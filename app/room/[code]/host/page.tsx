@@ -15,6 +15,11 @@ export default function HostPage() {
   const [lobby, setLobby] = useState<LobbyState>({ teams: [] });
   const [game, setGame] = useState<PlayState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Team whose judge buttons are disabled while we wait for the server's
+  // STATE broadcast to confirm the judgment — doubles as visible click
+  // feedback (buttons dim + show a spinner) and blocks accidental
+  // double-clicks from firing two judgments for the same turn.
+  const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
 
   const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
@@ -33,12 +38,15 @@ export default function HostPage() {
           break;
         case "STATE":
           setGame({ view: msg.view, phase: msg.phase, winners: msg.winners });
+          setPendingTeamId(null);
           break;
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
+          setPendingTeamId(null);
           break;
         case "ERROR":
           setError(`${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`);
+          setPendingTeamId(null);
           break;
       }
     },
@@ -50,6 +58,7 @@ export default function HostPage() {
   }
 
   function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "flee" | "retry") {
+    setPendingTeamId(teamId);
     send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice });
   }
 
@@ -123,22 +132,25 @@ export default function HostPage() {
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
+                        disabled={pendingTeamId === t.id}
                         onClick={() => judge(t.id, questionId, true)}
-                        className="rounded-lg bg-[var(--ok)] px-3 py-2 text-sm font-bold text-black"
+                        className="rounded-lg bg-[var(--ok)] px-3 py-2 text-sm font-bold text-black transition active:scale-95 disabled:animate-pulse disabled:opacity-60"
                       >
                         ✅ 答對
                       </button>
                       <button
                         type="button"
+                        disabled={pendingTeamId === t.id}
                         onClick={() => judge(t.id, questionId, false, "retry")}
-                        className="rounded-lg bg-[var(--surface2)] px-3 py-2 text-sm font-bold"
+                        className="rounded-lg bg-[var(--surface2)] px-3 py-2 text-sm font-bold transition active:scale-95 disabled:animate-pulse disabled:opacity-60"
                       >
                         🔁 答錯・重答
                       </button>
                       <button
                         type="button"
+                        disabled={pendingTeamId === t.id}
                         onClick={() => judge(t.id, questionId, false, "flee")}
-                        className="rounded-lg bg-[var(--surface2)] px-3 py-2 text-sm font-bold"
+                        className="rounded-lg bg-[var(--surface2)] px-3 py-2 text-sm font-bold transition active:scale-95 disabled:animate-pulse disabled:opacity-60"
                       >
                         😨 答錯・逃跑
                       </button>
