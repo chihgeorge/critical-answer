@@ -212,11 +212,11 @@ Synthesized from this review's findings. Run with Claude Code or Codex; checkbox
   - Files: `lib/game-state.ts`
   - Verify: 單元測試涵蓋首領死亡判定邊界（血量剛好歸零）、尾刀歸屬
   - **DONE (2026-09-17)**：`isInBossPhase`/boss combat 分支，含後到隊伍補刀、3d6 尾刀分測試
-- [ ] **T5 (P2, human: ~2-3h / CC: ~30min)** — game-state — 加入輕量旁觀提示廣播（等待隊伍看到目前輪到誰、答到哪）
+- [x] **T5 (P2, human: ~2-3h / CC: ~30min)** — game-state — 加入輕量旁觀提示廣播（等待隊伍看到目前輪到誰、答到哪）
   - Surfaced by: Outside Voice 的步調風險緩解（Premise 7）
-  - Files: 連線層廣播邏輯（PartyKit `party/index.ts`，尚未寫）
+  - Files: `party/index.ts` 廣播、`app/room/[code]/{host,play}/page.tsx` 顯示
   - Verify: 手動測試多隊連線時，等待中的隊伍畫面有更新
-  - **部分完成**：`getSpectatorView()` 已在 `lib/game-state.ts` 提供純函式版本；PartyKit 廣播接線還沒做
+  - **DONE (2026-09-17)**：`getSpectatorView()` 接進 PartyKit `broadcastState()`；host/player 頁面都會顯示目前輪到誰、各隊房間進度、首領血量。已用真的 `partykit dev` + WebSocket 端到端驗證（非僅單元測試）。
 - [x] **T6 (P1, human: ~30min / CC: ~10min)** — game-state — 為 `answerQuestion()` 加入題目/房間狀態校驗（防止前端快取過期導致誤判）
   - Surfaced by: Failure modes — critical gap
   - Files: `lib/game-state.ts`
