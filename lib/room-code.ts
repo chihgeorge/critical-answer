@@ -8,11 +8,30 @@ export function generateRoomCode(): string {
 
 const TEAM_ID_STORAGE_KEY = "dungeon_master_team_id";
 
+/**
+ * `crypto.randomUUID()` only exists in secure contexts (HTTPS or localhost).
+ * Local playtests are joined over a plain `http://<lan-ip>:3000` URL so
+ * phones on the same Wi-Fi can reach the host — that's an insecure context,
+ * where `crypto.randomUUID` is undefined and throws. `crypto.getRandomValues`
+ * has no such restriction, so build a UUID v4 from it instead.
+ */
+function randomUuidV4(): string {
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /** Client-only: read the stored team id for this browser, or mint and store a new one. */
 export function getOrCreateTeamId(): string {
   const stored = localStorage.getItem(TEAM_ID_STORAGE_KEY);
   if (stored) return stored;
-  const id = crypto.randomUUID();
+  const id = randomUuidV4();
   localStorage.setItem(TEAM_ID_STORAGE_KEY, id);
   return id;
 }

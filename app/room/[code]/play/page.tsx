@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { getOrCreateTeamId } from "@/lib/room-code";
@@ -15,20 +15,14 @@ export default function PlayPage() {
   const searchParams = useSearchParams();
   const teamName = searchParams.get("name") ?? "隊伍";
 
-  // Read lazily on first render only — fine here because this page is
-  // always client-rendered (usePartySocket already requires a browser).
   const [teamId, setTeamId] = useState("");
   const [lobby, setLobby] = useState<LobbyState | null>(null);
   const [game, setGame] = useState<PlayState | null>(null);
+  const joinedRef = useRef(false);
 
   const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
     room: code,
-    onOpen() {
-      const id = getOrCreateTeamId();
-      setTeamId(id);
-      send({ type: "JOIN", teamId: id, teamName });
-    },
     onMessage(event: MessageEvent) {
       let msg: ServerMessage;
       try {
@@ -55,6 +49,34 @@ export default function PlayPage() {
   function send(msg: ClientMessage) {
     socket.send(JSON.stringify(msg));
   }
+
+  // Join once the socket is open. Polled rather than driven off the "open"
+  // event: React StrictMode's dev-mode mount→cleanup→mount double-invoke can
+  // close and replace the underlying socket right around when this effect
+  // first runs, so an addEventListener("open", ...) registered at that exact
+  // moment can miss the event entirely. Polling is immune to that race.
+  useEffect(() => {
+    joinedRef.current = false;
+    function join() {
+      if (joinedRef.current) return;
+      joinedRef.current = true;
+      const id = getOrCreateTeamId();
+      setTeamId(id);
+      send({ type: "JOIN", teamId: id, teamName });
+    }
+    if (socket.readyState === socket.OPEN) {
+      join();
+      return;
+    }
+    const pollId = setInterval(() => {
+      if (socket.readyState === socket.OPEN) {
+        join();
+        clearInterval(pollId);
+      }
+    }, 100);
+    return () => clearInterval(pollId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, teamName]);
 
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
   const isMyTurn = game?.view.currentTurnTeamId === teamId;
