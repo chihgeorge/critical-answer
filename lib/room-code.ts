@@ -6,7 +6,7 @@ export function generateRoomCode(): string {
   );
 }
 
-const TEAM_ID_STORAGE_KEY = "dungeon_master_team_id";
+const TEAM_ID_STORAGE_KEY = "critical_answer_team_id";
 
 /**
  * `crypto.randomUUID()` only exists in secure contexts (HTTPS or localhost).

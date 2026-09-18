@@ -1,6 +1,6 @@
 {
   "$schema": "https://www.partykit.io/schema.json",
-  "name": "dungeon-master",
+  "name": "critical-answer",
   "main": "party/index.ts",
   "compatibilityDate": "2024-01-01"
 }

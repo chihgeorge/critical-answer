@@ -1,7 +1,7 @@
 // PartyKit client/server message contract for the dungeon room.
 //
 // Iteration 1 has no host quiz-editor UI or player text input (see
-// docs/designs/dungeon-master-party-game.md, Next Steps #7): the host reads
+// docs/designs/critical-answer-party-game.md, Next Steps #7): the host reads
 // each question aloud off a fixed fixture set and judges the current team's
 // answer correct/incorrect. Only the host can send HOST_JUDGE — trusting a
 // team's own "I got it right" claim would let them self-score.

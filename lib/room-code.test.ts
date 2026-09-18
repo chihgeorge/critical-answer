@@ -32,7 +32,7 @@ describe("getOrCreateTeamId", () => {
     "falls back to crypto.getRandomValues and still produces a valid UUID v4 " +
       "when crypto.randomUUID is unavailable — the insecure-context case that " +
       "broke JOIN entirely when a phone connects over http://<lan-ip> (see " +
-      "docs/designs/dungeon-master-party-game.md playtest notes)",
+      "docs/designs/critical-answer-party-game.md playtest notes)",
     () => {
       const originalRandomUUID = crypto.randomUUID;
       // @ts-expect-error simulating an insecure context, where this is undefined

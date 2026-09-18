@@ -1,4 +1,4 @@
-// Global turn-based dungeon game state (see docs/designs/dungeon-master-party-game.md).
+// Global turn-based dungeon game state (see docs/designs/critical-answer-party-game.md).
 //
 //                    ┌─────────────────────────┐
 //                    │  隊伍固定順序佇列          │

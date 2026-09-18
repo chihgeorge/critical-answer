@@ -196,12 +196,12 @@ Synthesized from this review's findings. Run with Claude Code or Codex; checkbox
 
 - [x] **T1 (P1, human: ~1h / CC: ~15min)** — scaffold — 確認並記錄 HITSTER! Online 的實際 runtime/測試框架
   - Surfaced by: Test Review — 「假定跟 HITSTER! Online 一樣的 runtime」但尚未實際確認
-  - Files: docs/designs/dungeon-master-party-game.md（更新 Next Steps 第 1 步）
+  - Files: docs/designs/critical-answer-party-game.md（更新 Next Steps 第 1 步）
   - Verify: 文件中列出具體 runtime 名稱與版本
   - **DONE (2026-09-17)**：Next.js 16.2.4 + React 19.2.4 + PartyKit + Tailwind 4 + TypeScript 5；測試用 Vitest + Testing Library + Playwright。確認自 /Users/georgechih/Repository/hitster_online。
 - [x] **T2 (P1, human: ~2h / CC: ~30min)** — game-state — 定案總分公式、逃跑重擲單位、難度權重公式、門檻分數 X
   - Surfaced by: Architecture Review + Reviewer Concerns #1 + Outside Voice — 這四項是 Next Steps 第 2 步的前置阻塞
-  - Files: docs/designs/dungeon-master-party-game.md（更新 Premises/Open Questions）
+  - Files: docs/designs/critical-answer-party-game.md（更新 Premises/Open Questions）
   - Verify: 每一項都有具體公式或數值，不再是空白 Open Question
   - **DONE (2026-09-17)**：難度=1-5分正相關；逃跑=換怪物+降級難度；門檻X=固定15分；總分=單純相加（一般怪物分+首領尾刀分）；平手=並列第一。參考桌遊修正為《Monster Eater: A Delicious in Dungeon Board Game》而非 MONSTER MAKER（使用者更正）。
 - [x] **T3 (P1, human: ~1-2天 / CC: ~2-3小時)** — game-state — 實作房間/怪物狀態機（全域回合制、固定隊伍順序）

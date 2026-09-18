@@ -65,7 +65,7 @@ export default function HostPage() {
   return (
     <main className="min-h-screen px-6 py-10">
       <header className="mb-8 flex items-center justify-between">
-        <h1 className="text-3xl font-black">dungeon_master</h1>
+        <h1 className="text-3xl font-black">Critical Answer</h1>
         <div className="rounded-xl bg-[var(--surface)] px-4 py-2 font-mono text-2xl tracking-[0.3em]">{code}</div>
       </header>
 

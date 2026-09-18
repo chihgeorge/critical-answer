@@ -10,7 +10,7 @@
 
 **Cons:** 需要選定持久化層（檔案/SQLite/其他），增加實作與測試複雜度。
 
-**Context:** 見 [docs/designs/dungeon-master-party-game.md](docs/designs/dungeon-master-party-game.md) 的 Open Questions 與 Architecture Review（/plan-eng-review, 2026-09-17）。決策記錄在該次審查的問題 1B。
+**Context:** 見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) 的 Open Questions 與 Architecture Review（/plan-eng-review, 2026-09-17）。決策記錄在該次審查的問題 1B。
 
 **Depends on / blocked by:** 需先完成第一輪範圍（狀態機 + 首領回合制 + 輕量真人測試），驗證玩法後再投入持久化工程。
 
@@ -26,7 +26,7 @@
 
 **Cons:** 需要額外設計淨化規則，可能誤傷正常題目內容（過度過濾）。
 
-**Context:** 見 [docs/designs/dungeon-master-party-game.md](docs/designs/dungeon-master-party-game.md) 的 Open Questions（「Host 自訂題庫的文字內容進入 LLM 旁白 prompt 前」）。
+**Context:** 見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) 的 Open Questions（「Host 自訂題庫的文字內容進入 LLM 旁白 prompt 前」）。
 
 **Depends on / blocked by:** 第二輪的敘事狀態管理層 + LLM API 接入（Next Steps 第 5-6 步）。
 
@@ -44,7 +44,7 @@
 
 **Cons:** 需要等 PartyKit 修這兩個 bug，或改走重工程的替代方案（見下）。
 
-**Context:** 見 [docs/designs/dungeon-master-party-game.md](docs/designs/dungeon-master-party-game.md)。Vercel（前端）跟 wrangler（Cloudflare 帳號）都已登入備妥，`.env.cloudflare.local`（已加密限存取、已加入 .gitignore）存有可用的 API token，卡點純粹是 PartyKit CLI 端。
+**Context:** 見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md)。Vercel（前端）跟 wrangler（Cloudflare 帳號）都已登入備妥，`.env.cloudflare.local`（已加密限存取、已加入 .gitignore）存有可用的 API token，卡點純粹是 PartyKit CLI 端。
 
 **替代方案（若不想等 PartyKit 修復）：**
 - 追蹤 PartyKit repo 更新，定期重試 `npx partykit deploy`（管理平台）或 cloud-prem 路徑

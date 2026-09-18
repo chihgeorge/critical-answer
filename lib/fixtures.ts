@@ -1,5 +1,5 @@
 // Iteration-1 fixture dungeon: no host quiz-editor UI yet (deferred to
-// iteration 2, see docs/designs/dungeon-master-party-game.md Next Steps #7).
+// iteration 2, see docs/designs/critical-answer-party-game.md Next Steps #7).
 // The host reads each question aloud from a printed/shared sheet that
 // matches these question ids — the app only tracks state, not question text.
 

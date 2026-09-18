@@ -33,8 +33,8 @@ export default function HomePage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-8 px-5 py-12">
       <div className="text-center">
-        <h1 className="text-5xl font-black tracking-tight">dungeon_master</h1>
-        <p className="mt-2 text-[var(--ink2)]">地城問答派對遊戲 · Iteration 1</p>
+        <h1 className="text-5xl font-black tracking-tight">Critical Answer</h1>
+        <p className="mt-2 text-[var(--ink2)]">致命答題 · 地城問答派對遊戲</p>
       </div>
 
       <form
