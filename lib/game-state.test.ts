@@ -323,14 +323,22 @@ describe("scoring and winners", () => {
 });
 
 describe("getSpectatorView (Premise 7 pacing mitigation)", () => {
-  it("exposes whose turn it is and every team's progress without exposing question ids", () => {
+  it("exposes whose turn it is, every team's progress, and each side's current question id", () => {
     const game = makeGame();
     const view = getSpectatorView(game);
     expect(view.currentTurnTeamId).toBe("T0");
     expect(view.teams).toHaveLength(3);
-    expect(view.teams[0]).toMatchObject({ id: "T0", score: 0, roomIndex: 0, inBossPhase: false, online: true });
+    expect(view.teams[0]).toMatchObject({
+      id: "T0",
+      score: 0,
+      roomIndex: 0,
+      inBossPhase: false,
+      online: true,
+      currentQuestionId: "room0-q1",
+    });
     expect(view.bossHp).toBe(game.boss.hp);
     expect(view.bossMaxHp).toBe(game.boss.maxHp);
+    expect(view.bossCurrentQuestionId).toBe(game.boss.currentQuestionId);
   });
 });
 

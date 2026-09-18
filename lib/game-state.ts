@@ -335,9 +335,22 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
  */
 export interface SpectatorView {
   currentTurnTeamId: string | null;
-  teams: { id: string; name: string; score: number; roomIndex: number; inBossPhase: boolean; online: boolean }[];
+  teams: {
+    id: string;
+    name: string;
+    score: number;
+    roomIndex: number;
+    inBossPhase: boolean;
+    online: boolean;
+    /** The question id this team must answer on their next turn — an opaque
+     * id, not the question text (the host reads text off a paper sheet
+     * matched by id; see docs/designs Next Steps #7). Exposed so the host
+     * client can submit a matching HOST_JUDGE without a separate lookup. */
+    currentQuestionId: string;
+  }[];
   bossHp: number;
   bossMaxHp: number;
+  bossCurrentQuestionId: string;
 }
 
 export function getSpectatorView(game: GameState): SpectatorView {
@@ -350,8 +363,10 @@ export function getSpectatorView(game: GameState): SpectatorView {
       roomIndex: t.roomIndex,
       inBossPhase: isInBossPhase(game, t.id),
       online: t.online,
+      currentQuestionId: t.currentQuestionId,
     })),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
+    bossCurrentQuestionId: game.boss.currentQuestionId,
   };
 }
