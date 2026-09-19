@@ -143,3 +143,21 @@
 **Effort:** L（人工約 1 週 / CC 約半天）　**Priority:** P3
 
 **Depends on / blocked by:** 第二次真人測試結果，題庫格式定案。
+
+---
+
+## 逃跑・換房（flee-switch-room）
+
+**What:** 答錯後除了「重答」和「逃跑・同房」，再加一個「逃跑・換房」：跳到另一間房、面對另一隻怪物。
+
+**Why:** 你在 2026-09-18 的 /plan-ceo-review 提出「逃跑可以選擇同一房或換房」。工程審查（/plan-eng-review，T1）決定先延後，改用全域已用題目牌堆解決題目重複，換房是狀態空間最大的新增規則，也還沒有真人測試要求過。
+
+**Pros:** 讓逃跑成為真正的策略選擇，符合設計文件「放棄較高難度換取簡單」的精神。
+
+**Cons:** 每隊需要記錄已通關的房間，「走完」的定義、被放棄的房間難度、`roomIndex` 不再線性都要重新定義，會動到第一輪已驗證的核心。
+
+**Context:** 見 [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md)「Engineering review decisions」T1。預設草案：換到下一間尚未通關的房、難度為該房基礎難度 −1、回頭打被放棄的房恢復基礎難度。
+
+**Effort:** M（人工約 1-2 天 / CC 約 1 小時）　**Priority:** P3
+
+**Depends on / blocked by:** 第二次真人測試結果、牌堆規則穩定。

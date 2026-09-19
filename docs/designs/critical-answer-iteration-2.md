@@ -258,18 +258,119 @@ Synthesized from this review's findings. Ordered so each phase is playable. Run 
 
 _No new tasks from Sections 7, 9, 10 (no findings; Section 9 items folded into T8 and T4)._
 
+## Engineering review decisions (/plan-eng-review, 2026-09-18)
+
+This section supersedes earlier rows where they conflict. Superseded: D4 (upgrade path), D7 (token hash), D15 (switch-room, `extraRooms`, staggered start), D9 (`rooms[]` carries several questions and the boss deck; no per-team routes), and the CEO-review claim of "independently revertable" work.
+
+| # | Decision | Choice |
+|---|----------|--------|
+| E1 | Delivery | Scope unchanged. Four stacked PRs in dependency order (only the top PR reverts alone; earlier ones revert in reverse order): **PR-A** identity and `/screen`, **PR-B** rules and bank, **PR-C** scripted narration, **PR-D** LLM and director interface |
+| 1A | Host connections | `hostConns: Set<string>` replaces single `hostConnId` (`party/index.ts:36,63,85`). A connection that presents a valid token joins, `onClose` removes it, host-only messages go to every member. If hibernation is ever enabled the Set must move to `conn.setState`; leave a code comment. Concurrent judging from two devices is caught by the existing T6 stale-question check |
+| T1 | Room model (user chose B, supersedes D20 and the D15 switch-room rule) | Shared linear room list, one monster per room, per-team `roomIndex` unchanged. A global used-question deck deals a question nobody has used yet in that room: at game start, when a team enters a room, and on flee-same-room. When a room's deck is exhausted it is reshuffled. The last room stays clamped, so a team still below 15 keeps getting fresh questions from it. Every question is worth at least 1 point, so 15 is always reachable. No `extraRooms`, no `bossUnlocked`, `MAX_TEAMS` stays 8. Wrong answer: retry, or flee-same-room (next fresh question, same monster, difficulty -1). Flee-switch-room is deferred (TODOS.md). Players see score toward 15 only, not room numbers. Bank: each of the 5 rooms gains 6-8 questions. `usedQuestionIds` and dealing take an injected rng so tests are deterministic |
+| 2A | Message validation | `parseClientMessage()` in `lib/protocol.ts` validates every field, returns `ClientMessage` or null, bad input gets `ERROR invalid_action`, never throws. `sanitizeTeamName` becomes shared `sanitizeText(max)` for team names, notes (<= 500) and edited lines (<= 40) |
+| 2B | Refactor order | User chose to add the rules directly inside `answerQuestion`, no pre-refactor. The regression tests below are the only safety net |
+| 3A | UI test infra | Add `@playwright/test`. One main-line E2E with a fake LLM provider, plus an assertion that `/screen` and `/play` DOM and WebSocket frames contain no answer string |
+| 3B | Live LLM smoke | `llm.live.test.ts` runs only when `ANTHROPIC_API_KEY` is set, is skipped otherwise and is excluded from default `npm test` |
+| T2 | Token and restart | Token compared in constant time, no hash, so `HOST_CLAIM` stays synchronous. The token is trust-on-first-use on a 4-letter code (23^4); that is the only protection and the docs say so. The AI narration on/off option travels in `HOST_START`. A random `roomEpoch` is created when the room instance starts and sent with `STATE`/`LOBBY`; when it changes the host and phones show "server restarted, game reset" and the host is warned that the transcript is gone |
+| T3 | Narration delivery (user chose A, supersedes D4 upgrade path) | Exactly one `NARRATION` per event, held up to 2 s while STATE and the animation update immediately. LLM line if ready in time, otherwise the scripted line. No upgrade, no stale-drop, no same-`eventId` double message. `handleHostJudge` mutates the game and assigns `eventId` synchronously before any await; narration is fire-and-forget with its own try/catch; `epilogueRequested` is set before the await; the kill-shot line is sent before the epilogue. Host edit just replaces the current line. The D19 3 s and the 15 s epilogue limits stay; the per-event limit becomes 2 s. Check that 40 characters is enough for the tone during T5 |
+
+### Regression tests (Iron Rule, CRITICAL)
+
+1. `party/index.test.ts:46` and `:58` encode "the first connection becomes the host", and `makeRoomWithHost` is used 26 times. All of it is rewritten for token claims. The mock room also needs `env` so T8 can inject `ANTHROPIC_API_KEY`.
+2. `lib/game-state.test.ts` uses `roomIndex` in 6 places and calls `createGame`. The deck changes the question chosen on room entry, on flee and at start, so those tests are updated and 100% coverage is kept.
+
+### Coverage diagram
+
+```
+CODE PATHS                                              USER FLOWS
+[+] lib/game-state.ts (deck, flee-same-room)            [+] /screen
+  ├── deal at start / enter room / flee   [GAP]           ├── [GAP][->E2E] question, monster, narration
+  ├── deck exhausted reshuffle             [GAP]           ├── [GAP] refresh replays last narration
+  ├── last room clamped, fresh question    [GAP]           └── [GAP] roomEpoch restart banner
+  ├── existing advance/flee (changed)      [REGRESSION]  [+] /host
+[+] lib/protocol.ts parseClientMessage      [GAP]           ├── [GAP][->E2E] token entry, answers visible
+[+] lib/question-bank.ts loader, validation [GAP]           ├── [GAP] #k= second device
+[+] party/index.ts                                          ├── [GAP] refresh keeps control
+  ├── hostConns, HOST_CLAIM   [REGRESSION]                  └── [GAP] notes / edit current line
+  ├── answer only to hostConns [GAP]                     [+] /play
+  ├── NARRATION 2 s hold, ordering [GAP]                   └── [GAP] narration and score/15
+  ├── epilogue once, kill-shot first [GAP]               [+] main line
+  ├── transcript, roomEpoch   [GAP]                        └── [GAP][->E2E] create, join, judge, narrate, epilogue
+[+] lib/narration/*  all [GAP]
+LLM: fake fetch only  [GAP][->EVAL]  (3B live smoke)
+
+COVERAGE: 0/24 new paths tested, 2 REGRESSIONS  |  GAPS: 24 (4 E2E, 1 live LLM)
+```
+
+### Failure Modes Registry (new since the CEO review)
+
+| Codepath | Failure | Rescued | Test | User sees | Logged |
+|----------|---------|---------|------|-----------|--------|
+| Room restart mid-game | Host reclaims an empty room | Y (roomEpoch) | Y | Restart banner | Y |
+| Two host devices judge at once | Second judge | Y (T6 check) | Y | `invalid_action` | Y |
+| Deck exhausted for a room | More teams than questions | Y (reshuffle) | Y | New question | Y |
+| Narration with slow LLM | Held 2 s | Y | Y | Scripted line | Y |
+| Malformed client message | Bad fields | Y (parseClientMessage) | Y | `invalid_action` | Y |
+
+CRITICAL GAPS: 0.
+
+### NOT in scope (added by this review)
+
+- Flee-switch-room, per-team routes, `extraRooms` (deferred, see TODOS.md).
+- State persistence across restarts (existing TODO); `roomEpoch` only makes a restart visible.
+- Hibernation support (comment only).
+
+### What already exists (added)
+
+`sendTo`/`broadcast`, T6 stale-question check, the judge-button pending feedback, `sanitizeTeamName` (generalised), Vitest setup, `getSpectatorView`.
+
+### Implementation Tasks (revised, grouped by PR)
+
+**Phase 0**
+- [ ] **T1 (P1, human ~0.5d / CC ~25min)** design: run `/plan-design-review` before any UI work in PR-A.
+
+**PR-A: identity and /screen**
+- [ ] **T4 (P1, human ~1.5d / CC ~50min)** party: `hostConns` Set, `HOST_CLAIM` with constant-time token compare, `SCREEN` role, answers via `sendTo` to `hostConns` only, `roomEpoch`, `#k=` URL with QR (adds a QR dependency, `qrcode`), `/screen` skeleton
+  - Files: `party/index.ts`, `lib/protocol.ts`, `app/room/[code]/host/page.tsx`, `app/room/[code]/screen/page.tsx`, `package.json`
+  - Verify: no broadcast payload contains an answer; refresh restores control; wrong token rejected; epoch change shows the banner
+- [ ] **T12 (P1, human ~0.5d / CC ~25min)** protocol: `parseClientMessage()` and shared `sanitizeText`, applied to every handler
+  - Files: `lib/protocol.ts`, `party/index.ts`
+  - Verify: one test per message type with missing, wrong-type and oversize fields
+- [ ] **T13 (P1, human ~1d / CC ~30min)** tests: rewrite the 26-use `makeRoomWithHost` suite for token claims; mock room `env`; add `@playwright/test` and config; answer-leak E2E assertion
+  - Files: `party/index.test.ts`, `playwright.config.ts`, `e2e/`
+  - Verify: `npm test` green, `npx playwright test` green
+
+**PR-B: rules and bank**
+- [ ] **T2 (P1, human ~1d / CC ~40min)** game-state: used-question deck, dealing at start, room entry and flee-same-room, reshuffle, last room clamped, retry unchanged; `SpectatorView` shows score toward 15 (not room number). Rules go directly into `answerQuestion` (2B)
+  - Files: `lib/game-state.ts`, `lib/game-state.test.ts`, `lib/protocol.ts`, host and play pages
+  - Verify: full clear never repeats a question until a deck is exhausted; two teams never receive the same question in one room; a team below 15 in the last room keeps getting fresh questions; 100% coverage held
+- [ ] **T3 (P1, human ~1-2d / CC ~40min)** content: bank JSON with one monster per room and 6-8 questions per room, boss questions, loader validation, only `party/` imports the full bank (client bundle gets a public projection)
+  - Files: `lib/question-bank.ts`, `data/question-bank.json`, `lib/fixtures.ts`
+  - Verify: load fails on a missing id; bundle check shows no `answer`
+
+**PR-C: scripted atmosphere**
+- [ ] **T5 (P1, human ~1d / CC ~30min)** narration: events mapper, scripted provider (4-5 variants per event, no-repeat pick), single `NARRATION` with 2 s hold, sync-before-await rules, `lastNarration` replay
+- [ ] **T6 (P2, human ~0.5d / CC ~20min)** epilogue (scripted), once-only guard, kill-shot before epilogue
+- [ ] **T7 (P2, human ~0.5d / CC ~20min)** transcript and host-only download
+- [ ] **T11 (P1, human ~0.5d / CC ~20min)** E2E main line with the fake provider
+
+**PR-D: LLM and director**
+- [ ] **T8 (P1, human ~1d / CC ~40min)** LLM provider (six named errors, breaker, output validation, prompt rules, `room.env` key, README `.env` note) plus `llm.live.test.ts`
+- [ ] **T9 (P2, human ~1d / CC ~40min)** director interface: notes and rewrite of the current line (no upgrade race any more), last 5 edits as style examples
+- [ ] **T10 (P2, human ~0.2d / CC ~10min)** AI narration on/off carried by `HOST_START`
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | CLEAR | 7 proposals, 2 accepted, 5 deferred (mode: SELECTIVE_EXPANSION) |
-| Outside Review | Claude subagent (Codex not authenticated) | Independent 2nd opinion | 1 | unavailable (native fallback completed) | 8 points; 1 verified bug (question progression and 15-point gate), 4 decisions revised |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ISSUES_OPEN (PLAN, 2026-09-17, iteration 1, predates this review) | 10 issues, 2 critical gaps |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | CLEAR | 7 proposals, 2 accepted, 5 deferred (SELECTIVE_EXPANSION) |
+| Outside Review | Claude subagent (Codex not authenticated) | Independent 2nd opinion | 2 | unavailable (native fallback completed) | CEO pass 8 points; eng pass 4 tensions, all resolved |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | 10 issues, 0 critical gaps, 2 regressions planned |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | not run | recommended before PR-A UI work |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | not run | not applicable |
 
-**OUTSIDE COVERAGE:** codex, plan-review, unavailable (not authenticated); a native Claude subagent pass completed with 8 findings. A native pass is not outside-model coverage.
+**OUTSIDE COVERAGE:** codex, plan-review, unavailable (not authenticated); native Claude subagent passes completed for both reviews. A native pass is not outside-model coverage.
 **CROSS-MODEL:** no completed external-model review exists, so no overlap analysis.
-**VERDICT:** CEO CLEARED. Eng review required (scope and architecture changed since the last eng review). Design review recommended (UI is the product this iteration).
+**VERDICT:** CEO + ENG CLEARED, ready to implement PR-A after `/plan-design-review`.
 
 NO UNRESOLVED DECISIONS
