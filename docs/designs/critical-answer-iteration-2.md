@@ -203,7 +203,7 @@ System architecture (see the review transcript, Section 1). State and flow delta
 Synthesized from this review's findings. Ordered so each phase is playable. Run with Claude Code or Codex; checkbox as you ship.
 
 **Phase 0 (before any UI)**
-- [ ] **T1 (P1, human: ~0.5d / CC: ~25min)** — design — Run `/plan-design-review` for `/screen`, `/host`, phone
+- [x] **T1 (P1, human: ~0.5d / CC: ~25min)** — design — Run `/plan-design-review` for `/screen`, `/host`, phone
   - Surfaced by: Section 11 + outside voice #1 — visuals undefined, they are the product this iteration
   - Files: design doc output only
   - Verify: visual direction, type scale for 3 m viewing, touch targets recorded
@@ -327,7 +327,7 @@ CRITICAL GAPS: 0.
 ### Implementation Tasks (revised, grouped by PR)
 
 **Phase 0**
-- [ ] **T1 (P1, human ~0.5d / CC ~25min)** design: run `/plan-design-review` before any UI work in PR-A.
+- [x] **T1 (P1, human ~0.5d / CC ~25min)** design: run `/plan-design-review` before any UI work in PR-A.
 
 **PR-A: identity and /screen**
 - [ ] **T4 (P1, human ~1.5d / CC ~50min)** party: `hostConns` Set, `HOST_CLAIM` with constant-time token compare, `SCREEN` role, answers via `sendTo` to `hostConns` only, `roomEpoch`, `#k=` URL with QR (adds a QR dependency, `qrcode`), `/screen` skeleton
@@ -359,6 +359,75 @@ CRITICAL GAPS: 0.
 - [ ] **T9 (P2, human ~1d / CC ~40min)** director interface: notes and rewrite of the current line (no upgrade race any more), last 5 edits as style examples
 - [ ] **T10 (P2, human ~0.2d / CC ~10min)** AI narration on/off carried by `HOST_START`
 
+## Design review decisions (/plan-design-review, 2026-09-19)
+
+Initial design score 3/10 (no visual system, flat states), final 8/10. Classifier: `/screen` = EXPERIENCE, `/host` and `/play` = OPERATE.
+
+### Visual direction (approved after four rejected proposals)
+
+Cute pixel dungeon. Hand-drawn pixel slime, ghost and chibi black dragon. Cream rounded panels with a 4px hard outline `#2a1533`. RPG dialogue box with an owl 地城主 portrait and typewriter text. Program-drawn pixel brick walls, torches with halation, 15-cell score meters, two-frame `steps()` animation, `prefers-reduced-motion` respected. No external image assets.
+
+Rejected on the way: torch-lit stone, tabletop parchment, rune neon, retro-anime, and the first emoji-derived pixel version.
+
+### Decisions by pass
+
+| Pass | Decision |
+|------|----------|
+| 1A information architecture | `/host` keeps only the judge buttons in the thumb zone. Director notes, AI narration toggle, QR and link, transcript download move into a `⚙ 更多` drawer. |
+| 2A lobby | `/screen` lobby shows a fire pit, a large room code, a join QR, and each team's adventurer running in as they join. Entry flow gets the same pixel treatment. |
+| 2B narration hold | During the 2 s hold the dialogue box clears to a blinking `…` loader with the owl portrait kept. The line then arrives once via typewriter. |
+| 2C not your turn | The phone becomes a mini broadcast: whose turn, the monster they face, the same narration line, own score toward 15. No new input surface. |
+| 2D disconnect (`ac659960`, reduced) | Disconnect UI on `/host` only (judge buttons disable, "重新連線中"). `/play` and `/screen` get nothing. Ceiling: a dropped player sees a frozen screen and does not know T7 skipped their turn. Upgrade when playtest 2 shows confusion about missed turns, or when the game leaves LAN. Implementation leaves a `gstack-shortcut(dec-ac659960)` marker. |
+| 2E game over | Podium and rankings appear immediately (program-generated). The story box runs the same `…` loader, and the epilogue arrives once via typewriter. Resolves D19 vs T3 in favour of T3's single-send rule. |
+| 3A boss transition (`98cb576b`, deferred) | No boss-room cutscene. Entering the boss room only changes the monster and the wall color. Ceiling: the mid-game has no structural peak, so 30-60 minutes reads as one flat loop. Same for the opening after `HOST_START`. Upgrade when playtest 2 reports the game feels long or eventless. |
+| 4A font | Chinese pixel font is 俐方體11號 (Cubic 11): Taiwan glyph forms, SIL OFL. Ship the font file inside the repo so LAN play works offline. Press Start 2P stays for digits. |
+| 5A design system | Rewrite `app/globals.css` tokens (outline, cream panel, lavender, turn-yellow, correct-green, danger-red, three team colors). Extract `Panel`, `PixelButton`, `DialogueBox` (portrait + typewriter), `ScoreMeter` (15 cells), `TurnRibbon`, `Nameplate`. Write `DESIGN.md`. Old purple tokens (`--bg:#14121f` etc.) are removed. |
+| 6A TV scaling (`b462db57`) | `/screen` is designed on a fixed 1920×1080 stage and scaled with `transform: scale()`, centered, letterboxed outside 16:9, integer scaling, `image-rendering: pixelated` on sprites. |
+| 6B contrast (`9c3fff9e`) | Small orange labels (第 N 題, 難度) render as `#e8862a` text on a dark `#2a1533` pill chip. 6.3:1 versus 2.4:1 for bare orange on cream. Large orange shapes are unchanged. |
+| 6C keyboard (`6c02a72b`, cut) | No keyboard support on `/host`. Ceiling: laptop hosts use only the trackpad or mouse, and keyboard-only users get no focus state. Upgrade when a host reports slow judging on a laptop, or before any public release. Touch targets already pass (78px judge buttons). |
+
+### Approved mockups
+
+Folder: `~/.gstack/projects/critical-answer/designs/screen-variants-20260918/` (source `cute-pixel-proposal.html`, PNGs in `png/`).
+
+| Screen | PNG | Status |
+|--------|-----|--------|
+| `/screen` playing | `A-playing.png` | Approved |
+| `/screen` ghost room | `B-ghost.png` | Approved |
+| `/screen` boss room | `C-boss.png` | Approved |
+| `/screen` podium | `D-podium.png` | Approved |
+| `/play` phone | `E1-phone.png` | Approved |
+| `/host` | `E2-host.png` | Approved |
+| Font comparison | `font-zoom.png`, `font-full.png` | Cubic 11 chosen |
+| Contrast options | `contrast-6b.png` | Option B chosen (the chip is not yet in the other mockups) |
+
+### NOT in scope (design review)
+
+- Boss-room and opening transition cutscenes (3A, deferred).
+- Disconnect indicator on `/play` and `/screen` (2D reduced).
+- Keyboard shortcuts and focus-ring work on `/host` (6C).
+- New input surfaces on the phone while it is not your turn (E5 stays deferred).
+- Fluid or multi-resolution `/screen` layouts (6A picked a fixed stage).
+
+### What already exists (design)
+
+Judge-button pending feedback on `/host` (dim plus spinner), the 78px judge buttons, `app/globals.css` (purple tokens, to be replaced), `getSpectatorView` for the `/play` mini broadcast. No shared component library yet.
+
+### Implementation tasks (design, land with PR-A)
+
+- [ ] **T14 (P1, human ~1.5d / CC ~45min)** design system: rewrite `app/globals.css` tokens, bundle Cubic 11 and Press Start 2P, add `Panel`, `PixelButton`, `DialogueBox`, `ScoreMeter`, `TurnRibbon`, `Nameplate`, label chip (6B), write `DESIGN.md`
+  - Files: `app/globals.css`, `app/layout.tsx`, `components/`, `public/fonts/`, `DESIGN.md`
+  - Verify: no old purple token remains; every screen loads with the network off
+- [ ] **T15 (P1, human ~2d / CC ~60min)** `/screen` stage: 1920×1080 scaled stage (6A), lobby with fire pit, code and QR (2A), brick walls, sprites, torches, nameplates, podium (2E)
+  - Files: `app/room/[code]/screen/page.tsx`, `components/`, `public/sprites/`
+  - Verify: screenshots at 1280×720, 1920×1080, 2560×1080 and 3840×2160 match the approved PNGs; `prefers-reduced-motion` stops animation
+- [ ] **T16 (P1, human ~1d / CC ~30min)** `/play` and `/host` restyle: mini broadcast when not your turn (2C), `⚙ 更多` drawer (1A), host-only disconnect state with the `gstack-shortcut(dec-ac659960)` marker (2D)
+  - Files: `app/room/[code]/play/page.tsx`, `app/room/[code]/host/page.tsx`
+  - Verify: judge buttons stay in the thumb zone at 375×667; drawer holds notes, toggle, QR, transcript
+- [ ] **T17 (P2, human ~0.5d / CC ~20min)** narration presentation: `…` loader then a single typewriter line (2B), epilogue loader (2E), contrast check on every small label (6B)
+  - Files: `components/DialogueBox.tsx`
+  - Verify: one `NARRATION` renders once; reduced-motion shows the text without typing
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
@@ -366,11 +435,11 @@ CRITICAL GAPS: 0.
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | CLEAR | 7 proposals, 2 accepted, 5 deferred (SELECTIVE_EXPANSION) |
 | Outside Review | Claude subagent (Codex not authenticated) | Independent 2nd opinion | 2 | unavailable (native fallback completed) | CEO pass 8 points; eng pass 4 tensions, all resolved |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | 10 issues, 0 critical gaps, 2 regressions planned |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | not run | recommended before PR-A UI work |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR (FULL) | score 3/10 → 8/10, 12 decisions, 3 deferred or cut (2D, 3A, 6C) |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | not run | not applicable |
 
 **OUTSIDE COVERAGE:** codex, plan-review, unavailable (not authenticated); native Claude subagent passes completed for both reviews. A native pass is not outside-model coverage.
 **CROSS-MODEL:** no completed external-model review exists, so no overlap analysis.
-**VERDICT:** CEO + ENG CLEARED, ready to implement PR-A after `/plan-design-review`.
+**VERDICT:** CEO + ENG + DESIGN CLEARED, ready to implement PR-A (T14-T16 land with it).
 
 NO UNRESOLVED DECISIONS
