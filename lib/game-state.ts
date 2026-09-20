@@ -68,6 +68,12 @@ export interface GameState {
   turnOrder: string[];
   currentTurnIndex: number;
   rooms: RoomTemplate[];
+  /**
+   * Per room index: the questions dealt there since that room's deck was last
+   * reshuffled. Shared by every team, so nobody is dealt a question another team
+   * already faced in the same room until the deck runs out.
+   */
+  usedQuestionIds: string[][];
   boss: BossState;
   config: GameConfig;
   phase: GamePhase;
@@ -96,12 +102,40 @@ export function rollBossKillBonus(rng: () => number = Math.random): number {
   return rollD6(rng) + rollD6(rng) + rollD6(rng);
 }
 
+/**
+ * Deal one question for `roomIndex`: a question nobody has drawn since the last
+ * reshuffle, avoiding any question a team is holding right now. When every
+ * question in the room has been drawn the deck reshuffles. Returns the id and
+ * the updated used-lists; `rng` is injected so tests are deterministic.
+ */
+function deal(
+  rooms: RoomTemplate[],
+  used: string[][],
+  teams: Team[],
+  roomIndex: number,
+  rng: () => number,
+): { questionId: string; used: string[][] } {
+  const all = rooms[roomIndex].questionIds;
+  let base = used;
+  let pool = all.filter((id) => !used[roomIndex].includes(id));
+  if (pool.length === 0) {
+    base = used.map((u, i) => (i === roomIndex ? [] : u));
+    pool = all;
+  }
+  const held = new Set(teams.map((t) => t.currentQuestionId));
+  const free = pool.filter((id) => !held.has(id));
+  if (free.length > 0) pool = free;
+  const questionId = pool[Math.floor(rng() * pool.length)];
+  return { questionId, used: base.map((u, i) => (i === roomIndex ? [...u, questionId] : u)) };
+}
+
 export function createGame(
   teamSeeds: { id: string; name: string }[],
   rooms: RoomTemplate[],
   bossQuestionIds: string[],
   config: GameConfig = { bossThreshold: 15 },
   bossMaxHp: number,
+  rng: () => number = Math.random,
 ): GameState {
   if (teamSeeds.length === 0) {
     throw new InvalidActionError("At least one team is required");
@@ -110,21 +144,29 @@ export function createGame(
     throw new InvalidActionError("At least one room is required");
   }
 
-  const teams: Team[] = teamSeeds.map((seed) => ({
-    id: seed.id,
-    name: seed.name,
-    online: true,
-    score: 0,
-    roomIndex: 0,
-    currentDifficulty: rooms[0].baseDifficulty,
-    currentQuestionId: rooms[0].questionIds[0],
-  }));
+  let used: string[][] = rooms.map(() => []);
+  const teams: Team[] = [];
+  for (const seed of teamSeeds) {
+    // Teams not dealt yet hold no question; the ones already dealt count as held.
+    const dealt = deal(rooms, used, teams, 0, rng);
+    used = dealt.used;
+    teams.push({
+      id: seed.id,
+      name: seed.name,
+      online: true,
+      score: 0,
+      roomIndex: 0,
+      currentDifficulty: rooms[0].baseDifficulty,
+      currentQuestionId: dealt.questionId,
+    });
+  }
 
   return {
     teams,
     turnOrder: teamSeeds.map((t) => t.id),
     currentTurnIndex: 0,
     rooms,
+    usedQuestionIds: used,
     boss: {
       maxHp: bossMaxHp,
       hp: bossMaxHp,
@@ -279,13 +321,14 @@ export function answerQuestion(
           : { type: "incorrect-retry", teamId };
     }
   } else {
-    const room = game.rooms[team.roomIndex];
     if (correct) {
       const pointsAwarded = team.currentDifficulty;
       const nextRoomIndex = Math.min(team.roomIndex + 1, game.rooms.length - 1);
       const nextRoom = game.rooms[nextRoomIndex];
+      const dealt = deal(game.rooms, game.usedQuestionIds, game.teams, nextRoomIndex, rng);
       nextGame = {
         ...game,
+        usedQuestionIds: dealt.used,
         teams: game.teams.map((t) =>
           t.id === teamId
             ? {
@@ -293,7 +336,7 @@ export function answerQuestion(
                 score: t.score + pointsAwarded,
                 roomIndex: nextRoomIndex,
                 currentDifficulty: nextRoom.baseDifficulty,
-                currentQuestionId: nextRoom.questionIds[0],
+                currentQuestionId: dealt.questionId,
               }
             : t,
         ),
@@ -301,12 +344,12 @@ export function answerQuestion(
       outcome = { type: "correct-room-advance", teamId, pointsAwarded, nextRoomIndex };
     } else if (fleeChoice === "flee") {
       const newDifficulty = clampDifficulty(team.currentDifficulty - 1);
+      const dealt = deal(game.rooms, game.usedQuestionIds, game.teams, team.roomIndex, rng);
       nextGame = {
         ...game,
+        usedQuestionIds: dealt.used,
         teams: game.teams.map((t) =>
-          t.id === teamId
-            ? { ...t, currentDifficulty: newDifficulty, currentQuestionId: room.questionIds[0] }
-            : t,
+          t.id === teamId ? { ...t, currentDifficulty: newDifficulty, currentQuestionId: dealt.questionId } : t,
         ),
       };
       outcome = { type: "incorrect-flee", teamId, newDifficulty };

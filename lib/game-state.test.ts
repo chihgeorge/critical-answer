@@ -13,12 +13,15 @@ import {
   type RoomTemplate,
 } from "./game-state";
 
-function makeRooms(count: number, baseDifficulty: 1 | 2 | 3 | 4 | 5 = 1): RoomTemplate[] {
+function makeRooms(count: number, baseDifficulty: 1 | 2 | 3 | 4 | 5 = 1, questionsPerRoom = 8): RoomTemplate[] {
   return Array.from({ length: count }, (_, i) => ({
     baseDifficulty,
-    questionIds: [`room${i}-q1`, `room${i}-q2`],
+    questionIds: Array.from({ length: questionsPerRoom }, (_, q) => `room${i}-q${q + 1}`),
   }));
 }
+
+/** Always picks the first available question, so deals are predictable: q1, q2, q3... */
+const first = () => 0;
 
 function makeGame(overrides?: { bossThreshold?: number; bossMaxHp?: number; teamCount?: number }): GameState {
   const teamCount = overrides?.teamCount ?? 3;
@@ -29,6 +32,7 @@ function makeGame(overrides?: { bossThreshold?: number; bossMaxHp?: number; team
     ["boss-q1", "boss-q2", "boss-q3"],
     { bossThreshold: overrides?.bossThreshold ?? 3 },
     overrides?.bossMaxHp ?? 2,
+    first,
   );
 }
 
@@ -48,7 +52,7 @@ describe("createGame", () => {
     for (const team of game.teams) {
       expect(team.roomIndex).toBe(0);
       expect(team.currentDifficulty).toBe(1);
-      expect(team.currentQuestionId).toBe("room0-q1");
+      expect(team.currentQuestionId).toMatch(/^room0-q\d$/);
       expect(team.score).toBe(0);
       expect(team.online).toBe(true);
     }
@@ -64,7 +68,7 @@ describe("createGame", () => {
 describe("answerQuestion — normal room, correct answer", () => {
   it("advances the room, awards points equal to the room's difficulty, and passes the turn", () => {
     const game = makeGame();
-    const { game: g2, outcome } = answerQuestion(game, "T0", "room0-q1", true);
+    const { game: g2, outcome } = answerQuestion(game, "T0", "room0-q1", true, "retry", first);
 
     expect(outcome).toMatchObject({ type: "correct-room-advance", teamId: "T0", pointsAwarded: 1, nextRoomIndex: 1 });
     const t0 = g2.teams.find((t) => t.id === "T0")!;
@@ -79,7 +83,7 @@ describe("answerQuestion — normal room, correct answer", () => {
     // Walk T0 through all 3 rooms.
     for (let i = 0; i < 3; i++) {
       const expectedQ = `room${Math.min(i, 2)}-q1`;
-      ({ game } = answerQuestion(game, "T0", expectedQ, true));
+      ({ game } = answerQuestion(game, "T0", expectedQ, true, "retry", first));
     }
     const t0 = game.teams[0];
     expect(t0.roomIndex).toBe(2); // last room index, not out of bounds
@@ -95,6 +99,7 @@ describe("answerQuestion — normal room, incorrect answer", () => {
       ["boss-q1"],
       { bossThreshold: 99 },
       1,
+      first,
     );
     const { game: g2, outcome } = answerQuestion(highDiffGame, "T0", "room0-q1", false, "flee");
     expect(outcome).toMatchObject({ type: "incorrect-flee", newDifficulty: 2 });
@@ -121,7 +126,7 @@ describe("answerQuestion — normal room, incorrect answer", () => {
 
   it("defaults to retry when no fleeChoice is given", () => {
     const game = makeGame();
-    const { outcome } = answerQuestion(game, "T0", "room0-q1", false);
+    const { outcome } = answerQuestion(game, "T0", "room0-q1", false, "retry", first);
     expect(outcome.type).toBe("incorrect-retry");
   });
 });
@@ -130,17 +135,17 @@ describe("global round-robin turn order", () => {
   it("cycles through all teams in fixed order regardless of outcome", () => {
     let game = makeGame();
     expect(currentTurnTeamId(game)).toBe("T0");
-    ({ game } = answerQuestion(game, "T0", "room0-q1", true));
+    ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first));
     expect(currentTurnTeamId(game)).toBe("T1");
-    ({ game } = answerQuestion(game, "T1", "room0-q1", false, "retry"));
+    ({ game } = answerQuestion(game, "T1", "room0-q2", false, "retry", first));
     expect(currentTurnTeamId(game)).toBe("T2");
-    ({ game } = answerQuestion(game, "T2", "room0-q1", false, "flee"));
+    ({ game } = answerQuestion(game, "T2", "room0-q3", false, "flee", first));
     expect(currentTurnTeamId(game)).toBe("T0"); // wrapped around
   });
 
   it("rejects an answer submitted by a team when it's not their turn", () => {
     const game = makeGame();
-    expect(() => answerQuestion(game, "T1", "room0-q1", true)).toThrow(InvalidActionError);
+    expect(() => answerQuestion(game, "T1", "room0-q1", true, "retry", first)).toThrow(InvalidActionError);
   });
 });
 
@@ -155,7 +160,7 @@ describe("answerQuestion — stale question rejection (T6 critical gap)", () => 
   it("does not mutate game state when rejecting a stale submission", () => {
     const game = makeGame();
     try {
-      answerQuestion(game, "T0", "stale-question", true);
+      answerQuestion(game, "T0", "stale-question", true, "retry", first);
     } catch {
       // expected
     }
@@ -175,7 +180,7 @@ describe("advanceTurn — offline team handling (T7 critical gap)", () => {
   it("answerQuestion also skips offline teams when passing the turn", () => {
     let game = makeGame();
     game = setTeamOnline(game, "T1", false);
-    const { game: g2 } = answerQuestion(game, "T0", "room0-q1", true);
+    const { game: g2 } = answerQuestion(game, "T0", "room0-q1", true, "retry", first);
     expect(currentTurnTeamId(g2)).toBe("T2");
   });
 
@@ -194,7 +199,7 @@ describe("advanceTurn — offline team handling (T7 critical gap)", () => {
   it("rejects an answer attempt when no online team can take a turn", () => {
     let game = makeGame();
     for (const t of game.teams) game = setTeamOnline(game, t.id, false);
-    expect(() => answerQuestion(game, "T0", "room0-q1", true)).toThrow(InvalidActionError);
+    expect(() => answerQuestion(game, "T0", "room0-q1", true, "retry", first)).toThrow(InvalidActionError);
   });
 });
 
@@ -214,9 +219,9 @@ describe("boss phase eligibility", () => {
   it("a team enters boss phase once its score reaches the fixed threshold", () => {
     let game = makeGame({ bossThreshold: 2, teamCount: 1 });
     expect(isInBossPhase(game, "T0")).toBe(false);
-    ({ game } = answerQuestion(game, "T0", "room0-q1", true)); // +1, score=1
+    ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first)); // +1, score=1
     expect(isInBossPhase(game, "T0")).toBe(false);
-    ({ game } = answerQuestion(game, "T0", "room1-q1", true)); // +1, score=2
+    ({ game } = answerQuestion(game, "T0", "room1-q1", true, "retry", first)); // +1, score=2
     expect(isInBossPhase(game, "T0")).toBe(true);
   });
 
@@ -363,5 +368,77 @@ describe("finished game guards further actions", () => {
     const { game: finished } = answerQuestion(game, "T0", game.boss.currentQuestionId, true);
     expect(finished.phase).toBe("finished");
     expect(() => answerQuestion(finished, "T0", "anything", true)).toThrow(InvalidActionError);
+  });
+});
+
+describe("question deck (T2)", () => {
+  const seeds = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `T${i}`, name: `Team ${i}` }));
+  const boss = ["boss-q1"];
+  const cfg = { bossThreshold: 999 };
+
+  it("deals each team a different question at the start when the room has enough", () => {
+    const game = createGame(seeds(3), makeRooms(2), boss, cfg, 1, first);
+    expect(game.teams.map((t) => t.currentQuestionId)).toEqual(["room0-q1", "room0-q2", "room0-q3"]);
+  });
+
+  it("a team entering a room gets a question nobody has used there yet", () => {
+    let game = createGame(seeds(2), makeRooms(2), boss, cfg, 1, first);
+    ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first)); // T0 -> room1
+    ({ game } = answerQuestion(game, "T1", "room0-q2", true, "retry", first)); // T1 -> room1
+    expect(game.teams[0].currentQuestionId).toBe("room1-q1");
+    expect(game.teams[1].currentQuestionId).toBe("room1-q2"); // not room1-q1 again
+  });
+
+  it("flee deals a fresh question in the same room and lowers difficulty", () => {
+    let game = createGame(seeds(1), makeRooms(2, 3), boss, cfg, 1, first);
+    ({ game } = answerQuestion(game, "T0", "room0-q1", false, "flee", first));
+    const t = game.teams[0];
+    expect(t.roomIndex).toBe(0);
+    expect(t.currentQuestionId).toBe("room0-q2");
+    expect(t.currentDifficulty).toBe(2);
+  });
+
+  it("retry keeps the same question and deals nothing new", () => {
+    let game = createGame(seeds(1), makeRooms(2), boss, cfg, 1, first);
+    ({ game } = answerQuestion(game, "T0", "room0-q1", false, "retry", first));
+    expect(game.teams[0].currentQuestionId).toBe("room0-q1");
+    expect(game.usedQuestionIds[0]).toEqual(["room0-q1"]);
+  });
+
+  it("uses the injected rng: a high roll picks the last unused question", () => {
+    const game = createGame(seeds(1), makeRooms(1), boss, cfg, 1, () => 0.99);
+    expect(game.teams[0].currentQuestionId).toBe("room0-q8");
+  });
+
+  it("reshuffles an exhausted deck and never deals the question the team just answered", () => {
+    // One team stuck in the only (last) room with 3 questions: clamped, so it keeps drawing.
+    let game = createGame(seeds(1), makeRooms(1, 1, 3), boss, cfg, 1, first);
+    let prev = game.teams[0].currentQuestionId;
+    for (let i = 0; i < 10; i++) {
+      ({ game } = answerQuestion(game, "T0", prev, true, "retry", first));
+      const next = game.teams[0].currentQuestionId;
+      expect(next).not.toBe(prev);
+      expect(next).toMatch(/^room0-q[1-3]$/);
+      prev = next;
+    }
+  });
+
+  it("does not hand two teams the same question while the deck has spares, even after a reshuffle", () => {
+    let game = createGame(seeds(2), makeRooms(1, 1, 4), boss, cfg, 1, first);
+    for (let i = 0; i < 12; i++) {
+      const [a, b] = game.teams;
+      expect(a.currentQuestionId).not.toBe(b.currentQuestionId);
+      const turn = currentTurnTeamId(game)!;
+      const q = game.teams.find((t) => t.id === turn)!.currentQuestionId;
+      ({ game } = answerQuestion(game, turn, q, true, "retry", first));
+    }
+  });
+
+  it("a team below the boss gate in the last room keeps getting questions and can still reach it", () => {
+    let game = createGame(seeds(1), makeRooms(2, 1, 3), boss, { bossThreshold: 15 }, 1, first);
+    for (let i = 0; i < 40 && !isInBossPhase(game, "T0"); i++) {
+      ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first));
+    }
+    expect(isInBossPhase(game, "T0")).toBe(true);
   });
 });
