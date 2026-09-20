@@ -28,6 +28,9 @@ test("create room, join two teams, start, judge; screen and play never see host-
     players.push({ page, frames });
   }
 
+  // The join QR is right there in the host's lobby, no drawer needed.
+  await expect(host.getByRole("img", { name: "掃描加入" })).toBeVisible();
+
   // While waiting, each phone lists every team that has joined, live.
   for (const { page } of players) {
     await expect(page.getByTestId("roster")).toContainText("甲隊");
@@ -73,6 +76,11 @@ test("create room, join two teams, start, judge; screen and play never see host-
 
   // Director: the host rewrites the line, and it replaces the line on the big screen and the phone at once.
   await host.getByRole("button", { name: /更多/ }).click();
+  // The drawer keeps only the host-device QR (the one that hands over control), not a second join QR.
+  await expect(host.getByText("用另一台裝置主持")).toBeVisible();
+  await expect(host.getByText("玩家掃描加入")).toHaveCount(0);
+  await expect(host.getByRole("img", { name: "掃描加入" })).toHaveCount(0);
+  await expect(host.getByRole("img", { name: "主持人 QR" })).toHaveCount(1);
   await host.locator('input[maxlength="40"]').fill("主持人改寫：全場安靜！");
   await host.getByRole("button", { name: /送出，立刻換上大螢幕/ }).click();
   await expect(screen.locator(".px-say")).toContainText("主持人改寫：全場安靜！");

@@ -139,16 +139,19 @@ export default function PlayPage() {
           </TurnRibbon>
         )}
 
-        <Panel tone={isMyTurn ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
-          <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
-            <div className="px-num my-1 text-[18px]" style={{ color: "#a8470f" }}>
-              {myTeam ? `${myTeam.score} / ${BOSS_THRESHOLD}` : `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`}
+        {/* While waiting, the roster above already highlights our own team. */}
+        {game && (
+          <Panel tone={isMyTurn ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
+            <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
+              <div className="px-num my-1 text-[18px]" style={{ color: "#a8470f" }}>
+                {myTeam ? `${myTeam.score} / ${BOSS_THRESHOLD}` : `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`}
+              </div>
+              {myTeam && <ScoreMeter score={Math.min(myTeam.score, BOSS_THRESHOLD)} max={BOSS_THRESHOLD} active={isMyTurn} />}
             </div>
-            {myTeam && <ScoreMeter score={Math.min(myTeam.score, BOSS_THRESHOLD)} max={BOSS_THRESHOLD} active={isMyTurn} />}
-          </div>
-        </Panel>
+          </Panel>
+        )}
 
         {game && !finished && turn?.team && (
           <Panel className="flex items-center gap-3 px-3 py-[10px]">
