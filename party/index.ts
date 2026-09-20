@@ -10,11 +10,13 @@ import {
   type GameState,
 } from "../lib/game-state";
 import { DEFAULT_ROOMS, DEFAULT_BOSS_QUESTION_IDS, DEFAULT_BOSS_MAX_HP, DEFAULT_GAME_CONFIG } from "../lib/fixtures";
-import { MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../lib/protocol";
+import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../lib/protocol";
 import { BANK, findQuestion, publicQuestion } from "../lib/question-bank";
 import { toNarrationEvent, type NarrationEvent } from "../lib/narration/events";
-import { createScriptedProvider, scriptedEpilogue, type NarrationProvider } from "../lib/narration/scripted";
-import { createRunner, type TranscriptEntry } from "../lib/narration/runner";
+import { createScriptedProvider, type NarrationProvider } from "../lib/narration/scripted";
+import { createRunner, type TranscriptItem } from "../lib/narration/runner";
+import { createLlmProvider } from "../lib/narration/llm";
+import { createBreaker, withBreaker } from "../lib/narration/breaker";
 
 const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TRANSCRIPT = 500;
@@ -25,9 +27,16 @@ export interface RoomOptions {
   /** How long a narration may take before the scripted line is used. */
   holdMs?: number;
   epilogueDelayMs?: number;
-  /** Swap in another narrator (an LLM, later). Scripted is always the fallback. */
+  /** How long the game-over story may take from the LLM before the program-built one is used. */
+  epilogueHoldMs?: number;
+  /** Replace the narrator entirely (tests). Scripted is always the fallback. */
   provider?: NarrationProvider;
+  /** Replace fetch for the LLM narrator (tests). */
+  fetch?: typeof fetch;
 }
+const STYLE_EXAMPLES = 5;
+/** Server-side only: every bank answer, so an LLM line that repeats one is rejected. */
+const BANK_ANSWERS = [...BANK.rooms.flatMap((r) => r.questions), ...BANK.boss.questions].map((q) => q.answer);
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,7 +80,14 @@ export default class DungeonRoom implements Party.Server {
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
-  private transcript: TranscriptEntry[] = [];
+  private transcript: TranscriptItem[] = [];
+  /** Host director: notes for the LLM and the last few hand-edited lines. */
+  private notes = "";
+  private editedLines: string[] = [];
+  /** Turned on by the host at HOST_START, and only effective when a key exists. */
+  private aiNarration = false;
+  private llm: NarrationProvider | null = null;
+  private breaker = createBreaker({ onTrip: (why) => this.onBreakerTrip(why) });
   private scripted: ReturnType<typeof createScriptedProvider>;
   private runner: ReturnType<typeof createRunner>;
   private epilogueDelayMs: number;
@@ -83,19 +99,58 @@ export default class DungeonRoom implements Party.Server {
   ) {
     this.scripted = createScriptedProvider(rng);
     this.epilogueDelayMs = opts.epilogueDelayMs ?? EPILOGUE_DELAY_MS;
+    // The key lives in room.env (server only), never in a NEXT_PUBLIC_ variable.
+    const apiKey = (room.env as Record<string, string | undefined> | undefined)?.ANTHROPIC_API_KEY;
+    this.aiAvailable = !!apiKey;
+    if (apiKey || opts.fetch) {
+      this.llm = withBreaker(
+        createLlmProvider({
+          apiKey,
+          fetch: opts.fetch,
+          getNotes: () => this.notes,
+          getStyleExamples: () => this.editedLines,
+          forbidden: () => BANK_ANSWERS,
+        }),
+        this.breaker,
+      );
+    }
+    const active = (): NarrationProvider => opts.provider ?? (this.aiNarration && this.llm ? this.llm : this.scripted);
     this.runner = createRunner({
-      provider: opts.provider ?? this.scripted,
+      // Resolved per call, so the host's AI switch (set at HOST_START) takes effect immediately.
+      provider: {
+        get name() {
+          return active().name;
+        },
+        narrate: (event, o) => active().narrate(event, o),
+      },
       fallback: this.scripted,
       holdMs: opts.holdMs,
-      emit: (eventId, line) => {
+      epilogueHoldMs: opts.epilogueHoldMs,
+      emit: (eventId, line, _provider, event) => {
+        if (event.type === "epilogue") {
+          this.epilogue = line;
+          this.broadcast({ type: "EPILOGUE", text: line });
+          return;
+        }
         this.lastNarration = { eventId, line };
         this.broadcast({ type: "NARRATION", eventId, line });
       },
-      record: (entry) => {
-        this.transcript.push(entry);
-        if (this.transcript.length > MAX_TRANSCRIPT) this.transcript.shift();
-      },
+      record: (entry) => this.addTranscript(entry),
     });
+  }
+
+  /** Whether this server has an API key at all; the host may only switch AI on when true. */
+  private aiAvailable: boolean;
+
+  private addTranscript(item: TranscriptItem) {
+    this.transcript.push(item);
+    if (this.transcript.length > MAX_TRANSCRIPT) this.transcript.shift();
+  }
+
+  /** Trips are logged apart from fallback counts: a breaker trip is an outage, not a slow line. */
+  private onBreakerTrip(why: string) {
+    console.warn(JSON.stringify({ narration: "breaker_open", why }));
+    this.addTranscript({ kind: "breaker", at: new Date().toISOString(), text: `LLM narration switched off: ${why}` });
   }
 
   private broadcast(msg: ServerMessage) {
@@ -147,15 +202,15 @@ export default class DungeonRoom implements Party.Server {
     });
   }
 
-  private async sendEpilogue(afterKillShot: Promise<void>) {
+  private async sendEpilogue(afterKillShot: Promise<void>, eventId: number) {
     const game = this.game;
     if (!game) return;
     await afterKillShot;
     await wait(this.epilogueDelayMs);
     const ranking = game.teams.map((t) => ({ name: t.name, score: t.score })).sort((a, b) => b.score - a.score);
     const winners = game.winners.map((id) => game.teams.find((t) => t.id === id)?.name ?? "");
-    this.epilogue = scriptedEpilogue(ranking, winners, this.rng);
-    this.broadcast({ type: "EPILOGUE", text: this.epilogue });
+    // One EPILOGUE, whoever writes it: the LLM within its hold, otherwise the program-built story.
+    await this.runner.run(eventId, { type: "epilogue", ranking, winners }, this.scores());
   }
 
   private broadcastState() {
@@ -214,7 +269,13 @@ export default class DungeonRoom implements Party.Server {
         this.handleRejoin(sender, msg.teamId);
         break;
       case "HOST_START":
-        this.handleHostStart(sender);
+        this.handleHostStart(sender, msg.aiNarration);
+        break;
+      case "HOST_SET_NOTES":
+        this.handleSetNotes(sender, msg.notes);
+        break;
+      case "HOST_EDIT_NARRATION":
+        this.handleEditNarration(sender, msg.line);
         break;
       case "HOST_GET_TRANSCRIPT":
         this.handleTranscript(sender);
@@ -232,7 +293,7 @@ export default class DungeonRoom implements Party.Server {
       return;
     }
     this.hostConns.set(conn.id, conn);
-    this.sendTo(conn, { type: "HOST_OK" });
+    this.sendTo(conn, { type: "HOST_OK", aiAvailable: this.aiAvailable });
     this.sendAnswer(conn);
   }
 
@@ -300,7 +361,38 @@ export default class DungeonRoom implements Party.Server {
     this.sendTo(conn, { type: "TRANSCRIPT", entries: this.transcript });
   }
 
-  private handleHostStart(conn: Party.Connection) {
+  private handleSetNotes(conn: Party.Connection, raw: string) {
+    if (!this.isHost(conn)) {
+      this.sendTo(conn, { type: "ERROR", error: "not_host" });
+      return;
+    }
+    this.notes = sanitizeText(raw, MAX_NOTES);
+    this.addTranscript({ kind: "notes", at: new Date().toISOString(), text: this.notes });
+  }
+
+  /** The host rewrites the line on screen. It wins over anything the LLM does later for that event. */
+  private handleEditNarration(conn: Party.Connection, raw: string) {
+    if (!this.isHost(conn)) {
+      this.sendTo(conn, { type: "ERROR", error: "not_host" });
+      return;
+    }
+    const line = sanitizeText(raw, MAX_EDIT_LINE);
+    if (!this.lastNarration) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_narration" });
+      return;
+    }
+    if (!line) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "empty_line" });
+      return;
+    }
+    const { eventId } = this.lastNarration;
+    this.lastNarration = { eventId, line };
+    this.editedLines = [...this.editedLines, line].slice(-STYLE_EXAMPLES);
+    this.addTranscript({ kind: "edit", at: new Date().toISOString(), text: line, eventId });
+    this.broadcast({ type: "NARRATION", eventId, line });
+  }
+
+  private handleHostStart(conn: Party.Connection, aiNarration?: boolean) {
     if (!this.isHost(conn)) {
       this.sendTo(conn, { type: "ERROR", error: "not_host" });
       return;
@@ -322,6 +414,8 @@ export default class DungeonRoom implements Party.Server {
       DEFAULT_BOSS_MAX_HP,
       this.rng,
     );
+    // Default on when a key exists; the host can switch it off before starting.
+    this.aiNarration = this.aiAvailable && aiNarration !== false;
     const eventId = ++this.eventSeq;
     this.broadcastState();
     void this.narrate(eventId, { type: "start", teams: this.pendingTeams.map((t) => t.name) });
@@ -356,7 +450,7 @@ export default class DungeonRoom implements Party.Server {
       const narration = this.narrate(eventId, event);
       if (game.phase === "finished" && !this.epilogueRequested) {
         this.epilogueRequested = true;
-        void this.sendEpilogue(narration).catch((err) => console.error("epilogue failed", err));
+        void this.sendEpilogue(narration, eventId).catch((err) => console.error("epilogue failed", err));
       }
     } catch (err) {
       const detail = err instanceof InvalidActionError ? err.message : "unknown error";

@@ -30,6 +30,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
 
   // Host claims control, then starts once both teams are in.
   await expect(host.getByText("乙隊")).toBeVisible();
+  await expect(host.getByText("AI 旁白")).toBeVisible(); // the switch is there whether or not a key is configured
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
@@ -50,6 +51,13 @@ test("create room, join two teams, start, judge; screen and play never see host-
   // One narration line about 甲隊's answer reaches the big screen and the other phone alike.
   await expect(screen.locator(".px-say")).toContainText("甲隊");
   await expect(players[1].page.locator(".px-say")).toContainText("甲隊");
+
+  // Director: the host rewrites the line, and it replaces the line on the big screen and the phone at once.
+  await host.getByRole("button", { name: /更多/ }).click();
+  await host.locator('input[maxlength="40"]').fill("主持人改寫：全場安靜！");
+  await host.getByRole("button", { name: /送出，立刻換上大螢幕/ }).click();
+  await expect(screen.locator(".px-say")).toContainText("主持人改寫：全場安靜！");
+  await expect(players[1].page.locator(".px-say")).toContainText("主持人改寫：全場安靜！");
 
   // Nothing host-only (token confirmation, answers) reaches the public surfaces.
   for (const frames of [screenFrames, ...players.map((p) => p.frames)]) {
