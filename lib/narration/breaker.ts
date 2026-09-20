@@ -1,0 +1,50 @@
+// Circuit breaker for the LLM narrator: three failures in a row, or any 401/403,
+// switches LLM narration off for the rest of the room so a dead key or outage
+// stops costing 2 seconds per event.
+
+import { AuthError, BreakerOpenError, UpstreamError } from "./errors";
+import type { NarrationProvider } from "./scripted";
+
+export function createBreaker(opts: { threshold?: number; onTrip?: (why: string) => void }) {
+  const threshold = opts.threshold ?? 3;
+  let failures = 0;
+  let open = false;
+  const trip = (why: string) => {
+    if (open) return;
+    open = true;
+    opts.onTrip?.(why);
+  };
+  return {
+    get open() {
+      return open;
+    },
+    success() {
+      failures = 0;
+    },
+    failure(err: unknown) {
+      if (err instanceof AuthError) return trip(`auth failure (${err.status})`);
+      if (++failures >= threshold) trip(`${threshold} consecutive failures`);
+    },
+  };
+}
+
+export type Breaker = ReturnType<typeof createBreaker>;
+
+export function withBreaker(inner: NarrationProvider, breaker: Breaker): NarrationProvider {
+  return {
+    get name() {
+      return inner.name;
+    },
+    async narrate(event, o) {
+      if (breaker.open) throw new BreakerOpenError();
+      try {
+        const line = await inner.narrate(event, o);
+        breaker.success();
+        return line;
+      } catch (err) {
+        breaker.failure(err instanceof Error && "reason" in err ? err : new UpstreamError(String(err)));
+        throw err;
+      }
+    },
+  };
+}

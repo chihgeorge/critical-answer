@@ -5,10 +5,10 @@ import type { NarrationEvent } from "./events";
 
 export interface NarrationProvider {
   name: string;
-  narrate(event: NarrationEvent): Promise<string>;
+  narrate(event: NarrationEvent, opts?: { signal?: AbortSignal }): Promise<string>;
 }
 
-export const VARIANTS: Record<NarrationEvent["type"], string[]> = {
+export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, string[]> = {
   start: [
     "火把一根根亮起，冒險者們踏進了地城。",
     "地城的大門緩緩打開，誰能活著走出去？",
@@ -64,6 +64,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     name: "scripted",
     /** Synchronous, so it can back up a slow provider without awaiting anything. */
     line(event: NarrationEvent): string {
+      if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
       const pool = VARIANTS[event.type];
       let i = Math.floor(rng() * pool.length);
       if (i === last[event.type]) i = (i + 1) % pool.length;

@@ -4,7 +4,7 @@ import type { NarrationEvent } from "./events";
 
 const team = "六個字的隊伍";
 const monster = "守門史萊姆王";
-const samples: NarrationEvent[] = [
+const samples: Exclude<NarrationEvent, { type: "epilogue" }>[] = [
   { type: "start", teams: ["a", "b"] },
   { type: "correct", team, monster, points: 12 },
   { type: "retry", team, monster },

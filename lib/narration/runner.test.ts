@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createRunner, type TranscriptEntry } from "./runner";
+import { AuthError, InvalidOutputError } from "./errors";
 import type { NarrationProvider } from "./scripted";
 import type { NarrationEvent } from "./events";
 
@@ -8,13 +9,14 @@ const fallback = { line: () => "備用旁白" };
 const provider = (narrate: NarrationProvider["narrate"], name = "fake"): NarrationProvider => ({ name, narrate });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function setup(p: NarrationProvider, holdMs = 30) {
+function setup(p: NarrationProvider, holdMs = 30, epilogueHoldMs = 60) {
   const emitted: { eventId: number; line: string; provider: string }[] = [];
   const entries: TranscriptEntry[] = [];
   const runner = createRunner({
     provider: p,
     fallback,
     holdMs,
+    epilogueHoldMs,
     emit: (eventId, line, providerName) => emitted.push({ eventId, line, provider: providerName }),
     record: (e) => entries.push(e),
   });
@@ -64,5 +66,42 @@ describe("narration runner", () => {
     const t0 = Date.now();
     await runner.run(5, event);
     expect(Date.now() - t0).toBeLessThan(500);
+  });
+
+  it("aborts the request when the hold runs out, so a slow call does not keep running", async () => {
+    let signal: AbortSignal | undefined;
+    const { runner } = setup(provider(async (_e, o) => { signal = o?.signal; await sleep(200); return "晚"; }));
+    await runner.run(1, event);
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("records the named failure reason from the provider's error", async () => {
+    const auth = setup(provider(async () => { throw new AuthError(401); }));
+    await auth.runner.run(1, event);
+    expect(auth.entries[0].fallbackReason).toBe("auth");
+    const bad = setup(provider(async () => { throw new InvalidOutputError("markup"); }));
+    await bad.runner.run(1, event);
+    expect(bad.entries[0].fallbackReason).toBe("invalid_output");
+  });
+
+  describe("epilogue", () => {
+    const epi: NarrationEvent = { type: "epilogue", ranking: [{ name: "紅隊", score: 9 }], winners: ["紅隊"] };
+
+    it("waits the longer epilogue hold instead of the per-event one", async () => {
+      const { runner, emitted } = setup(provider(async () => (await sleep(45), "慢慢寫的後記")), 20, 200);
+      await runner.run(9, epi);
+      expect(emitted[0].line).toBe("慢慢寫的後記");
+    });
+
+    it("accepts a line longer than 40 characters, up to 160", async () => {
+      const long = "字".repeat(100);
+      const ok = setup(provider(async () => long));
+      await ok.runner.run(9, epi);
+      expect(ok.emitted[0].line).toBe(long);
+      const tooLong = setup(provider(async () => "字".repeat(161)));
+      await tooLong.runner.run(9, epi);
+      expect(tooLong.emitted[0].line).toBe("備用旁白");
+      expect(tooLong.entries[0].fallbackReason).toBe("invalid");
+    });
   });
 });
