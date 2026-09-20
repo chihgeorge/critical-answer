@@ -8,22 +8,14 @@ import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import type { ServerMessage } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
-import type { SceneTheme, SpriteKind } from "@/lib/pixel-art";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
+import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { DialogueBox, LabelChip, Nameplate, Panel, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 
 type Lobby = { id: string; name: string }[];
 type Play = { view: SpectatorView; phase: GamePhase; winners: string[] };
-
-const BOSS_THRESHOLD = 15;
-const MONSTERS: { kind: SpriteKind; name: string; scale: number; float?: boolean }[] = [
-  { kind: "slime", name: "軟趴趴史萊姆", scale: 6 },
-  { kind: "ghost", name: "害羞幽靈", scale: 5, float: true },
-];
-const BOSS: (typeof MONSTERS)[number] = { kind: "dragon", name: "深淵小黑龍", scale: 4 };
-const ROOM_THEMES: SceneTheme[] = ["stone", "moss", "stone", "moss", "stone"];
 
 const look = (i: number) => TEAM_LOOKS[i % TEAM_LOOKS.length];
 
@@ -93,14 +85,7 @@ function Lobby({ code, teams }: { code: string; teams: Lobby }) {
 }
 
 function Playing({ view }: { view: SpectatorView }) {
-  const turnIdx = view.teams.findIndex((t) => t.id === view.currentTurnTeamId);
-  const turn = view.teams[turnIdx];
-  const inBoss = turn?.inBossPhase ?? false;
-  const room = turn?.roomIndex ?? 0;
-  const monster = inBoss ? BOSS : MONSTERS[room % MONSTERS.length];
-  const theme: SceneTheme = inBoss ? "crimson" : ROOM_THEMES[room % ROOM_THEMES.length];
-  const questionId = inBoss ? view.bossCurrentQuestionId : turn?.currentQuestionId;
-  const hits = view.bossMaxHp - view.bossHp;
+  const { team: turn, teamIndex: turnIdx, inBoss, room, monster, theme, questionId, bossHits: hits } = describeTurn(view);
 
   return (
     <>
