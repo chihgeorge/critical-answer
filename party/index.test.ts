@@ -489,3 +489,178 @@ describe("questions and answers (T3)", () => {
     expect(room.game!.teams[0].currentQuestionId).toBe("r0-q8");
   });
 });
+
+describe("narration (T5-T7)", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const all = (room: DungeonRoom) =>
+    (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+  const sentMsgs = (conn: ReturnType<typeof makeConn>) =>
+    (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+
+  function narrRoom(opts: ConstructorParameters<typeof DungeonRoom>[2] = { holdMs: 30, epilogueDelayMs: 0 }) {
+    const room = new DungeonRoom(makeRoom() as any, () => 0, opts);
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    return { room, hostConn };
+  }
+  function start(teamCount = 2, opts?: ConstructorParameters<typeof DungeonRoom>[2]) {
+    const { room, hostConn } = narrRoom(opts);
+    const { ids, conns } = joinTeams(room, hostConn, teamCount);
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn, ids, conns };
+  }
+  /** Judge the team on turn correct, using whatever question it currently holds. */
+  function judgeCorrect(room: DungeonRoom, hostConn: ReturnType<typeof makeConn>) {
+    const g = room.game!;
+    const teamId = g.turnOrder[g.currentTurnIndex];
+    const t = g.teams.find((x) => x.id === teamId)!;
+    const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
+  }
+
+  it("announces the start with one NARRATION after STATE", async () => {
+    const { room } = start();
+    await flush();
+    const msgs = all(room);
+    const stateAt = msgs.findIndex((m) => m.type === "STATE");
+    const narrAt = msgs.findIndex((m) => m.type === "NARRATION");
+    expect(stateAt).toBeGreaterThanOrEqual(0);
+    expect(narrAt).toBeGreaterThan(stateAt);
+    expect(msgs.filter((m) => m.type === "NARRATION")).toHaveLength(1);
+    expect(msgs[stateAt].eventId).toBe(1);
+    expect(msgs[narrAt].eventId).toBe(1);
+  });
+
+  it("sends STATE immediately and exactly one NARRATION per judgment, with rising eventIds", async () => {
+    const { room, hostConn } = start();
+    await flush();
+    judgeCorrect(room, hostConn);
+    // STATE for the judgment is out synchronously, before any narration for it.
+    expect(all(room).at(-1)).toMatchObject({ type: "STATE", eventId: 2 });
+    await flush();
+    judgeCorrect(room, hostConn);
+    await flush();
+    const narr = all(room).filter((m) => m.type === "NARRATION");
+    expect(narr.map((m) => m.eventId)).toEqual([1, 2, 3]);
+    for (const n of narr) expect(n.line.length).toBeGreaterThan(0);
+  });
+
+  it("names the team that was judged in the line", async () => {
+    const { room, hostConn } = start();
+    await flush();
+    judgeCorrect(room, hostConn);
+    await flush();
+    const last = all(room).filter((m) => m.type === "NARRATION").at(-1);
+    expect(last.line).toContain("Team 0");
+  });
+
+  it("a rejected judgment produces no event and no narration", async () => {
+    const { room, hostConn } = start();
+    await flush();
+    const before = all(room).filter((m) => m.type === "NARRATION").length;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: T1, questionId: "stale", correct: true });
+    await flush();
+    expect(all(room).filter((m) => m.type === "NARRATION")).toHaveLength(before);
+    expect(all(room).filter((m) => m.type === "STATE").at(-1).eventId).toBe(1);
+  });
+
+  it("replays the last narration to a connection that arrives later", async () => {
+    const { room } = start();
+    await flush();
+    const late = makeConn("late");
+    room.onConnect(late);
+    const types = sentMsgs(late).map((m) => m.type);
+    expect(types).toEqual(["STATE", "NARRATION"]);
+  });
+
+  it("falls back to the scripted line when the provider is slower than the hold, without delaying STATE", async () => {
+    const slow = { name: "slow", narrate: async () => (await sleep(200), "太慢的一行") };
+    const { room, hostConn } = start(2, { holdMs: 20, epilogueDelayMs: 0, provider: slow });
+    await sleep(60);
+    const narr = all(room).filter((m) => m.type === "NARRATION");
+    expect(narr).toHaveLength(1);
+    expect(narr[0].line).not.toBe("太慢的一行");
+    await sleep(250);
+    expect(all(room).filter((m) => m.type === "NARRATION")).toHaveLength(1); // late answer sends nothing
+    expect(hostConn).toBeDefined();
+  });
+
+  it("uses the provider's line when it answers in time", async () => {
+    const quick = { name: "quick", narrate: async () => "提供者的一行" };
+    const { room } = start(2, { holdMs: 50, epilogueDelayMs: 0, provider: quick });
+    await flush();
+    expect(all(room).find((m) => m.type === "NARRATION").line).toBe("提供者的一行");
+  });
+
+  it("survives a provider that throws", async () => {
+    const bad = { name: "bad", narrate: async () => { throw new Error("boom"); } };
+    const { room } = start(2, { holdMs: 30, epilogueDelayMs: 0, provider: bad });
+    await flush();
+    expect(all(room).filter((m) => m.type === "NARRATION")).toHaveLength(1);
+  });
+
+  describe("epilogue", () => {
+    async function finishGame() {
+      const { room, hostConn, conns } = start(1);
+      for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) judgeCorrect(room, hostConn);
+      await sleep(30);
+      return { room, hostConn, conns };
+    }
+
+    it("is sent once, after the kill-shot line, with the winner and score from the facts", async () => {
+      const { room } = await finishGame();
+      const msgs = all(room);
+      const epi = msgs.filter((m) => m.type === "EPILOGUE");
+      expect(epi).toHaveLength(1);
+      const score = room.game!.teams[0].score;
+      expect(epi[0].text).toContain("Team 0");
+      expect(epi[0].text).toContain(String(score));
+      const killShot = msgs.findLast((m) => m.type === "NARRATION");
+      expect(msgs.indexOf(epi[0])).toBeGreaterThan(msgs.indexOf(killShot));
+    });
+
+    it("is not generated again when GAME_OVER is re-broadcast (close, rejoin)", async () => {
+      const { room, conns } = await finishGame();
+      room.onClose(conns[0]);
+      send(room, makeConn("again"), { type: "REJOIN", teamId: T1 });
+      await sleep(30);
+      expect(all(room).filter((m) => m.type === "EPILOGUE")).toHaveLength(1);
+    });
+
+    it("is replayed to a connection that arrives after game over", async () => {
+      const { room } = await finishGame();
+      const late = makeConn("late");
+      room.onConnect(late);
+      expect(sentMsgs(late).map((m) => m.type)).toEqual(["STATE", "NARRATION", "EPILOGUE"]);
+    });
+  });
+
+  describe("transcript", () => {
+    it("is sent only to the host, with event, scores, line and provider", async () => {
+      const { room, hostConn, conns } = start();
+      await flush();
+      judgeCorrect(room, hostConn);
+      await flush();
+      send(room, hostConn, { type: "HOST_GET_TRANSCRIPT" });
+      const t = sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT");
+      expect(t.entries.length).toBe(2); // start + one judgment
+      expect(t.entries[1]).toMatchObject({ eventId: 2, provider: "scripted", event: { type: "correct" } });
+      expect(t.entries[1].scores).toEqual({ "Team 0": 1, "Team 1": 0 });
+      const intruder = makeConn("nope");
+      send(room, intruder, { type: "HOST_GET_TRANSCRIPT" });
+      expect(sentMsgs(intruder).at(-1)).toMatchObject({ type: "ERROR", error: "not_host" });
+      for (const c of conns) expect(sentMsgs(c).some((m) => m.type === "TRANSCRIPT")).toBe(false);
+    });
+
+    it("records the fallback reason when the provider was too slow", async () => {
+      const slow = { name: "slow", narrate: async () => (await sleep(200), "晚") };
+      const { room, hostConn } = start(2, { holdMs: 10, epilogueDelayMs: 0, provider: slow });
+      await sleep(40);
+      send(room, hostConn, { type: "HOST_GET_TRANSCRIPT" });
+      const t = sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT");
+      expect(t.entries[0]).toMatchObject({ provider: "scripted", fallbackReason: "timeout" });
+    });
+  });
+});

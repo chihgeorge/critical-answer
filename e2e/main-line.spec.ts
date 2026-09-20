@@ -47,6 +47,10 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.getByText("輪到：乙隊")).toBeVisible();
   await expect(players[1].page.getByText("輪到我們了！")).toBeVisible();
 
+  // One narration line about 甲隊's answer reaches the big screen and the other phone alike.
+  await expect(screen.locator(".px-say")).toContainText("甲隊");
+  await expect(players[1].page.locator(".px-say")).toContainText("甲隊");
+
   // Nothing host-only (token confirmation, answers) reaches the public surfaces.
   for (const frames of [screenFrames, ...players.map((p) => p.frames)]) {
     expect(frames.length).toBeGreaterThan(0);
@@ -64,4 +68,41 @@ test("a browser with no host token cannot start a game", async ({ page }) => {
   await page.goto("/room/ZZZZ/host");
   await expect(page.getByText("這個瀏覽器沒有主持人金鑰")).toBeVisible();
   await expect(page.getByRole("button", { name: /開始遊戲/ })).toBeDisabled();
+});
+
+test("game over: podium at once, then the epilogue arrives on the big screen", async ({ browser }) => {
+  test.setTimeout(60_000);
+  const code = "EPIL";
+  const partyUrl = `ws://localhost:1996/party/${code}`;
+  const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
+
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await screen.goto(`/room/${code}/screen`);
+
+  // Drive a one-team game to the boss kill over a raw socket, judging whatever question is current.
+  const host = await open(partyUrl);
+  type Msg = { type: string; phase: string; eventId: number; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
+  const box: { state: Msg | null } = { state: null };
+  const cur = () => box.state!;
+  host.onmessage = (e) => { const m = JSON.parse(e.data as string) as Msg; if (m.type === "STATE") box.state = m; };
+  host.send(JSON.stringify({ type: "HOST_CLAIM", token: "epilogue-token-0123456789" }));
+  const team = await open(partyUrl);
+  team.send(JSON.stringify({ type: "JOIN", teamId: "00000000-0000-0000-0000-0000000000aa", teamName: "終局隊" }));
+  await expect(screen.getByText("終局隊")).toBeVisible();
+  host.send(JSON.stringify({ type: "HOST_START" }));
+  await expect.poll(() => box.state?.phase).toBe("playing");
+  for (let i = 0; i < 200 && cur().phase === "playing"; i++) {
+    const t = cur().view.teams[0];
+    const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
+    const before = cur().eventId;
+    host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
+    await expect.poll(() => cur().eventId, { timeout: 2000 }).toBeGreaterThan(before);
+  }
+  expect(cur().phase).toBe("finished");
+
+  // Podium is there immediately; the story follows as a single line.
+  await expect(screen.getByText("奪得榜首")).toBeVisible();
+  await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/, { timeout: 15_000 });
+  host.close();
+  team.close();
 });

@@ -42,6 +42,10 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_START" })).toEqual({ type: "HOST_START" });
   });
 
+  it("HOST_GET_TRANSCRIPT: needs only the type", () => {
+    expect(parseClientMessage({ type: "HOST_GET_TRANSCRIPT" })).toEqual({ type: "HOST_GET_TRANSCRIPT" });
+  });
+
   it("HOST_JUDGE: accepts valid, rejects missing, wrong-type, oversize and bad fleeChoice", () => {
     const ok = { type: "HOST_JUDGE", teamId: ID, questionId: "r0-q1", correct: true };
     expect(parseClientMessage(ok)).toMatchObject(ok);

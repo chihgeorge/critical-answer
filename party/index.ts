@@ -12,8 +12,23 @@ import {
 import { DEFAULT_ROOMS, DEFAULT_BOSS_QUESTION_IDS, DEFAULT_BOSS_MAX_HP, DEFAULT_GAME_CONFIG } from "../lib/fixtures";
 import { MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../lib/protocol";
 import { BANK, findQuestion, publicQuestion } from "../lib/question-bank";
+import { toNarrationEvent, type NarrationEvent } from "../lib/narration/events";
+import { createScriptedProvider, scriptedEpilogue, type NarrationProvider } from "../lib/narration/scripted";
+import { createRunner, type TranscriptEntry } from "../lib/narration/runner";
 
 const MAX_TEAM_NAME_LENGTH = 20;
+const MAX_TRANSCRIPT = 500;
+/** Lets the kill-shot line be read before the story arrives. */
+const EPILOGUE_DELAY_MS = 4000;
+
+export interface RoomOptions {
+  /** How long a narration may take before the scripted line is used. */
+  holdMs?: number;
+  epilogueDelayMs?: number;
+  /** Swap in another narrator (an LLM, later). Scripted is always the fallback. */
+  provider?: NarrationProvider;
+}
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidTeamId(id: string): boolean {
@@ -50,10 +65,38 @@ export default class DungeonRoom implements Party.Server {
   private connTeam = new Map<string, string>();
 
   /** `rng` is injectable so tests can make question dealing deterministic. */
+  /** Counts the start and every accepted judgment; each gets exactly one NARRATION. */
+  private eventSeq = 0;
+  private lastNarration: { eventId: number; line: string } | null = null;
+  private epilogue: string | null = null;
+  /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
+  private epilogueRequested = false;
+  private transcript: TranscriptEntry[] = [];
+  private scripted: ReturnType<typeof createScriptedProvider>;
+  private runner: ReturnType<typeof createRunner>;
+  private epilogueDelayMs: number;
+
   constructor(
     readonly room: Party.Room,
     private rng: () => number = Math.random,
-  ) {}
+    opts: RoomOptions = {},
+  ) {
+    this.scripted = createScriptedProvider(rng);
+    this.epilogueDelayMs = opts.epilogueDelayMs ?? EPILOGUE_DELAY_MS;
+    this.runner = createRunner({
+      provider: opts.provider ?? this.scripted,
+      fallback: this.scripted,
+      holdMs: opts.holdMs,
+      emit: (eventId, line) => {
+        this.lastNarration = { eventId, line };
+        this.broadcast({ type: "NARRATION", eventId, line });
+      },
+      record: (entry) => {
+        this.transcript.push(entry);
+        if (this.transcript.length > MAX_TRANSCRIPT) this.transcript.shift();
+      },
+    });
+  }
 
   private broadcast(msg: ServerMessage) {
     this.room.broadcast(JSON.stringify(msg));
@@ -89,7 +132,30 @@ export default class DungeonRoom implements Party.Server {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       question: this.currentQuestion()?.pub ?? null,
+      eventId: this.eventSeq,
     };
+  }
+
+  private scores(): Record<string, number> {
+    return Object.fromEntries((this.game?.teams ?? []).map((t) => [t.name, t.score]));
+  }
+
+  /** Fire-and-forget: narration must never block or break the game. */
+  private narrate(eventId: number, event: NarrationEvent): Promise<void> {
+    return this.runner.run(eventId, event, this.scores()).catch((err) => {
+      console.error("narration failed", err);
+    });
+  }
+
+  private async sendEpilogue(afterKillShot: Promise<void>) {
+    const game = this.game;
+    if (!game) return;
+    await afterKillShot;
+    await wait(this.epilogueDelayMs);
+    const ranking = game.teams.map((t) => ({ name: t.name, score: t.score })).sort((a, b) => b.score - a.score);
+    const winners = game.winners.map((id) => game.teams.find((t) => t.id === id)?.name ?? "");
+    this.epilogue = scriptedEpilogue(ranking, winners, this.rng);
+    this.broadcast({ type: "EPILOGUE", text: this.epilogue });
   }
 
   private broadcastState() {
@@ -103,6 +169,8 @@ export default class DungeonRoom implements Party.Server {
 
   onConnect(conn: Party.Connection) {
     this.sendTo(conn, this.snapshot());
+    if (this.lastNarration) this.sendTo(conn, { type: "NARRATION", ...this.lastNarration });
+    if (this.epilogue) this.sendTo(conn, { type: "EPILOGUE", text: this.epilogue });
   }
 
   onClose(conn: Party.Connection) {
@@ -147,6 +215,9 @@ export default class DungeonRoom implements Party.Server {
         break;
       case "HOST_START":
         this.handleHostStart(sender);
+        break;
+      case "HOST_GET_TRANSCRIPT":
+        this.handleTranscript(sender);
         break;
       case "HOST_JUDGE":
         this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice);
@@ -221,6 +292,14 @@ export default class DungeonRoom implements Party.Server {
     this.sendTo(conn, this.snapshot());
   }
 
+  private handleTranscript(conn: Party.Connection) {
+    if (!this.isHost(conn)) {
+      this.sendTo(conn, { type: "ERROR", error: "not_host" });
+      return;
+    }
+    this.sendTo(conn, { type: "TRANSCRIPT", entries: this.transcript });
+  }
+
   private handleHostStart(conn: Party.Connection) {
     if (!this.isHost(conn)) {
       this.sendTo(conn, { type: "ERROR", error: "not_host" });
@@ -243,7 +322,9 @@ export default class DungeonRoom implements Party.Server {
       DEFAULT_BOSS_MAX_HP,
       this.rng,
     );
+    const eventId = ++this.eventSeq;
     this.broadcastState();
+    void this.narrate(eventId, { type: "start", teams: this.pendingTeams.map((t) => t.name) });
   }
 
   private handleHostJudge(
@@ -263,9 +344,20 @@ export default class DungeonRoom implements Party.Server {
     }
 
     try {
-      const { game } = answerQuestion(this.game, teamId, questionId, correct, fleeChoice ?? "retry", this.rng);
+      const prev = this.game;
+      const monster = this.currentQuestion()?.pub.monster.name ?? "怪物";
+      const { game, outcome } = answerQuestion(prev, teamId, questionId, correct, fleeChoice ?? "retry", this.rng);
+      // Everything up to broadcastState is synchronous: state changes and the eventId are
+      // fixed before any narration awaits, so concurrent judgments cannot interleave.
       this.game = game;
+      const eventId = ++this.eventSeq;
+      const event = toNarrationEvent(prev, outcome, monster);
       this.broadcastState();
+      const narration = this.narrate(eventId, event);
+      if (game.phase === "finished" && !this.epilogueRequested) {
+        this.epilogueRequested = true;
+        void this.sendEpilogue(narration).catch((err) => console.error("epilogue failed", err));
+      }
     } catch (err) {
       const detail = err instanceof InvalidActionError ? err.message : "unknown error";
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
