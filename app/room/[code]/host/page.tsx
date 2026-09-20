@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
+import { getHostToken } from "@/lib/room-code";
 import type { ClientMessage, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 
@@ -21,9 +22,18 @@ export default function HostPage() {
   // double-clicks from firing two judgments for the same turn.
   const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
 
+  // True when this browser has no host token for the room (opened /host directly).
+  const [noToken, setNoToken] = useState(false);
+
   const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
     room: code,
+    onOpen() {
+      // Claim on every (re)connect: the server forgets host rights when the socket closes.
+      const t = getHostToken(code);
+      if (t) socket.send(JSON.stringify({ type: "HOST_CLAIM", token: t } satisfies ClientMessage));
+      else setNoToken(true);
+    },
     onMessage(event: MessageEvent) {
       let msg: ServerMessage;
       try {
@@ -69,6 +79,11 @@ export default function HostPage() {
         <div className="rounded-xl bg-[var(--surface)] px-4 py-2 font-mono text-2xl tracking-[0.3em]">{code}</div>
       </header>
 
+      {noToken && (
+        <div className="mb-6 rounded-xl bg-[var(--danger)]/20 px-4 py-2 text-sm text-[var(--danger)]">
+          這個瀏覽器沒有主持人金鑰。請回首頁按「主持遊戲」，或用建立房間時的連結／QR 開啟。
+        </div>
+      )}
       {error && (
         <div className="mb-6 rounded-xl bg-[var(--danger)]/20 px-4 py-2 text-sm text-[var(--danger)]">{error}</div>
       )}

@@ -8,21 +8,23 @@ import {
   type GameState,
 } from "../lib/game-state";
 import { DEFAULT_ROOMS, DEFAULT_BOSS_QUESTION_IDS, DEFAULT_BOSS_MAX_HP, DEFAULT_GAME_CONFIG } from "../lib/fixtures";
-import type { ClientMessage, ServerMessage } from "../lib/protocol";
+import { parseClientMessage, sanitizeText, type ServerMessage } from "../lib/protocol";
 
 const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TEAMS = 8;
 
-function sanitizeTeamName(name: string): string {
-  return name
-    .replace(/[<>&"']/g, "")
-    .trim()
-    .slice(0, MAX_TEAM_NAME_LENGTH);
-}
-
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidTeamId(id: string): boolean {
   return UUID_RE.test(id);
+}
+
+/** Compare in time that does not depend on where the strings first differ. */
+function tokensEqual(a: string, b: string): boolean {
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  }
+  return diff === 0;
 }
 
 /**
@@ -33,7 +35,15 @@ function isValidTeamId(id: string): boolean {
 export default class DungeonRoom implements Party.Server {
   game: GameState | null = null;
   private pendingTeams: { id: string; name: string }[] = [];
-  private hostConnId = "";
+  /**
+   * Trust on first use: the first HOST_CLAIM sets the token, later claims must
+   * match. The only protection is the 4-letter room code (23^4) plus this token.
+   */
+  private hostToken = "";
+  // ponytail: in-memory Set. If hibernation is ever enabled it must move to conn.setState.
+  private hostConns = new Set<string>();
+  /** Changes whenever the room instance restarts, so clients can show "game reset". */
+  private roomEpoch = crypto.randomUUID();
   /** connection id -> team id, so onClose can mark the right team offline. */
   private connTeam = new Map<string, string>();
 
@@ -47,29 +57,30 @@ export default class DungeonRoom implements Party.Server {
     conn.send(JSON.stringify(msg));
   }
 
+  private snapshot(): ServerMessage {
+    if (!this.game) return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch };
+    return {
+      type: "STATE",
+      view: getSpectatorView(this.game),
+      phase: this.game.phase,
+      winners: this.game.winners,
+      roomEpoch: this.roomEpoch,
+    };
+  }
+
   private broadcastState() {
-    if (!this.game) {
-      this.broadcast({ type: "LOBBY", teams: this.pendingTeams });
-      return;
-    }
-    const view = getSpectatorView(this.game);
-    this.broadcast({ type: "STATE", view, phase: this.game.phase, winners: this.game.winners });
-    if (this.game.phase === "finished") {
+    this.broadcast(this.snapshot());
+    if (this.game?.phase === "finished") {
       this.broadcast({ type: "GAME_OVER", winners: this.game.winners });
     }
   }
 
   onConnect(conn: Party.Connection) {
-    if (!this.hostConnId) this.hostConnId = conn.id;
-    if (this.game) {
-      const view = getSpectatorView(this.game);
-      this.sendTo(conn, { type: "STATE", view, phase: this.game.phase, winners: this.game.winners });
-    } else {
-      this.sendTo(conn, { type: "LOBBY", teams: this.pendingTeams });
-    }
+    this.sendTo(conn, this.snapshot());
   }
 
   onClose(conn: Party.Connection) {
+    this.hostConns.delete(conn.id);
     const teamId = this.connTeam.get(conn.id);
     this.connTeam.delete(conn.id);
     if (!teamId || !this.game) return;
@@ -82,18 +93,26 @@ export default class DungeonRoom implements Party.Server {
   }
 
   private isHost(conn: Party.Connection): boolean {
-    return conn.id === this.hostConnId;
+    return this.hostConns.has(conn.id);
   }
 
   onMessage(message: string, sender: Party.Connection) {
-    let msg: ClientMessage;
+    let raw: unknown;
     try {
-      msg = JSON.parse(message) as ClientMessage;
+      raw = JSON.parse(message);
     } catch {
+      raw = null;
+    }
+    const msg = parseClientMessage(raw);
+    if (!msg) {
+      this.sendTo(sender, { type: "ERROR", error: "invalid_action", detail: "bad_message" });
       return;
     }
 
     switch (msg.type) {
+      case "HOST_CLAIM":
+        this.handleHostClaim(sender, msg.token);
+        break;
       case "JOIN":
         this.handleJoin(sender, msg.teamId, msg.teamName);
         break;
@@ -109,6 +128,16 @@ export default class DungeonRoom implements Party.Server {
     }
   }
 
+  private handleHostClaim(conn: Party.Connection, token: string) {
+    if (!this.hostToken) this.hostToken = token;
+    if (!tokensEqual(this.hostToken, token)) {
+      this.sendTo(conn, { type: "ERROR", error: "bad_token" });
+      return;
+    }
+    this.hostConns.add(conn.id);
+    this.sendTo(conn, { type: "HOST_OK" });
+  }
+
   private handleJoin(conn: Party.Connection, teamId: string, rawName: string) {
     if (!isValidTeamId(teamId)) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_team_id" });
@@ -118,7 +147,7 @@ export default class DungeonRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
       return;
     }
-    const name = sanitizeTeamName(rawName);
+    const name = sanitizeText(rawName, MAX_TEAM_NAME_LENGTH);
     if (!name) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_name" });
       return;
@@ -162,7 +191,7 @@ export default class DungeonRoom implements Party.Server {
       return;
     }
     this.connTeam.set(conn.id, teamId);
-    this.sendTo(conn, { type: "LOBBY", teams: this.pendingTeams });
+    this.sendTo(conn, this.snapshot());
   }
 
   private handleHostStart(conn: Party.Connection) {

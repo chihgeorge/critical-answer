@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { generateRoomCode } from "@/lib/room-code";
+import { generateRoomCode, newHostToken } from "@/lib/room-code";
 
 export default function HomePage() {
   const router = useRouter();
@@ -12,7 +12,7 @@ export default function HomePage() {
 
   function handleCreateRoom() {
     const code = generateRoomCode();
-    router.push(`/room/${code}/host`);
+    router.push(`/room/${code}/host#k=${newHostToken()}`);
   }
 
   function handleJoin(e: React.FormEvent) {
