@@ -52,11 +52,14 @@ export function Sprite({
   kind,
   variant = 0,
   scale = 4,
+  hue = 0,
   className,
   style,
 }: {
   kind: SpriteKind;
   variant?: number;
+  /** hue-rotate degrees: lets one drawn monster play several. */
+  hue?: number;
   /** Integer multiple of the native pixel size, so pixels stay square. */
   scale?: number;
   className?: string;
@@ -85,7 +88,7 @@ export function Sprite({
     <canvas
       ref={ref}
       className={cx("px-sprite", className)}
-      style={{ width: w * scale, height: h * scale, ...style }}
+      style={{ width: w * scale, height: h * scale, ...(hue ? { filter: `hue-rotate(${hue}deg)` } : null), ...style }}
     />
   );
 }

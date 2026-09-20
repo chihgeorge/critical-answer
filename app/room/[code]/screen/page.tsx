@@ -6,7 +6,7 @@
 import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
-import type { ServerMessage } from "@/lib/protocol";
+import type { PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
@@ -15,7 +15,7 @@ import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 
 type Lobby = { id: string; name: string }[];
-type Play = { view: SpectatorView; phase: GamePhase; winners: string[] };
+type Play = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null };
 
 const look = (i: number) => TEAM_LOOKS[i % TEAM_LOOKS.length];
 
@@ -84,8 +84,9 @@ function Lobby({ code, teams }: { code: string; teams: Lobby }) {
   );
 }
 
-function Playing({ view }: { view: SpectatorView }) {
-  const { team: turn, teamIndex: turnIdx, inBoss, room, monster, theme, questionId, bossHits: hits } = describeTurn(view);
+function Playing({ view, question }: { view: SpectatorView; question: PublicQuestion | null }) {
+  const { team: turn, teamIndex: turnIdx, inBoss, monster, theme, bossHits: hits } = describeTurn(view, question);
+  const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
 
   return (
     <>
@@ -128,18 +129,18 @@ function Playing({ view }: { view: SpectatorView }) {
         </div>
       </div>
 
-      <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 100, padding: "34px 24px 16px", fontSize: 34, lineHeight: 1.3, zIndex: 5 }}>
+      <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
-          <LabelChip>{inBoss ? "首領題" : `第 ${room + 1} 房`}</LabelChip>
+          <LabelChip>{inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
           {inBoss && <LabelChip>最後的挑戰！</LabelChip>}
         </div>
-        題目 {questionId}
+        {question?.text ?? "……"}
       </Panel>
 
       <div className="absolute" style={{ left: "50%", bottom: 136, width: inBoss ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         <div className={hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}>
-          <Sprite kind={monster.kind} scale={monster.scale} />
+          <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} />
         </div>
       </div>
       <Nameplate className="absolute" style={{ left: "50%", bottom: 112, transform: "translateX(-50%)", zIndex: 5, color: inBoss ? "#b02a3a" : undefined }}>
@@ -235,7 +236,7 @@ export default function ScreenPage() {
           setGame(null);
           break;
         case "STATE":
-          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners });
+          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question });
           break;
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
@@ -247,7 +248,7 @@ export default function ScreenPage() {
   return (
     <Stage>
       {!game && <Lobby code={code} teams={lobby} />}
-      {game?.phase === "playing" && <Playing view={game.view} />}
+      {game?.phase === "playing" && <Playing view={game.view} question={game.question} />}
       {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} />}
       {reset && (
         <div className="absolute inset-x-0 top-0 text-center text-[20px] text-white" style={{ zIndex: 20, background: "var(--danger)", padding: 6 }}>

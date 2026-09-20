@@ -11,6 +11,18 @@
 // room code); every later claim must match. See party/index.ts.
 
 import type { GamePhase, SpectatorView } from "./game-state";
+import type { SpriteKind } from "./pixel-art";
+
+export const MAX_TEAMS = 8;
+
+/** The question the team in turn faces, without its answer: safe for /screen and /play. */
+export interface PublicQuestion {
+  id: string;
+  text: string;
+  difficulty: number;
+  boss: boolean;
+  monster: { name: string; sprite: SpriteKind; hue: number };
+}
 
 export type ClientMessage =
   | { type: "JOIN"; teamId: string; teamName: string }
@@ -38,9 +50,18 @@ export type ServerErrorCode =
 
 export type ServerMessage =
   | { type: "LOBBY"; teams: { id: string; name: string }[]; roomEpoch: string }
-  | { type: "STATE"; view: SpectatorView; phase: GamePhase; winners: string[]; roomEpoch: string }
+  | {
+      type: "STATE";
+      view: SpectatorView;
+      phase: GamePhase;
+      winners: string[];
+      roomEpoch: string;
+      question: PublicQuestion | null;
+    }
   | { type: "GAME_OVER"; winners: string[] }
   | { type: "HOST_OK" }
+  /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
+  | { type: "HOST_ANSWER"; questionId: string; answer: string }
   | { type: "ERROR"; error: ServerErrorCode; detail?: string };
 
 export const HOST_TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;

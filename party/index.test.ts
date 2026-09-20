@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import DungeonRoom from "./index";
 import { DEFAULT_BOSS_QUESTION_IDS, DEFAULT_ROOMS } from "../lib/fixtures";
+import { BANK } from "../lib/question-bank";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";
@@ -47,7 +48,7 @@ function claim(room: DungeonRoom, conn: ReturnType<typeof makeConn>, token = TOK
 }
 
 function makeRoomWithHost() {
-  const room = new DungeonRoom(makeRoom() as any);
+  const room = new DungeonRoom(makeRoom() as any, () => 0); // always deal the first free question
   const hostConn = makeConn("host-conn");
   room.onConnect(hostConn);
   claim(room, hostConn);
@@ -311,34 +312,13 @@ describe("HOST_JUDGE", () => {
 
   it("broadcasts GAME_OVER once the boss dies", () => {
     const { room, hostConn, ids } = startedGame(1);
-    // Push the team into boss phase, then land every boss hit.
-    let game = room.game!;
-    // Walk through every room once (1+2+2+3+4=12), then keep clearing the
-    // last room (worth 4 each) — once clamped at the last room, the
-    // question id resets to its first question every time.
-    const initialSequence = ["r0-q1", "r1-q1", "r2-q1", "r3-q1", "r4-q1"];
-    for (const q of initialSequence) {
-      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: q, correct: true });
-      game = room.game!;
-      if (game.teams[0].score >= game.config.bossThreshold) break;
+    // Answer whatever question is current (room deal or boss) correctly until the game ends.
+    for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) {
+      const g = room.game!;
+      const t = g.teams[0];
+      const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: qid, correct: true });
     }
-    while (game.teams[0].score < game.config.bossThreshold) {
-      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r4-q1", correct: true });
-      game = room.game!;
-    }
-    expect(game.teams[0].score).toBeGreaterThanOrEqual(game.config.bossThreshold);
-
-    // Now answer every boss question correctly until the boss dies.
-    for (let i = 0; i < game.boss.maxHp + 1 && room.game!.phase === "playing"; i++) {
-      const current = room.game!;
-      send(room, hostConn, {
-        type: "HOST_JUDGE",
-        teamId: ids[0],
-        questionId: current.boss.currentQuestionId,
-        correct: true,
-      });
-    }
-
     expect(room.game!.phase).toBe("finished");
     const broadcastCalls = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
     expect(broadcastCalls.some((m) => m.type === "GAME_OVER")).toBe(true);
@@ -435,5 +415,77 @@ describe("malformed messages", () => {
     const { room, hostConn } = makeRoomWithHost();
     send(room, hostConn, { type: "HOST_JUDGE", teamId: T1, questionId: "r0-q1", correct: "yes" });
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
+  });
+});
+
+describe("questions and answers (T3)", () => {
+  function started(teamCount = 2) {
+    const { room, hostConn } = makeRoomWithHost();
+    const { ids, conns } = joinTeams(room, hostConn, teamCount);
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn, ids, conns };
+  }
+  const sent = (conn: ReturnType<typeof makeConn>) =>
+    (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+  const broadcasts = (room: DungeonRoom) =>
+    (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+
+  it("STATE carries the public question for the team on turn, with monster and no answer", () => {
+    const { room } = started();
+    const state = broadcasts(room).findLast((m) => m.type === "STATE");
+    expect(state.question).toMatchObject({ id: "r0-q1", boss: false, monster: { sprite: "slime" } });
+    expect(typeof state.question.text).toBe("string");
+    expect(state.question).not.toHaveProperty("answer");
+  });
+
+  it("sends the answer only to host connections, on start and after every judgment", () => {
+    const { room, hostConn, ids, conns } = started();
+    expect(sent(hostConn).findLast((m) => m.type === "HOST_ANSWER")).toMatchObject({ questionId: "r0-q1", answer: "台北 101" });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    // Turn passes to team 2, whose question is r0-q2.
+    expect(sent(hostConn).findLast((m) => m.type === "HOST_ANSWER")).toMatchObject({ questionId: "r0-q2", answer: "115 年" });
+    for (const c of conns) expect(sent(c).some((m) => m.type === "HOST_ANSWER")).toBe(false);
+  });
+
+  it("a host that claims mid-game gets the current answer at once", () => {
+    const { room } = started();
+    const second = makeConn("host-phone");
+    claim(room, second);
+    expect(sent(second).map((m) => m.type)).toEqual(["HOST_OK", "HOST_ANSWER"]);
+  });
+
+  it("never puts any bank answer into a broadcast or a player message across a full game", () => {
+    const { room, hostConn, conns } = started(2);
+    for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) {
+      const g = room.game!;
+      const teamId = g.turnOrder[g.currentTurnIndex];
+      const t = g.teams.find((x) => x.id === teamId)!;
+      const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+      send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
+    }
+    expect(room.game!.phase).toBe("finished");
+    const public_ = JSON.stringify([...broadcasts(room), ...conns.flatMap(sent)]);
+    for (const r of BANK.rooms) for (const q of [...r.questions]) expect(public_).not.toContain(`"answer":"${q.answer}"`);
+    for (const q of BANK.boss.questions) expect(public_).not.toContain(`"answer":"${q.answer}"`);
+    expect(public_).not.toContain("HOST_ANSWER");
+  });
+
+  it("in the boss room the public question is flagged as boss", () => {
+    const { room, hostConn, ids } = started(1);
+    for (let i = 0; i < 100 && room.game!.teams[0].score < 15; i++) {
+      const t = room.game!.teams[0];
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: t.currentQuestionId, correct: true });
+    }
+    const state = broadcasts(room).findLast((m) => m.type === "STATE");
+    expect(state.question).toMatchObject({ boss: true, monster: { sprite: "dragon" } });
+  });
+
+  it("dealing follows the injected rng", () => {
+    const room = new DungeonRoom(makeRoom() as any, () => 0.99);
+    const host = makeConn("h");
+    claim(room, host);
+    joinTeams(room, host, 1);
+    send(room, host, { type: "HOST_START" });
+    expect(room.game!.teams[0].currentQuestionId).toBe("r0-q8");
   });
 });

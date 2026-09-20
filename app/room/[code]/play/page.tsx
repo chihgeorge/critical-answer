@@ -4,14 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { getOrCreateTeamId } from "@/lib/room-code";
-import type { ClientMessage, ServerMessage } from "@/lib/protocol";
+import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { DialogueBox, Panel, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 
 type LobbyState = { teams: { id: string; name: string }[] };
-type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[] };
+type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null };
 
 export default function PlayPage() {
   const { code } = useParams<{ code: string }>();
@@ -45,7 +45,7 @@ export default function PlayPage() {
           setGame(null);
           break;
         case "STATE":
-          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners });
+          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question });
           setLobby(null);
           break;
         case "GAME_OVER":
@@ -90,7 +90,7 @@ export default function PlayPage() {
   const roster = game?.view.teams ?? lobby?.teams ?? [];
   const myIndex = Math.max(0, roster.findIndex((t) => t.id === teamId));
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
-  const turn = game ? describeTurn(game.view) : null;
+  const turn = game ? describeTurn(game.view, game.question) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
   const finished = game?.phase === "finished";
 
@@ -130,7 +130,7 @@ export default function PlayPage() {
 
         {game && !finished && turn?.team && (
           <Panel className="flex items-center gap-3 px-3 py-[10px]">
-            <Sprite kind={turn.monster.kind} scale={Math.max(1, Math.floor(turn.monster.scale / 3))} className="flex-none" />
+            <Sprite kind={turn.monster.kind} hue={turn.monster.hue} scale={Math.max(1, Math.floor(turn.monster.scale / 3))} className="flex-none" />
             <div className="text-[15px]">
               <div>{turn.team.name} 正在面對</div>
               <div className="text-[18px]">{turn.monster.name}</div>

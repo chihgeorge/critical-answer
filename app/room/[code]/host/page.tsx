@@ -4,14 +4,14 @@ import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { getHostToken } from "@/lib/room-code";
-import type { ClientMessage, ServerMessage } from "@/lib/protocol";
+import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 
 type LobbyState = { teams: { id: string; name: string }[] };
-type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[] };
+type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null };
 
 /** The host's own link carries the token, so it is shown here and never on /screen or /play. */
 function MoreDrawer({ code, onClose }: { code: string; onClose: () => void }) {
@@ -65,6 +65,8 @@ export default function HostPage() {
   const [connected, setConnected] = useState(false);
   const [claimed, setClaimed] = useState(false);
   const [reset, setReset] = useState(false);
+  /** Host-only: the answer to the question in play. Never shown on /screen or /play. */
+  const [answer, setAnswer] = useState<{ questionId: string; answer: string } | null>(null);
   const [drawer, setDrawer] = useState(false);
   // Team whose judge buttons are disabled while we wait for the server's
   // STATE broadcast to confirm the judgment — doubles as visible click
@@ -103,12 +105,15 @@ export default function HostPage() {
         case "HOST_OK":
           setClaimed(true);
           break;
+        case "HOST_ANSWER":
+          setAnswer({ questionId: msg.questionId, answer: msg.answer });
+          break;
         case "LOBBY":
           setLobby({ teams: msg.teams });
           setGame(null);
           break;
         case "STATE":
-          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners });
+          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question });
           setPendingTeamId(null);
           break;
         case "GAME_OVER":
@@ -137,7 +142,7 @@ export default function HostPage() {
   // /play and /screen show nothing, so a dropped player sees a frozen screen. Upgrade when playtest 2
   // shows confusion about missed turns, or when the game leaves LAN.
   const ready = connected && claimed;
-  const turn = game ? describeTurn(game.view) : null;
+  const turn = game ? describeTurn(game.view, game.question) : null;
   const canJudge = ready && !!turn?.team && pendingTeamId !== turn.team.id;
 
   return (
@@ -189,15 +194,21 @@ export default function HostPage() {
             <TurnRibbon>{turn.inBoss ? "首領戰　" : ""}輪到：{turn.team.name}</TurnRibbon>
             <Panel tone="turn" className="px-3 py-[10px]">
               <div className="flex items-center gap-3">
-                <Sprite kind={turn.monster.kind} scale={Math.max(1, Math.floor(turn.monster.scale / 3))} className="flex-none" />
+                <Sprite kind={turn.monster.kind} hue={turn.monster.hue} scale={Math.max(1, Math.floor(turn.monster.scale / 3))} className="flex-none" />
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.monster.name}</div>
-                  <div className="text-[20px]">題目 {turn.questionId}</div>
+                  <div data-testid="host-question" className="text-[20px] leading-snug">{game.question?.text ?? `題目 ${turn.questionId}`}</div>
                 </div>
               </div>
               <div className="mt-2">
                 <ScoreMeter score={Math.min(turn.team.score, BOSS_THRESHOLD)} max={BOSS_THRESHOLD} active />
               </div>
+              {answer && answer.questionId === turn.questionId && (
+                <div className="mt-2 px-3 py-1" style={{ background: "#d6f5c2", color: "#1e5a1c", boxShadow: "inset 0 0 0 3px #6fd36a" }}>
+                  <div className="text-[11px]" style={{ color: "#2f6a2c" }}>答案（只有你看得到）</div>
+                  <div data-testid="host-answer" className="text-[19px]">{answer.answer}</div>
+                </div>
+              )}
               {turn.inBoss && <div className="mt-1 text-[14px]">首領血量 {game.view.bossHp} / {game.view.bossMaxHp}</div>}
             </Panel>
 
