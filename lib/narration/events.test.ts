@@ -44,4 +44,21 @@ describe("toNarrationEvent", () => {
     const o: AnswerOutcome = { type: "incorrect-retry", teamId: "zzz" };
     expect(toNarrationEvent(game, o, "史萊姆")).toMatchObject({ team: "冒險者" });
   });
+
+  it("attaches who is up next, when the game goes on", () => {
+    const next = { team: "藍隊", monster: "害羞幽靈", boss: false };
+    const o: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, nextRoomIndex: 1 };
+    expect(toNarrationEvent(game, o, "史萊姆", next)).toMatchObject({ type: "correct", next });
+    expect(toNarrationEvent(game, { type: "incorrect-retry", teamId: "b" }, "史萊姆", next)).toMatchObject({ next });
+  });
+
+  it("leaves 'next' off when nobody is next (the killing blow ends the game)", () => {
+    const next = { team: "藍隊", monster: "小黑龍", boss: true };
+    const o: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 0, bossKilled: true, killBonus: 11 };
+    expect(toNarrationEvent(game, o, "小黑龍", next)).not.toHaveProperty("next");
+  });
+
+  it("has no 'next' at all when none is given", () => {
+    expect(toNarrationEvent(game, { type: "incorrect-retry", teamId: "b" }, "史萊姆")).not.toHaveProperty("next");
+  });
 });

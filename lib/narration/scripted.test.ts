@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, VARIANTS, NEXT_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 
 const team = "六個字的隊伍";
@@ -100,5 +100,42 @@ describe("scriptedEpilogue", () => {
     );
     expect(text).toContain("紅隊");
     expect(text).toContain("藍隊");
+  });
+});
+
+describe("next-team prompt (the second line)", () => {
+  const next = { team: "六個字的隊伍", monster: "守門史萊姆王", boss: false };
+
+  it("has 4-5 variants for a room and for the boss room", () => {
+    expect(NEXT_VARIANTS.room.length).toBeGreaterThanOrEqual(4);
+    expect(NEXT_VARIANTS.room.length).toBeLessThanOrEqual(5);
+    expect(NEXT_VARIANTS.boss.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("names the team on turn and the monster it faces, with no braces left", () => {
+    const p = createScriptedProvider(lcg(5));
+    for (let i = 0; i < 30; i++) {
+      const line = p.nextLine(next);
+      expect(line).toContain(next.team);
+      expect(line).toContain(next.monster);
+      expect(line).not.toMatch(/[{}]/);
+      expect(line.length).toBeLessThanOrEqual(40);
+    }
+  });
+
+  it("uses the boss variants in the boss room", () => {
+    const p = createScriptedProvider(lcg(6));
+    const line = p.nextLine({ ...next, boss: true });
+    expect(NEXT_VARIANTS.boss.some((v) => v.replace("{team}", next.team).replace("{monster}", next.monster) === line)).toBe(true);
+  });
+
+  it("never repeats the same prompt twice in a row", () => {
+    const p = createScriptedProvider(lcg(7));
+    let prev = "";
+    for (let i = 0; i < 100; i++) {
+      const line = p.nextLine(next);
+      expect(line).not.toBe(prev);
+      prev = line;
+    }
   });
 });

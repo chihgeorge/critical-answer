@@ -872,3 +872,93 @@ describe("LLM narration and director (T8-T10)", () => {
     });
   });
 });
+
+describe("story moves on to the next team (two-line narration)", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const all = (room: DungeonRoom) => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+  const sentMsgs = (conn: ReturnType<typeof makeConn>) => (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+  const narrs = (room: DungeonRoom) => all(room).filter((m) => m.type === "NARRATION");
+
+  function begin(teamCount = 2, opts: ConstructorParameters<typeof DungeonRoom>[2] = { holdMs: 30, epilogueDelayMs: 0 }) {
+    const room = new DungeonRoom(makeRoom() as any, () => 0, opts);
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    joinTeams(room, hostConn, teamCount);
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn };
+  }
+  function judge(room: DungeonRoom, hostConn: ReturnType<typeof makeConn>, correct = true) {
+    const g = room.game!;
+    const teamId = g.turnOrder[g.currentTurnIndex];
+    const t = g.teams.find((x) => x.id === teamId)!;
+    const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct });
+  }
+
+  it("the opening narration is followed by a line about the first team on turn", async () => {
+    const { room } = begin();
+    await flush();
+    expect(narrs(room)[0].then).toContain("Team 0");
+  });
+
+  it("a judgment's narration carries a follow-up that names the team now on turn and its monster", async () => {
+    const { room, hostConn } = begin();
+    await flush();
+    judge(room, hostConn); // Team 0 answers; Team 1 is next, still in the first room
+    await flush();
+    const n = narrs(room).at(-1);
+    expect(n.line).toContain("Team 0");
+    expect(n.then).toContain("Team 1");
+    expect(n.then).toContain("軟趴趴史萊姆");
+  });
+
+  it("names the right team after a wrong answer too (turn still passes)", async () => {
+    const { room, hostConn } = begin();
+    await flush();
+    judge(room, hostConn, false);
+    await flush();
+    expect(narrs(room).at(-1).then).toContain("Team 1");
+  });
+
+  it("the killing blow has no follow-up: nobody is next", async () => {
+    const { room, hostConn } = begin(1);
+    for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) judge(room, hostConn);
+    await sleep(40);
+    const kill = narrs(room).filter((m) => m.line).at(-1);
+    expect(kill.then).toBeUndefined();
+  });
+
+  it("replays the follow-up to a late connection, and a host edit keeps it", async () => {
+    const { room, hostConn } = begin();
+    await flush();
+    judge(room, hostConn);
+    await flush();
+    send(room, hostConn, { type: "HOST_EDIT_NARRATION", line: "主持人改的結果句" });
+    const edited = narrs(room).at(-1);
+    expect(edited.line).toBe("主持人改的結果句");
+    expect(edited.then).toContain("Team 1");
+    const late = makeConn("late");
+    room.onConnect(late);
+    expect(sentMsgs(late).find((m) => m.type === "NARRATION")).toMatchObject({ line: "主持人改的結果句", then: expect.stringContaining("Team 1") });
+  });
+
+  it("records the follow-up and who wrote it in the transcript", async () => {
+    const { room, hostConn } = begin();
+    await flush();
+    judge(room, hostConn);
+    await flush();
+    send(room, hostConn, { type: "HOST_GET_TRANSCRIPT" });
+    const t = sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT").entries;
+    expect(t.at(-1)).toMatchObject({ thenSource: "scripted" });
+    expect(t.at(-1).then).toContain("Team 1");
+  });
+
+  it("uses the model's own second line when it writes one", async () => {
+    const two = { name: "llm", narrate: async () => "結果句在這裡！\n輪到 Team 1，準備好了嗎？" };
+    const { room } = begin(2, { holdMs: 50, epilogueDelayMs: 0, provider: two });
+    await sleep(40);
+    expect(narrs(room)[0]).toMatchObject({ line: "結果句在這裡！", then: "輪到 Team 1，準備好了嗎？" });
+  });
+});

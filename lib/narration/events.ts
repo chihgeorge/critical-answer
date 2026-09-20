@@ -3,13 +3,22 @@
 
 import type { AnswerOutcome, GameState } from "../game-state";
 
+/** Who is up next and what they face: the story moves on to them after the result line. */
+export interface NextTurn {
+  team: string;
+  monster: string;
+  boss: boolean;
+}
+
+type WithNext<T> = T & { next?: NextTurn };
+
 export type NarrationEvent =
-  | { type: "start"; teams: string[] }
-  | { type: "correct"; team: string; monster: string; points: number }
-  | { type: "retry"; team: string; monster: string }
-  | { type: "flee"; team: string; monster: string }
-  | { type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number }
-  | { type: "boss-kill"; team: string; monster: string; bonus: number }
+  | WithNext<{ type: "start"; teams: string[] }>
+  | WithNext<{ type: "correct"; team: string; monster: string; points: number }>
+  | WithNext<{ type: "retry"; team: string; monster: string }>
+  | WithNext<{ type: "flee"; team: string; monster: string }>
+  | WithNext<{ type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number }>
+  | WithNext<{ type: "boss-kill"; team: string; monster: string; bonus: number }>
   /** Game over: ranking is sorted high to low. Longer line, longer timeout. */
   | { type: "epilogue"; ranking: { name: string; score: number }[]; winners: string[] };
 
@@ -18,7 +27,13 @@ export type NarrationEvent =
  * boss's full HP); `monster` is the monster the team was facing, supplied by the
  * caller because the bank lives on the server.
  */
-export function toNarrationEvent(prev: GameState, outcome: AnswerOutcome, monster: string): NarrationEvent {
+export function toNarrationEvent(prev: GameState, outcome: AnswerOutcome, monster: string, next?: NextTurn): NarrationEvent {
+  const event = baseEvent(prev, outcome, monster);
+  // A finished game has nobody next: the last line stands alone.
+  return next && event.type !== "boss-kill" ? { ...event, next } : event;
+}
+
+function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string): Exclude<NarrationEvent, { type: "epilogue" }> {
   const team = prev.teams.find((t) => t.id === outcome.teamId)?.name ?? "冒險者";
   switch (outcome.type) {
     case "correct-room-advance":

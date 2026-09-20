@@ -25,6 +25,18 @@ describe.skipIf(!key)("LLM narrator (live)", () => {
     expect(line).not.toMatch(/[<>]/);
   }, 20_000);
 
+  it("writes a result line and a follow-up that addresses the next team", async () => {
+    const out = await llm.narrate(
+      { type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2, next: { team: "藍隊", monster: "軟趴趴史萊姆", boss: false } },
+      { signal: AbortSignal.timeout(15_000) },
+    );
+    const [first, second] = out.split("\n");
+    expect(first.length).toBeLessThanOrEqual(MAX_LINE);
+    expect(second, "the model should write a second line").toBeTruthy();
+    expect(second.length).toBeLessThanOrEqual(MAX_LINE);
+    expect(second).toContain("藍隊");
+  }, 20_000);
+
   it("writes an epilogue that keeps the winner's name", async () => {
     const line = await llm.narrate(
       { type: "epilogue", ranking: [{ name: "藍隊", score: 24 }, { name: "紅隊", score: 16 }], winners: ["藍隊"] },

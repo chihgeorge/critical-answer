@@ -67,8 +67,9 @@ export type ServerMessage =
       eventId: number;
     }
   | { type: "GAME_OVER"; winners: string[] }
-  /** Exactly one per event. Clients keep the highest eventId they have seen. */
-  | { type: "NARRATION"; eventId: number; line: string }
+  /** Exactly one per event (it may carry two lines). Clients keep the highest eventId they have seen. */
+  /** `then`: a follow-up line about the team now on turn, shown after `line` (absent at game over). */
+  | { type: "NARRATION"; eventId: number; line: string; then?: string }
   | { type: "EPILOGUE"; text: string }
   /** Host-only reply to HOST_GET_TRANSCRIPT. */
   | { type: "TRANSCRIPT"; entries: TranscriptItem[] }

@@ -5,19 +5,19 @@ import type { NarrationProvider } from "./scripted";
 import type { NarrationEvent } from "./events";
 
 const event: NarrationEvent = { type: "retry", team: "紅隊", monster: "史萊姆" };
-const fallback = { line: () => "備用旁白" };
+const fallback = { line: () => "備用旁白", nextLine: () => "備用下一句" };
 const provider = (narrate: NarrationProvider["narrate"], name = "fake"): NarrationProvider => ({ name, narrate });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function setup(p: NarrationProvider, holdMs = 30, epilogueHoldMs = 60) {
-  const emitted: { eventId: number; line: string; provider: string }[] = [];
+  const emitted: { eventId: number; line: string; provider: string; then?: string }[] = [];
   const entries: TranscriptEntry[] = [];
   const runner = createRunner({
     provider: p,
     fallback,
     holdMs,
     epilogueHoldMs,
-    emit: (eventId, line, providerName) => emitted.push({ eventId, line, provider: providerName }),
+    emit: (eventId, line, providerName, _event, then) => emitted.push({ eventId, line, provider: providerName, ...(then ? { then } : {}) }),
     record: (e) => entries.push(e),
   });
   return { runner, emitted, entries };
@@ -102,6 +102,46 @@ describe("narration runner", () => {
       await tooLong.runner.run(9, epi);
       expect(tooLong.emitted[0].line).toBe("備用旁白");
       expect(tooLong.entries[0].fallbackReason).toBe("invalid");
+    });
+  });
+
+  describe("second line (the next-team prompt)", () => {
+    const withNext: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next: { team: "藍隊", monster: "害羞幽靈", boss: false } };
+
+    it("splits a two-line answer into the result line and the follow-up", async () => {
+      const { runner, emitted, entries } = setup(provider(async () => "紅隊答對了！\n輪到藍隊，害羞幽靈在等你們。"));
+      await runner.run(1, withNext);
+      expect(emitted[0]).toEqual({ eventId: 1, line: "紅隊答對了！", provider: "fake", then: "輪到藍隊，害羞幽靈在等你們。" });
+      expect(entries[0]).toMatchObject({ then: "輪到藍隊，害羞幽靈在等你們。", thenSource: "fake" });
+    });
+
+    it("writes the follow-up itself when the provider gave only one line", async () => {
+      const { runner, emitted, entries } = setup(provider(async () => "紅隊答對了！"));
+      await runner.run(1, withNext);
+      expect(emitted[0]).toMatchObject({ line: "紅隊答對了！", then: "備用下一句" });
+      expect(entries[0].thenSource).toBe("scripted");
+    });
+
+    it("replaces an invalid follow-up (too long, markup) with the scripted one but keeps the good result line", async () => {
+      const { runner, emitted } = setup(provider(async () => "紅隊答對了！\n" + "字".repeat(60)));
+      await runner.run(1, withNext);
+      expect(emitted[0]).toMatchObject({ provider: "fake", line: "紅隊答對了！", then: "備用下一句" });
+      const markup = setup(provider(async () => "紅隊答對了！\n<b>輪到</b>"));
+      await markup.runner.run(1, withNext);
+      expect(markup.emitted[0].then).toBe("備用下一句");
+    });
+
+    it("uses both scripted lines when the provider fails or is too slow", async () => {
+      const slow = setup(provider(async () => (await sleep(120), "晚")));
+      await slow.runner.run(1, withNext);
+      expect(slow.emitted[0]).toMatchObject({ line: "備用旁白", provider: "scripted", then: "備用下一句" });
+    });
+
+    it("sends no follow-up when the event has no next team, even if the provider wrote two lines", async () => {
+      const { runner, emitted } = setup(provider(async () => "藍隊擊倒了首領！\n多餘的第二行"));
+      await runner.run(1, { type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9 });
+      expect(emitted[0].then).toBeUndefined();
+      expect(emitted[0].line).toBe("藍隊擊倒了首領！");
     });
   });
 });

@@ -8,7 +8,7 @@ import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protoco
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
-import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
+import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, Panel, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 
 type LobbyState = { teams: { id: string; name: string }[] };
@@ -158,11 +158,16 @@ export default function PlayPage() {
           <DialogueBox
             compact
             loading={!!game && !finished && isPending(game.eventId, narration)}
-            text={
+            lines={
               finished
-                ? (epilogue ?? narration?.line ?? "冒險結束了，大螢幕正在頒獎。")
-                : (narration?.line ??
-                  (turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"))
+                ? epilogue
+                  ? [epilogue]
+                  : narration
+                    ? linesOf(narration)
+                    : ["冒險結束了，大螢幕正在頒獎。"]
+                : narration
+                  ? linesOf(narration)
+                  : [turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"]
             }
           />
         </div>

@@ -11,6 +11,13 @@ describe("keepLatest", () => {
     expect(n?.line).toBe("三");
   });
 
+  it("keeps the follow-up line with its result line, and drops it when a newer event has none", () => {
+    let n = keepLatest(null, { eventId: 2, line: "結果", then: "輪到藍隊" });
+    expect(n).toEqual({ eventId: 2, line: "結果", then: "輪到藍隊" });
+    n = keepLatest(n, { eventId: 3, line: "終局" });
+    expect(n).toEqual({ eventId: 3, line: "終局", then: undefined });
+  });
+
   it("accepts a replay of the same eventId (a reconnect) without changing it", () => {
     const n = keepLatest({ eventId: 4, line: "四" }, { eventId: 4, line: "四" });
     expect(n).toEqual({ eventId: 4, line: "四" });

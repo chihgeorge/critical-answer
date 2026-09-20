@@ -1,7 +1,7 @@
 // The always-available narrator: hand-written lines with template slots, four
 // or five variants per event type, never the same variant twice in a row.
 
-import type { NarrationEvent } from "./events";
+import type { NarrationEvent, NextTurn } from "./events";
 
 export interface NarrationProvider {
   name: string;
@@ -53,13 +53,30 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
   ],
 };
 
+/** The second line: the narrator turns to the team now on turn. */
+export const NEXT_VARIANTS = {
+  room: [
+    "輪到{team}，{monster}擋在前面，請看題目！",
+    "{team}，換你們了！{monster}正等著你們。",
+    "下一位：{team}。{monster}磨牙霍霍，準備好了嗎？",
+    "{team}上前一步，{monster}攔住了去路。",
+    "接下來輪到{team}，面對{monster}！",
+  ],
+  boss: [
+    "{team}，首領{monster}在等你們，看題目！",
+    "換{team}上場，{monster}怒目而視。",
+    "輪到{team}！{monster}擋在最後一道門前。",
+    "{team}挺身而出，直面{monster}！",
+  ],
+};
+
 function fill(template: string, event: NarrationEvent): string {
   const vars = event as unknown as Record<string, string | number | string[]>;
   return template.replace(/\{(\w+)\}/g, (_, key: string) => String(vars[key] ?? ""));
 }
 
 export function createScriptedProvider(rng: () => number = Math.random) {
-  const last: Partial<Record<NarrationEvent["type"], number>> = {};
+  const last: Partial<Record<NarrationEvent["type"] | "next-room" | "next-boss", number>> = {};
   const provider = {
     name: "scripted",
     /** Synchronous, so it can back up a slow provider without awaiting anything. */
@@ -70,6 +87,15 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (i === last[event.type]) i = (i + 1) % pool.length;
       last[event.type] = i;
       return fill(pool[i], event);
+    },
+    /** Synchronous like line(): the scripted prompt for whoever is up next. */
+    nextLine(next: NextTurn): string {
+      const key = next.boss ? "next-boss" : "next-room";
+      const pool = next.boss ? NEXT_VARIANTS.boss : NEXT_VARIANTS.room;
+      let i = Math.floor(rng() * pool.length);
+      if (i === last[key]) i = (i + 1) % pool.length;
+      last[key] = i;
+      return pool[i].replace("{team}", next.team).replace("{monster}", next.monster);
     },
     async narrate(event: NarrationEvent): Promise<string> {
       return provider.line(event);
