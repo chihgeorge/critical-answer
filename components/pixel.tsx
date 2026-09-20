@@ -97,17 +97,19 @@ export function SceneBackground({
   cols = 160,
   rows = 90,
   arch = true,
+  className = "absolute inset-0",
 }: {
   theme: SceneTheme;
   cols?: number;
   rows?: number;
   arch?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     if (ref.current) drawScene(ref.current, theme, cols, rows, arch);
   }, [theme, cols, rows, arch]);
-  return <canvas ref={ref} className="px-sprite absolute inset-0 h-full w-full" />;
+  return <canvas ref={ref} className={cx("px-sprite h-full w-full", className)} />;
 }
 
 /* ---------- Score meter: 15 cells ---------- */

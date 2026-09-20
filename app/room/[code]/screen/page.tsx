@@ -114,7 +114,7 @@ function Playing({ view }: { view: SpectatorView }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-1 text-[15px]">
                     <span className="truncate">{t.name}</span>
-                    <span className="px-num flex-none text-[9px]" style={{ color: "#c2571f" }}>
+                    <span className="px-num flex-none text-[9px]" style={{ color: "#a8470f" }}>
                       {t.score}/{BOSS_THRESHOLD}
                     </span>
                   </div>

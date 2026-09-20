@@ -27,13 +27,6 @@
   --warn: #ffcf4a;
   --orange: #e8862a; /* only on dark chips or large shapes, never as small text on cream */
   --stage: #241a3f;
-
-  /* Old tokens: removed in the /play, /host and home restyle. */
-  --bg: #14121f;
-  --surface: #211d33;
-  --surface2: #2c2647;
-  --ink2: #b8b2d9;
-  --accent: #ff6b35;
 }
 
 body {
