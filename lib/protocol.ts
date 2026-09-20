@@ -12,7 +12,7 @@
 
 import type { GamePhase, SpectatorView } from "./game-state";
 import type { SpriteKind } from "./pixel-art";
-import type { TranscriptEntry } from "./narration/runner";
+import type { TranscriptItem } from "./narration/runner";
 
 export const MAX_TEAMS = 8;
 
@@ -29,7 +29,11 @@ export type ClientMessage =
   | { type: "JOIN"; teamId: string; teamName: string }
   | { type: "REJOIN"; teamId: string }
   | { type: "HOST_CLAIM"; token: string }
-  | { type: "HOST_START" }
+  | { type: "HOST_START"; aiNarration?: boolean }
+  /** Director: free-text style notes (<= 500 chars) injected into every LLM call. */
+  | { type: "HOST_SET_NOTES"; notes: string }
+  /** Director: replace the line now on screen (<= 40 chars). */
+  | { type: "HOST_EDIT_NARRATION"; line: string }
   | { type: "HOST_GET_TRANSCRIPT" }
   | {
       type: "HOST_JUDGE";
@@ -67,8 +71,9 @@ export type ServerMessage =
   | { type: "NARRATION"; eventId: number; line: string }
   | { type: "EPILOGUE"; text: string }
   /** Host-only reply to HOST_GET_TRANSCRIPT. */
-  | { type: "TRANSCRIPT"; entries: TranscriptEntry[] }
-  | { type: "HOST_OK" }
+  | { type: "TRANSCRIPT"; entries: TranscriptItem[] }
+  /** `aiAvailable`: the server has an API key, so the host may turn AI narration on. */
+  | { type: "HOST_OK"; aiAvailable: boolean }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   | { type: "HOST_ANSWER"; questionId: string; answer: string }
   | { type: "ERROR"; error: ServerErrorCode; detail?: string };
@@ -90,6 +95,8 @@ export function sanitizeText(text: string, max: number): string {
 // to 20 characters; the ceiling here only rejects absurd payloads.
 const MAX_ID = 64;
 const MAX_RAW_NAME = 100;
+export const MAX_NOTES = 500;
+export const MAX_EDIT_LINE = 40;
 
 function str(v: unknown, max: number): string | null {
   return typeof v === "string" && v.length <= max ? v : null;
@@ -118,7 +125,16 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         ? { type: "HOST_CLAIM", token: m.token }
         : null;
     case "HOST_START":
-      return { type: "HOST_START" };
+      if (m.aiNarration !== undefined && typeof m.aiNarration !== "boolean") return null;
+      return { type: "HOST_START", aiNarration: m.aiNarration };
+    case "HOST_SET_NOTES": {
+      const notes = str(m.notes, MAX_NOTES);
+      return notes !== null ? { type: "HOST_SET_NOTES", notes } : null;
+    }
+    case "HOST_EDIT_NARRATION": {
+      const line = str(m.line, MAX_EDIT_LINE);
+      return line !== null ? { type: "HOST_EDIT_NARRATION", line } : null;
+    }
     case "HOST_GET_TRANSCRIPT":
       return { type: "HOST_GET_TRANSCRIPT" };
     case "HOST_JUDGE": {

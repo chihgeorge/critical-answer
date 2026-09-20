@@ -75,7 +75,7 @@ describe("HOST_CLAIM", () => {
     const conn = makeConn("h1");
     claim(room, conn);
     expect((room as any).isHost(conn)).toBe(true);
-    expect(lastSentTo(conn)).toEqual({ type: "HOST_OK" });
+    expect(lastSentTo(conn)).toEqual({ type: "HOST_OK", aiAvailable: false }); // no API key in the test room
   });
 
   it("rejects a claim with a different token once a token is set", () => {
@@ -661,6 +661,214 @@ describe("narration (T5-T7)", () => {
       send(room, hostConn, { type: "HOST_GET_TRANSCRIPT" });
       const t = sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT");
       expect(t.entries[0]).toMatchObject({ provider: "scripted", fallbackReason: "timeout" });
+    });
+  });
+});
+
+describe("LLM narration and director (T8-T10)", () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const all = (room: DungeonRoom) => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+  const sentMsgs = (conn: ReturnType<typeof makeConn>) => (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+  const json = (b: object, status = 200) => new Response(JSON.stringify(b), { status });
+  const textReply = (text: string) => json({ content: [{ type: "text", text }], stop_reason: "end_turn" });
+
+  /** A room with (or without) an API key and a fake fetch that records every request. */
+  function llmRoom(fetchImpl: (req: { model: string; system: string; user: string }) => Response | Promise<Response>, opts: { key?: string | null; epilogueHoldMs?: number } = {}) {
+    const calls: { model: string; system: string; user: string }[] = [];
+    const fake = async (_url: unknown, init?: RequestInit) => {
+      const b = JSON.parse(init!.body as string);
+      const req = { model: b.model, system: b.system, user: b.messages[0].content };
+      calls.push(req);
+      return fetchImpl(req);
+    };
+    const roomMock = makeRoom() as any;
+    roomMock.env = opts.key === null ? {} : { ANTHROPIC_API_KEY: opts.key ?? "sk-test" };
+    const room = new DungeonRoom(roomMock, () => 0, { holdMs: 200, epilogueDelayMs: 0, epilogueHoldMs: opts.epilogueHoldMs ?? 200, fetch: fake as unknown as typeof fetch });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    return { room, hostConn, calls };
+  }
+  function begin(r: ReturnType<typeof llmRoom>, ai?: boolean, teams = 2) {
+    joinTeams(r.room, r.hostConn, teams);
+    send(r.room, r.hostConn, ai === undefined ? { type: "HOST_START" } : { type: "HOST_START", aiNarration: ai });
+  }
+  function judge(room: DungeonRoom, hostConn: ReturnType<typeof makeConn>) {
+    const g = room.game!;
+    const teamId = g.turnOrder[g.currentTurnIndex];
+    const t = g.teams.find((x) => x.id === teamId)!;
+    const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
+  }
+  const narrations = (room: DungeonRoom) => all(room).filter((m) => m.type === "NARRATION");
+  const transcript = (room: DungeonRoom, hostConn: ReturnType<typeof makeConn>) => {
+    send(room, hostConn, { type: "HOST_GET_TRANSCRIPT" });
+    return sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT").entries;
+  };
+
+  it("tells the host whether an API key is configured", () => {
+    const withKey = llmRoom(() => textReply("x"));
+    expect(sentMsgs(withKey.hostConn).find((m) => m.type === "HOST_OK").aiAvailable).toBe(true);
+    const noKey = llmRoom(() => textReply("x"), { key: null });
+    expect(sentMsgs(noKey.hostConn).find((m) => m.type === "HOST_OK").aiAvailable).toBe(false);
+  });
+
+  it("uses the LLM line when AI narration is on and a key exists", async () => {
+    const r = llmRoom(() => textReply("地城主親自開口了！"));
+    begin(r);
+    await sleep(30);
+    expect(narrations(r.room)[0].line).toBe("地城主親自開口了！");
+    expect(r.calls[0].model).toBe("claude-haiku-4-5");
+    expect(transcript(r.room, r.hostConn)[0]).toMatchObject({ provider: "llm" });
+  });
+
+  it("makes no LLM call when the host turns AI narration off, or when there is no key", async () => {
+    const off = llmRoom(() => textReply("不該出現"));
+    begin(off, false);
+    judge(off.room, off.hostConn);
+    await sleep(30);
+    expect(off.calls).toHaveLength(0);
+    expect(narrations(off.room).every((n) => n.line !== "不該出現")).toBe(true);
+    const noKey = llmRoom(() => textReply("不該出現"), { key: null });
+    begin(noKey, true);
+    await sleep(30);
+    expect(noKey.calls).toHaveLength(0);
+  });
+
+  it("falls back to the scripted line on an LLM failure and still sends exactly one NARRATION", async () => {
+    const r = llmRoom(() => json({ error: {} }, 500));
+    begin(r);
+    await sleep(30);
+    expect(narrations(r.room)).toHaveLength(1);
+    expect(transcript(r.room, r.hostConn)[0]).toMatchObject({ provider: "scripted", fallbackReason: "upstream" });
+  });
+
+  it("rejects an LLM line that repeats a bank answer and uses the scripted line", async () => {
+    const r = llmRoom(() => textReply("其實它叫新高山啦"));
+    begin(r);
+    await sleep(30);
+    expect(narrations(r.room)[0].line).not.toContain("新高山");
+    expect(transcript(r.room, r.hostConn)[0]).toMatchObject({ fallbackReason: "invalid_output" });
+  });
+
+  it("stops calling the LLM after a 401 (breaker) and records the trip", async () => {
+    const r = llmRoom(() => json({ error: {} }, 401));
+    begin(r);
+    await sleep(30);
+    judge(r.room, r.hostConn);
+    judge(r.room, r.hostConn);
+    await sleep(30);
+    expect(r.calls).toHaveLength(1); // start only; later events never reached the API
+    const t = transcript(r.room, r.hostConn);
+    expect(t.some((e: any) => e.kind === "breaker")).toBe(true);
+    expect(t.filter((e: any) => e.fallbackReason === "breaker_open").length).toBeGreaterThanOrEqual(2);
+    expect(narrations(r.room)).toHaveLength(3); // still exactly one per event
+  });
+
+  it("opens the breaker after three failures in a row", async () => {
+    const r = llmRoom(() => json({ error: {} }, 500));
+    begin(r);
+    for (let i = 0; i < 4; i++) { judge(r.room, r.hostConn); await sleep(20); }
+    await sleep(30);
+    expect(r.calls).toHaveLength(3);
+  });
+
+  describe("director", () => {
+    it("host notes go into every later LLM call; non-hosts cannot set them", async () => {
+      const r = llmRoom(() => textReply("行"));
+      begin(r);
+      await sleep(30);
+      send(r.room, r.hostConn, { type: "HOST_SET_NOTES", notes: "用武俠口吻，紅隊是一群恐龍" });
+      judge(r.room, r.hostConn);
+      await sleep(30);
+      expect(r.calls.at(-1)!.system).toContain("用武俠口吻，紅隊是一群恐龍");
+      const intruder = makeConn("nope");
+      send(r.room, intruder, { type: "HOST_SET_NOTES", notes: "駭進來" });
+      expect(sentMsgs(intruder).at(-1)).toMatchObject({ type: "ERROR", error: "not_host" });
+      judge(r.room, r.hostConn);
+      await sleep(30);
+      expect(r.calls.at(-1)!.system).not.toContain("駭進來");
+    });
+
+    it("strips markup from notes and records them in the transcript", () => {
+      const r = llmRoom(() => textReply("行"));
+      send(r.room, r.hostConn, { type: "HOST_SET_NOTES", notes: "<b>活潑</b>一點" });
+      expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ kind: "notes", text: "b活潑/b一點" });
+    });
+
+    it("host edit replaces the line on screen under the same eventId, and is marked host in the transcript", async () => {
+      const r = llmRoom(() => textReply("原本的一句"));
+      begin(r);
+      await sleep(30);
+      const first = narrations(r.room).at(-1);
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: "主持人改寫的一句" });
+      const edited = narrations(r.room).at(-1);
+      expect(edited).toMatchObject({ eventId: first.eventId, line: "主持人改寫的一句" });
+      expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ kind: "edit", text: "主持人改寫的一句", eventId: first.eventId });
+      const late = makeConn("late");
+      r.room.onConnect(late);
+      expect(sentMsgs(late).find((m) => m.type === "NARRATION").line).toBe("主持人改寫的一句");
+    });
+
+    it("rejects an edit from a non-host, an edit with no line on screen, and an empty edit", async () => {
+      const r = llmRoom(() => textReply("行"));
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: "太早了" });
+      expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "no_narration" });
+      begin(r);
+      await sleep(30);
+      const intruder = makeConn("nope");
+      send(r.room, intruder, { type: "HOST_EDIT_NARRATION", line: "改" });
+      expect(sentMsgs(intruder).at(-1)).toMatchObject({ error: "not_host" });
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: "   " });
+      expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ error: "invalid_action" });
+      expect(narrations(r.room).at(-1).line).toBe("行");
+    });
+
+    it("feeds the last five edited lines back as style examples", async () => {
+      const r = llmRoom(() => textReply("行"));
+      begin(r);
+      await sleep(30);
+      for (let i = 1; i <= 6; i++) send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: `改寫第${i}句` });
+      judge(r.room, r.hostConn);
+      await sleep(30);
+      const system = r.calls.at(-1)!.system;
+      expect(system).not.toContain("改寫第1句");
+      for (let i = 2; i <= 6; i++) expect(system).toContain(`改寫第${i}句`);
+    });
+  });
+
+  describe("epilogue", () => {
+    async function finish(r: ReturnType<typeof llmRoom>) {
+      begin(r, undefined, 1);
+      for (let i = 0; i < 200 && r.room.game!.phase === "playing"; i++) judge(r.room, r.hostConn);
+      await sleep(60);
+    }
+
+    it("is written by the bigger model, sent once, and the scripted one is not used", async () => {
+      const r = llmRoom((req) => textReply(req.model === "claude-sonnet-5" ? "漫長的一夜，Team 0 走出了地城。" : "行"));
+      await finish(r);
+      const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
+      expect(epi).toHaveLength(1);
+      expect(epi[0].text).toBe("漫長的一夜，Team 0 走出了地城。");
+      expect(r.calls.some((c) => c.model === "claude-sonnet-5" && c.user.includes("排名"))).toBe(true);
+    });
+
+    it("falls back to the program-built epilogue when the LLM fails", async () => {
+      const r = llmRoom((req) => (req.model === "claude-sonnet-5" ? json({ error: {} }, 500) : textReply("行")));
+      await finish(r);
+      const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
+      expect(epi).toHaveLength(1);
+      expect(epi[0].text).toContain("Team 0");
+      expect(epi[0].text).toContain(String(r.room.game!.teams[0].score));
+    });
+
+    it("waits for the LLM up to the epilogue hold, then falls back once", async () => {
+      const r = llmRoom(async (req) => (req.model === "claude-sonnet-5" ? (await sleep(300), textReply("太慢了")) : textReply("行")), { epilogueHoldMs: 40 });
+      await finish(r);
+      await sleep(350);
+      const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
+      expect(epi).toHaveLength(1);
+      expect(epi[0].text).not.toBe("太慢了");
     });
   });
 });

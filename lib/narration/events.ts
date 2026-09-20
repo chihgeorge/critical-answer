@@ -9,7 +9,9 @@ export type NarrationEvent =
   | { type: "retry"; team: string; monster: string }
   | { type: "flee"; team: string; monster: string }
   | { type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number }
-  | { type: "boss-kill"; team: string; monster: string; bonus: number };
+  | { type: "boss-kill"; team: string; monster: string; bonus: number }
+  /** Game over: ranking is sorted high to low. Longer line, longer timeout. */
+  | { type: "epilogue"; ranking: { name: string; score: number }[]; winners: string[] };
 
 /**
  * Pure. `prev` is the game before the judgment (it names the team and gives the

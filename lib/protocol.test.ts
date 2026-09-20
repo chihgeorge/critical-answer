@@ -42,6 +42,26 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_START" })).toEqual({ type: "HOST_START" });
   });
 
+  it("HOST_START: aiNarration is optional and must be a boolean", () => {
+    expect(parseClientMessage({ type: "HOST_START", aiNarration: false })).toEqual({ type: "HOST_START", aiNarration: false });
+    expect(parseClientMessage({ type: "HOST_START", aiNarration: "yes" })).toBeNull();
+  });
+
+  it("HOST_SET_NOTES: a string of at most 500 characters", () => {
+    expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: "用武俠口吻" })).toEqual({ type: "HOST_SET_NOTES", notes: "用武俠口吻" });
+    expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: "" })).toEqual({ type: "HOST_SET_NOTES", notes: "" });
+    expect(parseClientMessage({ type: "HOST_SET_NOTES" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: 5 })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: "字".repeat(501) })).toBeNull();
+  });
+
+  it("HOST_EDIT_NARRATION: a string of at most 40 characters", () => {
+    expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "改過的一句" })).toEqual({ type: "HOST_EDIT_NARRATION", line: "改過的一句" });
+    expect(parseClientMessage({ type: "HOST_EDIT_NARRATION" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: ["x"] })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "字".repeat(41) })).toBeNull();
+  });
+
   it("HOST_GET_TRANSCRIPT: needs only the type", () => {
     expect(parseClientMessage({ type: "HOST_GET_TRANSCRIPT" })).toEqual({ type: "HOST_GET_TRANSCRIPT" });
   });

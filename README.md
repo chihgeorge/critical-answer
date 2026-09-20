@@ -51,13 +51,30 @@ npm run dev
 2. 重啟 `npm run dev`。
 3. 主持人和玩家都用 `http://<區網 IP>:3000` 開啟網頁，手機和電腦要在同一個 Wi-Fi。
 
+### AI 旁白（選用）
+
+沒有金鑰也能玩，旁白會用腳本句。要讓 Claude 即時寫旁白：
+
+1. 在**專案根目錄**建立 `.env`（PartyKit 讀這個檔，不是 `.env.local`）：
+
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+
+2. 重啟 `npm run dev:party`。主持人開房間後，大廳會出現「AI 旁白」開關（沒有金鑰時是灰的）。
+
+金鑰只在伺服器（PartyKit）讀取，不要加 `NEXT_PUBLIC_` 前綴，否則會進到瀏覽器。旁白用 `claude-haiku-4-5`，遊戲結束的後記用 `claude-sonnet-5`。每句旁白最多等 2 秒（後記 15 秒），逾時、出錯或內容不合格就改用腳本句；連續失敗 3 次或金鑰被拒絕（401/403）就整個房間改用腳本。`⚙ 更多` 裡有導演筆記、改寫目前旁白，和旁白紀錄下載（記錄每句的來源、延遲和備援原因）。
+
 ### 常用指令
 
 | 指令 | 說明 |
 | --- | --- |
 | `npm run dev` | 同時啟動前端與 PartyKit |
 | `npm run dev:next` / `npm run dev:party` | 分別啟動 |
-| `npm test` | 執行測試 |
+| `npm test` | 執行測試（不含會呼叫 Claude 的測試） |
+| `ANTHROPIC_API_KEY=... npm run test:live` | 用真的金鑰跑 LLM 旁白冒煙測試（會花幾分錢） |
+| `npm run e2e` | Playwright 端對端測試 |
+| `npm run check:bundle` | 建置後檢查題目與答案沒有進到瀏覽器 bundle |
 | `npm run test:watch` | 監看模式測試 |
 | `npm run lint` | ESLint |
 | `npm run build` | 建置前端 |

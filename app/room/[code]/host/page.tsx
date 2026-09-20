@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { getHostToken } from "@/lib/room-code";
@@ -14,7 +15,25 @@ type LobbyState = { teams: { id: string; name: string }[] };
 type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
 
 /** The host's own link carries the token, so it is shown here and never on /screen or /play. */
-function MoreDrawer({ code, onClose, onTranscript }: { code: string; onClose: () => void; onTranscript: () => void }) {
+function MoreDrawer({
+  code,
+  onClose,
+  onTranscript,
+  currentLine,
+  onNotes,
+  onEdit,
+  aiOn,
+}: {
+  code: string;
+  onClose: () => void;
+  onTranscript: () => void;
+  currentLine: string;
+  onNotes: (notes: string) => void;
+  onEdit: (line: string) => void;
+  aiOn: boolean;
+}) {
+  const [notes, setNotes] = useState("");
+  const [line, setLine] = useState(currentLine);
   const origin = location.origin;
   const token = getHostToken(code);
   const joinUrl = `${origin}/?code=${code}`;
@@ -40,11 +59,25 @@ function MoreDrawer({ code, onClose, onTranscript }: { code: string; onClose: ()
               <div className="break-all">{joinUrl}</div>
             </div>
           </section>
+          <section className="flex flex-col gap-2">
+            <div className="text-[15px]">導演筆記{aiOn ? "（AI 每次寫旁白都會參考）" : "（AI 旁白已關閉，只會記錄）"}</div>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} rows={3} placeholder="例如：用武俠口吻，紅隊是一群恐龍" className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
+            <PixelButton onClick={() => onNotes(notes)} className="!m-0 !px-4 !py-2 text-[16px]">
+              儲存導演筆記
+            </PixelButton>
+          </section>
+          <section className="flex flex-col gap-2">
+            <div className="text-[15px]">改寫目前旁白（最多 40 字）</div>
+            <input value={line} onChange={(e) => setLine(e.target.value)} maxLength={40} disabled={!currentLine} className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
+            <PixelButton onClick={() => onEdit(line)} disabled={!currentLine || !line.trim()} className="!m-0 !px-4 !py-2 text-[16px]">
+              送出，立刻換上大螢幕
+            </PixelButton>
+          </section>
           <section>
             <PixelButton onClick={onTranscript} className="!m-0 !px-4 !py-2 text-[16px]">
               下載旁白紀錄（JSON）
             </PixelButton>
-            <div className="mt-1 text-[13px]">每一句旁白的事件、分數、來源與延遲。伺服器重啟後會消失。</div>
+            <div className="mt-3 text-[13px]">每一句旁白的事件、分數、來源與延遲。伺服器重啟後會消失。</div>
           </section>
           {hostUrl && (
             <section className="flex items-center gap-3">
@@ -74,6 +107,10 @@ export default function HostPage() {
   /** Host-only: the answer to the question in play. Never shown on /screen or /play. */
   const [answer, setAnswer] = useState<{ questionId: string; answer: string } | null>(null);
   const [drawer, setDrawer] = useState(false);
+  /** Server has an API key, so AI narration can be switched on. Default on when it can. */
+  const [aiAvailable, setAiAvailable] = useState(false);
+  const [aiOn, setAiOn] = useState(true);
+  const [narration, setNarration] = useState<NarrationState>(null);
   // Team whose judge buttons are disabled while we wait for the server's
   // STATE broadcast to confirm the judgment — doubles as visible click
   // feedback (buttons dim) and blocks accidental double-clicks from firing
@@ -110,6 +147,10 @@ export default function HostPage() {
       switch (msg.type) {
         case "HOST_OK":
           setClaimed(true);
+          setAiAvailable(msg.aiAvailable);
+          break;
+        case "NARRATION":
+          setNarration((n) => keepLatest(n, msg));
           break;
         case "TRANSCRIPT": {
           // Host-only download of every narration line with provider, latency and fallback reason.
@@ -194,11 +235,20 @@ export default function HostPage() {
               ))}
               {lobby.teams.length === 0 && <Panel className="px-3 py-2 text-[15px]">還沒有隊伍加入</Panel>}
             </ul>
+            <Panel tone="lav" className="px-3 py-2">
+              <label className="flex items-center gap-3 text-[16px]">
+                <input type="checkbox" className="h-5 w-5" checked={aiAvailable && aiOn} disabled={!aiAvailable} onChange={(e) => setAiOn(e.target.checked)} />
+                AI 旁白
+              </label>
+              <div className="mt-1 text-[13px]">
+                {aiAvailable ? "由 Claude 即時寫旁白，失敗或太慢時自動改用腳本旁白。" : "伺服器沒有設定 API 金鑰，會使用腳本旁白。"}
+              </div>
+            </Panel>
             <PixelButton
               variant="primary"
               className="mt-auto min-h-[78px] text-[26px]"
               disabled={!ready || lobby.teams.length === 0}
-              onClick={() => send({ type: "HOST_START" })}
+              onClick={() => send({ type: "HOST_START", aiNarration: aiAvailable && aiOn })}
             >
               開始遊戲 ▶
             </PixelButton>
@@ -265,7 +315,17 @@ export default function HostPage() {
         )}
       </div>
 
-      {drawer && <MoreDrawer code={code} onClose={() => setDrawer(false)} onTranscript={() => send({ type: "HOST_GET_TRANSCRIPT" })} />}
+      {drawer && (
+        <MoreDrawer
+          code={code}
+          onClose={() => setDrawer(false)}
+          onTranscript={() => send({ type: "HOST_GET_TRANSCRIPT" })}
+          currentLine={narration?.line ?? ""}
+          onNotes={(notes) => send({ type: "HOST_SET_NOTES", notes })}
+          onEdit={(line) => send({ type: "HOST_EDIT_NARRATION", line })}
+          aiOn={aiAvailable && aiOn}
+        />
+      )}
     </main>
   );
 }
