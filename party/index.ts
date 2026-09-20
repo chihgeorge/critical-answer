@@ -4,14 +4,16 @@ import {
   answerQuestion,
   setTeamOnline,
   getSpectatorView,
+  currentTurnTeamId,
+  isInBossPhase,
   InvalidActionError,
   type GameState,
 } from "../lib/game-state";
 import { DEFAULT_ROOMS, DEFAULT_BOSS_QUESTION_IDS, DEFAULT_BOSS_MAX_HP, DEFAULT_GAME_CONFIG } from "../lib/fixtures";
-import { parseClientMessage, sanitizeText, type ServerMessage } from "../lib/protocol";
+import { MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../lib/protocol";
+import { BANK, findQuestion, publicQuestion } from "../lib/question-bank";
 
 const MAX_TEAM_NAME_LENGTH = 20;
-const MAX_TEAMS = 8;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidTeamId(id: string): boolean {
@@ -40,14 +42,18 @@ export default class DungeonRoom implements Party.Server {
    * match. The only protection is the 4-letter room code (23^4) plus this token.
    */
   private hostToken = "";
-  // ponytail: in-memory Set. If hibernation is ever enabled it must move to conn.setState.
-  private hostConns = new Set<string>();
+  // ponytail: in-memory Map. If hibernation is ever enabled it must move to conn.setState.
+  private hostConns = new Map<string, Party.Connection>();
   /** Changes whenever the room instance restarts, so clients can show "game reset". */
   private roomEpoch = crypto.randomUUID();
   /** connection id -> team id, so onClose can mark the right team offline. */
   private connTeam = new Map<string, string>();
 
-  constructor(readonly room: Party.Room) {}
+  /** `rng` is injectable so tests can make question dealing deterministic. */
+  constructor(
+    readonly room: Party.Room,
+    private rng: () => number = Math.random,
+  ) {}
 
   private broadcast(msg: ServerMessage) {
     this.room.broadcast(JSON.stringify(msg));
@@ -55,6 +61,23 @@ export default class DungeonRoom implements Party.Server {
 
   private sendTo(conn: Party.Connection, msg: ServerMessage) {
     conn.send(JSON.stringify(msg));
+  }
+
+  /** The question in play for the team on turn: what everyone may see, and the host-only answer. */
+  private currentQuestion() {
+    const game = this.game;
+    if (!game || game.phase !== "playing") return null;
+    const teamId = currentTurnTeamId(game);
+    const team = game.teams.find((t) => t.id === teamId);
+    if (!team) return null;
+    const id = isInBossPhase(game, team.id) ? game.boss.currentQuestionId : team.currentQuestionId;
+    const pub = publicQuestion(BANK, id, team.currentDifficulty);
+    return pub ? { pub, answer: findQuestion(BANK, id)?.answer ?? "" } : null;
+  }
+
+  private sendAnswer(conn: Party.Connection) {
+    const q = this.currentQuestion();
+    if (q) this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer });
   }
 
   private snapshot(): ServerMessage {
@@ -65,11 +88,14 @@ export default class DungeonRoom implements Party.Server {
       phase: this.game.phase,
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
+      question: this.currentQuestion()?.pub ?? null,
     };
   }
 
   private broadcastState() {
     this.broadcast(this.snapshot());
+    // The answer goes only to connections that hold the host token, never to broadcast.
+    for (const conn of this.hostConns.values()) this.sendAnswer(conn);
     if (this.game?.phase === "finished") {
       this.broadcast({ type: "GAME_OVER", winners: this.game.winners });
     }
@@ -134,8 +160,9 @@ export default class DungeonRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "bad_token" });
       return;
     }
-    this.hostConns.add(conn.id);
+    this.hostConns.set(conn.id, conn);
     this.sendTo(conn, { type: "HOST_OK" });
+    this.sendAnswer(conn);
   }
 
   private handleJoin(conn: Party.Connection, teamId: string, rawName: string) {
@@ -214,6 +241,7 @@ export default class DungeonRoom implements Party.Server {
       DEFAULT_BOSS_QUESTION_IDS,
       DEFAULT_GAME_CONFIG,
       DEFAULT_BOSS_MAX_HP,
+      this.rng,
     );
     this.broadcastState();
   }
@@ -235,7 +263,7 @@ export default class DungeonRoom implements Party.Server {
     }
 
     try {
-      const { game } = answerQuestion(this.game, teamId, questionId, correct, fleeChoice ?? "retry");
+      const { game } = answerQuestion(this.game, teamId, questionId, correct, fleeChoice ?? "retry", this.rng);
       this.game = game;
       this.broadcastState();
     } catch (err) {

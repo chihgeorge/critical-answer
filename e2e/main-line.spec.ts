@@ -35,6 +35,12 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
   await expect(players[0].page.getByText("輪到我們了！")).toBeVisible();
 
+  // The host sees the question and its answer; the big screen shows the question only.
+  const question = (await host.getByTestId("host-question").textContent())!;
+  const answer = (await host.getByTestId("host-answer").textContent())!;
+  expect(answer.length).toBeGreaterThan(0);
+  await expect(screen.getByText(question)).toBeVisible();
+
   // A correct judgment scores and passes the turn.
   await host.getByRole("button", { name: "答對！" }).click();
   await expect(host.getByText("輪到：乙隊")).toBeVisible();
@@ -47,9 +53,11 @@ test("create room, join two teams, start, judge; screen and play never see host-
     const all = frames.join("\n");
     expect(all).not.toContain("HOST_OK");
     expect(all).not.toContain('"answer"');
+    expect(all).not.toContain("HOST_ANSWER");
   }
-  await expect(screen.locator("body")).not.toContainText("答案");
-  await expect(players[0].page.locator("body")).not.toContainText("答案");
+  await expect(screen.locator("body")).not.toContainText("答案（只有你看得到）");
+  await expect(players[0].page.locator("body")).not.toContainText("答案（只有你看得到）");
+  await expect(players[0].page.locator("body")).not.toContainText(question);
 });
 
 test("a browser with no host token cannot start a game", async ({ page }) => {
