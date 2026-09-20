@@ -120,6 +120,19 @@ export default function PlayPage() {
           </Panel>
         )}
 
+        {/* Who has joined so far, updating live while everyone waits for the host. */}
+        {!game && lobby && (
+          <ul data-testid="roster" className="flex flex-col gap-2">
+            {lobby.teams.map((t, i) => (
+              <Panel key={t.id} tone={t.id === teamId ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-2">
+                <Sprite kind="hero" variant={i} scale={2} className="flex-none" />
+                <span className="min-w-0 flex-1 truncate text-[18px]">{t.name}</span>
+                {t.id === teamId && <span className="text-[14px]">你們</span>}
+              </Panel>
+            ))}
+          </ul>
+        )}
+
         {game && !finished && turn && (
           <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
             {isMyTurn ? "輪到我們了！" : `輪到：${turn.team?.name ?? "…"}`}

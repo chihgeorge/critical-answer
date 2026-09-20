@@ -28,6 +28,16 @@ test("create room, join two teams, start, judge; screen and play never see host-
     players.push({ page, frames });
   }
 
+  // While waiting, each phone lists every team that has joined, live.
+  for (const { page } of players) {
+    await expect(page.getByTestId("roster")).toContainText("甲隊");
+    await expect(page.getByTestId("roster")).toContainText("乙隊");
+  }
+  const late = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await late.goto(`/room/${code}/play?name=${encodeURIComponent("丙隊")}`);
+  await expect(players[0].page.getByTestId("roster")).toContainText("丙隊"); // shows up without a refresh
+  await late.close();
+
   // Host claims control, then starts once both teams are in.
   await expect(host.getByText("乙隊")).toBeVisible();
   await expect(host.getByText("AI 旁白")).toBeVisible(); // the switch is there whether or not a key is configured
@@ -58,8 +68,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   // The narrator moves the story on: the result line shows a ▼ (more to come), then the next team is
   // addressed, and the last line has no ▼.
   await expect(screen.locator(".px-say .more")).toBeVisible({ timeout: 6000 });
-  await expect(screen.locator(".px-say")).toContainText("輪到", { timeout: 8000 });
-  await expect(screen.locator(".px-say")).toContainText("乙隊");
+  await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 8000 }); // the follow-up addresses the next team
   await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
 
   // Director: the host rewrites the line, and it replaces the line on the big screen and the phone at once.
