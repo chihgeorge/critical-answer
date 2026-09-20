@@ -46,3 +46,8 @@ yarn-error.log*
 next-env.d.ts
 
 .gstack/
+
+# playwright
+/test-results/
+/playwright-report/
+/.playwright-mcp/

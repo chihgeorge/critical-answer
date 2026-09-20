@@ -35,3 +35,27 @@ export function getOrCreateTeamId(): string {
   localStorage.setItem(TEAM_ID_STORAGE_KEY, id);
   return id;
 }
+
+const HOST_TOKEN_PREFIX = "critical_answer_host_token_";
+
+/** Client-only: a fresh 32-hex-char host token (getRandomValues, so it works over plain http on a LAN). */
+export function newHostToken(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Client-only: the host token for this room. A `#k=` URL fragment (from the
+ * creation link or QR) wins and is stored, so a refresh or the same browser
+ * later keeps control. Returns null when this browser has no token.
+ */
+export function getHostToken(code: string): string | null {
+  const key = HOST_TOKEN_PREFIX + code;
+  const fromUrl = new URLSearchParams(location.hash.replace(/^#/, "")).get("k");
+  if (fromUrl) {
+    localStorage.setItem(key, fromUrl);
+    return fromUrl;
+  }
+  return localStorage.getItem(key);
+}

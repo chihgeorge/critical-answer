@@ -1,13 +1,59 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
+import { getHostToken } from "@/lib/room-code";
 import type { ClientMessage, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
+import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
+import { Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { Qr } from "@/components/qr";
 
 type LobbyState = { teams: { id: string; name: string }[] };
 type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[] };
+
+/** The host's own link carries the token, so it is shown here and never on /screen or /play. */
+function MoreDrawer({ code, onClose }: { code: string; onClose: () => void }) {
+  const origin = location.origin;
+  const token = getHostToken(code);
+  const joinUrl = `${origin}/?code=${code}`;
+  const hostUrl = token ? `${origin}/room/${code}/host#k=${token}` : "";
+  return (
+    <div className="fixed inset-0 z-30 flex items-end bg-black/60" onClick={onClose}>
+      <Panel tone="lav" className="max-h-[85vh] w-full overflow-y-auto p-4">
+        <div onClick={(e) => e.stopPropagation()} className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[20px]">更多</span>
+            <PixelButton onClick={onClose} className="!m-0 !px-4 !py-1 text-[16px]">
+              關閉
+            </PixelButton>
+          </div>
+          <section>
+            <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
+            <div className="break-all text-[14px]">{`${origin}/room/${code}/screen`}</div>
+          </section>
+          <section className="flex items-center gap-3">
+            <Qr text={joinUrl} size={120} />
+            <div className="text-[14px]">
+              <div className="text-[15px]">玩家掃描加入</div>
+              <div className="break-all">{joinUrl}</div>
+            </div>
+          </section>
+          {hostUrl && (
+            <section className="flex items-center gap-3">
+              <Qr text={hostUrl} size={120} />
+              <div className="text-[14px]">
+                <div className="text-[15px]">用另一台裝置主持</div>
+                <div>這個連結擁有主持權，不要給玩家。</div>
+              </div>
+            </section>
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
 
 export default function HostPage() {
   const { code } = useParams<{ code: string }>();
@@ -15,15 +61,33 @@ export default function HostPage() {
   const [lobby, setLobby] = useState<LobbyState>({ teams: [] });
   const [game, setGame] = useState<PlayState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [noToken, setNoToken] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [claimed, setClaimed] = useState(false);
+  const [reset, setReset] = useState(false);
+  const [drawer, setDrawer] = useState(false);
   // Team whose judge buttons are disabled while we wait for the server's
   // STATE broadcast to confirm the judgment — doubles as visible click
-  // feedback (buttons dim + show a spinner) and blocks accidental
-  // double-clicks from firing two judgments for the same turn.
+  // feedback (buttons dim) and blocks accidental double-clicks from firing
+  // two judgments for the same turn.
   const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
+  const epoch = useRef<string | null>(null);
 
   const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
     room: code,
+    onOpen() {
+      setConnected(true);
+      // Claim on every (re)connect: the server forgets host rights when the socket closes.
+      const t = getHostToken(code);
+      if (t) socket.send(JSON.stringify({ type: "HOST_CLAIM", token: t } satisfies ClientMessage));
+      else setNoToken(true);
+    },
+    onClose() {
+      setConnected(false);
+      setClaimed(false);
+      setPendingTeamId(null);
+    },
     onMessage(event: MessageEvent) {
       let msg: ServerMessage;
       try {
@@ -31,7 +95,14 @@ export default function HostPage() {
       } catch {
         return;
       }
+      if ((msg.type === "LOBBY" || msg.type === "STATE") && msg.roomEpoch) {
+        if (epoch.current && epoch.current !== msg.roomEpoch) setReset(true);
+        epoch.current = msg.roomEpoch;
+      }
       switch (msg.type) {
+        case "HOST_OK":
+          setClaimed(true);
+          break;
         case "LOBBY":
           setLobby({ teams: msg.teams });
           setGame(null);
@@ -45,7 +116,7 @@ export default function HostPage() {
           setPendingTeamId(null);
           break;
         case "ERROR":
-          setError(`${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`);
+          setError(msg.error === "bad_token" ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人" : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`);
           setPendingTeamId(null);
           break;
       }
@@ -62,118 +133,112 @@ export default function HostPage() {
     send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice });
   }
 
+  // gstack-shortcut(dec-ac659960): disconnect UI on /host only (judge buttons disable, "重新連線中");
+  // /play and /screen show nothing, so a dropped player sees a frozen screen. Upgrade when playtest 2
+  // shows confusion about missed turns, or when the game leaves LAN.
+  const ready = connected && claimed;
+  const turn = game ? describeTurn(game.view) : null;
+  const canJudge = ready && !!turn?.team && pendingTeamId !== turn.team.id;
+
   return (
-    <main className="min-h-screen px-6 py-10">
-      <header className="mb-8 flex items-center justify-between">
-        <h1 className="text-3xl font-black">Critical Answer</h1>
-        <div className="rounded-xl bg-[var(--surface)] px-4 py-2 font-mono text-2xl tracking-[0.3em]">{code}</div>
-      </header>
+    <main className="relative min-h-screen overflow-hidden">
+      <SceneBackground theme={turn?.theme ?? "stone"} cols={48} rows={100} arch={false} className="fixed inset-0" />
 
-      {error && (
-        <div className="mb-6 rounded-xl bg-[var(--danger)]/20 px-4 py-2 text-sm text-[var(--danger)]">{error}</div>
-      )}
+      <div className="relative z-10 flex min-h-screen flex-col gap-3 px-[14px] pb-4 pt-5">
+        <header className="flex items-center justify-between gap-3">
+          <Panel className="px-3 py-1">
+            <span className="px-num text-[18px] tracking-[0.2em]" style={{ color: "var(--danger)" }}>
+              {code}
+            </span>
+          </Panel>
+          <PixelButton onClick={() => setDrawer(true)} className="!m-0 !px-4 !py-2 text-[16px]">
+            ⚙ 更多
+          </PixelButton>
+        </header>
 
-      {!game && (
-        <section className="flex flex-col gap-6">
-          <h2 className="text-xl font-bold">等待隊伍加入…</h2>
-          <ul className="flex flex-wrap gap-3">
-            {lobby.teams.map((t) => (
-              <li key={t.id} className="rounded-xl bg-[var(--surface)] px-4 py-3 font-bold">
-                {t.name}
-              </li>
-            ))}
-            {lobby.teams.length === 0 && <p className="text-[var(--ink2)]">還沒有隊伍加入</p>}
-          </ul>
-          <button
-            type="button"
-            disabled={lobby.teams.length === 0}
-            onClick={() => send({ type: "HOST_START" })}
-            className="w-fit rounded-xl bg-[var(--accent)] px-6 py-3 font-black text-white disabled:opacity-40"
-          >
-            開始遊戲 ▶
-          </button>
-        </section>
-      )}
+        {reset && <Panel className="px-3 py-2 text-center text-[14px]" style={{ background: "var(--danger)", color: "#fff" }}>伺服器重新啟動，遊戲已重置，轉錄紀錄已消失</Panel>}
+        {noToken && <Panel tone="lav" className="px-3 py-2 text-[14px]">這個瀏覽器沒有主持人金鑰。請回首頁按「主持遊戲」，或用建立房間時的連結／QR 開啟。</Panel>}
+        {!connected && !noToken && <Panel tone="turn" className="px-3 py-2 text-center text-[16px]">重新連線中…</Panel>}
+        {error && <Panel className="px-3 py-2 text-[14px]" style={{ background: "#ffd9d9" }}>{error}</Panel>}
 
-      {game && game.phase === "playing" && (
-        <section className="flex flex-col gap-6">
-          <div className="rounded-xl bg-[var(--surface)] p-4">
-            <p className="text-sm text-[var(--ink2)]">首領血量</p>
-            <div className="mt-1 h-4 w-full overflow-hidden rounded-full bg-[var(--surface2)]">
-              <div
-                className="h-full bg-[var(--danger)] transition-all"
-                style={{ width: `${(game.view.bossHp / game.view.bossMaxHp) * 100}%` }}
-              />
+        {!game && (
+          <section className="flex flex-1 flex-col gap-3">
+            <Panel tone="lav" className="px-3 py-2 text-[18px]">等待隊伍加入…</Panel>
+            <ul className="flex flex-col gap-2">
+              {lobby.teams.map((t, i) => (
+                <Panel key={t.id} className="flex items-center gap-3 px-3 py-2">
+                  <Sprite kind="hero" variant={i} scale={2} />
+                  <span className="text-[18px]">{t.name}</span>
+                </Panel>
+              ))}
+              {lobby.teams.length === 0 && <Panel className="px-3 py-2 text-[15px]">還沒有隊伍加入</Panel>}
+            </ul>
+            <PixelButton
+              variant="primary"
+              className="mt-auto min-h-[78px] text-[26px]"
+              disabled={!ready || lobby.teams.length === 0}
+              onClick={() => send({ type: "HOST_START" })}
+            >
+              開始遊戲 ▶
+            </PixelButton>
+          </section>
+        )}
+
+        {game && game.phase === "playing" && turn?.team && (
+          <>
+            <TurnRibbon>{turn.inBoss ? "首領戰　" : ""}輪到：{turn.team.name}</TurnRibbon>
+            <Panel tone="turn" className="px-3 py-[10px]">
+              <div className="flex items-center gap-3">
+                <Sprite kind={turn.monster.kind} scale={Math.max(1, Math.floor(turn.monster.scale / 3))} className="flex-none" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.monster.name}</div>
+                  <div className="text-[20px]">題目 {turn.questionId}</div>
+                </div>
+              </div>
+              <div className="mt-2">
+                <ScoreMeter score={Math.min(turn.team.score, BOSS_THRESHOLD)} max={BOSS_THRESHOLD} active />
+              </div>
+              {turn.inBoss && <div className="mt-1 text-[14px]">首領血量 {game.view.bossHp} / {game.view.bossMaxHp}</div>}
+            </Panel>
+
+            <ul className="flex flex-col gap-2">
+              {game.view.teams.map((t, i) => (
+                <Panel key={t.id} className={`flex items-center gap-2 px-3 py-1 ${t.online ? "" : "opacity-50"}`}>
+                  <Sprite kind="hero" variant={i} scale={1} className="flex-none" />
+                  <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
+                  <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
+                </Panel>
+              ))}
+            </ul>
+
+            <div className="mt-auto flex flex-col">
+              {!ready && connected && <div className="px-1 text-center text-[14px] text-white">等待主持人驗證…</div>}
+              <PixelButton variant="ok" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, true)}>
+                {connected ? "答對！" : "重新連線中"}
+              </PixelButton>
+              <div className="grid grid-cols-2">
+                <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                  答錯・重答
+                </PixelButton>
+                <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                  答錯・逃跑
+                </PixelButton>
+              </div>
             </div>
-            <p className="mt-1 text-xs text-[var(--ink2)]">
-              {game.view.bossHp} / {game.view.bossMaxHp}
-            </p>
-          </div>
+          </>
+        )}
 
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {game.view.teams.map((t) => {
-              const isCurrent = t.id === game.view.currentTurnTeamId;
-              const questionId = t.inBossPhase ? game.view.bossCurrentQuestionId : t.currentQuestionId;
-              return (
-                <li
-                  key={t.id}
-                  className={`rounded-xl p-4 ${isCurrent ? "bg-[var(--accent)]/20 ring-2 ring-[var(--accent)]" : "bg-[var(--surface)]"} ${!t.online ? "opacity-40" : ""}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold">
-                      {t.name} {!t.online && "（離線）"}
-                    </span>
-                    <span className="font-mono text-lg">{t.score} 分</span>
-                  </div>
-                  <p className="text-xs text-[var(--ink2)]">
-                    {t.inBossPhase ? "首領房" : `第 ${t.roomIndex + 1} 房`} · 題目 {questionId}
-                  </p>
-                  {isCurrent && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={pendingTeamId === t.id}
-                        onClick={() => judge(t.id, questionId, true)}
-                        className="rounded-lg bg-[var(--ok)] px-3 py-2 text-sm font-bold text-black transition active:scale-95 disabled:animate-pulse disabled:opacity-60"
-                      >
-                        ✅ 答對
-                      </button>
-                      <button
-                        type="button"
-                        disabled={pendingTeamId === t.id}
-                        onClick={() => judge(t.id, questionId, false, "retry")}
-                        className="rounded-lg bg-[var(--surface2)] px-3 py-2 text-sm font-bold transition active:scale-95 disabled:animate-pulse disabled:opacity-60"
-                      >
-                        🔁 答錯・重答
-                      </button>
-                      <button
-                        type="button"
-                        disabled={pendingTeamId === t.id}
-                        onClick={() => judge(t.id, questionId, false, "flee")}
-                        className="rounded-lg bg-[var(--surface2)] px-3 py-2 text-sm font-bold transition active:scale-95 disabled:animate-pulse disabled:opacity-60"
-                      >
-                        😨 答錯・逃跑
-                      </button>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
+        {game && game.phase === "finished" && (
+          <Panel tone="lav" className="mt-8 px-4 py-8 text-center">
+            <div className="text-[28px]">遊戲結束！</div>
+            <div className="mt-2 text-[18px]">
+              {game.winners.map((id) => game.view.teams.find((t) => t.id === id)?.name ?? id).join("、")} 獲勝
+            </div>
+          </Panel>
+        )}
+      </div>
 
-      {game && game.phase === "finished" && (
-        <section className="flex flex-col items-center gap-4 py-16 text-center">
-          <h2 className="text-3xl font-black">遊戲結束！</h2>
-          <p className="text-lg">
-            {game.winners
-              .map((id) => game.view.teams.find((t) => t.id === id)?.name ?? id)
-              .join("、")}{" "}
-            獲勝
-          </p>
-        </section>
-      )}
+      {drawer && <MoreDrawer code={code} onClose={() => setDrawer(false)} />}
     </main>
   );
 }

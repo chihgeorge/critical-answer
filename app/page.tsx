@@ -1,18 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { generateRoomCode } from "@/lib/room-code";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { generateRoomCode, newHostToken } from "@/lib/room-code";
+import { DialogueBox, Panel, PixelButton, SceneBackground, Sprite } from "@/components/pixel";
 
-export default function HomePage() {
+const inputClass =
+  "w-full border-4 border-[var(--k)] bg-white px-4 py-3 text-[20px] text-[var(--ink)] outline-none focus:bg-[var(--turn)]";
+
+function HomeForm() {
   const router = useRouter();
-  const [joinCode, setJoinCode] = useState("");
+  // A scanned QR arrives as /?code=ABCD and fills the code in.
+  const [joinCode, setJoinCode] = useState((useSearchParams().get("code") ?? "").toUpperCase().slice(0, 4));
   const [teamName, setTeamName] = useState("");
   const [error, setError] = useState("");
 
   function handleCreateRoom() {
     const code = generateRoomCode();
-    router.push(`/room/${code}/host`);
+    router.push(`/room/${code}/host#k=${newHostToken()}`);
   }
 
   function handleJoin(e: React.FormEvent) {
@@ -31,61 +36,69 @@ export default function HomePage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 px-5 py-12">
-      <div className="text-center">
-        <h1 className="text-5xl font-black tracking-tight">Critical Answer</h1>
-        <p className="mt-2 text-[var(--ink2)]">致命答題 · 地城問答派對遊戲</p>
-      </div>
-
-      <form
-        onSubmit={handleJoin}
-        className="flex w-full max-w-sm flex-col gap-3 rounded-2xl bg-[var(--surface)] p-6"
-      >
-        <p className="text-xs font-bold text-[var(--ink2)]">加入現有房間</p>
-        <input
-          type="text"
-          placeholder="隊伍名稱"
-          value={teamName}
-          onChange={(e) => {
-            setTeamName(e.target.value);
-            setError("");
-          }}
-          maxLength={20}
-          className="rounded-xl border-2 border-[var(--surface2)] bg-[var(--surface2)] px-4 py-3 outline-none focus:border-[var(--accent)]"
-        />
-        <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder="房間代碼"
-            value={joinCode}
-            onChange={(e) => {
-              setJoinCode(e.target.value.toUpperCase());
-              setError("");
-            }}
-            maxLength={4}
-            className="min-w-0 flex-1 rounded-xl border-2 border-[var(--surface2)] bg-[var(--surface2)] px-4 py-3 text-center font-mono tracking-widest outline-none focus:border-[var(--accent)]"
-          />
-          <button
-            type="submit"
-            className="whitespace-nowrap rounded-xl bg-[var(--accent)] px-5 py-3 font-black text-white"
-          >
-            加入 →
-          </button>
-        </div>
-        {error && <p className="text-center text-sm text-[var(--danger)]">{error}</p>}
-
-        <div className="my-1 flex items-center gap-3 text-xs text-[var(--ink2)]">
-          <div className="h-px flex-1 bg-[var(--surface2)]" />或<div className="h-px flex-1 bg-[var(--surface2)]" />
+    <main className="relative min-h-screen overflow-hidden">
+      <SceneBackground theme="stone" cols={48} rows={100} arch={false} className="fixed inset-0" />
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-4 py-10">
+        <div className="text-center">
+          <div className="flex justify-center gap-2">
+            <Sprite kind="slime" scale={3} />
+            <Sprite kind="dragon" scale={2} />
+            <Sprite kind="ghost" scale={3} />
+          </div>
+          <h1 className="mt-3 text-[44px] text-[var(--warn)]" style={{ textShadow: "3px 3px 0 var(--k), -2px -2px 0 var(--k), 2px -2px 0 var(--k), -2px 2px 0 var(--k)" }}>
+            致命答題
+          </h1>
+          <p className="text-[16px] text-white" style={{ textShadow: "2px 2px 0 var(--k)" }}>Critical Answer · 地城問答派對遊戲</p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleCreateRoom}
-          className="rounded-xl bg-[var(--accent)] py-3 font-black text-white"
-        >
+        <Panel className="w-full">
+          <form onSubmit={handleJoin} className="flex flex-col gap-3 p-4">
+            <p className="text-[16px]">加入現有房間</p>
+            <input
+              type="text"
+              placeholder="隊伍名稱"
+              value={teamName}
+              onChange={(e) => {
+                setTeamName(e.target.value);
+                setError("");
+              }}
+              maxLength={20}
+              className={inputClass}
+            />
+            <div className="flex items-stretch gap-2">
+              <input
+                type="text"
+                placeholder="房間代碼"
+                value={joinCode}
+                onChange={(e) => {
+                  setJoinCode(e.target.value.toUpperCase());
+                  setError("");
+                }}
+                maxLength={4}
+                className={`${inputClass} min-w-0 flex-1 text-center tracking-[0.3em]`}
+              />
+              <PixelButton type="submit" variant="ok" className="!m-0 !min-h-0 !px-5 !text-[20px]">
+                加入 →
+              </PixelButton>
+            </div>
+            {error && <p className="text-center text-[15px]" style={{ color: "#b02a3a" }}>{error}</p>}
+          </form>
+        </Panel>
+
+        <PixelButton variant="primary" onClick={handleCreateRoom} className="w-full">
           🏰 主持遊戲 · Create a Room
-        </button>
-      </form>
+        </PixelButton>
+
+        <DialogueBox compact className="w-full" text="歡迎，冒險者。輸入代碼加入房間，或自己開一間地城。" />
+      </div>
     </main>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense>
+      <HomeForm />
+    </Suspense>
   );
 }

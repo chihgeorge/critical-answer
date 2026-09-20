@@ -1,17 +1,187 @@
 @import "tailwindcss";
 
+/* ---------- Fonts (bundled in public/fonts, both SIL OFL, so LAN play works offline) ---------- */
+@font-face {
+  font-family: "Cubic 11";
+  src: url("/fonts/Cubic_11.woff2") format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Press Start 2P";
+  src: url("/fonts/PressStart2P.woff2") format("woff2");
+  font-display: swap;
+}
+
+/* ---------- Tokens (see DESIGN.md) ---------- */
 :root {
-  --bg: #14121f;
-  --surface: #211d33;
-  --surface2: #2c2647;
-  --ink: #f5f3ff;
-  --ink2: #b8b2d9;
-  --accent: #ff6b35;
-  --danger: #ff3b5c;
-  --ok: #00c896;
+  --k: #2a1533; /* outline */
+  --ink: #3a2245; /* text on panels */
+  --cream: #fff4dc;
+  --cream2: #f1dcb6;
+  --lav: #e9defa;
+  --lav2: #cdbdf0;
+  --turn: #fff0a8; /* whose turn */
+  --turn2: #f4c94a;
+  --ok: #6fd36a; /* correct */
+  --danger: #ff6b6b;
+  --warn: #ffcf4a;
+  --orange: #e8862a; /* only on dark chips or large shapes, never as small text on cream */
+  --stage: #241a3f;
 }
 
 body {
-  background: var(--bg);
+  background: var(--stage);
   color: var(--ink);
+  font-family: "Cubic 11", system-ui, sans-serif;
+}
+
+.px-num {
+  font-family: "Press Start 2P", monospace;
+}
+.px-sprite {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+}
+
+/* Component styles sit in the components layer so Tailwind utilities (absolute, flex...) still win. */
+@layer components {
+/* ---------- Panel: cream pixel-rounded card, 4px hard outline ---------- */
+.px-panel {
+  --hi: #fff;
+  --lo: var(--cream2);
+  position: relative;
+  margin: 4px;
+  background: var(--cream);
+  color: var(--ink);
+  box-shadow:
+    0 -4px 0 0 var(--k), 0 4px 0 0 var(--k), -4px 0 0 0 var(--k), 4px 0 0 0 var(--k),
+    0 8px 0 0 #0007,
+    inset 0 4px 0 var(--hi),
+    inset 0 -6px 0 var(--lo);
+}
+.px-panel.lav { --hi: #fff; --lo: var(--lav2); background: var(--lav); }
+.px-panel.turn { --hi: #fffbe0; --lo: var(--turn2); background: var(--turn); }
+
+/* ---------- Button ---------- */
+.px-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 4px;
+  padding: 12px;
+  font-size: 20px;
+  color: var(--k);
+  background: var(--warn);
+  cursor: pointer;
+  box-shadow:
+    0 -4px 0 0 var(--k), 0 4px 0 0 var(--k), -4px 0 0 0 var(--k), 4px 0 0 0 var(--k),
+    0 8px 0 0 #0008,
+    inset 0 4px 0 #ffffff88,
+    inset 0 -6px 0 #0003;
+}
+.px-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 -4px 0 0 var(--k), 0 4px 0 0 var(--k), -4px 0 0 0 var(--k), 4px 0 0 0 var(--k), inset 0 4px 0 #ffffff88, inset 0 -6px 0 #0003; }
+.px-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.px-btn:focus-visible { outline: 4px solid #fff; outline-offset: 2px; }
+.px-btn.ok { background: var(--ok); color: #0f3a17; min-height: 78px; font-size: 30px; }
+.px-btn.flee { background: #ffa94d; }
+.px-btn.primary { background: var(--danger); color: #fff; text-shadow: 2px 2px 0 var(--k); }
+
+/* ---------- Label chip: small orange text always sits on the dark pill (contrast 6.3:1) ---------- */
+.px-chip {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: var(--k);
+  color: var(--orange);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+/* ---------- Turn ribbon ---------- */
+.px-ribbon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 56px;
+  padding: 0 26px 0 20px;
+  font-size: 26px;
+  color: #fff;
+  white-space: nowrap;
+  background: var(--danger);
+  text-shadow: 2px 2px 0 var(--k), -2px 2px 0 var(--k), 2px -2px 0 var(--k), -2px -2px 0 var(--k), 0 3px 0 var(--k);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 50%, 100% 100%, 0 100%);
+  filter: drop-shadow(0 4px 0 #0008);
+}
+.px-ribbon i { font-style: normal; animation: px-blink 1s steps(1) infinite; }
+
+/* ---------- Score meter: 15 cells ---------- */
+.px-meter { display: grid; grid-template-columns: repeat(15, 1fr); gap: 1px; }
+.px-meter i { height: 9px; background: #e1cfa8; box-shadow: inset 0 0 0 1px #b99c66; }
+.px-meter i.on { background: var(--ok); box-shadow: inset 0 0 0 1px #2f8f3a, inset 0 -2px 0 #4ab653; }
+.px-meter.act i.on { background: #ffa94d; box-shadow: inset 0 0 0 1px #b85a12, inset 0 -2px 0 #e88a2a; }
+
+/* ---------- Dialogue box ---------- */
+.px-say .who {
+  position: absolute;
+  left: 112px;
+  top: -22px;
+  padding: 2px 14px;
+  background: #ffa94d;
+  color: #fff;
+  font-size: 15px;
+  text-shadow: 1px 1px 0 var(--k);
+  box-shadow: 0 0 0 3px var(--k);
+}
+.px-say .por { position: absolute; left: 12px; top: 8px; background: var(--lav2); box-shadow: 0 0 0 4px var(--k), inset 0 4px 0 #e8defa; }
+.px-say .more { position: absolute; right: 16px; bottom: 6px; font-size: 18px; color: var(--orange); animation: px-blink 0.8s steps(1) infinite; }
+
+/* ---------- Motion ---------- */
+@keyframes px-blink { 50% { opacity: 0; } }
+@keyframes px-hop { 50% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .px-ribbon i, .px-say .more, .px-anim { animation: none !important; }
+}
+
+/* ---------- Big screen animations (two-frame steps(), all stopped by reduced motion) ---------- */
+@keyframes px-flick { 0% { opacity: 1; } 50% { opacity: 0; } }
+.px-tf1 { animation: px-flick 0.5s steps(1) infinite; }
+.px-tf2 { animation: px-flick 0.5s steps(1) infinite reverse; }
+@keyframes px-glow { 50% { transform: scale(1.07); opacity: 0.85; } }
+.px-glow {
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background: radial-gradient(circle, #ffb04a66 0%, #ff8a2a33 35%, #0000 70%);
+  animation: px-glow 0.5s steps(1) infinite;
+}
+@keyframes px-idle { 50% { transform: scale(1.05, 0.95); } }
+@keyframes px-float { 50% { transform: translateY(-10px); } }
+@keyframes px-hit { 25% { transform: translateX(-12px); } 75% { transform: translateX(12px); } }
+.px-idle { transform-origin: 50% 100%; animation: px-idle 1s steps(1) infinite; }
+.px-float { animation: px-float 1.2s steps(1) infinite; }
+.px-hit { animation: px-hit 0.3s steps(1) 3; }
+.px-hop { animation: px-hop 0.6s steps(1) infinite; }
+@keyframes px-rise { from { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } to { transform: translateY(-70px); opacity: 0; } }
+.px-spark {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #fff6b0;
+  box-shadow: 6px 0 #fff6b0, -6px 0 #fff6b0, 0 6px #fff6b0, 0 -6px #fff6b0;
+  animation: px-rise 3s steps(6) infinite;
+}
+@keyframes px-run { from { transform: translateX(-420px); } to { transform: translateX(0); } }
+.px-run { animation: px-run 1.2s steps(8) 1 both; }
+@keyframes px-fall { from { transform: translateY(-40px) rotate(0); } to { transform: translateY(560px) rotate(180deg); } }
+.px-confetti { position: absolute; width: 8px; height: 8px; animation: px-fall 3.6s steps(9) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-hop, .px-spark, .px-run, .px-confetti { animation: none !important; }
+  .px-tf2 { opacity: 0; }
+}
 }

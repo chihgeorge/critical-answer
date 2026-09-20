@@ -40,10 +40,17 @@ function lastSentTo(conn: ReturnType<typeof makeConn>) {
   return last ? JSON.parse(last) : null;
 }
 
+const TOKEN = "host-token-0123456789abcdef";
+
+function claim(room: DungeonRoom, conn: ReturnType<typeof makeConn>, token = TOKEN) {
+  send(room, conn, { type: "HOST_CLAIM", token });
+}
+
 function makeRoomWithHost() {
   const room = new DungeonRoom(makeRoom() as any);
   const hostConn = makeConn("host-conn");
-  room.onConnect(hostConn); // first connection becomes host
+  room.onConnect(hostConn);
+  claim(room, hostConn);
   return { room, hostConn };
 }
 
@@ -54,14 +61,90 @@ function joinTeams(room: DungeonRoom, hostConn: ReturnType<typeof makeConn>, cou
   return { ids, conns };
 }
 
-describe("onConnect", () => {
-  it("the first connection becomes the host", () => {
+describe("HOST_CLAIM", () => {
+  it("does not make the first connection a host", () => {
     const room = new DungeonRoom(makeRoom() as any);
-    const hostConn = makeConn("first");
-    room.onConnect(hostConn);
-    expect((room as any).isHost(hostConn)).toBe(true);
+    const conn = makeConn("first");
+    room.onConnect(conn);
+    expect((room as any).isHost(conn)).toBe(false);
   });
 
+  it("accepts the first claim and answers HOST_OK", () => {
+    const room = new DungeonRoom(makeRoom() as any);
+    const conn = makeConn("h1");
+    claim(room, conn);
+    expect((room as any).isHost(conn)).toBe(true);
+    expect(lastSentTo(conn)).toEqual({ type: "HOST_OK" });
+  });
+
+  it("rejects a claim with a different token once a token is set", () => {
+    const { room } = makeRoomWithHost();
+    const intruder = makeConn("intruder");
+    claim(room, intruder, "another-token-0123456789abcd");
+    expect((room as any).isHost(intruder)).toBe(false);
+    expect(lastSentTo(intruder)).toMatchObject({ type: "ERROR", error: "bad_token" });
+  });
+
+  it("lets a refreshed host reclaim control with the same token", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    room.onClose(hostConn);
+    expect((room as any).isHost(hostConn)).toBe(false);
+    const again = makeConn("host-conn-2");
+    claim(room, again);
+    expect((room as any).isHost(again)).toBe(true);
+  });
+
+  it("lets two devices hold the token at once, and both can judge-gate", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    const second = makeConn("host-phone");
+    claim(room, second);
+    joinTeams(room, hostConn, 1);
+    send(room, second, { type: "HOST_START" });
+    expect(room.game).not.toBeNull();
+  });
+
+  it("drops host rights when that connection closes", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    room.onClose(hostConn);
+    joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    expect(room.game).toBeNull();
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "not_host" });
+  });
+
+  it("rejects a token that is too short", () => {
+    const room = new DungeonRoom(makeRoom() as any);
+    const conn = makeConn("weak");
+    claim(room, conn, "short");
+    expect((room as any).isHost(conn)).toBe(false);
+    expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
+  });
+});
+
+describe("roomEpoch", () => {
+  it("is on LOBBY and STATE and stays the same within one room instance", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    const lobby = makeConn("a");
+    room.onConnect(lobby);
+    const epoch = lastSentTo(lobby).roomEpoch;
+    expect(typeof epoch).toBe("string");
+    joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    expect(lastBroadcast(room).roomEpoch).toBe(epoch);
+  });
+
+  it("differs between two room instances (a restart)", () => {
+    const a = new DungeonRoom(makeRoom() as any);
+    const b = new DungeonRoom(makeRoom() as any);
+    const ca = makeConn("ca");
+    const cb = makeConn("cb");
+    a.onConnect(ca);
+    b.onConnect(cb);
+    expect(lastSentTo(ca).roomEpoch).not.toBe(lastSentTo(cb).roomEpoch);
+  });
+});
+
+describe("onConnect", () => {
   it("sends a LOBBY message with the current pending teams before the game starts", () => {
     const { room, hostConn } = makeRoomWithHost();
     joinTeams(room, hostConn, 1);
@@ -334,15 +417,23 @@ describe("onClose — offline handling (T7)", () => {
 });
 
 describe("malformed messages", () => {
-  it("ignores unparseable JSON instead of throwing", () => {
+  it("answers unparseable JSON with invalid_action instead of throwing", () => {
     const { room } = makeRoomWithHost();
     const conn = makeConn();
     expect(() => room.onMessage("not json", conn)).not.toThrow();
+    expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
   });
 
-  it("ignores an unknown message type", () => {
+  it("answers an unknown message type with invalid_action", () => {
     const { room } = makeRoomWithHost();
     const conn = makeConn();
-    expect(() => send(room, conn, { type: "SOMETHING_ELSE" })).not.toThrow();
+    send(room, conn, { type: "SOMETHING_ELSE" });
+    expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
+  });
+
+  it("answers a wrong-typed field with invalid_action and changes nothing", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: T1, questionId: "r0-q1", correct: "yes" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
   });
 });
