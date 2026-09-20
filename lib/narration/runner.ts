@@ -5,7 +5,8 @@
 import type { NarrationEvent } from "./events";
 import type { NarrationProvider } from "./scripted";
 
-export const MAX_LINE = 40;
+/** One narration line. 40 was too tight for the tone the model writes; 50 fits the dialogue box in two lines. */
+export const MAX_LINE = 50;
 export const DEFAULT_HOLD_MS = 2000;
 export const DEFAULT_EPILOGUE_HOLD_MS = 15000;
 export const MAX_EPILOGUE_LINE = 160;

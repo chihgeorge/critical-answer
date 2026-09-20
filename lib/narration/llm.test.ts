@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createLlmProvider, buildPrompt, NARRATION_MODEL, EPILOGUE_MODEL } from "./llm";
+import { MAX_LINE } from "./runner";
 import { AuthError, ConfigMissingError, EmptyOrRefusalError, InvalidOutputError, TimeoutError, UpstreamError } from "./errors";
 import type { NarrationEvent } from "./events";
 
@@ -82,6 +83,20 @@ describe("prompt", () => {
     expect(system).toContain("此戰驚天動地。");
   });
 
+  it("keeps the narrator an owl: no cat sounds or internet slang, and a tight length ask", () => {
+    const { system } = buildPrompt(event, "", []);
+    expect(system).toMatch(/貓頭鷹/);
+    expect(system).toMatch(/不要.*喵/);
+    expect(system).toMatch(/最多 2\d 個字/);
+  });
+
+  it("tells the model to say boss health as hearts left, never as a fraction or percentage", () => {
+    const { system, user } = buildPrompt({ type: "boss-hit", team: "紅隊", bossHp: 3, bossMaxHp: 5 }, "", []);
+    expect(system).toMatch(/顆心/);
+    expect(system).toMatch(/分數|百分比/);
+    expect(user).toContain("還剩 3/5 顆心");
+  });
+
   it("leaves those sections out when there are none", () => {
     const { system } = buildPrompt(event, "", []);
     expect(system).not.toContain("導演");
@@ -101,13 +116,25 @@ describe("output", () => {
 
   it.each([
     ["empty", ""],
-    ["over the 40 character ceiling", "字".repeat(41)],
+    ["one long sentence over the ceiling", "字".repeat(51)],
     ["containing markup", "<b>紅隊</b>"],
   ])("rejects a line that is %s", async (_n, text) => {
     const f = async () => ok(reply(text));
     await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toSatisfy(
       (e) => e instanceof EmptyOrRefusalError || e instanceof InvalidOutputError,
     );
+  });
+
+  it("keeps the first sentences that fit when the model writes too much", async () => {
+    const long = "藍隊揮舞著魔法劍，一記致命一擊戳進小黑龍的心臟！那傢伙發出慘叫，倒地身亡，藍隊額外獲得 11 分的獎勵呢！";
+    expect([...long].length).toBeGreaterThan(MAX_LINE);
+    const f = async () => ok(reply(long));
+    await expect(make(f as unknown as typeof fetch).narrate(event)).resolves.toBe("藍隊揮舞著魔法劍，一記致命一擊戳進小黑龍的心臟！");
+  });
+
+  it("removes 「」 quote marks the model echoes from the prompt", async () => {
+    const f = async () => ok(reply("「藍隊」擊倒了「深淵小黑龍」！"));
+    await expect(make(f as unknown as typeof fetch).narrate(event)).resolves.toBe("藍隊擊倒了深淵小黑龍！");
   });
 
   it("rejects a line that repeats a bank answer of 3+ characters, but ignores short answers", async () => {

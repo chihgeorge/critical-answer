@@ -51,7 +51,7 @@ describe("narration runner", () => {
   it.each([
     ["empty", ""],
     ["blank", "   "],
-    ["over 40 characters", "字".repeat(41)],
+    ["over the line ceiling", "字".repeat(51)],
     ["containing markup", "<b>粗體</b>"],
   ])("falls back when the line is %s", async (_n, bad) => {
     const { runner, emitted, entries } = setup(provider(async () => bad));

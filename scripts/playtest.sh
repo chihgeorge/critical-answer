@@ -35,6 +35,13 @@ case "$1" in
     for p in $WEB $PARTY; do
       [ -z "$(pids $p)" ] || pids $p | xargs kill
     done
+    # workerd (PartyKit) can ignore a plain kill for a moment: wait, then force it.
+    i=0
+    while [ -n "$(pids $WEB)$(pids $PARTY)" ]; do
+      i=$((i+1))
+      [ $i -lt 6 ] || { for p in $WEB $PARTY; do pids $p | xargs kill -9 2>/dev/null; done; sleep 1; break; }
+      sleep 1
+    done
     echo "已停止"
     ;;
   status)
