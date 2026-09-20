@@ -10,12 +10,13 @@ import type { PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
+import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Nameplate, Panel, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 
 type Lobby = { id: string; name: string }[];
-type Play = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null };
+type Play = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
 
 const look = (i: number) => TEAM_LOOKS[i % TEAM_LOOKS.length];
 
@@ -84,7 +85,7 @@ function Lobby({ code, teams }: { code: string; teams: Lobby }) {
   );
 }
 
-function Playing({ view, question }: { view: SpectatorView; question: PublicQuestion | null }) {
+function Playing({ view, question, eventId, narration }: { view: SpectatorView; question: PublicQuestion | null; eventId: number; narration: NarrationState }) {
   const { team: turn, teamIndex: turnIdx, inBoss, monster, theme, bossHits: hits } = describeTurn(view, question);
   const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
 
@@ -158,7 +159,8 @@ function Playing({ view, question }: { view: SpectatorView; question: PublicQues
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         accent={inBoss ? "var(--danger)" : undefined}
-        text={turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"}
+        loading={isPending(eventId, narration)}
+        text={narration?.line ?? (turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……")}
       />
     </>
   );
@@ -171,7 +173,7 @@ const PODIUM = [
 ];
 const CONFETTI = ["#ff6b6b", "#ffcf4a", "#6fd36a", "#6ab4ff", "#ff9db8", "#fff"];
 
-function Finished({ view, winners }: { view: SpectatorView; winners: string[] }) {
+function Finished({ view, winners, narration, epilogue }: { view: SpectatorView; winners: string[]; narration: NarrationState; epilogue: string | null }) {
   const ranked = view.teams.map((t, i) => ({ ...t, i })).sort((a, b) => b.score - a.score).slice(0, 3);
   const names = winners.map((id) => view.teams.find((t) => t.id === id)?.name ?? id).join("、");
   return (
@@ -203,8 +205,13 @@ function Finished({ view, winners }: { view: SpectatorView; winners: string[] })
           );
         })}
       </div>
-      {/* Rankings show at once; the epilogue arrives later as one typewriter line. */}
-      <DialogueBox className="absolute" style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }} loading />
+      {/* Rankings show at once. The kill-shot line is read first, then the story arrives as one typewriter line. */}
+      <DialogueBox
+        className="absolute"
+        style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
+        loading={!epilogue && !narration}
+        text={epilogue ?? narration?.line}
+      />
     </>
   );
 }
@@ -214,6 +221,8 @@ export default function ScreenPage() {
   const [lobby, setLobby] = useState<Lobby>([]);
   const [game, setGame] = useState<Play | null>(null);
   const [reset, setReset] = useState(false);
+  const [narration, setNarration] = useState<NarrationState>(null);
+  const [epilogue, setEpilogue] = useState<string | null>(null);
   const epoch = useRef<string | null>(null);
 
   usePartySocket({
@@ -234,9 +243,17 @@ export default function ScreenPage() {
         case "LOBBY":
           setLobby(msg.teams);
           setGame(null);
+          setNarration(null);
+          setEpilogue(null);
           break;
         case "STATE":
-          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question });
+          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
+          break;
+        case "NARRATION":
+          setNarration((n) => keepLatest(n, msg));
+          break;
+        case "EPILOGUE":
+          setEpilogue(msg.text);
           break;
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
@@ -248,8 +265,8 @@ export default function ScreenPage() {
   return (
     <Stage>
       {!game && <Lobby code={code} teams={lobby} />}
-      {game?.phase === "playing" && <Playing view={game.view} question={game.question} />}
-      {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} />}
+      {game?.phase === "playing" && <Playing view={game.view} question={game.question} eventId={game.eventId} narration={narration} />}
+      {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} narration={narration} epilogue={epilogue} />}
       {reset && (
         <div className="absolute inset-x-0 top-0 text-center text-[20px] text-white" style={{ zIndex: 20, background: "var(--danger)", padding: 6 }}>
           伺服器重新啟動，遊戲已重置

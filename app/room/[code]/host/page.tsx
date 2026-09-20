@@ -11,10 +11,10 @@ import { Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon } f
 import { Qr } from "@/components/qr";
 
 type LobbyState = { teams: { id: string; name: string }[] };
-type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null };
+type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
 
 /** The host's own link carries the token, so it is shown here and never on /screen or /play. */
-function MoreDrawer({ code, onClose }: { code: string; onClose: () => void }) {
+function MoreDrawer({ code, onClose, onTranscript }: { code: string; onClose: () => void; onTranscript: () => void }) {
   const origin = location.origin;
   const token = getHostToken(code);
   const joinUrl = `${origin}/?code=${code}`;
@@ -39,6 +39,12 @@ function MoreDrawer({ code, onClose }: { code: string; onClose: () => void }) {
               <div className="text-[15px]">玩家掃描加入</div>
               <div className="break-all">{joinUrl}</div>
             </div>
+          </section>
+          <section>
+            <PixelButton onClick={onTranscript} className="!m-0 !px-4 !py-2 text-[16px]">
+              下載旁白紀錄（JSON）
+            </PixelButton>
+            <div className="mt-1 text-[13px]">每一句旁白的事件、分數、來源與延遲。伺服器重啟後會消失。</div>
           </section>
           {hostUrl && (
             <section className="flex items-center gap-3">
@@ -105,6 +111,16 @@ export default function HostPage() {
         case "HOST_OK":
           setClaimed(true);
           break;
+        case "TRANSCRIPT": {
+          // Host-only download of every narration line with provider, latency and fallback reason.
+          const blob = new Blob([JSON.stringify(msg.entries, null, 2)], { type: "application/json" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `critical-answer-${code}-transcript.json`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+          break;
+        }
         case "HOST_ANSWER":
           setAnswer({ questionId: msg.questionId, answer: msg.answer });
           break;
@@ -113,7 +129,7 @@ export default function HostPage() {
           setGame(null);
           break;
         case "STATE":
-          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question });
+          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
           setPendingTeamId(null);
           break;
         case "GAME_OVER":
@@ -249,7 +265,7 @@ export default function HostPage() {
         )}
       </div>
 
-      {drawer && <MoreDrawer code={code} onClose={() => setDrawer(false)} />}
+      {drawer && <MoreDrawer code={code} onClose={() => setDrawer(false)} onTranscript={() => send({ type: "HOST_GET_TRANSCRIPT" })} />}
     </main>
   );
 }

@@ -8,10 +8,11 @@ import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protoco
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
+import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, Panel, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 
 type LobbyState = { teams: { id: string; name: string }[] };
-type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null };
+type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
 
 export default function PlayPage() {
   const { code } = useParams<{ code: string }>();
@@ -22,6 +23,8 @@ export default function PlayPage() {
   const [lobby, setLobby] = useState<LobbyState | null>(null);
   const [game, setGame] = useState<PlayState | null>(null);
   const [reset, setReset] = useState(false);
+  const [narration, setNarration] = useState<NarrationState>(null);
+  const [epilogue, setEpilogue] = useState<string | null>(null);
   const joinedRef = useRef(false);
   const epoch = useRef<string | null>(null);
 
@@ -45,8 +48,14 @@ export default function PlayPage() {
           setGame(null);
           break;
         case "STATE":
-          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question });
+          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
           setLobby(null);
+          break;
+        case "NARRATION":
+          setNarration((n) => keepLatest(n, msg));
+          break;
+        case "EPILOGUE":
+          setEpilogue(msg.text);
           break;
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
@@ -148,12 +157,12 @@ export default function PlayPage() {
         <div className="mt-auto">
           <DialogueBox
             compact
+            loading={!!game && !finished && isPending(game.eventId, narration)}
             text={
               finished
-                ? "冒險結束了，大螢幕正在頒獎。"
-                : turn?.team
-                  ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……`
-                  : "火光搖曳，冒險者們正在集合……"
+                ? (epilogue ?? narration?.line ?? "冒險結束了，大螢幕正在頒獎。")
+                : (narration?.line ??
+                  (turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"))
             }
           />
         </div>

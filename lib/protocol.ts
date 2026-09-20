@@ -12,6 +12,7 @@
 
 import type { GamePhase, SpectatorView } from "./game-state";
 import type { SpriteKind } from "./pixel-art";
+import type { TranscriptEntry } from "./narration/runner";
 
 export const MAX_TEAMS = 8;
 
@@ -29,6 +30,7 @@ export type ClientMessage =
   | { type: "REJOIN"; teamId: string }
   | { type: "HOST_CLAIM"; token: string }
   | { type: "HOST_START" }
+  | { type: "HOST_GET_TRANSCRIPT" }
   | {
       type: "HOST_JUDGE";
       teamId: string;
@@ -57,8 +59,15 @@ export type ServerMessage =
       winners: string[];
       roomEpoch: string;
       question: PublicQuestion | null;
+      /** Counts judgments (and the start); NARRATION carries the id it belongs to. */
+      eventId: number;
     }
   | { type: "GAME_OVER"; winners: string[] }
+  /** Exactly one per event. Clients keep the highest eventId they have seen. */
+  | { type: "NARRATION"; eventId: number; line: string }
+  | { type: "EPILOGUE"; text: string }
+  /** Host-only reply to HOST_GET_TRANSCRIPT. */
+  | { type: "TRANSCRIPT"; entries: TranscriptEntry[] }
   | { type: "HOST_OK" }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   | { type: "HOST_ANSWER"; questionId: string; answer: string }
@@ -110,6 +119,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         : null;
     case "HOST_START":
       return { type: "HOST_START" };
+    case "HOST_GET_TRANSCRIPT":
+      return { type: "HOST_GET_TRANSCRIPT" };
     case "HOST_JUDGE": {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);
