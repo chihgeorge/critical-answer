@@ -97,6 +97,17 @@ describe("prompt", () => {
     expect(user).toContain("還剩 3/5 顆心");
   });
 
+  it("tells the model to call teams exactly as named and not to add 隊 or 隊伍 (a team named G was written G隊 and G隊伍)", () => {
+    const { system } = buildPrompt(event, "", []);
+    expect(system).toMatch(/原樣/);
+    expect(system).toMatch(/不要.*「隊」/);
+  });
+
+  it("holds the second line to a firm 20 characters (real answers ran to 50)", () => {
+    const { system } = buildPrompt({ ...event, next: { team: "T", monster: "史萊姆", boss: false } }, "", []);
+    expect(system).toMatch(/第二行[^。]*不超過 20 個字/);
+  });
+
   it("leaves those sections out when there are none", () => {
     const { system } = buildPrompt(event, "", []);
     expect(system).not.toContain("導演");

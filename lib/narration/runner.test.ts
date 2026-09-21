@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createRunner, type TranscriptEntry } from "./runner";
 import { AuthError, InvalidOutputError } from "./errors";
 import type { NarrationProvider } from "./scripted";
@@ -142,6 +142,46 @@ describe("narration runner", () => {
       await runner.run(1, { type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9 });
       expect(emitted[0].then).toBeUndefined();
       expect(emitted[0].line).toBe("藍隊擊倒了首領！");
+    });
+  });
+
+  describe("default hold", () => {
+    it("waits up to 3 seconds for the provider by default (real games saw 1.8-1.9 s answers and 3 of 21 timeouts at 2 s)", async () => {
+      vi.useFakeTimers();
+      try {
+        const emitted: string[] = [];
+        const runner = createRunner({
+          provider: provider(async () => (await new Promise((r) => setTimeout(r, 2600)), "兩點六秒才到")),
+          fallback,
+          emit: (_id, line) => emitted.push(line),
+          record: () => {},
+        });
+        const run = runner.run(1, event);
+        await vi.advanceTimersByTimeAsync(2700);
+        await run;
+        expect(emitted).toEqual(["兩點六秒才到"]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("still falls back once the 3 seconds are used up", async () => {
+      vi.useFakeTimers();
+      try {
+        const emitted: string[] = [];
+        const runner = createRunner({
+          provider: provider(async () => (await new Promise((r) => setTimeout(r, 3500)), "太慢")),
+          fallback,
+          emit: (_id, line) => emitted.push(line),
+          record: () => {},
+        });
+        const run = runner.run(1, event);
+        await vi.advanceTimersByTimeAsync(3100);
+        await run;
+        expect(emitted).toEqual(["備用旁白"]);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });
