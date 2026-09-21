@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi } from "vitest";
 import DungeonRoom from "./index";
-import { DEFAULT_BOSS_QUESTION_IDS, DEFAULT_ROOMS } from "../lib/fixtures";
-import { BANK } from "../lib/question-bank";
+import { BANK, bossQuestionIds, roomTemplates } from "../lib/question-bank";
 import { currentTurnTeamId } from "../lib/game-state";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
@@ -256,8 +255,8 @@ describe("HOST_START", () => {
     joinTeams(room, hostConn, 2);
     send(room, hostConn, { type: "HOST_START" });
     expect(room.game).not.toBeNull();
-    expect(room.game!.rooms).toEqual(DEFAULT_ROOMS);
-    expect(room.game!.boss.questionIds).toEqual(DEFAULT_BOSS_QUESTION_IDS);
+    expect(room.game!.rooms).toEqual(roomTemplates(BANK));
+    expect(room.game!.boss.questionIds).toEqual(bossQuestionIds(BANK));
     expect(lastBroadcast(room)).toMatchObject({ type: "STATE", phase: "playing" });
   });
 

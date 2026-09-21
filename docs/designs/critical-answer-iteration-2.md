@@ -64,7 +64,7 @@ Facts, not decisions:
 - `lib/protocol.ts` has no message for narration, epilogue or question payload. Add `NARRATION` and `EPILOGUE` to `ServerMessage`. The room stores `lastNarration` and `epilogue` so REJOIN and late joiners see the current line.
 - `GameState` keeps no event log. The room must accumulate `events[]` in memory. `broadcastState()` re-sends `GAME_OVER` on every call after the game finishes (onClose, REJOIN), so the epilogue must be generated exactly once, guarded by a flag, or it will re-call the LLM.
 - `hostConnId` is the first connection; only it can send `HOST_JUDGE`. The "big screen" is the host page. There is no separate spectator role.
-- The 20 existing questions (15 room, 5 boss) live in `docs/question-bank-2026-taiwan.md` with no monster names. The bank schema needs a monster or theme field and a boss identity.
+- The 20 existing questions (15 room, 5 boss) lived in `docs/question-bank-2026-taiwan.md` (since removed; they are now the first questions of each room in `data/question-bank.json`) with no monster names. The bank schema needs a monster or theme field and a boss identity.
 - TODOS.md "content moderation before LLM prompt" was blocked on LLM integration. This plan removes that block, so it becomes in scope for the LLM provider (team names are user-supplied and only strip `<>&"'`).
 - TODOS.md does not yet contain E1, E3-E6, the editor or the wrangler bypass detail. They are added as part of finishing this review.
 

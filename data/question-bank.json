@@ -257,7 +257,6 @@
       "sprite": "dragon",
       "hue": 0
     },
-    "lore": "盤踞在地城最深處的小黑龍，只認得答對問題的冒險者。",
     "maxHp": 5,
     "questions": [
       {

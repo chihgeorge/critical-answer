@@ -1,6 +1,7 @@
 import type * as Party from "partykit/server";
 import {
   createGame,
+  DEFAULT_GAME_CONFIG,
   answerQuestion,
   setTeamOnline,
   getSpectatorView,
@@ -9,9 +10,8 @@ import {
   InvalidActionError,
   type GameState,
 } from "../lib/game-state";
-import { DEFAULT_ROOMS, DEFAULT_BOSS_QUESTION_IDS, DEFAULT_BOSS_MAX_HP, DEFAULT_GAME_CONFIG } from "../lib/fixtures";
 import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../lib/protocol";
-import { BANK, findQuestion, publicQuestion } from "../lib/question-bank";
+import { BANK, bossQuestionIds, findQuestion, publicQuestion, roomTemplates } from "../lib/question-bank";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../lib/narration/events";
 import { createScriptedProvider, type NarrationProvider } from "../lib/narration/scripted";
 import { createRunner, type TranscriptItem } from "../lib/narration/runner";
@@ -436,10 +436,10 @@ export default class DungeonRoom implements Party.Server {
 
     this.game = createGame(
       this.pendingTeams,
-      DEFAULT_ROOMS,
-      DEFAULT_BOSS_QUESTION_IDS,
+      roomTemplates(BANK),
+      bossQuestionIds(BANK),
       DEFAULT_GAME_CONFIG,
-      DEFAULT_BOSS_MAX_HP,
+      BANK.boss.maxHp,
       this.rng,
     );
     // Default on when a key exists; the host can switch it off before starting.

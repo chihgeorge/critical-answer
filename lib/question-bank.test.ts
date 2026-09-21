@@ -5,7 +5,7 @@ import { MAX_TEAMS } from "./protocol";
 const q = (id: string, text = "題目", answer = "答案") => ({ id, text, answer });
 const valid = () => ({
   rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, questions: [q("a1"), q("a2")] }],
-  boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, lore: "…", maxHp: 3, questions: [q("b1")] },
+  boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [q("b1")] },
 });
 
 describe("shipped bank", () => {

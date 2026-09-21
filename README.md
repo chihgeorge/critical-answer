@@ -27,7 +27,7 @@ D&D 風格的地城問答派對遊戲。名字是 *Critical Hit*（爆擊）的�
 - [PartyKit](https://www.partykit.io/)：房間與 WebSocket 連線層（[party/index.ts](party/index.ts)）
 - 像素畫面全部用程式繪製，字型（俐方體11號、Press Start 2P，皆 SIL OFL）放在 `public/fonts/`，沒有網路也能玩。設計規則見 [DESIGN.md](DESIGN.md)
 - Anthropic Messages API（選用）：AI 旁白，只在伺服器端呼叫
-- Vitest + happy-dom：單元測試；Playwright：端對端測試
+- Vitest：單元測試；Playwright：端對端測試
 
 ## 快速開始
 
@@ -102,7 +102,7 @@ sh scripts/playtest.sh stop
 
 題庫在 [data/question-bank.json](data/question-bank.json)：5 個房間，每房 8 題、一隻怪物，加上首領的 8 題。伺服器啟動時會載入並驗證（缺 id、重複 id、空題目或答案、難度不在 1–5 都會直接報錯），**只有伺服器會讀這個檔**，瀏覽器只收得到題目文字，收不到答案。`npm run check:bundle` 會檢查這一點。
 
-新增題目時：每房至少 8 題（最多 8 隊）、題目文字不能含答案。說明見 [docs/question-bank-2026-taiwan.md](docs/question-bank-2026-taiwan.md)。
+新增題目時：每房至少 8 題（最多 8 隊）、題目文字不能含答案（`lib/question-bank.test.ts` 會檢查）。
 
 > 每房最後 5 題和首領最後 3 題是 AI 起草的台灣常識題，**開局前請主持人覆核答案**。
 
