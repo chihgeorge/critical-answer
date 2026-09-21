@@ -27,13 +27,15 @@ Small orange text on cream is 2.4:1 and fails. Small labels (第 N 題, 難度) 
 
 ## Components (`components/pixel.tsx`)
 
-`Panel` (cream, lav, turn), `PixelButton` (ok, retry, flee, primary), `LabelChip`, `Sprite` (slime, ghost, dragon, owl, hero, crown, heart, torch), `SceneBackground` (stone, moss, crimson), `ScoreMeter` (15 cells), `TurnRibbon`, `Nameplate`, `DialogueBox` (owl portrait, `…` loader, one typewriter line).
+`Panel` (cream, lav, turn), `PixelButton` (ok, retry, flee, primary), `LabelChip`, `Sprite` (slime, ghost, dragon, owl, hero, crown, heart, torch), `SceneBackground` (stone, moss, crimson), `ScoreMeter` (15 cells), `TurnRibbon`, `Nameplate`, `DialogueBox` (owl portrait, `…` loader, and one or more lines typed in order: the result line, then a line about the next team, with a 2.2 s reading pause between them; the ▼ shows only while another line is still to come, so it means "the owl has more to say").
+
+Also: `components/stage.tsx` (the scaled big-screen stage) and `components/qr.tsx` (QR in the panel colors; give it an `alt`).
 
 Sprites are drawn in `lib/pixel-art.ts`. Scale them by whole numbers only, so pixels stay square. `TEAM_LOOKS` gives eight team looks (three hat shapes over eight colors) because a room holds up to 8 teams.
 
 ## Rules
 
-- Big screen (`/screen`): fixed 1920×1080 stage, scaled with `transform: scale()`, letterboxed outside 16:9.
+- Big screen (`/screen`): a fixed **960×540** stage (every approved mockup is this size), scaled with `transform: scale()` and letterboxed outside 16:9. 1920×1080 is exactly 2x and 4K exactly 4x, so pixels stay square. (An earlier note said 1920×1080; decision 6A was revised on 2026-09-20.)
 - Judge buttons live in the thumb zone. `PixelButton.ok` is 78px tall.
 - Motion is two-frame `steps()` only. `prefers-reduced-motion` stops blinking, typing and hopping.
 - Never show an answer on `/screen` or `/play`.

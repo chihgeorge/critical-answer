@@ -99,6 +99,8 @@ Facts, not decisions:
 
 ## Evidence notes
 
+- **Real-API check (2026-09-20)**: 36 calls with the first prompt gave median 1.16 s and max 1.9 s, but 7 of 24 lines broke the 40 character ceiling and one wrote boss health as a fraction. The T5 question "is 40 characters enough" is answered: no. The line ceiling is now 50, over-long answers keep their leading sentences, and the prompt asks for 28 characters. After tuning: 0 of 36 rejected; a full 24-judgment game had 26 of 26 lines from the model with no fallback and a correct epilogue; 20 of 20 two-line answers were usable. Still unmeasured: whether the tone wears thin over a real session.
+- **Narration is two lines since the post-merge fixes (PR #5)**: after the result line the owl addresses the team on turn. `NARRATION` carries an optional `then`; the killing blow and the epilogue stay single. Supersedes "one line per event" in T3 for the wording only: it is still exactly one message per event.
 - PartyKit deployment blockers re-verified 2026-09-18: `partykit` latest is still 0.0.115, issue partykit/partykit#985 still OPEN. Iteration 2 assumes LAN-only playtest.
 
 ## NOT in scope
@@ -196,6 +198,8 @@ System architecture (see the review transcript, Section 1). State and flow delta
 
 ## Stale Diagram Audit
 
+*Advisory (2026-09-20, /document-release):* the two diagrams above this section predate the engineering review. The flee diagram still shows `flee-switch-room` and `extraRooms` (dropped by eng-review T1) and the narration timeline still shows the LLM upgrade path (dropped by eng-review T3: exactly one `NARRATION` per event, held up to 2 s, no upgrade). Read them together with "Engineering review decisions" below; they were not redrawn.
+
 `docs/designs/critical-answer-party-game.md` "全域回合制主流程" diagram shows a per-room question step and a flee branch that changes difficulty only. It is stale after D15 (flee has two variants, extra rooms). Update as part of T2.
 
 ## Implementation Tasks
@@ -209,49 +213,49 @@ Synthesized from this review's findings. Ordered so each phase is playable. Run 
   - Verify: visual direction, type scale for 3 m viewing, touch targets recorded
 
 **Phase 1 (playable without the paper sheet)**
-- [ ] **T2 (P1, human: ~1d / CC: ~40min)** — game-state — Rooms as monster units, extra rooms, flee-same-room and flee-switch-room, staggered start question
+- [x] **T2 (P1, human: ~1d / CC: ~40min)** — game-state — Rooms as monster units, extra rooms, flee-same-room and flee-switch-room, staggered start question *(shipped as the eng-review T1 version: shared question deck, last room clamped; no extra rooms, no switch-room, no staggered start)*
   - Surfaced by: outside voice #4 (verified in `lib/game-state.ts`), user decision D15
   - Files: `lib/game-state.ts`, `lib/game-state.test.ts`, `lib/protocol.ts`, `docs/designs/critical-answer-party-game.md` (premises and stale diagram)
   - Verify: `npm test`; tests for no repeated question in a full clear, different starts for two teams, 15-point gate reachable, extraRooms exhausted opens boss gate
-- [ ] **T3 (P1, human: ~1-2d / CC: ~40min)** — content — Question bank JSON, loader with validation, CC-drafted monsters, boss and scripted lines; only `party/` imports the full bank
+- [x] **T3 (P1, human: ~1-2d / CC: ~40min)** — content — Question bank JSON, loader with validation, CC-drafted monsters, boss and scripted lines; only `party/` imports the full bank
   - Surfaced by: Section 4, D9, D18
   - Files: `lib/question-bank.ts`, `data/question-bank.json`, `lib/fixtures.ts`
   - Verify: unit test fails on missing id; bundle check shows no `answer` in client output
-- [ ] **T4 (P1, human: ~1d / CC: ~30min)** — party — Host token, `HOST_CLAIM`, `SCREEN` role, answer via `sendTo` only, `#k=` URL and QR
+- [x] **T4 (P1, human: ~1d / CC: ~30min)** — party — Host token, `HOST_CLAIM`, `SCREEN` role, answer via `sendTo` only, `#k=` URL and QR *(no `SCREEN` message: the screen only listens. Host answers via `sendTo` landed with the bank)*
   - Surfaced by: Section 3, D3, D7, D18
   - Files: `party/index.ts`, `lib/protocol.ts`, `app/room/[code]/host/page.tsx`, `app/room/[code]/screen/page.tsx`
   - Verify: integration test that no broadcast payload contains an answer, host refresh restores control, wrong token rejected
 - **Checkpoint 1:** run a playtest-lite with question text on `/screen`, no narration yet.
 
 **Phase 2 (scripted atmosphere)**
-- [ ] **T5 (P1, human: ~1d / CC: ~30min)** — narration — `lib/narration/` events, scripted provider (4-5 variants per event, no-repeat pick), `NARRATION` message, `lastNarration` replay
+- [x] **T5 (P1, human: ~1d / CC: ~30min)** — narration — `lib/narration/` events, scripted provider (4-5 variants per event, no-repeat pick), `NARRATION` message, `lastNarration` replay
   - Surfaced by: Section 1, Section 4, D4, D10
   - Files: `lib/narration/*`, `party/index.ts`
   - Verify: pure mapper tests for all outcomes, boss kill emits one event, REJOIN receives the last line
-- [ ] **T6 (P2, human: ~0.5d / CC: ~20min)** — narration — Epilogue (scripted template), once-only guard, `EPILOGUE` message
+- [x] **T6 (P2, human: ~0.5d / CC: ~20min)** — narration — Epilogue (scripted template), once-only guard, `EPILOGUE` message
   - Surfaced by: E2, Section 4
   - Files: `lib/narration/epilogue.ts`, `party/index.ts`
   - Verify: GAME_OVER resent N times yields one epilogue
-- [ ] **T7 (P2, human: ~0.5d / CC: ~20min)** — observability — In-memory transcript, host-only JSON download
+- [x] **T7 (P2, human: ~0.5d / CC: ~20min)** — observability — In-memory transcript, host-only JSON download
   - Surfaced by: Section 8, D12
   - Files: `lib/narration/transcript.ts`, `/host` page
   - Verify: download contains event, snapshot, line, provider, latency, fallback_reason, breaker trips
 - **Checkpoint 2:** playtest with scripted narration, screen designed per T1.
 
 **Phase 3 (AI DM)**
-- [ ] **T8 (P1, human: ~1d / CC: ~40min)** — llm — LLM provider: `fetch`, Haiku 4.5 per event, Sonnet 5 epilogue, six named errors, breaker, output validation, no question text in wrong-answer prompts, quoted team names, key from `room.env`, log per event, README note about `.env` and `partykit dev`
+- [x] **T8 (P1, human: ~1d / CC: ~40min)** — llm — LLM provider: `fetch`, Haiku 4.5 per event, Sonnet 5 epilogue, six named errors, breaker, output validation, no question text in wrong-answer prompts, quoted team names, key from `room.env`, log per event, README note about `.env` and `partykit dev`
   - Surfaced by: Section 2, Section 3, D5, D6, D8, D19
   - Files: `lib/narration/llm.ts`, `lib/narration/runner.ts`, `README.md`
   - Verify: fake-fetch tests for each failure class, breaker, hostile team name, stale ordering with controlled pause points
-- [ ] **T9 (P2, human: ~2d / CC: ~1h)** — host — Director interface: `HOST_SET_NOTES`, `HOST_EDIT_NARRATION`, last 5 edits as style examples, host edit wins over late upgrade
+- [x] **T9 (P2, human: ~2d / CC: ~1h)** — host — Director interface: `HOST_SET_NOTES`, `HOST_EDIT_NARRATION`, last 5 edits as style examples, host edit wins over late upgrade
   - Surfaced by: user decision D13
   - Files: `party/index.ts`, `lib/protocol.ts`, `/host` page, `lib/narration/runner.ts`
   - Verify: only token holders can send; over 500 chars rejected; edited line marked `provider: host`
-- [ ] **T10 (P2, human: ~0.2d / CC: ~10min)** — host — Room-creation toggle "AI narration on/off" for a scripted control game
+- [x] **T10 (P2, human: ~0.2d / CC: ~10min)** — host — Room-creation toggle "AI narration on/off" for a scripted control game
   - Surfaced by: outside voice #2, D16
   - Files: `app/page.tsx`, `party/index.ts`
   - Verify: with toggle off no LLM call is made
-- [ ] **T11 (P1, human: ~0.5d / CC: ~20min)** — e2e — Playwright: create room, `/screen`, `/host`, two teams, judge, narration and epilogue with a fake LLM provider
+- [x] **T11 (P1, human: ~0.5d / CC: ~20min)** — e2e — Playwright: create room, `/screen`, `/host`, two teams, judge, narration and epilogue *(AI off in E2E; a `.env` key must never make tests call the real API)*
   - Surfaced by: Section 6
   - Files: `e2e/`
   - Verify: `npx playwright test`
@@ -330,34 +334,34 @@ CRITICAL GAPS: 0.
 - [x] **T1 (P1, human ~0.5d / CC ~25min)** design: run `/plan-design-review` before any UI work in PR-A.
 
 **PR-A: identity and /screen**
-- [ ] **T4 (P1, human ~1.5d / CC ~50min)** party: `hostConns` Set, `HOST_CLAIM` with constant-time token compare, `SCREEN` role, answers via `sendTo` to `hostConns` only, `roomEpoch`, `#k=` URL with QR (adds a QR dependency, `qrcode`), `/screen` skeleton
+- [x] **T4 (P1, human ~1.5d / CC ~50min)** party: `hostConns` Set, `HOST_CLAIM` with constant-time token compare, `SCREEN` role, answers via `sendTo` to `hostConns` only, `roomEpoch`, `#k=` URL with QR (adds a QR dependency, `qrcode`), `/screen` skeleton
   - Files: `party/index.ts`, `lib/protocol.ts`, `app/room/[code]/host/page.tsx`, `app/room/[code]/screen/page.tsx`, `package.json`
   - Verify: no broadcast payload contains an answer; refresh restores control; wrong token rejected; epoch change shows the banner
-- [ ] **T12 (P1, human ~0.5d / CC ~25min)** protocol: `parseClientMessage()` and shared `sanitizeText`, applied to every handler
+- [x] **T12 (P1, human ~0.5d / CC ~25min)** protocol: `parseClientMessage()` and shared `sanitizeText`, applied to every handler
   - Files: `lib/protocol.ts`, `party/index.ts`
   - Verify: one test per message type with missing, wrong-type and oversize fields
-- [ ] **T13 (P1, human ~1d / CC ~30min)** tests: rewrite the 26-use `makeRoomWithHost` suite for token claims; mock room `env`; add `@playwright/test` and config; answer-leak E2E assertion
+- [x] **T13 (P1, human ~1d / CC ~30min)** tests: rewrite the 26-use `makeRoomWithHost` suite for token claims; mock room `env`; add `@playwright/test` and config; answer-leak E2E assertion
   - Files: `party/index.test.ts`, `playwright.config.ts`, `e2e/`
   - Verify: `npm test` green, `npx playwright test` green
 
 **PR-B: rules and bank**
-- [ ] **T2 (P1, human ~1d / CC ~40min)** game-state: used-question deck, dealing at start, room entry and flee-same-room, reshuffle, last room clamped, retry unchanged; `SpectatorView` shows score toward 15 (not room number). Rules go directly into `answerQuestion` (2B)
+- [x] **T2 (P1, human ~1d / CC ~40min)** game-state: used-question deck, dealing at start, room entry and flee-same-room, reshuffle, last room clamped, retry unchanged; `SpectatorView` shows score toward 15 (not room number). Rules go directly into `answerQuestion` (2B)
   - Files: `lib/game-state.ts`, `lib/game-state.test.ts`, `lib/protocol.ts`, host and play pages
   - Verify: full clear never repeats a question until a deck is exhausted; two teams never receive the same question in one room; a team below 15 in the last room keeps getting fresh questions; 100% coverage held
-- [ ] **T3 (P1, human ~1-2d / CC ~40min)** content: bank JSON with one monster per room and 6-8 questions per room, boss questions, loader validation, only `party/` imports the full bank (client bundle gets a public projection)
+- [x] **T3 (P1, human ~1-2d / CC ~40min)** content: bank JSON with one monster per room and 6-8 questions per room, boss questions, loader validation, only `party/` imports the full bank (client bundle gets a public projection)
   - Files: `lib/question-bank.ts`, `data/question-bank.json`, `lib/fixtures.ts`
   - Verify: load fails on a missing id; bundle check shows no `answer`
 
 **PR-C: scripted atmosphere**
-- [ ] **T5 (P1, human ~1d / CC ~30min)** narration: events mapper, scripted provider (4-5 variants per event, no-repeat pick), single `NARRATION` with 2 s hold, sync-before-await rules, `lastNarration` replay
-- [ ] **T6 (P2, human ~0.5d / CC ~20min)** epilogue (scripted), once-only guard, kill-shot before epilogue
-- [ ] **T7 (P2, human ~0.5d / CC ~20min)** transcript and host-only download
-- [ ] **T11 (P1, human ~0.5d / CC ~20min)** E2E main line with the fake provider
+- [x] **T5 (P1, human ~1d / CC ~30min)** narration: events mapper, scripted provider (4-5 variants per event, no-repeat pick), single `NARRATION` with 2 s hold, sync-before-await rules, `lastNarration` replay
+- [x] **T6 (P2, human ~0.5d / CC ~20min)** epilogue (scripted), once-only guard, kill-shot before epilogue
+- [x] **T7 (P2, human ~0.5d / CC ~20min)** transcript and host-only download
+- [x] **T11 (P1, human ~0.5d / CC ~20min)** E2E main line with the fake provider *(E2E runs with AI switched off; the fake LLM is an injected `fetch` in the unit tests)*
 
 **PR-D: LLM and director**
-- [ ] **T8 (P1, human ~1d / CC ~40min)** LLM provider (six named errors, breaker, output validation, prompt rules, `room.env` key, README `.env` note) plus `llm.live.test.ts`
-- [ ] **T9 (P2, human ~1d / CC ~40min)** director interface: notes and rewrite of the current line (no upgrade race any more), last 5 edits as style examples
-- [ ] **T10 (P2, human ~0.2d / CC ~10min)** AI narration on/off carried by `HOST_START`
+- [x] **T8 (P1, human ~1d / CC ~40min)** LLM provider (six named errors, breaker, output validation, prompt rules, `room.env` key, README `.env` note) plus `llm.live.test.ts`
+- [x] **T9 (P2, human ~1d / CC ~40min)** director interface: notes and rewrite of the current line (no upgrade race any more), last 5 edits as style examples
+- [x] **T10 (P2, human ~0.2d / CC ~10min)** AI narration on/off carried by `HOST_START`
 
 ## Design review decisions (/plan-design-review, 2026-09-19)
 
@@ -382,7 +386,7 @@ Rejected on the way: torch-lit stone, tabletop parchment, rune neon, retro-anime
 | 3A boss transition (`98cb576b`, deferred) | No boss-room cutscene. Entering the boss room only changes the monster and the wall color. Ceiling: the mid-game has no structural peak, so 30-60 minutes reads as one flat loop. Same for the opening after `HOST_START`. Upgrade when playtest 2 reports the game feels long or eventless. |
 | 4A font | Chinese pixel font is 俐方體11號 (Cubic 11): Taiwan glyph forms, SIL OFL. Ship the font file inside the repo so LAN play works offline. Press Start 2P stays for digits. |
 | 5A design system | Rewrite `app/globals.css` tokens (outline, cream panel, lavender, turn-yellow, correct-green, danger-red, three team colors). Extract `Panel`, `PixelButton`, `DialogueBox` (portrait + typewriter), `ScoreMeter` (15 cells), `TurnRibbon`, `Nameplate`. Write `DESIGN.md`. Old purple tokens (`--bg:#14121f` etc.) are removed. |
-| 6A TV scaling (`b462db57`) | `/screen` is designed on a fixed 1920×1080 stage and scaled with `transform: scale()`, centered, letterboxed outside 16:9, integer scaling, `image-rendering: pixelated` on sprites. |
+| 6A TV scaling (`b462db57`, revised `52e4fd24`) | `/screen` is laid out on a fixed **960×540** stage and scaled with `transform: scale()`, centered, letterboxed outside 16:9, `image-rendering: pixelated` on sprites. Revised 2026-09-20: the approved mockups are all 960×540 and were reused without re-layout; 1920×1080 is exactly 2x and 3840×2160 exactly 4x, so pixels stay square. The original wording said 1920×1080. |
 | 6B contrast (`9c3fff9e`) | Small orange labels (第 N 題, 難度) render as `#e8862a` text on a dark `#2a1533` pill chip. 6.3:1 versus 2.4:1 for bare orange on cream. Large orange shapes are unchanged. |
 | 6C keyboard (`6c02a72b`, cut) | No keyboard support on `/host`. Ceiling: laptop hosts use only the trackpad or mouse, and keyboard-only users get no focus state. Upgrade when a host reports slow judging on a laptop, or before any public release. Touch targets already pass (78px judge buttons). |
 
@@ -415,16 +419,16 @@ Judge-button pending feedback on `/host` (dim plus spinner), the 78px judge butt
 
 ### Implementation tasks (design, land with PR-A)
 
-- [ ] **T14 (P1, human ~1.5d / CC ~45min)** design system: rewrite `app/globals.css` tokens, bundle Cubic 11 and Press Start 2P, add `Panel`, `PixelButton`, `DialogueBox`, `ScoreMeter`, `TurnRibbon`, `Nameplate`, label chip (6B), write `DESIGN.md`
+- [x] **T14 (P1, human ~1.5d / CC ~45min)** design system: rewrite `app/globals.css` tokens, bundle Cubic 11 and Press Start 2P, add `Panel`, `PixelButton`, `DialogueBox`, `ScoreMeter`, `TurnRibbon`, `Nameplate`, label chip (6B), write `DESIGN.md`
   - Files: `app/globals.css`, `app/layout.tsx`, `components/`, `public/fonts/`, `DESIGN.md`
   - Verify: no old purple token remains; every screen loads with the network off
-- [ ] **T15 (P1, human ~2d / CC ~60min)** `/screen` stage: 1920×1080 scaled stage (6A), lobby with fire pit, code and QR (2A), brick walls, sprites, torches, nameplates, podium (2E)
+- [x] **T15 (P1, human ~2d / CC ~60min)** `/screen` stage: 960×540 scaled stage (6A, revised), lobby with code and QR and the teams running in (2A; the fire pit was not built, see TODOS.md), brick walls, sprites, torches, nameplates, podium (2E)
   - Files: `app/room/[code]/screen/page.tsx`, `components/`, `public/sprites/`
   - Verify: screenshots at 1280×720, 1920×1080, 2560×1080 and 3840×2160 match the approved PNGs; `prefers-reduced-motion` stops animation
-- [ ] **T16 (P1, human ~1d / CC ~30min)** `/play` and `/host` restyle: mini broadcast when not your turn (2C), `⚙ 更多` drawer (1A), host-only disconnect state with the `gstack-shortcut(dec-ac659960)` marker (2D)
+- [x] **T16 (P1, human ~1d / CC ~30min)** `/play` and `/host` restyle: mini broadcast when not your turn (2C), `⚙ 更多` drawer (1A), host-only disconnect state with the `gstack-shortcut(dec-ac659960)` marker (2D)
   - Files: `app/room/[code]/play/page.tsx`, `app/room/[code]/host/page.tsx`
   - Verify: judge buttons stay in the thumb zone at 375×667; drawer holds notes, toggle, QR, transcript
-- [ ] **T17 (P2, human ~0.5d / CC ~20min)** narration presentation: `…` loader then a single typewriter line (2B), epilogue loader (2E), contrast check on every small label (6B)
+- [x] **T17 (P2, human ~0.5d / CC ~20min)** narration presentation: `…` loader then a single typewriter line (2B), epilogue loader (2E), contrast check on every small label (6B)
   - Files: `components/DialogueBox.tsx`
   - Verify: one `NARRATION` renders once; reduced-motion shows the text without typing
 
