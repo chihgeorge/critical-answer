@@ -27,6 +27,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit -p .
+      # The Worker runs on workerd and has its own tsconfig, so the root check does not see it.
+      - run: npx tsc --noEmit -p worker
       - run: npx eslint
       - run: npm test
       # Builds, then fails if any question or answer text is in the browser bundle.

@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "critical-answer",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-09-01",
+  "durable_objects": {
+    // The binding name "main" makes partysocket's default path (/parties/main/<room>) reach the room.
+    "bindings": [{ "name": "main", "class_name": "Room" }]
+  },
+  // Cloudflare's free plan only allows SQLite-backed Durable Objects. Migrations only ever move forward.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  // The public workers.dev URL is the only door. Per-version preview URLs would be a second, unlisted one.
+  "workers_dev": true,
+  "preview_urls": false,
+  // Browser origins allowed to open a WebSocket. Local runs override it in .dev.vars (see .dev.vars.example).
+  "vars": { "ALLOWED_ORIGINS": "" },
+  "observability": { "enabled": true }
+}

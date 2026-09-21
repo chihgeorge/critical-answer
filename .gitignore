@@ -52,3 +52,6 @@ next-env.d.ts
 /playwright-report/
 /.playwright-mcp/
 /.playtest/
+
+# wrangler local state (dev Durable Object storage)
+.wrangler/

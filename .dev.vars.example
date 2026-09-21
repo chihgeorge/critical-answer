@@ -1,0 +1,3 @@
+# Copy to .dev.vars (gitignored) for `npm run dev:worker`. Real secrets never go in this file.
+# Local browsers may come from anywhere on the LAN, so allow every origin while developing.
+ALLOWED_ORIGINS=*
