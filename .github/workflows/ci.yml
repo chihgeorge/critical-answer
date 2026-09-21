@@ -1,0 +1,41 @@
+name: CI
+
+# Runs on every pull request and on main. Never calls the real Anthropic API:
+# no key exists here, the E2E tests switch AI narration off, and the live tests
+# (npm run test:live) are not part of this workflow.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit -p .
+      - run: npx eslint
+      - run: npm test
+      # Builds, then fails if any question or answer text is in the browser bundle.
+      - run: npm run check:bundle
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7
