@@ -7,7 +7,8 @@ import type { NarrationProvider } from "./scripted";
 
 /** One narration line. 40 was too tight for the tone the model writes; 50 fits the dialogue box in two lines. */
 export const MAX_LINE = 50;
-export const DEFAULT_HOLD_MS = 2000;
+/** 2 s timed out 3 of 21 lines in a real game (answers took up to 1.9 s once every line has two parts). */
+export const DEFAULT_HOLD_MS = 3000;
 export const DEFAULT_EPILOGUE_HOLD_MS = 15000;
 export const MAX_EPILOGUE_LINE = 160;
 
