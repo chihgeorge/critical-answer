@@ -17,8 +17,6 @@
 /.next/
 /out/
 
-# partykit
-/.partykit/
 
 # production
 /build
@@ -35,7 +33,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-# PartyKit local secrets — NEVER commit
+# wrangler dev local secrets — NEVER commit
 .dev.vars
 
 # vercel

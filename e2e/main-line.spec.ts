@@ -131,7 +131,7 @@ test("a browser with no host token cannot start a game", async ({ page }) => {
 test("game over: podium at once, then the epilogue arrives on the big screen", async ({ browser }) => {
   test.setTimeout(60_000);
   const code = "EPIL";
-  const partyUrl = `ws://localhost:1996/party/${code}`;
+  const partyUrl = `ws://localhost:1996/parties/main/${code}`;
   const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
@@ -169,7 +169,7 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
 });
 
 test("a spectator cannot knock a team out of the turn order by copying its public id", async () => {
-  const partyUrl = "ws://localhost:1996/party/SPYT";
+  const partyUrl = "ws://localhost:1996/parties/main/SPYT";
   const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
   const box: { teams: { name: string; online: boolean }[] } = { teams: [] };
   const host = await open(partyUrl);
@@ -192,4 +192,16 @@ test("a spectator cannot knock a team out of the turn order by copying its publi
   expect(box.teams[0].online).toBe(true);
   host.close();
   team.close();
+});
+
+test("the old PartyKit path is refused, and only the room can be reached", async () => {
+  const tryOpen = (u: string) =>
+    new Promise<"opened" | "refused">((res) => {
+      const w = new WebSocket(u);
+      w.onopen = () => { w.close(); res("opened"); };
+      w.onerror = () => res("refused");
+    });
+  expect(await tryOpen("ws://localhost:1996/party/OLDP")).toBe("refused");
+  expect(await tryOpen("ws://localhost:1996/parties/bank-store/x")).toBe("refused");
+  expect(await tryOpen("ws://localhost:1996/parties/main/NEWP")).toBe("opened");
 });

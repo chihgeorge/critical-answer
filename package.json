@@ -3,9 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"next dev\" \"partykit dev\"",
+    "dev": "concurrently \"NEXT_PUBLIC_PARTYKIT_HOST=localhost:8787 next dev\" \"wrangler dev --var ALLOWED_ORIGINS:*\"",
     "dev:next": "next dev",
-    "dev:party": "partykit dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -16,12 +15,11 @@
     "test:live": "LIVE=1 vitest run lib/narration/llm.live.test.ts",
     "playtest": "sh scripts/playtest.sh start",
     "playtest:stop": "sh scripts/playtest.sh stop",
-    "dev:worker": "wrangler dev",
+    "dev:worker": "wrangler dev --var ALLOWED_ORIGINS:*",
     "typecheck:worker": "tsc --noEmit -p worker"
   },
   "dependencies": {
     "next": "16.2.4",
-    "partykit": "^0.0.115",
     "partyserver": "^0.5.10",
     "partysocket": "^1.1.18",
     "qrcode": "^1.5.4",
