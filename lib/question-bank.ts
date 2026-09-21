@@ -5,7 +5,7 @@
 import bankJson from "../data/question-bank.json";
 import type { Difficulty, RoomTemplate } from "./game-state";
 import type { PublicQuestion } from "./protocol";
-import type { SpriteKind } from "./pixel-art";
+import type { SpriteKind } from "./sprite-kind";
 
 export interface BankQuestion {
   id: string;

@@ -8,10 +8,10 @@
 //
 // Host identity is a token minted by the host's browser at room creation.
 // The first HOST_CLAIM for a room sets it (trust on first use, on a 4-letter
-// room code); every later claim must match. See party/index.ts.
+// room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import type { GamePhase, SpectatorView } from "./game-state";
-import type { SpriteKind } from "./pixel-art";
+import type { SpriteKind } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
 export const MAX_TEAMS = 8;
