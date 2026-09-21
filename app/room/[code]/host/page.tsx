@@ -53,6 +53,7 @@ function MoreDrawer({
           </section>
           <section className="flex flex-col gap-2">
             <div className="text-[15px]">導演筆記{aiOn ? "（AI 每次寫旁白都會參考）" : "（AI 旁白已關閉，只會記錄）"}</div>
+            <div className="text-[13px]">只影響語氣與風格，不是逐字台詞。想改已經出現的那一句，用下面的「改寫目前旁白」。</div>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} rows={3} placeholder="例如：用武俠口吻，紅隊是一群恐龍" className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
             <PixelButton onClick={() => onNotes(notes)} className="!m-0 !px-4 !py-2 text-[16px]">
               儲存導演筆記

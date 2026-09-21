@@ -100,6 +100,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await host.getByRole("button", { name: /更多/ }).click();
   // The drawer keeps only the host-device QR (the one that hands over control), not a second join QR.
   await expect(host.getByText("用另一台裝置主持")).toBeVisible();
+  await expect(host.getByText("不是逐字台詞")).toBeVisible(); // the notes are style guidance, not a script
   await expect(host.getByText("玩家掃描加入")).toHaveCount(0);
   await expect(host.getByRole("img", { name: "掃描加入" })).toHaveCount(0);
   await expect(host.getByRole("img", { name: "主持人 QR" })).toHaveCount(1);
