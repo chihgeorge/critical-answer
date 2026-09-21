@@ -15,17 +15,21 @@
     "check:bundle": "next build && sh scripts/check-bundle.sh",
     "test:live": "LIVE=1 vitest run lib/narration/llm.live.test.ts",
     "playtest": "sh scripts/playtest.sh start",
-    "playtest:stop": "sh scripts/playtest.sh stop"
+    "playtest:stop": "sh scripts/playtest.sh stop",
+    "dev:worker": "wrangler dev",
+    "typecheck:worker": "tsc --noEmit -p worker"
   },
   "dependencies": {
     "next": "16.2.4",
     "partykit": "^0.0.115",
+    "partyserver": "^0.5.10",
     "partysocket": "^1.1.18",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260921.1",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
@@ -37,6 +41,7 @@
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.5",
+    "wrangler": "^4.136.1"
   }
 }
