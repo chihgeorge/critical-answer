@@ -1,30 +1,44 @@
 import { Server, routePartykitRequest, type Connection, type WSMessage } from "partyserver";
 import { entryGate } from "../lib/gate";
+import { DungeonRoom } from "../lib/room/dungeon-room";
 
 export interface Env {
   /** The binding is named "main" on purpose: partysocket's default path is /parties/main/<room>. */
   main: DurableObjectNamespace<Room>;
   /** Comma-separated origins allowed to open a WebSocket, see lib/origin.ts. Unset means no browser page. */
   ALLOWED_ORIGINS?: string;
+  /** Secret for AI narration (wrangler secret put ANTHROPIC_API_KEY). Without it the room uses scripted lines. */
+  ANTHROPIC_API_KEY?: string;
 }
 
 /**
- * Spike room (plan task T1): proves routing, the SQLite-backed Durable Object migration, sockets and the
- * entry rules on a real deploy. It is replaced by the real game room in T2.
+ * Cloudflare adapter for the game room: one Durable Object per room code. All game logic lives in
+ * lib/room/dungeon-room.ts, which knows nothing about this platform.
  */
 export class Room extends Server<Env> {
-  // The room keeps connections in memory, so it must not hibernate.
+  // The room keeps its connections in memory, so it must not hibernate.
   static options = { hibernate: false };
 
-  async onConnect(conn: Connection) {
-    // Storage that survives a restart of the object: what the migration and persistence rely on.
-    const visits = ((await this.ctx.storage.get<number>("visits")) ?? 0) + 1;
-    this.ctx.storage.put("visits", visits);
-    conn.send(JSON.stringify({ type: "HELLO", room: this.name, visits }));
+  private game!: DungeonRoom;
+
+  onStart() {
+    this.game = new DungeonRoom({
+      broadcast: (message) => this.broadcast(message),
+      env: this.env,
+    });
   }
 
-  onMessage(_conn: Connection, message: WSMessage) {
-    if (typeof message === "string") this.broadcast(JSON.stringify({ type: "ECHO", text: message.slice(0, 200) }));
+  onConnect(conn: Connection) {
+    this.game.onConnect(conn);
+  }
+
+  onMessage(conn: Connection, message: WSMessage) {
+    // The protocol is JSON text; a binary frame is not a message we understand.
+    if (typeof message === "string") this.game.onMessage(message, conn);
+  }
+
+  onClose(conn: Connection) {
+    this.game.onClose(conn);
   }
 }
 
@@ -35,7 +49,6 @@ export default {
     if (new URL(request.url).pathname === "/healthz") return Response.json({ ok: true });
 
     const gate = (req: Request, lobby: { party: string }) => entryGate(req, lobby, env.ALLOWED_ORIGINS ?? "");
-
     return (await routePartykitRequest(request, env, { onBeforeConnect: gate, onBeforeRequest: gate })) ?? notFound();
   },
 } satisfies ExportedHandler<Env>;

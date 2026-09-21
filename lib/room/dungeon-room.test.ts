@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi } from "vitest";
-import DungeonRoom from "./index";
-import { BANK, bossQuestionIds, roomTemplates } from "../lib/question-bank";
-import { currentTurnTeamId } from "../lib/game-state";
+import { DungeonRoom } from "./dungeon-room";
+import type { Conn, RoomIO } from "./io";
+import { BANK, bossQuestionIds, roomTemplates } from "../question-bank";
+import { currentTurnTeamId } from "../game-state";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";
@@ -17,7 +18,7 @@ function makeConn(id = "conn-1") {
     id,
     send: vi.fn(),
     close: vi.fn(),
-  } as unknown as import("partykit/server").Connection;
+  } as unknown as Conn;
 }
 
 function makeRoom() {
@@ -25,7 +26,7 @@ function makeRoom() {
     id: "room-1",
     broadcast: vi.fn(),
     getConnections: vi.fn(() => []),
-  } as unknown as import("partykit/server").Room;
+  } as unknown as RoomIO;
 }
 
 function send(room: DungeonRoom, conn: ReturnType<typeof makeConn>, msg: object) {

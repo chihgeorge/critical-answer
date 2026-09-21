@@ -3,6 +3,9 @@
 // a small canvas filled cell by cell, so the app ships no image assets and the
 // art stays crisp at any integer scale (CSS `image-rendering: pixelated`).
 
+import type { SpriteKind } from "./sprite-kind";
+export type { SpriteKind };
+
 export const OUTLINE = "#2a1533";
 const K = OUTLINE;
 
@@ -99,8 +102,6 @@ function eye(P: Px, x: number, y: number, blink: boolean, big = false) {
   if (big) P.set(x + 1, y, "#fff");
   P.set(x + w - 1, y + h - 1, "#7a5a9a");
 }
-
-export type SpriteKind = "slime" | "ghost" | "dragon" | "owl" | "hero" | "crown" | "heart" | "torch";
 
 /** Native pixel size of each sprite; the component scales it with CSS. */
 export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {

@@ -9,7 +9,8 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "resolveJsonModule": true
   },
-  "include": ["./**/*.ts", "../lib/origin.ts", "../lib/gate.ts"]
+  "include": ["./**/*.ts", "../lib/origin.ts", "../lib/gate.ts", "../lib/room/dungeon-room.ts"]
 }

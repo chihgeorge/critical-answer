@@ -82,7 +82,7 @@ export function createRunner(opts: {
       } catch (err) {
         reason = err instanceof Error && "reason" in err ? String((err as { reason: unknown }).reason) : "error";
       } finally {
-        clearTimeout(timer);
+        if (timer !== undefined) clearTimeout(timer);
         if (reason === "timeout") abort.abort(); // stop paying for a call nobody will read
       }
       const provider = line === undefined ? "scripted" : opts.provider.name;
