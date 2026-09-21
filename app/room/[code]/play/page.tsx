@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
-import { getOrCreateTeamId } from "@/lib/room-code";
+import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
@@ -31,6 +31,11 @@ export default function PlayPage() {
   const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
     room: code,
+    // Every (re)connect says who we are again: a phone that slept or changed network comes back
+    // as the same team instead of staying "offline" and being skipped.
+    onOpen() {
+      send({ type: "JOIN", teamId: getOrCreateTeamId(), teamKey: getOrCreateTeamKey(), teamName });
+    },
     onMessage(event: MessageEvent) {
       let msg: ServerMessage;
       try {
@@ -80,7 +85,7 @@ export default function PlayPage() {
       joinedRef.current = true;
       const id = getOrCreateTeamId();
       setTeamId(id);
-      send({ type: "JOIN", teamId: id, teamName });
+      send({ type: "JOIN", teamId: id, teamKey: getOrCreateTeamKey(), teamName });
     }
     if (socket.readyState === socket.OPEN) {
       join();

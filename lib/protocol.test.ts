@@ -3,6 +3,7 @@ import { parseClientMessage, sanitizeText } from "./protocol";
 
 const TOKEN = "host-token-0123456789abcdef";
 const ID = "00000000-0000-0000-0000-000000000001";
+const KEY = "team-key-0123456789abcdef";
 
 describe("parseClientMessage", () => {
   it("returns null for non-objects and unknown types", () => {
@@ -12,18 +13,27 @@ describe("parseClientMessage", () => {
   });
 
   it("JOIN: accepts a valid message, rejects missing, wrong-type and oversize fields", () => {
-    expect(parseClientMessage({ type: "JOIN", teamId: ID, teamName: "A" })).toEqual({
+    expect(parseClientMessage({ type: "JOIN", teamId: ID, teamKey: KEY, teamName: "A" })).toEqual({
       type: "JOIN",
       teamId: ID,
+      teamKey: KEY,
       teamName: "A",
     });
     expect(parseClientMessage({ type: "JOIN", teamId: ID })).toBeNull();
     expect(parseClientMessage({ type: "JOIN", teamId: 1, teamName: "A" })).toBeNull();
-    expect(parseClientMessage({ type: "JOIN", teamId: ID, teamName: "x".repeat(101) })).toBeNull();
+    expect(parseClientMessage({ type: "JOIN", teamId: ID, teamKey: KEY, teamName: "x".repeat(101) })).toBeNull();
+  });
+
+  it("JOIN and REJOIN need a team key: 16-128 url-safe characters", () => {
+    for (const bad of [undefined, 5, "short", "has space in it 1234567", "a".repeat(129)]) {
+      expect(parseClientMessage({ type: "JOIN", teamId: ID, teamKey: bad, teamName: "A" })).toBeNull();
+      expect(parseClientMessage({ type: "REJOIN", teamId: ID, teamKey: bad })).toBeNull();
+    }
+    expect(parseClientMessage({ type: "JOIN", teamId: ID, teamName: "A" })).toBeNull();
   });
 
   it("REJOIN: accepts a valid message, rejects missing, wrong-type and oversize ids", () => {
-    expect(parseClientMessage({ type: "REJOIN", teamId: ID })).toEqual({ type: "REJOIN", teamId: ID });
+    expect(parseClientMessage({ type: "REJOIN", teamId: ID, teamKey: KEY })).toEqual({ type: "REJOIN", teamId: ID, teamKey: KEY });
     expect(parseClientMessage({ type: "REJOIN" })).toBeNull();
     expect(parseClientMessage({ type: "REJOIN", teamId: {} })).toBeNull();
     expect(parseClientMessage({ type: "REJOIN", teamId: "x".repeat(65) })).toBeNull();

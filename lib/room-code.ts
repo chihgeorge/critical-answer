@@ -36,6 +36,22 @@ export function getOrCreateTeamId(): string {
   return id;
 }
 
+const TEAM_KEY_STORAGE_KEY = "critical_answer_team_key";
+
+/**
+ * Client-only: this browser's team secret. teamId is public (every STATE message carries it), so
+ * this is what proves a connection really is that team when it reconnects.
+ */
+export function getOrCreateTeamKey(): string {
+  const stored = localStorage.getItem(TEAM_KEY_STORAGE_KEY);
+  if (stored) return stored;
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const key = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  localStorage.setItem(TEAM_KEY_STORAGE_KEY, key);
+  return key;
+}
+
 const HOST_TOKEN_PREFIX = "critical_answer_host_token_";
 
 /** Client-only: a fresh 32-hex-char host token (getRandomValues, so it works over plain http on a LAN). */

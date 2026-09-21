@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { generateRoomCode, getOrCreateTeamId } from "./room-code";
+import { generateRoomCode, getOrCreateTeamId, getOrCreateTeamKey } from "./room-code";
+import { TEAM_KEY_RE } from "./protocol";
 
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -70,5 +71,27 @@ describe("getOrCreateTeamId", () => {
     } finally {
       crypto.randomUUID = originalRandomUUID;
     }
+  });
+});
+
+describe("getOrCreateTeamKey", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("mints a key the server accepts, and keeps it across calls (a reconnect must prove the same key)", () => {
+    const first = getOrCreateTeamKey();
+    expect(first).toMatch(TEAM_KEY_RE);
+    expect(getOrCreateTeamKey()).toBe(first);
+  });
+
+  it("is not the team id (the id is public, the key is not)", () => {
+    expect(getOrCreateTeamKey()).not.toBe(getOrCreateTeamId());
+  });
+
+  it("differs between browsers", () => {
+    const a = getOrCreateTeamKey();
+    localStorage.clear();
+    expect(getOrCreateTeamKey()).not.toBe(a);
   });
 });
