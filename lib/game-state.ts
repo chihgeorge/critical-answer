@@ -129,11 +129,13 @@ function deal(
   return { questionId, used: base.map((u, i) => (i === roomIndex ? [...u, questionId] : u)) };
 }
 
+export const DEFAULT_GAME_CONFIG: GameConfig = { bossThreshold: 15 };
+
 export function createGame(
   teamSeeds: { id: string; name: string }[],
   rooms: RoomTemplate[],
   bossQuestionIds: string[],
-  config: GameConfig = { bossThreshold: 15 },
+  config: GameConfig = DEFAULT_GAME_CONFIG,
   bossMaxHp: number,
   rng: () => number = Math.random,
 ): GameState {

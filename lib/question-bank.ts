@@ -20,7 +20,7 @@ export interface BankMonster {
 }
 export interface Bank {
   rooms: { monster: BankMonster; baseDifficulty: Difficulty; questions: BankQuestion[] }[];
-  boss: { monster: BankMonster; lore: string; maxHp: number; questions: BankQuestion[] };
+  boss: { monster: BankMonster; maxHp: number; questions: BankQuestion[] };
 }
 
 const SPRITES: SpriteKind[] = ["slime", "ghost", "dragon"];
@@ -70,7 +70,6 @@ export function parseBank(raw: unknown): Bank {
     rooms,
     boss: {
       monster: parseMonster(boss!.monster, "boss"),
-      lore: typeof boss!.lore === "string" ? boss!.lore : "",
       maxHp: boss!.maxHp as number,
       questions: parseQuestions(boss!.questions, "boss", seen),
     },

@@ -1,5 +1,4 @@
-// @vitest-environment node
-// Real Anthropic API calls (node environment: happy-dom's fetch enforces browser CORS, a server's does not). Excluded from `npm test`; run with `ANTHROPIC_API_KEY=... npm run test:live`.
+// Real Anthropic API calls. Excluded from `npm test`; run with `ANTHROPIC_API_KEY=... npm run test:live`.
 // It costs a few cents. It checks that what the model actually returns passes our own validation.
 import { describe, it, expect } from "vitest";
 import { createLlmProvider } from "./llm";
