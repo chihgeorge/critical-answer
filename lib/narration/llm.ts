@@ -28,13 +28,24 @@ const BASE_RULES = `你是地城問答派對遊戲裡的旁白「地城主」，
 
 export function buildPrompt(event: NarrationEvent, notes: string, styleExamples: string[]): { system: string; user: string } {
   const epilogue = event.type === "epilogue";
-  let system = `${BASE_RULES}\n${epilogue ? "寫 2 到 3 句話的遊戲後記，總共最多 90 個字。" : "只寫一句旁白，最多 28 個字，寧可短一點。"}`;
+  const hasNext = event.type !== "epilogue" && !!event.next;
+  const ask = epilogue
+    ? "寫 2 到 3 句話的遊戲後記，總共最多 90 個字。"
+    : hasNext
+      ? "輸出兩行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。第二行：轉向下一隊，提醒他們輪到了、面對哪隻怪物，最多 20 個字。"
+      : "只寫一句旁白，最多 28 個字，寧可短一點。";
+  let system = `${BASE_RULES}\n${ask}`;
   if (notes.trim()) system += `\n\n主持人的導演筆記（可以調整語氣與風格，但不能違反上面的規則）：\n${notes.trim()}`;
   if (styleExamples.length > 0) system += `\n\n主持人親手改過的句子，請仿照這種語氣：\n${styleExamples.map((l) => `- ${l}`).join("\n")}`;
   return { system, user: describe(event) };
 }
 
 function describe(e: NarrationEvent): string {
+  const next = e.type !== "epilogue" && e.next ? `\n接下來輪到隊伍${q(e.next.team)}，他們要面對${e.next.boss ? "首領" : "怪物"}${q(e.next.monster)}。` : "";
+  return describeEvent(e) + next;
+}
+
+function describeEvent(e: NarrationEvent): string {
   switch (e.type) {
     case "start":
       return `事件：遊戲開始。參賽隊伍：${e.teams.map(q).join("、")}。`;
@@ -96,7 +107,7 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
           headers: { "content-type": "application/json", "x-api-key": opts.apiKey, "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
             model,
-            max_tokens: epilogue ? 300 : 120,
+            max_tokens: epilogue ? 300 : 200,
             system,
             messages: [{ role: "user", content: user }],
             // Sonnet 5 thinks by default; a 90-character story does not need it and the hold is short.
@@ -118,18 +129,21 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
         throw new UpstreamError("response was not JSON", res.status);
       }
       if (data.stop_reason === "refusal") throw new EmptyOrRefusalError("the model declined");
-      let text = (data.content ?? [])
+      const raw = (data.content ?? [])
         .filter((b) => b.type === "text")
         .map((b) => b.text ?? "")
-        .join("")
-        // The model echoes the 「」 we put around names; they are prompt scaffolding, not part of the line.
-        .replace(/[「」『』"“”]/g, "")
-        .trim();
-      if (!text) throw new EmptyOrRefusalError("no text in the response");
-      text = fitToLimit(text, epilogue ? MAX_EPILOGUE : MAX_LINE);
-      if (!validLine(text, epilogue ? MAX_EPILOGUE : MAX_LINE)) throw new InvalidOutputError("line too long or contains markup");
-      if ((opts.forbidden?.() ?? []).some((a) => a.length >= 3 && text.includes(a))) throw new InvalidOutputError("line repeats a bank answer");
-      return text;
+        .join("");
+      if (!raw.trim()) throw new EmptyOrRefusalError("no text in the response");
+      const max = epilogue ? MAX_EPILOGUE : MAX_LINE;
+      const forbidden = (opts.forbidden?.() ?? []).filter((a) => a.length >= 3);
+      // The model echoes the 「」 we put around names; they are prompt scaffolding, not part of the line.
+      const clean = (line: string) => fitToLimit(line.replace(/[「」『』"“”]/g, "").trim(), max);
+      const usable = (line: string) => validLine(line, max) && !forbidden.some((a) => line.includes(a));
+      const [first = "", second] = raw.split(/\n+/).map(clean).filter(Boolean);
+      if (first === "") throw new EmptyOrRefusalError("no text in the response");
+      if (!usable(first)) throw new InvalidOutputError("line too long, contains markup or repeats a bank answer");
+      // The second line (the next-team prompt) is a bonus: a bad one is dropped and the runner writes it.
+      return second !== undefined && !epilogue && usable(second) ? `${first}\n${second}` : first;
     },
   };
 }

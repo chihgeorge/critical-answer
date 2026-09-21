@@ -148,24 +148,56 @@ export function Nameplate({ children, className, style }: { children: ReactNode;
   );
 }
 
-/* ---------- Dialogue box: owl portrait, `…` loader, one typewriter line ---------- */
+/* ---------- Dialogue box: owl portrait, `…` loader, lines typed one after another ---------- */
 
-function Typewriter({ text }: { text: string }) {
+/** Reading time between one line and the next, after the first has finished typing. */
+export const LINE_PAUSE_MS = 2200;
+
+function Typewriter({ text, onDone }: { text: string; onDone: () => void }) {
   const [n, setN] = useState(0);
   useEffect(() => {
     let i = 0;
     const id = setInterval(() => {
       i = prefersReducedMotion() ? text.length : i + 1;
       setN(i);
-      if (i >= text.length) clearInterval(id);
+      if (i >= text.length) {
+        clearInterval(id);
+        onDone();
+      }
     }, 45);
     return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
   return <>{text.slice(0, n)}</>;
 }
 
+/**
+ * Plays `lines` in order. The ▼ shows only while another line is still to come,
+ * so a player learns that ▼ means "the owl has more to say"; the last line has none.
+ */
+function Sequence({ lines }: { lines: string[] }) {
+  const [i, setI] = useState(0);
+  const [typed, setTyped] = useState(false);
+  const last = i >= lines.length - 1;
+  useEffect(() => {
+    if (!typed || last) return;
+    const id = setTimeout(() => {
+      setI((c) => c + 1);
+      setTyped(false);
+    }, LINE_PAUSE_MS);
+    return () => clearTimeout(id);
+  }, [typed, last]);
+  return (
+    <>
+      <Typewriter key={i} text={lines[i]} onDone={() => setTyped(true)} />
+      {typed && !last && <span className="more">▼</span>}
+    </>
+  );
+}
+
 export function DialogueBox({
   text,
+  lines,
   loading = false,
   speaker = "地城主",
   accent,
@@ -173,8 +205,10 @@ export function DialogueBox({
   style,
   compact = false,
 }: {
-  /** The line to show. Ignored while `loading`. */
+  /** One line to show. Ignored while `loading`, or when `lines` is given. */
   text?: string;
+  /** Several lines, played in order with a ▼ between them. */
+  lines?: string[];
   /** Narration hold: shows a blinking `…` and keeps the portrait. */
   loading?: boolean;
   speaker?: string;
@@ -186,6 +220,7 @@ export function DialogueBox({
   compact?: boolean;
 }) {
   const portrait = compact ? 56 : 84; // multiples of the owl's 28px, so pixels stay square
+  const shown = (lines && lines.length > 0 ? lines : text ? [text] : [""]);
   return (
     <Panel
       tone="lav"
@@ -209,10 +244,7 @@ export function DialogueBox({
           …
         </span>
       ) : (
-        <>
-          <Typewriter key={text} text={text ?? ""} />
-          <span className="more">▼</span>
-        </>
+        <Sequence key={shown.join("\n")} lines={shown} />
       )}
     </Panel>
   );

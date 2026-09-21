@@ -10,7 +10,7 @@ import type { PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
-import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
+import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Nameplate, Panel, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
@@ -160,7 +160,7 @@ function Playing({ view, question, eventId, narration }: { view: SpectatorView; 
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         accent={inBoss ? "var(--danger)" : undefined}
         loading={isPending(eventId, narration)}
-        text={narration?.line ?? (turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……")}
+        lines={narration ? linesOf(narration) : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
       />
     </>
   );
@@ -210,7 +210,7 @@ function Finished({ view, winners, narration, epilogue }: { view: SpectatorView;
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         loading={!epilogue && !narration}
-        text={epilogue ?? narration?.line}
+        lines={epilogue ? [epilogue] : linesOf(narration)}
       />
     </>
   );

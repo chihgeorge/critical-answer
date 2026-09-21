@@ -103,6 +103,50 @@ describe("prompt", () => {
   });
 });
 
+describe("two lines (result, then the next team)", () => {
+  const withNext: NarrationEvent = { type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2, next: { team: "藍隊", monster: "軟趴趴史萊姆", boss: false } };
+
+  it("asks for two lines and names the next team and its monster as quoted data", () => {
+    const { system, user } = buildPrompt(withNext, "", []);
+    expect(system).toMatch(/兩行/);
+    expect(system).toMatch(/第二行/);
+    expect(user).toContain("「藍隊」");
+    expect(user).toContain("「軟趴趴史萊姆」");
+  });
+
+  it("says 首領 in the second-line ask when the next team faces the boss", () => {
+    const { user } = buildPrompt({ ...withNext, next: { team: "藍隊", monster: "深淵小黑龍", boss: true } }, "", []);
+    expect(user).toMatch(/首領/);
+  });
+
+  it("asks for one line when nobody is next", () => {
+    const { system } = buildPrompt({ type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9 }, "", []);
+    expect(system).not.toMatch(/兩行/);
+  });
+
+  it("returns both lines, newline separated", async () => {
+    const f = async () => ok(reply("紅隊答對了！\n輪到藍隊，史萊姆在等你們。"));
+    await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！\n輪到藍隊，史萊姆在等你們。");
+  });
+
+  it("drops an unusable second line but keeps the first", async () => {
+    const f = async () => ok(reply("紅隊答對了！\n<b>輪到</b>藍隊"));
+    await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！");
+    const g = async () => ok(reply("紅隊答對了！\n" + "字".repeat(60)));
+    await expect(make(g as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！");
+  });
+
+  it("does not let the second line repeat a bank answer", async () => {
+    const f = async () => ok(reply("紅隊答對了！\n答案是新高山喔"));
+    await expect(make(f as unknown as typeof fetch, { forbidden: () => ["新高山"] }).narrate(withNext)).resolves.toBe("紅隊答對了！");
+  });
+
+  it("rejects the whole answer when the first line is unusable", async () => {
+    const f = async () => ok(reply("字".repeat(60) + "\n輪到藍隊"));
+    await expect(make(f as unknown as typeof fetch).narrate(withNext)).rejects.toBeInstanceOf(InvalidOutputError);
+  });
+});
+
 describe("output", () => {
   it("returns the trimmed line and strips wrapping quotes", async () => {
     const f = async () => ok(reply("  「紅隊一劍破幽靈！」\n"));

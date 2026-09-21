@@ -36,7 +36,6 @@ function MoreDrawer({
   const [line, setLine] = useState(currentLine);
   const origin = location.origin;
   const token = getHostToken(code);
-  const joinUrl = `${origin}/?code=${code}`;
   const hostUrl = token ? `${origin}/room/${code}/host#k=${token}` : "";
   return (
     <div className="fixed inset-0 z-30 flex items-end bg-black/60" onClick={onClose}>
@@ -51,13 +50,6 @@ function MoreDrawer({
           <section>
             <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
             <div className="break-all text-[14px]">{`${origin}/room/${code}/screen`}</div>
-          </section>
-          <section className="flex items-center gap-3">
-            <Qr text={joinUrl} size={120} />
-            <div className="text-[14px]">
-              <div className="text-[15px]">玩家掃描加入</div>
-              <div className="break-all">{joinUrl}</div>
-            </div>
           </section>
           <section className="flex flex-col gap-2">
             <div className="text-[15px]">導演筆記{aiOn ? "（AI 每次寫旁白都會參考）" : "（AI 旁白已關閉，只會記錄）"}</div>
@@ -81,7 +73,7 @@ function MoreDrawer({
           </section>
           {hostUrl && (
             <section className="flex items-center gap-3">
-              <Qr text={hostUrl} size={120} />
+              <Qr text={hostUrl} size={120} alt="主持人 QR" />
               <div className="text-[14px]">
                 <div className="text-[15px]">用另一台裝置主持</div>
                 <div>這個連結擁有主持權，不要給玩家。</div>
@@ -235,6 +227,13 @@ export default function HostPage() {
               ))}
               {lobby.teams.length === 0 && <Panel className="px-3 py-2 text-[15px]">還沒有隊伍加入</Panel>}
             </ul>
+            <Panel className="flex items-center gap-3 px-3 py-2">
+              <Qr text={typeof location === "undefined" ? "" : `${location.origin}/?code=${code}`} size={120} />
+              <div className="text-[15px]">
+                <div className="text-[18px]">玩家掃描加入</div>
+                <div className="mt-1 text-[14px]">或輸入房間代碼 {code}</div>
+              </div>
+            </Panel>
             <Panel tone="lav" className="px-3 py-2">
               <label className="flex items-center gap-3 text-[16px]">
                 <input type="checkbox" className="h-5 w-5" checked={aiAvailable && aiOn} disabled={!aiAvailable} onChange={(e) => setAiOn(e.target.checked)} />

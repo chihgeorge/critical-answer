@@ -8,7 +8,7 @@ import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protoco
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
-import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
+import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, Panel, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 
 type LobbyState = { teams: { id: string; name: string }[] };
@@ -120,22 +120,38 @@ export default function PlayPage() {
           </Panel>
         )}
 
+        {/* Who has joined so far, updating live while everyone waits for the host. */}
+        {!game && lobby && (
+          <ul data-testid="roster" className="flex flex-col gap-2">
+            {lobby.teams.map((t, i) => (
+              <Panel key={t.id} tone={t.id === teamId ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-2">
+                <Sprite kind="hero" variant={i} scale={2} className="flex-none" />
+                <span className="min-w-0 flex-1 truncate text-[18px]">{t.name}</span>
+                {t.id === teamId && <span className="text-[14px]">你們</span>}
+              </Panel>
+            ))}
+          </ul>
+        )}
+
         {game && !finished && turn && (
           <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
             {isMyTurn ? "輪到我們了！" : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
         )}
 
-        <Panel tone={isMyTurn ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
-          <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
-            <div className="px-num my-1 text-[18px]" style={{ color: "#a8470f" }}>
-              {myTeam ? `${myTeam.score} / ${BOSS_THRESHOLD}` : `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`}
+        {/* While waiting, the roster above already highlights our own team. */}
+        {game && (
+          <Panel tone={isMyTurn ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
+            <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
+              <div className="px-num my-1 text-[18px]" style={{ color: "#a8470f" }}>
+                {myTeam ? `${myTeam.score} / ${BOSS_THRESHOLD}` : `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`}
+              </div>
+              {myTeam && <ScoreMeter score={Math.min(myTeam.score, BOSS_THRESHOLD)} max={BOSS_THRESHOLD} active={isMyTurn} />}
             </div>
-            {myTeam && <ScoreMeter score={Math.min(myTeam.score, BOSS_THRESHOLD)} max={BOSS_THRESHOLD} active={isMyTurn} />}
-          </div>
-        </Panel>
+          </Panel>
+        )}
 
         {game && !finished && turn?.team && (
           <Panel className="flex items-center gap-3 px-3 py-[10px]">
@@ -158,11 +174,16 @@ export default function PlayPage() {
           <DialogueBox
             compact
             loading={!!game && !finished && isPending(game.eventId, narration)}
-            text={
+            lines={
               finished
-                ? (epilogue ?? narration?.line ?? "冒險結束了，大螢幕正在頒獎。")
-                : (narration?.line ??
-                  (turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"))
+                ? epilogue
+                  ? [epilogue]
+                  : narration
+                    ? linesOf(narration)
+                    : ["冒險結束了，大螢幕正在頒獎。"]
+                : narration
+                  ? linesOf(narration)
+                  : [turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"]
             }
           />
         </div>

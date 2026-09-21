@@ -2,7 +2,7 @@
 // always emits exactly one line (the provider's, or the scripted fallback).
 // No upgrade, no second message for the same event.
 
-import type { NarrationEvent } from "./events";
+import type { NarrationEvent, NextTurn } from "./events";
 import type { NarrationProvider } from "./scripted";
 
 /** One narration line. 40 was too tight for the tone the model writes; 50 fits the dialogue box in two lines. */
@@ -18,6 +18,10 @@ export interface TranscriptEntry {
   /** Team name -> score when the event happened. */
   scores?: Record<string, number>;
   line: string;
+  /** The follow-up line about the team now on turn, when there is one. */
+  then?: string;
+  /** Who wrote `then`: the provider, or "scripted" when its line was missing or invalid. */
+  thenSource?: string;
   provider: string;
   latencyMs: number;
   /** Why the scripted line was used: a named LLM failure, or timeout / error / invalid. */
@@ -41,11 +45,11 @@ export function validLine(line: unknown, max = MAX_LINE): line is string {
 
 export function createRunner(opts: {
   provider: NarrationProvider;
-  fallback: { line(event: NarrationEvent): string };
+  fallback: { line(event: NarrationEvent): string; nextLine(next: NextTurn): string };
   holdMs?: number;
   /** The epilogue is one long call after the game, so it may take longer. */
   epilogueHoldMs?: number;
-  emit(eventId: number, line: string, provider: string, event: NarrationEvent): void;
+  emit(eventId: number, line: string, provider: string, event: NarrationEvent, then?: string): void;
   record(entry: TranscriptEntry): void;
 }) {
   return {
@@ -56,6 +60,7 @@ export function createRunner(opts: {
       const holdMs = isEpilogue ? (opts.epilogueHoldMs ?? DEFAULT_EPILOGUE_HOLD_MS) : (opts.holdMs ?? DEFAULT_HOLD_MS);
       const max = isEpilogue ? MAX_EPILOGUE_LINE : MAX_LINE;
       let line: string | undefined;
+      let second: string | undefined;
       let reason: string | undefined;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const abort = new AbortController();
@@ -65,8 +70,14 @@ export function createRunner(opts: {
         });
         const got = await Promise.race([opts.provider.narrate(event, { signal: abort.signal }), timeout]);
         if (got === null) reason = "timeout";
-        else if (validLine(got, max)) line = got.trim();
-        else reason = "invalid";
+        else {
+          // A provider may return the result line and the follow-up on two lines.
+          const [first, next] = got.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+          if (validLine(first, max)) {
+            line = first;
+            second = next;
+          } else reason = "invalid";
+        }
       } catch (err) {
         reason = err instanceof Error && "reason" in err ? String((err as { reason: unknown }).reason) : "error";
       } finally {
@@ -75,13 +86,27 @@ export function createRunner(opts: {
       }
       const provider = line === undefined ? "scripted" : opts.provider.name;
       const final = line ?? opts.fallback.line(event);
-      opts.emit(eventId, final, provider, event);
+      // Only a turn event has someone next. The follow-up is the provider's if it is usable, else scripted.
+      const next = event.type === "epilogue" ? undefined : event.next;
+      let then: string | undefined;
+      let thenSource: string | undefined;
+      if (next) {
+        if (line !== undefined && validLine(second, MAX_LINE)) {
+          then = second.trim();
+          thenSource = opts.provider.name;
+        } else {
+          then = opts.fallback.nextLine(next);
+          thenSource = "scripted";
+        }
+      }
+      opts.emit(eventId, final, provider, event, then);
       opts.record({
         eventId,
         at: new Date().toISOString(),
         event,
         scores,
         line: final,
+        ...(then ? { then, thenSource } : {}),
         provider,
         latencyMs: Date.now() - started,
         ...(reason ? { fallbackReason: reason } : {}),
