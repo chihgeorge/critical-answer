@@ -24,7 +24,7 @@ D&D 風格的地城問答派對遊戲。名字是 *Critical Hit*（爆擊）的�
 ## 技術棧
 
 - [Next.js](https://nextjs.org/) 16 + React 19 + Tailwind CSS 4 + TypeScript
-- [PartyKit](https://www.partykit.io/)：房間與 WebSocket 連線層（[party/index.ts](party/index.ts)）
+- [Cloudflare Workers](https://workers.cloudflare.com/) + Durable Objects（[`partyserver`](https://github.com/cloudflare/partykit/tree/main/packages/partyserver)）：房間與 WebSocket 連線層，一個房間代碼一個 Durable Object（[worker/index.ts](worker/index.ts)）。遊戲邏輯在 [lib/room/dungeon-room.ts](lib/room/dungeon-room.ts)，不依賴任何平台
 - 像素畫面全部用程式繪製，字型（俐方體11號、Press Start 2P，皆 SIL OFL）放在 `public/fonts/`，沒有網路也能玩。設計規則見 [DESIGN.md](DESIGN.md)
 - Anthropic Messages API（選用）：AI 旁白，只在伺服器端呼叫
 - Vitest：單元測試；Playwright：端對端測試
@@ -38,24 +38,11 @@ npm install
 npm run dev
 ```
 
-`npm run dev` 會同時啟動 Next.js（`http://localhost:3000`）和 PartyKit（預設 `localhost:1999`）。如果 1999 埠被別的專案占用，PartyKit 會跑到隨機埠，前端就連不上：改用 `npx partykit dev --port 1998`，並讓 `NEXT_PUBLIC_PARTYKIT_HOST` 指向同一個埠。
+`npm run dev` 會同時啟動 Next.js（`http://localhost:3000`）和房間伺服器（`wrangler dev`，`localhost:8787`，和 Cloudflare 上跑的是同一份程式）。本機只綁 localhost，手機要加入請用下面的區網試玩。
 
-### 讓手機加入（區網）
+### 讓手機加入（區網試玩）
 
-手機連不到你電腦的 `localhost`，所以要指定電腦的區網 IP：
-
-1. 建立 `.env.local`，內容是電腦的區網 IP 加上 PartyKit 的連接埠，例如：
-
-   ```
-   NEXT_PUBLIC_PARTYKIT_HOST=192.168.1.10:1999
-   ```
-
-2. 重啟 `npm run dev`。
-3. 主持人和玩家都用 `http://<區網 IP>:3000` 開啟網頁，手機和電腦要在同一個 Wi-Fi。
-
-### 一個指令的區網試玩
-
-要拿去給朋友玩，不想手動設定的話：
+手機連不到你電腦的 `localhost`，所以要用區網 IP。一個指令搞定，手機和電腦要在同一個 Wi-Fi：
 
 ```bash
 sh scripts/playtest.sh start    # 建置正式版、啟動，最後印出網址
@@ -63,21 +50,21 @@ sh scripts/playtest.sh status
 sh scripts/playtest.sh stop
 ```
 
-它自動抓區網 IP，用 3100（網頁）和 1998（PartyKit）兩個埠，停止時也只依這兩個埠關閉，不會動到其他專案。手機打不開時，看看 macOS 防火牆有沒有擋 node 的連入連線。（同樣的指令也有 `npm run playtest` / `npm run playtest:stop`。）
+它自動抓區網 IP，用 3100（網頁）和 1998（房間伺服器）兩個埠，停止時也只依這兩個埠關閉，不會動到其他專案。手機打不開時，看看 macOS 防火牆有沒有擋 node 的連入連線。（同樣的指令也有 `npm run playtest` / `npm run playtest:stop`。）
 
 ### AI 旁白（選用）
 
 沒有金鑰也能玩，旁白會用腳本句。要讓 Claude 即時寫旁白：
 
-1. 在**專案根目錄**建立 `.env`（PartyKit 讀這個檔，不是 `.env.local`）：
+1. 在**專案根目錄**建立 `.env`（`wrangler dev` 讀這個檔，不是 `.env.local`）：
 
    ```
    ANTHROPIC_API_KEY=sk-ant-...
    ```
 
-2. 重啟 `npm run dev:party`（或 `sh scripts/playtest.sh start`）。主持人開房間後，大廳會出現「AI 旁白」開關（沒有金鑰時是灰的）。
+2. 重啟 `npm run dev:worker`（或 `sh scripts/playtest.sh start`）。主持人開房間後，大廳會出現「AI 旁白」開關（沒有金鑰時是灰的）。
 
-金鑰只在伺服器（PartyKit）讀取，不要加 `NEXT_PUBLIC_` 前綴，否則會進到瀏覽器。旁白用 `claude-haiku-4-5`，遊戲結束的後記用 `claude-sonnet-5`。每句旁白最多等 3 秒（後記 15 秒），逾時、出錯或內容不合格就改用腳本句；連續失敗 3 次或金鑰被拒絕（401/403）就整個房間改用腳本。玩家輸入的隊伍名稱只會以資料的形式進提示詞，題目和答案完全不會進提示詞。
+金鑰只在伺服器（Worker）讀取，不要加 `NEXT_PUBLIC_` 前綴，否則會進到瀏覽器。旁白用 `claude-haiku-4-5`，遊戲結束的後記用 `claude-sonnet-5`。每句旁白最多等 3 秒（後記 15 秒），逾時、出錯或內容不合格就改用腳本句；連續失敗 3 次或金鑰被拒絕（401/403）就整個房間改用腳本。玩家輸入的隊伍名稱只會以資料的形式進提示詞，題目和答案完全不會進提示詞。
 
 主持人頁 `⚙ 更多` 裡有導演筆記（例如「用武俠口吻」）、改寫目前旁白，和旁白紀錄下載（每句的事件、當時分數、來源、延遲和備援原因；伺服器重啟後會消失）。
 
@@ -87,8 +74,8 @@ sh scripts/playtest.sh stop
 
 | 指令 | 說明 |
 | --- | --- |
-| `npm run dev` | 同時啟動前端與 PartyKit |
-| `npm run dev:next` / `npm run dev:party` | 分別啟動 |
+| `npm run dev` | 同時啟動前端與房間伺服器（`wrangler dev`） |
+| `npm run dev:next` / `npm run dev:worker` | 分別啟動 |
 | `npm run playtest` / `npm run playtest:stop` | 建置正式版並在區網啟動／停止（見上） |
 | `npm test` | 執行單元測試（不含會呼叫 Claude 的測試） |
 | `ANTHROPIC_API_KEY=... npm run test:live` | 用真的金鑰跑 LLM 旁白冒煙測試（會花幾分錢） |
@@ -118,7 +105,9 @@ lib/question-bank.ts     題庫載入、驗證、公開題目（不含答案）
 lib/narration/           旁白：事件、腳本句、LLM、斷路器、執行器
 lib/pixel-art.ts         程式繪製的像素角色與場景
 lib/turn-info.ts         從公開狀態算出輪到誰、面對哪隻怪
-party/index.ts           PartyKit 房間處理，把狀態機接到 WebSocket
+worker/index.ts          Cloudflare Worker：Durable Object 房間與入口規則（只放行 /parties/main、Origin 白名單）
+lib/room/                房間邏輯（dungeon-room.ts）與它需要的兩個小介面（io.ts），不依賴平台
+lib/gate.ts、origin.ts   Worker 入口規則
 e2e/                     Playwright 端對端測試
 scripts/                 playtest.sh（區網試玩）、check-bundle.sh
 public/fonts/            內建字型
@@ -132,7 +121,7 @@ TODOS.md                 已知問題與延後事項
 - **狀態只存在記憶體**：伺服器重啟，整場遊戲和旁白紀錄就會消失，三個畫面都會顯示「伺服器重新啟動，遊戲已重置」。玩家手機斷線或重新整理後，會用同一組隊伍身分自動回到原本那隊，不會被跳過。
 - **主持人身分靠金鑰**：建立房間時瀏覽器產生一把金鑰，放在網址的 `#k=`，第一個用它認領的裝置成為主持人，之後同一把金鑰可以從別的裝置接手。保護只有這把金鑰加 4 個字母的房間代碼，**不要把主持人網址給玩家**。
 - **隊伍身分**：隊伍 ID 是公開的（每次狀態廣播都帶著），所以每隊另外有一把只存在自己瀏覽器裡的密鑰，重連時要出示。別人拿到隊伍 ID 也冒用不了。但**房間沒有密碼**：任何知道 4 碼代碼的人都能加入（最多 8 隊、每個房間最多 60 條連線）。
-- **尚未正式部署**：PartyKit CLI 目前有兩個相容性 bug 擋住部署，所以只能在本機或區網玩。詳見 [TODOS.md](TODOS.md)。
+- **雲端還在建置中**：房間伺服器已部署到 Cloudflare（`https://critical-answer.aiko-studio.workers.dev`），但網頁前端還沒部署，`ALLOWED_ORIGINS` 也還是空的，所以目前只能在本機或區網玩。房間狀態尚未持久化，重新部署會清掉進行中的遊戲。進度見 [docs/designs](docs/designs) 與 [TODOS.md](TODOS.md)。
 - 怪物只有三張圖（史萊姆、幽靈、小黑龍），第 3–5 房是換色。
 - 最多 8 隊；8 隊同時在線時，大螢幕上方的隊伍卡會變得很窄，還沒有實測過。
 - 玩家手機與大螢幕沒有斷線提示，只有主持人頁有。
