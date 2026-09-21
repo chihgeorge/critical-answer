@@ -20,6 +20,8 @@ import { createBreaker, withBreaker } from "../lib/narration/breaker";
 
 const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TRANSCRIPT = 500;
+/** Sockets per room: players, screens and the host, with room to spare. Stops one client opening thousands. */
+const MAX_CONNECTIONS = 60;
 /** Lets the kill-shot line be read before the story arrives. */
 const EPILOGUE_DELAY_MS = 4000;
 
@@ -70,8 +72,12 @@ export default class DungeonRoom implements Party.Server {
   private hostConns = new Map<string, Party.Connection>();
   /** Changes whenever the room instance restarts, so clients can show "game reset". */
   private roomEpoch = crypto.randomUUID();
-  /** connection id -> team id, so onClose can mark the right team offline. */
+  /** connection id -> team id, so onClose can mark the right team offline. Only set after the connection proved the team key. */
   private connTeam = new Map<string, string>();
+  /** team id -> team secret, set by the team's first JOIN (teamId is public, the key is not). */
+  private teamKeys = new Map<string, string>();
+  /** Live connections we accepted, for the per-room cap. */
+  private conns = new Set<string>();
 
   /** `rng` is injectable so tests can make question dealing deterministic. */
   /** Counts the start and every accepted judgment; each gets exactly one NARRATION. */
@@ -232,16 +238,24 @@ export default class DungeonRoom implements Party.Server {
   }
 
   onConnect(conn: Party.Connection) {
+    if (this.conns.size >= MAX_CONNECTIONS) {
+      conn.close();
+      return;
+    }
+    this.conns.add(conn.id);
     this.sendTo(conn, this.snapshot());
     if (this.lastNarration) this.sendTo(conn, { type: "NARRATION", ...this.lastNarration });
     if (this.epilogue) this.sendTo(conn, { type: "EPILOGUE", text: this.epilogue });
   }
 
   onClose(conn: Party.Connection) {
+    this.conns.delete(conn.id);
     this.hostConns.delete(conn.id);
     const teamId = this.connTeam.get(conn.id);
     this.connTeam.delete(conn.id);
     if (!teamId || !this.game) return;
+    // The team may already have a newer connection (a reload or reconnect): then it is still online.
+    if ([...this.connTeam.values()].includes(teamId)) return;
     try {
       this.game = setTeamOnline(this.game, teamId, false);
       this.broadcastState();
@@ -272,10 +286,10 @@ export default class DungeonRoom implements Party.Server {
         this.handleHostClaim(sender, msg.token);
         break;
       case "JOIN":
-        this.handleJoin(sender, msg.teamId, msg.teamName);
+        this.handleJoin(sender, msg.teamId, msg.teamKey, msg.teamName);
         break;
       case "REJOIN":
-        this.handleRejoin(sender, msg.teamId);
+        this.handleRejoin(sender, msg.teamId, msg.teamKey);
         break;
       case "HOST_START":
         this.handleHostStart(sender, msg.aiNarration);
@@ -306,9 +320,22 @@ export default class DungeonRoom implements Party.Server {
     this.sendAnswer(conn);
   }
 
-  private handleJoin(conn: Party.Connection, teamId: string, rawName: string) {
+  private handleJoin(conn: Party.Connection, teamId: string, teamKey: string, rawName: string) {
     if (!isValidTeamId(teamId)) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_team_id" });
+      return;
+    }
+    const known = this.teamKeys.get(teamId);
+    if (known !== undefined) {
+      // An existing team: only the client holding its key may speak for it. During a game this is a
+      // reconnect or a page reload (the phone sends JOIN each time its socket opens).
+      if (!tokensEqual(known, teamKey)) {
+        this.sendTo(conn, { type: "ERROR", error: "bad_token" });
+        return;
+      }
+      this.connTeam.set(conn.id, teamId);
+      if (this.game) this.game = setTeamOnline(this.game, teamId, true);
+      this.broadcastState();
       return;
     }
     if (this.game) {
@@ -320,45 +347,37 @@ export default class DungeonRoom implements Party.Server {
       this.sendTo(conn, { type: "ERROR", error: "invalid_name" });
       return;
     }
-    if (
-      this.pendingTeams.length >= MAX_TEAMS &&
-      !this.pendingTeams.some((t) => t.id === teamId)
-    ) {
+    if (this.pendingTeams.length >= MAX_TEAMS) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "room_full" });
       return;
     }
 
+    this.teamKeys.set(teamId, teamKey);
     this.connTeam.set(conn.id, teamId);
-    if (!this.pendingTeams.some((t) => t.id === teamId)) {
-      this.pendingTeams.push({ id: teamId, name });
-    }
+    this.pendingTeams.push({ id: teamId, name });
     this.broadcastState();
   }
 
-  private handleRejoin(conn: Party.Connection, teamId: string) {
+  private handleRejoin(conn: Party.Connection, teamId: string, teamKey: string) {
     if (!isValidTeamId(teamId)) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_team_id" });
       return;
     }
-
+    const known = this.teamKeys.get(teamId);
+    if (known === undefined) {
+      this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
+      return;
+    }
+    if (!tokensEqual(known, teamKey)) {
+      this.sendTo(conn, { type: "ERROR", error: "bad_token" });
+      return;
+    }
+    this.connTeam.set(conn.id, teamId);
     if (this.game) {
-      const known = this.game.teams.some((t) => t.id === teamId);
-      if (!known) {
-        this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
-        return;
-      }
-      this.connTeam.set(conn.id, teamId);
       this.game = setTeamOnline(this.game, teamId, true);
       this.broadcastState();
       return;
     }
-
-    const known = this.pendingTeams.some((t) => t.id === teamId);
-    if (!known) {
-      this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
-      return;
-    }
-    this.connTeam.set(conn.id, teamId);
     this.sendTo(conn, this.snapshot());
   }
 

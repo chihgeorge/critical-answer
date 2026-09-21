@@ -3,11 +3,15 @@ import { describe, it, expect, vi } from "vitest";
 import DungeonRoom from "./index";
 import { DEFAULT_BOSS_QUESTION_IDS, DEFAULT_ROOMS } from "../lib/fixtures";
 import { BANK } from "../lib/question-bank";
+import { currentTurnTeamId } from "../lib/game-state";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";
 const T3 = "00000000-0000-0000-0000-000000000003";
 const BAD_ID = "not-a-uuid";
+/** A team's secret: only the client that created the team knows it. */
+const KEY = "team-key-0123456789abcdef";
+const KEY2 = "another-key-0123456789abcd";
 
 function makeConn(id = "conn-1") {
   return {
@@ -58,7 +62,7 @@ function makeRoomWithHost() {
 function joinTeams(room: DungeonRoom, hostConn: ReturnType<typeof makeConn>, count: number) {
   const ids = [T1, T2, T3].slice(0, count);
   const conns = ids.map((id, i) => makeConn(`player-conn-${i}`));
-  ids.forEach((id, i) => send(room, conns[i], { type: "JOIN", teamId: id, teamName: `Team ${i}` }));
+  ids.forEach((id, i) => send(room, conns[i], { type: "JOIN", teamId: id, teamKey: KEY, teamName: `Team ${i}` }));
   return { ids, conns };
 }
 
@@ -168,21 +172,21 @@ describe("JOIN", () => {
   it("rejects a non-UUID team id", () => {
     const { room } = makeRoomWithHost();
     const conn = makeConn();
-    send(room, conn, { type: "JOIN", teamId: BAD_ID, teamName: "Team X" });
+    send(room, conn, { type: "JOIN", teamId: BAD_ID, teamKey: KEY, teamName: "Team X" });
     expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "invalid_team_id" });
   });
 
   it("rejects an empty/whitespace team name after sanitization", () => {
     const { room } = makeRoomWithHost();
     const conn = makeConn();
-    send(room, conn, { type: "JOIN", teamId: T1, teamName: "   " });
+    send(room, conn, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "   " });
     expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "invalid_name" });
   });
 
   it("strips HTML-special characters from a team name", () => {
     const { room } = makeRoomWithHost();
     const conn = makeConn();
-    send(room, conn, { type: "JOIN", teamId: T1, teamName: "<b>Team</b>" });
+    send(room, conn, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "<b>Team</b>" });
     const state = lastBroadcast(room);
     expect(state.teams[0].name).toBe("bTeam/b");
   });
@@ -190,7 +194,7 @@ describe("JOIN", () => {
   it("broadcasts the updated lobby roster on a successful join", () => {
     const { room } = makeRoomWithHost();
     const conn = makeConn();
-    send(room, conn, { type: "JOIN", teamId: T1, teamName: "Team A" });
+    send(room, conn, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Team A" });
     expect(lastBroadcast(room)).toMatchObject({ type: "LOBBY", teams: [{ id: T1, name: "Team A" }] });
   });
 
@@ -198,12 +202,12 @@ describe("JOIN", () => {
     const { room } = makeRoomWithHost();
     for (let i = 0; i < 8; i++) {
       const id = `00000000-0000-0000-0000-00000000000${i}`;
-      send(room, makeConn(`conn-${i}`), { type: "JOIN", teamId: id, teamName: `Team ${i}` });
+      send(room, makeConn(`conn-${i}`), { type: "JOIN", teamId: id, teamKey: KEY, teamName: `Team ${i}` });
     }
     const overflowConn = makeConn("overflow");
     send(room, overflowConn, {
       type: "JOIN",
-      teamId: "00000000-0000-0000-0000-000000000009",
+      teamId: "00000000-0000-0000-0000-000000000009", teamKey: KEY,
       teamName: "One Too Many",
     });
     expect(lastSentTo(overflowConn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "room_full" });
@@ -215,10 +219,10 @@ describe("JOIN", () => {
     for (let i = 0; i < 8; i++) {
       const id = `00000000-0000-0000-0000-00000000000${i}`;
       ids.push(id);
-      send(room, makeConn(`conn-${i}`), { type: "JOIN", teamId: id, teamName: `Team ${i}` });
+      send(room, makeConn(`conn-${i}`), { type: "JOIN", teamId: id, teamKey: KEY, teamName: `Team ${i}` });
     }
     const rejoinConn = makeConn("rejoin-conn");
-    send(room, rejoinConn, { type: "JOIN", teamId: ids[0], teamName: "Team 0 again" });
+    send(room, rejoinConn, { type: "JOIN", teamId: ids[0], teamKey: KEY, teamName: "Team 0 again" });
     expect(lastSentTo(rejoinConn)).toBeNull();
   });
 
@@ -227,7 +231,7 @@ describe("JOIN", () => {
     joinTeams(room, hostConn, 1);
     send(room, hostConn, { type: "HOST_START" });
     const conn = makeConn("latecomer");
-    send(room, conn, { type: "JOIN", teamId: T2, teamName: "Late Team" });
+    send(room, conn, { type: "JOIN", teamId: T2, teamKey: KEY, teamName: "Late Team" });
     expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "game_already_started" });
   });
 });
@@ -329,14 +333,14 @@ describe("REJOIN", () => {
   it("rejects a non-UUID team id", () => {
     const { room } = makeRoomWithHost();
     const conn = makeConn();
-    send(room, conn, { type: "REJOIN", teamId: BAD_ID });
+    send(room, conn, { type: "REJOIN", teamId: BAD_ID, teamKey: KEY });
     expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "invalid_team_id" });
   });
 
   it("rejects rejoining an unknown team before the game starts", () => {
     const { room } = makeRoomWithHost();
     const conn = makeConn();
-    send(room, conn, { type: "REJOIN", teamId: T1 });
+    send(room, conn, { type: "REJOIN", teamId: T1, teamKey: KEY });
     expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "unknown_team" });
   });
 
@@ -344,7 +348,7 @@ describe("REJOIN", () => {
     const { room, hostConn } = makeRoomWithHost();
     joinTeams(room, hostConn, 1);
     const conn = makeConn("reconnect");
-    send(room, conn, { type: "REJOIN", teamId: T1 });
+    send(room, conn, { type: "REJOIN", teamId: T1, teamKey: KEY });
     expect(lastSentTo(conn)).toMatchObject({ type: "LOBBY" });
   });
 
@@ -359,7 +363,7 @@ describe("REJOIN", () => {
     expect(room.game!.teams[0].online).toBe(false);
 
     const conn = makeConn("player-conn-0-again");
-    send(room, conn, { type: "REJOIN", teamId: ids[0] });
+    send(room, conn, { type: "REJOIN", teamId: ids[0], teamKey: KEY });
     expect(room.game!.teams[0].online).toBe(true);
   });
 
@@ -368,7 +372,7 @@ describe("REJOIN", () => {
     joinTeams(room, hostConn, 1);
     send(room, hostConn, { type: "HOST_START" });
     const conn = makeConn();
-    send(room, conn, { type: "REJOIN", teamId: T3 });
+    send(room, conn, { type: "REJOIN", teamId: T3, teamKey: KEY });
     expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "unknown_team" });
   });
 });
@@ -624,7 +628,7 @@ describe("narration (T5-T7)", () => {
     it("is not generated again when GAME_OVER is re-broadcast (close, rejoin)", async () => {
       const { room, conns } = await finishGame();
       room.onClose(conns[0]);
-      send(room, makeConn("again"), { type: "REJOIN", teamId: T1 });
+      send(room, makeConn("again"), { type: "REJOIN", teamId: T1, teamKey: KEY });
       await sleep(30);
       expect(all(room).filter((m) => m.type === "EPILOGUE")).toHaveLength(1);
     });
@@ -962,3 +966,91 @@ describe("story moves on to the next team (two-line narration)", () => {
     expect(narrs(room)[0]).toMatchObject({ line: "結果句在這裡！", then: "輪到 Team 1，準備好了嗎？" });
   });
 });
+
+describe("team identity and reconnect (audit findings)", () => {
+  function twoTeamGame() {
+    const { room, hostConn } = makeRoomWithHost();
+    const { ids, conns } = joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn, ids, conns };
+  }
+  const online = (room: DungeonRoom) => room.game!.teams.map((t) => t.online);
+
+  it("another connection cannot take over an existing team id with a different key", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    joinTeams(room, hostConn, 1);
+    const attacker = makeConn("attacker");
+    send(room, attacker, { type: "JOIN", teamId: T1, teamKey: KEY2, teamName: "Hijack" });
+    expect(lastSentTo(attacker)).toMatchObject({ type: "ERROR", error: "bad_token" });
+    expect(lastBroadcast(room)).toMatchObject({ type: "LOBBY", teams: [{ id: T1, name: "Team 0" }] });
+  });
+
+  it("impersonating a team with REJOIN and a wrong key does nothing, and leaving does not take the team offline", () => {
+    const { room, ids } = twoTeamGame();
+    const spy = makeConn("spy");
+    send(room, spy, { type: "REJOIN", teamId: ids[1], teamKey: KEY2 });
+    expect(lastSentTo(spy)).toMatchObject({ type: "ERROR", error: "bad_token" });
+    room.onClose(spy);
+    expect(online(room)).toEqual([true, true]);
+    expect(currentTurnAny(room)).not.toBeNull();
+  });
+
+  it("a phone that reconnects (JOIN with its own id and key) comes back online after the game started", () => {
+    const { room, ids, conns } = twoTeamGame();
+    room.onClose(conns[0]);
+    expect(online(room)).toEqual([false, true]);
+    const again = makeConn("player-again");
+    send(room, again, { type: "JOIN", teamId: ids[0], teamKey: KEY, teamName: "Team 0" });
+    expect(online(room)).toEqual([true, true]);
+    expect(lastBroadcast(room)).toMatchObject({ type: "STATE" });
+  });
+
+  it("REJOIN with the right key restores the team; the wrong key is refused", () => {
+    const { room, ids, conns } = twoTeamGame();
+    room.onClose(conns[0]);
+    const bad = makeConn("bad");
+    send(room, bad, { type: "REJOIN", teamId: ids[0], teamKey: KEY2 });
+    expect(lastSentTo(bad)).toMatchObject({ error: "bad_token" });
+    expect(online(room)).toEqual([false, true]);
+    send(room, makeConn("good"), { type: "REJOIN", teamId: ids[0], teamKey: KEY });
+    expect(online(room)).toEqual([true, true]);
+  });
+
+  it("an unknown team still cannot join once the game has started", () => {
+    const { room } = twoTeamGame();
+    const late = makeConn("late");
+    send(room, late, { type: "JOIN", teamId: T3, teamKey: KEY, teamName: "Late" });
+    expect(lastSentTo(late)).toMatchObject({ error: "game_already_started" });
+  });
+
+  it("a page reload: the old connection closing after the new one joined does not take the team offline", () => {
+    const { room, ids, conns } = twoTeamGame();
+    send(room, makeConn("reloaded"), { type: "JOIN", teamId: ids[0], teamKey: KEY, teamName: "Team 0" });
+    room.onClose(conns[0]); // the stale socket closes late
+    expect(online(room)).toEqual([true, true]);
+  });
+
+  it("the turn keeps going for a team that came back", () => {
+    const { room, ids, conns } = twoTeamGame();
+    room.onClose(conns[0]);
+    send(room, makeConn("again"), { type: "JOIN", teamId: ids[0], teamKey: KEY, teamName: "Team 0" });
+    expect(currentTurnAny(room)).toBe(ids[0]);
+  });
+
+  it("caps the connections to one room", () => {
+    const room = new DungeonRoom(makeRoom() as any, () => 0);
+    const conns = Array.from({ length: 61 }, (_, i) => makeConn(`c${i}`));
+    conns.forEach((c) => room.onConnect(c));
+    expect((conns[59].close as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+    expect((conns[60].close as ReturnType<typeof vi.fn>)).toHaveBeenCalled();
+    room.onClose(conns[0]);
+    const next = makeConn("after-a-slot-frees");
+    room.onConnect(next);
+    expect((next.close as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+  });
+});
+
+function currentTurnAny(room: DungeonRoom) {
+  const g = room.game!;
+  return currentTurnTeamId(g);
+}

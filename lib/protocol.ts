@@ -26,8 +26,9 @@ export interface PublicQuestion {
 }
 
 export type ClientMessage =
-  | { type: "JOIN"; teamId: string; teamName: string }
-  | { type: "REJOIN"; teamId: string }
+  /** `teamKey` is the team's secret. teamId is public (every STATE broadcasts it), so the key is what proves a connection owns the team. */
+  | { type: "JOIN"; teamId: string; teamKey: string; teamName: string }
+  | { type: "REJOIN"; teamId: string; teamKey: string }
   | { type: "HOST_CLAIM"; token: string }
   | { type: "HOST_START"; aiNarration?: boolean }
   /** Director: free-text style notes (<= 500 chars) injected into every LLM call. */
@@ -80,6 +81,8 @@ export type ServerMessage =
   | { type: "ERROR"; error: ServerErrorCode; detail?: string };
 
 export const HOST_TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
+/** Same shape as the host token. */
+export const TEAM_KEY_RE = HOST_TOKEN_RE;
 
 /**
  * Shared text cleaner for anything a user types that ends up on a screen or
@@ -115,11 +118,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "JOIN": {
       const teamId = str(m.teamId, MAX_ID);
       const teamName = str(m.teamName, MAX_RAW_NAME);
-      return teamId !== null && teamName !== null ? { type: "JOIN", teamId, teamName } : null;
+      const teamKey = typeof m.teamKey === "string" && TEAM_KEY_RE.test(m.teamKey) ? m.teamKey : null;
+      return teamId !== null && teamName !== null && teamKey !== null ? { type: "JOIN", teamId, teamKey, teamName } : null;
     }
     case "REJOIN": {
       const teamId = str(m.teamId, MAX_ID);
-      return teamId !== null ? { type: "REJOIN", teamId } : null;
+      const teamKey = typeof m.teamKey === "string" && TEAM_KEY_RE.test(m.teamKey) ? m.teamKey : null;
+      return teamId !== null && teamKey !== null ? { type: "REJOIN", teamId, teamKey } : null;
     }
     case "HOST_CLAIM":
       return typeof m.token === "string" && HOST_TOKEN_RE.test(m.token)

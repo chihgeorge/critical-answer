@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
 
 /** Every WebSocket text frame a page receives, so we can assert on what /screen and /play were sent. */
 function recordFrames(page: Page): string[] {
@@ -20,9 +20,18 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.getByText(code)).toBeVisible();
 
   const players: { page: Page; frames: string[] }[] = [];
+  // The second phone's socket goes through a route we can cut, to simulate a dropped connection.
+  const phone2: { socket: WebSocketRoute | null; opened: number } = { socket: null, opened: 0 };
   for (const name of ["甲隊", "乙隊"]) {
     const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
     const frames = recordFrames(page);
+    if (name === "乙隊") {
+      await page.routeWebSocket(/:1996\//, (ws) => {
+        ws.connectToServer();
+        phone2.socket = ws;
+        phone2.opened++;
+      });
+    }
     await page.goto(`/room/${code}/play?name=${encodeURIComponent(name)}`);
     await expect(page.getByText("等待主持人開始遊戲")).toBeVisible();
     players.push({ page, frames });
@@ -74,6 +83,19 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 8000 }); // the follow-up addresses the next team
   await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
 
+  // A phone that reloads (or wakes from sleep) comes back as the same team: it is not left "offline" and skipped.
+  await players[1].page.reload();
+  await expect(players[1].page.getByText("輪到我們了！")).toBeVisible();
+  await expect(host.getByText("（離線）")).toHaveCount(0);
+
+  // Same when only the connection drops (phone sleeps, Wi-Fi changes) and comes back, with no reload:
+  // the phone says who it is again on its own.
+  const opened = phone2.opened;
+  await phone2.socket!.close();
+  await expect.poll(() => phone2.opened, { timeout: 15000 }).toBeGreaterThan(opened); // partysocket reconnected
+  await expect(players[1].page.getByText("輪到我們了！")).toBeVisible({ timeout: 10000 });
+  await expect(host.getByText("（離線）")).toHaveCount(0, { timeout: 10000 });
+
   // Director: the host rewrites the line, and it replaces the line on the big screen and the phone at once.
   await host.getByRole("button", { name: /更多/ }).click();
   // The drawer keeps only the host-device QR (the one that hands over control), not a second join QR.
@@ -122,7 +144,7 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
   host.onmessage = (e) => { const m = JSON.parse(e.data as string) as Msg; if (m.type === "STATE") box.state = m; };
   host.send(JSON.stringify({ type: "HOST_CLAIM", token: "epilogue-token-0123456789" }));
   const team = await open(partyUrl);
-  team.send(JSON.stringify({ type: "JOIN", teamId: "00000000-0000-0000-0000-0000000000aa", teamName: "終局隊" }));
+  team.send(JSON.stringify({ type: "JOIN", teamId: "00000000-0000-0000-0000-0000000000aa", teamKey: "epilogue-team-key-0123456789", teamName: "終局隊" }));
   await expect(screen.getByText("終局隊")).toBeVisible();
   host.send(JSON.stringify({ type: "HOST_START", aiNarration: false })); // never the real API in tests
   await expect.poll(() => box.state?.phase).toBe("playing");
@@ -141,6 +163,32 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
   // A single last line: no ▼ once the story has finished typing.
   await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/);
   await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
+  host.close();
+  team.close();
+});
+
+test("a spectator cannot knock a team out of the turn order by copying its public id", async () => {
+  const partyUrl = "ws://localhost:1996/party/SPYT";
+  const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
+  const box: { teams: { name: string; online: boolean }[] } = { teams: [] };
+  const host = await open(partyUrl);
+  host.onmessage = (e) => { const m = JSON.parse(e.data as string); if (m.type === "STATE") box.teams = m.view.teams; };
+  host.send(JSON.stringify({ type: "HOST_CLAIM", token: "spectator-test-token-0123456789" }));
+  const id = "00000000-0000-0000-0000-0000000000cc";
+  const team = await open(partyUrl);
+  team.send(JSON.stringify({ type: "JOIN", teamId: id, teamKey: "the-teams-own-secret-0123456789", teamName: "被冒用隊" }));
+  await new Promise((r) => setTimeout(r, 300));
+  host.send(JSON.stringify({ type: "HOST_START", aiNarration: false }));
+  await expect.poll(() => box.teams.length).toBe(1);
+
+  const spy = await open(partyUrl);
+  let spyError = "";
+  spy.onmessage = (e) => { const m = JSON.parse(e.data as string); if (m.type === "ERROR") spyError = m.error; };
+  spy.send(JSON.stringify({ type: "REJOIN", teamId: id, teamKey: "a-guess-that-is-wrong-0123456789" }));
+  await expect.poll(() => spyError).toBe("bad_token");
+  spy.close();
+  await new Promise((r) => setTimeout(r, 500));
+  expect(box.teams[0].online).toBe(true);
   host.close();
   team.close();
 });
