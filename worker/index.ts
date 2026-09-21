@@ -21,11 +21,15 @@ export class Room extends Server<Env> {
 
   private game!: DungeonRoom;
 
-  onStart() {
+  /** Runs once each time the object starts, before any connection is served: read the saved room back. */
+  async onStart() {
     this.game = new DungeonRoom({
       broadcast: (message) => this.broadcast(message),
       env: this.env,
+      // The room saves without awaiting; Cloudflare holds its messages until the write is durable.
+      storage: { get: (key) => this.ctx.storage.get(key), put: (key, value) => this.ctx.storage.put(key, value) },
     });
+    await this.game.restore();
   }
 
   onConnect(conn: Connection) {

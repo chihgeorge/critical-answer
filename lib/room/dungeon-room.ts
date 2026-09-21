@@ -1,4 +1,5 @@
 import type { Conn, RoomIO } from "./io";
+import { parseSnapshot, SCHEMA_VERSION, SNAPSHOT_KEY, type RoomSnapshot } from "./snapshot";
 import {
   createGame,
   DEFAULT_GAME_CONFIG,
@@ -40,6 +41,8 @@ export interface RoomOptions {
   bank?: Bank;
 }
 const STYLE_EXAMPLES = 5;
+/** Server-side only: every answer in a bank, so a narration line that repeats one is rejected. */
+const allAnswers = (bank: Bank) => [...bank.rooms.flatMap((r) => r.questions), ...bank.boss.questions].map((q) => q.answer);
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -48,9 +51,13 @@ function isValidTeamId(id: string): boolean {
 }
 
 /**
- * Iteration 1 has no persistence (Open Questions: 純 in-memory 決定) — a
- * server restart loses the whole game, and that's a known/accepted
- * limitation for a single lightweight playtest session, not a bug.
+ * One game room. It knows nothing about the platform: messages come in through onMessage/onConnect/onClose
+ * and go out through RoomIO.
+ *
+ * Persistence (RoomIO.storage): before the room says anything to anyone, `persist()` saves what it knows.
+ * On Cloudflare a Durable Object holds outgoing messages until the write is confirmed and resets itself if
+ * the write fails, so a player never sees a state that was not saved. `restore()` reads it back after a
+ * restart. Without storage (tests, the temporary PartyKit adapter) the room is in memory only.
  */
 export class DungeonRoom {
   game: GameState | null = null;
@@ -89,6 +96,8 @@ export class DungeonRoom {
   private scripted: ReturnType<typeof createScriptedProvider>;
   private runner: ReturnType<typeof createRunner>;
   private epilogueDelayMs: number;
+  /** The last snapshot handed to storage, so an unchanged room does not write again. */
+  private lastSaved = "";
   /** The bank this room plays with, and every answer in it (server-side only, so an LLM line that repeats one is rejected). */
   private bank: Bank;
   private bankAnswers: string[];
@@ -99,7 +108,7 @@ export class DungeonRoom {
     opts: RoomOptions = {},
   ) {
     this.bank = opts.bank ?? BANK;
-    this.bankAnswers = [...this.bank.rooms.flatMap((r) => r.questions), ...this.bank.boss.questions].map((q) => q.answer);
+    this.bankAnswers = allAnswers(this.bank);
     this.scripted = createScriptedProvider(rng);
     this.epilogueDelayMs = opts.epilogueDelayMs ?? EPILOGUE_DELAY_MS;
     // The key lives in room.env (server only), never in a NEXT_PUBLIC_ variable.
@@ -157,11 +166,95 @@ export class DungeonRoom {
   }
 
   private broadcast(msg: ServerMessage) {
+    this.persist();
     this.room.broadcast(JSON.stringify(msg));
   }
 
   private sendTo(conn: Conn, msg: ServerMessage) {
+    this.persist();
     conn.send(JSON.stringify(msg));
+  }
+
+  /** What survives a restart. Teams are saved offline: after a restart nobody is connected until a phone says so. */
+  private persistedState(): RoomSnapshot {
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      roomEpoch: this.roomEpoch,
+      game: this.game && { ...this.game, teams: this.game.teams.map((t) => ({ ...t, online: false })) },
+      pendingTeams: this.pendingTeams,
+      hostToken: this.hostToken,
+      teamKeys: [...this.teamKeys],
+      eventSeq: this.eventSeq,
+      lastNarration: this.lastNarration,
+      epilogue: this.epilogue,
+      epilogueRequested: this.epilogueRequested,
+      notes: this.notes,
+      editedLines: this.editedLines,
+      aiNarration: this.aiNarration,
+      bank: this.bank,
+    };
+  }
+
+  /**
+   * Save the room, without awaiting. Called before every outgoing message: on Cloudflare the message is then
+   * held until this write is durable, and a failed write resets the object instead of letting the message out.
+   * A write that changes nothing is skipped.
+   */
+  private persist() {
+    const storage = this.room.storage;
+    if (!storage) return;
+    const state = this.persistedState();
+    const json = JSON.stringify(state);
+    if (json === this.lastSaved) return;
+    this.lastSaved = json;
+    const failed = (err: unknown) => {
+      this.lastSaved = ""; // whatever we believed was saved, retry on the next message
+      console.error(JSON.stringify({ event: "persist_failed", error: String(err) }));
+    };
+    try {
+      void Promise.resolve(storage.put(SNAPSHOT_KEY, state)).catch(failed);
+    } catch (err) {
+      failed(err);
+    }
+  }
+
+  /**
+   * Read the room back after a restart. Returns what happened, for the caller's log:
+   * "none" = nothing saved (a new room), "restored", or "discarded" = saved data we cannot use, so the room
+   * starts fresh under a NEW roomEpoch (clients then show "game reset").
+   */
+  async restore(): Promise<"none" | "restored" | "discarded"> {
+    const storage = this.room.storage;
+    if (!storage) return "none";
+    const raw = await storage.get(SNAPSHOT_KEY);
+    if (raw === undefined) return "none";
+    const s = parseSnapshot(raw);
+    if (!s) {
+      console.warn(JSON.stringify({ event: "state_discarded", reason: "unreadable" }));
+      return "discarded";
+    }
+    this.roomEpoch = s.roomEpoch;
+    this.game = s.game;
+    this.pendingTeams = s.pendingTeams;
+    this.hostToken = s.hostToken;
+    this.teamKeys = new Map(s.teamKeys);
+    this.eventSeq = s.eventSeq;
+    this.lastNarration = s.lastNarration;
+    this.epilogue = s.epilogue;
+    this.epilogueRequested = s.epilogueRequested;
+    this.notes = s.notes;
+    this.editedLines = s.editedLines;
+    this.aiNarration = this.aiAvailable && s.aiNarration;
+    this.bank = s.bank;
+    this.bankAnswers = allAnswers(s.bank);
+    this.lastSaved = JSON.stringify(this.persistedState());
+    console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
+    // The story that ends a finished game is written by a promise that a restart loses: ask for it again.
+    if (this.game?.phase === "finished" && !this.epilogue) {
+      this.epilogueRequested = true;
+      void this.sendEpilogue(Promise.resolve(), this.eventSeq).catch((err) => console.error("epilogue failed", err));
+    }
+    return "restored";
   }
 
   /** The question in play for the team on turn: what everyone may see, and the host-only answer. */
