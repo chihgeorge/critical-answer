@@ -18,16 +18,29 @@ function bankApiBase(): string {
 }
 
 /** Reads the owner key from localStorage — a per-browser convenience, not the source of truth (the
- * Worker checks it on every request; a wrong/missing key never gets past the fetch below). */
-function useOwnerKey() {
-  const [key, setKey] = useState(() => {
-    try {
-      return localStorage.getItem(OWNER_KEY_STORAGE) ?? "";
-    } catch {
-      // Private browsing / blocked storage, or server-side render: start empty.
-      return "";
+ * Worker checks it on every request; a wrong/missing key never gets past the fetch below). Starts
+ * empty and reads localStorage only after mount: doing it in the initial render (e.g. useState's
+ * lazy initializer) would make the client's first render disagree with the server-rendered HTML
+ * (SSR has no localStorage) and trigger a React hydration mismatch. */
+function useOwnerKey(onRestored: (key: string) => void) {
+  const [key, setKey] = useState("");
+  useEffect(() => {
+    function readStoredKey() {
+      try {
+        const stored = localStorage.getItem(OWNER_KEY_STORAGE);
+        if (stored) {
+          setKey(stored);
+          onRestored(stored);
+        }
+      } catch {
+        // Private browsing / blocked storage: the key box just starts empty.
+      }
     }
-  });
+    readStoredKey();
+    // Runs once on mount only — onRestored is the load() callback below, stable enough in practice
+    // that re-running this on every render would only risk a duplicate auto-load, not a stale one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const save = (next: string) => {
     setKey(next);
     try {
@@ -42,7 +55,6 @@ function useOwnerKey() {
 type Location = { kind: "room"; roomIndex: number } | { kind: "boss" };
 
 export default function BankEditorPage() {
-  const [ownerKey, setOwnerKey] = useOwnerKey();
   const [bank, setBank] = useState<Bank | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -71,14 +83,8 @@ export default function BankEditorPage() {
     }
   };
 
-  useEffect(() => {
-    function loadOnMount() {
-      if (ownerKey) void load(ownerKey);
-    }
-    loadOnMount();
-    // Only on the key read from storage at mount; re-fetching on every keystroke isn't wanted.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const [ownerKey, setOwnerKey] = useOwnerKey((restoredKey) => void load(restoredKey));
+
 
   const save = async (next: Bank) => {
     setSaving(true);
@@ -145,8 +151,10 @@ export default function BankEditorPage() {
           {loading ? "載入中…" : "載入題庫"}
         </PixelButton>
         {error && (
+          // Panel doesn't forward arbitrary props (no data-testid passthrough), so the test id sits
+          // on this inner span; role="alert" on the Panel itself is the real screen-reader semantics.
           <Panel tone="turn" role="alert" className="text-[14px]">
-            {error}
+            <span data-testid="bank-editor-error">{error}</span>
           </Panel>
         )}
       </Panel>
@@ -156,6 +164,7 @@ export default function BankEditorPage() {
           {bank.rooms.map((room, roomIndex) => (
             <RoomEditor
               key={roomIndex}
+              testId={`bank-room-${roomIndex}`}
               title={`第 ${roomIndex + 1} 房 · ${room.monster.name}`}
               questions={room.questions}
               onEdit={(id, field, value) => editQuestion({ kind: "room", roomIndex }, id, field, value)}
@@ -164,6 +173,7 @@ export default function BankEditorPage() {
             />
           ))}
           <RoomEditor
+            testId="bank-room-boss"
             title={`首領 · ${bank.boss.monster.name}`}
             questions={bank.boss.questions}
             onEdit={(id, field, value) => editQuestion({ kind: "boss" }, id, field, value)}
@@ -180,12 +190,14 @@ export default function BankEditorPage() {
 }
 
 function RoomEditor({
+  testId,
   title,
   questions,
   onEdit,
   onDelete,
   onAdd,
 }: {
+  testId: string;
   title: string;
   questions: BankQuestion[];
   onEdit: (id: string, field: "text" | "answer", value: string) => void;
@@ -194,29 +206,31 @@ function RoomEditor({
 }) {
   return (
     <Panel className="flex flex-col gap-2 p-4">
-      <h2 className="text-[18px]">{title}</h2>
-      {questions.map((q) => (
-        <div key={q.id} className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
-          <input
-            className="px-input"
-            aria-label="題目"
-            value={q.text}
-            onChange={(e) => onEdit(q.id, "text", e.target.value)}
-          />
-          <div className="flex gap-2">
+      <div data-testid={testId} className="flex flex-col gap-2">
+        <h2 className="text-[18px]">{title}</h2>
+        {questions.map((q) => (
+          <div key={q.id} className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
             <input
-              className="px-input flex-1"
-              aria-label="答案"
-              value={q.answer}
-              onChange={(e) => onEdit(q.id, "answer", e.target.value)}
+              className="px-input"
+              aria-label="題目"
+              value={q.text}
+              onChange={(e) => onEdit(q.id, "text", e.target.value)}
             />
-            <PixelButton variant="flee" onClick={() => onDelete(q.id)}>
-              刪除
-            </PixelButton>
+            <div className="flex gap-2">
+              <input
+                className="px-input flex-1"
+                aria-label="答案"
+                value={q.answer}
+                onChange={(e) => onEdit(q.id, "answer", e.target.value)}
+              />
+              <PixelButton variant="flee" onClick={() => onDelete(q.id)}>
+                刪除
+              </PixelButton>
+            </div>
           </div>
-        </div>
-      ))}
-      <PixelButton onClick={onAdd}>+ 新增題目</PixelButton>
+        ))}
+        <PixelButton onClick={onAdd}>+ 新增題目</PixelButton>
+      </div>
     </Panel>
   );
 }
