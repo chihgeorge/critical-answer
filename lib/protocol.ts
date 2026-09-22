@@ -6,13 +6,18 @@
 // answer correct/incorrect. Only the host can send HOST_JUDGE — trusting a
 // team's own "I got it right" claim would let them self-score.
 //
-// TEAM_BRANCH_CHOICE is the one exception to "only the host mutates game
-// state" (docs/designs/dm-branching-and-question-types.md, decision 1): a
-// branch pick is not a score claim, the server still resolves everything
-// deterministically, so the self-scoring risk above does not apply. The
-// sender's team is derived from the connection's own connTeam binding
-// (set at JOIN/REJOIN) — never from a client-supplied team id — so no
-// teamKey is needed on this message, unlike JOIN/REJOIN.
+// TEAM_BRANCH_CHOICE and TEAM_SELECT_OPTION are the exceptions to "only the
+// host mutates game state" (docs/designs/dm-branching-and-question-types.md
+// decision 1; docs/designs/multiple-choice-questions.md decision 5): neither
+// is a score claim — a branch pick and a multiple-choice pick both leave the
+// actual correct/incorrect call to the host (HOST_JUDGE), so the self-scoring
+// risk above does not apply. Both derive their sender's team from the
+// connection's own connTeam binding (set at JOIN/REJOIN) — never from a
+// client-supplied team id — so no teamKey is needed on either message,
+// unlike JOIN/REJOIN. Unlike TEAM_BRANCH_CHOICE, TEAM_SELECT_OPTION is
+// re-selectable (a later pick for the same question overwrites the earlier
+// one) — picking an option is a "change your mind before the host looks"
+// interaction, not a one-time narrative fork.
 //
 // Host identity is a token minted by the host's browser at room creation.
 // The first HOST_CLAIM for a room sets it (trust on first use, on a 4-letter
@@ -24,13 +29,16 @@ import type { TranscriptItem } from "./narration/runner";
 
 export const MAX_TEAMS = 8;
 
-/** The question the team in turn faces, without its answer: safe for /screen and /play. */
+/** The question the team in turn faces, without its answer: safe for /screen and /play.
+ * `options` is present only for multipleChoice questions (never `correctIndex` — see
+ * question-bank.ts's publicQuestion() field-picking discipline). */
 export interface PublicQuestion {
   id: string;
   text: string;
   difficulty: number;
   boss: boolean;
   monster: { name: string; sprite: SpriteKind; hue: number };
+  options?: string[];
 }
 
 export type ClientMessage =
@@ -52,7 +60,12 @@ export type ClientMessage =
       fleeChoice?: "flee" | "retry";
     }
   /** DM branching interlude pick, sent by the team's own phone. See the module header. */
-  | { type: "TEAM_BRANCH_CHOICE"; roomIndex: number; choice: BranchOptionId };
+  | { type: "TEAM_BRANCH_CHOICE"; roomIndex: number; choice: BranchOptionId }
+  /** MultipleChoice pick, sent by the team's own phone. Re-selectable — see the module header.
+   * `optionIndex` is only type-checked here (non-negative integer); the real bounds check
+   * against the live question's actual options.length happens in dungeon-room.ts, which is
+   * the only layer that has the current game state. */
+  | { type: "TEAM_SELECT_OPTION"; questionId: string; optionIndex: number };
 
 export type ServerErrorCode =
   | "invalid_team_id"
@@ -163,6 +176,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "TEAM_BRANCH_CHOICE": {
       if (!Number.isInteger(m.roomIndex) || !isBranchOptionId(m.choice)) return null;
       return { type: "TEAM_BRANCH_CHOICE", roomIndex: m.roomIndex as number, choice: m.choice };
+    }
+    case "TEAM_SELECT_OPTION": {
+      const questionId = str(m.questionId, MAX_ID);
+      if (questionId === null || !Number.isInteger(m.optionIndex) || (m.optionIndex as number) < 0) return null;
+      return { type: "TEAM_SELECT_OPTION", questionId, optionIndex: m.optionIndex as number };
     }
     default:
       return null;

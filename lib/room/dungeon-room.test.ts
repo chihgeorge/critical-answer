@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
-import { BANK, bossQuestionIds, roomTemplates } from "../question-bank";
+import { BANK, answerText, bossQuestionIds, roomTemplates, type Bank } from "../question-bank";
 import { currentTurnTeamId } from "../game-state";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
@@ -424,6 +424,119 @@ describe("TEAM_BRANCH_CHOICE", () => {
   });
 });
 
+describe("TEAM_SELECT_OPTION", () => {
+  // A minimal bank with one multipleChoice question so the success path (and the live
+  // options.length bounds check) can be exercised without touching the shipped bank.
+  const mcBank: Bank = {
+    rooms: [
+      {
+        monster: { name: "史萊姆", sprite: "slime", hue: 0 },
+        baseDifficulty: 1,
+        questions: [{ kind: "multipleChoice", id: "r0-mc1", text: "選哪個？", options: ["A", "B", "C"], correctIndex: 1 }],
+      },
+    ],
+    boss: {
+      monster: { name: "龍", sprite: "dragon", hue: 0 },
+      maxHp: 3,
+      questions: [
+        { kind: "text", id: "boss-q1", text: "？", answer: "x" },
+        { kind: "multipleChoice", id: "boss-mc1", text: "選哪個？", options: ["X", "Y"], correctIndex: 0 },
+      ],
+    },
+  };
+
+  function startedMcGame(teamCount = 2) {
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: mcBank });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids, conns } = joinTeams(room, hostConn, teamCount);
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn, ids, conns };
+  }
+
+  it("rejects a connection that never joined any team", () => {
+    const { room } = startedMcGame(1);
+    const spectator = makeConn("spectator-conn");
+    send(room, spectator, { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 0 });
+    expect(lastSentTo(spectator)).toMatchObject({ type: "ERROR", error: "unknown_team" });
+  });
+
+  it("rejects when there's no active game", () => {
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: mcBank });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { conns } = joinTeams(room, hostConn, 1);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 0 });
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "no_active_game" });
+  });
+
+  it("records a valid pick and broadcasts it in STATE", () => {
+    const { room, conns } = startedMcGame(1);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 1 });
+    const state = lastBroadcast(room);
+    expect(state.type).toBe("STATE");
+    expect(state.view.teams[0].currentSelection).toBe(1);
+  });
+
+  it("the broadcast question carries options for a multipleChoice question, with no correctIndex leaked", () => {
+    const { room } = startedMcGame(1);
+    const state = lastBroadcast(room);
+    expect(state.question.options).toEqual(["A", "B", "C"]);
+    expect(state.question).not.toHaveProperty("correctIndex");
+  });
+
+  it("is re-selectable — a later pick overwrites the earlier one", () => {
+    const { room, conns } = startedMcGame(1);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 0 });
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 2 });
+    expect(room.game!.teams[0].currentSelection).toBe(2);
+  });
+
+  it("re-tapping the option already selected is a no-op — no redundant broadcast (adversarial review: no other rate limit on this message)", () => {
+    const { room, conns } = startedMcGame(1);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 1 });
+    const broadcastsAfterFirstPick = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.length;
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 1 });
+    expect((room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.length).toBe(broadcastsAfterFirstPick);
+    expect(room.game!.teams[0].currentSelection).toBe(1);
+  });
+
+  it("rejects an optionIndex out of range for the live question, even though the protocol layer allowed it", () => {
+    const { room, conns } = startedMcGame(1);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 3 }); // only 0/1/2 exist
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
+    expect(room.game!.teams[0].currentSelection).toBeNull();
+  });
+
+  it("rejects a questionId that isn't a multipleChoice question", () => {
+    const { room, conns } = startedMcGame(1);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "boss-q1", optionIndex: 0 });
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
+  });
+
+  it("ignores a spoofed teamId in the payload — the sender's own team (via connTeam) is always used", () => {
+    const { room, ids, conns } = startedMcGame(2);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 1, teamId: ids[1] } as never);
+    expect(room.game!.teams.find((t) => t.id === ids[0])!.currentSelection).toBe(1);
+    expect(room.game!.teams.find((t) => t.id === ids[1])!.currentSelection).toBeNull();
+  });
+
+  it("rejects a questionId that isn't the one the team is actually facing right now", () => {
+    const { room, conns } = startedMcGame(1);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "some-other-question", optionIndex: 0 });
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
+  });
+
+  it("rejects a real, in-bounds multipleChoice question that just isn't the team's current one (not in boss phase yet)", () => {
+    const { room, conns } = startedMcGame(1);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "boss-mc1", optionIndex: 0 });
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
+    expect(room.game!.teams[0].currentSelection).toBeNull();
+  });
+});
+
 describe("REJOIN", () => {
   it("rejects a non-UUID team id", () => {
     const { room } = makeRoomWithHost();
@@ -564,8 +677,8 @@ describe("questions and answers (T3)", () => {
     }
     expect(room.game!.phase).toBe("finished");
     const public_ = JSON.stringify([...broadcasts(room), ...conns.flatMap(sent)]);
-    for (const r of BANK.rooms) for (const q of [...r.questions]) expect(public_).not.toContain(`"answer":"${q.answer}"`);
-    for (const q of BANK.boss.questions) expect(public_).not.toContain(`"answer":"${q.answer}"`);
+    for (const r of BANK.rooms) for (const q of [...r.questions]) expect(public_).not.toContain(`"answer":"${answerText(q)}"`);
+    for (const q of BANK.boss.questions) expect(public_).not.toContain(`"answer":"${answerText(q)}"`);
     expect(public_).not.toContain("HOST_ANSWER");
   });
 

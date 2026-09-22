@@ -13,8 +13,8 @@ function memoryStorage(seed?: unknown): BankStorage {
 }
 
 const validBank: Bank = {
-  rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, questions: [{ id: "r0-q1", text: "1+1?", answer: "2" }] }],
-  boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, maxHp: 10, questions: [{ id: "b-q1", text: "2+2?", answer: "4" }] },
+  rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, questions: [{ kind: "text", id: "r0-q1", text: "1+1?", answer: "2" }] }],
+  boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, maxHp: 10, questions: [{ kind: "text", id: "b-q1", text: "2+2?", answer: "4" }] },
 };
 
 describe("BankStore.getBank / getVersionedBank", () => {
@@ -78,7 +78,7 @@ describe("BankStore.putBank", () => {
   });
 
   it("rejects a duplicate question id across rooms", async () => {
-    const dup: Bank = { ...validBank, boss: { ...validBank.boss, questions: [{ id: "r0-q1", text: "dup?", answer: "x" }] } };
+    const dup: Bank = { ...validBank, boss: { ...validBank.boss, questions: [{ kind: "text", id: "r0-q1", text: "dup?", answer: "x" }] } };
     const store = new BankStore(memoryStorage({ bank: validBank, version: 1 }));
     await expect(store.putBank(dup, 1)).rejects.toThrow(/duplicate question id/i);
   });

@@ -96,6 +96,15 @@ export interface Team {
   /** Question id the team must answer next — used to reject stale submissions (T6). */
   currentQuestionId: string;
   /**
+   * The team's current pick for a multipleChoice question, or null if none yet.
+   * Re-selectable up until the host judges (docs/designs/multiple-choice-questions.md
+   * decision 5) — set by recordOptionSelection, reset to null everywhere a new question
+   * is dealt (createGame, correct-room-advance, incorrect-flee, and boss question
+   * rotation), but left alone on incorrect-retry, where the team still faces the same
+   * question and a stray earlier pick is still meaningful context for the host.
+   */
+  currentSelection: number | null;
+  /**
    * DM branching interlude choices, keyed by the roomIndex the team had
    * just entered when it chose. First choice for a given roomIndex wins —
    * see recordBranchChoice. Stores the option id, not display text.
@@ -223,6 +232,7 @@ export function createGame(
       roomIndex: 0,
       currentDifficulty: rooms[0].baseDifficulty,
       currentQuestionId: dealt.questionId,
+      currentSelection: null,
       branchChoices: {},
     });
   }
@@ -256,6 +266,15 @@ function getTeam(game: GameState, teamId: string): Team {
 export function isInBossPhase(game: GameState, teamId: string): boolean {
   const team = getTeam(game, teamId);
   return team.score >= game.config.bossThreshold;
+}
+
+/** Clears every boss-phase team's multipleChoice pick — used wherever the shared boss question
+ * rotates (correct-hit-not-killed, flee), since every team still fighting the boss now faces a
+ * different question and a leftover pick would be stale. `game` supplies isInBossPhase's score
+ * check; `teams` is the array to map over (sometimes `game.teams`, sometimes an already-updated
+ * copy from a same-branch score change). */
+function resetBossSelections(game: GameState, teams: Team[]): Team[] {
+  return teams.map((t) => (isInBossPhase(game, t.id) ? { ...t, currentSelection: null } : t));
 }
 
 /** The id of the team whose turn it currently is, skipping offline teams (T7). */
@@ -358,9 +377,14 @@ export function answerQuestion(
         ? boss.currentQuestionId
         : boss.questionIds[(boss.questionIds.indexOf(boss.currentQuestionId) + 1) % boss.questionIds.length];
 
+      // The boss question is shared: every team already in boss phase faces the same
+      // nextBossQuestionId, not just the team that just answered. Reset ALL of their
+      // picks, or a team's stale index from the old question could line up with a
+      // different option on the new one and mislead the host into judging against
+      // a pick that team never made for this question (adversarial review finding).
       nextGame = {
         ...game,
-        teams,
+        teams: bossKilled ? teams : resetBossSelections(game, teams),
         boss: {
           ...boss,
           hp: newHp,
@@ -380,7 +404,13 @@ export function answerQuestion(
         fleeChoice === "flee"
           ? boss.questionIds[(boss.questionIds.indexOf(boss.currentQuestionId) + 1) % boss.questionIds.length]
           : boss.currentQuestionId;
-      nextGame = { ...game, boss: { ...boss, currentQuestionId: nextBossQuestionId } };
+      // Same shared-question reasoning as the correct-hit branch above: a flee rotates
+      // the question for every team in boss phase, so every one of their picks resets.
+      nextGame = {
+        ...game,
+        teams: fleeChoice === "flee" ? resetBossSelections(game, game.teams) : game.teams,
+        boss: { ...boss, currentQuestionId: nextBossQuestionId },
+      };
       outcome =
         fleeChoice === "flee"
           ? { type: "incorrect-flee", teamId, newDifficulty: team.currentDifficulty }
@@ -403,6 +433,7 @@ export function answerQuestion(
                 roomIndex: nextRoomIndex,
                 currentDifficulty: nextRoom.baseDifficulty,
                 currentQuestionId: dealt.questionId,
+                currentSelection: null,
               }
             : t,
         ),
@@ -415,7 +446,7 @@ export function answerQuestion(
         ...game,
         usedQuestionIds: dealt.used,
         teams: game.teams.map((t) =>
-          t.id === teamId ? { ...t, currentDifficulty: newDifficulty, currentQuestionId: dealt.questionId } : t,
+          t.id === teamId ? { ...t, currentDifficulty: newDifficulty, currentQuestionId: dealt.questionId, currentSelection: null } : t,
         ),
       };
       outcome = { type: "incorrect-flee", teamId, newDifficulty };
@@ -466,6 +497,36 @@ export function recordBranchChoice(
   };
 }
 
+/**
+ * Record (or change) a team's pick for the multipleChoice question they're currently
+ * facing. Re-selectable — unlike recordBranchChoice, a later submission for the same
+ * question simply overwrites the earlier one; the sender only ever changes their own
+ * mind before the host judges. Rejects a submission for any question other than the
+ * one the team (or the shared boss encounter, if they're in it) is expected to answer
+ * right now — same stale-submission guard as answerQuestion's expectedQuestionId.
+ *
+ * `optionIndex` is only type-checked at the protocol layer (lib/protocol.ts); bounds-
+ * checking it against the live question's actual options.length — and rejecting a
+ * questionId whose question isn't kind "multipleChoice" at all — happens in
+ * dungeon-room.ts, the only layer with bank access. This function has no bank access
+ * (game-state.ts is deliberately bank-agnostic) and so cannot check "is this actually
+ * an MC question" itself; it trusts its one caller to have gated that first.
+ */
+export function recordOptionSelection(game: GameState, teamId: string, questionId: string, optionIndex: number): GameState {
+  if (game.phase === "finished") {
+    throw new InvalidActionError("Game already finished");
+  }
+  const team = getTeam(game, teamId); // throws if unknown
+  const expectedQuestionId = isInBossPhase(game, teamId) ? game.boss.currentQuestionId : team.currentQuestionId;
+  if (questionId !== expectedQuestionId) {
+    throw new InvalidActionError(`Stale question submission for ${teamId}: expected ${expectedQuestionId}, got ${questionId}`);
+  }
+  return {
+    ...game,
+    teams: game.teams.map((t) => (t.id === teamId ? { ...t, currentSelection: optionIndex } : t)),
+  };
+}
+
 /** Mark a team offline/online — a disconnected team is skipped by advanceTurn (T7). */
 export function setTeamOnline(game: GameState, teamId: string, online: boolean): GameState {
   getTeam(game, teamId); // throws if unknown
@@ -494,6 +555,9 @@ export interface SpectatorView {
      * matched by id; see docs/designs Next Steps #7). Exposed so the host
      * client can submit a matching HOST_JUDGE without a separate lookup. */
     currentQuestionId: string;
+    /** The team's current pick for a multipleChoice question, or null. Lets the host
+     * see what a team has picked before judging (T7 host UI). */
+    currentSelection: number | null;
     /** DM branching interlude choices so far, keyed by roomIndex. A client derives which
      * rooms are still pending a choice from `roomIndex` minus this map's keys. */
     branchChoices: Partial<Record<number, BranchOptionId>>;
@@ -514,6 +578,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       inBossPhase: isInBossPhase(game, t.id),
       online: t.online,
       currentQuestionId: t.currentQuestionId,
+      currentSelection: t.currentSelection,
       branchChoices: t.branchChoices,
     })),
     bossHp: game.boss.hp,

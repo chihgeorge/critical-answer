@@ -98,6 +98,19 @@ describe("parseClientMessage", () => {
     // the connection's own connTeam binding, never from client-supplied data.
     expect(parseClientMessage({ type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight", teamId: ID })).toEqual(ok);
   });
+
+  it("TEAM_SELECT_OPTION: accepts valid, rejects non-integer/negative optionIndex and bad questionId", () => {
+    const ok = { type: "TEAM_SELECT_OPTION", questionId: "r0-q1", optionIndex: 1 };
+    expect(parseClientMessage(ok)).toEqual(ok);
+    expect(parseClientMessage({ ...ok, optionIndex: 0 })).toEqual({ ...ok, optionIndex: 0 });
+    expect(parseClientMessage({ ...ok, optionIndex: -1 })).toBeNull();
+    expect(parseClientMessage({ ...ok, optionIndex: 1.5 })).toBeNull();
+    expect(parseClientMessage({ ...ok, optionIndex: "1" })).toBeNull();
+    expect(parseClientMessage({ ...ok, questionId: undefined })).toBeNull();
+    expect(parseClientMessage({ ...ok, questionId: "q".repeat(65) })).toBeNull();
+    // Deliberately no teamId/teamKey field — same connTeam-derived trust as TEAM_BRANCH_CHOICE.
+    expect(parseClientMessage({ type: "TEAM_SELECT_OPTION", questionId: "r0-q1", optionIndex: 1, teamId: ID })).toEqual(ok);
+  });
 });
 
 describe("sanitizeText", () => {

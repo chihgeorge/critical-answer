@@ -185,6 +185,18 @@ describe("restoring after a restart", () => {
     expect(second.room.game!.teams.map((t) => t.branchChoices)).toEqual([{}, {}]);
   });
 
+  it("a save from before currentSelection existed restores with it backfilled to null, not crashing on the next read", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    for (const t of saved.game.teams) delete t.currentSelection; // simulate a pre-multipleChoice save
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored");
+    expect(second.room.game!.teams.every((t) => t.currentSelection === null)).toBe(true);
+  });
+
   it("a corrupt snapshot with a null team entry doesn't crash restore (adversarial review, 2026-09-21)", async () => {
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);

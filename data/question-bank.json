@@ -10,41 +10,49 @@
       "questions": [
         {
           "id": "r0-q1",
+          "kind": "text",
           "text": "2026 年台北跨年煙火在哪個地標施放？",
           "answer": "台北 101"
         },
         {
           "id": "r0-q2",
+          "kind": "text",
           "text": "2026 年是中華民國幾年？",
           "answer": "115 年"
         },
         {
           "id": "r0-q3",
+          "kind": "text",
           "text": "2026 年的生肖是什麼？",
           "answer": "馬（丙午年）"
         },
         {
           "id": "r0-q4",
+          "kind": "text",
           "text": "台灣最高的山是哪一座？",
           "answer": "玉山"
         },
         {
           "id": "r0-q5",
+          "kind": "text",
           "text": "珍珠奶茶裡的「珍珠」，主要是用什麼植物的澱粉做的？",
           "answer": "木薯（樹薯）"
         },
         {
           "id": "r0-q6",
+          "kind": "text",
           "text": "台灣使用的貨幣單位叫什麼？",
           "answer": "新臺幣"
         },
         {
           "id": "r0-q7",
+          "kind": "text",
           "text": "農曆新年時，長輩會包什麼給晚輩？",
           "answer": "紅包"
         },
         {
           "id": "r0-q8",
+          "kind": "text",
           "text": "台北 101 大樓名字裡的「101」代表什麼？",
           "answer": "地上共 101 層"
         }
@@ -60,41 +68,49 @@
       "questions": [
         {
           "id": "r1-q1",
+          "kind": "text",
           "text": "2026 年亞洲運動會在哪個城市舉辦？",
           "answer": "日本名古屋"
         },
         {
           "id": "r1-q2",
+          "kind": "text",
           "text": "2026 年台灣代表隊派出多少位選手參加亞運？",
           "answer": "482 名"
         },
         {
           "id": "r1-q3",
+          "kind": "text",
           "text": "第 40 屆韓國金唱片獎頒獎典禮在台灣哪個場館舉辦？",
           "answer": "台北大巨蛋"
         },
         {
           "id": "r1-q4",
+          "kind": "text",
           "text": "日月潭位於台灣哪個縣市？",
           "answer": "南投縣"
         },
         {
           "id": "r1-q5",
+          "kind": "text",
           "text": "阿里山森林鐵路位於台灣哪個縣市？",
           "answer": "嘉義縣"
         },
         {
           "id": "r1-q6",
+          "kind": "text",
           "text": "元宵節時，新北平溪最有名的活動是什麼？",
           "answer": "放天燈"
         },
         {
           "id": "r1-q7",
+          "kind": "text",
           "text": "端午節是農曆幾月幾日？",
           "answer": "五月五日"
         },
         {
           "id": "r1-q8",
+          "kind": "text",
           "text": "中華職棒的英文縮寫是什麼？",
           "answer": "CPBL"
         }
@@ -110,41 +126,49 @@
       "questions": [
         {
           "id": "r2-q1",
+          "kind": "text",
           "text": "2026 年金唱片獎「藝人大賞」得主是誰？",
           "answer": "Jennie"
         },
         {
           "id": "r2-q2",
+          "kind": "text",
           "text": "G-Dragon 在 2026 年金唱片獎以哪首歌拿下「音源大賞」？",
           "answer": "〈Home Sweet Home〉"
         },
         {
           "id": "r2-q3",
+          "kind": "text",
           "text": "2026 年 8 月幾號是原住民族日？",
           "answer": "8 月 1 日"
         },
         {
           "id": "r2-q4",
+          "kind": "text",
           "text": "中秋節是農曆幾月幾日？",
           "answer": "八月十五日"
         },
         {
           "id": "r2-q5",
+          "kind": "text",
           "text": "花蓮的哪個峽谷以大理石地形聞名？",
           "answer": "太魯閣峽谷"
         },
         {
           "id": "r2-q6",
+          "kind": "text",
           "text": "台灣的國際電話國碼是多少？",
           "answer": "+886"
         },
         {
           "id": "r2-q7",
+          "kind": "text",
           "text": "二二八和平紀念日是幾月幾日？",
           "answer": "2 月 28 日"
         },
         {
           "id": "r2-q8",
+          "kind": "text",
           "text": "「鼎泰豐」最有名的招牌點心是什麼？",
           "answer": "小籠包"
         }
@@ -160,41 +184,49 @@
       "questions": [
         {
           "id": "r3-q1",
+          "kind": "text",
           "text": "政府宣布透過 2027 年度總預算增列多少金額來普發現金 1 萬元？",
           "answer": "新台幣 2357 億元"
         },
         {
           "id": "r3-q2",
+          "kind": "text",
           "text": "2026 年城鎮韌性演習首次新增了什麼項目？",
           "answer": "行動通訊降速演練"
         },
         {
           "id": "r3-q3",
+          "kind": "text",
           "text": "2026 年金唱片獎「專輯大賞」是哪個團體、哪張專輯拿下的？",
           "answer": "Stray Kids，《KARMA》"
         },
         {
           "id": "r3-q4",
+          "kind": "text",
           "text": "台灣高鐵是哪一年通車的？",
           "answer": "2007 年"
         },
         {
           "id": "r3-q5",
+          "kind": "text",
           "text": "台灣第一條高速公路（國道 1 號）全線通車於哪一年？",
           "answer": "1978 年"
         },
         {
           "id": "r3-q6",
+          "kind": "text",
           "text": "九二一大地震發生在哪一年？",
           "answer": "1999 年"
         },
         {
           "id": "r3-q7",
+          "kind": "text",
           "text": "台灣哪一年以「台澎金馬個別關稅領域」名義加入 WTO？",
           "answer": "2002 年"
         },
         {
           "id": "r3-q8",
+          "kind": "text",
           "text": "台北捷運第一條路線（木柵線）通車於哪一年？",
           "answer": "1996 年"
         }
@@ -210,41 +242,49 @@
       "questions": [
         {
           "id": "r4-q1",
+          "kind": "text",
           "text": "台灣高鐵新世代列車 N700ST 是在日本哪個縣、哪間工廠出廠的？",
           "answer": "山口縣，日立製作所笠戶工廠"
         },
         {
           "id": "r4-q2",
+          "kind": "text",
           "text": "2026 年城鎮韌性演習在中部地區是哪一天施行？",
           "answer": "8 月 10 日"
         },
         {
           "id": "r4-q3",
+          "kind": "text",
           "text": "2026 亞運台灣代表隊中，哪兩位知名選手分別代表舉重與柔道出賽？",
           "answer": "郭婞淳（舉重）、楊勇緯（柔道）"
         },
         {
           "id": "r4-q4",
+          "kind": "text",
           "text": "台北 101 是在哪一年落成啟用的？",
           "answer": "2004 年"
         },
         {
           "id": "r4-q5",
+          "kind": "text",
           "text": "台灣第一位女性總統是誰？",
           "answer": "蔡英文"
         },
         {
           "id": "r4-q6",
+          "kind": "text",
           "text": "貫穿雪山山脈的雪山隧道，屬於哪一條國道？",
           "answer": "國道 5 號"
         },
         {
           "id": "r4-q7",
+          "kind": "text",
           "text": "日治時期，玉山被稱為什麼名字？",
           "answer": "新高山"
         },
         {
           "id": "r4-q8",
+          "kind": "text",
           "text": "中華民國憲法是在哪一年施行的？",
           "answer": "1947 年"
         }
@@ -261,41 +301,49 @@
     "questions": [
       {
         "id": "boss-q1",
+        "kind": "text",
         "text": "台灣高鐵 N700ST 列車出廠時，哪一位日本前首相的夫人到場見證？",
         "answer": "安倍晉三夫人安倍昭惠"
       },
       {
         "id": "boss-q2",
+        "kind": "text",
         "text": "2026 年在台北大巨蛋舉辦的金唱片獎是第幾屆？",
         "answer": "第 40 屆"
       },
       {
         "id": "boss-q3",
+        "kind": "text",
         "text": "2026 年城鎮韌性演習在北部地區是哪一天施行？",
         "answer": "8 月 13 日"
       },
       {
         "id": "boss-q4",
+        "kind": "text",
         "text": "台灣高鐵 N700ST 列車是由日本哪間廠商製造？",
         "answer": "日立製作所"
       },
       {
         "id": "boss-q5",
+        "kind": "text",
         "text": "2026 年城鎮韌性演習今年首次辦了幾場次（分別在哪些地區）？",
         "answer": "3 場，分別是中部（8/10）、北部（8/13）、以及 8/7 的場次"
       },
       {
         "id": "boss-q6",
+        "kind": "text",
         "text": "中華民國在西元哪一年成立？",
         "answer": "1912 年"
       },
       {
         "id": "boss-q7",
+        "kind": "text",
         "text": "玉山的標高約為多少公尺？",
         "answer": "3,952 公尺"
       },
       {
         "id": "boss-q8",
+        "kind": "text",
         "text": "台灣第一座國家公園是哪一座？",
         "answer": "墾丁國家公園"
       }
