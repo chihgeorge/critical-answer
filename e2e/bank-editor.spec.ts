@@ -47,3 +47,49 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
   await page.getByRole("button", { name: "載入題庫" }).click();
   await expect(page.getByTestId("bank-room-0").getByLabel("題目")).toHaveCount(startingCount);
 });
+
+test("a save that fails server-side validation shows the server's error, and does not clear the form", async ({ page }) => {
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const room0 = page.getByTestId("bank-room-0");
+  await expect(room0).toBeVisible();
+
+  // parseBank() rejects an empty answer — a real state reachable by clearing the field, not a
+  // client-side-only validation the form itself would block.
+  await room0.getByLabel("答案").first().fill("");
+  await page.getByRole("button", { name: "儲存全部變更" }).click();
+
+  await expect(page.getByTestId("bank-editor-error")).toBeVisible();
+  await expect(page.getByTestId("bank-editor-error")).toContainText(/empty answer/i);
+});
+
+test("deleting every question in a room down to zero is rejected on save (a room needs at least one)", async ({ page }) => {
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+
+  // The boss room is smaller in the bundled bank, so it takes fewer deletes to empty out.
+  // parseBank() requires every room (and the boss) to have at least one question — emptying one
+  // out is a real, reachable UI state, and the save must be rejected, not silently accepted.
+  const boss = page.getByTestId("bank-room-boss");
+  await expect(boss).toBeVisible();
+  let remaining = await boss.getByLabel("題目").count();
+  while (remaining > 0) {
+    await boss.getByRole("button", { name: "刪除" }).first().click();
+    remaining--;
+  }
+  await expect(boss.getByLabel("題目")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await expect(page.getByTestId("bank-editor-error")).toBeVisible();
+  await expect(page.getByTestId("bank-editor-error")).toContainText(/no questions/i);
+
+  // Nothing was actually persisted — a fresh load still has the original boss question(s).
+  await page.reload();
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const bossAfterReload = page.getByTestId("bank-room-boss");
+  await expect(bossAfterReload).toBeVisible();
+  await expect(bossAfterReload.getByLabel("題目")).not.toHaveCount(0);
+});

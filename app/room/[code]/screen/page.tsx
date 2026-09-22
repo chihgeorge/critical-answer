@@ -13,6 +13,7 @@ import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { PARTY_HOST } from "@/lib/party-host";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 
@@ -229,7 +230,7 @@ export default function ScreenPage() {
   const epoch = useRef<string | null>(null);
 
   const socket = usePartySocket({
-    host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
+    host: PARTY_HOST,
     room: code,
     onOpen() {
       setRested(false);

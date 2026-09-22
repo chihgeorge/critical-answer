@@ -8,14 +8,10 @@
 import { useEffect, useState } from "react";
 import { Panel, PixelButton } from "@/components/pixel";
 import type { Bank, BankQuestion } from "@/lib/question-bank";
+import { partyHttpBase } from "@/lib/party-host";
 
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
-
-function bankApiBase(): string {
-  const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999";
-  const protocol = host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https";
-  return `${protocol}://${host}/api/bank`;
-}
+const bankApiBase = () => `${partyHttpBase()}/api/bank`;
 
 /** Reads the owner key from localStorage — a per-browser convenience, not the source of truth (the
  * Worker checks it on every request; a wrong/missing key never gets past the fetch below). Starts
@@ -152,7 +148,9 @@ export default function BankEditorPage() {
         {error && (
           // Panel doesn't forward arbitrary props (no data-testid passthrough), so the test id sits
           // on this inner span; role="alert" on the Panel itself is the real screen-reader semantics.
-          <Panel tone="turn" role="alert" className="text-[14px]">
+          // Red background matches every other error surface in the app (host/page.tsx's connection
+          // error) — "turn" is reserved for whose-turn-it-is, not errors.
+          <Panel role="alert" className="text-[14px]" style={{ background: "#ffd9d9" }}>
             <span data-testid="bank-editor-error">{error}</span>
           </Panel>
         )}

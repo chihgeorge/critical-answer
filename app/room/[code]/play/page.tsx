@@ -11,6 +11,7 @@ import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { PARTY_HOST } from "@/lib/party-host";
 
 type LobbyState = { teams: { id: string; name: string }[] };
 type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
@@ -32,7 +33,7 @@ export default function PlayPage() {
   const epoch = useRef<string | null>(null);
 
   const socket = usePartySocket({
-    host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
+    host: PARTY_HOST,
     room: code,
     // Every (re)connect says who we are again: a phone that slept or changed network comes back
     // as the same team instead of staying "offline" and being skipped.
