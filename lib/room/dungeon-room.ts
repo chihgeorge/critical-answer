@@ -286,7 +286,7 @@ export class DungeonRoom {
     // game validation is shallow — it never re-validates individual Team fields, or even that
     // each team entry is an object at all). Backfill so every read site (recordBranchChoice,
     // getSpectatorView) can assume the field always exists. Defensive: a team entry that isn't
-    // a real object (a corrupt snapshot snapshot.ts's own shallow check wouldn't catch) is left
+    // a real object (which snapshot.ts's own shallow check wouldn't catch) is left
     // as-is rather than crashing here — the room ends up as broken as the corrupt data already
     // made it, same as every other Team field this file never re-validates, not a new failure
     // mode this backfill introduces (see the /review adversarial pass, 2026-09-21).
