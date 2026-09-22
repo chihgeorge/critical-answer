@@ -23,6 +23,7 @@ function view(over: Partial<SpectatorView> = {}, teams: Partial<SpectatorView["t
       inBossPhase: false,
       online: true,
       currentQuestionId: `r${i}-q1`,
+      branchChoices: {},
       ...t,
     })),
     bossHp: 5,

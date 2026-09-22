@@ -5,11 +5,13 @@ import {
   createGame,
   DEFAULT_GAME_CONFIG,
   answerQuestion,
+  recordBranchChoice,
   setTeamOnline,
   getSpectatorView,
   currentTurnTeamId,
   isInBossPhase,
   InvalidActionError,
+  type BranchOptionId,
   type GameState,
 } from "../game-state";
 import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../protocol";
@@ -280,7 +282,10 @@ export class DungeonRoom {
       return "discarded";
     }
     this.roomEpoch = s.roomEpoch;
-    this.game = s.game;
+    // A save from before branchChoices existed has teams missing that field (snapshot.ts's
+    // game validation is shallow — it never re-validates individual Team fields). Backfill so
+    // every read site (recordBranchChoice, getSpectatorView) can assume the field always exists.
+    this.game = s.game && { ...s.game, teams: s.game.teams.map((t) => ({ ...t, branchChoices: t.branchChoices ?? {} })) };
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
     this.teamKeys = new Map(s.teamKeys);
@@ -551,6 +556,9 @@ export class DungeonRoom {
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice);
           break;
+        case "TEAM_BRANCH_CHOICE":
+          this.handleTeamBranchChoice(sender, msg.roomIndex, msg.choice);
+          break;
       }
       // A transcript download changes nothing; a rejected message did not either.
       if (msg.type !== "HOST_GET_TRANSCRIPT" && !this.rejected) {
@@ -724,6 +732,27 @@ export class DungeonRoom {
         this.epilogueRequested = true;
         void this.sendEpilogue(narration, eventId).catch((err) => console.error("epilogue failed", err));
       }
+    } catch (err) {
+      const detail = err instanceof InvalidActionError ? err.message : "unknown error";
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    }
+  }
+
+  /** DM branching interlude pick. The team is derived from `connTeam` — never from a
+   * client-supplied id — so a connection can only ever choose for its own team. */
+  private handleTeamBranchChoice(conn: Conn, roomIndex: number, choice: BranchOptionId) {
+    const teamId = this.connTeam.get(conn.id);
+    if (!teamId) {
+      this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
+      return;
+    }
+    if (!this.game) {
+      this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+      return;
+    }
+    try {
+      this.game = recordBranchChoice(this.game, teamId, roomIndex, choice);
+      this.broadcastState();
     } catch (err) {
       const detail = err instanceof InvalidActionError ? err.message : "unknown error";
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
