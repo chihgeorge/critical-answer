@@ -329,6 +329,101 @@ describe("HOST_JUDGE", () => {
   });
 });
 
+describe("TEAM_BRANCH_CHOICE", () => {
+  function startedGame(teamCount = 2) {
+    const { room, hostConn } = makeRoomWithHost();
+    const { ids, conns } = joinTeams(room, hostConn, teamCount);
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn, ids, conns };
+  }
+
+  it("rejects a connection that never joined any team", () => {
+    const { room } = startedGame(1);
+    const spectator = makeConn("spectator-conn");
+    send(room, spectator, { type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight" });
+    expect(lastSentTo(spectator)).toMatchObject({ type: "ERROR", error: "unknown_team" });
+  });
+
+  it("rejects when there's no active game", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    const { conns } = joinTeams(room, hostConn, 1);
+    send(room, conns[0], { type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight" });
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "no_active_game" });
+  });
+
+  it("ignores a spoofed teamId in the payload — the sender's own team (via connTeam) is always used", () => {
+    const { room, hostConn, ids, conns } = startedGame(2);
+    // ids[0] answers incorrectly (stays at room 0, turn passes on); ids[1] then answers
+    // correctly and enters room 1. Net: ids[0] at room 0, ids[1] at room 1.
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: false });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[1], questionId: "r0-q1", correct: true });
+    // conns[0] (team ids[0], still at room 0) tries to claim ids[1]'s already-entered room via a spoofed teamId.
+    send(room, conns[0], { type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight", teamId: ids[1] } as never);
+    // Rejected as ids[0]'s own (unreached) room, not applied to ids[1].
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
+    expect(room.game!.teams.find((t) => t.id === ids[1])!.branchChoices).toEqual({});
+  });
+
+  it("full flow: room advance, then a valid branch choice sticks and is visible in STATE", () => {
+    const { room, hostConn, ids, conns } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true }); // roomIndex 0 -> 1
+    send(room, conns[0], { type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "negotiate" });
+    const state = lastBroadcast(room);
+    expect(state.type).toBe("STATE");
+    expect(state.view.teams[0].branchChoices).toEqual({ 1: "negotiate" });
+  });
+
+  it("a second team cannot choose on behalf of the first — each connection only ever affects its own team", () => {
+    const { room, hostConn, ids, conns } = startedGame(2);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true }); // team 0 enters room 1
+    send(room, conns[1], { type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight" }); // team 1 hasn't entered room 1
+    expect(lastSentTo(conns[1])).toMatchObject({ type: "ERROR", error: "invalid_action" });
+    expect(room.game!.teams[0].branchChoices).toEqual({});
+  });
+
+  it("rejects a resubmission for an already-decided room without overwriting the first choice", () => {
+    const { room, hostConn, ids, conns } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    send(room, conns[0], { type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight" });
+    send(room, conns[0], { type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "negotiate" });
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
+    expect(room.game!.teams[0].branchChoices).toEqual({ 1: "fight" });
+  });
+
+  it("does not block the team's next turn — HOST_JUDGE for that team still succeeds with the choice still pending", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true }); // enters room 1, never chooses
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
+    expect(room.game!.teams[0].roomIndex).toBeGreaterThanOrEqual(1);
+    expect(room.game!.teams[0].branchChoices).toEqual({}); // still unanswered, and nothing broke
+  });
+
+  it("the recorded outcome always comes from the client's own message, never from the LLM/narration provider (design doc Next Steps #3)", async () => {
+    // A "malicious" provider that tries to narrate a DIFFERENT branch choice than what the
+    // client actually sent. If anything downstream ever consulted the provider's output to
+    // decide (or override) a branch outcome, this would leak "negotiate" into a "fight" pick.
+    const flush = () => new Promise((r) => setTimeout(r, 30));
+    const malicious = { name: "malicious", narrate: async () => "negotiate" };
+    const narrateSpy = vi.spyOn(malicious, "narrate");
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { provider: malicious, holdMs: 20 });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids, conns } = joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true }); // enters room 1
+    await flush(); // drain HOST_JUDGE's own in-flight room-advance narration before counting calls
+    const callsBeforeBranchChoice = narrateSpy.mock.calls.length; // 1: HOST_JUDGE's own room-advance narration
+    send(room, conns[0], { type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight" });
+    await flush(); // drain any narrate() call TEAM_BRANCH_CHOICE might have triggered, sync or async
+
+    expect(room.game!.teams[0].branchChoices).toEqual({ 1: "fight" }); // exactly what the client sent, not "negotiate"
+    // handleTeamBranchChoice never calls narrate() at all — recordBranchChoice is a pure,
+    // synchronous GameState transform with no LLM/provider dependency in its call path.
+    expect(narrateSpy.mock.calls.length).toBe(callsBeforeBranchChoice);
+  });
+});
+
 describe("REJOIN", () => {
   it("rejects a non-UUID team id", () => {
     const { room } = makeRoomWithHost();

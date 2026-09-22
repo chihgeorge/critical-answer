@@ -14,14 +14,71 @@
 //                 ▼                               ▼
 //        T 分數 < 門檻 X                     T 分數 ≥ 門檻 X
 //        （一般怪物房）                        （首領房）
+//                 │
+//                 │ answerQuestion(): 答對，roomIndex 真的變化
+//                 │ (最後一房被 clamp 反覆刷分不算，見下方 recordBranchChoice)
+//                 ▼
+//        ┌───────────────────────────┐
+//        │ 該房變成「可選」：client 端比對   │   （非同步、不擋回合 — T 的
+//        │ roomIndex 與 branchChoices 的鍵   │    下一輪照常進行，選擇是
+//        │ 值，缺的那個 roomIndex 就顯示分支  │    背景 UI，隨時可補）
+//        │ 按鈕（DM branching interlude）    │
+//        └──────────────┬────────────┘
+//                        │ TEAM_BRANCH_CHOICE（隊伍手機直接發，
+//                        │ teamId 由 connTeam 綁定推導，不信任 client）
+//                        ▼
+//        recordBranchChoice()：第一次選擇定案，
+//        同 roomIndex 之後的提交一律拒絕
 //
 // Turn order never changes with room progress — this avoids the "arrival
 // order" snowball fairness risk flagged in /plan-eng-review's Outside Voice.
+//
+// DM branching interlude (docs/designs/dm-branching-and-question-types.md,
+// /plan-eng-review 2026-09-21): there is no server-side "trigger" step —
+// the offer is purely client-derived. A client compares a team's `roomIndex`
+// against the keys of its `branchChoices` map (both broadcast in every
+// STATE) to find rooms it has entered but not yet chosen for, and renders
+// buttons for them. The team's own phone then sends TEAM_BRANCH_CHOICE,
+// validated server-side by recordBranchChoice below. Not turn-blocking: a
+// team's next turn is never gated on answering it. The last-room clamp in
+// answerQuestion (nextRoomIndex === team.roomIndex when already at the
+// final room) means roomIndex simply never grows past it again, so no
+// special-casing is needed here — a room is only ever "enterable" once.
 
 export type Difficulty = 1 | 2 | 3 | 4 | 5;
 
 export const MIN_DIFFICULTY: Difficulty = 1;
 export const MAX_DIFFICULTY: Difficulty = 5;
+
+/**
+ * Fixed, developer-authored branch option ids (not host-editable — see
+ * design doc decision 7). Display text is looked up by id, never stored
+ * durably, so copy changes never alter the meaning of an old save.
+ */
+export const BRANCH_OPTIONS = ["fight", "negotiate"] as const;
+export type BranchOptionId = (typeof BRANCH_OPTIONS)[number];
+
+export function isBranchOptionId(v: unknown): v is BranchOptionId {
+  return typeof v === "string" && (BRANCH_OPTIONS as readonly string[]).includes(v);
+}
+
+/** Display text for each option id — never stored, so this can be reworded freely. */
+export const BRANCH_LABELS: Record<BranchOptionId, string> = {
+  fight: "武力",
+  negotiate: "討價",
+};
+
+/**
+ * The earliest room a team entered but hasn't chosen a branch for, or null if
+ * there's nothing pending. Non-blocking UI (design doc decision 4B) surfaces
+ * this one at a time rather than the whole backlog at once.
+ */
+export function firstPendingBranchRoom(team: { roomIndex: number; branchChoices: Partial<Record<number, BranchOptionId>> }): number | null {
+  for (let i = 1; i <= team.roomIndex; i++) {
+    if (team.branchChoices[i] === undefined) return i;
+  }
+  return null;
+}
 
 export interface Team {
   id: string;
@@ -38,6 +95,12 @@ export interface Team {
   currentDifficulty: Difficulty;
   /** Question id the team must answer next — used to reject stale submissions (T6). */
   currentQuestionId: string;
+  /**
+   * DM branching interlude choices, keyed by the roomIndex the team had
+   * just entered when it chose. First choice for a given roomIndex wins —
+   * see recordBranchChoice. Stores the option id, not display text.
+   */
+  branchChoices: Partial<Record<number, BranchOptionId>>;
 }
 
 export interface RoomTemplate {
@@ -160,6 +223,7 @@ export function createGame(
       roomIndex: 0,
       currentDifficulty: rooms[0].baseDifficulty,
       currentQuestionId: dealt.questionId,
+      branchChoices: {},
     });
   }
 
@@ -364,6 +428,44 @@ export function answerQuestion(
   return { game: advanceTurn(nextGame), outcome };
 }
 
+/**
+ * Record a team's DM branching interlude choice for a room it has already
+ * entered. Non-turn-blocking (see the module header): a team may submit at
+ * any point after entering `roomIndex`, even after advancing further — it
+ * is validated against how far the team has actually gotten, not against
+ * their current room. First choice for a given roomIndex wins; a later
+ * submission for an already-decided roomIndex is a no-op error, not a
+ * silent overwrite (design doc decision 6).
+ *
+ * `roomIndex` must be a room the team actually transitioned INTO (1..team.roomIndex)
+ * — room 0 is the starting room, never entered via a branch-triggering transition,
+ * and a room reached by the last-room clamp still counts once (the clamp only
+ * suppresses *repeat* triggers while farming that same room, see decision 3).
+ */
+export function recordBranchChoice(
+  game: GameState,
+  teamId: string,
+  roomIndex: number,
+  choice: BranchOptionId,
+): GameState {
+  if (game.phase === "finished") {
+    throw new InvalidActionError("Game already finished");
+  }
+  const team = getTeam(game, teamId); // throws if unknown
+  if (!Number.isInteger(roomIndex) || roomIndex < 1 || roomIndex > team.roomIndex) {
+    throw new InvalidActionError(`Invalid branch roomIndex ${roomIndex} for ${teamId} (at ${team.roomIndex})`);
+  }
+  if (team.branchChoices[roomIndex] !== undefined) {
+    throw new InvalidActionError(`Branch choice for room ${roomIndex} already decided for ${teamId}`);
+  }
+  return {
+    ...game,
+    teams: game.teams.map((t) =>
+      t.id === teamId ? { ...t, branchChoices: { ...t.branchChoices, [roomIndex]: choice } } : t,
+    ),
+  };
+}
+
 /** Mark a team offline/online — a disconnected team is skipped by advanceTurn (T7). */
 export function setTeamOnline(game: GameState, teamId: string, online: boolean): GameState {
   getTeam(game, teamId); // throws if unknown
@@ -392,6 +494,9 @@ export interface SpectatorView {
      * matched by id; see docs/designs Next Steps #7). Exposed so the host
      * client can submit a matching HOST_JUDGE without a separate lookup. */
     currentQuestionId: string;
+    /** DM branching interlude choices so far, keyed by roomIndex. A client derives which
+     * rooms are still pending a choice from `roomIndex` minus this map's keys. */
+    branchChoices: Partial<Record<number, BranchOptionId>>;
   }[];
   bossHp: number;
   bossMaxHp: number;
@@ -409,6 +514,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       inBossPhase: isInBossPhase(game, t.id),
       online: t.online,
       currentQuestionId: t.currentQuestionId,
+      branchChoices: t.branchChoices,
     })),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,

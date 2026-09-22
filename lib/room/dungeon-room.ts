@@ -5,11 +5,13 @@ import {
   createGame,
   DEFAULT_GAME_CONFIG,
   answerQuestion,
+  recordBranchChoice,
   setTeamOnline,
   getSpectatorView,
   currentTurnTeamId,
   isInBossPhase,
   InvalidActionError,
+  type BranchOptionId,
   type GameState,
 } from "../game-state";
 import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../protocol";
@@ -280,7 +282,21 @@ export class DungeonRoom {
       return "discarded";
     }
     this.roomEpoch = s.roomEpoch;
-    this.game = s.game;
+    // A save from before branchChoices existed has teams missing that field (snapshot.ts's
+    // game validation is shallow — it never re-validates individual Team fields, or even that
+    // each team entry is an object at all). Backfill so every read site (recordBranchChoice,
+    // getSpectatorView) can assume the field always exists. Defensive: a team entry that isn't
+    // a real object (which snapshot.ts's own shallow check wouldn't catch) is left
+    // as-is rather than crashing here — the room ends up as broken as the corrupt data already
+    // made it, same as every other Team field this file never re-validates, not a new failure
+    // mode this backfill introduces (see the /review adversarial pass, 2026-09-21).
+    this.game =
+      s.game && {
+        ...s.game,
+        teams: s.game.teams.map((t) =>
+          t && typeof t === "object" ? { ...t, branchChoices: t.branchChoices ?? {} } : t,
+        ),
+      };
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
     this.teamKeys = new Map(s.teamKeys);
@@ -551,6 +567,9 @@ export class DungeonRoom {
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice);
           break;
+        case "TEAM_BRANCH_CHOICE":
+          this.handleTeamBranchChoice(sender, msg.roomIndex, msg.choice);
+          break;
       }
       // A transcript download changes nothing; a rejected message did not either.
       if (msg.type !== "HOST_GET_TRANSCRIPT" && !this.rejected) {
@@ -724,6 +743,27 @@ export class DungeonRoom {
         this.epilogueRequested = true;
         void this.sendEpilogue(narration, eventId).catch((err) => console.error("epilogue failed", err));
       }
+    } catch (err) {
+      const detail = err instanceof InvalidActionError ? err.message : "unknown error";
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    }
+  }
+
+  /** DM branching interlude pick. The team is derived from `connTeam` — never from a
+   * client-supplied id — so a connection can only ever choose for its own team. */
+  private handleTeamBranchChoice(conn: Conn, roomIndex: number, choice: BranchOptionId) {
+    const teamId = this.connTeam.get(conn.id);
+    if (!teamId) {
+      this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
+      return;
+    }
+    if (!this.game) {
+      this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+      return;
+    }
+    try {
+      this.game = recordBranchChoice(this.game, teamId, roomIndex, choice);
+      this.broadcastState();
     } catch (err) {
       const detail = err instanceof InvalidActionError ? err.message : "unknown error";
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });

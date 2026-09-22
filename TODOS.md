@@ -361,9 +361,11 @@
 
 **Context:** 見 [docs/designs/dm-branching-and-question-types.md](docs/designs/dm-branching-and-question-types.md)。`lib/room/dungeon-room.ts` 的 `handleHostJudge` 是唯一會產生 `NarrationEvent` 的地方，新事件要從那裡發出。
 
+**更新（2026-09-21，DM 分支互動實作階段）：** 設計文件 Implementation Tasks 的 T4（LLM 不可用時跳過首領回提、不硬塞模板）併進本項——因為回提事件本身還沒做，T4 現在沒有程式碼可改，等這項開工時一起處理降級邏輯。`lib/narration/runner.ts` 目前對任何事件都保證恰好 emit 一次（LLM 失敗會自動換 scripted 備用台詞，不會卡住），新事件型別要決定是沿用這個「保證 emit」的既有契約（一定講一句話，用備用台詞頂）還是真的要能「完全跳過不講」——後者需要修改 runner 的契約，前者不用。
+
 **Effort:** M（人工約 1 天 / CC 約 1 小時）　**Priority:** P2
 
-**Depends on / blocked by:** DM 分支互動（每房觸發版）先實作完成。
+**Depends on / blocked by:** ~~DM 分支互動（每房觸發版）先實作完成~~ — 已在 v0.3.0.0（2026-09-22）實作完成（`lib/game-state.ts` 的 `recordBranchChoice`／`TEAM_BRANCH_CHOICE`），本項不再被阻擋，可以開工。
 
 ---
 

@@ -172,6 +172,32 @@ describe("restoring after a restart", () => {
     expect(lastOf(screen, "STATE").roomEpoch).toBe(epoch);
   });
 
+  it("a save from before branchChoices existed restores with it backfilled, not crashing on the next read", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    for (const t of saved.game.teams) delete t.branchChoices; // simulate a pre-DM-branching save
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored");
+    expect(second.room.game!.teams.every((t) => t.branchChoices !== undefined)).toBe(true);
+    expect(second.room.game!.teams.map((t) => t.branchChoices)).toEqual([{}, {}]);
+  });
+
+  it("a corrupt snapshot with a null team entry doesn't crash restore (adversarial review, 2026-09-21)", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    saved.game.teams[0] = null; // snapshot.ts's shallow validation lets this through
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored"); // must not throw
+    expect(second.room.game!.teams[0]).toBeNull(); // left as-is, not crashed on
+    expect(second.room.game!.teams[1]!.branchChoices).toEqual({}); // the valid team still backfills fine
+  });
+
   it("every team is offline until its phone rejoins", async () => {
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);

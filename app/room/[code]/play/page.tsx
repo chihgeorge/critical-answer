@@ -6,7 +6,7 @@ import usePartySocket from "partysocket/react";
 import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
-import type { SpectatorView, GamePhase } from "@/lib/game-state";
+import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom, type SpectatorView, type GamePhase } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
@@ -118,6 +118,9 @@ export default function PlayPage() {
   const turn = game ? describeTurn(game.view, game.question) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
   const finished = game?.phase === "finished";
+  // Non-blocking DM branching interlude (design doc decision 4B): does not gate turn order,
+  // so this is just derived from the broadcast state, not tied to isMyTurn.
+  const pendingBranchRoom = myTeam ? firstPendingBranchRoom(myTeam) : null;
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -172,6 +175,24 @@ export default function PlayPage() {
                 {myTeam ? `${myTeam.score} / ${BOSS_THRESHOLD}` : `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`}
               </div>
               {myTeam && <ScoreMeter score={Math.min(myTeam.score, BOSS_THRESHOLD)} max={BOSS_THRESHOLD} active={isMyTurn} />}
+            </div>
+          </Panel>
+        )}
+
+        {/* DM branching interlude: background choice, never blocks the turn above. */}
+        {game && !finished && pendingBranchRoom !== null && (
+          <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-3 text-center">
+            <div className="text-[15px]">冒險出現岔路，你們要怎麼做？</div>
+            <div className="flex gap-2">
+              {BRANCH_OPTIONS.map((choice) => (
+                <PixelButton
+                  key={choice}
+                  onClick={() => send({ type: "TEAM_BRANCH_CHOICE", roomIndex: pendingBranchRoom, choice })}
+                  className="!m-0"
+                >
+                  {BRANCH_LABELS[choice]}
+                </PixelButton>
+              ))}
             </div>
           </Panel>
         )}

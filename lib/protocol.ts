@@ -6,11 +6,19 @@
 // answer correct/incorrect. Only the host can send HOST_JUDGE — trusting a
 // team's own "I got it right" claim would let them self-score.
 //
+// TEAM_BRANCH_CHOICE is the one exception to "only the host mutates game
+// state" (docs/designs/dm-branching-and-question-types.md, decision 1): a
+// branch pick is not a score claim, the server still resolves everything
+// deterministically, so the self-scoring risk above does not apply. The
+// sender's team is derived from the connection's own connTeam binding
+// (set at JOIN/REJOIN) — never from a client-supplied team id — so no
+// teamKey is needed on this message, unlike JOIN/REJOIN.
+//
 // Host identity is a token minted by the host's browser at room creation.
 // The first HOST_CLAIM for a room sets it (trust on first use, on a 4-letter
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
-import type { GamePhase, SpectatorView } from "./game-state";
+import { isBranchOptionId, type BranchOptionId, type GamePhase, type SpectatorView } from "./game-state";
 import type { SpriteKind } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -42,7 +50,9 @@ export type ClientMessage =
       questionId: string;
       correct: boolean;
       fleeChoice?: "flee" | "retry";
-    };
+    }
+  /** DM branching interlude pick, sent by the team's own phone. See the module header. */
+  | { type: "TEAM_BRANCH_CHOICE"; roomIndex: number; choice: BranchOptionId };
 
 export type ServerErrorCode =
   | "invalid_team_id"
@@ -149,6 +159,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (teamId === null || questionId === null || typeof m.correct !== "boolean") return null;
       if (m.fleeChoice !== undefined && m.fleeChoice !== "flee" && m.fleeChoice !== "retry") return null;
       return { type: "HOST_JUDGE", teamId, questionId, correct: m.correct, fleeChoice: m.fleeChoice };
+    }
+    case "TEAM_BRANCH_CHOICE": {
+      if (!Number.isInteger(m.roomIndex) || !isBranchOptionId(m.choice)) return null;
+      return { type: "TEAM_BRANCH_CHOICE", roomIndex: m.roomIndex as number, choice: m.choice };
     }
     default:
       return null;

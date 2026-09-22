@@ -85,6 +85,19 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ ...ok, questionId: "q".repeat(65) })).toBeNull();
     expect(parseClientMessage({ ...ok, fleeChoice: "run" })).toBeNull();
   });
+
+  it("TEAM_BRANCH_CHOICE: accepts valid, rejects non-integer roomIndex and unknown choice ids", () => {
+    const ok = { type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight" };
+    expect(parseClientMessage(ok)).toEqual(ok);
+    expect(parseClientMessage({ ...ok, choice: "negotiate" })).toEqual({ ...ok, choice: "negotiate" });
+    expect(parseClientMessage({ ...ok, roomIndex: 1.5 })).toBeNull();
+    expect(parseClientMessage({ ...ok, roomIndex: "1" })).toBeNull();
+    expect(parseClientMessage({ ...ok, choice: "flee" })).toBeNull();
+    expect(parseClientMessage({ ...ok, choice: undefined })).toBeNull();
+    // Deliberately no teamId/teamKey field: the sender's team is derived from
+    // the connection's own connTeam binding, never from client-supplied data.
+    expect(parseClientMessage({ type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight", teamId: ID })).toEqual(ok);
+  });
 });
 
 describe("sanitizeText", () => {
