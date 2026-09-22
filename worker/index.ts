@@ -1,11 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { Server, routePartykitRequest, type Connection, type WSMessage } from "partyserver";
 import { entryGate } from "../lib/gate";
-import { originAllowed } from "../lib/origin";
 import { positiveMs } from "../lib/room/positive-ms";
 import { DungeonRoom } from "../lib/room/dungeon-room";
 import { BankStore } from "../lib/bank-store";
-import { tokensEqual } from "../lib/tokens";
+import { bankOrFallback, handleBankApi } from "../lib/bank-api";
 
 export interface Env {
   /** The binding is named "main" on purpose: partysocket's default path is /parties/main/<room>. */
@@ -79,9 +78,10 @@ export class Room extends Server<Env> {
       {
         idleMs: positiveMs(this.env.ROOM_IDLE_MS),
         expireMs: positiveMs(this.env.ROOM_EXPIRE_MS),
-        // Undefined (not fetched here) falls through to DungeonRoom's own bundled-bank default:
-        // an existing room's restore() overrides this with its own saved bank regardless.
-        bank: await fetchBank(this.env),
+        // Undefined (bankOrFallback swallowed a fetch failure) falls through to DungeonRoom's own
+        // bundled-bank default: an existing room's restore() overrides this with its own saved bank
+        // regardless. See docs/designs/question-bank-editor.md, decision 7.
+        bank: await bankOrFallback(() => this.env.bank.get(this.env.bank.idFromName(BANK_DO_NAME)).getBank()),
       },
     );
     await this.game.restore();
@@ -107,74 +107,19 @@ export class Room extends Server<Env> {
 
 const notFound = () => new Response("Not found", { status: 404 });
 
-/** A new room's starting bank: the live one from BankStore, or the bundled default if BankStore is
- * unreachable (redeploying, an editor bug, cold-start latency). A live game must never fail to start
- * because the question-bank editor is having a bad day — see docs/designs/question-bank-editor.md,
- * decision 7. Once a room is built it keeps its own snapshot's bank and never calls this again. */
-async function fetchBank(env: Env) {
-  try {
-    const stub = env.bank.get(env.bank.idFromName(BANK_DO_NAME));
-    return await stub.getBank();
-  } catch (err) {
-    console.error(JSON.stringify({ event: "bank_fetch_failed", error: String(err) }));
-    return undefined; // DungeonRoom's own constructor default (the bundled BANK) takes over.
-  }
-}
-
-/** CORS for /api/bank/*: the editor UI is a separate origin (the Next.js frontend), unlike the WebSocket
- * room paths above which don't need CORS at all. Reuses the same ALLOWED_ORIGINS the WS Origin check uses. */
-function corsHeaders(origin: string | null, allowed: string): HeadersInit {
-  if (!origin || !originAllowed(origin, allowed)) return {};
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
-  };
-}
-
-const MAX_BANK_BODY_BYTES = 200_000; // ~4x the bundled bank's size; generous headroom, not unbounded
-
-/** Owner-only question-bank CRUD. Deliberately its own route, not routePartykitRequest — see the Env.bank
- * doc comment and lib/gate.ts's header comment on why a new DO binding needs this. */
-async function handleBankApi(request: Request, env: Env): Promise<Response> {
-  const origin = request.headers.get("Origin");
-  const cors = corsHeaders(origin, env.ALLOWED_ORIGINS ?? "");
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-
-  const ownerKey = env.OWNER_KEY;
-  const header = request.headers.get("Authorization") ?? "";
-  const presented = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
-  if (!ownerKey || !tokensEqual(ownerKey, presented)) {
-    return new Response("Forbidden", { status: 403, headers: cors });
-  }
-
-  const stub = env.bank.get(env.bank.idFromName(BANK_DO_NAME));
-  if (request.method === "GET") {
-    return Response.json(await stub.getBank(), { headers: cors });
-  }
-  if (request.method === "PUT") {
-    const contentLength = Number(request.headers.get("Content-Length") ?? "0");
-    if (contentLength > MAX_BANK_BODY_BYTES) return new Response("Payload too large", { status: 413, headers: cors });
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return new Response("Invalid JSON", { status: 400, headers: cors });
-    }
-    try {
-      return Response.json(await stub.putBank(body), { headers: cors });
-    } catch (err) {
-      return new Response(err instanceof Error ? err.message : "Invalid bank", { status: 400, headers: cors });
-    }
-  }
-  return new Response("Method not allowed", { status: 405, headers: cors });
-}
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (pathname === "/healthz") return Response.json({ ok: true });
-    if (pathname === "/api/bank" || pathname.startsWith("/api/bank/")) return handleBankApi(request, env);
+    if (pathname === "/api/bank" || pathname.startsWith("/api/bank/")) {
+      const stub = env.bank.get(env.bank.idFromName(BANK_DO_NAME));
+      return handleBankApi(request, {
+        ownerKey: env.OWNER_KEY,
+        allowedOrigins: env.ALLOWED_ORIGINS ?? "",
+        getBank: () => stub.getBank(),
+        putBank: (candidate) => stub.putBank(candidate),
+      });
+    }
 
     const gate = (req: Request, lobby: { party: string }) => entryGate(req, lobby, env.ALLOWED_ORIGINS ?? "");
     return (await routePartykitRequest(request, env, { onBeforeConnect: gate, onBeforeRequest: gate })) ?? notFound();
