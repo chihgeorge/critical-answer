@@ -1,17 +1,21 @@
 "use client";
 
 // Owner-only question-bank editor. Not linked from anywhere in the game's normal flow — reached by
-// its URL directly, gated by the OWNER_KEY the Worker checks on every /api/bank request. Text
-// questions only this round (see docs/designs/question-bank-editor.md's NOT in scope section for
-// why multipleChoice/image aren't here).
+// its URL directly, gated by the OWNER_KEY the Worker checks on every /api/bank request. Supports
+// both question kinds (see docs/designs/multiple-choice-questions.md): text (free-answer, judged by
+// the host reading it aloud) and multipleChoice (options[] + correctIndex, judged the same way).
 
 import { useEffect, useState } from "react";
 import { Panel, PixelButton } from "@/components/pixel";
-import type { Bank, BankQuestion } from "@/lib/question-bank";
+import { MIN_OPTIONS, type Bank, type BankQuestion } from "@/lib/question-bank";
 import { partyHttpBase } from "@/lib/party-host";
 
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
 const bankApiBase = () => `${partyHttpBase()}/api/bank`;
+// Sentinel for "no correct option marked yet" — happens right after switching a question to
+// multipleChoice, or after deleting the option that was marked correct. Never a valid saved
+// state: validate() below blocks 儲存全部變更 while any question is stuck at this value.
+const UNSET_CORRECT_INDEX = -1;
 
 /** Reads the owner key from localStorage — a per-browser convenience, not the source of truth (the
  * Worker checks it on every request; a wrong/missing key never gets past the fetch below). Starts
@@ -49,6 +53,22 @@ function useOwnerKey(onRestored: (key: string) => void) {
 }
 
 type Location = { kind: "room"; roomIndex: number } | { kind: "boss" };
+
+/** multipleChoice questions need a client-side pre-save check that text questions don't: a
+ * freshly-added or just-edited option list can sit at UNSET_CORRECT_INDEX (no radio picked
+ * yet) or under MIN_OPTIONS, states the type system itself can't rule out client-side. Text
+ * questions have no such intermediate state — an empty answer is still a valid string, so
+ * that check is left to the server's parseBank() round trip, same as before this feature. */
+function validationError(bank: Bank): string | null {
+  const all = [...bank.rooms.flatMap((r) => r.questions), ...bank.boss.questions];
+  for (const q of all) {
+    if (q.kind !== "multipleChoice") continue;
+    if (q.options.length < MIN_OPTIONS) return `題目「${q.text || q.id}」至少要有 ${MIN_OPTIONS} 個選項`;
+    if (q.options.some((o) => !o.trim())) return `題目「${q.text || q.id}」有空白選項`;
+    if (q.correctIndex < 0 || q.correctIndex >= q.options.length) return `題目「${q.text || q.id}」還沒標記正解`;
+  }
+  return null;
+}
 
 export default function BankEditorPage() {
   const [bank, setBank] = useState<Bank | null>(null);
@@ -89,6 +109,11 @@ export default function BankEditorPage() {
 
   const save = async (next: Bank) => {
     if (version === null) return; // no successful load yet — nothing to compare against
+    const invalid = validationError(next);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -124,9 +149,9 @@ export default function BankEditorPage() {
       ? { ...b, boss: { ...b.boss, questions } }
       : { ...b, rooms: b.rooms.map((r, i) => (i === loc.roomIndex ? { ...r, questions } : r)) };
 
-  const editQuestion = (loc: Location, id: string, field: "text" | "answer", value: string) => {
+  const updateQuestion = (loc: Location, id: string, updater: (q: BankQuestion) => BankQuestion) => {
     if (!bank) return;
-    const questions = questionsAt(bank, loc).map((q) => (q.id === id ? { ...q, [field]: value } : q));
+    const questions = questionsAt(bank, loc).map((q) => (q.id === id ? updater(q) : q));
     setBank(withQuestions(bank, loc, questions));
   };
 
@@ -138,7 +163,7 @@ export default function BankEditorPage() {
   const addQuestion = (loc: Location) => {
     if (!bank) return;
     const id = `${loc.kind === "boss" ? "boss" : `r${loc.roomIndex}`}-${crypto.randomUUID().slice(0, 8)}`;
-    setBank(withQuestions(bank, loc, [...questionsAt(bank, loc), { id, text: "", answer: "" }]));
+    setBank(withQuestions(bank, loc, [...questionsAt(bank, loc), { kind: "text", id, text: "", answer: "" }]));
   };
 
   return (
@@ -183,7 +208,7 @@ export default function BankEditorPage() {
               testId={`bank-room-${roomIndex}`}
               title={`第 ${roomIndex + 1} 房 · ${room.monster.name}`}
               questions={room.questions}
-              onEdit={(id, field, value) => editQuestion({ kind: "room", roomIndex }, id, field, value)}
+              onUpdate={(id, updater) => updateQuestion({ kind: "room", roomIndex }, id, updater)}
               onDelete={(id) => deleteQuestion({ kind: "room", roomIndex }, id)}
               onAdd={() => addQuestion({ kind: "room", roomIndex })}
             />
@@ -192,7 +217,7 @@ export default function BankEditorPage() {
             testId="bank-room-boss"
             title={`首領 · ${bank.boss.monster.name}`}
             questions={bank.boss.questions}
-            onEdit={(id, field, value) => editQuestion({ kind: "boss" }, id, field, value)}
+            onUpdate={(id, updater) => updateQuestion({ kind: "boss" }, id, updater)}
             onDelete={(id) => deleteQuestion({ kind: "boss" }, id)}
             onAdd={() => addQuestion({ kind: "boss" })}
           />
@@ -209,14 +234,14 @@ function RoomEditor({
   testId,
   title,
   questions,
-  onEdit,
+  onUpdate,
   onDelete,
   onAdd,
 }: {
   testId: string;
   title: string;
   questions: BankQuestion[];
-  onEdit: (id: string, field: "text" | "answer", value: string) => void;
+  onUpdate: (id: string, updater: (q: BankQuestion) => BankQuestion) => void;
   onDelete: (id: string) => void;
   onAdd: () => void;
 }) {
@@ -225,28 +250,122 @@ function RoomEditor({
       <div data-testid={testId} className="flex flex-col gap-2">
         <h2 className="text-[18px]">{title}</h2>
         {questions.map((q) => (
-          <div key={q.id} className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
-            <input
-              className="px-input"
-              aria-label="題目"
-              value={q.text}
-              onChange={(e) => onEdit(q.id, "text", e.target.value)}
-            />
-            <div className="flex gap-2">
-              <input
-                className="px-input flex-1"
-                aria-label="答案"
-                value={q.answer}
-                onChange={(e) => onEdit(q.id, "answer", e.target.value)}
-              />
-              <PixelButton variant="flee" onClick={() => onDelete(q.id)}>
-                刪除
-              </PixelButton>
-            </div>
-          </div>
+          <QuestionRow
+            key={q.id}
+            question={q}
+            onUpdate={(updater) => onUpdate(q.id, updater)}
+            onDelete={() => onDelete(q.id)}
+          />
         ))}
         <PixelButton onClick={onAdd}>+ 新增題目</PixelButton>
       </div>
     </Panel>
+  );
+}
+
+/** A fresh question of the given kind, keeping only `id`/`text` — switching kind never carries
+ * over the other kind's fields (no auto-conversion; the two kinds' content isn't comparable). */
+function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): BankQuestion {
+  return kind === "text"
+    ? { kind: "text", id: q.id, text: q.text, answer: "" }
+    : { kind: "multipleChoice", id: q.id, text: q.text, options: ["", ""], correctIndex: UNSET_CORRECT_INDEX };
+}
+
+function QuestionRow({
+  question: q,
+  onUpdate,
+  onDelete,
+}: {
+  question: BankQuestion;
+  onUpdate: (updater: (q: BankQuestion) => BankQuestion) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
+      <div className="flex gap-2">
+        <input
+          className="px-input flex-1"
+          aria-label="題目"
+          value={q.text}
+          onChange={(e) => onUpdate((cur) => ({ ...cur, text: e.target.value }))}
+        />
+        <select
+          className="px-input"
+          aria-label="題型"
+          value={q.kind}
+          onChange={(e) => onUpdate((cur) => blankQuestion(cur, e.target.value as BankQuestion["kind"]))}
+        >
+          <option value="text">問答</option>
+          <option value="multipleChoice">選擇</option>
+        </select>
+      </div>
+
+      {q.kind === "text" ? (
+        <div className="flex gap-2">
+          <input
+            className="px-input flex-1"
+            aria-label="答案"
+            value={q.answer}
+            onChange={(e) => onUpdate((cur) => (cur.kind === "text" ? { ...cur, answer: e.target.value } : cur))}
+          />
+          <PixelButton variant="flee" onClick={onDelete}>
+            刪除
+          </PixelButton>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {q.options.map((opt, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input
+                type="radio"
+                aria-label={`第 ${i + 1} 個選項為正解`}
+                name={`correct-${q.id}`}
+                checked={q.correctIndex === i}
+                onChange={() => onUpdate((cur) => (cur.kind === "multipleChoice" ? { ...cur, correctIndex: i } : cur))}
+              />
+              <input
+                className="px-input flex-1"
+                aria-label={`選項 ${i + 1}`}
+                value={opt}
+                onChange={(e) =>
+                  onUpdate((cur) =>
+                    cur.kind === "multipleChoice"
+                      ? { ...cur, options: cur.options.map((o, j) => (j === i ? e.target.value : o)) }
+                      : cur,
+                  )
+                }
+              />
+              <PixelButton
+                variant="flee"
+                disabled={q.options.length <= MIN_OPTIONS}
+                onClick={() =>
+                  onUpdate((cur) => {
+                    if (cur.kind !== "multipleChoice") return cur;
+                    const options = cur.options.filter((_, j) => j !== i);
+                    // Deleting the option marked correct forces re-marking; deleting one before it
+                    // just shifts the index so the same option is still marked.
+                    const correctIndex =
+                      cur.correctIndex === i ? UNSET_CORRECT_INDEX : cur.correctIndex > i ? cur.correctIndex - 1 : cur.correctIndex;
+                    return { ...cur, options, correctIndex };
+                  })
+                }
+              >
+                刪
+              </PixelButton>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <PixelButton
+              onClick={() => onUpdate((cur) => (cur.kind === "multipleChoice" ? { ...cur, options: [...cur.options, ""] } : cur))}
+            >
+              + 新增選項
+            </PixelButton>
+            <PixelButton variant="flee" onClick={onDelete}>
+              刪除題目
+            </PixelButton>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

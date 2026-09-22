@@ -301,6 +301,27 @@ export default function HostPage() {
               <div className="mt-2">
                 <ScoreMeter score={Math.min(turn.team.score, BOSS_THRESHOLD)} max={BOSS_THRESHOLD} active />
               </div>
+              {/* The team's current tap on a multipleChoice question, if any — lets the host see
+                  what they picked before judging, same panel timing as the answer reveal below. */}
+              {game.question?.options && (
+                <div className="mt-2 flex flex-col gap-1">
+                  {game.question.options.map((opt, i) => (
+                    <div
+                      key={i}
+                      data-testid={`host-option-${i}`}
+                      className="px-3 py-1 text-[16px]"
+                      style={
+                        turn.team!.currentSelection === i
+                          ? { background: "var(--turn)", boxShadow: "inset 0 0 0 3px var(--turn2)" }
+                          : { background: "var(--cream2)" }
+                      }
+                    >
+                      {opt}
+                      {turn.team!.currentSelection === i && <span className="ml-2 text-[13px]">← 隊伍目前選的</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
               {answer && answer.questionId === turn.questionId && (
                 <div className="mt-2 px-3 py-1" style={{ background: "#d6f5c2", color: "#1e5a1c", boxShadow: "inset 0 0 0 3px #6fd36a" }}>
                   <div className="text-[11px]" style={{ color: "#2f6a2c" }}>答案（只有你看得到）</div>

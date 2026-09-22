@@ -208,6 +208,24 @@ export default function PlayPage() {
           </Panel>
         )}
 
+        {/* multipleChoice options — only our own turn shows the tappable list; re-tappable
+            any time before the host judges (see docs/designs/multiple-choice-questions.md
+            decision 5), so there's no "locked in" state here beyond the highlight itself. */}
+        {game && !finished && isMyTurn && game.question?.options && (
+          <Panel tone="turn" className="flex flex-col gap-2 px-3 py-3">
+            {game.question.options.map((opt, i) => (
+              <PixelButton
+                key={i}
+                variant={myTeam?.currentSelection === i ? "primary" : undefined}
+                onClick={() => send({ type: "TEAM_SELECT_OPTION", questionId: game.question!.id, optionIndex: i })}
+                className="!m-0"
+              >
+                {opt}
+              </PixelButton>
+            ))}
+          </Panel>
+        )}
+
         {finished && game && (
           <Panel tone="lav" className="px-4 py-5 text-center">
             <div className="text-[26px]">遊戲結束！</div>

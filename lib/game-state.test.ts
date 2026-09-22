@@ -8,6 +8,7 @@ import {
   setTeamOnline,
   getSpectatorView,
   recordBranchChoice,
+  recordOptionSelection,
   firstPendingBranchRoom,
   rollBossKillBonus,
   InvalidActionError,
@@ -524,6 +525,95 @@ describe("recordBranchChoice (DM branching interlude)", () => {
     // finished-game guard should block this, same as answerQuestion's own check.
     expect(game.teams[0].roomIndex).toBe(1);
     expect(() => recordBranchChoice(game, "T0", 1, "fight")).toThrow(InvalidActionError);
+  });
+});
+
+describe("recordOptionSelection (multipleChoice pick)", () => {
+  it("records a team's pick for the question it's currently facing", () => {
+    let game = makeGame({ teamCount: 1 });
+    game = recordOptionSelection(game, "T0", game.teams[0].currentQuestionId, 2);
+    expect(game.teams[0].currentSelection).toBe(2);
+  });
+
+  it("is re-selectable: a later pick for the same question overwrites the earlier one", () => {
+    let game = makeGame({ teamCount: 1 });
+    const qid = game.teams[0].currentQuestionId;
+    game = recordOptionSelection(game, "T0", qid, 0);
+    game = recordOptionSelection(game, "T0", qid, 3);
+    expect(game.teams[0].currentSelection).toBe(3);
+  });
+
+  it("rejects a selection for a stale (already-moved-past) question id", () => {
+    const game = makeGame({ teamCount: 1 });
+    expect(() => recordOptionSelection(game, "T0", "not-the-current-question", 0)).toThrow(InvalidActionError);
+  });
+
+  it("rejects an unknown team", () => {
+    const game = makeGame({ teamCount: 1 });
+    expect(() => recordOptionSelection(game, "ghost", game.teams[0].currentQuestionId, 0)).toThrow(InvalidActionError);
+  });
+
+  it("does not affect other teams' selections", () => {
+    let game = makeGame({ teamCount: 2 });
+    const before = game.teams[1];
+    game = recordOptionSelection(game, "T0", game.teams[0].currentQuestionId, 1);
+    expect(game.teams[1]).toEqual(before);
+  });
+
+  it("rejects a selection once the game has finished", () => {
+    let game = createGame([{ id: "T0", name: "A" }], makeRooms(2, 1, 3), ["boss-q1"], { bossThreshold: 15 }, 1, first);
+    for (let i = 0; i < 40 && game.phase !== "finished"; i++) {
+      const qid = isInBossPhase(game, "T0") ? game.boss.currentQuestionId : game.teams[0].currentQuestionId;
+      game = answerQuestion(game, "T0", qid, true, "retry", first).game;
+    }
+    expect(game.phase).toBe("finished");
+    expect(() => recordOptionSelection(game, "T0", game.boss.currentQuestionId, 0)).toThrow(InvalidActionError);
+  });
+
+  it("resets to null whenever a new question is dealt, but survives an incorrect-retry (same question)", () => {
+    let game = makeGame({ teamCount: 1 });
+    game = recordOptionSelection(game, "T0", game.teams[0].currentQuestionId, 1);
+    expect(game.teams[0].currentSelection).toBe(1);
+
+    // retry: same question, selection survives
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, false, "retry", first));
+    expect(game.teams[0].currentSelection).toBe(1);
+
+    // correct answer deals a new question: selection resets
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first));
+    expect(game.teams[0].currentSelection).toBeNull();
+  });
+
+  it("resets to null on a flee (new question dealt for the same room)", () => {
+    let game = makeGame({ teamCount: 1 });
+    game = recordOptionSelection(game, "T0", game.teams[0].currentQuestionId, 1);
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, false, "flee", first));
+    expect(game.teams[0].currentSelection).toBeNull();
+  });
+
+  it("resets EVERY team's selection when the shared boss question rotates, not just the answering team's", () => {
+    // Regression for the adversarial-review finding: boss.currentQuestionId is shared by every
+    // team in boss phase, so a stale currentSelection left on a non-answering team could line up
+    // with a different option on the new question and mislead the host into judging against a
+    // pick that team never actually made.
+    let game = makeGame({ bossThreshold: 0, bossMaxHp: 5, teamCount: 2 }); // both start in boss phase
+    game = recordOptionSelection(game, "T0", game.boss.currentQuestionId, 0);
+    game = recordOptionSelection(game, "T1", game.boss.currentQuestionId, 2);
+    expect(game.teams[1].currentSelection).toBe(2);
+
+    // T0 answers correctly, not killing the boss (maxHp 5): the shared boss question rotates.
+    ({ game } = answerQuestion(game, "T0", game.boss.currentQuestionId, true, "retry", first));
+    expect(game.teams[0].currentSelection).toBeNull();
+    expect(game.teams[1].currentSelection).toBeNull(); // T1 never answered, but its old pick is now stale too
+  });
+
+  it("resets every boss-phase team's selection on a flee too", () => {
+    let game = makeGame({ bossThreshold: 0, bossMaxHp: 5, teamCount: 2 });
+    game = recordOptionSelection(game, "T0", game.boss.currentQuestionId, 0);
+    game = recordOptionSelection(game, "T1", game.boss.currentQuestionId, 1);
+    ({ game } = answerQuestion(game, "T0", game.boss.currentQuestionId, false, "flee", first));
+    expect(game.teams[0].currentSelection).toBeNull();
+    expect(game.teams[1].currentSelection).toBeNull();
   });
 });
 

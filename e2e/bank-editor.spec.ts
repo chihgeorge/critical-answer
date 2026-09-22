@@ -37,7 +37,7 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
   await expect(room0AfterSave.getByLabel("題目")).toHaveCount(startingCount + 1);
 
   // Delete the question just added (the last one) and save again.
-  const lastRow = room0AfterSave.getByLabel("題目").last().locator("xpath=..");
+  const lastRow = room0AfterSave.getByLabel("題目").last().locator("xpath=../..");
   await lastRow.getByRole("button", { name: "刪除" }).click();
   await page.getByRole("button", { name: "儲存全部變更" }).click();
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
@@ -105,6 +105,76 @@ test("deleting every question in a room down to zero is rejected on save (a room
   const bossAfterReload = page.getByTestId("bank-room-boss");
   await expect(bossAfterReload).toBeVisible();
   await expect(bossAfterReload.getByLabel("題目")).not.toHaveCount(0);
+});
+
+test("multipleChoice authoring: switch kind, edit options, mark correct, and deleting the marked-correct option blocks save until re-marked", async ({ page }) => {
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const room0 = page.getByTestId("bank-room-0");
+  await expect(room0).toBeVisible();
+
+  // Switch the first question in room 0 to multipleChoice — it starts as a text question.
+  const firstRow = room0.getByLabel("題目").first().locator("xpath=../..");
+  await firstRow.getByLabel("題型").selectOption("multipleChoice");
+  // blankQuestion() gives a fresh multipleChoice question: 2 empty options, no answer field.
+  await expect(firstRow.getByLabel("答案")).toHaveCount(0);
+  await expect(firstRow.getByLabel(/^選項 /)).toHaveCount(2);
+
+  await firstRow.getByLabel("選項 1").fill("台北 101");
+  await firstRow.getByLabel("選項 2").fill("高雄 85 大樓");
+  await firstRow.getByRole("button", { name: "+ 新增選項" }).click();
+  await expect(firstRow.getByLabel(/^選項 /)).toHaveCount(3);
+  await firstRow.getByLabel("選項 3").fill("台中歌劇院");
+
+  // Nothing marked correct yet — save must be rejected, not silently accepted with a bogus pick.
+  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await expect(page.getByTestId("bank-editor-error")).toContainText(/還沒標記正解/);
+
+  // Mark option 1 correct, then delete it — the mark must not silently move to whatever now
+  // sits at index 0; it has to go back to "unmarked" and block save again.
+  await firstRow.getByLabel("第 1 個選項為正解").check();
+  await firstRow.getByLabel("選項 1").locator("xpath=..").getByRole("button", { name: "刪" }).click();
+  await expect(firstRow.getByLabel(/^選項 /)).toHaveCount(2);
+
+  // At the MIN_OPTIONS floor, the delete button on every remaining option is disabled — a
+  // multipleChoice question can never drop below 2 options via the UI.
+  await expect(firstRow.getByLabel("選項 1").locator("xpath=..").getByRole("button", { name: "刪" })).toBeDisabled();
+  await expect(firstRow.getByLabel("選項 2").locator("xpath=..").getByRole("button", { name: "刪" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await expect(page.getByTestId("bank-editor-error")).toContainText(/還沒標記正解/);
+
+  // Mark the (now first) remaining option correct and save — this time it goes through.
+  await firstRow.getByLabel("第 1 個選項為正解").check();
+  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
+
+  // Reload and confirm it persisted as multipleChoice with the mark intact, not reverted to text.
+  await page.reload();
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const reloadedRow = page.getByTestId("bank-room-0").getByLabel("題目").first().locator("xpath=../..");
+  await expect(reloadedRow.getByLabel("題型")).toHaveValue("multipleChoice");
+  await expect(reloadedRow.getByLabel("第 1 個選項為正解")).toBeChecked();
+});
+
+test("switching a question back to text discards its options and starts with a blank answer, not a converted value", async ({ page }) => {
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const room0 = page.getByTestId("bank-room-0");
+  await expect(room0).toBeVisible();
+
+  const firstRow = room0.getByLabel("題目").first().locator("xpath=../..");
+  await firstRow.getByLabel("題型").selectOption("multipleChoice");
+  await firstRow.getByLabel("選項 1").fill("A");
+  await firstRow.getByLabel("選項 2").fill("B");
+  await firstRow.getByLabel("第 1 個選項為正解").check();
+
+  await firstRow.getByLabel("題型").selectOption("text");
+  await expect(firstRow.getByLabel(/^選項 /)).toHaveCount(0);
+  await expect(firstRow.getByLabel("答案")).toHaveValue(""); // blank, not "A" auto-converted
 });
 
 test("two tabs editing at once: the second save is rejected as a conflict, not a silent overwrite", async ({ browser }) => {

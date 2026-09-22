@@ -6,6 +6,7 @@ import {
   DEFAULT_GAME_CONFIG,
   answerQuestion,
   recordBranchChoice,
+  recordOptionSelection,
   setTeamOnline,
   getSpectatorView,
   currentTurnTeamId,
@@ -15,7 +16,7 @@ import {
   type GameState,
 } from "../game-state";
 import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../protocol";
-import { BANK, bossQuestionIds, findQuestion, publicQuestion, roomTemplates, type Bank } from "../question-bank";
+import { BANK, answerText, bossQuestionIds, findQuestion, publicQuestion, roomTemplates, type Bank } from "../question-bank";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { createScriptedProvider, type NarrationProvider } from "../narration/scripted";
@@ -54,7 +55,7 @@ export interface RoomOptions {
 }
 const STYLE_EXAMPLES = 5;
 /** Server-side only: every answer in a bank, so a narration line that repeats one is rejected. */
-const allAnswers = (bank: Bank) => [...bank.rooms.flatMap((r) => r.questions), ...bank.boss.questions].map((q) => q.answer);
+const allAnswers = (bank: Bank) => [...bank.rooms.flatMap((r) => r.questions), ...bank.boss.questions].map(answerText);
 
 /**
  * Round an activity timestamp down for storage, at a granularity scaled to idleMs so the rounding error
@@ -294,7 +295,7 @@ export class DungeonRoom {
       s.game && {
         ...s.game,
         teams: s.game.teams.map((t) =>
-          t && typeof t === "object" ? { ...t, branchChoices: t.branchChoices ?? {} } : t,
+          t && typeof t === "object" ? { ...t, branchChoices: t.branchChoices ?? {}, currentSelection: t.currentSelection ?? null } : t,
         ),
       };
     this.pendingTeams = s.pendingTeams;
@@ -332,7 +333,8 @@ export class DungeonRoom {
     if (!team) return null;
     const id = isInBossPhase(game, team.id) ? game.boss.currentQuestionId : team.currentQuestionId;
     const pub = publicQuestion(this.bank, id, team.currentDifficulty);
-    return pub ? { pub, answer: findQuestion(this.bank, id)?.answer ?? "" } : null;
+    const q = findQuestion(this.bank, id);
+    return pub ? { pub, answer: q ? answerText(q) : "" } : null;
   }
 
   /** Who is on turn now and what they face, for the narrator's second line. Null when the game is over. */
@@ -570,6 +572,9 @@ export class DungeonRoom {
         case "TEAM_BRANCH_CHOICE":
           this.handleTeamBranchChoice(sender, msg.roomIndex, msg.choice);
           break;
+        case "TEAM_SELECT_OPTION":
+          this.handleTeamSelectOption(sender, msg.questionId, msg.optionIndex);
+          break;
       }
       // A transcript download changes nothing; a rejected message did not either.
       if (msg.type !== "HOST_GET_TRANSCRIPT" && !this.rejected) {
@@ -763,6 +768,39 @@ export class DungeonRoom {
     }
     try {
       this.game = recordBranchChoice(this.game, teamId, roomIndex, choice);
+      this.broadcastState();
+    } catch (err) {
+      const detail = err instanceof InvalidActionError ? err.message : "unknown error";
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    }
+  }
+
+  private handleTeamSelectOption(conn: Conn, questionId: string, optionIndex: number) {
+    const teamId = this.connTeam.get(conn.id);
+    if (!teamId) {
+      this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
+      return;
+    }
+    if (!this.game) {
+      this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+      return;
+    }
+    // The protocol layer only checked optionIndex >= 0; the real bounds check needs the
+    // live question's actual options.length, which only this layer (with bank access) has.
+    const q = findQuestion(this.bank, questionId);
+    if (!q || q.kind !== "multipleChoice" || optionIndex >= q.options.length) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: `bad optionIndex for ${questionId}` });
+      return;
+    }
+    // Re-tapping the option a team already has selected is a no-op: nothing about the game
+    // state would actually change, so skip the persist()+broadcast() this message would
+    // otherwise unconditionally trigger. TEAM_SELECT_OPTION has no other rate limit (unlike
+    // TEAM_BRANCH_CHOICE, which self-limits to one accepted pick per room) — this at least
+    // keeps an idle-fingered phone from writing/broadcasting on every repeat tap of the same
+    // button (adversarial review finding).
+    if (this.game.teams.find((t) => t.id === teamId)?.currentSelection === optionIndex) return;
+    try {
+      this.game = recordOptionSelection(this.game, teamId, questionId, optionIndex);
       this.broadcastState();
     } catch (err) {
       const detail = err instanceof InvalidActionError ? err.message : "unknown error";

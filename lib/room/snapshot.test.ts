@@ -63,7 +63,7 @@ describe("parseSnapshot", () => {
 
   it("refuses a snapshot whose bank would not load today", () => {
     const broken = structuredClone(BANK);
-    broken.rooms[0].questions[0].answer = "";
+    broken.rooms[0].questions[0].text = "";
     expect(parseSnapshot({ ...valid(), bank: broken })).toBeNull();
     expect(parseSnapshot({ ...valid(), bank: { rooms: [] } })).toBeNull();
   });

@@ -25,24 +25,6 @@
 
 ---
 
-## 題庫編輯器：multipleChoice 題型
-
-**Priority:** P3
-
-**What:** 給 `PublicQuestion`（`lib/protocol.ts`）加 `options` 欄位、`/play` 加選項渲染與選擇訊息、host 判分邏輯支援選項判分，然後題庫 schema 才能真的加回 `multipleChoice` kind。
-
-**Why:** `question-bank-editor` PR 的 outside-voice 審查發現一個 P0：原設計想先建 `multipleChoice` 的 schema/CRUD，但遊戲引擎目前完全沒有能力播放它（`PublicQuestion` 只有 `text` 欄位，整個判分流程是「host 念題目、host 判斷對錯」，沒有選項渲染/選擇/判分邏輯）。先建一個沒有消費者的題型只是空的「可擴充性」。這輪因此把 `multipleChoice` 全部切掉，只做 `text` 題型的編輯器。
-
-**Pros:** 完成後題庫編輯器才能真正支援選擇題玩法，符合原設計文件的初衷。
-
-**Cons:** 要同時改動 protocol、/play UI、host 判分邏輯、題庫 schema 四個地方，不是單純加欄位。
-
-**Context:** 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md) 的 NOT in scope 段落與 Revision note。
-
-**Depends on / blocked by:** 無直接阻塞，但應該在 `question-bank-editor` 的 text-only v1 上線、驗證過後再排。
-
----
-
 ## 題庫編輯器：image 題型 + Cloudflare R2 上傳
 
 **Priority:** P3
@@ -408,6 +390,20 @@
 ---
 
 ## Completed
+
+## 題庫編輯器：multipleChoice 題型
+
+**Priority:** P3
+
+**What:** 給 `PublicQuestion`（`lib/protocol.ts`）加 `options` 欄位、`/play` 加選項渲染與選擇訊息、host 判分邏輯支援選項判分，然後題庫 schema 才能真的加回 `multipleChoice` kind。
+
+**Why:** `question-bank-editor` PR 的 outside-voice 審查發現一個 P0：原設計想先建 `multipleChoice` 的 schema/CRUD，但遊戲引擎目前完全沒有能力播放它（`PublicQuestion` 只有 `text` 欄位，整個判分流程是「host 念題目、host 判斷對錯」，沒有選項渲染/選擇/判分邏輯）。先建一個沒有消費者的題型只是空的「可擴充性」。這輪因此把 `multipleChoice` 全部切掉，只做 `text` 題型的編輯器。
+
+**Context:** 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md) 的 NOT in scope 段落與 Revision note，以及本項完成時新增的 [docs/designs/multiple-choice-questions.md](docs/designs/multiple-choice-questions.md)。
+
+**Completed:** v0.5.0.0 (2026-09-22)。`lib/question-bank.ts` 的 `kind` 判別聯集、`lib/protocol.ts` 的 `TEAM_SELECT_OPTION`、`lib/game-state.ts` 的 `Team.currentSelection`/`recordOptionSelection`、`lib/room/dungeon-room.ts` 的 `handleTeamSelectOption`、`/play` 選項渲染、`/host` 選擇高亮、題庫編輯器的題型切換 UI，全部完成並有測試覆蓋（433 單元測試 + e2e）。
+
+---
 
 ## 斷線重連 / 狀態持久化完整方案
 
