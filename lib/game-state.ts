@@ -62,6 +62,24 @@ export function isBranchOptionId(v: unknown): v is BranchOptionId {
   return typeof v === "string" && (BRANCH_OPTIONS as readonly string[]).includes(v);
 }
 
+/** Display text for each option id — never stored, so this can be reworded freely. */
+export const BRANCH_LABELS: Record<BranchOptionId, string> = {
+  fight: "武力",
+  negotiate: "討價",
+};
+
+/**
+ * The earliest room a team entered but hasn't chosen a branch for, or null if
+ * there's nothing pending. Non-blocking UI (design doc decision 4B) surfaces
+ * this one at a time rather than the whole backlog at once.
+ */
+export function firstPendingBranchRoom(team: { roomIndex: number; branchChoices: Partial<Record<number, BranchOptionId>> }): number | null {
+  for (let i = 1; i <= team.roomIndex; i++) {
+    if (team.branchChoices[i] === undefined) return i;
+  }
+  return null;
+}
+
 export interface Team {
   id: string;
   name: string;
