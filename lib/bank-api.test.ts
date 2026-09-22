@@ -78,6 +78,19 @@ describe("handleBankApi: PUT", () => {
     expect(putBank).not.toHaveBeenCalled();
   });
 
+  it("rejects an oversized body even when Content-Length is missing or lied about (413)", async () => {
+    const putBank = vi.fn();
+    const bigBody = { text: "x".repeat(250_000) };
+    const request = new Request("https://worker.example.com/api/bank", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${KEY}` }, // no Content-Length at all
+      body: JSON.stringify(bigBody),
+    });
+    const res = await handleBankApi(request, deps({ putBank }));
+    expect(res.status).toBe(413);
+    expect(putBank).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid JSON (400)", async () => {
     const request = new Request("https://worker.example.com/api/bank", {
       method: "PUT",

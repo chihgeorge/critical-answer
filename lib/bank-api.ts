@@ -46,9 +46,20 @@ export async function handleBankApi(request: Request, deps: BankApiDeps): Promis
   if (request.method === "PUT") {
     const contentLength = Number(request.headers.get("Content-Length") ?? "0");
     if (contentLength > MAX_BANK_BODY_BYTES) return new Response("Payload too large", { status: 413, headers: cors });
+    // Content-Length is attacker-controlled (a chunked-encoding or spoofed request can omit or lie
+    // about it): the real check is on bytes actually read, not the header the client claims.
+    let text: string;
+    try {
+      text = await request.text();
+    } catch {
+      return new Response("Invalid JSON", { status: 400, headers: cors });
+    }
+    if (new TextEncoder().encode(text).length > MAX_BANK_BODY_BYTES) {
+      return new Response("Payload too large", { status: 413, headers: cors });
+    }
     let body: unknown;
     try {
-      body = await request.json();
+      body = JSON.parse(text);
     } catch {
       return new Response("Invalid JSON", { status: 400, headers: cors });
     }
