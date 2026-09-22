@@ -95,26 +95,34 @@ sh scripts/playtest.sh stop
 
 > 每房最後 5 題和首領最後 3 題是 AI 起草的台灣常識題，**開局前請主持人覆核答案**。
 
+### 題庫編輯
+
+`/bank-editor` 是主持人專用的題庫編輯頁，直接打網址進入（遊戲內沒有連結），可以新增、修改、刪除各房間與首領的**文字題**（選擇題、圖片題還沒做，見 [TODOS.md](TODOS.md)）。題庫實際存在 Cloudflare Durable Object（`BankStore`），編輯即時生效；`BankStore` 連不上時自動退回 bundle 裡的 `data/question-bank.json` 唯讀。存檔會做版本檢查，別人同時改過會擋下（409），避免互相覆蓋。
+
+頁面要輸入 `OWNER_KEY` 才能讀寫題庫，伺服器端沒設這把密鑰時一律回 403（本機開發要在 `.dev.vars` 加一行 `OWNER_KEY=...` 才能測，`.dev.vars.example` 沒有內建）；正式部署要用 `wrangler secret put OWNER_KEY` 設一組 ≥32 bytes 的隨機值，太短會在 Worker log 留警告。
+
 ## 專案結構
 
 ```
-app/                     Next.js 頁面：首頁、/room/[code]/host、/play、/screen
+app/                     Next.js 頁面：首頁、/room/[code]/host、/play、/screen、/bank-editor（題庫編輯）
 components/              共用像素元件（pixel.tsx）、大螢幕舞台（stage.tsx）、QR（qr.tsx）
-data/question-bank.json  題庫（只在伺服器端載入）
+data/question-bank.json  題庫的 bundle 備援（BankStore 連不上時用這份唯讀）
 lib/game-state.ts        遊戲狀態機：房間、題目牌堆、首領、計分（純函式，有完整測試）
 lib/protocol.ts          host / player / server 之間的訊息格式與驗證
-lib/question-bank.ts     題庫載入、驗證、公開題目（不含答案）
+lib/question-bank.ts     題庫型別、驗證、公開題目（不含答案）
+lib/bank-store.ts        BankStore：題庫的 Durable Object 儲存層，版本檢查（純函式邏輯）
+lib/bank-api.ts          /api/bank 的 HTTP 處理（OWNER_KEY 驗證、CORS、409 衝突），平台無關
 lib/narration/           旁白：事件、腳本句、LLM、斷路器、執行器
 lib/pixel-art.ts         程式繪製的像素角色與場景
 lib/turn-info.ts         從公開狀態算出輪到誰、面對哪隻怪
-worker/index.ts          Cloudflare Worker：Durable Object 房間與入口規則（只放行 /parties/main、Origin 白名單）
+worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable Object、/api/bank 路由、入口規則
 lib/room/                房間邏輯（dungeon-room.ts）與它需要的兩個小介面（io.ts），不依賴平台
 lib/gate.ts、origin.ts   Worker 入口規則
 e2e/                     Playwright 端對端測試
 scripts/                 playtest.sh（區網試玩）、check-bundle.sh
 public/fonts/            內建字型
 DESIGN.md                像素設計系統
-docs/designs/            設計文件與決策紀錄
+docs/designs/            設計文件與決策紀錄（含 question-bank-editor.md）
 TODOS.md                 已知問題與延後事項
 ```
 
@@ -132,9 +140,8 @@ TODOS.md                 已知問題與延後事項
 
 ## 路線圖
 
-已完成：大螢幕（題目、怪物、頒獎台）、題庫進 app、腳本與 AI 旁白、主持人導演介面。接下來的重點是**第二次真人測試**：驗證有氣氛之後是不是比第一輪好玩。之後再看：
+已完成：大螢幕（題目、怪物、頒獎台）、題庫進 app、腳本與 AI 旁白、主持人導演介面、主持人題庫編輯介面（`/bank-editor`，見下方「題庫編輯」）。接下來的重點是**第二次真人測試**：驗證有氣氛之後是不是比第一輪好玩。之後再看：
 
-- 主持人題庫編輯介面
 - 共享大螢幕活地圖
 - 語音旁白、音效
 - 正式部署

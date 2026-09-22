@@ -21,6 +21,44 @@
 
 **更新（2026-09-18 /plan-ceo-review）：** 第二輪 LLM 旁白已進入範圍，此項不再被擋住。第二輪只處理「隊伍名稱進 prompt」（資料引號化、答案與答錯時的題目文字不進 prompt、輸出驗證，見 CEO plan D8/D19）；host 自訂題庫文字仍待題庫編輯 UI 出現時再處理。
 
+**更新（2026-09-22，`/plan-eng-review` question-bank-editor）：** 這條 TODO 等的「題庫編輯介面」這輪要做了，但範圍不變——題目文字/答案本來就不進 prompt（見上，已有防護），所以題庫變成可編輯並不會新增暴露面。真正要處理的情境是：如果未來旁白 prompt 改成會讀題目文字（例如題目本身要融入敘事），才需要回頭做這條 TODO 描述的淨化。用戶決定繼續延後，本次只更新現狀說明。見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md)。
+
+---
+
+## 題庫編輯器：multipleChoice 題型
+
+**Priority:** P3
+
+**What:** 給 `PublicQuestion`（`lib/protocol.ts`）加 `options` 欄位、`/play` 加選項渲染與選擇訊息、host 判分邏輯支援選項判分，然後題庫 schema 才能真的加回 `multipleChoice` kind。
+
+**Why:** `question-bank-editor` PR 的 outside-voice 審查發現一個 P0：原設計想先建 `multipleChoice` 的 schema/CRUD，但遊戲引擎目前完全沒有能力播放它（`PublicQuestion` 只有 `text` 欄位，整個判分流程是「host 念題目、host 判斷對錯」，沒有選項渲染/選擇/判分邏輯）。先建一個沒有消費者的題型只是空的「可擴充性」。這輪因此把 `multipleChoice` 全部切掉，只做 `text` 題型的編輯器。
+
+**Pros:** 完成後題庫編輯器才能真正支援選擇題玩法，符合原設計文件的初衷。
+
+**Cons:** 要同時改動 protocol、/play UI、host 判分邏輯、題庫 schema 四個地方，不是單純加欄位。
+
+**Context:** 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md) 的 NOT in scope 段落與 Revision note。
+
+**Depends on / blocked by:** 無直接阻塞，但應該在 `question-bank-editor` 的 text-only v1 上線、驗證過後再排。
+
+---
+
+## 題庫編輯器：image 題型 + Cloudflare R2 上傳
+
+**Priority:** P3
+
+**What:** 實作 Cloudflare R2 bucket binding、圖片上傳表單、`image` kind 的 schema、`/play` 顯示圖片。
+
+**Why:** `question-bank-editor` PR 的 Step 0 complexity check 觸發（9+ 檔案、2 個新基礎設施在同一個 PR），使用者選擇把 image/R2 切到這個後續 PR，先讓 `BankStore` + `text` 題型上線。
+
+**Pros:** 完成後題庫可以有圖片題，符合原設計文件的完整範圍。
+
+**Cons:** R2 需要額外處理上傳大小限制、內容類型驗證、簽章 URL、房間關閉後的孤兒檔案清理——是這條功能線裡最重的一塊。
+
+**Context:** 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md) 的決策 5（原 D4）與 NOT in scope 段落。
+
+**Depends on / blocked by:** 無直接阻塞，可以在 `question-bank-editor` 的 text-only v1 之後任何時間做。
+
 ---
 
 
@@ -410,3 +448,21 @@
 **Depends on / blocked by:** 無（獨立於遊戲玩法開發），但目前選擇不投入這個重工程替代方案，先用 localhost/局域網進行第一輪真人測試。
 
 **Completed（改走替代方案）：** v0.2.0.0 (2026-09-22)。沒有等到 PartyKit 修復，改走上面列的替代方案：繞過 partykit CLI，直接用 `partyserver` + `wrangler` 部署成原生 Cloudflare Worker + Durable Object（cf-minimal-room PR 起）。房間已部署在 `https://critical-answer.aiko-studio.workers.dev`。
+
+---
+
+## 房間重啟時對 BankStore 發出用不到的 RPC
+
+**Priority:** P3
+
+**What:** `worker/index.ts`'s `Room.onStart()` 在每次房間喚醒時都呼叫 `bankOrFallback(() => ...getBank())`，但如果這個房間是「復原」（不是全新建立），緊接著的 `this.game.restore()` 會用房間自己存的 snapshot 覆蓋掉這個 RPC 結果——等於每次已存在房間醒來都白打一通 BankStore 的電話。
+
+**Why:** `/review` adversarial pass（Claude subagent，2026-09-22）發現的：不是正確性問題（`bankOrFallback` 的容錯已經保護了它），純粹是多餘的延遲跟對 BankStore 可用性的非必要依賴——跟決策 7「房間不該依賴 BankStore 存活」的精神有點矛盾。
+
+**Pros:** 修掉可以省一次 DO-to-DO 呼叫的延遲，也讓「已存在房間的喚醒完全不碰 BankStore」這件事名副其實。
+
+**Cons:** 需要重排 `onStart()`/`restore()` 的順序（先確認 storage 有沒有既有 snapshot，再決定要不要打這通 RPC），改動比表面看起來大一點，且目前的浪費只是效能成本，沒有正確性風險。
+
+**Context:** 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md) 決策 7，以及 `worker/index.ts` 的 `Room.onStart()`。
+
+**Depends on / blocked by:** 無，隨時可做，非阻塞。

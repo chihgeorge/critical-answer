@@ -5,10 +5,18 @@
   "compatibility_date": "2025-09-01",
   "durable_objects": {
     // The binding name "main" makes partysocket's default path (/parties/main/<room>) reach the room.
-    "bindings": [{ "name": "main", "class_name": "Room" }]
+    // "bank" is reached only via RPC from worker/index.ts's own /api/bank/* route and Room.onStart(),
+    // never through routePartykitRequest — see lib/gate.ts's header comment.
+    "bindings": [
+      { "name": "main", "class_name": "Room" },
+      { "name": "bank", "class_name": "BankStoreDO" }
+    ]
   },
   // Cloudflare's free plan only allows SQLite-backed Durable Objects. Migrations only ever move forward.
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Room"] },
+    { "tag": "v2", "new_sqlite_classes": ["BankStoreDO"] }
+  ],
   // The public workers.dev URL is the only door. Per-version preview URLs would be a second, unlisted one.
   "workers_dev": true,
   "preview_urls": false,
