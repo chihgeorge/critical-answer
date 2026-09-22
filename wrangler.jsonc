@@ -20,7 +20,10 @@
   // The public workers.dev URL is the only door. Per-version preview URLs would be a second, unlisted one.
   "workers_dev": true,
   "preview_urls": false,
-  // Browser origins allowed to open a WebSocket. Local runs override it in .dev.vars (see .dev.vars.example).
-  "vars": { "ALLOWED_ORIGINS": "" },
+  // Browser origins allowed to open a WebSocket or call /api/bank. Local runs override it in
+  // .dev.vars (see .dev.vars.example). The wildcard matches Vercel preview deploy URLs, per
+  // lib/origin.ts's doc comment; the frontend's first production deploy is
+  // https://critical-answer.vercel.app (2026-09-22).
+  "vars": { "ALLOWED_ORIGINS": "https://critical-answer.vercel.app,https://critical-answer-*.vercel.app" },
   "observability": { "enabled": true }
 }
