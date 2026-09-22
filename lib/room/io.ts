@@ -12,6 +12,11 @@ export interface Conn {
 export interface RoomStorage {
   get(key: string): Promise<unknown>;
   put(key: string, value: unknown): void | Promise<void>;
+  /** Wake the room at this time (ms since epoch), replacing any earlier alarm. */
+  setAlarm?(at: number): void | Promise<void>;
+  deleteAlarm?(): void | Promise<void>;
+  /** Forget everything this room saved. */
+  deleteAll?(): void | Promise<void>;
 }
 
 export interface RoomIO {
@@ -21,4 +26,6 @@ export interface RoomIO {
   env?: { ANTHROPIC_API_KEY?: string };
   /** Where the room saves itself. Without it (tests, the temporary PartyKit adapter) the room lives in memory only. */
   storage?: RoomStorage;
+  /** Close every open connection with an application close code (see close-codes.ts). */
+  closeAll?(code: number, reason: string): void;
 }

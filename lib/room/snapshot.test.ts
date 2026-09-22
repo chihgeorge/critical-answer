@@ -16,6 +16,7 @@ const valid = (): RoomSnapshot => ({
   notes: "",
   editedLines: [],
   aiNarration: false,
+  lastActivityAt: 1_700_000_000_000,
   bank: BANK,
 });
 
@@ -23,6 +24,12 @@ describe("parseSnapshot", () => {
   it("accepts what a room writes, unchanged", () => {
     const s = parseSnapshot(structuredClone(valid()));
     expect(s).toEqual(valid());
+  });
+
+  it("reads a save from before activity was tracked, as 'unknown time'", () => {
+    const { lastActivityAt: _omit, ...legacy } = valid();
+    void _omit;
+    expect(parseSnapshot(legacy)?.lastActivityAt).toBeNull();
   });
 
   it("refuses anything that is not an object, and an unknown schema version", () => {
@@ -46,6 +53,8 @@ describe("parseSnapshot", () => {
       ["notes", null],
       ["editedLines", [1]],
       ["game", { phase: "playing" }],
+      ["lastActivityAt", "yesterday"],
+      ["lastActivityAt", -5],
     ];
     for (const [field, value] of fields) {
       expect(parseSnapshot({ ...valid(), [field]: value }), `${field}=${JSON.stringify(value)}`).toBeNull();

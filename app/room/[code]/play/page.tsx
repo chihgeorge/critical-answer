@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
+import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
-import { DialogueBox, Panel, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { DialogueBox, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 
 type LobbyState = { teams: { id: string; name: string }[] };
 type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
@@ -23,6 +24,8 @@ export default function PlayPage() {
   const [lobby, setLobby] = useState<LobbyState | null>(null);
   const [game, setGame] = useState<PlayState | null>(null);
   const [reset, setReset] = useState(false);
+  /** The room closed our connection on purpose after a long idle time. The game is saved; a tap reconnects. */
+  const [rested, setRested] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
   const joinedRef = useRef(false);
@@ -34,7 +37,15 @@ export default function PlayPage() {
     // Every (re)connect says who we are again: a phone that slept or changed network comes back
     // as the same team instead of staying "offline" and being skipped.
     onOpen() {
+      setRested(false);
       send({ type: "JOIN", teamId: getOrCreateTeamId(), teamKey: getOrCreateTeamKey(), teamName });
+    },
+    onClose(event: CloseEvent) {
+      // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
+      if (isIdleClose(event)) {
+        socket.close();
+        setRested(true);
+      }
     },
     onMessage(event: MessageEvent) {
       let msg: ServerMessage;
@@ -117,6 +128,13 @@ export default function PlayPage() {
           <div className="px-panel text-center text-[15px]" style={{ background: "var(--danger)", color: "#fff" }}>
             伺服器重新啟動，遊戲已重置
           </div>
+        )}
+
+        {rested && (
+          <Panel tone="turn" role="status" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]">
+            {RESTED_NOTICE}
+            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-2">{RESTED_RECONNECT_LABEL}</PixelButton>
+          </Panel>
         )}
 
         {!game && (

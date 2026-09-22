@@ -1,22 +1,9 @@
 # TODOs
 
-## 斷線重連 / 狀態持久化完整方案
-
-**What:** 設計真正的斷線重連與遊戲狀態持久化方案（目前決定：第一輪純 in-memory，伺服器重啟整場遊戲遺失）。
-
-**Why:** 現在的決定只適合第一輪小規模真人測試（朋友聚會、幾十分鐘一場），正式上線後伺服器意外重啟會毀掉整場進行中的遊戲，不適合正式難度。
-
-**Pros:** 提升正式上線後的可靠度；玩家手機斷線也能無縫恢復。
-
-**Cons:** 需要選定持久化層（檔案/SQLite/其他），增加實作與測試複雜度。
-
-**Context:** 見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) 的 Open Questions 與 Architecture Review（/plan-eng-review, 2026-09-17）。決策記錄在該次審查的問題 1B。
-
-**Depends on / blocked by:** 需先完成第一輪範圍（狀態機 + 首領回合制 + 輕量真人測試），驗證玩法後再投入持久化工程。
-
----
 
 ## Host 自訂題庫文字進 LLM prompt 前的內容審核
+
+**Priority:** P3
 
 **What:** 對 host 自訂的題庫文字（問題、答案）進行基本的輸入淨化與 prompt injection 防護，才餵進敘事狀態層生成 DM 旁白的 LLM prompt。
 
@@ -36,27 +23,6 @@
 
 ---
 
-## PartyKit 正式部署（卡在工具本身的兩個相容性 bug）
-
-**What:** 把 PartyKit 後端（`party/index.ts`）部署到公開網址，讓不在同一個 Wi-Fi 的人也能玩。
-
-**Why:** 2026-09-17 嘗試部署時，兩條路徑都撞到 PartyKit CLI（0.0.115，當時最新版）本身還沒修的相容性問題：
-1. 預設管理平台（`partykit deploy`）：共用網域 `partykit.dev` 已超過 Cloudflare 10000 個 Workers custom domain 上限，官方 [issue #985](https://github.com/partykit/partykit/issues/985) 開著沒人修（2026-06-18 回報至今）。
-2. Cloud-prem 模式（部署到自己的 Cloudflare 帳號，`CLOUDFLARE_ACCOUNT_ID`/`CLOUDFLARE_API_TOKEN` + `partykit deploy`）：卡在 Cloudflare 2026-07-09 起強制免費方案 Durable Objects 必須用 `new_sqlite_classes` migration，但 PartyKit CLI 產生部署設定時還沒跟進，報錯且無 CLI 參數可覆寫。
-
-**Pros:** 能找不同地點的朋友一起測、也是正式上線的必要條件。
-
-**Cons:** 需要等 PartyKit 修這兩個 bug，或改走重工程的替代方案（見下）。
-
-**Context:** 見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md)。Vercel（前端）跟 wrangler（Cloudflare 帳號）都已登入備妥，`.env.cloudflare.local`（已加密限存取、已加入 .gitignore）存有可用的 API token，卡點純粹是 PartyKit CLI 端。
-
-**替代方案（若不想等 PartyKit 修復）：**
-- 追蹤 PartyKit repo 更新，定期重試 `npx partykit deploy`（管理平台）或 cloud-prem 路徑
-- 改走「繞過 partykit CLI，直接用 wrangler 部署成原生 Cloudflare Worker + Durable Object」——PartyKit 本來就是建在 Workers+DO 上，理論上可行，但需要把 `party/index.ts` 改寫成原生 Workers 專案格式，額外工程量較高
-
-**Depends on / blocked by:** 無（獨立於遊戲玩法開發），但目前選擇不投入這個重工程替代方案，先用 localhost/局域網進行第一輪真人測試。
-
----
 
 ## DM 語音旁白（瀏覽器 TTS）
 
@@ -344,3 +310,83 @@
 
 **Depends on / blocked by:** 下一個階段再做（2026-09-21 決定）。
 
+
+---
+
+## 房間過期時的關閉碼與提示跟「休息」共用，可能誤導
+
+**What:** 房間閒置 2 小時（休息，遊戲仍保留）和閒置 24 小時（過期，房間已被整個清除）目前用同一個 WebSocket 關閉碼 `4001`，三個畫面也顯示同一句「房間休息中：太久沒有動作，連線已暫停，遊戲進度都還在」。過期時這句話是錯的：進度已經不在了。
+
+**Why:** `/review`（2026-09-21，PR #15）由 Codex 外部審查指出。實際發生的條件很窄：需要有連線在過期那一刻剛好還連著、且從那之後沒有再重新連線過（一般手機和主持人頁重連時會送出訊息，等同重新計時，不會落入過期分支；主要風險在 `/screen`，因為它從不主動送訊息）。
+
+**Pros:** 使用者不會被誤導以為進度還在；行為更誠實。
+
+**Cons:** 需要新的關閉碼（例如 4002）、新的三語系提示文案、三個頁面（host/play/screen）的 `onClose` 都要改，且要決定過期後點「重新連線」該顯示什麼（房間其實是全新的空大廳）。
+
+**Context:** 見 `lib/room/dungeon-room.ts` 的 `onAlarm()` 與 `expire()`，`lib/room/close-codes.ts` 的 `CLOSE_IDLE`，三個頁面裡對 `CLOSE_IDLE` 的處理。
+
+**Effort:** S（人工約 3 小時 / CC 約 30 分鐘）　**Priority:** P3
+
+**Depends on / blocked by:** 無，可獨立處理；建議等真人測試回饋再決定文案。
+
+---
+
+## 自動重連（非人為）也算活動，理論上可讓房間永不休息
+
+**What:** `/host`、`/play` 每次 WebSocket 重新連上都會自動發送 `HOST_CLAIM`／`JOIN`（見各自的 `onOpen`），不論是使用者按下「重新連線」還是網路短暫抖動、手機系統自動重連。這些都被視為「活動」，重新計時房間的閒置時鐘。
+
+**Why:** `/review` 的 Claude 對抗性審查（2026-09-21，PR #15）指出：如果一支手機或電腦在背景週期性自動重連（沒有人真的在用），房間就會一直被重新計時，永遠不會進入「休息」，等於免費額度保護（T16）在這個情境下失效。
+
+**Pros:** 修正後更貼近「有人在用」的真實定義，行為更誠實。
+
+**Cons:** 需要在 `handleJoin`／`handleRejoin`／`handleHostClaim` 區分「第一次加入」與「重連既有身分」，是中等重構，且要重新驗證所有重連相關的測試。
+
+**Context:** v1.0 只給自己和朋友使用、不對外公開（2026-09-21 office-hours 決定），瀏覽器與行動裝置本來就會抑制背景分頁的自動重連，實際發生機率低。與此相關的 TODOS 項目「房間過期時的關閉碼與提示跟休息共用」也是同一類「/screen 沒有主動訊息」的邊界情況。
+
+**Effort:** M（人工約 4 小時 / CC 約 40 分鐘）　**Priority:** P3
+
+**Depends on / blocked by:** 無，可獨立處理；建議等實際聚會使用後看是否真的發生再決定要不要修。
+
+---
+
+## Completed
+
+## 斷線重連 / 狀態持久化完整方案
+
+**What:** 設計真正的斷線重連與遊戲狀態持久化方案（目前決定：第一輪純 in-memory，伺服器重啟整場遊戲遺失）。
+
+**Why:** 現在的決定只適合第一輪小規模真人測試（朋友聚會、幾十分鐘一場），正式上線後伺服器意外重啟會毀掉整場進行中的遊戲，不適合正式難度。
+
+**Pros:** 提升正式上線後的可靠度；玩家手機斷線也能無縫恢復。
+
+**Cons:** 需要選定持久化層（檔案/SQLite/其他），增加實作與測試複雜度。
+
+**Context:** 見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) 的 Open Questions 與 Architecture Review（/plan-eng-review, 2026-09-17）。決策記錄在該次審查的問題 1B。
+
+**Depends on / blocked by:** 需先完成第一輪範圍（狀態機 + 首領回合制 + 輕量真人測試），驗證玩法後再投入持久化工程。
+
+**Completed:** v0.2.0.0 (2026-09-22)。由 persist-room-state PR（Durable Object 儲存、還原、重連）與 room-lifecycle PR（閒置關連線、24 小時過期）共同完成，見 `lib/room/dungeon-room.ts` 的 `persist()`／`restore()`／`onAlarm()`。
+
+---
+
+## PartyKit 正式部署（卡在工具本身的兩個相容性 bug）
+
+**What:** 把 PartyKit 後端（`party/index.ts`）部署到公開網址，讓不在同一個 Wi-Fi 的人也能玩。
+
+**Why:** 2026-09-17 嘗試部署時，兩條路徑都撞到 PartyKit CLI（0.0.115，當時最新版）本身還沒修的相容性問題：
+1. 預設管理平台（`partykit deploy`）：共用網域 `partykit.dev` 已超過 Cloudflare 10000 個 Workers custom domain 上限，官方 [issue #985](https://github.com/partykit/partykit/issues/985) 開著沒人修（2026-06-18 回報至今）。
+2. Cloud-prem 模式（部署到自己的 Cloudflare 帳號，`CLOUDFLARE_ACCOUNT_ID`/`CLOUDFLARE_API_TOKEN` + `partykit deploy`）：卡在 Cloudflare 2026-07-09 起強制免費方案 Durable Objects 必須用 `new_sqlite_classes` migration，但 PartyKit CLI 產生部署設定時還沒跟進，報錯且無 CLI 參數可覆寫。
+
+**Pros:** 能找不同地點的朋友一起測、也是正式上線的必要條件。
+
+**Cons:** 需要等 PartyKit 修這兩個 bug，或改走重工程的替代方案（見下）。
+
+**Context:** 見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md)。Vercel（前端）跟 wrangler（Cloudflare 帳號）都已登入備妥，`.env.cloudflare.local`（已加密限存取、已加入 .gitignore）存有可用的 API token，卡點純粹是 PartyKit CLI 端。
+
+**替代方案（若不想等 PartyKit 修復）：**
+- 追蹤 PartyKit repo 更新，定期重試 `npx partykit deploy`（管理平台）或 cloud-prem 路徑
+- 改走「繞過 partykit CLI，直接用 wrangler 部署成原生 Cloudflare Worker + Durable Object」——PartyKit 本來就是建在 Workers+DO 上，理論上可行，但需要把 `party/index.ts` 改寫成原生 Workers 專案格式，額外工程量較高
+
+**Depends on / blocked by:** 無（獨立於遊戲玩法開發），但目前選擇不投入這個重工程替代方案，先用 localhost/局域網進行第一輪真人測試。
+
+**Completed（改走替代方案）：** v0.2.0.0 (2026-09-22)。沒有等到 PartyKit 修復，改走上面列的替代方案：繞過 partykit CLI，直接用 `partyserver` + `wrangler` 部署成原生 Cloudflare Worker + Durable Object（cf-minimal-room PR 起）。房間已部署在 `https://critical-answer.aiko-studio.workers.dev`。

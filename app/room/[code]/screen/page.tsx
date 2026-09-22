@@ -6,12 +6,13 @@
 import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
+import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import type { PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
-import { DialogueBox, LabelChip, Nameplate, Panel, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 
@@ -221,13 +222,25 @@ export default function ScreenPage() {
   const [lobby, setLobby] = useState<Lobby>([]);
   const [game, setGame] = useState<Play | null>(null);
   const [reset, setReset] = useState(false);
+  /** The room closed our connection on purpose after a long idle time. The game is saved; a click reconnects. */
+  const [rested, setRested] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
   const epoch = useRef<string | null>(null);
 
-  usePartySocket({
+  const socket = usePartySocket({
     host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
     room: code,
+    onOpen() {
+      setRested(false);
+    },
+    onClose(event: CloseEvent) {
+      // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
+      if (isIdleClose(event)) {
+        socket.close();
+        setRested(true);
+      }
+    },
     onMessage(event: MessageEvent) {
       let msg: ServerMessage;
       try {
@@ -267,11 +280,20 @@ export default function ScreenPage() {
       {!game && <Lobby code={code} teams={lobby} />}
       {game?.phase === "playing" && <Playing view={game.view} question={game.question} eventId={game.eventId} narration={narration} />}
       {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} narration={narration} epilogue={epilogue} />}
-      {reset && (
-        <div className="absolute inset-x-0 top-0 text-center text-[20px] text-white" style={{ zIndex: 20, background: "var(--danger)", padding: 6 }}>
-          伺服器重新啟動，遊戲已重置
-        </div>
-      )}
+      {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
+      <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
+        {rested && (
+          <div role="status" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
+            {RESTED_NOTICE}
+            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-1 text-[18px]">{RESTED_RECONNECT_LABEL}</PixelButton>
+          </div>
+        )}
+        {reset && (
+          <div className="text-center text-[20px] text-white" style={{ background: "var(--danger)", padding: 6 }}>
+            伺服器重新啟動，遊戲已重置
+          </div>
+        )}
+      </div>
     </Stage>
   );
 }
