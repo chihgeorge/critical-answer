@@ -35,6 +35,20 @@ async function waitHealthy() {
 }
 
 /** SIGKILL, not a polite stop: nothing gets a chance to save on the way out. */
+/** Kill the worker and wait for its port to actually free, so a leaked process never blocks the next run. */
+async function killAndWaitFree(worker: ChildProcess, port: number) {
+  try {
+    process.kill(-worker.pid!, "SIGKILL");
+  } catch {
+    /* already gone */
+  }
+  for (let i = 0; i < 20; i++) {
+    const stillUp = await fetch(`http://localhost:${port}/healthz`).then(() => true, () => false);
+    if (!stillUp) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
 async function crash(child: ChildProcess) {
   process.kill(-child.pid!, "SIGKILL");
   await expect
@@ -59,7 +73,7 @@ test("a game survives the server being killed and started again", async () => {
   test.setTimeout(120_000);
   rmSync(STORE, { recursive: true, force: true });
   let worker = startWorker();
-  const cleanup = () => { try { process.kill(-worker.pid!, "SIGKILL"); } catch { /* already gone */ } };
+  const cleanup = () => killAndWaitFree(worker, PORT);
   try {
     await waitHealthy();
 
@@ -118,6 +132,6 @@ test("a game survives the server being killed and started again", async () => {
     expect(JSON.stringify(a2.seen)).not.toContain(last(host2, "HOST_ANSWER").answer);
     for (const p of [host2, a2, b2, stranger]) p.ws.close();
   } finally {
-    cleanup();
+    await cleanup();
   }
 });

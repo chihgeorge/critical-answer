@@ -21,6 +21,20 @@ const KEY1 = "life-team-one-secret-0123456789";
 const KEY2 = "life-team-two-secret-0123456789";
 const HOST_TOKEN = "life-host-token-0123456789";
 
+/** Kill the worker and wait for its port to actually free, so a leaked process never blocks the next run. */
+async function killAndWaitFree(worker: import("node:child_process").ChildProcess, port: number) {
+  try {
+    process.kill(-worker.pid!, "SIGKILL");
+  } catch {
+    /* already gone */
+  }
+  for (let i = 0; i < 20; i++) {
+    const stillUp = await fetch(`http://localhost:${port}/healthz`).then(() => true, () => false);
+    if (!stillUp) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
 function startWorker(): ChildProcess {
   return spawn(
     "npx",
@@ -47,6 +61,24 @@ const last = (p: Peer, type: string) => p.seen.findLast((m) => m.type === type);
 const send = (p: Peer, m: object) => p.ws.send(JSON.stringify(m));
 const wait = <T,>(fn: () => T | undefined | null | false, what: string, timeout = 15_000) =>
   expect.poll(fn, { message: what, timeout, intervals: [100] }).toBeTruthy();
+
+test("a room only ever watched on the big screen (nobody ever played) still rests after the idle time", async () => {
+  test.setTimeout(30_000);
+  rmSync(STORE, { recursive: true, force: true });
+  const worker = startWorker();
+  try {
+    await expect
+      .poll(() => fetch(`http://localhost:${PORT}/healthz`).then((r) => r.ok, () => false), { timeout: 60_000, intervals: [500] })
+      .toBe(true);
+    // /screen never sends a message at all — this room's only activity, ever, is this one connection opening.
+    const screen = await open();
+    await expect
+      .poll(() => screen.closedWith, { timeout: IDLE_MS + 5000, intervals: [200] })
+      .toBe(CLOSE_IDLE);
+  } finally {
+    await killAndWaitFree(worker, PORT);
+  }
+});
 
 test("an unused room closes its connections after the idle time, keeps the game, and is forgotten after the expiry", async () => {
   test.setTimeout(120_000);
@@ -104,6 +136,6 @@ test("an unused room closes its connections after the idle time, keeps the game,
     expect(last(oldTeam, "STATE")).toBeUndefined();
     for (const p of [newHost, oldTeam]) p.ws.close();
   } finally {
-    try { process.kill(-worker.pid!, "SIGKILL"); } catch { /* already gone */ }
+    await killAndWaitFree(worker, PORT);
   }
 });

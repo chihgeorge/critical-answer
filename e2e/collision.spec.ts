@@ -33,6 +33,24 @@ test("a new room whose code is already taken moves to another code by itself", a
   owner.close();
 });
 
+test("five taken codes in a row give up and show the error, instead of retrying forever", async ({ page }) => {
+  test.setTimeout(30_000);
+  const roomsTried = new Set<string>();
+  // Every connection this page opens, to any code, is rejected as if that code always belonged to someone else.
+  await page.routeWebSocket(/:1996\/parties\/main\/([A-Z]{4})/, (ws) => {
+    const code = new URL(ws.url()).pathname.split("/").pop()!;
+    roomsTried.add(code);
+    ws.onMessage((raw) => {
+      const msg = JSON.parse(raw as string);
+      if (msg.type === "HOST_CLAIM") ws.send(JSON.stringify({ type: "ERROR", error: "bad_token" }));
+    });
+  });
+  await page.goto(`/room/COLZ/host#k=${NEWCOMER_TOKEN}&new=1`);
+  await expect(page.getByText("主持人金鑰不符")).toBeVisible({ timeout: 15_000 });
+  // Exactly MAX_FRESH_ATTEMPTS distinct codes: the loop stopped instead of running forever.
+  expect(roomsTried.size).toBe(5);
+});
+
 test("a link to an existing room never jumps to another one", async ({ page }) => {
   const owner = await takeCode("COLB");
   await page.goto(`/room/COLB/host#k=${NEWCOMER_TOKEN}`);
