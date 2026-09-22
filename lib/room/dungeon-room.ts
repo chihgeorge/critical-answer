@@ -283,9 +283,20 @@ export class DungeonRoom {
     }
     this.roomEpoch = s.roomEpoch;
     // A save from before branchChoices existed has teams missing that field (snapshot.ts's
-    // game validation is shallow — it never re-validates individual Team fields). Backfill so
-    // every read site (recordBranchChoice, getSpectatorView) can assume the field always exists.
-    this.game = s.game && { ...s.game, teams: s.game.teams.map((t) => ({ ...t, branchChoices: t.branchChoices ?? {} })) };
+    // game validation is shallow — it never re-validates individual Team fields, or even that
+    // each team entry is an object at all). Backfill so every read site (recordBranchChoice,
+    // getSpectatorView) can assume the field always exists. Defensive: a team entry that isn't
+    // a real object (a corrupt snapshot snapshot.ts's own shallow check wouldn't catch) is left
+    // as-is rather than crashing here — the room ends up as broken as the corrupt data already
+    // made it, same as every other Team field this file never re-validates, not a new failure
+    // mode this backfill introduces (see the /review adversarial pass, 2026-09-21).
+    this.game =
+      s.game && {
+        ...s.game,
+        teams: s.game.teams.map((t) =>
+          t && typeof t === "object" ? { ...t, branchChoices: t.branchChoices ?? {} } : t,
+        ),
+      };
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
     this.teamKeys = new Map(s.teamKeys);

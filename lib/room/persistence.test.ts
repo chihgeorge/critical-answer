@@ -185,6 +185,19 @@ describe("restoring after a restart", () => {
     expect(second.room.game!.teams.map((t) => t.branchChoices)).toEqual([{}, {}]);
   });
 
+  it("a corrupt snapshot with a null team entry doesn't crash restore (adversarial review, 2026-09-21)", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    saved.game.teams[0] = null; // snapshot.ts's shallow validation lets this through
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored"); // must not throw
+    expect(second.room.game!.teams[0]).toBeNull(); // left as-is, not crashed on
+    expect(second.room.game!.teams[1]!.branchChoices).toEqual({}); // the valid team still backfills fine
+  });
+
   it("every team is offline until its phone rejoins", async () => {
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);
