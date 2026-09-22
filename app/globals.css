@@ -88,6 +88,24 @@ body {
 .px-btn.flee { background: #ffa94d; }
 .px-btn.primary { background: var(--danger); color: #fff; text-shadow: 2px 2px 0 var(--k); }
 
+/* ---------- Text input: same hard outline as panels/buttons, for the bank editor ---------- */
+.px-input {
+  display: block;
+  width: 100%;
+  margin: 4px 0;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--cream);
+  border: none;
+  box-shadow: 0 -3px 0 0 var(--k), 0 3px 0 0 var(--k), -3px 0 0 0 var(--k), 3px 0 0 0 var(--k), inset 0 -4px 0 var(--cream2);
+}
+.px-input:focus-visible {
+  outline: 4px solid #fff;
+  outline-offset: 2px;
+}
+
 /* ---------- Label chip: small orange text always sits on the dark pill (contrast 6.3:1) ---------- */
 .px-chip {
   display: inline-block;

@@ -1,0 +1,222 @@
+"use client";
+
+// Owner-only question-bank editor. Not linked from anywhere in the game's normal flow — reached by
+// its URL directly, gated by the OWNER_KEY the Worker checks on every /api/bank request. Text
+// questions only this round (see docs/designs/question-bank-editor.md's NOT in scope section for
+// why multipleChoice/image aren't here).
+
+import { useEffect, useState } from "react";
+import { Panel, PixelButton } from "@/components/pixel";
+import type { Bank, BankQuestion } from "@/lib/question-bank";
+
+const OWNER_KEY_STORAGE = "bank-editor-owner-key";
+
+function bankApiBase(): string {
+  const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999";
+  const protocol = host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https";
+  return `${protocol}://${host}/api/bank`;
+}
+
+/** Reads the owner key from localStorage — a per-browser convenience, not the source of truth (the
+ * Worker checks it on every request; a wrong/missing key never gets past the fetch below). */
+function useOwnerKey() {
+  const [key, setKey] = useState(() => {
+    try {
+      return localStorage.getItem(OWNER_KEY_STORAGE) ?? "";
+    } catch {
+      // Private browsing / blocked storage, or server-side render: start empty.
+      return "";
+    }
+  });
+  const save = (next: string) => {
+    setKey(next);
+    try {
+      localStorage.setItem(OWNER_KEY_STORAGE, next);
+    } catch {
+      // Nothing to do — the key still works for this page load, just won't be remembered.
+    }
+  };
+  return [key, save] as const;
+}
+
+type Location = { kind: "room"; roomIndex: number } | { kind: "boss" };
+
+export default function BankEditorPage() {
+  const [ownerKey, setOwnerKey] = useOwnerKey();
+  const [bank, setBank] = useState<Bank | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const load = async (key: string) => {
+    if (!key) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(bankApiBase(), { headers: { Authorization: `Bearer ${key}` } });
+      if (res.status === 403) {
+        setError("Owner key rejected.");
+        setBank(null);
+        return;
+      }
+      if (!res.ok) {
+        setError(`Load failed: ${res.status}`);
+        return;
+      }
+      setBank(await res.json());
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    function loadOnMount() {
+      if (ownerKey) void load(ownerKey);
+    }
+    loadOnMount();
+    // Only on the key read from storage at mount; re-fetching on every keystroke isn't wanted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const save = async (next: Bank) => {
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(bankApiBase(), {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${ownerKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      if (!res.ok) {
+        setError(await res.text());
+        return;
+      }
+      setBank(await res.json());
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const questionsAt = (b: Bank, loc: Location): BankQuestion[] =>
+    loc.kind === "boss" ? b.boss.questions : b.rooms[loc.roomIndex].questions;
+
+  const withQuestions = (b: Bank, loc: Location, questions: BankQuestion[]): Bank =>
+    loc.kind === "boss"
+      ? { ...b, boss: { ...b.boss, questions } }
+      : { ...b, rooms: b.rooms.map((r, i) => (i === loc.roomIndex ? { ...r, questions } : r)) };
+
+  const editQuestion = (loc: Location, id: string, field: "text" | "answer", value: string) => {
+    if (!bank) return;
+    const questions = questionsAt(bank, loc).map((q) => (q.id === id ? { ...q, [field]: value } : q));
+    setBank(withQuestions(bank, loc, questions));
+  };
+
+  const deleteQuestion = (loc: Location, id: string) => {
+    if (!bank) return;
+    setBank(withQuestions(bank, loc, questionsAt(bank, loc).filter((q) => q.id !== id)));
+  };
+
+  const addQuestion = (loc: Location) => {
+    if (!bank) return;
+    const id = `${loc.kind === "boss" ? "boss" : `r${loc.roomIndex}`}-${crypto.randomUUID().slice(0, 8)}`;
+    setBank(withQuestions(bank, loc, [...questionsAt(bank, loc), { id, text: "", answer: "" }]));
+  };
+
+  return (
+    <main className="mx-auto flex max-w-2xl flex-col gap-4 p-4">
+      <h1 className="text-[24px]">題庫編輯器</h1>
+
+      <Panel className="flex flex-col gap-2 p-4">
+        <label className="text-[14px]" htmlFor="owner-key">
+          Owner key
+        </label>
+        <input
+          id="owner-key"
+          type="password"
+          className="px-input"
+          value={ownerKey}
+          onChange={(e) => setOwnerKey(e.target.value)}
+        />
+        <PixelButton onClick={() => void load(ownerKey)} disabled={!ownerKey || loading}>
+          {loading ? "載入中…" : "載入題庫"}
+        </PixelButton>
+        {error && (
+          <Panel tone="turn" role="alert" className="text-[14px]">
+            {error}
+          </Panel>
+        )}
+      </Panel>
+
+      {bank && (
+        <div className="flex flex-col gap-4">
+          {bank.rooms.map((room, roomIndex) => (
+            <RoomEditor
+              key={roomIndex}
+              title={`第 ${roomIndex + 1} 房 · ${room.monster.name}`}
+              questions={room.questions}
+              onEdit={(id, field, value) => editQuestion({ kind: "room", roomIndex }, id, field, value)}
+              onDelete={(id) => deleteQuestion({ kind: "room", roomIndex }, id)}
+              onAdd={() => addQuestion({ kind: "room", roomIndex })}
+            />
+          ))}
+          <RoomEditor
+            title={`首領 · ${bank.boss.monster.name}`}
+            questions={bank.boss.questions}
+            onEdit={(id, field, value) => editQuestion({ kind: "boss" }, id, field, value)}
+            onDelete={(id) => deleteQuestion({ kind: "boss" }, id)}
+            onAdd={() => addQuestion({ kind: "boss" })}
+          />
+          <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving}>
+            {saving ? "儲存中…" : "儲存全部變更"}
+          </PixelButton>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function RoomEditor({
+  title,
+  questions,
+  onEdit,
+  onDelete,
+  onAdd,
+}: {
+  title: string;
+  questions: BankQuestion[];
+  onEdit: (id: string, field: "text" | "answer", value: string) => void;
+  onDelete: (id: string) => void;
+  onAdd: () => void;
+}) {
+  return (
+    <Panel className="flex flex-col gap-2 p-4">
+      <h2 className="text-[18px]">{title}</h2>
+      {questions.map((q) => (
+        <div key={q.id} className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
+          <input
+            className="px-input"
+            aria-label="題目"
+            value={q.text}
+            onChange={(e) => onEdit(q.id, "text", e.target.value)}
+          />
+          <div className="flex gap-2">
+            <input
+              className="px-input flex-1"
+              aria-label="答案"
+              value={q.answer}
+              onChange={(e) => onEdit(q.id, "answer", e.target.value)}
+            />
+            <PixelButton variant="flee" onClick={() => onDelete(q.id)}>
+              刪除
+            </PixelButton>
+          </div>
+        </div>
+      ))}
+      <PixelButton onClick={onAdd}>+ 新增題目</PixelButton>
+    </Panel>
+  );
+}
