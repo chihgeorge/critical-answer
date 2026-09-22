@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { generateRoomCode, getOrCreateTeamId, getOrCreateTeamKey } from "./room-code";
+import { freshHostPath, generateRoomCode, getOrCreateTeamId, getOrCreateTeamKey, isFreshRoomHash, settledHash } from "./room-code";
 import { TEAM_KEY_RE } from "./protocol";
 
 // The only test that needs a browser API: a Map-backed localStorage is enough.
@@ -101,5 +101,29 @@ describe("getOrCreateTeamKey", () => {
     const a = getOrCreateTeamKey();
     localStorage.clear();
     expect(getOrCreateTeamKey()).not.toBe(a);
+  });
+});
+
+describe("fresh room links", () => {
+  it("only a link marked new=1 is a fresh room", () => {
+    expect(isFreshRoomHash("#k=abc&new=1")).toBe(true);
+    expect(isFreshRoomHash("#new=1&k=abc")).toBe(true);
+    expect(isFreshRoomHash("#k=abc")).toBe(false);
+    expect(isFreshRoomHash("")).toBe(false);
+    expect(isFreshRoomHash("#k=abc&new=0")).toBe(false);
+  });
+
+  it("settling drops new=1 and keeps the host token", () => {
+    expect(settledHash("#k=abc&new=1")).toBe("#k=abc");
+    expect(settledHash("#new=1&k=abc")).toBe("#k=abc");
+    expect(settledHash("#k=abc")).toBe("#k=abc");
+    expect(settledHash("#new=1")).toBe("");
+  });
+
+  it("the path the home page opens is fresh, and settling it leaves the plain host link", () => {
+    const path = freshHostPath("ABCD", "0123456789abcdef");
+    expect(path).toBe("/room/ABCD/host#k=0123456789abcdef&new=1");
+    expect(isFreshRoomHash(path.slice(path.indexOf("#")))).toBe(true);
+    expect(settledHash(path.slice(path.indexOf("#")))).toBe("#k=0123456789abcdef");
   });
 });

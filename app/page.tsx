@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { generateRoomCode, newHostToken } from "@/lib/room-code";
+import { freshHostPath, generateRoomCode, newHostToken } from "@/lib/room-code";
 import { DialogueBox, Panel, PixelButton, SceneBackground, Sprite } from "@/components/pixel";
 
 const inputClass =
@@ -17,7 +17,7 @@ function HomeForm() {
 
   function handleCreateRoom() {
     const code = generateRoomCode();
-    router.push(`/room/${code}/host#k=${newHostToken()}`);
+    router.push(freshHostPath(code, newHostToken()));
   }
 
   function handleJoin(e: React.FormEvent) {

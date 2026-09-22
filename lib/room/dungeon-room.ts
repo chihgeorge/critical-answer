@@ -1,4 +1,5 @@
 import type { Conn, RoomIO } from "./io";
+import { CLOSE_IDLE } from "./close-codes";
 import { parseSnapshot, SCHEMA_VERSION, SNAPSHOT_KEY, type RoomSnapshot } from "./snapshot";
 import {
   createGame,
@@ -22,6 +23,9 @@ import { createBreaker, withBreaker } from "../narration/breaker";
 
 const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TRANSCRIPT = 500;
+/** Long enough for a pizza break, short enough that a TV left on overnight is not billed all night. */
+const IDLE_MS = 2 * 60 * 60 * 1000;
+const EXPIRE_MS = 24 * 60 * 60 * 1000;
 /** Sockets per room: players, screens and the host, with room to spare. Stops one client opening thousands. */
 const MAX_CONNECTIONS = 60;
 /** Lets the kill-shot line be read before the story arrives. */
@@ -39,6 +43,12 @@ export interface RoomOptions {
   fetch?: typeof fetch;
   /** The question bank this room plays with. Defaults to the bundled one until banks come from a store. */
   bank?: Bank;
+  /** No state-changing message for this long: close every connection (the game stays saved). Default 2 hours. */
+  idleMs?: number;
+  /** No state-changing message for this long: forget the room and free its code. Default 24 hours. */
+  expireMs?: number;
+  /** The clock (tests). */
+  now?: () => number;
 }
 const STYLE_EXAMPLES = 5;
 /** Server-side only: every answer in a bank, so a narration line that repeats one is rejected. */
@@ -98,6 +108,14 @@ export class DungeonRoom {
   private epilogueDelayMs: number;
   /** The last snapshot handed to storage, so an unchanged room does not write again. */
   private lastSaved = "";
+  private idleMs: number;
+  private expireMs: number;
+  private now: () => number;
+  private initialBank: Bank;
+  /** Last message that changed something (not a transcript download). Null until the first one. */
+  private lastActivityAt: number | null = null;
+  /** When the room's alarm is set to wake it, or null. In memory only: a restart re-sets it in restore(). */
+  private alarmAt: number | null = null;
   /** The bank this room plays with, and every answer in it (server-side only, so an LLM line that repeats one is rejected). */
   private bank: Bank;
   private bankAnswers: string[];
@@ -107,7 +125,11 @@ export class DungeonRoom {
     private rng: () => number = Math.random,
     opts: RoomOptions = {},
   ) {
-    this.bank = opts.bank ?? BANK;
+    this.initialBank = opts.bank ?? BANK;
+    this.bank = this.initialBank;
+    this.idleMs = opts.idleMs ?? IDLE_MS;
+    this.expireMs = opts.expireMs ?? EXPIRE_MS;
+    this.now = opts.now ?? Date.now;
     this.bankAnswers = allAnswers(this.bank);
     this.scripted = createScriptedProvider(rng);
     this.epilogueDelayMs = opts.epilogueDelayMs ?? EPILOGUE_DELAY_MS;
@@ -191,6 +213,7 @@ export class DungeonRoom {
       notes: this.notes,
       editedLines: this.editedLines,
       aiNarration: this.aiNarration,
+      lastActivityAt: this.lastActivityAt === null ? null : Math.floor(this.lastActivityAt / 60_000) * 60_000,
       bank: this.bank,
     };
   }
@@ -247,7 +270,11 @@ export class DungeonRoom {
     this.aiNarration = this.aiAvailable && s.aiNarration;
     this.bank = s.bank;
     this.bankAnswers = allAnswers(s.bank);
+    // A save from before activity was tracked counts as active now: never expire a room we cannot date.
+    this.lastActivityAt = s.lastActivityAt ?? this.now();
     this.lastSaved = JSON.stringify(this.persistedState());
+    const idleFor = this.now() - this.lastActivityAt;
+    this.setAlarmAt(Math.max(this.now(), this.lastActivityAt + (idleFor >= this.idleMs ? this.expireMs : this.idleMs)));
     console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
     // The story that ends a finished game is written by a promise that a restart loses: ask for it again.
     if (this.game?.phase === "finished" && !this.epilogue) {
@@ -327,6 +354,78 @@ export class DungeonRoom {
     }
   }
 
+  private markActivity() {
+    const now = this.now();
+    this.lastActivityAt = now;
+    const due = now + this.idleMs;
+    // Only move the alarm earlier: while people are active the alarm already waiting is sooner than `due`.
+    if (this.alarmAt === null || this.alarmAt > due) this.setAlarmAt(due);
+  }
+
+  private setAlarmAt(at: number) {
+    this.alarmAt = at;
+    const failed = (err: unknown) => console.error(JSON.stringify({ event: "alarm_failed", error: String(err) }));
+    try {
+      void Promise.resolve(this.room.storage?.setAlarm?.(at)).catch(failed);
+    } catch (err) {
+      failed(err);
+    }
+  }
+
+  /**
+   * The room's alarm. Idle for `idleMs`: close every connection, keep the game. Idle for `expireMs`: forget the
+   * room, so its code can be used again. Anything in between just sets the alarm for the next check.
+   */
+  async onAlarm() {
+    this.alarmAt = null;
+    const last = this.lastActivityAt;
+    if (last === null) return;
+    const idleFor = this.now() - last;
+    if (idleFor >= this.expireMs) {
+      await this.expire();
+    } else if (idleFor >= this.idleMs) {
+      this.room.closeAll?.(CLOSE_IDLE, "idle");
+      console.log(JSON.stringify({ event: "room_idle_closed", idleMs: idleFor }));
+      this.setAlarmAt(last + this.expireMs);
+    } else {
+      this.setAlarmAt(last + this.idleMs);
+    }
+  }
+
+  private async expire() {
+    this.room.closeAll?.(CLOSE_IDLE, "expired");
+    const storage = this.room.storage;
+    this.reset();
+    await storage?.deleteAlarm?.();
+    await storage?.deleteAll?.();
+    console.log(JSON.stringify({ event: "room_expired" }));
+  }
+
+  /** Back to a room nobody has ever used, under a new epoch (a client that still has the old one shows "game reset"). */
+  private reset() {
+    this.game = null;
+    this.pendingTeams = [];
+    this.hostToken = "";
+    this.hostConns.clear();
+    this.connTeam.clear();
+    this.teamKeys.clear();
+    this.conns.clear();
+    this.eventSeq = 0;
+    this.lastNarration = null;
+    this.epilogue = null;
+    this.epilogueRequested = false;
+    this.transcript = [];
+    this.notes = "";
+    this.editedLines = [];
+    this.aiNarration = false;
+    this.bank = this.initialBank;
+    this.bankAnswers = allAnswers(this.bank);
+    this.roomEpoch = crypto.randomUUID();
+    this.lastSaved = "";
+    this.lastActivityAt = null;
+    this.alarmAt = null;
+  }
+
   onConnect(conn: Conn) {
     if (this.conns.size >= MAX_CONNECTIONS) {
       conn.close();
@@ -377,6 +476,8 @@ export class DungeonRoom {
       this.sendTo(sender, { type: "ERROR", error: "invalid_action", detail: "bad_message" });
       return;
     }
+    // A transcript download changes nothing; every other valid message means someone is really here.
+    if (msg.type !== "HOST_GET_TRANSCRIPT") this.markActivity();
 
     switch (msg.type) {
       case "HOST_CLAIM":

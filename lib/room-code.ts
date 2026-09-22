@@ -75,3 +75,25 @@ export function getHostToken(code: string): string | null {
   }
   return localStorage.getItem(key);
 }
+
+/**
+ * The link the home page opens for a room the user just created carries `new=1` in its fragment. Only such a
+ * link may swap its room code when the code turns out to belong to someone else's room (a 1 in 279,841 clash,
+ * or a room that has not expired yet). A link to an existing room must never jump to another one.
+ */
+export function isFreshRoomHash(hash: string): boolean {
+  return new URLSearchParams(hash.replace(/^#/, "")).get("new") === "1";
+}
+
+/** The same fragment without the `new` marker: once the room is ours, a refresh must not be able to swap it. */
+export function settledHash(hash: string): string {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  params.delete("new");
+  const rest = params.toString();
+  return rest ? `#${rest}` : "";
+}
+
+/** The host link for a room that is being created (see isFreshRoomHash). */
+export function freshHostPath(code: string, token: string): string {
+  return `/room/${code}/host#k=${token}&new=1`;
+}

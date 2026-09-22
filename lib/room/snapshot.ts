@@ -29,6 +29,8 @@ export interface RoomSnapshot {
   notes: string;
   editedLines: string[];
   aiNarration: boolean;
+  /** When someone last did something that changes the room, rounded down to the minute so it does not make every message a write. Null in a save from before this field existed. */
+  lastActivityAt: number | null;
   /** The full bank the game is dealt from, not just question ids: editing or deleting a bank must not change a game in progress. */
   bank: Bank;
 }
@@ -51,8 +53,10 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (raw.epilogue !== null && !isString(raw.epilogue)) return null;
     if (typeof raw.epilogueRequested !== "boolean" || typeof raw.aiNarration !== "boolean" || !isString(raw.notes)) return null;
     if (!Array.isArray(raw.editedLines) || !raw.editedLines.every(isString)) return null;
+    const at = raw.lastActivityAt ?? null;
+    if (at !== null && !(typeof at === "number" && Number.isFinite(at) && at >= 0)) return null;
     const bank = parseBank(raw.bank); // throws on a bank that would not load today
-    return { ...(raw as unknown as RoomSnapshot), bank };
+    return { ...(raw as unknown as RoomSnapshot), lastActivityAt: at, bank };
   } catch {
     return null;
   }

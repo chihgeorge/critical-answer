@@ -7,6 +7,10 @@ export interface Env {
   main: DurableObjectNamespace<Room>;
   /** Comma-separated origins allowed to open a WebSocket, see lib/origin.ts. Unset means no browser page. */
   ALLOWED_ORIGINS?: string;
+  /** Milliseconds without activity before a room closes its connections (default 2 hours). */
+  ROOM_IDLE_MS?: string;
+  /** Milliseconds without activity before a room is forgotten and its code freed (default 24 hours). */
+  ROOM_EXPIRE_MS?: string;
   /** Secret for AI narration (wrangler secret put ANTHROPIC_API_KEY). Without it the room uses scripted lines. */
   ANTHROPIC_API_KEY?: string;
 }
@@ -23,13 +27,31 @@ export class Room extends Server<Env> {
 
   /** Runs once each time the object starts, before any connection is served: read the saved room back. */
   async onStart() {
-    this.game = new DungeonRoom({
-      broadcast: (message) => this.broadcast(message),
-      env: this.env,
-      // The room saves without awaiting; Cloudflare holds its messages until the write is durable.
-      storage: { get: (key) => this.ctx.storage.get(key), put: (key, value) => this.ctx.storage.put(key, value) },
-    });
+    const ms = (v: string | undefined) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : undefined);
+    this.game = new DungeonRoom(
+      {
+        broadcast: (message) => this.broadcast(message),
+        env: this.env,
+        // The room saves without awaiting; Cloudflare holds its messages until the write is durable.
+        storage: {
+          get: (key) => this.ctx.storage.get(key),
+          put: (key, value) => this.ctx.storage.put(key, value),
+          setAlarm: (at) => this.ctx.storage.setAlarm(at),
+          deleteAlarm: () => this.ctx.storage.deleteAlarm(),
+          deleteAll: () => this.ctx.storage.deleteAll(),
+        },
+        closeAll: (code, reason) => {
+          for (const conn of this.getConnections()) conn.close(code, reason);
+        },
+      },
+      undefined,
+      { idleMs: ms(this.env.ROOM_IDLE_MS), expireMs: ms(this.env.ROOM_EXPIRE_MS) },
+    );
     await this.game.restore();
+  }
+
+  onAlarm() {
+    return this.game.onAlarm();
   }
 
   onConnect(conn: Connection) {

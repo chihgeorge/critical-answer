@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
-import { getHostToken } from "@/lib/room-code";
+import { CLOSE_IDLE } from "@/lib/room/close-codes";
+import { freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, settledHash } from "@/lib/room-code";
 import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
@@ -97,6 +98,8 @@ export default function HostPage() {
   const [connected, setConnected] = useState(false);
   const [claimed, setClaimed] = useState(false);
   const [reset, setReset] = useState(false);
+  /** The room closed our connection on purpose after a long idle time. The game is saved; a click reconnects. */
+  const [rested, setRested] = useState(false);
   /** Host-only: the answer to the question in play. Never shown on /screen or /play. */
   const [answer, setAnswer] = useState<{ questionId: string; answer: string } | null>(null);
   const [drawer, setDrawer] = useState(false);
@@ -116,15 +119,21 @@ export default function HostPage() {
     room: code,
     onOpen() {
       setConnected(true);
+      setRested(false);
       // Claim on every (re)connect: the server forgets host rights when the socket closes.
       const t = getHostToken(code);
       if (t) socket.send(JSON.stringify({ type: "HOST_CLAIM", token: t } satisfies ClientMessage));
       else setNoToken(true);
     },
-    onClose() {
+    onClose(event: CloseEvent) {
       setConnected(false);
       setClaimed(false);
       setPendingTeamId(null);
+      // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
+      if (event.code === CLOSE_IDLE) {
+        socket.close();
+        setRested(true);
+      }
     },
     onMessage(event: MessageEvent) {
       let msg: ServerMessage;
@@ -140,6 +149,8 @@ export default function HostPage() {
       switch (msg.type) {
         case "HOST_OK":
           setClaimed(true);
+          // The room is ours: from now on this link can no longer swap its code.
+          if (isFreshRoomHash(location.hash)) history.replaceState(null, "", location.pathname + location.search + settledHash(location.hash));
           setAiAvailable(msg.aiAvailable);
           break;
         case "NARRATION":
@@ -171,6 +182,12 @@ export default function HostPage() {
           setPendingTeamId(null);
           break;
         case "ERROR":
+          // A room we just created answers bad_token when its code was already taken: pick another code.
+          if (msg.error === "bad_token" && isFreshRoomHash(location.hash)) {
+            const token = getHostToken(code);
+            if (token) location.replace(freshHostPath(generateRoomCode(), token));
+            break;
+          }
           setError(msg.error === "bad_token" ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人" : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`);
           setPendingTeamId(null);
           break;
@@ -213,7 +230,13 @@ export default function HostPage() {
 
         {reset && <Panel className="px-3 py-2 text-center text-[14px]" style={{ background: "var(--danger)", color: "#fff" }}>伺服器重新啟動，遊戲已重置，轉錄紀錄已消失</Panel>}
         {noToken && <Panel tone="lav" className="px-3 py-2 text-[14px]">這個瀏覽器沒有主持人金鑰。請回首頁按「主持遊戲」，或用建立房間時的連結／QR 開啟。</Panel>}
-        {!connected && !noToken && <Panel tone="turn" className="px-3 py-2 text-center text-[16px]">重新連線中…</Panel>}
+        {rested && (
+          <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
+            房間休息中：太久沒有動作，連線已暫停，遊戲進度都還在。
+            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-2 text-[16px]">重新連線</PixelButton>
+          </Panel>
+        )}
+        {!connected && !noToken && !rested && <Panel tone="turn" className="px-3 py-2 text-center text-[16px]">重新連線中…</Panel>}
         {error && <Panel className="px-3 py-2 text-[14px]" style={{ background: "#ffd9d9" }}>{error}</Panel>}
 
         {!game && (
