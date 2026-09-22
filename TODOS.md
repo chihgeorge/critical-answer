@@ -349,6 +349,24 @@
 
 ---
 
+## 首領登場的敘事事件（DM 分支回提用）
+
+**What:** 新增一個「隊伍進入首領房」的旁白事件型別（`lib/narration/events.ts` 目前只有 `correct`/`boss-hit`/`boss-kill`，沒有進房事件），讓 DM 分支互動能在首領登場時回提隊伍先前選過的分支。
+
+**Why:** `/plan-eng-review`（2026-09-21）的 Codex 外部審查指出這個接進點不存在，且共用首領可能在某隊進房前就被別隊打死，事件設計要處理這個時序問題。設計文件原本假設「首領登場時回提選擇」，但這一輪決定先不做，只做每房分支本身。
+
+**Pros:** DM 分支互動的敘事收尾（讓玩家的選擇被記得、被提起）需要這個事件才能做。
+
+**Cons:** 要新增事件型別、處理共用首領被搶先擊殺的時序、更新 narration runner 的事件契約。
+
+**Context:** 見 [docs/designs/dm-branching-and-question-types.md](docs/designs/dm-branching-and-question-types.md)。`lib/room/dungeon-room.ts` 的 `handleHostJudge` 是唯一會產生 `NarrationEvent` 的地方，新事件要從那裡發出。
+
+**Effort:** M（人工約 1 天 / CC 約 1 小時）　**Priority:** P2
+
+**Depends on / blocked by:** DM 分支互動（每房觸發版）先實作完成。
+
+---
+
 ## Completed
 
 ## 斷線重連 / 狀態持久化完整方案

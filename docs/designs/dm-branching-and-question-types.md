@@ -102,3 +102,94 @@ Codex（`codex exec`，read-only，`model_reasoning_effort=high`）的獨立冷�
 - 你一開始把題庫編輯器的討論收斂成「架構本身沒問題，想討論的是不同類型的題目編輯器」——沒有重新打開已經定案的權限/儲存決策，只挑真正還沒想清楚的部分繼續深挖，這種範圍界定的精準度不是每個人都有。
 - 對 DM 模式，你自己先講了「疊加在現有玩法上」，選擇了風險較低的方向，而不是被「自由對話 DM」這個比較炫的版本吸引走——你在乎的是遊戲仍然公平、host 仍然可判分，這個判斷比多數人先想到的還務實。
 - 兩次追問（先做選擇題還是圖片題、DM 想讓玩家做什麼）你都選了「先講架構，不確定具體」——這不是迴避決定，是正確地把「還沒想清楚」和「架構要先扛得住任何答案」分開處理。
+
+---
+
+## Engineering Review（2026-09-21，/plan-eng-review）
+
+Status: 已鎖定，準備進實作。範圍在這一輪從設計文件原本的「單一插曲」擴大為「每房觸發」，是使用者在審查中明確做的決定，不是我自己擴的。
+
+### 鎖定的架構決策
+
+1. **分支訊息由隊伍手機直接發送**（新 `ClientMessage` 型別 `TEAM_BRANCH_CHOICE`），不經 host 轉發。`lib/protocol.ts:6` 的「只有 host 能發 HOST_JUDGE，因為信任隊伍自報會讓他們自己評分」這條防線是防分數自報，分支選擇不是分數宣告，結果仍由程式碼決定，所以這條防線不適用於本功能。
+2. **逐隊獨立觸發，不做決策主體機制。** `game-state.ts` 的 `Team.roomIndex` 本來就是逐隊獨立推進，不需要全員一致/多數決/host 代表的機制。
+3. **觸發條件是 `roomIndex` 真的變化，不含最後一房被 clamp 刷分的情況。** `game-state.ts:328` 的 `Math.min(team.roomIndex + 1, game.rooms.length - 1)` 會讓最後一房重複答對但 `roomIndex` 不變；若拿 `outcome.type === "correct-room-advance"` 當觸發條件會在刷分房裡洗版。改用「新 `nextRoomIndex` ≠ 舊 `roomIndex`」判斷。
+4. **分支選擇不阻擋回合。** `handleHostJudge` 在同一個同步區塊裡就呼叫 `this.nextTurn()`，回合在分支選擇被回答之前就已經推進——分支是背景 UI，隊伍可以隨時點，不卡下一隊。
+5. **資料模型：`Team.branchChoices: { [roomIndex]: string }`，存 option ID（如 `'fight'`）不存顯示文字。** 顯示文字另外用查表對應，避免以後改文案改到舊存檔的語意。沿用既有的 `persist()`/`restore()` 路徑，不另開持久化。
+6. **重複提交政策：同一 `roomIndex` 第一次選擇定案，之後的提交一律拒絕。** 呼應 `currentQuestionId` 的防重送模式。
+7. **選項文字寫死在開發者程式碼裡（靠近題庫實作），不是主持人可編輯的內容。** 與題庫編輯器（另一個方向）的 scope 完全分開，本功能不需要新的設定 UI、權限、或 prompt-safety 審核。
+8. **首領登場的回提敘事這一輪不做，記進 TODOS.md（P2）。** `lib/narration/events.ts` 沒有「進首領房」事件型別，且共用首領可能在某隊進房前被別隊打死，時序要另外設計——不在這輪範圍。
+9. **LLM 不可用時，任何引用 `branchChoices` 的旁白直接跳過該事件，不強塞模板。** 實作時要注意：narration runner 目前保證每個 event 都會有一個輸出（`isPending(eventId)` 才會結束等待），「跳過」必須讓這個 pending 狀態正確結束，不能讓前端卡在等待中——這是這輪 Codex 抓到、我原本 Open Questions 沒處理到的執行細節，不是新的決策，是既有決策的正確落地方式。
+
+### NOT in scope（這一輪明確不做）
+
+- Campaign replay map（大螢幕路徑視覺化、首領回提）——已列為 Open Question，等玩測回饋。
+- 首領登場回提敘事——移進 TODOS.md（P2），等分支本身驗證過、且有新的敘事事件接進點後再做。
+- 分支選項的語意內容（「武力」/「討價」實際代表什麼機制效果）——留給實作階段決定，本文件只鎖定「有兩個固定選項、結果由程式決定」的骨架。
+- 題型 schema 與題庫編輯器 UI——完全分開的方向，未動。
+- 主持人可編輯選項文字——這輪選了開發者寫死。
+
+### What already exists（重用/不重用）
+
+- `lib/room/dungeon-room.ts` 的 `persist()`/`persistedState()`——重用，`branchChoices` 隨 `Team` 物件自動存活。
+- `lib/protocol.ts` 的 `ClientMessage` 判別式聯合與 `parseClientMessage`——重用既有模式，新增一個 case。
+- `game-state.ts` 的 `currentQuestionId` 防重送模式——重用同樣的「第一次定案、之後拒絕」邏輯處理分支重複提交。
+- `lib/narration/events.ts` / `runner.ts` 的 `NarrationEvent` 與 `isPending` 機制——重用，但要注意第 9 點提到的「跳過事件仍要正確結束 pending」細節。
+- **不重用、刻意繞開：** `HOST_JUDGE` 的 host-only 模式——本功能刻意不沿用，改為隊伍直接發送（見決策 1）。
+
+### Failure modes
+
+| Codepath | 失敗方式 | 有測試？ | 有錯誤處理？ | 靜默失敗？ |
+|---|---|---|---|---|
+| `TEAM_BRANCH_CHOICE` 帶過期 `roomIndex` | 隊伍用舊分頁提交 | 待實作時補 | 有（拒絕） | 否，回 ERROR |
+| 同 room 重複提交不同選擇 | 手滑/多標籤 | 待實作時補 | 有（拒絕，第一次為準） | 否，回 ERROR |
+| 錯的 `teamKey` 冒充其他隊 | 惡意/打錯 | 待實作時補 | 有（沿用 JOIN/REJOIN 驗證模式） | 否，回 ERROR |
+| LLM 不可用時的分支回提旁白 | API 掛掉 | 待實作時補 | 有（跳過，見決策 9） | **需確認 pending 狀態正確結束，否則前端會靜默卡住——標記為 critical gap，實作時必須驗證** |
+| 房間重啟（Worker 重部署）中途 | Worker 被 redeploy | 待實作時補 | 有（沿用 persist/restore） | 否 |
+
+### Worktree parallelization strategy
+
+Sequential implementation, no parallelization opportunity——`lib/protocol.ts`（訊息型別）、`lib/game-state.ts`（`recordBranchChoice`）、`lib/room/dungeon-room.ts`（`handleTeamBranchChoice`）三者高度耦合，同一條資料流從訊息解析到狀態變更到持久化，拆到不同 worktree 只會製造合併衝突。
+
+### Implementation Tasks
+
+- [ ] **T1 (P1, human: ~2h / CC: ~20min)** — protocol — 新增 `TEAM_BRANCH_CHOICE` ClientMessage 型別與 `parseClientMessage` case
+  - Surfaced by: Architecture 1A — 隊伍手機直接發送分支選擇
+  - Files: `lib/protocol.ts`
+  - Verify: unit test，涵蓋合法/缺欄位/非法 choice 值三種輸入
+- [ ] **T2 (P1, human: ~3h / CC: ~30min)** — game-state — 新增 `Team.branchChoices` 欄位與 `recordBranchChoice()`，觸發條件用「`nextRoomIndex` ≠ 舊 `roomIndex`」判斷
+  - Surfaced by: Architecture 1B/1C + Outside Voice 4A — 逐隊觸發、option ID 存法、避開最後一房 clamp 陷阱
+  - Files: `lib/game-state.ts`
+  - Verify: unit test 涵蓋正常寫入、過期 roomIndex 拒絕、重複提交拒絕、最後一房刷分不觸發
+- [ ] **T3 (P1, human: ~2h / CC: ~25min)** — dungeon-room — 新增 `handleTeamBranchChoice()`，驗證 teamKey，呼叫 `recordBranchChoice`，persist + broadcast
+  - Surfaced by: Architecture 1A + Test 3A — 隊伍身分驗證、重複提交政策
+  - Files: `lib/room/dungeon-room.ts`
+  - Verify: unit test（teamKey 驗證、persist 呼叫）+ 一個 restore() round-trip 測試
+- [ ] **T4 (P2, human: ~2h / CC: ~20min)** — narration — 分支相關旁白的 LLM-down 跳過路徑，確認 `isPending(eventId)` 正確結束
+  - Surfaced by: Engineering Review 決策 9（Codex 抓到的執行細節）
+  - Files: `lib/narration/llm.ts`, `lib/narration/runner.ts`
+  - Verify: unit test 模擬 LLM 拋錯，斷言 pending 狀態正確清除、前端不會卡住
+- [ ] **T5 (P2, human: ~1h / CC: ~15min)** — frontend — `/play` 頁面顯示分支按鈕，點擊後送出，按鈕消失直到下一房觸發
+  - Surfaced by: Test review user flows
+  - Files: `app/room/[code]/play/page.tsx`
+  - Verify: e2e，涵蓋兩隊各自獨立選擇不互相干擾
+- [ ] **T6 (P1, human: ~20min / CC: ~10min)** — diagram — 更新 `game-state.ts` 開頭的 ASCII 流程圖，加上分支插入點
+  - Surfaced by: Code Quality 2A（專案自訂規則）
+  - Files: `lib/game-state.ts`
+  - Verify: 人工檢查圖與程式碼一致
+
+### Completion summary
+
+- Step 0: Scope Challenge — 範圍照使用者決定擴大（逐隊每房觸發，非原設計文件的單一插曲），Complexity check 未觸發 STOP（5 個檔案、0 個新服務）
+- Architecture Review: 3 issues found（發送者、逐隊 vs 全房、資料模型），全部有決策
+- Code Quality Review: 2 issues found（圖同步、重複選擇無回提的風險），全部有決策
+- Test Review: diagram produced, 17 gaps identified（規劃階段，尚未實作）
+- Performance Review: 0 issues found
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 1 item proposed and accepted（首領登場敘事事件，P2）
+- Failure modes: 1 critical gap flagged（LLM 跳過路徑的 pending 狀態，已排進 T4）
+- Outside voice: ran (Codex) — 12 項發現，其中 6 項轉為正式決策（4A-4E + T4 的執行細節），其餘已被既有決策涵蓋或移進 NOT in scope
+- Parallelization: 1 lane, 0 parallel / 1 sequential
+- Lake Score: 6/6 recommendations chose complete option（option ID 查表、逐隊觸發、跳過而非硬塞模板皆選了較完整的路徑，無 N/A 決策）
+- Unresolved decisions: 0
