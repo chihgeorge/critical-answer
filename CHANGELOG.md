@@ -2,6 +2,14 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.3.0.0] - 2026-09-22
+
+### Added
+- Teams now hit a DM-style branching choice each time they clear a room: two fixed options ("fight" / "negotiate") appear right on their own phone, don't block the game for anyone else, and can be answered whenever — even after the team has moved on to a later room.
+
+### Fixed
+- A rare corrupted save (from before this feature existed, or otherwise malformed) could crash a room on restart instead of just discarding the bad entry.
+
 ## [0.2.0.0] - 2026-09-22
 
 ### Added
