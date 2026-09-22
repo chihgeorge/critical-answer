@@ -143,7 +143,12 @@ export default function BankEditorPage() {
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-4 p-4">
-      <h1 className="text-[24px]">題庫編輯器</h1>
+      {/* The page sits directly on the dark stage background (no SceneBackground/Panel behind
+          it), so this needs explicit light text — body's default --ink color is meant for text
+          on cream panels and is nearly invisible here (same convention as screen/page.tsx). */}
+      <h1 className="text-[24px] text-white" style={{ textShadow: "2px 2px 0 var(--k)" }}>
+        題庫編輯器
+      </h1>
 
       <Panel className="flex flex-col gap-2 p-4">
         <label className="text-[14px]" htmlFor="owner-key">
