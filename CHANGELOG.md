@@ -2,6 +2,16 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.4.0.0] - 2026-09-22
+
+### Added
+- A question-bank editor at `/bank-editor`, gated by an owner key: load the whole question bank, add, edit, or delete questions per room and the boss, and save. Text questions only for now.
+- The question bank now lives in its own cloud storage (a Durable Object) instead of only the file bundled into the app, so it can be edited without a redeploy. If that storage is ever unreachable, new games fall back to the bundled bank automatically — a game is never blocked from starting.
+- Saves are conflict-checked: if the bank changed since you loaded it (another tab, another device), your save is rejected with a clear message instead of silently overwriting someone else's edit.
+
+### Fixed
+- The size limit on saving the bank now checks the actual data sent, not just a header a request could lie about or omit.
+
 ## [0.3.0.0] - 2026-09-22
 
 ### Added
