@@ -62,6 +62,24 @@ describe("handleBankApi: auth", () => {
   });
 });
 
+describe("handleBankApi: weak owner key", () => {
+  it("logs a warning but still serves the request when OWNER_KEY is shorter than the minimum", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await handleBankApi(req("GET", { auth: "Bearer short" }), deps({ ownerKey: "short" }));
+    expect(res.status).toBe(200); // a short key still works for auth — this only logs, never blocks
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("weak_owner_key"));
+    spy.mockRestore();
+  });
+
+  it("does not log when OWNER_KEY meets the minimum length", async () => {
+    const longKey = "a".repeat(32);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await handleBankApi(req("GET", { auth: `Bearer ${longKey}` }), deps({ ownerKey: longKey }));
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
 describe("handleBankApi: CORS", () => {
   it("answers OPTIONS with the CORS headers for an allowed origin, before checking auth", async () => {
     const res = await handleBankApi(req("OPTIONS", { origin: "https://app.example.com" }), deps());

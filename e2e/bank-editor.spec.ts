@@ -48,6 +48,19 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
   await expect(page.getByTestId("bank-room-0").getByLabel("題目")).toHaveCount(startingCount);
 });
 
+test("a remembered owner key (localStorage) auto-loads the bank on a fresh visit, no typing required", async ({ page }) => {
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  await expect(page.getByTestId("bank-room-0")).toBeVisible(); // save() below isn't reached — this just persists the key
+
+  // A fresh page load (simulating a returning owner) must read the key back and auto-load, per
+  // useOwnerKey's onRestored callback — never typing the key again this browser.
+  await page.reload();
+  await expect(page.getByLabel("Owner key")).toHaveValue(E2E_OWNER_KEY);
+  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+});
+
 test("a save that fails server-side validation shows the server's error, and does not clear the form", async ({ page }) => {
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
