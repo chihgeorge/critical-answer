@@ -448,6 +448,9 @@ export function recordBranchChoice(
   roomIndex: number,
   choice: BranchOptionId,
 ): GameState {
+  if (game.phase === "finished") {
+    throw new InvalidActionError("Game already finished");
+  }
   const team = getTeam(game, teamId); // throws if unknown
   if (!Number.isInteger(roomIndex) || roomIndex < 1 || roomIndex > team.roomIndex) {
     throw new InvalidActionError(`Invalid branch roomIndex ${roomIndex} for ${teamId} (at ${team.roomIndex})`);

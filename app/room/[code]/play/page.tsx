@@ -188,7 +188,7 @@ export default function PlayPage() {
                 <PixelButton
                   key={choice}
                   onClick={() => send({ type: "TEAM_BRANCH_CHOICE", roomIndex: pendingBranchRoom, choice })}
-                  className="!m-0 !px-4 !py-2"
+                  className="!m-0"
                 >
                   {BRANCH_LABELS[choice]}
                 </PixelButton>

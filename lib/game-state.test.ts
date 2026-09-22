@@ -8,6 +8,7 @@ import {
   setTeamOnline,
   getSpectatorView,
   recordBranchChoice,
+  firstPendingBranchRoom,
   rollBossKillBonus,
   InvalidActionError,
   type GameState,
@@ -508,5 +509,34 @@ describe("recordBranchChoice (DM branching interlude)", () => {
     expect(() => recordBranchChoice(game, "T0", 2, "fight")).toThrow(InvalidActionError);
     game = recordBranchChoice(game, "T0", 1, "fight");
     expect(game.teams[0].branchChoices).toEqual({ 1: "fight" });
+  });
+
+  it("rejects a choice once the game has finished, mirroring answerQuestion's own guard", () => {
+    // 2 rooms so the team legitimately enters roomIndex 1 before reaching the boss;
+    // bossMaxHp 1 kills it on the first hit, finishing the game.
+    let game = createGame([{ id: "T0", name: "A" }], makeRooms(2, 1, 3), ["boss-q1"], { bossThreshold: 15 }, 1, first);
+    for (let i = 0; i < 40 && game.phase !== "finished"; i++) {
+      const qid = isInBossPhase(game, "T0") ? game.boss.currentQuestionId : game.teams[0].currentQuestionId;
+      game = answerQuestion(game, "T0", qid, true, "retry", first).game;
+    }
+    expect(game.phase).toBe("finished");
+    // roomIndex 1 was legitimately entered (not the "unreached room" rejection) — only the
+    // finished-game guard should block this, same as answerQuestion's own check.
+    expect(game.teams[0].roomIndex).toBe(1);
+    expect(() => recordBranchChoice(game, "T0", 1, "fight")).toThrow(InvalidActionError);
+  });
+});
+
+describe("firstPendingBranchRoom", () => {
+  it("returns null when roomIndex is 0 — the starting room is never a choosable transition", () => {
+    expect(firstPendingBranchRoom({ roomIndex: 0, branchChoices: {} })).toBeNull();
+  });
+
+  it("returns the earliest pending room, not the latest, when there is a gap", () => {
+    expect(firstPendingBranchRoom({ roomIndex: 3, branchChoices: { 1: "fight", 3: "negotiate" } })).toBe(2);
+  });
+
+  it("returns null once every room up to roomIndex has a choice", () => {
+    expect(firstPendingBranchRoom({ roomIndex: 2, branchChoices: { 1: "fight", 2: "negotiate" } })).toBeNull();
   });
 });
