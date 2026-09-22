@@ -7,6 +7,7 @@ import {
   isInBossPhase,
   setTeamOnline,
   getSpectatorView,
+  recordBranchChoice,
   rollBossKillBonus,
   InvalidActionError,
   type GameState,
@@ -440,5 +441,72 @@ describe("question deck (T2)", () => {
       ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first));
     }
     expect(isInBossPhase(game, "T0")).toBe(true);
+  });
+});
+
+describe("recordBranchChoice (DM branching interlude)", () => {
+  function advanceOnce(game: GameState, teamId: string): GameState {
+    const team = game.teams.find((t) => t.id === teamId)!;
+    return answerQuestion(game, teamId, team.currentQuestionId, true, "retry", first).game;
+  }
+
+  it("records a choice for a room the team has actually entered", () => {
+    let game = makeGame({ teamCount: 1 });
+    game = advanceOnce(game, "T0"); // T0.roomIndex: 0 -> 1
+    game = recordBranchChoice(game, "T0", 1, "fight");
+    expect(game.teams[0].branchChoices).toEqual({ 1: "fight" });
+  });
+
+  it("rejects a roomIndex the team has not reached yet", () => {
+    const game = makeGame({ teamCount: 1 }); // T0.roomIndex is still 0
+    expect(() => recordBranchChoice(game, "T0", 1, "fight")).toThrow(InvalidActionError);
+  });
+
+  it("rejects roomIndex 0 — the starting room was never entered via a transition", () => {
+    const game = makeGame({ teamCount: 1 });
+    expect(() => recordBranchChoice(game, "T0", 0, "fight")).toThrow(InvalidActionError);
+  });
+
+  it("rejects an unknown team", () => {
+    const game = makeGame({ teamCount: 1 });
+    expect(() => recordBranchChoice(game, "ghost", 1, "fight")).toThrow(InvalidActionError);
+  });
+
+  it("first choice for a room wins; a later submission for the same room is rejected and does not overwrite", () => {
+    let game = makeGame({ teamCount: 1 });
+    game = advanceOnce(game, "T0");
+    game = recordBranchChoice(game, "T0", 1, "fight");
+    expect(() => recordBranchChoice(game, "T0", 1, "negotiate")).toThrow(InvalidActionError);
+    expect(game.teams[0].branchChoices).toEqual({ 1: "fight" });
+  });
+
+  it("a team can still choose for an earlier room after advancing further without choosing", () => {
+    let game = makeGame({ teamCount: 1 });
+    game = advanceOnce(game, "T0"); // roomIndex 0 -> 1
+    game = advanceOnce(game, "T0"); // roomIndex 1 -> 2, room 1's choice still unanswered
+    game = recordBranchChoice(game, "T0", 1, "negotiate");
+    expect(game.teams[0].branchChoices).toEqual({ 1: "negotiate" });
+  });
+
+  it("does not affect other teams' choices or any other game state", () => {
+    let game = makeGame({ teamCount: 2 });
+    game = advanceOnce(game, "T0");
+    const before = game.teams[1];
+    game = recordBranchChoice(game, "T0", 1, "fight");
+    expect(game.teams[1]).toEqual(before);
+  });
+
+  it("farming the clamped last room never opens a second choosable roomIndex for it", () => {
+    // Mirrors "a team below the boss gate in the last room..." above: roomIndex sticks at
+    // the last room while the team racks up score, so only ONE roomIndex (the last one) is
+    // ever recordable for it — repeated correct answers do not create new choosable rooms.
+    let game = createGame([{ id: "T0", name: "A" }], makeRooms(2, 1, 3), ["boss-q1"], { bossThreshold: 15 }, 1, first);
+    for (let i = 0; i < 40 && !isInBossPhase(game, "T0"); i++) {
+      game = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first).game;
+    }
+    // Only roomIndex 1 (the last non-boss room) was ever enterable, never a roomIndex 2+.
+    expect(() => recordBranchChoice(game, "T0", 2, "fight")).toThrow(InvalidActionError);
+    game = recordBranchChoice(game, "T0", 1, "fight");
+    expect(game.teams[0].branchChoices).toEqual({ 1: "fight" });
   });
 });
