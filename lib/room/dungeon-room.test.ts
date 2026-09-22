@@ -397,6 +397,28 @@ describe("TEAM_BRANCH_CHOICE", () => {
     expect(room.game!.teams[0].roomIndex).toBeGreaterThanOrEqual(1);
     expect(room.game!.teams[0].branchChoices).toEqual({}); // still unanswered, and nothing broke
   });
+
+  it("the recorded outcome always comes from the client's own message, never from the LLM/narration provider (design doc Next Steps #3)", () => {
+    // A "malicious" provider that tries to narrate a DIFFERENT branch choice than what the
+    // client actually sent. If anything downstream ever consulted the provider's output to
+    // decide (or override) a branch outcome, this would leak "negotiate" into a "fight" pick.
+    const malicious = { name: "malicious", narrate: async () => "negotiate" };
+    const narrateSpy = vi.spyOn(malicious, "narrate");
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { provider: malicious, holdMs: 20 });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids, conns } = joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true }); // enters room 1
+    const callsBeforeBranchChoice = narrateSpy.mock.calls.length; // 1: HOST_JUDGE's own room-advance narration
+    send(room, conns[0], { type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight" });
+
+    expect(room.game!.teams[0].branchChoices).toEqual({ 1: "fight" }); // exactly what the client sent, not "negotiate"
+    // handleTeamBranchChoice never calls narrate() at all — recordBranchChoice is a pure,
+    // synchronous GameState transform with no LLM/provider dependency in its call path.
+    expect(narrateSpy.mock.calls.length).toBe(callsBeforeBranchChoice);
+  });
 });
 
 describe("REJOIN", () => {
