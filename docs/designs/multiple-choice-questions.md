@@ -182,43 +182,43 @@ type as the schema work, so it stays in the same lane too.
 
 ## Implementation Tasks
 
-- [ ] **T1 (P1)** — schema — `lib/question-bank.ts`: `kind` required on
+- [x] **T1 (P1)** — schema — `lib/question-bank.ts`: `kind` required on
   every `BankQuestion`, MC variant + validation, `answerText()` helper,
   migrate `data/question-bank.json`'s 48 questions to `kind: "text"`
   - Files: `lib/question-bank.ts`, `lib/question-bank.test.ts`,
     `data/question-bank.json`
   - Verify: unit tests — valid/invalid MC (options count, correctIndex
     bounds), missing kind rejected, `answerText()` both kinds
-- [ ] **T2 (P1)** — protocol — `TEAM_SELECT_OPTION` message type +
+- [x] **T2 (P1)** — protocol — `TEAM_SELECT_OPTION` message type +
   bounds-checked parse
   - Files: `lib/protocol.ts`, `lib/protocol.test.ts`
   - Verify: unit tests — valid message, out-of-bounds/non-numeric
     optionIndex rejected, spoofed teamId field ignored
-- [ ] **T3 (P1)** — game-state — `Team.currentSelection`, re-selectable
+- [x] **T3 (P1)** — game-state — `Team.currentSelection`, re-selectable
   recording logic, reset-on-every-deal-except-retry, `SpectatorView` exposure
   - Files: `lib/game-state.ts`, `lib/game-state.test.ts`, `lib/turn-info.test.ts`
     (fixture update)
   - Verify: unit tests — first pick, overwrite, stale rejection, reset per
     outcome type
-- [ ] **T4 (P1)** — dungeon-room — `handleTeamSelectOption()` (bounds-check
+- [x] **T4 (P1)** — dungeon-room — `handleTeamSelectOption()` (bounds-check
   against the live question), `restore()` backfill for `currentSelection`
   - Files: `lib/room/dungeon-room.ts`, `lib/room/dungeon-room.test.ts`,
     `lib/room/persistence.test.ts`
   - Verify: unit tests — handler + a restore() round-trip test
-- [ ] **T5 (P1)** — publicQuestion — `PublicQuestion.options`, explicit
+- [x] **T5 (P1)** — publicQuestion — `PublicQuestion.options`, explicit
   field-picking (never spread), extend the existing
   "publicQuestion never contains the answer" test to assert no `correctIndex`
   - Files: `lib/question-bank.ts`, `lib/question-bank.test.ts`
   - Verify: unit test extension
-- [ ] **T6 (P2)** — frontend (play) — render options, send
+- [x] **T6 (P2)** — frontend (play) — render options, send
   `TEAM_SELECT_OPTION` on tap, allow re-picking before judgment
   - Files: `app/room/[code]/play/page.tsx`
   - Verify: e2e
-- [ ] **T7 (P2)** — frontend (host) — show the team's current pick before
+- [x] **T7 (P2)** — frontend (host) — show the team's current pick before
   judging
   - Files: `app/room/[code]/host/page.tsx`
   - Verify: e2e
-- [ ] **T8 (P2)** — frontend (bank editor) — kind switcher,
+- [x] **T8 (P2)** — frontend (bank editor) — kind switcher,
   `TextQuestionRow`/`MultipleChoiceQuestionRow` split, dynamic option
   add/remove, correct-answer radio, delete-correct-option clears+blocks,
   kind-switch clears the other kind's fields
