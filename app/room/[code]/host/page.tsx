@@ -4,8 +4,8 @@ import { useRef, useState } from "react";
 import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
-import { CLOSE_IDLE } from "@/lib/room/close-codes";
-import { freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, settledHash } from "@/lib/room-code";
+import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
+import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
 import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
@@ -130,7 +130,7 @@ export default function HostPage() {
       setClaimed(false);
       setPendingTeamId(null);
       // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
-      if (event.code === CLOSE_IDLE) {
+      if (isIdleClose(event)) {
         socket.close();
         setRested(true);
       }
@@ -183,10 +183,18 @@ export default function HostPage() {
           break;
         case "ERROR":
           // A room we just created answers bad_token when its code was already taken: pick another code.
-          if (msg.error === "bad_token" && isFreshRoomHash(location.hash)) {
-            const token = getHostToken(code);
-            if (token) location.replace(freshHostPath(generateRoomCode(), token));
-            break;
+          // Bounded: five taken codes in a row is not bad luck, so after that the error below is shown.
+          {
+            const attempt = freshAttempt(location.hash);
+            if (msg.error === "bad_token" && attempt > 0 && attempt < MAX_FRESH_ATTEMPTS) {
+              const token = getHostToken(code);
+              // token is expected here (we only reach a fresh-room retry after sending HOST_CLAIM with it), but
+              // if it somehow vanished, fall through to the normal error instead of leaving the page silent.
+              if (token) {
+                location.replace(freshHostPath(generateRoomCode(), token, attempt + 1));
+                break;
+              }
+            }
           }
           setError(msg.error === "bad_token" ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人" : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`);
           setPendingTeamId(null);
@@ -231,9 +239,9 @@ export default function HostPage() {
         {reset && <Panel className="px-3 py-2 text-center text-[14px]" style={{ background: "var(--danger)", color: "#fff" }}>伺服器重新啟動，遊戲已重置，轉錄紀錄已消失</Panel>}
         {noToken && <Panel tone="lav" className="px-3 py-2 text-[14px]">這個瀏覽器沒有主持人金鑰。請回首頁按「主持遊戲」，或用建立房間時的連結／QR 開啟。</Panel>}
         {rested && (
-          <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
-            房間休息中：太久沒有動作，連線已暫停，遊戲進度都還在。
-            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-2 text-[16px]">重新連線</PixelButton>
+          <Panel tone="turn" role="status" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
+            {RESTED_NOTICE}
+            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-2 text-[16px]">{RESTED_RECONNECT_LABEL}</PixelButton>
           </Panel>
         )}
         {!connected && !noToken && !rested && <Panel tone="turn" className="px-3 py-2 text-center text-[16px]">重新連線中…</Panel>}

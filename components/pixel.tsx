@@ -16,15 +16,18 @@ export function Panel({
   tone = "cream",
   className,
   style,
+  role,
   children,
 }: {
   tone?: "cream" | "lav" | "turn";
   className?: string;
   style?: CSSProperties;
+  /** e.g. "status" for a notice that appears on its own, so a screen reader announces it. */
+  role?: "status" | "alert";
   children: ReactNode;
 }) {
   return (
-    <div className={cx("px-panel", tone !== "cream" && tone, className)} style={style}>
+    <div className={cx("px-panel", tone !== "cream" && tone, className)} style={style} role={role}>
       {children}
     </div>
   );

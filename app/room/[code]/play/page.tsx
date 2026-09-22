@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
-import { CLOSE_IDLE } from "@/lib/room/close-codes";
+import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
@@ -42,7 +42,7 @@ export default function PlayPage() {
     },
     onClose(event: CloseEvent) {
       // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
-      if (event.code === CLOSE_IDLE) {
+      if (isIdleClose(event)) {
         socket.close();
         setRested(true);
       }
@@ -131,9 +131,9 @@ export default function PlayPage() {
         )}
 
         {rested && (
-          <Panel tone="turn" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]">
-            房間休息中：太久沒有動作，連線已暫停，遊戲進度都還在。
-            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-2">重新連線</PixelButton>
+          <Panel tone="turn" role="status" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]">
+            {RESTED_NOTICE}
+            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-2">{RESTED_RECONNECT_LABEL}</PixelButton>
           </Panel>
         )}
 

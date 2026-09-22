@@ -6,7 +6,7 @@
 import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
-import { CLOSE_IDLE } from "@/lib/room/close-codes";
+import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import type { PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
@@ -236,7 +236,7 @@ export default function ScreenPage() {
     },
     onClose(event: CloseEvent) {
       // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
-      if (event.code === CLOSE_IDLE) {
+      if (isIdleClose(event)) {
         socket.close();
         setRested(true);
       }
@@ -280,17 +280,20 @@ export default function ScreenPage() {
       {!game && <Lobby code={code} teams={lobby} />}
       {game?.phase === "playing" && <Playing view={game.view} question={game.question} eventId={game.eventId} narration={narration} />}
       {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} narration={narration} epilogue={epilogue} />}
-      {rested && (
-        <div className="absolute inset-x-0 top-0 flex items-center justify-center gap-4 text-center text-[20px]" style={{ zIndex: 20, background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
-          房間休息中：太久沒有動作，連線已暫停，遊戲進度都還在。
-          <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-1 text-[18px]">重新連線</PixelButton>
-        </div>
-      )}
-      {reset && (
-        <div className="absolute inset-x-0 top-0 text-center text-[20px] text-white" style={{ zIndex: 20, background: "var(--danger)", padding: 6 }}>
-          伺服器重新啟動，遊戲已重置
-        </div>
-      )}
+      {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
+      <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
+        {rested && (
+          <div role="status" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
+            {RESTED_NOTICE}
+            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-1 text-[18px]">{RESTED_RECONNECT_LABEL}</PixelButton>
+          </div>
+        )}
+        {reset && (
+          <div className="text-center text-[20px] text-white" style={{ background: "var(--danger)", padding: 6 }}>
+            伺服器重新啟動，遊戲已重置
+          </div>
+        )}
+      </div>
     </Stage>
   );
 }
