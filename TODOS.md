@@ -365,7 +365,7 @@
 
 **Effort:** M（人工約 1 天 / CC 約 1 小時）　**Priority:** P2
 
-**Depends on / blocked by:** DM 分支互動（每房觸發版）先實作完成。
+**Depends on / blocked by:** ~~DM 分支互動（每房觸發版）先實作完成~~ — 已在 v0.3.0.0（2026-09-22）實作完成（`lib/game-state.ts` 的 `recordBranchChoice`／`TEAM_BRANCH_CHOICE`），本項不再被阻擋，可以開工。
 
 ---
 
