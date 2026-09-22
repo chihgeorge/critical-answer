@@ -66,9 +66,14 @@ export function newHostToken(): string {
  * creation link or QR) wins and is stored, so a refresh or the same browser
  * later keeps control. Returns null when this browser has no token.
  */
+/** The URL fragment's query-style params, e.g. "#k=abc&new=1" -> {k: "abc", new: "1"}. */
+function hashParams(hash: string): URLSearchParams {
+  return new URLSearchParams(hash.replace(/^#/, ""));
+}
+
 export function getHostToken(code: string): string | null {
   const key = HOST_TOKEN_PREFIX + code;
-  const fromUrl = new URLSearchParams(location.hash.replace(/^#/, "")).get("k");
+  const fromUrl = hashParams(location.hash).get("k");
   if (fromUrl) {
     localStorage.setItem(key, fromUrl);
     return fromUrl;
@@ -77,23 +82,33 @@ export function getHostToken(code: string): string | null {
 }
 
 /**
- * The link the home page opens for a room the user just created carries `new=1` in its fragment. Only such a
- * link may swap its room code when the code turns out to belong to someone else's room (a 1 in 279,841 clash,
- * or a room that has not expired yet). A link to an existing room must never jump to another one.
+ * The link the home page opens for a room the user just created carries `new=<attempt count>` in its fragment
+ * (1, then 2, 3, ... on each retry — see freshAttempt). Only such a link may swap its room code when the code
+ * turns out to belong to someone else's room (a 1 in 279,841 clash, or a room that has not expired yet). A link
+ * to an existing room must never jump to another one.
  */
 export function isFreshRoomHash(hash: string): boolean {
-  return new URLSearchParams(hash.replace(/^#/, "")).get("new") === "1";
+  return freshAttempt(hash) > 0;
 }
+
+/** How many codes this link has tried: 0 for a link that is not a room being created, 1 for the first code. */
+export function freshAttempt(hash: string): number {
+  const n = Number(hashParams(hash).get("new"));
+  return Number.isInteger(n) && n >= 1 ? n : 0;
+}
+
+/** After this many taken codes in a row something is wrong (not bad luck), so stop and show the error. */
+export const MAX_FRESH_ATTEMPTS = 5;
 
 /** The same fragment without the `new` marker: once the room is ours, a refresh must not be able to swap it. */
 export function settledHash(hash: string): string {
-  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const params = hashParams(hash);
   params.delete("new");
   const rest = params.toString();
   return rest ? `#${rest}` : "";
 }
 
 /** The host link for a room that is being created (see isFreshRoomHash). */
-export function freshHostPath(code: string, token: string): string {
-  return `/room/${code}/host#k=${token}&new=1`;
+export function freshHostPath(code: string, token: string, attempt = 1): string {
+  return `/room/${code}/host#k=${token}&new=${attempt}`;
 }

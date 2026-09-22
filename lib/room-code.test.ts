@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { freshHostPath, generateRoomCode, getOrCreateTeamId, getOrCreateTeamKey, isFreshRoomHash, settledHash } from "./room-code";
+import { freshAttempt, freshHostPath, generateRoomCode, getOrCreateTeamId, getOrCreateTeamKey, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "./room-code";
 import { TEAM_KEY_RE } from "./protocol";
 
 // The only test that needs a browser API: a Map-backed localStorage is enough.
@@ -111,6 +111,19 @@ describe("fresh room links", () => {
     expect(isFreshRoomHash("#k=abc")).toBe(false);
     expect(isFreshRoomHash("")).toBe(false);
     expect(isFreshRoomHash("#k=abc&new=0")).toBe(false);
+  });
+
+  it("counts the attempts a link has made, and treats anything that is not a positive whole number as none", () => {
+    expect(freshAttempt("#k=abc&new=1")).toBe(1);
+    expect(freshAttempt("#k=abc&new=4")).toBe(4);
+    for (const bad of ["", "#k=abc", "#new=0", "#new=-1", "#new=1.5", "#new=abc", "#new="]) expect(freshAttempt(bad), bad).toBe(0);
+  });
+
+  it("the next attempt's path carries the incremented count, and gives up at the cap", () => {
+    const path = freshHostPath("ABCD", "0123456789abcdef", 3);
+    expect(freshAttempt(path.slice(path.indexOf("#")))).toBe(3);
+    expect(MAX_FRESH_ATTEMPTS).toBeGreaterThan(1);
+    expect(MAX_FRESH_ATTEMPTS).toBeLessThanOrEqual(10);
   });
 
   it("settling drops new=1 and keeps the host token", () => {

@@ -15,23 +15,30 @@ const EXPIRE = 24 * 60 * MIN;
 /** Storage with an alarm, like a Durable Object's: the test decides when it "rings" by calling onAlarm. */
 function fakeStorage() {
   const data = new Map<string, unknown>();
-  const s: RoomStorage & { data: Map<string, unknown>; alarms: number[]; deleted: string[]; puts: number } = {
+  const s: RoomStorage & { data: Map<string, unknown>; alarms: number[]; deleted: string[]; puts: number; failAlarm: boolean; failDeleteAll: boolean } = {
     data,
     alarms: [],
     deleted: [],
     puts: 0,
+    failAlarm: false,
+    failDeleteAll: false,
     get: async (k) => structuredClone(data.get(k)),
     put(k, v) {
       s.puts++;
       data.set(k, structuredClone(v));
     },
     setAlarm(at) {
+      if (s.failAlarm) throw new Error("alarm store down");
       s.alarms.push(at);
     },
     deleteAlarm() {
       s.deleted.push("alarm");
     },
     deleteAll() {
+      if (s.failDeleteAll) {
+        s.failDeleteAll = false;
+        throw new Error("storage down");
+      }
       s.deleted.push("all");
       data.clear();
     },
@@ -68,6 +75,24 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("what counts as activity", () => {
+  it("a screen that never sends a message still gets the room a baseline: it rests after the idle time", async () => {
+    const { room, storage, closeAll, clock } = setup();
+    room.onConnect(conn("screen-only")); // /screen never sends anything, ever
+    expect(storage.alarms).toEqual([clock.t + IDLE]); // primed exactly like a real message would
+    clock.t += IDLE;
+    await room.onAlarm();
+    expect(closeAll).toHaveBeenCalledWith(CLOSE_IDLE, "idle");
+  });
+
+  it("a screen that keeps reconnecting after resting does not postpone resting forever", async () => {
+    const { room, storage, clock } = setup();
+    room.onConnect(conn("screen-1"));
+    const primedAt = storage.alarms[0];
+    clock.t += 10 * MIN;
+    room.onConnect(conn("screen-2")); // reconnected (e.g. after a network blip), still nobody playing
+    expect(storage.alarms.at(-1)).toBe(primedAt); // the baseline is not re-primed by a second connection
+  });
+
   it("the first message sets the alarm for one idle period from now", () => {
     const { room, storage, clock } = setup();
     send(room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
@@ -97,10 +122,37 @@ describe("what counts as activity", () => {
     expect(storage.alarms.at(-1)).toBe(clock.t - IDLE + EXPIRE); // next check at the expiry, dated from the real last activity
   });
 
+  it("an alarm firing on a room nobody has ever touched does nothing (no activity time to check against)", async () => {
+    const { room, storage, closeAll } = setup();
+    await room.onAlarm();
+    expect(closeAll).not.toHaveBeenCalled();
+    expect(storage.puts).toBe(0);
+  });
+
   it("a message that is not valid is not activity either", async () => {
     const { room, storage } = setup();
     room.onMessage("not json", conn("x"));
     expect(storage.alarms).toEqual([]);
+  });
+
+  const lastActivityAt = (storage: ReturnType<typeof fakeStorage>) => (storage.data.get(SNAPSHOT_KEY) as any)?.lastActivityAt;
+
+  it("a rejected message is not activity: a stranger guessing keys cannot keep a room from resting", () => {
+    const { room, storage, clock } = setup();
+    send(room, conn("h"), { type: "HOST_CLAIM", token: TOKEN }); // real activity
+    const before = lastActivityAt(storage);
+    clock.t += 5 * MIN;
+    send(room, conn("stranger"), { type: "HOST_CLAIM", token: "wrong-token-0123456789abcdef" });
+    expect(lastActivityAt(storage)).toBe(before);
+  });
+
+  it("a request for a not-yet-started game (no_active_game) is not activity", () => {
+    const { room, storage, clock } = setup();
+    send(room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
+    const before = lastActivityAt(storage);
+    clock.t += 5 * MIN;
+    send(room, conn("intruder"), { type: "HOST_JUDGE", teamId: T1, questionId: "x", correct: true });
+    expect(lastActivityAt(storage)).toBe(before);
   });
 });
 
@@ -133,7 +185,7 @@ describe("idle for two hours", () => {
     const host = conn("h");
     send(room, host, { type: "HOST_CLAIM", token: TOKEN });
     clock.t += IDLE - MIN;
-    send(room, host, { type: "HOST_START", aiNarration: false }); // someone is still here
+    send(room, host, { type: "HOST_CLAIM", token: TOKEN }); // someone is still here (an accepted reclaim)
     clock.t += MIN;
     await room.onAlarm();
     expect(closeAll).not.toHaveBeenCalled();
@@ -199,7 +251,116 @@ describe("idle for a day", () => {
   });
 });
 
+describe("onAlarm waits for its own rescheduled alarm to be durable", () => {
+  it("does not resolve until the platform confirms the new alarm is set", async () => {
+    // Unlike onMessage (whose fire-and-forget write is protected by a send/broadcast right after it),
+    // onAlarm's own return is what tells the platform this alarm was handled — so if it resolved before
+    // setAlarm's write landed, the object could be evicted and the rescheduled alarm silently lost.
+    const { room, storage, clock } = setup();
+    send(room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
+    let releaseSetAlarm: () => void = () => {};
+    const gate = new Promise<void>((res) => (releaseSetAlarm = res));
+    let setAlarmCalled = false;
+    const realSetAlarm = storage.setAlarm!.bind(storage);
+    storage.setAlarm = async (at: number) => {
+      setAlarmCalled = true;
+      await gate;
+      return realSetAlarm(at);
+    };
+    clock.t += IDLE - MIN; // not yet due: onAlarm's "check again later" branch reschedules
+    const alarmDone = room.onAlarm();
+    let resolved = false;
+    void alarmDone.then(() => (resolved = true));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(setAlarmCalled).toBe(true);
+    expect(resolved).toBe(false); // still waiting on the gated write
+    releaseSetAlarm();
+    await alarmDone;
+    expect(resolved).toBe(true);
+  });
+});
+
+describe("the window while expire() is clearing storage", () => {
+  it("a connection that arrives mid-expire is refused, not resurrected into the wiped room", async () => {
+    const { room, storage, clock } = setup();
+    startedGame(room);
+    clock.t += EXPIRE;
+    // A slow deleteAll lets us open a connection while expire() is still in flight.
+    let releaseDelete: () => void = () => {};
+    const gate = new Promise<void>((res) => (releaseDelete = res));
+    const realDeleteAll = storage.deleteAll!.bind(storage);
+    storage.deleteAll = async () => {
+      await gate;
+      return realDeleteAll();
+    };
+    const alarmDone = room.onAlarm();
+    await new Promise((r) => setTimeout(r, 0)); // let expire() reach the slow deleteAll
+    const sneaky = conn("sneaky");
+    room.onConnect(sneaky);
+    expect(sneaky.close).toHaveBeenCalled(); // refused outright, not queued behind the wipe
+    releaseDelete();
+    await alarmDone;
+    expect(storage.data.size).toBe(0); // the sneaky connection wrote nothing back
+  });
+});
+
+describe("when the platform misbehaves", () => {
+  it("a failing setAlarm is logged by name and does not stop the room from working", () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { room, storage } = setup();
+    storage.failAlarm = true;
+    const host = conn("h");
+    expect(() => send(room, host, { type: "HOST_CLAIM", token: TOKEN })).not.toThrow();
+    expect(err).toHaveBeenCalledWith(expect.stringContaining('"event":"alarm_failed"'));
+    expect(lastOf(host, "HOST_OK")).toBeTruthy(); // the host still got in
+  });
+
+  it("if clearing storage fails, the room is not reset, and the alarm's retry finishes the job", async () => {
+    const { room, storage, clock } = setup();
+    startedGame(room);
+    clock.t += EXPIRE;
+    storage.failDeleteAll = true;
+    await expect(room.onAlarm()).rejects.toThrow("storage down"); // the platform retries an alarm that throws
+    expect(room.game).not.toBeNull(); // still the old room, still saved: nothing half-forgotten
+    expect(storage.data.size).toBeGreaterThan(0);
+    await room.onAlarm(); // the retry
+    expect(room.game).toBeNull();
+    expect(storage.data.size).toBe(0);
+  });
+
+  it("a forgotten room is exactly a room nobody used, apart from its epoch (nothing was left out of the reset)", async () => {
+    const fresh = (setup().room as any).persistedState();
+    const used = setup();
+    startedGame(used.room);
+    used.room.onMessage(JSON.stringify({ type: "HOST_SET_NOTES", notes: "武俠風" }), conn("h2"));
+    used.clock.t += EXPIRE;
+    await used.room.onAlarm();
+    const after = (used.room as any).persistedState();
+    expect({ ...after, roomEpoch: "-" }).toEqual({ ...fresh, roomEpoch: "-" });
+    expect(after.roomEpoch).not.toBe(fresh.roomEpoch);
+  });
+});
+
 describe("after a restart", () => {
+  it("with a short idle time (as e2e/lifecycle.spec.ts configures), a restart right after activity does not expire an active game", async () => {
+    // Codex outside review: a fixed one-minute rounding would make this indistinguishable from 59s of
+    // silence at short configured durations, wiping an active game on restart. Granularity must scale down.
+    const shortIdle = 2000; // matches e2e/lifecycle.spec.ts's ROOM_IDLE_MS
+    const shortExpire = 6000;
+    const a = setup();
+    const aRoom = new (a.room.constructor as any)(a.io, () => 0, { idleMs: shortIdle, expireMs: shortExpire, now: () => a.clock.t });
+    send(aRoom, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
+    const savedAt = (a.storage.data.get(SNAPSHOT_KEY) as any).lastActivityAt;
+    expect(a.clock.t - savedAt).toBeLessThan(100); // rounding error stays small relative to a 2s window
+
+    const b = setup(a.clock.t + 500); // "restarted" half a second later
+    const bRoom = new (a.room.constructor as any)(b.io, () => 0, { idleMs: shortIdle, expireMs: shortExpire, now: () => b.clock.t });
+    b.storage.data.set(SNAPSHOT_KEY, a.storage.data.get(SNAPSHOT_KEY));
+    expect(await bRoom.restore()).toBe("restored");
+    await bRoom.onAlarm(); // due at savedAt + shortIdle, which has not arrived yet
+    expect(b.io.closeAll).not.toHaveBeenCalled(); // must not be treated as already idle
+  });
+
   it("the alarm is set again from the saved last activity", async () => {
     const a = setup();
     send(a.room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
@@ -220,6 +381,17 @@ describe("after a restart", () => {
     b.storage.data.set(SNAPSHOT_KEY, a.storage.data.get(SNAPSHOT_KEY));
     await b.room.restore();
     expect(b.storage.alarms).toEqual([savedAt + EXPIRE]);
+  });
+
+  it("a room that was already past its expiry when it restarted is due at once, and forgotten by that alarm", async () => {
+    const a = setup();
+    send(a.room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
+    const b = setup(a.clock.t + EXPIRE + 5 * MIN);
+    b.storage.data.set(SNAPSHOT_KEY, a.storage.data.get(SNAPSHOT_KEY));
+    await b.room.restore();
+    expect(b.storage.alarms).toEqual([b.clock.t]); // not in the past, not a day away: now
+    await b.room.onAlarm();
+    expect(b.storage.data.size).toBe(0);
   });
 
   it("a save from before activity was tracked counts as active now, so it is never expired by surprise", async () => {

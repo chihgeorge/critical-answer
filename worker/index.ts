@@ -1,5 +1,6 @@
 import { Server, routePartykitRequest, type Connection, type WSMessage } from "partyserver";
 import { entryGate } from "../lib/gate";
+import { positiveMs } from "../lib/room/positive-ms";
 import { DungeonRoom } from "../lib/room/dungeon-room";
 
 export interface Env {
@@ -27,7 +28,6 @@ export class Room extends Server<Env> {
 
   /** Runs once each time the object starts, before any connection is served: read the saved room back. */
   async onStart() {
-    const ms = (v: string | undefined) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : undefined);
     this.game = new DungeonRoom(
       {
         broadcast: (message) => this.broadcast(message),
@@ -45,7 +45,7 @@ export class Room extends Server<Env> {
         },
       },
       undefined,
-      { idleMs: ms(this.env.ROOM_IDLE_MS), expireMs: ms(this.env.ROOM_EXPIRE_MS) },
+      { idleMs: positiveMs(this.env.ROOM_IDLE_MS), expireMs: positiveMs(this.env.ROOM_EXPIRE_MS) },
     );
     await this.game.restore();
   }
