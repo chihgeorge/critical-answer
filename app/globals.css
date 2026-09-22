@@ -99,7 +99,7 @@ body {
   color: var(--ink);
   background: var(--cream);
   border: none;
-  box-shadow: 0 -3px 0 0 var(--k), 0 3px 0 0 var(--k), -3px 0 0 0 var(--k), 3px 0 0 0 var(--k), inset 0 -4px 0 var(--cream2);
+  box-shadow: 0 -4px 0 0 var(--k), 0 4px 0 0 var(--k), -4px 0 0 0 var(--k), 4px 0 0 0 var(--k), inset 0 -4px 0 var(--cream2);
 }
 .px-input:focus-visible {
   outline: 4px solid #fff;

@@ -85,7 +85,6 @@ export default function BankEditorPage() {
 
   const [ownerKey, setOwnerKey] = useOwnerKey((restoredKey) => void load(restoredKey));
 
-
   const save = async (next: Bank) => {
     setSaving(true);
     setError("");

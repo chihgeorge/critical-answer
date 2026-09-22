@@ -1,6 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleBankApi, bankOrFallback, type BankApiDeps } from "./bank-api";
+import { handleBankApi, bankOrFallback, MAX_BANK_BODY_BYTES, type BankApiDeps } from "./bank-api";
 import { BANK, type Bank } from "./question-bank";
+
+/** A syntactically valid JSON body whose UTF-8 byte length is exactly `totalBytes` — every
+ * character here is ASCII, so JS string length and UTF-8 byte length coincide for the padding. */
+function jsonBodyOfBytes(totalBytes: number): string {
+  const prefix = '{"x":"';
+  const suffix = '"}';
+  const overhead = prefix.length + suffix.length;
+  return prefix + "a".repeat(totalBytes - overhead) + suffix;
+}
 
 const KEY = "owner-key-0123456789abcdef";
 
@@ -59,6 +68,12 @@ describe("handleBankApi: CORS", () => {
     const res = await handleBankApi(req("GET", { auth: `Bearer ${KEY}`, origin: "https://evil.example.com" }), deps());
     expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
+
+  it("preflights a disallowed origin with 204 but no Access-Control-Allow-Origin — the browser, not this endpoint, blocks the real request", async () => {
+    const res = await handleBankApi(req("OPTIONS", { origin: "https://evil.example.com" }), deps());
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
 });
 
 describe("handleBankApi: GET", () => {
@@ -86,6 +101,46 @@ describe("handleBankApi: PUT", () => {
       headers: { Authorization: `Bearer ${KEY}` }, // no Content-Length at all
       body: JSON.stringify(bigBody),
     });
+    const res = await handleBankApi(request, deps({ putBank }));
+    expect(res.status).toBe(413);
+    expect(putBank).not.toHaveBeenCalled();
+  });
+
+  it("accepts a body of exactly the byte limit, with no Content-Length header", async () => {
+    const putBank = vi.fn(async () => BANK);
+    const request = new Request("https://worker.example.com/api/bank", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${KEY}` },
+      body: jsonBodyOfBytes(MAX_BANK_BODY_BYTES),
+    });
+    const res = await handleBankApi(request, deps({ putBank }));
+    expect(res.status).toBe(200);
+    expect(putBank).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a body exactly one byte over the limit, with no Content-Length header", async () => {
+    const putBank = vi.fn();
+    const request = new Request("https://worker.example.com/api/bank", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${KEY}` },
+      body: jsonBodyOfBytes(MAX_BANK_BODY_BYTES + 1),
+    });
+    const res = await handleBankApi(request, deps({ putBank }));
+    expect(res.status).toBe(413);
+    expect(putBank).not.toHaveBeenCalled();
+  });
+
+  it("rejects a CJK body over the byte limit even though its JS string length is well under it", async () => {
+    // '題' is 1 UTF-16 code unit but 3 UTF-8 bytes — a naive `.length` check would let this
+    // through (67,000 chars is far below MAX_BANK_BODY_BYTES), but the real byte count doesn't.
+    const putBank = vi.fn();
+    const text = "題".repeat(67_000); // ~201,000 UTF-8 bytes, .length is only 67,000
+    const request = new Request("https://worker.example.com/api/bank", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${KEY}` },
+      body: JSON.stringify({ text }),
+    });
+    expect(text.length).toBeLessThan(MAX_BANK_BODY_BYTES);
     const res = await handleBankApi(request, deps({ putBank }));
     expect(res.status).toBe(413);
     expect(putBank).not.toHaveBeenCalled();

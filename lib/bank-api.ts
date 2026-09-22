@@ -13,7 +13,9 @@ export interface BankApiDeps {
   putBank(candidate: unknown): Promise<Bank>;
 }
 
-const MAX_BANK_BODY_BYTES = 200_000; // ~4x the bundled bank's size; generous headroom, not unbounded
+// ~4x the bundled bank's size; generous headroom, not unbounded. Exported so tests can probe the
+// exact boundary instead of guessing a value that could silently drift from this one.
+export const MAX_BANK_BODY_BYTES = 200_000;
 
 /** The editor UI is a separate origin (the Next.js frontend), unlike the WebSocket room paths which
  * don't need CORS at all. Reuses the same ALLOWED_ORIGINS the WS Origin check uses. */

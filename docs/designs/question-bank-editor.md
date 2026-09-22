@@ -69,10 +69,13 @@ import/export, no preview, no multi-bank).
    file's own header comment warns a new Durable Object binding is reachable
    at `/parties/<binding>/<id>` unless the whitelist is updated in lockstep.
    A separate route sidesteps that failure class entirely.
-5. **No CORS handling** — the editor UI is served same-origin from this same
-   Worker, so `/api/bank/*` never receives a cross-origin request. Revisit
-   only if the editor UI ever moves to a separate origin (e.g. the Vercel
-   frontend calling the Worker directly).
+5. **CORS is implemented** (`lib/bank-api.ts`'s `corsHeaders()`, reusing
+   `ALLOWED_ORIGINS`/`originAllowed()`) — corrected during build. This
+   decision originally assumed the editor would be Worker-served, so no
+   cross-origin request would ever reach `/api/bank/*`. That assumption was
+   wrong: the editor page is part of the Next.js frontend (Vercel), a
+   different origin than the Worker, so every request is cross-origin and
+   needs a real preflight response.
 6. **Bank seeding: `BankStore.onStart()` seeds itself from the bundled
    `data/question-bank.json` when its storage is empty** (first boot only),
    mirroring `dungeon-room.ts`'s `restore()` pattern. No manual migration
@@ -110,7 +113,6 @@ import/export, no preview, no multi-bank).
 - **Abuse protection / rate limiting on the owner-key endpoint** — mirrors an
   existing accepted decision elsewhere; OWNER_KEY entropy (decision 3) is the
   mitigation for this round.
-- **CORS handling** — no cross-origin caller exists yet.
 
 ## What already exists (reused / not reused)
 
