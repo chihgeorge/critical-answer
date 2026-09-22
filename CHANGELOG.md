@@ -2,6 +2,16 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.5.0.0] - 2026-09-22
+
+### Added
+- Questions can now be multiple choice: authors pick this in the question-bank editor, add options, and mark the correct one. Text questions still work exactly as before.
+- Teams see the options on their own phone during their turn and can tap one — and change their mind and re-tap right up until the host judges the answer.
+- The host sees which option a team currently has picked, highlighted next to the question, before deciding correct or incorrect. The host still makes the final call either way — a team's tap is never auto-scored.
+
+### Changed
+- The question-bank editor now shows a "問答"/"選擇" (text/multiple choice) switcher per question, with dynamic add/remove for options and a radio to mark the correct one. Switching a question's type clears its old content rather than trying to convert it.
+
 ## [0.4.0.0] - 2026-09-22
 
 ### Added
