@@ -1,11 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
 import { handleBankApi, bankOrFallback, MAX_BANK_BODY_BYTES, type BankApiDeps } from "./bank-api";
-import { BANK, type Bank } from "./question-bank";
+import type { VersionedBank } from "./bank-store";
+import { BANK } from "./question-bank";
 
-/** A syntactically valid JSON body whose UTF-8 byte length is exactly `totalBytes` — every
- * character here is ASCII, so JS string length and UTF-8 byte length coincide for the padding. */
+const VERSIONED: VersionedBank = { bank: BANK, version: 1 };
+
+/** A syntactically valid `{"version":1,"bank":"...padding..."}` body whose UTF-8 byte length is
+ * exactly `totalBytes` — every character here is ASCII, so JS string length and UTF-8 byte length
+ * coincide for the padding. `bank`'s value doesn't need to be a real Bank: putBank is mocked in
+ * every test that uses this, so shape validation never runs. */
 function jsonBodyOfBytes(totalBytes: number): string {
-  const prefix = '{"x":"';
+  const prefix = '{"version":1,"bank":"';
   const suffix = '"}';
   const overhead = prefix.length + suffix.length;
   return prefix + "a".repeat(totalBytes - overhead) + suffix;
@@ -17,8 +22,8 @@ function deps(over: Partial<BankApiDeps> = {}): BankApiDeps {
   return {
     ownerKey: KEY,
     allowedOrigins: "https://app.example.com",
-    getBank: vi.fn(async () => BANK),
-    putBank: vi.fn(async (b: unknown) => b as Bank),
+    getVersionedBank: vi.fn(async () => VERSIONED),
+    putBank: vi.fn(async () => ({ bank: BANK, version: 2 })),
     ...over,
   };
 }
@@ -77,11 +82,11 @@ describe("handleBankApi: CORS", () => {
 });
 
 describe("handleBankApi: GET", () => {
-  it("returns the bank from deps.getBank()", async () => {
-    const getBank = vi.fn(async () => BANK);
-    const res = await handleBankApi(req("GET", { auth: `Bearer ${KEY}` }), deps({ getBank }));
-    expect(getBank).toHaveBeenCalledOnce();
-    expect(await res.json()).toEqual(BANK);
+  it("returns the bank and version from deps.getVersionedBank()", async () => {
+    const getVersionedBank = vi.fn(async () => VERSIONED);
+    const res = await handleBankApi(req("GET", { auth: `Bearer ${KEY}` }), deps({ getVersionedBank }));
+    expect(getVersionedBank).toHaveBeenCalledOnce();
+    expect(await res.json()).toEqual(VERSIONED);
   });
 });
 
@@ -95,7 +100,7 @@ describe("handleBankApi: PUT", () => {
 
   it("rejects an oversized body even when Content-Length is missing or lied about (413)", async () => {
     const putBank = vi.fn();
-    const bigBody = { text: "x".repeat(250_000) };
+    const bigBody = { version: 1, bank: { text: "x".repeat(250_000) } };
     const request = new Request("https://worker.example.com/api/bank", {
       method: "PUT",
       headers: { Authorization: `Bearer ${KEY}` }, // no Content-Length at all
@@ -107,7 +112,7 @@ describe("handleBankApi: PUT", () => {
   });
 
   it("accepts a body of exactly the byte limit, with no Content-Length header", async () => {
-    const putBank = vi.fn(async () => BANK);
+    const putBank = vi.fn(async () => ({ bank: BANK, version: 2 }));
     const request = new Request("https://worker.example.com/api/bank", {
       method: "PUT",
       headers: { Authorization: `Bearer ${KEY}` },
@@ -138,7 +143,7 @@ describe("handleBankApi: PUT", () => {
     const request = new Request("https://worker.example.com/api/bank", {
       method: "PUT",
       headers: { Authorization: `Bearer ${KEY}` },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ version: 1, bank: { text } }),
     });
     expect(text.length).toBeLessThan(MAX_BANK_BODY_BYTES);
     const res = await handleBankApi(request, deps({ putBank }));
@@ -156,20 +161,41 @@ describe("handleBankApi: PUT", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects a body with no version field (400), without calling putBank", async () => {
+    const putBank = vi.fn();
+    const res = await handleBankApi(req("PUT", { auth: `Bearer ${KEY}`, body: { bank: BANK } }), deps({ putBank }));
+    expect(res.status).toBe(400);
+    expect(putBank).not.toHaveBeenCalled();
+  });
+
   it("propagates a putBank validation failure as 400 with its message", async () => {
     const putBank = vi.fn(async () => {
       throw new Error("Invalid question bank: no rooms");
     });
-    const res = await handleBankApi(req("PUT", { auth: `Bearer ${KEY}`, body: { rooms: [] } }), deps({ putBank }));
+    const res = await handleBankApi(req("PUT", { auth: `Bearer ${KEY}`, body: { version: 1, bank: { rooms: [] } } }), deps({ putBank }));
     expect(res.status).toBe(400);
     expect(await res.text()).toMatch(/no rooms/);
   });
 
-  it("saves and returns the validated bank on success", async () => {
-    const putBank = vi.fn(async (b: unknown) => b as Bank);
-    const res = await handleBankApi(req("PUT", { auth: `Bearer ${KEY}`, body: BANK }), deps({ putBank }));
+  it("reports a version conflict (deps.putBank's discriminated result) as 409 with the current version, not a generic 400", async () => {
+    // Deliberately a *returned* conflict result, not a thrown BankConflictError: that class
+    // doesn't survive the real Durable Object RPC boundary intact (verified live against
+    // wrangler dev — instanceof fails on the far side even though .message doesn't), so the RPC
+    // contract (BankApiDeps.putBank) is a discriminated result, and this is what an implementation
+    // of it must return for a conflict.
+    const putBank = vi.fn(async () => ({ conflict: true as const, currentVersion: 5 }));
+    const res = await handleBankApi(req("PUT", { auth: `Bearer ${KEY}`, body: { version: 1, bank: BANK } }), deps({ putBank }));
+    expect(res.status).toBe(409);
+    const body: { error: string; currentVersion: number } = await res.json();
+    expect(body.currentVersion).toBe(5);
+  });
+
+  it("saves and returns the validated bank and new version on success", async () => {
+    const putBank = vi.fn(async () => ({ bank: BANK, version: 2 }));
+    const res = await handleBankApi(req("PUT", { auth: `Bearer ${KEY}`, body: { version: 1, bank: BANK } }), deps({ putBank }));
     expect(res.status).toBe(200);
-    expect(putBank).toHaveBeenCalledWith(BANK);
+    expect(putBank).toHaveBeenCalledWith(BANK, 1);
+    expect(await res.json()).toEqual({ bank: BANK, version: 2 });
   });
 });
 

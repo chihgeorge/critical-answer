@@ -4,18 +4,35 @@
 
 import { tokensEqual } from "./tokens";
 import { originAllowed } from "./origin";
+import type { VersionedBank } from "./bank-store";
 import type { Bank } from "./question-bank";
+
+/** A version conflict, returned rather than thrown. A thrown `BankConflictError` loses its class
+ * identity crossing the Durable Object RPC boundary — `instanceof` on the caller side fails even
+ * though `.message` survives (verified live against a real wrangler dev instance) — so the RPC
+ * contract is a discriminated result instead of relying on exception identity across that
+ * boundary. `deps.putBank`'s implementation (worker/index.ts's BankStoreDO) catches
+ * BankConflictError itself, same-realm, where `instanceof` is reliable. */
+export interface BankConflict {
+  conflict: true;
+  currentVersion: number;
+}
 
 export interface BankApiDeps {
   ownerKey: string | undefined;
   allowedOrigins: string;
-  getBank(): Promise<Bank>;
-  putBank(candidate: unknown): Promise<Bank>;
+  getVersionedBank(): Promise<VersionedBank>;
+  putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict>;
 }
 
 // ~4x the bundled bank's size; generous headroom, not unbounded. Exported so tests can probe the
 // exact boundary instead of guessing a value that could silently drift from this one.
 export const MAX_BANK_BODY_BYTES = 200_000;
+
+/** Below this, brute-forcing OWNER_KEY over an unthrottled Worker endpoint (no rate limiting —
+ * see docs/designs/question-bank-editor.md's NOT in scope) stops being a documentation-only risk.
+ * This never refuses service, just makes a weak secret visible in the Worker's own logs. */
+const MIN_OWNER_KEY_LENGTH = 32;
 
 /** The editor UI is a separate origin (the Next.js frontend), unlike the WebSocket room paths which
  * don't need CORS at all. Reuses the same ALLOWED_ORIGINS the WS Origin check uses. */
@@ -36,6 +53,9 @@ export async function handleBankApi(request: Request, deps: BankApiDeps): Promis
   const cors = corsHeaders(origin, deps.allowedOrigins);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
+  if (deps.ownerKey && deps.ownerKey.length < MIN_OWNER_KEY_LENGTH) {
+    console.error(JSON.stringify({ event: "weak_owner_key", length: deps.ownerKey.length, minimum: MIN_OWNER_KEY_LENGTH }));
+  }
   const header = request.headers.get("Authorization") ?? "";
   const presented = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
   if (!deps.ownerKey || !tokensEqual(deps.ownerKey, presented)) {
@@ -43,7 +63,7 @@ export async function handleBankApi(request: Request, deps: BankApiDeps): Promis
   }
 
   if (request.method === "GET") {
-    return Response.json(await deps.getBank(), { headers: cors });
+    return Response.json(await deps.getVersionedBank(), { headers: cors });
   }
   if (request.method === "PUT") {
     const contentLength = Number(request.headers.get("Content-Length") ?? "0");
@@ -59,14 +79,25 @@ export async function handleBankApi(request: Request, deps: BankApiDeps): Promis
     if (new TextEncoder().encode(text).length > MAX_BANK_BODY_BYTES) {
       return new Response("Payload too large", { status: 413, headers: cors });
     }
-    let body: unknown;
+    let parsed: unknown;
     try {
-      body = JSON.parse(text);
+      parsed = JSON.parse(text);
     } catch {
       return new Response("Invalid JSON", { status: 400, headers: cors });
     }
+    const { bank, version } = (parsed ?? {}) as { bank?: unknown; version?: unknown };
+    if (typeof version !== "number") {
+      return new Response("Missing version — GET the bank first and send back its version", { status: 400, headers: cors });
+    }
     try {
-      return Response.json(await deps.putBank(body), { headers: cors });
+      const result = await deps.putBank(bank, version);
+      if ("conflict" in result) {
+        return Response.json(
+          { error: "Bank was changed by someone else since you loaded it. Reload and try again.", currentVersion: result.currentVersion },
+          { status: 409, headers: cors },
+        );
+      }
+      return Response.json(result, { headers: cors });
     } catch (err) {
       return new Response(err instanceof Error ? err.message : "Invalid bank", { status: 400, headers: cors });
     }

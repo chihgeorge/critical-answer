@@ -448,3 +448,21 @@
 **Depends on / blocked by:** 無（獨立於遊戲玩法開發），但目前選擇不投入這個重工程替代方案，先用 localhost/局域網進行第一輪真人測試。
 
 **Completed（改走替代方案）：** v0.2.0.0 (2026-09-22)。沒有等到 PartyKit 修復，改走上面列的替代方案：繞過 partykit CLI，直接用 `partyserver` + `wrangler` 部署成原生 Cloudflare Worker + Durable Object（cf-minimal-room PR 起）。房間已部署在 `https://critical-answer.aiko-studio.workers.dev`。
+
+---
+
+## 房間重啟時對 BankStore 發出用不到的 RPC
+
+**Priority:** P3
+
+**What:** `worker/index.ts`'s `Room.onStart()` 在每次房間喚醒時都呼叫 `bankOrFallback(() => ...getBank())`，但如果這個房間是「復原」（不是全新建立），緊接著的 `this.game.restore()` 會用房間自己存的 snapshot 覆蓋掉這個 RPC 結果——等於每次已存在房間醒來都白打一通 BankStore 的電話。
+
+**Why:** `/review` adversarial pass（Claude subagent，2026-09-22）發現的：不是正確性問題（`bankOrFallback` 的容錯已經保護了它），純粹是多餘的延遲跟對 BankStore 可用性的非必要依賴——跟決策 7「房間不該依賴 BankStore 存活」的精神有點矛盾。
+
+**Pros:** 修掉可以省一次 DO-to-DO 呼叫的延遲，也讓「已存在房間的喚醒完全不碰 BankStore」這件事名副其實。
+
+**Cons:** 需要重排 `onStart()`/`restore()` 的順序（先確認 storage 有沒有既有 snapshot，再決定要不要打這通 RPC），改動比表面看起來大一點，且目前的浪費只是效能成本，沒有正確性風險。
+
+**Context:** 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md) 決策 7，以及 `worker/index.ts` 的 `Room.onStart()`。
+
+**Depends on / blocked by:** 無，隨時可做，非阻塞。

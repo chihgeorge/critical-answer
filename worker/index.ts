@@ -3,8 +3,8 @@ import { Server, routePartykitRequest, type Connection, type WSMessage } from "p
 import { entryGate } from "../lib/gate";
 import { positiveMs } from "../lib/room/positive-ms";
 import { DungeonRoom } from "../lib/room/dungeon-room";
-import { BankStore } from "../lib/bank-store";
-import { bankOrFallback, handleBankApi } from "../lib/bank-api";
+import { BankStore, BankConflictError, type VersionedBank } from "../lib/bank-store";
+import { bankOrFallback, handleBankApi, type BankConflict } from "../lib/bank-api";
 
 export interface Env {
   /** The binding is named "main" on purpose: partysocket's default path is /parties/main/<room>. */
@@ -30,17 +30,42 @@ export interface Env {
  * RPC (never HTTP) to this file's own fetch handler and to Room.onStart(). All storage/validation
  * logic lives in lib/bank-store.ts, which knows nothing about this platform. */
 export class BankStoreDO extends DurableObject<Env> {
-  private store = new BankStore({
-    get: (key) => this.ctx.storage.get(key),
-    put: (key, value) => this.ctx.storage.put(key, value),
-  });
+  private store: BankStore;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.store = new BankStore({
+      get: (key) => ctx.storage.get(key),
+      put: (key, value) => ctx.storage.put(key, value),
+    });
+    // Seed-on-first-read otherwise races: two requests arriving before storage has ever been
+    // written could both see it empty and both write the seed. Both writes are identical today
+    // (same bundled JSON), so it's harmless as written, but blockConcurrencyWhile is the platform's
+    // own documented fix and forces the seed to happen once, before any request is handled
+    // (adversarial review, 2026-09-22).
+    ctx.blockConcurrencyWhile(async () => {
+      await this.store.getVersionedBank();
+    });
+  }
 
   getBank() {
     return this.store.getBank();
   }
 
-  putBank(candidate: unknown) {
-    return this.store.putBank(candidate);
+  getVersionedBank(): Promise<VersionedBank> {
+    return this.store.getVersionedBank();
+  }
+
+  /** Catches BankConflictError itself — same JS realm as where it's thrown, where `instanceof`
+   * is reliable — and returns a plain discriminated result instead of letting the error cross the
+   * RPC boundary to lib/bank-api.ts, where its class identity would not survive. */
+  async putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict> {
+    try {
+      return await this.store.putBank(candidate, expectedVersion);
+    } catch (err) {
+      if (err instanceof BankConflictError) return { conflict: true, currentVersion: err.currentVersion };
+      throw err;
+    }
   }
 }
 
@@ -116,8 +141,8 @@ export default {
       return handleBankApi(request, {
         ownerKey: env.OWNER_KEY,
         allowedOrigins: env.ALLOWED_ORIGINS ?? "",
-        getBank: () => stub.getBank(),
-        putBank: (candidate) => stub.putBank(candidate),
+        getVersionedBank: () => stub.getVersionedBank(),
+        putBank: (candidate, expectedVersion) => stub.putBank(candidate, expectedVersion),
       });
     }
 

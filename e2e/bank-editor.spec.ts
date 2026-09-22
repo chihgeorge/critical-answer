@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 test("owner key gate, load, add/edit/delete a question, save, and reload persists it", async ({ page }) => {
@@ -92,4 +92,34 @@ test("deleting every question in a room down to zero is rejected on save (a room
   const bossAfterReload = page.getByTestId("bank-room-boss");
   await expect(bossAfterReload).toBeVisible();
   await expect(bossAfterReload.getByLabel("題目")).not.toHaveCount(0);
+});
+
+test("two tabs editing at once: the second save is rejected as a conflict, not a silent overwrite", async ({ browser }) => {
+  const openAndLoad = async (): Promise<Page> => {
+    const p = await (await browser.newContext()).newPage();
+    await p.goto("/bank-editor");
+    await p.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+    await p.getByRole("button", { name: "載入題庫" }).click();
+    await expect(p.getByTestId("bank-room-0")).toBeVisible();
+    return p;
+  };
+
+  const tabA = await openAndLoad();
+  const tabB = await openAndLoad();
+
+  // Tab A edits and saves first — this is the edit that must NOT be lost.
+  await tabA.getByTestId("bank-room-0").getByLabel("題目").first().fill("A 先存的版本");
+  await tabA.getByRole("button", { name: "儲存全部變更" }).click();
+  await expect(tabA.getByTestId("bank-editor-error")).toHaveCount(0);
+
+  // Tab B still holds the version it loaded before A's save — its save must be rejected, not
+  // silently accepted (which would erase A's edit with no trace).
+  await tabB.getByTestId("bank-room-0").getByLabel("題目").first().fill("B 後存的版本（應該被拒絕）");
+  await tabB.getByRole("button", { name: "儲存全部變更" }).click();
+  await expect(tabB.getByTestId("bank-editor-error")).toBeVisible();
+  await expect(tabB.getByTestId("bank-editor-error")).toContainText(/changed by someone else/i);
+
+  // A's save is what actually persisted.
+  const verify = await openAndLoad();
+  await expect(verify.getByTestId("bank-room-0").getByLabel("題目").first()).toHaveValue("A 先存的版本");
 });

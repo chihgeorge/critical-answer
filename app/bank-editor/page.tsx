@@ -52,6 +52,10 @@ type Location = { kind: "room"; roomIndex: number } | { kind: "boss" };
 
 export default function BankEditorPage() {
   const [bank, setBank] = useState<Bank | null>(null);
+  // The version this editor last loaded/saved. Sent back on every PUT so a save that's stale
+  // (someone else — another tab, another device — saved first) is rejected with a clear conflict
+  // instead of silently overwriting their edits (adversarial review, 2026-09-22).
+  const [version, setVersion] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -71,7 +75,9 @@ export default function BankEditorPage() {
         setError(`Load failed: ${res.status}`);
         return;
       }
-      setBank(await res.json());
+      const versioned: { bank: Bank; version: number } = await res.json();
+      setBank(versioned.bank);
+      setVersion(versioned.version);
     } catch {
       setError("Could not reach the server.");
     } finally {
@@ -82,19 +88,27 @@ export default function BankEditorPage() {
   const [ownerKey, setOwnerKey] = useOwnerKey((restoredKey) => void load(restoredKey));
 
   const save = async (next: Bank) => {
+    if (version === null) return; // no successful load yet — nothing to compare against
     setSaving(true);
     setError("");
     try {
       const res = await fetch(bankApiBase(), {
         method: "PUT",
         headers: { Authorization: `Bearer ${ownerKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify(next),
+        body: JSON.stringify({ bank: next, version }),
       });
+      if (res.status === 409) {
+        const conflict: { error: string; currentVersion: number } = await res.json();
+        setError(`${conflict.error} (someone else's save is now current — press 載入題庫 to get it before retrying)`);
+        return;
+      }
       if (!res.ok) {
         setError(await res.text());
         return;
       }
-      setBank(await res.json());
+      const versioned: { bank: Bank; version: number } = await res.json();
+      setBank(versioned.bank);
+      setVersion(versioned.version);
     } catch {
       setError("Could not reach the server.");
     } finally {
