@@ -61,26 +61,6 @@
 
 ---
 
-## 題庫編輯器：image 題型 + Cloudflare R2 上傳
-
-**Priority:** P3
-
-**What:** 實作 Cloudflare R2 bucket binding、圖片上傳表單、`image` kind 的 schema、`/play` 顯示圖片。
-
-**Why:** `question-bank-editor` PR 的 Step 0 complexity check 觸發（9+ 檔案、2 個新基礎設施在同一個 PR），使用者選擇把 image/R2 切到這個後續 PR，先讓 `BankStore` + `text` 題型上線。
-
-**Pros:** 完成後題庫可以有圖片題，符合原設計文件的完整範圍。
-
-**Cons:** R2 需要額外處理上傳大小限制、內容類型驗證、簽章 URL、房間關閉後的孤兒檔案清理——是這條功能線裡最重的一塊。
-
-**Context:** 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md) 的決策 5（原 D4）與 NOT in scope 段落。
-
-**Depends on / blocked by:** 無直接阻塞，可以在 `question-bank-editor` 的 text-only v1 之後任何時間做。
-
-**更新（2026-09-22，`image-question-type` 分支完成）：** 已實作完成（image kind schema、R2 綁定、上傳 API、bank editor 上傳表單、`/play`・`/screen` 顯示圖片）。此項結案。
-
----
-
 ## 上傳但從未存檔的題庫圖片會永久留在 R2
 
 **Priority:** P3
@@ -99,24 +79,6 @@
 
 ---
 
-
-## ~~DM 語音旁白（瀏覽器 TTS）~~ ✅ 已完成 2026-09-22
-
-**What:** 大螢幕用瀏覽器內建 Web Speech API（zh-TW 聲音）把旁白念出來，並提供關閉開關。已透過 `/office-hours` → `/plan-eng-review` → `/review` → `/ship` 完整流程實作，見 [docs/designs/dm-voice-narration-tts.md](docs/designs/dm-voice-narration-tts.md)。審查過程發現並修正兩個真實 bug（重播誤判導致語音修正被靜默吞掉、`zh-Hant-HK`/`zh-Hant-MO` 誤判為台灣腔），另有兩個較低嚴重度的邊角案例延後為上方的 P3 待辦項目。
-
-**Why:** 旁白從「要看的文字」變成「大家一起聽的場景」，首領倒下時客廳裡有個聲音在說話，是氛圍最直接的來源。2026-09-18 第二輪範圍審查（/plan-ceo-review，E1）評估過，因為第二輪先只驗證「看得到的氛圍」而延後。
-
-**Pros:** 不需要額外費用；接在 `NarrationEvent` 事件流下游，成本很低。
-
-**Cons:** 不同瀏覽器的中文聲音品質差異很大；瀏覽器會擋自動播放，需要 host 按一下「開始」解鎖。
-
-**Context:** 見 `~/.gstack/projects/critical-answer/ceo-plans/2026-09-18-iteration-2-atmosphere.md`。事件流由 `lib/narration/` 提供，TTS 只是多一個事件消費者，不需要動房間邏輯。
-
-**Effort:** S（人工約 0.5 天 / CC 約 20 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 第二輪的 `NarrationEvent` 接縫完成。
-
----
 
 ## 共享大螢幕活地圖
 
@@ -447,9 +409,25 @@
 
 ## Completed
 
+## DM 語音旁白（瀏覽器 TTS）
+
+**Priority:** P2　**Completed:** v0.7.0.0 (2026-09-22)
+
+**What:** 大螢幕用瀏覽器內建 Web Speech API（zh-TW 聲音）把旁白念出來，並提供關閉開關。已透過 `/office-hours` → `/plan-eng-review` → `/review` → `/ship` 完整流程實作，見 [docs/designs/dm-voice-narration-tts.md](docs/designs/dm-voice-narration-tts.md)。審查過程發現並修正兩個真實 bug（重播誤判導致語音修正被靜默吞掉、`zh-Hant-HK`/`zh-Hant-MO` 誤判為台灣腔），另有兩個較低嚴重度的邊角案例延後為 P3 待辦項目（見上方「語音旁白：…」兩項）。
+
+---
+
+## 題庫編輯器：image 題型 + Cloudflare R2 上傳
+
+**Priority:** P3　**Completed:** v0.6.0.0 (2026-09-22)
+
+**What:** 實作 Cloudflare R2 bucket binding、圖片上傳表單、`image` kind 的 schema、`/play` 顯示圖片。已在 `image-question-type` 分支完成（image kind schema、R2 綁定、上傳 API、bank editor 上傳表單、`/play`・`/screen` 顯示圖片）。
+
+---
+
 ## 題庫覆核：AI 起草的 8 題
 
-**Priority:** P1　**Completed:** v0.7.1.1 (2026-09-23)
+**Priority:** P1　**Completed:** 2026-09-23 (docs-only PR #23, no version bump — between v0.7.1.0 and v0.7.2.0)
 
 **What:** 每房最後 5 題和首領最後 3 題（共 28 題）是 AI 起草的台灣常識題，需要人工查證答案。
 
