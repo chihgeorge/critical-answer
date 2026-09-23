@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseSnapshot, SCHEMA_VERSION, type RoomSnapshot } from "./snapshot";
-import { BANK } from "../question-bank";
+import { BANK } from "../question-bank-data";
 
 const valid = (): RoomSnapshot => ({
   schemaVersion: SCHEMA_VERSION,

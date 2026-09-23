@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { handleBankApi, bankOrFallback, MAX_BANK_BODY_BYTES, type BankApiDeps } from "./bank-api";
 import type { VersionedBank } from "./bank-store";
-import { BANK } from "./question-bank";
+import { BANK } from "./question-bank-data";
 
 const VERSIONED: VersionedBank = { bank: BANK, version: 1 };
 

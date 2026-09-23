@@ -2,7 +2,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
-import { BANK, answerText, bossQuestionIds, roomTemplates, type Bank } from "../question-bank";
+import { answerText, bossQuestionIds, roomTemplates, type Bank } from "../question-bank";
+import { BANK } from "../question-bank-data";
 import { currentTurnTeamId } from "../game-state";
 
 const T1 = "00000000-0000-0000-0000-000000000001";

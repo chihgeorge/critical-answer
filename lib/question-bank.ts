@@ -1,8 +1,19 @@
 // The question bank: one monster per room, several questions per room, one boss.
-// Source of truth is data/question-bank.json. Only party/ (the server) imports
-// this file; the browser only ever gets PublicQuestion, which has no answer.
+// Source of truth is data/question-bank.json — but that raw JSON (with every answer) is loaded
+// and parsed only in lib/question-bank-data.ts, a server-only module. This file is pure
+// logic/types over an already-in-memory Bank and is safe to import from client components (e.g.
+// app/bank-editor/page.tsx needs MIN_OPTIONS/allQuestions) — the browser only ever gets
+// PublicQuestion (built by publicQuestion() below), which has no answer.
+//
+// This split exists because of a real regression: app/bank-editor/page.tsx importing this file
+// used to also pull in the top-level `export const BANK = parseBank(bankJson)` below, and
+// Turbopack/webpack can't tree-shake a side-effecting top-level statement — so the ENTIRE bank,
+// every question's answer included, shipped in that page's public client JS bundle, bypassing
+// the OWNER_KEY gate entirely (a static JS asset has no auth). Caught by CI's
+// scripts/check-bundle.sh, which failed on every push since. Never re-add a top-level parsed
+// BANK constant (or the bankJson import) to this file — that import belongs only in
+// lib/question-bank-data.ts.
 
-import bankJson from "../data/question-bank.json";
 import type { Difficulty, RoomTemplate } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 import type { SpriteKind } from "./sprite-kind";
@@ -116,8 +127,6 @@ export function parseBank(raw: unknown): Bank {
     },
   };
 }
-
-export const BANK: Bank = parseBank(bankJson);
 
 export function roomTemplates(bank: Bank): RoomTemplate[] {
   return bank.rooms.map((r) => ({ baseDifficulty: r.baseDifficulty, questionIds: r.questions.map((q) => q.id) }));

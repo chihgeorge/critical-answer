@@ -16,7 +16,8 @@ import {
   type GameState,
 } from "../game-state";
 import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../protocol";
-import { BANK, allQuestions, answerText, bossQuestionIds, findQuestion, publicQuestion, roomTemplates, type Bank } from "../question-bank";
+import { allQuestions, answerText, bossQuestionIds, findQuestion, publicQuestion, roomTemplates, type Bank } from "../question-bank";
+import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { createScriptedProvider, type NarrationProvider } from "../narration/scripted";

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { BANK, parseBank, roomTemplates, findQuestion, publicQuestion, answerText, imageKeysOf } from "./question-bank";
+import { parseBank, roomTemplates, findQuestion, publicQuestion, answerText, imageKeysOf } from "./question-bank";
+import { BANK } from "./question-bank-data";
 import { MAX_TEAMS } from "./protocol";
 
 const q = (id: string, text = "題目", answer = "答案") => ({ kind: "text" as const, id, text, answer });

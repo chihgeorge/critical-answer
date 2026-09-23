@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { BankStore, BankConflictError, type BankStorage } from "./bank-store";
-import { BANK, type Bank } from "./question-bank";
+import { type Bank } from "./question-bank";
+import { BANK } from "./question-bank-data";
 
 /** In-memory stand-in for a Durable Object's storage, same convention as lib/room's tests. */
 function memoryStorage(seed?: unknown): BankStorage {
