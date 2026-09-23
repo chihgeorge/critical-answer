@@ -343,6 +343,13 @@ function QuestionRow({
         />
         <select
           className="px-input"
+          // .px-input sets width:100% as unlayered CSS (outside Tailwind's @layer), which always
+          // beats a Tailwind width utility here — so the fix has to be an inline style, the one
+          // thing with higher priority than any stylesheet rule. Without it this <select> claims
+          // the whole flex row (flex-basis resolves from its own width:100%) and squeezes the
+          // sibling 題目 input down to ~20px (bug found 2026-09-23: multipleChoice questions
+          // looked like they had no editable question-text field at all).
+          style={{ width: "auto" }}
           aria-label="題型"
           value={q.kind}
           onChange={(e) => onUpdate((cur) => blankQuestion(cur, e.target.value as BankQuestion["kind"]))}
