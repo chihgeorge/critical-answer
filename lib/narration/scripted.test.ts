@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, VARIANTS, NEXT_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 
 const team = "六個字的隊伍";
@@ -68,6 +68,50 @@ describe("scripted lines", () => {
     const p = createScriptedProvider(lcg(4));
     expect(p.name).toBe("scripted");
     await expect(p.narrate(samples[2])).resolves.toContain(team);
+  });
+});
+
+describe("atmosphereLine", () => {
+  it("has 4-5 variants for every event type", () => {
+    for (const e of samples) {
+      expect(ATMOSPHERE_VARIANTS[e.type].length).toBeGreaterThanOrEqual(4);
+      expect(ATMOSPHERE_VARIANTS[e.type].length).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it("fills in the team, monster and numbers and leaves no template braces", () => {
+    const p = createScriptedProvider(lcg(5));
+    for (const e of samples) {
+      for (let i = 0; i < 20; i++) {
+        const line = p.atmosphereLine(e);
+        expect(line).not.toMatch(/[{}]/);
+        expect(line.length).toBeLessThanOrEqual(40);
+      }
+    }
+  });
+
+  it("never repeats the same variant twice in a row for one event type", () => {
+    const p = createScriptedProvider(lcg(6));
+    const e = samples[1];
+    let prev = "";
+    for (let i = 0; i < 200; i++) {
+      const line = p.atmosphereLine(e);
+      expect(line).not.toBe(prev);
+      prev = line;
+    }
+  });
+
+  it("rotates independently from line() — picking one doesn't affect the other's rotation state", () => {
+    const p = createScriptedProvider(lcg(7));
+    const e = samples[1];
+    const lines = new Set<string>();
+    const atmospheres = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      lines.add(p.line(e));
+      atmospheres.add(p.atmosphereLine(e));
+    }
+    expect(lines.size).toBeGreaterThan(1);
+    expect(atmospheres.size).toBeGreaterThan(1);
   });
 });
 

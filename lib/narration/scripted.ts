@@ -53,7 +53,49 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
   ],
 };
 
-/** The second line: the narrator turns to the team now on turn. */
+/** The middle line: a short atmosphere/detail beat, one per event type — added for multi-segment
+ * narration (docs/designs/multi-segment-narration.md). Every event gets one of these, whether or
+ * not it has a next team, so it's a flat pool keyed by event type, same shape as VARIANTS. */
+export const ATMOSPHERE_VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, string[]> = {
+  start: [
+    "火把的光在石牆上搖曳。",
+    "空氣裡有股潮濕的塵土味。",
+    "遠處傳來滴水聲，一滴、又一滴。",
+    "石廊深處，看不見盡頭。",
+  ],
+  correct: [
+    "石屑從天花板簌簌落下。",
+    "空氣裡還殘留著戰鬥的餘熱。",
+    "冒險者們喘了口氣，稍作喘息。",
+    "地城彷彿也鬆了一口氣。",
+  ],
+  retry: [
+    "汗水滴落，緊張感沒有散去。",
+    "時間彷彿慢了下來。",
+    "石廊裡一片寂靜，等著下一步。",
+    "{monster}的影子在牆上晃動。",
+  ],
+  flee: [
+    "腳步聲漸漸遠去，又漸漸靠近。",
+    "喘息聲在石廊裡迴盪。",
+    "撤退不是恥辱，是策略。",
+    "重新整隊的片刻，也是片刻的喘息。",
+  ],
+  "boss-hit": [
+    "地城為之一震。",
+    "碎石從天花板落下。",
+    "首領的怒吼震得人耳鳴。",
+    "戰鬥的氣息瀰漫整個房間。",
+  ],
+  "boss-kill": [
+    "地城陷入一片寂靜。",
+    "塵埃落定，勝利的氣息瀰漫。",
+    "石廊裡迴盪著最後一聲回音。",
+    "這一刻，值得被記住。",
+  ],
+};
+
+/** The transition segment (last of 3, when there's a next team): the narrator turns to the team now on turn. */
 export const NEXT_VARIANTS = {
   room: [
     "輪到{team}，{monster}擋在前面，請看題目！",
@@ -77,6 +119,7 @@ function fill(template: string, event: NarrationEvent): string {
 
 export function createScriptedProvider(rng: () => number = Math.random) {
   const last: Partial<Record<NarrationEvent["type"] | "next-room" | "next-boss", number>> = {};
+  const lastAtmosphere: Partial<Record<Exclude<NarrationEvent["type"], "epilogue">, number>> = {};
   const provider = {
     name: "scripted",
     /** Synchronous, so it can back up a slow provider without awaiting anything. */
@@ -86,6 +129,15 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       let i = Math.floor(rng() * pool.length);
       if (i === last[event.type]) i = (i + 1) % pool.length;
       last[event.type] = i;
+      return fill(pool[i], event);
+    },
+    /** Synchronous like line(): a short atmosphere/detail beat, the new middle segment. */
+    atmosphereLine(event: NarrationEvent): string {
+      if (event.type === "epilogue") return ""; // epilogue never uses this — see the module header
+      const pool = ATMOSPHERE_VARIANTS[event.type];
+      let i = Math.floor(rng() * pool.length);
+      if (i === lastAtmosphere[event.type]) i = (i + 1) % pool.length;
+      lastAtmosphere[event.type] = i;
       return fill(pool[i], event);
     },
     /** Synchronous like line(): the scripted prompt for whoever is up next. */

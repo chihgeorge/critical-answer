@@ -1,16 +1,25 @@
 // Runs one narration event: asks the provider, waits at most `holdMs`, and
-// always emits exactly one line (the provider's, or the scripted fallback).
+// always emits a complete set of segments (mixing the provider's valid segments
+// with scripted fallbacks segment-by-segment, same as before — see run()).
 // No upgrade, no second message for the same event.
 
 import type { NarrationEvent, NextTurn } from "./events";
 import type { NarrationProvider } from "./scripted";
 
-/** One narration line. 40 was too tight for the tone the model writes; 50 fits the dialogue box in two lines. */
+/** One narration segment. 40 was too tight for the tone the model writes; 50 fits the dialogue box in two lines. */
 export const MAX_LINE = 50;
 /** 2 s timed out 3 of 21 lines in a real game (answers took up to 1.9 s once every line has two parts). */
 export const DEFAULT_HOLD_MS = 3000;
 export const DEFAULT_EPILOGUE_HOLD_MS = 15000;
 export const MAX_EPILOGUE_LINE = 160;
+
+/** Segment count for a non-epilogue event: 3 (result + atmosphere + transition) when there's a next
+ * team, 2 (result + atmosphere) when there isn't — boss-kill, or the game's last judged event. See
+ * docs/designs/multi-segment-narration.md's D3. */
+export function targetSegmentCount(event: NarrationEvent): number {
+  if (event.type === "epilogue") return 1;
+  return event.next ? 3 : 2;
+}
 
 export interface TranscriptEntry {
   eventId: number;
@@ -18,14 +27,13 @@ export interface TranscriptEntry {
   event: NarrationEvent;
   /** Team name -> score when the event happened. */
   scores?: Record<string, number>;
-  line: string;
-  /** The follow-up line about the team now on turn, when there is one. */
-  then?: string;
-  /** Who wrote `then`: the provider, or "scripted" when its line was missing or invalid. */
-  thenSource?: string;
+  lines: string[];
+  /** Same length as lines: each segment's source ("scripted", or the live provider's name). */
+  sources: string[];
+  /** The overall provider used — the live provider's name if segment 0 came from it, else "scripted". */
   provider: string;
   latencyMs: number;
-  /** Why the scripted line was used: a named LLM failure, or timeout / error / invalid. */
+  /** Why the live provider's attempt failed for this event as a whole: a named LLM failure, timeout, or invalid output. Unset when segment 0 succeeded. */
   fallbackReason?: string;
 }
 
@@ -46,11 +54,11 @@ export function validLine(line: unknown, max = MAX_LINE): line is string {
 
 export function createRunner(opts: {
   provider: NarrationProvider;
-  fallback: { line(event: NarrationEvent): string; nextLine(next: NextTurn): string };
+  fallback: { line(event: NarrationEvent): string; atmosphereLine(event: NarrationEvent): string; nextLine(next: NextTurn): string };
   holdMs?: number;
   /** The epilogue is one long call after the game, so it may take longer. */
   epilogueHoldMs?: number;
-  emit(eventId: number, line: string, provider: string, event: NarrationEvent, then?: string): void;
+  emit(eventId: number, lines: string[], provider: string, event: NarrationEvent): void;
   record(entry: TranscriptEntry): void;
 }) {
   return {
@@ -60,8 +68,8 @@ export function createRunner(opts: {
       const isEpilogue = event.type === "epilogue";
       const holdMs = isEpilogue ? (opts.epilogueHoldMs ?? DEFAULT_EPILOGUE_HOLD_MS) : (opts.holdMs ?? DEFAULT_HOLD_MS);
       const max = isEpilogue ? MAX_EPILOGUE_LINE : MAX_LINE;
-      let line: string | undefined;
-      let second: string | undefined;
+      const targetCount = targetSegmentCount(event);
+      let providerLines: string[] | undefined;
       let reason: string | undefined;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const abort = new AbortController();
@@ -72,12 +80,9 @@ export function createRunner(opts: {
         const got = await Promise.race([opts.provider.narrate(event, { signal: abort.signal }), timeout]);
         if (got === null) reason = "timeout";
         else {
-          // A provider may return the result line and the follow-up on two lines.
-          const [first, next] = got.split(/\n+/).map((s) => s.trim()).filter(Boolean);
-          if (validLine(first, max)) {
-            line = first;
-            second = next;
-          } else reason = "invalid";
+          const raw = got.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+          if (validLine(raw[0], max)) providerLines = raw;
+          else reason = "invalid";
         }
       } catch (err) {
         reason = err instanceof Error && "reason" in err ? String((err as { reason: unknown }).reason) : "error";
@@ -85,29 +90,43 @@ export function createRunner(opts: {
         if (timer !== undefined) clearTimeout(timer);
         if (reason === "timeout") abort.abort(); // stop paying for a call nobody will read
       }
-      const provider = line === undefined ? "scripted" : opts.provider.name;
-      const final = line ?? opts.fallback.line(event);
-      // Only a turn event has someone next. The follow-up is the provider's if it is usable, else scripted.
-      const next = event.type === "epilogue" ? undefined : event.next;
-      let then: string | undefined;
-      let thenSource: string | undefined;
-      if (next) {
-        if (line !== undefined && validLine(second, MAX_LINE)) {
-          then = second.trim();
-          thenSource = opts.provider.name;
+      const providerName = opts.provider.name;
+      const provider = providerLines !== undefined ? providerName : "scripted";
+
+      // Fill each segment independently — a good segment 0 from the provider stands even if segment 1
+      // came back empty or too long; that segment alone falls back to scripted. Same mix-and-match
+      // spirit as the original 2-segment design (the "then" line could fall back on its own).
+      const fallbackFor = (i: number): string => {
+        // event.type === "epilogue" (not the isEpilogue local) narrows event's type here, so
+        // .next below is safe to access on the non-epilogue branch.
+        if (event.type === "epilogue" || i === 0) return opts.fallback.line(event);
+        if (i === targetCount - 1 && event.next) return opts.fallback.nextLine(event.next);
+        return opts.fallback.atmosphereLine(event);
+      };
+      const lines: string[] = [];
+      const sources: string[] = [];
+      for (let i = 0; i < targetCount; i++) {
+        const candidate = providerLines?.[i];
+        // Segment 0 already passed validLine(max) above (that's what set providerLines); re-validating
+        // it here against MAX_LINE for epilogue (max=160) would be wrong, so keep it as accepted.
+        const ok = candidate !== undefined && (i === 0 ? providerLines !== undefined : validLine(candidate, isEpilogue ? max : MAX_LINE));
+        if (ok && candidate !== undefined) {
+          lines.push(candidate);
+          sources.push(providerName);
         } else {
-          then = opts.fallback.nextLine(next);
-          thenSource = "scripted";
+          lines.push(fallbackFor(i));
+          sources.push("scripted");
         }
       }
-      opts.emit(eventId, final, provider, event, then);
+
+      opts.emit(eventId, lines, provider, event);
       opts.record({
         eventId,
         at: new Date().toISOString(),
         event,
         scores,
-        line: final,
-        ...(then ? { then, thenSource } : {}),
+        lines,
+        sources,
         provider,
         latencyMs: Date.now() - started,
         ...(reason ? { fallbackReason: reason } : {}),

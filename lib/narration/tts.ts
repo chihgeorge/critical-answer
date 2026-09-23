@@ -6,8 +6,12 @@
 
 export interface SpokenNarration {
   eventId: number;
-  line: string;
-  then?: string;
+  /** 1-3 segments — see docs/designs/multi-segment-narration.md. */
+  lines: string[];
+}
+
+function sameLines(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((line, i) => line === b[i]);
 }
 
 /** Whether to speak this NARRATION. The caller must update its lastSpoken tracking to this
@@ -22,15 +26,18 @@ export interface SpokenNarration {
  *   has baseline 0, so its first live line (eventId >= 1) still speaks.
  * - Every narration after that: speak it iff it differs from what's already been "seen"
  *   (remembered, whether or not it was spoken) — either a genuinely new eventId, or the SAME
- *   eventId with different text. That second case is a host correction
- *   (HOST_EDIT_NARRATION re-broadcasts the same eventId with corrected text) — including a
- *   correction to the very narration that was just suppressed as a replay, which an earlier
- *   version of this function got wrong by blocking anything at-or-below baseline
- *   unconditionally (adversarial review finding: the replayed line's own correction was
- *   silently never spoken). */
+ *   eventId with a different segment array (length OR content). That second case is a host
+ *   correction (HOST_EDIT_NARRATION re-broadcasts the same eventId with a corrected first
+ *   segment) — including a correction to the very narration that was just suppressed as a
+ *   replay, which an earlier version of this function got wrong by blocking anything
+ *   at-or-below baseline unconditionally (adversarial review finding: the replayed line's own
+ *   correction was silently never spoken). Comparing the whole array (not just index 0) also
+ *   catches a same-eventId narration whose segment COUNT differs — e.g. the LLM producing 2
+ *   segments one time and 3 the next for the same event — as a real content change, not a
+ *   silently-ignored no-op (/plan-eng-review D1). */
 export function shouldSpeakNarration(narration: SpokenNarration, baselineEventId: number, lastSpoken: SpokenNarration | null): boolean {
   if (!lastSpoken) return narration.eventId > baselineEventId;
-  return narration.eventId !== lastSpoken.eventId || narration.line !== lastSpoken.line || narration.then !== lastSpoken.then;
+  return narration.eventId !== lastSpoken.eventId || !sameLines(narration.lines, lastSpoken.lines);
 }
 
 /** Speak EPILOGUE iff a live GAME_OVER was already observed on this connection — onConnect's
