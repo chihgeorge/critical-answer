@@ -2,6 +2,14 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.7.1.0] - 2026-09-23
+
+### Added
+- The homepage now links to the question-bank editor (previously reachable only by typing `/bank-editor` directly).
+
+### Fixed
+- The question-bank editor's multiple-choice questions had their question-text field squeezed down to about 20px wide by a CSS conflict with the type dropdown next to it — present and editable, but effectively invisible. Fixed; the field now takes up its proper share of the row.
+
 ## [0.7.0.0] - 2026-09-22
 
 ### Added

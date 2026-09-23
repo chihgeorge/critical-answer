@@ -1,6 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
+test("homepage links to the bank editor", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: /題庫編輯器/ }).click();
+  await expect(page).toHaveURL(/\/bank-editor$/);
+  await expect(page.getByLabel("Owner key")).toBeVisible();
+});
+
 test("owner key gate, load, add/edit/delete a question, save, and reload persists it", async ({ page }) => {
   await page.goto("/bank-editor");
 
@@ -157,6 +164,32 @@ test("multipleChoice authoring: switch kind, edit options, mark correct, and del
   const reloadedRow = page.getByTestId("bank-room-0").getByLabel("題目").first().locator("xpath=../..");
   await expect(reloadedRow.getByLabel("題型")).toHaveValue("multipleChoice");
   await expect(reloadedRow.getByLabel("第 1 個選項為正解")).toBeChecked();
+});
+
+test("multipleChoice question-text field stays wide and editable, not squeezed by the 題型 select (2026-09-23 regression)", async ({ page }) => {
+  // The 題型 <select> reuses the .px-input class, which sets width:100% as unlayered CSS — that
+  // beats any Tailwind width utility (Tailwind's utilities live inside a cascade layer, and
+  // unlayered rules always win). Without an explicit inline-style override on the select, its
+  // flex-basis resolves to the full row width and the sibling 題目 input gets squeezed to ~20px:
+  // technically present and fillable, but invisible to a real user. A plain .fill() + .toHaveValue
+  // check wouldn't catch this — it doesn't require real screen space — so this asserts the actual
+  // rendered width instead.
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const room0 = page.getByTestId("bank-room-0");
+  await expect(room0).toBeVisible();
+
+  const firstRow = room0.getByLabel("題目").first().locator("xpath=../..");
+  await firstRow.getByLabel("題型").selectOption("multipleChoice");
+
+  const questionInput = firstRow.getByLabel("題目");
+  const box = await questionInput.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThan(200); // was ~20px before the fix
+
+  await questionInput.fill("這題應該可以正常編輯題目文字");
+  await expect(questionInput).toHaveValue("這題應該可以正常編輯題目文字");
 });
 
 test("switching a question back to text discards its options and starts with a blank answer, not a converted value", async ({ page }) => {
