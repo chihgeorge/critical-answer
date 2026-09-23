@@ -1,6 +1,42 @@
 # TODOs
 
 
+## 語音旁白：重連時剛好落在 GAME_OVER 到 EPILOGUE 之間會漏念後記
+
+**Priority:** P3
+
+**What:** `/screen` 的語音旁白（`lib/narration/tts.ts` 的 `shouldSpeakEpilogue`）用「這次連線有沒有先看過即時 GAME_OVER」判斷後記是不是重播。如果連線（重新整理、WS 重連）剛好落在首領死亡（GAME_OVER 廣播）到後記文字準備好（`EPILOGUE_DELAY_MS`，約 4 秒）之間，這個連線既沒收到即時 GAME_OVER，onConnect 也還沒有 `this.epilogue` 可以重播——4 秒後真正的即時 EPILOGUE 廣播抵達時，會被誤判成重播而永遠不念。畫面上後記文字正常顯示，但語音永遠漏那一段，沒有任何錯誤提示。
+
+**Why:** adversarial review（`/review`，2026-09-23）找到的真實 bug，正確修法需要 server 協議改動（明確標記訊息是重播還是即時廣播）或一個只靠 client 的啟發式解法，兩者都有成本。
+
+**Pros:** 修好後後記語音在所有重連時機下都能正確播放。
+
+**Cons:** 發生機率低（4 秒視窗、需要剛好在那個時間點重新整理或斷線重連），需要 server 端配合才能徹底修好。
+
+**Context:** 見 [docs/designs/dm-voice-narration-tts.md](docs/designs/dm-voice-narration-tts.md)、`lib/narration/tts.ts` 的 `shouldSpeakEpilogue`、`lib/room/dungeon-room.ts` 的 `sendEpilogue`（`EPILOGUE_DELAY_MS`）。
+
+**Depends on / blocked by:** 無直接阻塞，等真的有人回報這個情況再處理。
+
+---
+
+## 語音旁白：語音清單還沒載完時到達的旁白會被永久靜默跳過
+
+**Priority:** P3
+
+**What:** `speak()`（`app/room/[code]/screen/page.tsx`）在 `ttsVoice` 還沒設定（語音清單尚未透過 `voiceschanged` 載入完成）時會直接不播放，且不會補念——如果旁白事件剛好在使用者點開開關跟語音清單真正載完之間的空檔到達，那句旁白就永久遺失，沒有任何提示。
+
+**Why:** adversarial review（`/review`，2026-09-23）找到的缺口，設計文件本身已經點出語音清單非同步載入是已知風險，但目前只處理了「不對還沒準備好的清單呼叫 speak()」，沒處理「那句旁白後來要補念」。
+
+**Pros:** 修好後不會在語音清單載入較慢的瀏覽器上漏念偶發的第一句旁白。
+
+**Cons:** 需要加一個緩衝機制（記下最後一句還沒念的旁白，`voiceschanged` 後補念），語音清單通常載入很快，實際發生機率低。
+
+**Context:** 見 [docs/designs/dm-voice-narration-tts.md](docs/designs/dm-voice-narration-tts.md)、`app/room/[code]/screen/page.tsx` 的 `speak()` 函式。
+
+**Depends on / blocked by:** 無直接阻塞。
+
+---
+
 ## Host 自訂題庫文字進 LLM prompt 前的內容審核
 
 **Priority:** P3

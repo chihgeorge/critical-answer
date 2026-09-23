@@ -215,3 +215,46 @@ test("screen TTS: a host correction (HOST_EDIT_NARRATION) re-speaks the correcte
 
   await expect.poll(() => ttsCalls(screen)).toContainEqual(correctedText);
 });
+
+test("screen TTS: a correction to the exact narration replayed at connect is still spoken (adversarial review finding)", async ({ browser }) => {
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("甲隊");
+  const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("乙隊");
+
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+
+  // Judge the question with NO /screen watching yet — the narration becomes the room's
+  // lastNarration, sitting there for onConnect to replay to whoever connects next.
+  await host.getByRole("button", { name: "答對！" }).click();
+  await expect(host.getByText("輪到：乙隊")).toBeVisible();
+
+  // Now open /screen: onConnect replays that narration as this connection's baseline —
+  // correctly not spoken (it's a replay, not a live event).
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await stubSpeechSynthesis(screen);
+  await screen.goto(`/room/${code}/screen`);
+  await expect(screen.getByText("輪到：乙隊")).toBeVisible();
+  await screen.getByRole("button", { name: /語音/ }).click();
+  expect(await ttsCalls(screen)).toEqual([""]); // only the unlock utterance — the replay was NOT spoken
+
+  // The host now corrects that exact (replayed, unspoken) line. It must still be spoken.
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  const editSection = host.locator("section", { hasText: "改寫目前旁白" });
+  const correctedText = "重播後修正的旁白文字";
+  await editSection.locator("input").fill(correctedText);
+  await editSection.getByRole("button", { name: "送出，立刻換上大螢幕" }).click();
+
+  await expect.poll(() => ttsCalls(screen)).toContainEqual(correctedText);
+});

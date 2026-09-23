@@ -266,6 +266,12 @@ export default function ScreenPage() {
    * correctly excluded, and a brand-new room with no narration yet (baseline 0) still speaks
    * its first live line. */
   const narrationBaseline = useRef<number | null>(null);
+  /** The last NARRATION this connection has SEEN, not just spoken — updated on every NARRATION
+   * message regardless of whether shouldSpeakNarration() decided to speak it. This is what lets
+   * a later correction (same eventId, different text) to the connect-time replay be recognized
+   * and spoken: if this only tracked what was actually spoken, the replay (correctly not
+   * spoken) would never update it, and a correction to it would have nothing to compare against
+   * (adversarial review finding — see shouldSpeakNarration's doc comment for the fixed bug). */
   const lastSpokenNarration = useRef<SpokenNarration | null>(null);
   /** Whether a live GAME_OVER has been seen since the last baseline reset — see
    * shouldSpeakEpilogue's doc comment for why this, not "first EPILOGUE seen", is the correct
@@ -380,9 +386,10 @@ export default function ScreenPage() {
           break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
-          if (narrationBaseline.current !== null && shouldSpeakNarration(msg, narrationBaseline.current, lastSpokenNarration.current)) {
-            lastSpokenNarration.current = msg;
-            speak(linesOf(msg));
+          if (narrationBaseline.current !== null) {
+            const speakIt = shouldSpeakNarration(msg, narrationBaseline.current, lastSpokenNarration.current);
+            lastSpokenNarration.current = msg; // always, even when not spoken — see the ref's doc comment
+            if (speakIt) speak(linesOf(msg));
           }
           break;
         case "EPILOGUE":
