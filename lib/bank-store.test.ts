@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { BankStore, BankConflictError, type BankStorage } from "./bank-store";
 import { BANK, type Bank } from "./question-bank";
 
@@ -87,5 +87,47 @@ describe("BankStore.putBank", () => {
     const storage = memoryStorage({ bank: validBank, version: 2 });
     const store = new BankStore(storage);
     await expect(store.putBank({ rooms: [] }, 1)).rejects.toThrow(BankConflictError);
+  });
+});
+
+describe("BankStore.putBank: image cleanup callback", () => {
+  const bankWithImage: Bank = {
+    ...validBank,
+    rooms: [{ ...validBank.rooms[0], questions: [{ kind: "image", id: "r0-q1", text: "這是誰？", answer: "松鼠", imageKey: "44444444-4444-4444-4444-444444444444" }] }],
+  };
+
+  it("calls onImagesOrphaned with a key present in the old bank but not the new one", async () => {
+    const storage = memoryStorage({ bank: bankWithImage, version: 1 });
+    const onImagesOrphaned = vi.fn(async () => {});
+    const store = new BankStore(storage, onImagesOrphaned);
+    await store.putBank(validBank, 1); // validBank's r0-q1 is text — no longer references the image key
+    expect(onImagesOrphaned).toHaveBeenCalledWith(["44444444-4444-4444-4444-444444444444"]);
+  });
+
+  it("does not call onImagesOrphaned when the same image key is still referenced after the save", async () => {
+    const storage = memoryStorage({ bank: bankWithImage, version: 1 });
+    const onImagesOrphaned = vi.fn();
+    const store = new BankStore(storage, onImagesOrphaned);
+    await store.putBank(bankWithImage, 1); // identical image key, still referenced
+    expect(onImagesOrphaned).not.toHaveBeenCalled();
+  });
+
+  it("does not call onImagesOrphaned when no callback was provided", async () => {
+    const storage = memoryStorage({ bank: bankWithImage, version: 1 });
+    const store = new BankStore(storage); // no callback
+    await expect(store.putBank(validBank, 1)).resolves.toBeDefined(); // must not throw
+  });
+
+  it("swallows a failing onImagesOrphaned callback — the save itself already succeeded", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const storage = memoryStorage({ bank: bankWithImage, version: 1 });
+    const onImagesOrphaned = vi.fn(async () => {
+      throw new Error("R2 delete failed");
+    });
+    const store = new BankStore(storage, onImagesOrphaned);
+    const result = await store.putBank(validBank, 1);
+    expect(result.version).toBe(2); // save still succeeded
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("image_cleanup_failed"));
+    spy.mockRestore();
   });
 });

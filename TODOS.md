@@ -41,6 +41,26 @@
 
 **Depends on / blocked by:** 無直接阻塞，可以在 `question-bank-editor` 的 text-only v1 之後任何時間做。
 
+**更新（2026-09-22，`image-question-type` 分支完成）：** 已實作完成（image kind schema、R2 綁定、上傳 API、bank editor 上傳表單、`/play`・`/screen` 顯示圖片）。此項結案。
+
+---
+
+## 上傳但從未存檔的題庫圖片會永久留在 R2
+
+**Priority:** P3
+
+**What:** `lib/bank-store.ts` 的孤兒圖片清理機制是「存檔前後的 bank 內容比對」（`imageKeysOf(current) \ imageKeysOf(next)`）。這個機制結構上抓不到「上傳成功但從未被存進任何一版 bank」的圖片——因為它從沒被任何一版 bank「擁有」過，沒有「之前」可以比對。
+
+**Why:** 觸發條件很日常：在題庫編輯器上傳圖片後，使用者還沒按「儲存」就關分頁、瀏覽器當機，或存檔時剛好版本衝突（409）。這張圖已經進了 R2，但永遠不會被任何清理邏輯發現。adversarial review 找到這個結構性漏洞（finding #2），未在本輪修。
+
+**Pros:** 修了之後就沒有這個緩慢累積的儲存洩漏。
+
+**Cons:** 沒有簡單修法——`beforeunload` 觸發不穩定（分頁被強制關閉時不會跑），穩妥做法需要一支背景排程 worker/cron 定期掃描「未被任何 bank 版本引用的物件」，複雜度超出這次 R2 整合的範圍。
+
+**Context:** 見 [docs/designs/image-question-type.md](docs/designs/image-question-type.md) 的「R2 cleanup mechanism」決策；`lib/bank-store.ts` 的 `putBank()` 與 `lib/question-bank.ts` 的 `imageKeysOf()`。
+
+**Depends on / blocked by:** 無直接阻塞。使用者決定：目前規模（單人維護、圖片數量少、R2 免費額度）下這只是浪費幾 KB～幾 MB，先延後，等真的在意儲存成本或圖片量變大時再做週期性掃描機制。
+
 ---
 
 

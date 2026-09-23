@@ -22,8 +22,10 @@ export interface RoomStorage {
 export interface RoomIO {
   /** Send to every open connection. */
   broadcast(message: string): void;
-  /** Server-only settings (secrets). Never sent to a browser. */
-  env?: { ANTHROPIC_API_KEY?: string };
+  /** Server-only settings (secrets and env vars). Never sent to a browser.
+   * `R2_PUBLIC_BASE_URL` is not a secret — it's the public read base for the image bucket
+   * (e.g. an r2.dev URL), needed to turn a stored image key into a renderable URL. */
+  env?: { ANTHROPIC_API_KEY?: string; R2_PUBLIC_BASE_URL?: string };
   /** Where the room saves itself. Without it (tests, the temporary PartyKit adapter) the room lives in memory only. */
   storage?: RoomStorage;
   /** Close every open connection with an application close code (see close-codes.ts). */

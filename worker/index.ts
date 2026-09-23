@@ -5,6 +5,8 @@ import { positiveMs } from "../lib/room/positive-ms";
 import { DungeonRoom } from "../lib/room/dungeon-room";
 import { BankStore, BankConflictError, type VersionedBank } from "../lib/bank-store";
 import { bankOrFallback, handleBankApi, type BankConflict } from "../lib/bank-api";
+import { handleBankImageApi } from "../lib/bank-image-api";
+import { deleteOrphanedImages } from "../lib/image-cleanup";
 
 export interface Env {
   /** The binding is named "main" on purpose: partysocket's default path is /parties/main/<room>. */
@@ -13,6 +15,14 @@ export interface Env {
    * routePartykitRequest — see lib/gate.ts's header comment on why a new DO binding must not be
    * left reachable at /parties/<binding>/<id> without its own auth. */
   bank: DurableObjectNamespace<BankStoreDO>;
+  /** Question-bank image storage (docs/designs/image-question-type.md). Public read access is
+   * configured on the bucket itself (its r2.dev subdomain), a one-time manual Cloudflare dashboard
+   * step, not something this Worker's deploy performs. */
+  images: R2Bucket;
+  /** The bucket's public read base URL (e.g. an r2.dev URL), prepended to a stored image key to
+   * build a renderable URL — never baked into stored bank data, same env-not-data split as
+   * PARTY_HOST (lib/party-host.ts). Not a secret. */
+  R2_PUBLIC_BASE_URL?: string;
   /** Comma-separated origins allowed to open a WebSocket, see lib/origin.ts. Unset means no browser page. */
   ALLOWED_ORIGINS?: string;
   /** Milliseconds without activity before a room closes its connections (default 2 hours). */
@@ -34,10 +44,20 @@ export class BankStoreDO extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.store = new BankStore({
-      get: (key) => ctx.storage.get(key),
-      put: (key, value) => ctx.storage.put(key, value),
-    });
+    this.store = new BankStore(
+      {
+        get: (key) => ctx.storage.get(key),
+        put: (key, value) => ctx.storage.put(key, value),
+      },
+      // R2 access lives only here (this class), never in lib/bank-store.ts — same
+      // platform-abstraction discipline as the rest of this file's DO/RPC split. BankStore
+      // calls this fire-and-forget (never awaits it); deleteOrphanedImages (lib/image-cleanup.ts,
+      // unit-tested there) swallows and logs its own failure, and ctx.waitUntil() keeps it alive
+      // past putBank()'s own return instead of letting the DO cut it off early.
+      async (keys) => {
+        ctx.waitUntil(deleteOrphanedImages(env.images, keys));
+      },
+    );
     // Seed-on-first-read otherwise races: two requests arriving before storage has ever been
     // written could both see it empty and both write the seed. Both writes are identical today
     // (same bundled JSON), so it's harmless as written, but blockConcurrencyWhile is the platform's
@@ -136,6 +156,25 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (pathname === "/healthz") return Response.json({ ok: true });
+    // /api/bank/image is dispatched to its own handler BEFORE the /api/bank/* prefix check below
+    // would otherwise swallow it — handleBankApi only branches on HTTP method, not path, so a
+    // request here must never fall through to it (docs/designs/image-question-type.md's
+    // "Routing" decision, caught by outside-voice review against this exact code).
+    if (pathname === "/api/bank/image") {
+      return handleBankImageApi(request, {
+        ownerKey: env.OWNER_KEY,
+        allowedOrigins: env.ALLOWED_ORIGINS ?? "",
+        putImage: async (bytes, contentType) => {
+          const key = crypto.randomUUID();
+          // Object keys are server-generated UUIDs — content at a given key never changes, so a
+          // long-lived immutable cache is safe. Every viewer (every phone on /play, the shared
+          // /screen) re-fetches the same image, so this matters for real: without it there's no
+          // caching directive at all.
+          await env.images.put(key, bytes, { httpMetadata: { contentType, cacheControl: "public, max-age=31536000, immutable" } });
+          return { key };
+        },
+      });
+    }
     if (pathname === "/api/bank" || pathname.startsWith("/api/bank/")) {
       const stub = env.bank.get(env.bank.idFromName(BANK_DO_NAME));
       return handleBankApi(request, {

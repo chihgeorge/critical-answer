@@ -12,7 +12,8 @@ import type { SpriteKind } from "./sprite-kind";
  * accepted risk of making it required instead of backward-compatible. */
 export type BankQuestion =
   | { kind: "text"; id: string; text: string; answer: string }
-  | { kind: "multipleChoice"; id: string; text: string; options: string[]; correctIndex: number };
+  | { kind: "multipleChoice"; id: string; text: string; options: string[]; correctIndex: number }
+  | { kind: "image"; id: string; text: string; answer: string; imageKey: string };
 
 export interface BankMonster {
   name: string;
@@ -46,6 +47,21 @@ function parseTextQuestion(r: Record<string, unknown>, id: string): BankQuestion
   return { kind: "text", id, text: r.text as string, answer: answer as string };
 }
 
+/** Every real imageKey is a `crypto.randomUUID()` minted by the upload endpoint (worker/index.ts) —
+ * requiring that shape here closes off a hand-crafted imageKey like "/evil.example/x", which would
+ * otherwise build a protocol-relative image URL (imageUrlOf below) that every player's phone and
+ * the shared screen load as-is (adversarial review finding). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** An `image` question is judged exactly like `text` (host reads it aloud/sees it, judges verbally)
+ * with one extra field: the R2 object key of the question's image. */
+function parseImageQuestion(r: Record<string, unknown>, id: string): BankQuestion {
+  const { answer, imageKey } = r;
+  if (typeof answer !== "string" || !answer.trim()) fail(`question ${id} has an empty answer`);
+  if (typeof imageKey !== "string" || !UUID_RE.test(imageKey)) fail(`question ${id} has an invalid imageKey`);
+  return { kind: "image", id, text: r.text as string, answer: answer as string, imageKey: imageKey as string };
+}
+
 function parseMultipleChoiceQuestion(r: Record<string, unknown>, id: string): BankQuestion {
   const rawOptions = r.options;
   if (!Array.isArray(rawOptions) || rawOptions.length < MIN_OPTIONS) fail(`question ${id} needs at least ${MIN_OPTIONS} options`);
@@ -68,6 +84,7 @@ function parseQuestions(raw: unknown, where: string, seen: Set<string>): BankQue
     if (typeof text !== "string" || !text.trim()) fail(`question ${String(id)} has empty text`);
     if (kind === "text") return parseTextQuestion(r, id as string);
     if (kind === "multipleChoice") return parseMultipleChoiceQuestion(r, id as string);
+    if (kind === "image") return parseImageQuestion(r, id as string);
     return fail(`question ${String(id)} has unknown kind ${String(kind)}`);
   });
 }
@@ -110,6 +127,12 @@ export function bossQuestionIds(bank: Bank): string[] {
   return bank.boss.questions.map((q) => q.id);
 }
 
+/** Every question in a bank, rooms then boss — the "flatten the whole bank" expression every
+ * whole-bank scan (allAnswers, validationError, imageKeysOf) needs, in one place. */
+export function allQuestions(bank: Bank): BankQuestion[] {
+  return [...bank.rooms.flatMap((r) => r.questions), ...bank.boss.questions];
+}
+
 export function findQuestion(bank: Bank, id: string) {
   for (const [roomIndex, r] of bank.rooms.entries()) {
     const q = r.questions.find((x) => x.id === id);
@@ -122,13 +145,17 @@ export function findQuestion(bank: Bank, id: string) {
 /** The correct answer's display text, regardless of kind — callers that only need to show or compare
  * the answer (HOST_ANSWER, the narration answer-leak check) don't need to branch on kind themselves. */
 export function answerText(q: BankQuestion): string {
-  return q.kind === "text" ? q.answer : q.options[q.correctIndex];
+  if (q.kind === "multipleChoice") return q.options[q.correctIndex];
+  return q.answer;
 }
 
 /** The part of a question every screen may see. `difficulty` is the team's current one (flee lowers it).
+ * `imageBaseUrl` is the R2 public base (env-specific, never stored in bank data — see
+ * docs/designs/image-question-type.md's "Schema storage" decision, same pattern as party-host.ts's
+ * PARTY_HOST) prepended to an `image` question's stored object key to make a renderable URL.
  * Built by explicit field-picking, never `...q` — that discipline is what keeps `answer`/`correctIndex`
  * off every client; extend it the same way for any future field, never spread the server-only shape. */
-export function publicQuestion(bank: Bank, id: string, difficulty: number): PublicQuestion | null {
+export function publicQuestion(bank: Bank, id: string, difficulty: number, imageBaseUrl: string): PublicQuestion | null {
   const q = findQuestion(bank, id);
   if (!q) return null;
   return {
@@ -138,5 +165,26 @@ export function publicQuestion(bank: Bank, id: string, difficulty: number): Publ
     boss: q.boss,
     monster: { name: q.monster.name, sprite: q.monster.sprite, hue: q.monster.hue },
     ...(q.kind === "multipleChoice" ? { options: q.options } : {}),
+    ...(q.kind === "image" ? { imageUrl: imageUrlOf(q, imageBaseUrl) } : {}),
   };
+}
+
+/** Builds an image question's public URL, warning loudly (not just failing silently client-side
+ * via the broken-image fallback) if `imageBaseUrl` is missing or still the unconfigured
+ * placeholder — a forgotten R2_PUBLIC_BASE_URL / bucket public-access setup step would otherwise
+ * only ever show up as a mysteriously hidden image, with nothing in the Worker's own logs
+ * pointing at the real cause (adversarial review finding). */
+function imageUrlOf(q: Extract<BankQuestion, { kind: "image" }>, imageBaseUrl: string): string {
+  if (!imageBaseUrl || imageBaseUrl.includes("REPLACE-ME")) {
+    console.error(JSON.stringify({ event: "image_base_url_missing", questionId: q.id }));
+  }
+  return `${imageBaseUrl}/${q.imageKey}`;
+}
+
+/** Every R2 object key referenced anywhere in a bank — used to diff an old bank against a new one
+ * after a save, so orphaned images (deleted question, replaced image, kind switched away from
+ * image) can be cleaned up without per-question change tracking. See docs/designs/image-question-type.md's
+ * "R2 cleanup mechanism" decision. */
+export function imageKeysOf(bank: Bank): Set<string> {
+  return new Set(allQuestions(bank).filter((q) => q.kind === "image").map((q) => q.imageKey));
 }

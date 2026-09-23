@@ -25,7 +25,7 @@
 // review, 2026-09-22).
 
 import bankJson from "../data/question-bank.json";
-import { parseBank, type Bank } from "./question-bank";
+import { parseBank, imageKeysOf, type Bank } from "./question-bank";
 
 const BANK_KEY = "bank";
 
@@ -51,7 +51,14 @@ export class BankConflictError extends Error {
 }
 
 export class BankStore {
-  constructor(private storage: BankStorage) {}
+  /** `onImagesOrphaned`: called with any R2 object key that was referenced by the previous bank
+   * but not the newly-saved one, after a successful putBank — see docs/designs/image-question-type.md's
+   * "R2 cleanup mechanism" decision. Optional and best-effort: a failure here must never fail the
+   * save itself (the bank write already succeeded; a missed cleanup is wasted storage, not data loss). */
+  constructor(
+    private storage: BankStorage,
+    private onImagesOrphaned?: (keys: string[]) => Promise<void>,
+  ) {}
 
   private async getStored(): Promise<VersionedBank> {
     const raw = await this.storage.get(BANK_KEY);
@@ -92,6 +99,27 @@ export class BankStore {
     const validated = parseBank(candidate);
     const next: VersionedBank = { bank: validated, version: current.version + 1 };
     await this.storage.put(BANK_KEY, next);
+    if (this.onImagesOrphaned) {
+      const oldKeys = imageKeysOf(current.bank);
+      const newKeys = imageKeysOf(validated);
+      const orphaned = [...oldKeys].filter((k) => !newKeys.has(k));
+      if (orphaned.length > 0) {
+        // Best-effort AND fire-and-forget: the bank write above already succeeded, so a cleanup
+        // failure here is wasted R2 storage, never data loss — and awaiting it would make every
+        // save that touches images wait on an R2 round trip that doesn't participate in the
+        // Durable Object's storage input-gate, needlessly delaying the caller's response and
+        // any concurrent request queued behind this one (adversarial review finding). The
+        // worker/index.ts caller wraps this in ctx.waitUntil() so it survives past this
+        // function's return instead of being cut off. This .catch is a defensive fallback for a
+        // badly-behaved injected callback (one that rejects before reaching its own try/catch) —
+        // worker/index.ts's real R2 delete failures are already caught and logged inside
+        // lib/image-cleanup.ts's deleteOrphanedImages, so this rarely fires in production
+        // (adversarial review finding: the comment previously implied otherwise).
+        void this.onImagesOrphaned(orphaned).catch((err: unknown) => {
+          console.error(JSON.stringify({ event: "image_cleanup_failed", keys: orphaned, error: String(err) }));
+        });
+      }
+    }
     return next;
   }
 }

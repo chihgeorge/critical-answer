@@ -16,7 +16,7 @@ import {
   type GameState,
 } from "../game-state";
 import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../protocol";
-import { BANK, answerText, bossQuestionIds, findQuestion, publicQuestion, roomTemplates, type Bank } from "../question-bank";
+import { BANK, allQuestions, answerText, bossQuestionIds, findQuestion, publicQuestion, roomTemplates, type Bank } from "../question-bank";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { createScriptedProvider, type NarrationProvider } from "../narration/scripted";
@@ -55,7 +55,7 @@ export interface RoomOptions {
 }
 const STYLE_EXAMPLES = 5;
 /** Server-side only: every answer in a bank, so a narration line that repeats one is rejected. */
-const allAnswers = (bank: Bank) => [...bank.rooms.flatMap((r) => r.questions), ...bank.boss.questions].map(answerText);
+const allAnswers = (bank: Bank) => allQuestions(bank).map(answerText);
 
 /**
  * Round an activity timestamp down for storage, at a granularity scaled to idleMs so the rounding error
@@ -332,7 +332,7 @@ export class DungeonRoom {
     const team = game.teams.find((t) => t.id === teamId);
     if (!team) return null;
     const id = isInBossPhase(game, team.id) ? game.boss.currentQuestionId : team.currentQuestionId;
-    const pub = publicQuestion(this.bank, id, team.currentDifficulty);
+    const pub = publicQuestion(this.bank, id, team.currentDifficulty, this.room.env?.R2_PUBLIC_BASE_URL ?? "");
     const q = findQuestion(this.bank, id);
     return pub ? { pub, answer: q ? answerText(q) : "" } : null;
   }

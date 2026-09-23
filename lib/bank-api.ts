@@ -35,14 +35,30 @@ export const MAX_BANK_BODY_BYTES = 200_000;
 const MIN_OWNER_KEY_LENGTH = 32;
 
 /** The editor UI is a separate origin (the Next.js frontend), unlike the WebSocket room paths which
- * don't need CORS at all. Reuses the same ALLOWED_ORIGINS the WS Origin check uses. */
-function corsHeaders(origin: string | null, allowed: string): HeadersInit {
+ * don't need CORS at all. Reuses the same ALLOWED_ORIGINS the WS Origin check uses. Exported for
+ * bank-image-api.ts, which needs the same CORS story (plus POST) for its own endpoint. */
+export function corsHeaders(origin: string | null, allowed: string, methods = "GET, PUT, OPTIONS"): HeadersInit {
   if (!origin || !originAllowed(origin, allowed)) return {};
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+    "Access-Control-Allow-Methods": methods,
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
   };
+}
+
+/** Bearer-token owner-key check shared by every /api/bank/* endpoint. Returns a 403 Response if
+ * the request isn't authorized, or null to continue. Logs (never blocks) a too-short configured
+ * key — see MIN_OWNER_KEY_LENGTH's doc comment. */
+export function ownerAuthResponse(request: Request, ownerKey: string | undefined, cors: HeadersInit): Response | null {
+  if (ownerKey && ownerKey.length < MIN_OWNER_KEY_LENGTH) {
+    console.error(JSON.stringify({ event: "weak_owner_key", length: ownerKey.length, minimum: MIN_OWNER_KEY_LENGTH }));
+  }
+  const header = request.headers.get("Authorization") ?? "";
+  const presented = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+  if (!ownerKey || !tokensEqual(ownerKey, presented)) {
+    return new Response("Forbidden", { status: 403, headers: cors });
+  }
+  return null;
 }
 
 /** Owner-only question-bank CRUD over HTTP. Deliberately not wired through routePartykitRequest —
@@ -53,14 +69,8 @@ export async function handleBankApi(request: Request, deps: BankApiDeps): Promis
   const cors = corsHeaders(origin, deps.allowedOrigins);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
-  if (deps.ownerKey && deps.ownerKey.length < MIN_OWNER_KEY_LENGTH) {
-    console.error(JSON.stringify({ event: "weak_owner_key", length: deps.ownerKey.length, minimum: MIN_OWNER_KEY_LENGTH }));
-  }
-  const header = request.headers.get("Authorization") ?? "";
-  const presented = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
-  if (!deps.ownerKey || !tokensEqual(deps.ownerKey, presented)) {
-    return new Response("Forbidden", { status: 403, headers: cors });
-  }
+  const authError = ownerAuthResponse(request, deps.ownerKey, cors);
+  if (authError) return authError;
 
   if (request.method === "GET") {
     return Response.json(await deps.getVersionedBank(), { headers: cors });
