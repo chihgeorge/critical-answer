@@ -1,6 +1,24 @@
 # TODOs
 
 
+## 旁白 emit() 無條件覆蓋 lastNarration，較慢的舊事件可能在新事件之後 resolve 並蓋掉它
+
+**Priority:** P3
+
+**What:** `lib/room/dungeon-room.ts` 的 `emit()`（narration runner 的 callback）無條件寫入 `this.lastNarration = { eventId, lines }`，沒有檢查 `eventId` 是否比目前已存的新。`handleHostJudge` 不會等待旁白播放完才處理下一個事件，所以連續兩個事件的 `runner.run()` 可能同時在跑；如果事件 N-1 的 LLM 呼叫比事件 N 慢，N-1 較晚 resolve 時會把 N 剛廣播的新內容蓋掉，並且之後重連的連線會被重播那句過期的舊旁白。
+
+**Why:** adversarial review（`/review`，2026-09-23，multi-segment-narration 分支）找到的真實 bug，不是這次 diff 引進的，但這次把 LLM prompt 從 1-2 句改成 2-3 句，生成時間變長，觸發這個 race 的機率被加寬了。
+
+**Pros:** 修好後不會有舊旁白蓋掉新旁白、或重連時被重播過期內容的風險。
+
+**Cons:** 發生機率仍然偏低（需要兩個事件的 LLM 呼叫剛好以錯誤順序 resolve），修法本身簡單（`emit()` 加一行 `eventId` 單調性檢查），但需要一個新測試驗證 out-of-order 完成不會覆蓋。
+
+**Context:** 見 `lib/room/dungeon-room.ts` 的 `emit()` callback（narration runner 建立處）、`lib/narration/runner.ts` 的 `run()`。
+
+**Depends on / blocked by:** 無直接阻塞，先觀察是否真的在實際遊戲中發生。
+
+---
+
 ## 語音旁白：重連時剛好落在 GAME_OVER 到 EPILOGUE 之間會漏念後記
 
 **Priority:** P3

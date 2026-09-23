@@ -10,7 +10,7 @@ import { parseBank, type Bank } from "../question-bank";
  *
  * Bump SCHEMA_VERSION whenever a field changes meaning. An unreadable snapshot is discarded, never guessed at.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2; // lastNarration's shape changed (line/then -> lines[]); see the comment above.
 export const SNAPSHOT_KEY = "room";
 
 export interface RoomSnapshot {
@@ -23,7 +23,7 @@ export interface RoomSnapshot {
   /** team id -> team secret */
   teamKeys: [string, string][];
   eventSeq: number;
-  lastNarration: { eventId: number; line: string; then?: string } | null;
+  lastNarration: { eventId: number; lines: string[] } | null;
   epilogue: string | null;
   epilogueRequested: boolean;
   notes: string;
@@ -49,7 +49,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (!Array.isArray(raw.teamKeys) || !raw.teamKeys.every((p) => Array.isArray(p) && p.length === 2 && isString(p[0]) && isString(p[1]))) return null;
     if (typeof raw.eventSeq !== "number" || !Number.isInteger(raw.eventSeq) || raw.eventSeq < 0) return null;
     const n = raw.lastNarration;
-    if (n !== null && !(isObject(n) && typeof n.eventId === "number" && isString(n.line) && (n.then === undefined || isString(n.then)))) return null;
+    if (n !== null && !(isObject(n) && typeof n.eventId === "number" && Array.isArray(n.lines) && n.lines.length > 0 && n.lines.length <= 3 && n.lines.every(isString))) return null;
     if (raw.epilogue !== null && !isString(raw.epilogue)) return null;
     if (typeof raw.epilogueRequested !== "boolean" || typeof raw.aiNarration !== "boolean" || !isString(raw.notes)) return null;
     if (!Array.isArray(raw.editedLines) || !raw.editedLines.every(isString)) return null;

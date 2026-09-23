@@ -37,6 +37,13 @@ describe("request", () => {
     expect(body.thinking).toEqual({ type: "disabled" });
   });
 
+  it("keeps only the first line for the epilogue even if the model writes several newline-separated ones (the ask is one block of prose, unlike the multi-segment events)", async () => {
+    const f = async () => ok(reply("火把熄滅，冒險結束。\n這是不該出現的第二行\n第三行也不該出現"));
+    await expect(
+      make(f as unknown as typeof fetch).narrate({ type: "epilogue", ranking: [{ name: "紅隊", score: 9 }], winners: ["紅隊"] }),
+    ).resolves.toBe("火把熄滅，冒險結束。");
+  });
+
   it("passes the abort signal to fetch", async () => {
     const f = vi.fn(async () => ok(reply("行")));
     const ac = new AbortController();
@@ -103,9 +110,9 @@ describe("prompt", () => {
     expect(system).toMatch(/不要.*「隊」/);
   });
 
-  it("holds the second line to a firm 20 characters (real answers ran to 50)", () => {
+  it("holds the transition (third) line to a firm 20 characters (real answers ran to 50)", () => {
     const { system } = buildPrompt({ ...event, next: { team: "T", monster: "史萊姆", boss: false } }, "", []);
-    expect(system).toMatch(/第二行[^。]*不超過 20 個字/);
+    expect(system).toMatch(/第三行[^。]*不超過 20 個字/);
   });
 
   it("leaves those sections out when there are none", () => {
@@ -114,25 +121,27 @@ describe("prompt", () => {
   });
 });
 
-describe("two lines (result, then the next team)", () => {
+describe("multi-line prompts (result, atmosphere, then the next team)", () => {
   const withNext: NarrationEvent = { type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2, next: { team: "藍隊", monster: "軟趴趴史萊姆", boss: false } };
 
-  it("asks for two lines and names the next team and its monster as quoted data", () => {
+  it("asks for three lines and names the next team and its monster as quoted data", () => {
     const { system, user } = buildPrompt(withNext, "", []);
-    expect(system).toMatch(/兩行/);
+    expect(system).toMatch(/三行/);
     expect(system).toMatch(/第二行/);
+    expect(system).toMatch(/第三行/);
     expect(user).toContain("「藍隊」");
     expect(user).toContain("「軟趴趴史萊姆」");
   });
 
-  it("says 首領 in the second-line ask when the next team faces the boss", () => {
+  it("says 首領 in the third-line (transition) ask when the next team faces the boss", () => {
     const { user } = buildPrompt({ ...withNext, next: { team: "藍隊", monster: "深淵小黑龍", boss: true } }, "", []);
     expect(user).toMatch(/首領/);
   });
 
-  it("asks for one line when nobody is next", () => {
+  it("asks for two lines (not three) when nobody is next", () => {
     const { system } = buildPrompt({ type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9 }, "", []);
-    expect(system).not.toMatch(/兩行/);
+    expect(system).toMatch(/兩行/);
+    expect(system).not.toMatch(/三行/);
   });
 
   it("returns both lines, newline separated", async () => {
@@ -140,16 +149,28 @@ describe("two lines (result, then the next team)", () => {
     await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！\n輪到藍隊，史萊姆在等你們。");
   });
 
-  it("drops an unusable second line but keeps the first", async () => {
+  it("returns three lines, newline separated, when the model writes result + atmosphere + transition", async () => {
+    const f = async () => ok(reply("紅隊答對了！\n塵埃落定\n輪到藍隊，史萊姆在等你們。"));
+    await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！\n塵埃落定\n輪到藍隊，史萊姆在等你們。");
+  });
+
+  it("marks an invalid middle segment instead of dropping it, so a valid trailing segment keeps its position", async () => {
+    // Dropping (rather than marking) would shift "輪到藍隊…" from slot 2 (transition) into slot 1
+    // (atmosphere) — exactly the bug an adversarial review caught. Marking preserves the index.
+    const f = async () => ok(reply("紅隊答對了！\n<b>壞掉</b>\n輪到藍隊，史萊姆在等你們。"));
+    await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！\n<invalid/>\n輪到藍隊，史萊姆在等你們。");
+  });
+
+  it("marks an unusable second line but keeps the first", async () => {
     const f = async () => ok(reply("紅隊答對了！\n<b>輪到</b>藍隊"));
-    await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！");
+    await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！\n<invalid/>");
     const g = async () => ok(reply("紅隊答對了！\n" + "字".repeat(60)));
-    await expect(make(g as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！");
+    await expect(make(g as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！\n<invalid/>");
   });
 
   it("does not let the second line repeat a bank answer", async () => {
     const f = async () => ok(reply("紅隊答對了！\n答案是新高山喔"));
-    await expect(make(f as unknown as typeof fetch, { forbidden: () => ["新高山"] }).narrate(withNext)).resolves.toBe("紅隊答對了！");
+    await expect(make(f as unknown as typeof fetch, { forbidden: () => ["新高山"] }).narrate(withNext)).resolves.toBe("紅隊答對了！\n<invalid/>");
   });
 
   it("rejects the whole answer when the first line is unusable", async () => {

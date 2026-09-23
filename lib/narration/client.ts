@@ -1,16 +1,17 @@
 // Client-side bookkeeping for narration lines (safe to import in the browser).
 
-/** `then` is the follow-up line about the next team, shown after `line`. */
-export type NarrationState = { eventId: number; line: string; then?: string } | null;
+/** `lines`: 1-3 segments, played in order (result, atmosphere, transition — see
+ * docs/designs/multi-segment-narration.md). */
+export type NarrationState = { eventId: number; lines: string[] } | null;
 
 /** Keep the line with the highest eventId; a late, older line is ignored. */
-export function keepLatest(prev: NarrationState, msg: { eventId: number; line: string; then?: string }): NarrationState {
-  return prev && prev.eventId > msg.eventId ? prev : { eventId: msg.eventId, line: msg.line, then: msg.then };
+export function keepLatest(prev: NarrationState, msg: { eventId: number; lines: string[] }): NarrationState {
+  return prev && prev.eventId > msg.eventId ? prev : { eventId: msg.eventId, lines: msg.lines };
 }
 
-/** The lines to play in order: the result, then (if any) the turn prompt. */
+/** The lines to play in order. */
 export function linesOf(n: NarrationState): string[] {
-  return n ? [n.line, ...(n.then ? [n.then] : [])] : [];
+  return n ? n.lines : [];
 }
 
 /** STATE for a new event arrives before its narration: show the `…` loader in between. */

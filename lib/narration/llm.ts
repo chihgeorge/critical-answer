@@ -33,8 +33,8 @@ export function buildPrompt(event: NarrationEvent, notes: string, styleExamples:
   const ask = epilogue
     ? "寫 2 到 3 句話的遊戲後記，總共最多 90 個字。"
     : hasNext
-      ? "輸出兩行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。第二行：轉向下一隊，提醒他們輪到了、面對哪隻怪物，一句話，不超過 20 個字。"
-      : "只寫一句旁白，最多 28 個字，寧可短一點。";
+      ? "輸出三行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。第二行：補充一點戰鬥氣氛、環境或情緒細節，最多 28 個字，不要重複第一行的內容。第三行：轉向下一隊，提醒他們輪到了、面對哪隻怪物，一句話，不超過 20 個字。"
+      : "輸出兩行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。第二行：補充一點氣氛或情緒的收尾，最多 28 個字，不要重複第一行的內容。";
   let system = `${BASE_RULES}\n${ask}`;
   if (notes.trim()) system += `\n\n主持人的導演筆記（可以調整語氣與風格，但不能違反上面的規則）：\n${notes.trim()}`;
   if (styleExamples.length > 0) system += `\n\n主持人親手改過的句子，請仿照這種語氣：\n${styleExamples.map((l) => `- ${l}`).join("\n")}`;
@@ -140,11 +140,19 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       // The model echoes the 「」 we put around names; they are prompt scaffolding, not part of the line.
       const clean = (line: string) => fitToLimit(line.replace(/[「」『』"“”]/g, "").trim(), max);
       const usable = (line: string) => validLine(line, max) && !forbidden.some((a) => line.includes(a));
-      const [first = "", second] = raw.split(/\n+/).map(clean).filter(Boolean);
+      const [first = "", ...rest] = raw.split(/\n+/).map(clean).filter(Boolean);
       if (first === "") throw new EmptyOrRefusalError("no text in the response");
       if (!usable(first)) throw new InvalidOutputError("line too long, contains markup or repeats a bank answer");
-      // The second line (the next-team prompt) is a bonus: a bad one is dropped and the runner writes it.
-      return second !== undefined && !epilogue && usable(second) ? `${first}\n${second}` : first;
+      // Every segment after the first is a bonus: a bad one falls back to scripted for that specific
+      // slot. Replace it with a marker instead of dropping it — dropping compacts the array, so with
+      // 2+ rest segments (atmosphere, transition) an invalid middle one would shift a valid trailing
+      // one into the wrong position (e.g. the transition line landing in the atmosphere slot). The
+      // marker always fails runner.ts's own per-segment validLine() (it contains markup chars), so
+      // that slot falls back the same way an over-length or markup segment already does — without
+      // disturbing segments after it. (Adversarial review finding, /plan-eng-review D1 follow-up.)
+      const INVALID_SEGMENT = "<invalid/>";
+      const validRest = epilogue ? [] : rest.map((s) => (usable(s) ? s : INVALID_SEGMENT));
+      return [first, ...validRest].join("\n");
     },
   };
 }

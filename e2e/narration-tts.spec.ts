@@ -248,7 +248,7 @@ test("screen TTS: a host correction (HOST_EDIT_NARRATION) re-speaks the correcte
 
   // Host opens "更多", corrects the just-spoken line, sends it — same eventId, different text.
   await host.getByRole("button", { name: "⚙ 更多" }).click();
-  const editSection = host.locator("section", { hasText: "改寫目前旁白" });
+  const editSection = host.locator("section", { hasText: "改寫第一句旁白" });
   const correctedText = "測試修正後的旁白文字";
   await editSection.locator("input").fill(correctedText);
   await editSection.getByRole("button", { name: "送出，立刻換上大螢幕" }).click();
@@ -291,7 +291,7 @@ test("screen TTS: a correction to the exact narration replayed at connect is sti
 
   // The host now corrects that exact (replayed, unspoken) line. It must still be spoken.
   await host.getByRole("button", { name: "⚙ 更多" }).click();
-  const editSection = host.locator("section", { hasText: "改寫目前旁白" });
+  const editSection = host.locator("section", { hasText: "改寫第一句旁白" });
   const correctedText = "重播後修正的旁白文字";
   await editSection.locator("input").fill(correctedText);
   await editSection.getByRole("button", { name: "送出，立刻換上大螢幕" }).click();
@@ -428,4 +428,26 @@ test("screen TTS: blocked localStorage (private browsing) doesn't break the togg
   await toggle.click();
   await expect(toggle).toHaveText("🔊 語音開"); // still works this page load even though nothing can be saved
   expect(await ttsCalls(screen)).toEqual([""]);
+});
+
+test("host edit drawer: the label tells the host how many segments there are, since the edit box only reaches the first", async ({ browser }) => {
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("甲隊");
+
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+
+  // The opening NARRATION already exists by the time the drawer opens (it fires right after
+  // start), so the label already shows a segment count, not the plain "no count" text.
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await expect(host.getByText(/改寫第一句旁白（共 \d 句，只能改第一句，最多 40 字）/)).toBeVisible();
 });
