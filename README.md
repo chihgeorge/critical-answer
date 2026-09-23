@@ -97,7 +97,9 @@ sh scripts/playtest.sh stop
 
 ### 題庫編輯
 
-`/bank-editor` 是主持人專用的題庫編輯頁，直接打網址進入（遊戲內沒有連結），可以新增、修改、刪除各房間與首領的**文字題和選擇題**（圖片題還沒做，見 [TODOS.md](TODOS.md)）。選擇題由玩家在 `/play` 上點選、host 在判分前看得到目前的選擇，但最終仍由 host 按鈕判定，不會自動計分（見 [docs/designs/multiple-choice-questions.md](docs/designs/multiple-choice-questions.md)）。題庫實際存在 Cloudflare Durable Object（`BankStore`），編輯即時生效；`BankStore` 連不上時自動退回 bundle 裡的 `data/question-bank.json` 唯讀。存檔會做版本檢查，別人同時改過會擋下（409），避免互相覆蓋。
+`/bank-editor` 是主持人專用的題庫編輯頁，直接打網址進入（遊戲內沒有連結），可以新增、修改、刪除各房間與首領的**文字題、選擇題和圖片題**。選擇題由玩家在 `/play` 上點選、host 在判分前看得到目前的選擇，但最終仍由 host 按鈕判定，不會自動計分（見 [docs/designs/multiple-choice-questions.md](docs/designs/multiple-choice-questions.md)）。圖片題會把圖片上傳到 Cloudflare R2，`/play` 和 `/screen` 都會顯示；換圖或刪題會自動清掉舊圖，但上傳後沒存檔就關分頁的圖片目前不會被清掉（見 [TODOS.md](TODOS.md)）。題庫實際存在 Cloudflare Durable Object（`BankStore`），編輯即時生效；`BankStore` 連不上時自動退回 bundle 裡的 `data/question-bank.json` 唯讀。存檔會做版本檢查，別人同時改過會擋下（409），避免互相覆蓋。
+
+> 圖片上傳需要先在 Cloudflare 建立一個名為 `critical-answer-images` 的 R2 bucket，並手動在 dashboard 開啟它的 r2.dev 公開讀取，再把 [wrangler.jsonc](wrangler.jsonc) 裡的 `R2_PUBLIC_BASE_URL` 換成 Cloudflare 給的網址——這一步不是 `wrangler deploy` 的一部分，見 [docs/designs/image-question-type.md](docs/designs/image-question-type.md)。
 
 頁面要輸入 `OWNER_KEY` 才能讀寫題庫，伺服器端沒設這把密鑰時一律回 403（本機開發要在 `.dev.vars` 加一行 `OWNER_KEY=...` 才能測，`.dev.vars.example` 沒有內建）；正式部署要用 `wrangler secret put OWNER_KEY` 設一組 ≥32 bytes 的隨機值，太短會在 Worker log 留警告。
 
