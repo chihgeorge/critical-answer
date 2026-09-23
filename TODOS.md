@@ -100,9 +100,9 @@
 ---
 
 
-## DM 語音旁白（瀏覽器 TTS）
+## ~~DM 語音旁白（瀏覽器 TTS）~~ ✅ 已完成 2026-09-22
 
-**What:** 大螢幕用瀏覽器內建 Web Speech API（zh-TW 聲音）把旁白念出來，並提供關閉開關。
+**What:** 大螢幕用瀏覽器內建 Web Speech API（zh-TW 聲音）把旁白念出來，並提供關閉開關。已透過 `/office-hours` → `/plan-eng-review` → `/review` → `/ship` 完整流程實作，見 [docs/designs/dm-voice-narration-tts.md](docs/designs/dm-voice-narration-tts.md)。審查過程發現並修正兩個真實 bug（重播誤判導致語音修正被靜默吞掉、`zh-Hant-HK`/`zh-Hant-MO` 誤判為台灣腔），另有兩個較低嚴重度的邊角案例延後為上方的 P3 待辦項目。
 
 **Why:** 旁白從「要看的文字」變成「大家一起聽的場景」，首領倒下時客廳裡有個聲音在說話，是氛圍最直接的來源。2026-09-18 第二輪範圍審查（/plan-ceo-review，E1）評估過，因為第二輪先只驗證「看得到的氛圍」而延後。
 
