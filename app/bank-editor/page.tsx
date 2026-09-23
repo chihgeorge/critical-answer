@@ -1,7 +1,7 @@
 "use client";
 
-// Owner-only question-bank editor. Not linked from anywhere in the game's normal flow — reached by
-// its URL directly, gated by the OWNER_KEY the Worker checks on every /api/bank request. Supports
+// Owner-only question-bank editor. Linked from the homepage, but not from anywhere in the game's
+// actual play flow — gated by the OWNER_KEY the Worker checks on every /api/bank request. Supports
 // all three question kinds: text (free-answer), multipleChoice (options[] + correctIndex), and
 // image (an uploaded picture + free-answer, see docs/designs/image-question-type.md) — all judged
 // by the host reading the answer aloud.
