@@ -2,10 +2,18 @@
 
 // Shared pixel-dungeon components (see DESIGN.md). Styles live in app/globals.css.
 
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
 import { drawScene, drawSprite, SPRITE_SIZE, type SceneTheme, type SpriteKind } from "@/lib/pixel-art";
 
 const cx = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" ");
+
+/** A question image (on /play or /screen) that fails to load hides itself rather than leaving a
+ * broken-image icon or blocking the rest of the question from rendering — the decided
+ * broken-image fallback (docs/designs/image-question-type.md). Shared so both call sites can't
+ * drift out of sync. */
+export function hideOnImageError(e: SyntheticEvent<HTMLImageElement>) {
+  e.currentTarget.style.display = "none";
+}
 
 const prefersReducedMotion = () =>
   typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;

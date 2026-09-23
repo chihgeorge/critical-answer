@@ -177,6 +177,70 @@ test("switching a question back to text discards its options and starts with a b
   await expect(firstRow.getByLabel("答案")).toHaveValue(""); // blank, not "A" auto-converted
 });
 
+// A real, minimal 1x1 transparent PNG — the upload endpoint sniffs actual magic bytes, so a fake
+// buffer would be correctly rejected. Base64 of the smallest valid PNG.
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+test("image authoring: switch kind, upload a real file through the Worker, save, and reload persists the key", async ({ page }) => {
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const room0 = page.getByTestId("bank-room-0");
+  await expect(room0).toBeVisible();
+
+  const firstRow = room0.getByLabel("題目").first().locator("xpath=../..");
+  await firstRow.getByLabel("題型").selectOption("image");
+  // blankQuestion() gives a fresh image question: an upload input, no options, an empty answer.
+  await expect(firstRow.getByLabel("上傳圖片")).toBeVisible();
+  await expect(firstRow.getByLabel(/^選項 /)).toHaveCount(0);
+
+  // No image uploaded yet — save must be rejected, not silently accepted with an empty imageKey.
+  await firstRow.getByLabel("答案").fill("松鼠");
+  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await expect(page.getByTestId("bank-editor-error")).toContainText(/還沒上傳圖片/);
+
+  // Upload a real file — goes through the actual /api/bank/image Worker endpoint (magic-byte
+  // sniffing, owner-key auth, R2 write), not a mock.
+  await firstRow.getByLabel("上傳圖片").setInputFiles({ name: "squirrel.png", mimeType: "image/png", buffer: TINY_PNG });
+  await expect(firstRow.getByText(/已上傳/)).toBeVisible();
+
+  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
+
+  // Reload and confirm it persisted as an image question with an answer — the uploaded key
+  // survived the round trip through BankStore.
+  await page.reload();
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const reloadedRow = page.getByTestId("bank-room-0").getByLabel("題目").first().locator("xpath=../..");
+  await expect(reloadedRow.getByLabel("題型")).toHaveValue("image");
+  await expect(reloadedRow.getByLabel("答案")).toHaveValue("松鼠");
+  await expect(reloadedRow.getByText(/已上傳/)).toBeVisible();
+});
+
+test("image authoring: a server-rejected upload (bad file type) shows an inline error and leaves the question unsaved", async ({ page }) => {
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const room0 = page.getByTestId("bank-room-0");
+  await expect(room0).toBeVisible();
+
+  const firstRow = room0.getByLabel("題目").first().locator("xpath=../..");
+  await firstRow.getByLabel("題型").selectOption("image");
+
+  // Not a real image — the server's magic-byte sniffing rejects it regardless of the declared
+  // mimeType, and handleFile's catch branch must surface that as an inline error.
+  const notAnImage = Buffer.from("this is not a real image file");
+  await firstRow.getByLabel("上傳圖片").setInputFiles({ name: "fake.png", mimeType: "image/png", buffer: notAnImage });
+
+  await expect(firstRow.getByText(/Unsupported image type/i)).toBeVisible();
+  await expect(firstRow.getByText(/已上傳/)).toHaveCount(0); // imageKey is still empty
+  await expect(page.getByTestId("bank-editor-error")).toHaveCount(0); // this is a row-local error, not the page-level save error
+});
+
 test("two tabs editing at once: the second save is rejected as a conflict, not a silent overwrite", async ({ browser }) => {
   const openAndLoad = async (): Promise<Page> => {
     const p = await (await browser.newContext()).newPage();

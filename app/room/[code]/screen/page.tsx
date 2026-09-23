@@ -12,7 +12,7 @@ import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
-import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon, hideOnImageError } from "@/components/pixel";
 import { PARTY_HOST } from "@/lib/party-host";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
@@ -138,6 +138,25 @@ function Playing({ view, question, eventId, narration }: { view: SpectatorView; 
           {inBoss && <LabelChip>最後的挑戰！</LabelChip>}
         </div>
         {question?.text ?? "……"}
+        {question?.imageUrl && (
+          // Inline content inside the Panel, not a second independently-positioned absolute
+          // element — the Panel's height already grows with wrapped question text, so an
+          // image positioned at a fixed pixel offset would overlap 2+ line questions (design
+          // review finding). Living inside the flow means the image always sits below
+          // whatever the text actually rendered to, no matter how many lines it took.
+          // eslint-disable-next-line @next/next/no-img-element -- a remote R2 URL, not a local asset next/image can optimize
+          <img
+            // See the matching comment in app/room/[code]/play/page.tsx — a key tied to the
+            // question forces a fresh DOM node, or a broken image would stay hidden forever
+            // once React reuses this node for the next image question (adversarial review).
+            key={question.id}
+            src={question.imageUrl}
+            alt="題目圖片"
+            className="mx-auto mt-3 block"
+            style={{ maxWidth: 260, maxHeight: 160, objectFit: "contain" }}
+            onError={hideOnImageError}
+          />
+        )}
       </Panel>
 
       <div className="absolute" style={{ left: "50%", bottom: 136, width: inBoss ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />

@@ -2,16 +2,18 @@
 
 // Owner-only question-bank editor. Not linked from anywhere in the game's normal flow — reached by
 // its URL directly, gated by the OWNER_KEY the Worker checks on every /api/bank request. Supports
-// both question kinds (see docs/designs/multiple-choice-questions.md): text (free-answer, judged by
-// the host reading it aloud) and multipleChoice (options[] + correctIndex, judged the same way).
+// all three question kinds: text (free-answer), multipleChoice (options[] + correctIndex), and
+// image (an uploaded picture + free-answer, see docs/designs/image-question-type.md) — all judged
+// by the host reading the answer aloud.
 
 import { useEffect, useState } from "react";
 import { Panel, PixelButton } from "@/components/pixel";
-import { MIN_OPTIONS, type Bank, type BankQuestion } from "@/lib/question-bank";
+import { MIN_OPTIONS, allQuestions, type Bank, type BankQuestion } from "@/lib/question-bank";
 import { partyHttpBase } from "@/lib/party-host";
 
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
 const bankApiBase = () => `${partyHttpBase()}/api/bank`;
+const bankImageApiBase = () => `${partyHttpBase()}/api/bank/image`;
 // Sentinel for "no correct option marked yet" — happens right after switching a question to
 // multipleChoice, or after deleting the option that was marked correct. Never a valid saved
 // state: validate() below blocks 儲存全部變更 while any question is stuck at this value.
@@ -60,12 +62,16 @@ type Location = { kind: "room"; roomIndex: number } | { kind: "boss" };
  * questions have no such intermediate state — an empty answer is still a valid string, so
  * that check is left to the server's parseBank() round trip, same as before this feature. */
 function validationError(bank: Bank): string | null {
-  const all = [...bank.rooms.flatMap((r) => r.questions), ...bank.boss.questions];
+  const all = allQuestions(bank);
   for (const q of all) {
-    if (q.kind !== "multipleChoice") continue;
-    if (q.options.length < MIN_OPTIONS) return `題目「${q.text || q.id}」至少要有 ${MIN_OPTIONS} 個選項`;
-    if (q.options.some((o) => !o.trim())) return `題目「${q.text || q.id}」有空白選項`;
-    if (q.correctIndex < 0 || q.correctIndex >= q.options.length) return `題目「${q.text || q.id}」還沒標記正解`;
+    if (q.kind === "multipleChoice") {
+      if (q.options.length < MIN_OPTIONS) return `題目「${q.text || q.id}」至少要有 ${MIN_OPTIONS} 個選項`;
+      if (q.options.some((o) => !o.trim())) return `題目「${q.text || q.id}」有空白選項`;
+      if (q.correctIndex < 0 || q.correctIndex >= q.options.length) return `題目「${q.text || q.id}」還沒標記正解`;
+    }
+    // Like MC's correctIndex, an empty imageKey is an intermediate client-only state (upload not
+    // finished yet) the type system can't rule out — same reasoning as the comment above.
+    if (q.kind === "image" && !q.imageKey) return `題目「${q.text || q.id}」還沒上傳圖片`;
   }
   return null;
 }
@@ -149,21 +155,44 @@ export default function BankEditorPage() {
       ? { ...b, boss: { ...b.boss, questions } }
       : { ...b, rooms: b.rooms.map((r, i) => (i === loc.roomIndex ? { ...r, questions } : r)) };
 
+  // All three use the functional setBank(prev => ...) form, not the closed-over `bank` variable:
+  // QuestionRow's image upload (below) awaits a real network call before its own onUpdate fires,
+  // so a plain `setBank(withQuestions(bank, ...))` here would rewrite the bank from whatever
+  // stale snapshot was in scope when the upload started — silently discarding any edit made
+  // elsewhere in the meantime (adversarial review finding: reachable by completely normal use,
+  // no attacker needed).
   const updateQuestion = (loc: Location, id: string, updater: (q: BankQuestion) => BankQuestion) => {
-    if (!bank) return;
-    const questions = questionsAt(bank, loc).map((q) => (q.id === id ? updater(q) : q));
-    setBank(withQuestions(bank, loc, questions));
+    setBank((prev) => {
+      if (!prev) return prev;
+      const questions = questionsAt(prev, loc).map((q) => (q.id === id ? updater(q) : q));
+      return withQuestions(prev, loc, questions);
+    });
   };
 
   const deleteQuestion = (loc: Location, id: string) => {
-    if (!bank) return;
-    setBank(withQuestions(bank, loc, questionsAt(bank, loc).filter((q) => q.id !== id)));
+    setBank((prev) => (prev ? withQuestions(prev, loc, questionsAt(prev, loc).filter((q) => q.id !== id)) : prev));
   };
 
   const addQuestion = (loc: Location) => {
-    if (!bank) return;
-    const id = `${loc.kind === "boss" ? "boss" : `r${loc.roomIndex}`}-${crypto.randomUUID().slice(0, 8)}`;
-    setBank(withQuestions(bank, loc, [...questionsAt(bank, loc), { kind: "text", id, text: "", answer: "" }]));
+    setBank((prev) => {
+      if (!prev) return prev;
+      const id = `${loc.kind === "boss" ? "boss" : `r${loc.roomIndex}`}-${crypto.randomUUID().slice(0, 8)}`;
+      return withQuestions(prev, loc, [...questionsAt(prev, loc), { kind: "text", id, text: "", answer: "" }]);
+    });
+  };
+
+  /** Uploads an image file to /api/bank/image and returns its R2 key, or throws with a message
+   * suitable for display. Called from QuestionRow; kept here so it can use the same ownerKey the
+   * rest of the page already has. */
+  const uploadImage = async (file: File): Promise<string> => {
+    const res = await fetch(bankImageApiBase(), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${ownerKey}`, "Content-Type": file.type },
+      body: file,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const { key } = (await res.json()) as { key: string };
+    return key;
   };
 
   return (
@@ -211,6 +240,7 @@ export default function BankEditorPage() {
               onUpdate={(id, updater) => updateQuestion({ kind: "room", roomIndex }, id, updater)}
               onDelete={(id) => deleteQuestion({ kind: "room", roomIndex }, id)}
               onAdd={() => addQuestion({ kind: "room", roomIndex })}
+              onUploadImage={uploadImage}
             />
           ))}
           <RoomEditor
@@ -220,6 +250,7 @@ export default function BankEditorPage() {
             onUpdate={(id, updater) => updateQuestion({ kind: "boss" }, id, updater)}
             onDelete={(id) => deleteQuestion({ kind: "boss" }, id)}
             onAdd={() => addQuestion({ kind: "boss" })}
+            onUploadImage={uploadImage}
           />
           <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving}>
             {saving ? "儲存中…" : "儲存全部變更"}
@@ -237,6 +268,7 @@ function RoomEditor({
   onUpdate,
   onDelete,
   onAdd,
+  onUploadImage,
 }: {
   testId: string;
   title: string;
@@ -244,6 +276,7 @@ function RoomEditor({
   onUpdate: (id: string, updater: (q: BankQuestion) => BankQuestion) => void;
   onDelete: (id: string) => void;
   onAdd: () => void;
+  onUploadImage: (file: File) => Promise<string>;
 }) {
   return (
     <Panel className="flex flex-col gap-2 p-4">
@@ -255,6 +288,7 @@ function RoomEditor({
             question={q}
             onUpdate={(updater) => onUpdate(q.id, updater)}
             onDelete={() => onDelete(q.id)}
+            onUploadImage={onUploadImage}
           />
         ))}
         <PixelButton onClick={onAdd}>+ 新增題目</PixelButton>
@@ -266,20 +300,38 @@ function RoomEditor({
 /** A fresh question of the given kind, keeping only `id`/`text` — switching kind never carries
  * over the other kind's fields (no auto-conversion; the two kinds' content isn't comparable). */
 function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): BankQuestion {
-  return kind === "text"
-    ? { kind: "text", id: q.id, text: q.text, answer: "" }
-    : { kind: "multipleChoice", id: q.id, text: q.text, options: ["", ""], correctIndex: UNSET_CORRECT_INDEX };
+  if (kind === "text") return { kind: "text", id: q.id, text: q.text, answer: "" };
+  if (kind === "image") return { kind: "image", id: q.id, text: q.text, answer: "", imageKey: "" };
+  return { kind: "multipleChoice", id: q.id, text: q.text, options: ["", ""], correctIndex: UNSET_CORRECT_INDEX };
 }
 
 function QuestionRow({
   question: q,
   onUpdate,
   onDelete,
+  onUploadImage,
 }: {
   question: BankQuestion;
   onUpdate: (updater: (q: BankQuestion) => BankQuestion) => void;
   onDelete: () => void;
+  onUploadImage: (file: File) => Promise<string>;
 }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  const handleFile = async (file: File) => {
+    setUploading(true);
+    setUploadError("");
+    try {
+      const key = await onUploadImage(file);
+      onUpdate((cur) => (cur.kind === "image" ? { ...cur, imageKey: key } : cur));
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "上傳失敗");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
       <div className="flex gap-2">
@@ -297,6 +349,7 @@ function QuestionRow({
         >
           <option value="text">問答</option>
           <option value="multipleChoice">選擇</option>
+          <option value="image">圖片</option>
         </select>
       </div>
 
@@ -311,6 +364,50 @@ function QuestionRow({
           <PixelButton variant="flee" onClick={onDelete}>
             刪除
           </PixelButton>
+        </div>
+      ) : q.kind === "image" ? (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            {/* Native file inputs can't be restyled directly — sr-only + a px-btn label is the
+                standard pattern, so this matches the page's other pixel-styled controls instead
+                of showing the browser's default control (design review finding). */}
+            <input
+              id={`image-upload-${q.id}`}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              aria-label="上傳圖片"
+              disabled={uploading}
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = ""; // lets re-selecting the same file re-trigger onChange
+                if (file) void handleFile(file);
+              }}
+            />
+            <label htmlFor={`image-upload-${q.id}`} className={`px-btn${uploading ? " pointer-events-none opacity-55" : ""}`}>
+              選擇圖片
+            </label>
+            {uploading && <span className="text-[13px]">上傳中…</span>}
+            {q.imageKey && !uploading && <span className="text-[13px]">已上傳（{q.imageKey.slice(0, 8)}…）</span>}
+          </div>
+          {uploadError && (
+            // Tinted background, not colored text on cream — matches the top-level error Panel's
+            // pattern (line ~217); plain --danger text here fails contrast (design review finding).
+            <Panel role="alert" className="text-[13px]" style={{ background: "#ffd9d9" }}>
+              {uploadError}
+            </Panel>
+          )}
+          <div className="flex gap-2">
+            <input
+              className="px-input flex-1"
+              aria-label="答案"
+              value={q.answer}
+              onChange={(e) => onUpdate((cur) => (cur.kind === "image" ? { ...cur, answer: e.target.value } : cur))}
+            />
+            <PixelButton variant="flee" onClick={onDelete}>
+              刪除
+            </PixelButton>
+          </div>
         </div>
       ) : (
         <div className="flex flex-col gap-1">

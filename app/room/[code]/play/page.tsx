@@ -10,7 +10,7 @@ import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom, type SpectatorVi
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
-import { DialogueBox, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { DialogueBox, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon, hideOnImageError } from "@/components/pixel";
 import { PARTY_HOST } from "@/lib/party-host";
 
 type LobbyState = { teams: { id: string; name: string }[] };
@@ -205,6 +205,24 @@ export default function PlayPage() {
               <div>{turn.team.name} 正在面對</div>
               <div className="text-[18px]">{turn.monster.name}</div>
             </div>
+          </Panel>
+        )}
+
+        {game && !finished && game.question?.imageUrl && (
+          <Panel className="flex justify-center px-3 py-3">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a remote R2 URL, not a local asset next/image can optimize */}
+            <img
+              // Forces a fresh DOM node per question: hideOnImageError sets style.display
+              // imperatively, outside React's own style diff, so without a key tied to the
+              // question React would reuse the same <img> node across consecutive image
+              // questions and a single broken image would stay hidden for every question after
+              // it (adversarial review finding).
+              key={game.question.id}
+              src={game.question.imageUrl}
+              alt="題目圖片"
+              style={{ maxWidth: "100%", maxHeight: 200, objectFit: "contain" }}
+              onError={hideOnImageError}
+            />
           </Panel>
         )}
 
