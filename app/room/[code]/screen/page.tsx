@@ -3,7 +3,7 @@
 // The shared big screen. Public: it only ever receives the spectator view and
 // never a host-only message, so it can be cast to a TV without leaking answers.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
@@ -12,10 +12,18 @@ import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
+import { pickVoice, shouldSpeakEpilogue, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon, hideOnImageError } from "@/components/pixel";
 import { PARTY_HOST } from "@/lib/party-host";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
+
+const TTS_ENABLED_STORAGE = "screen-tts-enabled";
+
+/** True only in a browser that actually implements the Web Speech API — the toggle button
+ * doesn't render at all otherwise (a rendered-but-disabled button implies the feature could
+ * work here if only the user did something, which isn't true). */
+const ttsSupported = () => typeof window !== "undefined" && "speechSynthesis" in window;
 
 type Lobby = { id: string; name: string }[];
 type Play = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
@@ -248,11 +256,99 @@ export default function ScreenPage() {
   const [epilogue, setEpilogue] = useState<string | null>(null);
   const epoch = useRef<string | null>(null);
 
+  // --- TTS (docs/designs/dm-voice-narration-tts.md) ---
+  const [ttsOn, setTtsOn] = useState(false);
+  const [ttsVoice, setTtsVoice] = useState<SpeechSynthesisVoice | undefined>(undefined);
+  /** Reset on every socket open AND on every LOBBY (a room reset can happen without a socket
+   * reconnect, and a new game's eventIds start over from 0 — see tts.ts's shouldSpeakNarration
+   * doc comment). null = "not yet established"; the next STATE message sets it from that
+   * event's own eventId, so onConnect's resent lastNarration (same eventId as that STATE) is
+   * correctly excluded, and a brand-new room with no narration yet (baseline 0) still speaks
+   * its first live line. */
+  const narrationBaseline = useRef<number | null>(null);
+  /** The last NARRATION this connection has SEEN, not just spoken — updated on every NARRATION
+   * message regardless of whether shouldSpeakNarration() decided to speak it. This is what lets
+   * a later correction (same eventId, different text) to the connect-time replay be recognized
+   * and spoken: if this only tracked what was actually spoken, the replay (correctly not
+   * spoken) would never update it, and a correction to it would have nothing to compare against
+   * (adversarial review finding — see shouldSpeakNarration's doc comment for the fixed bug). */
+  const lastSpokenNarration = useRef<SpokenNarration | null>(null);
+  /** Whether a live GAME_OVER has been seen since the last baseline reset — see
+   * shouldSpeakEpilogue's doc comment for why this, not "first EPILOGUE seen", is the correct
+   * live-vs-replay signal. */
+  const sawLiveGameOver = useRef(false);
+
+  // Read in an effect, not the initial render: ttsSupported() reads `window`, which doesn't
+  // exist during SSR — rendering the toggle from the first client render would disagree with
+  // the server-rendered HTML and trigger a hydration mismatch (same reasoning as
+  // app/bank-editor/page.tsx's useOwnerKey).
+  const [showTtsToggle, setShowTtsToggle] = useState(false);
+  useEffect(() => {
+    function readTtsPrefs() {
+      if (ttsSupported()) setShowTtsToggle(true);
+      try {
+        const stored = localStorage.getItem(TTS_ENABLED_STORAGE) === "true";
+        if (stored) setTtsOn(true);
+      } catch {
+        // Private browsing / blocked storage: TTS just stays off (the default anyway).
+      }
+    }
+    readTtsPrefs();
+  }, []);
+
+  useEffect(() => {
+    if (!ttsSupported()) return;
+    const load = () => {
+      const found = pickVoice(window.speechSynthesis.getVoices());
+      if (found) setTtsVoice(found);
+    };
+    load(); // some browsers already have the list on first call
+    window.speechSynthesis.addEventListener("voiceschanged", load);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+  }, []);
+
+  /** Cancels anything in progress, then queues each line as its own utterance —
+   * speechSynthesis plays consecutive speak() calls in order automatically. No-ops (does not
+   * even cancel) when TTS is off, the API is unsupported, or no matching voice loaded yet. */
+  function speak(lines: string[]) {
+    if (!ttsOn || !ttsSupported() || !ttsVoice) return;
+    window.speechSynthesis.cancel();
+    for (const line of lines) {
+      const utter = new SpeechSynthesisUtterance(line);
+      utter.voice = ttsVoice;
+      utter.lang = ttsVoice.lang;
+      window.speechSynthesis.speak(utter);
+    }
+  }
+
+  function toggleTts() {
+    if (!ttsOn && ttsSupported()) {
+      // The unlock speak() call must run synchronously inside this click handler — Safari/iOS
+      // gate audio output behind a user gesture that itself produces sound (see design doc's
+      // Approach A note). A later, async speak() from a NarrationEvent arriving minutes on
+      // wouldn't count as "inside the gesture" and can silently fail there.
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+    } else if (ttsOn) {
+      window.speechSynthesis.cancel();
+    }
+    setTtsOn((on) => {
+      const next = !on;
+      try {
+        localStorage.setItem(TTS_ENABLED_STORAGE, String(next));
+      } catch {
+        // Nothing to do — the toggle still works for this page load, just won't be remembered.
+      }
+      return next;
+    });
+  }
+
   const socket = usePartySocket({
     host: PARTY_HOST,
     room: code,
     onOpen() {
       setRested(false);
+      narrationBaseline.current = null;
+      sawLiveGameOver.current = false;
     },
     onClose(event: CloseEvent) {
       // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
@@ -278,42 +374,74 @@ export default function ScreenPage() {
           setGame(null);
           setNarration(null);
           setEpilogue(null);
+          // A room reset can arrive without a socket reconnect, and the next game's eventIds
+          // start over from 0 — re-arm the baseline the same way onOpen does.
+          narrationBaseline.current = null;
+          sawLiveGameOver.current = false;
+          window.speechSynthesis?.cancel();
           break;
         case "STATE":
           setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
+          if (narrationBaseline.current === null) narrationBaseline.current = msg.eventId;
           break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
+          if (narrationBaseline.current !== null) {
+            const speakIt = shouldSpeakNarration(msg, narrationBaseline.current, lastSpokenNarration.current);
+            lastSpokenNarration.current = msg; // always, even when not spoken — see the ref's doc comment
+            if (speakIt) speak(linesOf(msg));
+          }
           break;
         case "EPILOGUE":
           setEpilogue(msg.text);
+          if (shouldSpeakEpilogue(sawLiveGameOver.current)) speak([msg.text]);
           break;
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
+          sawLiveGameOver.current = true;
           break;
       }
     },
   });
 
   return (
-    <Stage>
-      {!game && <Lobby code={code} teams={lobby} />}
-      {game?.phase === "playing" && <Playing view={game.view} question={game.question} eventId={game.eventId} narration={narration} />}
-      {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} narration={narration} epilogue={epilogue} />}
-      {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
-      <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
-        {rested && (
-          <div role="status" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
-            {RESTED_NOTICE}
-            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-1 text-[18px]">{RESTED_RECONNECT_LABEL}</PixelButton>
-          </div>
-        )}
-        {reset && (
-          <div className="text-center text-[20px] text-white" style={{ background: "var(--danger)", padding: 6 }}>
-            伺服器重新啟動，遊戲已重置
-          </div>
-        )}
-      </div>
-    </Stage>
+    <>
+      <Stage>
+        {!game && <Lobby code={code} teams={lobby} />}
+        {game?.phase === "playing" && <Playing view={game.view} question={game.question} eventId={game.eventId} narration={narration} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} narration={narration} epilogue={epilogue} />}
+        {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
+        <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
+          {rested && (
+            <div role="status" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
+              {RESTED_NOTICE}
+              <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-1 text-[18px]">{RESTED_RECONNECT_LABEL}</PixelButton>
+            </div>
+          )}
+          {reset && (
+            <div className="text-center text-[20px] text-white" style={{ background: "var(--danger)", padding: 6 }}>
+              伺服器重新啟動，遊戲已重置
+            </div>
+          )}
+        </div>
+      </Stage>
+      {/* Outside <Stage>, fixed to the real viewport (not scaled/letterboxed with the 960x540
+          canvas) — the 960x540 stage has no free margin left in any phase (Lobby/Playing/
+          Finished all use the full width), so a toggle drawn inside it would collide with the
+          team-status row or the top banner depending on game phase. A real-size corner control,
+          like a video player's mute button living outside the video frame, sidesteps all of
+          that and stays a consistent, comfortably tappable size regardless of TV scale
+          (/review design finding: the original in-Stage placement was both too small a touch
+          target and overlapped the team-status row during Playing). */}
+      {showTtsToggle && (
+        <PixelButton
+          onClick={toggleTts}
+          className="!m-0 !px-4 !py-2 text-[16px]"
+          style={{ position: "fixed", bottom: 12, right: 12, zIndex: 30 }}
+        >
+          {ttsOn ? "🔊 語音開" : "🔇 語音關"}
+        </PixelButton>
+      )}
+    </>
   );
 }
