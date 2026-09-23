@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
 
 /** Stubs window.speechSynthesis before the page loads, recording every speak() call's text
  * and every cancel(). getVoices() returns one usable zh-TW voice so pickVoice() finds it
@@ -34,6 +34,7 @@ async function stubSpeechSynthesis(page: Page) {
 }
 
 const ttsCalls = (page: Page) => page.evaluate(() => (window as unknown as { __ttsCalls: string[] }).__ttsCalls);
+const ttsCancelCount = (page: Page) => page.evaluate(() => (window as unknown as { __ttsCancelCount: () => number }).__ttsCancelCount());
 
 test("screen TTS toggle: renders, persists the preference, and unlocks audio on click", async ({ page }) => {
   await stubSpeechSynthesis(page);
@@ -98,4 +99,119 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
   await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
   const calls = await ttsCalls(screen);
   expect(calls.length).toBeGreaterThanOrEqual(2); // unlock + at least the result line (+ then, if the scripted line has one)
+});
+
+test("screen TTS: turning the toggle off cancels any speech in progress", async ({ browser }) => {
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("甲隊");
+  const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("乙隊");
+
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await stubSpeechSynthesis(screen);
+  await screen.goto(`/room/${code}/screen`);
+  await expect(screen.getByText("輪到：甲隊")).toBeVisible();
+
+  const toggle = screen.getByRole("button", { name: /語音/ });
+  await toggle.click(); // on: 1 cancel-free unlock utterance so far
+  await host.getByRole("button", { name: "答對！" }).click();
+  await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
+
+  const cancelsBeforeToggleOff = await ttsCancelCount(screen);
+  await toggle.click(); // off, mid-utterance
+  await expect(toggle).toHaveText("🔇 語音關");
+  expect(await ttsCancelCount(screen)).toBeGreaterThan(cancelsBeforeToggleOff);
+});
+
+test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ browser }) => {
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("甲隊");
+  const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("乙隊");
+
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+
+  const screenCtx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  const screen = await screenCtx.newPage();
+  await stubSpeechSynthesis(screen);
+  const sockets: WebSocketRoute[] = [];
+  await screen.routeWebSocket(/:1996\//, (ws) => {
+    sockets.push(ws);
+    ws.connectToServer();
+  });
+  await screen.goto(`/room/${code}/screen`);
+  await expect(screen.getByText("輪到：甲隊")).toBeVisible();
+
+  await screen.getByRole("button", { name: /語音/ }).click();
+  await host.getByRole("button", { name: "答對！" }).click();
+  await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
+
+  const cancelsBeforeReset = await ttsCancelCount(screen);
+  // Inject a synthetic LOBBY frame (a real server restart/room-reset sends exactly this) — the
+  // client-side handling under test doesn't care whether the server or this test sent it.
+  await expect.poll(() => sockets.length).toBe(1);
+  sockets[0].send(JSON.stringify({ type: "LOBBY", teams: [], roomEpoch: crypto.randomUUID() }));
+  await expect.poll(() => ttsCancelCount(screen)).toBeGreaterThan(cancelsBeforeReset);
+});
+
+test("screen TTS: a host correction (HOST_EDIT_NARRATION) re-speaks the corrected text", async ({ browser }) => {
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("甲隊");
+  const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("乙隊");
+
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await stubSpeechSynthesis(screen);
+  await screen.goto(`/room/${code}/screen`);
+  await expect(screen.getByText("輪到：甲隊")).toBeVisible();
+  await screen.getByRole("button", { name: /語音/ }).click();
+
+  await host.getByRole("button", { name: "答對！" }).click();
+  await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
+
+  // Host opens "更多", corrects the just-spoken line, sends it — same eventId, different text.
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  const editSection = host.locator("section", { hasText: "改寫目前旁白" });
+  const correctedText = "測試修正後的旁白文字";
+  await editSection.locator("input").fill(correctedText);
+  await editSection.getByRole("button", { name: "送出，立刻換上大螢幕" }).click();
+
+  await expect.poll(() => ttsCalls(screen)).toContainEqual(correctedText);
 });

@@ -41,9 +41,3 @@ const TW_HANT_RE = /(TW|Hant)/i;
 export function pickVoice<V extends { lang: string }>(voices: readonly V[]): V | undefined {
   return voices.find((v) => ZH_OR_CMN_PREFIX_RE.test(v.lang) && TW_HANT_RE.test(v.lang));
 }
-
-/** The lines to speak, in order, for a NARRATION message — mirrors lib/narration/client.ts's
- * linesOf() so TTS never drops the `then` (next-team) line that the screen already displays. */
-export function speechLinesOf(narration: SpokenNarration): string[] {
-  return [narration.line, ...(narration.then ? [narration.then] : [])];
-}

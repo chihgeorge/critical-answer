@@ -12,7 +12,7 @@ import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
-import { pickVoice, shouldSpeakEpilogue, shouldSpeakNarration, speechLinesOf, type SpokenNarration } from "@/lib/narration/tts";
+import { pickVoice, shouldSpeakEpilogue, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon, hideOnImageError } from "@/components/pixel";
 import { PARTY_HOST } from "@/lib/party-host";
 import { Qr } from "@/components/qr";
@@ -382,7 +382,7 @@ export default function ScreenPage() {
           setNarration((n) => keepLatest(n, msg));
           if (narrationBaseline.current !== null && shouldSpeakNarration(msg, narrationBaseline.current, lastSpokenNarration.current)) {
             lastSpokenNarration.current = msg;
-            speak(speechLinesOf(msg));
+            speak(linesOf(msg));
           }
           break;
         case "EPILOGUE":
@@ -398,33 +398,43 @@ export default function ScreenPage() {
   });
 
   return (
-    <Stage>
-      {!game && <Lobby code={code} teams={lobby} />}
-      {game?.phase === "playing" && <Playing view={game.view} question={game.question} eventId={game.eventId} narration={narration} />}
-      {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} narration={narration} epilogue={epilogue} />}
-      {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
-      <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
-        {rested && (
-          <div role="status" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
-            {RESTED_NOTICE}
-            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-1 text-[18px]">{RESTED_RECONNECT_LABEL}</PixelButton>
-          </div>
-        )}
-        {reset && (
-          <div className="text-center text-[20px] text-white" style={{ background: "var(--danger)", padding: 6 }}>
-            伺服器重新啟動，遊戲已重置
-          </div>
-        )}
-      </div>
+    <>
+      <Stage>
+        {!game && <Lobby code={code} teams={lobby} />}
+        {game?.phase === "playing" && <Playing view={game.view} question={game.question} eventId={game.eventId} narration={narration} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} narration={narration} epilogue={epilogue} />}
+        {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
+        <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
+          {rested && (
+            <div role="status" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
+              {RESTED_NOTICE}
+              <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-1 text-[18px]">{RESTED_RECONNECT_LABEL}</PixelButton>
+            </div>
+          )}
+          {reset && (
+            <div className="text-center text-[20px] text-white" style={{ background: "var(--danger)", padding: 6 }}>
+              伺服器重新啟動，遊戲已重置
+            </div>
+          )}
+        </div>
+      </Stage>
+      {/* Outside <Stage>, fixed to the real viewport (not scaled/letterboxed with the 960x540
+          canvas) — the 960x540 stage has no free margin left in any phase (Lobby/Playing/
+          Finished all use the full width), so a toggle drawn inside it would collide with the
+          team-status row or the top banner depending on game phase. A real-size corner control,
+          like a video player's mute button living outside the video frame, sidesteps all of
+          that and stays a consistent, comfortably tappable size regardless of TV scale
+          (/review design finding: the original in-Stage placement was both too small a touch
+          target and overlapped the team-status row during Playing). */}
       {showTtsToggle && (
         <PixelButton
           onClick={toggleTts}
-          className="absolute !m-0 !px-3 !py-1 text-[14px]"
-          style={{ top: 8, right: 8, zIndex: 21 }}
+          className="!m-0 !px-4 !py-2 text-[16px]"
+          style={{ position: "fixed", bottom: 12, right: 12, zIndex: 30 }}
         >
           {ttsOn ? "🔊 語音開" : "🔇 語音關"}
         </PixelButton>
       )}
-    </Stage>
+    </>
   );
 }

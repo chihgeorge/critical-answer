@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldSpeakNarration, shouldSpeakEpilogue, pickVoice, speechLinesOf } from "./tts";
+import { shouldSpeakNarration, shouldSpeakEpilogue, pickVoice } from "./tts";
 
 describe("shouldSpeakNarration", () => {
   it("suppresses onConnect's resent lastNarration (eventId at or below the connection baseline)", () => {
@@ -56,12 +56,3 @@ describe("pickVoice", () => {
   });
 });
 
-describe("speechLinesOf", () => {
-  it("returns just the result line when there's no follow-up", () => {
-    expect(speechLinesOf({ eventId: 1, line: "答對了" })).toEqual(["答對了"]);
-  });
-
-  it("returns both lines in order when a follow-up exists", () => {
-    expect(speechLinesOf({ eventId: 1, line: "答對了", then: "輪到藍隊了" })).toEqual(["答對了", "輪到藍隊了"]);
-  });
-});
