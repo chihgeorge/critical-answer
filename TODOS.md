@@ -146,11 +146,27 @@
 
 **Cons:** 素材授權要弄清楚（CC0 或自行生成），這比寫程式更花時間。
 
-**Context:** 見同上 CEO plan。
+**Context:** 見同上 CEO plan。2026-09-23 比對 `hitster_online` repo（同類 party-game 專案）時注意到它的 `VictoryPlayer.tsx` 有「瀏覽器擋自動播放 → 顯示按鈕讓使用者手動點一下解鎖」的處理模式，跟這次 DM 語音旁白（`lib/narration/tts.ts` 的解鎖 utterance）解決的是同一類問題，可以直接參考那個模式，不用重新設計。
 
 **Effort:** S（人工約 1 天 / CC 約 30 分鐘）　**Priority:** P3
 
 **Depends on / blocked by:** 第二輪的 `NarrationEvent` 接縫完成、素材授權來源確定。
+
+---
+
+## localStorage「讀取，沒有就生成並存起來」邏輯重複
+
+**What:** 把 `useOwnerKey`（`app/bank-editor/page.tsx`）跟 TTS 開關偏好（`app/room/[code]/screen/page.tsx`）裡各自寫一份的「讀 localStorage、沒有就生成一個值存起來」邏輯，抽成一個共用的小工具函式。
+
+**Why:** 純粹 DRY，不是 bug。2026-09-23 比對 `hitster_online` repo 時注意到它把同樣的邏輯抽成 `lib/device-id.ts` 的 `getOrCreatePersistedId(key)`，一行函式，值得抄這個做法。
+
+**Pros:** 少幾行重複程式碼，之後要加第三個用到 localStorage 偏好的功能時直接複用。
+
+**Cons:** 目前只有 2 個地方用到，效益有限；抽出來本身有一點重構風險（要小心兩邊 SSR-hydration-mismatch 的處理方式是否一致）。
+
+**Effort:** XS（人工約 15 分鐘 / CC 約 10 分鐘）　**Priority:** P4
+
+**Depends on / blocked by:** 無。
 
 ---
 
