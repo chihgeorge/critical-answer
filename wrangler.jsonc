@@ -24,6 +24,18 @@
   // .dev.vars (see .dev.vars.example). The wildcard matches Vercel preview deploy URLs, per
   // lib/origin.ts's doc comment; the frontend's first production deploy is
   // https://critical-answer.vercel.app (2026-09-22).
-  "vars": { "ALLOWED_ORIGINS": "https://critical-answer.vercel.app,https://critical-answer-*.vercel.app" },
+  //
+  // R2_PUBLIC_BASE_URL is a placeholder until the "images" bucket below is created and its r2.dev
+  // public access is enabled (one-time manual Cloudflare dashboard step — see
+  // docs/designs/image-question-type.md's Dependencies section). Replace with the real
+  // https://pub-<hash>.r2.dev URL Cloudflare generates once that's done.
+  "vars": {
+    "ALLOWED_ORIGINS": "https://critical-answer.vercel.app,https://critical-answer-*.vercel.app",
+    "R2_PUBLIC_BASE_URL": "https://REPLACE-ME.r2.dev"
+  },
+  // Question-bank images (docs/designs/image-question-type.md). Public read access via the
+  // bucket's r2.dev subdomain must be enabled manually in the dashboard — not part of `wrangler
+  // deploy` — before uploaded images will actually be servable.
+  "r2_buckets": [{ "binding": "images", "bucket_name": "critical-answer-images" }],
   "observability": { "enabled": true }
 }

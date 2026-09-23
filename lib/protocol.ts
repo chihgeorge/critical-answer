@@ -31,7 +31,8 @@ export const MAX_TEAMS = 8;
 
 /** The question the team in turn faces, without its answer: safe for /screen and /play.
  * `options` is present only for multipleChoice questions (never `correctIndex` — see
- * question-bank.ts's publicQuestion() field-picking discipline). */
+ * question-bank.ts's publicQuestion() field-picking discipline). `imageUrl` is present only
+ * for `image` questions (a public R2 URL, never the raw storage key). */
 export interface PublicQuestion {
   id: string;
   text: string;
@@ -39,6 +40,7 @@ export interface PublicQuestion {
   boss: boolean;
   monster: { name: string; sprite: SpriteKind; hue: number };
   options?: string[];
+  imageUrl?: string;
 }
 
 export type ClientMessage =

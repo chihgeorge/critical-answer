@@ -1262,3 +1262,40 @@ function currentTurnAny(room: DungeonRoom) {
   const g = room.game!;
   return currentTurnTeamId(g);
 }
+
+describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
+  const imageBank: Bank = {
+    rooms: [
+      {
+        monster: { name: "史萊姆", sprite: "slime", hue: 0 },
+        baseDifficulty: 1,
+        questions: [{ kind: "image", id: "r0-img1", text: "這是誰？", answer: "松鼠", imageKey: "55555555-5555-5555-5555-555555555555" }],
+      },
+    ],
+    boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [{ kind: "text", id: "boss-q1", text: "？", answer: "x" }] },
+  };
+
+  it("builds the broadcast question's imageUrl from room.env.R2_PUBLIC_BASE_URL", () => {
+    const roomIO = { ...(makeRoom() as any), env: { R2_PUBLIC_BASE_URL: "https://pub.example.r2.dev" } } as RoomIO;
+    const room = new DungeonRoom(roomIO, () => 0, { bank: imageBank });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    const state = lastBroadcast(room);
+    expect(state.question.imageUrl).toBe("https://pub.example.r2.dev/55555555-5555-5555-5555-555555555555");
+    expect(state.question).not.toHaveProperty("answer");
+  });
+
+  it("falls back to a base-less path (never throws) when R2_PUBLIC_BASE_URL is unset", () => {
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: imageBank }); // no env at all
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    const state = lastBroadcast(room);
+    expect(state.question.imageUrl).toBe("/55555555-5555-5555-5555-555555555555");
+  });
+});
