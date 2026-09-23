@@ -132,6 +132,24 @@
 
 ---
 
+## ESLint 10 / TypeScript 7 升級被上游卡住
+
+**What:** `npm outdated` 列出的兩個 major 版本升級目前做不了：ESLint 9→10（`eslint-config-next@16.3.6` 內建的 `eslint-plugin-react` 用了 ESLint 10 移除的 API，直接噴 `contextOrFilename.getFilename is not a function`）、TypeScript 5→7（`typescript-eslint` 明確拒絕載入，官方公告要等 7.1+ 才支援）。
+
+**Why:** 2026-09-23 逐一嘗試升級時發現，兩者都不是設定問題，是上游套件（`eslint-config-next`、`typescript-eslint`）還沒跟上，沒有繞過的辦法。
+
+**Pros:** 之後升級好處：更快的 lint/typecheck（TS 7 是 Go 原生編譯器，官方號稱 8–12 倍）、ESLint 10 的新規則。
+
+**Cons:** 現在做不了，勉強做會直接打斷開發環境。
+
+**Context:** 已完成同批的其他升級：React 19.2.4→19.3.0、Vitest 4.1.11→5.0.1、`concurrently` 9→10（v0.7.3.0）。
+
+**Effort:** 不確定（等上游）　**Priority:** P4
+
+**Depends on / blocked by:** `eslint-config-next` 支援 ESLint 10；`typescript-eslint` 支援 TypeScript ≥7.1。
+
+---
+
 ## 等待隊伍的觀眾反應（表情 / 加油 / 噓聲）
 
 **What:** 等待中的隊伍在手機上點表情，大螢幕浮現，DM 旁白可提到。
