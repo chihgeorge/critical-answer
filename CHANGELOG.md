@@ -2,6 +2,15 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.6.0.0] - 2026-09-23
+
+### Added
+- Questions can now include an uploaded picture: authors pick "圖片" in the question-bank editor, choose an image file, and write the answer — same as a text question, but with a picture to look at.
+- Teams and the big screen both show the question's picture, sized to fit without cropping. If a picture ever fails to load, it just quietly disappears — the question text and judging keep working either way.
+
+### Changed
+- Uploaded pictures are stored in Cloudflare's object storage and served from a stable, long-lived URL. Removing or replacing a picture (deleting its question, swapping the image, or switching a question away from the picture type) cleans up the old file automatically.
+
 ## [0.5.0.0] - 2026-09-22
 
 ### Added
