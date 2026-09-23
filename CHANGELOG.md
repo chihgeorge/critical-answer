@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.7.2.0] - 2026-09-23
+
+### Fixed
+- Patched a critical and two high-severity dependency vulnerabilities (Next.js unauthenticated RCE on Windows-hosted servers, Next.js unauthenticated RCE in the AVIF image-optimization path, a postcss XSS/path-traversal chain) by bumping Next.js 16.2.4 → 16.3.6. Neither RCE's precondition applies to this app today, but the fix was free.
+- Replaced a deprecated partyserver API (`lobby.party`) in the Worker's room-vs-other-bindings security gate with its typed replacement (`lobby.className`), pre-empting a behavior change partyserver's own deprecation notice says is coming in its next major version.
+
 ## [0.7.1.0] - 2026-09-23
 
 ### Added

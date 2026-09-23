@@ -185,7 +185,7 @@ export default {
       });
     }
 
-    const gate = (req: Request, lobby: { party: string }) => entryGate(req, lobby, env.ALLOWED_ORIGINS ?? "");
+    const gate = (req: Request, lobby: { className: string }) => entryGate(req, lobby, env.ALLOWED_ORIGINS ?? "");
     return (await routePartykitRequest(request, env, { onBeforeConnect: gate, onBeforeRequest: gate })) ?? notFound();
   },
 } satisfies ExportedHandler<Env>;
