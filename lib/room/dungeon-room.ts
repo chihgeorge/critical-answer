@@ -104,7 +104,7 @@ export class DungeonRoom {
   /** `rng` is injectable so tests can make question dealing deterministic. */
   /** Counts the start and every accepted judgment; each gets exactly one NARRATION. */
   private eventSeq = 0;
-  private lastNarration: { eventId: number; line: string; then?: string } | null = null;
+  private lastNarration: { eventId: number; lines: string[] } | null = null;
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
@@ -181,14 +181,14 @@ export class DungeonRoom {
       fallback: this.scripted,
       holdMs: opts.holdMs,
       epilogueHoldMs: opts.epilogueHoldMs,
-      emit: (eventId, line, _provider, event, then) => {
+      emit: (eventId, lines, _provider, event) => {
         if (event.type === "epilogue") {
-          this.epilogue = line;
-          this.broadcast({ type: "EPILOGUE", text: line });
+          this.epilogue = lines[0];
+          this.broadcast({ type: "EPILOGUE", text: lines[0] });
           return;
         }
-        this.lastNarration = { eventId, line, ...(then ? { then } : {}) };
-        this.broadcast({ type: "NARRATION", eventId, line, ...(then ? { then } : {}) });
+        this.lastNarration = { eventId, lines };
+        this.broadcast({ type: "NARRATION", eventId, lines });
       },
       record: (entry) => this.addTranscript(entry),
     });
@@ -687,11 +687,16 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "empty_line" });
       return;
     }
-    const { eventId, then } = this.lastNarration;
-    this.lastNarration = { eventId, line, ...(then ? { then } : {}) };
+    // Edits only the first segment (the "what happened" line) — the host has no visibility into
+    // which segment a given client is currently displaying (that timing is client-side, in
+    // Sequence), so editing later segments is left for a future redesign. See
+    // docs/designs/multi-segment-narration.md's Open Questions.
+    const { eventId, lines } = this.lastNarration;
+    const newLines = [line, ...lines.slice(1)];
+    this.lastNarration = { eventId, lines: newLines };
     this.editedLines = [...this.editedLines, line].slice(-STYLE_EXAMPLES);
     this.addTranscript({ kind: "edit", at: new Date().toISOString(), text: line, eventId });
-    this.broadcast({ type: "NARRATION", eventId, line, ...(then ? { then } : {}) });
+    this.broadcast({ type: "NARRATION", eventId, lines: newLines });
   }
 
   private handleHostStart(conn: Conn, aiNarration?: boolean) {

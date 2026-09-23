@@ -757,7 +757,7 @@ describe("narration (T5-T7)", () => {
     await flush();
     const narr = all(room).filter((m) => m.type === "NARRATION");
     expect(narr.map((m) => m.eventId)).toEqual([1, 2, 3]);
-    for (const n of narr) expect(n.line.length).toBeGreaterThan(0);
+    for (const n of narr) expect(n.lines[0].length).toBeGreaterThan(0);
   });
 
   it("names the team that was judged in the line", async () => {
@@ -766,7 +766,7 @@ describe("narration (T5-T7)", () => {
     judgeCorrect(room, hostConn);
     await flush();
     const last = all(room).filter((m) => m.type === "NARRATION").at(-1);
-    expect(last.line).toContain("Team 0");
+    expect(last.lines[0]).toContain("Team 0");
   });
 
   it("a rejected judgment produces no event and no narration", async () => {
@@ -794,7 +794,7 @@ describe("narration (T5-T7)", () => {
     await sleep(60);
     const narr = all(room).filter((m) => m.type === "NARRATION");
     expect(narr).toHaveLength(1);
-    expect(narr[0].line).not.toBe("太慢的一行");
+    expect(narr[0].lines[0]).not.toBe("太慢的一行");
     await sleep(250);
     expect(all(room).filter((m) => m.type === "NARRATION")).toHaveLength(1); // late answer sends nothing
     expect(hostConn).toBeDefined();
@@ -804,7 +804,7 @@ describe("narration (T5-T7)", () => {
     const quick = { name: "quick", narrate: async () => "提供者的一行" };
     const { room } = start(2, { holdMs: 50, epilogueDelayMs: 0, provider: quick });
     await flush();
-    expect(all(room).find((m) => m.type === "NARRATION").line).toBe("提供者的一行");
+    expect(all(room).find((m) => m.type === "NARRATION").lines[0]).toBe("提供者的一行");
   });
 
   it("survives a provider that throws", async () => {
@@ -930,7 +930,7 @@ describe("LLM narration and director (T8-T10)", () => {
     const r = llmRoom(() => textReply("地城主親自開口了！"));
     begin(r);
     await sleep(30);
-    expect(narrations(r.room)[0].line).toBe("地城主親自開口了！");
+    expect(narrations(r.room)[0].lines[0]).toBe("地城主親自開口了！");
     expect(r.calls[0].model).toBe("claude-haiku-4-5");
     expect(transcript(r.room, r.hostConn)[0]).toMatchObject({ provider: "llm" });
   });
@@ -941,7 +941,7 @@ describe("LLM narration and director (T8-T10)", () => {
     judge(off.room, off.hostConn);
     await sleep(30);
     expect(off.calls).toHaveLength(0);
-    expect(narrations(off.room).every((n) => n.line !== "不該出現")).toBe(true);
+    expect(narrations(off.room).every((n) => n.lines[0] !== "不該出現")).toBe(true);
     const noKey = llmRoom(() => textReply("不該出現"), { key: null });
     begin(noKey, true);
     await sleep(30);
@@ -960,7 +960,7 @@ describe("LLM narration and director (T8-T10)", () => {
     const r = llmRoom(() => textReply("其實它叫新高山啦"));
     begin(r);
     await sleep(30);
-    expect(narrations(r.room)[0].line).not.toContain("新高山");
+    expect(narrations(r.room)[0].lines[0]).not.toContain("新高山");
     expect(transcript(r.room, r.hostConn)[0]).toMatchObject({ fallbackReason: "invalid_output" });
   });
 
@@ -1016,11 +1016,11 @@ describe("LLM narration and director (T8-T10)", () => {
       const first = narrations(r.room).at(-1);
       send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: "主持人改寫的一句" });
       const edited = narrations(r.room).at(-1);
-      expect(edited).toMatchObject({ eventId: first.eventId, line: "主持人改寫的一句" });
+      expect(edited).toMatchObject({ eventId: first.eventId, lines: ["主持人改寫的一句", ...first.lines.slice(1)] });
       expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ kind: "edit", text: "主持人改寫的一句", eventId: first.eventId });
       const late = makeConn("late");
       r.room.onConnect(late);
-      expect(sentMsgs(late).find((m) => m.type === "NARRATION").line).toBe("主持人改寫的一句");
+      expect(sentMsgs(late).find((m) => m.type === "NARRATION").lines[0]).toBe("主持人改寫的一句");
     });
 
     it("rejects an edit from a non-host, an edit with no line on screen, and an empty edit", async () => {
@@ -1034,7 +1034,7 @@ describe("LLM narration and director (T8-T10)", () => {
       expect(sentMsgs(intruder).at(-1)).toMatchObject({ error: "not_host" });
       send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: "   " });
       expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ error: "invalid_action" });
-      expect(narrations(r.room).at(-1).line).toBe("行");
+      expect(narrations(r.room).at(-1).lines[0]).toBe("行");
     });
 
     it("feeds the last five edited lines back as style examples", async () => {
@@ -1113,7 +1113,7 @@ describe("story moves on to the next team (two-line narration)", () => {
   it("the opening narration is followed by a line about the first team on turn", async () => {
     const { room } = begin();
     await flush();
-    expect(narrs(room)[0].then).toContain("Team 0");
+    expect(narrs(room)[0].lines.at(-1)).toContain("Team 0");
   });
 
   it("a judgment's narration carries a follow-up that names the team now on turn and its monster", async () => {
@@ -1122,9 +1122,9 @@ describe("story moves on to the next team (two-line narration)", () => {
     judge(room, hostConn); // Team 0 answers; Team 1 is next, still in the first room
     await flush();
     const n = narrs(room).at(-1);
-    expect(n.line).toContain("Team 0");
-    expect(n.then).toContain("Team 1");
-    expect(n.then).toContain("軟趴趴史萊姆");
+    expect(n.lines[0]).toContain("Team 0");
+    expect(n.lines.at(-1)).toContain("Team 1");
+    expect(n.lines.at(-1)).toContain("軟趴趴史萊姆");
   });
 
   it("names the right team after a wrong answer too (turn still passes)", async () => {
@@ -1132,15 +1132,15 @@ describe("story moves on to the next team (two-line narration)", () => {
     await flush();
     judge(room, hostConn, false);
     await flush();
-    expect(narrs(room).at(-1).then).toContain("Team 1");
+    expect(narrs(room).at(-1).lines.at(-1)).toContain("Team 1");
   });
 
   it("the killing blow has no follow-up: nobody is next", async () => {
     const { room, hostConn } = begin(1);
     for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) judge(room, hostConn);
     await sleep(40);
-    const kill = narrs(room).filter((m) => m.line).at(-1);
-    expect(kill.then).toBeUndefined();
+    const kill = narrs(room).at(-1);
+    expect(kill.lines).toHaveLength(2); // result + atmosphere, no transition — nobody is next
   });
 
   it("replays the follow-up to a late connection, and a host edit keeps it", async () => {
@@ -1150,11 +1150,13 @@ describe("story moves on to the next team (two-line narration)", () => {
     await flush();
     send(room, hostConn, { type: "HOST_EDIT_NARRATION", line: "主持人改的結果句" });
     const edited = narrs(room).at(-1);
-    expect(edited.line).toBe("主持人改的結果句");
-    expect(edited.then).toContain("Team 1");
+    expect(edited.lines[0]).toBe("主持人改的結果句");
+    expect(edited.lines.at(-1)).toContain("Team 1");
     const late = makeConn("late");
     room.onConnect(late);
-    expect(sentMsgs(late).find((m) => m.type === "NARRATION")).toMatchObject({ line: "主持人改的結果句", then: expect.stringContaining("Team 1") });
+    const replayed = sentMsgs(late).find((m) => m.type === "NARRATION");
+    expect(replayed.lines[0]).toBe("主持人改的結果句");
+    expect(replayed.lines.at(-1)).toContain("Team 1");
   });
 
   it("records the follow-up and who wrote it in the transcript", async () => {
@@ -1164,15 +1166,21 @@ describe("story moves on to the next team (two-line narration)", () => {
     await flush();
     send(room, hostConn, { type: "HOST_GET_TRANSCRIPT" });
     const t = sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT").entries;
-    expect(t.at(-1)).toMatchObject({ thenSource: "scripted" });
-    expect(t.at(-1).then).toContain("Team 1");
+    expect(t.at(-1).sources.at(-1)).toBe("scripted");
+    expect(t.at(-1).lines.at(-1)).toContain("Team 1");
   });
 
-  it("uses the model's own second line when it writes one", async () => {
+  it("uses the model's own second line for atmosphere, but still falls back to scripted for the transition it didn't write", async () => {
+    // The provider only wrote 2 of the 3 target segments (result + atmosphere) for this
+    // has-next event, so its 2nd line lands in the atmosphere slot — the transition slot
+    // (naming the next team) always falls back to scripted when the provider didn't supply it.
     const two = { name: "llm", narrate: async () => "結果句在這裡！\n輪到 Team 1，準備好了嗎？" };
     const { room } = begin(2, { holdMs: 50, epilogueDelayMs: 0, provider: two });
     await sleep(40);
-    expect(narrs(room)[0]).toMatchObject({ line: "結果句在這裡！", then: "輪到 Team 1，準備好了嗎？" });
+    const n = narrs(room)[0];
+    expect(n.lines[0]).toBe("結果句在這裡！");
+    expect(n.lines[1]).toBe("輪到 Team 1，準備好了嗎？");
+    expect(n.lines[2]).toContain("Team 0"); // scripted fallback transition, not the provider's line
   });
 });
 

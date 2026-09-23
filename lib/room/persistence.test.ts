@@ -285,6 +285,25 @@ describe("restoring after a restart", () => {
     expect(state.eventId).toBe(seq + 1);
   });
 
+  it("the multi-segment narration (lines[]) survives a restart and is replayed whole to a late connection", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(first.room);
+    judgeCorrect(first.room, host, T1); // a judgment with a next team: lines has result + atmosphere + transition
+    await new Promise((r) => setTimeout(r, 30)); // the runner writes lastNarration asynchronously
+    const savedLines = (storage.data.get(SNAPSHOT_KEY) as any).lastNarration.lines;
+    expect(savedLines.length).toBeGreaterThanOrEqual(2); // not the old single `line`/`then` shape
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    const late = makeConn("late");
+    second.room.onConnect(late);
+    const replayed = lastOf(late, "NARRATION");
+    expect(replayed.lines).toEqual(savedLines);
+    expect(replayed).not.toHaveProperty("line");
+    expect(replayed).not.toHaveProperty("then");
+  });
+
   it("the game keeps the bank it started with, not the bundled one", async () => {
     const custom = structuredClone(BANK);
     custom.rooms[0].questions[0].text = "自訂題庫的第一題";
