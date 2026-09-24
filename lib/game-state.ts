@@ -207,19 +207,25 @@ function deal(
   // Prefer a question nobody has seen the answer to yet (D4/D5 — AnswerReveal), but never
   // at the cost of handing two teams the identical question — the held-exclusion above is the
   // more important invariant, so this only narrows within whatever it already left.
+  // When every question left in this cycle is revealed, an unrevealed one already dealt this
+  // cycle (fled, never answered) still beats re-showing an answer everyone has seen.
   const unrevealed = pool.filter((id) => !revealed.includes(id));
+  const unrevealedAnywhere = all.filter((id) => !revealed.includes(id) && !held.has(id));
   if (unrevealed.length > 0) pool = unrevealed;
+  else if (unrevealedAnywhere.length > 0) pool = unrevealedAnywhere;
   const questionId = pool[Math.floor(rng() * pool.length)];
   return { questionId, used: base.map((u, i) => (i === roomIndex ? [...u, questionId] : u)) };
 }
 
 /** Same never-redeal-a-revealed-question rule as deal(), for the boss's shared question ring —
  * walk the ring from the current question, skip anything already revealed, and only fall back to
- * the plain next-in-ring slot once every question in the ring has been revealed. */
+ * the plain next-in-ring slot once every OTHER question in the ring has been revealed. The walk
+ * stops short of the current question itself: after a correct hit it was just revealed (but isn't
+ * in `revealed` yet), and after a flee the ring must actually move on. */
 function nextBossQuestionId(boss: BossState, revealed: string[]): string {
   const { questionIds, currentQuestionId } = boss;
   const startIdx = questionIds.indexOf(currentQuestionId);
-  for (let step = 1; step <= questionIds.length; step++) {
+  for (let step = 1; step < questionIds.length; step++) {
     const candidate = questionIds[(startIdx + step) % questionIds.length];
     if (!revealed.includes(candidate)) return candidate;
   }

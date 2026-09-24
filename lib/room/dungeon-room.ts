@@ -835,6 +835,12 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
       return;
     }
+    // /play hides the options during a reveal (D7); a stale client must not pre-pick the next
+    // question before it has even been shown.
+    if (this.reveal) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
+      return;
+    }
     // The protocol layer only checked optionIndex >= 0; the real bounds check needs the
     // live question's actual options.length, which only this layer (with bank access) has.
     const q = findQuestion(this.bank, questionId);

@@ -9,7 +9,7 @@
 export const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
 const URL_PATTERNS = [
-  /youtube(?:-nocookie)?\.com\/(?:watch\?v=|embed\/|shorts\/)([A-Za-z0-9_-]{11})/,
+  /youtube(?:-nocookie)?\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/)([A-Za-z0-9_-]{11})/,
   /youtu\.be\/([A-Za-z0-9_-]{11})/,
 ];
 

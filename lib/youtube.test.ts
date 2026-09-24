@@ -5,6 +5,8 @@ describe("extractYoutubeId", () => {
   it.each([
     ["a watch URL", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
     ["a watch URL with extra query params", "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s"],
+    ["a watch URL where v is not the first param (mobile share)", "https://m.youtube.com/watch?feature=share&v=dQw4w9WgXcQ"],
+    ["a live URL", "https://www.youtube.com/live/dQw4w9WgXcQ?si=abc"],
     ["a youtu.be short link", "https://youtu.be/dQw4w9WgXcQ"],
     ["an embed URL", "https://www.youtube.com/embed/dQw4w9WgXcQ"],
     ["a shorts URL", "https://www.youtube.com/shorts/dQw4w9WgXcQ"],

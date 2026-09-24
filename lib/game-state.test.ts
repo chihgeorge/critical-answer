@@ -488,6 +488,31 @@ describe("question deck (T2)", () => {
     expect(game.boss.currentQuestionId).toBe("boss-q2");
   });
 
+  it("a correct boss hit on the last unrevealed question never re-asks it (its answer is on screen)", () => {
+    // Ring b1,b2,b3: reveal b2 and b3 first, then answer b1 correctly. The old walk reached the
+    // current question itself (not yet in the revealed list) and dealt b1 right back.
+    let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
+    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q1", false, "flee", first)); // -> q2
+    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q2", true, "retry", first)); // -> q3
+    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q3", true, "retry", first)); // -> q1
+    expect(game.boss.currentQuestionId).toBe("boss-q1");
+    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q1", true, "retry", first));
+    expect(game.boss.currentQuestionId).not.toBe("boss-q1");
+  });
+
+  it("a room redeals a fled (unrevealed) question before re-showing a revealed one", () => {
+    // q1 answered (revealed); then q2/q3 keep getting fled. After the reshuffle the cycle's only
+    // unused question is q1 — but q2 was fled, never revealed, so it must win over re-showing q1.
+    let game = createGame(seeds(1), makeRooms(1, 1, 3), boss, cfg, 1, first);
+    ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first)); // q1 revealed -> q2
+    ({ game } = answerQuestion(game, "T0", "room0-q2", false, "flee", first)); // -> q3
+    ({ game } = answerQuestion(game, "T0", "room0-q3", false, "flee", first)); // reshuffle -> q2
+    ({ game } = answerQuestion(game, "T0", "room0-q2", false, "flee", first)); // -> q3
+    ({ game } = answerQuestion(game, "T0", "room0-q3", false, "flee", first)); // unused left: only q1
+    expect(game.revealedQuestionIds).toEqual(["room0-q1"]);
+    expect(game.teams[0].currentQuestionId).toBe("room0-q2");
+  });
+
   it("the boss ring skips an already-revealed question, falling back to reuse once every boss question has been revealed", () => {
     let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
     const seen: string[] = [];
