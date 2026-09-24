@@ -47,3 +47,4 @@ Sprites are drawn in `lib/pixel-art.ts`. Scale them by whole numbers only, so pi
   D2/D3 (2026-09-23, revised the earlier blanket rule). **Note (D7, impl change):** the reveal is
   carried on `STATE` with a `reveal: AnswerReveal | null` field, not a separate `ANSWER_REVEALED`
   broadcast; it stays on screen until the host presses 「下一題」 via `HOST_NEXT` (see `lib/protocol.ts`).
+  `HOST_NEXT` carries the STATE's eventId, and the room ignores any `HOST_NEXT` with a mismatched eventId (a stale second-device tap).
