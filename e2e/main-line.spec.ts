@@ -73,6 +73,12 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.getByText("輪到：乙隊")).toBeVisible();
   await expect(players[1].page.getByText("輪到我們了！")).toBeVisible();
 
+  // ANSWER_REVEALED (D2/D3, docs/designs/question-media-content.md): a correct answer's reveal
+  // reaches everyone — the shared screen and every phone, 甲隊 (who just answered) included, not
+  // just the host's own answer channel checked above.
+  await expect(screen.getByText(`正解：${answer}`)).toBeVisible();
+  await expect(players[0].page.getByText(`正解：${answer}`)).toBeVisible();
+
   // DM branching interlude: 甲隊 just entered room 1, so it sees the choice — and it's
   // non-blocking, so 乙隊 (whose turn it now is) never sees it and can play on regardless.
   await expect(players[0].page.getByText("冒險出現岔路")).toBeVisible();
@@ -116,12 +122,14 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.locator(".px-say")).toContainText("主持人改寫：全場安靜！");
   await expect(players[1].page.locator(".px-say")).toContainText("主持人改寫：全場安靜！");
 
-  // Nothing host-only (token confirmation, answers) reaches the public surfaces.
+  // Nothing host-only (token confirmation, the host-only answer channel) reaches the public
+  // surfaces. ANSWER_REVEALED legitimately carries an "answer" field now (D2/D3 — a shared-screen
+  // party game, broadcast on purpose after a correct answer) — HOST_ANSWER itself, sent only via
+  // sendTo to host connections, is the invariant this test actually guards.
   for (const frames of [screenFrames, ...players.map((p) => p.frames)]) {
     expect(frames.length).toBeGreaterThan(0);
     const all = frames.join("\n");
     expect(all).not.toContain("HOST_OK");
-    expect(all).not.toContain('"answer"');
     expect(all).not.toContain("HOST_ANSWER");
   }
   await expect(screen.locator("body")).not.toContainText("答案（只有你看得到）");
