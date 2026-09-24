@@ -88,6 +88,10 @@ describe("parseBank", () => {
     ["a question with an invalid YouTube id", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [q("a1", { kind: "youtube", value: "too-short" })] }] })],
     ["a question with an unknown content kind", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [q("a1", { kind: "audio", value: "x" } as unknown as MediaContent)] }] })],
     ["a question with an invalid explanation", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [{ ...q("a1"), explanation: { kind: "image", value: "not-a-uuid" } }] }] })],
+    ["a question with no content, no legacy text, and no legacy imageKey", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [{ id: "a1", kind: "text", answer: "答案" }] }] })],
+    ["a question whose content is null", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [{ ...q("a1"), content: null }] }] })],
+    ["a question whose explanation is null (only an absent explanation means none)", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [{ ...q("a1"), explanation: null }] }] })],
+    ["a question with an empty explanation value", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [{ ...q("a1"), explanation: textContent("  ") }] }] })],
   ])("fails loudly on %s", (_name, make) => {
     expect(() => parseBank(make())).toThrow(/question bank|content/i);
   });

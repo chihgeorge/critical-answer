@@ -170,3 +170,64 @@ test("youtube-content question: renders an iframe with the embed URL on /play, /
   await host.getByRole("button", { name: "答對！" }).click();
   await expect(host.getByText("輪到")).toBeVisible();
 });
+
+/** Seeds room 0 with one text question carrying the given explanation, starts a 1-team game,
+ * and returns the three surfaces with the team's turn already up. */
+async function startWithExplanation(browser: import("@playwright/test").Browser, request: import("@playwright/test").APIRequestContext, explanation: unknown) {
+  const loaded = await request.get(`${WORKER}/api/bank`, { headers: HEADERS });
+  const { bank, version } = await loaded.json();
+  bank.rooms[0].questions = [{ kind: "text", id: "r0-reveal-e2e", content: { kind: "text", value: "揭曉測試題" }, answer: "揭曉答案", explanation }];
+  const saved = await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } });
+  expect(saved.ok()).toBe(true);
+
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await screen.goto(`/room/${code}/screen`);
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("揭曉隊")}`);
+  await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(team.getByText("輪到我們了！")).toBeVisible();
+  return { host, screen, team };
+}
+
+test("answer reveal: a correct answer shows the answer and its text explanation on /play and /screen, then the next STATE clears it", async ({ browser, request }) => {
+  const { host, screen, team } = await startWithExplanation(browser, request, { kind: "text", value: "因為這是補充說明" });
+
+  // Nothing is revealed before the answer is judged.
+  await expect(screen.getByText("正解：揭曉答案")).toHaveCount(0);
+  await expect(screen.getByText("因為這是補充說明")).toHaveCount(0);
+
+  await host.getByRole("button", { name: "答對！" }).click();
+  for (const page of [screen, team]) {
+    await expect(page.getByText("正解：揭曉答案")).toBeVisible();
+    await expect(page.getByText("因為這是補充說明")).toBeVisible();
+  }
+
+  // The next judgment's STATE replaces the reveal — it never lingers into the following question.
+  await host.getByRole("button", { name: "答錯・重答" }).click();
+  for (const page of [screen, team]) {
+    await expect(page.getByText("正解：揭曉答案")).toHaveCount(0);
+    await expect(page.getByText("因為這是補充說明")).toHaveCount(0);
+  }
+});
+
+test("answer reveal: a YouTube explanation renders as an embed on /play and /screen, only after a correct answer", async ({ browser, request }) => {
+  const { host, screen, team } = await startWithExplanation(browser, request, { kind: "youtube", value: "dQw4w9WgXcQ" });
+
+  // A wrong answer (retry) never reveals it (D5).
+  await host.getByRole("button", { name: "答錯・重答" }).click();
+  await expect(screen.getByTitle("題目影片")).toHaveCount(0);
+  await expect(team.getByTitle("題目影片")).toHaveCount(0);
+
+  await host.getByRole("button", { name: "答對！" }).click();
+  const embedSrc = /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ$/;
+  await expect(screen.getByTitle("題目影片")).toHaveAttribute("src", embedSrc);
+  await expect(team.getByTitle("題目影片")).toHaveAttribute("src", embedSrc);
+});

@@ -391,6 +391,20 @@ describe("ANSWER_REVEALED (D2/D3/D5)", () => {
     expect(revealed.explanation).toEqual({ kind: "image", url: "https://pub.example.r2.dev/66666666-6666-6666-6666-666666666666" });
   });
 
+  it("broadcasts ANSWER_REVEALED for the boss question on a correct boss hit (the correct-boss-hit branch, not just room advances)", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    for (let i = 0; i < 100 && room.game!.teams[0].score < room.game!.config.bossThreshold; i++) {
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
+    }
+    const bossQid = room.game!.boss.currentQuestionId;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: bossQid, correct: true });
+    const revealed = broadcastsOf(room).findLast((m) => m.type === "ANSWER_REVEALED");
+    expect(revealed).toMatchObject({ questionId: bossQid, answer: answerText(findQuestion(BANK, bossQid)!) });
+    // Revealed means never redealt: the ring moved on and remembers it (D4/D5).
+    expect(room.game!.revealedQuestionIds).toContain(bossQid);
+    expect(room.game!.boss.currentQuestionId).not.toBe(bossQid);
+  });
+
   it("has no explanation field at all when the question has none", () => {
     const { room, hostConn, ids } = startedGame(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });

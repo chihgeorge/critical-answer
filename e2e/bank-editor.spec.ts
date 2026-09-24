@@ -451,3 +451,74 @@ test("two tabs editing at once: the second save is rejected as a conflict, not a
   const verify = await openAndLoad();
   await expect(rows(verify.getByTestId("bank-room-0")).first().getByLabel("題目文字")).toHaveValue("A 先存的版本");
 });
+
+/** Resets room 0's first question to a known text-content state via the API, so a test doesn't
+ * depend on whatever media kind an earlier test in this file left it on. */
+async function resetFirstQuestion(request: import("@playwright/test").APIRequestContext) {
+  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const loaded = await request.get("http://localhost:1996/api/bank", { headers });
+  const { bank, version } = await loaded.json();
+  bank.rooms[0].questions[0] = { kind: "text", id: bank.rooms[0].questions[0].id, content: { kind: "text", value: "重設用題目" }, answer: "重設用答案" };
+  const reset = await request.put("http://localhost:1996/api/bank", { headers, data: { bank, version } });
+  expect(reset.ok()).toBe(true);
+}
+
+async function loadEditor(page: Page) {
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const room0 = page.getByTestId("bank-room-0");
+  await expect(room0).toBeVisible();
+  return rows(room0).first();
+}
+
+test("dismissing the discard confirm() keeps the slot's media type and content untouched", async ({ page, request }) => {
+  await resetFirstQuestion(request);
+  const firstRow = await loadEditor(page);
+
+  page.once("dialog", (d) => void d.dismiss());
+  await firstRow.getByRole("button", { name: "題目：YouTube" }).click();
+
+  await expect(firstRow.getByRole("button", { name: "題目：文字" })).toHaveAttribute("aria-pressed", "true");
+  await expect(firstRow.getByLabel("題目文字")).toHaveValue("重設用題目");
+});
+
+test("an explanation tab picked but left empty blocks save with an explanation-specific error", async ({ page, request }) => {
+  await resetFirstQuestion(request);
+  const firstRow = await loadEditor(page);
+
+  await firstRow.getByRole("button", { name: "詳解：YouTube" }).click();
+  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await expect(page.getByTestId("bank-editor-error")).toContainText(/的詳解還沒填完（還沒貼網址）/);
+});
+
+test("switching the outer 題型 carries the explanation over, never silently dropping it", async ({ page, request }) => {
+  await resetFirstQuestion(request);
+  const firstRow = await loadEditor(page);
+
+  await firstRow.getByRole("button", { name: "詳解：文字" }).click();
+  await firstRow.getByLabel("詳解文字").fill("要保留的詳解");
+  await firstRow.getByLabel("題型").selectOption("multipleChoice");
+  await expect(firstRow.getByLabel("詳解文字")).toHaveValue("要保留的詳解");
+  await firstRow.getByLabel("題型").selectOption("text");
+  await expect(firstRow.getByLabel("詳解文字")).toHaveValue("要保留的詳解");
+});
+
+test("two image slots in the same room: the second row's 選擇圖片 uploads into the second row, not the first (fieldId regression)", async ({ page, request }) => {
+  await resetFirstQuestion(request);
+  autoAcceptConfirms(page);
+  const firstRow = await loadEditor(page);
+  const secondRow = rows(page.getByTestId("bank-room-0")).nth(1);
+
+  await firstRow.getByRole("button", { name: "題目：圖片" }).click();
+  await secondRow.getByRole("button", { name: "題目：圖片" }).click();
+
+  // Click the visible label (not the sr-only input) — that's the path that resolved to the first
+  // row's <input> when both rows shared one id.
+  const chooser = page.waitForEvent("filechooser");
+  await secondRow.getByText("選擇圖片").click();
+  await (await chooser).setFiles({ name: "second.png", mimeType: "image/png", buffer: TINY_PNG });
+
+  await expect(secondRow.getByText(/已上傳/)).toBeVisible();
+  await expect(firstRow.getByText(/已上傳/)).toHaveCount(0);
+});
