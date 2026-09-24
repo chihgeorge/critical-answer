@@ -205,7 +205,7 @@ const PODIUM = [
 ];
 const CONFETTI = ["#ff6b6b", "#ffcf4a", "#6fd36a", "#6ab4ff", "#ff9db8", "#fff"];
 
-function Finished({ view, winners, narration, epilogue }: { view: SpectatorView; winners: string[]; narration: NarrationState; epilogue: string | null }) {
+function Finished({ view, winners, reveal, narration, epilogue }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; narration: NarrationState; epilogue: string | null }) {
   const ranked = view.teams.map((t, i) => ({ ...t, i })).sort((a, b) => b.score - a.score).slice(0, 3);
   const names = winners.map((id) => view.teams.find((t) => t.id === id)?.name ?? id).join("、");
   return (
@@ -220,6 +220,12 @@ function Finished({ view, winners, narration, epilogue }: { view: SpectatorView;
         </small>
         {names}奪得榜首！
       </div>
+      {/* The winning answer: the last correct judgment ends the game, so its reveal lands here, not on <Playing>. */}
+      {reveal && (
+        <div data-testid="answer-reveal" className="absolute inset-x-0 text-center text-[20px]" style={{ top: 122, zIndex: 6 }}>
+          <span style={{ background: "var(--turn)", color: "var(--ink)", padding: "4px 12px", boxShadow: "0 0 0 3px var(--k)" }}>最後一題正解：{reveal.answer}</span>
+        </div>
+      )}
       <div className="absolute inset-x-0 flex items-end justify-center gap-12" style={{ bottom: 130, zIndex: 5 }}>
         {PODIUM.map((p) => {
           const t = ranked[p.place - 1];
@@ -418,7 +424,7 @@ export default function ScreenPage() {
       <Stage>
         {!game && <Lobby code={code} teams={lobby} />}
         {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={revealed} eventId={game.eventId} narration={narration} />}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} narration={narration} epilogue={epilogue} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={revealed} narration={narration} epilogue={epilogue} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
           {rested && (

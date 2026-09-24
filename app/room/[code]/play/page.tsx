@@ -223,7 +223,7 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {game && !finished && revealed && (
+        {game && revealed && (
           <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-3 text-center">
             <div className="text-[18px]">正解：{revealed.answer}</div>
             {revealed.explanation && revealed.explanation.kind === "text" && (

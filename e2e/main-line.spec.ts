@@ -172,6 +172,7 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
     const t = cur().view.teams[0];
     const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
     const before = cur().eventId;
+    host.send(JSON.stringify({ type: "HOST_NEXT" })); // close the previous answer reveal (D7); no-op if none
     host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
     await expect.poll(() => cur().eventId, { timeout: 2000 }).toBeGreaterThan(before);
   }
@@ -179,6 +180,8 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
 
   // Podium is there immediately; the story follows as a single line.
   await expect(screen.getByText("奪得榜首")).toBeVisible();
+  // The boss-kill answer ended the game, so its reveal shows on the podium screen instead (D7).
+  await expect(screen.getByTestId("answer-reveal")).toContainText("最後一題正解：");
   await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/, { timeout: 15_000 });
   // A single last line: no ▼ once the story has finished typing.
   await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/);

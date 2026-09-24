@@ -759,6 +759,12 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
       return;
     }
+    // D7: judging waits until the host closes the reveal — a second host device or a stale page
+    // must not skip past an answer the room hasn't been shown yet.
+    if (this.reveal) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
+      return;
+    }
 
     try {
       const prev = this.game;

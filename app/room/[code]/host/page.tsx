@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
@@ -223,7 +223,17 @@ export default function HostPage() {
   // shows confusion about missed turns, or when the game leaves LAN.
   const ready = connected && claimed;
   const turn = game ? describeTurn(game.view, game.question) : null;
-  const canJudge = ready && !!turn?.team && pendingTeamId !== turn.team.id;
+  // The judge buttons and 下一題 swap in the same slot the moment a STATE arrives, so a double-tap
+  // on one would land on the other (judging the next question, or closing a reveal nobody saw).
+  // Both stay disabled for a beat after every swap.
+  const revealUp = !!game?.reveal;
+  const [armedFor, setArmedFor] = useState(revealUp);
+  const swapArmed = armedFor === revealUp;
+  useEffect(() => {
+    const t = setTimeout(() => setArmedFor(revealUp), 500);
+    return () => clearTimeout(t);
+  }, [revealUp]);
+  const canJudge = ready && swapArmed && !!turn?.team && pendingTeamId !== turn.team.id;
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -360,7 +370,7 @@ export default function HostPage() {
                 // question until the host moves on — judging waits until then.
                 <>
                   <div data-testid="host-reveal" className="px-1 text-center text-[14px] text-white">大螢幕正在揭曉：{game.reveal.answer}</div>
-                  <PixelButton variant="ok" disabled={!ready} onClick={() => send({ type: "HOST_NEXT" })}>
+                  <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: "HOST_NEXT" })}>
                     {connected ? "下一題" : "重新連線中"}
                   </PixelButton>
                 </>
