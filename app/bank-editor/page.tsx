@@ -2,14 +2,17 @@
 
 // Owner-only question-bank editor. Linked from the homepage, but not from anywhere in the game's
 // actual play flow — gated by the OWNER_KEY the Worker checks on every /api/bank request. Supports
-// all three question kinds: text (free-answer), multipleChoice (options[] + correctIndex), and
-// image (an uploaded picture + free-answer, see docs/designs/image-question-type.md) — all judged
-// by the host reading the answer aloud.
+// two question kinds: text (free-answer) and multipleChoice (options[] + correctIndex), both
+// judged by the host reading the answer aloud. Each kind's content — and its optional
+// answer-reveal explanation — can independently be text, an uploaded image, or a YouTube video
+// (see docs/designs/question-media-content.md's D1: content REPLACES the old fixed prompt text,
+// it doesn't decorate it; the standalone `image` kind from image-question-type.md retired).
 
 import { useEffect, useState } from "react";
 import { Panel, PixelButton } from "@/components/pixel";
-import { MIN_OPTIONS, allQuestions, type Bank, type BankQuestion } from "@/lib/question-bank";
+import { MIN_OPTIONS, allQuestions, type Bank, type BankQuestion, type MediaContent } from "@/lib/question-bank";
 import { partyHttpBase } from "@/lib/party-host";
+import { extractYoutubeId } from "@/lib/youtube";
 
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
 const bankApiBase = () => `${partyHttpBase()}/api/bank`;
@@ -18,6 +21,7 @@ const bankImageApiBase = () => `${partyHttpBase()}/api/bank/image`;
 // multipleChoice, or after deleting the option that was marked correct. Never a valid saved
 // state: validate() below blocks 儲存全部變更 while any question is stuck at this value.
 const UNSET_CORRECT_INDEX = -1;
+const TEXT_CONTENT: MediaContent = { kind: "text", value: "" };
 
 /** Reads the owner key from localStorage — a per-browser convenience, not the source of truth (the
  * Worker checks it on every request; a wrong/missing key never gets past the fetch below). Starts
@@ -56,22 +60,28 @@ function useOwnerKey(onRestored: (key: string) => void) {
 
 type Location = { kind: "room"; roomIndex: number } | { kind: "boss" };
 
-/** multipleChoice questions need a client-side pre-save check that text questions don't: a
- * freshly-added or just-edited option list can sit at UNSET_CORRECT_INDEX (no radio picked
- * yet) or under MIN_OPTIONS, states the type system itself can't rule out client-side. Text
- * questions have no such intermediate state — an empty answer is still a valid string, so
- * that check is left to the server's parseBank() round trip, same as before this feature. */
+/** A content or explanation slot that's still mid-upload (image kind, empty value) or otherwise
+ * incomplete is an intermediate client-only state the type system can't rule out — the same
+ * reasoning multipleChoice's correctIndex sentinel already needed. */
+function contentError(label: string, c: MediaContent | undefined): string | null {
+  if (!c) return null;
+  if (!c.value.trim()) return `${label}還沒填完（${c.kind === "image" ? "還沒上傳圖片" : c.kind === "youtube" ? "還沒貼網址" : "是空的"}）`;
+  return null;
+}
+
 function validationError(bank: Bank): string | null {
   const all = allQuestions(bank);
   for (const q of all) {
+    const label = `題目「${q.content.value || q.id}」`;
     if (q.kind === "multipleChoice") {
-      if (q.options.length < MIN_OPTIONS) return `題目「${q.text || q.id}」至少要有 ${MIN_OPTIONS} 個選項`;
-      if (q.options.some((o) => !o.trim())) return `題目「${q.text || q.id}」有空白選項`;
-      if (q.correctIndex < 0 || q.correctIndex >= q.options.length) return `題目「${q.text || q.id}」還沒標記正解`;
+      if (q.options.length < MIN_OPTIONS) return `${label}至少要有 ${MIN_OPTIONS} 個選項`;
+      if (q.options.some((o) => !o.trim())) return `${label}有空白選項`;
+      if (q.correctIndex < 0 || q.correctIndex >= q.options.length) return `${label}還沒標記正解`;
     }
-    // Like MC's correctIndex, an empty imageKey is an intermediate client-only state (upload not
-    // finished yet) the type system can't rule out — same reasoning as the comment above.
-    if (q.kind === "image" && !q.imageKey) return `題目「${q.text || q.id}」還沒上傳圖片`;
+    const contentErr = contentError(`${label}的內容`, q.content);
+    if (contentErr) return contentErr;
+    const explanationErr = contentError(`${label}的詳解`, q.explanation);
+    if (explanationErr) return explanationErr;
   }
   return null;
 }
@@ -177,12 +187,12 @@ export default function BankEditorPage() {
     setBank((prev) => {
       if (!prev) return prev;
       const id = `${loc.kind === "boss" ? "boss" : `r${loc.roomIndex}`}-${crypto.randomUUID().slice(0, 8)}`;
-      return withQuestions(prev, loc, [...questionsAt(prev, loc), { kind: "text", id, text: "", answer: "" }]);
+      return withQuestions(prev, loc, [...questionsAt(prev, loc), { kind: "text", id, content: TEXT_CONTENT, answer: "" }]);
     });
   };
 
   /** Uploads an image file to /api/bank/image and returns its R2 key, or throws with a message
-   * suitable for display. Called from QuestionRow; kept here so it can use the same ownerKey the
+   * suitable for display. Called from MediaPicker; kept here so it can use the same ownerKey the
    * rest of the page already has. */
   const uploadImage = async (file: File): Promise<string> => {
     const res = await fetch(bankImageApiBase(), {
@@ -297,12 +307,193 @@ function RoomEditor({
   );
 }
 
-/** A fresh question of the given kind, keeping only `id`/`text` — switching kind never carries
- * over the other kind's fields (no auto-conversion; the two kinds' content isn't comparable). */
+/** A fresh question of the given outer kind, keeping only `id`/`content` — switching kind never
+ * carries over the other kind's fields (no auto-conversion; the two kinds' extra fields aren't
+ * comparable). The standalone `image` kind retired (D1) — content/explanation media type is
+ * chosen independently via MediaPicker, not by the outer kind selector. */
 function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): BankQuestion {
-  if (kind === "text") return { kind: "text", id: q.id, text: q.text, answer: "" };
-  if (kind === "image") return { kind: "image", id: q.id, text: q.text, answer: "", imageKey: "" };
-  return { kind: "multipleChoice", id: q.id, text: q.text, options: ["", ""], correctIndex: UNSET_CORRECT_INDEX };
+  // explanation carries over just like content does — dropping it here would silently discard
+  // an uploaded image/video with no warning at all, bypassing MediaPicker's own confirm() gate
+  // entirely (adversarial review finding, /ship).
+  if (kind === "text") return { kind: "text", id: q.id, content: q.content, answer: "", ...(q.explanation ? { explanation: q.explanation } : {}) };
+  return {
+    kind: "multipleChoice",
+    id: q.id,
+    content: q.content,
+    options: ["", ""],
+    correctIndex: UNSET_CORRECT_INDEX,
+    ...(q.explanation ? { explanation: q.explanation } : {}),
+  };
+}
+
+/** Picks text / uploaded image / YouTube video for one content slot (a question's `content`, or
+ * its optional `explanation`). Switching media type discards the prior value immediately — no
+ * draft-preservation across kinds — with a native `confirm()` first if the slot being switched
+ * away from is non-empty (docs/designs/question-media-content.md's R1-6 decision; this is new UI
+ * pattern work, not reuse — the codebase had no existing confirm() precedent, per the design
+ * doc's own Outside Voice correction). `allowNone` renders a fourth "無" tab that clears the slot
+ * entirely — only the explanation slot uses it; a question's own content is always required. */
+function MediaPicker({
+  fieldId,
+  label,
+  value,
+  onChange,
+  onUploadImage,
+  allowNone,
+}: {
+  fieldId: string;
+  label: string;
+  value: MediaContent | undefined;
+  onChange: (next: MediaContent | undefined) => void;
+  onUploadImage: (file: File) => Promise<string>;
+  allowNone?: boolean;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [youtubeInput, setYoutubeInput] = useState(value?.kind === "youtube" ? value.value : "");
+  const [youtubeError, setYoutubeError] = useState("");
+
+  const current = value ?? { kind: "text", value: "" };
+  const hasContent = value !== undefined && value.value.trim() !== "";
+
+  const switchTo = (kind: MediaContent["kind"] | "none") => {
+    // Re-clicking the already-active tab is a no-op, not a discard — every tab button below
+    // calls switchTo(kind) unconditionally on click, so without this guard, clicking a
+    // non-empty slot's own active tab popped the confirm() and wiped it on accept (test-coverage
+    // audit finding, /ship).
+    if (kind !== "none" && value !== undefined && value.kind === kind) return;
+    if (hasContent && !window.confirm("換媒材類型會清空目前已填的內容，確定嗎？")) return;
+    setUploadError("");
+    setYoutubeError("");
+    if (kind === "none") {
+      setYoutubeInput("");
+      onChange(undefined);
+      return;
+    }
+    setYoutubeInput("");
+    onChange({ kind, value: "" });
+  };
+
+  const handleFile = async (file: File) => {
+    setUploading(true);
+    setUploadError("");
+    try {
+      const key = await onUploadImage(file);
+      onChange({ kind: "image", value: key });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "上傳失敗");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleYoutubeInput = (pasted: string) => {
+    setYoutubeInput(pasted);
+    if (!pasted.trim()) {
+      setYoutubeError("");
+      onChange({ kind: "youtube", value: "" });
+      return;
+    }
+    const id = extractYoutubeId(pasted);
+    if (!id) {
+      setYoutubeError("看不出這是 YouTube 網址");
+      onChange({ kind: "youtube", value: "" });
+      return;
+    }
+    setYoutubeError("");
+    onChange({ kind: "youtube", value: id });
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="text-[13px] text-black/60">{label}</span>
+        <div className="flex gap-1">
+          {(["text", "image", "youtube"] as const).map((kind) => {
+            const kindLabel = kind === "text" ? "文字" : kind === "image" ? "圖片" : "YouTube";
+            return (
+              <button
+                key={kind}
+                type="button"
+                className={`px-btn !px-2 !py-1 text-[12px] ${current.kind === kind ? "!bg-[var(--turn)]" : ""}`}
+                aria-pressed={current.kind === kind}
+                aria-label={`${label}：${kindLabel}`}
+                onClick={() => switchTo(kind)}
+              >
+                {kindLabel}
+              </button>
+            );
+          })}
+          {allowNone && (
+            <button
+              type="button"
+              className={`px-btn !px-2 !py-1 text-[12px] ${value === undefined ? "!bg-[var(--turn)]" : ""}`}
+              aria-pressed={value === undefined}
+              aria-label={`${label}：無`}
+              onClick={() => switchTo("none")}
+            >
+              無
+            </button>
+          )}
+        </div>
+      </div>
+
+      {value === undefined ? null : current.kind === "text" ? (
+        <input
+          className="px-input"
+          aria-label={`${label}文字`}
+          value={current.value}
+          onChange={(e) => onChange({ kind: "text", value: e.target.value })}
+        />
+      ) : current.kind === "image" ? (
+        <div className="flex items-center gap-2">
+          {/* Native file inputs can't be restyled directly — sr-only + a px-btn label is the
+              standard pattern, so this matches the page's other pixel-styled controls instead
+              of showing the browser's default control (design review finding). */}
+          <input
+            // fieldId (a question id + slot, not the shared "題目"/"詳解" label text) — two
+            // image questions in the same room previously collided on this id, so clicking the
+            // second row's label resolved to the FIRST row's <input> (test-coverage audit
+            // finding, /ship).
+            id={`image-upload-${fieldId}`}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            aria-label={`上傳${label}圖片`}
+            disabled={uploading}
+            className="sr-only"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = ""; // lets re-selecting the same file re-trigger onChange
+              if (file) void handleFile(file);
+            }}
+          />
+          <label htmlFor={`image-upload-${fieldId}`} className={`px-btn${uploading ? " pointer-events-none opacity-55" : ""}`}>
+            選擇圖片
+          </label>
+          {uploading && <span className="text-[13px]">上傳中…</span>}
+          {current.value && !uploading && <span className="text-[13px]">已上傳（{current.value.slice(0, 8)}…）</span>}
+        </div>
+      ) : (
+        <input
+          className="px-input"
+          aria-label={`${label}的 YouTube 網址`}
+          placeholder="貼上 YouTube 網址"
+          value={youtubeInput}
+          onChange={(e) => handleYoutubeInput(e.target.value)}
+        />
+      )}
+      {uploadError && (
+        <Panel role="alert" className="text-[13px]" style={{ background: "#ffd9d9" }}>
+          {uploadError}
+        </Panel>
+      )}
+      {youtubeError && (
+        <Panel role="alert" className="text-[13px]" style={{ background: "#ffd9d9" }}>
+          {youtubeError}
+        </Panel>
+      )}
+    </div>
+  );
 }
 
 function QuestionRow({
@@ -316,38 +507,19 @@ function QuestionRow({
   onDelete: () => void;
   onUploadImage: (file: File) => Promise<string>;
 }) {
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
-
-  const handleFile = async (file: File) => {
-    setUploading(true);
-    setUploadError("");
-    try {
-      const key = await onUploadImage(file);
-      onUpdate((cur) => (cur.kind === "image" ? { ...cur, imageKey: key } : cur));
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "上傳失敗");
-    } finally {
-      setUploading(false);
-    }
-  };
-
   return (
-    <div className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
+    <div data-testid={`question-${q.id}`} className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
       <div className="flex gap-2">
-        <input
-          className="px-input flex-1"
-          aria-label="題目"
-          value={q.text}
-          onChange={(e) => onUpdate((cur) => ({ ...cur, text: e.target.value }))}
-        />
+        <div className="flex-1">
+          <MediaPicker fieldId={`${q.id}-content`} label="題目" value={q.content} onChange={(c) => onUpdate((cur) => ({ ...cur, content: c! }))} onUploadImage={onUploadImage} />
+        </div>
         <select
           className="px-input"
           // .px-input sets width:100% as unlayered CSS (outside Tailwind's @layer), which always
           // beats a Tailwind width utility here — so the fix has to be an inline style, the one
           // thing with higher priority than any stylesheet rule. Without it this <select> claims
           // the whole flex row (flex-basis resolves from its own width:100%) and squeezes the
-          // sibling 題目 input down to ~20px (bug found 2026-09-23: multipleChoice questions
+          // sibling content picker down (bug found 2026-09-23: multipleChoice questions
           // looked like they had no editable question-text field at all).
           style={{ width: "auto" }}
           aria-label="題型"
@@ -356,9 +528,17 @@ function QuestionRow({
         >
           <option value="text">問答</option>
           <option value="multipleChoice">選擇</option>
-          <option value="image">圖片</option>
         </select>
       </div>
+
+      <MediaPicker
+        fieldId={`${q.id}-explanation`}
+        label="詳解"
+        value={q.explanation}
+        onChange={(c) => onUpdate((cur) => (c ? { ...cur, explanation: c } : { ...cur, explanation: undefined }))}
+        onUploadImage={onUploadImage}
+        allowNone
+      />
 
       {q.kind === "text" ? (
         <div className="flex gap-2">
@@ -371,50 +551,6 @@ function QuestionRow({
           <PixelButton variant="flee" onClick={onDelete}>
             刪除
           </PixelButton>
-        </div>
-      ) : q.kind === "image" ? (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            {/* Native file inputs can't be restyled directly — sr-only + a px-btn label is the
-                standard pattern, so this matches the page's other pixel-styled controls instead
-                of showing the browser's default control (design review finding). */}
-            <input
-              id={`image-upload-${q.id}`}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              aria-label="上傳圖片"
-              disabled={uploading}
-              className="sr-only"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = ""; // lets re-selecting the same file re-trigger onChange
-                if (file) void handleFile(file);
-              }}
-            />
-            <label htmlFor={`image-upload-${q.id}`} className={`px-btn${uploading ? " pointer-events-none opacity-55" : ""}`}>
-              選擇圖片
-            </label>
-            {uploading && <span className="text-[13px]">上傳中…</span>}
-            {q.imageKey && !uploading && <span className="text-[13px]">已上傳（{q.imageKey.slice(0, 8)}…）</span>}
-          </div>
-          {uploadError && (
-            // Tinted background, not colored text on cream — matches the top-level error Panel's
-            // pattern (line ~217); plain --danger text here fails contrast (design review finding).
-            <Panel role="alert" className="text-[13px]" style={{ background: "#ffd9d9" }}>
-              {uploadError}
-            </Panel>
-          )}
-          <div className="flex gap-2">
-            <input
-              className="px-input flex-1"
-              aria-label="答案"
-              value={q.answer}
-              onChange={(e) => onUpdate((cur) => (cur.kind === "image" ? { ...cur, answer: e.target.value } : cur))}
-            />
-            <PixelButton variant="flee" onClick={onDelete}>
-              刪除
-            </PixelButton>
-          </div>
         </div>
       ) : (
         <div className="flex flex-col gap-1">
