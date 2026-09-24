@@ -29,8 +29,8 @@ export default function PlayPage() {
   const [rested, setRested] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
-  /** The last correct answer's reveal (D2/D3, docs/designs/question-media-content.md) — shown
-   * until the next STATE (the next turn's question already dealt) replaces it. */
+  /** STATE.reveal: the last correct answer, shown in place of the next question until the host
+   * presses 下一題 (HOST_NEXT, D7 — docs/designs/question-media-content.md). */
   const [revealed, setRevealed] = useState<AnswerReveal | null>(null);
   const joinedRef = useRef(false);
   const epoch = useRef<string | null>(null);

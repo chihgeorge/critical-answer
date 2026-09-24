@@ -244,8 +244,8 @@ export function publicQuestion(bank: Bank, id: string, difficulty: number, image
 
 /** The public-safe explanation for a question that was just answered CORRECTLY — built
  * separately from publicQuestion() (never attached to the in-play question, which would leak it
- * before the answer is judged). Returns undefined when the question has none. See AnswerReveal (lib/protocol.ts)
- * in lib/protocol.ts and its D2/D5 decisions. */
+ * before the answer is judged). Returns undefined when the question has none. See AnswerReveal in
+ * lib/protocol.ts and its D2/D5 decisions. */
 export function publicExplanation(bank: Bank, id: string, imageBaseUrl: string): PublicMediaContent | undefined {
   const q = findQuestion(bank, id);
   return q?.explanation ? publicMediaContent(q.explanation, imageBaseUrl, q.id) : undefined;

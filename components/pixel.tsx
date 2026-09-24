@@ -11,8 +11,7 @@ const cx = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).j
 
 /** A question image (on /play or /screen) that fails to load hides itself rather than leaving a
  * broken-image icon or blocking the rest of the question from rendering — the decided
- * broken-image fallback (docs/designs/image-question-type.md). Shared so both call sites can't
- * drift out of sync. */
+ * broken-image fallback (docs/designs/image-question-type.md). */
 function hideOnImageError(e: SyntheticEvent<HTMLImageElement>) {
   e.currentTarget.style.display = "none";
 }

@@ -153,7 +153,7 @@ function Playing({ view, question, reveal, eventId, narration }: { view: Spectat
             {reveal.explanation && reveal.explanation.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
             {reveal.explanation && reveal.explanation.kind !== "text" && (
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
-              <QuestionMedia key={reveal.questionId} content={reveal.explanation} label="詳解" maxWidth={300} maxHeight={180} />
+              <QuestionMedia key={reveal.questionId} content={reveal.explanation} label="詳解" maxWidth={300} maxHeight={140} />
             )}
           </div>
         ) : question ? (question.content.kind === "text" ? question.content.value : "") : "……"}
@@ -265,9 +265,8 @@ export default function ScreenPage() {
   const [rested, setRested] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
-  /** The last correct answer's reveal (D2/D3, docs/designs/question-media-content.md) — shown
-   * until the next STATE (the next turn's question already dealt) replaces it, same lifetime
-   * as the rested/reset banners above it in the flow stack. */
+  /** STATE.reveal: the last correct answer, shown in place of the next question until the host
+   * presses 下一題 (HOST_NEXT, D7 — docs/designs/question-media-content.md). */
   const [revealed, setRevealed] = useState<AnswerReveal | null>(null);
   const epoch = useRef<string | null>(null);
 

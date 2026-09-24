@@ -22,6 +22,9 @@ describe("extractYoutubeId", () => {
     ["random text", "not a url at all"],
     ["an id that's the wrong length", "shortid"],
     ["an empty string", ""],
+    ["a watch URL with no v param", "https://www.youtube.com/watch?feature=share"],
+    ["a param that merely ends in v", "https://www.youtube.com/watch?xv=dQw4w9WgXcQ"],
+    ["a v only inside the #fragment", "https://www.youtube.com/watch?feature=share#&v=dQw4w9WgXcQ"],
   ])("returns null for %s", (_name, input) => {
     expect(extractYoutubeId(input)).toBeNull();
   });
