@@ -195,6 +195,12 @@ Findings below are retained from the last completed review; the current document
 
 Claude subagent (Codex `model_unusable` again this session, confirmed live). Read the actual source (`lib/question-bank.ts`, `lib/protocol.ts`, `lib/bank-store.ts`, `lib/room/dungeon-room.ts`, `lib/game-state.ts`, `app/bank-editor/page.tsx`, `app/room/[code]/{play,screen}/page.tsx`) before raising each finding — all independently re-verified against source above before being folded into D3/D4 and the implementation-level fixes list. Findings: (1) D2 audience scope vs. `HOST_ANSWER`'s deliberate host-only invariant and the reshuffle/boss-ring repeat mechanic (→ D3/D4), (2) `imageKeysOf` orphan-deletion bug (→ implementation-level fix), (3) `handleHostJudge` state-capture-ordering trap (→ implementation-level fix), (4) YouTube ID validation trust-boundary gap (→ implementation-level fix), (5) `PublicQuestion.text` required-field removal blast radius (→ implementation-level fix), (6) R1-6's fabricated precedent claim (→ corrected). Recommendation from the subagent: send back to plan-eng-review before implementation because (2) and (1) were assessed as the two highest-severity gaps — both resolved above.
 
+### Decided during /ship (2026-09-24)
+
+**D7 — the host decides when the reveal ends.** Pre-landing review found that STATE (already showing the next question) went out before `ANSWER_REVEALED`, so the reveal banner covered the next question on `/screen` for the whole next turn. The founder chose a host-controlled 「下一題」 button instead of an auto-timeout. So the reveal moved off the separate `ANSWER_REVEALED` message and onto STATE as `reveal: AnswerReveal | null`. That way it arrives together with the post-judgment state and a reconnecting phone still sees it. `/screen` and `/play` show it in place of the next question. The host sends `HOST_NEXT` to clear it. `HOST_JUDGE` and `TEAM_SELECT_OPTION` are rejected (`reveal_pending`) until then. The reveal is in memory only: a Worker restart drops it, which just skips ahead to the next question.
+
+**Deploy order.** `PublicQuestion.text` → `content` is a breaking wire change. Deploy the Worker before the Vercel frontend.
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
