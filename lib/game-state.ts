@@ -147,7 +147,7 @@ export interface GameState {
    */
   usedQuestionIds: string[][];
   /** Every question id a team has actually gotten right, globally, across the whole game — never
-   * reset by a room's reshuffle. A revealed answer (see ANSWER_REVEALED, dungeon-room.ts) must
+   * reset by a room's reshuffle. A revealed answer (see AnswerReveal, lib/protocol.ts) must
    * never come back around for someone who hasn't faced it yet; a retried or fled question stays
    * eligible (D5 — its answer was never shown). deal()'s reshuffle and the boss ring both filter
    * against this before falling back to reuse once every remaining question has been revealed. */
@@ -204,7 +204,7 @@ function deal(
   const held = new Set(teams.map((t) => t.currentQuestionId));
   const free = pool.filter((id) => !held.has(id));
   if (free.length > 0) pool = free;
-  // Prefer a question nobody has seen the answer to yet (D4/D5 — ANSWER_REVEALED), but never
+  // Prefer a question nobody has seen the answer to yet (D4/D5 — AnswerReveal), but never
   // at the cost of handing two teams the identical question — the held-exclusion above is the
   // more important invariant, so this only narrows within whatever it already left.
   const unrevealed = pool.filter((id) => !revealed.includes(id));

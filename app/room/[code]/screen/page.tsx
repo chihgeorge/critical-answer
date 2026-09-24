@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
-import type { PublicMediaContent, PublicQuestion, ServerMessage } from "@/lib/protocol";
+import type { AnswerReveal, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
@@ -95,7 +95,7 @@ function Lobby({ code, teams }: { code: string; teams: Lobby }) {
   );
 }
 
-function Playing({ view, question, eventId, narration }: { view: SpectatorView; question: PublicQuestion | null; eventId: number; narration: NarrationState }) {
+function Playing({ view, question, reveal, eventId, narration }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; eventId: number; narration: NarrationState }) {
   const { team: turn, teamIndex: turnIdx, inBoss, monster, theme, bossHits: hits } = describeTurn(view, question);
   const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
 
@@ -142,11 +142,22 @@ function Playing({ view, question, eventId, narration }: { view: SpectatorView; 
 
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
-          <LabelChip>{inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
-          {inBoss && <LabelChip>最後的挑戰！</LabelChip>}
+          <LabelChip>{reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
+          {!reveal && inBoss && <LabelChip>最後的挑戰！</LabelChip>}
         </div>
-        {question ? (question.content.kind === "text" ? question.content.value : "") : "……"}
-        {question && question.content.kind !== "text" && (
+        {/* The reveal takes the question's own slot until the host presses 下一題 (D7), so the
+            next question never shows underneath (or behind) the previous answer. */}
+        {reveal ? (
+          <div data-testid="answer-reveal" className="flex flex-col items-center gap-2">
+            <div>正解：{reveal.answer}</div>
+            {reveal.explanation && reveal.explanation.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
+            {reveal.explanation && reveal.explanation.kind !== "text" && (
+              // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
+              <QuestionMedia key={reveal.questionId} content={reveal.explanation} label="詳解" maxWidth={300} maxHeight={180} />
+            )}
+          </div>
+        ) : question ? (question.content.kind === "text" ? question.content.value : "") : "……"}
+        {!reveal && question && question.content.kind !== "text" && (
           // Inline content inside the Panel, not a second independently-positioned absolute
           // element — the Panel's height already grows with wrapped question text, so a
           // media block positioned at a fixed pixel offset would overlap 2+ line questions
@@ -249,7 +260,7 @@ export default function ScreenPage() {
   /** The last correct answer's reveal (D2/D3, docs/designs/question-media-content.md) — shown
    * until the next STATE (the next turn's question already dealt) replaces it, same lifetime
    * as the rested/reset banners above it in the flow stack. */
-  const [revealed, setRevealed] = useState<{ questionId: string; answer: string; explanation?: PublicMediaContent } | null>(null);
+  const [revealed, setRevealed] = useState<AnswerReveal | null>(null);
   const epoch = useRef<string | null>(null);
 
   // --- TTS (docs/designs/dm-voice-narration-tts.md) ---
@@ -380,10 +391,7 @@ export default function ScreenPage() {
         case "STATE":
           setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
           if (narrationBaseline.current === null) narrationBaseline.current = msg.eventId;
-          setRevealed(null);
-          break;
-        case "ANSWER_REVEALED":
-          setRevealed({ questionId: msg.questionId, answer: msg.answer, explanation: msg.explanation });
+          setRevealed(msg.reveal);
           break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
@@ -409,7 +417,7 @@ export default function ScreenPage() {
     <>
       <Stage>
         {!game && <Lobby code={code} teams={lobby} />}
-        {game?.phase === "playing" && <Playing view={game.view} question={game.question} eventId={game.eventId} narration={narration} />}
+        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={revealed} eventId={game.eventId} narration={narration} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} narration={narration} epilogue={epilogue} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
@@ -422,21 +430,6 @@ export default function ScreenPage() {
           {reset && (
             <div className="text-center text-[20px] text-white" style={{ background: "var(--danger)", padding: 6 }}>
               伺服器重新啟動，遊戲已重置
-            </div>
-          )}
-          {revealed && (
-            <div className="flex flex-col items-center gap-2 text-center" style={{ background: "var(--turn)", color: "var(--ink)", padding: 10 }}>
-              <div className="text-[22px]">正解：{revealed.answer}</div>
-              {revealed.explanation && revealed.explanation.kind === "text" && (
-                <div className="text-[16px]">{revealed.explanation.value}</div>
-              )}
-              {revealed.explanation && revealed.explanation.kind !== "text" && (
-                // key tied to questionId — same broken-image-stays-hidden-forever guard every
-                // other media render site in this diff carries (adversarial review finding,
-                // /ship): without it, a 404'd explanation image on one reveal would stay hidden
-                // on every later reveal too, since React would reuse this DOM node.
-                <QuestionMedia key={revealed.questionId} content={revealed.explanation} maxWidth={300} maxHeight={180} />
-              )}
             </div>
           )}
         </div>

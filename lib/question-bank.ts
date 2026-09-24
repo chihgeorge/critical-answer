@@ -69,12 +69,6 @@ function parseMonster(raw: unknown, where: string): BankMonster {
  * below) that every player's phone and the shared screen load as-is (adversarial review finding,
  * carried forward from the retired `image` kind — /plan-eng-review R2-2). */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// A YouTube video id: exactly 11 characters from YouTube's own id alphabet. Checked at this same
-// trust boundary (parseBank, reached by any authenticated PUT to /api/bank), not only client-side
-// at edit time — otherwise a compromised OWNER_KEY or a future editor bug could push an
-// unvalidated string in as a "youtube" value (Outside Voice finding, /plan-eng-review). Imported
-// from lib/youtube.ts rather than redefined here, so the two can't silently drift apart
-// (maintainability specialist finding, /ship).
 
 /** Validates and normalizes one content/explanation slot. Called from both call sites below
  * (content and explanation, on both question kinds) so kind-specific validation can't drift
@@ -250,7 +244,7 @@ export function publicQuestion(bank: Bank, id: string, difficulty: number, image
 
 /** The public-safe explanation for a question that was just answered CORRECTLY — built
  * separately from publicQuestion() (never attached to the in-play question, which would leak it
- * before the answer is judged). Returns undefined when the question has none. See ANSWER_REVEALED
+ * before the answer is judged). Returns undefined when the question has none. See AnswerReveal (lib/protocol.ts)
  * in lib/protocol.ts and its D2/D5 decisions. */
 export function publicExplanation(bank: Bank, id: string, imageBaseUrl: string): PublicMediaContent | undefined {
   const q = findQuestion(bank, id);

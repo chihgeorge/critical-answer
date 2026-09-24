@@ -468,6 +468,26 @@ describe("question deck (T2)", () => {
     expect(game.revealedQuestionIds).toEqual([]);
   });
 
+  it("a reshuffle prefers an unrevealed question over a revealed one", () => {
+    // Flees exhaust the deck while q2 is still unrevealed, so the reshuffle pool {q1, q2} has a
+    // real choice to make — with `first` and no revealed filter it would redeal q1.
+    let game = createGame(seeds(1), makeRooms(1, 1, 3), boss, cfg, 1, first);
+    ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first));
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, false, "flee", first));
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, false, "flee", first));
+    expect(game.revealedQuestionIds).toEqual(["room0-q1"]);
+    expect(game.teams[0].currentQuestionId).toBe("room0-q2");
+  });
+
+  it("a boss flee skips a revealed question in the ring, where plain rotation would land on it", () => {
+    let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
+    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q1", true, "retry", first));
+    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, game.boss.currentQuestionId, false, "flee", first));
+    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, game.boss.currentQuestionId, false, "flee", first));
+    expect(game.revealedQuestionIds).toEqual(["boss-q1"]);
+    expect(game.boss.currentQuestionId).toBe("boss-q2");
+  });
+
   it("the boss ring skips an already-revealed question, falling back to reuse once every boss question has been revealed", () => {
     let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
     const seen: string[] = [];

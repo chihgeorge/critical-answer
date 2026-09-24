@@ -15,7 +15,7 @@ import {
   type BranchOptionId,
   type GameState,
 } from "../game-state";
-import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../protocol";
+import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type ServerMessage } from "../protocol";
 import { allQuestions, answerText, bossQuestionIds, findQuestion, publicExplanation, publicQuestion, roomTemplates, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
@@ -108,6 +108,8 @@ export class DungeonRoom {
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
+  /** The answer on show until the host moves on (D7). In memory only: a restart simply drops it. */
+  private reveal: AnswerReveal | null = null;
   private transcript: TranscriptItem[] = [];
   /** Host director: notes for the LLM and the last few hand-edited lines. */
   private notes = "";
@@ -368,6 +370,7 @@ export class DungeonRoom {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       question: this.currentQuestion()?.pub ?? null,
+      reveal: this.reveal,
       eventId: this.eventSeq,
     };
   }
@@ -477,6 +480,7 @@ export class DungeonRoom {
     this.lastNarration = null;
     this.epilogue = null;
     this.epilogueRequested = false;
+    this.reveal = null;
     this.transcript = [];
     this.notes = "";
     this.editedLines = [];
@@ -573,6 +577,9 @@ export class DungeonRoom {
           break;
         case "HOST_GET_TRANSCRIPT":
           this.handleTranscript(sender);
+          break;
+        case "HOST_NEXT":
+          this.handleHostNext(sender);
           break;
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice);
@@ -671,6 +678,13 @@ export class DungeonRoom {
     this.sendTo(conn, this.snapshot());
   }
 
+  private handleHostNext(conn: Conn) {
+    if (!this.requireHost(conn)) return;
+    if (!this.reveal) return;
+    this.reveal = null;
+    this.broadcastState();
+  }
+
   private handleTranscript(conn: Conn) {
     if (!this.requireHost(conn)) return;
     this.sendTo(conn, { type: "TRANSCRIPT", entries: this.transcript });
@@ -751,7 +765,7 @@ export class DungeonRoom {
       const monster = this.currentQuestion()?.pub.monster.name ?? "怪物";
       // Captured before `this.game` reassigns to the post-judgment state below — same
       // read-prev-before-mutating discipline the `monster` capture above already needs.
-      // ANSWER_REVEALED must describe the question that was JUST answered, not whatever
+      // The reveal must describe the question that was JUST answered, not whatever
       // currentQuestion() would return afterwards (the next one) — a trap this file's own
       // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
       const justAnswered = this.currentQuestion();
@@ -761,17 +775,18 @@ export class DungeonRoom {
       this.game = game;
       const eventId = ++this.eventSeq;
       const event = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined);
-      this.broadcastState();
-      // Sent to everyone — this is a shared-screen, in-person party game, so there's nothing to
-      // protect by hiding it from non-answering teams (D3) — but only on a genuinely correct
-      // answer (D5): a retry or a flee must never reveal it, or the question loses its point, and
-      // game-state.ts's deal()/boss ring already rely on "revealed" meaning "answered correctly"
-      // to decide what's safe to redeal.
+      // Shown to everyone (D3), but only on a genuinely correct answer (D5): a retry or a flee
+      // must never reveal it, or the question loses its point, and game-state.ts's deal()/boss
+      // ring already rely on "revealed" meaning "answered correctly" to decide what's safe to
+      // redeal. Set before broadcastState so the reveal and the post-judgment state arrive
+      // together in one STATE — no window where a client shows the next question first.
+      this.reveal = null;
       if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
         const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
         const explanation = publicExplanation(this.bank, questionId, imageBaseUrl);
-        this.broadcast({ type: "ANSWER_REVEALED", questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}) });
+        this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}) };
       }
+      this.broadcastState();
       const narration = this.narrate(eventId, event);
       if (game.phase === "finished" && !this.epilogueRequested) {
         this.epilogueRequested = true;

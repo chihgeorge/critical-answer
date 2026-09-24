@@ -72,6 +72,10 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "字".repeat(41) })).toBeNull();
   });
 
+  it("HOST_NEXT: needs only the type", () => {
+    expect(parseClientMessage({ type: "HOST_NEXT", extra: "ignored" })).toEqual({ type: "HOST_NEXT" });
+  });
+
   it("HOST_GET_TRANSCRIPT: needs only the type", () => {
     expect(parseClientMessage({ type: "HOST_GET_TRANSCRIPT" })).toEqual({ type: "HOST_GET_TRANSCRIPT" });
   });

@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
-import type { ClientMessage, PublicMediaContent, PublicQuestion, ServerMessage } from "@/lib/protocol";
+import type { AnswerReveal, ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom, type SpectatorView, type GamePhase } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
@@ -31,7 +31,7 @@ export default function PlayPage() {
   const [epilogue, setEpilogue] = useState<string | null>(null);
   /** The last correct answer's reveal (D2/D3, docs/designs/question-media-content.md) — shown
    * until the next STATE (the next turn's question already dealt) replaces it. */
-  const [revealed, setRevealed] = useState<{ questionId: string; answer: string; explanation?: PublicMediaContent } | null>(null);
+  const [revealed, setRevealed] = useState<AnswerReveal | null>(null);
   const joinedRef = useRef(false);
   const epoch = useRef<string | null>(null);
 
@@ -71,10 +71,7 @@ export default function PlayPage() {
         case "STATE":
           setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
           setLobby(null);
-          setRevealed(null);
-          break;
-        case "ANSWER_REVEALED":
-          setRevealed({ questionId: msg.questionId, answer: msg.answer, explanation: msg.explanation });
+          setRevealed(msg.reveal);
           break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
@@ -206,7 +203,7 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {game && !finished && turn?.team && (
+        {game && !finished && !revealed && turn?.team && (
           <Panel className="flex items-center gap-3 px-3 py-[10px]">
             <Sprite kind={turn.monster.kind} hue={turn.monster.hue} scale={Math.max(1, Math.floor(turn.monster.scale / 3))} className="flex-none" />
             <div className="text-[15px]">
@@ -216,7 +213,7 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {game && !finished && game.question && game.question.content.kind !== "text" && (
+        {game && !finished && !revealed && game.question && game.question.content.kind !== "text" && (
           <Panel className="flex justify-center px-3 py-3">
             {/* key tied to the question forces a fresh DOM node per question — without it, React
                 would reuse the same node across consecutive media questions and a broken image
@@ -230,12 +227,12 @@ export default function PlayPage() {
           <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-3 text-center">
             <div className="text-[18px]">正解：{revealed.answer}</div>
             {revealed.explanation && revealed.explanation.kind === "text" && (
-              <div className="text-[14px]">{revealed.explanation.value}</div>
+              <div className="text-[16px]">{revealed.explanation.value}</div>
             )}
             {revealed.explanation && revealed.explanation.kind !== "text" && (
               // key tied to questionId — same broken-image-stays-hidden-forever guard every
               // other media render site in this diff carries (adversarial review finding, /ship).
-              <QuestionMedia key={revealed.questionId} content={revealed.explanation} maxWidth={260} maxHeight={180} />
+              <QuestionMedia key={revealed.questionId} content={revealed.explanation} label="詳解" maxWidth={260} maxHeight={180} />
             )}
           </Panel>
         )}
@@ -243,7 +240,7 @@ export default function PlayPage() {
         {/* multipleChoice options — only our own turn shows the tappable list; re-tappable
             any time before the host judges (see docs/designs/multiple-choice-questions.md
             decision 5), so there's no "locked in" state here beyond the highlight itself. */}
-        {game && !finished && isMyTurn && game.question?.options && (
+        {game && !finished && !revealed && isMyTurn && game.question?.options && (
           <Panel tone="turn" className="flex flex-col gap-2 px-3 py-3">
             {game.question.options.map((opt, i) => (
               <PixelButton

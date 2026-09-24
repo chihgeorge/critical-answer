@@ -353,7 +353,7 @@ function MediaPicker({
   const [youtubeInput, setYoutubeInput] = useState(value?.kind === "youtube" ? value.value : "");
   const [youtubeError, setYoutubeError] = useState("");
 
-  const current = value ?? { kind: "text", value: "" };
+  const current = value ?? TEXT_CONTENT;
   const hasContent = value !== undefined && value.value.trim() !== "";
 
   const switchTo = (kind: MediaContent["kind"] | "none") => {
@@ -418,6 +418,7 @@ function MediaPicker({
                 className={`px-btn !px-2 !py-1 text-[12px] ${current.kind === kind ? "!bg-[var(--turn)]" : ""}`}
                 aria-pressed={current.kind === kind}
                 aria-label={`${label}：${kindLabel}`}
+                disabled={uploading}
                 onClick={() => switchTo(kind)}
               >
                 {kindLabel}
@@ -430,6 +431,7 @@ function MediaPicker({
               className={`px-btn !px-2 !py-1 text-[12px] ${value === undefined ? "!bg-[var(--turn)]" : ""}`}
               aria-pressed={value === undefined}
               aria-label={`${label}：無`}
+              disabled={uploading}
               onClick={() => switchTo("none")}
             >
               無

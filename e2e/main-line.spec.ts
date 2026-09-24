@@ -69,15 +69,19 @@ test("create room, join two teams, start, judge; screen and play never see host-
 
   // A correct judgment scores and passes the turn.
   await host.getByRole("button", { name: "答對！" }).click();
+
+  // The answer reveal (D2/D3/D7, docs/designs/question-media-content.md) reaches everyone — the
+  // shared screen and every phone, 甲隊 (who just answered) included, not just the host's own
+  // answer channel checked above — and stays up until the host moves on.
+  await expect(screen.getByText(`正解：${answer}`)).toBeVisible();
+  await expect(players[0].page.getByText(`正解：${answer}`)).toBeVisible();
+  await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0); // judging waits for 下一題
+  await host.getByRole("button", { name: "下一題" }).click();
+  await expect(screen.getByText(`正解：${answer}`)).toHaveCount(0);
+
   await expect(host.getByText("輪到：乙隊")).toBeVisible();
   await expect(screen.getByText("輪到：乙隊")).toBeVisible();
   await expect(players[1].page.getByText("輪到我們了！")).toBeVisible();
-
-  // ANSWER_REVEALED (D2/D3, docs/designs/question-media-content.md): a correct answer's reveal
-  // reaches everyone — the shared screen and every phone, 甲隊 (who just answered) included, not
-  // just the host's own answer channel checked above.
-  await expect(screen.getByText(`正解：${answer}`)).toBeVisible();
-  await expect(players[0].page.getByText(`正解：${answer}`)).toBeVisible();
 
   // DM branching interlude: 甲隊 just entered room 1, so it sees the choice — and it's
   // non-blocking, so 乙隊 (whose turn it now is) never sees it and can play on regardless.
@@ -123,7 +127,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(players[1].page.locator(".px-say")).toContainText("主持人改寫：全場安靜！");
 
   // Nothing host-only (token confirmation, the host-only answer channel) reaches the public
-  // surfaces. ANSWER_REVEALED legitimately carries an "answer" field now (D2/D3 — a shared-screen
+  // surfaces. STATE.reveal legitimately carries an "answer" field now (D2/D3 — a shared-screen
   // party game, broadcast on purpose after a correct answer) — HOST_ANSWER itself, sent only via
   // sendTo to host connections, is the invariant this test actually guards.
   for (const frames of [screenFrames, ...players.map((p) => p.frames)]) {

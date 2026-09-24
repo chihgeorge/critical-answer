@@ -38,8 +38,16 @@ export type PublicMediaContent = { kind: "text"; value: string } | { kind: "imag
  * `options` is present only for multipleChoice questions (never `correctIndex` — see
  * question-bank.ts's publicQuestion() field-picking discipline). Deliberately carries no
  * `explanation` — that would leak the answer's supporting content before the answer is judged;
- * see ANSWER_REVEALED below, built separately at judge time from the question that was just
+ * see AnswerReveal below, built separately at judge time from the question that was just
  * answered, never from the question currently in play. */
+/** Shown to everyone (D2/D3 — a shared-screen, in-person party game, so hiding the answer from
+ * non-answering teams protects nothing here) only after a team answers CORRECTLY (D5 — a retry
+ * or a flee never reveals it, so the same question can come back around). Built from the question
+ * that was JUST answered, never the one now in play. Carried on STATE, not a one-off message, so a
+ * reconnecting phone still sees it; it stays up — replacing the next question on /screen and
+ * /play — until the host sends HOST_NEXT (D7). */
+export type AnswerReveal = { questionId: string; answer: string; explanation?: PublicMediaContent };
+
 export interface PublicQuestion {
   id: string;
   content: PublicMediaContent;
@@ -60,6 +68,8 @@ export type ClientMessage =
   /** Director: replace the line now on screen (<= 40 chars). */
   | { type: "HOST_EDIT_NARRATION"; line: string }
   | { type: "HOST_GET_TRANSCRIPT" }
+  /** Director: close the answer reveal and show the next question (D7). */
+  | { type: "HOST_NEXT" }
   | {
       type: "HOST_JUDGE";
       teamId: string;
@@ -95,15 +105,12 @@ export type ServerMessage =
       winners: string[];
       roomEpoch: string;
       question: PublicQuestion | null;
+      /** Non-null while the last correct answer is on show; the host's HOST_NEXT clears it. */
+      reveal: AnswerReveal | null;
       /** Counts judgments (and the start); NARRATION carries the id it belongs to. */
       eventId: number;
     }
   | { type: "GAME_OVER"; winners: string[] }
-  /** Sent to everyone (D2/D3 — a shared-screen, in-person party game, so hiding the answer from
-   * non-answering teams protects nothing here) only when a team answers CORRECTLY (D5 — a retry
-   * or a flee never reveals it, so the same question can come back around). `explanation` is
-   * built from the question that was JUST answered, never the one now in play. */
-  | { type: "ANSWER_REVEALED"; questionId: string; answer: string; explanation?: PublicMediaContent }
   /** Exactly one per event (1-3 segments, played in order). Clients keep the highest eventId they
    * have seen. 3 segments when there's a next team (result + atmosphere + transition), 2 when there
    * isn't (boss-kill, or the game's last judged event) — see docs/designs/multi-segment-narration.md. */
@@ -180,6 +187,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "HOST_GET_TRANSCRIPT":
       return { type: "HOST_GET_TRANSCRIPT" };
+    case "HOST_NEXT":
+      return { type: "HOST_NEXT" };
     case "HOST_JUDGE": {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);

@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
+import type { AnswerReveal, ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
@@ -14,7 +14,7 @@ import { Qr } from "@/components/qr";
 import { PARTY_HOST } from "@/lib/party-host";
 
 type LobbyState = { teams: { id: string; name: string }[] };
-type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
+type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; reveal: AnswerReveal | null; eventId: number };
 
 /** The host's own link carries the token, so it is shown here and never on /screen or /play. */
 function MoreDrawer({
@@ -179,7 +179,7 @@ export default function HostPage() {
           setGame(null);
           break;
         case "STATE":
-          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
+          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, reveal: msg.reveal, eventId: msg.eventId });
           setPendingTeamId(null);
           break;
         case "GAME_OVER":
@@ -300,7 +300,7 @@ export default function HostPage() {
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.monster.name}</div>
                   <div data-testid="host-question" className="text-[20px] leading-snug">
-                    {game.question ? (game.question.content.kind === "text" ? game.question.content.value : `題目 ${turn.questionId}`) : `題目 ${turn.questionId}`}
+                    {game.question?.content.kind === "text" ? game.question.content.value : `題目 ${turn.questionId}`}
                   </div>
                   {/* The host previously never saw question media at all (text-only preview) —
                       a small preview so judging an image/video question doesn't mean squinting
@@ -355,17 +355,30 @@ export default function HostPage() {
 
             <div className="mt-auto flex flex-col">
               {!ready && connected && <div className="px-1 text-center text-[14px] text-white">等待主持人驗證…</div>}
-              <PixelButton variant="ok" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, true)}>
-                {connected ? "答對！" : "重新連線中"}
-              </PixelButton>
-              <div className="grid grid-cols-2">
-                <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
-                  答錯・重答
-                </PixelButton>
-                <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                  答錯・逃跑
-                </PixelButton>
-              </div>
+              {game.reveal ? (
+                // D7: the big screen and every phone show the answer in place of the next
+                // question until the host moves on — judging waits until then.
+                <>
+                  <div data-testid="host-reveal" className="px-1 text-center text-[14px] text-white">大螢幕正在揭曉：{game.reveal.answer}</div>
+                  <PixelButton variant="ok" disabled={!ready} onClick={() => send({ type: "HOST_NEXT" })}>
+                    {connected ? "下一題" : "重新連線中"}
+                  </PixelButton>
+                </>
+              ) : (
+                <>
+                  <PixelButton variant="ok" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, true)}>
+                    {connected ? "答對！" : "重新連線中"}
+                  </PixelButton>
+                  <div className="grid grid-cols-2">
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                      答錯・重答
+                    </PixelButton>
+                    <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                      答錯・逃跑
+                    </PixelButton>
+                  </div>
+                </>
+              )}
             </div>
           </>
         )}

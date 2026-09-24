@@ -134,6 +134,24 @@
 ---
 
 
+## 遊戲進行中在題庫編輯器換圖，會立刻刪掉那一局還在用的 R2 圖片
+
+**Priority:** P2
+
+**What:** `BankStore.putBank()` 存檔時會立刻刪掉「新題庫沒用到」的 R2 圖片（`lib/bank-store.ts` 的 orphan diff → `worker/index.ts` 的 `deleteOrphanedImages`）。但每個進行中的房間都把題庫複製進自己的 snapshot（「編輯題庫不影響進行中的遊戲」）。所以遊戲進行中換掉或刪掉一張圖，那一局的題目圖和詳解圖會直接消失，`hideOnImageError` 把它藏起來，log 裡什麼都看不到。
+
+**Why:** 這個問題 v0.6 的圖片題就有了；v0.9.0.0 讓每個題目的 content 和 explanation 都可以放圖，影響範圍變大。詳解圖壞掉的時間點剛好是揭曉的那一刻。
+
+**Pros:** 換題庫時不會弄壞正在進行的派對。
+
+**Cons:** 刪除要延後，R2 會暫時多放一些圖，另外需要一個延後刪除的機制。
+
+**Context:** 可以把 orphan key 加上時間戳記排進佇列，等超過房間壽命（`EXPIRE_MS`）後由 alarm 刪除；或是讓房間登記自己正在用的 image key，刪除時排除掉。red-team 審查發現，/ship v0.9.0.0（2026-09-24）。
+
+**Depends on / blocked by:** 無。
+
+---
+
 ## 共享大螢幕活地圖
 
 **What:** 大螢幕顯示地城地圖，各隊棋子從房間移到房間，首領房有血條與強度條。

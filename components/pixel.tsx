@@ -13,23 +13,23 @@ const cx = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).j
  * broken-image icon or blocking the rest of the question from rendering — the decided
  * broken-image fallback (docs/designs/image-question-type.md). Shared so both call sites can't
  * drift out of sync. */
-export function hideOnImageError(e: SyntheticEvent<HTMLImageElement>) {
+function hideOnImageError(e: SyntheticEvent<HTMLImageElement>) {
   e.currentTarget.style.display = "none";
 }
 
 /** Renders a question's or explanation's `content`/`explanation` media on /play, /screen, or the
  * host's preview — `text` content renders nothing here (the caller shows its `value` as the
  * ordinary prompt/explanation line, same slot the old fixed text field used); `image` and
- * `youtube` render below that line. `key={questionId}` on the caller's wrapper (not here) is what
+ * `youtube` render below that line. Callers pass `key={questionId}` on <QuestionMedia> itself, which
  * forces a fresh DOM node per question, same broken-image fallback discipline as before this
  * component existed (docs/designs/question-media-content.md, carrying forward
  * image-question-type.md's decision). */
-export function QuestionMedia({ content, maxWidth, maxHeight, className }: { content: PublicMediaContent; maxWidth: number; maxHeight: number; className?: string }) {
+export function QuestionMedia({ content, maxWidth, maxHeight, className, label = "題目" }: { content: PublicMediaContent; maxWidth: number; maxHeight: number; className?: string; label?: string }) {
   if (content.kind === "text") return null;
   if (content.kind === "image") {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- a remote R2 URL, not a local asset next/image can optimize
-      <img src={content.url} alt="題目圖片" className={className} style={{ maxWidth, maxHeight, objectFit: "contain" }} onError={hideOnImageError} />
+      <img src={content.url} alt={`${label}圖片`} className={className} style={{ maxWidth, maxHeight, objectFit: "contain" }} onError={hideOnImageError} />
     );
   }
   // youtube: a plain iframe, no library or API key needed (confirmed 2026 best practice,
@@ -38,7 +38,7 @@ export function QuestionMedia({ content, maxWidth, maxHeight, className }: { con
   return (
     <iframe
       src={youtubeEmbedUrl(content.videoId)}
-      title="題目影片"
+      title={`${label}影片`}
       className={className}
       // width: 100% (capped by maxWidth) instead of a hardcoded pixel width — /screen and the
       // host preview live inside a fixed-size scaled stage where maxWidth always fits, but

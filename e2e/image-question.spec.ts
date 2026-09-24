@@ -197,7 +197,7 @@ async function startWithExplanation(browser: import("@playwright/test").Browser,
   return { host, screen, team };
 }
 
-test("answer reveal: a correct answer shows the answer and its text explanation on /play and /screen, then the next STATE clears it", async ({ browser, request }) => {
+test("answer reveal: a correct answer shows the answer and its text explanation on /play and /screen in place of the question, until the host presses 下一題", async ({ browser, request }) => {
   const { host, screen, team } = await startWithExplanation(browser, request, { kind: "text", value: "因為這是補充說明" });
 
   // Nothing is revealed before the answer is judged.
@@ -210,12 +210,21 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
     await expect(page.getByText("因為這是補充說明")).toBeVisible();
   }
 
-  // The next judgment's STATE replaces the reveal — it never lingers into the following question.
-  await host.getByRole("button", { name: "答錯・重答" }).click();
+  // The reveal takes the question's place (D7): the next question stays hidden and the host can't
+  // judge until they press 下一題.
+  await expect(screen.getByText("揭曉測試題")).toHaveCount(0);
+  await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
+
+  // A reconnecting phone still sees it — the reveal rides on STATE, not a one-off message.
+  await team.reload();
+  await expect(team.getByText("正解：揭曉答案")).toBeVisible();
+
+  await host.getByRole("button", { name: "下一題" }).click();
   for (const page of [screen, team]) {
     await expect(page.getByText("正解：揭曉答案")).toHaveCount(0);
     await expect(page.getByText("因為這是補充說明")).toHaveCount(0);
   }
+  await expect(host.getByRole("button", { name: "答對！" })).toBeVisible();
 });
 
 test("answer reveal: a YouTube explanation renders as an embed on /play and /screen, only after a correct answer", async ({ browser, request }) => {
@@ -223,11 +232,11 @@ test("answer reveal: a YouTube explanation renders as an embed on /play and /scr
 
   // A wrong answer (retry) never reveals it (D5).
   await host.getByRole("button", { name: "答錯・重答" }).click();
-  await expect(screen.getByTitle("題目影片")).toHaveCount(0);
-  await expect(team.getByTitle("題目影片")).toHaveCount(0);
+  await expect(screen.getByTitle("詳解影片")).toHaveCount(0);
+  await expect(team.getByTitle("詳解影片")).toHaveCount(0);
 
   await host.getByRole("button", { name: "答對！" }).click();
   const embedSrc = /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ$/;
-  await expect(screen.getByTitle("題目影片")).toHaveAttribute("src", embedSrc);
-  await expect(team.getByTitle("題目影片")).toHaveAttribute("src", embedSrc);
+  await expect(screen.getByTitle("詳解影片")).toHaveAttribute("src", embedSrc);
+  await expect(team.getByTitle("詳解影片")).toHaveAttribute("src", embedSrc);
 });
