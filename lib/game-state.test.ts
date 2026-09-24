@@ -500,6 +500,36 @@ describe("question deck (T2)", () => {
     expect(game.boss.currentQuestionId).not.toBe("boss-q1");
   });
 
+  it("the fled-question fallback never hands a team the question another team is holding", () => {
+    // Two teams, room of 3. By T0's last deal, q2/q3 are revealed and q1 (the only unrevealed
+    // question) sits in T1's hand — T0 must get a revealed question, never T1's.
+    let game = createGame(seeds(2), makeRooms(1, 1, 3), boss, cfg, 1, first); // T0 q1, T1 q2
+    ({ game } = answerQuestion(game, "T0", "room0-q1", false, "flee", first)); // T0 -> q3
+    ({ game } = answerQuestion(game, "T1", "room0-q2", true, "retry", first)); // q2 revealed, T1 -> q1
+    ({ game } = answerQuestion(game, "T0", "room0-q3", true, "retry", first)); // q3 revealed
+    expect(game.teams[1].currentQuestionId).toBe("room0-q1");
+    expect(game.teams[0].currentQuestionId).not.toBe("room0-q1");
+  });
+
+  it("a boss flee stays on the current question when it is the last unrevealed one", () => {
+    // b2 and b3 answered correctly; b1 is the only question whose answer nobody has seen, so
+    // fleeing it must not rotate the whole boss encounter onto a revealed question.
+    let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
+    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q1", false, "flee", first)); // -> q2
+    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q2", true, "retry", first)); // -> q3
+    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q3", true, "retry", first)); // -> q1
+    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q1", false, "flee", first));
+    expect(game.boss.currentQuestionId).toBe("boss-q1");
+  });
+
+  it("a boss question answered again after every one was revealed is not listed twice", () => {
+    let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
+    for (let i = 0; i < 5; i++) {
+      ({ game } = answerQuestion(game, currentTurnTeamId(game)!, game.boss.currentQuestionId, true, "retry", first));
+    }
+    expect(game.revealedQuestionIds.filter((id) => id.startsWith("boss")).sort()).toEqual(["boss-q1", "boss-q2", "boss-q3"]);
+  });
+
   it("a room redeals a fled (unrevealed) question before re-showing a revealed one", () => {
     // q1 answered (revealed); then q2/q3 keep getting fled. After the reshuffle the cycle's only
     // unused question is q1 — but q2 was fled, never revealed, so it must win over re-showing q1.
