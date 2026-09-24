@@ -2,6 +2,21 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.0.0] - 2026-09-24
+
+### Added
+- A question (or multiple-choice question) can now show its prompt as text, an uploaded image, or a YouTube video — the same slot, not three separate question types. The standalone "image question" type is gone; images are just one of the three ways any question can look.
+- Any question can also carry an optional "詳解" (detailed explanation) — its own text/image/video, independent of the question's own content — shown to everyone right after a team answers correctly.
+- When a team answers correctly, the correct answer (and its explanation, if there is one) now appears on the big screen and every phone, not just the host's own screen — since everyone at the party already watches the shared screen together, there was nothing being protected by keeping it host-only.
+- A question whose answer was already shown this way won't come back around for a team who hasn't faced it yet, even after a room or boss question pool reshuffles.
+- The host's own screen now shows a small preview of a question's image or video too, so judging doesn't mean squinting at the big screen from across the room.
+
+### Fixed
+- The bank editor's image-upload button could collide between two image questions in the same room, sending an upload to the wrong question's slot.
+- Switching a question between 問答/選擇 in the bank editor silently discarded its explanation.
+- Clicking a media-type tab that was already selected in the bank editor asked to discard — and, on confirm, actually discarded — content that hadn't changed at all.
+- A game already in progress when this version deployed would have had every correctly-answered question wrongly rejected after the next server restart, due to a missing field on old saves. Fixed before it shipped.
+
 ## [0.8.0.0] - 2026-09-23
 
 ### Added
