@@ -16,7 +16,7 @@ import {
   type GameState,
 } from "../game-state";
 import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../protocol";
-import { allQuestions, answerText, bossQuestionIds, findQuestion, publicQuestion, roomTemplates, type Bank } from "../question-bank";
+import { allQuestions, answerText, bossQuestionIds, findQuestion, publicExplanation, publicQuestion, roomTemplates, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
@@ -295,6 +295,13 @@ export class DungeonRoom {
     this.game =
       s.game && {
         ...s.game,
+        // A save from before revealedQuestionIds existed (question-media-content.md's D4/D5)
+        // hits the same shallow-snapshot-validation gap as branchChoices above — deal() and
+        // nextBossQuestionId() both call .includes() on it unconditionally, so an undamaged
+        // backfill here is required or the next correct answer throws inside handleHostJudge's
+        // try/catch and gets silently turned into an ERROR sent to the host (test-coverage audit
+        // finding, /ship).
+        revealedQuestionIds: s.game.revealedQuestionIds ?? [],
         teams: s.game.teams.map((t) =>
           t && typeof t === "object" ? { ...t, branchChoices: t.branchChoices ?? {}, currentSelection: t.currentSelection ?? null } : t,
         ),
@@ -742,6 +749,12 @@ export class DungeonRoom {
     try {
       const prev = this.game;
       const monster = this.currentQuestion()?.pub.monster.name ?? "怪物";
+      // Captured before `this.game` reassigns to the post-judgment state below — same
+      // read-prev-before-mutating discipline the `monster` capture above already needs.
+      // ANSWER_REVEALED must describe the question that was JUST answered, not whatever
+      // currentQuestion() would return afterwards (the next one) — a trap this file's own
+      // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
+      const justAnswered = this.currentQuestion();
       const { game, outcome } = answerQuestion(prev, teamId, questionId, correct, fleeChoice ?? "retry", this.rng);
       // Everything up to broadcastState is synchronous: state changes and the eventId are
       // fixed before any narration awaits, so concurrent judgments cannot interleave.
@@ -749,6 +762,16 @@ export class DungeonRoom {
       const eventId = ++this.eventSeq;
       const event = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined);
       this.broadcastState();
+      // Sent to everyone — this is a shared-screen, in-person party game, so there's nothing to
+      // protect by hiding it from non-answering teams (D3) — but only on a genuinely correct
+      // answer (D5): a retry or a flee must never reveal it, or the question loses its point, and
+      // game-state.ts's deal()/boss ring already rely on "revealed" meaning "answered correctly"
+      // to decide what's safe to redeal.
+      if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
+        const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
+        const explanation = publicExplanation(this.bank, questionId, imageBaseUrl);
+        this.broadcast({ type: "ANSWER_REVEALED", questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}) });
+      }
       const narration = this.narrate(eventId, event);
       if (game.phase === "finished" && !this.epilogueRequested) {
         this.epilogueRequested = true;

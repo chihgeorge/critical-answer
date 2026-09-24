@@ -185,6 +185,32 @@ describe("restoring after a restart", () => {
     expect(second.room.game!.teams.map((t) => t.branchChoices)).toEqual([{}, {}]);
   });
 
+  it("REGRESSION: a save from before revealedQuestionIds existed has it backfilled, so the next correct answer isn't wrongly rejected", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    delete saved.game.revealedQuestionIds; // simulate a save from before this field existed
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored");
+    const host2 = makeConn("host2");
+    send(second.room, host2, { type: "HOST_CLAIM", token: TOKEN });
+    rejoin(second.room, T1, TEAM_KEY, "a-again");
+    rejoin(second.room, T2, TEAM_KEY + "2", "b-again");
+    send(second.room, host2, { type: "HOST_CLAIM", token: TOKEN });
+    const scoreBefore = second.room.game!.teams.find((t) => t.id === T1)!.score;
+    // deal()/nextBossQuestionId both spread/`.includes()` game.revealedQuestionIds without a
+    // backfill for a pre-existing field (unlike branchChoices/currentSelection above, which DO
+    // get backfilled in restore()) — a missing field here throws inside handleHostJudge's own
+    // try/catch, which silently turns it into a generic ERROR "invalid_action" instead of
+    // recording the correct answer. Documents the actual failure mode: not a crash visible to
+    // the caller, but every post-restart correct answer being wrongly rejected.
+    judgeCorrect(second.room, host2 as any, T1);
+    expect(lastOf(host2, "ERROR")).toBeUndefined();
+    expect(second.room.game!.teams.find((t) => t.id === T1)!.score).toBeGreaterThan(scoreBefore);
+  });
+
   it("a save from before currentSelection existed restores with it backfilled to null, not crashing on the next read", async () => {
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);
@@ -306,7 +332,7 @@ describe("restoring after a restart", () => {
 
   it("the game keeps the bank it started with, not the bundled one", async () => {
     const custom = structuredClone(BANK);
-    custom.rooms[0].questions[0].text = "自訂題庫的第一題";
+    custom.rooms[0].questions[0].content.value = "自訂題庫的第一題";
     const storage = memoryStorage();
     const first = makeRoom(storage, { bank: custom }).room;
     startedGame(first);
@@ -316,7 +342,7 @@ describe("restoring after a restart", () => {
     rejoin(second, T1, TEAM_KEY, "a-again");
     const screen = makeConn("screen");
     second.onConnect(screen);
-    expect(lastOf(screen, "STATE").question.text).toBe("自訂題庫的第一題");
+    expect(lastOf(screen, "STATE").question.content).toEqual({ kind: "text", value: "自訂題庫的第一題" });
   });
 
   it("a finished game whose epilogue was lost asks for it again", async () => {
