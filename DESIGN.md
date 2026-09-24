@@ -41,7 +41,9 @@ Sprites are drawn in `lib/pixel-art.ts`. Scale them by whole numbers only, so pi
 - Judge buttons live in the thumb zone. `PixelButton.ok` is 78px tall.
 - Motion is two-frame `steps()` only. `prefers-reduced-motion` stops blinking, typing and hopping.
 - A question's answer is never shown while it's still in play (the host judges by ear). Once a
-  team answers CORRECTLY, `ANSWER_REVEALED` broadcasts the answer (and optional explanation
-  media) to `/screen` and `/play` — this is a shared-screen, in-person party game, so everyone
-  in the room already sees the reveal together; it is not a competitive-integrity boundary. See
-  `docs/designs/question-media-content.md`'s D2/D3 (2026-09-23, revised the earlier blanket rule).
+  team answers CORRECTLY, the answer (and optional explanation media) is shown to `/screen` and `/play`
+  — this is a shared-screen, in-person party game, so everyone in the room already sees the reveal
+  together; it is not a competitive-integrity boundary. See `docs/designs/question-media-content.md`'s
+  D2/D3 (2026-09-23, revised the earlier blanket rule). **Note (D7, impl change):** the reveal is
+  carried on `STATE` with a `reveal: AnswerReveal | null` field, not a separate `ANSWER_REVEALED`
+  broadcast; it stays on screen until the host presses 「下一題」 via `HOST_NEXT` (see `lib/protocol.ts`).
