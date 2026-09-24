@@ -220,10 +220,12 @@ function Finished({ view, winners, reveal, narration, epilogue }: { view: Specta
         </small>
         {names}奪得榜首！
       </div>
-      {/* The winning answer: the last correct judgment ends the game, so its reveal lands here, not on <Playing>. */}
+      {/* The winning answer: the last correct judgment ends the game, so its reveal lands here, not on
+          <Playing>. The podium is centered and about 546px wide, which leaves the left margin free
+          below the title — a banner up top would sit on the crown. */}
       {reveal && (
-        <div data-testid="answer-reveal" className="absolute inset-x-0 text-center text-[20px]" style={{ top: 122, zIndex: 6 }}>
-          <span style={{ background: "var(--turn)", color: "var(--ink)", padding: "4px 12px", boxShadow: "0 0 0 3px var(--k)" }}>最後一題正解：{reveal.answer}</span>
+        <div data-testid="answer-reveal" className="absolute" style={{ left: 18, top: 160, width: 170, zIndex: 6 }}>
+          <Panel tone="turn" className="px-3 py-2 text-[16px] leading-snug">最後一題正解：{reveal.answer}</Panel>
         </div>
       )}
       <div className="absolute inset-x-0 flex items-end justify-center gap-12" style={{ bottom: 130, zIndex: 5 }}>

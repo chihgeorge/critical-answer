@@ -201,7 +201,13 @@ export default function HostPage() {
               }
             }
           }
-          setError(msg.error === "bad_token" ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人" : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`);
+          setError(
+            msg.error === "bad_token"
+              ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人"
+              : msg.detail === "reveal_pending"
+                ? "正解還在揭曉中，先按「下一題」"
+                : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
+          );
           setPendingTeamId(null);
           break;
       }
