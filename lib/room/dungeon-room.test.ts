@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
-import { answerText, bossQuestionIds, roomTemplates, type Bank } from "../question-bank";
+import { answerText, bossQuestionIds, findQuestion, roomTemplates, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { currentTurnTeamId } from "../game-state";
 
@@ -39,6 +39,9 @@ function lastBroadcast(room: DungeonRoom) {
   const last = mock.mock.calls.at(-1)?.[0];
   return last ? JSON.parse(last) : null;
 }
+
+/** The room's current eventSeq — what a real host echoes back in HOST_NEXT (the eventId of the STATE it saw). */
+const seqOf = (room: DungeonRoom) => (room as unknown as { eventSeq: number }).eventSeq;
 
 function lastSentTo(conn: ReturnType<typeof makeConn>) {
   const calls = (conn.send as ReturnType<typeof vi.fn>).mock.calls;
@@ -295,8 +298,9 @@ describe("HOST_JUDGE", () => {
   it("applies a correct answer and broadcasts the updated STATE", () => {
     const { room, hostConn, ids } = startedGame(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
-    const state = lastBroadcast(room);
-    expect(state.type).toBe("STATE");
+    // Find STATE specifically rather than assuming it's the very last broadcast.
+    const mock = room.room.broadcast as ReturnType<typeof vi.fn>;
+    const state = mock.mock.calls.map((c) => JSON.parse(c[0])).findLast((m) => m.type === "STATE");
     expect(state.view.teams[0].score).toBe(1); // room 0 base difficulty
     expect(state.view.teams[0].roomIndex).toBe(1);
   });
@@ -322,11 +326,170 @@ describe("HOST_JUDGE", () => {
       const g = room.game!;
       const t = g.teams[0];
       const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: qid, correct: true });
     }
     expect(room.game!.phase).toBe("finished");
     const broadcastCalls = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
     expect(broadcastCalls.some((m) => m.type === "GAME_OVER")).toBe(true);
+  });
+});
+
+describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
+  function startedGame(teamCount = 2) {
+    const { room, hostConn } = makeRoomWithHost();
+    const { ids } = joinTeams(room, hostConn, teamCount);
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn, ids };
+  }
+  const broadcastsOf = (room: DungeonRoom) => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+  const revealOf = (room: DungeonRoom) => broadcastsOf(room).findLast((m) => m.type === "STATE")?.reveal;
+
+  it("broadcasts the correct answer to everyone (not just the host) on a correct answer", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const revealed = revealOf(room);
+    expect(revealed).toMatchObject({ questionId: "r0-q1", answer: answerText(findQuestion(BANK, "r0-q1")!) });
+  });
+
+  it("does not reveal on a retry (wrong answer, staying on the same question)", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: false, fleeChoice: "retry" });
+    expect(revealOf(room)).toBeNull();
+  });
+
+  it("does not reveal on a flee (wrong answer, giving up on the question)", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: false, fleeChoice: "flee" });
+    expect(revealOf(room)).toBeNull();
+  });
+
+  it("includes the explanation when the question has one, using room.env.R2_PUBLIC_BASE_URL for an image explanation", () => {
+    const bankWithExplanation: Bank = {
+      rooms: [
+        {
+          monster: { name: "史萊姆", sprite: "slime", hue: 0 },
+          baseDifficulty: 1,
+          questions: [
+            {
+              kind: "text",
+              id: "r0-q1",
+              content: { kind: "text", value: "題目？" },
+              answer: "答案",
+              explanation: { kind: "image", value: "66666666-6666-6666-6666-666666666666" },
+            },
+          ],
+        },
+      ],
+      boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+    };
+    const roomIO = { ...(makeRoom() as any), env: { R2_PUBLIC_BASE_URL: "https://pub.example.r2.dev" } } as RoomIO;
+    const explanationRoom = new DungeonRoom(roomIO, () => 0, { bank: bankWithExplanation });
+    const hostConn2 = makeConn("host-conn-2");
+    explanationRoom.onConnect(hostConn2);
+    claim(explanationRoom, hostConn2);
+    const { ids: teamIds } = joinTeams(explanationRoom, hostConn2, 1);
+    send(explanationRoom, hostConn2, { type: "HOST_START" });
+    send(explanationRoom, hostConn2, { type: "HOST_JUDGE", teamId: teamIds[0], questionId: "r0-q1", correct: true });
+    const revealed = revealOf(explanationRoom);
+    expect(revealed.explanation).toEqual({ kind: "image", url: "https://pub.example.r2.dev/66666666-6666-6666-6666-666666666666" });
+  });
+
+  it("reveals the boss question on a correct boss hit (the correct-boss-hit branch, not just room advances)", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    for (let i = 0; i < 100 && room.game!.teams[0].score < room.game!.config.bossThreshold; i++) {
+      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
+    }
+    const bossQid = room.game!.boss.currentQuestionId;
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: bossQid, correct: true });
+    const revealed = revealOf(room);
+    expect(revealed).toMatchObject({ questionId: bossQid, answer: answerText(findQuestion(BANK, bossQid)!) });
+    // Revealed means never redealt: the ring moved on and remembers it (D4/D5).
+    expect(room.game!.revealedQuestionIds).toContain(bossQid);
+    expect(room.game!.boss.currentQuestionId).not.toBe(bossQid);
+  });
+
+  it("has no explanation field at all when the question has none", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const revealed = revealOf(room);
+    expect(revealed).not.toHaveProperty("explanation");
+  });
+
+  it("reveals the question that was JUST answered, not the one now in play (state-capture-ordering trap, Outside Voice finding)", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const revealed = revealOf(room);
+    // Must name the question that was actually answered (r0-q1), never whatever the team is
+    // holding now that the turn has already advanced.
+    expect(revealed.questionId).toBe("r0-q1");
+    expect(room.game!.teams[0].currentQuestionId).not.toBe("r0-q1");
+  });
+
+  it("the reveal and the post-judgment state arrive in the same STATE, so no client ever shows the next question first", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const state = broadcastsOf(room).findLast((m) => m.type === "STATE");
+    expect(state.reveal.questionId).toBe("r0-q1");
+    expect(state.view.teams[0].score).toBe(1);
+  });
+
+  it("stays up until the host sends HOST_NEXT, which clears it and rebroadcasts (D7)", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    expect(revealOf(room)).toBeNull();
+  });
+
+  it("a reconnecting screen still gets the reveal", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const late = makeConn("late-screen");
+    room.onConnect(late);
+    expect(lastSentTo(late)).toMatchObject({ type: "STATE", reveal: { questionId: "r0-q1" } });
+  });
+
+  it("a stale HOST_NEXT (for an older STATE) doesn't close a newer reveal", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const firstRevealEvent = seqOf(room);
+    send(room, hostConn, { type: "HOST_NEXT", eventId: firstRevealEvent });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
+    const second = revealOf(room);
+    send(room, hostConn, { type: "HOST_NEXT", eventId: firstRevealEvent }); // a second device's late tap
+    expect(revealOf(room)).toEqual(second);
+    expect(second).not.toBeNull();
+  });
+
+  it("HOST_NEXT from a non-host is rejected and leaves the reveal up", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const stranger = makeConn("stranger");
+    room.onConnect(stranger);
+    send(room, stranger, { type: "HOST_NEXT", eventId: seqOf(room) });
+    expect(lastSentTo(stranger)).toMatchObject({ type: "ERROR", error: "not_host" });
+    expect(revealOf(room)).toMatchObject({ questionId: "r0-q1" });
+  });
+
+  it("rejects a judgment while a reveal is up, so a second host device can't skip past it (D7)", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const next = room.game!.teams[0].currentQuestionId;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: next, correct: true });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
+    expect(room.game!.teams[0].currentQuestionId).toBe(next);
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: next, correct: false, fleeChoice: "retry" });
+    expect(revealOf(room)).toBeNull();
+  });
+
+  it("HOST_NEXT with nothing revealed is a no-op (no extra STATE)", () => {
+    const { room, hostConn } = startedGame(1);
+    const before = broadcastsOf(room).length;
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    expect(broadcastsOf(room).length).toBe(before);
   });
 });
 
@@ -394,6 +557,7 @@ describe("TEAM_BRANCH_CHOICE", () => {
   it("does not block the team's next turn — HOST_JUDGE for that team still succeeds with the choice still pending", () => {
     const { room, hostConn, ids } = startedGame(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true }); // enters room 1, never chooses
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
     expect(room.game!.teams[0].roomIndex).toBeGreaterThanOrEqual(1);
     expect(room.game!.teams[0].branchChoices).toEqual({}); // still unanswered, and nothing broke
@@ -433,15 +597,15 @@ describe("TEAM_SELECT_OPTION", () => {
       {
         monster: { name: "史萊姆", sprite: "slime", hue: 0 },
         baseDifficulty: 1,
-        questions: [{ kind: "multipleChoice", id: "r0-mc1", text: "選哪個？", options: ["A", "B", "C"], correctIndex: 1 }],
+        questions: [{ kind: "multipleChoice", id: "r0-mc1", content: { kind: "text", value: "選哪個？" }, options: ["A", "B", "C"], correctIndex: 1 }],
       },
     ],
     boss: {
       monster: { name: "龍", sprite: "dragon", hue: 0 },
       maxHp: 3,
       questions: [
-        { kind: "text", id: "boss-q1", text: "？", answer: "x" },
-        { kind: "multipleChoice", id: "boss-mc1", text: "選哪個？", options: ["X", "Y"], correctIndex: 0 },
+        { kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" },
+        { kind: "multipleChoice", id: "boss-mc1", content: { kind: "text", value: "選哪個？" }, options: ["X", "Y"], correctIndex: 0 },
       ],
     },
   };
@@ -471,6 +635,18 @@ describe("TEAM_SELECT_OPTION", () => {
     const { conns } = joinTeams(room, hostConn, 1);
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 0 });
     expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "no_active_game" });
+  });
+
+  it("rejects a pick while an answer reveal is up, and accepts it once the host moves on (D7)", () => {
+    const { room, hostConn, ids, conns } = startedMcGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-mc1", correct: true });
+    const next = room.game!.teams[0].currentQuestionId; // the room's only question, redealt
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: next, optionIndex: 0 });
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
+    expect(room.game!.teams[0].currentSelection).toBeNull();
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: next, optionIndex: 0 });
+    expect(room.game!.teams[0].currentSelection).toBe(0);
   });
 
   it("records a valid pick and broadcasts it in STATE", () => {
@@ -647,7 +823,8 @@ describe("questions and answers (T3)", () => {
     const { room } = started();
     const state = broadcasts(room).findLast((m) => m.type === "STATE");
     expect(state.question).toMatchObject({ id: "r0-q1", boss: false, monster: { sprite: "slime" } });
-    expect(typeof state.question.text).toBe("string");
+    expect(state.question.content.kind).toBe("text");
+    expect(typeof state.question.content.value).toBe("string");
     expect(state.question).not.toHaveProperty("answer");
   });
 
@@ -667,26 +844,36 @@ describe("questions and answers (T3)", () => {
     expect(sent(second).map((m) => m.type)).toEqual(["HOST_OK", "HOST_ANSWER"]);
   });
 
-  it("never puts any bank answer into a broadcast or a player message across a full game", () => {
+  it("STATE's live question never carries an answer, and STATE.reveal carries the correct one only for questions actually answered correctly (D2/D3/D5)", () => {
     const { room, hostConn, conns } = started(2);
     for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) {
       const g = room.game!;
       const teamId = g.turnOrder[g.currentTurnIndex];
       const t = g.teams.find((x) => x.id === teamId)!;
       const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
     }
     expect(room.game!.phase).toBe("finished");
-    const public_ = JSON.stringify([...broadcasts(room), ...conns.flatMap(sent)]);
-    for (const r of BANK.rooms) for (const q of [...r.questions]) expect(public_).not.toContain(`"answer":"${answerText(q)}"`);
-    for (const q of BANK.boss.questions) expect(public_).not.toContain(`"answer":"${answerText(q)}"`);
-    expect(public_).not.toContain("HOST_ANSWER");
+    const messages = [...broadcasts(room), ...conns.flatMap(sent)];
+    // The live in-play question is never the answer, in any STATE message.
+    for (const m of messages.filter((x) => x.type === "STATE" && x.question)) expect(m.question).not.toHaveProperty("answer");
+    // The reveal is intentional (D2/D3 — a shared-screen party game), but only carries the real
+    // answer for a question this playthrough actually got right (every judgment above was
+    // correct, so every judged question should have one).
+    const revealed = messages.filter((m) => m.type === "STATE" && m.reveal).map((m) => m.reveal);
+    expect(revealed.length).toBeGreaterThan(0);
+    for (const r of revealed) expect(r.answer).toBe(answerText(findQuestion(BANK, r.questionId)!));
+    // HOST_ANSWER itself must still never appear outside a host-only sendTo (the invariant this
+    // test originally guarded — the reveal is a deliberately separate, narrower channel).
+    expect(JSON.stringify(messages)).not.toContain("HOST_ANSWER");
   });
 
   it("in the boss room the public question is flagged as boss", () => {
     const { room, hostConn, ids } = started(1);
     for (let i = 0; i < 100 && room.game!.teams[0].score < 15; i++) {
       const t = room.game!.teams[0];
+      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: t.currentQuestionId, correct: true });
     }
     const state = broadcasts(room).findLast((m) => m.type === "STATE");
@@ -730,6 +917,7 @@ describe("narration (T5-T7)", () => {
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
     const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
   }
 
@@ -750,8 +938,10 @@ describe("narration (T5-T7)", () => {
     const { room, hostConn } = start();
     await flush();
     judgeCorrect(room, hostConn);
-    // STATE for the judgment is out synchronously, before any narration for it.
-    expect(all(room).at(-1)).toMatchObject({ type: "STATE", eventId: 2 });
+    // STATE for the judgment (carrying the reveal, since judgeCorrect always judges correctly)
+    // is out synchronously, before any narration for it.
+    const afterJudge = all(room);
+    expect(afterJudge.at(-1)).toMatchObject({ type: "STATE", eventId: 2, reveal: { questionId: expect.any(String) } });
     await flush();
     judgeCorrect(room, hostConn);
     await flush();
@@ -911,6 +1101,7 @@ describe("LLM narration and director (T8-T10)", () => {
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
     const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
   }
   const narrations = (room: DungeonRoom) => all(room).filter((m) => m.type === "NARRATION");
@@ -1107,6 +1298,7 @@ describe("story moves on to the next team (two-line narration)", () => {
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
     const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct });
   }
 
@@ -1278,13 +1470,13 @@ describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
       {
         monster: { name: "史萊姆", sprite: "slime", hue: 0 },
         baseDifficulty: 1,
-        questions: [{ kind: "image", id: "r0-img1", text: "這是誰？", answer: "松鼠", imageKey: "55555555-5555-5555-5555-555555555555" }],
+        questions: [{ kind: "text", id: "r0-img1", content: { kind: "image", value: "55555555-5555-5555-5555-555555555555" }, answer: "松鼠" }],
       },
     ],
-    boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [{ kind: "text", id: "boss-q1", text: "？", answer: "x" }] },
+    boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
   };
 
-  it("builds the broadcast question's imageUrl from room.env.R2_PUBLIC_BASE_URL", () => {
+  it("builds the broadcast question's content.url from room.env.R2_PUBLIC_BASE_URL", () => {
     const roomIO = { ...(makeRoom() as any), env: { R2_PUBLIC_BASE_URL: "https://pub.example.r2.dev" } } as RoomIO;
     const room = new DungeonRoom(roomIO, () => 0, { bank: imageBank });
     const hostConn = makeConn("host-conn");
@@ -1293,7 +1485,7 @@ describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
     joinTeams(room, hostConn, 1);
     send(room, hostConn, { type: "HOST_START" });
     const state = lastBroadcast(room);
-    expect(state.question.imageUrl).toBe("https://pub.example.r2.dev/55555555-5555-5555-5555-555555555555");
+    expect(state.question.content).toEqual({ kind: "image", url: "https://pub.example.r2.dev/55555555-5555-5555-5555-555555555555" });
     expect(state.question).not.toHaveProperty("answer");
   });
 
@@ -1305,6 +1497,6 @@ describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
     joinTeams(room, hostConn, 1);
     send(room, hostConn, { type: "HOST_START" });
     const state = lastBroadcast(room);
-    expect(state.question.imageUrl).toBe("/55555555-5555-5555-5555-555555555555");
+    expect(state.question.content).toEqual({ kind: "image", url: "/55555555-5555-5555-5555-555555555555" });
   });
 });

@@ -5,7 +5,7 @@ import type { PublicQuestion } from "./protocol";
 
 const pq = (over: Partial<PublicQuestion> = {}): PublicQuestion => ({
   id: "r0-q1",
-  text: "題目？",
+  content: { kind: "text", value: "題目？" },
   difficulty: 2,
   boss: false,
   monster: { name: "害羞幽靈", sprite: "ghost", hue: 40 },

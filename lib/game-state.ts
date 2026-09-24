@@ -146,6 +146,12 @@ export interface GameState {
    * already faced in the same room until the deck runs out.
    */
   usedQuestionIds: string[][];
+  /** Every question id a team has actually gotten right, globally, across the whole game — never
+   * reset by a room's reshuffle. A revealed answer (see AnswerReveal, lib/protocol.ts) must
+   * never come back around for someone who hasn't faced it yet; a retried or fled question stays
+   * eligible (D5 — its answer was never shown). deal()'s reshuffle and the boss ring both filter
+   * against this before falling back to reuse once every remaining question has been revealed. */
+  revealedQuestionIds: string[];
   boss: BossState;
   config: GameConfig;
   phase: GamePhase;
@@ -177,12 +183,15 @@ export function rollBossKillBonus(rng: () => number = Math.random): number {
 /**
  * Deal one question for `roomIndex`: a question nobody has drawn since the last
  * reshuffle, avoiding any question a team is holding right now. When every
- * question in the room has been drawn the deck reshuffles. Returns the id and
- * the updated used-lists; `rng` is injected so tests are deterministic.
+ * question in the room has been drawn the deck reshuffles. Within that, prefer a
+ * question whose answer hasn't been revealed; if only revealed ones are left this
+ * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer.
+ * Returns the id and the updated used-lists; `rng` is injected so tests are deterministic.
  */
 function deal(
   rooms: RoomTemplate[],
   used: string[][],
+  revealed: string[],
   teams: Team[],
   roomIndex: number,
   rng: () => number,
@@ -197,8 +206,38 @@ function deal(
   const held = new Set(teams.map((t) => t.currentQuestionId));
   const free = pool.filter((id) => !held.has(id));
   if (free.length > 0) pool = free;
+  // Prefer a question nobody has seen the answer to yet (D4/D5 — AnswerReveal), but never
+  // at the cost of handing two teams the identical question — the held-exclusion above is the
+  // more important invariant, so this only narrows within whatever it already left.
+  // When every question left in this cycle is revealed, an unrevealed one already dealt this
+  // cycle (fled, never answered) still beats re-showing an answer everyone has seen.
+  const unrevealed = pool.filter((id) => !revealed.includes(id));
+  const unrevealedAnywhere = all.filter((id) => !revealed.includes(id) && !held.has(id));
+  if (unrevealed.length > 0) pool = unrevealed;
+  else if (unrevealedAnywhere.length > 0) pool = unrevealedAnywhere;
   const questionId = pool[Math.floor(rng() * pool.length)];
-  return { questionId, used: base.map((u, i) => (i === roomIndex ? [...u, questionId] : u)) };
+  // The fled-question fallback above picks from questions already in `used`; don't record them twice.
+  return { questionId, used: base.map((u, i) => (i === roomIndex && !u.includes(questionId) ? [...u, questionId] : u)) };
+}
+
+/** A question answered again after every question was revealed must not be listed twice. */
+function withRevealed(revealed: string[], id: string): string[] {
+  return revealed.includes(id) ? revealed : [...revealed, id];
+}
+
+/** Same never-redeal-a-revealed-question rule as deal(), for the boss's shared question ring —
+ * walk the ring from the current question (ending back on it), skip anything already revealed,
+ * and only fall back to the plain next-in-ring slot once every question has been revealed. A
+ * flee therefore stays on the current question when it is the last unrevealed one; a correct hit
+ * passes `revealed` with the current question already added, so it never comes straight back. */
+function nextBossQuestionId(boss: BossState, revealed: string[]): string {
+  const { questionIds, currentQuestionId } = boss;
+  const startIdx = questionIds.indexOf(currentQuestionId);
+  for (let step = 1; step <= questionIds.length; step++) {
+    const candidate = questionIds[(startIdx + step) % questionIds.length];
+    if (!revealed.includes(candidate)) return candidate;
+  }
+  return questionIds[(startIdx + 1) % questionIds.length];
 }
 
 export const DEFAULT_GAME_CONFIG: GameConfig = { bossThreshold: 15 };
@@ -219,10 +258,11 @@ export function createGame(
   }
 
   let used: string[][] = rooms.map(() => []);
+  const revealed: string[] = [];
   const teams: Team[] = [];
   for (const seed of teamSeeds) {
     // Teams not dealt yet hold no question; the ones already dealt count as held.
-    const dealt = deal(rooms, used, teams, 0, rng);
+    const dealt = deal(rooms, used, revealed, teams, 0, rng);
     used = dealt.used;
     teams.push({
       id: seed.id,
@@ -243,6 +283,7 @@ export function createGame(
     currentTurnIndex: 0,
     rooms,
     usedQuestionIds: used,
+    revealedQuestionIds: revealed,
     boss: {
       maxHp: bossMaxHp,
       hp: bossMaxHp,
@@ -373,23 +414,25 @@ export function answerQuestion(
         );
       }
 
-      const nextBossQuestionId = bossKilled
-        ? boss.currentQuestionId
-        : boss.questionIds[(boss.questionIds.indexOf(boss.currentQuestionId) + 1) % boss.questionIds.length];
+      const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
+      const nextQuestionId = bossKilled ? boss.currentQuestionId : nextBossQuestionId(boss, revealedNow);
 
       // The boss question is shared: every team already in boss phase faces the same
-      // nextBossQuestionId, not just the team that just answered. Reset ALL of their
+      // nextQuestionId, not just the team that just answered. Reset ALL of their
       // picks, or a team's stale index from the old question could line up with a
       // different option on the new one and mislead the host into judging against
       // a pick that team never made for this question (adversarial review finding).
       nextGame = {
         ...game,
         teams: bossKilled ? teams : resetBossSelections(game, teams),
+        // A correct answer is always revealed (D5) — the current boss question just got right,
+        // so it joins the never-redeal set before nextBossQuestionId's own next call sees it.
+        revealedQuestionIds: revealedNow,
         boss: {
           ...boss,
           hp: newHp,
           killedByTeamId: bossKilled ? teamId : boss.killedByTeamId,
-          currentQuestionId: nextBossQuestionId,
+          currentQuestionId: nextQuestionId,
         },
       };
       outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, killBonus };
@@ -399,17 +442,17 @@ export function answerQuestion(
       }
     } else {
       // Wrong boss answer: rotate to the next boss question either way —
-      // there's no "downgrade" concept for a shared boss queue.
-      const nextBossQuestionId =
-        fleeChoice === "flee"
-          ? boss.questionIds[(boss.questionIds.indexOf(boss.currentQuestionId) + 1) % boss.questionIds.length]
-          : boss.currentQuestionId;
+      // there's no "downgrade" concept for a shared boss queue. Fleeing never reveals the
+      // answer (D5), so this rotation only skips already-revealed questions from prior
+      // correct hits — it never adds one.
+      const rotatedBossQuestionId = fleeChoice === "flee" ? nextBossQuestionId(boss, game.revealedQuestionIds) : boss.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a flee rotates
-      // the question for every team in boss phase, so every one of their picks resets.
+      // the question for every team in boss phase, so every one of their picks resets —
+      // unless it stayed on the same question (the last unrevealed one), where picks still apply.
       nextGame = {
         ...game,
-        teams: fleeChoice === "flee" ? resetBossSelections(game, game.teams) : game.teams,
-        boss: { ...boss, currentQuestionId: nextBossQuestionId },
+        teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game, game.teams) : game.teams,
+        boss: { ...boss, currentQuestionId: rotatedBossQuestionId },
       };
       outcome =
         fleeChoice === "flee"
@@ -421,10 +464,14 @@ export function answerQuestion(
       const pointsAwarded = team.currentDifficulty;
       const nextRoomIndex = Math.min(team.roomIndex + 1, game.rooms.length - 1);
       const nextRoom = game.rooms[nextRoomIndex];
-      const dealt = deal(game.rooms, game.usedQuestionIds, game.teams, nextRoomIndex, rng);
+      // A correct answer is always revealed (D5), so this room's next deal must not hand it
+      // back to a team who hasn't faced it yet.
+      const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
+      const dealt = deal(game.rooms, game.usedQuestionIds, revealedQuestionIds, game.teams, nextRoomIndex, rng);
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,
+        revealedQuestionIds,
         teams: game.teams.map((t) =>
           t.id === teamId
             ? {
@@ -441,7 +488,9 @@ export function answerQuestion(
       outcome = { type: "correct-room-advance", teamId, pointsAwarded, nextRoomIndex };
     } else if (fleeChoice === "flee") {
       const newDifficulty = clampDifficulty(team.currentDifficulty - 1);
-      const dealt = deal(game.rooms, game.usedQuestionIds, game.teams, team.roomIndex, rng);
+      // Fleeing never reveals the answer (D5) — only skip already-revealed questions from
+      // prior correct answers, never add this one.
+      const dealt = deal(game.rooms, game.usedQuestionIds, game.revealedQuestionIds, game.teams, team.roomIndex, rng);
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,

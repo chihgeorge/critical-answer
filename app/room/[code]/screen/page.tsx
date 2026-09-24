@@ -7,13 +7,13 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
-import type { PublicQuestion, ServerMessage } from "@/lib/protocol";
+import type { AnswerReveal, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakEpilogue, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
-import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon, hideOnImageError } from "@/components/pixel";
+import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { PARTY_HOST } from "@/lib/party-host";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
@@ -95,7 +95,7 @@ function Lobby({ code, teams }: { code: string; teams: Lobby }) {
   );
 }
 
-function Playing({ view, question, eventId, narration }: { view: SpectatorView; question: PublicQuestion | null; eventId: number; narration: NarrationState }) {
+function Playing({ view, question, reveal, eventId, narration }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; eventId: number; narration: NarrationState }) {
   const { team: turn, teamIndex: turnIdx, inBoss, monster, theme, bossHits: hits } = describeTurn(view, question);
   const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
 
@@ -142,28 +142,31 @@ function Playing({ view, question, eventId, narration }: { view: SpectatorView; 
 
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
-          <LabelChip>{inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
-          {inBoss && <LabelChip>最後的挑戰！</LabelChip>}
+          <LabelChip>{reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
+          {!reveal && inBoss && <LabelChip>最後的挑戰！</LabelChip>}
         </div>
-        {question?.text ?? "……"}
-        {question?.imageUrl && (
+        {/* The reveal takes the question's own slot until the host presses 下一題 (D7), so the
+            next question never shows underneath (or behind) the previous answer. */}
+        {reveal ? (
+          <div data-testid="answer-reveal" className="flex flex-col items-center gap-2">
+            <div>正解：{reveal.answer}</div>
+            {reveal.explanation && reveal.explanation.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
+            {reveal.explanation && reveal.explanation.kind !== "text" && (
+              // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
+              <QuestionMedia key={reveal.questionId} content={reveal.explanation} label="詳解" maxWidth={300} maxHeight={140} />
+            )}
+          </div>
+        ) : question ? (question.content.kind === "text" ? question.content.value : "") : "……"}
+        {!reveal && question && question.content.kind !== "text" && (
           // Inline content inside the Panel, not a second independently-positioned absolute
-          // element — the Panel's height already grows with wrapped question text, so an
-          // image positioned at a fixed pixel offset would overlap 2+ line questions (design
-          // review finding). Living inside the flow means the image always sits below
+          // element — the Panel's height already grows with wrapped question text, so a
+          // media block positioned at a fixed pixel offset would overlap 2+ line questions
+          // (design review finding). Living inside the flow means it always sits below
           // whatever the text actually rendered to, no matter how many lines it took.
-          // eslint-disable-next-line @next/next/no-img-element -- a remote R2 URL, not a local asset next/image can optimize
-          <img
-            // See the matching comment in app/room/[code]/play/page.tsx — a key tied to the
-            // question forces a fresh DOM node, or a broken image would stay hidden forever
-            // once React reuses this node for the next image question (adversarial review).
-            key={question.id}
-            src={question.imageUrl}
-            alt="題目圖片"
-            className="mx-auto mt-3 block"
-            style={{ maxWidth: 260, maxHeight: 160, objectFit: "contain" }}
-            onError={hideOnImageError}
-          />
+          // See the matching comment in app/room/[code]/play/page.tsx — a key tied to the
+          // question forces a fresh DOM node, or a broken image would stay hidden forever
+          // once React reuses this node for the next media question (adversarial review).
+          <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
         )}
       </Panel>
 
@@ -202,7 +205,7 @@ const PODIUM = [
 ];
 const CONFETTI = ["#ff6b6b", "#ffcf4a", "#6fd36a", "#6ab4ff", "#ff9db8", "#fff"];
 
-function Finished({ view, winners, narration, epilogue }: { view: SpectatorView; winners: string[]; narration: NarrationState; epilogue: string | null }) {
+function Finished({ view, winners, reveal, narration, epilogue }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; narration: NarrationState; epilogue: string | null }) {
   const ranked = view.teams.map((t, i) => ({ ...t, i })).sort((a, b) => b.score - a.score).slice(0, 3);
   const names = winners.map((id) => view.teams.find((t) => t.id === id)?.name ?? id).join("、");
   return (
@@ -217,6 +220,14 @@ function Finished({ view, winners, narration, epilogue }: { view: SpectatorView;
         </small>
         {names}奪得榜首！
       </div>
+      {/* The winning answer: the last correct judgment ends the game, so its reveal lands here, not on
+          <Playing>. The podium is centered and about 546px wide, which leaves the left margin free
+          below the title — a banner up top would sit on the crown. */}
+      {reveal && (
+        <div data-testid="answer-reveal" className="absolute" style={{ left: 18, top: 160, width: 170, zIndex: 6 }}>
+          <Panel tone="turn" className="px-3 py-2 text-[16px] leading-snug">最後一題正解：{reveal.answer}</Panel>
+        </div>
+      )}
       <div className="absolute inset-x-0 flex items-end justify-center gap-12" style={{ bottom: 130, zIndex: 5 }}>
         {PODIUM.map((p) => {
           const t = ranked[p.place - 1];
@@ -254,6 +265,9 @@ export default function ScreenPage() {
   const [rested, setRested] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
+  /** STATE.reveal: the last correct answer, shown in place of the next question until the host
+   * presses 下一題 (HOST_NEXT, D7 — docs/designs/question-media-content.md). */
+  const [revealed, setRevealed] = useState<AnswerReveal | null>(null);
   const epoch = useRef<string | null>(null);
 
   // --- TTS (docs/designs/dm-voice-narration-tts.md) ---
@@ -374,6 +388,7 @@ export default function ScreenPage() {
           setGame(null);
           setNarration(null);
           setEpilogue(null);
+          setRevealed(null);
           // A room reset can arrive without a socket reconnect, and the next game's eventIds
           // start over from 0 — re-arm the baseline the same way onOpen does.
           narrationBaseline.current = null;
@@ -383,6 +398,7 @@ export default function ScreenPage() {
         case "STATE":
           setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
           if (narrationBaseline.current === null) narrationBaseline.current = msg.eventId;
+          setRevealed(msg.reveal);
           break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
@@ -408,8 +424,8 @@ export default function ScreenPage() {
     <>
       <Stage>
         {!game && <Lobby code={code} teams={lobby} />}
-        {game?.phase === "playing" && <Playing view={game.view} question={game.question} eventId={game.eventId} narration={narration} />}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} narration={narration} epilogue={epilogue} />}
+        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={revealed} eventId={game.eventId} narration={narration} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={revealed} narration={narration} epilogue={epilogue} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
           {rested && (

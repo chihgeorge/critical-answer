@@ -1,6 +1,42 @@
 # TODOs
 
 
+## 修改主頁的背景圖，換成更有特色、更有內容的圖片
+
+**Priority:** P3
+
+**What:** 主頁（`app/page.tsx`）目前的背景圖比較樸素，想換成更有特色、更能代表遊戲主題（地城/DM 風格）的圖片。
+
+**Why:** 使用者提出的視覺優化需求，希望第一印象更吸睛、更有記憶點。
+
+**Pros:** 成本低、見效快，是很典型的「lake」不是「ocean」——換一張圖，不動邏輯。
+
+**Cons:** 需要先確定圖片素材來源（AI 生成？購買版權圖庫？自己畫？），還要注意檔案大小對首頁載入速度的影響。
+
+**Context:** 見 `app/page.tsx` 的背景圖設定；風格可以參考 `DESIGN.md` 既有的視覺語言（`--lav`/`--lav2` 之類的色票、pixel-art 風格）。
+
+**Depends on / blocked by:** 需要先選定圖片素材／授權來源。
+
+---
+
+## 增加背景音樂
+
+**Priority:** P3
+
+**What:** 遊戲過程（大螢幕 `/screen` 或全站）加入背景音樂。
+
+**Why:** 使用者提出的氛圍優化需求，讓遊玩體驗更沉浸，跟旁白 TTS（`lib/narration/tts.ts`）互補。
+
+**Pros:** 能大幅提升現場遊玩的氣氛，跟已經做好的語音旁白是同一類「沉浸感」投資，方向一致。
+
+**Cons:** 需要決定音樂素材授權來源（跟 TODOS 裡「首領登場」那項提到的素材授權問題類似）；背景音樂音量要跟語音旁白（TTS）協調，不能互相蓋過；瀏覽器自動播放限制（跟語音旁白遇到的解鎖問題類似，可以參考同一套解法）。
+
+**Context:** 可參考 `lib/narration/tts.ts` 解決瀏覽器自動播放限制的模式（點擊解鎖 utterance）；播放位置應該在 `/screen`（大螢幕）還是每個裝置都放，是開工前要決定的問題。
+
+**Depends on / blocked by:** 需要先決定音樂素材授權來源；建議跟上面「首領登場」相關的素材授權問題（TODOS.md 另一項）一起解決，一次搞定授權來源。
+
+---
+
 ## 旁白 emit() 無條件覆蓋 lastNarration，較慢的舊事件可能在新事件之後 resolve 並蓋掉它
 
 **Priority:** P3
@@ -97,6 +133,24 @@
 
 ---
 
+
+## 遊戲進行中在題庫編輯器換圖，會立刻刪掉那一局還在用的 R2 圖片
+
+**Priority:** P2
+
+**What:** `BankStore.putBank()` 存檔時會立刻刪掉「新題庫沒用到」的 R2 圖片（`lib/bank-store.ts` 的 orphan diff → `worker/index.ts` 的 `deleteOrphanedImages`）。但每個進行中的房間都把題庫複製進自己的 snapshot（「編輯題庫不影響進行中的遊戲」）。所以遊戲進行中換掉或刪掉一張圖，那一局的題目圖和詳解圖會直接消失，`hideOnImageError` 把它藏起來，log 裡什麼都看不到。
+
+**Why:** 這個問題 v0.6 的圖片題就有了；v0.9.0.0 讓每個題目的 content 和 explanation 都可以放圖，影響範圍變大。詳解圖壞掉的時間點剛好是揭曉的那一刻。
+
+**Pros:** 換題庫時不會弄壞正在進行的派對。
+
+**Cons:** 刪除要延後，R2 會暫時多放一些圖，另外需要一個延後刪除的機制。
+
+**Context:** 可以把 orphan key 加上時間戳記排進佇列，等超過房間壽命（`EXPIRE_MS`）後由 alarm 刪除；或是讓房間登記自己正在用的 image key，刪除時排除掉。red-team 審查發現，/ship v0.9.0.0（2026-09-24）。
+
+**Depends on / blocked by:** 無。
+
+---
 
 ## 共享大螢幕活地圖
 
@@ -444,6 +498,14 @@
 ---
 
 ## Completed
+
+## 問答題／選擇題的題目可以是圖片／YouTube 影片／文字，並移除獨立的「圖片題」類型；公布解答時可加一段可換媒材的詳解
+
+**Priority:** P2　**Completed:** v0.9.0.0 (2026-09-24)
+
+**What:** 問答題跟選擇題的「題目」本身都可以選擇用文字／圖片／YouTube 影片來呈現（同一題型，換媒材），移除了獨立的「圖片題」類型；公布解答時多一個可換媒材的「詳解」欄位。已透過 `/office-hours` → `/plan-eng-review` → `/review` → `/ship` 完整流程實作，見 [docs/designs/question-media-content.md](docs/designs/question-media-content.md)。審查過程發現並修正多個真實 bug（Durable Object 重啟後 `revealedQuestionIds` 未回填、bank editor 圖片上傳按鈕 id 衝突、切換媒材類型的重複點擊會誤刪內容、公布解答的詳解媒體漏掉 React key 導致壞圖狀態卡住）。
+
+---
 
 ## DM 語音旁白（瀏覽器 TTS）
 

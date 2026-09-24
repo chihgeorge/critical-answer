@@ -29,19 +29,33 @@ import type { TranscriptItem } from "./narration/runner";
 
 export const MAX_TEAMS = 8;
 
+/** A question's (or explanation's) content, wire-safe: `image`'s `url` is a public R2 URL, never
+ * the raw storage key; `youtube`'s `videoId` is the extracted id, never the pasted URL. See
+ * docs/designs/question-media-content.md's D1 (content replaces the old fixed `text` prompt). */
+export type PublicMediaContent = { kind: "text"; value: string } | { kind: "image"; url: string } | { kind: "youtube"; videoId: string };
+
 /** The question the team in turn faces, without its answer: safe for /screen and /play.
  * `options` is present only for multipleChoice questions (never `correctIndex` — see
- * question-bank.ts's publicQuestion() field-picking discipline). `imageUrl` is present only
- * for `image` questions (a public R2 URL, never the raw storage key). */
+ * question-bank.ts's publicQuestion() field-picking discipline). Deliberately carries no
+ * `explanation` — that would leak the answer's supporting content before the answer is judged;
+ * see AnswerReveal below, built separately at judge time from the question that was just
+ * answered, never from the question currently in play. */
 export interface PublicQuestion {
   id: string;
-  text: string;
+  content: PublicMediaContent;
   difficulty: number;
   boss: boolean;
   monster: { name: string; sprite: SpriteKind; hue: number };
   options?: string[];
-  imageUrl?: string;
 }
+
+/** Shown to everyone (D2/D3 — a shared-screen, in-person party game, so hiding the answer from
+ * non-answering teams protects nothing here) only after a team answers CORRECTLY (D5 — a retry
+ * or a flee never reveals it, so the same question can come back around). Built from the question
+ * that was JUST answered, never the one now in play. Carried on STATE, not a one-off message, so a
+ * reconnecting phone still sees it; it stays up — replacing the next question on /screen and
+ * /play — until the host sends HOST_NEXT (D7). */
+export type AnswerReveal = { questionId: string; answer: string; explanation?: PublicMediaContent };
 
 export type ClientMessage =
   /** `teamKey` is the team's secret. teamId is public (every STATE broadcasts it), so the key is what proves a connection owns the team. */
@@ -54,6 +68,10 @@ export type ClientMessage =
   /** Director: replace the line now on screen (<= 40 chars). */
   | { type: "HOST_EDIT_NARRATION"; line: string }
   | { type: "HOST_GET_TRANSCRIPT" }
+  /** Director: close the answer reveal and show the next question (D7). `eventId` is the STATE
+   * eventId the reveal arrived with, so a late HOST_NEXT (second host device, a send buffered
+   * across a reconnect) can't close a newer reveal the room hasn't seen yet. */
+  | { type: "HOST_NEXT"; eventId: number }
   | {
       type: "HOST_JUDGE";
       teamId: string;
@@ -89,6 +107,8 @@ export type ServerMessage =
       winners: string[];
       roomEpoch: string;
       question: PublicQuestion | null;
+      /** Non-null while the last correct answer is on show; the host's HOST_NEXT clears it. */
+      reveal: AnswerReveal | null;
       /** Counts judgments (and the start); NARRATION carries the id it belongs to. */
       eventId: number;
     }
@@ -169,6 +189,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "HOST_GET_TRANSCRIPT":
       return { type: "HOST_GET_TRANSCRIPT" };
+    case "HOST_NEXT":
+      return Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "HOST_NEXT", eventId: m.eventId as number } : null;
     case "HOST_JUDGE": {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);

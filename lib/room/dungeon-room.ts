@@ -15,8 +15,8 @@ import {
   type BranchOptionId,
   type GameState,
 } from "../game-state";
-import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type ServerMessage } from "../protocol";
-import { allQuestions, answerText, bossQuestionIds, findQuestion, publicQuestion, roomTemplates, type Bank } from "../question-bank";
+import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type ServerMessage } from "../protocol";
+import { allQuestions, answerText, bossQuestionIds, findQuestion, publicExplanation, publicQuestion, roomTemplates, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
@@ -108,6 +108,8 @@ export class DungeonRoom {
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
+  /** The answer on show until the host moves on (D7). In memory only: a restart simply drops it. */
+  private reveal: AnswerReveal | null = null;
   private transcript: TranscriptItem[] = [];
   /** Host director: notes for the LLM and the last few hand-edited lines. */
   private notes = "";
@@ -295,6 +297,13 @@ export class DungeonRoom {
     this.game =
       s.game && {
         ...s.game,
+        // A save from before revealedQuestionIds existed (question-media-content.md's D4/D5)
+        // hits the same shallow-snapshot-validation gap as branchChoices above — deal() and
+        // nextBossQuestionId() both call .includes() on it unconditionally, so an undamaged
+        // backfill here is required or the next correct answer throws inside handleHostJudge's
+        // try/catch and gets silently turned into an ERROR sent to the host (test-coverage audit
+        // finding, /ship).
+        revealedQuestionIds: Array.isArray(s.game.revealedQuestionIds) ? s.game.revealedQuestionIds : [],
         teams: s.game.teams.map((t) =>
           t && typeof t === "object" ? { ...t, branchChoices: t.branchChoices ?? {}, currentSelection: t.currentSelection ?? null } : t,
         ),
@@ -361,6 +370,7 @@ export class DungeonRoom {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       question: this.currentQuestion()?.pub ?? null,
+      reveal: this.reveal,
       eventId: this.eventSeq,
     };
   }
@@ -470,6 +480,7 @@ export class DungeonRoom {
     this.lastNarration = null;
     this.epilogue = null;
     this.epilogueRequested = false;
+    this.reveal = null;
     this.transcript = [];
     this.notes = "";
     this.editedLines = [];
@@ -566,6 +577,9 @@ export class DungeonRoom {
           break;
         case "HOST_GET_TRANSCRIPT":
           this.handleTranscript(sender);
+          break;
+        case "HOST_NEXT":
+          this.handleHostNext(sender, msg.eventId);
           break;
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice);
@@ -664,6 +678,15 @@ export class DungeonRoom {
     this.sendTo(conn, this.snapshot());
   }
 
+  private handleHostNext(conn: Conn, eventId: number) {
+    if (!this.requireHost(conn)) return;
+    // The reveal is always set in the same judgment that bumps eventSeq, so a HOST_NEXT for an
+    // older STATE is stale — ignore it rather than close a reveal nobody has seen.
+    if (!this.reveal || eventId !== this.eventSeq) return;
+    this.reveal = null;
+    this.broadcastState();
+  }
+
   private handleTranscript(conn: Conn) {
     if (!this.requireHost(conn)) return;
     this.sendTo(conn, { type: "TRANSCRIPT", entries: this.transcript });
@@ -738,16 +761,39 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
       return;
     }
+    // D7: judging waits until the host closes the reveal — a second host device or a stale page
+    // must not skip past an answer the room hasn't been shown yet.
+    if (this.reveal) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
+      return;
+    }
 
     try {
       const prev = this.game;
       const monster = this.currentQuestion()?.pub.monster.name ?? "怪物";
+      // Captured before `this.game` reassigns to the post-judgment state below — same
+      // read-prev-before-mutating discipline the `monster` capture above already needs.
+      // The reveal must describe the question that was JUST answered, not whatever
+      // currentQuestion() would return afterwards (the next one) — a trap this file's own
+      // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
+      const justAnswered = this.currentQuestion();
       const { game, outcome } = answerQuestion(prev, teamId, questionId, correct, fleeChoice ?? "retry", this.rng);
       // Everything up to broadcastState is synchronous: state changes and the eventId are
       // fixed before any narration awaits, so concurrent judgments cannot interleave.
       this.game = game;
       const eventId = ++this.eventSeq;
       const event = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined);
+      // Shown to everyone (D3), but only on a genuinely correct answer (D5): a retry or a flee
+      // must never reveal it, or the question loses its point, and game-state.ts's deal()/boss
+      // ring already rely on "revealed" meaning "answered correctly" to decide what's safe to
+      // redeal. Set before broadcastState so the reveal and the post-judgment state arrive
+      // together in one STATE — no window where a client shows the next question first.
+      this.reveal = null;
+      if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
+        const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
+        const explanation = publicExplanation(this.bank, questionId, imageBaseUrl);
+        this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}) };
+      }
       this.broadcastState();
       const narration = this.narrate(eventId, event);
       if (game.phase === "finished" && !this.epilogueRequested) {
@@ -789,6 +835,12 @@ export class DungeonRoom {
     }
     if (!this.game) {
       this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+      return;
+    }
+    // /play hides the options during a reveal (D7); a stale client must not pre-pick the next
+    // question before it has even been shown.
+    if (this.reveal) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
       return;
     }
     // The protocol layer only checked optionIndex >= 0; the real bounds check needs the

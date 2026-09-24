@@ -69,6 +69,16 @@ test("create room, join two teams, start, judge; screen and play never see host-
 
   // A correct judgment scores and passes the turn.
   await host.getByRole("button", { name: "答對！" }).click();
+
+  // The answer reveal (D2/D3/D7, docs/designs/question-media-content.md) reaches everyone — the
+  // shared screen and every phone, 甲隊 (who just answered) included, not just the host's own
+  // answer channel checked above — and stays up until the host moves on.
+  await expect(screen.getByText(`正解：${answer}`)).toBeVisible();
+  await expect(players[0].page.getByText(`正解：${answer}`)).toBeVisible();
+  await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0); // judging waits for 下一題
+  await host.getByRole("button", { name: "下一題" }).click();
+  await expect(screen.getByText(`正解：${answer}`)).toHaveCount(0);
+
   await expect(host.getByText("輪到：乙隊")).toBeVisible();
   await expect(screen.getByText("輪到：乙隊")).toBeVisible();
   await expect(players[1].page.getByText("輪到我們了！")).toBeVisible();
@@ -116,12 +126,14 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.locator(".px-say")).toContainText("主持人改寫：全場安靜！");
   await expect(players[1].page.locator(".px-say")).toContainText("主持人改寫：全場安靜！");
 
-  // Nothing host-only (token confirmation, answers) reaches the public surfaces.
+  // Nothing host-only (token confirmation, the host-only answer channel) reaches the public
+  // surfaces. STATE.reveal legitimately carries an "answer" field now (D2/D3 — a shared-screen
+  // party game, broadcast on purpose after a correct answer) — HOST_ANSWER itself, sent only via
+  // sendTo to host connections, is the invariant this test actually guards.
   for (const frames of [screenFrames, ...players.map((p) => p.frames)]) {
     expect(frames.length).toBeGreaterThan(0);
     const all = frames.join("\n");
     expect(all).not.toContain("HOST_OK");
-    expect(all).not.toContain('"answer"');
     expect(all).not.toContain("HOST_ANSWER");
   }
   await expect(screen.locator("body")).not.toContainText("答案（只有你看得到）");
@@ -160,6 +172,7 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
     const t = cur().view.teams[0];
     const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
     const before = cur().eventId;
+    host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId })); // close the previous answer reveal (D7); no-op if none
     host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
     await expect.poll(() => cur().eventId, { timeout: 2000 }).toBeGreaterThan(before);
   }
@@ -167,6 +180,8 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
 
   // Podium is there immediately; the story follows as a single line.
   await expect(screen.getByText("奪得榜首")).toBeVisible();
+  // The boss-kill answer ended the game, so its reveal shows on the podium screen instead (D7).
+  await expect(screen.getByTestId("answer-reveal")).toContainText("最後一題正解：");
   await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/, { timeout: 15_000 });
   // A single last line: no ▼ once the story has finished typing.
   await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/);
