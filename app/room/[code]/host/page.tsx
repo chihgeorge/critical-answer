@@ -9,7 +9,7 @@ import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoo
 import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
-import { Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { PARTY_HOST } from "@/lib/party-host";
 
@@ -299,7 +299,15 @@ export default function HostPage() {
                 <Sprite kind={turn.monster.kind} hue={turn.monster.hue} scale={Math.max(1, Math.floor(turn.monster.scale / 3))} className="flex-none" />
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.monster.name}</div>
-                  <div data-testid="host-question" className="text-[20px] leading-snug">{game.question?.text ?? `題目 ${turn.questionId}`}</div>
+                  <div data-testid="host-question" className="text-[20px] leading-snug">
+                    {game.question ? (game.question.content.kind === "text" ? game.question.content.value : `題目 ${turn.questionId}`) : `題目 ${turn.questionId}`}
+                  </div>
+                  {/* The host previously never saw question media at all (text-only preview) —
+                      a small preview so judging an image/video question doesn't mean squinting
+                      at the big screen from across the room (complexity-gate scope, /plan-eng-review). */}
+                  {game.question && game.question.content.kind !== "text" && (
+                    <QuestionMedia key={game.question.id} content={game.question.content} maxWidth={120} maxHeight={90} className="mt-1" />
+                  )}
                 </div>
               </div>
               <div className="mt-2">

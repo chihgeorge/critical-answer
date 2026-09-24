@@ -5,12 +5,12 @@ import { useParams, useSearchParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
-import type { ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
+import type { ClientMessage, PublicMediaContent, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom, type SpectatorView, type GamePhase } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
-import { DialogueBox, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon, hideOnImageError } from "@/components/pixel";
+import { DialogueBox, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { PARTY_HOST } from "@/lib/party-host";
 
 type LobbyState = { teams: { id: string; name: string }[] };
@@ -29,6 +29,9 @@ export default function PlayPage() {
   const [rested, setRested] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
+  /** The last correct answer's reveal (D2/D3, docs/designs/question-media-content.md) — shown
+   * until the next STATE (the next turn's question already dealt) replaces it. */
+  const [revealed, setRevealed] = useState<{ questionId: string; answer: string; explanation?: PublicMediaContent } | null>(null);
   const joinedRef = useRef(false);
   const epoch = useRef<string | null>(null);
 
@@ -63,10 +66,15 @@ export default function PlayPage() {
         case "LOBBY":
           setLobby({ teams: msg.teams });
           setGame(null);
+          setRevealed(null);
           break;
         case "STATE":
           setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
           setLobby(null);
+          setRevealed(null);
+          break;
+        case "ANSWER_REVEALED":
+          setRevealed({ questionId: msg.questionId, answer: msg.answer, explanation: msg.explanation });
           break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
@@ -208,21 +216,27 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {game && !finished && game.question?.imageUrl && (
+        {game && !finished && game.question && game.question.content.kind !== "text" && (
           <Panel className="flex justify-center px-3 py-3">
-            {/* eslint-disable-next-line @next/next/no-img-element -- a remote R2 URL, not a local asset next/image can optimize */}
-            <img
-              // Forces a fresh DOM node per question: hideOnImageError sets style.display
-              // imperatively, outside React's own style diff, so without a key tied to the
-              // question React would reuse the same <img> node across consecutive image
-              // questions and a single broken image would stay hidden for every question after
-              // it (adversarial review finding).
-              key={game.question.id}
-              src={game.question.imageUrl}
-              alt="題目圖片"
-              style={{ maxWidth: "100%", maxHeight: 200, objectFit: "contain" }}
-              onError={hideOnImageError}
-            />
+            {/* key tied to the question forces a fresh DOM node per question — without it, React
+                would reuse the same node across consecutive media questions and a broken image
+                (or a stale video) would stay hidden/showing for every question after it
+                (adversarial review finding, carried forward from image-question-type.md). */}
+            <QuestionMedia key={game.question.id} content={game.question.content} maxWidth={280} maxHeight={200} />
+          </Panel>
+        )}
+
+        {game && !finished && revealed && (
+          <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-3 text-center">
+            <div className="text-[18px]">正解：{revealed.answer}</div>
+            {revealed.explanation && revealed.explanation.kind === "text" && (
+              <div className="text-[14px]">{revealed.explanation.value}</div>
+            )}
+            {revealed.explanation && revealed.explanation.kind !== "text" && (
+              // key tied to questionId — same broken-image-stays-hidden-forever guard every
+              // other media render site in this diff carries (adversarial review finding, /ship).
+              <QuestionMedia key={revealed.questionId} content={revealed.explanation} maxWidth={260} maxHeight={180} />
+            )}
           </Panel>
         )}
 

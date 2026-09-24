@@ -4,6 +4,8 @@
 
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
 import { drawScene, drawSprite, SPRITE_SIZE, type SceneTheme, type SpriteKind } from "@/lib/pixel-art";
+import { youtubeEmbedUrl } from "@/lib/youtube";
+import type { PublicMediaContent } from "@/lib/protocol";
 
 const cx = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" ");
 
@@ -13,6 +15,41 @@ const cx = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).j
  * drift out of sync. */
 export function hideOnImageError(e: SyntheticEvent<HTMLImageElement>) {
   e.currentTarget.style.display = "none";
+}
+
+/** Renders a question's or explanation's `content`/`explanation` media on /play, /screen, or the
+ * host's preview — `text` content renders nothing here (the caller shows its `value` as the
+ * ordinary prompt/explanation line, same slot the old fixed text field used); `image` and
+ * `youtube` render below that line. `key={questionId}` on the caller's wrapper (not here) is what
+ * forces a fresh DOM node per question, same broken-image fallback discipline as before this
+ * component existed (docs/designs/question-media-content.md, carrying forward
+ * image-question-type.md's decision). */
+export function QuestionMedia({ content, maxWidth, maxHeight, className }: { content: PublicMediaContent; maxWidth: number; maxHeight: number; className?: string }) {
+  if (content.kind === "text") return null;
+  if (content.kind === "image") {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- a remote R2 URL, not a local asset next/image can optimize
+      <img src={content.url} alt="題目圖片" className={className} style={{ maxWidth, maxHeight, objectFit: "contain" }} onError={hideOnImageError} />
+    );
+  }
+  // youtube: a plain iframe, no library or API key needed (confirmed 2026 best practice,
+  // /plan-eng-review). No render-time detection of a since-deleted/private video — that needs
+  // the YouTube IFrame Player API, deliberately deferred (design doc R2-4).
+  return (
+    <iframe
+      src={youtubeEmbedUrl(content.videoId)}
+      title="題目影片"
+      className={className}
+      // width: 100% (capped by maxWidth) instead of a hardcoded pixel width — /screen and the
+      // host preview live inside a fixed-size scaled stage where maxWidth always fits, but
+      // /play has no fixed canvas (just page padding), so on a narrow phone the available width
+      // can drop below maxWidth and a fixed-width iframe wouldn't shrink to fit, unlike the
+      // <img> branch above which already caps via objectFit (design review finding, /ship).
+      style={{ width: "100%", maxWidth, aspectRatio: "16 / 9", maxHeight }}
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowFullScreen
+    />
+  );
 }
 
 const prefersReducedMotion = () =>

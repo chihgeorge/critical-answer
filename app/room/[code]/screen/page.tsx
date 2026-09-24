@@ -7,13 +7,13 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
-import type { PublicQuestion, ServerMessage } from "@/lib/protocol";
+import type { PublicMediaContent, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakEpilogue, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
-import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, SceneBackground, ScoreMeter, Sprite, TurnRibbon, hideOnImageError } from "@/components/pixel";
+import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { PARTY_HOST } from "@/lib/party-host";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
@@ -145,25 +145,17 @@ function Playing({ view, question, eventId, narration }: { view: SpectatorView; 
           <LabelChip>{inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
           {inBoss && <LabelChip>最後的挑戰！</LabelChip>}
         </div>
-        {question?.text ?? "……"}
-        {question?.imageUrl && (
+        {question ? (question.content.kind === "text" ? question.content.value : "") : "……"}
+        {question && question.content.kind !== "text" && (
           // Inline content inside the Panel, not a second independently-positioned absolute
-          // element — the Panel's height already grows with wrapped question text, so an
-          // image positioned at a fixed pixel offset would overlap 2+ line questions (design
-          // review finding). Living inside the flow means the image always sits below
+          // element — the Panel's height already grows with wrapped question text, so a
+          // media block positioned at a fixed pixel offset would overlap 2+ line questions
+          // (design review finding). Living inside the flow means it always sits below
           // whatever the text actually rendered to, no matter how many lines it took.
-          // eslint-disable-next-line @next/next/no-img-element -- a remote R2 URL, not a local asset next/image can optimize
-          <img
-            // See the matching comment in app/room/[code]/play/page.tsx — a key tied to the
-            // question forces a fresh DOM node, or a broken image would stay hidden forever
-            // once React reuses this node for the next image question (adversarial review).
-            key={question.id}
-            src={question.imageUrl}
-            alt="題目圖片"
-            className="mx-auto mt-3 block"
-            style={{ maxWidth: 260, maxHeight: 160, objectFit: "contain" }}
-            onError={hideOnImageError}
-          />
+          // See the matching comment in app/room/[code]/play/page.tsx — a key tied to the
+          // question forces a fresh DOM node, or a broken image would stay hidden forever
+          // once React reuses this node for the next media question (adversarial review).
+          <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
         )}
       </Panel>
 
@@ -254,6 +246,10 @@ export default function ScreenPage() {
   const [rested, setRested] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
+  /** The last correct answer's reveal (D2/D3, docs/designs/question-media-content.md) — shown
+   * until the next STATE (the next turn's question already dealt) replaces it, same lifetime
+   * as the rested/reset banners above it in the flow stack. */
+  const [revealed, setRevealed] = useState<{ questionId: string; answer: string; explanation?: PublicMediaContent } | null>(null);
   const epoch = useRef<string | null>(null);
 
   // --- TTS (docs/designs/dm-voice-narration-tts.md) ---
@@ -374,6 +370,7 @@ export default function ScreenPage() {
           setGame(null);
           setNarration(null);
           setEpilogue(null);
+          setRevealed(null);
           // A room reset can arrive without a socket reconnect, and the next game's eventIds
           // start over from 0 — re-arm the baseline the same way onOpen does.
           narrationBaseline.current = null;
@@ -383,6 +380,10 @@ export default function ScreenPage() {
         case "STATE":
           setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
           if (narrationBaseline.current === null) narrationBaseline.current = msg.eventId;
+          setRevealed(null);
+          break;
+        case "ANSWER_REVEALED":
+          setRevealed({ questionId: msg.questionId, answer: msg.answer, explanation: msg.explanation });
           break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
@@ -421,6 +422,21 @@ export default function ScreenPage() {
           {reset && (
             <div className="text-center text-[20px] text-white" style={{ background: "var(--danger)", padding: 6 }}>
               伺服器重新啟動，遊戲已重置
+            </div>
+          )}
+          {revealed && (
+            <div className="flex flex-col items-center gap-2 text-center" style={{ background: "var(--turn)", color: "var(--ink)", padding: 10 }}>
+              <div className="text-[22px]">正解：{revealed.answer}</div>
+              {revealed.explanation && revealed.explanation.kind === "text" && (
+                <div className="text-[16px]">{revealed.explanation.value}</div>
+              )}
+              {revealed.explanation && revealed.explanation.kind !== "text" && (
+                // key tied to questionId — same broken-image-stays-hidden-forever guard every
+                // other media render site in this diff carries (adversarial review finding,
+                // /ship): without it, a 404'd explanation image on one reveal would stay hidden
+                // on every later reveal too, since React would reuse this DOM node.
+                <QuestionMedia key={revealed.questionId} content={revealed.explanation} maxWidth={300} maxHeight={180} />
+              )}
             </div>
           )}
         </div>
