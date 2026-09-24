@@ -437,6 +437,52 @@ describe("question deck (T2)", () => {
     }
   });
 
+  it("a correctly answered question is never redealt while an unrevealed one is available, even after a reshuffle (D4/D5)", () => {
+    let game = createGame(seeds(1), makeRooms(1, 1, 3), boss, cfg, 1, first);
+    const q1 = game.teams[0].currentQuestionId; // room0-q1
+    ({ game } = answerQuestion(game, "T0", q1, true, "retry", first));
+    expect(game.revealedQuestionIds).toEqual([q1]);
+    // Answer through the rest of the deck (q2, q3) and force a reshuffle — q1 must not come back
+    // until every other question has also been revealed.
+    for (let i = 0; i < 5; i++) {
+      const q = game.teams[0].currentQuestionId;
+      if (game.revealedQuestionIds.length < 3) expect(q).not.toBe(q1);
+      ({ game } = answerQuestion(game, "T0", q, true, "retry", first));
+    }
+    // Once every question in the room has been revealed, reuse is the only option left.
+    expect(new Set(game.revealedQuestionIds)).toEqual(new Set(["room0-q1", "room0-q2", "room0-q3"]));
+  });
+
+  it("fleeing never marks a question revealed, so it can come straight back", () => {
+    let game = createGame(seeds(1), makeRooms(1, 1, 2), boss, cfg, 1, first);
+    const q1 = game.teams[0].currentQuestionId;
+    ({ game } = answerQuestion(game, "T0", q1, false, "flee", first));
+    expect(game.revealedQuestionIds).toEqual([]);
+    expect(game.teams[0].currentQuestionId).not.toBe(q1); // dealt the other question in the room
+  });
+
+  it("retrying never marks a question revealed", () => {
+    let game = createGame(seeds(1), makeRooms(1), boss, cfg, 1, first);
+    const q1 = game.teams[0].currentQuestionId;
+    ({ game } = answerQuestion(game, "T0", q1, false, "retry", first));
+    expect(game.revealedQuestionIds).toEqual([]);
+  });
+
+  it("the boss ring skips an already-revealed question, falling back to reuse once every boss question has been revealed", () => {
+    let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
+    const seen: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const turn = currentTurnTeamId(game)!;
+      const q = game.boss.currentQuestionId;
+      seen.push(q);
+      if (i < 2) expect(game.revealedQuestionIds).not.toContain(q); // not yet reused
+      ({ game } = answerQuestion(game, turn, q, true, "retry", first));
+    }
+    // All 3 boss questions got hit once each before any repeat — the ring genuinely skipped revealed ones.
+    expect(new Set(seen).size).toBe(3);
+    expect(game.revealedQuestionIds.sort()).toEqual(["boss-q1", "boss-q2", "boss-q3"]);
+  });
+
   it("a team below the boss gate in the last room keeps getting questions and can still reach it", () => {
     let game = createGame(seeds(1), makeRooms(2, 1, 3), boss, { bossThreshold: 15 }, 1, first);
     for (let i = 0; i < 40 && !isInBossPhase(game, "T0"); i++) {

@@ -15,16 +15,27 @@
 // lib/question-bank-data.ts.
 
 import type { Difficulty, RoomTemplate } from "./game-state";
-import type { PublicQuestion } from "./protocol";
+import type { PublicMediaContent, PublicQuestion } from "./protocol";
 import type { SpriteKind } from "./sprite-kind";
+import { YOUTUBE_ID_RE } from "./youtube";
+
+/** A question's (or explanation's) content: text, an uploaded image, or a YouTube video —
+ * interchangeable, picked at write time (docs/designs/question-media-content.md's D1: `content`
+ * REPLACES the old fixed `text` prompt, it doesn't decorate it — a `kind: "image"` question shows
+ * only the image, no separate prompt line). */
+export interface MediaContent {
+  kind: "text" | "image" | "youtube";
+  value: string;
+}
 
 /** `kind` is required on every question (not optional/defaulted) — see
  * docs/designs/multiple-choice-questions.md decision 1 for why, and the
- * accepted risk of making it required instead of backward-compatible. */
+ * accepted risk of making it required instead of backward-compatible.
+ * The standalone `image` kind retired (D1) — an image is now one `content`/`explanation` media
+ * type available on either remaining kind, not its own top-level kind. */
 export type BankQuestion =
-  | { kind: "text"; id: string; text: string; answer: string }
-  | { kind: "multipleChoice"; id: string; text: string; options: string[]; correctIndex: number }
-  | { kind: "image"; id: string; text: string; answer: string; imageKey: string };
+  | { kind: "text"; id: string; content: MediaContent; answer: string; explanation?: MediaContent }
+  | { kind: "multipleChoice"; id: string; content: MediaContent; options: string[]; correctIndex: number; explanation?: MediaContent };
 
 export interface BankMonster {
   name: string;
@@ -52,25 +63,62 @@ function parseMonster(raw: unknown, where: string): BankMonster {
   return { name: m!.name as string, sprite: m!.sprite as SpriteKind, hue: typeof m!.hue === "number" ? m!.hue : 0 };
 }
 
+/** Every real image `value` is a `crypto.randomUUID()` minted by the upload endpoint
+ * (worker/index.ts) — requiring that shape here closes off a hand-crafted key like
+ * "/evil.example/x", which would otherwise build a protocol-relative image URL (imageUrlOf
+ * below) that every player's phone and the shared screen load as-is (adversarial review finding,
+ * carried forward from the retired `image` kind — /plan-eng-review R2-2). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// A YouTube video id: exactly 11 characters from YouTube's own id alphabet. Checked at this same
+// trust boundary (parseBank, reached by any authenticated PUT to /api/bank), not only client-side
+// at edit time — otherwise a compromised OWNER_KEY or a future editor bug could push an
+// unvalidated string in as a "youtube" value (Outside Voice finding, /plan-eng-review). Imported
+// from lib/youtube.ts rather than redefined here, so the two can't silently drift apart
+// (maintainability specialist finding, /ship).
+
+/** Validates and normalizes one content/explanation slot. Called from both call sites below
+ * (content and explanation, on both question kinds) so kind-specific validation can't drift
+ * apart via copy-paste — a lesson the design doc's own review caught (R2-2 / Outside Voice). */
+function parseMediaContent(raw: unknown, where: string): MediaContent {
+  const m = raw as Record<string, unknown> | null;
+  if (!m || typeof m !== "object") fail(`${where} has no content`);
+  const { kind, value } = m!;
+  if (typeof value !== "string" || !value.trim()) fail(`${where} content has no value`);
+  if (kind === "text") return { kind: "text", value: value as string };
+  if (kind === "image") {
+    if (!UUID_RE.test(value as string)) fail(`${where} has an invalid image key`);
+    return { kind: "image", value: value as string };
+  }
+  if (kind === "youtube") {
+    if (!YOUTUBE_ID_RE.test(value as string)) fail(`${where} has an invalid YouTube video id`);
+    return { kind: "youtube", value: value as string };
+  }
+  return fail(`${where} content has unknown kind ${String(kind)}`);
+}
+
+/** Accepts either the current `content: MediaContent` shape, or a legacy bare `text: string`
+ * field (every question before this schema change) or a legacy `image`-kind's `imageKey` (before
+ * the standalone `image` kind retired) — converted to the new shape on read, in the same
+ * bank-loading path every save already goes through. See docs/designs/question-media-content.md's
+ * migration decision: a backward-read shim here, not a separate migration script. */
+function parseContent(r: Record<string, unknown>, where: string): MediaContent {
+  if (r.content !== undefined) return parseMediaContent(r.content, where);
+  if (typeof r.imageKey === "string") return parseMediaContent({ kind: "image", value: r.imageKey }, where);
+  if (typeof r.text === "string") return parseMediaContent({ kind: "text", value: r.text }, where);
+  return fail(`${where} has no content`);
+}
+
+function parseExplanation(r: Record<string, unknown>, where: string): MediaContent | undefined {
+  if (r.explanation === undefined) return undefined;
+  return parseMediaContent(r.explanation, `${where} explanation`);
+}
+
 function parseTextQuestion(r: Record<string, unknown>, id: string): BankQuestion {
   const { answer } = r;
   if (typeof answer !== "string" || !answer.trim()) fail(`question ${id} has an empty answer`);
-  return { kind: "text", id, text: r.text as string, answer: answer as string };
-}
-
-/** Every real imageKey is a `crypto.randomUUID()` minted by the upload endpoint (worker/index.ts) —
- * requiring that shape here closes off a hand-crafted imageKey like "/evil.example/x", which would
- * otherwise build a protocol-relative image URL (imageUrlOf below) that every player's phone and
- * the shared screen load as-is (adversarial review finding). */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** An `image` question is judged exactly like `text` (host reads it aloud/sees it, judges verbally)
- * with one extra field: the R2 object key of the question's image. */
-function parseImageQuestion(r: Record<string, unknown>, id: string): BankQuestion {
-  const { answer, imageKey } = r;
-  if (typeof answer !== "string" || !answer.trim()) fail(`question ${id} has an empty answer`);
-  if (typeof imageKey !== "string" || !UUID_RE.test(imageKey)) fail(`question ${id} has an invalid imageKey`);
-  return { kind: "image", id, text: r.text as string, answer: answer as string, imageKey: imageKey as string };
+  const content = parseContent(r, `question ${id}`);
+  const explanation = parseExplanation(r, `question ${id}`);
+  return { kind: "text", id, content, answer: answer as string, ...(explanation ? { explanation } : {}) };
 }
 
 function parseMultipleChoiceQuestion(r: Record<string, unknown>, id: string): BankQuestion {
@@ -82,20 +130,29 @@ function parseMultipleChoiceQuestion(r: Record<string, unknown>, id: string): Ba
   if (typeof correctIndex !== "number" || !Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex >= options.length) {
     fail(`question ${id} has correctIndex out of range`);
   }
-  return { kind: "multipleChoice", id, text: r.text as string, options: options as string[], correctIndex: correctIndex as number };
+  const content = parseContent(r, `question ${id}`);
+  const explanation = parseExplanation(r, `question ${id}`);
+  return {
+    kind: "multipleChoice",
+    id,
+    content,
+    options: options as string[],
+    correctIndex: correctIndex as number,
+    ...(explanation ? { explanation } : {}),
+  };
 }
 
 function parseQuestions(raw: unknown, where: string, seen: Set<string>): BankQuestion[] {
   if (!Array.isArray(raw) || raw.length === 0) fail(`${where} has no questions`);
   return (raw as Record<string, unknown>[]).map((r) => {
-    const { id, text, kind } = r;
+    const { id, kind } = r;
     if (typeof id !== "string" || !id) fail(`${where} has a question without an id`);
     if (seen.has(id as string)) fail(`duplicate question id ${String(id)}`);
     seen.add(id as string);
-    if (typeof text !== "string" || !text.trim()) fail(`question ${String(id)} has empty text`);
-    if (kind === "text") return parseTextQuestion(r, id as string);
+    // "image" is a legacy top-level kind (pre-D1): it converts to a text-kind question whose
+    // content happens to be an image, same as parseContent's imageKey fallback handles it.
+    if (kind === "text" || kind === "image") return parseTextQuestion(r, id as string);
     if (kind === "multipleChoice") return parseMultipleChoiceQuestion(r, id as string);
-    if (kind === "image") return parseImageQuestion(r, id as string);
     return fail(`question ${String(id)} has unknown kind ${String(kind)}`);
   });
 }
@@ -158,42 +215,61 @@ export function answerText(q: BankQuestion): string {
   return q.answer;
 }
 
-/** The part of a question every screen may see. `difficulty` is the team's current one (flee lowers it).
- * `imageBaseUrl` is the R2 public base (env-specific, never stored in bank data — see
- * docs/designs/image-question-type.md's "Schema storage" decision, same pattern as party-host.ts's
- * PARTY_HOST) prepended to an `image` question's stored object key to make a renderable URL.
- * Built by explicit field-picking, never `...q` — that discipline is what keeps `answer`/`correctIndex`
- * off every client; extend it the same way for any future field, never spread the server-only shape. */
+/** Builds a wire-safe `PublicMediaContent` from an internal `MediaContent` — `image`'s stored key
+ * becomes a public R2 URL, `youtube`'s stored value becomes the wire's `videoId` field, `text`
+ * passes through. Warns loudly (not just failing silently client-side via the broken-image
+ * fallback) if `imageBaseUrl` is missing or still the unconfigured placeholder — a forgotten
+ * R2_PUBLIC_BASE_URL / bucket public-access setup step would otherwise only ever show up as a
+ * mysteriously hidden image, with nothing in the Worker's own logs pointing at the real cause
+ * (adversarial review finding, carried forward from the retired `image` kind). */
+export function publicMediaContent(c: MediaContent, imageBaseUrl: string, questionId: string): PublicMediaContent {
+  if (c.kind === "text") return { kind: "text", value: c.value };
+  if (c.kind === "youtube") return { kind: "youtube", videoId: c.value };
+  if (!imageBaseUrl || imageBaseUrl.includes("REPLACE-ME")) {
+    console.error(JSON.stringify({ event: "image_base_url_missing", questionId }));
+  }
+  return { kind: "image", url: `${imageBaseUrl}/${c.value}` };
+}
+
+/** The part of a question every screen may see while it's in play. `difficulty` is the team's
+ * current one (flee lowers it). Built by explicit field-picking, never `...q` — that discipline
+ * is what keeps `answer`/`correctIndex`/`explanation` off every client; extend it the same way
+ * for any future field, never spread the server-only shape. */
 export function publicQuestion(bank: Bank, id: string, difficulty: number, imageBaseUrl: string): PublicQuestion | null {
   const q = findQuestion(bank, id);
   if (!q) return null;
   return {
     id: q.id,
-    text: q.text,
+    content: publicMediaContent(q.content, imageBaseUrl, q.id),
     difficulty: q.boss ? 5 : difficulty,
     boss: q.boss,
     monster: { name: q.monster.name, sprite: q.monster.sprite, hue: q.monster.hue },
     ...(q.kind === "multipleChoice" ? { options: q.options } : {}),
-    ...(q.kind === "image" ? { imageUrl: imageUrlOf(q, imageBaseUrl) } : {}),
   };
 }
 
-/** Builds an image question's public URL, warning loudly (not just failing silently client-side
- * via the broken-image fallback) if `imageBaseUrl` is missing or still the unconfigured
- * placeholder — a forgotten R2_PUBLIC_BASE_URL / bucket public-access setup step would otherwise
- * only ever show up as a mysteriously hidden image, with nothing in the Worker's own logs
- * pointing at the real cause (adversarial review finding). */
-function imageUrlOf(q: Extract<BankQuestion, { kind: "image" }>, imageBaseUrl: string): string {
-  if (!imageBaseUrl || imageBaseUrl.includes("REPLACE-ME")) {
-    console.error(JSON.stringify({ event: "image_base_url_missing", questionId: q.id }));
-  }
-  return `${imageBaseUrl}/${q.imageKey}`;
+/** The public-safe explanation for a question that was just answered CORRECTLY — built
+ * separately from publicQuestion() (never attached to the in-play question, which would leak it
+ * before the answer is judged). Returns undefined when the question has none. See ANSWER_REVEALED
+ * in lib/protocol.ts and its D2/D5 decisions. */
+export function publicExplanation(bank: Bank, id: string, imageBaseUrl: string): PublicMediaContent | undefined {
+  const q = findQuestion(bank, id);
+  return q?.explanation ? publicMediaContent(q.explanation, imageBaseUrl, q.id) : undefined;
 }
 
-/** Every R2 object key referenced anywhere in a bank — used to diff an old bank against a new one
- * after a save, so orphaned images (deleted question, replaced image, kind switched away from
- * image) can be cleaned up without per-question change tracking. See docs/designs/image-question-type.md's
- * "R2 cleanup mechanism" decision. */
+/** Every R2 object key referenced anywhere in a bank (content OR explanation, on either
+ * surviving kind) — used to diff an old bank against a new one after a save, so orphaned images
+ * (deleted question, replaced image, media type switched away from image) can be cleaned up
+ * without per-question change tracking. See docs/designs/image-question-type.md's original "R2
+ * cleanup mechanism" decision — walking `content`/`explanation` here instead of a top-level
+ * `image` kind is what keeps that mechanism correct after D1 retired the standalone kind
+ * (Outside Voice finding, /plan-eng-review: this function silently returning nothing for every
+ * bank would have made the very next save delete every live image). */
 export function imageKeysOf(bank: Bank): Set<string> {
-  return new Set(allQuestions(bank).filter((q) => q.kind === "image").map((q) => q.imageKey));
+  const keys = new Set<string>();
+  for (const q of allQuestions(bank)) {
+    if (q.content.kind === "image") keys.add(q.content.value);
+    if (q.explanation?.kind === "image") keys.add(q.explanation.value);
+  }
+  return keys;
 }

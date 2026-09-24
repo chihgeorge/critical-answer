@@ -14,8 +14,8 @@ function memoryStorage(seed?: unknown): BankStorage {
 }
 
 const validBank: Bank = {
-  rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, questions: [{ kind: "text", id: "r0-q1", text: "1+1?", answer: "2" }] }],
-  boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, maxHp: 10, questions: [{ kind: "text", id: "b-q1", text: "2+2?", answer: "4" }] },
+  rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "1+1?" }, answer: "2" }] }],
+  boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, maxHp: 10, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "2+2?" }, answer: "4" }] },
 };
 
 describe("BankStore.getBank / getVersionedBank", () => {
@@ -79,7 +79,7 @@ describe("BankStore.putBank", () => {
   });
 
   it("rejects a duplicate question id across rooms", async () => {
-    const dup: Bank = { ...validBank, boss: { ...validBank.boss, questions: [{ kind: "text", id: "r0-q1", text: "dup?", answer: "x" }] } };
+    const dup: Bank = { ...validBank, boss: { ...validBank.boss, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "dup?" }, answer: "x" }] } };
     const store = new BankStore(memoryStorage({ bank: validBank, version: 1 }));
     await expect(store.putBank(dup, 1)).rejects.toThrow(/duplicate question id/i);
   });
@@ -94,7 +94,12 @@ describe("BankStore.putBank", () => {
 describe("BankStore.putBank: image cleanup callback", () => {
   const bankWithImage: Bank = {
     ...validBank,
-    rooms: [{ ...validBank.rooms[0], questions: [{ kind: "image", id: "r0-q1", text: "這是誰？", answer: "松鼠", imageKey: "44444444-4444-4444-4444-444444444444" }] }],
+    rooms: [
+      {
+        ...validBank.rooms[0],
+        questions: [{ kind: "text", id: "r0-q1", content: { kind: "image", value: "44444444-4444-4444-4444-444444444444" }, answer: "松鼠" }],
+      },
+    ],
   };
 
   it("calls onImagesOrphaned with a key present in the old bank but not the new one", async () => {

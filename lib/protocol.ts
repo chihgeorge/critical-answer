@@ -29,18 +29,24 @@ import type { TranscriptItem } from "./narration/runner";
 
 export const MAX_TEAMS = 8;
 
+/** A question's (or explanation's) content, wire-safe: `image`'s `url` is a public R2 URL, never
+ * the raw storage key; `youtube`'s `videoId` is the extracted id, never the pasted URL. See
+ * docs/designs/question-media-content.md's D1 (content replaces the old fixed `text` prompt). */
+export type PublicMediaContent = { kind: "text"; value: string } | { kind: "image"; url: string } | { kind: "youtube"; videoId: string };
+
 /** The question the team in turn faces, without its answer: safe for /screen and /play.
  * `options` is present only for multipleChoice questions (never `correctIndex` — see
- * question-bank.ts's publicQuestion() field-picking discipline). `imageUrl` is present only
- * for `image` questions (a public R2 URL, never the raw storage key). */
+ * question-bank.ts's publicQuestion() field-picking discipline). Deliberately carries no
+ * `explanation` — that would leak the answer's supporting content before the answer is judged;
+ * see ANSWER_REVEALED below, built separately at judge time from the question that was just
+ * answered, never from the question currently in play. */
 export interface PublicQuestion {
   id: string;
-  text: string;
+  content: PublicMediaContent;
   difficulty: number;
   boss: boolean;
   monster: { name: string; sprite: SpriteKind; hue: number };
   options?: string[];
-  imageUrl?: string;
 }
 
 export type ClientMessage =
@@ -93,6 +99,11 @@ export type ServerMessage =
       eventId: number;
     }
   | { type: "GAME_OVER"; winners: string[] }
+  /** Sent to everyone (D2/D3 — a shared-screen, in-person party game, so hiding the answer from
+   * non-answering teams protects nothing here) only when a team answers CORRECTLY (D5 — a retry
+   * or a flee never reveals it, so the same question can come back around). `explanation` is
+   * built from the question that was JUST answered, never the one now in play. */
+  | { type: "ANSWER_REVEALED"; questionId: string; answer: string; explanation?: PublicMediaContent }
   /** Exactly one per event (1-3 segments, played in order). Clients keep the highest eventId they
    * have seen. 3 segments when there's a next team (result + atmosphere + transition), 2 when there
    * isn't (boss-kill, or the game's last judged event) — see docs/designs/multi-segment-narration.md. */
