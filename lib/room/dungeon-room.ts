@@ -303,7 +303,7 @@ export class DungeonRoom {
         // backfill here is required or the next correct answer throws inside handleHostJudge's
         // try/catch and gets silently turned into an ERROR sent to the host (test-coverage audit
         // finding, /ship).
-        revealedQuestionIds: s.game.revealedQuestionIds ?? [],
+        revealedQuestionIds: Array.isArray(s.game.revealedQuestionIds) ? s.game.revealedQuestionIds : [],
         teams: s.game.teams.map((t) =>
           t && typeof t === "object" ? { ...t, branchChoices: t.branchChoices ?? {}, currentSelection: t.currentSelection ?? null } : t,
         ),
@@ -579,7 +579,7 @@ export class DungeonRoom {
           this.handleTranscript(sender);
           break;
         case "HOST_NEXT":
-          this.handleHostNext(sender);
+          this.handleHostNext(sender, msg.eventId);
           break;
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice);
@@ -678,9 +678,11 @@ export class DungeonRoom {
     this.sendTo(conn, this.snapshot());
   }
 
-  private handleHostNext(conn: Conn) {
+  private handleHostNext(conn: Conn, eventId: number) {
     if (!this.requireHost(conn)) return;
-    if (!this.reveal) return;
+    // The reveal is always set in the same judgment that bumps eventSeq, so a HOST_NEXT for an
+    // older STATE is stale — ignore it rather than close a reveal nobody has seen.
+    if (!this.reveal || eventId !== this.eventSeq) return;
     this.reveal = null;
     this.broadcastState();
   }

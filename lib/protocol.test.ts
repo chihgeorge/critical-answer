@@ -72,8 +72,11 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "字".repeat(41) })).toBeNull();
   });
 
-  it("HOST_NEXT: needs only the type", () => {
-    expect(parseClientMessage({ type: "HOST_NEXT", extra: "ignored" })).toEqual({ type: "HOST_NEXT" });
+  it("HOST_NEXT: needs a non-negative integer eventId", () => {
+    expect(parseClientMessage({ type: "HOST_NEXT", eventId: 3, extra: "ignored" })).toEqual({ type: "HOST_NEXT", eventId: 3 });
+    expect(parseClientMessage({ type: "HOST_NEXT" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_NEXT", eventId: "3" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_NEXT", eventId: -1 })).toBeNull();
   });
 
   it("HOST_GET_TRANSCRIPT: needs only the type", () => {

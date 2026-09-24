@@ -40,6 +40,9 @@ function lastBroadcast(room: DungeonRoom) {
   return last ? JSON.parse(last) : null;
 }
 
+/** The room's current eventSeq — what a real host echoes back in HOST_NEXT (the eventId of the STATE it saw). */
+const seqOf = (room: DungeonRoom) => (room as unknown as { eventSeq: number }).eventSeq;
+
 function lastSentTo(conn: ReturnType<typeof makeConn>) {
   const calls = (conn.send as ReturnType<typeof vi.fn>).mock.calls;
   const last = calls.at(-1)?.[0];
@@ -323,7 +326,7 @@ describe("HOST_JUDGE", () => {
       const g = room.game!;
       const t = g.teams[0];
       const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
-      send(room, hostConn, { type: "HOST_NEXT" }); // close the previous reveal (D7); no-op if none
+      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: qid, correct: true });
     }
     expect(room.game!.phase).toBe("finished");
@@ -395,11 +398,11 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
   it("reveals the boss question on a correct boss hit (the correct-boss-hit branch, not just room advances)", () => {
     const { room, hostConn, ids } = startedGame(1);
     for (let i = 0; i < 100 && room.game!.teams[0].score < room.game!.config.bossThreshold; i++) {
-      send(room, hostConn, { type: "HOST_NEXT" }); // close the previous reveal (D7); no-op if none
+      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
     }
     const bossQid = room.game!.boss.currentQuestionId;
-    send(room, hostConn, { type: "HOST_NEXT" });
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: bossQid, correct: true });
     const revealed = revealOf(room);
     expect(revealed).toMatchObject({ questionId: bossQid, answer: answerText(findQuestion(BANK, bossQid)!) });
@@ -436,7 +439,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
   it("stays up until the host sends HOST_NEXT, which clears it and rebroadcasts (D7)", () => {
     const { room, hostConn, ids } = startedGame(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
-    send(room, hostConn, { type: "HOST_NEXT" });
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
     expect(revealOf(room)).toBeNull();
   });
 
@@ -448,12 +451,24 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     expect(lastSentTo(late)).toMatchObject({ type: "STATE", reveal: { questionId: "r0-q1" } });
   });
 
+  it("a stale HOST_NEXT (for an older STATE) doesn't close a newer reveal", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const firstRevealEvent = seqOf(room);
+    send(room, hostConn, { type: "HOST_NEXT", eventId: firstRevealEvent });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
+    const second = revealOf(room);
+    send(room, hostConn, { type: "HOST_NEXT", eventId: firstRevealEvent }); // a second device's late tap
+    expect(revealOf(room)).toEqual(second);
+    expect(second).not.toBeNull();
+  });
+
   it("HOST_NEXT from a non-host is rejected and leaves the reveal up", () => {
     const { room, hostConn, ids } = startedGame(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
     const stranger = makeConn("stranger");
     room.onConnect(stranger);
-    send(room, stranger, { type: "HOST_NEXT" });
+    send(room, stranger, { type: "HOST_NEXT", eventId: seqOf(room) });
     expect(lastSentTo(stranger)).toMatchObject({ type: "ERROR", error: "not_host" });
     expect(revealOf(room)).toMatchObject({ questionId: "r0-q1" });
   });
@@ -465,7 +480,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: next, correct: true });
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
     expect(room.game!.teams[0].currentQuestionId).toBe(next);
-    send(room, hostConn, { type: "HOST_NEXT" });
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: next, correct: false, fleeChoice: "retry" });
     expect(revealOf(room)).toBeNull();
   });
@@ -473,7 +488,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
   it("HOST_NEXT with nothing revealed is a no-op (no extra STATE)", () => {
     const { room, hostConn } = startedGame(1);
     const before = broadcastsOf(room).length;
-    send(room, hostConn, { type: "HOST_NEXT" });
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
     expect(broadcastsOf(room).length).toBe(before);
   });
 });
@@ -542,7 +557,7 @@ describe("TEAM_BRANCH_CHOICE", () => {
   it("does not block the team's next turn — HOST_JUDGE for that team still succeeds with the choice still pending", () => {
     const { room, hostConn, ids } = startedGame(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true }); // enters room 1, never chooses
-    send(room, hostConn, { type: "HOST_NEXT" }); // close the previous reveal (D7); no-op if none
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
     expect(room.game!.teams[0].roomIndex).toBeGreaterThanOrEqual(1);
     expect(room.game!.teams[0].branchChoices).toEqual({}); // still unanswered, and nothing broke
@@ -620,6 +635,18 @@ describe("TEAM_SELECT_OPTION", () => {
     const { conns } = joinTeams(room, hostConn, 1);
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 0 });
     expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "no_active_game" });
+  });
+
+  it("rejects a pick while an answer reveal is up, and accepts it once the host moves on (D7)", () => {
+    const { room, hostConn, ids, conns } = startedMcGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-mc1", correct: true });
+    const next = room.game!.teams[0].currentQuestionId; // the room's only question, redealt
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: next, optionIndex: 0 });
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
+    expect(room.game!.teams[0].currentSelection).toBeNull();
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: next, optionIndex: 0 });
+    expect(room.game!.teams[0].currentSelection).toBe(0);
   });
 
   it("records a valid pick and broadcasts it in STATE", () => {
@@ -824,7 +851,7 @@ describe("questions and answers (T3)", () => {
       const teamId = g.turnOrder[g.currentTurnIndex];
       const t = g.teams.find((x) => x.id === teamId)!;
       const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
-      send(room, hostConn, { type: "HOST_NEXT" }); // close the previous reveal (D7); no-op if none
+      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
     }
     expect(room.game!.phase).toBe("finished");
@@ -846,7 +873,7 @@ describe("questions and answers (T3)", () => {
     const { room, hostConn, ids } = started(1);
     for (let i = 0; i < 100 && room.game!.teams[0].score < 15; i++) {
       const t = room.game!.teams[0];
-      send(room, hostConn, { type: "HOST_NEXT" }); // close the previous reveal (D7); no-op if none
+      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: t.currentQuestionId, correct: true });
     }
     const state = broadcasts(room).findLast((m) => m.type === "STATE");
@@ -890,7 +917,7 @@ describe("narration (T5-T7)", () => {
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
     const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
-    send(room, hostConn, { type: "HOST_NEXT" }); // close the previous reveal (D7); no-op if none
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
   }
 
@@ -1074,7 +1101,7 @@ describe("LLM narration and director (T8-T10)", () => {
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
     const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
-    send(room, hostConn, { type: "HOST_NEXT" }); // close the previous reveal (D7); no-op if none
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
   }
   const narrations = (room: DungeonRoom) => all(room).filter((m) => m.type === "NARRATION");
@@ -1271,7 +1298,7 @@ describe("story moves on to the next team (two-line narration)", () => {
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
     const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
-    send(room, hostConn, { type: "HOST_NEXT" }); // close the previous reveal (D7); no-op if none
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct });
   }
 

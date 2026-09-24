@@ -321,9 +321,12 @@ export default function HostPage() {
                   {/* The host previously never saw question media at all (text-only preview) —
                       a small preview so judging an image/video question doesn't mean squinting
                       at the big screen from across the room (complexity-gate scope, /plan-eng-review). */}
-                  {game.question && game.question.content.kind !== "text" && (
+                  {game.question?.content.kind === "image" && (
                     <QuestionMedia key={game.question.id} content={game.question.content} maxWidth={120} maxHeight={90} className="mt-1" />
                   )}
+                  {/* A 120px YouTube embed is below the player's minimum size and won't play — the
+                      host watches the big screen instead. */}
+                  {game.question?.content.kind === "youtube" && <div className="mt-1 text-[14px]" style={{ color: "#6b4a2a" }}>影片題（看大螢幕）</div>}
                 </div>
               </div>
               <div className="mt-2">
@@ -375,8 +378,10 @@ export default function HostPage() {
                 // D7: the big screen and every phone show the answer in place of the next
                 // question until the host moves on — judging waits until then.
                 <>
-                  <div data-testid="host-reveal" className="px-1 text-center text-[14px] text-white">大螢幕正在揭曉：{game.reveal.answer}</div>
-                  <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: "HOST_NEXT" })}>
+                  <Panel tone="lav" className="px-3 py-2 text-center text-[16px]">
+                    <div data-testid="host-reveal">大螢幕正在揭曉：{game.reveal.answer}</div>
+                  </Panel>
+                  <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: "HOST_NEXT", eventId: game.eventId })}>
                     {connected ? "下一題" : "重新連線中"}
                   </PixelButton>
                 </>

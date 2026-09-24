@@ -172,7 +172,7 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
     const t = cur().view.teams[0];
     const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
     const before = cur().eventId;
-    host.send(JSON.stringify({ type: "HOST_NEXT" })); // close the previous answer reveal (D7); no-op if none
+    host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId })); // close the previous answer reveal (D7); no-op if none
     host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
     await expect.poll(() => cur().eventId, { timeout: 2000 }).toBeGreaterThan(before);
   }

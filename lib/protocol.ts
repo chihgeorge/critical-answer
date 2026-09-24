@@ -40,14 +40,6 @@ export type PublicMediaContent = { kind: "text"; value: string } | { kind: "imag
  * `explanation` — that would leak the answer's supporting content before the answer is judged;
  * see AnswerReveal below, built separately at judge time from the question that was just
  * answered, never from the question currently in play. */
-/** Shown to everyone (D2/D3 — a shared-screen, in-person party game, so hiding the answer from
- * non-answering teams protects nothing here) only after a team answers CORRECTLY (D5 — a retry
- * or a flee never reveals it, so the same question can come back around). Built from the question
- * that was JUST answered, never the one now in play. Carried on STATE, not a one-off message, so a
- * reconnecting phone still sees it; it stays up — replacing the next question on /screen and
- * /play — until the host sends HOST_NEXT (D7). */
-export type AnswerReveal = { questionId: string; answer: string; explanation?: PublicMediaContent };
-
 export interface PublicQuestion {
   id: string;
   content: PublicMediaContent;
@@ -56,6 +48,14 @@ export interface PublicQuestion {
   monster: { name: string; sprite: SpriteKind; hue: number };
   options?: string[];
 }
+
+/** Shown to everyone (D2/D3 — a shared-screen, in-person party game, so hiding the answer from
+ * non-answering teams protects nothing here) only after a team answers CORRECTLY (D5 — a retry
+ * or a flee never reveals it, so the same question can come back around). Built from the question
+ * that was JUST answered, never the one now in play. Carried on STATE, not a one-off message, so a
+ * reconnecting phone still sees it; it stays up — replacing the next question on /screen and
+ * /play — until the host sends HOST_NEXT (D7). */
+export type AnswerReveal = { questionId: string; answer: string; explanation?: PublicMediaContent };
 
 export type ClientMessage =
   /** `teamKey` is the team's secret. teamId is public (every STATE broadcasts it), so the key is what proves a connection owns the team. */
@@ -68,8 +68,10 @@ export type ClientMessage =
   /** Director: replace the line now on screen (<= 40 chars). */
   | { type: "HOST_EDIT_NARRATION"; line: string }
   | { type: "HOST_GET_TRANSCRIPT" }
-  /** Director: close the answer reveal and show the next question (D7). */
-  | { type: "HOST_NEXT" }
+  /** Director: close the answer reveal and show the next question (D7). `eventId` is the STATE
+   * eventId the reveal arrived with, so a late HOST_NEXT (second host device, a send buffered
+   * across a reconnect) can't close a newer reveal the room hasn't seen yet. */
+  | { type: "HOST_NEXT"; eventId: number }
   | {
       type: "HOST_JUDGE";
       teamId: string;
@@ -188,7 +190,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_GET_TRANSCRIPT":
       return { type: "HOST_GET_TRANSCRIPT" };
     case "HOST_NEXT":
-      return { type: "HOST_NEXT" };
+      return Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "HOST_NEXT", eventId: m.eventId as number } : null;
     case "HOST_JUDGE": {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);

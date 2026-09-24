@@ -163,7 +163,9 @@ test("youtube-content question: renders an iframe with the embed URL on /play, /
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
   const embedSrc = new RegExp(`youtube-nocookie\\.com/embed/${videoId}$`);
-  await expect(host.getByTitle("題目影片")).toHaveAttribute("src", embedSrc);
+  // The host gets a label, not a too-small embed (YouTube's player needs ~200px).
+  await expect(host.getByText("影片題（看大螢幕）")).toBeVisible();
+  await expect(host.getByTitle("題目影片")).toHaveCount(0);
   await expect(team.getByTitle("題目影片")).toHaveAttribute("src", embedSrc);
   await expect(screen.getByTitle("題目影片")).toHaveAttribute("src", embedSrc);
 
