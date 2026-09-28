@@ -425,3 +425,214 @@ export function drawScene(cv: HTMLCanvasElement, name: SceneTheme, W = 160, H = 
     }
   P.flush();
 }
+
+/* ---------- home page: a dungeon castle under the moon ---------- */
+
+/** Screen pixels per scene pixel on the home page, from the viewport size. A whole number, so the
+ * drawn scene and the torch sprites laid over it keep square pixels: about 5 on a phone, 7 on a laptop. */
+export function homeSceneCell(vw: number, vh: number): number {
+  return Math.max(4, Math.min(7, Math.round(Math.min(vw, vh * 0.75) / 80)));
+}
+
+/** Where the home scene's torch posts stand, in scene pixels: the top centre of each post. */
+export type HomeSceneAnchors = { torches: { x: number; y: number }[] };
+
+const HOME = {
+  sky: ["#150e2b", "#1b1236", "#241a3f", "#2f2352", "#3b2d68", "#4f3d84"],
+  star: ["#fff", "#fff6b0", "#cdbdf0"],
+  far: "#2c2254",
+  near: "#1f1740",
+  castle: "#1b1236",
+  roof: "#3c1530",
+  lit: ["#ffcf4a", "#ffa94d"],
+  ground: ["#241a3f", "#2a1f4d", "#30245a"],
+  cobble: ["#7a5fa6", "#6a4f96", "#5a4690"],
+  mortar: "#2f2352",
+  grass: ["#3f6b58", "#62957c"],
+  stone: ["#63509c", "#5a4690", "#4f3d84"],
+} as const;
+
+/**
+ * The home page backdrop, sized to fill the viewport: a starry sky and moon, mountains, a
+ * castle with lit windows and a glowing gate, and a cobbled path flanked by two torch posts.
+ * The torches' flames are sprites the caller lays over the returned anchors, so they can flicker.
+ * Seeded, so it never changes between renders.
+ */
+export function drawHomeScene(cv: HTMLCanvasElement, W: number, H: number): HomeSceneAnchors {
+  const P = new Px(cv, W, H);
+  let s = 7;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const hy = Math.floor(H * 0.58); // horizon
+  const px = (x: number, y: number) => (x >= 0 && y >= 0 && x < W && y < H ? P.a[y * W + x] : null);
+
+  // Sky: bands that darken upward, dithered where two bands meet.
+  const bands = HOME.sky.length;
+  for (let y = 0; y < hy; y++) {
+    const t = (y / hy) * bands;
+    const b = Math.min(bands - 1, Math.floor(t));
+    const edge = t - b > 0.8 && b < bands - 1;
+    for (let x = 0; x < W; x++) P.set(x, y, edge && (x + y) % 2 === 0 ? HOME.sky[b + 1] : HOME.sky[b]);
+  }
+  // Stars, a few of them bigger plus shapes.
+  const stars = Math.floor((W * hy) / 70);
+  for (let i = 0; i < stars; i++) {
+    const x = Math.floor(rnd() * W);
+    const y = Math.floor(rnd() * hy * 0.8);
+    const c = HOME.star[Math.floor(rnd() * 3)];
+    P.set(x, y, c);
+    if (rnd() < 0.12) {
+      P.set(x - 1, y, HOME.star[2]);
+      P.set(x + 1, y, HOME.star[2]);
+      P.set(x, y - 1, HOME.star[2]);
+      P.set(x, y + 1, HOME.star[2]);
+    }
+  }
+  // Moon, with a dithered halo, a shaded crescent and craters.
+  const mr = Math.max(5, Math.round(Math.min(W, H) * 0.07));
+  const mx = Math.round(W * 0.8);
+  const my = Math.round(Math.max(mr + 3, H * 0.12));
+  for (let y = my - mr * 2; y <= my + mr * 2; y++)
+    for (let x = mx - mr * 2; x <= mx + mr * 2; x++) {
+      const d = Math.hypot(x + 0.5 - mx, y + 0.5 - my) / mr;
+      if (d <= 1.6 && (x + y) % 2 === 0 && px(x, y) && !HOME.star.includes(px(x, y) as never)) P.set(x, y, HOME.sky[3]);
+    }
+  P.ell(mx, my, mr, mr, "#fff4dc");
+  P.shade(mx, my, mr, mr, "#f1dcb6", -Math.max(1, mr / 3), -Math.max(1, mr / 4));
+  P.ell(mx - mr * 0.35, my - mr * 0.2, Math.max(1, mr * 0.22), Math.max(1, mr * 0.22), "#e8d6b0");
+  P.ell(mx + mr * 0.3, my + mr * 0.35, Math.max(1, mr * 0.15), Math.max(1, mr * 0.15), "#e8d6b0");
+
+  // Two mountain ridges.
+  for (let x = 0; x < W; x++) {
+    const far = hy - Math.round(H * 0.06 + H * 0.05 * Math.sin(x * 0.06 + 1) + H * 0.025 * Math.sin(x * 0.17 + 2));
+    for (let y = Math.max(0, far); y < hy; y++) P.set(x, y, HOME.far);
+    const near = hy - Math.round(H * 0.02 + H * 0.025 * Math.sin(x * 0.11 + 4) + H * 0.01 * Math.sin(x * 0.31));
+    for (let y = Math.max(0, near); y < hy + 1; y++) P.set(x, y, HOME.near);
+  }
+
+  // Castle on the horizon: a keep, two side towers and a tall centre tower, all with merlons.
+  const cxC = Math.round(W / 2);
+  const cw = Math.max(36, Math.min(96, Math.round(W * 0.42)));
+  const base = hy;
+  // Capped by the sky's height too, so on a wide, short screen the spire still clears the top.
+  const kh = Math.min(Math.round(cw * 0.26), Math.round(hy * 0.22));
+  const tw = Math.max(6, Math.round(cw * 0.12));
+  const block = (x0: number, w: number, h: number) => {
+    P.rect(x0, base - h, w, h, HOME.castle);
+    for (let x = x0; x < x0 + w; x += 2) if ((x - x0) % 4 < 2) P.rect(x, base - h - 2, 2, 2, HOME.castle);
+  };
+  const roof = (x0: number, w: number, y: number) => {
+    const h = Math.round(w * 1.1);
+    for (let r = 0; r < h; r++) {
+      const half = Math.round(((r + 1) / h) * (w / 2 + 1));
+      P.rect(Math.round(x0 + w / 2 - half), y - h + r, half * 2, 1, HOME.roof);
+    }
+    return y - h;
+  };
+  const windows = (x0: number, w: number, top: number, bottom: number) => {
+    for (let y = top + 3; y < bottom - 4; y += 5)
+      for (let x = x0 + 2; x < x0 + w - 2; x += 4) if (rnd() < 0.45) P.rect(x, y, 1, 2, HOME.lit[Math.floor(rnd() * 2)]);
+  };
+  const left = cxC - Math.round(cw / 2);
+  block(left, cw, kh);
+  windows(left + tw, cw - tw * 2, base - kh, base);
+  const th = Math.round(kh * 1.5);
+  for (const x0 of [left - 1, left + cw - tw + 1]) {
+    block(x0, tw, th);
+    roof(x0 - 1, tw + 2, base - th - 2);
+    windows(x0, tw, base - th, base - kh);
+  }
+  const ctw = Math.round(tw * 1.4);
+  const cth = Math.round(kh * 2);
+  block(cxC - Math.round(ctw / 2), ctw, cth);
+  const peak = roof(cxC - Math.round(ctw / 2) - 1, ctw + 2, base - cth - 2);
+  windows(cxC - Math.round(ctw / 2), ctw, base - cth, base - kh);
+  // Pennant on the centre spire.
+  P.rect(cxC, peak - 5, 1, 5, HOME.castle);
+  P.grid(["dd", "ddd", "dd"], { d: "#ff6b6b" }, cxC + 1, peak - 5);
+  // Gate: a warm glowing arch at the foot of the keep.
+  const gw = Math.max(3, Math.round(cw * 0.07));
+  const gh = Math.max(4, Math.round(kh * 0.45));
+  P.ell(cxC, base - gh, gw, gw * 0.8, "#e2742f");
+  P.rect(cxC - gw, base - gh, gw * 2, gh, "#e2742f");
+  for (let y = base - gh - gw; y < base; y++)
+    for (let x = cxC - gw; x < cxC + gw; x++)
+      if (px(x, y) === "#e2742f" && ((x + y) % 2 === 0 || Math.abs(x + 0.5 - cxC) < gw / 2)) P.set(x, y, "#ffa94d");
+
+  // Ground, then a cobbled path that widens toward the viewer.
+  for (let y = hy + 1; y < H; y++) {
+    const t = (y - hy) / (H - hy);
+    const g = HOME.ground[Math.min(2, Math.floor(t * 3))];
+    for (let x = 0; x < W; x++) P.set(x, y, g);
+  }
+  for (let y = hy + 1; y < H; y++) {
+    const t = (y - hy) / (H - hy);
+    const half = gw + t * W * 0.32;
+    const bh = 1 + Math.round(t * 3);
+    const bw = 2 + Math.round(t * 6);
+    const row = Math.floor(((y - hy) * (y - hy)) / Math.max(1, H - hy) / 1.2 + (y - hy) * 0.4);
+    for (let x = Math.round(cxC - half); x < Math.round(cxC + half); x++) {
+      const off = (row % 2) * Math.floor(bw / 2);
+      const col = Math.floor((x + off) / bw);
+      const mortar = (x + off) % bw === 0 || (y + row) % (bh + 1) === 0;
+      P.set(x, y, mortar ? HOME.mortar : HOME.cobble[(col * 7 + row * 3) % 3]);
+    }
+  }
+  const onPath = (x: number, y: number) => Math.abs(x - cxC) < gw + ((y - hy) / (H - hy)) * W * 0.32 + 2;
+  // Grass tufts.
+  const tufts = Math.floor((W * (H - hy)) / 45);
+  for (let i = 0; i < tufts; i++) {
+    const x = Math.floor(rnd() * W);
+    const y = hy + 2 + Math.floor(rnd() * (H - hy - 2));
+    if (onPath(x, y)) continue;
+    const c = HOME.grass[Math.floor(rnd() * 2)];
+    P.set(x, y, c);
+    P.set(x - 1, y - 1, c);
+    P.set(x + 1, y - 1, c);
+  }
+  // Props beside the path (and clear of the torch posts): gravestones and red mushrooms.
+  const pw = Math.max(4, Math.round(W * 0.03));
+  const nearPost = (x: number) => [0.12, 0.88].some((fx) => Math.abs(x - W * fx) < pw + 5);
+  const props = Math.max(4, Math.floor(W / 16));
+  for (let i = 0; i < props; i++) {
+    const x = Math.floor(rnd() * W);
+    const y = hy + 4 + Math.floor(rnd() * (H - hy - 6));
+    if (onPath(x, y) || onPath(x + 4, y) || onPath(x - 4, y) || nearPost(x)) continue;
+    if (rnd() < 0.5) {
+      P.grid([".sss.", "sssss", "ssXss", "sXXXs", "ssXss", "sssss"], { s: "#8a74c4", X: "#4f3d84" }, x - 2, y - 6);
+      P.rect(x - 3, y, 7, 1, HOME.grass[0]);
+    } else {
+      P.grid([".rrr.", "rwrwr", "rrrrr", "..c..", "..c.."], { r: "#ff6b6b", w: "#fff", c: "#fff4dc" }, x - 2, y - 5);
+    }
+  }
+
+  // Two stone posts flanking the path; the flames are sprites laid on top (see anchors).
+  const pt = H - Math.max(16, Math.round((H - hy) * 0.55));
+  const torches: { x: number; y: number }[] = [];
+  for (const fx of [0.12, 0.88]) {
+    const x0 = Math.round(W * fx - pw / 2);
+    for (let y = pt; y < H; y++)
+      for (let x = x0; x < x0 + pw; x++) {
+        const brick = Math.floor((y - pt) / 3);
+        const c = (y - pt) % 3 === 0 ? HOME.mortar : HOME.stone[(brick + Math.floor((x - x0 + (brick % 2) * 2) / 3)) % 3];
+        P.set(x, y, c);
+      }
+    P.rect(x0 - 1, pt - 2, pw + 2, 2, "#8a74c4");
+    P.rect(x0 - 1, pt, pw + 2, 1, HOME.mortar);
+    torches.push({ x: x0 + pw / 2, y: pt - 2 });
+  }
+
+  // Dithered vignette, same as the room scenes.
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const dx = Math.abs(x - W / 2) / (W / 2);
+      const dy = Math.abs(y - H * 0.45) / (H * 0.55);
+      const d = Math.max(dx, dy);
+      if ((d > 0.8 && (x + y) % 2 === 0) || (d > 0.94 && x % 2 === 0)) {
+        const i = y * W + x;
+        const c = P.a[i];
+        if (c) P.a[i] = "#" + rgb(c).map((v) => Math.floor(v * 0.6).toString(16).padStart(2, "0")).join("");
+      }
+    }
+  P.flush();
+  return { torches };
+}

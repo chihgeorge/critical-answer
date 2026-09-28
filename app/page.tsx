@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { freshHostPath, generateRoomCode, newHostToken } from "@/lib/room-code";
-import { DialogueBox, Panel, PixelButton, SceneBackground, Sprite } from "@/components/pixel";
+import { DialogueBox, HomeBackground, Panel, PixelButton, Sprite } from "@/components/pixel";
 
 const inputClass =
   "w-full border-4 border-[var(--k)] bg-white px-4 py-3 text-[20px] text-[var(--ink)] outline-none focus:bg-[var(--turn)]";
@@ -37,7 +37,7 @@ function HomeForm() {
 
   return (
     <main className="relative min-h-screen overflow-hidden">
-      <SceneBackground theme="stone" cols={48} rows={100} arch={false} className="fixed inset-0" />
+      <HomeBackground />
       <div className="relative z-10 mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-4 py-10">
         <div className="text-center">
           <div className="flex justify-center gap-2">

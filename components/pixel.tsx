@@ -3,7 +3,7 @@
 // Shared pixel-dungeon components (see DESIGN.md). Styles live in app/globals.css.
 
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
-import { drawScene, drawSprite, SPRITE_SIZE, type SceneTheme, type SpriteKind } from "@/lib/pixel-art";
+import { drawHomeScene, drawScene, drawSprite, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme, type SpriteKind } from "@/lib/pixel-art";
 import { youtubeEmbedUrl } from "@/lib/youtube";
 import type { PublicMediaContent } from "@/lib/protocol";
 
@@ -160,6 +160,63 @@ export function SceneBackground({
     if (ref.current) drawScene(ref.current, theme, cols, rows, arch);
   }, [theme, cols, rows, arch]);
   return <canvas ref={ref} className={cx("px-sprite h-full w-full", className)} />;
+}
+
+/* ---------- Home background: the castle scene, sized to the viewport ---------- */
+
+/**
+ * Fills the viewport with the home page's castle scene. Unlike `SceneBackground`, which stretches a
+ * fixed grid, this sizes the grid from the viewport so every scene pixel is a whole number of screen
+ * pixels, then lays two flickering torch sprites (and their glow) on the scene's torch posts.
+ */
+export function HomeBackground() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const [layout, setLayout] = useState<{ cell: number; W: number; H: number } | null>(null);
+  const [anchors, setAnchors] = useState<HomeSceneAnchors | null>(null);
+
+  useEffect(() => {
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const cell = homeSceneCell(vw, vh);
+        const W = Math.ceil(vw / cell);
+        const H = Math.ceil(vh / cell);
+        setLayout((old) => (old && old.cell === cell && old.W === W && old.H === H ? old : { cell, W, H }));
+      });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (ref.current && layout) setAnchors(drawHomeScene(ref.current, layout.W, layout.H));
+  }, [layout]);
+
+  const cell = layout?.cell ?? 1;
+  const [tw, th] = SPRITE_SIZE.torch;
+  return (
+    <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
+      <canvas
+        ref={ref}
+        className="px-sprite absolute left-0 top-0"
+        style={layout ? { width: layout.W * cell, height: layout.H * cell } : { display: "none" }}
+      />
+      {anchors?.torches.map(({ x, y }) => (
+        <div key={x} className="absolute" style={{ left: x * cell - (tw * cell) / 2, top: y * cell - th * cell, width: tw * cell, height: th * cell }}>
+          <div className="px-glow px-tf1" style={{ left: (tw * cell) / 2 - 150, top: -150 + (th * cell) / 3 }} />
+          <Sprite kind="torch" variant={0} scale={cell} className="px-tf1 absolute inset-0" />
+          <Sprite kind="torch" variant={1} scale={cell} className="px-tf2 absolute inset-0" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /* ---------- Score meter: 15 cells ---------- */
