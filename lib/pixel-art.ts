@@ -426,7 +426,7 @@ export function drawScene(cv: HTMLCanvasElement, name: SceneTheme, W = 160, H = 
   P.flush();
 }
 
-/* ---------- home page: a dungeon castle under the moon ---------- */
+/* ---------- home page: looking down a dungeon corridor ---------- */
 
 /** Screen pixels per scene pixel on the home page, from the viewport size. A whole number, so the
  * drawn scene and the torch sprites laid over it keep square pixels: about 5 on a phone, 7 on a laptop. */
@@ -434,204 +434,266 @@ export function homeSceneCell(vw: number, vh: number): number {
   return Math.max(4, Math.min(7, Math.round(Math.min(vw, vh * 0.75) / 80)));
 }
 
-/** Where the home scene's torch posts stand, in scene pixels: the top centre of each post. */
+/** Where the home scene's wall torches hang, in scene pixels: the top centre of each bracket. */
 export type HomeSceneAnchors = { torches: { x: number; y: number }[] };
 
-const HOME = {
-  sky: ["#150e2b", "#1b1236", "#241a3f", "#2f2352", "#3b2d68", "#4f3d84"],
-  star: ["#fff", "#fff6b0", "#cdbdf0"],
-  far: "#2c2254",
-  near: "#1f1740",
-  castle: "#1b1236",
-  roof: "#3c1530",
-  lit: ["#ffcf4a", "#ffa94d"],
-  ground: ["#241a3f", "#2a1f4d", "#30245a"],
-  cobble: ["#7a5fa6", "#6a4f96", "#5a4690"],
+const DUN = {
+  wall: ["#5a4690", "#63509c", "#4f3d84"],
+  wallHi: "#7a66b6",
   mortar: "#2f2352",
-  grass: ["#3f6b58", "#62957c"],
-  stone: ["#63509c", "#5a4690", "#4f3d84"],
+  floor: ["#6a4f96", "#5f4589", "#553d7c"],
+  floorM: "#2a1f4d",
+  ceil: ["#3b2d68", "#33285e"],
+  beam: "#7a4a34",
+  beamHi: "#8a5a3e",
+  moss: ["#3f6b58", "#62957c"],
+  iron: ["#8a86a8", "#5a5670"],
+  bone: "#fff4dc",
+  web: "#cdbdf0",
 } as const;
 
+const SKULL = [".wwwww.", "wwwwwww", "wkkwkkw", "wkkwkkw", "wwwkwww", ".wwwww.", ".w.w.w."];
+const BONES = ["ww....ww", ".wwwwww.", "ww....ww"];
+const CHEST = [
+  ".kkkkkkkkkkkk.",
+  "kbBbbBbbBbbBbk",
+  "kbbbbbbbbbbbbk",
+  "kyyyyyyyyyyyyk",
+  "kbbbbbyybbbbbk",
+  "kbbbbbkkbbbbbk",
+  "kbBbbBbbBbbBbk",
+  "kkkkkkkkkkkkkk",
+];
+const BARREL = [".kkkkkk.", "kbBbbBbk", "kssssssk", "kbBbbBbk", "kbBbbBbk", "kbBbbBbk", "kssssssk", "kbBbbBbk", ".kkkkkk."];
+const PROP_PAL = { w: DUN.bone, k: K, b: "#b07a4f", B: "#8a5a3e", y: "#ffcf4a", s: "#5a5670" };
+
 /**
- * The home page backdrop, sized to fill the viewport: a starry sky and moon, mountains, a
- * castle with lit windows and a glowing gate, and a cobbled path flanked by two torch posts.
- * The torches' flames are sprites the caller lays over the returned anchors, so they can flicker.
+ * The home page backdrop, sized to fill the viewport: a stone corridor seen from inside, with
+ * brick walls in perspective, a beamed ceiling hung with chains, a tiled floor, and an iron-banded
+ * door at the far end. Cobwebs, moss, bones, a chest and a barrel fill the corners, where the home
+ * page's panels leave the backdrop showing. The two wall torches' flames are sprites the caller lays
+ * over the returned anchors, so they can flicker; their glow is painted here.
  * Seeded, so it never changes between renders.
  */
 export function drawHomeScene(cv: HTMLCanvasElement, W: number, H: number): HomeSceneAnchors {
   const P = new Px(cv, W, H);
   let s = 7;
   const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
-  const hy = Math.floor(H * 0.58); // horizon
-  const px = (x: number, y: number) => (x >= 0 && y >= 0 && x < W && y < H ? P.a[y * W + x] : null);
 
-  // Sky: bands that darken upward, dithered where two bands meet.
-  const bands = HOME.sky.length;
-  for (let y = 0; y < hy; y++) {
-    const t = (y / hy) * bands;
-    const b = Math.min(bands - 1, Math.floor(t));
-    const edge = t - b > 0.8 && b < bands - 1;
-    for (let x = 0; x < W; x++) P.set(x, y, edge && (x + y) % 2 === 0 ? HOME.sky[b + 1] : HOME.sky[b]);
-  }
-  // Stars, a few of them bigger plus shapes.
-  const stars = Math.floor((W * hy) / 70);
-  for (let i = 0; i < stars; i++) {
-    const x = Math.floor(rnd() * W);
-    const y = Math.floor(rnd() * hy * 0.8);
-    const c = HOME.star[Math.floor(rnd() * 3)];
-    P.set(x, y, c);
-    if (rnd() < 0.12) {
-      P.set(x - 1, y, HOME.star[2]);
-      P.set(x + 1, y, HOME.star[2]);
-      P.set(x, y - 1, HOME.star[2]);
-      P.set(x, y + 1, HOME.star[2]);
-    }
-  }
-  // Moon, with a dithered halo, a shaded crescent and craters.
-  const mr = Math.max(5, Math.round(Math.min(W, H) * 0.07));
-  const mx = Math.round(W * 0.8);
-  const my = Math.round(Math.max(mr + 3, H * 0.12));
-  for (let y = my - mr * 2; y <= my + mr * 2; y++)
-    for (let x = mx - mr * 2; x <= mx + mr * 2; x++) {
-      const d = Math.hypot(x + 0.5 - mx, y + 0.5 - my) / mr;
-      if (d <= 1.6 && (x + y) % 2 === 0 && px(x, y) && !HOME.star.includes(px(x, y) as never)) P.set(x, y, HOME.sky[3]);
-    }
-  P.ell(mx, my, mr, mr, "#fff4dc");
-  P.shade(mx, my, mr, mr, "#f1dcb6", -Math.max(1, mr / 3), -Math.max(1, mr / 4));
-  P.ell(mx - mr * 0.35, my - mr * 0.2, Math.max(1, mr * 0.22), Math.max(1, mr * 0.22), "#e8d6b0");
-  P.ell(mx + mr * 0.3, my + mr * 0.35, Math.max(1, mr * 0.15), Math.max(1, mr * 0.15), "#e8d6b0");
+  // The far wall, a rectangle the four near surfaces (walls, ceiling, floor) run into.
+  const cx = W / 2;
+  const bw = Math.max(16, Math.round(W * 0.34));
+  const bh = Math.max(14, Math.round(H * 0.34));
+  const Rl = Math.round(cx - bw / 2);
+  const Rr = Rl + bw;
+  const Rt = Math.round(H * 0.42 - bh / 2);
+  const Rb = Rt + bh;
+  const sIn = bw / W;
 
-  // Two mountain ridges.
-  for (let x = 0; x < W; x++) {
-    const far = hy - Math.round(H * 0.06 + H * 0.05 * Math.sin(x * 0.06 + 1) + H * 0.025 * Math.sin(x * 0.17 + 2));
-    for (let y = Math.max(0, far); y < hy; y++) P.set(x, y, HOME.far);
-    const near = hy - Math.round(H * 0.02 + H * 0.025 * Math.sin(x * 0.11 + 4) + H * 0.01 * Math.sin(x * 0.31));
-    for (let y = Math.max(0, near); y < hy + 1; y++) P.set(x, y, HOME.near);
-  }
-
-  // Castle on the horizon: a keep, two side towers and a tall centre tower, all with merlons.
-  const cxC = Math.round(W / 2);
-  const cw = Math.max(36, Math.min(96, Math.round(W * 0.42)));
-  const base = hy;
-  // Capped by the sky's height too, so on a wide, short screen the spire still clears the top.
-  const kh = Math.min(Math.round(cw * 0.26), Math.round(hy * 0.22));
-  const tw = Math.max(6, Math.round(cw * 0.12));
-  const block = (x0: number, w: number, h: number) => {
-    P.rect(x0, base - h, w, h, HOME.castle);
-    for (let x = x0; x < x0 + w; x += 2) if ((x - x0) % 4 < 2) P.rect(x, base - h - 2, 2, 2, HOME.castle);
-  };
-  const roof = (x0: number, w: number, y: number) => {
-    const h = Math.round(w * 1.1);
-    for (let r = 0; r < h; r++) {
-      const half = Math.round(((r + 1) / h) * (w / 2 + 1));
-      P.rect(Math.round(x0 + w / 2 - half), y - h + r, half * 2, 1, HOME.roof);
-    }
-    return y - h;
-  };
-  const windows = (x0: number, w: number, top: number, bottom: number) => {
-    for (let y = top + 3; y < bottom - 4; y += 5)
-      for (let x = x0 + 2; x < x0 + w - 2; x += 4) if (rnd() < 0.45) P.rect(x, y, 1, 2, HOME.lit[Math.floor(rnd() * 2)]);
-  };
-  const left = cxC - Math.round(cw / 2);
-  block(left, cw, kh);
-  windows(left + tw, cw - tw * 2, base - kh, base);
-  const th = Math.round(kh * 1.5);
-  for (const x0 of [left - 1, left + cw - tw + 1]) {
-    block(x0, tw, th);
-    roof(x0 - 1, tw + 2, base - th - 2);
-    windows(x0, tw, base - th, base - kh);
-  }
-  const ctw = Math.round(tw * 1.4);
-  const cth = Math.round(kh * 2);
-  block(cxC - Math.round(ctw / 2), ctw, cth);
-  const peak = roof(cxC - Math.round(ctw / 2) - 1, ctw + 2, base - cth - 2);
-  windows(cxC - Math.round(ctw / 2), ctw, base - cth, base - kh);
-  // Pennant on the centre spire.
-  P.rect(cxC, peak - 5, 1, 5, HOME.castle);
-  P.grid(["dd", "ddd", "dd"], { d: "#ff6b6b" }, cxC + 1, peak - 5);
-  // Gate: a warm glowing arch at the foot of the keep.
-  const gw = Math.max(3, Math.round(cw * 0.07));
-  const gh = Math.max(4, Math.round(kh * 0.45));
-  P.ell(cxC, base - gh, gw, gw * 0.8, "#e2742f");
-  P.rect(cxC - gw, base - gh, gw * 2, gh, "#e2742f");
-  for (let y = base - gh - gw; y < base; y++)
-    for (let x = cxC - gw; x < cxC + gw; x++)
-      if (px(x, y) === "#e2742f" && ((x + y) % 2 === 0 || Math.abs(x + 0.5 - cxC) < gw / 2)) P.set(x, y, "#ffa94d");
-
-  // Ground, then a cobbled path that widens toward the viewer.
-  for (let y = hy + 1; y < H; y++) {
-    const t = (y - hy) / (H - hy);
-    const g = HOME.ground[Math.min(2, Math.floor(t * 3))];
-    for (let x = 0; x < W; x++) P.set(x, y, g);
-  }
-  for (let y = hy + 1; y < H; y++) {
-    const t = (y - hy) / (H - hy);
-    const half = gw + t * W * 0.32;
-    const bh = 1 + Math.round(t * 3);
-    const bw = 2 + Math.round(t * 6);
-    const row = Math.floor(((y - hy) * (y - hy)) / Math.max(1, H - hy) / 1.2 + (y - hy) * 0.4);
-    for (let x = Math.round(cxC - half); x < Math.round(cxC + half); x++) {
-      const off = (row % 2) * Math.floor(bw / 2);
-      const col = Math.floor((x + off) / bw);
-      const mortar = (x + off) % bw === 0 || (y + row) % (bh + 1) === 0;
-      P.set(x, y, mortar ? HOME.mortar : HOME.cobble[(col * 7 + row * 3) % 3]);
-    }
-  }
-  const onPath = (x: number, y: number) => Math.abs(x - cxC) < gw + ((y - hy) / (H - hy)) * W * 0.32 + 2;
-  // Grass tufts.
-  const tufts = Math.floor((W * (H - hy)) / 45);
-  for (let i = 0; i < tufts; i++) {
-    const x = Math.floor(rnd() * W);
-    const y = hy + 2 + Math.floor(rnd() * (H - hy - 2));
-    if (onPath(x, y)) continue;
-    const c = HOME.grass[Math.floor(rnd() * 2)];
-    P.set(x, y, c);
-    P.set(x - 1, y - 1, c);
-    P.set(x + 1, y - 1, c);
-  }
-  // Props beside the path (and clear of the torch posts): gravestones and red mushrooms.
-  const pw = Math.max(4, Math.round(W * 0.03));
-  const nearPost = (x: number) => [0.12, 0.88].some((fx) => Math.abs(x - W * fx) < pw + 5);
-  const props = Math.max(4, Math.floor(W / 16));
-  for (let i = 0; i < props; i++) {
-    const x = Math.floor(rnd() * W);
-    const y = hy + 4 + Math.floor(rnd() * (H - hy - 6));
-    if (onPath(x, y) || onPath(x + 4, y) || onPath(x - 4, y) || nearPost(x)) continue;
-    if (rnd() < 0.5) {
-      P.grid([".sss.", "sssss", "ssXss", "sXXXs", "ssXss", "sssss"], { s: "#8a74c4", X: "#4f3d84" }, x - 2, y - 6);
-      P.rect(x - 3, y, 7, 1, HOME.grass[0]);
-    } else {
-      P.grid([".rrr.", "rwrwr", "rrrrr", "..c..", "..c.."], { r: "#ff6b6b", w: "#fff", c: "#fff4dc" }, x - 2, y - 5);
-    }
-  }
-
-  // Two stone posts flanking the path; the flames are sprites laid on top (see anchors).
-  const pt = H - Math.max(16, Math.round((H - hy) * 0.55));
-  const torches: { x: number; y: number }[] = [];
-  for (const fx of [0.12, 0.88]) {
-    const x0 = Math.round(W * fx - pw / 2);
-    for (let y = pt; y < H; y++)
-      for (let x = x0; x < x0 + pw; x++) {
-        const brick = Math.floor((y - pt) / 3);
-        const c = (y - pt) % 3 === 0 ? HOME.mortar : HOME.stone[(brick + Math.floor((x - x0 + (brick % 2) * 2) / 3)) % 3];
-        P.set(x, y, c);
-      }
-    P.rect(x0 - 1, pt - 2, pw + 2, 2, "#8a74c4");
-    P.rect(x0 - 1, pt, pw + 2, 1, HOME.mortar);
-    torches.push({ x: x0 + pw / 2, y: pt - 2 });
-  }
-
-  // Dithered vignette, same as the room scenes.
+  // Each pixel outside the far wall sits on a ring t (0 = screen edge, 1 = far wall) of one surface.
+  type Surf = "L" | "R" | "T" | "B" | "F";
+  const surf: Surf[] = new Array(W * H);
+  const ring = new Float32Array(W * H);
+  const cellId: string[] = new Array(W * H);
+  const zScale = Math.max(Rl, Rt, 1) / (1 - sIn);
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
-      const dx = Math.abs(x - W / 2) / (W / 2);
-      const dy = Math.abs(y - H * 0.45) / (H * 0.55);
-      const d = Math.max(dx, dy);
-      if ((d > 0.8 && (x + y) % 2 === 0) || (d > 0.94 && x % 2 === 0)) {
-        const i = y * W + x;
-        const c = P.a[i];
-        if (c) P.a[i] = "#" + rgb(c).map((v) => Math.floor(v * 0.6).toString(16).padStart(2, "0")).join("");
+      const c = [
+        ["L", x < Rl ? x / Rl : 9],
+        ["R", x >= Rr ? (W - 1 - x) / Math.max(1, W - 1 - Rr) : 9],
+        ["T", y < Rt ? y / Rt : 9],
+        ["B", y >= Rb ? (H - 1 - y) / Math.max(1, H - 1 - Rb) : 9],
+      ] as [Surf, number][];
+      let [sf, t] = c[0];
+      for (const [k, v] of c) if (v < t) [sf, t] = [k, v];
+      const i = y * W + x;
+      if (t >= 9) {
+        surf[i] = "F";
+        ring[i] = 1;
+        const row = Math.floor((y - Rt) / 3);
+        cellId[i] = `F${row},${Math.floor((x - Rl + (row % 2) * 3) / 6)}`;
+        continue;
       }
+      surf[i] = sf;
+      ring[i] = t;
+      // Depth along the corridor, in roughly near-screen pixels.
+      const z = (1 / (1 - t * (1 - sIn))) * zScale;
+      if (sf === "L" || sf === "R") {
+        const top = t * Rt;
+        const bot = H - 1 - t * (H - 1 - Rb);
+        const row = Math.floor(((y - top) / Math.max(1, bot - top)) * 12);
+        cellId[i] = `${sf}${row},${Math.floor(z / 14 + (row % 2) * 0.5)}`;
+      } else {
+        const left = t * Rl;
+        const right = W - 1 - t * (W - 1 - Rr);
+        const col = Math.floor(((x - left) / Math.max(1, right - left)) * (sf === "B" ? 7 : 9));
+        cellId[i] = `${sf}${col},${Math.floor(z / (sf === "B" ? 12 : 26))}`;
+      }
+    }
+  // Paint: a 1px mortar line wherever the brick/tile id changes from the pixel above or to the left.
+  const pick = <T,>(arr: readonly T[], key: string) => {
+    let h = 0;
+    for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) | 0;
+    return arr[Math.abs(h) % arr.length];
+  };
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      const id = cellId[i];
+      const up = y > 0 && surf[i - W] === surf[i] ? cellId[i - W] : id;
+      const lf = x > 0 && surf[i - 1] === surf[i] ? cellId[i - 1] : id;
+      const edge = up !== id || lf !== id;
+      const sf = surf[i];
+      if (sf === "B") P.set(x, y, edge ? DUN.floorM : pick(DUN.floor, id));
+      else if (sf === "T") {
+        const beam = Number(id.split(",")[1]) % 2 === 0;
+        P.set(x, y, beam ? (edge ? DUN.mortar : up !== id ? DUN.beamHi : DUN.beam) : edge ? DUN.mortar : pick(DUN.ceil, id));
+      } else P.set(x, y, edge ? DUN.mortar : up !== id || (y > 0 && cellId[i - W] !== id) ? DUN.wallHi : pick(DUN.wall, id));
+      if (!edge && sf !== "T" && sf !== "B" && y > 0 && cellId[i - W] !== id) P.set(x, y, DUN.wallHi);
+    }
+  // Corner seams where two surfaces meet.
+  for (let y = 0; y < H; y++)
+    for (let x = 1; x < W; x++) {
+      const i = y * W + x;
+      if (surf[i] !== surf[i - 1] || (y > 0 && surf[i] !== surf[i - W])) P.set(x, y, K);
+    }
+  P.rect(Rl, Rt, bw, 1, K);
+  P.rect(Rl, Rb - 1, bw, 1, K);
+
+  // Moss creeping up the bottom of the side walls, and a few cracks on the far wall.
+  for (let n = 0; n < Math.floor((W * H) / 90); n++) {
+    const x = Math.floor(rnd() * W);
+    const y = Math.floor(rnd() * H);
+    const i = y * W + x;
+    if ((surf[i] === "L" || surf[i] === "R") && y > H * 0.55) {
+      const c = DUN.moss[Math.floor(rnd() * 2)];
+      P.set(x, y, c);
+      P.set(x + 1, y, c);
+      P.set(x, y - 1, c);
+    }
+  }
+  for (let n = 0; n < 3; n++) {
+    let x = Rl + 3 + Math.floor(rnd() * (bw - 6));
+    for (let y = Rt + 2 + Math.floor(rnd() * 4), k = 0; k < 5; k++, y++) {
+      P.set(x, y, K);
+      x += rnd() < 0.5 ? -1 : 1;
+    }
+  }
+
+  // The door at the end: a stone rim, wooden planks, iron bands, a ring and light leaking under it.
+  const dw = Math.max(6, Math.round(bw * 0.34));
+  const dh = Math.max(8, Math.round(bh * 0.72));
+  const dx = Math.round(cx - dw / 2);
+  const dTop = Rb - dh;
+  // Arch height capped so a wide, short far wall (an ultrawide screen) can't push it below the floor.
+  const archR = Math.min(dw / 2, dh * 0.4);
+  P.ell(cx, dTop + archR, dw / 2 + 1.5, archR + 1.5, DUN.wallHi);
+  P.rect(dx - 1, dTop + archR, dw + 2, dh - archR, DUN.wallHi);
+  P.ell(cx, dTop + archR, dw / 2, archR, "#8a5a3e");
+  P.rect(dx, dTop + archR, dw, dh - archR - 1, "#8a5a3e");
+  for (let y = dTop; y < Rb - 1; y++)
+    for (let x = dx; x < dx + dw; x++) {
+      if (P.a[y * W + x] !== "#8a5a3e") continue;
+      if ((x - dx) % 3 === 2) P.set(x, y, "#5a3426");
+      const band = Math.round(dh * 0.35);
+      if (y === dTop + band || y === Rb - 1 - band) P.set(x, y, DUN.iron[1]);
+    }
+  P.set(Math.round(cx) + Math.max(1, Math.round(dw / 4)), dTop + Math.round(dh * 0.55), "#ffcf4a");
+  P.rect(dx, Rb - 1, dw, 1, "#ffa94d");
+
+  // Two small torches on the far wall either side of the door (painted, not sprites: too small to flicker).
+  const glows: { x: number; y: number; r: number }[] = [];
+  for (const sx of [-1, 1]) {
+    const tx = Math.round(cx + sx * (dw / 2 + Math.max(3, bw * 0.12)));
+    const ty = dTop + Math.round(dh * 0.25);
+    P.rect(tx, ty + 2, 1, 2, "#7a4a34");
+    P.set(tx, ty + 1, "#ffa94d");
+    P.set(tx, ty, "#fff08a");
+    glows.push({ x: tx, y: ty, r: Math.max(6, bw * 0.2) });
+  }
+
+  // Wall torches near the viewer: an iron bracket here, the flame is a sprite on top.
+  const torches: { x: number; y: number }[] = [];
+  const tt = 0.3;
+  for (const side of ["L", "R"] as const) {
+    const edgeX = side === "L" ? tt * Rl : W - 1 - tt * (W - 1 - Rr);
+    const top = tt * Rt;
+    const bot = H - 1 - tt * (H - 1 - Rb);
+    const x = Math.round(edgeX + (side === "L" ? -1 : 1) * Math.max(3, W * 0.03));
+    const y = Math.round(top + (bot - top) * 0.32);
+    P.rect(x - 2, y, 5, 1, DUN.iron[0]);
+    P.rect(x - 1, y + 1, 3, 1, DUN.iron[1]);
+    P.rect(x, y + 2, 1, 3, DUN.iron[1]);
+    torches.push({ x: x + 0.5, y });
+    glows.push({ x, y: y - 6, r: Math.max(14, Math.min(W, H) * 0.28) });
+  }
+
+  // Chains hanging from the ceiling.
+  for (const fx of [0.3, 0.7, 0.18, 0.82]) {
+    const x = Math.round(W * fx);
+    const len = Math.round(Rt * (0.5 + rnd() * 0.4));
+    for (let y = 0; y < len; y++) {
+      if (y % 3 === 2) P.set(x, y, DUN.iron[1]);
+      else {
+        P.set(x - (y % 3), y, DUN.iron[0]);
+        P.set(x + 1 - (y % 3), y, DUN.iron[1]);
+      }
+    }
+    P.rect(x - 1, len, 3, 1, DUN.iron[0]);
+    P.set(x - 1, len + 1, DUN.iron[0]);
+    P.set(x + 1, len + 1, DUN.iron[0]);
+  }
+
+  // Cobwebs in the two top corners: spokes plus dotted arcs.
+  const webR = Math.max(8, Math.round(Math.min(W, H) * 0.14));
+  for (const [ox, dir] of [[0, 1], [W - 1, -1]] as const)
+    for (let y = 0; y <= webR; y++)
+      for (let x = 0; x <= webR; x++) {
+        const d = Math.hypot(x, y);
+        if (d > webR) continue;
+        const a = Math.atan2(y, x);
+        const spoke = [0.25, 0.75, 1.2].some((k) => Math.abs(a - k) * d < 0.6);
+        const arc = [0.35, 0.65, 0.95].some((k) => Math.abs(d - webR * k) < 0.5) && (x + y) % 2 === 0;
+        if (spoke || arc) P.set(ox + dir * x, y, DUN.web);
+      }
+
+  // Things on the floor, in the strip the home page leaves showing at the bottom.
+  const fy = H - 2;
+  P.grid(SKULL, PROP_PAL, Math.round(W * 0.2) - 3, fy - 8);
+  P.grid(BONES, PROP_PAL, Math.round(W * 0.2) + 5, fy - 3);
+  P.grid(BONES, PROP_PAL, Math.round(W * 0.12), fy - 2);
+  P.grid(CHEST, PROP_PAL, Math.round(W * 0.66) - 7, fy - 8);
+  for (let n = 0; n < 5; n++) P.set(Math.round(W * 0.66) - 9 + Math.floor(rnd() * 18), fy - Math.floor(rnd() * 2), "#ffcf4a");
+  P.grid(BARREL, PROP_PAL, Math.round(W * 0.86) - 4, fy - 9);
+  P.ell(Math.round(W * 0.42), fy - 2, Math.max(3, W * 0.05), 1.6, "#2a1f4d");
+  P.set(Math.round(W * 0.42) - 1, fy - 3, "#7a66b6");
+
+  // Light: the corridor darkens with depth, and every torch throws a warm pool.
+  const cache = new Map<string, string>();
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      const c = P.a[i];
+      if (!c || c === K) continue;
+      let f = 1 - 0.55 * ring[i];
+      let warm = 0;
+      for (const g of glows) {
+        const d = Math.hypot(x - g.x, y - g.y) / g.r;
+        if (d < 1) warm = Math.max(warm, 1 - d);
+      }
+      f += warm * 0.45;
+      // Quantize so the light falls off in visible pixel-art steps, dithered between steps.
+      const q = Math.round(f * 6 + ((x + y) % 2 ? 0.25 : -0.25)) / 6;
+      const w = Math.round(warm * 3) / 3;
+      const key = `${c}${q}${w}`;
+      let out = cache.get(key);
+      if (!out) {
+        const [r, gg, b] = rgb(c);
+        const hex = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+        out = "#" + hex(r * q + 95 * w) + hex(gg * q + 50 * w) + hex(b * q * (1 - 0.35 * w));
+        cache.set(key, out);
+      }
+      P.a[i] = out;
     }
   P.flush();
   return { torches };

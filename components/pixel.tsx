@@ -162,12 +162,12 @@ export function SceneBackground({
   return <canvas ref={ref} className={cx("px-sprite h-full w-full", className)} />;
 }
 
-/* ---------- Home background: the castle scene, sized to the viewport ---------- */
+/* ---------- Home background: the dungeon corridor, sized to the viewport ---------- */
 
 /**
- * Fills the viewport with the home page's castle scene. Unlike `SceneBackground`, which stretches a
+ * Fills the viewport with the home page's dungeon corridor. Unlike `SceneBackground`, which stretches a
  * fixed grid, this sizes the grid from the viewport so every scene pixel is a whole number of screen
- * pixels, then lays two flickering torch sprites (and their glow) on the scene's torch posts.
+ * pixels, then lays two flickering torch sprites (and their glow) on the corridor's wall brackets.
  */
 export function HomeBackground() {
   const ref = useRef<HTMLCanvasElement>(null);

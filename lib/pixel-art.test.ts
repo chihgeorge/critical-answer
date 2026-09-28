@@ -22,7 +22,7 @@ describe("homeSceneCell", () => {
 });
 
 describe("drawHomeScene", () => {
-  it.each([[78, 169], [206, 129], [275, 115], [117, 169], [40, 40]])("fits a %i×%i grid and puts both torch posts on it", (W, H) => {
+  it.each([[78, 169], [206, 129], [275, 115], [117, 169], [40, 40]])("fits a %i×%i grid and hangs one torch on each side wall", (W, H) => {
     const cv = fakeCanvas();
     const { torches } = drawHomeScene(cv, W, H);
     expect([cv.width, cv.height]).toEqual([W, H]);
@@ -30,10 +30,11 @@ describe("drawHomeScene", () => {
     for (const t of torches) {
       expect(t.x).toBeGreaterThan(0);
       expect(t.x).toBeLessThan(W);
-      expect(t.y).toBeGreaterThan(H / 2);
+      expect(t.y).toBeGreaterThan(0);
       expect(t.y).toBeLessThan(H);
     }
-    expect(torches[0].x).toBeLessThan(torches[1].x);
+    expect(torches[0].x).toBeLessThan(W / 2);
+    expect(torches[1].x).toBeGreaterThan(W / 2);
   });
 
   it("is seeded, so the same size always gives the same scene", () => {

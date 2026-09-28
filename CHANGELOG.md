@@ -5,7 +5,7 @@ All notable changes to Critical Answer are documented here.
 ## [0.9.1.0] - 2026-09-28
 
 ### Changed
-- The home page has a new backdrop: a moonlit castle with lit windows and a glowing gate at the end of a cobbled path, flanked by two flickering torches, with gravestones and mushrooms in the grass. Like the rest of the art, it's drawn in code, so the page doesn't download any images.
+- The home page has a new backdrop: you're standing in a dungeon corridor, with brick walls running off into the dark, a beamed ceiling hung with chains and cobwebs, flickering torches on both walls, and an iron-banded door at the far end. A skull, bones, a treasure chest and a barrel lie on the floor. Like the rest of the art, it's drawn in code, so the page doesn't download any images.
 - The home backdrop now keeps its pixels square at any screen size, instead of stretching one fixed grid to fill the window.
 
 ## [0.9.0.0] - 2026-09-24
