@@ -79,6 +79,11 @@ export class BankStoreDO extends DurableObject<Env> {
     await this.store.runImageCleanup();
   }
 
+  /** Called right after an upload lands in R2: see BankStore.queueUploadedImage. */
+  imageUploaded(key: string): Promise<void> {
+    return this.store.queueUploadedImage(key);
+  }
+
   getBank() {
     return this.store.getBank();
   }
@@ -182,6 +187,14 @@ export default {
           // /screen) re-fetches the same image, so this matters for real: without it there's no
           // caching directive at all.
           await env.images.put(key, bytes, { httpMetadata: { contentType, cacheControl: "public, max-age=31536000, immutable" } });
+          // Queue it for deletion unless a save puts it in the bank first, so an upload the editor
+          // never saves doesn't stay in R2 forever. Best-effort: the upload itself already worked,
+          // and a failure here only means this one image might leak, as every upload did before.
+          try {
+            await env.bank.get(env.bank.idFromName(BANK_DO_NAME)).imageUploaded(key);
+          } catch (err) {
+            console.error(JSON.stringify({ event: "image_upload_queue_failed", key, error: String(err) }));
+          }
           return { key };
         },
       });
