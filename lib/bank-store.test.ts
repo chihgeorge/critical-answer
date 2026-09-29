@@ -173,6 +173,28 @@ describe("BankStore: orphaned images wait out running games before they're delet
     expect(alarms.at(-1)).toBe(300 + DELAY);
   });
 
+  it("deletes an uploaded image the editor never saved, once the wait is over", async () => {
+    const { store, onImagesOrphaned, at } = setup({ bank: validBank, version: 1 });
+    const UPLOAD = "66666666-6666-6666-6666-666666666666";
+    await store.queueUploadedImage(UPLOAD);
+    at(DELAY - 1);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).not.toHaveBeenCalled();
+    at(DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).toHaveBeenCalledWith([UPLOAD]);
+  });
+
+  it("keeps an uploaded image that a save put in the bank, and drops it from the queue", async () => {
+    const { store, storage, onImagesOrphaned, at } = setup({ bank: validBank, version: 1 });
+    await store.queueUploadedImage(KEY);
+    await store.putBank(bankWithImage, 1); // the editor saved it
+    at(DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).not.toHaveBeenCalled();
+    expect(await storage.get("pendingImageDeletes")).toEqual([]);
+  });
+
   it("queues nothing when the same image key is still referenced after the save", async () => {
     const { store, storage, alarms } = setup();
     await store.putBank(bankWithImage, 1);

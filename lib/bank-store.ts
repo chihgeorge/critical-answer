@@ -27,7 +27,8 @@
 // Orphaned images (R2 keys the new bank no longer references) are queued in storage, not deleted
 // on save: rooms copy the bank when they start, so a game in progress may still show an image
 // the owner just replaced. The Durable Object alarm calls runImageCleanup() once they have waited
-// out the room expiry (TODOS.md P2, fixed 2026-09-29).
+// out the room expiry (TODOS.md P2, fixed 2026-09-29). Fresh uploads join the same queue
+// (queueUploadedImage), so one the editor never saves is deleted too.
 
 import bankJson from "../data/question-bank.json";
 import { parseBank, imageKeysOf, type Bank } from "./question-bank";
@@ -97,6 +98,15 @@ export class BankStore {
   private async setPending(pending: PendingDelete[]): Promise<void> {
     await this.storage.put(PENDING_KEY, pending);
     if (pending.length > 0) await this.storage.setAlarm?.(Math.min(...pending.map((p) => p.deleteAt)));
+  }
+
+  /** Queues a just-uploaded image for deletion, as if a save had orphaned it. Once a save puts it in
+   * the bank, runImageCleanup() finds it in use and drops it from the queue; an upload that never
+   * makes it into a saved bank (tab closed, browser crash, a 409 on save) is deleted when the wait
+   * is over, instead of sitting in R2 forever. */
+  async queueUploadedImage(key: string): Promise<void> {
+    const pending = (await this.getPending()).filter((p) => p.key !== key);
+    await this.setPending([...pending, { key, deleteAt: this.now() + this.cleanupDelayMs }]);
   }
 
   /** Deletes every queued image whose wait is over, unless a later save put it back in the bank
