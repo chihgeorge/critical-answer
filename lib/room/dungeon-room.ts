@@ -189,6 +189,11 @@ export class DungeonRoom {
           this.broadcast({ type: "EPILOGUE", text: lines[0] });
           return;
         }
+        // Narrations run concurrently (a judgment never waits for the previous event's line), so an
+        // older, slower LLM call can resolve after a newer one. Drop it rather than overwrite the
+        // newer line on every screen and in the replay a reconnecting client gets. An eventId above
+        // eventSeq is a leftover from before a reset(), which zeroes eventSeq.
+        if (eventId > this.eventSeq || (this.lastNarration && eventId < this.lastNarration.eventId)) return;
         this.lastNarration = { eventId, lines };
         this.broadcast({ type: "NARRATION", eventId, lines });
       },

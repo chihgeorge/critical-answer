@@ -19,23 +19,6 @@
 
 ---
 
-## 旁白 emit() 無條件覆蓋 lastNarration，較慢的舊事件可能在新事件之後 resolve 並蓋掉它
-
-**Priority:** P3
-
-**What:** `lib/room/dungeon-room.ts` 的 `emit()`（narration runner 的 callback）無條件寫入 `this.lastNarration = { eventId, lines }`，沒有檢查 `eventId` 是否比目前已存的新。`handleHostJudge` 不會等待旁白播放完才處理下一個事件，所以連續兩個事件的 `runner.run()` 可能同時在跑；如果事件 N-1 的 LLM 呼叫比事件 N 慢，N-1 較晚 resolve 時會把 N 剛廣播的新內容蓋掉，並且之後重連的連線會被重播那句過期的舊旁白。
-
-**Why:** adversarial review（`/review`，2026-09-23，multi-segment-narration 分支）找到的真實 bug，不是這次 diff 引進的，但這次把 LLM prompt 從 1-2 句改成 2-3 句，生成時間變長，觸發這個 race 的機率被加寬了。
-
-**Pros:** 修好後不會有舊旁白蓋掉新旁白、或重連時被重播過期內容的風險。
-
-**Cons:** 發生機率仍然偏低（需要兩個事件的 LLM 呼叫剛好以錯誤順序 resolve），修法本身簡單（`emit()` 加一行 `eventId` 單調性檢查），但需要一個新測試驗證 out-of-order 完成不會覆蓋。
-
-**Context:** 見 `lib/room/dungeon-room.ts` 的 `emit()` callback（narration runner 建立處）、`lib/narration/runner.ts` 的 `run()`。
-
-**Depends on / blocked by:** 無直接阻塞，先觀察是否真的在實際遊戲中發生。
-
----
 
 ## 語音旁白：重連時剛好落在 GAME_OVER 到 EPILOGUE 之間會漏念後記
 
@@ -452,6 +435,14 @@
 **Priority:** P3　**Completed:** v0.9.3.0 (2026-09-29)
 
 **What:** 不用另寫週期性掃描：圖片一上傳成功就排進 v0.9.1.0 做好的延後刪除佇列（`BankStore.queueUploadedImage`，由 `worker/index.ts` 的上傳路徑呼叫 bank DO 的 `imageUploaded`）。期限內被存進題庫的圖，alarm 會看到它還在使用中而把它移出佇列；從沒存檔的（關分頁、當機、409）期限一到就刪。排隊失敗只記 log，不影響上傳本身。
+
+---
+
+## 旁白 emit() 無條件覆蓋 lastNarration，較慢的舊事件可能在新事件之後 resolve 並蓋掉它
+
+**Priority:** P3　**Completed:** v0.9.2.0 (2026-09-29)
+
+**What:** `lib/room/dungeon-room.ts` 的 `emit()` 現在只接受不比目前 `lastNarration` 舊、也不超過 `eventSeq` 的 eventId：較慢才回來的舊事件旁白直接丟掉，不再蓋掉新旁白，也不會被重播給重連的連線；`reset()` 之前留下、在重置後才回來的旁白（eventId 比歸零後的 `eventSeq` 大）也一併丟掉。測試 `drops an older event's narration that resolves after a newer one's` 先在沒修的程式上重現了 bug。
 
 ---
 

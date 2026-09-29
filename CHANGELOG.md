@@ -7,6 +7,11 @@ All notable changes to Critical Answer are documented here.
 ### Fixed
 - An image uploaded in the bank editor but never saved (tab closed, browser crash, a save that hit a conflict) used to stay in storage forever. It's now deleted after the same wait as any other image the bank stopped using; an image that does get saved is kept.
 
+## [0.9.2.0] - 2026-09-29
+
+### Fixed
+- When two narrations were being written at once and the older one finished last, it replaced the newer line on every screen, and a phone that reconnected afterwards was shown the out-of-date line. The older line is now dropped.
+
 ## [0.9.1.0] - 2026-09-29
 
 ### Changed
