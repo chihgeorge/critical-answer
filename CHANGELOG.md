@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.5.0] - 2026-09-29
+
+### Added
+- The big screen can play background music: an 8-bit dungeon loop, generated in the browser, so there are no music files to download or license. Turn it on with the 🎵 button next to the voice toggle; the setting is remembered. The music gets quieter whenever the narrator is speaking.
+
 ## [0.9.4.0] - 2026-09-29
 
 ### Fixed
