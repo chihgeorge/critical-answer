@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { restKindOf, restNoticeFor, RESTED_RECONNECT_LABEL, type RestKind } from "@/lib/room/close-codes";
+import { DISCONNECTED_NOTICE } from "@/lib/offline-notice";
 import type { AnswerReveal, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
@@ -267,6 +268,9 @@ export default function ScreenPage() {
   const [reset, setReset] = useState(false);
   /** The room closed our connection on purpose after a long idle time. The game is saved; a click reconnects. */
   const [rested, setRested] = useState<RestKind | null>(null);
+  /** A network drop (not a rest): shown so a frozen screen doesn't look like a quiet game. */
+  const [disconnected, setDisconnected] = useState(false);
+  const screenOpened = useRef(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
   /** STATE.reveal: the last correct answer, shown in place of the next question until the host
@@ -439,6 +443,8 @@ export default function ScreenPage() {
     room: code,
     onOpen() {
       setRested(null);
+      setDisconnected(false);
+      screenOpened.current = true;
       narrationBaseline.current = null;
       sfxSeen.current = null;
     },
@@ -448,6 +454,8 @@ export default function ScreenPage() {
       if (restKind) {
         socket.close();
         setRested(restKind);
+      } else if (screenOpened.current) {
+        setDisconnected(true);
       }
     },
     onMessage(event: MessageEvent) {
@@ -513,6 +521,11 @@ export default function ScreenPage() {
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={revealed} narration={narration} epilogue={epilogue} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
+          {disconnected && !rested && (
+            <div role="status" className="text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
+              {DISCONNECTED_NOTICE}
+            </div>
+          )}
           {rested && (
             <div role="status" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
               {restNoticeFor(rested)}
