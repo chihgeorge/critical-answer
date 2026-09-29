@@ -113,6 +113,7 @@ export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   crown: [20, 12],
   heart: [11, 10],
   torch: [9, 14],
+  campfire: [26, 22],
 };
 
 function slime(cv: HTMLCanvasElement, b: boolean) {
@@ -337,8 +338,55 @@ function torch(cv: HTMLCanvasElement, frame: number) {
   P.flush();
 }
 
+// The lobby campfire: two flame frames over crossed logs in a ring of stones (like the torch, the
+// screen shows both frames and flicks between them with CSS, so the canvas itself never animates).
+const CAMPFIRE_FLAMES = [
+  [
+    "...........y..........",
+    "..........yy..........",
+    ".........yoy...y......",
+    "........yooy..yy......",
+    "....y...yooyy.yoy.....",
+    "...yy..yoooOy.yooy....",
+    "...yoy.yoOOoyyooy.....",
+    "...yooyyoOrOooooy.....",
+    "....yoooOrrrOooy......",
+    "....yooOrrrrrOoy......",
+    ".....yoOrrrrrOy.......",
+  ],
+  [
+    "..........y...........",
+    "..........yy..y.......",
+    "......y..yoy..yy......",
+    ".....yy..yooy.yoy.....",
+    ".....yoy.yoooyyoy.....",
+    "....yooy.yoOoooy......",
+    "...yooyyyoOOoooy......",
+    "...yoooyoOrOOooy......",
+    "....yoooOrrrOooy......",
+    "....yooOrrrrrOoy......",
+    ".....yoOrrrrrOy.......",
+  ],
+];
+const CAMPFIRE_BASE = [
+  "..nnN..........Nnn....",
+  "...nnNN......NNnn.....",
+  "....NnnNN..NNnnN......",
+  "..ss..NNnnnnNN..ss....",
+  ".sSss...NNNN...ssSs...",
+  "..sss..........sss....",
+];
+const CAMPFIRE_PAL = { y: "#fff08a", o: "#ffa94d", O: "#e2742f", r: "#c94a2a", n: "#b07a4f", N: "#7a4a34", s: "#8a86a8", S: "#5a5670" };
+function campfire(cv: HTMLCanvasElement, frame: number) {
+  const P = new Px(cv, 26, 22);
+  P.grid(CAMPFIRE_FLAMES[frame % 2], CAMPFIRE_PAL, 2, 1);
+  P.grid(CAMPFIRE_BASE, CAMPFIRE_PAL, 2, 11);
+  P.outline(K);
+  P.flush();
+}
+
 /**
- * Draw one sprite. `variant` means: hero = look index, torch = frame (0/1),
+ * Draw one sprite. `variant` means: hero = look index, torch/campfire = frame (0/1),
  * heart = 1 for full and 0 for empty. `blink` closes the eyes.
  */
 export function drawSprite(cv: HTMLCanvasElement, kind: SpriteKind, variant = 0, blink = false) {
@@ -359,6 +407,8 @@ export function drawSprite(cv: HTMLCanvasElement, kind: SpriteKind, variant = 0,
       return heart(cv, variant === 1);
     case "torch":
       return torch(cv, variant);
+    case "campfire":
+      return campfire(cv, variant);
   }
 }
 

@@ -139,23 +139,6 @@
 
 ---
 
-## 大廳營火
-
-**What:** `/screen` 大廳中央加一個營火（或大火盆），隊伍的角色圍著它跑進來。
-
-**Why:** 設計審查 2A 核准了「營火 + 大房間代碼 + 加入 QR + 各隊冒險者跑進來」，實作時只做了代碼、QR、隊伍角色和兩側火把，營火沒做。
-
-**Pros:** 大廳是玩家最先看到的畫面，最能決定第一印象。
-
-**Cons:** 需要新增一個動畫精靈（兩格火焰加光暈），畫面已經滿，要重排。
-
-**Context:** 見 [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md) 決定 2A。
-
-**Effort:** S（人工約 0.5 天 / CC 約 20 分鐘）　**Priority:** P3
-
-**Depends on / blocked by:** 無。
-
----
 
 ## 開場與首領房的轉場動畫
 
@@ -288,6 +271,14 @@
 **Priority:** P3　**Completed:** v0.9.10.0 (2026-09-29)
 
 **What:** 主持人頁判分可以用鍵盤：`1` 答對、`2` 答錯・重答、`3` 答錯・逃跑；揭曉答案時 `1` 或 Enter 是「下一題」。按鍵只在對應按鈕可按時生效，加了修飾鍵（Ctrl+1 是瀏覽器切分頁）、長按重複、或正在輸入框（主持人筆記）打字時不作用；對應邏輯在 `lib/host-keys.ts`（單元測試）。有滑鼠的裝置在按鈕上顯示小小的 1/2/3 提示（`aria-hidden`，手機不顯示）。焦點框原本就有（`.px-btn:focus-visible`）。e2e `host-keys.spec.ts` 抓到一個真 bug：`{ ...e }` 不會複製 KeyboardEvent 的 getter，Ctrl+1 會被當成 1，已修正。
+
+---
+
+## 大廳營火
+
+**Priority:** P3　**Completed:** v0.9.12.0 (2026-09-29)
+
+**What:** `/screen` 大廳中央加了一個程式繪製的營火（`lib/pixel-art.ts` 的 `campfire` 精靈，兩格火焰用 CSS 交替閃爍，加上光暈），隊伍角色一半在左、一半在右圍著它跑進來；5 隊以上角色縮小、隊名過長截斷，8 隊也放得下（8 隊時最外側角色會稍微碰到兩側火把）。設計審查 2A 的最後一塊。
 
 ---
 
