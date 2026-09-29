@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
 import { restKindOf, restNoticeFor, RESTED_RECONNECT_LABEL, type RestKind } from "@/lib/room/close-codes";
+import { DISCONNECTED_NOTICE, offlineNotice, type DropSnapshot } from "@/lib/offline-notice";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import type { AnswerReveal, ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom, type SpectatorView, type GamePhase } from "@/lib/game-state";
@@ -39,6 +40,18 @@ export default function PlayPage() {
   const openedOnce = useRef(false);
   const reconnectByHand = useRef(false);
 
+  /** A network drop (not a rest): the room skips an offline team's turn, so the team should know
+   * it's disconnected, and after reconnecting whether the game moved on (lib/offline-notice.ts). */
+  const [disconnected, setDisconnected] = useState(false);
+  const [offlineMsg, setOfflineMsg] = useState<string | null>(null);
+  const lastGame = useRef<PlayState | null>(null);
+  const drop = useRef<DropSnapshot | null>(null);
+  useEffect(() => {
+    if (!offlineMsg) return;
+    const id = setTimeout(() => setOfflineMsg(null), 10_000);
+    return () => clearTimeout(id);
+  }, [offlineMsg]);
+
   const socket = usePartySocket({
     host: PARTY_HOST,
     room: code,
@@ -46,6 +59,7 @@ export default function PlayPage() {
     // as the same team instead of staying "offline" and being skipped.
     onOpen() {
       setRested(null);
+      setDisconnected(false);
       const resume = openedOnce.current && !reconnectByHand.current;
       openedOnce.current = true;
       reconnectByHand.current = false;
@@ -57,7 +71,13 @@ export default function PlayPage() {
       if (restKind) {
         socket.close();
         setRested(restKind);
+        return;
       }
+      if (!openedOnce.current) return;
+      setDisconnected(true);
+      const g = lastGame.current;
+      // Keep the first drop's snapshot across several failed reconnect attempts.
+      if (g && !drop.current) drop.current = { eventId: g.eventId, wasMyTurn: g.view.currentTurnTeamId === getOrCreateTeamId() };
     },
     onMessage(event: MessageEvent) {
       let msg: ServerMessage;
@@ -74,13 +94,22 @@ export default function PlayPage() {
         case "LOBBY":
           setLobby({ teams: msg.teams });
           setGame(null);
+          lastGame.current = null;
+          drop.current = null;
           setRevealed(null);
           break;
-        case "STATE":
-          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
+        case "STATE": {
+          const next = { view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId };
+          setGame(next);
+          lastGame.current = next;
+          if (drop.current) {
+            setOfflineMsg(offlineNotice(drop.current, msg.eventId));
+            drop.current = null;
+          }
           setLobby(null);
           setRevealed(msg.reveal);
           break;
+        }
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
           break;
@@ -147,6 +176,16 @@ export default function PlayPage() {
           </div>
         )}
 
+        {disconnected && !rested && (
+          <Panel tone="turn" role="status" className="px-3 py-2 text-center text-[16px]">
+            {DISCONNECTED_NOTICE}
+          </Panel>
+        )}
+        {offlineMsg && !disconnected && (
+          <Panel tone="lav" role="status" className="px-3 py-2 text-center text-[16px]">
+            {offlineMsg}
+          </Panel>
+        )}
         {rested && (
           <Panel tone="turn" role="status" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]">
             {restNoticeFor(rested)}

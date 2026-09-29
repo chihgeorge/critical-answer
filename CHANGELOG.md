@@ -7,6 +7,16 @@ All notable changes to Critical Answer are documented here.
 ### Added
 - When a team's answer takes it into the boss room, the narrator now says so. With AI narration on, it also calls back the choices the team made at the forks on the way; the scripted fallback just announces the entrance.
 
+## [0.9.10.0] - 2026-09-29
+
+### Added
+- The host can judge from a laptop keyboard: 1 for correct, 2 for wrong (retry), 3 for wrong (flee), and 1 or Enter for 下一題 while the answer is on show. The buttons show the key on devices with a mouse. The keys do nothing while typing in the notes box or when combined with Ctrl/⌘/Alt.
+
+## [0.9.9.0] - 2026-09-29
+
+### Added
+- Phones and the big screen now say 「連線中斷，重新連線中…」 while their connection is down, instead of just freezing. When a phone reconnects, it tells the team if its turn was skipped while it was offline, or how many answers were judged in the meantime.
+
 ## [0.9.8.0] - 2026-09-29
 
 ### Added
