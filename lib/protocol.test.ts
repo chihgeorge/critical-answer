@@ -127,3 +127,15 @@ describe("sanitizeText", () => {
     expect(sanitizeText("   ", 5)).toBe("");
   });
 });
+
+describe("parseClientMessage: resume flag on re-identification", () => {
+  it("keeps resume: true on HOST_CLAIM, JOIN and REJOIN, and drops anything that isn't literally true", () => {
+    const token = "host-token-0123456789abcdef";
+    const teamKey = "team-key-0123456789abcdef";
+    expect(parseClientMessage({ type: "HOST_CLAIM", token, resume: true })).toEqual({ type: "HOST_CLAIM", token, resume: true });
+    expect(parseClientMessage({ type: "HOST_CLAIM", token, resume: "yes" })).toEqual({ type: "HOST_CLAIM", token });
+    expect(parseClientMessage({ type: "JOIN", teamId: "t1", teamKey, teamName: "甲", resume: true })).toMatchObject({ resume: true });
+    expect(parseClientMessage({ type: "REJOIN", teamId: "t1", teamKey, resume: true })).toMatchObject({ resume: true });
+    expect(parseClientMessage({ type: "JOIN", teamId: "t1", teamKey, teamName: "甲" })).not.toHaveProperty("resume");
+  });
+});

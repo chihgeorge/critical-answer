@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
-import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
+import { restKindOf, restNoticeFor, RESTED_RECONNECT_LABEL, type RestKind } from "@/lib/room/close-codes";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
 import type { AnswerReveal, ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
@@ -104,7 +104,7 @@ export default function HostPage() {
   const [claimed, setClaimed] = useState(false);
   const [reset, setReset] = useState(false);
   /** The room closed our connection on purpose after a long idle time. The game is saved; a click reconnects. */
-  const [rested, setRested] = useState(false);
+  const [rested, setRested] = useState<RestKind | null>(null);
   /** Host-only: the answer to the question in play. Never shown on /screen or /play. */
   const [answer, setAnswer] = useState<{ questionId: string; answer: string } | null>(null);
   const [drawer, setDrawer] = useState(false);
@@ -119,15 +119,23 @@ export default function HostPage() {
   const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
   const epoch = useRef<string | null>(null);
 
+  /** Whether this page has connected before, and whether the next reconnect was asked for by a click:
+   * together they tell an automatic reconnect (`resume`, not activity) from a person coming back. */
+  const openedOnce = useRef(false);
+  const reconnectByHand = useRef(false);
+
   const socket = usePartySocket({
     host: PARTY_HOST,
     room: code,
     onOpen() {
       setConnected(true);
-      setRested(false);
+      setRested(null);
+      const resume = openedOnce.current && !reconnectByHand.current;
+      openedOnce.current = true;
+      reconnectByHand.current = false;
       // Claim on every (re)connect: the server forgets host rights when the socket closes.
       const t = getHostToken(code);
-      if (t) socket.send(JSON.stringify({ type: "HOST_CLAIM", token: t } satisfies ClientMessage));
+      if (t) socket.send(JSON.stringify({ type: "HOST_CLAIM", token: t, ...(resume ? { resume: true } : {}) } satisfies ClientMessage));
       else setNoToken(true);
     },
     onClose(event: CloseEvent) {
@@ -135,9 +143,10 @@ export default function HostPage() {
       setClaimed(false);
       setPendingTeamId(null);
       // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
-      if (isIdleClose(event)) {
+      const restKind = restKindOf(event);
+      if (restKind) {
         socket.close();
-        setRested(true);
+        setRested(restKind);
       }
     },
     onMessage(event: MessageEvent) {
@@ -261,8 +270,14 @@ export default function HostPage() {
         {noToken && <Panel tone="lav" className="px-3 py-2 text-[14px]">這個瀏覽器沒有主持人金鑰。請回首頁按「主持遊戲」，或用建立房間時的連結／QR 開啟。</Panel>}
         {rested && (
           <Panel tone="turn" role="status" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
-            {RESTED_NOTICE}
-            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-2 text-[16px]">{RESTED_RECONNECT_LABEL}</PixelButton>
+            {restNoticeFor(rested)}
+            <PixelButton
+              onClick={() => {
+                reconnectByHand.current = true;
+                socket.reconnect();
+              }}
+              className="!m-0 !px-4 !py-2 text-[16px]"
+            >{RESTED_RECONNECT_LABEL}</PixelButton>
           </Panel>
         )}
         {!connected && !noToken && !rested && <Panel tone="turn" className="px-3 py-2 text-center text-[16px]">重新連線中…</Panel>}

@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
-import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
+import { restKindOf, restNoticeFor, RESTED_RECONNECT_LABEL, type RestKind } from "@/lib/room/close-codes";
 import type { AnswerReveal, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
@@ -265,7 +265,7 @@ export default function ScreenPage() {
   const [game, setGame] = useState<Play | null>(null);
   const [reset, setReset] = useState(false);
   /** The room closed our connection on purpose after a long idle time. The game is saved; a click reconnects. */
-  const [rested, setRested] = useState(false);
+  const [rested, setRested] = useState<RestKind | null>(null);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
   /** STATE.reveal: the last correct answer, shown in place of the next question until the host
@@ -413,14 +413,15 @@ export default function ScreenPage() {
     host: PARTY_HOST,
     room: code,
     onOpen() {
-      setRested(false);
+      setRested(null);
       narrationBaseline.current = null;
     },
     onClose(event: CloseEvent) {
       // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
-      if (isIdleClose(event)) {
+      const restKind = restKindOf(event);
+      if (restKind) {
         socket.close();
-        setRested(true);
+        setRested(restKind);
       }
     },
     onMessage(event: MessageEvent) {
@@ -480,7 +481,7 @@ export default function ScreenPage() {
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
           {rested && (
             <div role="status" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
-              {RESTED_NOTICE}
+              {restNoticeFor(rested)}
               <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-1 text-[18px]">{RESTED_RECONNECT_LABEL}</PixelButton>
             </div>
           )}

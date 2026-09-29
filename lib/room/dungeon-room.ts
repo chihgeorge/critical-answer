@@ -1,5 +1,5 @@
 import type { Conn, RoomIO } from "./io";
-import { CLOSE_IDLE } from "./close-codes";
+import { CLOSE_EXPIRED, CLOSE_IDLE } from "./close-codes";
 import { parseSnapshot, SCHEMA_VERSION, SNAPSHOT_KEY, type RoomSnapshot } from "./snapshot";
 import {
   createGame,
@@ -461,7 +461,7 @@ export class DungeonRoom {
     // persist() from one) checks this and skips writing, so it cannot resurrect the room storage.deleteAll is
     // about to clear (Claude adversarial review, 2026-09-21).
     this.expiring = true;
-    this.room.closeAll?.(CLOSE_IDLE, "expired");
+    this.room.closeAll?.(CLOSE_EXPIRED, "expired");
     const storage = this.room.storage;
     // Storage first: if clearing it fails this throws with the room still intact, and the alarm's retry runs expire
     // again. Resetting memory first would leave the old room saved, to come back at the next restart.
@@ -596,8 +596,10 @@ export class DungeonRoom {
           this.handleTeamSelectOption(sender, msg.questionId, msg.optionIndex);
           break;
       }
-      // A transcript download changes nothing; a rejected message did not either.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && !this.rejected) {
+      // A transcript download changes nothing; a rejected message did not either; and an automatic
+      // reconnect's re-identification (`resume`) is a device, not a person.
+      const resumed = "resume" in msg && msg.resume === true;
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
