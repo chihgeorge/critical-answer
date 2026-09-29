@@ -1,7 +1,7 @@
 # Design system: Critical Answer (致命答題)
 
 Cute pixel dungeon. Approved in `docs/designs/critical-answer-iteration-2.md` (design review, 2026-09-19).
-Everything is drawn in code or CSS. No image assets.
+Everything is drawn in code or CSS. No image assets. Sound follows the same rule: the big screen's background music is synthesized with the Web Audio API (`lib/bgm.ts`, `lib/bgm-player.ts`), no audio files.
 
 ## Tokens (`app/globals.css`)
 

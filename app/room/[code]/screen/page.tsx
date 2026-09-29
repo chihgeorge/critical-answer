@@ -13,12 +13,15 @@ import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakEpilogue, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
+import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { PARTY_HOST } from "@/lib/party-host";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 
 const TTS_ENABLED_STORAGE = "screen-tts-enabled";
+const BGM_ENABLED_STORAGE = "screen-bgm-enabled";
+const bgmSupported = () => typeof window !== "undefined" && "AudioContext" in window;
 
 /** True only in a browser that actually implements the Web Speech API — the toggle button
  * doesn't render at all otherwise (a rendered-but-disabled button implies the feature could
@@ -356,6 +359,60 @@ export default function ScreenPage() {
     });
   }
 
+  // --- Background music (lib/bgm.ts): off by default, like the narration voice ---
+  const [bgmOn, setBgmOn] = useState(false);
+  const [showBgmToggle, setShowBgmToggle] = useState(false);
+  const bgm = useRef<BgmPlayer | null>(null);
+  const player = () => (bgm.current ??= createBgmPlayer());
+
+  useEffect(() => {
+    // Same shape as readTtsPrefs above: read in an effect so SSR and the first render agree.
+    function readBgmPrefs(): boolean {
+      if (!bgmSupported()) return false;
+      setShowBgmToggle(true);
+      let stored = false;
+      try {
+        stored = localStorage.getItem(BGM_ENABLED_STORAGE) === "true";
+      } catch {
+        // Blocked storage: music stays off.
+      }
+      if (stored) setBgmOn(true);
+      return stored;
+    }
+    if (!readBgmPrefs()) return;
+    // Browsers only let audio start inside a user gesture, so a remembered "on" waits for the
+    // first click or key press on the page.
+    const unlock = () => void player().start();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
+  // Keep the music under the narration voice: lower it while speechSynthesis is talking.
+  useEffect(() => {
+    if (!bgmOn) return;
+    const id = setInterval(() => bgm.current?.duck(ttsSupported() && window.speechSynthesis.speaking), 250);
+    return () => clearInterval(id);
+  }, [bgmOn]);
+
+  useEffect(() => () => bgm.current?.stop(), []);
+
+  function toggleBgm() {
+    const next = !bgmOn;
+    // start() runs inside this click, which is what lets the browser play it.
+    if (next) void player().start();
+    else bgm.current?.stop();
+    setBgmOn(next);
+    try {
+      localStorage.setItem(BGM_ENABLED_STORAGE, String(next));
+    } catch {
+      // Still works for this page load, just won't be remembered.
+    }
+  }
+
   const socket = usePartySocket({
     host: PARTY_HOST,
     room: code,
@@ -456,6 +513,16 @@ export default function ScreenPage() {
           style={{ position: "fixed", bottom: 12, right: 12, zIndex: 30 }}
         >
           {ttsOn ? "🔊 語音開" : "🔇 語音關"}
+        </PixelButton>
+      )}
+      {showBgmToggle && (
+        <PixelButton
+          onClick={toggleBgm}
+          className="!m-0 !px-4 !py-2 text-[16px]"
+          // Left of the voice toggle, same corner and size (see the comment above it).
+          style={{ position: "fixed", bottom: 12, right: showTtsToggle ? 150 : 12, zIndex: 30 }}
+        >
+          {bgmOn ? "🎵 音樂開" : "🎵 音樂關"}
         </PixelButton>
       )}
     </>
