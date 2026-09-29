@@ -8,6 +8,11 @@ All notable changes to Critical Answer are documented here.
 - When a room had been idle long enough to be deleted, the host page, phones and big screen still said "resting, your progress is saved". They now say the room has expired and the last game is gone; reconnecting opens a fresh room.
 - A phone or computer that kept reconnecting on its own in the background (a flaky network, the system waking it) kept the room from ever resting. Only reconnects a person asks for (opening or reloading the page, or tapping 重新連線) count as activity now.
 
+## [0.9.5.0] - 2026-09-29
+
+### Added
+- The big screen can play background music: an 8-bit dungeon loop, generated in the browser, so there are no music files to download or license. Turn it on with the 🎵 button next to the voice toggle; the setting is remembered. The music gets quieter whenever the narrator is speaking.
+
 ## [0.9.4.0] - 2026-09-29
 
 ### Fixed
