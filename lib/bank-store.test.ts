@@ -91,48 +91,108 @@ describe("BankStore.putBank", () => {
   });
 });
 
-describe("BankStore.putBank: image cleanup callback", () => {
+describe("BankStore: orphaned images wait out running games before they're deleted", () => {
+  const KEY = "44444444-4444-4444-4444-444444444444";
   const bankWithImage: Bank = {
     ...validBank,
     rooms: [
       {
         ...validBank.rooms[0],
-        questions: [{ kind: "text", id: "r0-q1", content: { kind: "image", value: "44444444-4444-4444-4444-444444444444" }, answer: "松鼠" }],
+        questions: [{ kind: "text", id: "r0-q1", content: { kind: "image", value: KEY }, answer: "松鼠" }],
       },
     ],
   };
+  const DELAY = 1000;
 
-  it("calls onImagesOrphaned with a key present in the old bank but not the new one", async () => {
-    const storage = memoryStorage({ bank: bankWithImage, version: 1 });
-    const onImagesOrphaned = vi.fn(async () => {});
-    const store = new BankStore(storage, onImagesOrphaned);
+  /** A store on a fake clock, with its alarm and deletions recorded. */
+  function setup(seed: unknown = { bank: bankWithImage, version: 1 }) {
+    let t = 0;
+    const alarms: number[] = [];
+    const storage = { ...memoryStorage(seed), setAlarm: async (at: number) => void alarms.push(at) };
+    const onImagesOrphaned = vi.fn<(keys: string[]) => Promise<void>>(async () => {});
+    const store = new BankStore(storage, onImagesOrphaned, { cleanupDelayMs: DELAY, now: () => t });
+    return { store, storage, alarms, onImagesOrphaned, at: (ms: number) => void (t = ms) };
+  }
+
+  it("does not delete an image at save time — a room mid-game may still be showing it", async () => {
+    const { store, alarms, onImagesOrphaned } = setup();
     await store.putBank(validBank, 1); // validBank's r0-q1 is text — no longer references the image key
-    expect(onImagesOrphaned).toHaveBeenCalledWith(["44444444-4444-4444-4444-444444444444"]);
+    expect(onImagesOrphaned).not.toHaveBeenCalled();
+    expect(alarms).toEqual([DELAY]);
   });
 
-  it("does not call onImagesOrphaned when the same image key is still referenced after the save", async () => {
-    const storage = memoryStorage({ bank: bankWithImage, version: 1 });
-    const onImagesOrphaned = vi.fn();
-    const store = new BankStore(storage, onImagesOrphaned);
-    await store.putBank(bankWithImage, 1); // identical image key, still referenced
+  it("deletes it when the alarm fires after the wait, and not before", async () => {
+    const { store, storage, onImagesOrphaned, at } = setup();
+    await store.putBank(validBank, 1);
+    at(DELAY - 1);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).not.toHaveBeenCalled();
+    at(DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).toHaveBeenCalledWith([KEY]);
+    expect(await storage.get("pendingImageDeletes")).toEqual([]);
+  });
+
+  it("never deletes an image that a later save put back in the bank", async () => {
+    const { store, onImagesOrphaned, at } = setup();
+    await store.putBank(validBank, 1);
+    await store.putBank(bankWithImage, 2); // undo: the image is back
+    at(DELAY);
+    await store.runImageCleanup();
     expect(onImagesOrphaned).not.toHaveBeenCalled();
   });
 
-  it("does not call onImagesOrphaned when no callback was provided", async () => {
-    const storage = memoryStorage({ bank: bankWithImage, version: 1 });
-    const store = new BankStore(storage); // no callback
-    await expect(store.putBank(validBank, 1)).resolves.toBeDefined(); // must not throw
+  it("restarts the wait when an image is removed, put back, and removed again", async () => {
+    const { store, alarms, onImagesOrphaned, at } = setup();
+    await store.putBank(validBank, 1);
+    await store.putBank(bankWithImage, 2);
+    at(500); // a room started now copies the bank with the image in it
+    await store.putBank(validBank, 3);
+    at(DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).not.toHaveBeenCalled();
+    expect(alarms.at(-1)).toBe(500 + DELAY);
+    at(500 + DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).toHaveBeenCalledWith([KEY]);
   });
 
-  it("swallows a failing onImagesOrphaned callback — the save itself already succeeded", async () => {
+  it("re-arms the alarm for what is still waiting after deleting what is due", async () => {
+    const OTHER = "55555555-5555-5555-5555-555555555555";
+    const twoImages: Bank = {
+      ...bankWithImage,
+      boss: { ...validBank.boss, questions: [{ kind: "text", id: "b-q1", content: { kind: "image", value: OTHER }, answer: "4" }] },
+    };
+    const { store, alarms, onImagesOrphaned, at } = setup({ bank: twoImages, version: 1 });
+    await store.putBank(bankWithImage, 1); // drops OTHER at t=0
+    at(300);
+    await store.putBank(validBank, 2); // drops KEY at t=300
+    at(DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).toHaveBeenCalledWith([OTHER]);
+    expect(alarms.at(-1)).toBe(300 + DELAY);
+  });
+
+  it("queues nothing when the same image key is still referenced after the save", async () => {
+    const { store, storage, alarms } = setup();
+    await store.putBank(bankWithImage, 1);
+    expect(await storage.get("pendingImageDeletes")).toBeUndefined();
+    expect(alarms).toEqual([]);
+  });
+
+  it("does not throw on cleanup when no callback was provided", async () => {
+    const store = new BankStore(memoryStorage({ bank: bankWithImage, version: 1 }), undefined, { cleanupDelayMs: 0 });
+    await store.putBank(validBank, 1);
+    await expect(store.runImageCleanup()).resolves.toBeUndefined();
+  });
+
+  it("logs a failing delete instead of throwing out of the alarm", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const storage = memoryStorage({ bank: bankWithImage, version: 1 });
-    const onImagesOrphaned = vi.fn(async () => {
-      throw new Error("R2 delete failed");
-    });
-    const store = new BankStore(storage, onImagesOrphaned);
-    const result = await store.putBank(validBank, 1);
-    expect(result.version).toBe(2); // save still succeeded
+    const { store, onImagesOrphaned, at } = setup();
+    onImagesOrphaned.mockRejectedValueOnce(new Error("R2 delete failed"));
+    await store.putBank(validBank, 1);
+    at(DELAY);
+    await expect(store.runImageCleanup()).resolves.toBeUndefined();
     expect(spy).toHaveBeenCalledWith(expect.stringContaining("image_cleanup_failed"));
     spy.mockRestore();
   });

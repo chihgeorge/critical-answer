@@ -23,16 +23,35 @@
 // bank is a last-write-wins clobber with no error and no trace — the first tab's edits just
 // vanish. `version` turns that into a loud, recoverable 409 instead of a silent loss (adversarial
 // review, 2026-09-22).
+//
+// Orphaned images (R2 keys the new bank no longer references) are queued in storage, not deleted
+// on save: rooms copy the bank when they start, so a game in progress may still show an image
+// the owner just replaced. The Durable Object alarm calls runImageCleanup() once they have waited
+// out the room expiry (TODOS.md P2, fixed 2026-09-29).
 
 import bankJson from "../data/question-bank.json";
 import { parseBank, imageKeysOf, type Bank } from "./question-bank";
 
 const BANK_KEY = "bank";
+/** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
+const PENDING_KEY = "pendingImageDeletes";
+/** Default wait before an orphaned image is deleted: a room's default 24-hour expiry plus an hour
+ * of margin. worker/index.ts passes the real room expiry (ROOM_EXPIRE_MS) + the same margin. */
+export const IMAGE_CLEANUP_MARGIN_MS = 60 * 60 * 1000;
+const DEFAULT_CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000 + IMAGE_CLEANUP_MARGIN_MS;
 
-/** The subset of Durable Object storage BankStore needs. Same shape as RoomStorage's get/put. */
+/** The subset of Durable Object storage BankStore needs. Same shape as RoomStorage's get/put/setAlarm. */
 export interface BankStorage {
   get(key: string): Promise<unknown>;
   put(key: string, value: unknown): void | Promise<void>;
+  /** Schedules the Durable Object alarm whose handler calls `runImageCleanup()`. Optional: without it
+   * the queue is still kept, and cleanup only happens when something calls `runImageCleanup()`. */
+  setAlarm?(at: number): void | Promise<void>;
+}
+
+interface PendingDelete {
+  key: string;
+  deleteAt: number;
 }
 
 export interface VersionedBank {
@@ -51,14 +70,52 @@ export class BankConflictError extends Error {
 }
 
 export class BankStore {
-  /** `onImagesOrphaned`: called with any R2 object key that was referenced by the previous bank
-   * but not the newly-saved one, after a successful putBank — see docs/designs/image-question-type.md's
-   * "R2 cleanup mechanism" decision. Optional and best-effort: a failure here must never fail the
-   * save itself (the bank write already succeeded; a missed cleanup is wasted storage, not data loss). */
+  private cleanupDelayMs: number;
+  private now: () => number;
+
+  /** `onImagesOrphaned`: deletes R2 objects the bank no longer references — see
+   * docs/designs/image-question-type.md's "R2 cleanup mechanism" decision. It is NOT called at save
+   * time: every room in progress plays from its own copy of the bank, so an image the new bank dropped
+   * may still be on screen in a running game. putBank only queues the key; `runImageCleanup()` (the
+   * Durable Object alarm) deletes it once `cleanupDelayMs` has passed, i.e. once every room that could
+   * have copied the old bank has expired. Best-effort: a failed delete is wasted storage, not data loss. */
   constructor(
     private storage: BankStorage,
     private onImagesOrphaned?: (keys: string[]) => Promise<void>,
-  ) {}
+    opts: { cleanupDelayMs?: number; now?: () => number } = {},
+  ) {
+    this.cleanupDelayMs = opts.cleanupDelayMs ?? DEFAULT_CLEANUP_DELAY_MS;
+    this.now = opts.now ?? Date.now;
+  }
+
+  private async getPending(): Promise<PendingDelete[]> {
+    const raw = await this.storage.get(PENDING_KEY);
+    return Array.isArray(raw) ? (raw as PendingDelete[]) : [];
+  }
+
+  /** Saves the queue and points the alarm at its earliest entry. */
+  private async setPending(pending: PendingDelete[]): Promise<void> {
+    await this.storage.put(PENDING_KEY, pending);
+    if (pending.length > 0) await this.storage.setAlarm?.(Math.min(...pending.map((p) => p.deleteAt)));
+  }
+
+  /** Deletes every queued image whose wait is over, unless a later save put it back in the bank
+   * (an undo, or the same image re-added). Called by the Durable Object alarm; re-arms the alarm for
+   * whatever is still waiting. */
+  async runImageCleanup(): Promise<void> {
+    const pending = await this.getPending();
+    if (pending.length === 0) return;
+    const now = this.now();
+    const inUse = imageKeysOf((await this.getStored()).bank);
+    const due = pending.filter((p) => p.deleteAt <= now && !inUse.has(p.key)).map((p) => p.key);
+    // Back in the bank: drop it from the queue; the save that removes it again re-queues it.
+    await this.setPending(pending.filter((p) => p.deleteAt > now && !inUse.has(p.key)));
+    if (due.length > 0 && this.onImagesOrphaned) {
+      await this.onImagesOrphaned(due).catch((err: unknown) => {
+        console.error(JSON.stringify({ event: "image_cleanup_failed", keys: due, error: String(err) }));
+      });
+    }
+  }
 
   private async getStored(): Promise<VersionedBank> {
     const raw = await this.storage.get(BANK_KEY);
@@ -99,26 +156,17 @@ export class BankStore {
     const validated = parseBank(candidate);
     const next: VersionedBank = { bank: validated, version: current.version + 1 };
     await this.storage.put(BANK_KEY, next);
-    if (this.onImagesOrphaned) {
-      const oldKeys = imageKeysOf(current.bank);
-      const newKeys = imageKeysOf(validated);
-      const orphaned = [...oldKeys].filter((k) => !newKeys.has(k));
-      if (orphaned.length > 0) {
-        // Best-effort AND fire-and-forget: the bank write above already succeeded, so a cleanup
-        // failure here is wasted R2 storage, never data loss — and awaiting it would make every
-        // save that touches images wait on an R2 round trip that doesn't participate in the
-        // Durable Object's storage input-gate, needlessly delaying the caller's response and
-        // any concurrent request queued behind this one (adversarial review finding). The
-        // worker/index.ts caller wraps this in ctx.waitUntil() so it survives past this
-        // function's return instead of being cut off. This .catch is a defensive fallback for a
-        // badly-behaved injected callback (one that rejects before reaching its own try/catch) —
-        // worker/index.ts's real R2 delete failures are already caught and logged inside
-        // lib/image-cleanup.ts's deleteOrphanedImages, so this rarely fires in production
-        // (adversarial review finding: the comment previously implied otherwise).
-        void this.onImagesOrphaned(orphaned).catch((err: unknown) => {
-          console.error(JSON.stringify({ event: "image_cleanup_failed", keys: orphaned, error: String(err) }));
-        });
-      }
+    const oldKeys = imageKeysOf(current.bank);
+    const newKeys = imageKeysOf(validated);
+    const orphaned = [...oldKeys].filter((k) => !newKeys.has(k));
+    if (orphaned.length > 0) {
+      // Queued, not deleted: a room mid-game may still show this image (see the constructor's comment).
+      // A key that was already queued gets the new, later deleteAt: it may have been put back in
+      // between, and a room started since then holds it too.
+      const again = new Set(orphaned);
+      const deleteAt = this.now() + this.cleanupDelayMs;
+      const pending = (await this.getPending()).filter((p) => !again.has(p.key));
+      await this.setPending([...pending, ...orphaned.map((key) => ({ key, deleteAt }))]);
     }
     return next;
   }

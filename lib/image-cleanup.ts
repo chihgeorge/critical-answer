@@ -13,7 +13,8 @@ export interface ImageBucket {
 /** Best-effort and swallows its own failure (logs instead of throwing): the bank write that
  * orphaned these keys already succeeded, so a failed delete here is wasted storage, never data
  * loss — same reasoning as lib/bank-store.ts's own defensive .catch on this callback.
- * worker/index.ts wraps the call in ctx.waitUntil() to keep it alive past the request. */
+ * Called from BankStore.runImageCleanup() in the bank Durable Object's alarm, once the key has
+ * waited out every room that might still show it. */
 export async function deleteOrphanedImages(images: ImageBucket, keys: string[]): Promise<void> {
   await images.delete(keys).catch((err: unknown) => {
     console.error(JSON.stringify({ event: "image_cleanup_failed", keys, error: String(err) }));
