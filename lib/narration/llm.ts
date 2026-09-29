@@ -50,8 +50,15 @@ function describeEvent(e: NarrationEvent): string {
   switch (e.type) {
     case "start":
       return `事件：遊戲開始。參賽隊伍：${e.teams.map(q).join("、")}。`;
-    case "correct":
-      return `事件：隊伍${q(e.team)}答對了，打退${q(e.monster)}，得 ${e.points} 分。`;
+    case "correct": {
+      const base = `事件：隊伍${q(e.team)}答對了，打退${q(e.monster)}，得 ${e.points} 分。`;
+      if (!e.entersBoss) return base;
+      const { branches } = e.entersBoss;
+      const callback = branches.length
+        ? `他們一路上在分岔路口的選擇依序是：${branches.map(q).join("、")}。第一行要提到他們踏進首領房，並用一句話呼應他們一路上的選擇。`
+        : "第一行要提到他們踏進首領房。";
+      return `${base}這一答讓他們踏進了首領房。${callback}`;
+    }
     case "retry":
       return `事件：隊伍${q(e.team)}答錯了，${q(e.monster)}還擋在原地，可以重答。`;
     case "flee":

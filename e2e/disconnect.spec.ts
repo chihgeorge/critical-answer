@@ -6,10 +6,13 @@ import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
  * closed, and every reconnect attempt is refused until the test lets it through.
  */
 async function flakySockets(page: Page) {
-  const links: { page: WebSocketRoute; server: WebSocketRoute }[] = [];
+  const links: { page: WebSocketRoute; server: WebSocketRoute; heard: boolean }[] = [];
   const state = {
     block: false,
     count: () => links.length,
+    /** Whether the latest connection has had a message from the room: proof it's really open (the
+     * big screen never sends anything, so the page side alone can't tell us). */
+    heard: () => links.at(-1)?.heard ?? false,
     /** Drop the latest connection on both ends, so the room sees the team go offline too. */
     drop() {
       const last = links.at(-1)!;
@@ -22,7 +25,13 @@ async function flakySockets(page: Page) {
       ws.close({ code: 1006, reason: "still offline" });
       return;
     }
-    links.push({ page: ws, server: ws.connectToServer() });
+    const server = ws.connectToServer();
+    const link = { page: ws, server, heard: false };
+    links.push(link);
+    server.onMessage((m) => {
+      link.heard = true;
+      ws.send(m);
+    });
   });
   return state;
 }
@@ -69,6 +78,8 @@ test("the big screen shows it's offline while its connection is down", async ({ 
   await screen.goto("/room/DSCN/screen");
   await expect(screen.getByText("DSCN")).toBeVisible();
   await expect.poll(() => net.count()).toBe(1);
+  // Dropping a socket that never opened would rightly show nothing: the screen was never connected.
+  await expect.poll(() => net.heard()).toBe(true);
   net.block = true;
   net.drop();
   await expect(screen.getByText("連線中斷，重新連線中…")).toBeVisible();

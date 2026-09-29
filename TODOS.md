@@ -272,27 +272,16 @@
 
 
 
-## 首領登場的敘事事件（DM 分支回提用）
-
-**What:** 新增一個「隊伍進入首領房」的旁白事件型別（`lib/narration/events.ts` 目前只有 `correct`/`boss-hit`/`boss-kill`，沒有進房事件），讓 DM 分支互動能在首領登場時回提隊伍先前選過的分支。
-
-**Why:** `/plan-eng-review`（2026-09-21）的 Codex 外部審查指出這個接進點不存在，且共用首領可能在某隊進房前就被別隊打死，事件設計要處理這個時序問題。設計文件原本假設「首領登場時回提選擇」，但這一輪決定先不做，只做每房分支本身。
-
-**Pros:** DM 分支互動的敘事收尾（讓玩家的選擇被記得、被提起）需要這個事件才能做。
-
-**Cons:** 要新增事件型別、處理共用首領被搶先擊殺的時序、更新 narration runner 的事件契約。
-
-**Context:** 見 [docs/designs/dm-branching-and-question-types.md](docs/designs/dm-branching-and-question-types.md)。`lib/room/dungeon-room.ts` 的 `handleHostJudge` 是唯一會產生 `NarrationEvent` 的地方，新事件要從那裡發出。
-
-**更新（2026-09-21，DM 分支互動實作階段）：** 設計文件 Implementation Tasks 的 T4（LLM 不可用時跳過首領回提、不硬塞模板）併進本項——因為回提事件本身還沒做，T4 現在沒有程式碼可改，等這項開工時一起處理降級邏輯。`lib/narration/runner.ts` 目前對任何事件都保證恰好 emit 一次（LLM 失敗會自動換 scripted 備用台詞，不會卡住），新事件型別要決定是沿用這個「保證 emit」的既有契約（一定講一句話，用備用台詞頂）還是真的要能「完全跳過不講」——後者需要修改 runner 的契約，前者不用。
-
-**Effort:** M（人工約 1 天 / CC 約 1 小時）　**Priority:** P2
-
-**Depends on / blocked by:** ~~DM 分支互動（每房觸發版）先實作完成~~ — 已在 v0.3.0.0（2026-09-22）實作完成（`lib/game-state.ts` 的 `recordBranchChoice`／`TEAM_BRANCH_CHOICE`），本項不再被阻擋，可以開工。
-
----
 
 ## Completed
+
+## 首領登場的敘事事件（DM 分支回提用）
+
+**Priority:** P2　**Completed:** v0.9.11.0 (2026-09-29)
+
+**What:** 沒有另開新事件（那會多一個 eventId、也要改 runner「每個事件恰好 emit 一次」的契約）：讓隊伍越過首領門檻的那次答對，`correct` 事件多帶 `entersBoss: { branches }`（隊伍一路上的分支選擇，依房間順序）。時序問題自然消失：事件在那次判定當下產生，而共用首領如果已經被打倒，遊戲早就結束了。LLM 旁白會提到踏進首領房並呼應分支選擇；scripted 備用台詞只宣告進入首領房，不硬塞「你選了 X」模板（T4）。見 `lib/narration/events.ts`、`scripted.ts` 的 `BOSS_ENTER_VARIANTS`、`llm.ts` 的 `describeEvent`。
+
+---
 
 ## 主持人頁的鍵盤操作
 
