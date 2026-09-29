@@ -7,6 +7,11 @@ All notable changes to Critical Answer are documented here.
 ### Added
 - Sound effects on the big screen: a fanfare when the game starts, a chime for a correct answer, a buzz for a wrong one, a swoop when a team flees, a thud when the boss is hit and a victory run when it falls. Like the music, they're generated in the browser and play when the 🎵 music toggle is on.
 
+## [0.9.7.0] - 2026-09-29
+
+### Fixed
+- On browsers that load their voices a moment after the page opens, the first narration after turning the big screen's voice on could be silently skipped. It's now read out as soon as the voice is ready.
+
 ## [0.9.6.0] - 2026-09-29
 
 ### Fixed

@@ -4,23 +4,6 @@
 
 
 
-## 語音旁白：語音清單還沒載完時到達的旁白會被永久靜默跳過
-
-**Priority:** P3
-
-**What:** `speak()`（`app/room/[code]/screen/page.tsx`）在 `ttsVoice` 還沒設定（語音清單尚未透過 `voiceschanged` 載入完成）時會直接不播放，且不會補念——如果旁白事件剛好在使用者點開開關跟語音清單真正載完之間的空檔到達，那句旁白就永久遺失，沒有任何提示。
-
-**Why:** adversarial review（`/review`，2026-09-23）找到的缺口，設計文件本身已經點出語音清單非同步載入是已知風險，但目前只處理了「不對還沒準備好的清單呼叫 speak()」，沒處理「那句旁白後來要補念」。
-
-**Pros:** 修好後不會在語音清單載入較慢的瀏覽器上漏念偶發的第一句旁白。
-
-**Cons:** 需要加一個緩衝機制（記下最後一句還沒念的旁白，`voiceschanged` 後補念），語音清單通常載入很快，實際發生機率低。
-
-**Context:** 見 [docs/designs/dm-voice-narration-tts.md](docs/designs/dm-voice-narration-tts.md)、`app/room/[code]/screen/page.tsx` 的 `speak()` 函式。
-
-**Depends on / blocked by:** 無直接阻塞。
-
----
 
 ## Host 自訂題庫文字進 LLM prompt 前的內容審核
 
@@ -350,6 +333,14 @@
 **Priority:** P3　**Completed:** v0.9.8.0 (2026-09-29)
 
 **What:** 大螢幕 `/screen` 在開始遊戲、答對、答錯重答、逃跑、打中首領、打倒首領時各播一段 8-bit 音效，跟背景音樂一樣用 Web Audio 即時合成（`lib/sfx.ts`），沒有音檔、沒有授權問題。server 在 STATE 帶 `cue`（由該事件的旁白事件類型決定），大螢幕只在 `eventId` 變大時播一次，重新連線不會重播。音效跟著「🎵 音樂」開關，不另外加按鈕；背景音樂的部分在 v0.9.5.0 完成。
+
+---
+
+## 語音旁白：語音清單還沒載完時到達的旁白會被永久靜默跳過
+
+**Priority:** P3　**Completed:** v0.9.7.0 (2026-09-29)
+
+**What:** `/screen` 的 `speak()` 在語音開著、但語音清單還沒載入時，改成把最後一句存進 `pendingLines`，等 `voiceschanged` 讓 `ttsVoice` 出現後立刻補念；只保留最新一句，關掉語音或房間重置（LOBBY）時清掉。e2e `narration-tts.spec.ts` 用「語音清單一開始是空的」的 stub 重現：沒修時那句永遠不念，修了之後載入語音就念出來。
 
 ---
 

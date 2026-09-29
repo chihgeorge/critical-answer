@@ -69,6 +69,41 @@ async function stubSpeechSynthesisNoMatchingVoice(page: Page) {
   });
 }
 
+/** Same stub, but the voice list starts empty, as it does in browsers that load it asynchronously:
+ * getVoices() returns [] until the test calls window.__loadVoices(), which fills it and fires the
+ * voiceschanged listeners the page registered. */
+async function stubSpeechSynthesisLateVoices(page: Page) {
+  await page.addInitScript(() => {
+    const calls: string[] = [];
+    const listeners: (() => void)[] = [];
+    let voices: SpeechSynthesisVoice[] = [];
+    (window as unknown as { __ttsCalls: string[] }).__ttsCalls = calls;
+    (window as unknown as { __loadVoices: () => void }).__loadVoices = () => {
+      voices = [{ lang: "zh-TW", name: "Test zh-TW Voice", default: true } as SpeechSynthesisVoice];
+      for (const l of listeners) l();
+    };
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: {
+        getVoices: () => voices,
+        addEventListener: (_: string, l: () => void) => listeners.push(l),
+        removeEventListener: () => {},
+        speak: (utter: SpeechSynthesisUtterance) => calls.push(utter.text),
+        cancel: () => {},
+        speaking: false,
+      },
+    });
+    (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = class {
+      text: string;
+      voice: SpeechSynthesisVoice | null = null;
+      lang = "";
+      constructor(text = "") {
+        this.text = text;
+      }
+    };
+  });
+}
+
 /** Removes window.speechSynthesis entirely, as in a browser without the Web Speech API. */
 async function stubNoSpeechSynthesisApi(page: Page) {
   await page.addInitScript(() => {
@@ -380,6 +415,42 @@ test("screen TTS: no matching Traditional Chinese voice loaded — toggle still 
   await expect(screen.locator(".px-say")).toContainText("甲隊"); // narration DID render on screen...
   await new Promise((r) => setTimeout(r, 500)); // ...but nothing further was ever spoken
   expect(await ttsCalls(screen)).toEqual([""]);
+});
+
+test("screen TTS: narration that arrives before the voice list has loaded is spoken once it loads, not lost", async ({ browser }) => {
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("甲隊");
+  const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("乙隊");
+
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await stubSpeechSynthesisLateVoices(screen);
+  await screen.goto(`/room/${code}/screen`);
+  await expect(screen.getByText("輪到：甲隊")).toBeVisible();
+  await screen.getByRole("button", { name: /語音/ }).click();
+
+  // A live narration arrives while there is still no voice to speak it with...
+  await host.getByRole("button", { name: "答對！" }).click();
+  await expect(screen.getByText("輪到：乙隊")).toBeVisible();
+  await screen.waitForTimeout(500);
+  expect(await ttsCalls(screen)).toEqual([""]); // just the unlock utterance: nothing to speak with yet
+
+  // ...then the voices load, and it's spoken.
+  await screen.evaluate(() => (window as unknown as { __loadVoices: () => void }).__loadVoices());
+  await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
 });
 
 test("screen TTS: a browser with no Web Speech API renders no toggle at all", async ({ page }) => {
