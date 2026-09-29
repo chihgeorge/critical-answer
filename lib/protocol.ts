@@ -117,7 +117,9 @@ export type ServerMessage =
    * have seen. 3 segments when there's a next team (result + atmosphere + transition), 2 when there
    * isn't (boss-kill, or the game's last judged event) — see docs/designs/multi-segment-narration.md. */
   | { type: "NARRATION"; eventId: number; lines: string[] }
-  | { type: "EPILOGUE"; text: string }
+  /** `replay`: set when onConnect resends an epilogue that was already broadcast, so /screen
+   * doesn't speak it again; absent on the live broadcast. Older servers never set it. */
+  | { type: "EPILOGUE"; text: string; replay?: true }
   /** Host-only reply to HOST_GET_TRANSCRIPT. */
   | { type: "TRANSCRIPT"; entries: TranscriptItem[] }
   /** `aiAvailable`: the server has an API key, so the host may turn AI narration on. */

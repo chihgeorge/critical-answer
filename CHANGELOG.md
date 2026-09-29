@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.4.0] - 2026-09-29
+
+### Fixed
+- If the big screen reconnected in the few seconds between the boss falling and the epilogue arriving, the epilogue appeared on screen but was never read aloud. It's now read aloud; reloading a finished game still doesn't repeat it.
+
 ## [0.9.3.0] - 2026-09-29
 
 ### Fixed

@@ -20,23 +20,6 @@
 ---
 
 
-## 語音旁白：重連時剛好落在 GAME_OVER 到 EPILOGUE 之間會漏念後記
-
-**Priority:** P3
-
-**What:** `/screen` 的語音旁白（`lib/narration/tts.ts` 的 `shouldSpeakEpilogue`）用「這次連線有沒有先看過即時 GAME_OVER」判斷後記是不是重播。如果連線（重新整理、WS 重連）剛好落在首領死亡（GAME_OVER 廣播）到後記文字準備好（`EPILOGUE_DELAY_MS`，約 4 秒）之間，這個連線既沒收到即時 GAME_OVER，onConnect 也還沒有 `this.epilogue` 可以重播——4 秒後真正的即時 EPILOGUE 廣播抵達時，會被誤判成重播而永遠不念。畫面上後記文字正常顯示，但語音永遠漏那一段，沒有任何錯誤提示。
-
-**Why:** adversarial review（`/review`，2026-09-23）找到的真實 bug，正確修法需要 server 協議改動（明確標記訊息是重播還是即時廣播）或一個只靠 client 的啟發式解法，兩者都有成本。
-
-**Pros:** 修好後後記語音在所有重連時機下都能正確播放。
-
-**Cons:** 發生機率低（4 秒視窗、需要剛好在那個時間點重新整理或斷線重連），需要 server 端配合才能徹底修好。
-
-**Context:** 見 [docs/designs/dm-voice-narration-tts.md](docs/designs/dm-voice-narration-tts.md)、`lib/narration/tts.ts` 的 `shouldSpeakEpilogue`、`lib/room/dungeon-room.ts` 的 `sendEpilogue`（`EPILOGUE_DELAY_MS`）。
-
-**Depends on / blocked by:** 無直接阻塞，等真的有人回報這個情況再處理。
-
----
 
 ## 語音旁白：語音清單還沒載完時到達的旁白會被永久靜默跳過
 
@@ -429,6 +412,14 @@
 ---
 
 ## Completed
+
+## 語音旁白：重連時剛好落在 GAME_OVER 到 EPILOGUE 之間會漏念後記
+
+**Priority:** P3　**Completed:** v0.9.4.0 (2026-09-29)
+
+**What:** 採用 server 協議改動：`onConnect` 重送的 EPILOGUE 帶 `replay: true`，即時廣播不帶；`lib/narration/tts.ts` 的 `shouldSpeakEpilogue` 改成只看這個欄位，`/screen` 拿掉 `sawLiveGameOver`。連線落在 GAME_OVER 和後記之間時，後記會正常念出來；重整已結束的遊戲仍然不會重念。
+
+---
 
 ## 上傳但從未存檔的題庫圖片會永久留在 R2
 
