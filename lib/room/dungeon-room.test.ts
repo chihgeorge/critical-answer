@@ -1525,3 +1525,34 @@ describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
     expect(state.question.content).toEqual({ kind: "image", url: "/55555555-5555-5555-5555-555555555555" });
   });
 });
+
+describe("sound cues (big-screen effects)", () => {
+  const states = (room: DungeonRoom) =>
+    (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE");
+
+  it("tags each event's STATE with its effect: start, then correct / retry", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    expect(states(room).at(-1)).toMatchObject({ eventId: 1, cue: "start" });
+
+    const g = room.game!;
+    const t = g.teams.find((x) => x.id === g.turnOrder[g.currentTurnIndex])!;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: t.id, questionId: t.currentQuestionId, correct: true });
+    expect(states(room).at(-1)).toMatchObject({ eventId: 2, cue: "correct" });
+
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    const g2 = room.game!;
+    const t2 = g2.teams.find((x) => x.id === g2.turnOrder[g2.currentTurnIndex])!;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: t2.id, questionId: t2.currentQuestionId, correct: false, fleeChoice: "retry" });
+    expect(states(room).at(-1)).toMatchObject({ eventId: 3, cue: "retry" });
+  });
+
+  it("sends no cue before any event", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    joinTeams(room, hostConn, 2);
+    const late = makeConn("late");
+    room.onConnect(late);
+    expect(JSON.parse((late.send as ReturnType<typeof vi.fn>).mock.calls[0][0]).cue).toBeUndefined();
+  });
+});
