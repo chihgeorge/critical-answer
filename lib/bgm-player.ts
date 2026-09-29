@@ -4,6 +4,7 @@
 // that themselves jitter.
 
 import { DUNGEON_THEME, loopDuration, songEvents, type Song } from "./bgm";
+import type { SfxNote } from "./sfx";
 
 const LOOKAHEAD_S = 0.25;
 const TICK_MS = 100;
@@ -11,6 +12,8 @@ const TICK_MS = 100;
 const VOLUME = 0.05;
 /** While the narration voice is speaking. */
 const DUCKED_VOLUME = 0.015;
+/** Effects sit above the music and aren't ducked: they're short and mark what just happened. */
+const SFX_VOLUME = 0.09;
 
 export interface BgmPlayer {
   /** Must first be called from inside a user gesture (a click): browsers only let audio start then. */
@@ -18,6 +21,9 @@ export interface BgmPlayer {
   stop(): void;
   /** Lower the music while something else (the narration) is talking. */
   duck(on: boolean): void;
+  /** Play a sound effect now (lib/sfx.ts). Does nothing unless the music is playing: effects
+   * follow the same 🎵 switch, and the browser only allows audio once start() ran in a click. */
+  playCue(notes: SfxNote[]): void;
 }
 
 export function createBgmPlayer(song: Song = DUNGEON_THEME): BgmPlayer {
@@ -100,6 +106,29 @@ export function createBgmPlayer(song: Song = DUNGEON_THEME): BgmPlayer {
       if (on === ducked) return;
       ducked = on;
       setVolume();
+    },
+    playCue(notes) {
+      if (!ctx || !timer) return;
+      const t0 = ctx.currentTime + 0.02;
+      const bus = ctx.createGain();
+      bus.gain.value = SFX_VOLUME;
+      bus.connect(ctx.destination);
+      for (const note of notes) {
+        const osc = ctx.createOscillator();
+        const env = ctx.createGain();
+        const at = t0 + note.at;
+        const end = at + note.duration;
+        osc.type = note.wave;
+        osc.frequency.setValueAtTime(note.freq, at);
+        if (note.slideTo) osc.frequency.exponentialRampToValueAtTime(note.slideTo, end);
+        env.gain.setValueAtTime(0, at);
+        env.gain.linearRampToValueAtTime(1, at + 0.005);
+        env.gain.setValueAtTime(1, Math.max(at + 0.005, end - 0.03));
+        env.gain.linearRampToValueAtTime(0, end);
+        osc.connect(env).connect(bus);
+        osc.start(at);
+        osc.stop(end + 0.01);
+      }
     },
   };
 }
