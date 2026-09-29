@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.2.0] - 2026-09-29
+
+### Fixed
+- When two narrations were being written at once and the older one finished last, it replaced the newer line on every screen, and a phone that reconnected afterwards was shown the out-of-date line. The older line is now dropped.
+
 ## [0.9.1.0] - 2026-09-29
 
 ### Changed
