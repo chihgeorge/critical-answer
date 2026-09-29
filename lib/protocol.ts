@@ -102,6 +102,9 @@ export type ServerErrorCode =
   | "unknown_team"
   | "invalid_action";
 
+/** One per kind of event: the big screen's sound effect for it (lib/sfx.ts). */
+export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-kill";
+
 export type ServerMessage =
   | { type: "LOBBY"; teams: { id: string; name: string }[]; roomEpoch: string }
   | {
@@ -115,6 +118,9 @@ export type ServerMessage =
       reveal: AnswerReveal | null;
       /** Counts judgments (and the start); NARRATION carries the id it belongs to. */
       eventId: number;
+      /** The sound effect for event `eventId` (the big screen plays it once, when eventId goes up).
+       * Absent before any event, and after a server restart. */
+      cue?: SoundCue;
     }
   | { type: "GAME_OVER"; winners: string[] }
   /** Exactly one per event (1-3 segments, played in order). Clients keep the highest eventId they

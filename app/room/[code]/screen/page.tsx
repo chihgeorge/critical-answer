@@ -15,6 +15,7 @@ import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakEpilogue, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
+import { SFX } from "@/lib/sfx";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { PARTY_HOST } from "@/lib/party-host";
 import { Qr } from "@/components/qr";
@@ -287,6 +288,9 @@ export default function ScreenPage() {
    * correctly excluded, and a brand-new room with no narration yet (baseline 0) still speaks
    * its first live line. */
   const narrationBaseline = useRef<number | null>(null);
+  /** The highest eventId whose sound effect this connection has already handled. Starts at the
+   * first STATE after connecting, so reconnecting never replays the current event's effect. */
+  const sfxSeen = useRef<number | null>(null);
   /** The last NARRATION this connection has SEEN, not just spoken — updated on every NARRATION
    * message regardless of whether shouldSpeakNarration() decided to speak it. This is what lets
    * a later correction (same eventId, different text) to the connect-time replay be recognized
@@ -442,6 +446,7 @@ export default function ScreenPage() {
       setDisconnected(false);
       screenOpened.current = true;
       narrationBaseline.current = null;
+      sfxSeen.current = null;
     },
     onClose(event: CloseEvent) {
       // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
@@ -474,12 +479,19 @@ export default function ScreenPage() {
           // A room reset can arrive without a socket reconnect, and the next game's eventIds
           // start over from 0 — re-arm the baseline the same way onOpen does.
           narrationBaseline.current = null;
+          sfxSeen.current = null;
           pendingLines.current = null;
           window.speechSynthesis?.cancel();
           break;
         case "STATE":
           setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
           if (narrationBaseline.current === null) narrationBaseline.current = msg.eventId;
+          // A new event: play its effect once (only while the 🎵 music is on, see playCue).
+          if (sfxSeen.current === null) sfxSeen.current = msg.eventId;
+          else if (msg.eventId > sfxSeen.current) {
+            sfxSeen.current = msg.eventId;
+            if (msg.cue) bgm.current?.playCue(SFX[msg.cue]);
+          }
           setRevealed(msg.reveal);
           break;
         case "NARRATION":

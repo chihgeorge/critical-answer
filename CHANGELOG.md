@@ -7,6 +7,11 @@ All notable changes to Critical Answer are documented here.
 ### Added
 - Phones and the big screen now say 「連線中斷，重新連線中…」 while their connection is down, instead of just freezing. When a phone reconnects, it tells the team if its turn was skipped while it was offline, or how many answers were judged in the meantime.
 
+## [0.9.8.0] - 2026-09-29
+
+### Added
+- Sound effects on the big screen: a fanfare when the game starts, a chime for a correct answer, a buzz for a wrong one, a swoop when a team flees, a thud when the boss is hit and a victory run when it falls. Like the music, they're generated in the browser and play when the 🎵 music toggle is on.
+
 ## [0.9.7.0] - 2026-09-29
 
 ### Fixed

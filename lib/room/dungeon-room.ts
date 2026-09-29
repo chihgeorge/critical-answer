@@ -15,7 +15,7 @@ import {
   type BranchOptionId,
   type GameState,
 } from "../game-state";
-import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type ServerMessage } from "../protocol";
+import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type ServerMessage, type SoundCue } from "../protocol";
 import { allQuestions, answerText, bossQuestionIds, findQuestion, publicExplanation, publicQuestion, roomTemplates, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
@@ -105,6 +105,8 @@ export class DungeonRoom {
   /** Counts the start and every accepted judgment; each gets exactly one NARRATION. */
   private eventSeq = 0;
   private lastNarration: { eventId: number; lines: string[] } | null = null;
+  /** The latest event's sound effect, sent with STATE (memory only: a restart just has none). */
+  private cue: SoundCue | null = null;
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
@@ -377,6 +379,7 @@ export class DungeonRoom {
       question: this.currentQuestion()?.pub ?? null,
       reveal: this.reveal,
       eventId: this.eventSeq,
+      ...(this.cue ? { cue: this.cue } : {}),
     };
   }
 
@@ -483,6 +486,7 @@ export class DungeonRoom {
     this.conns.clear();
     this.eventSeq = 0;
     this.lastNarration = null;
+    this.cue = null;
     this.epilogue = null;
     this.epilogueRequested = false;
     this.reveal = null;
@@ -751,6 +755,7 @@ export class DungeonRoom {
     // Default on when a key exists; the host can switch it off before starting.
     this.aiNarration = this.aiAvailable && aiNarration !== false;
     const eventId = ++this.eventSeq;
+    this.cue = "start";
     this.broadcastState();
     const next = this.nextTurn();
     void this.narrate(eventId, { type: "start", teams: this.pendingTeams.map((t) => t.name), ...(next ? { next } : {}) });
@@ -790,6 +795,7 @@ export class DungeonRoom {
       this.game = game;
       const eventId = ++this.eventSeq;
       const event = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined);
+      this.cue = event.type === "epilogue" ? null : event.type;
       // Shown to everyone (D3), but only on a genuinely correct answer (D5): a retry or a flee
       // must never reveal it, or the question loses its point, and game-state.ts's deal()/boss
       // ring already rely on "revealed" meaning "answered correctly" to decide what's safe to
