@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import usePartySocket from "partysocket/react";
-import { isIdleClose, RESTED_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
+import { restKindOf, restNoticeFor, RESTED_RECONNECT_LABEL, type RestKind } from "@/lib/room/close-codes";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import type { AnswerReveal, ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
 import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom, type SpectatorView, type GamePhase } from "@/lib/game-state";
@@ -26,7 +26,7 @@ export default function PlayPage() {
   const [game, setGame] = useState<PlayState | null>(null);
   const [reset, setReset] = useState(false);
   /** The room closed our connection on purpose after a long idle time. The game is saved; a tap reconnects. */
-  const [rested, setRested] = useState(false);
+  const [rested, setRested] = useState<RestKind | null>(null);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
   /** STATE.reveal: the last correct answer, shown in place of the next question until the host
@@ -35,20 +35,28 @@ export default function PlayPage() {
   const joinedRef = useRef(false);
   const epoch = useRef<string | null>(null);
 
+  /** Same as the host page: an automatic reconnect's JOIN carries `resume` so it isn't activity. */
+  const openedOnce = useRef(false);
+  const reconnectByHand = useRef(false);
+
   const socket = usePartySocket({
     host: PARTY_HOST,
     room: code,
     // Every (re)connect says who we are again: a phone that slept or changed network comes back
     // as the same team instead of staying "offline" and being skipped.
     onOpen() {
-      setRested(false);
-      send({ type: "JOIN", teamId: getOrCreateTeamId(), teamKey: getOrCreateTeamKey(), teamName });
+      setRested(null);
+      const resume = openedOnce.current && !reconnectByHand.current;
+      openedOnce.current = true;
+      reconnectByHand.current = false;
+      send({ type: "JOIN", teamId: getOrCreateTeamId(), teamKey: getOrCreateTeamKey(), teamName, ...(resume ? { resume: true } : {}) });
     },
     onClose(event: CloseEvent) {
       // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
-      if (isIdleClose(event)) {
+      const restKind = restKindOf(event);
+      if (restKind) {
         socket.close();
-        setRested(true);
+        setRested(restKind);
       }
     },
     onMessage(event: MessageEvent) {
@@ -141,8 +149,14 @@ export default function PlayPage() {
 
         {rested && (
           <Panel tone="turn" role="status" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]">
-            {RESTED_NOTICE}
-            <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-2">{RESTED_RECONNECT_LABEL}</PixelButton>
+            {restNoticeFor(rested)}
+            <PixelButton
+              onClick={() => {
+                reconnectByHand.current = true;
+                socket.reconnect();
+              }}
+              className="!m-0 !px-4 !py-2"
+            >{RESTED_RECONNECT_LABEL}</PixelButton>
           </Panel>
         )}
 
