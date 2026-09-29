@@ -87,6 +87,10 @@ sh scripts/playtest.sh stop
 | `npm run lint` | ESLint |
 | `npm run build` | 建置前端 |
 
+### 部署
+
+合併進 `main` 就會自動部署：GitHub Actions 的 `deploy-worker` job 在檢查通過後執行 `wrangler deploy`（房間伺服器），Vercel 自己從 `main` 部署前端。第一次要在 GitHub repo 的 Settings → Secrets and variables → Actions 加兩個 secret：`CLOUDFLARE_API_TOKEN`（用「Edit Cloudflare Workers」範本建的 API token）和 `CLOUDFLARE_ACCOUNT_ID`；沒設的話這個 job 只會留警告、不部署。`OWNER_KEY`、`ANTHROPIC_API_KEY` 存在 Worker 上，部署不會動到。
+
 ## 題庫
 
 題庫在 [data/question-bank.json](data/question-bank.json)：5 個房間，每房 8 題、一隻怪物，加上首領的 8 題。伺服器啟動時會載入並驗證（缺 id、重複 id、空題目或答案、難度不在 1–5 都會直接報錯），**只有伺服器會讀這個檔**，瀏覽器只收得到題目文字，收不到答案。`npm run check:bundle` 會檢查這一點。
