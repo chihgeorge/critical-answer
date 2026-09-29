@@ -106,7 +106,10 @@ function eye(P: Px, x: number, y: number, blink: boolean, big = false) {
 /** Native pixel size of each sprite; the component scales it with CSS. */
 export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   slime: [32, 30],
+  "slime-lost": [32, 38],
+  "slime-king": [36, 40],
   ghost: [32, 36],
+  "ghost-cry": [32, 36],
   dragon: [52, 46],
   owl: [28, 28],
   hero: [24, 24],
@@ -116,27 +119,78 @@ export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   campfire: [26, 22],
 };
 
+/** Body colors: face, shade, highlight. The newer monsters bake in their own instead of relying on
+ * the bank's hue-rotate, which would also recolor their crown, spear or thought bubble. */
+type SlimeColors = { body: string; dark: string; light: string };
+const GREEN_SLIME: SlimeColors = { body: "#6fd36a", dark: "#3fa65a", light: "#a8f07a" };
+const BLUE_SLIME: SlimeColors = { body: "#6fb8e8", dark: "#3f7fb8", light: "#b0e0ff" };
+const PURPLE_SLIME: SlimeColors = { body: "#b07ae8", dark: "#7a4ab8", light: "#dcb8ff" };
+
+/** The slime's body, `oy` pixels down the canvas (room above for a hat or a thought). `sprout`: the
+ * leaf on top (the plain slime has one; the king wears a crown instead). Call before outline(). */
+function slimeBody(P: Px, oy: number, sprout = true, c: SlimeColors = GREEN_SLIME) {
+  if (sprout) {
+    P.rect(15, 2 + oy, 2, 5, c.dark);
+    P.ell(12, 3 + oy, 3.2, 2, c.body);
+    P.ell(20, 3 + oy, 3.2, 2, c.body);
+  }
+  P.ell(16, 17 + oy, 13, 11, c.body);
+  P.cut((_x, y) => y > 26 + oy);
+  P.shade(16, 17 + oy, 13, 11, c.dark, 2, 2);
+  P.ellIn(11, 10 + oy, 7, 4, c.light);
+}
+
+/** The slime's face and shine, drawn after outline() so the outline doesn't swallow them. */
+function slimeFace(P: Px, oy: number, b: boolean) {
+  P.set(9, 10 + oy, "#fff");
+  P.set(10, 10 + oy, "#fff");
+  P.set(9, 11 + oy, "#fff");
+  P.set(13, 9 + oy, "#fff");
+  eye(P, 9, 15 + oy, b);
+  eye(P, 20, 15 + oy, b);
+  P.rect(5, 21 + oy, 3, 1, "#ff9db8");
+  P.rect(24, 21 + oy, 3, 1, "#ff9db8");
+  P.set(15, 22 + oy, K);
+  P.set(16, 23 + oy, K);
+  P.set(17, 22 + oy, K);
+}
+
 function slime(cv: HTMLCanvasElement, b: boolean) {
   const P = new Px(cv, 32, 30);
-  P.rect(15, 2, 2, 5, "#3fa65a");
-  P.ell(12, 3, 3.2, 2, "#6fd36a");
-  P.ell(20, 3, 3.2, 2, "#6fd36a");
-  P.ell(16, 17, 13, 11, "#6fd36a");
-  P.cut((_x, y) => y > 26);
-  P.shade(16, 17, 13, 11, "#3fa65a", 2, 2);
-  P.ellIn(11, 10, 7, 4, "#a8f07a");
+  slimeBody(P, 0);
   P.outline(K);
-  P.set(9, 10, "#fff");
-  P.set(10, 10, "#fff");
-  P.set(9, 11, "#fff");
-  P.set(13, 9, "#fff");
-  eye(P, 9, 15, b);
-  eye(P, 20, 15, b);
-  P.rect(5, 21, 3, 1, "#ff9db8");
-  P.rect(24, 21, 3, 1, "#ff9db8");
-  P.set(15, 22, K);
-  P.set(16, 23, K);
-  P.set(17, 22, K);
+  slimeFace(P, 0, b);
+  P.flush();
+}
+
+/** 迷路史萊姆: the slime, with a big question mark floating over its head. */
+function slimeLost(cv: HTMLCanvasElement, b: boolean) {
+  const P = new Px(cv, 32, 38);
+  slimeBody(P, 8, true, BLUE_SLIME);
+  P.grid([".www.", "ww.ww", "...ww", "..ww.", "..w..", ".....", "..w.."], { w: "#fff4dc" }, 22, 0);
+  P.outline(K);
+  slimeFace(P, 8, b);
+  // A flat, unsure mouth instead of the smile.
+  P.set(15, 30, K);
+  P.set(16, 30, K);
+  P.set(17, 30, K);
+  P.set(16, 31, BLUE_SLIME.body);
+  P.flush();
+}
+
+/** 守門史萊姆王: a crowned slime standing guard with a spear. */
+function slimeKing(cv: HTMLCanvasElement, b: boolean) {
+  const P = new Px(cv, 36, 40);
+  const oy = 10;
+  P.rect(32, 6, 2, 32, "#b07a4f");
+  P.grid(["..s..", ".sss.", ".sss.", "sssss", "..n.."], { s: "#d8d4ee", n: "#7a4a34" }, 30, 1);
+  slimeBody(P, oy, false, PURPLE_SLIME);
+  // Sits on the top of the head (the body's top edge is at y = 6 + oy).
+  const cy = 2 + oy;
+  P.grid(["y...y...y", "yy.yyy.yy", "yyyyyyyyy", "yrryyyrry", "yyyyyyyyy"], { y: "#ffcf4a", r: "#ff6b6b" }, 12, cy);
+  P.outline(K);
+  slimeFace(P, oy, b);
+  P.set(13, cy + 1, "#fff6b0");
   P.flush();
 }
 
@@ -162,6 +216,27 @@ function ghost(cv: HTMLCanvasElement, b: boolean) {
   P.rect(22, 21, 3, 1, "#ff9db8");
   P.rect(15, 21, 2, 2, "#7a4a6a");
   P.flush();
+}
+
+/** 愛哭幽靈: the ghost, with streams of tears and a wobbly frown. */
+function ghostCry(cv: HTMLCanvasElement, b: boolean) {
+  ghost(cv, b);
+  const ctx = cv.getContext("2d");
+  if (!ctx) return;
+  const tear = "#8fd4ff";
+  const put = (x: number, y: number, c: string) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(x, y, 1, 1);
+  };
+  // Replace the round mouth with a wobbly frown, then draw two tear streams under the eyes.
+  for (let x = 14; x <= 17; x++) for (let y = 21; y <= 22; y++) put(x, y, "#f4ecff");
+  for (const [x, y] of [[13, 23], [14, 22], [15, 23], [16, 22], [17, 23], [18, 22]]) put(x, y, K);
+  for (let y = 19; y <= 26; y++) {
+    put(11, y, tear);
+    put(20, y, tear);
+  }
+  put(10, 27, tear);
+  put(21, 27, tear);
 }
 
 function dragon(cv: HTMLCanvasElement, b: boolean) {
@@ -393,8 +468,14 @@ export function drawSprite(cv: HTMLCanvasElement, kind: SpriteKind, variant = 0,
   switch (kind) {
     case "slime":
       return slime(cv, blink);
+    case "slime-lost":
+      return slimeLost(cv, blink);
+    case "slime-king":
+      return slimeKing(cv, blink);
     case "ghost":
       return ghost(cv, blink);
+    case "ghost-cry":
+      return ghostCry(cv, blink);
     case "dragon":
       return dragon(cv, blink);
     case "owl":

@@ -10,7 +10,10 @@ export type Monster = { kind: SpriteKind; name: string; scale: number; hue: numb
 /** Sprite size (an integer multiple of its native pixels) and whether it hovers. */
 const LOOK: Record<string, { scale: number; float?: boolean }> = {
   slime: { scale: 6 },
+  "slime-lost": { scale: 6 },
+  "slime-king": { scale: 5 },
   ghost: { scale: 5, float: true },
+  "ghost-cry": { scale: 5, float: true },
   dragon: { scale: 4 },
 };
 export const FALLBACK_MONSTER: Monster = { kind: "slime", name: "…", scale: 6, hue: 0 };

@@ -27,7 +27,7 @@ Small orange text on cream is 2.4:1 and fails. Small labels (第 N 題, 難度) 
 
 ## Components (`components/pixel.tsx`)
 
-`Panel` (cream, lav, turn), `PixelButton` (ok, retry, flee, primary), `LabelChip`, `Sprite` (slime, ghost, dragon, owl, hero, crown, heart, torch, campfire), `SceneBackground` (stone, moss, crimson), `HomeBackground` (the home page's dungeon corridor, seen in perspective, sized to the viewport so its pixels stay square, with flickering torch sprites on its side walls), `ScoreMeter` (15 cells), `TurnRibbon`, `Nameplate`, `DialogueBox` (owl portrait, `…` loader, and one or more lines typed in order: the result line, then a line about the next team, with a 2.2 s reading pause between them; the ▼ shows only while another line is still to come, so it means "the owl has more to say").
+`Panel` (cream, lav, turn), `PixelButton` (ok, retry, flee, primary), `LabelChip`, `Sprite` (slime, slime-lost, slime-king, ghost, ghost-cry, dragon, owl, hero, crown, heart, torch, campfire), `SceneBackground` (stone, moss, crimson), `HomeBackground` (the home page's dungeon corridor, seen in perspective, sized to the viewport so its pixels stay square, with flickering torch sprites on its side walls), `ScoreMeter` (15 cells), `TurnRibbon`, `Nameplate`, `DialogueBox` (owl portrait, `…` loader, and one or more lines typed in order: the result line, then a line about the next team, with a 2.2 s reading pause between them; the ▼ shows only while another line is still to come, so it means "the owl has more to say").
 
 Also: `components/stage.tsx` (the scaled big-screen stage) and `components/qr.tsx` (QR in the panel colors; give it an `alt`).
 
