@@ -13,7 +13,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Only PR runs cancel an older run: on main a newer merge must not kill a deploy halfway.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
@@ -41,3 +42,44 @@ jobs:
           name: playwright-results
           path: test-results/
           retention-days: 7
+
+  # Every push to main (i.e. every merged PR) deploys the Worker, once the checks above pass.
+  # Needs two repository secrets: CLOUDFLARE_API_TOKEN (an API token with the "Edit Cloudflare
+  # Workers" template) and CLOUDFLARE_ACCOUNT_ID. Until both exist this job skips with a warning
+  # instead of turning main red. Runtime secrets (OWNER_KEY, ANTHROPIC_API_KEY) are not touched:
+  # they live in the Worker and survive a deploy. The Vercel frontend deploys itself from main;
+  # this job usually finishes first, which matches the "Worker before frontend" deploy order
+  # (docs/designs/question-media-content.md).
+  deploy-worker:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # One deploy at a time, and never cancel one halfway (unlike the check job above).
+    concurrency:
+      group: deploy-worker
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Skip when Cloudflare secrets are not set up
+        id: secrets
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::Worker not deployed: add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.secrets.outputs.ok == 'true'
+        uses: actions/checkout@v5
+      - if: steps.secrets.outputs.ok == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.secrets.outputs.ok == 'true'
+        run: npm ci
+      - if: steps.secrets.outputs.ok == 'true'
+        run: npx wrangler deploy
