@@ -510,7 +510,7 @@ export class DungeonRoom {
     this.conns.add(conn.id);
     this.sendTo(conn, this.snapshot());
     if (this.lastNarration) this.sendTo(conn, { type: "NARRATION", ...this.lastNarration });
-    if (this.epilogue) this.sendTo(conn, { type: "EPILOGUE", text: this.epilogue });
+    if (this.epilogue) this.sendTo(conn, { type: "EPILOGUE", text: this.epilogue, replay: true });
   }
 
   onClose(conn: Conn) {

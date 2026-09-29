@@ -40,13 +40,13 @@ export function shouldSpeakNarration(narration: SpokenNarration, baselineEventId
   return narration.eventId !== lastSpoken.eventId || !sameLines(narration.lines, lastSpoken.lines);
 }
 
-/** Speak EPILOGUE iff a live GAME_OVER was already observed on this connection — onConnect's
- * resend of an already-finished game's epilogue text is never preceded by a GAME_OVER on the
- * CURRENT connection (GAME_OVER is only ever broadcast live, never replayed at connect; see
- * dungeon-room.ts's onConnect), so this distinguishes a live epilogue from a stale replay
- * without comparing text or persisting anything across reconnects. */
-export function shouldSpeakEpilogue(sawLiveGameOver: boolean): boolean {
-  return sawLiveGameOver;
+/** Speak a live EPILOGUE, never onConnect's replay of one: the server marks the replay with
+ * `replay: true` and sends the live broadcast without it. This replaced "was a live GAME_OVER seen
+ * on this connection", which went wrong when a connection landed in the ~4 s between GAME_OVER and
+ * the live EPILOGUE: that EPILOGUE was taken for a replay and never spoken. (The Worker deploys
+ * before the frontend, so a page that reads the flag never talks to a server that doesn't send it.) */
+export function shouldSpeakEpilogue(msg: { replay?: true }): boolean {
+  return !msg.replay;
 }
 
 const ZH_OR_CMN_PREFIX_RE = /^(zh|cmn)/i;

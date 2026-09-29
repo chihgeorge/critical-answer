@@ -1037,6 +1037,9 @@ describe("narration (T5-T7)", () => {
       const late = makeConn("late");
       room.onConnect(late);
       expect(sentMsgs(late).map((m) => m.type)).toEqual(["STATE", "NARRATION", "EPILOGUE"]);
+      // Marked as a replay, so /screen shows it without speaking it again; the live one isn't.
+      expect(sentMsgs(late).find((m) => m.type === "EPILOGUE").replay).toBe(true);
+      expect(all(room).find((m) => m.type === "EPILOGUE").replay).toBeUndefined();
     });
   });
 

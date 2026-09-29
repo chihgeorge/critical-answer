@@ -55,9 +55,9 @@ describe("shouldSpeakNarration", () => {
 });
 
 describe("shouldSpeakEpilogue", () => {
-  it("speaks only after a live GAME_OVER was observed this connection", () => {
-    expect(shouldSpeakEpilogue(true)).toBe(true);
-    expect(shouldSpeakEpilogue(false)).toBe(false); // onConnect's resend of an already-finished game
+  it("speaks the live broadcast and never onConnect's replay", () => {
+    expect(shouldSpeakEpilogue({})).toBe(true);
+    expect(shouldSpeakEpilogue({ replay: true })).toBe(false);
   });
 });
 
