@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 
 const team = "六個字的隊伍";
@@ -180,6 +180,18 @@ describe("next-team prompt (the second line)", () => {
       const line = p.nextLine(next);
       expect(line).not.toBe(prev);
       prev = line;
+    }
+  });
+});
+
+describe("scripted: entering the boss room", () => {
+  it("announces the entrance, and never recites the branch choices (design doc T4)", () => {
+    const p = createScriptedProvider(lcg(3));
+    const event: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 3, entersBoss: { branches: ["武力"] } };
+    for (let i = 0; i < 8; i++) {
+      const line = p.line(event);
+      expect(BOSS_ENTER_VARIANTS.some((v) => line === v.replace("{team}", "紅隊").replace("{monster}", "史萊姆").replace("{points}", "3"))).toBe(true);
+      expect(line).not.toContain("武力");
     }
   });
 });

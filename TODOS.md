@@ -159,23 +159,6 @@
 ---
 
 
-## 主持人頁的鍵盤操作
-
-**What:** 主持人用筆電時，判分鈕支援鍵盤（例如 1/2/3），並有清楚的焦點框。
-
-**Why:** 設計審查 6C 選擇不做（決定 `6c02a72b`，完整度 3/10）。上限：筆電主持人只能用觸控板或滑鼠，鍵盤使用者沒有無障礙的焦點狀態。觸控目標已達標（判分鈕高 78px）。
-
-**Pros:** 筆電主持人的判分速度更快；符合無障礙基本要求。
-
-**Cons:** 約 15 行程式，但要決定快捷鍵不與瀏覽器衝突。
-
-**Context:** 觸發條件：主持人反映筆電上判分太慢，或任何公開發布之前。
-
-**Effort:** S（人工約 0.3 天 / CC 約 15 分鐘）　**Priority:** P3
-
-**Depends on / blocked by:** 無。
-
----
 
 ## 怪物美術：目前只有三張圖
 
@@ -272,27 +255,24 @@
 
 
 
+
+## Completed
+
 ## 首領登場的敘事事件（DM 分支回提用）
 
-**What:** 新增一個「隊伍進入首領房」的旁白事件型別（`lib/narration/events.ts` 目前只有 `correct`/`boss-hit`/`boss-kill`，沒有進房事件），讓 DM 分支互動能在首領登場時回提隊伍先前選過的分支。
+**Priority:** P2　**Completed:** v0.9.11.0 (2026-09-29)
 
-**Why:** `/plan-eng-review`（2026-09-21）的 Codex 外部審查指出這個接進點不存在，且共用首領可能在某隊進房前就被別隊打死，事件設計要處理這個時序問題。設計文件原本假設「首領登場時回提選擇」，但這一輪決定先不做，只做每房分支本身。
-
-**Pros:** DM 分支互動的敘事收尾（讓玩家的選擇被記得、被提起）需要這個事件才能做。
-
-**Cons:** 要新增事件型別、處理共用首領被搶先擊殺的時序、更新 narration runner 的事件契約。
-
-**Context:** 見 [docs/designs/dm-branching-and-question-types.md](docs/designs/dm-branching-and-question-types.md)。`lib/room/dungeon-room.ts` 的 `handleHostJudge` 是唯一會產生 `NarrationEvent` 的地方，新事件要從那裡發出。
-
-**更新（2026-09-21，DM 分支互動實作階段）：** 設計文件 Implementation Tasks 的 T4（LLM 不可用時跳過首領回提、不硬塞模板）併進本項——因為回提事件本身還沒做，T4 現在沒有程式碼可改，等這項開工時一起處理降級邏輯。`lib/narration/runner.ts` 目前對任何事件都保證恰好 emit 一次（LLM 失敗會自動換 scripted 備用台詞，不會卡住），新事件型別要決定是沿用這個「保證 emit」的既有契約（一定講一句話，用備用台詞頂）還是真的要能「完全跳過不講」——後者需要修改 runner 的契約，前者不用。
-
-**Effort:** M（人工約 1 天 / CC 約 1 小時）　**Priority:** P2
-
-**Depends on / blocked by:** ~~DM 分支互動（每房觸發版）先實作完成~~ — 已在 v0.3.0.0（2026-09-22）實作完成（`lib/game-state.ts` 的 `recordBranchChoice`／`TEAM_BRANCH_CHOICE`），本項不再被阻擋，可以開工。
+**What:** 沒有另開新事件（那會多一個 eventId、也要改 runner「每個事件恰好 emit 一次」的契約）：讓隊伍越過首領門檻的那次答對，`correct` 事件多帶 `entersBoss: { branches }`（隊伍一路上的分支選擇，依房間順序）。時序問題自然消失：事件在那次判定當下產生，而共用首領如果已經被打倒，遊戲早就結束了。LLM 旁白會提到踏進首領房並呼應分支選擇；scripted 備用台詞只宣告進入首領房，不硬塞「你選了 X」模板（T4）。見 `lib/narration/events.ts`、`scripted.ts` 的 `BOSS_ENTER_VARIANTS`、`llm.ts` 的 `describeEvent`。
 
 ---
 
-## Completed
+## 主持人頁的鍵盤操作
+
+**Priority:** P3　**Completed:** v0.9.10.0 (2026-09-29)
+
+**What:** 主持人頁判分可以用鍵盤：`1` 答對、`2` 答錯・重答、`3` 答錯・逃跑；揭曉答案時 `1` 或 Enter 是「下一題」。按鍵只在對應按鈕可按時生效，加了修飾鍵（Ctrl+1 是瀏覽器切分頁）、長按重複、或正在輸入框（主持人筆記）打字時不作用；對應邏輯在 `lib/host-keys.ts`（單元測試）。有滑鼠的裝置在按鈕上顯示小小的 1/2/3 提示（`aria-hidden`，手機不顯示）。焦點框原本就有（`.px-btn:focus-visible`）。e2e `host-keys.spec.ts` 抓到一個真 bug：`{ ...e }` 不會複製 KeyboardEvent 的 getter，Ctrl+1 會被當成 1，已修正。
+
+---
 
 ## 大廳營火
 

@@ -1,7 +1,7 @@
 // Typed narration events, derived from what just happened in the game. This is
 // the seam every narration provider (scripted now, LLM later) reads.
 
-import type { AnswerOutcome, GameState } from "../game-state";
+import { BRANCH_LABELS, type AnswerOutcome, type GameState } from "../game-state";
 
 /** Who is up next and what they face: the story moves on to them after the result line. */
 export interface NextTurn {
@@ -14,7 +14,10 @@ type WithNext<T> = T & { next?: NextTurn };
 
 export type NarrationEvent =
   | WithNext<{ type: "start"; teams: string[] }>
-  | WithNext<{ type: "correct"; team: string; monster: string; points: number }>
+  /** `entersBoss`: this answer took the team over the boss threshold, into the boss room. `branches`
+   * are the DM branch choices it made on the way (display text, room order), for the LLM to call
+   * back; the scripted lines just announce the entrance (design doc T4: no forced callback template). */
+  | WithNext<{ type: "correct"; team: string; monster: string; points: number; entersBoss?: { branches: string[] } }>
   | WithNext<{ type: "retry"; team: string; monster: string }>
   | WithNext<{ type: "flee"; team: string; monster: string }>
   | WithNext<{ type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number }>
@@ -33,11 +36,31 @@ export function toNarrationEvent(prev: GameState, outcome: AnswerOutcome, monste
   return next && event.type !== "boss-kill" ? { ...event, next } : event;
 }
 
+/** A team's branch choices as display text, in the order of the rooms it made them in. */
+function branchesOf(team: GameState["teams"][number]): string[] {
+  return Object.entries(team.branchChoices)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .flatMap(([, id]) => (id ? [BRANCH_LABELS[id]] : []));
+}
+
 function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string): Exclude<NarrationEvent, { type: "epilogue" }> {
-  const team = prev.teams.find((t) => t.id === outcome.teamId)?.name ?? "冒險者";
+  const t = prev.teams.find((x) => x.id === outcome.teamId);
+  const team = t?.name ?? "冒險者";
   switch (outcome.type) {
-    case "correct-room-advance":
-      return { type: "correct", team, monster, points: outcome.pointsAwarded };
+    case "correct-room-advance": {
+      const threshold = prev.config.bossThreshold;
+      // Only the answer that crosses the threshold: the boss is shared, and a team already past it
+      // is fighting the boss (correct-boss-hit), never advancing rooms. If the boss had already been
+      // killed the game would be over, so no judgment could get here.
+      const entersBoss = !!t && t.score < threshold && t.score + outcome.pointsAwarded >= threshold;
+      return {
+        type: "correct",
+        team,
+        monster,
+        points: outcome.pointsAwarded,
+        ...(entersBoss ? { entersBoss: { branches: branchesOf(t) } } : {}),
+      };
+    }
     case "incorrect-retry":
       return { type: "retry", team, monster };
     case "incorrect-flee":
