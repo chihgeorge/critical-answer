@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.7.0] - 2026-09-29
+
+### Fixed
+- On browsers that load their voices a moment after the page opens, the first narration after turning the big screen's voice on could be silently skipped. It's now read out as soon as the voice is ready.
+
 ## [0.9.5.0] - 2026-09-29
 
 ### Added
