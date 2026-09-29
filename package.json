@@ -1,6 +1,6 @@
 {
   "name": "critical-answer",
-  "version": "0.9.7",
+  "version": "0.9.9",
   "private": true,
   "scripts": {
     "dev": "concurrently \"NEXT_PUBLIC_PARTYKIT_HOST=localhost:8787 next dev\" \"wrangler dev --var ALLOWED_ORIGINS:*\"",
