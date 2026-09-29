@@ -119,8 +119,8 @@
     {
       "monster": {
         "name": "迷路史萊姆",
-        "sprite": "slime",
-        "hue": 190
+        "sprite": "slime-lost",
+        "hue": 0
       },
       "baseDifficulty": 2,
       "questions": [
@@ -177,8 +177,8 @@
     {
       "monster": {
         "name": "愛哭幽靈",
-        "sprite": "ghost",
-        "hue": 160
+        "sprite": "ghost-cry",
+        "hue": 0
       },
       "baseDifficulty": 3,
       "questions": [
@@ -235,8 +235,8 @@
     {
       "monster": {
         "name": "守門史萊姆王",
-        "sprite": "slime",
-        "hue": 300
+        "sprite": "slime-king",
+        "hue": 0
       },
       "baseDifficulty": 4,
       "questions": [

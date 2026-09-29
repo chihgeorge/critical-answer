@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.13.0] - 2026-09-29
+
+### Added
+- Rooms 3 to 5 now have their own monsters instead of recoloured copies: a blue lost slime with a question mark over its head, a crying ghost, and a crowned slime king standing guard with a spear. The live question bank keeps its current monsters until it's re-seeded, since the bank editor doesn't offer a monster picker yet.
+
 ## [0.9.9.0] - 2026-09-29
 
 ### Added

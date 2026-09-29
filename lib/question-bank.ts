@@ -48,7 +48,7 @@ export interface Bank {
   boss: { monster: BankMonster; maxHp: number; questions: BankQuestion[] };
 }
 
-const SPRITES: SpriteKind[] = ["slime", "ghost", "dragon"];
+const SPRITES: SpriteKind[] = ["slime", "slime-lost", "slime-king", "ghost", "ghost-cry", "dragon"];
 /** Exported so app/bank-editor/page.tsx's client-side pre-save check can't silently drift from
  * this server-side minimum. */
 export const MIN_OPTIONS = 2;
