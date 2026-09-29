@@ -7,6 +7,16 @@ All notable changes to Critical Answer are documented here.
 ### Added
 - The big screen can play background music: an 8-bit dungeon loop, generated in the browser, so there are no music files to download or license. Turn it on with the 🎵 button next to the voice toggle; the setting is remembered. The music gets quieter whenever the narrator is speaking.
 
+## [0.9.4.0] - 2026-09-29
+
+### Fixed
+- If the big screen reconnected in the few seconds between the boss falling and the epilogue arriving, the epilogue appeared on screen but was never read aloud. It's now read aloud; reloading a finished game still doesn't repeat it.
+
+## [0.9.3.0] - 2026-09-29
+
+### Fixed
+- An image uploaded in the bank editor but never saved (tab closed, browser crash, a save that hit a conflict) used to stay in storage forever. It's now deleted after the same wait as any other image the bank stopped using; an image that does get saved is kept.
+
 ## [0.9.2.0] - 2026-09-29
 
 ### Fixed

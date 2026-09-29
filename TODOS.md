@@ -3,23 +3,6 @@
 
 
 
-## 語音旁白：重連時剛好落在 GAME_OVER 到 EPILOGUE 之間會漏念後記
-
-**Priority:** P3
-
-**What:** `/screen` 的語音旁白（`lib/narration/tts.ts` 的 `shouldSpeakEpilogue`）用「這次連線有沒有先看過即時 GAME_OVER」判斷後記是不是重播。如果連線（重新整理、WS 重連）剛好落在首領死亡（GAME_OVER 廣播）到後記文字準備好（`EPILOGUE_DELAY_MS`，約 4 秒）之間，這個連線既沒收到即時 GAME_OVER，onConnect 也還沒有 `this.epilogue` 可以重播——4 秒後真正的即時 EPILOGUE 廣播抵達時，會被誤判成重播而永遠不念。畫面上後記文字正常顯示，但語音永遠漏那一段，沒有任何錯誤提示。
-
-**Why:** adversarial review（`/review`，2026-09-23）找到的真實 bug，正確修法需要 server 協議改動（明確標記訊息是重播還是即時廣播）或一個只靠 client 的啟發式解法，兩者都有成本。
-
-**Pros:** 修好後後記語音在所有重連時機下都能正確播放。
-
-**Cons:** 發生機率低（4 秒視窗、需要剛好在那個時間點重新整理或斷線重連），需要 server 端配合才能徹底修好。
-
-**Context:** 見 [docs/designs/dm-voice-narration-tts.md](docs/designs/dm-voice-narration-tts.md)、`lib/narration/tts.ts` 的 `shouldSpeakEpilogue`、`lib/room/dungeon-room.ts` 的 `sendEpilogue`（`EPILOGUE_DELAY_MS`）。
-
-**Depends on / blocked by:** 無直接阻塞，等真的有人回報這個情況再處理。
-
----
 
 ## 語音旁白：語音清單還沒載完時到達的旁白會被永久靜默跳過
 
@@ -63,23 +46,6 @@
 
 ---
 
-## 上傳但從未存檔的題庫圖片會永久留在 R2
-
-**Priority:** P3
-
-**What:** `lib/bank-store.ts` 的孤兒圖片清理機制是「存檔前後的 bank 內容比對」（`imageKeysOf(current) \ imageKeysOf(next)`）。這個機制結構上抓不到「上傳成功但從未被存進任何一版 bank」的圖片——因為它從沒被任何一版 bank「擁有」過，沒有「之前」可以比對。
-
-**Why:** 觸發條件很日常：在題庫編輯器上傳圖片後，使用者還沒按「儲存」就關分頁、瀏覽器當機，或存檔時剛好版本衝突（409）。這張圖已經進了 R2，但永遠不會被任何清理邏輯發現。adversarial review 找到這個結構性漏洞（finding #2），未在本輪修。
-
-**Pros:** 修了之後就沒有這個緩慢累積的儲存洩漏。
-
-**Cons:** 沒有簡單修法——`beforeunload` 觸發不穩定（分頁被強制關閉時不會跑），穩妥做法需要一支背景排程 worker/cron 定期掃描「未被任何 bank 版本引用的物件」，複雜度超出這次 R2 整合的範圍。
-
-**Context:** 見 [docs/designs/image-question-type.md](docs/designs/image-question-type.md) 的「R2 cleanup mechanism」決策；`lib/bank-store.ts` 的 `putBank()` 與 `lib/question-bank.ts` 的 `imageKeysOf()`。
-
-**Depends on / blocked by:** 無直接阻塞。使用者決定：目前規模（單人維護、圖片數量少、R2 免費額度）下這只是浪費幾 KB～幾 MB，先延後，等真的在意儲存成本或圖片量變大時再做週期性掃描機制。
-
----
 
 
 
@@ -435,6 +401,22 @@
 **Priority:** P3　**Completed:** v0.9.5.0 (2026-09-29)
 
 **What:** 大螢幕 `/screen` 加了背景音樂：一段用 Web Audio API 即時合成的 A 小調 8-bit 地城循環（方波旋律＋三角波低音，`lib/bgm.ts` 是曲子資料、`lib/bgm-player.ts` 負責播放）。跟美術一樣用程式產生，所以沒有素材授權問題、也不用下載音檔。右下角「🎵 音樂」按鈕切換，預設關閉、會記住設定（記住開啟時，重新整理後第一次點擊頁面才開始播，因為瀏覽器規定）；語音旁白在念的時候音樂自動降低音量。只放在大螢幕，手機不播。
+
+---
+
+## 語音旁白：重連時剛好落在 GAME_OVER 到 EPILOGUE 之間會漏念後記
+
+**Priority:** P3　**Completed:** v0.9.4.0 (2026-09-29)
+
+**What:** 採用 server 協議改動：`onConnect` 重送的 EPILOGUE 帶 `replay: true`，即時廣播不帶；`lib/narration/tts.ts` 的 `shouldSpeakEpilogue` 改成只看這個欄位，`/screen` 拿掉 `sawLiveGameOver`。連線落在 GAME_OVER 和後記之間時，後記會正常念出來；重整已結束的遊戲仍然不會重念。
+
+---
+
+## 上傳但從未存檔的題庫圖片會永久留在 R2
+
+**Priority:** P3　**Completed:** v0.9.3.0 (2026-09-29)
+
+**What:** 不用另寫週期性掃描：圖片一上傳成功就排進 v0.9.1.0 做好的延後刪除佇列（`BankStore.queueUploadedImage`，由 `worker/index.ts` 的上傳路徑呼叫 bank DO 的 `imageUploaded`）。期限內被存進題庫的圖，alarm 會看到它還在使用中而把它移出佇列；從沒存檔的（關分頁、當機、409）期限一到就刪。排隊失敗只記 log，不影響上傳本身。
 
 ---
 

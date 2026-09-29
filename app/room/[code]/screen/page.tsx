@@ -290,10 +290,6 @@ export default function ScreenPage() {
    * spoken) would never update it, and a correction to it would have nothing to compare against
    * (adversarial review finding — see shouldSpeakNarration's doc comment for the fixed bug). */
   const lastSpokenNarration = useRef<SpokenNarration | null>(null);
-  /** Whether a live GAME_OVER has been seen since the last baseline reset — see
-   * shouldSpeakEpilogue's doc comment for why this, not "first EPILOGUE seen", is the correct
-   * live-vs-replay signal. */
-  const sawLiveGameOver = useRef(false);
 
   // Read in an effect, not the initial render: ttsSupported() reads `window`, which doesn't
   // exist during SSR — rendering the toggle from the first client render would disagree with
@@ -419,7 +415,6 @@ export default function ScreenPage() {
     onOpen() {
       setRested(false);
       narrationBaseline.current = null;
-      sawLiveGameOver.current = false;
     },
     onClose(event: CloseEvent) {
       // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
@@ -449,7 +444,6 @@ export default function ScreenPage() {
           // A room reset can arrive without a socket reconnect, and the next game's eventIds
           // start over from 0 — re-arm the baseline the same way onOpen does.
           narrationBaseline.current = null;
-          sawLiveGameOver.current = false;
           window.speechSynthesis?.cancel();
           break;
         case "STATE":
@@ -467,11 +461,10 @@ export default function ScreenPage() {
           break;
         case "EPILOGUE":
           setEpilogue(msg.text);
-          if (shouldSpeakEpilogue(sawLiveGameOver.current)) speak([msg.text]);
+          if (shouldSpeakEpilogue(msg)) speak([msg.text]);
           break;
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
-          sawLiveGameOver.current = true;
           break;
       }
     },

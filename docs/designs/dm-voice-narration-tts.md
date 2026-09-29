@@ -208,3 +208,7 @@ No issues found。單一 `speechSynthesis.speak()` 呼叫，無迴圈、無 N+1�
 **VERDICT:** ENG REVIEW CLEARED — ready to implement.
 
 NO UNRESOLVED DECISIONS
+
+## 後記重播判斷改成 server 標記（v0.9.4.0，2026-09-29）
+
+原本 `/screen` 用「這次連線有沒有先看過即時 GAME_OVER」判斷 EPILOGUE 是不是 `onConnect` 的重播。連線如果剛好落在 GAME_OVER 和即時 EPILOGUE 之間的約 4 秒，即時的那則會被誤判成重播而不念。現在 `onConnect` 重送後記時帶 `replay: true`，即時廣播不帶；`shouldSpeakEpilogue` 只看這個欄位。Worker 會比前端先部署（CI 的 `deploy-worker`），所以讀這個欄位的頁面不會連到還沒送這個欄位的 server。
