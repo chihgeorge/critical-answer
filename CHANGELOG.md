@@ -2,11 +2,14 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [0.9.1.0] - 2026-09-28
+## [0.9.1.0] - 2026-09-29
 
 ### Changed
 - The home page has a new backdrop: you're standing in a dungeon corridor, with brick walls running off into the dark, a beamed ceiling hung with chains and cobwebs, flickering torches on both walls, and an iron-banded door at the far end. A skull, bones, a treasure chest and a barrel lie on the floor. Like the rest of the art, it's drawn in code, so the page doesn't download any images.
 - The home backdrop now keeps its pixels square at any screen size, instead of stretching one fixed grid to fill the window.
+
+### Fixed
+- Replacing or removing a question's image in the bank editor while a game was running deleted that image straight away, so the running game's question or explanation image vanished. Removed images now stay available until every game that could still be using them has ended (a room's 24-hour expiry plus an hour), and one that's put back in the meantime is never deleted.
 
 ## [0.9.0.0] - 2026-09-24
 
