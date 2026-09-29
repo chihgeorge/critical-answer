@@ -234,9 +234,8 @@ export default function HostPage() {
     send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice });
   }
 
-  // gstack-shortcut(dec-ac659960): disconnect UI on /host only (judge buttons disable, "重新連線中");
-  // /play and /screen show nothing, so a dropped player sees a frozen screen. Upgrade when playtest 2
-  // shows confusion about missed turns, or when the game leaves LAN.
+  // Disconnect UI: judge buttons disable and "重新連線中" shows here; /play and /screen show their own
+  // notice (lib/offline-notice.ts), and a phone is told after reconnecting if its turn was skipped.
   const ready = connected && claimed;
   const turn = game ? describeTurn(game.view, game.question) : null;
   // The judge buttons and 下一題 swap in the same slot the moment a STATE arrives, so a double-tap
