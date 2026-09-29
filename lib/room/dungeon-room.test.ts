@@ -997,6 +997,28 @@ describe("narration (T5-T7)", () => {
     expect(all(room).find((m) => m.type === "NARRATION").lines[0]).toBe("提供者的一行");
   });
 
+  it("drops an older event's narration that resolves after a newer one's (no overwrite, no stale replay)", async () => {
+    const pending: ((line: string) => void)[] = [];
+    const slow = { name: "slow", narrate: () => new Promise<string>((resolve) => pending.push(resolve)) };
+    const { room, hostConn } = start(2, { holdMs: 5000, epilogueDelayMs: 0, provider: slow });
+    await flush();
+    pending[0]("開場的一行");
+    await flush();
+    judgeCorrect(room, hostConn); // event 2: its LLM call is still out...
+    judgeCorrect(room, hostConn); // ...when event 3 is judged
+    await flush();
+    expect(pending).toHaveLength(3);
+    pending[2]("新的一行");
+    await flush();
+    pending[1]("舊的一行");
+    await flush();
+    const narr = all(room).filter((m) => m.type === "NARRATION");
+    expect(narr.map((m) => m.lines[0])).toEqual(["開場的一行", "新的一行"]);
+    const late = makeConn("late");
+    room.onConnect(late);
+    expect(sentMsgs(late).find((m) => m.type === "NARRATION").lines[0]).toBe("新的一行");
+  });
+
   it("survives a provider that throws", async () => {
     const bad = { name: "bad", narrate: async () => { throw new Error("boom"); } };
     const { room } = start(2, { holdMs: 30, epilogueDelayMs: 0, provider: bad });

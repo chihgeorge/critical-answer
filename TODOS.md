@@ -19,23 +19,6 @@
 
 ---
 
-## 旁白 emit() 無條件覆蓋 lastNarration，較慢的舊事件可能在新事件之後 resolve 並蓋掉它
-
-**Priority:** P3
-
-**What:** `lib/room/dungeon-room.ts` 的 `emit()`（narration runner 的 callback）無條件寫入 `this.lastNarration = { eventId, lines }`，沒有檢查 `eventId` 是否比目前已存的新。`handleHostJudge` 不會等待旁白播放完才處理下一個事件，所以連續兩個事件的 `runner.run()` 可能同時在跑；如果事件 N-1 的 LLM 呼叫比事件 N 慢，N-1 較晚 resolve 時會把 N 剛廣播的新內容蓋掉，並且之後重連的連線會被重播那句過期的舊旁白。
-
-**Why:** adversarial review（`/review`，2026-09-23，multi-segment-narration 分支）找到的真實 bug，不是這次 diff 引進的，但這次把 LLM prompt 從 1-2 句改成 2-3 句，生成時間變長，觸發這個 race 的機率被加寬了。
-
-**Pros:** 修好後不會有舊旁白蓋掉新旁白、或重連時被重播過期內容的風險。
-
-**Cons:** 發生機率仍然偏低（需要兩個事件的 LLM 呼叫剛好以錯誤順序 resolve），修法本身簡單（`emit()` 加一行 `eventId` 單調性檢查），但需要一個新測試驗證 out-of-order 完成不會覆蓋。
-
-**Context:** 見 `lib/room/dungeon-room.ts` 的 `emit()` callback（narration runner 建立處）、`lib/narration/runner.ts` 的 `run()`。
-
-**Depends on / blocked by:** 無直接阻塞，先觀察是否真的在實際遊戲中發生。
-
----
 
 
 ## 語音旁白：語音清單還沒載完時到達的旁白會被永久靜默跳過
@@ -80,23 +63,6 @@
 
 ---
 
-## 上傳但從未存檔的題庫圖片會永久留在 R2
-
-**Priority:** P3
-
-**What:** `lib/bank-store.ts` 的孤兒圖片清理機制是「存檔前後的 bank 內容比對」（`imageKeysOf(current) \ imageKeysOf(next)`）。這個機制結構上抓不到「上傳成功但從未被存進任何一版 bank」的圖片——因為它從沒被任何一版 bank「擁有」過，沒有「之前」可以比對。
-
-**Why:** 觸發條件很日常：在題庫編輯器上傳圖片後，使用者還沒按「儲存」就關分頁、瀏覽器當機，或存檔時剛好版本衝突（409）。這張圖已經進了 R2，但永遠不會被任何清理邏輯發現。adversarial review 找到這個結構性漏洞（finding #2），未在本輪修。
-
-**Pros:** 修了之後就沒有這個緩慢累積的儲存洩漏。
-
-**Cons:** 沒有簡單修法——`beforeunload` 觸發不穩定（分頁被強制關閉時不會跑），穩妥做法需要一支背景排程 worker/cron 定期掃描「未被任何 bank 版本引用的物件」，複雜度超出這次 R2 整合的範圍。
-
-**Context:** 見 [docs/designs/image-question-type.md](docs/designs/image-question-type.md) 的「R2 cleanup mechanism」決策；`lib/bank-store.ts` 的 `putBank()` 與 `lib/question-bank.ts` 的 `imageKeysOf()`。
-
-**Depends on / blocked by:** 無直接阻塞。使用者決定：目前規模（單人維護、圖片數量少、R2 免費額度）下這只是浪費幾 KB～幾 MB，先延後，等真的在意儲存成本或圖片量變大時再做週期性掃描機制。
-
----
 
 
 
@@ -452,6 +418,22 @@
 **Priority:** P3　**Completed:** v0.9.4.0 (2026-09-29)
 
 **What:** 採用 server 協議改動：`onConnect` 重送的 EPILOGUE 帶 `replay: true`，即時廣播不帶；`lib/narration/tts.ts` 的 `shouldSpeakEpilogue` 改成只看這個欄位，`/screen` 拿掉 `sawLiveGameOver`。連線落在 GAME_OVER 和後記之間時，後記會正常念出來；重整已結束的遊戲仍然不會重念。
+
+---
+
+## 上傳但從未存檔的題庫圖片會永久留在 R2
+
+**Priority:** P3　**Completed:** v0.9.3.0 (2026-09-29)
+
+**What:** 不用另寫週期性掃描：圖片一上傳成功就排進 v0.9.1.0 做好的延後刪除佇列（`BankStore.queueUploadedImage`，由 `worker/index.ts` 的上傳路徑呼叫 bank DO 的 `imageUploaded`）。期限內被存進題庫的圖，alarm 會看到它還在使用中而把它移出佇列；從沒存檔的（關分頁、當機、409）期限一到就刪。排隊失敗只記 log，不影響上傳本身。
+
+---
+
+## 旁白 emit() 無條件覆蓋 lastNarration，較慢的舊事件可能在新事件之後 resolve 並蓋掉它
+
+**Priority:** P3　**Completed:** v0.9.2.0 (2026-09-29)
+
+**What:** `lib/room/dungeon-room.ts` 的 `emit()` 現在只接受不比目前 `lastNarration` 舊、也不超過 `eventSeq` 的 eventId：較慢才回來的舊事件旁白直接丟掉，不再蓋掉新旁白，也不會被重播給重連的連線；`reset()` 之前留下、在重置後才回來的旁白（eventId 比歸零後的 `eventSeq` 大）也一併丟掉。測試 `drops an older event's narration that resolves after a newer one's` 先在沒修的程式上重現了 bug。
 
 ---
 
