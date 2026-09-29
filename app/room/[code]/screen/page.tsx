@@ -320,11 +320,21 @@ export default function ScreenPage() {
     return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
   }, []);
 
+  /** The latest lines that arrived while TTS was on but the voice list hadn't loaded yet (it loads
+   * asynchronously, via voiceschanged). Spoken as soon as a voice turns up, so the first narration
+   * after the toggle isn't silently lost. Only the latest is kept: a newer line replaces it. */
+  const pendingLines = useRef<string[] | null>(null);
+
   /** Cancels anything in progress, then queues each line as its own utterance —
    * speechSynthesis plays consecutive speak() calls in order automatically. No-ops (does not
-   * even cancel) when TTS is off, the API is unsupported, or no matching voice loaded yet. */
+   * even cancel) when TTS is off or the API is unsupported; with no voice loaded yet it keeps
+   * the lines in pendingLines instead. */
   function speak(lines: string[]) {
-    if (!ttsOn || !ttsSupported() || !ttsVoice) return;
+    if (!ttsOn || !ttsSupported()) return;
+    if (!ttsVoice) {
+      pendingLines.current = lines;
+      return;
+    }
     window.speechSynthesis.cancel();
     for (const line of lines) {
       const utter = new SpeechSynthesisUtterance(line);
@@ -333,6 +343,16 @@ export default function ScreenPage() {
       window.speechSynthesis.speak(utter);
     }
   }
+
+  // The voice just loaded: speak whatever arrived while waiting for it (see pendingLines).
+  useEffect(() => {
+    if (!ttsVoice || !pendingLines.current) return;
+    const lines = pendingLines.current;
+    pendingLines.current = null;
+    speak(lines);
+    // Only a newly loaded voice should trigger this; speak() itself changes every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ttsVoice]);
 
   function toggleTts() {
     if (!ttsOn && ttsSupported()) {
@@ -343,6 +363,7 @@ export default function ScreenPage() {
       window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
     } else if (ttsOn) {
       window.speechSynthesis.cancel();
+      pendingLines.current = null; // turned off: nothing waiting should play later
     }
     setTtsOn((on) => {
       const next = !on;
@@ -445,6 +466,7 @@ export default function ScreenPage() {
           // A room reset can arrive without a socket reconnect, and the next game's eventIds
           // start over from 0 — re-arm the baseline the same way onOpen does.
           narrationBaseline.current = null;
+          pendingLines.current = null;
           window.speechSynthesis?.cancel();
           break;
         case "STATE":
