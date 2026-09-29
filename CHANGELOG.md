@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.12.0] - 2026-09-29
+
+### Added
+- The big screen's lobby has a flickering campfire in the middle, and each team's adventurer runs in to gather around it as the team joins. With five or more teams the characters shrink and long names are shortened, so all eight fit.
+
 ## [0.9.9.0] - 2026-09-29
 
 ### Added
