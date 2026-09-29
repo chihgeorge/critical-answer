@@ -29,7 +29,7 @@ const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TRANSCRIPT = 500;
 /** Long enough for a pizza break, short enough that a TV left on overnight is not billed all night. */
 const IDLE_MS = 2 * 60 * 60 * 1000;
-const EXPIRE_MS = 24 * 60 * 60 * 1000;
+export const EXPIRE_MS = 24 * 60 * 60 * 1000;
 /** Sockets per room: players, screens and the host, with room to spare. Stops one client opening thousands. */
 const MAX_CONNECTIONS = 60;
 /** Lets the kill-shot line be read before the story arrives. */

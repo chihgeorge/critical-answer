@@ -2,8 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import { Server, routePartykitRequest, type Connection, type WSMessage } from "partyserver";
 import { entryGate } from "../lib/gate";
 import { positiveMs } from "../lib/room/positive-ms";
-import { DungeonRoom } from "../lib/room/dungeon-room";
-import { BankStore, BankConflictError, type VersionedBank } from "../lib/bank-store";
+import { DungeonRoom, EXPIRE_MS } from "../lib/room/dungeon-room";
+import { BankStore, BankConflictError, IMAGE_CLEANUP_MARGIN_MS, type VersionedBank } from "../lib/bank-store";
 import { bankOrFallback, handleBankApi, type BankConflict } from "../lib/bank-api";
 import { handleBankImageApi } from "../lib/bank-image-api";
 import { deleteOrphanedImages } from "../lib/image-cleanup";
@@ -48,14 +48,20 @@ export class BankStoreDO extends DurableObject<Env> {
       {
         get: (key) => ctx.storage.get(key),
         put: (key, value) => ctx.storage.put(key, value),
+        setAlarm: (at) => ctx.storage.setAlarm(at),
       },
       // R2 access lives only here (this class), never in lib/bank-store.ts — same
-      // platform-abstraction discipline as the rest of this file's DO/RPC split. BankStore
-      // calls this fire-and-forget (never awaits it); deleteOrphanedImages (lib/image-cleanup.ts,
-      // unit-tested there) swallows and logs its own failure, and ctx.waitUntil() keeps it alive
-      // past putBank()'s own return instead of letting the DO cut it off early.
-      async (keys) => {
-        ctx.waitUntil(deleteOrphanedImages(env.images, keys));
+      // platform-abstraction discipline as the rest of this file's DO/RPC split. BankStore calls
+      // this from runImageCleanup() (this DO's alarm, below), awaited; deleteOrphanedImages
+      // (lib/image-cleanup.ts, unit-tested there) swallows and logs its own failure.
+      (keys) => deleteOrphanedImages(env.images, keys),
+      // An orphaned image waits until every room that could have copied the old bank has expired.
+      // Same expiry the rooms use (Room.onStart below, and DungeonRoom's own max(expire, idle)), so
+      // changing ROOM_EXPIRE_MS moves both. A room kept busy for longer than this (activity keeps
+      // pushing its expiry back) can still lose an image it copied — rare enough to accept.
+      {
+        cleanupDelayMs:
+          Math.max(positiveMs(env.ROOM_EXPIRE_MS) ?? EXPIRE_MS, positiveMs(env.ROOM_IDLE_MS) ?? 0) + IMAGE_CLEANUP_MARGIN_MS,
       },
     );
     // Seed-on-first-read otherwise races: two requests arriving before storage has ever been
@@ -66,6 +72,11 @@ export class BankStoreDO extends DurableObject<Env> {
     ctx.blockConcurrencyWhile(async () => {
       await this.store.getVersionedBank();
     });
+  }
+
+  /** Deletes queued orphaned images whose wait is over (see BankStore.runImageCleanup). */
+  async alarm() {
+    await this.store.runImageCleanup();
   }
 
   getBank() {

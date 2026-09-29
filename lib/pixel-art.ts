@@ -425,3 +425,276 @@ export function drawScene(cv: HTMLCanvasElement, name: SceneTheme, W = 160, H = 
     }
   P.flush();
 }
+
+/* ---------- home page: looking down a dungeon corridor ---------- */
+
+/** Screen pixels per scene pixel on the home page, from the viewport size. A whole number, so the
+ * drawn scene and the torch sprites laid over it keep square pixels: about 5 on a phone, 7 on a laptop. */
+export function homeSceneCell(vw: number, vh: number): number {
+  return Math.max(4, Math.min(7, Math.round(Math.min(vw, vh * 0.75) / 80)));
+}
+
+/** Where the home scene's wall torches hang, in scene pixels: the top centre of each bracket. */
+export type HomeSceneAnchors = { torches: { x: number; y: number }[] };
+
+const DUN = {
+  wall: ["#5a4690", "#63509c", "#4f3d84"],
+  wallHi: "#7a66b6",
+  mortar: "#2f2352",
+  floor: ["#6a4f96", "#5f4589", "#553d7c"],
+  floorM: "#2a1f4d",
+  ceil: ["#3b2d68", "#33285e"],
+  beam: "#7a4a34",
+  beamHi: "#8a5a3e",
+  moss: ["#3f6b58", "#62957c"],
+  iron: ["#8a86a8", "#5a5670"],
+  bone: "#fff4dc",
+  web: "#cdbdf0",
+} as const;
+
+const SKULL = [".wwwww.", "wwwwwww", "wkkwkkw", "wkkwkkw", "wwwkwww", ".wwwww.", ".w.w.w."];
+const BONES = ["ww....ww", ".wwwwww.", "ww....ww"];
+const CHEST = [
+  ".kkkkkkkkkkkk.",
+  "kbBbbBbbBbbBbk",
+  "kbbbbbbbbbbbbk",
+  "kyyyyyyyyyyyyk",
+  "kbbbbbyybbbbbk",
+  "kbbbbbkkbbbbbk",
+  "kbBbbBbbBbbBbk",
+  "kkkkkkkkkkkkkk",
+];
+const BARREL = [".kkkkkk.", "kbBbbBbk", "kssssssk", "kbBbbBbk", "kbBbbBbk", "kbBbbBbk", "kssssssk", "kbBbbBbk", ".kkkkkk."];
+const PROP_PAL = { w: DUN.bone, k: K, b: "#b07a4f", B: "#8a5a3e", y: "#ffcf4a", s: "#5a5670" };
+
+/**
+ * The home page backdrop, sized to fill the viewport: a stone corridor seen from inside, with
+ * brick walls in perspective, a beamed ceiling hung with chains, a tiled floor, and an iron-banded
+ * door at the far end. Cobwebs, moss, bones, a chest and a barrel fill the corners, where the home
+ * page's panels leave the backdrop showing. The two wall torches' flames are sprites the caller lays
+ * over the returned anchors, so they can flicker; their glow is painted here.
+ * Seeded, so it never changes between renders.
+ */
+export function drawHomeScene(cv: HTMLCanvasElement, W: number, H: number): HomeSceneAnchors {
+  const P = new Px(cv, W, H);
+  let s = 7;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+
+  // The far wall, a rectangle the four near surfaces (walls, ceiling, floor) run into.
+  const cx = W / 2;
+  const bw = Math.max(16, Math.round(W * 0.34));
+  const bh = Math.max(14, Math.round(H * 0.34));
+  const Rl = Math.round(cx - bw / 2);
+  const Rr = Rl + bw;
+  const Rt = Math.round(H * 0.42 - bh / 2);
+  const Rb = Rt + bh;
+  const sIn = bw / W;
+
+  // Each pixel outside the far wall sits on a ring t (0 = screen edge, 1 = far wall) of one surface.
+  type Surf = "L" | "R" | "T" | "B" | "F";
+  const surf: Surf[] = new Array(W * H);
+  const ring = new Float32Array(W * H);
+  const cellId: string[] = new Array(W * H);
+  const zScale = Math.max(Rl, Rt, 1) / (1 - sIn);
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const c = [
+        ["L", x < Rl ? x / Rl : 9],
+        ["R", x >= Rr ? (W - 1 - x) / Math.max(1, W - 1 - Rr) : 9],
+        ["T", y < Rt ? y / Rt : 9],
+        ["B", y >= Rb ? (H - 1 - y) / Math.max(1, H - 1 - Rb) : 9],
+      ] as [Surf, number][];
+      let [sf, t] = c[0];
+      for (const [k, v] of c) if (v < t) [sf, t] = [k, v];
+      const i = y * W + x;
+      if (t >= 9) {
+        surf[i] = "F";
+        ring[i] = 1;
+        const row = Math.floor((y - Rt) / 3);
+        cellId[i] = `F${row},${Math.floor((x - Rl + (row % 2) * 3) / 6)}`;
+        continue;
+      }
+      surf[i] = sf;
+      ring[i] = t;
+      // Depth along the corridor, in roughly near-screen pixels.
+      const z = (1 / (1 - t * (1 - sIn))) * zScale;
+      if (sf === "L" || sf === "R") {
+        const top = t * Rt;
+        const bot = H - 1 - t * (H - 1 - Rb);
+        const row = Math.floor(((y - top) / Math.max(1, bot - top)) * 12);
+        cellId[i] = `${sf}${row},${Math.floor(z / 14 + (row % 2) * 0.5)}`;
+      } else {
+        const left = t * Rl;
+        const right = W - 1 - t * (W - 1 - Rr);
+        const col = Math.floor(((x - left) / Math.max(1, right - left)) * (sf === "B" ? 7 : 9));
+        cellId[i] = `${sf}${col},${Math.floor(z / (sf === "B" ? 12 : 26))}`;
+      }
+    }
+  // Paint: a 1px mortar line wherever the brick/tile id changes from the pixel above or to the left.
+  const pick = <T,>(arr: readonly T[], key: string) => {
+    let h = 0;
+    for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) | 0;
+    return arr[Math.abs(h) % arr.length];
+  };
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      const id = cellId[i];
+      const up = y > 0 && surf[i - W] === surf[i] ? cellId[i - W] : id;
+      const lf = x > 0 && surf[i - 1] === surf[i] ? cellId[i - 1] : id;
+      const edge = up !== id || lf !== id;
+      const sf = surf[i];
+      if (sf === "B") P.set(x, y, edge ? DUN.floorM : pick(DUN.floor, id));
+      else if (sf === "T") {
+        const beam = Number(id.split(",")[1]) % 2 === 0;
+        P.set(x, y, beam ? (edge ? DUN.mortar : up !== id ? DUN.beamHi : DUN.beam) : edge ? DUN.mortar : pick(DUN.ceil, id));
+      } else P.set(x, y, edge ? DUN.mortar : up !== id || (y > 0 && cellId[i - W] !== id) ? DUN.wallHi : pick(DUN.wall, id));
+      if (!edge && sf !== "T" && sf !== "B" && y > 0 && cellId[i - W] !== id) P.set(x, y, DUN.wallHi);
+    }
+  // Corner seams where two surfaces meet.
+  for (let y = 0; y < H; y++)
+    for (let x = 1; x < W; x++) {
+      const i = y * W + x;
+      if (surf[i] !== surf[i - 1] || (y > 0 && surf[i] !== surf[i - W])) P.set(x, y, K);
+    }
+  P.rect(Rl, Rt, bw, 1, K);
+  P.rect(Rl, Rb - 1, bw, 1, K);
+
+  // Moss creeping up the bottom of the side walls, and a few cracks on the far wall.
+  for (let n = 0; n < Math.floor((W * H) / 90); n++) {
+    const x = Math.floor(rnd() * W);
+    const y = Math.floor(rnd() * H);
+    const i = y * W + x;
+    if ((surf[i] === "L" || surf[i] === "R") && y > H * 0.55) {
+      const c = DUN.moss[Math.floor(rnd() * 2)];
+      P.set(x, y, c);
+      P.set(x + 1, y, c);
+      P.set(x, y - 1, c);
+    }
+  }
+  for (let n = 0; n < 3; n++) {
+    let x = Rl + 3 + Math.floor(rnd() * (bw - 6));
+    for (let y = Rt + 2 + Math.floor(rnd() * 4), k = 0; k < 5; k++, y++) {
+      P.set(x, y, K);
+      x += rnd() < 0.5 ? -1 : 1;
+    }
+  }
+
+  // The door at the end: a stone rim, wooden planks, iron bands, a ring and light leaking under it.
+  const dw = Math.max(6, Math.round(bw * 0.34));
+  const dh = Math.max(8, Math.round(bh * 0.72));
+  const dx = Math.round(cx - dw / 2);
+  const dTop = Rb - dh;
+  // Arch height capped so a wide, short far wall (an ultrawide screen) can't push it below the floor.
+  const archR = Math.min(dw / 2, dh * 0.4);
+  P.ell(cx, dTop + archR, dw / 2 + 1.5, archR + 1.5, DUN.wallHi);
+  P.rect(dx - 1, dTop + archR, dw + 2, dh - archR, DUN.wallHi);
+  P.ell(cx, dTop + archR, dw / 2, archR, "#8a5a3e");
+  P.rect(dx, dTop + archR, dw, dh - archR - 1, "#8a5a3e");
+  for (let y = dTop; y < Rb - 1; y++)
+    for (let x = dx; x < dx + dw; x++) {
+      if (P.a[y * W + x] !== "#8a5a3e") continue;
+      if ((x - dx) % 3 === 2) P.set(x, y, "#5a3426");
+      const band = Math.round(dh * 0.35);
+      if (y === dTop + band || y === Rb - 1 - band) P.set(x, y, DUN.iron[1]);
+    }
+  P.set(Math.round(cx) + Math.max(1, Math.round(dw / 4)), dTop + Math.round(dh * 0.55), "#ffcf4a");
+  P.rect(dx, Rb - 1, dw, 1, "#ffa94d");
+
+  // Two small torches on the far wall either side of the door (painted, not sprites: too small to flicker).
+  const glows: { x: number; y: number; r: number }[] = [];
+  for (const sx of [-1, 1]) {
+    const tx = Math.round(cx + sx * (dw / 2 + Math.max(3, bw * 0.12)));
+    const ty = dTop + Math.round(dh * 0.25);
+    P.rect(tx, ty + 2, 1, 2, "#7a4a34");
+    P.set(tx, ty + 1, "#ffa94d");
+    P.set(tx, ty, "#fff08a");
+    glows.push({ x: tx, y: ty, r: Math.max(6, bw * 0.2) });
+  }
+
+  // Wall torches near the viewer: an iron bracket here, the flame is a sprite on top.
+  const torches: { x: number; y: number }[] = [];
+  const tt = 0.3;
+  for (const side of ["L", "R"] as const) {
+    const edgeX = side === "L" ? tt * Rl : W - 1 - tt * (W - 1 - Rr);
+    const top = tt * Rt;
+    const bot = H - 1 - tt * (H - 1 - Rb);
+    const x = Math.round(edgeX + (side === "L" ? -1 : 1) * Math.max(3, W * 0.03));
+    const y = Math.round(top + (bot - top) * 0.32);
+    P.rect(x - 2, y, 5, 1, DUN.iron[0]);
+    P.rect(x - 1, y + 1, 3, 1, DUN.iron[1]);
+    P.rect(x, y + 2, 1, 3, DUN.iron[1]);
+    torches.push({ x: x + 0.5, y });
+    glows.push({ x, y: y - 6, r: Math.max(14, Math.min(W, H) * 0.28) });
+  }
+
+  // Chains hanging from the ceiling.
+  for (const fx of [0.3, 0.7, 0.18, 0.82]) {
+    const x = Math.round(W * fx);
+    const len = Math.round(Rt * (0.5 + rnd() * 0.4));
+    for (let y = 0; y < len; y++) {
+      if (y % 3 === 2) P.set(x, y, DUN.iron[1]);
+      else {
+        P.set(x - (y % 3), y, DUN.iron[0]);
+        P.set(x + 1 - (y % 3), y, DUN.iron[1]);
+      }
+    }
+    P.rect(x - 1, len, 3, 1, DUN.iron[0]);
+    P.set(x - 1, len + 1, DUN.iron[0]);
+    P.set(x + 1, len + 1, DUN.iron[0]);
+  }
+
+  // Cobwebs in the two top corners: spokes plus dotted arcs.
+  const webR = Math.max(8, Math.round(Math.min(W, H) * 0.14));
+  for (const [ox, dir] of [[0, 1], [W - 1, -1]] as const)
+    for (let y = 0; y <= webR; y++)
+      for (let x = 0; x <= webR; x++) {
+        const d = Math.hypot(x, y);
+        if (d > webR) continue;
+        const a = Math.atan2(y, x);
+        const spoke = [0.25, 0.75, 1.2].some((k) => Math.abs(a - k) * d < 0.6);
+        const arc = [0.35, 0.65, 0.95].some((k) => Math.abs(d - webR * k) < 0.5) && (x + y) % 2 === 0;
+        if (spoke || arc) P.set(ox + dir * x, y, DUN.web);
+      }
+
+  // Things on the floor, in the strip the home page leaves showing at the bottom.
+  const fy = H - 2;
+  P.grid(SKULL, PROP_PAL, Math.round(W * 0.2) - 3, fy - 8);
+  P.grid(BONES, PROP_PAL, Math.round(W * 0.2) + 5, fy - 3);
+  P.grid(BONES, PROP_PAL, Math.round(W * 0.12), fy - 2);
+  P.grid(CHEST, PROP_PAL, Math.round(W * 0.66) - 7, fy - 8);
+  for (let n = 0; n < 5; n++) P.set(Math.round(W * 0.66) - 9 + Math.floor(rnd() * 18), fy - Math.floor(rnd() * 2), "#ffcf4a");
+  P.grid(BARREL, PROP_PAL, Math.round(W * 0.86) - 4, fy - 9);
+  P.ell(Math.round(W * 0.42), fy - 2, Math.max(3, W * 0.05), 1.6, "#2a1f4d");
+  P.set(Math.round(W * 0.42) - 1, fy - 3, "#7a66b6");
+
+  // Light: the corridor darkens with depth, and every torch throws a warm pool.
+  const cache = new Map<string, string>();
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      const c = P.a[i];
+      if (!c || c === K) continue;
+      let f = 1 - 0.55 * ring[i];
+      let warm = 0;
+      for (const g of glows) {
+        const d = Math.hypot(x - g.x, y - g.y) / g.r;
+        if (d < 1) warm = Math.max(warm, 1 - d);
+      }
+      f += warm * 0.45;
+      // Quantize so the light falls off in visible pixel-art steps, dithered between steps.
+      const q = Math.round(f * 6 + ((x + y) % 2 ? 0.25 : -0.25)) / 6;
+      const w = Math.round(warm * 3) / 3;
+      const key = `${c}${q}${w}`;
+      let out = cache.get(key);
+      if (!out) {
+        const [r, gg, b] = rgb(c);
+        const hex = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+        out = "#" + hex(r * q + 95 * w) + hex(gg * q + 50 * w) + hex(b * q * (1 - 0.35 * w));
+        cache.set(key, out);
+      }
+      P.a[i] = out;
+    }
+  P.flush();
+  return { torches };
+}

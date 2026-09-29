@@ -1,24 +1,6 @@
 # TODOs
 
 
-## 修改主頁的背景圖，換成更有特色、更有內容的圖片
-
-**Priority:** P3
-
-**What:** 主頁（`app/page.tsx`）目前的背景圖比較樸素，想換成更有特色、更能代表遊戲主題（地城/DM 風格）的圖片。
-
-**Why:** 使用者提出的視覺優化需求，希望第一印象更吸睛、更有記憶點。
-
-**Pros:** 成本低、見效快，是很典型的「lake」不是「ocean」——換一張圖，不動邏輯。
-
-**Cons:** 需要先確定圖片素材來源（AI 生成？購買版權圖庫？自己畫？），還要注意檔案大小對首頁載入速度的影響。
-
-**Context:** 見 `app/page.tsx` 的背景圖設定；風格可以參考 `DESIGN.md` 既有的視覺語言（`--lav`/`--lav2` 之類的色票、pixel-art 風格）。
-
-**Depends on / blocked by:** 需要先選定圖片素材／授權來源。
-
----
-
 ## 增加背景音樂
 
 **Priority:** P3
@@ -134,23 +116,6 @@
 ---
 
 
-## 遊戲進行中在題庫編輯器換圖，會立刻刪掉那一局還在用的 R2 圖片
-
-**Priority:** P2
-
-**What:** `BankStore.putBank()` 存檔時會立刻刪掉「新題庫沒用到」的 R2 圖片（`lib/bank-store.ts` 的 orphan diff → `worker/index.ts` 的 `deleteOrphanedImages`）。但每個進行中的房間都把題庫複製進自己的 snapshot（「編輯題庫不影響進行中的遊戲」）。所以遊戲進行中換掉或刪掉一張圖，那一局的題目圖和詳解圖會直接消失，`hideOnImageError` 把它藏起來，log 裡什麼都看不到。
-
-**Why:** 這個問題 v0.6 的圖片題就有了；v0.9.0.0 讓每個題目的 content 和 explanation 都可以放圖，影響範圍變大。詳解圖壞掉的時間點剛好是揭曉的那一刻。
-
-**Pros:** 換題庫時不會弄壞正在進行的派對。
-
-**Cons:** 刪除要延後，R2 會暫時多放一些圖，另外需要一個延後刪除的機制。
-
-**Context:** 可以把 orphan key 加上時間戳記排進佇列，等超過房間壽命（`EXPIRE_MS`）後由 alarm 刪除；或是讓房間登記自己正在用的 image key，刪除時排除掉。red-team 審查發現，/ship v0.9.0.0（2026-09-24）。
-
-**Depends on / blocked by:** 無。
-
----
 
 ## 共享大螢幕活地圖
 
@@ -498,6 +463,22 @@
 ---
 
 ## Completed
+
+## 遊戲進行中在題庫編輯器換圖，會立刻刪掉那一局還在用的 R2 圖片
+
+**Priority:** P2　**Completed:** 2026-09-29
+
+**What:** `BankStore.putBank()` 不再立刻刪掉新題庫沒用到的 R2 圖片，而是把 key 連同刪除時間排進 Durable Object storage 的佇列（`pendingImageDeletes`），等超過房間壽命（`ROOM_EXPIRE_MS`，預設 24 小時，再加 1 小時緩衝）後由 bank DO 的 alarm 呼叫 `runImageCleanup()` 刪除。刪除前會再檢查一次：如果之後的存檔又把這張圖放回題庫（復原），就不刪；拿掉 → 放回 → 再拿掉，會重新計時。已知限制：一局遊戲如果一直有活動、撐超過房間壽命，還是可能丟圖（每次活動都會延後過期），機率很低，先接受。見 `lib/bank-store.ts`、`worker/index.ts` 的 `BankStoreDO.alarm()`。
+
+---
+
+## 修改主頁的背景圖，換成更有特色、更有內容的圖片
+
+**Priority:** P3　**Completed:** v0.9.1.0 (2026-09-28)
+
+**What:** 主頁背景從單純的石牆換成一整幅程式繪製的地城走廊（第一人稱透視）：兩側磚牆延伸進黑暗、木樑天花板掛著鐵鍊與蜘蛛網、兩側牆上會閃爍的火把、盡頭一扇鐵箍木門與兩盞小壁燈，地上有骷髏、骨頭、寶箱和木桶，牆腳長青苔。第一版做的是「月夜城堡外觀」，使用者回饋要「真的有 dungeon 造型」，改成地城內部。素材授權的阻塞點用 DESIGN.md 既有的「全部用程式畫、不放圖檔」原則解掉——沒有圖檔、零授權問題、首頁不多載任何位元組。場景依視窗大小重新計算格數（`homeSceneCell`），每個場景像素都是整數倍的螢幕像素，不再像舊背景那樣被拉伸變形。見 `lib/pixel-art.ts` 的 `drawHomeScene`、`components/pixel.tsx` 的 `HomeBackground`。
+
+---
 
 ## 問答題／選擇題的題目可以是圖片／YouTube 影片／文字，並移除獨立的「圖片題」類型；公布解答時可加一段可換媒材的詳解
 
