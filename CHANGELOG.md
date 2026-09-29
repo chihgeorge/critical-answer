@@ -7,6 +7,21 @@ All notable changes to Critical Answer are documented here.
 ### Added
 - Rooms 3 to 5 now have their own monsters instead of recoloured copies: a blue lost slime with a question mark over its head, a crying ghost, and a crowned slime king standing guard with a spear. The live question bank keeps its current monsters until it's re-seeded, since the bank editor doesn't offer a monster picker yet.
 
+## [0.9.12.0] - 2026-09-29
+
+### Added
+- The big screen's lobby has a flickering campfire in the middle, and each team's adventurer runs in to gather around it as the team joins. With five or more teams the characters shrink and long names are shortened, so all eight fit.
+
+## [0.9.11.0] - 2026-09-29
+
+### Added
+- When a team's answer takes it into the boss room, the narrator now says so. With AI narration on, it also calls back the choices the team made at the forks on the way; the scripted fallback just announces the entrance.
+
+## [0.9.10.0] - 2026-09-29
+
+### Added
+- The host can judge from a laptop keyboard: 1 for correct, 2 for wrong (retry), 3 for wrong (flee), and 1 or Enter for 下一題 while the answer is on show. The buttons show the key on devices with a mouse. The keys do nothing while typing in the notes box or when combined with Ctrl/⌘/Alt.
+
 ## [0.9.9.0] - 2026-09-29
 
 ### Added

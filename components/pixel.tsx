@@ -119,7 +119,7 @@ export function Sprite({
     const cv = ref.current;
     if (!cv) return;
     drawSprite(cv, kind, variant, false);
-    if (prefersReducedMotion() || kind === "crown" || kind === "heart" || kind === "torch") return;
+    if (prefersReducedMotion() || kind === "crown" || kind === "heart" || kind === "torch" || kind === "campfire") return;
     let reopen: ReturnType<typeof setTimeout>;
     const id = setInterval(() => {
       drawSprite(cv, kind, variant, true);

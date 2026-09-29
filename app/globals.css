@@ -84,6 +84,22 @@ body {
 .px-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 -4px 0 0 var(--k), 0 4px 0 0 var(--k), -4px 0 0 0 var(--k), 4px 0 0 0 var(--k), inset 0 4px 0 #ffffff88, inset 0 -6px 0 #0003; }
 .px-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .px-btn:focus-visible { outline: 4px solid #fff; outline-offset: 2px; }
+/* Keyboard shortcut hint on the host's judge buttons (lib/host-keys.ts): only where there's a
+   keyboard-and-mouse setup, so phones don't show keys they can't press. */
+.px-key { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .px-key {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 0 5px;
+    font-family: "Press Start 2P", monospace;
+    font-size: 10px;
+    line-height: 16px;
+    vertical-align: middle;
+    border: 2px solid currentColor;
+    opacity: 0.7;
+  }
+}
 .px-btn.ok { background: var(--ok); color: #0f3a17; min-height: 78px; font-size: 30px; }
 .px-btn.flee { background: #ffa94d; }
 .px-btn.primary { background: var(--danger); color: #fff; text-shadow: 2px 2px 0 var(--k); }

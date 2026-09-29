@@ -193,3 +193,7 @@ Sequential implementation, no parallelization opportunity——`lib/protocol.ts`
 - Parallelization: 1 lane, 0 parallel / 1 sequential
 - Lake Score: 6/6 recommendations chose complete option（option ID 查表、逐隊觸發、跳過而非硬塞模板皆選了較完整的路徑，無 N/A 決策）
 - Unresolved decisions: 0
+
+## 首領登場回提（v0.9.11.0，2026-09-29）
+
+原本延後的「首領登場時回提隊伍選擇」已實作，做法是擴充既有事件而不是新增事件：讓隊伍越過首領門檻的那次答對，`correct` 事件帶 `entersBoss: { branches }`。這樣 runner 的「每個事件恰好 emit 一次」契約不用改，共用首領被搶先擊殺的時序問題也不存在（首領倒下時遊戲已結束，不會再有答對）。T4 的降級：LLM 旁白呼應分支選擇；scripted 備用台詞只宣告進入首領房（`BOSS_ENTER_VARIANTS`），不套「你選了 X」的模板。

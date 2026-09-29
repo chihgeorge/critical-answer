@@ -81,15 +81,16 @@ function Lobby({ code, teams }: { code: string; teams: Lobby }) {
         </div>
         <Qr text={joinUrl} size={132} />
       </Panel>
-      <div className="absolute inset-x-0 flex items-end justify-center gap-6" style={{ bottom: 120, zIndex: 4 }}>
-        {teams.map((t, i) => (
-          <div key={t.id} className="flex flex-col items-center gap-1">
-            <div className="px-run">
-              <Sprite kind="hero" variant={i} scale={4} />
-            </div>
-            <Nameplate className="text-[16px]">{t.name}</Nameplate>
-          </div>
-        ))}
+      {/* The campfire (design review 2A), with the teams gathering around it: first half on the left,
+          the rest on the right. Characters shrink at 5+ teams and names truncate, so 8 still fit. */}
+      <div className="absolute inset-x-0 flex items-end justify-center" style={{ bottom: 120, zIndex: 4, gap: 18 }}>
+        <TeamGroup teams={teams} from={0} to={Math.ceil(teams.length / 2)} align="end" />
+        <div className="relative shrink-0" style={{ width: 26 * 5, height: 22 * 5 }}>
+          <div className="px-glow px-tf1" style={{ left: 65 - 150, top: 40 - 150 }} />
+          <Sprite kind="campfire" variant={0} scale={5} className="px-tf1 absolute inset-0" />
+          <Sprite kind="campfire" variant={1} scale={5} className="px-tf2 absolute inset-0" />
+        </div>
+        <TeamGroup teams={teams} from={Math.ceil(teams.length / 2)} to={teams.length} align="start" />
       </div>
       <DialogueBox
         className="absolute"
@@ -97,6 +98,26 @@ function Lobby({ code, teams }: { code: string; teams: Lobby }) {
         text={teams.length === 0 ? "篝火燒得正旺，等待第一支隊伍加入……" : `${teams.length} 支隊伍已就位，等主持人宣布開始！`}
       />
     </>
+  );
+}
+
+/** One side of the campfire: teams[from, to), each running in. `variant` stays the team's overall
+ * index so its look matches the rest of the game. */
+function TeamGroup({ teams, from, to, align }: { teams: Lobby; from: number; to: number; align: "start" | "end" }) {
+  const scale = teams.length > 4 ? 3 : 4;
+  return (
+    <div className={`flex flex-1 items-end gap-2 ${align === "end" ? "justify-end" : "justify-start"}`}>
+      {teams.slice(from, to).map((t, j) => (
+        <div key={t.id} className="flex flex-col items-center gap-1" style={{ maxWidth: 96 }}>
+          <div className="px-run">
+            <Sprite kind="hero" variant={from + j} scale={scale} />
+          </div>
+          <Nameplate className="text-[14px]" style={{ maxWidth: 96, overflow: "hidden", textOverflow: "ellipsis", padding: "3px 8px" }}>
+            {t.name}
+          </Nameplate>
+        </div>
+      ))}
+    </div>
   );
 }
 
