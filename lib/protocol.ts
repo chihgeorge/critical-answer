@@ -59,9 +59,13 @@ export type AnswerReveal = { questionId: string; answer: string; explanation?: P
 
 export type ClientMessage =
   /** `teamKey` is the team's secret. teamId is public (every STATE broadcasts it), so the key is what proves a connection owns the team. */
-  | { type: "JOIN"; teamId: string; teamKey: string; teamName: string }
-  | { type: "REJOIN"; teamId: string; teamKey: string }
-  | { type: "HOST_CLAIM"; token: string }
+  /** `resume`: sent by a page's automatic reconnect (a network hiccup, a server restart), not by a
+   * person. The room still accepts it, but it doesn't count as activity, so a device reconnecting
+   * in the background can't keep a room from resting. First opens, reloads and a click on
+   * 重新連線 leave it off. */
+  | { type: "JOIN"; teamId: string; teamKey: string; teamName: string; resume?: true }
+  | { type: "REJOIN"; teamId: string; teamKey: string; resume?: true }
+  | { type: "HOST_CLAIM"; token: string; resume?: true }
   | { type: "HOST_START"; aiNarration?: boolean }
   /** Director: free-text style notes (<= 500 chars) injected into every LLM call. */
   | { type: "HOST_SET_NOTES"; notes: string }
@@ -154,6 +158,11 @@ function str(v: unknown, max: number): string | null {
   return typeof v === "string" && v.length <= max ? v : null;
 }
 
+/** `{ resume: true }` only for a literal `true`; anything else is simply dropped. */
+function resumeOf(m: Record<string, unknown>): { resume?: true } {
+  return m.resume === true ? { resume: true } : {};
+}
+
 /**
  * Validate an untrusted, already JSON-parsed value into a ClientMessage.
  * Returns null on any missing, wrong-typed or oversize field. Never throws.
@@ -167,16 +176,16 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const teamId = str(m.teamId, MAX_ID);
       const teamName = str(m.teamName, MAX_RAW_NAME);
       const teamKey = typeof m.teamKey === "string" && TEAM_KEY_RE.test(m.teamKey) ? m.teamKey : null;
-      return teamId !== null && teamName !== null && teamKey !== null ? { type: "JOIN", teamId, teamKey, teamName } : null;
+      return teamId !== null && teamName !== null && teamKey !== null ? { type: "JOIN", teamId, teamKey, teamName, ...resumeOf(m) } : null;
     }
     case "REJOIN": {
       const teamId = str(m.teamId, MAX_ID);
       const teamKey = typeof m.teamKey === "string" && TEAM_KEY_RE.test(m.teamKey) ? m.teamKey : null;
-      return teamId !== null && teamKey !== null ? { type: "REJOIN", teamId, teamKey } : null;
+      return teamId !== null && teamKey !== null ? { type: "REJOIN", teamId, teamKey, ...resumeOf(m) } : null;
     }
     case "HOST_CLAIM":
       return typeof m.token === "string" && HOST_TOKEN_RE.test(m.token)
-        ? { type: "HOST_CLAIM", token: m.token }
+        ? { type: "HOST_CLAIM", token: m.token, ...resumeOf(m) }
         : null;
     case "HOST_START":
       if (m.aiNarration !== undefined && typeof m.aiNarration !== "boolean") return null;

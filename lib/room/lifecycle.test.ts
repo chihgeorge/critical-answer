@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
-import { CLOSE_IDLE } from "./close-codes";
+import { CLOSE_EXPIRED, CLOSE_IDLE } from "./close-codes";
 import { SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 
@@ -122,6 +122,29 @@ describe("what counts as activity", () => {
     expect(storage.alarms.at(-1)).toBe(clock.t - IDLE + EXPIRE); // next check at the expiry, dated from the real last activity
   });
 
+  it("an automatic reconnect's re-identification (resume) is not activity, so it can't keep the room awake", async () => {
+    const { room, closeAll, clock } = setup();
+    const host = conn("h");
+    const phone = conn("a");
+    send(room, host, { type: "HOST_CLAIM", token: TOKEN });
+    send(room, phone, { type: "JOIN", teamId: T1, teamKey: TEAM_KEY, teamName: "甲隊" });
+    clock.t += IDLE - MIN;
+    // Both pages reconnect by themselves (a network blip) and say who they are again.
+    send(room, conn("h2"), { type: "HOST_CLAIM", token: TOKEN, resume: true });
+    send(room, conn("a2"), { type: "JOIN", teamId: T1, teamKey: TEAM_KEY, teamName: "甲隊", resume: true });
+    clock.t += MIN;
+    await room.onAlarm();
+    expect(closeAll).toHaveBeenCalledWith(CLOSE_IDLE, "idle");
+  });
+
+  it("an automatic reconnect still gets its identity back (resume only affects the idle clock)", () => {
+    const { room } = setup();
+    send(room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
+    const back = conn("h2");
+    send(room, back, { type: "HOST_CLAIM", token: TOKEN, resume: true });
+    expect(lastOf(back, "HOST_OK")).toBeDefined();
+  });
+
   it("an alarm firing on a room nobody has ever touched does nothing (no activity time to check against)", async () => {
     const { room, storage, closeAll } = setup();
     await room.onAlarm();
@@ -213,7 +236,8 @@ describe("idle for a day", () => {
     await room.onAlarm();
     clock.t += EXPIRE - IDLE;
     await room.onAlarm();
-    expect(closeAll).toHaveBeenLastCalledWith(CLOSE_IDLE, "expired");
+    // Its own code, not the idle one: the pages must say the game is gone, not "still saved".
+    expect(closeAll).toHaveBeenLastCalledWith(CLOSE_EXPIRED, "expired");
     expect(storage.deleted).toEqual(["alarm", "all"]);
     expect(storage.data.size).toBe(0);
     expect(room.game).toBeNull();
