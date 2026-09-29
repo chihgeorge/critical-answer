@@ -262,3 +262,18 @@ describe("failures are named", () => {
     await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toBeInstanceOf(UpstreamError);
   });
 });
+
+describe("buildPrompt: entering the boss room", () => {
+  it("asks the model to mention the entrance and call back the team's branch choices", () => {
+    const { user } = buildPrompt({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, entersBoss: { branches: ["武力", "討價"] } }, "", []);
+    expect(user).toContain("踏進了首領房");
+    expect(user).toContain("「武力」、「討價」");
+    expect(user).toContain("呼應他們一路上的選擇");
+  });
+
+  it("only asks for the entrance when the team made no choices", () => {
+    const { user } = buildPrompt({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, entersBoss: { branches: [] } }, "", []);
+    expect(user).toContain("踏進了首領房");
+    expect(user).not.toContain("呼應");
+  });
+});

@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.11.0] - 2026-09-29
+
+### Added
+- When a team's answer takes it into the boss room, the narrator now says so. With AI narration on, it also calls back the choices the team made at the forks on the way; the scripted fallback just announces the entrance.
+
 ## [0.9.8.0] - 2026-09-29
 
 ### Added

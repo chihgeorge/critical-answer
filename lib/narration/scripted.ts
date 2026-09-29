@@ -53,6 +53,16 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
   ],
 };
 
+/** A correct answer that takes the team into the boss room (event.entersBoss). No callback to the
+ * team's branch choices here: with no LLM, the design doc (T4) prefers announcing the entrance over a
+ * forced "you chose X" template. */
+export const BOSS_ENTER_VARIANTS = [
+  "{team}答對了，推開最後一道門——首領就在眼前！",
+  "{monster}倒下，{team}踏進了首領的巢穴，+{points}！",
+  "答對！{team}走進最深處，首領緩緩睜開眼睛。",
+  "{team}拿下 {points} 分，地城最深處的大門為他們打開了。",
+];
+
 /** The middle line: a short atmosphere/detail beat, one per event type — added for multi-segment
  * narration (docs/designs/multi-segment-narration.md). Every event gets one of these, whether or
  * not it has a next team, so it's a flat pool keyed by event type, same shape as VARIANTS. */
@@ -118,17 +128,18 @@ function fill(template: string, event: NarrationEvent): string {
 }
 
 export function createScriptedProvider(rng: () => number = Math.random) {
-  const last: Partial<Record<NarrationEvent["type"] | "next-room" | "next-boss", number>> = {};
+  const last: Partial<Record<NarrationEvent["type"] | "next-room" | "next-boss" | "boss-enter", number>> = {};
   const lastAtmosphere: Partial<Record<Exclude<NarrationEvent["type"], "epilogue">, number>> = {};
   const provider = {
     name: "scripted",
     /** Synchronous, so it can back up a slow provider without awaiting anything. */
     line(event: NarrationEvent): string {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
-      const pool = VARIANTS[event.type];
+      const key = event.type === "correct" && event.entersBoss ? "boss-enter" : event.type;
+      const pool = key === "boss-enter" ? BOSS_ENTER_VARIANTS : VARIANTS[event.type];
       let i = Math.floor(rng() * pool.length);
-      if (i === last[event.type]) i = (i + 1) % pool.length;
-      last[event.type] = i;
+      if (i === last[key]) i = (i + 1) % pool.length;
+      last[key] = i;
       return fill(pool[i], event);
     },
     /** Synchronous like line(): a short atmosphere/detail beat, the new middle segment. */
