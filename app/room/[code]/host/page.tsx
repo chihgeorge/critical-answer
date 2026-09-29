@@ -12,6 +12,7 @@ import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { PARTY_HOST } from "@/lib/party-host";
+import { hostKeyAction } from "@/lib/host-keys";
 
 type LobbyState = { teams: { id: string; name: string }[] };
 type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; reveal: AnswerReveal | null; eventId: number };
@@ -250,6 +251,34 @@ export default function HostPage() {
   }, [revealUp]);
   const canJudge = ready && swapArmed && !!turn?.team && pendingTeamId !== turn.team.id;
 
+  // Keyboard shortcuts for a host on a laptop (lib/host-keys.ts): each key does exactly what its
+  // button does, and only while that button is enabled.
+  useEffect(() => {
+    if (game?.phase !== "playing") return;
+    function onKey(e: KeyboardEvent) {
+      // Fields spelled out: KeyboardEvent's are prototype getters, which `{ ...e }` would not copy.
+      const target = e.target as HTMLElement | null;
+      const action = hostKeyAction(
+        { key: e.key, repeat: e.repeat, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, target },
+        !!game?.reveal,
+      );
+      if (!action || !game) return;
+      if (action === "next") {
+        if (!ready || !swapArmed) return;
+        send({ type: "HOST_NEXT", eventId: game.eventId });
+      } else {
+        if (!canJudge || !turn?.team || !turn.questionId) return;
+        if (action === "correct") judge(turn.team.id, turn.questionId, true);
+        else judge(turn.team.id, turn.questionId, false, action);
+      }
+      e.preventDefault();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // judge/send are plain functions over state this effect already depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game, ready, swapArmed, canJudge, turn]);
+
   return (
     <main className="relative min-h-screen overflow-hidden">
       <SceneBackground theme={turn?.theme ?? "stone"} cols={48} rows={100} arch={false} className="fixed inset-0" />
@@ -398,19 +427,23 @@ export default function HostPage() {
                   </Panel>
                   <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: "HOST_NEXT", eventId: game.eventId })}>
                     {connected ? "下一題" : "重新連線中"}
+                    <span className="px-key" aria-hidden="true">1</span>
                   </PixelButton>
                 </>
               ) : (
                 <>
                   <PixelButton variant="ok" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, true)}>
                     {connected ? "答對！" : "重新連線中"}
+                    <span className="px-key" aria-hidden="true">1</span>
                   </PixelButton>
                   <div className="grid grid-cols-2">
                     <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                       答錯・重答
+                      <span className="px-key" aria-hidden="true">2</span>
                     </PixelButton>
                     <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
                       答錯・逃跑
+                      <span className="px-key" aria-hidden="true">3</span>
                     </PixelButton>
                   </div>
                 </>

@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.10.0] - 2026-09-29
+
+### Added
+- The host can judge from a laptop keyboard: 1 for correct, 2 for wrong (retry), 3 for wrong (flee), and 1 or Enter for 下一題 while the answer is on show. The buttons show the key on devices with a mouse. The keys do nothing while typing in the notes box or when combined with Ctrl/⌘/Alt.
+
 ## [0.9.8.0] - 2026-09-29
 
 ### Added
