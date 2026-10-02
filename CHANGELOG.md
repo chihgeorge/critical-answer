@@ -2,6 +2,15 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.14.0] - 2026-10-01
+
+### Changed
+- Internal cleanup with no change to how the game plays: the host, phone and big-screen pages now share one room-connection hook instead of three copies, and duplicated logic in the narration picker, turn order, room server, music player and bank editor was folded together. About 200 fewer lines.
+- A phone now sends its JOIN once per connection. It used to send a second, redundant one right after connecting.
+
+### Removed
+- Unused pieces: the `vite` runtime dependency, `next.config.ts` (a dev-only LAN origin the playtest flow never used), the `typecheck:worker` script, and the separate R2 image-cleanup wrapper (the bank store already logs a failed delete).
+
 ## [0.9.13.1] - 2026-10-01
 
 ### Changed
