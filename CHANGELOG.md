@@ -2,6 +2,14 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.13.1] - 2026-10-01
+
+### Changed
+- The room server (Cloudflare Worker) now deploys through Cloudflare's own GitHub connection (Workers Builds) on every merge to `main`, the same way Vercel deploys the frontend. No deploy secret is stored in GitHub any more.
+
+### Removed
+- The GitHub Actions `deploy-worker` job. Without repository secrets it skipped every deploy while still showing green, which left the live Worker at v0.9.0.0 while `main` reached v0.9.13.0.
+
 ## [0.9.13.0] - 2026-09-29
 
 ### Added
