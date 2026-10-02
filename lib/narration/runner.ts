@@ -58,7 +58,7 @@ export function createRunner(opts: {
   holdMs?: number;
   /** The epilogue is one long call after the game, so it may take longer. */
   epilogueHoldMs?: number;
-  emit(eventId: number, lines: string[], provider: string, event: NarrationEvent): void;
+  emit(eventId: number, lines: string[], event: NarrationEvent): void;
   record(entry: TranscriptEntry): void;
 }) {
   return {
@@ -107,10 +107,8 @@ export function createRunner(opts: {
       const sources: string[] = [];
       for (let i = 0; i < targetCount; i++) {
         const candidate = providerLines?.[i];
-        // Segment 0 already passed validLine(max) above (that's what set providerLines); re-validating
-        // it here against MAX_LINE for epilogue (max=160) would be wrong, so keep it as accepted.
-        const ok = candidate !== undefined && (i === 0 ? providerLines !== undefined : validLine(candidate, isEpilogue ? max : MAX_LINE));
-        if (ok && candidate !== undefined) {
+        // Segment 0 already passed validLine(max) above (that's what set providerLines).
+        if (candidate !== undefined && (i === 0 || validLine(candidate, max))) {
           lines.push(candidate);
           sources.push(providerName);
         } else {
@@ -119,7 +117,7 @@ export function createRunner(opts: {
         }
       }
 
-      opts.emit(eventId, lines, provider, event);
+      opts.emit(eventId, lines, event);
       opts.record({
         eventId,
         at: new Date().toISOString(),

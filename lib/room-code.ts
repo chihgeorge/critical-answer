@@ -7,6 +7,13 @@ export function generateRoomCode(): string {
 }
 
 const TEAM_ID_STORAGE_KEY = "critical_answer_team_id";
+const TEAM_KEY_STORAGE_KEY = "critical_answer_team_key";
+const HOST_TOKEN_PREFIX = "critical_answer_host_token_";
+
+/** 16 random bytes as 32 hex chars. getRandomValues, so it works over plain http on a LAN. */
+function randomBytesHex(bytes = crypto.getRandomValues(new Uint8Array(16))): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 /**
  * `crypto.randomUUID()` only exists in secure contexts (HTTPS or localhost).
@@ -19,46 +26,43 @@ function randomUuidV4(): string {
   if (typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
   bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
   bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const hex = randomBytesHex(bytes);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** Client-only: the value stored under `key` in this browser, or a fresh one from `make`, stored. */
+function storedOrCreate(key: string, make: () => string): string {
+  const stored = localStorage.getItem(key);
+  if (stored) return stored;
+  const value = make();
+  localStorage.setItem(key, value);
+  return value;
 }
 
 /** Client-only: read the stored team id for this browser, or mint and store a new one. */
 export function getOrCreateTeamId(): string {
-  const stored = localStorage.getItem(TEAM_ID_STORAGE_KEY);
-  if (stored) return stored;
-  const id = randomUuidV4();
-  localStorage.setItem(TEAM_ID_STORAGE_KEY, id);
-  return id;
+  return storedOrCreate(TEAM_ID_STORAGE_KEY, randomUuidV4);
 }
-
-const TEAM_KEY_STORAGE_KEY = "critical_answer_team_key";
 
 /**
  * Client-only: this browser's team secret. teamId is public (every STATE message carries it), so
  * this is what proves a connection really is that team when it reconnects.
  */
 export function getOrCreateTeamKey(): string {
-  const stored = localStorage.getItem(TEAM_KEY_STORAGE_KEY);
-  if (stored) return stored;
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  const key = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  localStorage.setItem(TEAM_KEY_STORAGE_KEY, key);
-  return key;
+  return storedOrCreate(TEAM_KEY_STORAGE_KEY, randomBytesHex);
 }
 
-const HOST_TOKEN_PREFIX = "critical_answer_host_token_";
-
-/** Client-only: a fresh 32-hex-char host token (getRandomValues, so it works over plain http on a LAN). */
+/** Client-only: a fresh 32-hex-char host token. */
 export function newHostToken(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return randomBytesHex();
+}
+
+/** The URL fragment's query-style params, e.g. "#k=abc&new=1" -> {k: "abc", new: "1"}. */
+function hashParams(hash: string): URLSearchParams {
+  return new URLSearchParams(hash.replace(/^#/, ""));
 }
 
 /**
@@ -66,11 +70,6 @@ export function newHostToken(): string {
  * creation link or QR) wins and is stored, so a refresh or the same browser
  * later keeps control. Returns null when this browser has no token.
  */
-/** The URL fragment's query-style params, e.g. "#k=abc&new=1" -> {k: "abc", new: "1"}. */
-function hashParams(hash: string): URLSearchParams {
-  return new URLSearchParams(hash.replace(/^#/, ""));
-}
-
 export function getHostToken(code: string): string | null {
   const key = HOST_TOKEN_PREFIX + code;
   const fromUrl = hashParams(location.hash).get("k");

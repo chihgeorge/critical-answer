@@ -1,17 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
-import usePartySocket from "partysocket/react";
-import { restKindOf, restNoticeFor, RESTED_RECONNECT_LABEL, type RestKind } from "@/lib/room/close-codes";
+import { restNoticeFor, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
+import { useRoomSocket } from "@/lib/use-room-socket";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import type { AnswerReveal, ClientMessage, PublicQuestion, ServerMessage } from "@/lib/protocol";
+import type { AnswerReveal, ClientMessage, PublicQuestion } from "@/lib/protocol";
 import type { SpectatorView, GamePhase } from "@/lib/game-state";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
-import { PARTY_HOST } from "@/lib/party-host";
 import { hostKeyAction } from "@/lib/host-keys";
 
 type LobbyState = { teams: { id: string; name: string }[] };
@@ -103,9 +102,6 @@ export default function HostPage() {
   const [noToken, setNoToken] = useState(false);
   const [connected, setConnected] = useState(false);
   const [claimed, setClaimed] = useState(false);
-  const [reset, setReset] = useState(false);
-  /** The room closed our connection on purpose after a long idle time. The game is saved; a click reconnects. */
-  const [rested, setRested] = useState<RestKind | null>(null);
   /** Host-only: the answer to the question in play. Never shown on /screen or /play. */
   const [answer, setAnswer] = useState<{ questionId: string; answer: string } | null>(null);
   const [drawer, setDrawer] = useState(false);
@@ -118,49 +114,21 @@ export default function HostPage() {
   // feedback (buttons dim) and blocks accidental double-clicks from firing
   // two judgments for the same turn.
   const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
-  const epoch = useRef<string | null>(null);
 
-  /** Whether this page has connected before, and whether the next reconnect was asked for by a click:
-   * together they tell an automatic reconnect (`resume`, not activity) from a person coming back. */
-  const openedOnce = useRef(false);
-  const reconnectByHand = useRef(false);
-
-  const socket = usePartySocket({
-    host: PARTY_HOST,
-    room: code,
-    onOpen() {
+  const room = useRoomSocket(code, {
+    onOpen(resume) {
       setConnected(true);
-      setRested(null);
-      const resume = openedOnce.current && !reconnectByHand.current;
-      openedOnce.current = true;
-      reconnectByHand.current = false;
       // Claim on every (re)connect: the server forgets host rights when the socket closes.
       const t = getHostToken(code);
-      if (t) socket.send(JSON.stringify({ type: "HOST_CLAIM", token: t, ...(resume ? { resume: true } : {}) } satisfies ClientMessage));
+      if (t) room.send({ type: "HOST_CLAIM", token: t, ...(resume ? { resume: true } : {}) });
       else setNoToken(true);
     },
-    onClose(event: CloseEvent) {
+    onClose() {
       setConnected(false);
       setClaimed(false);
       setPendingTeamId(null);
-      // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
-      const restKind = restKindOf(event);
-      if (restKind) {
-        socket.close();
-        setRested(restKind);
-      }
     },
-    onMessage(event: MessageEvent) {
-      let msg: ServerMessage;
-      try {
-        msg = JSON.parse(event.data as string) as ServerMessage;
-      } catch {
-        return;
-      }
-      if ((msg.type === "LOBBY" || msg.type === "STATE") && msg.roomEpoch) {
-        if (epoch.current && epoch.current !== msg.roomEpoch) setReset(true);
-        epoch.current = msg.roomEpoch;
-      }
+    onMessage(msg) {
       switch (msg.type) {
         case "HOST_OK":
           setClaimed(true);
@@ -224,9 +192,10 @@ export default function HostPage() {
     },
   });
 
+  const { reset, rested } = room;
   function send(msg: ClientMessage) {
     setError(null);
-    socket.send(JSON.stringify(msg));
+    room.send(msg);
   }
 
   function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "flee" | "retry") {
@@ -300,10 +269,7 @@ export default function HostPage() {
           <Panel tone="turn" role="status" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
             {restNoticeFor(rested)}
             <PixelButton
-              onClick={() => {
-                reconnectByHand.current = true;
-                socket.reconnect();
-              }}
+              onClick={room.reconnect}
               className="!m-0 !px-4 !py-2 text-[16px]"
             >{RESTED_RECONNECT_LABEL}</PixelButton>
           </Panel>
@@ -355,7 +321,7 @@ export default function HostPage() {
             <TurnRibbon>{turn.inBoss ? "首領戰　" : ""}輪到：{turn.team.name}</TurnRibbon>
             <Panel tone="turn" className="px-3 py-[10px]">
               <div className="flex items-center gap-3">
-                <Sprite kind={turn.monster.kind} hue={turn.monster.hue} scale={Math.max(1, Math.floor(turn.monster.scale / 3))} className="flex-none" />
+                <Sprite kind={turn.monster.kind} hue={turn.monster.hue} scale={turn.miniScale} className="flex-none" />
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.monster.name}</div>
                   <div data-testid="host-question" className="text-[20px] leading-snug">
@@ -373,7 +339,7 @@ export default function HostPage() {
                 </div>
               </div>
               <div className="mt-2">
-                <ScoreMeter score={Math.min(turn.team.score, BOSS_THRESHOLD)} max={BOSS_THRESHOLD} active />
+                <ScoreMeter score={turn.team.score} active />
               </div>
               {/* The team's current tap on a multipleChoice question, if any — lets the host see
                   what they picked before judging, same panel timing as the answer reveal below. */}

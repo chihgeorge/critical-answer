@@ -6,7 +6,6 @@ import { DungeonRoom, EXPIRE_MS } from "../lib/room/dungeon-room";
 import { BankStore, BankConflictError, IMAGE_CLEANUP_MARGIN_MS, type VersionedBank } from "../lib/bank-store";
 import { bankOrFallback, handleBankApi, type BankConflict } from "../lib/bank-api";
 import { handleBankImageApi } from "../lib/bank-image-api";
-import { deleteOrphanedImages } from "../lib/image-cleanup";
 
 export interface Env {
   /** The binding is named "main" on purpose: partysocket's default path is /parties/main/<room>. */
@@ -52,9 +51,8 @@ export class BankStoreDO extends DurableObject<Env> {
       },
       // R2 access lives only here (this class), never in lib/bank-store.ts — same
       // platform-abstraction discipline as the rest of this file's DO/RPC split. BankStore calls
-      // this from runImageCleanup() (this DO's alarm, below), awaited; deleteOrphanedImages
-      // (lib/image-cleanup.ts, unit-tested there) swallows and logs its own failure.
-      (keys) => deleteOrphanedImages(env.images, keys),
+      // this from runImageCleanup() (this DO's alarm, below), which catches and logs a failed delete.
+      (keys) => env.images.delete(keys),
       // An orphaned image waits until every room that could have copied the old bank has expired.
       // Same expiry the rooms use (Room.onStart below, and DungeonRoom's own max(expire, idle)), so
       // changing ROOM_EXPIRE_MS moves both. A room kept busy for longer than this (activity keeps
@@ -82,10 +80,6 @@ export class BankStoreDO extends DurableObject<Env> {
   /** Called right after an upload lands in R2: see BankStore.queueUploadedImage. */
   imageUploaded(key: string): Promise<void> {
     return this.store.queueUploadedImage(key);
-  }
-
-  getBank() {
-    return this.store.getBank();
   }
 
   getVersionedBank(): Promise<VersionedBank> {
@@ -142,7 +136,7 @@ export class Room extends Server<Env> {
         // Undefined (bankOrFallback swallowed a fetch failure) falls through to DungeonRoom's own
         // bundled-bank default: an existing room's restore() overrides this with its own saved bank
         // regardless. See docs/designs/question-bank-editor.md, decision 7.
-        bank: await bankOrFallback(() => this.env.bank.get(this.env.bank.idFromName(BANK_DO_NAME)).getBank()),
+        bank: await bankOrFallback(async () => (await this.env.bank.getByName(BANK_DO_NAME).getVersionedBank()).bank),
       },
     );
     await this.game.restore();
@@ -191,7 +185,7 @@ export default {
           // never saves doesn't stay in R2 forever. Best-effort: the upload itself already worked,
           // and a failure here only means this one image might leak, as every upload did before.
           try {
-            await env.bank.get(env.bank.idFromName(BANK_DO_NAME)).imageUploaded(key);
+            await env.bank.getByName(BANK_DO_NAME).imageUploaded(key);
           } catch (err) {
             console.error(JSON.stringify({ event: "image_upload_queue_failed", key, error: String(err) }));
           }
@@ -200,7 +194,7 @@ export default {
       });
     }
     if (pathname === "/api/bank" || pathname.startsWith("/api/bank/")) {
-      const stub = env.bank.get(env.bank.idFromName(BANK_DO_NAME));
+      const stub = env.bank.getByName(BANK_DO_NAME);
       return handleBankApi(request, {
         ownerKey: env.OWNER_KEY,
         allowedOrigins: env.ALLOWED_ORIGINS ?? "",

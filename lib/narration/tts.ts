@@ -49,11 +49,6 @@ export function shouldSpeakEpilogue(msg: { replay?: true }): boolean {
   return !msg.replay;
 }
 
-const ZH_OR_CMN_PREFIX_RE = /^(zh|cmn)/i;
-const TW_RE = /TW/i;
-const HANT_RE = /Hant/i;
-const HK_OR_MO_RE = /HK|MO/i;
-
 /** Loose match: different OS/browsers report Traditional Chinese as zh-TW, zh-Hant-TW,
  * cmn-Hant-TW (cmn is Mandarin's own ISO 639-3 code), zh_TW, or similar. An exact
  * `lang === "zh-TW"` comparison false-negatives on real voices that do support Traditional
@@ -66,6 +61,6 @@ const HK_OR_MO_RE = /HK|MO/i;
  * present, so a Hong Kong Traditional-Chinese voice — Cantonese-accented, not the intended
  * Taiwan Mandarin — silently won over a missing TW-tagged voice). */
 export function pickVoice<V extends { lang: string }>(voices: readonly V[]): V | undefined {
-  const candidates = voices.filter((v) => ZH_OR_CMN_PREFIX_RE.test(v.lang));
-  return candidates.find((v) => TW_RE.test(v.lang)) ?? candidates.find((v) => HANT_RE.test(v.lang) && !HK_OR_MO_RE.test(v.lang));
+  const candidates = voices.filter((v) => /^(zh|cmn)/i.test(v.lang));
+  return candidates.find((v) => /TW/i.test(v.lang)) ?? candidates.find((v) => /Hant/i.test(v.lang) && !/HK|MO/i.test(v.lang));
 }

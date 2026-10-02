@@ -13,10 +13,11 @@ import { Panel, PixelButton } from "@/components/pixel";
 import { MIN_OPTIONS, allQuestions, type Bank, type BankQuestion, type MediaContent } from "@/lib/question-bank";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId } from "@/lib/youtube";
+import { readStored, writeStored } from "@/lib/stored";
 
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
 const bankApiBase = () => `${partyHttpBase()}/api/bank`;
-const bankImageApiBase = () => `${partyHttpBase()}/api/bank/image`;
+const bankImageApiBase = () => `${bankApiBase()}/image`;
 // Sentinel for "no correct option marked yet" — happens right after switching a question to
 // multipleChoice, or after deleting the option that was marked correct. Never a valid saved
 // state: validate() below blocks 儲存全部變更 while any question is stuck at this value.
@@ -31,29 +32,22 @@ const TEXT_CONTENT: MediaContent = { kind: "text", value: "" };
 function useOwnerKey(onRestored: (key: string) => void) {
   const [key, setKey] = useState("");
   useEffect(() => {
-    function readStoredKey() {
-      try {
-        const stored = localStorage.getItem(OWNER_KEY_STORAGE);
-        if (stored) {
-          setKey(stored);
-          onRestored(stored);
-        }
-      } catch {
-        // Private browsing / blocked storage: the key box just starts empty.
+    // A named function, not the effect body itself: react-hooks/set-state-in-effect.
+    function restore() {
+      const stored = readStored(OWNER_KEY_STORAGE);
+      if (stored) {
+        setKey(stored);
+        onRestored(stored);
       }
     }
-    readStoredKey();
+    restore();
     // Runs once on mount only — onRestored is the load() callback below, stable enough in practice
     // that re-running this on every render would only risk a duplicate auto-load, not a stale one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const save = (next: string) => {
     setKey(next);
-    try {
-      localStorage.setItem(OWNER_KEY_STORAGE, next);
-    } catch {
-      // Nothing to do — the key still works for this page load, just won't be remembered.
-    }
+    writeStored(OWNER_KEY_STORAGE, next);
   };
   return [key, save] as const;
 }
@@ -315,14 +309,14 @@ function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): BankQuestio
   // explanation carries over just like content does — dropping it here would silently discard
   // an uploaded image/video with no warning at all, bypassing MediaPicker's own confirm() gate
   // entirely (adversarial review finding, /ship).
-  if (kind === "text") return { kind: "text", id: q.id, content: q.content, answer: "", ...(q.explanation ? { explanation: q.explanation } : {}) };
+  if (kind === "text") return { kind: "text", id: q.id, content: q.content, answer: "", explanation: q.explanation };
   return {
     kind: "multipleChoice",
     id: q.id,
     content: q.content,
     options: ["", ""],
     correctIndex: UNSET_CORRECT_INDEX,
-    ...(q.explanation ? { explanation: q.explanation } : {}),
+    explanation: q.explanation,
   };
 }
 
@@ -349,9 +343,9 @@ function MediaPicker({
   allowNone?: boolean;
 }) {
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
+  /** The upload's or the pasted YouTube link's problem, if any. */
+  const [error, setError] = useState("");
   const [youtubeInput, setYoutubeInput] = useState(value?.kind === "youtube" ? value.value : "");
-  const [youtubeError, setYoutubeError] = useState("");
 
   const current = value ?? TEXT_CONTENT;
   const hasContent = value !== undefined && value.value.trim() !== "";
@@ -363,25 +357,19 @@ function MediaPicker({
     // audit finding, /ship).
     if (kind !== "none" && value !== undefined && value.kind === kind) return;
     if (hasContent && !window.confirm("換媒材類型會清空目前已填的內容，確定嗎？")) return;
-    setUploadError("");
-    setYoutubeError("");
-    if (kind === "none") {
-      setYoutubeInput("");
-      onChange(undefined);
-      return;
-    }
+    setError("");
     setYoutubeInput("");
-    onChange({ kind, value: "" });
+    onChange(kind === "none" ? undefined : { kind, value: "" });
   };
 
   const handleFile = async (file: File) => {
     setUploading(true);
-    setUploadError("");
+    setError("");
     try {
       const key = await onUploadImage(file);
       onChange({ kind: "image", value: key });
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "上傳失敗");
+      setError(err instanceof Error ? err.message : "上傳失敗");
     } finally {
       setUploading(false);
     }
@@ -390,17 +378,17 @@ function MediaPicker({
   const handleYoutubeInput = (pasted: string) => {
     setYoutubeInput(pasted);
     if (!pasted.trim()) {
-      setYoutubeError("");
+      setError("");
       onChange({ kind: "youtube", value: "" });
       return;
     }
     const id = extractYoutubeId(pasted);
     if (!id) {
-      setYoutubeError("看不出這是 YouTube 網址");
+      setError("看不出這是 YouTube 網址");
       onChange({ kind: "youtube", value: "" });
       return;
     }
-    setYoutubeError("");
+    setError("");
     onChange({ kind: "youtube", value: id });
   };
 
@@ -484,14 +472,9 @@ function MediaPicker({
           onChange={(e) => handleYoutubeInput(e.target.value)}
         />
       )}
-      {uploadError && (
+      {error && (
         <Panel role="alert" className="text-[13px]" style={{ background: "#ffd9d9" }}>
-          {uploadError}
-        </Panel>
-      )}
-      {youtubeError && (
-        <Panel role="alert" className="text-[13px]" style={{ background: "#ffd9d9" }}>
-          {youtubeError}
+          {error}
         </Panel>
       )}
     </div>

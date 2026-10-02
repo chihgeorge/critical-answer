@@ -48,7 +48,6 @@
 export type Difficulty = 1 | 2 | 3 | 4 | 5;
 
 export const MIN_DIFFICULTY: Difficulty = 1;
-export const MAX_DIFFICULTY: Difficulty = 5;
 
 /**
  * Fixed, developer-authored branch option ids (not host-editable — see
@@ -167,10 +166,6 @@ export type AnswerOutcome =
 
 export class InvalidActionError extends Error {}
 
-function clampDifficulty(value: number): Difficulty {
-  return Math.max(MIN_DIFFICULTY, Math.min(MAX_DIFFICULTY, value)) as Difficulty;
-}
-
 function rollD6(rng: () => number = Math.random): number {
   return Math.floor(rng() * 6) + 1;
 }
@@ -246,7 +241,7 @@ export function createGame(
   teamSeeds: { id: string; name: string }[],
   rooms: RoomTemplate[],
   bossQuestionIds: string[],
-  config: GameConfig = DEFAULT_GAME_CONFIG,
+  config: GameConfig,
   bossMaxHp: number,
   rng: () => number = Math.random,
 ): GameState {
@@ -320,14 +315,18 @@ function resetBossSelections(game: GameState, teams: Team[]): Team[] {
 
 /** The id of the team whose turn it currently is, skipping offline teams (T7). */
 export function currentTurnTeamId(game: GameState): string | null {
+  const idx = nextOnlineIndex(game, 0);
+  // null: every team is offline, so no one can take a turn.
+  return idx === null ? null : game.turnOrder[idx];
+}
+
+/** The first turn index at or after currentTurnIndex + `from` whose team is online (wrapping), or null. */
+function nextOnlineIndex(game: GameState, from: number): number | null {
   const n = game.turnOrder.length;
-  for (let i = 0; i < n; i++) {
+  for (let i = from; i < from + n; i++) {
     const idx = (game.currentTurnIndex + i) % n;
-    const teamId = game.turnOrder[idx];
-    const team = getTeam(game, teamId);
-    if (team.online) return teamId;
+    if (getTeam(game, game.turnOrder[idx]).online) return idx;
   }
-  // Every team is offline — no one can take a turn.
   return null;
 }
 
@@ -337,14 +336,8 @@ export function currentTurnTeamId(game: GameState): string | null {
  * Failure modes: nextTurn() 離線隊伍處理 critical gap from /plan-eng-review.
  */
 export function advanceTurn(game: GameState): GameState {
-  const n = game.turnOrder.length;
-  for (let i = 1; i <= n; i++) {
-    const idx = (game.currentTurnIndex + i) % n;
-    if (getTeam(game, game.turnOrder[idx]).online) {
-      return { ...game, currentTurnIndex: idx };
-    }
-  }
-  return game;
+  const idx = nextOnlineIndex(game, 1);
+  return idx === null ? game : { ...game, currentTurnIndex: idx };
 }
 
 function finishGame(game: GameState): GameState {
@@ -487,7 +480,7 @@ export function answerQuestion(
       };
       outcome = { type: "correct-room-advance", teamId, pointsAwarded, nextRoomIndex };
     } else if (fleeChoice === "flee") {
-      const newDifficulty = clampDifficulty(team.currentDifficulty - 1);
+      const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
       // Fleeing never reveals the answer (D5) — only skip already-revealed questions from
       // prior correct answers, never add this one.
       const dealt = deal(game.rooms, game.usedQuestionIds, game.revealedQuestionIds, game.teams, team.roomIndex, rng);

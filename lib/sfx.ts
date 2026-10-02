@@ -47,8 +47,3 @@ export const SFX: Record<SoundCue, SfxNote[]> = {
     n(0.5, 0.5, "G4", "triangle"),
   ],
 };
-
-/** Seconds from the effect's start to its last note ending. */
-export function sfxDuration(notes: SfxNote[]): number {
-  return Math.max(...notes.map((x) => x.at + x.duration));
-}

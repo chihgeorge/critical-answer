@@ -5,10 +5,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import usePartySocket from "partysocket/react";
-import { restKindOf, restNoticeFor, RESTED_RECONNECT_LABEL, type RestKind } from "@/lib/room/close-codes";
+import { restNoticeFor, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
+import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE } from "@/lib/offline-notice";
-import type { AnswerReveal, PublicQuestion, ServerMessage } from "@/lib/protocol";
+import type { AnswerReveal, PublicQuestion } from "@/lib/protocol";
 import type { GamePhase, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
@@ -17,18 +17,18 @@ import { pickVoice, shouldSpeakEpilogue, shouldSpeakNarration, type SpokenNarrat
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { SFX } from "@/lib/sfx";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
-import { PARTY_HOST } from "@/lib/party-host";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
+import { readStored, writeStored } from "@/lib/stored";
 
 const TTS_ENABLED_STORAGE = "screen-tts-enabled";
 const BGM_ENABLED_STORAGE = "screen-bgm-enabled";
-const bgmSupported = () => typeof window !== "undefined" && "AudioContext" in window;
+const bgmSupported = () => "AudioContext" in window;
 
 /** True only in a browser that actually implements the Web Speech API — the toggle button
  * doesn't render at all otherwise (a rendered-but-disabled button implies the feature could
  * work here if only the user did something, which isn't true). */
-const ttsSupported = () => typeof window !== "undefined" && "speechSynthesis" in window;
+const ttsSupported = () => "speechSynthesis" in window;
 
 type Lobby = { id: string; name: string }[];
 type Play = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
@@ -157,7 +157,7 @@ function Playing({ view, question, reveal, eventId, narration }: { view: Spectat
                     </span>
                   </div>
                   <div className="mt-[5px]">
-                    <ScoreMeter score={Math.min(t.score, BOSS_THRESHOLD)} max={BOSS_THRESHOLD} active={active} />
+                    <ScoreMeter score={t.score} active={active} />
                   </div>
                 </div>
               </Panel>
@@ -286,18 +286,13 @@ export default function ScreenPage() {
   const { code } = useParams<{ code: string }>();
   const [lobby, setLobby] = useState<Lobby>([]);
   const [game, setGame] = useState<Play | null>(null);
-  const [reset, setReset] = useState(false);
-  /** The room closed our connection on purpose after a long idle time. The game is saved; a click reconnects. */
-  const [rested, setRested] = useState<RestKind | null>(null);
   /** A network drop (not a rest): shown so a frozen screen doesn't look like a quiet game. */
   const [disconnected, setDisconnected] = useState(false);
-  const screenOpened = useRef(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
   /** STATE.reveal: the last correct answer, shown in place of the next question until the host
    * presses 下一題 (HOST_NEXT, D7 — docs/designs/question-media-content.md). */
   const [revealed, setRevealed] = useState<AnswerReveal | null>(null);
-  const epoch = useRef<string | null>(null);
 
   // --- TTS (docs/designs/dm-voice-narration-tts.md) ---
   const [ttsOn, setTtsOn] = useState(false);
@@ -326,16 +321,12 @@ export default function ScreenPage() {
   // app/bank-editor/page.tsx's useOwnerKey).
   const [showTtsToggle, setShowTtsToggle] = useState(false);
   useEffect(() => {
-    function readTtsPrefs() {
+    // A named function, not the effect body itself: react-hooks/set-state-in-effect.
+    function restore() {
       if (ttsSupported()) setShowTtsToggle(true);
-      try {
-        const stored = localStorage.getItem(TTS_ENABLED_STORAGE) === "true";
-        if (stored) setTtsOn(true);
-      } catch {
-        // Private browsing / blocked storage: TTS just stays off (the default anyway).
-      }
+      if (readStored(TTS_ENABLED_STORAGE) === "true") setTtsOn(true);
     }
-    readTtsPrefs();
+    restore();
   }, []);
 
   useEffect(() => {
@@ -395,13 +386,8 @@ export default function ScreenPage() {
       pendingLines.current = null; // turned off: nothing waiting should play later
     }
     setTtsOn((on) => {
-      const next = !on;
-      try {
-        localStorage.setItem(TTS_ENABLED_STORAGE, String(next));
-      } catch {
-        // Nothing to do — the toggle still works for this page load, just won't be remembered.
-      }
-      return next;
+      writeStored(TTS_ENABLED_STORAGE, String(!on));
+      return !on;
     });
   }
 
@@ -412,20 +398,16 @@ export default function ScreenPage() {
   const player = () => (bgm.current ??= createBgmPlayer());
 
   useEffect(() => {
-    // Same shape as readTtsPrefs above: read in an effect so SSR and the first render agree.
-    function readBgmPrefs(): boolean {
+    // Read in an effect, like the TTS toggle above, so SSR and the first render agree.
+    // A named function, not the effect body itself: react-hooks/set-state-in-effect.
+    function restore(): boolean {
       if (!bgmSupported()) return false;
       setShowBgmToggle(true);
-      let stored = false;
-      try {
-        stored = localStorage.getItem(BGM_ENABLED_STORAGE) === "true";
-      } catch {
-        // Blocked storage: music stays off.
-      }
-      if (stored) setBgmOn(true);
-      return stored;
+      const on = readStored(BGM_ENABLED_STORAGE) === "true";
+      if (on) setBgmOn(true);
+      return on;
     }
-    if (!readBgmPrefs()) return;
+    if (!restore()) return;
     // Browsers only let audio start inside a user gesture, so a remembered "on" waits for the
     // first click or key press on the page.
     const unlock = () => void player().start();
@@ -452,44 +434,19 @@ export default function ScreenPage() {
     if (next) void player().start();
     else bgm.current?.stop();
     setBgmOn(next);
-    try {
-      localStorage.setItem(BGM_ENABLED_STORAGE, String(next));
-    } catch {
-      // Still works for this page load, just won't be remembered.
-    }
+    writeStored(BGM_ENABLED_STORAGE, String(next));
   }
 
-  const socket = usePartySocket({
-    host: PARTY_HOST,
-    room: code,
+  const { reset, rested, reconnect } = useRoomSocket(code, {
     onOpen() {
-      setRested(null);
       setDisconnected(false);
-      screenOpened.current = true;
       narrationBaseline.current = null;
       sfxSeen.current = null;
     },
-    onClose(event: CloseEvent) {
-      // Stop the automatic reconnecting, or an unused room would be woken up again straight away.
-      const restKind = restKindOf(event);
-      if (restKind) {
-        socket.close();
-        setRested(restKind);
-      } else if (screenOpened.current) {
-        setDisconnected(true);
-      }
+    onClose({ rested, openedBefore }) {
+      if (!rested && openedBefore) setDisconnected(true);
     },
-    onMessage(event: MessageEvent) {
-      let msg: ServerMessage;
-      try {
-        msg = JSON.parse(event.data as string) as ServerMessage;
-      } catch {
-        return;
-      }
-      if ((msg.type === "LOBBY" || msg.type === "STATE") && msg.roomEpoch) {
-        if (epoch.current && epoch.current !== msg.roomEpoch) setReset(true);
-        epoch.current = msg.roomEpoch;
-      }
+    onMessage(msg) {
       switch (msg.type) {
         case "LOBBY":
           setLobby(msg.teams);
@@ -550,7 +507,7 @@ export default function ScreenPage() {
           {rested && (
             <div role="status" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
               {restNoticeFor(rested)}
-              <PixelButton onClick={() => socket.reconnect()} className="!m-0 !px-4 !py-1 text-[18px]">{RESTED_RECONNECT_LABEL}</PixelButton>
+              <PixelButton onClick={reconnect} className="!m-0 !px-4 !py-1 text-[18px]">{RESTED_RECONNECT_LABEL}</PixelButton>
             </div>
           )}
           {reset && (

@@ -68,7 +68,7 @@ function parseMonster(raw: unknown, where: string): BankMonster {
  * "/evil.example/x", which would otherwise build a protocol-relative image URL (imageUrlOf
  * below) that every player's phone and the shared screen load as-is (adversarial review finding,
  * carried forward from the retired `image` kind — /plan-eng-review R2-2). */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Validates and normalizes one content/explanation slot. Called from both call sites below
  * (content and explanation, on both question kinds) so kind-specific validation can't drift
@@ -78,16 +78,10 @@ function parseMediaContent(raw: unknown, where: string): MediaContent {
   if (!m || typeof m !== "object") fail(`${where} has no content`);
   const { kind, value } = m!;
   if (typeof value !== "string" || !value.trim()) fail(`${where} content has no value`);
-  if (kind === "text") return { kind: "text", value: value as string };
-  if (kind === "image") {
-    if (!UUID_RE.test(value as string)) fail(`${where} has an invalid image key`);
-    return { kind: "image", value: value as string };
-  }
-  if (kind === "youtube") {
-    if (!YOUTUBE_ID_RE.test(value as string)) fail(`${where} has an invalid YouTube video id`);
-    return { kind: "youtube", value: value as string };
-  }
-  return fail(`${where} content has unknown kind ${String(kind)}`);
+  if (kind === "image" && !UUID_RE.test(value as string)) fail(`${where} has an invalid image key`);
+  else if (kind === "youtube" && !YOUTUBE_ID_RE.test(value as string)) fail(`${where} has an invalid YouTube video id`);
+  else if (kind !== "text" && kind !== "image" && kind !== "youtube") fail(`${where} content has unknown kind ${String(kind)}`);
+  return { kind, value } as MediaContent;
 }
 
 /** Accepts either the current `content: MediaContent` shape, or a legacy bare `text: string`

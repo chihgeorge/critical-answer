@@ -1,9 +1,9 @@
 {
   "name": "critical-answer",
-  "version": "0.9.13",
+  "version": "0.9.14",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"NEXT_PUBLIC_PARTYKIT_HOST=localhost:8787 next dev\" \"wrangler dev --var ALLOWED_ORIGINS:*\"",
+    "dev": "concurrently \"NEXT_PUBLIC_PARTYKIT_HOST=localhost:8787 next dev\" npm:dev:worker",
     "dev:next": "next dev",
     "build": "next build",
     "start": "next start",
@@ -15,8 +15,7 @@
     "test:live": "LIVE=1 vitest run lib/narration/llm.live.test.ts",
     "playtest": "sh scripts/playtest.sh start",
     "playtest:stop": "sh scripts/playtest.sh stop",
-    "dev:worker": "wrangler dev --var ALLOWED_ORIGINS:*",
-    "typecheck:worker": "tsc --noEmit -p worker"
+    "dev:worker": "wrangler dev --var ALLOWED_ORIGINS:*"
   },
   "dependencies": {
     "next": "16.3.6",
@@ -24,8 +23,7 @@
     "partysocket": "^1.1.18",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "vite": "^8.3.0"
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260923.1",

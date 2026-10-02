@@ -38,22 +38,29 @@ export function createBgmPlayer(song: Song = DUNGEON_THEME): BgmPlayer {
   let loops = 0;
   let ducked = false;
 
-  function playNote(freq: number, at: number, duration: number, voice: "melody" | "bass") {
-    if (!ctx || !master) return;
+  /** One oscillator note with a short attack and release, so notes don't click. */
+  function tone(dest: AudioNode, wave: OscillatorType, freq: number, at: number, end: number, peak: number, attack: number, slideTo?: number) {
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const env = ctx.createGain();
-    osc.type = voice === "melody" ? "square" : "triangle";
-    osc.frequency.value = freq;
-    const peak = voice === "melody" ? 0.5 : 0.9;
-    // A tiny attack and release so notes don't click; a gap before the next note keeps steps crisp.
-    const end = at + Math.max(0.05, duration - 0.02);
+    osc.type = wave;
+    osc.frequency.setValueAtTime(freq, at);
+    if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, end);
     env.gain.setValueAtTime(0, at);
-    env.gain.linearRampToValueAtTime(peak, at + 0.01);
-    env.gain.setValueAtTime(peak, end - 0.03);
+    env.gain.linearRampToValueAtTime(peak, at + attack);
+    env.gain.setValueAtTime(peak, Math.max(at + attack, end - 0.03));
     env.gain.linearRampToValueAtTime(0, end);
-    osc.connect(env).connect(master);
+    osc.connect(env).connect(dest);
     osc.start(at);
     osc.stop(end + 0.01);
+  }
+
+  function playNote(freq: number, at: number, duration: number, voice: "melody" | "bass") {
+    if (!master) return;
+    // A gap before the next note keeps steps crisp.
+    const end = at + Math.max(0.05, duration - 0.02);
+    if (voice === "melody") tone(master, "square", freq, at, end, 0.5, 0.01);
+    else tone(master, "triangle", freq, at, end, 0.9, 0.01);
   }
 
   function schedule() {
@@ -114,20 +121,8 @@ export function createBgmPlayer(song: Song = DUNGEON_THEME): BgmPlayer {
       bus.gain.value = SFX_VOLUME;
       bus.connect(ctx.destination);
       for (const note of notes) {
-        const osc = ctx.createOscillator();
-        const env = ctx.createGain();
         const at = t0 + note.at;
-        const end = at + note.duration;
-        osc.type = note.wave;
-        osc.frequency.setValueAtTime(note.freq, at);
-        if (note.slideTo) osc.frequency.exponentialRampToValueAtTime(note.slideTo, end);
-        env.gain.setValueAtTime(0, at);
-        env.gain.linearRampToValueAtTime(1, at + 0.005);
-        env.gain.setValueAtTime(1, Math.max(at + 0.005, end - 0.03));
-        env.gain.linearRampToValueAtTime(0, end);
-        osc.connect(env).connect(bus);
-        osc.start(at);
-        osc.stop(end + 0.01);
+        tone(bus, note.wave, note.freq, at, at + note.duration, 1, 0.005, note.slideTo);
       }
     },
   };

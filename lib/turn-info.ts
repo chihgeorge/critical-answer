@@ -1,9 +1,10 @@
 // Derives what every surface shows about the current turn from the public
 // SpectatorView, so /screen and the /play mini broadcast never disagree.
 
-import type { SpectatorView } from "./game-state";
+import { DEFAULT_GAME_CONFIG, type SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
-import type { SceneTheme, SpriteKind } from "./pixel-art";
+import type { SceneTheme } from "./pixel-art";
+import type { SpriteKind } from "./sprite-kind";
 
 export type Monster = { kind: SpriteKind; name: string; scale: number; hue: number; float?: boolean };
 
@@ -17,7 +18,7 @@ const LOOK: Record<string, { scale: number; float?: boolean }> = {
   dragon: { scale: 4 },
 };
 export const FALLBACK_MONSTER: Monster = { kind: "slime", name: "…", scale: 6, hue: 0 };
-export const BOSS_THRESHOLD = 15;
+export const BOSS_THRESHOLD = DEFAULT_GAME_CONFIG.bossThreshold;
 
 const ROOM_THEMES: SceneTheme[] = ["stone", "moss", "stone", "moss", "stone"];
 
@@ -26,12 +27,15 @@ export function describeTurn(view: SpectatorView, question: PublicQuestion | nul
   const team = view.teams[teamIndex];
   const inBoss = team?.inBossPhase ?? false;
   const room = team?.roomIndex ?? 0;
+  const monster: Monster = question ? { ...LOOK[question.monster.sprite], kind: question.monster.sprite, name: question.monster.name, hue: question.monster.hue } : FALLBACK_MONSTER;
   return {
     team,
     teamIndex,
     inBoss,
     room,
-    monster: question ? { ...LOOK[question.monster.sprite], kind: question.monster.sprite, name: question.monster.name, hue: question.monster.hue } : FALLBACK_MONSTER,
+    monster,
+    /** The monster's sprite scale for the phone-size turn card. */
+    miniScale: Math.max(1, Math.floor(monster.scale / 3)),
     theme: inBoss ? ("crimson" as const) : ROOM_THEMES[room % ROOM_THEMES.length],
     questionId: inBoss ? view.bossCurrentQuestionId : team?.currentQuestionId,
     bossHits: view.bossMaxHp - view.bossHp,

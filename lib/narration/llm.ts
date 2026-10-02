@@ -5,12 +5,11 @@
 
 import type { NarrationEvent } from "./events";
 import type { NarrationProvider } from "./scripted";
-import { validLine, MAX_LINE } from "./runner";
+import { validLine, MAX_LINE, MAX_EPILOGUE_LINE } from "./runner";
 import { AuthError, ConfigMissingError, EmptyOrRefusalError, InvalidOutputError, TimeoutError, UpstreamError } from "./errors";
 
 export const NARRATION_MODEL = "claude-haiku-4-5";
 export const EPILOGUE_MODEL = "claude-sonnet-5";
-export const MAX_EPILOGUE = 160;
 const API_URL = "https://api.anthropic.com/v1/messages";
 
 /** Player-typed names go into prompts as quoted data: drop anything that could close the quote. */
@@ -142,7 +141,7 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
         .map((b) => b.text ?? "")
         .join("");
       if (!raw.trim()) throw new EmptyOrRefusalError("no text in the response");
-      const max = epilogue ? MAX_EPILOGUE : MAX_LINE;
+      const max = epilogue ? MAX_EPILOGUE_LINE : MAX_LINE;
       const forbidden = (opts.forbidden?.() ?? []).filter((a) => a.length >= 3);
       // The model echoes the 「」 we put around names; they are prompt scaffolding, not part of the line.
       const clean = (line: string) => fitToLimit(line.replace(/[「」『』"“”]/g, "").trim(), max);
