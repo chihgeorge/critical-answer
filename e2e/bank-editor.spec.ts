@@ -14,6 +14,14 @@ function autoAcceptConfirms(page: Page) {
   page.on("dialog", (d) => void d.accept());
 }
 
+/** Clicks 儲存全部變更 and waits for the save to finish (the button reads 儲存中… and is disabled while
+ * the PUT is in flight). Without this, a following reload or error check races the request and, on a
+ * slow CI runner, can cancel it before it lands. */
+async function saveAll(page: Page) {
+  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await expect(page.getByRole("button", { name: "儲存全部變更" })).toBeEnabled();
+}
+
 test("homepage links to the bank editor", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: /題庫編輯器/ }).click();
@@ -44,7 +52,7 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
   await rows(room0).first().getByLabel("題目文字").fill("編輯過的題目");
   await expect(rows(room0)).toHaveCount(startingCount + 1);
 
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   // Reload with the key and confirm both changes persisted through BankStore, not just local state.
@@ -58,7 +66,7 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
 
   // Delete the question just added (the last one) and save again.
   await rows(room0AfterSave).last().getByRole("button", { name: "刪除" }).click();
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   await page.reload();
@@ -90,7 +98,7 @@ test("a save that fails server-side validation shows the server's error, and doe
   // parseBank() rejects an empty answer — a real state reachable by clearing the field, not a
   // client-side-only validation the form itself would block.
   await rows(room0).first().getByLabel("答案").fill("");
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
 
   await expect(page.getByTestId("bank-editor-error")).toBeVisible();
   await expect(page.getByTestId("bank-editor-error")).toContainText(/empty answer/i);
@@ -113,7 +121,7 @@ test("deleting every question in a room down to zero is rejected on save (a room
   }
   await expect(rows(boss)).toHaveCount(0);
 
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toBeVisible();
   await expect(page.getByTestId("bank-editor-error")).toContainText(/no questions/i);
 
@@ -148,7 +156,7 @@ test("multipleChoice authoring: switch kind, edit options, mark correct, and del
   await firstRow.getByLabel("選項 3").fill("台中歌劇院");
 
   // Nothing marked correct yet — save must be rejected, not silently accepted with a bogus pick.
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toContainText(/還沒標記正解/);
 
   // Mark option 1 correct, then delete it — the mark must not silently move to whatever now
@@ -162,12 +170,12 @@ test("multipleChoice authoring: switch kind, edit options, mark correct, and del
   await expect(firstRow.getByLabel("選項 1").locator("xpath=..").getByRole("button", { name: "刪" })).toBeDisabled();
   await expect(firstRow.getByLabel("選項 2").locator("xpath=..").getByRole("button", { name: "刪" })).toBeDisabled();
 
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toContainText(/還沒標記正解/);
 
   // Mark the (now first) remaining option correct and save — this time it goes through.
   await firstRow.getByLabel("第 1 個選項為正解").check();
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   // Reload and confirm it persisted as multipleChoice with the mark intact, not reverted to text.
@@ -247,7 +255,7 @@ test("image authoring: switch the content's media type to image, upload a real f
   await expect(firstRow.getByLabel("上傳題目圖片")).toBeVisible();
 
   // No image uploaded yet — save must be rejected, not silently accepted with an empty value.
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toContainText(/還沒上傳圖片/);
 
   // Upload a real file — goes through the actual /api/bank/image Worker endpoint (magic-byte
@@ -255,7 +263,7 @@ test("image authoring: switch the content's media type to image, upload a real f
   await firstRow.getByLabel("上傳題目圖片").setInputFiles({ name: "squirrel.png", mimeType: "image/png", buffer: TINY_PNG });
   await expect(firstRow.getByText(/已上傳/)).toBeVisible();
 
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   // Reload and confirm it persisted as image content — the uploaded key survived the round trip
@@ -314,7 +322,7 @@ test("YouTube authoring: pasting a full watch URL extracts and stores just the v
   await firstRow.getByLabel("題目的 YouTube 網址").fill("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s");
   await expect(firstRow.getByLabel("題目的 YouTube 網址")).toHaveValue("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s");
 
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   await page.reload();
@@ -341,7 +349,7 @@ test("YouTube authoring: an unparseable paste shows an inline error and blocks s
   await firstRow.getByLabel("題目的 YouTube 網址").fill("this is not a youtube url");
   await expect(firstRow.getByText("看不出這是 YouTube 網址")).toBeVisible();
 
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toContainText(/還沒填完/);
 });
 
@@ -358,7 +366,7 @@ test("explanation: optional, independently text/image/YouTube from the content, 
   await firstRow.getByRole("button", { name: "詳解：文字" }).click();
   await firstRow.getByLabel("詳解文字").fill("這是補充說明");
 
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   await page.reload();
@@ -371,7 +379,7 @@ test("explanation: optional, independently text/image/YouTube from the content, 
   // non-empty ("這是補充說明"), so a real dialog fires; accept it inline for this one action.
   page.once("dialog", (d) => void d.accept());
   await reloadedRow.getByRole("button", { name: "詳解：無" }).click();
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   await page.reload();
@@ -437,13 +445,13 @@ test("two tabs editing at once: the second save is rejected as a conflict, not a
 
   // Tab A edits and saves first — this is the edit that must NOT be lost.
   await rows(tabA.getByTestId("bank-room-0")).first().getByLabel("題目文字").fill("A 先存的版本");
-  await tabA.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(tabA);
   await expect(tabA.getByTestId("bank-editor-error")).toHaveCount(0);
 
   // Tab B still holds the version it loaded before A's save — its save must be rejected, not
   // silently accepted (which would erase A's edit with no trace).
   await rows(tabB.getByTestId("bank-room-0")).first().getByLabel("題目文字").fill("B 後存的版本（應該被拒絕）");
-  await tabB.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(tabB);
   await expect(tabB.getByTestId("bank-editor-error")).toBeVisible();
   await expect(tabB.getByTestId("bank-editor-error")).toContainText(/changed by someone else/i);
 
@@ -488,7 +496,7 @@ test("an explanation tab picked but left empty blocks save with an explanation-s
   const firstRow = await loadEditor(page);
 
   await firstRow.getByRole("button", { name: "詳解：YouTube" }).click();
-  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toContainText(/的詳解還沒填完（還沒貼網址）/);
 });
 

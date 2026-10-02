@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.14.1] - 2026-10-01
+
+### Fixed
+- A flaky end-to-end test of the bank editor no longer fails the CI check on slow runners. Every save in the test now waits for the request to finish before reloading the page, so a reload can't cancel a save that is still in flight. Test-only; the editor itself is unchanged.
+
 ## [0.9.14.0] - 2026-10-01
 
 ### Changed
