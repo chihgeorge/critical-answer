@@ -89,7 +89,7 @@ sh scripts/playtest.sh stop
 
 ### 部署
 
-合併進 `main` 就會自動部署：GitHub Actions 的 `deploy-worker` job 在檢查通過後執行 `wrangler deploy`（房間伺服器），Vercel 自己從 `main` 部署前端。第一次要在 GitHub repo 的 Settings → Secrets and variables → Actions 加兩個 secret：`CLOUDFLARE_API_TOKEN`（用「Edit Cloudflare Workers」範本建的 API token）和 `CLOUDFLARE_ACCOUNT_ID`；沒設的話這個 job 只會留警告、不部署。`OWNER_KEY`、`ANTHROPIC_API_KEY` 存在 Worker 上，部署不會動到。
+合併進 `main` 就會自動部署，兩邊都是平台自己的 Git 連動，GitHub 上不放任何部署用的 secret：Cloudflare Workers Builds 從 `main` 執行 `wrangler deploy`（房間伺服器），Vercel 從 `main` 部署前端。Workers Builds 在 Cloudflare dashboard 設定（Workers & Pages → `critical-answer` → Settings → Build → 連 GitHub repo，production branch 選 `main`）。它不等 GitHub Actions 的檢查跑完，也不保證比 Vercel 先完成；如果這次改動要求 Worker 先上線（例如前端會讀新的協定欄位），合併前先在本機 `wrangler deploy`。`OWNER_KEY`、`ANTHROPIC_API_KEY` 存在 Worker 上，部署不會動到。
 
 ## 題庫
 
