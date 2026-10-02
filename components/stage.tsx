@@ -3,8 +3,8 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 
 /** Logical size of the big-screen stage. Every approved mockup was laid out at this size. */
-export const STAGE_W = 960;
-export const STAGE_H = 540;
+const STAGE_W = 960;
+const STAGE_H = 540;
 
 function subscribe(cb: () => void) {
   addEventListener("resize", cb);

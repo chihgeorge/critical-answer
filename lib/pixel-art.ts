@@ -4,7 +4,6 @@
 // art stays crisp at any integer scale (CSS `image-rendering: pixelated`).
 
 import type { SpriteKind } from "./sprite-kind";
-export type { SpriteKind };
 
 export const OUTLINE = "#2a1533";
 const K = OUTLINE;

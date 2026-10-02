@@ -18,11 +18,11 @@ const validBank: Bank = {
   boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, maxHp: 10, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "2+2?" }, answer: "4" }] },
 };
 
-describe("BankStore.getBank / getVersionedBank", () => {
+describe("BankStore.getVersionedBank", () => {
   it("seeds itself from the bundled bank at version 1 on first read (empty storage)", async () => {
     const storage = memoryStorage();
     const store = new BankStore(storage);
-    const bank = await store.getBank();
+    const { bank } = await store.getVersionedBank();
     expect(bank).toEqual(BANK);
     // The seed is persisted, not re-computed every call.
     expect(await storage.get("bank")).toEqual({ bank: BANK, version: 1 });

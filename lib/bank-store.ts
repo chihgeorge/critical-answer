@@ -6,7 +6,7 @@
 // see lib/gate.ts's header comment on why a new DO binding must not be reachable at
 // /parties/<binding>/<id>).
 //
-//   BankStore.getBank() / getVersionedBank()      BankStore.putBank(candidate, expectedVersion)
+//   BankStore.getVersionedBank()                   BankStore.putBank(candidate, expectedVersion)
 //     │                                              │
 //     ├─ storage empty? ─yes─> seed from              ├─ expectedVersion !== stored.version?
 //     │                        bundled JSON, v1              └─throws BankConflictError─>
@@ -116,7 +116,7 @@ export class BankStore {
     const pending = await this.getPending();
     if (pending.length === 0) return;
     const now = this.now();
-    const inUse = imageKeysOf((await this.getStored()).bank);
+    const inUse = imageKeysOf((await this.getVersionedBank()).bank);
     const due = pending.filter((p) => p.deleteAt <= now && !inUse.has(p.key)).map((p) => p.key);
     // Back in the bank: drop it from the queue; the save that removes it again re-queues it.
     await this.setPending(pending.filter((p) => p.deleteAt > now && !inUse.has(p.key)));
@@ -127,7 +127,9 @@ export class BankStore {
     }
   }
 
-  private async getStored(): Promise<VersionedBank> {
+  /** The current bank plus its version. The editor round-trips the version on save so a
+   * conflicting concurrent save is caught instead of silently overwritten. */
+  async getVersionedBank(): Promise<VersionedBank> {
     const raw = await this.storage.get(BANK_KEY);
     if (raw === undefined) {
       const seeded: VersionedBank = { bank: parseBank(bankJson), version: 1 };
@@ -145,23 +147,11 @@ export class BankStore {
     }
   }
 
-  /** The current bank only — for callers that don't need to detect conflicts (Room.onStart()'s
-   * bank-fetch-with-fallback; a room's own snapshot is the source of truth after that anyway). */
-  async getBank(): Promise<Bank> {
-    return (await this.getStored()).bank;
-  }
-
-  /** The current bank plus its version, for the editor: round-trip the version on save so a
-   * conflicting concurrent save is caught instead of silently overwritten. */
-  async getVersionedBank(): Promise<VersionedBank> {
-    return this.getStored();
-  }
-
   /** Validates and replaces the whole bank atomically, but only if `expectedVersion` still
    * matches what's stored. Throws `BankConflictError` on a stale version, or parseBank's error on
    * invalid input — either way nothing is saved, the previous bank stands. */
   async putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank> {
-    const current = await this.getStored();
+    const current = await this.getVersionedBank();
     if (current.version !== expectedVersion) throw new BankConflictError(current.version);
     const validated = parseBank(candidate);
     const next: VersionedBank = { bank: validated, version: current.version + 1 };

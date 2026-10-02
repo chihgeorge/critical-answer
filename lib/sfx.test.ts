@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { SFX, sfxDuration } from "./sfx";
+import { SFX, type SfxNote } from "./sfx";
+
+/** Seconds from the effect's start to its last note ending. */
+const sfxDuration = (notes: SfxNote[]) => Math.max(...notes.map((x) => x.at + x.duration));
 
 describe("SFX", () => {
   it("has an effect for every cue, each short enough to finish before the narration gets going", () => {

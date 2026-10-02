@@ -16,7 +16,7 @@ import {
   type GameState,
 } from "../game-state";
 import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type ServerMessage, type SoundCue } from "../protocol";
-import { allQuestions, answerText, bossQuestionIds, findQuestion, publicExplanation, publicQuestion, roomTemplates, type Bank } from "../question-bank";
+import { UUID_RE, allQuestions, answerText, bossQuestionIds, findQuestion, publicExplanation, publicQuestion, roomTemplates, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
@@ -68,10 +68,6 @@ function roundActivity(at: number, idleMs: number): number {
 }
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function isValidTeamId(id: string): boolean {
-  return UUID_RE.test(id);
-}
 
 /**
  * One game room. It knows nothing about the platform: messages come in through onMessage/onConnect/onClose
@@ -101,7 +97,6 @@ export class DungeonRoom {
   /** Live connections we accepted, for the per-room cap. */
   private conns = new Set<string>();
 
-  /** `rng` is injectable so tests can make question dealing deterministic. */
   /** Counts the start and every accepted judgment; each gets exactly one NARRATION. */
   private eventSeq = 0;
   private lastNarration: { eventId: number; lines: string[] } | null = null;
@@ -185,7 +180,7 @@ export class DungeonRoom {
       fallback: this.scripted,
       holdMs: opts.holdMs,
       epilogueHoldMs: opts.epilogueHoldMs,
-      emit: (eventId, lines, _provider, event) => {
+      emit: (eventId, lines, event) => {
         if (event.type === "epilogue") {
           this.epilogue = lines[0];
           this.broadcast({ type: "EPILOGUE", text: lines[0] });
@@ -629,7 +624,7 @@ export class DungeonRoom {
   }
 
   private handleJoin(conn: Conn, teamId: string, teamKey: string, rawName: string) {
-    if (!isValidTeamId(teamId)) {
+    if (!UUID_RE.test(teamId)) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_team_id" });
       return;
     }
@@ -667,7 +662,7 @@ export class DungeonRoom {
   }
 
   private handleRejoin(conn: Conn, teamId: string, teamKey: string) {
-    if (!isValidTeamId(teamId)) {
+    if (!UUID_RE.test(teamId)) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_team_id" });
       return;
     }
@@ -782,13 +777,12 @@ export class DungeonRoom {
 
     try {
       const prev = this.game;
-      const monster = this.currentQuestion()?.pub.monster.name ?? "怪物";
-      // Captured before `this.game` reassigns to the post-judgment state below — same
-      // read-prev-before-mutating discipline the `monster` capture above already needs.
-      // The reveal must describe the question that was JUST answered, not whatever
+      // Captured before `this.game` reassigns to the post-judgment state below: the monster name
+      // and the reveal must describe the question that was JUST answered, not whatever
       // currentQuestion() would return afterwards (the next one) — a trap this file's own
       // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
       const justAnswered = this.currentQuestion();
+      const monster = justAnswered?.pub.monster.name ?? "怪物";
       const { game, outcome } = answerQuestion(prev, teamId, questionId, correct, fleeChoice ?? "retry", this.rng);
       // Everything up to broadcastState is synchronous: state changes and the eventId are
       // fixed before any narration awaits, so concurrent judgments cannot interleave.
@@ -814,42 +808,40 @@ export class DungeonRoom {
         void this.sendEpilogue(narration, eventId).catch((err) => console.error("epilogue failed", err));
       }
     } catch (err) {
-      const detail = err instanceof InvalidActionError ? err.message : "unknown error";
-      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+      this.sendInvalid(conn, err);
     }
+  }
+
+  private sendInvalid(conn: Conn, err: unknown) {
+    const detail = err instanceof InvalidActionError ? err.message : "unknown error";
+    this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+  }
+
+  /** The connection's own team while a game runs; otherwise sends the matching ERROR and returns null. */
+  private playingTeam(conn: Conn): string | null {
+    const teamId = this.connTeam.get(conn.id);
+    if (!teamId) this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
+    else if (!this.game) this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+    else return teamId;
+    return null;
   }
 
   /** DM branching interlude pick. The team is derived from `connTeam` — never from a
    * client-supplied id — so a connection can only ever choose for its own team. */
   private handleTeamBranchChoice(conn: Conn, roomIndex: number, choice: BranchOptionId) {
-    const teamId = this.connTeam.get(conn.id);
-    if (!teamId) {
-      this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
-      return;
-    }
-    if (!this.game) {
-      this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
-      return;
-    }
+    const teamId = this.playingTeam(conn);
+    if (!teamId || !this.game) return;
     try {
       this.game = recordBranchChoice(this.game, teamId, roomIndex, choice);
       this.broadcastState();
     } catch (err) {
-      const detail = err instanceof InvalidActionError ? err.message : "unknown error";
-      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+      this.sendInvalid(conn, err);
     }
   }
 
   private handleTeamSelectOption(conn: Conn, questionId: string, optionIndex: number) {
-    const teamId = this.connTeam.get(conn.id);
-    if (!teamId) {
-      this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
-      return;
-    }
-    if (!this.game) {
-      this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
-      return;
-    }
+    const teamId = this.playingTeam(conn);
+    if (!teamId || !this.game) return;
     // /play hides the options during a reveal (D7); a stale client must not pre-pick the next
     // question before it has even been shown.
     if (this.reveal) {
@@ -874,8 +866,7 @@ export class DungeonRoom {
       this.game = recordOptionSelection(this.game, teamId, questionId, optionIndex);
       this.broadcastState();
     } catch (err) {
-      const detail = err instanceof InvalidActionError ? err.message : "unknown error";
-      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+      this.sendInvalid(conn, err);
     }
   }
 }

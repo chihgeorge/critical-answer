@@ -3,7 +3,9 @@
 // Shared pixel-dungeon components (see DESIGN.md). Styles live in app/globals.css.
 
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
-import { drawHomeScene, drawScene, drawSprite, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme, type SpriteKind } from "@/lib/pixel-art";
+import { drawHomeScene, drawScene, drawSprite, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme } from "@/lib/pixel-art";
+import type { SpriteKind } from "@/lib/sprite-kind";
+import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { youtubeEmbedUrl } from "@/lib/youtube";
 import type { PublicMediaContent } from "@/lib/protocol";
 
@@ -219,9 +221,10 @@ export function HomeBackground() {
   );
 }
 
-/* ---------- Score meter: 15 cells ---------- */
+/* ---------- Score meter: one cell per point up to the boss threshold ---------- */
 
-export function ScoreMeter({ score, max = 15, active = false }: { score: number; max?: number; active?: boolean }) {
+export function ScoreMeter({ score: raw, max = BOSS_THRESHOLD, active = false }: { score: number; max?: number; active?: boolean }) {
+  const score = Math.min(raw, max);
   return (
     <div className={cx("px-meter", active && "act")} role="meter" aria-valuenow={score} aria-valuemin={0} aria-valuemax={max}>
       {Array.from({ length: max }, (_, i) => (
@@ -255,7 +258,7 @@ export function Nameplate({ children, className, style }: { children: ReactNode;
 /* ---------- Dialogue box: owl portrait, `…` loader, lines typed one after another ---------- */
 
 /** Reading time between one line and the next, after the first has finished typing. */
-export const LINE_PAUSE_MS = 2200;
+const LINE_PAUSE_MS = 2200;
 
 function Typewriter({ text, onDone }: { text: string; onDone: () => void }) {
   const [n, setN] = useState(0);
@@ -303,7 +306,6 @@ export function DialogueBox({
   text,
   lines,
   loading = false,
-  speaker = "地城主",
   accent,
   className,
   style,
@@ -315,7 +317,6 @@ export function DialogueBox({
   lines?: string[];
   /** Narration hold: shows a blinking `…` and keeps the portrait. */
   loading?: boolean;
-  speaker?: string;
   /** Speaker tag color. */
   accent?: string;
   className?: string;
@@ -338,7 +339,7 @@ export function DialogueBox({
       }}
     >
       <span className="who" style={accent ? { background: accent } : undefined}>
-        {speaker}
+        地城主
       </span>
       <div className="por" style={compact ? { left: 8, top: 10, width: 56, height: 56 } : { width: 84, height: 84 }}>
         <Sprite kind="owl" scale={portrait / 28} />

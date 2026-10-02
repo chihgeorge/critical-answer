@@ -122,43 +122,36 @@ export const NEXT_VARIANTS = {
   ],
 };
 
-function fill(template: string, event: NarrationEvent): string {
-  const vars = event as unknown as Record<string, string | number | string[]>;
-  return template.replace(/\{(\w+)\}/g, (_, key: string) => String(vars[key] ?? ""));
+function fill(template: string, vars: object): string {
+  const v = vars as Record<string, string | number | string[]>;
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => String(v[key] ?? ""));
 }
 
 export function createScriptedProvider(rng: () => number = Math.random) {
-  const last: Partial<Record<NarrationEvent["type"] | "next-room" | "next-boss" | "boss-enter", number>> = {};
-  const lastAtmosphere: Partial<Record<Exclude<NarrationEvent["type"], "epilogue">, number>> = {};
+  /** The last index picked per pool, so the same line never plays twice in a row. */
+  const last: Record<string, number> = {};
+  function pick(pool: string[], key: string): string {
+    let i = Math.floor(rng() * pool.length);
+    if (i === last[key]) i = (i + 1) % pool.length;
+    last[key] = i;
+    return pool[i];
+  }
   const provider = {
     name: "scripted",
     /** Synchronous, so it can back up a slow provider without awaiting anything. */
     line(event: NarrationEvent): string {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
-      const key = event.type === "correct" && event.entersBoss ? "boss-enter" : event.type;
-      const pool = key === "boss-enter" ? BOSS_ENTER_VARIANTS : VARIANTS[event.type];
-      let i = Math.floor(rng() * pool.length);
-      if (i === last[key]) i = (i + 1) % pool.length;
-      last[key] = i;
-      return fill(pool[i], event);
+      const bossEnter = event.type === "correct" && event.entersBoss;
+      return fill(pick(bossEnter ? BOSS_ENTER_VARIANTS : VARIANTS[event.type], bossEnter ? "boss-enter" : event.type), event);
     },
     /** Synchronous like line(): a short atmosphere/detail beat, the new middle segment. */
     atmosphereLine(event: NarrationEvent): string {
       if (event.type === "epilogue") return ""; // epilogue never uses this — see the module header
-      const pool = ATMOSPHERE_VARIANTS[event.type];
-      let i = Math.floor(rng() * pool.length);
-      if (i === lastAtmosphere[event.type]) i = (i + 1) % pool.length;
-      lastAtmosphere[event.type] = i;
-      return fill(pool[i], event);
+      return fill(pick(ATMOSPHERE_VARIANTS[event.type], `atm-${event.type}`), event);
     },
     /** Synchronous like line(): the scripted prompt for whoever is up next. */
     nextLine(next: NextTurn): string {
-      const key = next.boss ? "next-boss" : "next-room";
-      const pool = next.boss ? NEXT_VARIANTS.boss : NEXT_VARIANTS.room;
-      let i = Math.floor(rng() * pool.length);
-      if (i === last[key]) i = (i + 1) % pool.length;
-      last[key] = i;
-      return pool[i].replace("{team}", next.team).replace("{monster}", next.monster);
+      return fill(pick(next.boss ? NEXT_VARIANTS.boss : NEXT_VARIANTS.room, next.boss ? "next-boss" : "next-room"), next);
     },
     async narrate(event: NarrationEvent): Promise<string> {
       return provider.line(event);

@@ -164,6 +164,10 @@ function str(v: unknown, max: number): string | null {
   return typeof v === "string" && v.length <= max ? v : null;
 }
 
+function teamKeyOf(v: unknown): string | null {
+  return typeof v === "string" && TEAM_KEY_RE.test(v) ? v : null;
+}
+
 /** `{ resume: true }` only for a literal `true`; anything else is simply dropped. */
 function resumeOf(m: Record<string, unknown>): { resume?: true } {
   return m.resume === true ? { resume: true } : {};
@@ -181,12 +185,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "JOIN": {
       const teamId = str(m.teamId, MAX_ID);
       const teamName = str(m.teamName, MAX_RAW_NAME);
-      const teamKey = typeof m.teamKey === "string" && TEAM_KEY_RE.test(m.teamKey) ? m.teamKey : null;
+      const teamKey = teamKeyOf(m.teamKey);
       return teamId !== null && teamName !== null && teamKey !== null ? { type: "JOIN", teamId, teamKey, teamName, ...resumeOf(m) } : null;
     }
     case "REJOIN": {
       const teamId = str(m.teamId, MAX_ID);
-      const teamKey = typeof m.teamKey === "string" && TEAM_KEY_RE.test(m.teamKey) ? m.teamKey : null;
+      const teamKey = teamKeyOf(m.teamKey);
       return teamId !== null && teamKey !== null ? { type: "REJOIN", teamId, teamKey, ...resumeOf(m) } : null;
     }
     case "HOST_CLAIM":

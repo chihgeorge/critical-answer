@@ -11,14 +11,14 @@ const provider = (narrate: NarrationProvider["narrate"], name = "fake"): Narrati
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function setup(p: NarrationProvider, holdMs = 30, epilogueHoldMs = 60) {
-  const emitted: { eventId: number; lines: string[]; provider: string }[] = [];
+  const emitted: { eventId: number; lines: string[] }[] = [];
   const entries: TranscriptEntry[] = [];
   const runner = createRunner({
     provider: p,
     fallback,
     holdMs,
     epilogueHoldMs,
-    emit: (eventId, lines, providerName) => emitted.push({ eventId, lines, provider: providerName }),
+    emit: (eventId, lines) => emitted.push({ eventId, lines }),
     record: (e) => entries.push(e),
   });
   return { runner, emitted, entries };
@@ -37,7 +37,7 @@ describe("narration runner", () => {
   it("uses the provider's result line, backed by the scripted atmosphere line for the segment it didn't write", async () => {
     const { runner, emitted, entries } = setup(provider(async () => "來自提供者"));
     await runner.run(1, event, { 紅隊: 3 });
-    expect(emitted).toEqual([{ eventId: 1, lines: ["來自提供者", "備用氣氛"], provider: "fake" }]);
+    expect(emitted).toEqual([{ eventId: 1, lines: ["來自提供者", "備用氣氛"] }]);
     expect(entries[0]).toMatchObject({ eventId: 1, lines: ["來自提供者", "備用氣氛"], sources: ["fake", "scripted"], provider: "fake", event, scores: { 紅隊: 3 } });
     expect(entries[0].fallbackReason).toBeUndefined();
     expect(entries[0].latencyMs).toBeGreaterThanOrEqual(0);
@@ -54,8 +54,8 @@ describe("narration runner", () => {
     const { runner, emitted, entries } = setup(provider(async () => (await sleep(120), "太晚了")));
     await runner.run(2, event);
     await sleep(150); // the late answer must not produce a second message
-    expect(emitted).toEqual([{ eventId: 2, lines: ["備用旁白", "備用氣氛"], provider: "scripted" }]);
-    expect(entries[0].fallbackReason).toBe("timeout");
+    expect(emitted).toEqual([{ eventId: 2, lines: ["備用旁白", "備用氣氛"] }]);
+    expect(entries[0]).toMatchObject({ provider: "scripted", fallbackReason: "timeout" });
   });
 
   it("falls back when the provider throws", async () => {
@@ -171,7 +171,8 @@ describe("narration runner", () => {
     it("uses all scripted segments when the provider fails or is too slow", async () => {
       const slow = setup(provider(async () => (await sleep(120), "晚")));
       await slow.runner.run(1, withNext);
-      expect(slow.emitted[0]).toMatchObject({ lines: ["備用旁白", "備用氣氛", "備用下一句"], provider: "scripted" });
+      expect(slow.emitted[0].lines).toEqual(["備用旁白", "備用氣氛", "備用下一句"]);
+      expect(slow.entries[0].provider).toBe("scripted");
     });
 
     it("sends no transition segment when the event has no next team, even if the provider wrote three lines", async () => {
