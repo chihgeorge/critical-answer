@@ -6,6 +6,22 @@ import { restKindOf, type RestKind } from "./room/close-codes";
 import type { ClientMessage, ServerMessage } from "./protocol";
 import { PARTY_HOST } from "./party-host";
 
+/** Parses one frame from the room and tracks `roomEpoch`, the id the server picks each time it starts
+ * a fresh game. A different epoch than the one we last saw means the server restarted and the game
+ * we were showing is gone (`reset`). The first epoch only gets recorded. Not JSON: null (ignored). */
+export function readRoomMessage(data: string, lastEpoch: string | null): { msg: ServerMessage; epoch: string | null; reset: boolean } | null {
+  let msg: ServerMessage;
+  try {
+    msg = JSON.parse(data) as ServerMessage;
+  } catch {
+    return null;
+  }
+  if ((msg.type === "LOBBY" || msg.type === "STATE") && msg.roomEpoch) {
+    return { msg, epoch: msg.roomEpoch, reset: lastEpoch !== null && lastEpoch !== msg.roomEpoch };
+  }
+  return { msg, epoch: lastEpoch, reset: false };
+}
+
 /** The room connection the host, play and screen pages share: parsed messages, the server-restart
  * check (`reset`), and the idle rest that stops automatic reconnecting (`rested`). */
 export function useRoomSocket(
@@ -47,17 +63,11 @@ export function useRoomSocket(
       handlers.onClose?.({ rested: restKind !== null, openedBefore: openedOnce.current });
     },
     onMessage(event: MessageEvent) {
-      let msg: ServerMessage;
-      try {
-        msg = JSON.parse(event.data as string) as ServerMessage;
-      } catch {
-        return;
-      }
-      if ((msg.type === "LOBBY" || msg.type === "STATE") && msg.roomEpoch) {
-        if (epoch.current && epoch.current !== msg.roomEpoch) setReset(true);
-        epoch.current = msg.roomEpoch;
-      }
-      handlers.onMessage(msg);
+      const read = readRoomMessage(event.data as string, epoch.current);
+      if (!read) return;
+      if (read.reset) setReset(true);
+      epoch.current = read.epoch;
+      handlers.onMessage(read.msg);
     },
   });
 
