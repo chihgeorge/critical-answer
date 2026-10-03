@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.14.7] - 2026-10-03
+
+### Added
+- Unit tests for the 「伺服器重新啟動，遊戲已重置」 notice. The room-message parsing and the restart check behind it moved into a small `readRoomMessage` function that the shared room connection calls, so it can be tested without a browser. Before this, no test covered the notice at all. No behavior change.
+
 ## [0.9.14.6] - 2026-10-03
 
 ### Changed
