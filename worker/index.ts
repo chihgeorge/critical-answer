@@ -136,6 +136,9 @@ export class Room extends Server<Env> {
         // Undefined (bankOrFallback swallowed a fetch failure) falls through to DungeonRoom's own
         // bundled-bank default: an existing room's restore() overrides this with its own saved bank
         // regardless. See docs/designs/question-bank-editor.md, decision 7.
+        // gstack-shortcut(dec-f5965fd8): fetched on every wake even when restore() then uses the
+        // snapshot's bank, because reset() reuses this one; upgrade when wake latency or BankStore
+        // availability matters: a lazy loadBank for the no-snapshot, discarded and reset paths (TODOS.md).
         bank: await bankOrFallback(async () => (await this.env.bank.getByName(BANK_DO_NAME).getVersionedBank()).bank),
       },
     );

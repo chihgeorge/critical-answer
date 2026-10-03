@@ -23,6 +23,14 @@ Run: `npm run test` (vitest, unit) · `npm run e2e` (playwright, e2e) · `npm ru
 
 **`npm run check:bundle` is not optional.** It caught a real regression (2026-09-23, v0.6.0.1): a client component importing `lib/question-bank.ts` pulled its top-level parsed `BANK` constant — the whole bank, every answer included — into that page's public JS, bypassing `OWNER_KEY` entirely. CI runs this on every push; run it locally before shipping too, not just `vitest`/`playwright`. Only server-only code (`worker/`, `lib/bank-store.ts`, `lib/room/dungeon-room.ts`, `lib/question-bank-data.ts`) may import the actual parsed `BANK` data or `data/question-bank.json`; client components (`app/bank-editor/page.tsx`) may only import the pure logic/types from `lib/question-bank.ts`.
 
+## Health Stack
+
+- typecheck: npx tsc --noEmit -p . && npx tsc --noEmit -p worker
+- lint: npx eslint
+- test: npm test
+
+`/health` uses exactly these. Dead code (knip) and shell lint (shellcheck) are not set up yet (TODOS.md).
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
