@@ -110,10 +110,14 @@ describe("handleBankImageApi: content-type sniffing", () => {
 
 describe("handleBankImageApi: unreadable body", () => {
   it("returns 400 (not a 500) when request.arrayBuffer() itself throws, e.g. a client aborting mid-upload", async () => {
+    // Only the members handleBankImageApi reads. Copying a real Request (Object.create + assign)
+    // breaks on Node 26, whose Request keeps headers in a private #field the copy doesn't have.
     const base = req("POST", { auth: `Bearer ${KEY}` });
-    const broken = Object.assign(Object.create(Object.getPrototypeOf(base)), base, {
+    const broken = {
+      method: base.method,
+      headers: base.headers,
       arrayBuffer: () => Promise.reject(new Error("network read failed")),
-    }) as Request;
+    } as unknown as Request;
     const putImage = vi.fn();
     const res = await handleBankImageApi(broken, deps({ putImage }));
     expect(res.status).toBe(400);
