@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.14.2] - 2026-10-02
+
+### Added
+- Test coverage for two things the host can do from the ⚙ 更多 drawer: saving the director notes, and downloading the narration transcript (the downloaded file must contain the saved notes and a real narration line).
+- Unit tests for the browser-storage helper and for how a browser remembers a room's host token (a `#k=` link wins and is kept, one token per room, a newer link replaces an older one). No game behavior changed.
+
 ## [0.9.14.1] - 2026-10-01
 
 ### Fixed
