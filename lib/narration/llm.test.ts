@@ -34,7 +34,7 @@ describe("request", () => {
     await make(f as unknown as typeof fetch).narrate({ type: "epilogue", ranking: [{ name: "紅隊", score: 9 }], winners: ["紅隊"] });
     const body = JSON.parse(((f.mock.calls[0] as unknown as [string, RequestInit])[1].body) as string);
     expect(body.model).toBe(EPILOGUE_MODEL);
-    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.thinking).toEqual({ type: "between_tools" });
   });
 
   it("keeps only the first line for the epilogue even if the model writes several newline-separated ones (the ask is one block of prose, unlike the multi-segment events)", async () => {

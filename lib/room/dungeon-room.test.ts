@@ -5,6 +5,7 @@ import type { Conn, RoomIO } from "./io";
 import { answerText, bossQuestionIds, findQuestion, roomTemplates, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { currentTurnTeamId } from "../game-state";
+import { EPILOGUE_MODEL } from "../narration/llm";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";
@@ -1274,16 +1275,16 @@ describe("LLM narration and director (T8-T10)", () => {
     }
 
     it("is written by the bigger model, sent once, and the scripted one is not used", async () => {
-      const r = llmRoom((req) => textReply(req.model === "claude-sonnet-5" ? "漫長的一夜，Team 0 走出了地城。" : "行"));
+      const r = llmRoom((req) => textReply(req.model === EPILOGUE_MODEL ? "漫長的一夜，Team 0 走出了地城。" : "行"));
       await finish(r);
       const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
       expect(epi).toHaveLength(1);
       expect(epi[0].text).toBe("漫長的一夜，Team 0 走出了地城。");
-      expect(r.calls.some((c) => c.model === "claude-sonnet-5" && c.user.includes("排名"))).toBe(true);
+      expect(r.calls.some((c) => c.model === EPILOGUE_MODEL && c.user.includes("排名"))).toBe(true);
     });
 
     it("falls back to the program-built epilogue when the LLM fails", async () => {
-      const r = llmRoom((req) => (req.model === "claude-sonnet-5" ? json({ error: {} }, 500) : textReply("行")));
+      const r = llmRoom((req) => (req.model === EPILOGUE_MODEL ? json({ error: {} }, 500) : textReply("行")));
       await finish(r);
       const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
       expect(epi).toHaveLength(1);
@@ -1292,7 +1293,7 @@ describe("LLM narration and director (T8-T10)", () => {
     });
 
     it("waits for the LLM up to the epilogue hold, then falls back once", async () => {
-      const r = llmRoom(async (req) => (req.model === "claude-sonnet-5" ? (await sleep(300), textReply("太慢了")) : textReply("行")), { epilogueHoldMs: 40 });
+      const r = llmRoom(async (req) => (req.model === EPILOGUE_MODEL ? (await sleep(300), textReply("太慢了")) : textReply("行")), { epilogueHoldMs: 40 });
       await finish(r);
       await sleep(350);
       const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
