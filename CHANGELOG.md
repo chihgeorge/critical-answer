@@ -2,6 +2,13 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.14.8] - 2026-10-03
+
+### Changed
+- The README now matches what is live. It covers the host keyboard keys, the campfire lobby, boss-room narration, background music and sound effects, disconnect notices, question media and explanations, automatic cleanup of unsaved images, and the room-expired notice. It also says Node 22 is required, and that the game runs on Vercel and Cloudflare with automatic deploys. A new cost note explains that AI narration has no call limit, so production needs an Anthropic spend limit.
+- TODOS.md cleaned up: the localStorage item is marked done, and the ESLint 10 / TypeScript 7 blockers were rechecked (still blocked). Newly recorded: frontend e2e coverage, the 5 lint-tool advisories with no upstream fix, adding dead-code and shell checks to `/health`, and why the room still fetches the bank on every wake.
+- `/health` has a fixed tool list in CLAUDE.md. The first baseline is 10/10 on the 3 categories it can check (types, lint, tests).
+
 ## [0.9.14.7] - 2026-10-03
 
 ### Added
