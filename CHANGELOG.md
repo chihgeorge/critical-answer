@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.14.6] - 2026-10-03
+
+### Changed
+- The end-of-game epilogue is now written by Claude Sonnet 5.5 instead of Claude Sonnet 5, at the same price. Thinking is switched off with `between_tools`, which is how this model does it (the old `disabled` setting is rejected by Sonnet 5.5). Narration during the game is unchanged (Claude Haiku 4.5). If the new model fails or is slow, the epilogue still falls back to the built-in one.
+
 ## [0.9.14.5] - 2026-10-03
 
 ### Security
