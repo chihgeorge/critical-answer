@@ -70,6 +70,60 @@
 
 
 
+## 量 e2e 對前端（app/、components/）的實際覆蓋率
+
+**What:** 讓 Next.js 在 e2e 建置時產生 source map，用 Playwright 收集 V8 coverage，算出 `app/` 與 `components/`（約 2,400 行）被 e2e 跑到多少。
+
+**Why:** 單元測試只覆蓋 `lib/`；前端完全靠 e2e，但沒有數字知道哪些頁面流程沒被碰過。
+
+**Pros:** 補測試有依據，能找出完全沒被 e2e 走過的頁面流程。
+
+**Cons:** 要加回 `next.config.ts`，而且只能在 e2e 建置開 source map；正式部署帶上 source map 等於公開原始碼。
+
+**Context:** 維護輪（`docs/designs/maintenance-2026-10.md` D3）審查時決定延後。從 `playwright.config.ts` 的 webServer 建置指令開始。
+
+**Effort:** M　**Priority:** P4
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）
+
+**What:** `npm audit` 剩 5 個 high，全是同一條：`eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob@3.3.1`（鎖死版本）→ `micromatch` → `braces <=3.0.3`。`braces` 最新版就是 3.0.3，上游沒有修好的版本。
+
+**Why:** 記下結論，之後看到 audit 報 high 不用重查一遍；上游修好時知道要回來升。
+
+**Pros:** 省下重複調查的時間。
+
+**Cons:** 無。
+
+**Context:** 只在跑 lint 時掃專案自己的檔案路徑，不會進到線上程式。v0.9.14.4 升級修掉另外 3 個（`undici` 等）。用 npm overrides 強制 `fast-glob@3.3.3` 沒用，因為 `braces` 仍有漏洞。上游修好的訊號：`@next/eslint-plugin-next` 不再鎖 `fast-glob@3.3.1`，或 `braces` 出修補版。
+
+**Effort:** S　**Priority:** P4
+
+**Depends on / blocked by:** 上游 `braces` 或 `@next/eslint-plugin-next`。
+
+---
+
+## /health 補上死碼與 shell 腳本檢查
+
+**What:** 加 `knip`（死碼偵測）當開發依賴、裝 `shellcheck` 檢查 `scripts/*.sh`，再把兩者寫進 CLAUDE.md 的 `## Health Stack`。
+
+**Why:** 第一次 `/health`（2026-10-03）是 10.0/10，但只有 3/6 類別有檢查（型別、lint、測試）；死碼與 shell 腳本沒有工具，分數不完整。
+
+**Pros:** 分數更完整，能抓到沒人用的 export 和腳本錯誤。
+
+**Cons:** knip 第一次跑可能報出一堆要逐一判斷的結果。
+
+**Context:** 歷史紀錄在 `~/.gstack/projects/critical-answer/health-history.jsonl`。加工具後覆蓋類別改變，分數會跟第一次不可比。
+
+**Effort:** S　**Priority:** P4
+
+**Depends on / blocked by:** 無。
+
+---
+
 ## 共享大螢幕活地圖
 
 **What:** 大螢幕顯示地城地圖，各隊棋子從房間移到房間，首領房有血條與強度條。
@@ -89,21 +143,6 @@
 ---
 
 
-## localStorage「讀取，沒有就生成並存起來」邏輯重複
-
-**What:** 把 `useOwnerKey`（`app/bank-editor/page.tsx`）跟 TTS 開關偏好（`app/room/[code]/screen/page.tsx`）裡各自寫一份的「讀 localStorage、沒有就生成一個值存起來」邏輯，抽成一個共用的小工具函式。
-
-**Why:** 純粹 DRY，不是 bug。2026-09-23 比對 `hitster_online` repo 時注意到它把同樣的邏輯抽成 `lib/device-id.ts` 的 `getOrCreatePersistedId(key)`，一行函式，值得抄這個做法。
-
-**Pros:** 少幾行重複程式碼，之後要加第三個用到 localStorage 偏好的功能時直接複用。
-
-**Cons:** 目前只有 2 個地方用到，效益有限；抽出來本身有一點重構風險（要小心兩邊 SSR-hydration-mismatch 的處理方式是否一致）。
-
-**Effort:** XS（人工約 15 分鐘 / CC 約 10 分鐘）　**Priority:** P4
-
-**Depends on / blocked by:** 無。
-
----
 
 ## ESLint 10 / TypeScript 7 升級被上游卡住
 
@@ -120,6 +159,8 @@
 **Effort:** 不確定（等上游）　**Priority:** P4
 
 **Depends on / blocked by:** `eslint-config-next` 支援 ESLint 10；`typescript-eslint` 支援 TypeScript ≥7.1。
+
+**重新確認（2026-10-03）：** 仍然卡住。`eslint-config-next@16.3.8` 依賴 `eslint-plugin-react@^7.37.0`，最新 7.37.5 的 peer 是 `eslint ^9.7`（沒有 10）；`typescript-eslint` 最新 8.71.0 的 peer 是 `typescript <6.1.0`（TS 已到 7.0.2）。
 
 ---
 
@@ -296,6 +337,24 @@
 
 
 ## Completed
+
+## localStorage「讀取，沒有就生成並存起來」邏輯重複
+
+**What:** 把 `useOwnerKey`（`app/bank-editor/page.tsx`）跟 TTS 開關偏好（`app/room/[code]/screen/page.tsx`）裡各自寫一份的「讀 localStorage、沒有就生成一個值存起來」邏輯，抽成一個共用的小工具函式。
+
+**Why:** 純粹 DRY，不是 bug。2026-09-23 比對 `hitster_online` repo 時注意到它把同樣的邏輯抽成 `lib/device-id.ts` 的 `getOrCreatePersistedId(key)`，一行函式，值得抄這個做法。
+
+**Pros:** 少幾行重複程式碼，之後要加第三個用到 localStorage 偏好的功能時直接複用。
+
+**Cons:** 目前只有 2 個地方用到，效益有限；抽出來本身有一點重構風險（要小心兩邊 SSR-hydration-mismatch 的處理方式是否一致）。
+
+**Effort:** XS（人工約 15 分鐘 / CC 約 10 分鐘）　**Priority:** P4
+
+**Depends on / blocked by:** 無。
+
+**Completed:** v0.9.14.0 (2026-10-01)，`lib/stored.ts` 的 `readStored` / `writeStored`，bank editor 與大螢幕都改用它（另見 `lib/room-code.ts` 的 `storedOrCreate`）。
+
+---
 
 ## 首領登場的敘事事件（DM 分支回提用）
 
@@ -524,5 +583,7 @@
 **Cons:** 需要重排 `onStart()`/`restore()` 的順序（先確認 storage 有沒有既有 snapshot，再決定要不要打這通 RPC），改動比表面看起來大一點，且目前的浪費只是效能成本，沒有正確性風險。
 
 **Context:** 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md) 決策 7，以及 `worker/index.ts` 的 `Room.onStart()`。
+
+**更新（2026-10-03，維護輪 /plan-eng-review）：** 不能直接「有存檔就不抓」。`lib/room/dungeon-room.ts` 的 `reset()` 會用醒來時抓到的 `initialBank` 開新局，跳過抓取會讓閒置過期後重開的房間改用內建題庫，你在編輯器改的題目就不見了。正確修法是懶載入：`DungeonRoom` 收一個 `loadBank`，只在沒有存檔、存檔壞掉、`reset()` 時呼叫。決定（dec-f5965fd8）：先不做；`worker/index.ts` 的 `onStart()` 有 `gstack-shortcut` 標記。升級觸發點：房間喚醒延遲或 BankStore 可用性成為實際問題。
 
 **Depends on / blocked by:** 無，隨時可做，非阻塞。
