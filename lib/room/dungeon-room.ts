@@ -748,6 +748,9 @@ export class DungeonRoom {
       this.rng,
     );
     // Default on when a key exists; the host can switch it off before starting.
+    // gstack-shortcut(dec-db628e32): no cap on paid narration calls per room or overall (anyone can
+    // host a room), only the Anthropic spend limit; upgrade when that limit is hit or usage shows
+    // abuse: a per-room narration budget that falls back to scripted lines (TODOS.md).
     this.aiNarration = this.aiAvailable && aiNarration !== false;
     const eventId = ++this.eventSeq;
     this.cue = "start";

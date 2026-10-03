@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.14.5] - 2026-10-03
+
+### Security
+- First `/cso` security audit (static, partial coverage within its time budget). One supported finding, medium: anyone can open a room, become its host and keep triggering paid AI narration calls, since there is no cap on how many a room makes. Decision for now: cap spend with an Anthropic account spend limit instead of changing the game; a per-room narration budget is recorded as a TODO with the trigger for doing it.
+- Confirmed during the audit: question text and answers never go into the AI narration prompt, the question-bank API fails closed without the owner key, and the room server only routes the room binding. The prompt-moderation TODO drops to P4.
 ## [0.9.14.4] - 2026-10-03
 
 ### Changed

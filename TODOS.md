@@ -5,9 +5,29 @@
 
 
 
+## AI 旁白沒有花費上限：任何人都能開房間觸發付費 LLM 呼叫
+
+**What:** 每局（或每個房間）設一個 AI 旁白次數上限，超過就改用罐頭旁白；必要時再加一個全站每日上限，記在一個 Durable Object 裡。
+
+**Why:** `/cso` 稽核（2026-10-03，發現 `7b53ff168118d30889fe2e95aa9ee99d`）：開房間不用登入、第一個 HOST_CLAIM 就是主持人，AI 旁白在有 `ANTHROPIC_API_KEY` 時預設開啟（正式環境有設），每次判題都打一次 Claude API，結束再打一次。沒有任何次數限制，breaker 只在失敗時跳開。一個腳本開很多房間、一直送「答錯重答」就能持續花費。
+
+**Pros:** 程式內就擋住，額度被打爆時不會連帶讓真的在玩的房間失去 AI 旁白。
+
+**Cons:** 單局上限擋不住「開很多房間」；全站上限要多一個 DO 和計數邏輯。
+
+**Context:** 這次決定（dec-db628e32）只在 Anthropic 後台設花費上限，程式不改；`lib/room/dungeon-room.ts` 的 `handleHostStart` 有 `gstack-shortcut(dec-db628e32)` 標記。升級的觸發點：花費上限被打到，或用量出現異常。從 `narrate()` 計次開始做。
+
+**Effort:** M　**Priority:** P3
+
+**Depends on / blocked by:** 無。
+
+---
+
 ## Host 自訂題庫文字進 LLM prompt 前的內容審核
 
-**Priority:** P3
+**Priority:** P4
+
+**更新（2026-10-03，`/cso` 稽核）：** 重新確認：`lib/narration/llm.ts` 的 `buildPrompt` 只放隊伍名、怪物名、分數與主持人導演筆記，題目文字與答案都不進 prompt；名稱以「」包起來並移除引號字元。這條只有在旁白開始讀題目文字時才需要，降為 P4。
 
 **What:** 對 host 自訂的題庫文字（問題、答案）進行基本的輸入淨化與 prompt injection 防護，才餵進敘事狀態層生成 DM 旁白的 LLM prompt。
 
