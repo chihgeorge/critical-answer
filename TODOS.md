@@ -5,6 +5,24 @@
 
 
 
+## 用真的 API 驗證後記改用 Sonnet 5.5 之後還正常
+
+**What:** 在專案目錄跑 `ANTHROPIC_API_KEY=<金鑰> npm run test:live`，確認旁白（`claude-haiku-4-5`）和後記（`claude-sonnet-5-5`）都打得通、輸出通過我們的驗證。
+
+**Why:** v0.9.14.6 把後記從 Sonnet 5 換成 Sonnet 5.5，關閉思考的參數也從 `disabled` 改成 `between_tools`。單元測試只確認請求長得對，沒有真的打 API；出貨時本機沒有金鑰，這一步跳過了。萬一 Sonnet 5.5 不接受這個請求，線上每場遊戲的後記都會安靜地退回罐頭文字，不會報錯。
+
+**Pros:** 一行指令、幾美分，就能確認新模型真的能用，不用等線上有人玩完一場。
+
+**Cons:** 需要有金鑰的人手動跑；金鑰不該貼進對話或寫進檔案。
+
+**Context:** 測試在 `lib/narration/llm.live.test.ts`，不在 `npm test` 裡，沒有金鑰時會自動跳過。如果失敗，先看錯誤訊息是不是 400 `thinking`（參數問題）或 `refusal`（內容被拒）；設定在 `lib/narration/llm.ts` 的 `EPILOGUE_MODEL` 和後記請求的 `thinking`。也可以看線上大螢幕的後記是不是罐頭版，或主持人「下載旁白紀錄」裡後記那筆的 `fallbackReason`。
+
+**Effort:** S　**Priority:** P2
+
+**Depends on / blocked by:** 有 `ANTHROPIC_API_KEY` 的人。
+
+---
+
 ## AI 旁白沒有花費上限：任何人都能開房間觸發付費 LLM 呼叫
 
 **What:** 每局（或每個房間）設一個 AI 旁白次數上限，超過就改用罐頭旁白；必要時再加一個全站每日上限，記在一個 Durable Object 裡。

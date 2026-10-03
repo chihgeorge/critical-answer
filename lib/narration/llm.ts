@@ -9,7 +9,7 @@ import { validLine, MAX_LINE, MAX_EPILOGUE_LINE } from "./runner";
 import { AuthError, ConfigMissingError, EmptyOrRefusalError, InvalidOutputError, TimeoutError, UpstreamError } from "./errors";
 
 export const NARRATION_MODEL = "claude-haiku-4-5";
-export const EPILOGUE_MODEL = "claude-sonnet-5";
+export const EPILOGUE_MODEL = "claude-sonnet-5-5";
 const API_URL = "https://api.anthropic.com/v1/messages";
 
 /** Player-typed names go into prompts as quoted data: drop anything that could close the quote. */
@@ -117,8 +117,9 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
             max_tokens: epilogue ? 300 : 200,
             system,
             messages: [{ role: "user", content: user }],
-            // Sonnet 5 thinks by default; a 90-character story does not need it and the hold is short.
-            ...(epilogue ? { thinking: { type: "disabled" } } : {}),
+            // Sonnet 5.5 thinks by default; a 90-character story does not need it and the hold is short.
+            // It rejects {type:"disabled"} with a 400: "between_tools" is how this model turns thinking off.
+            ...(epilogue ? { thinking: { type: "between_tools" } } : {}),
           }),
           signal: o.signal,
         });
