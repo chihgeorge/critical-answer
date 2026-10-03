@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { freshAttempt, freshHostPath, generateRoomCode, getOrCreateTeamId, getOrCreateTeamKey, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "./room-code";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, getOrCreateTeamId, getOrCreateTeamKey, isFreshRoomHash, MAX_FRESH_ATTEMPTS, newHostToken, settledHash } from "./room-code";
 import { TEAM_KEY_RE } from "./protocol";
 
 // The only test that needs a browser API: a Map-backed localStorage is enough.
@@ -138,5 +138,51 @@ describe("fresh room links", () => {
     expect(path).toBe("/room/ABCD/host#k=0123456789abcdef&new=1");
     expect(isFreshRoomHash(path.slice(path.indexOf("#")))).toBe(true);
     expect(settledHash(path.slice(path.indexOf("#")))).toBe("#k=0123456789abcdef");
+  });
+});
+
+describe("newHostToken / getHostToken", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.stubGlobal("location", { hash: "" });
+  });
+
+  // Not vi.unstubAllGlobals(): that would also drop the module-level localStorage stub.
+  afterEach(() => {
+    delete (globalThis as { location?: unknown }).location;
+  });
+
+  it("mints a fresh 32-hex-char token each time", () => {
+    const a = newHostToken();
+    expect(a).toMatch(/^[0-9a-f]{32}$/);
+    expect(newHostToken()).not.toBe(a);
+  });
+
+  it("returns null when this browser has no token for the room and the URL carries none", () => {
+    expect(getHostToken("ABCD")).toBeNull();
+  });
+
+  it("a #k= fragment wins and is remembered, so a later visit without it keeps control", () => {
+    vi.stubGlobal("location", { hash: "#k=from-the-link&new=1" });
+    expect(getHostToken("ABCD")).toBe("from-the-link");
+    vi.stubGlobal("location", { hash: "" });
+    expect(getHostToken("ABCD")).toBe("from-the-link");
+  });
+
+  it("keeps one token per room", () => {
+    vi.stubGlobal("location", { hash: "#k=room-a-token" });
+    getHostToken("AAAA");
+    vi.stubGlobal("location", { hash: "" });
+    expect(getHostToken("BBBB")).toBeNull();
+    expect(getHostToken("AAAA")).toBe("room-a-token");
+  });
+
+  it("a fresher link replaces an older stored token for the same room", () => {
+    vi.stubGlobal("location", { hash: "#k=old" });
+    getHostToken("ABCD");
+    vi.stubGlobal("location", { hash: "#k=new" });
+    expect(getHostToken("ABCD")).toBe("new");
+    vi.stubGlobal("location", { hash: "" });
+    expect(getHostToken("ABCD")).toBe("new");
   });
 });
