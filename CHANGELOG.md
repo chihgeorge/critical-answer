@@ -7,6 +7,13 @@ All notable changes to Critical Answer are documented here.
 ### Security
 - First `/cso` security audit (static, partial coverage within its time budget). One supported finding, medium: anyone can open a room, become its host and keep triggering paid AI narration calls, since there is no cap on how many a room makes. Decision for now: cap spend with an Anthropic account spend limit instead of changing the game; a per-room narration budget is recorded as a TODO with the trigger for doing it.
 - Confirmed during the audit: question text and answers never go into the AI narration prompt, the question-bank API fails closed without the owner key, and the room server only routes the room binding. The prompt-moderation TODO drops to P4.
+## [0.9.14.4] - 2026-10-03
+
+### Changed
+- Patch upgrades: Next.js 16.3.6 → 16.3.8 (and `eslint-config-next` with it), wrangler 4.137 → 4.147, vitest 5.0.1 → 5.0.3, and the latest Cloudflare Workers types. No game behavior changes.
+
+### Fixed
+- `npm audit` drops from 8 findings to 5. The 3 fixed ones came in through wrangler's bundled `undici` (now 7.29.1). The 5 left are one chain inside the lint tooling (`eslint-config-next` → `fast-glob@3.3.1` → `micromatch` → `braces`), where even the newest `braces` has no fixed release yet. It only touches lint runs over the project's own files, never the deployed app.
 
 ## [0.9.14.3] - 2026-10-03
 
