@@ -85,6 +85,24 @@
 
 ---
 
+## CI 在 Ubuntu 26 上試跑一次，通過再換掉固定的 ubuntu-24.04
+
+**What:** `.github/workflows/ci.yml` 目前把 `runs-on` 固定在 `ubuntu-24.04`。找一個 PR 把它改成 `ubuntu-26.04`（或 `ubuntu-latest`）跑一次完整 CI，全過就換，不過就記下壞在哪。
+
+**Why:** GitHub 從 2026-10-19 起把 `ubuntu-latest` 換成 Ubuntu 26。先固定版本是為了不在某天突然紅燈；但不能永遠停在 24.04，等它停止支援時會被迫一次升。
+
+**Pros:** 主動、可控地升級；壞的話只影響那一個試跑 PR。
+
+**Cons:** 最可能出問題的是 `npx playwright install --with-deps chromium` 裝的系統套件，可能要跟著調整。
+
+**Context:** v0.9.14.3 固定版本時加的（`docs/designs/maintenance-2026-10.md` B1）。只要改 `runs-on` 那一行；CI 其他步驟不用動。
+
+**Effort:** S　**Priority:** P3
+
+**Depends on / blocked by:** GitHub 的 Ubuntu 26 runner 正式可用。
+
+---
+
 ## 等待隊伍的觀眾反應（表情 / 加油 / 噓聲）
 
 **What:** 等待中的隊伍在手機上點表情，大螢幕浮現，DM 旁白可提到。

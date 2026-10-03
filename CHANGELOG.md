@@ -2,6 +2,15 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.14.3] - 2026-10-03
+
+### Changed
+- CI now runs on a pinned Ubuntu 24.04 runner instead of `ubuntu-latest`, which GitHub switches to Ubuntu 26 on 2026-10-19. Moving to 26 is a deliberate step later (see TODOS.md), not a surprise red build.
+- The Node version is pinned to 22 in a new `.nvmrc`, and CI reads it from there, so CI and Cloudflare's Worker build use the same version.
+
+### Fixed
+- The full unit test suite now also passes on Node 26. One bank-image upload test built its fake request in a way Node 26 rejects.
+
 ## [0.9.14.2] - 2026-10-02
 
 ### Added
