@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.14.9] - 2026-10-03
+
+### Changed
+- The `check:bundle` rule in CLAUDE.md is easier for agents to read. It now uses short sentences, no semicolons, and a list of the server-only files that may import the question bank. The rule itself did not change.
+
 ## [0.9.14.8] - 2026-10-03
 
 ### Changed
