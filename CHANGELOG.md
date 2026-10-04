@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.14.10] - 2026-10-03
+
+### Changed
+- Two open items in TODOS.md pointed to `party/index.ts`, which no longer exists. They now point to `lib/room/dungeon-room.ts`.
+- The comment in `scripts/check-bundle.sh` now names the current rule (server-only code may import the bank). It also states the scope of the check. Questions saved in the bank editor stay on the server and never go into the build.
+
 ## [0.9.14.9] - 2026-10-03
 
 ### Changed

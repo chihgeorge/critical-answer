@@ -306,7 +306,7 @@
 
 **Cons:** 多一步加入手續；區網朋友聚會用不到。
 
-**Context:** 見 `party/index.ts` 的 `handleJoin` 與 `handleHostClaim`。已經加上的：每隊密鑰、每房間 60 條連線上限。
+**Context:** 見 `lib/room/dungeon-room.ts` 的 `handleJoin` 與 `handleHostClaim`。已經加上的：每隊密鑰、每房間 60 條連線上限。
 
 **Effort:** S（人工約 0.5 天 / CC 約 20 分鐘）　**Priority:** P3（公開部署之前升 P1）
 
@@ -324,7 +324,7 @@
 
 **Cons:** 要決定 AI 怎麼「自然地」放進去（要求必須包含這句，還是改寫過也行）、腳本旁白怎麼處理（直接當第一句？）、以及沒開 AI 時是否還有意義。
 
-**Context:** 見 `lib/narration/llm.ts` 的 `buildPrompt`、`party/index.ts` 的 `HOST_SET_NOTES` 處理。順手做：導演筆記欄位的說明改成「語氣與風格，不是逐字台詞」。
+**Context:** 見 `lib/narration/llm.ts` 的 `buildPrompt`、`lib/room/dungeon-room.ts` 的 `HOST_SET_NOTES` 處理。順手做：導演筆記欄位的說明改成「語氣與風格，不是逐字台詞」。
 
 **Effort:** S（人工約 0.5 天 / CC 約 30 分鐘）　**Priority:** P2
 

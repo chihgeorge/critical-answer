@@ -1,6 +1,8 @@
 #!/bin/sh
 # Fails if any question or answer text from the bank ships in the browser bundle (.next/static).
-# Run after `next build`. Only party/ may import the bank.
+# Run after `next build`. Only server-only code may import the bank (see CLAUDE.md).
+# Scope: the bundled data/question-bank.json. Questions saved in the bank editor live in
+# BankStore at runtime and never enter the build, so they cannot leak through the bundle.
 set -e
 [ -d .next/static ] || { echo "run next build first"; exit 2; }
 python3 - <<'PY'
