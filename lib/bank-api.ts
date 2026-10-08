@@ -4,19 +4,8 @@
 
 import { tokensEqual } from "./tokens";
 import { originAllowed } from "./origin";
-import type { VersionedBank } from "./bank-store";
+import type { BankConflict, VersionedBank } from "./bank-store";
 import type { Bank } from "./question-bank";
-
-/** A version conflict, returned rather than thrown. A thrown `BankConflictError` loses its class
- * identity crossing the Durable Object RPC boundary — `instanceof` on the caller side fails even
- * though `.message` survives (verified live against a real wrangler dev instance) — so the RPC
- * contract is a discriminated result instead of relying on exception identity across that
- * boundary. `deps.putBank`'s implementation (worker/index.ts's BankStoreDO) catches
- * BankConflictError itself, same-realm, where `instanceof` is reliable. */
-export interface BankConflict {
-  conflict: true;
-  currentVersion: number;
-}
 
 export interface BankApiDeps {
   ownerKey: string | undefined;

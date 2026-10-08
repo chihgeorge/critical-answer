@@ -196,7 +196,7 @@ describe("handleBankApi: PUT", () => {
   });
 
   it("reports a version conflict (deps.putBank's discriminated result) as 409 with the current version, not a generic 400", async () => {
-    // Deliberately a *returned* conflict result, not a thrown BankConflictError: that class
+    // Deliberately a *returned* conflict result, not a thrown error: an error class
     // doesn't survive the real Durable Object RPC boundary intact (verified live against
     // wrangler dev — instanceof fails on the far side even though .message doesn't), so the RPC
     // contract (BankApiDeps.putBank) is a discriminated result, and this is what an implementation

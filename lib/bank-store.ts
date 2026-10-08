@@ -9,7 +9,7 @@
 //   BankStore.getVersionedBank()                   BankStore.putBank(candidate, expectedVersion)
 //     │                                              │
 //     ├─ storage empty? ─yes─> seed from              ├─ expectedVersion !== stored.version?
-//     │                        bundled JSON, v1              └─throws BankConflictError─>
+//     │                        bundled JSON, v1              └─returns {conflict, currentVersion}─>
 //     │         │                                              (nothing saved — see decision below)
 //     │         └─> store it, return it                 ├─ parseBank(candidate) ─throws─>
 //     ├─ storage has a value                                    caller sees the error, nothing saved
@@ -61,13 +61,13 @@ export interface VersionedBank {
   version: number;
 }
 
-/** Thrown by `putBank` when `expectedVersion` doesn't match what's actually stored — someone
+/** Returned by `putBank` when `expectedVersion` doesn't match what's actually stored — someone
  * else's save landed first. The caller's edits are NOT saved; `currentVersion` lets a client
- * decide whether to reload and retry. */
-export class BankConflictError extends Error {
-  constructor(public readonly currentVersion: number) {
-    super("Bank was changed by someone else since you loaded it. Reload and try again.");
-  }
+ * decide whether to reload and retry. Returned, not thrown: an error's class identity does not
+ * survive the Durable Object RPC boundary (verified live against wrangler dev), a plain object does. */
+export interface BankConflict {
+  conflict: true;
+  currentVersion: number;
 }
 
 export class BankStore {
@@ -148,11 +148,11 @@ export class BankStore {
   }
 
   /** Validates and replaces the whole bank atomically, but only if `expectedVersion` still
-   * matches what's stored. Throws `BankConflictError` on a stale version, or parseBank's error on
+   * matches what's stored. Returns a `BankConflict` on a stale version, throws parseBank's error on
    * invalid input — either way nothing is saved, the previous bank stands. */
-  async putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank> {
+  async putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict> {
     const current = await this.getVersionedBank();
-    if (current.version !== expectedVersion) throw new BankConflictError(current.version);
+    if (current.version !== expectedVersion) return { conflict: true, currentVersion: current.version };
     const validated = parseBank(candidate);
     const next: VersionedBank = { bank: validated, version: current.version + 1 };
     await this.storage.put(BANK_KEY, next);

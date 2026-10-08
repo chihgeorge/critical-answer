@@ -3,8 +3,8 @@ import { Server, routePartykitRequest, type Connection, type WSMessage } from "p
 import { entryGate } from "../lib/gate";
 import { positiveMs } from "../lib/room/positive-ms";
 import { DungeonRoom, EXPIRE_MS } from "../lib/room/dungeon-room";
-import { BankStore, BankConflictError, IMAGE_CLEANUP_MARGIN_MS, type VersionedBank } from "../lib/bank-store";
-import { bankOrFallback, handleBankApi, type BankConflict } from "../lib/bank-api";
+import { BankStore, IMAGE_CLEANUP_MARGIN_MS, type BankConflict, type VersionedBank } from "../lib/bank-store";
+import { bankOrFallback, handleBankApi } from "../lib/bank-api";
 import { handleBankImageApi } from "../lib/bank-image-api";
 
 export interface Env {
@@ -86,16 +86,8 @@ export class BankStoreDO extends DurableObject<Env> {
     return this.store.getVersionedBank();
   }
 
-  /** Catches BankConflictError itself — same JS realm as where it's thrown, where `instanceof`
-   * is reliable — and returns a plain discriminated result instead of letting the error cross the
-   * RPC boundary to lib/bank-api.ts, where its class identity would not survive. */
-  async putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict> {
-    try {
-      return await this.store.putBank(candidate, expectedVersion);
-    } catch (err) {
-      if (err instanceof BankConflictError) return { conflict: true, currentVersion: err.currentVersion };
-      throw err;
-    }
+  putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict> {
+    return this.store.putBank(candidate, expectedVersion);
   }
 }
 
