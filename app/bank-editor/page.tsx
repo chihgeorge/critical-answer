@@ -235,27 +235,26 @@ export default function BankEditorPage() {
 
       {bank && (
         <div className="flex flex-col gap-4">
-          {bank.rooms.map((room, roomIndex) => (
+          {[
+            ...bank.rooms.map((room, roomIndex) => ({
+              loc: { kind: "room", roomIndex } as Location,
+              testId: `bank-room-${roomIndex}`,
+              title: `第 ${roomIndex + 1} 房 · ${room.monster.name}`,
+              questions: room.questions,
+            })),
+            { loc: { kind: "boss" } as Location, testId: "bank-room-boss", title: `首領 · ${bank.boss.monster.name}`, questions: bank.boss.questions },
+          ].map(({ loc, testId, title, questions }) => (
             <RoomEditor
-              key={roomIndex}
-              testId={`bank-room-${roomIndex}`}
-              title={`第 ${roomIndex + 1} 房 · ${room.monster.name}`}
-              questions={room.questions}
-              onUpdate={(id, updater) => updateQuestion({ kind: "room", roomIndex }, id, updater)}
-              onDelete={(id) => deleteQuestion({ kind: "room", roomIndex }, id)}
-              onAdd={() => addQuestion({ kind: "room", roomIndex })}
+              key={testId}
+              testId={testId}
+              title={title}
+              questions={questions}
+              onUpdate={(id, updater) => updateQuestion(loc, id, updater)}
+              onDelete={(id) => deleteQuestion(loc, id)}
+              onAdd={() => addQuestion(loc)}
               onUploadImage={uploadImage}
             />
           ))}
-          <RoomEditor
-            testId="bank-room-boss"
-            title={`首領 · ${bank.boss.monster.name}`}
-            questions={bank.boss.questions}
-            onUpdate={(id, updater) => updateQuestion({ kind: "boss" }, id, updater)}
-            onDelete={(id) => deleteQuestion({ kind: "boss" }, id)}
-            onAdd={() => addQuestion({ kind: "boss" })}
-            onUploadImage={uploadImage}
-          />
           <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving}>
             {saving ? "儲存中…" : "儲存全部變更"}
           </PixelButton>
@@ -397,14 +396,15 @@ function MediaPicker({
       <div className="flex items-center gap-2">
         <span className="text-[13px] text-black/60">{label}</span>
         <div className="flex gap-1">
-          {(["text", "image", "youtube"] as const).map((kind) => {
-            const kindLabel = kind === "text" ? "文字" : kind === "image" ? "圖片" : "YouTube";
+          {(["text", "image", "youtube", ...(allowNone ? ["none" as const] : [])] as const).map((kind) => {
+            const kindLabel = { text: "文字", image: "圖片", youtube: "YouTube", none: "無" }[kind];
+            const pressed = kind === "none" ? value === undefined : current.kind === kind;
             return (
               <button
                 key={kind}
                 type="button"
-                className={`px-btn !px-2 !py-1 text-[12px] ${current.kind === kind ? "!bg-[var(--turn)]" : ""}`}
-                aria-pressed={current.kind === kind}
+                className={`px-btn !px-2 !py-1 text-[12px] ${pressed ? "!bg-[var(--turn)]" : ""}`}
+                aria-pressed={pressed}
                 aria-label={`${label}：${kindLabel}`}
                 disabled={uploading}
                 onClick={() => switchTo(kind)}
@@ -413,18 +413,6 @@ function MediaPicker({
               </button>
             );
           })}
-          {allowNone && (
-            <button
-              type="button"
-              className={`px-btn !px-2 !py-1 text-[12px] ${value === undefined ? "!bg-[var(--turn)]" : ""}`}
-              aria-pressed={value === undefined}
-              aria-label={`${label}：無`}
-              disabled={uploading}
-              onClick={() => switchTo("none")}
-            >
-              無
-            </button>
-          )}
         </div>
       </div>
 
@@ -520,7 +508,7 @@ function QuestionRow({
         fieldId={`${q.id}-explanation`}
         label="詳解"
         value={q.explanation}
-        onChange={(c) => onUpdate((cur) => (c ? { ...cur, explanation: c } : { ...cur, explanation: undefined }))}
+        onChange={(c) => onUpdate((cur) => ({ ...cur, explanation: c }))}
         onUploadImage={onUploadImage}
         allowNone
       />
