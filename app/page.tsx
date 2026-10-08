@@ -89,7 +89,7 @@ function HomeForm() {
           🏰 主持遊戲 · Create a Room
         </PixelButton>
 
-        <DialogueBox compact className="w-full" text="歡迎，冒險者。輸入代碼加入房間，或自己開一間地城。" />
+        <DialogueBox compact className="w-full" lines={["歡迎，冒險者。輸入代碼加入房間，或自己開一間地城。"]} />
 
         <a href="/bank-editor" className="text-[13px] text-white underline underline-offset-2" style={{ textShadow: "1px 1px 0 var(--k)" }}>
           題庫編輯器（需要 owner key）

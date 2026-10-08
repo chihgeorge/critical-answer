@@ -223,7 +223,8 @@ export function HomeBackground() {
 
 /* ---------- Score meter: one cell per point up to the boss threshold ---------- */
 
-export function ScoreMeter({ score: raw, max = BOSS_THRESHOLD, active = false }: { score: number; max?: number; active?: boolean }) {
+export function ScoreMeter({ score: raw, active = false }: { score: number; active?: boolean }) {
+  const max = BOSS_THRESHOLD;
   const score = Math.min(raw, max);
   return (
     <div className={cx("px-meter", active && "act")} role="meter" aria-valuenow={score} aria-valuemin={0} aria-valuemax={max}>
@@ -303,7 +304,6 @@ function Sequence({ lines }: { lines: string[] }) {
 }
 
 export function DialogueBox({
-  text,
   lines,
   loading = false,
   accent,
@@ -311,10 +311,8 @@ export function DialogueBox({
   style,
   compact = false,
 }: {
-  /** One line to show. Ignored while `loading`, or when `lines` is given. */
-  text?: string;
-  /** Several lines, played in order with a ▼ between them. */
-  lines?: string[];
+  /** Played in order with a ▼ between them. Ignored while `loading`. */
+  lines: string[];
   /** Narration hold: shows a blinking `…` and keeps the portrait. */
   loading?: boolean;
   /** Speaker tag color. */
@@ -325,7 +323,7 @@ export function DialogueBox({
   compact?: boolean;
 }) {
   const portrait = compact ? 56 : 84; // multiples of the owl's 28px, so pixels stay square
-  const shown = (lines && lines.length > 0 ? lines : text ? [text] : [""]);
+  const shown = lines.length > 0 ? lines : [""];
   return (
     <Panel
       tone="lav"
@@ -341,7 +339,7 @@ export function DialogueBox({
       <span className="who" style={accent ? { background: accent } : undefined}>
         地城主
       </span>
-      <div className="por" style={compact ? { left: 8, top: 10, width: 56, height: 56 } : { width: 84, height: 84 }}>
+      <div className="por" style={{ width: portrait, height: portrait, ...(compact ? { left: 8, top: 10 } : {}) }}>
         <Sprite kind="owl" scale={portrait / 28} />
       </div>
       {loading ? (

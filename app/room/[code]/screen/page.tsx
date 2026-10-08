@@ -93,7 +93,7 @@ function Lobby({ code, teams }: { code: string; teams: LobbyTeams }) {
       <DialogueBox
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
-        text={teams.length === 0 ? "篝火燒得正旺，等待第一支隊伍加入……" : `${teams.length} 支隊伍已就位，等主持人宣布開始！`}
+        lines={[teams.length === 0 ? "篝火燒得正旺，等待第一支隊伍加入……" : `${teams.length} 支隊伍已就位，等主持人宣布開始！`]}
       />
     </>
   );
