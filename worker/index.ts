@@ -44,11 +44,7 @@ export class BankStoreDO extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.store = new BankStore(
-      {
-        get: (key) => ctx.storage.get(key),
-        put: (key, value) => ctx.storage.put(key, value),
-        setAlarm: (at) => ctx.storage.setAlarm(at),
-      },
+      ctx.storage,
       // R2 access lives only here (this class), never in lib/bank-store.ts — same
       // platform-abstraction discipline as the rest of this file's DO/RPC split. BankStore calls
       // this from runImageCleanup() (this DO's alarm, below), which catches and logs a failed delete.
@@ -110,13 +106,7 @@ export class Room extends Server<Env> {
         broadcast: (message) => this.broadcast(message),
         env: this.env,
         // The room saves without awaiting; Cloudflare holds its messages until the write is durable.
-        storage: {
-          get: (key) => this.ctx.storage.get(key),
-          put: (key, value) => this.ctx.storage.put(key, value),
-          setAlarm: (at) => this.ctx.storage.setAlarm(at),
-          deleteAlarm: () => this.ctx.storage.deleteAlarm(),
-          deleteAll: () => this.ctx.storage.deleteAll(),
-        },
+        storage: this.ctx.storage,
         closeAll: (code, reason) => {
           for (const conn of this.getConnections()) conn.close(code, reason);
         },

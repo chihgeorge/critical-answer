@@ -30,8 +30,9 @@
 // out the room expiry (TODOS.md P2, fixed 2026-09-29). Fresh uploads join the same queue
 // (queueUploadedImage), so one the editor never saves is deleted too.
 
-import bankJson from "../data/question-bank.json";
+import { BANK } from "./question-bank-data";
 import { parseBank, imageKeysOf, type Bank } from "./question-bank";
+import type { RoomStorage } from "./room/io";
 
 const BANK_KEY = "bank";
 /** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
@@ -41,14 +42,10 @@ const PENDING_KEY = "pendingImageDeletes";
 export const IMAGE_CLEANUP_MARGIN_MS = 60 * 60 * 1000;
 const DEFAULT_CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000 + IMAGE_CLEANUP_MARGIN_MS;
 
-/** The subset of Durable Object storage BankStore needs. Same shape as RoomStorage's get/put/setAlarm. */
-export interface BankStorage {
-  get(key: string): Promise<unknown>;
-  put(key: string, value: unknown): void | Promise<void>;
-  /** Schedules the Durable Object alarm whose handler calls `runImageCleanup()`. Optional: without it
-   * the queue is still kept, and cleanup only happens when something calls `runImageCleanup()`. */
-  setAlarm?(at: number): void | Promise<void>;
-}
+/** The subset of Durable Object storage BankStore needs. `setAlarm` schedules the alarm whose handler
+ * calls `runImageCleanup()`; without it the queue is still kept, and cleanup only happens when
+ * something calls `runImageCleanup()`. */
+export type BankStorage = Pick<RoomStorage, "get" | "put" | "setAlarm">;
 
 interface PendingDelete {
   key: string;
@@ -132,7 +129,7 @@ export class BankStore {
   async getVersionedBank(): Promise<VersionedBank> {
     const raw = await this.storage.get(BANK_KEY);
     if (raw === undefined) {
-      const seeded: VersionedBank = { bank: parseBank(bankJson), version: 1 };
+      const seeded: VersionedBank = { bank: BANK, version: 1 };
       await this.storage.put(BANK_KEY, seeded);
       return seeded;
     }
@@ -143,7 +140,7 @@ export class BankStore {
       // Corrupt storage must not crash whatever called this (a room trying to start a game, the
       // editor trying to load) — same class of defensive fallback as dungeon-room.ts's restore().
       console.error(JSON.stringify({ event: "bank_store_corrupt", error: String(err) }));
-      return { bank: parseBank(bankJson), version: 1 };
+      return { bank: BANK, version: 1 };
     }
   }
 
