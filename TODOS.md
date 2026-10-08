@@ -5,6 +5,24 @@
 
 
 
+## 背景音樂的低音全部擠在每圈結尾一起響
+
+**What:** `lib/bgm.ts` 的 `songEvents()` 回傳的音符改成依 `start` 排序（或 `lib/bgm-player.ts` 的 `schedule()` 每個聲部分開排），再補一個單元測試確認事件按時間排列。
+
+**Why:** `songEvents()` 先推完所有旋律、再推所有低音，`schedule()` 遇到第一個超出預排範圍的音符就停。結果每圈約 16 秒只聽得到旋律，低音要等旋律全排完才在圈尾一次全部響起（開始時間都已過去）。大螢幕一開音樂就聽得出來。
+
+**Pros:** 一行排序就修好；根因已確認。
+
+**Cons:** 會改變大螢幕聽到的音樂（這正是目的），要人耳確認一次。
+
+**Context:** 2026-10-07 `/ship`（v0.9.15.0，ponytail-audit-cuts）的測試覆蓋稽核發現，main 上本來就有，不是那個分支造成的；當時 e2e 試過，開音樂後只出現 `square` 振盪器、不出現 `triangle`。為了讓那個重構 PR 保持純重構，決定另開 PR 修。
+
+**Effort:** S　**Priority:** P1
+
+**Depends on / blocked by:** 無。
+
+---
+
 ## 用真的 API 驗證後記改用 Sonnet 5.5 之後還正常
 
 **What:** 在專案目錄跑 `ANTHROPIC_API_KEY=<金鑰> npm run test:live`，確認旁白（`claude-haiku-4-5`）和後記（`claude-sonnet-5-5`）都打得通、輸出通過我們的驗證。
