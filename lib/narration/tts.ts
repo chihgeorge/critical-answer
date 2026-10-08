@@ -40,15 +40,6 @@ export function shouldSpeakNarration(narration: SpokenNarration, baselineEventId
   return narration.eventId !== lastSpoken.eventId || !sameLines(narration.lines, lastSpoken.lines);
 }
 
-/** Speak a live EPILOGUE, never onConnect's replay of one: the server marks the replay with
- * `replay: true` and sends the live broadcast without it. This replaced "was a live GAME_OVER seen
- * on this connection", which went wrong when a connection landed in the ~4 s between GAME_OVER and
- * the live EPILOGUE: that EPILOGUE was taken for a replay and never spoken. (The Worker deploys
- * before the frontend, so a page that reads the flag never talks to a server that doesn't send it.) */
-export function shouldSpeakEpilogue(msg: { replay?: true }): boolean {
-  return !msg.replay;
-}
-
 /** Loose match: different OS/browsers report Traditional Chinese as zh-TW, zh-Hant-TW,
  * cmn-Hant-TW (cmn is Mandarin's own ISO 639-3 code), zh_TW, or similar. An exact
  * `lang === "zh-TW"` comparison false-negatives on real voices that do support Traditional

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createRunner, targetSegmentCount, type TranscriptEntry } from "./runner";
-import { AuthError, InvalidOutputError } from "./errors";
+import { NarrationError } from "./errors";
 import type { NarrationProvider } from "./scripted";
 import type { NarrationEvent } from "./events";
 
@@ -93,10 +93,10 @@ describe("narration runner", () => {
   });
 
   it("records the named failure reason from the provider's error", async () => {
-    const auth = setup(provider(async () => { throw new AuthError(401); }));
+    const auth = setup(provider(async () => { throw new NarrationError("auth", "x", 401); }));
     await auth.runner.run(1, event);
     expect(auth.entries[0].fallbackReason).toBe("auth");
-    const bad = setup(provider(async () => { throw new InvalidOutputError("markup"); }));
+    const bad = setup(provider(async () => { throw new NarrationError("invalid_output", "markup"); }));
     await bad.runner.run(1, event);
     expect(bad.entries[0].fallbackReason).toBe("invalid_output");
   });

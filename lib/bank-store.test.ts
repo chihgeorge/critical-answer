@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { BankStore, BankConflictError, type BankStorage } from "./bank-store";
+import { BankStore, type BankStorage } from "./bank-store";
 import { type Bank } from "./question-bank";
 import { BANK } from "./question-bank-data";
 
@@ -59,15 +59,13 @@ describe("BankStore.putBank", () => {
   it("saves against the freshly-seeded version 1 on an empty store", async () => {
     const store = new BankStore(memoryStorage());
     const result = await store.putBank(validBank, 1);
-    expect(result.version).toBe(2);
+    expect(result).toMatchObject({ version: 2 });
   });
 
-  it("rejects a stale version with BankConflictError, naming the current version, and saves nothing", async () => {
+  it("returns a conflict for a stale version, naming the current version, and saves nothing", async () => {
     const storage = memoryStorage({ bank: validBank, version: 5 });
     const store = new BankStore(storage);
-    const err = await store.putBank(validBank, 3).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(BankConflictError);
-    expect((err as BankConflictError).currentVersion).toBe(5);
+    expect(await store.putBank(validBank, 3)).toEqual({ conflict: true, currentVersion: 5 });
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 5 }); // unchanged
   });
 
@@ -87,7 +85,7 @@ describe("BankStore.putBank", () => {
   it("checks the version before validating the candidate — a stale save with a bad bank still reports the conflict", async () => {
     const storage = memoryStorage({ bank: validBank, version: 2 });
     const store = new BankStore(storage);
-    await expect(store.putBank({ rooms: [] }, 1)).rejects.toThrow(BankConflictError);
+    expect(await store.putBank({ rooms: [] }, 1)).toEqual({ conflict: true, currentVersion: 2 });
   });
 });
 

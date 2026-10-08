@@ -3,17 +3,17 @@
 // The shared big screen. Public: it only ever receives the spectator view and
 // never a host-only message, so it can be cast to a TV without leaking answers.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useParams } from "next/navigation";
-import { restNoticeFor, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
+import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE } from "@/lib/offline-notice";
-import type { AnswerReveal, PublicQuestion } from "@/lib/protocol";
-import type { GamePhase, SpectatorView } from "@/lib/game-state";
+import type { AnswerReveal, LobbyTeams, PublicQuestion, StateMessage } from "@/lib/protocol";
+import type { SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
-import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
-import { pickVoice, shouldSpeakEpilogue, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
+import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
+import { pickVoice, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { SFX } from "@/lib/sfx";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
@@ -29,9 +29,9 @@ const bgmSupported = () => "AudioContext" in window;
  * doesn't render at all otherwise (a rendered-but-disabled button implies the feature could
  * work here if only the user did something, which isn't true). */
 const ttsSupported = () => "speechSynthesis" in window;
+/** Browser support never changes while the page is open, so there is nothing to subscribe to. */
+const noSubscribe = () => () => {};
 
-type Lobby = { id: string; name: string }[];
-type Play = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
 
 const look = (i: number) => TEAM_LOOKS[i % TEAM_LOOKS.length];
 
@@ -60,7 +60,7 @@ function Sparks() {
   );
 }
 
-function Lobby({ code, teams }: { code: string; teams: Lobby }) {
+function Lobby({ code, teams }: { code: string; teams: LobbyTeams }) {
   const joinUrl = typeof location === "undefined" ? "" : `${location.origin}/?code=${code}`;
   return (
     <>
@@ -95,7 +95,7 @@ function Lobby({ code, teams }: { code: string; teams: Lobby }) {
       <DialogueBox
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
-        text={teams.length === 0 ? "篝火燒得正旺，等待第一支隊伍加入……" : `${teams.length} 支隊伍已就位，等主持人宣布開始！`}
+        lines={[teams.length === 0 ? "篝火燒得正旺，等待第一支隊伍加入……" : `${teams.length} 支隊伍已就位，等主持人宣布開始！`]}
       />
     </>
   );
@@ -103,7 +103,7 @@ function Lobby({ code, teams }: { code: string; teams: Lobby }) {
 
 /** One side of the campfire: teams[from, to), each running in. `variant` stays the team's overall
  * index so its look matches the rest of the game. */
-function TeamGroup({ teams, from, to, align }: { teams: Lobby; from: number; to: number; align: "start" | "end" }) {
+function TeamGroup({ teams, from, to, align }: { teams: LobbyTeams; from: number; to: number; align: "start" | "end" }) {
   const scale = teams.length > 4 ? 3 : 4;
   return (
     <div className={`flex flex-1 items-end gap-2 ${align === "end" ? "justify-end" : "justify-start"}`}>
@@ -218,7 +218,7 @@ function Playing({ view, question, reveal, eventId, narration }: { view: Spectat
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         accent={inBoss ? "var(--danger)" : undefined}
         loading={isPending(eventId, narration)}
-        lines={narration ? linesOf(narration) : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
+        lines={narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
       />
     </>
   );
@@ -276,7 +276,7 @@ function Finished({ view, winners, reveal, narration, epilogue }: { view: Specta
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         loading={!epilogue && !narration}
-        lines={epilogue ? [epilogue] : linesOf(narration)}
+        lines={epilogue ? [epilogue] : (narration?.lines ?? [])}
       />
     </>
   );
@@ -284,15 +284,12 @@ function Finished({ view, winners, reveal, narration, epilogue }: { view: Specta
 
 export default function ScreenPage() {
   const { code } = useParams<{ code: string }>();
-  const [lobby, setLobby] = useState<Lobby>([]);
-  const [game, setGame] = useState<Play | null>(null);
+  const [lobby, setLobby] = useState<LobbyTeams>([]);
+  const [game, setGame] = useState<StateMessage | null>(null);
   /** A network drop (not a rest): shown so a frozen screen doesn't look like a quiet game. */
   const [disconnected, setDisconnected] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
-  /** STATE.reveal: the last correct answer, shown in place of the next question until the host
-   * presses 下一題 (HOST_NEXT, D7 — docs/designs/question-media-content.md). */
-  const [revealed, setRevealed] = useState<AnswerReveal | null>(null);
 
   // --- TTS (docs/designs/dm-voice-narration-tts.md) ---
   const [ttsOn, setTtsOn] = useState(false);
@@ -315,15 +312,12 @@ export default function ScreenPage() {
    * (adversarial review finding — see shouldSpeakNarration's doc comment for the fixed bug). */
   const lastSpokenNarration = useRef<SpokenNarration | null>(null);
 
-  // Read in an effect, not the initial render: ttsSupported() reads `window`, which doesn't
-  // exist during SSR — rendering the toggle from the first client render would disagree with
-  // the server-rendered HTML and trigger a hydration mismatch (same reasoning as
-  // app/bank-editor/page.tsx's useOwnerKey).
-  const [showTtsToggle, setShowTtsToggle] = useState(false);
+  // ttsSupported() reads `window`, which doesn't exist during SSR: the server snapshot (false)
+  // keeps the first client render matching the server HTML, no hydration mismatch.
+  const showTtsToggle = useSyncExternalStore(noSubscribe, ttsSupported, () => false);
   useEffect(() => {
     // A named function, not the effect body itself: react-hooks/set-state-in-effect.
     function restore() {
-      if (ttsSupported()) setShowTtsToggle(true);
       if (readStored(TTS_ENABLED_STORAGE) === "true") setTtsOn(true);
     }
     restore();
@@ -393,16 +387,15 @@ export default function ScreenPage() {
 
   // --- Background music (lib/bgm.ts): off by default, like the narration voice ---
   const [bgmOn, setBgmOn] = useState(false);
-  const [showBgmToggle, setShowBgmToggle] = useState(false);
+  const showBgmToggle = useSyncExternalStore(noSubscribe, bgmSupported, () => false);
   const bgm = useRef<BgmPlayer | null>(null);
   const player = () => (bgm.current ??= createBgmPlayer());
 
   useEffect(() => {
-    // Read in an effect, like the TTS toggle above, so SSR and the first render agree.
+    // Read in an effect so SSR and the first render agree.
     // A named function, not the effect body itself: react-hooks/set-state-in-effect.
     function restore(): boolean {
       if (!bgmSupported()) return false;
-      setShowBgmToggle(true);
       const on = readStored(BGM_ENABLED_STORAGE) === "true";
       if (on) setBgmOn(true);
       return on;
@@ -453,7 +446,6 @@ export default function ScreenPage() {
           setGame(null);
           setNarration(null);
           setEpilogue(null);
-          setRevealed(null);
           // A room reset can arrive without a socket reconnect, and the next game's eventIds
           // start over from 0 — re-arm the baseline the same way onOpen does.
           narrationBaseline.current = null;
@@ -462,7 +454,7 @@ export default function ScreenPage() {
           window.speechSynthesis?.cancel();
           break;
         case "STATE":
-          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
+          setGame(msg);
           if (narrationBaseline.current === null) narrationBaseline.current = msg.eventId;
           // A new event: play its effect once (only while the 🎵 music is on, see playCue).
           if (sfxSeen.current === null) sfxSeen.current = msg.eventId;
@@ -470,19 +462,19 @@ export default function ScreenPage() {
             sfxSeen.current = msg.eventId;
             if (msg.cue) bgm.current?.playCue(SFX[msg.cue]);
           }
-          setRevealed(msg.reveal);
           break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
           if (narrationBaseline.current !== null) {
             const speakIt = shouldSpeakNarration(msg, narrationBaseline.current, lastSpokenNarration.current);
             lastSpokenNarration.current = msg; // always, even when not spoken — see the ref's doc comment
-            if (speakIt) speak(linesOf(msg));
+            if (speakIt) speak(msg.lines);
           }
           break;
         case "EPILOGUE":
           setEpilogue(msg.text);
-          if (shouldSpeakEpilogue(msg)) speak([msg.text]);
+          // Speak the live broadcast, never onConnect's replay (the server marks it `replay: true`).
+          if (!msg.replay) speak([msg.text]);
           break;
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
@@ -495,8 +487,8 @@ export default function ScreenPage() {
     <>
       <Stage>
         {!game && <Lobby code={code} teams={lobby} />}
-        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={revealed} eventId={game.eventId} narration={narration} />}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={revealed} narration={narration} epilogue={epilogue} />}
+        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={game.reveal} eventId={game.eventId} narration={narration} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
           {disconnected && !rested && (
@@ -506,7 +498,7 @@ export default function ScreenPage() {
           )}
           {rested && (
             <div role="status" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
-              {restNoticeFor(rested)}
+              {REST_NOTICE[rested]}
               <PixelButton onClick={reconnect} className="!m-0 !px-4 !py-1 text-[18px]">{RESTED_RECONNECT_LABEL}</PixelButton>
             </div>
           )}

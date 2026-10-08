@@ -2,7 +2,7 @@
 // switches LLM narration off for the rest of the room so a dead key or outage
 // stops costing 2 seconds per event.
 
-import { AuthError, BreakerOpenError, UpstreamError } from "./errors";
+import { NarrationError } from "./errors";
 import type { NarrationProvider } from "./scripted";
 
 export function createBreaker(opts: { threshold?: number; onTrip?: (why: string) => void }) {
@@ -22,7 +22,7 @@ export function createBreaker(opts: { threshold?: number; onTrip?: (why: string)
       failures = 0;
     },
     failure(err: unknown) {
-      if (err instanceof AuthError) return trip(`auth failure (${err.status})`);
+      if (err instanceof NarrationError && err.reason === "auth") return trip(`auth failure (${err.status})`);
       if (++failures >= threshold) trip(`${threshold} consecutive failures`);
     },
   };
@@ -36,13 +36,13 @@ export function withBreaker(inner: NarrationProvider, breaker: Breaker): Narrati
       return inner.name;
     },
     async narrate(event, o) {
-      if (breaker.open) throw new BreakerOpenError();
+      if (breaker.open) throw new NarrationError("breaker_open", "LLM narration is switched off for this room");
       try {
         const line = await inner.narrate(event, o);
         breaker.success();
         return line;
       } catch (err) {
-        breaker.failure(err instanceof Error && "reason" in err ? err : new UpstreamError(String(err)));
+        breaker.failure(err);
         throw err;
       }
     },

@@ -2,6 +2,21 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.15.0] - 2026-10-07
+
+### Fixed
+- The scripted end-of-game epilogue now shows team names exactly as typed. Before, a team named something like `{score}隊` got its name replaced by a number, and a name containing `$'` or `$&` was garbled.
+
+### Changed
+- About 170 fewer lines of code, with the game behaving the same. Narration errors are one error type with a reason, the room pages read the server's STATE message directly, the question-bank save returns a version conflict instead of throwing it, and several one-use helpers and unused options are gone.
+- `npm run dev` starts the room server and Next.js with plain `sh`. Stopping it (Ctrl-C, or Next.js exiting on its own) also stops the room server, so port 8787 is not left taken.
+
+### Removed
+- The `concurrently` dev dependency. `npm run dev` no longer prefixes or colors each server's output.
+
+### Added
+- An e2e test that a big screen opened after the game ends shows the epilogue but does not read it aloud again, and a unit test that team names stay verbatim in every epilogue template.
+
 ## [0.9.14.10] - 2026-10-03
 
 ### Changed

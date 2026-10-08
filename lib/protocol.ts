@@ -138,6 +138,9 @@ export type ServerMessage =
   | { type: "HOST_ANSWER"; questionId: string; answer: string }
   | { type: "ERROR"; error: ServerErrorCode; detail?: string };
 
+export type StateMessage = Extract<ServerMessage, { type: "STATE" }>;
+export type LobbyTeams = Extract<ServerMessage, { type: "LOBBY" }>["teams"];
+
 export const HOST_TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
 /** Same shape as the host token. */
 export const TEAM_KEY_RE = HOST_TOKEN_RE;

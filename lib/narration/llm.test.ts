@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createLlmProvider, buildPrompt, NARRATION_MODEL, EPILOGUE_MODEL } from "./llm";
 import { MAX_LINE } from "./runner";
-import { AuthError, ConfigMissingError, EmptyOrRefusalError, InvalidOutputError, TimeoutError, UpstreamError } from "./errors";
+import { NarrationError } from "./errors";
 import type { NarrationEvent } from "./events";
 
 const event: NarrationEvent = { type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2 };
@@ -175,7 +175,7 @@ describe("multi-line prompts (result, atmosphere, then the next team)", () => {
 
   it("rejects the whole answer when the first line is unusable", async () => {
     const f = async () => ok(reply("字".repeat(60) + "\n輪到藍隊"));
-    await expect(make(f as unknown as typeof fetch).narrate(withNext)).rejects.toBeInstanceOf(InvalidOutputError);
+    await expect(make(f as unknown as typeof fetch).narrate(withNext)).rejects.toMatchObject({ reason: "invalid_output" });
   });
 });
 
@@ -197,7 +197,7 @@ describe("output", () => {
   ])("rejects a line that is %s", async (_n, text) => {
     const f = async () => ok(reply(text));
     await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toSatisfy(
-      (e) => e instanceof EmptyOrRefusalError || e instanceof InvalidOutputError,
+      (e: NarrationError) => e.reason === "empty_or_refusal" || e.reason === "invalid_output",
     );
   });
 
@@ -217,49 +217,49 @@ describe("output", () => {
     const f = async () => ok(reply("答案就是玉山啦"));
     await expect(make(f as unknown as typeof fetch, { forbidden: () => ["玉山"] }).narrate(event)).resolves.toBe("答案就是玉山啦"); // 2 chars: ignored
     const g = async () => ok(reply("答案就是新高山啦"));
-    await expect(make(g as unknown as typeof fetch, { forbidden: () => ["新高山"] }).narrate(event)).rejects.toBeInstanceOf(InvalidOutputError);
+    await expect(make(g as unknown as typeof fetch, { forbidden: () => ["新高山"] }).narrate(event)).rejects.toMatchObject({ reason: "invalid_output" });
   });
 
   it("treats a refusal stop reason as a failure", async () => {
     const f = async () => ok({ content: [], stop_reason: "refusal", stop_details: { type: "refusal", category: null } });
-    await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toBeInstanceOf(EmptyOrRefusalError);
+    await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toMatchObject({ reason: "empty_or_refusal" });
   });
 });
 
 describe("failures are named", () => {
-  it("no key -> ConfigMissing, and fetch is never called", async () => {
+  it("no key -> config_missing, and fetch is never called", async () => {
     const f = vi.fn();
-    await expect(createLlmProvider({ apiKey: undefined, fetch: f as unknown as typeof fetch }).narrate(event)).rejects.toBeInstanceOf(ConfigMissingError);
+    await expect(createLlmProvider({ apiKey: undefined, fetch: f as unknown as typeof fetch }).narrate(event)).rejects.toMatchObject({ reason: "config_missing" });
     expect(f).not.toHaveBeenCalled();
   });
 
-  it.each([401, 403])("HTTP %i -> Auth", async (status) => {
+  it.each([401, 403])("HTTP %i -> auth", async (status) => {
     const f = async () => ok({ error: { type: "authentication_error", message: "x" } }, status);
-    await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toBeInstanceOf(AuthError);
+    await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toMatchObject({ reason: "auth" });
   });
 
-  it.each([429, 500, 529, 400])("HTTP %i -> Upstream", async (status) => {
+  it.each([429, 500, 529, 400])("HTTP %i -> upstream", async (status) => {
     const f = async () => ok({ error: { type: "x", message: "x" } }, status);
     await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toMatchObject({ reason: "upstream", status });
   });
 
-  it("a network failure -> Upstream", async () => {
+  it("a network failure -> upstream", async () => {
     const f = async () => { throw new TypeError("network down"); };
-    await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toBeInstanceOf(UpstreamError);
+    await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toMatchObject({ reason: "upstream" });
   });
 
-  it("an aborted request -> Timeout", async () => {
+  it("an aborted request -> timeout", async () => {
     const ac = new AbortController();
     const f = (_u: string, init: RequestInit) =>
       new Promise((_res, rej) => init.signal!.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError"))));
     const p = make(f as unknown as typeof fetch).narrate(event, { signal: ac.signal });
     ac.abort();
-    await expect(p).rejects.toBeInstanceOf(TimeoutError);
+    await expect(p).rejects.toMatchObject({ reason: "timeout" });
   });
 
-  it("a response that is not JSON -> Upstream", async () => {
+  it("a response that is not JSON -> upstream", async () => {
     const f = async () => new Response("<html>bad gateway</html>", { status: 200 });
-    await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toBeInstanceOf(UpstreamError);
+    await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toMatchObject({ reason: "upstream" });
   });
 });
 
