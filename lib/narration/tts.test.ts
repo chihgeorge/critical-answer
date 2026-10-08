@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldSpeakNarration, shouldSpeakEpilogue, pickVoice } from "./tts";
+import { shouldSpeakNarration, pickVoice } from "./tts";
 
 describe("shouldSpeakNarration", () => {
   it("suppresses onConnect's resent lastNarration (eventId at or below the connection baseline)", () => {
@@ -51,13 +51,6 @@ describe("shouldSpeakNarration", () => {
     // now that lastSpoken is the replay's own content rather than null.
     const corrected = { eventId: 5, lines: ["修正後的答案"] };
     expect(shouldSpeakNarration(corrected, 5, replayed)).toBe(true);
-  });
-});
-
-describe("shouldSpeakEpilogue", () => {
-  it("speaks the live broadcast and never onConnect's replay", () => {
-    expect(shouldSpeakEpilogue({})).toBe(true);
-    expect(shouldSpeakEpilogue({ replay: true })).toBe(false);
   });
 });
 

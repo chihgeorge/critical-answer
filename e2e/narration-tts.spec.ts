@@ -371,8 +371,7 @@ test("screen TTS: a live GAME_OVER followed by the epilogue speaks the epilogue 
   expect(cur().phase).toBe("finished");
 
   // The epilogue text arrives ~EPILOGUE_DELAY_MS (4s) after the kill shot, over the live socket
-  // this connection has open the whole time — shouldSpeakEpilogue's true branch (a live
-  // GAME_OVER really was observed on this connection first).
+  // this connection has open the whole time — a live EPILOGUE (no `replay` flag), so it is spoken.
   await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/, { timeout: 15_000 });
   await expect.poll(() => ttsCalls(screen)).toEqual(
     expect.arrayContaining([expect.stringMatching(/地城重歸寂靜|走出地城|成為傳說/)]),
