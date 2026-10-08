@@ -6,7 +6,7 @@
 import type { NarrationEvent } from "./events";
 import type { NarrationProvider } from "./scripted";
 import { validLine, MAX_LINE, MAX_EPILOGUE_LINE } from "./runner";
-import { AuthError, ConfigMissingError, EmptyOrRefusalError, InvalidOutputError, TimeoutError, UpstreamError } from "./errors";
+import { NarrationError } from "./errors";
 
 export const NARRATION_MODEL = "claude-haiku-4-5";
 export const EPILOGUE_MODEL = "claude-sonnet-5-5";
@@ -88,7 +88,7 @@ export function fitToLimit(text: string, max: number): string {
 }
 
 export interface LlmOptions {
-  /** From room.env.ANTHROPIC_API_KEY. Missing -> ConfigMissingError, and nothing is sent. */
+  /** From room.env.ANTHROPIC_API_KEY. Missing -> config_missing, and nothing is sent. */
   apiKey?: string;
   fetch?: typeof fetch;
   getNotes?: () => string;
@@ -103,7 +103,7 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
   return {
     name: "llm",
     async narrate(event: NarrationEvent, o: { signal?: AbortSignal } = {}): Promise<string> {
-      if (!opts.apiKey) throw new ConfigMissingError();
+      if (!opts.apiKey) throw new NarrationError("config_missing", "ANTHROPIC_API_KEY is not set");
       const epilogue = event.type === "epilogue";
       const { system, user } = buildPrompt(event, opts.getNotes?.() ?? "", opts.getStyleExamples?.() ?? []);
       const model = epilogue ? EPILOGUE_MODEL : NARRATION_MODEL;
@@ -124,32 +124,32 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
           signal: o.signal,
         });
       } catch (err) {
-        if (o.signal?.aborted || (err instanceof Error && err.name === "AbortError")) throw new TimeoutError();
-        throw new UpstreamError(err instanceof Error ? err.message : String(err));
+        if (o.signal?.aborted || (err instanceof Error && err.name === "AbortError")) throw new NarrationError("timeout", "narration request timed out or was aborted");
+        throw new NarrationError("upstream", err instanceof Error ? err.message : String(err));
       }
-      if (res.status === 401 || res.status === 403) throw new AuthError(res.status);
-      if (!res.ok) throw new UpstreamError(`Anthropic returned ${res.status}`, res.status);
+      if (res.status === 401 || res.status === 403) throw new NarrationError("auth", `Anthropic rejected the key (${res.status})`, res.status);
+      if (!res.ok) throw new NarrationError("upstream", `Anthropic returned ${res.status}`, res.status);
 
       let data: { content?: { type: string; text?: string }[]; stop_reason?: string };
       try {
         data = await res.json();
       } catch {
-        throw new UpstreamError("response was not JSON", res.status);
+        throw new NarrationError("upstream", "response was not JSON", res.status);
       }
-      if (data.stop_reason === "refusal") throw new EmptyOrRefusalError("the model declined");
+      if (data.stop_reason === "refusal") throw new NarrationError("empty_or_refusal", "the model declined");
       const raw = (data.content ?? [])
         .filter((b) => b.type === "text")
         .map((b) => b.text ?? "")
         .join("");
-      if (!raw.trim()) throw new EmptyOrRefusalError("no text in the response");
+      if (!raw.trim()) throw new NarrationError("empty_or_refusal", "no text in the response");
       const max = epilogue ? MAX_EPILOGUE_LINE : MAX_LINE;
       const forbidden = (opts.forbidden?.() ?? []).filter((a) => a.length >= 3);
       // The model echoes the 「」 we put around names; they are prompt scaffolding, not part of the line.
       const clean = (line: string) => fitToLimit(line.replace(/[「」『』"“”]/g, "").trim(), max);
       const usable = (line: string) => validLine(line, max) && !forbidden.some((a) => line.includes(a));
       const [first = "", ...rest] = raw.split(/\n+/).map(clean).filter(Boolean);
-      if (first === "") throw new EmptyOrRefusalError("no text in the response");
-      if (!usable(first)) throw new InvalidOutputError("line too long, contains markup or repeats a bank answer");
+      if (first === "") throw new NarrationError("empty_or_refusal", "no text in the response");
+      if (!usable(first)) throw new NarrationError("invalid_output", "line too long, contains markup or repeats a bank answer");
       // Every segment after the first is a bonus: a bad one falls back to scripted for that specific
       // slot. Replace it with a marker instead of dropping it — dropping compacts the array, so with
       // 2+ rest segments (atmosphere, transition) an invalid middle one would shift a valid trailing
