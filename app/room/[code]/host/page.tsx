@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
-import { restNoticeFor, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
+import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
 import type { ClientMessage, LobbyTeams, StateMessage } from "@/lib/protocol";
@@ -264,7 +264,7 @@ export default function HostPage() {
         {noToken && <Panel tone="lav" className="px-3 py-2 text-[14px]">這個瀏覽器沒有主持人金鑰。請回首頁按「主持遊戲」，或用建立房間時的連結／QR 開啟。</Panel>}
         {rested && (
           <Panel tone="turn" role="status" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
-            {restNoticeFor(rested)}
+            {REST_NOTICE[rested]}
             <PixelButton
               onClick={room.reconnect}
               className="!m-0 !px-4 !py-2 text-[16px]"

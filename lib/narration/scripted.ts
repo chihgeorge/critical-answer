@@ -178,8 +178,5 @@ export function scriptedEpilogue(
     .slice(0, 2)
     .map((t) => `${t.name} ${t.score} 分`);
   const restText = rest.length > 0 ? `${rest.join("、")}緊追在後` : "無人能敵";
-  return EPILOGUES[Math.floor(rng() * EPILOGUES.length)]
-    .replace("{winners}", winners.join("、"))
-    .replace("{score}", String(top))
-    .replace("{rest}", restText);
+  return fill(EPILOGUES[Math.floor(rng() * EPILOGUES.length)], { winners: winners.join("、"), score: top, rest: restText });
 }

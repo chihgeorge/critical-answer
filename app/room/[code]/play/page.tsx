@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { restNoticeFor, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
+import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE, offlineNotice, type DropSnapshot } from "@/lib/offline-notice";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
@@ -10,7 +10,7 @@ import type { LobbyTeams, StateMessage } from "@/lib/protocol";
 import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
-import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
+import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 
 export default function PlayPage() {
@@ -121,7 +121,7 @@ export default function PlayPage() {
         )}
         {rested && (
           <Panel tone="turn" role="status" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]">
-            {restNoticeFor(rested)}
+            {REST_NOTICE[rested]}
             <PixelButton
               onClick={reconnect}
               className="!m-0 !px-4 !py-2"
@@ -254,10 +254,10 @@ export default function PlayPage() {
                 ? epilogue
                   ? [epilogue]
                   : narration
-                    ? linesOf(narration)
+                    ? narration.lines
                     : ["冒險結束了，大螢幕正在頒獎。"]
                 : narration
-                  ? linesOf(narration)
+                  ? narration.lines
                   : [turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"]
             }
           />

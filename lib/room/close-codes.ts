@@ -16,9 +16,8 @@ export function restKindOf(event: CloseEvent): RestKind | null {
 }
 
 /** The one wording for each notice, shared so the three pages can never drift apart on it. */
-export const RESTED_NOTICE = "房間休息中：太久沒有動作，連線已暫停，遊戲進度都還在。";
-export const EXPIRED_NOTICE = "房間已過期：太久沒有動作，上一場遊戲已經清除。重新連線會開一個新的空房間。";
-export function restNoticeFor(kind: RestKind): string {
-  return kind === "expired" ? EXPIRED_NOTICE : RESTED_NOTICE;
-}
+export const REST_NOTICE: Record<RestKind, string> = {
+  idle: "房間休息中：太久沒有動作，連線已暫停，遊戲進度都還在。",
+  expired: "房間已過期：太久沒有動作，上一場遊戲已經清除。重新連線會開一個新的空房間。",
+};
 export const RESTED_RECONNECT_LABEL = "重新連線";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { keepLatest, isPending, linesOf } from "./client";
+import { keepLatest, isPending } from "./client";
 
 describe("keepLatest", () => {
   it("takes the first narration, then only narrations with a higher eventId", () => {
@@ -21,15 +21,6 @@ describe("keepLatest", () => {
   it("accepts a replay of the same eventId (a reconnect) without changing it", () => {
     const n = keepLatest({ eventId: 4, lines: ["四"] }, { eventId: 4, lines: ["四"] });
     expect(n).toEqual({ eventId: 4, lines: ["四"] });
-  });
-});
-
-describe("linesOf", () => {
-  it("returns the segment array, in order", () => {
-    expect(linesOf({ eventId: 1, lines: ["一", "二", "三"] })).toEqual(["一", "二", "三"]);
-  });
-  it("returns an empty array for null", () => {
-    expect(linesOf(null)).toEqual([]);
   });
 });
 

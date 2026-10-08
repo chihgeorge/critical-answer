@@ -5,14 +5,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { restNoticeFor, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
+import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE } from "@/lib/offline-notice";
 import type { AnswerReveal, LobbyTeams, PublicQuestion, StateMessage } from "@/lib/protocol";
 import type { SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
-import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
+import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { SFX } from "@/lib/sfx";
@@ -216,7 +216,7 @@ function Playing({ view, question, reveal, eventId, narration }: { view: Spectat
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         accent={inBoss ? "var(--danger)" : undefined}
         loading={isPending(eventId, narration)}
-        lines={narration ? linesOf(narration) : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
+        lines={narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
       />
     </>
   );
@@ -274,7 +274,7 @@ function Finished({ view, winners, reveal, narration, epilogue }: { view: Specta
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         loading={!epilogue && !narration}
-        lines={epilogue ? [epilogue] : linesOf(narration)}
+        lines={epilogue ? [epilogue] : (narration?.lines ?? [])}
       />
     </>
   );
@@ -470,7 +470,7 @@ export default function ScreenPage() {
           if (narrationBaseline.current !== null) {
             const speakIt = shouldSpeakNarration(msg, narrationBaseline.current, lastSpokenNarration.current);
             lastSpokenNarration.current = msg; // always, even when not spoken — see the ref's doc comment
-            if (speakIt) speak(linesOf(msg));
+            if (speakIt) speak(msg.lines);
           }
           break;
         case "EPILOGUE":
@@ -500,7 +500,7 @@ export default function ScreenPage() {
           )}
           {rested && (
             <div role="status" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
-              {restNoticeFor(rested)}
+              {REST_NOTICE[rested]}
               <PixelButton onClick={reconnect} className="!m-0 !px-4 !py-1 text-[18px]">{RESTED_RECONNECT_LABEL}</PixelButton>
             </div>
           )}

@@ -9,11 +9,6 @@ export function keepLatest(prev: NarrationState, msg: { eventId: number; lines: 
   return prev && prev.eventId > msg.eventId ? prev : { eventId: msg.eventId, lines: msg.lines };
 }
 
-/** The lines to play in order. */
-export function linesOf(n: NarrationState): string[] {
-  return n ? n.lines : [];
-}
-
 /** STATE for a new event arrives before its narration: show the `…` loader in between. */
 export function isPending(stateEventId: number, narration: NarrationState): boolean {
   return stateEventId > (narration?.eventId ?? 0);
