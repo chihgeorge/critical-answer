@@ -632,13 +632,7 @@ export class DungeonRoom {
     if (known !== undefined) {
       // An existing team: only the client holding its key may speak for it. During a game this is a
       // reconnect or a page reload (the phone sends JOIN each time its socket opens).
-      if (!tokensEqual(known, teamKey)) {
-        this.sendTo(conn, { type: "ERROR", error: "bad_token" });
-        return;
-      }
-      this.connTeam.set(conn.id, teamId);
-      if (this.game) this.game = setTeamOnline(this.game, teamId, true);
-      this.broadcastState();
+      if (this.claimTeam(conn, teamId, teamKey, known)) this.broadcastState();
       return;
     }
     if (this.game) {
@@ -671,17 +665,20 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
       return;
     }
+    if (!this.claimTeam(conn, teamId, teamKey, known)) return;
+    if (this.game) this.broadcastState();
+    else this.sendTo(conn, this.snapshot());
+  }
+
+  /** Binds `conn` to an existing team if `teamKey` matches the team's key `known`, and marks the team online. */
+  private claimTeam(conn: Conn, teamId: string, teamKey: string, known: string): boolean {
     if (!tokensEqual(known, teamKey)) {
       this.sendTo(conn, { type: "ERROR", error: "bad_token" });
-      return;
+      return false;
     }
     this.connTeam.set(conn.id, teamId);
-    if (this.game) {
-      this.game = setTeamOnline(this.game, teamId, true);
-      this.broadcastState();
-      return;
-    }
-    this.sendTo(conn, this.snapshot());
+    if (this.game) this.game = setTeamOnline(this.game, teamId, true);
+    return true;
   }
 
   private handleHostNext(conn: Conn, eventId: number) {
