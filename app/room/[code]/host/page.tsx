@@ -17,24 +17,20 @@ import { hostKeyAction } from "@/lib/host-keys";
 function MoreDrawer({
   code,
   onClose,
-  onTranscript,
-  currentLine,
-  totalSegments,
-  onNotes,
-  onEdit,
+  send,
+  lines,
   aiOn,
 }: {
   code: string;
   onClose: () => void;
-  onTranscript: () => void;
-  currentLine: string;
-  /** How many segments the current narration has (1-3) — the edit box below only ever
-   * rewrites the first one, so hosts need to know there may be more they can't reach. */
-  totalSegments: number;
-  onNotes: (notes: string) => void;
-  onEdit: (line: string) => void;
+  send: (msg: ClientMessage) => void;
+  /** The current narration's segments (1-3). The edit box below only ever rewrites the first
+   * one, so hosts need to know there may be more they can't reach. */
+  lines: string[];
   aiOn: boolean;
 }) {
+  const currentLine = lines[0] ?? "";
+  const totalSegments = lines.length;
   const [notes, setNotes] = useState("");
   const [line, setLine] = useState(currentLine);
   const origin = location.origin;
@@ -58,19 +54,19 @@ function MoreDrawer({
             <div className="text-[15px]">導演筆記{aiOn ? "（AI 每次寫旁白都會參考）" : "（AI 旁白已關閉，只會記錄）"}</div>
             <div className="text-[13px]">只影響語氣與風格，不是逐字台詞。想改已經出現的那一句，用下面的「改寫目前旁白」。</div>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} rows={3} placeholder="例如：用武俠口吻，紅隊是一群恐龍" className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
-            <PixelButton onClick={() => onNotes(notes)} className="!m-0 !px-4 !py-2 text-[16px]">
+            <PixelButton onClick={() => send({ type: "HOST_SET_NOTES", notes })} className="!m-0 !px-4 !py-2 text-[16px]">
               儲存導演筆記
             </PixelButton>
           </section>
           <section className="flex flex-col gap-2">
             <div className="text-[15px]">改寫第一句旁白{totalSegments > 1 ? `（共 ${totalSegments} 句，只能改第一句，最多 40 字）` : "（最多 40 字）"}</div>
             <input value={line} onChange={(e) => setLine(e.target.value)} maxLength={40} disabled={!currentLine} className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
-            <PixelButton onClick={() => onEdit(line)} disabled={!currentLine || !line.trim()} className="!m-0 !px-4 !py-2 text-[16px]">
+            <PixelButton onClick={() => send({ type: "HOST_EDIT_NARRATION", line })} disabled={!currentLine || !line.trim()} className="!m-0 !px-4 !py-2 text-[16px]">
               送出，立刻換上大螢幕
             </PixelButton>
           </section>
           <section>
-            <PixelButton onClick={onTranscript} className="!m-0 !px-4 !py-2 text-[16px]">
+            <PixelButton onClick={() => send({ type: "HOST_GET_TRANSCRIPT" })} className="!m-0 !px-4 !py-2 text-[16px]">
               下載旁白紀錄（JSON）
             </PixelButton>
             <div className="mt-3 text-[13px]">每一句旁白的事件、分數、來源與延遲。伺服器重啟後會消失。</div>
@@ -428,11 +424,8 @@ export default function HostPage() {
         <MoreDrawer
           code={code}
           onClose={() => setDrawer(false)}
-          onTranscript={() => send({ type: "HOST_GET_TRANSCRIPT" })}
-          currentLine={narration?.lines[0] ?? ""}
-          totalSegments={narration?.lines.length ?? 0}
-          onNotes={(notes) => send({ type: "HOST_SET_NOTES", notes })}
-          onEdit={(line) => send({ type: "HOST_EDIT_NARRATION", line })}
+          send={send}
+          lines={narration?.lines ?? []}
           aiOn={aiAvailable && aiOn}
         />
       )}
