@@ -6,15 +6,12 @@ import { restNoticeFor, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE, offlineNotice, type DropSnapshot } from "@/lib/offline-notice";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
-import type { AnswerReveal, PublicQuestion } from "@/lib/protocol";
-import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom, type SpectatorView, type GamePhase } from "@/lib/game-state";
+import type { LobbyTeams, StateMessage } from "@/lib/protocol";
+import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
-
-type LobbyState = { teams: { id: string; name: string }[] };
-type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
 
 export default function PlayPage() {
   const { code } = useParams<{ code: string }>();
@@ -22,20 +19,17 @@ export default function PlayPage() {
   const teamName = searchParams.get("name") ?? "隊伍";
 
   const [teamId, setTeamId] = useState("");
-  const [lobby, setLobby] = useState<LobbyState | null>(null);
-  const [game, setGame] = useState<PlayState | null>(null);
+  const [lobby, setLobby] = useState<LobbyTeams | null>(null);
+  const [game, setGame] = useState<StateMessage | null>(null);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
-  /** STATE.reveal: the last correct answer, shown in place of the next question until the host
-   * presses 下一題 (HOST_NEXT, D7 — docs/designs/question-media-content.md). */
-  const [revealed, setRevealed] = useState<AnswerReveal | null>(null);
 
 
   /** A network drop (not a rest): the room skips an offline team's turn, so the team should know
    * it's disconnected, and after reconnecting whether the game moved on (lib/offline-notice.ts). */
   const [disconnected, setDisconnected] = useState(false);
   const [offlineMsg, setOfflineMsg] = useState<string | null>(null);
-  const lastGame = useRef<PlayState | null>(null);
+  const lastGame = useRef<StateMessage | null>(null);
   const drop = useRef<DropSnapshot | null>(null);
   useEffect(() => {
     if (!offlineMsg) return;
@@ -63,22 +57,19 @@ export default function PlayPage() {
     onMessage(msg) {
       switch (msg.type) {
         case "LOBBY":
-          setLobby({ teams: msg.teams });
+          setLobby(msg.teams);
           setGame(null);
           lastGame.current = null;
           drop.current = null;
-          setRevealed(null);
           break;
         case "STATE": {
-          const next = { view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId };
-          setGame(next);
-          lastGame.current = next;
+          setGame(msg);
+          lastGame.current = msg;
           if (drop.current) {
             setOfflineMsg(offlineNotice(drop.current, msg.eventId));
             drop.current = null;
           }
           setLobby(null);
-          setRevealed(msg.reveal);
           break;
         }
         case "NARRATION":
@@ -94,7 +85,10 @@ export default function PlayPage() {
     },
   });
 
-  const roster = game?.view.teams ?? lobby?.teams ?? [];
+  /** The last correct answer, shown in place of the next question until the host presses 下一題
+   * (HOST_NEXT, D7 — docs/designs/question-media-content.md). */
+  const revealed = game?.reveal ?? null;
+  const roster = game?.view.teams ?? lobby ?? [];
   const myIndex = Math.max(0, roster.findIndex((t) => t.id === teamId));
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
   const turn = game ? describeTurn(game.view, game.question) : null;
@@ -144,7 +138,7 @@ export default function PlayPage() {
         {/* Who has joined so far, updating live while everyone waits for the host. */}
         {!game && lobby && (
           <ul data-testid="roster" className="flex flex-col gap-2">
-            {lobby.teams.map((t, i) => (
+            {lobby.map((t, i) => (
               <Panel key={t.id} tone={t.id === teamId ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-2">
                 <Sprite kind="hero" variant={i} scale={2} className="flex-none" />
                 <span className="min-w-0 flex-1 truncate text-[18px]">{t.name}</span>

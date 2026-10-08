@@ -6,15 +6,12 @@ import { useParams } from "next/navigation";
 import { restNoticeFor, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import type { AnswerReveal, ClientMessage, PublicQuestion } from "@/lib/protocol";
-import type { SpectatorView, GamePhase } from "@/lib/game-state";
+import type { ClientMessage, LobbyTeams, StateMessage } from "@/lib/protocol";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { hostKeyAction } from "@/lib/host-keys";
 
-type LobbyState = { teams: { id: string; name: string }[] };
-type PlayState = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; reveal: AnswerReveal | null; eventId: number };
 
 /** The host's own link carries the token, so it is shown here and never on /screen or /play. */
 function MoreDrawer({
@@ -96,8 +93,8 @@ function MoreDrawer({
 export default function HostPage() {
   const { code } = useParams<{ code: string }>();
 
-  const [lobby, setLobby] = useState<LobbyState>({ teams: [] });
-  const [game, setGame] = useState<PlayState | null>(null);
+  const [lobby, setLobby] = useState<LobbyTeams>([]);
+  const [game, setGame] = useState<StateMessage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [noToken, setNoToken] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -153,11 +150,11 @@ export default function HostPage() {
           setAnswer({ questionId: msg.questionId, answer: msg.answer });
           break;
         case "LOBBY":
-          setLobby({ teams: msg.teams });
+          setLobby(msg.teams);
           setGame(null);
           break;
         case "STATE":
-          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, reveal: msg.reveal, eventId: msg.eventId });
+          setGame(msg);
           setPendingTeamId(null);
           break;
         case "GAME_OVER":
@@ -281,13 +278,13 @@ export default function HostPage() {
           <section className="flex flex-1 flex-col gap-3">
             <Panel tone="lav" className="px-3 py-2 text-[18px]">等待隊伍加入…</Panel>
             <ul className="flex flex-col gap-2">
-              {lobby.teams.map((t, i) => (
+              {lobby.map((t, i) => (
                 <Panel key={t.id} className="flex items-center gap-3 px-3 py-2">
                   <Sprite kind="hero" variant={i} scale={2} />
                   <span className="text-[18px]">{t.name}</span>
                 </Panel>
               ))}
-              {lobby.teams.length === 0 && <Panel className="px-3 py-2 text-[15px]">還沒有隊伍加入</Panel>}
+              {lobby.length === 0 && <Panel className="px-3 py-2 text-[15px]">還沒有隊伍加入</Panel>}
             </ul>
             <Panel className="flex items-center gap-3 px-3 py-2">
               <Qr text={typeof location === "undefined" ? "" : `${location.origin}/?code=${code}`} size={120} />
@@ -308,7 +305,7 @@ export default function HostPage() {
             <PixelButton
               variant="primary"
               className="mt-auto min-h-[78px] text-[26px]"
-              disabled={!ready || lobby.teams.length === 0}
+              disabled={!ready || lobby.length === 0}
               onClick={() => send({ type: "HOST_START", aiNarration: aiAvailable && aiOn })}
             >
               開始遊戲 ▶

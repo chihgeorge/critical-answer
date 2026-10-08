@@ -8,8 +8,8 @@ import { useParams } from "next/navigation";
 import { restNoticeFor, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE } from "@/lib/offline-notice";
-import type { AnswerReveal, PublicQuestion } from "@/lib/protocol";
-import type { GamePhase, SpectatorView } from "@/lib/game-state";
+import type { AnswerReveal, LobbyTeams, PublicQuestion, StateMessage } from "@/lib/protocol";
+import type { SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, linesOf, type NarrationState } from "@/lib/narration/client";
@@ -30,8 +30,6 @@ const bgmSupported = () => "AudioContext" in window;
  * work here if only the user did something, which isn't true). */
 const ttsSupported = () => "speechSynthesis" in window;
 
-type Lobby = { id: string; name: string }[];
-type Play = { view: SpectatorView; phase: GamePhase; winners: string[]; question: PublicQuestion | null; eventId: number };
 
 const look = (i: number) => TEAM_LOOKS[i % TEAM_LOOKS.length];
 
@@ -60,7 +58,7 @@ function Sparks() {
   );
 }
 
-function Lobby({ code, teams }: { code: string; teams: Lobby }) {
+function Lobby({ code, teams }: { code: string; teams: LobbyTeams }) {
   const joinUrl = typeof location === "undefined" ? "" : `${location.origin}/?code=${code}`;
   return (
     <>
@@ -103,7 +101,7 @@ function Lobby({ code, teams }: { code: string; teams: Lobby }) {
 
 /** One side of the campfire: teams[from, to), each running in. `variant` stays the team's overall
  * index so its look matches the rest of the game. */
-function TeamGroup({ teams, from, to, align }: { teams: Lobby; from: number; to: number; align: "start" | "end" }) {
+function TeamGroup({ teams, from, to, align }: { teams: LobbyTeams; from: number; to: number; align: "start" | "end" }) {
   const scale = teams.length > 4 ? 3 : 4;
   return (
     <div className={`flex flex-1 items-end gap-2 ${align === "end" ? "justify-end" : "justify-start"}`}>
@@ -284,15 +282,12 @@ function Finished({ view, winners, reveal, narration, epilogue }: { view: Specta
 
 export default function ScreenPage() {
   const { code } = useParams<{ code: string }>();
-  const [lobby, setLobby] = useState<Lobby>([]);
-  const [game, setGame] = useState<Play | null>(null);
+  const [lobby, setLobby] = useState<LobbyTeams>([]);
+  const [game, setGame] = useState<StateMessage | null>(null);
   /** A network drop (not a rest): shown so a frozen screen doesn't look like a quiet game. */
   const [disconnected, setDisconnected] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
-  /** STATE.reveal: the last correct answer, shown in place of the next question until the host
-   * presses 下一題 (HOST_NEXT, D7 — docs/designs/question-media-content.md). */
-  const [revealed, setRevealed] = useState<AnswerReveal | null>(null);
 
   // --- TTS (docs/designs/dm-voice-narration-tts.md) ---
   const [ttsOn, setTtsOn] = useState(false);
@@ -453,7 +448,6 @@ export default function ScreenPage() {
           setGame(null);
           setNarration(null);
           setEpilogue(null);
-          setRevealed(null);
           // A room reset can arrive without a socket reconnect, and the next game's eventIds
           // start over from 0 — re-arm the baseline the same way onOpen does.
           narrationBaseline.current = null;
@@ -462,7 +456,7 @@ export default function ScreenPage() {
           window.speechSynthesis?.cancel();
           break;
         case "STATE":
-          setGame({ view: msg.view, phase: msg.phase, winners: msg.winners, question: msg.question, eventId: msg.eventId });
+          setGame(msg);
           if (narrationBaseline.current === null) narrationBaseline.current = msg.eventId;
           // A new event: play its effect once (only while the 🎵 music is on, see playCue).
           if (sfxSeen.current === null) sfxSeen.current = msg.eventId;
@@ -470,7 +464,6 @@ export default function ScreenPage() {
             sfxSeen.current = msg.eventId;
             if (msg.cue) bgm.current?.playCue(SFX[msg.cue]);
           }
-          setRevealed(msg.reveal);
           break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
@@ -495,8 +488,8 @@ export default function ScreenPage() {
     <>
       <Stage>
         {!game && <Lobby code={code} teams={lobby} />}
-        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={revealed} eventId={game.eventId} narration={narration} />}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={revealed} narration={narration} epilogue={epilogue} />}
+        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={game.reveal} eventId={game.eventId} narration={narration} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
           {disconnected && !rested && (
