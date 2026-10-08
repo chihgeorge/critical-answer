@@ -227,28 +227,28 @@ describe("output", () => {
 });
 
 describe("failures are named", () => {
-  it("no key -> ConfigMissing, and fetch is never called", async () => {
+  it("no key -> config_missing, and fetch is never called", async () => {
     const f = vi.fn();
     await expect(createLlmProvider({ apiKey: undefined, fetch: f as unknown as typeof fetch }).narrate(event)).rejects.toMatchObject({ reason: "config_missing" });
     expect(f).not.toHaveBeenCalled();
   });
 
-  it.each([401, 403])("HTTP %i -> Auth", async (status) => {
+  it.each([401, 403])("HTTP %i -> auth", async (status) => {
     const f = async () => ok({ error: { type: "authentication_error", message: "x" } }, status);
     await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toMatchObject({ reason: "auth" });
   });
 
-  it.each([429, 500, 529, 400])("HTTP %i -> Upstream", async (status) => {
+  it.each([429, 500, 529, 400])("HTTP %i -> upstream", async (status) => {
     const f = async () => ok({ error: { type: "x", message: "x" } }, status);
     await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toMatchObject({ reason: "upstream", status });
   });
 
-  it("a network failure -> Upstream", async () => {
+  it("a network failure -> upstream", async () => {
     const f = async () => { throw new TypeError("network down"); };
     await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toMatchObject({ reason: "upstream" });
   });
 
-  it("an aborted request -> Timeout", async () => {
+  it("an aborted request -> timeout", async () => {
     const ac = new AbortController();
     const f = (_u: string, init: RequestInit) =>
       new Promise((_res, rej) => init.signal!.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError"))));
@@ -257,7 +257,7 @@ describe("failures are named", () => {
     await expect(p).rejects.toMatchObject({ reason: "timeout" });
   });
 
-  it("a response that is not JSON -> Upstream", async () => {
+  it("a response that is not JSON -> upstream", async () => {
     const f = async () => new Response("<html>bad gateway</html>", { status: 200 });
     await expect(make(f as unknown as typeof fetch).narrate(event)).rejects.toMatchObject({ reason: "upstream" });
   });

@@ -59,7 +59,7 @@ describe("BankStore.putBank", () => {
   it("saves against the freshly-seeded version 1 on an empty store", async () => {
     const store = new BankStore(memoryStorage());
     const result = await store.putBank(validBank, 1);
-    expect((result as { version: number }).version).toBe(2);
+    expect(result).toMatchObject({ version: 2 });
   });
 
   it("returns a conflict for a stale version, naming the current version, and saves nothing", async () => {

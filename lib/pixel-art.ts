@@ -459,10 +459,6 @@ function campfire(cv: HTMLCanvasElement, frame: number) {
   P.flush();
 }
 
-/**
- * Draw one sprite. `variant` means: hero = look index, torch/campfire = frame (0/1),
- * heart = 1 for full and 0 for empty. `blink` closes the eyes.
- */
 const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: boolean) => void> = {
   slime: (cv, _v, b) => slime(cv, b),
   "slime-lost": (cv, _v, b) => slimeLost(cv, b),
@@ -478,6 +474,10 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   campfire: (cv, v) => campfire(cv, v),
 };
 
+/**
+ * Draw one sprite. `variant` means: hero = look index, torch/campfire = frame (0/1),
+ * heart = 1 for full and 0 for empty. `blink` closes the eyes.
+ */
 export function drawSprite(cv: HTMLCanvasElement, kind: SpriteKind, variant = 0, blink = false) {
   DRAW[kind](cv, variant, blink);
 }

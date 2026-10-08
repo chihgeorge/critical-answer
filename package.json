@@ -3,7 +3,7 @@
   "version": "0.9.14",
   "private": true,
   "scripts": {
-    "dev": "npm run dev:worker & NEXT_PUBLIC_PARTYKIT_HOST=localhost:8787 next dev",
+    "dev": "trap 'kill $! 2>/dev/null' EXIT; npm run dev:worker & NEXT_PUBLIC_PARTYKIT_HOST=localhost:8787 next dev",
     "dev:next": "next dev",
     "build": "next build",
     "start": "next start",

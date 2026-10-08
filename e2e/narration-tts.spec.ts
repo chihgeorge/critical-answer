@@ -380,6 +380,58 @@ test("screen TTS: a live GAME_OVER followed by the epilogue speaks the epilogue 
   team.close();
 });
 
+test("screen TTS: an epilogue replayed at connect is shown but never spoken", async ({ browser }) => {
+  test.setTimeout(60_000);
+  const code = "EPI3"; // distinct from EPIL/EPI2 — same shared server
+  const partyUrl = `ws://localhost:1996/parties/main/${code}`;
+  const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
+
+  // Play the whole game with no screen open, and wait for the live EPILOGUE to go out.
+  const host = await open(partyUrl);
+  type Msg = { type: string; phase: string; eventId: number; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
+  const box: { state: Msg | null; epilogue: boolean } = { state: null, epilogue: false };
+  const cur = () => box.state!;
+  host.onmessage = (e) => {
+    const m = JSON.parse(e.data as string) as Msg;
+    if (m.type === "STATE") box.state = m;
+    if (m.type === "EPILOGUE") box.epilogue = true;
+  };
+  host.send(JSON.stringify({ type: "HOST_CLAIM", token: "epilogue-replay-token-0123456789" }));
+  const team = await open(partyUrl);
+  team.send(JSON.stringify({ type: "JOIN", teamId: "00000000-0000-0000-0000-0000000000ef", teamKey: "epilogue-replay-team-key-012345", teamName: "重播終局隊" }));
+  host.send(JSON.stringify({ type: "HOST_START", aiNarration: false }));
+  await expect.poll(() => box.state?.phase).toBe("playing");
+  for (let i = 0; i < 200 && cur().phase === "playing"; i++) {
+    const t = cur().view.teams[0];
+    const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
+    const before = cur().eventId;
+    host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId }));
+    host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
+    await expect.poll(() => cur().eventId, { timeout: 2000 }).toBeGreaterThan(before);
+  }
+  expect(cur().phase).toBe("finished");
+  await expect.poll(() => box.epilogue, { timeout: 15_000 }).toBe(true);
+
+  // Now open the screen with TTS already on (remembered from an earlier visit). onConnect
+  // replays the EPILOGUE with `replay: true`: it must show, but must not be read aloud again.
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await stubSpeechSynthesis(screen);
+  await screen.addInitScript(() => localStorage.setItem("screen-tts-enabled", "true"));
+  await screen.goto(`/room/${code}/screen`);
+  await expect(screen.getByRole("button", { name: /語音開/ })).toBeVisible();
+  // setEpilogue and speak run in the same handler, so once the text shows, the speak decision is made.
+  await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/, { timeout: 15_000 });
+  expect(await ttsCalls(screen)).toEqual([]);
+
+  // Positive control: the speak path is live on this connection, so the silence above came from
+  // the replay flag, not from TTS being off.
+  const corrected = "重播測試的修正旁白";
+  host.send(JSON.stringify({ type: "HOST_EDIT_NARRATION", line: corrected }));
+  await expect.poll(() => ttsCalls(screen)).toContainEqual(corrected);
+  host.close();
+  team.close();
+});
+
 test("screen TTS: no matching Traditional Chinese voice loaded — toggle still works, but live narration is silently never spoken (voice-unavailable fallback)", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");
