@@ -463,33 +463,23 @@ function campfire(cv: HTMLCanvasElement, frame: number) {
  * Draw one sprite. `variant` means: hero = look index, torch/campfire = frame (0/1),
  * heart = 1 for full and 0 for empty. `blink` closes the eyes.
  */
+const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: boolean) => void> = {
+  slime: (cv, _v, b) => slime(cv, b),
+  "slime-lost": (cv, _v, b) => slimeLost(cv, b),
+  "slime-king": (cv, _v, b) => slimeKing(cv, b),
+  ghost: (cv, _v, b) => ghost(cv, b),
+  "ghost-cry": (cv, _v, b) => ghostCry(cv, b),
+  dragon: (cv, _v, b) => dragon(cv, b),
+  owl: (cv, _v, b) => owl(cv, b),
+  hero: (cv, v, b) => hero(cv, v, b),
+  crown: (cv) => crown(cv),
+  heart: (cv, v) => heart(cv, v === 1),
+  torch: (cv, v) => torch(cv, v),
+  campfire: (cv, v) => campfire(cv, v),
+};
+
 export function drawSprite(cv: HTMLCanvasElement, kind: SpriteKind, variant = 0, blink = false) {
-  switch (kind) {
-    case "slime":
-      return slime(cv, blink);
-    case "slime-lost":
-      return slimeLost(cv, blink);
-    case "slime-king":
-      return slimeKing(cv, blink);
-    case "ghost":
-      return ghost(cv, blink);
-    case "ghost-cry":
-      return ghostCry(cv, blink);
-    case "dragon":
-      return dragon(cv, blink);
-    case "owl":
-      return owl(cv, blink);
-    case "hero":
-      return hero(cv, variant, blink);
-    case "crown":
-      return crown(cv);
-    case "heart":
-      return heart(cv, variant === 1);
-    case "torch":
-      return torch(cv, variant);
-    case "campfire":
-      return campfire(cv, variant);
-  }
+  DRAW[kind](cv, variant, blink);
 }
 
 /* ---------- scene backgrounds ---------- */
