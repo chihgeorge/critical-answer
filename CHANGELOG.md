@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.9.15.1] - 2026-10-07
+
+### Fixed
+- The big screen's background music plays its bass line in time with the melody. Before, you heard only the melody for about 16 seconds, then every bass note of the loop at once.
+
 ## [0.9.15.0] - 2026-10-07
 
 ### Fixed
