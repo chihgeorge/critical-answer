@@ -3,7 +3,7 @@
 // AudioContext clock a little ahead of time, the standard way to get steady timing out of timers
 // that themselves jitter.
 
-import { DUNGEON_THEME, loopDuration, songEvents, type Song } from "./bgm";
+import { DUNGEON_THEME, loopDuration, songEvents } from "./bgm";
 import type { SfxNote } from "./sfx";
 
 const LOOKAHEAD_S = 0.25;
@@ -15,20 +15,11 @@ const DUCKED_VOLUME = 0.015;
 /** Effects sit above the music and aren't ducked: they're short and mark what just happened. */
 const SFX_VOLUME = 0.09;
 
-export interface BgmPlayer {
-  /** Must first be called from inside a user gesture (a click): browsers only let audio start then. */
-  start(): Promise<void>;
-  stop(): void;
-  /** Lower the music while something else (the narration) is talking. */
-  duck(on: boolean): void;
-  /** Play a sound effect now (lib/sfx.ts). Does nothing unless the music is playing: effects
-   * follow the same 🎵 switch, and the browser only allows audio once start() ran in a click. */
-  playCue(notes: SfxNote[]): void;
-}
+export type BgmPlayer = ReturnType<typeof createBgmPlayer>;
 
-export function createBgmPlayer(song: Song = DUNGEON_THEME): BgmPlayer {
-  const events = songEvents(song);
-  const loopLen = loopDuration(song);
+export function createBgmPlayer() {
+  const events = songEvents(DUNGEON_THEME);
+  const loopLen = loopDuration(DUNGEON_THEME);
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -55,22 +46,17 @@ export function createBgmPlayer(song: Song = DUNGEON_THEME): BgmPlayer {
     osc.stop(end + 0.01);
   }
 
-  function playNote(freq: number, at: number, duration: number, voice: "melody" | "bass") {
-    if (!master) return;
-    // A gap before the next note keeps steps crisp.
-    const end = at + Math.max(0.05, duration - 0.02);
-    if (voice === "melody") tone(master, "square", freq, at, end, 0.5, 0.01);
-    else tone(master, "triangle", freq, at, end, 0.9, 0.01);
-  }
-
   function schedule() {
-    if (!ctx) return;
+    if (!ctx || !master) return;
     const horizon = ctx.currentTime + LOOKAHEAD_S;
     for (;;) {
       const e = events[next];
       const at = loopStart + loops * loopLen + e.start;
       if (at > horizon) break;
-      playNote(e.freq, at, e.duration, e.voice);
+      // A gap before the next note keeps steps crisp.
+      const end = at + Math.max(0.05, e.duration - 0.02);
+      if (e.voice === "melody") tone(master, "square", e.freq, at, end, 0.5, 0.01);
+      else tone(master, "triangle", e.freq, at, end, 0.9, 0.01);
       next++;
       if (next === events.length) {
         next = 0;
@@ -85,6 +71,7 @@ export function createBgmPlayer(song: Song = DUNGEON_THEME): BgmPlayer {
   }
 
   return {
+    /** Must first be called from inside a user gesture (a click): browsers only let audio start then. */
     async start() {
       if (timer) return;
       if (!ctx) {
@@ -109,12 +96,15 @@ export function createBgmPlayer(song: Song = DUNGEON_THEME): BgmPlayer {
       ctx = null;
       master = null;
     },
-    duck(on) {
+    /** Lower the music while something else (the narration) is talking. */
+    duck(on: boolean) {
       if (on === ducked) return;
       ducked = on;
       setVolume();
     },
-    playCue(notes) {
+    /** Play a sound effect now (lib/sfx.ts). Does nothing unless the music is playing: effects
+     * follow the same 🎵 switch, and the browser only allows audio once start() ran in a click. */
+    playCue(notes: SfxNote[]) {
       if (!ctx || !timer) return;
       const t0 = ctx.currentTime + 0.02;
       const bus = ctx.createGain();
