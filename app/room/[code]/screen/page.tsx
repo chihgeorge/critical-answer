@@ -3,7 +3,7 @@
 // The shared big screen. Public: it only ever receives the spectator view and
 // never a host-only message, so it can be cast to a TV without leaking answers.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
@@ -29,6 +29,8 @@ const bgmSupported = () => "AudioContext" in window;
  * doesn't render at all otherwise (a rendered-but-disabled button implies the feature could
  * work here if only the user did something, which isn't true). */
 const ttsSupported = () => "speechSynthesis" in window;
+/** Browser support never changes while the page is open, so there is nothing to subscribe to. */
+const noSubscribe = () => () => {};
 
 
 const look = (i: number) => TEAM_LOOKS[i % TEAM_LOOKS.length];
@@ -310,15 +312,12 @@ export default function ScreenPage() {
    * (adversarial review finding — see shouldSpeakNarration's doc comment for the fixed bug). */
   const lastSpokenNarration = useRef<SpokenNarration | null>(null);
 
-  // Read in an effect, not the initial render: ttsSupported() reads `window`, which doesn't
-  // exist during SSR — rendering the toggle from the first client render would disagree with
-  // the server-rendered HTML and trigger a hydration mismatch (same reasoning as
-  // app/bank-editor/page.tsx's useOwnerKey).
-  const [showTtsToggle, setShowTtsToggle] = useState(false);
+  // ttsSupported() reads `window`, which doesn't exist during SSR: the server snapshot (false)
+  // keeps the first client render matching the server HTML, no hydration mismatch.
+  const showTtsToggle = useSyncExternalStore(noSubscribe, ttsSupported, () => false);
   useEffect(() => {
     // A named function, not the effect body itself: react-hooks/set-state-in-effect.
     function restore() {
-      if (ttsSupported()) setShowTtsToggle(true);
       if (readStored(TTS_ENABLED_STORAGE) === "true") setTtsOn(true);
     }
     restore();
@@ -388,16 +387,15 @@ export default function ScreenPage() {
 
   // --- Background music (lib/bgm.ts): off by default, like the narration voice ---
   const [bgmOn, setBgmOn] = useState(false);
-  const [showBgmToggle, setShowBgmToggle] = useState(false);
+  const showBgmToggle = useSyncExternalStore(noSubscribe, bgmSupported, () => false);
   const bgm = useRef<BgmPlayer | null>(null);
   const player = () => (bgm.current ??= createBgmPlayer());
 
   useEffect(() => {
-    // Read in an effect, like the TTS toggle above, so SSR and the first render agree.
+    // Read in an effect so SSR and the first render agree.
     // A named function, not the effect body itself: react-hooks/set-state-in-effect.
     function restore(): boolean {
       if (!bgmSupported()) return false;
-      setShowBgmToggle(true);
       const on = readStored(BGM_ENABLED_STORAGE) === "true";
       if (on) setBgmOn(true);
       return on;
