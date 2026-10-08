@@ -63,7 +63,7 @@ export function loopDuration(song: Song): number {
   return (Math.max(song.melody.length, song.bass.length) * 60) / song.stepsPerMinute;
 }
 
-/** Every note of one pass, in start order per voice. */
+/** Every note of one pass, both voices merged in start order (the player schedules them in list order). */
 export function songEvents(song: Song): NoteEvent[] {
   const step = 60 / song.stepsPerMinute;
   const events: NoteEvent[] = [];
@@ -80,5 +80,5 @@ export function songEvents(song: Song): NoteEvent[] {
       events.push(current);
     });
   }
-  return events;
+  return events.sort((a, b) => a.start - b.start);
 }

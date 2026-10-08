@@ -37,6 +37,13 @@ describe("DUNGEON_THEME", () => {
     expect(melody[1].start).toBe(0.5);
   });
 
+  // The player queues notes in list order and stops at the first one past its lookahead, so a
+  // per-voice list (all melody, then all bass) held every bass note back to the end of the loop.
+  it("lists every note of both voices in start order, so the player can schedule them as they come", () => {
+    const starts = songEvents(DUNGEON_THEME).map((e) => e.start);
+    expect(starts).toEqual([...starts].sort((x, y) => x - y));
+  });
+
   it("treats a rest as silence, not as a hold", () => {
     const [a, b] = songEvents({ stepsPerMinute: 60, melody: ["A4", ".", "-", "A4"], bass: [] });
     expect(a).toMatchObject({ start: 0, duration: 1 });
