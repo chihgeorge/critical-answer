@@ -363,9 +363,7 @@ export function answerQuestion(
   fleeChoice: "flee" | "retry" = "retry",
   rng: () => number = Math.random,
 ): { game: GameState; outcome: AnswerOutcome } {
-  if (game.phase === "finished") {
-    throw new InvalidActionError("Game already finished");
-  }
+  assertPlaying(game);
 
   const activeTeamId = currentTurnTeamId(game);
   if (activeTeamId === null) {
@@ -402,9 +400,7 @@ export function answerQuestion(
 
       if (bossKilled) {
         killBonus = rollBossKillBonus(rng);
-        teams = game.teams.map((t) =>
-          t.id === teamId ? { ...t, score: t.score + (killBonus as number) } : t,
-        );
+        teams = patchTeam(game.teams, teamId, (t) => ({ score: t.score + (killBonus as number) }));
       }
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
@@ -465,18 +461,13 @@ export function answerQuestion(
         ...game,
         usedQuestionIds: dealt.used,
         revealedQuestionIds,
-        teams: game.teams.map((t) =>
-          t.id === teamId
-            ? {
-                ...t,
-                score: t.score + pointsAwarded,
-                roomIndex: nextRoomIndex,
-                currentDifficulty: nextRoom.baseDifficulty,
-                currentQuestionId: dealt.questionId,
-                currentSelection: null,
-              }
-            : t,
-        ),
+        teams: patchTeam(game.teams, teamId, (t) => ({
+          score: t.score + pointsAwarded,
+          roomIndex: nextRoomIndex,
+          currentDifficulty: nextRoom.baseDifficulty,
+          currentQuestionId: dealt.questionId,
+          currentSelection: null,
+        })),
       };
       outcome = { type: "correct-room-advance", teamId, pointsAwarded, nextRoomIndex };
     } else if (fleeChoice === "flee") {
@@ -487,9 +478,7 @@ export function answerQuestion(
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,
-        teams: game.teams.map((t) =>
-          t.id === teamId ? { ...t, currentDifficulty: newDifficulty, currentQuestionId: dealt.questionId, currentSelection: null } : t,
-        ),
+        teams: patchTeam(game.teams, teamId, () => ({ currentDifficulty: newDifficulty, currentQuestionId: dealt.questionId, currentSelection: null })),
       };
       outcome = { type: "incorrect-flee", teamId, newDifficulty };
     } else {
@@ -521,9 +510,7 @@ export function recordBranchChoice(
   roomIndex: number,
   choice: BranchOptionId,
 ): GameState {
-  if (game.phase === "finished") {
-    throw new InvalidActionError("Game already finished");
-  }
+  assertPlaying(game);
   const team = getTeam(game, teamId); // throws if unknown
   if (!Number.isInteger(roomIndex) || roomIndex < 1 || roomIndex > team.roomIndex) {
     throw new InvalidActionError(`Invalid branch roomIndex ${roomIndex} for ${teamId} (at ${team.roomIndex})`);
@@ -533,9 +520,7 @@ export function recordBranchChoice(
   }
   return {
     ...game,
-    teams: game.teams.map((t) =>
-      t.id === teamId ? { ...t, branchChoices: { ...t.branchChoices, [roomIndex]: choice } } : t,
-    ),
+    teams: patchTeam(game.teams, teamId, (t) => ({ branchChoices: { ...t.branchChoices, [roomIndex]: choice } })),
   };
 }
 
@@ -555,9 +540,7 @@ export function recordBranchChoice(
  * an MC question" itself; it trusts its one caller to have gated that first.
  */
 export function recordOptionSelection(game: GameState, teamId: string, questionId: string, optionIndex: number): GameState {
-  if (game.phase === "finished") {
-    throw new InvalidActionError("Game already finished");
-  }
+  assertPlaying(game);
   const team = getTeam(game, teamId); // throws if unknown
   const expectedQuestionId = isInBossPhase(game, teamId) ? game.boss.currentQuestionId : team.currentQuestionId;
   if (questionId !== expectedQuestionId) {
@@ -565,8 +548,17 @@ export function recordOptionSelection(game: GameState, teamId: string, questionI
   }
   return {
     ...game,
-    teams: game.teams.map((t) => (t.id === teamId ? { ...t, currentSelection: optionIndex } : t)),
+    teams: patchTeam(game.teams, teamId, () => ({ currentSelection: optionIndex })),
   };
+}
+
+function assertPlaying(game: GameState) {
+  if (game.phase === "finished") throw new InvalidActionError("Game already finished");
+}
+
+/** `teams` with team `teamId` replaced by a copy that has `patch(team)`'s fields. */
+function patchTeam(teams: Team[], teamId: string, patch: (t: Team) => Partial<Team>): Team[] {
+  return teams.map((t) => (t.id === teamId ? { ...t, ...patch(t) } : t));
 }
 
 /** Mark a team offline/online — a disconnected team is skipped by advanceTurn (T7). */
@@ -574,7 +566,7 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
   getTeam(game, teamId); // throws if unknown
   return {
     ...game,
-    teams: game.teams.map((t) => (t.id === teamId ? { ...t, online } : t)),
+    teams: patchTeam(game.teams, teamId, () => ({ online })),
   };
 }
 
