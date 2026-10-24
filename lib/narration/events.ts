@@ -14,7 +14,8 @@ type WithNext<T> = T & { next?: NextTurn };
 
 export type NarrationEvent =
   | WithNext<{ type: "start"; teams: string[] }>
-  /** `entersBoss`: this answer took the team over the boss threshold, into the boss room. `branches`
+  /** `entersBoss`: this answer moved the team into the boss room (it reached the boss
+   * threshold, or another team was already inside: Team.inBoss). `branches`
    * are the DM branch choices it made on the way (display text, room order), for the LLM to call
    * back; the scripted lines just announce the entrance (design doc T4: no forced callback template). */
   | WithNext<{ type: "correct"; team: string; monster: string; points: number; entersBoss?: { branches: string[] } }>
@@ -48,11 +49,8 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string): Ex
   const team = t?.name ?? "冒險者";
   switch (outcome.type) {
     case "correct-room-advance": {
-      const threshold = prev.config.bossThreshold;
-      // Only the answer that crosses the threshold: the boss is shared, and a team already past it
-      // is fighting the boss (correct-boss-hit), never advancing rooms. If the boss had already been
-      // killed the game would be over, so no judgment could get here.
-      const entersBoss = !!t && t.score < threshold && t.score + outcome.pointsAwarded >= threshold;
+      // A team already in the boss room answers correct-boss-hit, never this, so entersBoss fires once per team.
+      const entersBoss = !!t && outcome.entersBoss;
       return {
         type: "correct",
         team,

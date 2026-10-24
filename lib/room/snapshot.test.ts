@@ -33,7 +33,8 @@ describe("parseSnapshot", () => {
   });
 
   it("refuses anything that is not an object, and an unknown schema version", () => {
-    for (const bad of [null, undefined, "room", 42, [], { schemaVersion: 999 }, { ...valid(), schemaVersion: 0 }]) {
+    // schemaVersion 2: a save from before teams had inBoss.
+    for (const bad of [null, undefined, "room", 42, [], { schemaVersion: 999 }, { ...valid(), schemaVersion: 0 }, { ...valid(), schemaVersion: 2 }]) {
       expect(parseSnapshot(bad)).toBeNull();
     }
   });

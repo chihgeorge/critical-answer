@@ -13,7 +13,7 @@ const game: GameState = createGame(
 
 describe("toNarrationEvent", () => {
   it("maps a correct room answer to a 'correct' event with team, monster and points", () => {
-    const o: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, nextRoomIndex: 1 };
+    const o: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, nextRoomIndex: 1, entersBoss: false };
     expect(toNarrationEvent(game, o, "害羞幽靈")).toEqual({ type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2 });
   });
 
@@ -47,7 +47,7 @@ describe("toNarrationEvent", () => {
 
   it("attaches who is up next, when the game goes on", () => {
     const next = { team: "藍隊", monster: "害羞幽靈", boss: false };
-    const o: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, nextRoomIndex: 1 };
+    const o: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, nextRoomIndex: 1, entersBoss: false };
     expect(toNarrationEvent(game, o, "史萊姆", next)).toMatchObject({ type: "correct", next });
     expect(toNarrationEvent(game, { type: "incorrect-retry", teamId: "b" }, "史萊姆", next)).toMatchObject({ next });
   });
@@ -64,22 +64,22 @@ describe("toNarrationEvent", () => {
 });
 
 describe("toNarrationEvent: entering the boss room", () => {
-  const withScore = (score: number, branchChoices: GameState["teams"][number]["branchChoices"] = {}): GameState => ({
+  const withBranches = (branchChoices: GameState["teams"][number]["branchChoices"] = {}): GameState => ({
     ...game,
-    teams: game.teams.map((t) => (t.id === "a" ? { ...t, score, branchChoices } : t)),
+    teams: game.teams.map((t) => (t.id === "a" ? { ...t, branchChoices } : t)),
   });
-  const advance = (points: number): AnswerOutcome => ({ type: "correct-room-advance", teamId: "a", pointsAwarded: points, nextRoomIndex: 1 });
+  const advance = (entersBoss: boolean): AnswerOutcome => ({ type: "correct-room-advance", teamId: "a", pointsAwarded: 2, nextRoomIndex: 1, entersBoss });
 
-  it("flags the correct answer that crosses the boss threshold, with the team's branch choices in room order", () => {
-    const e = toNarrationEvent(withScore(13, { 3: "negotiate", 1: "fight" }), advance(3), "史萊姆");
+  it("flags a correct answer that enters the boss room, with the team's branch choices in room order", () => {
+    const e = toNarrationEvent(withBranches({ 3: "negotiate", 1: "fight" }), advance(true), "史萊姆");
     expect(e).toMatchObject({ type: "correct", entersBoss: { branches: ["武力", "討價"] } });
   });
 
   it("flags it with no branches when the team never chose one", () => {
-    expect(toNarrationEvent(withScore(14), advance(1), "史萊姆")).toMatchObject({ entersBoss: { branches: [] } });
+    expect(toNarrationEvent(withBranches(), advance(true), "史萊姆")).toMatchObject({ entersBoss: { branches: [] } });
   });
 
-  it("does not flag an answer that stays below the threshold", () => {
-    expect(toNarrationEvent(withScore(10), advance(2), "史萊姆")).not.toHaveProperty("entersBoss");
+  it("does not flag an answer that stays out of the boss room", () => {
+    expect(toNarrationEvent(withBranches(), advance(false), "史萊姆")).not.toHaveProperty("entersBoss");
   });
 });

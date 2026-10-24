@@ -228,6 +228,43 @@ describe("boss phase eligibility", () => {
     expect(isInBossPhase(game, "T0")).toBe(true);
   });
 
+  it("once one team is in, the others get in on their next correct answer, whatever their score (D9)", () => {
+    let game = makeGame({ bossThreshold: 2, bossMaxHp: 1, teamCount: 2 });
+    const q = (id: string) => game.teams.find((t) => t.id === id)!.currentQuestionId;
+    let outcome;
+    ({ game, outcome } = answerQuestion(game, "T0", q("T0"), true, "retry", first)); // T0 score 1
+    expect(outcome).toMatchObject({ type: "correct-room-advance", entersBoss: false });
+    ({ game } = answerQuestion(game, "T1", q("T1"), false, "retry", first));
+    ({ game, outcome } = answerQuestion(game, "T0", q("T0"), true, "retry", first)); // T0 score 2: first in
+    expect(outcome).toMatchObject({ type: "correct-room-advance", entersBoss: true });
+    expect(isInBossPhase(game, "T0")).toBe(true);
+
+    ({ game } = answerQuestion(game, "T1", q("T1"), false, "retry", first));
+    expect(isInBossPhase(game, "T1")).toBe(false); // a wrong answer does not get in
+    ({ game } = answerQuestion(game, "T0", game.boss.currentQuestionId, false, "retry", first));
+    ({ game } = answerQuestion(game, "T1", q("T1"), false, "flee", first));
+    expect(isInBossPhase(game, "T1")).toBe(false); // neither does a flee
+    ({ game } = answerQuestion(game, "T0", game.boss.currentQuestionId, false, "retry", first));
+    const before = { used: game.usedQuestionIds, room: game.teams[1].roomIndex };
+    ({ game, outcome } = answerQuestion(game, "T1", q("T1"), true, "retry", first)); // T1 score 1, below 2
+    expect(outcome).toMatchObject({ type: "correct-room-advance", entersBoss: true });
+    expect(isInBossPhase(game, "T1")).toBe(true);
+    // Value: protects=a team entering the boss room burns no room question and opens no branch room;
+    // fails_when=boss entry deals the next room again; why_new=D9 made every later team enter this way;
+    // seam=none; no_claim=the phone's branch UI
+    expect(game.usedQuestionIds).toEqual(before.used);
+    expect(game.teams[1].roomIndex).toBe(before.room);
+    // Value: protects=the big-screen view (map strip) shows a below-threshold team in the boss room;
+    // fails_when=getSpectatorView derives inBossPhase from score again; why_new=no test read the view
+    // for a below-threshold boss team; seam=none; no_claim=MapStrip rendering (unit only, no DOM)
+    expect(getSpectatorView(game).teams.find((t) => t.id === "T1")).toMatchObject({ score: 1, inBossPhase: true });
+
+    ({ game } = answerQuestion(game, "T0", game.boss.currentQuestionId, false, "retry", first));
+    ({ game, outcome } = answerQuestion(game, "T1", game.boss.currentQuestionId, true, "retry", first));
+    expect(outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: true }); // in the fight, not entering again
+    expect(game.boss.killedByTeamId).toBe("T1");
+  });
+
   it("boss phase questions come from the shared boss queue, not the team's room", () => {
     const game = makeGame({ bossThreshold: 0, teamCount: 1 }); // start already eligible
     expect(isInBossPhase(game, "T0")).toBe(true);
