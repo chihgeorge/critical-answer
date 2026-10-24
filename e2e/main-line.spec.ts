@@ -59,6 +59,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
+  await expect(screen.getByTestId("map-strip")).toBeVisible();
   await expect(players[0].page.getByText("輪到我們了！")).toBeVisible();
 
   // The host sees the question and its answer; the big screen shows the question only.
@@ -168,8 +169,13 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
   await expect(screen.getByText("終局隊")).toBeVisible();
   host.send(JSON.stringify({ type: "HOST_START", aiNarration: false })); // never the real API in tests
   await expect.poll(() => box.state?.phase).toBe("playing");
+  let sawBossRoom = false;
   for (let i = 0; i < 200 && cur().phase === "playing"; i++) {
     const t = cur().view.teams[0];
+    if (t.inBossPhase && !sawBossRoom) {
+      await expect(screen.getByTestId("boss-room")).toBeVisible(); // the map's door has opened
+      sawBossRoom = true;
+    }
     const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
     const before = cur().eventId;
     host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId })); // close the previous answer reveal (D7); no-op if none
@@ -177,6 +183,7 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
     await expect.poll(() => cur().eventId, { timeout: 2000 }).toBeGreaterThan(before);
   }
   expect(cur().phase).toBe("finished");
+  expect(sawBossRoom).toBe(true);
 
   // Podium is there immediately; the story follows as a single line.
   await expect(screen.getByText("奪得榜首")).toBeVisible();

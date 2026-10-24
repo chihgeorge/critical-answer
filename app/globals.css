@@ -133,6 +133,16 @@ body {
   white-space: nowrap;
 }
 
+.px-chip-tag {
+  padding: 0 1px;
+  box-shadow: 0 0 0 1px var(--cream); /* keeps side-by-side two-character tags apart */
+  border-radius: 0;
+  color: var(--cream);
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0;
+}
+
 /* ---------- Turn ribbon ---------- */
 .px-ribbon {
   position: relative;
@@ -214,8 +224,21 @@ body {
 .px-run { animation: px-run 1.2s steps(8) 1 both; }
 @keyframes px-fall { from { transform: translateY(-40px) rotate(0); } to { transform: translateY(560px) rotate(180deg); } }
 .px-confetti { position: absolute; width: 8px; height: 8px; animation: px-fall 3.6s steps(9) infinite; }
+/* Live map (docs/designs/live-map.md D13-D16): a pawn hops into a room (or vanishes, then appears in the
+   boss room) and that room's outline flashes; clouds drift. Two-frame steps(). */
+.px-turn { outline: 3px solid var(--turn2); outline-offset: -1px; } /* inside the room's bottom border */
+@keyframes px-hop-in { 0% { transform: translateY(-8px); } 50% { transform: none; } }
+.px-hop-in { animation: px-hop-in 0.6s steps(2) 1; }
+@keyframes px-charge { 0% { opacity: 0; } 50% { opacity: 1; } }
+.px-charge { animation: px-charge 0.6s steps(2) 1; }
+@keyframes px-room-flash { 0% { outline: 3px solid var(--turn2); } 100% { outline-color: transparent; } }
+.px-room-flash { animation: px-room-flash 0.6s steps(2) 1; }
+@keyframes px-drift { 50% { transform: translateX(4px); } }
+.px-drift { animation: px-drift 2.4s steps(1) infinite; }
+.px-drift2 { animation: px-drift 2.4s steps(1) infinite reverse; }
 @media (prefers-reduced-motion: reduce) {
-  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-hop, .px-spark, .px-run, .px-confetti { animation: none !important; }
+  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge { animation: none !important; }
   .px-tf2 { opacity: 0; }
+  /* .px-room-flash keeps running (D13: a pawn must not change rooms unseen). */
 }
 }

@@ -91,8 +91,9 @@ export function PixelButton({
 
 /* ---------- Label chip (small orange text on a dark pill) ---------- */
 
-export function LabelChip({ children }: { children: ReactNode }) {
-  return <span className="px-chip">{children}</span>;
+/** `tag`: the live map's cream-on-plum team name tag (docs/designs/live-map.md D5, D17). */
+export function LabelChip({ children, tone }: { children: ReactNode; tone?: "tag" }) {
+  return <span className={cx("px-chip", tone === "tag" && "px-chip-tag")}>{children}</span>;
 }
 
 /* ---------- Sprite: a program-drawn pixel canvas that blinks ---------- */
@@ -121,7 +122,7 @@ export function Sprite({
     const cv = ref.current;
     if (!cv) return;
     drawSprite(cv, kind, variant, false);
-    if (prefersReducedMotion() || kind === "crown" || kind === "heart" || kind === "torch" || kind === "campfire") return;
+    if (prefersReducedMotion() || kind === "crown" || kind === "heart" || kind === "torch" || kind === "campfire" || kind === "door" || kind === "cloud" || kind === "zz") return;
     let reopen: ReturnType<typeof setTimeout>;
     const id = setInterval(() => {
       drawSprite(cv, kind, variant, true);
@@ -237,11 +238,11 @@ export function ScoreMeter({ score: raw, active = false }: { score: number; acti
 
 /* ---------- Turn ribbon ---------- */
 
-export function TurnRibbon({ children, color }: { children: ReactNode; color?: string }) {
+export function TurnRibbon({ children, color, maxWidth }: { children: ReactNode; color?: string; maxWidth?: number }) {
   return (
-    <div className="px-ribbon" style={color ? { background: color } : undefined}>
+    <div className="px-ribbon" style={{ ...(color ? { background: color } : null), maxWidth }}>
       <i>▶</i>
-      {children}
+      <span className="min-w-0 truncate">{children}</span>
     </div>
   );
 }
