@@ -76,3 +76,27 @@ test("a pawn that moves plays its arrival once; a reload does not replay it", as
   await expect(map.getByRole("img", { name: "紅隊（輪到）" })).toBeVisible();
   await expect(map.locator(".px-hop-in, .px-charge, .px-room-flash")).toHaveCount(0);
 });
+
+// Value: protects=rooms show no number and the entrance stub still reads "…" when rooms fold; fails_when=the
+// room label goes back to the room number, or the stub loses its "…"; why_new=map-layout.test.ts checks the
+// fold geometry only, nothing checked what the rooms render; seam=none; no_claim=label placement or font
+test("rooms carry no number; only the folded-rooms stub shows …", async ({ page }) => {
+  await fakeRoom(page, state([team(0, 0), team(1, 9)], 1)); // room 9 pushes rooms 0-2 into the stub
+  await page.goto("/room/LMAP/screen");
+  const map = page.getByTestId("map-strip");
+  await expect(map.getByRole("img", { name: "紅隊（輪到）" })).toBeVisible();
+  await expect(map.locator(".px-num")).toHaveText(["…"]);
+  await expect(map).not.toContainText(/\d/);
+});
+
+// Value: protects=a short map with no folded rooms shows no label at all; fails_when=a room gets a number or
+// the "…" leaks onto a room that is not the stub; why_new=the test above only covers the folded case;
+// seam=none; no_claim=label placement or font
+test("an unfolded map shows no room label at all", async ({ page }) => {
+  await fakeRoom(page, state([team(0, 0), team(1, 2)], 1));
+  await page.goto("/room/LMAP/screen");
+  const map = page.getByTestId("map-strip");
+  await expect(map.getByRole("img", { name: "紅隊（輪到）" })).toBeVisible();
+  await expect(map.locator(".px-num")).toHaveCount(0);
+  await expect(map).not.toContainText(/\d/);
+});

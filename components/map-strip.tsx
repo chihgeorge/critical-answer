@@ -59,11 +59,14 @@ export function MapStrip({ view }: { view: SpectatorView }) {
     );
   };
 
-  const room = (x: number, w: number, label: string) => (
-    <div key={`room-${label}`} className="absolute border-4" style={{ ...ROOM_STYLE, left: x, width: w, top: ROOM_BOX.top, height: ROOM_BOX.h, borderColor: "var(--k)" }}>
-      <span className="px-num absolute text-[8px]" style={{ right: 2, top: 1, color: "var(--cream)" }} /* right corner: the turn ▼ sits top-left */>
-        {label}
-      </span>
+  // Rooms carry no number (the host asked for none); only the stub is labelled "…" so folded rooms still read as more.
+  const room = (x: number, w: number, key: string, label?: string) => (
+    <div key={`room-${key}`} className="absolute border-4" style={{ ...ROOM_STYLE, left: x, width: w, top: ROOM_BOX.top, height: ROOM_BOX.h, borderColor: "var(--k)" }}>
+      {label && (
+        <span className="px-num absolute text-[8px]" style={{ right: 2, top: 1, color: "var(--cream)" }} /* right corner: the turn ▼ sits top-left */>
+          {label}
+        </span>
+      )}
     </div>
   );
   const corridor = (x: number) => <div key={`cor-${x}`} className="absolute border-y-4" style={{ left: x, width: CORRIDOR, top: 40, height: 14, background: "#5d4a79", borderColor: "var(--k)" }} />;
@@ -74,8 +77,8 @@ export function MapStrip({ view }: { view: SpectatorView }) {
     <div ref={ref} data-testid="map-strip" className="relative min-w-0 flex-1" style={{ height: 82, marginTop: -16 }}>
       {budget > 0 && (
         <>
-          {map.stub && [room(map.stub.x, map.stub.w, "…"), corridor(map.stub.x + map.stub.w)]}
-          {map.rooms.map((r) => [room(r.x, r.w, String(r.index + 1)), corridor(r.x + r.w)])}
+          {map.stub && [room(map.stub.x, map.stub.w, "stub", "…"), corridor(map.stub.x + map.stub.w)]}
+          {map.rooms.map((r) => [room(r.x, r.w, String(r.index)), corridor(r.x + r.w)])}
           <div className="absolute" style={{ left: map.fog.x, width: map.fog.w, top: 14, height: 66 }}>
             {Array.from({ length: clouds }, (_, k) => (
               <Sprite key={k} kind="cloud" scale={2} className={`absolute ${k % 2 ? "px-drift2" : "px-drift"}`} style={{ left: Math.round((k * (map.fog.w - 36)) / Math.max(1, clouds - 1)), top: k % 2 ? 30 : 4 }} />

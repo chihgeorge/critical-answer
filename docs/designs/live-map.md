@@ -17,7 +17,7 @@ The big screen (`/screen`) shows a dungeon map. Each team's piece moves from roo
 
 ## Approved layout (Step 0.5, decision D2 = A)
 
-A map strip replaces the team-card row at the top of `/screen` (about 90px tall). It is always visible during play. The turn ribbon stays at the left of the strip. Rooms are drawn as numbered squares in a row, joined by corridors. The boss room is at the right end, with the boss sprite and the HP bar. Each team is a pawn (its `TEAM_LOOKS` hat) in its room. (The first mockup put the score under each pawn. D6 later removed scores from the map.) The team whose turn it is has a yellow outline and a red arrow. The question panel, monster and dialogue box do not change.
+A map strip replaces the team-card row at the top of `/screen` (about 90px tall). It is always visible during play. The turn ribbon stays at the left of the strip. Rooms are drawn as plain squares in a row, joined by corridors (the room numbers were dropped after launch at the host's request; only the stub keeps its "…"). The boss room is at the right end, with the boss sprite and the HP bar. Each team is a pawn (its `TEAM_LOOKS` hat) in its room. (The first mockup put the score under each pawn. D6 later removed scores from the map.) The team whose turn it is has a yellow outline and a red arrow. The question panel, monster and dialogue box do not change.
 
 Mockup: `~/.gstack/projects/critical-answer/designs/live-map-20261023/A.png` (an HTML wireframe, not final art).
 

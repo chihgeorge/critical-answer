@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.10.0.1] - 2026-10-24
+
+### Changed
+- The rooms on the big-screen map no longer show room numbers. When the map is too long to fit and the first rooms fold together, that folded block still shows "…".
+
 ## [0.10.0.0] - 2026-10-23
 
 ### Added
