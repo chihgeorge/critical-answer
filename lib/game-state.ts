@@ -109,6 +109,12 @@ export interface Team {
    * see recordBranchChoice. Stores the option id, not display text.
    */
   branchChoices: Partial<Record<number, BranchOptionId>>;
+  /**
+   * In the boss room. The first team gets in at `bossThreshold` points; once any team is in, every
+   * other team gets in on its next correct answer (docs/designs/live-map.md D9). Stored, not derived
+   * from score, because the second rule depends on when the answer came.
+   */
+  inBoss: boolean;
 }
 
 export interface RoomTemplate {
@@ -159,7 +165,7 @@ export interface GameState {
 }
 
 export type AnswerOutcome =
-  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; nextRoomIndex: number }
+  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; nextRoomIndex: number; entersBoss: boolean }
   | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; killBonus?: number }
   | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty }
   | { type: "incorrect-retry"; teamId: string };
@@ -198,7 +204,7 @@ function deal(
     base = used.map((u, i) => (i === roomIndex ? [] : u));
     pool = all;
   }
-  const held = new Set(teams.map((t) => t.currentQuestionId));
+  const held = new Set(teams.filter((t) => !t.inBoss).map((t) => t.currentQuestionId)); // a boss team's room question is stale
   const free = pool.filter((id) => !held.has(id));
   if (free.length > 0) pool = free;
   // Prefer a question nobody has seen the answer to yet (D4/D5 — AnswerReveal), but never
@@ -269,6 +275,7 @@ export function createGame(
       currentQuestionId: dealt.questionId,
       currentSelection: null,
       branchChoices: {},
+      inBoss: config.bossThreshold <= 0, // score starts at 0
     });
   }
 
@@ -298,16 +305,15 @@ function getTeam(game: GameState, teamId: string): Team {
   return team;
 }
 
-/** Whether it's this team in a boss encounter (score threshold reached). */
+/** Whether this team is in the boss room (see Team.inBoss). */
 export function isInBossPhase(game: GameState, teamId: string): boolean {
-  const team = getTeam(game, teamId);
-  return team.score >= game.config.bossThreshold;
+  return getTeam(game, teamId).inBoss;
 }
 
 /** Clears every boss-phase team's multipleChoice pick — used wherever the shared boss question
  * rotates (correct-hit-not-killed, flee), since every team still fighting the boss now faces a
- * different question and a leftover pick would be stale. `game` supplies isInBossPhase's score
- * check; `teams` is the array to map over (sometimes `game.teams`, sometimes an already-updated
+ * different question and a leftover pick would be stale. `game` supplies the stored
+ * inBoss flags (isInBossPhase); `teams` is the array to map over (sometimes `game.teams`, sometimes an already-updated
  * copy from a same-branch score change). */
 function resetBossSelections(game: GameState, teams: Team[]): Team[] {
   return teams.map((t) => (isInBossPhase(game, t.id) ? { ...t, currentSelection: null } : t));
@@ -451,12 +457,16 @@ export function answerQuestion(
   } else {
     if (correct) {
       const pointsAwarded = team.currentDifficulty;
-      const nextRoomIndex = Math.min(team.roomIndex + 1, game.rooms.length - 1);
-      const nextRoom = game.rooms[nextRoomIndex];
       // A correct answer is always revealed (D5), so this room's next deal must not hand it
       // back to a team who hasn't faced it yet.
       const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
-      const dealt = deal(game.rooms, game.usedQuestionIds, revealedQuestionIds, game.teams, nextRoomIndex, rng);
+      const entersBoss = team.score + pointsAwarded >= game.config.bossThreshold || game.teams.some((t) => t.inBoss);
+      // A team walking into the boss room stays at its room: no next-room question is dealt
+      // (it would burn one) and no branch room opens that it will never walk into.
+      const nextRoomIndex = entersBoss ? team.roomIndex : Math.min(team.roomIndex + 1, game.rooms.length - 1);
+      const dealt = entersBoss
+        ? { questionId: team.currentQuestionId, used: game.usedQuestionIds }
+        : deal(game.rooms, game.usedQuestionIds, revealedQuestionIds, game.teams, nextRoomIndex, rng);
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,
@@ -464,12 +474,13 @@ export function answerQuestion(
         teams: patchTeam(game.teams, teamId, (t) => ({
           score: t.score + pointsAwarded,
           roomIndex: nextRoomIndex,
-          currentDifficulty: nextRoom.baseDifficulty,
+          currentDifficulty: entersBoss ? t.currentDifficulty : game.rooms[nextRoomIndex].baseDifficulty,
           currentQuestionId: dealt.questionId,
           currentSelection: null,
+          inBoss: entersBoss,
         })),
       };
-      outcome = { type: "correct-room-advance", teamId, pointsAwarded, nextRoomIndex };
+      outcome = { type: "correct-room-advance", teamId, pointsAwarded, nextRoomIndex, entersBoss };
     } else if (fleeChoice === "flee") {
       const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
       // Fleeing never reveals the answer (D5) — only skip already-revealed questions from

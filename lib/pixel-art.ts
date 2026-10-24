@@ -116,6 +116,9 @@ export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   heart: [11, 10],
   torch: [9, 14],
   campfire: [26, 22],
+  door: [20, 26],
+  cloud: [18, 10],
+  zz: [9, 9],
 };
 
 /** Body colors: face, shade, highlight. The newer monsters bake in their own instead of relying on
@@ -400,6 +403,53 @@ function heart(cv: HTMLCanvasElement, on: boolean) {
   P.flush();
 }
 
+// Live map (docs/designs/live-map.md): the boss room's closed door (D14), a fog cloud (D16) and an
+// offline team's "zz" (D11).
+const DOOR = [
+  "....rrrrrrrr....",
+  "..rrRRRRRRRRrr..",
+  ".rRRRRRwRRRRRRr.",
+  ".rRRRRRwRRRRRRr.",
+  "rRRRRRRwRRRRRRRr",
+  "rsssssswsssssssr",
+  "rRRRRRRwRRRRRRRr",
+  "rRRRRRRwRRRRRRRr",
+  "rRRRRRRwRRRRRRRr",
+  "rRRRRyRwRyRRRRRr",
+  "rRRRRRRwRRRRRRRr",
+  "rRRRRRRwRRRRRRRr",
+  "rsssssswsssssssr",
+  "rRRRRRRwRRRRRRRr",
+  "rRRRRRRwRRRRRRRr",
+  "rRRRRRRwRRRRRRRr",
+  "rRRRRRRwRRRRRRRr",
+  "rRRRRRRwRRRRRRRr",
+  "rRRRRRRwRRRRRRRr",
+  "rRRRRRRwRRRRRRRr",
+  "rrrrrrrrrrrrrrrr",
+];
+const DOOR_PAL = { r: "#5a1a2a", R: "#7a2438", w: "#3c1020", s: "#5a5670", y: "#ffcf4a" };
+const CLOUD = ["....llll........", "..llwwwwll.lll..", ".lwwwwwwwwlwwwl.", "lwwwwwwwwwwwwwwl", "lwwwwwwwwwwwwwwl", ".llllllllllllll."];
+const ZZ = ["zzzz...", "..z....", ".z.....", "zzzz...", "...zzz.", "....z..", "...zzz."];
+function door(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 20, 26);
+  P.grid(DOOR, DOOR_PAL, 2, 3);
+  P.outline(K);
+  P.flush();
+}
+function cloud(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 18, 10);
+  P.grid(CLOUD, { w: "#e9defa", l: "#cdbdf0" }, 1, 2);
+  P.outline(K);
+  P.flush();
+}
+function zz(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 9, 9);
+  P.grid(ZZ, { z: "#fff4dc" }, 1, 1);
+  P.outline(K);
+  P.flush();
+}
+
 const TORCH_FRAMES = [
   ["...y...", "..yoy..", ".yoooy.", ".yooOy.", "..oOO..", "...O...", "..nnn..", "...n...", "...n...", "...n...", "..nnn..", "..nNn.."],
   ["....y..", "..yoyy.", ".yooooy", ".yoOOy.", "..oOO..", "..O....", "..nnn..", "...n...", "...n...", "...n...", "..nnn..", "..nNn.."],
@@ -472,6 +522,9 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   heart: (cv, v) => heart(cv, v === 1),
   torch: (cv, v) => torch(cv, v),
   campfire: (cv, v) => campfire(cv, v),
+  door: (cv) => door(cv),
+  cloud: (cv) => cloud(cv),
+  zz: (cv) => zz(cv),
 };
 
 /**

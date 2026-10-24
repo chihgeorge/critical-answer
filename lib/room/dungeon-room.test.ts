@@ -326,7 +326,7 @@ describe("HOST_JUDGE", () => {
     for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) {
       const g = room.game!;
       const t = g.teams[0];
-      const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+      const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
       send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: qid, correct: true });
     }
@@ -851,7 +851,7 @@ describe("questions and answers (T3)", () => {
       const g = room.game!;
       const teamId = g.turnOrder[g.currentTurnIndex];
       const t = g.teams.find((x) => x.id === teamId)!;
-      const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+      const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
       send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
     }
@@ -917,7 +917,7 @@ describe("narration (T5-T7)", () => {
     const g = room.game!;
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
-    const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+    const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
     send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
   }
@@ -1126,7 +1126,7 @@ describe("LLM narration and director (T8-T10)", () => {
     const g = room.game!;
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
-    const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+    const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
     send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
   }
@@ -1323,7 +1323,7 @@ describe("story moves on to the next team (two-line narration)", () => {
     const g = room.game!;
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
-    const qid = t.score >= g.config.bossThreshold ? g.boss.currentQuestionId : t.currentQuestionId;
+    const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
     send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct });
   }

@@ -11,12 +11,13 @@ import { DISCONNECTED_NOTICE } from "@/lib/offline-notice";
 import type { AnswerReveal, LobbyTeams, PublicQuestion, StateMessage } from "@/lib/protocol";
 import type { SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
-import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
+import { describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { SFX } from "@/lib/sfx";
-import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
+import { MapStrip } from "@/components/map-strip";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 import { readStored, writeStored } from "@/lib/stored";
@@ -132,38 +133,8 @@ function Playing({ view, question, reveal, eventId, narration }: { view: Spectat
       <Sparks />
 
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
-        {turn && <TurnRibbon color={look(turnIdx).hat}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>}
-        <div className="flex min-w-0 flex-1 justify-end gap-3">
-          {view.teams.map((t, i) => {
-            const active = t.id === view.currentTurnTeamId;
-            return (
-              <Panel
-                key={t.id}
-                tone={active ? "turn" : "cream"}
-                className={`flex items-center gap-2 ${t.online ? "" : "opacity-50"}`}
-                style={{ flex: "1 1 0", maxWidth: 158, minWidth: 0, height: 62, padding: "6px 8px" }}
-              >
-                {active && (
-                  <span className="px-hop absolute text-[22px]" style={{ left: 18, top: -22, color: "var(--danger)", textShadow: "2px 2px 0 var(--k)" }}>
-                    ▼
-                  </span>
-                )}
-                <Sprite kind="hero" variant={i} scale={2} className="flex-none" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-1 text-[15px]">
-                    <span className="truncate">{t.name}</span>
-                    <span className="px-num flex-none text-[9px]" style={{ color: "#a8470f" }}>
-                      {t.score}/{BOSS_THRESHOLD}
-                    </span>
-                  </div>
-                  <div className="mt-[5px]">
-                    <ScoreMeter score={t.score} active={active} />
-                  </div>
-                </div>
-              </Panel>
-            );
-          })}
-        </div>
+        {turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={420 /* a 20-character name must leave the map its width (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>}
+        <MapStrip view={view} />
       </div>
 
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
