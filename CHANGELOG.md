@@ -2,6 +2,18 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.10.0.0] - 2026-10-23
+
+### Added
+- The big screen shows a live dungeon map in place of the team cards. Each team is a pawn with a short name tag, moving from room to room as it answers. Rooms past the furthest team are fog. The boss room stays a closed door until the first team walks in, then opens with the boss and its HP bar. The team whose turn it is has a ▼ over its pawn, and offline teams show "zz".
+- A pawn that moves hops into its new room (or charges into the boss room), and that room flashes once. Reloading the screen does not replay it. With reduced motion turned on, only the room flash stays.
+
+### Changed
+- Once any team is in the boss room, every other team joins the fight on its next correct answer, whatever its score.
+- Joining the boss room no longer uses up a question from the next room, and no longer offers a branch choice for a room the team will never enter.
+- A very long team name is cut short with "…" in the turn ribbon on the big screen, so the map always fits on screen.
+- A room that was in progress when this version deploys starts over, and phones show the existing "game reset" notice.
+
 ## [0.9.15.1] - 2026-10-07
 
 ### Fixed
