@@ -76,6 +76,16 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1 });
   });
 
+  it("still loads a stored multipleChoice question with 5 options, but refuses to save one (the TV has 4 tiles)", async () => {
+    const five = { kind: "multipleChoice" as const, id: "mc5", content: { kind: "text" as const, value: "?" }, options: ["A", "B", "C", "D", "E"], correctIndex: 0 };
+    const legacy: Bank = { ...validBank, rooms: [{ ...validBank.rooms[0], questions: [...validBank.rooms[0].questions, five] }] };
+    const storage = memoryStorage({ bank: legacy, version: 3 });
+    const store = new BankStore(storage);
+    expect(await store.getVersionedBank()).toEqual({ bank: legacy, version: 3 });
+    await expect(store.putBank(legacy, 3)).rejects.toThrow(/more than 4 options/);
+    expect(await storage.get("bank")).toEqual({ bank: legacy, version: 3 });
+  });
+
   it("rejects a duplicate question id across rooms", async () => {
     const dup: Bank = { ...validBank, boss: { ...validBank.boss, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "dup?" }, answer: "x" }] } };
     const store = new BankStore(memoryStorage({ bank: validBank, version: 1 }));
