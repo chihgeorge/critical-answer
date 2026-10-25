@@ -23,6 +23,7 @@
   --turn: #fff0a8; /* whose turn */
   --turn2: #f4c94a;
   --ok: #6fd36a; /* correct */
+  --ok2: #3f9a3b; /* correct bevel */
   --danger: #ff6b6b;
   --warn: #ffcf4a;
   --orange: #e8862a; /* only on dark chips or large shapes, never as small text on cream */
@@ -271,16 +272,21 @@ body {
   color: var(--turn2);
   font: 13px "Press Start 2P", monospace;
 }
-.px-opt > i { font-style: normal; margin-left: auto; font-size: 15px; white-space: nowrap; }
+.px-opt:focus-visible { outline: 4px solid var(--k); outline-offset: 2px; }
+.px-opt > span { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+/* A long team name ends in …; it never pushes the option text out of the tile. */
+.px-opt > i { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; font-style: normal; font-size: 15px; white-space: nowrap; }
+/* The TV tile is a fixed 62px high: long option text stops at two lines. */
+.px-opt.wall > i { max-width: 38%; }
+.px-opt.wall > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .px-opt.sel { background: var(--danger); color: #fff; box-shadow: inset 0 -6px 0 var(--wrong); }
 .px-opt.lock { background: var(--turn); box-shadow: inset 0 -5px 0 var(--turn2); outline: 4px solid var(--turn2); outline-offset: 2px; }
-.px-opt.ok { background: var(--ok); color: var(--k); box-shadow: inset 0 -5px 0 #3f9a3b; outline: 4px solid #fff; outline-offset: 2px; }
+.px-opt.ok { background: var(--ok); color: var(--k); box-shadow: inset 0 -5px 0 var(--ok2); outline: 4px solid #fff; outline-offset: 2px; }
 .px-opt.bad { background: var(--danger); color: #fff; box-shadow: inset 0 -5px 0 var(--wrong); }
 /* Opaque, never opacity: the wall must not show through on the TV (D12). */
 .px-opt.dim { background: var(--cream2); color: var(--dim-ink); border-color: var(--dim-line); box-shadow: none; }
 .px-opt.dim > b { background: var(--dim-line); color: var(--cream); }
 .px-opt.dim > i { color: var(--wrong); }
-.px-opt.dim.ok-mark > i { color: var(--k); }
 /* The unpressable bars under the options (D5, D6, D14): styled, not :disabled opacity. */
 .px-bar {
   display: flex;
@@ -293,4 +299,4 @@ body {
   background: var(--lav);
   box-shadow: inset 0 -5px 0 var(--lav2);
 }
-.px-bar.ok { background: var(--ok); color: var(--k); box-shadow: inset 0 -6px 0 #3f9a3b; }
+.px-bar.ok { background: var(--ok); color: var(--k); box-shadow: inset 0 -6px 0 var(--ok2); }

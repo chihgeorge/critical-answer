@@ -93,7 +93,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
           onClick={() => {
             setLockFailed(false);
             setLocking({ qid: q.id, eventId: game.eventId });
-            send({ type: "TEAM_LOCK_OPTION", questionId: q.id });
+            send({ type: "TEAM_LOCK_OPTION", questionId: q.id, optionIndex: pick! });
           }}
         >
           鎖定答案

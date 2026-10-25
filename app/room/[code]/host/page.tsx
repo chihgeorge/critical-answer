@@ -240,10 +240,9 @@ export default function HostPage() {
       const action = hostKeyAction(
         { key: e.key, repeat: e.repeat, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, target },
         !!game?.reveal,
+        isMc ? { stuck } : undefined,
       );
       if (!action || !game) return;
-      // D13: on a multipleChoice turn 1 does nothing, and 2 / 3 only once the stuck row is showing.
-      if (isMc && (action === "correct" || !stuck)) return;
       if (action === "next") {
         if (!ready || !swapArmed) return;
         send({ type: "HOST_NEXT", eventId: game.eventId });

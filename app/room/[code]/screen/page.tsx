@@ -157,7 +157,7 @@ function WallOptions({ options, gone, lock, wrong, correct, teamName }: { option
             tabIndex={-1}
             data-testid={`wall-option-${i}`}
             data-look={look}
-            className="absolute !text-[24px] leading-[1.15]"
+            className="wall absolute !text-[24px] leading-[1.05]"
             style={{ ...TILE_SPOTS[i], width: 316, height: 62, zIndex: 5 }}
           />
         );
