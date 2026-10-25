@@ -103,6 +103,54 @@
             "門牌號碼 101 號"
           ],
           "correctIndex": 2
+        },
+        {
+          "id": "r0-q9",
+          "kind": "multipleChoice",
+          "text": "一年（不是閏年）有幾天？",
+          "options": [
+            "365 天",
+            "360 天",
+            "366 天",
+            "400 天"
+          ],
+          "correctIndex": 0
+        },
+        {
+          "id": "r0-q10",
+          "kind": "multipleChoice",
+          "text": "台灣的國際電話國碼是多少？",
+          "options": [
+            "+886",
+            "+86",
+            "+81",
+            "+852"
+          ],
+          "correctIndex": 0
+        },
+        {
+          "id": "r0-q11",
+          "kind": "multipleChoice",
+          "text": "台灣四面環海，它是一座什麼？",
+          "options": [
+            "半島",
+            "沙漠",
+            "大陸",
+            "島嶼"
+          ],
+          "correctIndex": 3
+        },
+        {
+          "id": "r0-q12",
+          "kind": "multipleChoice",
+          "text": "騎機車上路一定要戴什麼？",
+          "options": [
+            "太陽眼鏡",
+            "安全帽",
+            "耳機",
+            "皇冠"
+          ],
+          "correctIndex": 1
         }
       ]
     },

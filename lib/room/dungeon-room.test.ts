@@ -1102,7 +1102,7 @@ describe("questions and answers (T3)", () => {
     claim(room, host);
     joinTeams(room, host, 1);
     send(room, host, { type: "HOST_START" });
-    expect(room.game!.teams[0].currentQuestionId).toBe("r0-q8");
+    expect(room.game!.teams[0].currentQuestionId).toBe("r0-q12");
   });
 });
 

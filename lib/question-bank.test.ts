@@ -28,6 +28,8 @@ const valid = () => ({
 describe("shipped bank", () => {
   it("has enough questions per room that a full room of teams never shares one", () => {
     for (const r of BANK.rooms) expect(r.questions.length).toBeGreaterThanOrEqual(MAX_TEAMS);
+    // Every team starts in room 0, so a flee there needs a question no team is holding.
+    expect(BANK.rooms[0].questions.length).toBeGreaterThan(MAX_TEAMS);
   });
 
   it("has unique ids and a boss deck", () => {
@@ -36,9 +38,9 @@ describe("shipped bank", () => {
     expect(BANK.boss.questions.length).toBeGreaterThanOrEqual(5);
   });
 
-  it("is 48 four-option multipleChoice questions, with the correct option in varied positions", () => {
+  it("is 52 four-option multipleChoice questions, with the correct option in varied positions", () => {
     const all = [...BANK.rooms.flatMap((r) => r.questions), ...BANK.boss.questions];
-    expect(all).toHaveLength(48);
+    expect(all).toHaveLength(52);
     for (const item of all) {
       if (item.kind !== "multipleChoice") throw new Error(`${item.id} is ${item.kind}`);
       expect(new Set(item.options).size).toBe(4);
