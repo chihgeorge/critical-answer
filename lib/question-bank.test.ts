@@ -47,15 +47,14 @@ describe("shipped bank", () => {
     expect(new Set(all.map((item) => item.kind === "multipleChoice" && item.correctIndex)).size).toBe(4);
   });
 
-  it("no question in a room gives away another one's answer in its text or options", () => {
-    for (const r of [...BANK.rooms, BANK.boss]) {
-      for (const item of r.questions) {
-        for (const other of r.questions) {
-          if (other === item) continue;
-          const answer = answerText(other);
-          if (item.content.kind === "text" && answer.length > 1) expect(item.content.value, `${item.id} shows ${other.id}'s answer`).not.toContain(answer);
-          if (item.kind === "multipleChoice") expect(item.options, `${item.id} offers ${other.id}'s answer`).not.toContain(answer);
-        }
+  it("no question gives away another one's answer: in its text anywhere in the bank (the big screen is shared), in its options within a room", () => {
+    const all = [...BANK.rooms, BANK.boss].flatMap((r) => r.questions.map((q) => ({ q, room: r })));
+    for (const { q: item, room } of all) {
+      for (const { q: other, room: otherRoom } of all) {
+        if (other === item) continue;
+        const answer = answerText(other);
+        if (item.content.kind === "text" && answer.length > 1) expect(item.content.value, `${item.id} shows ${other.id}'s answer`).not.toContain(answer);
+        if (room === otherRoom && item.kind === "multipleChoice") expect(item.options, `${item.id} offers ${other.id}'s answer`).not.toContain(answer);
       }
     }
   });
