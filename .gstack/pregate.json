@@ -6,6 +6,9 @@
     "app/room/**": ["e2e/main-line.spec.ts", "e2e/live-map.spec.ts"],
     "app/bank-editor/**": ["e2e/bank-editor.spec.ts"],
     "components/**": ["e2e/main-line.spec.ts", "e2e/live-map.spec.ts"],
-    "scripts/check-bundle.sh": []
+    "scripts/check-bundle.sh": [],
+    "VERSION": [],
+    "package.json": ["e2e/main-line.spec.ts"],
+    "package-lock.json": ["e2e/main-line.spec.ts"]
   }
 }
