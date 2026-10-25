@@ -9,15 +9,15 @@
 // TEAM_BRANCH_CHOICE and TEAM_SELECT_OPTION are the exceptions to "only the
 // host mutates game state" (docs/designs/dm-branching-and-question-types.md
 // decision 1; docs/designs/multiple-choice-questions.md decision 5): neither
-// is a score claim — a branch pick and a multiple-choice pick both leave the
-// actual correct/incorrect call to the host (HOST_JUDGE), so the self-scoring
-// risk above does not apply. Both derive their sender's team from the
+// is a score claim. A branch pick changes no score, and a multiple-choice pick
+// or lock is judged by the room against the bank's correctIndex, which never
+// reaches a client (docs/designs/phone-answering.md), so the self-scoring risk
+// above does not apply. Both derive their sender's team from the
 // connection's own connTeam binding (set at JOIN/REJOIN) — never from a
 // client-supplied team id — so no teamKey is needed on either message,
 // unlike JOIN/REJOIN. Unlike TEAM_BRANCH_CHOICE, TEAM_SELECT_OPTION is
 // re-selectable (a later pick for the same question overwrites the earlier
-// one) — picking an option is a "change your mind before the host looks"
-// interaction, not a one-time narrative fork.
+// one) until TEAM_LOCK_OPTION commits it — not a one-time narrative fork.
 //
 // Host identity is a token minted by the host's browser at room creation.
 // The first HOST_CLAIM for a room sets it (trust on first use, on a 4-letter
@@ -100,7 +100,7 @@ export type ClientMessage =
   | { type: "TEAM_SELECT_OPTION"; questionId: string; optionIndex: number }
   /** Locks the team's current pick (the server's `currentSelection`, never a client-sent index), judged
    * after the reveal beat (docs/designs/phone-answering.md E2, E11). */
-  | { type: "TEAM_LOCK_OPTION"; questionId: string }
+  | { type: "TEAM_LOCK_OPTION"; questionId: string; optionIndex?: number }
   /** The team's choice after a wrong lock: answer again next turn, or flee to an easier question. */
   | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "flee" };
 
@@ -248,7 +248,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "TEAM_LOCK_OPTION": {
       const questionId = str(m.questionId, MAX_ID);
-      return questionId !== null ? { type: "TEAM_LOCK_OPTION", questionId } : null;
+      if (questionId === null) return null;
+      if (m.optionIndex === undefined) return { type: "TEAM_LOCK_OPTION", questionId };
+      if (!Number.isInteger(m.optionIndex) || (m.optionIndex as number) < 0) return null;
+      return { type: "TEAM_LOCK_OPTION", questionId, optionIndex: m.optionIndex as number };
     }
     case "TEAM_WRONG_CHOICE": {
       const questionId = str(m.questionId, MAX_ID);

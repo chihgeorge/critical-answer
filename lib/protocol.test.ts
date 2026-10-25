@@ -119,8 +119,10 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "TEAM_SELECT_OPTION", questionId: "r0-q1", optionIndex: 1, teamId: ID })).toEqual(ok);
   });
 
-  it("TEAM_LOCK_OPTION carries only the question id: a client-sent index is dropped (phone-answering.md E11)", () => {
-    expect(parseClientMessage({ type: "TEAM_LOCK_OPTION", questionId: "r0-q1", optionIndex: 3 })).toEqual({ type: "TEAM_LOCK_OPTION", questionId: "r0-q1" });
+  it("TEAM_LOCK_OPTION carries the question id and, optionally, the index the phone showed (phone-answering.md E11)", () => {
+    expect(parseClientMessage({ type: "TEAM_LOCK_OPTION", questionId: "r0-q1", optionIndex: 3 })).toEqual({ type: "TEAM_LOCK_OPTION", questionId: "r0-q1", optionIndex: 3 });
+    expect(parseClientMessage({ type: "TEAM_LOCK_OPTION", questionId: "r0-q1" })).toEqual({ type: "TEAM_LOCK_OPTION", questionId: "r0-q1" });
+    expect(parseClientMessage({ type: "TEAM_LOCK_OPTION", questionId: "r0-q1", optionIndex: -1 })).toBeNull();
     expect(parseClientMessage({ type: "TEAM_LOCK_OPTION" })).toBeNull();
   });
 

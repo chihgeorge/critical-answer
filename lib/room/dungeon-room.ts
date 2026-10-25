@@ -481,6 +481,8 @@ export class DungeonRoom {
     // persist() from one) checks this and skips writing, so it cannot resurrect the room storage.deleteAll is
     // about to clear (Claude adversarial review, 2026-09-21).
     this.expiring = true;
+    // A lock beat or auto-advance firing during the awaits below would broadcast into a room being deleted.
+    this.clearAnswerTimers();
     this.room.closeAll?.(CLOSE_EXPIRED, "expired");
     const storage = this.room.storage;
     // Storage first: if clearing it fails this throws with the room still intact, and the alarm's retry runs expire
@@ -618,7 +620,7 @@ export class DungeonRoom {
           this.handleTeamSelectOption(sender, msg.questionId, msg.optionIndex);
           break;
         case "TEAM_LOCK_OPTION":
-          this.handleTeamLockOption(sender, msg.questionId);
+          this.handleTeamLockOption(sender, msg.questionId, msg.optionIndex);
           break;
         case "TEAM_WRONG_CHOICE":
           this.handleTeamWrongChoice(sender, msg.questionId, msg.choice);
@@ -868,9 +870,8 @@ export class DungeonRoom {
     const event = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined);
     this.cue = event.type === "epilogue" ? null : event.type;
     // Shown to everyone (D3), but only on a genuinely correct answer (D5): a retry or a flee
-    // must never reveal it, or the question loses its point, and game-state.ts's deal()/boss
-    // ring already rely on "revealed" meaning "answered correctly" to decide what's safe to
-    // redeal. Set before broadcastState so the reveal and the post-judgment state arrive
+    // must never reveal it, or the question loses its point; game-state.ts's deal()/boss ring
+    // treat a revealed question (answered, or fled after a wrong lock) as not safe to redeal. Set before broadcastState so the reveal and the post-judgment state arrive
     // together in one STATE — no window where a client shows the next question first.
     this.reveal = null;
     if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
@@ -879,7 +880,7 @@ export class DungeonRoom {
       const q = findQuestion(this.bank, questionId);
       const choice =
         autoAdvance && q?.kind === "multipleChoice"
-          ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.type === "correct-room-advance" ? outcome.pointsAwarded : 0 }
+          ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.type === "correct-room-advance" ? outcome.pointsAwarded : (outcome.killBonus ?? 0) }
           : undefined;
       this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(choice ? { choice } : {}) };
       this.revealAt = this.now();
@@ -894,8 +895,9 @@ export class DungeonRoom {
     }
   }
 
-  /** A team locks its current pick (E2, E11). Judged after the beat, in resolveLock. */
-  private handleTeamLockOption(conn: Conn, questionId: string) {
+  /** A team locks its current pick (E2, E11). Judged after the beat, in resolveLock. `shown` is the
+   * pick the phone showed when pressed; a different room pick means another phone on the team changed it. */
+  private handleTeamLockOption(conn: Conn, questionId: string, shown?: number) {
     const teamId = this.playingTeam(conn);
     const game = this.game;
     if (!teamId || !game) return;
@@ -905,9 +907,10 @@ export class DungeonRoom {
     if (this.reveal) return reject("reveal_pending");
     if (this.pendingLock || game.pendingWrong) return reject("answer_pending");
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
-    if (q?.kind !== "multipleChoice" || currentQuestionIdOf(game, teamId) !== questionId) return reject(`stale question ${questionId}`);
+    if (q?.kind !== "multipleChoice" || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
     const pick = team?.currentSelection ?? null;
     if (pick === null || pick >= q.options.length || game.eliminated[questionId]?.includes(pick)) return reject("no_selection");
+    if (shown !== undefined && shown !== pick) return reject("selection_changed");
     this.pendingLock = { teamId, questionId, optionIndex: pick };
     this.lockTimer = setTimeout(() => this.resolveLock(), BEAT_MS);
     this.broadcastState();

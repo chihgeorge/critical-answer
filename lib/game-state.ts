@@ -96,11 +96,10 @@ export interface Team {
   currentQuestionId: string;
   /**
    * The team's current pick for a multipleChoice question, or null if none yet.
-   * Re-selectable up until the host judges (docs/designs/multiple-choice-questions.md
-   * decision 5) — set by recordOptionSelection, reset to null everywhere a new question
-   * is dealt (createGame, correct-room-advance, incorrect-flee, and boss question
-   * rotation), but left alone on incorrect-retry, where the team still faces the same
-   * question and a stray earlier pick is still meaningful context for the host.
+   * Re-selectable until the team locks it (docs/designs/phone-answering.md) — set by
+   * recordOptionSelection, reset to null everywhere a new question is dealt (createGame,
+   * correct-room-advance, incorrect-flee, and boss question rotation) and by a wrong lock
+   * (recordWrongLock), so a retry turn starts with no pick.
    */
   currentSelection: number | null;
   /**
@@ -399,9 +398,12 @@ export function answerQuestion(
   if (correct && game.pendingWrong) {
     throw new InvalidActionError(`${teamId} already locked a wrong answer; only retry or flee is left`);
   }
-  // The choice resolves the pending wrong lock; advanceTurn below then moves on from the turn index,
-  // which never left that team.
+  // The choice resolves the pending wrong lock.
   game = { ...game, pendingWrong: null };
+  // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
+  // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
+  const seenWrong = !correct && fleeChoice === "flee" && (game.eliminated[questionId]?.length ?? 0) > 0;
+  const revealedOnFlee = seenWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
 
   const team = getTeam(game, teamId);
   const boss = game.boss;
@@ -459,15 +461,15 @@ export function answerQuestion(
       }
     } else {
       // Wrong boss answer: rotate to the next boss question either way —
-      // there's no "downgrade" concept for a shared boss queue. Fleeing never reveals the
-      // answer (D5), so this rotation only skips already-revealed questions from prior
-      // correct hits — it never adds one.
-      const rotatedBossQuestionId = fleeChoice === "flee" ? nextBossQuestionId(boss, game.revealedQuestionIds) : boss.currentQuestionId;
+      // there's no "downgrade" concept for a shared boss queue. A flee reveals the question
+      // only after a wrong lock (revealedOnFlee); the rotation skips every revealed one.
+      const rotatedBossQuestionId = fleeChoice === "flee" ? nextBossQuestionId(boss, revealedOnFlee) : boss.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a flee rotates
       // the question for every team in boss phase, so every one of their picks resets —
       // unless it stayed on the same question (the last unrevealed one), where picks still apply.
       nextGame = {
         ...game,
+        revealedQuestionIds: revealedOnFlee,
         teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game, game.teams) : game.teams,
         boss: { ...boss, currentQuestionId: rotatedBossQuestionId },
       };
@@ -505,12 +507,13 @@ export function answerQuestion(
       outcome = { type: "correct-room-advance", teamId, pointsAwarded, nextRoomIndex, entersBoss };
     } else if (fleeChoice === "flee") {
       const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
-      // Fleeing never reveals the answer (D5) — only skip already-revealed questions from
-      // prior correct answers, never add this one.
-      const dealt = deal(game.rooms, game.usedQuestionIds, game.revealedQuestionIds, game.teams, team.roomIndex, rng);
+      // Fleeing reveals the answer only after a wrong lock (revealedOnFlee); otherwise only skip
+      // already-revealed questions from prior correct answers.
+      const dealt = deal(game.rooms, game.usedQuestionIds, revealedOnFlee, game.teams, team.roomIndex, rng);
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,
+        revealedQuestionIds: revealedOnFlee,
         teams: patchTeam(game.teams, teamId, () => ({ currentDifficulty: newDifficulty, currentQuestionId: dealt.questionId, currentSelection: null })),
       };
       outcome = { type: "incorrect-flee", teamId, newDifficulty };
@@ -520,7 +523,15 @@ export function answerQuestion(
     }
   }
 
-  return { game: advanceTurn(nextGame), outcome };
+  // Eliminated options belong to a question still in play: once it leaves (answered, fled, rotated)
+  // a later deal of it starts clean.
+  // Any team: a room short of questions can deal one question to two teams at once.
+  const stillFaced = nextGame.teams.some((t) => (t.inBoss ? nextGame.boss.currentQuestionId : t.currentQuestionId) === questionId);
+  if (!stillFaced && questionId in nextGame.eliminated) {
+    nextGame = { ...nextGame, eliminated: Object.fromEntries(Object.entries(nextGame.eliminated).filter(([id]) => id !== questionId)) };
+  }
+  // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
+  return { game: advanceTurn({ ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) }), outcome };
 }
 
 /**
