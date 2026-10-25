@@ -61,6 +61,13 @@ describe("shipped bank", () => {
     }
   });
 
+  it("no two questions anywhere in the bank share a text or a correct answer (a reveal on the big screen would give the other away)", () => {
+    const all = [...BANK.rooms.flatMap((r) => r.questions), ...BANK.boss.questions];
+    const texts = all.map((q) => (q.content.kind === "text" ? q.content.value : q.id));
+    expect(new Set(texts).size).toBe(all.length);
+    expect(new Set(all.map(answerText)).size).toBe(all.length);
+  });
+
   it("no question's text content contains its own answer", () => {
     const all = [...BANK.rooms.flatMap((r) => r.questions), ...BANK.boss.questions];
     for (const item of all) {
