@@ -118,6 +118,19 @@ describe("parseClientMessage", () => {
     // Deliberately no teamId/teamKey field — same connTeam-derived trust as TEAM_BRANCH_CHOICE.
     expect(parseClientMessage({ type: "TEAM_SELECT_OPTION", questionId: "r0-q1", optionIndex: 1, teamId: ID })).toEqual(ok);
   });
+
+  it("TEAM_LOCK_OPTION carries only the question id: a client-sent index is dropped (phone-answering.md E11)", () => {
+    expect(parseClientMessage({ type: "TEAM_LOCK_OPTION", questionId: "r0-q1", optionIndex: 3 })).toEqual({ type: "TEAM_LOCK_OPTION", questionId: "r0-q1" });
+    expect(parseClientMessage({ type: "TEAM_LOCK_OPTION" })).toBeNull();
+  });
+
+  it("TEAM_WRONG_CHOICE accepts only retry or flee", () => {
+    const ok = { type: "TEAM_WRONG_CHOICE", questionId: "r0-q1", choice: "flee" };
+    expect(parseClientMessage(ok)).toEqual(ok);
+    expect(parseClientMessage({ ...ok, choice: "retry" })).toEqual({ ...ok, choice: "retry" });
+    expect(parseClientMessage({ ...ok, choice: "correct" })).toBeNull();
+    expect(parseClientMessage({ ...ok, questionId: 1 })).toBeNull();
+  });
 });
 
 describe("sanitizeText", () => {

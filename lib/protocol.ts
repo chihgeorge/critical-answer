@@ -23,7 +23,7 @@
 // The first HOST_CLAIM for a room sets it (trust on first use, on a 4-letter
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
-import { isBranchOptionId, type BranchOptionId, type GamePhase, type SpectatorView } from "./game-state";
+import { isBranchOptionId, type BranchOptionId, type GamePhase, type LockedOption, type SpectatorView } from "./game-state";
 import type { SpriteKind } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -89,7 +89,12 @@ export type ClientMessage =
    * `optionIndex` is only type-checked here (non-negative integer); the real bounds check
    * against the live question's actual options.length happens in dungeon-room.ts, which is
    * the only layer that has the current game state. */
-  | { type: "TEAM_SELECT_OPTION"; questionId: string; optionIndex: number };
+  | { type: "TEAM_SELECT_OPTION"; questionId: string; optionIndex: number }
+  /** Locks the team's current pick (the server's `currentSelection`, never a client-sent index), judged
+   * after the reveal beat (docs/designs/phone-answering.md E2, E11). */
+  | { type: "TEAM_LOCK_OPTION"; questionId: string }
+  /** The team's choice after a wrong lock: answer again next turn, or flee to an easier question. */
+  | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "flee" };
 
 export type ServerErrorCode =
   | "invalid_team_id"
@@ -116,6 +121,8 @@ export type ServerMessage =
       question: PublicQuestion | null;
       /** Non-null while the last correct answer is on show; the host's HOST_NEXT clears it. */
       reveal: AnswerReveal | null;
+      /** A lock being held for the reveal beat before it is judged (phone-answering.md E2). */
+      pendingLock: LockedOption | null;
       /** Counts judgments (and the start); NARRATION carries the id it belongs to. */
       eventId: number;
       /** The sound effect for event `eventId` (the big screen plays it once, when eventId goes up).
@@ -230,6 +237,15 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const questionId = str(m.questionId, MAX_ID);
       if (questionId === null || !Number.isInteger(m.optionIndex) || (m.optionIndex as number) < 0) return null;
       return { type: "TEAM_SELECT_OPTION", questionId, optionIndex: m.optionIndex as number };
+    }
+    case "TEAM_LOCK_OPTION": {
+      const questionId = str(m.questionId, MAX_ID);
+      return questionId !== null ? { type: "TEAM_LOCK_OPTION", questionId } : null;
+    }
+    case "TEAM_WRONG_CHOICE": {
+      const questionId = str(m.questionId, MAX_ID);
+      if (questionId === null || (m.choice !== "retry" && m.choice !== "flee")) return null;
+      return { type: "TEAM_WRONG_CHOICE", questionId, choice: m.choice };
     }
     default:
       return null;

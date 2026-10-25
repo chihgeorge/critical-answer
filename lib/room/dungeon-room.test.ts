@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { answerText, bossQuestionIds, findQuestion, roomTemplates, type Bank } from "../question-bank";
@@ -639,8 +639,12 @@ describe("TEAM_SELECT_OPTION", () => {
   });
 
   it("rejects a pick while an answer reveal is up, and accepts it once the host moves on (D7)", () => {
-    const { room, hostConn, ids, conns } = startedMcGame(1);
-    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-mc1", correct: true });
+    vi.useFakeTimers();
+    const { room, hostConn, conns } = startedMcGame(1);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: 1 });
+    send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+    vi.advanceTimersByTime(2000);
+    vi.useRealTimers();
     const next = room.game!.teams[0].currentQuestionId; // the room's only question, redealt
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: next, optionIndex: 0 });
     expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
@@ -712,6 +716,159 @@ describe("TEAM_SELECT_OPTION", () => {
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "boss-mc1", optionIndex: 0 });
     expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
     expect(room.game!.teams[0].currentSelection).toBeNull();
+  });
+
+  describe("phone answering: lock, beat, wrong choice, auto-advance (phone-answering.md)", () => {
+    // A failed assertion must not leave fake timers on for the rest of the file.
+    afterEach(() => vi.useRealTimers());
+    const pick = (room: DungeonRoom, conn: Conn, i: number) => send(room, conn, { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: i });
+    const lock = (room: DungeonRoom, conn: Conn) => send(room, conn, { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+    const err = (conn: Conn) => lastSentTo(conn as never)?.detail;
+
+    it("rejects a lock with no pick, off turn, or on a stale question (E11)", () => {
+      vi.useFakeTimers();
+      const { room, conns } = startedMcGame(2);
+      lock(room, conns[0]);
+      expect(err(conns[0])).toBe("no_selection");
+      send(room, conns[1], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+      expect(err(conns[1])).toBe("not_your_turn");
+      send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "boss-mc1" });
+      expect(lastSentTo(conns[0] as never)).toMatchObject({ type: "ERROR", error: "invalid_action" });
+      vi.useRealTimers();
+    });
+
+    it("holds the lock for 2 s with no score change, then reveals a correct answer (E2)", () => {
+      vi.useFakeTimers();
+      const { room, conns } = startedMcGame(1);
+      const seq = seqOf(room);
+      pick(room, conns[0], 1);
+      lock(room, conns[0]);
+      const held = lastBroadcast(room);
+      expect(held.pendingLock).toMatchObject({ optionIndex: 1, questionId: "r0-mc1" });
+      expect(held.view.teams[0].score).toBe(0);
+      expect(held.reveal).toBeNull();
+      expect(JSON.stringify(held)).not.toContain("correctIndex");
+      vi.advanceTimersByTime(1999);
+      expect(room.game!.teams[0].score).toBe(0);
+      vi.advanceTimersByTime(1);
+      const out = lastBroadcast(room);
+      expect(out.pendingLock).toBeNull();
+      expect(out.reveal).toMatchObject({ questionId: "r0-mc1", answer: "B" });
+      expect(room.game!.teams[0].score).toBe(1);
+      expect(seqOf(room)).toBe(seq + 1);
+      vi.useRealTimers();
+    });
+
+    it("a wrong lock waits for the team's choice without bumping eventSeq (E7), then retry narrates", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, conns } = startedMcGame(2);
+      const seq = seqOf(room);
+      pick(room, conns[0], 0);
+      lock(room, conns[0]);
+      vi.advanceTimersByTime(2000);
+      const st = lastBroadcast(room);
+      expect(st.view.pendingWrong).toMatchObject({ optionIndex: 0, questionId: "r0-mc1" });
+      expect(st.view.eliminated).toEqual({ "r0-mc1": [0] });
+      expect(st.reveal).toBeNull();
+      expect(seqOf(room)).toBe(seq);
+      pick(room, conns[0], 2);
+      expect(err(conns[0])).toBe("answer_pending");
+      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+      expect(room.game!.pendingWrong).not.toBeNull();
+      send(room, conns[1], { type: "TEAM_WRONG_CHOICE", questionId: "r0-mc1", choice: "retry" });
+      expect(err(conns[1])).toBe("no_wrong_answer");
+      send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "r0-mc1", choice: "retry" });
+      expect(room.game!.pendingWrong).toBeNull();
+      expect(seqOf(room)).toBe(seq + 1);
+      expect(lastBroadcast(room).view.currentTurnTeamId).toBe(room.game!.turnOrder[1]);
+      vi.useRealTimers();
+    });
+
+    it("HOST_JUDGE on multipleChoice: 答對 is refused, 重答/逃跑 resolves a stuck team, nothing during the beat (E5, E10)", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns } = startedMcGame(2);
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-mc1", correct: true });
+      expect(err(hostConn)).toBe("auto_judged");
+      pick(room, conns[0], 0);
+      lock(room, conns[0]);
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-mc1", correct: false, fleeChoice: "retry" });
+      expect(err(hostConn)).toBe("lock_pending");
+      vi.advanceTimersByTime(2000);
+      send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "r0-mc1", choice: "x" } as never);
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-mc1", correct: false, fleeChoice: "flee" });
+      expect(room.game!.pendingWrong).toBeNull();
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+      vi.useRealTimers();
+    });
+
+    it("a team that drops offline while deciding keeps the turn (E9)", () => {
+      vi.useFakeTimers();
+      const { room, ids, conns } = startedMcGame(2);
+      pick(room, conns[0], 0);
+      lock(room, conns[0]);
+      vi.advanceTimersByTime(2000);
+      room.onClose(conns[0]);
+      expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+      vi.useRealTimers();
+    });
+
+    it("a lock whose team went offline during the beat is dropped (E9)", () => {
+      vi.useFakeTimers();
+      const { room, ids, conns } = startedMcGame(2);
+      pick(room, conns[0], 1);
+      lock(room, conns[0]);
+      room.onClose(conns[0]);
+      vi.advanceTimersByTime(2000);
+      expect(room.game!.teams[0].score).toBe(0);
+      expect(lastBroadcast(room).pendingLock).toBeNull();
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+      vi.useRealTimers();
+    });
+
+    const revealOpen = (room: DungeonRoom) => (room as unknown as { reveal: unknown }).reveal !== null;
+    /** E4's estimate for the narration now on screen, in ms after it arrived. */
+    const speech = (room: DungeonRoom) => ((room as unknown as { lastNarration: { lines: string[] } }).lastNarration.lines.join("").length / 4) * 1000 + 1000;
+
+    it("auto-advances a correct reveal once the voice is done, at least 8 s and at most 15 s after it (E3, E4)", async () => {
+      vi.useFakeTimers();
+      const { room, conns } = startedMcGame(1);
+      pick(room, conns[0], 1);
+      lock(room, conns[0]);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(revealOpen(room)).toBe(true);
+      const due = Math.min(15_000, Math.max(8000, speech(room)));
+      await vi.advanceTimersByTimeAsync(due - 10);
+      expect(revealOpen(room)).toBe(true);
+      await vi.advanceTimersByTimeAsync(20);
+      expect(revealOpen(room)).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it("a host edit re-counts the voice but keeps the 15 s cap; HOST_NEXT cancels the timer (E12, R2-4)", async () => {
+      vi.useFakeTimers();
+      const { room, hostConn, conns } = startedMcGame(1);
+      pick(room, conns[0], 1);
+      lock(room, conns[0]);
+      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(7000);
+      send(room, hostConn, { type: "HOST_EDIT_NARRATION", line: "長".repeat(40) });
+      const due = Math.min(15_000, Math.max(8000, 7000 + speech(room)));
+      expect(due).toBeGreaterThan(8000);
+      await vi.advanceTimersByTimeAsync(due - 7000 - 10);
+      expect(revealOpen(room)).toBe(true);
+      await vi.advanceTimersByTimeAsync(20);
+      expect(revealOpen(room)).toBe(false);
+
+      const second = startedMcGame(1);
+      pick(second.room, second.conns[0], 1);
+      lock(second.room, second.conns[0]);
+      await vi.advanceTimersByTimeAsync(2000);
+      send(second.room, second.hostConn, { type: "HOST_NEXT", eventId: seqOf(second.room) });
+      const after = (second.room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.length;
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect((second.room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.length).toBe(after);
+      vi.useRealTimers();
+    });
   });
 });
 

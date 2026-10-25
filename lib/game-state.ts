@@ -157,11 +157,22 @@ export interface GameState {
    * eligible (D5 — its answer was never shown). deal()'s reshuffle and the boss ring both filter
    * against this before falling back to reuse once every remaining question has been revealed. */
   revealedQuestionIds: string[];
+  /** Options locked wrong so far, per question id (docs/designs/phone-answering.md E6): one map for rooms
+   * and the boss, public like the TV's wrong reveal. A new question id simply has no entry. */
+  eliminated: Record<string, number[]>;
+  /** A wrong lock waiting for that team's 重答 / 逃跑. The team keeps the turn meanwhile, even offline (E9). */
+  pendingWrong: LockedOption | null;
   boss: BossState;
   config: GameConfig;
   phase: GamePhase;
   /** Team ids tied for first place once phase === "finished". */
   winners: string[];
+}
+
+export interface LockedOption {
+  teamId: string;
+  questionId: string;
+  optionIndex: number;
 }
 
 export type AnswerOutcome =
@@ -286,6 +297,8 @@ export function createGame(
     rooms,
     usedQuestionIds: used,
     revealedQuestionIds: revealed,
+    eliminated: {},
+    pendingWrong: null,
     boss: {
       maxHp: bossMaxHp,
       hp: bossMaxHp,
@@ -321,6 +334,8 @@ function resetBossSelections(game: GameState, teams: Team[]): Team[] {
 
 /** The id of the team whose turn it currently is, skipping offline teams (T7). */
 export function currentTurnTeamId(game: GameState): string | null {
+  // A team deciding 重答 / 逃跑 keeps the turn even if its phone sleeps (phone-answering.md E9).
+  if (game.pendingWrong) return game.pendingWrong.teamId;
   const idx = nextOnlineIndex(game, 0);
   // null: every team is offline, so no one can take a turn.
   return idx === null ? null : game.turnOrder[idx];
@@ -380,6 +395,13 @@ export function answerQuestion(
       `It is not ${teamId}'s turn (current turn: ${activeTeamId})`,
     );
   }
+
+  if (correct && game.pendingWrong) {
+    throw new InvalidActionError(`${teamId} already locked a wrong answer; only retry or flee is left`);
+  }
+  // The choice resolves the pending wrong lock; advanceTurn below then moves on from the turn index,
+  // which never left that team.
+  game = { ...game, pendingWrong: null };
 
   const team = getTeam(game, teamId);
   const boss = game.boss;
@@ -552,15 +574,46 @@ export function recordBranchChoice(
  */
 export function recordOptionSelection(game: GameState, teamId: string, questionId: string, optionIndex: number): GameState {
   assertPlaying(game);
-  const team = getTeam(game, teamId); // throws if unknown
-  const expectedQuestionId = isInBossPhase(game, teamId) ? game.boss.currentQuestionId : team.currentQuestionId;
-  if (questionId !== expectedQuestionId) {
-    throw new InvalidActionError(`Stale question submission for ${teamId}: expected ${expectedQuestionId}, got ${questionId}`);
+  assertCurrentQuestion(game, teamId, questionId);
+  if (game.eliminated[questionId]?.includes(optionIndex)) {
+    throw new InvalidActionError(`Option ${optionIndex} of ${questionId} was already locked wrong`);
   }
   return {
     ...game,
     teams: patchTeam(game.teams, teamId, () => ({ currentSelection: optionIndex })),
   };
+}
+
+/**
+ * A wrong lock on a multipleChoice question (phone-answering.md premise 3): the option joins the
+ * question's eliminated set, the team's pick clears, and `pendingWrong` waits for the team's
+ * 重答 / 逃跑, which answerQuestion(correct=false) applies. Like recordOptionSelection, the caller
+ * (dungeon-room.ts) has already checked the question kind and the option range against the bank.
+ */
+export function recordWrongLock(game: GameState, teamId: string, questionId: string, optionIndex: number): GameState {
+  assertPlaying(game);
+  if (game.pendingWrong) throw new InvalidActionError("A wrong answer is already waiting for its choice");
+  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
+  assertCurrentQuestion(game, teamId, questionId);
+  const old = game.eliminated[questionId] ?? [];
+  return {
+    ...game,
+    eliminated: { ...game.eliminated, [questionId]: old.includes(optionIndex) ? old : [...old, optionIndex] },
+    pendingWrong: { teamId, questionId, optionIndex },
+    teams: patchTeam(game.teams, teamId, () => ({ currentSelection: null })),
+  };
+}
+
+/** The question `teamId` faces right now: the shared boss question in the boss room, else its own. */
+export function currentQuestionIdOf(game: GameState, teamId: string): string {
+  return isInBossPhase(game, teamId) ? game.boss.currentQuestionId : getTeam(game, teamId).currentQuestionId;
+}
+
+function assertCurrentQuestion(game: GameState, teamId: string, questionId: string) {
+  const expectedQuestionId = currentQuestionIdOf(game, teamId);
+  if (questionId !== expectedQuestionId) {
+    throw new InvalidActionError(`Stale question submission for ${teamId}: expected ${expectedQuestionId}, got ${questionId}`);
+  }
 }
 
 function assertPlaying(game: GameState) {
@@ -610,6 +663,9 @@ export interface SpectatorView {
   bossHp: number;
   bossMaxHp: number;
   bossCurrentQuestionId: string;
+  /** Options locked wrong per question id (shown greyed on every screen) and the wrong lock awaiting a choice. */
+  eliminated: Record<string, number[]>;
+  pendingWrong: LockedOption | null;
 }
 
 export function getSpectatorView(game: GameState): SpectatorView {
@@ -629,5 +685,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
     bossCurrentQuestionId: game.boss.currentQuestionId,
+    eliminated: game.eliminated,
+    pendingWrong: game.pendingWrong,
   };
 }
