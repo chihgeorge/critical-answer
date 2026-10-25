@@ -756,6 +756,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(out.reveal).toMatchObject({ questionId: "r0-mc1", answer: "B" });
       expect(room.game!.teams[0].score).toBe(1);
       expect(seqOf(room)).toBe(seq + 1);
+      expect((room as any).lastActivityAt).toBe(Date.now()); // the idle clock restarts at the reveal
       vi.useRealTimers();
     });
 
@@ -1038,13 +1039,13 @@ describe("questions and answers (T3)", () => {
     expect(state.question).toMatchObject({ boss: true, monster: { sprite: "dragon" } });
   });
 
-  it("dealing follows the injected rng", () => {
+  it("dealing follows the injected rng (0.99 picks room 0's last question)", () => {
     const room = new DungeonRoom(makeRoom() as any, () => 0.99);
     const host = makeConn("h");
     claim(room, host);
     joinTeams(room, host, 1);
     send(room, host, { type: "HOST_START" });
-    expect(room.game!.teams[0].currentQuestionId).toBe("r0-q8");
+    expect(room.game!.teams[0].currentQuestionId).toBe("r0-mc6");
   });
 });
 

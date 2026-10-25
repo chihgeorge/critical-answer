@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { answerCorrectly } from "./answer";
 import { readFile } from "node:fs/promises";
 
 /** The host's ⚙ 更多 drawer: director notes are saved into the room, and the narration transcript
@@ -17,10 +18,8 @@ test("the host saves director notes and downloads a transcript that contains the
   const ai = host.getByRole("checkbox");
   if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
-  await expect(host.getByRole("button", { name: "答對！" })).toBeEnabled();
-
   // One judged answer, so the transcript has a narration line as well as the notes.
-  await host.getByRole("button", { name: "答對！" }).click();
+  await answerCorrectly(host);
   await expect(host.getByTestId("host-reveal")).toBeVisible();
 
   await host.getByRole("button", { name: "⚙ 更多" }).click();

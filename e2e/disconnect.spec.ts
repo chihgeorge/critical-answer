@@ -1,4 +1,8 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
+import { textOnlyRoom0 } from "./answer";
+
+// These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
+textOnlyRoom0();
 
 /**
  * A phone whose connection drops (not a rest) says so, and once it's back tells its team whether its

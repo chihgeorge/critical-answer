@@ -10,7 +10,8 @@ import json, pathlib, sys
 bank = json.load(open("data/question-bank.json"))
 qs = [q for r in bank["rooms"] for q in r["questions"]] + bank["boss"]["questions"]
 blob = "".join(p.read_text(errors="ignore") for p in pathlib.Path(".next/static").rglob("*.js"))
-leaks = [q["id"] for q in qs if q["answer"] in blob or q["text"] in blob]
+answer = lambda q: q["options"][q["correctIndex"]] if q["kind"] == "multipleChoice" else q["answer"]
+leaks = [q["id"] for q in qs if answer(q) in blob or q["text"] in blob]
 if leaks:
     print("LEAK in client bundle:", leaks[:5]); sys.exit(1)
 print(f"ok: {len(qs)} questions and answers absent from the client bundle")

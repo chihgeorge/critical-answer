@@ -55,7 +55,15 @@ export interface PublicQuestion {
  * that was JUST answered, never the one now in play. Carried on STATE, not a one-off message, so a
  * reconnecting phone still sees it; it stays up — replacing the next question on /screen and
  * /play — until the host sends HOST_NEXT (D7). */
-export type AnswerReveal = { questionId: string; answer: string; explanation?: PublicMediaContent };
+export type AnswerReveal = {
+  questionId: string;
+  answer: string;
+  explanation?: PublicMediaContent;
+  /** Set when a team's lock was judged (phone answering): the answered question's options, which one
+   * was right, who locked it and the points it scored, so every screen can light the tile (D8, D14).
+   * Safe to send: it goes out only once the answer is revealed. */
+  choice?: { options: string[]; correctIndex: number; teamId: string; points: number };
+};
 
 export type ClientMessage =
   /** `teamKey` is the team's secret. teamId is public (every STATE broadcasts it), so the key is what proves a connection owns the team. */

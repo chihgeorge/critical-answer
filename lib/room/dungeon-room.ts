@@ -876,7 +876,12 @@ export class DungeonRoom {
     if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
       const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
       const explanation = publicExplanation(this.bank, questionId, imageBaseUrl);
-      this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}) };
+      const q = findQuestion(this.bank, questionId);
+      const choice =
+        autoAdvance && q?.kind === "multipleChoice"
+          ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.type === "correct-room-advance" ? outcome.pointsAwarded : 0 }
+          : undefined;
+      this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(choice ? { choice } : {}) };
       this.revealAt = this.now();
       // Armed before narrate() so the narration's arrival can re-arm it (E4).
       if (autoAdvance && game.phase === "playing") this.rearmAdvance();
@@ -914,6 +919,8 @@ export class DungeonRoom {
     this.pendingLock = null;
     this.lockTimer = null;
     if (!lock || !game) return;
+    // The reveal is the room doing something: the idle clock starts after it, not at the lock.
+    this.markActivity();
     const q = findQuestion(this.bank, lock.questionId);
     try {
       // The team's phone dropped during the beat and the turn moved on (E9): drop the lock; it locks again.

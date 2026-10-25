@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE } from "@/lib/offline-notice";
 import type { AnswerReveal, LobbyTeams, PublicQuestion, StateMessage } from "@/lib/protocol";
-import type { SpectatorView } from "@/lib/game-state";
+import type { LockedOption, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
@@ -18,6 +18,7 @@ import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { SFX } from "@/lib/sfx";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { MapStrip } from "@/components/map-strip";
+import { McOption, optionLetter, type OptionLook } from "@/components/mc-option";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 import { readStored, writeStored } from "@/lib/stored";
@@ -122,15 +123,74 @@ function TeamGroup({ teams, from, to, align }: { teams: LobbyTeams; from: number
   );
 }
 
-function Playing({ view, question, reveal, eventId, narration }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; eventId: number; narration: NarrationState }) {
+/** D1: A and C on the wall left of the monster, B and D on the right (960x540 stage). */
+// Rows start below a two-line question box (it ends near y 232) and end above the dialogue box.
+const TILE_SPOTS = [
+  { left: 22, top: 246 },
+  { left: 622, top: 246 },
+  { left: 22, top: 320 },
+  { left: 622, top: 320 },
+];
+
+/**
+ * The option tiles on the wall (docs/designs/phone-answering.md D1, D8, D9): plain while the team
+ * thinks, 🔒 during the beat, the wrong pick red while the team decides, the answer green on a
+ * correct reveal. Eliminated options are the grey ✕ 答錯 tile.
+ */
+function WallOptions({ options, gone, lock, wrong, correct, teamName }: { options: string[]; gone: number[]; lock: LockedOption | null; wrong: LockedOption | null; correct: number | null; teamName: string }) {
+  return (
+    <>
+      {options.slice(0, TILE_SPOTS.length).map((opt, i) => {
+        let look: OptionLook = "plain";
+        let label: string | undefined;
+        if (correct !== null) [look, label] = i === correct ? ["ok", "✓ 正解"] : ["dim", undefined];
+        else if (lock?.optionIndex === i) [look, label] = ["lock", `🔒 ${teamName}`];
+        else if (wrong?.optionIndex === i) [look, label] = ["bad", `✕ ${teamName}答錯`];
+        else if (gone.includes(i)) [look, label] = ["dim", "✕ 答錯"];
+        return (
+          <McOption
+            key={i}
+            index={i}
+            text={opt}
+            look={look}
+            label={label}
+            tabIndex={-1}
+            data-testid={`wall-option-${i}`}
+            data-look={look}
+            className="absolute !text-[24px] leading-[1.15]"
+            style={{ ...TILE_SPOTS[i], width: 316, height: 62, zIndex: 5 }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function Playing({ view, question, reveal, pendingLock, eventId, narration }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; eventId: number; narration: NarrationState }) {
   const { team: turn, teamIndex: turnIdx, inBoss, monster, theme, bossHits: hits } = describeTurn(view, question);
+  const wrong = view.pendingWrong ?? null;
+  const nameOf = (id?: string) => view.teams.find((t) => t.id === id)?.name ?? "";
+  // During a correct reveal the tiles are the answered question's (the next one is already dealt).
+  const wall = reveal?.choice
+    ? { options: reveal.choice.options, correct: reveal.choice.correctIndex, team: nameOf(reveal.choice.teamId), gone: [] as number[] }
+    : !reveal && question?.options && question.options.length <= TILE_SPOTS.length
+      ? { options: question.options, correct: null, team: nameOf(pendingLock?.teamId ?? wrong?.teamId), gone: view.eliminated?.[question.id] ?? [] }
+      : null;
+  // Fixed lines, not an LLM call (D8, D9): nothing is narrated until the outcome is known.
+  const held = pendingLock
+    ? `${nameOf(pendingLock.teamId)}鎖定了 ${optionLetter(pendingLock.optionIndex)}……`
+    : wrong
+      ? `${nameOf(wrong.teamId)}答錯了！他們正在決定：重答，還是逃跑……`
+      : null;
   const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
 
   return (
     <>
       <SceneBackground theme={theme} />
-      <Torches />
+      {/* D1: the tiles stand where the torches hang. */}
+      {!wall && <Torches />}
       <Sparks />
+      {wall && <WallOptions options={wall.options} gone={wall.gone} lock={pendingLock} wrong={wrong} correct={wall.correct} teamName={wall.team} />}
 
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
         {turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={420 /* a 20-character name must leave the map its width (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>}
@@ -188,8 +248,8 @@ function Playing({ view, question, reveal, eventId, narration }: { view: Spectat
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         accent={inBoss ? "var(--danger)" : undefined}
-        loading={isPending(eventId, narration)}
-        lines={narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
+        loading={!held && isPending(eventId, narration)}
+        lines={held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
       />
     </>
   );
@@ -458,7 +518,7 @@ export default function ScreenPage() {
     <>
       <Stage>
         {!game && <Lobby code={code} teams={lobby} />}
-        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={game.reveal} eventId={game.eventId} narration={narration} />}
+        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} eventId={game.eventId} narration={narration} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>

@@ -1,4 +1,8 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
+import { answerCorrectly, textOnlyRoom0 } from "./answer";
+
+// These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
+textOnlyRoom0();
 
 /** Every WebSocket text frame a page receives, so we can assert on what /screen and /play were sent. */
 function recordFrames(page: Page): string[] {
@@ -69,7 +73,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.getByText(question)).toBeVisible();
 
   // A correct judgment scores and passes the turn.
-  await host.getByRole("button", { name: "答對！" }).click();
+  await answerCorrectly(host);
 
   // The answer reveal (D2/D3/D7, docs/designs/question-media-content.md) reaches everyone — the
   // shared screen and every phone, 甲隊 (who just answered) included, not just the host's own

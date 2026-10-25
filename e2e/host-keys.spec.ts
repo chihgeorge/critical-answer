@@ -1,4 +1,8 @@
 import { test, expect } from "@playwright/test";
+import { textOnlyRoom0 } from "./answer";
+
+// These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
+textOnlyRoom0();
 
 /** The host can judge from a laptop keyboard (lib/host-keys.ts): 1 = 答對 / 下一題, 2 = 重答, 3 = 逃跑. */
 test("the host judges with the keyboard: 2 marks a wrong answer, 1 a correct one, 1 again closes the reveal", async ({ browser }) => {
