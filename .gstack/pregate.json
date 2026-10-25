@@ -1,14 +1,36 @@
 {
+  "runner": "scripts/pregate-runner.sh {files}",
   "dependencies": {
-    "app/globals.css": ["e2e/main-line.spec.ts", "e2e/live-map.spec.ts"],
-    "app/layout.tsx": ["e2e/main-line.spec.ts"],
-    "app/page.tsx": ["e2e/main-line.spec.ts", "e2e/collision.spec.ts"],
-    "app/room/**": ["e2e/main-line.spec.ts", "e2e/live-map.spec.ts"],
-    "app/bank-editor/**": ["e2e/bank-editor.spec.ts"],
-    "components/**": ["e2e/main-line.spec.ts", "e2e/live-map.spec.ts"],
+    "app/globals.css": [
+      "e2e/main-line.spec.ts",
+      "e2e/live-map.spec.ts"
+    ],
+    "app/layout.tsx": [
+      "e2e/main-line.spec.ts"
+    ],
+    "app/page.tsx": [
+      "e2e/main-line.spec.ts",
+      "e2e/collision.spec.ts"
+    ],
+    "app/room/**": [
+      "e2e/main-line.spec.ts",
+      "e2e/live-map.spec.ts"
+    ],
+    "app/bank-editor/**": [
+      "e2e/bank-editor.spec.ts"
+    ],
+    "components/**": [
+      "e2e/main-line.spec.ts",
+      "e2e/live-map.spec.ts"
+    ],
     "scripts/check-bundle.sh": [],
     "VERSION": [],
-    "package.json": ["e2e/main-line.spec.ts"],
-    "package-lock.json": ["e2e/main-line.spec.ts"]
+    "package.json": [
+      "e2e/main-line.spec.ts"
+    ],
+    "package-lock.json": [
+      "e2e/main-line.spec.ts"
+    ],
+    "scripts/pregate-runner.sh": []
   }
 }

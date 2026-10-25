@@ -2,6 +2,15 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.11.1.0] - 2026-10-25
+
+### Fixed
+- In the question-bank editor, when two loads overlap, only the newest one counts. An older load that finishes late no longer overwrites the bank on screen, wipes it with "Owner key rejected.", or shows "Could not reach the server." over a load that worked.
+- 載入題庫 stays 載入中… until the newest load is back, even if an older one finishes first.
+
+### Changed
+- In the question-bank editor, 儲存全部變更 cannot be pressed while a load is in progress, and 載入題庫 cannot be pressed while a save is in progress.
+
 ## [0.11.0.0] - 2026-10-25
 
 ### Added

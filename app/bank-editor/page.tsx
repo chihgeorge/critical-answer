@@ -8,7 +8,7 @@
 // (see docs/designs/question-media-content.md's D1: content REPLACES the old fixed prompt text,
 // it doesn't decorate it; the standalone `image` kind from image-question-type.md retired).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Panel, PixelButton } from "@/components/pixel";
 import { MAX_OPTIONS, MIN_OPTIONS, allQuestions, type Bank, type BankQuestion, type MediaContent } from "@/lib/question-bank";
 import { partyHttpBase } from "@/lib/party-host";
@@ -90,13 +90,18 @@ export default function BankEditorPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Only the latest load may land: dev StrictMode runs the auto-load effect twice, and a response that
+  // arrived late used to overwrite edits made after a newer load (CI on main, 2026-10-25).
+  const loadSeq = useRef(0);
 
   const load = async (key: string) => {
     if (!key) return;
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError("");
     try {
       const res = await fetch(bankApiBase(), { headers: { Authorization: `Bearer ${key}` } });
+      if (seq !== loadSeq.current) return;
       if (res.status === 403) {
         setError("Owner key rejected.");
         setBank(null);
@@ -107,12 +112,13 @@ export default function BankEditorPage() {
         return;
       }
       const versioned: { bank: Bank; version: number } = await res.json();
+      if (seq !== loadSeq.current) return;
       setBank(versioned.bank);
       setVersion(versioned.version);
     } catch {
-      setError("Could not reach the server.");
+      if (seq === loadSeq.current) setError("Could not reach the server.");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   };
 
@@ -220,7 +226,7 @@ export default function BankEditorPage() {
           value={ownerKey}
           onChange={(e) => setOwnerKey(e.target.value)}
         />
-        <PixelButton onClick={() => void load(ownerKey)} disabled={!ownerKey || loading}>
+        <PixelButton onClick={() => void load(ownerKey)} disabled={!ownerKey || loading || saving}>
           {loading ? "載入中…" : "載入題庫"}
         </PixelButton>
         {error && (
@@ -256,7 +262,7 @@ export default function BankEditorPage() {
               onUploadImage={uploadImage}
             />
           ))}
-          <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving}>
+          <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving || loading}>
             {saving ? "儲存中…" : "儲存全部變更"}
           </PixelButton>
         </div>
