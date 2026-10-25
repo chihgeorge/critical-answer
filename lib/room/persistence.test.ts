@@ -4,6 +4,11 @@ import { DungeonRoom } from "./dungeon-room";
 import { SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { BANK } from "../question-bank-data";
+// Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
+vi.mock("../question-bank-data", async (actual) => {
+  const { asTextBank } = await import("../text-bank");
+  return { BANK: asTextBank((await actual<typeof import("../question-bank-data")>()).BANK) };
+});
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";

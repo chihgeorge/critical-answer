@@ -266,7 +266,8 @@ test("a remembered owner key (localStorage) auto-loads the bank on a fresh visit
   await expect(page.getByTestId("bank-room-0")).toBeVisible();
 });
 
-test("a save that fails server-side validation shows the server's error, and does not clear the form", async ({ page }) => {
+test("a save that fails server-side validation shows the server's error, and does not clear the form", async ({ page, request }) => {
+  await resetFirstQuestion(request); // the bundled first question is multipleChoice, with no 答案 field
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();

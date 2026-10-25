@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
-import { textOnlyRoom0 } from "./answer";
+import { textOnlyBank } from "./answer";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
-textOnlyRoom0();
+textOnlyBank();
 
 /**
  * The big screen's sound effects (lib/sfx.ts) are synthesized, so there is nothing to listen to in

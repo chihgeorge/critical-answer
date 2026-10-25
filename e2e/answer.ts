@@ -46,14 +46,23 @@ export function restoreRoom0AfterEach() {
   });
 }
 
-/** For specs about the host judging by hand (keys, 答錯・重答): room 0 keeps only its text
- * questions, since a multipleChoice turn is judged by the phone's lock, not the host. */
-export function textOnlyRoom0() {
-  restoreRoom0AfterEach();
+/** For specs about the host judging by hand (keys, 答錯・重答, a whole game driven by HOST_JUDGE):
+ * every question becomes a text question (the correct option as the answer), since a
+ * multipleChoice turn is judged by the phone's lock, not the host, and the bundled bank is all
+ * multipleChoice. The whole bank is put back after each test, like restoreRoom0AfterEach. */
+export function textOnlyBank() {
+  let original: unknown;
   test.beforeEach(async ({ request }) => {
     const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
-    bank.rooms[0].questions = bank.rooms[0].questions.filter((q: { kind: string }) => q.kind !== "multipleChoice");
+    original = structuredClone(bank);
+    type Q = { kind: string; id: string; content: unknown; options?: string[]; correctIndex?: number };
+    const toText = (q: Q) => (q.kind === "multipleChoice" ? { kind: "text", id: q.id, content: q.content, answer: q.options![q.correctIndex!] } : q);
+    for (const r of [...bank.rooms, bank.boss]) r.questions = r.questions.map(toText);
     const saved = await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } });
     expect(saved.ok()).toBe(true);
+  });
+  test.afterEach(async ({ request }) => {
+    const { version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
+    await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: original, version } });
   });
 }

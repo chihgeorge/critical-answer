@@ -1,8 +1,8 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { answerCorrectly, textOnlyRoom0 } from "./answer";
+import { answerCorrectly, textOnlyBank } from "./answer";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
-textOnlyRoom0();
+textOnlyBank();
 
 /** Stubs window.speechSynthesis before the page loads, recording every speak() call's text
  * and every cancel(). getVoices() returns one usable zh-TW voice so pickVoice() finds it

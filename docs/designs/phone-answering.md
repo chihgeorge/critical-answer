@@ -243,7 +243,7 @@ Existing deployment pipeline covers this: merge to main auto-deploys Vercel and 
 2. /plan-eng-review: message shapes, state and snapshot fields, alarm-driven advance, boss-phase behavior.
 3. Build PR 1, then /review and /ship.
 4. Play one real round on PR 1.
-5. Draft PR 2's 48 questions, user review, then /review and /ship.
+5. ~~Draft PR 2's 48 questions, user review, then /review and /ship.~~ Drafted and approved by the user on 2026-10-25. Reseeding production is still the user's call.
 6. Add TODOs: boss-stage redesign; waiting-team predictions (Codex's lantern idea) to the existing reactions TODO.
 
 ## The Assignment
