@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { Panel, PixelButton } from "@/components/pixel";
-import { MIN_OPTIONS, allQuestions, type Bank, type BankQuestion, type MediaContent } from "@/lib/question-bank";
+import { MAX_OPTIONS, MIN_OPTIONS, allQuestions, type Bank, type BankQuestion, type MediaContent } from "@/lib/question-bank";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId } from "@/lib/youtube";
 import { readStored, writeStored } from "@/lib/stored";
@@ -69,6 +69,7 @@ function validationError(bank: Bank): string | null {
     const label = `題目「${q.content.value || q.id}」`;
     if (q.kind === "multipleChoice") {
       if (q.options.length < MIN_OPTIONS) return `${label}至少要有 ${MIN_OPTIONS} 個選項`;
+      if (q.options.length > MAX_OPTIONS) return `${label}最多 ${MAX_OPTIONS} 個選項`;
       if (q.options.some((o) => !o.trim())) return `${label}有空白選項`;
       if (q.correctIndex < 0 || q.correctIndex >= q.options.length) return `${label}還沒標記正解`;
     }
@@ -569,6 +570,7 @@ function QuestionRow({
           ))}
           <div className="flex gap-2">
             <PixelButton
+              disabled={q.options.length >= MAX_OPTIONS}
               onClick={() => onUpdate((cur) => (cur.kind === "multipleChoice" ? { ...cur, options: [...cur.options, ""] } : cur))}
             >
               + 新增選項

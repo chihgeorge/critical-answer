@@ -6,12 +6,103 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE, offlineNotice, type DropSnapshot } from "@/lib/offline-notice";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
-import type { LobbyTeams, StateMessage } from "@/lib/protocol";
+import type { ClientMessage, LobbyTeams, StateMessage } from "@/lib/protocol";
 import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { McOption } from "@/components/mc-option";
+
+/** How long 鎖定中… waits for the room to confirm a lock before offering a retry (phone-answering.md D6). */
+const LOCK_CONFIRM_MS = 3000;
+
+/**
+ * The team's own multipleChoice turn (docs/designs/phone-answering.md D2, D5–D7): pick, lock, then
+ * either the beat (locked) or, after a wrong lock, 重答 / 逃跑. Eliminated options are grey and inert.
+ */
+function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void }) {
+  const q = game.question!;
+  const options = q.options!;
+  const pick = game.view.teams.find((t) => t.id === teamId)?.currentSelection ?? null;
+  const gone = game.view.eliminated?.[q.id] ?? [];
+  const lock = game.pendingLock?.teamId === teamId ? game.pendingLock : null;
+  const wrong = game.view.pendingWrong?.teamId === teamId ? game.view.pendingWrong : null;
+  // A press waiting for the room: keyed to the question and eventId, so a later turn on the same
+  // question (after 重答, which bumps eventId) never looks like it is still in flight.
+  const [locking, setLocking] = useState<{ qid: string; eventId: number } | null>(null);
+  const [lockFailed, setLockFailed] = useState(false);
+  const inFlight = !lock && !wrong && locking?.qid === q.id && locking.eventId === game.eventId;
+  useEffect(() => {
+    if (!inFlight) return;
+    const id = setTimeout(() => {
+      setLocking(null);
+      setLockFailed(true);
+    }, LOCK_CONFIRM_MS);
+    return () => clearTimeout(id);
+  }, [inFlight]);
+  const frozen = !!lock || !!wrong || inFlight;
+
+  return (
+    <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
+      {wrong && (
+        <div className="flex items-center gap-2 text-[22px]">
+          <span aria-hidden className="inline-flex h-7 w-7 items-center justify-center border-[3px] border-[var(--k)] bg-[var(--danger)] text-[14px] text-white">✕</span>
+          答錯了！要怎麼辦？
+        </div>
+      )}
+      {options.map((opt, i) => {
+        const out = gone.includes(i);
+        const locked = lock?.optionIndex === i;
+        const picked = !out && pick === i;
+        return (
+          <McOption
+            key={i}
+            index={i}
+            text={opt}
+            look={out ? "dim" : locked || (picked && !lock) ? "sel" : frozen ? "dim" : "plain"}
+            label={out ? "✕ 答錯" : locked ? "🔒 已鎖定" : picked && !lock ? "◀ 已選" : undefined}
+            aria-pressed={picked || locked}
+            disabled={out || frozen}
+            onClick={() => {
+              setLockFailed(false);
+              send({ type: "TEAM_SELECT_OPTION", questionId: q.id, optionIndex: i });
+            }}
+            className="min-h-[56px] text-[21px]"
+          />
+        );
+      })}
+      {wrong ? (
+        <div className="mt-1 flex gap-2">
+          <PixelButton variant="ok" className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
+            重答<small className="text-[13px]">下一輪再挑一次</small>
+          </PixelButton>
+          <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "var(--lav)" }} onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "flee" })}>
+            逃跑<small className="text-[13px]">換一題簡單的</small>
+          </PixelButton>
+        </div>
+      ) : lock ? (
+        <div className="px-bar mt-1" role="status">已鎖定！看大螢幕揭曉 ▶</div>
+      ) : inFlight ? (
+        <div className="px-bar ok mt-1" role="status">鎖定中…</div>
+      ) : (
+        <PixelButton
+          variant="ok"
+          disabled={pick === null || gone.includes(pick)}
+          className="!m-0 mt-1 !min-h-[62px] !text-[23px]"
+          onClick={() => {
+            setLockFailed(false);
+            setLocking({ qid: q.id, eventId: game.eventId });
+            send({ type: "TEAM_LOCK_OPTION", questionId: q.id, optionIndex: pick! });
+          }}
+        >
+          鎖定答案
+        </PixelButton>
+      )}
+      {lockFailed && !frozen && <div className="text-center text-[14px]">沒送出，再按一次</div>}
+    </Panel>
+  );
+}
 
 export default function PlayPage() {
   const { code } = useParams<{ code: string }>();
@@ -154,6 +245,21 @@ export default function PlayPage() {
           </TurnRibbon>
         )}
 
+        {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
+        {game && !finished && !revealed && isMyTurn && game.question?.options && <MyChoicePanel game={game} teamId={teamId} send={send} />}
+
+        {/* D14: our own lock was right — the same tiles, the right one green, and the points. */}
+        {game && revealed?.choice && revealed.choice.teamId === teamId && (
+          <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
+            {revealed.choice.options.map((opt, i) => (
+              <McOption key={i} index={i} text={opt} disabled look={i === revealed.choice!.correctIndex ? "ok" : "dim"} label={i === revealed.choice!.correctIndex ? "✓ 答對" : undefined} className="min-h-[56px] text-[21px]" />
+            ))}
+            <div className="px-bar ok mt-1 !text-[22px]" role="status">
+              答對了！{revealed.choice.points > 0 ? `＋${revealed.choice.points} 分` : ""}
+            </div>
+          </Panel>
+        )}
+
         {/* While waiting, the roster above already highlights our own team. */}
         {game && (
           <Panel tone={isMyTurn ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
@@ -217,24 +323,6 @@ export default function PlayPage() {
               // other media render site in this diff carries (adversarial review finding, /ship).
               <QuestionMedia key={revealed.questionId} content={revealed.explanation} label="詳解" maxWidth={260} maxHeight={180} />
             )}
-          </Panel>
-        )}
-
-        {/* multipleChoice options — only our own turn shows the tappable list; re-tappable
-            any time before the host judges (see docs/designs/multiple-choice-questions.md
-            decision 5), so there's no "locked in" state here beyond the highlight itself. */}
-        {game && !finished && !revealed && isMyTurn && game.question?.options && (
-          <Panel tone="turn" className="flex flex-col gap-2 px-3 py-3">
-            {game.question.options.map((opt, i) => (
-              <PixelButton
-                key={i}
-                variant={myTeam?.currentSelection === i ? "primary" : undefined}
-                onClick={() => send({ type: "TEAM_SELECT_OPTION", questionId: game.question!.id, optionIndex: i })}
-                className="!m-0"
-              >
-                {opt}
-              </PixelButton>
-            ))}
           </Panel>
         )}
 

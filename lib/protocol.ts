@@ -9,21 +9,21 @@
 // TEAM_BRANCH_CHOICE and TEAM_SELECT_OPTION are the exceptions to "only the
 // host mutates game state" (docs/designs/dm-branching-and-question-types.md
 // decision 1; docs/designs/multiple-choice-questions.md decision 5): neither
-// is a score claim — a branch pick and a multiple-choice pick both leave the
-// actual correct/incorrect call to the host (HOST_JUDGE), so the self-scoring
-// risk above does not apply. Both derive their sender's team from the
+// is a score claim. A branch pick changes no score, and a multiple-choice pick
+// or lock is judged by the room against the bank's correctIndex, which never
+// reaches a client (docs/designs/phone-answering.md), so the self-scoring risk
+// above does not apply. Both derive their sender's team from the
 // connection's own connTeam binding (set at JOIN/REJOIN) — never from a
 // client-supplied team id — so no teamKey is needed on either message,
 // unlike JOIN/REJOIN. Unlike TEAM_BRANCH_CHOICE, TEAM_SELECT_OPTION is
 // re-selectable (a later pick for the same question overwrites the earlier
-// one) — picking an option is a "change your mind before the host looks"
-// interaction, not a one-time narrative fork.
+// one) until TEAM_LOCK_OPTION commits it — not a one-time narrative fork.
 //
 // Host identity is a token minted by the host's browser at room creation.
 // The first HOST_CLAIM for a room sets it (trust on first use, on a 4-letter
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
-import { isBranchOptionId, type BranchOptionId, type GamePhase, type SpectatorView } from "./game-state";
+import { isBranchOptionId, type BranchOptionId, type GamePhase, type LockedOption, type SpectatorView } from "./game-state";
 import type { SpriteKind } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -55,7 +55,15 @@ export interface PublicQuestion {
  * that was JUST answered, never the one now in play. Carried on STATE, not a one-off message, so a
  * reconnecting phone still sees it; it stays up — replacing the next question on /screen and
  * /play — until the host sends HOST_NEXT (D7). */
-export type AnswerReveal = { questionId: string; answer: string; explanation?: PublicMediaContent };
+export type AnswerReveal = {
+  questionId: string;
+  answer: string;
+  explanation?: PublicMediaContent;
+  /** Set when a team's lock was judged (phone answering): the answered question's options, which one
+   * was right, who locked it and the points it scored, so every screen can light the tile (D8, D14).
+   * Safe to send: it goes out only once the answer is revealed. */
+  choice?: { options: string[]; correctIndex: number; teamId: string; points: number };
+};
 
 export type ClientMessage =
   /** `teamKey` is the team's secret. teamId is public (every STATE broadcasts it), so the key is what proves a connection owns the team. */
@@ -89,7 +97,12 @@ export type ClientMessage =
    * `optionIndex` is only type-checked here (non-negative integer); the real bounds check
    * against the live question's actual options.length happens in dungeon-room.ts, which is
    * the only layer that has the current game state. */
-  | { type: "TEAM_SELECT_OPTION"; questionId: string; optionIndex: number };
+  | { type: "TEAM_SELECT_OPTION"; questionId: string; optionIndex: number }
+  /** Locks the team's current pick (the server's `currentSelection`, never a client-sent index), judged
+   * after the reveal beat (docs/designs/phone-answering.md E2, E11). */
+  | { type: "TEAM_LOCK_OPTION"; questionId: string; optionIndex?: number }
+  /** The team's choice after a wrong lock: answer again next turn, or flee to an easier question. */
+  | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "flee" };
 
 export type ServerErrorCode =
   | "invalid_team_id"
@@ -116,6 +129,8 @@ export type ServerMessage =
       question: PublicQuestion | null;
       /** Non-null while the last correct answer is on show; the host's HOST_NEXT clears it. */
       reveal: AnswerReveal | null;
+      /** A lock being held for the reveal beat before it is judged (phone-answering.md E2). */
+      pendingLock: LockedOption | null;
       /** Counts judgments (and the start); NARRATION carries the id it belongs to. */
       eventId: number;
       /** The sound effect for event `eventId` (the big screen plays it once, when eventId goes up).
@@ -230,6 +245,18 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const questionId = str(m.questionId, MAX_ID);
       if (questionId === null || !Number.isInteger(m.optionIndex) || (m.optionIndex as number) < 0) return null;
       return { type: "TEAM_SELECT_OPTION", questionId, optionIndex: m.optionIndex as number };
+    }
+    case "TEAM_LOCK_OPTION": {
+      const questionId = str(m.questionId, MAX_ID);
+      if (questionId === null) return null;
+      if (m.optionIndex === undefined) return { type: "TEAM_LOCK_OPTION", questionId };
+      if (!Number.isInteger(m.optionIndex) || (m.optionIndex as number) < 0) return null;
+      return { type: "TEAM_LOCK_OPTION", questionId, optionIndex: m.optionIndex as number };
+    }
+    case "TEAM_WRONG_CHOICE": {
+      const questionId = str(m.questionId, MAX_ID);
+      if (questionId === null || (m.choice !== "retry" && m.choice !== "flee")) return null;
+      return { type: "TEAM_WRONG_CHOICE", questionId, choice: m.choice };
     }
     default:
       return null;

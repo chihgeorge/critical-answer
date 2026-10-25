@@ -55,6 +55,78 @@
           "kind": "text",
           "text": "台北 101 大樓名字裡的「101」代表什麼？",
           "answer": "地上共 101 層"
+        },
+        {
+          "id": "r0-mc1",
+          "kind": "multipleChoice",
+          "text": "台灣的國花是什麼？",
+          "options": [
+            "梅花",
+            "櫻花",
+            "蓮花",
+            "桂花"
+          ],
+          "correctIndex": 0
+        },
+        {
+          "id": "r0-mc2",
+          "kind": "multipleChoice",
+          "text": "台灣高鐵最北端的車站是哪一站？",
+          "options": [
+            "台北",
+            "南港",
+            "板橋",
+            "基隆"
+          ],
+          "correctIndex": 1
+        },
+        {
+          "id": "r0-mc3",
+          "kind": "multipleChoice",
+          "text": "日月潭位在哪個縣市？",
+          "options": [
+            "南投縣",
+            "嘉義縣",
+            "台中市",
+            "花蓮縣"
+          ],
+          "correctIndex": 0
+        },
+        {
+          "id": "r0-mc4",
+          "kind": "multipleChoice",
+          "text": "台灣最長的河流是哪一條？",
+          "options": [
+            "淡水河",
+            "高屏溪",
+            "濁水溪",
+            "大甲溪"
+          ],
+          "correctIndex": 2
+        },
+        {
+          "id": "r0-mc5",
+          "kind": "multipleChoice",
+          "text": "台灣目前有幾個直轄市？",
+          "options": [
+            "4 個",
+            "5 個",
+            "6 個",
+            "7 個"
+          ],
+          "correctIndex": 2
+        },
+        {
+          "id": "r0-mc6",
+          "kind": "multipleChoice",
+          "text": "端午節最應景的食物是什麼？",
+          "options": [
+            "月餅",
+            "湯圓",
+            "春捲",
+            "粽子"
+          ],
+          "correctIndex": 3
         }
       ]
     },

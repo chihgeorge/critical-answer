@@ -31,7 +31,7 @@
 // (queueUploadedImage), so one the editor never saves is deleted too.
 
 import { BANK } from "./question-bank-data";
-import { parseBank, imageKeysOf, type Bank } from "./question-bank";
+import { assertSavable, parseBank, imageKeysOf, type Bank } from "./question-bank";
 import type { RoomStorage } from "./room/io";
 
 const BANK_KEY = "bank";
@@ -151,6 +151,7 @@ export class BankStore {
     const current = await this.getVersionedBank();
     if (current.version !== expectedVersion) return { conflict: true, currentVersion: current.version };
     const validated = parseBank(candidate);
+    assertSavable(validated);
     const next: VersionedBank = { bank: validated, version: current.version + 1 };
     await this.storage.put(BANK_KEY, next);
     const oldKeys = imageKeysOf(current.bank);

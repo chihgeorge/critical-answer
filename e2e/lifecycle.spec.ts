@@ -97,7 +97,16 @@ test("an unused room closes its connections after the idle time, keeps the game,
     await wait(() => last(a, "LOBBY")?.teams.length === 2, "both teams in the lobby");
     send(host, { type: "HOST_START", aiNarration: false });
     await wait(() => last(host, "HOST_ANSWER"), "the host is sent the answer");
-    send(host, { type: "HOST_JUDGE", teamId: last(a, "STATE").view.currentTurnTeamId, questionId: last(host, "HOST_ANSWER").questionId, correct: true });
+    const dealt = last(host, "HOST_ANSWER");
+    const options: string[] | undefined = last(a, "STATE").question?.options;
+    if (options) {
+      // A multipleChoice turn is answered by the team's own lock, not HOST_JUDGE. Both phones
+      // send it; the one not on turn is refused.
+      for (const p of [a, b]) {
+        send(p, { type: "TEAM_SELECT_OPTION", questionId: dealt.questionId, optionIndex: options.indexOf(dealt.answer) });
+        send(p, { type: "TEAM_LOCK_OPTION", questionId: dealt.questionId });
+      }
+    } else send(host, { type: "HOST_JUDGE", teamId: last(a, "STATE").view.currentTurnTeamId, questionId: dealt.questionId, correct: true });
     await wait(() => last(a, "STATE")?.eventId >= 2, "the judgment is applied");
     const before = last(a, "STATE");
     const epoch = before.roomEpoch;

@@ -2,6 +2,21 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.11.0.0] - 2026-10-25
+
+### Added
+- Teams answer multiple-choice questions on their own phones. A team taps an option, then 鎖定答案. The big screen shows the lock, holds it for 2 seconds, then reveals the result. The host no longer presses 答對 for these questions.
+- A wrong lock turns only the picked option red on the big screen. The right answer stays hidden. The team then chooses 重答 (the wrong option is greyed out on its next try) or 逃跑 (a different question).
+- After a correct multiple-choice answer, the game moves on to the next turn by itself, 8 to 15 seconds after the reveal, depending on how long the narration is. 下一題 on the host page still moves on at once.
+- When a team has not locked an answer for 15 seconds, or has not chosen 重答 or 逃跑 15 seconds after a wrong lock, the host page offers 替{隊名}選・重答 / 逃跑, and keys 2 and 3 press them.
+- When a lock gets no answer from the room within 3 seconds, the phone shows 沒送出，再按一次 and the team can lock again.
+- Room 1 of the bundled question bank has 6 sample multiple-choice questions.
+
+### Changed
+- A multiple-choice question can have at most 4 options, the number of tiles on the big screen. The editor stops adding options at 4. A saved bank with more still loads and plays, but cannot be saved until those questions are cut down to 4.
+- Long option text on the big screen wraps to two lines and ends with "…" instead of spilling out of its tile.
+- A question a team fled after a wrong lock is not dealt again, because its wrong option was already shown to the room.
+
 ## [0.10.0.1] - 2026-10-24
 
 ### Changed

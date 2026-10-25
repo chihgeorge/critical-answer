@@ -27,4 +27,13 @@ describe("hostKeyAction", () => {
     expect(hostKeyAction({ key: "1", target: { tagName: "DIV", isContentEditable: true } }, false)).toBeNull();
     expect(hostKeyAction({ key: "1", target: { tagName: "BUTTON" } }, false)).toBe("correct");
   });
+
+  it("on a multipleChoice turn, 1 does nothing and 2/3 wait for the stuck row (phone-answering.md D13)", () => {
+    expect(hostKeyAction({ key: "1" }, false, { stuck: false })).toBeNull();
+    expect(hostKeyAction({ key: "2" }, false, { stuck: false })).toBeNull();
+    expect(hostKeyAction({ key: "3" }, false, { stuck: false })).toBeNull();
+    expect(hostKeyAction({ key: "1" }, false, { stuck: true })).toBeNull(); // the lock judges it, never the host
+    expect(hostKeyAction({ key: "2" }, false, { stuck: true })).toBe("retry");
+    expect(hostKeyAction({ key: "3" }, false, { stuck: true })).toBe("flee");
+  });
 });

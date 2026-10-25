@@ -11,6 +11,10 @@ import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { hostKeyAction } from "@/lib/host-keys";
+import { optionLetter } from "@/components/mc-option";
+
+/** D11: the stuck-team row waits this long with no lock (or no choice after a wrong lock). */
+const STUCK_MS = 15_000;
 
 
 /** The host's own link carries the token, so it is shown here and never on /screen or /play. */
@@ -212,6 +216,20 @@ export default function HostPage() {
   }, [revealUp]);
   const canJudge = ready && swapArmed && !!turn?.team && pendingTeamId !== turn.team.id;
 
+  // Phone answering (docs/designs/phone-answering.md D3, D11, D13): a multipleChoice turn is judged by
+  // the team's lock, so the host only watches it, and gets 替選・重答 / 逃跑 after 15 s of no progress.
+  const isMc = !game?.reveal && !!game?.question?.options;
+  const lock = game?.pendingLock ?? null;
+  const wrong = game?.view.pendingWrong ?? null;
+  const stuckKey = isMc && turn?.team && !lock ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}` : null;
+  const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!stuckKey) return;
+    const t = setTimeout(() => setStuckShownFor(stuckKey), STUCK_MS);
+    return () => clearTimeout(t);
+  }, [stuckKey]);
+  const stuck = !!stuckKey && stuckShownFor === stuckKey;
+
   // Keyboard shortcuts for a host on a laptop (lib/host-keys.ts): each key does exactly what its
   // button does, and only while that button is enabled.
   useEffect(() => {
@@ -222,6 +240,7 @@ export default function HostPage() {
       const action = hostKeyAction(
         { key: e.key, repeat: e.repeat, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, target },
         !!game?.reveal,
+        isMc ? { stuck } : undefined,
       );
       if (!action || !game) return;
       if (action === "next") {
@@ -238,7 +257,7 @@ export default function HostPage() {
     return () => window.removeEventListener("keydown", onKey);
     // judge/send are plain functions over state this effect already depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, ready, swapArmed, canJudge, turn]);
+  }, [game, ready, swapArmed, canJudge, turn, isMc, stuck]);
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -342,14 +361,15 @@ export default function HostPage() {
                     <div
                       key={i}
                       data-testid={`host-option-${i}`}
-                      className="px-3 py-1 text-[16px]"
+                      className="flex items-center gap-2 px-3 py-1 text-[16px]"
                       style={
                         turn.team!.currentSelection === i
                           ? { background: "var(--turn)", boxShadow: "inset 0 0 0 3px var(--turn2)" }
                           : { background: "var(--cream2)" }
                       }
                     >
-                      {opt}
+                      <b className="px-num inline-flex h-6 w-6 flex-none items-center justify-center text-[11px]" style={{ background: "var(--k)", color: "var(--turn2)" }}>{optionLetter(i)}</b>
+                      <span className={game.view.eliminated?.[game.question!.id]?.includes(i) ? "line-through" : ""}>{opt}</span>
                       {turn.team!.currentSelection === i && <span className="ml-2 text-[13px]">← 隊伍目前選的</span>}
                     </div>
                   ))}
@@ -387,6 +407,37 @@ export default function HostPage() {
                     {connected ? "下一題" : "重新連線中"}
                     <span className="px-key" aria-hidden="true">1</span>
                   </PixelButton>
+                </>
+              ) : isMc ? (
+                <>
+                  <div data-testid="host-mc-status">
+                  <Panel tone="lav" className="px-3 py-2 text-center">
+                    <div className="text-[22px]">
+                      {lock
+                        ? `${turn.team.name}鎖定了 ${optionLetter(lock.optionIndex)}…`
+                        : wrong
+                          ? `答錯！等${turn.team.name}選重答或逃跑`
+                          : `等${turn.team.name}鎖定答案…`}
+                    </div>
+                    <div className="text-[14px]">{lock ? "大螢幕停頓 2 秒後揭曉" : "選擇題由隊伍手機作答，系統自動判定"}</div>
+                  </Panel>
+                  </div>
+                  {stuck && (
+                    <>
+                      <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>
+                      <div className="px-1 pt-1 text-[14px] text-white">隊伍卡住時：</div>
+                      <div className="grid grid-cols-2">
+                        <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                          替{turn.team.name}選・重答
+                          <span className="px-key" aria-hidden="true">2</span>
+                        </PixelButton>
+                        <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                          替{turn.team.name}選・逃跑
+                          <span className="px-key" aria-hidden="true">3</span>
+                        </PixelButton>
+                      </div>
+                    </>
+                  )}
                 </>
               ) : (
                 <>

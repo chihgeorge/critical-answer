@@ -211,6 +211,36 @@ describe("restoring after a restart", () => {
     expect(second.room.game!.teams.find((t) => t.id === T1)!.score).toBeGreaterThan(scoreBefore);
   });
 
+  it("a save from before phone answering restores with eliminated and pendingWrong backfilled (phone-answering.md)", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    delete saved.game.eliminated;
+    delete saved.game.pendingWrong;
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored");
+    expect(second.room.game!.eliminated).toEqual({});
+    expect(second.room.game!.pendingWrong).toBeNull();
+  });
+
+  it("a wrong answer awaiting its choice survives a restart", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[0];
+    const q = saved.game.teams.find((t: any) => t.id === t0).currentQuestionId;
+    saved.game.pendingWrong = { teamId: t0, questionId: q, optionIndex: 1 };
+    saved.game.eliminated = { [q]: [1] };
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored");
+    expect(second.room.game!.pendingWrong).toEqual({ teamId: t0, questionId: q, optionIndex: 1 });
+    expect(second.room.game!.eliminated).toEqual({ [q]: [1] });
+  });
+
   it("a save from before currentSelection existed restores with it backfilled to null, not crashing on the next read", async () => {
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);

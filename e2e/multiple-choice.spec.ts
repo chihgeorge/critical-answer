@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
+import { restoreRoom0AfterEach } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
+
+restoreRoom0AfterEach();
 
 const WORKER = "http://localhost:1996";
 
@@ -58,8 +61,142 @@ test("multipleChoice in play: the team taps an option, the host sees the pick hi
   await expect(host.getByText("← 隊伍目前選的")).toHaveCount(1);
   await expect(host.getByTestId("host-option-0")).not.toContainText("← 隊伍目前選的");
 
-  // The host still judges independently — a wrong pick can still be marked correct by the host,
-  // since TEAM_SELECT_OPTION is a UI hint, never a self-score.
-  await host.getByRole("button", { name: "答對！" }).click();
-  await expect(host.getByText("輪到")).toBeVisible();
+  // Phone answering (docs/designs/phone-answering.md): the host no longer judges an MC turn.
+  await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
+  await expect(host.getByTestId("host-mc-status")).toContainText("等選擇隊鎖定答案");
+});
+
+test("phone answering: a wrong lock is marked without the answer, 重答 greys it out, a right lock lights up everywhere", async ({ browser, request }) => {
+  await seedSingleMcQuestion(request);
+
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
+  await screen.goto(`/room/${code}/screen`);
+  const team = await (await browser.newContext({ viewport: { width: 375, height: 667 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("選擇隊")}`);
+  await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+
+  const lockButton = team.getByRole("button", { name: "鎖定答案" });
+  await expect(lockButton).toBeDisabled();
+  await team.getByRole("button", { name: "藍色" }).click();
+  await lockButton.click();
+  // The beat: everyone sees the lock, nobody sees the result yet.
+  // (The beat lasts 2 s, so these run back to back.)
+  await expect(team.getByText("已鎖定！看大螢幕揭曉")).toBeVisible();
+  await expect(host.getByTestId("host-mc-status")).toContainText("選擇隊鎖定了 C");
+  await expect(screen.getByTestId("wall-option-2")).toHaveAttribute("data-look", "lock");
+  await expect(screen.getByText("選擇隊鎖定了 C……")).toBeVisible();
+
+  // Wrong: only the pick turns red on the TV; the answer stays hidden.
+  await expect(screen.getByTestId("wall-option-2")).toHaveAttribute("data-look", "bad");
+  await expect(screen.getByTestId("wall-option-1")).toHaveAttribute("data-look", "plain");
+  await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
+  // D2: the options and the 重答/逃跑 row fit 375x667 without scrolling (the cards below may run under the fold).
+  // Measured from the top of the page, since the earlier 鎖定答案 click may have scrolled it.
+  const fleeBottom = await team.getByRole("button", { name: /逃跑/ }).evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
+  expect(fleeBottom).toBeLessThanOrEqual(667);
+  await team.getByRole("button", { name: /重答/ }).click();
+
+  // Retry turn (the only team, so it is up again): 藍色 is greyed and cannot be picked.
+  await expect(team.getByRole("button", { name: /藍色/ })).toBeDisabled();
+  await expect(screen.getByTestId("wall-option-2")).toHaveAttribute("data-look", "dim");
+  await team.getByRole("button", { name: "綠色" }).click();
+  await team.getByRole("button", { name: "鎖定答案" }).click();
+  await expect(screen.getByTestId("wall-option-1")).toHaveAttribute("data-look", "ok");
+  await expect(team.getByText(/答對了！＋1 分/)).toBeVisible();
+  await expect(host.getByTestId("host-reveal")).toContainText("綠色");
+});
+
+// Value: protects=after 15 s with no lock the host gets 替…選・逃跑 and it moves the stuck team on; fails_when=the stuck timer, its key or the rescue button breaks, leaving the host no way past an MC turn; why_new=no spec waits out STUCK_MS; seam=none; no_claim=重答 rescue and keys 2/3 (host clock faked; server timers real)
+test("phone answering: a team that never locks gets the host's stuck row after 15 s, and 逃跑 moves it on", async ({ browser, request }) => {
+  await seedSingleMcQuestion(request);
+
+  const host = await (await browser.newContext()).newPage();
+  await host.clock.install();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  const team = await (await browser.newContext({ viewport: { width: 375, height: 667 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("選擇隊")}`);
+  await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(host.getByTestId("host-mc-status")).toContainText("等選擇隊鎖定答案");
+
+  const stuckRow = host.getByText("選擇隊好像卡住了");
+  await host.clock.fastForward(14_000);
+  await expect(stuckRow).toHaveCount(0);
+  await host.clock.fastForward(1_500);
+  await expect(stuckRow).toBeVisible();
+  await host.getByRole("button", { name: /替選擇隊選・逃跑/ }).click();
+  // The flee is a judgment (new eventId), so the row resets and waits another 15 s.
+  await expect(stuckRow).toHaveCount(0);
+  await expect(host.getByTestId("host-mc-status")).toContainText("等選擇隊鎖定答案");
+  await expect(team.getByText("輪到我們了！")).toBeVisible();
+});
+
+/** Starts a game with one team on a 375x667 phone; returns the pages. */
+async function startOneTeam(browser: import("@playwright/test").Browser, beforeJoin?: (team: import("@playwright/test").Page) => Promise<void>) {
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  const team = await (await browser.newContext({ viewport: { width: 375, height: 667 } })).newPage();
+  await beforeJoin?.(team);
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("選擇隊")}`);
+  await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(team.getByText("輪到我們了！")).toBeVisible();
+  return { host, team };
+}
+
+// Value: protects=the phone's 逃跑 after a wrong lock sends flee and the team gets the other question; fails_when=the button sends retry or nothing; why_new=the other journey only presses 重答; seam=none; no_claim=which question is dealt first
+test("phone answering: 逃跑 after a wrong lock moves the team to the other question", async ({ browser, request }) => {
+  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
+  bank.rooms[0].questions = [
+    { kind: "multipleChoice", id: "r0-mc-e2e-a", text: "門是什麼顏色？", options: ["紅門", "綠門"], correctIndex: 1 },
+    { kind: "multipleChoice", id: "r0-mc-e2e-b", text: "鑰匙是什麼形狀？", options: ["圓鑰", "方鑰"], correctIndex: 1 },
+  ];
+  expect((await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } })).ok()).toBe(true);
+
+  const { team } = await startOneTeam(browser);
+  const onDoor = await team.getByRole("button", { name: "紅門" }).isVisible();
+  await team.getByRole("button", { name: onDoor ? "紅門" : "圓鑰" }).click(); // the wrong option of whichever was dealt
+  await team.getByRole("button", { name: "鎖定答案" }).click();
+  await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
+  await team.getByRole("button", { name: /逃跑/ }).click();
+  await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
+  await expect(team.getByRole("button", { name: onDoor ? "圓鑰" : "紅門" })).toBeVisible();
+});
+
+// Value: protects=a lock the room never confirms un-freezes the phone after 3 s with 沒送出，再按一次; fails_when=inFlight never clears and the team is stuck on 鎖定中…; why_new=no test drops the lock message; seam=routeWebSocket drops TEAM_LOCK_OPTION; no_claim=real network loss
+test("phone answering: a lock the room never answers shows 沒送出，再按一次 after 3 s", async ({ browser, request }) => {
+  await seedSingleMcQuestion(request);
+  const { team } = await startOneTeam(browser, (page) =>
+    page.routeWebSocket(/localhost:1996/, (ws) => {
+      const server = ws.connectToServer();
+      ws.onMessage((m) => {
+        if (typeof m === "string" && m.includes('"TEAM_LOCK_OPTION"')) return; // lost on the way
+        server.send(m);
+      });
+    }),
+  );
+  await team.getByRole("button", { name: "藍色" }).click();
+  await team.getByRole("button", { name: "鎖定答案" }).click();
+  await expect(team.getByText("鎖定中…")).toBeVisible();
+  await expect(team.getByText("沒送出，再按一次")).toBeVisible({ timeout: 5_000 });
+  await expect(team.getByRole("button", { name: "鎖定答案" })).toBeEnabled();
 });

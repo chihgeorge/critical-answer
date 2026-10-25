@@ -7,6 +7,8 @@ import {
   answerQuestion,
   recordBranchChoice,
   recordOptionSelection,
+  recordWrongLock,
+  currentQuestionIdOf,
   setTeamOnline,
   getSpectatorView,
   currentTurnTeamId,
@@ -14,6 +16,7 @@ import {
   InvalidActionError,
   type BranchOptionId,
   type GameState,
+  type LockedOption,
 } from "../game-state";
 import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type ServerMessage, type SoundCue } from "../protocol";
 import { UUID_RE, allQuestions, answerText, bossQuestionIds, findQuestion, publicExplanation, publicQuestion, roomTemplates, type Bank } from "../question-bank";
@@ -34,6 +37,14 @@ export const EXPIRE_MS = 24 * 60 * 60 * 1000;
 const MAX_CONNECTIONS = 60;
 /** Lets the kill-shot line be read before the story arrives. */
 const EPILOGUE_DELAY_MS = 4000;
+/** Phone answering (docs/designs/phone-answering.md D10, E2–E4): a lock is held this long before it is
+ * judged, and a correct multipleChoice reveal closes on its own after ADVANCE_MS, or once the voice has
+ * read the narration (estimated at SPEECH_CHARS_PER_S), never later than ADVANCE_CAP_MS. */
+const BEAT_MS = 2000;
+const ADVANCE_MS = 8000;
+const ADVANCE_CAP_MS = 15000;
+const SPEECH_CHARS_PER_S = 4;
+const speechMs = (lines: string[]) => (lines.join("").length / SPEECH_CHARS_PER_S) * 1000 + 1000;
 
 export interface RoomOptions {
   /** How long a narration may take before the scripted line is used. */
@@ -107,6 +118,12 @@ export class DungeonRoom {
   private epilogueRequested = false;
   /** The answer on show until the host moves on (D7). In memory only: a restart simply drops it. */
   private reveal: AnswerReveal | null = null;
+  /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
+  private pendingLock: LockedOption | null = null;
+  private lockTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Closes a correct multipleChoice reveal on its own (E3); cancelled by HOST_NEXT. */
+  private advanceTimer: ReturnType<typeof setTimeout> | null = null;
+  private revealAt = 0;
   private transcript: TranscriptItem[] = [];
   /** Host director: notes for the LLM and the last few hand-edited lines. */
   private notes = "";
@@ -193,6 +210,7 @@ export class DungeonRoom {
         if (eventId > this.eventSeq || (this.lastNarration && eventId < this.lastNarration.eventId)) return;
         this.lastNarration = { eventId, lines };
         this.broadcast({ type: "NARRATION", eventId, lines });
+        if (eventId === this.eventSeq) this.rearmAdvance(lines);
       },
       record: (entry) => this.addTranscript(entry),
     });
@@ -306,6 +324,9 @@ export class DungeonRoom {
         // try/catch and gets silently turned into an ERROR sent to the host (test-coverage audit
         // finding, /ship).
         revealedQuestionIds: Array.isArray(s.game.revealedQuestionIds) ? s.game.revealedQuestionIds : [],
+        // Same shallow-validation backfill for saves from before phone answering (phone-answering.md).
+        eliminated: s.game.eliminated ?? {},
+        pendingWrong: s.game.pendingWrong ?? null,
         teams: s.game.teams.map((t) =>
           t && typeof t === "object" ? { ...t, branchChoices: t.branchChoices ?? {}, currentSelection: t.currentSelection ?? null } : t,
         ),
@@ -373,6 +394,7 @@ export class DungeonRoom {
       roomEpoch: this.roomEpoch,
       question: this.currentQuestion()?.pub ?? null,
       reveal: this.reveal,
+      pendingLock: this.pendingLock,
       eventId: this.eventSeq,
       ...(this.cue ? { cue: this.cue } : {}),
     };
@@ -459,6 +481,8 @@ export class DungeonRoom {
     // persist() from one) checks this and skips writing, so it cannot resurrect the room storage.deleteAll is
     // about to clear (Claude adversarial review, 2026-09-21).
     this.expiring = true;
+    // A lock beat or auto-advance firing during the awaits below would broadcast into a room being deleted.
+    this.clearAnswerTimers();
     this.room.closeAll?.(CLOSE_EXPIRED, "expired");
     const storage = this.room.storage;
     // Storage first: if clearing it fails this throws with the room still intact, and the alarm's retry runs expire
@@ -485,6 +509,7 @@ export class DungeonRoom {
     this.epilogue = null;
     this.epilogueRequested = false;
     this.reveal = null;
+    this.clearAnswerTimers();
     this.transcript = [];
     this.notes = "";
     this.editedLines = [];
@@ -594,6 +619,12 @@ export class DungeonRoom {
         case "TEAM_SELECT_OPTION":
           this.handleTeamSelectOption(sender, msg.questionId, msg.optionIndex);
           break;
+        case "TEAM_LOCK_OPTION":
+          this.handleTeamLockOption(sender, msg.questionId, msg.optionIndex);
+          break;
+        case "TEAM_WRONG_CHOICE":
+          this.handleTeamWrongChoice(sender, msg.questionId, msg.choice);
+          break;
       }
       // A transcript download changes nothing; a rejected message did not either; and an automatic
       // reconnect's re-identification (`resume`) is a device, not a person.
@@ -686,8 +717,39 @@ export class DungeonRoom {
     // The reveal is always set in the same judgment that bumps eventSeq, so a HOST_NEXT for an
     // older STATE is stale — ignore it rather than close a reveal nobody has seen.
     if (!this.reveal || eventId !== this.eventSeq) return;
+    this.closeReveal();
+  }
+
+  private closeReveal() {
+    if (this.advanceTimer) clearTimeout(this.advanceTimer);
+    this.advanceTimer = null;
     this.reveal = null;
     this.broadcastState();
+  }
+
+  private clearAnswerTimers() {
+    if (this.lockTimer) clearTimeout(this.lockTimer);
+    if (this.advanceTimer) clearTimeout(this.advanceTimer);
+    this.lockTimer = this.advanceTimer = null;
+    this.pendingLock = null;
+  }
+
+  /**
+   * (Re)arms the auto-advance of the open multipleChoice reveal (E4): 8 s after the reveal, later if the
+   * voice is still reading `lines` (counted from now, when they reached the screens), never past 15 s.
+   * A no-op unless an auto-advancing reveal is open, so text questions keep waiting for HOST_NEXT.
+   */
+  private rearmAdvance(lines?: string[]) {
+    if (!this.reveal || (lines && !this.advanceTimer)) return;
+    if (this.advanceTimer) clearTimeout(this.advanceTimer);
+    const sinceReveal = this.now() - this.revealAt;
+    const due = Math.min(ADVANCE_CAP_MS, Math.max(ADVANCE_MS, lines ? sinceReveal + speechMs(lines) : 0));
+    const eventId = this.eventSeq;
+    this.advanceTimer = setTimeout(() => {
+      this.advanceTimer = null;
+      // Only the reveal this timer was set for (R2-4): HOST_NEXT or a newer judgment already moved on.
+      if (this.reveal && this.eventSeq === eventId) this.closeReveal();
+    }, Math.max(0, due - sinceReveal));
   }
 
   private handleTranscript(conn: Conn) {
@@ -723,6 +785,8 @@ export class DungeonRoom {
     this.editedLines = [...this.editedLines, line].slice(-STYLE_EXAMPLES);
     this.addTranscript({ kind: "edit", at: new Date().toISOString(), text: line, eventId });
     this.broadcast({ type: "NARRATION", eventId, lines: newLines });
+    // A longer line read out again must not be cut off by the auto-advance (E12).
+    if (eventId === this.eventSeq) this.rearmAdvance(newLines);
   }
 
   private handleHostStart(conn: Conn, aiNarration?: boolean) {
@@ -769,44 +833,126 @@ export class DungeonRoom {
       return;
     }
     // D7: judging waits until the host closes the reveal — a second host device or a stale page
-    // must not skip past an answer the room hasn't been shown yet.
-    if (this.reveal) {
-      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
+    // must not skip past an answer the room hasn't been shown yet. Nor may it judge a lock that is
+    // still in its beat (phone-answering.md E10).
+    if (this.reveal || this.pendingLock) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: this.reveal ? "reveal_pending" : "lock_pending" });
       return;
     }
-
+    // A multipleChoice question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
+    // team (E5), never 答對.
+    if (correct && findQuestion(this.bank, questionId)?.kind === "multipleChoice") {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "auto_judged" });
+      return;
+    }
     try {
-      const prev = this.game;
-      // Captured before `this.game` reassigns to the post-judgment state below: the monster name
-      // and the reveal must describe the question that was JUST answered, not whatever
-      // currentQuestion() would return afterwards (the next one) — a trap this file's own
-      // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
-      const justAnswered = this.currentQuestion();
-      const monster = justAnswered?.pub.monster.name ?? "怪物";
-      const { game, outcome } = answerQuestion(prev, teamId, questionId, correct, fleeChoice ?? "retry", this.rng);
-      // Everything up to broadcastState is synchronous: state changes and the eventId are
-      // fixed before any narration awaits, so concurrent judgments cannot interleave.
-      this.game = game;
-      const eventId = ++this.eventSeq;
-      const event = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined);
-      this.cue = event.type === "epilogue" ? null : event.type;
-      // Shown to everyone (D3), but only on a genuinely correct answer (D5): a retry or a flee
-      // must never reveal it, or the question loses its point, and game-state.ts's deal()/boss
-      // ring already rely on "revealed" meaning "answered correctly" to decide what's safe to
-      // redeal. Set before broadcastState so the reveal and the post-judgment state arrive
-      // together in one STATE — no window where a client shows the next question first.
-      this.reveal = null;
-      if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
-        const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
-        const explanation = publicExplanation(this.bank, questionId, imageBaseUrl);
-        this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}) };
+      this.judge(teamId, questionId, correct, fleeChoice ?? "retry", false);
+    } catch (err) {
+      this.sendInvalid(conn, err);
+    }
+  }
+
+  /** Applies one answer; throws InvalidActionError (from answerQuestion) before changing anything. */
+  private judge(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", autoAdvance: boolean) {
+    const prev = this.game;
+    if (!prev) return;
+    // Captured before `this.game` reassigns to the post-judgment state below: the monster name
+    // and the reveal must describe the question that was JUST answered, not whatever
+    // currentQuestion() would return afterwards (the next one) — a trap this file's own
+    // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
+    const justAnswered = this.currentQuestion();
+    const monster = justAnswered?.pub.monster.name ?? "怪物";
+    const { game, outcome } = answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng);
+    // Everything up to broadcastState is synchronous: state changes and the eventId are
+    // fixed before any narration awaits, so concurrent judgments cannot interleave.
+    this.game = game;
+    const eventId = ++this.eventSeq;
+    const event = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined);
+    this.cue = event.type === "epilogue" ? null : event.type;
+    // Shown to everyone (D3), but only on a genuinely correct answer (D5): a retry or a flee
+    // must never reveal it, or the question loses its point; game-state.ts's deal()/boss ring
+    // treat a revealed question (answered, or fled after a wrong lock) as not safe to redeal. Set before broadcastState so the reveal and the post-judgment state arrive
+    // together in one STATE — no window where a client shows the next question first.
+    this.reveal = null;
+    if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
+      const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
+      const explanation = publicExplanation(this.bank, questionId, imageBaseUrl);
+      const q = findQuestion(this.bank, questionId);
+      const choice =
+        autoAdvance && q?.kind === "multipleChoice"
+          ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.type === "correct-room-advance" ? outcome.pointsAwarded : (outcome.killBonus ?? 0) }
+          : undefined;
+      this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(choice ? { choice } : {}) };
+      this.revealAt = this.now();
+      // Armed before narrate() so the narration's arrival can re-arm it (E4).
+      if (autoAdvance && game.phase === "playing") this.rearmAdvance();
+    }
+    this.broadcastState();
+    const narration = this.narrate(eventId, event);
+    if (game.phase === "finished" && !this.epilogueRequested) {
+      this.epilogueRequested = true;
+      void this.sendEpilogue(narration, eventId).catch((err) => console.error("epilogue failed", err));
+    }
+  }
+
+  /** A team locks its current pick (E2, E11). Judged after the beat, in resolveLock. `shown` is the
+   * pick the phone showed when pressed; a different room pick means another phone on the team changed it. */
+  private handleTeamLockOption(conn: Conn, questionId: string, shown?: number) {
+    const teamId = this.playingTeam(conn);
+    const game = this.game;
+    if (!teamId || !game) return;
+    const team = game.teams.find((t) => t.id === teamId);
+    const q = findQuestion(this.bank, questionId);
+    const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    if (this.reveal) return reject("reveal_pending");
+    if (this.pendingLock || game.pendingWrong) return reject("answer_pending");
+    if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
+    if (q?.kind !== "multipleChoice" || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
+    const pick = team?.currentSelection ?? null;
+    if (pick === null || pick >= q.options.length || game.eliminated[questionId]?.includes(pick)) return reject("no_selection");
+    if (shown !== undefined && shown !== pick) return reject("selection_changed");
+    this.pendingLock = { teamId, questionId, optionIndex: pick };
+    this.lockTimer = setTimeout(() => this.resolveLock(), BEAT_MS);
+    this.broadcastState();
+  }
+
+  private resolveLock() {
+    const lock = this.pendingLock;
+    const game = this.game;
+    this.pendingLock = null;
+    this.lockTimer = null;
+    if (!lock || !game) return;
+    // The reveal is the room doing something: the idle clock starts after it, not at the lock.
+    this.markActivity();
+    const q = findQuestion(this.bank, lock.questionId);
+    try {
+      // The team's phone dropped during the beat and the turn moved on (E9): drop the lock; it locks again.
+      if (currentTurnTeamId(game) !== lock.teamId || currentQuestionIdOf(game, lock.teamId) !== lock.questionId) {
+        this.broadcastState();
+      } else if (q?.kind === "multipleChoice" && q.correctIndex === lock.optionIndex) {
+        this.judge(lock.teamId, lock.questionId, true, "retry", true);
+      } else {
+        // No eventSeq bump: nothing is narrated until the team chooses (E7).
+        this.game = recordWrongLock(game, lock.teamId, lock.questionId, lock.optionIndex);
+        this.broadcastState();
       }
+    } catch (err) {
+      console.error(JSON.stringify({ event: "lock_failed", error: String(err) }));
       this.broadcastState();
-      const narration = this.narrate(eventId, event);
-      if (game.phase === "finished" && !this.epilogueRequested) {
-        this.epilogueRequested = true;
-        void this.sendEpilogue(narration, eventId).catch((err) => console.error("epilogue failed", err));
-      }
+    }
+  }
+
+  /** 重答 / 逃跑 from the team that just locked wrong. */
+  private handleTeamWrongChoice(conn: Conn, questionId: string, choice: "retry" | "flee") {
+    const teamId = this.playingTeam(conn);
+    const pending = this.game?.pendingWrong;
+    if (!teamId) return;
+    if (!pending || pending.teamId !== teamId || pending.questionId !== questionId) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_wrong_answer" });
+      return;
+    }
+    try {
+      this.judge(teamId, questionId, false, choice, false);
     } catch (err) {
       this.sendInvalid(conn, err);
     }
@@ -846,6 +992,11 @@ export class DungeonRoom {
     // question before it has even been shown.
     if (this.reveal) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
+      return;
+    }
+    // A locked or wrong-locked pick is final until the turn resolves (phone-answering.md premise 2).
+    if (this.pendingLock?.teamId === teamId || this.game.pendingWrong?.teamId === teamId) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "answer_pending" });
       return;
     }
     // The protocol layer only checked optionIndex >= 0; the real bounds check needs the

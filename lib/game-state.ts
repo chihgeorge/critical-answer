@@ -96,11 +96,10 @@ export interface Team {
   currentQuestionId: string;
   /**
    * The team's current pick for a multipleChoice question, or null if none yet.
-   * Re-selectable up until the host judges (docs/designs/multiple-choice-questions.md
-   * decision 5) — set by recordOptionSelection, reset to null everywhere a new question
-   * is dealt (createGame, correct-room-advance, incorrect-flee, and boss question
-   * rotation), but left alone on incorrect-retry, where the team still faces the same
-   * question and a stray earlier pick is still meaningful context for the host.
+   * Re-selectable until the team locks it (docs/designs/phone-answering.md) — set by
+   * recordOptionSelection, reset to null everywhere a new question is dealt (createGame,
+   * correct-room-advance, incorrect-flee, and boss question rotation) and by a wrong lock
+   * (recordWrongLock), so a retry turn starts with no pick.
    */
   currentSelection: number | null;
   /**
@@ -157,11 +156,22 @@ export interface GameState {
    * eligible (D5 — its answer was never shown). deal()'s reshuffle and the boss ring both filter
    * against this before falling back to reuse once every remaining question has been revealed. */
   revealedQuestionIds: string[];
+  /** Options locked wrong so far, per question id (docs/designs/phone-answering.md E6): one map for rooms
+   * and the boss, public like the TV's wrong reveal. A new question id simply has no entry. */
+  eliminated: Record<string, number[]>;
+  /** A wrong lock waiting for that team's 重答 / 逃跑. The team keeps the turn meanwhile, even offline (E9). */
+  pendingWrong: LockedOption | null;
   boss: BossState;
   config: GameConfig;
   phase: GamePhase;
   /** Team ids tied for first place once phase === "finished". */
   winners: string[];
+}
+
+export interface LockedOption {
+  teamId: string;
+  questionId: string;
+  optionIndex: number;
 }
 
 export type AnswerOutcome =
@@ -286,6 +296,8 @@ export function createGame(
     rooms,
     usedQuestionIds: used,
     revealedQuestionIds: revealed,
+    eliminated: {},
+    pendingWrong: null,
     boss: {
       maxHp: bossMaxHp,
       hp: bossMaxHp,
@@ -321,6 +333,8 @@ function resetBossSelections(game: GameState, teams: Team[]): Team[] {
 
 /** The id of the team whose turn it currently is, skipping offline teams (T7). */
 export function currentTurnTeamId(game: GameState): string | null {
+  // A team deciding 重答 / 逃跑 keeps the turn even if its phone sleeps (phone-answering.md E9).
+  if (game.pendingWrong) return game.pendingWrong.teamId;
   const idx = nextOnlineIndex(game, 0);
   // null: every team is offline, so no one can take a turn.
   return idx === null ? null : game.turnOrder[idx];
@@ -381,6 +395,16 @@ export function answerQuestion(
     );
   }
 
+  if (correct && game.pendingWrong) {
+    throw new InvalidActionError(`${teamId} already locked a wrong answer; only retry or flee is left`);
+  }
+  // The choice resolves the pending wrong lock.
+  game = { ...game, pendingWrong: null };
+  // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
+  // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
+  const seenWrong = !correct && fleeChoice === "flee" && (game.eliminated[questionId]?.length ?? 0) > 0;
+  const revealedOnFlee = seenWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
+
   const team = getTeam(game, teamId);
   const boss = game.boss;
   const inBoss = isInBossPhase(game, teamId);
@@ -437,15 +461,15 @@ export function answerQuestion(
       }
     } else {
       // Wrong boss answer: rotate to the next boss question either way —
-      // there's no "downgrade" concept for a shared boss queue. Fleeing never reveals the
-      // answer (D5), so this rotation only skips already-revealed questions from prior
-      // correct hits — it never adds one.
-      const rotatedBossQuestionId = fleeChoice === "flee" ? nextBossQuestionId(boss, game.revealedQuestionIds) : boss.currentQuestionId;
+      // there's no "downgrade" concept for a shared boss queue. A flee reveals the question
+      // only after a wrong lock (revealedOnFlee); the rotation skips every revealed one.
+      const rotatedBossQuestionId = fleeChoice === "flee" ? nextBossQuestionId(boss, revealedOnFlee) : boss.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a flee rotates
       // the question for every team in boss phase, so every one of their picks resets —
       // unless it stayed on the same question (the last unrevealed one), where picks still apply.
       nextGame = {
         ...game,
+        revealedQuestionIds: revealedOnFlee,
         teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game, game.teams) : game.teams,
         boss: { ...boss, currentQuestionId: rotatedBossQuestionId },
       };
@@ -483,12 +507,13 @@ export function answerQuestion(
       outcome = { type: "correct-room-advance", teamId, pointsAwarded, nextRoomIndex, entersBoss };
     } else if (fleeChoice === "flee") {
       const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
-      // Fleeing never reveals the answer (D5) — only skip already-revealed questions from
-      // prior correct answers, never add this one.
-      const dealt = deal(game.rooms, game.usedQuestionIds, game.revealedQuestionIds, game.teams, team.roomIndex, rng);
+      // Fleeing reveals the answer only after a wrong lock (revealedOnFlee); otherwise only skip
+      // already-revealed questions from prior correct answers.
+      const dealt = deal(game.rooms, game.usedQuestionIds, revealedOnFlee, game.teams, team.roomIndex, rng);
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,
+        revealedQuestionIds: revealedOnFlee,
         teams: patchTeam(game.teams, teamId, () => ({ currentDifficulty: newDifficulty, currentQuestionId: dealt.questionId, currentSelection: null })),
       };
       outcome = { type: "incorrect-flee", teamId, newDifficulty };
@@ -498,7 +523,15 @@ export function answerQuestion(
     }
   }
 
-  return { game: advanceTurn(nextGame), outcome };
+  // Eliminated options belong to a question still in play: once it leaves (answered, fled, rotated)
+  // a later deal of it starts clean.
+  // Any team: a room short of questions can deal one question to two teams at once.
+  const stillFaced = nextGame.teams.some((t) => (t.inBoss ? nextGame.boss.currentQuestionId : t.currentQuestionId) === questionId);
+  if (!stillFaced && questionId in nextGame.eliminated) {
+    nextGame = { ...nextGame, eliminated: Object.fromEntries(Object.entries(nextGame.eliminated).filter(([id]) => id !== questionId)) };
+  }
+  // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
+  return { game: advanceTurn({ ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) }), outcome };
 }
 
 /**
@@ -552,15 +585,46 @@ export function recordBranchChoice(
  */
 export function recordOptionSelection(game: GameState, teamId: string, questionId: string, optionIndex: number): GameState {
   assertPlaying(game);
-  const team = getTeam(game, teamId); // throws if unknown
-  const expectedQuestionId = isInBossPhase(game, teamId) ? game.boss.currentQuestionId : team.currentQuestionId;
-  if (questionId !== expectedQuestionId) {
-    throw new InvalidActionError(`Stale question submission for ${teamId}: expected ${expectedQuestionId}, got ${questionId}`);
+  assertCurrentQuestion(game, teamId, questionId);
+  if (game.eliminated[questionId]?.includes(optionIndex)) {
+    throw new InvalidActionError(`Option ${optionIndex} of ${questionId} was already locked wrong`);
   }
   return {
     ...game,
     teams: patchTeam(game.teams, teamId, () => ({ currentSelection: optionIndex })),
   };
+}
+
+/**
+ * A wrong lock on a multipleChoice question (phone-answering.md premise 3): the option joins the
+ * question's eliminated set, the team's pick clears, and `pendingWrong` waits for the team's
+ * 重答 / 逃跑, which answerQuestion(correct=false) applies. Like recordOptionSelection, the caller
+ * (dungeon-room.ts) has already checked the question kind and the option range against the bank.
+ */
+export function recordWrongLock(game: GameState, teamId: string, questionId: string, optionIndex: number): GameState {
+  assertPlaying(game);
+  if (game.pendingWrong) throw new InvalidActionError("A wrong answer is already waiting for its choice");
+  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
+  assertCurrentQuestion(game, teamId, questionId);
+  const old = game.eliminated[questionId] ?? [];
+  return {
+    ...game,
+    eliminated: { ...game.eliminated, [questionId]: old.includes(optionIndex) ? old : [...old, optionIndex] },
+    pendingWrong: { teamId, questionId, optionIndex },
+    teams: patchTeam(game.teams, teamId, () => ({ currentSelection: null })),
+  };
+}
+
+/** The question `teamId` faces right now: the shared boss question in the boss room, else its own. */
+export function currentQuestionIdOf(game: GameState, teamId: string): string {
+  return isInBossPhase(game, teamId) ? game.boss.currentQuestionId : getTeam(game, teamId).currentQuestionId;
+}
+
+function assertCurrentQuestion(game: GameState, teamId: string, questionId: string) {
+  const expectedQuestionId = currentQuestionIdOf(game, teamId);
+  if (questionId !== expectedQuestionId) {
+    throw new InvalidActionError(`Stale question submission for ${teamId}: expected ${expectedQuestionId}, got ${questionId}`);
+  }
 }
 
 function assertPlaying(game: GameState) {
@@ -610,6 +674,9 @@ export interface SpectatorView {
   bossHp: number;
   bossMaxHp: number;
   bossCurrentQuestionId: string;
+  /** Options locked wrong per question id (shown greyed on every screen) and the wrong lock awaiting a choice. */
+  eliminated: Record<string, number[]>;
+  pendingWrong: LockedOption | null;
 }
 
 export function getSpectatorView(game: GameState): SpectatorView {
@@ -629,5 +696,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
     bossCurrentQuestionId: game.boss.currentQuestionId,
+    eliminated: game.eliminated,
+    pendingWrong: game.pendingWrong,
   };
 }

@@ -9,6 +9,7 @@ import {
   getSpectatorView,
   recordBranchChoice,
   recordOptionSelection,
+  recordWrongLock,
   firstPendingBranchRoom,
   rollBossKillBonus,
   InvalidActionError,
@@ -786,5 +787,107 @@ describe("firstPendingBranchRoom", () => {
 
   it("returns null once every room up to roomIndex has a choice", () => {
     expect(firstPendingBranchRoom({ roomIndex: 2, branchChoices: { 1: "fight", 2: "negotiate" } })).toBeNull();
+  });
+});
+
+describe("recordWrongLock (phone answering, phone-answering.md E6/E9)", () => {
+  it("eliminates the option, clears the pick and waits for the team's choice", () => {
+    let g = makeGame();
+    const q = g.teams[0].currentQuestionId;
+    g = recordOptionSelection(g, "T0", q, 2);
+    g = recordWrongLock(g, "T0", q, 2);
+    expect(g.eliminated[q]).toEqual([2]);
+    expect(g.pendingWrong).toEqual({ teamId: "T0", questionId: q, optionIndex: 2 });
+    expect(g.teams[0].currentSelection).toBeNull();
+    expect(() => recordOptionSelection(g, "T0", q, 2)).toThrow(InvalidActionError);
+  });
+
+  it("rejects a second wrong lock, a wrong turn and a correct answer while waiting", () => {
+    const g0 = makeGame();
+    expect(() => recordWrongLock(g0, "T1", g0.teams[1].currentQuestionId, 0)).toThrow(InvalidActionError);
+    const q = g0.teams[0].currentQuestionId;
+    const g = recordWrongLock(g0, "T0", q, 0);
+    expect(() => recordWrongLock(g, "T0", q, 1)).toThrow(InvalidActionError);
+    expect(() => answerQuestion(g, "T0", q, true)).toThrow(InvalidActionError);
+  });
+
+  it("retry keeps the eliminated option for the team's next turn on the same question", () => {
+    const q = makeGame().teams[0].currentQuestionId;
+    const g = recordWrongLock(makeGame(), "T0", q, 1);
+    const { game, outcome } = answerQuestion(g, "T0", q, false, "retry");
+    expect(outcome.type).toBe("incorrect-retry");
+    expect(game.pendingWrong).toBeNull();
+    expect(game.eliminated[q]).toEqual([1]);
+    expect(currentTurnTeamId(game)).toBe("T1");
+  });
+
+  it("the waiting team keeps the turn while offline, and the turn moves on after its choice", () => {
+    const q = makeGame().teams[0].currentQuestionId;
+    let g = recordWrongLock(makeGame(), "T0", q, 1);
+    g = setTeamOnline(g, "T0", false);
+    expect(currentTurnTeamId(g)).toBe("T0");
+    expect(getSpectatorView(g).currentTurnTeamId).toBe("T0");
+    const { game } = answerQuestion(g, "T0", q, false, "flee");
+    expect(currentTurnTeamId(game)).toBe("T1");
+  });
+
+  it("boss: every team shares the eliminated set; a flee rotates the question as before", () => {
+    let g = makeGame({ bossThreshold: 0 });
+    const q = g.boss.currentQuestionId;
+    g = answerQuestion(recordWrongLock(g, "T0", q, 0), "T0", q, false, "retry").game;
+    expect(g.boss.currentQuestionId).toBe(q);
+    expect(() => recordOptionSelection(g, "T1", q, 0)).toThrow(InvalidActionError);
+    g = answerQuestion(recordWrongLock(g, "T1", q, 1), "T1", q, false, "flee").game;
+    expect(g.boss.currentQuestionId).not.toBe(q);
+    expect(g.eliminated[g.boss.currentQuestionId]).toBeUndefined();
+  });
+
+  it("the turn moves on from the team that answered, not from an offline team the stale index points at", () => {
+    let g = setTeamOnline(makeGame(), "T0", false);
+    const q = g.teams[1].currentQuestionId;
+    g = recordWrongLock(g, "T1", q, 0);
+    g = setTeamOnline(g, "T0", true);
+    const { game } = answerQuestion(g, "T1", q, false, "retry");
+    expect(currentTurnTeamId(game)).toBe("T2");
+  });
+
+  it("a flee after a wrong lock counts the question as revealed: the room saw part of its answer", () => {
+    const q = makeGame().teams[0].currentQuestionId;
+    const { game } = answerQuestion(recordWrongLock(makeGame(), "T0", q, 1), "T0", q, false, "flee");
+    expect(game.revealedQuestionIds).toContain(q);
+    expect(game.eliminated[q]).toBeUndefined();
+  });
+
+  it("a flee without a lock reveals nothing", () => {
+    const g = makeGame();
+    const q = g.teams[0].currentQuestionId;
+    expect(answerQuestion(g, "T0", q, false, "flee").game.revealedQuestionIds).not.toContain(q);
+  });
+
+  it("a correct answer clears the question's eliminated set", () => {
+    const q = makeGame().teams[0].currentQuestionId;
+    let g = answerQuestion(recordWrongLock(makeGame(), "T0", q, 1), "T0", q, false, "retry").game;
+    g = answerQuestion(g, "T1", g.teams[1].currentQuestionId, false, "retry").game;
+    g = answerQuestion(g, "T2", g.teams[2].currentQuestionId, false, "retry").game;
+    expect(answerQuestion(g, "T0", q, true).game.eliminated[q]).toBeUndefined();
+  });
+
+  // Value: protects=eliminated options stay while another team still faces the same room question; fails_when=the stillFaced check is dropped and any answer clears the set; why_new=other tests use 8-question rooms, so no question is ever shared; seam=none; no_claim=room/UI greying (game-state unit only)
+  it("a question two teams share keeps its eliminated set while one of them still faces it", () => {
+    let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], makeRooms(2, 1, 1), ["boss-q1"], { bossThreshold: 3 }, 2, first);
+    const q = g.teams[0].currentQuestionId;
+    expect(g.teams[1].currentQuestionId).toBe(q); // a 1-question room deals the same question twice
+    g = answerQuestion(recordWrongLock(g, "T0", q, 1), "T0", q, false, "retry").game;
+    g = answerQuestion(g, "T1", q, true).game; // T1 moves on to room 1; T0 still faces q
+    expect(g.eliminated[q]).toEqual([1]);
+    expect(() => recordOptionSelection(g, "T0", q, 1)).toThrow(InvalidActionError);
+  });
+
+  it("boss: a flee after a wrong lock reveals the shared question and clears its set", () => {
+    let g = makeGame({ bossThreshold: 0 });
+    const q = g.boss.currentQuestionId;
+    g = answerQuestion(recordWrongLock(g, "T0", q, 0), "T0", q, false, "flee").game;
+    expect(g.revealedQuestionIds).toContain(q);
+    expect(g.eliminated[q]).toBeUndefined();
   });
 });

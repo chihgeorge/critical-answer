@@ -81,7 +81,10 @@ TODO, needs R2), import/export, multi-bank.
    it.
 10. **Judging stays host-mediated** — the host still presses 答對/答錯 after
     seeing the pick (if any). No server-side correctness check on
-    `TEAM_SELECT_OPTION` itself.
+    `TEAM_SELECT_OPTION` itself. **Superseded in v0.11.0.0** by
+    `docs/designs/phone-answering.md`: the team locks its pick
+    (`TEAM_LOCK_OPTION`) and the room judges it; `HOST_JUDGE` is now only
+    the stuck-team 重答/逃跑 fallback on an MC question.
 11. **Editor: kind switcher per question**, splitting the existing
     single-shape question row into `TextQuestionRow` / `MultipleChoiceQuestionRow`
     components (DRY — the alternative is an increasingly-branchy single

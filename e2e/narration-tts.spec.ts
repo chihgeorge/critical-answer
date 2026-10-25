@@ -1,4 +1,8 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
+import { answerCorrectly, textOnlyRoom0 } from "./answer";
+
+// These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
+textOnlyRoom0();
 
 /** Stubs window.speechSynthesis before the page loads, recording every speak() call's text
  * and every cancel(). getVoices() returns one usable zh-TW voice so pickVoice() finds it
@@ -166,7 +170,7 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
   await screen.getByRole("button", { name: /語音/ }).click();
   expect(await ttsCalls(screen)).toEqual([""]); // just the unlock utterance so far
 
-  await host.getByRole("button", { name: "答對！" }).click();
+  await answerCorrectly(host);
   await expect(screen.getByText("輪到：乙隊")).toBeVisible();
 
   // The live NARRATION's line and its "then" (next-team) line both get spoken, in order —
@@ -202,7 +206,7 @@ test("screen TTS: turning the toggle off cancels any speech in progress", async 
 
   const toggle = screen.getByRole("button", { name: /語音/ });
   await toggle.click(); // on: 1 cancel-free unlock utterance so far
-  await host.getByRole("button", { name: "答對！" }).click();
+  await answerCorrectly(host);
   await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
 
   const cancelsBeforeToggleOff = await ttsCancelCount(screen);
@@ -242,7 +246,7 @@ test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ brows
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
 
   await screen.getByRole("button", { name: /語音/ }).click();
-  await host.getByRole("button", { name: "答對！" }).click();
+  await answerCorrectly(host);
   await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
 
   const cancelsBeforeReset = await ttsCancelCount(screen);
@@ -278,7 +282,7 @@ test("screen TTS: a host correction (HOST_EDIT_NARRATION) re-speaks the correcte
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
   await screen.getByRole("button", { name: /語音/ }).click();
 
-  await host.getByRole("button", { name: "答對！" }).click();
+  await answerCorrectly(host);
   await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
 
   // Host opens "更多", corrects the just-spoken line, sends it — same eventId, different text.
@@ -312,7 +316,7 @@ test("screen TTS: a correction to the exact narration replayed at connect is sti
 
   // Judge the question with NO /screen watching yet — the narration becomes the room's
   // lastNarration, sitting there for onConnect to replay to whoever connects next.
-  await host.getByRole("button", { name: "答對！" }).click();
+  await answerCorrectly(host);
   await expect(host.getByText("輪到：乙隊")).toBeVisible();
 
   // Now open /screen: onConnect replays that narration as this connection's baseline —
@@ -461,7 +465,7 @@ test("screen TTS: no matching Traditional Chinese voice loaded — toggle still 
   await toggle.click();
   expect(await ttsCalls(screen)).toEqual([""]); // unlock utterance bypasses ttsVoice entirely
 
-  await host.getByRole("button", { name: "答對！" }).click();
+  await answerCorrectly(host);
   await expect(screen.getByText("輪到：乙隊")).toBeVisible();
   await expect(screen.locator(".px-say")).toContainText("甲隊"); // narration DID render on screen...
   await new Promise((r) => setTimeout(r, 500)); // ...but nothing further was ever spoken
@@ -494,7 +498,7 @@ test("screen TTS: narration that arrives before the voice list has loaded is spo
   await screen.getByRole("button", { name: /語音/ }).click();
 
   // A live narration arrives while there is still no voice to speak it with...
-  await host.getByRole("button", { name: "答對！" }).click();
+  await answerCorrectly(host);
   await expect(screen.getByText("輪到：乙隊")).toBeVisible();
   await screen.waitForTimeout(500);
   expect(await ttsCalls(screen)).toEqual([""]); // just the unlock utterance: nothing to speak with yet

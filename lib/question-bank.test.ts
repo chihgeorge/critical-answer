@@ -167,7 +167,8 @@ describe("lookups", () => {
     for (const r of BANK.rooms) {
       for (const item of r.questions) {
         const pub = publicQuestion(BANK, item.id, 2, "");
-        expect(JSON.stringify(pub)).not.toContain(answerText(item));
+        // A multipleChoice answer is one of its public options; only which one stays hidden.
+        if (item.kind !== "multipleChoice") expect(JSON.stringify(pub)).not.toContain(answerText(item));
         expect(pub).not.toHaveProperty("answer");
         expect(pub).not.toHaveProperty("correctIndex");
         expect(pub).not.toHaveProperty("explanation");

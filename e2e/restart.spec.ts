@@ -89,7 +89,15 @@ test("a game survives the server being killed and started again", async () => {
     await wait(() => last(host, "HOST_ANSWER"), "the host is sent the answer");
     const q = last(host, "HOST_ANSWER");
     const onTurn = last(a, "STATE").view.currentTurnTeamId as string;
-    host.ws.send(JSON.stringify({ type: "HOST_JUDGE", teamId: onTurn, questionId: q.questionId, correct: true }));
+    const options: string[] | undefined = last(a, "STATE").question?.options;
+    if (options) {
+      // A multipleChoice turn is answered by the team's own lock, not HOST_JUDGE. Both phones
+      // send it; the one not on turn is refused.
+      for (const p of [a, b]) {
+        p.ws.send(JSON.stringify({ type: "TEAM_SELECT_OPTION", questionId: q.questionId, optionIndex: options.indexOf(q.answer) }));
+        p.ws.send(JSON.stringify({ type: "TEAM_LOCK_OPTION", questionId: q.questionId }));
+      }
+    } else host.ws.send(JSON.stringify({ type: "HOST_JUDGE", teamId: onTurn, questionId: q.questionId, correct: true }));
     await wait(() => last(a, "STATE")?.eventId >= 2, "the judgment is applied");
     const before = last(a, "STATE");
     const scoresBefore = before.view.teams.map((t: any) => [t.id, t.score]);
@@ -129,7 +137,9 @@ test("a game survives the server being killed and started again", async () => {
     // The game is playable again: the host is sent the current answer and can judge on.
     await wait(() => last(host2, "HOST_ANSWER"), "the host is sent the answer after the restart");
     expect(last(a2, "STATE").question).not.toBeNull();
-    expect(JSON.stringify(a2.seen)).not.toContain(last(host2, "HOST_ANSWER").answer);
+    // A multipleChoice answer is one of its public options; only which one stays hidden.
+    if (last(a2, "STATE").question.options) expect(JSON.stringify(a2.seen)).not.toContain("correctIndex");
+    else expect(JSON.stringify(a2.seen)).not.toContain(last(host2, "HOST_ANSWER").answer);
     for (const p of [host2, a2, b2, stranger]) p.ws.close();
   } finally {
     await cleanup();

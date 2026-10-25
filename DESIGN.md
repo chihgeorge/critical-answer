@@ -13,9 +13,13 @@ Everything is drawn in code or CSS. No image assets. Sound follows the same rule
 | `--lav` / `--lav2` | `#e9defa` / `#cdbdf0` | narration and nameplate panels |
 | `--turn` / `--turn2` | `#fff0a8` / `#f4c94a` | the team whose turn it is |
 | `--ok` | `#6fd36a` | correct, score cells |
+| `--ok2` | `#3f9a3b` | a correct tile's or bar's bevel |
 | `--danger` | `#ff6b6b` | ribbon, boss |
 | `--warn` | `#ffcf4a` | retry button |
 | `--orange` | `#e8862a` | **only** on the dark chip or large shapes |
+| `--dim-ink` | `#8a7a8f` | text on an eliminated or faded option tile |
+| `--dim-line` | `#7a6a80` | that tile's outline and letter chip |
+| `--wrong` | `#c94848` | the ✕ 答錯 label and a wrong tile's bevel |
 
 Small orange text on cream is 2.4:1 and fails. Small labels (第 N 題, 難度) use `LabelChip`, which is orange on `--k` (6.3:1).
 
@@ -29,7 +33,7 @@ Small orange text on cream is 2.4:1 and fails. Small labels (第 N 題, 難度) 
 
 `Panel` (cream, lav, turn), `PixelButton` (ok, retry, flee, primary), `LabelChip` (`tone="tag"`: the live map's cream-on-`--k` team tag, 12px), `Sprite` (slime, slime-lost, slime-king, ghost, ghost-cry, dragon, owl, hero, crown, heart, torch, campfire, door, cloud, zz), `SceneBackground` (stone, moss, crimson), `HomeBackground` (the home page's dungeon corridor, seen in perspective, sized to the viewport so its pixels stay square, with flickering torch sprites on its side walls), `ScoreMeter` (15 cells), `TurnRibbon`, `Nameplate`, `DialogueBox` (owl portrait, `…` loader, and one or more lines typed in order: the result line, then a line about the next team, with a 2.2 s reading pause between them; the ▼ shows only while another line is still to come, so it means "the owl has more to say").
 
-Also: `components/map-strip.tsx` (the big screen's live map: rooms, team pawns with one-character tags, fog clouds, the boss door that opens into the boss room; geometry from `lib/map-layout.ts`, see `docs/designs/live-map.md`), `components/stage.tsx` (the scaled big-screen stage) and `components/qr.tsx` (QR in the panel colors; give it an `alt`).
+Also: `components/map-strip.tsx` (the big screen's live map: rooms, team pawns with one-character tags, fog clouds, the boss door that opens into the boss room; geometry from `lib/map-layout.ts`, see `docs/designs/live-map.md`), `components/mc-option.tsx` (`McOption`, one A–D multiple-choice tile on `/screen` and `/play`, `.px-opt` in `app/globals.css`; looks `plain`, `sel`, `lock`, `ok`, `bad`, `dim`, see `docs/designs/phone-answering.md` D5–D14), `components/stage.tsx` (the scaled big-screen stage) and `components/qr.tsx` (QR in the panel colors; give it an `alt`).
 
 Text input (`.px-input` in `app/globals.css`): same hard 4px outline as panels/buttons, cream face; used by the bank editor's forms.
 
@@ -48,3 +52,5 @@ Sprites are drawn in `lib/pixel-art.ts`. Scale them by whole numbers only, so pi
   carried on `STATE` with a `reveal: AnswerReveal | null` field, not a separate `ANSWER_REVEALED`
   broadcast; it stays on screen until the host presses 「下一題」 via `HOST_NEXT` (see `lib/protocol.ts`).
   `HOST_NEXT` carries the STATE's eventId, and the room ignores any `HOST_NEXT` with a mismatched eventId (a stale second-device tap).
+  Exception: a `multipleChoice` question is judged by the team's lock, not by the host, and a correct
+  lock's reveal closes on its own 8–15 s later (`docs/designs/phone-answering.md` D10, E2–E4).

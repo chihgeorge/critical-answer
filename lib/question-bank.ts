@@ -52,6 +52,8 @@ const SPRITES: SpriteKind[] = ["slime", "slime-lost", "slime-king", "ghost", "gh
 /** Exported so app/bank-editor/page.tsx's client-side pre-save check can't silently drift from
  * this server-side minimum. */
 export const MIN_OPTIONS = 2;
+/** The TV wall has four tile spots (app/room/[code]/screen/page.tsx TILE_SPOTS). */
+export const MAX_OPTIONS = 4;
 const fail = (why: string): never => {
   throw new Error(`Invalid question bank: ${why}`);
 };
@@ -171,6 +173,13 @@ export function parseBank(raw: unknown): Bank {
       questions: parseQuestions(boss!.questions, "boss", seen),
     },
   };
+}
+
+/** Save-time only, not in parseBank: a stored bank from before the cap must still load (a load
+ * failure falls back to the bundled bank, and the editor's next save would overwrite the real one). */
+export function assertSavable(bank: Bank): void {
+  const tooMany = allQuestions(bank).find((q) => q.kind === "multipleChoice" && q.options.length > MAX_OPTIONS);
+  if (tooMany) fail(`question ${tooMany.id} has more than ${MAX_OPTIONS} options`);
 }
 
 export function roomTemplates(bank: Bank): RoomTemplate[] {
