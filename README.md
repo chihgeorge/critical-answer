@@ -139,7 +139,7 @@ worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable
 lib/room/                房間邏輯（dungeon-room.ts）與它需要的兩個小介面（io.ts），不依賴平台
 lib/gate.ts、origin.ts   Worker 入口規則
 e2e/                     Playwright 端對端測試
-scripts/                 playtest.sh（區網試玩）、check-bundle.sh
+scripts/                 playtest.sh（區網試玩）、check-bundle.sh、pregate-runner.sh（gstack pregate 的本機測試執行器，見 .gstack/pregate.json）
 public/fonts/            內建字型
 DESIGN.md                像素設計系統
 docs/designs/            設計文件與決策紀錄（含 question-bank-editor.md）
