@@ -36,6 +36,30 @@ describe("shipped bank", () => {
     expect(BANK.boss.questions.length).toBeGreaterThanOrEqual(5);
   });
 
+  it("is 48 four-option multipleChoice questions, with the correct option in varied positions", () => {
+    const all = [...BANK.rooms.flatMap((r) => r.questions), ...BANK.boss.questions];
+    expect(all).toHaveLength(48);
+    for (const item of all) {
+      if (item.kind !== "multipleChoice") throw new Error(`${item.id} is ${item.kind}`);
+      expect(new Set(item.options).size).toBe(4);
+      expect(item.correctIndex).toBeLessThan(4);
+    }
+    expect(new Set(all.map((item) => item.kind === "multipleChoice" && item.correctIndex)).size).toBe(4);
+  });
+
+  it("no question in a room gives away another one's answer in its text or options", () => {
+    for (const r of [...BANK.rooms, BANK.boss]) {
+      for (const item of r.questions) {
+        for (const other of r.questions) {
+          if (other === item) continue;
+          const answer = answerText(other);
+          if (item.content.kind === "text" && answer.length > 1) expect(item.content.value, `${item.id} shows ${other.id}'s answer`).not.toContain(answer);
+          if (item.kind === "multipleChoice") expect(item.options, `${item.id} offers ${other.id}'s answer`).not.toContain(answer);
+        }
+      }
+    }
+  });
+
   it("no question's text content contains its own answer", () => {
     const all = [...BANK.rooms.flatMap((r) => r.questions), ...BANK.boss.questions];
     for (const item of all) {

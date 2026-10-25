@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
+import { asTextBank } from "../lib/text-bank";
 
 const WORKER = "http://localhost:1996";
 const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
@@ -26,7 +27,9 @@ export async function answerCorrectly(host: Page) {
     .filter((p) => p.url().includes(`/room/${code}/play`));
   for (const phone of phones) {
     if (!(await phone.getByText("輪到我們了！").isVisible())) continue;
-    await phone.getByRole("button", { name: answer }).click();
+    // The option's name is its letter then its text; anchor both ends, since "2 月 28 日" is inside "12 月 28 日".
+    const name = new RegExp(`^[A-D]\\s*${answer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+    await phone.getByRole("button", { name }).click();
     return phone.getByRole("button", { name: "鎖定答案" }).click();
   }
   throw new Error(`no phone in room ${code} is on turn`);
@@ -54,15 +57,15 @@ export function textOnlyBank() {
   let original: unknown;
   test.beforeEach(async ({ request }) => {
     const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
-    original = structuredClone(bank);
-    type Q = { kind: string; id: string; content: unknown; options?: string[]; correctIndex?: number };
-    const toText = (q: Q) => (q.kind === "multipleChoice" ? { kind: "text", id: q.id, content: q.content, answer: q.options![q.correctIndex!] } : q);
-    for (const r of [...bank.rooms, bank.boss]) r.questions = r.questions.map(toText);
-    const saved = await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } });
+    original = bank;
+    const saved = await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: asTextBank(bank), version } });
     expect(saved.ok()).toBe(true);
   });
   test.afterEach(async ({ request }) => {
+    if (!original) return; // beforeEach failed before reading the bank: nothing to put back
     const { version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
-    await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: original, version } });
+    const restored = await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: original, version } });
+    expect(restored.ok()).toBe(true);
+    original = undefined;
   });
 }

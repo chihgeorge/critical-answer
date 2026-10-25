@@ -1046,7 +1046,7 @@ describe("questions and answers (T3)", () => {
 
   it("sends the answer only to host connections, on start and after every judgment", () => {
     const { room, hostConn, ids, conns } = started();
-    expect(sent(hostConn).findLast((m) => m.type === "HOST_ANSWER")).toMatchObject({ questionId: "r0-q1", answer: "台北 101" });
+    expect(sent(hostConn).findLast((m) => m.type === "HOST_ANSWER")).toMatchObject({ questionId: "r0-q1", answer: "梅花" });
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
     // Turn passes to team 2, whose question is r0-q2.
     expect(sent(hostConn).findLast((m) => m.type === "HOST_ANSWER")).toMatchObject({ questionId: "r0-q2", answer: "115 年" });
