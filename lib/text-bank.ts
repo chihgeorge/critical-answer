@@ -5,7 +5,9 @@ import type { Bank, BankQuestion } from "./question-bank";
  * so room tests that drive turns with HOST_JUDGE play this version of it. */
 export function asTextBank(bank: Bank): Bank {
   const toText = (q: BankQuestion): BankQuestion =>
-    q.kind === "multipleChoice" ? { kind: "text", id: q.id, content: q.content, answer: q.options[q.correctIndex] } : q;
+    q.kind === "multipleChoice"
+      ? { kind: "text", id: q.id, content: q.content, answer: q.options[q.correctIndex], ...(q.explanation ? { explanation: q.explanation } : {}) }
+      : q;
   return {
     ...bank,
     rooms: bank.rooms.map((r) => ({ ...r, questions: r.questions.map(toText) })),
