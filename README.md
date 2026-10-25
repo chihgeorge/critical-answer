@@ -15,6 +15,8 @@ D&D 風格的地城問答派對遊戲。名字是 *Critical Hit*（爆擊）的�
    - **答對**：過關，拿到該房間的分數（難度 1–5，與分數正相關），進到下一間房。
    - **答錯・重答**：留在同一間房，同一題再答一次。
    - **答錯・逃跑**：留在同一間房、面對同一隻怪物，但換一題新的，難度 −1。
+
+   **選擇題**不用主持人判定：輪到的隊伍在手機上點選一個選項，再按「鎖定答案」。大螢幕先停 2 秒，再揭曉對錯。答錯時大螢幕只把選錯的那一格標紅，正確答案不公布，隊伍在手機上選「重答」（選錯的選項會變灰、不能再選）或「逃跑」。答對後約 8–15 秒（看旁白長短）自動進下一題，主持人按「下一題」可以立刻跳過。隊伍 15 秒沒鎖定（或答錯後 15 秒沒選重答／逃跑）時，主持人頁會出現「替{隊名}選・重答／逃跑」，鍵盤 `2`、`3` 對應這兩顆；選擇題按 `1` 沒有作用。設計見 [docs/designs/phone-answering.md](docs/designs/phone-answering.md)。
 5. 累積分數達 **15 分**的隊伍進入首領房。只要有一隊已經在首領房，其他隊伍下一次答對就直接進首領房，不論分數。進首領房的那一題不會再發下一間房的題目。首領血量共用，各隊輪流攻擊。
 6. **尾刀**：把首領血量打到 0 的那一次答對，該隊額外獲得 3 顆 D6 的隨機加分。其他隊伍沒有尾刀分，但一般怪物累積的分數仍有機會超車。
 7. 總分 = 怪物累積分 + 尾刀分，最高分獲勝，同分並列第一。
@@ -101,15 +103,15 @@ sh scripts/playtest.sh stop
 
 ## 題庫
 
-題庫在 [data/question-bank.json](data/question-bank.json)：5 個房間，每房 8 題、一隻怪物，加上首領的 8 題。伺服器啟動時會載入並驗證（缺 id、重複 id、空題目或答案、難度不在 1–5 都會直接報錯），**只有伺服器會讀這個檔**，瀏覽器只收得到題目文字，收不到答案。`npm run check:bundle` 會檢查這一點。
+題庫在 [data/question-bank.json](data/question-bank.json)：5 個房間，每房 8 題、一隻怪物（第一房另有 6 題範例選擇題，共 14 題），加上首領的 8 題。伺服器啟動時會載入並驗證（缺 id、重複 id、空題目或答案、難度不在 1–5 都會直接報錯），**只有伺服器會讀這個檔**，瀏覽器只收得到題目文字，收不到答案。`npm run check:bundle` 會檢查這一點。
 
 新增題目時：每房至少 8 題（最多 8 隊）、題目文字不能含答案（`lib/question-bank.test.ts` 會檢查）。
 
-> 每房最後 5 題和首領最後 3 題是 AI 起草的台灣常識題，**開局前請主持人覆核答案**。
+> 每房最後 5 題（第一房是範例選擇題之前的最後 5 題）和首領最後 3 題是 AI 起草的台灣常識題，**開局前請主持人覆核答案**。
 
 ### 題庫編輯
 
-`/bank-editor` 是主持人專用的題庫編輯頁，首頁下方有連結，也可以直接打網址進入；不在遊戲的實際玩法流程裡。可以新增、修改、刪除各房間與首領的**問答題和選擇題**；每題的題目可以是文字、上傳的圖片或 YouTube 影片，另外可以加一段同樣可選媒材的詳解，答對後跟答案一起顯示。選擇題由玩家在 `/play` 上點選、host 在判分前看得到目前的選擇，但最終仍由 host 按鈕判定，不會自動計分（見 [docs/designs/multiple-choice-questions.md](docs/designs/multiple-choice-questions.md)）。圖片會上傳到 Cloudflare R2，`/play` 和 `/screen` 都會顯示；換圖、刪題，或上傳後沒存檔的圖片，都會在等過一段寬限期（確保還在進行的局不會突然少圖）之後自動清掉。題庫實際存在 Cloudflare Durable Object（`BankStore`），編輯即時生效；`BankStore` 連不上時自動退回 bundle 裡的 `data/question-bank.json` 唯讀。存檔會做版本檢查，別人同時改過會擋下（409），避免互相覆蓋。
+`/bank-editor` 是主持人專用的題庫編輯頁，首頁下方有連結，也可以直接打網址進入；不在遊戲的實際玩法流程裡。可以新增、修改、刪除各房間與首領的**問答題和選擇題**；每題的題目可以是文字、上傳的圖片或 YouTube 影片，另外可以加一段同樣可選媒材的詳解，答對後跟答案一起顯示。選擇題最多 4 個選項（大螢幕只有 4 格），由玩家在 `/play` 上點選並鎖定，伺服器依正確選項自動判定，不經 host 按鈕（見上方「玩法」、[docs/designs/multiple-choice-questions.md](docs/designs/multiple-choice-questions.md) 與 [docs/designs/phone-answering.md](docs/designs/phone-answering.md)）。舊題庫裡超過 4 個選項的題目仍可載入、照常遊玩，但要先刪到 4 個才能存檔。圖片會上傳到 Cloudflare R2，`/play` 和 `/screen` 都會顯示；換圖、刪題，或上傳後沒存檔的圖片，都會在等過一段寬限期（確保還在進行的局不會突然少圖）之後自動清掉。題庫實際存在 Cloudflare Durable Object（`BankStore`），編輯即時生效；`BankStore` 連不上時自動退回 bundle 裡的 `data/question-bank.json` 唯讀。存檔會做版本檢查，別人同時改過會擋下（409），避免互相覆蓋。
 
 > 圖片上傳需要先在 Cloudflare 建立一個名為 `critical-answer-images` 的 R2 bucket，並手動在 dashboard 開啟它的 r2.dev 公開讀取，再把 [wrangler.jsonc](wrangler.jsonc) 裡的 `R2_PUBLIC_BASE_URL` 換成 Cloudflare 給的網址——這一步不是 `wrangler deploy` 的一部分，見 [docs/designs/image-question-type.md](docs/designs/image-question-type.md)。
 
@@ -119,7 +121,7 @@ sh scripts/playtest.sh stop
 
 ```
 app/                     Next.js 頁面：首頁、/room/[code]/host、/play、/screen、/bank-editor（題庫編輯）
-components/              共用像素元件（pixel.tsx）、大螢幕舞台（stage.tsx）、大螢幕活地圖（map-strip.tsx）、QR（qr.tsx）
+components/              共用像素元件（pixel.tsx）、大螢幕舞台（stage.tsx）、大螢幕活地圖（map-strip.tsx）、選擇題選項格（mc-option.tsx）、QR（qr.tsx）
 data/question-bank.json  題庫的 bundle 備援（BankStore 連不上時用這份唯讀）
 lib/game-state.ts        遊戲狀態機：房間、題目牌堆、首領、計分（純函式，有完整測試）
 lib/protocol.ts          host / player / server 之間的訊息格式與驗證

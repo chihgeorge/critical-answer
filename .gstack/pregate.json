@@ -5,6 +5,7 @@
     "app/page.tsx": ["e2e/main-line.spec.ts", "e2e/collision.spec.ts"],
     "app/room/**": ["e2e/main-line.spec.ts", "e2e/live-map.spec.ts"],
     "app/bank-editor/**": ["e2e/bank-editor.spec.ts"],
-    "components/**": ["e2e/main-line.spec.ts", "e2e/live-map.spec.ts"]
+    "components/**": ["e2e/main-line.spec.ts", "e2e/live-map.spec.ts"],
+    "scripts/check-bundle.sh": []
   }
 }
