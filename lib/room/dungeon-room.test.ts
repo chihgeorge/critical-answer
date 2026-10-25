@@ -4,6 +4,11 @@ import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { answerText, bossQuestionIds, findQuestion, roomTemplates, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
+// Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
+vi.mock("../question-bank-data", async (actual) => {
+  const { asTextBank } = await import("../text-bank");
+  return { BANK: asTextBank((await actual<typeof import("../question-bank-data")>()).BANK) };
+});
 import { currentTurnTeamId } from "../game-state";
 import { EPILOGUE_MODEL } from "../narration/llm";
 
@@ -1041,7 +1046,7 @@ describe("questions and answers (T3)", () => {
 
   it("sends the answer only to host connections, on start and after every judgment", () => {
     const { room, hostConn, ids, conns } = started();
-    expect(sent(hostConn).findLast((m) => m.type === "HOST_ANSWER")).toMatchObject({ questionId: "r0-q1", answer: "台北 101" });
+    expect(sent(hostConn).findLast((m) => m.type === "HOST_ANSWER")).toMatchObject({ questionId: "r0-q1", answer: "梅花" });
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
     // Turn passes to team 2, whose question is r0-q2.
     expect(sent(hostConn).findLast((m) => m.type === "HOST_ANSWER")).toMatchObject({ questionId: "r0-q2", answer: "115 年" });
@@ -1097,7 +1102,7 @@ describe("questions and answers (T3)", () => {
     claim(room, host);
     joinTeams(room, host, 1);
     send(room, host, { type: "HOST_START" });
-    expect(room.game!.teams[0].currentQuestionId).toBe("r0-mc6");
+    expect(room.game!.teams[0].currentQuestionId).toBe("r0-q12");
   });
 });
 

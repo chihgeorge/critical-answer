@@ -2,6 +2,14 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.12.0.0] - 2026-10-25
+
+### Changed
+- The default question bank is now 52 four-option multiple-choice questions: 12 in room 1, 8 in each of rooms 2 to 5, and 8 for the boss. They mix Taiwan general knowledge, 2026 news, pop culture and history, and get harder room by room. Every question is answered on the teams' phones and judged by the game, so the host never has to press 答對. The old text questions and the 6 sample multiple-choice questions are gone.
+- Room 1 has 12 questions, so even with 8 teams there, a team that flees always gets a question nobody else is holding.
+- No question's text names another question's answer, and no two questions share a question or an answer, so a reveal on the big screen never gives another team a free answer.
+- A bank already saved in the question-bank editor stays as it is. The new default bank is used only where no bank has been saved yet.
+
 ## [0.11.1.0] - 2026-10-25
 
 ### Fixed

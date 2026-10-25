@@ -1,8 +1,8 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { answerCorrectly, textOnlyRoom0 } from "./answer";
+import { answerCorrectly, textOnlyBank } from "./answer";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
-textOnlyRoom0();
+textOnlyBank();
 
 /** Every WebSocket text frame a page receives, so we can assert on what /screen and /play were sent. */
 function recordFrames(page: Page): string[] {

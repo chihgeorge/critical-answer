@@ -266,7 +266,8 @@ test("a remembered owner key (localStorage) auto-loads the bank on a fresh visit
   await expect(page.getByTestId("bank-room-0")).toBeVisible();
 });
 
-test("a save that fails server-side validation shows the server's error, and does not clear the form", async ({ page }) => {
+test("a save that fails server-side validation shows the server's error, and does not clear the form", async ({ page, request }) => {
+  await resetFirstQuestion(request); // the bundled first question is multipleChoice, with no 答案 field
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
@@ -310,14 +311,15 @@ test("deleting every question in a room down to zero is rejected on save (a room
   await expect(rows(bossAfterReload)).not.toHaveCount(0);
 });
 
-test("multipleChoice authoring: switch kind, edit options, mark correct, and deleting the marked-correct option blocks save until re-marked", async ({ page }) => {
+test("multipleChoice authoring: switch kind, edit options, mark correct, and deleting the marked-correct option blocks save until re-marked", async ({ page, request }) => {
+  await resetFirstQuestion(request); // the bundled first question is already multipleChoice
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
   const room0 = page.getByTestId("bank-room-0");
   await expect(room0).toBeVisible();
 
-  // Switch the first question in room 0 to multipleChoice — it starts as a text question.
+  // Switch the first question in room 0 to multipleChoice — the reset above made it a text question.
   const firstRow = rows(room0).first();
   await firstRow.getByLabel("題型").selectOption("multipleChoice");
   // blankQuestion() gives a fresh multipleChoice question: 2 empty options, no answer field.

@@ -226,7 +226,8 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
     await expect(page.getByText("正解：揭曉答案")).toHaveCount(0);
     await expect(page.getByText("因為這是補充說明")).toHaveCount(0);
   }
-  await expect(host.getByRole("button", { name: "答對！" })).toBeVisible();
+  // The next question is dealt: room 1 of the bundled bank is multipleChoice, so the host sees the lock status.
+  await expect(host.getByTestId("host-mc-status")).toBeVisible();
 });
 
 test("answer reveal: a YouTube explanation renders as an embed on /play and /screen, only after a correct answer", async ({ browser, request }) => {

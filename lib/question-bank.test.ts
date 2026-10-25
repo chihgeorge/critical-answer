@@ -28,12 +28,44 @@ const valid = () => ({
 describe("shipped bank", () => {
   it("has enough questions per room that a full room of teams never shares one", () => {
     for (const r of BANK.rooms) expect(r.questions.length).toBeGreaterThanOrEqual(MAX_TEAMS);
+    // Every team starts in room 0, so a flee there needs a question no team is holding.
+    expect(BANK.rooms[0].questions.length).toBeGreaterThan(MAX_TEAMS);
   });
 
   it("has unique ids and a boss deck", () => {
     const ids = [...BANK.rooms.flatMap((r) => r.questions), ...BANK.boss.questions].map((x) => x.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(BANK.boss.questions.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("is 52 four-option multipleChoice questions, with the correct option in varied positions", () => {
+    const all = [...BANK.rooms.flatMap((r) => r.questions), ...BANK.boss.questions];
+    expect(all).toHaveLength(52);
+    for (const item of all) {
+      if (item.kind !== "multipleChoice") throw new Error(`${item.id} is ${item.kind}`);
+      expect(new Set(item.options).size).toBe(4);
+      expect(item.correctIndex).toBeLessThan(4);
+    }
+    expect(new Set(all.map((item) => item.kind === "multipleChoice" && item.correctIndex)).size).toBe(4);
+  });
+
+  it("no question gives away another one's answer: in its text anywhere in the bank (the big screen is shared), in its options within a room", () => {
+    const all = [...BANK.rooms, BANK.boss].flatMap((r) => r.questions.map((q) => ({ q, room: r })));
+    for (const { q: item, room } of all) {
+      for (const { q: other, room: otherRoom } of all) {
+        if (other === item) continue;
+        const answer = answerText(other);
+        if (item.content.kind === "text" && answer.length > 1) expect(item.content.value, `${item.id} shows ${other.id}'s answer`).not.toContain(answer);
+        if (room === otherRoom && item.kind === "multipleChoice") expect(item.options, `${item.id} offers ${other.id}'s answer`).not.toContain(answer);
+      }
+    }
+  });
+
+  it("no two questions anywhere in the bank share a text or a correct answer (a reveal on the big screen would give the other away)", () => {
+    const all = [...BANK.rooms.flatMap((r) => r.questions), ...BANK.boss.questions];
+    const texts = all.map((q) => (q.content.kind === "text" ? q.content.value : q.id));
+    expect(new Set(texts).size).toBe(all.length);
+    expect(new Set(all.map(answerText)).size).toBe(all.length);
   });
 
   it("no question's text content contains its own answer", () => {
