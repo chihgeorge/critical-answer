@@ -72,6 +72,7 @@ describe("prompt", () => {
       { type: "start", teams: ["甲", "乙"] },
       event,
       { type: "retry", team: "甲", monster: "史萊姆" },
+      { type: "retry", team: "甲", monster: "小黑龍", boss: true },
       { type: "flee", team: "甲", monster: "史萊姆" },
       { type: "boss-hit", team: "甲", bossHp: 2, bossMaxHp: 5 },
       { type: "boss-kill", team: "甲", monster: "小黑龍", bonus: 9 },
@@ -81,6 +82,16 @@ describe("prompt", () => {
       expect(user).not.toMatch(/題目|答案/); // the event itself is only names and numbers
       expect(system).toMatch(/不要透露/); // and the model is told not to go there
     }
+  });
+
+  // Value: protects=a wrong boss answer's prompt says the boss brought a new question, never 可以重答;
+  // fails_when=describeEvent ignores e.boss; why_new=no llm test sends a boss retry; seam=none;
+  // no_claim=the model's actual line (prompt bytes only; no eval framework)
+  it("tells the model a wrong boss answer brought a new question, not that the team can answer again", () => {
+    const { user } = buildPrompt({ type: "retry", team: "甲", monster: "小黑龍", boss: true }, "", []);
+    expect(user).toContain("首領「小黑龍」換出了新的考驗");
+    expect(user).not.toContain("可以重答");
+    expect(buildPrompt({ type: "retry", team: "甲", monster: "史萊姆" }, "", []).user).toContain("可以重答");
   });
 
   it("adds the host's notes and the last edited lines as style examples when present", () => {

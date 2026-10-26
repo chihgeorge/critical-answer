@@ -2,6 +2,20 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.0.0] - 2026-10-26
+
+### Changed
+- In the boss room, a wrong multiple-choice answer always brings a new boss question, so the next team never gets a question with options already crossed out. The team no longer chooses 重答 or 逃跑 there: the red option shows for 2 seconds, then the boss swaps the question and the turn moves on. The phone shows 「首領要換題了 ▶」, the big screen 「X答錯了！首領換一題……」 and the host 「答錯！首領換一題…」.
+- The narrator says the boss brought a new question instead of offering the team another try.
+- The default boss bank has 20 questions instead of 8, because every hit and every miss now uses one up. When a boss bank runs out, it repeats questions whose answers were already shown.
+
+### Added
+- The bank editor's 首領 tab suggests at least boss HP + 10 questions when the boss bank is smaller. A bank saved in the editor keeps its own boss questions, so a saved bank does not get the 12 new ones on its own.
+
+### Fixed
+- After a restart in the middle of a boss miss, the room still swaps the question on its own.
+- A broken saved game whose waiting wrong answer names no team, or a question the team no longer faces, no longer freezes the room.
+
 ## [0.14.0.0] - 2026-10-26
 
 ### Changed

@@ -914,15 +914,43 @@ describe("recordWrongLock (phone answering, phone-answering.md E6/E9)", () => {
     expect(currentTurnTeamId(game)).toBe("T1");
   });
 
-  it("boss: every team shares the eliminated set; a flee rotates the question as before", () => {
+  it("boss: a wrong lock rotates the shared question even on retry, so the next team never inherits a narrowed one", () => {
+    // Boss redesign D1=A: three wrong retries used to leave the fourth team only the right option.
     let g = makeGame({ bossThreshold: 0 });
     const q = g.boss.currentQuestionId;
-    g = answerQuestion(recordWrongLock(g, "T0", q, 0), "T0", q, false, "retry").game;
-    expect(g.boss.currentQuestionId).toBe(q);
+    const first = answerQuestion(recordWrongLock(g, "T0", q, 0), "T0", q, false, "retry");
+    expect(first.outcome).toEqual({ type: "incorrect-retry", teamId: "T0", newBossQuestion: true }); // narration says so
+    g = first.game;
+    const q2 = g.boss.currentQuestionId;
+    expect(q2).not.toBe(q);
+    expect(g.eliminated[q2]).toBeUndefined();
+    expect(g.eliminated[q]).toBeUndefined(); // nobody faces q any more
+    expect(g.revealedQuestionIds).toContain(q); // its wrong option was shown: reused only as a last resort
     expect(() => recordOptionSelection(g, "T1", q, 0)).toThrow(InvalidActionError);
-    g = answerQuestion(recordWrongLock(g, "T1", q, 1), "T1", q, false, "flee").game;
-    expect(g.boss.currentQuestionId).not.toBe(q);
+    g = answerQuestion(recordWrongLock(g, "T1", q2, 1), "T1", q2, false, "flee").game;
+    expect(g.boss.currentQuestionId).not.toBe(q2);
     expect(g.eliminated[g.boss.currentQuestionId]).toBeUndefined();
+  });
+
+  // Value: protects=newBossQuestion is set only when the boss question really changed (narration truth);
+  // fails_when=newBossQuestion follows the shown wrong option instead of the rotation; why_new=both boss tests
+  // above have shownWrong and rotation agree; seam=none; no_claim=none beyond protects
+  it("boss: a wrong lock with a one-question boss bank stays on it and does not claim a new question", () => {
+    const teams = [{ id: "T0", name: "A" }, { id: "T1", name: "B" }];
+    const g = createGame(teams, ...deck(1), ["boss-only"], { bossThreshold: 0 }, 2, first);
+    const { game: after, outcome } = answerQuestion(recordWrongLock(g, "T0", "boss-only", 1), "T0", "boss-only", false, "retry", first);
+    expect(after.boss.currentQuestionId).toBe("boss-only");
+    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" }); // the narration must not say the boss changed the question
+  });
+
+  it("boss: a wrong answer with no option shown (a text question the host judged) keeps the question on retry", () => {
+    let g = makeGame({ bossThreshold: 0 });
+    const q = g.boss.currentQuestionId;
+    const { game: after, outcome } = answerQuestion(g, "T0", q, false, "retry");
+    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" }); // narration must not claim a new question
+    g = after;
+    expect(g.boss.currentQuestionId).toBe(q);
+    expect(g.revealedQuestionIds).not.toContain(q);
   });
 
   it("the turn moves on from the team that answered, not from an offline team the stale index points at", () => {

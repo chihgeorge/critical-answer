@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_MISS_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 
 const team = "六個字的隊伍";
@@ -8,6 +8,7 @@ const samples: Exclude<NarrationEvent, { type: "epilogue" }>[] = [
   { type: "start", teams: ["a", "b"] },
   { type: "correct", team, monster, points: 12 },
   { type: "retry", team, monster },
+  { type: "retry", team, monster, boss: true },
   { type: "flee", team, monster },
   { type: "boss-hit", team, bossHp: 4, bossMaxHp: 5 },
   { type: "boss-kill", team, monster, bonus: 18 },
@@ -25,6 +26,13 @@ describe("scripted lines", () => {
       expect(VARIANTS[e.type].length).toBeGreaterThanOrEqual(4);
       expect(VARIANTS[e.type].length).toBeLessThanOrEqual(5);
     }
+  });
+
+  it("a wrong boss answer gets a new-question line, never an answer-again one (D2=B)", () => {
+    const p = createScriptedProvider(lcg(2));
+    const boss = new Set(BOSS_MISS_VARIANTS.map((t) => t.replace("{team}", team).replace("{monster}", monster)));
+    for (let i = 0; i < 20; i++) expect(boss.has(p.line({ type: "retry", team, monster, boss: true }))).toBe(true);
+    expect(BOSS_MISS_VARIANTS.length).toBeGreaterThanOrEqual(4);
   });
 
   it("fills in the team, monster and numbers and leaves no template braces", async () => {

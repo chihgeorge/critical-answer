@@ -80,6 +80,13 @@ function roundActivity(at: number, idleMs: number): number {
 }
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Shallow snapshot validation: a saved pendingWrong must name a team and the question it faces now, or it pins the turn forever. */
+function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
+  const p = g.pendingWrong;
+  const team = p ? g.teams.find((t) => t?.id === p.teamId) : undefined;
+  if (!p || !team) return null;
+  return p.questionId === (team.inBoss ? g.boss.currentQuestionId : team.currentQuestionId) ? p : null;
+}
 
 /**
  * One game room. It knows nothing about the platform: messages come in through onMessage/onConnect/onClose
@@ -327,7 +334,7 @@ export class DungeonRoom {
         revealedQuestionIds: Array.isArray(s.game.revealedQuestionIds) ? s.game.revealedQuestionIds : [],
         // Same shallow-validation backfill for saves from before phone answering (phone-answering.md).
         eliminated: s.game.eliminated ?? {},
-        pendingWrong: s.game.pendingWrong ?? null,
+        pendingWrong: restoredPendingWrong(s.game),
         // Not for old saves (SCHEMA_VERSION 5 refuses them): guards a v5 snapshot missing the field.
         optionOrder: s.game.optionOrder ?? {},
         teams: s.game.teams.map((t) =>
@@ -352,6 +359,8 @@ export class DungeonRoom {
     const idleFor = this.now() - this.lastActivityAt;
     this.setAlarmAt(Math.max(this.now(), this.lastActivityAt + (idleFor >= this.idleMs ? this.expireMs : this.idleMs)));
     console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
+    // A restart loses the beat that resolves a wrong boss lock.
+    this.armBossMiss();
     // The story that ends a finished game is written by a promise that a restart loses: ask for it again.
     if (this.game?.phase === "finished" && !this.epilogue) {
       this.epilogueRequested = true;
@@ -896,6 +905,8 @@ export class DungeonRoom {
     // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
     const justAnswered = this.currentQuestion();
     const monster = justAnswered?.pub.monster.name ?? "怪物";
+    // A boss MC miss has no flee (D2=B): the host's stuck row (button or key 3) resolves it as the beat would.
+    if (!correct && prev.pendingWrong?.teamId === teamId && isInBossPhase(prev, teamId)) fleeChoice = "retry";
     const { game, outcome } = answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng);
     // Everything up to broadcastState is synchronous: state changes and the eventId are
     // fixed before any narration awaits, so concurrent judgments cannot interleave.
@@ -969,11 +980,30 @@ export class DungeonRoom {
         // No eventSeq bump: nothing is narrated until the team chooses (E7).
         this.game = recordWrongLock(game, lock.teamId, lock.questionId, lock.optionIndex);
         this.broadcastState();
+        this.armBossMiss();
       }
     } catch (err) {
       console.error(JSON.stringify({ event: "lock_failed", error: String(err) }));
       this.broadcastState();
     }
+  }
+
+  /** A wrong boss lock has no 重答 / 逃跑 choice (boss redesign D2=B): both would rotate the shared
+   * question anyway. The red tile shows for a beat, then it resolves as a retry on its own. */
+  private armBossMiss() {
+    const pending = this.game?.pendingWrong;
+    if (!pending || !isInBossPhase(this.game!, pending.teamId)) return;
+    if (this.lockTimer) clearTimeout(this.lockTimer);
+    this.lockTimer = setTimeout(() => {
+      // Resolved early (the host judged it): lockTimer may already be the next lock's beat.
+      if (this.game?.pendingWrong !== pending) return;
+      this.lockTimer = null;
+      try {
+        this.judge(pending.teamId, pending.questionId, false, "retry", false);
+      } catch (err) {
+        console.error(JSON.stringify({ event: "boss_miss_failed", error: String(err) }));
+      }
+    }, BEAT_MS);
   }
 
   /** 重答 / 逃跑 from the team that just locked wrong. */
@@ -983,6 +1013,11 @@ export class DungeonRoom {
     if (!teamId) return;
     if (!pending || pending.teamId !== teamId || pending.questionId !== questionId) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_wrong_answer" });
+      return;
+    }
+    // A boss miss resolves on its own beat (D2=B): a phone cannot cut the red tile short.
+    if (isInBossPhase(this.game!, teamId)) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "boss_miss" });
       return;
     }
     try {

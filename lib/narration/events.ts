@@ -19,7 +19,8 @@ export type NarrationEvent =
    * are the DM branch choices it made on the way (display text, room order), for the LLM to call
    * back; the scripted lines just announce the entrance (design doc T4: no forced callback template). */
   | WithNext<{ type: "correct"; team: string; monster: string; points: number; entersBoss?: { branches: string[] } }>
-  | WithNext<{ type: "retry"; team: string; monster: string }>
+  /** `boss`: a wrong boss answer, which always brings a new question (boss redesign D2=B). */
+  | WithNext<{ type: "retry"; team: string; monster: string; boss?: true }>
   | WithNext<{ type: "flee"; team: string; monster: string }>
   | WithNext<{ type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number }>
   | WithNext<{ type: "boss-kill"; team: string; monster: string; bonus: number }>
@@ -61,7 +62,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string): Ex
       };
     }
     case "incorrect-retry":
-      return { type: "retry", team, monster };
+      return { type: "retry", team, monster, ...(outcome.newBossQuestion ? { boss: true as const } : {}) };
     case "incorrect-flee":
       return { type: "flee", team, monster };
     case "correct-boss-hit":

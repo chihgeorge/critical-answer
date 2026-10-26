@@ -451,6 +451,14 @@ REALITY: numbers pass 2 s/8 s/15 s [user decision] docs/designs/phone-answering.
 REALITY: deferred-asks pass no linked issue docs/designs/phone-answering.md:1
 REALITY: pr-count pass no ship-policy; one PR (E1) docs/designs/phone-answering.md:323
 
+## 首領房規則（v0.15）
+
+Closes premise 7's stopgap and E8. Decided with the user on 2026-10-26:
+
+- **D1=A, a wrong boss lock always rotates the shared question.** On a retry too, not only on a flee. Its red tile would otherwise hand the next team a narrowed question, up to a free hit. The question becomes revealed, and `nextBossQuestionId` skips it (`lib/game-state.ts`, boss wrong branch). A wrong answer with no option shown (a text question the host judged) keeps the question.
+- **D2=B, no 重答／逃跑 in the boss room.** Both choices would do the same thing, so the room does not ask. After a wrong boss lock the red tile shows for one beat (`BEAT_MS`, 2 s), then the room resolves it as a retry (`armBossMiss` in `lib/room/dungeon-room.ts`, re-armed by `restore()`). The phone shows 「首領要換題了 ▶」, the TV shows 「X答錯了！首領換一題……」, and the host shows 「答錯！首領換一題…」. The 15 s stuck row stays armed only as a fallback in case the beat never resolves. The narration's `retry` event carries `boss: true` and gets new-question lines (`BOSS_MISS_VARIANTS`, LLM prompt).
+- **D3=A, the boss bank stays as it is.** It is a separate bank, every question counts as difficulty 5, and the questions are four-option multiple choice.
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |

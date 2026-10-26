@@ -35,16 +35,19 @@ export async function answerCorrectly(host: Page) {
   throw new Error(`no phone in room ${code} is on turn`);
 }
 
-/** Puts room 0 back after each test in the calling file. The dev server's bank is shared by every
+/** Puts room 0 (pool 1) and the boss questions back after each test in the calling file. The dev server's bank is shared by every
  * spec file, so a test that seeds or filters room 0 would otherwise change what later files deal. */
 export function restoreRoom0AfterEach() {
-  let original: unknown;
+  let original: { pool: unknown; boss: unknown };
   test.beforeEach(async ({ request }) => {
-    original = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank.pools["1"];
+    const { bank } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
+    original = { pool: bank.pools["1"], boss: bank.boss.questions };
   });
   test.afterEach(async ({ request }) => {
+    if (!original) return; // beforeEach failed: writing undefined would break every later spec file
     const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
-    bank.pools["1"] = original;
+    bank.pools["1"] = original.pool;
+    bank.boss.questions = original.boss;
     await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } });
   });
 }

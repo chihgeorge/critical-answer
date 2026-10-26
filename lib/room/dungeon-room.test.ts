@@ -889,6 +889,76 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useRealTimers();
     });
 
+    it("a wrong boss lock offers no choice: after a beat the question rotates and the turn moves on (D2=B)", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns } = startedMcGame(2);
+      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+      room.game = { ...room.game!, boss: { ...room.game!.boss, currentQuestionId: "boss-mc1" } };
+      const wrongIdx = room.game.optionOrder["boss-mc1"].indexOf(1); // "Y"; "X" is right
+      const seq = seqOf(room);
+      send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "boss-mc1", optionIndex: wrongIdx });
+      send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "boss-mc1" });
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).view.pendingWrong).toMatchObject({ teamId: ids[0], questionId: "boss-mc1" }); // the red tile shows
+      expect(seqOf(room)).toBe(seq);
+      vi.advanceTimersByTime(1999);
+      expect(room.game!.pendingWrong).not.toBeNull();
+      vi.advanceTimersByTime(1);
+      expect(room.game!.pendingWrong).toBeNull();
+      expect(room.game!.boss.currentQuestionId).not.toBe("boss-mc1");
+      expect(room.game!.eliminated["boss-mc1"]).toBeUndefined();
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+      expect(seqOf(room)).toBe(seq + 1);
+      vi.useRealTimers();
+    });
+
+    // Value: protects=a phone cannot cut a boss miss's red tile short, and the miss is judged once;
+    // fails_when=handleTeamWrongChoice judges a boss team; seam=none; no_claim=none beyond protects (fake timers)
+    it("a phone's 重答 during a boss miss is ignored: the beat judges it, once", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns } = startedMcGame(1); // one team: the turn comes straight back to it
+      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+      room.game = { ...room.game!, boss: { ...room.game!.boss, currentQuestionId: "boss-mc1" } };
+      const wrongIdx = room.game.optionOrder["boss-mc1"].indexOf(1);
+      send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "boss-mc1", optionIndex: wrongIdx });
+      send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "boss-mc1" });
+      vi.advanceTimersByTime(2000);
+      expect(room.game!.pendingWrong).not.toBeNull();
+      const seq = seqOf(room);
+      send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "boss-mc1", choice: "retry" });
+      expect(seqOf(room)).toBe(seq);
+      vi.advanceTimersByTime(2000);
+      expect(seqOf(room)).toBe(seq + 1);
+      expect(room.game!.pendingWrong).toBeNull();
+      vi.useRealTimers();
+    });
+
+    it("a flee the host sends during a boss miss (stuck row, key 3) resolves as the retry the beat would", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns } = startedMcGame(1);
+      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+      room.game = { ...room.game!, boss: { ...room.game!.boss, currentQuestionId: "boss-mc1" } };
+      const wrongIdx = room.game.optionOrder["boss-mc1"].indexOf(1);
+      send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "boss-mc1", optionIndex: wrongIdx });
+      send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "boss-mc1" });
+      vi.advanceTimersByTime(2000);
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "boss-mc1", correct: false, fleeChoice: "flee" });
+      const last = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE").at(-1);
+      expect(last.cue).toBe("retry");
+      expect(room.game!.boss.currentQuestionId).not.toBe("boss-mc1");
+      vi.useRealTimers();
+    });
+
+    it("a wrong room lock still waits for the team's choice: no timer resolves it", () => {
+      vi.useFakeTimers();
+      const { room, conns } = startedMcGame(2);
+      pick(room, conns[0], 0);
+      lock(room, conns[0]);
+      vi.advanceTimersByTime(60_000);
+      expect(room.game!.pendingWrong).not.toBeNull();
+      vi.useRealTimers();
+    });
+
     it("a team that drops offline while deciding keeps the turn (E9)", () => {
       vi.useFakeTimers();
       const { room, ids, conns } = startedMcGame(2);

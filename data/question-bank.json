@@ -957,6 +957,150 @@
           "陽明山國家公園"
         ],
         "correctIndex": 0
+      },
+      {
+        "id": "boss-q9",
+        "kind": "multipleChoice",
+        "text": "台灣第一次總統直選，由誰當選？",
+        "options": [
+          "蔣經國",
+          "宋楚瑜",
+          "李登輝",
+          "彭明敏"
+        ],
+        "correctIndex": 2
+      },
+      {
+        "id": "boss-q10",
+        "kind": "multipleChoice",
+        "text": "中華民國國旗上的白日，共有幾道光芒？",
+        "options": [
+          "8 道",
+          "10 道",
+          "16 道",
+          "12 道"
+        ],
+        "correctIndex": 3
+      },
+      {
+        "id": "boss-q11",
+        "kind": "multipleChoice",
+        "text": "台灣本島上面積最小的縣市是哪一個？",
+        "options": [
+          "新竹市",
+          "嘉義市",
+          "基隆市",
+          "台北市"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "boss-q12",
+        "kind": "multipleChoice",
+        "text": "澎湖縣的縣治（縣政府所在地）是哪裡？",
+        "options": [
+          "湖西鄉",
+          "白沙鄉",
+          "西嶼鄉",
+          "馬公市"
+        ],
+        "correctIndex": 3
+      },
+      {
+        "id": "boss-q13",
+        "kind": "multipleChoice",
+        "text": "台灣全民健康保險是哪一年開始實施的？",
+        "options": [
+          "1995 年",
+          "1989 年",
+          "2000 年",
+          "1992 年"
+        ],
+        "correctIndex": 0
+      },
+      {
+        "id": "boss-q14",
+        "kind": "multipleChoice",
+        "text": "日本結束對台灣的統治，是在哪一年？",
+        "options": [
+          "1937 年",
+          "1949 年",
+          "1945 年",
+          "1952 年"
+        ],
+        "correctIndex": 2
+      },
+      {
+        "id": "boss-q15",
+        "kind": "multipleChoice",
+        "text": "國立臺灣大學的前身是哪一所學校？",
+        "options": [
+          "臺北帝國大學",
+          "臺北高等學校",
+          "臺北工業學校",
+          "臺北師範學校"
+        ],
+        "correctIndex": 0
+      },
+      {
+        "id": "boss-q16",
+        "kind": "multipleChoice",
+        "text": "台灣本島解除戒嚴是在哪一年？",
+        "options": [
+          "1979 年",
+          "1987 年",
+          "1991 年",
+          "1996 年"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "boss-q17",
+        "kind": "multipleChoice",
+        "text": "台灣第一座核能發電廠位在哪裡？",
+        "options": [
+          "新北市萬里區",
+          "屏東縣恆春鎮",
+          "新北市石門區",
+          "新北市貢寮區"
+        ],
+        "correctIndex": 2
+      },
+      {
+        "id": "boss-q18",
+        "kind": "multipleChoice",
+        "text": "中華民國國歌的歌詞，出自哪一位人物的訓詞？",
+        "options": [
+          "蔣中正",
+          "孫中山",
+          "胡適",
+          "戴季陶"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "id": "boss-q19",
+        "kind": "multipleChoice",
+        "text": "台灣第一座科學工業園區（新竹科學園區）是哪一年設立的？",
+        "options": [
+          "1974 年",
+          "1988 年",
+          "1992 年",
+          "1980 年"
+        ],
+        "correctIndex": 3
+      },
+      {
+        "id": "boss-q20",
+        "kind": "multipleChoice",
+        "text": "1986 年獲得諾貝爾化學獎的台灣科學家是誰？",
+        "options": [
+          "李遠哲",
+          "丁肇中",
+          "楊振寧",
+          "李政道"
+        ],
+        "correctIndex": 0
       }
     ]
   }

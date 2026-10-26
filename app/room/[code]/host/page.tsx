@@ -251,6 +251,9 @@ export default function HostPage() {
   const isMc = !game?.reveal && !!game?.question?.options;
   const lock = game?.pendingLock ?? null;
   const wrong = game?.view.pendingWrong ?? null;
+  // A wrong boss lock resolves on its own after a beat (D2=B). The stuck row still comes after 15 s,
+  // as the way out if that beat never resolves.
+  const bossMiss = !!wrong && !!game?.view.teams.find((t) => t.id === wrong.teamId)?.inBossPhase;
   const stuckKey = isMc && turn?.team && !lock ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}` : null;
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   useEffect(() => {
@@ -279,7 +282,7 @@ export default function HostPage() {
       } else {
         if (!canJudge || !turn?.team || !turn.questionId) return;
         if (action === "correct") judge(turn.team.id, turn.questionId, true);
-        else judge(turn.team.id, turn.questionId, false, action);
+        else if (!(bossMiss && action === "flee")) judge(turn.team.id, turn.questionId, false, action); // no 逃跑 button on a boss miss
       }
       e.preventDefault();
     }
@@ -446,7 +449,9 @@ export default function HostPage() {
                     <div className="text-[22px]">
                       {lock
                         ? `${turn.team.name}鎖定了 ${optionLetter(lock.optionIndex)}…`
-                        : wrong
+                        : bossMiss
+                          ? "答錯！首領換一題…"
+                          : wrong
                           ? `答錯！等${turn.team.name}選重答或逃跑`
                           : `等${turn.team.name}鎖定答案…`}
                     </div>
@@ -457,15 +462,17 @@ export default function HostPage() {
                     <>
                       <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>
                       <div className="px-1 pt-1 text-[14px] text-white">隊伍卡住時：</div>
-                      <div className="grid grid-cols-2">
+                      <div className={bossMiss ? "grid" : "grid grid-cols-2"}>
                         <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                           替{turn.team.name}選・重答
                           <span className="px-key" aria-hidden="true">2</span>
                         </PixelButton>
-                        <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                          替{turn.team.name}選・逃跑
-                          <span className="px-key" aria-hidden="true">3</span>
-                        </PixelButton>
+                        {!bossMiss && (
+                          <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                            替{turn.team.name}選・逃跑
+                            <span className="px-key" aria-hidden="true">3</span>
+                          </PixelButton>
+                        )}
                       </div>
                     </>
                   )}

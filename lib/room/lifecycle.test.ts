@@ -385,6 +385,41 @@ describe("after a restart", () => {
     expect(b.io.closeAll).not.toHaveBeenCalled(); // must not be treated as already idle
   });
 
+  it("a wrong boss lock saved mid-beat still resolves on its own after a restart (D2=B)", async () => {
+    const a = setup();
+    startedGame(a.room);
+    const snap = structuredClone(a.storage.data.get(SNAPSHOT_KEY)) as any;
+    const qid = snap.game.boss.currentQuestionId;
+    snap.game.teams[0].inBoss = true;
+    snap.game.pendingWrong = { teamId: T1, questionId: qid, optionIndex: 0 };
+    snap.game.eliminated = { [qid]: [0] };
+    const b = setup(a.clock.t);
+    b.storage.data.set(SNAPSHOT_KEY, snap);
+    vi.useFakeTimers();
+    try {
+      await b.room.restore();
+      vi.advanceTimersByTime(2000);
+      expect(b.room.game!.pendingWrong).toBeNull();
+      expect(b.room.game!.boss.currentQuestionId).not.toBe(qid);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ["names no team", (snap: any) => ({ teamId: "ghost", questionId: snap.game.boss.currentQuestionId, optionIndex: 0 })],
+    ["names a question the team no longer faces", () => ({ teamId: T1, questionId: "stale-q", optionIndex: 0 })],
+  ])("a saved pendingWrong that %s is dropped, so it cannot pin the turn forever", async (_, pendingWrong) => {
+    const a = setup();
+    startedGame(a.room);
+    const snap = structuredClone(a.storage.data.get(SNAPSHOT_KEY)) as any;
+    snap.game.pendingWrong = pendingWrong(snap);
+    const b = setup(a.clock.t);
+    b.storage.data.set(SNAPSHOT_KEY, snap);
+    expect(await b.room.restore()).toBe("restored");
+    expect(b.room.game!.pendingWrong).toBeNull();
+  });
+
   it("the alarm is set again from the saved last activity", async () => {
     const a = setup();
     send(a.room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });

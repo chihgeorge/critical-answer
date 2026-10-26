@@ -194,7 +194,8 @@ export type AnswerOutcome =
   | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; nextRoomIndex: number; entersBoss: boolean }
   | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; killBonus?: number }
   | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty }
-  | { type: "incorrect-retry"; teamId: string };
+  /** `newBossQuestion`: a wrong boss answer rotated the shared question (boss redesign D2=B). */
+  | { type: "incorrect-retry"; teamId: string; newBossQuestion?: true };
 
 export class InvalidActionError extends Error {}
 
@@ -225,9 +226,9 @@ function poolIndexFor(pools: string[][], d: Difficulty): number {
  * unrevealed free one from the nearest other pool, then `own` if unrevealed and no other team holds it.
  * When every question is held (a small custom bank): an unrevealed free borrow, then `own` (the
  * question the dealt team is leaving: fled, or just answered) if unrevealed and unshared, then any
- * free borrow, then `own` anyway. Only that last step, in a bank with fewer questions than teams,
- * can leave two teams on one question. "Nearest" is by distance, lower first on ties, and a donor
- * pool's undrawn questions come first. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
+ * free borrow, then `own` anyway. In a bank with fewer questions than teams, only that last step,
+ * or a deal with no `own` (game start), can leave two teams on one question. "Nearest" is by
+ * distance, lower first on ties, and a donor pool's undrawn questions come first. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
  */
 function deal(
   pools: string[][],
@@ -521,23 +522,26 @@ export function answerQuestion(
         return { game: finishGame(nextGame), outcome };
       }
     } else {
-      // Wrong boss answer: rotate to the next boss question either way —
-      // there's no "downgrade" concept for a shared boss queue. A flee reveals the question
-      // only after a wrong lock (revealedOnFlee); the rotation skips every revealed one.
-      const rotatedBossQuestionId = fleeChoice === "flee" ? nextBossQuestionId(boss, revealedOnFlee) : boss.currentQuestionId;
-      // Same shared-question reasoning as the correct-hit branch above: a flee rotates
+      // Wrong boss answer: there's no "downgrade" concept for a shared boss queue. A flee rotates
+      // the question, and so does a wrong lock even on retry: its red tile on the TV would hand the
+      // next team a narrowed question, up to a free hit (boss redesign D1=A). Either way the shown
+      // wrong option makes it revealed; the rotation skips every revealed one.
+      const shownWrong = (game.eliminated[questionId]?.length ?? 0) > 0;
+      const revealed = shownWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
+      const rotatedBossQuestionId = fleeChoice === "flee" || shownWrong ? nextBossQuestionId(boss, revealed) : boss.currentQuestionId;
+      // Same shared-question reasoning as the correct-hit branch above: a rotation changes
       // the question for every team in boss phase, so every one of their picks resets —
-      // unless it stayed on the same question (the last unrevealed one), where picks still apply.
+      // unless it stayed on the same question (a one-question boss bank, or no option shown), where picks still apply.
       nextGame = {
         ...game,
-        revealedQuestionIds: revealedOnFlee,
+        revealedQuestionIds: revealed,
         teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game, game.teams) : game.teams,
         boss: { ...boss, currentQuestionId: rotatedBossQuestionId },
       };
       outcome =
         fleeChoice === "flee"
           ? { type: "incorrect-flee", teamId, newDifficulty: team.currentDifficulty }
-          : { type: "incorrect-retry", teamId };
+          : { type: "incorrect-retry", teamId, ...(rotatedBossQuestionId !== boss.currentQuestionId ? { newBossQuestion: true as const } : {}) };
     }
   } else {
     if (correct) {
