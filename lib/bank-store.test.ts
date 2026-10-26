@@ -56,6 +56,14 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 2 });
   });
 
+  it("refuses to save over a stored bank it cannot read, and keeps it (a rollback below a newer format)", async () => {
+    // The fallback bank is version 1, so a save at version 1 would otherwise replace every custom question.
+    const stored = { bank: { rooms: "a format this version can't read" }, version: 3 };
+    const storage = memoryStorage(stored);
+    await expect(new BankStore(storage).putBank(validBank, 1)).rejects.toThrow(/unreadable/);
+    expect(await storage.get("bank")).toEqual(stored);
+  });
+
   it("saves against the freshly-seeded version 1 on an empty store", async () => {
     const store = new BankStore(memoryStorage());
     const result = await store.putBank(validBank, 1);
@@ -136,6 +144,23 @@ describe("BankStore: orphaned images wait out running games before they're delet
     await store.runImageCleanup();
     expect(onImagesOrphaned).not.toHaveBeenCalled();
     at(DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).toHaveBeenCalledWith([KEY]);
+    expect(await storage.get("pendingImageDeletes")).toEqual([]);
+  });
+
+  it("deletes nothing while the stored bank is unreadable (the fallback bank is not what's stored)", async () => {
+    const { store, storage, alarms, onImagesOrphaned, at } = setup({ bank: { rooms: "a format this version can't read" }, version: 3 });
+    await storage.put("pendingImageDeletes", [{ key: KEY, deleteAt: 0 }]);
+    at(DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).not.toHaveBeenCalled();
+    expect(await storage.get("pendingImageDeletes")).toEqual([{ key: KEY, deleteAt: 0 }]);
+    expect(alarms).toEqual([2 * DELAY]); // re-armed, so the queue is not stranded once the bank is readable again
+
+    // Readable again (a roll-forward): the re-armed alarm finishes the job.
+    await storage.put("bank", { bank: validBank, version: 4 });
+    at(2 * DELAY);
     await store.runImageCleanup();
     expect(onImagesOrphaned).toHaveBeenCalledWith([KEY]);
     expect(await storage.get("pendingImageDeletes")).toEqual([]);
