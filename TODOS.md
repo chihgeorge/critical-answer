@@ -214,6 +214,8 @@
 
 **Depends on / blocked by:** `eslint-config-next` 支援 ESLint 10；`typescript-eslint` 支援 TypeScript ≥7.1。
 
+**解鎖後：** 把 `.github/dependabot.yml` 裡 `typescript` 和 `eslint` 的 `ignore` 規則拿掉，Dependabot 才會再開這兩個升級 PR。
+
 **重新確認（2026-10-03）：** 仍然卡住。`eslint-config-next@16.3.8` 依賴 `eslint-plugin-react@^7.37.0`，最新 7.37.5 的 peer 是 `eslint ^9.7`（沒有 10）；`typescript-eslint` 最新 8.71.0 的 peer 是 `typescript <6.1.0`（TS 已到 7.0.2）。
 
 ---
