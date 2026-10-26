@@ -79,7 +79,7 @@ Notes:
 
 ## Screens
 
-- **Big screen:** each team's reward points next to its pawn or in a scoreboard. No progress number, no `/15`. The map draws all 8 rooms.
+- **Big screen:** each team's reward points next to its pawn or in a scoreboard. No progress number, no `/15`. The map draws up to 7 rooms; earlier ones fold into the … stub (live-map D8).
 - **Phone (`/play`):** reward points only, in place of `score / 15`.
 - **Host:** progress `9/15` plus reward points per team.
 - **Reveal and narration:** a correct answer shows `+20` (the reward), not the difficulty. A boss hit shows `+10`; the final blow shows the dice roll.

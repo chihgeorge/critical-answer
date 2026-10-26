@@ -255,9 +255,10 @@ export function shuffledOptionOrders(bank: Bank, rng: () => number): Record<stri
 }
 
 /** The question as this game shows it: options in `order`, correctIndex moved with them. Without an
- * order (a text question, or a bank question added after the game started) it is unchanged. */
+ * order (a text question, or a bank question added after the game started), or with a broken one, it is unchanged. */
 export function inShownOrder<Q extends BankQuestion>(q: Q, order: number[] | undefined): Q {
-  if (q.kind !== "multipleChoice" || !order || order.length !== q.options.length) return q;
+  // Anything but a permutation of 0..n-1 (a corrupt saved order) would blank options and lose the answer.
+  if (q.kind !== "multipleChoice" || !order || order.length !== q.options.length || !q.options.every((_, i) => order.includes(i))) return q;
   return { ...q, options: order.map((i) => q.options[i]), correctIndex: order.indexOf(q.correctIndex) };
 }
 

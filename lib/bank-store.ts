@@ -113,7 +113,10 @@ export class BankStore {
     const pending = await this.getPending();
     if (pending.length === 0) return;
     const now = this.now();
-    const inUse = imageKeysOf((await this.getVersionedBank()).bank);
+    const { current, unreadable } = await this.read();
+    // The fallback bank is not what's stored: deleting by it would drop images the stored bank still uses.
+    if (unreadable) return;
+    const inUse = imageKeysOf(current.bank);
     const due = pending.filter((p) => p.deleteAt <= now && !inUse.has(p.key)).map((p) => p.key);
     // Back in the bank: drop it from the queue; the save that removes it again re-queues it.
     await this.setPending(pending.filter((p) => p.deleteAt > now && !inUse.has(p.key)));

@@ -1003,13 +1003,18 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
 
   it("8 teams in one 12-question pool never hold the same question, however often they flee", () => {
     const seeds = Array.from({ length: 8 }, (_, i) => ({ id: `T${i}`, name: `${i}` }));
-    let g = createGame(seeds, [{ baseDifficulty: 1, reward: 10 }], [ids("q", 12), [], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, Math.random);
-    for (let n = 0; n < 200; n++) {
-      const id = currentTurnTeamId(g)!;
-      const team = g.teams.find((t) => t.id === id)!;
-      ({ game: g } = answerQuestion(g, id, team.currentQuestionId, false, "flee", Math.random));
-      const held = g.teams.map((t) => t.currentQuestionId);
-      expect(new Set(held).size).toBe(held.length);
+    // Seeded so a failure reproduces.
+    for (const seed of [1, 2, 3]) {
+      let s = seed;
+      const rng = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+      let g = createGame(seeds, [{ baseDifficulty: 1, reward: 10 }], [ids("q", 12), [], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, rng);
+      for (let n = 0; n < 200; n++) {
+        const id = currentTurnTeamId(g)!;
+        const team = g.teams.find((t) => t.id === id)!;
+        ({ game: g } = answerQuestion(g, id, team.currentQuestionId, false, "flee", rng));
+        const held = g.teams.map((t) => t.currentQuestionId);
+        expect(new Set(held).size, `seed ${seed}, flee ${n}`).toBe(held.length);
+      }
     }
   });
 
@@ -1017,6 +1022,16 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], [["a", "b"], [], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
     ({ game: g } = answerQuestion(g, "T0", "a", false, "flee", first));
     expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["a", "b"]);
+  });
+
+  it("a pool smaller than the team count borrows a free question from the nearest other pool", () => {
+    // Codex adversarial review (/ship): a 2-question pool with 3 teams dealt two teams the same question,
+    // so one team's answer reveal gave it away to the other.
+    const seeds = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `${i}` }));
+    const g = createGame(seeds, [{ baseDifficulty: 1, reward: 10 }], [["a", "b"], [], ["c"], ["z"], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    const held = g.teams.map((t) => t.currentQuestionId);
+    expect(new Set(held).size).toBe(3);
+    expect(held).toContain("c"); // pool 3 is nearer to pool 1 than pool 4
   });
 
   it("a flee into a lower pool whose every question is held gives back the team's own question", () => {

@@ -34,7 +34,7 @@ describe("parseSnapshot", () => {
 
   it("refuses anything that is not an object, and an unknown schema version", () => {
     // schemaVersion 2: a save from before teams had inBoss.
-    for (const bad of [null, undefined, "room", 42, [], { schemaVersion: 999 }, { ...valid(), schemaVersion: 0 }, { ...valid(), schemaVersion: 2 }, { ...valid(), schemaVersion: 3 } /* saved before teams had reward */]) {
+    for (const bad of [null, undefined, "room", 42, [], { schemaVersion: 999 }, { ...valid(), schemaVersion: 0 }, { ...valid(), schemaVersion: 2 }, { ...valid(), schemaVersion: 3 } /* saved before teams had reward */, { ...valid(), schemaVersion: 4 } /* saved before pools and optionOrder */]) {
       expect(parseSnapshot(bad)).toBeNull();
     }
   });
@@ -57,6 +57,7 @@ describe("parseSnapshot", () => {
       ["notes", null],
       ["editedLines", [1]],
       ["game", { phase: "playing" }],
+      ["game", { teams: [], turnOrder: [], phase: "playing", pools: [[]], usedQuestionIds: [[], [], [], [], []] }], // pools not 5 lists: deal() would throw
       ["lastActivityAt", "yesterday"],
       ["lastActivityAt", -5],
     ];

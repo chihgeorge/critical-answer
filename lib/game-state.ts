@@ -167,7 +167,7 @@ export interface GameState {
    * Every option index the room and clients use (picks, locks, eliminated, reveals) is a shown index. */
   optionOrder: Record<string, number[]>;
   /** Every question id a team has actually gotten right, globally, across the whole game — never
-   * reset by a room's reshuffle. A revealed answer (see AnswerReveal, lib/protocol.ts) must
+   * reset by a pool's reshuffle. A revealed answer (see AnswerReveal, lib/protocol.ts) must
    * never come back around for someone who hasn't faced it yet; a retried or fled question stays
    * eligible (D5 — its answer was never shown). deal()'s reshuffle and the boss ring both filter
    * against this before falling back to reuse once every remaining question has been revealed. */
@@ -223,7 +223,7 @@ function poolIndexFor(pools: string[][], d: Difficulty): number {
  * question whose answer hasn't been revealed; if only revealed ones are left this
  * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer.
  * When every question is held (a small custom bank), `own` (the dealt team's fled question) comes
- * back before another team's. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
+ * back before another team's; without `own`, a free question from the nearest other pool does. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
  */
 function deal(
   pools: string[][],
@@ -248,6 +248,13 @@ function deal(
   if (free.length > 0) pool = free;
   else if (freeAnywhere.length > 0) pool = freeAnywhere;
   else if (own) pool = [own]; // even from another pool: a flee into a full lower pool
+  else {
+    // A pool smaller than the team count: borrow a free question from the nearest other pool
+    // (lower first) before two teams hold the same one. Only a bank with fewer questions than teams repeats.
+    const order = pools.map((_, i) => i).filter((i) => i !== p).sort((x, y) => Math.abs(x - p) - Math.abs(y - p) || x - y);
+    const borrow = order.map((i) => pools[i].filter((id) => !held.has(id))).find((ids) => ids.length > 0);
+    if (borrow) pool = borrow;
+  }
   // Prefer a question nobody has seen the answer to yet (D4/D5 — AnswerReveal), but never
   // at the cost of handing two teams the identical question — the held-exclusion above is the
   // more important invariant, so this only narrows within whatever it already left.
@@ -258,7 +265,8 @@ function deal(
   if (unrevealed.length > 0) pool = unrevealed;
   else if (unrevealedAnywhere.length > 0) pool = unrevealedAnywhere;
   const questionId = pool[Math.floor(rng() * pool.length)];
-  // The fled-question fallback above picks from questions already in `used`; don't record them twice.
+  // The fled-question fallback above picks from questions already in `used`; don't record them twice,
+  // and a team's own question from another pool (a flee into a full pool) never joins this pool's list.
   return { questionId, used: base.map((u, i) => (i === p && all.includes(questionId) && !u.includes(questionId) ? [...u, questionId] : u)) };
 }
 

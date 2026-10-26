@@ -144,6 +144,15 @@ describe("BankStore: orphaned images wait out running games before they're delet
     expect(await storage.get("pendingImageDeletes")).toEqual([]);
   });
 
+  it("deletes nothing while the stored bank is unreadable (the fallback bank is not what's stored)", async () => {
+    const { store, storage, onImagesOrphaned, at } = setup({ bank: { rooms: "a format this version can't read" }, version: 3 });
+    await storage.put("pendingImageDeletes", [{ key: KEY, deleteAt: 0 }]);
+    at(DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).not.toHaveBeenCalled();
+    expect(await storage.get("pendingImageDeletes")).toEqual([{ key: KEY, deleteAt: 0 }]);
+  });
+
   it("never deletes an image that a later save put back in the bank", async () => {
     const { store, onImagesOrphaned, at } = setup();
     await store.putBank(validBank, 1);

@@ -328,6 +328,7 @@ export class DungeonRoom {
         // Same shallow-validation backfill for saves from before phone answering (phone-answering.md).
         eliminated: s.game.eliminated ?? {},
         pendingWrong: s.game.pendingWrong ?? null,
+        // Not for old saves (SCHEMA_VERSION 5 refuses them): guards a v5 snapshot missing the field.
         optionOrder: s.game.optionOrder ?? {},
         teams: s.game.teams.map((t) =>
           t && typeof t === "object" ? { ...t, branchChoices: t.branchChoices ?? {}, currentSelection: t.currentSelection ?? null } : t,
