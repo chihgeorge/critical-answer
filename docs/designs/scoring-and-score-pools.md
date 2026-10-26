@@ -119,6 +119,16 @@ Mockups: `~/.gstack/projects/critical-answer/designs/scoring-20261025/score-all.
 - `HOST_SEND_TO_BOSS { teamId }` calls `sendToBoss`: refused for a team already in the boss room, with a wrong lock waiting, or with a lock still in its 2 s beat. It does not narrate; step 4 (later joiners' lines) can hook in here.
 - `SpectatorView.bossKilledBy` feeds the end screen's 「最後一擊」 line. Snapshot schema 4: a room saved by the old code is discarded on restart.
 
+## PR B as built (2026-10-26)
+
+- Bank format v2 as drafted above (`pools` keyed "1"–"5", rooms with `difficulty` and `reward`). `parseBank` still reads v1 and converts it, so production's stored bank needs no manual step (D1=B: the pooled format, not pools derived from rooms).
+- `parseBank` refuses a room whose pool is empty. An empty pool a flee needs falls back to the nearest pool below, then above (`poolIndexFor`).
+- `deal()` takes a difficulty. When every question in the pool is held, it deals the fleeing team's own question back, never another team's.
+- `GameState.optionOrder` is the per-game shuffle (`shuffledOptionOrders`, Fisher-Yates counted down so the tests' `() => 0` rng keeps bank order). Every option index in the room, the protocol and the clients is a shown index; `inShownOrder` maps a bank question into it. Snapshot schema 5.
+- The question's monster comes from the team's room, not the question, since one pool serves several rooms.
+- Default bank: 8 rooms (3 new monsters: 暴躁幽靈, 熔岩史萊姆王, 冰霜愛哭鬼), 20 new questions (p3-q1..4, p4-q1..4, p5-q1..12), the guessable year ladders and answer-built distractors reworked, and two pool-2 option clashes (端午 / 中秋) fixed.
+- Bank editor (D2=B): tabs 房間 / 難度 1–5 / 首領. The 房間 tab edits each room's difficulty and reward and the boss's hit reward; monster names stay read-only.
+
 ## Next Steps
 
 1. `/plan-eng-review`.

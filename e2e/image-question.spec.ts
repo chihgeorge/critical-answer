@@ -18,12 +18,12 @@ const TINY_PNG = Buffer.from(
 let originalRoom0Questions: unknown;
 test.beforeEach(async ({ request }) => {
   const loaded = await request.get(`${WORKER}/api/bank`, { headers: HEADERS });
-  originalRoom0Questions = (await loaded.json()).bank.rooms[0].questions;
+  originalRoom0Questions = (await loaded.json()).bank.pools["1"];
 });
 test.afterEach(async ({ request }) => {
   const loaded = await request.get(`${WORKER}/api/bank`, { headers: HEADERS });
   const { bank, version } = await loaded.json();
-  bank.rooms[0].questions = originalRoom0Questions;
+  bank.pools["1"] = originalRoom0Questions;
   await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } });
 });
 
@@ -43,7 +43,7 @@ async function seedSingleImageQuestion(request: import("@playwright/test").APIRe
 
   const loaded = await request.get(`${WORKER}/api/bank`, { headers });
   const { bank, version } = await loaded.json();
-  bank.rooms[0].questions = [{ kind: "text", id: "r0-img-e2e", content: { kind: "image", value: key }, answer: "松鼠" }];
+  bank.pools["1"] = [{ kind: "text", id: "r0-img-e2e", content: { kind: "image", value: key }, answer: "松鼠" }];
   const saved = await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } });
   expect(saved.ok()).toBe(true);
   return key as string;
@@ -97,7 +97,7 @@ test("image-content question: a broken image URL hides itself on every surface, 
   // A key that was never uploaded — the R2 object genuinely doesn't exist, a real 404. Still
   // UUID-shaped so parseBank's content-validation format check (adversarial review finding,
   // carried forward from the retired `image` kind) accepts it.
-  bank.rooms[0].questions = [
+  bank.pools["1"] = [
     { kind: "text", id: "r0-img-broken", content: { kind: "image", value: "66666666-6666-6666-6666-666666666666" }, answer: "無所謂" },
   ];
   const saved = await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } });
@@ -140,7 +140,7 @@ test("youtube-content question: renders an iframe with the embed URL on /play, /
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const loaded = await request.get(`${WORKER}/api/bank`, { headers });
   const { bank, version } = await loaded.json();
-  bank.rooms[0].questions = [{ kind: "text", id: "r0-yt-e2e", content: { kind: "youtube", value: videoId }, answer: "彩蛋" }];
+  bank.pools["1"] = [{ kind: "text", id: "r0-yt-e2e", content: { kind: "youtube", value: videoId }, answer: "彩蛋" }];
   const saved = await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } });
   expect(saved.ok()).toBe(true);
 
@@ -178,7 +178,7 @@ test("youtube-content question: renders an iframe with the embed URL on /play, /
 async function startWithExplanation(browser: import("@playwright/test").Browser, request: import("@playwright/test").APIRequestContext, explanation: unknown) {
   const loaded = await request.get(`${WORKER}/api/bank`, { headers: HEADERS });
   const { bank, version } = await loaded.json();
-  bank.rooms[0].questions = [{ kind: "text", id: "r0-reveal-e2e", content: { kind: "text", value: "揭曉測試題" }, answer: "揭曉答案", explanation }];
+  bank.pools["1"] = [{ kind: "text", id: "r0-reveal-e2e", content: { kind: "text", value: "揭曉測試題" }, answer: "揭曉答案", explanation }];
   const saved = await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } });
   expect(saved.ok()).toBe(true);
 

@@ -46,12 +46,12 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
   await page.getByLabel("Owner key").fill("wrong-key");
   await page.getByRole("button", { name: "載入題庫" }).click();
   await expect(page.getByTestId("bank-editor-error")).toBeVisible();
-  await expect(page.getByTestId("bank-room-0")).toHaveCount(0);
+  await expect(page.getByTestId("bank-pool-1")).toHaveCount(0);
 
   // Correct key: the bundled bank loads (seeded into BankStore on first read).
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
   const startingCount = await rows(room0).count();
 
@@ -67,7 +67,7 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
 
   // Reload with the key and confirm both changes persisted through BankStore, not just local state.
   await reloadAndLoad(page);
-  const room0AfterSave = page.getByTestId("bank-room-0");
+  const room0AfterSave = page.getByTestId("bank-pool-1");
   await expect(rows(room0AfterSave).first().getByLabel("題目文字")).toHaveValue("編輯過的題目");
   await expect(rows(room0AfterSave).last().getByLabel("題目文字")).toHaveValue("e2e 測試題目");
   await expect(rows(room0AfterSave)).toHaveCount(startingCount + 1);
@@ -78,14 +78,14 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   await reloadAndLoad(page);
-  await expect(rows(page.getByTestId("bank-room-0"))).toHaveCount(startingCount);
+  await expect(rows(page.getByTestId("bank-pool-1"))).toHaveCount(startingCount);
 });
 
 test("a late load response never overwrites edits made after a newer load", async ({ page }) => {
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
 
   // Hold the first load after the reload until the manual load and the edit are done. `next dev` runs
   // the auto-load effect twice (StrictMode), so the second auto-load lets the 載入題庫 button come back.
@@ -100,7 +100,7 @@ test("a late load response never overwrites edits made after a newer load", asyn
     await route.continue();
   });
   await reloadAndLoad(page);
-  const firstText = rows(page.getByTestId("bank-room-0")).first().getByLabel("題目文字");
+  const firstText = rows(page.getByTestId("bank-pool-1")).first().getByLabel("題目文字");
   await firstText.fill("載入後的編輯");
 
   const late = page.waitForResponse((r) => r.request() === heldRequest);
@@ -118,7 +118,7 @@ test("a superseded load that fails at the network never shows an error over a ne
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
 
   let fail = () => {};
   const held = new Promise<void>((r) => (fail = r));
@@ -133,14 +133,14 @@ test("a superseded load that fails at the network never shows an error over a ne
     await route.continue();
   });
   await reloadAndLoad(page);
-  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
 
   const failed = page.waitForEvent("requestfailed", (r) => r.url().endsWith("/api/bank") && r.method() === "GET");
   fail();
   await failed;
   await page.waitForTimeout(300); // let the stale catch run; a guard regression shows the error here
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
-  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
 });
 
 test("the current load failing at the network still shows the error", async ({ page }) => {
@@ -160,7 +160,7 @@ test("a superseded load answered 403 never wipes the bank shown by a newer succe
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
 
   let reject = () => {};
   const held = new Promise<void>((r) => (reject = r));
@@ -175,14 +175,14 @@ test("a superseded load answered 403 never wipes the bank shown by a newer succe
     await route.continue();
   });
   await reloadAndLoad(page);
-  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
 
   const rejected = page.waitForResponse((r) => r.status() === 403);
   reject();
   await (await rejected).finished();
   await page.waitForTimeout(300); // let the stale 403 branch run; a guard regression wipes the bank here
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
-  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
 });
 
 // Generated by /ship test-coverage audit.
@@ -193,7 +193,7 @@ test("an older load finishing never clears the loading state while the newest lo
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
 
   // On reload StrictMode runs the auto-load twice: let the first (older) GET through, hold the second (newest).
   let release = () => {};
@@ -214,7 +214,7 @@ test("an older load finishing never clears the loading state while the newest lo
 
   release();
   await expect(page.getByRole("button", { name: "載入題庫" })).toBeEnabled();
-  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
 });
 
 // Generated by /ship test-coverage audit.
@@ -225,7 +225,7 @@ test("save and load are mutually exclusive: each button is disabled while the ot
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
 
   let release = () => {};
   let held = new Promise<void>((r) => (release = r));
@@ -257,13 +257,13 @@ test("a remembered owner key (localStorage) auto-loads the bank on a fresh visit
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  await expect(page.getByTestId("bank-room-0")).toBeVisible(); // save() below isn't reached — this just persists the key
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible(); // save() below isn't reached — this just persists the key
 
   // A fresh page load (simulating a returning owner) must read the key back and auto-load, per
   // useOwnerKey's onRestored callback — never typing the key again this browser.
   await page.reload();
   await expect(page.getByLabel("Owner key")).toHaveValue(E2E_OWNER_KEY);
-  await expect(page.getByTestId("bank-room-0")).toBeVisible();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
 });
 
 test("a save that fails server-side validation shows the server's error, and does not clear the form", async ({ page, request }) => {
@@ -271,7 +271,7 @@ test("a save that fails server-side validation shows the server's error, and doe
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
 
   // parseBank() rejects an empty answer — a real state reachable by clearing the field, not a
@@ -291,6 +291,7 @@ test("deleting every question in a room down to zero is rejected on save (a room
   // The boss room is smaller in the bundled bank, so it takes fewer deletes to empty out.
   // parseBank() requires every room (and the boss) to have at least one question — emptying one
   // out is a real, reachable UI state, and the save must be rejected, not silently accepted.
+  await page.getByTestId("bank-tab-boss").click();
   const boss = page.getByTestId("bank-room-boss");
   await expect(boss).toBeVisible();
   let remaining = await rows(boss).count();
@@ -306,6 +307,7 @@ test("deleting every question in a room down to zero is rejected on save (a room
 
   // Nothing was actually persisted — a fresh load still has the original boss question(s).
   await reloadAndLoad(page);
+  await page.getByTestId("bank-tab-boss").click();
   const bossAfterReload = page.getByTestId("bank-room-boss");
   await expect(bossAfterReload).toBeVisible();
   await expect(rows(bossAfterReload)).not.toHaveCount(0);
@@ -316,7 +318,7 @@ test("multipleChoice authoring: switch kind, edit options, mark correct, and del
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
 
   // Switch the first question in room 0 to multipleChoice — the reset above made it a text question.
@@ -358,7 +360,7 @@ test("multipleChoice authoring: switch kind, edit options, mark correct, and del
 
   // Reload and confirm it persisted as multipleChoice with the mark intact, not reverted to text.
   await reloadAndLoad(page);
-  const reloadedRow = rows(page.getByTestId("bank-room-0")).first();
+  const reloadedRow = rows(page.getByTestId("bank-pool-1")).first();
   await expect(reloadedRow.getByLabel("題型")).toHaveValue("multipleChoice");
   await expect(reloadedRow.getByLabel("第 1 個選項為正解")).toBeChecked();
 });
@@ -374,7 +376,7 @@ test("multipleChoice question-text field stays wide and editable, not squeezed b
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
 
   const firstRow = rows(room0).first();
@@ -393,7 +395,7 @@ test("switching a question back to text discards its options, and content carrie
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
 
   const firstRow = rows(room0).first();
@@ -421,7 +423,7 @@ test("image authoring: switch the content's media type to image, upload a real f
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
 
   const firstRow = rows(room0).first();
@@ -445,7 +447,7 @@ test("image authoring: switch the content's media type to image, upload a real f
   // Reload and confirm it persisted as image content — the uploaded key survived the round trip
   // through BankStore.
   await reloadAndLoad(page);
-  const reloadedRow = rows(page.getByTestId("bank-room-0")).first();
+  const reloadedRow = rows(page.getByTestId("bank-pool-1")).first();
   await expect(reloadedRow.getByRole("button", { name: "題目：圖片" })).toHaveAttribute("aria-pressed", "true");
   await expect(reloadedRow.getByText(/已上傳/)).toBeVisible();
 });
@@ -459,7 +461,7 @@ test("image authoring: a server-rejected upload (bad file type) shows an inline 
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const loaded = await request.get("http://localhost:1996/api/bank", { headers });
   const { bank, version } = await loaded.json();
-  bank.rooms[0].questions[0] = { kind: "text", id: bank.rooms[0].questions[0].id, content: { kind: "text", value: "重設用題目" }, answer: "重設用答案" };
+  bank.pools["1"][0] = { kind: "text", id: bank.pools["1"][0].id, content: { kind: "text", value: "重設用題目" }, answer: "重設用答案" };
   const reset = await request.put("http://localhost:1996/api/bank", { headers, data: { bank, version } });
   expect(reset.ok()).toBe(true);
 
@@ -467,7 +469,7 @@ test("image authoring: a server-rejected upload (bad file type) shows an inline 
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
 
   const firstRow = rows(room0).first();
@@ -488,7 +490,7 @@ test("YouTube authoring: pasting a full watch URL extracts and stores just the v
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
 
   const firstRow = rows(room0).first();
@@ -500,7 +502,7 @@ test("YouTube authoring: pasting a full watch URL extracts and stores just the v
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   await reloadAndLoad(page);
-  const reloadedRow = rows(page.getByTestId("bank-room-0")).first();
+  const reloadedRow = rows(page.getByTestId("bank-pool-1")).first();
   await expect(reloadedRow.getByRole("button", { name: "題目：YouTube" })).toHaveAttribute("aria-pressed", "true");
   // What's actually stored is the extracted id, not the raw pasted URL — the field re-displays
   // whatever the server persisted, so a full watch URL round-tripping down to a bare id is the
@@ -513,7 +515,7 @@ test("YouTube authoring: an unparseable paste shows an inline error and blocks s
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
 
   const firstRow = rows(room0).first();
@@ -529,7 +531,7 @@ test("explanation: optional, independently text/image/YouTube from the content, 
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
 
   const firstRow = rows(room0).first();
@@ -542,7 +544,7 @@ test("explanation: optional, independently text/image/YouTube from the content, 
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   await reloadAndLoad(page);
-  const reloadedRow = rows(page.getByTestId("bank-room-0")).first();
+  const reloadedRow = rows(page.getByTestId("bank-pool-1")).first();
   await expect(reloadedRow.getByLabel("詳解文字")).toHaveValue("這是補充說明");
 
   // Clear it back to 無 — no confirm expected here since MediaPicker's own text field is
@@ -553,7 +555,7 @@ test("explanation: optional, independently text/image/YouTube from the content, 
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   await reloadAndLoad(page);
-  const finalRow = rows(page.getByTestId("bank-room-0")).first();
+  const finalRow = rows(page.getByTestId("bank-pool-1")).first();
   await expect(finalRow.getByRole("button", { name: "詳解：無" })).toHaveAttribute("aria-pressed", "true");
 });
 
@@ -564,7 +566,7 @@ test("re-clicking a media tab that's already active is a no-op, not a discard (r
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const loaded = await request.get("http://localhost:1996/api/bank", { headers });
   const { bank, version } = await loaded.json();
-  bank.rooms[0].questions[0] = { kind: "text", id: bank.rooms[0].questions[0].id, content: { kind: "text", value: "重設用題目" }, answer: "重設用答案" };
+  bank.pools["1"][0] = { kind: "text", id: bank.pools["1"][0].id, content: { kind: "text", value: "重設用題目" }, answer: "重設用答案" };
   const reset = await request.put("http://localhost:1996/api/bank", { headers, data: { bank, version } });
   expect(reset.ok()).toBe(true);
 
@@ -576,7 +578,7 @@ test("re-clicking a media tab that's already active is a no-op, not a discard (r
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
 
   const firstRow = rows(room0).first();
@@ -595,7 +597,7 @@ test("two tabs editing at once: the second save is rejected as a conflict, not a
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const loaded = await request.get("http://localhost:1996/api/bank", { headers });
   const { bank, version } = await loaded.json();
-  bank.rooms[0].questions[0] = { kind: "text", id: bank.rooms[0].questions[0].id, content: { kind: "text", value: "重設用題目" }, answer: "重設用答案" };
+  bank.pools["1"][0] = { kind: "text", id: bank.pools["1"][0].id, content: { kind: "text", value: "重設用題目" }, answer: "重設用答案" };
   const reset = await request.put("http://localhost:1996/api/bank", { headers, data: { bank, version } });
   expect(reset.ok()).toBe(true);
 
@@ -604,7 +606,7 @@ test("two tabs editing at once: the second save is rejected as a conflict, not a
     await p.goto("/bank-editor");
     await p.getByLabel("Owner key").fill(E2E_OWNER_KEY);
     await p.getByRole("button", { name: "載入題庫" }).click();
-    await expect(p.getByTestId("bank-room-0")).toBeVisible();
+    await expect(p.getByTestId("bank-pool-1")).toBeVisible();
     return p;
   };
 
@@ -612,20 +614,20 @@ test("two tabs editing at once: the second save is rejected as a conflict, not a
   const tabB = await openAndLoad();
 
   // Tab A edits and saves first — this is the edit that must NOT be lost.
-  await rows(tabA.getByTestId("bank-room-0")).first().getByLabel("題目文字").fill("A 先存的版本");
+  await rows(tabA.getByTestId("bank-pool-1")).first().getByLabel("題目文字").fill("A 先存的版本");
   await saveAll(tabA);
   await expect(tabA.getByTestId("bank-editor-error")).toHaveCount(0);
 
   // Tab B still holds the version it loaded before A's save — its save must be rejected, not
   // silently accepted (which would erase A's edit with no trace).
-  await rows(tabB.getByTestId("bank-room-0")).first().getByLabel("題目文字").fill("B 後存的版本（應該被拒絕）");
+  await rows(tabB.getByTestId("bank-pool-1")).first().getByLabel("題目文字").fill("B 後存的版本（應該被拒絕）");
   await saveAll(tabB);
   await expect(tabB.getByTestId("bank-editor-error")).toBeVisible();
   await expect(tabB.getByTestId("bank-editor-error")).toContainText(/changed by someone else/i);
 
   // A's save is what actually persisted.
   const verify = await openAndLoad();
-  await expect(rows(verify.getByTestId("bank-room-0")).first().getByLabel("題目文字")).toHaveValue("A 先存的版本");
+  await expect(rows(verify.getByTestId("bank-pool-1")).first().getByLabel("題目文字")).toHaveValue("A 先存的版本");
 });
 
 /** Resets room 0's first question to a known text-content state via the API, so a test doesn't
@@ -634,7 +636,7 @@ async function resetFirstQuestion(request: import("@playwright/test").APIRequest
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const loaded = await request.get("http://localhost:1996/api/bank", { headers });
   const { bank, version } = await loaded.json();
-  bank.rooms[0].questions[0] = { kind: "text", id: bank.rooms[0].questions[0].id, content: { kind: "text", value: "重設用題目" }, answer: "重設用答案" };
+  bank.pools["1"][0] = { kind: "text", id: bank.pools["1"][0].id, content: { kind: "text", value: "重設用題目" }, answer: "重設用答案" };
   const reset = await request.put("http://localhost:1996/api/bank", { headers, data: { bank, version } });
   expect(reset.ok()).toBe(true);
 }
@@ -643,7 +645,7 @@ async function loadEditor(page: Page) {
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
-  const room0 = page.getByTestId("bank-room-0");
+  const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
   return rows(room0).first();
 }
@@ -684,7 +686,7 @@ test("two image slots in the same room: the second row's 選擇圖片 uploads in
   await resetFirstQuestion(request);
   autoAcceptConfirms(page);
   const firstRow = await loadEditor(page);
-  const secondRow = rows(page.getByTestId("bank-room-0")).nth(1);
+  const secondRow = rows(page.getByTestId("bank-pool-1")).nth(1);
 
   await firstRow.getByRole("button", { name: "題目：圖片" }).click();
   await secondRow.getByRole("button", { name: "題目：圖片" }).click();
@@ -697,4 +699,33 @@ test("two image slots in the same room: the second row's 選擇圖片 uploads in
 
   await expect(secondRow.getByText(/已上傳/)).toBeVisible();
   await expect(firstRow.getByText(/已上傳/)).toHaveCount(0);
+});
+
+test("the 房間 tab edits a room's difficulty and reward and the boss hit reward, and a room whose pool is empty blocks save", async ({ page, request }) => {
+  const WORKER = "http://localhost:1996";
+  const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  await page.getByTestId("bank-tab-rooms").click();
+  const room1 = page.getByTestId("bank-room-1");
+  await room1.getByRole("spinbutton").fill("25");
+  await page.getByTestId("bank-boss-hit-reward").fill("12");
+  await saveAll(page);
+  await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
+  const saved = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank;
+  expect(saved.rooms[1].reward).toBe(25);
+  expect(saved.boss.hitReward).toBe(12);
+
+  // Pool 5 holds rooms 7 and 8; emptying it must be refused before the save goes out.
+  await page.getByTestId("bank-tab-5").click();
+  const pool5 = page.getByTestId("bank-pool-5");
+  while ((await rows(pool5).count()) > 0) await rows(pool5).first().getByRole("button", { name: "刪除" }).click();
+  await saveAll(page);
+  await expect(page.getByTestId("bank-editor-error")).toContainText("難度 5 題庫沒有題目");
+
+  saved.rooms[1].reward = 20;
+  saved.boss.hitReward = 10;
+  const { version } = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()) as { version: number };
+  await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: saved, version } });
 });

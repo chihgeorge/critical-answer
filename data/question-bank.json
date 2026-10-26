@@ -227,7 +227,7 @@
           "一月十五日",
           "五月五日",
           "七月七日",
-          "八月十五日"
+          "九月九日"
         ],
         "correctIndex": 1
       },
@@ -284,7 +284,7 @@
         "kind": "multipleChoice",
         "text": "中秋節是農曆幾月幾日？",
         "options": [
-          "五月五日",
+          "七月十五日",
           "十二月三十日",
           "九月九日",
           "八月十五日"
@@ -320,10 +320,10 @@
         "kind": "multipleChoice",
         "text": "二二八和平紀念日是幾月幾日？",
         "options": [
-          "2 月 8 日",
-          "8 月 22 日",
+          "1 月 1 日",
+          "4 月 4 日",
           "2 月 28 日",
-          "12 月 28 日"
+          "10 月 25 日"
         ],
         "correctIndex": 2
       },
@@ -346,12 +346,12 @@
         "kind": "multipleChoice",
         "text": "政府宣布透過 2027 年度總預算增列多少金額來普發現金 1 萬元？",
         "options": [
-          "新台幣 1000 億元",
-          "新台幣 2357 億元",
-          "新台幣 5000 億元",
-          "新台幣 2357 萬元"
+          "新台幣 1500 億元",
+          "新台幣 3200 億元",
+          "新台幣 4100 億元",
+          "新台幣 2357 億元"
         ],
-        "correctIndex": 1
+        "correctIndex": 3
       },
       {
         "id": "r3-q2",
@@ -394,46 +394,94 @@
         "kind": "multipleChoice",
         "text": "台灣第一條高速公路（國道 1 號）全線通車於哪一年？",
         "options": [
-          "1968 年",
           "1978 年",
-          "1988 年",
-          "1998 年"
+          "1983 年",
+          "1987 年",
+          "1994 年"
         ],
-        "correctIndex": 1
+        "correctIndex": 0
       },
       {
         "id": "r3-q6",
         "kind": "multipleChoice",
         "text": "九二一大地震發生在哪一年？",
         "options": [
-          "2009 年",
-          "1989 年",
-          "2019 年",
-          "1999 年"
+          "1986 年",
+          "1991 年",
+          "1999 年",
+          "1995 年"
         ],
-        "correctIndex": 3
+        "correctIndex": 2
       },
       {
         "id": "r3-q7",
         "kind": "multipleChoice",
         "text": "台灣哪一年以「台澎金馬個別關稅領域」名義加入 WTO？",
         "options": [
-          "2008 年",
-          "1992 年",
+          "1995 年",
           "2002 年",
-          "2012 年"
+          "1998 年",
+          "2005 年"
         ],
-        "correctIndex": 2
+        "correctIndex": 1
       },
       {
         "id": "r3-q8",
         "kind": "multipleChoice",
         "text": "台北捷運第一條路線（木柵線）通車於哪一年？",
         "options": [
-          "1996 年",
-          "1986 年",
-          "2006 年",
-          "2016 年"
+          "1989 年",
+          "1984 年",
+          "1993 年",
+          "1996 年"
+        ],
+        "correctIndex": 3
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p3-q1",
+        "text": "台灣本島最東端的岬角是哪裡？",
+        "options": [
+          "鵝鑾鼻",
+          "三貂角",
+          "富貴角",
+          "貓鼻頭"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p3-q2",
+        "text": "澎湖有名的「雙心石滬」位在哪一座島上？",
+        "options": [
+          "望安島",
+          "吉貝嶼",
+          "七美嶼",
+          "西嶼"
+        ],
+        "correctIndex": 2
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p3-q3",
+        "text": "每年春天的「客家桐花祭」，賞的是哪一種花？",
+        "options": [
+          "杜鵑花",
+          "木棉花",
+          "櫻花",
+          "油桐花"
+        ],
+        "correctIndex": 3
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p3-q4",
+        "text": "台灣哪一個城市有「風城」的稱號？",
+        "options": [
+          "新竹市",
+          "基隆市",
+          "嘉義市",
+          "屏東市"
         ],
         "correctIndex": 0
       }
@@ -480,12 +528,12 @@
         "kind": "multipleChoice",
         "text": "台北 101 是在哪一年落成啟用的？",
         "options": [
-          "1999 年",
           "2004 年",
-          "2009 年",
-          "2014 年"
+          "1997 年",
+          "2001 年",
+          "2008 年"
         ],
-        "correctIndex": 1
+        "correctIndex": 0
       },
       {
         "id": "r4-q5",
@@ -528,15 +576,208 @@
         "kind": "multipleChoice",
         "text": "中華民國憲法是在哪一年施行的？",
         "options": [
-          "1912 年",
-          "1949 年",
-          "1987 年",
-          "1947 年"
+          "1958 年",
+          "1947 年",
+          "1952 年",
+          "1966 年"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p4-q1",
+        "text": "台灣的山脈中，哪一條最長？",
+        "options": [
+          "雪山山脈",
+          "中央山脈",
+          "玉山山脈",
+          "阿里山山脈"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p4-q2",
+        "text": "蘭嶼達悟族最有代表性的傳統木船叫什麼？",
+        "options": [
+          "獨木舟",
+          "竹筏",
+          "拼板舟",
+          "龍舟"
+        ],
+        "correctIndex": 2
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p4-q3",
+        "text": "台灣第一位拿到奧運金牌的選手是誰？",
+        "options": [
+          "紀政",
+          "楊傳廣",
+          "許淑淨",
+          "陳詩欣"
         ],
         "correctIndex": 3
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p4-q4",
+        "text": "機場代碼 TPE 指的是哪一座機場？",
+        "options": [
+          "桃園國際機場",
+          "臺北松山機場",
+          "高雄國際機場",
+          "臺中國際機場"
+        ],
+        "correctIndex": 0
       }
     ],
-    "5": []
+    "5": [
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q1",
+        "text": "台灣政府目前認定的原住民族共有幾族？",
+        "options": [
+          "9 族",
+          "14 族",
+          "16 族",
+          "21 族"
+        ],
+        "correctIndex": 2
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q2",
+        "text": "荷蘭人在台南興建的「熱蘭遮城」，今天通常叫什麼？",
+        "options": [
+          "赤崁樓",
+          "安平古堡",
+          "億載金城",
+          "紅毛城"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q3",
+        "text": "淡水的「紅毛城」，最早是哪一國人興建的？",
+        "options": [
+          "荷蘭",
+          "英國",
+          "葡萄牙",
+          "西班牙"
+        ],
+        "correctIndex": 3
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q4",
+        "text": "日本技師八田與一主持興建的是哪一座水庫？",
+        "options": [
+          "烏山頭水庫",
+          "石門水庫",
+          "曾文水庫",
+          "翡翠水庫"
+        ],
+        "correctIndex": 0
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q5",
+        "text": "鄭成功率軍攻打荷蘭人時，是從哪裡登陸台灣的？",
+        "options": [
+          "基隆港",
+          "鹿耳門",
+          "打狗港",
+          "蘇澳港"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q6",
+        "text": "日治時期的「台灣總督府」建築，今天是哪個機關在使用？",
+        "options": [
+          "行政院",
+          "監察院",
+          "總統府",
+          "台北市政府"
+        ],
+        "correctIndex": 2
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q7",
+        "text": "「台灣民主國」是在哪一年成立的？",
+        "options": [
+          "1885 年",
+          "1874 年",
+          "1902 年",
+          "1895 年"
+        ],
+        "correctIndex": 3
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q8",
+        "text": "布袋戲大師黃海岱創立的戲團叫什麼？",
+        "options": [
+          "五洲園",
+          "亦宛然",
+          "小西園",
+          "新興閣"
+        ],
+        "correctIndex": 0
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q9",
+        "text": "舞團「雲門舞集」的創辦人是誰？",
+        "options": [
+          "李安",
+          "林懷民",
+          "侯孝賢",
+          "白先勇"
+        ],
+        "correctIndex": 1
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q10",
+        "text": "李安第一次拿下奧斯卡最佳導演，是靠哪一部電影？",
+        "options": [
+          "臥虎藏龍",
+          "色，戒",
+          "斷背山",
+          "少年Pi的奇幻漂流"
+        ],
+        "correctIndex": 2
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q11",
+        "text": "國家音樂廳和國家戲劇院，分別位在哪一個廣場的兩側？",
+        "options": [
+          "凱達格蘭大道",
+          "市民廣場",
+          "二二八和平公園",
+          "自由廣場"
+        ],
+        "correctIndex": 3
+      },
+      {
+        "kind": "multipleChoice",
+        "id": "p5-q12",
+        "text": "清代俗諺「一府二鹿三艋舺」的「二鹿」，指的是今天哪裡？",
+        "options": [
+          "彰化鹿港",
+          "屏東東港",
+          "宜蘭頭城",
+          "台中梧棲"
+        ],
+        "correctIndex": 0
+      }
+    ]
   },
   "rooms": [
     {
@@ -583,6 +824,33 @@
       },
       "difficulty": 4,
       "reward": 40
+    },
+    {
+      "monster": {
+        "name": "暴躁幽靈",
+        "sprite": "ghost",
+        "hue": 300
+      },
+      "difficulty": 4,
+      "reward": 40
+    },
+    {
+      "monster": {
+        "name": "熔岩史萊姆王",
+        "sprite": "slime-king",
+        "hue": 330
+      },
+      "difficulty": 5,
+      "reward": 50
+    },
+    {
+      "monster": {
+        "name": "冰霜愛哭鬼",
+        "sprite": "ghost-cry",
+        "hue": 180
+      },
+      "difficulty": 5,
+      "reward": 50
     }
   ],
   "boss": {
@@ -659,24 +927,24 @@
         "kind": "multipleChoice",
         "text": "民國元年是西元哪一年？",
         "options": [
-          "1895 年",
+          "1901 年",
+          "1906 年",
           "1919 年",
-          "1912 年",
-          "1949 年"
+          "1912 年"
         ],
-        "correctIndex": 2
+        "correctIndex": 3
       },
       {
         "id": "boss-q7",
         "kind": "multipleChoice",
         "text": "台灣最高峰的標高約為多少公尺？",
         "options": [
-          "3,886 公尺",
-          "3,776 公尺",
-          "8,848 公尺",
-          "3,952 公尺"
+          "3,492 公尺",
+          "3,952 公尺",
+          "3,629 公尺",
+          "4,095 公尺"
         ],
-        "correctIndex": 3
+        "correctIndex": 1
       },
       {
         "id": "boss-q8",
