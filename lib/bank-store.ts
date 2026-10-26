@@ -7,7 +7,8 @@
 // /parties/<binding>/<id>).
 //
 //   BankStore.getVersionedBank()                   BankStore.putBank(candidate, expectedVersion)
-//     │                                              │
+//     │                                              ├─ stored bank unreadable (see left)? ─throws─>
+//     │                                              │    nothing saved: the fallback is not what's stored
 //     ├─ storage empty? ─yes─> seed from              ├─ expectedVersion !== stored.version?
 //     │                        bundled JSON, v1              └─returns {conflict, currentVersion}─>
 //     │         │                                              (nothing saved — see decision below)
@@ -18,6 +19,8 @@
 //     │        fall back to the bundled bank, v1
 //     │        (never crash the caller — a room starting
 //     │        a game must still be able to get a bank)
+//     │        Saves and image cleanup refuse in this state (e.g. after a rollback below a newer
+//     │        bank format); a roll-forward or a fixed stored bank is the way out.
 //
 // Why a version at all: two editor tabs (or a save racing a fresh load) both PUT-ing the whole
 // bank is a last-write-wins clobber with no error and no trace — the first tab's edits just
@@ -115,7 +118,8 @@ export class BankStore {
     const now = this.now();
     const { current, unreadable } = await this.read();
     // The fallback bank is not what's stored: deleting by it would drop images the stored bank still uses.
-    if (unreadable) return;
+    // Try again later; this alarm is spent, and the queue would otherwise wait for the next save or upload.
+    if (unreadable) return void (await this.storage.setAlarm?.(now + this.cleanupDelayMs));
     const inUse = imageKeysOf(current.bank);
     const due = pending.filter((p) => p.deleteAt <= now && !inUse.has(p.key)).map((p) => p.key);
     // Back in the bank: drop it from the queue; the save that removes it again re-queues it.
@@ -152,8 +156,9 @@ export class BankStore {
   }
 
   /** Validates and replaces the whole bank atomically, but only if `expectedVersion` still
-   * matches what's stored. Returns a `BankConflict` on a stale version, throws parseBank's error on
-   * invalid input — either way nothing is saved, the previous bank stands. */
+   * matches what's stored. Returns a `BankConflict` on a stale version, throws when the stored bank
+   * is unreadable (nothing may overwrite it) or parseBank's error on invalid input — either way
+   * nothing is saved, the previous bank stands. */
   async putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict> {
     const { current, unreadable } = await this.read();
     // The fallback bank is not what's stored (e.g. a rollback to code that can't read a newer
