@@ -531,7 +531,7 @@ export function answerQuestion(
       const rotatedBossQuestionId = fleeChoice === "flee" || shownWrong ? nextBossQuestionId(boss, revealed) : boss.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a rotation changes
       // the question for every team in boss phase, so every one of their picks resets —
-      // unless it stayed on the same question (the last unrevealed one), where picks still apply.
+      // unless it stayed on the same question (a one-question boss bank, or no option shown), where picks still apply.
       nextGame = {
         ...game,
         revealedQuestionIds: revealed,

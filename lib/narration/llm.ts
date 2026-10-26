@@ -60,7 +60,7 @@ function describeEvent(e: NarrationEvent): string {
     }
     case "retry":
       return e.boss
-        ? `事件：隊伍${q(e.team)}答錯了，首領${q(e.monster)}換出了一道新題目。`
+        ? `事件：隊伍${q(e.team)}答錯了，首領${q(e.monster)}換出了新的考驗。`
         : `事件：隊伍${q(e.team)}答錯了，${q(e.monster)}還擋在原地，可以重答。`;
     case "flee":
       return `事件：隊伍${q(e.team)}答錯後逃跑，換一題較簡單的。`;

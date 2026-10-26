@@ -932,6 +932,17 @@ describe("recordWrongLock (phone answering, phone-answering.md E6/E9)", () => {
     expect(g.eliminated[g.boss.currentQuestionId]).toBeUndefined();
   });
 
+  // Value: protects=newBossQuestion is set only when the boss question really changed (narration truth);
+  // fails_when=newBossQuestion follows the shown wrong option instead of the rotation; why_new=both boss tests
+  // above have shownWrong and rotation agree; seam=none; no_claim=none beyond protects
+  it("boss: a wrong lock with a one-question boss bank stays on it and does not claim a new question", () => {
+    const teams = [{ id: "T0", name: "A" }, { id: "T1", name: "B" }];
+    const g = createGame(teams, ...deck(1), ["boss-only"], { bossThreshold: 0 }, 2, first);
+    const { game: after, outcome } = answerQuestion(recordWrongLock(g, "T0", "boss-only", 1), "T0", "boss-only", false, "retry", first);
+    expect(after.boss.currentQuestionId).toBe("boss-only");
+    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" }); // the narration must not say the boss changed the question
+  });
+
   it("boss: a wrong answer with no option shown (a text question the host judged) keeps the question on retry", () => {
     let g = makeGame({ bossThreshold: 0 });
     const q = g.boss.currentQuestionId;
