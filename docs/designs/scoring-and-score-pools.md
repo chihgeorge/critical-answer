@@ -119,7 +119,7 @@ Mockups: `~/.gstack/projects/critical-answer/designs/scoring-20261025/score-all.
 - `HOST_SEND_TO_BOSS { teamId }` calls `sendToBoss`: refused for a team already in the boss room, with a wrong lock waiting, or with a lock still in its 2 s beat. It does not narrate; step 4 (later joiners' lines) can hook in here.
 - `SpectatorView.bossKilledBy` feeds the end screen's 「最後一擊」 line. Snapshot schema 4: a room saved by the old code is discarded on restart.
 
-## PR B as built (2026-10-25)
+## PR B as built (2026-10-26)
 
 - Bank format v2 as drafted above (`pools` keyed "1"–"5", rooms with `difficulty` and `reward`). `parseBank` still reads v1 and converts it, so production's stored bank needs no manual step (D1=B: the pooled format, not pools derived from rooms).
 - `parseBank` refuses a room whose pool is empty. An empty pool a flee needs falls back to the nearest pool below, then above (`poolIndexFor`).
@@ -131,6 +131,6 @@ Mockups: `~/.gstack/projects/critical-answer/designs/scoring-20261025/score-all.
 
 ## Next Steps
 
-1. `/plan-eng-review`.
-2. Build PR A, `/review`, `/ship`, ask before merge.
-3. Then PR B the same way.
+1. ~~`/plan-eng-review`.~~ Done.
+2. ~~Build PR A, `/review`, `/ship`, ask before merge.~~ Shipped as v0.13.0.0.
+3. ~~Then PR B the same way.~~ Shipped as v0.14.0.0.
