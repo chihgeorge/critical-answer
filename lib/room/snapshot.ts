@@ -10,7 +10,7 @@ import { parseBank, type Bank } from "../question-bank";
  *
  * Bump SCHEMA_VERSION whenever a field changes meaning. An unreadable snapshot is discarded, never guessed at.
  */
-export const SCHEMA_VERSION = 3; // teams gained inBoss (boss phase stored, not derived from score); see the comment above.
+export const SCHEMA_VERSION = 4; // teams gained reward, rooms reward, boss hitReward (scoring-and-score-pools.md); see the comment above.
 export const SNAPSHOT_KEY = "room";
 
 export interface RoomSnapshot {

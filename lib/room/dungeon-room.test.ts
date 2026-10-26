@@ -341,6 +341,54 @@ describe("HOST_JUDGE", () => {
   });
 });
 
+describe("HOST_SEND_TO_BOSS (scoring-and-score-pools.md S13)", () => {
+  function startedGame(teamCount = 2) {
+    const { room, hostConn } = makeRoomWithHost();
+    const { ids } = joinTeams(room, hostConn, teamCount);
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn, ids };
+  }
+
+  it("rejects a non-host", () => {
+    const { room, ids } = startedGame(1);
+    const conn = makeConn("not-host");
+    send(room, conn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+    expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "not_host" });
+    expect(room.game!.teams[0].inBoss).toBe(false);
+  });
+
+  it("rejects when there's no active game", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: T1 });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "no_active_game" });
+  });
+
+  it("puts the team in the boss room and broadcasts it", () => {
+    const { room, hostConn, ids } = startedGame(2);
+    send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[1] });
+    expect(room.game!.teams.find((t) => t.id === ids[1])!.inBoss).toBe(true);
+    expect(lastBroadcast(room)).toMatchObject({ type: "STATE" });
+    expect(lastBroadcast(room).view.teams.find((t: { id: string }) => t.id === ids[1]).inBossPhase).toBe(true);
+    send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[1] });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
+  });
+  it("pays the bank's boss.hitReward on a boss hit, not the default 10", () => {
+    const bank: Bank = {
+      rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "？" }, answer: "x" }] }],
+      boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 25, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+    };
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids } = joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "boss-q1", correct: true });
+    expect(room.game!.teams[0].reward).toBe(25);
+  });
+});
+
 describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
   function startedGame(teamCount = 2) {
     const { room, hostConn } = makeRoomWithHost();
@@ -375,7 +423,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
       rooms: [
         {
           monster: { name: "史萊姆", sprite: "slime", hue: 0 },
-          baseDifficulty: 1,
+          baseDifficulty: 1, reward: 10,
           questions: [
             {
               kind: "text",
@@ -387,7 +435,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
           ],
         },
       ],
-      boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+      boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
     };
     const roomIO = { ...(makeRoom() as any), env: { R2_PUBLIC_BASE_URL: "https://pub.example.r2.dev" } } as RoomIO;
     const explanationRoom = new DungeonRoom(roomIO, () => 0, { bank: bankWithExplanation });
@@ -602,13 +650,13 @@ describe("TEAM_SELECT_OPTION", () => {
     rooms: [
       {
         monster: { name: "史萊姆", sprite: "slime", hue: 0 },
-        baseDifficulty: 1,
+        baseDifficulty: 1, reward: 10,
         questions: [{ kind: "multipleChoice", id: "r0-mc1", content: { kind: "text", value: "選哪個？" }, options: ["A", "B", "C"], correctIndex: 1 }],
       },
     ],
     boss: {
       monster: { name: "龍", sprite: "dragon", hue: 0 },
-      maxHp: 3,
+      maxHp: 3, hitReward: 10,
       questions: [
         { kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" },
         { kind: "multipleChoice", id: "boss-mc1", content: { kind: "text", value: "選哪個？" }, options: ["X", "Y"], correctIndex: 0 },
@@ -888,6 +936,16 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useRealTimers();
     });
 
+    it("the host cannot send a team to the boss while its lock is in its beat", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns } = startedMcGame(1);
+      pick(room, conns[0], 1);
+      lock(room, conns[0]);
+      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+      expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "lock_pending" });
+      expect(room.game!.teams[0].inBoss).toBe(false);
+    });
+
     it("boss: a killing lock reveals with the kill bonus as its points", () => {
       vi.useFakeTimers();
       const { room, ids, conns } = startedMcGame(1);
@@ -896,9 +954,9 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "boss-mc1", optionIndex: 0 });
       send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "boss-mc1" });
       vi.advanceTimersByTime(2000);
-      const score = room.game!.teams.find((t) => t.id === ids[0])!.score;
-      expect(score).toBeGreaterThan(0);
-      expect((room as any).reveal.choice).toMatchObject({ correctIndex: 0, points: score });
+      const reward = room.game!.teams.find((t) => t.id === ids[0])!.reward;
+      expect(reward).toBeGreaterThan(10); // the hit reward plus the kill bonus
+      expect((room as any).reveal.choice).toMatchObject({ correctIndex: 0, points: reward });
     });
 
     it("an expiring room drops a lock still in its beat: the timer never fires into the reset room", async () => {
@@ -1255,7 +1313,7 @@ describe("narration (T5-T7)", () => {
       const msgs = all(room);
       const epi = msgs.filter((m) => m.type === "EPILOGUE");
       expect(epi).toHaveLength(1);
-      const score = room.game!.teams[0].score;
+      const score = room.game!.teams[0].reward;
       expect(epi[0].text).toContain("Team 0");
       expect(epi[0].text).toContain(String(score));
       const killShot = msgs.findLast((m) => m.type === "NARRATION");
@@ -1291,7 +1349,7 @@ describe("narration (T5-T7)", () => {
       const t = sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT");
       expect(t.entries.length).toBe(2); // start + one judgment
       expect(t.entries[1]).toMatchObject({ eventId: 2, provider: "scripted", event: { type: "correct" } });
-      expect(t.entries[1].scores).toEqual({ "Team 0": 1, "Team 1": 0 });
+      expect(t.entries[1].scores).toEqual({ "Team 0": 10, "Team 1": 0 });
       const intruder = makeConn("nope");
       send(room, intruder, { type: "HOST_GET_TRANSCRIPT" });
       expect(sentMsgs(intruder).at(-1)).toMatchObject({ type: "ERROR", error: "not_host" });
@@ -1504,7 +1562,7 @@ describe("LLM narration and director (T8-T10)", () => {
       const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
       expect(epi).toHaveLength(1);
       expect(epi[0].text).toContain("Team 0");
-      expect(epi[0].text).toContain(String(r.room.game!.teams[0].score));
+      expect(epi[0].text).toContain(String(r.room.game!.teams[0].reward));
     });
 
     it("waits for the LLM up to the epilogue hold, then falls back once", async () => {
@@ -1710,11 +1768,11 @@ describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
     rooms: [
       {
         monster: { name: "史萊姆", sprite: "slime", hue: 0 },
-        baseDifficulty: 1,
+        baseDifficulty: 1, reward: 10,
         questions: [{ kind: "text", id: "r0-img1", content: { kind: "image", value: "55555555-5555-5555-5555-555555555555" }, answer: "松鼠" }],
       },
     ],
-    boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+    boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
   };
 
   it("builds the broadcast question's content.url from room.env.R2_PUBLIC_BASE_URL", () => {

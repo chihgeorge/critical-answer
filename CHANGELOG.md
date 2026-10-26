@@ -2,6 +2,23 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.13.0.0] - 2026-10-25
+
+### Changed
+- The winner is the team with the most reward points, and teams tied on reward share the win. Landing the final blow on the boss ends the game but no longer wins it by itself.
+- Beating a room's monster pays that room's reward: 10, 20, 20, 30 and 40 for rooms 1 to 5. Each boss hit pays 10, and the final blow also pays a 4d20 roll (4 to 80). A flee costs no reward.
+- Progress points (the difficulty of each question answered right) still decide when a team enters the boss room at 15, but only the host page shows them, as `9/15`, next to each team's reward.
+- The phone shows the team's reward points (for example `120 獎勵分`) instead of `x / 15` and the progress bar. The big screen still shows no scores during play.
+- The end screen ranks teams by reward and adds a 「最後一擊：隊名」 line for the team that killed the boss.
+- A correct answer shows the reward it paid (for example ＋20), not the question's difficulty.
+
+### Added
+- The host can send a team straight into the boss room from 更多 → 送王房, before it reaches 15 progress. The first tap changes the button to 確定送？; a second tap within 3 seconds sends the team. It cannot be undone.
+- A question bank can set each room's `reward` and the boss's `hitReward`. Banks that leave them out (including every bank saved before this version) get difficulty × 10 per room and 10 per boss hit.
+
+### Removed
+- A room saved by an older version cannot be resumed after a server restart. A game in progress during the deploy starts over.
+
 ## [0.12.0.0] - 2026-10-25
 
 ### Changed

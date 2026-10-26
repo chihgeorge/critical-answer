@@ -85,6 +85,18 @@ describe("parseBank", () => {
     expect(parseBank(valid()).rooms[0].questions).toHaveLength(2);
   });
 
+  it("defaults rewards for a bank saved before they existed: difficulty x 10 per room, 10 per boss hit", () => {
+    const b = parseBank({ ...valid(), rooms: [{ ...valid().rooms[0], baseDifficulty: 3 }] });
+    expect(b.rooms[0].reward).toBe(30);
+    expect(b.boss.hitReward).toBe(10);
+  });
+
+  it("keeps rewards the bank sets, zero included", () => {
+    const b = parseBank({ ...valid(), rooms: [{ ...valid().rooms[0], reward: 0 }], boss: { ...valid().boss, hitReward: 25 } });
+    expect(b.rooms[0].reward).toBe(0);
+    expect(b.boss.hitReward).toBe(25);
+  });
+
   it.each([
     ["not an object", () => "x"],
     ["no rooms", () => ({ ...valid(), rooms: [] })],
@@ -97,6 +109,9 @@ describe("parseBank", () => {
     ["an unknown sprite", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], monster: { name: "x", sprite: "cat" } }] })],
     ["no boss questions", () => ({ ...valid(), boss: { ...valid().boss, questions: [] } })],
     ["a boss without hp", () => ({ ...valid(), boss: { ...valid().boss, maxHp: 0 } })],
+    ["a negative room reward", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], reward: -1 }] })],
+    ["a non-integer room reward", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], reward: 1.5 }] })],
+    ["a boss hit reward that is not a number", () => ({ ...valid(), boss: { ...valid().boss, hitReward: "10" } })],
     ["an unknown kind", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [{ id: "a1", text: "t", kind: "essay" }] }] })],
     ["a multipleChoice question with only 1 option", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [mc("a1", ["A"])] }] })],
     [
@@ -186,7 +201,7 @@ describe("lookups", () => {
   const bank = parseBank(valid());
 
   it("roomTemplates keeps the ids and difficulty per room", () => {
-    expect(roomTemplates(bank)).toEqual([{ baseDifficulty: 1, questionIds: ["a1", "a2"] }]);
+    expect(roomTemplates(bank)).toEqual([{ baseDifficulty: 1, reward: 10, questionIds: ["a1", "a2"] }]);
   });
 
   it("findQuestion returns content, answer and where it lives, or undefined", () => {

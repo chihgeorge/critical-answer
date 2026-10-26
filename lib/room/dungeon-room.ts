@@ -6,6 +6,7 @@ import {
   DEFAULT_GAME_CONFIG,
   answerQuestion,
   recordBranchChoice,
+  sendToBoss,
   recordOptionSelection,
   recordWrongLock,
   currentQuestionIdOf,
@@ -401,7 +402,7 @@ export class DungeonRoom {
   }
 
   private scores(): Record<string, number> {
-    return Object.fromEntries((this.game?.teams ?? []).map((t) => [t.name, t.score]));
+    return Object.fromEntries((this.game?.teams ?? []).map((t) => [t.name, t.reward]));
   }
 
   /** Fire-and-forget: narration must never block or break the game. */
@@ -416,7 +417,7 @@ export class DungeonRoom {
     if (!game) return;
     await afterKillShot;
     await wait(this.epilogueDelayMs);
-    const ranking = game.teams.map((t) => ({ name: t.name, score: t.score })).sort((a, b) => b.score - a.score);
+    const ranking = game.teams.map((t) => ({ name: t.name, score: t.reward })).sort((a, b) => b.score - a.score);
     const winners = game.winners.map((id) => game.teams.find((t) => t.id === id)?.name ?? "");
     // One EPILOGUE, whoever writes it: the LLM within its hold, otherwise the program-built story.
     await this.runner.run(eventId, { type: "epilogue", ranking, winners }, this.scores());
@@ -609,6 +610,9 @@ export class DungeonRoom {
           break;
         case "HOST_NEXT":
           this.handleHostNext(sender, msg.eventId);
+          break;
+        case "HOST_SEND_TO_BOSS":
+          this.handleSendToBoss(sender, msg.teamId);
           break;
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice);
@@ -807,6 +811,7 @@ export class DungeonRoom {
       DEFAULT_GAME_CONFIG,
       this.bank.boss.maxHp,
       this.rng,
+      this.bank.boss.hitReward,
     );
     // Default on when a key exists; the host can switch it off before starting.
     // gstack-shortcut(dec-db628e32): no cap on paid narration calls per room or overall (anyone can
@@ -852,6 +857,25 @@ export class DungeonRoom {
     }
   }
 
+  private handleSendToBoss(conn: Conn, teamId: string) {
+    if (!this.requireHost(conn)) return;
+    if (!this.game) {
+      this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+      return;
+    }
+    // A lock in its beat would then be judged against a room question the team no longer faces.
+    if (this.pendingLock?.teamId === teamId) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
+      return;
+    }
+    try {
+      this.game = sendToBoss(this.game, teamId);
+      this.broadcastState();
+    } catch (err) {
+      this.sendInvalid(conn, err);
+    }
+  }
+
   /** Applies one answer; throws InvalidActionError (from answerQuestion) before changing anything. */
   private judge(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", autoAdvance: boolean) {
     const prev = this.game;
@@ -880,7 +904,7 @@ export class DungeonRoom {
       const q = findQuestion(this.bank, questionId);
       const choice =
         autoAdvance && q?.kind === "multipleChoice"
-          ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.type === "correct-room-advance" ? outcome.pointsAwarded : (outcome.killBonus ?? 0) }
+          ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward }
           : undefined;
       this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(choice ? { choice } : {}) };
       this.revealAt = this.now();

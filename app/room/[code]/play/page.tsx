@@ -9,9 +9,9 @@ import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import type { ClientMessage, LobbyTeams, StateMessage } from "@/lib/protocol";
 import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
-import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
+import { describeTurn } from "@/lib/turn-info";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
-import { DialogueBox, Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { DialogueBox, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { McOption } from "@/components/mc-option";
 
 /** How long 鎖定中… waits for the room to confirm a lock before offering a retry (phone-answering.md D6). */
@@ -266,10 +266,15 @@ export default function PlayPage() {
             <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
-              <div className="px-num my-1 text-[18px]" style={{ color: "#a8470f" }}>
-                {myTeam ? `${myTeam.score} / ${BOSS_THRESHOLD}` : `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`}
+              <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
+                {myTeam ? (
+                  <>
+                    <span className="px-num">{myTeam.reward}</span> 獎勵分
+                  </>
+                ) : (
+                  `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`
+                )}
               </div>
-              {myTeam && <ScoreMeter score={myTeam.score} active={isMyTurn} />}
             </div>
           </Panel>
         )}

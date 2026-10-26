@@ -4,7 +4,7 @@ import { createGame, type AnswerOutcome, type GameState } from "../game-state";
 
 const game: GameState = createGame(
   [{ id: "a", name: "紅隊" }, { id: "b", name: "藍隊" }],
-  [{ baseDifficulty: 2, questionIds: ["q1", "q2", "q3"] }],
+  [{ baseDifficulty: 2, reward: 20, questionIds: ["q1", "q2", "q3"] }],
   ["b1", "b2"],
   { bossThreshold: 15 },
   5,
@@ -13,8 +13,8 @@ const game: GameState = createGame(
 
 describe("toNarrationEvent", () => {
   it("maps a correct room answer to a 'correct' event with team, monster and points", () => {
-    const o: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, nextRoomIndex: 1, entersBoss: false };
-    expect(toNarrationEvent(game, o, "害羞幽靈")).toEqual({ type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2 });
+    const o: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, reward: 20, nextRoomIndex: 1, entersBoss: false };
+    expect(toNarrationEvent(game, o, "害羞幽靈")).toEqual({ type: "correct", team: "紅隊", monster: "害羞幽靈", points: 20 });
   });
 
   it("maps retry and flee", () => {
@@ -31,12 +31,12 @@ describe("toNarrationEvent", () => {
   });
 
   it("maps a boss hit that does not kill to 'boss-hit' with the HP left", () => {
-    const o: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 3, bossKilled: false };
+    const o: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 3, bossKilled: false, reward: 10 };
     expect(toNarrationEvent(game, o, "小黑龍")).toEqual({ type: "boss-hit", team: "紅隊", bossHp: 3, bossMaxHp: 5 });
   });
 
   it("maps the killing blow to exactly one 'boss-kill' event carrying the bonus", () => {
-    const o: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 0, bossKilled: true, killBonus: 11 };
+    const o: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 0, bossKilled: true, reward: 21, killBonus: 11 };
     expect(toNarrationEvent(game, o, "小黑龍")).toEqual({ type: "boss-kill", team: "紅隊", monster: "小黑龍", bonus: 11 });
   });
 
@@ -47,14 +47,14 @@ describe("toNarrationEvent", () => {
 
   it("attaches who is up next, when the game goes on", () => {
     const next = { team: "藍隊", monster: "害羞幽靈", boss: false };
-    const o: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, nextRoomIndex: 1, entersBoss: false };
+    const o: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, reward: 20, nextRoomIndex: 1, entersBoss: false };
     expect(toNarrationEvent(game, o, "史萊姆", next)).toMatchObject({ type: "correct", next });
     expect(toNarrationEvent(game, { type: "incorrect-retry", teamId: "b" }, "史萊姆", next)).toMatchObject({ next });
   });
 
   it("leaves 'next' off when nobody is next (the killing blow ends the game)", () => {
     const next = { team: "藍隊", monster: "小黑龍", boss: true };
-    const o: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 0, bossKilled: true, killBonus: 11 };
+    const o: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 0, bossKilled: true, reward: 21, killBonus: 11 };
     expect(toNarrationEvent(game, o, "小黑龍", next)).not.toHaveProperty("next");
   });
 
@@ -68,7 +68,7 @@ describe("toNarrationEvent: entering the boss room", () => {
     ...game,
     teams: game.teams.map((t) => (t.id === "a" ? { ...t, branchChoices } : t)),
   });
-  const advance = (entersBoss: boolean): AnswerOutcome => ({ type: "correct-room-advance", teamId: "a", pointsAwarded: 2, nextRoomIndex: 1, entersBoss });
+  const advance = (entersBoss: boolean): AnswerOutcome => ({ type: "correct-room-advance", teamId: "a", pointsAwarded: 2, reward: 20, nextRoomIndex: 1, entersBoss });
 
   it("flags a correct answer that enters the boss room, with the team's branch choices in room order", () => {
     const e = toNarrationEvent(withBranches({ 3: "negotiate", 1: "fight" }), advance(true), "史萊姆");

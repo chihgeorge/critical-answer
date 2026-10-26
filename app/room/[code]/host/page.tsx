@@ -24,6 +24,7 @@ function MoreDrawer({
   send,
   lines,
   aiOn,
+  bossable,
 }: {
   code: string;
   onClose: () => void;
@@ -32,11 +33,20 @@ function MoreDrawer({
    * one, so hosts need to know there may be more they can't reach. */
   lines: string[];
   aiOn: boolean;
+  /** Teams in play and not yet in the boss room: the host may send one there (scoring-and-score-pools.md S13). */
+  bossable: { id: string; name: string }[];
 }) {
   const currentLine = lines[0] ?? "";
   const totalSegments = lines.length;
   const [notes, setNotes] = useState("");
   const [line, setLine] = useState(currentLine);
+  // 送王房 cannot be undone, so the first tap only arms it for 3 s.
+  const [armed, setArmed] = useState<string | null>(null);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(null), 3000);
+    return () => clearTimeout(t);
+  }, [armed]);
   const origin = location.origin;
   const token = getHostToken(code);
   const hostUrl = token ? `${origin}/room/${code}/host#k=${token}` : "";
@@ -50,6 +60,26 @@ function MoreDrawer({
               關閉
             </PixelButton>
           </div>
+          {bossable.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <div className="text-[15px]">{`送隊伍進王房（不用等到 ${BOSS_THRESHOLD} 分，送了不能退回）`}</div>
+              {bossable.map((t) => (
+                <div key={t.id} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-[16px]">{t.name}</span>
+                  <PixelButton
+                    onClick={() => {
+                      if (armed !== t.id) return setArmed(t.id);
+                      setArmed(null);
+                      send({ type: "HOST_SEND_TO_BOSS", teamId: t.id });
+                    }}
+                    className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]"
+                  >
+                    {armed === t.id ? "確定送？" : "送王房"}
+                  </PixelButton>
+                </div>
+              ))}
+            </section>
+          )}
           <section>
             <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
             <div className="break-all text-[14px]">{`${origin}/room/${code}/screen`}</div>
@@ -390,6 +420,7 @@ export default function HostPage() {
                   <Sprite kind="hero" variant={i} scale={1} className="flex-none" />
                   <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
+                  <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title="獎勵分">{t.reward}</span>
                 </Panel>
               ))}
             </ul>
@@ -478,6 +509,7 @@ export default function HostPage() {
           send={send}
           lines={narration?.lines ?? []}
           aiOn={aiAvailable && aiOn}
+          bossable={game?.phase === "playing" ? game.view.teams.filter((t) => !t.inBossPhase) : []}
         />
       )}
     </main>

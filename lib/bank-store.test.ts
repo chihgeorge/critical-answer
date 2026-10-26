@@ -14,8 +14,8 @@ function memoryStorage(seed?: unknown): BankStorage {
 }
 
 const validBank: Bank = {
-  rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "1+1?" }, answer: "2" }] }],
-  boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, maxHp: 10, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "2+2?" }, answer: "4" }] },
+  rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "1+1?" }, answer: "2" }] }],
+  boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, maxHp: 10, hitReward: 10, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "2+2?" }, answer: "4" }] },
 };
 
 describe("BankStore.getVersionedBank", () => {

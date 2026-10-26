@@ -72,6 +72,12 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "字".repeat(41) })).toBeNull();
   });
 
+  it("HOST_SEND_TO_BOSS: needs a team id", () => {
+    expect(parseClientMessage({ type: "HOST_SEND_TO_BOSS", teamId: "t1" })).toEqual({ type: "HOST_SEND_TO_BOSS", teamId: "t1" });
+    expect(parseClientMessage({ type: "HOST_SEND_TO_BOSS" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_SEND_TO_BOSS", teamId: 3 })).toBeNull();
+  });
+
   it("HOST_NEXT: needs a non-negative integer eventId", () => {
     expect(parseClientMessage({ type: "HOST_NEXT", eventId: 3, extra: "ignored" })).toEqual({ type: "HOST_NEXT", eventId: 3 });
     expect(parseClientMessage({ type: "HOST_NEXT" })).toBeNull();
