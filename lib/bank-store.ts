@@ -7,7 +7,8 @@
 // /parties/<binding>/<id>).
 //
 //   BankStore.getVersionedBank()                   BankStore.putBank(candidate, expectedVersion)
-//     │                                              │
+//     │                                              ├─ stored bank unreadable (see left)? ─throws─>
+//     │                                              │    nothing saved: the fallback is not what's stored
 //     ├─ storage empty? ─yes─> seed from              ├─ expectedVersion !== stored.version?
 //     │                        bundled JSON, v1              └─returns {conflict, currentVersion}─>
 //     │         │                                              (nothing saved — see decision below)
@@ -18,6 +19,8 @@
 //     │        fall back to the bundled bank, v1
 //     │        (never crash the caller — a room starting
 //     │        a game must still be able to get a bank)
+//     │        Saves and image cleanup refuse in this state (e.g. after a rollback below a newer
+//     │        bank format); a roll-forward or a fixed stored bank is the way out.
 //
 // Why a version at all: two editor tabs (or a save racing a fresh load) both PUT-ing the whole
 // bank is a last-write-wins clobber with no error and no trace — the first tab's edits just
@@ -113,7 +116,11 @@ export class BankStore {
     const pending = await this.getPending();
     if (pending.length === 0) return;
     const now = this.now();
-    const inUse = imageKeysOf((await this.getVersionedBank()).bank);
+    const { current, unreadable } = await this.read();
+    // The fallback bank is not what's stored: deleting by it would drop images the stored bank still uses.
+    // Try again later; this alarm is spent, and the queue would otherwise wait for the next save or upload.
+    if (unreadable) return void (await this.storage.setAlarm?.(now + this.cleanupDelayMs));
+    const inUse = imageKeysOf(current.bank);
     const due = pending.filter((p) => p.deleteAt <= now && !inUse.has(p.key)).map((p) => p.key);
     // Back in the bank: drop it from the queue; the save that removes it again re-queues it.
     await this.setPending(pending.filter((p) => p.deleteAt > now && !inUse.has(p.key)));
@@ -127,28 +134,36 @@ export class BankStore {
   /** The current bank plus its version. The editor round-trips the version on save so a
    * conflicting concurrent save is caught instead of silently overwritten. */
   async getVersionedBank(): Promise<VersionedBank> {
+    return (await this.read()).current;
+  }
+
+  private async read(): Promise<{ current: VersionedBank; unreadable: boolean }> {
     const raw = await this.storage.get(BANK_KEY);
     if (raw === undefined) {
       const seeded: VersionedBank = { bank: BANK, version: 1 };
       await this.storage.put(BANK_KEY, seeded);
-      return seeded;
+      return { current: seeded, unreadable: false };
     }
     try {
       const r = raw as { bank?: unknown; version?: unknown };
-      return { bank: parseBank(r.bank), version: typeof r.version === "number" ? r.version : 1 };
+      return { current: { bank: parseBank(r.bank), version: typeof r.version === "number" ? r.version : 1 }, unreadable: false };
     } catch (err) {
       // Corrupt storage must not crash whatever called this (a room trying to start a game, the
       // editor trying to load) — same class of defensive fallback as dungeon-room.ts's restore().
       console.error(JSON.stringify({ event: "bank_store_corrupt", error: String(err) }));
-      return { bank: BANK, version: 1 };
+      return { current: { bank: BANK, version: 1 }, unreadable: true };
     }
   }
 
   /** Validates and replaces the whole bank atomically, but only if `expectedVersion` still
-   * matches what's stored. Returns a `BankConflict` on a stale version, throws parseBank's error on
-   * invalid input — either way nothing is saved, the previous bank stands. */
+   * matches what's stored. Returns a `BankConflict` on a stale version, throws when the stored bank
+   * is unreadable (nothing may overwrite it) or parseBank's error on invalid input — either way
+   * nothing is saved, the previous bank stands. */
   async putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict> {
-    const current = await this.getVersionedBank();
+    const { current, unreadable } = await this.read();
+    // The fallback bank is not what's stored (e.g. a rollback to code that can't read a newer
+    // format): saving it at version 1 would overwrite every custom question.
+    if (unreadable) throw new Error("stored bank is unreadable by this version; refusing to overwrite it");
     if (current.version !== expectedVersion) return { conflict: true, currentVersion: current.version };
     const validated = parseBank(candidate);
     assertSavable(validated);
