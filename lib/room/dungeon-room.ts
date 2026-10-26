@@ -352,6 +352,8 @@ export class DungeonRoom {
     const idleFor = this.now() - this.lastActivityAt;
     this.setAlarmAt(Math.max(this.now(), this.lastActivityAt + (idleFor >= this.idleMs ? this.expireMs : this.idleMs)));
     console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
+    // A restart loses the beat that resolves a wrong boss lock.
+    this.armBossMiss();
     // The story that ends a finished game is written by a promise that a restart loses: ask for it again.
     if (this.game?.phase === "finished" && !this.epilogue) {
       this.epilogueRequested = true;
@@ -969,11 +971,28 @@ export class DungeonRoom {
         // No eventSeq bump: nothing is narrated until the team chooses (E7).
         this.game = recordWrongLock(game, lock.teamId, lock.questionId, lock.optionIndex);
         this.broadcastState();
+        this.armBossMiss();
       }
     } catch (err) {
       console.error(JSON.stringify({ event: "lock_failed", error: String(err) }));
       this.broadcastState();
     }
+  }
+
+  /** A wrong boss lock has no 重答 / 逃跑 choice (boss redesign D2=B): both would rotate the shared
+   * question anyway. The red tile shows for a beat, then it resolves as a retry on its own. */
+  private armBossMiss() {
+    const pending = this.game?.pendingWrong;
+    if (!pending || !isInBossPhase(this.game!, pending.teamId)) return;
+    this.lockTimer = setTimeout(() => {
+      this.lockTimer = null;
+      if (this.game?.pendingWrong !== pending) return;
+      try {
+        this.judge(pending.teamId, pending.questionId, false, "retry", false);
+      } catch (err) {
+        console.error(JSON.stringify({ event: "boss_miss_failed", error: String(err) }));
+      }
+    }, BEAT_MS);
   }
 
   /** 重答 / 逃跑 from the team that just locked wrong. */

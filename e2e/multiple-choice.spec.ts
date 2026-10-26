@@ -207,3 +207,53 @@ test("phone answering: a lock the room never answers shows 沒送出，再按一
   await expect(team.getByText("沒送出，再按一次")).toBeVisible({ timeout: 5_000 });
   await expect(team.getByRole("button", { name: "鎖定答案" })).toBeEnabled();
 });
+
+// Value: protects=a wrong boss lock shows no 重答/逃跑 and rotates the shared question on its own (boss rules D1/D2);
+// fails_when=the boss-miss timer, the phone/host/TV boss wording or the rotation breaks; why_new=no spec covers a boss lock;
+// seam=room timer (real); no_claim=restart mid-beat (lib/room/lifecycle.test.ts)
+test("boss room: a wrong lock shows no choice, then the boss brings a new question", async ({ browser, request }) => {
+  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
+  bank.boss.questions = [
+    { kind: "multipleChoice", id: "boss-e2e-1", text: "深淵小黑龍最怕什麼？", options: ["火焰", "冰霜", "雷電", "陽光"], correctIndex: 1 },
+    { kind: "multipleChoice", id: "boss-e2e-2", text: "首領房在地城的第幾層？", options: ["第一層", "第三層", "第五層", "第八層"], correctIndex: 3 },
+  ];
+  expect((await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } })).ok()).toBe(true);
+
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
+  await screen.goto(`/room/${code}/screen`);
+  const team = await (await browser.newContext({ viewport: { width: 375, height: 667 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("紅隊")}`);
+  await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(team.getByText("輪到我們了！")).toBeVisible();
+
+  await host.getByRole("button", { name: /更多/ }).click();
+  await host.getByRole("button", { name: "送王房" }).click();
+  await host.getByRole("button", { name: "確定送？" }).click();
+  await host.getByRole("button", { name: "關閉" }).click();
+
+  // Which boss question comes first depends on the room's rng: lock a wrong option of whichever is up.
+  await expect(team.getByRole("button", { name: /火焰|第一層/ })).toBeVisible();
+  const first = (await team.getByRole("button", { name: "火焰" }).count()) ? { wrong: "火焰", next: "第一層" } : { wrong: "第一層", next: "火焰" };
+  await team.getByRole("button", { name: first.wrong }).click();
+  await team.getByRole("button", { name: "鎖定答案" }).click();
+
+  // The beat after the reveal: the red tile shows, nothing to pick.
+  await expect(screen.locator('[data-look="bad"]')).toBeVisible();
+  await expect(team.getByText("首領要換題了")).toBeVisible();
+  await expect(team.getByRole("button", { name: /逃跑/ })).toHaveCount(0);
+  await expect(host.getByTestId("host-mc-status")).toContainText("答錯！首領換一題");
+  await expect(screen.getByText("紅隊答錯了！首領換一題……")).toBeVisible();
+
+  // Then the room rotates on its own: the other boss question, with no greyed option.
+  await expect(team.getByRole("button", { name: first.next })).toBeEnabled();
+  await expect(team.getByRole("button", { name: first.wrong })).toHaveCount(0);
+});

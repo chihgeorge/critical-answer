@@ -289,7 +289,7 @@ export default function BankEditorPage() {
                   note={
                     tab === "boss"
                       ? "首領房的隊伍輪流回答這些題目"
-                      : `${used ? `${used}從這裡抽題` : "目前沒有房間是這個難度"}${tab < 5 ? `；難度 ${tab + 1} 的房間逃跑後也會抽到` : ""}`
+                      : `${used ? `${used}從這裡抽題` : "目前沒有房間是這個難度"}${tab < 5 ? `；難度 ${tab === 4 ? "5" : `${tab + 1}～5`} 的房間逃跑後也會抽到` : ""}`
                   }
                   questions={questionsAt(bank, loc)}
                   onUpdate={(id, updater) => updateQuestion(loc, id, updater)}

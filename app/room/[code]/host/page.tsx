@@ -251,7 +251,9 @@ export default function HostPage() {
   const isMc = !game?.reveal && !!game?.question?.options;
   const lock = game?.pendingLock ?? null;
   const wrong = game?.view.pendingWrong ?? null;
-  const stuckKey = isMc && turn?.team && !lock ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}` : null;
+  // A wrong boss lock resolves on its own after a beat (D2=B): nothing for the team or host to pick.
+  const bossMiss = !!wrong && !!game?.view.teams.find((t) => t.id === wrong.teamId)?.inBossPhase;
+  const stuckKey = isMc && turn?.team && !lock && !bossMiss ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}` : null;
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   useEffect(() => {
     if (!stuckKey) return;
@@ -446,7 +448,9 @@ export default function HostPage() {
                     <div className="text-[22px]">
                       {lock
                         ? `${turn.team.name}鎖定了 ${optionLetter(lock.optionIndex)}…`
-                        : wrong
+                        : bossMiss
+                          ? "答錯！首領換一題…"
+                          : wrong
                           ? `答錯！等${turn.team.name}選重答或逃跑`
                           : `等${turn.team.name}鎖定答案…`}
                     </div>

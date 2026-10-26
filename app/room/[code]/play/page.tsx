@@ -28,6 +28,8 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
   const gone = game.view.eliminated?.[q.id] ?? [];
   const lock = game.pendingLock?.teamId === teamId ? game.pendingLock : null;
   const wrong = game.view.pendingWrong?.teamId === teamId ? game.view.pendingWrong : null;
+  // A wrong boss lock has no choice to make: the room brings a new question after a beat (D2=B).
+  const bossMiss = !!wrong && !!game.view.teams.find((t) => t.id === teamId)?.inBossPhase;
   // A press waiting for the room: keyed to the question and eventId, so a later turn on the same
   // question (after 重答, which bumps eventId) never looks like it is still in flight.
   const [locking, setLocking] = useState<{ qid: string; eventId: number } | null>(null);
@@ -48,7 +50,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
       {wrong && (
         <div className="flex items-center gap-2 text-[22px]">
           <span aria-hidden className="inline-flex h-7 w-7 items-center justify-center border-[3px] border-[var(--k)] bg-[var(--danger)] text-[14px] text-white">✕</span>
-          答錯了！要怎麼辦？
+          {bossMiss ? "答錯了！" : "答錯了！要怎麼辦？"}
         </div>
       )}
       {options.map((opt, i) => {
@@ -72,7 +74,9 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
           />
         );
       })}
-      {wrong ? (
+      {bossMiss ? (
+        <div className="px-bar mt-1" role="status">首領要換題了 ▶</div>
+      ) : wrong ? (
         <div className="mt-1 flex gap-2">
           <PixelButton variant="ok" className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
             重答<small className="text-[13px]">下一輪再挑一次</small>

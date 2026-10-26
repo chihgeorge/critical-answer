@@ -180,7 +180,9 @@ function Playing({ view, question, reveal, pendingLock, eventId, narration }: { 
   const held = pendingLock
     ? `${nameOf(pendingLock.teamId)}鎖定了 ${optionLetter(pendingLock.optionIndex)}……`
     : wrong
-      ? `${nameOf(wrong.teamId)}答錯了！他們正在決定：重答，還是逃跑……`
+      ? inBoss
+        ? `${nameOf(wrong.teamId)}答錯了！首領換一題……`
+        : `${nameOf(wrong.teamId)}答錯了！他們正在決定：重答，還是逃跑……`
       : null;
   const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
 

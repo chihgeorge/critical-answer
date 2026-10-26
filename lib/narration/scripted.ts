@@ -105,6 +105,14 @@ export const ATMOSPHERE_VARIANTS: Record<Exclude<NarrationEvent["type"], "epilog
   ],
 };
 
+/** A wrong boss answer: the boss brings a new question, there is nothing to answer again (D2=B). */
+export const BOSS_MISS_VARIANTS = [
+  "{team}答錯了！{monster}大笑一聲，換出新的難題。",
+  "{team}落空！{monster}甩甩尾巴，丟出下一道題。",
+  "{monster}閃過{team}這一擊，題目也跟著換了。",
+  "{team}沒打中，{monster}出了新的考驗。",
+];
+
 /** The transition segment (last of 3, when there's a next team): the narrator turns to the team now on turn. */
 export const NEXT_VARIANTS = {
   room: [
@@ -141,6 +149,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     /** Synchronous, so it can back up a slow provider without awaiting anything. */
     line(event: NarrationEvent): string {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
+      if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
       const bossEnter = event.type === "correct" && event.entersBoss;
       return fill(pick(bossEnter ? BOSS_ENTER_VARIANTS : VARIANTS[event.type], bossEnter ? "boss-enter" : event.type), event);
     },
