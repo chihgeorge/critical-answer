@@ -187,6 +187,7 @@ export function parseBank(raw: unknown): Bank {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) fail("pools is not an object");
     for (const [key, list] of Object.entries(raw!)) {
       const d = parseDifficulty(Number(key), `pool ${key}`);
+      if (key !== String(d)) fail(`pool key ${key} is not one of 1–5`); // "01" would overwrite pool 1
       // An empty pool is fine; a room that needs it is caught below.
       if (Array.isArray(list) && list.length === 0) continue;
       pools[d] = parseQuestions(list, `pool ${d}`, seen);
@@ -194,6 +195,7 @@ export function parseBank(raw: unknown): Bank {
   }
   const rooms = (b!.rooms as Record<string, unknown>[]).map((r, i): BankRoom => {
     const d = parseDifficulty(pooled ? r.difficulty : r.baseDifficulty, `room ${i}`);
+    if (pooled && r.questions !== undefined) fail(`room ${i} has questions, but this bank keeps them in pools`);
     if (!pooled) pools[d] = [...pools[d], ...parseQuestions(r.questions, `room ${i}`, seen)];
     return {
       monster: parseMonster(r.monster, `room ${i}`),

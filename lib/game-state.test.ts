@@ -1018,4 +1018,15 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     ({ game: g } = answerQuestion(g, "T0", "a", false, "flee", first));
     expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["a", "b"]);
   });
+
+  it("a flee into a lower pool whose every question is held gives back the team's own question", () => {
+    const two: RoomTemplate[] = [{ baseDifficulty: 1, reward: 10 }, { baseDifficulty: 3, reward: 30 }];
+    let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], two, [["a", "x"], ["b"], ["d", "e"], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    ({ game: g } = answerQuestion(g, "T0", "a", true, "retry", first)); // T0 -> room 1, holds d
+    ({ game: g } = answerQuestion(g, "T1", "x", true, "retry", first)); // T1 -> room 1, holds e
+    ({ game: g } = answerQuestion(g, "T0", "d", false, "flee", first)); // difficulty 2: T0 takes b
+    ({ game: g } = answerQuestion(g, "T1", "e", false, "flee", first)); // pool 2 is all held
+    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["b", "e"]);
+    expect(g.usedQuestionIds[1]).not.toContain("e"); // a pool-3 id never lands in pool 2's list
+  });
 });

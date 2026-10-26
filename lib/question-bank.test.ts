@@ -100,6 +100,15 @@ describe("parseBank", () => {
     expect(b.rooms.map((r) => [r.difficulty, r.reward])).toEqual([[1, 10], [3, 99]]);
   });
 
+  it("rejects a pooled bank that could silently drop questions: a pool key like 01, or rooms still holding questions", () => {
+    const dup = pooled() as Record<string, unknown> & { pools: Record<string, unknown> };
+    dup.pools["01"] = [q("a9")];
+    expect(() => parseBank(dup)).toThrow(/pool key 01/);
+    const mixed = pooled();
+    (mixed.rooms[0] as Record<string, unknown>).questions = [q("r1")];
+    expect(() => parseBank(mixed)).toThrow(/room 0 has questions/);
+  });
+
   it("converts the older per-room format: each room's questions join the pool of its baseDifficulty", () => {
     const b = parseBank({
       rooms: [

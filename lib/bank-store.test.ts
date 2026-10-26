@@ -57,6 +57,13 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 2 });
   });
 
+  it("refuses to save over a stored bank it cannot read, instead of replacing it with the bundled one", async () => {
+    const stored = { bank: { rooms: "a format this version can't read" }, version: 3 };
+    const storage = memoryStorage(stored);
+    await expect(new BankStore(storage).putBank(validBank, 1)).rejects.toThrow(/unreadable/);
+    expect(await storage.get("bank")).toEqual(stored);
+  });
+
   it("saves against the freshly-seeded version 1 on an empty store", async () => {
     const store = new BankStore(memoryStorage());
     const result = await store.putBank(validBank, 1);

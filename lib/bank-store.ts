@@ -127,20 +127,24 @@ export class BankStore {
   /** The current bank plus its version. The editor round-trips the version on save so a
    * conflicting concurrent save is caught instead of silently overwritten. */
   async getVersionedBank(): Promise<VersionedBank> {
+    return (await this.read()).current;
+  }
+
+  private async read(): Promise<{ current: VersionedBank; unreadable: boolean }> {
     const raw = await this.storage.get(BANK_KEY);
     if (raw === undefined) {
       const seeded: VersionedBank = { bank: BANK, version: 1 };
       await this.storage.put(BANK_KEY, seeded);
-      return seeded;
+      return { current: seeded, unreadable: false };
     }
     try {
       const r = raw as { bank?: unknown; version?: unknown };
-      return { bank: parseBank(r.bank), version: typeof r.version === "number" ? r.version : 1 };
+      return { current: { bank: parseBank(r.bank), version: typeof r.version === "number" ? r.version : 1 }, unreadable: false };
     } catch (err) {
       // Corrupt storage must not crash whatever called this (a room trying to start a game, the
       // editor trying to load) — same class of defensive fallback as dungeon-room.ts's restore().
       console.error(JSON.stringify({ event: "bank_store_corrupt", error: String(err) }));
-      return { bank: BANK, version: 1 };
+      return { current: { bank: BANK, version: 1 }, unreadable: true };
     }
   }
 
@@ -148,7 +152,10 @@ export class BankStore {
    * matches what's stored. Returns a `BankConflict` on a stale version, throws parseBank's error on
    * invalid input — either way nothing is saved, the previous bank stands. */
   async putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict> {
-    const current = await this.getVersionedBank();
+    const { current, unreadable } = await this.read();
+    // The fallback bank is not what's stored (e.g. a rollback to code that can't read a newer
+    // format): saving it at version 1 would overwrite every custom question.
+    if (unreadable) throw new Error("stored bank is unreadable by this version; refusing to overwrite it");
     if (current.version !== expectedVersion) return { conflict: true, currentVersion: current.version };
     const validated = parseBank(candidate);
     assertSavable(validated);

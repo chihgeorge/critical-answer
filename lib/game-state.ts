@@ -247,7 +247,7 @@ function deal(
   const freeAnywhere = all.filter((id) => !held.has(id));
   if (free.length > 0) pool = free;
   else if (freeAnywhere.length > 0) pool = freeAnywhere;
-  else if (own && all.includes(own)) pool = [own];
+  else if (own) pool = [own]; // even from another pool: a flee into a full lower pool
   // Prefer a question nobody has seen the answer to yet (D4/D5 — AnswerReveal), but never
   // at the cost of handing two teams the identical question — the held-exclusion above is the
   // more important invariant, so this only narrows within whatever it already left.
@@ -259,7 +259,7 @@ function deal(
   else if (unrevealedAnywhere.length > 0) pool = unrevealedAnywhere;
   const questionId = pool[Math.floor(rng() * pool.length)];
   // The fled-question fallback above picks from questions already in `used`; don't record them twice.
-  return { questionId, used: base.map((u, i) => (i === p && !u.includes(questionId) ? [...u, questionId] : u)) };
+  return { questionId, used: base.map((u, i) => (i === p && all.includes(questionId) && !u.includes(questionId) ? [...u, questionId] : u)) };
 }
 
 /** A question answered again after every question was revealed must not be listed twice. */
