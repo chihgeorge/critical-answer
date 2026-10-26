@@ -1056,6 +1056,15 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(g.usedQuestionIds[2]).toEqual(["c"]); // recorded in the pool it came from
   });
 
+  it("after a wrong lock, a flee with no unrevealed spare borrows a revealed one before its own, and gets its own back only when nothing is free", () => {
+    const start = (pools: string[][]) => {
+      const g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], pools, ["boss-q1"], { bossThreshold: 99 }, 1, first);
+      return { ...g, eliminated: { a: [0] }, revealedQuestionIds: ["c"] };
+    };
+    expect(answerQuestion(start([["a", "b"], [], ["c"], [], []]), "T0", "a", false, "flee", first).game.teams[0].currentQuestionId).toBe("c");
+    expect(answerQuestion(start([["a", "b"], [], [], [], []]), "T0", "a", false, "flee", first).game.teams[0].currentQuestionId).toBe("a");
+  });
+
   it("a correct answer scores the difficulty of the pool the question came from", () => {
     // Codex adversarial review (/ship): a flee into an empty pool 2 dealt from pool 1 but scored 2.
     let g = createGame([{ id: "T0", name: "A" }], rooms, [ids("p1-", 3), [], ids("p3-", 3), [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);

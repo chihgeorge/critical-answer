@@ -155,8 +155,9 @@ describe("parseBank", () => {
 
   it("publicQuestion shows the monster of the team's room and the game's option order", () => {
     const b = parseBank({ ...pooled(), pools: { "1": [mc("m1", ["A", "B", "C"], 0)], "3": [q("c1")] } });
-    expect(publicQuestion(b, "m1", 1, 1, "", [2, 1, 0])).toMatchObject({ monster: { name: "幽靈" }, options: ["C", "B", "A"] });
-    expect(publicQuestion(b, "b1", 5, 0, "")).toMatchObject({ monster: { name: "龍" }, boss: true });
+    expect(publicQuestion(b, "m1", 1, "", [2, 1, 0])).toMatchObject({ monster: { name: "幽靈" }, options: ["C", "B", "A"] });
+    expect(publicQuestion(b, "b1", 0, "")).toMatchObject({ monster: { name: "龍" }, boss: true });
+    expect(publicQuestion(b, "c1", 0, "")?.difficulty).toBe(3); // its own pool, even when dealt to a team at another difficulty
   });
 
   it("defaults rewards for a bank saved before they existed: difficulty x 10 per room, 10 per boss hit", () => {
@@ -288,7 +289,7 @@ describe("lookups", () => {
   it("publicQuestion never contains the answer, correctIndex, or explanation, even in the shipped bank", () => {
     for (const item of allQuestions(BANK)) {
       {
-        const pub = publicQuestion(BANK, item.id, 2, 0, "");
+        const pub = publicQuestion(BANK, item.id, 0, "");
         // A multipleChoice answer is one of its public options; only which one stays hidden.
         if (item.kind !== "multipleChoice") expect(JSON.stringify(pub)).not.toContain(answerText(item));
         expect(pub).not.toHaveProperty("answer");
@@ -296,7 +297,7 @@ describe("lookups", () => {
         expect(pub).not.toHaveProperty("explanation");
       }
     }
-    expect(publicQuestion(BANK, "nope", 1, 0, "")).toBeNull();
+    expect(publicQuestion(BANK, "nope", 0, "")).toBeNull();
   });
 
   it("answerText reads a text question's answer, and a multipleChoice question's correct option", () => {
@@ -307,28 +308,28 @@ describe("lookups", () => {
 
   it("publicQuestion includes options (but never correctIndex) for a multipleChoice question, and no options field for text", () => {
     const bank = parseBank({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [q("a1"), mc("mc1", ["A", "B", "C"], 1)] }] });
-    const pub = publicQuestion(bank, "mc1", 1, 0, "")!;
+    const pub = publicQuestion(bank, "mc1", 0, "")!;
     expect(pub.options).toEqual(["A", "B", "C"]);
     expect(pub).not.toHaveProperty("correctIndex");
-    expect(publicQuestion(bank, "a1", 1, 0, "")).not.toHaveProperty("options");
+    expect(publicQuestion(bank, "a1", 0, "")).not.toHaveProperty("options");
   });
 
   it("publicQuestion's content is text pass-through for a text-content question", () => {
     const bank = parseBank({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [q("a1", textContent("你好"))] }] });
-    expect(publicQuestion(bank, "a1", 1, 0, "")!.content).toEqual({ kind: "text", value: "你好" });
+    expect(publicQuestion(bank, "a1", 0, "")!.content).toEqual({ kind: "text", value: "你好" });
   });
 
   it("publicQuestion prepends imageBaseUrl to an image-content question's stored key, and never leaks the answer", () => {
     const bank = parseBank({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [q("a1"), q("img1", imageContent(UUID_C), "松鼠")] }] });
-    const pub = publicQuestion(bank, "img1", 1, 0, "https://pub-example.r2.dev")!;
+    const pub = publicQuestion(bank, "img1", 0, "https://pub-example.r2.dev")!;
     expect(pub.content).toEqual({ kind: "image", url: `https://pub-example.r2.dev/${UUID_C}` });
     expect(pub).not.toHaveProperty("answer");
-    expect(publicQuestion(bank, "a1", 1, 0, "https://pub-example.r2.dev")!.content.kind).toBe("text");
+    expect(publicQuestion(bank, "a1", 0, "https://pub-example.r2.dev")!.content.kind).toBe("text");
   });
 
   it("publicQuestion's content is the videoId for a youtube-content question, never the raw stored value re-wrapped as a URL", () => {
     const bank = parseBank({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [q("a1", youtubeContent())] }] });
-    expect(publicQuestion(bank, "a1", 1, 0, "")!.content).toEqual({ kind: "youtube", videoId: YT_ID });
+    expect(publicQuestion(bank, "a1", 0, "")!.content).toEqual({ kind: "youtube", videoId: YT_ID });
   });
 
   it("answerText reads an image-content question's answer, same as text", () => {
@@ -342,7 +343,7 @@ describe("lookups", () => {
   ])("publicQuestion logs image_base_url_missing (not just a silently broken image) for %s", (_name, base) => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const bank = parseBank({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [q("img1", imageContent(UUID_C), "松鼠")] }] });
-    const pub = publicQuestion(bank, "img1", 1, 0, base)!;
+    const pub = publicQuestion(bank, "img1", 0, base)!;
     expect(pub.content).toEqual({ kind: "image", url: `${base}/${UUID_C}` }); // still builds a URL — the warning doesn't block it
     expect(spy).toHaveBeenCalledWith(expect.stringContaining("image_base_url_missing"));
     spy.mockRestore();
@@ -351,7 +352,7 @@ describe("lookups", () => {
   it("publicQuestion does not log image_base_url_missing for a real, configured base URL", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const bank = parseBank({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [q("img1", imageContent(UUID_C), "松鼠")] }] });
-    publicQuestion(bank, "img1", 1, 0, "https://pub-real.r2.dev");
+    publicQuestion(bank, "img1", 0, "https://pub-real.r2.dev");
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });

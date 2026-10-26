@@ -304,8 +304,8 @@ export function publicMediaContent(c: MediaContent, imageBaseUrl: string, questi
   return { kind: "image", url: `${imageBaseUrl}/${c.value}` };
 }
 
-/** The part of a question every screen may see while it's in play. `difficulty` is the team's
- * current one (flee lowers it); the monster is the one in the team's room (`roomIndex`), since a pool
+/** The part of a question every screen may see while it's in play. `difficulty` is the pool the
+ * question came from (what a correct answer scores); the monster is the one in the team's room (`roomIndex`), since a pool
  * question can come up in any room of its difficulty. `order` is the game's shown option order.
  * Built by explicit field-picking, never `...q` — that discipline
  * is what keeps `answer`/`correctIndex`/`explanation` off every client; extend it the same way
@@ -313,7 +313,6 @@ export function publicMediaContent(c: MediaContent, imageBaseUrl: string, questi
 export function publicQuestion(
   bank: Bank,
   id: string,
-  difficulty: number,
   roomIndex: number,
   imageBaseUrl: string,
   order?: number[],
@@ -325,7 +324,7 @@ export function publicQuestion(
   return {
     id: q.id,
     content: publicMediaContent(q.content, imageBaseUrl, q.id),
-    difficulty: q.boss ? 5 : difficulty,
+    difficulty: q.difficulty,
     boss: q.boss,
     monster: { name: monster.name, sprite: monster.sprite, hue: monster.hue },
     ...(q.kind === "multipleChoice" ? { options: q.options } : {}),

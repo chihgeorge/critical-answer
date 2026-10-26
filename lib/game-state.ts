@@ -530,7 +530,7 @@ export function answerQuestion(
       // The question's own difficulty: an empty or fully held pool deals from another one (deal()).
       const pointsAwarded = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
       const reward = game.rooms[team.roomIndex].reward;
-      // A correct answer is always revealed (D5), so this room's next deal must not hand it
+      // A correct answer is always revealed (D5), so the next deal from any pool must not hand it
       // back to a team who hasn't faced it yet.
       const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
       const entersBoss = team.score + pointsAwarded >= game.config.bossThreshold || game.teams.some((t) => t.inBoss);

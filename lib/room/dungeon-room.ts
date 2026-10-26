@@ -368,7 +368,7 @@ export class DungeonRoom {
     const team = game.teams.find((t) => t.id === teamId);
     if (!team) return null;
     const id = isInBossPhase(game, team.id) ? game.boss.currentQuestionId : team.currentQuestionId;
-    const pub = publicQuestion(this.bank, id, team.currentDifficulty, team.roomIndex, this.room.env?.R2_PUBLIC_BASE_URL ?? "", game.optionOrder[id]);
+    const pub = publicQuestion(this.bank, id, team.roomIndex, this.room.env?.R2_PUBLIC_BASE_URL ?? "", game.optionOrder[id]);
     const q = this.question(id);
     return pub ? { pub, answer: q ? answerText(q) : "" } : null;
   }

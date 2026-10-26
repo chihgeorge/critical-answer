@@ -58,6 +58,7 @@ describe("parseSnapshot", () => {
       ["editedLines", [1]],
       ["game", { phase: "playing" }],
       ["game", { teams: [], turnOrder: [], phase: "playing", pools: [[]], usedQuestionIds: [[], [], [], [], []] }], // pools not 5 lists: deal() would throw
+      ["game", { teams: [], turnOrder: [], phase: "playing", pools: [[], [], [], [], []], usedQuestionIds: [[]] }], // usedQuestionIds not 5 lists
       ["lastActivityAt", "yesterday"],
       ["lastActivityAt", -5],
     ];

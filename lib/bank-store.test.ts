@@ -35,6 +35,16 @@ describe("BankStore.getVersionedBank", () => {
     expect(versioned).toEqual({ bank: validBank, version: 7 });
   });
 
+  it("reads a bank stored before pools as pools, and saves it back", async () => {
+    // Every stored bank in production is in the pre-pool shape until its first save after deploy.
+    const { rooms: [room], boss } = validBank;
+    const legacy = { rooms: [{ monster: room.monster, baseDifficulty: 1, reward: 10, questions: validBank.pools[1] }], boss };
+    const store = new BankStore(memoryStorage({ bank: legacy, version: 2 }));
+    const { bank } = await store.getVersionedBank();
+    expect(bank.pools[1].map((q) => q.id)).toEqual(["r0-q1"]);
+    await expect(store.putBank(bank, 2)).resolves.toBeDefined();
+  });
+
   it("falls back to the bundled bank at version 1 when storage holds something corrupt, without throwing", async () => {
     const storage = memoryStorage({ bank: { rooms: "not an array" }, version: 3 });
     const versioned = await new BankStore(storage).getVersionedBank();
