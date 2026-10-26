@@ -912,10 +912,9 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useRealTimers();
     });
 
-    // Value: protects=a wrong boss lock is judged once, even when a stale phone resolves it during the beat;
-    // fails_when=armBossMiss's pendingWrong guard is dropped (answerQuestion does not check the question id);
-    // why_new=the boss-miss test above never resolves early; seam=none; no_claim=none beyond protects (fake timers)
-    it("a wrong boss lock a stale phone resolves during the beat is not judged a second time by the timer", () => {
+    // Value: protects=a phone cannot cut a boss miss's red tile short, and the miss is judged once;
+    // fails_when=handleTeamWrongChoice judges a boss team; seam=none; no_claim=none beyond protects (fake timers)
+    it("a phone's 重答 during a boss miss is ignored: the beat judges it, once", () => {
       vi.useFakeTimers();
       const { room, hostConn, ids, conns } = startedMcGame(1); // one team: the turn comes straight back to it
       send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
@@ -927,15 +926,14 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(room.game!.pendingWrong).not.toBeNull();
       const seq = seqOf(room);
       send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "boss-mc1", choice: "retry" });
-      expect(seqOf(room)).toBe(seq + 1);
-      const after = room.game!;
+      expect(seqOf(room)).toBe(seq);
       vi.advanceTimersByTime(2000);
       expect(seqOf(room)).toBe(seq + 1);
-      expect(room.game).toBe(after);
+      expect(room.game!.pendingWrong).toBeNull();
       vi.useRealTimers();
     });
 
-    it("a flee sent during a boss miss (stale phone or the host's stuck row) resolves as the retry the beat would", () => {
+    it("a flee the host sends during a boss miss (stuck row, key 3) resolves as the retry the beat would", () => {
       vi.useFakeTimers();
       const { room, hostConn, ids, conns } = startedMcGame(1);
       send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
@@ -944,7 +942,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "boss-mc1", optionIndex: wrongIdx });
       send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "boss-mc1" });
       vi.advanceTimersByTime(2000);
-      send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "boss-mc1", choice: "flee" });
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "boss-mc1", correct: false, fleeChoice: "flee" });
       const last = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE").at(-1);
       expect(last.cue).toBe("retry");
       expect(room.game!.boss.currentQuestionId).not.toBe("boss-mc1");

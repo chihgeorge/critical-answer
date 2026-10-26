@@ -898,7 +898,7 @@ export class DungeonRoom {
     // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
     const justAnswered = this.currentQuestion();
     const monster = justAnswered?.pub.monster.name ?? "怪物";
-    // A boss MC miss has no flee (D2=B): a stale phone or the host's stuck row resolves it as the beat would.
+    // A boss MC miss has no flee (D2=B): the host's stuck row (button or key 3) resolves it as the beat would.
     if (!correct && prev.pendingWrong?.teamId === teamId && isInBossPhase(prev, teamId)) fleeChoice = "retry";
     const { game, outcome } = answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng);
     // Everything up to broadcastState is synchronous: state changes and the eventId are
@@ -985,9 +985,11 @@ export class DungeonRoom {
    * question anyway. The red tile shows for a beat, then it resolves as a retry on its own. */
   private armBossMiss() {
     const pending = this.game?.pendingWrong;
-    if (!pending || !isInBossPhase(this.game!, pending.teamId)) return;
+    // A snapshot's pendingWrong naming no team (shallow validation) must not throw out of restore().
+    if (!pending || !this.game!.teams.some((t) => t.id === pending.teamId) || !isInBossPhase(this.game!, pending.teamId)) return;
+    if (this.lockTimer) clearTimeout(this.lockTimer);
     this.lockTimer = setTimeout(() => {
-      // Resolved early (a host or stale phone judged it): lockTimer may already be the next lock's beat.
+      // Resolved early (the host judged it): lockTimer may already be the next lock's beat.
       if (this.game?.pendingWrong !== pending) return;
       this.lockTimer = null;
       try {
@@ -1007,6 +1009,8 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_wrong_answer" });
       return;
     }
+    // A boss miss resolves on its own beat (D2=B): a phone cannot cut the red tile short.
+    if (isInBossPhase(this.game!, teamId)) return;
     try {
       this.judge(teamId, questionId, false, choice, false);
     } catch (err) {

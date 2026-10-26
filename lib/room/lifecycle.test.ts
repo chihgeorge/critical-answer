@@ -406,6 +406,16 @@ describe("after a restart", () => {
     }
   });
 
+  it("a saved pendingWrong naming no team does not stop the room from restoring", async () => {
+    const a = setup();
+    startedGame(a.room);
+    const snap = structuredClone(a.storage.data.get(SNAPSHOT_KEY)) as any;
+    snap.game.pendingWrong = { teamId: "ghost", questionId: snap.game.boss.currentQuestionId, optionIndex: 0 };
+    const b = setup(a.clock.t);
+    b.storage.data.set(SNAPSHOT_KEY, snap);
+    await expect(b.room.restore()).resolves.toBeDefined();
+  });
+
   it("the alarm is set again from the saved last activity", async () => {
     const a = setup();
     send(a.room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });

@@ -282,7 +282,7 @@ export default function HostPage() {
       } else {
         if (!canJudge || !turn?.team || !turn.questionId) return;
         if (action === "correct") judge(turn.team.id, turn.questionId, true);
-        else judge(turn.team.id, turn.questionId, false, action);
+        else if (!(bossMiss && action === "flee")) judge(turn.team.id, turn.questionId, false, action); // no 逃跑 button on a boss miss
       }
       e.preventDefault();
     }

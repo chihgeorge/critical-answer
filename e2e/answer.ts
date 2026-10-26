@@ -44,6 +44,7 @@ export function restoreRoom0AfterEach() {
     original = { pool: bank.pools["1"], boss: bank.boss.questions };
   });
   test.afterEach(async ({ request }) => {
+    if (!original) return; // beforeEach failed: writing undefined would break every later spec file
     const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
     bank.pools["1"] = original.pool;
     bank.boss.questions = original.boss;
