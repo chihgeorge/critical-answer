@@ -221,7 +221,8 @@ function poolIndexFor(pools: string[][], d: Difficulty): number {
  * reshuffle, avoiding any question a team is holding right now. When every
  * question in the pool has been drawn it reshuffles. Within that, prefer a
  * question whose answer hasn't been revealed; if only revealed ones are left this
- * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer.
+ * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer, and then an
+ * unrevealed free one from the nearest other pool (lower first) does.
  * When every question is held (a small custom bank), a free question from the nearest other pool comes
  * next, then `own` (the question the dealt team is leaving: fled, or just answered), never another team's. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
  */
@@ -243,6 +244,8 @@ function deal(
     pool = all;
   }
   const held = new Set(teams.filter((t) => !t.inBoss).map((t) => t.currentQuestionId)); // a boss team's room question is stale
+  const order = pools.map((_, i) => i).filter((i) => i !== p).sort((x, y) => Math.abs(x - p) - Math.abs(y - p) || x - y);
+  const borrowFrom = (ok: (id: string) => boolean) => order.map((i) => pools[i].filter((id) => !held.has(id) && ok(id))).find((ids) => ids.length > 0);
   const free = pool.filter((id) => !held.has(id));
   const freeAnywhere = all.filter((id) => !held.has(id));
   if (free.length > 0) pool = free;
@@ -252,8 +255,6 @@ function deal(
     // nearest other pool (lower first) before two teams hold the same one, preferring an unrevealed one.
     // A fleeing team's own question comes back only when no unrevealed one is free anywhere: it would
     // undo the flee, and after a wrong lock its answer is half shown. Only a bank with fewer questions than teams repeats.
-    const order = pools.map((_, i) => i).filter((i) => i !== p).sort((x, y) => Math.abs(x - p) - Math.abs(y - p) || x - y);
-    const borrowFrom = (ok: (id: string) => boolean) => order.map((i) => pools[i].filter((id) => !held.has(id) && ok(id))).find((ids) => ids.length > 0);
     const borrow = borrowFrom((id) => !revealed.includes(id)) ?? (own && !revealed.includes(own) ? [own] : borrowFrom(() => true));
     if (borrow) pool = borrow;
     else if (own) pool = [own];
@@ -267,6 +268,8 @@ function deal(
   const unrevealedAnywhere = all.filter((id) => !revealed.includes(id) && !held.has(id));
   if (unrevealed.length > 0) pool = unrevealed;
   else if (unrevealedAnywhere.length > 0) pool = unrevealedAnywhere;
+  // Every answer left here has been shown: an unseen question from the nearest other pool beats a repeat.
+  else pool = borrowFrom((id) => !revealed.includes(id)) ?? pool;
   const questionId = pool[Math.floor(rng() * pool.length)];
   // Recorded in the pool that holds it (a borrowed or own question belongs to another pool), once:
   // the fled-question fallback above picks from questions already in `used`. This pool's reshuffle

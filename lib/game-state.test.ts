@@ -1078,6 +1078,19 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(others).not.toContain(after.find((t) => t.id === t0.id)!.currentQuestionId);
   });
 
+  it("when every answer left in a pool has been shown, an unseen question from another pool comes before a repeat", () => {
+    // Codex adversarial review (/ship): pool 1 [a,b,c] dealt the revealed a again while pool 2's fresh was never used.
+    let g = createGame([{ id: "A", name: "A" }, { id: "B", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], [["a", "b", "c"], ["fresh"], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 3, first);
+    const dealt: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const t = g.teams[g.currentTurnIndex];
+      g = answerQuestion(g, t.id, t.currentQuestionId, true, "retry", first).game;
+      dealt.push(g.teams.find((x) => x.id === t.id)!.currentQuestionId);
+    }
+    expect(dealt).toContain("fresh");
+    expect(dealt.filter((id) => g.revealedQuestionIds.includes(id) && id !== "fresh")).toEqual([]);
+  });
+
   it("a correct answer scores the difficulty of the pool the question came from", () => {
     // Codex adversarial review (/ship): a flee into an empty pool 2 dealt from pool 1 but scored 2.
     let g = createGame([{ id: "T0", name: "A" }], rooms, [ids("p1-", 3), [], ids("p3-", 3), [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);

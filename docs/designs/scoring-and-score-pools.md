@@ -123,7 +123,7 @@ Mockups: `~/.gstack/projects/critical-answer/designs/scoring-20261025/score-all.
 
 - Bank format v2 as drafted above (`pools` keyed "1"–"5", rooms with `difficulty` and `reward`). `parseBank` still reads v1 and converts it, so production's stored bank needs no manual step (D1=B: the pooled format, not pools derived from rooms).
 - `parseBank` refuses a room whose pool is empty. An empty pool a flee needs falls back to the nearest pool below, then above (`poolIndexFor`).
-- `deal()` takes a difficulty. When every question in the pool is held, it deals the fleeing team's own question back, never another team's.
+- `deal()` takes a difficulty. When every question in the pool is held, it deals the fleeing team's own question back, never another team's. When every answer left in the pool has been shown, it borrows an unseen question from the nearest pool before repeating one.
 - `GameState.optionOrder` is the per-game shuffle (`shuffledOptionOrders`, Fisher-Yates counted down so the tests' `() => 0` rng keeps bank order). Every option index in the room, the protocol and the clients is a shown index; `inShownOrder` maps a bank question into it. Snapshot schema 5.
 - The question's monster comes from the team's room, not the question, since one pool serves several rooms.
 - Default bank: 8 rooms (3 new monsters: 暴躁幽靈, 熔岩史萊姆王, 冰霜愛哭鬼), 20 new questions (p3-q1..4, p4-q1..4, p5-q1..12), the guessable year ladders and answer-built distractors reworked, and two pool-2 option clashes (端午 / 中秋) fixed.
