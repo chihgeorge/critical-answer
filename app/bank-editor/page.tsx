@@ -283,7 +283,7 @@ export default function BankEditorPage() {
               const used = tab === "boss" ? "" : roomsUsing(bank, tab);
               return (
                 <RoomEditor
-                  key={String(tab)}
+                  key={tab}
                   testId={tab === "boss" ? "bank-room-boss" : `bank-pool-${tab}`}
                   title={tab === "boss" ? `首領 · ${bank.boss.monster.name} · ${bank.boss.questions.length} 題` : `難度 ${tab} 題庫 · ${bank.pools[tab].length} 題`}
                   note={
