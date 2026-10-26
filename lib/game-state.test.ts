@@ -1104,6 +1104,26 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(g.teams.find((t) => t.id === "T2")!.currentQuestionId).toBe("b");
   });
 
+  it("a borrow takes a question the donor pool has not dealt yet before repeating one", () => {
+    // Codex adversarial review (/ship): borrowing ignored the donor's used list, so flees cycled a/b/c and never dealt d.
+    let g = createGame([{ id: "A", name: "A" }, { id: "B", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], [["a"], ["b", "c", "d"], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    const dealt: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const t = g.teams[g.currentTurnIndex];
+      g = answerQuestion(g, t.id, t.currentQuestionId, false, "flee", first).game;
+      dealt.push(g.teams.find((x) => x.id === t.id)!.currentQuestionId);
+    }
+    expect(dealt).toContain("d");
+  });
+
+  it("a flee keeps its own unseen question rather than re-show an answer when nothing unseen is free", () => {
+    // Claude adversarial simulation (/ship): the revealed-pool branch skipped `own`, unlike the all-held branch.
+    let g = createGame([{ id: "A", name: "A" }], [3, 4].map((d) => ({ baseDifficulty: d as 3 | 4, reward: 10 })), [[], [], ["c"], ["d"], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    ({ game: g } = answerQuestion(g, "A", "c", true, "retry", first)); // c is revealed, A moves to d
+    ({ game: g } = answerQuestion(g, "A", "d", false, "flee", first)); // difficulty 3: only the revealed c
+    expect(g.teams[0].currentQuestionId).toBe("d");
+  });
+
   it("a correct answer scores the difficulty of the pool the question came from", () => {
     // Codex adversarial review (/ship): a flee into an empty pool 2 dealt from pool 1 but scored 2.
     let g = createGame([{ id: "T0", name: "A" }], rooms, [ids("p1-", 3), [], ids("p3-", 3), [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
