@@ -111,7 +111,7 @@ sh scripts/playtest.sh stop
 
 ### 題庫編輯
 
-`/bank-editor` 是主持人專用的題庫編輯頁，首頁下方有連結，也可以直接打網址進入；不在遊戲的實際玩法流程裡。可以新增、修改、刪除各房間與首領的**問答題和選擇題**；每題的題目可以是文字、上傳的圖片或 YouTube 影片，另外可以加一段同樣可選媒材的詳解，答對後跟答案一起顯示。選擇題最多 4 個選項（大螢幕只有 4 格），由玩家在 `/play` 上點選並鎖定，伺服器依正確選項自動判定，不經 host 按鈕（見上方「玩法」、[docs/designs/multiple-choice-questions.md](docs/designs/multiple-choice-questions.md) 與 [docs/designs/phone-answering.md](docs/designs/phone-answering.md)）。舊題庫裡超過 4 個選項的題目仍可載入、照常遊玩，但要先刪到 4 個才能存檔。圖片會上傳到 Cloudflare R2，`/play` 和 `/screen` 都會顯示；換圖、刪題，或上傳後沒存檔的圖片，都會在等過一段寬限期（確保還在進行的局不會突然少圖）之後自動清掉。題庫實際存在 Cloudflare Durable Object（`BankStore`），編輯即時生效；`BankStore` 連不上時自動退回 bundle 裡的 `data/question-bank.json` 唯讀。存檔會做版本檢查，別人同時改過會擋下（409），避免互相覆蓋。
+`/bank-editor` 是主持人專用的題庫編輯頁，首頁下方有連結，也可以直接打網址進入；不在遊戲的實際玩法流程裡。可以新增、修改、刪除各房間與首領的**問答題和選擇題**；每題的題目可以是文字、上傳的圖片或 YouTube 影片，另外可以加一段同樣可選媒材的詳解，答對後跟答案一起顯示。選擇題最多 4 個選項（大螢幕只有 4 格），由玩家在 `/play` 上點選並鎖定，伺服器依正確選項自動判定，不經 host 按鈕（見上方「玩法」、[docs/designs/multiple-choice-questions.md](docs/designs/multiple-choice-questions.md) 與 [docs/designs/phone-answering.md](docs/designs/phone-answering.md)）。舊題庫裡超過 4 個選項的題目仍可載入、照常遊玩，但要先刪到 4 個才能存檔。圖片會上傳到 Cloudflare R2，`/play` 和 `/screen` 都會顯示；換圖、刪題，或上傳後沒存檔的圖片，都會在等過一段寬限期（確保還在進行的局不會突然少圖）之後自動清掉。題庫實際存在 Cloudflare Durable Object（`BankStore`），編輯即時生效；`BankStore` 連不上時自動退回 bundle 裡的 `data/question-bank.json` 唯讀。存檔會做版本檢查，別人同時改過會擋下（409），避免互相覆蓋。存著的題庫這一版讀不懂時（例如回滾到比題庫格式舊的版本），編輯器載入的是 bundle 裡的預設題庫，存檔會被拒絕（400），圖片也暫停清理，存著的題庫保持原樣，等部署回讀得懂的版本再編輯。
 
 > 圖片上傳需要先在 Cloudflare 建立一個名為 `critical-answer-images` 的 R2 bucket，並手動在 dashboard 開啟它的 r2.dev 公開讀取，再把 [wrangler.jsonc](wrangler.jsonc) 裡的 `R2_PUBLIC_BASE_URL` 換成 Cloudflare 給的網址——這一步不是 `wrangler deploy` 的一部分，見 [docs/designs/image-question-type.md](docs/designs/image-question-type.md)。
 
