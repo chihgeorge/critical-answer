@@ -1034,14 +1034,36 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(held).toContain("c"); // pool 3 is nearer to pool 1 than pool 4
   });
 
-  it("a flee into a lower pool whose every question is held gives back the team's own question", () => {
+  it("a flee into a lower pool whose every question is held borrows an unrevealed question before giving back its own", () => {
     const two: RoomTemplate[] = [{ baseDifficulty: 1, reward: 10 }, { baseDifficulty: 3, reward: 30 }];
     let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], two, [["a", "x"], ["b"], ["d", "e"], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
     ({ game: g } = answerQuestion(g, "T0", "a", true, "retry", first)); // T0 -> room 1, holds d
     ({ game: g } = answerQuestion(g, "T1", "x", true, "retry", first)); // T1 -> room 1, holds e
     ({ game: g } = answerQuestion(g, "T0", "d", false, "flee", first)); // difficulty 2: T0 takes b
-    ({ game: g } = answerQuestion(g, "T1", "e", false, "flee", first)); // pool 2 is all held
-    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["b", "e"]);
-    expect(g.usedQuestionIds[1]).not.toContain("e"); // a pool-3 id never lands in pool 2's list
+    ({ game: g } = answerQuestion(g, "T1", "e", false, "flee", first)); // pool 2 is all held; a and x are revealed
+    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["b", "d"]);
+    expect(g.usedQuestionIds[1]).toEqual(["b"]); // a pool-3 id never lands in pool 2's list
+  });
+
+  it("a fleeing team never gets back its own question after a wrong lock while another pool has a free one", () => {
+    // Claude adversarial review (/ship): the own-question fallback ran before borrowing, so a team that
+    // locked wrong and fled got the same question back with its wrong option already shown.
+    const pools = [["a", "b"], [], ["c"], [], []];
+    let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], pools, ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    g = { ...g, eliminated: { a: [0] } }; // T0 locked a wrong option on a
+    ({ game: g } = answerQuestion(g, "T0", "a", false, "flee", first));
+    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["c", "b"]);
+    expect(g.usedQuestionIds[2]).toEqual(["c"]); // recorded in the pool it came from
+  });
+
+  it("a correct answer scores the difficulty of the pool the question came from", () => {
+    // Codex adversarial review (/ship): a flee into an empty pool 2 dealt from pool 1 but scored 2.
+    let g = createGame([{ id: "T0", name: "A" }], rooms, [ids("p1-", 3), [], ids("p3-", 3), [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    ({ game: g } = answerQuestion(g, "T0", "p1-1", true, "retry", first)); // -> difficulty 3
+    ({ game: g } = answerQuestion(g, "T0", "p3-1", false, "flee", first)); // difficulty 2, empty: pool 1
+    const id = g.teams[0].currentQuestionId;
+    expect(id).toMatch(/^p1-/);
+    const { outcome } = answerQuestion(g, "T0", id, true, "retry", first);
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1 });
   });
 });

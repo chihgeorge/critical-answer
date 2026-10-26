@@ -222,8 +222,8 @@ function poolIndexFor(pools: string[][], d: Difficulty): number {
  * question in the pool has been drawn it reshuffles. Within that, prefer a
  * question whose answer hasn't been revealed; if only revealed ones are left this
  * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer.
- * When every question is held (a small custom bank), `own` (the dealt team's fled question) comes
- * back before another team's; without `own`, a free question from the nearest other pool does. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
+ * When every question is held (a small custom bank), a free question from the nearest other pool comes
+ * next, then `own` (the dealt team's fled question), never another team's. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
  */
 function deal(
   pools: string[][],
@@ -247,13 +247,16 @@ function deal(
   const freeAnywhere = all.filter((id) => !held.has(id));
   if (free.length > 0) pool = free;
   else if (freeAnywhere.length > 0) pool = freeAnywhere;
-  else if (own) pool = [own]; // even from another pool: a flee into a full lower pool
   else {
-    // A pool smaller than the team count: borrow a free question from the nearest other pool
-    // (lower first) before two teams hold the same one. Only a bank with fewer questions than teams repeats.
+    // Every question here is held (a pool smaller than the team count): borrow a free question from the
+    // nearest other pool (lower first) before two teams hold the same one, preferring an unrevealed one.
+    // A fleeing team's own question comes back only when no unrevealed one is free anywhere: it would
+    // undo the flee, and after a wrong lock its answer is half shown. Only a bank with fewer questions than teams repeats.
     const order = pools.map((_, i) => i).filter((i) => i !== p).sort((x, y) => Math.abs(x - p) - Math.abs(y - p) || x - y);
-    const borrow = order.map((i) => pools[i].filter((id) => !held.has(id))).find((ids) => ids.length > 0);
+    const borrowFrom = (ok: (id: string) => boolean) => order.map((i) => pools[i].filter((id) => !held.has(id) && ok(id))).find((ids) => ids.length > 0);
+    const borrow = borrowFrom((id) => !revealed.includes(id)) ?? (own && !revealed.includes(own) ? [own] : borrowFrom(() => true));
     if (borrow) pool = borrow;
+    else if (own) pool = [own];
   }
   // Prefer a question nobody has seen the answer to yet (D4/D5 — AnswerReveal), but never
   // at the cost of handing two teams the identical question — the held-exclusion above is the
@@ -265,9 +268,11 @@ function deal(
   if (unrevealed.length > 0) pool = unrevealed;
   else if (unrevealedAnywhere.length > 0) pool = unrevealedAnywhere;
   const questionId = pool[Math.floor(rng() * pool.length)];
-  // The fled-question fallback above picks from questions already in `used`; don't record them twice,
-  // and a team's own question from another pool (a flee into a full pool) never joins this pool's list.
-  return { questionId, used: base.map((u, i) => (i === p && all.includes(questionId) && !u.includes(questionId) ? [...u, questionId] : u)) };
+  // Recorded in the pool that holds it (a borrowed or own question belongs to another pool), once:
+  // the fled-question fallback above picks from questions already in `used`. This pool's reshuffle
+  // only counts when the question came from it.
+  const from = pools.findIndex((ids) => ids.includes(questionId));
+  return { questionId, used: (all.includes(questionId) ? base : used).map((u, i) => (i === from && !u.includes(questionId) ? [...u, questionId] : u)) };
 }
 
 /** A question answered again after every question was revealed must not be listed twice. */
@@ -522,7 +527,8 @@ export function answerQuestion(
     }
   } else {
     if (correct) {
-      const pointsAwarded = team.currentDifficulty;
+      // The question's own difficulty: an empty or fully held pool deals from another one (deal()).
+      const pointsAwarded = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
       const reward = game.rooms[team.roomIndex].reward;
       // A correct answer is always revealed (D5), so this room's next deal must not hand it
       // back to a team who hasn't faced it yet.
