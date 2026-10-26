@@ -194,7 +194,8 @@ export type AnswerOutcome =
   | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; nextRoomIndex: number; entersBoss: boolean }
   | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; killBonus?: number }
   | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty }
-  | { type: "incorrect-retry"; teamId: string };
+  /** `newBossQuestion`: a wrong boss answer rotated the shared question (boss redesign D2=B). */
+  | { type: "incorrect-retry"; teamId: string; newBossQuestion?: true };
 
 export class InvalidActionError extends Error {}
 
@@ -226,8 +227,8 @@ function poolIndexFor(pools: string[][], d: Difficulty): number {
  * When every question is held (a small custom bank): an unrevealed free borrow, then `own` (the
  * question the dealt team is leaving: fled, or just answered) if unrevealed and unshared, then any
  * free borrow, then `own` anyway. In a bank with fewer questions than teams, only that last step,
- * or a deal with no `own` (game start), can leave two teams on one question. "Nearest" is by distance, lower first on ties, and a donor
- * pool's undrawn questions come first. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
+ * or a deal with no `own` (game start), can leave two teams on one question. "Nearest" is by
+ * distance, lower first on ties, and a donor pool's undrawn questions come first. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
  */
 function deal(
   pools: string[][],
@@ -540,7 +541,7 @@ export function answerQuestion(
       outcome =
         fleeChoice === "flee"
           ? { type: "incorrect-flee", teamId, newDifficulty: team.currentDifficulty }
-          : { type: "incorrect-retry", teamId };
+          : { type: "incorrect-retry", teamId, ...(rotatedBossQuestionId !== boss.currentQuestionId ? { newBossQuestion: true as const } : {}) };
     }
   } else {
     if (correct) {

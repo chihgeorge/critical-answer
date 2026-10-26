@@ -62,7 +62,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string): Ex
       };
     }
     case "incorrect-retry":
-      return { type: "retry", team, monster, ...(t?.inBoss ? { boss: true as const } : {}) };
+      return { type: "retry", team, monster, ...(outcome.newBossQuestion ? { boss: true as const } : {}) };
     case "incorrect-flee":
       return { type: "flee", team, monster };
     case "correct-boss-hit":

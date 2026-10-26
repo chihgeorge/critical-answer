@@ -251,9 +251,10 @@ export default function HostPage() {
   const isMc = !game?.reveal && !!game?.question?.options;
   const lock = game?.pendingLock ?? null;
   const wrong = game?.view.pendingWrong ?? null;
-  // A wrong boss lock resolves on its own after a beat (D2=B): nothing for the team or host to pick.
+  // A wrong boss lock resolves on its own after a beat (D2=B). The stuck row still comes after 15 s,
+  // as the way out if that beat never resolves.
   const bossMiss = !!wrong && !!game?.view.teams.find((t) => t.id === wrong.teamId)?.inBossPhase;
-  const stuckKey = isMc && turn?.team && !lock && !bossMiss ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}` : null;
+  const stuckKey = isMc && turn?.team && !lock ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}` : null;
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   useEffect(() => {
     if (!stuckKey) return;

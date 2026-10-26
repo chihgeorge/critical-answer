@@ -985,8 +985,9 @@ export class DungeonRoom {
     const pending = this.game?.pendingWrong;
     if (!pending || !isInBossPhase(this.game!, pending.teamId)) return;
     this.lockTimer = setTimeout(() => {
-      this.lockTimer = null;
+      // Resolved early (a host or stale phone judged it): lockTimer may already be the next lock's beat.
       if (this.game?.pendingWrong !== pending) return;
+      this.lockTimer = null;
       try {
         this.judge(pending.teamId, pending.questionId, false, "retry", false);
       } catch (err) {

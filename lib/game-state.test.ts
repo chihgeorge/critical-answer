@@ -918,7 +918,9 @@ describe("recordWrongLock (phone answering, phone-answering.md E6/E9)", () => {
     // Boss redesign D1=A: three wrong retries used to leave the fourth team only the right option.
     let g = makeGame({ bossThreshold: 0 });
     const q = g.boss.currentQuestionId;
-    g = answerQuestion(recordWrongLock(g, "T0", q, 0), "T0", q, false, "retry").game;
+    const first = answerQuestion(recordWrongLock(g, "T0", q, 0), "T0", q, false, "retry");
+    expect(first.outcome).toEqual({ type: "incorrect-retry", teamId: "T0", newBossQuestion: true }); // narration says so
+    g = first.game;
     const q2 = g.boss.currentQuestionId;
     expect(q2).not.toBe(q);
     expect(g.eliminated[q2]).toBeUndefined();
@@ -933,7 +935,9 @@ describe("recordWrongLock (phone answering, phone-answering.md E6/E9)", () => {
   it("boss: a wrong answer with no option shown (a text question the host judged) keeps the question on retry", () => {
     let g = makeGame({ bossThreshold: 0 });
     const q = g.boss.currentQuestionId;
-    g = answerQuestion(g, "T0", q, false, "retry").game;
+    const { game: after, outcome } = answerQuestion(g, "T0", q, false, "retry");
+    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" }); // narration must not claim a new question
+    g = after;
     expect(g.boss.currentQuestionId).toBe(q);
     expect(g.revealedQuestionIds).not.toContain(q);
   });

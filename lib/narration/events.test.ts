@@ -31,6 +31,11 @@ describe("toNarrationEvent", () => {
     });
   });
 
+  it("marks a retry as a boss miss only when the boss brought a new question (D2=B)", () => {
+    expect(toNarrationEvent(game, { type: "incorrect-retry", teamId: "a", newBossQuestion: true }, "小黑龍")).toEqual({ type: "retry", team: "紅隊", monster: "小黑龍", boss: true });
+    expect(toNarrationEvent(game, { type: "incorrect-retry", teamId: "a" }, "小黑龍")).toEqual({ type: "retry", team: "紅隊", monster: "小黑龍" });
+  });
+
   it("maps a boss hit that does not kill to 'boss-hit' with the HP left", () => {
     const o: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 3, bossKilled: false, reward: 10 };
     expect(toNarrationEvent(game, o, "小黑龍")).toEqual({ type: "boss-hit", team: "紅隊", bossHp: 3, bossMaxHp: 5 });
