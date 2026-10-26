@@ -221,10 +221,13 @@ function poolIndexFor(pools: string[][], d: Difficulty): number {
  * reshuffle, avoiding any question a team is holding right now. When every
  * question in the pool has been drawn it reshuffles. Within that, prefer a
  * question whose answer hasn't been revealed; if only revealed ones are left this
- * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer, and then an
- * unrevealed free one from the nearest other pool (by distance, lower first on ties) does.
- * When every question is held (a small custom bank), a free question from the nearest other pool comes
- * next, then `own` (the question the dealt team is leaving: fled, or just answered), never another team's. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
+ * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer, then an
+ * unrevealed free one from the nearest other pool, then `own` if unrevealed and no other team holds it.
+ * When every question is held (a small custom bank): an unrevealed free borrow, then `own` (the
+ * question the dealt team is leaving: fled, or just answered) if unrevealed and unshared, then any
+ * free borrow, then `own` anyway. Only that last step, in a bank with fewer questions than teams,
+ * can leave two teams on one question. "Nearest" is by distance, lower first on ties, and a donor
+ * pool's undrawn questions come first. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
  */
 function deal(
   pools: string[][],
@@ -259,7 +262,7 @@ function deal(
   else if (freeAnywhere.length > 0) pool = freeAnywhere;
   else {
     // Every question here is held (a pool smaller than the team count): borrow a free question from the
-    // nearest other pool (lower first) before two teams hold the same one, preferring an unrevealed one.
+    // nearest other pool (by distance, lower first on ties) before two teams hold the same one, preferring an unrevealed one.
     // A fleeing team's own question comes back only when no unrevealed one is free anywhere: it would
     // undo the flee, and after a wrong lock its answer is half shown. Only a bank with fewer questions than teams repeats.
     const borrow = borrowFrom((id) => !revealed.includes(id)) ?? (mine && !revealed.includes(mine) ? [mine] : borrowFrom(() => true));
