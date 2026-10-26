@@ -1076,6 +1076,7 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     const others = after.filter((t) => t.id !== t0.id).map((t) => t.currentQuestionId);
     expect(held.sort()).toEqual(["p2", "p3", "p5"]);
     expect(others).not.toContain(after.find((t) => t.id === t0.id)!.currentQuestionId);
+    expect(after.find((t) => t.id === t0.id)!.currentQuestionId).toBe("p5");
   });
 
   it("when every answer left in a pool has been shown, an unseen question from another pool comes before a repeat", () => {
@@ -1089,6 +1090,18 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     }
     expect(dealt).toContain("fresh");
     expect(dealt.filter((id) => g.revealedQuestionIds.includes(id) && id !== "fresh")).toEqual([]);
+    expect(g.usedQuestionIds[1]).toEqual(["fresh"]); // recorded in its own pool, not pool 1's
+    expect(g.usedQuestionIds[0]).not.toContain("fresh");
+  });
+
+  it("a flee does not keep a question another team holds while a free one exists", () => {
+    // Red Team review (/ship): with fewer questions than teams the fled question was already shared, and the own fallback handed it back.
+    let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }, { id: "T2", name: "C" }], [{ baseDifficulty: 1, reward: 1 }], [["a"], ["b"], [], [], []], ["boss-q1"], { bossThreshold: 2 }, 3, first);
+    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["a", "b", "a"]);
+    ({ game: g } = answerQuestion(g, "T0", "a", false, "retry", first));
+    ({ game: g } = answerQuestion(g, "T1", "b", true, "retry", first)); // enters the boss; b is revealed and free
+    ({ game: g } = answerQuestion(g, "T2", "a", false, "flee", first));
+    expect(g.teams.find((t) => t.id === "T2")!.currentQuestionId).toBe("b");
   });
 
   it("a correct answer scores the difficulty of the pool the question came from", () => {

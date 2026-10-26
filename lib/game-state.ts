@@ -222,7 +222,7 @@ function poolIndexFor(pools: string[][], d: Difficulty): number {
  * question in the pool has been drawn it reshuffles. Within that, prefer a
  * question whose answer hasn't been revealed; if only revealed ones are left this
  * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer, and then an
- * unrevealed free one from the nearest other pool (lower first) does.
+ * unrevealed free one from the nearest other pool (by distance, lower first on ties) does.
  * When every question is held (a small custom bank), a free question from the nearest other pool comes
  * next, then `own` (the question the dealt team is leaving: fled, or just answered), never another team's. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
  */
@@ -255,7 +255,9 @@ function deal(
     // nearest other pool (lower first) before two teams hold the same one, preferring an unrevealed one.
     // A fleeing team's own question comes back only when no unrevealed one is free anywhere: it would
     // undo the flee, and after a wrong lock its answer is half shown. Only a bank with fewer questions than teams repeats.
-    const borrow = borrowFrom((id) => !revealed.includes(id)) ?? (own && !revealed.includes(own) ? [own] : borrowFrom(() => true));
+    // In a bank smaller than the team count `own` may be shared already; keeping it then would undo the flee.
+    const mine = own && teams.filter((t) => !t.inBoss && t.currentQuestionId === own).length < 2 ? own : undefined;
+    const borrow = borrowFrom((id) => !revealed.includes(id)) ?? (mine && !revealed.includes(mine) ? [mine] : borrowFrom(() => true));
     if (borrow) pool = borrow;
     else if (own) pool = [own];
   }
@@ -530,7 +532,7 @@ export function answerQuestion(
     }
   } else {
     if (correct) {
-      // The question's own difficulty: an empty or fully held pool deals from another one (deal()).
+      // The question's own difficulty: an empty, fully held or fully revealed pool deals from another one (deal()).
       const pointsAwarded = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
       const reward = game.rooms[team.roomIndex].reward;
       // A correct answer is always revealed (D5), so the next deal from any pool must not hand it
