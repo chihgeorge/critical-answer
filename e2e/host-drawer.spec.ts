@@ -61,7 +61,8 @@ test("the phone shows reward points and the host sends a team to the boss from t
   await expect(host.getByText("1/15")).toBeVisible();
 
   await host.getByRole("button", { name: "⚙ 更多" }).click();
-  await host.getByRole("button", { name: "送王房" }).click();
-  await expect(host.getByRole("button", { name: "送王房" })).toHaveCount(0);
+  await host.getByRole("button", { name: "送王房" }).click(); // first tap only arms it
+  await host.getByRole("button", { name: "確定送？" }).click();
+  await expect(host.getByRole("button", { name: /送王房|確定送/ })).toHaveCount(0);
   await expect(host.getByText(/首領血量/)).toBeVisible();
 });

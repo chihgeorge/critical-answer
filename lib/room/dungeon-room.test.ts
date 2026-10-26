@@ -372,6 +372,21 @@ describe("HOST_SEND_TO_BOSS (scoring-and-score-pools.md S13)", () => {
     send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[1] });
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
   });
+  it("pays the bank's boss.hitReward on a boss hit, not the default 10", () => {
+    const bank: Bank = {
+      rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "？" }, answer: "x" }] }],
+      boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 25, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+    };
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids } = joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "boss-q1", correct: true });
+    expect(room.game!.teams[0].reward).toBe(25);
+  });
 });
 
 describe("answer reveal on STATE (D2/D3/D5/D7)", () => {

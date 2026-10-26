@@ -24,6 +24,7 @@ export type NarrationEvent =
   | WithNext<{ type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number }>
   | WithNext<{ type: "boss-kill"; team: string; monster: string; bonus: number }>
   /** Game over: ranking is sorted high to low. Longer line, longer timeout. */
+  // ranking[].score carries reward points (Team.reward), not progress points (Team.score).
   | { type: "epilogue"; ranking: { name: string; score: number }[]; winners: string[] };
 
 /**

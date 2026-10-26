@@ -385,6 +385,8 @@ describe("scoring and winners (docs/designs/scoring-and-score-pools.md)", () => 
     expect(game.boss.killedByTeamId).toBe("T0");
     expect(getTeam(game, "T0").reward).toBe(14);
     expect(game.winners).toEqual(["T1"]);
+    expect(getSpectatorView(game).bossKilledBy).toBe("T0");
+    expect(getSpectatorView(g).bossKilledBy).toBeNull();
   });
 
   it("teams tied on reward share the win (並列第一)", () => {
@@ -427,6 +429,19 @@ describe("sendToBoss (host override, scoring-and-score-pools.md S13)", () => {
     const { game: g } = answerQuestion(recordWrongLock(g0, "T0", q, 1), "T0", q, false, "retry");
     expect(g.eliminated[q]).toEqual([1]);
     expect(sendToBoss(g, "T0").eliminated).not.toHaveProperty(q);
+  });
+
+  it("keeps eliminated options while another team still faces that question", () => {
+    const g0 = makeGame({ bossThreshold: 15 });
+    const q = g0.teams[0].currentQuestionId;
+    const g = { ...g0, teams: g0.teams.map((t) => ({ ...t, currentQuestionId: q })), eliminated: { [q]: [1] } };
+    expect(sendToBoss(g, "T1").eliminated[q]).toEqual([1]);
+  });
+
+  it("clears the sent team's option pick", () => {
+    const g = makeGame({ bossThreshold: 15 });
+    const g1 = recordOptionSelection(g, "T0", g.teams[0].currentQuestionId, 0);
+    expect(sendToBoss(g1, "T0").teams[0].currentSelection).toBeNull();
   });
 });
 

@@ -14,7 +14,7 @@
 // BANK constant (or the bankJson import) to this file — that import belongs only in
 // lib/question-bank-data.ts.
 
-import type { Difficulty, RoomTemplate } from "./game-state";
+import { DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./game-state";
 import type { PublicMediaContent, PublicQuestion } from "./protocol";
 import type { SpriteKind } from "./sprite-kind";
 import { YOUTUBE_ID_RE } from "./youtube";
@@ -60,7 +60,6 @@ const fail = (why: string): never => {
   throw new Error(`Invalid question bank: ${why}`);
 };
 /** A bank saved before rewards existed has none: a room pays difficulty x 10, a boss hit 10 (S8). */
-const DEFAULT_BOSS_HIT_REWARD = 10;
 const defaultRoomReward = (d: Difficulty) => d * 10;
 function parseReward(v: unknown, fallback: number, where: string): number {
   if (v === undefined) return fallback;

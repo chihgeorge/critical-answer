@@ -266,8 +266,14 @@ export default function PlayPage() {
             <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
-              <div className="px-num my-1 text-[18px]" style={{ color: "#a8470f" }}>
-                {myTeam ? `${myTeam.reward} 獎勵分` : `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`}
+              <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
+                {myTeam ? (
+                  <>
+                    <span className="px-num">{myTeam.reward}</span> 獎勵分
+                  </>
+                ) : (
+                  `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`
+                )}
               </div>
             </div>
           </Panel>

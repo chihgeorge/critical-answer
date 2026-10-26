@@ -40,6 +40,13 @@ function MoreDrawer({
   const totalSegments = lines.length;
   const [notes, setNotes] = useState("");
   const [line, setLine] = useState(currentLine);
+  // 送王房 cannot be undone, so the first tap only arms it for 3 s.
+  const [armed, setArmed] = useState<string | null>(null);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(null), 3000);
+    return () => clearTimeout(t);
+  }, [armed]);
   const origin = location.origin;
   const token = getHostToken(code);
   const hostUrl = token ? `${origin}/room/${code}/host#k=${token}` : "";
@@ -55,12 +62,19 @@ function MoreDrawer({
           </div>
           {bossable.length > 0 && (
             <section className="flex flex-col gap-2">
-              <div className="text-[15px]">送隊伍進王房（不用等到 15 分，送了不能退回）</div>
+              <div className="text-[15px]">{`送隊伍進王房（不用等到 ${BOSS_THRESHOLD} 分，送了不能退回）`}</div>
               {bossable.map((t) => (
                 <div key={t.id} className="flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-[16px]">{t.name}</span>
-                  <PixelButton onClick={() => send({ type: "HOST_SEND_TO_BOSS", teamId: t.id })} className="!m-0 !px-3 !py-1 text-[15px]">
-                    送王房
+                  <PixelButton
+                    onClick={() => {
+                      if (armed !== t.id) return setArmed(t.id);
+                      setArmed(null);
+                      send({ type: "HOST_SEND_TO_BOSS", teamId: t.id });
+                    }}
+                    className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]"
+                  >
+                    {armed === t.id ? "確定送？" : "送王房"}
                   </PixelButton>
                 </div>
               ))}

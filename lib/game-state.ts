@@ -79,12 +79,16 @@ export function firstPendingBranchRoom(team: { roomIndex: number; branchChoices:
   return null;
 }
 
+/** What one boss hit pays when the bank does not say (docs/designs/scoring-and-score-pools.md S8). */
+export const DEFAULT_BOSS_HIT_REWARD = 10;
+
 export interface Team {
   id: string;
   name: string;
   online: boolean;
   /** Progress points: the difficulty of every question answered right. Decides boss-room entry only,
-   * and only the host sees it (docs/designs/scoring-and-score-pools.md S3). */
+   * and only the host page shows it (docs/designs/scoring-and-score-pools.md S3). It is still in the
+   * broadcast SpectatorView, so this is a UI rule, not a secret. */
   score: number;
   /** Reward points: what this team's defeated monsters and boss hits paid. Decides the winner (S7). */
   reward: number;
@@ -268,7 +272,7 @@ export function createGame(
   config: GameConfig,
   bossMaxHp: number,
   rng: () => number = Math.random,
-  bossHitReward = 10,
+  bossHitReward = DEFAULT_BOSS_HIT_REWARD,
 ): GameState {
   if (teamSeeds.length === 0) {
     throw new InvalidActionError("At least one team is required");
