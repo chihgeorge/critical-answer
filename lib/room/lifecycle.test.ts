@@ -406,14 +406,18 @@ describe("after a restart", () => {
     }
   });
 
-  it("a saved pendingWrong naming no team does not stop the room from restoring", async () => {
+  it.each([
+    ["names no team", (snap: any) => ({ teamId: "ghost", questionId: snap.game.boss.currentQuestionId, optionIndex: 0 })],
+    ["names a question the team no longer faces", () => ({ teamId: T1, questionId: "stale-q", optionIndex: 0 })],
+  ])("a saved pendingWrong that %s is dropped, so it cannot pin the turn forever", async (_, pendingWrong) => {
     const a = setup();
     startedGame(a.room);
     const snap = structuredClone(a.storage.data.get(SNAPSHOT_KEY)) as any;
-    snap.game.pendingWrong = { teamId: "ghost", questionId: snap.game.boss.currentQuestionId, optionIndex: 0 };
+    snap.game.pendingWrong = pendingWrong(snap);
     const b = setup(a.clock.t);
     b.storage.data.set(SNAPSHOT_KEY, snap);
-    await expect(b.room.restore()).resolves.toBeDefined();
+    expect(await b.room.restore()).toBe("restored");
+    expect(b.room.game!.pendingWrong).toBeNull();
   });
 
   it("the alarm is set again from the saved last activity", async () => {

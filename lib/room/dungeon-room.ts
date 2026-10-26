@@ -80,6 +80,13 @@ function roundActivity(at: number, idleMs: number): number {
 }
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Shallow snapshot validation: a saved pendingWrong must name a team and the question it faces now, or it pins the turn forever. */
+function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
+  const p = g.pendingWrong;
+  const team = p ? g.teams.find((t) => t?.id === p.teamId) : undefined;
+  if (!p || !team) return null;
+  return p.questionId === (team.inBoss ? g.boss.currentQuestionId : team.currentQuestionId) ? p : null;
+}
 
 /**
  * One game room. It knows nothing about the platform: messages come in through onMessage/onConnect/onClose
@@ -327,7 +334,7 @@ export class DungeonRoom {
         revealedQuestionIds: Array.isArray(s.game.revealedQuestionIds) ? s.game.revealedQuestionIds : [],
         // Same shallow-validation backfill for saves from before phone answering (phone-answering.md).
         eliminated: s.game.eliminated ?? {},
-        pendingWrong: s.game.pendingWrong ?? null,
+        pendingWrong: restoredPendingWrong(s.game),
         // Not for old saves (SCHEMA_VERSION 5 refuses them): guards a v5 snapshot missing the field.
         optionOrder: s.game.optionOrder ?? {},
         teams: s.game.teams.map((t) =>
@@ -985,8 +992,7 @@ export class DungeonRoom {
    * question anyway. The red tile shows for a beat, then it resolves as a retry on its own. */
   private armBossMiss() {
     const pending = this.game?.pendingWrong;
-    // A snapshot's pendingWrong naming no team (shallow validation) must not throw out of restore().
-    if (!pending || !this.game!.teams.some((t) => t.id === pending.teamId) || !isInBossPhase(this.game!, pending.teamId)) return;
+    if (!pending || !isInBossPhase(this.game!, pending.teamId)) return;
     if (this.lockTimer) clearTimeout(this.lockTimer);
     this.lockTimer = setTimeout(() => {
       // Resolved early (the host judged it): lockTimer may already be the next lock's beat.
@@ -1010,7 +1016,10 @@ export class DungeonRoom {
       return;
     }
     // A boss miss resolves on its own beat (D2=B): a phone cannot cut the red tile short.
-    if (isInBossPhase(this.game!, teamId)) return;
+    if (isInBossPhase(this.game!, teamId)) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "boss_miss" });
+      return;
+    }
     try {
       this.judge(teamId, questionId, false, choice, false);
     } catch (err) {
