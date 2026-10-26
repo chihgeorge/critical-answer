@@ -2,7 +2,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
-import { answerText, bossQuestionIds, findQuestion, roomTemplates, type Bank } from "../question-bank";
+import { answerText, bossQuestionIds, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 // Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
 vi.mock("../question-bank-data", async (actual) => {
@@ -373,10 +373,10 @@ describe("HOST_SEND_TO_BOSS (scoring-and-score-pools.md S13)", () => {
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
   });
   it("pays the bank's boss.hitReward on a boss hit, not the default 10", () => {
-    const bank: Bank = {
+    const bank = parseBank({
       rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "？" }, answer: "x" }] }],
       boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 25, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
-    };
+    });
     const room = new DungeonRoom(makeRoom() as any, () => 0, { bank });
     const hostConn = makeConn("host-conn");
     room.onConnect(hostConn);
@@ -419,7 +419,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
   });
 
   it("includes the explanation when the question has one, using room.env.R2_PUBLIC_BASE_URL for an image explanation", () => {
-    const bankWithExplanation: Bank = {
+    const bankWithExplanation = parseBank({
       rooms: [
         {
           monster: { name: "史萊姆", sprite: "slime", hue: 0 },
@@ -436,7 +436,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
         },
       ],
       boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
-    };
+    });
     const roomIO = { ...(makeRoom() as any), env: { R2_PUBLIC_BASE_URL: "https://pub.example.r2.dev" } } as RoomIO;
     const explanationRoom = new DungeonRoom(roomIO, () => 0, { bank: bankWithExplanation });
     const hostConn2 = makeConn("host-conn-2");
@@ -646,7 +646,7 @@ describe("TEAM_BRANCH_CHOICE", () => {
 describe("TEAM_SELECT_OPTION", () => {
   // A minimal bank with one multipleChoice question so the success path (and the live
   // options.length bounds check) can be exercised without touching the shipped bank.
-  const mcBank: Bank = {
+  const mcBank = parseBank({
     rooms: [
       {
         monster: { name: "史萊姆", sprite: "slime", hue: 0 },
@@ -662,7 +662,7 @@ describe("TEAM_SELECT_OPTION", () => {
         { kind: "multipleChoice", id: "boss-mc1", content: { kind: "text", value: "選哪個？" }, options: ["X", "Y"], correctIndex: 0 },
       ],
     },
-  };
+  });
 
   function startedMcGame(teamCount = 2) {
     const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: mcBank });
@@ -705,6 +705,28 @@ describe("TEAM_SELECT_OPTION", () => {
     send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: next, optionIndex: 0 });
     expect(room.game!.teams[0].currentSelection).toBe(0);
+  });
+
+  it("shows the options in the game's shuffled order and judges a lock by the shown slot", () => {
+    vi.useFakeTimers();
+    // A non-zero rng moves the options (shuffledOptionOrders); the right answer is wherever B ends up.
+    const room = new DungeonRoom(makeRoom() as any, () => 0.99, { bank: mcBank });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { conns } = joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    const order = room.game!.optionOrder["r0-mc1"];
+    const shown = order.map((i) => ["A", "B", "C"][i]);
+    expect(shown).not.toEqual(["A", "B", "C"]);
+    expect(lastBroadcast(room).question.options).toEqual(shown);
+    const right = shown.indexOf("B");
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: right });
+    send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+    vi.advanceTimersByTime(2000);
+    vi.useRealTimers();
+    expect(room.game!.teams[0].reward).toBe(10);
+    expect(lastBroadcast(room).reveal.choice).toMatchObject({ options: shown, correctIndex: right });
   });
 
   it("records a valid pick and broadcasts it in STATE", () => {
@@ -973,7 +995,7 @@ describe("TEAM_SELECT_OPTION", () => {
 
     it("a text question's reveal never auto-advances: the host closes it", async () => {
       vi.useFakeTimers();
-      const textBank: Bank = { ...mcBank, rooms: [{ ...mcBank.rooms[0], questions: [{ kind: "text", id: "r0-t1", content: { kind: "text", value: "？" }, answer: "a" }] }] };
+      const textBank: Bank = { ...mcBank, pools: { ...mcBank.pools, 1: [{ kind: "text", id: "r0-t1", content: { kind: "text", value: "？" }, answer: "a" }] } };
       const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: textBank });
       const hostConn = makeConn("host-conn");
       room.onConnect(hostConn);
@@ -1764,7 +1786,7 @@ function currentTurnAny(room: DungeonRoom) {
 }
 
 describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
-  const imageBank: Bank = {
+  const imageBank = parseBank({
     rooms: [
       {
         monster: { name: "史萊姆", sprite: "slime", hue: 0 },
@@ -1773,7 +1795,7 @@ describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
       },
     ],
     boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
-  };
+  });
 
   it("builds the broadcast question's content.url from room.env.R2_PUBLIC_BASE_URL", () => {
     const roomIO = { ...(makeRoom() as any), env: { R2_PUBLIC_BASE_URL: "https://pub.example.r2.dev" } } as RoomIO;

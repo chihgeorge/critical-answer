@@ -367,7 +367,7 @@ describe("restoring after a restart", () => {
 
   it("the game keeps the bank it started with, not the bundled one", async () => {
     const custom = structuredClone(BANK);
-    custom.rooms[0].questions[0].content.value = "自訂題庫的第一題";
+    custom.pools[1][0].content.value = "自訂題庫的第一題";
     const storage = memoryStorage();
     const first = makeRoom(storage, { bank: custom }).room;
     startedGame(first);

@@ -8,7 +8,7 @@ set -e
 python3 - <<'PY'
 import json, pathlib, sys
 bank = json.load(open("data/question-bank.json"))
-qs = [q for r in bank["rooms"] for q in r["questions"]] + bank["boss"]["questions"]
+qs = [q for p in bank["pools"].values() for q in p] + bank["boss"]["questions"]
 blob = "".join(p.read_text(errors="ignore") for p in pathlib.Path(".next/static").rglob("*.js"))
 answer = lambda q: q["options"][q["correctIndex"]] if q["kind"] == "multipleChoice" else q["answer"]
 leaks = [q["id"] for q in qs if answer(q) in blob or q["text"] in blob]
