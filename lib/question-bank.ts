@@ -1,4 +1,5 @@
-// The question bank: one monster per room, several questions per room, one boss.
+// The question bank: questions in five pools by difficulty, rooms that each name a monster, a
+// difficulty and a reward, and one boss (docs/designs/scoring-and-score-pools.md).
 // Source of truth is data/question-bank.json — but that raw JSON (with every answer) is loaded
 // and parsed only in lib/question-bank-data.ts, a server-only module. This file is pure
 // logic/types over an already-in-memory Bank and is safe to import from client components (e.g.
@@ -43,9 +44,18 @@ export interface BankMonster {
   /** CSS hue-rotate degrees, so one sprite can play several monsters. */
   hue: number;
 }
+export const DIFFICULTIES = [1, 2, 3, 4, 5] as const satisfies readonly Difficulty[];
+export interface BankRoom {
+  monster: BankMonster;
+  /** The pool this room deals from, and the progress points a correct answer here earns. */
+  difficulty: Difficulty;
+  /** Reward points for defeating the room's monster (docs/designs/scoring-and-score-pools.md S5). */
+  reward: number;
+}
 export interface Bank {
-  /** `reward`: reward points for defeating the room's monster (docs/designs/scoring-and-score-pools.md S5). */
-  rooms: { monster: BankMonster; baseDifficulty: Difficulty; reward: number; questions: BankQuestion[] }[];
+  /** Questions by difficulty (S11); a room draws from the pool of its difficulty. */
+  pools: Record<Difficulty, BankQuestion[]>;
+  rooms: BankRoom[];
   /** `hitReward`: reward points per boss hit (S6). */
   boss: { monster: BankMonster; maxHp: number; hitReward: number; questions: BankQuestion[] };
 }
@@ -156,26 +166,51 @@ function parseQuestions(raw: unknown, where: string, seen: Set<string>): BankQue
   });
 }
 
-/** Validate untrusted JSON into a Bank. Throws (loudly, at startup) on the first problem. */
+function parseDifficulty(d: unknown, where: string): Difficulty {
+  if (typeof d !== "number" || !Number.isInteger(d) || d < 1 || d > 5) fail(`${where} has difficulty ${String(d)}`);
+  return d as Difficulty;
+}
+
+/** Validate untrusted JSON into a Bank. Throws (loudly, at startup) on the first problem.
+ * Reads the pooled format, and also the older one where each room held its own questions and a
+ * `baseDifficulty`: those questions join the pool of that difficulty, so a bank stored before pools
+ * keeps working with no manual step. */
 export function parseBank(raw: unknown): Bank {
   const b = raw as Record<string, unknown> | null;
   if (!b || typeof b !== "object") fail("not an object");
   if (!Array.isArray(b!.rooms) || b!.rooms.length === 0) fail("no rooms");
   const seen = new Set<string>();
-  const rooms = (b!.rooms as Record<string, unknown>[]).map((r, i) => {
-    const d = r.baseDifficulty;
-    if (typeof d !== "number" || !Number.isInteger(d) || d < 1 || d > 5) fail(`room ${i} has difficulty ${String(d)}`);
+  const pools = { 1: [], 2: [], 3: [], 4: [], 5: [] } as Record<Difficulty, BankQuestion[]>;
+  const pooled = b!.pools !== undefined;
+  if (pooled) {
+    const raw = b!.pools as Record<string, unknown> | null;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) fail("pools is not an object");
+    for (const [key, list] of Object.entries(raw!)) {
+      const d = parseDifficulty(Number(key), `pool ${key}`);
+      if (key !== String(d)) fail(`pool key ${key} is not one of 1–5`); // "01" would overwrite pool 1
+      // An empty pool is fine; a room that needs it is caught below.
+      if (Array.isArray(list) && list.length === 0) continue;
+      pools[d] = parseQuestions(list, `pool ${d}`, seen);
+    }
+  }
+  const rooms = (b!.rooms as Record<string, unknown>[]).map((r, i): BankRoom => {
+    const d = parseDifficulty(pooled ? r.difficulty : r.baseDifficulty, `room ${i}`);
+    if (pooled && r.questions !== undefined) fail(`room ${i} has questions, but this bank keeps them in pools`);
+    if (!pooled) pools[d] = [...pools[d], ...parseQuestions(r.questions, `room ${i}`, seen)];
     return {
       monster: parseMonster(r.monster, `room ${i}`),
-      baseDifficulty: d as Difficulty,
-      reward: parseReward(r.reward, defaultRoomReward(d as Difficulty), `room ${i}`),
-      questions: parseQuestions(r.questions, `room ${i}`, seen),
+      difficulty: d,
+      reward: parseReward(r.reward, defaultRoomReward(d), `room ${i}`),
     };
+  });
+  rooms.forEach((r, i) => {
+    if (pools[r.difficulty].length === 0) fail(`room ${i} has difficulty ${r.difficulty} but pool ${r.difficulty} has no questions`);
   });
   const boss = b!.boss as Record<string, unknown> | null;
   if (!boss) fail("no boss");
   if (typeof boss!.maxHp !== "number" || boss!.maxHp < 1) fail("boss has no hp");
   return {
+    pools,
     rooms,
     boss: {
       monster: parseMonster(boss!.monster, "boss"),
@@ -194,26 +229,56 @@ export function assertSavable(bank: Bank): void {
 }
 
 export function roomTemplates(bank: Bank): RoomTemplate[] {
-  return bank.rooms.map((r) => ({ baseDifficulty: r.baseDifficulty, reward: r.reward, questionIds: r.questions.map((q) => q.id) }));
+  return bank.rooms.map((r) => ({ baseDifficulty: r.difficulty, reward: r.reward }));
+}
+
+/** Question ids by pool, `[d - 1]` for difficulty d, the shape GameState.pools keeps. */
+export function poolQuestionIds(bank: Bank): string[][] {
+  return DIFFICULTIES.map((d) => bank.pools[d].map((q) => q.id));
+}
+
+/** A fresh shown order for every multipleChoice question, so a game's answers are not always in the
+ * slot the bank wrote them in: `order[shown] = bank index` (Fisher-Yates over `rng`). */
+export function shuffledOptionOrders(bank: Bank, rng: () => number): Record<string, number[]> {
+  const orders: Record<string, number[]> = {};
+  for (const q of allQuestions(bank)) {
+    if (q.kind !== "multipleChoice") continue;
+    const order = q.options.map((_, i) => i);
+    for (let i = order.length - 1; i > 0; i--) {
+      // Counted down from i, so a constant rng() of 0 (the tests' deterministic rng) keeps the bank order.
+      const j = i - Math.floor(rng() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    orders[q.id] = order;
+  }
+  return orders;
+}
+
+/** The question as this game shows it: options in `order`, correctIndex moved with them. Without an
+ * order (a text question, or a bank question added after the game started), or with a broken one, it is unchanged. */
+export function inShownOrder<Q extends BankQuestion>(q: Q, order: number[] | undefined): Q {
+  // Anything but a permutation of 0..n-1 (a corrupt saved order) would blank options and lose the answer.
+  if (q.kind !== "multipleChoice" || !order || order.length !== q.options.length || !q.options.every((_, i) => order.includes(i))) return q;
+  return { ...q, options: order.map((i) => q.options[i]), correctIndex: order.indexOf(q.correctIndex) };
 }
 
 export function bossQuestionIds(bank: Bank): string[] {
   return bank.boss.questions.map((q) => q.id);
 }
 
-/** Every question in a bank, rooms then boss — the "flatten the whole bank" expression every
+/** Every question in a bank, pools 1 to 5 then boss — the "flatten the whole bank" expression every
  * whole-bank scan (allAnswers, validationError, imageKeysOf) needs, in one place. */
 export function allQuestions(bank: Bank): BankQuestion[] {
-  return [...bank.rooms.flatMap((r) => r.questions), ...bank.boss.questions];
+  return [...DIFFICULTIES.flatMap((d) => bank.pools[d]), ...bank.boss.questions];
 }
 
 export function findQuestion(bank: Bank, id: string) {
-  for (const [roomIndex, r] of bank.rooms.entries()) {
-    const q = r.questions.find((x) => x.id === id);
-    if (q) return { ...q, roomIndex, boss: false as const, monster: r.monster, baseDifficulty: r.baseDifficulty };
+  for (const d of DIFFICULTIES) {
+    const q = bank.pools[d].find((x) => x.id === id);
+    if (q) return { ...q, boss: false as const, difficulty: d };
   }
   const q = bank.boss.questions.find((x) => x.id === id);
-  return q ? { ...q, roomIndex: -1, boss: true as const, monster: bank.boss.monster, baseDifficulty: 5 as Difficulty } : undefined;
+  return q ? { ...q, boss: true as const, difficulty: 5 as Difficulty } : undefined;
 }
 
 /** The correct answer's display text, regardless of kind — callers that only need to show or compare
@@ -239,19 +304,29 @@ export function publicMediaContent(c: MediaContent, imageBaseUrl: string, questi
   return { kind: "image", url: `${imageBaseUrl}/${c.value}` };
 }
 
-/** The part of a question every screen may see while it's in play. `difficulty` is the team's
- * current one (flee lowers it). Built by explicit field-picking, never `...q` — that discipline
+/** The part of a question every screen may see while it's in play. `difficulty` is the pool the
+ * question came from (what a correct answer scores); the monster is the one in the team's room (`roomIndex`), since a pool
+ * question can come up in any room of its difficulty. `order` is the game's shown option order.
+ * Built by explicit field-picking, never `...q` — that discipline
  * is what keeps `answer`/`correctIndex`/`explanation` off every client; extend it the same way
  * for any future field, never spread the server-only shape. */
-export function publicQuestion(bank: Bank, id: string, difficulty: number, imageBaseUrl: string): PublicQuestion | null {
-  const q = findQuestion(bank, id);
-  if (!q) return null;
+export function publicQuestion(
+  bank: Bank,
+  id: string,
+  roomIndex: number,
+  imageBaseUrl: string,
+  order?: number[],
+): PublicQuestion | null {
+  const found = findQuestion(bank, id);
+  if (!found) return null;
+  const q = inShownOrder(found, order);
+  const monster = q.boss ? bank.boss.monster : (bank.rooms[roomIndex] ?? bank.rooms[0]).monster;
   return {
     id: q.id,
     content: publicMediaContent(q.content, imageBaseUrl, q.id),
-    difficulty: q.boss ? 5 : difficulty,
+    difficulty: q.difficulty,
     boss: q.boss,
-    monster: { name: q.monster.name, sprite: q.monster.sprite, hue: q.monster.hue },
+    monster: { name: monster.name, sprite: monster.sprite, hue: monster.hue },
     ...(q.kind === "multipleChoice" ? { options: q.options } : {}),
   };
 }

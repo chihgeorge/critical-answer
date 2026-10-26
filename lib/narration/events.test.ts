@@ -4,7 +4,8 @@ import { createGame, type AnswerOutcome, type GameState } from "../game-state";
 
 const game: GameState = createGame(
   [{ id: "a", name: "紅隊" }, { id: "b", name: "藍隊" }],
-  [{ baseDifficulty: 2, reward: 20, questionIds: ["q1", "q2", "q3"] }],
+  [{ baseDifficulty: 2, reward: 20 }],
+  [[], ["q1", "q2", "q3"], [], [], []],
   ["b1", "b2"],
   { bossThreshold: 15 },
   5,

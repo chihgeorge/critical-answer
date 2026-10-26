@@ -129,8 +129,6 @@ export interface RoomTemplate {
   baseDifficulty: Difficulty;
   /** Reward points for defeating this room's monster, whatever difficulty the team faced it at (S5). */
   reward: number;
-  /** Question bank for this room; questionId must be one of these ids. */
-  questionIds: string[];
 }
 
 export interface BossState {
@@ -156,14 +154,20 @@ export interface GameState {
   turnOrder: string[];
   currentTurnIndex: number;
   rooms: RoomTemplate[];
+  /** Question ids by difficulty: `pools[d - 1]` holds difficulty d (S11). A room deals from its own
+   * difficulty's pool, and a team that fled from the pool of its lowered difficulty. */
+  pools: string[][];
   /**
-   * Per room index: the questions dealt there since that room's deck was last
+   * Per pool, the same index as `pools`: the questions dealt from it since it was last
    * reshuffled. Shared by every team, so nobody is dealt a question another team
-   * already faced in the same room until the deck runs out.
+   * already faced until the pool runs out.
    */
   usedQuestionIds: string[][];
+  /** Per multipleChoice question id, the option order this game shows: `optionOrder[id][shown] = bank index`.
+   * Every option index the room and clients use (picks, locks, eliminated, reveals) is a shown index. */
+  optionOrder: Record<string, number[]>;
   /** Every question id a team has actually gotten right, globally, across the whole game — never
-   * reset by a room's reshuffle. A revealed answer (see AnswerReveal, lib/protocol.ts) must
+   * reset by a pool's reshuffle. A revealed answer (see AnswerReveal, lib/protocol.ts) must
    * never come back around for someone who hasn't faced it yet; a retried or fled question stays
    * eligible (D5 — its answer was never shown). deal()'s reshuffle and the boss ring both filter
    * against this before falling back to reuse once every remaining question has been revealed. */
@@ -203,32 +207,68 @@ export function rollBossKillBonus(rng: () => number = Math.random): number {
   return rollD20(rng) + rollD20(rng) + rollD20(rng) + rollD20(rng);
 }
 
+/** The pool difficulty `d` deals from: its own, else the nearest non-empty one below it, then above
+ * (a custom bank may leave a pool empty; parseBank only insists on each room's own pool). */
+function poolIndexFor(pools: string[][], d: Difficulty): number {
+  for (let i = d - 1; i >= 0; i--) if (pools[i].length > 0) return i;
+  const above = pools.findIndex((p) => p.length > 0);
+  if (above < 0) throw new InvalidActionError("No questions to deal");
+  return above;
+}
+
 /**
- * Deal one question for `roomIndex`: a question nobody has drawn since the last
+ * Deal one question of `difficulty`: a question nobody has drawn from its pool since the last
  * reshuffle, avoiding any question a team is holding right now. When every
- * question in the room has been drawn the deck reshuffles. Within that, prefer a
+ * question in the pool has been drawn it reshuffles. Within that, prefer a
  * question whose answer hasn't been revealed; if only revealed ones are left this
- * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer.
- * Returns the id and the updated used-lists; `rng` is injected so tests are deterministic.
+ * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer, then an
+ * unrevealed free one from the nearest other pool, then `own` if unrevealed and no other team holds it.
+ * When every question is held (a small custom bank): an unrevealed free borrow, then `own` (the
+ * question the dealt team is leaving: fled, or just answered) if unrevealed and unshared, then any
+ * free borrow, then `own` anyway. Only that last step, in a bank with fewer questions than teams,
+ * can leave two teams on one question. "Nearest" is by distance, lower first on ties, and a donor
+ * pool's undrawn questions come first. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
  */
 function deal(
-  rooms: RoomTemplate[],
+  pools: string[][],
   used: string[][],
   revealed: string[],
   teams: Team[],
-  roomIndex: number,
+  difficulty: Difficulty,
   rng: () => number,
+  own?: string,
 ): { questionId: string; used: string[][] } {
-  const all = rooms[roomIndex].questionIds;
+  const p = poolIndexFor(pools, difficulty);
+  const all = pools[p];
   let base = used;
-  let pool = all.filter((id) => !used[roomIndex].includes(id));
+  let pool = all.filter((id) => !used[p].includes(id));
   if (pool.length === 0) {
-    base = used.map((u, i) => (i === roomIndex ? [] : u));
+    base = used.map((u, i) => (i === p ? [] : u));
     pool = all;
   }
   const held = new Set(teams.filter((t) => !t.inBoss).map((t) => t.currentQuestionId)); // a boss team's room question is stale
+  const order = pools.map((_, i) => i).filter((i) => i !== p).sort((x, y) => Math.abs(x - p) - Math.abs(y - p) || x - y);
+  // From each donor pool, a question not drawn since its last reshuffle comes first.
+  const borrowFrom = (ok: (id: string) => boolean) =>
+    order
+      .map((i) => pools[i].filter((id) => !held.has(id) && ok(id)))
+      .map((ids, k) => (ids.some((id) => !used[order[k]].includes(id)) ? ids.filter((id) => !used[order[k]].includes(id)) : ids))
+      .find((ids) => ids.length > 0);
+  // In a bank smaller than the team count `own` may be shared already; keeping it then would undo the flee.
+  const mine = own && teams.filter((t) => !t.inBoss && t.currentQuestionId === own).length < 2 ? own : undefined;
   const free = pool.filter((id) => !held.has(id));
+  const freeAnywhere = all.filter((id) => !held.has(id));
   if (free.length > 0) pool = free;
+  else if (freeAnywhere.length > 0) pool = freeAnywhere;
+  else {
+    // Every question here is held (a pool smaller than the team count): borrow a free question from the
+    // nearest other pool (by distance, lower first on ties) before two teams hold the same one, preferring an unrevealed one.
+    // A fleeing team's own question comes back only when no unrevealed one is free anywhere: it would
+    // undo the flee, and after a wrong lock its answer is half shown. Only a bank with fewer questions than teams repeats.
+    const borrow = borrowFrom((id) => !revealed.includes(id)) ?? (mine && !revealed.includes(mine) ? [mine] : borrowFrom(() => true));
+    if (borrow) pool = borrow;
+    else if (own) pool = [own];
+  }
   // Prefer a question nobody has seen the answer to yet (D4/D5 — AnswerReveal), but never
   // at the cost of handing two teams the identical question — the held-exclusion above is the
   // more important invariant, so this only narrows within whatever it already left.
@@ -238,9 +278,15 @@ function deal(
   const unrevealedAnywhere = all.filter((id) => !revealed.includes(id) && !held.has(id));
   if (unrevealed.length > 0) pool = unrevealed;
   else if (unrevealedAnywhere.length > 0) pool = unrevealedAnywhere;
+  // Every answer left here has been shown: an unseen question from the nearest other pool, then the
+  // team's own unseen one, beats a repeat (the same order as the all-held branch above).
+  else pool = borrowFrom((id) => !revealed.includes(id)) ?? (mine && !revealed.includes(mine) ? [mine] : pool);
   const questionId = pool[Math.floor(rng() * pool.length)];
-  // The fled-question fallback above picks from questions already in `used`; don't record them twice.
-  return { questionId, used: base.map((u, i) => (i === roomIndex && !u.includes(questionId) ? [...u, questionId] : u)) };
+  // Recorded in the pool that holds it (a borrowed or own question belongs to another pool), once:
+  // the fled-question fallback above picks from questions already in `used`. This pool's reshuffle
+  // only counts when the question came from it.
+  const from = pools.findIndex((ids) => ids.includes(questionId));
+  return { questionId, used: (all.includes(questionId) ? base : used).map((u, i) => (i === from && !u.includes(questionId) ? [...u, questionId] : u)) };
 }
 
 /** A question answered again after every question was revealed must not be listed twice. */
@@ -268,11 +314,13 @@ export const DEFAULT_GAME_CONFIG: GameConfig = { bossThreshold: 15 };
 export function createGame(
   teamSeeds: { id: string; name: string }[],
   rooms: RoomTemplate[],
+  pools: string[][],
   bossQuestionIds: string[],
   config: GameConfig,
   bossMaxHp: number,
   rng: () => number = Math.random,
   bossHitReward = DEFAULT_BOSS_HIT_REWARD,
+  optionOrder: Record<string, number[]> = {},
 ): GameState {
   if (teamSeeds.length === 0) {
     throw new InvalidActionError("At least one team is required");
@@ -281,12 +329,12 @@ export function createGame(
     throw new InvalidActionError("At least one room is required");
   }
 
-  let used: string[][] = rooms.map(() => []);
+  let used: string[][] = pools.map(() => []);
   const revealed: string[] = [];
   const teams: Team[] = [];
   for (const seed of teamSeeds) {
     // Teams not dealt yet hold no question; the ones already dealt count as held.
-    const dealt = deal(rooms, used, revealed, teams, 0, rng);
+    const dealt = deal(pools, used, revealed, teams, rooms[0].baseDifficulty, rng);
     used = dealt.used;
     teams.push({
       id: seed.id,
@@ -308,7 +356,9 @@ export function createGame(
     turnOrder: teamSeeds.map((t) => t.id),
     currentTurnIndex: 0,
     rooms,
+    pools,
     usedQuestionIds: used,
+    optionOrder,
     revealedQuestionIds: revealed,
     eliminated: {},
     pendingWrong: null,
@@ -491,9 +541,10 @@ export function answerQuestion(
     }
   } else {
     if (correct) {
-      const pointsAwarded = team.currentDifficulty;
+      // The question's own difficulty: an empty, fully held or fully revealed pool deals from another one (deal()).
+      const pointsAwarded = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
       const reward = game.rooms[team.roomIndex].reward;
-      // A correct answer is always revealed (D5), so this room's next deal must not hand it
+      // A correct answer is always revealed (D5), so the next deal from any pool must not hand it
       // back to a team who hasn't faced it yet.
       const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
       const entersBoss = team.score + pointsAwarded >= game.config.bossThreshold || game.teams.some((t) => t.inBoss);
@@ -502,7 +553,7 @@ export function answerQuestion(
       const nextRoomIndex = entersBoss ? team.roomIndex : Math.min(team.roomIndex + 1, game.rooms.length - 1);
       const dealt = entersBoss
         ? { questionId: team.currentQuestionId, used: game.usedQuestionIds }
-        : deal(game.rooms, game.usedQuestionIds, revealedQuestionIds, game.teams, nextRoomIndex, rng);
+        : deal(game.pools, game.usedQuestionIds, revealedQuestionIds, game.teams, game.rooms[nextRoomIndex].baseDifficulty, rng, questionId);
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,
@@ -522,7 +573,7 @@ export function answerQuestion(
       const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
       // Fleeing reveals the answer only after a wrong lock (revealedOnFlee); otherwise only skip
       // already-revealed questions from prior correct answers.
-      const dealt = deal(game.rooms, game.usedQuestionIds, revealedOnFlee, game.teams, team.roomIndex, rng);
+      const dealt = deal(game.pools, game.usedQuestionIds, revealedOnFlee, game.teams, newDifficulty, rng, team.currentQuestionId);
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,

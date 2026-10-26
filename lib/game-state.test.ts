@@ -18,12 +18,18 @@ import {
   type RoomTemplate,
 } from "./game-state";
 
-function makeRooms(count: number, baseDifficulty: 1 | 2 | 3 | 4 | 5 = 1, questionsPerRoom = 8): RoomTemplate[] {
-  return Array.from({ length: count }, (_, i) => ({
-    baseDifficulty,
-    reward: baseDifficulty * 10,
-    questionIds: Array.from({ length: questionsPerRoom }, (_, q) => `room${i}-q${q + 1}`),
-  }));
+function makeRooms(count: number, baseDifficulty: 1 | 2 | 3 | 4 | 5 = 1): RoomTemplate[] {
+  return Array.from({ length: count }, () => ({ baseDifficulty, reward: baseDifficulty * 10 }));
+}
+
+/** Pools (`[d - 1]` = difficulty d) with `ids` in pool d and the others empty. */
+function poolsWith(d: 1 | 2 | 3 | 4 | 5, ids: string[]): string[][] {
+  return [1, 2, 3, 4, 5].map((x) => (x === d ? ids : []));
+}
+
+/** `count` rooms of one difficulty sharing one pool of `size` questions, room0-q1... (S11). */
+function deck(count: number, baseDifficulty: 1 | 2 | 3 | 4 | 5 = 1, size = 8): [RoomTemplate[], string[][]] {
+  return [makeRooms(count, baseDifficulty), poolsWith(baseDifficulty, Array.from({ length: size }, (_, q) => `room0-q${q + 1}`))];
 }
 
 /** Always picks the first available question, so deals are predictable: q1, q2, q3... */
@@ -34,7 +40,7 @@ function makeGame(overrides?: { bossThreshold?: number; bossMaxHp?: number; team
   const teams = Array.from({ length: teamCount }, (_, i) => ({ id: `T${i}`, name: `Team ${i}` }));
   return createGame(
     teams,
-    makeRooms(3, 1),
+    ...deck(3, 1),
     ["boss-q1", "boss-q2", "boss-q3"],
     { bossThreshold: overrides?.bossThreshold ?? 3 },
     overrides?.bossMaxHp ?? 2,
@@ -44,11 +50,11 @@ function makeGame(overrides?: { bossThreshold?: number; bossMaxHp?: number; team
 
 describe("createGame", () => {
   it("throws with zero teams", () => {
-    expect(() => createGame([], makeRooms(1), ["q"], { bossThreshold: 1 }, 1)).toThrow(InvalidActionError);
+    expect(() => createGame([], ...deck(1), ["q"], { bossThreshold: 1 }, 1)).toThrow(InvalidActionError);
   });
 
   it("throws with zero rooms", () => {
-    expect(() => createGame([{ id: "T0", name: "A" }], [], ["q"], { bossThreshold: 1 }, 1)).toThrow(
+    expect(() => createGame([{ id: "T0", name: "A" }], [], poolsWith(1, ["q"]), ["q"], { bossThreshold: 1 }, 1)).toThrow(
       InvalidActionError,
     );
   });
@@ -80,7 +86,7 @@ describe("answerQuestion — normal room, correct answer", () => {
     const t0 = g2.teams.find((t) => t.id === "T0")!;
     expect(t0.score).toBe(1);
     expect(t0.roomIndex).toBe(1);
-    expect(t0.currentQuestionId).toBe("room1-q1");
+    expect(t0.currentQuestionId).toBe("room0-q4"); // rooms of one difficulty share a pool; q1-q3 are taken
     expect(currentTurnTeamId(g2)).toBe("T1"); // turn passed, no bonus turn for a correct answer
   });
 
@@ -88,8 +94,7 @@ describe("answerQuestion — normal room, correct answer", () => {
     let game = makeGame({ teamCount: 1 });
     // Walk T0 through all 3 rooms.
     for (let i = 0; i < 3; i++) {
-      const expectedQ = `room${Math.min(i, 2)}-q1`;
-      ({ game } = answerQuestion(game, "T0", expectedQ, true, "retry", first));
+      ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first));
     }
     const t0 = game.teams[0];
     expect(t0.roomIndex).toBe(2); // last room index, not out of bounds
@@ -101,7 +106,7 @@ describe("answerQuestion — normal room, incorrect answer", () => {
     // Use a fresh game with higher base room difficulty to observe the downgrade.
     const highDiffGame = createGame(
       [{ id: "T0", name: "Team 0" }],
-      makeRooms(2, 3),
+      ...deck(2, 3),
       ["boss-q1"],
       { bossThreshold: 99 },
       1,
@@ -227,7 +232,7 @@ describe("boss phase eligibility", () => {
     expect(isInBossPhase(game, "T0")).toBe(false);
     ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first)); // +1, score=1
     expect(isInBossPhase(game, "T0")).toBe(false);
-    ({ game } = answerQuestion(game, "T0", "room1-q1", true, "retry", first)); // +1, score=2
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first)); // +1, score=2
     expect(isInBossPhase(game, "T0")).toBe(true);
   });
 
@@ -341,11 +346,12 @@ describe("boss combat", () => {
 describe("scoring and winners (docs/designs/scoring-and-score-pools.md)", () => {
   // Room 0 pays 10 at difficulty 1; room 1 pays 50 at difficulty 2: reward and progress are separate.
   const rooms = (): RoomTemplate[] => [
-    { baseDifficulty: 1, reward: 10, questionIds: ["a1", "a2", "a3", "a4"] },
-    { baseDifficulty: 2, reward: 50, questionIds: ["b1", "b2", "b3", "b4"] },
+    { baseDifficulty: 1, reward: 10 },
+    { baseDifficulty: 2, reward: 50 },
   ];
+  const pools = [["a1", "a2", "a3", "a4"], ["b1", "b2", "b3", "b4"], [], [], []];
   const twoTeams = (bossThreshold = 15, bossMaxHp = 1) =>
-    createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], rooms(), ["boss-q1", "boss-q2"], { bossThreshold }, bossMaxHp, first);
+    createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], rooms(), pools, ["boss-q1", "boss-q2"], { bossThreshold }, bossMaxHp, first);
   const answer = (g: GameState, id: string, correct = true, flee: "flee" | "retry" = "retry") =>
     answerQuestion(g, id, getTeam(g, id).inBoss ? g.boss.currentQuestionId : getTeam(g, id).currentQuestionId, correct, flee, first);
   const getTeam = (g: GameState, id: string) => g.teams.find((t) => t.id === id)!;
@@ -495,20 +501,20 @@ describe("question deck (T2)", () => {
   const cfg = { bossThreshold: 999 };
 
   it("deals each team a different question at the start when the room has enough", () => {
-    const game = createGame(seeds(3), makeRooms(2), boss, cfg, 1, first);
+    const game = createGame(seeds(3), ...deck(2), boss, cfg, 1, first);
     expect(game.teams.map((t) => t.currentQuestionId)).toEqual(["room0-q1", "room0-q2", "room0-q3"]);
   });
 
-  it("a team entering a room gets a question nobody has used there yet", () => {
-    let game = createGame(seeds(2), makeRooms(2), boss, cfg, 1, first);
+  it("a team entering a room gets a question nobody has drawn from its pool yet", () => {
+    let game = createGame(seeds(2), ...deck(2), boss, cfg, 1, first);
     ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first)); // T0 -> room1
     ({ game } = answerQuestion(game, "T1", "room0-q2", true, "retry", first)); // T1 -> room1
-    expect(game.teams[0].currentQuestionId).toBe("room1-q1");
-    expect(game.teams[1].currentQuestionId).toBe("room1-q2"); // not room1-q1 again
+    expect(game.teams[0].currentQuestionId).toBe("room0-q3");
+    expect(game.teams[1].currentQuestionId).toBe("room0-q4"); // not room0-q3 again
   });
 
   it("flee deals a fresh question in the same room and lowers difficulty", () => {
-    let game = createGame(seeds(1), makeRooms(2, 3), boss, cfg, 1, first);
+    let game = createGame(seeds(1), ...deck(2, 3), boss, cfg, 1, first);
     ({ game } = answerQuestion(game, "T0", "room0-q1", false, "flee", first));
     const t = game.teams[0];
     expect(t.roomIndex).toBe(0);
@@ -517,20 +523,20 @@ describe("question deck (T2)", () => {
   });
 
   it("retry keeps the same question and deals nothing new", () => {
-    let game = createGame(seeds(1), makeRooms(2), boss, cfg, 1, first);
+    let game = createGame(seeds(1), ...deck(2), boss, cfg, 1, first);
     ({ game } = answerQuestion(game, "T0", "room0-q1", false, "retry", first));
     expect(game.teams[0].currentQuestionId).toBe("room0-q1");
     expect(game.usedQuestionIds[0]).toEqual(["room0-q1"]);
   });
 
   it("uses the injected rng: a high roll picks the last unused question", () => {
-    const game = createGame(seeds(1), makeRooms(1), boss, cfg, 1, () => 0.99);
+    const game = createGame(seeds(1), ...deck(1), boss, cfg, 1, () => 0.99);
     expect(game.teams[0].currentQuestionId).toBe("room0-q8");
   });
 
   it("reshuffles an exhausted deck and never deals the question the team just answered", () => {
     // One team stuck in the only (last) room with 3 questions: clamped, so it keeps drawing.
-    let game = createGame(seeds(1), makeRooms(1, 1, 3), boss, cfg, 1, first);
+    let game = createGame(seeds(1), ...deck(1, 1, 3), boss, cfg, 1, first);
     let prev = game.teams[0].currentQuestionId;
     for (let i = 0; i < 10; i++) {
       ({ game } = answerQuestion(game, "T0", prev, true, "retry", first));
@@ -542,7 +548,7 @@ describe("question deck (T2)", () => {
   });
 
   it("does not hand two teams the same question while the deck has spares, even after a reshuffle", () => {
-    let game = createGame(seeds(2), makeRooms(1, 1, 4), boss, cfg, 1, first);
+    let game = createGame(seeds(2), ...deck(1, 1, 4), boss, cfg, 1, first);
     for (let i = 0; i < 12; i++) {
       const [a, b] = game.teams;
       expect(a.currentQuestionId).not.toBe(b.currentQuestionId);
@@ -553,7 +559,7 @@ describe("question deck (T2)", () => {
   });
 
   it("a correctly answered question is never redealt while an unrevealed one is available, even after a reshuffle (D4/D5)", () => {
-    let game = createGame(seeds(1), makeRooms(1, 1, 3), boss, cfg, 1, first);
+    let game = createGame(seeds(1), ...deck(1, 1, 3), boss, cfg, 1, first);
     const q1 = game.teams[0].currentQuestionId; // room0-q1
     ({ game } = answerQuestion(game, "T0", q1, true, "retry", first));
     expect(game.revealedQuestionIds).toEqual([q1]);
@@ -569,7 +575,7 @@ describe("question deck (T2)", () => {
   });
 
   it("fleeing never marks a question revealed, so it can come straight back", () => {
-    let game = createGame(seeds(1), makeRooms(1, 1, 2), boss, cfg, 1, first);
+    let game = createGame(seeds(1), ...deck(1, 1, 2), boss, cfg, 1, first);
     const q1 = game.teams[0].currentQuestionId;
     ({ game } = answerQuestion(game, "T0", q1, false, "flee", first));
     expect(game.revealedQuestionIds).toEqual([]);
@@ -577,7 +583,7 @@ describe("question deck (T2)", () => {
   });
 
   it("retrying never marks a question revealed", () => {
-    let game = createGame(seeds(1), makeRooms(1), boss, cfg, 1, first);
+    let game = createGame(seeds(1), ...deck(1), boss, cfg, 1, first);
     const q1 = game.teams[0].currentQuestionId;
     ({ game } = answerQuestion(game, "T0", q1, false, "retry", first));
     expect(game.revealedQuestionIds).toEqual([]);
@@ -586,7 +592,7 @@ describe("question deck (T2)", () => {
   it("a reshuffle prefers an unrevealed question over a revealed one", () => {
     // Flees exhaust the deck while q2 is still unrevealed, so the reshuffle pool {q1, q2} has a
     // real choice to make — with `first` and no revealed filter it would redeal q1.
-    let game = createGame(seeds(1), makeRooms(1, 1, 3), boss, cfg, 1, first);
+    let game = createGame(seeds(1), ...deck(1, 1, 3), boss, cfg, 1, first);
     ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first));
     ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, false, "flee", first));
     ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, false, "flee", first));
@@ -618,7 +624,7 @@ describe("question deck (T2)", () => {
   it("the fled-question fallback never hands a team the question another team is holding", () => {
     // Two teams, room of 3. By T0's last deal, q2/q3 are revealed and q1 (the only unrevealed
     // question) sits in T1's hand — T0 must get a revealed question, never T1's.
-    let game = createGame(seeds(2), makeRooms(1, 1, 3), boss, cfg, 1, first); // T0 q1, T1 q2
+    let game = createGame(seeds(2), ...deck(1, 1, 3), boss, cfg, 1, first); // T0 q1, T1 q2
     ({ game } = answerQuestion(game, "T0", "room0-q1", false, "flee", first)); // T0 -> q3
     ({ game } = answerQuestion(game, "T1", "room0-q2", true, "retry", first)); // q2 revealed, T1 -> q1
     ({ game } = answerQuestion(game, "T0", "room0-q3", true, "retry", first)); // q3 revealed
@@ -648,7 +654,7 @@ describe("question deck (T2)", () => {
   it("a room redeals a fled (unrevealed) question before re-showing a revealed one", () => {
     // q1 answered (revealed); then q2/q3 keep getting fled. After the reshuffle the cycle's only
     // unused question is q1 — but q2 was fled, never revealed, so it must win over re-showing q1.
-    let game = createGame(seeds(1), makeRooms(1, 1, 3), boss, cfg, 1, first);
+    let game = createGame(seeds(1), ...deck(1, 1, 3), boss, cfg, 1, first);
     ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first)); // q1 revealed -> q2
     ({ game } = answerQuestion(game, "T0", "room0-q2", false, "flee", first)); // -> q3
     ({ game } = answerQuestion(game, "T0", "room0-q3", false, "flee", first)); // reshuffle -> q2
@@ -674,7 +680,7 @@ describe("question deck (T2)", () => {
   });
 
   it("a team below the boss gate in the last room keeps getting questions and can still reach it", () => {
-    let game = createGame(seeds(1), makeRooms(2, 1, 3), boss, { bossThreshold: 15 }, 1, first);
+    let game = createGame(seeds(1), ...deck(2, 1, 3), boss, { bossThreshold: 15 }, 1, first);
     for (let i = 0; i < 40 && !isInBossPhase(game, "T0"); i++) {
       ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first));
     }
@@ -738,7 +744,7 @@ describe("recordBranchChoice (DM branching interlude)", () => {
     // Mirrors "a team below the boss gate in the last room..." above: roomIndex sticks at
     // the last room while the team racks up score, so only ONE roomIndex (the last one) is
     // ever recordable for it — repeated correct answers do not create new choosable rooms.
-    let game = createGame([{ id: "T0", name: "A" }], makeRooms(2, 1, 3), ["boss-q1"], { bossThreshold: 15 }, 1, first);
+    let game = createGame([{ id: "T0", name: "A" }], ...deck(2, 1, 3), ["boss-q1"], { bossThreshold: 15 }, 1, first);
     for (let i = 0; i < 40 && !isInBossPhase(game, "T0"); i++) {
       game = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first).game;
     }
@@ -751,7 +757,7 @@ describe("recordBranchChoice (DM branching interlude)", () => {
   it("rejects a choice once the game has finished, mirroring answerQuestion's own guard", () => {
     // 2 rooms so the team legitimately enters roomIndex 1 before reaching the boss;
     // bossMaxHp 1 kills it on the first hit, finishing the game.
-    let game = createGame([{ id: "T0", name: "A" }], makeRooms(2, 1, 3), ["boss-q1"], { bossThreshold: 15 }, 1, first);
+    let game = createGame([{ id: "T0", name: "A" }], ...deck(2, 1, 3), ["boss-q1"], { bossThreshold: 15 }, 1, first);
     for (let i = 0; i < 40 && game.phase !== "finished"; i++) {
       const qid = isInBossPhase(game, "T0") ? game.boss.currentQuestionId : game.teams[0].currentQuestionId;
       game = answerQuestion(game, "T0", qid, true, "retry", first).game;
@@ -797,7 +803,7 @@ describe("recordOptionSelection (multipleChoice pick)", () => {
   });
 
   it("rejects a selection once the game has finished", () => {
-    let game = createGame([{ id: "T0", name: "A" }], makeRooms(2, 1, 3), ["boss-q1"], { bossThreshold: 15 }, 1, first);
+    let game = createGame([{ id: "T0", name: "A" }], ...deck(2, 1, 3), ["boss-q1"], { bossThreshold: 15 }, 1, first);
     for (let i = 0; i < 40 && game.phase !== "finished"; i++) {
       const qid = isInBossPhase(game, "T0") ? game.boss.currentQuestionId : game.teams[0].currentQuestionId;
       game = answerQuestion(game, "T0", qid, true, "retry", first).game;
@@ -951,7 +957,7 @@ describe("recordWrongLock (phone answering, phone-answering.md E6/E9)", () => {
 
   // Value: protects=eliminated options stay while another team still faces the same room question; fails_when=the stillFaced check is dropped and any answer clears the set; why_new=other tests use 8-question rooms, so no question is ever shared; seam=none; no_claim=room/UI greying (game-state unit only)
   it("a question two teams share keeps its eliminated set while one of them still faces it", () => {
-    let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], makeRooms(2, 1, 1), ["boss-q1"], { bossThreshold: 3 }, 2, first);
+    let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], ...deck(2, 1, 1), ["boss-q1"], { bossThreshold: 3 }, 2, first);
     const q = g.teams[0].currentQuestionId;
     expect(g.teams[1].currentQuestionId).toBe(q); // a 1-question room deals the same question twice
     g = answerQuestion(recordWrongLock(g, "T0", q, 1), "T0", q, false, "retry").game;
@@ -966,5 +972,166 @@ describe("recordWrongLock (phone answering, phone-answering.md E6/E9)", () => {
     g = answerQuestion(recordWrongLock(g, "T0", q, 0), "T0", q, false, "flee").game;
     expect(g.revealedQuestionIds).toContain(q);
     expect(g.eliminated[q]).toBeUndefined();
+  });
+});
+
+describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
+  const rooms: RoomTemplate[] = [
+    { baseDifficulty: 1, reward: 10 },
+    { baseDifficulty: 3, reward: 30 },
+  ];
+  const ids = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}${i + 1}`);
+
+  it("a room deals from its difficulty's pool, and a flee from the pool of the lowered difficulty", () => {
+    const pools = [ids("p1-", 3), ids("p2-", 3), ids("p3-", 3), [], []];
+    let g = createGame([{ id: "T0", name: "A" }], rooms, pools, ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    expect(g.teams[0].currentQuestionId).toBe("p1-1");
+    ({ game: g } = answerQuestion(g, "T0", "p1-1", true, "retry", first)); // -> room 1, difficulty 3
+    expect(g.teams[0].currentQuestionId).toBe("p3-1");
+    ({ game: g } = answerQuestion(g, "T0", "p3-1", false, "flee", first)); // difficulty 2
+    expect(g.teams[0]).toMatchObject({ roomIndex: 1, currentDifficulty: 2, currentQuestionId: "p2-1" });
+  });
+
+  it("an empty pool falls back to the nearest one below, then above", () => {
+    let g = createGame([{ id: "T0", name: "A" }], rooms, [ids("p1-", 3), [], ids("p3-", 3), [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    ({ game: g } = answerQuestion(g, "T0", "p1-1", true, "retry", first));
+    ({ game: g } = answerQuestion(g, "T0", "p3-1", false, "flee", first)); // pool 2 is empty: pool 1
+    expect(g.teams[0].currentQuestionId).toMatch(/^p1-/);
+    const above = createGame([{ id: "T0", name: "A" }], rooms, [[], [], ids("p3-", 2), [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    expect(above.teams[0].currentQuestionId).toBe("p3-1");
+  });
+
+  it("8 teams in one 12-question pool never hold the same question, however often they flee", () => {
+    const seeds = Array.from({ length: 8 }, (_, i) => ({ id: `T${i}`, name: `${i}` }));
+    // Seeded so a failure reproduces.
+    for (const seed of [1, 2, 3]) {
+      let s = seed;
+      const rng = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+      let g = createGame(seeds, [{ baseDifficulty: 1, reward: 10 }], [ids("q", 12), [], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, rng);
+      for (let n = 0; n < 200; n++) {
+        const id = currentTurnTeamId(g)!;
+        const team = g.teams.find((t) => t.id === id)!;
+        ({ game: g } = answerQuestion(g, id, team.currentQuestionId, false, "flee", rng));
+        const held = g.teams.map((t) => t.currentQuestionId);
+        expect(new Set(held).size, `seed ${seed}, flee ${n}`).toBe(held.length);
+      }
+    }
+  });
+
+  it("when every question is held, a fleeing team gets its own question back, not another team's", () => {
+    let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], [["a", "b"], [], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    ({ game: g } = answerQuestion(g, "T0", "a", false, "flee", first));
+    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["a", "b"]);
+  });
+
+  it("a pool smaller than the team count borrows a free question from the nearest other pool", () => {
+    // Codex adversarial review (/ship): a 2-question pool with 3 teams dealt two teams the same question,
+    // so one team's answer reveal gave it away to the other.
+    const seeds = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `${i}` }));
+    const g = createGame(seeds, [{ baseDifficulty: 1, reward: 10 }], [["a", "b"], [], ["c"], ["z"], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    const held = g.teams.map((t) => t.currentQuestionId);
+    expect(new Set(held).size).toBe(3);
+    expect(held).toContain("c"); // pool 3 is nearer to pool 1 than pool 4
+  });
+
+  it("a flee into a lower pool whose every question is held borrows an unrevealed question before giving back its own", () => {
+    const two: RoomTemplate[] = [{ baseDifficulty: 1, reward: 10 }, { baseDifficulty: 3, reward: 30 }];
+    let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], two, [["a", "x"], ["b"], ["d", "e"], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    ({ game: g } = answerQuestion(g, "T0", "a", true, "retry", first)); // T0 -> room 1, holds d
+    ({ game: g } = answerQuestion(g, "T1", "x", true, "retry", first)); // T1 -> room 1, holds e
+    ({ game: g } = answerQuestion(g, "T0", "d", false, "flee", first)); // difficulty 2: T0 takes b
+    ({ game: g } = answerQuestion(g, "T1", "e", false, "flee", first)); // pool 2 is all held; a and x are revealed
+    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["b", "d"]);
+    expect(g.usedQuestionIds[1]).toEqual(["b"]); // a pool-3 id never lands in pool 2's list
+  });
+
+  it("a fleeing team never gets back its own question after a wrong lock while another pool has a free one", () => {
+    // Claude adversarial review (/ship): the own-question fallback ran before borrowing, so a team that
+    // locked wrong and fled got the same question back with its wrong option already shown.
+    const pools = [["a", "b"], [], ["c"], [], []];
+    let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], pools, ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    g = { ...g, eliminated: { a: [0] } }; // T0 locked a wrong option on a
+    ({ game: g } = answerQuestion(g, "T0", "a", false, "flee", first));
+    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["c", "b"]);
+    expect(g.usedQuestionIds[2]).toEqual(["c"]); // recorded in the pool it came from
+  });
+
+  it("after a wrong lock, a flee with no unrevealed spare borrows a revealed one before its own, and gets its own back only when nothing is free", () => {
+    const start = (pools: string[][]) => {
+      const g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], pools, ["boss-q1"], { bossThreshold: 99 }, 1, first);
+      return { ...g, eliminated: { a: [0] }, revealedQuestionIds: ["c"] };
+    };
+    expect(answerQuestion(start([["a", "b"], [], ["c"], [], []]), "T0", "a", false, "flee", first).game.teams[0].currentQuestionId).toBe("c");
+    expect(answerQuestion(start([["a", "b"], [], [], [], []]), "T0", "a", false, "flee", first).game.teams[0].currentQuestionId).toBe("a");
+  });
+
+  it("a correct answer with nothing free gives back the answered question, never one another team holds", () => {
+    // Red Team review (/ship): the correct-answer deal counted the team's own question as held, so with
+    // every question held it dealt another team's live question to two teams at once.
+    const rooms5 = ([5, 3, 5, 5] as const).map((d) => ({ baseDifficulty: d, reward: 1 }));
+    const g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }, { id: "T2", name: "C" }], rooms5, [[], ["p2"], ["p3"], [], ["p5"]], ["boss-q1"], { bossThreshold: 99 }, 3, first);
+    const held = g.teams.map((t) => t.currentQuestionId);
+    const t0 = g.teams.find((t) => t.currentQuestionId === "p5")!;
+    const after = answerQuestion(g, t0.id, "p5", true, "retry", first).game.teams;
+    const others = after.filter((t) => t.id !== t0.id).map((t) => t.currentQuestionId);
+    expect(held.sort()).toEqual(["p2", "p3", "p5"]);
+    expect(others).not.toContain(after.find((t) => t.id === t0.id)!.currentQuestionId);
+    expect(after.find((t) => t.id === t0.id)!.currentQuestionId).toBe("p5");
+  });
+
+  it("when every answer left in a pool has been shown, an unseen question from another pool comes before a repeat", () => {
+    // Codex adversarial review (/ship): pool 1 [a,b,c] dealt the revealed a again while pool 2's fresh was never used.
+    let g = createGame([{ id: "A", name: "A" }, { id: "B", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], [["a", "b", "c"], ["fresh"], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 3, first);
+    const dealt: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const t = g.teams[g.currentTurnIndex];
+      g = answerQuestion(g, t.id, t.currentQuestionId, true, "retry", first).game;
+      dealt.push(g.teams.find((x) => x.id === t.id)!.currentQuestionId);
+    }
+    expect(dealt).toContain("fresh");
+    expect(dealt.filter((id) => g.revealedQuestionIds.includes(id) && id !== "fresh")).toEqual([]);
+    expect(g.usedQuestionIds[1]).toEqual(["fresh"]); // recorded in its own pool, not pool 1's
+    expect(g.usedQuestionIds[0]).not.toContain("fresh");
+  });
+
+  it("a flee does not keep a question another team holds while a free one exists", () => {
+    // Red Team review (/ship): with fewer questions than teams the fled question was already shared, and the own fallback handed it back.
+    let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }, { id: "T2", name: "C" }], [{ baseDifficulty: 1, reward: 1 }], [["a"], ["b"], [], [], []], ["boss-q1"], { bossThreshold: 2 }, 3, first);
+    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["a", "b", "a"]);
+    ({ game: g } = answerQuestion(g, "T0", "a", false, "retry", first));
+    ({ game: g } = answerQuestion(g, "T1", "b", true, "retry", first)); // enters the boss; b is revealed and free
+    ({ game: g } = answerQuestion(g, "T2", "a", false, "flee", first));
+    expect(g.teams.find((t) => t.id === "T2")!.currentQuestionId).toBe("b");
+  });
+
+  it("a borrow takes a question the donor pool has not dealt yet before repeating one", () => {
+    // Codex adversarial review (/ship): borrowing ignored the donor's used list, so flees cycled a/b/c and never dealt d.
+    let g = createGame([{ id: "A", name: "A" }, { id: "B", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], [["a"], ["b", "c", "d"], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    const dealt: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const t = g.teams[g.currentTurnIndex];
+      g = answerQuestion(g, t.id, t.currentQuestionId, false, "flee", first).game;
+      dealt.push(g.teams.find((x) => x.id === t.id)!.currentQuestionId);
+    }
+    expect(dealt).toContain("d");
+  });
+
+  it("a flee keeps its own unseen question rather than re-show an answer when nothing unseen is free", () => {
+    // Claude adversarial simulation (/ship): the revealed-pool branch skipped `own`, unlike the all-held branch.
+    let g = createGame([{ id: "A", name: "A" }], [3, 4].map((d) => ({ baseDifficulty: d as 3 | 4, reward: 10 })), [[], [], ["c"], ["d"], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    ({ game: g } = answerQuestion(g, "A", "c", true, "retry", first)); // c is revealed, A moves to d
+    ({ game: g } = answerQuestion(g, "A", "d", false, "flee", first)); // difficulty 3: only the revealed c
+    expect(g.teams[0].currentQuestionId).toBe("d");
+  });
+
+  it("a correct answer scores the difficulty of the pool the question came from", () => {
+    // Codex adversarial review (/ship): a flee into an empty pool 2 dealt from pool 1 but scored 2.
+    let g = createGame([{ id: "T0", name: "A" }], rooms, [ids("p1-", 3), [], ids("p3-", 3), [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    ({ game: g } = answerQuestion(g, "T0", "p1-1", true, "retry", first)); // -> difficulty 3
+    ({ game: g } = answerQuestion(g, "T0", "p3-1", false, "flee", first)); // difficulty 2, empty: pool 1
+    const id = g.teams[0].currentQuestionId;
+    expect(id).toMatch(/^p1-/);
+    const { outcome } = answerQuestion(g, "T0", id, true, "retry", first);
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1 });
   });
 });

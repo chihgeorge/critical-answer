@@ -10,7 +10,7 @@ import { parseBank, type Bank } from "../question-bank";
  *
  * Bump SCHEMA_VERSION whenever a field changes meaning. An unreadable snapshot is discarded, never guessed at.
  */
-export const SCHEMA_VERSION = 4; // teams gained reward, rooms reward, boss hitReward (scoring-and-score-pools.md); see the comment above.
+export const SCHEMA_VERSION = 5; // questions moved to pools by difficulty, games gained optionOrder (scoring-and-score-pools.md); see the comment above.
 export const SNAPSHOT_KEY = "room";
 
 export interface RoomSnapshot {
@@ -44,6 +44,9 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
   try {
     const game = raw.game;
     if (game !== null && !(isObject(game) && Array.isArray(game.teams) && Array.isArray(game.turnOrder) && isString(game.phase))) return null;
+    // deal() indexes both by pool: a malformed one would stick the room on ERROR instead of starting fresh.
+    const fivePools = (v: unknown) => Array.isArray(v) && v.length === 5 && v.every((p) => Array.isArray(p) && p.every(isString));
+    if (game !== null && !(fivePools(game.pools) && fivePools(game.usedQuestionIds))) return null;
     if (!isString(raw.roomEpoch) || !isString(raw.hostToken)) return null;
     if (!Array.isArray(raw.pendingTeams) || !raw.pendingTeams.every((t) => isObject(t) && isString(t.id) && isString(t.name))) return null;
     if (!Array.isArray(raw.teamKeys) || !raw.teamKeys.every((p) => Array.isArray(p) && p.length === 2 && isString(p[0]) && isString(p[1]))) return null;

@@ -40,11 +40,11 @@ export async function answerCorrectly(host: Page) {
 export function restoreRoom0AfterEach() {
   let original: unknown;
   test.beforeEach(async ({ request }) => {
-    original = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank.rooms[0].questions;
+    original = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank.pools["1"];
   });
   test.afterEach(async ({ request }) => {
     const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
-    bank.rooms[0].questions = original;
+    bank.pools["1"] = original;
     await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } });
   });
 }

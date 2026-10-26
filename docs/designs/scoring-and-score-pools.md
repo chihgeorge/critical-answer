@@ -79,7 +79,7 @@ Notes:
 
 ## Screens
 
-- **Big screen:** each team's reward points next to its pawn or in a scoreboard. No progress number, no `/15`. The map draws all 8 rooms.
+- **Big screen:** each team's reward points next to its pawn or in a scoreboard. No progress number, no `/15`. The map draws up to 7 rooms; earlier ones fold into the … stub (live-map D8).
 - **Phone (`/play`):** reward points only, in place of `score / 15`.
 - **Host:** progress `9/15` plus reward points per team.
 - **Reveal and narration:** a correct answer shows `+20` (the reward), not the difficulty. A boss hit shows `+10`; the final blow shows the dice roll.
@@ -119,8 +119,19 @@ Mockups: `~/.gstack/projects/critical-answer/designs/scoring-20261025/score-all.
 - `HOST_SEND_TO_BOSS { teamId }` calls `sendToBoss`: refused for a team already in the boss room, with a wrong lock waiting, or with a lock still in its 2 s beat. It does not narrate; step 4 (later joiners' lines) can hook in here.
 - `SpectatorView.bossKilledBy` feeds the end screen's 「最後一擊」 line. Snapshot schema 4: a room saved by the old code is discarded on restart.
 
+## PR B as built (2026-10-26)
+
+- Bank format v2 as drafted above (`pools` keyed "1"–"5", rooms with `difficulty` and `reward`). `parseBank` still reads v1 and converts it, so production's stored bank needs no manual step (D1=B: the pooled format, not pools derived from rooms).
+- `parseBank` refuses a room whose pool is empty. An empty pool a flee needs falls back to the nearest pool below, then above (`poolIndexFor`).
+- `deal()` takes a difficulty. When every question in the pool is held, it borrows an unseen free question from the nearest other pool, then gives back the team's own unseen question (fled or just answered) if no other team holds it, then borrows any free question, then gives back its own anyway; only that last step, in a bank with fewer questions than teams, leaves two teams on one question. A donor pool's undrawn questions come first. When every answer left in the pool has been shown, it borrows an unseen question from the nearest pool before repeating one. "Nearest" for borrowing is by distance, lower first on ties (from 3: 2, 4, 1, 5); an empty pool instead falls back to every lower pool before any higher one (`poolIndexFor`), so a flee into an empty pool stays easier.
+- `GameState.optionOrder` is the per-game shuffle (`shuffledOptionOrders`, Fisher-Yates counted down so the tests' `() => 0` rng keeps bank order). Every option index in the room, the protocol and the clients is a shown index; `inShownOrder` maps a bank question into it. Snapshot schema 5.
+- The question's monster comes from the team's room, not the question, since one pool serves several rooms.
+- A correct answer scores the difficulty of the pool its question came from, not `team.currentDifficulty` as the Model sketch above says; the two differ after a borrow or an empty-pool fallback. The big screen shows that same difficulty (`publicQuestion`).
+- Default bank: 8 rooms (3 new monsters: 暴躁幽靈, 熔岩史萊姆王, 冰霜愛哭鬼), 20 new questions (p3-q1..4, p4-q1..4, p5-q1..12), the guessable year ladders and answer-built distractors reworked, and two pool-2 option clashes (端午 / 中秋) fixed.
+- Bank editor (D2=B): tabs 房間 / 難度 1–5 / 首領. The 房間 tab edits each room's difficulty and reward and the boss's hit reward; monster names stay read-only.
+
 ## Next Steps
 
-1. `/plan-eng-review`.
-2. Build PR A, `/review`, `/ship`, ask before merge.
-3. Then PR B the same way.
+1. ~~`/plan-eng-review`.~~ Done.
+2. ~~Build PR A, `/review`, `/ship`, ask before merge.~~ Shipped as v0.13.0.0.
+3. ~~Then PR B the same way.~~ Shipped as v0.14.0.0.

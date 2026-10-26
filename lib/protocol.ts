@@ -10,7 +10,8 @@
 // host mutates game state" (docs/designs/dm-branching-and-question-types.md
 // decision 1; docs/designs/multiple-choice-questions.md decision 5): neither
 // is a score claim. A branch pick changes no score, and a multiple-choice pick
-// or lock is judged by the room against the bank's correctIndex, which never
+// or lock is judged by the room against the shown correctIndex (the bank's, moved by
+// the game's optionOrder), which never
 // reaches a client (docs/designs/phone-answering.md), so the self-scoring risk
 // above does not apply. Both derive their sender's team from the
 // connection's own connTeam binding (set at JOIN/REJOIN) — never from a

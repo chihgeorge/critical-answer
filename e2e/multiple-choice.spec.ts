@@ -14,7 +14,7 @@ async function seedSingleMcQuestion(request: import("@playwright/test").APIReque
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const loaded = await request.get(`${WORKER}/api/bank`, { headers });
   const { bank, version } = await loaded.json();
-  bank.rooms[0].questions = [
+  bank.pools["1"] = [
     { kind: "multipleChoice", id: "r0-mc-e2e", text: "地城之門是什麼顏色？", options: ["紅色", "綠色", "藍色"], correctIndex: 1 },
   ];
   const saved = await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } });
@@ -47,19 +47,20 @@ test("multipleChoice in play: the team taps an option, the host sees the pick hi
   await expect(team.getByRole("button", { name: "綠色" })).toBeVisible();
   await expect(team.getByRole("button", { name: "藍色" })).toBeVisible();
 
-  // Before any tap, the host sees no highlighted pick. Options are seeded in order
-  // [紅色, 綠色, 藍色] → host-option-0/1/2.
+  // Before any tap, the host sees no highlighted pick. Each game shuffles the options, so a host
+  // row is found by its text, not its index.
+  const hostOption = (text: string) => host.locator('[data-testid^="host-option-"]', { hasText: text });
   await expect(host.getByText("← 隊伍目前選的")).toHaveCount(0);
 
   await team.getByRole("button", { name: "紅色" }).click();
-  await expect(host.getByTestId("host-option-0")).toContainText("← 隊伍目前選的");
+  await expect(hostOption("紅色")).toContainText("← 隊伍目前選的");
 
   // Re-selectable: tapping a different option before judgment moves the host's highlight, not
   // adds a second one — this is a "change your mind" interaction, not a one-time commit.
   await team.getByRole("button", { name: "藍色" }).click();
-  await expect(host.getByTestId("host-option-2")).toContainText("← 隊伍目前選的");
+  await expect(hostOption("藍色")).toContainText("← 隊伍目前選的");
   await expect(host.getByText("← 隊伍目前選的")).toHaveCount(1);
-  await expect(host.getByTestId("host-option-0")).not.toContainText("← 隊伍目前選的");
+  await expect(hostOption("紅色")).not.toContainText("← 隊伍目前選的");
 
   // Phone answering (docs/designs/phone-answering.md): the host no longer judges an MC turn.
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
@@ -85,18 +86,24 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
 
   const lockButton = team.getByRole("button", { name: "鎖定答案" });
   await expect(lockButton).toBeDisabled();
+  // Each game shuffles the options: read where 藍色 and 綠色 landed on the TV.
+  await expect(screen.getByTestId("wall-option-2")).toBeVisible();
+  const shown = await screen.locator('[data-testid^="wall-option-"]').allTextContents();
+  const at = (text: string) => shown.findIndex((t) => t.includes(text));
+  const blue = at("藍色"), green = at("綠色");
+  const wall = (i: number) => screen.getByTestId(`wall-option-${i}`);
   await team.getByRole("button", { name: "藍色" }).click();
   await lockButton.click();
   // The beat: everyone sees the lock, nobody sees the result yet.
   // (The beat lasts 2 s, so these run back to back.)
   await expect(team.getByText("已鎖定！看大螢幕揭曉")).toBeVisible();
-  await expect(host.getByTestId("host-mc-status")).toContainText("選擇隊鎖定了 C");
-  await expect(screen.getByTestId("wall-option-2")).toHaveAttribute("data-look", "lock");
-  await expect(screen.getByText("選擇隊鎖定了 C……")).toBeVisible();
+  await expect(host.getByTestId("host-mc-status")).toContainText(`選擇隊鎖定了 ${"ABC"[blue]}`);
+  await expect(wall(blue)).toHaveAttribute("data-look", "lock");
+  await expect(screen.getByText(`選擇隊鎖定了 ${"ABC"[blue]}……`)).toBeVisible();
 
   // Wrong: only the pick turns red on the TV; the answer stays hidden.
-  await expect(screen.getByTestId("wall-option-2")).toHaveAttribute("data-look", "bad");
-  await expect(screen.getByTestId("wall-option-1")).toHaveAttribute("data-look", "plain");
+  await expect(wall(blue)).toHaveAttribute("data-look", "bad");
+  await expect(wall(green)).toHaveAttribute("data-look", "plain");
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   // D2: the options and the 重答/逃跑 row fit 375x667 without scrolling (the cards below may run under the fold).
   // Measured from the top of the page, since the earlier 鎖定答案 click may have scrolled it.
@@ -106,10 +113,10 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
 
   // Retry turn (the only team, so it is up again): 藍色 is greyed and cannot be picked.
   await expect(team.getByRole("button", { name: /藍色/ })).toBeDisabled();
-  await expect(screen.getByTestId("wall-option-2")).toHaveAttribute("data-look", "dim");
+  await expect(wall(blue)).toHaveAttribute("data-look", "dim");
   await team.getByRole("button", { name: "綠色" }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
-  await expect(screen.getByTestId("wall-option-1")).toHaveAttribute("data-look", "ok");
+  await expect(wall(green)).toHaveAttribute("data-look", "ok");
   await expect(team.getByText(/答對了！＋10 分/)).toBeVisible();
   await expect(host.getByTestId("host-reveal")).toContainText("綠色");
 });
@@ -166,7 +173,7 @@ async function startOneTeam(browser: import("@playwright/test").Browser, beforeJ
 test("phone answering: 逃跑 after a wrong lock moves the team to the other question", async ({ browser, request }) => {
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
-  bank.rooms[0].questions = [
+  bank.pools["1"] = [
     { kind: "multipleChoice", id: "r0-mc-e2e-a", text: "門是什麼顏色？", options: ["紅門", "綠門"], correctIndex: 1 },
     { kind: "multipleChoice", id: "r0-mc-e2e-b", text: "鑰匙是什麼形狀？", options: ["圓鑰", "方鑰"], correctIndex: 1 },
   ];

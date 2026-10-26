@@ -10,7 +10,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Panel, PixelButton } from "@/components/pixel";
-import { MAX_OPTIONS, MIN_OPTIONS, allQuestions, type Bank, type BankQuestion, type MediaContent } from "@/lib/question-bank";
+import { DIFFICULTIES, MAX_OPTIONS, MIN_OPTIONS, allQuestions, type Bank, type BankQuestion, type MediaContent } from "@/lib/question-bank";
+import type { Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId } from "@/lib/youtube";
 import { readStored, writeStored } from "@/lib/stored";
@@ -52,7 +53,18 @@ function useOwnerKey(onRestored: (key: string) => void) {
   return [key, save] as const;
 }
 
-type Location = { kind: "room"; roomIndex: number } | { kind: "boss" };
+type Location = { kind: "pool"; difficulty: Difficulty } | { kind: "boss" };
+/** Which page of the editor is open (docs/designs/scoring-and-score-pools.md D2=B: one pool per tab). */
+type Tab = "rooms" | Difficulty | "boss";
+
+/** Rooms that draw from pool `d`, as "第 2、3 房" (empty when none does). */
+function roomsUsing(bank: Bank, d: Difficulty): string {
+  const rooms = bank.rooms.flatMap((r, i) => (r.difficulty === d ? [i + 1] : []));
+  return rooms.length ? `第 ${rooms.join("、")} 房` : "";
+}
+
+/** A reward box's text as a whole, non-negative number (an empty box is 0). */
+const toReward = (v: string) => Math.max(0, Math.floor(Number(v) || 0));
 
 /** A content or explanation slot that's still mid-upload (image kind, empty value) or otherwise
  * incomplete is an intermediate client-only state the type system can't rule out — the same
@@ -64,6 +76,9 @@ function contentError(label: string, c: MediaContent | undefined): string | null
 }
 
 function validationError(bank: Bank): string | null {
+  for (const [i, r] of bank.rooms.entries()) {
+    if (bank.pools[r.difficulty].length === 0) return `第 ${i + 1} 房是難度 ${r.difficulty}，但難度 ${r.difficulty} 題庫沒有題目`;
+  }
   const all = allQuestions(bank);
   for (const q of all) {
     const label = `題目「${q.content.value || q.id}」`;
@@ -158,13 +173,16 @@ export default function BankEditorPage() {
     }
   };
 
-  const questionsAt = (b: Bank, loc: Location): BankQuestion[] =>
-    loc.kind === "boss" ? b.boss.questions : b.rooms[loc.roomIndex].questions;
+  const [tab, setTab] = useState<Tab>(1);
+
+  const questionsAt = (b: Bank, loc: Location): BankQuestion[] => (loc.kind === "boss" ? b.boss.questions : b.pools[loc.difficulty]);
 
   const withQuestions = (b: Bank, loc: Location, questions: BankQuestion[]): Bank =>
-    loc.kind === "boss"
-      ? { ...b, boss: { ...b.boss, questions } }
-      : { ...b, rooms: b.rooms.map((r, i) => (i === loc.roomIndex ? { ...r, questions } : r)) };
+    loc.kind === "boss" ? { ...b, boss: { ...b.boss, questions } } : { ...b, pools: { ...b.pools, [loc.difficulty]: questions } };
+
+  const updateRoom = (roomIndex: number, patch: Partial<Bank["rooms"][number]>) => {
+    setBank((prev) => (prev ? { ...prev, rooms: prev.rooms.map((r, i) => (i === roomIndex ? { ...r, ...patch } : r)) } : prev));
+  };
 
   // All three use the functional setBank(prev => ...) form, not the closed-over `bank` variable:
   // QuestionRow's image upload (below) awaits a real network call before its own onUpdate fires,
@@ -187,7 +205,7 @@ export default function BankEditorPage() {
   const addQuestion = (loc: Location) => {
     setBank((prev) => {
       if (!prev) return prev;
-      const id = `${loc.kind === "boss" ? "boss" : `r${loc.roomIndex}`}-${crypto.randomUUID().slice(0, 8)}`;
+      const id = `${loc.kind === "boss" ? "boss" : `p${loc.difficulty}`}-${crypto.randomUUID().slice(0, 8)}`;
       return withQuestions(prev, loc, [...questionsAt(prev, loc), { kind: "text", id, content: TEXT_CONTENT, answer: "" }]);
     });
   };
@@ -242,26 +260,46 @@ export default function BankEditorPage() {
 
       {bank && (
         <div className="flex flex-col gap-4">
-          {[
-            ...bank.rooms.map((room, roomIndex) => ({
-              loc: { kind: "room", roomIndex } as Location,
-              testId: `bank-room-${roomIndex}`,
-              title: `第 ${roomIndex + 1} 房 · ${room.monster.name}`,
-              questions: room.questions,
-            })),
-            { loc: { kind: "boss" } as Location, testId: "bank-room-boss", title: `首領 · ${bank.boss.monster.name}`, questions: bank.boss.questions },
-          ].map(({ loc, testId, title, questions }) => (
-            <RoomEditor
-              key={testId}
-              testId={testId}
-              title={title}
-              questions={questions}
-              onUpdate={(id, updater) => updateQuestion(loc, id, updater)}
-              onDelete={(id) => deleteQuestion(loc, id)}
-              onAdd={() => addQuestion(loc)}
-              onUploadImage={uploadImage}
-            />
-          ))}
+          <div role="tablist" className="flex flex-wrap gap-2">
+            {(["rooms", ...DIFFICULTIES, "boss"] as Tab[]).map((t) => (
+              <PixelButton
+                key={t}
+                role="tab"
+                aria-selected={tab === t}
+                data-testid={`bank-tab-${t}`}
+                onClick={() => setTab(t)}
+                className={`!m-0 !px-3 !py-1 text-[15px] ${tab === t ? "" : "opacity-70"}`}
+                style={tab === t ? { background: "var(--cream, #fff3d6)" } : undefined}
+              >
+                {t === "rooms" ? "房間" : t === "boss" ? `首領 ${bank.boss.questions.length}` : `難度 ${t}・${bank.pools[t].length}`}
+              </PixelButton>
+            ))}
+          </div>
+          {tab === "rooms" ? (
+            <RoomsEditor bank={bank} onRoom={updateRoom} onHitReward={(hitReward) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, hitReward } } : prev))} />
+          ) : (
+            (() => {
+              const loc: Location = tab === "boss" ? { kind: "boss" } : { kind: "pool", difficulty: tab };
+              const used = tab === "boss" ? "" : roomsUsing(bank, tab);
+              return (
+                <RoomEditor
+                  key={tab}
+                  testId={tab === "boss" ? "bank-room-boss" : `bank-pool-${tab}`}
+                  title={tab === "boss" ? `首領 · ${bank.boss.monster.name} · ${bank.boss.questions.length} 題` : `難度 ${tab} 題庫 · ${bank.pools[tab].length} 題`}
+                  note={
+                    tab === "boss"
+                      ? "首領房的隊伍輪流回答這些題目"
+                      : `${used ? `${used}從這裡抽題` : "目前沒有房間是這個難度"}${tab < 5 ? `；難度 ${tab + 1} 的房間逃跑後也會抽到` : ""}`
+                  }
+                  questions={questionsAt(bank, loc)}
+                  onUpdate={(id, updater) => updateQuestion(loc, id, updater)}
+                  onDelete={(id) => deleteQuestion(loc, id)}
+                  onAdd={() => addQuestion(loc)}
+                  onUploadImage={uploadImage}
+                />
+              );
+            })()
+          )}
           <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving || loading}>
             {saving ? "儲存中…" : "儲存全部變更"}
           </PixelButton>
@@ -271,9 +309,73 @@ export default function BankEditorPage() {
   );
 }
 
+/** Each room's difficulty (which pool it draws from) and reward, and the boss's reward per hit. Monster
+ * names and sprites are not editable here. */
+function RoomsEditor({
+  bank,
+  onRoom,
+  onHitReward,
+}: {
+  bank: Bank;
+  onRoom: (roomIndex: number, patch: Partial<Bank["rooms"][number]>) => void;
+  onHitReward: (hitReward: number) => void;
+}) {
+  return (
+    <Panel className="flex flex-col gap-2 p-4">
+      <div data-testid="bank-rooms" className="flex flex-col gap-2">
+        <h2 className="text-[18px]">房間（{bank.rooms.length} 間）</h2>
+        <div className="text-[13px]">難度決定從哪個題庫抽題、答對拿幾點進度分；獎勵分決定冠軍。</div>
+        {bank.rooms.map((r, i) => (
+          <div key={i} data-testid={`bank-room-${i}`} className="flex flex-wrap items-center gap-2 text-[15px]">
+            <span className="w-[64px]">第 {i + 1} 房</span>
+            <span className="min-w-0 flex-1 truncate">{r.monster.name}</span>
+            <label className="flex items-center gap-1">
+              難度
+              <select
+                className="px-input !w-auto !py-1"
+                value={r.difficulty}
+                onChange={(e) => onRoom(i, { difficulty: Number(e.target.value) as Difficulty })}
+              >
+                {DIFFICULTIES.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              獎勵
+              <input type="number" min={0} step={1} className="px-input !w-[72px] !py-1" value={r.reward} onChange={(e) => onRoom(i, { reward: toReward(e.target.value) })} />
+            </label>
+          </div>
+        ))}
+        <div className="flex flex-wrap items-center gap-2 text-[15px]">
+          <span className="w-[64px]">首領</span>
+          <span className="min-w-0 flex-1 truncate">{bank.boss.monster.name}</span>
+          <label className="flex items-center gap-1">
+            每打中一下
+            <input
+              type="number"
+              min={0}
+              step={1}
+              data-testid="bank-boss-hit-reward"
+              className="px-input !w-[72px] !py-1"
+              value={bank.boss.hitReward}
+              onChange={(e) => onHitReward(toReward(e.target.value))}
+            />
+            分
+          </label>
+        </div>
+        <div className="text-[13px]">最後一擊另外加 4 顆 D20（4～80 分）。</div>
+      </div>
+    </Panel>
+  );
+}
+
 function RoomEditor({
   testId,
   title,
+  note,
   questions,
   onUpdate,
   onDelete,
@@ -282,6 +384,7 @@ function RoomEditor({
 }: {
   testId: string;
   title: string;
+  note: string;
   questions: BankQuestion[];
   onUpdate: (id: string, updater: (q: BankQuestion) => BankQuestion) => void;
   onDelete: (id: string) => void;
@@ -292,6 +395,7 @@ function RoomEditor({
     <Panel className="flex flex-col gap-2 p-4">
       <div data-testid={testId} className="flex flex-col gap-2">
         <h2 className="text-[18px]">{title}</h2>
+        <div className="text-[13px]">{note}</div>
         {questions.map((q) => (
           <QuestionRow
             key={q.id}

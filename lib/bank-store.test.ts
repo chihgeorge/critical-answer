@@ -14,7 +14,8 @@ function memoryStorage(seed?: unknown): BankStorage {
 }
 
 const validBank: Bank = {
-  rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "1+1?" }, answer: "2" }] }],
+  pools: { 1: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "1+1?" }, answer: "2" }], 2: [], 3: [], 4: [], 5: [] },
+  rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, difficulty: 1, reward: 10 }],
   boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, maxHp: 10, hitReward: 10, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "2+2?" }, answer: "4" }] },
 };
 
@@ -32,6 +33,16 @@ describe("BankStore.getVersionedBank", () => {
     const storage = memoryStorage({ bank: validBank, version: 7 });
     const versioned = await new BankStore(storage).getVersionedBank();
     expect(versioned).toEqual({ bank: validBank, version: 7 });
+  });
+
+  it("reads a bank stored before pools as pools, and saves it back", async () => {
+    // Every stored bank in production is in the pre-pool shape until its first save after deploy.
+    const { rooms: [room], boss } = validBank;
+    const legacy = { rooms: [{ monster: room.monster, baseDifficulty: 1, reward: 10, questions: validBank.pools[1] }], boss };
+    const store = new BankStore(memoryStorage({ bank: legacy, version: 2 }));
+    const { bank } = await store.getVersionedBank();
+    expect(bank.pools[1].map((q) => q.id)).toEqual(["r0-q1"]);
+    await expect(store.putBank(bank, 2)).resolves.toBeDefined();
   });
 
   it("falls back to the bundled bank at version 1 when storage holds something corrupt, without throwing", async () => {
@@ -86,7 +97,7 @@ describe("BankStore.putBank", () => {
 
   it("still loads a stored multipleChoice question with 5 options, but refuses to save one (the TV has 4 tiles)", async () => {
     const five = { kind: "multipleChoice" as const, id: "mc5", content: { kind: "text" as const, value: "?" }, options: ["A", "B", "C", "D", "E"], correctIndex: 0 };
-    const legacy: Bank = { ...validBank, rooms: [{ ...validBank.rooms[0], questions: [...validBank.rooms[0].questions, five] }] };
+    const legacy: Bank = { ...validBank, pools: { ...validBank.pools, 1: [...validBank.pools[1], five] } };
     const storage = memoryStorage({ bank: legacy, version: 3 });
     const store = new BankStore(storage);
     expect(await store.getVersionedBank()).toEqual({ bank: legacy, version: 3 });
@@ -111,12 +122,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
   const KEY = "44444444-4444-4444-4444-444444444444";
   const bankWithImage: Bank = {
     ...validBank,
-    rooms: [
-      {
-        ...validBank.rooms[0],
-        questions: [{ kind: "text", id: "r0-q1", content: { kind: "image", value: KEY }, answer: "松鼠" }],
-      },
-    ],
+    pools: { ...validBank.pools, 1: [{ kind: "text", id: "r0-q1", content: { kind: "image", value: KEY }, answer: "松鼠" }] },
   };
   const DELAY = 1000;
 

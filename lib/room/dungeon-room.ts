@@ -20,7 +20,7 @@ import {
   type LockedOption,
 } from "../game-state";
 import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type ServerMessage, type SoundCue } from "../protocol";
-import { UUID_RE, allQuestions, answerText, bossQuestionIds, findQuestion, publicExplanation, publicQuestion, roomTemplates, type Bank } from "../question-bank";
+import { UUID_RE, allQuestions, answerText, bossQuestionIds, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
@@ -328,6 +328,8 @@ export class DungeonRoom {
         // Same shallow-validation backfill for saves from before phone answering (phone-answering.md).
         eliminated: s.game.eliminated ?? {},
         pendingWrong: s.game.pendingWrong ?? null,
+        // Not for old saves (SCHEMA_VERSION 5 refuses them): guards a v5 snapshot missing the field.
+        optionOrder: s.game.optionOrder ?? {},
         teams: s.game.teams.map((t) =>
           t && typeof t === "object" ? { ...t, branchChoices: t.branchChoices ?? {}, currentSelection: t.currentSelection ?? null } : t,
         ),
@@ -366,9 +368,15 @@ export class DungeonRoom {
     const team = game.teams.find((t) => t.id === teamId);
     if (!team) return null;
     const id = isInBossPhase(game, team.id) ? game.boss.currentQuestionId : team.currentQuestionId;
-    const pub = publicQuestion(this.bank, id, team.currentDifficulty, this.room.env?.R2_PUBLIC_BASE_URL ?? "");
-    const q = findQuestion(this.bank, id);
+    const pub = publicQuestion(this.bank, id, team.roomIndex, this.room.env?.R2_PUBLIC_BASE_URL ?? "", game.optionOrder[id]);
+    const q = this.question(id);
     return pub ? { pub, answer: q ? answerText(q) : "" } : null;
+  }
+
+  /** A bank question as this game shows it (options in the game's shuffled order). */
+  private question(id: string) {
+    const q = findQuestion(this.bank, id);
+    return q && inShownOrder(q, this.game?.optionOrder[id]);
   }
 
   /** Who is on turn now and what they face, for the narrator's second line. Null when the game is over. */
@@ -807,11 +815,13 @@ export class DungeonRoom {
     this.game = createGame(
       this.pendingTeams,
       roomTemplates(this.bank),
+      poolQuestionIds(this.bank),
       bossQuestionIds(this.bank),
       DEFAULT_GAME_CONFIG,
       this.bank.boss.maxHp,
       this.rng,
       this.bank.boss.hitReward,
+      shuffledOptionOrders(this.bank, this.rng),
     );
     // Default on when a key exists; the host can switch it off before starting.
     // gstack-shortcut(dec-db628e32): no cap on paid narration calls per room or overall (anyone can
@@ -846,7 +856,7 @@ export class DungeonRoom {
     }
     // A multipleChoice question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
     // team (E5), never 答對.
-    if (correct && findQuestion(this.bank, questionId)?.kind === "multipleChoice") {
+    if (correct && this.question(questionId)?.kind === "multipleChoice") {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "auto_judged" });
       return;
     }
@@ -901,7 +911,7 @@ export class DungeonRoom {
     if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
       const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
       const explanation = publicExplanation(this.bank, questionId, imageBaseUrl);
-      const q = findQuestion(this.bank, questionId);
+      const q = this.question(questionId);
       const choice =
         autoAdvance && q?.kind === "multipleChoice"
           ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward }
@@ -926,7 +936,7 @@ export class DungeonRoom {
     const game = this.game;
     if (!teamId || !game) return;
     const team = game.teams.find((t) => t.id === teamId);
-    const q = findQuestion(this.bank, questionId);
+    const q = this.question(questionId);
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (this.reveal) return reject("reveal_pending");
     if (this.pendingLock || game.pendingWrong) return reject("answer_pending");
@@ -948,7 +958,7 @@ export class DungeonRoom {
     if (!lock || !game) return;
     // The reveal is the room doing something: the idle clock starts after it, not at the lock.
     this.markActivity();
-    const q = findQuestion(this.bank, lock.questionId);
+    const q = this.question(lock.questionId);
     try {
       // The team's phone dropped during the beat and the turn moved on (E9): drop the lock; it locks again.
       if (currentTurnTeamId(game) !== lock.teamId || currentQuestionIdOf(game, lock.teamId) !== lock.questionId) {
@@ -1025,7 +1035,7 @@ export class DungeonRoom {
     }
     // The protocol layer only checked optionIndex >= 0; the real bounds check needs the
     // live question's actual options.length, which only this layer (with bank access) has.
-    const q = findQuestion(this.bank, questionId);
+    const q = this.question(questionId);
     if (!q || q.kind !== "multipleChoice" || optionIndex >= q.options.length) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: `bad optionIndex for ${questionId}` });
       return;
