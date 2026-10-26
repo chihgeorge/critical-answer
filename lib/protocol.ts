@@ -84,6 +84,8 @@ export type ClientMessage =
    * eventId the reveal arrived with, so a late HOST_NEXT (second host device, a send buffered
    * across a reconnect) can't close a newer reveal the room hasn't seen yet. */
   | { type: "HOST_NEXT"; eventId: number }
+  /** Host override: take a team into the boss room (docs/designs/scoring-and-score-pools.md S13). */
+  | { type: "HOST_SEND_TO_BOSS"; teamId: string }
   | {
       type: "HOST_JUDGE";
       teamId: string;
@@ -230,6 +232,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: "HOST_GET_TRANSCRIPT" };
     case "HOST_NEXT":
       return Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "HOST_NEXT", eventId: m.eventId as number } : null;
+    case "HOST_SEND_TO_BOSS": {
+      const teamId = str(m.teamId, MAX_ID);
+      return teamId === null ? null : { type: "HOST_SEND_TO_BOSS", teamId };
+    }
     case "HOST_JUDGE": {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);

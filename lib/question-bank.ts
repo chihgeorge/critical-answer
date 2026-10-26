@@ -44,8 +44,10 @@ export interface BankMonster {
   hue: number;
 }
 export interface Bank {
-  rooms: { monster: BankMonster; baseDifficulty: Difficulty; questions: BankQuestion[] }[];
-  boss: { monster: BankMonster; maxHp: number; questions: BankQuestion[] };
+  /** `reward`: reward points for defeating the room's monster (docs/designs/scoring-and-score-pools.md S5). */
+  rooms: { monster: BankMonster; baseDifficulty: Difficulty; reward: number; questions: BankQuestion[] }[];
+  /** `hitReward`: reward points per boss hit (S6). */
+  boss: { monster: BankMonster; maxHp: number; hitReward: number; questions: BankQuestion[] };
 }
 
 const SPRITES: SpriteKind[] = ["slime", "slime-lost", "slime-king", "ghost", "ghost-cry", "dragon"];
@@ -57,6 +59,14 @@ export const MAX_OPTIONS = 4;
 const fail = (why: string): never => {
   throw new Error(`Invalid question bank: ${why}`);
 };
+/** A bank saved before rewards existed has none: a room pays difficulty x 10, a boss hit 10 (S8). */
+const DEFAULT_BOSS_HIT_REWARD = 10;
+const defaultRoomReward = (d: Difficulty) => d * 10;
+function parseReward(v: unknown, fallback: number, where: string): number {
+  if (v === undefined) return fallback;
+  if (typeof v !== "number" || !Number.isInteger(v) || v < 0) fail(`${where} has reward ${String(v)}`);
+  return v as number;
+}
 
 function parseMonster(raw: unknown, where: string): BankMonster {
   const m = raw as Record<string, unknown> | null;
@@ -159,6 +169,7 @@ export function parseBank(raw: unknown): Bank {
     return {
       monster: parseMonster(r.monster, `room ${i}`),
       baseDifficulty: d as Difficulty,
+      reward: parseReward(r.reward, defaultRoomReward(d as Difficulty), `room ${i}`),
       questions: parseQuestions(r.questions, `room ${i}`, seen),
     };
   });
@@ -170,6 +181,7 @@ export function parseBank(raw: unknown): Bank {
     boss: {
       monster: parseMonster(boss!.monster, "boss"),
       maxHp: boss!.maxHp as number,
+      hitReward: parseReward(boss!.hitReward, DEFAULT_BOSS_HIT_REWARD, "boss"),
       questions: parseQuestions(boss!.questions, "boss", seen),
     },
   };
@@ -183,7 +195,7 @@ export function assertSavable(bank: Bank): void {
 }
 
 export function roomTemplates(bank: Bank): RoomTemplate[] {
-  return bank.rooms.map((r) => ({ baseDifficulty: r.baseDifficulty, questionIds: r.questions.map((q) => q.id) }));
+  return bank.rooms.map((r) => ({ baseDifficulty: r.baseDifficulty, reward: r.reward, questionIds: r.questions.map((q) => q.id) }));
 }
 
 export function bossQuestionIds(bank: Bank): string[] {

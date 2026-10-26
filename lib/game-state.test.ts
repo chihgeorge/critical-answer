@@ -12,6 +12,7 @@ import {
   recordWrongLock,
   firstPendingBranchRoom,
   rollBossKillBonus,
+  sendToBoss,
   InvalidActionError,
   type GameState,
   type RoomTemplate,
@@ -20,6 +21,7 @@ import {
 function makeRooms(count: number, baseDifficulty: 1 | 2 | 3 | 4 | 5 = 1, questionsPerRoom = 8): RoomTemplate[] {
   return Array.from({ length: count }, (_, i) => ({
     baseDifficulty,
+    reward: baseDifficulty * 10,
     questionIds: Array.from({ length: questionsPerRoom }, (_, q) => `room${i}-q${q + 1}`),
   }));
 }
@@ -285,18 +287,17 @@ describe("boss combat", () => {
     expect(g2.phase).toBe("playing");
   });
 
-  it("the killing blow awards a 3d6 kill bonus (3-18) only to the team that landed it", () => {
+  it("the killing blow awards the hit reward plus a 4d20 kill bonus (4-80) only to the team that landed it", () => {
     const game = makeGame({ bossThreshold: 0, bossMaxHp: 1, teamCount: 2 });
     const { game: g2, outcome } = answerQuestion(game, "T0", game.boss.currentQuestionId, true);
     expect(outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true });
     if (outcome.type === "correct-boss-hit") {
-      expect(outcome.killBonus).toBeGreaterThanOrEqual(3);
-      expect(outcome.killBonus).toBeLessThanOrEqual(18);
+      expect(outcome.killBonus).toBeGreaterThanOrEqual(4);
+      expect(outcome.killBonus).toBeLessThanOrEqual(80);
+      expect(outcome.reward).toBe(10 + outcome.killBonus!);
+      expect(g2.teams.find((t) => t.id === "T0")!.reward).toBe(outcome.reward);
     }
-    const t0 = g2.teams.find((t) => t.id === "T0")!;
-    const t1 = g2.teams.find((t) => t.id === "T1")!;
-    expect(t0.score).toBeGreaterThan(0);
-    expect(t1.score).toBe(0); // non-participating team gets nothing from the kill
+    expect(g2.teams.find((t) => t.id === "T1")!.reward).toBe(0); // non-participating team gets nothing from the kill
   });
 
   it("finishes the game the moment the boss dies", () => {
@@ -337,34 +338,95 @@ describe("boss combat", () => {
   });
 });
 
-describe("scoring and winners", () => {
-  it("declares a single winner as the highest total score", () => {
-    const game = makeGame({ bossThreshold: 0, bossMaxHp: 1, teamCount: 2 });
-    const { game: g2 } = answerQuestion(game, "T0", game.boss.currentQuestionId, true);
-    expect(g2.winners).toEqual(["T0"]);
+describe("scoring and winners (docs/designs/scoring-and-score-pools.md)", () => {
+  // Room 0 pays 10 at difficulty 1; room 1 pays 50 at difficulty 2: reward and progress are separate.
+  const rooms = (): RoomTemplate[] => [
+    { baseDifficulty: 1, reward: 10, questionIds: ["a1", "a2", "a3", "a4"] },
+    { baseDifficulty: 2, reward: 50, questionIds: ["b1", "b2", "b3", "b4"] },
+  ];
+  const twoTeams = (bossThreshold = 15, bossMaxHp = 1) =>
+    createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], rooms(), ["boss-q1", "boss-q2"], { bossThreshold }, bossMaxHp, first);
+  const answer = (g: GameState, id: string, correct = true, flee: "flee" | "retry" = "retry") =>
+    answerQuestion(g, id, getTeam(g, id).inBoss ? g.boss.currentQuestionId : getTeam(g, id).currentQuestionId, correct, flee, first);
+  const getTeam = (g: GameState, id: string) => g.teams.find((t) => t.id === id)!;
+
+  it("a correct room answer adds the difficulty to progress and the monster's reward to reward", () => {
+    const { game, outcome } = answer(twoTeams(), "T0");
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 10 });
+    expect(getTeam(game, "T0")).toMatchObject({ score: 1, reward: 10 });
   });
 
-  it("declares a tie (並列第一) when scores are equal — no tiebreaker match", () => {
-    // Build a 1-room, 1-HP-boss game where a single correct room answer plus
-    // an equal kill bonus can't happen deterministically, so instead assert
-    // the tie path directly against a hand-built finished-adjacent state:
-    // two teams with identical score before boss death should both win if
-    // the boss died from a pre-scored, pre-tied position. We approximate by
-    // giving both teams the same room score, then finishing via a boss kill
-    // by a third, spectating team is out of scope — assert via finishGame's
-    // contract using equal room scores and a boss whose kill bonus is mocked.
-    const game = createGame(
-      [{ id: "T0", name: "A" }, { id: "T1", name: "B" }],
-      makeRooms(1, 1),
-      ["boss-q"],
-      { bossThreshold: 0 },
-      1,
-    );
-    const rngAlwaysOne = () => 0.999; // rollD6 -> 6 each time, deterministic kill bonus
-    const { game: g2 } = answerQuestion(game, "T0", game.boss.currentQuestionId, true, "retry", rngAlwaysOne);
-    // T0 killed the boss and got the bonus; T1 has 0. Not a tie by design —
-    // this test documents that ties only occur when scores genuinely match.
-    expect(g2.winners).toEqual(["T0"]);
+  it("the reward follows the monster, not the question: a team that fled still earns the full reward", () => {
+    let g = answer(twoTeams(), "T0").game; // T0 -> room 1
+    g = answer(g, "T1", false).game; // T1 retries
+    g = answer(g, "T0", false, "flee").game; // T0 flees in room 1: difficulty 2 -> 1
+    expect(getTeam(g, "T0").currentDifficulty).toBe(1);
+    g = answer(g, "T1", false).game;
+    const { game, outcome } = answer(g, "T0");
+    expect(outcome).toMatchObject({ pointsAwarded: 1, reward: 50 });
+    expect(getTeam(game, "T0")).toMatchObject({ score: 2, reward: 60 });
+  });
+
+  it("each boss hit pays the hit reward; the final blow adds the kill bonus", () => {
+    let g = twoTeams(0, 2);
+    const hit = answer(g, "T0");
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: false, reward: 10 });
+    expect(hit.outcome).not.toHaveProperty("killBonus");
+    g = hit.game;
+    const kill = answer(g, "T1");
+    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 4, reward: 14 }); // first() rolls 1 on each d20
+    expect(getTeam(kill.game, "T1").reward).toBe(14);
+  });
+
+  it("the winner is the highest reward total, even when another team landed the final blow", () => {
+    let g = twoTeams(0, 1);
+    g = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, reward: 100 } : t)) };
+    const { game } = answer(g, "T0");
+    expect(game.boss.killedByTeamId).toBe("T0");
+    expect(getTeam(game, "T0").reward).toBe(14);
+    expect(game.winners).toEqual(["T1"]);
+  });
+
+  it("teams tied on reward share the win (並列第一)", () => {
+    let g = twoTeams(0, 1);
+    g = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, reward: 14 } : t)) };
+    expect(answer(g, "T0").game.winners).toEqual(["T0", "T1"]);
+  });
+
+  it("progress points alone never pick the winner", () => {
+    let g = twoTeams(0, 1);
+    g = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, score: 99 } : t)) };
+    expect(answer(g, "T0").game.winners).toEqual(["T0"]);
+  });
+});
+
+describe("sendToBoss (host override, scoring-and-score-pools.md S13)", () => {
+  it("takes a team into the boss room without touching the turn or any score", () => {
+    const g = makeGame({ bossThreshold: 15 });
+    const g2 = sendToBoss(g, "T1");
+    expect(isInBossPhase(g2, "T1")).toBe(true);
+    expect(isInBossPhase(g2, "T0")).toBe(false);
+    expect(currentTurnTeamId(g2)).toBe(currentTurnTeamId(g));
+    expect(g2.teams.map((t) => [t.score, t.reward])).toEqual(g.teams.map((t) => [t.score, t.reward]));
+    const { outcome } = answerQuestion(advanceTurn(g2), "T1", g2.boss.currentQuestionId, true, "retry", first);
+    expect(outcome.type).toBe("correct-boss-hit");
+  });
+
+  it("refuses a team already in the boss room, a wrong lock waiting for its choice, and a finished game", () => {
+    const g = makeGame({ bossThreshold: 15 });
+    expect(() => sendToBoss(sendToBoss(g, "T1"), "T1")).toThrow(InvalidActionError);
+    const q = g.teams[0].currentQuestionId;
+    expect(() => sendToBoss(recordWrongLock(g, "T0", q, 0), "T0")).toThrow(InvalidActionError);
+    expect(() => sendToBoss({ ...g, phase: "finished" }, "T0")).toThrow(InvalidActionError);
+    expect(() => sendToBoss(g, "nope")).toThrow(InvalidActionError);
+  });
+
+  it("drops the left room question's eliminated options, so a later deal of it starts clean", () => {
+    const g0 = makeGame({ bossThreshold: 15 });
+    const q = g0.teams[0].currentQuestionId;
+    const { game: g } = answerQuestion(recordWrongLock(g0, "T0", q, 1), "T0", q, false, "retry");
+    expect(g.eliminated[q]).toEqual([1]);
+    expect(sendToBoss(g, "T0").eliminated).not.toHaveProperty(q);
   });
 });
 
@@ -389,17 +451,17 @@ describe("getSpectatorView (Premise 7 pacing mitigation)", () => {
 });
 
 describe("rollBossKillBonus", () => {
-  it("is always between 3 and 18 (3d6)", () => {
+  it("is always between 4 and 80 (4d20)", () => {
     for (let i = 0; i < 200; i++) {
       const bonus = rollBossKillBonus();
-      expect(bonus).toBeGreaterThanOrEqual(3);
-      expect(bonus).toBeLessThanOrEqual(18);
+      expect(bonus).toBeGreaterThanOrEqual(4);
+      expect(bonus).toBeLessThanOrEqual(80);
     }
   });
 
   it("is deterministic when given a fixed rng", () => {
-    expect(rollBossKillBonus(() => 0)).toBe(3); // each d6 floors to 1
-    expect(rollBossKillBonus(() => 0.999)).toBe(18); // each d6 rounds up to 6
+    expect(rollBossKillBonus(() => 0)).toBe(4); // each d20 floors to 1
+    expect(rollBossKillBonus(() => 0.999)).toBe(80); // each d20 rounds up to 20
   });
 });
 

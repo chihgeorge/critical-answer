@@ -110,7 +110,7 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
   await team.getByRole("button", { name: "綠色" }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await expect(screen.getByTestId("wall-option-1")).toHaveAttribute("data-look", "ok");
-  await expect(team.getByText(/答對了！＋1 分/)).toBeVisible();
+  await expect(team.getByText(/答對了！＋10 分/)).toBeVisible();
   await expect(host.getByTestId("host-reveal")).toContainText("綠色");
 });
 

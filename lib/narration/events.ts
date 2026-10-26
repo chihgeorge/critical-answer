@@ -55,7 +55,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string): Ex
         type: "correct",
         team,
         monster,
-        points: outcome.pointsAwarded,
+        points: outcome.reward,
         ...(entersBoss ? { entersBoss: { branches: branchesOf(t) } } : {}),
       };
     }

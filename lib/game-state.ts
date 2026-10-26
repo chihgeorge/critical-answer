@@ -83,7 +83,11 @@ export interface Team {
   id: string;
   name: string;
   online: boolean;
+  /** Progress points: the difficulty of every question answered right. Decides boss-room entry only,
+   * and only the host sees it (docs/designs/scoring-and-score-pools.md S3). */
   score: number;
+  /** Reward points: what this team's defeated monsters and boss hits paid. Decides the winner (S7). */
+  reward: number;
   /** Index into the shared room template this team is currently facing. */
   roomIndex: number;
   /**
@@ -119,12 +123,16 @@ export interface Team {
 export interface RoomTemplate {
   /** Base difficulty for this room, before any per-team flee downgrades. */
   baseDifficulty: Difficulty;
+  /** Reward points for defeating this room's monster, whatever difficulty the team faced it at (S5). */
+  reward: number;
   /** Question bank for this room; questionId must be one of these ids. */
   questionIds: string[];
 }
 
 export interface BossState {
   maxHp: number;
+  /** Reward points per hit, the final blow included; the final blow also rolls the kill bonus (S6). */
+  hitReward: number;
   hp: number;
   killedByTeamId: string | null;
   currentQuestionId: string;
@@ -175,20 +183,20 @@ export interface LockedOption {
 }
 
 export type AnswerOutcome =
-  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; nextRoomIndex: number; entersBoss: boolean }
-  | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; killBonus?: number }
+  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; nextRoomIndex: number; entersBoss: boolean }
+  | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; killBonus?: number }
   | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty }
   | { type: "incorrect-retry"; teamId: string };
 
 export class InvalidActionError extends Error {}
 
-function rollD6(rng: () => number = Math.random): number {
-  return Math.floor(rng() * 6) + 1;
+function rollD20(rng: () => number = Math.random): number {
+  return Math.floor(rng() * 20) + 1;
 }
 
-/** 3d6 kill bonus per Premise 5. */
+/** 4d20 kill bonus (docs/designs/scoring-and-score-pools.md S8). */
 export function rollBossKillBonus(rng: () => number = Math.random): number {
-  return rollD6(rng) + rollD6(rng) + rollD6(rng);
+  return rollD20(rng) + rollD20(rng) + rollD20(rng) + rollD20(rng);
 }
 
 /**
@@ -260,6 +268,7 @@ export function createGame(
   config: GameConfig,
   bossMaxHp: number,
   rng: () => number = Math.random,
+  bossHitReward = 10,
 ): GameState {
   if (teamSeeds.length === 0) {
     throw new InvalidActionError("At least one team is required");
@@ -280,6 +289,7 @@ export function createGame(
       name: seed.name,
       online: true,
       score: 0,
+      reward: 0,
       roomIndex: 0,
       currentDifficulty: rooms[0].baseDifficulty,
       currentQuestionId: dealt.questionId,
@@ -300,6 +310,7 @@ export function createGame(
     pendingWrong: null,
     boss: {
       maxHp: bossMaxHp,
+      hitReward: bossHitReward,
       hp: bossMaxHp,
       killedByTeamId: null,
       currentQuestionId: bossQuestionIds[0],
@@ -361,8 +372,8 @@ export function advanceTurn(game: GameState): GameState {
 }
 
 function finishGame(game: GameState): GameState {
-  const maxScore = Math.max(...game.teams.map((t) => t.score));
-  const winners = game.teams.filter((t) => t.score === maxScore).map((t) => t.id);
+  const maxReward = Math.max(...game.teams.map((t) => t.reward));
+  const winners = game.teams.filter((t) => t.reward === maxReward).map((t) => t.id);
   return { ...game, phase: "finished", winners };
 }
 
@@ -425,13 +436,9 @@ export function answerQuestion(
     if (correct) {
       const newHp = Math.max(0, boss.hp - 1);
       const bossKilled = newHp === 0;
-      let killBonus: number | undefined;
-      let teams = game.teams;
-
-      if (bossKilled) {
-        killBonus = rollBossKillBonus(rng);
-        teams = patchTeam(game.teams, teamId, (t) => ({ score: t.score + (killBonus as number) }));
-      }
+      const killBonus = bossKilled ? rollBossKillBonus(rng) : undefined;
+      const reward = boss.hitReward + (killBonus ?? 0);
+      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
       const nextQuestionId = bossKilled ? boss.currentQuestionId : nextBossQuestionId(boss, revealedNow);
@@ -454,7 +461,7 @@ export function answerQuestion(
           currentQuestionId: nextQuestionId,
         },
       };
-      outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, killBonus };
+      outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, reward, ...(killBonus === undefined ? {} : { killBonus }) };
 
       if (bossKilled) {
         return { game: finishGame(nextGame), outcome };
@@ -481,6 +488,7 @@ export function answerQuestion(
   } else {
     if (correct) {
       const pointsAwarded = team.currentDifficulty;
+      const reward = game.rooms[team.roomIndex].reward;
       // A correct answer is always revealed (D5), so this room's next deal must not hand it
       // back to a team who hasn't faced it yet.
       const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
@@ -497,6 +505,7 @@ export function answerQuestion(
         revealedQuestionIds,
         teams: patchTeam(game.teams, teamId, (t) => ({
           score: t.score + pointsAwarded,
+          reward: t.reward + reward,
           roomIndex: nextRoomIndex,
           currentDifficulty: entersBoss ? t.currentDifficulty : game.rooms[nextRoomIndex].baseDifficulty,
           currentQuestionId: dealt.questionId,
@@ -504,7 +513,7 @@ export function answerQuestion(
           inBoss: entersBoss,
         })),
       };
-      outcome = { type: "correct-room-advance", teamId, pointsAwarded, nextRoomIndex, entersBoss };
+      outcome = { type: "correct-room-advance", teamId, pointsAwarded, reward, nextRoomIndex, entersBoss };
     } else if (fleeChoice === "flee") {
       const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
       // Fleeing reveals the answer only after a wrong lock (revealedOnFlee); otherwise only skip
@@ -532,6 +541,25 @@ export function answerQuestion(
   }
   // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
   return { game: advanceTurn({ ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) }), outcome };
+}
+
+/**
+ * The host's override (docs/designs/scoring-and-score-pools.md S13): take a team into the boss room
+ * as if it had just reached the threshold. Not a turn: the turn order and every score stay as they
+ * are. Refused while the team's wrong lock waits for retry/flee, so that choice never lands on a
+ * question the team no longer faces.
+ */
+export function sendToBoss(game: GameState, teamId: string): GameState {
+  assertPlaying(game);
+  const team = getTeam(game, teamId);
+  if (team.inBoss) throw new InvalidActionError(`${teamId} is already in the boss room`);
+  if (game.pendingWrong?.teamId === teamId) throw new InvalidActionError(`${teamId} has a wrong lock waiting for retry or flee`);
+  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null }));
+  // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
+  const left = team.currentQuestionId;
+  const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
+  const eliminated = stillFaced ? game.eliminated : Object.fromEntries(Object.entries(game.eliminated).filter(([id]) => id !== left));
+  return { ...game, teams, eliminated };
 }
 
 /**
@@ -656,6 +684,7 @@ export interface SpectatorView {
     id: string;
     name: string;
     score: number;
+    reward: number;
     roomIndex: number;
     inBossPhase: boolean;
     online: boolean;
@@ -674,6 +703,8 @@ export interface SpectatorView {
   bossHp: number;
   bossMaxHp: number;
   bossCurrentQuestionId: string;
+  /** Who landed the boss's final blow, or null while it lives. */
+  bossKilledBy: string | null;
   /** Options locked wrong per question id (shown greyed on every screen) and the wrong lock awaiting a choice. */
   eliminated: Record<string, number[]>;
   pendingWrong: LockedOption | null;
@@ -686,6 +717,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       id: t.id,
       name: t.name,
       score: t.score,
+      reward: t.reward,
       roomIndex: t.roomIndex,
       inBossPhase: isInBossPhase(game, t.id),
       online: t.online,
@@ -696,6 +728,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
     bossCurrentQuestionId: game.boss.currentQuestionId,
+    bossKilledBy: game.boss.killedByTeamId,
     eliminated: game.eliminated,
     pendingWrong: game.pendingWrong,
   };

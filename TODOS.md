@@ -160,24 +160,6 @@
 
 ---
 
-## 重新設計計分（首領門檻、提早進王房的分數顯示、冠軍怎麼算）
-
-**What:** 一次想清楚計分：(1) 活地圖上線後，有隊伍先進王房，其他隊答對一題就進王房，這時手機和主持人畫面還顯示「9 / 15」和分數條；(2) 要不要告訴玩家「拿滿 15 分就能打王」（手機其實已經顯示 /15）；(3) 冠軍看總分（`lib/game-state.ts` 的 `finishGame`），但打王答對不加分，只有最後一擊有獎勵分。
-
-**Why:** 活地圖的 D9 規則讓「15 分」只對第一隊有意義。三件事互相牽動，分開改會互相矛盾。
-
-**Pros:** 手機、主持人、大螢幕的分數說法一致；冠軍結果不會讓人意外。
-
-**Cons:** 會動到 `/play`、`/host`、`components/pixel.tsx` 的分數條，可能還有 `finishGame` 的勝負規則。改 UI 前要先給 PNG。
-
-**Context:** 2026-10-23 活地圖工程審查 D5：使用者說「先不動分數 之後我們重新研究分數」，D5b 確認這次 PR 不碰 `/play`、`/host`。取代原本的「要不要告訴玩家 15 分」TODO。Codex outside voice 指出冠軍看分數這一點。從 `lib/turn-info.ts` 的 `BOSS_THRESHOLD` 和 `describeTurn().inBoss` 開始看。
-
-**Effort:** M（人工約 1 天 / CC 約 30 分鐘，不含討論）　**Priority:** P2
-
-**Depends on / blocked by:** 活地圖（D9 規則）上線後再做。
-
----
-
 ## 題庫改成依分數分類，房間依需要的難度抽題
 
 **What:** 題庫不再是「每房一組題」，改成「每種分數（1–5）一組題」的大題庫，每個房間依自己的難度去對應分數的題庫抽題。隊伍逃跑後分數降 1，換題時就抽降級後那個分數的題（使用者 2026-10-25 選 D9=A）。同時讓 `lib/game-state.ts` 的 `deal()` 在沒有空題時，寧可發回這隊自己剛逃的題，也絕不發別隊手上的題。另外每場開局時在 server 端打亂每題的選項順序（`correctIndex` 跟著換，快照、`restore()`、公布答案的格式都要一起改），並在重寫題目時避開兩種可猜的規律：年份題答案常是「第二早」的年份（r3-q5、r3-q6、r3-q7、r3-q8、r4-q4、r4-q8、boss-q6），以及錯誤選項從答案改出來（r3-q1 的「2357 萬元」、r2-q7 的 2-2-8 排列、boss-q7 的富士山／聖母峰高度）。
@@ -192,7 +174,7 @@
 
 **Effort:** L（人工約 2–3 天 / CC 約 1–2 小時）　**Priority:** P2
 
-**Depends on / blocked by:** 跟「重新設計計分」一起設計。
+**Depends on / blocked by:** 規則已定（[docs/designs/scoring-and-score-pools.md](docs/designs/scoring-and-score-pools.md)），這一項是那份設計的 PR B：分數池、第 6～8 房與 3 隻新怪物、約 20 題新題、選項洗牌。計分本身（PR A）已在 v0.13.0.0 上線。
 
 ---
 
@@ -463,6 +445,26 @@
 ---
 
 ## Completed
+
+## 重新設計計分（首領門檻、提早進王房的分數顯示、冠軍怎麼算）
+
+**What:** 一次想清楚計分：(1) 活地圖上線後，有隊伍先進王房，其他隊答對一題就進王房，這時手機和主持人畫面還顯示「9 / 15」和分數條；(2) 要不要告訴玩家「拿滿 15 分就能打王」（手機其實已經顯示 /15）；(3) 冠軍看總分（`lib/game-state.ts` 的 `finishGame`），但打王答對不加分，只有最後一擊有獎勵分。
+
+**Why:** 活地圖的 D9 規則讓「15 分」只對第一隊有意義。三件事互相牽動，分開改會互相矛盾。
+
+**Pros:** 手機、主持人、大螢幕的分數說法一致；冠軍結果不會讓人意外。
+
+**Cons:** 會動到 `/play`、`/host`、`components/pixel.tsx` 的分數條，可能還有 `finishGame` 的勝負規則。改 UI 前要先給 PNG。
+
+**Context:** 2026-10-23 活地圖工程審查 D5：使用者說「先不動分數 之後我們重新研究分數」，D5b 確認這次 PR 不碰 `/play`、`/host`。取代原本的「要不要告訴玩家 15 分」TODO。Codex outside voice 指出冠軍看分數這一點。從 `lib/turn-info.ts` 的 `BOSS_THRESHOLD` 和 `describeTurn().inBoss` 開始看。
+
+**Effort:** M（人工約 1 天 / CC 約 30 分鐘，不含討論）　**Priority:** P2
+
+**Completed:** v0.13.0.0 (2026-10-25)。規則見 [docs/designs/scoring-and-score-pools.md](docs/designs/scoring-and-score-pools.md)：進度分（只有主持人看得到）決定進王房，獎勵分決定冠軍；主持人可以從「更多」把隊伍送進王房。
+
+**Depends on / blocked by:** 活地圖（D9 規則）上線後再做。
+
+---
 
 ## 共享大螢幕活地圖
 

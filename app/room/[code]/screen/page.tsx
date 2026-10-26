@@ -263,8 +263,10 @@ const PODIUM = [
 const CONFETTI = ["#ff6b6b", "#ffcf4a", "#6fd36a", "#6ab4ff", "#ff9db8", "#fff"];
 
 function Finished({ view, winners, reveal, narration, epilogue }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; narration: NarrationState; epilogue: string | null }) {
-  const ranked = view.teams.map((t, i) => ({ ...t, i })).sort((a, b) => b.score - a.score).slice(0, 3);
+  const ranked = view.teams.map((t, i) => ({ ...t, i })).sort((a, b) => b.reward - a.reward).slice(0, 3);
   const names = winners.map((id) => view.teams.find((t) => t.id === id)?.name ?? id).join("、");
+  // The winner is the reward total, not the kill (scoring-and-score-pools.md S7), so the kill gets its own line.
+  const killer = view.teams.find((t) => t.id === view.bossKilledBy)?.name;
   return (
     <>
       <SceneBackground theme="moss" arch={false} />
@@ -276,6 +278,7 @@ function Finished({ view, winners, reveal, narration, epilogue }: { view: Specta
           冒　險　結　束
         </small>
         {names}奪得榜首！
+        {killer && <small data-testid="final-blow" className="mt-1 block text-[18px] text-white" style={{ textShadow: "2px 2px 0 var(--k)" }}>最後一擊：{killer}</small>}
       </div>
       {/* The winning answer: the last correct judgment ends the game, so its reveal lands here, not on
           <Playing>. The podium is centered and about 546px wide, which leaves the left margin free
@@ -296,7 +299,7 @@ function Finished({ view, winners, reveal, narration, epilogue }: { view: Specta
               <div className="flex flex-col items-center pt-2 text-white" style={{ width: 150, height: p.h, background: p.bg, boxShadow: "0 0 0 4px var(--k), inset 0 6px 0 #ffffff55, inset 0 -8px 0 #0003" }}>
                 <span className="px-num text-[22px]" style={{ textShadow: "3px 3px 0 var(--k)" }}>{p.place}</span>
                 <b className="mt-[6px] truncate text-[18px] font-normal" style={{ maxWidth: 140, textShadow: "2px 2px 0 var(--k)" }}>{t.name}</b>
-                <s className="mt-[2px] text-[14px] no-underline" style={{ color: "#fff6c0", textShadow: "2px 2px 0 var(--k)" }}>{t.score} 分</s>
+                <s className="mt-[2px] text-[14px] no-underline" style={{ color: "#fff6c0", textShadow: "2px 2px 0 var(--k)" }}>{t.reward} 分</s>
               </div>
             </div>
           );
