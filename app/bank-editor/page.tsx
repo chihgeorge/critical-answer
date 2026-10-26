@@ -288,7 +288,10 @@ export default function BankEditorPage() {
                   title={tab === "boss" ? `首領 · ${bank.boss.monster.name} · ${bank.boss.questions.length} 題` : `難度 ${tab} 題庫 · ${bank.pools[tab].length} 題`}
                   note={
                     tab === "boss"
-                      ? "首領房的隊伍輪流回答這些題目"
+                      ? `首領房的隊伍輪流回答這些題目${
+                          // Every hit and every wrong lock uses one up; past that the ring repeats shown answers.
+                          bank.boss.questions.length < bank.boss.maxHp + 10 ? `；建議至少 ${bank.boss.maxHp + 10} 題，題目用完後會重出看過答案的題` : ""
+                        }`
                       : `${used ? `${used}從這裡抽題` : "目前沒有房間是這個難度"}${tab < 5 ? `；難度 ${tab === 4 ? "5" : `${tab + 1}～5`} 的房間逃跑後也會抽到` : ""}`
                   }
                   questions={questionsAt(bank, loc)}

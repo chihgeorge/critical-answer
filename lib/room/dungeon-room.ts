@@ -898,6 +898,8 @@ export class DungeonRoom {
     // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
     const justAnswered = this.currentQuestion();
     const monster = justAnswered?.pub.monster.name ?? "怪物";
+    // A boss MC miss has no flee (D2=B): a stale phone or the host's stuck row resolves it as the beat would.
+    if (!correct && prev.pendingWrong?.teamId === teamId && isInBossPhase(prev, teamId)) fleeChoice = "retry";
     const { game, outcome } = answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng);
     // Everything up to broadcastState is synchronous: state changes and the eventId are
     // fixed before any narration awaits, so concurrent judgments cannot interleave.

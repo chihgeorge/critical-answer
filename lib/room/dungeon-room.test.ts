@@ -935,6 +935,22 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useRealTimers();
     });
 
+    it("a flee sent during a boss miss (stale phone or the host's stuck row) resolves as the retry the beat would", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns } = startedMcGame(1);
+      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+      room.game = { ...room.game!, boss: { ...room.game!.boss, currentQuestionId: "boss-mc1" } };
+      const wrongIdx = room.game.optionOrder["boss-mc1"].indexOf(1);
+      send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "boss-mc1", optionIndex: wrongIdx });
+      send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "boss-mc1" });
+      vi.advanceTimersByTime(2000);
+      send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "boss-mc1", choice: "flee" });
+      const last = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE").at(-1);
+      expect(last.cue).toBe("retry");
+      expect(room.game!.boss.currentQuestionId).not.toBe("boss-mc1");
+      vi.useRealTimers();
+    });
+
     it("a wrong room lock still waits for the team's choice: no timer resolves it", () => {
       vi.useFakeTimers();
       const { room, conns } = startedMcGame(2);
