@@ -223,7 +223,7 @@ function poolIndexFor(pools: string[][], d: Difficulty): number {
  * question whose answer hasn't been revealed; if only revealed ones are left this
  * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer.
  * When every question is held (a small custom bank), a free question from the nearest other pool comes
- * next, then `own` (the dealt team's fled question), never another team's. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
+ * next, then `own` (the question the dealt team is leaving: fled, or just answered), never another team's. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
  */
 function deal(
   pools: string[][],
@@ -539,7 +539,7 @@ export function answerQuestion(
       const nextRoomIndex = entersBoss ? team.roomIndex : Math.min(team.roomIndex + 1, game.rooms.length - 1);
       const dealt = entersBoss
         ? { questionId: team.currentQuestionId, used: game.usedQuestionIds }
-        : deal(game.pools, game.usedQuestionIds, revealedQuestionIds, game.teams, game.rooms[nextRoomIndex].baseDifficulty, rng);
+        : deal(game.pools, game.usedQuestionIds, revealedQuestionIds, game.teams, game.rooms[nextRoomIndex].baseDifficulty, rng, questionId);
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,

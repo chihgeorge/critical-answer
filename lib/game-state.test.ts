@@ -1065,6 +1065,19 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(answerQuestion(start([["a", "b"], [], [], [], []]), "T0", "a", false, "flee", first).game.teams[0].currentQuestionId).toBe("a");
   });
 
+  it("a correct answer with nothing free gives back the answered question, never one another team holds", () => {
+    // Red Team review (/ship): the correct-answer deal counted the team's own question as held, so with
+    // every question held it dealt another team's live question to two teams at once.
+    const rooms5 = ([5, 3, 5, 5] as const).map((d) => ({ baseDifficulty: d, reward: 1 }));
+    const g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }, { id: "T2", name: "C" }], rooms5, [[], ["p2"], ["p3"], [], ["p5"]], ["boss-q1"], { bossThreshold: 99 }, 3, first);
+    const held = g.teams.map((t) => t.currentQuestionId);
+    const t0 = g.teams.find((t) => t.currentQuestionId === "p5")!;
+    const after = answerQuestion(g, t0.id, "p5", true, "retry", first).game.teams;
+    const others = after.filter((t) => t.id !== t0.id).map((t) => t.currentQuestionId);
+    expect(held.sort()).toEqual(["p2", "p3", "p5"]);
+    expect(others).not.toContain(after.find((t) => t.id === t0.id)!.currentQuestionId);
+  });
+
   it("a correct answer scores the difficulty of the pool the question came from", () => {
     // Codex adversarial review (/ship): a flee into an empty pool 2 dealt from pool 1 but scored 2.
     let g = createGame([{ id: "T0", name: "A" }], rooms, [ids("p1-", 3), [], ids("p3-", 3), [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
