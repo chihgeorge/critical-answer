@@ -1,6 +1,6 @@
 {
   "name": "critical-answer",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "private": true,
   "scripts": {
     "dev": "trap 'kill $! 2>/dev/null' EXIT; npm run dev:worker & NEXT_PUBLIC_PARTYKIT_HOST=localhost:8787 next dev",

@@ -2,6 +2,22 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.14.0.0] - 2026-10-26
+
+### Changed
+- Questions now live in five pools by difficulty (1 to 5) instead of inside rooms. Each room has a difficulty and deals from that pool, and rooms with the same difficulty share one pool. If a pool has no questions, the team gets one from the nearest lower pool, then a higher one. If every question in it is held by another team, the team gets a free one from the nearest pool (the lower one on a tie). When every answer left in a pool has already been shown, a question nobody has seen comes from the nearest pool before any repeat. A correct answer scores the difficulty of the pool the question came from. The big screen shows that difficulty too.
+- Each game shuffles the options of every multiple-choice question, so the right answer is not always in the same spot. The phones, the host page and the big screen all show the same order.
+- The default bank has 8 rooms (difficulty 1, 2, 2, 3, 4, 4, 5, 5 and reward 10, 20, 20, 30, 40, 40, 50, 50) and 72 questions: 12 in each pool except 16 at difficulty 2, plus 8 for the boss. 20 of the questions and 3 of the monsters are new.
+- A bank saved before this version still loads. Each room's questions move into the pool of that room's difficulty.
+
+### Added
+- The question-bank editor has tabs: 房間 (each room's difficulty and reward, and the boss hit reward), one tab for each pool from 1 to 5, and 首領.
+- The editor will not save a bank where a room's pool has no questions, for example 「第 8 房是難度 5，但難度 5 題庫沒有題目」.
+
+### Removed
+- A room saved by an older version cannot be resumed after a server restart. A game in progress during the deploy starts over.
+- Once the bank editor saves in this version, older versions cannot read the stored bank. Rolling back below 0.14.0.0 then runs games on the default questions and refuses saves, but keeps the stored bank, so rolling forward again brings it back.
+
 ## [0.13.1.0] - 2026-10-25
 
 ### Fixed

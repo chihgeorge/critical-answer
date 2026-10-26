@@ -482,7 +482,7 @@
 
 ---
 
-**Completed:** v0.14.0.0 (2026-10-25)。格式 v2（依難度分的題庫）、選項每場打亂、第 6～8 房與 20 題新題、編輯器分頁，見 [docs/designs/scoring-and-score-pools.md](docs/designs/scoring-and-score-pools.md) 的「PR B as built」。
+**Completed:** v0.14.0.0 (2026-10-26)。格式 v2（依難度分的題庫）、選項每場打亂、第 6～8 房與 20 題新題、編輯器分頁，見 [docs/designs/scoring-and-score-pools.md](docs/designs/scoring-and-score-pools.md) 的「PR B as built」。
 
 ## 重新設計計分（首領門檻、提早進王房的分數顯示、冠軍怎麼算）
 
