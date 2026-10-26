@@ -2,6 +2,13 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.13.1.0] - 2026-10-25
+
+### Fixed
+- When the server cannot read the stored question bank (for example after rolling back below a newer bank format), saving in the bank editor is refused with an error instead of replacing every custom question with the default bank. The stored bank is kept as it is.
+- In the same state, image cleanup waits and retries later instead of deleting images by the default bank, so pictures the stored bank still uses are not lost.
+- Do not roll back below this version once a newer bank format has been saved.
+
 ## [0.13.0.0] - 2026-10-25
 
 ### Changed
