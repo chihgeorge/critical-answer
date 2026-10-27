@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.0.2] - 2026-10-27
+
+### Added
+- The stored question bank now records a format number (`BANK_FORMAT` in `lib/bank-store.ts`). Code that finds a newer format treats the stored bank as unreadable, so it refuses to save over it. Before this change, a newer format that only added fields would still parse in older code, and the next save would drop those fields. When you change the bank format in a way older code would lose data, increase `BANK_FORMAT` by 1.
+
 ## [0.15.0.1] - 2026-10-26
 
 ### Changed

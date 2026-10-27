@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { BankStore, type BankStorage } from "./bank-store";
+import { BANK_FORMAT, BankStore, type BankStorage } from "./bank-store";
 import { type Bank } from "./question-bank";
 import { BANK } from "./question-bank-data";
 
@@ -26,7 +26,7 @@ describe("BankStore.getVersionedBank", () => {
     const { bank } = await store.getVersionedBank();
     expect(bank).toEqual(BANK);
     // The seed is persisted, not re-computed every call.
-    expect(await storage.get("bank")).toEqual({ bank: BANK, version: 1 });
+    expect(await storage.get("bank")).toEqual({ bank: BANK, version: 1, format: BANK_FORMAT });
   });
 
   it("returns the stored bank and version unchanged when one already exists", async () => {
@@ -64,7 +64,7 @@ describe("BankStore.putBank", () => {
     const store = new BankStore(storage);
     const result = await store.putBank(validBank, 1);
     expect(result).toEqual({ bank: validBank, version: 2 });
-    expect(await storage.get("bank")).toEqual({ bank: validBank, version: 2 });
+    expect(await storage.get("bank")).toEqual({ bank: validBank, version: 2, format: BANK_FORMAT });
   });
 
   it("refuses to save over a stored bank it cannot read, and keeps it (a rollback below a newer format)", async () => {
@@ -72,6 +72,16 @@ describe("BankStore.putBank", () => {
     const stored = { bank: { rooms: "a format this version can't read" }, version: 3 };
     const storage = memoryStorage(stored);
     await expect(new BankStore(storage).putBank(validBank, 1)).rejects.toThrow(/unreadable/);
+    expect(await storage.get("bank")).toEqual(stored);
+  });
+
+  it("refuses to save over a stored bank in a newer format, even one its parseBank accepts", async () => {
+    // A newer format that only adds fields would parse fine here, and a save would drop those fields.
+    const stored = { bank: validBank, version: 3, format: BANK_FORMAT + 1 };
+    const storage = memoryStorage(stored);
+    const store = new BankStore(storage);
+    expect(await store.getVersionedBank()).toEqual({ bank: BANK, version: 1 });
+    await expect(store.putBank(validBank, 1)).rejects.toThrow(/unreadable/);
     expect(await storage.get("bank")).toEqual(stored);
   });
 
