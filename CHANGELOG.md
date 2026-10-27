@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.0.1] - 2026-10-26
+
+### Changed
+- Dependabot no longer opens TypeScript 7+ or ESLint 10+ upgrade PRs. Both fail CI lint because `eslint-config-next` is not ready for them yet (typescript-eslint rejects TS 6.1 and later, eslint-plugin-react crashes on ESLint 10). TypeScript 6.0 upgrades still come through. TODOS.md says to remove the rule once upstream catches up.
+
 ## [0.15.0.0] - 2026-10-26
 
 ### Changed

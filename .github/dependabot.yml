@@ -8,6 +8,12 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+    # eslint-config-next's typescript-eslint rejects TS >=6.1 and its eslint-plugin-react crashes on ESLint 10; see TODOS.md.
+    ignore:
+      - dependency-name: "typescript"
+        versions: [">=7"]
+      - dependency-name: "eslint"
+        versions: [">=10"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
