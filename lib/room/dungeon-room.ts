@@ -135,6 +135,8 @@ export class DungeonRoom {
   private transcript: TranscriptItem[] = [];
   /** Host director: notes for the LLM and the last few hand-edited lines. */
   private notes = "";
+  /** Asked of new teams at JOIN when not "" (HOST_SET_PASSWORD). Known teams rejoin with their key alone. */
+  private joinPassword = "";
   private editedLines: string[] = [];
   /** Turned on by the host at HOST_START, and only effective when a key exists. */
   private aiNarration = false;
@@ -263,6 +265,7 @@ export class DungeonRoom {
       epilogue: this.epilogue,
       epilogueRequested: this.epilogueRequested,
       notes: this.notes,
+      joinPassword: this.joinPassword,
       editedLines: this.editedLines,
       aiNarration: this.aiNarration,
       // Rounded so a run of messages with no other state change does not force a write every time (persist()
@@ -349,6 +352,7 @@ export class DungeonRoom {
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
     this.notes = s.notes;
+    this.joinPassword = s.joinPassword;
     this.editedLines = s.editedLines;
     this.aiNarration = this.aiAvailable && s.aiNarration;
     this.bank = s.bank;
@@ -530,6 +534,7 @@ export class DungeonRoom {
     this.clearAnswerTimers();
     this.transcript = [];
     this.notes = "";
+    this.joinPassword = "";
     this.editedLines = [];
     this.aiNarration = false;
     this.bank = this.initialBank;
@@ -608,7 +613,7 @@ export class DungeonRoom {
           this.handleHostClaim(sender, msg.token);
           break;
         case "JOIN":
-          this.handleJoin(sender, msg.teamId, msg.teamKey, msg.teamName);
+          this.handleJoin(sender, msg.teamId, msg.teamKey, msg.teamName, msg.password ?? "");
           break;
         case "REJOIN":
           this.handleRejoin(sender, msg.teamId, msg.teamKey);
@@ -618,6 +623,9 @@ export class DungeonRoom {
           break;
         case "HOST_SET_NOTES":
           this.handleSetNotes(sender, msg.notes);
+          break;
+        case "HOST_SET_PASSWORD":
+          if (this.requireHost(sender)) this.joinPassword = msg.password.trim();
           break;
         case "HOST_EDIT_NARRATION":
           this.handleEditNarration(sender, msg.line);
@@ -671,11 +679,11 @@ export class DungeonRoom {
       return;
     }
     this.hostConns.set(conn.id, conn);
-    this.sendTo(conn, { type: "HOST_OK", aiAvailable: this.aiAvailable });
+    this.sendTo(conn, { type: "HOST_OK", aiAvailable: this.aiAvailable, joinPassword: this.joinPassword });
     this.sendAnswer(conn);
   }
 
-  private handleJoin(conn: Conn, teamId: string, teamKey: string, rawName: string) {
+  private handleJoin(conn: Conn, teamId: string, teamKey: string, rawName: string, password: string) {
     if (!UUID_RE.test(teamId)) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_team_id" });
       return;
@@ -689,6 +697,10 @@ export class DungeonRoom {
     }
     if (this.game) {
       this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
+      return;
+    }
+    if (this.joinPassword && !tokensEqual(this.joinPassword, password.trim())) {
+      this.sendTo(conn, { type: "ERROR", error: "bad_password" });
       return;
     }
     const name = sanitizeText(rawName, MAX_TEAM_NAME_LENGTH);

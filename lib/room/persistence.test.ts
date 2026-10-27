@@ -159,6 +159,19 @@ describe("restoring after a restart", () => {
     expect(room.game).toBeNull();
   });
 
+  it("the join password comes back: a stranger still cannot join the lobby after a restart", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage).room;
+    const host = makeConn("host");
+    send(first, host, { type: "HOST_CLAIM", token: TOKEN });
+    send(first, host, { type: "HOST_SET_PASSWORD", password: "dragon" });
+    const second = makeRoom(storage).room;
+    expect(await second.restore()).toBe("restored");
+    const stranger = makeConn("stranger");
+    send(second, stranger, { type: "JOIN", teamId: T1, teamKey: TEAM_KEY, teamName: "甲隊" });
+    expect(lastOf(stranger, "ERROR")).toMatchObject({ error: "bad_password" });
+  });
+
   it("a game in progress comes back: same scores, same turn, same room epoch", async () => {
     const storage = memoryStorage();
     const first = makeRoom(storage).room;

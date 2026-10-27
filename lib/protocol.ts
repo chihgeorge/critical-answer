@@ -72,12 +72,15 @@ export type ClientMessage =
    * person. The room still accepts it, but it doesn't count as activity, so a device reconnecting
    * in the background can't keep a room from resting. First opens, reloads and a click on
    * 重新連線 leave it off. */
-  | { type: "JOIN"; teamId: string; teamKey: string; teamName: string; resume?: true }
+  /** `password`: only checked for a new team, and only when the host set one (HOST_SET_PASSWORD). */
+  | { type: "JOIN"; teamId: string; teamKey: string; teamName: string; password?: string; resume?: true }
   | { type: "REJOIN"; teamId: string; teamKey: string; resume?: true }
   | { type: "HOST_CLAIM"; token: string; resume?: true }
   | { type: "HOST_START"; aiNarration?: boolean }
   /** Director: free-text style notes (<= 500 chars) injected into every LLM call. */
   | { type: "HOST_SET_NOTES"; notes: string }
+  /** Join password for new teams; "" lets anyone with the room code join. */
+  | { type: "HOST_SET_PASSWORD"; password: string }
   /** Director: replace the line now on screen (<= 40 chars). */
   | { type: "HOST_EDIT_NARRATION"; line: string }
   | { type: "HOST_GET_TRANSCRIPT" }
@@ -113,6 +116,7 @@ export type ServerErrorCode =
   | "game_already_started"
   | "not_host"
   | "bad_token"
+  | "bad_password"
   | "no_active_game"
   | "not_enough_teams"
   | "unknown_team"
@@ -151,7 +155,7 @@ export type ServerMessage =
   /** Host-only reply to HOST_GET_TRANSCRIPT. */
   | { type: "TRANSCRIPT"; entries: TranscriptItem[] }
   /** `aiAvailable`: the server has an API key, so the host may turn AI narration on. */
-  | { type: "HOST_OK"; aiAvailable: boolean }
+  | { type: "HOST_OK"; aiAvailable: boolean; joinPassword: string }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   | { type: "HOST_ANSWER"; questionId: string; answer: string }
   | { type: "ERROR"; error: ServerErrorCode; detail?: string };
@@ -179,6 +183,7 @@ export function sanitizeText(text: string, max: number): string {
 const MAX_ID = 64;
 const MAX_RAW_NAME = 100;
 export const MAX_NOTES = 500;
+export const MAX_PASSWORD = 32;
 export const MAX_EDIT_LINE = 40;
 
 function str(v: unknown, max: number): string | null {
@@ -207,7 +212,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const teamId = str(m.teamId, MAX_ID);
       const teamName = str(m.teamName, MAX_RAW_NAME);
       const teamKey = teamKeyOf(m.teamKey);
-      return teamId !== null && teamName !== null && teamKey !== null ? { type: "JOIN", teamId, teamKey, teamName, ...resumeOf(m) } : null;
+      const password = m.password === undefined ? undefined : str(m.password, MAX_PASSWORD);
+      if (password === null) return null;
+      return teamId !== null && teamName !== null && teamKey !== null
+        ? { type: "JOIN", teamId, teamKey, teamName, ...(password ? { password } : {}), ...resumeOf(m) }
+        : null;
     }
     case "REJOIN": {
       const teamId = str(m.teamId, MAX_ID);
@@ -224,6 +233,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_SET_NOTES": {
       const notes = str(m.notes, MAX_NOTES);
       return notes !== null ? { type: "HOST_SET_NOTES", notes } : null;
+    }
+    case "HOST_SET_PASSWORD": {
+      const password = str(m.password, MAX_PASSWORD);
+      return password !== null ? { type: "HOST_SET_PASSWORD", password } : null;
     }
     case "HOST_EDIT_NARRATION": {
       const line = str(m.line, MAX_EDIT_LINE);

@@ -112,6 +112,8 @@ export default function PlayPage() {
   const { code } = useParams<{ code: string }>();
   const searchParams = useSearchParams();
   const teamName = searchParams.get("name") ?? "隊伍";
+  const password = searchParams.get("pw") ?? "";
+  const [badPassword, setBadPassword] = useState(false);
 
   const [teamId, setTeamId] = useState("");
   const [lobby, setLobby] = useState<LobbyTeams | null>(null);
@@ -140,7 +142,7 @@ export default function PlayPage() {
       setDisconnected(false);
       const id = getOrCreateTeamId();
       setTeamId(id);
-      send({ type: "JOIN", teamId: id, teamKey: getOrCreateTeamKey(), teamName, ...(resume ? { resume: true } : {}) });
+      send({ type: "JOIN", teamId: id, teamKey: getOrCreateTeamKey(), teamName, ...(password ? { password } : {}), ...(resume ? { resume: true } : {}) });
     },
     onClose({ rested, openedBefore }) {
       if (rested || !openedBefore) return;
@@ -151,7 +153,11 @@ export default function PlayPage() {
     },
     onMessage(msg) {
       switch (msg.type) {
+        case "ERROR":
+          if (msg.error === "bad_password") setBadPassword(true);
+          break;
         case "LOBBY":
+          setBadPassword(false);
           setLobby(msg.teams);
           setGame(null);
           lastGame.current = null;
@@ -224,7 +230,14 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {!game && (
+        {badPassword && (
+          <Panel role="alert" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]" style={{ background: "#ffd9d9" }}>
+            {password ? "房間密碼不對" : "這個房間要密碼才能加入"}
+            <a href={`/?code=${code}`} className="text-[16px] underline underline-offset-2">回首頁輸入密碼</a>
+          </Panel>
+        )}
+
+        {!game && !badPassword && (
           <Panel tone="lav" className="px-4 py-5 text-center text-[20px]">
             {lobby ? "等待主持人開始遊戲…" : "連線中…"}
           </Panel>

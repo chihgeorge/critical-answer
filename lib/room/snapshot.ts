@@ -27,6 +27,8 @@ export interface RoomSnapshot {
   epilogue: string | null;
   epilogueRequested: boolean;
   notes: string;
+  /** "" when the room has none. Missing in a save from before join passwords. */
+  joinPassword: string;
   editedLines: string[];
   aiNarration: boolean;
   /** When someone last did something that changes the room, rounded down to the minute so it does not make every message a write. Null in a save from before this field existed. */
@@ -56,10 +58,12 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (raw.epilogue !== null && !isString(raw.epilogue)) return null;
     if (typeof raw.epilogueRequested !== "boolean" || typeof raw.aiNarration !== "boolean" || !isString(raw.notes)) return null;
     if (!Array.isArray(raw.editedLines) || !raw.editedLines.every(isString)) return null;
+    const joinPassword = raw.joinPassword ?? "";
+    if (!isString(joinPassword)) return null;
     const at = raw.lastActivityAt ?? null;
     if (at !== null && !(typeof at === "number" && Number.isFinite(at) && at >= 0)) return null;
     const bank = parseBank(raw.bank); // throws on a bank that would not load today
-    return { ...(raw as unknown as RoomSnapshot), lastActivityAt: at, bank };
+    return { ...(raw as unknown as RoomSnapshot), joinPassword, lastActivityAt: at, bank };
   } catch {
     return null;
   }

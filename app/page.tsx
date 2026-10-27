@@ -13,6 +13,7 @@ function HomeForm() {
   // A scanned QR arrives as /?code=ABCD and fills the code in.
   const [joinCode, setJoinCode] = useState((useSearchParams().get("code") ?? "").toUpperCase().slice(0, 4));
   const [teamName, setTeamName] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   function handleCreateRoom() {
@@ -32,7 +33,8 @@ function HomeForm() {
       setError("請輸入 4 碼房間代碼");
       return;
     }
-    router.push(`/room/${code}/play?name=${encodeURIComponent(name)}`);
+    const pw = password.trim();
+    router.push(`/room/${code}/play?name=${encodeURIComponent(name)}${pw ? `&pw=${encodeURIComponent(pw)}` : ""}`);
   }
 
   return (
@@ -63,6 +65,15 @@ function HomeForm() {
                 setError("");
               }}
               maxLength={20}
+              className={inputClass}
+            />
+            <input
+              type="text"
+              placeholder="房間密碼（主持人有設才要填）"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              maxLength={32}
+              autoComplete="off"
               className={inputClass}
             />
             <div className="flex items-stretch gap-2">
