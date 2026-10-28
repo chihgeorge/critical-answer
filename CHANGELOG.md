@@ -2,6 +2,15 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.2.0] - 2026-10-28
+
+### Added
+- When the saved question bank can't be read by the deployed version (usually after rolling back to an older one), the bank editor now says so the moment it loads: a red notice explains that the questions shown are the defaults, that your bank is still saved, and that nothing can be saved until a version that reads it is deployed. The save button is disabled.
+- README has a new 「題庫卡住時怎麼救」 section: how to get the bank readable again, which versions are safe to roll back to, and what to do if the stored data itself is damaged.
+
+### Changed
+- Image uploads are refused while the saved bank can't be read (409), since no save could keep them. They are also refused while the bank store can't be reached (503), instead of failing with an unexplained error.
+
 ## [0.15.1.1] - 2026-10-28
 
 ### Fixed
