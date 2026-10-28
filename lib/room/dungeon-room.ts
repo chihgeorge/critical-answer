@@ -625,7 +625,10 @@ export class DungeonRoom {
           this.handleSetNotes(sender, msg.notes);
           break;
         case "HOST_SET_PASSWORD":
-          if (this.requireHost(sender)) this.joinPassword = msg.password.trim();
+          if (!this.requireHost(sender)) break;
+          this.joinPassword = msg.password.trim();
+          // Every host page shows the room's real password only once the room has it.
+          for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", aiAvailable: this.aiAvailable, joinPassword: this.joinPassword });
           break;
         case "HOST_EDIT_NARRATION":
           this.handleEditNarration(sender, msg.line);
@@ -640,7 +643,7 @@ export class DungeonRoom {
           this.handleSendToBoss(sender, msg.teamId);
           break;
         case "HOST_JUDGE":
-          this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice);
+          this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice, msg.eventId);
           break;
         case "TEAM_BRANCH_CHOICE":
           this.handleTeamBranchChoice(sender, msg.roomIndex, msg.choice);
@@ -862,8 +865,12 @@ export class DungeonRoom {
     questionId: string,
     correct: boolean,
     fleeChoice?: "flee" | "retry",
+    eventId?: number,
   ) {
     if (!this.requireHost(conn)) return;
+    // Judged from an older STATE (a key pressed as the turn moved on): drop it, like a stale HOST_NEXT.
+    // The STATE that made it stale is already on its way to the host.
+    if (eventId !== undefined && eventId !== this.eventSeq) return;
     if (!this.game) {
       this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
       return;

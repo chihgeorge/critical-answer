@@ -80,6 +80,13 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_SEND_TO_BOSS", teamId: 3 })).toBeNull();
   });
 
+  it("HOST_JUDGE: eventId is optional, but must be a non-negative integer when sent", () => {
+    const base = { type: "HOST_JUDGE", teamId: "t", questionId: "q", correct: true };
+    expect(parseClientMessage({ ...base, eventId: 4 })).toMatchObject({ eventId: 4 });
+    expect(parseClientMessage(base)).not.toHaveProperty("eventId");
+    for (const eventId of [-1, 1.5, "4", null]) expect(parseClientMessage({ ...base, eventId })).toBeNull();
+  });
+
   it("HOST_NEXT: needs a non-negative integer eventId", () => {
     expect(parseClientMessage({ type: "HOST_NEXT", eventId: 3, extra: "ignored" })).toEqual({ type: "HOST_NEXT", eventId: 3 });
     expect(parseClientMessage({ type: "HOST_NEXT" })).toBeNull();

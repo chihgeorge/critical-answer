@@ -211,7 +211,11 @@ describe("JOIN", () => {
   it("asks new teams for the join password once the host sets one, but not a team that already joined", () => {
     const { room, hostConn } = makeRoomWithHost();
     send(room, makeConn("early"), { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Early" });
+    const otherTab = makeConn("host-tab-2");
+    claim(room, otherTab);
     send(room, hostConn, { type: "HOST_SET_PASSWORD", password: " dragon " });
+    // Every host page hears the password the room now enforces.
+    for (const c of [hostConn, otherTab]) expect(lastSentTo(c)).toEqual({ type: "HOST_OK", aiAvailable: false, joinPassword: "dragon" });
     const noPw = makeConn("no-pw");
     send(room, noPw, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess" });
     expect(lastSentTo(noPw)).toMatchObject({ type: "ERROR", error: "bad_password" });
@@ -343,6 +347,17 @@ describe("HOST_JUDGE", () => {
     // ids[1] is not first in turn order.
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[1], questionId: "r0-q1", correct: true });
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
+  });
+
+  it("drops a judgment made from an older STATE without an error (a key pressed as the turn moved on)", () => {
+    const { room, hostConn, ids } = startedGame(2);
+    const seen = seqOf(room);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: false, fleeChoice: "retry", eventId: seen });
+    const sends = (hostConn.send as ReturnType<typeof vi.fn>).mock.calls.length;
+    // The host had not seen the STATE above yet: it judges team 0 again from the old one.
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true, eventId: seen });
+    expect((hostConn.send as ReturnType<typeof vi.fn>).mock.calls.length).toBe(sends);
+    expect(room.game!.teams[0].score).toBe(0);
   });
 
   it("broadcasts GAME_OVER once the boss dies", () => {

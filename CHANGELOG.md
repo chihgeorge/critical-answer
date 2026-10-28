@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.1.1] - 2026-10-28
+
+### Fixed
+- A host key press (1/2/3) right as the turn moved on could judge the previous team's turn, which the room then rejected with a raw error. `HOST_JUDGE` now carries the eventId of the STATE the host judged from, and the room silently drops an older one, the same way it already treats a stale 下一題. The host page's keyboard listener is now registered in a layout effect, so it already has the new turn when that turn is drawn.
+- The host lobby's 目前密碼 line now changes only when the room confirms the new join password, and every open host page gets the update. Before, it changed as soon as 設定 was pressed, so it could show a password the room never received.
+
 ## [0.15.1.0] - 2026-10-27
 
 ### Added

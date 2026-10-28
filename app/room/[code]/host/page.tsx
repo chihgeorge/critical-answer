@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
@@ -231,7 +231,7 @@ export default function HostPage() {
 
   function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "flee" | "retry") {
     setPendingTeamId(teamId);
-    send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice });
+    send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice, ...(game ? { eventId: game.eventId } : {}) });
   }
 
   // Disconnect UI: judge buttons disable and "重新連線中" shows here; /play and /screen show their own
@@ -268,8 +268,9 @@ export default function HostPage() {
   const stuck = !!stuckKey && stuckShownFor === stuckKey;
 
   // Keyboard shortcuts for a host on a laptop (lib/host-keys.ts): each key does exactly what its
-  // button does, and only while that button is enabled.
-  useEffect(() => {
+  // button does, and only while that button is enabled. A layout effect, so the listener already
+  // holds the new turn when it is painted: a key pressed right after a turn change judges that turn.
+  useLayoutEffect(() => {
     if (game?.phase !== "playing") return;
     function onKey(e: KeyboardEvent) {
       // Fields spelled out: KeyboardEvent's are prototype getters, which `{ ...e }` would not copy.
@@ -371,10 +372,8 @@ export default function HostPage() {
                 />
                 <PixelButton
                   disabled={!ready || joinPassword.trim() === savedPassword}
-                  onClick={() => {
-                    send({ type: "HOST_SET_PASSWORD", password: joinPassword });
-                    setSavedPassword(joinPassword.trim());
-                  }}
+                  // 目前密碼 changes on the room's HOST_OK reply, not here: it must show what the room enforces.
+                  onClick={() => send({ type: "HOST_SET_PASSWORD", password: joinPassword })}
                   className="!m-0 !px-4 !py-2 text-[16px]"
                 >
                   設定
