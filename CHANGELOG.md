@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.2.4] - 2026-10-28
+
+### Changed
+- `local-banks/` (local question-bank drafts, which hold answers) is now in `.gitignore`, so a draft can't be committed by accident.
+- The ordering-question and multi-phase-boss backlog items now say the bank format number (`BANK_FORMAT`) must go up, and the host-picks-the-question item no longer points at backlog items that don't exist.
+
 ## [0.15.2.3] - 2026-10-28
 
 ### Changed
