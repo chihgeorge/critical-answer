@@ -84,8 +84,9 @@ function Lobby({ code, teams }: { code: string; teams: LobbyTeams }) {
         <Qr text={joinUrl} size={132} />
       </Panel>
       {/* The campfire (design review 2A), with the teams gathering around it: first half on the left,
-          the rest on the right. Characters shrink at 5+ teams and names truncate, so 8 still fit. */}
-      <div className="absolute inset-x-0 flex items-end justify-center" style={{ bottom: 120, zIndex: 4, gap: 18 }}>
+          the rest on the right, high enough that no nameplate sits under the dialogue box's 地城主 tag. At
+          5+ teams each side stacks in two rows, so 8 names still fit. */}
+      <div className="absolute inset-x-0 flex items-end justify-center" style={{ bottom: 136, zIndex: 4, gap: 18 }}>
         <TeamGroup teams={teams} from={0} to={Math.ceil(teams.length / 2)} align="end" />
         <div className="relative shrink-0" style={{ width: 26 * 5, height: 22 * 5 }}>
           <div className="px-glow px-tf1" style={{ left: 65 - 150, top: 40 - 150 }} />
@@ -106,16 +107,24 @@ function Lobby({ code, teams }: { code: string; teams: LobbyTeams }) {
 /** One side of the campfire: teams[from, to), each running in. `variant` stays the team's overall
  * index so its look matches the rest of the game. */
 function TeamGroup({ teams, from, to, align }: { teams: LobbyTeams; from: number; to: number; align: "start" | "end" }) {
-  const scale = teams.length > 4 ? 3 : 4;
+  const crowded = teams.length > 4;
+  // Two rows of two cells per side when crowded: a cell's nameplate fits about 8 CJK characters, and a
+  // longer name ends in "…" (names are capped at 20).
+  const cell = crowded ? 190 : 96;
   return (
-    <div className={`flex flex-1 items-end gap-2 ${align === "end" ? "justify-end" : "justify-start"}`}>
+    <div
+      className={`flex flex-1 flex-wrap items-end gap-x-2 gap-y-1 ${align === "end" ? "justify-end" : "justify-start"}`}
+      style={crowded ? { maxWidth: cell * 2 + 8 } : undefined}
+    >
       {teams.slice(from, to).map((t, j) => (
-        <div key={t.id} className="flex flex-col items-center gap-1" style={{ maxWidth: 96 }}>
+        // Crowded: the hero stands beside its nameplate, so two rows clear the room-code panel above.
+        <div key={t.id} className={`flex items-center gap-1 ${crowded ? "flex-row" : "flex-col"}`} style={{ width: crowded ? cell : undefined, maxWidth: cell }}>
           <div className="px-run">
-            <Sprite kind="hero" variant={from + j} scale={scale} />
+            <Sprite kind="hero" variant={from + j} scale={crowded ? 2 : 4} />
           </div>
-          <Nameplate className="text-[14px]" style={{ maxWidth: 96, overflow: "hidden", textOverflow: "ellipsis", padding: "3px 8px" }}>
-            {t.name}
+          <Nameplate className="min-w-0 text-[14px]" style={{ maxWidth: cell, padding: "3px 8px" }}>
+            {/* text-overflow needs a block box: the Nameplate itself is a flex container. */}
+            <span className="block min-w-0 truncate">{t.name}</span>
           </Nameplate>
         </div>
       ))}

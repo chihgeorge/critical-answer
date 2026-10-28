@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.2.2] - 2026-10-28
+
+### Fixed
+- The big-screen lobby now fits 8 teams. From 5 teams on, each side of the campfire stacks its teams in two rows, with the hero beside its name, so no name hides under the room-code panel or the 地城主 tag of the dialogue box. A name too long for its nameplate ends in "…" instead of running into the next team.
+- At 4 or fewer teams, the first name no longer sits under the 地城主 tag.
+
 ## [0.15.2.0] - 2026-10-28
 
 ### Added
