@@ -150,7 +150,8 @@ export class BankStore {
     }
     try {
       const r = raw as { bank?: unknown; version?: unknown; format?: unknown };
-      if (typeof r.format === "number" && r.format > BANK_FORMAT) throw new Error(`stored bank format ${r.format} is newer than ${BANK_FORMAT}`);
+      // Fails closed: anything but a missing format or one this code knows could be a newer writer's.
+      if (r.format !== undefined && !(typeof r.format === "number" && r.format <= BANK_FORMAT)) throw new Error(`stored bank format ${String(r.format)} is not one this version (${BANK_FORMAT}) can read`);
       return { current: { bank: parseBank(r.bank), version: typeof r.version === "number" ? r.version : 1 }, unreadable: false };
     } catch (err) {
       // Corrupt storage must not crash whatever called this (a room trying to start a game, the

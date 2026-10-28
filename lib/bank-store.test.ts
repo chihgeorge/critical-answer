@@ -85,6 +85,14 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual(stored);
   });
 
+  it("treats a format that is not a known number as unreadable too", async () => {
+    for (const format of ["2", null, Number.NaN, {}]) {
+      const stored = { bank: validBank, version: 3, format };
+      const storage = memoryStorage(stored);
+      await expect(new BankStore(storage).putBank(validBank, 3)).rejects.toThrow(/unreadable/);
+    }
+  });
+
   it("saves against the freshly-seeded version 1 on an empty store", async () => {
     const store = new BankStore(memoryStorage());
     const result = await store.putBank(validBank, 1);
