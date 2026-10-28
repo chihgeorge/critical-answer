@@ -55,7 +55,7 @@ The host is preparing a boss music bank for an event. It has two modes: guess th
 - `maxHp` and `questions` move into `boss.phases: { name, rule, maxHp, questions }[]`.
 - A bank without `phases` is parsed as one phase `{ name: "", rule: "", maxHp, questions }`.
 - `parseBank` requires every phase to have `maxHp ≥ 1` and at least one question.
-- The editor warns when a phase has fewer questions than its HP plus a few.
+- ~~The editor warns when a phase has fewer questions than its HP plus a few.~~ Dropped by the eng review (D6): no phase shows a question-count warning, and the old boss-tab warning goes too.
 
 **Question ids.** Question ids are unique across the whole bank, all pools and all boss phases together. `parseBank` rejects a duplicate and the editor never creates one. So a question belongs to exactly one phase, and 「revealed」 is unambiguous.
 
@@ -355,3 +355,322 @@ issues verified: 4 of 4
 
 Verification is deterministic: a fix counts when its `applied_text` is in the current design and absent from the round-3 snapshot. It confirms applied edits, never a review verdict; no reviewer was launched past the cap.
 <!-- gstack:office-hours:concerns:end -->
+
+## Eng Review (/plan-eng-review, 2026-10-28)
+
+Target: `docs/designs/boss-phases.md` (this file), reviewed at commit accd017 on `boss-phases-design`.
+
+### Scope record
+feature answers: none (no feature cut proposed); structure: B Smaller arrangement (D1, answered 2026-10-28); accepted scope: every premise and Success Criterion above, built as follows. `BossState` gains `phases: { maxHp, questionIds }[]`, `phaseIndex` and `phasePending?: "cleared" | "exhausted"`. A hit that empties a non-last phase, or a rotation that finds the phase out of unrevealed questions, only sets `phasePending` (HP stays at what it is, the current question does not change). A new `enterNextBossPhase(game)` in `lib/game-state.ts` applies the change (phaseIndex + 1, hp and maxHp from the new phase, `questionIds` and `currentQuestionId` from the new phase, queued pick cleared, boss picks reset) when the room opens the phase card. The room masks no view field; `pendingPhase` as a separate room field is dropped. pending remedies: none.
+
+REALITY lines:
+- REALITY: premise-table pass 12 claims, unverified=0 lib/question-bank.ts:159
+- REALITY: already-done finding question ids are already unique across the whole bank (one shared `seen` set) lib/question-bank.ts:159
+- REALITY: surface-check pass a putBank parse error is a 400 and nothing is stored lib/bank-api.test.ts:199
+- REALITY: binding-decisions pass no recorded branch decisions; office-hours premises 1-6 bind docs/designs/boss-phases.md:22
+- REALITY: numbers finding the editor's existing warning threshold is maxHp + 10, not "HP plus a few" app/bank-editor/page.tsx:304
+- REALITY: deferred-asks pass no linked issue; the TODO's five asks are all covered TODOS.md:412
+- REALITY: pr-count pass one PR (#88), no ship-policy
+
+### Scope Challenge findings
+1. [INFORMATIONAL] (confidence: 9/10) lib/question-bank.ts:159 `if (seen.has(id as string)) fail(\`duplicate question id ${String(id)}\`);` Ids are already unique across pools and boss. The plan only has to pass the same `seen` set through every phase. Factual correction, no question.
+2. [INFORMATIONAL] (confidence: 9/10) lib/question-bank.ts:211 `if (typeof boss!.maxHp !== "number" || boss!.maxHp < 1) fail("boss has no hp");` An old Worker rejects a phased bank on the missing `boss.maxHp`, not `boss.questions` (R3-15). The 400 is verified: lib/bank-api.test.ts:199, and putBank parses before it writes (lib/bank-store.ts:178-181). Factual correction.
+3. [INFORMATIONAL] (confidence: 9/10) lib/bank-store.ts:181 `await this.storage.put(BANK_KEY, { ...next, format: BANK_FORMAT });` Every save already stamps the current format (v0.15.0.2, #76), so a single-phase bank saved by the new code is also locked away from older code (R3-12). That is the approved fail-closed mechanism; saves always write the new phased shape. Factual correction.
+4. [INFORMATIONAL] (confidence: 8/10) lib/game-state.ts:601-603 and lib/room/dungeon-room.ts:988 A miss exhausts a phase only through a shown multiple-choice wrong lock, which makes the current question revealed. A boss multiple-choice miss is always a retry, and a flee without a shown wrong option leaves the current question unrevealed, so a flee never exhausts a phase (R3-14). After a miss there is no answer reveal, so the card opens at once, in front of the team that missed. Factual correction.
+Dispositions: 1-4 recorded as corrections (no behaviour change).
+Scope Challenge result: scope accepted as-is (the smaller arrangement keeps every feature).
+
+### Section 1: Architecture
+Design-twice: not run. The plan adds no new module, service or boundary, only one game-state function (`enterNextBossPhase`) and fields on existing messages. The structure choice D1 already compared two shapes (mask the view vs defer the phase change).
+
+Flow with the D1 structure:
+```
+judge (hit empties a non-last phase, or rotation finds the phase used up)
+  └─ answerQuestion: boss.phasePending = "cleared" | "exhausted"; phaseIndex, question, hp unchanged
+       ├─ correct answer → STATE{reveal, old phase, cue boss-hit}      (no game over, no kill cue)
+       │     └─ 下一題 / MC auto-advance → closeReveal ─┐
+       └─ miss (shown wrong lock) ─────────────────────┤
+                                                       ▼
+                     openPhaseCard: game = enterNextBossPhase(game); phaseReveal = {name, rule}
+                     ++eventSeq; cue boss-phase; narrate boss-phase; persist
+                                                       │
+                     下一題 (HOST_NEXT, eventId) → phaseReveal = null → new phase's question shows
+restore: phasePending && no card → openPhaseCard without narration; phaseReveal saved → card shows again
+```
+
+Findings:
+1. [CRITICAL] (confidence: 9/10) lib/game-state.ts:864 `bossCurrentQuestionId: game.boss.currentQuestionId,` The design withheld `question` during the pauses but not this field, which `lib/turn-info.ts:40` also reads. Under the original arrangement the next phase's first question id reached every phone during the answer reveal. Resolved by D1: the state does not leave the old phase until the card opens.
+2. [CRITICAL] (confidence: 9/10) lib/room/dungeon-room.ts:799 `if (!this.reveal || eventId !== this.eventSeq) return;` 下一題 closes only an answer reveal today, and three gates hold play only while `this.reveal` is set (lib/room/dungeon-room.ts:925 judging, :1030 locking, :1140 option picks). The card needs its own close path, and all three gates must also hold while it shows, or a team could answer a question that is not on screen yet. Fix (required by the approved card behaviour, no question): one `paused()` check (reveal or card) used by all three gates and by HOST_NEXT, plus room tests for each gate during the card.
+3. [CRITICAL] (confidence: 8/10) lib/room/dungeon-room.ts:831 `if (this.reveal && this.eventSeq === eventId) this.closeReveal();` A correct multiple-choice reveal closes itself after 8-15 s. The design does not say whether that also opens the phase card, or whether the card closes itself (R3-5). Decision R1 (D2).
+4. [INFORMATIONAL] (confidence: 7/10) lib/narration/llm.ts:68 `` return `事件：隊伍${q(e.team)}擊中首領，首領還剩 ${e.bossHp}/${e.bossMaxHp} 顆心。`; `` On a phase-clearing hit the reveal's narration is an ordinary `boss-hit` with 0 HP left (lib/narration/events.ts:71), so the LLM is likely to announce a victory one step before the card says the fight goes on. Decision R2 (D3).
+5. [INFORMATIONAL] (confidence: 8/10) lib/room/dungeon-room.ts:415 `private picksMessage(): ServerMessage | null {` The host-only phase list still has no named channel ("`HOST_PICKS` or a sibling", R3-11). Decision R3 (D4).
+6. [INFORMATIONAL] (confidence: 9/10) Red flag 8, hand-synced list: lib/question-bank.ts:266 `return bank.boss.questions.map((q) => q.id);`, :272 `...bank.boss.questions]`, :280 `bank.boss.questions.find(`, lib/text-bank.ts:14 `questions: bank.boss.questions.map(toText)`. Four places walk the boss questions; with phases each would have to flatten them. Fix (mechanical, part of the approved shape): one `bossQuestions(bank)` that flattens the phases, used by all four; text-bank maps each phase.
+7. [INFORMATIONAL] (confidence: 8/10) Red flag 5, split ownership: keeping `boss.maxHp` and `boss.questionIds` as copies of `phases[phaseIndex]` keeps the ring (lib/game-state.ts:309), picks (:359) and old-snapshot restore unchanged, but the copy can drift. Fix (part of the approved shape): only `createGame` and `enterNextBossPhase` write them, and a game-state test asserts they equal `phases[phaseIndex]` after each phase change.
+8. [INFORMATIONAL] (confidence: 8/10) lib/room/dungeon-room.ts:133 `private reveal: AnswerReveal | null = null;` The answer reveal is memory-only, the card is not: `phaseReveal` goes into `RoomSnapshot`, and `restore()` opens the card when it finds `boss.phasePending` with no card, without replaying narration (restore replays nothing but the epilogue today, :373). Approved by the design's restore rule (R3-4); the old-snapshot backfill follows the existing pattern at :330-355, so `SCHEMA_VERSION` stays 5.
+
+## Decision ledger
+
+### R1: MC auto-advance and the phase card
+Finding: Section 1 #3, CRITICAL, confidence 8/10, lib/room/dungeon-room.ts:831, eng review
+Plan baseline: design says 下一題 closes the reveal and then the card; auto-advance not mentioned (R3-5 open)
+Runtime evidence: a correct multiple-choice reveal closes itself after 8 s, later while the voice reads, never past 15 s (lib/room/dungeon-room.ts:818-832); text reveals wait for 下一題
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| R1 auto-advance opens the card | unspecified, pending | yes: the auto-close opens the card | no: the auto-close stops, the reveal stays until 下一題 |
+| R1 card closes itself | unspecified, pending | no, waits for 下一題 | no, waits for 下一題 |
+| R2 clearing-hit narration | pending | pending | pending |
+| R3 host phase channel | pending | pending | pending |
+Question D2:
+D2 — 選擇題自動跳過答案時，要不要自動打開轉場卡？
+Project/branch/task: boss-phases-design 分支，/plan-eng-review 審魔王分階段設計。
+ELI10: 選擇題在大螢幕公布答案後，房間會在 8 到 15 秒後自己關掉答案、出下一題，不用主持人按。現在打空第一階段後，答案關掉的下一步是「還沒結束！第二階段」轉場卡。問題是：自動關答案時要不要直接接著開轉場卡？卡片本身兩個選項都一樣，一定等主持人按「下一題」才關，因為那是活動的高潮，要主持人掌握節奏。
+Stakes if we pick wrong: 選 A 主持人在聊天時卡片就自己跳出來；選 B 選擇題魔王戰會停在答案畫面，主持人不按就不會揭曉。
+Recommendation: A because 跟現在選擇題自動往下走的節奏一致，卡片本身還是等主持人按，高潮不會被跳過
+Completeness: A=10/10, B=10/10
+Pros / cons:
+A) 自動打開卡片
+  ✅ 選擇題的節奏不變：答案照樣自己收掉，只是下一個畫面是轉場卡
+  ✅ 程式最少：自動關答案和按下一題走同一條 closeReveal 路徑
+  ❌ 主持人沒注意時卡片也會出現，但旁白會唸、卡片會停住等他
+B) 停在答案，等主持人
+  ✅ 主持人一定親手按出揭曉，掌握時機
+  ✅ 卡片出現前主持人有時間醞釀氣氛
+  ❌ 跟選擇題其他時候的自動節奏不一致，要多一個特例
+Net: 自動接續保持節奏，停住則把揭曉時機交給主持人；卡片兩邊都等下一題才關。
+Header: 自動開卡
+Options:
+A) 自動打開卡片 (recommended)
+選擇題答案自動收掉時，直接打開轉場卡（旁白、音效、換色同時開始）。卡片本身不會自己關，一定等主持人按「下一題」。(human: ~0 / CC: ~0，走既有 closeReveal)
+B) 停在答案，等主持人
+打空階段的那次選擇題答案不自動收掉，停在答案畫面，主持人按「下一題」才開卡。卡片同樣等「下一題」才關。(human: ~30 分 / CC: ~5 分，rearmAdvance 加一個例外和測試)
+
+State: approved
+Actual answer: A) 自動打開卡片 (D2, answered 2026-10-28)
+Accepted scope: the MC auto-advance closes the reveal through the same closeReveal path as 下一題, which opens the phase card when `boss.phasePending` is set. The card never closes itself; only 下一題 (HOST_NEXT for the card's eventId) closes it. Room test: an auto-advancing MC reveal on a clearing hit opens the card, and the card is still open after the advance cap.
+History: none
+
+### R2: narration on a phase-clearing hit
+Finding: Section 1 #4, INFORMATIONAL, confidence 7/10, lib/narration/llm.ts:68, eng review
+Plan baseline: design says the triggering answer gets the ordinary boss-hit narration and cue; the boss-phase line plays when the card opens
+Runtime evidence: the boss-hit event carries bossHp 0 on a clearing hit (lib/narration/events.ts:71); the LLM prompt reads 「首領還剩 0/N 顆心」 (lib/narration/llm.ts:68); scripted lines include 「{team}重擊首領，血量剩 {bossHp}/{bossMaxHp}。」 (lib/narration/scripted.ts:43)
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| R1 auto-advance opens the card | approved A (D2) | approved A (D2) | approved A (D2) |
+| R2 clearing-hit narration | ordinary boss-hit with 0 HP | boss-hit with `bossHp: 0` gets its own scripted lines, and the LLM prompt for 0 HP says the bar is empty and forbids announcing a kill or the end of the fight | unchanged: ordinary boss-hit |
+| R2 cue on the clearing hit | boss-hit | boss-hit | boss-hit |
+| R3 host phase channel | pending | pending | pending |
+Question D3:
+D3 — 打空第一階段那一下的旁白怎麼說？
+Project/branch/task: boss-phases-design 分支，/plan-eng-review 審魔王分階段設計。
+ELI10: 打空第一階段血條的那一題，大螢幕先公布答案，旁白照一般「擊中首領」唸，這時血量顯示 0。AI 旁白拿到「首領還剩 0 顆心」，很可能直接說「首領倒下了！勝利！」，下一秒轉場卡卻說「還沒結束」，等於旁白先講錯。修法是血量 0 時給專用台詞，並叮嚀 AI 只能說血條被打空，不能宣布打倒或戰鬥結束。音效兩邊都還是一般擊中音效。
+Stakes if we pick wrong: 不修的話，活動現場 AI 旁白可能先宣布勝利再被轉場卡推翻，驚喜變成出包。
+Recommendation: A because 一行提示加幾句固定台詞就能擋掉旁白先講錯，成本很小
+Completeness: A=10/10, B=6/10
+Pros / cons:
+A) 血條打空專用台詞
+  ✅ AI 和固定台詞都只說「血條被打空」，懸念留給轉場卡揭曉
+  ✅ 只改 llm.ts 一個 case 和 scripted.ts 幾句台詞，加兩個測試
+  ❌ AI 仍可能不聽話，只能靠提示壓低機率，固定台詞才是保證
+B) 照一般擊中旁白
+  ✅ 不用改任何旁白程式
+  ✅ 固定台詞「血量剩 0/3」本身不算說錯
+  ❌ AI 模式很可能先宣布勝利，轉場卡出來時前後矛盾
+Net: 小改動換旁白不跟轉場卡打架；不改則賭 AI 不會宣布勝利。
+Header: 打空旁白
+Options:
+A) 血條打空專用台詞 (recommended)
+血量 0 的擊中（只會發生在打空非最後階段時，因為最後一擊是 boss-kill）用專用固定台詞，例如「{team}一擊打空了首領的血條！」；AI 提示改成「首領的血條被打空了，不要說首領倒下或戰鬥結束」。音效照一般擊中。(human: ~1 小時 / CC: ~10 分，含 llm/scripted 測試)
+B) 照一般擊中旁白
+不改旁白：固定台詞說「血量剩 0/3」，AI 拿到「還剩 0/3 顆心」自由發揮。(human: 0 / CC: 0)
+
+State: approved
+Actual answer: A) 血條打空專用台詞 (D3, answered 2026-10-28)
+Accepted scope: a boss-hit event with `bossHp: 0` (only a phase-clearing hit; the last phase's final blow is boss-kill) uses its own scripted lines such as 「{team}一擊打空了首領的血條！」, and lib/narration/llm.ts's prompt for it says the bar is empty and forbids saying the boss fell or the fight ended. The cue stays boss-hit. Tests: scripted picks a 0-HP line; the LLM prompt for 0 HP carries the instruction and no 「0/N 顆心」 wording.
+History: none
+
+### R3: host-only channel for the phase list
+Finding: Section 1 #5, INFORMATIONAL, confidence 8/10, lib/room/dungeon-room.ts:415, eng review
+Plan baseline: design says the host page learns the phase list (names, HP, which one is current) through `HOST_PICKS` or a sibling, never STATE (R3-11 open)
+Runtime evidence: HOST_PICKS goes only to host connections and is resent only when its JSON changes (lib/room/dungeon-room.ts:437-444); a phase change changes its boss options, so it is resent then anyway
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| R1 auto-advance opens the card | approved A (D2) | approved A (D2) | approved A (D2) |
+| R2 clearing-hit narration | approved A (D3) | approved A (D3) | approved A (D3) |
+| R3 channel | unnamed | HOST_PICKS gains `bossPhases: { name, rule, maxHp }[]` and `bossPhaseIndex` | new host-only HOST_BOSS_PHASES message, sent on claim and at each phase change |
+| R3 host page shows | nothing | current phase name and the next phase's name beside 首領血量 (layout from /plan-design-review) | same |
+Question D4:
+D4 — 主持人怎麼知道魔王有幾個階段？
+Project/branch/task: boss-phases-design 分支，/plan-eng-review 審魔王分階段設計。
+ELI10: 玩家不能知道魔王有幾個階段，但主持人要知道，才能掌握活動節奏（例如知道打完第一階段還有第二階段）。這份資料只能走主持人專用的連線，跟答案一樣。現有一條主持人專用訊息 HOST_PICKS（選題清單），只在內容變動時才重送，換階段時本來就會變。問題是把階段清單放進 HOST_PICKS，還是另開一條新訊息。主持人頁怎麼排版留給設計審查。
+Stakes if we pick wrong: 選錯只是多寫或少寫一條訊息，不影響玩家；但新訊息要自己處理重送和斷線重連，漏了主持人頁會顯示舊階段。
+Recommendation: A because HOST_PICKS 已經處理好只送主持人、變動才重送、重連補送，直接搭便車
+Completeness: A=10/10, B=10/10
+Pros / cons:
+A) 放進 HOST_PICKS
+  ✅ 重送、重連、只送主持人都沿用 v0.15.4 修好的 sendPicks，不用新邏輯
+  ✅ 換階段時選題清單本來就變，階段資料跟著一起到，不會不同步
+  ❌ HOST_PICKS 的意思變寬，不只是選題清單
+B) 新訊息 HOST_BOSS_PHASES
+  ✅ 每條訊息只管一件事，名稱清楚
+  ✅ 選題清單以後改動不會牽動階段資料
+  ❌ 要另寫送出時機、重連補送和測試，等於重做一次 sendPicks
+Net: 搭 HOST_PICKS 省掉重送邏輯；新訊息比較乾淨但要重寫一次已修好的送法。
+Header: 階段通道
+Options:
+A) 放進 HOST_PICKS (recommended)
+HOST_PICKS 加 `bossPhases`（每階段的名稱、規則、血量）和 `bossPhaseIndex`。沿用 sendPicks 的變動才重送和主持人重連補送。房間測試：手機和大螢幕收不到這兩個欄位。(human: ~1 小時 / CC: ~10 分)
+B) 新訊息 HOST_BOSS_PHASES
+新開一條主持人專用訊息，主持人連上時和每次換階段時送。房間測試同上，另測重連補送。(human: ~2 小時 / CC: ~20 分)
+
+State: approved
+Actual answer: A) 放進 HOST_PICKS (D4, answered 2026-10-28)
+Accepted scope: HOST_PICKS gains `bossPhases: { name, rule, maxHp }[]` and `bossPhaseIndex`, built in picksMessage and sent through the existing sendPicks (resend on change, copy on claim). Room test: neither field appears in any STATE or in any message to a phone or screen connection; a phase change resends HOST_PICKS with the new index. The host page's display is laid out in /plan-design-review.
+History: none
+
+### Section 2: Code quality
+1. [INFORMATIONAL] (confidence: 8/10) lib/question-bank.ts:211 `if (typeof boss!.maxHp !== "number" || boss!.maxHp < 1) fail("boss has no hp");` The design normalises a single-phase bank to `{ name: "", rule: "" }` and does not say what a later phase needs, so the card's text for an empty name or rule is undefined (R3-8). Decision R4 (D5).
+2. [INFORMATIONAL] (confidence: 8/10) app/bank-editor/page.tsx:304 `bank.boss.questions.length < bank.boss.maxHp + 10 ? \`；建議至少 ${bank.boss.maxHp + 10} 題，題目用完後會重出看過答案的題\` : ""` The existing warning says used-up questions repeat. That is true only for the last phase; an earlier phase moves on instead (premise 3). Decision R5 (D6).
+3. [INFORMATIONAL] (confidence: 9/10) lib/room/dungeon-room.ts:573 `this.reveal = null;` reset() clears the reveal; the card's `phaseReveal` must be cleared there too, or a new game opened after 回大廳 would start under the old card. Fix (required by the approved card, no question): clear it in reset() with the reveal, plus a room test.
+4. [INFORMATIONAL] (confidence: 8/10) app/bank-editor/page.tsx:56 `type Location = { kind: "pool"; difficulty: Difficulty } | { kind: "boss" };` The editor's boss location must carry a phase index so add, edit and delete land in the right phase. Mechanical part of the approved editor scope (premise 6).
+5. [INFORMATIONAL] (confidence: 8/10) lib/game-state.ts `enterNextBossPhase` must refuse when `phasePending` is unset or the boss is on its last phase (throw InvalidActionError, as the other transitions do), so a stray call cannot run past the phase list. Fix with a game-state test; part of the approved shape.
+Shared code: no extraction beyond `bossQuestions(bank)` (Section 1 #6), which has four verified callers.
+
+### R4: phase name and rule validation
+Finding: Section 2 #1, INFORMATIONAL, confidence 8/10, lib/question-bank.ts:211, eng review
+Plan baseline: design: a bank without phases parses as one phase `{ name: "", rule: "" }`; the card shows 「還沒結束！第二階段」, the phase name and its rule; nothing requires either for later phases
+Runtime evidence: parseBank validates the monster name as non-empty (lib/question-bank.ts:82); no phase fields exist yet
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| R1-R3 | approved (D2-D4) | approved (D2-D4) | approved (D2-D4) |
+| R4 phases 2+ name | not defined | required, non-empty after trim; parseBank rejects otherwise and the editor shows the error | optional; the card shows only 「還沒結束！第X階段」 when empty |
+| R4 phases 2+ rule | not defined | required, non-empty after trim | optional; the card omits the rule line when empty |
+| R4 phase 1 name/rule | "" for an old bank | optional (never shown on a card) | optional |
+Question D5:
+D5 — 第二階段以後，名稱和規則可以空白嗎？
+Project/branch/task: boss-phases-design 分支，/plan-eng-review 審魔王分階段設計。
+ELI10: 轉場卡會顯示「還沒結束！第二階段」、階段名稱（例如「主題曲之謎」）和規則（例如「聽前奏，說出是哪部作品的主題曲」）。第一階段從不出現在卡片上，所以可以空白；舊題庫轉過來時也是空白。問題是第二階段以後：要強制填，還是允許空白、卡片少印那一行？規則是玩家換玩法的唯一提示，空白的話大家不知道接下來要答什麼。
+Stakes if we pick wrong: 允許空白又忘了填，活動當下轉場卡只寫「第二階段」，玩家不知道規則變了，高潮變成困惑。
+Recommendation: A because 存檔時擋下比活動現場才發現空白便宜，規則本來就是這功能的重點
+Completeness: A=10/10, B=7/10
+Pros / cons:
+A) 第二階段起必填
+  ✅ 存檔時就擋下，活動現場不會出現沒有規則的轉場卡
+  ✅ 跟怪物名稱必填的既有規則一致
+  ❌ 只想快速試玩時也得先填兩個欄位才能存
+B) 允許空白
+  ✅ 編輯時比較寬鬆，先存再補也行
+  ✅ 卡片程式要處理空白，以後想做「無說明的驚喜」也可以
+  ❌ 忘了填就會在活動現場出現只有「第二階段」的卡片
+Net: 必填多一點編輯摩擦，換活動現場不出錯；允許空白則把風險留到現場。
+Header: 名稱規則
+Options:
+A) 第二階段起必填 (recommended)
+第 2 階段以後的名稱和規則都必填（去掉空白後不能是空字串），parseBank 擋下，編輯器顯示錯誤。第 1 階段可空白。測試：parseBank 拒絕空名稱或空規則的第 2 階段，接受空白的第 1 階段。(human: ~30 分 / CC: ~5 分)
+B) 允許空白
+名稱和規則都可空白；空白時卡片只印「還沒結束！第X階段」，或省略規則那一行。測試：卡片在空白時的顯示。(human: ~30 分 / CC: ~5 分)
+
+State: approved
+Actual answer: A) 第二階段起必填 (D5, answered 2026-10-28)
+Accepted scope: parseBank requires a non-empty (after trim) name and rule on every phase after the first and rejects the bank otherwise; the editor surfaces that error before saving. Phase 1 may be empty, and an old bank's single phase is `{ name: "", rule: "" }`. Tests: parseBank rejects an empty name or rule on phase 2, accepts an empty phase 1.
+History: none
+
+### R5: editor warning per phase
+Finding: Section 2 #2, INFORMATIONAL, confidence 8/10, app/bank-editor/page.tsx:304, eng review
+Plan baseline: design: "the editor warns when a phase has fewer questions than its HP plus a few" (no number, R3-11)
+Runtime evidence: today the boss tab warns below maxHp + 10 questions with 「題目用完後會重出看過答案的題」 (app/bank-editor/page.tsx:304); premise 3: an earlier phase that runs out moves on, only the last phase repeats
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| R1-R4 | approved (D2-D5) | approved (D2-D5) | approved (D2-D5) |
+| R5 last phase warning | below maxHp + 10, repeats text | unchanged: below maxHp + 10, repeats text | unchanged |
+| R5 earlier phase warning | none | below maxHp + 3, text says the phase may move on before its bar is empty | below maxHp + 10, same repeats text as today |
+Question D6:
+D6 — 編輯器對每個階段題目太少的提醒怎麼給？
+Project/branch/task: boss-phases-design 分支，/plan-eng-review 審魔王分階段設計。
+ELI10: 現在編輯器在魔王題少於「血量 + 10」題時提醒「題目用完後會重出看過答案的題」。分階段後只有最後一階段會重出題；前面的階段題目用完會直接跳下一階段，血條還沒打空也一樣。所以前面階段的提醒要換一句話，門檻也可以低一點：一題答對扣一滴血，答錯鎖定也會用掉一題，血量 + 3 題大致夠打完。你預計每階段 8 題以上，血量 3 時「+10」會一直跳提醒。
+Stakes if we pick wrong: 提醒文字錯了，主持人會以為前面階段會重出題，結果活動中階段沒打完就換了。
+Recommendation: A because 文字講對真正會發生的事，門檻也不會對 8 題的音樂階段一直誤報
+Completeness: A=10/10, B=6/10
+Pros / cons:
+A) 前面階段另給提醒
+  ✅ 前面階段的提醒說出真正後果：題目不夠會提早換階段
+  ✅ 門檻血量 + 3，8 題、3 血的階段不會被誤報
+  ❌ 多一種提醒文字和門檻要記，最後階段仍是 +10
+B) 每階段同一條提醒
+  ✅ 規則只有一條，程式最簡單
+  ✅ 門檻保守，題目一定夠
+  ❌ 前面階段的文字說「會重出題」是錯的，而且 8 題階段一直被提醒
+Net: 分開提醒讓文字和門檻都對；統一提醒最簡單但前面階段說錯後果。
+Header: 題數提醒
+Options:
+A) 前面階段另給提醒 (recommended)
+最後一階段照舊：少於血量 + 10 題時提醒會重出看過答案的題。前面的階段：少於血量 + 3 題時提醒「題目不夠時，血條還沒打空就會換到下一階段」。實際文字和位置在 /plan-design-review 定。(human: ~30 分 / CC: ~5 分)
+B) 每階段同一條提醒
+每個階段都用現有規則：少於血量 + 10 題時提醒會重出看過答案的題。(human: ~15 分 / CC: ~3 分)
+
+State: approved
+Actual answer: Other: 「都不提醒」 (D6, answered 2026-10-28)
+Accepted scope: no question-count warning on any boss phase. The existing boss-tab warning (app/bank-editor/page.tsx:304) is removed, and the design's "the editor warns when a phase has fewer questions than its HP plus a few" is dropped. The tab note keeps its first sentence.
+History: none
+
+### Section 3: Tests
+Framework: vitest (`npm run test`, lib/**/*.test.ts) and Playwright (`npm run e2e`), per CLAUDE.md. All paths below are proposed; existing tests are cited where they already guard old behaviour.
+
+```
+CODE PATHS                                                   USER FLOWS
+[+] lib/question-bank.ts parseBank                           [+] Host builds a 2-phase boss
+  ├── [GAP] boss.phases parsed (name/rule/maxHp/questions)     ├── [GAP] [→E2E] editor: add phase, fill name/rule/HP,
+  ├── [GAP] no phases → one phase {name:"",rule:""}            │         questions, save, reload shows both phases
+  ├── [GAP] phase 2+ empty name or rule → rejected (D5)        └── [GAP] editor: save refused with a phase-2 empty rule
+  ├── [GAP] phase maxHp < 1 / no questions → rejected        [+] Event night: phase change
+  └── [★★★ TESTED] duplicate id across bank — question-bank      ├── [GAP] [→E2E] clear phase 1 → answer reveal (0 HP,
+        .test.ts (extend: duplicate across two phases)          │         no game over) → 下一題 → card (name, rule,
+[+] lib/game-state.ts                                          │         new bar) → 下一題 → phase-2 question
+  ├── answerQuestion boss hit                                  ├── [GAP] [→E2E] phase 1 runs out (MC wrong locks)
+  │   ├── [★★★ TESTED] hit / kill / reward — :291-:379          │         → card opens at once → phase 2
+  │   ├── [GAP] hit empties non-last phase → phasePending      └── [GAP] MC auto-advance on a clearing hit opens the
+  │   │         "cleared", no kill bonus, no finish, no rotate           card; card stays past the 15 s cap (D2)
+  │   ├── [GAP] last phase final blow → kill + 4d20 only there [+] Surprise boundary
+  │   └── [GAP] hit leaves phase out of unrevealed → "exhausted" ├── [GAP] no STATE/screen/phone message before the card
+  ├── answerQuestion boss miss                                 │         carries a phase-2 id, name, rule, HP or count
+  │   ├── [★★★ TESTED] flee/retry/wrong-lock rotation :333-:1000 └── [GAP] HOST_PICKS carries bossPhases only to hosts
+  │   └── [GAP] shown wrong lock exhausts phase → "exhausted"   [+] Old bank
+  ├── [GAP] enterNextBossPhase: index+1, hp/maxHp/questionIds   └── [★★★ TESTED] every existing boss test, unchanged
+  │         copied from phases[i] (flag 5), pick cleared,
+  │         selections reset; throws when not pending/last
+  ├── [GAP] ring and picks walk only the current phase
+  └── [★★ TESTED] queued boss pick :1216 (extend: cleared by phase change)
+[+] lib/room/dungeon-room.ts
+  ├── [GAP] closeReveal with phasePending opens card: ++eventSeq, cue boss-phase,
+  │         narration boss-phase, phaseReveal {name, rule}; HOST_PICKS resent
+  ├── [GAP] HOST_NEXT closes card (stale eventId ignored, non-host rejected)
+  ├── [GAP] paused(): judge / lock / option pick rejected while the card shows
+  ├── [GAP] reset() clears phaseReveal
+  ├── [GAP] restore: phasePending + no card → card opens, no narration;
+  │         saved phaseReveal → card shows again; old snapshot → one phase
+  └── [★★★ TESTED] reveal ordering / stale HOST_NEXT / D7 rejects :598-:665
+[+] lib/narration
+  ├── [GAP] events.ts: boss-phase event {phase name, rule}; 0-HP boss-hit
+  ├── [GAP] scripted.ts: boss-phase lines; 0-HP lines (D3)
+  └── [GAP] [→EVAL optional] llm.ts: boss-phase prompt; 0-HP prompt forbids a kill (D3)
+          (prompt bytes in llm.test.ts; llm.live.test.ts needs an API key)
+COVERAGE: 6/30 paths tested today (20%) | GAPS: 24 (4 E2E, 1 optional live eval)
+```
+
+Regression rule: the approved Success Criterion "An old single-boss bank plays exactly as before. All existing boss tests pass unchanged, or change only where the new shape requires it" is the regression contract (carried forward, no question). Every existing test in lib/game-state.test.ts "boss combat" (:290-:413), the boss ring tests (:606-:685), lib/room/dungeon-room.test.ts boss and reveal tests (:363-:665, :1015-:1189) and lib/room/persistence.test.ts must pass; a test may change only to build its bank with the new shape.
+
+Tests made obsolete: none. The editor test that asserts the boss-tab warning, if any, changes with D6.
+
+Test plan artifact: written to the gstack project dir (path in the completion summary).
+
+Findings:
+1. [CRITICAL] (confidence: 9/10) The no-leak guarantee has no test today: lib/room/dungeon-room.test.ts:1336 checks answers, not phase data. Required proof of the Surprise constraint (Success Criteria): a room test plays a two-phase boss and asserts that every message to non-host connections, from game start until the card opens, contains no phase-2 question id, name, rule, HP or phase count, and that HOST_PICKS reaches hosts only. Carried forward from the approved criteria, no question.
+2. [INFORMATIONAL] (confidence: 8/10) The four [→E2E] flows need one new spec, `e2e/boss-phases.spec.ts`, with a text-only two-phase bank built like e2e/answer.ts `textOnlyBank`. Required by Success Criteria 1-3, no question.
+Dispositions: 1-2 required proof of approved behaviour, accepted without a new question.
+
+### Section 4: Performance
+No issues found. The phase list adds a few short strings to HOST_PICKS, which is resent only when its JSON changes (lib/room/dungeon-room.ts:437-444); STATE gains one number (`bossPhase`) and the card's two strings while it shows. Scale: one room, at most 8 teams, a handful of phases. Nothing loops over the bank per message beyond what picksMessage already does.
