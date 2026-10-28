@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LabelChip, Panel, PixelButton } from "@/components/pixel";
-import { DIFFICULTIES, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { DIFFICULTIES, MAX_BOSS_HP, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import type { Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId } from "@/lib/youtube";
@@ -462,7 +462,7 @@ function BossPhaseEditor({
           </label>
           <label className="flex items-center gap-1">
             血量
-            <input type="number" min={1} step={1} className="px-input !w-[64px] !py-1" value={phase.maxHp} onChange={(e) => onChange({ maxHp: Math.max(1, Math.floor(Number(e.target.value) || 1)) })} />
+            <input type="number" min={1} max={MAX_BOSS_HP} step={1} className="px-input !w-[64px] !py-1" value={phase.maxHp} onChange={(e) => onChange({ maxHp: Math.min(MAX_BOSS_HP, Math.max(1, Math.floor(Number(e.target.value) || 1))) })} />
           </label>
           {canDelete && (
             <PixelButton variant="flee" className="!m-0 !min-h-[44px] !px-3 !py-1" onClick={onDelete}>

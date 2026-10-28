@@ -125,6 +125,14 @@ export const BOSS_EMPTIED_VARIANTS = [
   "最後一顆心也碎了，{team}屏住呼吸。",
 ];
 
+/** The last answer of a boss phase that ran out of questions, right or wrong: the phase card comes next, so
+ * no "try again" and no hearts left (review finding, 2026-10-28). */
+export const BOSS_EXHAUSTED_VARIANTS = [
+  "{team}這一擊之後，首領的題目都答完了……",
+  "首領的考驗已經出完，地城安靜了一瞬……",
+  "最後一道題落下，首領卻還沒有倒下……",
+];
+
 /** A team walking into the boss room after phase 2 has started: the phase everyone has already seen (D13). */
 export const BOSS_ENTER_PHASE_VARIANTS = [
   "{team}推開最後一道門，首領正處於「{phase}」！",
@@ -176,6 +184,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     /** Synchronous, so it can back up a slow provider without awaiting anything. */
     line(event: NarrationEvent): string {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
+      if ((event.type === "retry" || event.type === "boss-hit") && event.exhausted) return fill(pick(BOSS_EXHAUSTED_VARIANTS, "boss-exhausted"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
       if (event.type === "boss-hit" && event.bossHp === 0) return fill(pick(BOSS_EMPTIED_VARIANTS, "boss-emptied"), event);
       if (event.type === "boss-phase") return fill(pick(VARIANTS["boss-phase"], "boss-phase"), { ...event, ordinal: ordinal(event.phase) });

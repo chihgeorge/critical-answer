@@ -736,3 +736,47 @@ test("the 房間 tab edits a room's difficulty and reward and the boss hit rewar
     expect((await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: original, version } })).ok()).toBe(true);
   }
 });
+
+// Review finding (testing, 2026-10-28): the boss phase editor (docs/designs/boss-phases.md D5, D6, D11) had no test.
+// Value: protects=adding, validating, saving and deleting a boss phase in the editor; fails_when=phase 2's empty
+// name saves, a saved phase is lost, or one tap deletes a phase full of questions; why_new=bank-editor specs only
+// touched phase 1; seam=none; no_claim=playing the phase (e2e/boss-phases.spec.ts)
+test("boss phases: add one, an empty name is refused, a filled one saves, and deleting it asks first", async ({ page, request }) => {
+  const WORKER = "http://localhost:1996";
+  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const { bank: original } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
+  try {
+    await page.goto("/bank-editor");
+    await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+    await page.getByRole("button", { name: "載入題庫" }).click();
+    await page.getByTestId("bank-tab-boss").click();
+    await page.getByTestId("bank-add-phase").click();
+    const phase2 = page.getByTestId("bank-boss-phase-2");
+    await expect(phase2).toBeVisible();
+    const questions2 = page.getByTestId("bank-room-boss-2");
+    await questions2.getByRole("button", { name: "+ 新增題目" }).click();
+    await rows(questions2).last().getByLabel("題目文字").fill("e2e 第二階段題目");
+    await rows(questions2).last().getByLabel("答案").fill("e2e 第二階段答案");
+
+    await saveAll(page);
+    await expect(page.getByTestId("bank-editor-error")).toHaveText("首領第 2 階段：名稱不能空白");
+
+    await phase2.getByLabel("名稱").fill("主題曲之謎");
+    await phase2.getByLabel("規則").fill("聽前奏，說出作品名");
+    await saveAll(page);
+    await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
+    const { bank: saved } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
+    expect(saved.boss.phases.map((p: { name: string; rule: string }) => [p.name, p.rule]).at(-1)).toEqual(["主題曲之謎", "聽前奏，說出作品名"]);
+
+    // Dismissing the confirm keeps the phase and its question.
+    page.once("dialog", (d) => void d.dismiss());
+    await phase2.getByRole("button", { name: "刪除階段" }).click();
+    await expect(phase2).toBeVisible();
+    page.once("dialog", (d) => void d.accept());
+    await phase2.getByRole("button", { name: "刪除階段" }).click();
+    await expect(page.getByTestId("bank-boss-phase-2")).toHaveCount(0);
+  } finally {
+    const { version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
+    await request.put(`${WORKER}/api/bank`, { headers, data: { bank: original, version } });
+  }
+});

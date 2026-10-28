@@ -246,3 +246,17 @@ describe("boss phases (docs/designs/boss-phases.md)", () => {
     expect(line).toContain("主題曲之謎");
   });
 });
+
+// Regression: the last answer of a phase out of questions said "try again" or counted hearts, right before the card
+// Found by /review on 2026-10-28
+describe("a boss phase out of questions", () => {
+  const p = createScriptedProvider(lcg(3));
+  it("never says try again, never counts hearts", () => {
+    for (let i = 0; i < 9; i++) {
+      for (const line of [p.line({ type: "retry", team, monster, exhausted: true }), p.line({ type: "boss-hit", team, bossHp: 2, bossMaxHp: 3, exhausted: true })]) {
+        expect(line).not.toMatch(/再試|重答|顆心|2\/3|倒下了|擊倒/);
+        expect(line).not.toContain("{");
+      }
+    }
+  });
+});

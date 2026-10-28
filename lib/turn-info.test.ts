@@ -104,3 +104,19 @@ describe("boss phase colour (docs/designs/boss-phases.md D9)", () => {
     expect(t.monster).toMatchObject({ kind: "dragon", name: "深淵小黑龍", hue: PHASE_HUE_STEP });
   });
 });
+
+// Regression: the phase card drawn as a room turn when the team on turn is still in a room (D9 keeps the turn order)
+// Found by /review on 2026-10-28
+describe("the phase card with a room team on turn", () => {
+  it("still draws the boss card: crimson, the phase's hue, boss hearts", () => {
+    const t = describeTurn(view({ bossPhase: 2 }), null, { name: "深淵小黑龍", sprite: "dragon", hue: 0 });
+    expect(t.inBoss).toBe(true);
+    expect(t.theme).toBe("crimson");
+    expect(t.monster.hue).toBe(PHASE_HUE_STEP);
+  });
+
+  it("tolerates a Worker from before boss phases (no bossPhase in the view)", () => {
+    const old = view({ bossPhase: undefined as unknown as number }, [{ inBossPhase: true }, {}]);
+    expect(describeTurn(old, pq({ boss: true, monster: { name: "龍", sprite: "dragon", hue: 30 } })).monster.hue).toBe(30);
+  });
+});

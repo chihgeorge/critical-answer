@@ -1044,7 +1044,9 @@ export class DungeonRoom {
     this.game = game;
     const eventId = ++this.eventSeq;
     const phaseName = prev.boss.phaseIndex > 0 ? this.bank.boss.phases[prev.boss.phaseIndex]?.name : undefined;
-    const event = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
+    const base = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
+    // A phase out of questions: no "try again" and no hearts count, its card comes next.
+    const event = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
     this.cue = event.type === "epilogue" ? null : event.type;
     // Shown to everyone (D3), but only on a genuinely correct answer (D5): a retry or a flee
     // must never reveal it, or the question loses its point; game-state.ts's deal()/boss ring

@@ -74,6 +74,8 @@ const SPRITES: SpriteKind[] = ["slime", "slime-lost", "slime-king", "ghost", "gh
 export const MIN_OPTIONS = 2;
 /** The TV wall has four tile spots (app/room/[code]/screen/page.tsx TILE_SPOTS). */
 export const MAX_OPTIONS = 4;
+/** The big screen draws one heart per HP on the boss's nameplate. */
+export const MAX_BOSS_HP = 20;
 const fail = (why: string): never => {
   throw new Error(`Invalid question bank: ${why}`);
 };
@@ -246,6 +248,8 @@ export function parseBank(raw: unknown): Bank {
 export function assertSavable(bank: Bank): void {
   const tooMany = allQuestions(bank).find((q) => q.kind === "multipleChoice" && q.options.length > MAX_OPTIONS);
   if (tooMany) fail(`question ${tooMany.id} has more than ${MAX_OPTIONS} options`);
+  const hp = bank.boss.phases.findIndex((p) => !Number.isInteger(p.maxHp) || p.maxHp > MAX_BOSS_HP);
+  if (hp >= 0) fail(`boss phase ${hp + 1} hp must be a whole number from 1 to ${MAX_BOSS_HP}`);
 }
 
 export function roomTemplates(bank: Bank): RoomTemplate[] {

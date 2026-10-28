@@ -123,6 +123,16 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual({ bank: legacy, version: 3 });
   });
 
+  // Regression: boss HP had no upper bound, and the big screen draws one heart per HP
+  // Found by /review on 2026-10-28
+  it.each([[21], [2.5]])("refuses to save a boss phase with %s HP (a whole number from 1 to 20), and keeps the stored bank", async (maxHp) => {
+    const storage = memoryStorage({ bank: validBank, version: 1 });
+    const store = new BankStore(storage);
+    const big: Bank = { ...validBank, boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], maxHp }] } };
+    await expect(store.putBank(big, 1)).rejects.toThrow(/hp must be a whole number from 1 to 20/);
+    expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1 });
+  });
+
   it("rejects a duplicate question id across rooms", async () => {
     const dup: Bank = { ...validBank, boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "dup?" }, answer: "x" }] }] } };
     const store = new BankStore(memoryStorage({ bank: validBank, version: 1 }));

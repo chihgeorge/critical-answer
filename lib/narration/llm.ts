@@ -60,12 +60,14 @@ function describeEvent(e: NarrationEvent): string {
       return `${base}這一答讓他們踏進了首領房。${callback}`;
     }
     case "retry":
+      if (e.exhausted) return `事件：隊伍${q(e.team)}答錯了，這一輪首領的題目都出完了。不要說可以重答，也不要說首領倒下，結果留待揭曉。`;
       return e.boss
         ? `事件：隊伍${q(e.team)}答錯了，首領${q(e.monster)}換出了新的考驗。`
         : `事件：隊伍${q(e.team)}答錯了，${q(e.monster)}還擋在原地，可以重答。`;
     case "flee":
       return `事件：隊伍${q(e.team)}答錯後逃跑，換一題較簡單的。`;
     case "boss-hit":
+      if (e.exhausted) return `事件：隊伍${q(e.team)}擊中首領，這一輪首領的題目都出完了。不要報剩下的血量，也不要說首領倒下，結果留待揭曉。`;
       // An emptied bar without a kill: the next phase is a surprise, so the line must leave the outcome open (D3).
       return e.bossHp === 0
         ? `事件：隊伍${q(e.team)}一擊打空了首領的血條。不要說首領倒下、被擊敗或戰鬥結束，結果留待揭曉。`

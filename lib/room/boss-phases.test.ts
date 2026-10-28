@@ -137,6 +137,65 @@ describe("boss phases in the room", () => {
     expect(events.map((m) => [m.cue, !!m.phaseCard])).toEqual([["retry", false], ["boss-phase", true]]);
     expect(g.state().view).toMatchObject({ bossPhase: 2, bossHp: 2 });
   });
+
+  // Review finding (state machine, 2026-10-28): the phase that runs out of questions with HP left had no room test.
+  it("a hit that uses up phase 1 with HP left: answer first, judging held, then the card, then phase 2", async () => {
+    const g = bossGame(phasedBank(text, 5));
+    g.judge(true);
+    g.next();
+    g.judge(true); // p1-b, the phase's last question
+    expect(g.state()).toMatchObject({ reveal: { questionId: "p1-b" } });
+    expect(g.state().view).toMatchObject({ bossPhase: 1, bossHp: 3 });
+    g.judge(true);
+    expect(msgs(g.host.send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
+    g.next();
+    expect(g.state()).toMatchObject({ phaseCard: expect.anything(), question: null });
+    expect(g.state().view).toMatchObject({ bossPhase: 2, bossHp: 2 });
+    g.next();
+    expect(g.state().question.id).toBe("p2-a");
+    await new Promise((r) => setTimeout(r, 0));
+    send(g.room, g.host, { type: "HOST_GET_TRANSCRIPT" });
+    const events = msgs(g.host.send.mock.calls).findLast((m) => m.type === "TRANSCRIPT").entries.map((e: { event: { type: string } }) => e.event);
+    // The used-up phase's last hit counts no hearts (review finding); the card's own line comes next.
+    expect(events.slice(-2)).toEqual([expect.objectContaining({ type: "boss-hit", exhausted: true }), expect.objectContaining({ type: "boss-phase", phase: 2, name: PHASE2.name })]);
+  });
+
+  it("after a wrong lock uses up phase 1, 下一題 closes the card", async () => {
+    vi.useFakeTimers();
+    const g = bossGame(phasedBank(mc, 5));
+    for (const id of ["p1-a", "p1-b"]) {
+      send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: id, optionIndex: 1 });
+      send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: id });
+      await vi.advanceTimersByTimeAsync(5000);
+    }
+    expect(g.state().phaseCard).toBeTruthy();
+    g.next();
+    expect(g.state()).toMatchObject({ question: { id: "p2-a" } });
+    expect(g.state().phaseCard).toBeUndefined();
+  });
+
+  // Review finding (testing, 2026-10-28): D13 was tested only below the room.
+  it("names the phase under way when a team walks into the boss room from phase 2 on, and not in phase 1 (D13)", async () => {
+    const entering = async (clearFirst: boolean) => {
+      const g = bossGame(phasedBank(), { teams: 2 }); // only T1 was sent in: send T2 back out of the boss room
+      (g.room as any).game = { ...g.room.game!, teams: g.room.game!.teams.map((t) => (t.id === T2 ? { ...t, inBoss: false } : t)) };
+      if (clearFirst) {
+        g.judge(true); // T1 empties phase 1
+        g.next();
+        g.next(); // card closed; T2 is on turn
+      } else {
+        send(g.room, g.host, { type: "HOST_JUDGE", teamId: T1, questionId: "p1-a", correct: false, fleeChoice: "retry", eventId: g.state().eventId });
+      }
+      send(g.room, g.host, { type: "HOST_JUDGE", teamId: T2, questionId: g.state().view.teams[1].currentQuestionId, correct: true, eventId: g.state().eventId });
+      await new Promise((r) => setTimeout(r, 0));
+      send(g.room, g.host, { type: "HOST_GET_TRANSCRIPT" });
+      return msgs(g.host.send.mock.calls).findLast((m) => m.type === "TRANSCRIPT").entries.at(-1).event;
+    };
+    expect(await entering(true)).toMatchObject({ type: "correct", entersBoss: { phase: PHASE2.name } });
+    const phase1 = await entering(false);
+    expect(phase1).toMatchObject({ type: "correct", entersBoss: {} });
+    expect(phase1.entersBoss).not.toHaveProperty("phase");
+  });
 });
 
 describe("boss phases across a restart", () => {

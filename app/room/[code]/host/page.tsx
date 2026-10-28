@@ -292,7 +292,7 @@ export default function HostPage() {
             msg.error === "bad_token"
               ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人"
               : msg.detail === "reveal_pending"
-                ? "正解還在揭曉中，先按「下一題」"
+                ? "大螢幕正在揭曉，先按「下一題」"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
           );
           setPendingTeamId(null);
@@ -335,12 +335,15 @@ export default function HostPage() {
   // Both stay disabled for a beat after every swap.
   // The boss's phase card is a pause like a reveal: 下一題 closes it (docs/designs/boss-phases.md D3).
   const revealUp = !!game?.reveal || !!game?.phaseCard;
-  const [armedFor, setArmedFor] = useState(revealUp);
-  const swapArmed = armedFor === revealUp;
+  // Keyed on the pause itself, not just "a pause is up": the answer reveal turning into the phase card
+  // swaps 下一題 for another 下一題, and a double-tap must not close the card nobody has seen.
+  const pauseKey = game?.reveal ? `reveal-${game.eventId}` : game?.phaseCard ? `card-${game.eventId}` : "";
+  const [armedFor, setArmedFor] = useState(pauseKey);
+  const swapArmed = armedFor === pauseKey;
   useEffect(() => {
-    const t = setTimeout(() => setArmedFor(revealUp), 500);
+    const t = setTimeout(() => setArmedFor(pauseKey), 500);
     return () => clearTimeout(t);
-  }, [revealUp]);
+  }, [pauseKey]);
   const canJudge = ready && swapArmed && !!turn?.team && pendingTeamId !== turn.team.id;
 
   // Phone answering (docs/designs/phone-answering.md D3, D11, D13): a multipleChoice turn is judged by
@@ -544,7 +547,8 @@ export default function HostPage() {
                 <div data-testid="host-boss-hp" className="mt-1 text-[14px]">
                   首領血量 {game.view.bossHp} / {game.view.bossMaxHp}
                   {/* Host-only (HOST_PICKS): how many phases there are and what comes next (D2). */}
-                  {picks && picks.bossPhases.length > 1 &&
+                  {/* `?.`: a Worker from before boss phases sends HOST_PICKS without them. */}
+                  {picks?.bossPhases && picks.bossPhases.length > 1 &&
                     `・第 ${picks.bossPhaseIndex + 1}/${picks.bossPhases.length} 階段・${
                       picks.bossPhaseIndex + 1 < picks.bossPhases.length ? `下一階段：${picks.bossPhases[picks.bossPhaseIndex + 1].name}` : "最後階段"
                     }`}

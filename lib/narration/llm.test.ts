@@ -304,3 +304,13 @@ describe("boss phase prompts (docs/designs/boss-phases.md)", () => {
     expect(user).toContain("不要提還有沒有下一個階段");
   });
 });
+
+describe("a boss phase out of questions (review finding, 2026-10-28)", () => {
+  it("asks the model not to offer a retry or count hearts", () => {
+    const miss = buildPrompt({ type: "retry", team: "紅隊", monster: "龍", boss: true, exhausted: true }, "", []).user;
+    expect(miss).toContain("不要說可以重答");
+    const hit = buildPrompt({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, exhausted: true }, "", []).user;
+    expect(hit).toContain("不要報剩下的血量");
+    expect(hit).not.toContain("2/3");
+  });
+});

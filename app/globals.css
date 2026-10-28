@@ -213,6 +213,7 @@ body {
 @keyframes px-hit { 25% { transform: translateX(-12px); } 75% { transform: translateX(12px); } }
 /* Boss phase card (docs/designs/boss-phases.md D7): the boss blinks between its old and new colour, then
    holds the new one; the hearts refill one by one. */
+/* -90deg undoes one PHASE_HUE_STEP (lib/turn-info.ts): change both together. */
 @keyframes px-phase-blink { 50% { filter: hue-rotate(-90deg); } }
 .px-phase-blink { animation: px-phase-blink 0.25s steps(1) 4; }
 @keyframes px-heart-in { from { opacity: 0; } }
