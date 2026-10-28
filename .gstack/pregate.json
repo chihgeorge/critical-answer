@@ -31,6 +31,10 @@
     "package-lock.json": [
       "e2e/main-line.spec.ts"
     ],
-    "scripts/pregate-runner.sh": []
+    "scripts/pregate-runner.sh": [],
+    "worker/**": [
+      "e2e/bank-editor.spec.ts",
+      "e2e/main-line.spec.ts"
+    ]
   }
 }
