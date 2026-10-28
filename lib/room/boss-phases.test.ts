@@ -71,7 +71,7 @@ describe("boss phases in the room", () => {
 
     g.next();
     const card = g.state();
-    expect(card).toMatchObject({ phaseCard: true, question: null, reveal: null, cue: "boss-phase", eventId: reveal.eventId + 1, bossPhaseInfo: PHASE2 });
+    expect(card).toMatchObject({ phaseCard: { monster: { name: "深淵小黑龍", sprite: "dragon", hue: 0 } }, question: null, reveal: null, cue: "boss-phase", eventId: reveal.eventId + 1, bossPhaseInfo: PHASE2 });
     expect(card.view).toMatchObject({ bossHp: 2, bossMaxHp: 2, bossPhase: 2 });
 
     // Nobody answers a question that is not on screen yet.
@@ -104,7 +104,7 @@ describe("boss phases in the room", () => {
     const revealId = g.state().eventId;
     g.next();
     send(g.room, g.host, { type: "HOST_NEXT", eventId: revealId });
-    expect(g.state().phaseCard).toBe(true);
+    expect(g.state().phaseCard).toBeTruthy();
   });
 
   it("a multiple-choice reveal that closes itself opens the card, and the card waits for 下一題 (D2)", async () => {
@@ -115,9 +115,9 @@ describe("boss phases in the room", () => {
     await vi.advanceTimersByTimeAsync(2500);
     expect(g.state().reveal).not.toBeNull();
     await vi.advanceTimersByTimeAsync(16_000);
-    expect(g.state()).toMatchObject({ phaseCard: true, reveal: null, cue: "boss-phase" });
+    expect(g.state()).toMatchObject({ phaseCard: expect.anything(), reveal: null, cue: "boss-phase" });
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(g.state().phaseCard).toBe(true);
+    expect(g.state().phaseCard).toBeTruthy();
   });
 
   it("a wrong lock that uses up phase 1 sends the retry first, then the card (D7)", async () => {
@@ -158,7 +158,7 @@ describe("boss phases across a restart", () => {
     const g = bossGame(phasedBank(), { storage });
     g.judge(true);
     const { stateOf } = await restored(storage);
-    expect(stateOf()).toMatchObject({ phaseCard: true, question: null, reveal: null, bossPhaseInfo: PHASE2 });
+    expect(stateOf()).toMatchObject({ phaseCard: expect.anything(), question: null, reveal: null, bossPhaseInfo: PHASE2 });
     expect(stateOf().view.bossPhase).toBe(2);
   });
 
@@ -169,7 +169,7 @@ describe("boss phases across a restart", () => {
     g.next();
     send(g.room, g.host, { type: "HOST_SET_NOTES", notes: "x" }); // any later save
     const { stateOf } = await restored(storage);
-    expect(stateOf()).toMatchObject({ phaseCard: true, question: null });
+    expect(stateOf()).toMatchObject({ phaseCard: expect.anything(), question: null });
   });
 
   it("restores a save from before boss phases as a one-phase boss", async () => {

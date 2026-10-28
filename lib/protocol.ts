@@ -147,8 +147,9 @@ export type ServerMessage =
       /** The sound effect for event `eventId` (the big screen plays it once, when eventId goes up).
        * Absent before any event, and after a server restart. */
       cue?: SoundCue;
-      /** The boss's phase card is up: `question` is null until the host's 下一題 (docs/designs/boss-phases.md). */
-      phaseCard?: true;
+      /** The boss's phase card is up: `question` is null until the host's 下一題 (docs/designs/boss-phases.md),
+       * so the card carries the boss to draw. */
+      phaseCard?: { monster: PublicQuestion["monster"] };
       /** The boss phase under way, from phase 2 on (phase 1 stays a plain boss). Never a later phase. */
       bossPhaseInfo?: { name: string; rule: string };
     }

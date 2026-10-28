@@ -2,6 +2,7 @@
 // or five variants per event type, never the same variant twice in a row.
 
 import type { NarrationEvent, NextTurn } from "./events";
+import { ordinal } from "../turn-info";
 
 export interface NarrationProvider {
   name: string;
@@ -155,12 +156,6 @@ export const NEXT_VARIANTS = {
     "{team}挺身而出，直面{monster}！",
   ],
 };
-
-const ORDINALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
-/** 2 -> 二, for 第二階段. */
-export function ordinal(n: number): string {
-  return ORDINALS[n - 1] ?? String(n);
-}
 
 function fill(template: string, vars: object): string {
   const v = vars as Record<string, string | number | string[]>;

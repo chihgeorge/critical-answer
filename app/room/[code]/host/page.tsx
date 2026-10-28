@@ -7,7 +7,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
 import type { ClientMessage, HostPick, LobbyTeams, ServerMessage, StateMessage } from "@/lib/protocol";
-import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
+import { BOSS_THRESHOLD, describeTurn, ordinal } from "@/lib/turn-info";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { hostKeyAction } from "@/lib/host-keys";
@@ -328,11 +328,12 @@ export default function HostPage() {
   // Disconnect UI: judge buttons disable and "重新連線中" shows here; /play and /screen show their own
   // notice (lib/offline-notice.ts), and a phone is told after reconnecting if its turn was skipped.
   const ready = connected && claimed;
-  const turn = game ? describeTurn(game.view, game.question) : null;
+  const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
   // The judge buttons and 下一題 swap in the same slot the moment a STATE arrives, so a double-tap
   // on one would land on the other (judging the next question, or closing a reveal nobody saw).
   // Both stay disabled for a beat after every swap.
-  const revealUp = !!game?.reveal;
+  // The boss's phase card is a pause like a reveal: 下一題 closes it (docs/designs/boss-phases.md D3).
+  const revealUp = !!game?.reveal || !!game?.phaseCard;
   const [armedFor, setArmedFor] = useState(revealUp);
   const swapArmed = armedFor === revealUp;
   useEffect(() => {
@@ -370,7 +371,7 @@ export default function HostPage() {
       const target = e.target as HTMLElement | null;
       const action = hostKeyAction(
         { key: e.key, repeat: e.repeat, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, target },
-        !!game?.reveal,
+        revealUp,
         isMc ? { stuck } : undefined,
       );
       if (!action || !game) return;
@@ -388,7 +389,7 @@ export default function HostPage() {
     return () => window.removeEventListener("keydown", onKey);
     // judge/send are plain functions over state this effect already depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, ready, swapArmed, canJudge, turn, isMc, stuck, picking, drawer]);
+  }, [game, ready, swapArmed, canJudge, turn, isMc, stuck, picking, drawer, revealUp]);
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -538,7 +539,16 @@ export default function HostPage() {
                   <div data-testid="host-answer" className="text-[19px]">{answer.answer}</div>
                 </div>
               )}
-              {turn.inBoss && <div className="mt-1 text-[14px]">首領血量 {game.view.bossHp} / {game.view.bossMaxHp}</div>}
+              {turn.inBoss && (
+                <div data-testid="host-boss-hp" className="mt-1 text-[14px]">
+                  首領血量 {game.view.bossHp} / {game.view.bossMaxHp}
+                  {/* Host-only (HOST_PICKS): how many phases there are and what comes next (D2). */}
+                  {picks && picks.bossPhases.length > 1 &&
+                    `・第 ${picks.bossPhaseIndex + 1}/${picks.bossPhases.length} 階段・${
+                      picks.bossPhaseIndex + 1 < picks.bossPhases.length ? `下一階段：${picks.bossPhases[picks.bossPhaseIndex + 1].name}` : "最後階段"
+                    }`}
+                </div>
+              )}
             </Panel>
 
             {picks && game.view.teams.some((t) => t.inBossPhase) && (
@@ -568,12 +578,15 @@ export default function HostPage() {
 
             <div className="mt-auto flex flex-col">
               {!ready && connected && <div className="px-1 text-center text-[14px] text-white">等待主持人驗證…</div>}
-              {game.reveal ? (
+              {revealUp ? (
                 // D7: the big screen and every phone show the answer in place of the next
-                // question until the host moves on — judging waits until then.
+                // question until the host moves on — judging waits until then. The boss's phase card
+                // waits the same way (boss-phases.md D3).
                 <>
                   <Panel tone="lav" className="px-3 py-2 text-center text-[16px]">
-                    <div data-testid="host-reveal">大螢幕正在揭曉：{game.reveal.answer}</div>
+                    <div data-testid="host-reveal">
+                      大螢幕正在揭曉：{game.reveal ? game.reveal.answer : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}
+                    </div>
                   </Panel>
                   <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: "HOST_NEXT", eventId: game.eventId })}>
                     {connected ? "下一題" : "重新連線中"}

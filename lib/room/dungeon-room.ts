@@ -470,7 +470,7 @@ export class DungeonRoom {
       // The card holds the new phase's first question back until the host's 下一題.
       question: this.phaseCard ? null : (this.currentQuestion()?.pub ?? null),
       reveal: this.reveal,
-      ...(this.phaseCard ? { phaseCard: true as const } : {}),
+      ...(this.phaseCard ? { phaseCard: { monster: this.bank.boss.monster } } : {}),
       ...this.bossPhaseInfo(),
       pendingLock: this.pendingLock,
       eventId: this.eventSeq,

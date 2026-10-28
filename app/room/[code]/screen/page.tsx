@@ -11,7 +11,7 @@ import { DISCONNECTED_NOTICE } from "@/lib/offline-notice";
 import type { AnswerReveal, LobbyTeams, PublicQuestion, StateMessage } from "@/lib/protocol";
 import type { LockedOption, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
-import { describeTurn } from "@/lib/turn-info";
+import { describeTurn, ordinal } from "@/lib/turn-info";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
@@ -175,8 +175,10 @@ function WallOptions({ options, gone, lock, wrong, correct, teamName }: { option
   );
 }
 
-function Playing({ view, question, reveal, pendingLock, eventId, narration }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; eventId: number; narration: NarrationState }) {
-  const { team: turn, teamIndex: turnIdx, inBoss, monster, theme, bossHits: hits } = describeTurn(view, question);
+function Playing({ view, question, reveal, pendingLock, eventId, narration, phaseCard, bossPhaseInfo }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"] }) {
+  const { team: turn, teamIndex: turnIdx, inBoss, monster, theme, bossHits: hits } = describeTurn(view, question, phaseCard?.monster);
+  // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
+  const card = phaseCard && bossPhaseInfo;
   const wrong = view.pendingWrong ?? null;
   const nameOf = (id?: string) => view.teams.find((t) => t.id === id)?.name ?? "";
   // During a correct reveal the tiles are the answered question's (the next one is already dealt).
@@ -210,12 +212,20 @@ function Playing({ view, question, reveal, pendingLock, eventId, narration }: { 
 
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
-          <LabelChip>{reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
-          {!reveal && inBoss && <LabelChip>最後的挑戰！</LabelChip>}
+          <LabelChip>{card ? "還沒結束！" : reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
+          {/* From phase 2 on the chip names the phase under way (D5); phase 1 looks like any boss. */}
+          {!reveal && !card && inBoss && <LabelChip>{bossPhaseInfo?.name ?? "最後的挑戰！"}</LabelChip>}
         </div>
         {/* The reveal takes the question's own slot until the host presses 下一題 (D7), so the
             next question never shows underneath (or behind) the previous answer. */}
-        {reveal ? (
+        {card ? (
+          <div data-testid="phase-card" className="flex flex-col items-center gap-2">
+            <div className="px-title-danger" style={{ fontSize: 34, lineHeight: 1.25 }}>
+              第{ordinal(view.bossPhase)}階段：{card.name}
+            </div>
+            <div className="text-[22px]">{card.rule}</div>
+          </div>
+        ) : reveal ? (
           <div data-testid="answer-reveal" className="flex flex-col items-center gap-2">
             <div>正解：{reveal.answer}</div>
             {reveal.explanation && reveal.explanation.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
@@ -240,7 +250,7 @@ function Playing({ view, question, reveal, pendingLock, eventId, narration }: { 
 
       <div className="absolute" style={{ left: "50%", bottom: 136, width: inBoss ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
-        <div className={hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}>
+        <div key={card ? `card-${eventId}` : undefined} className={card ? "px-phase-blink" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}>
           <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} />
         </div>
       </div>
@@ -248,9 +258,16 @@ function Playing({ view, question, reveal, pendingLock, eventId, narration }: { 
         <span>{monster.name}</span>
         {inBoss && (
           <span className="ml-[14px] flex gap-[3px]">
-            {Array.from({ length: view.bossMaxHp }, (_, i) => (
-              <Sprite key={i} kind="heart" variant={i < view.bossHp ? 1 : 0} scale={2} />
-            ))}
+            {Array.from({ length: view.bossMaxHp }, (_, i) =>
+              card ? (
+                // The new bar fills one heart at a time (D7).
+                <span key={`card-${eventId}-${i}`} className="px-heart-in" style={{ animationDelay: `${i * 0.15}s` }}>
+                  <Sprite kind="heart" variant={1} scale={2} />
+                </span>
+              ) : (
+                <Sprite key={i} kind="heart" variant={i < view.bossHp ? 1 : 0} scale={2} />
+              ),
+            )}
           </span>
         )}
       </Nameplate>
@@ -532,7 +549,7 @@ export default function ScreenPage() {
     <>
       <Stage>
         {!game && <Lobby code={code} teams={lobby} />}
-        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} eventId={game.eventId} narration={narration} />}
+        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>

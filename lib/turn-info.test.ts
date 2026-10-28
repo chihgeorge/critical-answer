@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeTurn, FALLBACK_MONSTER } from "./turn-info";
+import { describeTurn, FALLBACK_MONSTER, PHASE_HUE_STEP } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -86,5 +86,21 @@ describe("describeTurn", () => {
     expect(t.teamIndex).toBe(-1);
     expect(t.monster).toBe(FALLBACK_MONSTER);
     expect(t.questionId).toBeUndefined();
+  });
+});
+
+describe("boss phase colour (docs/designs/boss-phases.md D9)", () => {
+  const boss = (hue: number) => pq({ boss: true, monster: { name: "深淵小黑龍", sprite: "dragon", hue } });
+  it("turns the boss's colour by one step per phase, wrapping at 360, and leaves room monsters alone", () => {
+    const inBoss = (bossPhase: number) => view({ bossPhase }, [{ inBossPhase: true }, {}]);
+    expect(describeTurn(inBoss(1), boss(0)).monster.hue).toBe(0);
+    expect(describeTurn(inBoss(2), boss(0)).monster.hue).toBe(PHASE_HUE_STEP);
+    expect(describeTurn(inBoss(5), boss(30)).monster.hue).toBe((30 + 4 * PHASE_HUE_STEP) % 360);
+    expect(describeTurn(view({ bossPhase: 3 }), pq()).monster.hue).toBe(40);
+  });
+
+  it("draws the boss from the phase card while no question is out", () => {
+    const t = describeTurn(view({ bossPhase: 2 }, [{ inBossPhase: true }, {}]), null, { name: "深淵小黑龍", sprite: "dragon", hue: 0 });
+    expect(t.monster).toMatchObject({ kind: "dragon", name: "深淵小黑龍", hue: PHASE_HUE_STEP });
   });
 });

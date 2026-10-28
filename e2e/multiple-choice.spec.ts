@@ -214,10 +214,10 @@ test("phone answering: a lock the room never answers shows 沒送出，再按一
 test("boss room: a wrong lock shows no choice, then the boss brings a new question", async ({ browser, request }) => {
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
-  bank.boss.questions = [
+  bank.boss.phases = [{ name: "", rule: "", maxHp: bank.boss.phases[0].maxHp, questions: [
     { kind: "multipleChoice", id: "boss-e2e-1", text: "深淵小黑龍最怕什麼？", options: ["火焰", "冰霜", "雷電", "陽光"], correctIndex: 1 },
     { kind: "multipleChoice", id: "boss-e2e-2", text: "首領房在地城的第幾層？", options: ["第一層", "第三層", "第五層", "第八層"], correctIndex: 3 },
-  ];
+  ] }];
   expect((await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } })).ok()).toBe(true);
 
   const host = await (await browser.newContext()).newPage();
