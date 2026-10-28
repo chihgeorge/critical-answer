@@ -108,9 +108,11 @@ describe("boss phase colour (docs/designs/boss-phases.md D9)", () => {
 // Regression: the phase card drawn as a room turn when the team on turn is still in a room (D9 keeps the turn order)
 // Found by /review on 2026-10-28
 describe("the phase card with a room team on turn", () => {
-  it("still draws the boss card: crimson, the phase's hue, boss hearts", () => {
+  it("still draws the boss card (crimson, the phase's hue), while the team on turn is still a room team", () => {
     const t = describeTurn(view({ bossPhase: 2 }), null, { name: "深淵小黑龍", sprite: "dragon", hue: 0 });
-    expect(t.inBoss).toBe(true);
+    expect(t.bossScene).toBe(true);
+    expect(t.inBoss).toBe(false); // the ribbon and the host do not call the room team a boss fighter
+    expect(t.questionId).toBe("r0-q1");
     expect(t.theme).toBe("crimson");
     expect(t.monster.hue).toBe(PHASE_HUE_STEP);
   });

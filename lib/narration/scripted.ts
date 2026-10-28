@@ -128,7 +128,7 @@ export const BOSS_EMPTIED_VARIANTS = [
 /** The last answer of a boss phase that ran out of questions, right or wrong: the phase card comes next, so
  * no "try again" and no hearts left (review finding, 2026-10-28). */
 export const BOSS_EXHAUSTED_VARIANTS = [
-  "{team}這一擊之後，首領的題目都答完了……",
+  "{team}答完這一題，首領的題目都出完了……",
   "首領的考驗已經出完，地城安靜了一瞬……",
   "最後一道題落下，首領卻還沒有倒下……",
 ];

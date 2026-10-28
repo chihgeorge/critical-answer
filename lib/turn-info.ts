@@ -30,22 +30,25 @@ export const PHASE_HUE_STEP = 90;
 export function describeTurn(view: SpectatorView, question: PublicQuestion | null, bossMonster?: PublicQuestion["monster"]) {
   const teamIndex = view.teams.findIndex((t) => t.id === view.currentTurnTeamId);
   const team = view.teams[teamIndex];
-  // The phase card is the boss's moment whoever is on turn: the turn order runs on after the answer (D9).
-  const inBoss = (team?.inBossPhase ?? false) || (!question && !!bossMonster);
+  const inBoss = team?.inBossPhase ?? false;
+  // The phase card is the boss's moment whoever is on turn (the turn order runs on after the answer, D9):
+  // draw the boss scene, while labels about the team on turn still follow `inBoss`.
+  const bossScene = inBoss || (!question && !!bossMonster);
   const room = team?.roomIndex ?? 0;
   const m = question?.monster ?? bossMonster;
   // `?? 1`: a Worker from before boss phases sends no bossPhase.
-  const phaseHue = inBoss ? PHASE_HUE_STEP * ((view.bossPhase ?? 1) - 1) : 0;
+  const phaseHue = bossScene ? PHASE_HUE_STEP * ((view.bossPhase ?? 1) - 1) : 0;
   const monster: Monster = m ? { ...LOOK[m.sprite], kind: m.sprite, name: m.name, hue: (m.hue + phaseHue) % 360 } : FALLBACK_MONSTER;
   return {
     team,
     teamIndex,
     inBoss,
+    bossScene,
     room,
     monster,
     /** The monster's sprite scale for the phone-size turn card. */
     miniScale: Math.max(1, Math.floor(monster.scale / 3)),
-    theme: inBoss ? ("crimson" as const) : ROOM_THEMES[room % ROOM_THEMES.length],
+    theme: bossScene ? ("crimson" as const) : ROOM_THEMES[room % ROOM_THEMES.length],
     questionId: inBoss ? view.bossCurrentQuestionId : team?.currentQuestionId,
     bossHits: view.bossMaxHp - view.bossHp,
   };

@@ -177,7 +177,7 @@ function WallOptions({ options, gone, lock, wrong, correct, teamName }: { option
 }
 
 function Playing({ view, question, reveal, pendingLock, eventId, narration, phaseCard, bossPhaseInfo }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"] }) {
-  const { team: turn, teamIndex: turnIdx, inBoss, monster, theme, bossHits: hits } = describeTurn(view, question, phaseCard?.monster);
+  const { team: turn, teamIndex: turnIdx, inBoss, bossScene, monster, theme, bossHits: hits } = describeTurn(view, question, phaseCard?.monster);
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
   const card = phaseCard && bossPhaseInfo;
   const wrong = view.pendingWrong ?? null;
@@ -249,15 +249,15 @@ function Playing({ view, question, reveal, pendingLock, eventId, narration, phas
         )}
       </Panel>
 
-      <div className="absolute" style={{ left: "50%", bottom: 136, width: inBoss ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
+      <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         <div key={card ? `card-${eventId}` : undefined} className={card ? "px-phase-blink" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}>
           <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} />
         </div>
       </div>
-      <Nameplate className="absolute" style={{ left: "50%", bottom: 112, transform: "translateX(-50%)", zIndex: 5, color: inBoss ? "#b02a3a" : undefined }}>
+      <Nameplate className="absolute" style={{ left: "50%", bottom: 112, transform: "translateX(-50%)", zIndex: 5, color: bossScene ? "#b02a3a" : undefined }}>
         <span>{monster.name}</span>
-        {inBoss && (
+        {bossScene && (
           <span className="ml-[14px] flex gap-[3px]">
             {Array.from({ length: view.bossMaxHp }, (_, i) =>
               card ? (
@@ -276,7 +276,7 @@ function Playing({ view, question, reveal, pendingLock, eventId, narration, phas
       <DialogueBox
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
-        accent={inBoss ? "var(--danger)" : undefined}
+        accent={bossScene ? "var(--danger)" : undefined}
         loading={!held && isPending(eventId, narration)}
         lines={held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
       />
