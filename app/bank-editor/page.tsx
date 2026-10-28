@@ -105,6 +105,8 @@ export default function BankEditorPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** The stored bank can't be read by this version: what's shown is the bundled fallback, and nothing may be saved. */
+  const [readOnly, setReadOnly] = useState(false);
   // Only the latest load may land: dev StrictMode runs the auto-load effect twice, and a response that
   // arrived late used to overwrite edits made after a newer load (CI on main, 2026-10-25).
   const loadSeq = useRef(0);
@@ -126,10 +128,11 @@ export default function BankEditorPage() {
         setError(`Load failed: ${res.status}`);
         return;
       }
-      const versioned: { bank: Bank; version: number } = await res.json();
+      const versioned: { bank: Bank; version: number; unreadable?: true } = await res.json();
       if (seq !== loadSeq.current) return;
       setBank(versioned.bank);
       setVersion(versioned.version);
+      setReadOnly(!!versioned.unreadable);
     } catch {
       if (seq === loadSeq.current) setError("Could not reach the server.");
     } finally {
@@ -258,6 +261,14 @@ export default function BankEditorPage() {
         )}
       </Panel>
 
+      {bank && readOnly && (
+        <Panel role="alert" className="p-4 text-[15px]" style={{ background: "#ffd9d9" }}>
+          <span data-testid="bank-editor-readonly">
+            存著的題庫這個版本讀不懂（可能是回滾到比較舊的版本），下面顯示的是預設題目，不是你的題庫。你的題庫還在，沒有被蓋掉；在讀得懂之前不能儲存或上傳圖片。救援步驟見 README 的「題庫卡住時怎麼救」。
+          </span>
+        </Panel>
+      )}
+
       {bank && (
         <div className="flex flex-col gap-4">
           <div role="tablist" className="flex flex-wrap gap-2">
@@ -303,7 +314,7 @@ export default function BankEditorPage() {
               );
             })()
           )}
-          <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving || loading}>
+          <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving || loading || readOnly}>
             {saving ? "儲存中…" : "儲存全部變更"}
           </PixelButton>
         </div>
