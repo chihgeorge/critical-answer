@@ -211,7 +211,11 @@ describe("JOIN", () => {
   it("asks new teams for the join password once the host sets one, but not a team that already joined", () => {
     const { room, hostConn } = makeRoomWithHost();
     send(room, makeConn("early"), { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Early" });
+    const otherTab = makeConn("host-tab-2");
+    claim(room, otherTab);
     send(room, hostConn, { type: "HOST_SET_PASSWORD", password: " dragon " });
+    // Every host page hears the password the room now enforces.
+    for (const c of [hostConn, otherTab]) expect(lastSentTo(c)).toEqual({ type: "HOST_OK", aiAvailable: false, joinPassword: "dragon" });
     const noPw = makeConn("no-pw");
     send(room, noPw, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess" });
     expect(lastSentTo(noPw)).toMatchObject({ type: "ERROR", error: "bad_password" });

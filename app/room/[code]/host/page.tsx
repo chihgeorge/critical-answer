@@ -372,10 +372,8 @@ export default function HostPage() {
                 />
                 <PixelButton
                   disabled={!ready || joinPassword.trim() === savedPassword}
-                  onClick={() => {
-                    send({ type: "HOST_SET_PASSWORD", password: joinPassword });
-                    setSavedPassword(joinPassword.trim());
-                  }}
+                  // 目前密碼 changes on the room's HOST_OK reply, not here: it must show what the room enforces.
+                  onClick={() => send({ type: "HOST_SET_PASSWORD", password: joinPassword })}
                   className="!m-0 !px-4 !py-2 text-[16px]"
                 >
                   設定

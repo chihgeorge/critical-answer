@@ -15,9 +15,13 @@ test("a join password keeps strangers out of the lobby and lets the right passwo
   await phone.goto(`/room/${code}/play?name=${encodeURIComponent("路人")}`);
   await expect(phone.getByText("這個房間要密碼才能加入")).toBeVisible();
   await phone.getByRole("link", { name: "回首頁輸入密碼" }).click();
-  await phone.getByPlaceholder("隊伍名稱").fill("甲隊");
-  await phone.getByPlaceholder(/房間密碼/).fill("dragon");
-  await phone.getByRole("button", { name: /加入/ }).click();
+  // Retried: under load the dev server can reload a freshly opened page, wiping what was typed into it.
+  await expect(async () => {
+    await phone.getByPlaceholder("隊伍名稱").fill("甲隊");
+    await phone.getByPlaceholder(/房間密碼/).fill("dragon");
+    await phone.getByRole("button", { name: /加入/ }).click();
+    await expect(phone).toHaveURL(/\/play/, { timeout: 2000 });
+  }).toPass();
   await expect(phone.getByText("等待主持人開始遊戲")).toBeVisible();
   expect(phone.url()).not.toContain("dragon"); // handed over in sessionStorage, never in the URL
   await expect(host.getByText("甲隊")).toBeVisible();
