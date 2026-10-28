@@ -20,6 +20,8 @@ describe("parseClientMessage", () => {
       teamName: "A",
     });
     expect(parseClientMessage({ type: "JOIN", teamId: ID })).toBeNull();
+    // An over-long password is cut, not a reason to drop the JOIN (a known team needs none to rejoin).
+    expect(parseClientMessage({ type: "JOIN", teamId: ID, teamKey: KEY, teamName: "A", password: "p".repeat(500) })).toMatchObject({ password: "p".repeat(32) });
     expect(parseClientMessage({ type: "JOIN", teamId: 1, teamName: "A" })).toBeNull();
     expect(parseClientMessage({ type: "JOIN", teamId: ID, teamKey: KEY, teamName: "x".repeat(101) })).toBeNull();
   });

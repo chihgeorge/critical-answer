@@ -212,8 +212,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const teamId = str(m.teamId, MAX_ID);
       const teamName = str(m.teamName, MAX_RAW_NAME);
       const teamKey = teamKeyOf(m.teamKey);
-      const password = m.password === undefined ? undefined : str(m.password, MAX_PASSWORD);
-      if (password === null) return null;
+      // Cut, not rejected: an over-long password must not stop a known team (which needs none) from rejoining.
+      const password = typeof m.password === "string" ? m.password.slice(0, MAX_PASSWORD) : undefined;
       return teamId !== null && teamName !== null && teamKey !== null
         ? { type: "JOIN", teamId, teamKey, teamName, ...(password ? { password } : {}), ...resumeOf(m) }
         : null;

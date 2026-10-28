@@ -157,7 +157,7 @@ export default function PlayPage() {
           if (msg.error === "bad_password") setBadPassword(true);
           break;
         case "LOBBY":
-          setBadPassword(false);
+          // Not a sign we joined: a connection that failed the password still gets every LOBBY broadcast.
           setLobby(msg.teams);
           setGame(null);
           lastGame.current = null;
