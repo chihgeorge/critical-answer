@@ -2,7 +2,7 @@
 // or five variants per event type, never the same variant twice in a row.
 
 import type { NarrationEvent, NextTurn } from "./events";
-import { ordinal } from "../turn-info";
+import { ordinal } from "../ordinal";
 
 export interface NarrationProvider {
   name: string;
