@@ -397,7 +397,7 @@
 
 **Effort:** M（人工約 2 天 / CC 約 1 小時）　**Priority:** P2
 
-**Depends on / blocked by:** 跟「上傳本機題庫」和「多份主題題庫」一起排時間；使用者 2026-10-26 說先不寫規格。
+**Depends on / blocked by:** 無。使用者 2026-10-26 說先不寫規格；當時也提到想上傳本機題庫、有多份主題題庫，這兩件還沒寫成 TODO，排時間時一起考慮。
 
 ---
 
@@ -409,7 +409,7 @@
 
 **Pros:** 可以重用選擇題已有的四格版面和每局打亂選項（`shuffledOptionOrders`）；答案可以自動判定，主持人不用按答對。
 
-**Cons:** 要決定的事：手機上怎麼排（拖拉或依序點選）；要全對才算對，還是排對幾個給部分分；大螢幕怎麼公布正確順序；題庫編輯器要多一種題型的編輯畫面；`parseBank` 的驗證要支援新題型。
+**Cons:** 要決定的事：手機上怎麼排（拖拉或依序點選）；要全對才算對，還是排對幾個給部分分；大螢幕怎麼公布正確順序；題庫編輯器要多一種題型的編輯畫面；`parseBank` 的驗證要支援新題型；題庫格式變了，要把 `lib/bank-store.ts` 的 `BANK_FORMAT` 加 1，舊版本才會把新題庫當成讀不懂、不會存檔時把排序題弄丟。
 
 **Context:** 題型定義在 `lib/question-bank.ts`（`BankQuestion` 目前只有 `text` 和 `multipleChoice`，驗證在 `parseQuestions`）。手機作答在 `app/room/[code]/play/page.tsx`，選擇題的鎖定和判定在 `lib/room/dungeon-room.ts`（`TEAM_SELECT_OPTION` / `TEAM_LOCK_OPTION`）。題庫編輯器在 `app/bank-editor/page.tsx`。改 UI 前要先給 PNG。
 
@@ -427,7 +427,7 @@
 
 **Pros:** 魔王戰更有高潮；題庫的分類可以直接對應到階段。
 
-**Cons:** 要決定的事：每階段的血量怎麼算（各自一條，還是總血量分段）；換階段時要不要有旁白或轉場動畫；某一階段的題目用完怎麼辦；題庫格式要從一組 `boss.questions` 改成多組，舊題庫要能照樣讀（當成只有一個階段）；題庫編輯器要能編輯各階段。
+**Cons:** 要決定的事：每階段的血量怎麼算（各自一條，還是總血量分段）；換階段時要不要有旁白或轉場動畫；某一階段的題目用完怎麼辦；題庫格式要從一組 `boss.questions` 改成多組，舊題庫要能照樣讀（當成只有一個階段），而且要把 `lib/bank-store.ts` 的 `BANK_FORMAT` 加 1，舊版本才不會存檔時把多出來的階段丟掉；題庫編輯器要能編輯各階段。
 
 **Context:** 魔王設定在 `lib/question-bank.ts` 的 `Bank.boss`（`monster`、`maxHp`、`hitReward`、`questions`），魔王題 id 由 `bossQuestionIds` 排出。魔王戰流程在 `lib/room/dungeon-room.ts` 和 `lib/game-state.ts`。本機的魔王題庫草稿在 `local-banks/boss-music.json`。可以參考「開場與首領房的轉場動畫」那條 TODO。
 

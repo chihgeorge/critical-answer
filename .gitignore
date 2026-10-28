@@ -54,3 +54,6 @@ next-env.d.ts
 
 # wrangler local state (dev Durable Object storage)
 .wrangler/
+
+# local question-bank drafts (may hold answers) — never commit
+/local-banks/
