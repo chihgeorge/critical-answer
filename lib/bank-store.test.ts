@@ -48,7 +48,7 @@ describe("BankStore.getVersionedBank", () => {
   it("falls back to the bundled bank at version 1 when storage holds something corrupt, without throwing", async () => {
     const storage = memoryStorage({ bank: { rooms: "not an array" }, version: 3 });
     const versioned = await new BankStore(storage).getVersionedBank();
-    expect(versioned).toEqual({ bank: BANK, version: 1 });
+    expect(versioned).toEqual({ bank: BANK, version: 1, unreadable: true });
   });
 
   it("treats a missing version field as 1 (backward-compatible with a pre-version save)", async () => {
@@ -80,7 +80,7 @@ describe("BankStore.putBank", () => {
     const stored = { bank: validBank, version: 3, format: BANK_FORMAT + 1 };
     const storage = memoryStorage(stored);
     const store = new BankStore(storage);
-    expect(await store.getVersionedBank()).toEqual({ bank: BANK, version: 1 });
+    expect(await store.getVersionedBank()).toEqual({ bank: BANK, version: 1, unreadable: true });
     await expect(store.putBank(validBank, 1)).rejects.toThrow(/unreadable/);
     expect(await storage.get("bank")).toEqual(stored);
   });

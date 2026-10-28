@@ -5,7 +5,22 @@ All notable changes to Critical Answer are documented here.
 ## [0.15.2.1] - 2026-10-28
 
 ### Changed
-- `package.json` now carries the same version as `VERSION` again (0.15.2). v0.15.1.0 bumped `VERSION` but left `package.json` at 0.15.0, and the release tooling refuses to bump while the two disagree.
+- TODOS.md has three new backlog items: the host picks which bank question comes next, an ordering question type, and a boss fight split into phases with their own questions.
+
+## [0.15.2.0] - 2026-10-28
+
+### Added
+- When the saved question bank can't be read by the deployed version (usually after rolling back to an older one), the bank editor now says so the moment it loads: a red notice explains that the questions shown are the defaults, that your bank is still saved, and that nothing can be saved until a version that reads it is deployed. The save button is disabled.
+- README has a new 「題庫卡住時怎麼救」 section: how to get the bank readable again, which versions are safe to roll back to, and what to do if the stored data itself is damaged.
+
+### Changed
+- Image uploads are refused while the saved bank can't be read (409), since no save could keep them. They are also refused while the bank store can't be reached (503), instead of failing with an unexplained error.
+
+## [0.15.1.3] - 2026-10-28
+
+### Fixed
+- Clicking 🎵 twice quickly on the big screen no longer starts two music loops, one of which could never be stopped. Turning music off while it is still starting no longer throws an error and leaves music and sound effects stuck off.
+- When the big screen tab comes back from the background, the music no longer plays every note it missed at once. Those notes are skipped and the song carries on from where it is.
 
 ## [0.15.1.2] - 2026-10-28
 
