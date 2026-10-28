@@ -856,6 +856,64 @@ Unresolved decisions that may bite you later: none.
 - Parallelization: 3 lanes, 2 parallel / 1 sequential
 - Lake Score: 6/8 (D7 and D8 took the lower-scored option)
 
+## Design Review (/plan-design-review, 2026-10-28)
+
+Target: this file. DESIGN.md calibrates every decision. The gstack designer could not run (no OpenAI key), so the approved mockup was drawn from the game's own code: `lib/pixel-art.ts` sprites, `app/globals.css` tokens and the bundled fonts, rendered with Playwright.
+
+**Approved mockup:** `docs/designs/img/boss-phases-design.png` (approved 2026-10-28). It supersedes the layout-only sketch `docs/designs/img/boss-phases-sketch.png`. Panels: 1 the phase card on `/screen`, 2 phase 2 in play, 3 hue options (+90° chosen), 4 the host page, 5 phones, 6 the editor's 首領 tab.
+
+Initial rating 4/10, final 9/10.
+
+### Decisions (each answered individually)
+| # | Pass | Decision | Answer |
+|---|---|---|---|
+| D1 | IA | The card takes the question panel's slot, as the answer reveal does. A LabelChip 「還沒結束！」, a large line 「第二階段：<名稱>」 and the rule on one line. The new HP shows only as the nameplate hearts; the card has no bar of its own. | A |
+| D2 | IA | Host page: the 首領血量 line gains 「・第 n/N 階段・下一階段：<名稱>」 (「最後階段」 on the last). Hidden for a single-phase boss. | A |
+| D3 | IA | During the card, the host sees the reveal panel pattern: lav panel 「大螢幕正在揭曉：第二階段－<名稱>」, the green 下一題 button, Enter key and swapArmed as for a reveal. | A |
+| D4 | States | Phones during the card: a lav panel (role="status") with the same chip, title and rule. The answer area is hidden. | A |
+| D5 | States | From phase 2 on, the big screen's right chip 「最後的挑戰！」 becomes the phase name, and phones show the rule on one line under the ribbon on boss turns. Phase 1 is unchanged. | A |
+| D6 | States | Editor: a phase 2+ with an empty name or rule gets the existing red save banner (「首領第 2 階段：規則不能空白」) and a `--danger` outline on that field. | A |
+| D7 | Journey | When the card opens, the boss blinks between old and new hue in two `steps()` frames for about 1 s, then holds the new hue; the nameplate hearts refill one every 0.15 s. Under prefers-reduced-motion both jump straight to the end. | A |
+| D8 | Journey | New `boss-phase` SFX in lib/sfx.ts: a low falling rumble, then three rising dissonant notes, about 1 s, over before the narration starts. | A |
+| D9 | Journey | Hue step +90° per phase (purple → red → green for the default dragon), chosen from the mockup. The hue is base + 90 × phaseIndex, applied where `describeTurn` builds the monster, so /screen and /play agree. | +90° |
+| D10 | System | The card uses only existing tokens: cream Panel, `px-chip` 「還沒結束！」, title in `--danger` with the `--k` text outline used by the game-over title (34px on /screen, 24px on phones), rule in `--ink` 22px. | A |
+| D11 | A11y | Deleting a phase that still has questions asks `confirm("刪除第 2 階段和它的 N 題？")`; an empty phase deletes at once. Phase buttons are at least 44px tall. | A |
+| D12 | Unresolved | The live map gets no extra effect; its boss bar refills when the card opens. | A |
+| D13 | Unresolved | A team that enters the boss room in phase 2 or later hears the current (already revealed) phase name in its boss-enter narration, scripted and LLM. Never a later phase or the count. This overrides the design's late-joiner default. | B |
+
+Pass 4 (AI slop): no issues; the card, hue shift and sound reuse the game's own pixel vocabulary. Accessibility carried by existing rules: two-frame motion and reduced motion (DESIGN.md Rules), 78px 下一題, role="status" on the phone panel.
+
+### Journey storyboard
+| Step | Players do | Players feel | Specified by |
+|---|---|---|---|
+| 1 | Fight phase 1, no hint of more | "this is the boss" | no phase label (premise 2) |
+| 2 | Empty the bar; answer revealed at 0 HP | "did we win?" | 0-HP reveal, D3 narration (eng) |
+| 3 | Host presses 下一題 | surprise | card D1/D10, blink D7, sound D8, red boss D9 |
+| 4 | Read the new rule | "oh, the game changed" | card rule, phone panel D4 |
+| 5 | Play phase 2 | focused | phase-name chip and phone rule D5 |
+| 6 | Final blow | release | existing kill and game over |
+
+### NOT in scope (design)
+- Per-phase background music: BGM stays the boss track.
+- A full-screen takeover card: rejected for the question-slot card (D1).
+- A live-map flash (D12).
+
+### What already exists (design)
+Panel, LabelChip, Nameplate hearts, the reveal slot and the host reveal panel, the game-over title outline, `px-input`, the editor's red save banner, `hue-rotate` on Sprite, lib/sfx.ts.
+
+### Implementation tasks added by the design review
+- [ ] **T8 (P1, human: ~3h / CC: ~15min)** — screen — card in the question slot (D1, D10), right chip as phase name from phase 2 (D5), blink and heart refill (D7), hue step +90° in describeTurn (D9). Files: app/room/[code]/screen/page.tsx, lib/turn-info.ts, app/globals.css. Verify: e2e boss-phases.spec.ts plus a screenshot against panel 1-2.
+- [ ] **T9 (P1, human: ~2h / CC: ~10min)** — host and play — host phase line (D2) and card panel (D3); phone card panel (D4) and rule line (D5). Files: app/room/[code]/host/page.tsx, app/room/[code]/play/page.tsx. Verify: e2e.
+- [ ] **T10 (P1, human: ~1h / CC: ~5min)** — sound and narration — `boss-phase` SFX (D8); boss-enter narration names the current revealed phase for a late joiner (D13). Files: lib/sfx.ts, lib/narration/events.ts, scripted.ts, llm.ts. Verify: narration tests (no later phase, no count in the prompt).
+- [ ] **T11 (P1, human: ~3h / CC: ~15min)** — editor — phases list per panel 6, field outline on error (D6), delete confirm (D11). Files: app/bank-editor/page.tsx. Verify: e2e editor round trip.
+
+TODOS: none proposed (no deferred design debt).
+
+### Design completion summary
+- Initial score 4/10 → 9/10; 13 decisions made, 0 unresolved.
+- Mockup: drawn from project code (gstack designer unavailable), approved.
+- Outside design voices: declined by the user.
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
@@ -863,10 +921,10 @@ Unresolved decisions that may bite you later: none.
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
 | Outside Review | codex (not installed); native Plan fallback | Independent 2nd opinion | 1 | unavailable (native fallback completed) | 11 findings, 3 decisions |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ISSUES OPEN | 15 issues, 0 critical gaps |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR | score: 4/10 → 9/10, 13 decisions |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **OUTSIDE COVERAGE:** codex, plan-review phase, unavailable (not installed). A native Plan subagent ran instead; its 11 findings were checked against the code and resolved above. Not counted as outside coverage.
-- **VERDICT:** no review CLEAR yet. Eng Review is ISSUES OPEN in the counting sense: all 15 findings have approved dispositions mapped to T1-T7. Design Review is still needed before UI work (T5, T6).
+- **OUTSIDE COVERAGE:** codex unavailable (not installed) in the eng phase; a native Plan subagent ran instead and its findings were resolved. Design outside voices were declined by the user. No outside coverage.
+- **VERDICT:** DESIGN CLEARED. Eng Review is ISSUES OPEN in the counting sense only: all 15 findings have approved dispositions mapped to T1-T7; T8-T11 come from the design review. Ready to implement.
 
 NO UNRESOLVED DECISIONS
