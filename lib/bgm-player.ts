@@ -28,6 +28,8 @@ export function createBgmPlayer() {
   let next = 0;
   let loops = 0;
   let ducked = false;
+  /** Set as soon as start() is called, before its await: a second click must not start a second loop. */
+  let wanted = false;
 
   /** One oscillator note with a short attack and release, so notes don't click. */
   function tone(dest: AudioNode, wave: OscillatorType, freq: number, at: number, end: number, peak: number, attack: number, slideTo?: number) {
@@ -53,15 +55,25 @@ export function createBgmPlayer() {
       const e = events[next];
       const at = loopStart + loops * loopLen + e.start;
       if (at > horizon) break;
+      // A background tab's timer runs about once a second: drop the notes it fell behind on instead of
+      // playing them all at once when the tab comes back.
+      if (at < ctx.currentTime) {
+        advance();
+        continue;
+      }
       // A gap before the next note keeps steps crisp.
       const end = at + Math.max(0.05, e.duration - 0.02);
       if (e.voice === "melody") tone(master, "square", e.freq, at, end, 0.5, 0.01);
       else tone(master, "triangle", e.freq, at, end, 0.9, 0.01);
-      next++;
-      if (next === events.length) {
-        next = 0;
-        loops++;
-      }
+      advance();
+    }
+  }
+
+  function advance() {
+    next++;
+    if (next === events.length) {
+      next = 0;
+      loops++;
     }
   }
 
@@ -73,14 +85,18 @@ export function createBgmPlayer() {
   return {
     /** Must first be called from inside a user gesture (a click): browsers only let audio start then. */
     async start() {
-      if (timer) return;
+      if (wanted) return;
+      wanted = true;
       if (!ctx) {
         ctx = new AudioContext();
         master = ctx.createGain();
         master.gain.value = 0;
         master.connect(ctx.destination);
       }
-      await ctx.resume();
+      const started = ctx;
+      await started.resume();
+      // stop() ran while resume() was pending (its context is closed), maybe followed by a new start().
+      if (ctx !== started || !wanted) return;
       loopStart = ctx.currentTime + 0.1;
       next = 0;
       loops = 0;
@@ -89,6 +105,7 @@ export function createBgmPlayer() {
       timer = setInterval(schedule, TICK_MS);
     },
     stop() {
+      wanted = false;
       if (timer) clearInterval(timer);
       timer = null;
       // Closing drops every note already queued; the next start() builds a fresh context.
