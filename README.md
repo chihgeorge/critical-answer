@@ -111,9 +111,17 @@ sh scripts/playtest.sh stop
 
 ### 題庫編輯
 
-`/bank-editor` 是主持人專用的題庫編輯頁，首頁下方有連結，也可以直接打網址進入；不在遊戲的實際玩法流程裡。上方分頁切換「房間」、「難度 1–5」題庫和「首領」。「房間」頁設定每間房的難度（決定從哪個題庫抽題）和獎勵分，以及首領每打中一下的獎勵分；題庫頁可以新增、修改、刪除**問答題和選擇題**，頁首會寫哪幾間房從這個題庫抽題；「首領」頁的題目少於首領血量 + 10 題時，頁首會建議補到這個數。存過的題庫保留自己的首領題，不會自動拿到預設題庫新增的首領題。舊格式（題目放在各房間底下）的題庫載入時會自動轉成依難度分的題庫。每題的題目可以是文字、上傳的圖片或 YouTube 影片，另外可以加一段同樣可選媒材的詳解，答對後跟答案一起顯示。選擇題最多 4 個選項（大螢幕只有 4 格），由玩家在 `/play` 上點選並鎖定，伺服器依正確選項自動判定，不經 host 按鈕（見上方「玩法」、[docs/designs/multiple-choice-questions.md](docs/designs/multiple-choice-questions.md) 與 [docs/designs/phone-answering.md](docs/designs/phone-answering.md)）。舊題庫裡超過 4 個選項的題目仍可載入、照常遊玩，但要先刪到 4 個才能存檔。圖片會上傳到 Cloudflare R2，`/play` 和 `/screen` 都會顯示；換圖、刪題，或上傳後沒存檔的圖片，都會在等過一段寬限期（確保還在進行的局不會突然少圖）之後自動清掉。題庫實際存在 Cloudflare Durable Object（`BankStore`），編輯即時生效；`BankStore` 連不上時自動退回 bundle 裡的 `data/question-bank.json` 唯讀。存檔會做版本檢查，別人同時改過會擋下（409），避免互相覆蓋。存著的題庫這一版讀不懂時（例如回滾到比題庫格式舊的版本），編輯器載入的是 bundle 裡的預設題庫，存檔會被拒絕（400），圖片也暫停清理，存著的題庫保持原樣，等部署回讀得懂的版本再編輯。
+`/bank-editor` 是主持人專用的題庫編輯頁，首頁下方有連結，也可以直接打網址進入；不在遊戲的實際玩法流程裡。上方分頁切換「房間」、「難度 1–5」題庫和「首領」。「房間」頁設定每間房的難度（決定從哪個題庫抽題）和獎勵分，以及首領每打中一下的獎勵分；題庫頁可以新增、修改、刪除**問答題和選擇題**，頁首會寫哪幾間房從這個題庫抽題；「首領」頁的題目少於首領血量 + 10 題時，頁首會建議補到這個數。存過的題庫保留自己的首領題，不會自動拿到預設題庫新增的首領題。舊格式（題目放在各房間底下）的題庫載入時會自動轉成依難度分的題庫。每題的題目可以是文字、上傳的圖片或 YouTube 影片，另外可以加一段同樣可選媒材的詳解，答對後跟答案一起顯示。選擇題最多 4 個選項（大螢幕只有 4 格），由玩家在 `/play` 上點選並鎖定，伺服器依正確選項自動判定，不經 host 按鈕（見上方「玩法」、[docs/designs/multiple-choice-questions.md](docs/designs/multiple-choice-questions.md) 與 [docs/designs/phone-answering.md](docs/designs/phone-answering.md)）。舊題庫裡超過 4 個選項的題目仍可載入、照常遊玩，但要先刪到 4 個才能存檔。圖片會上傳到 Cloudflare R2，`/play` 和 `/screen` 都會顯示；換圖、刪題，或上傳後沒存檔的圖片，都會在等過一段寬限期（確保還在進行的局不會突然少圖）之後自動清掉。題庫實際存在 Cloudflare Durable Object（`BankStore`），編輯即時生效；`BankStore` 連不上時，新開的房間會自動改用 bundle 裡的 `data/question-bank.json`，編輯器則載入不了也存不了，圖片上傳回 503。存檔會做版本檢查，別人同時改過會擋下（409），避免互相覆蓋。存著的題庫這一版讀不懂時（例如回滾到比題庫格式舊的版本），編輯器一載入就會顯示紅色的唯讀提示，畫面上是 bundle 裡的預設題庫，儲存鍵停用，圖片上傳會被擋（409），圖片也暫停清理；存著的題庫保持原樣，見下方「題庫卡住時怎麼救」。
 
 > 圖片上傳需要先在 Cloudflare 建立一個名為 `critical-answer-images` 的 R2 bucket，並手動在 dashboard 開啟它的 r2.dev 公開讀取，再把 [wrangler.jsonc](wrangler.jsonc) 裡的 `R2_PUBLIC_BASE_URL` 換成 Cloudflare 給的網址——這一步不是 `wrangler deploy` 的一部分，見 [docs/designs/image-question-type.md](docs/designs/image-question-type.md)。
+
+#### 題庫卡住時怎麼救
+
+編輯器出現「存著的題庫這個版本讀不懂」時，你的題庫還在 `BankStore` 裡，沒有被蓋掉，只是目前部署的程式讀不懂它的格式。這段期間開的遊戲會用預設題庫。
+
+1. **最常見：回滾到比題庫格式舊的版本。** 往前部署回存題庫的那個版本或更新的版本（`main` 合併後會自動部署；要手動的話在 Cloudflare dashboard 的 Worker「Deployments」頁把那個版本設為目前版本）。部署好之後重新載入編輯器，提示就會消失。
+2. **不要回滾到 v0.13.1.0 以前。** 更舊的版本沒有這個保護，讀不懂題庫時會直接用預設題庫存檔，把你的題庫蓋掉。`lib/bank-store.ts` 的 `BANK_FORMAT` 加過 1 之後，底線變成 **v0.15.0.2**：v0.13.1.0～v0.15.0.1 不看格式號碼，會把新欄位存掉。
+3. **真的是存著的資料壞了**（Worker log 有 `bank_store_corrupt`，而且部署的已經是最新版）：先從 log 的錯誤訊息找出是哪一題、哪個欄位不合格式，再修正 Durable Object 裡存的值。修之前先把原值備份下來。
 
 頁面要輸入 `OWNER_KEY` 才能讀寫題庫，伺服器端沒設這把密鑰時一律回 403（本機開發要在 `.dev.vars` 加一行 `OWNER_KEY=...` 才能測，`.dev.vars.example` 沒有內建）；正式部署要用 `wrangler secret put OWNER_KEY` 設一組 ≥32 bytes 的隨機值，太短會在 Worker log 留警告。
 
@@ -122,7 +130,7 @@ sh scripts/playtest.sh stop
 ```
 app/                     Next.js 頁面：首頁、/room/[code]/host、/play、/screen、/bank-editor（題庫編輯）
 components/              共用像素元件（pixel.tsx）、大螢幕舞台（stage.tsx）、大螢幕活地圖（map-strip.tsx）、選擇題選項格（mc-option.tsx）、QR（qr.tsx）
-data/question-bank.json  題庫的 bundle 備援（BankStore 連不上時用這份唯讀）
+data/question-bank.json  題庫的 bundle 備援（BankStore 連不上時新開的房間用這份；存著的題庫讀不懂時編輯器唯讀顯示這份）
 lib/game-state.ts        遊戲狀態機：房間、題目牌堆、首領、計分（純函式，有完整測試）
 lib/protocol.ts          host / player / server 之間的訊息格式與驗證
 lib/question-bank.ts     題庫型別、驗證、公開題目（不含答案）
@@ -134,7 +142,7 @@ lib/turn-info.ts         從公開狀態算出輪到誰、面對哪隻怪
 lib/map-layout.ts        活地圖的版面計算：房間、棋子、迷霧、首領房的位置（純函式）
 lib/use-room-socket.ts   三個房間頁面共用的連線 hook（訊息解析、伺服器重啟偵測、休息時停止重連）
 lib/stored.ts            不會丟錯的 localStorage 讀寫（無痕模式也不會壞）
-lib/bank-image-api.ts    /api/bank/image 圖片上傳（檔案類型、大小檢查）
+lib/bank-image-api.ts    /api/bank/image 圖片上傳（檔案類型、大小檢查；題庫讀不懂時回 409、連不上時回 503）
 worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable Object、/api/bank 路由、入口規則
 lib/room/                房間邏輯（dungeon-room.ts）與它需要的兩個小介面（io.ts），不依賴平台
 lib/gate.ts、origin.ts   Worker 入口規則
