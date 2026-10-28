@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.3.0] - 2026-10-28
+
+### Added
+- The host can pick a team's next question. Each team's row on the host page has 「指定下一題」, which lists the questions at the difficulty of that team's next room, with their answers. Questions whose answer was already revealed, that another team is answering, or that are already picked for someone else can't be chosen. The team gets the pick the next time it is dealt a question of that difficulty, usually when it answers right and moves to the next room. A retry keeps the same question, so the pick waits. Tap 取消 to drop a pick.
+- While any team is in the boss room, the host page also has 「首領房下一題」: the boss's next question change uses the host's pick instead of the next one in order.
+
 ## [0.15.2.4] - 2026-10-28
 
 ### Changed
