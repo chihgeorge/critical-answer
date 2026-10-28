@@ -76,6 +76,8 @@ The host is preparing a boss music bank for an event. It has two modes: guess th
   - **Show:** it gets the same phase card, narration, hue change and 下一題 pause as a cleared phase.
 - **Kill:** only the last phase's final blow kills the boss and rolls the kill bonus.
 
+> **Superseded by the Eng Review (D1, D7, D9):** the game state does not change at the triggering answer; it only sets `boss.phasePending`, and `enterNextBossPhase` runs when the card opens. There is no room-side `pendingPhase` and no view masking, except that STATE's `question` is null while the card shows. Read the Eng Review section below before this subsection and the next two.
+
 **Ordering of the pauses (both reasons).**
 1. **The answer** (only when the triggering answer was correct): the room shows the normal answer reveal for the question just answered.
 2. **The phase card:** 下一題 closes the reveal and the room shows the phase card. After a miss that exhausts the phase there is no answer to reveal, so the card shows right away.
@@ -132,7 +134,9 @@ Wireframe (layout only; final look comes from /plan-design-review in the game's 
 ## Distribution Plan
 The existing deployment pipeline covers this: Vercel for the web app, plus a Cloudflare Worker deploy for the room logic. Bump `BANK_FORMAT` in the same release.
 
-**Deploy order: the Worker first, then the web app.** The bank is parsed and stored by the Worker (`BankStoreDO`, `lib/bank-store.ts`), so the Worker must understand phases before any editor can send one.
+**Deploy order (changed by the Eng Review, D8): the Worker and the web app ship together.** The new Worker's GET returns the phased shape, which the old editor cannot read, so a gap between the two deploys breaks the editor (not rooms). Rollback: rolling the Worker back mid-event discards every live room whose saved bank has phases (the old parseBank refuses it; fail closed, "game reset"). The original text follows for history.
+
+~~**Deploy order: the Worker first, then the web app.**~~ The bank is parsed and stored by the Worker (`BankStoreDO`, `lib/bank-store.ts`), so the Worker must understand phases before any editor can send one.
 - **Web app first instead:** the new editor would send a phased bank to the old Worker. The old `parseBank` rejects it, because it has no `boss.questions`, so the save fails with a 400 and nothing is stored or lost.
 - **Worker first:** the old editor keeps working. It sends single-boss banks, which the new Worker reads as one phase.
 
@@ -370,7 +374,7 @@ REALITY lines:
 - REALITY: binding-decisions pass no recorded branch decisions; office-hours premises 1-6 bind docs/designs/boss-phases.md:22
 - REALITY: numbers finding the editor's existing warning threshold is maxHp + 10, not "HP plus a few" app/bank-editor/page.tsx:304
 - REALITY: deferred-asks pass no linked issue; the TODO's five asks are all covered TODOS.md:412
-- REALITY: pr-count pass one PR (#88), no ship-policy
+- REALITY: pr-count pass one PR (#88), no .gstack/ship-policy.json, design commit accd017
 
 ### Scope Challenge findings
 1. [INFORMATIONAL] (confidence: 9/10) lib/question-bank.ts:159 `if (seen.has(id as string)) fail(\`duplicate question id ${String(id)}\`);` Ids are already unique across pools and boss. The plan only has to pass the same `seen` set through every phase. Factual correction, no question.
@@ -674,3 +678,195 @@ Dispositions: 1-2 required proof of approved behaviour, accepted without a new q
 
 ### Section 4: Performance
 No issues found. The phase list adds a few short strings to HOST_PICKS, which is resent only when its JSON changes (lib/room/dungeon-room.ts:437-444); STATE gains one number (`bossPhase`) and the card's two strings while it shows. Scale: one room, at most 8 teams, a handful of phases. Nothing loops over the bank per message beyond what picksMessage already does.
+
+### Outside Voice
+Provider: Codex not installed (CODEX_MODE: not_installed); native fallback (Plan subagent, inherited model), completed within the five-minute timer. A native result is not outside coverage.
+
+OUTSIDE VOICE (native fallback) findings, checked against the code:
+1. [CRITICAL] (confidence: 9/10, verified) app/room/[code]/host/page.tsx:578 `<PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: "HOST_NEXT", eventId: game.eventId })}>` sits inside the `game.reveal` branch, and app/room/[code]/play/page.tsx:269 `{game && !finished && !revealed && isMyTurn && game.question?.options && <MyChoicePanel .../>}` hides the choices only behind `reveal`. Without changes the card could never be closed, and under D1 the STATE that opens the card already carries the new phase's question, so phones would mount its options and media. Fix (required by the approved rule "the new question is never on screen before the card closes", no question): while `phaseReveal` is set, STATE's `question` is null (the one field the room withholds); the host page shows 下一題 for the card (button, key, swapArmed); /play treats the card as a pause. Covered in e2e/boss-phases.spec.ts.
+2. [INFORMATIONAL] (confidence: 8/10) lib/room/dungeon-room.ts:993-994 A miss that exhausts a phase would produce a retry event and then a boss-phase event back to back. Decision R6 (D7).
+3. [INFORMATIONAL] (confidence: 7/10) lib/room/dungeon-room.ts:1001 The card must open on state (`phasePending` and no reveal), not on outcome type. Same remedy as #2, Decision R6 (D7).
+4. [CRITICAL] (confidence: 8/10) lib/bank-store.ts:159 `parseBank(r.bank)` returns the normalised phased shape, so with "Worker first" the old editor reads `bank.boss.questions.length` (app/bank-editor/page.tsx:285) and crashes until Vercel deploys. Decision R7 (D8).
+5. [INFORMATIONAL] (confidence: 7/10) lib/question-bank.ts:60 Keeping `boss.maxHp`/`boss.questions` as phase 1 and adding optional `boss.nextPhases` would leave old banks, fixtures and the old editor intact. Decision R7 (D8).
+6. [INFORMATIONAL] (confidence: 9/10, verified) lib/game-state.ts:677 `return { game: advanceTurn(...)` The turn moves on at the triggering answer, so with teams still in rooms, closing the card can show a room team's question, not phase 2's. Decision R8 (D9).
+7. [INFORMATIONAL] (confidence: 8/10) lib/game-state.ts:670-674 The old question's `eliminated` entry survives because it is still faced at answer time. Fix (mechanical): `enterNextBossPhase` drops it. Accepted.
+8. [INFORMATIONAL] (confidence: 7/10) lib/game-state.ts:366-382 A boss pick queued during the reveal is cleared by the phase change. Expected under premise 5 ("a phase change clears any pick"); no change. The host sees the cleared pick in the resent HOST_PICKS.
+9. [INFORMATIONAL] (confidence: 7/10) lib/room/snapshot.ts:65 A Worker rollback mid-event discards live rooms holding a phased bank (fail closed). Fix: written into the Distribution Plan. Accepted.
+10. [INFORMATIONAL] (confidence: 9/10) The design body still describes `pendingPhase` and masking. Fix: annotate those lines as superseded by D1. Accepted.
+11. [INFORMATIONAL] (confidence: 7/10) lib/turn-info.ts:29 /play's turn card takes the hue from the question, and lib/sfx.ts needs a `boss-phase` entry. Fix (mechanical): the hue step is applied where `describeTurn` builds the monster, so screen and phones agree; add the SFX entry. Accepted; the step value comes from /plan-design-review.
+
+### R6: the card after a phase-exhausting miss
+Finding: Outside Voice #2-#3, INFORMATIONAL, confidence 8/10, lib/room/dungeon-room.ts:993, native outside voice
+Plan baseline: Scope record (D1): after a miss there is no reveal, so the card opens at once
+Runtime evidence: judge builds the narration event and cue from the outcome and broadcasts once (lib/room/dungeon-room.ts:992-1018)
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| R6 events after an exhausting miss | unspecified | one: judge sees phasePending with no reveal, enters the phase and emits only boss-phase in a single STATE | two: retry STATE, then boss-phase STATE |
+| R6 trigger | outcome type | state: after any judge, phasePending && no reveal opens the card | outcome type |
+Question D7: D7 — 答錯把階段題目用完時，要播兩段還是一段？ (A: one boss-phase event, recommended; B: retry then boss-phase)
+Header: 用完換階段
+Options:
+A) 只播換階段 (recommended)
+答錯用完題目時，房間直接開轉場卡，只播換階段的音效和旁白，一個畫面更新。判斷依狀態（待換階段且沒在公布答案），不靠答題結果種類。(CC: ~10 分)
+B) 先答錯再換階段
+先播答錯的音效和旁白，緊接著播換階段的，兩次畫面更新。(CC: ~5 分)
+
+State: approved
+Actual answer: B) 先答錯再換階段 (D7, answered 2026-10-28)
+Accepted scope: after a miss that exhausts a phase, judge broadcasts the ordinary retry STATE (cue and narration as today), then the room opens the card at once with its own eventId, cue boss-phase and narration. The card opens on the outcome path (a judged answer that left `phasePending` set with no reveal). Room test: two STATEs in order, retry then the card.
+History: none
+
+### R7: bank shape for phases
+Finding: Outside Voice #4-#5, CRITICAL, confidence 8/10, lib/bank-store.ts:159 and lib/question-bank.ts:60, native outside voice
+Plan baseline: design: `boss.phases: {name, rule, maxHp, questions}[]` replaces `maxHp`/`questions`; deploy Worker first
+Runtime evidence: the Worker's GET returns parseBank's output (lib/bank-store.ts:159); the editor reads `bank.boss.questions` (app/bank-editor/page.tsx:181, :285)
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| R7 shape | `boss.phases` replaces fields | `boss.maxHp`/`boss.questions` stay as phase 1, optional `boss.nextPhases: {name, rule, maxHp, questions}[]` | `boss.phases` as designed |
+| R7 deploy | Worker first | Worker first is safe | Worker and web app together |
+| R4 D5 | phases 2+ need name and rule | every nextPhases entry needs name and rule | phases 2+ need name and rule |
+Question D8: D8 — 題庫裡階段怎麼存？ (A: keep phase 1 where it is, add nextPhases, recommended; B: phases list as designed)
+Header: 題庫格式
+Options:
+A) 第一階段不動，加 nextPhases (recommended)
+`boss.maxHp` 和 `boss.questions` 照舊當第一階段，新增選填的 `boss.nextPhases`。舊題庫、測試資料、舊編輯器都不用改，先部署 Worker 也安全。BANK_FORMAT 照樣 +1。(CC: 省 ~20 分)
+B) 照設計用 phases 清單
+所有階段放進 `boss.phases`，形狀最整齊，但約 18 處測試資料和編輯器要改，而且 Worker 和網站要同時部署。
+
+State: approved
+Actual answer: B) 照設計用 phases 清單 (D8, answered 2026-10-28)
+Accepted scope: `boss.phases: {name, rule, maxHp, questions}[]` replaces `boss.maxHp`/`boss.questions` as designed; a bank without phases parses as one phase. Fixtures, e2e/answer.ts, text-bank and the editor move to the new shape. Deploy order changes: the Worker and the web app ship together (the old editor cannot read the new GET), and the Distribution Plan says so.
+History: none
+
+### R8: whose turn after the card
+Finding: Outside Voice #6, INFORMATIONAL, confidence 9/10, lib/game-state.ts:677, native outside voice
+Plan baseline: design: "下一題 closes the card and the new phase's first question appears"
+Runtime evidence: answerQuestion advances the turn at the triggering answer (lib/game-state.ts:677); teams still in rooms keep their turns
+Comparison grid:
+| Choice | Current | A | B |
+|---|---|---|---|
+| R8 after the card | unspecified | turn order unchanged: the next team plays, room or boss; phase 2's question shows on the next boss turn | the turn jumps to the next boss-room team |
+Question D9: D9 — 轉場卡關掉後輪到誰？ (A: turn order unchanged, recommended; B: jump to a boss team)
+Header: 卡後輪誰
+Options:
+A) 照原本輪流 (recommended)
+輪流順序不變。下一隊如果還在一般房間就答它的題，輪到首領房的隊伍時才出第二階段的題。e2e 照此寫。(CC: ~0)
+B) 跳到首領房的隊伍
+卡片關掉後直接輪到下一個首領房隊伍，讓第二階段第一題馬上出現。要改輪流規則和測試。(CC: ~20 分)
+
+State: approved
+Actual answer: A) 照原本輪流 (D9, answered 2026-10-28)
+Accepted scope: turn order is unchanged: after the card closes the next team in order plays; phase 2's question shows on the next boss-room turn. The e2e spec asserts this (with every team in the boss room the next turn is phase 2's question).
+History: none
+
+Approval readiness: PASS. Checked D1 (structure, scope record), R1/D2, R2/D3, R3/D4, R4/D5, R5/D6, R6/D7, R7/D8, R8/D9, each with its actual answer above. Required-proof items accepted without a question cite the approved design text: Section 1 #2 and #8, Section 2 #3-#5, Section 3 #1-#2, Outside Voice #1, #7-#11. The regression contract is the approved Success Criterion on old banks.
+
+### TODOS.md
+No new TODOs. The open design questions (hue step, live-map reaction, phone wording, the host page's phase display) belong to /plan-design-review, which runs next. The existing multi-phase boss TODO (TODOS.md:410-416) is marked done by /ship.
+
+### NOT in scope
+- Per-phase monster, music or rewards (approach B): rejected at office hours; one boss keeps one monster and hit reward.
+- A visible phase counter on /screen or /play: ruled out by the Surprise constraint.
+- Any question-count warning in the editor: dropped (D6).
+- Jumping the turn to a boss team after the card: rejected (D9).
+- A live LLM eval of the boss-phase and 0-HP prompts: prompt-byte tests only; llm.live.test.ts can be run by hand with an API key.
+
+### What already exists
+- Question ids unique across the bank: lib/question-bank.ts:159 (reused, nothing to build).
+- The reveal pause and HOST_NEXT: lib/room/dungeon-room.ts:795-832 (reused; the card adds a second pause behind the same key).
+- Host-only resend-on-change channel: sendPicks, lib/room/dungeon-room.ts:437-444 (reused for the phase list, D4).
+- Fail-closed bank format: BANK_FORMAT, lib/bank-store.ts:44, :158 (bumped, not rebuilt).
+- Snapshot backfill for old saves: lib/room/dungeon-room.ts:330-355 (same pattern for `phases`/`phaseIndex`).
+- The boss ring and pick: nextBossQuestionId, rotateBoss, queueQuestion (lib/game-state.ts:309-382), kept and walked per phase.
+
+### Failure modes
+| Path | Realistic failure | Covered by | User sees |
+|---|---|---|---|
+| clearing hit → reveal | kill fires on phase 1 (bonus, GAME_OVER) | game-state test: last-phase-only kill | wrong game over (loud) |
+| reveal → card | card never opens (phasePending stuck) | room test: closeReveal and auto-advance open the card | boss never asks again (loud) |
+| card → 下一題 | host page has no button for the card | e2e boss-phases.spec.ts | stuck card (loud) |
+| card shown | new question leaks to phones | no-leak room test + `question: null` during card | spoiled surprise (silent without the test) |
+| exhausting miss | card does not open after retry STATE | room test: two STATEs, retry then card | stuck pending (loud) |
+| restore mid-reveal/card | card lost or replayed twice | persistence tests | card missing after a restart |
+| bank save | phase 2 with empty rule saved | parseBank test (D5) | 400 in the editor (clear) |
+| deploy gap | old editor reads new GET | ship both together (D8) | editor crash (loud) |
+Critical gaps: 0 (every silent path has a planned test).
+
+### Worktree parallelization strategy
+| Step | Modules touched | Depends on |
+|------|----------------|------------|
+| 1 bank shape + BANK_FORMAT | lib/ (question-bank, bank-store, text-bank), fixtures | — |
+| 2 game-state phases | lib/game-state | 1 |
+| 3 room, protocol, snapshot, host channel | lib/room, lib/protocol | 2 |
+| 4 narration (boss-phase, 0-HP) + sfx | lib/narration, lib/sfx | 2 |
+| 5 screen card, host 下一題, play pause, hue | app/room, lib/turn-info | 3, design PNG |
+| 6 editor phases | app/bank-editor | 1, design PNG |
+| 7 e2e | e2e/ | 3-6 |
+Parallel lanes: Lane A: 1 → 2 → 3 → 5 → 7 (shared lib/). Lane B: 4 after 2. Lane C: 6 after 1 and the approved PNG. Steps 1-3 share lib/ types, so run them sequentially; one session can do it all in order.
+
+## Implementation Tasks
+Synthesized from this review's findings. Each task derives from a specific finding above. Ratios assume features ~30x, tests ~50x.
+
+- [ ] **T1 (P1, human: ~3h / CC: ~10min)** — bank — `boss.phases` parse, one-phase normalisation, D5 name/rule rule, BANK_FORMAT 2, `bossQuestions(bank)` for the four flatteners
+  - Surfaced by: Scope Challenge #1-#3; Section 1 #6; R4/D5; R7/D8
+  - Files: lib/question-bank.ts, lib/bank-store.ts, lib/text-bank.ts, fixtures, e2e/answer.ts
+  - Verify: `npm run test -- question-bank text-bank bank-store`
+- [ ] **T2 (P1, human: ~6h / CC: ~20min)** — game-state — phases, phaseIndex, phasePending; enterNextBossPhase (copies, pick, selections, eliminated, refusals); ring per phase; kill only on the last phase
+  - Surfaced by: D1; Section 1 #7; Section 2 #5; Outside Voice #7
+  - Files: lib/game-state.ts, lib/game-state.test.ts
+  - Verify: `npm run test -- game-state` (all existing boss tests unchanged)
+- [ ] **T3 (P1, human: ~6h / CC: ~25min)** — room — card open/close, paused() on all gates, MC auto-advance (D2), exhausting miss two STATEs (D7), `question: null` during the card, reset, restore and snapshot backfill, HOST_PICKS bossPhases (D4)
+  - Surfaced by: Section 1 #2, #3, #8; Section 2 #3; Outside Voice #1; R1, R3, R6
+  - Files: lib/room/dungeon-room.ts, lib/room/snapshot.ts, lib/protocol.ts, tests
+  - Verify: `npm run test -- dungeon-room persistence` incl. the no-leak test (Section 3 #1)
+- [ ] **T4 (P1, human: ~2h / CC: ~10min)** — narration — boss-phase event and lines, 0-HP boss-hit lines and prompt (D3), sfx entry
+  - Surfaced by: R2/D3; Outside Voice #11
+  - Files: lib/narration/events.ts, scripted.ts, llm.ts, lib/sfx.ts, tests
+  - Verify: `npm run test -- narration`
+- [ ] **T5 (P1, human: ~4h / CC: ~20min)** — clients — screen card, host 下一題 for the card and phase list, /play pause, hue step in describeTurn (after the design PNG)
+  - Surfaced by: Outside Voice #1, #11; R3/D4
+  - Files: app/room/[code]/screen/page.tsx, host/page.tsx, play/page.tsx, lib/turn-info.ts
+  - Verify: e2e boss-phases.spec.ts
+- [ ] **T6 (P1, human: ~4h / CC: ~20min)** — editor — phases list, name/rule/HP, add/delete, no count warning (D6) (after the design PNG)
+  - Surfaced by: Section 2 #4; R5/D6
+  - Files: app/bank-editor/page.tsx
+  - Verify: e2e editor save and reload
+- [ ] **T7 (P1, human: ~4h / CC: ~15min)** — e2e — two-phase boss played through, exhausted phase, MC auto-advance card, editor round trip
+  - Surfaced by: Section 3 #2; R8/D9
+  - Files: e2e/boss-phases.spec.ts
+  - Verify: `npm run e2e`, `npm run check:bundle`
+
+Unresolved decisions that may bite you later: none.
+
+### Completion summary
+- Step 0: Scope Challenge — scope accepted as-is (smaller arrangement, D1)
+- Reality rows: 7/7 applicable rows emitted, 0 unverified premises
+- Architecture Review: 8 issues found
+- Code Quality Review: 5 issues found
+- Test Review: diagram produced, 2 gaps identified (24 untested planned paths)
+- Performance Review: 0 issues found
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 0 items proposed to user
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: codex not installed; native fallback (Plan subagent) completed, 11 findings, 3 decisions (D7-D9); no outside coverage
+- Parallelization: 3 lanes, 2 parallel / 1 sequential
+- Lake Score: 6/8 (D7 and D8 took the lower-scored option)
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Outside Review | codex (not installed); native Plan fallback | Independent 2nd opinion | 1 | unavailable (native fallback completed) | 11 findings, 3 decisions |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ISSUES OPEN | 15 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+- **OUTSIDE COVERAGE:** codex, plan-review phase, unavailable (not installed). A native Plan subagent ran instead; its 11 findings were checked against the code and resolved above. Not counted as outside coverage.
+- **VERDICT:** no review CLEAR yet. Eng Review is ISSUES OPEN in the counting sense: all 15 findings have approved dispositions mapped to T1-T7. Design Review is still needed before UI work (T5, T6).
+
+NO UNRESOLVED DECISIONS
