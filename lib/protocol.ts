@@ -93,6 +93,8 @@ export type ClientMessage =
       questionId: string;
       correct: boolean;
       fleeChoice?: "flee" | "retry";
+      /** The eventId of the STATE the host judged from; an older one is a stale press and is dropped. */
+      eventId?: number;
     }
   /** DM branching interlude pick, sent by the team's own phone. See the module header. */
   | { type: "TEAM_BRANCH_CHOICE"; roomIndex: number; choice: BranchOptionId }
@@ -242,7 +244,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const questionId = str(m.questionId, MAX_ID);
       if (teamId === null || questionId === null || typeof m.correct !== "boolean") return null;
       if (m.fleeChoice !== undefined && m.fleeChoice !== "flee" && m.fleeChoice !== "retry") return null;
-      return { type: "HOST_JUDGE", teamId, questionId, correct: m.correct, fleeChoice: m.fleeChoice };
+      if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
+      return { type: "HOST_JUDGE", teamId, questionId, correct: m.correct, fleeChoice: m.fleeChoice, ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}) };
     }
     case "TEAM_BRANCH_CHOICE": {
       if (!Number.isInteger(m.roomIndex) || !isBranchOptionId(m.choice)) return null;

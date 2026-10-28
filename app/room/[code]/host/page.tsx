@@ -227,7 +227,7 @@ export default function HostPage() {
 
   function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "flee" | "retry") {
     setPendingTeamId(teamId);
-    send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice });
+    send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice, ...(game ? { eventId: game.eventId } : {}) });
   }
 
   // Disconnect UI: judge buttons disable and "重新連線中" shows here; /play and /screen show their own

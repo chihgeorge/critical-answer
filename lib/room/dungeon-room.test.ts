@@ -325,6 +325,17 @@ describe("HOST_JUDGE", () => {
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
   });
 
+  it("drops a judgment made from an older STATE without an error (a key pressed as the turn moved on)", () => {
+    const { room, hostConn, ids } = startedGame(2);
+    const seen = seqOf(room);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: false, fleeChoice: "retry", eventId: seen });
+    const sends = (hostConn.send as ReturnType<typeof vi.fn>).mock.calls.length;
+    // The host had not seen the STATE above yet: it judges team 0 again from the old one.
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true, eventId: seen });
+    expect((hostConn.send as ReturnType<typeof vi.fn>).mock.calls.length).toBe(sends);
+    expect(room.game!.teams[0].score).toBe(0);
+  });
+
   it("broadcasts GAME_OVER once the boss dies", () => {
     const { room, hostConn, ids } = startedGame(1);
     // Answer whatever question is current (room deal or boss) correctly until the game ends.
