@@ -169,13 +169,14 @@ function QuestionPicker({
                 type="button"
                 disabled={!!blocked}
                 onClick={() => onPick(x.id)}
-                className={`flex w-full items-start gap-2 border-[3px] border-[var(--k)] p-2 text-left ${blocked ? "bg-[#ddd6e8] opacity-55" : "bg-[#fff8e1]"}`}
+                // Blocked rows use DESIGN.md's faded-tile tokens, with the reason in full ink so it stays readable.
+                className={`flex w-full items-start gap-2 border-[3px] p-2 text-left ${blocked ? "border-[var(--dim-line)] bg-[var(--cream2)] text-[var(--dim-ink)]" : "border-[var(--k)] bg-[var(--cream)]"}`}
               >
                 <span className="min-w-0 flex-1">
                   <span className="block text-[14px]">{x.label}</span>
-                  <span className="block text-[12px]" style={{ color: "#2f6a2c" }}>答案：{x.answer}</span>
+                  <span className="block text-[12px]" style={blocked ? undefined : { color: "#2f6a2c" }}>答案：{x.answer}</span>
                 </span>
-                {(blocked || mine) && <span className="flex-none text-[11px]" style={{ color: mine ? "#2f6a2c" : "#7a1e1e" }}>{mine ? "目前選的" : why(x.block!)}</span>}
+                {(blocked || mine) && <span className="flex-none text-[13px]" style={{ color: mine ? "#2f6a2c" : "var(--ink)" }}>{mine ? "目前選的" : why(x.block!)}</span>}
               </button>
             );
           })}
@@ -259,6 +260,7 @@ export default function HostPage() {
           setLobby(msg.teams);
           setGame(null);
           setPicks(null);
+          setPicking(null);
           break;
         case "STATE":
           setGame(msg);
@@ -307,7 +309,7 @@ export default function HostPage() {
     return (
       <PixelButton
         onClick={() => (queued ? send({ type: "HOST_QUEUE_QUESTION", target, questionId: null }) : setPicking(target))}
-        className="!m-0 min-h-[32px] !px-2 !py-0 text-[13px]"
+        className="!m-0 min-h-[44px] !px-3 !py-0 text-[14px]"
       >
         {queued ? "取消" : target === "boss" ? "指定" : "指定下一題"}
       </PixelButton>
@@ -362,6 +364,8 @@ export default function HostPage() {
   useLayoutEffect(() => {
     if (game?.phase !== "playing") return;
     function onKey(e: KeyboardEvent) {
+      // An open picker or drawer covers the turn: a key there must not judge it or close a reveal.
+      if (picking || drawer) return;
       // Fields spelled out: KeyboardEvent's are prototype getters, which `{ ...e }` would not copy.
       const target = e.target as HTMLElement | null;
       const action = hostKeyAction(
@@ -384,7 +388,7 @@ export default function HostPage() {
     return () => window.removeEventListener("keydown", onKey);
     // judge/send are plain functions over state this effect already depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, ready, swapArmed, canJudge, turn, isMc, stuck]);
+  }, [game, ready, swapArmed, canJudge, turn, isMc, stuck, picking, drawer]);
 
   return (
     <main className="relative min-h-screen overflow-hidden">

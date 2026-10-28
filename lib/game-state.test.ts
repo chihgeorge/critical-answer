@@ -1227,6 +1227,34 @@ describe("queueQuestion (the host picks the next question)", () => {
     expect(retried.boss.queuedQuestionId).toBe("boss-q3");
   });
 
+  it("keeps a team's pick through a wrong lock and retry", () => {
+    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7");
+    const { game: g2 } = answerQuestion(recordWrongLock(g, "T0", "room0-q1", 0), "T0", "room0-q1", false, "retry", first);
+    expect(g2.teams[0].currentQuestionId).toBe("room0-q1");
+    expect(g2.teams[0].queuedQuestionId).toBe("room0-q7");
+    expect(g2.pendingWrong).toBeNull();
+  });
+
+  it("clears the boss pick, and the ring takes over again", () => {
+    const g = queueQuestion(queueQuestion(sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"), "boss", "boss-q3"), "boss", null);
+    expect(g.boss.queuedQuestionId).toBeUndefined();
+    expect(g.boss.currentQuestionId).toBe("boss-q1");
+    expect(answerQuestion(g, "T0", "boss-q1", true, "retry", first).game.boss.currentQuestionId).toBe("boss-q2");
+  });
+
+  it("rotates the boss to its pick after a wrong lock, even on retry", () => {
+    const g = queueQuestion(sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"), "boss", "boss-q3");
+    const { game: r } = answerQuestion(recordWrongLock(g, "T0", "boss-q1", 0), "T0", "boss-q1", false, "retry", first);
+    expect(r.boss.currentQuestionId).toBe("boss-q3");
+    expect(r.boss.queuedQuestionId).toBeUndefined();
+    expect(r.revealedQuestionIds).toContain("boss-q1");
+  });
+
+  it("keeps the boss pick when another team enters the boss room", () => {
+    const g = queueQuestion(sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"), "boss", "boss-q3");
+    expect(sendToBoss(g, "T1").boss.queuedQuestionId).toBe("boss-q3");
+  });
+
   it("only offers the team's next room difficulty, and refuses revealed, held and queued questions", () => {
     const pools = [["e1", "e2"], ["m1", "m2", "m3"], [], [], []];
     const g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }, { baseDifficulty: 2, reward: 20 }], pools, ["b1", "b2"], { bossThreshold: 15 }, 2, first);

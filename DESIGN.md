@@ -17,8 +17,8 @@ Everything is drawn in code or CSS. No image assets. Sound follows the same rule
 | `--danger` | `#ff6b6b` | ribbon, boss |
 | `--warn` | `#ffcf4a` | retry button |
 | `--orange` | `#e8862a` | **only** on the dark chip or large shapes |
-| `--dim-ink` | `#8a7a8f` | text on an eliminated or faded option tile |
-| `--dim-line` | `#7a6a80` | that tile's outline and letter chip |
+| `--dim-ink` | `#8a7a8f` | text on an eliminated or faded option tile, or on a question the host's picker can't pick |
+| `--dim-line` | `#7a6a80` | that tile's or picker row's outline, and the tile's letter chip |
 | `--wrong` | `#c94848` | the ✕ 答錯 label and a wrong tile's bevel |
 
 Small orange text on cream is 2.4:1 and fails. Small labels (第 N 題, 難度) use `LabelChip`, which is orange on `--k` (6.3:1).

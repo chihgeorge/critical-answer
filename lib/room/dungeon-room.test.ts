@@ -427,9 +427,9 @@ describe("HOST_SEND_TO_BOSS (scoring-and-score-pools.md S13)", () => {
 describe("HOST_QUEUE_QUESTION (the host picks the next question)", () => {
   function startedGame(teamCount = 2) {
     const { room, hostConn } = makeRoomWithHost();
-    const { ids } = joinTeams(room, hostConn, teamCount);
+    const { ids, conns } = joinTeams(room, hostConn, teamCount);
     send(room, hostConn, { type: "HOST_START" });
-    return { room, hostConn, ids };
+    return { room, hostConn, ids, conns };
   }
   const sentOf = (conn: ReturnType<typeof makeConn>) => (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
   const lastPicks = (conn: ReturnType<typeof makeConn>) => sentOf(conn).findLast((m) => m.type === "HOST_PICKS");
@@ -457,6 +457,51 @@ describe("HOST_QUEUE_QUESTION (the host picks the next question)", () => {
     expect(broadcasts.some((m) => m.type === "HOST_PICKS")).toBe(false);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
     expect(room.game!.teams[0].currentQuestionId).toBe(pick);
+  });
+
+  // Regression: ISSUE-002 — every STATE (even a phone's option tap) re-sent the whole picker with every answer
+  // Found by /review on 2026-10-28
+  it("sends the host its picker again only when the picker changed", () => {
+    const { room, hostConn, ids, conns } = startedGame(2);
+    const picksSent = () => sentOf(hostConn).filter((m) => m.type === "HOST_PICKS").length;
+    const before = picksSent();
+    const states = () => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.length;
+    const broadcasts = states();
+    room.onClose(conns[1]); // a phone dropping: a STATE goes out, the picker is the same
+    expect(states()).toBeGreaterThan(broadcasts);
+    expect(picksSent()).toBe(before);
+    send(room, hostConn, { type: "HOST_QUEUE_QUESTION", target: ids[1], questionId: lastPicks(hostConn).options[ids[1]].at(-1) });
+    expect(picksSent()).toBe(before + 1);
+  });
+
+  // Regression: ISSUE-003 — after the last host left, the room's record of the last picker went stale and dropped a real change
+  // Found by /ship adversarial review on 2026-10-28
+  it("a host that comes back still gets every picker change", () => {
+    const { room, hostConn, ids, conns } = startedGame(2);
+    const pick = lastPicks(hostConn).options[ids[1]].at(-1);
+    send(room, hostConn, { type: "HOST_QUEUE_QUESTION", target: ids[1], questionId: pick });
+    room.onClose(hostConn);
+    // While no host is connected the picker changes (a phone's play can do this; set it directly here).
+    (room as any).game = { ...room.game!, teams: room.game!.teams.map((t) => ({ ...t, queuedQuestionId: undefined })) };
+    room.onClose(conns[0]); // a STATE goes out
+    const back = makeConn("host-back");
+    room.onConnect(back);
+    claim(room, back);
+    expect(lastPicks(back).queued).toEqual({});
+    send(room, back, { type: "HOST_QUEUE_QUESTION", target: ids[1], questionId: pick });
+    expect(lastPicks(back).queued).toEqual({ [ids[1]]: pick });
+  });
+
+  it("queues the boss's next question and reports it in HOST_PICKS", () => {
+    const { room, hostConn, ids } = startedGame(2);
+    send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+    const picks = lastPicks(hostConn);
+    expect(picks.options[ids[0]]).toBeUndefined();
+    const pick = picks.options.boss.find((id: string) => !picks.questions.find((q: { id: string; block?: unknown }) => q.id === id).block);
+    send(room, hostConn, { type: "HOST_QUEUE_QUESTION", target: "boss", questionId: pick });
+    expect(lastPicks(hostConn).queued).toEqual({ boss: pick });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.boss.currentQuestionId, correct: true });
+    expect(room.game!.boss.currentQuestionId).toBe(pick);
   });
 
   it("refuses a question the team can't be dealt next", () => {
