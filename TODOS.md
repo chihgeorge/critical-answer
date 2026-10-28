@@ -446,6 +446,60 @@
 
 ---
 
+## 主持人可以指定每一題要出題庫裡的哪一題
+
+**What:** 主持人在遊戲中可以替下一道題，從題庫裡挑要出哪一題，不再只能由遊戲隨機抽。
+
+**Why:** 2026-10-26 使用者在準備活動用的魔王音樂題庫（YouTube 片段，猜歌手＋歌名或猜主題曲出處）時提出。主持人想依現場氣氛和隊伍程度決定下一首播什麼，例如先放大家都會的廣告歌暖場，最後才放難的。
+
+**Pros:** 主持人可以控制節奏和難度。也能避開現場玩家剛好太熟或太陌生的題目。
+
+**Cons:** 要決定的事：主持人沒選時是不是照舊隨機抽；選題畫面不能被大螢幕或玩家手機看到（題目和答案都在上面）；已經出過的題目要標示或擋掉；跟目前「難度池抽題」（`poolQuestionIds`、`bossQuestionIds`）和「答錯換一題」的規則怎麼並存。
+
+**Context:** 現在題目由 `lib/room/dungeon-room.ts` 開局時排好的題目順序決定（`lib/question-bank.ts` 的 `poolQuestionIds` / `bossQuestionIds`）。主持人的訊息在 `lib/protocol.ts`（`HOST_*`）。本機的魔王題庫草稿在 `local-banks/boss-music.json`（只在使用者電腦上，git 不追蹤）。改 UI 前要先給 PNG。
+
+**Effort:** M（人工約 2 天 / CC 約 1 小時）　**Priority:** P2
+
+**Depends on / blocked by:** 跟「上傳本機題庫」和「多份主題題庫」一起排時間；使用者 2026-10-26 說先不寫規格。
+
+---
+
+## 新題型：排序題
+
+**What:** 新增第三種題型「排序題」。題目給四個項目，隊伍要依照規則把它們排成一列，例如「四個角色依年齡由大到小排」。排序規則和正確順序在建立題目時決定。
+
+**Why:** 2026-10-26 使用者提出。比四選一更需要討論，適合隊伍一起想；同一組項目換個規則（年齡、出道年份、身高）就能變成新題目。
+
+**Pros:** 可以重用選擇題已有的四格版面和每局打亂選項（`shuffledOptionOrders`）；答案可以自動判定，主持人不用按答對。
+
+**Cons:** 要決定的事：手機上怎麼排（拖拉或依序點選）；要全對才算對，還是排對幾個給部分分；大螢幕怎麼公布正確順序；題庫編輯器要多一種題型的編輯畫面；`parseBank` 的驗證要支援新題型。
+
+**Context:** 題型定義在 `lib/question-bank.ts`（`BankQuestion` 目前只有 `text` 和 `multipleChoice`，驗證在 `parseQuestions`）。手機作答在 `app/room/[code]/play/page.tsx`，選擇題的鎖定和判定在 `lib/room/dungeon-room.ts`（`TEAM_SELECT_OPTION` / `TEAM_LOCK_OPTION`）。題庫編輯器在 `app/bank-editor/page.tsx`。改 UI 前要先給 PNG。
+
+**Effort:** M（人工約 3 天 / CC 約 1.5 小時）　**Priority:** P2
+
+**Depends on / blocked by:** 無。使用者 2026-10-26 說先記下，之後再排。
+
+---
+
+## 魔王分成多個階段，每階段題目不同
+
+**What:** 魔王戰可以分成多個階段（例如三階段），每個階段用自己的一組題目。打完一個階段才進下一個階段。
+
+**Why:** 2026-10-26 使用者提出。使用者正在準備魔王音樂題，分成「猜歌手＋歌名」和「猜主題曲出處」兩種模式；多階段可以讓每個階段用一種模式或一個分類（廣告歌、運動歌、主題曲…），魔王戰也比較有層次。
+
+**Pros:** 魔王戰更有高潮；題庫的分類可以直接對應到階段。
+
+**Cons:** 要決定的事：每階段的血量怎麼算（各自一條，還是總血量分段）；換階段時要不要有旁白或轉場動畫；某一階段的題目用完怎麼辦；題庫格式要從一組 `boss.questions` 改成多組，舊題庫要能照樣讀（當成只有一個階段）；題庫編輯器要能編輯各階段。
+
+**Context:** 魔王設定在 `lib/question-bank.ts` 的 `Bank.boss`（`monster`、`maxHp`、`hitReward`、`questions`），魔王題 id 由 `bossQuestionIds` 排出。魔王戰流程在 `lib/room/dungeon-room.ts` 和 `lib/game-state.ts`。本機的魔王題庫草稿在 `local-banks/boss-music.json`。可以參考「開場與首領房的轉場動畫」那條 TODO。
+
+**Effort:** M（人工約 3 天 / CC 約 1.5 小時）　**Priority:** P2
+
+**Depends on / blocked by:** 無。使用者 2026-10-26 說先記下，之後再排。
+
+---
+
 ## Completed
 
 ## 房間密碼（知道 4 碼代碼的人都能加入）
