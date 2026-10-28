@@ -63,6 +63,9 @@ export interface VersionedBank {
   bank: Bank;
   /** Starts at 1 on first seed, increments by 1 on every successful save. */
   version: number;
+  /** Set when the stored bank can't be read by this version: `bank` is then the bundled fallback,
+   * and saves and uploads are refused (README's 「題庫卡住時怎麼救」). */
+  unreadable?: true;
 }
 
 /** Returned by `putBank` when `expectedVersion` doesn't match what's actually stored — someone
@@ -138,7 +141,8 @@ export class BankStore {
   /** The current bank plus its version. The editor round-trips the version on save so a
    * conflicting concurrent save is caught instead of silently overwritten. */
   async getVersionedBank(): Promise<VersionedBank> {
-    return (await this.read()).current;
+    const { current, unreadable } = await this.read();
+    return unreadable ? { ...current, unreadable: true } : current;
   }
 
   private async read(): Promise<{ current: VersionedBank; unreadable: boolean }> {

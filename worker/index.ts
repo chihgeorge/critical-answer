@@ -176,6 +176,7 @@ export default {
           }
           return { key };
         },
+        bankUnreadable: async () => !!(await env.bank.getByName(BANK_DO_NAME).getVersionedBank()).unreadable,
       });
     }
     if (pathname === "/api/bank" || pathname.startsWith("/api/bank/")) {
