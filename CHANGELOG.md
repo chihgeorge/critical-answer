@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.1.3] - 2026-10-28
+
+### Fixed
+- Clicking 🎵 twice quickly on the big screen no longer starts two music loops, one of which could never be stopped. Turning music off while it is still starting no longer throws an error and leaves music and sound effects stuck off.
+- When the big screen tab comes back from the background, the music no longer plays every note it missed at once. Those notes are skipped and the song carries on from where it is.
+
 ## [0.15.1.1] - 2026-10-28
 
 ### Fixed

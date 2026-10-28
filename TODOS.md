@@ -41,24 +41,6 @@
 
 ---
 
-## 背景音樂播放器：連點🎵的競態、背景分頁時音符擠成一團
-
-**What:** `lib/bgm-player.ts` 兩個問題：(1) `start()` 在 `await ctx.resume()` 之前才檢查 `timer`，連點 🎵 會開兩個 interval，`stop()` 只清掉一個，`resume()` 還沒好就 `stop()` 會讓 `ctx.currentTime` 拋 TypeError；(2) 大螢幕分頁在背景時瀏覽器把 timer 降到約每秒一次，排程落後，回來時已過時間的音符一次全部響。
-
-**Why:** (1) 主持人連點音樂鍵可能讓音樂和音效卡在關閉狀態；(2) 大螢幕被切到背景再切回來時會聽到一團雜音。
-
-**Pros:** 根因都已找到：(1) 在 await 前設「啟動中」旗標或保存 pending promise，await 後重新檢查 `ctx`；(2) 跳過 `at` 已經過去的音符，或落後時重設 `loopStart`。
-
-**Cons:** 都要在真的瀏覽器裡手動試（連點、切分頁），單元測試很難涵蓋。
-
-**Context:** 2026-10-07 `/ship`（v0.9.15.1，fix-bgm-bass-order）的對抗審查發現，都是既有程式碼，不是那個 PR 造成的。同一份審查也提到空曲目會讓 `schedule()` 每次 tick 都拋錯，但現在的曲子是固定常數、不會是空的，所以沒記。
-
-**Effort:** S　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
----
-
 ## 用真的 API 驗證後記改用 Sonnet 5.5 之後還正常
 
 **What:** 在專案目錄跑 `ANTHROPIC_API_KEY=<金鑰> npm run test:live`，確認旁白（`claude-haiku-4-5`）和後記（`claude-sonnet-5-5`）都打得通、輸出通過我們的驗證。
@@ -447,6 +429,26 @@
 ---
 
 ## Completed
+
+## 背景音樂播放器：連點🎵的競態、背景分頁時音符擠成一團
+
+**What:** `lib/bgm-player.ts` 兩個問題：(1) `start()` 在 `await ctx.resume()` 之前才檢查 `timer`，連點 🎵 會開兩個 interval，`stop()` 只清掉一個，`resume()` 還沒好就 `stop()` 會讓 `ctx.currentTime` 拋 TypeError；(2) 大螢幕分頁在背景時瀏覽器把 timer 降到約每秒一次，排程落後，回來時已過時間的音符一次全部響。
+
+**Why:** (1) 主持人連點音樂鍵可能讓音樂和音效卡在關閉狀態；(2) 大螢幕被切到背景再切回來時會聽到一團雜音。
+
+**Pros:** 根因都已找到：(1) 在 await 前設「啟動中」旗標或保存 pending promise，await 後重新檢查 `ctx`；(2) 跳過 `at` 已經過去的音符，或落後時重設 `loopStart`。
+
+**Cons:** 都要在真的瀏覽器裡手動試（連點、切分頁），單元測試很難涵蓋。
+
+**Context:** 2026-10-07 `/ship`（v0.9.15.1，fix-bgm-bass-order）的對抗審查發現，都是既有程式碼，不是那個 PR 造成的。同一份審查也提到空曲目會讓 `schedule()` 每次 tick 都拋錯，但現在的曲子是固定常數、不會是空的，所以沒記。
+
+**Effort:** S　**Priority:** P2
+
+**Completed:** v0.15.1.3 (2026-10-28)
+
+**Depends on / blocked by:** 無。
+
+---
 
 ## 房間密碼（知道 4 碼代碼的人都能加入）
 
