@@ -177,8 +177,6 @@ export type ServerMessage =
 /** One bank question in the host's picker: a short label for its content, its answer, and why it can't be picked now. */
 export interface HostPick {
   id: string;
-  /** 1-5 for a room question; the boss's are listed under "boss". */
-  difficulty: number | "boss";
   label: string;
   answer: string;
   block?: PickBlock;

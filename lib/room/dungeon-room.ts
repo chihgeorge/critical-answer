@@ -110,6 +110,8 @@ export class DungeonRoom {
   private hostToken = "";
   // ponytail: in-memory Map. If hibernation is ever enabled it must move to conn.setState.
   private hostConns = new Map<string, Conn>();
+  /** The last HOST_PICKS sent to the host pages, so an unchanged picker is not sent again. */
+  private lastPicks: string | null = null;
   /** Changes whenever the room instance restarts, so clients can show "game reset". */
   private roomEpoch = crypto.randomUUID();
   /** connection id -> team id, so onClose can mark the right team offline. Only set after the connection proved the team key. */
@@ -410,24 +412,37 @@ export class DungeonRoom {
   }
 
   /** Host-only: the picker's questions with their answers, what each target may queue and what is queued. */
-  private sendPicks(conn: Conn) {
+  private picksMessage(): ServerMessage | null {
     const game = this.game;
-    if (!game || game.phase !== "playing") return;
-    const ids: [string, number | "boss"][] = [...game.pools.flatMap((pool, i) => pool.map((id): [string, number] => [id, i + 1])), ...game.boss.questionIds.map((id): [string, "boss"] => [id, "boss"])];
-    const questions: HostPick[] = ids.flatMap(([id, difficulty]) => {
-      const q = findQuestion(this.bank, id);
+    if (!game || game.phase !== "playing") return null;
+    const bankQuestions = new Map(allQuestions(this.bank).map((q) => [q.id, q]));
+    const questions: HostPick[] = [...game.pools.flat(), ...game.boss.questionIds].flatMap((id) => {
+      const q = bankQuestions.get(id);
       if (!q) return [];
       const label = q.content.kind === "text" ? q.content.value : q.content.kind === "image" ? "（圖片題）" : "（YouTube 題）";
       const block = pickBlock(game, id);
-      return [{ id, difficulty, label, answer: answerText(q), ...(block ? { block } : {}) }];
+      return [{ id, label, answer: answerText(q), ...(block ? { block } : {}) }];
     });
     const targets = [...game.teams.filter((t) => !t.inBoss).map((t) => t.id), "boss"];
     const options = Object.fromEntries(targets.map((t) => [t, pickableQuestionIds(game, t)]));
     const queued: Record<string, string> = {};
     for (const t of game.teams) if (t.queuedQuestionId) queued[t.id] = t.queuedQuestionId;
     if (game.boss.queuedQuestionId) queued.boss = game.boss.queuedQuestionId;
-    this.sendTo(conn, { type: "HOST_PICKS", questions, options, queued });
+    return { type: "HOST_PICKS", questions, options, queued };
   }
+
+  /** The picker carries the whole bank, so the host pages get it again only when it changed (a phone's
+   * option taps broadcast STATE too). `claimed` is a host that just claimed: it gets a copy even when
+   * nothing changed. `lastPicks` always records what the connected hosts hold, and null when none are. */
+  private sendPicks(claimed?: Conn) {
+    const msg = this.hostConns.size > 0 ? this.picksMessage() : null;
+    const text = msg && JSON.stringify(msg);
+    const changed = text !== this.lastPicks;
+    this.lastPicks = text;
+    if (!msg) return;
+    for (const conn of changed ? [...this.hostConns.values()] : claimed ? [claimed] : []) this.sendTo(conn, msg);
+  }
+
 
   private snapshot(): ServerMessage {
     if (!this.game) return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch };
@@ -470,10 +485,8 @@ export class DungeonRoom {
   private broadcastState() {
     this.broadcast(this.snapshot());
     // The answer goes only to connections that hold the host token, never to broadcast.
-    for (const conn of this.hostConns.values()) {
-      this.sendAnswer(conn);
-      this.sendPicks(conn);
-    }
+    for (const conn of this.hostConns.values()) this.sendAnswer(conn);
+    this.sendPicks();
     if (this.game?.phase === "finished") {
       this.broadcast({ type: "GAME_OVER", winners: this.game.winners });
     }
@@ -544,6 +557,7 @@ export class DungeonRoom {
 
   /** Back to a room nobody has ever used, under a new epoch (a client that still has the old one shows "game reset"). */
   private reset() {
+    this.lastPicks = null;
     this.game = null;
     this.pendingTeams = [];
     this.hostToken = "";
@@ -953,7 +967,7 @@ export class DungeonRoom {
     try {
       this.game = queueQuestion(this.game, target, questionId);
       // Nothing anyone else sees changed: only the host pages hear about it.
-      for (const host of this.hostConns.values()) this.sendPicks(host);
+      this.sendPicks();
     } catch (err) {
       this.sendInvalid(conn, err);
     }
