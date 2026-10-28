@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.1.2] - 2026-10-28
+
+### Changed
+- The big-screen URL in the host's ⚙ 更多 panel is now a link that opens the big screen in a new tab, so a host whose laptop drives the TV no longer has to copy it. The host page stays where it is.
+
 ## [0.15.1.1] - 2026-10-28
 
 ### Fixed
