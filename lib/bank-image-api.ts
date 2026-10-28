@@ -11,6 +11,8 @@ export interface BankImageApiDeps {
   /** Writes the validated bytes to storage and returns the key they're stored under. Cloudflare
    * R2 in production (worker/index.ts); an in-memory Map in tests. */
   putImage(bytes: Uint8Array, contentType: string): Promise<{ key: string }>;
+  /** True while the stored bank can't be read by this version: no save can keep an upload then. */
+  bankUnreadable(): Promise<boolean>;
 }
 
 // Independent of MAX_BANK_BODY_BYTES (lib/bank-api.ts) — that governs the bank JSON PUT, this
@@ -57,6 +59,17 @@ export async function handleBankImageApi(request: Request, deps: BankImageApiDep
 
   const authError = ownerAuthResponse(request, deps.ownerKey, cors);
   if (authError) return authError;
+  let unreadable: boolean;
+  try {
+    unreadable = await deps.bankUnreadable();
+  } catch (err) {
+    // BankStore unreachable (redeploying, cold start): refuse rather than upload an image no save may keep.
+    console.error(JSON.stringify({ event: "bank_state_unavailable", error: String(err) }));
+    return new Response("題庫暫時連不上，請稍後再上傳", { status: 503, headers: cors });
+  }
+  if (unreadable) {
+    return new Response("題庫目前是唯讀：存著的題庫這個版本讀不懂，上傳的圖片存不進去", { status: 409, headers: cors });
+  }
 
   // Same lesson as bank-api.ts's PUT handler: Content-Length is attacker-controlled, so the real
   // limit is enforced against bytes actually read below, not this header. This early check is
