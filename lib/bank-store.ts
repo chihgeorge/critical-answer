@@ -41,7 +41,7 @@ const BANK_KEY = "bank";
 /** The stored bank's format. Bump it when older code reading a newly saved bank would lose data on
  * its next save (e.g. a new field its parseBank drops): older code sees a higher number, treats the
  * stored bank as unreadable and refuses to save. A stored bank without one is format 1. */
-export const BANK_FORMAT = 1;
+export const BANK_FORMAT = 2;
 /** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
 const PENDING_KEY = "pendingImageDeletes";
 /** Default wait before an orphaned image is deleted: a room's default 24-hour expiry plus an hour

@@ -89,3 +89,12 @@ describe("toNarrationEvent: entering the boss room", () => {
     expect(toNarrationEvent(withBranches(), advance(false), "史萊姆")).not.toHaveProperty("entersBoss");
   });
 });
+
+describe("boss phases", () => {
+  it("names the phase under way when a team enters the boss room from phase 2 on (D13), and only then", () => {
+    const o: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, reward: 20, nextRoomIndex: 0, entersBoss: true };
+    expect(toNarrationEvent(game, o, "害羞幽靈", undefined, "主題曲之謎")).toMatchObject({ entersBoss: { branches: [], phase: "主題曲之謎" } });
+    expect(toNarrationEvent(game, o, "害羞幽靈")).toMatchObject({ entersBoss: { branches: [] } });
+    expect((toNarrationEvent(game, o, "害羞幽靈") as { entersBoss: object }).entersBoss).not.toHaveProperty("phase");
+  });
+});

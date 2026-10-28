@@ -25,6 +25,24 @@ const valid = () => ({
   boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [q("b1")] },
 });
 
+const phase1 = () => ({ maxHp: 3, questions: [q("b1")] });
+
+describe("boss phases", () => {
+  it("reads a bank without phases as one phase with an empty name and rule", () => {
+    expect(parseBank(valid()).boss.phases).toEqual([{ name: "", rule: "", maxHp: 3, questions: [q("b1")] }]);
+  });
+
+  it("reads phases in order, trims names and rules, and lets phase 1 leave them empty", () => {
+    const b = parseBank({ ...valid(), boss: { monster: valid().boss.monster, phases: [phase1(), { name: " 主題曲之謎 ", rule: "聽前奏", maxHp: 2, questions: [q("c1"), q("c2")] }] } });
+    expect(b.boss.phases.map((p) => [p.name, p.rule, p.maxHp, p.questions.map((x) => x.id)])).toEqual([
+      ["", "", 3, ["b1"]],
+      ["主題曲之謎", "聽前奏", 2, ["c1", "c2"]],
+    ]);
+    expect(allQuestions(b).map((x) => x.id)).toEqual(["a1", "a2", "b1", "c1", "c2"]);
+    expect(findQuestion(b, "c2")).toMatchObject({ boss: true, difficulty: 5 });
+  });
+});
+
 describe("shipped bank", () => {
   const all = allQuestions(BANK);
 
@@ -41,7 +59,7 @@ describe("shipped bank", () => {
   it("has unique ids and a boss deck", () => {
     const ids = all.map((x) => x.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(BANK.boss.questions.length).toBeGreaterThanOrEqual(5);
+    expect(BANK.boss.phases[0].questions.length).toBeGreaterThanOrEqual(5);
   });
 
   it("is all four-option multipleChoice questions, with the correct option in varied positions", () => {
@@ -54,7 +72,7 @@ describe("shipped bank", () => {
   });
 
   it("no question gives away another one's answer: in its text anywhere in the bank (the big screen is shared), in its options within a pool", () => {
-    const placed = [...DIFFICULTIES.map((d) => BANK.pools[d]), BANK.boss.questions].flatMap((list) => list.map((q) => ({ q, list })));
+    const placed = [...DIFFICULTIES.map((d) => BANK.pools[d]), ...BANK.boss.phases.map((p) => p.questions)].flatMap((list) => list.map((q) => ({ q, list })));
     for (const { q: item, list } of placed) {
       for (const { q: other, list: otherList } of placed) {
         if (other === item) continue;
@@ -187,6 +205,13 @@ describe("parseBank", () => {
     ["a negative room reward", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], reward: -1 }] })],
     ["a non-integer room reward", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], reward: 1.5 }] })],
     ["a boss hit reward that is not a number", () => ({ ...valid(), boss: { ...valid().boss, hitReward: "10" } })],
+    ["boss phases that are not a list", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: {} } })],
+    ["no boss phases", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: [] } })],
+    ["a phase 2 with no rule", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: [phase1(), { name: "主題曲之謎", rule: "  ", maxHp: 2, questions: [q("c1")] }] } })],
+    ["a phase 2 with no name", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: [phase1(), { rule: "聽前奏", maxHp: 2, questions: [q("c1")] }] } })],
+    ["a phase 2 without hp", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: [phase1(), { name: "n", rule: "r", maxHp: 0, questions: [q("c1")] }] } })],
+    ["a phase 2 with no questions", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: [phase1(), { name: "n", rule: "r", maxHp: 2, questions: [] }] } })],
+    ["a duplicate id across boss phases", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: [phase1(), { name: "n", rule: "r", maxHp: 2, questions: [q("b1")] }] } })],
     ["an unknown kind", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [{ id: "a1", text: "t", kind: "essay" }] }] })],
     ["a multipleChoice question with only 1 option", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [mc("a1", ["A"])] }] })],
     [

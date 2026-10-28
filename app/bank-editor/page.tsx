@@ -9,8 +9,8 @@
 // it doesn't decorate it; the standalone `image` kind from image-question-type.md retired).
 
 import { useEffect, useRef, useState } from "react";
-import { Panel, PixelButton } from "@/components/pixel";
-import { DIFFICULTIES, MAX_OPTIONS, MIN_OPTIONS, allQuestions, type Bank, type BankQuestion, type MediaContent } from "@/lib/question-bank";
+import { LabelChip, Panel, PixelButton } from "@/components/pixel";
+import { DIFFICULTIES, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import type { Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId } from "@/lib/youtube";
@@ -53,7 +53,7 @@ function useOwnerKey(onRestored: (key: string) => void) {
   return [key, save] as const;
 }
 
-type Location = { kind: "pool"; difficulty: Difficulty } | { kind: "boss" };
+type Location = { kind: "pool"; difficulty: Difficulty } | { kind: "boss"; phase: number };
 /** Which page of the editor is open (docs/designs/scoring-and-score-pools.md D2=B: one pool per tab). */
 type Tab = "rooms" | Difficulty | "boss";
 
@@ -78,6 +78,12 @@ function contentError(label: string, c: MediaContent | undefined): string | null
 function validationError(bank: Bank): string | null {
   for (const [i, r] of bank.rooms.entries()) {
     if (bank.pools[r.difficulty].length === 0) return `第 ${i + 1} 房是難度 ${r.difficulty}，但難度 ${r.difficulty} 題庫沒有題目`;
+  }
+  // From phase 2 on, players meet a phase through its card, so it needs a name and a rule (boss-phases.md D5, D6).
+  for (const [i, p] of bank.boss.phases.entries()) {
+    if (i === 0) continue;
+    if (!p.name.trim()) return `首領第 ${i + 1} 階段：名稱不能空白`;
+    if (!p.rule.trim()) return `首領第 ${i + 1} 階段：規則不能空白`;
   }
   const all = allQuestions(bank);
   for (const q of all) {
@@ -178,10 +184,23 @@ export default function BankEditorPage() {
 
   const [tab, setTab] = useState<Tab>(1);
 
-  const questionsAt = (b: Bank, loc: Location): BankQuestion[] => (loc.kind === "boss" ? b.boss.questions : b.pools[loc.difficulty]);
+  const questionsAt = (b: Bank, loc: Location): BankQuestion[] => (loc.kind === "boss" ? (b.boss.phases[loc.phase]?.questions ?? []) : b.pools[loc.difficulty]);
 
   const withQuestions = (b: Bank, loc: Location, questions: BankQuestion[]): Bank =>
-    loc.kind === "boss" ? { ...b, boss: { ...b.boss, questions } } : { ...b, pools: { ...b.pools, [loc.difficulty]: questions } };
+    loc.kind === "boss" ? withPhase(b, loc.phase, { questions }) : { ...b, pools: { ...b.pools, [loc.difficulty]: questions } };
+
+  const withPhase = (b: Bank, phase: number, patch: Partial<BossPhase>): Bank => ({
+    ...b,
+    boss: { ...b.boss, phases: b.boss.phases.map((p, i) => (i === phase ? { ...p, ...patch } : p)) },
+  });
+  const updatePhase = (phase: number, patch: Partial<BossPhase>) => setBank((prev) => (prev ? withPhase(prev, phase, patch) : prev));
+  const addPhase = () => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: [...prev.boss.phases, { name: "", rule: "", maxHp: 3, questions: [] }] } } : prev));
+  const deletePhase = (phase: number) => {
+    const count = bank?.boss.phases[phase]?.questions.length ?? 0;
+    // A phase can hold a whole set of prepared questions: one stray tap must not drop them all (D11).
+    if (count > 0 && !window.confirm(`刪除第 ${phase + 1} 階段和它的 ${count} 題？`)) return;
+    setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: prev.boss.phases.filter((_, i) => i !== phase) } } : prev));
+  };
 
   const updateRoom = (roomIndex: number, patch: Partial<Bank["rooms"][number]>) => {
     setBank((prev) => (prev ? { ...prev, rooms: prev.rooms.map((r, i) => (i === roomIndex ? { ...r, ...patch } : r)) } : prev));
@@ -282,29 +301,50 @@ export default function BankEditorPage() {
                 className={`!m-0 !px-3 !py-1 text-[15px] ${tab === t ? "" : "opacity-70"}`}
                 style={tab === t ? { background: "var(--cream, #fff3d6)" } : undefined}
               >
-                {t === "rooms" ? "房間" : t === "boss" ? `首領 ${bank.boss.questions.length}` : `難度 ${t}・${bank.pools[t].length}`}
+                {t === "rooms" ? "房間" : t === "boss" ? `首領 ${bossQuestions(bank).length}` : `難度 ${t}・${bank.pools[t].length}`}
               </PixelButton>
             ))}
           </div>
           {tab === "rooms" ? (
             <RoomsEditor bank={bank} onRoom={updateRoom} onHitReward={(hitReward) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, hitReward } } : prev))} />
+          ) : tab === "boss" ? (
+            <>
+              <Panel className="p-4 text-[16px]">
+                首領 · {bank.boss.monster.name} · {bank.boss.phases.length} 個階段 · {bossQuestions(bank).length} 題
+                <div className="text-[13px]">首領房的隊伍輪流回答目前階段的題目。打空一個階段的血（或它的題目都出完）就換下一階段，大螢幕這時才揭曉它的名稱和規則；玩家不會知道總共有幾個階段。</div>
+              </Panel>
+              {bank.boss.phases.map((p, i) => {
+                const loc: Location = { kind: "boss", phase: i };
+                return (
+                  <div key={i} className="flex flex-col gap-2">
+                    <BossPhaseEditor index={i} phase={p} canDelete={bank.boss.phases.length > 1} onChange={(patch) => updatePhase(i, patch)} onDelete={() => deletePhase(i)} />
+                    <RoomEditor
+                      testId={i === 0 ? "bank-room-boss" : `bank-room-boss-${i + 1}`}
+                      title={`第 ${i + 1} 階段的題目 · ${p.questions.length} 題`}
+                      note={i === 0 ? "第 1 階段看起來就是普通的首領。" : `第 ${i} 階段打完後出現。`}
+                      questions={p.questions}
+                      onUpdate={(id, updater) => updateQuestion(loc, id, updater)}
+                      onDelete={(id) => deleteQuestion(loc, id)}
+                      onAdd={() => addQuestion(loc)}
+                      onUploadImage={uploadImage}
+                    />
+                  </div>
+                );
+              })}
+              <PixelButton data-testid="bank-add-phase" onClick={addPhase} className="!min-h-[44px]">
+                ＋ 新增階段
+              </PixelButton>
+            </>
           ) : (
             (() => {
-              const loc: Location = tab === "boss" ? { kind: "boss" } : { kind: "pool", difficulty: tab };
-              const used = tab === "boss" ? "" : roomsUsing(bank, tab);
+              const loc: Location = { kind: "pool", difficulty: tab };
+              const used = roomsUsing(bank, tab);
               return (
                 <RoomEditor
                   key={tab}
-                  testId={tab === "boss" ? "bank-room-boss" : `bank-pool-${tab}`}
-                  title={tab === "boss" ? `首領 · ${bank.boss.monster.name} · ${bank.boss.questions.length} 題` : `難度 ${tab} 題庫 · ${bank.pools[tab].length} 題`}
-                  note={
-                    tab === "boss"
-                      ? `首領房的隊伍輪流回答這些題目${
-                          // Every hit and every wrong lock uses one up; past that the ring repeats shown answers.
-                          bank.boss.questions.length < bank.boss.maxHp + 10 ? `；建議至少 ${bank.boss.maxHp + 10} 題，題目用完後會重出看過答案的題` : ""
-                        }`
-                      : `${used ? `${used}從這裡抽題` : "目前沒有房間是這個難度"}${tab < 5 ? `；難度 ${tab === 4 ? "5" : `${tab + 1}～5`} 的房間逃跑後也會抽到` : ""}`
-                  }
+                  testId={`bank-pool-${tab}`}
+                  title={`難度 ${tab} 題庫 · ${bank.pools[tab].length} 題`}
+                  note={`${used ? `${used}從這裡抽題` : "目前沒有房間是這個難度"}${tab < 5 ? `；難度 ${tab === 4 ? "5" : `${tab + 1}～5`} 的房間逃跑後也會抽到` : ""}`}
                   questions={questionsAt(bank, loc)}
                   onUpdate={(id, updater) => updateQuestion(loc, id, updater)}
                   onDelete={(id) => deleteQuestion(loc, id)}
@@ -381,6 +421,66 @@ function RoomsEditor({
           </label>
         </div>
         <div className="text-[13px]">最後一擊另外加 4 顆 D20（4～80 分）。</div>
+      </div>
+    </Panel>
+  );
+}
+
+/** One boss phase's name, rule and HP (docs/designs/boss-phases.md, approved mockup panel 6). Phase 1's
+ * name and rule are never shown to players, so only later phases require them (D5); an empty one is
+ * outlined in --danger (D6). */
+function BossPhaseEditor({
+  index,
+  phase,
+  canDelete,
+  onChange,
+  onDelete,
+}: {
+  index: number;
+  phase: BossPhase;
+  canDelete: boolean;
+  onChange: (patch: Partial<BossPhase>) => void;
+  onDelete: () => void;
+}) {
+  const required = index > 0;
+  const missing = (v: string) => (required && !v.trim() ? { boxShadow: "0 0 0 4px var(--danger)" } : undefined);
+  return (
+    <Panel className="flex flex-col gap-2 p-4" style={{ background: "var(--cream2)" }}>
+      <div data-testid={`bank-boss-phase-${index + 1}`} className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2 text-[15px]">
+          <LabelChip>第 {index + 1} 階段</LabelChip>
+          <label className="flex min-w-0 flex-1 items-center gap-1">
+            名稱
+            <input
+              className="px-input !py-1"
+              value={phase.name}
+              placeholder={required ? "例如：主題曲之謎" : "（第 1 階段可空白）"}
+              aria-invalid={!!missing(phase.name)}
+              style={missing(phase.name)}
+              onChange={(e) => onChange({ name: e.target.value })}
+            />
+          </label>
+          <label className="flex items-center gap-1">
+            血量
+            <input type="number" min={1} step={1} className="px-input !w-[64px] !py-1" value={phase.maxHp} onChange={(e) => onChange({ maxHp: Math.max(1, Math.floor(Number(e.target.value) || 1)) })} />
+          </label>
+          {canDelete && (
+            <PixelButton variant="flee" className="!m-0 !min-h-[44px] !px-3 !py-1" onClick={onDelete}>
+              刪除階段
+            </PixelButton>
+          )}
+        </div>
+        <label className="flex items-center gap-1 text-[15px]">
+          規則
+          <input
+            className="px-input !py-1"
+            value={phase.rule}
+            placeholder={required ? "例如：聽前奏，說出這首是哪部作品的主題曲" : "（第 1 階段不顯示，可空白）"}
+            aria-invalid={!!missing(phase.rule)}
+            style={missing(phase.rule)}
+            onChange={(e) => onChange({ rule: e.target.value })}
+          />
+        </label>
       </div>
     </Panel>
   );

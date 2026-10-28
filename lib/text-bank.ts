@@ -11,6 +11,6 @@ export function asTextBank(bank: Bank): Bank {
   return {
     ...bank,
     pools: Object.fromEntries(Object.entries(bank.pools).map(([d, qs]) => [d, qs.map(toText)])) as Bank["pools"],
-    boss: { ...bank.boss, questions: bank.boss.questions.map(toText) },
+    boss: { ...bank.boss, phases: bank.boss.phases.map((p) => ({ ...p, questions: p.questions.map(toText) })) },
   };
 }

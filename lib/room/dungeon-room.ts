@@ -5,6 +5,7 @@ import {
   createGame,
   DEFAULT_GAME_CONFIG,
   answerQuestion,
+  enterNextBossPhase,
   recordBranchChoice,
   sendToBoss,
   queueQuestion,
@@ -23,7 +24,7 @@ import {
   type LockedOption,
 } from "../game-state";
 import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type HostPick, type ServerMessage, type SoundCue } from "../protocol";
-import { UUID_RE, allQuestions, answerText, bossQuestionIds, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
+import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
@@ -131,6 +132,9 @@ export class DungeonRoom {
   private epilogueRequested = false;
   /** The answer on show until the host moves on (D7). In memory only: a restart simply drops it. */
   private reveal: AnswerReveal | null = null;
+  /** The boss's phase card is up (docs/designs/boss-phases.md): the next phase has started but its first
+   * question waits for the host's 下一題. Saved, unlike the reveal: a restart shows the card again. */
+  private phaseCard = false;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
   private lockTimer: ReturnType<typeof setTimeout> | null = null;
@@ -279,6 +283,7 @@ export class DungeonRoom {
       // minute. Capped so it never exceeds 60s even for a very long idleMs.
       lastActivityAt: this.lastActivityAt === null ? null : roundActivity(this.lastActivityAt, this.idleMs),
       bank: this.bank,
+      phaseCard: this.phaseCard,
     };
   }
 
@@ -362,6 +367,14 @@ export class DungeonRoom {
     this.aiNarration = this.aiAvailable && s.aiNarration;
     this.bank = s.bank;
     this.bankAnswers = allAnswers(s.bank);
+    this.phaseCard = s.phaseCard ?? false;
+    // A save from before boss phases has a one-phase boss.
+    if (this.game && !Array.isArray(this.game.boss.phases)) {
+      const b = this.game.boss;
+      this.game = { ...this.game, boss: { ...b, phases: [{ maxHp: b.maxHp, questionIds: b.questionIds }], phaseIndex: 0 } };
+    }
+    // The answer reveal does not survive a restart, so a phase that ended under it goes straight to its card.
+    if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
     this.lastActivityAt = s.lastActivityAt ?? this.now();
     this.lastSaved = JSON.stringify(this.persistedState());
@@ -428,7 +441,9 @@ export class DungeonRoom {
     const queued: Record<string, string> = {};
     for (const t of game.teams) if (t.queuedQuestionId) queued[t.id] = t.queuedQuestionId;
     if (game.boss.queuedQuestionId) queued.boss = game.boss.queuedQuestionId;
-    return { type: "HOST_PICKS", questions, options, queued };
+    // Host-only, like the answers: the players never learn how many phases are left (boss-phases.md D4).
+    const bossPhases = this.bank.boss.phases.map(({ name, rule, maxHp }) => ({ name, rule, maxHp }));
+    return { type: "HOST_PICKS", questions, options, queued, bossPhases, bossPhaseIndex: game.boss.phaseIndex };
   }
 
   /** The picker carries the whole bank, so the host pages get it again only when it changed (a phone's
@@ -452,8 +467,11 @@ export class DungeonRoom {
       phase: this.game.phase,
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
-      question: this.currentQuestion()?.pub ?? null,
+      // The card holds the new phase's first question back until the host's 下一題.
+      question: this.phaseCard ? null : (this.currentQuestion()?.pub ?? null),
       reveal: this.reveal,
+      ...(this.phaseCard ? { phaseCard: true as const } : {}),
+      ...this.bossPhaseInfo(),
       pendingLock: this.pendingLock,
       eventId: this.eventSeq,
       ...(this.cue ? { cue: this.cue } : {}),
@@ -571,6 +589,7 @@ export class DungeonRoom {
     this.epilogue = null;
     this.epilogueRequested = false;
     this.reveal = null;
+    this.phaseCard = false;
     this.clearAnswerTimers();
     this.transcript = [];
     this.notes = "";
@@ -796,15 +815,47 @@ export class DungeonRoom {
     if (!this.requireHost(conn)) return;
     // The reveal is always set in the same judgment that bumps eventSeq, so a HOST_NEXT for an
     // older STATE is stale — ignore it rather than close a reveal nobody has seen.
-    if (!this.reveal || eventId !== this.eventSeq) return;
-    this.closeReveal();
+    if (!this.paused() || eventId !== this.eventSeq) return;
+    if (this.reveal) return this.closeReveal();
+    this.phaseCard = false;
+    this.broadcastState();
+  }
+
+  /** An answer reveal or the boss's phase card is up: nobody answers until the host moves on. */
+  private paused(): boolean {
+    return !!this.reveal || this.phaseCard;
   }
 
   private closeReveal() {
     if (this.advanceTimer) clearTimeout(this.advanceTimer);
     this.advanceTimer = null;
     this.reveal = null;
+    // A hit that ended a boss phase showed its answer first; the phase card comes next (boss-phases.md).
+    if (this.game?.phase === "playing" && this.game.boss.phasePending) return this.openPhaseCard();
     this.broadcastState();
+  }
+
+  /** Starts the boss's next phase and shows its card until 下一題. `announce` is false on a restart, which
+   * replays no narration. */
+  private openPhaseCard(announce = true) {
+    const game = enterNextBossPhase(this.game!);
+    this.game = game;
+    this.phaseCard = true;
+    if (!announce) return;
+    const eventId = ++this.eventSeq;
+    this.cue = "boss-phase";
+    const phase = this.bank.boss.phases[game.boss.phaseIndex];
+    this.broadcastState();
+    const event: NarrationEvent = { type: "boss-phase", monster: this.bank.boss.monster.name, phase: game.boss.phaseIndex + 1, name: phase.name, rule: phase.rule };
+    const next = this.nextTurn();
+    void this.narrate(eventId, next ? { ...event, next } : event);
+  }
+
+  /** The boss phase under way, for /screen and /play, once players know there are phases: from phase 2 on. */
+  private bossPhaseInfo(): { bossPhaseInfo?: { name: string; rule: string } } {
+    const i = this.game?.boss.phaseIndex ?? 0;
+    const phase = i > 0 ? this.bank.boss.phases[i] : undefined;
+    return phase ? { bossPhaseInfo: { name: phase.name, rule: phase.rule } } : {};
   }
 
   private clearAnswerTimers() {
@@ -880,16 +931,18 @@ export class DungeonRoom {
       return;
     }
 
+    const [firstPhase, ...laterPhases] = bossPhaseStates(this.bank);
     this.game = createGame(
       this.pendingTeams,
       roomTemplates(this.bank),
       poolQuestionIds(this.bank),
-      bossQuestionIds(this.bank),
+      firstPhase.questionIds,
       DEFAULT_GAME_CONFIG,
-      this.bank.boss.maxHp,
+      firstPhase.maxHp,
       this.rng,
       this.bank.boss.hitReward,
       shuffledOptionOrders(this.bank, this.rng),
+      laterPhases,
     );
     // Default on when a key exists; the host can switch it off before starting.
     // gstack-shortcut(dec-db628e32): no cap on paid narration calls per room or overall (anyone can
@@ -922,8 +975,8 @@ export class DungeonRoom {
     // D7: judging waits until the host closes the reveal — a second host device or a stale page
     // must not skip past an answer the room hasn't been shown yet. Nor may it judge a lock that is
     // still in its beat (phone-answering.md E10).
-    if (this.reveal || this.pendingLock) {
-      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: this.reveal ? "reveal_pending" : "lock_pending" });
+    if (this.paused() || this.pendingLock) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: this.paused() ? "reveal_pending" : "lock_pending" });
       return;
     }
     // A multipleChoice question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
@@ -990,7 +1043,8 @@ export class DungeonRoom {
     // fixed before any narration awaits, so concurrent judgments cannot interleave.
     this.game = game;
     const eventId = ++this.eventSeq;
-    const event = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined);
+    const phaseName = prev.boss.phaseIndex > 0 ? this.bank.boss.phases[prev.boss.phaseIndex]?.name : undefined;
+    const event = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
     this.cue = event.type === "epilogue" ? null : event.type;
     // Shown to everyone (D3), but only on a genuinely correct answer (D5): a retry or a flee
     // must never reveal it, or the question loses its point; game-state.ts's deal()/boss ring
@@ -1016,6 +1070,8 @@ export class DungeonRoom {
       this.epilogueRequested = true;
       void this.sendEpilogue(narration, eventId).catch((err) => console.error("epilogue failed", err));
     }
+    // A miss that used up a boss phase has no answer to show: its card follows the retry at once (D7).
+    if (game.phase === "playing" && game.boss.phasePending && !this.reveal) this.openPhaseCard();
   }
 
   /** A team locks its current pick (E2, E11). Judged after the beat, in resolveLock. `shown` is the
@@ -1027,7 +1083,7 @@ export class DungeonRoom {
     const team = game.teams.find((t) => t.id === teamId);
     const q = this.question(questionId);
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
-    if (this.reveal) return reject("reveal_pending");
+    if (this.paused()) return reject("reveal_pending");
     if (this.pendingLock || game.pendingWrong) return reject("answer_pending");
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
     if (q?.kind !== "multipleChoice" || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
@@ -1137,7 +1193,7 @@ export class DungeonRoom {
     if (!teamId || !this.game) return;
     // /play hides the options during a reveal (D7); a stale client must not pre-pick the next
     // question before it has even been shown.
-    if (this.reveal) {
+    if (this.paused()) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
       return;
     }

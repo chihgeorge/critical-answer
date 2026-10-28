@@ -30,6 +30,7 @@ function view(over: Partial<SpectatorView> = {}, teams: Partial<SpectatorView["t
     })),
     bossHp: 5,
     bossMaxHp: 5,
+    bossPhase: 1,
     bossCurrentQuestionId: "boss-q1",
     bossKilledBy: null,
     eliminated: {},

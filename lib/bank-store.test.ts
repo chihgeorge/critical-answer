@@ -16,7 +16,7 @@ function memoryStorage(seed?: unknown): BankStorage {
 const validBank: Bank = {
   pools: { 1: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "1+1?" }, answer: "2" }], 2: [], 3: [], 4: [], 5: [] },
   rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, difficulty: 1, reward: 10 }],
-  boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, maxHp: 10, hitReward: 10, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "2+2?" }, answer: "4" }] },
+  boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, hitReward: 10, phases: [{ name: "", rule: "", maxHp: 10, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "2+2?" }, answer: "4" }] }] },
 };
 
 describe("BankStore.getVersionedBank", () => {
@@ -124,7 +124,7 @@ describe("BankStore.putBank", () => {
   });
 
   it("rejects a duplicate question id across rooms", async () => {
-    const dup: Bank = { ...validBank, boss: { ...validBank.boss, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "dup?" }, answer: "x" }] } };
+    const dup: Bank = { ...validBank, boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "dup?" }, answer: "x" }] }] } };
     const store = new BankStore(memoryStorage({ bank: validBank, version: 1 }));
     await expect(store.putBank(dup, 1)).rejects.toThrow(/duplicate question id/i);
   });
@@ -218,7 +218,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
     const OTHER = "55555555-5555-5555-5555-555555555555";
     const twoImages: Bank = {
       ...bankWithImage,
-      boss: { ...validBank.boss, questions: [{ kind: "text", id: "b-q1", content: { kind: "image", value: OTHER }, answer: "4" }] },
+      boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], questions: [{ kind: "text", id: "b-q1", content: { kind: "image", value: OTHER }, answer: "4" }] }] },
     };
     const { store, alarms, onImagesOrphaned, at } = setup({ bank: twoImages, version: 1 });
     await store.putBank(bankWithImage, 1); // drops OTHER at t=0

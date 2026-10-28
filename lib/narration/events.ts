@@ -17,12 +17,16 @@ export type NarrationEvent =
   /** `entersBoss`: this answer moved the team into the boss room (it reached the boss
    * threshold, or another team was already inside: Team.inBoss). `branches`
    * are the DM branch choices it made on the way (display text, room order), for the LLM to call
-   * back; the scripted lines just announce the entrance (design doc T4: no forced callback template). */
-  | WithNext<{ type: "correct"; team: string; monster: string; points: number; entersBoss?: { branches: string[] } }>
+   * back; the scripted lines just announce the entrance (design doc T4: no forced callback template).
+   * `phase`: the boss phase already under way when a late team walks in, from phase 2 on (boss-phases.md D13). */
+  | WithNext<{ type: "correct"; team: string; monster: string; points: number; entersBoss?: { branches: string[]; phase?: string } }>
   /** `boss`: a wrong boss answer, which always brings a new question (boss redesign D2=B). */
   | WithNext<{ type: "retry"; team: string; monster: string; boss?: true }>
   | WithNext<{ type: "flee"; team: string; monster: string }>
+  /** `bossHp` 0 without a kill: an earlier phase's bar emptied, and the next phase is still a secret. */
   | WithNext<{ type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number }>
+  /** The phase card opened: the boss is back with a new bar. `phase` counts from 1; nothing about later phases. */
+  | WithNext<{ type: "boss-phase"; monster: string; phase: number; name: string; rule: string }>
   | WithNext<{ type: "boss-kill"; team: string; monster: string; bonus: number }>
   /** Game over: ranking is sorted high to low. Longer line, longer timeout. */
   // ranking[].score carries reward points (Team.reward), not progress points (Team.score).
@@ -33,8 +37,8 @@ export type NarrationEvent =
  * boss's full HP); `monster` is the monster the team was facing, supplied by the
  * caller because the bank lives on the server.
  */
-export function toNarrationEvent(prev: GameState, outcome: AnswerOutcome, monster: string, next?: NextTurn): NarrationEvent {
-  const event = baseEvent(prev, outcome, monster);
+export function toNarrationEvent(prev: GameState, outcome: AnswerOutcome, monster: string, next?: NextTurn, bossPhase?: string): NarrationEvent {
+  const event = baseEvent(prev, outcome, monster, bossPhase);
   // A finished game has nobody next: the last line stands alone.
   return next && event.type !== "boss-kill" ? { ...event, next } : event;
 }
@@ -46,7 +50,8 @@ function branchesOf(team: GameState["teams"][number]): string[] {
     .flatMap(([, id]) => (id ? [BRANCH_LABELS[id]] : []));
 }
 
-function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string): Exclude<NarrationEvent, { type: "epilogue" }> {
+/** `bossPhase`: the current boss phase's name, given only from phase 2 on. */
+function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bossPhase?: string): Exclude<NarrationEvent, { type: "epilogue" }> {
   const t = prev.teams.find((x) => x.id === outcome.teamId);
   const team = t?.name ?? "冒險者";
   switch (outcome.type) {
@@ -58,7 +63,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string): Ex
         team,
         monster,
         points: outcome.reward,
-        ...(entersBoss ? { entersBoss: { branches: branchesOf(t) } } : {}),
+        ...(entersBoss ? { entersBoss: { branches: branchesOf(t), ...(bossPhase ? { phase: bossPhase } : {}) } } : {}),
       };
     }
     case "incorrect-retry":

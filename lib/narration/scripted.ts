@@ -44,6 +44,12 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
     "首領怒吼，還撐得住 {bossHp} 顆心。",
     "轟！{team}再添一擊，{bossHp} 顆心待破。",
   ],
+  "boss-phase": [
+    "{monster}的鱗片轉了顏色，戰鬥進入第{ordinal}階段：{name}！",
+    "還沒結束！{monster}重新站起，第{ordinal}階段「{name}」開始了。",
+    "{monster}發出一聲長嘯，血量全滿——第{ordinal}階段：{name}。",
+    "地城劇烈搖晃，{monster}換了模樣，迎來第{ordinal}階段！",
+  ],
   "boss-kill": [
     "{team}擊倒了{monster}！額外 {bonus} 分！",
     "{monster}轟然倒下，{team}拿下致命一擊，+{bonus}！",
@@ -97,6 +103,11 @@ export const ATMOSPHERE_VARIANTS: Record<Exclude<NarrationEvent["type"], "epilog
     "首領的怒吼震得人耳鳴。",
     "戰鬥的氣息瀰漫整個房間。",
   ],
+  "boss-phase": [
+    "規則變了：{rule}",
+    "這次的考驗是：{rule}",
+    "聽好了——{rule}",
+  ],
   "boss-kill": [
     "地城陷入一片寂靜。",
     "塵埃落定，勝利的氣息瀰漫。",
@@ -104,6 +115,21 @@ export const ATMOSPHERE_VARIANTS: Record<Exclude<NarrationEvent["type"], "epilog
     "這一刻，值得被記住。",
   ],
 };
+
+/** A hit that empties an earlier phase's bar (bossHp 0, no kill): the fight's outcome stays open until
+ * the phase card, so none of these says the boss fell (boss-phases.md D3). */
+export const BOSS_EMPTIED_VARIANTS = [
+  "{team}一擊打空了首領的血條！",
+  "{team}命中！首領的血條見底了……",
+  "最後一顆心也碎了，{team}屏住呼吸。",
+];
+
+/** A team walking into the boss room after phase 2 has started: the phase everyone has already seen (D13). */
+export const BOSS_ENTER_PHASE_VARIANTS = [
+  "{team}推開最後一道門，首領正處於「{phase}」！",
+  "{team}踏進首領房，戰鬥已經進入「{phase}」。",
+  "答對！{team}走進最深處，迎面就是「{phase}」的首領。",
+];
 
 /** A wrong boss answer: the boss brings a new question, there is nothing to answer again (D2=B). */
 export const BOSS_MISS_VARIANTS = [
@@ -130,6 +156,12 @@ export const NEXT_VARIANTS = {
   ],
 };
 
+const ORDINALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+/** 2 -> 二, for 第二階段. */
+export function ordinal(n: number): string {
+  return ORDINALS[n - 1] ?? String(n);
+}
+
 function fill(template: string, vars: object): string {
   const v = vars as Record<string, string | number | string[]>;
   return template.replace(/\{(\w+)\}/g, (_, key: string) => String(v[key] ?? ""));
@@ -150,6 +182,9 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     line(event: NarrationEvent): string {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
+      if (event.type === "boss-hit" && event.bossHp === 0) return fill(pick(BOSS_EMPTIED_VARIANTS, "boss-emptied"), event);
+      if (event.type === "boss-phase") return fill(pick(VARIANTS["boss-phase"], "boss-phase"), { ...event, ordinal: ordinal(event.phase) });
+      if (event.type === "correct" && event.entersBoss?.phase) return fill(pick(BOSS_ENTER_PHASE_VARIANTS, "boss-enter-phase"), { ...event, phase: event.entersBoss.phase });
       const bossEnter = event.type === "correct" && event.entersBoss;
       return fill(pick(bossEnter ? BOSS_ENTER_VARIANTS : VARIANTS[event.type], bossEnter ? "boss-enter" : event.type), event);
     },

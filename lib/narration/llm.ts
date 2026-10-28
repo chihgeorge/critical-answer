@@ -53,6 +53,7 @@ function describeEvent(e: NarrationEvent): string {
       const base = `事件：隊伍${q(e.team)}答對了，打退${q(e.monster)}，得 ${e.points} 分。`;
       if (!e.entersBoss) return base;
       const { branches } = e.entersBoss;
+      if (e.entersBoss.phase) return `${base}這一答讓他們踏進了首領房，首領戰已經進入階段${q(e.entersBoss.phase)}。第一行要提到他們踏進首領房和這個階段，不要提還有沒有別的階段。`;
       const callback = branches.length
         ? `他們一路上在分岔路口的選擇依序是：${branches.map(q).join("、")}。第一行要提到他們踏進首領房，並用一句話呼應他們一路上的選擇。`
         : "第一行要提到他們踏進首領房。";
@@ -65,7 +66,12 @@ function describeEvent(e: NarrationEvent): string {
     case "flee":
       return `事件：隊伍${q(e.team)}答錯後逃跑，換一題較簡單的。`;
     case "boss-hit":
-      return `事件：隊伍${q(e.team)}擊中首領，首領還剩 ${e.bossHp}/${e.bossMaxHp} 顆心。`;
+      // An emptied bar without a kill: the next phase is a surprise, so the line must leave the outcome open (D3).
+      return e.bossHp === 0
+        ? `事件：隊伍${q(e.team)}一擊打空了首領的血條。不要說首領倒下、被擊敗或戰鬥結束，結果留待揭曉。`
+        : `事件：隊伍${q(e.team)}擊中首領，首領還剩 ${e.bossHp}/${e.bossMaxHp} 顆心。`;
+    case "boss-phase":
+      return `事件：首領${q(e.monster)}沒有倒下，血量全滿重新站起，戰鬥進入第${e.phase}階段${q(e.name)}。新的規則：${q(e.rule)}。不要提還有沒有下一個階段。`;
     case "boss-kill":
       return `事件：隊伍${q(e.team)}擊倒了首領${q(e.monster)}，額外加 ${e.bonus} 分。`;
     case "epilogue":

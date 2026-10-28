@@ -224,3 +224,25 @@ describe("scripted: entering the boss room", () => {
     }
   });
 });
+
+describe("boss phases (docs/designs/boss-phases.md)", () => {
+  const p = createScriptedProvider(lcg(7));
+  it("an emptied bar without a kill never says the boss fell (D3)", () => {
+    for (let i = 0; i < 12; i++) {
+      const line = p.line({ type: "boss-hit", team, bossHp: 0, bossMaxHp: 3 });
+      expect(line).not.toMatch(/倒下|擊倒|擊敗|勝利|0\/3/);
+      expect(line).not.toContain("{");
+    }
+  });
+
+  it("the phase card names the phase reached and its rule, and nothing after it", () => {
+    const e = { type: "boss-phase" as const, monster, phase: 2, name: "主題曲之謎", rule: "聽前奏說出作品名" };
+    for (let i = 0; i < 8; i++) expect(p.line(e)).toMatch(/第二階段|主題曲之謎/);
+    for (let i = 0; i < 6; i++) expect(p.atmosphereLine(e)).toContain("聽前奏說出作品名");
+  });
+
+  it("a team entering the boss room mid-fight hears the phase already under way (D13)", () => {
+    const line = p.line({ type: "correct", team, monster, points: 30, entersBoss: { branches: [], phase: "主題曲之謎" } });
+    expect(line).toContain("主題曲之謎");
+  });
+});
