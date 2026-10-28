@@ -66,3 +66,22 @@ test("the phone shows reward points and the host sends a team to the boss from t
   await expect(host.getByRole("button", { name: /送王房|確定送/ })).toHaveCount(0);
   await expect(host.getByText(/首領血量/)).toBeVisible();
 });
+
+test("the big-screen URL in the host drawer opens the screen in a new tab, leaving the host page in place", async ({ browser }) => {
+  const context = await browser.newContext();
+  const host = await context.newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("甲隊");
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  const [screen] = await Promise.all([context.waitForEvent("page"), host.getByRole("link", { name: new RegExp(`/room/${code}/screen$`) }).click()]);
+  await expect(screen).toHaveURL(new RegExp(`/room/${code}/screen$`));
+  await expect(host).toHaveURL(/\/host/);
+});

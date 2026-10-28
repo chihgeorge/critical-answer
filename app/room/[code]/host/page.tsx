@@ -82,7 +82,8 @@ function MoreDrawer({
           )}
           <section>
             <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
-            <div className="break-all text-[14px]">{`${origin}/room/${code}/screen`}</div>
+            {/* A new tab, so opening it never navigates the host page away from its socket. */}
+            <a href={`/room/${code}/screen`} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{`${origin}/room/${code}/screen`}</a>
           </section>
           <section className="flex flex-col gap-2">
             <div className="text-[15px]">導演筆記{aiOn ? "（AI 每次寫旁白都會參考）" : "（AI 旁白已關閉，只會記錄）"}</div>
