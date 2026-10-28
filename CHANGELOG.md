@@ -8,6 +8,11 @@ All notable changes to Critical Answer are documented here.
 - Clicking 🎵 twice quickly on the big screen no longer starts two music loops, one of which could never be stopped. Turning music off while it is still starting no longer throws an error and leaves music and sound effects stuck off.
 - When the big screen tab comes back from the background, the music no longer plays every note it missed at once. Those notes are skipped and the song carries on from where it is.
 
+## [0.15.1.2] - 2026-10-28
+
+### Changed
+- The big-screen URL in the host's ⚙ 更多 panel is now a link that opens the big screen in a new tab, so a host whose laptop drives the TV no longer has to copy it. The host page stays where it is.
+
 ## [0.15.1.1] - 2026-10-28
 
 ### Fixed
