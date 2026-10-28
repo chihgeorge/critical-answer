@@ -74,6 +74,14 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "字".repeat(41) })).toBeNull();
   });
 
+  it("HOST_QUEUE_QUESTION: a target and a question id, or null to clear", () => {
+    expect(parseClientMessage({ type: "HOST_QUEUE_QUESTION", target: "t1", questionId: "q1" })).toEqual({ type: "HOST_QUEUE_QUESTION", target: "t1", questionId: "q1" });
+    expect(parseClientMessage({ type: "HOST_QUEUE_QUESTION", target: "boss", questionId: null })).toEqual({ type: "HOST_QUEUE_QUESTION", target: "boss", questionId: null });
+    expect(parseClientMessage({ type: "HOST_QUEUE_QUESTION", target: "t1" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_QUEUE_QUESTION", target: "t1", questionId: 3 })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_QUEUE_QUESTION", questionId: "q1" })).toBeNull();
+  });
+
   it("HOST_SEND_TO_BOSS: needs a team id", () => {
     expect(parseClientMessage({ type: "HOST_SEND_TO_BOSS", teamId: "t1" })).toEqual({ type: "HOST_SEND_TO_BOSS", teamId: "t1" });
     expect(parseClientMessage({ type: "HOST_SEND_TO_BOSS" })).toBeNull();

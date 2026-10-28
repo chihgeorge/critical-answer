@@ -424,6 +424,49 @@ describe("HOST_SEND_TO_BOSS (scoring-and-score-pools.md S13)", () => {
   });
 });
 
+describe("HOST_QUEUE_QUESTION (the host picks the next question)", () => {
+  function startedGame(teamCount = 2) {
+    const { room, hostConn } = makeRoomWithHost();
+    const { ids } = joinTeams(room, hostConn, teamCount);
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn, ids };
+  }
+  const sentOf = (conn: ReturnType<typeof makeConn>) => (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+  const lastPicks = (conn: ReturnType<typeof makeConn>) => sentOf(conn).findLast((m) => m.type === "HOST_PICKS");
+
+  it("rejects a non-host and a room with no game", () => {
+    const { room, ids } = startedGame(1);
+    const conn = makeConn("not-host");
+    send(room, conn, { type: "HOST_QUEUE_QUESTION", target: ids[0], questionId: null });
+    expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "not_host" });
+    const { room: idle, hostConn } = makeRoomWithHost();
+    send(idle, hostConn, { type: "HOST_QUEUE_QUESTION", target: T1, questionId: null });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "no_active_game" });
+  });
+
+  it("sends the host its picker with answers, queues a pick, and deals it on the team's next correct answer", () => {
+    const { room, hostConn, ids } = startedGame(2);
+    const picks = lastPicks(hostConn);
+    const pick = picks.options[ids[0]].find((id: string) => !picks.questions.find((q: { id: string; block?: unknown }) => q.id === id).block);
+    const entry = picks.questions.find((q: { id: string }) => q.id === pick);
+    expect(entry.answer).toBe(answerText(findQuestion(BANK, pick)!));
+    send(room, hostConn, { type: "HOST_QUEUE_QUESTION", target: ids[0], questionId: pick });
+    expect(lastPicks(hostConn).queued).toEqual({ [ids[0]]: pick });
+    // The picker (it carries answers) never goes out to everyone.
+    const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+    expect(broadcasts.some((m) => m.type === "HOST_PICKS")).toBe(false);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
+    expect(room.game!.teams[0].currentQuestionId).toBe(pick);
+  });
+
+  it("refuses a question the team can't be dealt next", () => {
+    const { room, hostConn, ids } = startedGame(2);
+    send(room, hostConn, { type: "HOST_QUEUE_QUESTION", target: ids[0], questionId: room.game!.teams[1].currentQuestionId });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
+    expect(room.game!.teams[0].queuedQuestionId).toBeUndefined();
+  });
+});
+
 describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
   function startedGame(teamCount = 2) {
     const { room, hostConn } = makeRoomWithHost();
@@ -1238,11 +1281,11 @@ describe("questions and answers (T3)", () => {
     for (const c of conns) expect(sent(c).some((m) => m.type === "HOST_ANSWER")).toBe(false);
   });
 
-  it("a host that claims mid-game gets the current answer at once", () => {
+  it("a host that claims mid-game gets the current answer and the question picker at once", () => {
     const { room } = started();
     const second = makeConn("host-phone");
     claim(room, second);
-    expect(sent(second).map((m) => m.type)).toEqual(["HOST_OK", "HOST_ANSWER"]);
+    expect(sent(second).map((m) => m.type)).toEqual(["HOST_OK", "HOST_ANSWER", "HOST_PICKS"]);
   });
 
   it("STATE's live question never carries an answer, and STATE.reveal carries the correct one only for questions actually answered correctly (D2/D3/D5)", () => {

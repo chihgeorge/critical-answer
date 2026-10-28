@@ -122,6 +122,9 @@ export interface Team {
    * from score, because the second rule depends on when the answer came.
    */
   inBoss: boolean;
+  /** The host's pick for this team's next room question (queueQuestion): the next deal of its difficulty
+   * hands it out instead of drawing. Dropped when the team walks into the boss room. */
+  queuedQuestionId?: string;
 }
 
 export interface RoomTemplate {
@@ -139,6 +142,8 @@ export interface BossState {
   killedByTeamId: string | null;
   currentQuestionId: string;
   questionIds: string[];
+  /** The host's pick for the boss's next question (queueQuestion): the next rotation takes it. */
+  queuedQuestionId?: string;
 }
 
 export interface GameConfig {
@@ -247,7 +252,8 @@ function deal(
     base = used.map((u, i) => (i === p ? [] : u));
     pool = all;
   }
-  const held = new Set(teams.filter((t) => !t.inBoss).map((t) => t.currentQuestionId)); // a boss team's room question is stale
+  // A boss team's room question is stale; a question the host queued for a team is spoken for.
+  const held = new Set([...teams.filter((t) => !t.inBoss).map((t) => t.currentQuestionId), ...teams.flatMap((t) => t.queuedQuestionId ?? [])]);
   const order = pools.map((_, i) => i).filter((i) => i !== p).sort((x, y) => Math.abs(x - p) - Math.abs(y - p) || x - y);
   // From each donor pool, a question not drawn since its last reshuffle comes first.
   const borrowFrom = (ok: (id: string) => boolean) =>
@@ -308,6 +314,72 @@ function nextBossQuestionId(boss: BossState, revealed: string[]): string {
     if (!revealed.includes(candidate)) return candidate;
   }
   return questionIds[(startIdx + 1) % questionIds.length];
+}
+
+/** The boss's next question: the host's queued pick if it is still unseen, else the next one in the ring. */
+function rotateBoss(boss: BossState, revealed: string[]): Pick<BossState, "currentQuestionId" | "queuedQuestionId"> {
+  const q = boss.queuedQuestionId;
+  if (q && q !== boss.currentQuestionId && !revealed.includes(q)) return { currentQuestionId: q, queuedQuestionId: undefined };
+  return { currentQuestionId: nextBossQuestionId(boss, revealed), queuedQuestionId: q };
+}
+
+/** Deal `team` a question of `difficulty`: its queued pick when that is in the pool this difficulty
+ * deals from, else deal(). A pick of another difficulty (a flee lowered it) waits for a deal that fits. */
+function dealFor(game: GameState, team: Team, difficulty: Difficulty, revealed: string[], rng: () => number, own?: string) {
+  const q = team.queuedQuestionId;
+  if (q && game.pools[poolIndexFor(game.pools, difficulty)].includes(q) && !revealed.includes(q)) {
+    const from = game.pools.findIndex((ids) => ids.includes(q));
+    return { questionId: q, used: game.usedQuestionIds.map((u, i) => (i === from && !u.includes(q) ? [...u, q] : u)), queuedQuestionId: undefined };
+  }
+  return { ...deal(game.pools, game.usedQuestionIds, revealed, game.teams, difficulty, rng, own), queuedQuestionId: q };
+}
+
+/** The difficulty a team's next correct answer deals from: its next room's (the last room repeats). */
+export function nextRoomDifficulty(game: GameState, team: Team): Difficulty {
+  return game.rooms[Math.min(team.roomIndex + 1, game.rooms.length - 1)].baseDifficulty;
+}
+
+/** Why the host can't queue question `id` for anyone, or null if it is free. */
+export type PickBlock = { kind: "revealed" } | { kind: "held" | "queued"; teamId: string | "boss" };
+
+export function pickBlock(game: GameState, id: string): PickBlock | null {
+  if (game.revealedQuestionIds.includes(id)) return { kind: "revealed" };
+  const holder = game.teams.find((t) => !t.inBoss && t.currentQuestionId === id);
+  if (holder) return { kind: "held", teamId: holder.id };
+  if (game.boss.currentQuestionId === id) return { kind: "held", teamId: "boss" };
+  const queuer = game.teams.find((t) => t.queuedQuestionId === id);
+  if (queuer) return { kind: "queued", teamId: queuer.id };
+  if (game.boss.queuedQuestionId === id) return { kind: "queued", teamId: "boss" };
+  return null;
+}
+
+/** The questions the host may pick from for `target` (a team id or "boss"): a room team's next room
+ * difficulty, or the boss's questions. Blocked ones are included; pickBlock says which. */
+export function pickableQuestionIds(game: GameState, target: string): string[] {
+  if (target === "boss") return game.boss.questionIds;
+  const team = getTeam(game, target);
+  return team.inBoss ? [] : game.pools[poolIndexFor(game.pools, nextRoomDifficulty(game, team))];
+}
+
+/**
+ * The host picks the next question for a team's room (or, with "boss", the boss's), from the pool its
+ * next room deals from (TODOS.md 主持人可以指定每一題要出題庫裡的哪一題). Revealed, held and already
+ * queued questions are refused. `questionId` null clears the pick. Not a turn: nothing else changes.
+ */
+export function queueQuestion(game: GameState, target: string, questionId: string | null): GameState {
+  assertPlaying(game);
+  const team = target === "boss" ? null : getTeam(game, target);
+  if (team?.inBoss) throw new InvalidActionError(`${target} is in the boss room`);
+  const current = team ? team.queuedQuestionId : game.boss.queuedQuestionId;
+  if (questionId !== null && questionId !== current) {
+    if (!pickableQuestionIds(game, target).includes(questionId)) throw new InvalidActionError(`${questionId} can't be ${target}'s next question`);
+    const block = pickBlock(game, questionId);
+    if (block) throw new InvalidActionError(`${questionId} is ${block.kind}`);
+  }
+  const queuedQuestionId = questionId ?? undefined;
+  return team
+    ? { ...game, teams: patchTeam(game.teams, team.id, () => ({ queuedQuestionId })) }
+    : { ...game, boss: { ...game.boss, queuedQuestionId } };
 }
 
 export const DEFAULT_GAME_CONFIG: GameConfig = { bossThreshold: 15 };
@@ -496,10 +568,10 @@ export function answerQuestion(
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
-      const nextQuestionId = bossKilled ? boss.currentQuestionId : nextBossQuestionId(boss, revealedNow);
+      const next = bossKilled ? { currentQuestionId: boss.currentQuestionId } : rotateBoss(boss, revealedNow);
 
       // The boss question is shared: every team already in boss phase faces the same
-      // nextQuestionId, not just the team that just answered. Reset ALL of their
+      // next question, not just the team that just answered. Reset ALL of their
       // picks, or a team's stale index from the old question could line up with a
       // different option on the new one and mislead the host into judging against
       // a pick that team never made for this question (adversarial review finding).
@@ -513,7 +585,7 @@ export function answerQuestion(
           ...boss,
           hp: newHp,
           killedByTeamId: bossKilled ? teamId : boss.killedByTeamId,
-          currentQuestionId: nextQuestionId,
+          ...next,
         },
       };
       outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, reward, ...(killBonus === undefined ? {} : { killBonus }) };
@@ -528,7 +600,8 @@ export function answerQuestion(
       // wrong option makes it revealed; the rotation skips every revealed one.
       const shownWrong = (game.eliminated[questionId]?.length ?? 0) > 0;
       const revealed = shownWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
-      const rotatedBossQuestionId = fleeChoice === "flee" || shownWrong ? nextBossQuestionId(boss, revealed) : boss.currentQuestionId;
+      const rotated = fleeChoice === "flee" || shownWrong ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
+      const rotatedBossQuestionId = rotated.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a rotation changes
       // the question for every team in boss phase, so every one of their picks resets —
       // unless it stayed on the same question (a one-question boss bank, or no option shown), where picks still apply.
@@ -536,7 +609,7 @@ export function answerQuestion(
         ...game,
         revealedQuestionIds: revealed,
         teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game, game.teams) : game.teams,
-        boss: { ...boss, currentQuestionId: rotatedBossQuestionId },
+        boss: { ...boss, ...rotated },
       };
       outcome =
         fleeChoice === "flee"
@@ -555,9 +628,10 @@ export function answerQuestion(
       // A team walking into the boss room stays at its room: no next-room question is dealt
       // (it would burn one) and no branch room opens that it will never walk into.
       const nextRoomIndex = entersBoss ? team.roomIndex : Math.min(team.roomIndex + 1, game.rooms.length - 1);
+      // Its queued pick goes with it: the boss room has its own.
       const dealt = entersBoss
-        ? { questionId: team.currentQuestionId, used: game.usedQuestionIds }
-        : deal(game.pools, game.usedQuestionIds, revealedQuestionIds, game.teams, game.rooms[nextRoomIndex].baseDifficulty, rng, questionId);
+        ? { questionId: team.currentQuestionId, used: game.usedQuestionIds, queuedQuestionId: undefined }
+        : dealFor(game, team, game.rooms[nextRoomIndex].baseDifficulty, revealedQuestionIds, rng, questionId);
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,
@@ -570,6 +644,7 @@ export function answerQuestion(
           currentQuestionId: dealt.questionId,
           currentSelection: null,
           inBoss: entersBoss,
+          queuedQuestionId: dealt.queuedQuestionId,
         })),
       };
       outcome = { type: "correct-room-advance", teamId, pointsAwarded, reward, nextRoomIndex, entersBoss };
@@ -577,12 +652,12 @@ export function answerQuestion(
       const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
       // Fleeing reveals the answer only after a wrong lock (revealedOnFlee); otherwise only skip
       // already-revealed questions from prior correct answers.
-      const dealt = deal(game.pools, game.usedQuestionIds, revealedOnFlee, game.teams, newDifficulty, rng, team.currentQuestionId);
+      const dealt = dealFor(game, team, newDifficulty, revealedOnFlee, rng, team.currentQuestionId);
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,
         revealedQuestionIds: revealedOnFlee,
-        teams: patchTeam(game.teams, teamId, () => ({ currentDifficulty: newDifficulty, currentQuestionId: dealt.questionId, currentSelection: null })),
+        teams: patchTeam(game.teams, teamId, () => ({ currentDifficulty: newDifficulty, currentQuestionId: dealt.questionId, currentSelection: null, queuedQuestionId: dealt.queuedQuestionId })),
       };
       outcome = { type: "incorrect-flee", teamId, newDifficulty };
     } else {
@@ -613,7 +688,7 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   const team = getTeam(game, teamId);
   if (team.inBoss) throw new InvalidActionError(`${teamId} is already in the boss room`);
   if (game.pendingWrong?.teamId === teamId) throw new InvalidActionError(`${teamId} has a wrong lock waiting for retry or flee`);
-  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null }));
+  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null, queuedQuestionId: undefined }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
