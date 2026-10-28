@@ -2,6 +2,17 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.4.0] - 2026-10-28
+
+### Fixed
+- With the question picker or the ⚙ 更多 drawer open, the keys 1, 2, 3 and Enter no longer judge the turn hidden behind it or close an answer reveal. Before, pressing Enter on a picker row while an answer was on show moved to the next question instead of picking.
+- When the host page goes back to the lobby while the question picker is open, the picker no longer pops back up by itself once the next game starts.
+- A host page that reloads or reconnects mid-game still gets every later change to the question picker.
+
+### Changed
+- The host page receives the question picker, which carries the whole bank, only when something in it changed. Before, it came again with every update, including each option a team tapped on its phone.
+- In the question picker, questions that can't be picked are greyed in the game's own colours, and the reason (已公布, 正在答, 已排給…) is easier to read. The 指定下一題, 指定 and 取消 buttons are taller and easier to tap on a phone.
+
 ## [0.15.3.0] - 2026-10-28
 
 ### Added
