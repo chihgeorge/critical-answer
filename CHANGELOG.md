@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.2.1] - 2026-10-28
+
+### Changed
+- `package.json` now carries the same version as `VERSION` again (0.15.2). v0.15.1.0 bumped `VERSION` but left `package.json` at 0.15.0, and the release tooling refuses to bump while the two disagree.
+
 ## [0.15.1.1] - 2026-10-28
 
 ### Fixed
