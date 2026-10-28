@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.2.3] - 2026-10-28
+
+### Changed
+- TODOS.md has three new backlog items: the host picks which bank question comes next, an ordering question type, and a boss fight split into phases with their own questions.
+
 ## [0.15.2.2] - 2026-10-28
 
 ### Fixed
