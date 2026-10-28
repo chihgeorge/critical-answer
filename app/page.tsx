@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { freshHostPath, generateRoomCode, newHostToken } from "@/lib/room-code";
+import { rememberJoinPassword } from "@/lib/stored";
 import { DialogueBox, HomeBackground, Panel, PixelButton, Sprite } from "@/components/pixel";
 
 const inputClass =
@@ -33,8 +34,8 @@ function HomeForm() {
       setError("請輸入 4 碼房間代碼");
       return;
     }
-    const pw = password.trim();
-    router.push(`/room/${code}/play?name=${encodeURIComponent(name)}${pw ? `&pw=${encodeURIComponent(pw)}` : ""}`);
+    rememberJoinPassword(code, password.trim());
+    router.push(`/room/${code}/play?name=${encodeURIComponent(name)}`);
   }
 
   return (

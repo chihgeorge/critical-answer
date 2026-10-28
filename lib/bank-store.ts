@@ -38,6 +38,10 @@ import { assertSavable, parseBank, imageKeysOf, type Bank } from "./question-ban
 import type { RoomStorage } from "./room/io";
 
 const BANK_KEY = "bank";
+/** The stored bank's format. Bump it when older code reading a newly saved bank would lose data on
+ * its next save (e.g. a new field its parseBank drops): older code sees a higher number, treats the
+ * stored bank as unreadable and refuses to save. A stored bank without one is format 1. */
+export const BANK_FORMAT = 1;
 /** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
 const PENDING_KEY = "pendingImageDeletes";
 /** Default wait before an orphaned image is deleted: a room's default 24-hour expiry plus an hour
@@ -141,11 +145,13 @@ export class BankStore {
     const raw = await this.storage.get(BANK_KEY);
     if (raw === undefined) {
       const seeded: VersionedBank = { bank: BANK, version: 1 };
-      await this.storage.put(BANK_KEY, seeded);
+      await this.storage.put(BANK_KEY, { ...seeded, format: BANK_FORMAT });
       return { current: seeded, unreadable: false };
     }
     try {
-      const r = raw as { bank?: unknown; version?: unknown };
+      const r = raw as { bank?: unknown; version?: unknown; format?: unknown };
+      // Fails closed: anything but a missing format or one this code knows could be a newer writer's.
+      if (r.format !== undefined && !(typeof r.format === "number" && r.format <= BANK_FORMAT)) throw new Error(`stored bank format ${String(r.format)} is not one this version (${BANK_FORMAT}) can read`);
       return { current: { bank: parseBank(r.bank), version: typeof r.version === "number" ? r.version : 1 }, unreadable: false };
     } catch (err) {
       // Corrupt storage must not crash whatever called this (a room trying to start a game, the
@@ -168,7 +174,7 @@ export class BankStore {
     const validated = parseBank(candidate);
     assertSavable(validated);
     const next: VersionedBank = { bank: validated, version: current.version + 1 };
-    await this.storage.put(BANK_KEY, next);
+    await this.storage.put(BANK_KEY, { ...next, format: BANK_FORMAT });
     const oldKeys = imageKeysOf(current.bank);
     const newKeys = imageKeysOf(validated);
     const orphaned = [...oldKeys].filter((k) => !newKeys.has(k));

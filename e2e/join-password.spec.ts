@@ -19,6 +19,7 @@ test("a join password keeps strangers out of the lobby and lets the right passwo
   await phone.getByPlaceholder(/房間密碼/).fill("dragon");
   await phone.getByRole("button", { name: /加入/ }).click();
   await expect(phone.getByText("等待主持人開始遊戲")).toBeVisible();
+  expect(phone.url()).not.toContain("dragon"); // handed over in sessionStorage, never in the URL
   await expect(host.getByText("甲隊")).toBeVisible();
   await expect(host.getByText("路人")).toHaveCount(0);
 });

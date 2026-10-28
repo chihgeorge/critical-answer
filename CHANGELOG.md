@@ -5,7 +5,12 @@ All notable changes to Critical Answer are documented here.
 ## [0.15.1.0] - 2026-10-27
 
 ### Added
-- Optional join password for rooms. The host sets it in the lobby (the 加入密碼 panel). A new team then has to enter it in the home page's join form, and a phone that arrives without it, or with the wrong one, sees a message and a link back to the form. Teams that have already joined rejoin with their team key alone. The password is saved with the room, so it still applies after a restart. The game is publicly deployed, so this item (a P1 before a public deploy) is now done.
+- Optional join password for rooms. The host sets it in the lobby (the 加入密碼 panel). A new team then has to enter it in the home page's join form, and a phone that arrives without it, or with the wrong one, sees a message and a link back to the form. The password goes from the join form to the game page in sessionStorage, never in the URL. Teams that have already joined rejoin with their team key alone. The password is saved with the room, so it still applies after a restart. The game is publicly deployed, so this item (a P1 before a public deploy) is now done.
+
+## [0.15.0.2] - 2026-10-27
+
+### Added
+- The stored question bank now records a format number (`BANK_FORMAT` in `lib/bank-store.ts`). Code that finds a newer format treats the stored bank as unreadable, so it refuses to save over it. Before this change, a newer format that only added fields would still parse in older code, and the next save would drop those fields. When you change the bank format in a way older code would lose data, increase `BANK_FORMAT` by 1. Only v0.15.0.2 and later check the number: once the format has been raised, do not roll back below v0.15.0.2, because older versions will still save over a newer bank.
 
 ## [0.15.0.1] - 2026-10-26
 
