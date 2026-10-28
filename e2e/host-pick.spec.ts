@@ -28,6 +28,23 @@ test("the host picks a team's next question and it comes up after the team's cor
   await choice.click();
   await expect(host.getByTestId("queued-pick")).toHaveText(`下一題：${label}`);
 
+  // Regression: ISSUE-001 — with the picker open, the judge keys still judged the turn behind it
+  // Found by /review on 2026-10-28
+  // The same goes for the ⚙ 更多 drawer.
+  await host.getByRole("button", { name: "取消" }).click();
+  await host.getByRole("button", { name: "指定下一題" }).click();
+  await host.keyboard.press("1");
+  await host.getByRole("button", { name: "關閉" }).click();
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await host.keyboard.press("1");
+  await host.getByRole("button", { name: "關閉" }).click();
+  await host.getByRole("button", { name: "指定下一題" }).click();
+  await host.getByRole("button").filter({ hasText: `${label}答案：` }).click();
+  // The pick's reply comes after any judgment the keys would have sent, so the turn is checked once it is in.
+  await expect(host.getByTestId("queued-pick")).toHaveText(`下一題：${label}`);
+  await expect(host.getByTestId("host-reveal")).toHaveCount(0);
+  await expect(host.getByRole("button", { name: "答對！" })).toBeEnabled();
+
   await host.getByRole("button", { name: "答對！" }).click();
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(host.getByText(label, { exact: true })).toBeVisible();
