@@ -89,7 +89,7 @@ describe("HOST_CLAIM", () => {
     const conn = makeConn("h1");
     claim(room, conn);
     expect((room as any).isHost(conn)).toBe(true);
-    expect(lastSentTo(conn)).toEqual({ type: "HOST_OK", aiAvailable: false }); // no API key in the test room
+    expect(lastSentTo(conn)).toEqual({ type: "HOST_OK", aiAvailable: false, joinPassword: "" }); // no API key in the test room
   });
 
   it("rejects a claim with a different token once a token is set", () => {
@@ -206,6 +206,26 @@ describe("JOIN", () => {
     const conn = makeConn();
     send(room, conn, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Team A" });
     expect(lastBroadcast(room)).toMatchObject({ type: "LOBBY", teams: [{ id: T1, name: "Team A" }] });
+  });
+
+  it("asks new teams for the join password once the host sets one, but not a team that already joined", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    send(room, makeConn("early"), { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Early" });
+    send(room, hostConn, { type: "HOST_SET_PASSWORD", password: " dragon " });
+    const noPw = makeConn("no-pw");
+    send(room, noPw, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess" });
+    expect(lastSentTo(noPw)).toMatchObject({ type: "ERROR", error: "bad_password" });
+    send(room, noPw, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess", password: "dragons" });
+    expect(lastSentTo(noPw)).toMatchObject({ type: "ERROR", error: "bad_password" });
+    send(room, makeConn("pw"), { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Friend", password: "dragon" });
+    // A reload of an already-joined phone carries no password and still gets back in.
+    send(room, makeConn("early-again"), { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Early" });
+    expect(lastBroadcast(room).teams.map((t: { name: string }) => t.name)).toEqual(["Early", "Friend"]);
+    // Only the host may set it.
+    send(room, noPw, { type: "HOST_SET_PASSWORD", password: "" });
+    expect(lastSentTo(noPw)).toMatchObject({ type: "ERROR", error: "not_host" });
+    claim(room, makeConn("host-reload"));
+    expect((room as any).joinPassword).toBe("dragon");
   });
 
   it("rejects a 9th distinct team once the room is full (max 8)", () => {

@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.15.1.0] - 2026-10-27
+
+### Added
+- Optional join password for rooms. The host sets it in the lobby (the 加入密碼 panel). A new team then has to enter it in the home page's join form, and a phone that arrives without it, or with the wrong one, sees a message and a link back to the form. The password goes from the join form to the game page in sessionStorage, never in the URL. Teams that have already joined rejoin with their team key alone. The password is saved with the room, so it still applies after a restart. The game is publicly deployed, so this item (a P1 before a public deploy) is now done.
+
 ## [0.15.0.2] - 2026-10-27
 
 ### Added

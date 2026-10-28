@@ -135,6 +135,8 @@ export default function HostPage() {
   /** Server has an API key, so AI narration can be switched on. Default on when it can. */
   const [aiAvailable, setAiAvailable] = useState(false);
   const [aiOn, setAiOn] = useState(true);
+  const [joinPassword, setJoinPassword] = useState("");
+  const [savedPassword, setSavedPassword] = useState("");
   const [narration, setNarration] = useState<NarrationState>(null);
   // Team whose judge buttons are disabled while we wait for the server's
   // STATE broadcast to confirm the judgment — doubles as visible click
@@ -162,6 +164,8 @@ export default function HostPage() {
           // The room is ours: from now on this link can no longer swap its code.
           if (isFreshRoomHash(location.hash)) history.replaceState(null, "", location.pathname + location.search + settledHash(location.hash));
           setAiAvailable(msg.aiAvailable);
+          setJoinPassword(msg.joinPassword);
+          setSavedPassword(msg.joinPassword);
           break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
@@ -349,6 +353,34 @@ export default function HostPage() {
               <div className="mt-1 text-[13px]">
                 {aiAvailable ? "由 Claude 即時寫旁白，失敗或太慢時自動改用腳本旁白。" : "伺服器沒有設定 API 金鑰，會使用腳本旁白。"}
               </div>
+            </Panel>
+            <Panel tone="lav" className="flex flex-col gap-2 px-3 py-2">
+              <div className="text-[16px]">加入密碼（選填）</div>
+              <div className="text-[13px]">設了之後，新隊伍要輸入密碼才能加入；已經加入的隊伍不受影響。公開網址建議設定。</div>
+              <div className="flex items-stretch gap-2">
+                <input
+                  type="text"
+                  value={joinPassword}
+                  onChange={(e) => setJoinPassword(e.target.value)}
+                  // HOST_OK fills this with the room's password, so typing before it arrives would be overwritten.
+                  disabled={!ready}
+                  maxLength={32}
+                  autoComplete="off"
+                  placeholder="不設就留空"
+                  className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[16px]"
+                />
+                <PixelButton
+                  disabled={!ready || joinPassword.trim() === savedPassword}
+                  onClick={() => {
+                    send({ type: "HOST_SET_PASSWORD", password: joinPassword });
+                    setSavedPassword(joinPassword.trim());
+                  }}
+                  className="!m-0 !px-4 !py-2 text-[16px]"
+                >
+                  設定
+                </PixelButton>
+              </div>
+              <div className="text-[13px]">{savedPassword ? `目前密碼：${savedPassword}` : "目前沒有密碼，知道代碼就能加入"}</div>
             </Panel>
             <PixelButton
               variant="primary"

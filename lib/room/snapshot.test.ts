@@ -14,6 +14,7 @@ const valid = (): RoomSnapshot => ({
   epilogue: null,
   epilogueRequested: false,
   notes: "",
+  joinPassword: "",
   editedLines: [],
   aiNarration: false,
   lastActivityAt: 1_700_000_000_000,
@@ -30,6 +31,13 @@ describe("parseSnapshot", () => {
     const { lastActivityAt: _omit, ...legacy } = valid();
     void _omit;
     expect(parseSnapshot(legacy)?.lastActivityAt).toBeNull();
+  });
+
+  it("reads a save from before join passwords as a room without one", () => {
+    const { joinPassword: _omit, ...legacy } = valid();
+    void _omit;
+    expect(parseSnapshot(legacy)?.joinPassword).toBe("");
+    expect(parseSnapshot({ ...valid(), joinPassword: 42 })).toBeNull();
   });
 
   it("refuses anything that is not an object, and an unknown schema version", () => {

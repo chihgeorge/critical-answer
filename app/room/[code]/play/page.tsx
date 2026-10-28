@@ -6,6 +6,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE, offlineNotice, type DropSnapshot } from "@/lib/offline-notice";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
+import { joinPasswordFor } from "@/lib/stored";
 import type { ClientMessage, LobbyTeams, StateMessage } from "@/lib/protocol";
 import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
@@ -112,6 +113,9 @@ export default function PlayPage() {
   const { code } = useParams<{ code: string }>();
   const searchParams = useSearchParams();
   const teamName = searchParams.get("name") ?? "隊伍";
+  /** What to tell a phone the room turned away for its password; null while it isn't turned away. */
+  const [badPassword, setBadPassword] = useState<string | null>(null);
+  const sentPassword = useRef("");
 
   const [teamId, setTeamId] = useState("");
   const [lobby, setLobby] = useState<LobbyTeams | null>(null);
@@ -140,7 +144,8 @@ export default function PlayPage() {
       setDisconnected(false);
       const id = getOrCreateTeamId();
       setTeamId(id);
-      send({ type: "JOIN", teamId: id, teamKey: getOrCreateTeamKey(), teamName, ...(resume ? { resume: true } : {}) });
+      const password = (sentPassword.current = joinPasswordFor(code));
+      send({ type: "JOIN", teamId: id, teamKey: getOrCreateTeamKey(), teamName, ...(password ? { password } : {}), ...(resume ? { resume: true } : {}) });
     },
     onClose({ rested, openedBefore }) {
       if (rested || !openedBefore) return;
@@ -151,7 +156,11 @@ export default function PlayPage() {
     },
     onMessage(msg) {
       switch (msg.type) {
+        case "ERROR":
+          if (msg.error === "bad_password") setBadPassword(sentPassword.current ? "房間密碼不對" : "這個房間要密碼才能加入");
+          break;
         case "LOBBY":
+          // Not a sign we joined: a connection that failed the password still gets every LOBBY broadcast.
           setLobby(msg.teams);
           setGame(null);
           lastGame.current = null;
@@ -224,7 +233,14 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {!game && (
+        {badPassword && (
+          <Panel role="alert" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]" style={{ background: "#ffd9d9" }}>
+            {badPassword}
+            <a href={`/?code=${code}`} className="text-[16px] underline underline-offset-2">回首頁輸入密碼</a>
+          </Panel>
+        )}
+
+        {!game && !badPassword && (
           <Panel tone="lav" className="px-4 py-5 text-center text-[20px]">
             {lobby ? "等待主持人開始遊戲…" : "連線中…"}
           </Panel>
