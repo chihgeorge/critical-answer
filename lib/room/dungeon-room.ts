@@ -7,6 +7,9 @@ import {
   answerQuestion,
   recordBranchChoice,
   sendToBoss,
+  queueQuestion,
+  pickBlock,
+  pickableQuestionIds,
   recordOptionSelection,
   recordWrongLock,
   currentQuestionIdOf,
@@ -19,7 +22,7 @@ import {
   type GameState,
   type LockedOption,
 } from "../game-state";
-import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type ServerMessage, type SoundCue } from "../protocol";
+import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type HostPick, type ServerMessage, type SoundCue } from "../protocol";
 import { UUID_RE, allQuestions, answerText, bossQuestionIds, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
@@ -406,6 +409,26 @@ export class DungeonRoom {
     if (q) this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer });
   }
 
+  /** Host-only: the picker's questions with their answers, what each target may queue and what is queued. */
+  private sendPicks(conn: Conn) {
+    const game = this.game;
+    if (!game || game.phase !== "playing") return;
+    const ids: [string, number | "boss"][] = [...game.pools.flatMap((pool, i) => pool.map((id): [string, number] => [id, i + 1])), ...game.boss.questionIds.map((id): [string, "boss"] => [id, "boss"])];
+    const questions: HostPick[] = ids.flatMap(([id, difficulty]) => {
+      const q = findQuestion(this.bank, id);
+      if (!q) return [];
+      const label = q.content.kind === "text" ? q.content.value : q.content.kind === "image" ? "（圖片題）" : "（YouTube 題）";
+      const block = pickBlock(game, id);
+      return [{ id, difficulty, label, answer: answerText(q), ...(block ? { block } : {}) }];
+    });
+    const targets = [...game.teams.filter((t) => !t.inBoss).map((t) => t.id), "boss"];
+    const options = Object.fromEntries(targets.map((t) => [t, pickableQuestionIds(game, t)]));
+    const queued: Record<string, string> = {};
+    for (const t of game.teams) if (t.queuedQuestionId) queued[t.id] = t.queuedQuestionId;
+    if (game.boss.queuedQuestionId) queued.boss = game.boss.queuedQuestionId;
+    this.sendTo(conn, { type: "HOST_PICKS", questions, options, queued });
+  }
+
   private snapshot(): ServerMessage {
     if (!this.game) return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch };
     return {
@@ -447,7 +470,10 @@ export class DungeonRoom {
   private broadcastState() {
     this.broadcast(this.snapshot());
     // The answer goes only to connections that hold the host token, never to broadcast.
-    for (const conn of this.hostConns.values()) this.sendAnswer(conn);
+    for (const conn of this.hostConns.values()) {
+      this.sendAnswer(conn);
+      this.sendPicks(conn);
+    }
     if (this.game?.phase === "finished") {
       this.broadcast({ type: "GAME_OVER", winners: this.game.winners });
     }
@@ -642,6 +668,9 @@ export class DungeonRoom {
         case "HOST_SEND_TO_BOSS":
           this.handleSendToBoss(sender, msg.teamId);
           break;
+        case "HOST_QUEUE_QUESTION":
+          this.handleQueueQuestion(sender, msg.target, msg.questionId);
+          break;
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice, msg.eventId);
           break;
@@ -684,6 +713,7 @@ export class DungeonRoom {
     this.hostConns.set(conn.id, conn);
     this.sendTo(conn, { type: "HOST_OK", aiAvailable: this.aiAvailable, joinPassword: this.joinPassword });
     this.sendAnswer(conn);
+    this.sendPicks(conn);
   }
 
   private handleJoin(conn: Conn, teamId: string, teamKey: string, rawName: string, password: string) {
@@ -909,6 +939,21 @@ export class DungeonRoom {
     try {
       this.game = sendToBoss(this.game, teamId);
       this.broadcastState();
+    } catch (err) {
+      this.sendInvalid(conn, err);
+    }
+  }
+
+  private handleQueueQuestion(conn: Conn, target: string, questionId: string | null) {
+    if (!this.requireHost(conn)) return;
+    if (!this.game) {
+      this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+      return;
+    }
+    try {
+      this.game = queueQuestion(this.game, target, questionId);
+      // Nothing anyone else sees changed: only the host pages hear about it.
+      for (const host of this.hostConns.values()) this.sendPicks(host);
     } catch (err) {
       this.sendInvalid(conn, err);
     }

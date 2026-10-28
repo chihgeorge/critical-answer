@@ -24,7 +24,7 @@
 // The first HOST_CLAIM for a room sets it (trust on first use, on a 4-letter
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
-import { isBranchOptionId, type BranchOptionId, type GamePhase, type LockedOption, type SpectatorView } from "./game-state";
+import { isBranchOptionId, type BranchOptionId, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { SpriteKind } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -90,6 +90,8 @@ export type ClientMessage =
   | { type: "HOST_NEXT"; eventId: number }
   /** Host override: take a team into the boss room (docs/designs/scoring-and-score-pools.md S13). */
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
+  /** Host: the next question for a team's room, or with target "boss" the boss's; null clears it (game-state queueQuestion). */
+  | { type: "HOST_QUEUE_QUESTION"; target: string; questionId: string | null }
   | {
       type: "HOST_JUDGE";
       teamId: string;
@@ -160,7 +162,27 @@ export type ServerMessage =
   | { type: "HOST_OK"; aiAvailable: boolean; joinPassword: string }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   | { type: "HOST_ANSWER"; questionId: string; answer: string }
+  /** Host-only, sent with every STATE: what the host may queue (HOST_QUEUE_QUESTION) and what is queued.
+   * Carries answers, so it goes out with sendTo, never broadcast. */
+  | {
+      type: "HOST_PICKS";
+      questions: HostPick[];
+      /** Per target (a room team's id, or "boss"): the question ids it may pick from. */
+      options: Record<string, string[]>;
+      /** Per target: the queued question id, when there is one. */
+      queued: Record<string, string>;
+    }
   | { type: "ERROR"; error: ServerErrorCode; detail?: string };
+
+/** One bank question in the host's picker: a short label for its content, its answer, and why it can't be picked now. */
+export interface HostPick {
+  id: string;
+  /** 1-5 for a room question; the boss's are listed under "boss". */
+  difficulty: number | "boss";
+  label: string;
+  answer: string;
+  block?: PickBlock;
+}
 
 export type StateMessage = Extract<ServerMessage, { type: "STATE" }>;
 export type LobbyTeams = Extract<ServerMessage, { type: "LOBBY" }>["teams"];
@@ -251,6 +273,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_SEND_TO_BOSS": {
       const teamId = str(m.teamId, MAX_ID);
       return teamId === null ? null : { type: "HOST_SEND_TO_BOSS", teamId };
+    }
+    case "HOST_QUEUE_QUESTION": {
+      const target = str(m.target, MAX_ID);
+      const questionId = m.questionId === null ? null : str(m.questionId, MAX_ID);
+      if (target === null || (questionId === null && m.questionId !== null)) return null;
+      return { type: "HOST_QUEUE_QUESTION", target, questionId };
     }
     case "HOST_JUDGE": {
       const teamId = str(m.teamId, MAX_ID);

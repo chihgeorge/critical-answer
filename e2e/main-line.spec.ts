@@ -81,7 +81,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.getByText(`正解：${answer}`)).toBeVisible();
   await expect(players[0].page.getByText(`正解：${answer}`)).toBeVisible();
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0); // judging waits for 下一題
-  await host.getByRole("button", { name: "下一題" }).click();
+  await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByText(`正解：${answer}`)).toHaveCount(0);
 
   await expect(host.getByText("輪到：乙隊")).toBeVisible();

@@ -221,7 +221,7 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
   await team.reload();
   await expect(team.getByText("正解：揭曉答案")).toBeVisible();
 
-  await host.getByRole("button", { name: "下一題" }).click();
+  await host.getByRole("button", { name: "下一題", exact: true }).click();
   for (const page of [screen, team]) {
     await expect(page.getByText("正解：揭曉答案")).toHaveCount(0);
     await expect(page.getByText("因為這是補充說明")).toHaveCount(0);

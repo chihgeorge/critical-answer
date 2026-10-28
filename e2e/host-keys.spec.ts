@@ -29,7 +29,7 @@ test("the host judges with the keyboard: 2 marks a wrong answer, 1 a correct one
 
   await host.keyboard.press("1"); // correct: the answer goes up on the big screen
   await expect(host.getByTestId("host-reveal")).toBeVisible();
-  await expect(host.getByRole("button", { name: "下一題" })).toBeEnabled();
+  await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeEnabled();
 
   await host.keyboard.press("Control+1"); // a browser shortcut: left alone
   await expect(host.getByTestId("host-reveal")).toBeVisible();

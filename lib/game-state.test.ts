@@ -13,6 +13,9 @@ import {
   firstPendingBranchRoom,
   rollBossKillBonus,
   sendToBoss,
+  queueQuestion,
+  pickBlock,
+  pickableQuestionIds,
   InvalidActionError,
   type GameState,
   type RoomTemplate,
@@ -1161,5 +1164,86 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(id).toMatch(/^p1-/);
     const { outcome } = answerQuestion(g, "T0", id, true, "retry", first);
     expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1 });
+  });
+});
+
+describe("queueQuestion (the host picks the next question)", () => {
+  it("hands a team its queued question on its next correct answer, then deals as usual", () => {
+    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7");
+    const { game: g2 } = answerQuestion(g, "T0", "room0-q1", true, "retry", first);
+    expect(g2.teams[0].currentQuestionId).toBe("room0-q7");
+    expect(g2.teams[0].queuedQuestionId).toBeUndefined();
+    expect(g2.usedQuestionIds[0]).toContain("room0-q7");
+  });
+
+  it("keeps a retry on the same question and the pick waiting", () => {
+    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7");
+    const { game: g2 } = answerQuestion(g, "T0", "room0-q1", false, "retry", first);
+    expect(g2.teams[0].currentQuestionId).toBe("room0-q1");
+    expect(g2.teams[0].queuedQuestionId).toBe("room0-q7");
+  });
+
+  it("waits through a flee to another difficulty, and is used by the flee when the difficulty fits", () => {
+    // Rooms at difficulty 2, so a flee drops to the difficulty-1 pool.
+    const pools = [["e1", "e2", "e3"], ["m1", "m2", "m3", "m4"], [], [], []];
+    const g0 = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], makeRooms(3, 2), pools, ["b1"], { bossThreshold: 15 }, 2, first);
+    const g = queueQuestion(g0, "T0", "m4");
+    const { game: fled } = answerQuestion(g, "T0", "m1", false, "flee", first);
+    expect(fled.teams[0].currentQuestionId).toBe("e1");
+    expect(fled.teams[0].queuedQuestionId).toBe("m4");
+    // Fleeing to a pool the pick is in uses it.
+    const pools1 = poolsWith(1, ["q1", "q2", "q3", "q4"]);
+    const h0 = createGame([{ id: "T0", name: "A" }], makeRooms(3, 1), pools1, ["b1"], { bossThreshold: 15 }, 2, first);
+    const { game: h } = answerQuestion(queueQuestion(h0, "T0", "q4"), "T0", "q1", false, "flee", first);
+    expect(h.teams[0].currentQuestionId).toBe("q4");
+  });
+
+  it("never deals a question queued for another team", () => {
+    // T1's next deal would draw room0-q4 first; T0 has it queued.
+    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q4");
+    const { game: g2 } = answerQuestion(advanceTurn(g), "T1", "room0-q2", true, "retry", first);
+    expect(g2.teams[1].currentQuestionId).toBe("room0-q5");
+  });
+
+  it("drops a team's pick when it enters the boss room", () => {
+    const g = queueQuestion(makeGame({ bossThreshold: 1 }), "T0", "room0-q7");
+    const { game: g2 } = answerQuestion(g, "T0", "room0-q1", true, "retry", first);
+    expect(g2.teams[0].inBoss).toBe(true);
+    expect(g2.teams[0].queuedQuestionId).toBeUndefined();
+    expect(sendToBoss(queueQuestion(makeGame({ bossThreshold: 15 }), "T1", "room0-q7"), "T1").teams[1].queuedQuestionId).toBeUndefined();
+  });
+
+  it("rotates the boss to its queued question on the next hit or flee", () => {
+    let g = sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0");
+    g = queueQuestion(g, "boss", "boss-q3");
+    const { game: hit } = answerQuestion(g, "T0", "boss-q1", true, "retry", first);
+    expect(hit.boss.currentQuestionId).toBe("boss-q3");
+    expect(hit.boss.queuedQuestionId).toBeUndefined();
+    const { game: fled } = answerQuestion(queueQuestion(g, "boss", "boss-q3"), "T0", "boss-q1", false, "flee", first);
+    expect(fled.boss.currentQuestionId).toBe("boss-q3");
+    // A plain retry keeps the question and the pick.
+    const { game: retried } = answerQuestion(g, "T0", "boss-q1", false, "retry", first);
+    expect(retried.boss.currentQuestionId).toBe("boss-q1");
+    expect(retried.boss.queuedQuestionId).toBe("boss-q3");
+  });
+
+  it("only offers the team's next room difficulty, and refuses revealed, held and queued questions", () => {
+    const pools = [["e1", "e2"], ["m1", "m2", "m3"], [], [], []];
+    const g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }, { baseDifficulty: 2, reward: 20 }], pools, ["b1", "b2"], { bossThreshold: 15 }, 2, first);
+    expect(pickableQuestionIds(g, "T0")).toEqual(["m1", "m2", "m3"]);
+    expect(pickableQuestionIds(g, "boss")).toEqual(["b1", "b2"]);
+    expect(() => queueQuestion(g, "T0", "e2")).toThrow(InvalidActionError);
+    const q = queueQuestion(g, "T0", "m1");
+    expect(pickBlock(q, "m1")).toEqual({ kind: "queued", teamId: "T0" });
+    expect(() => queueQuestion(q, "T1", "m1")).toThrow(InvalidActionError);
+    expect(queueQuestion(q, "T0", "m1").teams[0].queuedQuestionId).toBe("m1"); // picking it again is fine
+    expect(queueQuestion(q, "T0", null).teams[0].queuedQuestionId).toBeUndefined();
+    expect(pickBlock(g, "e1")).toEqual({ kind: "held", teamId: "T0" });
+    expect(pickBlock(g, "b1")).toEqual({ kind: "held", teamId: "boss" });
+    expect(pickBlock({ ...g, revealedQuestionIds: ["m2"] }, "m2")).toEqual({ kind: "revealed" });
+    expect(() => queueQuestion({ ...g, revealedQuestionIds: ["m2"] }, "T0", "m2")).toThrow(InvalidActionError);
+    expect(() => queueQuestion(sendToBoss(g, "T0"), "T0", "m1")).toThrow(InvalidActionError);
+    expect(() => queueQuestion({ ...g, phase: "finished" }, "T0", "m1")).toThrow(InvalidActionError);
+    expect(() => queueQuestion(g, "nope", "m1")).toThrow(InvalidActionError);
   });
 });

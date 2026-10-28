@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import type { ClientMessage, LobbyTeams, StateMessage } from "@/lib/protocol";
+import type { ClientMessage, HostPick, LobbyTeams, ServerMessage, StateMessage } from "@/lib/protocol";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
@@ -121,6 +121,70 @@ function MoreDrawer({
   );
 }
 
+type Picks = Extract<ServerMessage, { type: "HOST_PICKS" }>;
+
+/** The host picks a target's next question (HOST_QUEUE_QUESTION). The list only ever reaches the host page. */
+function QuestionPicker({
+  title,
+  note,
+  questions,
+  current,
+  teamName,
+  onPick,
+  onClose,
+}: {
+  title: string;
+  note: string;
+  questions: HostPick[];
+  /** The target's queued pick, if any: shown as chosen, not as blocked. */
+  current: string | undefined;
+  teamName: (id: string) => string;
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const q = query.trim();
+  const shown = q ? questions.filter((x) => x.label.includes(q) || x.answer.includes(q)) : questions;
+  const why = (b: NonNullable<HostPick["block"]>) =>
+    b.kind === "revealed" ? "已公布" : b.kind === "held" ? (b.teamId === "boss" ? "王房正在用" : `${teamName(b.teamId)}正在答`) : `已排給${b.teamId === "boss" ? "王房" : teamName(b.teamId)}`;
+  return (
+    <div className="fixed inset-0 z-30 flex items-end bg-black/60" onClick={onClose}>
+      <Panel tone="lav" className="max-h-[85vh] w-full overflow-y-auto p-4">
+        <div onClick={(e) => e.stopPropagation()} className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[19px]">{title}</span>
+            <PixelButton onClick={onClose} className="!m-0 !px-4 !py-1 text-[16px]">
+              關閉
+            </PixelButton>
+          </div>
+          <div className="text-[13px]">{note}</div>
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜尋題目或答案" className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
+          {shown.length === 0 && <div className="text-[14px]">沒有符合的題目</div>}
+          {shown.map((x) => {
+            const mine = x.id === current;
+            const blocked = x.block && !mine;
+            return (
+              <button
+                key={x.id}
+                type="button"
+                disabled={!!blocked}
+                onClick={() => onPick(x.id)}
+                className={`flex w-full items-start gap-2 border-[3px] border-[var(--k)] p-2 text-left ${blocked ? "bg-[#ddd6e8] opacity-55" : "bg-[#fff8e1]"}`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px]">{x.label}</span>
+                  <span className="block text-[12px]" style={{ color: "#2f6a2c" }}>答案：{x.answer}</span>
+                </span>
+                {(blocked || mine) && <span className="flex-none text-[11px]" style={{ color: mine ? "#2f6a2c" : "#7a1e1e" }}>{mine ? "目前選的" : why(x.block!)}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
 export default function HostPage() {
   const { code } = useParams<{ code: string }>();
 
@@ -133,6 +197,10 @@ export default function HostPage() {
   /** Host-only: the answer to the question in play. Never shown on /screen or /play. */
   const [answer, setAnswer] = useState<{ questionId: string; answer: string } | null>(null);
   const [drawer, setDrawer] = useState(false);
+  /** Host-only: what the host may queue as a team's (or the boss's) next question, with answers. */
+  const [picks, setPicks] = useState<Picks | null>(null);
+  /** The open picker's target: a team id or "boss". */
+  const [picking, setPicking] = useState<string | null>(null);
   /** Server has an API key, so AI narration can be switched on. Default on when it can. */
   const [aiAvailable, setAiAvailable] = useState(false);
   const [aiOn, setAiOn] = useState(true);
@@ -184,9 +252,13 @@ export default function HostPage() {
         case "HOST_ANSWER":
           setAnswer({ questionId: msg.questionId, answer: msg.answer });
           break;
+        case "HOST_PICKS":
+          setPicks(msg);
+          break;
         case "LOBBY":
           setLobby(msg.teams);
           setGame(null);
+          setPicks(null);
           break;
         case "STATE":
           setGame(msg);
@@ -195,6 +267,8 @@ export default function HostPage() {
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
           setPendingTeamId(null);
+          setPicks(null);
+          setPicking(null);
           break;
         case "ERROR":
           // A room we just created answers bad_token when its code was already taken: pick another code.
@@ -225,6 +299,20 @@ export default function HostPage() {
   });
 
   const { reset, rested } = room;
+  const teamName = (id: string) => game?.view.teams.find((t) => t.id === id)?.name ?? "";
+  const pickLabel = (id: string) => picks?.questions.find((q) => q.id === id)?.label ?? "";
+  /** 指定 opens the picker; with a pick queued, 取消 clears it. */
+  function pickButton(target: string) {
+    const queued = picks?.queued[target];
+    return (
+      <PixelButton
+        onClick={() => (queued ? send({ type: "HOST_QUEUE_QUESTION", target, questionId: null }) : setPicking(target))}
+        className="!m-0 min-h-[32px] !px-2 !py-0 text-[13px]"
+      >
+        {queued ? "取消" : target === "boss" ? "指定" : "指定下一題"}
+      </PixelButton>
+    );
+  }
   function send(msg: ClientMessage) {
     setError(null);
     room.send(msg);
@@ -449,13 +537,27 @@ export default function HostPage() {
               {turn.inBoss && <div className="mt-1 text-[14px]">首領血量 {game.view.bossHp} / {game.view.bossMaxHp}</div>}
             </Panel>
 
+            {picks && game.view.teams.some((t) => t.inBossPhase) && (
+              <Panel tone="turn" className="flex items-center gap-2 px-3 py-1">
+                <span className="min-w-0 flex-1 truncate text-[14px]">首領房下一題：{picks.queued.boss ? pickLabel(picks.queued.boss) : "照順序"}</span>
+                {pickButton("boss")}
+              </Panel>
+            )}
+
             <ul className="flex flex-col gap-2">
               {game.view.teams.map((t, i) => (
-                <Panel key={t.id} className={`flex items-center gap-2 px-3 py-1 ${t.online ? "" : "opacity-50"}`}>
+                <Panel key={t.id} className={`flex flex-wrap items-center gap-2 px-3 py-1 ${t.online ? "" : "opacity-50"}`}>
                   <Sprite kind="hero" variant={i} scale={1} className="flex-none" />
                   <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title="獎勵分">{t.reward}</span>
+                  {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}
+                  {picks?.queued[t.id] && (
+                    <div className="flex min-w-0 basis-full items-center gap-2 pl-6 text-[13px]">
+                      <span data-testid="queued-pick" className="min-w-0 flex-1 truncate">下一題：{pickLabel(picks.queued[t.id])}</span>
+                      {pickButton(t.id)}
+                    </div>
+                  )}
                 </Panel>
               ))}
             </ul>
@@ -541,6 +643,20 @@ export default function HostPage() {
         )}
       </div>
 
+      {picking && picks && game && (
+        <QuestionPicker
+          title={picking === "boss" ? "指定首領房下一題" : `替${teamName(picking)}指定下一題`}
+          note={`${picking === "boss" ? "首領房下一次換題" : `${teamName(picking)}下一次換到這個難度的題目（通常是答對進下一間房）`}時就出這題。只有你看得到這個清單。`}
+          questions={(picks.options[picking] ?? []).flatMap((id) => picks.questions.find((x) => x.id === id) ?? [])}
+          current={picks.queued[picking]}
+          teamName={teamName}
+          onPick={(id) => {
+            send({ type: "HOST_QUEUE_QUESTION", target: picking, questionId: id });
+            setPicking(null);
+          }}
+          onClose={() => setPicking(null)}
+        />
+      )}
       {drawer && (
         <MoreDrawer
           code={code}
