@@ -1,0 +1,51 @@
+name: Release
+
+# A version bump to X.Y.0.0 (MINOR or MAJOR) merged to main becomes tag vX.Y.0.0 and a GitHub
+# Release whose notes are every CHANGELOG section since the previous release. Smaller versions
+# (hotfixes) wait for the next one, or are released by hand: Actions → Release → Run workflow
+# releases main's current VERSION.
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # The only job that may write: it pushes the tag and creates the release.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Tag and release VERSION
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          if [ "$EVENT" = push ] && ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.0\.0$ ]]; then
+            echo "v$version is not a MINOR or MAJOR version; release it by hand if it should have its own release."
+            exit 0
+          fi
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already released."
+            exit 0
+          fi
+          previous=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          node scripts/release-notes.ts "$version" "${previous#v}" > "$RUNNER_TEMP/notes.md"
+          gh release create "v$version" --target "$GITHUB_SHA" --title "v$version" --notes-file "$RUNNER_TEMP/notes.md"
