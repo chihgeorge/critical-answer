@@ -2,6 +2,17 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.16.1.2] - 2026-10-28
+
+### Added
+- Dependabot's minor and patch PRs now merge themselves once CI's `check` passes, so dependency updates stop piling up. Major updates still wait for the maintainer. Dependabot waits 5 days after a release before proposing it; security fixes are not delayed.
+- `SECURITY.md` explains how to report a vulnerability privately, and the README links to it.
+
+## [0.16.1.1] - 2026-10-28
+
+### Changed
+- The repository is now public. `docs/going-public.md` marks every pre-public and post-public step as done: webhooks checked, CI artifacts deleted, fork pull requests need the owner's approval to run CI, a ruleset protects `main`, and secret scanning with push protection is on.
+
 ## [0.16.1.0] - 2026-10-28
 
 ### Added
