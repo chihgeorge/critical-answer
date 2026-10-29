@@ -135,6 +135,10 @@ export class DungeonRoom {
   /** The boss's phase card is up (docs/designs/boss-phases.md): the next phase has started but its first
    * question waits for the host's 下一題. Saved, unlike the reveal: a restart shows the card again. */
   private phaseCard = false;
+  /** A miss used up a boss phase: its card opens once the retry line has been read (D7). Memory only:
+   * a restart opens the card at once. */
+  private phaseCardDue = false;
+  private phaseCardTimer: ReturnType<typeof setTimeout> | null = null;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
   private lockTimer: ReturnType<typeof setTimeout> | null = null;
@@ -590,6 +594,7 @@ export class DungeonRoom {
     this.epilogueRequested = false;
     this.reveal = null;
     this.phaseCard = false;
+    this.phaseCardDue = false;
     this.clearAnswerTimers();
     this.transcript = [];
     this.notes = "";
@@ -817,13 +822,14 @@ export class DungeonRoom {
     // older STATE is stale — ignore it rather than close a reveal nobody has seen.
     if (!this.paused() || eventId !== this.eventSeq) return;
     if (this.reveal) return this.closeReveal();
+    if (this.phaseCardDue) return this.openPhaseCard();
     this.phaseCard = false;
     this.broadcastState();
   }
 
   /** An answer reveal or the boss's phase card is up: nobody answers until the host moves on. */
   private paused(): boolean {
-    return !!this.reveal || this.phaseCard;
+    return !!this.reveal || this.phaseCard || this.phaseCardDue;
   }
 
   private closeReveal() {
@@ -841,6 +847,9 @@ export class DungeonRoom {
     const game = enterNextBossPhase(this.game!);
     this.game = game;
     this.phaseCard = true;
+    this.phaseCardDue = false;
+    if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
+    this.phaseCardTimer = null;
     if (!announce) return;
     const eventId = ++this.eventSeq;
     this.cue = "boss-phase";
@@ -861,7 +870,8 @@ export class DungeonRoom {
   private clearAnswerTimers() {
     if (this.lockTimer) clearTimeout(this.lockTimer);
     if (this.advanceTimer) clearTimeout(this.advanceTimer);
-    this.lockTimer = this.advanceTimer = null;
+    if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
+    this.lockTimer = this.advanceTimer = this.phaseCardTimer = null;
     this.pendingLock = null;
   }
 
@@ -1072,8 +1082,19 @@ export class DungeonRoom {
       this.epilogueRequested = true;
       void this.sendEpilogue(narration, eventId).catch((err) => console.error("epilogue failed", err));
     }
-    // A miss that used up a boss phase has no answer to show: its card follows the retry at once (D7).
-    if (game.phase === "playing" && game.boss.phasePending && !this.reveal) this.openPhaseCard();
+    // A miss that used up a boss phase has no answer to show: its card follows once the retry line has
+    // been read (D7), held like a reveal; 下一題 opens it sooner.
+    if (game.phase === "playing" && game.boss.phasePending && !this.reveal) {
+      this.phaseCardDue = true;
+      void narration.then(() => {
+        if (!this.phaseCardDue) return;
+        const lines = this.lastNarration?.eventId === eventId ? this.lastNarration.lines : [];
+        this.phaseCardTimer = setTimeout(() => {
+          this.phaseCardTimer = null;
+          if (this.phaseCardDue) this.openPhaseCard();
+        }, Math.min(ADVANCE_CAP_MS, Math.max(BEAT_MS, speechMs(lines))));
+      });
+    }
   }
 
   /** A team locks its current pick (E2, E11). Judged after the beat, in resolveLock. `shown` is the

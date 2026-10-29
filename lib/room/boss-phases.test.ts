@@ -79,6 +79,10 @@ describe("boss phases in the room", () => {
     expect(msgs(g.host.send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
     send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "p2-a", optionIndex: 0 });
     expect(msgs(g.phones[0].send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
+    // Value: protects=no lock lands while the card hides the question; fails_when=the lock handler checks only the
+    // reveal again; why_new=judge and select were covered, lock was not; seam=none; no_claim=multiple-choice timing
+    send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: "p2-a" });
+    expect(msgs(g.phones[0].send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
 
     g.next();
     expect(g.state()).toMatchObject({ question: { id: "p2-a" }, bossPhaseInfo: PHASE2 });
@@ -132,6 +136,12 @@ describe("boss phases in the room", () => {
     expect(g.room.game!.boss.currentQuestionId).toBe("p1-b");
     const before = g.state().eventId;
     await lockWrong("p1-b");
+    // Review finding (red team, 2026-10-28): the card opened in the same tick, so the retry line was never read.
+    expect(g.state()).toMatchObject({ cue: "retry", question: { id: "p1-b" } });
+    expect(g.state().phaseCard).toBeUndefined();
+    send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "p1-b", optionIndex: 0 });
+    expect(msgs(g.phones[0].send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
+    await vi.advanceTimersByTimeAsync(15_000); // the retry line read out, never past the reveal's cap
     // The first STATE of each new event: what the screens play.
     const events = g.states().filter((m, i, all) => m.eventId > before && m.eventId !== all[i - 1].eventId);
     expect(events.map((m) => [m.cue, !!m.phaseCard])).toEqual([["retry", false], ["boss-phase", true]]);
@@ -160,7 +170,7 @@ describe("boss phases in the room", () => {
     expect(events.slice(-2)).toEqual([expect.objectContaining({ type: "boss-hit", exhausted: true }), expect.objectContaining({ type: "boss-phase", phase: 2, name: PHASE2.name })]);
   });
 
-  it("after a wrong lock uses up phase 1, 下一題 closes the card", async () => {
+  it("after a wrong lock uses up phase 1, 下一題 opens the card early, then closes it", async () => {
     vi.useFakeTimers();
     const g = bossGame(phasedBank(mc, 5));
     for (const id of ["p1-a", "p1-b"]) {
@@ -168,7 +178,11 @@ describe("boss phases in the room", () => {
       send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: id });
       await vi.advanceTimersByTimeAsync(5000);
     }
+    expect(g.state().phaseCard).toBeUndefined();
+    g.next();
     expect(g.state().phaseCard).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(15_000); // the hold's timer, already cleared, opens nothing twice
+    expect(g.state().view).toMatchObject({ bossPhase: 2, bossHp: 2 });
     g.next();
     expect(g.state()).toMatchObject({ question: { id: "p2-a" } });
     expect(g.state().phaseCard).toBeUndefined();
