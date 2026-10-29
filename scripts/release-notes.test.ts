@@ -40,6 +40,7 @@ describe("release notes", () => {
   // Value: protects=a stray higher tag producing an empty release; fails_when=previous >= version returns ""
   it("refuses a previous release that is not older", () => {
     expect(() => releaseNotes(CHANGELOG, "0.2.1.0", "0.3.0.0")).toThrow("not older than 0.2.1.0");
+    expect(() => releaseNotes(CHANGELOG, "0.3.0.0", "v0.2.0.0-rc1")).toThrow("not a four-part version");
   });
 
   it("drops non-version headings", () => {

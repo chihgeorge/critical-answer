@@ -28,6 +28,7 @@ export function changelogSections(changelog: string): Section[] {
 export function releaseNotes(changelog: string, version: string, previous?: string): string {
   const all = changelogSections(changelog);
   if (!all.some((s) => s.version === version)) throw new Error(`CHANGELOG.md has no section for ${version}`);
+  if (previous && !/^v?\d+(\.\d+){3}$/.test(previous)) throw new Error(`previous release ${previous} is not a four-part version`);
   if (previous && compareVersions(previous, version) >= 0) throw new Error(`previous release ${previous} is not older than ${version}`);
   return all
     .filter((s) => compareVersions(s.version, version) <= 0 && (!previous || compareVersions(s.version, previous) > 0))

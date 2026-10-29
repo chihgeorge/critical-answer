@@ -43,11 +43,11 @@ jobs:
             echo "v$version is not a MINOR or MAJOR version; release it by hand if it should have its own release."
             exit 0
           fi
-          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+          if gh release view "v$version" >/dev/null 2>&1; then
             echo "v$version is already released."
             exit 0
           fi
-          previous=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          previous=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+(\.[0-9]+){3}$' | grep -vxF "v$version" | head -1 || true)
           if [ -z "$previous" ]; then
             # Without a previous release the notes would be the whole CHANGELOG.
             echo "No release tags yet: publish the historical releases first, then run this workflow by hand."
