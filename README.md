@@ -103,6 +103,10 @@ sh scripts/playtest.sh stop
 
 合併進 `main` 就會自動部署，兩邊都是平台自己的 Git 連動，GitHub 上不放任何部署用的 secret：Cloudflare Workers Builds 從 `main` 執行 `wrangler deploy`（房間伺服器），Vercel 從 `main` 部署前端。Workers Builds 在 Cloudflare dashboard 設定（Workers & Pages → `critical-answer` → Settings → Build → 連 GitHub repo，production branch 選 `main`）。它不等 GitHub Actions 的檢查跑完，也不保證比 Vercel 先完成；如果這次改動要求 Worker 先上線（例如前端會讀新的協定欄位），合併前先在本機 `wrangler deploy`。`OWNER_KEY`、`ANTHROPIC_API_KEY` 存在 Worker 上，部署不會動到。
 
+### 版本與 Release
+
+版本號有四段（例如 `0.16.1.0`），由 `/ship` 依改動決定，寫進 `VERSION` 和 `CHANGELOG.md`。合併進 `main` 的版本如果是 `X.Y.0.0`（第二段以上變了，也就是有新功能），[.github/workflows/release.yml](.github/workflows/release.yml) 會自動打 tag `vX.Y.0.0`，並發一個 GitHub Release，內容是從上一個 release 到這一版的所有 CHANGELOG 段落（[scripts/release-notes.ts](scripts/release-notes.ts) 整理）。後兩段的小修和熱修不自動發，會收進下一個 release；要單獨發的話，到 Actions → Release → Run workflow，就會把 `main` 現在的版本發出去。repo 裡還沒有任何 `v` tag 時 workflow 會直接失敗（不然說明會是整份 CHANGELOG），要先補發歷史版本。
+
 ## 題庫
 
 題庫在 [data/question-bank.json](data/question-bank.json)：8 個房間各一隻怪物（難度 1／2／2／3／4／4／5／5），題目放在難度 1–5 五個題庫（難度 2 有 16 題，其他各 12 題），加上首領的 20 題，共 84 題，全部是四選一選擇題（玩家在手機上作答、遊戲自動判定）。題庫編輯器存過題庫的環境會繼續用存檔的那份，這個檔只在還沒存過題庫時使用（見下方「題庫編輯」）。伺服器啟動時會載入並驗證（缺 id、重複 id、空題目或答案、難度不在 1–5 都會直接報錯），**只有伺服器會讀這個檔**，瀏覽器只收得到題目文字，收不到答案。`npm run check:bundle` 會檢查這一點。

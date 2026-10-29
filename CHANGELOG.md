@@ -2,6 +2,13 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.17.0.0] - 2026-10-28
+
+### Added
+- Every new feature version (`X.Y.0.0`) merged to `main` now becomes a Git tag and a GitHub Release automatically. The release notes are every CHANGELOG section since the previous release, so hotfixes in between are listed too.
+- A hotfix can get its own release by hand: Actions → Release → Run workflow releases the version currently on `main`.
+- The README explains the versioning rule under 版本與 Release.
+
 ## [0.16.1.2] - 2026-10-28
 
 ### Added
