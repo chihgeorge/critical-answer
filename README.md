@@ -153,6 +153,7 @@ scripts/                 playtest.sh（區網試玩）、check-bundle.sh、prega
 public/fonts/            內建字型
 DESIGN.md                像素設計系統
 docs/designs/            設計文件與決策紀錄（含 question-bank-editor.md）
+docs/going-public.md     公開 repo 前的檢查清單
 TODOS.md                 已知問題與延後事項
 ```
 

@@ -27,7 +27,8 @@
   //
   // R2_PUBLIC_BASE_URL is the "images" bucket's public r2.dev URL. A fork deploying its own Worker
   // creates its own bucket, enables r2.dev public access in the dashboard (see
-  // docs/designs/image-question-type.md's Dependencies section) and puts its own URL here.
+  // docs/designs/image-question-type.md's Dependencies section) and puts its own URL here, and
+  // replaces ALLOWED_ORIGINS with its own frontend's origins.
   "vars": {
     "ALLOWED_ORIGINS": "https://critical-answer.vercel.app,https://critical-answer-*.vercel.app",
     "R2_PUBLIC_BASE_URL": "https://pub-86b65422a566486d8227ac280553f081.r2.dev"

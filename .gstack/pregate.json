@@ -35,6 +35,10 @@
     "worker/**": [
       "e2e/bank-editor.spec.ts",
       "e2e/main-line.spec.ts"
+    ],
+    "wrangler.jsonc": [
+      "e2e/bank-editor.spec.ts",
+      "e2e/main-line.spec.ts"
     ]
   }
 }
