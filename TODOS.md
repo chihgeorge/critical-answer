@@ -292,6 +292,24 @@
 
 ---
 
+## 手機顯示題目的剩餘小風險（/ship 2026-10-29）
+
+**Priority:** P3
+
+**What:** phone-question-text 分支 /ship 審查找到、這次沒修的幾項：
+1. 題目橫條沒有長度上限。預設題庫最長 34 字，iPhone 12（390×844）放得下；但本機題庫（`local-banks/`）沒有字數限制，約 100 字的題目會多出 4 行，答錯後的重答／逃跑或魔王房的鎖定答案可能被推到螢幕外。
+2. 自己回合的圖片／影片題，「冒險出現岔路」面板在媒體下方，390×844 上可能要捲動才看得到。
+3. 揭曉時才重新整理或重新連線的手機，看不到剛答對的那題題目（只記得連線期間看過的題目）。設計時已接受。
+4. 還沒有 e2e 檢查「揭曉時重新連線不顯示題目」和「等待中的手機不顯示選擇題橫條」。
+
+**Why:** 預設題庫不會發生 1；2、3 不影響答題。第一次用長題目的本機題庫試玩前再處理 1。
+
+**Context:** 設計見 [docs/designs/phone-question-text.md](docs/designs/phone-question-text.md)，畫面在 `app/room/[code]/play/page.tsx` 的 `QuestionStrip`。
+
+**Depends on / blocked by:** 無。
+
+---
+
 ## 題庫編輯器：載入或儲存途中的編輯會被蓋掉（/review 2026-10-25）
 
 **Priority:** P3
@@ -967,3 +985,31 @@
 **更新（2026-10-03，維護輪 /plan-eng-review）：** 不能直接「有存檔就不抓」。`lib/room/dungeon-room.ts` 的 `reset()` 會用醒來時抓到的 `initialBank` 開新局，跳過抓取會讓閒置過期後重開的房間改用內建題庫，你在編輯器改的題目就不見了。正確修法是懶載入：`DungeonRoom` 收一個 `loadBank`，只在沒有存檔、存檔壞掉、`reset()` 時呼叫。決定（dec-f5965fd8）：先不做；`worker/index.ts` 的 `onStart()` 有 `gstack-shortcut` 標記。升級觸發點：房間喚醒延遲或 BankStore 可用性成為實際問題。
 
 **Depends on / blocked by:** 無，隨時可做，非阻塞。
+
+---
+
+## 每次行動可以選不同的動作，不只答題
+
+**Priority:** P3
+
+**What:** 輪到一隊時，現在只能答題。改成可以從幾個動作裡選一個，答題只是其中之一。
+
+**Why:** 使用者 2026-10-29 提出，讓每回合多一點選擇和策略。
+
+**Context:** 回合流程在 `lib/game-state.ts` 和 `lib/room/dungeon-room.ts`；手機畫面在 `app/room/[code]/play/page.tsx`。可以和下面「隊伍職業」一起設計，職業的特殊能力可能就是其中一種動作。
+
+**Depends on / blocked by:** 還沒寫規格，要先走 /office-hours 決定有哪些動作。
+
+---
+
+## 每隊有一個代表職業，戰鬥時有不同的特殊能力
+
+**Priority:** P3
+
+**What:** 每個隊伍選一個代表職業，不同職業在戰鬥時有不同的特殊能力。
+
+**Why:** 使用者 2026-10-29 提出，讓隊伍之間有差異，更像 D&D。
+
+**Context:** 隊伍資料在 `lib/game-state.ts`，戰鬥和首領規則在 `lib/room/dungeon-room.ts`。和上面「每次行動可以選不同的動作」相關。
+
+**Depends on / blocked by:** 還沒寫規格，要先走 /office-hours 決定有哪些職業、能力怎麼平衡。
