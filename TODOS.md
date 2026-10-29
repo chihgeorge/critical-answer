@@ -475,6 +475,24 @@
 
 ---
 
+## 上架手機版本
+
+**What:** 把玩家手機頁做成可以從 App Store／Google Play 安裝的版本。先比較三條路：PWA（加到主畫面，不上架）、用 Capacitor 包現有網頁再上架、或原生 app。
+
+**Why:** 玩家現在要掃 QR 碼開瀏覽器；裝成 app 可以全螢幕、不怕誤關分頁，也方便下次再玩。
+
+**Pros:** 體驗更像遊戲；PWA 路線幾乎不用改程式。
+
+**Cons:** 上架要開發者帳號（Apple 每年 USD 99）和審核；包殼的 app 可能被 Apple 以「只是網頁」退件；兩個商店都要維護版本。
+
+**Context:** 玩家頁在 `app/room/[code]/play/`，連線走 Cloudflare Worker 的 WebSocket。要先走 /office-hours 決定路線，再 /plan-eng-review。
+
+**Effort:** PWA S（人工約半天 / CC 約 30 分鐘）；上架 L（人工約 1–2 週 / CC 約半天，不含審核）　**Priority:** P3
+
+**Depends on / blocked by:** 無。
+
+---
+
 ## Completed
 
 ## 魔王分成多個階段，每階段題目不同
