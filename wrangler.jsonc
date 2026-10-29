@@ -25,10 +25,9 @@
   // lib/origin.ts's doc comment; the frontend's first production deploy is
   // https://critical-answer.vercel.app (2026-09-22).
   //
-  // R2_PUBLIC_BASE_URL is a placeholder until the "images" bucket below is created and its r2.dev
-  // public access is enabled (one-time manual Cloudflare dashboard step — see
-  // docs/designs/image-question-type.md's Dependencies section). Replace with the real
-  // https://pub-<hash>.r2.dev URL Cloudflare generates once that's done.
+  // R2_PUBLIC_BASE_URL is the "images" bucket's public r2.dev URL. A fork deploying its own Worker
+  // creates its own bucket, enables r2.dev public access in the dashboard (see
+  // docs/designs/image-question-type.md's Dependencies section) and puts its own URL here.
   "vars": {
     "ALLOWED_ORIGINS": "https://critical-answer.vercel.app,https://critical-answer-*.vercel.app",
     "R2_PUBLIC_BASE_URL": "https://pub-86b65422a566486d8227ac280553f081.r2.dev"

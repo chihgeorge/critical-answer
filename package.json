@@ -2,6 +2,7 @@
   "name": "critical-answer",
   "version": "0.16.0",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "trap 'kill $! 2>/dev/null' EXIT; npm run dev:worker & NEXT_PUBLIC_PARTYKIT_HOST=localhost:8787 next dev",
     "dev:next": "next dev",

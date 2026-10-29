@@ -172,3 +172,7 @@ TODOS.md                 已知問題與延後事項
 已完成：大螢幕（題目、怪物、頒獎台）、題庫進 app、腳本與 AI 旁白、主持人導演介面、主持人題庫編輯介面（`/bank-editor`，見上方「題庫編輯」）、大螢幕語音旁白（瀏覽器 TTS）、音效與背景音樂、營火大廳、斷線提示、主持人鍵盤操作、共享大螢幕活地圖、正式部署（Vercel + Cloudflare）。接下來的重點是**第二次真人測試**：驗證有氣氛之後是不是比第一輪好玩。
 
 延後事項與原因見 [TODOS.md](TODOS.md)。完整設計、決策過程與任務清單見 [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md)（第二輪）和 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md)（第一輪）。
+
+## 授權
+
+[MIT](LICENSE)。
