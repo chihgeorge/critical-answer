@@ -90,8 +90,8 @@ All the questions listed before the review now have decisions: strength bar (D7)
 
 | Screen/Section | Mockup Path | Direction | Notes |
 |----------------|-------------|-----------|-------|
-| `/screen` play view, layout | /Users/georgechih/.gstack/projects/critical-answer/designs/live-map-20261023/A.png | A: map strip replaces the team-card row | Picked over B (full-screen interlude) and C (left tower). Wireframe only. |
-| `/screen` strip, after review | /Users/georgechih/.gstack/projects/critical-answer/designs/live-map-20261023/v2.png | A2: fog clouds, closed then open boss door, one-character tags, no scores | Wireframe only. Pawns must be the real `hero` + `TEAM_LOOKS` sprites (D17). The boss room must fit the boss sprite, the HP bar on top and a row of pawns below inside the 90px strip. |
+| `/screen` play view, layout | ~/.gstack/projects/critical-answer/designs/live-map-20261023/A.png | A: map strip replaces the team-card row | Picked over B (full-screen interlude) and C (left tower). Wireframe only. |
+| `/screen` strip, after review | ~/.gstack/projects/critical-answer/designs/live-map-20261023/v2.png | A2: fog clouds, closed then open boss door, one-character tags, no scores | Wireframe only. Pawns must be the real `hero` + `TEAM_LOOKS` sprites (D17). The boss room must fit the boss sprite, the HP bar on top and a row of pawns below inside the 90px strip. |
 
 ## Implementation Tasks
 

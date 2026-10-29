@@ -73,7 +73,7 @@ The team on turn picks and **locks** an option on its phone, the TV holds a shor
 
 PR 2 needs no editor work: `/bank-editor` already authors `multipleChoice` questions (v0.5.0.0).
 
-Wireframe (rough, flow only; pixel art comes from /plan-design-review): `/Users/georgechih/.gstack/projects/critical-answer/phone-answering-sketch-20261024.png` (five states: phone pick and lock, phone after a wrong lock, phone while waiting, TV correct reveal, TV wrong reveal). Approved by the user on 2026-10-24.
+Wireframe (rough, flow only; pixel art comes from /plan-design-review): `~/.gstack/projects/critical-answer/phone-answering-sketch-20261024.png` (five states: phone pick and lock, phone after a wrong lock, phone while waiting, TV correct reveal, TV wrong reveal). Approved by the user on 2026-10-24.
 
 ## Open Questions
 
@@ -84,7 +84,7 @@ Wireframe (rough, flow only; pixel art comes from /plan-design-review): `/Users/
 
 ## Design decisions (/plan-design-review, 2026-10-24)
 
-Mockups: `/Users/georgechih/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/`. D1–D3 from the first session; D5–D14 from the second (D4 was its scope question, not a design decision).
+Mockups: `~/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/`. D1–D3 from the first session; D5–D14 from the second (D4 was its scope question, not a design decision).
 
 - **D1. TV option layout (`layout-B.png`).** On an MC question the four options stand on the wall to the left and right of the monster: A and C on the left (x 22–338), B and D on the right (x 622–938), rows at y 212 and y 290, each tile 316×62. The monster, the question panel, the nameplate and the dialogue box keep their current size and place; the two wall torches are hidden behind the tiles. Tile: cream face, 4px `--k` outline, `--cream2` bottom bevel, 24px Cubic text, about 10 characters per line; a 30px `--k` letter chip with the A–D letter in Press Start 2P (`--turn2`). `text` questions keep today's layout.
 - **D2. Phone order on the team's own MC turn (`phone-A.png`).** Top to bottom: the 輪到我們了 ribbon, then one `Panel tone="turn"` holding the four option buttons and the 鎖定 button, then the 正在面對 card, the score card and the branch panel. All four options and 鎖定 fit in one iPhone SE screen (375×667) with no scrolling. Option buttons are 56px tall with the same A–D letter chip as the TV; the picked option is `--danger` with white text and a "◀ 已選" label, so the pick never relies on color alone. 鎖定答案 is a 62px `--ok` button under the options. On any other turn the order stays as today.
@@ -184,15 +184,15 @@ Synthesized from this review's findings. Each task derives from a specific findi
 
 | Screen/Section | Mockup Path | Direction | Notes |
 |----------------|-------------|-----------|-------|
-| TV option layout | /Users/georgechih/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/layout-B.png | options beside the monster | D1 |
-| Phone MC turn | /Users/georgechih/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/phone-A.png | options + 鎖定 in one panel | D2 |
-| Host MC turn | /Users/georgechih/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/host-A.png | status box + secondary stuck row | D3, row timing D11 |
-| Phone lock in flight | /Users/georgechih/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/lock-P.png | 鎖定中… | D6 |
-| Phone locked | /Users/georgechih/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/lock-A.png | list stays, 🔒 已鎖定 | D5 |
-| Phone wrong / retry | /Users/georgechih/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/wrong-A.png, wrong-N.png | list stays, 重答 / 逃跑 side by side | D7 |
-| Phone correct | /Users/georgechih/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/okphone-A.png | green ✓ 答對 ＋N 分 | D14 |
-| TV beat / correct | /Users/georgechih/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/tv-F1.png, tv-F2.png | gold 🔒, then green ✓ 正解 | D8; faded tiles are opaque grey |
-| TV wrong / retry | /Users/georgechih/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/tv-WA.png, tv-R.png | red ✕ then grey ✕ | D9 |
+| TV option layout | ~/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/layout-B.png | options beside the monster | D1 |
+| Phone MC turn | ~/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/phone-A.png | options + 鎖定 in one panel | D2 |
+| Host MC turn | ~/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/host-A.png | status box + secondary stuck row | D3, row timing D11 |
+| Phone lock in flight | ~/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/lock-P.png | 鎖定中… | D6 |
+| Phone locked | ~/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/lock-A.png | list stays, 🔒 已鎖定 | D5 |
+| Phone wrong / retry | ~/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/wrong-A.png, wrong-N.png | list stays, 重答 / 逃跑 side by side | D7 |
+| Phone correct | ~/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/okphone-A.png | green ✓ 答對 ＋N 分 | D14 |
+| TV beat / correct | ~/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/tv-F1.png, tv-F2.png | gold 🔒, then green ✓ 正解 | D8; faded tiles are opaque grey |
+| TV wrong / retry | ~/.gstack/projects/critical-answer/designs/phone-answering-tv-20261024/tv-WA.png, tv-R.png | red ✕ then grey ✕ | D9 |
 
 Mockups are HTML overlays on real app screenshots, rendered with Playwright (same method as the first session), not gstack designer images: AI image output does not match the DESIGN.md pixel style.
 

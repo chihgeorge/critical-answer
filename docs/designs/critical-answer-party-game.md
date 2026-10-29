@@ -198,7 +198,7 @@ Synthesized from this review's findings. Run with Claude Code or Codex; checkbox
   - Surfaced by: Test Review — 「假定跟 HITSTER! Online 一樣的 runtime」但尚未實際確認
   - Files: docs/designs/critical-answer-party-game.md（更新 Next Steps 第 1 步）
   - Verify: 文件中列出具體 runtime 名稱與版本
-  - **DONE (2026-09-17)**：Next.js 16.2.4 + React 19.2.4 + PartyKit + Tailwind 4 + TypeScript 5；測試用 Vitest + Testing Library + Playwright。確認自 /Users/georgechih/Repository/hitster_online。
+  - **DONE (2026-09-17)**：Next.js 16.2.4 + React 19.2.4 + PartyKit + Tailwind 4 + TypeScript 5；測試用 Vitest + Testing Library + Playwright。確認自 ~/Repository/hitster_online。
 - [x] **T2 (P1, human: ~2h / CC: ~30min)** — game-state — 定案總分公式、逃跑重擲單位、難度權重公式、門檻分數 X
   - Surfaced by: Architecture Review + Reviewer Concerns #1 + Outside Voice — 這四項是 Next Steps 第 2 步的前置阻塞
   - Files: docs/designs/critical-answer-party-game.md（更新 Premises/Open Questions）
