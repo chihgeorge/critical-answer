@@ -21,8 +21,9 @@
 - ✅ **GitHub Actions**：`ci.yml` 只聽 `pull_request` 和 `push` 到 `main`，沒有 `pull_request_target` 或 `workflow_run`，權限是 `contents: read`，repo 預設 workflow 權限也是 read。fork 開的 PR 拿不到任何密鑰（本來也沒有），也寫不了 repo。
 - ✅ **Cloudflare Workers Builds**：唯一的 trigger 只建 `main`（2026-10-28 用 API 確認過）。「Builds for Preview branches」2026-10-02 已關掉，所以 fork 或其他分支不會觸發建置。
 - ✅ **Dependabot alerts 和 security updates** 已打開（2026-10-28，你同意後改的）。有已知漏洞的套件會發警示並自動開修補 PR；`.github/dependabot.yml` 原本只做每週版本更新。
+- ✅ **Dependabot PR 自動合併**（2026-10-28，你選的）：minor 和 patch 升級在 CI 的 `check` 通過後自動 squash 合併（`.github/workflows/dependabot-auto-merge.yml`）；major 升級留給你。新版本要發布滿 5 天才會升（`cooldown`），漏洞修補不等。repo 的「Allow auto-merge」已打開。漏洞回報方式寫在 `SECURITY.md`。
 - ✅ **只允許 squash merge**（2026-10-28）。merge commit 和 rebase 已關掉。
-- ✅ **Actions 只允許 GitHub 官方和 verified 的 action**（2026-10-28）。`ci.yml` 用的 `actions/checkout`、`actions/setup-node`、`actions/upload-artifact` 都是官方的。
+- ✅ **Actions 只允許 GitHub 官方和 verified 的 action**（2026-10-28）。`ci.yml` 用的 `actions/checkout`、`actions/setup-node`、`actions/upload-artifact` 都是官方的；`dependabot-auto-merge.yml` 用的 `dependabot/fetch-metadata` 是 verified 的，並用 commit SHA 釘住。
 - ✅ 只有你一個 collaborator，沒有 deploy key。`npm audit --omit=dev` 0 個漏洞（2026-10-28）。
 
 ## 內容
