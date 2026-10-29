@@ -133,6 +133,14 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1 });
   });
 
+  // Value: protects=20 HP, the documented top, still saves; fails_when=the bound turns into >= or MAX_BOSS_HP drops;
+  // why_new=the rows above only test refusals; seam=none; no_claim=the editor's own input limits (e2e)
+  it("saves a boss phase with exactly 20 HP", async () => {
+    const store = new BankStore(memoryStorage({ bank: validBank, version: 1 }));
+    const top: Bank = { ...validBank, boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], maxHp: 20 }] } };
+    await expect(store.putBank(top, 1)).resolves.toMatchObject({ version: 2 });
+  });
+
   it("rejects a duplicate question id across rooms", async () => {
     const dup: Bank = { ...validBank, boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "dup?" }, answer: "x" }] }] } };
     const store = new BankStore(memoryStorage({ bank: validBank, version: 1 }));

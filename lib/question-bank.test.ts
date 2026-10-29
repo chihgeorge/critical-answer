@@ -211,6 +211,9 @@ describe("parseBank", () => {
     ["a phase 2 with no name", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: [phase1(), { rule: "聽前奏", maxHp: 2, questions: [q("c1")] }] } })],
     ["a phase 2 without hp", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: [phase1(), { name: "n", rule: "r", maxHp: 0, questions: [q("c1")] }] } })],
     ["a phase 2 with no questions", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: [phase1(), { name: "n", rule: "r", maxHp: 2, questions: [] }] } })],
+    // Value: protects=a non-text phase name fails as an invalid bank, not a TypeError; fails_when=the type guard
+    // before trim() is dropped; why_new=rows only had missing or blank names; seam=none; no_claim=none beyond protects
+    ["a boss phase name that is not text", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: [{ ...phase1(), name: 5 }] } })],
     ["a duplicate id across boss phases", () => ({ ...valid(), boss: { monster: valid().boss.monster, phases: [phase1(), { name: "n", rule: "r", maxHp: 2, questions: [q("b1")] }] } })],
     ["an unknown kind", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [{ id: "a1", text: "t", kind: "essay" }] }] })],
     ["a multipleChoice question with only 1 option", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [mc("a1", ["A"])] }] })],
