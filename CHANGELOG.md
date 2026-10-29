@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.17.0.2] - 2026-10-28
+
+### Added
+- `TODOS.md` has a P3 idea for a mobile version of the player page: compare a PWA, a Capacitor wrapper, and a native app before publishing to the App Store or Google Play.
+
 ## [0.17.0.1] - 2026-10-28
 
 ### Added
