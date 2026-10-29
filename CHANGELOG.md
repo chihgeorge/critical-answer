@@ -10,6 +10,9 @@ All notable changes to Critical Answer are documented here.
 ### Changed
 - The two P3 ideas for turn actions and team classes in `TODOS.md` moved out of the Completed section, where they had been added by mistake.
 
+### Fixed
+- The e2e test for the picture's place on the phone no longer fails at random in CI. It measured the picture while the turn change was remounting it, so it read a position of 0. It now retries until the picture has a layout position.
+
 ## [0.18.0.0] - 2026-10-29
 
 ### Added
