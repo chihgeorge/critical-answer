@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.16.1.1] - 2026-10-28
+
+### Changed
+- The repository is now public. `docs/going-public.md` marks every pre-public and post-public step as done: webhooks checked, CI artifacts deleted, fork pull requests need the owner's approval to run CI, a ruleset protects `main`, and secret scanning with push protection is on.
+
 ## [0.16.1.0] - 2026-10-28
 
 ### Added
