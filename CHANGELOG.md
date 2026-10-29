@@ -2,6 +2,16 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.16.1.0] - 2026-10-28
+
+### Added
+- The project is now MIT licensed, so anyone can use, change and redeploy it. The README ends with a 授權 section.
+- `docs/going-public.md` lists what was checked before the repository goes public (no secrets anywhere in the history, CI and deploy behaviour on outside pull requests, personal data) and the settings the owner still has to change.
+
+### Changed
+- `wrangler.jsonc` now tells a fork to put its own R2 bucket URL and its own frontend origins there before deploying.
+- The design docs refer to local mockups by `~/` paths instead of a full home-folder path.
+
 ## [0.16.0.0] - 2026-10-28
 
 ### Added
