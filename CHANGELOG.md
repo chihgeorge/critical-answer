@@ -2,6 +2,14 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.18.0.1] - 2026-10-29
+
+### Added
+- `TODOS.md` has a P3 idea for a mobile version of the player page: compare a PWA, a Capacitor wrapper, and a native app before publishing to the App Store or Google Play.
+
+### Changed
+- The two P3 ideas for turn actions and team classes in `TODOS.md` moved out of the Completed section, where they had been added by mistake.
+
 ## [0.18.0.0] - 2026-10-29
 
 ### Added
