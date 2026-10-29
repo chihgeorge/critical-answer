@@ -176,4 +176,4 @@ TODOS.md                 已知問題與延後事項
 
 ## 授權
 
-[MIT](LICENSE)。
+[MIT](LICENSE)。發現安全問題請照 [SECURITY.md](SECURITY.md) 私下回報。
