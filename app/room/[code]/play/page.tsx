@@ -11,8 +11,9 @@ import type { ClientMessage, LobbyTeams, StateMessage } from "@/lib/protocol";
 import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
+import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
-import { DialogueBox, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
+import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { McOption } from "@/components/mc-option";
 
 /** How long 鎖定中… waits for the room to confirm a lock before offering a retry (phone-answering.md D6). */
@@ -195,7 +196,7 @@ export default function PlayPage() {
   const roster = game?.view.teams ?? lobby ?? [];
   const myIndex = Math.max(0, roster.findIndex((t) => t.id === teamId));
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
-  const turn = game ? describeTurn(game.view, game.question) : null;
+  const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
   const finished = game?.phase === "finished";
   // Non-blocking DM branching interlude (design doc decision 4B): does not gate turn order,
@@ -263,6 +264,27 @@ export default function PlayPage() {
           <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
             {isMyTurn ? "輪到我們了！" : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
+        )}
+
+        {/* The boss's phase card, as the big screen shows it (docs/designs/boss-phases.md D4): the new rule
+            reaches the back of the room too. The next question waits for the host's 下一題. */}
+        {game && !finished && game.phaseCard && game.bossPhaseInfo && (
+          <div data-testid="phone-phase-card">
+            <Panel tone="lav" role="status" className="flex flex-col items-center gap-2 px-3 py-[14px] text-center">
+              <LabelChip>還沒結束！</LabelChip>
+              <div className="px-title-danger text-[24px]">第{ordinal(game.view.bossPhase)}階段：{game.bossPhaseInfo.name}</div>
+              <div className="text-[18px]">{game.bossPhaseInfo.rule}</div>
+            </Panel>
+          </div>
+        )}
+
+        {/* From phase 2 on, a boss turn keeps the phase's rule in view (D5). */}
+        {game && !finished && !game.phaseCard && turn?.inBoss && game.bossPhaseInfo && (
+          <div data-testid="phone-phase-rule">
+            <Panel tone="turn" className="px-3 py-[6px] text-[16px]">
+              {game.bossPhaseInfo.name}：{game.bossPhaseInfo.rule}
+            </Panel>
+          </div>
         )}
 
         {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}

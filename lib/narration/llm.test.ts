@@ -288,3 +288,29 @@ describe("buildPrompt: entering the boss room", () => {
     expect(user).not.toContain("呼應");
   });
 });
+
+describe("boss phase prompts (docs/designs/boss-phases.md)", () => {
+  it("an emptied bar asks the model not to call the fight (D3) and never says 0 hearts left", () => {
+    const { user } = buildPrompt({ type: "boss-hit", team: "紅隊", bossHp: 0, bossMaxHp: 3 }, "", []);
+    expect(user).toContain("不要說首領倒下");
+    expect(user).not.toContain("0/3");
+  });
+
+  it("the phase card gives the model the phase reached and its rule, and tells it not to hint at more", () => {
+    const { user } = buildPrompt({ type: "boss-phase", monster: "小黑龍", phase: 2, name: "主題曲之謎", rule: "聽前奏" }, "", []);
+    expect(user).toContain("第2階段");
+    expect(user).toContain("主題曲之謎");
+    expect(user).toContain("聽前奏");
+    expect(user).toContain("不要提還有沒有下一個階段");
+  });
+});
+
+describe("a boss phase out of questions (review finding, 2026-10-28)", () => {
+  it("asks the model not to offer a retry or count hearts", () => {
+    const miss = buildPrompt({ type: "retry", team: "紅隊", monster: "龍", boss: true, exhausted: true }, "", []).user;
+    expect(miss).toContain("不要說可以重答");
+    const hit = buildPrompt({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, exhausted: true }, "", []).user;
+    expect(hit).toContain("不要報剩下的血量");
+    expect(hit).not.toContain("2/3");
+  });
+});

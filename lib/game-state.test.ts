@@ -16,6 +16,7 @@ import {
   queueQuestion,
   pickBlock,
   pickableQuestionIds,
+  enterNextBossPhase,
   InvalidActionError,
   type GameState,
   type RoomTemplate,
@@ -1273,5 +1274,99 @@ describe("queueQuestion (the host picks the next question)", () => {
     expect(() => queueQuestion(sendToBoss(g, "T0"), "T0", "m1")).toThrow(InvalidActionError);
     expect(() => queueQuestion({ ...g, phase: "finished" }, "T0", "m1")).toThrow(InvalidActionError);
     expect(() => queueQuestion(g, "nope", "m1")).toThrow(InvalidActionError);
+  });
+});
+
+describe("boss phases (docs/designs/boss-phases.md)", () => {
+  /** One team in the boss room: phase 1 is p1-a/p1-b/p1-c with `hp1` HP, phase 2 is p2-a/p2-b with 2 HP. */
+  function phased(hp1 = 1, teamCount = 1): GameState {
+    const teams = Array.from({ length: teamCount }, (_, i) => ({ id: `T${i}`, name: `Team ${i}` }));
+    return createGame(teams, ...deck(1), ["p1-a", "p1-b", "p1-c"], { bossThreshold: 0 }, hp1, first, 10, {}, [{ maxHp: 2, questionIds: ["p2-a", "p2-b"] }]);
+  }
+  const hit = (g: GameState, team = "T0") => answerQuestion(g, team, g.boss.currentQuestionId, true, "retry", first);
+
+  it("a hit that empties an earlier phase only marks it cleared: no kill, no bonus, same question, game goes on", () => {
+    const { game, outcome } = hit(phased(1));
+    expect(outcome).toEqual({ type: "correct-boss-hit", teamId: "T0", bossHpRemaining: 0, bossKilled: false, reward: 10 });
+    expect(game.phase).toBe("playing");
+    expect(game.boss).toMatchObject({ hp: 0, phaseIndex: 0, phasePending: "cleared", currentQuestionId: "p1-a", killedByTeamId: null });
+    expect(getSpectatorView(game).bossPhase).toBe(1); // nothing about phase 2 before the card
+    expect(() => hit(game)).toThrow(InvalidActionError); // nobody answers until the next phase starts
+  });
+
+  it("enterNextBossPhase starts the next phase: full new bar, its own questions, no pick, no stale picks or tiles", () => {
+    let g = hit(phased(1, 2)).game;
+    g = { ...g, boss: { ...g.boss, queuedQuestionId: "p1-b" }, eliminated: { "p1-a": [1] }, teams: g.teams.map((t) => ({ ...t, currentSelection: 2 })) };
+    const next = enterNextBossPhase(g);
+    expect(next.boss).toMatchObject({ phaseIndex: 1, hp: 2, maxHp: 2, questionIds: ["p2-a", "p2-b"], currentQuestionId: "p2-a" });
+    expect(next.boss.maxHp).toBe(next.boss.phases[1].maxHp);
+    expect(next.boss.questionIds).toBe(next.boss.phases[1].questionIds);
+    expect(next.boss.queuedQuestionId).toBeUndefined();
+    expect(next.boss.phasePending).toBeUndefined();
+    expect(next.eliminated["p1-a"]).toBeUndefined();
+    expect(next.teams.every((t) => t.currentSelection === null)).toBe(true);
+    expect(getSpectatorView(next).bossPhase).toBe(2);
+    expect(pickableQuestionIds(next, "boss")).toEqual(["p2-a", "p2-b"]);
+    expect(next.currentTurnIndex).toBe(g.currentTurnIndex); // not a turn
+  });
+
+  it("enterNextBossPhase refuses when no phase is pending, and on the last phase", () => {
+    expect(() => enterNextBossPhase(phased(2))).toThrow(InvalidActionError);
+    const last = enterNextBossPhase(hit(phased(1)).game);
+    expect(() => enterNextBossPhase({ ...last, boss: { ...last.boss, phasePending: "cleared" } })).toThrow(InvalidActionError);
+  });
+
+  it("only the last phase's final blow kills the boss and rolls the kill bonus", () => {
+    let g = enterNextBossPhase(hit(phased(1)).game);
+    g = hit(g).game;
+    expect(g.boss.phasePending).toBeUndefined(); // the last phase has no next one
+    const { game, outcome } = hit(g);
+    expect(outcome).toMatchObject({ bossKilled: true, bossHpRemaining: 0 });
+    expect(outcome.type === "correct-boss-hit" && outcome.killBonus).toBeGreaterThanOrEqual(4);
+    expect(game.phase).toBe("finished");
+  });
+
+  it("a hit that reveals an earlier phase's last unrevealed question marks it exhausted, its HP left unpaid", () => {
+    let g = phased(5);
+    g = hit(g).game; // p1-a
+    g = hit(g).game; // p1-b
+    expect(g.boss.phasePending).toBeUndefined();
+    const { game, outcome } = hit(g); // p1-c, the phase's last unrevealed one
+    expect(outcome).toMatchObject({ bossHpRemaining: 2, bossKilled: false });
+    expect(game.boss).toMatchObject({ phasePending: "exhausted", hp: 2, currentQuestionId: "p1-c" });
+    expect(enterNextBossPhase(game).boss.currentQuestionId).toBe("p2-a"); // never a phase-1 question in phase 2
+  });
+
+  it("a shown wrong lock on an earlier phase's last unrevealed question exhausts it without rotating", () => {
+    let g = phased(5);
+    g = hit(g).game;
+    g = hit(g).game;
+    const q = g.boss.currentQuestionId;
+    const { game, outcome } = answerQuestion(recordWrongLock(g, "T0", q, 0), "T0", q, false, "retry", first);
+    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" });
+    expect(game.boss).toMatchObject({ phasePending: "exhausted", currentQuestionId: q, hp: 3 });
+  });
+
+  it("a flee without a shown option never exhausts a phase: the question stays unrevealed", () => {
+    let g = phased(5);
+    g = hit(g).game;
+    g = hit(g).game;
+    const { game } = answerQuestion(g, "T0", g.boss.currentQuestionId, false, "flee", first);
+    expect(game.boss.phasePending).toBeUndefined();
+  });
+
+  it("the last phase out of questions repeats them, as a one-phase boss does today", () => {
+    let g = enterNextBossPhase(hit(phased(1)).game);
+    g = { ...g, boss: { ...g.boss, hp: 9, maxHp: 9 } };
+    g = hit(g).game;
+    g = hit(g).game;
+    expect(g.boss.phasePending).toBeUndefined();
+    expect(["p2-a", "p2-b"]).toContain(g.boss.currentQuestionId);
+  });
+
+  it("a one-phase boss has phase 1 and nothing else", () => {
+    const g = makeGame();
+    expect(g.boss.phases).toEqual([{ maxHp: g.boss.maxHp, questionIds: g.boss.questionIds }]);
+    expect(getSpectatorView(g).bossPhase).toBe(1);
   });
 });

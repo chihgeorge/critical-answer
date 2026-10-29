@@ -57,7 +57,15 @@ export interface Bank {
   pools: Record<Difficulty, BankQuestion[]>;
   rooms: BankRoom[];
   /** `hitReward`: reward points per boss hit (S6). */
-  boss: { monster: BankMonster; maxHp: number; hitReward: number; questions: BankQuestion[] };
+  boss: { monster: BankMonster; hitReward: number; phases: BossPhase[] };
+}
+/** One boss phase with its own HP bar and questions (docs/designs/boss-phases.md). Players learn a
+ * phase's name and rule only when it starts, so both are required from the second phase on. */
+export interface BossPhase {
+  name: string;
+  rule: string;
+  maxHp: number;
+  questions: BankQuestion[];
 }
 
 const SPRITES: SpriteKind[] = ["slime", "slime-lost", "slime-king", "ghost", "ghost-cry", "dragon"];
@@ -66,6 +74,8 @@ const SPRITES: SpriteKind[] = ["slime", "slime-lost", "slime-king", "ghost", "gh
 export const MIN_OPTIONS = 2;
 /** The TV wall has four tile spots (app/room/[code]/screen/page.tsx TILE_SPOTS). */
 export const MAX_OPTIONS = 4;
+/** The big screen draws one heart per HP on the boss's nameplate. */
+export const MAX_BOSS_HP = 20;
 const fail = (why: string): never => {
   throw new Error(`Invalid question bank: ${why}`);
 };
@@ -208,15 +218,27 @@ export function parseBank(raw: unknown): Bank {
   });
   const boss = b!.boss as Record<string, unknown> | null;
   if (!boss) fail("no boss");
-  if (typeof boss!.maxHp !== "number" || boss!.maxHp < 1) fail("boss has no hp");
+  // A bank from before phases holds one bar and one question list on the boss itself: that is phase 1.
+  const rawPhases = boss!.phases === undefined ? [{ maxHp: boss!.maxHp, questions: boss!.questions }] : boss!.phases;
+  if (!Array.isArray(rawPhases) || rawPhases.length === 0) fail("boss has no phases");
+  const phases = (rawPhases as Record<string, unknown>[]).map((r, i): BossPhase => {
+    const where = i === 0 ? "boss" : `boss phase ${i + 1}`;
+    if (typeof r?.maxHp !== "number" || r.maxHp < 1) fail(`${where} has no hp`);
+    const text = (v: unknown, what: string) => {
+      if (v !== undefined && typeof v !== "string") fail(`${where} ${what} is not text`);
+      const t = ((v as string | undefined) ?? "").trim();
+      if (i > 0 && !t) fail(`${where} has no ${what}`);
+      return t;
+    };
+    return { name: text(r.name, "name"), rule: text(r.rule, "rule"), maxHp: r.maxHp as number, questions: parseQuestions(r.questions, where, seen) };
+  });
   return {
     pools,
     rooms,
     boss: {
       monster: parseMonster(boss!.monster, "boss"),
-      maxHp: boss!.maxHp as number,
       hitReward: parseReward(boss!.hitReward, DEFAULT_BOSS_HIT_REWARD, "boss"),
-      questions: parseQuestions(boss!.questions, "boss", seen),
+      phases,
     },
   };
 }
@@ -226,6 +248,8 @@ export function parseBank(raw: unknown): Bank {
 export function assertSavable(bank: Bank): void {
   const tooMany = allQuestions(bank).find((q) => q.kind === "multipleChoice" && q.options.length > MAX_OPTIONS);
   if (tooMany) fail(`question ${tooMany.id} has more than ${MAX_OPTIONS} options`);
+  const hp = bank.boss.phases.findIndex((p) => !Number.isInteger(p.maxHp) || p.maxHp > MAX_BOSS_HP);
+  if (hp >= 0) fail(`boss phase ${hp + 1} hp must be a whole number from 1 to ${MAX_BOSS_HP}`);
 }
 
 export function roomTemplates(bank: Bank): RoomTemplate[] {
@@ -262,14 +286,20 @@ export function inShownOrder<Q extends BankQuestion>(q: Q, order: number[] | und
   return { ...q, options: order.map((i) => q.options[i]), correctIndex: order.indexOf(q.correctIndex) };
 }
 
-export function bossQuestionIds(bank: Bank): string[] {
-  return bank.boss.questions.map((q) => q.id);
+/** Every boss question, all phases in order. */
+export function bossQuestions(bank: Bank): BankQuestion[] {
+  return bank.boss.phases.flatMap((p) => p.questions);
+}
+
+/** Each phase's HP and question ids, the shape GameState's boss keeps. */
+export function bossPhaseStates(bank: Bank): { maxHp: number; questionIds: string[] }[] {
+  return bank.boss.phases.map((p) => ({ maxHp: p.maxHp, questionIds: p.questions.map((q) => q.id) }));
 }
 
 /** Every question in a bank, pools 1 to 5 then boss — the "flatten the whole bank" expression every
  * whole-bank scan (allAnswers, validationError, imageKeysOf) needs, in one place. */
 export function allQuestions(bank: Bank): BankQuestion[] {
-  return [...DIFFICULTIES.flatMap((d) => bank.pools[d]), ...bank.boss.questions];
+  return [...DIFFICULTIES.flatMap((d) => bank.pools[d]), ...bossQuestions(bank)];
 }
 
 export function findQuestion(bank: Bank, id: string) {
@@ -277,7 +307,7 @@ export function findQuestion(bank: Bank, id: string) {
     const q = bank.pools[d].find((x) => x.id === id);
     if (q) return { ...q, boss: false as const, difficulty: d };
   }
-  const q = bank.boss.questions.find((x) => x.id === id);
+  const q = bossQuestions(bank).find((x) => x.id === id);
   return q ? { ...q, boss: true as const, difficulty: 5 as Difficulty } : undefined;
 }
 

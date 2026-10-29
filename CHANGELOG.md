@@ -2,6 +2,19 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.16.0.0] - 2026-10-28
+
+### Added
+- A boss fight can now have phases, each with its own name, rule, HP bar and questions. In the bank editor's boss tab, 「新增階段」 adds one. From phase 2 on a phase needs a name and a rule: the editor marks the empty field and won't save until it is filled. Deleting a phase that has questions asks 「刪除第 N 階段和它的 M 題？」 first.
+- When a phase's bar empties, the big screen shows the answer as usual and the boss does not fall. On 下一題 a phase card opens: 「還沒結束！」, the new phase's name and rule. The boss flashes to a new colour and its hearts refill one by one. A phase that runs out of questions moves on the same way. After a wrong answer, the card waits until the retry line has been read.
+- The phones show the same card, then keep the phase's rule on screen during its boss turns. The host page shows 「第 n/N 階段・下一階段：…」 or 「最後階段」, so only the host knows how many phases are left.
+- The narration never says the boss fell when only a phase's bar emptied, and the card has its own line and sound. A team that walks into the boss room from phase 2 on hears which phase is under way.
+
+### Changed
+- The bank format number goes from 1 to 2. Banks saved before this release load as a boss with one phase. An older Worker or editor treats a format-2 bank as unreadable and refuses to save it, rather than drop its phases. Deploy the Worker and the site together.
+- A boss phase's HP must be a whole number from 1 to 20 to save (the big screen draws one heart per HP).
+- The boss tab no longer warns when there are fewer than HP + 10 questions.
+
 ## [0.15.4.0] - 2026-10-28
 
 ### Fixed

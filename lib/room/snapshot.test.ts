@@ -69,6 +69,9 @@ describe("parseSnapshot", () => {
       ["game", { teams: [], turnOrder: [], phase: "playing", pools: [[], [], [], [], []], usedQuestionIds: [[]] }], // usedQuestionIds not 5 lists
       ["lastActivityAt", "yesterday"],
       ["lastActivityAt", -5],
+      // Value: protects=a mistyped phaseCard save is refused; fails_when=the boolean check is dropped; why_new=no row
+      // covered phaseCard; seam=none; no_claim=restoring a valid card (lib/room/boss-phases.test.ts)
+      ["phaseCard", "yes"],
     ];
     for (const [field, value] of fields) {
       expect(parseSnapshot({ ...valid(), [field]: value }), `${field}=${JSON.stringify(value)}`).toBeNull();

@@ -9,10 +9,10 @@ describe("asTextBank", () => {
     const bank = {
       pools: { 1: [{ kind: "multipleChoice", id: "a", content, options: ["x", "y"], correctIndex: 1, explanation }], 2: [], 3: [], 4: [], 5: [] },
       rooms: [],
-      boss: { questions: [{ kind: "text", id: "b", content, answer: "z" }] },
+      boss: { phases: [{ questions: [{ kind: "text", id: "b", content, answer: "z" }] }] },
     } as unknown as Bank;
     const out = asTextBank(bank);
     expect(out.pools[1][0]).toEqual({ kind: "text", id: "a", content, answer: "y", explanation });
-    expect(out.boss.questions[0]).toBe(bank.boss.questions[0]);
+    expect(out.boss.phases[0].questions[0]).toBe(bank.boss.phases[0].questions[0]);
   });
 });

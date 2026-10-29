@@ -127,7 +127,7 @@ export type ServerErrorCode =
   | "invalid_action";
 
 /** One per kind of event: the big screen's sound effect for it (lib/sfx.ts). */
-export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-kill";
+export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill";
 
 export type ServerMessage =
   | { type: "LOBBY"; teams: { id: string; name: string }[]; roomEpoch: string }
@@ -147,6 +147,11 @@ export type ServerMessage =
       /** The sound effect for event `eventId` (the big screen plays it once, when eventId goes up).
        * Absent before any event, and after a server restart. */
       cue?: SoundCue;
+      /** The boss's phase card is up: `question` is null until the host's 下一題 (docs/designs/boss-phases.md),
+       * so the card carries the boss to draw. */
+      phaseCard?: { monster: PublicQuestion["monster"] };
+      /** The boss phase under way, from phase 2 on (phase 1 stays a plain boss). Never a later phase. */
+      bossPhaseInfo?: { name: string; rule: string };
     }
   | { type: "GAME_OVER"; winners: string[] }
   /** Exactly one per event (1-3 segments, played in order). Clients keep the highest eventId they
@@ -171,6 +176,9 @@ export type ServerMessage =
       options: Record<string, string[]>;
       /** Per target: the queued question id, when there is one. */
       queued: Record<string, string>;
+      /** Every boss phase and which one is under way: only the host knows what is still to come. */
+      bossPhases: { name: string; rule: string; maxHp: number }[];
+      bossPhaseIndex: number;
     }
   | { type: "ERROR"; error: ServerErrorCode; detail?: string };
 

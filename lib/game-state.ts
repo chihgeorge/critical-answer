@@ -144,6 +144,18 @@ export interface BossState {
   questionIds: string[];
   /** The host's pick for the boss's next question (queueQuestion): the next rotation takes it. */
   queuedQuestionId?: string;
+  /** Every phase's bar and questions (docs/designs/boss-phases.md); `maxHp` and `questionIds` above are
+   * a copy of `phases[phaseIndex]`, written only by createGame and enterNextBossPhase. */
+  phases: BossPhaseState[];
+  phaseIndex: number;
+  /** The current phase is over, its bar emptied ("cleared") or its questions all revealed ("exhausted"),
+   * and the next has not started: the room starts it with enterNextBossPhase when the phase card opens. */
+  phasePending?: "cleared" | "exhausted";
+}
+
+export interface BossPhaseState {
+  maxHp: number;
+  questionIds: string[];
 }
 
 export interface GameConfig {
@@ -394,6 +406,8 @@ export function createGame(
   rng: () => number = Math.random,
   bossHitReward = DEFAULT_BOSS_HIT_REWARD,
   optionOrder: Record<string, number[]> = {},
+  /** Phases after the first, which is `bossQuestionIds` and `bossMaxHp`. */
+  laterBossPhases: BossPhaseState[] = [],
 ): GameState {
   if (teamSeeds.length === 0) {
     throw new InvalidActionError("At least one team is required");
@@ -442,6 +456,8 @@ export function createGame(
       killedByTeamId: null,
       currentQuestionId: bossQuestionIds[0],
       questionIds: bossQuestionIds,
+      phases: [{ maxHp: bossMaxHp, questionIds: bossQuestionIds }, ...laterBossPhases],
+      phaseIndex: 0,
     },
     config,
     phase: "playing",
@@ -467,6 +483,33 @@ export function isInBossPhase(game: GameState, teamId: string): boolean {
  * copy from a same-branch score change). */
 function resetBossSelections(game: GameState, teams: Team[]): Team[] {
   return teams.map((t) => (isInBossPhase(game, t.id) ? { ...t, currentSelection: null } : t));
+}
+
+/** Starts the boss's next phase once the room opens its phase card (docs/designs/boss-phases.md, D1):
+ * a full new bar, that phase's first unrevealed question, no queued pick and no leftover picks. Not a turn. */
+export function enterNextBossPhase(game: GameState): GameState {
+  assertPlaying(game);
+  const boss = game.boss;
+  const phaseIndex = boss.phaseIndex + 1;
+  const phase = boss.phases[phaseIndex];
+  if (!boss.phasePending || !phase) throw new InvalidActionError("no boss phase is waiting to start");
+  // The old phase's question leaves play, so its wrong tiles go with it.
+  const eliminated = Object.fromEntries(Object.entries(game.eliminated).filter(([id]) => id !== boss.currentQuestionId));
+  return {
+    ...game,
+    eliminated,
+    teams: resetBossSelections(game, game.teams),
+    boss: {
+      ...boss,
+      phaseIndex,
+      maxHp: phase.maxHp,
+      hp: phase.maxHp,
+      questionIds: phase.questionIds,
+      currentQuestionId: phase.questionIds.find((id) => !game.revealedQuestionIds.includes(id)) ?? phase.questionIds[0],
+      queuedQuestionId: undefined,
+      phasePending: undefined,
+    },
+  };
 }
 
 /** The id of the team whose turn it currently is, skipping offline teams (T7). */
@@ -559,16 +602,24 @@ export function answerQuestion(
   let nextGame = game;
   let outcome: AnswerOutcome;
 
+  if (inBoss && boss.phasePending) throw new InvalidActionError("the next boss phase has not started yet");
+
   if (inBoss) {
+    const lastPhase = boss.phaseIndex >= boss.phases.length - 1;
+    // An earlier phase out of unrevealed questions moves on; the last one repeats them (premise 3).
+    const usedUp = (revealed: string[]) => !lastPhase && boss.questionIds.every((id) => revealed.includes(id));
     if (correct) {
       const newHp = Math.max(0, boss.hp - 1);
-      const bossKilled = newHp === 0;
+      const bossKilled = newHp === 0 && lastPhase;
       const killBonus = bossKilled ? rollBossKillBonus(rng) : undefined;
       const reward = boss.hitReward + (killBonus ?? 0);
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
-      const next = bossKilled ? { currentQuestionId: boss.currentQuestionId } : rotateBoss(boss, revealedNow);
+      const phasePending = bossKilled ? undefined : newHp === 0 ? "cleared" : usedUp(revealedNow) ? "exhausted" : undefined;
+      // A phase that just ended keeps its question until enterNextBossPhase deals the next phase's.
+      const stay = bossKilled || phasePending;
+      const next = stay ? { currentQuestionId: boss.currentQuestionId } : rotateBoss(boss, revealedNow);
 
       // The boss question is shared: every team already in boss phase faces the same
       // next question, not just the team that just answered. Reset ALL of their
@@ -577,7 +628,7 @@ export function answerQuestion(
       // a pick that team never made for this question (adversarial review finding).
       nextGame = {
         ...game,
-        teams: bossKilled ? teams : resetBossSelections(game, teams),
+        teams: stay ? teams : resetBossSelections(game, teams),
         // A correct answer is always revealed (D5) — the current boss question just got right,
         // so it joins the never-redeal set before nextBossQuestionId's own next call sees it.
         revealedQuestionIds: revealedNow,
@@ -586,6 +637,7 @@ export function answerQuestion(
           hp: newHp,
           killedByTeamId: bossKilled ? teamId : boss.killedByTeamId,
           ...next,
+          ...(phasePending ? { phasePending } : {}),
         },
       };
       outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, reward, ...(killBonus === undefined ? {} : { killBonus }) };
@@ -600,7 +652,8 @@ export function answerQuestion(
       // wrong option makes it revealed; the rotation skips every revealed one.
       const shownWrong = (game.eliminated[questionId]?.length ?? 0) > 0;
       const revealed = shownWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
-      const rotated = fleeChoice === "flee" || shownWrong ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
+      const phasePending = usedUp(revealed) ? ("exhausted" as const) : undefined;
+      const rotated = !phasePending && (fleeChoice === "flee" || shownWrong) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
       const rotatedBossQuestionId = rotated.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a rotation changes
       // the question for every team in boss phase, so every one of their picks resets —
@@ -609,7 +662,7 @@ export function answerQuestion(
         ...game,
         revealedQuestionIds: revealed,
         teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game, game.teams) : game.teams,
-        boss: { ...boss, ...rotated },
+        boss: { ...boss, ...rotated, ...(phasePending ? { phasePending } : {}) },
       };
       outcome =
         fleeChoice === "flee"
@@ -836,6 +889,8 @@ export interface SpectatorView {
   }[];
   bossHp: number;
   bossMaxHp: number;
+  /** The boss phase being fought, from 1. Only phases already reached: never the total (boss-phases.md). */
+  bossPhase: number;
   bossCurrentQuestionId: string;
   /** Who landed the boss's final blow, or null while it lives. */
   bossKilledBy: string | null;
@@ -861,6 +916,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
     })),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
+    bossPhase: game.boss.phaseIndex + 1,
     bossCurrentQuestionId: game.boss.currentQuestionId,
     bossKilledBy: game.boss.killedByTeamId,
     eliminated: game.eliminated,

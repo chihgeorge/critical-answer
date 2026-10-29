@@ -36,6 +36,17 @@ export const SFX: Record<SoundCue, SfxNote[]> = {
     { at: 0, duration: 0.12, freq: noteToFreq("C3"), slideTo: noteToFreq("C2"), wave: "square" },
     n(0.1, 0.15, "G5"),
   ],
+  // The boss gets back up for its next phase (boss-phases.md D8): the opposite of the victory run, a low
+  // falling rumble, then three rising notes a tritone apart.
+  "boss-phase": [
+    { at: 0, duration: 0.4, freq: noteToFreq("E2"), slideTo: noteToFreq("A1"), wave: "square" },
+    n(0.4, 0.15, "C4"),
+    n(0.4, 0.15, "F#4", "triangle"),
+    n(0.58, 0.15, "D#4"),
+    n(0.58, 0.15, "A4", "triangle"),
+    n(0.76, 0.25, "F#4"),
+    n(0.76, 0.25, "C5", "triangle"),
+  ],
   // The boss falls: a longer victory run.
   "boss-kill": [
     n(0, 0.1, "G4"),

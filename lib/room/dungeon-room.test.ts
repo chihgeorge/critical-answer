@@ -2,7 +2,7 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
-import { answerText, bossQuestionIds, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
+import { answerText, bossPhaseStates, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 // Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
 vi.mock("../question-bank-data", async (actual) => {
@@ -291,7 +291,7 @@ describe("HOST_START", () => {
     send(room, hostConn, { type: "HOST_START" });
     expect(room.game).not.toBeNull();
     expect(room.game!.rooms).toEqual(roomTemplates(BANK));
-    expect(room.game!.boss.questionIds).toEqual(bossQuestionIds(BANK));
+    expect(room.game!.boss.questionIds).toEqual(bossPhaseStates(BANK)[0].questionIds);
     expect(lastBroadcast(room)).toMatchObject({ type: "STATE", phase: "playing" });
   });
 

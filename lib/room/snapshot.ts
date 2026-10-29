@@ -35,6 +35,8 @@ export interface RoomSnapshot {
   lastActivityAt: number | null;
   /** The full bank the game is dealt from, not just question ids: editing or deleting a bank must not change a game in progress. */
   bank: Bank;
+  /** The boss's phase card is up. Missing in a save from before boss phases. */
+  phaseCard?: boolean;
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -63,6 +65,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     const at = raw.lastActivityAt ?? null;
     if (at !== null && !(typeof at === "number" && Number.isFinite(at) && at >= 0)) return null;
     const bank = parseBank(raw.bank); // throws on a bank that would not load today
+    if (raw.phaseCard !== undefined && typeof raw.phaseCard !== "boolean") return null;
     return { ...(raw as unknown as RoomSnapshot), joinPassword, lastActivityAt: at, bank };
   } catch {
     return null;
