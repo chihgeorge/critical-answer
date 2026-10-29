@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.17.0.1] - 2026-10-28
+
+### Added
+- `TODOS.md` has three new P3 ideas for a dungeon-cooking style: monsters drop ingredients from their own bodies and become a dish, points are renamed 「飽足感」 (fullness), the dungeon art turns warm and lived-in, and the narration speaks like a food show or a biologist. They borrow only the theme, never another work's characters or art.
+
 ## [0.17.0.0] - 2026-10-28
 
 ### Added
