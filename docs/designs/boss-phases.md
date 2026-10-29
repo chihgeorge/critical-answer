@@ -809,31 +809,31 @@ Parallel lanes: Lane A: 1 → 2 → 3 → 5 → 7 (shared lib/). Lane B: 4 after
 ## Implementation Tasks
 Synthesized from this review's findings. Each task derives from a specific finding above. Ratios assume features ~30x, tests ~50x.
 
-- [ ] **T1 (P1, human: ~3h / CC: ~10min)** — bank — `boss.phases` parse, one-phase normalisation, D5 name/rule rule, BANK_FORMAT 2, `bossQuestions(bank)` for the four flatteners
+- [x] **T1 (P1, human: ~3h / CC: ~10min)** — bank — `boss.phases` parse, one-phase normalisation, D5 name/rule rule, BANK_FORMAT 2, `bossQuestions(bank)` for the four flatteners
   - Surfaced by: Scope Challenge #1-#3; Section 1 #6; R4/D5; R7/D8
   - Files: lib/question-bank.ts, lib/bank-store.ts, lib/text-bank.ts, fixtures, e2e/answer.ts
   - Verify: `npm run test -- question-bank text-bank bank-store`
-- [ ] **T2 (P1, human: ~6h / CC: ~20min)** — game-state — phases, phaseIndex, phasePending; enterNextBossPhase (copies, pick, selections, eliminated, refusals); ring per phase; kill only on the last phase
+- [x] **T2 (P1, human: ~6h / CC: ~20min)** — game-state — phases, phaseIndex, phasePending; enterNextBossPhase (copies, pick, selections, eliminated, refusals); ring per phase; kill only on the last phase
   - Surfaced by: D1; Section 1 #7; Section 2 #5; Outside Voice #7
   - Files: lib/game-state.ts, lib/game-state.test.ts
   - Verify: `npm run test -- game-state` (all existing boss tests unchanged)
-- [ ] **T3 (P1, human: ~6h / CC: ~25min)** — room — card open/close, paused() on all gates, MC auto-advance (D2), exhausting miss two STATEs (D7), `question: null` during the card, reset, restore and snapshot backfill, HOST_PICKS bossPhases (D4)
+- [x] **T3 (P1, human: ~6h / CC: ~25min)** — room — card open/close, paused() on all gates, MC auto-advance (D2), exhausting miss two STATEs (D7), `question: null` during the card, reset, restore and snapshot backfill, HOST_PICKS bossPhases (D4)
   - Surfaced by: Section 1 #2, #3, #8; Section 2 #3; Outside Voice #1; R1, R3, R6
   - Files: lib/room/dungeon-room.ts, lib/room/snapshot.ts, lib/protocol.ts, tests
   - Verify: `npm run test -- dungeon-room persistence` incl. the no-leak test (Section 3 #1)
-- [ ] **T4 (P1, human: ~2h / CC: ~10min)** — narration — boss-phase event and lines, 0-HP boss-hit lines and prompt (D3), sfx entry
+- [x] **T4 (P1, human: ~2h / CC: ~10min)** — narration — boss-phase event and lines, 0-HP boss-hit lines and prompt (D3), sfx entry
   - Surfaced by: R2/D3; Outside Voice #11
   - Files: lib/narration/events.ts, scripted.ts, llm.ts, lib/sfx.ts, tests
   - Verify: `npm run test -- narration`
-- [ ] **T5 (P1, human: ~4h / CC: ~20min)** — clients — screen card, host 下一題 for the card and phase list, /play pause, hue step in describeTurn (after the design PNG)
+- [x] **T5 (P1, human: ~4h / CC: ~20min)** — clients — screen card, host 下一題 for the card and phase list, /play pause, hue step in describeTurn (after the design PNG)
   - Surfaced by: Outside Voice #1, #11; R3/D4
   - Files: app/room/[code]/screen/page.tsx, host/page.tsx, play/page.tsx, lib/turn-info.ts
   - Verify: e2e boss-phases.spec.ts
-- [ ] **T6 (P1, human: ~4h / CC: ~20min)** — editor — phases list, name/rule/HP, add/delete, no count warning (D6) (after the design PNG)
+- [x] **T6 (P1, human: ~4h / CC: ~20min)** — editor — phases list, name/rule/HP, add/delete, no count warning (D6) (after the design PNG)
   - Surfaced by: Section 2 #4; R5/D6
   - Files: app/bank-editor/page.tsx
   - Verify: e2e editor save and reload
-- [ ] **T7 (P1, human: ~4h / CC: ~15min)** — e2e — two-phase boss played through, exhausted phase, MC auto-advance card, editor round trip
+- [x] **T7 (P1, human: ~4h / CC: ~15min)** — e2e — two-phase boss played through, exhausted phase, MC auto-advance card, editor round trip
   - Surfaced by: Section 3 #2; R8/D9
   - Files: e2e/boss-phases.spec.ts
   - Verify: `npm run e2e`, `npm run check:bundle`
@@ -902,10 +902,10 @@ Pass 4 (AI slop): no issues; the card, hue shift and sound reuse the game's own 
 Panel, LabelChip, Nameplate hearts, the reveal slot and the host reveal panel, the game-over title outline, `px-input`, the editor's red save banner, `hue-rotate` on Sprite, lib/sfx.ts.
 
 ### Implementation tasks added by the design review
-- [ ] **T8 (P1, human: ~3h / CC: ~15min)** — screen — card in the question slot (D1, D10), right chip as phase name from phase 2 (D5), blink and heart refill (D7), hue step +90° in describeTurn (D9). Files: app/room/[code]/screen/page.tsx, lib/turn-info.ts, app/globals.css. Verify: e2e boss-phases.spec.ts plus a screenshot against panel 1-2.
-- [ ] **T9 (P1, human: ~2h / CC: ~10min)** — host and play — host phase line (D2) and card panel (D3); phone card panel (D4) and rule line (D5). Files: app/room/[code]/host/page.tsx, app/room/[code]/play/page.tsx. Verify: e2e.
-- [ ] **T10 (P1, human: ~1h / CC: ~5min)** — sound and narration — `boss-phase` SFX (D8); boss-enter narration names the current revealed phase for a late joiner (D13). Files: lib/sfx.ts, lib/narration/events.ts, scripted.ts, llm.ts. Verify: narration tests (no later phase, no count in the prompt).
-- [ ] **T11 (P1, human: ~3h / CC: ~15min)** — editor — phases list per panel 6, field outline on error (D6), delete confirm (D11). Files: app/bank-editor/page.tsx. Verify: e2e editor round trip.
+- [x] **T8 (P1, human: ~3h / CC: ~15min)** — screen — card in the question slot (D1, D10), right chip as phase name from phase 2 (D5), blink and heart refill (D7), hue step +90° in describeTurn (D9). Files: app/room/[code]/screen/page.tsx, lib/turn-info.ts, app/globals.css. Verify: e2e boss-phases.spec.ts plus a screenshot against panel 1-2.
+- [x] **T9 (P1, human: ~2h / CC: ~10min)** — host and play — host phase line (D2) and card panel (D3); phone card panel (D4) and rule line (D5). Files: app/room/[code]/host/page.tsx, app/room/[code]/play/page.tsx. Verify: e2e.
+- [x] **T10 (P1, human: ~1h / CC: ~5min)** — sound and narration — `boss-phase` SFX (D8); boss-enter narration names the current revealed phase for a late joiner (D13). Files: lib/sfx.ts, lib/narration/events.ts, scripted.ts, llm.ts. Verify: narration tests (no later phase, no count in the prompt).
+- [x] **T11 (P1, human: ~3h / CC: ~15min)** — editor — phases list per panel 6, field outline on error (D6), delete confirm (D11). Files: app/bank-editor/page.tsx. Verify: e2e editor round trip.
 
 TODOS: none proposed (no deferred design debt).
 
