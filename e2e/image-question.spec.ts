@@ -243,3 +243,88 @@ test("answer reveal: a YouTube explanation renders as an embed on /play and /scr
   await expect(screen.getByTitle("詳解影片")).toHaveAttribute("src", embedSrc);
   await expect(team.getByTitle("詳解影片")).toHaveAttribute("src", embedSrc);
 });
+
+/** Seeds room 0 with host-judged questions, starts a 2-team game, and returns the host and both
+ * phones: 甲隊 joins first, so it is up first. Pass one question per team: deal() never hands a
+ * team a question another team holds. */
+async function startTwoTeams(browser: import("@playwright/test").Browser, request: import("@playwright/test").APIRequestContext, questions: unknown[]) {
+  const loaded = await request.get(`${WORKER}/api/bank`, { headers: HEADERS });
+  const { bank, version } = await loaded.json();
+  bank.pools["1"] = questions;
+  const saved = await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } });
+  expect(saved.ok()).toBe(true);
+
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  const phones = [];
+  for (const name of ["甲隊", "乙隊"]) {
+    const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+    await phone.goto(`/room/${code}/play?name=${encodeURIComponent(name)}`);
+    await expect(phone.getByText("等待主持人開始遊戲")).toBeVisible();
+    phones.push(phone);
+  }
+  await expect(host.getByText("乙隊")).toBeVisible();
+  const ai = host.getByRole("checkbox");
+  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(phones[0].getByText("輪到我們了！")).toBeVisible();
+  return { host, a: phones[0], b: phones[1] };
+}
+
+// Value: protects=on our own turn the picture sits right under the ribbon, before our team card; fails_when=the media slot or the cards stop swapping sides with the turn; why_new=no spec compares media and card positions; seam=none; no_claim=node reuse (each turn shows another question id, so QuestionMedia's key remounts it anyway)
+test("media question: on our own turn the picture comes before our team card, and after it while waiting", async ({ browser, request }) => {
+  const uploaded = await request.post(`${WORKER}/api/bank/image`, { headers: { ...HEADERS, "Content-Type": "image/png" }, data: TINY_PNG });
+  const { key } = await uploaded.json();
+  const image = (id: string) => ({ kind: "text", id, content: { kind: "image", value: key }, answer: "松鼠" });
+  const { host, a, b } = await startTwoTeams(browser, request, [image("r0-img-slot-1"), image("r0-img-slot-2")]);
+
+  const top = (loc: import("@playwright/test").Locator) => loc.evaluate((el) => el.getBoundingClientRect().top);
+  const img = (page: import("@playwright/test").Page) => page.getByAltText("題目圖片");
+  const card = (page: import("@playwright/test").Page, name: string) => page.getByText(name, { exact: true });
+  await expect(img(a)).toBeAttached();
+  await expect(img(b)).toBeAttached();
+  await expect(a.getByRole("heading")).toHaveCount(0); // a picture question has no text strip
+  expect(await top(img(a))).toBeLessThan(await top(card(a, "甲隊")));
+  expect(await top(img(b))).toBeGreaterThan(await top(card(b, "乙隊")));
+
+  await host.getByRole("button", { name: "答錯・重答" }).click();
+  await expect(b.getByText("輪到我們了！")).toBeVisible();
+  await expect(a.getByText("輪到：乙隊")).toBeVisible();
+  expect(await top(img(a))).toBeGreaterThan(await top(card(a, "甲隊")));
+  expect(await top(img(b))).toBeLessThan(await top(card(b, "乙隊")));
+});
+
+// Value: protects=a host-judged text turn shows the question only on the answering phone, and only before the reveal (eng review R2); fails_when=the strip shows on a waiting phone or stays on the reveal; why_new=host-judged turns had no question on the phone; seam=none; no_claim=multiple choice (multiple-choice.spec.ts)
+test("host-judged text question: only the answering phone shows it, and it moves with the turn", async ({ browser, request }) => {
+  const spoken = (n: number) => ({ kind: "text", id: `r0-host-text-${n}`, content: { kind: "text", value: `口答測試題${n}` }, answer: "口答答案" });
+  const { host, a, b } = await startTwoTeams(browser, request, [spoken(1), spoken(2)]);
+
+  const question = (page: import("@playwright/test").Page) => page.getByRole("heading", { name: /口答測試題/ });
+  await expect(question(a)).toBeVisible();
+  await expect(question(b)).toHaveCount(0);
+
+  await host.getByRole("button", { name: "答錯・重答" }).click();
+  await expect(question(b)).toBeVisible();
+  await expect(question(a)).toHaveCount(0);
+
+  await host.getByRole("button", { name: "答對！" }).click();
+  await expect(b.getByText("正解：口答答案")).toBeVisible();
+  await expect(question(b)).toHaveCount(0);
+});
+
+// Value: protects=a picture multipleChoice turn shows no text strip and still names its option group 選項; fails_when=the strip renders the image key or the group loses its name; why_new=no spec seeds a picture multipleChoice; seam=none; no_claim=YouTube content
+test("picture multipleChoice: no question strip, and the options sit in a group named 選項", async ({ browser, request }) => {
+  const uploaded = await request.post(`${WORKER}/api/bank/image`, { headers: { ...HEADERS, "Content-Type": "image/png" }, data: TINY_PNG });
+  const { key } = await uploaded.json();
+  const mc = (id: string) => ({ kind: "multipleChoice", id, content: { kind: "image", value: key }, options: ["松鼠", "刺蝟"], correctIndex: 0 });
+  const { a } = await startTwoTeams(browser, request, [mc("r0-img-mc-1"), mc("r0-img-mc-2")]);
+
+  await expect(a.getByAltText("題目圖片")).toBeAttached();
+  await expect(a.getByRole("heading")).toHaveCount(0);
+  const group = a.getByRole("group", { name: "選項" });
+  await expect(group.getByRole("button", { name: /松鼠/ })).toBeVisible();
+  await expect(group.getByRole("button", { name: /刺蝟/ })).toBeVisible();
+});

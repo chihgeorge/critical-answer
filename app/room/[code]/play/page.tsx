@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
@@ -18,6 +18,17 @@ import { McOption } from "@/components/mc-option";
 
 /** How long 鎖定中… waits for the room to confirm a lock before offering a retry (phone-answering.md D6). */
 const LOCK_CONFIRM_MS = 3000;
+
+/** The question on the answering team's own turn (docs/designs/phone-question-text.md D2): a dark
+ * strip flush with the top of its turn panel, so nobody reads it as a fifth option. The default
+ * margins cancel the panel's px-[10px] py-[10px] padding. */
+function QuestionStrip({ id, text, className = "-mx-[10px] -mt-[10px] mb-[2px]" }: { id?: string; text: string; className?: string }) {
+  return (
+    <h2 id={id} className={`bg-[var(--k)] px-3 py-[10px] text-[20px] font-normal leading-[1.35] text-[var(--cream)] [overflow-wrap:anywhere] ${className}`}>
+      {text}
+    </h2>
+  );
+}
 
 /**
  * The team's own multipleChoice turn (docs/designs/phone-answering.md D2, D5–D7): pick, lock, then
@@ -46,36 +57,41 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
     return () => clearTimeout(id);
   }, [inFlight]);
   const frozen = !!lock || !!wrong || inFlight;
+  const stripId = useId();
+  const text = q.content.kind === "text" ? q.content.value : null;
 
   return (
     <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
+      {text && <QuestionStrip id={stripId} text={text} />}
       {wrong && (
         <div className="flex items-center gap-2 text-[22px]">
           <span aria-hidden className="inline-flex h-7 w-7 items-center justify-center border-[3px] border-[var(--k)] bg-[var(--danger)] text-[14px] text-white">✕</span>
           {bossMiss ? "答錯了！" : "答錯了！要怎麼辦？"}
         </div>
       )}
-      {options.map((opt, i) => {
-        const out = gone.includes(i);
-        const locked = lock?.optionIndex === i;
-        const picked = !out && pick === i;
-        return (
-          <McOption
-            key={i}
-            index={i}
-            text={opt}
-            look={out ? "dim" : locked || (picked && !lock) ? "sel" : frozen ? "dim" : "plain"}
-            label={out ? "✕ 答錯" : locked ? "🔒 已鎖定" : picked && !lock ? "◀ 已選" : undefined}
-            aria-pressed={picked || locked}
-            disabled={out || frozen}
-            onClick={() => {
-              setLockFailed(false);
-              send({ type: "TEAM_SELECT_OPTION", questionId: q.id, optionIndex: i });
-            }}
-            className="min-h-[56px] text-[21px]"
-          />
-        );
-      })}
+      <div role="group" aria-labelledby={text ? stripId : undefined} aria-label={text ? undefined : "選項"} className="flex flex-col gap-2">
+        {options.map((opt, i) => {
+          const out = gone.includes(i);
+          const locked = lock?.optionIndex === i;
+          const picked = !out && pick === i;
+          return (
+            <McOption
+              key={i}
+              index={i}
+              text={opt}
+              look={out ? "dim" : locked || (picked && !lock) ? "sel" : frozen ? "dim" : "plain"}
+              label={out ? "✕ 答錯" : locked ? "🔒 已鎖定" : picked && !lock ? "◀ 已選" : undefined}
+              aria-pressed={picked || locked}
+              disabled={out || frozen}
+              onClick={() => {
+                setLockFailed(false);
+                send({ type: "TEAM_SELECT_OPTION", questionId: q.id, optionIndex: i });
+              }}
+              className="min-h-[56px] text-[21px]"
+            />
+          );
+        })}
+      </div>
       {bossMiss ? (
         <div className="px-bar mt-1" role="status">首領要換題了 ▶</div>
       ) : wrong ? (
@@ -130,6 +146,10 @@ export default function PlayPage() {
   const [disconnected, setDisconnected] = useState(false);
   const [offlineMsg, setOfflineMsg] = useState<string | null>(null);
   const lastGame = useRef<StateMessage | null>(null);
+  /** Text of every question this phone has shown, by id: during a reveal `game.question` is already
+   * the next one, so the reveal panel looks up the answered question here (phone-question-text.md D6). */
+  const seen = useRef(new Map<string, string>());
+  const [revealedText, setRevealedText] = useState<string | undefined>();
   const drop = useRef<DropSnapshot | null>(null);
   useEffect(() => {
     if (!offlineMsg) return;
@@ -164,10 +184,13 @@ export default function PlayPage() {
           // Not a sign we joined: a connection that failed the password still gets every LOBBY broadcast.
           setLobby(msg.teams);
           setGame(null);
+          seen.current.clear();
           lastGame.current = null;
           drop.current = null;
           break;
         case "STATE": {
+          if (msg.question?.content.kind === "text") seen.current.set(msg.question.id, msg.question.content.value);
+          setRevealedText(msg.reveal ? seen.current.get(msg.reveal.questionId) : undefined);
           setGame(msg);
           lastGame.current = msg;
           if (drop.current) {
@@ -202,6 +225,56 @@ export default function PlayPage() {
   // Non-blocking DM branching interlude (design doc decision 4B): does not gate turn order,
   // so this is just derived from the broadcast state, not tied to isMyTurn.
   const pendingBranchRoom = myTeam ? firstPendingBranchRoom(myTeam) : null;
+  const cards = (
+    <>
+      {/* While waiting, the roster above already highlights our own team. */}
+      {game && (
+        <Panel tone={isMyTurn ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
+          <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
+            <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
+              {myTeam ? (
+                <>
+                  <span className="px-num">{myTeam.reward}</span> 獎勵分
+                </>
+              ) : (
+                `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`
+              )}
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {/* DM branching interlude: background choice, never blocks the turn above. */}
+      {game && !finished && pendingBranchRoom !== null && (
+        <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-3 text-center">
+          <div className="text-[15px]">冒險出現岔路，你們要怎麼做？</div>
+          <div className="flex gap-2">
+            {BRANCH_OPTIONS.map((choice) => (
+              <PixelButton
+                key={choice}
+                onClick={() => send({ type: "TEAM_BRANCH_CHOICE", roomIndex: pendingBranchRoom, choice })}
+                className="!m-0"
+              >
+                {BRANCH_LABELS[choice]}
+              </PixelButton>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {game && !finished && !revealed && turn?.team && (
+        <Panel className="flex items-center gap-3 px-3 py-[10px]">
+          <Sprite kind={turn.monster.kind} hue={turn.monster.hue} scale={turn.miniScale} className="flex-none" />
+          <div className="text-[15px]">
+            <div>{turn.team.name} 正在面對</div>
+            <div className="text-[18px]">{turn.monster.name}</div>
+          </div>
+        </Panel>
+      )}
+    </>
+  );
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -290,9 +363,17 @@ export default function PlayPage() {
         {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
         {game && !finished && !revealed && isMyTurn && game.question?.options && <MyChoicePanel game={game} teamId={teamId} send={send} />}
 
+        {/* Eng review R2: our own host-judged text turn shows the question too (the team answers aloud). */}
+        {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && game.question.content.kind === "text" && (
+          <Panel tone="turn" className="px-[10px] py-[10px]">
+            <QuestionStrip text={game.question.content.value} className="-mx-[10px] -mt-[10px]" />
+          </Panel>
+        )}
+
         {/* D14: our own lock was right — the same tiles, the right one green, and the points. */}
-        {game && revealed?.choice && revealed.choice.teamId === teamId && (
+        {game && !finished && revealed?.choice && revealed.choice.teamId === teamId && (
           <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
+            {revealedText && <QuestionStrip text={revealedText} />}
             {revealed.choice.options.map((opt, i) => (
               <McOption key={i} index={i} text={opt} disabled look={i === revealed.choice!.correctIndex ? "ok" : "dim"} label={i === revealed.choice!.correctIndex ? "✓ 答對" : undefined} className="min-h-[56px] text-[21px]" />
             ))}
@@ -302,52 +383,9 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {/* While waiting, the roster above already highlights our own team. */}
-        {game && (
-          <Panel tone={isMyTurn ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
-            <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
-              <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
-                {myTeam ? (
-                  <>
-                    <span className="px-num">{myTeam.reward}</span> 獎勵分
-                  </>
-                ) : (
-                  `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`
-                )}
-              </div>
-            </div>
-          </Panel>
-        )}
-
-        {/* DM branching interlude: background choice, never blocks the turn above. */}
-        {game && !finished && pendingBranchRoom !== null && (
-          <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-3 text-center">
-            <div className="text-[15px]">冒險出現岔路，你們要怎麼做？</div>
-            <div className="flex gap-2">
-              {BRANCH_OPTIONS.map((choice) => (
-                <PixelButton
-                  key={choice}
-                  onClick={() => send({ type: "TEAM_BRANCH_CHOICE", roomIndex: pendingBranchRoom, choice })}
-                  className="!m-0"
-                >
-                  {BRANCH_LABELS[choice]}
-                </PixelButton>
-              ))}
-            </div>
-          </Panel>
-        )}
-
-        {game && !finished && !revealed && turn?.team && (
-          <Panel className="flex items-center gap-3 px-3 py-[10px]">
-            <Sprite kind={turn.monster.kind} hue={turn.monster.hue} scale={turn.miniScale} className="flex-none" />
-            <div className="text-[15px]">
-              <div>{turn.team.name} 正在面對</div>
-              <div className="text-[18px]">{turn.monster.name}</div>
-            </div>
-          </Panel>
-        )}
+        {/* Eng review R1, R3: one fixed media slot. On our own turn it comes right after the turn panel
+            (or the ribbon) and the cards go below it; while waiting the cards stay above it. */}
+        {!isMyTurn && cards}
 
         {game && !finished && !revealed && game.question && game.question.content.kind !== "text" && (
           <Panel className="flex justify-center px-3 py-3">
@@ -358,6 +396,8 @@ export default function PlayPage() {
             <QuestionMedia key={game.question.id} content={game.question.content} maxWidth={280} maxHeight={200} />
           </Panel>
         )}
+
+        {isMyTurn && cards}
 
         {game && revealed && (
           <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-3 text-center">
