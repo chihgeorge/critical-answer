@@ -281,20 +281,23 @@ test("media question: on our own turn the picture comes before our team card, an
   const image = (id: string) => ({ kind: "text", id, content: { kind: "image", value: key }, answer: "松鼠" });
   const { host, a, b } = await startTwoTeams(browser, request, [image("r0-img-slot-1"), image("r0-img-slot-2")]);
 
-  const top = (loc: import("@playwright/test").Locator) => loc.evaluate((el) => el.getBoundingClientRect().top);
+  // NaN (fails every compare, so the poll retries) while the node has no layout box, e.g. detached mid-remount.
+  const top = (loc: import("@playwright/test").Locator) => loc.evaluate((el) => (el.getClientRects().length ? el.getBoundingClientRect().top : NaN));
   const img = (page: import("@playwright/test").Page) => page.getByAltText("題目圖片");
   const card = (page: import("@playwright/test").Page, name: string) => page.getByText(name, { exact: true });
+  // Polled: the turn change remounts the picture, and a measure taken mid-swap reads top 0 (main CI, 2026-10-29).
+  const gap = (page: import("@playwright/test").Page, name: string) => async () => (await top(img(page))) - (await top(card(page, name)));
   await expect(img(a)).toBeAttached();
   await expect(img(b)).toBeAttached();
   await expect(a.getByRole("heading")).toHaveCount(0); // a picture question has no text strip
-  expect(await top(img(a))).toBeLessThan(await top(card(a, "甲隊")));
-  expect(await top(img(b))).toBeGreaterThan(await top(card(b, "乙隊")));
+  await expect.poll(gap(a, "甲隊")).toBeLessThan(0);
+  await expect.poll(gap(b, "乙隊")).toBeGreaterThan(0);
 
   await host.getByRole("button", { name: "答錯・重答" }).click();
   await expect(b.getByText("輪到我們了！")).toBeVisible();
   await expect(a.getByText("輪到：乙隊")).toBeVisible();
-  expect(await top(img(a))).toBeGreaterThan(await top(card(a, "甲隊")));
-  expect(await top(img(b))).toBeLessThan(await top(card(b, "乙隊")));
+  await expect.poll(gap(a, "甲隊")).toBeGreaterThan(0);
+  await expect.poll(gap(b, "乙隊")).toBeLessThan(0);
 });
 
 // Value: protects=a host-judged text turn shows the question only on the answering phone, and only before the reveal (eng review R2); fails_when=the strip shows on a waiting phone or stays on the reveal; why_new=host-judged turns had no question on the phone; seam=none; no_claim=multiple choice (multiple-choice.spec.ts)
