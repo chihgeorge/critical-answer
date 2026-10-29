@@ -2,6 +2,18 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.18.0.0] - 2026-10-29
+
+### Added
+- The answering team's phone now shows the question, not just the options. On a multiple-choice turn it sits in a dark strip at the top of the answer panel, and it stays there after a wrong lock, through 重答, and in the boss room until the boss brings a new question.
+- After a correct lock, the team's phone keeps the question it just answered above the green tile.
+- On a host-judged text turn (the team answers aloud), the answering phone shows the question too. Waiting phones do not.
+- Screen readers hear the question as a heading, and the options as a group named after it (or 「選項」 for a picture question).
+
+### Changed
+- On a picture or YouTube turn, the media now sits right under the 輪到我們了！ ribbon on the answering phone, with the team cards below it. Waiting phones keep the cards on top.
+- When the game ends, the team's own 答對了 panel gives way to 遊戲結束, so the result is near the top of the screen.
+
 ## [0.17.0.1] - 2026-10-28
 
 ### Added
