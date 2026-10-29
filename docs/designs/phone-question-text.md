@@ -268,23 +268,23 @@ Local-only files under `~/.gstack/projects/critical-answer/designs/play-question
 
 Synthesized from this review's findings. Each task comes from one decision above.
 
-- [ ] **T1 (P1, human: ~1h / CC: ~10min)**: `MyChoicePanel`: add the question strip (D2)
+- [x] **T1 (P1, human: ~1h / CC: ~10min)**: `MyChoicePanel`: add the question strip (D2)
   - Surfaced by: Pass 1 and Pass 5, the question block style.
   - Files: `app/room/[code]/play/page.tsx`
   - Verify: e2e on 390×844. The text question is visible above the options in picking, in flight, locked, wrong lock and the boss-miss beat. The heading and the `aria-labelledby` group are present.
-- [ ] **T2 (P1, human: ~1h / CC: ~10min)**: show the strip on the team's own correct-lock reveal panel, from the last shown question (D4, D6)
+- [x] **T2 (P1, human: ~1h / CC: ~10min)**: show the strip on the team's own correct-lock reveal panel, from the last shown question (D4, D6)
   - Surfaced by: Pass 2, the reveal state.
   - Files: `app/room/[code]/play/page.tsx`
   - Verify: e2e. After a correct lock, the reveal panel shows the answered question, not the next one.
-- [ ] **T3 (P2, human: ~1h / CC: ~10min)**: on the team's own media turn, put the media panel right under the turn panel with a fixed media slot (D5, eng R1)
+- [x] **T3 (P2, human: ~1h / CC: ~10min)**: on the team's own media turn, put the media panel right under the turn panel with a fixed media slot (D5, eng R1)
   - Surfaced by: Pass 7, the media question.
   - Files: `app/room/[code]/play/page.tsx`
   - Verify: e2e. The media panel is directly below the turn panel on the own turn (or right under the ribbon on a host-judged media turn, eng R3), and lower on other turns. (Implementation note: the planned same-node assert was dropped. `deal()` never gives a team a question another team holds, so every turn change brings a new question id and a remount by key.)
-- [ ] **T4 (P2, human: ~1h / CC: ~10min)**: host-judged text turn shows the strip on the answering phone (eng R2)
+- [x] **T4 (P2, human: ~1h / CC: ~10min)**: host-judged text turn shows the strip on the answering phone (eng R2)
   - Surfaced by: eng review R2.
   - Files: `app/room/[code]/play/page.tsx`
   - Verify: e2e. The answering phone shows the strip; a waiting phone does not.
-- [ ] **T5 (P1, human: ~3h / CC: ~20min)**: e2e coverage from the eng test plan
+- [x] **T5 (P1, human: ~3h / CC: ~20min)**: e2e coverage from the eng test plan
   - Surfaced by: eng review section 3.
   - Files: `e2e/multiple-choice.spec.ts`, `e2e/image-question.spec.ts`
   - Verify: `npm run e2e`; the 375×667 fit asserts at multiple-choice.spec.ts:108-111 still pass unchanged; a new worst-case case (34-character question, four options, 390×844) asserts 鎖定答案 and 重答/逃跑 fit (eng R4).
