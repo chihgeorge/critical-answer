@@ -29,6 +29,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -46,6 +47,11 @@ jobs:
             echo "v$version is already released."
             exit 0
           fi
-          previous=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          previous=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          if [ -z "$previous" ]; then
+            # Without a previous release the notes would be the whole CHANGELOG.
+            echo "No release tags yet: publish the historical releases first, then run this workflow by hand."
+            exit 1
+          fi
           node scripts/release-notes.ts "$version" "${previous#v}" > "$RUNNER_TEMP/notes.md"
           gh release create "v$version" --target "$GITHUB_SHA" --title "v$version" --notes-file "$RUNNER_TEMP/notes.md"

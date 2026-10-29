@@ -105,7 +105,7 @@ sh scripts/playtest.sh stop
 
 ### 版本與 Release
 
-版本號有四段（例如 `0.16.1.0`），由 `/ship` 依改動決定，寫進 `VERSION` 和 `CHANGELOG.md`。合併進 `main` 的版本如果是 `X.Y.0.0`（第二段以上變了，也就是有新功能），[.github/workflows/release.yml](.github/workflows/release.yml) 會自動打 tag `vX.Y.0.0`，並發一個 GitHub Release，內容是從上一個 release 到這一版的所有 CHANGELOG 段落（[scripts/release-notes.ts](scripts/release-notes.ts) 整理）。後兩段的小修和熱修不自動發，會收進下一個 release；要單獨發的話，到 Actions → Release → Run workflow，就會把 `main` 現在的版本發出去。
+版本號有四段（例如 `0.16.1.0`），由 `/ship` 依改動決定，寫進 `VERSION` 和 `CHANGELOG.md`。合併進 `main` 的版本如果是 `X.Y.0.0`（第二段以上變了，也就是有新功能），[.github/workflows/release.yml](.github/workflows/release.yml) 會自動打 tag `vX.Y.0.0`，並發一個 GitHub Release，內容是從上一個 release 到這一版的所有 CHANGELOG 段落（[scripts/release-notes.ts](scripts/release-notes.ts) 整理）。後兩段的小修和熱修不自動發，會收進下一個 release；要單獨發的話，到 Actions → Release → Run workflow，就會把 `main` 現在的版本發出去。repo 裡還沒有任何 `v` tag 時 workflow 會直接失敗（不然說明會是整份 CHANGELOG），要先補發歷史版本。
 
 ## 題庫
 

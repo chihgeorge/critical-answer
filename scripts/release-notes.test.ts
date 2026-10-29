@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { changelogSections, compareVersions, releaseNotes } from "./release-notes";
@@ -36,6 +37,11 @@ describe("release notes", () => {
     expect(() => releaseNotes(CHANGELOG, "0.4.0.0")).toThrow("no section for 0.4.0.0");
   });
 
+  // Value: protects=a stray higher tag producing an empty release; fails_when=previous >= version returns ""
+  it("refuses a previous release that is not older", () => {
+    expect(() => releaseNotes(CHANGELOG, "0.2.1.0", "0.3.0.0")).toThrow("not older than 0.2.1.0");
+  });
+
   it("drops non-version headings", () => {
     expect(changelogSections(CHANGELOG).map((s) => s.version)).toEqual(["0.3.0.0", "0.2.1.0", "0.2.0.0"]);
   });
@@ -48,5 +54,12 @@ describe("release notes", () => {
 
   it("reads the real CHANGELOG", () => {
     expect(releaseNotes(readFileSync("CHANGELOG.md", "utf8"), "0.16.0.0", "0.15.0.0")).toMatch(/^## \[0\.16\.0\.0\][\s\S]*## \[0\.15\.1\.0\]/);
+  });
+
+  // Value: protects=the command line release.yml runs; fails_when=the CLI entry stops printing or stops failing on bad input
+  it("runs as a CLI the way release.yml calls it", () => {
+    const out = execFileSync(process.execPath, ["scripts/release-notes.ts", "0.16.0.0", "0.15.0.0"], { encoding: "utf8", stdio: "pipe" });
+    expect(out).toMatch(/^## \[0\.16\.0\.0\]/);
+    expect(() => execFileSync(process.execPath, ["scripts/release-notes.ts", "9.9.0.0"], { stdio: "pipe" })).toThrow();
   });
 });
