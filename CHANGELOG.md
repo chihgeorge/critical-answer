@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.18.0.2] - 2026-10-29
+
+### Fixed
+- The e2e test for the picture's place on the phone now passes in CI. The 0.18.0.1 fix had the wrong cause. In e2e the picture points at the real image bucket, where the test's upload does not exist, so the picture fails to load and hides itself. The test measured the picture, which read no position once it was hidden. It now measures the picture's frame, which keeps its place whether or not the picture loads.
+
 ## [0.18.0.1] - 2026-10-29
 
 ### Added
