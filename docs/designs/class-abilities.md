@@ -70,9 +70,9 @@ Approach A。兩個 PR：
 **PR 1：職業的基礎 + 戰士**
 - `Team` 加 `classId?: "mage" | "cleric" | "warrior" | "thief"` 和 `abilityUses: number`（開始時是 2）。
 - 舊 snapshot：不升 `SCHEMA_VERSION`。讀取時，沒有 `classId` 就當普通冒險者，沒有 `abilityUses` 就給 2。加兩個測試：舊格式的 snapshot 讀進來後，每隊都是 `classId` undefined、`abilityUses` 2，`use-ability` 被拒絕；有 `classId` 但沒有 `abilityUses` 的 snapshot 讀進來後是 2 次。預設值在 `lib/room/snapshot.ts` 的 `parseSnapshot` 裡補：隊伍沒有 `abilityUses` 就給 2；`pendingTeams` 的 `classId` 可以沒有。
-- 大廳：手機上選職業，存在 `pendingTeams` 的那一隊上，遊戲開始時帶進 `Team`，之後鎖定。遊戲開始後才加入的隊伍沒有職業。這隊任何一支手機都能選，遊戲開始前最後一次選的算。主持人頁面顯示每隊的職業，但不能改。
+- 大廳：手機上選職業，存在 `pendingTeams` 的那一隊上，遊戲開始時帶進 `Team`，之後鎖定。遊戲開始後才加入的隊伍沒有職業。這隊任何一支手機都能選，遊戲開始前最後一次選的算。主持人頁面顯示每隊的職業，但不能改。還沒做好的職業（`lib/game-state.ts` 的 `READY_CLASSES` 以外）在大廳顯示鎖住，房間也拒絕（`class_not_ready`）。
 - 新的 action `use-ability`，檢查見上面的共通規則。
-- 擲骰有 2 秒懸念：伺服器先擲，廣播 `pendingRoll {teamId, questionId, value}`。TV 轉骰子，停在 value。2000 ms 後才判。等待時拒絕 HOST_JUDGE 和鎖定。輪次已經換了，就丟掉這次擲骰。次數在判的時候才扣，所以丟掉的擲骰不扣（Eng Review R2、R3）。
+- 擲骰有 2 秒懸念：伺服器先擲，廣播 `pendingRoll {teamId, questionId, value}`。TV 轉骰子，停在 value。2000 ms 後才判。等待時拒絕 HOST_JUDGE 和鎖定。輪次已經換了，就丟掉這次擲骰。次數在伺服器擲骰的那一刻就扣，所以丟掉的擲骰也算用掉（Eng Review R2；R3 原本選判定時才扣，/review 改成擲骰時扣，見 R3 的 History）。
 - 戰士成功（12 以上）：完全等於答對。揭曉答案（`AnswerReveal`），題目記進 `revealedQuestionIds`，加進度分（等於難度）和獎勵，前進到下一個房間。boss 房算一次命中（10 分、扣血）。打到最後一擊一樣擲 4d20。
 - 戰士失敗（11 以下）：等於 `incorrect-retry`。不刪任何選項，換下一隊，這隊下次輪到時面對同一題。boss 房完全照現有的答錯重答規則（`lib/game-state.ts` 的 `fleeChoice === "flee" || shownWrong`）：這題的 `eliminated` 是空的就不換題；已經有被刪掉的選項（例如之前答錯的，或 PR 2 別隊法師刪的）就換題。加兩個測試：PR 1 boss 房戰士失敗、`eliminated` 是空的，題目不變；PR 2 先有法師刪選項，再戰士失敗，題目換掉。
 - 口說題也能用戰士，伺服器直接判，主持人不用判。
@@ -607,12 +607,12 @@ Cross-model tension: none left. Codex and this review agree once the plan text m
 
 | Path | Failure | Test | Handled | User sees |
 |---|---|---|---|---|
-| roll during beat, team goes offline / turn moves | stale roll judged on the wrong team | dungeon-room.test drop case | yes, dropped like pendingLock, no use spent (R3) | the next team's turn |
+| roll during beat, team goes offline / turn moves | stale roll judged on the wrong team | dungeon-room.test drop case | yes, dropped like pendingLock; the use stays spent (R3, reversed in /review) | the next team's turn |
 | HOST_JUDGE or lock during pendingRoll | double judgment | dungeon-room.test rejection | yes, rejected (R2) | nothing |
 | use-ability with 0 uses, wrong team, or no class | extra or stolen turn | dungeon-room.test + protocol.test | yes, rejected | button hidden or disabled |
 | unknown class id from a phone | bad data in Team | protocol.test | yes, parser rejects | nothing |
 | pre-PR snapshot restore | room lost or abilities blocked | snapshot.test | yes, defaults in parseSnapshot | room continues |
-| Durable Object restart during the 2 s beat | the timer is lost, roll never judged | none | partly: `pendingRoll` is not persisted, so the roll is lost and no use is spent (R3); the team rolls again | the die stops, the turn stays |
+| Durable Object restart during the 2 s beat | the timer is lost, roll never judged | none | partly: `pendingRoll` is not persisted, so the roll is lost; the use was spent when the room rolled (R3, reversed in /review) | the die stops, the turn stays |
 
 No critical gaps: every failure has a test or a no-loss outcome.
 
@@ -626,7 +626,7 @@ Branch: `class-abilities` from main. One PR (PR 2 is a later wave).
 
 1. **T1 game state**: `Team.classId?`, `Team.abilityUses` (2); export `rollD20`; update the header diagram and the `answerQuestion` comment. Tests: 11 retry / 12 correct with a fixed rng, boss hit at 12+, boss miss rotation per `eliminated`.
 2. **T2 protocol**: lobby class message, `use-ability` message, class id validation, `classId` on LOBBY teams, `pendingRoll` in STATE. Tests: protocol.test parse / reject.
-3. **T3 room**: lobby pick on `pendingTeams` (last pick wins, locked at start); `use-ability` checks; `pendingRoll` + `BEAT_MS` + drop; uses spent at judge time; HOST_JUDGE / lock rejected during the beat. Tests: dungeon-room.test rows in Section 3.
+3. **T3 room**: lobby pick on `pendingTeams` (last pick wins, locked at start); `use-ability` checks; `pendingRoll` + `BEAT_MS` + drop; uses spent when the room rolls (R3, reversed in /review); HOST_JUDGE / lock rejected during the beat. Tests: dungeon-room.test rows in Section 3.
 4. **T4 snapshot**: defaults in `parseSnapshot`, `pendingTeams.classId` validation. Tests: the two old-snapshot rows.
 5. **T5 pages**: phone lobby picker and 擲骰 button with uses left; TV die that spins and lands on `pendingRoll.value`; host page shows each team's class. PNG preview of the phone and TV before building (UI rule).
 6. **T6 e2e + checks**: `e2e/warrior.spec.ts`; `npm run test`, `npm run e2e`, `npm run check:bundle`, both `tsc`, `npm run lint`. Then /review and /ship.
