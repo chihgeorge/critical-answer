@@ -894,6 +894,7 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   if (team.inBoss) throw new InvalidActionError(`${teamId} is already in the boss room`);
   if (game.pendingWrong?.teamId === teamId) throw new InvalidActionError(`${teamId} has a wrong lock waiting for retry or flee`);
   // A sneak armed for the room question is for that question only (D16): drop it and give the use back.
+  // (A boss-room sneak can outlive a question rotation while the thief is offline; accepted, /review D4=A.)
   const sneak = team.sneakArmed ? { sneakArmed: undefined, abilityUses: team.abilityUses + 1 } : {};
   const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null, queuedQuestionId: undefined, ...sneak }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
