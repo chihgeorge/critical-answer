@@ -2,6 +2,18 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.21.0.0] - 2026-10-30
+
+### Added
+- The host picks who pays for AI narration in the lobby's 「AI 旁白」 panel: 不用 AI (scripted lines, free, the default), 用我自己的 Anthropic API key, or 站長金鑰. A pasted key is checked with Anthropic before the room uses it, and the host sees only its last 4 characters.
+- 「記住這台電腦」 keeps the host's key in that browser only, so a reload or a room restart picks it up again. Without the tick, nothing is stored.
+- Each room has a limit on AI narration lines, 300 by default and up to 5000. The host sees 已用 N / 上限 and can change the limit. When it runs out, the host is asked to raise it or carry on with scripted lines. Players and the big screen see no difference.
+- The host can switch keys or forget the key from 「⚙ 更多」 during a game. If Anthropic refuses the key, or AI stops after repeated failures (for example no credit left), the host page says so. Pasting a key again brings AI back.
+
+### Changed
+- AI narration no longer turns on by itself because the server has a key. A room uses the server's key only for someone who enters `OWNER_KEY`, so an open room can no longer spend the owner's credit.
+- The host's key lives only in the room's memory. It is never saved, logged or sent to any screen. After a server restart the host page sends it again.
+
 ## [0.20.0.0] - 2026-10-30
 
 ### Added
