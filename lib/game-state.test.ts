@@ -1480,6 +1480,12 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(game.teams[0].sneakArmed).toBeUndefined();
   });
 
+  it("sneak attack armed for a room question is dropped and refunded when the host sends the team to the boss room", () => {
+    const g = sendToBoss(armSneak(classGame(["thief", undefined]), "T0"), "T0");
+    expect(g.teams[0]).toMatchObject({ inBoss: true, abilityUses: 2 });
+    expect(g.teams[0].sneakArmed).toBeUndefined();
+  });
+
   it("sneak attack in the boss room takes 2 HP and doubles the hit reward and the kill bonus", () => {
     const g = armSneak(classGame(["thief"], 0, 3), "T0");
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first);
@@ -1523,11 +1529,10 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const retry = answerQuestion(prayed, "T0", q, false, "retry").game;
     expect(currentTurnTeamId(retry)).toBe("T0");
     expect(retry.teams[0].currentQuestionId).toBe(q);
-    // Skipped while offline, it gets its prayer back by its next turn.
-    expect(setTeamOnline(retry, "T0", false).prayerTurn).toBeUndefined();
-    // Wrong again in the kept turn: no second prayer, and the turn moves on.
+    // Wrong again in the kept turn: no second prayer, not even after a reload, and the turn moves on.
     const again = wrongLock(retry, "T0");
     expect(canPray(again, "T0")).toBe(false);
+    expect(canPray(setTeamOnline(setTeamOnline(again, "T0", false), "T0", true), "T0")).toBe(false);
     const next = answerQuestion(again, "T0", q, false, "retry").game;
     expect(currentTurnTeamId(next)).toBe("T1");
     expect(next.prayerTurn).toBeUndefined();

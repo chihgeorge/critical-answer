@@ -893,7 +893,9 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   const team = getTeam(game, teamId);
   if (team.inBoss) throw new InvalidActionError(`${teamId} is already in the boss room`);
   if (game.pendingWrong?.teamId === teamId) throw new InvalidActionError(`${teamId} has a wrong lock waiting for retry or flee`);
-  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null, queuedQuestionId: undefined }));
+  // A sneak armed for the room question is for that question only (D16): drop it and give the use back.
+  const sneak = team.sneakArmed ? { sneakArmed: undefined, abilityUses: team.abilityUses + 1 } : {};
+  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null, queuedQuestionId: undefined, ...sneak }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
@@ -1014,8 +1016,6 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
   return {
     ...game,
     teams: patchTeam(game.teams, teamId, () => ({ online })),
-    // A cleric skipped while offline gets its prayer back by its next turn, even if nobody answered in between.
-    ...(!online && game.prayerTurn === teamId ? { prayerTurn: undefined } : {}),
   };
 }
 

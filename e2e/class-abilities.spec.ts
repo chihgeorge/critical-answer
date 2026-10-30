@@ -58,7 +58,7 @@ test("thief: sneak attack shows on the phone and over the TV's monster until the
   await expect(team.getByText("盜賊・剩 1 次")).toBeVisible();
 });
 
-test("cleric: after a wrong lock the team prays, and its 重答 comes straight back to it", async ({ browser }) => {
+test("cleric: after a wrong lock the team prays, spends a use and retries (keep-turn is a room unit test)", async ({ browser }) => {
   const { screen, team } = await start(browser, "牧師");
   await option(team, "紅色").click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
