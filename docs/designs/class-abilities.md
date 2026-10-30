@@ -20,7 +20,7 @@ TODOS.md 有兩條：「每回合能選不同行動，不只答題」和「每�
 
 - 目標是好玩、帶朋友玩，不是商業產品。
 - 伺服器說了算：輪次、剩餘次數、能力能不能用，都在 Durable Object（`lib/game-state.ts`）裡檢查。
-- 只有 server-only 的檔案可以 import BANK。法師要刪掉錯的選項、盜賊要看答案第一個字，所以都要在伺服器算好，只把結果送給手機。`npm run check:bundle` 一定要過。
+- 只有 server-only 的檔案可以 import BANK。法師要刪掉錯的選項，所以要在伺服器算好，只把結果送給手機。`npm run check:bundle` 一定要過。
 - 現有規則不變：答錯（重答或逃跑）都會換下一隊（`advanceTurn`），boss 房答錯會照現有條件換題（`newBossQuestion`）。例外是下面的牧師祈禱（保留回合）和戰士擲骰（不經過 `pendingWrong`）。
 
 ## Premises
@@ -32,7 +32,7 @@ TODOS.md 有兩條：「每回合能選不同行動，不只答題」和「每�
    - 法師：刪掉 2 個錯的選項，只能用在選擇題。
    - 牧師（祈禱）：答錯後用。保留回合，立刻再答一次：同一題（少一個錯的選項）重答，或馬上逃跑換一題簡單的。boss 房祈禱：題目照常換，這隊保留回合，馬上答新題（Eng Review R1、R1b）。一般隊伍答錯要等一整圈，這就是牧師的好處。
    - 戰士：擲 1d20 代替答題。12 以上算答對（全額獎勵、前進），11 以下算答錯。成功率 45%。
-   - 盜賊：偷看答案的第一個字。用了之後答對只拿一半獎勵。
+   - 盜賊（偷襲）：答題前按。這題答對，獎勵分和 boss 扣血都 ×2；答錯就用掉了。（PR 2 改版，原本是「偷看答案第一個字」，見 PR 2 的 D15、D16。）
 5. 戰士的骰子在 TV 上有動畫。TV 現在沒有骰子動畫（最後一擊的 4d20 只是一個數字），所以 PR 1 在 TV 頁面裡新畫一顆骰子（Eng Review Scope finding 1）。
 6. 先不仔細平衡數字。帶朋友玩一場真的，再調整。
 
@@ -63,7 +63,7 @@ Codex 冷讀（沒看過這段對話）的重點：
 Approach A。兩個 PR：
 
 **共通規則（兩個 PR 都適用）**
-- 一隊一回合最多用一次能力，同一題最多一次。所以法師不能在同一題連用兩次，盜賊也不能偷看兩次。
+- 一隊一回合最多用一次能力，同一題最多一次。所以法師不能在同一題連用兩次，盜賊也不能偷襲兩次。
 - 伺服器在這些狀態才接受 `use-ability`：輪到這隊，有職業，剩餘次數 > 0。法師、盜賊、戰士只能在還沒鎖定答案、沒有 `pendingWrong` 的時候用。牧師只能在這隊自己的 `pendingWrong` 等待中用。
 - 戰士用了就取代這次答題。法師和盜賊用了以後，這隊照常答題。
 
@@ -83,9 +83,10 @@ Approach A。兩個 PR：
 **PR 2：法師、牧師、盜賊**
 - 法師：只能用在選擇題。伺服器挑 min(2, 剩下的錯選項數 − 1) 個錯選項。結果是 0 就拒絕這次使用，不扣次數。刪掉的選項放進公開的 `eliminated`，所有畫面都看得到變灰，跟現在答錯的選項一樣。這不洩漏答案。boss 房的題目是大家共用的，所以法師刪的選項別隊也看得到，也等於幫到別隊。先接受這點，試玩後再看要不要改成只有這隊看得到。
 - 牧師（祈禱）：只能用在選擇題，因為口說題答錯是主持人直接判重答或逃跑，沒有等待選擇的時間。在這隊的 `pendingWrong` 等待中按「祈禱」，扣一次。接著這隊選重答或逃跑，但不 `advanceTurn`，還是這隊的回合。boss 房：牧師隊還有次數時，答錯的鎖定不自動結算（不設 `armBossMiss`），手機顯示「祈禱 / 不用」。按祈禱：照現有規則換題，這隊保留回合，馬上答新題。按不用：照現在的 boss 答錯處理。隊伍卡住時，主持人用現有的卡住列 fallback 結算（Eng Review R1、R1b）。祈禱後再答錯，照一般規則處理（boss 房換題、換下一隊）。其他隊伍的畫面沿用現在的 boss 題目畫面（逃跑換題後就顯示新題目），只多一行「牧師祈禱中」。
-- 盜賊：伺服器取答案的第一個字。選擇題取正確選項文字的第一個字，口說題取答案文字的第一個字。答案不是文字（只有圖片）就拒絕，不扣次數。提示不放進廣播的 state 或 `SpectatorView`。它只用私訊送給這隊的連線（`connTeam` 對到這隊的那些）。伺服器只記在記憶體（不進 snapshot），重連時再補送。已知限制：Durable Object 重啟後提示會不見，已扣的次數不還。這隊目前的題目 id 一變（答對、逃跑、boss 換題、進入 boss 階段）或遊戲結束，就清掉。加一個測試：其他隊和 TV 的連線收不到提示。
-- 選擇題的正確選項第一個字常常只對得上一個選項，等於半價拿到答案。先接受（Premise 6），試玩後再看要不要只給口說題用。
-- 盜賊的減半：只減那一題答對拿到的獎勵分，無條件捨去。boss 房那一下的命中獎勵（10 → 5）和最後一擊的 4d20 也一起減半。進度分和 boss 扣血不變。減半跟提示同時清掉：這隊目前的題目 id 一變或遊戲結束就失效。加一個測試：boss 房換題後，提示不再補送，下一題的獎勵不減半。
+- 盜賊（偷襲，D16=A）：輪到這隊、還沒鎖定、沒有 `pendingWrong` 時按，按下就扣一次（跟戰士一樣）。存在 `Team.sneakArmed`，會進 snapshot 和廣播的 state。這題答對：這一下的獎勵分 ×2（一般房的房間獎勵；boss 房的命中獎勵和最後一擊的 4d20 都 ×2），boss 扣 2 滴血（不會扣到 0 以下）。進度分不加倍。答錯（重答、逃跑、boss 答錯）就用掉。任何一次判定都會清掉 `sneakArmed`。已經準備好時不能再按。選擇題和口說題都能用。
+- 偷襲的畫面：手機在鎖定答案下面放「🗝️ 偷襲：這題答對加倍」（小字「獎勵分、boss 扣血 ×2・剩 N 次」），按了變成一條「🗝️ 偷襲準備好了！」（小字「這題答對加倍・答錯就沒了・剩 N 次」）。TV 在怪物上方掛紅色牌子「🗝️ 偷襲！這題答對加倍」，留到這隊被判定為止（D17=A）。
+- 法師刪掉的選項跟答錯的選項長得一樣（變灰，不加字，D13=A）。牧師的「✝️ 祈禱：這回合再答一次・剩 N 次」是一般房答錯畫面上、重答 / 逃跑上面的一整條（D14=A）。
+- 原本的盜賊（偷看答案第一個字、答對減半、私訊提示）在 PR 2 的 UI 預覽時被使用者拿掉（D15：「看到第一個字只有在問答題會比較有用 但選擇題沒用」），R3-7、R3-8 因此不再適用。
 
 ## Open Questions
 
@@ -186,7 +187,7 @@ Stop: MAX_ITERATIONS
 
 > Describe the actual sequence (for example, team A's mage removals on the shared boss question, then team B's wrong lock and prayer), or remove the open question if it cannot happen.
 
-### R3-7 — feasibility (minor)
+### R3-7 — feasibility (minor) — moot: the hint thief was replaced by Sneak Attack in PR 2 (D16)
 
 **Problem**
 
@@ -196,7 +197,7 @@ Stop: MAX_ITERATIONS
 
 > State the storage: a private persisted field removed before every broadcast, or memory only, with the known limit that a restart drops the hint.
 
-### R3-8 — scope (minor)
+### R3-8 — scope (minor) — moot: the hint thief was replaced by Sneak Attack in PR 2 (D16)
 
 **Problem**
 
@@ -589,7 +590,7 @@ Cross-model tension: none left. Codex and this review agree once the plan text m
 
 ### NOT in scope
 
-- PR 2 (法師、牧師、盜賊): designed here, built after PR 1 and one real game.
+- 偷襲的倍數和法師刪的選項只給自己隊看：試玩後再調（Premise 6）。
 - Class-specific animations and sound: TODOS.md P3 (D7).
 - Narration that reads the roll value: TODOS.md P3 (D8). `lib/narration` is unchanged (D1).
 - The unused fight / negotiate branch choice: unchanged.
@@ -630,6 +631,15 @@ Branch: `class-abilities` from main. One PR (PR 2 is a later wave).
 4. **T4 snapshot**: defaults in `parseSnapshot`, `pendingTeams.classId` validation. Tests: the two old-snapshot rows.
 5. **T5 pages**: phone lobby picker and 擲骰 button with uses left; TV die that spins and lands on `pendingRoll.value`; host page shows each team's class. PNG preview of the phone and TV before building (UI rule).
 6. **T6 e2e + checks**: `e2e/warrior.spec.ts`; `npm run test`, `npm run e2e`, `npm run check:bundle`, both `tsc`, `npm run lint`. Then /review and /ship.
+
+### Implementation Tasks (PR 2, mage, cleric, thief)
+
+Branch: `class-abilities-pr2` from main.
+
+1. **Game state**: `READY_CLASSES` = all four. `mageEliminate` (public `eliminated`, plus `mageRemoved` so those tiles have no ✕ 答錯 label, D13=A), `armSneak` and `Team.sneakArmed` (×2 reward, kill bonus and boss damage; used up by any judgment), `canPray` / `pray` with `LockedOption.prayed` and `GameState.prayerTurn` (the prayed 重答 / 逃跑 keeps the turn, once a turn). `SpectatorView` gains `mageRemoved`, `awaitingPrayer` and `sneakArmed`.
+2. **Room**: `TEAM_USE_ABILITY` dispatches by class. A cleric that may pray gets no boss beat (`armBossMiss` skips it); its 祈禱 judges the miss at once and keeps the turn, its 不用 is `TEAM_WRONG_CHOICE` retry. No protocol change.
+3. **Pages**: the phone's `ClassAbility` (mage and thief buttons and bars), the cleric's pray bar (D14=A) and boss 祈禱 / 不用, the TV's sneak chip (D17=A) and prayer lines, the host's 🗝️×2 on the team row.
+4. **Tests**: game-state and dungeon-room unit tests, including R3-1 (a mage's removal on the boss question, then a failed warrior roll, rotates it); `e2e/class-abilities.spec.ts`.
 
 ### Unresolved decisions
 

@@ -21,6 +21,10 @@ import {
   rollD20,
   READY_CLASSES,
   spendAbility,
+  mageEliminate,
+  armSneak,
+  pray,
+  canPray,
   warriorRoll,
   InvalidActionError,
   type BranchOptionId,
@@ -1166,7 +1170,8 @@ export class DungeonRoom {
    * question anyway. The red tile shows for a beat, then it resolves as a retry on its own. */
   private armBossMiss() {
     const pending = this.game?.pendingWrong;
-    if (!pending || !isInBossPhase(this.game!, pending.teamId)) return;
+    // A cleric that may pray decides itself (祈禱 / 不用); the host's stuck row covers a team that never does (R1b).
+    if (!pending || !isInBossPhase(this.game!, pending.teamId) || canPray(this.game!, pending.teamId)) return;
     if (this.lockTimer) clearTimeout(this.lockTimer);
     this.lockTimer = setTimeout(() => {
       // Resolved early (the host judged it): lockTimer may already be the next lock's beat.
@@ -1193,9 +1198,11 @@ export class DungeonRoom {
     this.broadcastState();
   }
 
-  /** The warrior rolls instead of answering (PR 1 has no other ability). The room spends the use and
-   * rolls at once, then shows the die for a beat; resolveRoll judges it (R2; R3 reversed in /review:
-   * a roll dropped in its beat is not free, or a reload would throw a bad die away). */
+  /** The team's class ability (class-abilities.md). The warrior: the room spends the use and rolls at
+   * once, then shows the die for a beat; resolveRoll judges it (R2; R3 reversed in /review: a roll
+   * dropped in its beat is not free, or a reload would throw a bad die away). The mage and the thief
+   * act at once and the team then answers. The cleric prays on its wrong lock; in the boss room the
+   * miss then resolves at once, rotating the question as usual, and the cleric answers the new one. */
   private handleTeamUseAbility(conn: Conn, questionId: string) {
     const teamId = this.playingTeam(conn);
     const game = this.game;
@@ -1203,16 +1210,27 @@ export class DungeonRoom {
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (this.paused()) return reject("reveal_pending");
     if (this.pendingLock || this.pendingRoll) return reject("answer_pending");
-    let spent: GameState;
+    const classId = game.teams.find((t) => t.id === teamId)?.classId;
+    const q = this.question(questionId);
+    let next: GameState;
     try {
-      spent = spendAbility(game, teamId, "warrior");
+      if (classId === "cleric") next = pray(game, teamId);
+      else if (classId === "thief") next = armSneak(game, teamId);
+      else if (classId === "mage") {
+        if (q?.kind !== "multipleChoice") return reject("not_multiple_choice");
+        next = mageEliminate(game, teamId, questionId, q.correctIndex, q.options.length, this.rng);
+      } else next = spendAbility(game, teamId, "warrior");
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
-    if (currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
-    this.game = spent;
-    this.pendingRoll = { teamId, questionId, value: rollD20(this.rng) };
-    this.lockTimer = setTimeout(() => this.resolveRoll(), BEAT_MS);
+    if (currentQuestionIdOf(game, teamId) !== questionId || (classId === "cleric" && game.pendingWrong?.questionId !== questionId)) return reject("stale_question");
+    this.game = next;
+    if (classId === "warrior") {
+      this.pendingRoll = { teamId, questionId, value: rollD20(this.rng) };
+      this.lockTimer = setTimeout(() => this.resolveRoll(), BEAT_MS);
+    } else if (classId === "cleric" && isInBossPhase(next, teamId)) {
+      return this.judge(teamId, questionId, false, "retry", false);
+    }
     this.broadcastState();
   }
 
@@ -1245,8 +1263,9 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_wrong_answer" });
       return;
     }
-    // A boss miss resolves on its own beat (D2=B): a phone cannot cut the red tile short.
-    if (isInBossPhase(this.game!, teamId)) {
+    // A boss miss resolves on its own beat (D2=B): a phone cannot cut the red tile short. A cleric
+    // that may pray has no beat: its 不用 is a retry.
+    if (isInBossPhase(this.game!, teamId) && !(choice === "retry" && canPray(this.game!, teamId))) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "boss_miss" });
       return;
     }

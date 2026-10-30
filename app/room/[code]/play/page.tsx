@@ -20,9 +20,9 @@ import { D20 } from "@/components/d20";
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
 const CLASS_HINTS: Record<ClassId, string> = {
   warrior: `擲 1d20 代替答題，${WARRIOR_TARGET} 以上算答對`,
-  mage: "刪掉 2 個錯的選項",
-  cleric: "答錯後立刻再答一次",
-  thief: "偷看答案第一個字",
+  mage: "選擇題刪掉 2 個錯的選項",
+  cleric: "選擇題答錯後，這回合再答一次",
+  thief: "偷襲：這題答對，獎勵分和 boss 扣血 ×2",
 };
 
 /** The lobby's class picker (D10=A): four cards, the ones not built yet locked, and 不選. */
@@ -60,11 +60,24 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
   );
 }
 
-/** The warrior's roll on its own turn (D11=A: under 鎖定答案): the button, or the die while the room holds it. */
-function WarriorRoll({ game, teamId, send, framed = false }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; framed?: boolean }) {
+/** The team's class ability on its own turn (D11=A: under 鎖定答案). The warrior's button or its die
+ * while the room holds it; the mage's button (multipleChoice, while 2+ wrong options are left) or what
+ * it removed; the thief's button or its armed bar (D16). The cleric prays in MyChoicePanel's wrong panel. */
+function ClassAbility({ game, teamId, send, framed = false, frozen = false }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; framed?: boolean; frozen?: boolean }) {
   const me = game.view.teams.find((t) => t.id === teamId);
   const roll = game.pendingRoll?.teamId === teamId ? game.pendingRoll : null;
-  const busy = !!game.pendingRoll || !!game.pendingLock || !!game.view.pendingWrong;
+  const q = game.question;
+  const gone = (q && game.view.eliminated?.[q.id]) ?? [];
+  // Which question this phone's mage press was for and how many options were out before it: the bar counts the rest.
+  const [cast, setCast] = useState<{ qid: string; eventId: number; before: number } | null>(null);
+  const ready = !!me && me.abilityUses > 0 && !frozen && !game.pendingRoll && !game.pendingLock && !game.view.pendingWrong && !!q;
+  const button = (icon: string, label: string, sub: string, background: string, onClick: () => void) => (
+    <PixelButton className="!m-0 mt-1 flex !min-h-[62px] flex-col !text-[21px]" style={{ background }} onClick={onClick}>
+      {icon} {label}
+      <small className="text-[13px]">{sub}</small>
+    </PixelButton>
+  );
+  const use = () => send({ type: "TEAM_USE_ABILITY", questionId: q!.id });
   let body;
   if (roll) {
     body = (
@@ -73,16 +86,30 @@ function WarriorRoll({ game, teamId, send, framed = false }: { game: StateMessag
         <span className="text-[20px]">擲出 {roll.value}！看大螢幕 ▶</span>
       </div>
     );
-  } else if (me?.classId === "warrior" && me.abilityUses > 0 && !busy && game.question) {
-    const questionId = game.question.id;
+  } else if (me?.classId === "thief" && me.sneakArmed) {
     body = (
-      <PixelButton className="!m-0 mt-1 flex !min-h-[62px] flex-col !text-[22px]" style={{ background: "#ffa94d" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId })}>
-        🎲 擲骰代替答題
-        <small className="text-[13px]">
-          {WARRIOR_TARGET} 以上算答對・剩 {me.abilityUses} 次
-        </small>
-      </PixelButton>
+      <div className="px-bar mt-1 flex-col !gap-0 !text-[19px]" role="status" style={{ background: "#ff8787", boxShadow: "inset 0 -5px 0 #e03131" }}>
+        <span>🗝️ 偷襲準備好了！</span>
+        <small className="text-[13px]">這題答對加倍・答錯就沒了・剩 {me.abilityUses} 次</small>
+      </div>
     );
+  } else if (me?.classId === "mage" && q && cast?.qid === q.id && cast.eventId === game.eventId && gone.length > cast.before) {
+    body = (
+      <div className="px-bar mt-1 !text-[17px]" role="status">
+        🔮 刪掉了 {gone.length - cast.before} 個・剩 {me.abilityUses} 次
+      </div>
+    );
+  } else if (!ready) {
+    return null;
+  } else if (me.classId === "warrior") {
+    body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
+  } else if (me.classId === "thief") {
+    body = button("🗝️", "偷襲：這題答對加倍", `獎勵分、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
+  } else if (me.classId === "mage" && q.options && q.options.length - 1 - gone.length >= 2) {
+    body = button("🔮", "刪掉 2 個錯的選項", `剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
+      setCast({ qid: q.id, eventId: game.eventId, before: gone.length });
+      use();
+    });
   } else return null;
   return framed ? <Panel tone="turn" className="flex flex-col px-[10px] py-[10px]">{body}</Panel> : body;
 }
@@ -110,11 +137,16 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
   const options = q.options!;
   const pick = game.view.teams.find((t) => t.id === teamId)?.currentSelection ?? null;
   const gone = game.view.eliminated?.[q.id] ?? [];
+  const magic = game.view.mageRemoved?.[q.id] ?? [];
   const lock = game.pendingLock?.teamId === teamId ? game.pendingLock : null;
   const wrong = game.view.pendingWrong?.teamId === teamId ? game.view.pendingWrong : null;
   const rolling = game.pendingRoll?.teamId === teamId;
-  // A wrong boss lock has no choice to make: the room brings a new question after a beat (D2=B).
-  const bossMiss = !!wrong && !!game.view.teams.find((t) => t.id === teamId)?.inBossPhase;
+  const me = game.view.teams.find((t) => t.id === teamId);
+  // A wrong boss lock has no choice to make: the room brings a new question after a beat (D2=B),
+  // unless this team's cleric may pray (祈禱 / 不用).
+  const bossMiss = !!wrong && !!me?.inBossPhase;
+  const canPray = !!wrong && game.view.awaitingPrayer === teamId;
+  const prayed = !!wrong?.prayed;
   // A press waiting for the room: keyed to the question and eventId, so a later turn on the same
   // question (after 重答, which bumps eventId) never looks like it is still in flight.
   const [locking, setLocking] = useState<{ qid: string; eventId: number } | null>(null);
@@ -138,7 +170,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
       {wrong && (
         <div className="flex items-center gap-2 text-[22px]">
           <span aria-hidden className="inline-flex h-7 w-7 items-center justify-center border-[3px] border-[var(--k)] bg-[var(--danger)] text-[14px] text-white">✕</span>
-          {bossMiss ? "答錯了！" : "答錯了！要怎麼辦？"}
+          {prayed ? "祈禱了！這回合再答一次" : bossMiss && !canPray ? "答錯了！" : "答錯了！要怎麼辦？"}
         </div>
       )}
       <div role="group" aria-labelledby={text ? stripId : undefined} aria-label={text ? undefined : "選項"} className="flex flex-col gap-2">
@@ -152,7 +184,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
               index={i}
               text={opt}
               look={out ? "dim" : locked || (picked && !lock) ? "sel" : frozen ? "dim" : "plain"}
-              label={out ? "✕ 答錯" : locked ? "🔒 已鎖定" : picked && !lock ? "◀ 已選" : undefined}
+              label={out ? (magic.includes(i) ? undefined : "✕ 答錯") : locked ? "🔒 已鎖定" : picked && !lock ? "◀ 已選" : undefined}
               aria-pressed={picked || locked}
               disabled={out || frozen}
               onClick={() => {
@@ -164,19 +196,35 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
           );
         })}
       </div>
-      {bossMiss ? (
-        <div className="px-bar mt-1" role="status">首領要換題了 ▶</div>
-      ) : wrong ? (
+      {bossMiss && canPray ? (
         <div className="mt-1 flex gap-2">
-          <PixelButton variant="ok" className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
-            重答<small className="text-[13px]">下一輪再挑一次</small>
+          <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
+            ✝️ 祈禱<small className="text-[13px]">立刻答新題・剩 {me!.abilityUses} 次</small>
           </PixelButton>
-          <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "var(--lav)" }} onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "flee" })}>
-            逃跑<small className="text-[13px]">換一題簡單的</small>
+          <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "var(--lav)" }} onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
+            不用<small className="text-[13px]">換下一隊</small>
           </PixelButton>
         </div>
+      ) : bossMiss ? (
+        <div className="px-bar mt-1" role="status">首領要換題了 ▶</div>
+      ) : wrong ? (
+        <>
+          {canPray && (
+            <PixelButton className="!m-0 mt-1 flex !min-h-[62px] flex-col !text-[21px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
+              ✝️ 祈禱：這回合再答一次<small className="text-[13px]">剩 {me!.abilityUses} 次</small>
+            </PixelButton>
+          )}
+          <div className="mt-1 flex gap-2">
+            <PixelButton variant="ok" className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
+              重答<small className="text-[13px]">{prayed ? "立刻再答這題" : "下一輪再挑一次"}</small>
+            </PixelButton>
+            <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "var(--lav)" }} onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "flee" })}>
+              逃跑<small className="text-[13px]">{prayed ? "換一題，還是你們答" : "換一題簡單的"}</small>
+            </PixelButton>
+          </div>
+        </>
       ) : rolling ? (
-        <WarriorRoll game={game} teamId={teamId} send={send} />
+        <ClassAbility game={game} teamId={teamId} send={send} />
       ) : lock ? (
         <div className="px-bar mt-1" role="status">已鎖定！看大螢幕揭曉 ▶</div>
       ) : inFlight ? (
@@ -195,7 +243,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
           鎖定答案
         </PixelButton>
       )}
-      {!frozen && <WarriorRoll game={game} teamId={teamId} send={send} />}
+      {!wrong && !rolling && <ClassAbility game={game} teamId={teamId} send={send} frozen={frozen} />}
       {lockFailed && !frozen && <div className="text-center text-[14px]">沒送出，再按一次</div>}
     </Panel>
   );
@@ -449,12 +497,12 @@ export default function PlayPage() {
         {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && game.question.content.kind === "text" && (
           <Panel tone="turn" className="px-[10px] py-[10px]">
             <QuestionStrip text={game.question.content.value} className="-mx-[10px] -mt-[10px]" />
-            <WarriorRoll game={game} teamId={teamId} send={send} />
+            <ClassAbility game={game} teamId={teamId} send={send} />
           </Panel>
         )}
         {/* A spoken image or video question has no turn panel of its own: the roll gets one. */}
         {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && game.question.content.kind !== "text" && (
-          <WarriorRoll game={game} teamId={teamId} send={send} framed />
+          <ClassAbility game={game} teamId={teamId} send={send} framed />
         )}
 
         {/* D14: our own lock was right — the same tiles, the right one green, and the points. */}

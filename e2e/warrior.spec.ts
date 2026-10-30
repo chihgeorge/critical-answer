@@ -16,8 +16,8 @@ test("warrior: a team picks 戰士 in the lobby, rolls instead of answering, the
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("戰士隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
 
-  // Only the warrior is built: the other three cards are locked.
-  await expect(team.getByRole("button", { name: /法師/ })).toBeDisabled();
+  // Every class can be picked (PR 2).
+  await expect(team.getByRole("button", { name: /法師/ })).toBeEnabled();
   await team.getByRole("button", { name: /戰士/ }).click();
   await expect(team.getByRole("button", { name: /戰士/ })).toHaveAttribute("aria-pressed", "true");
   await expect(host.getByText("⚔️ 戰士")).toBeVisible();

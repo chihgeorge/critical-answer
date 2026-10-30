@@ -146,9 +146,9 @@ const TILE_SPOTS = [
 /**
  * The option tiles on the wall (docs/designs/phone-answering.md D1, D8, D9): plain while the team
  * thinks, 🔒 during the beat, the wrong pick red while the team decides, the answer green on a
- * correct reveal. Eliminated options are the grey ✕ 答錯 tile.
+ * correct reveal. Eliminated options are the grey ✕ 答錯 tile; a mage's removal (`magic`) is grey with no label (D13=A).
  */
-function WallOptions({ options, gone, lock, wrong, correct, teamName }: { options: string[]; gone: number[]; lock: LockedOption | null; wrong: LockedOption | null; correct: number | null; teamName: string }) {
+function WallOptions({ options, gone, magic, lock, wrong, correct, teamName }: { options: string[]; gone: number[]; magic: number[]; lock: LockedOption | null; wrong: LockedOption | null; correct: number | null; teamName: string }) {
   return (
     <>
       {options.slice(0, TILE_SPOTS.length).map((opt, i) => {
@@ -157,7 +157,7 @@ function WallOptions({ options, gone, lock, wrong, correct, teamName }: { option
         if (correct !== null) [look, label] = i === correct ? ["ok", "✓ 正解"] : ["dim", undefined];
         else if (lock?.optionIndex === i) [look, label] = ["lock", `🔒 ${teamName}`];
         else if (wrong?.optionIndex === i) [look, label] = ["bad", `✕ ${teamName}答錯`];
-        else if (gone.includes(i)) [look, label] = ["dim", "✕ 答錯"];
+        else if (gone.includes(i)) [look, label] = ["dim", magic.includes(i) ? undefined : "✕ 答錯"];
         return (
           <McOption
             key={i}
@@ -185,9 +185,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
   const nameOf = (id?: string) => view.teams.find((t) => t.id === id)?.name ?? "";
   // During a correct reveal the tiles are the answered question's (the next one is already dealt).
   const wall = reveal?.choice
-    ? { options: reveal.choice.options, correct: reveal.choice.correctIndex, team: nameOf(reveal.choice.teamId), gone: [] as number[] }
+    ? { options: reveal.choice.options, correct: reveal.choice.correctIndex, team: nameOf(reveal.choice.teamId), gone: [] as number[], magic: [] as number[] }
     : !reveal && question?.options && question.options.length <= TILE_SPOTS.length
-      ? { options: question.options, correct: null, team: nameOf(pendingLock?.teamId ?? wrong?.teamId), gone: view.eliminated?.[question.id] ?? [] }
+      ? { options: question.options, correct: null, team: nameOf(pendingLock?.teamId ?? wrong?.teamId), gone: view.eliminated?.[question.id] ?? [], magic: view.mageRemoved?.[question.id] ?? [] }
       : null;
   // Fixed lines, not an LLM call (D8, D9): nothing is narrated until the outcome is known.
   const held = pendingRoll
@@ -195,7 +195,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
     : pendingLock
     ? `${nameOf(pendingLock.teamId)}鎖定了 ${optionLetter(pendingLock.optionIndex)}……`
     : wrong
-      ? inBoss
+      ? view.awaitingPrayer === wrong.teamId
+        ? `${nameOf(wrong.teamId)}答錯了！牧師祈禱中……`
+        : wrong.prayed
+          ? `${nameOf(wrong.teamId)}祈禱了！這回合再答一次……`
+          : inBoss
         ? `${nameOf(wrong.teamId)}答錯了！首領換一題……`
         : `${nameOf(wrong.teamId)}答錯了！他們正在決定：重答，還是逃跑……`
       : null;
@@ -207,7 +211,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
       {/* D1: the tiles stand where the torches hang. */}
       {!wall && <Torches />}
       <Sparks />
-      {wall && <WallOptions options={wall.options} gone={wall.gone} lock={pendingLock} wrong={wrong} correct={wall.correct} teamName={wall.team} />}
+      {wall && <WallOptions options={wall.options} gone={wall.gone} magic={wall.magic} lock={pendingLock} wrong={wrong} correct={wall.correct} teamName={wall.team} />}
 
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
         {turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={420 /* a 20-character name must leave the map its width (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>}
@@ -252,6 +256,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
         )}
       </Panel>
 
+      {/* D17=A: a thief's armed Sneak Attack hangs over the monster until its answer is judged. */}
+      {turn?.sneakArmed && !reveal && !card && (
+        <div className="px-chip absolute" style={{ left: "50%", top: 262, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
+          🗝️ 偷襲！這題答對加倍
+        </div>
+      )}
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         <div key={card ? `card-${eventId}` : undefined} className={card ? "px-phase-blink" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}>
