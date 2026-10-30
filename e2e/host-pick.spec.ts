@@ -15,8 +15,6 @@ test("the host picks a team's next question and it comes up after the team's cor
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 

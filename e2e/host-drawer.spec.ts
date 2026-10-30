@@ -15,8 +15,6 @@ test("the host saves director notes and downloads a transcript that contains the
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   // One judged answer, so the transcript has a narration line as well as the notes.
   await answerCorrectly(host);
@@ -50,8 +48,6 @@ test("the phone shows reward points and the host sends a team to the boss from t
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(team.getByText("0 獎勵分")).toBeVisible();
   await expect(team.getByText(/\/ 15/)).toHaveCount(0);

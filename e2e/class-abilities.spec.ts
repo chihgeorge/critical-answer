@@ -27,8 +27,6 @@ async function start(browser: Browser, classLabel: string): Promise<{ host: Page
   await team.goto(`/room/${code}/play?name=${encodeURIComponent(`${classLabel}隊`)}`);
   await team.getByRole("button", { name: new RegExp(classLabel) }).click();
   await expect(team.getByRole("button", { name: new RegExp(classLabel) })).toHaveAttribute("aria-pressed", "true");
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   return { host, screen, team };

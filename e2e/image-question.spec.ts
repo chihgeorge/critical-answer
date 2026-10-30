@@ -65,8 +65,6 @@ test("image-content question: renders on /play, /screen, and the host's own prev
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("圖片隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
@@ -116,8 +114,6 @@ test("image-content question: a broken image URL hides itself on every surface, 
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("壞圖隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
@@ -157,8 +153,6 @@ test("youtube-content question: renders an iframe with the embed URL on /play, /
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("影片隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
@@ -192,8 +186,6 @@ async function startWithExplanation(browser: import("@playwright/test").Browser,
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("揭曉隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   return { host, screen, team };
@@ -267,8 +259,6 @@ async function startTwoTeams(browser: import("@playwright/test").Browser, reques
     phones.push(phone);
   }
   await expect(host.getByText("乙隊")).toBeVisible();
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(phones[0].getByText("輪到我們了！")).toBeVisible();
   return { host, a: phones[0], b: phones[1] };

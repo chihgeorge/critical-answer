@@ -9,7 +9,7 @@ import type { NarrationEvent } from "./events";
 const key = process.env.ANTHROPIC_API_KEY;
 
 describe.skipIf(!key)("LLM narrator (live)", () => {
-  const llm = createLlmProvider({ apiKey: key });
+  const llm = createLlmProvider({ getApiKey: () => key });
   const events: NarrationEvent[] = [
     { type: "start", teams: ["紅隊", "藍隊"] },
     { type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2 },

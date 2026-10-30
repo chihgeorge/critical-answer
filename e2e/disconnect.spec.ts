@@ -55,8 +55,6 @@ test("a phone that drops on its own turn shows it's offline, then that its turn 
   await other.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(phone.getByTestId("roster")).toContainText("乙隊");
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   await expect(phone.getByText("斷線")).toHaveCount(0);

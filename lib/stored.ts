@@ -38,3 +38,11 @@ export function joinPasswordFor(code: string): string {
     return "";
   }
 }
+
+export function forgetStored(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Nothing was remembered.
+  }
+}
