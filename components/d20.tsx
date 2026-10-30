@@ -30,6 +30,8 @@ const TUMBLE_MS = 1200;
 export function RollOverlay({ teamName, value }: { teamName: string; value: number }) {
   const [face, setFace] = useState<number | null>(null);
   useEffect(() => {
+    // Reduced motion: no face flicker either (the CSS tumble already stops), the die shows its value at once.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const tick = setInterval(() => setFace(1 + Math.floor(Math.random() * 20)), 80);
     const land = setTimeout(() => {
       clearInterval(tick);

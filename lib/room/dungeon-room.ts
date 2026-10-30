@@ -18,8 +18,8 @@ import {
   getSpectatorView,
   currentTurnTeamId,
   isInBossPhase,
-  assertCanUseAbility,
   rollD20,
+  spendAbility,
   warriorRoll,
   InvalidActionError,
   type BranchOptionId,
@@ -145,7 +145,7 @@ export class DungeonRoom {
   private phaseCardTimer: ReturnType<typeof setTimeout> | null = null;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
-  /** A warrior's roll in its beat (memory only: a restart drops it, and no use is spent). Shares lockTimer. */
+  /** A warrior's roll in its beat (memory only: a restart drops it; its use was already spent). Shares lockTimer. */
   private pendingRoll: PendingRoll | null = null;
   private lockTimer: ReturnType<typeof setTimeout> | null = null;
   /** Closes a correct multipleChoice reveal on its own (E3); cancelled by HOST_NEXT. */
@@ -1191,8 +1191,9 @@ export class DungeonRoom {
     this.broadcastState();
   }
 
-  /** The warrior rolls instead of answering (PR 1 has no other ability). The room rolls at once and
-   * shows the die for a beat; resolveRoll judges it, so the use is spent only then (R2, R3). */
+  /** The warrior rolls instead of answering (PR 1 has no other ability). The room spends the use and
+   * rolls at once, then shows the die for a beat; resolveRoll judges it (R2; R3 reversed in /review:
+   * a roll dropped in its beat is not free, or a reload would throw a bad die away). */
   private handleTeamUseAbility(conn: Conn, questionId: string) {
     const teamId = this.playingTeam(conn);
     const game = this.game;
@@ -1200,12 +1201,14 @@ export class DungeonRoom {
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (this.paused()) return reject("reveal_pending");
     if (this.pendingLock || this.pendingRoll) return reject("answer_pending");
+    let spent: GameState;
     try {
-      assertCanUseAbility(game, teamId, "warrior");
+      spent = spendAbility(game, teamId, "warrior");
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
     if (currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
+    this.game = spent;
     this.pendingRoll = { teamId, questionId, value: rollD20(this.rng) };
     this.lockTimer = setTimeout(() => this.resolveRoll(), BEAT_MS);
     this.broadcastState();
@@ -1219,7 +1222,7 @@ export class DungeonRoom {
     if (!roll || !game) return;
     this.markActivity();
     try {
-      // The turn moved on during the beat (the phone dropped): drop the roll, like a lock (E9). No use is spent.
+      // The turn moved on during the beat (the phone dropped): drop the roll, like a lock (E9). The use stays spent.
       if (currentTurnTeamId(game) !== roll.teamId || currentQuestionIdOf(game, roll.teamId) !== roll.questionId) {
         this.broadcastState();
       } else {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseSnapshot, SCHEMA_VERSION, type RoomSnapshot } from "./snapshot";
 import { BANK } from "../question-bank-data";
-import { assertCanUseAbility, createGame, DEFAULT_GAME_CONFIG } from "../game-state";
+import { spendAbility, createGame, DEFAULT_GAME_CONFIG } from "../game-state";
 import { bossPhaseStates, poolQuestionIds, roomTemplates } from "../question-bank";
 
 const valid = (): RoomSnapshot => ({
@@ -36,7 +36,7 @@ describe("parseSnapshot", () => {
     const game = gameWithTeams((t) => omit(t, "abilityUses", "classId"));
     const s = parseSnapshot({ ...valid(), game });
     expect(s?.game?.teams.map((t) => [t.classId, t.abilityUses])).toEqual([[undefined, 2], [undefined, 2]]);
-    expect(() => assertCanUseAbility(s!.game!, "a", "warrior")).toThrow(/not a warrior/);
+    expect(() => spendAbility(s!.game!, "a", "warrior")).toThrow(/not a warrior/);
   });
 
   it("gives a team with a class but no abilityUses 2 uses, and refuses an unknown class", () => {
@@ -45,6 +45,7 @@ describe("parseSnapshot", () => {
     expect(parseSnapshot({ ...valid(), game: gameWithTeams((t) => ({ ...t, classId: "bard" })) })).toBeNull();
     expect(parseSnapshot({ ...valid(), pendingTeams: [{ id: "x", name: "甲隊", classId: "warrior" }] })?.pendingTeams[0].classId).toBe("warrior");
     expect(parseSnapshot({ ...valid(), pendingTeams: [{ id: "x", name: "甲隊", classId: "bard" }] })).toBeNull();
+    for (const abilityUses of [1.5, "2", null]) expect(parseSnapshot({ ...valid(), game: gameWithTeams((t) => ({ ...t, abilityUses })) })).toBeNull();
   });
 
   it("accepts what a room writes, unchanged", () => {

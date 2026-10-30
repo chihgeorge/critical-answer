@@ -473,8 +473,8 @@ B) 算用掉
 
 State: approved
 Actual answer: A) 不算用掉 (D5, 2026-10-29)
-Accepted scope: abilityUses is decremented only when the roll is judged; a dropped roll leaves it unchanged and the team may roll again on a later turn. Test: drop during the beat keeps 2 uses.
-History: none
+Accepted scope (superseded): abilityUses is decremented only when the roll is judged; a dropped roll leaves it unchanged and the team may roll again on a later turn.
+History: reversed in /review (2026-10-29, D1=A). The con above assumed the die shows only on the TV, but the phone shows 擲出 N too (D11), and a dropped team gets the same question back at once (currentTurnIndex never moves), so a reload threw a bad die away for free. Now spendAbility takes the use when the room rolls; a dropped roll stays spent. Test: drop during the beat leaves 1 use.
 
 Section 1 dispositions: #1 accepted (R3 = A, D5); #2 accepted as necessary implementation; #3 accepted as necessary implementation.
 

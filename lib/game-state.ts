@@ -32,8 +32,9 @@
 //
 // Class abilities (docs/designs/class-abilities.md): a team picked a class in the lobby
 // spends one of its ABILITY_USES on its turn instead of answering. PR 1 has the warrior
-// only: warriorRoll() judges a d20 as the answer (WARRIOR_TARGET or more is correct)
-// through answerQuestion, so the turn still advances exactly once.
+// only: spendAbility() takes the use when the room rolls, then warriorRoll() judges the d20
+// as the answer (WARRIOR_TARGET or more is correct) through answerQuestion, so the turn
+// still advances exactly once.
 //
 // Turn order never changes with room progress — this avoids the "arrival
 // order" snowball fairness risk flagged in /plan-eng-review's Outside Voice.
@@ -768,21 +769,27 @@ export function answerQuestion(
   return { game: advanceTurn({ ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) }), outcome };
 }
 
-/** Throws unless `teamId` may spend a `classId` ability now: its turn, that class, uses left, and no
- * wrong lock waiting (that waits for retry/flee). The room checks its own beats (locks, rolls). */
-export function assertCanUseAbility(game: GameState, teamId: string, classId: ClassId) {
+/** Throws unless it is `teamId`'s turn as a `classId` with no wrong lock waiting (that waits for
+ * retry/flee). The room checks its own beats (locks, rolls). */
+function assertAbilityTurn(game: GameState, teamId: string, classId: ClassId) {
   assertPlaying(game);
   if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
-  const team = getTeam(game, teamId);
-  if (team.classId !== classId) throw new InvalidActionError(`${teamId} is not a ${classId}`);
-  if (team.abilityUses <= 0) throw new InvalidActionError(`${teamId} has no ability uses left`);
+  if (getTeam(game, teamId).classId !== classId) throw new InvalidActionError(`${teamId} is not a ${classId}`);
   if (game.pendingWrong) throw new InvalidActionError(`${teamId} already locked a wrong answer`);
+}
+
+/** Takes one `classId` use from `teamId` as the ability starts, so a roll dropped in its beat (a phone
+ * that reloads to throw a bad die away) still costs it (class-abilities.md D5, reversed in /review). */
+export function spendAbility(game: GameState, teamId: string, classId: ClassId): GameState {
+  assertAbilityTurn(game, teamId, classId);
+  if (getTeam(game, teamId).abilityUses <= 0) throw new InvalidActionError(`${teamId} has no ability uses left`);
+  return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1 })) };
 }
 
 /**
  * The warrior's roll stands in for the answer: `value` (a d20, rolled by the room) of WARRIOR_TARGET
  * or more is a correct answer, less is a wrong one with retry, under answerQuestion's usual rules
- * (in the boss room a shown wrong option still rotates the question). Spends one use.
+ * (in the boss room a shown wrong option still rotates the question). The use was spent by spendAbility.
  */
 export function warriorRoll(
   game: GameState,
@@ -791,9 +798,8 @@ export function warriorRoll(
   value: number,
   rng: () => number = Math.random,
 ): { game: GameState; outcome: AnswerOutcome } {
-  assertCanUseAbility(game, teamId, "warrior");
-  const result = answerQuestion(game, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng);
-  return { ...result, game: { ...result.game, teams: patchTeam(result.game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1 })) } };
+  assertAbilityTurn(game, teamId, "warrior");
+  return answerQuestion(game, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng);
 }
 
 /**

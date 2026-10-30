@@ -31,10 +31,13 @@ test("warrior: a team picks 戰士 in the lobby, rolls instead of answering, the
   await team.getByRole("button", { name: /擲骰代替答題/ }).click();
   await expect(team.getByText(/擲出 \d+！看大螢幕/)).toBeVisible();
   await expect(screen.getByTestId("roll-overlay")).toBeVisible();
+  // The host waits the beat out: the room judges the roll (and the use is already spent).
+  await expect(host.getByText("戰士隊擲出了骰子…")).toBeVisible();
+  await expect(team.getByText("戰士・剩 1 次")).toBeVisible();
   // The die lands on the room's value and the verdict bar reads it.
   await expect(screen.getByTestId("roll-overlay")).toContainText(/(1[2-9]|20) ≥ 12 命中！|\d+，差一點/);
 
   // After the 2 s beat the room judges the roll and the overlay goes away.
   await expect(screen.getByTestId("roll-overlay")).toHaveCount(0, { timeout: 5000 });
-  await expect(team.getByText("戰士・剩 1 次")).toBeVisible();
+  await expect(host.getByText("戰士隊擲出了骰子…")).toHaveCount(0);
 });

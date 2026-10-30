@@ -2081,7 +2081,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(room.game!.teams[0].classId).toBe("warrior");
   });
 
-  it("holds a 12 for 2 s (host judging and locks refused), then judges it correct and spends one use", () => {
+  it("spends the use at the roll, holds a 12 for 2 s (host judging and a second roll refused), then judges it correct", () => {
     vi.useFakeTimers();
     const { room, hostConn, conns, roll } = warriorGame();
     const q = room.game!.teams[0].currentQuestionId;
@@ -2089,7 +2089,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     roll(12);
     const held = lastBroadcast(room);
     expect(held.pendingRoll).toMatchObject({ questionId: q, value: 12 });
-    expect(held.view.teams[0].abilityUses).toBe(2);
+    expect(held.view.teams[0].abilityUses).toBe(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: room.game!.teams[0].id, questionId: q, correct: true, eventId: seq });
     expect(err(hostConn)).toBe("roll_pending");
     roll(12);
@@ -2113,15 +2113,60 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
   });
 
-  it("drops a roll whose turn moved on during the beat, and spends no use (R3)", () => {
+  it("drops a roll whose turn moved on during the beat, and the use stays spent (R3, reversed in /review)", () => {
+    // A phone that reloads during the beat must not throw a bad die away for free and roll again.
     vi.useFakeTimers();
     const { room, ids, conns, roll } = warriorGame();
-    roll(20);
+    roll(1);
     room.onClose(conns[0]);
     expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
     vi.advanceTimersByTime(2000);
     expect(lastBroadcast(room).pendingRoll).toBeNull();
-    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 2, roomIndex: 0 });
+    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 1, roomIndex: 0 });
+  });
+
+  it("a classless team is refused on its own turn, and nothing is spent", () => {
+    const { room, ids, conns } = warriorGame();
+    room.onClose(conns[0]);
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    send(room, conns[1], { type: "TEAM_USE_ABILITY", questionId: room.game!.teams[1].currentQuestionId });
+    expect(err(conns[1])).toMatch(/not a warrior/);
+    expect((room as any).pendingRoll).toBeNull();
+    expect(room.game!.teams[1].abilityUses).toBe(2);
+  });
+
+  it("during the beat the rolling team's select and lock, and sending it to the boss, are refused; the roll still judges", () => {
+    vi.useFakeTimers();
+    const { room, hostConn, ids, conns, roll } = warriorGame();
+    const q = room.game!.teams[0].currentQuestionId;
+    roll(12);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: 0 });
+    expect(err(conns[0])).toBe("answer_pending");
+    send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: q });
+    expect(err(conns[0])).toBe("answer_pending");
+    send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+    expect(err(hostConn)).toBe("lock_pending");
+    expect((room as any).pendingRoll).toMatchObject({ questionId: q });
+    vi.advanceTimersByTime(2000);
+    expect(lastBroadcast(room).reveal).toMatchObject({ questionId: q });
+  });
+
+  it("a roll while a reveal is open is refused", () => {
+    vi.useFakeTimers();
+    const { room, conns, roll } = warriorGame();
+    roll(12);
+    vi.advanceTimersByTime(2000);
+    expect(lastBroadcast(room).reveal).not.toBeNull();
+    roll(12);
+    expect(err(conns[0])).toBe("reveal_pending");
+  });
+
+  it("a class pick from a connection with no team is refused", () => {
+    const { room } = makeRoomWithHost();
+    const stranger = makeConn("stranger");
+    room.onConnect(stranger);
+    send(room, stranger, { type: "TEAM_PICK_CLASS", classId: "warrior" });
+    expect(err(stranger)).toBe("unknown_team");
   });
 
   it("refuses a team with no class, another team's turn, a stale question and no uses left", () => {
@@ -2131,6 +2176,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(err(conns[1])).toMatch(/turn/);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "boss-q1" });
     expect(err(conns[0])).toBe("stale_question");
+    expect(room.game!.teams[0].abilityUses).toBe(2);
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, abilityUses: 0 } : t)) };
     roll(20);
     expect(err(conns[0])).toMatch(/no ability uses/);
