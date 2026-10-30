@@ -156,6 +156,18 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ ...ok, choice: "correct" })).toBeNull();
     expect(parseClientMessage({ ...ok, questionId: 1 })).toBeNull();
   });
+
+  it("TEAM_PICK_CLASS accepts a known class id or null, nothing else (class-abilities.md)", () => {
+    expect(parseClientMessage({ type: "TEAM_PICK_CLASS", classId: "warrior" })).toEqual({ type: "TEAM_PICK_CLASS", classId: "warrior" });
+    expect(parseClientMessage({ type: "TEAM_PICK_CLASS", classId: null })).toEqual({ type: "TEAM_PICK_CLASS", classId: null });
+    expect(parseClientMessage({ type: "TEAM_PICK_CLASS", classId: "bard" })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_PICK_CLASS" })).toBeNull();
+  });
+
+  it("TEAM_USE_ABILITY carries only the question id", () => {
+    expect(parseClientMessage({ type: "TEAM_USE_ABILITY", questionId: "r0-q1", value: 20 })).toEqual({ type: "TEAM_USE_ABILITY", questionId: "r0-q1" });
+    expect(parseClientMessage({ type: "TEAM_USE_ABILITY" })).toBeNull();
+  });
 });
 
 describe("sanitizeText", () => {

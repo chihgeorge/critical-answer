@@ -30,6 +30,11 @@
 //        recordBranchChoice()：第一次選擇定案，
 //        同 roomIndex 之後的提交一律拒絕
 //
+// Class abilities (docs/designs/class-abilities.md): a team picked a class in the lobby
+// spends one of its ABILITY_USES on its turn instead of answering. PR 1 has the warrior
+// only: warriorRoll() judges a d20 as the answer (WARRIOR_TARGET or more is correct)
+// through answerQuestion, so the turn still advances exactly once.
+//
 // Turn order never changes with room progress — this avoids the "arrival
 // order" snowball fairness risk flagged in /plan-eng-review's Outside Voice.
 //
@@ -82,6 +87,26 @@ export function firstPendingBranchRoom(team: { roomIndex: number; branchChoices:
 /** What one boss hit pays when the bank does not say (docs/designs/scoring-and-score-pools.md S8). */
 export const DEFAULT_BOSS_HIT_REWARD = 10;
 
+/** Fixed class ids (docs/designs/class-abilities.md). Display text is looked up by id, like BRANCH_OPTIONS. */
+export const CLASS_IDS = ["mage", "cleric", "warrior", "thief"] as const;
+export type ClassId = (typeof CLASS_IDS)[number];
+
+export function isClassId(v: unknown): v is ClassId {
+  return typeof v === "string" && (CLASS_IDS as readonly string[]).includes(v);
+}
+
+export const CLASS_LABELS: Record<ClassId, string> = {
+  mage: "法師",
+  cleric: "牧師",
+  warrior: "戰士",
+  thief: "盜賊",
+};
+
+/** Ability uses per team per game, every class. */
+export const ABILITY_USES = 2;
+/** The warrior's d20 counts as a correct answer at this value or more (45%). */
+export const WARRIOR_TARGET = 12;
+
 export interface Team {
   id: string;
   name: string;
@@ -125,6 +150,10 @@ export interface Team {
   /** The host's pick for this team's next room question (queueQuestion): the next deal of its difficulty
    * hands it out instead of drawing. Dropped when the team walks into the boss room. */
   queuedQuestionId?: string;
+  /** Picked in the lobby, fixed once the game starts; none is a plain adventurer. */
+  classId?: ClassId;
+  /** Class ability uses left (ABILITY_USES at the start). */
+  abilityUses: number;
 }
 
 export interface RoomTemplate {
@@ -216,7 +245,7 @@ export type AnswerOutcome =
 
 export class InvalidActionError extends Error {}
 
-function rollD20(rng: () => number = Math.random): number {
+export function rollD20(rng: () => number = Math.random): number {
   return Math.floor(rng() * 20) + 1;
 }
 
@@ -397,7 +426,7 @@ export function queueQuestion(game: GameState, target: string, questionId: strin
 export const DEFAULT_GAME_CONFIG: GameConfig = { bossThreshold: 15 };
 
 export function createGame(
-  teamSeeds: { id: string; name: string }[],
+  teamSeeds: { id: string; name: string; classId?: ClassId }[],
   rooms: RoomTemplate[],
   pools: string[][],
   bossQuestionIds: string[],
@@ -435,6 +464,8 @@ export function createGame(
       currentSelection: null,
       branchChoices: {},
       inBoss: config.bossThreshold <= 0, // score starts at 0
+      ...(seed.classId ? { classId: seed.classId } : {}),
+      abilityUses: ABILITY_USES,
     });
   }
 
@@ -730,6 +761,34 @@ export function answerQuestion(
   return { game: advanceTurn({ ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) }), outcome };
 }
 
+/** Throws unless `teamId` may spend a `classId` ability now: its turn, that class, uses left, and no
+ * wrong lock waiting (that waits for retry/flee). The room checks its own beats (locks, rolls). */
+export function assertCanUseAbility(game: GameState, teamId: string, classId: ClassId) {
+  assertPlaying(game);
+  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
+  const team = getTeam(game, teamId);
+  if (team.classId !== classId) throw new InvalidActionError(`${teamId} is not a ${classId}`);
+  if (team.abilityUses <= 0) throw new InvalidActionError(`${teamId} has no ability uses left`);
+  if (game.pendingWrong) throw new InvalidActionError(`${teamId} already locked a wrong answer`);
+}
+
+/**
+ * The warrior's roll stands in for the answer: `value` (a d20, rolled by the room) of WARRIOR_TARGET
+ * or more is a correct answer, less is a wrong one with retry, under answerQuestion's usual rules
+ * (in the boss room a shown wrong option still rotates the question). Spends one use.
+ */
+export function warriorRoll(
+  game: GameState,
+  teamId: string,
+  questionId: string,
+  value: number,
+  rng: () => number = Math.random,
+): { game: GameState; outcome: AnswerOutcome } {
+  assertCanUseAbility(game, teamId, "warrior");
+  const result = answerQuestion(game, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng);
+  return { ...result, game: { ...result.game, teams: patchTeam(result.game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1 })) } };
+}
+
 /**
  * The host's override (docs/designs/scoring-and-score-pools.md S13): take a team into the boss room
  * as if it had just reached the threshold. Not a turn: the turn order and every score stay as they
@@ -886,6 +945,8 @@ export interface SpectatorView {
     /** DM branching interlude choices so far, keyed by roomIndex. A client derives which
      * rooms are still pending a choice from `roomIndex` minus this map's keys. */
     branchChoices: Partial<Record<number, BranchOptionId>>;
+    classId?: ClassId;
+    abilityUses: number;
   }[];
   bossHp: number;
   bossMaxHp: number;
@@ -913,6 +974,8 @@ export function getSpectatorView(game: GameState): SpectatorView {
       currentQuestionId: t.currentQuestionId,
       currentSelection: t.currentSelection,
       branchChoices: t.branchChoices,
+      ...(t.classId ? { classId: t.classId } : {}),
+      abilityUses: t.abilityUses,
     })),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,

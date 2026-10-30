@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { parseSnapshot, SCHEMA_VERSION, type RoomSnapshot } from "./snapshot";
 import { BANK } from "../question-bank-data";
+import { assertCanUseAbility, createGame, DEFAULT_GAME_CONFIG } from "../game-state";
+import { bossPhaseStates, poolQuestionIds, roomTemplates } from "../question-bank";
 
 const valid = (): RoomSnapshot => ({
   schemaVersion: SCHEMA_VERSION,
@@ -22,6 +24,29 @@ const valid = (): RoomSnapshot => ({
 });
 
 describe("parseSnapshot", () => {
+  // A game saved before classes (class-abilities.md): its teams have neither classId nor abilityUses.
+  const gameWithTeams = (patch: (t: Record<string, unknown>, i: number) => Record<string, unknown>) => {
+    const [phase] = bossPhaseStates(BANK);
+    const g = createGame([{ id: "a", name: "甲隊" }, { id: "b", name: "乙隊" }], roomTemplates(BANK), poolQuestionIds(BANK), phase.questionIds, DEFAULT_GAME_CONFIG, phase.maxHp, () => 0);
+    return { ...g, teams: g.teams.map((t, i) => patch(t as unknown as Record<string, unknown>, i)) };
+  };
+  const omit = (t: Record<string, unknown>, ...keys: string[]) => Object.fromEntries(Object.entries(t).filter(([k]) => !keys.includes(k)));
+
+  it("reads teams from before classes as plain adventurers with 2 uses, who cannot use an ability", () => {
+    const game = gameWithTeams((t) => omit(t, "abilityUses", "classId"));
+    const s = parseSnapshot({ ...valid(), game });
+    expect(s?.game?.teams.map((t) => [t.classId, t.abilityUses])).toEqual([[undefined, 2], [undefined, 2]]);
+    expect(() => assertCanUseAbility(s!.game!, "a", "warrior")).toThrow(/not a warrior/);
+  });
+
+  it("gives a team with a class but no abilityUses 2 uses, and refuses an unknown class", () => {
+    const game = gameWithTeams((t, i) => (i === 0 ? { ...omit(t, "abilityUses"), classId: "warrior" } : omit(t, "abilityUses")));
+    expect(parseSnapshot({ ...valid(), game })?.game?.teams[0]).toMatchObject({ classId: "warrior", abilityUses: 2 });
+    expect(parseSnapshot({ ...valid(), game: gameWithTeams((t) => ({ ...t, classId: "bard" })) })).toBeNull();
+    expect(parseSnapshot({ ...valid(), pendingTeams: [{ id: "x", name: "甲隊", classId: "warrior" }] })?.pendingTeams[0].classId).toBe("warrior");
+    expect(parseSnapshot({ ...valid(), pendingTeams: [{ id: "x", name: "甲隊", classId: "bard" }] })).toBeNull();
+  });
+
   it("accepts what a room writes, unchanged", () => {
     const s = parseSnapshot(structuredClone(valid()));
     expect(s).toEqual(valid());

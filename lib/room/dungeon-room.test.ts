@@ -2045,3 +2045,95 @@ describe("sound cues (big-screen effects)", () => {
     expect(JSON.parse((late.send as ReturnType<typeof vi.fn>).mock.calls[0][0]).cue).toBeUndefined();
   });
 });
+
+describe("class abilities: lobby pick and the warrior's roll (class-abilities.md)", () => {
+  afterEach(() => vi.useRealTimers());
+  // The room's rng both deals questions and rolls the d20: rollD20 gives floor(r * 20) + 1.
+  function warriorGame(teamCount = 2) {
+    let r = 0;
+    const room = new DungeonRoom(makeRoom() as any, () => r);
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids, conns } = joinTeams(room, hostConn, teamCount);
+    send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "warrior" });
+    send(room, hostConn, { type: "HOST_START" });
+    const roll = (value: number) => {
+      r = (value - 1) / 20;
+      send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: room.game!.teams[0].currentQuestionId });
+    };
+    return { room, hostConn, ids, conns, roll };
+  }
+  const err = (conn: Conn) => lastSentTo(conn as never)?.detail ?? lastSentTo(conn as never)?.error;
+
+  it("a lobby pick shows on LOBBY, the last pick wins, null clears it, and it is fixed at the start", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    const { conns } = joinTeams(room, hostConn, 2);
+    send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "mage" });
+    send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "warrior" });
+    send(room, conns[1], { type: "TEAM_PICK_CLASS", classId: "warrior" });
+    send(room, conns[1], { type: "TEAM_PICK_CLASS", classId: null });
+    expect(lastBroadcast(room).teams.map((t: { classId?: string }) => t.classId)).toEqual(["warrior", undefined]);
+    send(room, hostConn, { type: "HOST_START" });
+    expect(room.game!.teams.map((t) => [t.classId, t.abilityUses])).toEqual([["warrior", 2], [undefined, 2]]);
+    send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "thief" });
+    expect(err(conns[0])).toBe("game_already_started");
+    expect(room.game!.teams[0].classId).toBe("warrior");
+  });
+
+  it("holds a 12 for 2 s (host judging and locks refused), then judges it correct and spends one use", () => {
+    vi.useFakeTimers();
+    const { room, hostConn, conns, roll } = warriorGame();
+    const q = room.game!.teams[0].currentQuestionId;
+    const seq = seqOf(room);
+    roll(12);
+    const held = lastBroadcast(room);
+    expect(held.pendingRoll).toMatchObject({ questionId: q, value: 12 });
+    expect(held.view.teams[0].abilityUses).toBe(2);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: room.game!.teams[0].id, questionId: q, correct: true, eventId: seq });
+    expect(err(hostConn)).toBe("roll_pending");
+    roll(12);
+    expect(err(conns[0])).toBe("answer_pending");
+    vi.advanceTimersByTime(2000);
+    const out = lastBroadcast(room);
+    expect(out.pendingRoll).toBeNull();
+    expect(out.reveal).toMatchObject({ questionId: q });
+    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 1, roomIndex: 1 });
+    expect(seqOf(room)).toBe(seq + 1);
+  });
+
+  it("an 11 is a retry: same question, the turn passes, one use spent", () => {
+    vi.useFakeTimers();
+    const { room, ids, roll } = warriorGame();
+    const q = room.game!.teams[0].currentQuestionId;
+    roll(11);
+    vi.advanceTimersByTime(2000);
+    expect(lastBroadcast(room).reveal).toBeNull();
+    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 1, currentQuestionId: q, roomIndex: 0 });
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+  });
+
+  it("drops a roll whose turn moved on during the beat, and spends no use (R3)", () => {
+    vi.useFakeTimers();
+    const { room, ids, conns, roll } = warriorGame();
+    roll(20);
+    room.onClose(conns[0]);
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    vi.advanceTimersByTime(2000);
+    expect(lastBroadcast(room).pendingRoll).toBeNull();
+    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 2, roomIndex: 0 });
+  });
+
+  it("refuses a team with no class, another team's turn, a stale question and no uses left", () => {
+    vi.useFakeTimers();
+    const { room, conns, roll } = warriorGame();
+    send(room, conns[1], { type: "TEAM_USE_ABILITY", questionId: room.game!.teams[1].currentQuestionId });
+    expect(err(conns[1])).toMatch(/turn/);
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "boss-q1" });
+    expect(err(conns[0])).toBe("stale_question");
+    room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, abilityUses: 0 } : t)) };
+    roll(20);
+    expect(err(conns[0])).toMatch(/no ability uses/);
+    expect((room as any).pendingRoll).toBeNull();
+  });
+});
