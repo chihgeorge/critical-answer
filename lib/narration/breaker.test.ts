@@ -26,6 +26,16 @@ describe("createBreaker", () => {
     expect(onTrip.mock.calls[0][0]).toMatch(/3 consecutive/);
   });
 
+  it("reset() closes an open breaker and clears the failure count", () => {
+    const b = createBreaker({ threshold: 3 });
+    for (let i = 0; i < 3; i++) b.failure(new NarrationError("upstream", "x"));
+    b.reset();
+    expect(b.open).toBe(false);
+    b.failure(new NarrationError("upstream", "x"));
+    b.failure(new NarrationError("upstream", "x"));
+    expect(b.open).toBe(false);
+  });
+
   it("opens at once on an auth failure (401/403)", () => {
     const onTrip = vi.fn();
     const b = createBreaker({ onTrip });

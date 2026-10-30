@@ -31,14 +31,31 @@ import {
   type GameState,
   type LockedOption,
 } from "../game-state";
-import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type HostPick, type PendingRoll, type ServerMessage, type SoundCue } from "../protocol";
+import {
+  DEFAULT_AI_LIMIT,
+  MAX_EDIT_LINE,
+  MAX_NOTES,
+  MAX_TEAMS,
+  parseClientMessage,
+  sanitizeText,
+  type AiKeyError,
+  type AiProviderId,
+  type AiSource,
+  type AnswerReveal,
+  type ClientMessage,
+  type HostPick,
+  type PendingRoll,
+  type ServerMessage,
+  type SoundCue,
+} from "../protocol";
 import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { createScriptedProvider, type NarrationProvider } from "../narration/scripted";
 import { createRunner, type TranscriptItem } from "../narration/runner";
-import { createLlmProvider } from "../narration/llm";
+import { PROVIDERS } from "../narration/providers";
+import { keyHint, withBudget } from "./ai-budget";
 import { createBreaker, withBreaker } from "../narration/breaker";
 
 const MAX_TEAM_NAME_LENGTH = 20;
@@ -57,6 +74,8 @@ const BEAT_MS = 2000;
 const ADVANCE_MS = 8000;
 const ADVANCE_CAP_MS = 15000;
 const SPEECH_CHARS_PER_S = 4;
+/** How long checking a pasted key may take before the host is told it failed. */
+const KEY_CHECK_MS = 5000;
 const speechMs = (lines: string[]) => (lines.join("").length / SPEECH_CHARS_PER_S) * 1000 + 1000;
 
 export interface RoomOptions {
@@ -161,9 +180,21 @@ export class DungeonRoom {
   /** Asked of new teams at JOIN when not "" (HOST_SET_PASSWORD). Known teams rejoin with their key alone. */
   private joinPassword = "";
   private editedLines: string[] = [];
-  /** Turned on by the host at HOST_START, and only effective when a key exists. */
+  /** The host's choice at HOST_START. Only effective while the room has a key and budget left. */
   private aiNarration = false;
-  private llm: NarrationProvider | null = null;
+  /** Who pays (saved), and the key itself (memory only: never saved, logged, broadcast or sent back). Each applied
+   * key gets a new generation, so a late 401 from a key the host already replaced cannot drop the new one. */
+  private aiSource: AiSource = "none";
+  private credential: { provider: AiProviderId; apiKey: string; generation: number } | null = null;
+  private credentialGeneration = 0;
+  private aiUsed = 0;
+  private aiLimit = DEFAULT_AI_LIMIT;
+  /** Shown to the host until the next key is applied: the key was refused mid-game, or the breaker tripped. */
+  private aiError: AiKeyError | undefined;
+  /** The pasted key being checked now, if any: a newer HOST_AI_KEY aborts it. */
+  private keyCheck: AbortController | null = null;
+  private fetchImpl: typeof fetch | undefined;
+  private llm: NarrationProvider;
   private breaker = createBreaker({ onTrip: (why) => this.onBreakerTrip(why) });
   private scripted: ReturnType<typeof createScriptedProvider>;
   private runner: ReturnType<typeof createRunner>;
@@ -203,22 +234,37 @@ export class DungeonRoom {
     this.bankAnswers = allAnswers(this.bank);
     this.scripted = createScriptedProvider(rng);
     this.epilogueDelayMs = opts.epilogueDelayMs ?? EPILOGUE_DELAY_MS;
-    // The key lives in room.env (server only), never in a NEXT_PUBLIC_ variable.
-    const apiKey = room.env?.ANTHROPIC_API_KEY;
-    this.aiAvailable = !!apiKey;
-    if (apiKey || opts.fetch) {
-      this.llm = withBreaker(
-        createLlmProvider({
-          apiKey,
-          fetch: opts.fetch,
-          getNotes: () => this.notes,
-          getStyleExamples: () => this.editedLines,
-          forbidden: () => this.bankAnswers,
-        }),
-        this.breaker,
-      );
-    }
-    const active = (): NarrationProvider => opts.provider ?? (this.aiNarration && this.llm ? this.llm : this.scripted);
+    this.fetchImpl = opts.fetch;
+    const llmOptions = {
+      getApiKey: () => this.credential?.apiKey,
+      fetch: opts.fetch,
+      getNotes: () => this.notes,
+      getStyleExamples: () => this.editedLines,
+      forbidden: () => this.bankAnswers,
+    };
+    const byProvider: NarrationProvider = {
+      name: "llm",
+      narrate: (event, o) => PROVIDERS[this.credential?.provider ?? "anthropic"].createNarrator(llmOptions).narrate(event, o),
+    };
+    this.llm = withBreaker(
+      withBudget(byProvider, {
+        canSpend: () => this.aiUsed < this.aiLimit,
+        spend: () => {
+          this.aiUsed++;
+          this.sendAiStatus();
+          return this.credential?.generation ?? -1;
+        },
+        isCurrent: (generation) => this.credential?.generation === generation,
+        onAuthRejected: () => {
+          this.credential = null;
+          this.aiError = "invalid_key";
+          this.sendAiStatus();
+        },
+      }),
+      this.breaker,
+    );
+    const active = (): NarrationProvider =>
+      opts.provider ?? (this.aiNarration && this.credential && this.aiUsed < this.aiLimit ? this.llm : this.scripted);
     this.runner = createRunner({
       // Resolved per call, so the host's AI switch (set at HOST_START) takes effect immediately.
       provider: {
@@ -249,9 +295,6 @@ export class DungeonRoom {
     });
   }
 
-  /** Whether this server has an API key at all; the host may only switch AI on when true. */
-  private aiAvailable: boolean;
-
   private addTranscript(item: TranscriptItem) {
     this.transcript.push(item);
     if (this.transcript.length > MAX_TRANSCRIPT) this.transcript.shift();
@@ -261,6 +304,64 @@ export class DungeonRoom {
   private onBreakerTrip(why: string) {
     console.warn(JSON.stringify({ narration: "breaker_open", why }));
     this.addTranscript({ kind: "breaker", at: new Date().toISOString(), text: `LLM narration switched off: ${why}` });
+    // A refused key already says invalid_key (onAuthRejected dropped it); anything else is "AI stopped".
+    if (this.credential) this.aiError = "ai_stopped";
+    this.sendAiStatus();
+  }
+
+  /** To one host connection, or every one. `error` is for this message only (a key that failed to apply). */
+  private sendAiStatus(error?: AiKeyError, only?: Conn) {
+    const msg: ServerMessage = {
+      type: "HOST_AI_STATUS",
+      source: this.aiSource,
+      provider: this.credential?.provider ?? null,
+      keyHint: this.aiSource === "own" && this.credential ? keyHint(this.credential.apiKey) : null,
+      keyMissing: this.aiSource !== "none" && !this.credential,
+      used: this.aiUsed,
+      limit: this.aiLimit,
+      exhausted: this.aiUsed >= this.aiLimit,
+      ...((error ?? this.aiError) ? { error: error ?? this.aiError } : {}),
+    };
+    for (const conn of only ? [only] : this.hostConns.values()) this.sendTo(conn, msg);
+  }
+
+  private applyCredential(source: AiSource, credential: { provider: AiProviderId; apiKey: string } | null) {
+    this.aiSource = source;
+    this.credential = credential && { ...credential, generation: ++this.credentialGeneration };
+    this.aiError = undefined;
+    // Whatever tripped the breaker (a dead key, no credit) may be fixed by this key.
+    if (credential) this.breaker.reset();
+    this.sendAiStatus();
+  }
+
+  private handleAiKey(conn: Conn, msg: Extract<ClientMessage, { type: "HOST_AI_KEY" }>) {
+    if (!this.requireHost(conn)) return;
+    this.keyCheck?.abort();
+    this.keyCheck = null;
+    if (msg.source === "none") return this.applyCredential("none", null);
+    if (msg.source === "owner") {
+      const ownerKey = this.room.env?.OWNER_KEY;
+      const serverKey = this.room.env?.ANTHROPIC_API_KEY;
+      if (!ownerKey || !serverKey) return this.sendAiStatus("owner_unavailable");
+      if (!tokensEqual(ownerKey, msg.ownerKey)) return this.sendAiStatus("wrong_owner_key");
+      return this.applyCredential("owner", { provider: "anthropic", apiKey: serverKey });
+    }
+    const provider = PROVIDERS[msg.provider];
+    if (!provider.keyFormat.test(msg.key)) return this.sendAiStatus("invalid_key");
+    // The host page resends its key after every reconnect: the same key needs no new check, and a flaky check must not drop it.
+    // After "AI stopped" the host pastes it again on purpose (credit topped up): apply it, which resets the breaker.
+    if (this.aiSource === "own" && this.credential?.provider === msg.provider && this.credential.apiKey === msg.key)
+      return this.aiError ? this.applyCredential("own", { provider: msg.provider, apiKey: msg.key }) : this.sendAiStatus();
+    const check = new AbortController();
+    this.keyCheck = check;
+    void provider.checkKey(msg.key, { fetch: this.fetchImpl, signal: AbortSignal.any([check.signal, AbortSignal.timeout(KEY_CHECK_MS)]) }).then((result) => {
+      // Superseded by a newer HOST_AI_KEY, or the room expired meanwhile.
+      if (check.signal.aborted) return;
+      this.keyCheck = null;
+      // A failed check leaves the key the room already had in place.
+      if (result === "ok") this.applyCredential("own", { provider: msg.provider, apiKey: msg.key });
+      else this.sendAiStatus(result === "invalid" ? "invalid_key" : "check_failed");
+    });
   }
 
   private broadcast(msg: ServerMessage) {
@@ -290,7 +391,11 @@ export class DungeonRoom {
       notes: this.notes,
       joinPassword: this.joinPassword,
       editedLines: this.editedLines,
-      aiNarration: this.aiNarration,
+      aiNarration: false,
+      aiWanted: this.aiNarration,
+      aiSource: this.aiSource,
+      aiUsed: this.aiUsed,
+      aiLimit: this.aiLimit,
       // Rounded so a run of messages with no other state change does not force a write every time (persist()
       // skips a write when the JSON is unchanged). The granularity scales down with idleMs so a short test
       // duration (seconds) is never rounded away entirely; production's 2-hour default still rounds to the
@@ -378,7 +483,11 @@ export class DungeonRoom {
     this.notes = s.notes;
     this.joinPassword = s.joinPassword;
     this.editedLines = s.editedLines;
-    this.aiNarration = this.aiAvailable && s.aiNarration;
+    // The key is not saved: the host page sends it again after HOST_OK (keyMissing until then).
+    this.aiNarration = s.aiWanted ?? false;
+    this.aiSource = s.aiSource ?? "none";
+    this.aiUsed = s.aiUsed ?? 0;
+    this.aiLimit = s.aiLimit ?? DEFAULT_AI_LIMIT;
     this.bank = s.bank;
     this.bankAnswers = allAnswers(s.bank);
     this.phaseCard = s.phaseCard ?? false;
@@ -612,6 +721,14 @@ export class DungeonRoom {
     this.joinPassword = "";
     this.editedLines = [];
     this.aiNarration = false;
+    // The next host of this code must not inherit this host's key or budget.
+    this.keyCheck?.abort();
+    this.keyCheck = null;
+    this.aiSource = "none";
+    this.credential = null;
+    this.aiUsed = 0;
+    this.aiLimit = DEFAULT_AI_LIMIT;
+    this.aiError = undefined;
     this.bank = this.initialBank;
     this.bankAnswers = allAnswers(this.bank);
     this.roomEpoch = crypto.randomUUID();
@@ -696,6 +813,14 @@ export class DungeonRoom {
         case "HOST_START":
           this.handleHostStart(sender, msg.aiNarration);
           break;
+        case "HOST_AI_KEY":
+          this.handleAiKey(sender, msg);
+          break;
+        case "HOST_AI_LIMIT":
+          if (!this.requireHost(sender)) break;
+          this.aiLimit = msg.limit;
+          this.sendAiStatus();
+          break;
         case "HOST_SET_NOTES":
           this.handleSetNotes(sender, msg.notes);
           break;
@@ -703,7 +828,7 @@ export class DungeonRoom {
           if (!this.requireHost(sender)) break;
           this.joinPassword = msg.password.trim();
           // Every host page shows the room's real password only once the room has it.
-          for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", aiAvailable: this.aiAvailable, joinPassword: this.joinPassword });
+          for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
           break;
         case "HOST_EDIT_NARRATION":
           this.handleEditNarration(sender, msg.line);
@@ -766,7 +891,8 @@ export class DungeonRoom {
       return;
     }
     this.hostConns.set(conn.id, conn);
-    this.sendTo(conn, { type: "HOST_OK", aiAvailable: this.aiAvailable, joinPassword: this.joinPassword });
+    this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
+    this.sendAiStatus(undefined, conn);
     this.sendAnswer(conn);
     this.sendPicks(conn);
   }
@@ -972,11 +1098,8 @@ export class DungeonRoom {
       shuffledOptionOrders(this.bank, this.rng),
       laterPhases,
     );
-    // Default on when a key exists; the host can switch it off before starting.
-    // gstack-shortcut(dec-db628e32): no cap on paid narration calls per room or overall (anyone can
-    // host a room), only the Anthropic spend limit; upgrade when that limit is hit or usage shows
-    // abuse: a per-room narration budget that falls back to scripted lines (TODOS.md).
-    this.aiNarration = this.aiAvailable && aiNarration !== false;
+    // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.
+    this.aiNarration = aiNarration !== false;
     const eventId = ++this.eventSeq;
     this.cue = "start";
     this.broadcastState();

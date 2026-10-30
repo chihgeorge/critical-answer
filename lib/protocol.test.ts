@@ -54,6 +54,29 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_START" })).toEqual({ type: "HOST_START" });
   });
 
+  it("HOST_AI_KEY: own needs a known provider and a key; owner needs an owner key; none needs nothing", () => {
+    const key = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz";
+    expect(parseClientMessage({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key })).toEqual({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key });
+    expect(parseClientMessage({ type: "HOST_AI_KEY", source: "owner", ownerKey: "x" })).toEqual({ type: "HOST_AI_KEY", source: "owner", ownerKey: "x" });
+    expect(parseClientMessage({ type: "HOST_AI_KEY", source: "none", key })).toEqual({ type: "HOST_AI_KEY", source: "none" });
+    // A key in the wrong format still parses: the room answers it with invalid_key, not bad_message.
+    expect(parseClientMessage({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: "oops" })).not.toBeNull();
+    for (const bad of [
+      { source: "own", provider: "openai", key },
+      { source: "own", provider: "anthropic" },
+      { source: "own", provider: "anthropic", key: "" },
+      { source: "own", provider: "anthropic", key: "k".repeat(257) },
+      { source: "owner", ownerKey: "" },
+      { source: "everyone" },
+    ]) expect(parseClientMessage({ type: "HOST_AI_KEY", ...bad })).toBeNull();
+  });
+
+  it("HOST_AI_LIMIT: a whole number from 1 to 5000", () => {
+    expect(parseClientMessage({ type: "HOST_AI_LIMIT", limit: 1 })).toEqual({ type: "HOST_AI_LIMIT", limit: 1 });
+    expect(parseClientMessage({ type: "HOST_AI_LIMIT", limit: 5000 })).toEqual({ type: "HOST_AI_LIMIT", limit: 5000 });
+    for (const limit of [0, 5001, 1.5, "300", null]) expect(parseClientMessage({ type: "HOST_AI_LIMIT", limit })).toBeNull();
+  });
+
   it("HOST_START: aiNarration is optional and must be a boolean", () => {
     expect(parseClientMessage({ type: "HOST_START", aiNarration: false })).toEqual({ type: "HOST_START", aiNarration: false });
     expect(parseClientMessage({ type: "HOST_START", aiNarration: "yes" })).toBeNull();

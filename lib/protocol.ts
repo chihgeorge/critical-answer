@@ -82,6 +82,14 @@ export type ClientMessage =
   | { type: "REJOIN"; teamId: string; teamKey: string; resume?: true }
   | { type: "HOST_CLAIM"; token: string; resume?: true }
   | { type: "HOST_START"; aiNarration?: boolean }
+  /** Which key pays for AI narration in this room. The key stays in the room's memory and is never sent back. */
+  | { type: "HOST_AI_KEY"; source: "own"; provider: AiProviderId; key: string }
+  /** The server's own key, for whoever knows OWNER_KEY. */
+  | { type: "HOST_AI_KEY"; source: "owner"; ownerKey: string }
+  /** Forget the key: scripted narration from now on. */
+  | { type: "HOST_AI_KEY"; source: "none" }
+  /** Most paid AI calls this room may make (1..MAX_AI_LIMIT). */
+  | { type: "HOST_AI_LIMIT"; limit: number }
   /** Director: free-text style notes (<= 500 chars) injected into every LLM call. */
   | { type: "HOST_SET_NOTES"; notes: string }
   /** Join password for new teams; "" lets anyone with the room code join. */
@@ -181,8 +189,20 @@ export type ServerMessage =
   | { type: "EPILOGUE"; text: string; replay?: true }
   /** Host-only reply to HOST_GET_TRANSCRIPT. */
   | { type: "TRANSCRIPT"; entries: TranscriptItem[] }
-  /** `aiAvailable`: the server has an API key, so the host may turn AI narration on. */
-  | { type: "HOST_OK"; aiAvailable: boolean; joinPassword: string }
+  | { type: "HOST_OK"; joinPassword: string }
+  /** Host-only: who pays for AI narration and how much is left. Never carries the key itself, only its last 4 characters. */
+  | {
+      type: "HOST_AI_STATUS";
+      source: AiSource;
+      provider: AiProviderId | null;
+      keyHint: string | null;
+      /** The source needs a key the room no longer has (it restarted, or the key was refused): the host page resends it. */
+      keyMissing: boolean;
+      used: number;
+      limit: number;
+      exhausted: boolean;
+      error?: AiKeyError;
+    }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   | { type: "HOST_ANSWER"; questionId: string; answer: string }
   /** Host-only, sent with every STATE: what the host may queue (HOST_QUEUE_QUESTION) and what is queued.
@@ -210,6 +230,16 @@ export interface HostPick {
 
 export type StateMessage = Extract<ServerMessage, { type: "STATE" }>;
 export type LobbyTeams = Extract<ServerMessage, { type: "LOBBY" }>["teams"];
+
+export const AI_PROVIDER_IDS = ["anthropic"] as const;
+export type AiProviderId = (typeof AI_PROVIDER_IDS)[number];
+export type AiSource = "none" | "own" | "owner";
+/** invalid_key: refused by the provider or not a key at all. ai_stopped: the breaker switched AI off after repeated failures. */
+export type AiKeyError = "invalid_key" | "wrong_owner_key" | "owner_unavailable" | "check_failed" | "ai_stopped";
+const MAX_AI_KEY = 256;
+/** A room's cap on paid AI narration calls: the default, and the most a host may set. */
+export const DEFAULT_AI_LIMIT = 300;
+export const MAX_AI_LIMIT = 5000;
 
 export const HOST_TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
 /** Same shape as the host token. */
@@ -278,6 +308,21 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_START":
       if (m.aiNarration !== undefined && typeof m.aiNarration !== "boolean") return null;
       return { type: "HOST_START", aiNarration: m.aiNarration };
+    case "HOST_AI_KEY": {
+      if (m.source === "none") return { type: "HOST_AI_KEY", source: "none" };
+      if (m.source === "owner") {
+        const ownerKey = str(m.ownerKey, MAX_AI_KEY);
+        return ownerKey ? { type: "HOST_AI_KEY", source: "owner", ownerKey } : null;
+      }
+      // The key's format is the room's check (invalid_key), not a malformed message.
+      const key = str(m.key, MAX_AI_KEY);
+      const provider = AI_PROVIDER_IDS.find((p) => p === m.provider);
+      return m.source === "own" && key && provider ? { type: "HOST_AI_KEY", source: "own", provider, key } : null;
+    }
+    case "HOST_AI_LIMIT":
+      return Number.isInteger(m.limit) && (m.limit as number) >= 1 && (m.limit as number) <= MAX_AI_LIMIT
+        ? { type: "HOST_AI_LIMIT", limit: m.limit as number }
+        : null;
     case "HOST_SET_NOTES": {
       const notes = str(m.notes, MAX_NOTES);
       return notes !== null ? { type: "HOST_SET_NOTES", notes } : null;

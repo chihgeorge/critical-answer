@@ -25,7 +25,12 @@ export interface RoomIO {
   /** Server-only settings (secrets and env vars). Never sent to a browser.
    * `R2_PUBLIC_BASE_URL` is not a secret — it's the public read base for the image bucket
    * (e.g. an r2.dev URL), needed to turn a stored image key into a renderable URL. */
-  env?: { ANTHROPIC_API_KEY?: string; R2_PUBLIC_BASE_URL?: string };
+  env?: {
+    /** The owner's key: used only in a room whose host proved they know OWNER_KEY (HOST_AI_KEY source "owner"). */
+    ANTHROPIC_API_KEY?: string;
+    R2_PUBLIC_BASE_URL?: string;
+    OWNER_KEY?: string;
+  };
   /** Where the room saves itself. Without it (tests, the temporary PartyKit adapter) the room lives in memory only. */
   storage?: RoomStorage;
   /** Close every open connection with an application close code (see close-codes.ts). */

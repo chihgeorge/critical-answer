@@ -1,6 +1,6 @@
 // The LLM narrator: one short Messages API call per event, plain fetch (no SDK,
-// so the worker bundle stays small). Server-side only: the key comes from
-// room.env and never reaches the browser. Every failure throws a named error;
+// so the worker bundle stays small). Server-side only: the key is the host's (or
+// the owner's), held in room memory, and never reaches a browser. Every failure throws a named error;
 // the runner turns any of them into the scripted line.
 
 import type { NarrationEvent } from "./events";
@@ -98,8 +98,9 @@ export function fitToLimit(text: string, max: number): string {
 }
 
 export interface LlmOptions {
-  /** From room.env.ANTHROPIC_API_KEY. Missing -> config_missing, and nothing is sent. */
-  apiKey?: string;
+  /** Read on every call, so a key the host swaps in mid-game is used from the next line on.
+   * Missing -> config_missing, and nothing is sent. */
+  getApiKey: () => string | undefined;
   fetch?: typeof fetch;
   getNotes?: () => string;
   /** The host's last few hand-edited lines. */
@@ -113,7 +114,8 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
   return {
     name: "llm",
     async narrate(event: NarrationEvent, o: { signal?: AbortSignal } = {}): Promise<string> {
-      if (!opts.apiKey) throw new NarrationError("config_missing", "ANTHROPIC_API_KEY is not set");
+      const apiKey = opts.getApiKey();
+      if (!apiKey) throw new NarrationError("config_missing", "no API key for this room");
       const epilogue = event.type === "epilogue";
       const { system, user } = buildPrompt(event, opts.getNotes?.() ?? "", opts.getStyleExamples?.() ?? []);
       const model = epilogue ? EPILOGUE_MODEL : NARRATION_MODEL;
@@ -121,7 +123,7 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       try {
         res = await doFetch(API_URL, {
           method: "POST",
-          headers: { "content-type": "application/json", "x-api-key": opts.apiKey, "anthropic-version": "2023-06-01" },
+          headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
             model,
             max_tokens: epilogue ? 300 : 200,

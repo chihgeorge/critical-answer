@@ -21,6 +21,11 @@ export function createBreaker(opts: { threshold?: number; onTrip?: (why: string)
     success() {
       failures = 0;
     },
+    /** A new key was applied: whatever tripped the breaker may be fixed, so try again. */
+    reset() {
+      failures = 0;
+      open = false;
+    },
     failure(err: unknown) {
       if (err instanceof NarrationError && err.reason === "auth") return trip(`auth failure (${err.status})`);
       if (++failures >= threshold) trip(`${threshold} consecutive failures`);

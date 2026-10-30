@@ -55,23 +55,20 @@
 
 ---
 
-## AI 旁白沒有花費上限：任何人都能開房間觸發付費 LLM 呼叫
+## OpenRouter 一鍵登入拿 key，手機主持人不用複製貼上
 
-**What:** 每局（或每個房間）設一個 AI 旁白次數上限，超過就改用罐頭旁白；必要時再加一個全站每日上限，記在一個 Durable Object 裡。
+**What:** 主持人頁加「用 OpenRouter 登入」，走 OpenRouter 官方的 PKCE OAuth 流程拿到一把 key，在 `lib/narration/providers.ts` 的 `PROVIDERS` 加一個 `"openrouter"`。
 
-**Why:** `/cso` 稽核（2026-10-03，發現 `7b53ff168118d30889fe2e95aa9ee99d`）：開房間不用登入、第一個 HOST_CLAIM 就是主持人，AI 旁白在有 `ANTHROPIC_API_KEY` 時預設開啟（正式環境有設），每次判題都打一次 Claude API，結束再打一次。沒有任何次數限制，breaker 只在失敗時跳開。一個腳本開很多房間、一直送「答錯重答」就能持續花費。
+**Why:** 使用者 2026-10-30 提出：用手機當主持人時，從 Anthropic Console 複製 key 再貼上很難。Anthropic 沒有給第三方拿 API key 的 OAuth，OpenRouter 有。
 
-**Pros:** 程式內就擋住，額度被打爆時不會連帶讓真的在玩的房間失去 AI 旁白。
-
-**Cons:** 單局上限擋不住「開很多房間」；全站上限要多一個 DO 和計數邏輯。
-
-**Context:** 這次決定（dec-db628e32）只在 Anthropic 後台設花費上限，程式不改；`lib/room/dungeon-room.ts` 的 `handleHostStart` 有 `gstack-shortcut(dec-db628e32)` 標記。升級的觸發點：花費上限被打到，或用量出現異常。從 `narrate()` 計次開始做。
+**Context:** spec #102 的 D11 決定先只做 Anthropic 複製貼上。`AiProvider` 介面已經按 provider 分開（`checkKey`、`createNarrator`），加一個 provider 不用動房間邏輯；要新增 OpenRouter 的 narrator（OpenAI 相容的 chat API）和 PKCE 的回呼頁。
 
 **Effort:** M　**Priority:** P3
 
 **Depends on / blocked by:** 無。
 
 ---
+
 
 ## Host 自訂題庫文字進 LLM prompt 前的內容審核
 
@@ -572,6 +569,26 @@
 ---
 
 ## Completed
+
+## AI 旁白沒有花費上限：任何人都能開房間觸發付費 LLM 呼叫
+
+**What:** 每局（或每個房間）設一個 AI 旁白次數上限，超過就改用罐頭旁白；必要時再加一個全站每日上限，記在一個 Durable Object 裡。
+
+**Why:** `/cso` 稽核（2026-10-03，發現 `7b53ff168118d30889fe2e95aa9ee99d`）：開房間不用登入、第一個 HOST_CLAIM 就是主持人，AI 旁白在有 `ANTHROPIC_API_KEY` 時預設開啟（正式環境有設），每次判題都打一次 Claude API，結束再打一次。沒有任何次數限制，breaker 只在失敗時跳開。一個腳本開很多房間、一直送「答錯重答」就能持續花費。
+
+**Pros:** 程式內就擋住，額度被打爆時不會連帶讓真的在玩的房間失去 AI 旁白。
+
+**Cons:** 單局上限擋不住「開很多房間」；全站上限要多一個 DO 和計數邏輯。
+
+**Context:** 這次決定（dec-db628e32）只在 Anthropic 後台設花費上限，程式不改；`lib/room/dungeon-room.ts` 的 `handleHostStart` 有 `gstack-shortcut(dec-db628e32)` 標記。升級的觸發點：花費上限被打到，或用量出現異常。從 `narrate()` 計次開始做。
+
+**Effort:** M　**Priority:** P3
+
+**Depends on / blocked by:** 無。
+
+**Completed:** v0.21.0.0 (2026-10-30)：主持人貼自己的 Anthropic key（或用站長金鑰），每房預設 300 句上限（spec #102）。全站上限依 D9 不做，靠 Anthropic Console 的花費上限。
+
+---
 
 ## 每隊有一個代表職業，戰鬥時有不同的特殊能力
 

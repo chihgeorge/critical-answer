@@ -17,8 +17,6 @@ test("the host judges with the keyboard: 2 marks a wrong answer, 1 a correct one
     await team.goto(`/room/${code}/play?name=${encodeURIComponent(name)}`);
     await expect(team.getByTestId("roster")).toContainText(name);
   }
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   await expect(host.getByRole("button", { name: "答對！" })).toBeEnabled();

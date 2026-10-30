@@ -1,5 +1,6 @@
 import { ABILITY_USES, isClassId, type ClassId, type GameState } from "../game-state";
 import { parseBank, type Bank } from "../question-bank";
+import { DEFAULT_AI_LIMIT, MAX_AI_LIMIT, type AiSource } from "../protocol";
 
 /**
  * Everything a room must get back after its Durable Object restarts, as plain data.
@@ -30,7 +31,16 @@ export interface RoomSnapshot {
   /** "" when the room has none. Missing in a save from before join passwords. */
   joinPassword: string;
   editedLines: string[];
+  /** Always false since host-owned keys: a reverted server reads this, and must not switch on its own key for a room
+   * whose host paid with theirs. The host's real choice is aiWanted. */
   aiNarration: boolean;
+  /** The host asked for AI narration at HOST_START. Missing in a save from before host-owned keys. */
+  aiWanted?: boolean;
+  /** Who pays for AI narration. The key itself is never saved: after a restart the host page sends it again. */
+  aiSource?: AiSource;
+  /** Paid AI calls made so far, and the most this room may make. */
+  aiUsed?: number;
+  aiLimit?: number;
   /** When someone last did something that changes the room, rounded down to the minute so it does not make every message a write. Null in a save from before this field existed. */
   lastActivityAt: number | null;
   /** The full bank the game is dealt from, not just question ids: editing or deleting a bank must not change a game in progress. */
@@ -71,7 +81,24 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (at !== null && !(typeof at === "number" && Number.isFinite(at) && at >= 0)) return null;
     const bank = parseBank(raw.bank); // throws on a bank that would not load today
     if (raw.phaseCard !== undefined && typeof raw.phaseCard !== "boolean") return null;
-    return { ...(raw as unknown as RoomSnapshot), game: withUses as GameState | null, joinPassword, lastActivityAt: at, bank };
+    // Host-owned AI keys came later without a version bump: missing fields mean no AI and a fresh budget.
+    const aiWanted = raw.aiWanted ?? false;
+    const aiSource = raw.aiSource ?? "none";
+    const aiUsed = raw.aiUsed ?? 0;
+    const aiLimit = raw.aiLimit ?? DEFAULT_AI_LIMIT;
+    if (typeof aiWanted !== "boolean" || !(aiSource === "none" || aiSource === "own" || aiSource === "owner")) return null;
+    if (!Number.isInteger(aiUsed) || (aiUsed as number) < 0 || !Number.isInteger(aiLimit) || (aiLimit as number) < 1 || (aiLimit as number) > MAX_AI_LIMIT) return null;
+    return {
+      ...(raw as unknown as RoomSnapshot),
+      game: withUses as GameState | null,
+      joinPassword,
+      lastActivityAt: at,
+      bank,
+      aiWanted,
+      aiSource,
+      aiUsed: aiUsed as number,
+      aiLimit: aiLimit as number,
+    };
   } catch {
     return null;
   }

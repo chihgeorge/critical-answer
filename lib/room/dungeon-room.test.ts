@@ -19,6 +19,8 @@ const BAD_ID = "not-a-uuid";
 /** A team's secret: only the client that created the team knows it. */
 const KEY = "team-key-0123456789abcdef";
 const KEY2 = "another-key-0123456789abcd";
+/** A host's pasted Anthropic key (fake, but in the right format). */
+const HOST_KEY = "sk-ant-test-HOSTKEY-0123456789abcdefWXYZ";
 
 function makeConn(id = "conn-1") {
   return {
@@ -89,7 +91,9 @@ describe("HOST_CLAIM", () => {
     const conn = makeConn("h1");
     claim(room, conn);
     expect((room as any).isHost(conn)).toBe(true);
-    expect(lastSentTo(conn)).toEqual({ type: "HOST_OK", aiAvailable: false, joinPassword: "" }); // no API key in the test room
+    const msgs = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+    expect(msgs.map((m) => m.type)).toEqual(["HOST_OK", "HOST_AI_STATUS"]);
+    expect(msgs[0]).toEqual({ type: "HOST_OK", joinPassword: "" });
   });
 
   it("rejects a claim with a different token once a token is set", () => {
@@ -215,7 +219,7 @@ describe("JOIN", () => {
     claim(room, otherTab);
     send(room, hostConn, { type: "HOST_SET_PASSWORD", password: " dragon " });
     // Every host page hears the password the room now enforces.
-    for (const c of [hostConn, otherTab]) expect(lastSentTo(c)).toEqual({ type: "HOST_OK", aiAvailable: false, joinPassword: "dragon" });
+    for (const c of [hostConn, otherTab]) expect(lastSentTo(c)).toEqual({ type: "HOST_OK", joinPassword: "dragon" });
     const noPw = makeConn("no-pw");
     send(room, noPw, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess" });
     expect(lastSentTo(noPw)).toMatchObject({ type: "ERROR", error: "bad_password" });
@@ -1330,7 +1334,7 @@ describe("questions and answers (T3)", () => {
     const { room } = started();
     const second = makeConn("host-phone");
     claim(room, second);
-    expect(sent(second).map((m) => m.type)).toEqual(["HOST_OK", "HOST_ANSWER", "HOST_PICKS"]);
+    expect(sent(second).map((m) => m.type)).toEqual(["HOST_OK", "HOST_AI_STATUS", "HOST_ANSWER", "HOST_PICKS"]);
   });
 
   it("STATE's live question never carries an answer, and STATE.reveal carries the correct one only for questions actually answered correctly (D2/D3/D5)", () => {
@@ -1589,24 +1593,35 @@ describe("LLM narration and director (T8-T10)", () => {
   const json = (b: object, status = 200) => new Response(JSON.stringify(b), { status });
   const textReply = (text: string) => json({ content: [{ type: "text", text }], stop_reason: "end_turn" });
 
-  /** A room with (or without) an API key and a fake fetch that records every request. */
-  function llmRoom(fetchImpl: (req: { model: string; system: string; user: string }) => Response | Promise<Response>, opts: { key?: string | null; epilogueHoldMs?: number } = {}) {
-    const calls: { model: string; system: string; user: string }[] = [];
-    const fake = async (_url: unknown, init?: RequestInit) => {
+  /** A room whose host pasted a key (or none: scripted only), and a fake fetch that records every narration request.
+   * The key check (GET /v1/models) is answered 200 and counted apart in `checks`. */
+  async function llmRoom(fetchImpl: (req: { model: string; system: string; user: string; apiKey: string }) => Response | Promise<Response>, opts: { key?: string | null; epilogueHoldMs?: number; env?: Record<string, string> } = {}) {
+    const calls: { model: string; system: string; user: string; apiKey: string }[] = [];
+    const checks: string[] = [];
+    const fake = async (url: unknown, init?: RequestInit) => {
+      const apiKey = (init!.headers as Record<string, string>)["x-api-key"];
+      if (String(url).includes("/v1/models")) {
+        checks.push(apiKey);
+        return json({ data: [] });
+      }
       const b = JSON.parse(init!.body as string);
-      const req = { model: b.model, system: b.system, user: b.messages[0].content };
+      const req = { model: b.model, system: b.system, user: b.messages[0].content, apiKey };
       calls.push(req);
       return fetchImpl(req);
     };
     const roomMock = makeRoom() as any;
-    roomMock.env = opts.key === null ? {} : { ANTHROPIC_API_KEY: opts.key ?? "sk-test" };
+    roomMock.env = opts.env ?? {};
     const room = new DungeonRoom(roomMock, () => 0, { holdMs: 200, epilogueDelayMs: 0, epilogueHoldMs: opts.epilogueHoldMs ?? 200, fetch: fake as unknown as typeof fetch });
     const hostConn = makeConn("host-conn");
     room.onConnect(hostConn);
     claim(room, hostConn);
-    return { room, hostConn, calls };
+    if (opts.key !== null) {
+      send(room, hostConn, { type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: opts.key ?? HOST_KEY });
+      await sleep(0);
+    }
+    return { room, hostConn, calls, checks };
   }
-  function begin(r: ReturnType<typeof llmRoom>, ai?: boolean, teams = 2) {
+  function begin(r: Awaited<ReturnType<typeof llmRoom>>, ai?: boolean, teams = 2) {
     joinTeams(r.room, r.hostConn, teams);
     send(r.room, r.hostConn, ai === undefined ? { type: "HOST_START" } : { type: "HOST_START", aiNarration: ai });
   }
@@ -1624,15 +1639,16 @@ describe("LLM narration and director (T8-T10)", () => {
     return sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT").entries;
   };
 
-  it("tells the host whether an API key is configured", () => {
-    const withKey = llmRoom(() => textReply("x"));
-    expect(sentMsgs(withKey.hostConn).find((m) => m.type === "HOST_OK").aiAvailable).toBe(true);
-    const noKey = llmRoom(() => textReply("x"), { key: null });
-    expect(sentMsgs(noKey.hostConn).find((m) => m.type === "HOST_OK").aiAvailable).toBe(false);
+  it("tells the host who pays and how much is left, never the key itself", async () => {
+    const withKey = await llmRoom(() => textReply("x"));
+    const status = sentMsgs(withKey.hostConn).findLast((m) => m.type === "HOST_AI_STATUS");
+    expect(status).toEqual({ type: "HOST_AI_STATUS", source: "own", provider: "anthropic", keyHint: `…${HOST_KEY.slice(-4)}`, keyMissing: false, used: 0, limit: 300, exhausted: false });
+    const noKey = await llmRoom(() => textReply("x"), { key: null });
+    expect(sentMsgs(noKey.hostConn).findLast((m) => m.type === "HOST_AI_STATUS")).toMatchObject({ source: "none", keyHint: null, keyMissing: false });
   });
 
   it("uses the LLM line when AI narration is on and a key exists", async () => {
-    const r = llmRoom(() => textReply("地城主親自開口了！"));
+    const r = await llmRoom(() => textReply("地城主親自開口了！"));
     begin(r);
     await sleep(30);
     expect(narrations(r.room)[0].lines[0]).toBe("地城主親自開口了！");
@@ -1641,20 +1657,20 @@ describe("LLM narration and director (T8-T10)", () => {
   });
 
   it("makes no LLM call when the host turns AI narration off, or when there is no key", async () => {
-    const off = llmRoom(() => textReply("不該出現"));
+    const off = await llmRoom(() => textReply("不該出現"));
     begin(off, false);
     judge(off.room, off.hostConn);
     await sleep(30);
     expect(off.calls).toHaveLength(0);
     expect(narrations(off.room).every((n) => n.lines[0] !== "不該出現")).toBe(true);
-    const noKey = llmRoom(() => textReply("不該出現"), { key: null });
+    const noKey = await llmRoom(() => textReply("不該出現"), { key: null });
     begin(noKey, true);
     await sleep(30);
     expect(noKey.calls).toHaveLength(0);
   });
 
   it("falls back to the scripted line on an LLM failure and still sends exactly one NARRATION", async () => {
-    const r = llmRoom(() => json({ error: {} }, 500));
+    const r = await llmRoom(() => json({ error: {} }, 500));
     begin(r);
     await sleep(30);
     expect(narrations(r.room)).toHaveLength(1);
@@ -1662,7 +1678,7 @@ describe("LLM narration and director (T8-T10)", () => {
   });
 
   it("rejects an LLM line that repeats a bank answer and uses the scripted line", async () => {
-    const r = llmRoom(() => textReply("其實它叫新高山啦"));
+    const r = await llmRoom(() => textReply("其實它叫新高山啦"));
     begin(r);
     await sleep(30);
     expect(narrations(r.room)[0].lines[0]).not.toContain("新高山");
@@ -1670,7 +1686,7 @@ describe("LLM narration and director (T8-T10)", () => {
   });
 
   it("stops calling the LLM after a 401 (breaker) and records the trip", async () => {
-    const r = llmRoom(() => json({ error: {} }, 401));
+    const r = await llmRoom(() => json({ error: {} }, 401));
     begin(r);
     await sleep(30);
     judge(r.room, r.hostConn);
@@ -1679,12 +1695,14 @@ describe("LLM narration and director (T8-T10)", () => {
     expect(r.calls).toHaveLength(1); // start only; later events never reached the API
     const t = transcript(r.room, r.hostConn);
     expect(t.some((e: any) => e.kind === "breaker")).toBe(true);
-    expect(t.filter((e: any) => e.fallbackReason === "breaker_open").length).toBeGreaterThanOrEqual(2);
+    // The refused key is dropped (the host page asks for another), so later events go straight to scripted lines.
+    expect(t.slice(-2).every((e: any) => e.provider === "scripted")).toBe(true);
+    expect(sentMsgs(r.hostConn).findLast((m) => m.type === "HOST_AI_STATUS")).toMatchObject({ keyMissing: true, error: "invalid_key" });
     expect(narrations(r.room)).toHaveLength(3); // still exactly one per event
   });
 
   it("opens the breaker after three failures in a row", async () => {
-    const r = llmRoom(() => json({ error: {} }, 500));
+    const r = await llmRoom(() => json({ error: {} }, 500));
     begin(r);
     for (let i = 0; i < 4; i++) { judge(r.room, r.hostConn); await sleep(20); }
     await sleep(30);
@@ -1693,7 +1711,7 @@ describe("LLM narration and director (T8-T10)", () => {
 
   describe("director", () => {
     it("host notes go into every later LLM call; non-hosts cannot set them", async () => {
-      const r = llmRoom(() => textReply("行"));
+      const r = await llmRoom(() => textReply("行"));
       begin(r);
       await sleep(30);
       send(r.room, r.hostConn, { type: "HOST_SET_NOTES", notes: "用武俠口吻，紅隊是一群恐龍" });
@@ -1708,14 +1726,14 @@ describe("LLM narration and director (T8-T10)", () => {
       expect(r.calls.at(-1)!.system).not.toContain("駭進來");
     });
 
-    it("strips markup from notes and records them in the transcript", () => {
-      const r = llmRoom(() => textReply("行"));
+    it("strips markup from notes and records them in the transcript", async () => {
+      const r = await llmRoom(() => textReply("行"));
       send(r.room, r.hostConn, { type: "HOST_SET_NOTES", notes: "<b>活潑</b>一點" });
       expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ kind: "notes", text: "b活潑/b一點" });
     });
 
     it("host edit replaces the line on screen under the same eventId, and is marked host in the transcript", async () => {
-      const r = llmRoom(() => textReply("原本的一句"));
+      const r = await llmRoom(() => textReply("原本的一句"));
       begin(r);
       await sleep(30);
       const first = narrations(r.room).at(-1);
@@ -1729,7 +1747,7 @@ describe("LLM narration and director (T8-T10)", () => {
     });
 
     it("rejects an edit from a non-host, an edit with no line on screen, and an empty edit", async () => {
-      const r = llmRoom(() => textReply("行"));
+      const r = await llmRoom(() => textReply("行"));
       send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: "太早了" });
       expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "no_narration" });
       begin(r);
@@ -1743,7 +1761,7 @@ describe("LLM narration and director (T8-T10)", () => {
     });
 
     it("feeds the last five edited lines back as style examples", async () => {
-      const r = llmRoom(() => textReply("行"));
+      const r = await llmRoom(() => textReply("行"));
       begin(r);
       await sleep(30);
       for (let i = 1; i <= 6; i++) send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: `改寫第${i}句` });
@@ -1756,14 +1774,14 @@ describe("LLM narration and director (T8-T10)", () => {
   });
 
   describe("epilogue", () => {
-    async function finish(r: ReturnType<typeof llmRoom>) {
+    async function finish(r: Awaited<ReturnType<typeof llmRoom>>) {
       begin(r, undefined, 1);
       for (let i = 0; i < 200 && r.room.game!.phase === "playing"; i++) judge(r.room, r.hostConn);
       await sleep(60);
     }
 
     it("is written by the bigger model, sent once, and the scripted one is not used", async () => {
-      const r = llmRoom((req) => textReply(req.model === EPILOGUE_MODEL ? "漫長的一夜，Team 0 走出了地城。" : "行"));
+      const r = await llmRoom((req) => textReply(req.model === EPILOGUE_MODEL ? "漫長的一夜，Team 0 走出了地城。" : "行"));
       await finish(r);
       const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
       expect(epi).toHaveLength(1);
@@ -1772,7 +1790,7 @@ describe("LLM narration and director (T8-T10)", () => {
     });
 
     it("falls back to the program-built epilogue when the LLM fails", async () => {
-      const r = llmRoom((req) => (req.model === EPILOGUE_MODEL ? json({ error: {} }, 500) : textReply("行")));
+      const r = await llmRoom((req) => (req.model === EPILOGUE_MODEL ? json({ error: {} }, 500) : textReply("行")));
       await finish(r);
       const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
       expect(epi).toHaveLength(1);
@@ -1781,7 +1799,7 @@ describe("LLM narration and director (T8-T10)", () => {
     });
 
     it("waits for the LLM up to the epilogue hold, then falls back once", async () => {
-      const r = llmRoom(async (req) => (req.model === EPILOGUE_MODEL ? (await sleep(300), textReply("太慢了")) : textReply("行")), { epilogueHoldMs: 40 });
+      const r = await llmRoom(async (req) => (req.model === EPILOGUE_MODEL ? (await sleep(300), textReply("太慢了")) : textReply("行")), { epilogueHoldMs: 40 });
       await finish(r);
       await sleep(350);
       const epi = all(r.room).filter((m) => m.type === "EPILOGUE");

@@ -56,10 +56,8 @@ test("create room, join two teams, start, judge; screen and play never see host-
 
   // Host claims control, then starts once both teams are in.
   await expect(host.getByText("乙隊")).toBeVisible();
-  await expect(host.getByText("AI 旁白")).toBeVisible(); // the switch is there whether or not a key is configured
-  // Tests must never call the real API (a .env with a key turns AI on by default): switch it off.
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
+  // AI narration is off until a host pastes a key, so tests never call the real API.
+  await expect(host.getByText("AI 旁白", { exact: true })).toBeVisible();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();

@@ -155,8 +155,6 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
@@ -194,8 +192,6 @@ test("screen TTS: turning the toggle off cancels any speech in progress", async 
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
@@ -229,8 +225,6 @@ test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ brows
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
@@ -271,8 +265,6 @@ test("screen TTS: a host correction (HOST_EDIT_NARRATION) re-speaks the correcte
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
@@ -309,8 +301,6 @@ test("screen TTS: a correction to the exact narration replayed at connect is sti
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
@@ -450,8 +440,6 @@ test("screen TTS: no matching Traditional Chinese voice loaded — toggle still 
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
@@ -486,8 +474,6 @@ test("screen TTS: narration that arrives before the voice list has loaded is spo
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
@@ -568,8 +554,6 @@ test("host edit drawer: the label tells the host how many segments there are, si
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
 
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 

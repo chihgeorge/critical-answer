@@ -19,6 +19,10 @@ const valid = (): RoomSnapshot => ({
   joinPassword: "",
   editedLines: [],
   aiNarration: false,
+  aiWanted: true,
+  aiSource: "own" as const,
+  aiUsed: 12,
+  aiLimit: 300,
   lastActivityAt: 1_700_000_000_000,
   bank: BANK,
 });
@@ -57,6 +61,16 @@ describe("parseSnapshot", () => {
     const { lastActivityAt: _omit, ...legacy } = valid();
     void _omit;
     expect(parseSnapshot(legacy)?.lastActivityAt).toBeNull();
+  });
+
+  it("reads a save from before host-owned AI keys as no AI and a fresh budget, and refuses bad AI fields", () => {
+    const { aiWanted: _w, aiSource: _s, aiUsed: _u, aiLimit: _l, ...legacy } = valid();
+    void [_w, _s, _u, _l];
+    // aiNarration:true here is an old room on the owner's key: it does not switch AI on by itself any more.
+    expect(parseSnapshot({ ...legacy, aiNarration: true })).toMatchObject({ aiWanted: false, aiSource: "none", aiUsed: 0, aiLimit: 300 });
+    for (const bad of [{ aiSource: "everyone" }, { aiUsed: -1 }, { aiUsed: 1.5 }, { aiLimit: 0 }, { aiLimit: 5001 }, { aiWanted: "yes" }]) {
+      expect(parseSnapshot({ ...valid(), ...bad })).toBeNull();
+    }
   });
 
   it("reads a save from before join passwords as a room without one", () => {

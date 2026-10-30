@@ -41,8 +41,6 @@ test("the big screen plays the wrong-answer effect when the host marks an answer
     await team.goto(`/room/${code}/play?name=${encodeURIComponent(name)}`);
     await expect(team.getByTestId("roster")).toContainText(name);
   }
-  const ai = host.getByRole("checkbox");
-  if ((await ai.isEnabled()) && (await ai.isChecked())) await ai.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 

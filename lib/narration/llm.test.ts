@@ -9,7 +9,7 @@ const reply = (text: string, extra: object = {}) => ({ content: [{ type: "text",
 const ok = (body: object, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 function make(fetchImpl: typeof fetch, over: Partial<Parameters<typeof createLlmProvider>[0]> = {}) {
-  return createLlmProvider({ apiKey: "sk-test", fetch: fetchImpl, ...over });
+  return createLlmProvider({ getApiKey: () => "sk-test", fetch: fetchImpl, ...over });
 }
 
 describe("request", () => {
@@ -240,7 +240,7 @@ describe("output", () => {
 describe("failures are named", () => {
   it("no key -> config_missing, and fetch is never called", async () => {
     const f = vi.fn();
-    await expect(createLlmProvider({ apiKey: undefined, fetch: f as unknown as typeof fetch }).narrate(event)).rejects.toMatchObject({ reason: "config_missing" });
+    await expect(createLlmProvider({ getApiKey: () => undefined, fetch: f as unknown as typeof fetch }).narrate(event)).rejects.toMatchObject({ reason: "config_missing" });
     expect(f).not.toHaveBeenCalled();
   });
 
