@@ -2317,4 +2317,29 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     expect(spent.room.game!.pendingWrong).toBeNull();
     expect(currentTurnTeamId(spent.room.game!)).toBe(spent.ids[1]);
   });
+  it("a cleric's second wrong boss lock in its kept turn gets the beat", () => {
+    vi.useFakeTimers();
+    const { room, ids, conns, use, lockWrong } = game("cleric", true);
+    lockWrong();
+    use(); // pray: rotates to a new boss question, keeps the turn
+    const q2 = room.game!.boss.currentQuestionId!;
+    const wrong = room.game!.optionOrder[q2].indexOf(0);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: q2, optionIndex: wrong });
+    send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: q2 });
+    vi.advanceTimersByTime(2000);
+    expect(lastBroadcast(room).view.awaitingPrayer).toBeNull();
+    vi.advanceTimersByTime(2000);
+    expect(room.game!.pendingWrong).toBeNull();
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+  });
+
+  it("a cleric's prayer for another question is refused without spending", () => {
+    vi.useFakeTimers();
+    const { room, conns, lockWrong } = game("cleric");
+    lockWrong();
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
+    expect(err(conns[0])).toBe("stale_question");
+    expect(room.game!.teams[0].abilityUses).toBe(2);
+    expect(room.game!.pendingWrong?.prayed).toBeUndefined();
+  });
 });

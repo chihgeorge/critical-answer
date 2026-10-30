@@ -1499,6 +1499,7 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(after.teams[0]).toMatchObject({ abilityUses: 1, currentSelection: null });
     // One wrong option left: nothing to remove, and nothing spent.
     expect(() => mageEliminate(after, "T0", q, 1, 4, first)).toThrow(/no_option_to_remove/);
+    expect(mageEliminate(g, "T0", q, 1, 4, () => 1).eliminated[q]).toHaveLength(2); // an rng of 1 cannot hang it
   });
 
   it("the mage removes only 1 when an option was already locked wrong, and refuses another class", () => {
@@ -1522,6 +1523,8 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const retry = answerQuestion(prayed, "T0", q, false, "retry").game;
     expect(currentTurnTeamId(retry)).toBe("T0");
     expect(retry.teams[0].currentQuestionId).toBe(q);
+    // Skipped while offline, it gets its prayer back by its next turn.
+    expect(setTeamOnline(retry, "T0", false).prayerTurn).toBeUndefined();
     // Wrong again in the kept turn: no second prayer, and the turn moves on.
     const again = wrongLock(retry, "T0");
     expect(canPray(again, "T0")).toBe(false);

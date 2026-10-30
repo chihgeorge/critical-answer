@@ -94,9 +94,6 @@ export const DEFAULT_BOSS_HIT_REWARD = 10;
 export const CLASS_IDS = ["mage", "cleric", "warrior", "thief"] as const;
 export type ClassId = (typeof CLASS_IDS)[number];
 
-/** Classes that work in this version; the lobby shows the rest locked and the room refuses them (D10=A). */
-export const READY_CLASSES: readonly ClassId[] = CLASS_IDS;
-
 export function isClassId(v: unknown): v is ClassId {
   return typeof v === "string" && (CLASS_IDS as readonly string[]).includes(v);
 }
@@ -603,7 +600,8 @@ function finishGame(game: GameState): GameState {
 /**
  * Resolve one answer attempt for `teamId`. Always advances the turn
  * afterwards (win or lose) — global round-robin never gives a bonus turn,
- * which is what keeps the 1/N pacing fair (see Architecture Review).
+ * which is what keeps the 1/N pacing fair (see Architecture Review). The one
+ * exception is a cleric's prayed wrong lock: its 重答 / 逃跑 keeps the turn, once a turn (prayerTurn).
  *
  * `fleeChoice` only matters when the answer is incorrect: "flee" downgrades
  * the room's difficulty and keeps the room index; "retry" leaves the
@@ -822,7 +820,8 @@ export function mageEliminate(
   const n = Math.min(2, wrong.length - 1);
   if (n <= 0) throw new InvalidActionError("no_option_to_remove");
   const removed: number[] = [];
-  while (removed.length < n) removed.push(...wrong.splice(Math.floor(rng() * wrong.length), 1));
+  // Clamped: an rng that ever returned 1 would otherwise splice nothing and loop forever.
+  while (removed.length < n) removed.push(...wrong.splice(Math.min(wrong.length - 1, Math.floor(rng() * wrong.length)), 1));
   const spent = spendAbility(game, teamId, "mage");
   return {
     ...spent,
@@ -1015,6 +1014,8 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
   return {
     ...game,
     teams: patchTeam(game.teams, teamId, () => ({ online })),
+    // A cleric skipped while offline gets its prayer back by its next turn, even if nobody answered in between.
+    ...(!online && game.prayerTurn === teamId ? { prayerTurn: undefined } : {}),
   };
 }
 

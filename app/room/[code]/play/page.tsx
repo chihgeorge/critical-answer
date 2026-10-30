@@ -8,7 +8,7 @@ import { DISCONNECTED_NOTICE, offlineNotice, type DropSnapshot } from "@/lib/off
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import type { ClientMessage, LobbyTeams, StateMessage } from "@/lib/protocol";
-import { BRANCH_LABELS, BRANCH_OPTIONS, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, READY_CLASSES, WARRIOR_TARGET, firstPendingBranchRoom, type ClassId } from "@/lib/game-state";
+import { BRANCH_LABELS, BRANCH_OPTIONS, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, firstPendingBranchRoom, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -25,30 +25,28 @@ const CLASS_HINTS: Record<ClassId, string> = {
   thief: "偷襲：這題答對，獎勵分和 boss 扣血 ×2",
 };
 
-/** The lobby's class picker (D10=A): four cards, the ones not built yet locked, and 不選. */
+/** The lobby's class picker (D10=A): four cards and 不選. */
 function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMessage) => void }) {
   return (
     <Panel tone="lav" className="flex flex-col gap-2 px-[10px] py-[10px]">
       <div className="text-[18px]">選一個職業（一場用 2 次）</div>
       <div className="grid grid-cols-2 gap-2">
         {CLASS_IDS.map((id) => {
-          const ready = READY_CLASSES.includes(id);
           const picked = current === id;
           return (
             <button
               key={id}
               type="button"
-              disabled={!ready}
               aria-pressed={picked}
               onClick={() => send({ type: "TEAM_PICK_CLASS", classId: id })}
               className="px-opt !flex-col !items-start !gap-[2px] !px-[10px] !py-2"
-              style={{ minHeight: 96, ...(picked ? { background: "var(--turn)", outline: "4px solid var(--turn2)", outlineOffset: -2 } : ready ? {} : { opacity: 0.55 }) }}
+              style={{ minHeight: 96, ...(picked ? { background: "var(--turn)", outline: "4px solid var(--turn2)", outlineOffset: -2 } : {}) }}
             >
               <span className="text-[22px]">
                 {CLASS_ICONS[id]} {CLASS_LABELS[id]}
               </span>
               <span className="text-[13px] leading-[1.3]">{CLASS_HINTS[id]}</span>
-              {picked ? <span className="text-[13px]" style={{ color: "#a8470f" }}>◀ 已選</span> : !ready && <span className="text-[12px]">下次更新</span>}
+              {picked ? <span className="text-[13px]" style={{ color: "#a8470f" }}>◀ 已選</span> : null}
             </button>
           );
         })}
@@ -106,7 +104,8 @@ function ClassAbility({ game, teamId, send, framed = false, frozen = false }: { 
   } else if (me.classId === "thief") {
     body = button("🗝️", "偷襲：這題答對加倍", `獎勵分、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
   } else if (me.classId === "mage" && q.options && q.options.length - 1 - gone.length >= 2) {
-    body = button("🔮", "刪掉 2 個錯的選項", `剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
+    // The room keeps one wrong option: with 2 left it removes 1.
+    body = button("🔮", `刪掉 ${Math.min(2, q.options.length - 2 - gone.length)} 個錯的選項`, `剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
       setCast({ qid: q.id, eventId: game.eventId, before: gone.length });
       use();
     });

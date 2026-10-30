@@ -19,7 +19,6 @@ import {
   currentTurnTeamId,
   isInBossPhase,
   rollD20,
-  READY_CLASSES,
   spendAbility,
   mageEliminate,
   armSneak,
@@ -1191,7 +1190,6 @@ export class DungeonRoom {
     const team = this.pendingTeams.find((t) => t.id === teamId);
     if (!team) return void this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
     if (this.game) return void this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
-    if (classId && !READY_CLASSES.includes(classId)) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "class_not_ready" });
     if ((team.classId ?? null) === classId) return;
     if (classId) team.classId = classId;
     else delete team.classId;
@@ -1229,7 +1227,12 @@ export class DungeonRoom {
       this.pendingRoll = { teamId, questionId, value: rollD20(this.rng) };
       this.lockTimer = setTimeout(() => this.resolveRoll(), BEAT_MS);
     } else if (classId === "cleric" && isInBossPhase(next, teamId)) {
-      return this.judge(teamId, questionId, false, "retry", false);
+      try {
+        return this.judge(teamId, questionId, false, "retry", false);
+      } catch (err) {
+        // The prayer stands; the miss falls back to the host's stuck row, like a cleric that never chose.
+        console.error(JSON.stringify({ event: "prayer_failed", error: String(err) }));
+      }
     }
     this.broadcastState();
   }
