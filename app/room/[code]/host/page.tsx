@@ -9,6 +9,7 @@ import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoo
 import type { ClientMessage, HostPick, LobbyTeams, ServerMessage, StateMessage } from "@/lib/protocol";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
+import { CLASS_ICONS, CLASS_LABELS } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { hostKeyAction } from "@/lib/host-keys";
@@ -433,6 +434,7 @@ export default function HostPage() {
                 <Panel key={t.id} className="flex items-center gap-3 px-3 py-2">
                   <Sprite kind="hero" variant={i} scale={2} />
                   <span className="text-[18px]">{t.name}</span>
+                  {t.classId && <span className="text-[15px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</span>}
                 </Panel>
               ))}
               {lobby.length === 0 && <Panel className="px-3 py-2 text-[15px]">還沒有隊伍加入</Panel>}
@@ -568,6 +570,7 @@ export default function HostPage() {
                 <Panel key={t.id} className={`flex flex-wrap items-center gap-2 px-3 py-1 ${t.online ? "" : "opacity-50"}`}>
                   <Sprite kind="hero" variant={i} scale={1} className="flex-none" />
                   <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
+                  {t.classId && <span className="text-[13px]" title={`${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.abilityUses}</span>}
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title="獎勵分">{t.reward}</span>
                   {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}

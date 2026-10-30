@@ -8,7 +8,7 @@ import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE } from "@/lib/offline-notice";
-import type { AnswerReveal, LobbyTeams, PublicQuestion, StateMessage } from "@/lib/protocol";
+import type { AnswerReveal, LobbyTeams, PendingRoll, PublicQuestion, StateMessage } from "@/lib/protocol";
 import type { LockedOption, SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
@@ -22,6 +22,7 @@ import { MapStrip } from "@/components/map-strip";
 import { McOption, optionLetter, type OptionLook } from "@/components/mc-option";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
+import { RollOverlay } from "@/components/d20";
 import { readStored, writeStored } from "@/lib/stored";
 
 const TTS_ENABLED_STORAGE = "screen-tts-enabled";
@@ -176,7 +177,7 @@ function WallOptions({ options, gone, lock, wrong, correct, teamName }: { option
   );
 }
 
-function Playing({ view, question, reveal, pendingLock, eventId, narration, phaseCard, bossPhaseInfo }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"] }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, narration, phaseCard, bossPhaseInfo }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"] }) {
   const { team: turn, teamIndex: turnIdx, inBoss, bossScene, monster, theme, bossHits: hits } = describeTurn(view, question, phaseCard?.monster);
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
   const card = phaseCard && bossPhaseInfo;
@@ -189,7 +190,9 @@ function Playing({ view, question, reveal, pendingLock, eventId, narration, phas
       ? { options: question.options, correct: null, team: nameOf(pendingLock?.teamId ?? wrong?.teamId), gone: view.eliminated?.[question.id] ?? [] }
       : null;
   // Fixed lines, not an LLM call (D8, D9): nothing is narrated until the outcome is known.
-  const held = pendingLock
+  const held = pendingRoll
+    ? `${nameOf(pendingRoll.teamId)}擲出了骰子……`
+    : pendingLock
     ? `${nameOf(pendingLock.teamId)}鎖定了 ${optionLetter(pendingLock.optionIndex)}……`
     : wrong
       ? inBoss
@@ -280,6 +283,7 @@ function Playing({ view, question, reveal, pendingLock, eventId, narration, phas
         loading={!held && isPending(eventId, narration)}
         lines={held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
       />
+      {pendingRoll && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} />}
     </>
   );
 }
@@ -550,7 +554,7 @@ export default function ScreenPage() {
     <>
       <Stage>
         {!game && <Lobby code={code} teams={lobby} />}
-        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} />}
+        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>

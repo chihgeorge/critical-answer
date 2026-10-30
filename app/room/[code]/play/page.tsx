@@ -8,13 +8,86 @@ import { DISCONNECTED_NOTICE, offlineNotice, type DropSnapshot } from "@/lib/off
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import type { ClientMessage, LobbyTeams, StateMessage } from "@/lib/protocol";
-import { BRANCH_LABELS, BRANCH_OPTIONS, firstPendingBranchRoom } from "@/lib/game-state";
+import { BRANCH_LABELS, BRANCH_OPTIONS, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, firstPendingBranchRoom, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { McOption } from "@/components/mc-option";
+import { D20 } from "@/components/d20";
+
+/** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
+const CLASS_HINTS: Record<ClassId, string> = {
+  warrior: `擲 1d20 代替答題，${WARRIOR_TARGET} 以上算答對`,
+  mage: "刪掉 2 個錯的選項",
+  cleric: "答錯後立刻再答一次",
+  thief: "偷看答案第一個字",
+};
+/** Classes that work in this version; the rest show locked (class-abilities.md D10=A). */
+const READY_CLASSES: ClassId[] = ["warrior"];
+
+/** The lobby's class picker (D10=A): four cards, the ones not built yet locked, and 不選. */
+function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMessage) => void }) {
+  return (
+    <Panel tone="lav" className="flex flex-col gap-2 px-[10px] py-[10px]">
+      <div className="text-[18px]">選一個職業（一場用 2 次）</div>
+      <div className="grid grid-cols-2 gap-2">
+        {CLASS_IDS.map((id) => {
+          const ready = READY_CLASSES.includes(id);
+          const picked = current === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              disabled={!ready}
+              aria-pressed={picked}
+              onClick={() => send({ type: "TEAM_PICK_CLASS", classId: id })}
+              className="px-opt !flex-col !items-start !gap-[2px] !px-[10px] !py-2"
+              style={{ minHeight: 96, ...(picked ? { background: "var(--turn)", outline: "4px solid var(--turn2)", outlineOffset: -2 } : ready ? {} : { opacity: 0.55 }) }}
+            >
+              <span className="text-[22px]">
+                {CLASS_ICONS[id]} {CLASS_LABELS[id]}
+              </span>
+              <span className="text-[13px] leading-[1.3]">{CLASS_HINTS[id]}</span>
+              {picked ? <span className="text-[13px]" style={{ color: "#a8470f" }}>◀ 已選</span> : !ready && <span className="text-[12px]">下次更新</span>}
+            </button>
+          );
+        })}
+      </div>
+      <PixelButton aria-pressed={!current} className="!m-0 !min-h-[48px] !text-[18px]" style={{ background: current ? "var(--cream)" : "var(--turn)" }} onClick={() => send({ type: "TEAM_PICK_CLASS", classId: null })}>
+        不選（普通冒險者）
+      </PixelButton>
+    </Panel>
+  );
+}
+
+/** The warrior's roll on its own turn (D11=A: under 鎖定答案): the button, or the die while the room holds it. */
+function WarriorRoll({ game, teamId, send, framed = false }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; framed?: boolean }) {
+  const me = game.view.teams.find((t) => t.id === teamId);
+  const roll = game.pendingRoll?.teamId === teamId ? game.pendingRoll : null;
+  const busy = !!game.pendingRoll || !!game.pendingLock || !!game.view.pendingWrong;
+  let body;
+  if (roll) {
+    body = (
+      <div className="px-bar mt-1 flex items-center gap-3" role="status">
+        <D20 value={roll.value} size={54} />
+        <span className="text-[20px]">擲出 {roll.value}！看大螢幕 ▶</span>
+      </div>
+    );
+  } else if (me?.classId === "warrior" && me.abilityUses > 0 && !busy && game.question) {
+    const questionId = game.question.id;
+    body = (
+      <PixelButton className="!m-0 mt-1 flex !min-h-[62px] flex-col !text-[22px]" style={{ background: "#ffa94d" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId })}>
+        🎲 擲骰代替答題
+        <small className="text-[13px]">
+          {WARRIOR_TARGET} 以上算答對・剩 {me.abilityUses} 次
+        </small>
+      </PixelButton>
+    );
+  } else return null;
+  return framed ? <Panel tone="turn" className="flex flex-col px-[10px] py-[10px]">{body}</Panel> : body;
+}
 
 /** How long 鎖定中… waits for the room to confirm a lock before offering a retry (phone-answering.md D6). */
 const LOCK_CONFIRM_MS = 3000;
@@ -41,6 +114,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
   const gone = game.view.eliminated?.[q.id] ?? [];
   const lock = game.pendingLock?.teamId === teamId ? game.pendingLock : null;
   const wrong = game.view.pendingWrong?.teamId === teamId ? game.view.pendingWrong : null;
+  const rolling = game.pendingRoll?.teamId === teamId;
   // A wrong boss lock has no choice to make: the room brings a new question after a beat (D2=B).
   const bossMiss = !!wrong && !!game.view.teams.find((t) => t.id === teamId)?.inBossPhase;
   // A press waiting for the room: keyed to the question and eventId, so a later turn on the same
@@ -56,7 +130,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
     }, LOCK_CONFIRM_MS);
     return () => clearTimeout(id);
   }, [inFlight]);
-  const frozen = !!lock || !!wrong || inFlight;
+  const frozen = !!lock || !!wrong || inFlight || rolling;
   const stripId = useId();
   const text = q.content.kind === "text" ? q.content.value : null;
 
@@ -103,6 +177,8 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
             逃跑<small className="text-[13px]">換一題簡單的</small>
           </PixelButton>
         </div>
+      ) : rolling ? (
+        <WarriorRoll game={game} teamId={teamId} send={send} />
       ) : lock ? (
         <div className="px-bar mt-1" role="status">已鎖定！看大螢幕揭曉 ▶</div>
       ) : inFlight ? (
@@ -121,6 +197,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
           鎖定答案
         </PixelButton>
       )}
+      {!frozen && <WarriorRoll game={game} teamId={teamId} send={send} />}
       {lockFailed && !frozen && <div className="text-center text-[14px]">沒送出，再按一次</div>}
     </Panel>
   );
@@ -233,6 +310,11 @@ export default function PlayPage() {
           <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
+            {myTeam?.classId && (
+              <div className="text-[15px]">
+                {CLASS_ICONS[myTeam.classId]} {CLASS_LABELS[myTeam.classId]}・剩 {myTeam.abilityUses} 次
+              </div>
+            )}
             <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
               {myTeam ? (
                 <>
@@ -327,11 +409,13 @@ export default function PlayPage() {
               <Panel key={t.id} tone={t.id === teamId ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-2">
                 <Sprite kind="hero" variant={i} scale={2} className="flex-none" />
                 <span className="min-w-0 flex-1 truncate text-[18px]">{t.name}</span>
+                {t.classId && <span className="text-[14px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</span>}
                 {t.id === teamId && <span className="text-[14px]">你們</span>}
               </Panel>
             ))}
           </ul>
         )}
+        {!game && lobby?.some((t) => t.id === teamId) && <ClassPicker current={lobby.find((t) => t.id === teamId)?.classId} send={send} />}
 
         {game && !finished && turn && (
           <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
@@ -367,7 +451,12 @@ export default function PlayPage() {
         {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && game.question.content.kind === "text" && (
           <Panel tone="turn" className="px-[10px] py-[10px]">
             <QuestionStrip text={game.question.content.value} className="-mx-[10px] -mt-[10px]" />
+            <WarriorRoll game={game} teamId={teamId} send={send} />
           </Panel>
+        )}
+        {/* A spoken image or video question has no turn panel of its own: the roll gets one. */}
+        {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && game.question.content.kind !== "text" && (
+          <WarriorRoll game={game} teamId={teamId} send={send} framed />
         )}
 
         {/* D14: our own lock was right — the same tiles, the right one green, and the points. */}

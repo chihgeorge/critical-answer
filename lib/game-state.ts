@@ -102,6 +102,13 @@ export const CLASS_LABELS: Record<ClassId, string> = {
   thief: "盜賊",
 };
 
+export const CLASS_ICONS: Record<ClassId, string> = {
+  mage: "🔮",
+  cleric: "✝️",
+  warrior: "⚔️",
+  thief: "🗝️",
+};
+
 /** Ability uses per team per game, every class. */
 export const ABILITY_USES = 2;
 /** The warrior's d20 counts as a correct answer at this value or more (45%). */
