@@ -20,11 +20,16 @@
 // re-selectable (a later pick for the same question overwrites the earlier
 // one) until TEAM_LOCK_OPTION commits it — not a one-time narrative fork.
 //
+// TEAM_PICK_CLASS and TEAM_USE_ABILITY (docs/designs/class-abilities.md) also
+// come from the team's own phone, bound by connTeam. A class pick is lobby-only;
+// the ability's result (the warrior's d20) is rolled by the room, never sent by
+// the phone, so neither message is a score claim either.
+//
 // Host identity is a token minted by the host's browser at room creation.
 // The first HOST_CLAIM for a room sets it (trust on first use, on a 4-letter
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
-import { isBranchOptionId, type BranchOptionId, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { isBranchOptionId, isClassId, type BranchOptionId, type ClassId, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { SpriteKind } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -112,7 +117,18 @@ export type ClientMessage =
    * after the reveal beat (docs/designs/phone-answering.md E2, E11). */
   | { type: "TEAM_LOCK_OPTION"; questionId: string; optionIndex?: number }
   /** The team's choice after a wrong lock: answer again next turn, or flee to an easier question. */
-  | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "flee" };
+  | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "flee" }
+  /** Lobby only: the team's class, or null for none. The last pick before HOST_START counts. */
+  | { type: "TEAM_PICK_CLASS"; classId: ClassId | null }
+  /** Spend one use of the team's class ability on `questionId` (PR 1: the warrior's roll). */
+  | { type: "TEAM_USE_ABILITY"; questionId: string };
+
+/** The warrior's d20, rolled and shown before it is judged (the beat, like a lock's). */
+export interface PendingRoll {
+  teamId: string;
+  questionId: string;
+  value: number;
+}
 
 export type ServerErrorCode =
   | "invalid_team_id"
@@ -130,7 +146,7 @@ export type ServerErrorCode =
 export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill";
 
 export type ServerMessage =
-  | { type: "LOBBY"; teams: { id: string; name: string }[]; roomEpoch: string }
+  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string }
   | {
       type: "STATE";
       view: SpectatorView;
@@ -142,6 +158,8 @@ export type ServerMessage =
       reveal: AnswerReveal | null;
       /** A lock being held for the reveal beat before it is judged (phone-answering.md E2). */
       pendingLock: LockedOption | null;
+      /** A warrior's roll being held for the beat before it is judged (class-abilities.md R2). */
+      pendingRoll: PendingRoll | null;
       /** Counts judgments (and the start); NARRATION carries the id it belongs to. */
       eventId: number;
       /** The sound effect for event `eventId` (the big screen plays it once, when eventId goes up).
@@ -314,6 +332,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const questionId = str(m.questionId, MAX_ID);
       if (questionId === null || (m.choice !== "retry" && m.choice !== "flee")) return null;
       return { type: "TEAM_WRONG_CHOICE", questionId, choice: m.choice };
+    }
+    case "TEAM_PICK_CLASS":
+      return m.classId === null || isClassId(m.classId) ? { type: "TEAM_PICK_CLASS", classId: m.classId } : null;
+    case "TEAM_USE_ABILITY": {
+      const questionId = str(m.questionId, MAX_ID);
+      return questionId === null ? null : { type: "TEAM_USE_ABILITY", questionId };
     }
     default:
       return null;

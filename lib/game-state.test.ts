@@ -17,6 +17,10 @@ import {
   pickBlock,
   pickableQuestionIds,
   enterNextBossPhase,
+  warriorRoll,
+  spendAbility,
+  rollD20,
+  isClassId,
   InvalidActionError,
   type GameState,
   type RoomTemplate,
@@ -39,9 +43,10 @@ function deck(count: number, baseDifficulty: 1 | 2 | 3 | 4 | 5 = 1, size = 8): [
 /** Always picks the first available question, so deals are predictable: q1, q2, q3... */
 const first = () => 0;
 
-function makeGame(overrides?: { bossThreshold?: number; bossMaxHp?: number; teamCount?: number }): GameState {
+function makeGame(overrides?: { bossThreshold?: number; bossMaxHp?: number; teamCount?: number; warrior?: boolean }): GameState {
   const teamCount = overrides?.teamCount ?? 3;
-  const teams = Array.from({ length: teamCount }, (_, i) => ({ id: `T${i}`, name: `Team ${i}` }));
+  // `warrior`: T0 is a warrior (docs/designs/class-abilities.md).
+  const teams = Array.from({ length: teamCount }, (_, i) => ({ id: `T${i}`, name: `Team ${i}`, ...(overrides?.warrior && i === 0 ? { classId: "warrior" as const } : {}) }));
   return createGame(
     teams,
     ...deck(3, 1),
@@ -1368,5 +1373,77 @@ describe("boss phases (docs/designs/boss-phases.md)", () => {
     const g = makeGame();
     expect(g.boss.phases).toEqual([{ maxHp: g.boss.maxHp, questionIds: g.boss.questionIds }]);
     expect(getSpectatorView(g).bossPhase).toBe(1);
+  });
+});
+
+describe("warriorRoll (docs/designs/class-abilities.md)", () => {
+  it("every team starts with 2 uses; only a seeded class is set", () => {
+    const g = makeGame({ warrior: true });
+    expect(g.teams.map((t) => t.abilityUses)).toEqual([2, 2, 2]);
+    expect(g.teams.map((t) => t.classId)).toEqual(["warrior", undefined, undefined]);
+    expect(getSpectatorView(g).teams[0]).toMatchObject({ classId: "warrior", abilityUses: 2 });
+  });
+
+  it("12 is a correct answer: the team advances and the turn passes", () => {
+    const g = makeGame({ warrior: true, bossThreshold: 15 });
+    const { game, outcome } = warriorRoll(g, "T0", g.teams[0].currentQuestionId, 12, first);
+    expect(outcome).toMatchObject({ type: "correct-room-advance", teamId: "T0", nextRoomIndex: 1 });
+    expect(game.revealedQuestionIds).toContain(g.teams[0].currentQuestionId);
+    expect(game.teams[0].abilityUses).toBe(2); // spendAbility takes the use, not the judgment
+    expect(currentTurnTeamId(game)).toBe("T1");
+  });
+
+  it("11 is a wrong answer with retry: same question, nothing eliminated", () => {
+    const g = makeGame({ warrior: true, bossThreshold: 15 });
+    const q = g.teams[0].currentQuestionId;
+    const { game, outcome } = warriorRoll(g, "T0", q, 11, first);
+    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" });
+    expect(game.teams[0].currentQuestionId).toBe(q);
+    expect(game.eliminated).toEqual({});
+    expect(currentTurnTeamId(game)).toBe("T1");
+  });
+
+  it("in the boss room 12+ is a hit; a miss with nothing eliminated keeps the question", () => {
+    const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 3, teamCount: 1 });
+    const hit = warriorRoll(g, "T0", g.boss.currentQuestionId, 20, first);
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 2, reward: 10 });
+    const q = hit.game.boss.currentQuestionId;
+    const miss = warriorRoll(hit.game, "T0", q, 1, first);
+    expect(miss.outcome).toEqual({ type: "incorrect-retry", teamId: "T0" });
+    expect(miss.game.boss.currentQuestionId).toBe(q);
+  });
+
+  it("the final blow still rolls the 4d20 kill bonus", () => {
+    const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 1, teamCount: 1 });
+    const { game, outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, 12, first);
+    expect(outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: true, killBonus: 4 });
+    expect(game.phase).toBe("finished");
+  });
+
+  it("spendAbility takes one use on the team's own turn, and refuses at 0", () => {
+    const g = makeGame({ warrior: true, bossThreshold: 15 });
+    const once = spendAbility(g, "T0", "warrior");
+    expect(once.teams.map((t) => t.abilityUses)).toEqual([1, 2, 2]);
+    const none = spendAbility(once, "T0", "warrior");
+    expect(none.teams[0].abilityUses).toBe(0);
+    expect(() => spendAbility(none, "T0", "warrior")).toThrow(/no ability uses/);
+  });
+
+  it("refuses another team's turn, a team without the class and a pending wrong lock", () => {
+    const g = makeGame({ warrior: true, bossThreshold: 15 });
+    const g1 = advanceTurn(g);
+    for (const act of [(x: typeof g, id: string) => warriorRoll(x, id, x.teams.find((t) => t.id === id)!.currentQuestionId, 20), (x: typeof g, id: string) => spendAbility(x, id, "warrior")]) {
+      expect(() => act(g1, "T0")).toThrow(InvalidActionError);
+      expect(() => act(g1, "T1")).toThrow(/not a warrior/);
+      const wrong = { ...g, pendingWrong: { teamId: "T0", questionId: g.teams[0].currentQuestionId, optionIndex: 0 } };
+      expect(() => act(wrong, "T0")).toThrow(/wrong answer/);
+    }
+  });
+
+  it("rollD20 covers 1-20 and isClassId rejects unknown ids", () => {
+    expect(rollD20(() => 0)).toBe(1);
+    expect(rollD20(() => 0.999)).toBe(20);
+    expect(isClassId("warrior")).toBe(true);
+    expect(isClassId("bard")).toBe(false);
   });
 });

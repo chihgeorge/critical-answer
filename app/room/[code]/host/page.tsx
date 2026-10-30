@@ -9,6 +9,7 @@ import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoo
 import type { ClientMessage, HostPick, LobbyTeams, ServerMessage, StateMessage } from "@/lib/protocol";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
+import { CLASS_ICONS, CLASS_LABELS } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { hostKeyAction } from "@/lib/host-keys";
@@ -344,7 +345,9 @@ export default function HostPage() {
     const t = setTimeout(() => setArmedFor(pauseKey), 500);
     return () => clearTimeout(t);
   }, [pauseKey]);
-  const canJudge = ready && swapArmed && !!turn?.team && pendingTeamId !== turn.team.id;
+  // A warrior's roll in its beat is judged by the room (class-abilities.md R2): the host waits it out too.
+  const roll = game?.pendingRoll ?? null;
+  const canJudge = ready && swapArmed && !!turn?.team && pendingTeamId !== turn.team.id && !roll;
 
   // Phone answering (docs/designs/phone-answering.md D3, D11, D13): a multipleChoice turn is judged by
   // the team's lock, so the host only watches it, and gets 替選・重答 / 逃跑 after 15 s of no progress.
@@ -433,6 +436,7 @@ export default function HostPage() {
                 <Panel key={t.id} className="flex items-center gap-3 px-3 py-2">
                   <Sprite kind="hero" variant={i} scale={2} />
                   <span className="text-[18px]">{t.name}</span>
+                  {t.classId && <span className="text-[15px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</span>}
                 </Panel>
               ))}
               {lobby.length === 0 && <Panel className="px-3 py-2 text-[15px]">還沒有隊伍加入</Panel>}
@@ -568,6 +572,7 @@ export default function HostPage() {
                 <Panel key={t.id} className={`flex flex-wrap items-center gap-2 px-3 py-1 ${t.online ? "" : "opacity-50"}`}>
                   <Sprite kind="hero" variant={i} scale={1} className="flex-none" />
                   <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
+                  {t.classId && <span className="text-[13px]" title={`${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.abilityUses}</span>}
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title="獎勵分">{t.reward}</span>
                   {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}
@@ -603,7 +608,9 @@ export default function HostPage() {
                   <div data-testid="host-mc-status">
                   <Panel tone="lav" className="px-3 py-2 text-center">
                     <div className="text-[22px]">
-                      {lock
+                      {roll
+                        ? `${turn.team.name}擲出了骰子…`
+                        : lock
                         ? `${turn.team.name}鎖定了 ${optionLetter(lock.optionIndex)}…`
                         : bossMiss
                           ? "答錯！首領換一題…"
@@ -611,7 +618,7 @@ export default function HostPage() {
                           ? `答錯！等${turn.team.name}選重答或逃跑`
                           : `等${turn.team.name}鎖定答案…`}
                     </div>
-                    <div className="text-[14px]">{lock ? "大螢幕停頓 2 秒後揭曉" : "選擇題由隊伍手機作答，系統自動判定"}</div>
+                    <div className="text-[14px]">{lock || roll ? "大螢幕停頓 2 秒後揭曉" : "選擇題由隊伍手機作答，系統自動判定"}</div>
                   </Panel>
                   </div>
                   {stuck && (
@@ -635,6 +642,11 @@ export default function HostPage() {
                 </>
               ) : (
                 <>
+                  {roll && (
+                    <Panel tone="lav" className="px-3 py-2 text-center text-[22px]" role="status">
+                      {turn.team.name}擲出了骰子…
+                    </Panel>
+                  )}
                   <PixelButton variant="ok" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, true)}>
                     {connected ? "答對！" : "重新連線中"}
                     <span className="px-key" aria-hidden="true">1</span>

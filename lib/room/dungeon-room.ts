@@ -18,12 +18,17 @@ import {
   getSpectatorView,
   currentTurnTeamId,
   isInBossPhase,
+  rollD20,
+  READY_CLASSES,
+  spendAbility,
+  warriorRoll,
   InvalidActionError,
   type BranchOptionId,
+  type ClassId,
   type GameState,
   type LockedOption,
 } from "../game-state";
-import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type HostPick, type ServerMessage, type SoundCue } from "../protocol";
+import { MAX_EDIT_LINE, MAX_NOTES, MAX_TEAMS, parseClientMessage, sanitizeText, type AnswerReveal, type HostPick, type PendingRoll, type ServerMessage, type SoundCue } from "../protocol";
 import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
@@ -103,7 +108,7 @@ function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
  */
 export class DungeonRoom {
   game: GameState | null = null;
-  private pendingTeams: { id: string; name: string }[] = [];
+  private pendingTeams: { id: string; name: string; classId?: ClassId }[] = [];
   /**
    * Trust on first use: the first HOST_CLAIM sets the token, later claims must
    * match. The only protection is the 4-letter room code (23^4) plus this token.
@@ -141,6 +146,8 @@ export class DungeonRoom {
   private phaseCardTimer: ReturnType<typeof setTimeout> | null = null;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
+  /** A warrior's roll in its beat (memory only: a restart drops it; its use was already spent). Shares lockTimer. */
+  private pendingRoll: PendingRoll | null = null;
   private lockTimer: ReturnType<typeof setTimeout> | null = null;
   /** Closes a correct multipleChoice reveal on its own (E3); cancelled by HOST_NEXT. */
   private advanceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -477,6 +484,7 @@ export class DungeonRoom {
       ...(this.phaseCard ? { phaseCard: { monster: this.bank.boss.monster } } : {}),
       ...this.bossPhaseInfo(),
       pendingLock: this.pendingLock,
+      pendingRoll: this.pendingRoll,
       eventId: this.eventSeq,
       ...(this.cue ? { cue: this.cue } : {}),
     };
@@ -724,6 +732,12 @@ export class DungeonRoom {
         case "TEAM_WRONG_CHOICE":
           this.handleTeamWrongChoice(sender, msg.questionId, msg.choice);
           break;
+        case "TEAM_PICK_CLASS":
+          this.handleTeamPickClass(sender, msg.classId);
+          break;
+        case "TEAM_USE_ABILITY":
+          this.handleTeamUseAbility(sender, msg.questionId);
+          break;
       }
       // A transcript download changes nothing; a rejected message did not either; and an automatic
       // reconnect's re-identification (`resume`) is a device, not a person.
@@ -873,6 +887,7 @@ export class DungeonRoom {
     if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
     this.lockTimer = this.advanceTimer = this.phaseCardTimer = null;
     this.pendingLock = null;
+    this.pendingRoll = null;
   }
 
   /**
@@ -985,8 +1000,8 @@ export class DungeonRoom {
     // D7: judging waits until the host closes the reveal — a second host device or a stale page
     // must not skip past an answer the room hasn't been shown yet. Nor may it judge a lock that is
     // still in its beat (phone-answering.md E10).
-    if (this.paused() || this.pendingLock) {
-      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: this.paused() ? "reveal_pending" : "lock_pending" });
+    if (this.paused() || this.pendingLock || this.pendingRoll) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: this.paused() ? "reveal_pending" : this.pendingRoll ? "roll_pending" : "lock_pending" });
       return;
     }
     // A multipleChoice question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
@@ -1009,7 +1024,7 @@ export class DungeonRoom {
       return;
     }
     // A lock in its beat would then be judged against a room question the team no longer faces.
-    if (this.pendingLock?.teamId === teamId) {
+    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
       return;
     }
@@ -1036,8 +1051,9 @@ export class DungeonRoom {
     }
   }
 
-  /** Applies one answer; throws InvalidActionError (from answerQuestion) before changing anything. */
-  private judge(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", autoAdvance: boolean) {
+  /** Applies one answer; throws InvalidActionError (from answerQuestion) before changing anything.
+   * `roll`: a warrior's d20 stands in for the answer (warriorRoll), and `correct` is ignored. */
+  private judge(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", autoAdvance: boolean, roll?: number) {
     const prev = this.game;
     if (!prev) return;
     // Captured before `this.game` reassigns to the post-judgment state below: the monster name
@@ -1048,7 +1064,8 @@ export class DungeonRoom {
     const monster = justAnswered?.pub.monster.name ?? "怪物";
     // A boss MC miss has no flee (D2=B): the host's stuck row (button or key 3) resolves it as the beat would.
     if (!correct && prev.pendingWrong?.teamId === teamId && isInBossPhase(prev, teamId)) fleeChoice = "retry";
-    const { game, outcome } = answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng);
+    const { game, outcome } =
+      roll === undefined ? answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng) : warriorRoll(prev, teamId, questionId, roll, this.rng);
     // Everything up to broadcastState is synchronous: state changes and the eventId are
     // fixed before any narration awaits, so concurrent judgments cannot interleave.
     this.game = game;
@@ -1107,7 +1124,7 @@ export class DungeonRoom {
     const q = this.question(questionId);
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (this.paused()) return reject("reveal_pending");
-    if (this.pendingLock || game.pendingWrong) return reject("answer_pending");
+    if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
     if (q?.kind !== "multipleChoice" || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
     const pick = team?.currentSelection ?? null;
@@ -1161,6 +1178,62 @@ export class DungeonRoom {
         console.error(JSON.stringify({ event: "boss_miss_failed", error: String(err) }));
       }
     }, BEAT_MS);
+  }
+
+  /** Lobby only (class-abilities.md): any phone of the team may pick; the last pick before HOST_START counts. */
+  private handleTeamPickClass(conn: Conn, classId: ClassId | null) {
+    const teamId = this.connTeam.get(conn.id);
+    const team = this.pendingTeams.find((t) => t.id === teamId);
+    if (!team) return void this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
+    if (this.game) return void this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
+    if (classId && !READY_CLASSES.includes(classId)) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "class_not_ready" });
+    if ((team.classId ?? null) === classId) return;
+    if (classId) team.classId = classId;
+    else delete team.classId;
+    this.broadcastState();
+  }
+
+  /** The warrior rolls instead of answering (PR 1 has no other ability). The room spends the use and
+   * rolls at once, then shows the die for a beat; resolveRoll judges it (R2; R3 reversed in /review:
+   * a roll dropped in its beat is not free, or a reload would throw a bad die away). */
+  private handleTeamUseAbility(conn: Conn, questionId: string) {
+    const teamId = this.playingTeam(conn);
+    const game = this.game;
+    if (!teamId || !game) return;
+    const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    if (this.paused()) return reject("reveal_pending");
+    if (this.pendingLock || this.pendingRoll) return reject("answer_pending");
+    let spent: GameState;
+    try {
+      spent = spendAbility(game, teamId, "warrior");
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    if (currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
+    this.game = spent;
+    this.pendingRoll = { teamId, questionId, value: rollD20(this.rng) };
+    this.lockTimer = setTimeout(() => this.resolveRoll(), BEAT_MS);
+    this.broadcastState();
+  }
+
+  private resolveRoll() {
+    const roll = this.pendingRoll;
+    const game = this.game;
+    this.pendingRoll = null;
+    this.lockTimer = null;
+    if (!roll || !game) return;
+    this.markActivity();
+    try {
+      // The turn moved on during the beat (the phone dropped): drop the roll, like a lock (E9). The use stays spent.
+      if (currentTurnTeamId(game) !== roll.teamId || currentQuestionIdOf(game, roll.teamId) !== roll.questionId) {
+        this.broadcastState();
+      } else {
+        this.judge(roll.teamId, roll.questionId, false, "retry", this.question(roll.questionId)?.kind === "multipleChoice", roll.value);
+      }
+    } catch (err) {
+      console.error(JSON.stringify({ event: "roll_failed", error: String(err) }));
+      this.broadcastState();
+    }
   }
 
   /** 重答 / 逃跑 from the team that just locked wrong. */
@@ -1221,7 +1294,7 @@ export class DungeonRoom {
       return;
     }
     // A locked or wrong-locked pick is final until the turn resolves (phone-answering.md premise 2).
-    if (this.pendingLock?.teamId === teamId || this.game.pendingWrong?.teamId === teamId) {
+    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.game.pendingWrong?.teamId === teamId) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "answer_pending" });
       return;
     }

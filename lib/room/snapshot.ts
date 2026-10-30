@@ -1,4 +1,4 @@
-import type { GameState } from "../game-state";
+import { ABILITY_USES, isClassId, type ClassId, type GameState } from "../game-state";
 import { parseBank, type Bank } from "../question-bank";
 
 /**
@@ -18,7 +18,7 @@ export interface RoomSnapshot {
   /** Clients show "game reset" when this changes, so it must survive a restart unchanged. */
   roomEpoch: string;
   game: GameState | null;
-  pendingTeams: { id: string; name: string }[];
+  pendingTeams: { id: string; name: string; classId?: ClassId }[];
   hostToken: string;
   /** team id -> team secret */
   teamKeys: [string, string][];
@@ -52,7 +52,12 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     const fivePools = (v: unknown) => Array.isArray(v) && v.length === 5 && v.every((p) => Array.isArray(p) && p.every(isString));
     if (game !== null && !(fivePools(game.pools) && fivePools(game.usedQuestionIds))) return null;
     if (!isString(raw.roomEpoch) || !isString(raw.hostToken)) return null;
-    if (!Array.isArray(raw.pendingTeams) || !raw.pendingTeams.every((t) => isObject(t) && isString(t.id) && isString(t.name))) return null;
+    // Classes came later (class-abilities.md) without a version bump: a missing class is none, missing uses are a full set.
+    const classOk = (t: Record<string, unknown>) => t.classId === undefined || isClassId(t.classId);
+    if (!Array.isArray(raw.pendingTeams) || !raw.pendingTeams.every((t) => isObject(t) && isString(t.id) && isString(t.name) && classOk(t))) return null;
+    // A non-object team entry is left as it is, like before classes (persistence.test.ts covers a null one).
+    if (game !== null && !(game.teams as unknown[]).every((t) => !isObject(t) || (classOk(t) && (t.abilityUses === undefined || Number.isInteger(t.abilityUses))))) return null;
+    const withUses = game === null ? null : { ...game, teams: (game.teams as unknown[]).map((t) => (isObject(t) ? { ...t, abilityUses: t.abilityUses ?? ABILITY_USES } : t)) };
     if (!Array.isArray(raw.teamKeys) || !raw.teamKeys.every((p) => Array.isArray(p) && p.length === 2 && isString(p[0]) && isString(p[1]))) return null;
     if (typeof raw.eventSeq !== "number" || !Number.isInteger(raw.eventSeq) || raw.eventSeq < 0) return null;
     const n = raw.lastNarration;
@@ -66,7 +71,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (at !== null && !(typeof at === "number" && Number.isFinite(at) && at >= 0)) return null;
     const bank = parseBank(raw.bank); // throws on a bank that would not load today
     if (raw.phaseCard !== undefined && typeof raw.phaseCard !== "boolean") return null;
-    return { ...(raw as unknown as RoomSnapshot), joinPassword, lastActivityAt: at, bank };
+    return { ...(raw as unknown as RoomSnapshot), game: withUses as GameState | null, joinPassword, lastActivityAt: at, bank };
   } catch {
     return null;
   }

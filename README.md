@@ -25,6 +25,8 @@ D&D 風格的地城問答派對遊戲。名字是 *Critical Hit*（爆擊）的�
 
 **分支選擇（背景，不擋回合）**：隊伍過關進到新房間後，手機上會多出一組固定的兩個按鈕（例如「武力」／「討價」），可以隨時選、選了就定案，不影響輪到誰答題、不影響分數，也不會擋住遊戲繼續進行。
 
+**職業**：在大廳，每隊可以用手機選一個職業，或選「不選（普通冒險者）」。同一隊任何一支手機都能選，開始前最後一次選的算，開始後就固定；主持人頁會顯示每隊的職業和剩下的次數。這一版只有**戰士**能用，法師、牧師、盜賊在大廳顯示「下次更新」，房間也不接受。戰士輪到自己時，手機的「鎖定答案」下方有「🎲 擲骰代替答題」（問答題也有），一場可以用 2 次：房間立刻擲 1d20，大螢幕暗下來、骰子滾 2 秒後停在點數上，12 以上算答對，11 以下算答錯・重答。這 2 秒內主持人不能判題。按下去的那一刻就扣次數，這 2 秒內斷線或重新整理也不會還。設計見 [docs/designs/class-abilities.md](docs/designs/class-abilities.md)。
+
 **大廳**：等人時大螢幕中間是營火，每隊加入時角色會跑進來圍著營火；房間代碼與加入 QR 也在這裡。
 
 **活地圖**：遊戲進行時，大螢幕上方是一條地城地圖（取代原本的隊伍卡）。每隊是一個標著隊名首字的小棋子，答對就走進下一間房；最前面那隊之後是迷霧，看不出還剩幾間。首領房一開始是關著的門，第一隊進去後門才打開，顯示首領和血條。輪到的隊伍棋子上方有 ▼，離線的隊伍顯示「zz」。地圖不顯示分數。設計見 [docs/designs/live-map.md](docs/designs/live-map.md)。
@@ -135,7 +137,7 @@ sh scripts/playtest.sh stop
 
 ```
 app/                     Next.js 頁面：首頁、/room/[code]/host、/play、/screen、/bank-editor（題庫編輯）
-components/              共用像素元件（pixel.tsx）、大螢幕舞台（stage.tsx）、大螢幕活地圖（map-strip.tsx）、選擇題選項格（mc-option.tsx）、QR（qr.tsx）
+components/              共用像素元件（pixel.tsx）、大螢幕舞台（stage.tsx）、大螢幕活地圖（map-strip.tsx）、選擇題選項格（mc-option.tsx）、戰士的 d20 與大螢幕擲骰畫面（d20.tsx）、QR（qr.tsx）
 data/question-bank.json  題庫的 bundle 備援（BankStore 連不上時新開的房間用這份；存著的題庫讀不懂時編輯器唯讀顯示這份）
 lib/game-state.ts        遊戲狀態機：房間、題目牌堆、首領、計分（純函式，有完整測試）
 lib/protocol.ts          host / player / server 之間的訊息格式與驗證
@@ -174,7 +176,7 @@ TODOS.md                 已知問題與延後事項
 
 ## 路線圖
 
-已完成：大螢幕（題目、怪物、頒獎台）、題庫進 app、腳本與 AI 旁白、主持人導演介面、主持人題庫編輯介面（`/bank-editor`，見上方「題庫編輯」）、大螢幕語音旁白（瀏覽器 TTS）、音效與背景音樂、營火大廳、斷線提示、主持人鍵盤操作、共享大螢幕活地圖、正式部署（Vercel + Cloudflare）。接下來的重點是**第二次真人測試**：驗證有氣氛之後是不是比第一輪好玩。
+已完成：大螢幕（題目、怪物、頒獎台）、題庫進 app、腳本與 AI 旁白、主持人導演介面、主持人題庫編輯介面（`/bank-editor`，見上方「題庫編輯」）、大螢幕語音旁白（瀏覽器 TTS）、音效與背景音樂、營火大廳、斷線提示、主持人鍵盤操作、共享大螢幕活地圖、隊伍職業（先開放戰士）、正式部署（Vercel + Cloudflare）。接下來的重點是**第二次真人測試**：驗證有氣氛之後是不是比第一輪好玩。
 
 延後事項與原因見 [TODOS.md](TODOS.md)。完整設計、決策過程與任務清單見 [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md)（第二輪）和 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md)（第一輪）。
 

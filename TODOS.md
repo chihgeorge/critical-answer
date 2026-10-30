@@ -535,9 +535,37 @@
 
 **Why:** 使用者 2026-10-29 提出，讓隊伍之間有差異，更像 D&D。
 
-**Context:** 隊伍資料在 `lib/game-state.ts`，戰鬥和首領規則在 `lib/room/dungeon-room.ts`。和上面「每次行動可以選不同的動作」相關。
+**Context:** 規格在 `docs/designs/class-abilities.md`（四個職業、office hours 與 eng review 的決定）。PR 1（戰士：大廳選職業、擲 d20 代替答題，每場 2 次）在 v0.19.0.0 做完。剩 PR 2：法師、牧師、盜賊的能力，以及大廳解鎖這三張卡（`lib/game-state.ts` 的 `READY_CLASSES`）。
 
-**Depends on / blocked by:** 還沒寫規格，要先走 /office-hours 決定有哪些職業、能力怎麼平衡。
+**Depends on / blocked by:** 無，PR 1 已上線。
+
+---
+
+## 每個職業有自己的動畫和音效
+
+**Priority:** P3
+
+**What:** 法師、牧師、盜賊用能力時，TV 有各自的動畫和音效。現在只有戰士的骰子有動畫。
+
+**Why:** 2026-10-29 職業能力的 office hours（Codex 建議），在 eng review 決定先不做（D7）。
+
+**Context:** 設計在 `docs/designs/class-abilities.md`。TV 畫面在 `app/room/[code]/screen/page.tsx`，音效在 `lib/` 的 `SfxNote`。
+
+**Depends on / blocked by:** 職業能力 PR 2（法師、牧師、盜賊）上線，並且試玩過一場。
+
+---
+
+## 旁白念出戰士擲到幾點
+
+**Priority:** P3
+
+**What:** 戰士擲骰後，旁白說出點數（例如「擲出 17 點」），不只是一般的答對 / 答錯。
+
+**Why:** eng review D1 選了小範圍，`lib/narration` 不改，所以 PR 1 的旁白不念點數。2026-10-29 決定記成 TODO（D8）。
+
+**Context:** 旁白事件在 `lib/narration/events.ts`（`toNarrationEvent`），點數在 `pendingRoll.value`。設計在 `docs/designs/class-abilities.md`。
+
+**Depends on / blocked by:** 無，戰士在 v0.19.0.0 上線。
 
 ---
 

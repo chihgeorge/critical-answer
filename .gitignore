@@ -57,3 +57,4 @@ next-env.d.ts
 
 # local question-bank drafts (may hold answers) — never commit
 /local-banks/
+.gstack/
