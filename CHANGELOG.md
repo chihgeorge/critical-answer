@@ -2,6 +2,22 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.20.0.0] - 2026-10-30
+
+### Added
+- 法師 (mage): on a multiple-choice turn the team presses 「🔮 刪掉 2 個錯的選項」, twice per game. Two wrong options turn grey for everyone, on the phones and the big screen, with no 「✕ 答錯」 label so they read differently from a real wrong lock. When only one wrong option is left it removes one. The correct option is never removed.
+- 牧師 (cleric): after a wrong lock on a multiple-choice turn, the phone shows 「✝️ 祈禱：這回合再答一次」 above 重答 / 逃跑. Praying keeps the turn, so the team answers again right away, once per turn. In the boss room a wrong lock waits for 祈禱 / 不用 instead of the 2-second miss beat. Praying brings a new boss question and keeps the turn.
+- 盜賊 (thief), Sneak Attack: press 「🗝️ 偷襲：這題答對加倍」 before answering. A correct answer doubles the reward, and in the boss room it takes 2 HP and doubles the hit reward and the kill bonus. A wrong answer uses it up. The big screen hangs a red 「🗝️ 偷襲！這題答對加倍」 chip over the monster until the answer is judged, and the host row shows 🗝️×2.
+- The big screen tells other teams when a cleric is deciding (「牧師祈禱中」) and after it prays (「祈禱了！這回合再答一次」).
+
+### Changed
+- All four classes can be picked in the lobby. The 「下次更新」 lock is gone.
+- The thief's ability is Sneak Attack instead of peeking at the answer's first letter, which only helped on spoken questions.
+
+### Fixed
+- A thief that armed Sneak Attack and was then sent to the boss room by the host, before its answer was judged, gets the use back instead of carrying the bonus into the boss room.
+- A cleric cannot get a second prayer in the same turn by reloading its phone.
+
 ## [0.19.0.0] - 2026-10-29
 
 ### Added
