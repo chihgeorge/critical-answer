@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.18.0.3] - 2026-10-29
+
+### Added
+- `TODOS.md` has a P3 idea to cap a room at 6 hours from creation. Today a room lasts 24 hours, and activity keeps pushing that back.
+
 ## [0.18.0.2] - 2026-10-29
 
 ### Fixed
