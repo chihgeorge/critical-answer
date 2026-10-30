@@ -31,10 +31,12 @@
 //        同 roomIndex 之後的提交一律拒絕
 //
 // Class abilities (docs/designs/class-abilities.md): a team picked a class in the lobby
-// spends one of its ABILITY_USES on its turn instead of answering. PR 1 has the warrior
-// only: spendAbility() takes the use when the room rolls, then warriorRoll() judges the d20
-// as the answer (WARRIOR_TARGET or more is correct) through answerQuestion, so the turn
-// still advances exactly once.
+// spends one of its ABILITY_USES on its turn. The warrior rolls instead of answering:
+// spendAbility() takes the use when the room rolls, then warriorRoll() judges the d20 as the
+// answer (WARRIOR_TARGET or more is correct) through answerQuestion, so the turn still advances
+// exactly once. The mage removes wrong options (mageEliminate), the thief arms a Sneak Attack
+// that doubles this answer's reward and boss damage (armSneak), and the cleric prays on a wrong
+// lock (pray) so that its 重答 / 逃跑 keeps the turn instead of advancing it (prayerTurn).
 //
 // Turn order never changes with room progress — this avoids the "arrival
 // order" snowball fairness risk flagged in /plan-eng-review's Outside Voice.
@@ -91,9 +93,6 @@ export const DEFAULT_BOSS_HIT_REWARD = 10;
 /** Fixed class ids (docs/designs/class-abilities.md). Display text is looked up by id, like BRANCH_OPTIONS. */
 export const CLASS_IDS = ["mage", "cleric", "warrior", "thief"] as const;
 export type ClassId = (typeof CLASS_IDS)[number];
-
-/** Classes that work in this version; the lobby shows the rest locked and the room refuses them (D10=A). */
-export const READY_CLASSES: readonly ClassId[] = ["warrior"];
 
 export function isClassId(v: unknown): v is ClassId {
   return typeof v === "string" && (CLASS_IDS as readonly string[]).includes(v);
@@ -165,6 +164,9 @@ export interface Team {
   classId?: ClassId;
   /** Class ability uses left (ABILITY_USES at the start). */
   abilityUses: number;
+  /** The thief's Sneak Attack waits for this team's next judgment: a correct one doubles its reward and
+   * boss damage, any judgment uses it up (class-abilities.md D16). */
+  sneakArmed?: true;
 }
 
 export interface RoomTemplate {
@@ -232,8 +234,12 @@ export interface GameState {
   /** Options locked wrong so far, per question id (docs/designs/phone-answering.md E6): one map for rooms
    * and the boss, public like the TV's wrong reveal. A new question id simply has no entry. */
   eliminated: Record<string, number[]>;
+  /** The part of `eliminated` a mage removed: grey with no ✕ 答錯 label (class-abilities.md D13=A). */
+  mageRemoved?: Record<string, number[]>;
   /** A wrong lock waiting for that team's 重答 / 逃跑. The team keeps the turn meanwhile, even offline (E9). */
   pendingWrong: LockedOption | null;
+  /** The cleric whose prayer kept this turn: it cannot pray again until the turn moves on. */
+  prayerTurn?: string;
   boss: BossState;
   config: GameConfig;
   phase: GamePhase;
@@ -245,6 +251,8 @@ export interface LockedOption {
   teamId: string;
   questionId: string;
   optionIndex: number;
+  /** The cleric prayed on this lock: its 重答 / 逃跑 keeps the turn. */
+  prayed?: true;
 }
 
 export type AnswerOutcome =
@@ -536,10 +544,10 @@ export function enterNextBossPhase(game: GameState): GameState {
   const phase = boss.phases[phaseIndex];
   if (!boss.phasePending || !phase) throw new InvalidActionError("no boss phase is waiting to start");
   // The old phase's question leaves play, so its wrong tiles go with it.
-  const eliminated = Object.fromEntries(Object.entries(game.eliminated).filter(([id]) => id !== boss.currentQuestionId));
+  const cleared = dropEliminated(game, boss.currentQuestionId);
   return {
     ...game,
-    eliminated,
+    ...cleared,
     teams: resetBossSelections(game, game.teams),
     boss: {
       ...boss,
@@ -592,7 +600,8 @@ function finishGame(game: GameState): GameState {
 /**
  * Resolve one answer attempt for `teamId`. Always advances the turn
  * afterwards (win or lose) — global round-robin never gives a bonus turn,
- * which is what keeps the 1/N pacing fair (see Architecture Review).
+ * which is what keeps the 1/N pacing fair (see Architecture Review). The one
+ * exception is a cleric's prayed wrong lock: its 重答 / 逃跑 keeps the turn, once a turn (prayerTurn).
  *
  * `fleeChoice` only matters when the answer is incorrect: "flee" downgrades
  * the room's difficulty and keeps the room index; "retry" leaves the
@@ -621,8 +630,11 @@ export function answerQuestion(
   if (correct && game.pendingWrong) {
     throw new InvalidActionError(`${teamId} already locked a wrong answer; only retry or flee is left`);
   }
+  const prayed = !correct && game.pendingWrong?.prayed === true;
+  // Any judgment uses up an armed Sneak Attack; only a correct one doubles (D16).
+  const sneak = getTeam(game, teamId).sneakArmed ? 2 : 1;
   // The choice resolves the pending wrong lock.
-  game = { ...game, pendingWrong: null };
+  game = { ...game, pendingWrong: null, teams: sneak > 1 ? patchTeam(game.teams, teamId, () => ({ sneakArmed: undefined })) : game.teams };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice === "flee" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -651,10 +663,10 @@ export function answerQuestion(
     // An earlier phase out of unrevealed questions moves on; the last one repeats them (premise 3).
     const usedUp = (revealed: string[]) => !lastPhase && boss.questionIds.every((id) => revealed.includes(id));
     if (correct) {
-      const newHp = Math.max(0, boss.hp - 1);
+      const newHp = Math.max(0, boss.hp - sneak);
       const bossKilled = newHp === 0 && lastPhase;
-      const killBonus = bossKilled ? rollBossKillBonus(rng) : undefined;
-      const reward = boss.hitReward + (killBonus ?? 0);
+      const killBonus = bossKilled ? rollBossKillBonus(rng) * sneak : undefined;
+      const reward = boss.hitReward * sneak + (killBonus ?? 0);
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
@@ -715,7 +727,7 @@ export function answerQuestion(
     if (correct) {
       // The question's own difficulty: an empty, fully held or fully revealed pool deals from another one (deal()).
       const pointsAwarded = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
-      const reward = game.rooms[team.roomIndex].reward;
+      const reward = game.rooms[team.roomIndex].reward * sneak;
       // A correct answer is always revealed (D5), so the next deal from any pool must not hand it
       // back to a team who hasn't faced it yet.
       const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
@@ -765,11 +777,12 @@ export function answerQuestion(
   // a later deal of it starts clean.
   // Any team: a room short of questions can deal one question to two teams at once.
   const stillFaced = nextGame.teams.some((t) => (t.inBoss ? nextGame.boss.currentQuestionId : t.currentQuestionId) === questionId);
-  if (!stillFaced && questionId in nextGame.eliminated) {
-    nextGame = { ...nextGame, eliminated: Object.fromEntries(Object.entries(nextGame.eliminated).filter(([id]) => id !== questionId)) };
-  }
+  if (!stillFaced && questionId in nextGame.eliminated) nextGame = { ...nextGame, ...dropEliminated(nextGame, questionId) };
   // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
-  return { game: advanceTurn({ ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) }), outcome };
+  const here = { ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) };
+  // A prayed wrong lock keeps the turn (class-abilities.md PR 2): the cleric answers again at once.
+  if (prayed) return { game: { ...here, prayerTurn: teamId }, outcome };
+  return { game: advanceTurn({ ...here, prayerTurn: undefined }), outcome };
 }
 
 /** Throws unless it is `teamId`'s turn as a `classId` with no wrong lock waiting (that waits for
@@ -787,6 +800,70 @@ export function spendAbility(game: GameState, teamId: string, classId: ClassId):
   assertAbilityTurn(game, teamId, classId);
   if (getTeam(game, teamId).abilityUses <= 0) throw new InvalidActionError(`${teamId} has no ability uses left`);
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1 })) };
+}
+
+/** The mage removes min(2, wrong options left − 1) wrong options of `questionId` at random into the
+ * public eliminated set, and spends a use. Nothing to remove is refused before anything is spent.
+ * `correctIndex` and `optionCount` come from the room's bank, in shown order. */
+export function mageEliminate(
+  game: GameState,
+  teamId: string,
+  questionId: string,
+  correctIndex: number,
+  optionCount: number,
+  rng: () => number = Math.random,
+): GameState {
+  assertAbilityTurn(game, teamId, "mage");
+  assertCurrentQuestion(game, teamId, questionId);
+  const old = game.eliminated[questionId] ?? [];
+  const wrong = Array.from({ length: optionCount }, (_, i) => i).filter((i) => i !== correctIndex && !old.includes(i));
+  const n = Math.min(2, wrong.length - 1);
+  if (n <= 0) throw new InvalidActionError("no_option_to_remove");
+  const removed: number[] = [];
+  // Clamped: an rng that ever returned 1 would otherwise splice nothing and loop forever.
+  while (removed.length < n) removed.push(...wrong.splice(Math.min(wrong.length - 1, Math.floor(rng() * wrong.length)), 1));
+  const spent = spendAbility(game, teamId, "mage");
+  return {
+    ...spent,
+    eliminated: { ...game.eliminated, [questionId]: [...old, ...removed] },
+    mageRemoved: { ...game.mageRemoved, [questionId]: [...(game.mageRemoved?.[questionId] ?? []), ...removed] },
+    // A pick on a removed option clears, for every team facing this question (the boss question is shared).
+    teams: spent.teams.map((t) =>
+      t.currentSelection !== null && removed.includes(t.currentSelection) && currentQuestionIdOf(game, t.id) === questionId ? { ...t, currentSelection: null } : t,
+    ),
+  };
+}
+
+/** The thief arms a Sneak Attack for its answer to this question, spending the use at once (D16). */
+export function armSneak(game: GameState, teamId: string): GameState {
+  assertAbilityTurn(game, teamId, "thief");
+  if (getTeam(game, teamId).sneakArmed) throw new InvalidActionError("sneak_armed");
+  const spent = spendAbility(game, teamId, "thief");
+  return { ...spent, teams: patchTeam(spent.teams, teamId, () => ({ sneakArmed: true })) };
+}
+
+/** Whether `teamId`'s wrong lock is waiting on a cleric that may still pray this turn. */
+export function canPray(game: GameState, teamId: string): boolean {
+  const team = game.teams.find((t) => t.id === teamId);
+  return (
+    game.phase === "playing" &&
+    game.pendingWrong?.teamId === teamId &&
+    !game.pendingWrong.prayed &&
+    team?.classId === "cleric" &&
+    team.abilityUses > 0 &&
+    game.prayerTurn !== teamId
+  );
+}
+
+/** The cleric prays on its wrong lock: one use, and its 重答 / 逃跑 then keeps the turn (answerQuestion). */
+export function pray(game: GameState, teamId: string): GameState {
+  assertPlaying(game);
+  if (!canPray(game, teamId)) throw new InvalidActionError(`${teamId} cannot pray now`);
+  return {
+    ...game,
+    pendingWrong: { ...game.pendingWrong!, prayed: true },
+    teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1 })),
+  };
 }
 
 /**
@@ -816,12 +893,20 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   const team = getTeam(game, teamId);
   if (team.inBoss) throw new InvalidActionError(`${teamId} is already in the boss room`);
   if (game.pendingWrong?.teamId === teamId) throw new InvalidActionError(`${teamId} has a wrong lock waiting for retry or flee`);
-  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null, queuedQuestionId: undefined }));
+  // A sneak armed for the room question is for that question only (D16): drop it and give the use back.
+  // (A boss-room sneak can outlive a question rotation while the thief is offline; accepted, /review D4=A.)
+  const sneak = team.sneakArmed ? { sneakArmed: undefined, abilityUses: team.abilityUses + 1 } : {};
+  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null, queuedQuestionId: undefined, ...sneak }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
-  const eliminated = stillFaced ? game.eliminated : Object.fromEntries(Object.entries(game.eliminated).filter(([id]) => id !== left));
-  return { ...game, teams, eliminated };
+  return { ...game, teams, ...(stillFaced ? {} : dropEliminated(game, left)) };
+}
+
+/** `eliminated` and `mageRemoved` without `questionId`: it left play, and a later deal of it starts clean. */
+function dropEliminated(game: GameState, questionId: string): Pick<GameState, "eliminated" | "mageRemoved"> {
+  const drop = (m: Record<string, number[]>) => Object.fromEntries(Object.entries(m).filter(([id]) => id !== questionId));
+  return { eliminated: drop(game.eliminated), mageRemoved: drop(game.mageRemoved ?? {}) };
 }
 
 /**
@@ -963,6 +1048,7 @@ export interface SpectatorView {
     branchChoices: Partial<Record<number, BranchOptionId>>;
     classId?: ClassId;
     abilityUses: number;
+    sneakArmed?: true;
   }[];
   bossHp: number;
   bossMaxHp: number;
@@ -973,7 +1059,10 @@ export interface SpectatorView {
   bossKilledBy: string | null;
   /** Options locked wrong per question id (shown greyed on every screen) and the wrong lock awaiting a choice. */
   eliminated: Record<string, number[]>;
+  mageRemoved: Record<string, number[]>;
   pendingWrong: LockedOption | null;
+  /** The cleric whose wrong lock waits for its 祈禱 (canPray), or null. */
+  awaitingPrayer: string | null;
 }
 
 export function getSpectatorView(game: GameState): SpectatorView {
@@ -992,6 +1081,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       branchChoices: t.branchChoices,
       ...(t.classId ? { classId: t.classId } : {}),
       abilityUses: t.abilityUses,
+      ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
     })),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
@@ -999,6 +1089,8 @@ export function getSpectatorView(game: GameState): SpectatorView {
     bossCurrentQuestionId: game.boss.currentQuestionId,
     bossKilledBy: game.boss.killedByTeamId,
     eliminated: game.eliminated,
+    mageRemoved: game.mageRemoved ?? {},
     pendingWrong: game.pendingWrong,
+    awaitingPrayer: game.pendingWrong && canPray(game, game.pendingWrong.teamId) ? game.pendingWrong.teamId : null,
   };
 }

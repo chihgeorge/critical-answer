@@ -2081,15 +2081,13 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(room.game!.teams[0].classId).toBe("warrior");
   });
 
-  it("refuses a class that is not built yet, even sent straight to the room", () => {
+  it("every class can be picked in the lobby (PR 2)", () => {
     const { room, hostConn } = makeRoomWithHost();
-    const { conns } = joinTeams(room, hostConn, 2);
-    send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "warrior" });
-    for (const classId of ["mage", "cleric", "thief"] as const) {
+    const { conns } = joinTeams(room, hostConn, 1);
+    for (const classId of ["mage", "cleric", "thief", "warrior"] as const) {
       send(room, conns[0], { type: "TEAM_PICK_CLASS", classId });
-      expect(err(conns[0])).toBe("class_not_ready");
+      expect(lastBroadcast(room).teams[0].classId).toBe(classId);
     }
-    expect(lastBroadcast(room).teams[0].classId).toBe("warrior");
   });
 
   it("spends the use at the roll, holds a 12 for 2 s (host judging and a second roll refused), then judges it correct", () => {
@@ -2213,5 +2211,135 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     roll(20);
     expect(err(conns[0])).toMatch(/no ability uses/);
     expect((room as any).pendingRoll).toBeNull();
+  });
+});
+
+describe("class abilities: mage, cleric and thief in the room (class-abilities.md PR 2)", () => {
+  afterEach(() => vi.useRealTimers());
+  const mc = (id: string) => ({ kind: "multipleChoice" as const, id, content: { kind: "text" as const, value: "選哪個？" }, options: ["A", "B", "C", "D"], correctIndex: 1 });
+  const bank = parseBank({
+    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [mc("r0-mc1"), { kind: "text", id: "r0-t1", content: { kind: "text", value: "？" }, answer: "a" }] }],
+    boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [mc("boss-mc1"), mc("boss-mc2")] },
+  });
+  const err = (conn: Conn) => lastSentTo(conn as never)?.detail ?? lastSentTo(conn as never)?.error;
+
+  /** Team 0 is `classId`; it faces r0-mc1 (or the boss's boss-mc1 with `boss`). */
+  function game(classId: "mage" | "cleric" | "thief", boss = false) {
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids, conns } = joinTeams(room, hostConn, 2);
+    send(room, conns[0], { type: "TEAM_PICK_CLASS", classId });
+    send(room, hostConn, { type: "HOST_START" });
+    if (boss) {
+      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+      room.game = { ...room.game!, boss: { ...room.game!.boss, currentQuestionId: "boss-mc1" } };
+    } else room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-mc1" } : t)) };
+    const q = boss ? "boss-mc1" : "r0-mc1";
+    const use = () => send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: q });
+    const lockWrong = () => {
+      const wrong = room.game!.optionOrder[q].indexOf(0); // "A"; "B" is right
+      send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: wrong });
+      send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: q });
+      vi.advanceTimersByTime(2000);
+    };
+    return { room, hostConn, ids, conns, q, use, lockWrong };
+  }
+
+  it("the mage greys out 2 wrong options for everyone, and is refused on a spoken question without spending", () => {
+    const { room, conns, q, use } = game("mage");
+    use();
+    const removed = lastBroadcast(room).view.eliminated[q];
+    expect(removed).toHaveLength(2);
+    expect(removed).not.toContain(room.game!.optionOrder[q].indexOf(1));
+    expect(room.game!.teams[0].abilityUses).toBe(1);
+    use();
+    expect(err(conns[0])).toBe("no_option_to_remove");
+    room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t1" } : t)) };
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
+    expect(err(conns[0])).toBe("not_multiple_choice");
+    expect(room.game!.teams[0].abilityUses).toBe(1);
+  });
+
+  it("the thief's sneak attack shows on every screen until its answer is judged, and cannot be armed twice", () => {
+    vi.useFakeTimers();
+    const { room, conns, use, lockWrong } = game("thief");
+    use();
+    expect(lastBroadcast(room).view.teams[0]).toMatchObject({ sneakArmed: true, abilityUses: 1 });
+    use();
+    expect(err(conns[0])).toBe("sneak_armed");
+    lockWrong();
+    send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "r0-mc1", choice: "retry" });
+    expect(lastBroadcast(room).view.teams[0].sneakArmed).toBeUndefined();
+    expect(room.game!.teams[0].abilityUses).toBe(1);
+  });
+
+  it("a cleric prays on its wrong lock and its 重答 keeps the turn", () => {
+    vi.useFakeTimers();
+    const { room, ids, conns, q, use, lockWrong } = game("cleric");
+    use();
+    expect(err(conns[0])).toMatch(/cannot pray/); // nothing locked wrong yet
+    lockWrong();
+    expect(lastBroadcast(room).view.awaitingPrayer).toBe(ids[0]);
+    use();
+    expect(room.game!.pendingWrong).toMatchObject({ teamId: ids[0], prayed: true });
+    send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: q, choice: "retry" });
+    expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+    expect(room.game!.teams[0]).toMatchObject({ currentQuestionId: q, abilityUses: 1 });
+  });
+
+  it("a cleric's wrong boss lock waits for 祈禱 instead of the beat; praying rotates the question and keeps the turn", () => {
+    vi.useFakeTimers();
+    const { room, ids, use, lockWrong } = game("cleric", true);
+    lockWrong();
+    vi.advanceTimersByTime(10_000);
+    expect(room.game!.pendingWrong).toMatchObject({ teamId: ids[0] });
+    expect(lastBroadcast(room).view.awaitingPrayer).toBe(ids[0]);
+    use();
+    expect(room.game!.pendingWrong).toBeNull();
+    expect(room.game!.boss.currentQuestionId).toBe("boss-mc2");
+    expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+  });
+
+  it("a cleric's 不用 in the boss room resolves the miss as usual, and a cleric with no uses gets the beat", () => {
+    vi.useFakeTimers();
+    const { room, ids, conns, lockWrong } = game("cleric", true);
+    lockWrong();
+    send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "boss-mc1", choice: "retry" });
+    expect(room.game!.pendingWrong).toBeNull();
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+
+    const spent = game("cleric", true);
+    spent.room.game = { ...spent.room.game!, teams: spent.room.game!.teams.map((t, i) => (i === 0 ? { ...t, abilityUses: 0 } : t)) };
+    spent.lockWrong();
+    vi.advanceTimersByTime(2000);
+    expect(spent.room.game!.pendingWrong).toBeNull();
+    expect(currentTurnTeamId(spent.room.game!)).toBe(spent.ids[1]);
+  });
+  it("a cleric's second wrong boss lock in its kept turn gets the beat", () => {
+    vi.useFakeTimers();
+    const { room, ids, conns, use, lockWrong } = game("cleric", true);
+    lockWrong();
+    use(); // pray: rotates to a new boss question, keeps the turn
+    const q2 = room.game!.boss.currentQuestionId!;
+    const wrong = room.game!.optionOrder[q2].indexOf(0);
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: q2, optionIndex: wrong });
+    send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: q2 });
+    vi.advanceTimersByTime(2000);
+    expect(lastBroadcast(room).view.awaitingPrayer).toBeNull();
+    vi.advanceTimersByTime(2000);
+    expect(room.game!.pendingWrong).toBeNull();
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+  });
+
+  it("a cleric's prayer for another question is refused without spending", () => {
+    vi.useFakeTimers();
+    const { room, conns, lockWrong } = game("cleric");
+    lockWrong();
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
+    expect(err(conns[0])).toBe("stale_question");
+    expect(room.game!.teams[0].abilityUses).toBe(2);
+    expect(room.game!.pendingWrong?.prayed).toBeUndefined();
   });
 });

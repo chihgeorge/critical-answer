@@ -19,9 +19,14 @@ import {
   enterNextBossPhase,
   warriorRoll,
   spendAbility,
+  mageEliminate,
+  armSneak,
+  pray,
+  canPray,
   rollD20,
   isClassId,
   InvalidActionError,
+  type ClassId,
   type GameState,
   type RoomTemplate,
 } from "./game-state";
@@ -1445,5 +1450,147 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
     expect(rollD20(() => 0.999)).toBe(20);
     expect(isClassId("warrior")).toBe(true);
     expect(isClassId("bard")).toBe(false);
+  });
+});
+
+describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
+  /** T0 has `classes[0]`, T1 `classes[1]`...; the boss bar is `bossMaxHp`, the boss room opens at `bossThreshold`. */
+  function classGame(classes: (ClassId | undefined)[], bossThreshold = 15, bossMaxHp = 3): GameState {
+    const teams = classes.map((c, i) => ({ id: `T${i}`, name: `Team ${i}`, ...(c ? { classId: c } : {}) }));
+    return createGame(teams, ...deck(3, 1), ["boss-q1", "boss-q2", "boss-q3"], { bossThreshold }, bossMaxHp, first);
+  }
+  const wrongLock = (g: GameState, id: string) => recordWrongLock(g, id, currentQ(g, id), 0);
+  const currentQ = (g: GameState, id: string) => (isInBossPhase(g, id) ? g.boss.currentQuestionId : g.teams.find((t) => t.id === id)!.currentQuestionId);
+
+  it("sneak attack: a correct answer doubles the room reward but not the progress points, and is used up", () => {
+    const g = armSneak(classGame(["thief", undefined]), "T0");
+    expect(g.teams[0]).toMatchObject({ sneakArmed: true, abilityUses: 1 });
+    expect(getSpectatorView(g).teams[0].sneakArmed).toBe(true);
+    expect(() => armSneak(g, "T0")).toThrow(/sneak_armed/);
+    const { game, outcome } = answerQuestion(g, "T0", currentQ(g, "T0"), true);
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 20 });
+    expect(game.teams[0]).toMatchObject({ score: 1, reward: 20, abilityUses: 1 });
+    expect(game.teams[0].sneakArmed).toBeUndefined();
+  });
+
+  it("sneak attack: a wrong answer uses it up and pays nothing", () => {
+    const g = armSneak(classGame(["thief", undefined]), "T0");
+    const { game } = answerQuestion(g, "T0", currentQ(g, "T0"), false, "retry");
+    expect(game.teams[0]).toMatchObject({ reward: 0, abilityUses: 1 });
+    expect(game.teams[0].sneakArmed).toBeUndefined();
+  });
+
+  it("sneak attack armed for a room question is dropped and refunded when the host sends the team to the boss room", () => {
+    const g = sendToBoss(armSneak(classGame(["thief", undefined]), "T0"), "T0");
+    expect(g.teams[0]).toMatchObject({ inBoss: true, abilityUses: 2 });
+    expect(g.teams[0].sneakArmed).toBeUndefined();
+  });
+
+  it("sneak attack in the boss room takes 2 HP and doubles the hit reward and the kill bonus", () => {
+    const g = armSneak(classGame(["thief"], 0, 3), "T0");
+    const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first);
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 1, reward: 20 });
+    const kill = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first);
+    // rollBossKillBonus(first) is 4 (4d20 all ones), doubled; the bar never goes below 0.
+    expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 8, reward: 28 });
+  });
+
+  it("the mage removes 2 wrong options, never the right one, and clears a pick on a removed option", () => {
+    let g = classGame(["mage", undefined]);
+    const q = currentQ(g, "T0");
+    g = { ...g, teams: g.teams.map((t) => (t.id === "T0" ? { ...t, currentSelection: 0 } : t)) };
+    const after = mageEliminate(g, "T0", q, 1, 4, first);
+    expect(after.eliminated[q]).toEqual([0, 2]);
+    expect(getSpectatorView(after).mageRemoved[q]).toEqual([0, 2]);
+    expect(after.teams[0]).toMatchObject({ abilityUses: 1, currentSelection: null });
+    // One wrong option left: nothing to remove, and nothing spent.
+    expect(() => mageEliminate(after, "T0", q, 1, 4, first)).toThrow(/no_option_to_remove/);
+    expect(mageEliminate(g, "T0", q, 1, 4, () => 1).eliminated[q]).toHaveLength(2); // an rng of 1 cannot hang it
+  });
+
+  it("the mage removes only 1 when an option was already locked wrong, and refuses another class", () => {
+    const g = classGame(["mage", "thief"]);
+    const q = currentQ(g, "T0");
+    const after = mageEliminate({ ...g, eliminated: { [q]: [3] } }, "T0", q, 1, 4, first);
+    expect(after.eliminated[q]).toEqual([3, 0]);
+    expect(after.mageRemoved?.[q]).toEqual([0]); // the wrong lock keeps its ✕ 答錯 label
+    expect(() => armSneak(g, "T0")).toThrow(/not a thief/);
+  });
+
+  it("a cleric's prayer keeps the turn for its retry, once a turn", () => {
+    const g = wrongLock(classGame(["cleric", undefined]), "T0");
+    expect(canPray(g, "T0")).toBe(true);
+    expect(getSpectatorView(g).awaitingPrayer).toBe("T0");
+    const prayed = pray(g, "T0");
+    expect(prayed.teams[0].abilityUses).toBe(1);
+    expect(getSpectatorView(prayed).awaitingPrayer).toBeNull();
+    expect(() => pray(prayed, "T0")).toThrow(/cannot pray/);
+    const q = currentQ(g, "T0");
+    const retry = answerQuestion(prayed, "T0", q, false, "retry").game;
+    expect(currentTurnTeamId(retry)).toBe("T0");
+    expect(retry.teams[0].currentQuestionId).toBe(q);
+    // Wrong again in the kept turn: no second prayer, not even after a reload, and the turn moves on.
+    const again = wrongLock(retry, "T0");
+    expect(canPray(again, "T0")).toBe(false);
+    expect(canPray(setTeamOnline(setTeamOnline(again, "T0", false), "T0", true), "T0")).toBe(false);
+    const next = answerQuestion(again, "T0", q, false, "retry").game;
+    expect(currentTurnTeamId(next)).toBe("T1");
+    expect(next.prayerTurn).toBeUndefined();
+  });
+
+  it("a cleric's prayed flee deals an easier question and keeps the turn; a non-cleric cannot pray", () => {
+    const g = wrongLock(classGame(["cleric", undefined]), "T0");
+    const fled = answerQuestion(pray(g, "T0"), "T0", currentQ(g, "T0"), false, "flee").game;
+    expect(currentTurnTeamId(fled)).toBe("T0");
+    expect(fled.teams[0].currentQuestionId).not.toBe(currentQ(g, "T0"));
+    const other = wrongLock(advanceTurn(classGame(["cleric", undefined])), "T1");
+    expect(canPray(other, "T1")).toBe(false);
+  });
+
+  it("a cleric's prayer in the boss room rotates the question and keeps the turn", () => {
+    const g = wrongLock(classGame(["cleric", undefined], 0), "T0");
+    const q = g.boss.currentQuestionId;
+    const { game, outcome } = answerQuestion(pray(g, "T0"), "T0", q, false, "retry");
+    expect(outcome).toMatchObject({ type: "incorrect-retry", newBossQuestion: true });
+    expect(game.boss.currentQuestionId).not.toBe(q);
+    expect(currentTurnTeamId(game)).toBe("T0");
+  });
+
+  // Generated by /ship coverage audit.
+  // Value: protects=a mage's removal on the shared boss question clears another boss team's pick on a removed option;
+  // fails_when=the pick clear only looks at the caster; why_new=the existing mage test clears only the caster's pick;
+  // seam=none; no_claim=room/phone rendering (pure game-state unit)
+  it("a mage's removal on the boss question clears another boss team's pick on a removed option", () => {
+    const g = classGame(["mage", undefined], 0);
+    const q = g.boss.currentQuestionId;
+    const picked = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, currentSelection: 2 } : t)) };
+    const after = mageEliminate(picked, "T0", q, 1, 4, first);
+    expect(after.eliminated[q]).toEqual([0, 2]);
+    expect(after.teams[1].currentSelection).toBeNull();
+  });
+
+  // Generated by /ship coverage audit.
+  // Value: protects=a room question leaving play with the team sent to the boss drops its mageRemoved entry too;
+  // fails_when=sendToBoss filters eliminated only, so a later deal of it loses the ✕ 答錯 label; why_new=only the boss
+  // rotation path checks mageRemoved; seam=none; no_claim=enterNextBossPhase's drop (same helper, not exercised here)
+  it("sending the mage to the boss room drops its room question's removed options", () => {
+    const g = classGame(["mage", undefined]);
+    const q = currentQ(g, "T0");
+    const sent = sendToBoss(mageEliminate(g, "T0", q, 1, 4, first), "T0");
+    expect(sent.eliminated[q]).toBeUndefined();
+    expect(sent.mageRemoved?.[q]).toBeUndefined();
+  });
+
+  // R3-1: the boss question is shared, so options a mage removed count as shown for the next team's miss.
+  it("a mage's removal on the boss question, then a failed warrior roll, rotates the question", () => {
+    const g = classGame(["mage", "warrior"], 0);
+    const q = g.boss.currentQuestionId;
+    // The mage removes two options, then its phone drops: the warrior faces the same narrowed question.
+    const handedOver = setTeamOnline(mageEliminate(g, "T0", q, 1, 4, first), "T0", false);
+    expect(currentTurnTeamId(handedOver)).toBe("T1");
+    const miss = warriorRoll(spendAbility(handedOver, "T1", "warrior"), "T1", q, 1, first);
+    expect(miss.outcome).toMatchObject({ type: "incorrect-retry", newBossQuestion: true });
+    expect(miss.game.boss.currentQuestionId).not.toBe(q);
+    expect(miss.game.mageRemoved?.[q]).toBeUndefined(); // it left play with its eliminated set
   });
 });

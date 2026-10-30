@@ -35,7 +35,9 @@ function view(over: Partial<SpectatorView> = {}, teams: Partial<SpectatorView["t
     bossCurrentQuestionId: "boss-q1",
     bossKilledBy: null,
     eliminated: {},
+    mageRemoved: {},
     pendingWrong: null,
+    awaitingPrayer: null,
     ...over,
   };
 }
