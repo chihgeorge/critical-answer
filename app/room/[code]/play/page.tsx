@@ -8,7 +8,7 @@ import { DISCONNECTED_NOTICE, offlineNotice, type DropSnapshot } from "@/lib/off
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import type { ClientMessage, LobbyTeams, StateMessage } from "@/lib/protocol";
-import { BRANCH_LABELS, BRANCH_OPTIONS, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, firstPendingBranchRoom, type ClassId } from "@/lib/game-state";
+import { BRANCH_LABELS, BRANCH_OPTIONS, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, READY_CLASSES, WARRIOR_TARGET, firstPendingBranchRoom, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -24,8 +24,6 @@ const CLASS_HINTS: Record<ClassId, string> = {
   cleric: "答錯後立刻再答一次",
   thief: "偷看答案第一個字",
 };
-/** Classes that work in this version; the rest show locked (class-abilities.md D10=A). */
-const READY_CLASSES: ClassId[] = ["warrior"];
 
 /** The lobby's class picker (D10=A): four cards, the ones not built yet locked, and 不選. */
 function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMessage) => void }) {

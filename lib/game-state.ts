@@ -92,6 +92,9 @@ export const DEFAULT_BOSS_HIT_REWARD = 10;
 export const CLASS_IDS = ["mage", "cleric", "warrior", "thief"] as const;
 export type ClassId = (typeof CLASS_IDS)[number];
 
+/** Classes that work in this version; the lobby shows the rest locked and the room refuses them (D10=A). */
+export const READY_CLASSES: readonly ClassId[] = ["warrior"];
+
 export function isClassId(v: unknown): v is ClassId {
   return typeof v === "string" && (CLASS_IDS as readonly string[]).includes(v);
 }

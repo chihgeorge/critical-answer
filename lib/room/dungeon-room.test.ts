@@ -2069,7 +2069,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
   it("a lobby pick shows on LOBBY, the last pick wins, null clears it, and it is fixed at the start", () => {
     const { room, hostConn } = makeRoomWithHost();
     const { conns } = joinTeams(room, hostConn, 2);
-    send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "mage" });
+    send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: null });
     send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "warrior" });
     send(room, conns[1], { type: "TEAM_PICK_CLASS", classId: "warrior" });
     send(room, conns[1], { type: "TEAM_PICK_CLASS", classId: null });
@@ -2079,6 +2079,17 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "thief" });
     expect(err(conns[0])).toBe("game_already_started");
     expect(room.game!.teams[0].classId).toBe("warrior");
+  });
+
+  it("refuses a class that is not built yet, even sent straight to the room", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    const { conns } = joinTeams(room, hostConn, 2);
+    send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "warrior" });
+    for (const classId of ["mage", "cleric", "thief"] as const) {
+      send(room, conns[0], { type: "TEAM_PICK_CLASS", classId });
+      expect(err(conns[0])).toBe("class_not_ready");
+    }
+    expect(lastBroadcast(room).teams[0].classId).toBe("warrior");
   });
 
   it("spends the use at the roll, holds a 12 for 2 s (host judging and a second roll refused), then judges it correct", () => {
@@ -2159,6 +2170,27 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(lastBroadcast(room).reveal).not.toBeNull();
     roll(12);
     expect(err(conns[0])).toBe("reveal_pending");
+  });
+
+  // Value: protects=a room that expires during a roll's beat comes back usable: the next game's host can judge;
+  // fails_when=clearAnswerTimers stops clearing pendingRoll, so every later judge says roll_pending; why_new=the
+  // expiry test above covers a lock's beat only; seam=none; no_claim=real Durable Object storage (mock RoomIO)
+  it("an expiring room drops a roll still in its beat: the next game in the room is not stuck behind it", async () => {
+    vi.useFakeTimers();
+    const { room, roll } = warriorGame();
+    roll(20);
+    await (room as any).expire();
+    vi.advanceTimersByTime(2000);
+    expect(room.game).toBeNull();
+    const host2 = makeConn("host-conn-2");
+    room.onConnect(host2);
+    claim(room, host2);
+    const { ids } = joinTeams(room, host2, 1);
+    send(room, host2, { type: "HOST_START" });
+    const q = room.game!.teams[0].currentQuestionId;
+    send(room, host2, { type: "HOST_JUDGE", teamId: ids[0], questionId: q, correct: true, eventId: seqOf(room) });
+    expect(lastSentTo(host2)?.type).not.toBe("ERROR");
+    expect(lastBroadcast(room).reveal).toMatchObject({ questionId: q });
   });
 
   it("a class pick from a connection with no team is refused", () => {

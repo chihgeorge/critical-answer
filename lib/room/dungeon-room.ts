@@ -19,6 +19,7 @@ import {
   currentTurnTeamId,
   isInBossPhase,
   rollD20,
+  READY_CLASSES,
   spendAbility,
   warriorRoll,
   InvalidActionError,
@@ -1185,6 +1186,7 @@ export class DungeonRoom {
     const team = this.pendingTeams.find((t) => t.id === teamId);
     if (!team) return void this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
     if (this.game) return void this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
+    if (classId && !READY_CLASSES.includes(classId)) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "class_not_ready" });
     if ((team.classId ?? null) === classId) return;
     if (classId) team.classId = classId;
     else delete team.classId;
