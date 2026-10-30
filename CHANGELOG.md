@@ -2,6 +2,17 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.19.0.0] - 2026-10-29
+
+### Added
+- Teams can pick a class in the lobby. The phone shows four class cards plus 「不選（普通冒險者）」. Only 戰士 (warrior) works in this version; 法師, 牧師 and 盜賊 show locked as 「下次更新」. The host's lobby and team rows show each team's class.
+- A warrior team can roll a d20 instead of answering, twice per game. The 擲骰代替答題 button sits under 鎖定答案, and on text turns too. A 12 or higher counts as a correct answer; lower counts as wrong.
+- The big screen shows the roll: the scene dims, a big d20 tumbles and lands on the room's number, then reads 命中！ or 差一點. With reduced motion turned on, the die shows its number at once.
+- During the 2-second roll, the phone reads 「擲出 N！看大螢幕 ▶」, the team card counts down the uses left (「⚔️ 戰士・剩 1 次」), and the host sees 「{隊名}擲出了骰子…」 and cannot judge until the roll lands.
+- A roll's use is spent the moment the room rolls. A team that drops out or reloads during the 2 seconds keeps the roll spent, so it cannot throw a bad roll away and try again.
+- The room refuses a class that is not built yet, even when a phone sends it directly.
+- `docs/designs/class-abilities.md` covers all four classes, with the design and engineering review decisions. This release ships the warrior. Mage, cleric and thief come in a later update.
+
 ## [0.18.0.3] - 2026-10-29
 
 ### Added
