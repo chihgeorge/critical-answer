@@ -7,7 +7,9 @@ export function asTextBank(bank: Bank, answer?: string): Bank {
   const toText = (q: BankQuestion): BankQuestion =>
     q.kind === "multipleChoice"
       ? { kind: "text", id: q.id, content: q.content, answer: answer ?? q.options[q.correctIndex], ...(q.explanation ? { explanation: q.explanation } : {}) }
-      : q;
+      : answer === undefined || q.kind !== "text"
+        ? q
+        : { ...q, answer };
   return {
     ...bank,
     pools: Object.fromEntries(Object.entries(bank.pools).map(([d, qs]) => [d, qs.map(toText)])) as Bank["pools"],
