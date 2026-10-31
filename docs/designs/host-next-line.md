@@ -1,6 +1,6 @@
 # 「下一句這樣說」：主持人指定下一句旁白
 
-狀態：草稿（2026-10-31），等 `/plan-eng-review`。來源：TODOS.md 的同名 P2 項目。
+狀態：eng review 完成（2026-10-31），已在 `feat/next-line` 實作（T1–T3）。來源：TODOS.md 的同名 P2 項目。
 
 ## 問題
 
@@ -41,19 +41,23 @@
 ```
 
 1. 主持人頁 `⚙ 更多` 新增一區「下一句這樣說（最多 40 字）」：輸入框、「排進下一句」按鈕；已排入時顯示「已排入：…」和「取消」（D3）。這一區只在收到過 `HOST_NEXT_LINE_STATE` 之後、且遊戲還沒結束時顯示（D5、D10）。
-2. 用戶端訊息 `HOST_NEXT_LINE { line }`，原本就是空字串代表取消。伺服器用 `sanitizeText(raw, MAX_EDIT_LINE)` 清理；非空的輸入清理後變空白，回 `ERROR invalid_action empty_line`（D11）。只有主持人能送（`requireHost`）；遊戲結束後回 `ERROR invalid_action game_over`（D10）。
+2. 用戶端訊息 `HOST_NEXT_LINE { line }`，原本就是空字串代表取消。伺服器先把空白和換行併成一個空格，再用 `sanitizeText(..., MAX_EDIT_LINE)` 清理；非空的輸入清理後變空白，回 `ERROR invalid_action empty_line`（D11）。只有主持人能送（`requireHost`）；遊戲結束後回 `ERROR invalid_action game_over`（D10）。
 3. `DungeonRoom.nextLine: { text, gen } | null`。每次排入或取消 `gen` 加一（D7）。設定、清掉、主持人連上（送 `HOST_OK` 的地方）時，送 `HOST_NEXT_LINE_STATE { line }` 給 `hostConns` 裡每一條連線。
 4. `NarrationEvent` 的 `WithNext` 加選填 `hostLine?: string` 和 `hostLineVerbatim?: true`（後記沒有）。旁白紀錄因此也記得這次有排句子。
 5. `buildPrompt` 看到 `hostLine`（且不是 `hostLineVerbatim`）時換掉第二行指示；句子用「」包住當資料，跟導演筆記同一層信任（主持人自己寫的）。
 6. `runner.run` 組好各段後只檢查第二段；沒說到就覆蓋第二段，`sources[1] = "host"`。
 7. 房間的 emit：過時的旁白照舊丟掉（不消耗）；沒被丟掉、且 `nextLine.gen` 等於這個事件記住的 `gen` 時，先清 `nextLine` 再廣播 NARRATION，然後通知主持人頁。
-8. 遊戲結束（`phase === "finished"`）時清掉 `nextLine` 並通知（D10）。
+8. 遊戲結束（`phase === "finished"`）後，沒有旁白帶著 `nextLine` 在跑時就清掉並通知；決勝那題的旁白帶著它時，說完才清（D10，/review 修正，見已知限制）。遊戲結束後才還原的存檔也直接清掉。
 9. 旁白紀錄：排入時加一筆 `DirectorEntry`，`kind: "next"`。
 10. 存檔（D2）：`RoomSnapshot` 加選填 `nextLine?: { text: string; gen: number }`（讀不到當 `null`），不升 `SCHEMA_VERSION`，比照 `joinPassword`。`reset()` 清掉。
 
 ### 已知限制
 
-- 兩個事件的旁白同時在跑（3 秒內連續判定兩次）時，兩次的提示詞都會帶這句；先出現的那次用掉它，後一次的第二段可能還是說了一次。很少見，接受。
+- 兩個事件的旁白同時在跑（3 秒內連續判定兩次）時，只有第一段帶這句；若第一段因為晚到被丟掉，句子留給下一次旁白（/review 修正）。
+- 決定勝負的那一題，旁白照樣說出排入的句子，說完才清掉；遊戲結束後沒有旁白在跑時才直接清掉（/review 修正 D10）。
+- 開 AI 時，若決勝那題之前的旁白還帶著這句在跑，而決勝旁白先回來，前一段被當成過期丟掉，這句就不會被說出來。要兩題判得很近才會發生，接受。
+- 旁白已經開始跑之後才按「取消」或改排別句，這次旁白還是會說原本那句（AI 最多等 3 秒）。接受。
+- 句子裡含題庫答案時會逐字上螢幕。主持人本來就看得到答案、也能用「改寫」直接改旁白，所以這是主持人自己的選擇，不擋。
 - AI 沒聽話、把句子寫在第一或第三行時，覆蓋第二段後會出現兩次。很少見，接受。
 - AI 那次寫的第二段沒用到時照樣付費。
 - 主持人的「改寫目前旁白」只能改第一段，改不到這句；用掉的句子不會因為改寫而回來。
@@ -209,15 +213,15 @@ REALITY: pr-count pass one PR (no ship-policy.json, default one PR per wave) doc
 
 ## Implementation Tasks
 
-- [ ] **T1 (P1, human: ~2h / CC: ~10min)** — narration — `hostLine` on events, prompt line-2 instruction, runner segment-2 check with NFKC
+- [x] **T1 (P1, human: ~2h / CC: ~10min)** — narration — `hostLine` on events, prompt line-2 instruction, runner segment-2 check with NFKC
   - Surfaced by: S1/X2/X3 (D1, D8, D9)
   - Files: lib/narration/events.ts, lib/narration/llm.ts, lib/narration/runner.ts, tests, llm.live.test.ts
   - Verify: npm run test
-- [ ] **T2 (P1, human: ~3h / CC: ~15min)** — room — HOST_NEXT_LINE handling, gen numbers, emit clear before broadcast, game-over clear, snapshot
+- [x] **T2 (P1, human: ~3h / CC: ~15min)** — room — HOST_NEXT_LINE handling, gen numbers, emit clear before broadcast, game-over clear, snapshot
   - Surfaced by: S2, X1, X4, X5 (D2, D7, D10, D11)
   - Files: lib/protocol.ts, lib/room/dungeon-room.ts, lib/room/snapshot.ts, tests
   - Verify: npm run test
-- [ ] **T3 (P1, human: ~2h / CC: ~10min)** — host page — 下一句這樣說 section, 已排入/取消, shown only after state arrives and before game over; PNG preview first
+- [x] **T3 (P1, human: ~2h / CC: ~10min)** — host page — 下一句這樣說 section, 已排入/取消, shown only after state arrives and before game over; PNG preview first
   - Surfaced by: S3, A1 (D3, D5)
   - Files: app/room/[code]/host/page.tsx, e2e/host-drawer.spec.ts
   - Verify: npm run e2e
