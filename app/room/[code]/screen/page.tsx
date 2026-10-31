@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE } from "@/lib/offline-notice";
 import type { AnswerReveal, LobbyTeams, PendingRoll, PublicQuestion, StateMessage } from "@/lib/protocol";
-import type { LockedOption, SpectatorView } from "@/lib/game-state";
+import type { LockedOption, SpectatorView, WrongAnswer } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -149,7 +149,7 @@ const TILE_SPOTS = [
  * thinks, 🔒 during the beat, the wrong pick red while the team decides, the answer green on a
  * correct reveal. Eliminated options are the grey ✕ 答錯 tile; a mage's removal (`magic`) is grey with no label (D13=A).
  */
-function WallOptions({ options, gone, magic, lock, wrong, correct, teamName }: { options: string[]; gone: number[]; magic: number[]; lock: LockedOption | null; wrong: LockedOption | null; correct: number | null; teamName: string }) {
+function WallOptions({ options, gone, magic, lock, wrong, correct, teamName }: { options: string[]; gone: number[]; magic: number[]; lock: LockedOption | null; wrong: WrongAnswer | null; correct: number | null; teamName: string }) {
   return (
     <>
       {options.slice(0, TILE_SPOTS.length).map((opt, i) => {

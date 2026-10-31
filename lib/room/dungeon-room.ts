@@ -26,6 +26,7 @@ import {
   armSneak,
   pray,
   canPray,
+  recordTextWrong,
   warriorRoll,
   InvalidActionError,
   type BranchOptionId,
@@ -1118,7 +1119,7 @@ export class DungeonRoom {
     teamId: string,
     questionId: string,
     correct: boolean,
-    fleeChoice?: "flee" | "retry",
+    fleeChoice?: "flee" | "retry" | "team" | "pray",
     eventId?: number,
   ) {
     if (!this.requireHost(conn)) return;
@@ -1136,6 +1137,7 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: this.paused() ? "reveal_pending" : this.pendingRoll ? "roll_pending" : "lock_pending" });
       return;
     }
+    if (fleeChoice === "team" || fleeChoice === "pray") return this.hostClericWrong(conn, teamId, questionId, fleeChoice);
     // A multipleChoice question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
     // team (E5), never 答對.
     if (correct && this.question(questionId)?.kind === "multipleChoice") {
@@ -1147,6 +1149,28 @@ export class DungeonRoom {
     } catch (err) {
       this.sendInvalid(conn, err);
     }
+  }
+
+  /** The host's 答錯 on a cleric's fill-in (#106): "team" waits for the team's 祈禱 / 重答 / 逃跑, "pray" picks
+   * 祈禱 for it. 重答 / 逃跑 from the wait are plain HOST_JUDGE retry / flee. The first press wins: a later
+   * one finds no wait (or a settled one) and is refused. */
+  private hostClericWrong(conn: Conn, teamId: string, questionId: string, choice: "team" | "pray") {
+    const game = this.game!;
+    if (this.question(questionId)?.kind !== "text") return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "not_text" });
+    try {
+      if (choice === "team") {
+        this.game = recordTextWrong(game, teamId, questionId);
+        return this.broadcastState();
+      }
+      const wrong = game.pendingWrong;
+      if (wrong?.teamId !== teamId || wrong.questionId !== questionId || wrong.optionIndex !== null) {
+        return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_wrong_answer" });
+      }
+      this.game = pray(game, teamId);
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    this.retryAfterPrayer(teamId, questionId);
   }
 
   private handleSendToBoss(conn: Conn, teamId: string) {
@@ -1195,7 +1219,8 @@ export class DungeonRoom {
     const justAnswered = this.currentQuestion();
     const monster = justAnswered?.pub.monster.name ?? "怪物";
     // A boss MC miss has no flee (D2=B): the host's stuck row (button or key 3) resolves it as the beat would.
-    if (!correct && prev.pendingWrong?.teamId === teamId && isInBossPhase(prev, teamId)) fleeChoice = "retry";
+    // A cleric's fill-in wait (optionIndex null) keeps its 逃跑, which rotates the question (#106 D2=A).
+    if (!correct && prev.pendingWrong?.teamId === teamId && prev.pendingWrong.optionIndex !== null && isInBossPhase(prev, teamId)) fleeChoice = "retry";
     const { game, outcome } =
       roll === undefined ? answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng) : warriorRoll(prev, teamId, questionId, roll, this.rng);
     // Everything up to broadcastState is synchronous: state changes and the eventId are
@@ -1299,7 +1324,7 @@ export class DungeonRoom {
   private armBossMiss() {
     const pending = this.game?.pendingWrong;
     // A cleric that may pray decides itself (祈禱 / 不用); the host's stuck row covers a team that never does (R1b).
-    if (!pending || !isInBossPhase(this.game!, pending.teamId) || canPray(this.game!, pending.teamId)) return;
+    if (!pending || pending.optionIndex === null || !isInBossPhase(this.game!, pending.teamId) || canPray(this.game!, pending.teamId)) return;
     if (this.lockTimer) clearTimeout(this.lockTimer);
     this.lockTimer = setTimeout(() => {
       // Resolved early (the host judged it): lockTimer may already be the next lock's beat.
@@ -1328,8 +1353,9 @@ export class DungeonRoom {
   /** The team's class ability (class-abilities.md). The warrior: the room spends the use and rolls at
    * once, then shows the die for a beat; resolveRoll judges it (R2; R3 reversed in /review: a roll
    * dropped in its beat is not free, or a reload would throw a bad die away). The mage and the thief
-   * act at once and the team then answers. The cleric prays on its wrong lock; in the boss room the
-   * miss then resolves at once, rotating the question as usual, and the cleric answers the new one. */
+   * act at once and the team then answers. The cleric prays on its wrong answer; in the boss room the
+   * miss then resolves at once, rotating the question as usual, and the cleric answers the new one. On a
+   * fill-in wait (#106) it resolves at once too, and the cleric answers the same question again. */
   private handleTeamUseAbility(conn: Conn, questionId: string) {
     const teamId = this.playingTeam(conn);
     const game = this.game;
@@ -1356,15 +1382,22 @@ export class DungeonRoom {
     if (classId === "warrior") {
       this.pendingRoll = { teamId, questionId, value: rollD20(this.rng) };
       this.lockTimer = setTimeout(() => this.resolveRoll(), BEAT_MS);
-    } else if (classId === "cleric" && isInBossPhase(next, teamId)) {
-      try {
-        return this.judge(teamId, questionId, false, "retry", false);
-      } catch (err) {
-        // The prayer stands; the miss falls back to the host's stuck row, like a cleric that never chose.
-        console.error(JSON.stringify({ event: "prayer_failed", error: String(err) }));
-      }
+    } else if (classId === "cleric" && (isInBossPhase(next, teamId) || game.pendingWrong?.optionIndex === null)) {
+      return this.retryAfterPrayer(teamId, questionId);
     }
     this.broadcastState();
+  }
+
+  /** A prayer that resolves at once: in the boss room, or on a fill-in (#106), where the cleric answers again
+   * straight away, keeping the turn. Shared by the team's 祈禱 and the host's. */
+  private retryAfterPrayer(teamId: string, questionId: string) {
+    try {
+      this.judge(teamId, questionId, false, "retry", false);
+    } catch (err) {
+      // The prayer stands; the miss falls back to the host's keys, like a cleric that never chose.
+      console.error(JSON.stringify({ event: "prayer_failed", error: String(err) }));
+      this.broadcastState();
+    }
   }
 
   private resolveRoll() {
@@ -1397,8 +1430,8 @@ export class DungeonRoom {
       return;
     }
     // A boss miss resolves on its own beat (D2=B): a phone cannot cut the red tile short. A cleric
-    // that may pray has no beat: its 不用 is a retry.
-    if (isInBossPhase(this.game!, teamId) && !(choice === "retry" && canPray(this.game!, teamId))) {
+    // that may pray has no beat: its 不用 is a retry. A fill-in wait has no red tile: 重答 and 逃跑 both stand (#106).
+    if (pending.optionIndex !== null && isInBossPhase(this.game!, teamId) && !(choice === "retry" && canPray(this.game!, teamId))) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "boss_miss" });
       return;
     }

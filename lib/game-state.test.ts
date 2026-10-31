@@ -25,6 +25,8 @@ import {
   armSneak,
   pray,
   canPray,
+  canPrayBeforeJudge,
+  recordTextWrong,
   rollD20,
   isClassId,
   submitText,
@@ -1584,6 +1586,33 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const next = answerQuestion(again, "T0", q, false, "retry").game;
     expect(currentTurnTeamId(next)).toBe("T1");
     expect(next.prayerTurn).toBeUndefined();
+  });
+
+  // Value: protects=only a cleric with a use left and no prayer this turn may wait on a fill-in 答錯, and the view tells the
+  // host so (#106 AC7, AC12); fails_when=a spent cleric or a non-cleric pins the turn in a wait, or mayPray shows for them;
+  // seam=none; no_claim=the room's question-kind check (room tests)
+  it("a cleric's fill-in 答錯 waits only while it may still pray", () => {
+    const g = classGame(["cleric", undefined]);
+    const q = currentQ(g, "T0");
+    expect(canPrayBeforeJudge(g, "T0")).toBe(true);
+    expect(getSpectatorView(g).teams.map((t) => t.mayPray)).toEqual([true, undefined]);
+    const waiting = recordTextWrong(g, "T0", q);
+    expect(waiting.pendingWrong).toEqual({ teamId: "T0", questionId: q, optionIndex: null });
+    expect(getSpectatorView(waiting).awaitingPrayer).toBe("T0");
+    expect(() => recordTextWrong(waiting, "T0", q)).toThrow(/cannot_pray/);
+    const spent = { ...g, teams: g.teams.map((t, i) => (i === 0 ? { ...t, abilityUses: 0 } : t)) };
+    expect(() => recordTextWrong(spent, "T0", q)).toThrow(/cannot_pray/);
+    expect(() => recordTextWrong({ ...g, prayerTurn: "T0" }, "T0", q)).toThrow(/cannot_pray/);
+    // Value (ship audit): protects=no wait for a cleric off its turn or on a question it no longer faces; fails_when=the
+    // turn or current-question guard is dropped and a wait pins another team's turn; seam=none; no_claim=none
+    const two = classGame(["cleric", "cleric"]);
+    expect(() => recordTextWrong(two, "T1", currentQ(two, "T1"))).toThrow(/turn/);
+    expect(() => recordTextWrong(two, "T0", currentQ(two, "T1"))).toThrow(/Stale/);
+    // Praying settles it as a retry that keeps the turn on the same question.
+    const retried = answerQuestion(pray(waiting, "T0"), "T0", q, false, "retry").game;
+    expect(currentTurnTeamId(retried)).toBe("T0");
+    expect(retried.teams[0]).toMatchObject({ currentQuestionId: q, abilityUses: 1 });
+    expect(canPrayBeforeJudge(retried, "T0")).toBe(false);
   });
 
   it("a cleric's prayed flee deals an easier question and keeps the turn; a non-cleric cannot pray", () => {
