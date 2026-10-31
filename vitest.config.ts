@@ -1,6 +1,8 @@
 import { defineConfig, configDefaults } from "vitest/config";
 
 export default defineConfig({
+  // Same "@/" alias as tsconfig, for tests that import app/ or components/ files.
+  resolve: { alias: { "@": new URL(".", import.meta.url).pathname } },
   test: {
     environment: "node",
     include: ["lib/**/*.test.ts", "scripts/**/*.test.ts"],

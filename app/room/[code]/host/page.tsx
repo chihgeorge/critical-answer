@@ -5,6 +5,7 @@ import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
+import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
 import { DEFAULT_AI_LIMIT, MAX_AI_LIMIT, type AiKeyError, type ClientMessage, type HostPick, type LobbyTeams, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, readStored, writeStored } from "@/lib/stored";
@@ -441,6 +442,7 @@ function AiExhausted({ status, send, onDismiss }: { status: AiStatus; send: (msg
 
 export default function HostPage() {
   const { code } = useParams<{ code: string }>();
+  useWakeLock();
 
   const [lobby, setLobby] = useState<LobbyTeams>([]);
   const [game, setGame] = useState<StateMessage | null>(null);

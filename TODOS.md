@@ -5,6 +5,30 @@
 
 
 
+## 換一組新的 OWNER_KEY，並在正式站測題庫編輯器（下週，2026-11-02 起）
+
+**What:** 站長忘了原本的 `OWNER_KEY`。在自己的終端機、專案資料夾裡跑：
+
+```bash
+K=$(openssl rand -base64 32); printf '%s' "$K" | npx wrangler secret put OWNER_KEY && echo "新的 OWNER_KEY：$K"; unset K
+```
+
+印出的值立刻存進密碼管理器。接著打開 https://critical-answer.vercel.app/bank-editor 貼上新密鑰、按「載入題庫」，確認讀得到題目；再到主持人頁的「站長金鑰」貼一次，確認 AI 旁白會開。
+
+**Why:** 沒有這把密鑰就不能在正式站改題庫，也不能用站長的 `ANTHROPIC_API_KEY` 開 AI 旁白。Cloudflare 不能把舊值讀出來，只能換新的。
+
+**Pros:** 一行指令，換完舊值立刻失效，不用重新部署。
+
+**Cons:** 要站長本人在終端機跑（wrangler 可能要登入 Cloudflare）；密鑰不能貼進對話、GitHub 或任何檔案。
+
+**Context:** README「題庫編輯器」一節；`lib/bank-api.ts` 驗證這把密鑰；長度至少 32 bytes，太短 Worker log 會留警告。
+
+**Effort:** S（人工約 10 分鐘）　**Priority:** P1
+
+**Depends on / blocked by:** 站長有空、手邊有終端機（2026-10-31 決定下週做）。
+
+---
+
 ## 題目比隊伍少時，兩隊可能一直拿同一題
 
 **What:** 自訂題庫的題目比隊伍數少時，開局就會有兩隊拿同一題（沒辦法避免）。之後有題目空出來（某隊進王房、被主持人送進王房、或答對換題），只有正在出題的那一隊會換題，共用同一題的兩隊要等其中一隊下次出題才會分開。做法：有題目空出來時，從共用同一題的隊伍裡挑一隊（沒有選錯紀錄的）立刻換到空出來的題目。
@@ -34,24 +58,6 @@
 **Effort:** S　**Priority:** P3
 
 **Depends on / blocked by:** 無。
-
----
-
-## 用真的 API 驗證後記改用 Sonnet 5.5 之後還正常
-
-**What:** 在專案目錄跑 `ANTHROPIC_API_KEY=<金鑰> npm run test:live`，確認旁白（`claude-haiku-4-5`）和後記（`claude-sonnet-5-5`）都打得通、輸出通過我們的驗證。
-
-**Why:** v0.9.14.6 把後記從 Sonnet 5 換成 Sonnet 5.5，關閉思考的參數也從 `disabled` 改成 `between_tools`。單元測試只確認請求長得對，沒有真的打 API；出貨時本機沒有金鑰，這一步跳過了。萬一 Sonnet 5.5 不接受這個請求，線上每場遊戲的後記都會安靜地退回罐頭文字，不會報錯。
-
-**Pros:** 一行指令、幾美分，就能確認新模型真的能用，不用等線上有人玩完一場。
-
-**Cons:** 需要有金鑰的人手動跑；金鑰不該貼進對話或寫進檔案。
-
-**Context:** 測試在 `lib/narration/llm.live.test.ts`，不在 `npm test` 裡，沒有金鑰時會自動跳過。如果失敗，先看錯誤訊息是不是 400 `thinking`（參數問題）或 `refusal`（內容被拒）；設定在 `lib/narration/llm.ts` 的 `EPILOGUE_MODEL` 和後記請求的 `thinking`。也可以看線上大螢幕的後記是不是罐頭版，或主持人「下載旁白紀錄」裡後記那筆的 `fallbackReason`。
-
-**Effort:** S　**Priority:** P2
-
-**Depends on / blocked by:** 有 `ANTHROPIC_API_KEY` 的人。
 
 ---
 
@@ -587,34 +593,6 @@
 
 ---
 
-## 電視和主持人的螢幕會自動休眠
-
-**What:** 程式裡完全沒用 Screen Wake Lock。接電視的筆電或主持人的手機在一輪裡很久沒人碰，螢幕就會暗掉。做法：大螢幕頁和主持人頁呼叫 `navigator.wakeLock.request("screen")`，`visibilitychange` 回到前景時再要一次。
-
-**Why:** 全場看著黑掉的電視，要等有人去喚醒。
-
-**Context:** `app/room/[code]/screen/page.tsx`、`app/room/[code]/host/page.tsx`。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
----
-
-## 前端一當掉就整頁白屏，也沒有回報
-
-**What:** 沒有 `app/error.tsx` 或 `app/global-error.tsx`，也沒有 `window.onerror`、`unhandledrejection` 的處理。一個渲染錯誤（例如版本不一致時 STATE 多了或少了欄位）就會讓電視或手機變成 Next 的「Application error」白頁，只能重新整理，而且我們不會知道發生過。做法：加 `error.tsx` 顯示「出錯了，按這裡重新載入」，再把錯誤送到 Worker 記一筆 log。
-
-**Why:** 派對中電視白屏，主持人不知道要按重新整理。
-
-**Context:** Worker 端已經有 log（`wrangler.jsonc` 開了 `observability`），缺的是前端。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約半天 / CC 約 30 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
----
-
 ## 不檢查房間代碼格式，任何名字都能開出新房
 
 **What:** `entryGate` 只檢查 party 名稱是不是 `main` 和 Origin，沒有檢查房間代碼。沒帶 Origin 的請求是允許的，所以腳本可以對 `/parties/main/<任意字串>` 開 WebSocket，每個名字都會建一個 Durable Object、設 alarm、寫一份包含整個題庫的 snapshot，在儲存空間留 24 小時。做法：在 gate 拒絕不符合 `^[BCDEFGHJKLMNPQRSTUVWXYZ]{4}$` 的名字。也可以改成等第一則有效訊息才寫入，這部分是 M。
@@ -756,6 +734,58 @@
 ---
 
 ## Completed
+
+## 電視和主持人的螢幕會自動休眠
+
+**What:** 程式裡完全沒用 Screen Wake Lock。接電視的筆電或主持人的手機在一輪裡很久沒人碰，螢幕就會暗掉。做法：大螢幕頁和主持人頁呼叫 `navigator.wakeLock.request("screen")`，`visibilitychange` 回到前景時再要一次。
+
+**Why:** 全場看著黑掉的電視，要等有人去喚醒。
+
+**Context:** `app/room/[code]/screen/page.tsx`、`app/room/[code]/host/page.tsx`。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+**Completed:** v0.26.0.0 (2026-10-31)：`lib/use-wake-lock.ts`，大螢幕頁和主持人頁都用；回到前景再要一次，瀏覽器不支援或拒絕就照舊。
+
+---
+
+## 前端一當掉就整頁白屏，也沒有回報
+
+**What:** 沒有 `app/error.tsx` 或 `app/global-error.tsx`，也沒有 `window.onerror`、`unhandledrejection` 的處理。一個渲染錯誤（例如版本不一致時 STATE 多了或少了欄位）就會讓電視或手機變成 Next 的「Application error」白頁，只能重新整理，而且我們不會知道發生過。做法：加 `error.tsx` 顯示「出錯了，按這裡重新載入」，再把錯誤送到 Worker 記一筆 log。
+
+**Why:** 派對中電視白屏，主持人不知道要按重新整理。
+
+**Context:** Worker 端已經有 log（`wrangler.jsonc` 開了 `observability`），缺的是前端。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約半天 / CC 約 30 分鐘）　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+**Completed:** v0.26.0.0 (2026-10-31)：`app/error.tsx`、`app/global-error.tsx` 顯示「畫面出錯了」和「重新載入」，並把錯誤送到 Worker 的 `POST /api/client-error` 記一筆 log。沒做 `window.onerror` / `unhandledrejection`：事件處理或 Promise 裡的錯誤不會白屏，所以也不會回報。
+
+---
+
+## 用真的 API 驗證後記改用 Sonnet 5.5 之後還正常
+
+**What:** 在專案目錄跑 `ANTHROPIC_API_KEY=<金鑰> npm run test:live`，確認旁白（`claude-haiku-4-5`）和後記（`claude-sonnet-5-5`）都打得通、輸出通過我們的驗證。
+
+**Why:** v0.9.14.6 把後記從 Sonnet 5 換成 Sonnet 5.5，關閉思考的參數也從 `disabled` 改成 `between_tools`。單元測試只確認請求長得對，沒有真的打 API；出貨時本機沒有金鑰，這一步跳過了。萬一 Sonnet 5.5 不接受這個請求，線上每場遊戲的後記都會安靜地退回罐頭文字，不會報錯。
+
+**Pros:** 一行指令、幾美分，就能確認新模型真的能用，不用等線上有人玩完一場。
+
+**Cons:** 需要有金鑰的人手動跑；金鑰不該貼進對話或寫進檔案。
+
+**Context:** 測試在 `lib/narration/llm.live.test.ts`，不在 `npm test` 裡，沒有金鑰時會自動跳過。如果失敗，先看錯誤訊息是不是 400 `thinking`（參數問題）或 `refusal`（內容被拒）；設定在 `lib/narration/llm.ts` 的 `EPILOGUE_MODEL` 和後記請求的 `thinking`。也可以看線上大螢幕的後記是不是罐頭版，或主持人「下載旁白紀錄」裡後記那筆的 `fallbackReason`。
+
+**Effort:** S　**Priority:** P2
+
+**Depends on / blocked by:** 有 `ANTHROPIC_API_KEY` 的人。
+
+**Completed:** 2026-10-31（v0.25.0.0 出貨時）：`npm run test:live` 9/9 通過，包含後記（`claude-sonnet-5-5`）留住贏家名字的那一項。
+
+---
 
 ## 「下一句這樣說」：主持人指定下一句旁白
 
