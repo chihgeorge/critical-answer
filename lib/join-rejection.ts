@@ -11,10 +11,11 @@ export interface JoinRejection {
  * The sentence a phone shows when the room refuses its JOIN (lib/room/dungeon-room.ts handleJoin), or null for
  * any other error. Pure, so it's unit-tested. `sentPassword`: whether the JOIN carried a password. `joined`: the
  * phone has seen its team in a LOBBY or STATE. Then the error answers something else, e.g. a class pick that
- * raced HOST_START gets game_already_started too.
+ * raced HOST_START gets game_already_started too. invalid_team_id and bad_token answer only JOIN/REJOIN, and the
+ * connect-time snapshot already names a known team, so `joined` doesn't hide them.
  */
 export function joinRejection(error: ServerErrorCode, detail: string | undefined, sentPassword: boolean, joined: boolean): JoinRejection | null {
-  if (joined) return null;
+  if (joined && error !== "invalid_team_id" && error !== "bad_token") return null;
   switch (error) {
     case "bad_password":
       return { text: sentPassword ? "房間密碼不對" : "這個房間要密碼才能加入", link: "password" };

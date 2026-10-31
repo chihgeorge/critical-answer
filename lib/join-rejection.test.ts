@@ -18,7 +18,13 @@ describe("joinRejection", () => {
   // handleTeamPickClass); it must not lock that team out of the game it is in.
   it("never calls an error a refused JOIN once the phone has joined", () => {
     expect(joinRejection("game_already_started", undefined, false, true)).toBeNull();
-    expect(joinRejection("bad_token", undefined, false, true)).toBeNull();
+  });
+
+  // /ship: the connect-time snapshot names a known team before its JOIN is checked, so `joined` is already true
+  // when a stale key's bad_token arrives. Only JOIN/REJOIN send these two, so they are always a refusal.
+  it("still refuses a stale team key after the snapshot named the team", () => {
+    expect(joinRejection("bad_token", undefined, false, true)?.text).toBe("加入失敗，請換一個瀏覽器再加入");
+    expect(joinRejection("invalid_team_id", undefined, false, true)?.link).toBe("home");
   });
 
   it("leaves errors that are not a refused JOIN alone", () => {

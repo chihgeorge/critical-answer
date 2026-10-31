@@ -381,7 +381,8 @@ export default function PlayPage() {
     // JOIN carries `resume` so it isn't activity.
     onOpen(resume) {
       setDisconnected(false);
-      // A wiped room has forgotten us, so this JOIN may be refused: ask again. The room's LOBBY or STATE naming us comes before any later ERROR.
+      // A wiped room has forgotten us, so this JOIN may be refused: ask again. The connect-time snapshot may name
+      // us before the JOIN is checked; joinRejection still lets a bad key's bad_token through.
       joined.current = false;
       const id = getOrCreateTeamId();
       setTeamId(id);
