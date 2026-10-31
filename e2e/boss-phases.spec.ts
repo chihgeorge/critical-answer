@@ -67,7 +67,7 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByTestId("phase-card")).toContainText("第二階段：主題曲之謎");
   await expect(screen.getByTestId("phase-card")).toContainText("聽前奏，說出這首是哪部作品的主題曲");
-  await expect(screen.getByText("還沒結束！")).toBeVisible();
+  await expect(screen.getByText("還沒結束！", { exact: true })).toBeVisible();
   await expect(team.getByTestId("phone-phase-card")).toContainText("第二階段：主題曲之謎");
   await expect(host.getByTestId("host-reveal")).toHaveText("大螢幕正在揭曉：第二階段－主題曲之謎");
   await expect(screen.getByText("題目 phase2-a")).toHaveCount(0); // held back until 下一題
