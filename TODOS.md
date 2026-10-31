@@ -788,7 +788,7 @@
 
 **Depends on / blocked by:** 無。
 
-**Completed:** v0.24.1.0 (2026-10-30)：手機和大螢幕 10 秒沒連上就顯示「連不上伺服器」和「重試」（`lib/use-room-socket.ts` 的 `unreachable`）。主持人頁沒有做。
+**Completed:** v0.24.1.0 (2026-10-31)：手機和大螢幕 10 秒沒連上就顯示「連不上伺服器」和「重試」（`lib/use-room-socket.ts` 的 `unreachable`）。主持人頁沒有做。
 
 ---
 
@@ -804,7 +804,7 @@
 
 **Depends on / blocked by:** 無。
 
-**Completed:** v0.24.1.0 (2026-10-30)：每種加入錯誤都有一句說明（`lib/join-rejection.ts`），也包含 `invalid_team_id`、`bad_token`；被拒絕的手機只顯示原因，不顯示遊戲畫面。
+**Completed:** v0.24.1.0 (2026-10-31)：每種加入錯誤都有一句說明（`lib/join-rejection.ts`），也包含 `invalid_team_id`、`bad_token`；被拒絕的手機只顯示原因，不顯示遊戲畫面。
 
 ---
 
