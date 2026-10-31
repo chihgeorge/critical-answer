@@ -23,6 +23,7 @@ import { McOption, optionLetter, type OptionLook } from "@/components/mc-option"
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 import { RollOverlay } from "@/components/d20";
+import { MageHint } from "@/components/mage-hint";
 import { readStored, writeStored } from "@/lib/stored";
 
 const TTS_ENABLED_STORAGE = "screen-tts-enabled";
@@ -253,6 +254,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
           // question forces a fresh DOM node, or a broken image would stay hidden forever
           // once React reuses this node for the next media question (adversarial review).
           <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
+        )}
+        {!reveal && !card && question && !question.options && (
+          <MageHint hint={view.mageHints?.[question.id]} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
         )}
         {/* #104: the team's typed answer to a text question, for the room to see. */}
         {!reveal && !card && question && !question.options && turn?.typedAnswer && (

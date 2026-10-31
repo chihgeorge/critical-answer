@@ -55,13 +55,14 @@ export function restoreRoom0AfterEach() {
 /** For specs about the host judging by hand (keys, 答錯・重答, a whole game driven by HOST_JUDGE):
  * every question becomes a text question (the correct option as the answer), since a
  * multipleChoice turn is judged by the phone's lock, not the host, and the bundled bank is all
- * multipleChoice. The whole bank is put back after each test, like restoreRoom0AfterEach. */
-export function textOnlyBank() {
+ * multipleChoice. The whole bank is put back after each test, like restoreRoom0AfterEach.
+ * `answer`, when given, replaces every answer (a spec that needs to know it, like the mage's hint). */
+export function textOnlyBank(answer?: string) {
   let original: unknown;
   test.beforeEach(async ({ request }) => {
     const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
     original = bank;
-    const saved = await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: asTextBank(bank), version } });
+    const saved = await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: asTextBank(bank, answer), version } });
     expect(saved.ok()).toBe(true);
   });
   test.afterEach(async ({ request }) => {

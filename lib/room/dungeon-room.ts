@@ -22,6 +22,7 @@ import {
   rollD20,
   spendAbility,
   mageEliminate,
+  mageHint,
   armSneak,
   pray,
   canPray,
@@ -1343,8 +1344,9 @@ export class DungeonRoom {
       if (classId === "cleric") next = pray(game, teamId);
       else if (classId === "thief") next = armSneak(game, teamId);
       else if (classId === "mage") {
-        if (q?.kind !== "multipleChoice") return reject("not_multiple_choice");
-        next = mageEliminate(game, teamId, questionId, q.correctIndex, q.options.length, this.rng);
+        if (q?.kind === "multipleChoice") next = mageEliminate(game, teamId, questionId, q.correctIndex, q.options.length, this.rng);
+        else if (q?.kind === "text") next = mageHint(game, teamId, questionId, q.answer);
+        else return reject("stale_question"); // not in the bank
       } else next = spendAbility(game, teamId, "warrior");
     } catch (err) {
       return this.sendInvalid(conn, err);

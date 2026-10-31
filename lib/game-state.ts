@@ -239,6 +239,8 @@ export interface GameState {
   eliminated: Record<string, number[]>;
   /** The part of `eliminated` a mage removed: grey with no ✕ 答錯 label (class-abilities.md D13=A). */
   mageRemoved?: Record<string, number[]>;
+  /** A mage's public hint on a fill-in question, per question id: the answer's first letter or number. */
+  mageHints?: Record<string, string>;
   /** A wrong lock waiting for that team's 重答 / 逃跑. The team keeps the turn meanwhile, even offline (E9). */
   pendingWrong: LockedOption | null;
   /** The cleric whose prayer kept this turn: it cannot pray again until the turn moves on. */
@@ -779,11 +781,11 @@ export function answerQuestion(
     }
   }
 
-  // Eliminated options belong to a question still in play: once it leaves (answered, fled, rotated)
+  // Eliminated options and a mage's hint belong to a question still in play: once it leaves (answered, fled, rotated)
   // a later deal of it starts clean.
   // Any team: a room short of questions can deal one question to two teams at once.
   const stillFaced = nextGame.teams.some((t) => (t.inBoss ? nextGame.boss.currentQuestionId : t.currentQuestionId) === questionId);
-  if (!stillFaced && questionId in nextGame.eliminated) nextGame = { ...nextGame, ...dropEliminated(nextGame, questionId) };
+  if (!stillFaced && (questionId in nextGame.eliminated || questionId in (nextGame.mageHints ?? {}))) nextGame = { ...nextGame, ...dropEliminated(nextGame, questionId) };
   // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
   const here = { ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) };
   // A prayed wrong lock keeps the turn (class-abilities.md PR 2): the cleric answers again at once.
@@ -839,6 +841,25 @@ export function mageEliminate(
       t.currentSelection !== null && removed.includes(t.currentSelection) && currentQuestionIdOf(game, t.id) === questionId ? { ...t, currentSelection: null } : t,
     ),
   };
+}
+
+/** The answer's first letter or number (skipping spaces, punctuation, symbols, emoji), or null when it
+ * has fewer than 2 of them: one would give the whole answer away. */
+export function firstMeaningfulChar(answer: string): string | null {
+  const chars = answer.match(/[\p{L}\p{N}]/gu) ?? [];
+  return chars.length >= 2 ? chars[0]! : null;
+}
+
+/** The mage shows the first character of a fill-in answer to everyone and spends a use. A second cast on
+ * the same question, or an answer too short to hint, is refused before anything is spent. */
+export function mageHint(game: GameState, teamId: string, questionId: string, answer: string): GameState {
+  assertAbilityTurn(game, teamId, "mage");
+  assertCurrentQuestion(game, teamId, questionId);
+  if (game.mageHints?.[questionId] !== undefined) throw new InvalidActionError("hint_shown");
+  const hint = firstMeaningfulChar(answer);
+  if (hint === null) throw new InvalidActionError("no_hint");
+  const spent = spendAbility(game, teamId, "mage");
+  return { ...spent, mageHints: { ...game.mageHints, [questionId]: hint } };
 }
 
 /** The thief arms a Sneak Attack for its answer to this question, spending the use at once (D16). */
@@ -910,10 +931,10 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   return { ...game, teams, ...(stillFaced ? {} : dropEliminated(game, left)) };
 }
 
-/** `eliminated` and `mageRemoved` without `questionId`: it left play, and a later deal of it starts clean. */
-function dropEliminated(game: GameState, questionId: string): Pick<GameState, "eliminated" | "mageRemoved"> {
-  const drop = (m: Record<string, number[]>) => Object.fromEntries(Object.entries(m).filter(([id]) => id !== questionId));
-  return { eliminated: drop(game.eliminated), mageRemoved: drop(game.mageRemoved ?? {}) };
+/** `eliminated`, `mageRemoved` and `mageHints` without `questionId`: it left play, and a later deal of it starts clean. */
+function dropEliminated(game: GameState, questionId: string): Pick<GameState, "eliminated" | "mageRemoved" | "mageHints"> {
+  const drop = <T>(m: Record<string, T>) => Object.fromEntries(Object.entries(m).filter(([id]) => id !== questionId));
+  return { eliminated: drop(game.eliminated), mageRemoved: drop(game.mageRemoved ?? {}), mageHints: drop(game.mageHints ?? {}) };
 }
 
 /**
@@ -1082,6 +1103,8 @@ export interface SpectatorView {
   /** Options locked wrong per question id (shown greyed on every screen) and the wrong lock awaiting a choice. */
   eliminated: Record<string, number[]>;
   mageRemoved: Record<string, number[]>;
+  /** The mage's first-character hint per fill-in question id (mageHint). Absent from a Worker before #106. */
+  mageHints?: Record<string, string>;
   pendingWrong: LockedOption | null;
   /** The cleric whose wrong lock waits for its 祈禱 (canPray), or null. */
   awaitingPrayer: string | null;
@@ -1113,6 +1136,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
     bossKilledBy: game.boss.killedByTeamId,
     eliminated: game.eliminated,
     mageRemoved: game.mageRemoved ?? {},
+    mageHints: game.mageHints ?? {},
     pendingWrong: game.pendingWrong,
     awaitingPrayer: game.pendingWrong && canPray(game, game.pendingWrong.teamId) ? game.pendingWrong.teamId : null,
   };

@@ -290,6 +290,16 @@ issues verified: 1 of 1
 Verification is deterministic: a fix counts when its `applied_text` is in the current design and absent from the round-3 snapshot. It confirms applied edits, never a review verdict; no reviewer was launched past the cap.
 <!-- gstack:office-hours:concerns:end -->
 
+## 填空題（issue #106，2026-10-31）
+
+v0.22.0.0 加了填空題以後，法師和牧師在填空題沒有能力可用。設計和決定在 #106，分兩個 PR。
+
+**法師（PR A）**
+- 填空題按施法，所有畫面（TV、主持人頁、手機）顯示答案的第一個字：「🔮 第一個字：萬」。提示公開，跟選擇題刪的選項一樣（#106 D4=A）。
+- 第一個字是答案裡第一個字母或數字（Unicode `\p{L}` / `\p{N}`），空白、標點、括號、符號、emoji 都跳過。
+- 一題只能看一次（`hint_shown`）。答案的字母或數字少於 2 個時拒絕（`no_hint`），因為一個字就是答案。兩種拒絕都不扣次數。
+- 提示存在 `GameState.mageHints`，題目離開場上時跟 `eliminated` 一起清掉（`dropEliminated`）。
+
 ## Eng Review (/plan-eng-review, 2026-10-29)
 
 Target: docs/designs/class-abilities.md (this file). Base: main @ 40cc10c era, branch phone-question-text.

@@ -2,6 +2,16 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.23.0.0] - 2026-10-30
+
+### Added
+- A mage team can now use its ability on a fill-in question. 看答案第一個字 shows the answer's first letter or number, as 「🔮 第一個字：{hint}」, on the team's phone, the host page and the big screen. It spends one of the mage's 2 uses, and works once per question.
+- The hint skips leading spaces, quotes and punctuation, so 〈萬家福〉 gives 萬.
+- On an answer with only one letter or number, pressing the button turns it into 「這題答案太短，不能看第一個字」, and no use is spent.
+
+### Changed
+- The mage's lobby card now reads 「選擇題刪 2 個錯的選項；填空題看答案第一個字」.
+
 ## [0.22.0.0] - 2026-10-30
 
 ### Added
