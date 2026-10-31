@@ -2251,7 +2251,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
   afterEach(() => vi.useRealTimers());
   const mc = (id: string) => ({ kind: "multipleChoice" as const, id, content: { kind: "text" as const, value: "選哪個？" }, options: ["A", "B", "C", "D"], correctIndex: 1 });
   const bank = parseBank({
-    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [mc("r0-mc1"), { kind: "text", id: "r0-t1", content: { kind: "text", value: "？" }, answer: "a" }] }],
+    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [mc("r0-mc1"), { kind: "text", id: "r0-t1", content: { kind: "text", value: "？" }, answer: "a" }, { kind: "text", id: "r0-t2", content: { kind: "text", value: "？" }, answer: "〈萬家福〉" }] }],
     boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [mc("boss-mc1"), mc("boss-mc2")] },
   });
   const err = (conn: Conn) => lastSentTo(conn as never)?.detail ?? lastSentTo(conn as never)?.error;
@@ -2280,7 +2280,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     return { room, hostConn, ids, conns, q, use, lockWrong };
   }
 
-  it("the mage greys out 2 wrong options for everyone, and is refused on a spoken question without spending", () => {
+  it("the mage greys out 2 wrong options for everyone, and is refused on a 1-character fill-in answer without spending", () => {
     const { room, conns, q, use } = game("mage");
     use();
     const removed = lastBroadcast(room).view.eliminated[q];
@@ -2291,8 +2291,32 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     expect(err(conns[0])).toBe("no_option_to_remove");
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t1" } : t)) };
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
-    expect(err(conns[0])).toBe("not_multiple_choice");
+    expect(err(conns[0])).toBe("no_hint");
     expect(room.game!.teams[0].abilityUses).toBe(1);
+  });
+
+  // Value: protects=the mage on a fill-in question shows the answer's first character to every screen and
+  // spends a use, once per question (#106); fails_when=the room still refuses fill-in, or a second cast spends;
+  // seam=room → game-state mageHint; no_claim=how each page renders it (e2e)
+  it("the mage shows a fill-in answer's first character to everyone, once per question", () => {
+    const { room, conns } = game("mage");
+    room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t2" } : t)) };
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
+    expect(lastBroadcast(room).view.mageHints).toEqual({ "r0-t2": "萬" });
+    expect(room.game!.teams[0].abilityUses).toBe(1);
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
+    expect(err(conns[0])).toBe("hint_shown");
+    expect(room.game!.teams[0].abilityUses).toBe(1);
+  });
+
+  // Value: protects=a mage cast on a question id the bank lacks is refused as stale and spends nothing (/review);
+  // fails_when=mageHint or mageEliminate runs on a missing question, or the error names the wrong cause; seam=room; no_claim=none
+  it("the mage is refused on a question id the bank lacks, without spending", () => {
+    const { room, conns } = game("mage");
+    room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "nope" } : t)) };
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "nope" });
+    expect(err(conns[0])).toBe("stale_question");
+    expect(room.game!.teams[0].abilityUses).toBe(2);
   });
 
   it("the thief's sneak attack shows on every screen until its answer is judged, and cannot be armed twice", () => {

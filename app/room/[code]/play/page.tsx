@@ -16,11 +16,12 @@ import { isPending, keepLatest, type NarrationState } from "@/lib/narration/clie
 import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { McOption } from "@/components/mc-option";
 import { D20 } from "@/components/d20";
+import { MageHint } from "@/components/mage-hint";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
 const CLASS_HINTS: Record<ClassId, string> = {
   warrior: `擲 1d20 代替答題，${WARRIOR_TARGET} 以上算答對`,
-  mage: "選擇題刪掉 2 個錯的選項",
+  mage: "選擇題刪 2 個錯的選項；填空題看答案第一個字",
   cleric: "選擇題答錯後，這回合再答一次",
   thief: "偷襲：這題答對，獎勵分和 boss 扣血 ×2",
 };
@@ -59,9 +60,9 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
 }
 
 /** The team's class ability on its own turn (D11=A: under 鎖定答案). The warrior's button or its die
- * while the room holds it; the mage's button (multipleChoice, while 2+ wrong options are left) or what
- * it removed; the thief's button or its armed bar (D16). The cleric prays in MyChoicePanel's wrong panel. */
-function ClassAbility({ game, teamId, send, frozen = false }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; frozen?: boolean }) {
+ * while the room holds it; the mage's button (multipleChoice, while 2+ wrong options are left; a fill-in
+ * question without a hint yet) or what it removed; the thief's button or its armed bar (D16). The cleric prays in MyChoicePanel's wrong panel. */
+function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; frozen?: boolean; noHint?: boolean }) {
   const me = game.view.teams.find((t) => t.id === teamId);
   const roll = game.pendingRoll?.teamId === teamId ? game.pendingRoll : null;
   const q = game.question;
@@ -109,6 +110,11 @@ function ClassAbility({ game, teamId, send, frozen = false }: { game: StateMessa
       setCast({ qid: q.id, eventId: game.eventId, before: gone.length });
       use();
     });
+  } else if (me.classId === "mage" && !q.options && game.view.mageHints && game.view.mageHints[q.id] === undefined) {
+    // No mageHints at all: a Worker from before #106, which refuses a fill-in cast.
+    // The room refused this question (no_hint): a 1-character answer has no first character to give.
+    if (noHint) return <div className="px-bar mt-1 !text-[17px]" role="status">🔮 這題答案太短，不能看第一個字・剩 {me.abilityUses} 次</div>;
+    body = button("🔮", "看答案第一個字", `大家都看得到・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
   } else return null;
   return body;
 }
@@ -252,7 +258,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
  * The team's own text turn (fill-in, #104): type one answer, send it once, then wait for the host.
  * Mounted per question and eventId, so a 重答 turn starts with an empty box.
  */
-function TextAnswerPanel({ game, teamId, send, offline }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; offline: boolean }) {
+function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; offline: boolean; noHint: boolean }) {
   const q = game.question!;
   const sent = game.view.teams.find((t) => t.id === teamId)?.typedAnswer ?? null;
   const [text, setText] = useState("");
@@ -272,6 +278,7 @@ function TextAnswerPanel({ game, teamId, send, offline }: { game: StateMessage; 
   return (
     <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
       {q.content.kind === "text" && <QuestionStrip text={q.content.value} />}
+      <MageHint hint={game.view.mageHints?.[q.id]} testId="mage-hint" />
       {sent !== null ? (
         <div className="px-bar mt-1 [overflow-wrap:anywhere]" role="status" data-testid="typed-answer-sent">
           已送出：{sent}・等主持人判
@@ -303,7 +310,7 @@ function TextAnswerPanel({ game, teamId, send, offline }: { game: StateMessage; 
           {failed && !inFlight && <div className="text-center text-[14px]">沒送出，再按一次，或直接唸給主持人聽</div>}
         </form>
       )}
-      {sent === null && !inFlight && <ClassAbility game={game} teamId={teamId} send={send} />}
+      {sent === null && !inFlight && <ClassAbility game={game} teamId={teamId} send={send} noHint={noHint} />}
     </Panel>
   );
 }
@@ -314,6 +321,8 @@ export default function PlayPage() {
   const teamName = searchParams.get("name") ?? "隊伍";
   /** What to tell a phone the room turned away for its password; null while it isn't turned away. */
   const [badPassword, setBadPassword] = useState<string | null>(null);
+  // The question the room refused a mage's hint on (no_hint), so its button gives way to a note.
+  const [noHintQid, setNoHintQid] = useState<string | null>(null);
   const sentPassword = useRef("");
 
   const [teamId, setTeamId] = useState("");
@@ -361,6 +370,7 @@ export default function PlayPage() {
       switch (msg.type) {
         case "ERROR":
           if (msg.error === "bad_password") setBadPassword(sentPassword.current ? "房間密碼不對" : "這個房間要密碼才能加入");
+          else if (msg.detail === "no_hint") setNoHintQid(lastGame.current?.question?.id ?? null);
           break;
         case "LOBBY":
           // Not a sign we joined: a connection that failed the password still gets every LOBBY broadcast.
@@ -554,7 +564,7 @@ export default function PlayPage() {
 
         {/* #104: our own host-judged text turn is a fill-in: the team types its answer for the host. */}
         {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && (
-          <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} />
+          <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint={noHintQid === game.question.id} />
         )}
 
         {/* D14: our own lock was right — the same tiles, the right one green, and the points. */}

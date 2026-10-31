@@ -4,7 +4,7 @@ import { DungeonRoom } from "./dungeon-room";
 import { SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { BANK } from "../question-bank-data";
-import { currentTurnTeamId } from "../game-state";
+import { currentTurnTeamId, getSpectatorView } from "../game-state";
 // Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
 vi.mock("../question-bank-data", async (actual) => {
   const { asTextBank } = await import("../text-bank");
@@ -278,6 +278,25 @@ describe("restoring after a restart", () => {
     expect(await second.room.restore()).toBe("restored");
     expect(second.room.game!.pendingWrong).toEqual({ teamId: t0, questionId: q, optionIndex: 1 });
     expect(second.room.game!.eliminated).toEqual({ [q]: [1] });
+  });
+
+  // Value: protects=a mage's fill-in hint survives a restart, and a save from before #106 (no mageHints) still restores;
+  // fails_when=the hint is dropped on restore, or reading an old save throws; seam=snapshot round trip; no_claim=rendering
+  it("a mage's fill-in hint survives a restart, and a save without mageHints restores with none", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    expect(saved.game.mageHints).toBeUndefined(); // what a pre-#106 save looks like
+    storage.data.set(SNAPSHOT_KEY, saved);
+    const old = makeRoom(storage);
+    expect(await old.room.restore()).toBe("restored");
+    expect(getSpectatorView(old.room.game!).mageHints).toEqual({});
+
+    saved.game.mageHints = { q1: "萬" };
+    storage.data.set(SNAPSHOT_KEY, saved);
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored");
+    expect(second.room.game!.mageHints).toEqual({ q1: "萬" });
   });
 
   it("a save from before currentSelection existed restores with it backfilled to null, not crashing on the next read", async () => {

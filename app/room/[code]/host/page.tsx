@@ -13,6 +13,7 @@ import { ordinal } from "@/lib/ordinal";
 import { CLASS_ICONS, CLASS_LABELS } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
+import { MageHint } from "@/components/mage-hint";
 import { hostKeyAction } from "@/lib/host-keys";
 import { optionLetter } from "@/components/mc-option";
 
@@ -789,6 +790,9 @@ export default function HostPage() {
               <div className="mt-2">
                 <ScoreMeter score={turn.team.score} active />
               </div>
+              {game.question && !game.question.options && (
+                <MageHint hint={game.view.mageHints?.[game.question.id]} testId="host-mage-hint" className="mt-2 inline-block px-2 py-1 text-[18px]" />
+              )}
               {/* #104: a text question's typed answer, judged with the buttons below. */}
               {game.question && !game.question.options && (
                 <div data-testid="host-typed-answer" className="mt-2 text-[18px] [overflow-wrap:anywhere]">

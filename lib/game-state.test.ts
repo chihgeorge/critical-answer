@@ -20,6 +20,8 @@ import {
   warriorRoll,
   spendAbility,
   mageEliminate,
+  mageHint,
+  firstMeaningfulChar,
   armSneak,
   pray,
   canPray,
@@ -1307,8 +1309,9 @@ describe("boss phases (docs/designs/boss-phases.md)", () => {
 
   it("enterNextBossPhase starts the next phase: full new bar, its own questions, no pick, no stale picks or tiles", () => {
     let g = hit(phased(1, 2)).game;
-    g = { ...g, boss: { ...g.boss, queuedQuestionId: "p1-b" }, eliminated: { "p1-a": [1] }, teams: g.teams.map((t) => ({ ...t, currentSelection: 2 })) };
+    g = { ...g, boss: { ...g.boss, queuedQuestionId: "p1-b" }, eliminated: { "p1-a": [1] }, mageHints: { "p1-a": "萬" }, teams: g.teams.map((t) => ({ ...t, currentSelection: 2 })) };
     const next = enterNextBossPhase(g);
+    expect(next.mageHints?.["p1-a"]).toBeUndefined();
     expect(next.boss).toMatchObject({ phaseIndex: 1, hp: 2, maxHp: 2, questionIds: ["p2-a", "p2-b"], currentQuestionId: "p2-a" });
     expect(next.boss.maxHp).toBe(next.boss.phases[1].maxHp);
     expect(next.boss.questionIds).toBe(next.boss.phases[1].questionIds);
@@ -1507,6 +1510,50 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     // One wrong option left: nothing to remove, and nothing spent.
     expect(() => mageEliminate(after, "T0", q, 1, 4, first)).toThrow(/no_option_to_remove/);
     expect(mageEliminate(g, "T0", q, 1, 4, () => 1).eliminated[q]).toHaveLength(2); // an rng of 1 cannot hang it
+  });
+
+  // Value: protects=the hint is the answer's first letter or number and never gives a 1-character answer away (#106);
+  // fails_when=punctuation, spaces or emoji become the hint, or a short answer is hinted; seam=none; no_claim=room wiring
+  it("firstMeaningfulChar skips spaces, punctuation and emoji, and refuses answers with fewer than 2 letters or numbers", () => {
+    expect(firstMeaningfulChar("萬家福")).toBe("萬");
+    expect(firstMeaningfulChar("〈美好有家在〉")).toBe("美");
+    expect(firstMeaningfulChar("  The Beatles")).toBe("T");
+    expect(firstMeaningfulChar("「1984」")).toBe("1");
+    expect(firstMeaningfulChar("〈萬〉")).toBeNull();
+    expect(firstMeaningfulChar("🎵🎶!!")).toBeNull();
+  });
+
+  // Value: protects=one public hint per fill-in question, refusals spend nothing, and the hint leaves with the question;
+  // fails_when=a second cast or a refused cast spends a use, or an old hint shows on a later deal; seam=none;
+  // no_claim=the room's choice between mageHint and mageEliminate
+  it("the mage's fill-in hint spends a use once per question and leaves with the question", () => {
+    const g = classGame(["mage", undefined]);
+    const q = currentQ(g, "T0");
+    const hinted = mageHint(g, "T0", q, "萬家福");
+    expect(hinted.teams[0].abilityUses).toBe(1);
+    expect(getSpectatorView(hinted).mageHints).toEqual({ [q]: "萬" });
+    expect(() => mageHint(hinted, "T0", q, "萬家福")).toThrow(/hint_shown/);
+    expect(() => mageHint(g, "T0", q, "萬")).toThrow(/no_hint/);
+    expect(() => mageHint(g, "T1", q, "萬家福")).toThrow(/not T1's turn|It is not T1/);
+    const typed = { ...g, teams: g.teams.map((t) => (t.id === "T0" ? { ...t, typedAnswer: "x" } : t)) };
+    expect(() => mageHint(typed, "T0", q, "萬家福")).toThrow(/answer_submitted/);
+    // No eliminated entry for this question: the hint alone must still be dropped once it leaves play.
+    const { game } = answerQuestion(hinted, "T0", q, true);
+    expect(game.mageHints?.[q]).toBeUndefined();
+  });
+
+  // Value: protects=the hint follows the question in every way it leaves or stays in play (state matrix, /review);
+  // fails_when=a flee, a send to the boss or a phase change leaves a stale hint, or a retry or a second team still
+  // facing it loses it; seam=none; no_claim=the boss rotation path (a text question has no eliminated options to rotate on)
+  it("the mage's hint leaves with a flee or a send to the boss room, and stays on a retry or while another team faces it", () => {
+    const g = classGame(["mage", undefined]);
+    const q = currentQ(g, "T0");
+    const hinted = mageHint(g, "T0", q, "萬家福");
+    expect(answerQuestion(hinted, "T0", q, false, "flee").game.mageHints?.[q]).toBeUndefined();
+    expect(answerQuestion(hinted, "T0", q, false, "retry").game.mageHints?.[q]).toBe("萬");
+    expect(sendToBoss(hinted, "T0").mageHints?.[q]).toBeUndefined();
+    const shared = { ...hinted, teams: hinted.teams.map((t) => (t.id === "T1" ? { ...t, currentQuestionId: q } : t)) };
+    expect(answerQuestion(shared, "T0", q, true).game.mageHints?.[q]).toBe("萬");
   });
 
   it("the mage removes only 1 when an option was already locked wrong, and refuses another class", () => {
