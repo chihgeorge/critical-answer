@@ -6,6 +6,7 @@ import { DungeonRoom, EXPIRE_MS } from "../lib/room/dungeon-room";
 import { BankStore, IMAGE_CLEANUP_MARGIN_MS, type BankConflict, type VersionedBank } from "../lib/bank-store";
 import { bankOrFallback, handleBankApi } from "../lib/bank-api";
 import { handleBankImageApi } from "../lib/bank-image-api";
+import { handleClientError } from "../lib/client-error-api";
 
 export interface Env {
   /** The binding is named "main" on purpose: partysocket's default path is /parties/main/<room>. */
@@ -151,6 +152,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (pathname === "/healthz") return Response.json({ ok: true });
+    if (pathname === "/api/client-error") return handleClientError(request, env.ALLOWED_ORIGINS ?? "");
     // /api/bank/image is dispatched to its own handler BEFORE the /api/bank/* prefix check below
     // would otherwise swallow it — handleBankApi only branches on HTTP method, not path, so a
     // request here must never fall through to it (docs/designs/image-question-type.md's

@@ -37,6 +37,10 @@ D&D 風格的地城問答派對遊戲。名字是 *Critical Hit*（爆擊）的�
 
 **連不上與被拒絕加入**：手機或大螢幕第一次連線 10 秒還沒連上，會顯示「連不上伺服器：請檢查網路，或稍後再試。」和「重試」按鈕（主持人頁沒有這個提示）。手機被房間拒絕加入時，會用一句話說明原因（遊戲已經開始、隊伍名稱不能用、房間已滿、瀏覽器存的隊伍資料對不上、密碼不對或需要密碼），並附連結：密碼問題回到輸入密碼，其餘回首頁。
 
+**螢幕不休眠**：主持人頁和大螢幕開著時會要求螢幕保持亮著（Screen Wake Lock），切走再回來會重新要求。瀏覽器不支援、低電量拒絕，或不是 HTTPS（例如區網試玩的 `http://` 網址）時，螢幕照舊會休眠。
+
+**畫面出錯時**：頁面當掉時顯示「畫面出錯了」和「重新載入」按鈕，不會只剩一片白；重新載入就回到遊戲，分數和進度都還在。每次當掉會送一行回報給 Worker（`POST /api/client-error`），Worker log 裡是 `{"event":"client_error",…}` 的 JSON。
+
 ## 技術棧
 
 - [Next.js](https://nextjs.org/) 16 + React 19 + Tailwind CSS 4 + TypeScript
@@ -138,8 +142,8 @@ sh scripts/playtest.sh stop
 ## 專案結構
 
 ```
-app/                     Next.js 頁面：首頁、/room/[code]/host、/play、/screen、/bank-editor（題庫編輯）
-components/              共用像素元件（pixel.tsx）、大螢幕舞台（stage.tsx）、大螢幕活地圖（map-strip.tsx）、選擇題選項格（mc-option.tsx）、戰士的 d20 與大螢幕擲骰畫面（d20.tsx）、法師的填空題提示（mage-hint.tsx）、QR（qr.tsx）
+app/                     Next.js 頁面：首頁、/room/[code]/host、/play、/screen、/bank-editor（題庫編輯），以及出錯時的畫面（error.tsx、global-error.tsx）
+components/              共用像素元件（pixel.tsx）、出錯畫面（error-screen.tsx）、大螢幕舞台（stage.tsx）、大螢幕活地圖（map-strip.tsx）、選擇題選項格（mc-option.tsx）、戰士的 d20 與大螢幕擲骰畫面（d20.tsx）、法師的填空題提示（mage-hint.tsx）、QR（qr.tsx）
 data/question-bank.json  題庫的 bundle 備援（BankStore 連不上時新開的房間用這份；存著的題庫讀不懂時編輯器唯讀顯示這份）
 lib/game-state.ts        遊戲狀態機：房間、題目牌堆、首領、計分（純函式，有完整測試）
 lib/protocol.ts          host / player / server 之間的訊息格式與驗證
@@ -153,8 +157,10 @@ lib/map-layout.ts        活地圖的版面計算：房間、棋子、迷霧、�
 lib/use-room-socket.ts   三個房間頁面共用的連線 hook（訊息解析、伺服器重啟偵測、休息時停止重連、首次連線逾時）
 lib/join-rejection.ts    加入被拒絕時手機顯示的原因句（純函式）
 lib/stored.ts            不會丟錯的 localStorage 讀寫（無痕模式也不會壞）
+lib/use-wake-lock.ts     主持人頁和大螢幕的螢幕不休眠 hook
+lib/report-client-error.ts、client-error-api.ts  前端當掉的回報（sendBeacon）與 /api/client-error 的處理（來源檢查、4 KB 上限、寫一行 log）
 lib/bank-image-api.ts    /api/bank/image 圖片上傳（檔案類型、大小檢查；題庫讀不懂時回 409、連不上時回 503）
-worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable Object、/api/bank 路由、入口規則
+worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable Object、/api/bank 與 /api/client-error 路由、入口規則
 lib/room/                房間邏輯（dungeon-room.ts）與它需要的兩個小介面（io.ts），不依賴平台
 lib/gate.ts、origin.ts   Worker 入口規則
 e2e/                     Playwright 端對端測試
