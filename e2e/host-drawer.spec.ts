@@ -111,4 +111,19 @@ test("the host queues the next line, the big screen says it, and the queue empti
   await host.getByRole("button", { name: "⚙ 更多" }).click();
   await expect(host.getByText("下一句這樣說（最多 40 字）")).toBeVisible();
   await expect(host.getByText(/已排入：/)).toHaveCount(0);
+
+  // 取消 empties the queue, so the next narration does not say the cancelled line.
+  const cancelled = "這句被取消了不該出現";
+  await host.getByPlaceholder(/不怕死的冒險者/).fill(cancelled);
+  await host.getByRole("button", { name: "排進下一句" }).click();
+  const queuedRow = host.getByText(`已排入：${cancelled}`);
+  await expect(queuedRow).toBeVisible();
+  await queuedRow.locator("..").getByRole("button", { name: "取消" }).click();
+  await expect(host.getByText(/已排入：/)).toHaveCount(0);
+  await host.getByRole("button", { name: "關閉" }).click();
+
+  await host.getByRole("button", { name: "下一題", exact: true }).click();
+  await answerCorrectly(host);
+  await expect(screen.locator(".px-say")).not.toContainText(queued, { timeout: 8000 });
+  await expect(screen.locator(".px-say")).not.toContainText(cancelled);
 });

@@ -198,6 +198,21 @@ describe("restoring after a restart", () => {
     expect(saved.nextLine).toBeNull();
   });
 
+  // /review: saved mid ending narration, the line would sit in a finished game's save forever.
+  it("a finished game saved with a queued line comes back without it", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage).room;
+    const { host } = startedGame(first);
+    send(first, host, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
+    const saved = storage.data.get(SNAPSHOT_KEY) as any;
+    storage.data.set(SNAPSHOT_KEY, { ...saved, game: { ...saved.game, phase: "finished", winners: [] } });
+    const second = makeRoom(storage).room;
+    expect(await second.restore()).toBe("restored");
+    const back = makeConn("host2");
+    send(second, back, { type: "HOST_CLAIM", token: TOKEN });
+    expect(lastOf(back, "HOST_NEXT_LINE_STATE")).toEqual({ type: "HOST_NEXT_LINE_STATE", line: "" });
+  });
+
   it("a game in progress comes back: same scores, same turn, same room epoch", async () => {
     const storage = memoryStorage();
     const first = makeRoom(storage).room;

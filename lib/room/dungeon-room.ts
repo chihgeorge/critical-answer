@@ -298,7 +298,10 @@ export class DungeonRoom {
         // eventSeq is a leftover from before a reset(), which zeroes eventSeq.
         const gen = this.hostLineGens.get(eventId);
         this.hostLineGens.delete(eventId);
-        if (eventId > this.eventSeq || (this.lastNarration && eventId < this.lastNarration.eventId)) return;
+        if (eventId > this.eventSeq || (this.lastNarration && eventId < this.lastNarration.eventId)) {
+          this.dropUnsaidLine();
+          return;
+        }
         // Cleared before the broadcast, so the one save it triggers cannot bring the line back after a restart.
         const said = gen !== undefined && this.nextLine?.gen === gen;
         if (said) this.nextLine = null;
@@ -502,6 +505,8 @@ export class DungeonRoom {
     this.editedLines = s.editedLines;
     this.nextLine = s.nextLine ?? null;
     this.nextLineGen = this.nextLine?.gen ?? 0;
+    // Saved mid ending narration: that narration did not survive the restart, so the line never will be said.
+    this.dropUnsaidLine();
     // The key is not saved: the host page sends it again after HOST_OK (keyMissing until then).
     this.aiNarration = s.aiWanted ?? false;
     this.aiSource = s.aiSource ?? "none";
@@ -627,15 +632,20 @@ export class DungeonRoom {
 
   /** Fire-and-forget: narration must never block or break the game. */
   private narrate(eventId: number, event: NarrationEvent): Promise<void> {
-    if (this.nextLine && event.type !== "epilogue") {
+    // One narration in flight carries the line at a time, so two quick judgments cannot both say it.
+    if (this.nextLine && event.type !== "epilogue" && !this.lineInFlight()) {
       const text = this.nextLine.text;
       // A line holding a bank answer would make llm.ts reject the whole AI reply: it goes in word for word instead.
       const verbatim = this.bankAnswers.some((a) => a.length >= 3 && text.includes(a));
       event = { ...event, hostLine: text, ...(verbatim ? { hostLineVerbatim: true as const } : {}) };
       this.hostLineGens.set(eventId, this.nextLine.gen);
     }
+    // The game-ending judgment narrates after its broadcastState(), so the line is dropped here, once that narration has it.
+    this.dropUnsaidLine();
     return this.runner.run(eventId, event, this.scores()).catch((err) => {
       console.error("narration failed", err);
+      this.hostLineGens.delete(eventId);
+      this.dropUnsaidLine();
     });
   }
 
@@ -656,11 +666,6 @@ export class DungeonRoom {
     for (const conn of this.hostConns.values()) this.sendAnswer(conn);
     this.sendPicks();
     if (this.game?.phase === "finished") {
-      // No narration comes after the game, so a line still queued would never be said (D10).
-      if (this.nextLine) {
-        this.nextLine = null;
-        this.sendNextLineState();
-      }
       this.broadcast({ type: "GAME_OVER", winners: this.game.winners });
     }
   }
@@ -1095,7 +1100,8 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "game_over" });
       return;
     }
-    const text = sanitizeText(raw, MAX_EDIT_LINE);
+    // One line on screen and in the prompt: a raw socket could send newlines the <input> cannot.
+    const text = sanitizeText(raw.replace(/\s+/g, " "), MAX_EDIT_LINE);
     // Typed text that cleans down to nothing is a mistake, not a cancel: only the 取消 button sends "" (D11).
     if (raw !== "" && !text) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "empty_line" });
@@ -1103,6 +1109,18 @@ export class DungeonRoom {
     }
     this.nextLine = text ? { text, gen: ++this.nextLineGen } : null;
     this.addTranscript({ kind: "next", at: new Date().toISOString(), text });
+    this.sendNextLineState();
+  }
+
+  private lineInFlight(): boolean {
+    const gen = this.nextLine?.gen;
+    return gen !== undefined && [...this.hostLineGens.values()].includes(gen);
+  }
+
+  /** Once the game is over no narration will come, so a line no narration in flight carries is never said (D10). */
+  private dropUnsaidLine() {
+    if (this.game?.phase !== "finished" || !this.nextLine || this.lineInFlight()) return;
+    this.nextLine = null;
     this.sendNextLineState();
   }
 

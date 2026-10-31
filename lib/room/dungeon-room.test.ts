@@ -1869,7 +1869,8 @@ describe("LLM narration and director (T8-T10)", () => {
         expect(states(r.hostConn).at(-1)).toBe("珍珠能吃嗎");
       });
 
-      it("a narration the room drops as stale does not use up the line", async () => {
+      // /review: two narrations in flight both carried the line, so a quick second judgment said it twice.
+      it("only one narration in flight carries the line, so two quick judgments never say it twice", async () => {
         const releases: (() => void)[] = [];
         const r = await llmRoom(() => new Promise<Response>((res) => releases.push(() => res(textReply("結果\n氣氛\n換人")))));
         begin(r);
@@ -1877,13 +1878,55 @@ describe("LLM narration and director (T8-T10)", () => {
         await sleep(30);
         send(r.room, r.hostConn, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
         judge(r.room, r.hostConn); // narration 1 carries the line and waits
-        judge(r.room, r.hostConn); // narration 2 also carries it
+        judge(r.room, r.hostConn); // narration 2 must not carry it too
+        releases[0]();
+        await sleep(10);
+        releases[1]();
+        await sleep(30);
+        expect(narrations(r.room).map((n: { lines: string[] }) => n.lines[1]).slice(-2)).toEqual(["珍珠能吃嗎", "氣氛"]);
+        expect(states(r.hostConn).at(-1)).toBe("");
+      });
+
+      it("a narration the room drops as stale does not use up the line: the next one says it", async () => {
+        const releases: (() => void)[] = [];
+        const r = await llmRoom(() => new Promise<Response>((res) => releases.push(() => res(textReply("結果\n氣氛\n換人")))));
+        begin(r);
+        releases.shift()!();
+        await sleep(30);
+        send(r.room, r.hostConn, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
+        judge(r.room, r.hostConn); // narration 1 carries the line and waits
+        judge(r.room, r.hostConn); // narration 2 does not
         releases[1]();
         await sleep(10);
         releases[0](); // narration 1 lands after 2: dropped as stale
         await sleep(30);
+        expect(narrations(r.room).at(-1).lines[1]).toBe("氣氛");
+        expect(states(r.hostConn).at(-1)).toBe("珍珠能吃嗎");
+        judge(r.room, r.hostConn);
+        releases[2]();
+        await sleep(30);
         expect(narrations(r.room).at(-1).lines[1]).toBe("珍珠能吃嗎");
         expect(states(r.hostConn).at(-1)).toBe("");
+      });
+
+      it("a room reset drops the queued line: the next host of the code starts with none", async () => {
+        const r = await llmRoom(() => textReply("結果\n氣氛\n換人"));
+        begin(r);
+        await sleep(30);
+        send(r.room, r.hostConn, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
+        await (r.room as any).expire();
+        const next = makeConn("host-next");
+        r.room.onConnect(next);
+        claim(r.room, next);
+        expect(states(next)).toEqual([""]);
+      });
+
+      it("folds newlines a raw socket sends into one line", async () => {
+        const r = await llmRoom(() => textReply("結果\n氣氛\n換人"));
+        begin(r);
+        await sleep(30);
+        send(r.room, r.hostConn, { type: "HOST_NEXT_LINE", line: "珍珠\n\n能吃嗎" });
+        expect(states(r.hostConn).at(-1)).toBe("珍珠 能吃嗎");
       });
 
       it("clears a queued line when the game ends and refuses new ones", async () => {
@@ -1899,6 +1942,8 @@ describe("LLM narration and director (T8-T10)", () => {
         }
         await sleep(30);
         expect(r.room.game!.phase).toBe("finished");
+        // /review: the game-ending judgment's own narration still says the line queued before it.
+        expect(narrations(r.room).at(-1).lines[1]).toBe("還沒說");
         expect(states(r.hostConn).at(-1)).toBe("");
         send(r.room, r.hostConn, { type: "HOST_NEXT_LINE", line: "太晚了" });
         expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "game_over" });

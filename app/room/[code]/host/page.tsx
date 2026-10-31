@@ -54,6 +54,12 @@ function MoreDrawer({
   const [notes, setNotes] = useState("");
   const [line, setLine] = useState(currentLine);
   const [nextDraft, setNextDraft] = useState("");
+  // Cleared once the room confirms a queued line, so an ERROR (game over, only punctuation) keeps what was typed.
+  const [seenNextLine, setSeenNextLine] = useState(nextLine);
+  if (nextLine !== seenNextLine) {
+    setSeenNextLine(nextLine);
+    if (nextLine) setNextDraft("");
+  }
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
   useEffect(() => {
@@ -115,17 +121,14 @@ function MoreDrawer({
               {nextLine && (
                 <div className="flex items-center gap-2 border-4 border-dashed border-[var(--k)] bg-[var(--turn)] p-2 text-[15px]">
                   <span className="flex-1 break-all">已排入：{nextLine}</span>
-                  <PixelButton onClick={() => send({ type: "HOST_NEXT_LINE", line: "" })} className="!m-0 !px-3 !py-1 text-[15px]">
+                  <PixelButton onClick={() => send({ type: "HOST_NEXT_LINE", line: "" })} className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]">
                     取消
                   </PixelButton>
                 </div>
               )}
               <input value={nextDraft} onChange={(e) => setNextDraft(e.target.value)} maxLength={40} placeholder={nextLine ? "再排一句會蓋掉上面這句" : "例如：不怕死的冒險者不知道珍珠是什麼意思？"} className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
               <PixelButton
-                onClick={() => {
-                  send({ type: "HOST_NEXT_LINE", line: nextDraft });
-                  setNextDraft("");
-                }}
+                onClick={() => send({ type: "HOST_NEXT_LINE", line: nextDraft })}
                 disabled={!nextDraft.trim()}
                 className="!m-0 !px-4 !py-2 text-[16px]"
               >
