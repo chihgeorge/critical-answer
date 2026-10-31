@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { createLlmProvider } from "./llm";
 import { NarrationError } from "./errors";
-import { MAX_LINE } from "./runner";
+import { MAX_LINE, saysLine } from "./runner";
 import type { NarrationEvent } from "./events";
 
 const key = process.env.ANTHROPIC_API_KEY;
@@ -18,23 +18,34 @@ describe.skipIf(!key)("LLM narrator (live)", () => {
     { type: "boss-kill", team: "藍隊", monster: "深淵小黑龍", bonus: 11 },
   ];
 
-  it.each(events)("writes a valid one-line narration for $type", async (event) => {
-    const line = await llm.narrate(event, { signal: AbortSignal.timeout(15_000) });
-    expect(line.length).toBeGreaterThan(0);
-    expect(line.length).toBeLessThanOrEqual(MAX_LINE);
-    expect(line).not.toMatch(/[<>]/);
+  // The prompt asks for two lines (multi-segment narration); each one is a dialogue-box segment of at most MAX_LINE.
+  it.each(events)("writes valid narration segments for $type", async (event) => {
+    const segments = (await llm.narrate(event, { signal: AbortSignal.timeout(15_000) })).split("\n");
+    expect(segments[0].length).toBeGreaterThan(0);
+    for (const s of segments) {
+      expect(s.length, s).toBeLessThanOrEqual(MAX_LINE);
+      expect(s).not.toMatch(/[<>]/);
+    }
   }, 20_000);
 
-  it("writes a result line and a follow-up that addresses the next team", async () => {
+  it("writes a result line and a last line that addresses the next team", async () => {
     const out = await llm.narrate(
       { type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2, next: { team: "藍隊", monster: "軟趴趴史萊姆", boss: false } },
       { signal: AbortSignal.timeout(15_000) },
     );
-    const [first, second] = out.split("\n");
-    expect(first.length).toBeLessThanOrEqual(MAX_LINE);
-    expect(second, "the model should write a second line").toBeTruthy();
-    expect(second.length).toBeLessThanOrEqual(MAX_LINE);
-    expect(second).toContain("藍隊");
+    const segments = out.split("\n");
+    expect(segments, "the model should write the result, the atmosphere and the handoff").toHaveLength(3);
+    for (const s of segments) expect(s.length, s).toBeLessThanOrEqual(MAX_LINE);
+    expect(segments[2]).toContain("藍隊");
+  }, 20_000);
+
+  it("puts the host's queued line in the second line (host-next-line.md D6)", async () => {
+    const out = await llm.narrate(
+      { type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2, next: { team: "藍隊", monster: "軟趴趴史萊姆", boss: false }, hostLine: "珍珠到底能不能吃" },
+      { signal: AbortSignal.timeout(15_000) },
+    );
+    const second = out.split("\n")[1] ?? "";
+    expect(saysLine(second, "珍珠到底能不能吃"), `second line: ${second}`).toBe(true);
   }, 20_000);
 
   it("writes an epilogue that keeps the winner's name", async () => {

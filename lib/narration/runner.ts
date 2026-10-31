@@ -39,13 +39,22 @@ export interface TranscriptEntry {
 
 /** Things the host did by hand, kept in the same transcript so a playtest can be reconstructed. */
 export interface DirectorEntry {
-  kind: "notes" | "edit" | "breaker";
+  kind: "notes" | "edit" | "breaker" | "next";
   at: string;
   text: string;
   eventId?: number;
 }
 
 export type TranscriptItem = TranscriptEntry | DirectorEntry;
+
+/** Folds width variants (NFKC) and drops whitespace and punctuation, so 「能吃嗎?」 matches 能吃嗎？. */
+const bare = (text: string) => text.normalize("NFKC").replace(/[\s\p{P}\p{S}]/gu, "");
+
+/** Whether a segment contains the host's line, ignoring punctuation, spacing and full/half width. */
+export function saysLine(segment: string, line: string): boolean {
+  const want = bare(line);
+  return want.length > 0 && bare(segment).includes(want);
+}
 
 /** Non-empty, short enough for the dialogue box, and no markup. */
 export function validLine(line: unknown, max = MAX_LINE): line is string {
@@ -115,6 +124,13 @@ export function createRunner(opts: {
           lines.push(fallbackFor(i));
           sources.push("scripted");
         }
+      }
+
+      // The host's queued line always ends up in segment 2: kept when the provider wrote it there, otherwise
+      // written over whatever is there, so a paraphrase is replaced rather than shown twice (host-next-line.md D9).
+      if (event.type !== "epilogue" && event.hostLine && !saysLine(lines[1], event.hostLine)) {
+        lines[1] = event.hostLine;
+        sources[1] = "host";
       }
 
       opts.emit(eventId, lines, event);

@@ -98,6 +98,8 @@ export type ClientMessage =
   | { type: "HOST_SET_PASSWORD"; password: string }
   /** Director: replace the line now on screen (<= 40 chars). */
   | { type: "HOST_EDIT_NARRATION"; line: string }
+  /** Director: the next narration's second line says this (<= 40 chars); "" cancels. */
+  | { type: "HOST_NEXT_LINE"; line: string }
   | { type: "HOST_GET_TRANSCRIPT" }
   /** Director: close the answer reveal and show the next question (D7). `eventId` is the STATE
    * eventId the reveal arrived with, so a late HOST_NEXT (second host device, a send buffered
@@ -198,6 +200,8 @@ export type ServerMessage =
   /** Host-only reply to HOST_GET_TRANSCRIPT. */
   | { type: "TRANSCRIPT"; entries: TranscriptItem[] }
   | { type: "HOST_OK"; joinPassword: string }
+  /** Host-only: the line queued by HOST_NEXT_LINE, "" when none. Sent on host connect and on every change. */
+  | { type: "HOST_NEXT_LINE_STATE"; line: string }
   /** Host-only: who pays for AI narration and how much is left. Never carries the key itself, only its last 4 characters. */
   | {
       type: "HOST_AI_STATUS";
@@ -355,6 +359,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_EDIT_NARRATION": {
       const line = str(m.line, MAX_EDIT_LINE);
       return line !== null ? { type: "HOST_EDIT_NARRATION", line } : null;
+    }
+    case "HOST_NEXT_LINE": {
+      const line = str(m.line, MAX_EDIT_LINE);
+      return line !== null ? { type: "HOST_NEXT_LINE", line } : null;
     }
     case "HOST_GET_TRANSCRIPT":
       return { type: "HOST_GET_TRANSCRIPT" };

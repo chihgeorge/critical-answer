@@ -124,7 +124,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(host.getByText("玩家掃描加入")).toHaveCount(0);
   await expect(host.getByRole("img", { name: "掃描加入" })).toHaveCount(0);
   await expect(host.getByRole("img", { name: "主持人 QR" })).toHaveCount(1);
-  await host.locator('input[maxlength="40"]').fill("主持人改寫：全場安靜！");
+  await host.locator("section", { hasText: "改寫第一句旁白" }).locator("input").fill("主持人改寫：全場安靜！");
   await host.getByRole("button", { name: /送出，立刻換上大螢幕/ }).click();
   await expect(screen.locator(".px-say")).toContainText("主持人改寫：全場安靜！");
   await expect(players[1].page.locator(".px-say")).toContainText("主持人改寫：全場安靜！");

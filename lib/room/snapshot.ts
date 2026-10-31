@@ -31,6 +31,8 @@ export interface RoomSnapshot {
   /** "" when the room has none. Missing in a save from before join passwords. */
   joinPassword: string;
   editedLines: string[];
+  /** The host's queued line for the next narration (HOST_NEXT_LINE). Missing in a save from before it. */
+  nextLine?: { text: string; gen: number } | null;
   /** Always false since host-owned keys: a reverted server reads this, and must not switch on its own key for a room
    * whose host paid with theirs. The host's real choice is aiWanted. */
   aiNarration: boolean;
@@ -77,6 +79,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (!Array.isArray(raw.editedLines) || !raw.editedLines.every(isString)) return null;
     const joinPassword = raw.joinPassword ?? "";
     if (!isString(joinPassword)) return null;
+    const nextLine = raw.nextLine ?? null;
+    if (nextLine !== null && !(isObject(nextLine) && isString(nextLine.text) && Number.isInteger(nextLine.gen))) return null;
     const at = raw.lastActivityAt ?? null;
     if (at !== null && !(typeof at === "number" && Number.isFinite(at) && at >= 0)) return null;
     const bank = parseBank(raw.bank); // throws on a bank that would not load today
@@ -92,6 +96,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       ...(raw as unknown as RoomSnapshot),
       game: withUses as GameState | null,
       joinPassword,
+      nextLine: nextLine as RoomSnapshot["nextLine"],
       lastActivityAt: at,
       bank,
       aiWanted,

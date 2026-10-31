@@ -33,6 +33,7 @@ function MoreDrawer({
   aiOn,
   ai,
   bossable,
+  nextLine,
 }: {
   code: string;
   onClose: () => void;
@@ -45,11 +46,20 @@ function MoreDrawer({
   ai: ReactNode;
   /** Teams in play and not yet in the boss room: the host may send one there (scoring-and-score-pools.md S13). */
   bossable: { id: string; name: string }[];
+  /** The line queued for the next narration ("" for none), or null until the room says it supports one (host-next-line.md D5). */
+  nextLine: string | null;
 }) {
   const currentLine = lines[0] ?? "";
   const totalSegments = lines.length;
   const [notes, setNotes] = useState("");
   const [line, setLine] = useState(currentLine);
+  const [nextDraft, setNextDraft] = useState("");
+  // Cleared once the room confirms a queued line, so an ERROR (game over, only punctuation) keeps what was typed.
+  const [seenNextLine, setSeenNextLine] = useState(nextLine);
+  if (nextLine !== seenNextLine) {
+    setSeenNextLine(nextLine);
+    if (nextLine) setNextDraft("");
+  }
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
   useEffect(() => {
@@ -104,6 +114,28 @@ function MoreDrawer({
               儲存導演筆記
             </PixelButton>
           </section>
+          {nextLine !== null && (
+            <section className="flex flex-col gap-2">
+              <div className="text-[15px]">下一句這樣說（最多 40 字）</div>
+              <div className="text-[13px]">下一次旁白的第二句會說出這句（AI 可能在前後加幾個字），說完就清掉。</div>
+              {nextLine && (
+                <div className="flex items-center gap-2 border-4 border-dashed border-[var(--k)] bg-[var(--turn)] p-2 text-[15px]">
+                  <span className="flex-1 break-all">已排入：{nextLine}</span>
+                  <PixelButton onClick={() => send({ type: "HOST_NEXT_LINE", line: "" })} className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]">
+                    取消
+                  </PixelButton>
+                </div>
+              )}
+              <input value={nextDraft} onChange={(e) => setNextDraft(e.target.value)} maxLength={40} placeholder={nextLine ? "再排一句會蓋掉上面這句" : "例如：不怕死的冒險者不知道珍珠是什麼意思？"} className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
+              <PixelButton
+                onClick={() => send({ type: "HOST_NEXT_LINE", line: nextDraft })}
+                disabled={!nextDraft.trim()}
+                className="!m-0 !px-4 !py-2 text-[16px]"
+              >
+                排進下一句
+              </PixelButton>
+            </section>
+          )}
           <section className="flex flex-col gap-2">
             <div className="text-[15px]">改寫第一句旁白{totalSegments > 1 ? `（共 ${totalSegments} 句，只能改第一句，最多 40 字）` : "（最多 40 字）"}</div>
             <input value={line} onChange={(e) => setLine(e.target.value)} maxLength={40} disabled={!currentLine} className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
@@ -424,6 +456,8 @@ export default function HostPage() {
   /** The open picker's target: a team id or "boss". */
   const [picking, setPicking] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  /** null until the room reports its queued line: an older room would not understand HOST_NEXT_LINE (D5). */
+  const [nextLine, setNextLine] = useState<string | null>(null);
   /** The key the room last accepted. The room keeps keys in memory only, so this is resent after every HOST_OK. */
   const aiSaved = useRef<AiCredential | null>(null);
   /** A key sent but not yet confirmed by HOST_AI_STATUS. */
@@ -496,6 +530,9 @@ export default function HostPage() {
           if (msg.error === "invalid_key" && msg.keyMissing && msg.source === "own") forgetAiKey();
           break;
         }
+        case "HOST_NEXT_LINE_STATE":
+          setNextLine(msg.line);
+          break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
           break;
@@ -1034,6 +1071,7 @@ export default function HostPage() {
           aiOn={!!aiStatus && aiStatus.source !== "none" && !aiStatus.keyMissing}
           ai={game ? aiPanel : null}
           bossable={game?.phase === "playing" ? game.view.teams.filter((t) => !t.inBossPhase) : []}
+          nextLine={game?.phase === "finished" ? null : nextLine}
         />
       )}
     </main>

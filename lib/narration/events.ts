@@ -10,7 +10,9 @@ export interface NextTurn {
   boss: boolean;
 }
 
-type WithNext<T> = T & { next?: NextTurn };
+/** `hostLine`: the line the host queued for this narration (HOST_NEXT_LINE); segment 2 always says it
+ * (docs/designs/host-next-line.md). `hostLineVerbatim`: it holds a bank answer, so the LLM never sees it. */
+type WithNext<T> = T & { next?: NextTurn; hostLine?: string; hostLineVerbatim?: true };
 
 export type NarrationEvent =
   | WithNext<{ type: "start"; teams: string[] }>

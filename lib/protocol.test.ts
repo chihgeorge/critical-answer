@@ -97,6 +97,13 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "字".repeat(41) })).toBeNull();
   });
 
+  it("HOST_NEXT_LINE: a string of at most 40 characters, \"\" to cancel", () => {
+    expect(parseClientMessage({ type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" })).toEqual({ type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
+    expect(parseClientMessage({ type: "HOST_NEXT_LINE", line: "" })).toEqual({ type: "HOST_NEXT_LINE", line: "" });
+    expect(parseClientMessage({ type: "HOST_NEXT_LINE" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_NEXT_LINE", line: "字".repeat(41) })).toBeNull();
+  });
+
   it("HOST_QUEUE_QUESTION: a target and a question id, or null to clear", () => {
     expect(parseClientMessage({ type: "HOST_QUEUE_QUESTION", target: "t1", questionId: "q1" })).toEqual({ type: "HOST_QUEUE_QUESTION", target: "t1", questionId: "q1" });
     expect(parseClientMessage({ type: "HOST_QUEUE_QUESTION", target: "boss", questionId: null })).toEqual({ type: "HOST_QUEUE_QUESTION", target: "boss", questionId: null });

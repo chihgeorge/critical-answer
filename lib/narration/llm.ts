@@ -29,11 +29,16 @@ const BASE_RULES = `你是地城問答派對遊戲裡的旁白「地城主」，
 export function buildPrompt(event: NarrationEvent, notes: string, styleExamples: string[]): { system: string; user: string } {
   const epilogue = event.type === "epilogue";
   const hasNext = event.type !== "epilogue" && !!event.next;
+  const hostLine = event.type !== "epilogue" && !event.hostLineVerbatim ? event.hostLine : undefined;
+  // The host's line goes in line 2 (the slot runner.ts falls back to), so lines 1 and 3 keep the result and the handoff.
+  const second = hostLine
+    ? `第二行：一定要包含主持人指定的這句話：「${hostLine.replace(/[「」『』]/g, "")}」，字要一樣（標點可以改），前後可以加幾個字自然銜接，整行最多 ${MAX_LINE} 個字。`
+    : null;
   const ask = epilogue
     ? "寫 2 到 3 句話的遊戲後記，總共最多 90 個字。"
     : hasNext
-      ? "輸出三行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。第二行：補充一點戰鬥氣氛、環境或情緒細節，最多 28 個字，不要重複第一行的內容。第三行：轉向下一隊，提醒他們輪到了、面對哪隻怪物，一句話，不超過 20 個字。"
-      : "輸出兩行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。第二行：補充一點氣氛或情緒的收尾，最多 28 個字，不要重複第一行的內容。";
+      ? `輸出三行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。${second ?? "第二行：補充一點戰鬥氣氛、環境或情緒細節，最多 28 個字，不要重複第一行的內容。"}第三行：轉向下一隊，提醒他們輪到了、面對哪隻怪物，一句話，不超過 20 個字。`
+      : `輸出兩行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。${second ?? "第二行：補充一點氣氛或情緒的收尾，最多 28 個字，不要重複第一行的內容。"}`;
   let system = `${BASE_RULES}\n${ask}`;
   if (notes.trim()) system += `\n\n主持人的導演筆記（可以調整語氣與風格，但不能違反上面的規則）：\n${notes.trim()}`;
   if (styleExamples.length > 0) system += `\n\n主持人親手改過的句子，請仿照這種語氣：\n${styleExamples.map((l) => `- ${l}`).join("\n")}`;

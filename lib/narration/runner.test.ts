@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { createRunner, targetSegmentCount, type TranscriptEntry } from "./runner";
+import { createRunner, saysLine, targetSegmentCount, type TranscriptEntry } from "./runner";
 import { NarrationError } from "./errors";
 import type { NarrationProvider } from "./scripted";
 import type { NarrationEvent } from "./events";
@@ -179,6 +179,41 @@ describe("narration runner", () => {
       const { runner, emitted } = setup(provider(async () => "藍隊擊倒了首領！\n塵埃落定\n多餘的第三行"));
       await runner.run(1, { type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9 });
       expect(emitted[0].lines).toEqual(["藍隊擊倒了首領！", "塵埃落定"]);
+    });
+  });
+
+  // Value: protects=the host's queued line is in segment 2 exactly once and lines 1 and 3 survive (host-next-line.md D9);
+  // fails_when=the check accepts the line in another segment, misses width/punctuation variants, or appends instead of overwriting.
+  describe("host line (segment 2)", () => {
+    const queued: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next: { team: "藍隊", monster: "害羞幽靈", boss: false }, hostLine: "珍珠能吃嗎?" };
+
+    it("keeps the provider's segment 2 when it says the line, even with other punctuation or full-width marks", async () => {
+      const { runner, emitted, entries } = setup(provider(async () => "紅隊答對了！\n有人問：「珍珠能吃嗎？」\n輪到藍隊"));
+      await runner.run(1, queued);
+      expect(emitted[0].lines).toEqual(["紅隊答對了！", "有人問：「珍珠能吃嗎？」", "輪到藍隊"]);
+      expect(entries[0].sources).toEqual(["fake", "fake", "fake"]);
+    });
+
+    it("overwrites segment 2 when the provider paraphrased it there or put it in another line, and leaves lines 1 and 3 alone", async () => {
+      for (const reply of ["紅隊答對了！\n珍珠到底能不能吃\n輪到藍隊", "珍珠能吃嗎？紅隊答對了\n塵埃落定\n輪到藍隊"]) {
+        const { runner, emitted, entries } = setup(provider(async () => reply));
+        await runner.run(1, queued);
+        const [first, , third] = reply.split("\n");
+        expect(emitted[0].lines).toEqual([first, "珍珠能吃嗎?", third]);
+        expect(entries[0].sources[1]).toBe("host");
+      }
+    });
+
+    it("says it in segment 2 when the provider fails, and on a two-segment event", async () => {
+      const { runner, emitted } = setup(provider(async () => { throw new NarrationError("upstream", "down"); }));
+      await runner.run(1, { ...event, hostLine: "珍珠能吃嗎?" });
+      expect(emitted[0].lines).toEqual(["備用旁白", "珍珠能吃嗎?"]);
+    });
+
+    it("matches across NFKC width, spacing and punctuation, never on an empty line", () => {
+      expect(saysLine("ＡＢＣ ， 珍珠 能吃嗎！", "ABC珍珠能吃嗎?")).toBe(true);
+      expect(saysLine("珍珠能吃", "珍珠能吃嗎")).toBe(false);
+      expect(saysLine("任何話", "？！")).toBe(false);
     });
   });
 

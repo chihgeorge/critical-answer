@@ -2,6 +2,17 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.25.0.0] - 2026-10-31
+
+### Added
+- The host can now line up what the narrator says next. In ⚙ 更多, under 「下一句這樣說（最多 40 字）」, type a line and press 排進下一句. The next narration's second line says it on the big screen. The AI may add a few words around it, and with no AI the line is said as typed.
+- The drawer shows 「已排入：…」 with a 取消 button until the line is said. Queuing another line replaces the one waiting.
+- A queued line survives a server restart. It is dropped when the game ends without saying it, and the section is hidden after the game ends.
+- If the line contains a question's answer, it is still shown on the big screen as typed, but the AI never sees it.
+
+### Fixed
+- The live AI narration checks now test each narration line on its own, as the game does. Before, they failed on every multi-line narration.
+
 ## [0.24.1.0] - 2026-10-31
 
 ### Added
