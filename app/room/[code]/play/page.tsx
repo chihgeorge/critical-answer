@@ -4,7 +4,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
-import { DISCONNECTED_NOTICE, offlineNotice, type DropSnapshot } from "@/lib/offline-notice";
+import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL, offlineNotice, type DropSnapshot } from "@/lib/offline-notice";
+import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, cleanTypedAnswer, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
@@ -343,11 +344,13 @@ export default function PlayPage() {
   const { code } = useParams<{ code: string }>();
   const searchParams = useSearchParams();
   const teamName = searchParams.get("name") ?? "隊伍";
-  /** What to tell a phone the room turned away for its password; null while it isn't turned away. */
-  const [badPassword, setBadPassword] = useState<string | null>(null);
+  /** Why the room turned this phone's JOIN away (lib/join-rejection.ts); null while it isn't turned away. */
+  const [rejected, setRejected] = useState<JoinRejection | null>(null);
   // The question the room refused a mage's hint on (no_hint), so its button gives way to a note.
   const [noHintQid, setNoHintQid] = useState<string | null>(null);
   const sentPassword = useRef("");
+  /** This phone has seen its own team in a LOBBY or STATE, so no later ERROR is a refused JOIN. */
+  const joined = useRef(false);
 
   const [teamId, setTeamId] = useState("");
   const [lobby, setLobby] = useState<LobbyTeams | null>(null);
@@ -372,12 +375,15 @@ export default function PlayPage() {
     return () => clearTimeout(id);
   }, [offlineMsg]);
 
-  const { reset, rested, send, reconnect } = useRoomSocket(code, {
+  const { reset, rested, unreachable, send, reconnect } = useRoomSocket(code, {
     // Every (re)connect says who we are again: a phone that slept or changed network comes back
     // as the same team instead of staying "offline" and being skipped. An automatic reconnect's
     // JOIN carries `resume` so it isn't activity.
     onOpen(resume) {
       setDisconnected(false);
+      // A wiped room has forgotten us, so this JOIN may be refused: ask again. The connect-time snapshot may name
+      // us before the JOIN is checked; joinRejection still lets a bad key's bad_token through.
+      joined.current = false;
       const id = getOrCreateTeamId();
       setTeamId(id);
       const password = (sentPassword.current = joinPasswordFor(code));
@@ -392,13 +398,16 @@ export default function PlayPage() {
     },
     onMessage(msg) {
       switch (msg.type) {
-        case "ERROR":
-          if (msg.error === "bad_password") setBadPassword(sentPassword.current ? "房間密碼不對" : "這個房間要密碼才能加入");
+        case "ERROR": {
+          const refused = joinRejection(msg.error, msg.detail, !!sentPassword.current, joined.current);
+          if (refused) setRejected(refused);
           else if (msg.detail === "no_hint") setNoHintQid(lastGame.current?.question?.id ?? null);
           break;
+        }
         case "LOBBY":
           // Not a sign we joined: a connection that failed the password still gets every LOBBY broadcast.
           setLobby(msg.teams);
+          if (msg.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           setGame(null);
           seen.current.clear();
           lastGame.current = null;
@@ -408,6 +417,7 @@ export default function PlayPage() {
           if (msg.question?.content.kind === "text") seen.current.set(msg.question.id, msg.question.content.value);
           setRevealedText(msg.reveal ? seen.current.get(msg.reveal.questionId) : undefined);
           setGame(msg);
+          if (msg.view.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           lastGame.current = msg;
           if (drop.current) {
             setOfflineMsg(offlineNotice(drop.current, msg.eventId));
@@ -497,6 +507,21 @@ export default function PlayPage() {
     </>
   );
 
+  // Turned away: the room still broadcasts LOBBY and STATE to this connection, but none of it is ours to show.
+  if (rejected) {
+    return (
+      <main className="relative min-h-screen overflow-hidden">
+        <SceneBackground theme="stone" cols={48} rows={100} arch={false} className="fixed inset-0" />
+        <div className="relative z-10 flex min-h-screen flex-col gap-4 px-[14px] pb-4 pt-5">
+          <Panel role="alert" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]" style={{ background: "#ffd9d9" }}>
+            {rejected.text}
+            <a href={`/?code=${code}`} className="text-[16px] underline underline-offset-2">{rejected.link === "password" ? "回首頁輸入密碼" : "回首頁"}</a>
+          </Panel>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden">
       <SceneBackground theme={turn?.theme ?? "stone"} cols={48} rows={100} arch={false} className="fixed inset-0" />
@@ -528,17 +553,17 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {badPassword && (
-          <Panel role="alert" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]" style={{ background: "#ffd9d9" }}>
-            {badPassword}
-            <a href={`/?code=${code}`} className="text-[16px] underline underline-offset-2">回首頁輸入密碼</a>
+        {unreachable ? (
+          <Panel tone="turn" role="alert" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]">
+            {UNREACHABLE_NOTICE}
+            <PixelButton onClick={reconnect} className="!m-0 !px-4 !py-2">{UNREACHABLE_RETRY_LABEL}</PixelButton>
           </Panel>
-        )}
-
-        {!game && !badPassword && (
-          <Panel tone="lav" className="px-4 py-5 text-center text-[20px]">
-            {lobby ? "等待主持人開始遊戲…" : "連線中…"}
-          </Panel>
+        ) : (
+          !game && (
+            <Panel tone="lav" className="px-4 py-5 text-center text-[20px]">
+              {lobby ? "等待主持人開始遊戲…" : "連線中…"}
+            </Panel>
+          )
         )}
 
         {/* Who has joined so far, updating live while everyone waits for the host. */}

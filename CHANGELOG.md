@@ -2,6 +2,19 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.24.1.0] - 2026-10-31
+
+### Added
+- A phone or big screen that cannot reach the server says so after 10 seconds: 「連不上伺服器：請檢查網路，或稍後再試。」 with a 重試 button. Before, the phone sat on 「連線中…」 and the big screen on an empty lobby, with no sign anything was wrong. If a retry also fails, the notice comes back after another 10 seconds.
+- A phone the room turns away now says why, with a link back to the home page:
+  - 「遊戲已經開始了，新隊伍不能再加入」 when the game has already started.
+  - 「隊伍名稱不能用，請換一個名字」 when the team name is empty or unusable.
+  - 「房間已滿（最多 8 隊）」 when the room is full.
+  - 「加入失敗，請換一個瀏覽器再加入」 when the browser's saved team data no longer matches the room.
+
+### Changed
+- A phone turned away while a game is running no longer shows that game as if it were a team in it. It shows only the reason.
+
 ## [0.24.0.0] - 2026-10-30
 
 ### Added

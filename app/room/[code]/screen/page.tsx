@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
-import { DISCONNECTED_NOTICE } from "@/lib/offline-notice";
+import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
 import type { AnswerReveal, LobbyTeams, PendingRoll, PublicQuestion, StateMessage } from "@/lib/protocol";
 import type { LockedOption, SpectatorView, WrongAnswer } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
@@ -517,7 +517,7 @@ export default function ScreenPage() {
     writeStored(BGM_ENABLED_STORAGE, String(next));
   }
 
-  const { reset, rested, reconnect } = useRoomSocket(code, {
+  const { reset, rested, unreachable, reconnect } = useRoomSocket(code, {
     onOpen() {
       setDisconnected(false);
       narrationBaseline.current = null;
@@ -581,6 +581,12 @@ export default function ScreenPage() {
           {disconnected && !rested && (
             <div role="status" className="text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
               {DISCONNECTED_NOTICE}
+            </div>
+          )}
+          {unreachable && (
+            <div role="alert" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
+              {UNREACHABLE_NOTICE}
+              <PixelButton onClick={reconnect} className="!m-0 !px-4 !py-1 text-[18px]">{UNREACHABLE_RETRY_LABEL}</PixelButton>
             </div>
           )}
           {rested && (

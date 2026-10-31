@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import usePartySocket from "partysocket/react";
 import { restKindOf, type RestKind } from "./room/close-codes";
 import type { ClientMessage, ServerMessage } from "./protocol";
@@ -22,6 +22,9 @@ export function readRoomMessage(data: string, lastEpoch: string | null): { msg: 
   return { msg, epoch: lastEpoch, reset: false };
 }
 
+/** How long a page waits for its first connection before saying it can't reach the server. */
+export const FIRST_CONNECT_TIMEOUT_MS = 10_000;
+
 /** The room connection the host, play and screen pages share: parsed messages, the server-restart
  * check (`reset`), and the idle rest that stops automatic reconnecting (`rested`). */
 export function useRoomSocket(
@@ -42,12 +45,22 @@ export function useRoomSocket(
    * together they tell an automatic reconnect (`resume`) from a person coming back. */
   const openedOnce = useRef(false);
   const reconnectByHand = useRef(false);
+  /** The first connect hasn't opened within FIRST_CONNECT_TIMEOUT_MS. partysocket keeps retrying meanwhile. */
+  const [unreachable, setUnreachable] = useState(false);
+  /** Bumped by `reconnect()` to restart the first-connect timer. */
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (openedOnce.current) return;
+    const id = setTimeout(() => setUnreachable(!openedOnce.current), FIRST_CONNECT_TIMEOUT_MS);
+    return () => clearTimeout(id);
+  }, [attempt]);
 
   const socket = usePartySocket({
     host: PARTY_HOST,
     room: code,
     onOpen() {
       setRested(null);
+      setUnreachable(false);
       const resume = openedOnce.current && !reconnectByHand.current;
       openedOnce.current = true;
       reconnectByHand.current = false;
@@ -74,10 +87,13 @@ export function useRoomSocket(
   return {
     reset,
     rested,
+    unreachable,
     send: (msg: ClientMessage) => socket.send(JSON.stringify(msg)),
-    /** The rested notice's button: reconnect as a person coming back, not a `resume`. */
+    /** The rested and unreachable notices' button: reconnect as a person coming back, not a `resume`. */
     reconnect() {
       reconnectByHand.current = true;
+      setUnreachable(false);
+      setAttempt((a) => a + 1);
       socket.reconnect();
     },
   };
