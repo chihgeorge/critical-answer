@@ -1,9 +1,7 @@
 // PartyKit client/server message contract for the dungeon room.
 //
-// Iteration 1 has no host quiz-editor UI or player text input (see
-// docs/designs/critical-answer-party-game.md, Next Steps #7): the host reads
-// each question aloud off a fixed fixture set and judges the current team's
-// answer correct/incorrect. Only the host can send HOST_JUDGE — trusting a
+// The host judges each text question's answer correct/incorrect (since #104 the team types it on
+// its phone; see TEAM_SUBMIT_TEXT below). Only the host can send HOST_JUDGE — trusting a
 // team's own "I got it right" claim would let them self-score.
 //
 // TEAM_BRANCH_CHOICE and TEAM_SELECT_OPTION are the exceptions to "only the
@@ -24,6 +22,10 @@
 // come from the team's own phone, bound by connTeam. A class pick is lobby-only;
 // the ability's result (the warrior's d20) is rolled by the room, never sent by
 // the phone, so neither message is a score claim either.
+//
+// TEAM_SUBMIT_TEXT (fill-in, #104) is a team's typed answer to a text question, also bound by
+// connTeam and one per question. The host still judges it, so it is not a score claim, and it
+// never goes into an LLM prompt.
 //
 // Host identity is a token minted by the host's browser at room creation.
 // The first HOST_CLAIM for a room sets it (trust on first use, on a 4-letter
@@ -129,7 +131,11 @@ export type ClientMessage =
   /** Lobby only: the team's class, or null for none. The last pick before HOST_START counts. */
   | { type: "TEAM_PICK_CLASS"; classId: ClassId | null }
   /** Spend one use of the team's class ability on `questionId` (PR 1: the warrior's roll). */
-  | { type: "TEAM_USE_ABILITY"; questionId: string };
+  | { type: "TEAM_USE_ABILITY"; questionId: string }
+  /** The team's typed answer to a text question, shown to the host to judge. One per question. */
+  /** `eventId` is the STATE eventId the answer was typed under; an older one (a send that arrived after
+   * the host judged that attempt) is dropped, like HOST_JUDGE. Optional so a phone on an older build still sends. */
+  | { type: "TEAM_SUBMIT_TEXT"; questionId: string; text: string; eventId?: number };
 
 /** The warrior's d20, rolled and shown before it is judged (the beat, like a lock's). */
 export interface PendingRoll {
@@ -260,9 +266,22 @@ export function sanitizeText(text: string, max: number): string {
 // to 20 characters; the ceiling here only rejects absurd payloads.
 const MAX_ID = 64;
 const MAX_RAW_NAME = 100;
+const MAX_RAW_TEXT = 200;
+/** A typed answer keeps this many characters (code points). */
+export const MAX_TYPED_ANSWER = 40;
 export const MAX_NOTES = 500;
 export const MAX_PASSWORD = 32;
 export const MAX_EDIT_LINE = 40;
+
+/**
+ * A typed answer: trimmed, control and bidi-override characters dropped, MAX_TYPED_ANSWER code points,
+ * and "" when nothing visible is left (only zero-width characters). Quotes stay (unlike sanitizeText):
+ * it is only shown as React text and never goes into an LLM prompt.
+ */
+export function cleanTypedAnswer(text: string): string {
+  const kept = Array.from(text.replace(/[\p{Cc}\u202A-\u202E\u2066-\u2069]/gu, "").trim()).slice(0, MAX_TYPED_ANSWER).join("").trim();
+  return /[^\p{Cf}\p{Z}]/u.test(kept) ? kept : "";
+}
 
 function str(v: unknown, max: number): string | null {
   return typeof v === "string" && v.length <= max ? v : null;
@@ -383,6 +402,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "TEAM_USE_ABILITY": {
       const questionId = str(m.questionId, MAX_ID);
       return questionId === null ? null : { type: "TEAM_USE_ABILITY", questionId };
+    }
+    case "TEAM_SUBMIT_TEXT": {
+      const questionId = str(m.questionId, MAX_ID);
+      const text = str(m.text, MAX_RAW_TEXT);
+      if (questionId === null || text === null) return null;
+      if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
+      return { type: "TEAM_SUBMIT_TEXT", questionId, text, ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}) };
     }
     default:
       return null;

@@ -568,6 +568,216 @@
 
 ---
 
+## 隊伍換手機或換瀏覽器後回不了遊戲
+
+**What:** 遊戲開始後，手機沒電、換瀏覽器或開無痕分頁，那支裝置的 localStorage 裡就是新的 `teamId`，房間會回 `game_already_started`。這隊整場都會被當成離線、一直被跳過。主持人也沒有任何訊息可以重新配對或移除這隊。做法：主持人頁加「把這隊交給新手機」（例如產生一次性的配對碼），或讓新裝置輸入隊名加主持人核准後接手原本的 `teamId`。
+
+**Why:** 派對現場很常有手機沒電或有人換手機，現在只能整隊放棄。
+
+**Context:** `lib/room/dungeon-room.ts:912-915`（`handleJoin`）；`/play` 也沒有顯示這個錯誤（見下一則）。2026-10-30 系統檢查時找到。
+
+**Effort:** M（人工約 1-2 天 / CC 約 1 小時）　**Priority:** P2
+
+**Depends on / blocked by:** 最好跟「手機被拒絕加入時不顯示原因」一起做。
+
+---
+
+## 手機被拒絕加入時不顯示原因
+
+**What:** 房間會回 `game_already_started`、`invalid_name`、`invalid_action/room_full` 這幾種錯誤，但 `/play` 只處理 `bad_password`。第 9 隊、遊戲開始後才來的人、名字只有空白的人，畫面都一直停在「等待主持人開始遊戲…」，沒人知道為什麼加不進去。做法：每種錯誤各給一句說明。
+
+**Why:** 現場沒人看得懂為什麼加不進去，只能一直問主持人。
+
+**Context:** `app/room/[code]/play/page.tsx:302-304`；伺服器端在 `lib/room/dungeon-room.ts:912-927`。伺服器有單元測試，手機端顯示什麼沒有測試。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約半天 / CC 約 20 分鐘）　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 電視和主持人的螢幕會自動休眠
+
+**What:** 程式裡完全沒用 Screen Wake Lock。接電視的筆電或主持人的手機在一輪裡很久沒人碰，螢幕就會暗掉。做法：大螢幕頁和主持人頁呼叫 `navigator.wakeLock.request("screen")`，`visibilitychange` 回到前景時再要一次。
+
+**Why:** 全場看著黑掉的電視，要等有人去喚醒。
+
+**Context:** `app/room/[code]/screen/page.tsx`、`app/room/[code]/host/page.tsx`。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 第一次連線就失敗時，畫面永遠停在「連線中…」
+
+**What:** 斷線提示只在「曾經連上過」之後才會出現（`onClose` 裡 `if (rested || !openedBefore) return`）。場地 Wi-Fi 要先登入、Worker 掛掉或 CORS 出錯時，手機和電視都永遠顯示「連線中…」，沒有逾時、沒有提示、沒有重試鈕。做法：例如 10 秒還沒連上就顯示「連不上伺服器」和重試鈕。
+
+**Why:** 現場網路出問題時，大家不知道是網路壞了還是遊戲壞了。
+
+**Context:** `app/room/[code]/play/page.tsx:294`、`:444-447`；`app/room/[code]/screen/page.tsx:517`。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約半天 / CC 約 20 分鐘）　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 前端一當掉就整頁白屏，也沒有回報
+
+**What:** 沒有 `app/error.tsx` 或 `app/global-error.tsx`，也沒有 `window.onerror`、`unhandledrejection` 的處理。一個渲染錯誤（例如版本不一致時 STATE 多了或少了欄位）就會讓電視或手機變成 Next 的「Application error」白頁，只能重新整理，而且我們不會知道發生過。做法：加 `error.tsx` 顯示「出錯了，按這裡重新載入」，再把錯誤送到 Worker 記一筆 log。
+
+**Why:** 派對中電視白屏，主持人不知道要按重新整理。
+
+**Context:** Worker 端已經有 log（`wrangler.jsonc` 開了 `observability`），缺的是前端。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約半天 / CC 約 30 分鐘）　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 不檢查房間代碼格式，任何名字都能開出新房
+
+**What:** `entryGate` 只檢查 party 名稱是不是 `main` 和 Origin，沒有檢查房間代碼。沒帶 Origin 的請求是允許的，所以腳本可以對 `/parties/main/<任意字串>` 開 WebSocket，每個名字都會建一個 Durable Object、設 alarm、寫一份包含整個題庫的 snapshot，在儲存空間留 24 小時。做法：在 gate 拒絕不符合 `^[BCDEFGHJKLMNPQRSTUVWXYZ]{4}$` 的名字。也可以改成等第一則有效訊息才寫入，這部分是 M。
+
+**Why:** 不用登入就能大量佔用 Durable Object 的儲存空間和請求次數；把 4 字代碼全部佔掉也會讓主持人頁的重試用完。
+
+**Context:** `lib/gate.ts:18-25`、`worker/index.ts:192-193`、`lib/room/dungeon-room.ts:753-755`。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P3
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 一條連線能佔滿 8 隊，60 條連線能鎖死房間
+
+**What:** 沒有加入密碼時，一條連線可以換 8 個 UUID 送 8 次 JOIN，`MAX_TEAMS` 就滿了；`connTeam` 會被直接覆蓋，沒檢查這條連線是不是已經有隊伍。另外 `MAX_CONNECTIONS = 60` 是整個房間的上限，有代碼的人開 60 個 socket，之後連主持人和斷線重連的手機都進不來。做法：一條連線只能有一隊（S）；連線上限保留名額給主持人，或用 `CF-Connecting-IP` 限制每個 IP 的數量（M）。
+
+**Why:** 代碼就顯示在電視上，有人搗蛋就能讓整場玩不下去。
+
+**Context:** `lib/room/dungeon-room.ts:67`、`:745-748`、`:925-932`。2026-10-30 系統檢查時找到。
+
+**Effort:** S/M　**Priority:** P3
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 每則訊息都把整個房間序列化一次，而且沒有速率限制
+
+**What:** `sendTo` 每次都先呼叫 `persist()`，`persist()` 會先 `JSON.stringify` 整個房間狀態（含題庫，預設約 27 KB、編輯後最多 200 KB），再跟上次比較有沒有變。所以連錯誤回覆也要付一次完整序列化的代價。一條沒驗證的連線一直送 `{}` 或錯的 HOST_CLAIM，就能拖慢正在進行的遊戲。做法：ERROR 回覆不呼叫 persist，或改用 dirty flag；再加每條連線的簡單速率限制。
+
+**Why:** 便宜的請求換到昂貴的 CPU，房間 Durable Object 是單執行緒的。
+
+**Context:** `lib/room/dungeon-room.ts:372-375`、`:414-420`、`:796`。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約半天 / CC 約 30 分鐘）　**Priority:** P3
+
+**Depends on / blocked by:** 無。
+
+---
+
+## HOST_AI_KEY 能被拿來批次驗證偷來的 Anthropic key
+
+**What:** 任何人都能搶到一個新代碼當主持人，然後連續送 HOST_AI_KEY（`own`）。每把格式正確的 key 都會從 Cloudflare 的 IP 打一次 `GET /v1/models`，回覆會告訴對方哪把 key 有效。新訊息會中止舊的檢查，但沒有次數或冷卻限制。做法：每個房間每分鐘只檢查幾次，超過就回 `check_failed`。
+
+**Why:** 我們的 Worker 會變成別人驗證外洩 key 的工具，Cloudflare 的 IP 也可能被 Anthropic 封鎖。
+
+**Context:** `lib/room/dungeon-room.ts:337-364`、`lib/narration/providers.ts:26-37`。v0.21.0.0 加入的路徑。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約 2 小時 / CC 約 20 分鐘）　**Priority:** P3
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 兩隊同名時分數會互相覆蓋
+
+**What:** 加入時沒有擋重複的隊名。`scores()` 用 `Object.fromEntries(teams.map(t => [t.name, t.reward]))`，同名的兩隊在每一筆 transcript 裡只會留下一隊的分數，旁白和電視也分不出是哪一隊。做法：加入時遇到同名就回錯誤或自動加上「2」；`scores()` 改用隊伍 id 當 key。
+
+**Why:** 後記和旁白的分數會講錯。
+
+**Context:** `lib/room/dungeon-room.ts:605-607`、`handleJoin`（`:920`）。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P3
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 每一題都由主持人宣布答案，選擇題和填空題節奏一樣
+
+**What:** 現在選擇題是手機鎖定後由系統直接判對錯，口說題（之後改成填空題）是主持人判。改成每一題都要主持人按下「公布答案」才揭曉，選擇題也一樣，讓兩種題型的節奏一致。
+
+**Why:** 使用者 2026-10-30 提出：不論是不是選擇題，節奏都要一樣。
+
+**Context:** 選擇題的自動判定在 `lib/room/dungeon-room.ts` 的鎖定流程（lock beat、`autoAdvance`），設計在 `docs/designs/phone-answering.md`。要一起檢查戰士擲骰、牧師祈禱、boss 房答錯換題這些靠自動判定的時間點。排在「口說題改成填空題（手機打字、主持人判）」之後做。
+
+**Effort:** M（人工約 2 天 / CC 約 1 小時）　**Priority:** P2
+
+**Depends on / blocked by:** 口說題改成填空題。
+
+---
+
+## 填空題可以有好幾個要填的欄位
+
+**What:** 填空題第一版只有一個答案欄位。之後讓一題可以有好幾個欄位，每一格各自有答案，例如猜歌要同時填「歌手」和「歌名」。要決定：手機上怎麼排好幾格、主持人怎麼判（整題對或錯，還是每一格分開判、可以給部分分數）、題庫格式怎麼存、題庫編輯器怎麼編。
+
+**Why:** 使用者 2026-10-30 提出，猜歌這類題目一題需要填不只一個答案。
+
+**Context:** 接在「口說題改成填空題（手機打字、主持人判）」之後。題庫格式在 `lib/question-bank.ts`（text 題現在只有一個 `answer` 字串）。
+
+**Effort:** M（人工約 2 天 / CC 約 1 小時）　**Priority:** P3
+
+**Depends on / blocked by:** 口說題改成填空題。
+
+---
+
+## 研究怎麼加入 D&D 規則，讓遊戲更像 D&D
+
+**What:** 研究 D&D（第五版）有哪些規則可以搬進來，讓遊戲更有跑團的感覺。候選例如：屬性與檢定（d20 加調整值對 DC）、優勢／劣勢（擲兩次取高或取低）、血量與休息、先攻順序、經驗值與升級。先列出候選，每一項評估「現場玩起來會不會太慢」，再挑幾項寫規格。
+
+**Why:** 使用者 2026-10-30 提出，希望遊戲更像 D&D。
+
+**Context:** 已經有的 D&D 元素：戰士的 d20 擲骰（`WARRIOR_TARGET`）、四個職業、地城房間與魔王。設計文件在 `docs/designs/class-abilities.md`。要注意 SRD 的授權範圍，只用公開的規則。
+
+**Effort:** M（研究加寫規格，人工約 2 天 / CC 約 1 小時）　**Priority:** P3
+
+**Depends on / blocked by:** 還沒寫規格，先走 /office-hours。
+
+---
+
+## 房間除了問答怪物，還有事件卡（像大富翁的機會／命運）
+
+**What:** 進到房間時，不一定是遇到要用問答打的怪物，也可能抽到一張事件卡，例如寶箱、陷阱、商人、泉水回血、詛咒。事件可以是好的也可以是壞的，可能影響分數、能力次數或下一題。
+
+**Why:** 使用者 2026-10-30 提出，讓地城每一間房間不只是答題，多一點意外。
+
+**Context:** 房間和地圖在 `lib/game-state.ts`、`lib/map-layout.ts`；分支選擇（`recordBranchChoice`）可能是加事件房的好位置。要決定：事件卡放在題庫裡還是寫死在程式、出現機率、大螢幕怎麼演出、AI 旁白怎麼描述。
+
+**Effort:** M（人工約 2-3 天 / CC 約 1.5 小時）　**Priority:** P3
+
+**Depends on / blocked by:** 還沒寫規格，先走 /office-hours。
+
+---
+
+## 不同題型變成不同行動：選擇題是打怪物，問答題是說服怪物
+
+**What:** 讓題型對應到故事裡的行動。例如選擇題是「攻擊」，填空題是「說服」或「談判」，答對的結果也不一樣（打倒得獎勵，說服可能讓怪物讓路或給線索）。也可以讓隊伍自己選要打還是要說服，再決定出哪一種題目。
+
+**Why:** 使用者 2026-10-30 提出，讓答題更像在跑團。
+
+**Context:** 跟「每次行動可以選不同的動作，不只答題」很接近，可以一起設計。也牽涉職業能力（法師、牧師在填空題的能力重新設計）和「口說題改成填空題」。
+
+**Effort:** M（人工約 2-3 天 / CC 約 1.5 小時）　**Priority:** P3
+
+**Depends on / blocked by:** 口說題改成填空題；還沒寫規格，先走 /office-hours。
+
+---
+
 ## Completed
 
 ## AI 旁白沒有花費上限：任何人都能開房間觸發付費 LLM 呼叫

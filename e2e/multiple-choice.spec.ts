@@ -64,6 +64,8 @@ test("multipleChoice in play: the team taps an option, the host sees the pick hi
   // Phone answering (docs/designs/phone-answering.md): the host no longer judges an MC turn.
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
   await expect(host.getByTestId("host-mc-status")).toContainText("等選擇隊鎖定答案");
+  // Value: protects=the fill-in line (#104) stays off the host page on a multipleChoice turn; fails_when=the !options guard on host-typed-answer is dropped; no_claim=the TV (its line needs a typedAnswer the room refuses on multipleChoice).
+  await expect(host.getByTestId("host-typed-answer")).toHaveCount(0);
 });
 
 test("phone answering: a wrong lock is marked without the answer, 重答 greys it out, a right lock lights up everywhere", async ({ browser, request }) => {

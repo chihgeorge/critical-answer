@@ -12,6 +12,7 @@ import {
   pickBlock,
   pickableQuestionIds,
   recordOptionSelection,
+  submitText,
   recordWrongLock,
   currentQuestionIdOf,
   setTeamOnline,
@@ -38,6 +39,7 @@ import {
   MAX_TEAMS,
   parseClientMessage,
   sanitizeText,
+  cleanTypedAnswer,
   type AiKeyError,
   type AiProviderId,
   type AiSource,
@@ -866,6 +868,9 @@ export class DungeonRoom {
         case "TEAM_USE_ABILITY":
           this.handleTeamUseAbility(sender, msg.questionId);
           break;
+        case "TEAM_SUBMIT_TEXT":
+          this.handleTeamSubmitText(sender, msg.questionId, msg.text, msg.eventId);
+          break;
       }
       // A transcript download changes nothing; a rejected message did not either; and an automatic
       // reconnect's re-identification (`resume`) is a device, not a person.
@@ -1423,6 +1428,27 @@ export class DungeonRoom {
     if (!teamId || !this.game) return;
     try {
       this.game = recordBranchChoice(this.game, teamId, roomIndex, choice);
+      this.broadcastState();
+    } catch (err) {
+      this.sendInvalid(conn, err);
+    }
+  }
+
+  /** A typed answer to a text question, shown to the host to judge (fill-in, #104). Not narrated. */
+  private handleTeamSubmitText(conn: Conn, questionId: string, raw: string, eventId?: number) {
+    const teamId = this.playingTeam(conn);
+    if (!teamId || !this.game) return;
+    const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    // Typed before the host judged that attempt (a slow send on a retry of the same question): drop it,
+    // so it never fills the new attempt and blocks the team's real answer with already_submitted.
+    if (eventId !== undefined && eventId !== this.eventSeq) return reject("stale_event");
+    if (this.paused()) return reject("reveal_pending");
+    if (this.pendingRoll) return reject("roll_pending");
+    if (this.question(questionId)?.kind !== "text") return reject("not_text_question");
+    const text = cleanTypedAnswer(raw);
+    if (!text) return reject("invalid_text");
+    try {
+      this.game = submitText(this.game, teamId, questionId, text);
       this.broadcastState();
     } catch (err) {
       this.sendInvalid(conn, err);

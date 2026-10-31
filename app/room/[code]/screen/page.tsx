@@ -254,6 +254,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
           // once React reuses this node for the next media question (adversarial review).
           <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
         )}
+        {/* #104: the team's typed answer to a text question, for the room to see. */}
+        {!reveal && !card && question && !question.options && turn?.typedAnswer && (
+          <div data-testid="screen-typed-answer" className="mt-3 text-[24px] [overflow-wrap:anywhere]">
+            ⚔️ {turn.name}：{turn.typedAnswer}
+          </div>
+        )}
       </Panel>
 
       {/* D17=A: a thief's armed Sneak Attack hangs over the monster until its answer is judged. */}

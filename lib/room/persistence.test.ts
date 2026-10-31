@@ -4,6 +4,7 @@ import { DungeonRoom } from "./dungeon-room";
 import { SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { BANK } from "../question-bank-data";
+import { currentTurnTeamId } from "../game-state";
 // Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
 vi.mock("../question-bank-data", async (actual) => {
   const { asTextBank } = await import("../text-bank");
@@ -289,6 +290,23 @@ describe("restoring after a restart", () => {
     const second = makeRoom(storage);
     expect(await second.room.restore()).toBe("restored");
     expect(second.room.game!.teams.every((t) => t.currentSelection === null)).toBe(true);
+  });
+
+  // Value: protects=a typed answer waiting for the host survives a restart and keeps its team on turn (AC7);
+  // fails_when=the field is dropped on save or restore; no_claim=old saves (they have no field: the view reads null).
+  it("a typed answer waiting for the host survives a restart, and its team keeps the turn", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const first = makeRoom(storage);
+    await first.room.restore();
+    const t0 = first.room.game!.turnOrder[0];
+    const conn = t0 === T1 ? rejoin(first.room, T1, TEAM_KEY, "a2") : rejoin(first.room, T2, TEAM_KEY + "2", "b2");
+    send(first.room, conn, { type: "TEAM_SUBMIT_TEXT", questionId: first.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId, text: "Don't" });
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored");
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.typedAnswer).toBe("Don't");
+    expect(currentTurnTeamId(second.room.game!)).toBe(t0); // every phone is offline after a restart
   });
 
   it("a corrupt snapshot with a null team entry doesn't crash restore (adversarial review, 2026-09-21)", async () => {

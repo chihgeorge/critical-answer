@@ -1656,6 +1656,21 @@ describe("LLM narration and director (T8-T10)", () => {
     expect(transcript(r.room, r.hostConn)[0]).toMatchObject({ provider: "llm" });
   });
 
+  // Value: protects=a team's typed answer never reaches the paid LLM prompt (#104 AC9);
+  // fails_when=a narration event starts carrying team.typedAnswer into the prompt; no_claim=the scripted provider.
+  it("never puts a team's typed answer into the prompt (#104)", async () => {
+    const r = await llmRoom(() => textReply("x"));
+    const { conns } = joinTeams(r.room, r.hostConn, 2);
+    send(r.room, r.hostConn, { type: "HOST_START" });
+    const g = r.room.game!;
+    send(r.room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: g.teams[0].currentQuestionId, text: "祕密答案ZQX" });
+    expect(r.room.game!.teams[0].typedAnswer).toBe("祕密答案ZQX");
+    judge(r.room, r.hostConn);
+    await sleep(30);
+    expect(r.calls.length).toBeGreaterThan(1);
+    expect(r.calls.some((c) => JSON.stringify(c).includes("ZQX"))).toBe(false);
+  });
+
   it("makes no LLM call when the host turns AI narration off, or when there is no key", async () => {
     const off = await llmRoom(() => textReply("不該出現"));
     begin(off, false);
@@ -2359,5 +2374,117 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     expect(err(conns[0])).toBe("stale_question");
     expect(room.game!.teams[0].abilityUses).toBe(2);
     expect(room.game!.pendingWrong?.prayed).toBeUndefined();
+  });
+});
+
+describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
+  afterEach(() => vi.useRealTimers());
+  function game(warrior = false) {
+    let r = 0;
+    const room = new DungeonRoom(makeRoom() as any, () => r);
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids, conns } = joinTeams(room, hostConn, 2);
+    if (warrior) send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "warrior" });
+    send(room, hostConn, { type: "HOST_START" });
+    const q = () => room.game!.teams[0].currentQuestionId;
+    const submit = (text: string, conn = conns[0]) => send(room, conn, { type: "TEAM_SUBMIT_TEXT", questionId: q(), text });
+    const rollFor = (value: number) => {
+      r = (value - 1) / 20;
+      send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: q() });
+    };
+    return { room, hostConn, ids, conns, q, submit, rollFor };
+  }
+  const err = (conn: Conn) => lastSentTo(conn as never)?.detail;
+
+  // Value: protects=the host page and TV get the cleaned answer in one STATE, without a narration bump (AC1);
+  // fails_when=quotes are stripped, 41 characters are kept, or eventSeq moves (spinner never stops);
+  // no_claim=the pages' rendering (e2e).
+  it("broadcasts the cleaned answer, 40 characters at most, without bumping eventSeq", () => {
+    const { room, submit } = game();
+    const seq = seqOf(room);
+    submit(`  Don't ${"字".repeat(40)}`);
+    const sent = lastBroadcast(room).view.teams[0].typedAnswer;
+    expect(Array.from(sent)).toHaveLength(40);
+    expect(sent.startsWith("Don't 字")).toBe(true);
+    expect(seqOf(room)).toBe(seq);
+  });
+
+  // Value: protects=blank, off-turn, repeated and mid-reveal sends change nothing and say why (AC2, AC3, AC7a);
+  // fails_when=any of them writes typedAnswer or answers with the wrong detail; no_claim=multipleChoice (next test).
+  it("refuses blank text, another team, a second send and a send during a reveal", () => {
+    const { room, hostConn, ids, conns, q, submit } = game();
+    submit(" \t ");
+    expect(err(conns[0])).toBe("invalid_text");
+    send(room, conns[1], { type: "TEAM_SUBMIT_TEXT", questionId: room.game!.teams[1].currentQuestionId, text: "x" });
+    expect(lastSentTo(conns[1])).toMatchObject({ type: "ERROR", error: "invalid_action" });
+    expect(room.game!.teams[1].typedAnswer).toBeUndefined();
+    send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: "no-such-q", text: "x" });
+    expect(err(conns[0])).toBe("not_text_question");
+    submit("first");
+    submit("second");
+    expect(err(conns[0])).toBe("already_submitted");
+    expect(room.game!.teams[0].typedAnswer).toBe("first");
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: q(), correct: true });
+    expect(room.game!.teams[0].typedAnswer).toBeUndefined();
+    send(room, conns[1], { type: "TEAM_SUBMIT_TEXT", questionId: room.game!.teams[1].currentQuestionId, text: "x" });
+    expect(err(conns[1])).toBe("reveal_pending");
+  });
+
+  // Value: protects=a send typed before the host judged that attempt never fills the retry of the same question;
+  // fails_when=the eventId check goes and the late send blocks the real one with already_submitted;
+  // no_claim=the phone stamping eventId (play page; e2e/fill-in.spec.ts).
+  it("drops a send stamped with an older eventId; the current one and an unstamped one land", () => {
+    const { room, hostConn, ids, conns, q, submit } = game();
+    const before = seqOf(room);
+    const first = q();
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: first, correct: false, fleeChoice: "retry" });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[1], questionId: room.game!.teams[1].currentQuestionId, correct: false, fleeChoice: "retry" });
+    expect(room.game!.currentTurnIndex).toBe(0);
+    expect(q()).toBe(first);
+    send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: first, text: "late", eventId: before });
+    expect(err(conns[0])).toBe("stale_event");
+    expect(room.game!.teams[0].typedAnswer).toBeUndefined();
+    send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: first, text: "now", eventId: seqOf(room) });
+    expect(room.game!.teams[0].typedAnswer).toBe("now");
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: first, correct: false, fleeChoice: "retry" });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[1], questionId: room.game!.teams[1].currentQuestionId, correct: false, fleeChoice: "retry" });
+    submit("old build");
+    expect(room.game!.teams[0].typedAnswer).toBe("old build");
+  });
+
+  // Value: protects=a multipleChoice question cannot get a typed answer (AC3); fails_when=the kind check goes;
+  // no_claim=the phone never shows the box there (play page).
+  it("refuses a multipleChoice question", () => {
+    const mcBank = parseBank({
+      rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [{ kind: "multipleChoice", id: "r0-mc1", content: { kind: "text", value: "？" }, options: ["a", "b"], correctIndex: 0 }] }],
+      boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+    });
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: mcBank });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { conns } = joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: "r0-mc1", text: "a" });
+    expect(err(conns[0])).toBe("not_text_question");
+  });
+
+  // Value: protects=a warrior cannot roll on a sent answer, nor send during its roll (AC6, AC7a);
+  // fails_when=the roll spends a use after the host saw the text, or text lands during the beat;
+  // no_claim=the thief (game-state test covers armSneak).
+  it("refuses the warrior's roll after a send, and a send during the roll", () => {
+    vi.useFakeTimers();
+    const sent = game(true);
+    sent.submit("x");
+    sent.rollFor(20);
+    expect(err(sent.conns[0])).toBe("answer_submitted");
+    expect(sent.room.game!.teams[0].abilityUses).toBe(2);
+    const rolling = game(true);
+    rolling.rollFor(20);
+    rolling.submit("x");
+    expect(err(rolling.conns[0])).toBe("roll_pending");
+    expect(rolling.room.game!.teams[0].typedAnswer).toBeUndefined();
   });
 });

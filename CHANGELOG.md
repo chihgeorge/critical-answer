@@ -2,6 +2,21 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.22.0.0] - 2026-10-30
+
+### Added
+- Spoken questions are now fill-in questions (填空題). On its turn, the team types one answer on its phone, up to 40 characters, and presses 送出. The phone then shows 「已送出：{answer}・等主持人判」.
+- The host page shows 「隊伍答：{answer}」 under the question, or 「（還沒送出）」 before anything is sent. The big screen shows 「⚔️ {team}：{answer}」 so the whole room sees what was answered.
+- The host still judges with 答對 / 答錯, and can judge before anything is sent, so a team whose phone has trouble can still answer aloud.
+- A send the room never confirms gives the box back after 3 seconds, with the text kept and the hint 「沒送出，再按一次，或直接唸給主持人聽」.
+
+### Changed
+- Once a team has sent its answer, the turn stays with it until the host judges, even if the phone goes to sleep or drops offline.
+- After sending, the team can no longer roll the warrior's d20 or arm the thief's Sneak Attack on that question.
+- A typed answer keeps its quotes (Don't Stop stays as typed). Control characters, direction-override characters and answers with nothing visible are dropped, and the 送出 button stays off for an answer that would be dropped.
+- A send that arrives after the host already judged that attempt is ignored, so it never lands on the team's retry.
+- The question-bank editor calls this question type 填空 instead of 問答.
+
 ## [0.21.0.0] - 2026-10-30
 
 ### Added

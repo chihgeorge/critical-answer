@@ -7,7 +7,7 @@ import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE, offlineNotice, type DropSnapshot } from "@/lib/offline-notice";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
-import type { ClientMessage, LobbyTeams, StateMessage } from "@/lib/protocol";
+import { MAX_TYPED_ANSWER, cleanTypedAnswer, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
 import { BRANCH_LABELS, BRANCH_OPTIONS, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, firstPendingBranchRoom, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
@@ -61,7 +61,7 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
 /** The team's class ability on its own turn (D11=A: under 鎖定答案). The warrior's button or its die
  * while the room holds it; the mage's button (multipleChoice, while 2+ wrong options are left) or what
  * it removed; the thief's button or its armed bar (D16). The cleric prays in MyChoicePanel's wrong panel. */
-function ClassAbility({ game, teamId, send, framed = false, frozen = false }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; framed?: boolean; frozen?: boolean }) {
+function ClassAbility({ game, teamId, send, frozen = false }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; frozen?: boolean }) {
   const me = game.view.teams.find((t) => t.id === teamId);
   const roll = game.pendingRoll?.teamId === teamId ? game.pendingRoll : null;
   const q = game.question;
@@ -110,7 +110,7 @@ function ClassAbility({ game, teamId, send, framed = false, frozen = false }: { 
       use();
     });
   } else return null;
-  return framed ? <Panel tone="turn" className="flex flex-col px-[10px] py-[10px]">{body}</Panel> : body;
+  return body;
 }
 
 /** How long 鎖定中… waits for the room to confirm a lock before offering a retry (phone-answering.md D6). */
@@ -244,6 +244,66 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
       )}
       {!wrong && !rolling && <ClassAbility game={game} teamId={teamId} send={send} frozen={frozen} />}
       {lockFailed && !frozen && <div className="text-center text-[14px]">沒送出，再按一次</div>}
+    </Panel>
+  );
+}
+
+/**
+ * The team's own text turn (fill-in, #104): type one answer, send it once, then wait for the host.
+ * Mounted per question and eventId, so a 重答 turn starts with an empty box.
+ */
+function TextAnswerPanel({ game, teamId, send, offline }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; offline: boolean }) {
+  const q = game.question!;
+  const sent = game.view.teams.find((t) => t.id === teamId)?.typedAnswer ?? null;
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const inFlight = sending && sent === null;
+  useEffect(() => {
+    if (!inFlight) return;
+    const id = setTimeout(() => {
+      setSending(false);
+      setFailed(true);
+    }, LOCK_CONFIRM_MS);
+    return () => clearTimeout(id);
+  }, [inFlight]);
+  const rolling = game.pendingRoll?.teamId === teamId;
+
+  return (
+    <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
+      {q.content.kind === "text" && <QuestionStrip text={q.content.value} />}
+      {sent !== null ? (
+        <div className="px-bar mt-1 [overflow-wrap:anywhere]" role="status" data-testid="typed-answer-sent">
+          已送出：{sent}・等主持人判
+        </div>
+      ) : (
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setFailed(false);
+            setSending(true);
+            send({ type: "TEAM_SUBMIT_TEXT", questionId: q.id, text, eventId: game.eventId });
+          }}
+        >
+          <input
+            type="text"
+            className="px-input text-[20px]"
+            aria-label="你們的答案"
+            placeholder="打你們的答案"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            maxLength={MAX_TYPED_ANSWER}
+            disabled={inFlight || rolling}
+            autoComplete="off"
+          />
+          <PixelButton type="submit" variant="ok" disabled={!cleanTypedAnswer(text) || inFlight || rolling || offline} className="!m-0 !min-h-[62px] !text-[23px]">
+            {inFlight ? "送出中…" : "送出"}
+          </PixelButton>
+          {failed && !inFlight && <div className="text-center text-[14px]">沒送出，再按一次，或直接唸給主持人聽</div>}
+        </form>
+      )}
+      {sent === null && !inFlight && <ClassAbility game={game} teamId={teamId} send={send} />}
     </Panel>
   );
 }
@@ -492,16 +552,9 @@ export default function PlayPage() {
         {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
         {game && !finished && !revealed && isMyTurn && game.question?.options && <MyChoicePanel game={game} teamId={teamId} send={send} />}
 
-        {/* Eng review R2: our own host-judged text turn shows the question too (the team answers aloud). */}
-        {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && game.question.content.kind === "text" && (
-          <Panel tone="turn" className="px-[10px] py-[10px]">
-            <QuestionStrip text={game.question.content.value} className="-mx-[10px] -mt-[10px]" />
-            <ClassAbility game={game} teamId={teamId} send={send} />
-          </Panel>
-        )}
-        {/* A spoken image or video question has no turn panel of its own: the roll gets one. */}
-        {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && game.question.content.kind !== "text" && (
-          <ClassAbility game={game} teamId={teamId} send={send} framed />
+        {/* #104: our own host-judged text turn is a fill-in: the team types its answer for the host. */}
+        {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && (
+          <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} />
         )}
 
         {/* D14: our own lock was right — the same tiles, the right one green, and the points. */}

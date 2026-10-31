@@ -789,6 +789,13 @@ export default function HostPage() {
               <div className="mt-2">
                 <ScoreMeter score={turn.team.score} active />
               </div>
+              {/* #104: a text question's typed answer, judged with the buttons below. */}
+              {game.question && !game.question.options && (
+                <div data-testid="host-typed-answer" className="mt-2 text-[18px] [overflow-wrap:anywhere]">
+                  {/* Truthy, not `!== null`: a Worker from before #104 sends no typedAnswer. */}
+                  {turn.team.typedAnswer ? `隊伍答：${turn.team.typedAnswer}` : "（還沒送出）"}
+                </div>
+              )}
               {/* The team's current tap on a multipleChoice question, if any — lets the host see
                   what they picked before judging, same panel timing as the answer reveal below. */}
               {game.question?.options && (
