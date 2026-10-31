@@ -35,6 +35,8 @@ D&D 風格的地城問答派對遊戲。名字是 *Critical Hit*（爆擊）的�
 
 **斷線提示**：手機或大螢幕斷線時會顯示「連線中斷，重新連線中…」；手機重新連上後，會告訴這隊離線期間是否被跳過、或期間判了幾題。
 
+**連不上與被拒絕加入**：手機或大螢幕第一次連線 10 秒還沒連上，會顯示「連不上伺服器：請檢查網路，或稍後再試。」和「重試」按鈕（主持人頁沒有這個提示）。手機被房間拒絕加入時，會用一句話說明原因（遊戲已經開始、隊伍名稱不能用、房間已滿、瀏覽器存的隊伍資料對不上、密碼不對或需要密碼），並附連結：密碼問題回到輸入密碼，其餘回首頁。
+
 ## 技術棧
 
 - [Next.js](https://nextjs.org/) 16 + React 19 + Tailwind CSS 4 + TypeScript
@@ -148,7 +150,8 @@ lib/narration/           旁白：事件、腳本句、LLM、斷路器、執行�
 lib/pixel-art.ts         程式繪製的像素角色與場景
 lib/turn-info.ts         從公開狀態算出輪到誰、面對哪隻怪
 lib/map-layout.ts        活地圖的版面計算：房間、棋子、迷霧、首領房的位置（純函式）
-lib/use-room-socket.ts   三個房間頁面共用的連線 hook（訊息解析、伺服器重啟偵測、休息時停止重連）
+lib/use-room-socket.ts   三個房間頁面共用的連線 hook（訊息解析、伺服器重啟偵測、休息時停止重連、首次連線逾時）
+lib/join-rejection.ts    加入被拒絕時手機顯示的原因句（純函式）
 lib/stored.ts            不會丟錯的 localStorage 讀寫（無痕模式也不會壞）
 lib/bank-image-api.ts    /api/bank/image 圖片上傳（檔案類型、大小檢查；題庫讀不懂時回 409、連不上時回 503）
 worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable Object、/api/bank 路由、入口規則
