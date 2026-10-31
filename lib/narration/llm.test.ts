@@ -101,6 +101,18 @@ describe("prompt", () => {
     expect(system).toContain("此戰驚天動地。");
   });
 
+  it("asks for the host's queued line in line 2, and leaves it out when it holds a bank answer", () => {
+    const withNext: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next: { team: "藍隊", monster: "害羞幽靈", boss: false } };
+    const plain = buildPrompt(withNext, "", []).system;
+    const queued = buildPrompt({ ...withNext, hostLine: "珍珠「能吃」嗎" }, "", []).system;
+    expect(queued).toContain("第二行：一定要包含主持人指定的這句話：「珍珠能吃嗎」");
+    expect(queued).toContain("第一行：交代剛剛發生的事");
+    expect(queued).toContain("第三行：轉向下一隊");
+    expect(queued).not.toContain("補充一點戰鬥氣氛");
+    expect(buildPrompt({ ...withNext, hostLine: "珍珠能吃嗎", hostLineVerbatim: true }, "", []).system).toBe(plain);
+    expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", hostLine: "珍珠能吃嗎" }, "", []).system).toContain("「珍珠能吃嗎」");
+  });
+
   it("keeps the narrator an owl: no cat sounds or internet slang, and a tight length ask", () => {
     const { system } = buildPrompt(event, "", []);
     expect(system).toMatch(/貓頭鷹/);

@@ -184,6 +184,12 @@ export class DungeonRoom {
   /** Asked of new teams at JOIN when not "" (HOST_SET_PASSWORD). Known teams rejoin with their key alone. */
   private joinPassword = "";
   private editedLines: string[] = [];
+  /** The host's line for the next narration's second segment (host-next-line.md). `gen` grows on every queue or
+   * cancel, so a narration started before a re-queue of the same text cannot clear the new one (D7). */
+  private nextLine: { text: string; gen: number } | null = null;
+  private nextLineGen = 0;
+  /** eventId -> the nextLine gen its narration carries, until that narration is emitted. */
+  private hostLineGens = new Map<number, number>();
   /** The host's choice at HOST_START. Only effective while the room has a key and budget left. */
   private aiNarration = false;
   /** Who pays (saved), and the key itself (memory only: never saved, logged, broadcast or sent back). Each applied
@@ -290,9 +296,15 @@ export class DungeonRoom {
         // older, slower LLM call can resolve after a newer one. Drop it rather than overwrite the
         // newer line on every screen and in the replay a reconnecting client gets. An eventId above
         // eventSeq is a leftover from before a reset(), which zeroes eventSeq.
+        const gen = this.hostLineGens.get(eventId);
+        this.hostLineGens.delete(eventId);
         if (eventId > this.eventSeq || (this.lastNarration && eventId < this.lastNarration.eventId)) return;
+        // Cleared before the broadcast, so the one save it triggers cannot bring the line back after a restart.
+        const said = gen !== undefined && this.nextLine?.gen === gen;
+        if (said) this.nextLine = null;
         this.lastNarration = { eventId, lines };
         this.broadcast({ type: "NARRATION", eventId, lines });
+        if (said) this.sendNextLineState();
         if (eventId === this.eventSeq) this.rearmAdvance(lines);
       },
       record: (entry) => this.addTranscript(entry),
@@ -395,6 +407,7 @@ export class DungeonRoom {
       notes: this.notes,
       joinPassword: this.joinPassword,
       editedLines: this.editedLines,
+      nextLine: this.nextLine,
       aiNarration: false,
       aiWanted: this.aiNarration,
       aiSource: this.aiSource,
@@ -487,6 +500,8 @@ export class DungeonRoom {
     this.notes = s.notes;
     this.joinPassword = s.joinPassword;
     this.editedLines = s.editedLines;
+    this.nextLine = s.nextLine ?? null;
+    this.nextLineGen = this.nextLine?.gen ?? 0;
     // The key is not saved: the host page sends it again after HOST_OK (keyMissing until then).
     this.aiNarration = s.aiWanted ?? false;
     this.aiSource = s.aiSource ?? "none";
@@ -612,6 +627,13 @@ export class DungeonRoom {
 
   /** Fire-and-forget: narration must never block or break the game. */
   private narrate(eventId: number, event: NarrationEvent): Promise<void> {
+    if (this.nextLine && event.type !== "epilogue") {
+      const text = this.nextLine.text;
+      // A line holding a bank answer would make llm.ts reject the whole AI reply: it goes in word for word instead.
+      const verbatim = this.bankAnswers.some((a) => a.length >= 3 && text.includes(a));
+      event = { ...event, hostLine: text, ...(verbatim ? { hostLineVerbatim: true as const } : {}) };
+      this.hostLineGens.set(eventId, this.nextLine.gen);
+    }
     return this.runner.run(eventId, event, this.scores()).catch((err) => {
       console.error("narration failed", err);
     });
@@ -634,6 +656,11 @@ export class DungeonRoom {
     for (const conn of this.hostConns.values()) this.sendAnswer(conn);
     this.sendPicks();
     if (this.game?.phase === "finished") {
+      // No narration comes after the game, so a line still queued would never be said (D10).
+      if (this.nextLine) {
+        this.nextLine = null;
+        this.sendNextLineState();
+      }
       this.broadcast({ type: "GAME_OVER", winners: this.game.winners });
     }
   }
@@ -724,6 +751,8 @@ export class DungeonRoom {
     this.notes = "";
     this.joinPassword = "";
     this.editedLines = [];
+    this.nextLine = null;
+    this.hostLineGens.clear();
     this.aiNarration = false;
     // The next host of this code must not inherit this host's key or budget.
     this.keyCheck?.abort();
@@ -837,6 +866,9 @@ export class DungeonRoom {
         case "HOST_EDIT_NARRATION":
           this.handleEditNarration(sender, msg.line);
           break;
+        case "HOST_NEXT_LINE":
+          this.handleNextLine(sender, msg.line);
+          break;
         case "HOST_GET_TRANSCRIPT":
           this.handleTranscript(sender);
           break;
@@ -899,6 +931,7 @@ export class DungeonRoom {
     }
     this.hostConns.set(conn.id, conn);
     this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
+    this.sendTo(conn, { type: "HOST_NEXT_LINE_STATE", line: this.nextLine?.text ?? "" });
     this.sendAiStatus(undefined, conn);
     this.sendAnswer(conn);
     this.sendPicks(conn);
@@ -1053,6 +1086,28 @@ export class DungeonRoom {
     if (!this.requireHost(conn)) return;
     this.notes = sanitizeText(raw, MAX_NOTES);
     this.addTranscript({ kind: "notes", at: new Date().toISOString(), text: this.notes });
+  }
+
+  /** The host queues a line for the next narration; "" cancels. */
+  private handleNextLine(conn: Conn, raw: string) {
+    if (!this.requireHost(conn)) return;
+    if (this.game?.phase === "finished") {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "game_over" });
+      return;
+    }
+    const text = sanitizeText(raw, MAX_EDIT_LINE);
+    // Typed text that cleans down to nothing is a mistake, not a cancel: only the 取消 button sends "" (D11).
+    if (raw !== "" && !text) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "empty_line" });
+      return;
+    }
+    this.nextLine = text ? { text, gen: ++this.nextLineGen } : null;
+    this.addTranscript({ kind: "next", at: new Date().toISOString(), text });
+    this.sendNextLineState();
+  }
+
+  private sendNextLineState() {
+    for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_NEXT_LINE_STATE", line: this.nextLine?.text ?? "" });
   }
 
   /** The host rewrites the line on screen. It wins over anything the LLM does later for that event. */

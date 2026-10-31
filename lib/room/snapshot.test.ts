@@ -18,6 +18,7 @@ const valid = (): RoomSnapshot => ({
   notes: "",
   joinPassword: "",
   editedLines: [],
+  nextLine: null,
   aiNarration: false,
   aiWanted: true,
   aiSource: "own" as const,
@@ -78,6 +79,13 @@ describe("parseSnapshot", () => {
     void _omit;
     expect(parseSnapshot(legacy)?.joinPassword).toBe("");
     expect(parseSnapshot({ ...valid(), joinPassword: 42 })).toBeNull();
+  });
+
+  it("reads a save from before the host's next line as none, and refuses a malformed one", () => {
+    expect(parseSnapshot(valid())?.nextLine).toBeNull();
+    expect(parseSnapshot({ ...valid(), nextLine: { text: "珍珠能吃嗎", gen: 3 } })?.nextLine).toEqual({ text: "珍珠能吃嗎", gen: 3 });
+    expect(parseSnapshot({ ...valid(), nextLine: "珍珠能吃嗎" })).toBeNull();
+    expect(parseSnapshot({ ...valid(), nextLine: { text: "x", gen: 1.5 } })).toBeNull();
   });
 
   it("refuses anything that is not an object, and an unknown schema version", () => {

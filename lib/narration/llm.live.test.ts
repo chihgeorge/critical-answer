@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { createLlmProvider } from "./llm";
 import { NarrationError } from "./errors";
-import { MAX_LINE } from "./runner";
+import { MAX_LINE, saysLine } from "./runner";
 import type { NarrationEvent } from "./events";
 
 const key = process.env.ANTHROPIC_API_KEY;
@@ -35,6 +35,15 @@ describe.skipIf(!key)("LLM narrator (live)", () => {
     expect(second, "the model should write a second line").toBeTruthy();
     expect(second.length).toBeLessThanOrEqual(MAX_LINE);
     expect(second).toContain("藍隊");
+  }, 20_000);
+
+  it("puts the host's queued line in the second line (host-next-line.md D6)", async () => {
+    const out = await llm.narrate(
+      { type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2, next: { team: "藍隊", monster: "軟趴趴史萊姆", boss: false }, hostLine: "珍珠到底能不能吃" },
+      { signal: AbortSignal.timeout(15_000) },
+    );
+    const second = out.split("\n")[1] ?? "";
+    expect(saysLine(second, "珍珠到底能不能吃"), `second line: ${second}`).toBe(true);
   }, 20_000);
 
   it("writes an epilogue that keeps the winner's name", async () => {

@@ -173,6 +173,31 @@ describe("restoring after a restart", () => {
     expect(lastOf(stranger, "ERROR")).toMatchObject({ error: "bad_password" });
   });
 
+  it("the host's queued next line comes back, and the host page is told about it", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage).room;
+    const host = makeConn("host");
+    send(first, host, { type: "HOST_CLAIM", token: TOKEN });
+    send(first, host, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
+    const second = makeRoom(storage).room;
+    expect(await second.restore()).toBe("restored");
+    const back = makeConn("host2");
+    send(second, back, { type: "HOST_CLAIM", token: TOKEN });
+    expect(lastOf(back, "HOST_NEXT_LINE_STATE")).toEqual({ type: "HOST_NEXT_LINE_STATE", line: "珍珠能吃嗎" });
+  });
+
+  it("a used next line is cleared in the same save as the narration that said it, so a restart cannot replay it", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage, { holdMs: 20 }).room;
+    const { host } = startedGame(first);
+    send(first, host, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
+    judgeCorrect(first, host, T1);
+    await new Promise((r) => setTimeout(r, 40));
+    const saved = storage.data.get(SNAPSHOT_KEY) as any;
+    expect(saved.lastNarration.lines[1]).toBe("珍珠能吃嗎");
+    expect(saved.nextLine).toBeNull();
+  });
+
   it("a game in progress comes back: same scores, same turn, same room epoch", async () => {
     const storage = memoryStorage();
     const first = makeRoom(storage).room;

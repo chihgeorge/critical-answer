@@ -81,3 +81,34 @@ test("the big-screen URL in the host drawer opens the screen in a new tab, leavi
   await expect(screen).toHaveURL(new RegExp(`/room/${code}/screen$`));
   await expect(host).toHaveURL(/\/host/);
 });
+
+/** 下一句這樣說 (docs/designs/host-next-line.md): the host queues a line, the next narration's second segment
+ * says it on the big screen, and the drawer's 已排入 goes away once it is used. Scripted narration (no AI key). */
+test("the host queues the next line, the big screen says it, and the queue empties", async ({ browser }) => {
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("甲隊");
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await screen.goto(`/room/${code}/screen`);
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+
+  const queued = "不怕死的冒險者問珍珠能吃嗎";
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await host.getByPlaceholder(/不怕死的冒險者/).fill(queued);
+  await host.getByRole("button", { name: "排進下一句" }).click();
+  await expect(host.getByText(`已排入：${queued}`)).toBeVisible();
+  await host.getByRole("button", { name: "關閉" }).click();
+
+  await answerCorrectly(host);
+  await expect(screen.locator(".px-say")).toContainText(queued, { timeout: 8000 });
+
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await expect(host.getByText("下一句這樣說（最多 40 字）")).toBeVisible();
+  await expect(host.getByText(/已排入：/)).toHaveCount(0);
+});
