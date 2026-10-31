@@ -2401,6 +2401,144 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
   });
 });
 
+describe("cleric on a fill-in question: 祈禱 / 重答 / 逃跑 after the host's 答錯 (#106)", () => {
+  afterEach(() => vi.useRealTimers());
+  const text = (id: string) => ({ kind: "text" as const, id, content: { kind: "text" as const, value: "？" }, answer: "台北市" });
+  const bank = parseBank({
+    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [text("r0-t1"), text("r0-t2"), { kind: "multipleChoice", id: "r0-mc1", content: { kind: "text", value: "？" }, options: ["A", "B"], correctIndex: 1 }] }],
+    boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [text("boss-t1"), text("boss-t2")] },
+  });
+  const err = (conn: Conn) => lastSentTo(conn as never)?.detail ?? lastSentTo(conn as never)?.error;
+
+  /** Team 0 is a cleric facing r0-t1 (or the boss's boss-t1), with 「台中」 sent; team 1 has no class. */
+  function game(boss = false) {
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids, conns } = joinTeams(room, hostConn, 2);
+    send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "cleric" });
+    send(room, hostConn, { type: "HOST_START" });
+    if (boss) {
+      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+      room.game = { ...room.game!, boss: { ...room.game!.boss, currentQuestionId: "boss-t1" } };
+    } else room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t1" } : t)) };
+    const q = boss ? "boss-t1" : "r0-t1";
+    send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: q, text: "台中" });
+    const host = (fleeChoice: "team" | "pray" | "retry" | "flee", eventId?: number) =>
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: q, correct: false, fleeChoice, ...(eventId !== undefined ? { eventId } : {}) });
+    return { room, hostConn, ids, conns, q, host };
+  }
+
+  // Value: protects=the host's 答錯 on a cleric's fill-in waits for the team, and the phone's 祈禱 then keeps the turn on the
+  // same question with an empty answer (AC8); fails_when=the 答錯 settles at once, or 祈禱 passes the turn; seam=room;
+  // no_claim=how the phone draws the buttons (e2e)
+  it("the host's 答錯 waits for the cleric; its 祈禱 keeps the turn on the same question, answer cleared", () => {
+    const { room, ids, conns, q, host } = game();
+    const before = lastBroadcast(room).eventId;
+    expect(lastBroadcast(room).view.teams[0].mayPray).toBe(true);
+    expect(lastBroadcast(room).view.teams[1].mayPray).toBeUndefined();
+    host("team");
+    expect(room.game!.pendingWrong).toEqual({ teamId: ids[0], questionId: q, optionIndex: null });
+    expect(lastBroadcast(room).view.awaitingPrayer).toBe(ids[0]);
+    expect(lastBroadcast(room).view.teams[0].typedAnswer).toBe("台中");
+    expect(lastBroadcast(room).eventId).toBe(before);
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: q });
+    expect(room.game!.pendingWrong).toBeNull();
+    expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+    expect(room.game!.teams[0]).toMatchObject({ currentQuestionId: q, abilityUses: 1, typedAnswer: undefined });
+    // Prayed this turn: a second 答錯 settles as usual.
+    expect(lastBroadcast(room).view.teams[0].mayPray).toBeUndefined();
+  });
+
+  // Value (ship review): protects=逃跑 from a non-boss wait, by the phone or the host, passes the turn, deals the cleric a new
+  // question and spends nothing; fails_when=逃跑 is refused or treated as 祈禱 outside the boss room; seam=room; no_claim=difficulty
+  it("逃跑 from a non-boss wait, by the phone or the host, passes the turn and spends nothing", () => {
+    for (const by of ["phone", "host"] as const) {
+      const { room, ids, conns, q, host } = game();
+      host("team");
+      if (by === "phone") send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: q, choice: "flee" });
+      else host("flee");
+      expect(room.game!.pendingWrong).toBeNull();
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+      expect(room.game!.teams[0].abilityUses).toBe(2);
+      expect(room.game!.teams[0].currentQuestionId).not.toBe(q);
+    }
+  });
+
+  // Value: protects=the host can pick 祈禱 for a team that does not, with the eventId it judged from, and 重答 passes the turn
+  // without spending (AC9); fails_when=the host's 祈禱 is dropped as stale, or 重答 spends a use; seam=room; no_claim=none
+  it("the host can pick 祈禱 for the team with the same eventId, or 重答, which spends nothing", () => {
+    const a = game();
+    const eventId = lastBroadcast(a.room).eventId;
+    a.host("team", eventId);
+    a.host("pray", eventId);
+    expect(currentTurnTeamId(a.room.game!)).toBe(a.ids[0]);
+    expect(a.room.game!.teams[0].abilityUses).toBe(1);
+
+    const b = game();
+    b.host("team");
+    b.host("retry");
+    expect(b.room.game!.pendingWrong).toBeNull();
+    expect(currentTurnTeamId(b.room.game!)).toBe(b.ids[1]);
+    expect(b.room.game!.teams[0]).toMatchObject({ currentQuestionId: b.q, abilityUses: 2 });
+  });
+
+  // Value: protects=the first press of the wait wins and a late one changes nothing (AC10); fails_when=the host's 祈禱 after the
+  // phone's 重答 spends a use or takes the turn back; seam=room; no_claim=none
+  it("the first press wins: the host's 祈禱 after the phone's 重答 is refused", () => {
+    const { room, ids, conns, q, host, hostConn } = game();
+    host("team");
+    send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: q, choice: "retry" });
+    host("pray");
+    expect(err(hostConn)).toBe("no_wrong_answer");
+    expect(room.game!.teams[0].abilityUses).toBe(2);
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+  });
+
+  // Value: protects=a wait only starts for a cleric that may pray on a fill-in, and 祈禱 only with a wait (AC12); fails_when=a
+  // "team" on multiple choice or for a spent cleric pins the turn, or "pray" spends without a wait; seam=room; no_claim=none
+  it("refuses a wait on multiple choice or for a cleric with no uses, and 祈禱 with no wait", () => {
+    const { room, ids, hostConn, host } = game();
+    host("pray");
+    expect(err(hostConn)).toBe("no_wrong_answer");
+    room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, abilityUses: 0 } : t)) };
+    host("team");
+    expect(err(hostConn)).toBe("cannot_pray");
+    room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, abilityUses: 2, currentQuestionId: "r0-mc1" } : t)) };
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-mc1", correct: false, fleeChoice: "team" });
+    expect(err(hostConn)).toBe("not_text");
+    expect(room.game!.pendingWrong).toBeNull();
+    expect(room.game!.teams[0].abilityUses).toBe(2);
+  });
+
+  // Value: protects=in the boss room the wait has no beat, 祈禱 and 重答 keep the shared question and 逃跑 rotates it (AC11,
+  // eng review D2=A); fails_when=armBossMiss settles the wait, or the MC-only flee→retry override swallows 逃跑; seam=room;
+  // no_claim=the boss's hp (a wrong answer never hits)
+  it("boss room: the wait outlasts the beat; 祈禱 and 重答 keep the question, 逃跑 rotates it", () => {
+    vi.useFakeTimers();
+    const pray = game(true);
+    pray.host("team");
+    vi.advanceTimersByTime(10_000);
+    expect(pray.room.game!.pendingWrong).toMatchObject({ teamId: pray.ids[0], optionIndex: null });
+    send(pray.room, pray.conns[0], { type: "TEAM_USE_ABILITY", questionId: "boss-t1" });
+    expect(pray.room.game!.boss.currentQuestionId).toBe("boss-t1");
+    expect(currentTurnTeamId(pray.room.game!)).toBe(pray.ids[0]);
+
+    const retry = game(true);
+    retry.host("team");
+    send(retry.room, retry.conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "boss-t1", choice: "retry" });
+    expect(retry.room.game!.boss.currentQuestionId).toBe("boss-t1");
+    expect(currentTurnTeamId(retry.room.game!)).toBe(retry.ids[1]);
+
+    const flee = game(true);
+    flee.host("team");
+    send(flee.room, flee.conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "boss-t1", choice: "flee" });
+    expect(flee.room.game!.boss.currentQuestionId).toBe("boss-t2");
+    expect(currentTurnTeamId(flee.room.game!)).toBe(flee.ids[1]);
+  });
+});
+
 describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
   afterEach(() => vi.useRealTimers());
   function game(warrior = false) {

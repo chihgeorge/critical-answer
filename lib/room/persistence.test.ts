@@ -280,6 +280,22 @@ describe("restoring after a restart", () => {
     expect(second.room.game!.eliminated).toEqual({ [q]: [1] });
   });
 
+  // Value: protects=a cleric's fill-in wait (optionIndex null) survives a restart (#106 AC13); fails_when=restore drops it
+  // and the team loses its 祈禱; seam=snapshot round trip; no_claim=the wait's buttons
+  it("a cleric's fill-in wait survives a restart", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[0];
+    const q = saved.game.teams.find((t: any) => t.id === t0).currentQuestionId;
+    saved.game.pendingWrong = { teamId: t0, questionId: q, optionIndex: null };
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored");
+    expect(second.room.game!.pendingWrong).toEqual({ teamId: t0, questionId: q, optionIndex: null });
+  });
+
   // Value: protects=a mage's fill-in hint survives a restart, and a save from before #106 (no mageHints) still restores;
   // fails_when=the hint is dropped on restore, or reading an old save throws; seam=snapshot round trip; no_claim=rendering
   it("a mage's fill-in hint survives a restart, and a save without mageHints restores with none", async () => {

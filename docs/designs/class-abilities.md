@@ -290,7 +290,7 @@ issues verified: 1 of 1
 Verification is deterministic: a fix counts when its `applied_text` is in the current design and absent from the round-3 snapshot. It confirms applied edits, never a review verdict; no reviewer was launched past the cap.
 <!-- gstack:office-hours:concerns:end -->
 
-## 填空題（issue #106，2026-10-31）
+## 填空題（issue #106，2026-10-30）
 
 v0.22.0.0 加了填空題以後，法師和牧師在填空題沒有能力可用。設計和決定在 #106，分兩個 PR。
 
@@ -299,6 +299,14 @@ v0.22.0.0 加了填空題以後，法師和牧師在填空題沒有能力可用�
 - 第一個字是答案裡第一個字母或數字（Unicode `\p{L}` / `\p{N}`），空白、標點、括號、符號、emoji 都跳過。
 - 一題只能看一次（`hint_shown`）。答案的字母或數字少於 2 個時拒絕（`no_hint`），因為一個字就是答案。兩種拒絕都不扣次數。
 - 提示存在 `GameState.mageHints`，題目離開場上時跟 `eliminated` 一起清掉（`dropEliminated`）。
+
+**牧師（PR B）**
+- 牧師隊還能祈禱時（有次數、這回合還沒祈禱過），主持人頁的填空題只有「答對！(1)」和一顆「答錯 (2)」。按答錯不結算，先記一個等待中的 `pendingWrong`（`optionIndex: null`），伺服器回傳 `mayPray` 讓主持人頁知道要換成這兩顆。
+- 等待中，手機和主持人頁都顯示三顆一樣大的按鈕：祈禱、重答、逃跑（主持人頁鍵 2 / 3 / 4）。誰先按算誰的，後到的按鍵因為 `pendingWrong` 已經沒了而被拒絕。
+- 主持人頁的等待一出現後 0.5 秒內，三顆按鈕停用、鍵盤也不理，連按兩下答錯（鍵 2 或滑鼠）不會落到祈禱或重答。祈禱後同一隊同一題的判定鈕也一樣停用 0.5 秒，連按祈禱不會變成答錯・重答或答對（/review、/ship 對抗審查）。
+- 祈禱：扣一次，這隊保留回合，同一題再答一次（輸入框清空）。祈禱後的回合不能再祈禱，所以再答錯時主持人頁回到「答錯・重答 / 答錯・逃跑」。
+- boss 房也一樣是三顆（eng review D2：三顆，同一般房）。issue #106 本文寫 boss 房是「祈禱 / 不用」，以這裡為準。填空題的等待沒有 2 秒自動結算（`armBossMiss` 跳過 `optionIndex: null`），boss 房按逃跑才換題。
+- 舊版 Worker 不送 `mayPray`，主持人頁就維持原本的「答錯・重答 / 答錯・逃跑」，分開部署不會壞。
 
 ## Eng Review (/plan-eng-review, 2026-10-29)
 

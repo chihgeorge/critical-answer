@@ -2,6 +2,18 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.24.0.0] - 2026-10-30
+
+### Added
+- A cleric team can now pray on a fill-in question. When the host presses 答錯, the turn waits: the team's phone shows 「答錯了！要怎麼辦？」 with three buttons, 祈禱 (再答一次・剩 N 次), 重答 (換下一隊) and 逃跑 (換一題). The host page shows the same three buttons (keys 2 / 3 / 4) and can choose for the team. Whoever presses first wins.
+- 祈禱 spends one of the cleric's 2 uses and gives the same team a fresh try at the same question, with an empty answer box. 重答 and 逃跑 spend nothing. A prayed try cannot pray again.
+- The boss room works the same way: 祈禱 and 重答 keep the shared question, and only 逃跑 deals a new one.
+
+### Changed
+- While a cleric can still pray, the host page judges its fill-in answers with 答對！(1) and a single 答錯 (2) that waits for the team's choice, instead of 答錯・重答 / 答錯・逃跑.
+- The host's buttons and keys ignore presses for half a second after the wait appears, and after a prayer, so a double-tap of 答錯 or 祈禱 never lands on the next button.
+- The cleric's lobby card now reads 「答錯後，這回合再答一次」.
+
 ## [0.23.0.0] - 2026-10-30
 
 ### Added

@@ -14,11 +14,14 @@ import { CLASS_ICONS, CLASS_LABELS } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { MageHint } from "@/components/mage-hint";
-import { hostKeyAction } from "@/lib/host-keys";
+import { clericStage, hostKeyAction } from "@/lib/host-keys";
 import { optionLetter } from "@/components/mc-option";
 
 /** D11: the stuck-team row waits this long with no lock (or no choice after a wrong lock). */
 const STUCK_MS = 15_000;
+/** A cleric's wait, and the prayed attempt after it, ignore keys and clicks this long after they appear, so a
+ * double-tap of 答錯 never lands on 祈禱 / 重答, nor one of 祈禱 on the new attempt's 答對 / 答錯 (#106). */
+const CLERIC_WAIT_DELAY_MS = 500;
 
 
 /** The host's own link carries the token, so it is shown here and never on /screen or /play. */
@@ -576,7 +579,7 @@ export default function HostPage() {
     room.send(msg);
   }
 
-  function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "flee" | "retry") {
+  function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "flee" | "retry" | "team" | "pray") {
     setPendingTeamId(teamId);
     send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice, ...(game ? { eventId: game.eventId } : {}) });
   }
@@ -610,7 +613,21 @@ export default function HostPage() {
   const wrong = game?.view.pendingWrong ?? null;
   // A wrong boss lock resolves on its own after a beat (D2=B). The stuck row still comes after 15 s,
   // as the way out if that beat never resolves.
-  const bossMiss = !!wrong && !!game?.view.teams.find((t) => t.id === wrong.teamId)?.inBossPhase;
+  const bossMiss = !!wrong && wrong.optionIndex !== null && !!game?.view.teams.find((t) => t.id === wrong.teamId)?.inBossPhase;
+  // A cleric's fill-in (#106): one 答錯 that waits for the team, then 祈禱 / 重答 / 逃跑 for whoever presses first.
+  const cleric = game && !isMc && turn?.team ? clericStage(game.view, turn.team.id) : undefined;
+  const turnKey = turn?.team ? `${turn.team.id}|${turn.questionId}` : null;
+  // The last wait's team and question, kept after it ends: the same team's next judge buttons on it hold too.
+  const [lastWait, setLastWait] = useState<string | null>(null);
+  if (cleric === "wait" && turnKey && lastWait !== turnKey) setLastWait(turnKey);
+  const holdKey = turnKey && (cleric === "wait" || lastWait === turnKey) ? `${turnKey}|${game?.eventId}|${cleric ?? ""}` : null; // the stage too: a wait keeps its 答錯's eventId
+  const [releasedFor, setReleasedFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!holdKey) return;
+    const t = setTimeout(() => setReleasedFor(holdKey), CLERIC_WAIT_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [holdKey]);
+  const held = !!holdKey && releasedFor !== holdKey;
   const stuckKey = isMc && turn?.team && !lock ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}` : null;
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   useEffect(() => {
@@ -634,6 +651,7 @@ export default function HostPage() {
         { key: e.key, repeat: e.repeat, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, target },
         revealUp,
         isMc ? { stuck } : undefined,
+        cleric,
       );
       if (!action || !game) return;
       if (action === "next") {
@@ -641,7 +659,10 @@ export default function HostPage() {
         send({ type: "HOST_NEXT", eventId: game.eventId });
       } else {
         if (!canJudge || !turn?.team || !turn.questionId) return;
+        // No 祈禱 button once the team cannot pray: its key does nothing too.
+        if (held || (cleric === "wait" && action === "pray" && game.view.awaitingPrayer !== turn.team.id)) return;
         if (action === "correct") judge(turn.team.id, turn.questionId, true);
+        else if (action === "wrong") judge(turn.team.id, turn.questionId, false, "team");
         else if (!(bossMiss && action === "flee")) judge(turn.team.id, turn.questionId, false, action); // no 逃跑 button on a boss miss
       }
       e.preventDefault();
@@ -650,7 +671,7 @@ export default function HostPage() {
     return () => window.removeEventListener("keydown", onKey);
     // judge/send are plain functions over state this effect already depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, ready, swapArmed, canJudge, turn, isMc, stuck, picking, drawer, revealUp]);
+  }, [game, ready, swapArmed, canJudge, turn, isMc, stuck, picking, drawer, revealUp, cleric, held]);
 
   const aiPanel = (
     <AiPanel
@@ -929,20 +950,51 @@ export default function HostPage() {
                       {turn.team.name}擲出了骰子…
                     </Panel>
                   )}
-                  <PixelButton variant="ok" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, true)}>
+                  {cleric === "wait" ? (
+                    <>
+                      <div className="px-1 pt-1 text-center text-[20px] text-white" role="status">答錯了！等{turn.team.name}選，或替他們選：</div>
+                      <div className="grid grid-cols-3">
+                        {game.view.awaitingPrayer === turn.team.id && (
+                          <PixelButton className="text-[16px]" style={{ background: "#ffe066" }} disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "pray")}>
+                            祈禱
+                            <span className="px-key" aria-hidden="true">2</span>
+                          </PixelButton>
+                        )}
+                        <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                          重答
+                          <span className="px-key" aria-hidden="true">3</span>
+                        </PixelButton>
+                        <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                          逃跑
+                          <span className="px-key" aria-hidden="true">4</span>
+                        </PixelButton>
+                      </div>
+                    </>
+                  ) : (
+                  <>
+                  <PixelButton variant="ok" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, true)}>
                     {connected ? "答對！" : "重新連線中"}
                     <span className="px-key" aria-hidden="true">1</span>
                   </PixelButton>
+                  {cleric === "before" ? (
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "team")}>
+                      答錯
+                      <span className="px-key" aria-hidden="true">2</span>
+                    </PixelButton>
+                  ) : (
                   <div className="grid grid-cols-2">
-                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                       答錯・重答
                       <span className="px-key" aria-hidden="true">2</span>
                     </PixelButton>
-                    <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                    <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
                       答錯・逃跑
                       <span className="px-key" aria-hidden="true">3</span>
                     </PixelButton>
                   </div>
+                  )}
+                  </>
+                  )}
                 </>
               )}
             </div>

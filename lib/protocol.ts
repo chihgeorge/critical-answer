@@ -112,7 +112,9 @@ export type ClientMessage =
       teamId: string;
       questionId: string;
       correct: boolean;
-      fleeChoice?: "flee" | "retry";
+      /** With correct: false. "team": a cleric's fill-in waits for 祈禱 / 重答 / 逃跑 (#106); "pray": the host
+       * picks 祈禱 for it. */
+      fleeChoice?: "flee" | "retry" | "team" | "pray";
       /** The eventId of the STATE the host judged from; an older one is a stale press and is dropped. */
       eventId?: number;
     }
@@ -372,7 +374,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);
       if (teamId === null || questionId === null || typeof m.correct !== "boolean") return null;
-      if (m.fleeChoice !== undefined && m.fleeChoice !== "flee" && m.fleeChoice !== "retry") return null;
+      if (m.fleeChoice !== undefined && m.fleeChoice !== "flee" && m.fleeChoice !== "retry" && m.fleeChoice !== "team" && m.fleeChoice !== "pray") return null;
+      if (m.correct && (m.fleeChoice === "team" || m.fleeChoice === "pray")) return null;
       if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       return { type: "HOST_JUDGE", teamId, questionId, correct: m.correct, fleeChoice: m.fleeChoice, ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}) };
     }

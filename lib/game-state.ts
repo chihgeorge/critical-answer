@@ -241,8 +241,8 @@ export interface GameState {
   mageRemoved?: Record<string, number[]>;
   /** A mage's public hint on a fill-in question, per question id: the answer's first letter or number. */
   mageHints?: Record<string, string>;
-  /** A wrong lock waiting for that team's 重答 / 逃跑. The team keeps the turn meanwhile, even offline (E9). */
-  pendingWrong: LockedOption | null;
+  /** A wrong answer waiting for that team's choice. The team keeps the turn meanwhile, even offline (E9). */
+  pendingWrong: WrongAnswer | null;
   /** The cleric whose prayer kept this turn: it cannot pray again until the turn moves on. */
   prayerTurn?: string;
   boss: BossState;
@@ -256,6 +256,14 @@ export interface LockedOption {
   teamId: string;
   questionId: string;
   optionIndex: number;
+}
+
+/** A wrong answer waiting for its 重答 / 逃跑 (or a cleric's 祈禱). `optionIndex` is the wrong lock on a
+ * multipleChoice question, or null for a fill-in the host judged wrong while a cleric could still pray (#106). */
+export interface WrongAnswer {
+  teamId: string;
+  questionId: string;
+  optionIndex: number | null;
   /** The cleric prayed on this lock: its 重答 / 逃跑 keeps the turn. */
   prayed?: true;
 }
@@ -870,6 +878,25 @@ export function armSneak(game: GameState, teamId: string): GameState {
   return { ...spent, teams: patchTeam(spent.teams, teamId, () => ({ sneakArmed: true })) };
 }
 
+/** Whether `teamId` is a cleric that could pray on a wrong answer now: a use left, no prayer yet this turn. */
+export function canPrayBeforeJudge(game: GameState, teamId: string): boolean {
+  const team = game.teams.find((t) => t.id === teamId);
+  return game.phase === "playing" && !game.pendingWrong && team?.classId === "cleric" && team.abilityUses > 0 && game.prayerTurn !== teamId;
+}
+
+/**
+ * The host judged a cleric's fill-in answer wrong (#106): instead of settling it, the wrong answer waits for
+ * 祈禱 / 重答 / 逃跑 from the team or the host. Like recordWrongLock there is no narration until then (E7).
+ * Only for a cleric that may pray (canPrayBeforeJudge); the room has checked the question is a text one.
+ */
+export function recordTextWrong(game: GameState, teamId: string, questionId: string): GameState {
+  assertPlaying(game);
+  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
+  assertCurrentQuestion(game, teamId, questionId);
+  if (!canPrayBeforeJudge(game, teamId)) throw new InvalidActionError("cannot_pray");
+  return { ...game, pendingWrong: { teamId, questionId, optionIndex: null } };
+}
+
 /** Whether `teamId`'s wrong lock is waiting on a cleric that may still pray this turn. */
 export function canPray(game: GameState, teamId: string): boolean {
   const team = game.teams.find((t) => t.id === teamId);
@@ -1092,6 +1119,9 @@ export interface SpectatorView {
     sneakArmed?: true;
     /** The typed answer waiting for the host (text questions), or null. */
     typedAnswer: string | null;
+    /** A cleric that could pray if judged wrong now (canPrayBeforeJudge): the host's one 答錯 key waits for
+     * its choice. Absent from a Worker before #106, so the host page keeps 答錯・重答 / 答錯・逃跑 there. */
+    mayPray?: true;
   }[];
   bossHp: number;
   bossMaxHp: number;
@@ -1105,7 +1135,7 @@ export interface SpectatorView {
   mageRemoved: Record<string, number[]>;
   /** The mage's first-character hint per fill-in question id (mageHint). Absent from a Worker before #106. */
   mageHints?: Record<string, string>;
-  pendingWrong: LockedOption | null;
+  pendingWrong: WrongAnswer | null;
   /** The cleric whose wrong lock waits for its 祈禱 (canPray), or null. */
   awaitingPrayer: string | null;
 }
@@ -1128,6 +1158,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       abilityUses: t.abilityUses,
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
       typedAnswer: t.typedAnswer ?? null,
+      ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
     })),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,

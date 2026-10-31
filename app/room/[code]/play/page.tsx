@@ -22,7 +22,7 @@ import { MageHint } from "@/components/mage-hint";
 const CLASS_HINTS: Record<ClassId, string> = {
   warrior: `擲 1d20 代替答題，${WARRIOR_TARGET} 以上算答對`,
   mage: "選擇題刪 2 個錯的選項；填空題看答案第一個字",
-  cleric: "選擇題答錯後，這回合再答一次",
+  cleric: "答錯後，這回合再答一次",
   thief: "偷襲：這題答對，獎勵分和 boss 扣血 ×2",
 };
 
@@ -274,12 +274,36 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
     return () => clearTimeout(id);
   }, [inFlight]);
   const rolling = game.pendingRoll?.teamId === teamId;
+  // A cleric's 答錯 waits for this team's choice (#106); the host may press for it too.
+  const wrong = game.view.pendingWrong?.teamId === teamId && game.view.pendingWrong.optionIndex === null;
+  const me = game.view.teams.find((t) => t.id === teamId);
+  const canPray = wrong && game.view.awaitingPrayer === teamId;
 
   return (
     <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
       {q.content.kind === "text" && <QuestionStrip text={q.content.value} />}
       <MageHint hint={game.view.mageHints?.[q.id]} testId="mage-hint" />
-      {sent !== null ? (
+      {wrong ? (
+        <>
+          <div className="flex items-center gap-2 text-[22px]" role="status">
+            <span aria-hidden className="inline-flex h-7 w-7 items-center justify-center border-[3px] border-[var(--k)] bg-[var(--danger)] text-[14px] text-white">✕</span>
+            答錯了！要怎麼辦？
+          </div>
+          <div className="mt-1 flex gap-2">
+            {canPray && (
+              <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
+                祈禱<small className="text-[13px]">再答一次・剩 {me!.abilityUses} 次</small>
+              </PixelButton>
+            )}
+            <PixelButton variant="ok" className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
+              重答<small className="text-[13px]">換下一隊</small>
+            </PixelButton>
+            <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "var(--lav)" }} onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "flee" })}>
+              逃跑<small className="text-[13px]">換一題</small>
+            </PixelButton>
+          </div>
+        </>
+      ) : sent !== null ? (
         <div className="px-bar mt-1 [overflow-wrap:anywhere]" role="status" data-testid="typed-answer-sent">
           已送出：{sent}・等主持人判
         </div>
@@ -310,7 +334,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
           {failed && !inFlight && <div className="text-center text-[14px]">沒送出，再按一次，或直接唸給主持人聽</div>}
         </form>
       )}
-      {sent === null && !inFlight && <ClassAbility game={game} teamId={teamId} send={send} noHint={noHint} />}
+      {sent === null && !inFlight && !wrong && <ClassAbility game={game} teamId={teamId} send={send} noHint={noHint} />}
     </Panel>
   );
 }

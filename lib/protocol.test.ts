@@ -137,6 +137,11 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ ...ok, correct: "true" })).toBeNull();
     expect(parseClientMessage({ ...ok, questionId: "q".repeat(65) })).toBeNull();
     expect(parseClientMessage({ ...ok, fleeChoice: "run" })).toBeNull();
+    // #106: a cleric's fill-in wait and the host's 祈禱, only on a wrong judgment.
+    expect(parseClientMessage({ ...ok, correct: false, fleeChoice: "team" })).toMatchObject({ fleeChoice: "team" });
+    expect(parseClientMessage({ ...ok, correct: false, fleeChoice: "pray" })).toMatchObject({ fleeChoice: "pray" });
+    expect(parseClientMessage({ ...ok, fleeChoice: "team" })).toBeNull();
+    expect(parseClientMessage({ ...ok, fleeChoice: "pray" })).toBeNull();
   });
 
   it("TEAM_BRANCH_CHOICE: accepts valid, rejects non-integer roomIndex and unknown choice ids", () => {
