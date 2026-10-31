@@ -593,34 +593,6 @@ K=$(openssl rand -base64 32); printf '%s' "$K" | npx wrangler secret put OWNER_K
 
 ---
 
-## 電視和主持人的螢幕會自動休眠
-
-**What:** 程式裡完全沒用 Screen Wake Lock。接電視的筆電或主持人的手機在一輪裡很久沒人碰，螢幕就會暗掉。做法：大螢幕頁和主持人頁呼叫 `navigator.wakeLock.request("screen")`，`visibilitychange` 回到前景時再要一次。
-
-**Why:** 全場看著黑掉的電視，要等有人去喚醒。
-
-**Context:** `app/room/[code]/screen/page.tsx`、`app/room/[code]/host/page.tsx`。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
----
-
-## 前端一當掉就整頁白屏，也沒有回報
-
-**What:** 沒有 `app/error.tsx` 或 `app/global-error.tsx`，也沒有 `window.onerror`、`unhandledrejection` 的處理。一個渲染錯誤（例如版本不一致時 STATE 多了或少了欄位）就會讓電視或手機變成 Next 的「Application error」白頁，只能重新整理，而且我們不會知道發生過。做法：加 `error.tsx` 顯示「出錯了，按這裡重新載入」，再把錯誤送到 Worker 記一筆 log。
-
-**Why:** 派對中電視白屏，主持人不知道要按重新整理。
-
-**Context:** Worker 端已經有 log（`wrangler.jsonc` 開了 `observability`），缺的是前端。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約半天 / CC 約 30 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
----
-
 ## 不檢查房間代碼格式，任何名字都能開出新房
 
 **What:** `entryGate` 只檢查 party 名稱是不是 `main` 和 Origin，沒有檢查房間代碼。沒帶 Origin 的請求是允許的，所以腳本可以對 `/parties/main/<任意字串>` 開 WebSocket，每個名字都會建一個 Durable Object、設 alarm、寫一份包含整個題庫的 snapshot，在儲存空間留 24 小時。做法：在 gate 拒絕不符合 `^[BCDEFGHJKLMNPQRSTUVWXYZ]{4}$` 的名字。也可以改成等第一則有效訊息才寫入，這部分是 M。
@@ -762,6 +734,38 @@ K=$(openssl rand -base64 32); printf '%s' "$K" | npx wrangler secret put OWNER_K
 ---
 
 ## Completed
+
+## 電視和主持人的螢幕會自動休眠
+
+**What:** 程式裡完全沒用 Screen Wake Lock。接電視的筆電或主持人的手機在一輪裡很久沒人碰，螢幕就會暗掉。做法：大螢幕頁和主持人頁呼叫 `navigator.wakeLock.request("screen")`，`visibilitychange` 回到前景時再要一次。
+
+**Why:** 全場看著黑掉的電視，要等有人去喚醒。
+
+**Context:** `app/room/[code]/screen/page.tsx`、`app/room/[code]/host/page.tsx`。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+**Completed:** v0.26.0.0 (2026-10-31)：`lib/use-wake-lock.ts`，大螢幕頁和主持人頁都用；回到前景再要一次，瀏覽器不支援或拒絕就照舊。
+
+---
+
+## 前端一當掉就整頁白屏，也沒有回報
+
+**What:** 沒有 `app/error.tsx` 或 `app/global-error.tsx`，也沒有 `window.onerror`、`unhandledrejection` 的處理。一個渲染錯誤（例如版本不一致時 STATE 多了或少了欄位）就會讓電視或手機變成 Next 的「Application error」白頁，只能重新整理，而且我們不會知道發生過。做法：加 `error.tsx` 顯示「出錯了，按這裡重新載入」，再把錯誤送到 Worker 記一筆 log。
+
+**Why:** 派對中電視白屏，主持人不知道要按重新整理。
+
+**Context:** Worker 端已經有 log（`wrangler.jsonc` 開了 `observability`），缺的是前端。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約半天 / CC 約 30 分鐘）　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+**Completed:** v0.26.0.0 (2026-10-31)：`app/error.tsx`、`app/global-error.tsx` 顯示「畫面出錯了」和「重新載入」，並把錯誤送到 Worker 的 `POST /api/client-error` 記一筆 log。沒做 `window.onerror` / `unhandledrejection`：事件處理或 Promise 裡的錯誤不會白屏，所以也不會回報。
+
+---
 
 ## 用真的 API 驗證後記改用 Sonnet 5.5 之後還正常
 

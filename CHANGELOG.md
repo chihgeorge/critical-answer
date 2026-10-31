@@ -2,6 +2,13 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.26.0.0] - 2026-10-31
+
+### Added
+- The big screen and the host's phone now stay on during a game. Before, they could go dark after a minute or two untouched, in the middle of a turn. When the page comes back to the front, it asks to stay on again. A browser that cannot do this, or refuses on low battery, works as before.
+- When the page crashes, it now shows 「畫面出錯了」 with a 重新載入 button, instead of a blank white page. Reloading takes you back into the game, and scores and progress are kept.
+- Each crash now sends a short report to the server log, so a crash at a party no longer goes unnoticed.
+
 ## [0.25.0.0] - 2026-10-31
 
 ### Added
