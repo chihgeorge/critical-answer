@@ -349,6 +349,8 @@ export default function PlayPage() {
   // The question the room refused a mage's hint on (no_hint), so its button gives way to a note.
   const [noHintQid, setNoHintQid] = useState<string | null>(null);
   const sentPassword = useRef("");
+  /** This phone has seen its own team in a LOBBY or STATE, so no later ERROR is a refused JOIN. */
+  const joined = useRef(false);
 
   const [teamId, setTeamId] = useState("");
   const [lobby, setLobby] = useState<LobbyTeams | null>(null);
@@ -379,6 +381,8 @@ export default function PlayPage() {
     // JOIN carries `resume` so it isn't activity.
     onOpen(resume) {
       setDisconnected(false);
+      // A wiped room has forgotten us, so this JOIN may be refused: ask again. The room's LOBBY or STATE naming us comes before any later ERROR.
+      joined.current = false;
       const id = getOrCreateTeamId();
       setTeamId(id);
       const password = (sentPassword.current = joinPasswordFor(code));
@@ -394,7 +398,7 @@ export default function PlayPage() {
     onMessage(msg) {
       switch (msg.type) {
         case "ERROR": {
-          const refused = joinRejection(msg.error, msg.detail, !!sentPassword.current);
+          const refused = joinRejection(msg.error, msg.detail, !!sentPassword.current, joined.current);
           if (refused) setRejected(refused);
           else if (msg.detail === "no_hint") setNoHintQid(lastGame.current?.question?.id ?? null);
           break;
@@ -402,6 +406,7 @@ export default function PlayPage() {
         case "LOBBY":
           // Not a sign we joined: a connection that failed the password still gets every LOBBY broadcast.
           setLobby(msg.teams);
+          if (msg.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           setGame(null);
           seen.current.clear();
           lastGame.current = null;
@@ -411,6 +416,7 @@ export default function PlayPage() {
           if (msg.question?.content.kind === "text") seen.current.set(msg.question.id, msg.question.content.value);
           setRevealedText(msg.reveal ? seen.current.get(msg.reveal.questionId) : undefined);
           setGame(msg);
+          if (msg.view.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           lastGame.current = msg;
           if (drop.current) {
             setOfflineMsg(offlineNotice(drop.current, msg.eventId));
