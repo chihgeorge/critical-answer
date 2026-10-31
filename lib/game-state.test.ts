@@ -25,6 +25,7 @@ import {
   canPray,
   rollD20,
   isClassId,
+  submitText,
   InvalidActionError,
   type ClassId,
   type GameState,
@@ -1592,5 +1593,66 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(miss.outcome).toMatchObject({ type: "incorrect-retry", newBossQuestion: true });
     expect(miss.game.boss.currentQuestionId).not.toBe(q);
     expect(miss.game.mageRemoved?.[q]).toBeUndefined(); // it left play with its eliminated set
+  });
+});
+
+describe("submitText (fill-in, #104)", () => {
+  // Value: protects=the turn's typed answer reaches the view and a second send is refused with it unchanged;
+  // fails_when=another team, a stale question or a wrong lock can write one, or a resend overwrites it;
+  // no_claim=the room's text cleaning or question-kind check (dungeon-room tests).
+  it("stores one answer for the turn's team on its current question and refuses the rest", () => {
+    const game = makeGame();
+    expect(getSpectatorView(game).teams.every((t) => t.typedAnswer === null)).toBe(true);
+    const q = game.teams[0].currentQuestionId;
+    expect(() => submitText(game, "T1", game.teams[1].currentQuestionId, "x")).toThrow("not T1's turn");
+    expect(() => submitText(game, "T0", "other-q", "x")).toThrow("Stale question");
+    const sent = submitText(game, "T0", q, "Don't Stop");
+    expect(getSpectatorView(sent).teams[0].typedAnswer).toBe("Don't Stop");
+    expect(() => submitText(sent, "T0", q, "again")).toThrow("already_submitted");
+    const wrong = recordWrongLock(game, "T0", q, 1);
+    expect(() => submitText(wrong, "T0", q, "x")).toThrow(InvalidActionError);
+  });
+
+  // Value: protects=a team that sent its answer and put the phone down can still be judged (eng review R1);
+  // fails_when=going offline skips the turn and the host's judgment throws "not your turn";
+  // no_claim=the room's offline handling or the host page.
+  it("keeps the turn on the sender while it is offline, until the host judges", () => {
+    let game = submitText(makeGame(), "T0", "room0-q1", "答案");
+    game = setTeamOnline(game, "T0", false);
+    expect(currentTurnTeamId(game)).toBe("T0");
+    const { game: judged } = answerQuestion(game, "T0", "room0-q1", true, "retry", first);
+    expect(judged.teams[0].typedAnswer).toBeUndefined();
+    expect(currentTurnTeamId(judged)).toBe("T1");
+  });
+
+  // Value: protects=every judgment, retry included, empties the typed answer so the next turn starts blank;
+  // fails_when=a retry (same question) or flee keeps the old answer on the host page;
+  // no_claim=the phone's input box (e2e).
+  it("is cleared by a wrong judgment with retry or flee", () => {
+    for (const choice of ["retry", "flee"] as const) {
+      const game = submitText(makeGame({ teamCount: 1 }), "T0", "room0-q1", "x");
+      const { game: next } = answerQuestion(game, "T0", "room0-q1", false, choice, first);
+      expect(next.teams[0].typedAnswer).toBeUndefined();
+    }
+  });
+
+  // Value: protects=sending a team to the boss room drops its typed answer and releases the turn pin;
+  // fails_when=the old room answer shows against the boss question, or the turn stays stuck on it;
+  // no_claim=sendToBoss's other effects (its own tests).
+  it("is cleared by sendToBoss", () => {
+    const game = sendToBoss(submitText(makeGame(), "T0", "room0-q1", "x"), "T0");
+    expect(game.teams[0].typedAnswer).toBeUndefined();
+  });
+
+  // Value: protects=after a typed answer the thief and warrior cannot use an ability on it, and keep their uses;
+  // fails_when=a use is spent or Sneak Attack armed on an answer already shown to the host;
+  // no_claim=the mage and cleric (not usable on text questions; redesign is a later PR).
+  it("refuses abilities after the answer is sent, spending nothing", () => {
+    const teams = [{ id: "T0", name: "A", classId: "thief" as const }, { id: "T1", name: "B" }];
+    const thief = submitText(createGame(teams, ...deck(3, 1), ["boss-q1"], { bossThreshold: 3 }, 2, first), "T0", "room0-q1", "x");
+    expect(() => armSneak(thief, "T0")).toThrow("answer_submitted");
+    const warrior = submitText(makeGame({ warrior: true }), "T0", "room0-q1", "x");
+    expect(() => spendAbility(warrior, "T0", "warrior")).toThrow("answer_submitted");
+    expect(warrior.teams[0].abilityUses).toBe(makeGame({ warrior: true }).teams[0].abilityUses);
   });
 });

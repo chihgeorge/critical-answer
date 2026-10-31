@@ -83,6 +83,12 @@ test("image-content question: renders on /play, /screen, and the host's own prev
   const screenImg = screen.getByAltText("題目圖片");
   await expect(screenImg).toHaveAttribute("src", new RegExp(`/${key}$`));
 
+  // Value: protects=an image text question is a fill-in too: the phone has the box and the host sees what
+  // was sent (#104 /review D3); fails_when=the box only shows for text content; no_claim=YouTube content.
+  await team.getByRole("textbox", { name: "你們的答案" }).fill("松鼠");
+  await team.getByRole("button", { name: "送出" }).click();
+  await expect(host.getByTestId("host-typed-answer")).toHaveText("隊伍答：松鼠");
+
   // The host still judges independently of the image — nothing about it blocks HOST_JUDGE.
   await host.getByRole("button", { name: "答對！" }).click();
   await expect(host.getByText("輪到")).toBeVisible();

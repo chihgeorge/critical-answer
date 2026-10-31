@@ -27,6 +27,7 @@ function view(over: Partial<SpectatorView> = {}, teams: Partial<SpectatorView["t
       currentSelection: null,
       branchChoices: {},
       abilityUses: 2,
+      typedAnswer: null,
       ...t,
     })),
     bossHp: 5,

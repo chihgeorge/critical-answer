@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseClientMessage, sanitizeText } from "./protocol";
+import { cleanTypedAnswer, parseClientMessage, sanitizeText } from "./protocol";
 
 const TOKEN = "host-token-0123456789abcdef";
 const ID = "00000000-0000-0000-0000-000000000001";
@@ -210,5 +210,34 @@ describe("parseClientMessage: resume flag on re-identification", () => {
     expect(parseClientMessage({ type: "JOIN", teamId: "t1", teamKey, teamName: "甲", resume: true })).toMatchObject({ resume: true });
     expect(parseClientMessage({ type: "REJOIN", teamId: "t1", teamKey, resume: true })).toMatchObject({ resume: true });
     expect(parseClientMessage({ type: "JOIN", teamId: "t1", teamKey, teamName: "甲" })).not.toHaveProperty("resume");
+  });
+});
+
+describe("TEAM_SUBMIT_TEXT (fill-in, #104)", () => {
+  // Value: protects=only a string answer under the raw cap parses; fails_when=a number, missing text or a
+  // huge payload reaches the room; no_claim=what the room keeps (cleanTypedAnswer below).
+  it("parses a string answer and rejects the rest", () => {
+    expect(parseClientMessage({ type: "TEAM_SUBMIT_TEXT", questionId: "r0-q1", text: "貓" })).toEqual({ type: "TEAM_SUBMIT_TEXT", questionId: "r0-q1", text: "貓" });
+    for (const text of [5, undefined, null, "x".repeat(201)]) expect(parseClientMessage({ type: "TEAM_SUBMIT_TEXT", questionId: "r0-q1", text })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_SUBMIT_TEXT", questionId: "r0-q1", text: "貓", eventId: 3 })).toEqual({ type: "TEAM_SUBMIT_TEXT", questionId: "r0-q1", text: "貓", eventId: 3 });
+    for (const eventId of [-1, 1.5, "3"]) expect(parseClientMessage({ type: "TEAM_SUBMIT_TEXT", questionId: "r0-q1", text: "貓", eventId })).toBeNull();
+  });
+
+  // Value: protects=a typed answer shows as typed: quotes kept, 40 characters counted per code point (eng review R2);
+  // fails_when=apostrophes are stripped, an emoji counts as 2, or control characters survive;
+  // no_claim=how React renders it.
+  it("cleanTypedAnswer keeps quotes, drops control characters and keeps 40 code points", () => {
+    expect(cleanTypedAnswer("  Don't \"Stop\"\n ")).toBe(`Don't "Stop"`);
+    expect(cleanTypedAnswer("a\u0000b")).toBe("ab");
+    expect(Array.from(cleanTypedAnswer("🎵".repeat(41)))).toHaveLength(40);
+    expect(cleanTypedAnswer(" \t ")).toBe("");
+  });
+
+  // Value: protects=an answer of only invisible characters is refused and bidi overrides cannot flip the TV text
+  // (/review D4); fails_when=zero-width spaces pass as an answer or U+202E survives; no_claim=emoji joiners (kept).
+  it("cleanTypedAnswer drops bidi controls and empties an answer with nothing visible", () => {
+    expect(cleanTypedAnswer("\u202Eabc\u2066")).toBe("abc");
+    expect(cleanTypedAnswer("\u200B\u200B \u200D")).toBe("");
+    expect(cleanTypedAnswer("👩\u200D💻")).toBe("👩\u200D💻");
   });
 });

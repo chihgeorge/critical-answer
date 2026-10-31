@@ -2,8 +2,8 @@
 
 // Owner-only question-bank editor. Linked from the homepage, but not from anywhere in the game's
 // actual play flow — gated by the OWNER_KEY the Worker checks on every /api/bank request. Supports
-// two question kinds: text (free-answer) and multipleChoice (options[] + correctIndex), both
-// judged by the host reading the answer aloud. Each kind's content — and its optional
+// two question kinds: text (fill-in: the team types its answer, the host judges it) and
+// multipleChoice (options[] + correctIndex, judged by the room from the team's lock). Each kind's content — and its optional
 // answer-reveal explanation — can independently be text, an uploaded image, or a YouTube video
 // (see docs/designs/question-media-content.md's D1: content REPLACES the old fixed prompt text,
 // it doesn't decorate it; the standalone `image` kind from image-question-type.md retired).
@@ -724,7 +724,7 @@ function QuestionRow({
           value={q.kind}
           onChange={(e) => onUpdate((cur) => blankQuestion(cur, e.target.value as BankQuestion["kind"]))}
         >
-          <option value="text">問答</option>
+          <option value="text">填空</option>
           <option value="multipleChoice">選擇</option>
         </select>
       </div>

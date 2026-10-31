@@ -167,6 +167,9 @@ export interface Team {
   /** The thief's Sneak Attack waits for this team's next judgment: a correct one doubles its reward and
    * boss damage, any judgment uses it up (class-abilities.md D16). */
   sneakArmed?: true;
+  /** The team's typed answer to its text question (submitText), waiting for the host. Only the turn's
+   * team can hold one, and it keeps the turn until judged; answerQuestion and sendToBoss clear it. */
+  typedAnswer?: string;
 }
 
 export interface RoomTemplate {
@@ -566,6 +569,9 @@ export function enterNextBossPhase(game: GameState): GameState {
 export function currentTurnTeamId(game: GameState): string | null {
   // A team deciding 重答 / 逃跑 keeps the turn even if its phone sleeps (phone-answering.md E9).
   if (game.pendingWrong) return game.pendingWrong.teamId;
+  // So does a team whose typed answer waits for the host: it puts the phone down after sending.
+  const typed = game.teams.find((t) => t.typedAnswer !== undefined);
+  if (typed) return typed.id;
   const idx = nextOnlineIndex(game, 0);
   // null: every team is offline, so no one can take a turn.
   return idx === null ? null : game.turnOrder[idx];
@@ -634,7 +640,7 @@ export function answerQuestion(
   // Any judgment uses up an armed Sneak Attack; only a correct one doubles (D16).
   const sneak = getTeam(game, teamId).sneakArmed ? 2 : 1;
   // The choice resolves the pending wrong lock.
-  game = { ...game, pendingWrong: null, teams: sneak > 1 ? patchTeam(game.teams, teamId, () => ({ sneakArmed: undefined })) : game.teams };
+  game = { ...game, pendingWrong: null, teams: patchTeam(game.teams, teamId, () => ({ sneakArmed: undefined, typedAnswer: undefined })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice === "flee" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -792,6 +798,7 @@ function assertAbilityTurn(game: GameState, teamId: string, classId: ClassId) {
   if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
   if (getTeam(game, teamId).classId !== classId) throw new InvalidActionError(`${teamId} is not a ${classId}`);
   if (game.pendingWrong) throw new InvalidActionError(`${teamId} already locked a wrong answer`);
+  if (getTeam(game, teamId).typedAnswer !== undefined) throw new InvalidActionError("answer_submitted");
 }
 
 /** Takes one `classId` use from `teamId` as the ability starts, so a roll dropped in its beat (a phone
@@ -896,7 +903,7 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   // A sneak armed for the room question is for that question only (D16): drop it and give the use back.
   // (A boss-room sneak can outlive a question rotation while the thief is offline; accepted, /review D4=A.)
   const sneak = team.sneakArmed ? { sneakArmed: undefined, abilityUses: team.abilityUses + 1 } : {};
-  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null, queuedQuestionId: undefined, ...sneak }));
+  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null, queuedQuestionId: undefined, typedAnswer: undefined, ...sneak }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
@@ -968,6 +975,19 @@ export function recordOptionSelection(game: GameState, teamId: string, questionI
     ...game,
     teams: patchTeam(game.teams, teamId, () => ({ currentSelection: optionIndex })),
   };
+}
+
+/**
+ * The turn's team sends its typed answer (already cleaned by the room) to its current question. One per
+ * question: a second is refused. Like recordOptionSelection, the room has checked the question is a text one.
+ */
+export function submitText(game: GameState, teamId: string, questionId: string, text: string): GameState {
+  assertPlaying(game);
+  if (game.pendingWrong) throw new InvalidActionError("A wrong answer is already waiting for its choice");
+  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
+  assertCurrentQuestion(game, teamId, questionId);
+  if (getTeam(game, teamId).typedAnswer !== undefined) throw new InvalidActionError("already_submitted");
+  return { ...game, teams: patchTeam(game.teams, teamId, () => ({ typedAnswer: text })) };
 }
 
 /**
@@ -1049,6 +1069,8 @@ export interface SpectatorView {
     classId?: ClassId;
     abilityUses: number;
     sneakArmed?: true;
+    /** The typed answer waiting for the host (text questions), or null. */
+    typedAnswer: string | null;
   }[];
   bossHp: number;
   bossMaxHp: number;
@@ -1082,6 +1104,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       ...(t.classId ? { classId: t.classId } : {}),
       abilityUses: t.abilityUses,
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
+      typedAnswer: t.typedAnswer ?? null,
     })),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
