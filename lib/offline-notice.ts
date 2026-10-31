@@ -23,3 +23,7 @@ export function offlineNotice(drop: DropSnapshot, nowEventId: number): string | 
 
 /** Shown while the phone or the big screen is disconnected (and not resting on purpose). */
 export const DISCONNECTED_NOTICE = "連線中斷，重新連線中…";
+
+/** Shown when the first connect has not opened after FIRST_CONNECT_TIMEOUT_MS (lib/use-room-socket.ts). */
+export const UNREACHABLE_NOTICE = "連不上伺服器：請檢查網路，或稍後再試。";
+export const UNREACHABLE_RETRY_LABEL = "重試";

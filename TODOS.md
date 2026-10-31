@@ -598,25 +598,11 @@
 
 **Why:** 派對現場很常有手機沒電或有人換手機，現在只能整隊放棄。
 
-**Context:** `lib/room/dungeon-room.ts:912-915`（`handleJoin`）；`/play` 也沒有顯示這個錯誤（見下一則）。2026-10-30 系統檢查時找到。
+**Context:** `lib/room/dungeon-room.ts:912-915`（`handleJoin`）；`/play` 現在會顯示「遊戲已經開始了」，但還是回不了原本的隊伍。2026-10-30 系統檢查時找到。
 
 **Effort:** M（人工約 1-2 天 / CC 約 1 小時）　**Priority:** P2
 
 **Depends on / blocked by:** 最好跟「手機被拒絕加入時不顯示原因」一起做。
-
----
-
-## 手機被拒絕加入時不顯示原因
-
-**What:** 房間會回 `game_already_started`、`invalid_name`、`invalid_action/room_full` 這幾種錯誤，但 `/play` 只處理 `bad_password`。第 9 隊、遊戲開始後才來的人、名字只有空白的人，畫面都一直停在「等待主持人開始遊戲…」，沒人知道為什麼加不進去。做法：每種錯誤各給一句說明。
-
-**Why:** 現場沒人看得懂為什麼加不進去，只能一直問主持人。
-
-**Context:** `app/room/[code]/play/page.tsx:302-304`；伺服器端在 `lib/room/dungeon-room.ts:912-927`。伺服器有單元測試，手機端顯示什麼沒有測試。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約半天 / CC 約 20 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 無。
 
 ---
 
@@ -629,20 +615,6 @@
 **Context:** `app/room/[code]/screen/page.tsx`、`app/room/[code]/host/page.tsx`。2026-10-30 系統檢查時找到。
 
 **Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
----
-
-## 第一次連線就失敗時，畫面永遠停在「連線中…」
-
-**What:** 斷線提示只在「曾經連上過」之後才會出現（`onClose` 裡 `if (rested || !openedBefore) return`）。場地 Wi-Fi 要先登入、Worker 掛掉或 CORS 出錯時，手機和電視都永遠顯示「連線中…」，沒有逾時、沒有提示、沒有重試鈕。做法：例如 10 秒還沒連上就顯示「連不上伺服器」和重試鈕。
-
-**Why:** 現場網路出問題時，大家不知道是網路壞了還是遊戲壞了。
-
-**Context:** `app/room/[code]/play/page.tsx:294`、`:444-447`；`app/room/[code]/screen/page.tsx:517`。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約半天 / CC 約 20 分鐘）　**Priority:** P2
 
 **Depends on / blocked by:** 無。
 
@@ -803,6 +775,38 @@
 ---
 
 ## Completed
+
+## 第一次連線就失敗時，畫面永遠停在「連線中…」
+
+**What:** 斷線提示只在「曾經連上過」之後才會出現（`onClose` 裡 `if (rested || !openedBefore) return`）。場地 Wi-Fi 要先登入、Worker 掛掉或 CORS 出錯時，手機和電視都永遠顯示「連線中…」，沒有逾時、沒有提示、沒有重試鈕。做法：例如 10 秒還沒連上就顯示「連不上伺服器」和重試鈕。
+
+**Why:** 現場網路出問題時，大家不知道是網路壞了還是遊戲壞了。
+
+**Context:** `app/room/[code]/play/page.tsx:294`、`:444-447`；`app/room/[code]/screen/page.tsx:517`。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約半天 / CC 約 20 分鐘）　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+**Completed:** v0.24.1.0 (2026-10-30)：手機和大螢幕 10 秒沒連上就顯示「連不上伺服器」和「重試」（`lib/use-room-socket.ts` 的 `unreachable`）。主持人頁沒有做。
+
+---
+
+## 手機被拒絕加入時不顯示原因
+
+**What:** 房間會回 `game_already_started`、`invalid_name`、`invalid_action/room_full` 這幾種錯誤，但 `/play` 只處理 `bad_password`。第 9 隊、遊戲開始後才來的人、名字只有空白的人，畫面都一直停在「等待主持人開始遊戲…」，沒人知道為什麼加不進去。做法：每種錯誤各給一句說明。
+
+**Why:** 現場沒人看得懂為什麼加不進去，只能一直問主持人。
+
+**Context:** `app/room/[code]/play/page.tsx:302-304`；伺服器端在 `lib/room/dungeon-room.ts:912-927`。伺服器有單元測試，手機端顯示什麼沒有測試。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約半天 / CC 約 20 分鐘）　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+**Completed:** v0.24.1.0 (2026-10-30)：每種加入錯誤都有一句說明（`lib/join-rejection.ts`），也包含 `invalid_team_id`、`bad_token`；被拒絕的手機只顯示原因，不顯示遊戲畫面。
+
+---
 
 ## AI 旁白沒有花費上限：任何人都能開房間觸發付費 LLM 呼叫
 
