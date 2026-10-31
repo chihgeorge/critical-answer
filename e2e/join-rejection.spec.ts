@@ -38,12 +38,17 @@ test("a phone that never connects says it can't reach the server, and 重試 get
   await expect(page.getByText(UNREACHABLE)).toHaveCount(0);
 });
 
-// Value: protects=the big screen shows the same notice when it never connects; fails_when=/screen ignores
-// `unreachable`; no_claim=the phone (test above).
+// Value: protects=the big screen shows the same notice when it never connects, and says so again when a 重試
+// fails too; fails_when=/screen ignores `unreachable`, or reconnect() stops re-arming the first-connect timer
+// (the page sits on no notice forever); no_claim=the phone (test above).
 test("a big screen that never connects says it can't reach the server", async ({ browser }) => {
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   const net = await refuseSockets(screen);
   await screen.goto("/room/UNRC/screen");
+  await expect(screen.getByText(UNREACHABLE)).toBeVisible({ timeout: 15_000 });
+  // A retry while the server is still unreachable clears the notice, then brings it back.
+  await screen.getByRole("button", { name: "重試" }).click();
+  await expect(screen.getByText(UNREACHABLE)).toHaveCount(0);
   await expect(screen.getByText(UNREACHABLE)).toBeVisible({ timeout: 15_000 });
   net.open();
   await screen.getByRole("button", { name: "重試" }).click();
