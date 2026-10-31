@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
+import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
 import type { AnswerReveal, LobbyTeams, PendingRoll, PublicQuestion, StateMessage } from "@/lib/protocol";
 import type { LockedOption, SpectatorView, WrongAnswer } from "@/lib/game-state";
@@ -371,6 +372,7 @@ function Finished({ view, winners, reveal, narration, epilogue }: { view: Specta
 
 export default function ScreenPage() {
   const { code } = useParams<{ code: string }>();
+  useWakeLock();
   const [lobby, setLobby] = useState<LobbyTeams>([]);
   const [game, setGame] = useState<StateMessage | null>(null);
   /** A network drop (not a rest): shown so a frozen screen doesn't look like a quiet game. */
