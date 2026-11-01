@@ -78,6 +78,9 @@ test("create room, join two teams, start, judge; screen and play never see host-
   // answer channel checked above — and stays up until the host moves on.
   await expect(screen.getByText(`正解：${answer}`)).toBeVisible();
   await expect(players[0].page.getByText(`正解：${answer}`)).toBeVisible();
+  // The bundled bank cooks every monster (docs/designs/monster-cuisine.md): the screen serves the dish, and scores are 飽足感.
+  await expect(screen.getByTestId("dish-card")).toContainText("今晚的菜");
+  await expect(screen.getByTestId("dish-card")).toContainText("飽足感");
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0); // judging waits for 下一題
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByText(`正解：${answer}`)).toHaveCount(0);

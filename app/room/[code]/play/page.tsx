@@ -8,7 +8,7 @@ import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL, offli
 import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
-import { MAX_TYPED_ANSWER, cleanTypedAnswer, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
+import { MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
 import { BRANCH_LABELS, BRANCH_OPTIONS, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, firstPendingBranchRoom, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
@@ -104,7 +104,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
   } else if (me.classId === "warrior") {
     body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
   } else if (me.classId === "thief") {
-    body = button("🗝️", "偷襲：這題答對加倍", `獎勵分、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
+    body = button("🗝️", "偷襲：這題答對加倍", `${scoreName(game.cuisine)}、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
   } else if (me.classId === "mage" && q.options && q.options.length - 1 - gone.length >= 2) {
     // The room keeps one wrong option: with 2 left it removes 1.
     body = button("🔮", `刪掉 ${Math.min(2, q.options.length - 2 - gone.length)} 個錯的選項`, `剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
@@ -467,7 +467,7 @@ export default function PlayPage() {
             <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
               {myTeam ? (
                 <>
-                  <span className="px-num">{myTeam.reward}</span> 獎勵分
+                  <span className="px-num">{myTeam.reward}</span> {scoreName(game.cuisine)}
                 </>
               ) : (
                 `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`

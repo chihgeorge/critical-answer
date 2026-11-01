@@ -7,7 +7,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import { DEFAULT_AI_LIMIT, MAX_AI_LIMIT, type AiKeyError, type ClientMessage, type HostPick, type LobbyTeams, type ServerMessage, type StateMessage } from "@/lib/protocol";
+import { DEFAULT_AI_LIMIT, MAX_AI_LIMIT, scoreName, type AiKeyError, type ClientMessage, type HostPick, type LobbyTeams, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, readStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -916,7 +916,7 @@ export default function HostPage() {
                   {t.classId && <span className="text-[13px]" title={`${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.abilityUses}</span>}
                   {t.sneakArmed && <span className="text-[13px]" title="偷襲準備好了：這題答對加倍">🗝️×2</span>}
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
-                  <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title="獎勵分">{t.reward}</span>
+                  <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
                   {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}
                   {picks?.queued[t.id] && (
                     <div className="flex min-w-0 basis-full items-center gap-2 pl-6 text-[13px]">
