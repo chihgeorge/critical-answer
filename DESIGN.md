@@ -10,7 +10,7 @@ Everything is drawn in code or CSS. No image assets. Sound follows the same rule
 | `--k` | `#2a1533` | 4px outline, chip background |
 | `--ink` | `#3a2245` | text on panels |
 | `--cream` / `--cream2` | `#fff4dc` / `#f1dcb6` | panel face / bottom bevel |
-| `--lav` / `--lav2` | `#e9defa` / `#cdbdf0` | narration and nameplate panels |
+| `--lav` / `--lav2` | `#e9defa` / `#cdbdf0` | narration and nameplate panels, the big screen's 「今晚的菜」 dish card |
 | `--turn` / `--turn2` | `#fff0a8` / `#f4c94a` | the team whose turn it is |
 | `--ok` | `#6fd36a` | correct, score cells |
 | `--ok2` | `#3f9a3b` | a correct tile's or bar's bevel |
