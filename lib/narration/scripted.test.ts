@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_MISS_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_MISS_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 
 const team = "六個字的隊伍";
@@ -258,5 +258,27 @@ describe("a boss phase out of questions", () => {
         expect(line).not.toContain("{");
       }
     }
+  });
+});
+
+describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
+  it("a cooked monster's line names the dish, for a room and for the boss", async () => {
+    const p = createScriptedProvider(lcg(3));
+    for (let i = 0; i < DISH_VARIANTS.length; i++) {
+      const line = await p.narrate({ type: "correct", team, monster, points: 10, dish: "史萊姆寒天" });
+      expect(line).toContain("史萊姆寒天");
+      expect(line).not.toMatch(/[{}]/);
+    }
+    for (let i = 0; i < BOSS_DISH_VARIANTS.length; i++) {
+      expect(await p.narrate({ type: "boss-kill", team, monster, bonus: 18, dish: "龍息烤龍尾" })).toContain("龍息烤龍尾");
+    }
+  });
+
+  it("the epilogue counts 飽足感 and serves the champions' dishes when there are any", () => {
+    const feast = scriptedEpilogue([{ name: "綠隊", score: 27, dishes: ["湯", "湯", "烤肉"] }, { name: "紅隊", score: 21 }], ["綠隊"], lcg(1));
+    expect(feast).toContain("飽足感");
+    expect(feast).toContain("綠隊吃了湯、烤肉，最飽。");
+    const plain = scriptedEpilogue([{ name: "綠隊", score: 27 }], ["綠隊"], lcg(1));
+    expect(plain).not.toContain("飽足感");
   });
 });

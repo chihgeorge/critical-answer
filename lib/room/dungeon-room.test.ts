@@ -2825,3 +2825,79 @@ describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
     expect(rolling.room.game!.teams[0].typedAnswer).toBeUndefined();
   });
 });
+
+describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const states = (room: DungeonRoom) => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE");
+  /** A room on `bank` whose narrator records every event it is asked to tell. */
+  function cookRoom(bank: Bank = BANK) {
+    const events: any[] = [];
+    const spy = { name: "spy", narrate: async (e: any) => (events.push(e), "一行") };
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank, provider: spy, holdMs: 30, epilogueDelayMs: 0 });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids } = joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn, ids, events };
+  }
+  const withRoom0Dish = (name: string): Bank => ({
+    ...BANK,
+    rooms: BANK.rooms.map((r, i) => (i === 0 ? { ...r, monster: { ...r.monster, dish: { ...r.monster.dish!, name } } } : r)),
+  });
+
+  it("a correct answer reveals the room monster's dish with the points it earned, and STATE says 飽足感", async () => {
+    const { room, hostConn, ids, events } = cookRoom();
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    await flush();
+    const last = states(room).at(-1);
+    expect(last.cuisine).toBe(true);
+    expect(last.reveal.dish).toEqual({ ...BANK.rooms[0].monster.dish, points: 10 });
+    expect(events.find((e) => e.type === "correct")?.dish).toBe(BANK.rooms[0].monster.dish!.name);
+  });
+
+  it("a wrong answer reveals no dish", () => {
+    const { room, hostConn, ids } = cookRoom();
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: false });
+    expect(states(room).at(-1).reveal).toBeNull();
+    expect(room.game!.teams[0].dishes).toBeUndefined();
+  });
+
+  it("a dish named after a bank answer is shown on screen but never told to the narrator", async () => {
+    const answer = Object.values(BANK.pools).flat().map((q) => answerText(q)).find((a) => a.length >= 3)!;
+    const { room, hostConn, ids, events } = cookRoom(withRoom0Dish(`${answer}燉菜`));
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    await flush();
+    expect(states(room).at(-1).reveal.dish.name).toBe(`${answer}燉菜`);
+    expect(events.find((e) => e.type === "correct")).not.toHaveProperty("dish");
+  });
+
+  // Review finding (coverage audit, 2026-10-31): the boss branch of the dish lookup and the epilogue filter had no room-level test.
+  it("the killing blow serves the boss's dish, and the epilogue lists the team's dishes without one naming an answer", async () => {
+    const answer = Object.values(BANK.pools).flat().map((q) => answerText(q)).find((a) => a.length >= 3)!;
+    const { room, hostConn, events } = cookRoom(withRoom0Dish(`${answer}燉菜`));
+    for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) {
+      const g = room.game!;
+      const t = g.teams[0];
+      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: t.id, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
+    }
+    await new Promise((r) => setTimeout(r, 50));
+    const boss = BANK.boss.monster.dish!;
+    expect(states(room).at(-1).reveal.dish).toMatchObject({ name: boss.name, part: boss.part });
+    expect(events.find((e) => e.type === "boss-kill")?.dish).toBe(boss.name);
+    const epilogue = events.find((e) => e.type === "epilogue");
+    expect(epilogue.ranking[0].dishes).toContain(boss.name);
+    expect(epilogue.ranking[0].dishes).not.toContain(`${answer}燉菜`);
+    expect(room.game!.teams[0].dishes).toContain(`${answer}燉菜`); // eaten all the same, just never told
+  });
+
+  it("a bank with no dishes keeps 獎勵分 and reveals none", () => {
+    const plain: Bank = { ...BANK, rooms: BANK.rooms.map((r) => ({ ...r, monster: { ...r.monster, dish: undefined } })), boss: { ...BANK.boss, monster: { ...BANK.boss.monster, dish: undefined } } };
+    const { room, hostConn, ids } = cookRoom(plain);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const last = states(room).at(-1);
+    expect(last.cuisine).toBeUndefined();
+    expect(last.reveal).not.toHaveProperty("dish");
+  });
+});

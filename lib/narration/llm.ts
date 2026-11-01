@@ -55,7 +55,9 @@ function describeEvent(e: NarrationEvent): string {
     case "start":
       return `事件：遊戲開始。參賽隊伍：${e.teams.map(q).join("、")}。`;
     case "correct": {
-      const base = `事件：隊伍${q(e.team)}答對了，打退${q(e.monster)}，得 ${e.points} 分。`;
+      const base = e.dish
+        ? `事件：隊伍${q(e.team)}答對了，打倒${q(e.monster)}，把牠煮成了${q(e.dish)}，吃下去得到 ${e.points} 飽足感。第一行要順口提到這道菜。`
+        : `事件：隊伍${q(e.team)}答對了，打退${q(e.monster)}，得 ${e.points} 分。`;
       if (!e.entersBoss) return base;
       const { branches } = e.entersBoss;
       if (e.entersBoss.phase) return `${base}這一答讓他們踏進了首領房，首領戰已經進入階段${q(e.entersBoss.phase)}。第一行要提到他們踏進首領房和這個階段，不要提還有沒有別的階段。`;
@@ -80,9 +82,17 @@ function describeEvent(e: NarrationEvent): string {
     case "boss-phase":
       return `事件：首領${q(e.monster)}沒有倒下，血量全滿重新站起，戰鬥進入第${e.phase}階段${q(e.name)}。新的規則：${q(e.rule)}。不要提還有沒有下一個階段。`;
     case "boss-kill":
-      return `事件：隊伍${q(e.team)}擊倒了首領${q(e.monster)}，額外加 ${e.bonus} 分。`;
-    case "epilogue":
-      return `事件：遊戲結束。排名（高到低）：${e.ranking.map((t, i) => `${i + 1}. ${q(t.name)} ${t.score} 分`).join("；")}。冠軍：${e.winners.map(q).join("、")}。後記裡的名字和分數必須和這裡一致。`;
+      return e.dish
+        ? `事件：隊伍${q(e.team)}擊倒了首領${q(e.monster)}，把牠煮成了${q(e.dish)}，額外加 ${e.bonus} 飽足感。要提到這道菜。`
+        : `事件：隊伍${q(e.team)}擊倒了首領${q(e.monster)}，額外加 ${e.bonus} 分。`;
+    case "epilogue": {
+      // Dishes make the score 飽足感 and the ending a feast (docs/designs/monster-cuisine.md).
+      const feast = e.ranking.some((t) => t.dishes?.length);
+      const unit = feast ? "飽足感" : "分";
+      const rows = e.ranking.map((t, i) => `${i + 1}. ${q(t.name)} ${t.score} ${unit}${t.dishes?.length ? `，吃了${t.dishes.map(q).join("、")}` : ""}`);
+      const ask = feast ? "後記是一頓大餐：說說各隊吃了什麼，冠軍吃得最飽。" : "";
+      return `事件：遊戲結束。排名（高到低）：${rows.join("；")}。冠軍：${e.winners.map(q).join("、")}。${ask}後記裡的名字和分數必須和這裡一致。`;
+    }
   }
 }
 

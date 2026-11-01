@@ -52,7 +52,7 @@ import {
   type ServerMessage,
   type SoundCue,
 } from "../protocol";
-import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
+import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, hasCuisine, inShownOrder, poolQuestionIds, publicExplanation, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
@@ -617,8 +617,10 @@ export class DungeonRoom {
       // The card holds the new phase's first question back until the host's 下一題.
       question: this.phaseCard ? null : (this.currentQuestion()?.pub ?? null),
       reveal: this.reveal,
-      ...(this.phaseCard ? { phaseCard: { monster: this.bank.boss.monster } } : {}),
+      // name, sprite and hue only: the boss's dish is served on the kill, not before (monster-cuisine.md).
+      ...(this.phaseCard ? { phaseCard: { monster: { name: this.bank.boss.monster.name, sprite: this.bank.boss.monster.sprite, hue: this.bank.boss.monster.hue } } } : {}),
       ...this.bossPhaseInfo(),
+      ...(hasCuisine(this.bank) ? { cuisine: true as const } : {}),
       pendingLock: this.pendingLock,
       pendingRoll: this.pendingRoll,
       eventId: this.eventSeq,
@@ -649,12 +651,22 @@ export class DungeonRoom {
     });
   }
 
+  /** A dish name holding a bank answer would make llm.ts reject the whole AI reply (monster-cuisine.md R1, R3). */
+  private sayable(dish: string): boolean {
+    return !this.bankAnswers.some((a) => a.length >= 3 && dish.includes(a));
+  }
+
   private async sendEpilogue(afterKillShot: Promise<void>, eventId: number) {
     const game = this.game;
     if (!game) return;
     await afterKillShot;
     await wait(this.epilogueDelayMs);
-    const ranking = game.teams.map((t) => ({ name: t.name, score: t.reward })).sort((a, b) => b.score - a.score);
+    const ranking = game.teams
+      .map((t) => {
+        const dishes = (t.dishes ?? []).filter((d) => this.sayable(d));
+        return { name: t.name, score: t.reward, ...(dishes.length ? { dishes } : {}) };
+      })
+      .sort((a, b) => b.score - a.score);
     const winners = game.winners.map((id) => game.teams.find((t) => t.id === id)?.name ?? "");
     // One EPILOGUE, whoever writes it: the LLM within its hold, otherwise the program-built story.
     await this.runner.run(eventId, { type: "epilogue", ranking, winners }, this.scores());
@@ -1177,6 +1189,7 @@ export class DungeonRoom {
       this.bank.boss.hitReward,
       shuffledOptionOrders(this.bank, this.rng),
       laterPhases,
+      this.bank.boss.monster.dish?.name,
     );
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.
     this.aiNarration = aiNarration !== false;
@@ -1301,7 +1314,12 @@ export class DungeonRoom {
     this.game = game;
     const eventId = ++this.eventSeq;
     const phaseName = prev.boss.phaseIndex > 0 ? this.bank.boss.phases[prev.boss.phaseIndex]?.name : undefined;
-    const base = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
+    // The dish the answer just ate: game-state appended it to the team's dishes (a game saved before dishes appends none).
+    const before = prev.teams.find((t) => t.id === teamId);
+    const ateDish = (game.teams.find((t) => t.id === teamId)?.dishes?.length ?? 0) > (before?.dishes?.length ?? 0);
+    const dish = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bank.boss.monster.dish : this.bank.rooms[before.roomIndex]?.monster.dish;
+    const told = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
+    const base = dish && this.sayable(dish.name) && (told.type === "correct" || told.type === "boss-kill") ? { ...told, dish: dish.name } : told;
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
     const event = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
     this.cue = event.type === "epilogue" ? null : event.type;
@@ -1318,7 +1336,13 @@ export class DungeonRoom {
         autoAdvance && q?.kind === "multipleChoice"
           ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward }
           : undefined;
-      this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(choice ? { choice } : {}) };
+      this.reveal = {
+        questionId,
+        answer: justAnswered.answer,
+        ...(explanation ? { explanation } : {}),
+        ...(choice ? { choice } : {}),
+        ...(dish ? { dish: { ...dish, points: outcome.reward } } : {}),
+      };
       this.revealAt = this.now();
       // Armed before narrate() so the narration's arrival can re-arm it (E4).
       if (autoAdvance && game.phase === "playing") this.rearmAdvance();
