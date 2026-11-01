@@ -780,3 +780,36 @@ test("boss phases: add one, an empty name is refused, a filled one saves, and de
     await request.put(`${WORKER}/api/bank`, { headers, data: { bank: original, version } });
   }
 });
+
+// docs/designs/monster-cuisine.md: a room's dish is four fields, all filled or all empty.
+test("a room's dish: a half-filled one is refused, a full one saves, and four empty fields mean no dish", async ({ page, request }) => {
+  const WORKER = "http://localhost:1996";
+  const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const original = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank;
+  try {
+    await page.goto("/bank-editor");
+    await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+    await page.getByRole("button", { name: "載入題庫" }).click();
+    await page.getByTestId("bank-tab-rooms").click();
+    const dish = page.getByTestId("bank-room-0-dish");
+    await dish.getByLabel("評語").fill("");
+    await saveAll(page);
+    await expect(page.getByTestId("bank-editor-error")).toContainText("第 1 房的菜：「評語」還沒填");
+
+    await dish.getByLabel("評語").fill("滑嫩順口。");
+    await dish.getByLabel("菜名").fill("測試布丁");
+    await saveAll(page);
+    await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
+    let saved = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank;
+    expect(saved.rooms[0].monster.dish).toMatchObject({ name: "測試布丁", comment: "滑嫩順口。" });
+
+    for (const label of ["部位", "做法", "菜名", "評語"]) await dish.getByLabel(label).fill("");
+    await saveAll(page);
+    await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
+    saved = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank;
+    expect(saved.rooms[0].monster).not.toHaveProperty("dish");
+  } finally {
+    const { version } = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()) as { version: number };
+    expect((await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: original, version } })).ok()).toBe(true);
+  }
+});

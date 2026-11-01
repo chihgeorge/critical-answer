@@ -243,6 +243,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
               <QuestionMedia key={reveal.questionId} content={reveal.explanation} label="詳解" maxWidth={300} maxHeight={140} />
             )}
+            {reveal.dish && <DishCard dish={reveal.dish} />}
           </div>
         ) : question ? (question.content.kind === "text" ? question.content.value : "") : "……"}
         {!reveal && question && question.content.kind !== "text" && (
@@ -309,6 +310,22 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
   );
 }
 
+/** The defeated monster, cooked (docs/designs/monster-cuisine.md, approved mockup A): a small card under the answer. */
+function DishCard({ dish }: { dish: NonNullable<AnswerReveal["dish"]> }) {
+  return (
+    <Panel tone="lav" className="mx-auto mt-2 px-[18px] pt-3 pb-[14px]" style={{ maxWidth: 620 }}>
+      <div data-testid="dish-card">
+        <div className="text-[30px]">🍲 今晚的菜：{dish.name}</div>
+        <div className="text-[20px]" style={{ color: "#6a4d74" }}>{dish.part}・{dish.method}</div>
+        <div className="text-[22px]">「{dish.comment}」</div>
+        <div className="mt-1 text-[22px]" style={{ color: "var(--ok2)" }}>
+          <span className="px-num">+{dish.points}</span> 飽足感
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 const PODIUM = [
   { place: 2, bg: "#c9c9d6", h: 108, hero: 5 },
   { place: 1, bg: "#ffcf4a", h: 136, hero: 6 },
@@ -316,7 +333,7 @@ const PODIUM = [
 ];
 const CONFETTI = ["#ff6b6b", "#ffcf4a", "#6fd36a", "#6ab4ff", "#ff9db8", "#fff"];
 
-function Finished({ view, winners, reveal, narration, epilogue }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; narration: NarrationState; epilogue: string | null }) {
+function Finished({ view, winners, reveal, narration, epilogue, cuisine }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; narration: NarrationState; epilogue: string | null; cuisine?: true }) {
   const ranked = view.teams.map((t, i) => ({ ...t, i })).sort((a, b) => b.reward - a.reward).slice(0, 3);
   const names = winners.map((id) => view.teams.find((t) => t.id === id)?.name ?? id).join("、");
   // The winner is the reward total, not the kill (scoring-and-score-pools.md S7), so the kill gets its own line.
@@ -339,7 +356,10 @@ function Finished({ view, winners, reveal, narration, epilogue }: { view: Specta
           below the title — a banner up top would sit on the crown. */}
       {reveal && (
         <div data-testid="answer-reveal" className="absolute" style={{ left: 18, top: 160, width: 170, zIndex: 6 }}>
-          <Panel tone="turn" className="px-3 py-2 text-[16px] leading-snug">最後一題正解：{reveal.answer}</Panel>
+          <Panel tone="turn" className="px-3 py-2 text-[16px] leading-snug">
+            最後一題正解：{reveal.answer}
+            {reveal.dish && <div data-testid="dish-card">🍲 今晚的大菜：{reveal.dish.name}</div>}
+          </Panel>
         </div>
       )}
       <div className="absolute inset-x-0 flex items-end justify-center gap-12" style={{ bottom: 130, zIndex: 5 }}>
@@ -353,7 +373,7 @@ function Finished({ view, winners, reveal, narration, epilogue }: { view: Specta
               <div className="flex flex-col items-center pt-2 text-white" style={{ width: 150, height: p.h, background: p.bg, boxShadow: "0 0 0 4px var(--k), inset 0 6px 0 #ffffff55, inset 0 -8px 0 #0003" }}>
                 <span className="px-num text-[22px]" style={{ textShadow: "3px 3px 0 var(--k)" }}>{p.place}</span>
                 <b className="mt-[6px] truncate text-[18px] font-normal" style={{ maxWidth: 140, textShadow: "2px 2px 0 var(--k)" }}>{t.name}</b>
-                <s className="mt-[2px] text-[14px] no-underline" style={{ color: "#fff6c0", textShadow: "2px 2px 0 var(--k)" }}>{t.reward} 分</s>
+                <s className="mt-[2px] text-[14px] no-underline" style={{ color: "#fff6c0", textShadow: "2px 2px 0 var(--k)" }}>{t.reward} {cuisine ? "飽足感" : "分"}</s>
               </div>
             </div>
           );
@@ -577,7 +597,7 @@ export default function ScreenPage() {
       <Stage>
         {!game && <Lobby code={code} teams={lobby} />}
         {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} />}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} cuisine={game.cuisine} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
           {disconnected && !rested && (

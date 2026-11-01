@@ -19,7 +19,7 @@ function phasedBank(q: (id: string) => object = text, hp1 = 1) {
   return parseBank({
     rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, questions: [text("r1"), text("r2")] }],
     boss: {
-      monster: { name: "深淵小黑龍", sprite: "dragon", hue: 0 },
+      monster: { name: "深淵小黑龍", sprite: "dragon", hue: 0, dish: { part: "龍尾", method: "炭火慢烤", name: "龍息烤龍尾", comment: "外脆內嫩。" } },
       phases: [
         { maxHp: hp1, questions: [q("p1-a"), q("p1-b")] },
         { ...PHASE2, maxHp: 2, questions: [q("p2-a"), q("p2-b")] },
@@ -72,6 +72,7 @@ describe("boss phases in the room", () => {
     g.next();
     const card = g.state();
     expect(card).toMatchObject({ phaseCard: { monster: { name: "深淵小黑龍", sprite: "dragon", hue: 0 } }, question: null, reveal: null, cue: "boss-phase", eventId: reveal.eventId + 1, bossPhaseInfo: PHASE2 });
+    expect(card.phaseCard.monster).not.toHaveProperty("dish"); // served on the kill, not before (monster-cuisine.md)
     expect(card.view).toMatchObject({ bossHp: 2, bossMaxHp: 2, bossPhase: 2 });
 
     // Nobody answers a question that is not on screen yet.

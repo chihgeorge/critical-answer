@@ -37,6 +37,7 @@ test("the host saves director notes and downloads a transcript that contains the
 });
 
 /** Reward points on the phone, progress on the host, and the host's 送王房 override (docs/designs/scoring-and-score-pools.md). */
+// The bundled bank cooks its monsters, so the score reads 飽足感 (docs/designs/monster-cuisine.md).
 test("the phone shows reward points and the host sends a team to the boss from the drawer", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");
@@ -49,11 +50,11 @@ test("the phone shows reward points and the host sends a team to the boss from t
   await expect(team.getByTestId("roster")).toContainText("甲隊");
 
   await host.getByRole("button", { name: /開始遊戲/ }).click();
-  await expect(team.getByText("0 獎勵分")).toBeVisible();
+  await expect(team.getByText("0 飽足感")).toBeVisible();
   await expect(team.getByText(/\/ 15/)).toHaveCount(0);
 
   await answerCorrectly(host); // room 1 pays 10 reward and 1 progress
-  await expect(team.getByText("10 獎勵分")).toBeVisible();
+  await expect(team.getByText("10 飽足感")).toBeVisible();
   await expect(host.getByText("1/15")).toBeVisible();
 
   await host.getByRole("button", { name: "⚙ 更多" }).click();

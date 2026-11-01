@@ -1732,3 +1732,40 @@ describe("submitText (fill-in, #104)", () => {
     expect(warrior.teams[0].abilityUses).toBe(makeGame({ warrior: true }).teams[0].abilityUses);
   });
 });
+
+describe("dishes (docs/designs/monster-cuisine.md)", () => {
+  /** Two teams; room 0 is cooked into 湯, room 1 has no dish; the boss is cooked into 龍尾. */
+  function cookedGame(bossThreshold = 99, bossMaxHp = 2) {
+    const rooms: RoomTemplate[] = [{ baseDifficulty: 1, reward: 10, dish: "湯" }, { baseDifficulty: 1, reward: 10 }];
+    const pools = poolsWith(1, Array.from({ length: 8 }, (_, q) => `q${q + 1}`));
+    const teams = [{ id: "T0", name: "A" }, { id: "T1", name: "B" }];
+    return createGame(teams, rooms, pools, ["boss-q1", "boss-q2"], { bossThreshold }, bossMaxHp, first, 10, {}, [], "龍尾");
+  }
+  const t = (g: GameState, id: string) => g.teams.find((x) => x.id === id)!;
+
+  it("defeating a room monster eats its dish; a room without one, a retry and a flee eat nothing", () => {
+    let g = cookedGame();
+    g = answerQuestion(g, "T0", t(g, "T0").currentQuestionId, true).game;
+    expect(t(g, "T0").dishes).toEqual(["湯"]);
+    g = answerQuestion(g, "T1", t(g, "T1").currentQuestionId, false, "retry").game;
+    g = answerQuestion(g, "T0", t(g, "T0").currentQuestionId, true).game; // room 1: no dish
+    g = answerQuestion(g, "T1", t(g, "T1").currentQuestionId, false, "flee").game;
+    expect(t(g, "T0").dishes).toEqual(["湯"]);
+    expect(t(g, "T1").dishes).toBeUndefined();
+  });
+
+  it("the answer that walks a team into the boss room still eats the room's dish", () => {
+    let g = cookedGame(1);
+    g = answerQuestion(g, "T0", t(g, "T0").currentQuestionId, true).game;
+    expect(t(g, "T0")).toMatchObject({ inBoss: true, dishes: ["湯"] });
+  });
+
+  it("only the killing blow eats the boss's dish", () => {
+    let g = cookedGame(0, 2);
+    g = answerQuestion(g, "T0", g.boss.currentQuestionId, true).game; // a hit
+    expect(t(g, "T0").dishes).toBeUndefined();
+    g = answerQuestion(g, "T1", g.boss.currentQuestionId, true).game; // the kill
+    expect(g.phase).toBe("finished");
+    expect(t(g, "T1").dishes).toEqual(["龍尾"]);
+  });
+});

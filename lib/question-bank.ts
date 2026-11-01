@@ -38,11 +38,28 @@ export type BankQuestion =
   | { kind: "text"; id: string; content: MediaContent; answer: string; explanation?: MediaContent }
   | { kind: "multipleChoice"; id: string; content: MediaContent; options: string[]; correctIndex: number; explanation?: MediaContent };
 
+/** What a defeated monster is cooked into (docs/designs/monster-cuisine.md). The ingredient comes
+ * from the monster itself. */
+export interface BankDish {
+  /** The edible part, e.g. 外膜. */
+  part: string;
+  /** How it is cooked, e.g. 曬乾後涼拌. */
+  method: string;
+  /** The dish's name, e.g. 史萊姆寒天涼拌. */
+  name: string;
+  /** One line about how it tastes. */
+  comment: string;
+}
+/** Character limits per dish field, counted in characters (Array.from), so the card fits the TV. */
+export const DISH_LIMITS: Record<keyof BankDish, number> = { part: 12, method: 16, name: 16, comment: 30 };
+export const DISH_FIELDS = Object.keys(DISH_LIMITS) as (keyof BankDish)[];
+
 export interface BankMonster {
   name: string;
   sprite: SpriteKind;
   /** CSS hue-rotate degrees, so one sprite can play several monsters. */
   hue: number;
+  dish?: BankDish;
 }
 export const DIFFICULTIES = [1, 2, 3, 4, 5] as const satisfies readonly Difficulty[];
 export interface BankRoom {
@@ -91,7 +108,26 @@ function parseMonster(raw: unknown, where: string): BankMonster {
   const m = raw as Record<string, unknown> | null;
   if (!m || typeof m.name !== "string" || !m.name.trim()) fail(`${where} monster has no name`);
   if (!SPRITES.includes(m!.sprite as SpriteKind)) fail(`${where} monster has unknown sprite ${String(m!.sprite)}`);
-  return { name: m!.name as string, sprite: m!.sprite as SpriteKind, hue: typeof m!.hue === "number" ? m!.hue : 0 };
+  const dish = m!.dish === undefined ? undefined : parseDish(m!.dish, where);
+  return { name: m!.name as string, sprite: m!.sprite as SpriteKind, hue: typeof m!.hue === "number" ? m!.hue : 0, ...(dish ? { dish } : {}) };
+}
+
+function parseDish(raw: unknown, where: string): BankDish {
+  const d = raw as Record<string, unknown> | null;
+  if (!d || typeof d !== "object" || Array.isArray(d)) fail(`${where} monster dish is not an object`);
+  const out = {} as BankDish;
+  for (const k of DISH_FIELDS) {
+    const v = typeof d![k] === "string" ? (d![k] as string).trim() : "";
+    if (!v) fail(`${where} monster dish has no ${k}`);
+    if (Array.from(v).length > DISH_LIMITS[k]) fail(`${where} monster dish ${k} is longer than ${DISH_LIMITS[k]} characters`);
+    out[k] = v;
+  }
+  return out;
+}
+
+/** The bank cooks its monsters: any room or boss monster has a dish. Then scores read 飽足感. */
+export function hasCuisine(bank: Pick<Bank, "rooms" | "boss">): boolean {
+  return !!bank.boss.monster.dish || bank.rooms.some((r) => !!r.monster.dish);
 }
 
 /** Every real image `value` is a `crypto.randomUUID()` minted by the upload endpoint
@@ -253,7 +289,7 @@ export function assertSavable(bank: Bank): void {
 }
 
 export function roomTemplates(bank: Bank): RoomTemplate[] {
-  return bank.rooms.map((r) => ({ baseDifficulty: r.difficulty, reward: r.reward }));
+  return bank.rooms.map((r) => ({ baseDifficulty: r.difficulty, reward: r.reward, ...(r.monster.dish ? { dish: r.monster.dish.name } : {}) }));
 }
 
 /** Question ids by pool, `[d - 1]` for difficulty d, the shape GameState.pools keeps. */

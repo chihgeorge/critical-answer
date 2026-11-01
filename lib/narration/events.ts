@@ -21,7 +21,8 @@ export type NarrationEvent =
    * are the DM branch choices it made on the way (display text, room order), for the LLM to call
    * back; the scripted lines just announce the entrance (design doc T4: no forced callback template).
    * `phase`: the boss phase already under way when a late team walks in, from phase 2 on (boss-phases.md D13). */
-  | WithNext<{ type: "correct"; team: string; monster: string; points: number; entersBoss?: { branches: string[]; phase?: string } }>
+  /** `dish` (correct and boss-kill): what the monster was cooked into; left out when it holds a bank answer. */
+  | WithNext<{ type: "correct"; team: string; monster: string; points: number; dish?: string; entersBoss?: { branches: string[]; phase?: string } }>
   /** `boss`: a wrong boss answer, which always brings a new question (boss redesign D2=B).
    * `exhausted`: it used up the boss phase's questions, and the phase card comes next (boss-phases.md). */
   | WithNext<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true }>
@@ -31,10 +32,11 @@ export type NarrationEvent =
   | WithNext<{ type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number; exhausted?: true }>
   /** The phase card opened: the boss is back with a new bar. `phase` counts from 1; nothing about later phases. */
   | WithNext<{ type: "boss-phase"; monster: string; phase: number; name: string; rule: string }>
-  | WithNext<{ type: "boss-kill"; team: string; monster: string; bonus: number }>
+  | WithNext<{ type: "boss-kill"; team: string; monster: string; bonus: number; dish?: string }>
   /** Game over: ranking is sorted high to low. Longer line, longer timeout. */
   // ranking[].score carries reward points (Team.reward), not progress points (Team.score).
-  | { type: "epilogue"; ranking: { name: string; score: number }[]; winners: string[] };
+  // ranking[].dishes: what the team ate, without any dish holding a bank answer.
+  | { type: "epilogue"; ranking: { name: string; score: number; dishes?: string[] }[]; winners: string[] };
 
 /**
  * Pure. `prev` is the game before the judgment (it names the team and gives the

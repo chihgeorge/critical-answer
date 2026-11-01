@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseBank, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, type MediaContent } from "./question-bank";
+import { parseBank, roomTemplates, hasCuisine, DISH_LIMITS, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, type MediaContent } from "./question-bank";
 import { BANK } from "./question-bank-data";
 import { MAX_TEAMS } from "./protocol";
 
@@ -420,5 +420,39 @@ describe("lookups", () => {
     expect(imageKeysOf(bank)).toEqual(
       new Set(["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "cccccccc-cccc-cccc-cccc-cccccccccccc"]),
     );
+  });
+});
+
+describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
+  const dish = { part: "外膜", method: "曬乾後涼拌", name: "史萊姆寒天涼拌", comment: "口感像寒天。" };
+  const withDish = (d: unknown) => ({ ...valid(), rooms: [{ ...valid().rooms[0], monster: { name: "史萊姆", sprite: "slime", hue: 0, dish: d } }] });
+
+  it("reads a dish, trimmed, and passes its name to the room template; a bank without dishes has no cuisine", () => {
+    const bank = parseBank(withDish({ ...dish, name: " 史萊姆寒天涼拌 " }));
+    expect(bank.rooms[0].monster.dish).toEqual(dish);
+    expect(roomTemplates(bank)[0].dish).toBe("史萊姆寒天涼拌");
+    expect(hasCuisine(bank)).toBe(true);
+    expect(hasCuisine(parseBank(valid()))).toBe(false);
+    expect(roomTemplates(parseBank(valid()))[0].dish).toBeUndefined();
+  });
+
+  it.each([
+    ["not an object", "外膜", /dish is not an object/],
+    ["missing a field", { part: "外膜", method: "煮", name: "湯" }, /dish has no comment/],
+    ["a blank field", { ...dish, part: "  " }, /dish has no part/],
+    ["a field over its limit", { ...dish, name: "一".repeat(DISH_LIMITS.name + 1) }, /dish name is longer than 16/],
+  ])("refuses a dish that is %s", (_, d, why) => {
+    expect(() => parseBank(withDish(d))).toThrow(why);
+  });
+
+  it("counts a character outside the BMP as one", () => {
+    expect(parseBank(withDish({ ...dish, name: "𩸽".repeat(DISH_LIMITS.name) })).rooms[0].monster.dish?.name).toHaveLength(DISH_LIMITS.name * 2);
+  });
+
+  it("the shipped bank cooks every monster, and no dish holds a 3+ character answer (the AI line would be thrown away)", () => {
+    const monsters = [...BANK.rooms.map((r) => r.monster), BANK.boss.monster];
+    expect(monsters.every((m) => m.dish)).toBe(true);
+    const answers = allQuestions(BANK).map(answerText).filter((a) => a.length >= 3);
+    for (const m of monsters) for (const v of Object.values(m.dish!)) expect(answers.filter((a) => v.includes(a)), `${m.name}: ${v}`).toEqual([]);
   });
 });

@@ -60,6 +60,21 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
   ],
 };
 
+/** A correct answer that cooked its monster (event.dish, docs/designs/monster-cuisine.md). */
+export const DISH_VARIANTS = [
+  "{team}答對了！{monster}被煮成了{dish}，+{points} 飽足感。",
+  "今晚的菜：{dish}！{team}吃下 {points} 飽足感。",
+  "{team}收拾了{monster}，端上一盤{dish}。",
+  "{monster}倒下，香味飄來——是{dish}！{team} +{points}。",
+];
+
+/** The boss kill when the boss has a dish. */
+export const BOSS_DISH_VARIANTS = [
+  "{team}擊倒了{monster}！今晚的大菜是{dish}，再加 {bonus} 飽足感！",
+  "{monster}轟然倒下，{team}把牠做成了{dish}，+{bonus}！",
+  "終結！{team}端出{dish}，整座地城都聞到了香味。",
+];
+
 /** A correct answer that takes the team into the boss room (event.entersBoss). No callback to the
  * team's branch choices here: with no LLM, the design doc (T4) prefers announcing the entrance over a
  * forced "you chose X" template. */
@@ -189,6 +204,8 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "boss-hit" && event.bossHp === 0) return fill(pick(BOSS_EMPTIED_VARIANTS, "boss-emptied"), event);
       if (event.type === "boss-phase") return fill(pick(VARIANTS["boss-phase"], "boss-phase"), { ...event, ordinal: ordinal(event.phase) });
       if (event.type === "correct" && event.entersBoss?.phase) return fill(pick(BOSS_ENTER_PHASE_VARIANTS, "boss-enter-phase"), { ...event, phase: event.entersBoss.phase });
+      if (event.type === "boss-kill" && event.dish) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
+      if (event.type === "correct" && event.dish && !event.entersBoss) return fill(pick(DISH_VARIANTS, "dish"), event);
       const bossEnter = event.type === "correct" && event.entersBoss;
       return fill(pick(bossEnter ? BOSS_ENTER_VARIANTS : VARIANTS[event.type], bossEnter ? "boss-enter" : event.type), event);
     },
@@ -209,22 +226,26 @@ export function createScriptedProvider(rng: () => number = Math.random) {
 }
 
 const EPILOGUES = [
-  "漫長的夜晚結束了。{winners}以 {score} 分奪下榜首，{rest}。地城重歸寂靜。",
-  "火把漸漸熄滅，{winners}帶著 {score} 分走出地城，{rest}。",
-  "貓頭鷹魔法師闔上書：{winners}以 {score} 分成為傳說，{rest}。",
+  "漫長的夜晚結束了。{winners}以 {score} {unit}奪下榜首，{rest}。地城重歸寂靜。",
+  "火把漸漸熄滅，{winners}帶著 {score} {unit}走出地城，{rest}。",
+  "貓頭鷹魔法師闔上書：{winners}以 {score} {unit}成為傳說，{rest}。",
 ];
 
 /** Built from the final ranking, so the scores in the story are always right. `ranking` is sorted high to low. */
 export function scriptedEpilogue(
-  ranking: { name: string; score: number }[],
+  ranking: { name: string; score: number; dishes?: string[] }[],
   winners: string[],
   rng: () => number = Math.random,
 ): string {
   const top = ranking[0]?.score ?? 0;
+  const unit = ranking.some((t) => t.dishes?.length) ? "飽足感" : "分";
   const rest = ranking
     .filter((t) => !winners.includes(t.name))
     .slice(0, 2)
-    .map((t) => `${t.name} ${t.score} 分`);
+    .map((t) => `${t.name} ${t.score} ${unit}`);
   const restText = rest.length > 0 ? `${rest.join("、")}緊追在後` : "無人能敵";
-  return fill(EPILOGUES[Math.floor(rng() * EPILOGUES.length)], { winners: winners.join("、"), score: top, rest: restText });
+  const story = fill(EPILOGUES[Math.floor(rng() * EPILOGUES.length)], { winners: winners.join("、"), score: top, unit, rest: restText });
+  // The feast: the champions' dishes, at most three so the line stays short.
+  const eaten = [...new Set(ranking.filter((t) => winners.includes(t.name)).flatMap((t) => t.dishes ?? []))].slice(0, 3);
+  return eaten.length ? `${story}${winners.join("、")}吃了${eaten.join("、")}，最飽。` : story;
 }

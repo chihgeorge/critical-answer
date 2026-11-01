@@ -170,6 +170,9 @@ export interface Team {
   /** The team's typed answer to its text question (submitText), waiting for the host. Only the turn's
    * team can hold one, and it keeps the turn until judged; answerQuestion and sendToBoss clear it. */
   typedAnswer?: string;
+  /** Dish names this team ate, in order: one per defeated room monster or boss that has a dish
+   * (docs/designs/monster-cuisine.md). Absent until the first, and in saves from before dishes. */
+  dishes?: string[];
 }
 
 export interface RoomTemplate {
@@ -177,12 +180,16 @@ export interface RoomTemplate {
   baseDifficulty: Difficulty;
   /** Reward points for defeating this room's monster, whatever difficulty the team faced it at (S5). */
   reward: number;
+  /** The name of the dish its monster is cooked into, if the bank gives one. */
+  dish?: string;
 }
 
 export interface BossState {
   maxHp: number;
   /** Reward points per hit, the final blow included; the final blow also rolls the kill bonus (S6). */
   hitReward: number;
+  /** The name of the dish the boss is cooked into, eaten by the team that kills it. */
+  dish?: string;
   hp: number;
   killedByTeamId: string | null;
   currentQuestionId: string;
@@ -469,6 +476,7 @@ export function createGame(
   optionOrder: Record<string, number[]> = {},
   /** Phases after the first, which is `bossQuestionIds` and `bossMaxHp`. */
   laterBossPhases: BossPhaseState[] = [],
+  bossDish?: string,
 ): GameState {
   if (teamSeeds.length === 0) {
     throw new InvalidActionError("At least one team is required");
@@ -515,6 +523,7 @@ export function createGame(
     boss: {
       maxHp: bossMaxHp,
       hitReward: bossHitReward,
+      ...(bossDish ? { dish: bossDish } : {}),
       hp: bossMaxHp,
       killedByTeamId: null,
       currentQuestionId: bossQuestionIds[0],
@@ -683,7 +692,7 @@ export function answerQuestion(
       const bossKilled = newHp === 0 && lastPhase;
       const killBonus = bossKilled ? rollBossKillBonus(rng) * sneak : undefined;
       const reward = boss.hitReward * sneak + (killBonus ?? 0);
-      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward }));
+      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}) }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
       const phasePending = bossKilled ? undefined : newHp === 0 ? "cleared" : usedUp(revealedNow) ? "exhausted" : undefined;
@@ -762,6 +771,7 @@ export function answerQuestion(
         teams: patchTeam(game.teams, teamId, (t) => ({
           score: t.score + pointsAwarded,
           reward: t.reward + reward,
+          ...ate(t, game.rooms[team.roomIndex].dish),
           roomIndex: nextRoomIndex,
           currentDifficulty: entersBoss ? t.currentDifficulty : game.rooms[nextRoomIndex].baseDifficulty,
           currentQuestionId: dealt.questionId,
@@ -956,6 +966,11 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
   return { ...game, teams, ...(stillFaced ? {} : dropEliminated(game, left)) };
+}
+
+/** The team's dishes with `dish` eaten, or nothing when the monster has none. */
+function ate(team: Team, dish: string | undefined): Pick<Team, "dishes"> | object {
+  return dish ? { dishes: [...(team.dishes ?? []), dish] } : {};
 }
 
 /** `eliminated`, `mageRemoved` and `mageHints` without `questionId`: it left play, and a later deal of it starts clean. */

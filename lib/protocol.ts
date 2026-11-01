@@ -71,7 +71,15 @@ export type AnswerReveal = {
    * was right, who locked it and the points it scored, so every screen can light the tile (D8, D14).
    * Safe to send: it goes out only once the answer is revealed. */
   choice?: { options: string[]; correctIndex: number; teamId: string; points: number };
+  /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
+   * Only when the answer defeated a room monster or killed the boss, and that monster has a dish. */
+  dish?: { name: string; part: string; method: string; comment: string; points: number };
 };
+
+/** What scores are called: 飽足感 when the bank cooks its monsters (STATE `cuisine`), else 獎勵分. */
+export function scoreName(cuisine: boolean | undefined): string {
+  return cuisine ? "飽足感" : "獎勵分";
+}
 
 export type ClientMessage =
   /** `teamKey` is the team's secret. teamId is public (every STATE broadcasts it), so the key is what proves a connection owns the team. */
@@ -188,6 +196,8 @@ export type ServerMessage =
       phaseCard?: { monster: PublicQuestion["monster"] };
       /** The boss phase under way, from phase 2 on (phase 1 stays a plain boss). Never a later phase. */
       bossPhaseInfo?: { name: string; rule: string };
+      /** The bank cooks its monsters (hasCuisine): scores read 飽足感 instead of 獎勵分. Absent from older servers. */
+      cuisine?: true;
     }
   | { type: "GAME_OVER"; winners: string[] }
   /** Exactly one per event (1-3 segments, played in order). Clients keep the highest eventId they
