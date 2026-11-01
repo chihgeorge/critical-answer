@@ -2,6 +2,15 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.27.0.0] - 2026-10-31
+
+### Added
+- Defeated monsters are now cooked. When a team answers right and beats a monster, the big screen shows a small 「🍲 今晚的菜」 card under the answer: the dish's name, which part of the monster it uses, how it was cooked, a one-line review, and 「+N 飽足感」. Killing the boss serves 今晚的大菜.
+- When the bank has any dishes, scores are called 飽足感 instead of 獎勵分 on the phones, the host page and the podium. The narrator mentions each dish, and the epilogue is a feast that says what each team ate and who ate the most.
+- The default bank gives every monster a dish, each made from the monster itself (for example, the slime's outer membrane becomes 史萊姆寒天涼拌).
+- In the bank editor's 房間 tab, each room's monster and the boss have four boxes for a dish: 部位, 做法, 菜名 and 評語. Leave all four empty for no dish. Saving with only some filled in says which box is missing.
+- A dish whose name contains a question's answer still appears on the big screen, but the narrator never says it.
+
 ## [0.26.0.0] - 2026-10-31
 
 ### Added
