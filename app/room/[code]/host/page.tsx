@@ -22,6 +22,7 @@ import { optionLetter } from "@/components/mc-option";
 import { AI_ERRORS, AI_STORE, AiExhausted, AiPanel, aiKeyMessage, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
 import { QuestionPicker } from "@/components/question-picker";
+import { createAiKeyQueue } from "@/lib/host-ai-queue";
 
 /** D11: the stuck-team row waits this long with no lock (or no choice after a wrong lock). */
 const STUCK_MS = 15_000;
@@ -63,6 +64,8 @@ export default function HostPage() {
   const aiSaved = useRef<AiCredential | null>(null);
   /** A key sent but not yet confirmed by HOST_AI_STATUS. */
   const aiPending = useRef<{ credential: AiCredential; remember: boolean } | null>(null);
+  const [aiQueue] = useState(createAiKeyQueue);
+  const aiSend = (msg: ClientMessage) => aiQueue.choose(msg, send);
   const [aiRemembered, setAiRemembered] = useState(false);
   /** The limit the host said 不用了 to, so the prompt stays closed until the limit changes. */
   const [aiDismissedAt, setAiDismissedAt] = useState<number | null>(null);
@@ -97,6 +100,7 @@ export default function HostPage() {
     onClose() {
       setConnected(false);
       setClaimed(false);
+      aiQueue.closed();
       setPendingTeamId(null);
     },
     onMessage(msg) {
@@ -105,8 +109,7 @@ export default function HostPage() {
           setClaimed(true);
           // The room is ours: from now on this link can no longer swap its code.
           if (isFreshRoomHash(location.hash)) history.replaceState(null, "", location.pathname + location.search + settledHash(location.hash));
-          // A restarted room has forgotten the key: send it again (the room skips the check for a key it still has).
-          if (aiSaved.current) room.send(aiKeyMessage(aiSaved.current));
+          aiQueue.hostOk(aiSaved.current && aiKeyMessage(aiSaved.current), room.send);
           setJoinPassword(msg.joinPassword);
           setSavedPassword(msg.joinPassword);
           break;
@@ -342,14 +345,14 @@ export default function HostPage() {
     <AiPanel
       status={aiStatus}
       remembered={aiRemembered}
-      send={send}
+      send={aiSend}
       onUse={(credential, remember) => {
         aiPending.current = { credential, remember };
-        send(aiKeyMessage(credential));
+        aiSend(aiKeyMessage(credential));
       }}
       onForget={() => {
         forgetAiKey();
-        send({ type: "HOST_AI_KEY", source: "none" });
+        aiSend({ type: "HOST_AI_KEY", source: "none" });
       }}
     />
   );

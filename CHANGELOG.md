@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.31.4.0] - 2026-11-05
+
+### Fixed
+- An AI key or AI limit the host sets before the room has accepted the host page (right after opening it, or while it reconnects) now goes through once the room accepts it. Before, the room refused it and the host saw `not_host`.
+- Changing the join password while a new AI key is being checked no longer puts the old key back.
+
 ## [0.31.3.0] - 2026-11-05
 
 **Rollback floor:** do not roll the Worker back below v0.31.3.0. Older Workers cannot read the rooms this one saves, so every live room would reset to a new game.
