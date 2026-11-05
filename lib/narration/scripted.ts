@@ -97,9 +97,7 @@ export const BOSS_DISH_VARIANTS = [
   "終結！{team}端出{dish}，整座地城都聞到了香味。",
 ];
 
-/** A correct answer that takes the team into the boss room (event.entersBoss). No callback to the
- * team's branch choices here: with no LLM, the design doc (T4) prefers announcing the entrance over a
- * forced "you chose X" template. */
+/** A correct answer that takes the team into the boss room (event.entersBoss). */
 export const BOSS_ENTER_VARIANTS = [
   "{team}答對了，推開最後一道門——首領就在眼前！",
   "{monster}倒下，{team}踏進了首領的巢穴，+{points}！",
@@ -171,7 +169,7 @@ export const BOSS_EXHAUSTED_VARIANTS = [
 ];
 
 /** A team walking into the boss room after phase 2 has started: the phase everyone has already seen (D13). */
-export const BOSS_ENTER_PHASE_VARIANTS = [
+const BOSS_ENTER_PHASE_VARIANTS = [
   "{team}推開最後一道門，首領正處於「{phase}」！",
   "{team}踏進首領房，戰鬥已經進入「{phase}」。",
   "答對！{team}走進最深處，迎面就是「{phase}」的首領。",

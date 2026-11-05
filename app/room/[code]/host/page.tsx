@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
@@ -8,17 +8,20 @@ import { UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notic
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, scoreName, type AiKeyError, type ClientMessage, type HostPick, type LobbyTeams, type ServerMessage, type StateMessage } from "@/lib/protocol";
-import { forgetStored, readStored, writeStored } from "@/lib/stored";
+import { INTRO_PAGES, MAX_PASSWORD, scoreName, type ClientMessage, type LobbyTeams, type ServerMessage, type StateMessage } from "@/lib/protocol";
+import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { CLASS_ICONS, CLASS_LABELS } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { MageHint } from "@/components/mage-hint";
-import { clericStage, hostKeyAction, introKeyAction } from "@/lib/host-keys";
-import { INTRO_PAGE_TEXT } from "@/components/how-to-play";
+import { clericStage, HOST_KEYS, hostKeyAction, introKeyAction } from "@/lib/host-keys";
+import { INTRO_PAGE_TEXT, introDots } from "@/components/how-to-play";
 import { optionLetter } from "@/components/mc-option";
+import { AI_ERRORS, AI_STORE, AiExhausted, AiPanel, aiKeyMessage, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
+import { MoreDrawer } from "@/components/more-drawer";
+import { QuestionPicker } from "@/components/question-picker";
 
 /** D11: the stuck-team row waits this long with no lock (or no choice after a wrong lock). */
 const STUCK_MS = 15_000;
@@ -27,441 +30,7 @@ const STUCK_MS = 15_000;
 const CLERIC_WAIT_DELAY_MS = 500;
 const noSubscribe = () => () => {};
 
-/** The host's own link carries the token, so it is shown here and never on /screen or /play. */
-function MoreDrawer({
-  code,
-  onClose,
-  send,
-  lines,
-  aiOn,
-  ai,
-  bossable,
-  nextLine,
-  playing,
-}: {
-  code: string;
-  onClose: () => void;
-  send: (msg: ClientMessage) => void;
-  /** The current narration's segments (1-3). The edit box below only ever rewrites the first
-   * one, so hosts need to know there may be more they can't reach. */
-  lines: string[];
-  aiOn: boolean;
-  /** The AI key and limit settings, mid-game (in the lobby they sit on the page itself). */
-  ai: ReactNode;
-  /** Teams in play and not yet in the boss room: the host may send one there (scoring-and-score-pools.md S13). */
-  bossable: { id: string; name: string }[];
-  /** The line queued for the next narration ("" for none), or null until the room says it supports one (host-next-line.md D5). */
-  nextLine: string | null;
-  /** A game is under way, so 結束冒險 can end it. */
-  playing: boolean;
-}) {
-  const currentLine = lines[0] ?? "";
-  const totalSegments = lines.length;
-  const [notes, setNotes] = useState("");
-  const [line, setLine] = useState(currentLine);
-  // A new narration line while the drawer is open replaces the draft, so 送出 never puts an old line back.
-  const [seenLine, setSeenLine] = useState(currentLine);
-  if (currentLine !== seenLine) {
-    setSeenLine(currentLine);
-    setLine(currentLine);
-  }
-  const [nextDraft, setNextDraft] = useState("");
-  // Cleared once the room confirms a queued line, so an ERROR (game over, only punctuation) keeps what was typed.
-  const [seenNextLine, setSeenNextLine] = useState(nextLine);
-  if (nextLine !== seenNextLine) {
-    setSeenNextLine(nextLine);
-    if (nextLine) setNextDraft("");
-  }
-  // 送王房 cannot be undone, so the first tap only arms it for 3 s.
-  const [armed, setArmed] = useState<string | null>(null);
-  useEffect(() => {
-    if (!armed) return;
-    const t = setTimeout(() => setArmed(null), 3000);
-    return () => clearTimeout(t);
-  }, [armed]);
-  const origin = location.origin;
-  const token = getHostToken(code);
-  const hostUrl = token ? `${origin}/room/${code}/host#k=${token}` : "";
-  return (
-    <div className="fixed inset-0 z-30 flex items-end bg-black/60" onClick={onClose}>
-      <Panel tone="lav" className="max-h-[85vh] w-full overflow-y-auto p-4">
-        <div onClick={(e) => e.stopPropagation()} className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <span className="text-[20px]">更多</span>
-            <PixelButton onClick={onClose} className="!m-0 !px-4 !py-1 text-[16px]">
-              關閉
-            </PixelButton>
-          </div>
-          {bossable.length > 0 && (
-            <section className="flex flex-col gap-2">
-              <div className="text-[15px]">{`送隊伍進王房（不用等到 ${BOSS_THRESHOLD} 分，送了不能退回）`}</div>
-              {bossable.map((t) => (
-                <div key={t.id} className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-[16px]">{t.name}</span>
-                  <PixelButton
-                    onClick={() => {
-                      if (armed !== t.id) return setArmed(t.id);
-                      setArmed(null);
-                      send({ type: "HOST_SEND_TO_BOSS", teamId: t.id });
-                    }}
-                    className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]"
-                  >
-                    {armed === t.id ? "確定送？" : "送王房"}
-                  </PixelButton>
-                </div>
-              ))}
-            </section>
-          )}
-          {playing && (
-            <section className="flex flex-col gap-2">
-              <div className="text-[15px]">時間到了？現在就結束，照目前的分數排名，大螢幕出頒獎台和後記。</div>
-              <PixelButton
-                onClick={() => {
-                  // Ending cannot be undone, so the first tap only arms it for 3 s, like 送王房.
-                  if (armed !== "end") return setArmed("end");
-                  setArmed(null);
-                  send({ type: "HOST_END_GAME" });
-                  onClose();
-                }}
-                className="!m-0 min-h-[44px] !px-4 !py-2 text-[16px]"
-              >
-                {armed === "end" ? "確定結束？" : "結束冒險"}
-              </PixelButton>
-            </section>
-          )}
-          {ai && <section>{ai}</section>}
-          <section className="flex flex-col gap-2">
-            <div className="text-[15px]">導演筆記{aiOn ? "（AI 每次寫旁白都會參考）" : "（AI 旁白已關閉，只會記錄）"}</div>
-            <div className="text-[13px]">只影響語氣與風格，不是逐字台詞。想改已經出現的那一句，用下面的「改寫目前旁白」。</div>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} rows={3} placeholder="例如：用武俠口吻，紅隊是一群恐龍" className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
-            <PixelButton onClick={() => send({ type: "HOST_SET_NOTES", notes })} className="!m-0 !px-4 !py-2 text-[16px]">
-              儲存導演筆記
-            </PixelButton>
-          </section>
-          {nextLine !== null && (
-            <section className="flex flex-col gap-2">
-              <div className="text-[15px]">下一句這樣說（最多 40 字）</div>
-              <div className="text-[13px]">下一次旁白的第二句會說出這句（AI 可能在前後加幾個字），說完就清掉。</div>
-              {nextLine && (
-                <div className="flex items-center gap-2 border-4 border-dashed border-[var(--k)] bg-[var(--turn)] p-2 text-[15px]">
-                  <span className="flex-1 break-all">已排入：{nextLine}</span>
-                  <PixelButton onClick={() => send({ type: "HOST_NEXT_LINE", line: "" })} className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]">
-                    取消
-                  </PixelButton>
-                </div>
-              )}
-              <input value={nextDraft} onChange={(e) => setNextDraft(e.target.value)} maxLength={40} placeholder={nextLine ? "再排一句會蓋掉上面這句" : "例如：不怕死的冒險者不知道珍珠是什麼意思？"} className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
-              <PixelButton
-                onClick={() => send({ type: "HOST_NEXT_LINE", line: nextDraft })}
-                disabled={!nextDraft.trim()}
-                className="!m-0 !px-4 !py-2 text-[16px]"
-              >
-                排進下一句
-              </PixelButton>
-            </section>
-          )}
-          <section className="flex flex-col gap-2">
-            <div className="text-[15px]">改寫第一句旁白{totalSegments > 1 ? `（共 ${totalSegments} 句，只能改第一句，最多 40 字）` : "（最多 40 字）"}</div>
-            <input value={line} onChange={(e) => setLine(e.target.value)} maxLength={40} disabled={!currentLine} className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
-            <PixelButton onClick={() => send({ type: "HOST_EDIT_NARRATION", line })} disabled={!currentLine || !line.trim()} className="!m-0 !px-4 !py-2 text-[16px]">
-              送出，立刻換上大螢幕
-            </PixelButton>
-          </section>
-          <section>
-            <PixelButton onClick={() => send({ type: "HOST_GET_TRANSCRIPT" })} className="!m-0 !px-4 !py-2 text-[16px]">
-              下載旁白紀錄（JSON）
-            </PixelButton>
-            <div className="mt-3 text-[13px]">每一句旁白的事件、分數、來源與延遲。伺服器重啟後會消失。</div>
-          </section>
-          {hostUrl && (
-            <section className="flex items-center gap-3">
-              <Qr text={hostUrl} size={120} alt="主持人 QR" />
-              <div className="text-[14px]">
-                <div className="text-[15px]">用另一台裝置主持</div>
-                <div>這個連結擁有主持權，不要給玩家。</div>
-              </div>
-            </section>
-          )}
-        </div>
-      </Panel>
-    </div>
-  );
-}
-
 type Picks = Extract<ServerMessage, { type: "HOST_PICKS" }>;
-
-/** The host picks a target's next question (HOST_QUEUE_QUESTION). The list only ever reaches the host page. */
-function QuestionPicker({
-  title,
-  note,
-  questions,
-  current,
-  teamName,
-  onPick,
-  onClose,
-}: {
-  title: string;
-  note: string;
-  questions: HostPick[];
-  /** The target's queued pick, if any: shown as chosen, not as blocked. */
-  current: string | undefined;
-  teamName: (id: string) => string;
-  onPick: (id: string) => void;
-  onClose: () => void;
-}) {
-  const [query, setQuery] = useState("");
-  const q = query.trim();
-  const shown = q ? questions.filter((x) => x.label.includes(q) || x.answer.includes(q)) : questions;
-  const why = (b: NonNullable<HostPick["block"]>) =>
-    b.kind === "revealed" ? "已公布" : b.kind === "held" ? (b.teamId === "boss" ? "王房正在用" : `${teamName(b.teamId)}正在答`) : `已排給${b.teamId === "boss" ? "王房" : teamName(b.teamId)}`;
-  return (
-    <div className="fixed inset-0 z-30 flex items-end bg-black/60" onClick={onClose}>
-      <Panel tone="lav" className="max-h-[85vh] w-full overflow-y-auto p-4">
-        <div onClick={(e) => e.stopPropagation()} className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[19px]">{title}</span>
-            <PixelButton onClick={onClose} className="!m-0 !px-4 !py-1 text-[16px]">
-              關閉
-            </PixelButton>
-          </div>
-          <div className="text-[13px]">{note}</div>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜尋題目或答案" className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
-          {shown.length === 0 && <div className="text-[14px]">沒有符合的題目</div>}
-          {shown.map((x) => {
-            const mine = x.id === current;
-            const blocked = x.block && !mine;
-            return (
-              <button
-                key={x.id}
-                type="button"
-                disabled={!!blocked}
-                onClick={() => onPick(x.id)}
-                // Blocked rows use DESIGN.md's faded-tile tokens, with the reason in full ink so it stays readable.
-                className={`flex w-full items-start gap-2 border-[3px] p-2 text-left ${blocked ? "border-[var(--dim-line)] bg-[var(--cream2)] text-[var(--dim-ink)]" : "border-[var(--k)] bg-[var(--cream)]"}`}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[14px]">{x.label}</span>
-                  <span className="block text-[12px]" style={blocked ? undefined : { color: "#2f6a2c" }}>答案：{x.answer}</span>
-                </span>
-                {(blocked || mine) && <span className="flex-none text-[13px]" style={{ color: mine ? "#2f6a2c" : "var(--ink)" }}>{mine ? "目前選的" : why(x.block!)}</span>}
-              </button>
-            );
-          })}
-        </div>
-      </Panel>
-    </div>
-  );
-}
-
-type AiStatus = Extract<ServerMessage, { type: "HOST_AI_STATUS" }>;
-/** What the host typed, kept in this page (and, with 記住這台電腦, in localStorage) to resend after a room restart. */
-type AiCredential = { source: "own"; key: string } | { source: "owner"; ownerKey: string };
-
-const AI_STORE = { own: "ai-key:own", owner: "ai-key:owner" } as const;
-const AI_ERRORS: Record<AiKeyError, string> = {
-  invalid_key: "這把 key 無效（格式不對，或 Anthropic 拒絕了它）",
-  wrong_owner_key: "站長金鑰不符",
-  owner_unavailable: "這個伺服器沒有開放站長金鑰",
-  check_failed: "暫時無法驗證這把 key，請再試一次",
-  ai_stopped: "AI 旁白已暫停：連續失敗。檢查 Anthropic Console 的餘額後，重新貼一次 key",
-};
-const aiKeyMessage = (c: AiCredential): ClientMessage =>
-  c.source === "own" ? { type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: c.key } : { type: "HOST_AI_KEY", source: "owner", ownerKey: c.ownerKey };
-
-function readSavedAiKey(): AiCredential | null {
-  const key = readStored(AI_STORE.own);
-  if (key) return { source: "own", key };
-  const ownerKey = readStored(AI_STORE.owner);
-  return ownerKey ? { source: "owner", ownerKey } : null;
-}
-
-/** Who pays for AI narration: none, the host's own Anthropic key, or the owner's key (layout A, designs/ai-key-20261030). */
-function AiPanel({
-  status,
-  remembered,
-  onUse,
-  onForget,
-  send,
-}: {
-  status: AiStatus | null;
-  /** A key from localStorage was found when the page opened. */
-  remembered: boolean;
-  onUse: (c: AiCredential, remember: boolean) => void;
-  onForget: () => void;
-  send: (msg: ClientMessage) => void;
-}) {
-  const [choice, setChoice] = useState<"none" | "own" | "owner">("none");
-  const [key, setKey] = useState("");
-  const [ownerKey, setOwnerKey] = useState("");
-  const [remember, setRemember] = useState(remembered);
-  const [limit, setLimit] = useState(String(DEFAULT_AI_LIMIT));
-  const source = status?.source ?? "none";
-  const serverLimit = status?.limit;
-  // Follow the room (after a restart, or on a second host device) and the stored key, when either changes.
-  const [seen, setSeen] = useState({ source, remembered, serverLimit });
-  if (seen.source !== source || seen.remembered !== remembered || seen.serverLimit !== serverLimit) {
-    setSeen({ source, remembered, serverLimit });
-    if (source !== seen.source && source !== "none") setChoice(source);
-    if (remembered !== seen.remembered) setRemember(remembered);
-    if (serverLimit !== seen.serverLimit && serverLimit !== undefined) setLimit(String(serverLimit));
-  }
-  const limitN = Number(limit);
-  const limitOk = Number.isInteger(limitN) && limitN >= 1 && limitN <= MAX_AI_LIMIT;
-  const active = status && status.source === choice && choice !== "none";
-  const radio = (value: typeof choice, label: string) => (
-    <label className="flex items-center gap-3 text-[16px]">
-      <input
-        type="radio"
-        name="ai-source"
-        className="h-5 w-5"
-        checked={choice === value}
-        onChange={() => {
-          setChoice(value);
-          if (value === "none" && source !== "none") onForget();
-        }}
-      />
-      {label}
-    </label>
-  );
-  const limitRow = (
-    <div className="flex items-center gap-2 text-[13px]">
-      上限
-      <input
-        type="number"
-        inputMode="numeric"
-        min={1}
-        max={MAX_AI_LIMIT}
-        value={limit}
-        onChange={(e) => setLimit(e.target.value)}
-        className="w-[90px] border-4 border-[var(--k)] bg-white px-2 py-1 text-[16px]"
-      />
-      次（1–{MAX_AI_LIMIT}）
-      {active && limitOk && limitN !== status.limit && (
-        <PixelButton onClick={() => send({ type: "HOST_AI_LIMIT", limit: limitN })} className="!m-0 !px-3 !py-1 text-[14px]">
-          設定
-        </PixelButton>
-      )}
-    </div>
-  );
-  const after = (c: AiCredential) => {
-    onUse(c, remember);
-    // A new limit typed before the key goes with it.
-    if (limitOk && limitN !== status?.limit) send({ type: "HOST_AI_LIMIT", limit: limitN });
-  };
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="text-[16px]">AI 旁白</div>
-      {radio("none", "不用 AI（腳本旁白，免費）")}
-      {radio("own", "用我自己的 Anthropic API key")}
-      {choice === "own" && (
-        <div className="ml-8 flex flex-col gap-2">
-          <input
-            type="password"
-            value={key}
-            onChange={(e) => setKey(e.target.value.trim())}
-            autoComplete="off"
-            placeholder={active && status.keyHint ? `已設定 ${status.keyHint}，要換再貼一把` : "sk-ant-…"}
-            aria-label="Anthropic API key"
-            className="min-w-0 border-4 border-[var(--k)] bg-white px-2 py-1 text-[16px]"
-          />
-          <label className="flex items-center gap-2 text-[13px]">
-            <input type="checkbox" className="h-5 w-5" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            記住這台電腦（存在這個瀏覽器）
-          </label>
-          {limitRow}
-          <div className="flex items-center gap-2">
-            <PixelButton disabled={!key} onClick={() => after({ source: "own", key })} className="!m-0 !px-4 !py-2 text-[16px]">
-              驗證並使用
-            </PixelButton>
-            {active && (
-              <PixelButton
-                onClick={() => {
-                  setKey("");
-                  onForget();
-                }}
-                className="!m-0 !px-3 !py-2 text-[14px]"
-                style={{ background: "var(--cream)" }}
-              >
-                忘掉 key
-              </PixelButton>
-            )}
-          </div>
-        </div>
-      )}
-      {radio("owner", "站長金鑰")}
-      {choice === "owner" && (
-        <div className="ml-8 flex flex-col gap-2">
-          <input
-            type="password"
-            value={ownerKey}
-            onChange={(e) => setOwnerKey(e.target.value.trim())}
-            autoComplete="off"
-            placeholder={active ? "已使用站長金鑰" : "OWNER_KEY"}
-            aria-label="站長金鑰（OWNER_KEY）"
-            className="min-w-0 border-4 border-[var(--k)] bg-white px-2 py-1 text-[16px]"
-          />
-          <label className="flex items-center gap-2 text-[13px]">
-            <input type="checkbox" className="h-5 w-5" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            記住這台電腦（存在這個瀏覽器）
-          </label>
-          {limitRow}
-          <PixelButton disabled={!ownerKey} onClick={() => after({ source: "owner", ownerKey })} className="!m-0 !px-4 !py-2 text-[16px]">
-            使用站長金鑰
-          </PixelButton>
-        </div>
-      )}
-      {status && status.source !== "none" && (
-        <div className="text-[13px]" style={{ color: status.keyMissing ? "#b23a3a" : "#2f6a2c" }} role="status">
-          {status.keyMissing
-            ? "房間重新啟動過，請再貼一次 key"
-            : `✓ ${status.source === "own" ? `Anthropic ${status.keyHint ?? ""}` : "站長金鑰"}・已用 ${status.used} / ${status.limit}`}
-        </div>
-      )}
-      {status?.error && (
-        <div className="text-[13px]" style={{ color: "#b23a3a" }} role="alert">
-          ✕ {AI_ERRORS[status.error]}
-        </div>
-      )}
-      <div className="border-2 border-dashed border-[var(--lav2)] bg-white/50 px-2 py-1 text-[13px]">
-        建議到 Anthropic Console 開一把這個遊戲專用的 key，並設好每月花費上限。key 只放在房間的記憶體裡，不會存檔，也不會傳回任何畫面。
-      </div>
-    </div>
-  );
-}
-
-/** In-game, host only: the budget ran out. Players and the TV see nothing (their lines just turn scripted). */
-function AiExhausted({ status, send, onDismiss }: { status: AiStatus; send: (msg: ClientMessage) => void; onDismiss: () => void }) {
-  const [limit, setLimit] = useState(String(Math.min(status.limit * 2, MAX_AI_LIMIT)));
-  const n = Number(limit);
-  const ok = Number.isInteger(n) && n > status.used && n <= MAX_AI_LIMIT;
-  return (
-    <Panel tone="turn" role="status" className="flex flex-col gap-2 px-3 py-2">
-      <div className="text-[18px]">{`AI 旁白額度用完（已用 ${status.used} / ${status.limit}）`}</div>
-      <div className="text-[13px]">接下來改用腳本旁白，遊戲照常進行。要繼續用 AI，設一個新上限：</div>
-      <div className="flex items-center gap-2 text-[13px]">
-        新上限
-        <input
-          type="number"
-          inputMode="numeric"
-          min={status.used + 1}
-          max={MAX_AI_LIMIT}
-          value={limit}
-          onChange={(e) => setLimit(e.target.value)}
-          className="w-[100px] border-4 border-[var(--k)] bg-white px-2 py-1 text-[16px]"
-        />
-        次
-      </div>
-      <div className="flex items-center gap-2">
-        <PixelButton disabled={!ok} onClick={() => send({ type: "HOST_AI_LIMIT", limit: n })} className="!m-0 !px-4 !py-2 text-[16px]">
-          繼續用 AI
-        </PixelButton>
-        <PixelButton onClick={onDismiss} className="!m-0 !px-4 !py-2 text-[16px]" style={{ background: "var(--cream)" }}>
-          不用了
-        </PixelButton>
-      </div>
-    </Panel>
-  );
-}
 
 export default function HostPage() {
   // "" on the server, the real origin after hydration: reading location in render would mismatch the server HTML.
@@ -867,7 +436,7 @@ export default function HostPage() {
               {lobby.length === 0 && <Panel className="px-3 py-2 text-[15px]">還沒有隊伍加入</Panel>}
             </ul>
             <Panel className="flex items-center gap-3 px-3 py-2">
-              <Qr text={typeof location === "undefined" ? "" : `${location.origin}/?code=${code}`} size={120} />
+              {origin ? <Qr text={`${origin}/?code=${code}`} size={120} /> : null}
               <div className="text-[15px]">
                 <div className="text-[18px]">玩家掃描加入</div>
                 <div className="mt-1 text-[14px]">或輸入房間代碼 {code}</div>
@@ -884,7 +453,7 @@ export default function HostPage() {
                   onChange={(e) => setJoinPassword(e.target.value)}
                   // HOST_OK fills this with the room's password, so typing before it arrives would be overwritten.
                   disabled={!ready}
-                  maxLength={32}
+                  maxLength={MAX_PASSWORD}
                   autoComplete="off"
                   placeholder="不設就留空"
                   className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[16px]"
@@ -936,7 +505,7 @@ export default function HostPage() {
               講稿提示：{INTRO_PAGE_TEXT[introPage - 1]?.script}
             </Panel>
             <div aria-hidden className="text-center text-[18px] tracking-[6px] text-white">
-              {Array.from({ length: INTRO_PAGES }, (_, i) => (i + 1 === introPage ? "●" : "○")).join(" ")}
+              {introDots(introPage)}
             </div>
             <div className="mt-auto flex items-stretch gap-2">
               {introPage > 1 && (
@@ -983,7 +552,6 @@ export default function HostPage() {
               {/* #104: a text question's typed answer, judged with the buttons below. */}
               {game.question && !game.question.options && (
                 <div data-testid="host-typed-answer" className="mt-2 text-[18px] [overflow-wrap:anywhere]">
-                  {/* Truthy, not `!== null`: a Worker from before #104 sends no typedAnswer. */}
                   {turn.team.typedAnswer ? `隊伍答：${turn.team.typedAnswer}` : "（還沒送出）"}
                 </div>
               )}
@@ -1019,8 +587,7 @@ export default function HostPage() {
                 <div data-testid="host-boss-hp" className="mt-1 text-[14px]">
                   首領血量 {game.view.bossHp} / {game.view.bossMaxHp}
                   {/* Host-only (HOST_PICKS): how many phases there are and what comes next (D2). */}
-                  {/* `?.`: a Worker from before boss phases sends HOST_PICKS without them. */}
-                  {picks?.bossPhases && picks.bossPhases.length > 1 &&
+                  {picks && picks.bossPhases.length > 1 &&
                     `・第 ${picks.bossPhaseIndex + 1}/${picks.bossPhases.length} 階段・${
                       picks.bossPhaseIndex + 1 < picks.bossPhases.length ? `下一階段：${picks.bossPhases[picks.bossPhaseIndex + 1].name}` : "最後階段"
                     }`}
@@ -1069,7 +636,7 @@ export default function HostPage() {
                   </Panel>
                   <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: "HOST_NEXT", eventId: game.eventId })}>
                     {connected ? "下一題" : "重新連線中"}
-                    <span className="px-key" aria-hidden="true">1</span>
+                    <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
                   </PixelButton>
                 </>
               ) : isMc ? (
@@ -1097,12 +664,12 @@ export default function HostPage() {
                       <div className={bossMiss ? "grid" : "grid grid-cols-2"}>
                         <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                           替{turn.team.name}選・重答
-                          <span className="px-key" aria-hidden="true">2</span>
+                          <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                         </PixelButton>
                         {!bossMiss && (
                           <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
                             替{turn.team.name}選・逃跑
-                            <span className="px-key" aria-hidden="true">3</span>
+                            <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
                           </PixelButton>
                         )}
                       </div>
@@ -1123,16 +690,16 @@ export default function HostPage() {
                         {game.view.awaitingPrayer === turn.team.id && (
                           <PixelButton className="text-[16px]" style={{ background: "#ffe066" }} disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "pray")}>
                             祈禱
-                            <span className="px-key" aria-hidden="true">2</span>
+                            <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.pray}</span>
                           </PixelButton>
                         )}
                         <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                           重答
-                          <span className="px-key" aria-hidden="true">3</span>
+                          <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.retry}</span>
                         </PixelButton>
                         <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
                           逃跑
-                          <span className="px-key" aria-hidden="true">4</span>
+                          <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.flee}</span>
                         </PixelButton>
                       </div>
                     </>
@@ -1140,22 +707,22 @@ export default function HostPage() {
                   <>
                   <PixelButton variant="ok" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, true)}>
                     {connected ? "答對！" : "重新連線中"}
-                    <span className="px-key" aria-hidden="true">1</span>
+                    <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.correct}</span>
                   </PixelButton>
                   {cleric === "before" ? (
                     <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "team")}>
                       答錯
-                      <span className="px-key" aria-hidden="true">2</span>
+                      <span className="px-key" aria-hidden="true">{HOST_KEYS.before.wrong}</span>
                     </PixelButton>
                   ) : (
                   <div className="grid grid-cols-2">
                     <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                       答錯・重答
-                      <span className="px-key" aria-hidden="true">2</span>
+                      <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                     </PixelButton>
                     <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
                       答錯・逃跑
-                      <span className="px-key" aria-hidden="true">3</span>
+                      <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
                     </PixelButton>
                   </div>
                   )}
@@ -1197,6 +764,7 @@ export default function HostPage() {
       )}
       {drawer && (
         <MoreDrawer
+          origin={origin}
           code={code}
           onClose={() => setDrawer(false)}
           send={send}

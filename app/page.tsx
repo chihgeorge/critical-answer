@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { freshHostPath, generateRoomCode, newHostToken } from "@/lib/room-code";
+import { MAX_PASSWORD } from "@/lib/protocol";
 import { rememberJoinPassword } from "@/lib/stored";
 import { DialogueBox, HomeBackground, Panel, PixelButton, Sprite } from "@/components/pixel";
 
@@ -73,7 +74,7 @@ function HomeForm() {
               placeholder="房間密碼（主持人有設才要填）"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              maxLength={32}
+              maxLength={MAX_PASSWORD}
               autoComplete="off"
               className={inputClass}
             />

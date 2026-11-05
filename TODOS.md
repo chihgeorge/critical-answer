@@ -35,7 +35,7 @@
 
 **Why:** 站長 2026-11-04 實測後決定先拿掉，玩法還沒定案。
 
-**Context:** 房間和協定照舊接受 `TEAM_BRANCH_CHOICE`，`lib/game-state.ts` 的 `firstPendingBranchRoom`、`BRANCH_OPTIONS`、`BRANCH_LABELS` 也都留著，加回來只要把 `app/room/[code]/play/page.tsx` 的面板接回去。首領房旁白（`lib/narration/llm.ts` 的 `branches`）沒有選擇時會整句略過。
+**Context:** v0.31.3.0（稽核清理）把伺服器端也拿掉了：`TEAM_BRANCH_CHOICE` 訊息、`lib/game-state.ts` 的 `recordBranchChoice`、`firstPendingBranchRoom`、`BRANCH_OPTIONS`、`BRANCH_LABELS`、隊伍的 `branchChoices`，還有首領房旁白（`lib/narration/llm.ts`）呼應岔路選擇的那句。加回來時要從 git 歷史把它們找回來（`git log -S recordBranchChoice`），再把 `app/room/[code]/play/page.tsx` 的面板接回去。
 
 **Effort:** S　**Priority:** P3
 
@@ -815,7 +815,7 @@
 
 **Why:** 使用者 2026-10-30 提出，讓地城每一間房間不只是答題，多一點意外。
 
-**Context:** 房間和地圖在 `lib/game-state.ts`、`lib/map-layout.ts`；分支選擇（`recordBranchChoice`）可能是加事件房的好位置。要決定：事件卡放在題庫裡還是寫死在程式、出現機率、大螢幕怎麼演出、AI 旁白怎麼描述。
+**Context:** 房間和地圖在 `lib/game-state.ts`、`lib/map-layout.ts`；分支選擇（`recordBranchChoice`，v0.31.3.0 已移除，要用得從 git 歷史找回）原本可能是加事件房的好位置。要決定：事件卡放在題庫裡還是寫死在程式、出現機率、大螢幕怎麼演出、AI 旁白怎麼描述。
 
 **Effort:** M（人工約 2-3 天 / CC 約 1.5 小時）　**Priority:** P3
 

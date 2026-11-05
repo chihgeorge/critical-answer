@@ -70,31 +70,22 @@ describe("toNarrationEvent", () => {
 });
 
 describe("toNarrationEvent: entering the boss room", () => {
-  const withBranches = (branchChoices: GameState["teams"][number]["branchChoices"] = {}): GameState => ({
-    ...game,
-    teams: game.teams.map((t) => (t.id === "a" ? { ...t, branchChoices } : t)),
-  });
   const advance = (entersBoss: boolean): AnswerOutcome => ({ type: "correct-room-advance", teamId: "a", pointsAwarded: 2, reward: 20, nextRoomIndex: 1, entersBoss });
 
-  it("flags a correct answer that enters the boss room, with the team's branch choices in room order", () => {
-    const e = toNarrationEvent(withBranches({ 3: "negotiate", 1: "fight" }), advance(true), "史萊姆");
-    expect(e).toMatchObject({ type: "correct", entersBoss: { branches: ["武力", "討價"] } });
-  });
-
-  it("flags it with no branches when the team never chose one", () => {
-    expect(toNarrationEvent(withBranches(), advance(true), "史萊姆")).toMatchObject({ entersBoss: { branches: [] } });
+  it("flags a correct answer that enters the boss room", () => {
+    expect(toNarrationEvent(game, advance(true), "史萊姆")).toMatchObject({ type: "correct", entersBoss: {} });
   });
 
   it("does not flag an answer that stays out of the boss room", () => {
-    expect(toNarrationEvent(withBranches(), advance(false), "史萊姆")).not.toHaveProperty("entersBoss");
+    expect(toNarrationEvent(game, advance(false), "史萊姆")).not.toHaveProperty("entersBoss");
   });
 });
 
 describe("boss phases", () => {
   it("names the phase under way when a team enters the boss room from phase 2 on (D13), and only then", () => {
     const o: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, reward: 20, nextRoomIndex: 0, entersBoss: true };
-    expect(toNarrationEvent(game, o, "害羞幽靈", undefined, "主題曲之謎")).toMatchObject({ entersBoss: { branches: [], phase: "主題曲之謎" } });
-    expect(toNarrationEvent(game, o, "害羞幽靈")).toMatchObject({ entersBoss: { branches: [] } });
+    expect(toNarrationEvent(game, o, "害羞幽靈", undefined, "主題曲之謎")).toMatchObject({ entersBoss: { phase: "主題曲之謎" } });
+    expect(toNarrationEvent(game, o, "害羞幽靈")).toMatchObject({ entersBoss: {} });
     expect((toNarrationEvent(game, o, "害羞幽靈") as { entersBoss: object }).entersBoss).not.toHaveProperty("phase");
   });
 

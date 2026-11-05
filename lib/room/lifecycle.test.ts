@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import { CLOSE_EXPIRED, CLOSE_IDLE } from "./close-codes";
-import { SNAPSHOT_KEY } from "./snapshot";
+import { BANK_KEY, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
@@ -251,6 +251,8 @@ describe("idle for a day", () => {
     expect(saved.roomEpoch).not.toBe(oldEpoch);
     expect(saved.game).toBeNull();
     expect(saved.teamKeys).toEqual([]);
+    // The bank was cleared with everything else, so the fresh room writes it again (or a restart would discard it).
+    expect(storage.data.get(BANK_KEY)).toBeDefined();
   });
 
   it("logs the expiry by name", async () => {
@@ -380,6 +382,7 @@ describe("after a restart", () => {
     const b = setup(a.clock.t + 500); // "restarted" half a second later
     const bRoom = new (a.room.constructor as any)(b.io, () => 0, { idleMs: shortIdle, expireMs: shortExpire, now: () => b.clock.t });
     b.storage.data.set(SNAPSHOT_KEY, a.storage.data.get(SNAPSHOT_KEY));
+    b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
     expect(await bRoom.restore()).toBe("restored");
     await bRoom.onAlarm(); // due at savedAt + shortIdle, which has not arrived yet
     expect(b.io.closeAll).not.toHaveBeenCalled(); // must not be treated as already idle
@@ -395,6 +398,7 @@ describe("after a restart", () => {
     snap.game.eliminated = { [qid]: [0] };
     const b = setup(a.clock.t);
     b.storage.data.set(SNAPSHOT_KEY, snap);
+    b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
     vi.useFakeTimers();
     try {
       await b.room.restore();
@@ -416,6 +420,7 @@ describe("after a restart", () => {
     snap.game.pendingWrong = pendingWrong(snap);
     const b = setup(a.clock.t);
     b.storage.data.set(SNAPSHOT_KEY, snap);
+    b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
     expect(await b.room.restore()).toBe("restored");
     expect(b.room.game!.pendingWrong).toBeNull();
   });
@@ -428,6 +433,7 @@ describe("after a restart", () => {
 
     const b = setup(a.clock.t + 30 * MIN);
     b.storage.data.set(SNAPSHOT_KEY, a.storage.data.get(SNAPSHOT_KEY));
+    b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
     expect(await b.room.restore()).toBe("restored");
     expect(b.storage.alarms).toEqual([savedAt + IDLE]);
   });
@@ -438,6 +444,7 @@ describe("after a restart", () => {
     const savedAt = (a.storage.data.get(SNAPSHOT_KEY) as any).lastActivityAt;
     const b = setup(a.clock.t + IDLE + 10 * MIN);
     b.storage.data.set(SNAPSHOT_KEY, a.storage.data.get(SNAPSHOT_KEY));
+    b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
     await b.room.restore();
     expect(b.storage.alarms).toEqual([savedAt + EXPIRE]);
   });
@@ -447,6 +454,7 @@ describe("after a restart", () => {
     send(a.room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
     const b = setup(a.clock.t + EXPIRE + 5 * MIN);
     b.storage.data.set(SNAPSHOT_KEY, a.storage.data.get(SNAPSHOT_KEY));
+    b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
     await b.room.restore();
     expect(b.storage.alarms).toEqual([b.clock.t]); // not in the past, not a day away: now
     await b.room.onAlarm();
@@ -460,6 +468,7 @@ describe("after a restart", () => {
     delete legacy.lastActivityAt;
     const b = setup(a.clock.t + 3 * 24 * 60 * MIN);
     b.storage.data.set(SNAPSHOT_KEY, legacy);
+    b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
     await b.room.restore();
     expect(b.storage.alarms).toEqual([b.clock.t + IDLE]);
   });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSnapshot, SCHEMA_VERSION, type RoomSnapshot } from "./snapshot";
+import { parseSavedBank, parseSnapshot, SCHEMA_VERSION, type RoomSnapshot } from "./snapshot";
 import { BANK } from "../question-bank-data";
 import { spendAbility, createGame, DEFAULT_GAME_CONFIG } from "../game-state";
 import { bossPhaseStates, poolQuestionIds, roomTemplates } from "../question-bank";
@@ -42,6 +42,14 @@ describe("parseSnapshot", () => {
     const s = parseSnapshot({ ...valid(), game });
     expect(s?.game?.teams.map((t) => [t.classId, t.abilityUses])).toEqual([[undefined, 2], [undefined, 2]]);
     expect(() => spendAbility(s!.game!, "a", "warrior")).toThrow(/not a warrior/);
+  });
+
+  // Value: protects=a v5 save from before boss phases is discarded, not restored to throw in boss play; fails_when=the
+  // boss.phases check is removed; why_new=the restore backfill and its test were removed; seam=none
+  it("discards a game saved before boss phases", () => {
+    const game = gameWithTeams((t) => t);
+    expect(parseSnapshot({ ...valid(), game })?.game).toBeTruthy();
+    expect(parseSnapshot({ ...valid(), game: { ...game, boss: omit(game.boss as unknown as Record<string, unknown>, "phases") } })).toBeNull();
   });
 
   it("gives a team with a class but no abilityUses 2 uses, and refuses an unknown class", () => {
@@ -135,6 +143,14 @@ describe("parseSnapshot", () => {
     broken.pools[1][0].content.value = "";
     expect(parseSnapshot({ ...valid(), bank: broken })).toBeNull();
     expect(parseSnapshot({ ...valid(), bank: { rooms: [] } })).toBeNull();
+    expect(parseSavedBank(broken)).toBeNull();
+  });
+
+  it("reads a snapshot with no bank inside: newer saves keep it under BANK_KEY", () => {
+    const { bank, ...rest } = valid();
+    expect(parseSnapshot(rest)).not.toBeNull();
+    expect(parseSnapshot(rest)!.bank).toBeUndefined();
+    expect(parseSavedBank(bank)).toEqual(parseSnapshot(valid())!.bank);
   });
 
   it("does not throw on hostile input", () => {

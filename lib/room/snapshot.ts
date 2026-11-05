@@ -13,6 +13,8 @@ import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, type AiSource } from "../p
  */
 export const SCHEMA_VERSION = 5; // questions moved to pools by difficulty, games gained optionOrder (scoring-and-score-pools.md); see the comment above.
 export const SNAPSHOT_KEY = "room";
+/** The room's bank, saved on its own and only when it changes, so a message's save does not rewrite it. */
+export const BANK_KEY = "bank";
 
 export interface RoomSnapshot {
   schemaVersion: typeof SCHEMA_VERSION;
@@ -47,8 +49,9 @@ export interface RoomSnapshot {
   aiLimit?: number;
   /** When someone last did something that changes the room, rounded down to the minute so it does not make every message a write. Null in a save from before this field existed. */
   lastActivityAt: number | null;
-  /** The full bank the game is dealt from, not just question ids: editing or deleting a bank must not change a game in progress. */
-  bank: Bank;
+  /** The full bank the game is dealt from, not just question ids: editing or deleting a bank must not change a game in progress.
+   * Only in a save from before BANK_KEY (or one an older Worker wrote): newer saves keep it under BANK_KEY. */
+  bank?: Bank;
   /** The boss's phase card is up. Missing in a save from before boss phases. */
   phaseCard?: boolean;
   /** How-to-play page on show (1..INTRO_PAGES). Missing means no intro, as in a save from before it. */
@@ -67,6 +70,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     // deal() indexes both by pool: a malformed one would stick the room on ERROR instead of starting fresh.
     const fivePools = (v: unknown) => Array.isArray(v) && v.length === 5 && v.every((p) => Array.isArray(p) && p.every(isString));
     if (game !== null && !(fivePools(game.pools) && fivePools(game.usedQuestionIds))) return null;
+    // Boss phases came after v5 with no backfill: a save from before them is discarded, never restored and stuck on ERROR.
+    if (game !== null && !(isObject(game.boss) && Array.isArray(game.boss.phases))) return null;
     if (!isString(raw.roomEpoch) || !isString(raw.hostToken)) return null;
     // Classes came later (class-abilities.md) without a version bump: a missing class is none, missing uses are a full set.
     const classOk = (t: Record<string, unknown>) => t.classId === undefined || isClassId(t.classId);
@@ -88,7 +93,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (nextLine !== null && !(isObject(nextLine) && isString(nextLine.text) && Number.isInteger(nextLine.gen))) return null;
     const at = raw.lastActivityAt ?? null;
     if (at !== null && !(typeof at === "number" && Number.isFinite(at) && at >= 0)) return null;
-    const bank = parseBank(raw.bank); // throws on a bank that would not load today
+    const bank = raw.bank === undefined ? undefined : parseBank(raw.bank); // throws on a bank that would not load today
     if (raw.phaseCard !== undefined && typeof raw.phaseCard !== "boolean") return null;
     if (raw.intro !== undefined && !(Number.isInteger(raw.intro) && (raw.intro as number) >= 1 && (raw.intro as number) <= INTRO_PAGES)) return null;
     // Host-owned AI keys came later without a version bump: missing fields mean no AI and a fresh budget.
@@ -110,6 +115,15 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       aiUsed: aiUsed as number,
       aiLimit: aiLimit as number,
     };
+  } catch {
+    return null;
+  }
+}
+
+/** The bank saved under BANK_KEY if it would load today, otherwise null. */
+export function parseSavedBank(raw: unknown): Bank | null {
+  try {
+    return parseBank(raw);
   } catch {
     return null;
   }

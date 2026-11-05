@@ -36,8 +36,7 @@ export function describeTurn(view: SpectatorView, question: PublicQuestion | nul
   const bossScene = inBoss || (!question && !!bossMonster);
   const room = team?.roomIndex ?? 0;
   const m = question?.monster ?? bossMonster;
-  // `?? 1`: a Worker from before boss phases sends no bossPhase.
-  const phaseHue = bossScene ? PHASE_HUE_STEP * ((view.bossPhase ?? 1) - 1) : 0;
+  const phaseHue = bossScene ? PHASE_HUE_STEP * (view.bossPhase - 1) : 0;
   const monster: Monster = m ? { ...LOOK[m.sprite], kind: m.sprite, name: m.name, hue: (m.hue + phaseHue) % 360 } : FALLBACK_MONSTER;
   return {
     team,

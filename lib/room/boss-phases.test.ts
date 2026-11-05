@@ -3,7 +3,6 @@
 // card, then the new phase's question, and nothing about a later phase reaching anyone but the host.
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
-import { SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
 
@@ -244,21 +243,5 @@ describe("boss phases across a restart", () => {
     send(g.room, g.host, { type: "HOST_SET_NOTES", notes: "x" }); // any later save
     const { stateOf } = await restored(storage);
     expect(stateOf()).toMatchObject({ phaseCard: expect.anything(), question: null });
-  });
-
-  it("restores a save from before boss phases as a one-phase boss", async () => {
-    const storage = memoryStorage();
-    const g = bossGame(phasedBank(), { storage });
-    const saved = storage.data.get(SNAPSHOT_KEY) as any;
-    expect(saved.schemaVersion).toBe(SCHEMA_VERSION);
-    const oldBoss = { ...saved.game.boss };
-    delete oldBoss.phases;
-    delete oldBoss.phaseIndex;
-    delete saved.phaseCard;
-    storage.data.set(SNAPSHOT_KEY, { ...saved, game: { ...saved.game, boss: oldBoss } });
-    const { room, stateOf } = await restored(storage);
-    expect(room.game!.boss).toMatchObject({ phaseIndex: 0, phases: [{ maxHp: oldBoss.maxHp, questionIds: oldBoss.questionIds }] });
-    expect(stateOf().view.bossPhase).toBe(1);
-    void g;
   });
 });

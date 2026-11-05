@@ -37,13 +37,13 @@ describe("hostKeyAction", () => {
     expect(hostKeyAction({ key: "3" }, false, { stuck: true })).toBe("flee");
   });
 
-  // Value: protects=a cleric's fill-in turn gets one 答錯 key, then 祈禱 / 重答 / 逃跑 on 2 / 3 / 4, and a view from a Worker
-  // before #106 keeps the old two keys (split deploy); fails_when=the host's 2 settles a cleric's answer the team should
-  // choose, or an old Worker's view hides 答錯・逃跑; seam=none; no_claim=the buttons' layout
-  it("a cleric's fill-in: one 答錯 key, then 祈禱 / 重答 / 逃跑; an old view keeps the two keys (#106)", () => {
+  // Value: protects=a cleric's fill-in turn gets one 答錯 key, then 祈禱 / 重答 / 逃跑 on 2 / 3 / 4, and a team that may not
+  // pray keeps the two keys; fails_when=the host's 2 settles a cleric's answer the team should
+  // choose, or a non-praying team's view hides 答錯・逃跑; seam=none; no_claim=the buttons' layout
+  it("a cleric's fill-in: one 答錯 key, then 祈禱 / 重答 / 逃跑; a team that may not pray keeps the two keys (#106)", () => {
     const team = (mayPray?: true) => ({ id: "T0", ...(mayPray ? { mayPray } : {}) }) as never;
     expect(clericStage({ teams: [team(true)], pendingWrong: null }, "T0")).toBe("before");
-    expect(clericStage({ teams: [team()], pendingWrong: null }, "T0")).toBeUndefined(); // no mayPray: an old Worker
+    expect(clericStage({ teams: [team()], pendingWrong: null }, "T0")).toBeUndefined(); // no mayPray
     expect(clericStage({ teams: [team()], pendingWrong: { teamId: "T0", questionId: "q", optionIndex: null } }, "T0")).toBe("wait");
     expect(clericStage({ teams: [team()], pendingWrong: { teamId: "T0", questionId: "q", optionIndex: 1 } }, "T0")).toBeUndefined();
     expect(hostKeyAction({ key: "1" }, false, undefined, "before")).toBe("correct");

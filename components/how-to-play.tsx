@@ -36,6 +36,9 @@ export const INTRO_PAGE_TEXT: { topic: string; big: string; owl: string; script:
 /** 「第 n／4 頁：<topic>」, the phone's live status line (eng D7). */
 export const introStatus = (page: number) => `第 ${page}／${INTRO_PAGES} 頁：${INTRO_PAGE_TEXT[page - 1]?.topic ?? ""}`;
 
+/** 「○ ● ○ ○」: which page is up, for the eye only (the host and phone pages mark it aria-hidden). */
+export const introDots = (page: number) => Array.from({ length: INTRO_PAGES }, (_, i) => (i + 1 === page ? "●" : "○")).join(" ");
+
 const miniBtn = (bg: string, text: string, width?: number) => (
   <div className="text-center text-[14px]" style={{ background: bg, border: "3px solid var(--k)", boxShadow: "inset 0 -3px 0 rgba(0,0,0,.2)", padding: "2px 0", width }}>
     {text}
