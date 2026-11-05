@@ -1512,6 +1512,21 @@ describe("narration (T5-T7)", () => {
     expect(sentMsgs(late).find((m) => m.type === "NARRATION").lines[0]).toBe("新的一行");
   });
 
+  it("drops a judgment's line that arrives after 結束冒險: the podium is up, nobody is next", async () => {
+    const pending: ((line: string) => void)[] = [];
+    const slow = { name: "slow", narrate: () => new Promise<string>((resolve) => pending.push(resolve)) };
+    const { room, hostConn } = start(2, { holdMs: 5000, epilogueDelayMs: 0, provider: slow });
+    await flush();
+    pending[0]("開場的一行");
+    await flush();
+    judgeCorrect(room, hostConn); // its LLM call is still out...
+    send(room, hostConn, { type: "HOST_END_GAME" }); // ...when the host ends the game
+    await flush();
+    pending[1]("接下來輪到乙隊");
+    await flush();
+    expect(all(room).filter((m) => m.type === "NARRATION").map((m) => m.lines[0])).toEqual(["開場的一行"]);
+  });
+
   it("survives a provider that throws", async () => {
     const bad = { name: "bad", narrate: async () => { throw new Error("boom"); } };
     const { room } = start(2, { holdMs: 30, epilogueDelayMs: 0, provider: bad });
@@ -2899,5 +2914,105 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     const last = states(room).at(-1);
     expect(last.cuisine).toBeUndefined();
     expect(last.reveal).not.toHaveProperty("dish");
+  });
+});
+
+describe("host controls: HOST_END_GAME, HOST_REMOVE_TEAM, HOST_RENAME_TEAM", () => {
+  const broadcasts = (room: DungeonRoom) => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+
+  it("結束冒險 ends a game in play, ranked by reward, with no final blow and an epilogue that keeps the boss alive", async () => {
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { epilogueDelayMs: 0, holdMs: 10 });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids } = joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    const first = currentTurnTeamId(room.game!)!;
+    const q = room.game!.teams.find((t) => t.id === first)!.currentQuestionId;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: first, questionId: q, correct: true, fleeChoice: "retry" });
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    expect(room.game!.phase).toBe("finished");
+    expect(room.game!.winners).toEqual([first]);
+    expect(room.game!.boss.killedByTeamId).toBeNull();
+    const all = broadcasts(room);
+    expect(all.some((m) => m.type === "GAME_OVER" && m.winners[0] === first)).toBe(true);
+    // The reveal from the judgment just before is dropped: the podium comes up at once.
+    expect(all.filter((m) => m.type === "STATE").at(-1).reveal).toBeNull();
+    await vi.waitFor(() => expect(broadcasts(room).some((m) => m.type === "EPILOGUE")).toBe(true));
+    expect(ids).toContain(first);
+    // Once over, it cannot be ended again.
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "no_active_game" });
+  });
+
+  it("結束冒險 is host-only and needs a game", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "no_active_game" });
+    joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    const other = makeConn("not-host");
+    send(room, other, { type: "HOST_END_GAME" });
+    expect(lastSentTo(other)).toMatchObject({ type: "ERROR", error: "not_host" });
+    expect(room.game!.phase).toBe("playing");
+  });
+
+  it("移除 takes a lobby team out, tells its phone, and lets a fresh JOIN from that phone back in", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    const phone = makeConn("phone");
+    room.onConnect(phone);
+    send(room, phone, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "加錯的" });
+    joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_REMOVE_TEAM", teamId: T1 });
+    expect(lastSentTo(phone)).toMatchObject({ type: "ERROR", error: "team_removed" });
+    expect(lastBroadcast(room)).toMatchObject({ type: "LOBBY" });
+    expect(lastBroadcast(room).teams.map((t: { id: string }) => t.id)).toEqual([T2]);
+    // Its old key is forgotten too, so going home and joining again is a new team, with any key.
+    send(room, phone, { type: "JOIN", teamId: T1, teamKey: KEY2, teamName: "重新加入" });
+    expect(lastBroadcast(room).teams.map((t: { name: string }) => t.name)).toEqual(["Team 1", "重新加入"]);
+  });
+
+  it("a removed phone's automatic reconnect is turned away, but opening the room again joins", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    joinTeams(room, hostConn, 2);
+    // The phone was asleep when the host removed it, so no team_removed reached it.
+    send(room, hostConn, { type: "HOST_REMOVE_TEAM", teamId: T1 });
+    const woke = makeConn("woke");
+    room.onConnect(woke);
+    send(room, woke, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Team 0", resume: true });
+    expect(lastSentTo(woke)).toMatchObject({ type: "ERROR", error: "team_removed" });
+    expect(lastBroadcast(room).teams.map((t: { id: string }) => t.id)).toEqual([T2]);
+    send(room, woke, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Team 0" });
+    expect(lastBroadcast(room).teams.map((t: { id: string }) => t.id)).toEqual([T2, T1]);
+  });
+
+  it("改名 renames a lobby team, refusing an empty name and another team's name", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_RENAME_TEAM", teamId: T1, teamName: "  紅隊  " });
+    expect(lastBroadcast(room).teams[0].name).toBe("紅隊");
+    send(room, hostConn, { type: "HOST_RENAME_TEAM", teamId: T2, teamName: "紅隊" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_name", detail: "duplicate_name" });
+    send(room, hostConn, { type: "HOST_RENAME_TEAM", teamId: T2, teamName: "   " });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_name" });
+    send(room, hostConn, { type: "HOST_RENAME_TEAM", teamId: T3, teamName: "藍隊" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "unknown_team" });
+    expect(lastBroadcast(room).teams[1].name).toBe("Team 1");
+  });
+
+  it("移除 and 改名 are host-only and lobby-only", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    joinTeams(room, hostConn, 1);
+    const other = makeConn("not-host");
+    send(room, other, { type: "HOST_REMOVE_TEAM", teamId: T1 });
+    expect(lastSentTo(other)).toMatchObject({ type: "ERROR", error: "not_host" });
+    send(room, other, { type: "HOST_RENAME_TEAM", teamId: T1, teamName: "x" });
+    expect(lastSentTo(other)).toMatchObject({ type: "ERROR", error: "not_host" });
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_REMOVE_TEAM", teamId: T1 });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "game_already_started" });
+    send(room, hostConn, { type: "HOST_RENAME_TEAM", teamId: T1, teamName: "x" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "game_already_started" });
+    expect(room.game!.teams).toHaveLength(1);
   });
 });

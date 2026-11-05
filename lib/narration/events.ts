@@ -36,7 +36,8 @@ export type NarrationEvent =
   /** Game over: ranking is sorted high to low. Longer line, longer timeout. */
   // ranking[].score carries reward points (Team.reward), not progress points (Team.score).
   // ranking[].dishes: what the team ate, without any dish holding a bank answer.
-  | { type: "epilogue"; ranking: { name: string; score: number; dishes?: string[] }[]; winners: string[] };
+  // bossStanding: the host ended the game early (結束冒險), so nobody slew the boss.
+  | { type: "epilogue"; ranking: { name: string; score: number; dishes?: string[] }[]; winners: string[]; bossStanding?: true };
 
 /**
  * Pure. `prev` is the game before the judgment (it names the team and gives the

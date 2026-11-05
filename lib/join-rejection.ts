@@ -15,10 +15,13 @@ export interface JoinRejection {
  * connect-time snapshot already names a known team, so `joined` doesn't hide them.
  */
 export function joinRejection(error: ServerErrorCode, detail: string | undefined, sentPassword: boolean, joined: boolean): JoinRejection | null {
-  if (joined && error !== "invalid_team_id" && error !== "bad_token") return null;
+  if (joined && error !== "invalid_team_id" && error !== "bad_token" && error !== "team_removed") return null;
   switch (error) {
     case "bad_password":
       return { text: sentPassword ? "房間密碼不對" : "這個房間要密碼才能加入", link: "password" };
+    // Sent to a team's own phones only (HOST_REMOVE_TEAM): joining again from the home page is allowed.
+    case "team_removed":
+      return { text: "主持人把你們的隊伍移除了", link: "home" };
     case "game_already_started":
       return { text: "遊戲已經開始了，新隊伍不能再加入", link: "home" };
     case "invalid_name":

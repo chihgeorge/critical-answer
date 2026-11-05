@@ -351,6 +351,8 @@ export default function PlayPage() {
   const sentPassword = useRef("");
   /** This phone has seen its own team in a LOBBY or STATE, so no later ERROR is a refused JOIN. */
   const joined = useRef(false);
+  /** The host removed this team: a reconnect must not JOIN it back. Going home and joining again is allowed. */
+  const removed = useRef(false);
 
   const [teamId, setTeamId] = useState("");
   const [lobby, setLobby] = useState<LobbyTeams | null>(null);
@@ -380,6 +382,7 @@ export default function PlayPage() {
     // as the same team instead of staying "offline" and being skipped. An automatic reconnect's
     // JOIN carries `resume` so it isn't activity.
     onOpen(resume) {
+      if (removed.current) return;
       setDisconnected(false);
       // A wiped room has forgotten us, so this JOIN may be refused: ask again. The connect-time snapshot may name
       // us before the JOIN is checked; joinRejection still lets a bad key's bad_token through.
@@ -400,6 +403,7 @@ export default function PlayPage() {
       switch (msg.type) {
         case "ERROR": {
           const refused = joinRejection(msg.error, msg.detail, !!sentPassword.current, joined.current);
+          if (msg.error === "team_removed") removed.current = true;
           if (refused) setRejected(refused);
           else if (msg.detail === "no_hint") setNoHintQid(lastGame.current?.question?.id ?? null);
           break;

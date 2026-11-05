@@ -33,3 +33,9 @@ describe("joinRejection", () => {
     expect(joinRejection("no_active_game", undefined, false, false)).toBeNull();
   });
 });
+
+describe("team_removed", () => {
+  it("shows even after the phone joined, and links home", () => {
+    expect(joinRejection("team_removed", undefined, false, true)).toEqual({ text: "主持人把你們的隊伍移除了", link: "home" });
+  });
+});
