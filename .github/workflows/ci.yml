@@ -53,14 +53,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      # The production build the users get; the Worker host is baked in at build time (lib/party-host.ts).
-      - run: npx next build
-        env:
-          NEXT_PUBLIC_PARTYKIT_HOST: localhost:1996
       - run: npx playwright install --with-deps chromium
+      # `next dev`, not `next start`: the bank-editor stale-load tests rely on dev mode's double effects.
       - run: npx playwright test --shard=${{ matrix.shard }}/2
-        env:
-          E2E_NEXT_START: "1"
       - uses: actions/upload-artifact@v7
         if: failure()
         with:

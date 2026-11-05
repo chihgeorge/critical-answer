@@ -30,12 +30,10 @@ export default defineConfig({
       timeout: 90_000,
     },
     {
-      // CI builds first and sets E2E_NEXT_START, so the tests run the production bundle; locally, dev mode.
-      command: process.env.E2E_NEXT_START ? `npx next start -p ${WEB}` : `npx next dev -p ${WEB}`,
+      command: `npx next dev -p ${WEB}`,
       port: WEB,
       reuseExistingServer: false,
       timeout: 60_000,
-      // Only `next dev` reads this; `next start` serves the host baked in by CI's build step (ci.yml).
       env: { NEXT_PUBLIC_PARTYKIT_HOST: `localhost:${WORKER}` },
     },
   ],
