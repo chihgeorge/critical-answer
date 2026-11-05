@@ -2,6 +2,14 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.30.0.0] - 2026-11-05
+
+### Added
+- Before the first question, the big screen can play a four-page 「怎麼玩？」 intro: taking turns, answering on the phone, what to do after a wrong answer, and how to win. Each page has a picture, a big line of text and the owl's line. With 語音 on, the screen reads the owl's line aloud.
+- The host turns the pages with 「下一頁 ▶」 and 「◀ 上一頁」, or with the right arrow key or Enter and the left arrow key. Each page shows a script hint for the host. 「開始冒險 ▶」 on the last page deals the first question.
+- During the intro, the phones show 「看大螢幕 👀」 and the page the host is on.
+- The lobby has a 「開始前播放玩法說明」 checkbox. It is checked in a new room and unchecked after 「回到大廳，再玩一場」, since the same group has already heard the rules.
+
 ## [0.29.0.3] - 2026-11-04
 
 ### Changed

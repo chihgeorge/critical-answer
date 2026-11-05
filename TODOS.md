@@ -1,16 +1,16 @@
 # TODOs
 
-## 正式遊戲開始前加玩法說明（文字＋圖片）
+## 修改現有美術
 
-**What:** 遊戲正式開始前，給玩家看一段玩法說明，文字配圖片最好。
+**What:** 重新調整遊戲現有的美術（像素圖、畫面）。要改哪些部分、改成什麼方向還沒定。
 
-**Why:** 站長 2026-11-04 提出：新玩家進來不知道怎麼玩。
+**Why:** 站長 2026-11-04 提出。
 
-**Context:** 放在哪裡還沒定：大螢幕（`app/room/[code]/screen/page.tsx`）、玩家手機大廳（`app/room/[code]/play/page.tsx`），或兩邊都放。圖片可以用現有的像素風元件（`components/`）截圖或畫示意圖。
+**Context:** 所有美術都在程式裡畫：像素圖在 `lib/pixel-art.ts`，元件在 `components/pixel.tsx`，色票和規則在 `DESIGN.md` 與 `app/globals.css`。照規定不用圖片檔。
 
-**Effort:** M　**Priority:** P2
+**Effort:** 未定　**Priority:** P2
 
-**Depends on / blocked by:** 動手前先用 `/plan-design-review` 定版面和要放哪幾張圖。
+**Depends on / blocked by:** 動手前先跑 `/design-consultation` 或 `/design-review`，定出要改哪些部分、改成什麼方向。
 
 ---
 
@@ -869,6 +869,22 @@
 ---
 
 ## Completed
+
+## 正式遊戲開始前加玩法說明（文字＋圖片）
+
+**What:** 遊戲正式開始前，給玩家看一段玩法說明，文字配圖片最好。
+
+**Why:** 站長 2026-11-04 提出：新玩家進來不知道怎麼玩。
+
+**Context:** 放在哪裡還沒定：大螢幕（`app/room/[code]/screen/page.tsx`）、玩家手機大廳（`app/room/[code]/play/page.tsx`），或兩邊都放。圖片可以用現有的像素風元件（`components/`）截圖或畫示意圖。
+
+**Effort:** M　**Priority:** P2
+
+**Depends on / blocked by:** 動手前先用 `/plan-design-review` 定版面和要放哪幾張圖。
+
+**Completed:** v0.30.0.0 (2026-11-05)
+
+---
 
 ## 遊戲結束後回到大廳，同一批人不用重新加入就能再玩一場
 
