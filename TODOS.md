@@ -5,27 +5,215 @@
 
 
 
-## 換一組新的 OWNER_KEY，並在正式站測題庫編輯器（下週，2026-11-02 起）
+## 把「冒險出現岔路」的選擇加回玩家手機
 
-**What:** 站長忘了原本的 `OWNER_KEY`。在自己的終端機、專案資料夾裡跑：
+**What:** v0.27.1.0 先把手機上「冒險出現岔路，你們要怎麼做？」拿掉了。改遊戲進行方式時，討論要不要、怎麼加回來。
 
-```bash
-K=$(openssl rand -base64 32); printf '%s' "$K" | npx wrangler secret put OWNER_KEY && echo "新的 OWNER_KEY：$K"; unset K
-```
+**Why:** 站長 2026-11-04 實測後決定先拿掉，玩法還沒定案。
 
-印出的值立刻存進密碼管理器。接著打開 https://critical-answer.vercel.app/bank-editor 貼上新密鑰、按「載入題庫」，確認讀得到題目；再到主持人頁的「站長金鑰」貼一次，確認 AI 旁白會開。
+**Context:** 房間和協定照舊接受 `TEAM_BRANCH_CHOICE`，`lib/game-state.ts` 的 `firstPendingBranchRoom`、`BRANCH_OPTIONS`、`BRANCH_LABELS` 也都留著，加回來只要把 `app/room/[code]/play/page.tsx` 的面板接回去。首領房旁白（`lib/narration/llm.ts` 的 `branches`）沒有選擇時會整句略過。
 
-**Why:** 沒有這把密鑰就不能在正式站改題庫，也不能用站長的 `ANTHROPIC_API_KEY` 開 AI 旁白。Cloudflare 不能把舊值讀出來，只能換新的。
+**Effort:** S　**Priority:** P3
 
-**Pros:** 一行指令，換完舊值立刻失效，不用重新部署。
+**Depends on / blocked by:** 「每次行動可以選不同的動作」那類玩法改動。
 
-**Cons:** 要站長本人在終端機跑（wrangler 可能要登入 Cloudflare）；密鑰不能貼進對話、GitHub 或任何檔案。
+---
 
-**Context:** README「題庫編輯器」一節；`lib/bank-api.ts` 驗證這把密鑰；長度至少 32 bytes，太短 Worker log 會留警告。
+## 拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞
 
-**Effort:** S（人工約 10 分鐘）　**Priority:** P1
+**What:**
+1. 拿掉「⚙ 更多」裡的「導演筆記」。
+2. 「改寫旁白」從「更多」搬到主持人頁上。
+3. 改寫的介面要變清楚：列出旁白輪到下一隊時會說的**每一句**台詞，主持人選要改哪一條再改。現在只能改第一句（`HOST_EDIT_NARRATION`），也看不出後面還有哪幾句。
 
-**Depends on / blocked by:** 站長有空、手邊有終端機（2026-10-31 決定下週做）。
+**Why:** 站長 2026-11-04 實測後覺得導演筆記用不到；改寫旁白放在「更多」裡又只能改第一句，看不出自己在改哪一句。
+
+**Pros:** 主持人在一個地方就看得到、改得到旁白。
+
+**Cons:** 目前協定只支援改第一句，要讓 `HOST_EDIT_NARRATION` 帶句子的編號，房間要能換掉第 N 句；已經在大螢幕上念完的句子要不能改。AI 旁白是一段一段生成的，要確認「下一隊的所有台詞」在主持人看的時候已經生成好了，還沒好時要怎麼顯示。導演筆記拿掉後，`HOST_SET_NOTES` 和 prompt 裡的筆記要一起清掉。「下一句這樣說」要決定是留在「更多」還是一起搬上來。
+
+**Context:** `app/room/[code]/host/page.tsx`（導演筆記、下一句這樣說、改寫第一句旁白三個區塊）、`lib/narration/runner.ts`（句數）、`lib/room/dungeon-room.ts`（`HOST_EDIT_NARRATION`、`HOST_SET_NOTES`）。
+
+**Effort:** M　**Priority:** P2
+
+**Depends on / blocked by:** 無。動手前先用 `/plan-design-review` 定主持人頁的版面。
+
+---
+
+## 攻擊成功或失敗的旁白，武器和招式要配合隊伍的職業
+
+**What:** 旁白說到用什麼武器或招式攻擊時，要符合那一隊的職業。例如法師用法術、戰士用劍、牧師用祈禱，不要讓法師「揮劍」。
+
+**Why:** 站長 2026-11-04 實測時發現旁白的武器和職業對不上。
+
+**Pros:** 旁白更有角色感，職業也更有存在感。
+
+**Cons:** AI 旁白要在 prompt 裡帶入隊伍職業，並寫清楚每個職業能用的武器和招式；腳本旁白（`lib/narration/scripted.ts`）的台詞要按職業分開寫。沒選職業的隊伍要有中性的寫法。
+
+**Context:** `lib/narration/events.ts`（`baseEvent`，事件目前沒帶職業）、`lib/narration/llm.ts`、`lib/narration/scripted.ts`。職業設計在 `docs/designs/class-abilities.md`。
+
+**Effort:** S–M　**Priority:** P2
+
+**Depends on / blocked by:** 無。可以跟「旁白念出戰士擲到幾點」一起做，兩個都要在旁白事件裡多帶隊伍資訊。
+
+---
+
+## 分數用到骰子時，一律先播擲骰動畫再加分
+
+**What:** 只要分數是骰出來的，都要先在大螢幕播擲骰動畫，動畫停下後才顯示骰出的點數，再加進總分。
+
+**Why:** 站長 2026-11-04 實測後提出：骰子是 D&D 的樂趣所在，直接跳出數字沒有懸念。
+
+**Pros:** 已經有 `components/d20.tsx` 的 `RollOverlay`，戰士擲骰（`pendingRoll`）在用。
+
+**Cons:** 目前只有戰士的 d20 有動畫。打倒首領的 4d20 獎勵（`rollBossKillBonus`）是直接算好加分，要改成能播 4 顆骰子，分數也要等動畫播完才更新（手機和頒獎台不能先露出新總分）。要先列出所有用到骰子的地方。
+
+**Context:** `lib/game-state.ts`（`rollD20`、`rollBossKillBonus`、`killBonus`）、`app/room/[code]/screen/page.tsx`（`RollOverlay`）、`components/d20.tsx`。計分設計在 `docs/designs/scoring-and-score-pools.md`。
+
+**Effort:** M　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 冒險結束、公布最終分數前，旁白先公布前幾名
+
+**What:** 冒險結束、頒獎台公布最終分數前，加一段旁白依序公布前 X 名（例如從第三名念到第一名），念完再顯示分數。
+
+**Why:** 站長 2026-11-04 實測後提出：直接跳出排行榜太快，少了揭曉的氣氛。
+
+**Pros:** 後記事件已經有排名（`epilogue` 事件的 `ranking`、`winners`），旁白有現成的資料。
+
+**Cons:** X 要決定（固定 3 名，還是隊伍少時全部念）；同分時怎麼念；大螢幕要配合旁白一名一名亮出來，不能先露出完整排行。AI 旁白關掉時腳本旁白也要能念。
+
+**Context:** `lib/narration/events.ts`（`epilogue`）、`lib/narration/runner.ts`（後記只有 1 句）、`app/room/[code]/screen/page.tsx`（頒獎台）。
+
+**Effort:** M　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 遊戲結束後回到大廳，同一批人不用重新加入就能再玩一場
+
+**What:** 遊戲結束（`phase: "finished"`）時，所有隊伍的手機、主持人頁和大螢幕都要有「回到大廳」。回到大廳後，房間保留原本的隊伍，分數和進度清空，主持人可以直接再開一場。
+
+**Why:** 現在一場打完，想再玩要重新開房、所有人重新掃碼加入（2026-11-04 站長實測後提出）。
+
+**Pros:** 隊伍、職業和連線都還在，第二場可以馬上開始。
+
+**Cons:**
+- 房間目前沒有「從結束回到大廳」的狀態轉換，要在 `lib/room/dungeon-room.ts` 加一個主持人訊息（例如 `HOST_BACK_TO_LOBBY`），把遊戲狀態重設回大廳、保留隊伍。
+- 要決定誰能按：建議只有主持人按了才真的回大廳，手機和大螢幕跟著切換（或顯示「等主持人回到大廳」），避免一隊按了就把大家帶走。
+- 要決定職業、隊名是否保留，題目要不要重新洗牌、避開上一場出過的題。
+- 旁白紀錄、AI 旁白狀態和房間的 6 小時上限要一起想清楚。
+
+**Context:** `lib/game-state.ts`（`GamePhase` 只有 `playing` 和 `finished`）、`lib/room/dungeon-room.ts`、`app/room/[code]/play/page.tsx`、`app/room/[code]/host/page.tsx`、`app/room/[code]/screen/page.tsx`（頒獎台）。相關的 TODO：「隊伍換手機或換瀏覽器後回不了遊戲」、「房間最多只能存在 6 小時」。
+
+**Effort:** M　**Priority:** P2
+
+**Depends on / blocked by:** 無。動手前先用 `/plan-eng-review` 定狀態怎麼重設。
+
+---
+
+## 新職業：廚師（被動能力，飽足感多 15%），做完後平衡所有職業
+
+**What:**
+1. 新增第 5 個職業「廚師」。能力是被動的：這一隊每次拿到飽足感，都多拿 15%。
+2. 廚師做完以後，把 5 個職業的能力一起做平衡，讓每個職業差不多強。
+
+**Why:** 站長 2026-11-04 提出，配合 v0.27.0.0 的「怪物變料理」主題。
+
+**Pros:** 被動能力不用按按鈕，手機和主持人頁不必多一個操作；「飽足感」本來就是現成的獎勵分（`reward`）。
+
+**Cons:**
+- 現有 4 個職業都是主動能力，每場各用 `ABILITY_USES`（2）次。廚師是唯一的被動職業，整場都有效，平衡時要特別算。
+- 「飽足感」只是題庫有菜時 `reward` 的顯示名稱。要決定題庫沒有菜時廚師還加不加 15%（建議照加，只是顯示成獎勵分）。
+- 15% 要決定怎麼取整數（建議四捨五入，或至少 +1），也要決定首領的 4d20 獎勵和盜賊的加倍是先乘還是後乘。
+- 大螢幕的料理卡和加分要看得出廚師多加的那一份（例如「+12 飽足感（廚師 +2）」）。
+- 平衡要先拿數字：用模擬腳本（類似 `/ship` 用過的 scratchpad `sim.ts`）跑每個職業的平均最終分數和勝率，再調參數，例如 `WARRIOR_TARGET`、廚師的 15%、各職業的使用次數。
+
+**Context:** `lib/game-state.ts`（`CLASS_IDS`、`CLASS_LABELS`、`CLASS_ICONS`、`ABILITY_USES`、`WARRIOR_TARGET`、`reward` 怎麼加）。職業設計在 `docs/designs/class-abilities.md`，計分在 `docs/designs/scoring-and-score-pools.md`，料理在 `docs/designs/monster-cuisine.md`。手機選職業的畫面在 `app/room/[code]/play/page.tsx`。「每個職業有自己的動畫和音效」這條 TODO 也要把廚師算進去。
+
+**Effort:** 廚師 S–M，平衡 M　**Priority:** P2
+
+**Depends on / blocked by:** 平衡要等廚師做完。動手前先用 `/plan-eng-review` 定加成的計算順序。
+
+---
+
+## 主持人可以提早結束遊戲
+
+**What:** 主持人頁的「⚙ 更多」加一個「結束冒險」。按了（要再按一次確認）就直接結束遊戲：照當下的飽足感（獎勵分）排名，大螢幕出頒獎台和後記。
+
+**Why:** 現在只有打倒首領遊戲才會結束（`lib/game-state.ts` 的 `finishGame` 只有一個呼叫點）。派對時間到了首領還沒倒，就看不到頒獎台和後記（2026-11-04 盤點功能缺口時找到）。
+
+**Pros:** `finishGame` 已經會算冠軍，後記和頒獎台照舊能用。
+
+**Cons:** 後記要知道首領沒有被打倒，不能說「最後一擊」；結束畫面「誰打出最後一擊」那行要能沒有。答題、擲骰或揭曉進行到一半時按下去，要先收尾。
+
+**Context:** `lib/game-state.ts`（`finishGame`）、`lib/room/dungeon-room.ts`（要加一個主持人訊息，例如 `HOST_END_GAME`）、`lib/narration/events.ts`（`epilogue`）、`app/room/[code]/host/page.tsx`。
+
+**Effort:** S–M　**Priority:** P2
+
+**Depends on / blocked by:** 無。跟「遊戲結束後回到大廳」一起做最順。
+
+---
+
+## 遊戲開始後，新隊伍可以中途加入
+
+**What:** 遊戲開始後有新隊伍要加入時，手機先顯示「等主持人讓你們加入」，主持人頁出現「收這隊」。收了以後，這隊從第一間房開始，排在輪流順序的最後。
+
+**Why:** 現在開始後新隊伍一律被擋下（`game_already_started`），遲到的朋友只能在旁邊看（2026-11-04 盤點功能缺口時找到）。
+
+**Pros:** 加入流程（JOIN、密碼、隊名檢查）都是現成的。
+
+**Cons:** 要決定中途加入的隊伍要不要補一點起始分，不然幾乎不可能贏；有隊伍已經在王房時，新隊伍是不是直接進王房。共用題庫的牌堆和地圖要能多一隊；房間最多 8 隊的上限照舊。
+
+**Context:** `lib/room/dungeon-room.ts`（三處 `game_already_started`）、`lib/game-state.ts`（`turnOrder`、`teams`）、`app/room/[code]/play/page.tsx`、`app/room/[code]/host/page.tsx`。
+
+**Effort:** M　**Priority:** P3
+
+**Depends on / blocked by:** 動手前先用 `/plan-eng-review` 定中途加入的計分規則。
+
+---
+
+## 大廳裡主持人可以踢掉隊伍、改隊名
+
+**What:** 開始前，主持人頁每隊旁邊有「移除」和「改名」。
+
+**Why:** 現在主持人沒辦法移除加錯的隊伍（同一隊兩支手機各加入一次、亂取的名字）。開局後它會一直佔著輪流順序和地圖上的棋子，也吃掉 8 隊上限的名額（2026-11-04 盤點功能缺口時找到）。
+
+**Pros:** 只動大廳，不碰遊戲中的狀態。
+
+**Cons:** 被移除的手機要顯示原因並回首頁，而且不能用瀏覽器存的隊伍資料立刻再加回來（要決定是擋還是允許重新加入）。改名要過跟加入時一樣的隊名檢查，也要避開「兩隊同名時分數會互相覆蓋」那條 TODO 的問題。
+
+**Context:** `lib/room/dungeon-room.ts`（JOIN、REJOIN、LOBBY）、`lib/join-rejection.ts`（被拒絕的原因）、`app/room/[code]/host/page.tsx`、`app/room/[code]/play/page.tsx`。
+
+**Effort:** S–M　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+---
+
+## 主持人開房時可以用自己的題庫
+
+**What:** 主持人開房時可以選題庫：站長的預設題庫，或上傳／貼上自己的題庫。
+
+**Why:** 現在每個房間都只能用站長那一份題庫，想玩自己出的題（例如 `local-banks/` 裡的主題題庫）要站長改正式站的題庫。2026-10 決定「上傳＋多題庫」先延後，但 TODOS.md 裡還沒有這一條（2026-11-04 盤點功能缺口時找到）。
+
+**Pros:** 題庫格式、驗證和編輯器都是現成的。
+
+**Cons:**
+- 主持人上傳的題庫要在伺服器端驗證（大小、格式、圖片網址），題目和答案也不能進大螢幕和手機的 bundle（`npm run check:bundle` 的規則照舊）。
+- 自訂題庫的文字會進 AI 旁白的提示詞，跟「Host 自訂題庫文字進 LLM prompt 前的內容審核」那條 TODO 綁在一起。
+- 要決定上傳的題庫存在哪：只存在房間裡，還是存起來下次再用。
+- 題目比隊伍少的問題（「題目比隊伍少時，兩隊可能一直拿同一題」）會變常見。
+
+**Context:** `lib/bank-store.ts`、`lib/question-bank.ts`（格式與驗證）、`lib/room/dungeon-room.ts`、`app/bank-editor/page.tsx`。
+
+**Effort:** L　**Priority:** P3
+
+**Depends on / blocked by:** 先用 `/office-hours` 或 `/plan-ceo-review` 決定範圍；內容審核那條 TODO 要一起考慮。
 
 ---
 
@@ -301,7 +489,7 @@ K=$(openssl rand -base64 32); printf '%s' "$K" | npx wrangler secret put OWNER_K
 
 **What:** phone-question-text 分支 /ship 審查找到、這次沒修的幾項：
 1. 題目橫條沒有長度上限。預設題庫最長 34 字，iPhone 12（390×844）放得下；但本機題庫（`local-banks/`）沒有字數限制，約 100 字的題目會多出 4 行，答錯後的重答／逃跑或魔王房的鎖定答案可能被推到螢幕外。
-2. 自己回合的圖片／影片題，「冒險出現岔路」面板在媒體下方，390×844 上可能要捲動才看得到。
+2. （v0.27.1.0 手機已拿掉「冒險出現岔路」面板，這點暫時不存在；加回來時再看會不會被媒體推到螢幕外。）
 3. 揭曉時才重新整理或重新連線的手機，看不到剛答對的那題題目（只記得連線期間看過的題目）。設計時已接受。
 4. 還沒有 e2e 檢查「揭曉時重新連線不顯示題目」和「等待中的手機不顯示選擇題橫條」。
 
@@ -712,6 +900,74 @@ K=$(openssl rand -base64 32); printf '%s' "$K" | npx wrangler secret put OWNER_K
 ---
 
 ## Completed
+
+## 大螢幕連結搬到主持人頁最上方
+
+**What:** 「大螢幕（在電視或投影機開這個網址）」的連結，從「⚙ 更多」裡搬到主持人頁最上方，一打開就看得到。
+
+**Why:** 開場第一件事就是把大螢幕開起來，藏在「更多」裡要多點一次才找得到（2026-11-04 站長實測後提出）。
+
+**Pros:** 只是把現有的 `<section>` 搬個位置。
+
+**Cons:** 主持人頁最上方多一行，手機畫面會被往下推一點。
+
+**Context:** `app/room/[code]/host/page.tsx` 的「大螢幕」區塊（目前在「更多」面板裡）。
+
+**Effort:** S　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+**Completed:** v0.27.1.0 (2026-11-04)（已完成）
+
+---
+
+## 玩家手機先拿掉「冒險出現岔路」的選擇
+
+**What:** 隊伍手機上「冒險出現岔路，你們要怎麼做？」那一區先移除。之後改遊戲進行方式時，再討論要怎麼加回來。
+
+**Why:** 站長 2026-11-04 實測後決定先拿掉，玩法還沒定案。
+
+**Pros:** 手機畫面比較單純，玩家只專心答題。
+
+**Cons:** 首領房旁白會用到隊伍一路上的岔路選擇（`lib/narration/llm.ts` 的 `branches`），拿掉之後這段要確認會正確略過，不要變成「一路上的選擇依序是：」後面接空白。協定和房間狀態裡的岔路欄位要決定是留著還是一起拿掉。
+
+**Context:** `app/room/[code]/play/page.tsx`（「冒險出現岔路」區塊）、`lib/narration/llm.ts`（`branches`）。
+
+**Effort:** S　**Priority:** P2
+
+**Depends on / blocked by:** 加回來的方式，等「每次行動可以選不同的動作」那類玩法改動一起討論。
+
+**Completed:** v0.27.1.0 (2026-11-04)（拿掉了；加回來另見「把「冒險出現岔路」的選擇加回玩家手機」）
+
+---
+
+## 題庫編輯器加一個回首頁的按鈕
+
+**What:** 題庫編輯器（`/bank-editor`）加上「回首頁」的連結或按鈕。
+
+**Why:** 現在進了題庫編輯器，只能按瀏覽器的上一頁或自己改網址才回得去（2026-11-04 站長實測後提出）。
+
+**Pros:** 加一個連到 `/` 的連結就好。
+
+**Cons:** 有還沒儲存的修改時，離開前要提醒，不然改到一半的題目會不見。
+
+**Context:** `app/bank-editor/page.tsx`。
+
+**Effort:** S　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+**Completed:** v0.27.1.0 (2026-11-04)（已完成）
+
+---
+
+## 換一組新的 OWNER_KEY，並在正式站測題庫編輯器
+
+**What:** 站長忘了 OWNER_KEY，正式站的題庫編輯器和站長付費的 AI 旁白都卡住，要換一組新的。
+
+**Completed:** v0.27.1.0 (2026-11-04)：站長 2026-11-04 用 `wrangler secret put` 換好新的 OWNER_KEY 並自己保管。v0.27.1.0 上線後的 /canary 會開正式站題庫編輯器確認畫面正常（不會用金鑰登入）。
+
+---
 
 ## 地城料理風格 1：怪物變食材，打倒後端上一道菜
 

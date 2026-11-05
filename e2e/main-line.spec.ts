@@ -89,12 +89,8 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.getByText("輪到：乙隊")).toBeVisible();
   await expect(players[1].page.getByText("輪到我們了！")).toBeVisible();
 
-  // DM branching interlude: 甲隊 just entered room 1, so it sees the choice — and it's
-  // non-blocking, so 乙隊 (whose turn it now is) never sees it and can play on regardless.
-  await expect(players[0].page.getByText("冒險出現岔路")).toBeVisible();
-  await expect(players[1].page.getByText("冒險出現岔路")).toHaveCount(0);
-  await players[0].page.getByRole("button", { name: "武力" }).click();
-  await expect(players[0].page.getByText("冒險出現岔路")).toHaveCount(0); // answered, panel gone
+  // The branch choice is off the phones for now (TODOS.md), even right after 甲隊 entered a new room.
+  await expect(players[0].page.getByText("冒險出現岔路")).toHaveCount(0);
 
   // One narration line about 甲隊's answer reaches the big screen and the other phone alike.
   await expect(screen.locator(".px-say")).toContainText("甲隊");

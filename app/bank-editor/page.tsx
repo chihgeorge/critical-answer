@@ -9,6 +9,7 @@
 // it doesn't decorate it; the standalone `image` kind from image-question-type.md retired).
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { LabelChip, Panel, PixelButton } from "@/components/pixel";
 import { DIFFICULTIES, DISH_FIELDS, DISH_LIMITS, MAX_BOSS_HP, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, hasCuisine, type Bank, type BankDish, type BankMonster, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { scoreName } from "@/lib/protocol";
@@ -135,6 +136,8 @@ function validationError(bank: Bank): string | null {
 
 export default function BankEditorPage() {
   const [bank, setBank] = useState<Bank | null>(null);
+  // The bank as last loaded or saved: every edit makes a new object, so `bank !== savedBank.current` means unsaved edits.
+  const savedBank = useRef<Bank | null>(null);
   // The version this editor last loaded/saved. Sent back on every PUT so a save that's stale
   // (someone else — another tab, another device — saved first) is rejected with a clear conflict
   // instead of silently overwriting their edits (adversarial review, 2026-09-22).
@@ -159,6 +162,7 @@ export default function BankEditorPage() {
       if (res.status === 403) {
         setError("Owner key rejected.");
         setBank(null);
+        savedBank.current = null;
         return;
       }
       if (!res.ok) {
@@ -168,6 +172,7 @@ export default function BankEditorPage() {
       const versioned: { bank: Bank; version: number; unreadable?: true } = await res.json();
       if (seq !== loadSeq.current) return;
       setBank(versioned.bank);
+      savedBank.current = versioned.bank;
       setVersion(versioned.version);
       setReadOnly(!!versioned.unreadable);
     } catch {
@@ -176,6 +181,14 @@ export default function BankEditorPage() {
       if (seq === loadSeq.current) setLoading(false);
     }
   };
+
+  // Reload, tab close or the back button would drop unsaved edits too, so the browser asks first.
+  useEffect(() => {
+    if (bank === savedBank.current) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [bank]);
 
   const [ownerKey, setOwnerKey] = useOwnerKey((restoredKey) => void load(restoredKey));
 
@@ -206,6 +219,7 @@ export default function BankEditorPage() {
       }
       const versioned: { bank: Bank; version: number } = await res.json();
       setBank(versioned.bank);
+      savedBank.current = versioned.bank;
       setVersion(versioned.version);
     } catch {
       setError("Could not reach the server.");
@@ -283,9 +297,21 @@ export default function BankEditorPage() {
       {/* The page sits directly on the dark stage background (no SceneBackground/Panel behind
           it), so this needs explicit light text — body's default --ink color is meant for text
           on cream panels and is nearly invisible here (same convention as screen/page.tsx). */}
-      <h1 className="text-[24px] text-white" style={{ textShadow: "2px 2px 0 var(--k)" }}>
-        題庫編輯器
-      </h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-[24px] text-white" style={{ textShadow: "2px 2px 0 var(--k)" }}>
+          題庫編輯器
+        </h1>
+        <Link
+          href="/"
+          onClick={(e) => {
+            if (bank !== savedBank.current && !window.confirm("還沒儲存的修改會不見，確定回首頁？")) e.preventDefault();
+          }}
+          className="text-[15px] text-white underline underline-offset-2"
+          style={{ textShadow: "1px 1px 0 var(--k)" }}
+        >
+          ← 回首頁
+        </Link>
+      </div>
 
       <Panel className="flex flex-col gap-2 p-4">
         <label className="text-[14px]" htmlFor="owner-key">
@@ -298,7 +324,14 @@ export default function BankEditorPage() {
           value={ownerKey}
           onChange={(e) => setOwnerKey(e.target.value)}
         />
-        <PixelButton onClick={() => void load(ownerKey)} disabled={!ownerKey || loading || saving}>
+        <PixelButton
+          onClick={() => {
+            // Loading replaces the bank shown here, so unsaved edits would go without a word.
+            if (bank !== savedBank.current && !window.confirm("還沒儲存的修改會不見，確定重新載入？")) return;
+            void load(ownerKey);
+          }}
+          disabled={!ownerKey || loading || saving}
+        >
           {loading ? "載入中…" : "載入題庫"}
         </PixelButton>
         {error && (

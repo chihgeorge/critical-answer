@@ -39,6 +39,92 @@ test("homepage links to the bank editor", async ({ page }) => {
   await expect(page.getByLabel("Owner key")).toBeVisible();
 });
 
+test("回首頁 goes home at once with nothing unsaved, and asks first when there are unsaved edits", async ({ page }) => {
+  const dialogs: string[] = [];
+  let accept = false;
+  page.on("dialog", (d) => {
+    dialogs.push(d.message());
+    void (accept ? d.accept() : d.dismiss());
+  });
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
+  await page.getByRole("link", { name: "← 回首頁" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  expect(dialogs).toHaveLength(0);
+
+  await page.goto("/bank-editor"); // the remembered key auto-loads
+  const room0 = page.getByTestId("bank-pool-1");
+  await expect(room0).toBeVisible();
+  await expect(page.getByRole("button", { name: "載入題庫" })).toBeEnabled();
+  await rows(room0).first().getByLabel("題目文字").fill("還沒儲存的題目");
+  await page.getByRole("link", { name: "← 回首頁" }).click();
+  expect(dialogs).toEqual(["還沒儲存的修改會不見，確定回首頁？"]);
+  await expect(page).toHaveURL(/\/bank-editor$/);
+  // 載入題庫 would replace the edits too, so it asks the same way; dismissed, the edit stays.
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  expect(dialogs).toEqual(["還沒儲存的修改會不見，確定回首頁？", "還沒儲存的修改會不見，確定重新載入？"]);
+  await expect(rows(room0).first().getByLabel("題目文字")).toHaveValue("還沒儲存的題目");
+  accept = true;
+  await page.getByRole("link", { name: "← 回首頁" }).click();
+  await expect(page).toHaveURL(/\/$/);
+});
+
+// Value: protects=after a save, or after a rejected key, 回首頁 goes home without asking; fails_when=save() or the 403 branch
+// stops resetting savedBank; why_new=only an implicit reload reached the save path, nothing reached the 403 path; seam=none;
+// no_claim=beforeunload after save
+test("回首頁 does not ask after a save, nor after the owner key is rejected", async ({ page }) => {
+  const dialogs: string[] = [];
+  page.on("dialog", (d) => {
+    dialogs.push(d.message());
+    void d.dismiss();
+  });
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const room0 = page.getByTestId("bank-pool-1");
+  await expect(room0).toBeVisible();
+  await expect(page.getByRole("button", { name: "載入題庫" })).toBeEnabled();
+  // An edit put back to the original text: a new object, so unsaved, but the saved bank is unchanged.
+  const text = rows(room0).first().getByLabel("題目文字");
+  const original = await text.inputValue();
+  await text.fill("暫時改掉");
+  await text.fill(original);
+  await saveAll(page);
+  await page.getByRole("link", { name: "← 回首頁" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  expect(dialogs).toHaveLength(0);
+
+  await page.goto("/bank-editor"); // the remembered key auto-loads
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
+  await expect(page.getByRole("button", { name: "載入題庫" })).toBeEnabled();
+  await page.getByLabel("Owner key").fill("wrong-key");
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  await expect(page.getByTestId("bank-editor-error")).toBeVisible();
+  await page.getByRole("link", { name: "← 回首頁" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  expect(dialogs).toHaveLength(0);
+});
+
+test("closing or reloading the tab with unsaved edits asks first", async ({ page }) => {
+  const dialogs: string[] = [];
+  page.on("dialog", (d) => {
+    dialogs.push(d.type());
+    void d.dismiss();
+  });
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const room0 = page.getByTestId("bank-pool-1");
+  await expect(room0).toBeVisible();
+  await expect(page.getByRole("button", { name: "載入題庫" })).toBeEnabled();
+  await rows(room0).first().getByLabel("題目文字").fill("還沒儲存的題目");
+  await page.close({ runBeforeUnload: true });
+  await expect.poll(() => dialogs).toEqual(["beforeunload"]);
+  expect(page.isClosed()).toBe(false); // dismissed, so the edits are still there
+});
+
 test("owner key gate, load, add/edit/delete a question, save, and reload persists it", async ({ page }) => {
   await page.goto("/bank-editor");
 
