@@ -338,3 +338,11 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     expect(`${plain.system}${plain.user}`).not.toContain("飽足感");
   });
 });
+
+describe("epilogue after 結束冒險", () => {
+  it("tells the model the boss is still standing", () => {
+    const { user } = buildPrompt({ type: "epilogue", ranking: [{ name: "紅隊", score: 30 }], winners: ["紅隊"], bossStanding: true }, "", []);
+    expect(user).toContain("首領還沒被打倒");
+    expect(buildPrompt({ type: "epilogue", ranking: [{ name: "紅隊", score: 30 }], winners: ["紅隊"] }, "", []).user).not.toContain("首領還沒被打倒");
+  });
+});

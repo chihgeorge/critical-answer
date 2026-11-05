@@ -115,6 +115,12 @@ export type ClientMessage =
   | { type: "HOST_NEXT"; eventId: number }
   /** Host override: take a team into the boss room (docs/designs/scoring-and-score-pools.md S13). */
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
+  /** 結束冒險: end the game now, ranked by each team's reward. */
+  | { type: "HOST_END_GAME" }
+  /** Lobby only: take a team out; its phones get team_removed. */
+  | { type: "HOST_REMOVE_TEAM"; teamId: string }
+  /** Lobby only: rename a team, with JOIN's name check and no other team's name. */
+  | { type: "HOST_RENAME_TEAM"; teamId: string; teamName: string }
   /** Host: the next question for a team's room, or with target "boss" the boss's; null clears it (game-state queueQuestion). */
   | { type: "HOST_QUEUE_QUESTION"; target: string; questionId: string | null }
   | {
@@ -166,6 +172,7 @@ export type ServerErrorCode =
   | "no_active_game"
   | "not_enough_teams"
   | "unknown_team"
+  | "team_removed"
   | "invalid_action";
 
 /** One per kind of event: the big screen's sound effect for it (lib/sfx.ts). */
@@ -381,6 +388,17 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_SEND_TO_BOSS": {
       const teamId = str(m.teamId, MAX_ID);
       return teamId === null ? null : { type: "HOST_SEND_TO_BOSS", teamId };
+    }
+    case "HOST_END_GAME":
+      return { type: "HOST_END_GAME" };
+    case "HOST_REMOVE_TEAM": {
+      const teamId = str(m.teamId, MAX_ID);
+      return teamId === null ? null : { type: "HOST_REMOVE_TEAM", teamId };
+    }
+    case "HOST_RENAME_TEAM": {
+      const teamId = str(m.teamId, MAX_ID);
+      const teamName = str(m.teamName, MAX_RAW_TEXT);
+      return teamId === null || teamName === null ? null : { type: "HOST_RENAME_TEAM", teamId, teamName };
     }
     case "HOST_QUEUE_QUESTION": {
       const target = str(m.target, MAX_ID);

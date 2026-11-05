@@ -617,6 +617,12 @@ export function advanceTurn(game: GameState): GameState {
   return idx === null ? game : { ...game, currentTurnIndex: idx };
 }
 
+/** 結束冒險: the host ends a game still being played, ranked by the reward each team has now. */
+export function endGame(game: GameState): GameState {
+  if (game.phase === "finished") throw new InvalidActionError("Game already finished");
+  return finishGame({ ...game, pendingWrong: null });
+}
+
 function finishGame(game: GameState): GameState {
   const maxReward = Math.max(...game.teams.map((t) => t.reward));
   const winners = game.teams.filter((t) => t.reward === maxReward).map((t) => t.id);

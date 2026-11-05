@@ -90,7 +90,7 @@ function describeEvent(e: NarrationEvent): string {
       const feast = e.ranking.some((t) => t.dishes?.length);
       const unit = feast ? "飽足感" : "分";
       const rows = e.ranking.map((t, i) => `${i + 1}. ${q(t.name)} ${t.score} ${unit}${t.dishes?.length ? `，吃了${t.dishes.map(q).join("、")}` : ""}`);
-      const ask = feast ? "後記是一頓大餐：說說各隊吃了什麼，冠軍吃得最飽。" : "";
+      const ask = (e.bossStanding ? "首領還沒被打倒，冒險就先結束了：不要說有人打倒首領。" : "") + (feast ? "後記是一頓大餐：說說各隊吃了什麼，冠軍吃得最飽。" : "");
       return `事件：遊戲結束。排名（高到低）：${rows.join("；")}。冠軍：${e.winners.map(q).join("、")}。${ask}後記裡的名字和分數必須和這裡一致。`;
     }
   }

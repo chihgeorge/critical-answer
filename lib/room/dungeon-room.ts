@@ -5,6 +5,7 @@ import {
   createGame,
   DEFAULT_GAME_CONFIG,
   answerQuestion,
+  endGame,
   enterNextBossPhase,
   recordBranchChoice,
   sendToBoss,
@@ -151,7 +152,7 @@ export class DungeonRoom {
   /** team id -> team secret, set by the team's first JOIN (teamId is public, the key is not). */
   private teamKeys = new Map<string, string>();
   /** Live connections we accepted, for the per-room cap. */
-  private conns = new Set<string>();
+  private conns = new Map<string, Conn>();
 
   /** Counts the start and every accepted judgment; each gets exactly one NARRATION. */
   private eventSeq = 0;
@@ -668,8 +669,10 @@ export class DungeonRoom {
       })
       .sort((a, b) => b.score - a.score);
     const winners = game.winners.map((id) => game.teams.find((t) => t.id === id)?.name ?? "");
+    // The host ended it early (結束冒險): the story must not have anyone slay the boss.
+    const bossStanding = game.boss.killedByTeamId === null;
     // One EPILOGUE, whoever writes it: the LLM within its hold, otherwise the program-built story.
-    await this.runner.run(eventId, { type: "epilogue", ranking, winners }, this.scores());
+    await this.runner.run(eventId, { type: "epilogue", ranking, winners, ...(bossStanding ? { bossStanding: true as const } : {}) }, this.scores());
   }
 
   private broadcastState() {
@@ -801,7 +804,7 @@ export class DungeonRoom {
     // first tick) do NOT touch this again — only an accepted message does — or leaving a TV on would postpone
     // resting forever exactly the way this whole feature exists to prevent.
     if (this.lastActivityAt === null) this.markActivity();
-    this.conns.add(conn.id);
+    this.conns.set(conn.id, conn);
     this.sendTo(conn, this.snapshot());
     if (this.lastNarration) this.sendTo(conn, { type: "NARRATION", ...this.lastNarration });
     if (this.epilogue) this.sendTo(conn, { type: "EPILOGUE", text: this.epilogue, replay: true });
@@ -897,6 +900,15 @@ export class DungeonRoom {
           break;
         case "HOST_QUEUE_QUESTION":
           this.handleQueueQuestion(sender, msg.target, msg.questionId);
+          break;
+        case "HOST_END_GAME":
+          this.handleEndGame(sender);
+          break;
+        case "HOST_REMOVE_TEAM":
+          this.handleRemoveTeam(sender, msg.teamId);
+          break;
+        case "HOST_RENAME_TEAM":
+          this.handleRenameTeam(sender, msg.teamId, msg.teamName);
           break;
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice, msg.eventId);
@@ -1014,6 +1026,66 @@ export class DungeonRoom {
     this.connTeam.set(conn.id, teamId);
     if (this.game) this.game = setTeamOnline(this.game, teamId, true);
     return true;
+  }
+
+  /** 結束冒險: the host ends the game now, ranked by the reward each team has (host-controls). Whatever was
+   * mid-way (a lock's beat, a roll, a reveal, the boss's phase card) is dropped, and the epilogue follows as usual. */
+  private handleEndGame(conn: Conn) {
+    if (!this.requireHost(conn)) return;
+    if (!this.game || this.game.phase === "finished") {
+      this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+      return;
+    }
+    this.clearAnswerTimers();
+    this.reveal = null;
+    this.phaseCard = false;
+    this.phaseCardDue = false;
+    this.game = endGame(this.game);
+    const eventId = ++this.eventSeq;
+    this.cue = null;
+    this.broadcastState();
+    this.dropUnsaidLine();
+    this.epilogueRequested = true;
+    void this.sendEpilogue(Promise.resolve(), eventId).catch((err) => console.error("epilogue failed", err));
+  }
+
+  /** Lobby only: the host takes a team out. Its phones are told why; their page won't JOIN again by itself. */
+  private handleRemoveTeam(conn: Conn, teamId: string) {
+    if (!this.lobbyTeamFor(conn, teamId)) return;
+    this.pendingTeams = this.pendingTeams.filter((t) => t.id !== teamId);
+    this.teamKeys.delete(teamId);
+    for (const [connId, tid] of [...this.connTeam]) {
+      if (tid !== teamId) continue;
+      this.connTeam.delete(connId);
+      const phone = this.conns.get(connId);
+      if (phone) this.sendTo(phone, { type: "ERROR", error: "team_removed" });
+    }
+    this.broadcastState();
+  }
+
+  /** Lobby only: the host renames a team, with JOIN's name check, and never to another team's name. */
+  private handleRenameTeam(conn: Conn, teamId: string, rawName: string) {
+    const team = this.lobbyTeamFor(conn, teamId);
+    if (!team) return;
+    const name = sanitizeText(rawName, MAX_TEAM_NAME_LENGTH);
+    if (!name || this.pendingTeams.some((t) => t.id !== teamId && t.name === name)) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_name", ...(name ? { detail: "duplicate_name" } : {}) });
+      return;
+    }
+    team.name = name;
+    this.broadcastState();
+  }
+
+  /** The host's lobby team `teamId`, or null after sending the error that says why not. */
+  private lobbyTeamFor(conn: Conn, teamId: string): { id: string; name: string } | null {
+    if (!this.requireHost(conn)) return null;
+    if (this.game) {
+      this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
+      return null;
+    }
+    const team = this.pendingTeams.find((t) => t.id === teamId);
+    if (!team) this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
+    return team ?? null;
   }
 
   private handleHostNext(conn: Conn, eventId: number) {

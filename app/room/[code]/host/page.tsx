@@ -35,6 +35,7 @@ function MoreDrawer({
   ai,
   bossable,
   nextLine,
+  playing,
 }: {
   code: string;
   onClose: () => void;
@@ -49,6 +50,8 @@ function MoreDrawer({
   bossable: { id: string; name: string }[];
   /** The line queued for the next narration ("" for none), or null until the room says it supports one (host-next-line.md D5). */
   nextLine: string | null;
+  /** A game is under way, so 結束冒險 can end it. */
+  playing: boolean;
 }) {
   const currentLine = lines[0] ?? "";
   const totalSegments = lines.length;
@@ -99,6 +102,23 @@ function MoreDrawer({
                   </PixelButton>
                 </div>
               ))}
+            </section>
+          )}
+          {playing && (
+            <section className="flex flex-col gap-2">
+              <div className="text-[15px]">時間到了？現在就結束，照目前的分數排名，大螢幕出頒獎台和後記。</div>
+              <PixelButton
+                onClick={() => {
+                  // Ending cannot be undone, so the first tap only arms it for 3 s, like 送王房.
+                  if (armed !== "end") return setArmed("end");
+                  setArmed(null);
+                  send({ type: "HOST_END_GAME" });
+                  onClose();
+                }}
+                className="!m-0 min-h-[44px] !px-4 !py-2 text-[16px]"
+              >
+                {armed === "end" ? "確定結束？" : "結束冒險"}
+              </PixelButton>
             </section>
           )}
           {ai && <section>{ai}</section>}
@@ -587,6 +607,10 @@ export default function HostPage() {
               ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人"
               : msg.detail === "reveal_pending"
                 ? "大螢幕正在揭曉，先按「下一題」"
+                : msg.detail === "duplicate_name"
+                ? "已經有隊伍叫這個名字了"
+                : msg.error === "invalid_name"
+                ? "隊名不能用，請換一個"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
           );
           setPendingTeamId(null);
@@ -775,8 +799,27 @@ export default function HostPage() {
               {lobby.map((t, i) => (
                 <Panel key={t.id} className="flex items-center gap-3 px-3 py-2">
                   <Sprite kind="hero" variant={i} scale={2} />
-                  <span className="text-[18px]">{t.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-[18px]">{t.name}</span>
                   {t.classId && <span className="text-[15px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</span>}
+                  <PixelButton
+                    disabled={!ready}
+                    onClick={() => {
+                      const name = window.prompt("新的隊名", t.name);
+                      if (name !== null && name.trim() && name.trim() !== t.name) send({ type: "HOST_RENAME_TEAM", teamId: t.id, teamName: name });
+                    }}
+                    className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]"
+                  >
+                    改名
+                  </PixelButton>
+                  <PixelButton
+                    disabled={!ready}
+                    onClick={() => {
+                      if (window.confirm(`移除「${t.name}」？那支手機會看到隊伍被移除了，要重新加入得回首頁。`)) send({ type: "HOST_REMOVE_TEAM", teamId: t.id });
+                    }}
+                    className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]"
+                  >
+                    移除
+                  </PixelButton>
                 </Panel>
               ))}
               {lobby.length === 0 && <Panel className="px-3 py-2 text-[15px]">還沒有隊伍加入</Panel>}
@@ -1076,6 +1119,7 @@ export default function HostPage() {
           ai={game ? aiPanel : null}
           bossable={game?.phase === "playing" ? game.view.teams.filter((t) => !t.inBossPhase) : []}
           nextLine={game?.phase === "finished" ? null : nextLine}
+          playing={game?.phase === "playing"}
         />
       )}
     </main>
