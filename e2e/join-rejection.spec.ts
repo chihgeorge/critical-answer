@@ -78,10 +78,11 @@ test("a phone that joins after the game started is told why, sees no game, and t
   const first = await phone(browser);
   // Closing a page alone doesn't reliably reach the local room; drop the socket at the server end too (as disconnect.spec.ts does).
   let dead = false;
-  let firstSocket: WebSocketRoute | undefined;
+  // Every socket, not only the last: the page may hold more than one (a dev-mode double mount, a reconnect).
+  const firstSockets: WebSocketRoute[] = [];
   await first.routeWebSocket(/:1996\//, (ws) => {
     if (dead) return void ws.close({ code: 1006, reason: "phone died" });
-    firstSocket = ws.connectToServer();
+    firstSockets.push(ws.connectToServer());
   });
   await first.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(first.getByText("等待主持人開始遊戲")).toBeVisible();
@@ -95,7 +96,7 @@ test("a phone that joins after the game started is told why, sees no game, and t
 
   // The first phone dies: the host hands 甲隊 to the late phone with a one-time code (docs/designs/team-handoff.md).
   dead = true;
-  await firstSocket!.close();
+  for (const s of firstSockets) await s.close();
   await first.context().close();
   await expect(host.getByText("甲隊（離線）")).toBeVisible();
   await host.getByRole("button", { name: "交給新手機" }).click();
