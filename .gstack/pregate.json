@@ -1,5 +1,5 @@
 {
-  "runner": "npx vitest run {files}",
+  "runner": "scripts/pregate-runner.sh {files}",
   "dependencies": {
     "app/globals.css": [],
     "app/layout.tsx": [],
@@ -12,6 +12,7 @@
     "package.json": [],
     "package-lock.json": [],
     "worker/**": [],
-    "wrangler.jsonc": []
+    "wrangler.jsonc": [],
+    "scripts/pregate-runner.sh": []
   }
 }
