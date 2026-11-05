@@ -2,6 +2,17 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.31.1.0] - 2026-11-05
+
+### Fixed
+- Two teams can no longer join the lobby with the same name. The second phone sees 「這個隊名已經有人用了，請換一個名字」. Names that differ only by letter case or full-width letters also count as the same name. Before this fix, the epilogue dropped one of the two teams and gave its dishes to the other.
+- When the host page cannot reach the server at all, it now shows 「連不上伺服器」 with a 重試 button, like the phones and the big screen do, instead of 「重新連線中…」 forever.
+- On the big screen, music that was turned off no longer starts again on the next key press.
+- In ⚙ 更多, the 改寫第一句旁白 box now follows a new narration line, so 送出 never puts an older line back on the big screen.
+- A phone with blocked browser storage (some private modes) can now join a room.
+- The question-bank editor refuses to save a question id longer than 64 characters, because phones could never answer that question.
+- 下載旁白紀錄 works in Safari.
+
 ## [0.31.0.0] - 2026-11-05
 
 ### Changed
