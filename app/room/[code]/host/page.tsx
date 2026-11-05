@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
@@ -23,7 +23,7 @@ const STUCK_MS = 15_000;
 /** A cleric's wait, and the prayed attempt after it, ignore keys and clicks this long after they appear, so a
  * double-tap of 答錯 never lands on 祈禱 / 重答, nor one of 祈禱 on the new attempt's 答對 / 答錯 (#106). */
 const CLERIC_WAIT_DELAY_MS = 500;
-
+const noSubscribe = () => () => {};
 
 /** The host's own link carries the token, so it is shown here and never on /screen or /play. */
 function MoreDrawer({
@@ -102,11 +102,6 @@ function MoreDrawer({
             </section>
           )}
           {ai && <section>{ai}</section>}
-          <section>
-            <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
-            {/* A new tab, so opening it never navigates the host page away from its socket. */}
-            <a href={`/room/${code}/screen`} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{`${origin}/room/${code}/screen`}</a>
-          </section>
           <section className="flex flex-col gap-2">
             <div className="text-[15px]">導演筆記{aiOn ? "（AI 每次寫旁白都會參考）" : "（AI 旁白已關閉，只會記錄）"}</div>
             <div className="text-[13px]">只影響語氣與風格，不是逐字台詞。想改已經出現的那一句，用下面的「改寫目前旁白」。</div>
@@ -441,6 +436,8 @@ function AiExhausted({ status, send, onDismiss }: { status: AiStatus; send: (msg
 }
 
 export default function HostPage() {
+  // "" on the server, the real origin after hydration: reading location in render would mismatch the server HTML.
+  const origin = useSyncExternalStore(noSubscribe, () => location.origin, () => "");
   const { code } = useParams<{ code: string }>();
   useWakeLock();
 
@@ -743,6 +740,11 @@ export default function HostPage() {
             ⚙ 更多
           </PixelButton>
         </header>
+        <Panel tone="lav" className="px-3 py-2">
+          <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
+          {/* A new tab, so opening it never navigates the host page away from its socket. */}
+          <a href={`/room/${code}/screen`} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{`${origin}/room/${code}/screen`}</a>
+        </Panel>
 
         {reset && <Panel className="px-3 py-2 text-center text-[14px]" style={{ background: "var(--danger)", color: "#fff" }}>伺服器重新啟動，遊戲已重置，轉錄紀錄已消失</Panel>}
         {noToken && <Panel tone="lav" className="px-3 py-2 text-[14px]">這個瀏覽器沒有主持人金鑰。請回首頁按「主持遊戲」，或用建立房間時的連結／QR 開啟。</Panel>}

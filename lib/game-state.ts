@@ -78,7 +78,8 @@ export const BRANCH_LABELS: Record<BranchOptionId, string> = {
 /**
  * The earliest room a team entered but hasn't chosen a branch for, or null if
  * there's nothing pending. Non-blocking UI (design doc decision 4B) surfaces
- * this one at a time rather than the whole backlog at once.
+ * this one at a time rather than the whole backlog at once. No phone shows it right now: kept for the
+ * re-add (TODOS.md「把「冒險出現岔路」的選擇加回玩家手機」).
  */
 export function firstPendingBranchRoom(team: { roomIndex: number; branchChoices: Partial<Record<number, BranchOptionId>> }): number | null {
   for (let i = 1; i <= team.roomIndex; i++) {

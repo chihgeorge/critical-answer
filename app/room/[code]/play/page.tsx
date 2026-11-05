@@ -9,7 +9,7 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
-import { BRANCH_LABELS, BRANCH_OPTIONS, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, firstPendingBranchRoom, type ClassId } from "@/lib/game-state";
+import { CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -448,9 +448,6 @@ export default function PlayPage() {
   const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
   const finished = game?.phase === "finished";
-  // Non-blocking DM branching interlude (design doc decision 4B): does not gate turn order,
-  // so this is just derived from the broadcast state, not tied to isMyTurn.
-  const pendingBranchRoom = myTeam ? firstPendingBranchRoom(myTeam) : null;
   const cards = (
     <>
       {/* While waiting, the roster above already highlights our own team. */}
@@ -473,24 +470,6 @@ export default function PlayPage() {
                 `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`
               )}
             </div>
-          </div>
-        </Panel>
-      )}
-
-      {/* DM branching interlude: background choice, never blocks the turn above. */}
-      {game && !finished && pendingBranchRoom !== null && (
-        <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-3 text-center">
-          <div className="text-[15px]">冒險出現岔路，你們要怎麼做？</div>
-          <div className="flex gap-2">
-            {BRANCH_OPTIONS.map((choice) => (
-              <PixelButton
-                key={choice}
-                onClick={() => send({ type: "TEAM_BRANCH_CHOICE", roomIndex: pendingBranchRoom, choice })}
-                className="!m-0"
-              >
-                {BRANCH_LABELS[choice]}
-              </PixelButton>
-            ))}
           </div>
         </Panel>
       )}
