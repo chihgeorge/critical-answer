@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.29.0.0] - 2026-11-04
+
+### Added
+- After a game, the host page has 「回到大廳，再玩一場」. It takes the phones, the host page and the big screen back to the lobby with the same teams, so nobody joins again. Names, classes, the join password, the AI narration settings and the director notes stay. Scores and progress start from zero, and teams can still change class in the lobby.
+- The next game deals the questions whose answers the last game showed only after every other question has been used, so the same group does not get a question they already know the answer to.
+
 ## [0.28.0.0] - 2026-11-04
 
 ### Added
