@@ -106,7 +106,11 @@ export default function HostPage() {
           // The room is ours: from now on this link can no longer swap its code.
           if (isFreshRoomHash(location.hash)) history.replaceState(null, "", location.pathname + location.search + settledHash(location.hash));
           // A restarted room has forgotten the key: send it again (the room skips the check for a key it still has).
-          if (aiSaved.current) room.send(aiKeyMessage(aiSaved.current));
+          // A key still pending was sent before this claim, so the room refused it with not_host: send that one instead.
+          {
+            const c = aiPending.current?.credential ?? aiSaved.current;
+            if (c) room.send(aiKeyMessage(c));
+          }
           setJoinPassword(msg.joinPassword);
           setSavedPassword(msg.joinPassword);
           break;
