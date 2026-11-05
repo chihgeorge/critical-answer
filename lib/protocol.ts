@@ -117,6 +117,8 @@ export type ClientMessage =
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
   /** 結束冒險: end the game now, ranked by each team's reward. */
   | { type: "HOST_END_GAME" }
+  /** After the game: back to the lobby with the same teams, ready for another game. */
+  | { type: "HOST_BACK_TO_LOBBY" }
   /** Lobby only: take a team out; its phones get team_removed. */
   | { type: "HOST_REMOVE_TEAM"; teamId: string }
   /** Lobby only: rename a team, with JOIN's name check and no other team's name. */
@@ -391,6 +393,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "HOST_END_GAME":
       return { type: "HOST_END_GAME" };
+    case "HOST_BACK_TO_LOBBY":
+      return { type: "HOST_BACK_TO_LOBBY" };
     case "HOST_REMOVE_TEAM": {
       const teamId = str(m.teamId, MAX_ID);
       return teamId === null ? null : { type: "HOST_REMOVE_TEAM", teamId };

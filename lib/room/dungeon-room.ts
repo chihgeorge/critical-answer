@@ -162,9 +162,12 @@ export class DungeonRoom {
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
-  /** The eventId 結束冒險 ended the game at: a judgment line still in flight from before it is dropped. Memory only,
-   * like the narration calls it guards. */
-  private endedAtSeq: number | null = null;
+  /** Narration for an eventId below this is stale and dropped: set by 結束冒險 (a judgment line still in flight
+   * would hand the turn on over the podium) and by 回到大廳 (a late epilogue or line from the game just left).
+   * Memory only, like the narration calls it guards. */
+  private staleBeforeSeq: number | null = null;
+  /** Answers earlier games in this room showed: the next game deals them last. */
+  private playedQuestionIds: string[] = [];
   /** Teams the host removed in the lobby: an automatic reconnect (`resume`) of one is turned away, since a phone
    * asleep at the removal never heard. A fresh page load joins again. Memory only: a restart forgets it. */
   private removedTeamIds = new Set<string>();
@@ -294,6 +297,12 @@ export class DungeonRoom {
       holdMs: opts.holdMs,
       epilogueHoldMs: opts.epilogueHoldMs,
       emit: (eventId, lines, event) => {
+        if (this.staleBeforeSeq !== null && eventId < this.staleBeforeSeq) {
+          this.hostLineGens.delete(eventId);
+          // The line it carried was never said, and no narration of a finished game will say it.
+          this.dropUnsaidLine();
+          return;
+        }
         if (event.type === "epilogue") {
           this.epilogue = lines[0];
           this.broadcast({ type: "EPILOGUE", text: lines[0] });
@@ -305,8 +314,7 @@ export class DungeonRoom {
         // eventSeq is a leftover from before a reset(), which zeroes eventSeq.
         const gen = this.hostLineGens.get(eventId);
         this.hostLineGens.delete(eventId);
-        // Also a judgment line from before 結束冒險: it hands the turn to a team, over the podium.
-        if (eventId > this.eventSeq || (this.lastNarration && eventId < this.lastNarration.eventId) || (this.endedAtSeq !== null && eventId < this.endedAtSeq)) {
+        if (eventId > this.eventSeq || (this.lastNarration && eventId < this.lastNarration.eventId)) {
           this.dropUnsaidLine();
           return;
         }
@@ -415,6 +423,7 @@ export class DungeonRoom {
       lastNarration: this.lastNarration,
       epilogue: this.epilogue,
       epilogueRequested: this.epilogueRequested,
+      playedQuestionIds: this.playedQuestionIds,
       notes: this.notes,
       joinPassword: this.joinPassword,
       editedLines: this.editedLines,
@@ -508,6 +517,7 @@ export class DungeonRoom {
     this.lastNarration = s.lastNarration;
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
+    this.playedQuestionIds = s.playedQuestionIds ?? [];
     this.notes = s.notes;
     this.joinPassword = s.joinPassword;
     this.editedLines = s.editedLines;
@@ -770,7 +780,8 @@ export class DungeonRoom {
     this.cue = null;
     this.epilogue = null;
     this.epilogueRequested = false;
-    this.endedAtSeq = null;
+    this.staleBeforeSeq = null;
+    this.playedQuestionIds = [];
     this.removedTeamIds.clear();
     this.reveal = null;
     this.phaseCard = false;
@@ -912,6 +923,9 @@ export class DungeonRoom {
           break;
         case "HOST_END_GAME":
           this.handleEndGame(sender);
+          break;
+        case "HOST_BACK_TO_LOBBY":
+          this.handleBackToLobby(sender);
           break;
         case "HOST_REMOVE_TEAM":
           this.handleRemoveTeam(sender, msg.teamId);
@@ -1058,12 +1072,47 @@ export class DungeonRoom {
     this.phaseCardDue = false;
     this.game = endGame(this.game);
     const eventId = ++this.eventSeq;
-    this.endedAtSeq = eventId;
+    this.staleBeforeSeq = eventId;
     this.cue = null;
     this.broadcastState();
     this.dropUnsaidLine();
     this.epilogueRequested = true;
     void this.sendEpilogue(Promise.resolve(), eventId).catch((err) => console.error("epilogue failed", err));
+  }
+
+  /** 回到大廳: a finished game goes back to the lobby with the same teams (names, classes, keys and connections),
+   * and the room's settings. Its shown answers are dealt last next game; everything else about it is gone. */
+  private handleBackToLobby(conn: Conn) {
+    if (!this.requireHost(conn)) return;
+    if (this.game?.phase !== "finished") {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "game_not_over" });
+      return;
+    }
+    const all = new Set(this.bankQuestionIds());
+    const played = [...new Set([...this.playedQuestionIds, ...this.game.revealedQuestionIds])].filter((id) => all.has(id));
+    // Once every question has been shown, start avoiding over with just this game's.
+    this.playedQuestionIds = played.length >= all.size ? [...this.game.revealedQuestionIds] : played;
+    this.game = null;
+    this.clearAnswerTimers();
+    this.reveal = null;
+    this.phaseCard = false;
+    this.phaseCardDue = false;
+    this.epilogue = null;
+    this.epilogueRequested = false;
+    this.lastNarration = null;
+    this.cue = null;
+    this.staleBeforeSeq = ++this.eventSeq;
+    // A line queued in the game just left belongs to it, even if a narration still in flight carries it.
+    if (this.nextLine) {
+      this.nextLine = null;
+      this.sendNextLineState();
+    }
+    this.broadcastState();
+  }
+
+  /** Every question the bank can deal: room pools and every boss phase. */
+  private bankQuestionIds(): string[] {
+    return [...poolQuestionIds(this.bank).flat(), ...bossPhaseStates(this.bank).flatMap((p) => p.questionIds)];
   }
 
   /** Lobby only: the host takes a team out. Its phones are told why; their page won't JOIN again by itself. */
@@ -1280,6 +1329,7 @@ export class DungeonRoom {
       shuffledOptionOrders(this.bank, this.rng),
       laterPhases,
       this.bank.boss.monster.dish?.name,
+      this.playedQuestionIds,
     );
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.
     this.aiNarration = aiNarration !== false;

@@ -478,6 +478,8 @@ export function createGame(
   /** Phases after the first, which is `bossQuestionIds` and `bossMaxHp`. */
   laterBossPhases: BossPhaseState[] = [],
   bossDish?: string,
+  /** Answers an earlier game in this room showed (回到大廳, back-to-lobby): dealt last, once nothing else is left. */
+  played: string[] = [],
 ): GameState {
   if (teamSeeds.length === 0) {
     throw new InvalidActionError("At least one team is required");
@@ -486,7 +488,12 @@ export function createGame(
     throw new InvalidActionError("At least one room is required");
   }
 
-  let used: string[][] = pools.map(() => []);
+  // Counted as already dealt this cycle, so deal() reaches them only after its reshuffle: never a "revealed"
+  // seed, which would make a boss phase whose questions were all played last game count as used up at once.
+  let used: string[][] = pools.map((ids) => ids.filter((id) => played.includes(id)));
+  const freshFirst = (ids: string[]) => [...ids.filter((id) => !played.includes(id)), ...ids.filter((id) => played.includes(id))];
+  bossQuestionIds = freshFirst(bossQuestionIds);
+  laterBossPhases = laterBossPhases.map((p) => ({ ...p, questionIds: freshFirst(p.questionIds) }));
   const revealed: string[] = [];
   const teams: Team[] = [];
   for (const seed of teamSeeds) {

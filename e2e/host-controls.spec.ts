@@ -55,3 +55,27 @@ test("the host ends the game early from the drawer", async ({ browser }) => {
   await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible();
   await expect(screen.getByTestId("final-blow")).toHaveCount(0);
 });
+
+/** 回到大廳: after the game, the same teams are back in the lobby without joining again, and a new game starts. */
+test("the host takes everyone back to the lobby and starts another game", async ({ browser }) => {
+  const { host, code } = await hostRoom(browser);
+  const team = await phone(browser, code, "甲隊");
+  const screen = await (await browser.newContext()).newPage();
+  await screen.goto(`/room/${code}/screen`);
+
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await answerCorrectly(host);
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await host.getByRole("button", { name: "結束冒險" }).click();
+  await host.getByRole("button", { name: "確定結束？" }).click();
+  await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible();
+
+  await host.screenshot({ path: ".gstack/tmp/host-back-to-lobby.png" });
+  await host.getByRole("button", { name: "回到大廳，再玩一場" }).click();
+  await expect(host.getByText("等待隊伍加入…")).toBeVisible();
+  await expect(team.getByTestId("roster")).toContainText("甲隊");
+  await expect(screen.getByText("甲隊奪得榜首！")).toHaveCount(0);
+
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await expect(team.getByText("0 飽足感")).toBeVisible();
+});

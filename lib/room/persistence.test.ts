@@ -173,6 +173,25 @@ describe("restoring after a restart", () => {
     expect(lastOf(stranger, "ERROR")).toMatchObject({ error: "bad_password" });
   });
 
+  it("after 回到大廳 a restart still deals the first game's shown answers last", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage).room;
+    const host = makeConn("host");
+    send(first, host, { type: "HOST_CLAIM", token: TOKEN });
+    send(first, makeConn("p1"), { type: "JOIN", teamId: T1, teamKey: TEAM_KEY, teamName: "甲隊" });
+    send(first, host, { type: "HOST_START" });
+    const q = first.game!.teams[0].currentQuestionId;
+    send(first, host, { type: "HOST_JUDGE", teamId: T1, questionId: q, correct: true, fleeChoice: "retry" });
+    send(first, host, { type: "HOST_END_GAME" });
+    send(first, host, { type: "HOST_BACK_TO_LOBBY" });
+    const second = makeRoom(storage).room;
+    expect(await second.restore()).toBe("restored");
+    const host2 = makeConn("host2");
+    send(second, host2, { type: "HOST_CLAIM", token: TOKEN });
+    send(second, host2, { type: "HOST_START" });
+    expect(second.game!.teams[0].currentQuestionId).not.toBe(q);
+  });
+
   it("the host's queued next line comes back, and the host page is told about it", async () => {
     const storage = memoryStorage();
     const first = makeRoom(storage).room;

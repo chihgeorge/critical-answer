@@ -3016,3 +3016,94 @@ describe("host controls: HOST_END_GAME, HOST_REMOVE_TEAM, HOST_RENAME_TEAM", () 
     expect(room.game!.teams).toHaveLength(1);
   });
 });
+
+describe("HOST_BACK_TO_LOBBY (回到大廳)", () => {
+  const broadcasts = (room: DungeonRoom) => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+
+  function finished() {
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { epilogueDelayMs: 0, holdMs: 10 });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const phone = makeConn("phone");
+    room.onConnect(phone);
+    send(room, phone, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "甲隊" });
+    send(room, phone, { type: "TEAM_PICK_CLASS", classId: "mage" });
+    joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    const team = currentTurnTeamId(room.game!)!;
+    const q = room.game!.teams.find((t) => t.id === team)!.currentQuestionId;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: team, questionId: q, correct: true, fleeChoice: "retry" });
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    return { room, hostConn, phone, answered: q };
+  }
+
+  it("brings a finished game back to the lobby with the same teams and classes, and another game can start", () => {
+    const { room, hostConn, answered } = finished();
+    send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });
+    expect(room.game).toBeNull();
+    const lobby = lastBroadcast(room);
+    expect(lobby).toMatchObject({ type: "LOBBY" });
+    expect(lobby.teams).toEqual([{ id: T1, name: "甲隊", classId: "mage" }, { id: T2, name: "Team 1" }]);
+    send(room, hostConn, { type: "HOST_START" });
+    expect(room.game!.phase).toBe("playing");
+    expect(room.game!.teams.every((t) => t.reward === 0 && t.roomIndex === 0)).toBe(true);
+    // The question whose answer the first game showed is not dealt again while others are left.
+    expect(room.game!.teams.map((t) => t.currentQuestionId)).not.toContain(answered);
+  });
+
+  it("is host-only and only after the game is over", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "game_not_over" });
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "game_not_over" });
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    const other = makeConn("not-host");
+    send(room, other, { type: "HOST_BACK_TO_LOBBY" });
+    expect(lastSentTo(other)).toMatchObject({ type: "ERROR", error: "not_host" });
+    expect(room.game!.phase).toBe("finished");
+  });
+
+  it("a queued 下一句 still riding a slow line when the game ends is not said in the next game", async () => {
+    const pending: ((line: string) => void)[] = [];
+    const slow = { name: "slow", narrate: () => new Promise<string>((resolve) => pending.push(resolve)) };
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { epilogueDelayMs: 0, holdMs: 5000, provider: slow });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    const team = currentTurnTeamId(room.game!)!;
+    const q = room.game!.teams.find((t) => t.id === team)!.currentQuestionId;
+    send(room, hostConn, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: team, questionId: q, correct: true, fleeChoice: "retry" }); // carries the line, still out
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    await new Promise((r) => setTimeout(r, 0));
+    pending[1]?.("晚到的一行");
+    await new Promise((r) => setTimeout(r, 0));
+    send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });
+    expect((room as unknown as { nextLine: unknown }).nextLine).toBeNull();
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "HOST_NEXT_LINE_STATE", line: "" });
+  });
+
+  it("a late epilogue from the game just left never reaches the lobby, nor a newcomer", async () => {
+    const { room, hostConn } = finished();
+    send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(broadcasts(room).filter((m) => m.type === "EPILOGUE")).toHaveLength(0);
+    const late = makeConn("late");
+    room.onConnect(late);
+    const msgs = (late.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+    expect(msgs.map((m) => m.type)).toEqual(["LOBBY"]);
+  });
+
+  it("the phones still belong to their teams: a class pick in the new lobby counts", () => {
+    const { room, hostConn, phone } = finished();
+    send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });
+    send(room, phone, { type: "TEAM_PICK_CLASS", classId: "warrior" });
+    expect(lastBroadcast(room).teams[0]).toMatchObject({ id: T1, classId: "warrior" });
+  });
+});

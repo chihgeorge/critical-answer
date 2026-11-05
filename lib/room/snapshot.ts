@@ -27,6 +27,8 @@ export interface RoomSnapshot {
   lastNarration: { eventId: number; lines: string[] } | null;
   epilogue: string | null;
   epilogueRequested: boolean;
+  /** Answers earlier games in this room showed, dealt last in the next one (回到大廳). Missing in a save from before it. */
+  playedQuestionIds?: string[];
   notes: string;
   /** "" when the room has none. Missing in a save from before join passwords. */
   joinPassword: string;
@@ -79,6 +81,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (!Array.isArray(raw.editedLines) || !raw.editedLines.every(isString)) return null;
     const joinPassword = raw.joinPassword ?? "";
     if (!isString(joinPassword)) return null;
+    if (raw.playedQuestionIds !== undefined && !(Array.isArray(raw.playedQuestionIds) && raw.playedQuestionIds.every(isString))) return null;
     const nextLine = raw.nextLine ?? null;
     if (nextLine !== null && !(isObject(nextLine) && isString(nextLine.text) && Number.isInteger(nextLine.gen))) return null;
     const at = raw.lastActivityAt ?? null;
