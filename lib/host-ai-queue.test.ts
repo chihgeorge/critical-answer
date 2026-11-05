@@ -18,9 +18,14 @@ describe("createAiKeyQueue", () => {
     expect(sent).toEqual([]);
     q.hostOk(own("sk-saved"), send);
     expect(sent).toEqual([own("sk-new"), limit(500)]);
-    // A later HOST_OK (password change, reconnect) never replays the held key: it may have been refused.
+    // A password change's HOST_OK sends nothing: the saved key would cancel the check of a newer one.
+    q.choose(own("sk-newer"), send);
     q.hostOk(own("sk-saved"), send);
-    expect(sent).toEqual([own("sk-new"), limit(500), own("sk-saved")]);
+    expect(sent).toEqual([own("sk-new"), limit(500), own("sk-newer")]);
+    // A reconnect resends the saved key, never the held one: it may have been refused.
+    q.closed();
+    q.hostOk(own("sk-saved"), send);
+    expect(sent.at(-1)).toEqual(own("sk-saved"));
   });
 
   // Value: protects=only the host's last choice is sent and a closed socket holds again; fails_when=held choices are
