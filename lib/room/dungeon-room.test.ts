@@ -3067,6 +3067,28 @@ describe("HOST_BACK_TO_LOBBY (回到大廳)", () => {
     expect(room.game!.phase).toBe("finished");
   });
 
+  it("a queued 下一句 still riding a slow line when the game ends is not said in the next game", async () => {
+    const pending: ((line: string) => void)[] = [];
+    const slow = { name: "slow", narrate: () => new Promise<string>((resolve) => pending.push(resolve)) };
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { epilogueDelayMs: 0, holdMs: 5000, provider: slow });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    const team = currentTurnTeamId(room.game!)!;
+    const q = room.game!.teams.find((t) => t.id === team)!.currentQuestionId;
+    send(room, hostConn, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: team, questionId: q, correct: true, fleeChoice: "retry" }); // carries the line, still out
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    await new Promise((r) => setTimeout(r, 0));
+    pending[1]?.("晚到的一行");
+    await new Promise((r) => setTimeout(r, 0));
+    send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });
+    expect((room as unknown as { nextLine: unknown }).nextLine).toBeNull();
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "HOST_NEXT_LINE_STATE", line: "" });
+  });
+
   it("a late epilogue from the game just left never reaches the lobby, nor a newcomer", async () => {
     const { room, hostConn } = finished();
     send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });

@@ -299,6 +299,8 @@ export class DungeonRoom {
       emit: (eventId, lines, event) => {
         if (this.staleBeforeSeq !== null && eventId < this.staleBeforeSeq) {
           this.hostLineGens.delete(eventId);
+          // The line it carried was never said, and no narration of a finished game will say it.
+          this.dropUnsaidLine();
           return;
         }
         if (event.type === "epilogue") {
@@ -1100,6 +1102,11 @@ export class DungeonRoom {
     this.lastNarration = null;
     this.cue = null;
     this.staleBeforeSeq = ++this.eventSeq;
+    // A line queued in the game just left belongs to it, even if a narration still in flight carries it.
+    if (this.nextLine) {
+      this.nextLine = null;
+      this.sendNextLineState();
+    }
     this.broadcastState();
   }
 
