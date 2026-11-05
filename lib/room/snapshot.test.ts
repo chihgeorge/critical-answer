@@ -44,6 +44,14 @@ describe("parseSnapshot", () => {
     expect(() => spendAbility(s!.game!, "a", "warrior")).toThrow(/not a warrior/);
   });
 
+  // Value: protects=a v5 save from before boss phases is discarded, not restored to throw in boss play; fails_when=the
+  // boss.phases check is removed; why_new=the restore backfill and its test were removed; seam=none
+  it("discards a game saved before boss phases", () => {
+    const game = gameWithTeams((t) => t);
+    expect(parseSnapshot({ ...valid(), game })?.game).toBeTruthy();
+    expect(parseSnapshot({ ...valid(), game: { ...game, boss: omit(game.boss as unknown as Record<string, unknown>, "phases") } })).toBeNull();
+  });
+
   it("gives a team with a class but no abilityUses 2 uses, and refuses an unknown class", () => {
     const game = gameWithTeams((t, i) => (i === 0 ? { ...omit(t, "abilityUses"), classId: "warrior" } : omit(t, "abilityUses")));
     expect(parseSnapshot({ ...valid(), game })?.game?.teams[0]).toMatchObject({ classId: "warrior", abilityUses: 2 });

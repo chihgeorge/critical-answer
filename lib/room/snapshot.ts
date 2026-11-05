@@ -70,6 +70,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     // deal() indexes both by pool: a malformed one would stick the room on ERROR instead of starting fresh.
     const fivePools = (v: unknown) => Array.isArray(v) && v.length === 5 && v.every((p) => Array.isArray(p) && p.every(isString));
     if (game !== null && !(fivePools(game.pools) && fivePools(game.usedQuestionIds))) return null;
+    // Boss phases came after v5 with no backfill: a save from before them is discarded, never restored and stuck on ERROR.
+    if (game !== null && !(isObject(game.boss) && Array.isArray(game.boss.phases))) return null;
     if (!isString(raw.roomEpoch) || !isString(raw.hostToken)) return null;
     // Classes came later (class-abilities.md) without a version bump: a missing class is none, missing uses are a full set.
     const classOk = (t: Record<string, unknown>) => t.classId === undefined || isClassId(t.classId);
