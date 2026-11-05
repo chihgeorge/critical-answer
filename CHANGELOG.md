@@ -2,6 +2,13 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.28.0.0] - 2026-11-04
+
+### Added
+- The host can end the game early. In ⚙ 更多, tap 「結束冒險」, then 「確定結束？」. The game ends at once and teams are ranked by their current score. The big screen shows the podium and the epilogue as usual. The 最後一擊 line is left out, and the epilogue does not say anyone slew the boss.
+- Before the game starts, each team in the host's list has 「改名」 and 「移除」 buttons. Renaming uses the same rules as joining and refuses a name another team already has.
+- A removed team's phone shows 「主持人把你們的隊伍移除了」 and a link home. The phone does not rejoin by itself, even after it reconnects. Opening the room from the home page again joins as a new team.
+
 ## [0.27.1.0] - 2026-11-04
 
 ### Added

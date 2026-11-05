@@ -141,23 +141,6 @@
 
 ---
 
-## 主持人可以提早結束遊戲
-
-**What:** 主持人頁的「⚙ 更多」加一個「結束冒險」。按了（要再按一次確認）就直接結束遊戲：照當下的飽足感（獎勵分）排名，大螢幕出頒獎台和後記。
-
-**Why:** 現在只有打倒首領遊戲才會結束（`lib/game-state.ts` 的 `finishGame` 只有一個呼叫點）。派對時間到了首領還沒倒，就看不到頒獎台和後記（2026-11-04 盤點功能缺口時找到）。
-
-**Pros:** `finishGame` 已經會算冠軍，後記和頒獎台照舊能用。
-
-**Cons:** 後記要知道首領沒有被打倒，不能說「最後一擊」；結束畫面「誰打出最後一擊」那行要能沒有。答題、擲骰或揭曉進行到一半時按下去，要先收尾。
-
-**Context:** `lib/game-state.ts`（`finishGame`）、`lib/room/dungeon-room.ts`（要加一個主持人訊息，例如 `HOST_END_GAME`）、`lib/narration/events.ts`（`epilogue`）、`app/room/[code]/host/page.tsx`。
-
-**Effort:** S–M　**Priority:** P2
-
-**Depends on / blocked by:** 無。跟「遊戲結束後回到大廳」一起做最順。
-
----
 
 ## 遊戲開始後，新隊伍可以中途加入
 
@@ -177,23 +160,6 @@
 
 ---
 
-## 大廳裡主持人可以踢掉隊伍、改隊名
-
-**What:** 開始前，主持人頁每隊旁邊有「移除」和「改名」。
-
-**Why:** 現在主持人沒辦法移除加錯的隊伍（同一隊兩支手機各加入一次、亂取的名字）。開局後它會一直佔著輪流順序和地圖上的棋子，也吃掉 8 隊上限的名額（2026-11-04 盤點功能缺口時找到）。
-
-**Pros:** 只動大廳，不碰遊戲中的狀態。
-
-**Cons:** 被移除的手機要顯示原因並回首頁，而且不能用瀏覽器存的隊伍資料立刻再加回來（要決定是擋還是允許重新加入）。改名要過跟加入時一樣的隊名檢查，也要避開「兩隊同名時分數會互相覆蓋」那條 TODO 的問題。
-
-**Context:** `lib/room/dungeon-room.ts`（JOIN、REJOIN、LOBBY）、`lib/join-rejection.ts`（被拒絕的原因）、`app/room/[code]/host/page.tsx`、`app/room/[code]/play/page.tsx`。
-
-**Effort:** S–M　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
----
 
 ## 主持人開房時可以用自己的題庫
 
@@ -900,6 +866,48 @@
 ---
 
 ## Completed
+
+## 主持人可以提早結束遊戲
+
+**What:** 主持人頁的「⚙ 更多」加一個「結束冒險」。按了（要再按一次確認）就直接結束遊戲：照當下的飽足感（獎勵分）排名，大螢幕出頒獎台和後記。
+
+**Why:** 現在只有打倒首領遊戲才會結束（`lib/game-state.ts` 的 `finishGame` 只有一個呼叫點）。派對時間到了首領還沒倒，就看不到頒獎台和後記（2026-11-04 盤點功能缺口時找到）。
+
+**Pros:** `finishGame` 已經會算冠軍，後記和頒獎台照舊能用。
+
+**Cons:** 後記要知道首領沒有被打倒，不能說「最後一擊」；結束畫面「誰打出最後一擊」那行要能沒有。答題、擲骰或揭曉進行到一半時按下去，要先收尾。
+
+**Context:** `lib/game-state.ts`（`finishGame`）、`lib/room/dungeon-room.ts`（要加一個主持人訊息，例如 `HOST_END_GAME`）、`lib/narration/events.ts`（`epilogue`）、`app/room/[code]/host/page.tsx`。
+
+**Effort:** S–M　**Priority:** P2
+
+**Depends on / blocked by:** 無。跟「遊戲結束後回到大廳」一起做最順。
+
+**Completed:** v0.28.0.0 (2026-11-04)（已完成）
+
+---
+
+## 大廳裡主持人可以踢掉隊伍、改隊名
+
+**What:** 開始前，主持人頁每隊旁邊有「移除」和「改名」。
+
+**Why:** 現在主持人沒辦法移除加錯的隊伍（同一隊兩支手機各加入一次、亂取的名字）。開局後它會一直佔著輪流順序和地圖上的棋子，也吃掉 8 隊上限的名額（2026-11-04 盤點功能缺口時找到）。
+
+**Pros:** 只動大廳，不碰遊戲中的狀態。
+
+**Cons:** 被移除的手機要顯示原因並回首頁，而且不能用瀏覽器存的隊伍資料立刻再加回來（要決定是擋還是允許重新加入）。改名要過跟加入時一樣的隊名檢查，也要避開「兩隊同名時分數會互相覆蓋」那條 TODO 的問題。
+
+**Context:** `lib/room/dungeon-room.ts`（JOIN、REJOIN、LOBBY）、`lib/join-rejection.ts`（被拒絕的原因）、`app/room/[code]/host/page.tsx`、`app/room/[code]/play/page.tsx`。
+
+**Effort:** S–M　**Priority:** P2
+
+**Depends on / blocked by:** 無。
+
+決定（2026-11-04，站長選的）：被移除的那頁不會自己加回去；回首頁重新進房可以再加入。
+
+**Completed:** v0.28.0.0 (2026-11-04)（已完成）
+
+---
 
 ## 大螢幕連結搬到主持人頁最上方
 
