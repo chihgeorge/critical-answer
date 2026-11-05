@@ -120,6 +120,10 @@ describe("parseSnapshot", () => {
       // Value: protects=a mistyped phaseCard save is refused; fails_when=the boolean check is dropped; why_new=no row
       // covered phaseCard; seam=none; no_claim=restoring a valid card (lib/room/boss-phases.test.ts)
       ["phaseCard", "yes"],
+      // The intro page must be one the screen can draw (how-to-play.md); restoring a valid one is in how-to-play.test.ts.
+      ["intro", 0],
+      ["intro", 5],
+      ["intro", "2"],
     ];
     for (const [field, value] of fields) {
       expect(parseSnapshot({ ...valid(), [field]: value }), `${field}=${JSON.stringify(value)}`).toBeNull();

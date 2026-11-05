@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clericStage, hostKeyAction } from "./host-keys";
+import { clericStage, hostKeyAction, introKeyAction } from "./host-keys";
 
 describe("hostKeyAction", () => {
   it("maps 1/2/3 to the three judge buttons", () => {
@@ -54,5 +54,26 @@ describe("hostKeyAction", () => {
     expect(hostKeyAction({ key: "3" }, false, undefined, "wait")).toBe("retry");
     expect(hostKeyAction({ key: "4" }, false, undefined, "wait")).toBe("flee");
     expect(hostKeyAction({ key: "4" }, false)).toBeNull();
+  });
+});
+
+describe("introKeyAction", () => {
+  it("→ and Enter turn forward, ← back, anything else does nothing", () => {
+    expect(introKeyAction({ key: "ArrowRight" })).toBe("next");
+    expect(introKeyAction({ key: "Enter" })).toBe("next");
+    expect(introKeyAction({ key: "ArrowLeft" })).toBe("prev");
+    expect(introKeyAction({ key: "1" })).toBeNull();
+  });
+
+  it("leaves a held key, a modifier and a text field alone", () => {
+    expect(introKeyAction({ key: "ArrowRight", repeat: true })).toBeNull();
+    expect(introKeyAction({ key: "ArrowLeft", altKey: true })).toBeNull();
+    expect(introKeyAction({ key: "Enter", target: { tagName: "input" } })).toBeNull();
+    expect(introKeyAction({ key: "Enter", target: { tagName: "div", isContentEditable: true } })).toBeNull();
+  });
+
+  it("leaves Enter on a focused button to the button itself, but the arrows still turn", () => {
+    expect(introKeyAction({ key: "Enter", target: { tagName: "BUTTON" } })).toBeNull();
+    expect(introKeyAction({ key: "ArrowRight", target: { tagName: "BUTTON" } })).toBe("next");
   });
 });

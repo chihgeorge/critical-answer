@@ -1,6 +1,6 @@
 import { ABILITY_USES, isClassId, type ClassId, type GameState } from "../game-state";
 import { parseBank, type Bank } from "../question-bank";
-import { DEFAULT_AI_LIMIT, MAX_AI_LIMIT, type AiSource } from "../protocol";
+import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, type AiSource } from "../protocol";
 
 /**
  * Everything a room must get back after its Durable Object restarts, as plain data.
@@ -51,6 +51,8 @@ export interface RoomSnapshot {
   bank: Bank;
   /** The boss's phase card is up. Missing in a save from before boss phases. */
   phaseCard?: boolean;
+  /** How-to-play page on show (1..INTRO_PAGES). Missing means no intro, as in a save from before it. */
+  intro?: number;
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -88,6 +90,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (at !== null && !(typeof at === "number" && Number.isFinite(at) && at >= 0)) return null;
     const bank = parseBank(raw.bank); // throws on a bank that would not load today
     if (raw.phaseCard !== undefined && typeof raw.phaseCard !== "boolean") return null;
+    if (raw.intro !== undefined && !(Number.isInteger(raw.intro) && (raw.intro as number) >= 1 && (raw.intro as number) <= INTRO_PAGES)) return null;
     // Host-owned AI keys came later without a version bump: missing fields mean no AI and a fresh budget.
     const aiWanted = raw.aiWanted ?? false;
     const aiSource = raw.aiSource ?? "none";

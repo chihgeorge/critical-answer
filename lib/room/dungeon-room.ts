@@ -37,6 +37,7 @@ import {
 } from "../game-state";
 import {
   DEFAULT_AI_LIMIT,
+  INTRO_PAGES,
   MAX_EDIT_LINE,
   MAX_NOTES,
   MAX_TEAMS,
@@ -179,6 +180,10 @@ export class DungeonRoom {
   /** A miss used up a boss phase: its card opens once the retry line has been read (D7). Memory only:
    * a restart opens the card at once. */
   private phaseCardDue = false;
+  /** How-to-play page on show (1..INTRO_PAGES), or null (docs/designs/how-to-play.md). The game exists but its
+   * first question, the start cue and the start narration wait for the host to leave the last page (eng D3).
+   * Saved, like the phase card: a restart shows the same page (D9). */
+  private intro: number | null = null;
   private phaseCardTimer: ReturnType<typeof setTimeout> | null = null;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
@@ -440,6 +445,7 @@ export class DungeonRoom {
       lastActivityAt: this.lastActivityAt === null ? null : roundActivity(this.lastActivityAt, this.idleMs),
       bank: this.bank,
       phaseCard: this.phaseCard,
+      ...(this.intro !== null ? { intro: this.intro } : {}),
     };
   }
 
@@ -533,6 +539,7 @@ export class DungeonRoom {
     this.bank = s.bank;
     this.bankAnswers = allAnswers(s.bank);
     this.phaseCard = s.phaseCard ?? false;
+    this.intro = s.intro ?? null;
     // A save from before boss phases has a one-phase boss.
     if (this.game && !Array.isArray(this.game.boss.phases)) {
       const b = this.game.boss;
@@ -625,7 +632,11 @@ export class DungeonRoom {
 
 
   private snapshot(): ServerMessage {
-    if (!this.game) return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch };
+    if (!this.game) {
+      // A game that showed a question counts as played: the host page then leaves the intro unchecked (eng D5).
+      const replay = this.playedQuestionIds.length > 0;
+      return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}) };
+    }
     return {
       type: "STATE",
       view: getSpectatorView(this.game),
@@ -633,10 +644,11 @@ export class DungeonRoom {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       // The card holds the new phase's first question back until the host's 下一題.
-      question: this.phaseCard ? null : (this.currentQuestion()?.pub ?? null),
+      question: this.phaseCard || this.intro !== null ? null : (this.currentQuestion()?.pub ?? null),
       reveal: this.reveal,
       // name, sprite and hue only: the boss's dish is served on the kill, not before (monster-cuisine.md).
       ...(this.phaseCard ? { phaseCard: { monster: { name: this.bank.boss.monster.name, sprite: this.bank.boss.monster.sprite, hue: this.bank.boss.monster.hue } } } : {}),
+      ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
       ...this.bossPhaseInfo(),
       ...(hasCuisine(this.bank) ? { cuisine: true as const } : {}),
       pendingLock: this.pendingLock,
@@ -786,6 +798,7 @@ export class DungeonRoom {
     this.reveal = null;
     this.phaseCard = false;
     this.phaseCardDue = false;
+    this.intro = null;
     this.clearAnswerTimers();
     this.transcript = [];
     this.notes = "";
@@ -884,7 +897,10 @@ export class DungeonRoom {
           this.handleRejoin(sender, msg.teamId, msg.teamKey);
           break;
         case "HOST_START":
-          this.handleHostStart(sender, msg.aiNarration);
+          this.handleHostStart(sender, msg.aiNarration, msg.intro);
+          break;
+        case "HOST_INTRO":
+          this.handleHostIntro(sender, msg.page);
           break;
         case "HOST_AI_KEY":
           this.handleAiKey(sender, msg);
@@ -1070,6 +1086,7 @@ export class DungeonRoom {
     this.reveal = null;
     this.phaseCard = false;
     this.phaseCardDue = false;
+    this.intro = null;
     this.game = endGame(this.game);
     const eventId = ++this.eventSeq;
     this.staleBeforeSeq = eventId;
@@ -1097,6 +1114,7 @@ export class DungeonRoom {
     this.reveal = null;
     this.phaseCard = false;
     this.phaseCardDue = false;
+    this.intro = null;
     this.epilogue = null;
     this.epilogueRequested = false;
     this.lastNarration = null;
@@ -1159,7 +1177,8 @@ export class DungeonRoom {
     if (!this.requireHost(conn)) return;
     // The reveal is always set in the same judgment that bumps eventSeq, so a HOST_NEXT for an
     // older STATE is stale — ignore it rather than close a reveal nobody has seen.
-    if (!this.paused() || eventId !== this.eventSeq) return;
+    // The intro turns pages with HOST_INTRO only.
+    if (!this.paused() || this.intro !== null || eventId !== this.eventSeq) return;
     if (this.reveal) return this.closeReveal();
     if (this.phaseCardDue) return this.openPhaseCard();
     this.phaseCard = false;
@@ -1168,7 +1187,7 @@ export class DungeonRoom {
 
   /** An answer reveal or the boss's phase card is up: nobody answers until the host moves on. */
   private paused(): boolean {
-    return !!this.reveal || this.phaseCard || this.phaseCardDue;
+    return !!this.reveal || this.phaseCard || this.phaseCardDue || this.intro !== null;
   }
 
   private closeReveal() {
@@ -1305,7 +1324,7 @@ export class DungeonRoom {
     if (eventId === this.eventSeq) this.rearmAdvance(newLines);
   }
 
-  private handleHostStart(conn: Conn, aiNarration?: boolean) {
+  private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean) {
     if (!this.requireHost(conn)) return;
     if (this.game) {
       this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
@@ -1333,11 +1352,35 @@ export class DungeonRoom {
     );
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.
     this.aiNarration = aiNarration !== false;
+    this.intro = intro ? 1 : null;
+    if (intro) {
+      this.broadcastState();
+      return;
+    }
+    this.announceStart();
+  }
+
+  /** The start's fanfare and narration: at HOST_START, or when the host leaves the intro's last page (eng D3). */
+  private announceStart() {
     const eventId = ++this.eventSeq;
     this.cue = "start";
     this.broadcastState();
     const next = this.nextTurn();
     void this.narrate(eventId, { type: "start", teams: this.pendingTeams.map((t) => t.name), ...(next ? { next } : {}) });
+  }
+
+  /** How-to-play: one page at a time (eng D4). A page past the last one ends the intro. */
+  private handleHostIntro(conn: Conn, page: number) {
+    if (!this.requireHost(conn)) return;
+    // Not current ±1: a double tap or a second tab already turned this page. Dropped quietly, like a stale HOST_NEXT.
+    if (this.intro === null || Math.abs(page - this.intro) !== 1) return;
+    if (page > INTRO_PAGES) {
+      this.intro = null;
+      this.announceStart();
+      return;
+    }
+    this.intro = page;
+    this.broadcastState();
   }
 
   private handleHostJudge(
