@@ -8,7 +8,7 @@ import { UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notic
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import { INTRO_PAGES, MAX_PASSWORD, scoreName, type ClientMessage, type LobbyTeams, type ServerMessage, type StateMessage } from "@/lib/protocol";
+import { HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, type ClientMessage, type LobbyTeams, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -55,6 +55,15 @@ export default function HostPage() {
   const [drawer, setDrawer] = useState(false);
   /** Host-only: what the host may queue as a team's (or the boss's) next question, with answers. */
   const [picks, setPicks] = useState<Picks | null>(null);
+  /** Team id -> the handoff code the room gave this page, shown in that team's row (docs/designs/team-handoff.md). */
+  const [handoffs, setHandoffs] = useState<Record<string, string>>({});
+  const dropHandoff = (teamId: string, code?: string) =>
+    setHandoffs((h) => {
+      if (!(teamId in h) || (code !== undefined && h[teamId] !== code)) return h;
+      const rest = { ...h };
+      delete rest[teamId];
+      return rest;
+    });
   /** The open picker's target: a team id or "boss". */
   const [picking, setPicking] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
@@ -157,12 +166,18 @@ export default function HostPage() {
         case "HOST_PICKS":
           setPicks(msg);
           break;
+        case "HANDOFF_CODE":
+          setHandoffs((h) => ({ ...h, [msg.teamId]: msg.code }));
+          // The room forgets a code after HANDOFF_MS, so the page stops showing it then (unless a newer one replaced it).
+          setTimeout(() => dropHandoff(msg.teamId, msg.code), HANDOFF_MS);
+          break;
         case "LOBBY":
           setLobby(msg.teams);
           setReplay(!!msg.replay);
           setGame(null);
           setPicks(null);
           setPicking(null);
+          setHandoffs({});
           // Back from a finished game (回到大廳): its last line and answer are not the next game's.
           setNarration(null);
           setAnswer(null);
@@ -615,6 +630,22 @@ export default function HostPage() {
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
                   {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}
+                  <PixelButton
+                    className="!m-0 min-h-[44px] !px-3 !py-0 text-[14px]"
+                    onClick={() => (!t.online || confirm(`${t.name}還在線上，確定要交給新手機？`)) && send({ type: "HOST_HANDOFF", teamId: t.id })}
+                  >
+                    交給新手機
+                  </PixelButton>
+                  {handoffs[t.id] && (
+                    <div data-testid="handoff-code" className="flex basis-full flex-col gap-1 pl-6 text-[14px]">
+                      <span>請{t.name}的新手機打開房間網址，輸入這組配對碼：</span>
+                      <span className="px-num pl-[0.5em] text-center text-[28px] tracking-[0.5em]">{handoffs[t.id]}</span>
+                      <span className="text-[13px]">{HANDOFF_MS / 60_000} 分鐘內有效，只能用一次。</span>
+                      <PixelButton className="!m-0 min-h-[44px] !py-0 text-[14px]" onClick={() => dropHandoff(t.id)}>
+                        關閉
+                      </PixelButton>
+                    </div>
+                  )}
                   {picks?.queued[t.id] && (
                     <div className="flex min-w-0 basis-full items-center gap-2 pl-6 text-[13px]">
                       <span data-testid="queued-pick" className="min-w-0 flex-1 truncate">下一題：{pickLabel(picks.queued[t.id])}</span>

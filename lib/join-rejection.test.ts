@@ -35,6 +35,20 @@ describe("joinRejection", () => {
   });
 });
 
+// Value: protects=a turned-away phone during a game can type the host's handoff code; fails_when=the input is not
+// offered on game_already_started / bad_token, or a wrong code hides it; why_new=team handoff; seam=none
+describe("handoff code input (team-handoff.md)", () => {
+  it("is offered when the game has started, on a lost key, and after a wrong code; not for a bad password", () => {
+    expect(joinRejection("game_already_started", undefined, false, false)?.handoff).toBe(true);
+    expect(joinRejection("bad_token", undefined, false, true)?.handoff).toBe(true);
+    expect(joinRejection("bad_code", undefined, false, false)).toEqual({ text: "配對碼不對或過期了，請主持人再按一次", link: "home", handoff: true });
+    expect(joinRejection("bad_password", undefined, true, false)?.handoff).toBeUndefined();
+    // /review: a lost-key phone (bad_token) is already `joined` (the connect-time snapshot names its team); a wrong
+    // code must still say so, or the screen keeps telling it to switch browsers.
+    expect(joinRejection("bad_code", undefined, false, true)?.text).toBe("配對碼不對或過期了，請主持人再按一次");
+  });
+});
+
 describe("team_removed", () => {
   it("shows even after the phone joined, and links home", () => {
     expect(joinRejection("team_removed", undefined, false, true)).toEqual({ text: "主持人把你們的隊伍移除了", link: "home" });

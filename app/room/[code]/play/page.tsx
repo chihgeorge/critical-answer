@@ -6,7 +6,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL, offlineNotice, type DropSnapshot } from "@/lib/offline-notice";
 import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
-import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
+import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
 import { CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, type ClassId } from "@/lib/game-state";
@@ -340,6 +340,34 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
   );
 }
 
+/** A turned-away phone types the host's 4-digit code to take over a team (docs/designs/team-handoff.md). */
+function HandoffForm({ send }: { send: (m: ClientMessage) => void }) {
+  const [code, setCode] = useState("");
+  return (
+    <form
+      className="flex w-full flex-col gap-2 text-left"
+      onSubmit={(e) => {
+        e.preventDefault();
+        send({ type: "TEAM_CLAIM", code });
+      }}
+    >
+      <label htmlFor="handoff-code" className="text-[16px]">換了手機？輸入主持人給的配對碼：</label>
+      <input
+        id="handoff-code"
+        className="px-input text-center text-[28px] tracking-[0.5em]"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        placeholder="____"
+        value={code}
+        onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+      />
+      <PixelButton type="submit" variant="ok" disabled={code.length !== 4} className="!m-0 !min-h-[56px] !text-[20px]">
+        接手隊伍
+      </PixelButton>
+    </form>
+  );
+}
+
 export default function PlayPage() {
   const { code } = useParams<{ code: string }>();
   const searchParams = useSearchParams();
@@ -353,6 +381,8 @@ export default function PlayPage() {
   const joined = useRef(false);
   /** The host removed this team: a reconnect must not JOIN it back. Going home and joining again is allowed. */
   const removed = useRef(false);
+  /** This connection's TEAM_CLAIM succeeded: a second claim sent by a double tap gets bad_code, which is not a refusal. */
+  const claimed = useRef(false);
 
   const [teamId, setTeamId] = useState("");
   const [lobby, setLobby] = useState<LobbyTeams | null>(null);
@@ -387,6 +417,7 @@ export default function PlayPage() {
       // A wiped room has forgotten us, so this JOIN may be refused: ask again. The connect-time snapshot may name
       // us before the JOIN is checked; joinRejection still lets a bad key's bad_token through.
       joined.current = false;
+      claimed.current = false;
       const id = getOrCreateTeamId();
       setTeamId(id);
       const password = (sentPassword.current = joinPasswordFor(code));
@@ -402,12 +433,21 @@ export default function PlayPage() {
     onMessage(msg) {
       switch (msg.type) {
         case "ERROR": {
+          if (msg.error === "bad_code" && claimed.current) break;
           const refused = joinRejection(msg.error, msg.detail, !!sentPassword.current, joined.current);
           if (msg.error === "team_removed") removed.current = true;
           if (refused) setRejected(refused);
           else if (msg.detail === "no_hint") setNoHintQid(lastGame.current?.question?.id ?? null);
           break;
         }
+        case "TEAM_CLAIMED":
+          // The host handed us this team: be it from now on, and JOIN as it (its key skips the password and name checks).
+          claimed.current = true;
+          storeTeam(msg.teamId, msg.teamKey);
+          setTeamId(msg.teamId);
+          setRejected(null);
+          send({ type: "JOIN", teamId: msg.teamId, teamKey: msg.teamKey, teamName });
+          break;
         case "LOBBY":
           // Not a sign we joined: a connection that failed the password still gets every LOBBY broadcast.
           setLobby(msg.teams);
@@ -504,6 +544,7 @@ export default function PlayPage() {
         <div className="relative z-10 flex min-h-screen flex-col gap-4 px-[14px] pb-4 pt-5">
           <Panel role="alert" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]" style={{ background: "#ffd9d9" }}>
             {rejected.text}
+            {rejected.handoff && <HandoffForm send={send} />}
             <a href={`/?code=${code}`} className="text-[16px] underline underline-offset-2">{rejected.link === "password" ? "回首頁輸入密碼" : "回首頁"}</a>
           </Panel>
         </div>

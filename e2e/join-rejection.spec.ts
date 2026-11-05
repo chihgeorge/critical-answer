@@ -70,9 +70,10 @@ test("a big screen that never connects says it can't reach the server", async ({
 });
 
 // Value: protects=a phone that joins after the start is told why and sees none of the running game (eng review
-// D1); fails_when=game_already_started is ignored, or the STATE broadcast still renders the game for it;
-// no_claim=room_full (lib/join-rejection.test.ts).
-test("a phone that joins after the game started is told why, and sees no game", async ({ browser }) => {
+// D1), and the host can hand it a team whose phone died (team-handoff.md); fails_when=game_already_started is
+// ignored, the STATE broadcast still renders the game for it, or the handoff code does not bind it to the team;
+// no_claim=room_full (lib/join-rejection.test.ts), wrong or expired codes (lib/room/dungeon-room.test.ts).
+test("a phone that joins after the game started is told why, sees no game, and takes over a team with the host's code", async ({ browser }) => {
   const { host, code } = await hostRoom(browser);
   const first = await phone(browser);
   await first.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
@@ -84,6 +85,16 @@ test("a phone that joins after the game started is told why, and sees no game", 
   await expect(late.getByText("遊戲已經開始了，新隊伍不能再加入")).toBeVisible();
   await expect(late.getByRole("link", { name: "回首頁" })).toBeVisible();
   await expect(late.getByText(/輪到/)).toHaveCount(0);
+
+  // The first phone dies: the host hands 甲隊 to the late phone with a one-time code (docs/designs/team-handoff.md).
+  await first.context().close();
+  await expect(host.getByText("甲隊（離線）")).toBeVisible();
+  await host.getByRole("button", { name: "交給新手機" }).click();
+  const handoffCode = (await host.getByTestId("handoff-code").locator(".px-num").textContent())!.trim();
+  await late.getByLabel("換了手機？輸入主持人給的配對碼：").fill(handoffCode);
+  await late.getByRole("button", { name: "接手隊伍" }).click();
+  await expect(late.getByText("輪到我們了！")).toBeVisible();
+  await expect(host.getByText("甲隊（離線）")).toHaveCount(0);
 });
 
 // Value: protects=a name the room refuses is explained instead of a silent lobby; fails_when=invalid_name is

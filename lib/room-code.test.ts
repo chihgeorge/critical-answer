@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, getOrCreateTeamId, getOrCreateTeamKey, isFreshRoomHash, MAX_FRESH_ATTEMPTS, newHostToken, settledHash } from "./room-code";
+import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, getOrCreateTeamId, getOrCreateTeamKey, isFreshRoomHash, storeTeam, MAX_FRESH_ATTEMPTS, newHostToken, settledHash } from "./room-code";
 import { TEAM_KEY_RE } from "./protocol";
 
 // The only test that needs a browser API: a Map-backed localStorage is enough.
@@ -199,5 +199,24 @@ describe("newHostToken / getHostToken", () => {
     expect(getHostToken("ABCD")).toBe("new");
     vi.stubGlobal("location", { hash: "" });
     expect(getHostToken("ABCD")).toBe("new");
+  });
+});
+
+describe("storeTeam", () => {
+  // Value: protects=a phone that claimed a team keeps playing as it, even when storage refuses the write;
+  // fails_when=the claimed id/key are not what getOrCreateTeamId/Key return next; why_new=team handoff; seam=localStorage stub
+  it("makes the claimed team this browser's team, even with storage blocked", () => {
+    const blocked = () => {
+      throw new Error("SecurityError");
+    };
+    vi.stubGlobal("localStorage", { getItem: blocked, setItem: blocked, clear: () => {} });
+    try {
+      getOrCreateTeamId();
+      storeTeam("00000000-0000-4000-8000-000000000001", "k".repeat(32));
+      expect(getOrCreateTeamId()).toBe("00000000-0000-4000-8000-000000000001");
+      expect(getOrCreateTeamKey()).toBe("k".repeat(32));
+    } finally {
+      vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, String(v)), clear: () => store.clear() });
+    }
   });
 });

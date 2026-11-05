@@ -39,7 +39,7 @@ const madeThisLoad = new Map<string, string>();
 
 /** Client-only: the value stored under `key` in this browser, or a fresh one from `make`, stored. */
 function storedOrCreate(key: string, make: () => string): string {
-  const stored = readStored(key) ?? madeThisLoad.get(key);
+  const stored = madeThisLoad.get(key) ?? readStored(key);
   if (stored) return stored;
   const value = make();
   writeStored(key, value);
@@ -58,6 +58,15 @@ export function getOrCreateTeamId(): string {
  */
 export function getOrCreateTeamKey(): string {
   return storedOrCreate(TEAM_KEY_STORAGE_KEY, randomBytesHex);
+}
+
+/** Client-only: from now on this browser is team `teamId` (a handoff, team-handoff.md). Kept in memory too, so
+ * this page load uses it even if storage refuses the write. */
+export function storeTeam(teamId: string, teamKey: string): void {
+  for (const [key, value] of [[TEAM_ID_STORAGE_KEY, teamId], [TEAM_KEY_STORAGE_KEY, teamKey]]) {
+    writeStored(key, value);
+    madeThisLoad.set(key, value);
+  }
 }
 
 /** Client-only: a fresh 32-hex-char host token. */
