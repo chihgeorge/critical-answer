@@ -1153,9 +1153,11 @@ export class DungeonRoom {
     if (!this.game) return void this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
     if (!this.game.teams.some((t) => t.id === teamId)) return void this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
     const live = new Set([...this.handoffs].filter(([id]) => id !== teamId).map(([, h]) => h.code));
-    let code: string;
-    do code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 10_000).padStart(4, "0");
-    while (live.has(code));
+    let n: number;
+    // 14 random bits, redrawn above 9999, so every code is equally likely (a modulo would favor low codes).
+    do n = crypto.getRandomValues(new Uint16Array(1))[0] & 0x3fff;
+    while (n >= 10_000 || live.has(String(n).padStart(4, "0")));
+    const code = String(n).padStart(4, "0");
     this.pruneHandoffs();
     this.handoffs.set(teamId, { code, expiresAt: this.now() + HANDOFF_MS });
     this.sendTo(conn, { type: "HANDOFF_CODE", teamId, code });
