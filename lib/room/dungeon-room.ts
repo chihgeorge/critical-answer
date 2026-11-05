@@ -35,6 +35,7 @@ import {
 } from "../game-state";
 import {
   DEFAULT_AI_LIMIT,
+  HANDOFF_MS,
   INTRO_PAGES,
   MAX_EDIT_LINE,
   MAX_NOTES,
@@ -64,6 +65,8 @@ import { createBreaker, withBreaker } from "../narration/breaker";
 
 const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TRANSCRIPT = 500;
+/** 5 wrong claims in the room burn every live handoff code (team-handoff.md D4). */
+const HANDOFF_MAX_WRONG = 5;
 /** Long enough for a pizza break, short enough that a TV left on overnight is not billed all night. */
 const IDLE_MS = 2 * 60 * 60 * 1000;
 export const EXPIRE_MS = 24 * 60 * 60 * 1000;
@@ -153,6 +156,10 @@ export class DungeonRoom {
   private connTeam = new Map<string, string>();
   /** team id -> team secret, set by the team's first JOIN (teamId is public, the key is not). */
   private teamKeys = new Map<string, string>();
+  /** team id -> the live one-time code that hands it to a new phone (team-handoff.md). Memory only (D1). */
+  private handoffs = new Map<string, { code: string; expiresAt: number }>();
+  /** Wrong TEAM_CLAIM codes since the last burn; HANDOFF_MAX_WRONG burns every live code (D4). */
+  private handoffWrong = 0;
   /** Live connections we accepted, for the per-room cap. */
   private conns = new Map<string, Conn>();
 
@@ -770,6 +777,8 @@ export class DungeonRoom {
     this.hostConns.clear();
     this.connTeam.clear();
     this.teamKeys.clear();
+    this.handoffs.clear();
+    this.handoffWrong = 0;
     this.conns.clear();
     this.eventSeq = 0;
     this.lastNarration = null;
@@ -934,6 +943,12 @@ export class DungeonRoom {
         case "HOST_RENAME_TEAM":
           this.handleRenameTeam(sender, msg.teamId, msg.teamName);
           break;
+        case "HOST_HANDOFF":
+          this.handleHandoff(sender, msg.teamId);
+          break;
+        case "TEAM_CLAIM":
+          this.handleClaim(sender, msg.code);
+          break;
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice, msg.eventId);
           break;
@@ -1093,6 +1108,7 @@ export class DungeonRoom {
     // Once every question has been shown, start avoiding over with just this game's.
     this.playedQuestionIds = played.length >= all.size ? [...this.game.revealedQuestionIds] : played;
     this.game = null;
+    this.handoffs.clear();
     this.clearAnswerTimers();
     this.reveal = null;
     this.phaseCard = false;
@@ -1129,6 +1145,46 @@ export class DungeonRoom {
       if (phone) this.sendTo(phone, { type: "ERROR", error: "team_removed" });
     }
     this.broadcastState();
+  }
+
+  /** During a game: a 4-digit one-time code, sent to this host page only, that hands `teamId` to a new phone. */
+  private handleHandoff(conn: Conn, teamId: string) {
+    if (!this.requireHost(conn)) return;
+    if (!this.game) return void this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+    if (!this.game.teams.some((t) => t.id === teamId)) return void this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
+    const live = new Set([...this.handoffs].filter(([id]) => id !== teamId).map(([, h]) => h.code));
+    let code: string;
+    do code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 10_000).padStart(4, "0");
+    while (live.has(code));
+    this.pruneHandoffs();
+    this.handoffs.set(teamId, { code, expiresAt: this.now() + HANDOFF_MS });
+    this.sendTo(conn, { type: "HANDOFF_CODE", teamId, code });
+  }
+
+  /** A phone types the host's code: it gets the team's id and key and JOINs with them (D2: the key is shared, not replaced). */
+  private handleClaim(conn: Conn, code: string) {
+    // A phone already playing for a team would leave that team marked online when its JOIN rebinds the connection.
+    if (this.connTeam.has(conn.id)) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "already_in_team" });
+    this.pruneHandoffs();
+    const hit = [...this.handoffs].find(([, h]) => h.code === code);
+    const teamId = hit?.[0];
+    const teamKey = teamId && this.teamKeys.get(teamId);
+    if (!teamId || !teamKey) {
+      // A guess while no code is live cannot hit, so it does not use up the next code's guesses.
+      if (this.handoffs.size > 0 && ++this.handoffWrong >= HANDOFF_MAX_WRONG) {
+        this.handoffs.clear();
+        this.handoffWrong = 0;
+      }
+      return void this.sendTo(conn, { type: "ERROR", error: "bad_code" });
+    }
+    this.handoffs.delete(teamId);
+    this.sendTo(conn, { type: "TEAM_CLAIMED", teamId, teamKey });
+  }
+
+  /** Drops expired codes; with none live, earlier wrong guesses no longer count against the next code. */
+  private pruneHandoffs() {
+    for (const [id, h] of this.handoffs) if (h.expiresAt <= this.now()) this.handoffs.delete(id);
+    if (this.handoffs.size === 0) this.handoffWrong = 0;
   }
 
   /** Lobby only: the host renames a team, with JOIN's name check, and never to another team's name. */
