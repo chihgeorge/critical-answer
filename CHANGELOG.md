@@ -2,6 +2,18 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.31.3.0] - 2026-11-05
+
+**Rollback floor:** do not roll the Worker back below v0.31.3.0. Older Workers cannot read the rooms this one saves, so every live room would reset to a new game.
+
+### Changed
+- A room saves its question bank once, under its own storage key, instead of inside every save of the game. A room saved before this release still restores with its bank.
+- The host page's QR code for joining the lobby waits until the page knows its own address, so it never points at the wrong place.
+
+### Removed
+- The branch choice (「冒險出現岔路」) is gone from the room and the narration too. The phone buttons were already removed on 2026-11-04.
+- Support for very old saves and for Workers from before boss phases. A save from before boss phases is now discarded and the room starts fresh, instead of crashing on the first boss question.
+
 ## [0.31.2.0] - 2026-11-05
 
 ### Changed
