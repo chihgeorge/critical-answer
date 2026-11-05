@@ -1,8 +1,32 @@
 # TODOs
 
+## 正式遊戲開始前加玩法說明（文字＋圖片）
 
+**What:** 遊戲正式開始前，給玩家看一段玩法說明，文字配圖片最好。
 
+**Why:** 站長 2026-11-04 提出：新玩家進來不知道怎麼玩。
 
+**Context:** 放在哪裡還沒定：大螢幕（`app/room/[code]/screen/page.tsx`）、玩家手機大廳（`app/room/[code]/play/page.tsx`），或兩邊都放。圖片可以用現有的像素風元件（`components/`）截圖或畫示意圖。
+
+**Effort:** M　**Priority:** P2
+
+**Depends on / blocked by:** 動手前先用 `/plan-design-review` 定版面和要放哪幾張圖。
+
+---
+
+## 精簡 README.md
+
+**What:** 把 README.md（目前 196 行）縮短，只留新讀者需要的部分。
+
+**Why:** 站長 2026-11-04 提出：README 太長。
+
+**Context:** 現在的段落：玩法、技術棧、快速開始、題庫、專案結構、已知限制、路線圖、授權。細節可以搬到 `docs/` 或直接刪掉（專案結構、路線圖跟 TODOS.md 重複的部分）。
+
+**Effort:** S　**Priority:** P3
+
+**Depends on / blocked by:** 無。
+
+---
 
 
 ## 把「冒險出現岔路」的選擇加回玩家手機
