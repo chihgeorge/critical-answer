@@ -19,7 +19,7 @@ Key routing rules:
 
 ## Testing
 
-Run: `npm run test` (vitest, unit) · `npm run e2e` (playwright, e2e — **CI only**: GitHub CI runs it on every pull request and every push to main; do not run it locally, it overloads the machine) · `npm run check:bundle` (fails if any question/answer text leaks into the browser bundle — see `scripts/check-bundle.sh`) · `npx tsc --noEmit -p .` and `npx tsc --noEmit -p worker` · `npm run lint`.
+Run: `npm run test` (vitest, unit) · `npm run e2e` (playwright, e2e — **CI only**: GitHub CI runs it on every pull request and every push to main, in two parallel shards; do not run it locally, it overloads the machine) · `npm run check:bundle` (fails if any question/answer text leaks into the browser bundle — see `scripts/check-bundle.sh`) · `npx tsc --noEmit -p .` and `npx tsc --noEmit -p worker` · `npm run lint`.
 
 **`npm run check:bundle` is not optional.** It caught a real regression (2026-09-23, v0.6.0.1). A client component imported `lib/question-bank.ts`. That import put the top-level parsed `BANK` constant into the public JS of the page. `BANK` is the whole bank, with every answer. The leak bypassed `OWNER_KEY` entirely.
 

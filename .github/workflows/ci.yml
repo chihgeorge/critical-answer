@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  check:
+  static:
     # Pinned: ubuntu-latest moves to Ubuntu 26 on 2026-10-19; try 26 deliberately (TODOS.md), not by surprise.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -37,12 +37,37 @@ jobs:
       - run: npm test
       # Builds, then fails if any question or answer text is in the browser bundle.
       - run: npm run check:bundle
+
+  e2e:
+    # Two shards, each with its own wrangler and Next servers, so the shared question bank stays per shard.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run e2e
+      # `next dev`, not `next start`: the bank-editor stale-load tests rely on dev mode's double effects.
+      - run: npx playwright test --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
 
+  # The main ruleset requires a status named `check`: this job passes only when every job above passed.
+  check:
+    if: always()
+    needs: [static, e2e]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - run: test "${{ needs.static.result }}" = success && test "${{ needs.e2e.result }}" = success

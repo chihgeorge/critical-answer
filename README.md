@@ -104,7 +104,7 @@ sh scripts/playtest.sh stop
 | `npm run playtest` / `npm run playtest:stop` | 建置正式版並在區網啟動／停止（見上） |
 | `npm test` | 執行單元測試（不含會呼叫 Claude 的測試） |
 | `ANTHROPIC_API_KEY=... npm run test:live` | 用真的金鑰跑 LLM 旁白冒煙測試（會花幾分錢） |
-| `npm run e2e` | Playwright 端對端測試（自己開伺服器，用 3101 和 1996 埠；平常交給 GitHub CI 跑，本機太吃資源） |
+| `npm run e2e` | Playwright 端對端測試（自己開伺服器，用 3101 和 1996 埠；平常交給 GitHub CI 跑，本機太吃資源。CI 把測試分成兩組平行跑） |
 | `npm run check:bundle` | 建置後檢查題目與答案沒有進到瀏覽器 bundle |
 | `npm run test:watch` | 監看模式測試 |
 | `npm run lint` | ESLint |

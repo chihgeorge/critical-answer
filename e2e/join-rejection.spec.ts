@@ -6,11 +6,14 @@ const UNREACHABLE = "連不上伺服器：請檢查網路，或稍後再試。";
 /** Refuses every room socket until `open()`: the first connect never succeeds. */
 async function refuseSockets(page: Page) {
   let refuse = true;
+  let attempts = 0;
   await page.routeWebSocket(/:1996\//, (ws) => {
+    attempts++;
     if (refuse) return void ws.close({ code: 1006, reason: "unreachable" });
     ws.connectToServer();
   });
-  return { open: () => void (refuse = false) };
+  // The first-connect timer's effect runs before the socket's connect effect: an attempt proves the timer is set.
+  return { open: () => void (refuse = false), attempts: () => attempts };
 }
 
 async function hostRoom(browser: Browser) {
@@ -30,8 +33,12 @@ test("a phone that never connects says it can't reach the server, and 重試 get
   const { code } = await hostRoom(browser);
   const page = await phone(browser);
   const net = await refuseSockets(page);
+  // Faked clock: jump over FIRST_CONNECT_TIMEOUT_MS (10 s) instead of waiting it out.
+  await page.clock.install();
   await page.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(page.getByText("連線中…")).toBeVisible();
+  await expect.poll(net.attempts).toBeGreaterThan(0);
+  await page.clock.fastForward(10_500);
   await expect(page.getByText(UNREACHABLE)).toBeVisible({ timeout: 15_000 });
   net.open();
   await page.getByRole("button", { name: "重試" }).click();
@@ -45,11 +52,17 @@ test("a phone that never connects says it can't reach the server, and 重試 get
 test("a big screen that never connects says it can't reach the server", async ({ browser }) => {
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   const net = await refuseSockets(screen);
+  await screen.clock.install();
   await screen.goto("/room/UNRC/screen");
+  await expect.poll(net.attempts).toBeGreaterThan(0);
+  await screen.clock.fastForward(10_500);
   await expect(screen.getByText(UNREACHABLE)).toBeVisible({ timeout: 15_000 });
   // A retry while the server is still unreachable clears the notice, then brings it back.
+  const before = net.attempts();
   await screen.getByRole("button", { name: "重試" }).click();
   await expect(screen.getByText(UNREACHABLE)).toHaveCount(0);
+  await expect.poll(net.attempts).toBeGreaterThan(before); // the re-armed timer is set before that socket opens
+  await screen.clock.fastForward(10_500);
   await expect(screen.getByText(UNREACHABLE)).toBeVisible({ timeout: 15_000 });
   net.open();
   await screen.getByRole("button", { name: "重試" }).click();

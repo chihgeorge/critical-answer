@@ -1,77 +1,28 @@
-import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { answerCorrectly, textOnlyBank, startGame } from "./answer";
+import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
+import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState } from "./answer";
+import { stubSpeechSynthesis, ttsCalls } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
 
-/** Stubs window.speechSynthesis before the page loads, recording every speak() call's text
- * and every cancel(). getVoices() returns one usable zh-TW voice so pickVoice() finds it
- * immediately (no need to wait for a real voiceschanged event in the test environment). */
-async function stubSpeechSynthesis(page: Page) {
-  await page.addInitScript(() => {
-    const calls: string[] = [];
-    let cancelCount = 0;
-    const voice = { lang: "zh-TW", name: "Test zh-TW Voice", default: true } as SpeechSynthesisVoice;
-    (window as unknown as { __ttsCalls: string[] }).__ttsCalls = calls;
-    (window as unknown as { __ttsCancelCount: () => number }).__ttsCancelCount = () => cancelCount;
-    Object.defineProperty(window, "speechSynthesis", {
-      configurable: true,
-      value: {
-        getVoices: () => [voice],
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        speak: (utter: SpeechSynthesisUtterance) => calls.push(utter.text),
-        cancel: () => {
-          cancelCount++;
-        },
-      },
-    });
-    (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = class {
-      text: string;
-      voice: SpeechSynthesisVoice | null = null;
-      lang = "";
-      constructor(text = "") {
-        this.text = text;
-      }
-    };
-  });
+/** A host page plus two phone teams (甲隊, 乙隊) in a started game, on 甲隊's turn. */
+async function twoTeamGame(browser: Browser) {
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  for (const name of ["甲隊", "乙隊"]) {
+    const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+    await team.goto(`/room/${code}/play?name=${encodeURIComponent(name)}`);
+    await expect(team.getByTestId("roster")).toContainText(name);
+  }
+  await startGame(host);
+  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+  return { host, code };
 }
 
-const ttsCalls = (page: Page) => page.evaluate(() => (window as unknown as { __ttsCalls: string[] }).__ttsCalls);
 const ttsCancelCount = (page: Page) => page.evaluate(() => (window as unknown as { __ttsCancelCount: () => number }).__ttsCancelCount());
-
-/** Same stub, but getVoices() never returns a zh-TW/Hant candidate — pickVoice() finds
- * nothing, ttsVoice stays undefined forever, so speak() keeps no-oping for anything except
- * the toggle's own unlock utterance (which bypasses speak() and calls speechSynthesis.speak
- * directly — see toggleTts's comment in the page). Exercises the "voice unavailable" fallback. */
-async function stubSpeechSynthesisNoMatchingVoice(page: Page) {
-  await page.addInitScript(() => {
-    const calls: string[] = [];
-    let cancelCount = 0;
-    (window as unknown as { __ttsCalls: string[] }).__ttsCalls = calls;
-    (window as unknown as { __ttsCancelCount: () => number }).__ttsCancelCount = () => cancelCount;
-    Object.defineProperty(window, "speechSynthesis", {
-      configurable: true,
-      value: {
-        getVoices: () => [{ lang: "en-US", name: "Test en-US Voice", default: true } as SpeechSynthesisVoice],
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        speak: (utter: SpeechSynthesisUtterance) => calls.push(utter.text),
-        cancel: () => {
-          cancelCount++;
-        },
-      },
-    });
-    (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = class {
-      text: string;
-      voice: SpeechSynthesisVoice | null = null;
-      lang = "";
-      constructor(text = "") {
-        this.text = text;
-      }
-    };
-  });
-}
 
 /** Same stub, but the voice list starts empty, as it does in browsers that load it asynchronously:
  * getVoices() returns [] until the test calls window.__loadVoices(), which fills it and fires the
@@ -179,21 +130,7 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
 });
 
 test("screen TTS: turning the toggle off cancels any speech in progress", async ({ browser }) => {
-  const host = await (await browser.newContext()).newPage();
-  await host.goto("/");
-  await host.getByRole("button", { name: /主持遊戲/ }).click();
-  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
-  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
-
-  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("甲隊");
-  const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("乙隊");
-
-  await startGame(host);
-  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+  const { host, code } = await twoTeamGame(browser);
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesis(screen);
@@ -212,21 +149,7 @@ test("screen TTS: turning the toggle off cancels any speech in progress", async 
 });
 
 test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ browser }) => {
-  const host = await (await browser.newContext()).newPage();
-  await host.goto("/");
-  await host.getByRole("button", { name: /主持遊戲/ }).click();
-  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
-  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
-
-  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("甲隊");
-  const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("乙隊");
-
-  await startGame(host);
-  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+  const { host, code } = await twoTeamGame(browser);
 
   const screenCtx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   const screen = await screenCtx.newPage();
@@ -251,58 +174,9 @@ test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ brows
   await expect.poll(() => ttsCancelCount(screen)).toBeGreaterThan(cancelsBeforeReset);
 });
 
-test("screen TTS: a host correction (HOST_EDIT_NARRATION) re-speaks the corrected text", async ({ browser }) => {
-  const host = await (await browser.newContext()).newPage();
-  await host.goto("/");
-  await host.getByRole("button", { name: /主持遊戲/ }).click();
-  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
-  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
-
-  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("甲隊");
-  const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("乙隊");
-
-  await startGame(host);
-  await expect(host.getByText("輪到：甲隊")).toBeVisible();
-
-  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
-  await stubSpeechSynthesis(screen);
-  await screen.goto(`/room/${code}/screen`);
-  await expect(screen.getByText("輪到：甲隊")).toBeVisible();
-  await screen.getByRole("button", { name: /語音/ }).click();
-
-  await answerCorrectly(host);
-  await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
-
-  // Host opens "更多", corrects the just-spoken line, sends it — same eventId, different text.
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
-  const editSection = host.locator("section", { hasText: "改寫第一句旁白" });
-  const correctedText = "測試修正後的旁白文字";
-  await editSection.locator("input").fill(correctedText);
-  await editSection.getByRole("button", { name: "送出，立刻換上大螢幕" }).click();
-
-  await expect.poll(() => ttsCalls(screen)).toContainEqual(correctedText);
-});
-
-test("screen TTS: a correction to the exact narration replayed at connect is still spoken (adversarial review finding)", async ({ browser }) => {
-  const host = await (await browser.newContext()).newPage();
-  await host.goto("/");
-  await host.getByRole("button", { name: /主持遊戲/ }).click();
-  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
-  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
-
-  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("甲隊");
-  const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("乙隊");
-
-  await startGame(host);
-  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+test("screen TTS: a host correction is spoken, both of the line replayed at connect and of a live line", async ({ browser }) => {
+  test.setTimeout(60_000); // two scenarios in one test
+  const { host, code } = await twoTeamGame(browser);
 
   // Judge the question with NO /screen watching yet — the narration becomes the room's
   // lastNarration, sitting there for onConnect to replay to whoever connects next.
@@ -324,55 +198,24 @@ test("screen TTS: a correction to the exact narration replayed at connect is sti
   const correctedText = "重播後修正的旁白文字";
   await editSection.locator("input").fill(correctedText);
   await editSection.getByRole("button", { name: "送出，立刻換上大螢幕" }).click();
-
   await expect.poll(() => ttsCalls(screen)).toContainEqual(correctedText);
+  await host.getByRole("button", { name: "關閉" }).click();
+
+  // A live line is spoken, and a correction of that spoken line (same eventId, new text) is spoken too.
+  await host.getByRole("button", { name: "下一題", exact: true }).click(); // close the first answer's reveal
+  const spokenBefore = (await ttsCalls(screen)).length; // the first correction already re-spoke a 乙隊 line
+  await answerCorrectly(host);
+  await expect
+    .poll(async () => (await ttsCalls(screen)).slice(spokenBefore))
+    .toContainEqual(expect.stringContaining("乙隊"));
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  const liveCorrection = "測試修正後的旁白文字";
+  await editSection.locator("input").fill(liveCorrection);
+  await editSection.getByRole("button", { name: "送出，立刻換上大螢幕" }).click();
+  await expect.poll(() => ttsCalls(screen)).toContainEqual(liveCorrection);
 });
 
-test("screen TTS: a live GAME_OVER followed by the epilogue speaks the epilogue text (not just the podium narration)", async ({ browser }) => {
-  test.setTimeout(60_000);
-  const code = "EPI2"; // distinct from main-line.spec.ts's "EPIL" — same shared server
-  const partyUrl = `ws://localhost:1996/parties/main/${code}`;
-  const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
-
-  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
-  await stubSpeechSynthesis(screen);
-  await screen.goto(`/room/${code}/screen`);
-
-  const host = await open(partyUrl);
-  type Msg = { type: string; phase: string; eventId: number; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
-  const box: { state: Msg | null } = { state: null };
-  const cur = () => box.state!;
-  host.onmessage = (e) => { const m = JSON.parse(e.data as string) as Msg; if (m.type === "STATE") box.state = m; };
-  host.send(JSON.stringify({ type: "HOST_CLAIM", token: "epilogue-tts-token-0123456789" }));
-  const team = await open(partyUrl);
-  team.send(JSON.stringify({ type: "JOIN", teamId: "00000000-0000-0000-0000-0000000000ee", teamKey: "epilogue-tts-team-key-0123456789", teamName: "語音終局隊" }));
-  await expect(screen.getByText("語音終局隊")).toBeVisible();
-
-  // Turn TTS on before anything is live, so the unlock utterance is the only call so far.
-  await screen.getByRole("button", { name: /語音/ }).click();
-  expect(await ttsCalls(screen)).toEqual([""]);
-
-  host.send(JSON.stringify({ type: "HOST_START", aiNarration: false }));
-  await expect.poll(() => box.state?.phase).toBe("playing");
-  for (let i = 0; i < 200 && cur().phase === "playing"; i++) {
-    const t = cur().view.teams[0];
-    const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
-    const before = cur().eventId;
-    host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId })); // close the previous answer reveal (D7); no-op if none
-    host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
-    await expect.poll(() => cur().eventId, { timeout: 2000 }).toBeGreaterThan(before);
-  }
-  expect(cur().phase).toBe("finished");
-
-  // The epilogue text arrives ~EPILOGUE_DELAY_MS (4s) after the kill shot, over the live socket
-  // this connection has open the whole time — a live EPILOGUE (no `replay` flag), so it is spoken.
-  await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/, { timeout: 15_000 });
-  await expect.poll(() => ttsCalls(screen)).toEqual(
-    expect.arrayContaining([expect.stringMatching(/地城重歸寂靜|走出地城|成為傳說/)]),
-  );
-  host.close();
-  team.close();
-});
+// A live epilogue is read aloud: main-line.spec.ts ("game over: podium at once, then the epilogue ...").
 
 test("screen TTS: an epilogue replayed at connect is shown but never spoken", async ({ browser }) => {
   test.setTimeout(60_000);
@@ -382,11 +225,10 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
 
   // Play the whole game with no screen open, and wait for the live EPILOGUE to go out.
   const host = await open(partyUrl);
-  type Msg = { type: string; phase: string; eventId: number; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
-  const box: { state: Msg | null; epilogue: boolean } = { state: null, epilogue: false };
+  const box: { state: HostState | null; epilogue: boolean } = { state: null, epilogue: false };
   const cur = () => box.state!;
   host.onmessage = (e) => {
-    const m = JSON.parse(e.data as string) as Msg;
+    const m = JSON.parse(e.data as string) as HostState;
     if (m.type === "STATE") box.state = m;
     if (m.type === "EPILOGUE") box.epilogue = true;
   };
@@ -395,15 +237,7 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
   team.send(JSON.stringify({ type: "JOIN", teamId: "00000000-0000-0000-0000-0000000000ef", teamKey: "epilogue-replay-team-key-012345", teamName: "重播終局隊" }));
   host.send(JSON.stringify({ type: "HOST_START", aiNarration: false }));
   await expect.poll(() => box.state?.phase).toBe("playing");
-  for (let i = 0; i < 200 && cur().phase === "playing"; i++) {
-    const t = cur().view.teams[0];
-    const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
-    const before = cur().eventId;
-    host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId }));
-    host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
-    await expect.poll(() => cur().eventId, { timeout: 2000 }).toBeGreaterThan(before);
-  }
-  expect(cur().phase).toBe("finished");
+  await judgeToTheEnd(host, cur);
   await expect.poll(() => box.epilogue, { timeout: 15_000 }).toBe(true);
 
   // Now open the screen with TTS already on (remembered from an earlier visit). onConnect
@@ -414,7 +248,7 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
   await screen.goto(`/room/${code}/screen`);
   await expect(screen.getByRole("button", { name: /語音開/ })).toBeVisible();
   // setEpilogue and speak run in the same handler, so once the text shows, the speak decision is made.
-  await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/, { timeout: 15_000 });
+  await expect(screen.locator(".px-say")).toContainText(EPILOGUE_RE, { timeout: 15_000 });
   expect(await ttsCalls(screen)).toEqual([]);
 
   // Positive control: the speak path is live on this connection, so the silence above came from
@@ -426,56 +260,8 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
   team.close();
 });
 
-test("screen TTS: no matching Traditional Chinese voice loaded — toggle still works, but live narration is silently never spoken (voice-unavailable fallback)", async ({ browser }) => {
-  const host = await (await browser.newContext()).newPage();
-  await host.goto("/");
-  await host.getByRole("button", { name: /主持遊戲/ }).click();
-  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
-  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
-
-  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("甲隊");
-  const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("乙隊");
-
-  await startGame(host);
-  await expect(host.getByText("輪到：甲隊")).toBeVisible();
-
-  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
-  await stubSpeechSynthesisNoMatchingVoice(screen);
-  await screen.goto(`/room/${code}/screen`);
-  await expect(screen.getByText("輪到：甲隊")).toBeVisible();
-
-  const toggle = screen.getByRole("button", { name: /語音/ });
-  await expect(toggle).toBeVisible(); // the toggle itself doesn't depend on a voice existing
-  await toggle.click();
-  expect(await ttsCalls(screen)).toEqual([""]); // unlock utterance bypasses ttsVoice entirely
-
-  await answerCorrectly(host);
-  await expect(screen.getByText("輪到：乙隊")).toBeVisible();
-  await expect(screen.locator(".px-say")).toContainText("甲隊"); // narration DID render on screen...
-  await new Promise((r) => setTimeout(r, 500)); // ...but nothing further was ever spoken
-  expect(await ttsCalls(screen)).toEqual([""]);
-});
-
 test("screen TTS: narration that arrives before the voice list has loaded is spoken once it loads, not lost", async ({ browser }) => {
-  const host = await (await browser.newContext()).newPage();
-  await host.goto("/");
-  await host.getByRole("button", { name: /主持遊戲/ }).click();
-  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
-  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
-
-  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("甲隊");
-  const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-  await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("乙隊");
-
-  await startGame(host);
-  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+  const { host, code } = await twoTeamGame(browser);
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesisLateVoices(screen);

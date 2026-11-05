@@ -1,5 +1,6 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { answerCorrectly, textOnlyBank, startGame } from "./answer";
+import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState } from "./answer";
+import { stubSpeechSynthesis, ttsCalls } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -156,73 +157,47 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
   const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await stubSpeechSynthesis(screen);
   await screen.goto(`/room/${code}/screen`);
 
   // Drive a one-team game to the boss kill over a raw socket, judging whatever question is current.
   const host = await open(partyUrl);
-  type Msg = { type: string; phase: string; eventId: number; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
-  const box: { state: Msg | null } = { state: null };
+  const box: { state: HostState | null } = { state: null };
   const cur = () => box.state!;
-  host.onmessage = (e) => { const m = JSON.parse(e.data as string) as Msg; if (m.type === "STATE") box.state = m; };
+  host.onmessage = (e) => { const m = JSON.parse(e.data as string) as HostState; if (m.type === "STATE") box.state = m; };
   host.send(JSON.stringify({ type: "HOST_CLAIM", token: "epilogue-token-0123456789" }));
   const team = await open(partyUrl);
   team.send(JSON.stringify({ type: "JOIN", teamId: "00000000-0000-0000-0000-0000000000aa", teamKey: "epilogue-team-key-0123456789", teamName: "終局隊" }));
   await expect(screen.getByText("終局隊")).toBeVisible();
+  // Read aloud too: the unlock utterance is the only speech before the game starts.
+  await screen.getByRole("button", { name: /語音/ }).click();
+  expect(await ttsCalls(screen)).toEqual([""]);
   host.send(JSON.stringify({ type: "HOST_START", aiNarration: false })); // never the real API in tests
   await expect.poll(() => box.state?.phase).toBe("playing");
   let sawBossRoom = false;
-  for (let i = 0; i < 200 && cur().phase === "playing"; i++) {
-    const t = cur().view.teams[0];
+  await judgeToTheEnd(host, cur, async (t) => {
     if (t.inBossPhase && !sawBossRoom) {
       await expect(screen.getByTestId("boss-room")).toBeVisible(); // the map's door has opened
       sawBossRoom = true;
     }
-    const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
-    const before = cur().eventId;
-    host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId })); // close the previous answer reveal (D7); no-op if none
-    host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
-    await expect.poll(() => cur().eventId, { timeout: 2000 }).toBeGreaterThan(before);
-  }
-  expect(cur().phase).toBe("finished");
+  });
   expect(sawBossRoom).toBe(true);
 
   // Podium is there immediately; the story follows as a single line.
   await expect(screen.getByText("奪得榜首")).toBeVisible();
   // The boss-kill answer ended the game, so its reveal shows on the podium screen instead (D7).
   await expect(screen.getByTestId("answer-reveal")).toContainText("最後一題正解：");
-  await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/, { timeout: 15_000 });
+  await expect(screen.locator(".px-say")).toContainText(EPILOGUE_RE, { timeout: 15_000 });
   // A single last line: no ▼ once the story has finished typing.
-  await expect(screen.locator(".px-say")).toContainText(/地城重歸寂靜|走出地城|成為傳說/);
   await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
+  // The live epilogue (no replay flag) is read aloud, not just the podium narration.
+  await expect.poll(() => ttsCalls(screen)).toEqual(expect.arrayContaining([expect.stringMatching(EPILOGUE_RE)]));
   host.close();
   team.close();
 });
 
-test("a spectator cannot knock a team out of the turn order by copying its public id", async () => {
-  const partyUrl = "ws://localhost:1996/parties/main/SPYT";
-  const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
-  const box: { teams: { name: string; online: boolean }[] } = { teams: [] };
-  const host = await open(partyUrl);
-  host.onmessage = (e) => { const m = JSON.parse(e.data as string); if (m.type === "STATE") box.teams = m.view.teams; };
-  host.send(JSON.stringify({ type: "HOST_CLAIM", token: "spectator-test-token-0123456789" }));
-  const id = "00000000-0000-0000-0000-0000000000cc";
-  const team = await open(partyUrl);
-  team.send(JSON.stringify({ type: "JOIN", teamId: id, teamKey: "the-teams-own-secret-0123456789", teamName: "被冒用隊" }));
-  await new Promise((r) => setTimeout(r, 300));
-  host.send(JSON.stringify({ type: "HOST_START", aiNarration: false }));
-  await expect.poll(() => box.teams.length).toBe(1);
-
-  const spy = await open(partyUrl);
-  let spyError = "";
-  spy.onmessage = (e) => { const m = JSON.parse(e.data as string); if (m.type === "ERROR") spyError = m.error; };
-  spy.send(JSON.stringify({ type: "REJOIN", teamId: id, teamKey: "a-guess-that-is-wrong-0123456789" }));
-  await expect.poll(() => spyError).toBe("bad_token");
-  spy.close();
-  await new Promise((r) => setTimeout(r, 500));
-  expect(box.teams[0].online).toBe(true);
-  host.close();
-  team.close();
-});
+// A spectator copying a team's public id with a wrong key changes nothing: lib/room/dungeon-room.test.ts
+// ("impersonating a team with REJOIN and a wrong key does nothing").
 
 test("the old PartyKit path is refused, and only the room can be reached", async () => {
   const tryOpen = (u: string) =>

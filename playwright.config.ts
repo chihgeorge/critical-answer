@@ -12,6 +12,12 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,
+  // A stray test.only would let every shard pass on a sliver of the suite.
+  forbidOnly: !!process.env.CI,
+  // One line per test with its time, so CI logs show which specs are slow.
+  reporter: "list",
+  // No trace: recording one slowed every test, and pushed a three-page test past its timeout.
+  // A failure still leaves error-context.md (page snapshot) in test-results/, which CI uploads.
   use: { baseURL: `http://localhost:${WEB}` },
   webServer: [
     {

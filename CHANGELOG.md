@@ -2,6 +2,13 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.31.2.0] - 2026-11-05
+
+### Changed
+- CI now runs the end-to-end tests in two parallel halves, so a pull request no longer runs into the 15-minute limit. The required `check` status passes only when the static checks and both halves passed.
+- Slower or duplicate end-to-end tests are gone or shorter. The 10-second "can't reach the server" wait uses a fake clock, the "no reconnect by itself" wait runs once instead of on every page, and tests already covered by unit tests were removed.
+- A committed `test.only` now fails CI instead of quietly running a few tests.
+
 ## [0.31.1.0] - 2026-11-05
 
 ### Fixed
