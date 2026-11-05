@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.29.0.3] - 2026-11-04
+
+### Changed
+- The plan now includes a how-to-play intro, with text and pictures, that players see before the game starts. It also includes a shorter README.
+
 ## [0.29.0.2] - 2026-11-04
 
 ### Changed
