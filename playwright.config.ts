@@ -16,8 +16,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   // One line per test with its time, so CI logs show which specs are slow.
   reporter: "list",
-  // Traces only for failures: CI uploads test-results/ when a shard fails.
-  use: { baseURL: `http://localhost:${WEB}`, trace: "retain-on-failure" },
+  // No trace: recording one slowed every test, and pushed a three-page test past its timeout.
+  // A failure still leaves error-context.md (page snapshot) in test-results/, which CI uploads.
+  use: { baseURL: `http://localhost:${WEB}` },
   webServer: [
     {
       // The same runtime as production (workerd). Each run starts from empty Durable Object storage, and

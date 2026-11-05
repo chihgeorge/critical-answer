@@ -87,6 +87,7 @@ test("the big-screen URL at the top of the host page opens the screen in a new t
 /** 下一句這樣說 (docs/designs/host-next-line.md): the host queues a line, the next narration's second segment
  * says it on the big screen, and the drawer's 已排入 goes away once it is used. Scripted narration (no AI key). */
 test("the host queues the next line, the big screen says it, and the queue empties", async ({ browser }) => {
+  test.setTimeout(60_000); // three pages and two narrated answers
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
