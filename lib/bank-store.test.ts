@@ -133,6 +133,16 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1 });
   });
 
+  // Value: protects=no saved question has an id the phones' messages would refuse (MAX_ID); fails_when=assertSavable stops checking id length; why_new=parseBank accepts any length; seam=none; no_claim=banks stored before this check
+  it("refuses to save a question id longer than 64 characters, and keeps the stored bank", async () => {
+    const storage = memoryStorage({ bank: validBank, version: 1 });
+    const store = new BankStore(storage);
+    const [q, ...rest] = validBank.pools[1];
+    const long: Bank = { ...validBank, pools: { ...validBank.pools, 1: [{ ...q, id: "x".repeat(65) }, ...rest] } };
+    await expect(store.putBank(long, 1)).rejects.toThrow(/longer than 64 characters/);
+    expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1 });
+  });
+
   // Value: protects=20 HP, the documented top, still saves; fails_when=the bound turns into >= or MAX_BOSS_HP drops;
   // why_new=the rows above only test refusals; seam=none; no_claim=the editor's own input limits (e2e)
   it("saves a boss phase with exactly 20 HP", async () => {

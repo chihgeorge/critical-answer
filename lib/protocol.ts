@@ -297,7 +297,8 @@ export function sanitizeText(text: string, max: number): string {
 
 // Raw-length ceilings, checked before any sanitising. A team name is later cut
 // to 20 characters; the ceiling here only rejects absurd payloads.
-const MAX_ID = 64;
+/** Longest id a client message may carry; the bank refuses to save longer question ids (assertSavable). */
+export const MAX_ID = 64;
 const MAX_RAW_NAME = 100;
 const MAX_RAW_TEXT = 200;
 /** A typed answer keeps this many characters (code points). */

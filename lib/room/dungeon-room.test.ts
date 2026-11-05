@@ -197,6 +197,20 @@ describe("JOIN", () => {
     expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "invalid_name" });
   });
 
+  // Value: protects=two lobby teams never share a name (the epilogue and transcript match teams by name); fails_when=JOIN stops checking names already taken; why_new=only rename checked duplicates; seam=none; no_claim=none beyond protects
+  it("rejects a name another team already has, like a rename does", () => {
+    const { room } = makeRoomWithHost();
+    send(room, makeConn(), { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "紅隊" });
+    const second = makeConn();
+    send(room, second, { type: "JOIN", teamId: T2, teamKey: KEY, teamName: " 紅隊 " });
+    expect(lastSentTo(second)).toMatchObject({ type: "ERROR", error: "invalid_name", detail: "duplicate_name" });
+    // Full-width and letter case look the same on the big screen, so they count as the same name.
+    send(room, second, { type: "JOIN", teamId: T2, teamKey: KEY, teamName: "ｒｅｄ" });
+    const third = makeConn();
+    send(room, third, { type: "JOIN", teamId: "00000000-0000-0000-0000-000000000003", teamKey: KEY2, teamName: "RED" });
+    expect(lastSentTo(third)).toMatchObject({ type: "ERROR", error: "invalid_name", detail: "duplicate_name" });
+  });
+
   it("strips HTML-special characters from a team name", () => {
     const { room } = makeRoomWithHost();
     const conn = makeConn();
