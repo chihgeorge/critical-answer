@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.29.0.1] - 2026-11-05
+
+### Changed
+- The Playwright end-to-end tests now run only in GitHub CI, on every pull request and every push to main. The local pre-ship check (`scripts/pregate-runner.sh`) runs only the unit tests, so shipping no longer overloads the developer's machine.
+
 ## [0.29.0.0] - 2026-11-04
 
 ### Added
