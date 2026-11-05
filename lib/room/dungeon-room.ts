@@ -162,6 +162,12 @@ export class DungeonRoom {
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
+  /** The eventId 結束冒險 ended the game at: a judgment line still in flight from before it is dropped. Memory only,
+   * like the narration calls it guards. */
+  private endedAtSeq: number | null = null;
+  /** Teams the host removed in the lobby: an automatic reconnect (`resume`) of one is turned away, since a phone
+   * asleep at the removal never heard. A fresh page load joins again. Memory only: a restart forgets it. */
+  private removedTeamIds = new Set<string>();
   /** The answer on show until the host moves on (D7). In memory only: a restart simply drops it. */
   private reveal: AnswerReveal | null = null;
   /** The boss's phase card is up (docs/designs/boss-phases.md): the next phase has started but its first
@@ -299,7 +305,8 @@ export class DungeonRoom {
         // eventSeq is a leftover from before a reset(), which zeroes eventSeq.
         const gen = this.hostLineGens.get(eventId);
         this.hostLineGens.delete(eventId);
-        if (eventId > this.eventSeq || (this.lastNarration && eventId < this.lastNarration.eventId)) {
+        // Also a judgment line from before 結束冒險: it hands the turn to a team, over the podium.
+        if (eventId > this.eventSeq || (this.lastNarration && eventId < this.lastNarration.eventId) || (this.endedAtSeq !== null && eventId < this.endedAtSeq)) {
           this.dropUnsaidLine();
           return;
         }
@@ -763,6 +770,8 @@ export class DungeonRoom {
     this.cue = null;
     this.epilogue = null;
     this.epilogueRequested = false;
+    this.endedAtSeq = null;
+    this.removedTeamIds.clear();
     this.reveal = null;
     this.phaseCard = false;
     this.phaseCardDue = false;
@@ -858,7 +867,7 @@ export class DungeonRoom {
           this.handleHostClaim(sender, msg.token);
           break;
         case "JOIN":
-          this.handleJoin(sender, msg.teamId, msg.teamKey, msg.teamName, msg.password ?? "");
+          this.handleJoin(sender, msg.teamId, msg.teamKey, msg.teamName, msg.password ?? "", msg.resume === true);
           break;
         case "REJOIN":
           this.handleRejoin(sender, msg.teamId, msg.teamKey);
@@ -966,7 +975,7 @@ export class DungeonRoom {
     this.sendPicks(conn);
   }
 
-  private handleJoin(conn: Conn, teamId: string, teamKey: string, rawName: string, password: string) {
+  private handleJoin(conn: Conn, teamId: string, teamKey: string, rawName: string, password: string, resume = false) {
     if (!UUID_RE.test(teamId)) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_team_id" });
       return;
@@ -981,6 +990,13 @@ export class DungeonRoom {
     if (this.game) {
       this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
       return;
+    }
+    if (this.removedTeamIds.has(teamId)) {
+      if (resume) {
+        this.sendTo(conn, { type: "ERROR", error: "team_removed" });
+        return;
+      }
+      this.removedTeamIds.delete(teamId);
     }
     if (this.joinPassword && !tokensEqual(this.joinPassword, password.trim())) {
       this.sendTo(conn, { type: "ERROR", error: "bad_password" });
@@ -1042,6 +1058,7 @@ export class DungeonRoom {
     this.phaseCardDue = false;
     this.game = endGame(this.game);
     const eventId = ++this.eventSeq;
+    this.endedAtSeq = eventId;
     this.cue = null;
     this.broadcastState();
     this.dropUnsaidLine();
@@ -1054,6 +1071,7 @@ export class DungeonRoom {
     if (!this.lobbyTeamFor(conn, teamId)) return;
     this.pendingTeams = this.pendingTeams.filter((t) => t.id !== teamId);
     this.teamKeys.delete(teamId);
+    this.removedTeamIds.add(teamId);
     for (const [connId, tid] of [...this.connTeam]) {
       if (tid !== teamId) continue;
       this.connTeam.delete(connId);

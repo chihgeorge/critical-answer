@@ -1512,6 +1512,21 @@ describe("narration (T5-T7)", () => {
     expect(sentMsgs(late).find((m) => m.type === "NARRATION").lines[0]).toBe("新的一行");
   });
 
+  it("drops a judgment's line that arrives after 結束冒險: the podium is up, nobody is next", async () => {
+    const pending: ((line: string) => void)[] = [];
+    const slow = { name: "slow", narrate: () => new Promise<string>((resolve) => pending.push(resolve)) };
+    const { room, hostConn } = start(2, { holdMs: 5000, epilogueDelayMs: 0, provider: slow });
+    await flush();
+    pending[0]("開場的一行");
+    await flush();
+    judgeCorrect(room, hostConn); // its LLM call is still out...
+    send(room, hostConn, { type: "HOST_END_GAME" }); // ...when the host ends the game
+    await flush();
+    pending[1]("接下來輪到乙隊");
+    await flush();
+    expect(all(room).filter((m) => m.type === "NARRATION").map((m) => m.lines[0])).toEqual(["開場的一行"]);
+  });
+
   it("survives a provider that throws", async () => {
     const bad = { name: "bad", narrate: async () => { throw new Error("boom"); } };
     const { room } = start(2, { holdMs: 30, epilogueDelayMs: 0, provider: bad });
@@ -2955,6 +2970,20 @@ describe("host controls: HOST_END_GAME, HOST_REMOVE_TEAM, HOST_RENAME_TEAM", () 
     // Its old key is forgotten too, so going home and joining again is a new team, with any key.
     send(room, phone, { type: "JOIN", teamId: T1, teamKey: KEY2, teamName: "重新加入" });
     expect(lastBroadcast(room).teams.map((t: { name: string }) => t.name)).toEqual(["Team 1", "重新加入"]);
+  });
+
+  it("a removed phone's automatic reconnect is turned away, but opening the room again joins", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    joinTeams(room, hostConn, 2);
+    // The phone was asleep when the host removed it, so no team_removed reached it.
+    send(room, hostConn, { type: "HOST_REMOVE_TEAM", teamId: T1 });
+    const woke = makeConn("woke");
+    room.onConnect(woke);
+    send(room, woke, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Team 0", resume: true });
+    expect(lastSentTo(woke)).toMatchObject({ type: "ERROR", error: "team_removed" });
+    expect(lastBroadcast(room).teams.map((t: { id: string }) => t.id)).toEqual([T2]);
+    send(room, woke, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Team 0" });
+    expect(lastBroadcast(room).teams.map((t: { id: string }) => t.id)).toEqual([T2, T1]);
   });
 
   it("改名 renames a lobby team, refusing an empty name and another team's name", () => {
