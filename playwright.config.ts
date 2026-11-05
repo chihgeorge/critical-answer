@@ -12,7 +12,12 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,
-  use: { baseURL: `http://localhost:${WEB}` },
+  // A stray test.only would let every shard pass on a sliver of the suite.
+  forbidOnly: !!process.env.CI,
+  // One line per test with its time, so CI logs show which specs are slow.
+  reporter: "list",
+  // Traces only for failures: CI uploads test-results/ when a shard fails.
+  use: { baseURL: `http://localhost:${WEB}`, trace: "retain-on-failure" },
   webServer: [
     {
       // The same runtime as production (workerd). Each run starts from empty Durable Object storage, and
@@ -25,10 +30,12 @@ export default defineConfig({
       timeout: 90_000,
     },
     {
-      command: `npx next dev -p ${WEB}`,
+      // CI builds first and sets E2E_NEXT_START, so the tests run the production bundle; locally, dev mode.
+      command: process.env.E2E_NEXT_START ? `npx next start -p ${WEB}` : `npx next dev -p ${WEB}`,
       port: WEB,
       reuseExistingServer: false,
       timeout: 60_000,
+      // Only `next dev` reads this; `next start` serves the host baked in by CI's build step (ci.yml).
       env: { NEXT_PUBLIC_PARTYKIT_HOST: `localhost:${WORKER}` },
     },
   ],
