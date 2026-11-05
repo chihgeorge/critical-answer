@@ -1,5 +1,7 @@
 # Shared big-screen live map (TODOS E3)
 
+> Note (2026-11-05, v0.29.0.1): the `npm run e2e` / `npx playwright test` steps in this plan now run only in GitHub CI. Do not run them locally (see CLAUDE.md, Testing).
+
 Status: design review and eng review done (2026-10-23). Built on branch claude/live-map (T1 to T6). Pawn slot widened 26 → 28px after the 8-team render so two-character tags do not touch.
 
 ## Goal

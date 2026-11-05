@@ -1,5 +1,7 @@
 # 怪物變料理：打倒怪物後端上一道菜
 
+> Note (2026-11-05, v0.29.0.1): the `npm run e2e` / `npx playwright test` steps in this plan now run only in GitHub CI. Do not run them locally (see CLAUDE.md, Testing).
+
 狀態：eng review 完成（2026-10-31），已在 `feat/monster-cuisine` 實作（T1–T5）。來源：TODOS.md「地城料理風格 1：怪物變食材，打倒後端上一道菜」。
 
 ## 問題
