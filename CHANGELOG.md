@@ -2,6 +2,13 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.31.0.0] - 2026-11-05
+
+### Changed
+- Attack narration now fits each team's class. A mage team casts spells (火球、冰箭、閃電), a warrior team swings a sword or an axe, a cleric team calls down holy light, and a thief team throws knives or strikes from the shadows. This holds for both the AI narrator and the scripted lines for correct answers and boss hits.
+- A team that picked no class hears neutral attack lines that name no weapon.
+- Ordinary hits never use the words 偷襲 or 祈禱, so nobody thinks a thief's or cleric's ability fired when it did not.
+
 ## [0.30.0.0] - 2026-11-05
 
 ### Added
