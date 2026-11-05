@@ -63,6 +63,14 @@ export default function HostPage() {
   const aiSaved = useRef<AiCredential | null>(null);
   /** A key sent but not yet confirmed by HOST_AI_STATUS. */
   const aiPending = useRef<{ credential: AiCredential; remember: boolean } | null>(null);
+  /** True from HOST_OK until the socket closes: a key message sent outside it would only get not_host. */
+  const hostClaimed = useRef(false);
+  /** The host's last key choice made while unclaimed, sent on the next HOST_OK instead of the saved key. */
+  const aiQueued = useRef<ClientMessage | null>(null);
+  const sendAiKey = (msg: ClientMessage) => {
+    if (hostClaimed.current) send(msg);
+    else aiQueued.current = msg;
+  };
   const [aiRemembered, setAiRemembered] = useState(false);
   /** The limit the host said 不用了 to, so the prompt stays closed until the limit changes. */
   const [aiDismissedAt, setAiDismissedAt] = useState<number | null>(null);
@@ -97,6 +105,7 @@ export default function HostPage() {
     onClose() {
       setConnected(false);
       setClaimed(false);
+      hostClaimed.current = false;
       setPendingTeamId(null);
     },
     onMessage(msg) {
@@ -105,12 +114,12 @@ export default function HostPage() {
           setClaimed(true);
           // The room is ours: from now on this link can no longer swap its code.
           if (isFreshRoomHash(location.hash)) history.replaceState(null, "", location.pathname + location.search + settledHash(location.hash));
-          // A restarted room has forgotten the key: send it again (the room skips the check for a key it still has).
-          // A key still pending was sent before this claim, so the room refused it with not_host: send that one instead.
-          {
-            const c = aiPending.current?.credential ?? aiSaved.current;
-            if (c) room.send(aiKeyMessage(c));
-          }
+          hostClaimed.current = true;
+          // A key chosen before the claim goes now. Otherwise a restarted room has forgotten the key: send it again
+          // (the room skips the check for a key it still has).
+          if (aiQueued.current) room.send(aiQueued.current);
+          else if (aiSaved.current) room.send(aiKeyMessage(aiSaved.current));
+          aiQueued.current = null;
           setJoinPassword(msg.joinPassword);
           setSavedPassword(msg.joinPassword);
           break;
@@ -349,11 +358,11 @@ export default function HostPage() {
       send={send}
       onUse={(credential, remember) => {
         aiPending.current = { credential, remember };
-        send(aiKeyMessage(credential));
+        sendAiKey(aiKeyMessage(credential));
       }}
       onForget={() => {
         forgetAiKey();
-        send({ type: "HOST_AI_KEY", source: "none" });
+        sendAiKey({ type: "HOST_AI_KEY", source: "none" });
       }}
     />
   );
