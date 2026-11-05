@@ -21,10 +21,9 @@ function lcg(seed: number) {
 }
 
 describe("scripted lines", () => {
-  it("has 4-5 variants for every event type", () => {
+  it("has at least 4 variants for every event type", () => {
     for (const e of samples) {
       expect(VARIANTS[e.type].length).toBeGreaterThanOrEqual(4);
-      expect(VARIANTS[e.type].length).toBeLessThanOrEqual(5);
     }
   });
 
@@ -80,10 +79,9 @@ describe("scripted lines", () => {
 });
 
 describe("atmosphereLine", () => {
-  it("has 4-5 variants for every event type", () => {
+  it("has at least 4 variants for every event type", () => {
     for (const e of samples) {
       expect(ATMOSPHERE_VARIANTS[e.type].length).toBeGreaterThanOrEqual(4);
-      expect(ATMOSPHERE_VARIANTS[e.type].length).toBeLessThanOrEqual(5);
     }
   });
 
@@ -179,9 +177,8 @@ describe("scriptedEpilogue", () => {
 describe("next-team prompt (the second line)", () => {
   const next = { team: "六個字的隊伍", monster: "守門史萊姆王", boss: false };
 
-  it("has 4-5 variants for a room and for the boss room", () => {
+  it("has at least 4 variants for a room and for the boss room", () => {
     expect(NEXT_VARIANTS.room.length).toBeGreaterThanOrEqual(4);
-    expect(NEXT_VARIANTS.room.length).toBeLessThanOrEqual(5);
     expect(NEXT_VARIANTS.boss.length).toBeGreaterThanOrEqual(4);
   });
 

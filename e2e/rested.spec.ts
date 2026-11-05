@@ -32,13 +32,17 @@ const joinOf = (ws: WebSocketRoute) => sentBy.get(ws)?.find((m) => m.type === "J
 
 const NOTICE = "房間休息中";
 
-async function restAndReconnect(page: Page, sockets: WebSocketRoute[]) {
+/** `waitForNoRetry`: the "does not reconnect by itself" check lives in the shared socket hook, so one page
+ * (the phone) pays its 3.5 s wait; the host and the big screen only check their own notice. */
+async function restAndReconnect(page: Page, sockets: WebSocketRoute[], waitForNoRetry = false) {
   await expect.poll(() => sockets.length).toBe(1);
   sockets[0].close({ code: 4001, reason: "idle" });
   await expect(page.getByText(NOTICE)).toBeVisible();
-  // partysocket would try again after about a second: it must not.
-  await page.waitForTimeout(3500);
-  expect(sockets.length).toBe(1);
+  if (waitForNoRetry) {
+    // partysocket would try again after about a second: it must not.
+    await page.waitForTimeout(3500);
+    expect(sockets.length).toBe(1);
+  }
   await page.getByRole("button", { name: "重新連線" }).click();
   await expect.poll(() => sockets.length).toBe(2);
   await expect(page.getByText(NOTICE)).toHaveCount(0);
@@ -68,7 +72,7 @@ test("a phone rests on the idle close and reconnects on a tap", async ({ browser
   const sockets = await watchSockets(page);
   await page.goto("/room/RSTP/play?name=%E7%94%B2%E9%9A%8A");
   await expect(page.getByText("等待主持人開始遊戲")).toBeVisible();
-  await restAndReconnect(page, sockets);
+  await restAndReconnect(page, sockets, true);
   await expect(page.getByText("等待主持人開始遊戲")).toBeVisible(); // joined again as the same team
   // A click is a person: that JOIN counts as activity, so it carries no `resume`.
   await expect.poll(() => joinOf(sockets[1])).toBeDefined();
@@ -84,8 +88,6 @@ test("a phone shows the expired notice on the expiry close, and still reconnects
   sockets[0].close({ code: 4002, reason: "expired" });
   await expect(page.getByText("房間已過期")).toBeVisible();
   await expect(page.getByText(NOTICE)).toHaveCount(0); // not the "progress is still saved" wording
-  await page.waitForTimeout(3500);
-  expect(sockets.length).toBe(1);
   await page.getByRole("button", { name: "重新連線" }).click();
   await expect.poll(() => sockets.length).toBe(2);
   await expect(page.getByText("房間已過期")).toHaveCount(0);

@@ -43,6 +43,27 @@ export async function answerCorrectly(host: Page) {
   throw new Error(`no phone in room ${code} is on turn`);
 }
 
+/** What a raw host socket keeps from the room's STATE messages, enough to judge every turn. */
+export type HostState = { type: string; phase: string; eventId: number; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
+
+/** Over a raw host socket, judges a one-team game correct turn after turn until it finishes (the boss kill).
+ * `onTurn` runs before each judge, e.g. to check the screen once the boss door opens. */
+export async function judgeToTheEnd(host: WebSocket, cur: () => HostState, onTurn?: (team: HostState["view"]["teams"][number]) => Promise<void>) {
+  for (let i = 0; i < 200 && cur().phase === "playing"; i++) {
+    const t = cur().view.teams[0];
+    await onTurn?.(t);
+    const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
+    const before = cur().eventId;
+    host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId })); // close the previous answer reveal (D7); no-op if none
+    host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
+    await expect.poll(() => cur().eventId, { timeout: 2000 }).toBeGreaterThan(before);
+  }
+  expect(cur().phase).toBe("finished");
+}
+
+/** The scripted epilogue's closing words (lib/narration/scripted.ts), for tests that wait for it. */
+export const EPILOGUE_RE = /地城重歸寂靜|走出地城|成為傳說/;
+
 /** Puts room 0 (pool 1) and the boss phases back after each test in the calling file. The dev server's bank is shared by every
  * spec file, so a test that seeds or filters room 0 would otherwise change what later files deal. */
 export function restoreRoom0AfterEach() {

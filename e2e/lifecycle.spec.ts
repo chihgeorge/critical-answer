@@ -62,24 +62,7 @@ const send = (p: Peer, m: object) => p.ws.send(JSON.stringify(m));
 const wait = <T,>(fn: () => T | undefined | null | false, what: string, timeout = 15_000) =>
   expect.poll(fn, { message: what, timeout, intervals: [100] }).toBeTruthy();
 
-test("a room only ever watched on the big screen (nobody ever played) still rests after the idle time", async () => {
-  test.setTimeout(30_000);
-  rmSync(STORE, { recursive: true, force: true });
-  const worker = startWorker();
-  try {
-    await expect
-      .poll(() => fetch(`http://localhost:${PORT}/healthz`).then((r) => r.ok, () => false), { timeout: 60_000, intervals: [500] })
-      .toBe(true);
-    // /screen never sends a message at all — this room's only activity, ever, is this one connection opening.
-    const screen = await open();
-    await expect
-      .poll(() => screen.closedWith, { timeout: IDLE_MS + 5000, intervals: [200] })
-      .toBe(CLOSE_IDLE);
-  } finally {
-    await killAndWaitFree(worker, PORT);
-  }
-});
-
+// A room only ever watched on the big screen still rests: lib/room/lifecycle.test.ts covers it without a worker boot.
 test("an unused room closes its connections after the idle time, keeps the game, and is forgotten after the expiry", async () => {
   test.setTimeout(120_000);
   rmSync(STORE, { recursive: true, force: true });

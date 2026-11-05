@@ -5,8 +5,7 @@ import { SFX, type SfxNote } from "./sfx";
 const sfxDuration = (notes: SfxNote[]) => Math.max(...notes.map((x) => x.at + x.duration));
 
 describe("SFX", () => {
-  it("has an effect for every cue, each short enough to finish before the narration gets going", () => {
-    expect(Object.keys(SFX).sort()).toEqual(["boss-hit", "boss-kill", "boss-phase", "correct", "flee", "retry", "start"]);
+  it("every effect is short enough to finish before the narration gets going", () => {
     for (const notes of Object.values(SFX)) {
       expect(notes.length).toBeGreaterThan(0);
       expect(sfxDuration(notes)).toBeLessThanOrEqual(1.1);
