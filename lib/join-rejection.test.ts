@@ -9,6 +9,7 @@ describe("joinRejection", () => {
     expect(joinRejection("bad_password", undefined, false, false)).toEqual({ text: "這個房間要密碼才能加入", link: "password" });
     expect(joinRejection("game_already_started", undefined, false, false)?.text).toBe("遊戲已經開始了，新隊伍不能再加入");
     expect(joinRejection("invalid_name", undefined, false, false)?.text).toBe("隊伍名稱不能用，請換一個名字");
+    expect(joinRejection("invalid_name", "duplicate_name", false, false)?.text).toBe("這個隊名已經有人用了，請換一個名字");
     expect(joinRejection("invalid_action", "room_full", false, false)).toEqual({ text: "房間已滿（最多 8 隊）", link: "home" });
     expect(joinRejection("invalid_team_id", undefined, false, false)?.link).toBe("home");
     expect(joinRejection("bad_token", undefined, false, false)?.link).toBe("home");

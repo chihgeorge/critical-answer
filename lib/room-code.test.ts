@@ -26,6 +26,21 @@ describe("getOrCreateTeamId", () => {
     localStorage.clear();
   });
 
+  // Value: protects=a phone with blocked storage can still join and keeps one team id; fails_when=storedOrCreate calls localStorage without a guard or mints a new id per call; why_new=no test blocked storage; seam=localStorage stub; no_claim=across page loads
+  it("still works, with one id per page load, when storage is blocked", () => {
+    const blocked = () => {
+      throw new Error("SecurityError");
+    };
+    vi.stubGlobal("localStorage", { getItem: blocked, setItem: blocked, clear: () => {} });
+    try {
+      const first = getOrCreateTeamId();
+      expect(first).toMatch(UUID_V4_RE);
+      expect(getOrCreateTeamId()).toBe(first);
+    } finally {
+      vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, String(v)), clear: () => store.clear() });
+    }
+  });
+
   it("returns a stored id on repeat calls without minting a new one", () => {
     const first = getOrCreateTeamId();
     const second = getOrCreateTeamId();

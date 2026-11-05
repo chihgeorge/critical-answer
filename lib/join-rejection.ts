@@ -25,7 +25,7 @@ export function joinRejection(error: ServerErrorCode, detail: string | undefined
     case "game_already_started":
       return { text: "遊戲已經開始了，新隊伍不能再加入", link: "home" };
     case "invalid_name":
-      return { text: "隊伍名稱不能用，請換一個名字", link: "home" };
+      return { text: detail === "duplicate_name" ? "這個隊名已經有人用了，請換一個名字" : "隊伍名稱不能用，請換一個名字", link: "home" };
     // A stored team id or key the room can't accept: broken browser data, not something the team did.
     case "invalid_team_id":
     case "bad_token":

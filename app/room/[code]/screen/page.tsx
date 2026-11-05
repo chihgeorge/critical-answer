@@ -515,13 +515,18 @@ export default function ScreenPage() {
     if (!restore()) return;
     // Browsers only let audio start inside a user gesture, so a remembered "on" waits for the
     // first click or key press on the page.
-    const unlock = () => void player().start();
-    window.addEventListener("pointerdown", unlock, { once: true });
-    window.addEventListener("keydown", unlock, { once: true });
-    return () => {
+    // One gesture unlocks: both listeners go, or a later key press restarts music the 🎵 button just turned off.
+    const off = () => {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
     };
+    const unlock = () => {
+      off();
+      void player().start();
+    };
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return off;
   }, []);
 
   // Keep the music under the narration voice: lower it while speechSynthesis is talking.

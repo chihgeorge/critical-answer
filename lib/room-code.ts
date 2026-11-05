@@ -1,3 +1,4 @@
+import { readStored, writeStored } from "./stored";
 const ROOM_CODE_CHARS = "BCDEFGHJKLMNPQRSTUVWXYZ";
 
 export function generateRoomCode(): string {
@@ -33,12 +34,16 @@ function randomUuidV4(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+// Blocked storage (private modes) must not stop a phone joining: a made-up value lives here for the page load.
+const madeThisLoad = new Map<string, string>();
+
 /** Client-only: the value stored under `key` in this browser, or a fresh one from `make`, stored. */
 function storedOrCreate(key: string, make: () => string): string {
-  const stored = localStorage.getItem(key);
+  const stored = readStored(key) ?? madeThisLoad.get(key);
   if (stored) return stored;
   const value = make();
-  localStorage.setItem(key, value);
+  writeStored(key, value);
+  if (readStored(key) !== value) madeThisLoad.set(key, value);
   return value;
 }
 
@@ -74,10 +79,10 @@ export function getHostToken(code: string): string | null {
   const key = HOST_TOKEN_PREFIX + code;
   const fromUrl = hashParams(location.hash).get("k");
   if (fromUrl) {
-    localStorage.setItem(key, fromUrl);
+    writeStored(key, fromUrl);
     return fromUrl;
   }
-  return localStorage.getItem(key);
+  return readStored(key);
 }
 
 /**

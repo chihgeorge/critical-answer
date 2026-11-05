@@ -766,19 +766,6 @@
 
 ---
 
-## 兩隊同名時分數會互相覆蓋
-
-**What:** 加入時沒有擋重複的隊名。`scores()` 用 `Object.fromEntries(teams.map(t => [t.name, t.reward]))`，同名的兩隊在每一筆 transcript 裡只會留下一隊的分數，旁白和電視也分不出是哪一隊。做法：加入時遇到同名就回錯誤或自動加上「2」；`scores()` 改用隊伍 id 當 key。
-
-**Why:** 後記和旁白的分數會講錯。
-
-**Context:** `lib/room/dungeon-room.ts:605-607`、`handleJoin`（`:920`）。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P3
-
-**Depends on / blocked by:** 無。
-
----
 
 ## 每一題都由主持人宣布答案，選擇題和填空題節奏一樣
 
@@ -851,6 +838,22 @@
 ---
 
 ## Completed
+
+## 兩隊同名時分數會互相覆蓋
+
+**What:** 加入時沒有擋重複的隊名。`scores()` 用 `Object.fromEntries(teams.map(t => [t.name, t.reward]))`，同名的兩隊在每一筆 transcript 裡只會留下一隊的分數，旁白和電視也分不出是哪一隊。做法：加入時遇到同名就回錯誤或自動加上「2」；`scores()` 改用隊伍 id 當 key。
+
+**Why:** 後記和旁白的分數會講錯。
+
+**Context:** `lib/room/dungeon-room.ts:605-607`、`handleJoin`（`:920`）。2026-10-30 系統檢查時找到。
+
+**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P3
+
+**Depends on / blocked by:** 無。
+
+**Completed:** v0.31.1.0 (2026-11-05)：加入時擋下別隊已經在用的名字（不分大小寫和全形半形），和改名用同一個規則。隊名不會重複，所以 `scores()` 照舊用隊名當 key。
+
+---
 
 ## 攻擊成功或失敗的旁白，武器和招式要配合隊伍的職業
 
@@ -1130,7 +1133,7 @@
 
 **Depends on / blocked by:** 無。
 
-**Completed:** v0.24.1.0 (2026-10-31)：手機和大螢幕 10 秒沒連上就顯示「連不上伺服器」和「重試」（`lib/use-room-socket.ts` 的 `unreachable`）。主持人頁沒有做。
+**Completed:** v0.24.1.0 (2026-10-31)：手機和大螢幕 10 秒沒連上就顯示「連不上伺服器」和「重試」（`lib/use-room-socket.ts` 的 `unreachable`）。主持人頁在 v0.31.1.0 補上。
 
 ---
 

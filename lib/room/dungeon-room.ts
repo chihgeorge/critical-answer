@@ -134,6 +134,9 @@ function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
  * the write fails, so a player never sees a state that was not saved. `restore()` reads it back after a
  * restart. Without storage (tests, the temporary PartyKit adapter) the room is in memory only.
  */
+/** Names a reader can't tell apart (full-width vs half-width, case) count as one team name. */
+const sameTeamName = (a: string, b: string) => a.normalize("NFKC").toLowerCase() === b.normalize("NFKC").toLowerCase();
+
 export class DungeonRoom {
   game: GameState | null = null;
   private pendingTeams: { id: string; name: string; classId?: ClassId }[] = [];
@@ -1033,8 +1036,9 @@ export class DungeonRoom {
       return;
     }
     const name = sanitizeText(rawName, MAX_TEAM_NAME_LENGTH);
-    if (!name) {
-      this.sendTo(conn, { type: "ERROR", error: "invalid_name" });
+    // Same rule as handleRenameTeam: the epilogue and the transcript tell teams apart by name.
+    if (!name || this.pendingTeams.some((t) => sameTeamName(t.name, name))) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_name", ...(name ? { detail: "duplicate_name" } : {}) });
       return;
     }
     if (this.pendingTeams.length >= MAX_TEAMS) {
@@ -1153,7 +1157,7 @@ export class DungeonRoom {
     const team = this.lobbyTeamFor(conn, teamId);
     if (!team) return;
     const name = sanitizeText(rawName, MAX_TEAM_NAME_LENGTH);
-    if (!name || this.pendingTeams.some((t) => t.id !== teamId && t.name === name)) {
+    if (!name || this.pendingTeams.some((t) => t.id !== teamId && sameTeamName(t.name, name))) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_name", ...(name ? { detail: "duplicate_name" } : {}) });
       return;
     }

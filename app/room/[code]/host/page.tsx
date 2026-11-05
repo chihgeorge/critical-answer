@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, typ
 import { keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
+import { UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
@@ -58,6 +59,12 @@ function MoreDrawer({
   const totalSegments = lines.length;
   const [notes, setNotes] = useState("");
   const [line, setLine] = useState(currentLine);
+  // A new narration line while the drawer is open replaces the draft, so 送出 never puts an old line back.
+  const [seenLine, setSeenLine] = useState(currentLine);
+  if (currentLine !== seenLine) {
+    setSeenLine(currentLine);
+    setLine(currentLine);
+  }
   const [nextDraft, setNextDraft] = useState("");
   // Cleared once the room confirms a queued line, so an ERROR (game over, only punctuation) keeps what was typed.
   const [seenNextLine, setSeenNextLine] = useState(nextLine);
@@ -568,7 +575,8 @@ export default function HostPage() {
           a.href = URL.createObjectURL(blob);
           a.download = `critical-answer-${code}-transcript.json`;
           a.click();
-          URL.revokeObjectURL(a.href);
+          // Safari starts the download after click() returns; revoking at once can cancel it.
+          setTimeout(() => URL.revokeObjectURL(a.href), 1000);
           break;
         }
         case "HOST_ANSWER":
@@ -629,7 +637,7 @@ export default function HostPage() {
     },
   });
 
-  const { reset, rested } = room;
+  const { reset, rested, unreachable } = room;
   const teamName = (id: string) => game?.view.teams.find((t) => t.id === id)?.name ?? "";
   const pickLabel = (id: string) => picks?.questions.find((q) => q.id === id)?.label ?? "";
   /** 指定 opens the picker; with a pick queued, 取消 clears it. */
@@ -809,7 +817,13 @@ export default function HostPage() {
             >{RESTED_RECONNECT_LABEL}</PixelButton>
           </Panel>
         )}
-        {!connected && !noToken && !rested && <Panel tone="turn" className="px-3 py-2 text-center text-[16px]">重新連線中…</Panel>}
+        {unreachable && !rested && !noToken && (
+          <Panel tone="turn" role="alert" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
+            {UNREACHABLE_NOTICE}
+            <PixelButton onClick={room.reconnect} className="!m-0 !px-4 !py-2 text-[16px]">{UNREACHABLE_RETRY_LABEL}</PixelButton>
+          </Panel>
+        )}
+        {!connected && !noToken && !rested && !unreachable && <Panel tone="turn" className="px-3 py-2 text-center text-[16px]">重新連線中…</Panel>}
         {error && <Panel className="px-3 py-2 text-[14px]" style={{ background: "#ffd9d9" }}>{error}</Panel>}
         {game && aiStatus && aiStatus.source !== "none" && aiStatus.exhausted && aiDismissedAt !== aiStatus.limit && (
           <AiExhausted key={aiStatus.limit} status={aiStatus} send={send} onDismiss={() => setAiDismissedAt(aiStatus.limit)} />

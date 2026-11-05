@@ -16,7 +16,7 @@
 // lib/question-bank-data.ts.
 
 import { DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./game-state";
-import type { PublicMediaContent, PublicQuestion } from "./protocol";
+import { MAX_ID, type PublicMediaContent, type PublicQuestion } from "./protocol";
 import type { SpriteKind } from "./sprite-kind";
 import { YOUTUBE_ID_RE } from "./youtube";
 
@@ -286,6 +286,9 @@ export function assertSavable(bank: Bank): void {
   if (tooMany) fail(`question ${tooMany.id} has more than ${MAX_OPTIONS} options`);
   const hp = bank.boss.phases.findIndex((p) => !Number.isInteger(p.maxHp) || p.maxHp > MAX_BOSS_HP);
   if (hp >= 0) fail(`boss phase ${hp + 1} hp must be a whole number from 1 to ${MAX_BOSS_HP}`);
+  // Save time only: a stored bank with a long id must still load, but phones could never answer that question.
+  const longId = allQuestions(bank).find((q) => q.id.length > MAX_ID);
+  if (longId) fail(`question id ${longId.id} is longer than ${MAX_ID} characters`);
 }
 
 export function roomTemplates(bank: Bank): RoomTemplate[] {
