@@ -2,6 +2,18 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.27.1.0] - 2026-11-04
+
+### Added
+- The bank editor has a 「← 回首頁」 link at the top. With unsaved edits it asks 「還沒儲存的修改會不見，確定回首頁？」 first, and with nothing unsaved it goes straight home.
+- With unsaved edits in the bank editor, reloading the page, closing the tab or pressing back now asks first. So does pressing 載入題庫, which used to replace the edits without a word.
+
+### Changed
+- The big-screen URL now sits at the top of the host page, so the host no longer has to open ⚙ 更多 to find it. It still opens in a new tab.
+
+### Removed
+- Phones no longer show 「冒險出現岔路，你們要怎麼做？」. It will come back once the way the game plays is settled.
+
 ## [0.27.0.0] - 2026-10-31
 
 ### Added
