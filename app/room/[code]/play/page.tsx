@@ -413,6 +413,10 @@ export default function PlayPage() {
           setLobby(msg.teams);
           if (msg.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           setGame(null);
+          // Back from a finished game (回到大廳): its story is over.
+          setNarration(null);
+          setEpilogue(null);
+          setRevealedText(undefined);
           seen.current.clear();
           lastGame.current = null;
           drop.current = null;

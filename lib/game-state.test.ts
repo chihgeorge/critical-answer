@@ -68,6 +68,22 @@ function makeGame(overrides?: { bossThreshold?: number; bossMaxHp?: number; team
 }
 
 describe("createGame", () => {
+  it("deals an earlier game's shown answers last, in rooms and in every boss phase (回到大廳)", () => {
+    const teams = [{ id: "T0", name: "A" }, { id: "T1", name: "B" }];
+    const later = [{ maxHp: 2, questionIds: ["p2-q1", "p2-q2"] }];
+    const g = createGame(teams, ...deck(3, 1, 4), ["boss-q1", "boss-q2"], { bossThreshold: 3 }, 2, first, undefined, {}, later, undefined, ["room0-q1", "room0-q2", "boss-q1", "p2-q1"]);
+    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["room0-q3", "room0-q4"]);
+    expect(g.boss.currentQuestionId).toBe("boss-q2");
+    expect(g.boss.phases[1].questionIds).toEqual(["p2-q2", "p2-q1"]);
+    // Not "revealed": a phase whose questions were all played last game is not used up.
+    expect(g.revealedQuestionIds).toEqual([]);
+  });
+
+  it("repeats an earlier game's questions once nothing else is left", () => {
+    const g = createGame([{ id: "T0", name: "A" }], ...deck(3, 1, 2), ["boss-q1"], { bossThreshold: 3 }, 2, first, undefined, {}, [], undefined, ["room0-q1", "room0-q2"]);
+    expect(g.teams[0].currentQuestionId).toBe("room0-q1");
+  });
+
   it("throws with zero teams", () => {
     expect(() => createGame([], ...deck(1), ["q"], { bossThreshold: 1 }, 1)).toThrow(InvalidActionError);
   });

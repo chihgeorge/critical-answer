@@ -576,6 +576,9 @@ export default function HostPage() {
           setGame(null);
           setPicks(null);
           setPicking(null);
+          // Back from a finished game (回到大廳): its last line and answer are not the next game's.
+          setNarration(null);
+          setAnswer(null);
           break;
         case "STATE":
           setGame(msg);
@@ -1091,6 +1094,10 @@ export default function HostPage() {
             <div className="mt-2 text-[18px]">
               {game.winners.map((id) => game.view.teams.find((t) => t.id === id)?.name ?? id).join("、")} 獲勝
             </div>
+            <PixelButton variant="primary" className="!mx-auto !mt-6 !block min-h-[64px] text-[22px]" disabled={!ready} onClick={() => send({ type: "HOST_BACK_TO_LOBBY" })}>
+              回到大廳，再玩一場
+            </PixelButton>
+            <div className="mt-2 text-[13px]">隊伍不用重新加入，分數歸零。這場公布過答案的題目，下一場會排到最後才出。</div>
           </Panel>
         )}
       </div>
