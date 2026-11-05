@@ -53,6 +53,14 @@ describe("request", () => {
 });
 
 describe("prompt", () => {
+  it("names the team's class and its weapons, and tells the model to fit the attack to it", () => {
+    const { system, user } = buildPrompt({ ...event, classId: "mage" }, "", []);
+    expect(user).toContain("職業是法師");
+    expect(user).toContain("法術");
+    expect(system).toMatch(/符合.*職業/);
+    expect(buildPrompt(event, "", []).user).not.toContain("職業");
+  });
+
   it("quotes the team and monster as data and tells the model to treat them that way", () => {
     const { system, user } = buildPrompt(event, "", []);
     expect(user).toContain("「紅隊」");

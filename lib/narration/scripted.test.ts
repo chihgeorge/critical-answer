@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_MISS_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_MISS_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 
 const team = "六個字的隊伍";
@@ -280,5 +280,69 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     expect(feast).toContain("綠隊吃了湯、烤肉，最飽。");
     const plain = scriptedEpilogue([{ name: "綠隊", score: 27 }], ["綠隊"], lcg(1));
     expect(plain).not.toContain("飽足感");
+  });
+});
+
+describe("class attack lines (TODOS: 旁白的武器和招式要配合職業)", () => {
+  const fills = (pool: string[], v: Record<string, string | number>) => pool.map((t) => t.replace(/\{(\w+)\}/g, (_, k: string) => String(v[k])));
+
+  it("a team with a class hears its own weapons, never another class's", () => {
+    const v = { team, monster, points: 12, bossHp: 4 };
+    for (const cls of Object.keys(CLASS_VARIANTS) as (keyof typeof CLASS_VARIANTS)[]) {
+      const p = createScriptedProvider(lcg(5));
+      const own = new Set([...fills(CLASS_VARIANTS[cls].correct, v), ...fills(CLASS_VARIANTS[cls]["boss-hit"], v)]);
+      const others = new Set(Object.entries(CLASS_VARIANTS).filter(([id]) => id !== cls).flatMap(([, c]) => [...fills(c.correct, v), ...fills(c["boss-hit"], v)]));
+      const heard = new Set<string>();
+      for (let i = 0; i < 60; i++) {
+        for (const e of [{ type: "correct", team, monster, points: 12, classId: cls }, { type: "boss-hit", team, bossHp: 4, bossMaxHp: 5, classId: cls }] as const) {
+          const line = p.line(e);
+          expect(others.has(line)).toBe(false);
+          expect(line).not.toMatch(/[{}]/);
+          expect(line.length).toBeLessThanOrEqual(40);
+          heard.add(line);
+        }
+      }
+      expect([...own].some((l) => heard.has(l))).toBe(true);
+    }
+  });
+
+  // Value: protects=an ordinary hit never sounds like a class ability fired; fails_when=a class line says 偷襲 or 祈禱 (on-screen ability names); why_new=no test checks wording against ability names; seam=none; no_claim=the AI narrator's wording
+  it("class lines never name the 偷襲 or 祈禱 abilities", () => {
+    const all = Object.values(CLASS_VARIANTS).flatMap((c) => [...c.correct, ...c["boss-hit"]]);
+    for (const l of all) expect(l).not.toMatch(/偷襲|祈禱/);
+  });
+
+  it("class lines never replace the boss entrance or the dish line", () => {
+    const p = createScriptedProvider(lcg(8));
+    const enter = new Set(fills(BOSS_ENTER_VARIANTS, { team, monster, points: 12 }));
+    for (let i = 0; i < 20; i++) {
+      expect(enter.has(p.line({ type: "correct", team, monster, points: 12, classId: "mage", entersBoss: { branches: [] } }))).toBe(true);
+      expect(p.line({ type: "correct", team, monster, points: 12, classId: "warrior", dish: "史萊姆凍" })).toContain("史萊姆凍");
+      // Value: protects=class lines never replace the emptied-bar or exhausted-phase line; fails_when=the class branch moves above those checks; why_new=those tests use no classId; seam=none; no_claim=none beyond protects
+      const emptied = p.line({ type: "boss-hit", team, bossHp: 0, bossMaxHp: 3, classId: "thief" });
+      expect(fills(BOSS_EMPTIED_VARIANTS, { team, monster, bossHp: 0 })).toContain(emptied);
+      const exhausted = p.line({ type: "boss-hit", team, bossHp: 2, bossMaxHp: 3, classId: "cleric", exhausted: true });
+      expect(fills(BOSS_EXHAUSTED_VARIANTS, { team, monster, bossHp: 2 })).toContain(exhausted);
+    }
+  });
+
+  it("a team with no class never hears a class line", () => {
+    const p = createScriptedProvider(lcg(6));
+    const v = { team, monster, points: 12, bossHp: 4 };
+    const all = new Set(Object.values(CLASS_VARIANTS).flatMap((c) => [...fills(c.correct, v), ...fills(c["boss-hit"], v)]));
+    for (let i = 0; i < 40; i++) {
+      expect(all.has(p.line({ type: "correct", team, monster, points: 12 }))).toBe(false);
+      expect(all.has(p.line({ type: "boss-hit", team, bossHp: 4, bossMaxHp: 5 }))).toBe(false);
+    }
+  });
+
+  it("never plays the same line twice in a row when a class team and a team with no class take turns", () => {
+    const p = createScriptedProvider(lcg(7));
+    let prev = "";
+    for (let i = 0; i < 200; i++) {
+      const line = p.line({ type: "correct", team, monster, points: 12, ...(i % 2 ? { classId: "warrior" as const } : {}) });
+      expect(line).not.toBe(prev);
+      prev = line;
+    }
   });
 });
