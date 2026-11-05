@@ -1,5 +1,7 @@
 # 「下一句這樣說」：主持人指定下一句旁白
 
+> Note (2026-11-05, v0.29.0.1): the `npm run e2e` / `npx playwright test` steps in this plan now run only in GitHub CI. Do not run them locally (see CLAUDE.md, Testing).
+
 狀態：eng review 完成（2026-10-31），已在 `feat/next-line` 實作（T1–T3）。來源：TODOS.md 的同名 P2 項目。
 
 ## 問題
