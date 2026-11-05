@@ -7,7 +7,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import { DEFAULT_AI_LIMIT, MAX_AI_LIMIT, scoreName, type AiKeyError, type ClientMessage, type HostPick, type LobbyTeams, type ServerMessage, type StateMessage } from "@/lib/protocol";
+import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, scoreName, type AiKeyError, type ClientMessage, type HostPick, type LobbyTeams, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, readStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -15,7 +15,8 @@ import { CLASS_ICONS, CLASS_LABELS } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { MageHint } from "@/components/mage-hint";
-import { clericStage, hostKeyAction } from "@/lib/host-keys";
+import { clericStage, hostKeyAction, introKeyAction } from "@/lib/host-keys";
+import { INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { optionLetter } from "@/components/mc-option";
 
 /** D11: the stuck-team row waits this long with no lock (or no choice after a wrong lock). */
@@ -462,6 +463,11 @@ export default function HostPage() {
   useWakeLock();
 
   const [lobby, setLobby] = useState<LobbyTeams>([]);
+  /** The room has played a game (LOBBY `replay`), so the intro checkbox starts unchecked (how-to-play.md D8, eng D5). */
+  const [replay, setReplay] = useState(false);
+  /** The host's own tick of the intro checkbox, kept only for the replay state it was made in. */
+  const [introPick, setIntroPick] = useState<{ replay: boolean; on: boolean } | null>(null);
+  const introOn = introPick && introPick.replay === replay ? introPick.on : !replay;
   const [game, setGame] = useState<StateMessage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [noToken, setNoToken] = useState(false);
@@ -573,6 +579,7 @@ export default function HostPage() {
           break;
         case "LOBBY":
           setLobby(msg.teams);
+          setReplay(!!msg.replay);
           setGame(null);
           setPicks(null);
           setPicking(null);
@@ -658,7 +665,8 @@ export default function HostPage() {
   const revealUp = !!game?.reveal || !!game?.phaseCard;
   // Keyed on the pause itself, not just "a pause is up": the answer reveal turning into the phase card
   // swaps 下一題 for another 下一題, and a double-tap must not close the card nobody has seen.
-  const pauseKey = game?.reveal ? `reveal-${game.eventId}` : game?.phaseCard ? `card-${game.eventId}` : "";
+  // The intro's pages count too: 下一頁 turns into 開始冒險 in its slot, and then into the judge buttons.
+  const pauseKey = game?.reveal ? `reveal-${game.eventId}` : game?.phaseCard ? `card-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : "";
   const [armedFor, setArmedFor] = useState(pauseKey);
   const swapArmed = armedFor === pauseKey;
   useEffect(() => {
@@ -703,8 +711,25 @@ export default function HostPage() {
   // Keyboard shortcuts for a host on a laptop (lib/host-keys.ts): each key does exactly what its
   // button does, and only while that button is enabled. A layout effect, so the listener already
   // holds the new turn when it is painted: a key pressed right after a turn change judges that turn.
+  // The intro's own keys (D7): → / Enter and ←. The judge keys below stay off while it shows.
+  const introPage = game?.phase === "playing" ? (game.intro?.page ?? null) : null;
+  useEffect(() => {
+    if (introPage === null || !ready) return;
+    function onKey(e: KeyboardEvent) {
+      if (picking || drawer || !swapArmed) return;
+      const action = introKeyAction({ key: e.key, repeat: e.repeat, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, target: e.target as HTMLElement | null });
+      if (!action || introPage === null || (action === "prev" && introPage === 1)) return;
+      send({ type: "HOST_INTRO", page: introPage + (action === "next" ? 1 : -1) });
+      e.preventDefault();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // send is a plain function over state this effect already depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [introPage, ready, picking, drawer, swapArmed]);
+
   useLayoutEffect(() => {
-    if (game?.phase !== "playing") return;
+    if (game?.phase !== "playing" || game.intro) return;
     function onKey(e: KeyboardEvent) {
       // An open picker or drawer covers the turn: a key there must not judge it or close a reveal.
       if (picking || drawer) return;
@@ -861,19 +886,59 @@ export default function HostPage() {
               </div>
               <div className="text-[13px]">{savedPassword ? `目前密碼：${savedPassword}` : "目前沒有密碼，知道代碼就能加入"}</div>
             </Panel>
+            <Panel className="mt-auto px-3 py-2">
+              <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
+                <input
+                  type="checkbox"
+                  checked={introOn}
+                  onChange={(e) => setIntroPick({ replay, on: e.target.checked })}
+                  className="h-6 w-6 accent-[var(--k)]"
+                />
+                開始前播放玩法說明
+              </label>
+            </Panel>
             <PixelButton
               variant="primary"
-              className="mt-auto min-h-[78px] text-[26px]"
+              className="min-h-[78px] text-[26px]"
               disabled={!ready || lobby.length === 0}
               // AI narration follows the room's key (HOST_AI_KEY), so a key added mid-game still takes effect.
-              onClick={() => send({ type: "HOST_START" })}
+              onClick={() => send({ type: "HOST_START", intro: introOn })}
             >
               開始遊戲 ▶
             </PixelButton>
           </section>
         )}
 
-        {game && game.phase === "playing" && turn?.team && (
+        {introPage !== null && (
+          <section data-testid="host-intro" className="flex flex-1 flex-col gap-3">
+            <Panel className="px-3 py-3 text-center">
+              <span className="px-chip">
+                怎麼玩？ <span className="px-num text-[11px]">{introPage}/{INTRO_PAGES}</span>
+              </span>
+              <div className="mt-2 text-[20px]">大螢幕正在說明規則</div>
+              <div className="mt-1 text-[15px]" style={{ color: "#6a5a7a" }}>這頁：{INTRO_PAGE_TEXT[introPage - 1]?.topic}</div>
+            </Panel>
+            <Panel tone="lav" className="px-3 py-2 text-[16px] leading-relaxed">
+              講稿提示：{INTRO_PAGE_TEXT[introPage - 1]?.script}
+            </Panel>
+            <div aria-hidden className="text-center text-[18px] tracking-[6px] text-white">
+              {Array.from({ length: INTRO_PAGES }, (_, i) => (i + 1 === introPage ? "●" : "○")).join(" ")}
+            </div>
+            <div className="mt-auto flex items-stretch gap-2">
+              {introPage > 1 && (
+                <PixelButton disabled={!ready || !swapArmed} className="!m-0 min-h-[78px] w-[110px] text-[18px]" onClick={() => send({ type: "HOST_INTRO", page: introPage - 1 })}>
+                  ◀ 上一頁
+                </PixelButton>
+              )}
+              <PixelButton variant="primary" disabled={!ready || !swapArmed} className="!m-0 min-h-[78px] flex-1 text-[26px]" onClick={() => send({ type: "HOST_INTRO", page: introPage + 1 })}>
+                {introPage === INTRO_PAGES ? "開始冒險 ▶" : "下一頁 ▶"}
+              </PixelButton>
+            </div>
+            <div className="text-center text-[13px] text-[#e9defa]">鍵盤：→ 或 Enter 下一頁，← 上一頁</div>
+          </section>
+        )}
+
+        {game && game.phase === "playing" && !game.intro && turn?.team && (
           <>
             <TurnRibbon>{turn.inBoss ? "首領戰　" : ""}輪到：{turn.team.name}</TurnRibbon>
             <Panel tone="turn" className="px-3 py-[10px]">

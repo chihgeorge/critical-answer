@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { textOnlyBank } from "./answer";
+import { textOnlyBank, startGame } from "./answer";
 
 async function mageRoom(browser: Browser) {
   const host = await (await browser.newContext()).newPage();
@@ -14,7 +14,7 @@ async function mageRoom(browser: Browser) {
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
   await expect(team.getByText("選擇題刪 2 個錯的選項；填空題看答案第一個字")).toBeVisible();
   await team.getByRole("button", { name: /法師/ }).click();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   return { host, screen, team };
 }

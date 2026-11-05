@@ -1,5 +1,5 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { answerCorrectly, textOnlyBank } from "./answer";
+import { answerCorrectly, textOnlyBank, startGame } from "./answer";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -155,7 +155,7 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
@@ -192,7 +192,7 @@ test("screen TTS: turning the toggle off cancels any speech in progress", async 
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
@@ -225,7 +225,7 @@ test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ brows
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
   const screenCtx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
@@ -265,7 +265,7 @@ test("screen TTS: a host correction (HOST_EDIT_NARRATION) re-speaks the correcte
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
@@ -301,7 +301,7 @@ test("screen TTS: a correction to the exact narration replayed at connect is sti
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
   // Judge the question with NO /screen watching yet — the narration becomes the room's
@@ -440,7 +440,7 @@ test("screen TTS: no matching Traditional Chinese voice loaded — toggle still 
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
@@ -474,7 +474,7 @@ test("screen TTS: narration that arrives before the voice list has loaded is spo
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(team.getByTestId("roster")).toContainText("乙隊");
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
@@ -554,11 +554,43 @@ test("host edit drawer: the label tells the host how many segments there are, si
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
   // The opening NARRATION already exists by the time the drawer opens (it fires right after
   // start), so the label already shows a segment count, not the plain "no count" text.
   await host.getByRole("button", { name: "⚙ 更多" }).click();
   await expect(host.getByText(/改寫第一句旁白（共 \d 句，只能改第一句，最多 40 字）/)).toBeVisible();
+});
+
+// Value: protects=with the voice on, each how-to-play page's owl line is spoken once when the page comes up (how-to-play.md D11);
+// fails_when=the intro speak call is dropped, or the per-page guard is lost so a page's line repeats on a later STATE;
+// why_new=no test spoke the intro; host-controls.spec.ts checks the pages, not the voice; seam=none;
+// no_claim=real speech output (speechSynthesis is stubbed); unit tests cover the room's paging
+test("screen TTS: the how-to-play intro speaks each page's owl line once", async ({ browser }) => {
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
+  await expect(team.getByTestId("roster")).toContainText("甲隊");
+
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await stubSpeechSynthesis(screen);
+  await screen.goto(`/room/${code}/screen`);
+  await screen.getByRole("button", { name: /語音/ }).click();
+  expect(await ttsCalls(screen)).toEqual([""]);
+
+  await expect(host.getByRole("checkbox", { name: "開始前播放玩法說明" })).toBeChecked();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  const page1 = "冒險者們，先聽我說規則……主持人會唸題目。";
+  const page2 = "題目會出現在大螢幕，答案用輪到的那隊手機送出。";
+  await expect.poll(() => ttsCalls(screen)).toEqual(["", page1]);
+
+  await host.getByRole("button", { name: "下一頁 ▶" }).click();
+  await expect(screen.getByTestId("how-to-play")).toContainText("2/4");
+  await expect.poll(() => ttsCalls(screen)).toEqual(["", page1, page2]);
 });

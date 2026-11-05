@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank } from "./answer";
+import { textOnlyBank, startGame } from "./answer";
 
 // Judged by hand with 答對！, which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -15,7 +15,7 @@ test("the host picks a team's next question and it comes up after the team's cor
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 
   await host.getByRole("button", { name: "指定下一題" }).click();

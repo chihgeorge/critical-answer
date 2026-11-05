@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
+import { startGame } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 const WORKER = "http://localhost:1996";
@@ -46,7 +47,7 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
 
   await host.getByRole("button", { name: "⚙ 更多" }).click();
   await host.getByRole("button", { name: "送王房" }).click();
@@ -99,7 +100,7 @@ test("a phase that runs out of questions moves on to the next one", async ({ bro
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await host.getByRole("button", { name: "⚙ 更多" }).click();
   await host.getByRole("button", { name: "送王房" }).click();
   await host.getByRole("button", { name: "確定送？" }).click();

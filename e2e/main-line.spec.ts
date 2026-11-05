@@ -1,5 +1,5 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { answerCorrectly, textOnlyBank } from "./answer";
+import { answerCorrectly, textOnlyBank, startGame } from "./answer";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -58,7 +58,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(host.getByText("乙隊")).toBeVisible();
   // AI narration is off until a host pastes a key, so tests never call the real API.
   await expect(host.getByText("AI 旁白", { exact: true })).toBeVisible();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
   await expect(screen.getByTestId("map-strip")).toBeVisible();

@@ -5,6 +5,14 @@ import { asTextBank } from "../lib/text-bank";
 const WORKER = "http://localhost:1996";
 const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
 
+/** 開始遊戲 without the how-to-play intro, the way every test but the intro's own starts a game
+ * (docs/designs/how-to-play.md eng D6). The intro itself is tested in host-controls.spec.ts. */
+export async function startGame(host: Page) {
+  const intro = host.getByRole("checkbox", { name: "開始前播放玩法說明" });
+  await intro.uncheck();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+}
+
 /** Answers the current turn correctly, whatever kind of question was dealt: the host presses 答對！
  * on a text question; on a multipleChoice one the host can't judge (docs/designs/phone-answering.md),
  * so the team on turn taps the right option on its phone and locks it. The phone is found among

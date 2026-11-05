@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { answerCorrectly } from "./answer";
+import { answerCorrectly, startGame } from "./answer";
 import { readFile } from "node:fs/promises";
 
 /** The host's ⚙ 更多 drawer: director notes are saved into the room, and the narration transcript
@@ -15,7 +15,7 @@ test("the host saves director notes and downloads a transcript that contains the
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   // One judged answer, so the transcript has a narration line as well as the notes.
   await answerCorrectly(host);
   await expect(host.getByTestId("host-reveal")).toBeVisible();
@@ -49,7 +49,7 @@ test("the phone shows reward points and the host sends a team to the boss from t
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("0 飽足感")).toBeVisible();
   await expect(team.getByText(/\/ 15/)).toHaveCount(0);
 
@@ -75,7 +75,7 @@ test("the big-screen URL at the top of the host page opens the screen in a new t
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   // The full URL with the origin, so the host can type it into a TV (the origin is "" only in the server HTML).
   await expect(host.getByRole("link", { name: /\/screen$/ })).toHaveText(`${baseURL}/room/${code}/screen`);
 
@@ -98,7 +98,7 @@ test("the host queues the next line, the big screen says it, and the queue empti
   await expect(team.getByTestId("roster")).toContainText("甲隊");
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await screen.goto(`/room/${code}/screen`);
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
 
   const queued = "不怕死的冒險者問珍珠能吃嗎";
   await host.getByRole("button", { name: "⚙ 更多" }).click();
