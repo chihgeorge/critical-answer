@@ -4,19 +4,17 @@
 // its phone; see TEAM_SUBMIT_TEXT below). Only the host can send HOST_JUDGE — trusting a
 // team's own "I got it right" claim would let them self-score.
 //
-// TEAM_BRANCH_CHOICE and TEAM_SELECT_OPTION are the exceptions to "only the
-// host mutates game state" (docs/designs/dm-branching-and-question-types.md
-// decision 1; docs/designs/multiple-choice-questions.md decision 5): neither
-// is a score claim. A branch pick changes no score, and a multiple-choice pick
-// or lock is judged by the room against the shown correctIndex (the bank's, moved by
-// the game's optionOrder), which never
+// TEAM_SELECT_OPTION is an exception to "only the host mutates game state"
+// (docs/designs/multiple-choice-questions.md decision 5): it is not a score claim.
+// A multiple-choice pick or lock is judged by the room against the shown correctIndex
+// (the bank's, moved by the game's optionOrder), which never
 // reaches a client (docs/designs/phone-answering.md), so the self-scoring risk
-// above does not apply. Both derive their sender's team from the
+// above does not apply. It derives its sender's team from the
 // connection's own connTeam binding (set at JOIN/REJOIN) — never from a
-// client-supplied team id — so no teamKey is needed on either message,
-// unlike JOIN/REJOIN. Unlike TEAM_BRANCH_CHOICE, TEAM_SELECT_OPTION is
+// client-supplied team id — so no teamKey is needed,
+// unlike JOIN/REJOIN. TEAM_SELECT_OPTION is
 // re-selectable (a later pick for the same question overwrites the earlier
-// one) until TEAM_LOCK_OPTION commits it — not a one-time narrative fork.
+// one) until TEAM_LOCK_OPTION commits it.
 //
 // TEAM_PICK_CLASS and TEAM_USE_ABILITY (docs/designs/class-abilities.md) also
 // come from the team's own phone, bound by connTeam. A class pick is lobby-only;
@@ -31,7 +29,7 @@
 // The first HOST_CLAIM for a room sets it (trust on first use, on a 4-letter
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
-import { isBranchOptionId, isClassId, type BranchOptionId, type ClassId, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { isClassId, type ClassId, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { SpriteKind } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -141,8 +139,6 @@ export type ClientMessage =
       /** The eventId of the STATE the host judged from; an older one is a stale press and is dropped. */
       eventId?: number;
     }
-  /** DM branching interlude pick, sent by the team's own phone. See the module header. */
-  | { type: "TEAM_BRANCH_CHOICE"; roomIndex: number; choice: BranchOptionId }
   /** MultipleChoice pick, sent by the team's own phone. Re-selectable — see the module header.
    * `optionIndex` is only type-checked here (non-negative integer); the real bounds check
    * against the live question's actual options.length happens in dungeon-room.ts, which is
@@ -280,7 +276,7 @@ const MAX_AI_KEY = 256;
 export const DEFAULT_AI_LIMIT = 300;
 export const MAX_AI_LIMIT = 5000;
 
-export const HOST_TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
+const HOST_TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
 /** Same shape as the host token. */
 export const TEAM_KEY_RE = HOST_TOKEN_RE;
 
@@ -434,10 +430,6 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.correct && (m.fleeChoice === "team" || m.fleeChoice === "pray")) return null;
       if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       return { type: "HOST_JUDGE", teamId, questionId, correct: m.correct, fleeChoice: m.fleeChoice, ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}) };
-    }
-    case "TEAM_BRANCH_CHOICE": {
-      if (!Number.isInteger(m.roomIndex) || !isBranchOptionId(m.choice)) return null;
-      return { type: "TEAM_BRANCH_CHOICE", roomIndex: m.roomIndex as number, choice: m.choice };
     }
     case "TEAM_SELECT_OPTION": {
       const questionId = str(m.questionId, MAX_ID);

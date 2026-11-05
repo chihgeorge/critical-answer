@@ -12,7 +12,6 @@ const team = (i: number, roomIndex: number, extra: { inBossPhase?: boolean; onli
   online: extra.online ?? true,
   currentQuestionId: "q",
   currentSelection: null,
-  branchChoices: {},
 });
 type Team = ReturnType<typeof team>;
 
@@ -25,7 +24,7 @@ const state = (teams: Team[], eventId: number) =>
     reveal: null,
     eventId,
     question: { id: "q", difficulty: 2, content: { kind: "text", value: "題目" }, monster: { name: "史萊姆", sprite: "slime", hue: 0 } },
-    view: { currentTurnTeamId: "t0", teams, bossHp: 5, bossMaxHp: 5, bossCurrentQuestionId: "b" },
+    view: { currentTurnTeamId: "t0", teams, bossHp: 5, bossMaxHp: 5, bossPhase: 1, bossCurrentQuestionId: "b" },
   });
 
 /** Every connection gets the latest state on open; `push` sends a new one to the open connection. */

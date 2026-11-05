@@ -14,21 +14,6 @@
 //                 ▼                               ▼
 //        T 分數 < 門檻 X                     T 分數 ≥ 門檻 X
 //        （一般怪物房）                        （首領房）
-//                 │
-//                 │ answerQuestion(): 答對，roomIndex 真的變化
-//                 │ (最後一房被 clamp 反覆刷分不算，見下方 recordBranchChoice)
-//                 ▼
-//        ┌───────────────────────────┐
-//        │ 該房變成「可選」：client 端比對   │   （非同步、不擋回合 — T 的
-//        │ roomIndex 與 branchChoices 的鍵   │    下一輪照常進行，選擇是
-//        │ 值，缺的那個 roomIndex 就顯示分支  │    背景 UI，隨時可補）
-//        │ 按鈕（DM branching interlude）    │
-//        └──────────────┬────────────┘
-//                        │ TEAM_BRANCH_CHOICE（隊伍手機直接發，
-//                        │ teamId 由 connTeam 綁定推導，不信任 client）
-//                        ▼
-//        recordBranchChoice()：第一次選擇定案，
-//        同 roomIndex 之後的提交一律拒絕
 //
 // Class abilities (docs/designs/class-abilities.md): a team picked a class in the lobby
 // spends one of its ABILITY_USES on its turn. The warrior rolls instead of answering:
@@ -40,58 +25,15 @@
 //
 // Turn order never changes with room progress — this avoids the "arrival
 // order" snowball fairness risk flagged in /plan-eng-review's Outside Voice.
-//
-// DM branching interlude (docs/designs/dm-branching-and-question-types.md,
-// /plan-eng-review 2026-09-21): there is no server-side "trigger" step —
-// the offer is purely client-derived. A client compares a team's `roomIndex`
-// against the keys of its `branchChoices` map (both broadcast in every
-// STATE) to find rooms it has entered but not yet chosen for, and renders
-// buttons for them. The team's own phone then sends TEAM_BRANCH_CHOICE,
-// validated server-side by recordBranchChoice below. Not turn-blocking: a
-// team's next turn is never gated on answering it. The last-room clamp in
-// answerQuestion (nextRoomIndex === team.roomIndex when already at the
-// final room) means roomIndex simply never grows past it again, so no
-// special-casing is needed here — a room is only ever "enterable" once.
 
 export type Difficulty = 1 | 2 | 3 | 4 | 5;
 
 export const MIN_DIFFICULTY: Difficulty = 1;
 
-/**
- * Fixed, developer-authored branch option ids (not host-editable — see
- * design doc decision 7). Display text is looked up by id, never stored
- * durably, so copy changes never alter the meaning of an old save.
- */
-export const BRANCH_OPTIONS = ["fight", "negotiate"] as const;
-export type BranchOptionId = (typeof BRANCH_OPTIONS)[number];
-
-export function isBranchOptionId(v: unknown): v is BranchOptionId {
-  return typeof v === "string" && (BRANCH_OPTIONS as readonly string[]).includes(v);
-}
-
-/** Display text for each option id — never stored, so this can be reworded freely. */
-export const BRANCH_LABELS: Record<BranchOptionId, string> = {
-  fight: "武力",
-  negotiate: "討價",
-};
-
-/**
- * The earliest room a team entered but hasn't chosen a branch for, or null if
- * there's nothing pending. Non-blocking UI (design doc decision 4B) surfaces
- * this one at a time rather than the whole backlog at once. No phone shows it right now: kept for the
- * re-add (TODOS.md「把「冒險出現岔路」的選擇加回玩家手機」).
- */
-export function firstPendingBranchRoom(team: { roomIndex: number; branchChoices: Partial<Record<number, BranchOptionId>> }): number | null {
-  for (let i = 1; i <= team.roomIndex; i++) {
-    if (team.branchChoices[i] === undefined) return i;
-  }
-  return null;
-}
-
 /** What one boss hit pays when the bank does not say (docs/designs/scoring-and-score-pools.md S8). */
 export const DEFAULT_BOSS_HIT_REWARD = 10;
 
-/** Fixed class ids (docs/designs/class-abilities.md). Display text is looked up by id, like BRANCH_OPTIONS. */
+/** Fixed class ids (docs/designs/class-abilities.md). Display text is looked up by id. */
 export const CLASS_IDS = ["mage", "cleric", "warrior", "thief"] as const;
 export type ClassId = (typeof CLASS_IDS)[number];
 
@@ -146,12 +88,6 @@ export interface Team {
    * (recordWrongLock), so a retry turn starts with no pick.
    */
   currentSelection: number | null;
-  /**
-   * DM branching interlude choices, keyed by the roomIndex the team had
-   * just entered when it chose. First choice for a given roomIndex wins —
-   * see recordBranchChoice. Stores the option id, not display text.
-   */
-  branchChoices: Partial<Record<number, BranchOptionId>>;
   /**
    * In the boss room. The first team gets in at `bossThreshold` points; once any team is in, every
    * other team gets in on its next correct answer (docs/designs/live-map.md D9). Stored, not derived
@@ -416,7 +352,7 @@ function dealFor(game: GameState, team: Team, difficulty: Difficulty, revealed: 
 }
 
 /** The difficulty a team's next correct answer deals from: its next room's (the last room repeats). */
-export function nextRoomDifficulty(game: GameState, team: Team): Difficulty {
+function nextRoomDifficulty(game: GameState, team: Team): Difficulty {
   return game.rooms[Math.min(team.roomIndex + 1, game.rooms.length - 1)].baseDifficulty;
 }
 
@@ -510,7 +446,6 @@ export function createGame(
       currentDifficulty: rooms[0].baseDifficulty,
       currentQuestionId: dealt.questionId,
       currentSelection: null,
-      branchChoices: {},
       inBoss: config.bossThreshold <= 0, // score starts at 0
       ...(seed.classId ? { classId: seed.classId } : {}),
       abilityUses: ABILITY_USES,
@@ -558,11 +493,9 @@ export function isInBossPhase(game: GameState, teamId: string): boolean {
 
 /** Clears every boss-phase team's multipleChoice pick — used wherever the shared boss question
  * rotates (correct-hit-not-killed, flee), since every team still fighting the boss now faces a
- * different question and a leftover pick would be stale. `game` supplies the stored
- * inBoss flags (isInBossPhase); `teams` is the array to map over (sometimes `game.teams`, sometimes an already-updated
- * copy from a same-branch score change). */
-function resetBossSelections(game: GameState, teams: Team[]): Team[] {
-  return teams.map((t) => (isInBossPhase(game, t.id) ? { ...t, currentSelection: null } : t));
+ * different question and a leftover pick would be stale. */
+function resetBossSelections(teams: Team[]): Team[] {
+  return teams.map((t) => (t.inBoss ? { ...t, currentSelection: null } : t));
 }
 
 /** Starts the boss's next phase once the room opens its phase card (docs/designs/boss-phases.md, D1):
@@ -578,7 +511,7 @@ export function enterNextBossPhase(game: GameState): GameState {
   return {
     ...game,
     ...cleared,
-    teams: resetBossSelections(game, game.teams),
+    teams: resetBossSelections(game.teams),
     boss: {
       ...boss,
       phaseIndex,
@@ -681,16 +614,11 @@ export function answerQuestion(
 
   const team = getTeam(game, teamId);
   const boss = game.boss;
-  const inBoss = isInBossPhase(game, teamId);
+  const inBoss = team.inBoss;
 
   // T6: reject stale question submissions (front-end cache lag between
   // rooms/monsters) instead of silently scoring against the wrong question.
-  const expectedQuestionId = inBoss ? boss.currentQuestionId : team.currentQuestionId;
-  if (questionId !== expectedQuestionId) {
-    throw new InvalidActionError(
-      `Stale question submission for ${teamId}: expected ${expectedQuestionId}, got ${questionId}`,
-    );
-  }
+  assertCurrentQuestion(game, teamId, questionId);
 
   let nextGame = game;
   let outcome: AnswerOutcome;
@@ -721,7 +649,7 @@ export function answerQuestion(
       // a pick that team never made for this question (adversarial review finding).
       nextGame = {
         ...game,
-        teams: stay ? teams : resetBossSelections(game, teams),
+        teams: stay ? teams : resetBossSelections(teams),
         // A correct answer is always revealed (D5) — the current boss question just got right,
         // so it joins the never-redeal set before nextBossQuestionId's own next call sees it.
         revealedQuestionIds: revealedNow,
@@ -754,7 +682,7 @@ export function answerQuestion(
       nextGame = {
         ...game,
         revealedQuestionIds: revealed,
-        teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game, game.teams) : game.teams,
+        teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game.teams) : game.teams,
         boss: { ...boss, ...rotated, ...(phasePending ? { phasePending } : {}) },
       };
       outcome =
@@ -771,8 +699,7 @@ export function answerQuestion(
       // back to a team who hasn't faced it yet.
       const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
       const entersBoss = team.score + pointsAwarded >= game.config.bossThreshold || game.teams.some((t) => t.inBoss);
-      // A team walking into the boss room stays at its room: no next-room question is dealt
-      // (it would burn one) and no branch room opens that it will never walk into.
+      // A team walking into the boss room stays at its room: no next-room question is dealt (it would burn one).
       const nextRoomIndex = entersBoss ? team.roomIndex : Math.min(team.roomIndex + 1, game.rooms.length - 1);
       // Its queued pick goes with it: the boss room has its own.
       const dealt = entersBoss
@@ -816,7 +743,7 @@ export function answerQuestion(
   // Eliminated options and a mage's hint belong to a question still in play: once it leaves (answered, fled, rotated)
   // a later deal of it starts clean.
   // Any team: a room short of questions can deal one question to two teams at once.
-  const stillFaced = nextGame.teams.some((t) => (t.inBoss ? nextGame.boss.currentQuestionId : t.currentQuestionId) === questionId);
+  const stillFaced = nextGame.teams.some((t) => currentQuestionIdOf(nextGame, t.id) === questionId);
   if (!stillFaced && (questionId in nextGame.eliminated || questionId in (nextGame.mageHints ?? {}))) nextGame = { ...nextGame, ...dropEliminated(nextGame, questionId) };
   // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
   const here = { ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) };
@@ -829,7 +756,7 @@ export function answerQuestion(
  * retry/flee). The room checks its own beats (locks, rolls). */
 function assertAbilityTurn(game: GameState, teamId: string, classId: ClassId) {
   assertPlaying(game);
-  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
+  assertTurn(game, teamId);
   if (getTeam(game, teamId).classId !== classId) throw new InvalidActionError(`${teamId} is not a ${classId}`);
   if (game.pendingWrong) throw new InvalidActionError(`${teamId} already locked a wrong answer`);
   if (getTeam(game, teamId).typedAnswer !== undefined) throw new InvalidActionError("answer_submitted");
@@ -902,10 +829,15 @@ export function armSneak(game: GameState, teamId: string): GameState {
   return { ...spent, teams: patchTeam(spent.teams, teamId, () => ({ sneakArmed: true })) };
 }
 
+/** Whether `teamId` is a cleric that may pray this turn: the game on, a use left, no prayer yet this turn. */
+function clericMayPray(game: GameState, teamId: string): boolean {
+  const team = game.teams.find((t) => t.id === teamId);
+  return game.phase === "playing" && team?.classId === "cleric" && team.abilityUses > 0 && game.prayerTurn !== teamId;
+}
+
 /** Whether `teamId` is a cleric that could pray on a wrong answer now: a use left, no prayer yet this turn. */
 export function canPrayBeforeJudge(game: GameState, teamId: string): boolean {
-  const team = game.teams.find((t) => t.id === teamId);
-  return game.phase === "playing" && !game.pendingWrong && team?.classId === "cleric" && team.abilityUses > 0 && game.prayerTurn !== teamId;
+  return !game.pendingWrong && clericMayPray(game, teamId);
 }
 
 /**
@@ -915,7 +847,7 @@ export function canPrayBeforeJudge(game: GameState, teamId: string): boolean {
  */
 export function recordTextWrong(game: GameState, teamId: string, questionId: string): GameState {
   assertPlaying(game);
-  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
+  assertTurn(game, teamId);
   assertCurrentQuestion(game, teamId, questionId);
   if (!canPrayBeforeJudge(game, teamId)) throw new InvalidActionError("cannot_pray");
   return { ...game, pendingWrong: { teamId, questionId, optionIndex: null } };
@@ -923,15 +855,7 @@ export function recordTextWrong(game: GameState, teamId: string, questionId: str
 
 /** Whether `teamId`'s wrong lock is waiting on a cleric that may still pray this turn. */
 export function canPray(game: GameState, teamId: string): boolean {
-  const team = game.teams.find((t) => t.id === teamId);
-  return (
-    game.phase === "playing" &&
-    game.pendingWrong?.teamId === teamId &&
-    !game.pendingWrong.prayed &&
-    team?.classId === "cleric" &&
-    team.abilityUses > 0 &&
-    game.prayerTurn !== teamId
-  );
+  return game.pendingWrong?.teamId === teamId && !game.pendingWrong.prayed && clericMayPray(game, teamId);
 }
 
 /** The cleric prays on its wrong lock: one use, and its 重答 / 逃跑 then keeps the turn (answerQuestion). */
@@ -994,42 +918,8 @@ function dropEliminated(game: GameState, questionId: string): Pick<GameState, "e
 }
 
 /**
- * Record a team's DM branching interlude choice for a room it has already
- * entered. Non-turn-blocking (see the module header): a team may submit at
- * any point after entering `roomIndex`, even after advancing further — it
- * is validated against how far the team has actually gotten, not against
- * their current room. First choice for a given roomIndex wins; a later
- * submission for an already-decided roomIndex is a no-op error, not a
- * silent overwrite (design doc decision 6).
- *
- * `roomIndex` must be a room the team actually transitioned INTO (1..team.roomIndex)
- * — room 0 is the starting room, never entered via a branch-triggering transition,
- * and a room reached by the last-room clamp still counts once (the clamp only
- * suppresses *repeat* triggers while farming that same room, see decision 3).
- */
-export function recordBranchChoice(
-  game: GameState,
-  teamId: string,
-  roomIndex: number,
-  choice: BranchOptionId,
-): GameState {
-  assertPlaying(game);
-  const team = getTeam(game, teamId); // throws if unknown
-  if (!Number.isInteger(roomIndex) || roomIndex < 1 || roomIndex > team.roomIndex) {
-    throw new InvalidActionError(`Invalid branch roomIndex ${roomIndex} for ${teamId} (at ${team.roomIndex})`);
-  }
-  if (team.branchChoices[roomIndex] !== undefined) {
-    throw new InvalidActionError(`Branch choice for room ${roomIndex} already decided for ${teamId}`);
-  }
-  return {
-    ...game,
-    teams: patchTeam(game.teams, teamId, (t) => ({ branchChoices: { ...t.branchChoices, [roomIndex]: choice } })),
-  };
-}
-
-/**
  * Record (or change) a team's pick for the multipleChoice question they're currently
- * facing. Re-selectable — unlike recordBranchChoice, a later submission for the same
+ * facing. Re-selectable: a later submission for the same
  * question simply overwrites the earlier one; the sender only ever changes their own
  * mind before the host judges. Rejects a submission for any question other than the
  * one the team (or the shared boss encounter, if they're in it) is expected to answer
@@ -1061,7 +951,7 @@ export function recordOptionSelection(game: GameState, teamId: string, questionI
 export function submitText(game: GameState, teamId: string, questionId: string, text: string): GameState {
   assertPlaying(game);
   if (game.pendingWrong) throw new InvalidActionError("A wrong answer is already waiting for its choice");
-  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
+  assertTurn(game, teamId);
   assertCurrentQuestion(game, teamId, questionId);
   if (getTeam(game, teamId).typedAnswer !== undefined) throw new InvalidActionError("already_submitted");
   return { ...game, teams: patchTeam(game.teams, teamId, () => ({ typedAnswer: text })) };
@@ -1076,7 +966,7 @@ export function submitText(game: GameState, teamId: string, questionId: string, 
 export function recordWrongLock(game: GameState, teamId: string, questionId: string, optionIndex: number): GameState {
   assertPlaying(game);
   if (game.pendingWrong) throw new InvalidActionError("A wrong answer is already waiting for its choice");
-  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
+  assertTurn(game, teamId);
   assertCurrentQuestion(game, teamId, questionId);
   const old = game.eliminated[questionId] ?? [];
   return {
@@ -1097,6 +987,10 @@ function assertCurrentQuestion(game: GameState, teamId: string, questionId: stri
   if (questionId !== expectedQuestionId) {
     throw new InvalidActionError(`Stale question submission for ${teamId}: expected ${expectedQuestionId}, got ${questionId}`);
   }
+}
+
+function assertTurn(game: GameState, teamId: string) {
+  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError(`It is not ${teamId}'s turn`);
 }
 
 function assertPlaying(game: GameState) {
@@ -1140,16 +1034,13 @@ export interface SpectatorView {
     /** The team's current pick for a multipleChoice question, or null. Lets the host
      * see what a team has picked before judging (T7 host UI). */
     currentSelection: number | null;
-    /** DM branching interlude choices so far, keyed by roomIndex. A client derives which
-     * rooms are still pending a choice from `roomIndex` minus this map's keys. */
-    branchChoices: Partial<Record<number, BranchOptionId>>;
     classId?: ClassId;
     abilityUses: number;
     sneakArmed?: true;
     /** The typed answer waiting for the host (text questions), or null. */
     typedAnswer: string | null;
     /** A cleric that could pray if judged wrong now (canPrayBeforeJudge): the host's one 答錯 key waits for
-     * its choice. Absent from a Worker before #106, so the host page keeps 答錯・重答 / 答錯・逃跑 there. */
+     * its choice. */
     mayPray?: true;
   }[];
   bossHp: number;
@@ -1162,8 +1053,8 @@ export interface SpectatorView {
   /** Options locked wrong per question id (shown greyed on every screen) and the wrong lock awaiting a choice. */
   eliminated: Record<string, number[]>;
   mageRemoved: Record<string, number[]>;
-  /** The mage's first-character hint per fill-in question id (mageHint). Absent from a Worker before #106. */
-  mageHints?: Record<string, string>;
+  /** The mage's first-character hint per fill-in question id (mageHint). */
+  mageHints: Record<string, string>;
   pendingWrong: WrongAnswer | null;
   /** The cleric whose wrong lock waits for its 祈禱 (canPray), or null. */
   awaitingPrayer: string | null;
@@ -1178,11 +1069,10 @@ export function getSpectatorView(game: GameState): SpectatorView {
       score: t.score,
       reward: t.reward,
       roomIndex: t.roomIndex,
-      inBossPhase: isInBossPhase(game, t.id),
+      inBossPhase: t.inBoss,
       online: t.online,
       currentQuestionId: t.currentQuestionId,
       currentSelection: t.currentSelection,
-      branchChoices: t.branchChoices,
       ...(t.classId ? { classId: t.classId } : {}),
       abilityUses: t.abilityUses,
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),

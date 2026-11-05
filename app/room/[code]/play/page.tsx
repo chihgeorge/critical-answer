@@ -8,7 +8,7 @@ import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL, offli
 import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
-import { INTRO_PAGES, MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
+import { MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
 import { CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
@@ -18,7 +18,7 @@ import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackgro
 import { McOption } from "@/components/mc-option";
 import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
-import { introStatus } from "@/components/how-to-play";
+import { introDots, introStatus } from "@/components/how-to-play";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
 const CLASS_HINTS: Record<ClassId, string> = {
@@ -112,8 +112,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
       setCast({ qid: q.id, eventId: game.eventId, before: gone.length });
       use();
     });
-  } else if (me.classId === "mage" && !q.options && game.view.mageHints && game.view.mageHints[q.id] === undefined) {
-    // No mageHints at all: a Worker from before #106, which refuses a fill-in cast.
+  } else if (me.classId === "mage" && !q.options && game.view.mageHints[q.id] === undefined) {
     // The room refused this question (no_hint): a 1-character answer has no first character to give.
     if (noHint) return <div className="px-bar mt-1 !text-[17px]" role="status">🔮 這題答案太短，不能看第一個字・剩 {me.abilityUses} 次</div>;
     body = button("🔮", "看答案第一個字", `大家都看得到・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
@@ -580,7 +579,7 @@ export default function PlayPage() {
               <div className="mt-2 text-[16px]">{introStatus(intro)}</div>
             </Panel>
             <div aria-hidden className="text-center text-[18px] tracking-[6px] text-white">
-              {Array.from({ length: INTRO_PAGES }, (_, i) => (i + 1 === intro ? "●" : "○")).join(" ")}
+              {introDots(intro)}
             </div>
           </div>
         )}

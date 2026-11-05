@@ -163,17 +163,8 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ ...ok, fleeChoice: "pray" })).toBeNull();
   });
 
-  it("TEAM_BRANCH_CHOICE: accepts valid, rejects non-integer roomIndex and unknown choice ids", () => {
-    const ok = { type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight" };
-    expect(parseClientMessage(ok)).toEqual(ok);
-    expect(parseClientMessage({ ...ok, choice: "negotiate" })).toEqual({ ...ok, choice: "negotiate" });
-    expect(parseClientMessage({ ...ok, roomIndex: 1.5 })).toBeNull();
-    expect(parseClientMessage({ ...ok, roomIndex: "1" })).toBeNull();
-    expect(parseClientMessage({ ...ok, choice: "flee" })).toBeNull();
-    expect(parseClientMessage({ ...ok, choice: undefined })).toBeNull();
-    // Deliberately no teamId/teamKey field: the sender's team is derived from
-    // the connection's own connTeam binding, never from client-supplied data.
-    expect(parseClientMessage({ type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight", teamId: ID })).toEqual(ok);
+  it("TEAM_BRANCH_CHOICE is no longer a message (the branch choice was removed, TODOS.md)", () => {
+    expect(parseClientMessage({ type: "TEAM_BRANCH_CHOICE", roomIndex: 1, choice: "fight" })).toBeNull();
   });
 
   it("TEAM_SELECT_OPTION: accepts valid, rejects non-integer/negative optionIndex and bad questionId", () => {
@@ -185,7 +176,7 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ ...ok, optionIndex: "1" })).toBeNull();
     expect(parseClientMessage({ ...ok, questionId: undefined })).toBeNull();
     expect(parseClientMessage({ ...ok, questionId: "q".repeat(65) })).toBeNull();
-    // Deliberately no teamId/teamKey field — same connTeam-derived trust as TEAM_BRANCH_CHOICE.
+    // Deliberately no teamId/teamKey field — the sender's team comes from the connection's connTeam binding.
     expect(parseClientMessage({ type: "TEAM_SELECT_OPTION", questionId: "r0-q1", optionIndex: 1, teamId: ID })).toEqual(ok);
   });
 

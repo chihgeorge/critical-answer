@@ -10,10 +10,10 @@ export const PAWN = 28; // fits a two-character tag with a gap (D10 said 26; wid
 export const ROOM_PAD = 12;
 export const CORRIDOR = 10;
 export const FOG_MIN = 100; // two empty-room slots (D8)
-export const STUB_MIN = 24;
+const STUB_MIN = 24;
 export const MAX_ROOMS = 7;
 export const BOSS_SPRITE = 52; // the king sprite plus its margins
-export const BOSS_HP_MIN = 60; // the HP bar's shortest width
+const BOSS_HP_MIN = 60; // the HP bar's shortest width
 export const DOOR_W = 56;
 
 export type MapTeam = { id: string; name: string; roomIndex: number; inBossPhase: boolean };

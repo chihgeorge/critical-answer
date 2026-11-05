@@ -5,7 +5,7 @@ import { Panel, PixelButton } from "./pixel";
 import { reportClientError } from "@/lib/report-client-error";
 
 export const ERROR_TITLE = "畫面出錯了";
-export const ERROR_HINT = "按「重新載入」就能回到遊戲，分數和進度都還在。";
+const ERROR_HINT = "按「重新載入」就能回到遊戲，分數和進度都還在。";
 export const ERROR_RELOAD_LABEL = "重新載入";
 
 /** What app/error.tsx and app/global-error.tsx show instead of a blank page. A full reload, not

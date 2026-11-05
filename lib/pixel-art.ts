@@ -5,8 +5,7 @@
 
 import type { SpriteKind } from "./sprite-kind";
 
-export const OUTLINE = "#2a1533";
-const K = OUTLINE;
+const K = "#2a1533"; // the outline colour
 
 function rgb(h: string): [number, number, number] {
   if (h.length === 4) h = "#" + [...h.slice(1)].map((c) => c + c).join("");

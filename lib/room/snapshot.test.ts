@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSnapshot, SCHEMA_VERSION, type RoomSnapshot } from "./snapshot";
+import { parseSavedBank, parseSnapshot, SCHEMA_VERSION, type RoomSnapshot } from "./snapshot";
 import { BANK } from "../question-bank-data";
 import { spendAbility, createGame, DEFAULT_GAME_CONFIG } from "../game-state";
 import { bossPhaseStates, poolQuestionIds, roomTemplates } from "../question-bank";
@@ -135,6 +135,14 @@ describe("parseSnapshot", () => {
     broken.pools[1][0].content.value = "";
     expect(parseSnapshot({ ...valid(), bank: broken })).toBeNull();
     expect(parseSnapshot({ ...valid(), bank: { rooms: [] } })).toBeNull();
+    expect(parseSavedBank(broken)).toBeNull();
+  });
+
+  it("reads a snapshot with no bank inside: newer saves keep it under BANK_KEY", () => {
+    const { bank, ...rest } = valid();
+    expect(parseSnapshot(rest)).not.toBeNull();
+    expect(parseSnapshot(rest)!.bank).toBeUndefined();
+    expect(parseSavedBank(bank)).toEqual(parseSnapshot(valid())!.bank);
   });
 
   it("does not throw on hostile input", () => {

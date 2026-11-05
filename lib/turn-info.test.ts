@@ -25,7 +25,6 @@ function view(over: Partial<SpectatorView> = {}, teams: Partial<SpectatorView["t
       online: true,
       currentQuestionId: `r${i}-q1`,
       currentSelection: null,
-      branchChoices: {},
       abilityUses: 2,
       typedAnswer: null,
       ...t,
@@ -37,6 +36,7 @@ function view(over: Partial<SpectatorView> = {}, teams: Partial<SpectatorView["t
     bossKilledBy: null,
     eliminated: {},
     mageRemoved: {},
+    mageHints: {},
     pendingWrong: null,
     awaitingPrayer: null,
     ...over,
@@ -119,10 +119,5 @@ describe("the phase card with a room team on turn", () => {
     expect(t.questionId).toBe("r0-q1");
     expect(t.theme).toBe("crimson");
     expect(t.monster.hue).toBe(PHASE_HUE_STEP);
-  });
-
-  it("tolerates a Worker from before boss phases (no bossPhase in the view)", () => {
-    const old = view({ bossPhase: undefined as unknown as number }, [{ inBossPhase: true }, {}]);
-    expect(describeTurn(old, pq({ boss: true, monster: { name: "龍", sprite: "dragon", hue: 30 } })).monster.hue).toBe(30);
   });
 });

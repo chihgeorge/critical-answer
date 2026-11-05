@@ -1,13 +1,12 @@
 import type { Conn, RoomIO } from "./io";
 import { CLOSE_EXPIRED, CLOSE_IDLE } from "./close-codes";
-import { parseSnapshot, SCHEMA_VERSION, SNAPSHOT_KEY, type RoomSnapshot } from "./snapshot";
+import { BANK_KEY, parseSavedBank, parseSnapshot, SCHEMA_VERSION, SNAPSHOT_KEY, type RoomSnapshot } from "./snapshot";
 import {
   createGame,
   DEFAULT_GAME_CONFIG,
   answerQuestion,
   endGame,
   enterNextBossPhase,
-  recordBranchChoice,
   sendToBoss,
   queueQuestion,
   pickBlock,
@@ -30,7 +29,6 @@ import {
   recordTextWrong,
   warriorRoll,
   InvalidActionError,
-  type BranchOptionId,
   type ClassId,
   type GameState,
   type LockedOption,
@@ -229,6 +227,8 @@ export class DungeonRoom {
   private epilogueDelayMs: number;
   /** The last snapshot handed to storage, so an unchanged room does not write again. */
   private lastSaved = "";
+  /** The bank last handed to storage under BANK_KEY, or null when storage may not hold this one. */
+  private savedBank: Bank | null = null;
   private idleMs: number;
   private expireMs: number;
   private now: () => number;
@@ -446,7 +446,6 @@ export class DungeonRoom {
       // duration (seconds) is never rounded away entirely; production's 2-hour default still rounds to the
       // minute. Capped so it never exceeds 60s even for a very long idleMs.
       lastActivityAt: this.lastActivityAt === null ? null : roundActivity(this.lastActivityAt, this.idleMs),
-      bank: this.bank,
       phaseCard: this.phaseCard,
       ...(this.intro !== null ? { intro: this.intro } : {}),
     };
@@ -463,13 +462,21 @@ export class DungeonRoom {
     if (!storage) return;
     const state = this.persistedState();
     const json = JSON.stringify(state);
-    if (json === this.lastSaved) return;
+    // The bank is not in the snapshot JSON, so a changed bank must write even when the snapshot did not change.
+    if (json === this.lastSaved && this.bank === this.savedBank) return;
     this.lastSaved = json;
     const failed = (err: unknown) => {
       this.lastSaved = ""; // whatever we believed was saved, retry on the next message
+      this.savedBank = null;
       console.error(JSON.stringify({ event: "persist_failed", error: String(err) }));
     };
     try {
+      // The bank goes first, in the same unawaited batch as the snapshot: Durable Object storage commits the puts of one
+      // turn together, so no snapshot is ever saved without its bank.
+      if (this.bank !== this.savedBank) {
+        this.savedBank = this.bank;
+        void Promise.resolve(storage.put(BANK_KEY, this.bank)).catch(failed);
+      }
       void Promise.resolve(storage.put(SNAPSHOT_KEY, state)).catch(failed);
     } catch (err) {
       failed(err);
@@ -487,38 +494,16 @@ export class DungeonRoom {
     const raw = await storage.get(SNAPSHOT_KEY);
     if (raw === undefined) return "none";
     const s = parseSnapshot(raw);
-    if (!s) {
+    // A bank inside the snapshot wins: only a save from before BANK_KEY, or from an older Worker after a rollback, has one,
+    // and then BANK_KEY is missing or older. persist() then writes it under BANK_KEY before the next snapshot.
+    const stored = s && !s.bank ? parseSavedBank(await storage.get(BANK_KEY)) : null;
+    const bank = s?.bank ?? stored;
+    if (!s || !bank) {
       console.warn(JSON.stringify({ event: "state_discarded", reason: "unreadable" }));
       return "discarded";
     }
     this.roomEpoch = s.roomEpoch;
-    // A save from before branchChoices existed has teams missing that field (snapshot.ts's
-    // game validation is shallow — it never re-validates individual Team fields, or even that
-    // each team entry is an object at all). Backfill so every read site (recordBranchChoice,
-    // getSpectatorView) can assume the field always exists. Defensive: a team entry that isn't
-    // a real object (which snapshot.ts's own shallow check wouldn't catch) is left
-    // as-is rather than crashing here — the room ends up as broken as the corrupt data already
-    // made it, same as every other Team field this file never re-validates, not a new failure
-    // mode this backfill introduces (see the /review adversarial pass, 2026-09-21).
-    this.game =
-      s.game && {
-        ...s.game,
-        // A save from before revealedQuestionIds existed (question-media-content.md's D4/D5)
-        // hits the same shallow-snapshot-validation gap as branchChoices above — deal() and
-        // nextBossQuestionId() both call .includes() on it unconditionally, so an undamaged
-        // backfill here is required or the next correct answer throws inside handleHostJudge's
-        // try/catch and gets silently turned into an ERROR sent to the host (test-coverage audit
-        // finding, /ship).
-        revealedQuestionIds: Array.isArray(s.game.revealedQuestionIds) ? s.game.revealedQuestionIds : [],
-        // Same shallow-validation backfill for saves from before phone answering (phone-answering.md).
-        eliminated: s.game.eliminated ?? {},
-        pendingWrong: restoredPendingWrong(s.game),
-        // Not for old saves (SCHEMA_VERSION 5 refuses them): guards a v5 snapshot missing the field.
-        optionOrder: s.game.optionOrder ?? {},
-        teams: s.game.teams.map((t) =>
-          t && typeof t === "object" ? { ...t, branchChoices: t.branchChoices ?? {}, currentSelection: t.currentSelection ?? null } : t,
-        ),
-      };
+    this.game = s.game && { ...s.game, pendingWrong: restoredPendingWrong(s.game) };
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
     this.teamKeys = new Map(s.teamKeys);
@@ -539,15 +524,11 @@ export class DungeonRoom {
     this.aiSource = s.aiSource ?? "none";
     this.aiUsed = s.aiUsed ?? 0;
     this.aiLimit = s.aiLimit ?? DEFAULT_AI_LIMIT;
-    this.bank = s.bank;
-    this.bankAnswers = allAnswers(s.bank);
+    this.bank = bank;
+    this.bankAnswers = allAnswers(bank);
+    this.savedBank = stored;
     this.phaseCard = s.phaseCard ?? false;
     this.intro = s.intro ?? null;
-    // A save from before boss phases has a one-phase boss.
-    if (this.game && !Array.isArray(this.game.boss.phases)) {
-      const b = this.game.boss;
-      this.game = { ...this.game, boss: { ...b, phases: [{ maxHp: b.maxHp, questionIds: b.questionIds }], phaseIndex: 0 } };
-    }
     // The answer reveal does not survive a restart, so a phase that ended under it goes straight to its card.
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
@@ -573,7 +554,7 @@ export class DungeonRoom {
     const teamId = currentTurnTeamId(game);
     const team = game.teams.find((t) => t.id === teamId);
     if (!team) return null;
-    const id = isInBossPhase(game, team.id) ? game.boss.currentQuestionId : team.currentQuestionId;
+    const id = currentQuestionIdOf(game, team.id);
     const pub = publicQuestion(this.bank, id, team.roomIndex, this.room.env?.R2_PUBLIC_BASE_URL ?? "", game.optionOrder[id]);
     const q = this.question(id);
     return pub ? { pub, answer: q ? answerText(q) : "" } : null;
@@ -822,6 +803,7 @@ export class DungeonRoom {
     this.bankAnswers = allAnswers(this.bank);
     this.roomEpoch = crypto.randomUUID();
     this.lastSaved = "";
+    this.savedBank = null; // expire() just cleared storage
     this.lastActivityAt = null;
     this.alarmAt = null;
   }
@@ -954,9 +936,6 @@ export class DungeonRoom {
           break;
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice, msg.eventId);
-          break;
-        case "TEAM_BRANCH_CHOICE":
-          this.handleTeamBranchChoice(sender, msg.roomIndex, msg.choice);
           break;
         case "TEAM_SELECT_OPTION":
           this.handleTeamSelectOption(sender, msg.questionId, msg.optionIndex);
@@ -1740,19 +1719,6 @@ export class DungeonRoom {
     return null;
   }
 
-  /** DM branching interlude pick. The team is derived from `connTeam` — never from a
-   * client-supplied id — so a connection can only ever choose for its own team. */
-  private handleTeamBranchChoice(conn: Conn, roomIndex: number, choice: BranchOptionId) {
-    const teamId = this.playingTeam(conn);
-    if (!teamId || !this.game) return;
-    try {
-      this.game = recordBranchChoice(this.game, teamId, roomIndex, choice);
-      this.broadcastState();
-    } catch (err) {
-      this.sendInvalid(conn, err);
-    }
-  }
-
   /** A typed answer to a text question, shown to the host to judge (fill-in, #104). Not narrated. */
   private handleTeamSubmitText(conn: Conn, questionId: string, raw: string, eventId?: number) {
     const teamId = this.playingTeam(conn);
@@ -1797,8 +1763,7 @@ export class DungeonRoom {
     }
     // Re-tapping the option a team already has selected is a no-op: nothing about the game
     // state would actually change, so skip the persist()+broadcast() this message would
-    // otherwise unconditionally trigger. TEAM_SELECT_OPTION has no other rate limit (unlike
-    // TEAM_BRANCH_CHOICE, which self-limits to one accepted pick per room) — this at least
+    // otherwise unconditionally trigger. TEAM_SELECT_OPTION has no other rate limit — this at least
     // keeps an idle-fingered phone from writing/broadcasting on every repeat tap of the same
     // button (adversarial review finding).
     if (this.game.teams.find((t) => t.id === teamId)?.currentSelection === optionIndex) return;

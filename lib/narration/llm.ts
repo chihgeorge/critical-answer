@@ -70,12 +70,8 @@ function describeEvent(e: NarrationEvent): string {
         ? `事件：隊伍${q(e.team)}答對了，打倒${q(e.monster)}，把牠煮成了${q(e.dish)}，吃下去得到 ${e.points} 飽足感。第一行要順口提到這道菜。`
         : `事件：隊伍${q(e.team)}答對了，打退${q(e.monster)}，得 ${e.points} 分。`;
       if (!e.entersBoss) return base;
-      const { branches } = e.entersBoss;
       if (e.entersBoss.phase) return `${base}這一答讓他們踏進了首領房，首領戰已經進入階段${q(e.entersBoss.phase)}。第一行要提到他們踏進首領房和這個階段，不要提還有沒有別的階段。`;
-      const callback = branches.length
-        ? `他們一路上在分岔路口的選擇依序是：${branches.map(q).join("、")}。第一行要提到他們踏進首領房，並用一句話呼應他們一路上的選擇。`
-        : "第一行要提到他們踏進首領房。";
-      return `${base}這一答讓他們踏進了首領房。${callback}`;
+      return `${base}這一答讓他們踏進了首領房。第一行要提到他們踏進首領房。`;
     }
     case "retry":
       if (e.exhausted) return `事件：隊伍${q(e.team)}答錯了，這一輪首領的題目都出完了。不要說可以重答，也不要說首領倒下，結果留待揭曉。`;
@@ -112,7 +108,7 @@ function describeEvent(e: NarrationEvent): string {
  * keep the leading sentences that fit. A single sentence that is too long stays as is
  * (and is then rejected).
  */
-export function fitToLimit(text: string, max: number): string {
+function fitToLimit(text: string, max: number): string {
   if ([...text].length <= max) return text;
   const sentences = text.match(/[^。！？!?]+[。！？!?]?/g) ?? [text];
   let out = "";

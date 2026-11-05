@@ -1,7 +1,7 @@
 // Typed narration events, derived from what just happened in the game. This is
 // the seam every narration provider (scripted now, LLM later) reads.
 
-import { BRANCH_LABELS, type AnswerOutcome, type ClassId, type GameState } from "../game-state";
+import { type AnswerOutcome, type ClassId, type GameState } from "../game-state";
 
 /** Who is up next and what they face: the story moves on to them after the result line. */
 export interface NextTurn {
@@ -20,12 +20,10 @@ type ByClass<T> = T & { classId?: ClassId };
 export type NarrationEvent =
   | WithNext<{ type: "start"; teams: string[] }>
   /** `entersBoss`: this answer moved the team into the boss room (it reached the boss
-   * threshold, or another team was already inside: Team.inBoss). `branches`
-   * are the DM branch choices it made on the way (display text, room order), for the LLM to call
-   * back; the scripted lines just announce the entrance (design doc T4: no forced callback template).
+   * threshold, or another team was already inside: Team.inBoss).
    * `phase`: the boss phase already under way when a late team walks in, from phase 2 on (boss-phases.md D13). */
   /** `dish` (correct and boss-kill): what the monster was cooked into; left out when it holds a bank answer. */
-  | WithNext<ByClass<{ type: "correct"; team: string; monster: string; points: number; dish?: string; entersBoss?: { branches: string[]; phase?: string } }>>
+  | WithNext<ByClass<{ type: "correct"; team: string; monster: string; points: number; dish?: string; entersBoss?: { phase?: string } }>>
   /** `boss`: a wrong boss answer, which always brings a new question (boss redesign D2=B).
    * `exhausted`: it used up the boss phase's questions, and the phase card comes next (boss-phases.md). */
   | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true }>>
@@ -53,13 +51,6 @@ export function toNarrationEvent(prev: GameState, outcome: AnswerOutcome, monste
   return next && event.type !== "boss-kill" ? { ...event, next } : event;
 }
 
-/** A team's branch choices as display text, in the order of the rooms it made them in. */
-function branchesOf(team: GameState["teams"][number]): string[] {
-  return Object.entries(team.branchChoices)
-    .sort(([a], [b]) => Number(a) - Number(b))
-    .flatMap(([, id]) => (id ? [BRANCH_LABELS[id]] : []));
-}
-
 /** `bossPhase`: the current boss phase's name, given only from phase 2 on. */
 function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bossPhase?: string): Exclude<NarrationEvent, { type: "epilogue" }> {
   const t = prev.teams.find((x) => x.id === outcome.teamId);
@@ -75,7 +66,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bos
         ...cls,
         monster,
         points: outcome.reward,
-        ...(entersBoss ? { entersBoss: { branches: branchesOf(t), ...(bossPhase ? { phase: bossPhase } : {}) } } : {}),
+        ...(entersBoss ? { entersBoss: bossPhase ? { phase: bossPhase } : {} } : {}),
       };
     }
     case "incorrect-retry":

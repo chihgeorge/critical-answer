@@ -211,13 +211,12 @@ describe("next-team prompt (the second line)", () => {
 });
 
 describe("scripted: entering the boss room", () => {
-  it("announces the entrance, and never recites the branch choices (design doc T4)", () => {
+  it("announces the entrance", () => {
     const p = createScriptedProvider(lcg(3));
-    const event: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 3, entersBoss: { branches: ["武力"] } };
+    const event: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 3, entersBoss: {} };
     for (let i = 0; i < 8; i++) {
       const line = p.line(event);
       expect(BOSS_ENTER_VARIANTS.some((v) => line === v.replace("{team}", "紅隊").replace("{monster}", "史萊姆").replace("{points}", "3"))).toBe(true);
-      expect(line).not.toContain("武力");
     }
   });
 });
@@ -239,7 +238,7 @@ describe("boss phases (docs/designs/boss-phases.md)", () => {
   });
 
   it("a team entering the boss room mid-fight hears the phase already under way (D13)", () => {
-    const line = p.line({ type: "correct", team, monster, points: 30, entersBoss: { branches: [], phase: "主題曲之謎" } });
+    const line = p.line({ type: "correct", team, monster, points: 30, entersBoss: { phase: "主題曲之謎" } });
     expect(line).toContain("主題曲之謎");
   });
 });
@@ -313,7 +312,7 @@ describe("class attack lines (TODOS: 旁白的武器和招式要配合職業)", 
     const p = createScriptedProvider(lcg(8));
     const enter = new Set(fills(BOSS_ENTER_VARIANTS, { team, monster, points: 12 }));
     for (let i = 0; i < 20; i++) {
-      expect(enter.has(p.line({ type: "correct", team, monster, points: 12, classId: "mage", entersBoss: { branches: [] } }))).toBe(true);
+      expect(enter.has(p.line({ type: "correct", team, monster, points: 12, classId: "mage", entersBoss: {} }))).toBe(true);
       expect(p.line({ type: "correct", team, monster, points: 12, classId: "warrior", dish: "史萊姆凍" })).toContain("史萊姆凍");
       // Value: protects=class lines never replace the emptied-bar or exhausted-phase line; fails_when=the class branch moves above those checks; why_new=those tests use no classId; seam=none; no_claim=none beyond protects
       const emptied = p.line({ type: "boss-hit", team, bossHp: 0, bossMaxHp: 3, classId: "thief" });
