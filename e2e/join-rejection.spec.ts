@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
 import { startGame } from "./answer";
 
 const UNREACHABLE = "連不上伺服器：請檢查網路，或稍後再試。";
@@ -76,6 +76,13 @@ test("a big screen that never connects says it can't reach the server", async ({
 test("a phone that joins after the game started is told why, sees no game, and takes over a team with the host's code", async ({ browser }) => {
   const { host, code } = await hostRoom(browser);
   const first = await phone(browser);
+  // Closing a page alone doesn't reliably reach the local room; drop the socket at the server end too (as disconnect.spec.ts does).
+  let dead = false;
+  let firstSocket: WebSocketRoute | undefined;
+  await first.routeWebSocket(/:1996\//, (ws) => {
+    if (dead) return void ws.close({ code: 1006, reason: "phone died" });
+    firstSocket = ws.connectToServer();
+  });
   await first.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(first.getByText("等待主持人開始遊戲")).toBeVisible();
   await startGame(host);
@@ -87,6 +94,8 @@ test("a phone that joins after the game started is told why, sees no game, and t
   await expect(late.getByText(/輪到/)).toHaveCount(0);
 
   // The first phone dies: the host hands 甲隊 to the late phone with a one-time code (docs/designs/team-handoff.md).
+  dead = true;
+  await firstSocket!.close();
   await first.context().close();
   await expect(host.getByText("甲隊（離線）")).toBeVisible();
   await host.getByRole("button", { name: "交給新手機" }).click();
