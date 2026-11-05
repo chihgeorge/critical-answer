@@ -64,24 +64,6 @@
 
 ---
 
-## 攻擊成功或失敗的旁白，武器和招式要配合隊伍的職業
-
-**What:** 旁白說到用什麼武器或招式攻擊時，要符合那一隊的職業。例如法師用法術、戰士用劍、牧師用祈禱，不要讓法師「揮劍」。
-
-**Why:** 站長 2026-11-04 實測時發現旁白的武器和職業對不上。
-
-**Pros:** 旁白更有角色感，職業也更有存在感。
-
-**Cons:** AI 旁白要在 prompt 裡帶入隊伍職業，並寫清楚每個職業能用的武器和招式；腳本旁白（`lib/narration/scripted.ts`）的台詞要按職業分開寫。沒選職業的隊伍要有中性的寫法。
-
-**Context:** `lib/narration/events.ts`（`baseEvent`，事件目前沒帶職業）、`lib/narration/llm.ts`、`lib/narration/scripted.ts`。職業設計在 `docs/designs/class-abilities.md`。
-
-**Effort:** S–M　**Priority:** P2
-
-**Depends on / blocked by:** 無。可以跟「旁白念出戰士擲到幾點」一起做，兩個都要在旁白事件裡多帶隊伍資訊。
-
----
-
 ## 分數用到骰子時，一律先播擲骰動畫再加分
 
 **What:** 只要分數是骰出來的，都要先在大螢幕播擲骰動畫，動畫停下後才顯示骰出的點數，再加進總分。
@@ -869,6 +851,24 @@
 ---
 
 ## Completed
+
+## 攻擊成功或失敗的旁白，武器和招式要配合隊伍的職業
+
+**What:** 旁白說到用什麼武器或招式攻擊時，要符合那一隊的職業。例如法師用法術、戰士用劍、牧師用祈禱，不要讓法師「揮劍」。
+
+**Why:** 站長 2026-11-04 實測時發現旁白的武器和職業對不上。
+
+**Pros:** 旁白更有角色感，職業也更有存在感。
+
+**Cons:** AI 旁白要在 prompt 裡帶入隊伍職業，並寫清楚每個職業能用的武器和招式；腳本旁白（`lib/narration/scripted.ts`）的台詞要按職業分開寫。沒選職業的隊伍要有中性的寫法。
+
+**Context:** `lib/narration/events.ts`（`baseEvent`，事件目前沒帶職業）、`lib/narration/llm.ts`、`lib/narration/scripted.ts`。職業設計在 `docs/designs/class-abilities.md`。
+
+**Effort:** S–M　**Priority:** P2
+
+**Depends on / blocked by:** 無。可以跟「旁白念出戰士擲到幾點」一起做，兩個都要在旁白事件裡多帶隊伍資訊。
+
+**Completed:** v0.31.0.0 (2026-11-05)：旁白事件帶上隊伍職業；AI 旁白照職業用武器和招式，腳本旁白的答對與擊中首領台詞也按職業分開寫。沒選職業的隊伍用不提武器的中性台詞。
 
 ## 正式遊戲開始前加玩法說明（文字＋圖片）
 

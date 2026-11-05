@@ -97,4 +97,18 @@ describe("boss phases", () => {
     expect(toNarrationEvent(game, o, "害羞幽靈")).toMatchObject({ entersBoss: { branches: [] } });
     expect((toNarrationEvent(game, o, "害羞幽靈") as { entersBoss: object }).entersBoss).not.toHaveProperty("phase");
   });
+
+  it("carries the acting team's class on attack events, and leaves it out for a team with no class", () => {
+    const withClass: GameState = { ...game, teams: game.teams.map((t) => (t.id === "a" ? { ...t, classId: "mage" as const } : t)) };
+    const hit: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 3, bossKilled: false, reward: 10 };
+    const correct: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, reward: 20, nextRoomIndex: 1, entersBoss: false };
+    expect(toNarrationEvent(withClass, hit, "小黑龍")).toMatchObject({ type: "boss-hit", classId: "mage" });
+    expect(toNarrationEvent(withClass, correct, "史萊姆")).toMatchObject({ type: "correct", classId: "mage" });
+    expect(toNarrationEvent(withClass, { type: "incorrect-retry", teamId: "a" }, "史萊姆")).toMatchObject({ classId: "mage" });
+    expect(toNarrationEvent(withClass, { type: "incorrect-retry", teamId: "b" }, "史萊姆")).not.toHaveProperty("classId");
+    expect(toNarrationEvent(withClass, { type: "incorrect-flee", teamId: "a", newDifficulty: 1 }, "史萊姆")).not.toHaveProperty("classId");
+    // Value: protects=boss-kill carries the killer's class; fails_when=classId is dropped from the boss-kill branch; why_new=only hit/correct/retry were checked; seam=none; no_claim=none beyond protects
+    const kill: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 0, bossKilled: true, reward: 21, killBonus: 11 };
+    expect(toNarrationEvent(withClass, kill, "小黑龍")).toMatchObject({ type: "boss-kill", classId: "mage" });
+  });
 });

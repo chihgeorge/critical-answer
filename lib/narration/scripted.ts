@@ -3,6 +3,7 @@
 
 import type { NarrationEvent, NextTurn } from "./events";
 import { ordinal } from "../ordinal";
+import type { ClassId } from "../game-state";
 
 export interface NarrationProvider {
   name: string;
@@ -58,6 +59,27 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
     "{monster}的哀號迴盪在地城，{team}是英雄！",
     "地城安靜了。{team}擊敗{monster}，加碼 {bonus} 分。",
   ],
+};
+
+/** Attack lines that name a class's own weapons and spells, mixed into the plain pools for a team
+ * with a class. The plain pools name no weapon, so a team with no class never swings the wrong one. */
+export const CLASS_VARIANTS: Record<ClassId, { correct: string[]; "boss-hit": string[] }> = {
+  mage: {
+    correct: ["{team}揮動法杖，火球轟向{monster}，+{points}！", "{team}念完咒語，冰箭把{monster}釘在原地，+{points}。"],
+    "boss-hit": ["{team}召來閃電劈中首領，只剩 {bossHp} 顆心！", "{team}的火球炸開，首領還剩 {bossHp} 顆心。"],
+  },
+  cleric: {
+    correct: ["{team}召來聖光，擊退了{monster}，+{points}！", "{team}舉起權杖，{monster}在聖光中退散，+{points}。"],
+    "boss-hit": ["聖光從天而降，{team}擊中首領，只剩 {bossHp} 顆心！", "{team}的聖光化成光矛，首領還剩 {bossHp} 顆心。"],
+  },
+  warrior: {
+    correct: ["{team}揮劍一斬，{monster}應聲倒地，+{points}！", "{team}舉盾衝撞，把{monster}撞飛了，+{points}。"],
+    "boss-hit": ["{team}一劍砍在首領身上，只剩 {bossHp} 顆心！", "{team}掄起戰斧重擊，首領還剩 {bossHp} 顆心。"],
+  },
+  thief: {
+    correct: ["{team}從暗處射出飛刀，{monster}來不及躲，+{points}！", "{team}繞到背後一刺，{monster}倒下了，+{points}。"],
+    "boss-hit": ["{team}的匕首找到破綻，首領只剩 {bossHp} 顆心！", "{team}從暗處一刺，首領還剩 {bossHp} 顆心。"],
+  },
 };
 
 /** A correct answer that cooked its monster (event.dish, docs/designs/monster-cuisine.md). */
@@ -186,12 +208,12 @@ function fill(template: string, vars: object): string {
 }
 
 export function createScriptedProvider(rng: () => number = Math.random) {
-  /** The last index picked per pool, so the same line never plays twice in a row. */
-  const last: Record<string, number> = {};
+  /** The last line picked per key, so the same line never plays twice in a row, even across a class pool and the plain one. */
+  const last: Record<string, string> = {};
   function pick(pool: string[], key: string): string {
     let i = Math.floor(rng() * pool.length);
-    if (i === last[key]) i = (i + 1) % pool.length;
-    last[key] = i;
+    if (pool[i] === last[key]) i = (i + 1) % pool.length;
+    last[key] = pool[i];
     return pool[i];
   }
   const provider = {
@@ -207,6 +229,9 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "boss-kill" && event.dish) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
       if (event.type === "correct" && event.dish && !event.entersBoss) return fill(pick(DISH_VARIANTS, "dish"), event);
       const bossEnter = event.type === "correct" && event.entersBoss;
+      if (!bossEnter && (event.type === "correct" || event.type === "boss-hit") && event.classId) {
+        return fill(pick([...CLASS_VARIANTS[event.classId][event.type], ...VARIANTS[event.type]], event.type), event);
+      }
       return fill(pick(bossEnter ? BOSS_ENTER_VARIANTS : VARIANTS[event.type], bossEnter ? "boss-enter" : event.type), event);
     },
     /** Synchronous like line(): a short atmosphere/detail beat, the new middle segment. */
