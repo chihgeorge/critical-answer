@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank } from "./answer";
+import { textOnlyBank, startGame } from "./answer";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -17,7 +17,7 @@ test("the host judges with the keyboard: 2 marks a wrong answer, 1 a correct one
     await team.goto(`/room/${code}/play?name=${encodeURIComponent(name)}`);
     await expect(team.getByTestId("roster")).toContainText(name);
   }
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   await expect(host.getByRole("button", { name: "答對！" })).toBeEnabled();
 

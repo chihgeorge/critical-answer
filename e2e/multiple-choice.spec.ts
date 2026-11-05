@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach } from "./answer";
+import { restoreRoom0AfterEach, startGame } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 restoreRoom0AfterEach();
@@ -38,7 +38,7 @@ test("multipleChoice in play: the team taps an option, the host sees the pick hi
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("選擇隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
   // The seeded question's 3 options render as tappable buttons on the team's phone.
@@ -81,7 +81,7 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
   const team = await (await browser.newContext({ viewport: { width: 375, height: 667 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("選擇隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
 
   const lockButton = team.getByRole("button", { name: "鎖定答案" });
   await expect(lockButton).toBeDisabled();
@@ -157,7 +157,7 @@ test("phone answering: a team that never locks gets the host's stuck row after 1
   const team = await (await browser.newContext({ viewport: { width: 375, height: 667 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("選擇隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByTestId("host-mc-status")).toContainText("等選擇隊鎖定答案");
 
   const stuckRow = host.getByText("選擇隊好像卡住了");
@@ -187,7 +187,7 @@ async function startOneTeam(
   await beforeJoin?.(team);
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("選擇隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   return { host, team };
 }
@@ -272,7 +272,7 @@ test("boss room: a wrong lock shows no choice, then the boss brings a new questi
   const team = await (await browser.newContext({ viewport: { width: 375, height: 667 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("紅隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
   await host.getByRole("button", { name: /更多/ }).click();

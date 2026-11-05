@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
+import { startGame } from "./answer";
 
 const UNREACHABLE = "連不上伺服器：請檢查網路，或稍後再試。";
 
@@ -63,7 +64,7 @@ test("a phone that joins after the game started is told why, and sees no game", 
   const first = await phone(browser);
   await first.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(first.getByText("等待主持人開始遊戲")).toBeVisible();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(first.getByText("輪到我們了！")).toBeVisible();
   const late = await phone(browser);
   await late.goto(`/room/${code}/play?name=${encodeURIComponent("遲到隊")}`);

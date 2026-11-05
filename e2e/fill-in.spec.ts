@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { textOnlyBank } from "./answer";
+import { textOnlyBank, startGame } from "./answer";
 
 // Fill-in (#104): on a text question the team types its answer, the host and the TV show it, the host judges.
 textOnlyBank();
@@ -15,7 +15,7 @@ async function oneTeamRoom(browser: Browser) {
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("填空隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   return { host, screen, team };
 }

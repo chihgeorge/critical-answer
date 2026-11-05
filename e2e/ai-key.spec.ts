@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { startGame } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 // The e2e server has no ANTHROPIC_API_KEY and no way to reach a fake Anthropic (the key check runs in the
@@ -38,6 +39,6 @@ test("owner mode on a server without its own key says so, and the game still sta
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await phone.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(phone.getByText("等待主持人開始遊戲")).toBeVisible();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
 });

@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { answerCorrectly } from "./answer";
+import { answerCorrectly, startGame } from "./answer";
 
 async function hostRoom(browser: Browser) {
   const host = await (await browser.newContext()).newPage();
@@ -46,7 +46,7 @@ test("the host ends the game early from the drawer", async ({ browser }) => {
   const screen = await (await browser.newContext()).newPage();
   await screen.goto(`/room/${code}/screen`);
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await answerCorrectly(host);
   await host.getByRole("button", { name: "⚙ 更多" }).click();
   await host.getByRole("button", { name: "結束冒險" }).click(); // first tap only arms it
@@ -63,7 +63,7 @@ test("the host takes everyone back to the lobby and starts another game", async 
   const screen = await (await browser.newContext()).newPage();
   await screen.goto(`/room/${code}/screen`);
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await answerCorrectly(host);
   await host.getByRole("button", { name: "⚙ 更多" }).click();
   await host.getByRole("button", { name: "結束冒險" }).click();
@@ -76,6 +76,60 @@ test("the host takes everyone back to the lobby and starts another game", async 
   await expect(team.getByTestId("roster")).toContainText("甲隊");
   await expect(screen.getByText("甲隊奪得榜首！")).toHaveCount(0);
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("0 飽足感")).toBeVisible();
+});
+
+/** The how-to-play intro (docs/designs/how-to-play.md): on by default in a new room, four pages the host turns
+ * with buttons or keys, the phone's status line following along, and off by default after 再玩一場. */
+test("the host plays the how-to-play intro, and it starts unchecked after 再玩一場", async ({ browser }) => {
+  const { host, code } = await hostRoom(browser);
+  const team = await phone(browser, code, "甲隊");
+  const screen = await (await browser.newContext()).newPage();
+  await screen.goto(`/room/${code}/screen`);
+
+  const intro = host.getByRole("checkbox", { name: "開始前播放玩法說明" });
+  await expect(intro).toBeChecked();
+  await host.getByRole("button", { name: /開始遊戲/ }).click();
+
+  await expect(screen.getByTestId("how-to-play")).toContainText("1/4");
+  await expect(team.getByTestId("phone-intro")).toContainText("第 1／4 頁：輪流上陣");
+  await expect(host.getByRole("button", { name: "◀ 上一頁" })).toHaveCount(0);
+
+  // Each page turn holds the buttons and keys for a beat (a double-tap must not skip a page), so a
+  // key waits for 下一頁 to come back.
+  const next = host.getByRole("button", { name: "下一頁 ▶" });
+  await next.click();
+  await expect(team.getByTestId("phone-intro")).toContainText("第 2／4 頁：用手機作答");
+  // A key acts on the host's own page, so wait for the host to show it too.
+  const hostIntro = host.getByTestId("host-intro");
+  await expect(hostIntro).toContainText("2/4");
+  await expect(next).toBeEnabled();
+  await host.keyboard.press("ArrowLeft");
+  await expect(screen.getByTestId("how-to-play")).toContainText("1/4");
+  await expect(hostIntro).toContainText("1/4");
+  await expect(next).toBeEnabled();
+  await host.keyboard.press("ArrowRight");
+  await expect(screen.getByTestId("how-to-play")).toContainText("2/4");
+  await expect(hostIntro).toContainText("2/4");
+  await expect(next).toBeEnabled();
+  await host.keyboard.press("Enter");
+  await expect(screen.getByTestId("how-to-play")).toContainText("3/4");
+  await next.click();
+  await expect(screen.getByTestId("how-to-play")).toContainText("4/4");
+  await host.screenshot({ path: ".gstack/tmp/host-intro.png" });
+  await screen.screenshot({ path: ".gstack/tmp/screen-intro.png" });
+
+  await host.getByRole("button", { name: "開始冒險 ▶" }).click();
+  await expect(screen.getByTestId("how-to-play")).toHaveCount(0);
+  await expect(team.getByText("輪到我們了！")).toBeVisible();
+
+  await answerCorrectly(host);
+  // Wait for the reveal: a phone lock is judged after a beat, and only a shown answer makes the next game a replay.
+  await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeVisible();
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await host.getByRole("button", { name: "結束冒險" }).click();
+  await host.getByRole("button", { name: "確定結束？" }).click();
+  await host.getByRole("button", { name: "回到大廳，再玩一場" }).click();
+  await expect(intro).not.toBeChecked();
 });

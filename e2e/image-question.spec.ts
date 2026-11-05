@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { startGame } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 const WORKER = "http://localhost:1996";
@@ -65,7 +66,7 @@ test("image-content question: renders on /play, /screen, and the host's own prev
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("圖片隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
   // The <img> renders on all three surfaces with the URL the server built (base + key) —
@@ -120,7 +121,7 @@ test("image-content question: a broken image URL hides itself on every surface, 
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("壞圖隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
   // The broken-image fallback hides only the image, on every surface that renders it (host's
@@ -159,7 +160,7 @@ test("youtube-content question: renders an iframe with the embed URL on /play, /
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("影片隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
   const embedSrc = new RegExp(`youtube-nocookie\\.com/embed/${videoId}$`);
@@ -192,7 +193,7 @@ async function startWithExplanation(browser: import("@playwright/test").Browser,
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("揭曉隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   return { host, screen, team };
 }
@@ -265,7 +266,7 @@ async function startTwoTeams(browser: import("@playwright/test").Browser, reques
     phones.push(phone);
   }
   await expect(host.getByText("乙隊")).toBeVisible();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(phones[0].getByText("輪到我們了！")).toBeVisible();
   return { host, a: phones[0], b: phones[1] };
 }

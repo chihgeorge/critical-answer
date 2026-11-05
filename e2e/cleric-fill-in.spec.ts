@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { textOnlyBank } from "./answer";
+import { textOnlyBank, startGame } from "./answer";
 
 // A cleric on a fill-in question (#106): the host's one 答錯 waits for 祈禱 / 重答 / 逃跑.
 textOnlyBank();
@@ -15,7 +15,7 @@ async function clericRoom(browser: Browser, beforeWrong?: (host: Page) => Promis
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
   await expect(team.getByText("答錯後，這回合再答一次")).toBeVisible();
   await team.getByRole("button", { name: /牧師/ }).click();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   const box = team.getByRole("textbox", { name: "你們的答案" });
   await box.fill("猜錯了");
@@ -82,7 +82,7 @@ test("cleric: a double-tap of 2 marks the answer wrong once and spends nothing",
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("牧師隊")}`);
   await team.getByRole("button", { name: /牧師/ }).click();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByRole("button", { name: "答錯", exact: true })).toBeEnabled();
   await host.keyboard.press("2");
   await expect(host.getByRole("button", { name: "祈禱", exact: true })).toBeVisible();

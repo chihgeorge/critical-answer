@@ -8,7 +8,7 @@ import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL, offli
 import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
-import { MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
+import { INTRO_PAGES, MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
 import { CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
@@ -18,6 +18,7 @@ import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackgro
 import { McOption } from "@/components/mc-option";
 import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
+import { introStatus } from "@/components/how-to-play";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
 const CLASS_HINTS: Record<ClassId, string> = {
@@ -456,6 +457,8 @@ export default function PlayPage() {
   const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
   const finished = game?.phase === "finished";
+  /** The how-to-play page on the big screen: the phone points there and never repeats the rules (D7). */
+  const intro = !finished ? (game?.intro?.page ?? null) : null;
   const cards = (
     <>
       {/* While waiting, the roster above already highlights our own team. */}
@@ -482,7 +485,7 @@ export default function PlayPage() {
         </Panel>
       )}
 
-      {game && !finished && !revealed && turn?.team && (
+      {game && !finished && !revealed && !intro && turn?.team && (
         <Panel className="flex items-center gap-3 px-3 py-[10px]">
           <Sprite kind={turn.monster.kind} hue={turn.monster.hue} scale={turn.miniScale} className="flex-none" />
           <div className="text-[15px]">
@@ -568,7 +571,21 @@ export default function PlayPage() {
         )}
         {!game && lobby?.some((t) => t.id === teamId) && <ClassPicker current={lobby.find((t) => t.id === teamId)?.classId} send={send} />}
 
-        {game && !finished && turn && (
+        {intro !== null && (
+          <div data-testid="phone-intro" className="flex flex-col gap-2">
+            <Panel tone="lav" role="status" className="px-3 py-5 text-center">
+              <div className="text-[22px]">看大螢幕 👀</div>
+              <div className="mt-1 text-[16px]">主持人在講規則</div>
+              {/* The live line a screen reader announces on every page (eng D7); the dots below are for the eye. */}
+              <div className="mt-2 text-[16px]">{introStatus(intro)}</div>
+            </Panel>
+            <div aria-hidden className="text-center text-[18px] tracking-[6px] text-white">
+              {Array.from({ length: INTRO_PAGES }, (_, i) => (i + 1 === intro ? "●" : "○")).join(" ")}
+            </div>
+          </div>
+        )}
+
+        {game && !finished && !intro && turn && (
           <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
             {isMyTurn ? "輪到我們了！" : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
@@ -656,7 +673,8 @@ export default function PlayPage() {
         <div className="mt-auto">
           <DialogueBox
             compact
-            loading={!!game && !finished && isPending(game.eventId, narration)}
+            // The intro narrates nothing: after a replay eventId is past the last narration, so it must not spin.
+            loading={!!game && !finished && intro === null && isPending(game.eventId, narration)}
             lines={
               finished
                 ? epilogue
@@ -664,7 +682,9 @@ export default function PlayPage() {
                   : narration
                     ? narration.lines
                     : ["冒險結束了，大螢幕正在頒獎。"]
-                : narration
+                : intro !== null
+                  ? ["說明結束後，輪到你們時這裡會出現題目"]
+                  : narration
                   ? narration.lines
                   : [turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"]
             }

@@ -91,7 +91,12 @@ export type ClientMessage =
   | { type: "JOIN"; teamId: string; teamKey: string; teamName: string; password?: string; resume?: true }
   | { type: "REJOIN"; teamId: string; teamKey: string; resume?: true }
   | { type: "HOST_CLAIM"; token: string; resume?: true }
-  | { type: "HOST_START"; aiNarration?: boolean }
+  /** `intro`: play the 4-page how-to-play first (docs/designs/how-to-play.md). Missing means no intro,
+   * so a host page from before the intro can't get stuck on a page it has no button for (eng D2). */
+  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean }
+  /** How-to-play: go to `page` (1..4); 5 ends the intro and deals the first question. The room takes
+   * only the current page ±1, so a double tap or a second host tab turns one page, not two (eng D4). */
+  | { type: "HOST_INTRO"; page: number }
   /** Which key pays for AI narration in this room. The key stays in the room's memory and is never sent back. */
   | { type: "HOST_AI_KEY"; source: "own"; provider: AiProviderId; key: string }
   /** The server's own key, for whoever knows OWNER_KEY. */
@@ -181,7 +186,8 @@ export type ServerErrorCode =
 export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill";
 
 export type ServerMessage =
-  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string }
+  /** `replay`: this room has played a game, so the host page leaves 開始前播放玩法說明 unchecked (eng D5). */
+  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true }
   | {
       type: "STATE";
       view: SpectatorView;
@@ -203,6 +209,8 @@ export type ServerMessage =
       /** The boss's phase card is up: `question` is null until the host's 下一題 (docs/designs/boss-phases.md),
        * so the card carries the boss to draw. */
       phaseCard?: { monster: PublicQuestion["monster"] };
+      /** How-to-play page on show (1..4); `question` is null until the host leaves page 4. */
+      intro?: { page: number };
       /** The boss phase under way, from phase 2 on (phase 1 stays a plain boss). Never a later phase. */
       bossPhaseInfo?: { name: string; rule: string };
       /** The bank cooks its monsters (hasCuisine): scores read 飽足感 instead of 獎勵分. Absent from older servers. */
@@ -297,6 +305,8 @@ export const MAX_TYPED_ANSWER = 40;
 export const MAX_NOTES = 500;
 export const MAX_PASSWORD = 32;
 export const MAX_EDIT_LINE = 40;
+/** How-to-play pages before the first question (docs/designs/how-to-play.md D4). */
+export const INTRO_PAGES = 4;
 
 /**
  * A typed answer: trimmed, control and bidi-override characters dropped, MAX_TYPED_ANSWER code points,
@@ -351,7 +361,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         : null;
     case "HOST_START":
       if (m.aiNarration !== undefined && typeof m.aiNarration !== "boolean") return null;
-      return { type: "HOST_START", aiNarration: m.aiNarration };
+      if (m.intro !== undefined && typeof m.intro !== "boolean") return null;
+      return { type: "HOST_START", aiNarration: m.aiNarration, ...(m.intro ? { intro: true } : {}) };
+    case "HOST_INTRO":
+      return Number.isInteger(m.page) && (m.page as number) >= 1 && (m.page as number) <= INTRO_PAGES + 1
+        ? { type: "HOST_INTRO", page: m.page as number }
+        : null;
     case "HOST_AI_KEY": {
       if (m.source === "none") return { type: "HOST_AI_KEY", source: "none" };
       if (m.source === "owner") {

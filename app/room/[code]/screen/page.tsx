@@ -25,6 +25,7 @@ import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 import { RollOverlay } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
+import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { readStored, writeStored } from "@/lib/stored";
 
 const TTS_ENABLED_STORAGE = "screen-tts-enabled";
@@ -402,6 +403,8 @@ export default function ScreenPage() {
 
   // --- TTS (docs/designs/dm-voice-narration-tts.md) ---
   const [ttsOn, setTtsOn] = useState(false);
+  /** The how-to-play page whose owl line was last spoken (D11). */
+  const introSpoken = useRef<number | null>(null);
   const [ttsVoice, setTtsVoice] = useState<SpeechSynthesisVoice | undefined>(undefined);
   /** Reset on every socket open AND on every LOBBY (a room reset can happen without a socket
    * reconnect, and a new game's eventIds start over from 0 — see tts.ts's shouldSpeakNarration
@@ -564,6 +567,9 @@ export default function ScreenPage() {
           break;
         case "STATE":
           setGame(msg);
+          // D11: each how-to-play page's owl line is spoken once, when the page comes up.
+          if (msg.intro && msg.intro.page !== introSpoken.current) speak([INTRO_PAGE_TEXT[msg.intro.page - 1]?.owl ?? ""]);
+          introSpoken.current = msg.intro?.page ?? null;
           if (narrationBaseline.current === null) narrationBaseline.current = msg.eventId;
           // A new event: play its effect once (only while the 🎵 music is on, see playCue).
           if (sfxSeen.current === null) sfxSeen.current = msg.eventId;
@@ -596,7 +602,14 @@ export default function ScreenPage() {
     <>
       <Stage>
         {!game && <Lobby code={code} teams={lobby} />}
-        {game?.phase === "playing" && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} />}
+        {game?.phase === "playing" && game.intro && (
+          <>
+            <SceneBackground theme="stone" />
+            <Torches />
+            <HowToPlay page={game.intro.page} firstTeam={describeTurn(game.view, null).team?.name ?? ""} cuisine={!!game.cuisine} />
+          </>
+        )}
+        {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} cuisine={game.cuisine} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>

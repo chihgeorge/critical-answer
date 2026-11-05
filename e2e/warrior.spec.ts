@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach } from "./answer";
+import { restoreRoom0AfterEach, startGame } from "./answer";
 
 restoreRoom0AfterEach();
 
@@ -22,7 +22,7 @@ test("warrior: a team picks 戰士 in the lobby, rolls instead of answering, the
   await expect(team.getByRole("button", { name: /戰士/ })).toHaveAttribute("aria-pressed", "true");
   await expect(host.getByText("⚔️ 戰士")).toBeVisible();
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   await expect(team.getByText("戰士・剩 2 次")).toBeVisible();
 

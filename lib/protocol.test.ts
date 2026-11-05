@@ -82,6 +82,18 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_START", aiNarration: "yes" })).toBeNull();
   });
 
+  it("HOST_START: intro is optional and must be a boolean; false is the same as missing", () => {
+    expect(parseClientMessage({ type: "HOST_START", intro: true })).toEqual({ type: "HOST_START", intro: true });
+    expect(parseClientMessage({ type: "HOST_START", intro: false })).toEqual({ type: "HOST_START" });
+    expect(parseClientMessage({ type: "HOST_START", intro: "yes" })).toBeNull();
+  });
+
+  it("HOST_INTRO: a whole page from 1 to 5 (5 ends the intro)", () => {
+    expect(parseClientMessage({ type: "HOST_INTRO", page: 1 })).toEqual({ type: "HOST_INTRO", page: 1 });
+    expect(parseClientMessage({ type: "HOST_INTRO", page: 5 })).toEqual({ type: "HOST_INTRO", page: 5 });
+    for (const page of [0, 6, 2.5, "2", undefined]) expect(parseClientMessage({ type: "HOST_INTRO", page }), String(page)).toBeNull();
+  });
+
   it("HOST_SET_NOTES: a string of at most 500 characters", () => {
     expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: "用武俠口吻" })).toEqual({ type: "HOST_SET_NOTES", notes: "用武俠口吻" });
     expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: "" })).toEqual({ type: "HOST_SET_NOTES", notes: "" });

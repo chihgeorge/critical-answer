@@ -1,5 +1,5 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { textOnlyBank } from "./answer";
+import { textOnlyBank, startGame } from "./answer";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -55,7 +55,7 @@ test("a phone that drops on its own turn shows it's offline, then that its turn 
   await other.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
   await expect(phone.getByTestId("roster")).toContainText("乙隊");
 
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   await expect(phone.getByText("斷線")).toHaveCount(0);
 

@@ -46,3 +46,16 @@ export function hostKeyAction(e: KeyLike, revealing: boolean, mc?: { stuck: bool
   if (e.key === "3") return "flee";
   return null;
 }
+
+/** The how-to-play slideshow's keys (docs/designs/how-to-play.md D7): → or Enter for the next page, ← for the
+ * previous one. Same "leave it alone" rules as hostKeyAction: no modifier, no held key, not while typing. */
+export function introKeyAction(e: KeyLike): "next" | "prev" | null {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return null;
+  const tag = e.target?.tagName?.toUpperCase();
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target?.isContentEditable) return null;
+  if (e.key === "ArrowRight") return "next";
+  // Enter on a focused button or link is that control's own click (◀ 上一頁 must go back).
+  if (e.key === "Enter") return tag === "BUTTON" || tag === "A" ? null : "next";
+  if (e.key === "ArrowLeft") return "prev";
+  return null;
+}
