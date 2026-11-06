@@ -196,7 +196,8 @@ export class DungeonRoom {
   private pendingLock: LockedOption | null = null;
   /** A warrior's roll in its beat (memory only: a restart drops it; its use was already spent). Shares lockTimer. */
   private pendingRoll: PendingRoll | null = null;
-  /** The beat of a revealed lock or a roll, or a boss miss's red tile. While a lock is pending, set means the host revealed it. */
+  /** The beat of a revealed lock or a roll, or a boss miss's red tile. A stale one may be left behind: whether the
+   * host revealed a lock is pendingLock.revealing, never this. */
   private lockTimer: ReturnType<typeof setTimeout> | null = null;
   private transcript: TranscriptItem[] = [];
   /** Host director: notes for the LLM and the last few hand-edited lines. */
@@ -638,7 +639,7 @@ export class DungeonRoom {
       ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
       ...this.bossPhaseInfo(),
       ...(hasCuisine(this.bank) ? { cuisine: true as const } : {}),
-      pendingLock: this.pendingLock && (this.lockTimer ? { ...this.pendingLock, revealing: true } : this.pendingLock),
+      pendingLock: this.pendingLock,
       pendingRoll: this.pendingRoll,
       eventId: this.eventSeq,
       ...(this.cue ? { cue: this.cue } : {}),
@@ -841,6 +842,9 @@ export class DungeonRoom {
     if (!teamId || !this.game) return;
     // The team may already have a newer connection (a reload or reconnect): then it is still online.
     if ([...this.connTeam.values()].includes(teamId)) return;
+    // A team whose lock waits for 公布答案 keeps the turn, like a sent fill-in: it put the phone down after locking
+    // (/review D9 = A). syncLockTeam marks it offline once the lock is gone.
+    if (this.pendingLock?.teamId === teamId) return;
     try {
       this.game = setTeamOnline(this.game, teamId, false);
       this.broadcastState();
@@ -1267,8 +1271,20 @@ export class DungeonRoom {
     if (this.lockTimer) clearTimeout(this.lockTimer);
     if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
     this.lockTimer = this.phaseCardTimer = null;
+    const lockTeam = this.pendingLock?.teamId;
     this.pendingLock = null;
     this.pendingRoll = null;
+    if (lockTeam) this.syncLockTeam(lockTeam);
+  }
+
+  /** After a lock is gone: its team, kept on turn while the lock waited (onClose), shows offline if no phone is left. */
+  private syncLockTeam(teamId: string) {
+    if (!this.game || [...this.connTeam.values()].includes(teamId)) return;
+    try {
+      this.game = setTeamOnline(this.game, teamId, false);
+    } catch {
+      // Team no longer exists in this game instance — nothing to do.
+    }
   }
 
   private handleTranscript(conn: Conn) {
@@ -1580,6 +1596,9 @@ export class DungeonRoom {
     if (pick === null || pick >= q.options.length || game.eliminated[questionId]?.includes(pick)) return reject("no_selection");
     if (shown !== undefined && shown !== pick) return reject("selection_changed");
     this.pendingLock = { teamId, questionId, optionIndex: pick };
+    // Pin the turn to the locking team: the stored index may point at an offline team the turn skipped, and that
+    // team coming back must not take the turn while the lock waits for 公布答案 (/review fix pass).
+    this.game = { ...game, currentTurnIndex: game.turnOrder.indexOf(teamId) };
     this.broadcastState();
   }
 
@@ -1591,7 +1610,11 @@ export class DungeonRoom {
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (!this.game || !lock || lock.teamId !== teamId || lock.questionId !== questionId) return reject("no_lock");
     // A double press: the beat already runs.
-    if (this.lockTimer) return reject("reveal_pending");
+    if (lock.revealing) return reject("reveal_pending");
+    // Nothing else may hold the timer now (a lock is refused during a roll or a miss): what is left is stale,
+    // e.g. a boss miss the host settled inside its beat (/review, 2026-11-05).
+    if (this.lockTimer) clearTimeout(this.lockTimer);
+    this.pendingLock = { ...lock, revealing: true };
     this.lockTimer = setTimeout(() => this.resolveLock(), BEAT_MS);
     this.broadcastState();
   }
@@ -1606,7 +1629,8 @@ export class DungeonRoom {
     this.markActivity();
     const q = this.question(lock.questionId);
     try {
-      // The team's phone dropped during the beat and the turn moved on (E9): drop the lock; it locks again.
+      // The turn moved on some other way (the team's phone cannot drop it: onClose keeps a locked team on turn):
+      // drop the lock; it locks again.
       if (currentTurnTeamId(game) !== lock.teamId || currentQuestionIdOf(game, lock.teamId) !== lock.questionId) {
         this.broadcastState();
       } else if (q?.kind === "multipleChoice" && q.correctIndex === lock.optionIndex) {
@@ -1621,6 +1645,10 @@ export class DungeonRoom {
       console.error(JSON.stringify({ event: "lock_failed", error: String(err) }));
       this.broadcastState();
     }
+    // Its phone may have closed while the lock waited (onClose): show it offline now.
+    const wasOnline = this.game?.teams.find((t) => t.id === lock.teamId)?.online;
+    this.syncLockTeam(lock.teamId);
+    if (wasOnline && !this.game?.teams.find((t) => t.id === lock.teamId)?.online) this.broadcastState();
   }
 
   /** A wrong boss lock has no 重答 / 逃跑 choice (boss redesign D2=B): both would rotate the shared

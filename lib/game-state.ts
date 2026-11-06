@@ -200,7 +200,7 @@ export interface LockedOption {
   teamId: string;
   questionId: string;
   optionIndex: number;
-  /** Set in STATE once the host pressed 公布答案 and the beat runs (host-reveal.md). */
+  /** Set once the host pressed 公布答案 and the beat runs (host-reveal.md). */
   revealing?: true;
 }
 

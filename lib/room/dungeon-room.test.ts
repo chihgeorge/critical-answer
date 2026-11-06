@@ -854,7 +854,6 @@ describe("TEAM_SELECT_OPTION", () => {
     const lock = (room: DungeonRoom, conn: Conn) => {
       send(room, conn, { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
       reveal(room);
-      reveal(room);
     };
     const err = (conn: Conn) => lastSentTo(conn as never)?.detail;
 
@@ -1014,6 +1013,32 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useRealTimers();
     });
 
+    // Value: protects=a boss miss the host settles inside its red-tile beat leaves no stale timer that makes the next lock
+    // read as revealing and refuse 公布答案 forever (/review, 2026-11-05); fails_when=revealing is derived from lockTimer again
+    it("after the host settles a boss miss early, the next lock still waits for 公布答案 and is judged", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns } = startedMcGame(1);
+      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+      const lockBoss = (option: number) => {
+        room.game = { ...room.game!, boss: { ...room.game!.boss, currentQuestionId: "boss-mc1" } };
+        send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "boss-mc1", optionIndex: room.game.optionOrder["boss-mc1"].indexOf(option) });
+        send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "boss-mc1" });
+      };
+      lockBoss(1);
+      reveal(room);
+      vi.advanceTimersByTime(2000); // the reveal's beat: the red tile and its own beat start
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "boss-mc1", correct: false, fleeChoice: "retry" });
+      vi.advanceTimersByTime(2000); // the boss miss's timer fires late and finds its miss settled
+      lockBoss(0);
+      const states = () => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE");
+      expect(states().at(-1).pendingLock.revealing).toBeUndefined();
+      reveal(room);
+      expect(lastSentTo(hostConn as never)?.detail).not.toBe("reveal_pending");
+      vi.advanceTimersByTime(2000);
+      expect((room as any).pendingLock).toBeNull();
+      expect(states().at(-1).reveal).not.toBeNull();
+    });
+
     it("a wrong room lock still waits for the team's choice: no timer resolves it", () => {
       vi.useFakeTimers();
       const { room, conns } = startedMcGame(2);
@@ -1024,6 +1049,39 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useRealTimers();
     });
 
+    // Value: protects=a team that locks and puts its phone down (it sleeps, the socket closes) keeps its answer until
+    // 公布答案, like a sent fill-in (/review D9 = A, 2026-11-05); fails_when=onClose marks a locked team offline at once
+    it("a team whose phone closes after its lock keeps the turn: 公布答案 still judges it, then it shows offline", () => {
+      vi.useFakeTimers();
+      const { room, ids, conns } = startedMcGame(2);
+      pick(room, conns[0], room.game!.optionOrder["r0-mc1"].indexOf(1));
+      send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+      room.onClose(conns[0]);
+      expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+      reveal(room);
+      vi.advanceTimersByTime(2000);
+      expect((room as any).reveal).toMatchObject({ questionId: "r0-mc1" });
+      expect(room.game!.teams.find((t) => t.id === ids[0])!.online).toBe(false);
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    });
+
+    // Value: protects=a team that comes back online while another team's lock waits does not take the turn and void it
+    // (/review fix pass, 2026-11-05); fails_when=the lock does not pin currentTurnIndex
+    it("a team that comes back while another team's lock waits does not take the turn from it", () => {
+      vi.useFakeTimers();
+      const { room, ids, conns } = startedMcGame(2);
+      const online = (id: string, on: boolean) => (room.game = { ...room.game!, teams: room.game!.teams.map((t) => (t.id === id ? { ...t, online: on } : t)) });
+      online(ids[0], false); // its phone slept on its own turn: the turn passes to team 1
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+      pick(room, conns[1], room.game!.optionOrder[room.game!.teams[1].currentQuestionId].indexOf(1));
+      send(room, conns[1], { type: "TEAM_LOCK_OPTION", questionId: room.game!.teams[1].currentQuestionId });
+      online(ids[0], true); // and wakes up while the lock waits
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+      reveal(room);
+      vi.advanceTimersByTime(2000);
+      expect((room as any).reveal).not.toBeNull();
+    });
+
     it("a team that drops offline while deciding keeps the turn (E9)", () => {
       vi.useFakeTimers();
       const { room, ids, conns } = startedMcGame(2);
@@ -1032,19 +1090,6 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.advanceTimersByTime(2000);
       room.onClose(conns[0]);
       expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
-      vi.useRealTimers();
-    });
-
-    it("a lock whose team went offline during the beat is dropped (E9)", () => {
-      vi.useFakeTimers();
-      const { room, ids, conns } = startedMcGame(2);
-      pick(room, conns[0], 1);
-      lock(room, conns[0]);
-      room.onClose(conns[0]);
-      vi.advanceTimersByTime(2000);
-      expect(room.game!.teams[0].score).toBe(0);
-      expect(lastBroadcast(room).pendingLock).toBeNull();
-      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
       vi.useRealTimers();
     });
 
@@ -1084,6 +1129,9 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastSentTo(conns[0])).toMatchObject({ error: "not_host" });
       press(hostConn, "r0-mc2");
       expect(lastSentTo(hostConn)).toMatchObject({ detail: "no_lock" });
+      send(room, hostConn, { type: "HOST_REVEAL", teamId: "other-team", questionId: "r0-mc1" }); // the right question, another team
+      expect(lastSentTo(hostConn)).toMatchObject({ detail: "no_lock" });
+      expect((room as any).pendingLock.revealing).toBeUndefined();
       const seq = seqOf(room);
       press(hostConn);
       press(hostConn);
@@ -1100,7 +1148,8 @@ describe("TEAM_SELECT_OPTION", () => {
       const { room, hostConn, ids, conns } = startedMcGame(2);
       pick(room, conns[0], 1);
       send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
-      room.onClose(conns[0]);
+      // A closed phone no longer moves the turn (D9 = A, the test above): move it by hand, as any other path would.
+      room.game = { ...room.game!, teams: room.game!.teams.map((t) => (t.id === ids[0] ? { ...t, online: false } : t)) };
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
       vi.advanceTimersByTime(60_000);
       expect(lastBroadcast(room).pendingLock).toMatchObject({ teamId: ids[0] });
@@ -1111,6 +1160,44 @@ describe("TEAM_SELECT_OPTION", () => {
       pick(room, conns[1], 1);
       send(room, conns[1], { type: "TEAM_LOCK_OPTION", questionId: room.game!.teams[1].currentQuestionId });
       expect(lastBroadcast(room).pendingLock).toMatchObject({ teamId: ids[1] });
+    });
+
+    // Value: protects=a locked team whose phone closed shows offline once 結束冒險 drops its lock unrevealed (host-reveal.md D9);
+    // fails_when=clearAnswerTimers stops calling syncLockTeam, so the podium shows a gone team online; why_new=only resolveLock's sync is tested;
+    // seam=none; no_claim=the lobby after 回到大廳 (no game then)
+    it("a locked team whose phone closed shows offline when the host ends the game before 公布答案", () => {
+      const { room, hostConn, ids, conns } = startedMcGame(2);
+      pick(room, conns[0], 1);
+      send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+      room.onClose(conns[0]);
+      expect(room.game!.teams.find((t) => t.id === ids[0])!.online).toBe(true);
+      send(room, hostConn, { type: "HOST_END_GAME" });
+      expect((room as any).pendingLock).toBeNull();
+      const lastState = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE").at(-1);
+      expect(lastState.view.teams.find((t: { id: string }) => t.id === ids[0]).online).toBe(false);
+    });
+
+    // Value: protects=a warrior's success on a multipleChoice question keeps its option wall and waits for 下一題 (host-reveal.md R1, finding 1);
+    // fails_when=choice is gated on the lock path again, or the roll's reveal gets a timer; why_new=room roll tests play text questions;
+    // seam=none; no_claim=the TV's green tile rendering (e2e)
+    it("a warrior's 20 on a multipleChoice question reveals the option wall and waits for 下一題", () => {
+      vi.useFakeTimers();
+      let r = 0;
+      const room = new DungeonRoom(makeRoom() as any, () => r, { bank: mcBank });
+      const hostConn = makeConn("host-conn");
+      room.onConnect(hostConn);
+      claim(room, hostConn);
+      const { conns } = joinTeams(room, hostConn, 1);
+      send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "warrior" });
+      send(room, hostConn, { type: "HOST_START" });
+      r = 19 / 20; // a 20
+      send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-mc1" });
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { correctIndex: 1 } });
+      vi.advanceTimersByTime(60_000);
+      expect(revealOpen(room)).toBe(true);
+      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+      expect(revealOpen(room)).toBe(false);
     });
 
     it("the host cannot send a team to the boss while its lock is in its beat", () => {
