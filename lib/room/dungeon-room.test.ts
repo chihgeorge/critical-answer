@@ -922,7 +922,7 @@ describe("TEAM_SELECT_OPTION", () => {
       const after = lastBroadcast(room);
       expect(after.pendingRoll).toBeNull();
       expect(after.cue).toBe("check-pass");
-      expect(after.view.checks["r0-t1:" + ids[0]]).toMatchObject({ value: 15, passed: true, hint: "萬" });
+      expect(after.view.checks[checkKey("r0-t1", ids[0])]).toMatchObject({ value: 15, passed: true, hint: "萬" });
     });
 
     it("rolls once per question: a second press and a press after a wrong retry are refused", () => {
@@ -939,7 +939,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "r0-t1", choice: "retry" });
       roll(18);
       expect(lastSentTo(conns[0])).toMatchObject({ detail: "check_done" });
-      expect(room.game!.checks!["r0-t1:" + ids[0]]).toMatchObject({ value: 3, passed: false });
+      expect(room.game!.checks![checkKey("r0-t1", ids[0])]).toMatchObject({ value: 3, passed: false });
     });
 
     // Value: protects=the e2e die seam only takes a real die face (worker E2E_DIE); fails_when=a bad var fixes the die
@@ -977,7 +977,7 @@ describe("TEAM_SELECT_OPTION", () => {
       room.onClose(conns[0]);
       expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
       vi.advanceTimersByTime(2000);
-      expect(room.game!.checks!["r0-t1:" + ids[0]]).toMatchObject({ value: 1, passed: false });
+      expect(room.game!.checks![checkKey("r0-t1", ids[0])]).toMatchObject({ value: 1, passed: false });
       // No phone left: the team shows offline now, and the turn moves on.
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
     });
@@ -999,8 +999,8 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useFakeTimers();
       const { room, ids, roll } = checkGame();
       roll(1);
-      expect(room.game!.checks?.["r0-t1:" + ids[0]]).toMatchObject({ value: 1, passed: false });
-      expect(lastBroadcast(room).view.checks?.["r0-t1:" + ids[0]]).toBeUndefined();
+      expect(room.game!.checks?.[checkKey("r0-t1", ids[0])]).toMatchObject({ value: 1, passed: false });
+      expect(lastBroadcast(room).view.checks?.[checkKey("r0-t1", ids[0])]).toBeUndefined();
     });
 
     // Value: protects=the room, not only the phone, asks for the check first (Codex P1 in /review), and a typed
@@ -1022,7 +1022,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(warrior.game!.teams[0].abilityUses).toBe(2);
       passChecks(room);
       send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: "r0-t1", text: "萬家福", eventId: seqOf(room) });
-      delete room.game!.checks!["r0-t1:" + room.game!.teams[0].id];
+      delete room.game!.checks![checkKey("r0-t1", room.game!.teams[0].id)];
       roll(20);
       expect(lastSentTo(conns[0])).toMatchObject({ detail: "answer_submitted" });
     });

@@ -358,6 +358,35 @@ describe("restoring after a restart", () => {
     expect(second.room.game!.checks?.[key]).toMatchObject({ value: 3, passed: false });
   });
 
+  // Value: protects=a natural 20 whose beat a restart cut off still wins (dnd design R7); fails_when=restore ignores
+  // the saved record, so the team keeps a question it already won; no_claim=the narration of that win.
+  it("a natural 20 cut off by a restart wins once the room is back", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[saved.game.currentTurnIndex];
+    const team = saved.game.teams.find((t: any) => t.id === t0);
+    const q = team.currentQuestionId;
+    saved.game.checks = { [checkKey(q, t0)]: { value: 20, bonus: 0, dc: 8, passed: true } };
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored");
+    // Every phone is offline after a restart: the win waits for one to come back.
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
+    if (t0 === T1) rejoin(second.room, T1, TEAM_KEY, "a2");
+    else rejoin(second.room, T2, TEAM_KEY + "2", "b2");
+    const after = second.room.game!.teams.find((t) => t.id === t0)!;
+    expect(after.score).toBeGreaterThan(team.score);
+    expect(after.currentQuestionId).not.toBe(q);
+    // Saved after the win: another restart and rejoin do not win it again.
+    const third = makeRoom(storage);
+    await third.room.restore();
+    if (t0 === T1) rejoin(third.room, T1, TEAM_KEY, "a3");
+    else rejoin(third.room, T2, TEAM_KEY + "2", "b3");
+    expect(third.room.game!.teams.find((t) => t.id === t0)!.score).toBe(after.score);
+  });
+
   it("a corrupt snapshot with a null team entry doesn't crash restore (adversarial review, 2026-09-21)", async () => {
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);

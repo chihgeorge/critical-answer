@@ -1100,6 +1100,7 @@ export class DungeonRoom {
     }
     this.connTeam.set(conn.id, teamId);
     if (this.game) this.game = setTeamOnline(this.game, teamId, true);
+    this.applyLostCrit();
     return true;
   }
 
@@ -1823,6 +1824,20 @@ export class DungeonRoom {
     if (value === 20) return this.judge(teamId, questionId, true, "retry");
     this.setCue(this.game!.checks![checkKey(questionId, teamId)].passed ? "check-pass" : "check-fail");
     this.broadcastState();
+  }
+
+  /** A restart during a natural 20's beat lost the win the beat applies (R7). The record is saved, so the win is applied
+   * when a phone comes back (a judgment needs a team online). A natural 20 still on the turn team's current question was
+   * never judged, since its win moves the team on; during a live beat pendingRoll is set and the beat applies it. */
+  private applyLostCrit() {
+    const game = this.game;
+    if (game?.phase !== "playing" || game.pendingWrong || this.pendingRoll || this.pendingLock) return;
+    const teamId = currentTurnTeamId(game);
+    if (!teamId) return;
+    const questionId = currentQuestionIdOf(game, teamId);
+    if (game.checks?.[checkKey(questionId, teamId)]?.value !== 20) return;
+    if (game.teams.find((t) => t.id === teamId)?.typedAnswer !== undefined) return;
+    this.judge(teamId, questionId, true, "retry");
   }
 
   /** 擲骰說服 (dnd design R-E1, R-E4): the team on turn rolls its check on its own fill-in question, once. */

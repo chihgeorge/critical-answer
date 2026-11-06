@@ -328,7 +328,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
         <>
         {check && (
           <div className="px-bar mt-1 !text-[17px]" role="status" data-testid="check-result">
-            🗣️ {check.value === 20 ? "說服成功！" : check.value === 1 ? "說服失敗……答對只拿一半" : check.passed ? (check.hint === undefined ? "過了！答案太短，沒有提示" : "過了！看提示") : "沒過，直接答吧"}
+            🗣️ {check.value === 20 ? "說服成功！" : check.value === 1 ? "說服失敗……答對只拿一半" : check.passed ? (check.hint !== undefined ? "過了！看提示" : game.view.mageHints[q.id] !== undefined ? "過了！提示法師已經給了" : "過了！答案太短，沒有提示") : "沒過，直接答吧"}
           </div>
         )}
         {check?.hint !== undefined && <MageHint hint={check.hint} testId="check-hint" />}
