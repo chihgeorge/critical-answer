@@ -539,8 +539,11 @@ export default function HostPage() {
           </section>
         )}
 
-        {game && game.phase === "playing" && !game.intro && turn?.team && (
+        {game && game.phase === "playing" && !game.intro && (
           <>
+            {/* No team on turn (every phone offline): the team rows and their 交給新手機 still show. */}
+            {turn?.team && (
+            <>
             <TurnRibbon>{turn.inBoss ? "首領戰　" : ""}輪到：{turn.team.name}</TurnRibbon>
             <Panel tone="turn" className="px-3 py-[10px]">
               <div className="flex items-center gap-3">
@@ -619,6 +622,8 @@ export default function HostPage() {
                 {pickButton("boss")}
               </Panel>
             )}
+            </>
+            )}
 
             <ul className="flex flex-col gap-2">
               {game.view.teams.map((t, i) => (
@@ -656,6 +661,7 @@ export default function HostPage() {
               ))}
             </ul>
 
+            {turn?.team && (
             <div className="mt-auto flex flex-col">
               {!ready && connected && <div className="px-1 text-center text-[14px] text-white">等待主持人驗證…</div>}
               {revealUp ? (
@@ -765,6 +771,7 @@ export default function HostPage() {
                 </>
               )}
             </div>
+            )}
           </>
         )}
 

@@ -76,7 +76,7 @@ test("a big screen that never connects says it can't reach the server", async ({
 test("a phone that joins after the game started is told why, sees no game, and takes over a team with the host's code", async ({ browser }) => {
   const { host, code } = await hostRoom(browser);
   const first = await phone(browser);
-  // Closing a page alone doesn't reliably reach the local room; drop the socket at the server end too (as disconnect.spec.ts does).
+  // Drop the phone at the server end too, so the room sees it go at once (as disconnect.spec.ts does).
   let dead = false;
   // Every socket, not only the last: the page may hold more than one (a dev-mode double mount, a reconnect).
   const firstSockets: WebSocketRoute[] = [];

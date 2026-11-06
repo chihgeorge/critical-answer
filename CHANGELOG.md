@@ -9,6 +9,9 @@ All notable changes to Critical Answer are documented here.
 - A code works once and lasts 5 minutes. Pressing the button again replaces the team's old code. After 5 wrong codes in the room, every open code stops working, and the host presses the button again.
 - If the team's old phone is still online, the host is asked to confirm first.
 
+### Fixed
+- When every team's phone is offline, the host page still lists the teams with their 交給新手機 buttons. Before, the host page went blank until a phone came back.
+
 ## [0.31.4.0] - 2026-11-05
 
 ### Fixed
