@@ -39,7 +39,10 @@ export async function answerCorrectly(host: Page) {
     const name = new RegExp(`^[A-D]\\s*${answer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
     await phone.getByRole("button", { name }).click();
     await phone.getByRole("button", { name: "鎖定答案" }).click();
-    return revealLock(host);
+    await revealLock(host);
+    // A right lock is judged after two beats: the reveal (2 s), then the crit die (2 s). Wait them out here, so
+    // callers see the judged state with their own default timeouts.
+    return expect(host.getByTestId("host-mc-status")).toHaveCount(0, { timeout: 10_000 });
   }
   throw new Error(`no phone in room ${code} is on turn`);
 }

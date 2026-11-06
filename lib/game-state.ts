@@ -214,9 +214,12 @@ export interface WrongAnswer {
   prayed?: true;
 }
 
+/** A natural 20 or 1 on the die behind a correct answer (the crit die, or a warrior's 20): narration and the cue use it. */
+export type RollMark = { kind: "crit"; value: 20 | 1 };
+
 export type AnswerOutcome =
-  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; nextRoomIndex: number; entersBoss: boolean }
-  | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; killBonus?: number }
+  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
+  | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; killBonus?: number; roll?: RollMark }
   | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty }
   /** `newBossQuestion`: a wrong boss answer rotated the shared question (boss redesign D2=B). */
   | { type: "incorrect-retry"; teamId: string; newBossQuestion?: true };
@@ -588,8 +591,13 @@ export function answerQuestion(
   correct: boolean,
   fleeChoice: "flee" | "retry" = "retry",
   rng: () => number = Math.random,
+  critValue?: number,
 ): { game: GameState; outcome: AnswerOutcome } {
   assertPlaying(game);
+  // The die behind a correct answer: a 20 adds half the base reward (and a boss hit); a 1 is only a show.
+  const crit = correct && critValue === 20;
+  const rollMark: { roll?: RollMark } = correct && (critValue === 20 || critValue === 1) ? { roll: { kind: "crit", value: critValue } } : {};
+  const critBonus = (base: number) => (crit ? Math.round(base * 0.5) : 0);
 
   const activeTeamId = currentTurnTeamId(game);
   if (activeTeamId === null) {
@@ -632,10 +640,11 @@ export function answerQuestion(
     // An earlier phase out of unrevealed questions moves on; the last one repeats them (premise 3).
     const usedUp = (revealed: string[]) => !lastPhase && boss.questionIds.every((id) => revealed.includes(id));
     if (correct) {
-      const newHp = Math.max(0, boss.hp - sneak);
+      const newHp = Math.max(0, boss.hp - sneak - (crit ? 1 : 0));
       const bossKilled = newHp === 0 && lastPhase;
+      // The 4d20 is not raised by a crit (R4).
       const killBonus = bossKilled ? rollBossKillBonus(rng) * sneak : undefined;
-      const reward = boss.hitReward * sneak + (killBonus ?? 0);
+      const reward = boss.hitReward * sneak + critBonus(boss.hitReward) + (killBonus ?? 0);
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}) }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
@@ -663,7 +672,7 @@ export function answerQuestion(
           ...(phasePending ? { phasePending } : {}),
         },
       };
-      outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, reward, ...(killBonus === undefined ? {} : { killBonus }) };
+      outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, reward, ...(killBonus === undefined ? {} : { killBonus }), ...rollMark };
 
       if (bossKilled) {
         return { game: finishGame(nextGame), outcome };
@@ -696,7 +705,8 @@ export function answerQuestion(
     if (correct) {
       // The question's own difficulty: an empty, fully held or fully revealed pool deals from another one (deal()).
       const pointsAwarded = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
-      const reward = game.rooms[team.roomIndex].reward * sneak;
+      const base = game.rooms[team.roomIndex].reward;
+      const reward = base * sneak + critBonus(base);
       // A correct answer is always revealed (D5), so the next deal from any pool must not hand it
       // back to a team who hasn't faced it yet.
       const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
@@ -723,7 +733,7 @@ export function answerQuestion(
           queuedQuestionId: dealt.queuedQuestionId,
         })),
       };
-      outcome = { type: "correct-room-advance", teamId, pointsAwarded, reward, nextRoomIndex, entersBoss };
+      outcome = { type: "correct-room-advance", teamId, pointsAwarded, reward, nextRoomIndex, entersBoss, ...rollMark };
     } else if (fleeChoice === "flee") {
       const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
       // Fleeing reveals the answer only after a wrong lock (revealedOnFlee); otherwise only skip
@@ -875,6 +885,7 @@ export function pray(game: GameState, teamId: string): GameState {
  * The warrior's roll stands in for the answer: `value` (a d20, rolled by the room) of WARRIOR_TARGET
  * or more is a correct answer, less is a wrong one with retry, under answerQuestion's usual rules
  * (in the boss room a shown wrong option still rotates the question). The use was spent by spendAbility.
+ * `critable`: a multipleChoice question, where this die is also the crit die (a 20 is a critical hit, R2).
  */
 export function warriorRoll(
   game: GameState,
@@ -882,9 +893,10 @@ export function warriorRoll(
   questionId: string,
   value: number,
   rng: () => number = Math.random,
+  critable = false,
 ): { game: GameState; outcome: AnswerOutcome } {
   assertAbilityTurn(game, teamId, "warrior");
-  return answerQuestion(game, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng);
+  return answerQuestion(game, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined);
 }
 
 /**

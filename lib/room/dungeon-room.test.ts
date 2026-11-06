@@ -726,6 +726,92 @@ describe("TEAM_SELECT_OPTION", () => {
     return { room, hostConn, ids, conns };
   }
 
+  // Value: protects=a correct lock's crit die (dnd design R9, R10, D10, E2): it shows for a beat before anything is
+  // scored, a 20 pays half again, its team keeps the turn through a dropped phone, every roll is logged once, and the
+  // big screen hears roll then crit/fumble through cueSeq; fails_when=the score or answer leaks into the die's beat, the
+  // die is skipped or rolled on a wrong lock, or a cue repeats; seam=none; no_claim=the overlay itself (e2e)
+  describe("the crit die after a correct lock (dnd design R9, R10)", () => {
+    afterEach(() => vi.useRealTimers());
+    function critGame(teamCount = 1) {
+      let r = 0;
+      const room = new DungeonRoom(makeRoom() as any, () => r, { bank: mcBank });
+      const hostConn = makeConn("host-conn");
+      room.onConnect(hostConn);
+      claim(room, hostConn);
+      const { ids, conns } = joinTeams(room, hostConn, teamCount);
+      send(room, hostConn, { type: "HOST_START" });
+      /** Locks option `i` for team 0, sets the die to land on `value`, and presses 公布答案. */
+      const lockAndReveal = (i: number, value: number) => {
+        send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: i });
+        send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+        r = (value - 1) / 20;
+        reveal(room);
+      };
+      const states = () => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE");
+      return { room, hostConn, ids, conns, lockAndReveal, states };
+    }
+
+    it("rolls only after a right reveal, holds it for 2 s with no score, answer or reveal, then judges a 20 as +50%", () => {
+      vi.useFakeTimers();
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      const { room, hostConn, ids, lockAndReveal } = critGame();
+      const seq = seqOf(room);
+      lockAndReveal(1, 20);
+      vi.advanceTimersByTime(2000);
+      const held = lastBroadcast(room);
+      expect(held.pendingLock).toBeNull();
+      expect(held.pendingRoll).toEqual({ teamId: ids[0], questionId: "r0-mc1", value: 20, kind: "crit" });
+      expect(held.reveal).toBeNull();
+      expect(held.view.teams[0].score).toBe(0);
+      expect(JSON.stringify(held)).not.toContain("correctIndex");
+      expect(seqOf(room)).toBe(seq);
+      const rolls = log.mock.calls.filter((c) => String(c[0]).includes('"event":"roll"')).map((c) => JSON.parse(String(c[0])));
+      expect(rolls).toEqual([{ event: "roll", kind: "crit", value: 20 }]);
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-mc1", correct: true, eventId: seq });
+      expect(lastSentTo(hostConn)?.detail).toBe("roll_pending");
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).pendingRoll).toBeNull();
+      expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { points: 15 } });
+      expect(room.game!.teams[0]).toMatchObject({ score: 1, reward: 15 });
+      expect(seqOf(room)).toBe(seq + 1);
+      log.mockRestore();
+    });
+
+    it("a wrong lock rolls no die", () => {
+      vi.useFakeTimers();
+      const { room, lockAndReveal } = critGame();
+      lockAndReveal(0, 20);
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).pendingRoll).toBeNull();
+      expect(room.game!.pendingWrong).toMatchObject({ questionId: "r0-mc1", optionIndex: 0 });
+    });
+
+    it("the big screen gets roll, then crit for a 20 or fumble for a 1, each with a new cueSeq", () => {
+      vi.useFakeTimers();
+      for (const [value, cue] of [[20, "crit"], [1, "fumble"], [7, "correct"]] as const) {
+        const { lockAndReveal, states } = critGame();
+        const start = states().at(-1).cueSeq;
+        lockAndReveal(1, value);
+        vi.advanceTimersByTime(2000);
+        expect(states().at(-1)).toMatchObject({ cue: "roll", cueSeq: start + 1 });
+        vi.advanceTimersByTime(2000);
+        expect(states().at(-1)).toMatchObject({ cue, cueSeq: start + 2 });
+      }
+    });
+
+    it("a team whose phone closes during the die keeps its right answer, then shows offline", () => {
+      vi.useFakeTimers();
+      const { room, ids, conns, lockAndReveal } = critGame(2);
+      lockAndReveal(1, 9);
+      vi.advanceTimersByTime(2000);
+      room.onClose(conns[0]);
+      expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+      vi.advanceTimersByTime(2000);
+      expect(room.game!.teams[0]).toMatchObject({ score: 1, reward: 10 });
+      expect(room.game!.teams[0].online).toBe(false);
+    });
+  });
+
   it("rejects a connection that never joined any team", () => {
     const { room } = startedMcGame(1);
     const spectator = makeConn("spectator-conn");
@@ -750,6 +836,7 @@ describe("TEAM_SELECT_OPTION", () => {
     send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
     reveal(room);
     vi.advanceTimersByTime(2000);
+    vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
     vi.useRealTimers();
     const next = room.game!.teams[0].currentQuestionId; // the room's only question, redealt
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: next, optionIndex: 0 });
@@ -778,8 +865,9 @@ describe("TEAM_SELECT_OPTION", () => {
     send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
     reveal(room);
     vi.advanceTimersByTime(2000);
+    vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
     vi.useRealTimers();
-    expect(room.game!.teams[0].reward).toBe(10);
+    expect(room.game!.teams[0].reward).toBe(15); // rng 0.99 rolls the crit die to 20: 10 plus half
     expect(lastBroadcast(room).reveal.choice).toMatchObject({ options: shown, correctIndex: right });
   });
 
@@ -898,6 +986,7 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.advanceTimersByTime(1999);
       expect(room.game!.teams[0].score).toBe(0);
       vi.advanceTimersByTime(1);
+      vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
       const out = lastBroadcast(room);
       expect(out.pendingLock).toBeNull();
       expect(out.reveal).toMatchObject({ questionId: "r0-mc1", answer: "B" });
@@ -1035,6 +1124,7 @@ describe("TEAM_SELECT_OPTION", () => {
       reveal(room);
       expect(lastSentTo(hostConn as never)?.detail).not.toBe("reveal_pending");
       vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
       expect((room as any).pendingLock).toBeNull();
       expect(states().at(-1).reveal).not.toBeNull();
     });
@@ -1060,6 +1150,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
       reveal(room);
       vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
       expect((room as any).reveal).toMatchObject({ questionId: "r0-mc1" });
       expect(room.game!.teams.find((t) => t.id === ids[0])!.online).toBe(false);
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
@@ -1079,6 +1170,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
       reveal(room);
       vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
       expect((room as any).reveal).not.toBeNull();
     });
 
@@ -1107,6 +1199,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, hostConn, { type: "HOST_REVEAL", teamId: ids[0], questionId: "r0-mc1" });
       expect(lastBroadcast(room).pendingLock).toMatchObject({ revealing: true });
       vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
       expect(room.game!.teams[0].reward).toBe(10);
       expect(lastBroadcast(room).reveal.choice).toMatchObject({ correctIndex: 1, points: 10 });
       vi.advanceTimersByTime(60_000);
@@ -1219,6 +1312,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "boss-mc1" });
       reveal(room);
       vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
       const reward = room.game!.teams.find((t) => t.id === ids[0])!.reward;
       expect(reward).toBeGreaterThan(10); // the hit reward plus the kill bonus
       expect((room as any).reveal.choice).toMatchObject({ correctIndex: 0, points: reward });

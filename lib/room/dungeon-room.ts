@@ -167,6 +167,8 @@ export class DungeonRoom {
   private lastNarration: { eventId: number; lines: string[] } | null = null;
   /** The latest event's sound effect, sent with STATE (memory only: a restart just has none). */
   private cue: SoundCue | null = null;
+  /** Goes up with every new cue (setCue), so the big screen plays a roll's cue, which bumps no eventId. */
+  private cueSeq = 0;
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
@@ -643,6 +645,7 @@ export class DungeonRoom {
       pendingRoll: this.pendingRoll,
       eventId: this.eventSeq,
       ...(this.cue ? { cue: this.cue } : {}),
+      cueSeq: this.cueSeq,
     };
   }
 
@@ -780,6 +783,7 @@ export class DungeonRoom {
     this.eventSeq = 0;
     this.lastNarration = null;
     this.cue = null;
+    this.cueSeq = 0;
     this.epilogue = null;
     this.epilogueRequested = false;
     this.staleBeforeSeq = null;
@@ -845,6 +849,8 @@ export class DungeonRoom {
     // A team whose lock waits for 公布答案 keeps the turn, like a sent fill-in: it put the phone down after locking
     // (/review D9 = A). syncLockTeam marks it offline once the lock is gone.
     if (this.pendingLock?.teamId === teamId) return;
+    // So does a correct lock's crit die: the answer is already right, a dropped phone must not lose it.
+    if (this.pendingRoll?.kind === "crit" && this.pendingRoll.teamId === teamId) return;
     try {
       this.game = setTeamOnline(this.game, teamId, false);
       this.broadcastState();
@@ -1252,7 +1258,7 @@ export class DungeonRoom {
     this.phaseCardTimer = null;
     if (!announce) return;
     const eventId = ++this.eventSeq;
-    this.cue = "boss-phase";
+    this.setCue("boss-phase");
     const phase = this.bank.boss.phases[game.boss.phaseIndex];
     this.broadcastState();
     const event: NarrationEvent = { type: "boss-phase", monster: this.bank.boss.monster.name, phase: game.boss.phaseIndex + 1, name: phase.name, rule: phase.rule };
@@ -1271,7 +1277,8 @@ export class DungeonRoom {
     if (this.lockTimer) clearTimeout(this.lockTimer);
     if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
     this.lockTimer = this.phaseCardTimer = null;
-    const lockTeam = this.pendingLock?.teamId;
+    // A crit die's team was kept on turn like a locked one (onClose): it too may be offline now.
+    const lockTeam = this.pendingLock?.teamId ?? (this.pendingRoll?.kind === "crit" ? this.pendingRoll.teamId : undefined);
     this.pendingLock = null;
     this.pendingRoll = null;
     if (lockTeam) this.syncLockTeam(lockTeam);
@@ -1396,7 +1403,7 @@ export class DungeonRoom {
   /** The start's fanfare and narration: at HOST_START, or when the host leaves the intro's last page (eng D3). */
   private announceStart() {
     const eventId = ++this.eventSeq;
-    this.cue = "start";
+    this.setCue("start");
     this.broadcastState();
     const next = this.nextTurn();
     void this.narrate(eventId, { type: "start", teams: this.pendingTeams.map((t) => t.name), ...(next ? { next } : {}) });
@@ -1510,8 +1517,9 @@ export class DungeonRoom {
   }
 
   /** Applies one answer; throws InvalidActionError (from answerQuestion) before changing anything.
-   * `roll`: a warrior's d20 stands in for the answer (warriorRoll), and `correct` is ignored. */
-  private judge(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: number) {
+   * `roll`: a warrior's d20 stands in for the answer (warriorRoll), and `correct` is ignored; on a
+   * multipleChoice question it is the crit die too. A crit die (`kind: "crit"`) rides on a correct answer. */
+  private judge(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: { kind: "warrior" | "crit"; value: number }) {
     const prev = this.game;
     if (!prev) return;
     // Captured before `this.game` reassigns to the post-judgment state below: the monster name
@@ -1524,7 +1532,9 @@ export class DungeonRoom {
     // A cleric's fill-in wait (optionIndex null) keeps its 逃跑, which rotates the question (#106 D2=A).
     if (!correct && prev.pendingWrong?.teamId === teamId && prev.pendingWrong.optionIndex !== null && isInBossPhase(prev, teamId)) fleeChoice = "retry";
     const { game, outcome } =
-      roll === undefined ? answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng) : warriorRoll(prev, teamId, questionId, roll, this.rng);
+      roll?.kind === "warrior"
+        ? warriorRoll(prev, teamId, questionId, roll.value, this.rng, this.question(questionId)?.kind === "multipleChoice")
+        : answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng, roll?.value);
     // Everything up to broadcastState is synchronous: state changes and the eventId are
     // fixed before any narration awaits, so concurrent judgments cannot interleave.
     this.game = game;
@@ -1538,7 +1548,9 @@ export class DungeonRoom {
     const base = dish && this.sayable(dish.name) && (told.type === "correct" || told.type === "boss-kill") ? { ...told, dish: dish.name } : told;
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
     const event = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
-    this.cue = event.type === "epilogue" ? null : event.type;
+    // A natural 20 or 1 swaps the correct / boss-hit sound; the boss kill keeps its own (E2).
+    const mark = "roll" in outcome ? outcome.roll : undefined;
+    this.setCue(event.type === "epilogue" ? null : event.type !== "boss-kill" && mark ? (mark.value === 20 ? "crit" : "fumble") : event.type);
     // Shown to everyone (D3), but only on a genuinely correct answer (D5): a retry or a flee
     // must never reveal it, or the question loses its point; game-state.ts's deal()/boss ring
     // treat a revealed question (answered, or fled after a wrong lock) as not safe to redeal. Set before broadcastState so the reveal and the post-judgment state arrive
@@ -1634,7 +1646,9 @@ export class DungeonRoom {
       if (currentTurnTeamId(game) !== lock.teamId || currentQuestionIdOf(game, lock.teamId) !== lock.questionId) {
         this.broadcastState();
       } else if (q?.kind === "multipleChoice" && q.correctIndex === lock.optionIndex) {
-        this.judge(lock.teamId, lock.questionId, true, "retry");
+        // Right: the crit die shows for a beat, then resolveRoll judges it (R9). Nothing is scored before.
+        this.startRoll("crit", lock.teamId, lock.questionId);
+        this.broadcastState();
       } else {
         // No eventSeq bump: nothing is narrated until the team chooses (E7).
         this.game = recordWrongLock(game, lock.teamId, lock.questionId, lock.optionIndex);
@@ -1645,10 +1659,14 @@ export class DungeonRoom {
       console.error(JSON.stringify({ event: "lock_failed", error: String(err) }));
       this.broadcastState();
     }
-    // Its phone may have closed while the lock waited (onClose): show it offline now.
-    const wasOnline = this.game?.teams.find((t) => t.id === lock.teamId)?.online;
-    this.syncLockTeam(lock.teamId);
-    if (wasOnline && !this.game?.teams.find((t) => t.id === lock.teamId)?.online) this.broadcastState();
+    // Its phone may have closed while the lock waited (onClose): show it offline now, or after its crit die.
+    if (this.pendingRoll?.kind !== "crit") this.syncLockTeamAndShow(lock.teamId);
+  }
+
+  private syncLockTeamAndShow(teamId: string) {
+    const wasOnline = this.game?.teams.find((t) => t.id === teamId)?.online;
+    this.syncLockTeam(teamId);
+    if (wasOnline && !this.game?.teams.find((t) => t.id === teamId)?.online) this.broadcastState();
   }
 
   /** A wrong boss lock has no 重答 / 逃跑 choice (boss redesign D2=B): both would rotate the shared
@@ -1683,7 +1701,7 @@ export class DungeonRoom {
   }
 
   /** The team's class ability (class-abilities.md). The warrior: the room spends the use and rolls at
-   * once, then shows the die for a beat; resolveRoll judges it (R2; R3 reversed in /review: a roll
+   * once, then shows the die for a beat; resolveRoll judges it as a warrior's roll (R2; R3 reversed in /review: a roll
    * dropped in its beat is not free, or a reload would throw a bad die away). The mage and the thief
    * act at once and the team then answers. The cleric prays on its wrong answer; in the boss room the
    * miss then resolves at once, rotating the question as usual, and the cleric answers the new one. On a
@@ -1712,8 +1730,7 @@ export class DungeonRoom {
     if (currentQuestionIdOf(game, teamId) !== questionId || (classId === "cleric" && game.pendingWrong?.questionId !== questionId)) return reject("stale_question");
     this.game = next;
     if (classId === "warrior") {
-      this.pendingRoll = { teamId, questionId, value: rollD20(this.rng) };
-      this.lockTimer = setTimeout(() => this.resolveRoll(), BEAT_MS);
+      this.startRoll("warrior", teamId, questionId);
     } else if (classId === "cleric" && (isInBossPhase(next, teamId) || game.pendingWrong?.optionIndex === null)) {
       return this.retryAfterPrayer(teamId, questionId);
     }
@@ -1732,6 +1749,22 @@ export class DungeonRoom {
     }
   }
 
+  /** Rolls the d20 the beat shows (pendingRoll) and arms resolveRoll. Logged here, not on judging, so a roll whose
+   * room restarts inside the beat still counts (eng review D10): the event's 20s and 1s are counted from these. */
+  private startRoll(kind: "warrior" | "crit", teamId: string, questionId: string) {
+    const value = rollD20(this.rng);
+    this.pendingRoll = { teamId, questionId, value, kind };
+    console.log(JSON.stringify({ event: "roll", kind, value }));
+    this.setCue("roll");
+    this.lockTimer = setTimeout(() => this.resolveRoll(), BEAT_MS);
+  }
+
+  /** The one place a cue is set: a new one bumps cueSeq, so the big screen plays it once. */
+  private setCue(cue: SoundCue | null) {
+    this.cue = cue;
+    if (cue) this.cueSeq++;
+  }
+
   private resolveRoll() {
     const roll = this.pendingRoll;
     const game = this.game;
@@ -1744,12 +1777,14 @@ export class DungeonRoom {
       if (currentTurnTeamId(game) !== roll.teamId || currentQuestionIdOf(game, roll.teamId) !== roll.questionId) {
         this.broadcastState();
       } else {
-        this.judge(roll.teamId, roll.questionId, false, "retry", roll.value);
+        // An older snapshot's roll has no kind: a warrior's.
+        this.judge(roll.teamId, roll.questionId, roll.kind === "crit", "retry", { kind: roll.kind ?? "warrior", value: roll.value });
       }
     } catch (err) {
       console.error(JSON.stringify({ event: "roll_failed", error: String(err) }));
       this.broadcastState();
     }
+    if (roll.kind === "crit") this.syncLockTeamAndShow(roll.teamId);
   }
 
   /** 重答 / 逃跑 from the team that just locked wrong. */

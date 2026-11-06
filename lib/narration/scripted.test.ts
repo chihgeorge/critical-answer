@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_MISS_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_MISS_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 
 const team = "六個字的隊伍";
@@ -340,5 +340,28 @@ describe("class attack lines (TODOS: 旁白的武器和招式要配合職業)", 
       expect(line).not.toBe(prev);
       prev = line;
     }
+  });
+});
+
+// Value: protects=a 20 or a 1 swaps the result line, not adds one (dnd design E3, R1); fails_when=the roll is ignored,
+// or a fumble line forgets the hit still landed
+describe("scripted: the crit die", () => {
+  it("a 20 gets a 大成功 line and a 1 a 手滑 line that still hits, for room and boss hits", () => {
+    const p = createScriptedProvider(() => 0);
+    const correct = { type: "correct", team: "紅隊", monster: "史萊姆", points: 15 } as const;
+    expect(p.line({ ...correct, roll: { kind: "crit", value: 20 } })).toMatch(/20.*\+15/);
+    expect(ROLL_VARIANTS.crit.correct).toContain(p.line({ ...correct, roll: { kind: "crit", value: 20 } }).replace("紅隊", "{team}").replace("史萊姆", "{monster}").replace("15", "{points}"));
+    const fumble = p.line({ ...correct, points: 10, roll: { kind: "crit", value: 1 } });
+    expect(fumble).toMatch(/擲出 1|停在 1/);
+    expect(fumble).toMatch(/打中|倒了/);
+    const boss = p.line({ type: "boss-hit", team: "紅隊", bossHp: 1, bossMaxHp: 3, roll: { kind: "crit", value: 20 } });
+    expect(boss).toContain("1 顆心");
+    for (const kind of ["crit", "fumble"] as const) for (const lines of Object.values(ROLL_VARIANTS[kind])) expect(lines.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("a team entering the boss room keeps its boss-door line, even on a 20", () => {
+    const p = createScriptedProvider(() => 0);
+    const line = p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 15, entersBoss: {}, roll: { kind: "crit", value: 20 } });
+    expect(BOSS_ENTER_VARIANTS.map((t) => t.replace("{team}", "紅隊").replace("{monster}", "史萊姆").replace("{points}", "15"))).toContain(line);
   });
 });

@@ -1687,3 +1687,68 @@ describe("dishes (docs/designs/monster-cuisine.md)", () => {
     expect(t(g, "T1").dishes).toEqual(["龍尾"]);
   });
 });
+
+// Value: protects=the crit die's rules (dnd design R4, R5, R2): a 20 adds half the base reward and one boss heart, a 1
+// changes nothing; fails_when=the bonus multiplies with the sneak, rounds wrong, raises the 4d20 or touches progress points
+describe("the crit die (dnd design R4, R5)", () => {
+  function critGame(classes: (ClassId | undefined)[], bossThreshold = 15, bossMaxHp = 3, rooms = makeRooms(3, 1)): GameState {
+    const teams = classes.map((c, i) => ({ id: `T${i}`, name: `Team ${i}`, ...(c ? { classId: c } : {}) }));
+    return createGame(teams, rooms, poolsWith(1, ["q1", "q2", "q3", "q4"]), ["boss-q1", "boss-q2", "boss-q3"], { bossThreshold }, bossMaxHp, first);
+  }
+  const q0 = (g: GameState) => g.teams[0].currentQuestionId;
+
+  it("a room 20 adds half the base reward, marks the outcome and keeps progress points", () => {
+    const g = critGame([undefined]);
+    const { game, outcome } = answerQuestion(g, "T0", q0(g), true, "retry", first, 20);
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 15, roll: { kind: "crit", value: 20 } });
+    expect(game.teams[0]).toMatchObject({ score: 1, reward: 15 });
+  });
+
+  it("a 1 is only a show: the same reward, marked as a fumble; other values leave no mark", () => {
+    const g = critGame([undefined]);
+    expect(answerQuestion(g, "T0", q0(g), true, "retry", first, 1).outcome).toMatchObject({ reward: 10, roll: { kind: "crit", value: 1 } });
+    const plain = answerQuestion(g, "T0", q0(g), true, "retry", first, 13).outcome;
+    expect(plain).toMatchObject({ reward: 10 });
+    expect("roll" in plain && plain.roll).toBeFalsy();
+  });
+
+  it("a sneak and a 20 add up from the base reward, not multiplied (reward × 2 + half)", () => {
+    const g = armSneak(critGame(["thief"]), "T0");
+    expect(answerQuestion(g, "T0", q0(g), true, "retry", first, 20).outcome).toMatchObject({ reward: 25 });
+  });
+
+  it("half a reward rounds with Math.round (25 → 13)", () => {
+    const g = critGame([undefined], 15, 3, [{ baseDifficulty: 1, reward: 25 }, ...makeRooms(2, 1)]);
+    expect(answerQuestion(g, "T0", q0(g), true, "retry", first, 20).outcome).toMatchObject({ reward: 38 });
+  });
+
+  it("a boss 20 takes one more heart and adds half the hit reward; with a sneak it takes 3", () => {
+    const g = critGame([undefined], 0, 5);
+    const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 20);
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 3, reward: 15, roll: { kind: "crit", value: 20 } });
+    const sneaky = armSneak(critGame(["thief"], 0, 5), "T0");
+    expect(answerQuestion(sneaky, "T0", sneaky.boss.currentQuestionId, true, "retry", first, 20).outcome).toMatchObject({ bossHpRemaining: 2, reward: 25 });
+  });
+
+  it("a 20 on the boss's last heart kills it, and the 4d20 is not raised by the crit", () => {
+    const g = critGame([undefined], 0, 1);
+    const kill = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 20);
+    // rollBossKillBonus(first) is 4 (4d20 all ones): 10 + 5 + 4.
+    expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 4, reward: 19 });
+    expect(kill.game.phase).toBe("finished");
+  });
+
+  it("a wrong answer ignores the die", () => {
+    const g = critGame([undefined]);
+    const { outcome } = answerQuestion(g, "T0", q0(g), false, "retry", first, 20);
+    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" });
+  });
+
+  it("a warrior's 20 is a crit on a multipleChoice question (critable) and only a hit on a fill-in", () => {
+    const g = spendAbility(critGame(["warrior"]), "T0", "warrior");
+    expect(warriorRoll(g, "T0", q0(g), 20, first, true).outcome).toMatchObject({ reward: 15, roll: { kind: "crit", value: 20 } });
+    const fillIn = warriorRoll(g, "T0", q0(g), 20, first).outcome;
+    expect(fillIn).toMatchObject({ reward: 10 });
+    expect("roll" in fillIn && fillIn.roll).toBeFalsy();
+  });
+});

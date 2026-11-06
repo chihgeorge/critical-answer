@@ -103,3 +103,18 @@ describe("boss phases", () => {
     expect(toNarrationEvent(withClass, kill, "小黑龍")).toMatchObject({ type: "boss-kill", classId: "mage" });
   });
 });
+
+// Value: protects=a natural 20 or 1 reaches the narrator (dnd design E3); fails_when=toNarrationEvent drops outcome.roll
+describe("toNarrationEvent: the crit die", () => {
+  it("carries a 20 or a 1 on correct, boss-hit and boss-kill, and nothing otherwise", () => {
+    const crit = { kind: "crit", value: 20 } as const;
+    const room: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, reward: 30, nextRoomIndex: 1, entersBoss: false, roll: crit };
+    expect(toNarrationEvent(game, room, "史萊姆")).toMatchObject({ type: "correct", points: 30, roll: crit });
+    const hit: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 2, bossKilled: false, reward: 10, roll: { kind: "crit", value: 1 } };
+    expect(toNarrationEvent(game, hit, "龍")).toMatchObject({ type: "boss-hit", roll: { kind: "crit", value: 1 } });
+    const kill: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 0, bossKilled: true, reward: 30, killBonus: 15, roll: crit };
+    expect(toNarrationEvent(game, kill, "龍")).toMatchObject({ type: "boss-kill", roll: crit });
+    const plain: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, reward: 20, nextRoomIndex: 1, entersBoss: false };
+    expect(toNarrationEvent(game, plain, "史萊姆")).not.toHaveProperty("roll");
+  });
+});

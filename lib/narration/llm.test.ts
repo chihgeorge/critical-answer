@@ -53,6 +53,15 @@ describe("request", () => {
 });
 
 describe("prompt", () => {
+  // Value: protects=the AI line names a 20 or a 1 (dnd design E3); fails_when=describeRoll is dropped from the prompt
+  it("tells the model about a natural 20 (大成功) or 1 (手滑 but still a hit), and says nothing on other rolls", () => {
+    expect(buildPrompt({ ...event, roll: { kind: "crit", value: 20 } } as NarrationEvent, "", []).user).toContain("大成功");
+    const fumble = buildPrompt({ ...event, roll: { kind: "crit", value: 1 } } as NarrationEvent, "", []).user;
+    expect(fumble).toContain("大失敗");
+    expect(fumble).toContain("還是打中");
+    expect(buildPrompt(event, "", []).user).not.toMatch(/大成功|大失敗/);
+  });
+
   it("names the team's class and its weapons, and tells the model to fit the attack to it", () => {
     const { system, user } = buildPrompt({ ...event, classId: "mage" }, "", []);
     expect(user).toContain("職業是法師");

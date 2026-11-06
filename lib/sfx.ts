@@ -57,4 +57,10 @@ export const SFX: Record<SoundCue, SfxNote[]> = {
     n(0.5, 0.5, "C6"),
     n(0.5, 0.5, "G4", "triangle"),
   ],
+  // A die tumbling: quick soft clicks for a second (the tumble on screen runs longer, the sound need not).
+  roll: [0, 0.12, 0.24, 0.36, 0.5, 0.64, 0.8, 0.96].map((at, i) => n(at, 0.05, ["C5", "G4", "E5", "A4"][i % 4], "triangle")),
+  // A natural 20: a rising trumpet call.
+  crit: [n(0, 0.1, "C5"), n(0.1, 0.1, "G5"), n(0.2, 0.1, "C6"), n(0.3, 0.45, "E6")],
+  // A natural 1: a sad slide down (still a hit).
+  fumble: [{ at: 0, duration: 0.6, freq: noteToFreq("E5"), slideTo: noteToFreq("A3"), wave: "triangle" }],
 };

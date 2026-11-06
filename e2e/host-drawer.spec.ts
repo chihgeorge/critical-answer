@@ -53,8 +53,8 @@ test("the phone shows reward points and the host sends a team to the boss from t
   await expect(team.getByText("0 飽足感")).toBeVisible();
   await expect(team.getByText(/\/ 15/)).toHaveCount(0);
 
-  await answerCorrectly(host); // room 1 pays 10 reward and 1 progress
-  await expect(team.getByText("10 飽足感")).toBeVisible();
+  await answerCorrectly(host); // room 1 pays 10 reward (15 on a natural 20) and 1 progress
+  await expect(team.getByText(/(^|\D)1[05] 飽足感/)).toBeVisible();
   await expect(host.getByText("1/15")).toBeVisible();
 
   await host.getByRole("button", { name: "⚙ 更多" }).click();
