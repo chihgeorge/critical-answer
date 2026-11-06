@@ -885,7 +885,8 @@ export class DungeonRoom {
     try {
       switch (msg.type) {
         case "HOST_CLAIM":
-          this.handleHostClaim(sender, msg.token);
+          // TEMPORARY forced probe: the room's first HOST_AI_STATUS comes 1.5 s late, so the test's click always beats it.
+          setTimeout(() => this.handleHostClaim(sender, msg.token), 1500);
           break;
         case "JOIN":
           this.handleJoin(sender, msg.teamId, msg.teamKey, msg.teamName, msg.password ?? "", msg.resume === true);

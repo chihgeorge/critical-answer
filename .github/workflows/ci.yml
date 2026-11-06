@@ -56,7 +56,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       # `next dev`, not `next start`: the bank-editor stale-load tests rely on dev mode's double effects.
-      - run: npx playwright test --shard=${{ matrix.shard }}/2
+      - run: npx playwright test e2e/ai-key.spec.ts --grep "malformed key" --repeat-each=3 # TEMPORARY forced probe
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
