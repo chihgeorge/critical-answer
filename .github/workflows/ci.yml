@@ -46,6 +46,7 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2]
+        rep: [1, 2, 3, 4, 5] # TEMPORARY flake probe: 5 full runs of each shard
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -59,7 +60,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: playwright-results-${{ matrix.shard }}
+          name: playwright-results-${{ matrix.shard }}-${{ matrix.rep }}
           path: test-results/
           retention-days: 7
 

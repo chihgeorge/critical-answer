@@ -382,6 +382,7 @@ export class DungeonRoom {
   }
 
   private handleAiKey(conn: Conn, msg: Extract<ClientMessage, { type: "HOST_AI_KEY" }>) {
+    console.log(JSON.stringify({ probe: "ai_key", conn: conn.id, host: this.isHost(conn), source: msg.source })); // TEMPORARY flake probe
     if (!this.requireHost(conn)) return;
     this.keyCheck?.abort();
     this.keyCheck = null;
@@ -815,6 +816,7 @@ export class DungeonRoom {
   }
 
   onConnect(conn: Conn) {
+    console.log(JSON.stringify({ probe: "connect", conn: conn.id })); // TEMPORARY flake probe
     if (this.expiring) {
       conn.close();
       return;
@@ -835,6 +837,7 @@ export class DungeonRoom {
   }
 
   onClose(conn: Conn) {
+    console.log(JSON.stringify({ probe: "close", conn: conn.id, wasHost: this.hostConns.has(conn.id) })); // TEMPORARY flake probe
     this.conns.delete(conn.id);
     this.hostConns.delete(conn.id);
     const teamId = this.connTeam.get(conn.id);
@@ -992,6 +995,7 @@ export class DungeonRoom {
   }
 
   private handleHostClaim(conn: Conn, token: string) {
+    console.log(JSON.stringify({ probe: "host_claim", conn: conn.id })); // TEMPORARY flake probe
     if (!this.hostToken) this.hostToken = token;
     if (!tokensEqual(this.hostToken, token)) {
       this.sendTo(conn, { type: "ERROR", error: "bad_token" });

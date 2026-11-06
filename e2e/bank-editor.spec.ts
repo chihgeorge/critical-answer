@@ -1,5 +1,9 @@
+import { attachProbe, dumpProbe } from "./probe";
 import { test, expect, type Page, type Locator, type Request } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
+
+test.beforeEach(({ page }) => attachProbe(page));
+test.afterEach(({ page }, info) => dumpProbe(page, info));
 
 /** Every question row carries `data-testid="question-{id}"` (app/bank-editor/page.tsx) — far more
  * robust than climbing from a labeled field via xpath now that a row's content/explanation

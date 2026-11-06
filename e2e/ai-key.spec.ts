@@ -1,6 +1,10 @@
+import { attachProbe, dumpProbe } from "./probe";
 import { test, expect } from "@playwright/test";
 import { startGame } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
+
+test.beforeEach(({ page }) => attachProbe(page));
+test.afterEach(({ page }, info) => dumpProbe(page, info));
 
 // The e2e server has no ANTHROPIC_API_KEY and no way to reach a fake Anthropic (the key check runs in the
 // Worker, not the browser), so these cover the paths that need no network: a refused key never reaches
