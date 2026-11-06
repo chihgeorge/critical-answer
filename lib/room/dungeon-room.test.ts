@@ -3025,3 +3025,125 @@ describe("HOST_BACK_TO_LOBBY (回到大廳)", () => {
     expect(lastBroadcast(room).teams[0]).toMatchObject({ id: T1, classId: "warrior" });
   });
 });
+
+describe("team handoff: HOST_HANDOFF, TEAM_CLAIM (docs/designs/team-handoff.md)", () => {
+  /** A game with two teams, T1's phone gone, and a clock the test moves. */
+  function gameWithLostPhone() {
+    const clock = { t: 1_000 };
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { now: () => clock.t });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { conns } = joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    room.onClose(conns[0]);
+    const fresh = makeConn("new-phone");
+    room.onConnect(fresh);
+    return { room, hostConn, fresh, clock };
+  }
+  const codeFor = (room: DungeonRoom, hostConn: ReturnType<typeof makeConn>, teamId: string) => {
+    send(room, hostConn, { type: "HOST_HANDOFF", teamId });
+    return lastSentTo(hostConn).code as string;
+  };
+
+  // Value: protects=a team whose phone died gets back into the game on a new phone; fails_when=the claim does not
+  // hand over the team's id and key, or the JOIN with them does not bind and set the team online; why_new=no
+  // recovery path existed; seam=none
+  it("hands the team to a new phone: the code goes to the host only, and a JOIN with the claimed id plays as the team", () => {
+    const { room, hostConn, fresh } = gameWithLostPhone();
+    send(room, fresh, { type: "JOIN", teamId: T3, teamKey: KEY2, teamName: "x" });
+    expect(lastSentTo(fresh)).toMatchObject({ type: "ERROR", error: "game_already_started" });
+    const code = codeFor(room, hostConn, T1);
+    expect(code).toMatch(/^\d{4}$/);
+    expect(JSON.stringify((room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls)).not.toContain(`"code":"${code}"`);
+    send(room, fresh, { type: "TEAM_CLAIM", code });
+    expect(lastSentTo(fresh)).toEqual({ type: "TEAM_CLAIMED", teamId: T1, teamKey: KEY });
+    send(room, fresh, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "x" });
+    expect(lastBroadcast(room).view.teams.find((t: any) => t.id === T1).online).toBe(true);
+    // One use: the same code again is refused.
+    const other = makeConn("other-phone");
+    send(room, other, { type: "TEAM_CLAIM", code });
+    expect(lastSentTo(other)).toMatchObject({ type: "ERROR", error: "bad_code" });
+  });
+
+  // Value: protects=a code cannot be used late or after a newer one; fails_when=expiry, replacement or the host check
+  // is dropped; why_new=new security boundary; seam=none
+  it("refuses an expired or replaced code, and only a host may ask for a code", () => {
+    const { room, hostConn, fresh, clock } = gameWithLostPhone();
+    send(room, fresh, { type: "HOST_HANDOFF", teamId: T1 });
+    expect(lastSentTo(fresh)).toMatchObject({ type: "ERROR", error: "not_host" });
+    send(room, hostConn, { type: "HOST_HANDOFF", teamId: T3 });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "unknown_team" });
+
+    let code = codeFor(room, hostConn, T1);
+    clock.t += 5 * 60 * 1000;
+    send(room, fresh, { type: "TEAM_CLAIM", code });
+    expect(lastSentTo(fresh)).toMatchObject({ type: "ERROR", error: "bad_code" });
+
+    // A new code for the team replaces the old one.
+    const first = codeFor(room, hostConn, T1);
+    code = codeFor(room, hostConn, T1);
+    if (first !== code) {
+      send(room, fresh, { type: "TEAM_CLAIM", code: first });
+      expect(lastSentTo(fresh)).toMatchObject({ type: "ERROR", error: "bad_code" });
+    }
+    send(room, fresh, { type: "TEAM_CLAIM", code });
+    expect(lastSentTo(fresh)).toMatchObject({ type: "TEAM_CLAIMED", teamId: T1 });
+  });
+
+  // Value: protects=4 digits cannot be brute-forced (D4); fails_when=the burn after 5 wrong claims is dropped, or a
+  // claim made while no code is live uses up a later code's guesses; why_new=new security boundary; seam=none
+  it("burns live codes on the 5th wrong claim; claims made while no code is live do not count", () => {
+    const { room, hostConn, fresh } = gameWithLostPhone();
+    for (let i = 0; i < 3; i++) send(room, fresh, { type: "TEAM_CLAIM", code: "0000" });
+    let code = codeFor(room, hostConn, T1);
+    const wrong = code === "0000" ? "0001" : "0000";
+    for (let i = 0; i < 4; i++) send(room, fresh, { type: "TEAM_CLAIM", code: wrong });
+    send(room, fresh, { type: "TEAM_CLAIM", code });
+    expect(lastSentTo(fresh)).toMatchObject({ type: "TEAM_CLAIMED", teamId: T1 });
+    code = codeFor(room, hostConn, T2);
+    for (let i = 0; i < 5; i++) send(room, fresh, { type: "TEAM_CLAIM", code: code === "0000" ? "0001" : "0000" });
+    send(room, fresh, { type: "TEAM_CLAIM", code });
+    expect(lastSentTo(fresh)).toMatchObject({ type: "ERROR", error: "bad_code" });
+  });
+
+  // Value: protects=an expired code's wrong guesses do not burn the next code, and a playing phone cannot claim a second
+  // team (its first would stay marked online); fails_when=expired codes are not pruned, or a bound connection may claim;
+  // why_new=/review pass 2; seam=injected clock
+  it("forgets an expired code's wrong guesses, and refuses a claim from a phone already in a team", () => {
+    const { room, hostConn, fresh, clock } = gameWithLostPhone();
+    let code = codeFor(room, hostConn, T1);
+    const wrongFor = (c: string) => (c === "0000" ? "0001" : "0000");
+    for (let i = 0; i < 4; i++) send(room, fresh, { type: "TEAM_CLAIM", code: wrongFor(code) });
+    clock.t += 5 * 60 * 1000;
+    code = codeFor(room, hostConn, T1);
+    send(room, fresh, { type: "TEAM_CLAIM", code: wrongFor(code) });
+    send(room, fresh, { type: "TEAM_CLAIM", code });
+    expect(lastSentTo(fresh)).toMatchObject({ type: "TEAM_CLAIMED", teamId: T1 });
+
+    const playing = makeConn("t2-phone");
+    send(room, playing, { type: "JOIN", teamId: T2, teamKey: KEY, teamName: "x" });
+    code = codeFor(room, hostConn, T1);
+    send(room, playing, { type: "TEAM_CLAIM", code });
+    expect(lastSentTo(playing)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "already_in_team" });
+  });
+
+  // Value: protects=a handoff code dies with its game; fails_when=handleBackToLobby stops clearing handoffs, so an old
+  // code claims a team in the next game; why_new=no test ends a game with a live code; seam=none; no_claim=none beyond protects
+  it("a code from a finished game is refused in the next game", () => {
+    const { room, hostConn, fresh } = gameWithLostPhone();
+    const code = codeFor(room, hostConn, T1);
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, fresh, { type: "TEAM_CLAIM", code });
+    expect(lastSentTo(fresh)).toMatchObject({ type: "ERROR", error: "bad_code" });
+  });
+
+  it("answers no_active_game in the lobby", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_HANDOFF", teamId: T1 });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "no_active_game" });
+  });
+});

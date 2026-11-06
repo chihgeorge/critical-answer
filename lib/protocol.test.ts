@@ -195,6 +195,14 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ ...ok, questionId: 1 })).toBeNull();
   });
 
+  // Value: protects=the room only sees a 4-digit claim code; fails_when=the parser lets other shapes through; why_new=new message; seam=none
+  it("TEAM_CLAIM takes exactly 4 digits; HOST_HANDOFF takes a team id (team-handoff.md)", () => {
+    expect(parseClientMessage({ type: "TEAM_CLAIM", code: "0427" })).toEqual({ type: "TEAM_CLAIM", code: "0427" });
+    for (const code of ["427", "04270", "04a7", 427, undefined]) expect(parseClientMessage({ type: "TEAM_CLAIM", code })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_HANDOFF", teamId: "t1" })).toEqual({ type: "HOST_HANDOFF", teamId: "t1" });
+    expect(parseClientMessage({ type: "HOST_HANDOFF" })).toBeNull();
+  });
+
   it("TEAM_PICK_CLASS accepts a known class id or null, nothing else (class-abilities.md)", () => {
     expect(parseClientMessage({ type: "TEAM_PICK_CLASS", classId: "warrior" })).toEqual({ type: "TEAM_PICK_CLASS", classId: "warrior" });
     expect(parseClientMessage({ type: "TEAM_PICK_CLASS", classId: null })).toEqual({ type: "TEAM_PICK_CLASS", classId: null });

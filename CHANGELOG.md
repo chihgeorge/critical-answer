@@ -2,6 +2,16 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.32.0.0] - 2026-11-05
+
+### Added
+- A team whose phone died or changed browser can get back into a running game. On the host page, every team row has a 交給新手機 button. It shows a 4-digit pairing code. On the new phone, open the room address and type the code under 「換了手機？輸入主持人給的配對碼：」, then press 接手隊伍. The phone plays as that team again, with its score and turn.
+- A code works once and lasts 5 minutes. Pressing the button again replaces the team's old code. After 5 wrong codes in the room, every open code stops working, and the host presses the button again.
+- If the team's old phone is still online, the host is asked to confirm first.
+
+### Fixed
+- When every team's phone is offline, the host page still lists the teams with their 交給新手機 buttons. Before, the host page went blank until a phone came back.
+
 ## [0.31.4.0] - 2026-11-05
 
 ### Fixed

@@ -126,6 +126,10 @@ export type ClientMessage =
   | { type: "HOST_REMOVE_TEAM"; teamId: string }
   /** Lobby only: rename a team, with JOIN's name check and no other team's name. */
   | { type: "HOST_RENAME_TEAM"; teamId: string; teamName: string }
+  /** During a game: a one-time code that hands the team to a new phone (docs/designs/team-handoff.md). */
+  | { type: "HOST_HANDOFF"; teamId: string }
+  /** A phone the room turned away types the host's handoff code; TEAM_CLAIMED answers with the team to JOIN as. */
+  | { type: "TEAM_CLAIM"; code: string }
   /** Host: the next question for a team's room, or with target "boss" the boss's; null clears it (game-state queueQuestion). */
   | { type: "HOST_QUEUE_QUESTION"; target: string; questionId: string | null }
   | {
@@ -176,6 +180,8 @@ export type ServerErrorCode =
   | "not_enough_teams"
   | "unknown_team"
   | "team_removed"
+  /** TEAM_CLAIM's code is wrong, used or expired. */
+  | "bad_code"
   | "invalid_action";
 
 /** One per kind of event: the big screen's sound effect for it (lib/sfx.ts). */
@@ -253,6 +259,10 @@ export type ServerMessage =
       bossPhases: { name: string; rule: string; maxHp: number }[];
       bossPhaseIndex: number;
     }
+  /** Host-only, to the page that sent HOST_HANDOFF: the code the team's new phone types. */
+  | { type: "HANDOFF_CODE"; teamId: string; code: string }
+  /** To the phone whose TEAM_CLAIM matched: the team's id and key, to store and JOIN with. */
+  | { type: "TEAM_CLAIMED"; teamId: string; teamKey: string }
   | { type: "ERROR"; error: ServerErrorCode; detail?: string };
 
 /** One bank question in the host's picker: a short label for its content, its answer, and why it can't be picked now. */
@@ -304,6 +314,8 @@ export const MAX_PASSWORD = 32;
 export const MAX_EDIT_LINE = 40;
 /** How-to-play pages before the first question (docs/designs/how-to-play.md D4). */
 export const INTRO_PAGES = 4;
+/** A host's handoff code lasts this long (docs/designs/team-handoff.md); the host page hides it then too. */
+export const HANDOFF_MS = 5 * 60 * 1000;
 
 /**
  * A typed answer: trimmed, control and bidi-override characters dropped, MAX_TYPED_ANSWER code points,
@@ -416,6 +428,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const teamName = str(m.teamName, MAX_RAW_TEXT);
       return teamId === null || teamName === null ? null : { type: "HOST_RENAME_TEAM", teamId, teamName };
     }
+    case "HOST_HANDOFF": {
+      const teamId = str(m.teamId, MAX_ID);
+      return teamId === null ? null : { type: "HOST_HANDOFF", teamId };
+    }
+    case "TEAM_CLAIM":
+      return typeof m.code === "string" && /^\d{4}$/.test(m.code) ? { type: "TEAM_CLAIM", code: m.code } : null;
     case "HOST_QUEUE_QUESTION": {
       const target = str(m.target, MAX_ID);
       const questionId = m.questionId === null ? null : str(m.questionId, MAX_ID);
