@@ -217,6 +217,12 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "TEAM_PICK_CLASS" })).toBeNull();
   });
 
+  it("TEAM_ROLL_CHECK carries the question id and a non-negative integer eventId only", () => {
+    expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId: 3, value: 20 })).toEqual({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId: 3 });
+    for (const eventId of [undefined, -1, 1.5, "3"]) expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", eventId: 0 })).toBeNull();
+  });
+
   it("TEAM_USE_ABILITY carries only the question id", () => {
     expect(parseClientMessage({ type: "TEAM_USE_ABILITY", questionId: "r0-q1", value: 20 })).toEqual({ type: "TEAM_USE_ABILITY", questionId: "r0-q1" });
     expect(parseClientMessage({ type: "TEAM_USE_ABILITY" })).toBeNull();

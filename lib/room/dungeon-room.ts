@@ -641,9 +641,13 @@ export class DungeonRoom {
       const replay = this.playedQuestionIds.length > 0;
       return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}) };
     }
+    const view = getSpectatorView(this.game);
+    // A check is written when its die is rolled, so a restart inside the beat cannot reroll it; it shows once the beat ends.
+    const rolling = this.pendingRoll?.kind === "check" ? checkKey(this.pendingRoll.questionId, this.pendingRoll.teamId) : null;
+    if (rolling && view.checks) view.checks = Object.fromEntries(Object.entries(view.checks).filter(([k]) => k !== rolling));
     return {
       type: "STATE",
-      view: getSpectatorView(this.game),
+      view,
       phase: this.game.phase,
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
@@ -1811,15 +1815,13 @@ export class DungeonRoom {
     if (roll.kind === "crit" || roll.kind === "check") this.syncLockTeamAndShow(roll.teamId);
   }
 
-  /** The check's beat is over (dnd design R6): its record is written and shown now, with the hint it earned. A natural
-   * 20 wins outright, along the host's 答對 path (R7). */
+  /** The check's beat is over (dnd design R6): its record, written at the roll, shows now with the hint it earned. A
+   * natural 20 wins outright, along the host's 答對 path (R7). */
   private resolveCheck(teamId: string, questionId: string, value: number) {
-    const q = this.question(questionId);
-    if (q?.kind !== "text") return this.broadcastState();
-    this.game = recordCheck(this.game!, teamId, questionId, value, q.answer);
+    if (!this.game!.checks?.[checkKey(questionId, teamId)]) return this.broadcastState();
     // A natural 20 goes straight to the win: one STATE, with the correct answer's cue (dnd design E2).
     if (value === 20) return this.judge(teamId, questionId, true, "retry");
-    this.setCue(this.game.checks![checkKey(questionId, teamId)].passed ? "check-pass" : "check-fail");
+    this.setCue(this.game!.checks![checkKey(questionId, teamId)].passed ? "check-pass" : "check-fail");
     this.broadcastState();
   }
 
@@ -1838,7 +1840,11 @@ export class DungeonRoom {
     if (game.checks?.[checkKey(questionId, teamId)]) return reject("check_done");
     // A typed answer already waits for the host: a natural 20 must not win over it.
     if (game.teams.find((t) => t.id === teamId)?.typedAnswer !== undefined) return reject("answer_submitted");
+    const q = this.question(questionId);
+    if (q?.kind !== "text") return reject("stale_question");
     this.startRoll("check", teamId, questionId, checkTarget(game, teamId, questionId));
+    // Written now and persisted with the STATE, but hidden until the beat ends (snapshot): a restart cannot reroll it.
+    this.game = recordCheck(game, teamId, questionId, this.pendingRoll!.value, q.answer);
     this.broadcastState();
   }
 

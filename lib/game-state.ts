@@ -79,6 +79,8 @@ export interface CheckRecord {
 
 /** Checks are kept per question and team: two teams facing one question (the boss's, or a short pool) each roll. */
 export const checkKey = (questionId: string, teamId: string) => `${questionId}:${teamId}`;
+/** Whether a checks key is some team's check on `questionId`: compared whole, as both ids may hold a colon. */
+const isCheckOn = (game: GameState, key: string, questionId: string) => game.teams.some((t) => key === checkKey(questionId, t.id));
 
 export interface Team {
   id: string;
@@ -789,7 +791,7 @@ export function answerQuestion(
   // a later deal of it starts clean.
   // Any team: a room short of questions can deal one question to two teams at once.
   const stillFaced = nextGame.teams.some((t) => currentQuestionIdOf(nextGame, t.id) === questionId);
-  const checked = Object.keys(nextGame.checks ?? {}).some((k) => k.startsWith(`${questionId}:`));
+  const checked = Object.keys(nextGame.checks ?? {}).some((k) => isCheckOn(nextGame, k, questionId));
   if (!stillFaced && (questionId in nextGame.eliminated || questionId in (nextGame.mageHints ?? {}) || checked)) nextGame = { ...nextGame, ...dropEliminated(nextGame, questionId) };
   // This team's check goes once the question is answered or the team has moved off it; a retry keeps it (R6).
   else if (checkKey(questionId, teamId) in (nextGame.checks ?? {}) && (correct || currentQuestionIdOf(nextGame, teamId) !== questionId)) {
@@ -894,7 +896,8 @@ export function recordCheck(game: GameState, teamId: string, questionId: string,
   if (game.checks?.[checkKey(questionId, teamId)]) throw new InvalidActionError("check_done");
   const { bonus, dc } = checkTarget(game, teamId, questionId);
   const passed = value === 20 || (value !== 1 && value + bonus >= dc);
-  const hint = passed && value !== 20 ? firstMeaningfulChar(answer) : null;
+  // A mage's hint already showed the first character: the check gives no second copy (R8).
+  const hint = passed && value !== 20 && game.mageHints?.[questionId] === undefined ? firstMeaningfulChar(answer) : null;
   const record: CheckRecord = { value, bonus, dc, passed, ...(hint !== null ? { hint } : {}) };
   return { ...game, checks: { ...game.checks, [checkKey(questionId, teamId)]: record } };
 }
@@ -994,7 +997,7 @@ function ate(team: Team, dish: string | undefined): Pick<Team, "dishes"> | objec
 /** `eliminated`, `mageRemoved`, `mageHints` and every team's check without `questionId`: it left play, and a later deal of it starts clean. */
 function dropEliminated(game: GameState, questionId: string): Pick<GameState, "eliminated" | "mageRemoved" | "mageHints" | "checks"> {
   const drop = <T>(m: Record<string, T>) => Object.fromEntries(Object.entries(m).filter(([id]) => id !== questionId));
-  const checks = Object.fromEntries(Object.entries(game.checks ?? {}).filter(([k]) => !k.startsWith(`${questionId}:`)));
+  const checks = Object.fromEntries(Object.entries(game.checks ?? {}).filter(([k]) => !isCheckOn(game, k, questionId)));
   return { eliminated: drop(game.eliminated), mageRemoved: drop(game.mageRemoved ?? {}), mageHints: drop(game.mageHints ?? {}), checks };
 }
 

@@ -982,14 +982,25 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
     });
 
-    it("ending the game during the beat writes no check and leaves no roll behind", () => {
+    it("ending the game during the beat leaves no roll behind, and a natural 20 wins nothing after the end", () => {
       vi.useFakeTimers();
-      const { room, hostConn, roll } = checkGame();
+      const { room, hostConn, ids, roll } = checkGame();
       roll(20);
       send(room, hostConn, { type: "HOST_END_GAME" });
       vi.advanceTimersByTime(2000);
       expect((room as any).pendingRoll).toBeNull();
-      expect(Object.keys(room.game?.checks ?? {})).toEqual([]);
+      expect(room.game!.phase).toBe("finished");
+      expect(room.game!.teams.find((t) => t.id === ids[0])!.reward).toBe(0);
+    });
+
+    // Value: protects=a check written at the roll survives a restart inside the beat, so the team cannot reroll a 1
+    // (Codex outside voice); fails_when=the record is written only when the beat ends; no_claim=the natural 20's win.
+    it("the rolled check is in the saved game during the beat, so a restart cannot roll it again", () => {
+      vi.useFakeTimers();
+      const { room, ids, roll } = checkGame();
+      roll(1);
+      expect(room.game!.checks?.["r0-t1:" + ids[0]]).toMatchObject({ value: 1, passed: false });
+      expect(lastBroadcast(room).view.checks?.["r0-t1:" + ids[0]]).toBeUndefined();
     });
 
     // Value: protects=the room, not only the phone, asks for the check first (Codex P1 in /review), and a typed

@@ -1828,6 +1828,20 @@ describe("the persuasion check (dnd design R6, R8)", () => {
     expect(g.teams[0].abilityUses).toBe(checkGame(["mage"]).teams[0].abilityUses);
   });
 
+  it("a check after the mage's hint passes with no second copy of it", () => {
+    const g = mageHint(checkGame(["mage"]), "T0", q0(checkGame(["mage"])), "萬家福");
+    expect(rec(check(g, 9))).toEqual({ value: 9, bonus: 2, dc: 8, passed: true });
+  });
+
+  it("a question leaving play drops only its own checks, even when ids hold a colon", () => {
+    const g = check(checkGame([undefined]), 9);
+    const q = q0(g);
+    const other = { [checkKey(`${q}:x`, "T0")]: { value: 1, bonus: 0, dc: 8, passed: false } };
+    const next = answerQuestion({ ...g, checks: { ...g.checks, ...other } }, "T0", q, true).game;
+    expect(next.checks?.[checkKey(q, "T0")]).toBeUndefined();
+    expect(next.checks?.[checkKey(`${q}:x`, "T0")]).toEqual(other[checkKey(`${q}:x`, "T0")]);
+  });
+
   it("the record stays on a retry and leaves with a correct answer or a flee; a game saved before checks still plays", () => {
     const g = check(checkGame([undefined]), 9);
     const q = q0(g);

@@ -309,7 +309,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
             </PixelButton>
           </div>
         </>
-      ) : needCheck && !rolling ? (
+      ) : needCheck && !rolling && sent === null ? (
         <PixelButton
           variant="ok"
           data-testid="roll-check"
