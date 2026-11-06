@@ -2,6 +2,18 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.33.0.0] - 2026-11-05
+
+**Deploy note:** reload every open host page after this release deploys, and do not merge it during an event. A host page from before this release has no 公布答案 button, so a multiple-choice lock would wait until the page is reloaded.
+
+### Added
+- The host now reveals every multiple-choice answer. When a team locks its option, the host page shows a green 公布答案 button (key 1). The big screen pauses 2 s, then shows the result. A multiple-choice question now runs at the same pace as a fill-in one.
+
+### Changed
+- A correct multiple-choice answer, and a warrior's successful roll on one, stay on the big screen until the host presses 下一題. Before, the screen moved on by itself after about 8 s.
+- While a lock waits, the host's 答對 / 答錯 buttons are disabled, and the lock line names the team that locked.
+- A team that locks and then puts its phone down (the phone sleeps) keeps its turn and its lock. It shows offline once the answer is revealed.
+
 ## [0.32.0.0] - 2026-11-05
 
 ### Added
