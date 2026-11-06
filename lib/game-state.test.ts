@@ -1833,11 +1833,6 @@ describe("the persuasion check (dnd design R6, R8)", () => {
     expect(rec(check(g, 9))).toEqual({ value: 9, bonus: 2, dc: 8, passed: true });
   });
 
-  it("check keys never collide, even when ids hold the separator", () => {
-    expect(checkKey("q", "x:T")).not.toBe(checkKey("q:x", "T"));
-    expect(checkKey("q", 'x","T')).not.toBe(checkKey('q","x', "T"));
-  });
-
   it("a question leaving play drops only its own checks, even when ids hold a colon", () => {
     const g = check(checkGame([undefined]), 9);
     const q = q0(g);

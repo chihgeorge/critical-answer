@@ -128,18 +128,6 @@ function roundActivity(at: number, idleMs: number): number {
 }
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Checks saved by v0.35.0.0 under its `${questionId}:${teamId}` keys, rewritten to checkKey's form. */
-function restoredChecks(g: GameState): Pick<GameState, "checks"> | Record<string, never> {
-  if (!g.checks) return {};
-  const ids = g.teams.flatMap((t) => (t ? [t.id] : []));
-  const entries = Object.entries(g.checks).map(([k, v]) => {
-    if (k.startsWith("[")) return [k, v] as const;
-    const id = ids.find((t) => k.endsWith(`:${t}`));
-    return [id === undefined ? k : checkKey(k.slice(0, -id.length - 1), id), v] as const;
-  });
-  return { checks: Object.fromEntries(entries) };
-}
-
 /** A natural 20 rolled on the turn team's current question and never judged: a restart cut off its beat (R7). Its win
  * moves the team on and drops the record, so one still there was never applied. */
 function lostCritOf(g: GameState): { teamId: string; questionId: string } | null {
@@ -552,7 +540,7 @@ export class DungeonRoom {
       return "discarded";
     }
     this.roomEpoch = s.roomEpoch;
-    this.game = s.game && { ...s.game, pendingWrong: restoredPendingWrong(s.game), ...restoredChecks(s.game) };
+    this.game = s.game && { ...s.game, pendingWrong: restoredPendingWrong(s.game) };
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
     this.teamKeys = new Map(s.teamKeys);
@@ -1577,7 +1565,19 @@ export class DungeonRoom {
   /** Applies one answer; throws InvalidActionError (from answerQuestion) before changing anything.
    * `roll`: a warrior's d20 stands in for the answer (warriorRoll), and `correct` is ignored; on a
    * multipleChoice question it is the crit die too. A crit die (`kind: "crit"`) rides on a correct answer. */
-  private judge(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: { kind: "warrior" | "crit"; value: number }) {
+  /** judgeNow, with a lost natural 20 held back until it is done (it narrates first and its phase card is due) and
+   * tried after: the turn may now be the crit team's. */
+  private judge(...args: Parameters<DungeonRoom["judgeNow"]>) {
+    this.judging = true;
+    try {
+      this.judgeNow(...args);
+    } finally {
+      this.judging = false;
+    }
+    if (this.lostCrit) this.applyLostCrit();
+  }
+
+  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: { kind: "warrior" | "crit"; value: number }) {
     const prev = this.game;
     if (!prev) return;
     // Captured before `this.game` reassigns to the post-judgment state below: the monster name
@@ -1595,7 +1595,6 @@ export class DungeonRoom {
         : answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng, roll?.value);
     // A ruling on the team (the host's, or the lost natural 20 itself) settles its lost natural 20; one refused above does not.
     if (this.lostCrit?.teamId === teamId) this.lostCrit = null;
-    this.judging = true;
     // Everything up to broadcastState is synchronous: state changes and the eventId are
     // fixed before any narration awaits, so concurrent judgments cannot interleave.
     this.game = game;
@@ -1650,9 +1649,6 @@ export class DungeonRoom {
         }, Math.min(ADVANCE_CAP_MS, Math.max(BEAT_MS, speechMs(lines))));
       });
     }
-    this.judging = false;
-    // Held back while this judgment ran, so it narrates first and its phase card is due: the turn may now be the crit team's.
-    if (this.lostCrit) this.applyLostCrit();
   }
 
   /** A team locks its current pick (E2, E11). It waits for the host's HOST_REVEAL, then the beat, then resolveLock. `shown` is the

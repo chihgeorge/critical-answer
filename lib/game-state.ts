@@ -78,8 +78,9 @@ export interface CheckRecord {
 }
 
 /** Checks are kept per question and team: two teams facing one question (the boss's, or a short pool) each roll. */
-/** One key per (question, team): JSON keeps it unique even when either id holds the separator. */
-export const checkKey = (questionId: string, teamId: string) => JSON.stringify([questionId, teamId]);
+/** One key per (question, team). A team id never holds a colon (JOIN refuses one), so the key stays unique even when a
+ * question id does. */
+export const checkKey = (questionId: string, teamId: string) => `${questionId}:${teamId}`;
 /** Whether a checks key is some team's check on `questionId`: compared whole, as both ids may hold a colon. */
 const isCheckOn = (game: GameState, key: string, questionId: string) => game.teams.some((t) => key === checkKey(questionId, t.id));
 

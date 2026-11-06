@@ -451,21 +451,6 @@ describe("restoring after a restart", () => {
     expect(ids.at(-1)).toBe(seq + 2);
   });
 
-  // Value: protects=a check rolled under v0.35.0.0's `q:t` key still counts after the deploy; fails_when=restore keeps
-  // the old key, so the team may roll again and the record is never dropped.
-  it("a check saved under the old question:team key is read back under the new key", async () => {
-    const storage = memoryStorage();
-    startedGame(makeRoom(storage).room);
-    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
-    const q = saved.game.teams.find((t: any) => t.id === T1).currentQuestionId;
-    saved.game.checks = { [`${q}:${T1}`]: { value: 3, bonus: 0, dc: 8, passed: false } };
-    storage.data.set(SNAPSHOT_KEY, saved);
-
-    const second = makeRoom(storage);
-    await second.room.restore();
-    expect(second.room.game!.checks).toEqual({ [checkKey(q, T1)]: { value: 3, bonus: 0, dc: 8, passed: false } });
-  });
-
   it("a corrupt snapshot with a null team entry doesn't crash restore (adversarial review, 2026-09-21)", async () => {
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);

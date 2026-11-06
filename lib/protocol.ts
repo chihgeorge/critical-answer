@@ -361,7 +361,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
 
   switch (m.type) {
     case "JOIN": {
-      const teamId = str(m.teamId, MAX_ID);
+      // No colon: checkKey joins a question id and a team id with one, and question ids may hold it.
+      const id = str(m.teamId, MAX_ID);
+      const teamId = id?.includes(":") ? null : id;
       const teamName = str(m.teamName, MAX_RAW_NAME);
       const teamKey = teamKeyOf(m.teamKey);
       // Cut, not rejected: an over-long password must not stop a known team (which needs none) from rejoining.
