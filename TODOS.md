@@ -1,66 +1,105 @@
 # TODOs
 
+## 索引
+
+### P2
+
+- [修改現有美術](#修改現有美術) — 未定
+- [拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞](#拿掉導演筆記改寫旁白搬到主持人頁並列出下一隊的所有台詞) — M
+- [分數用到骰子時，一律先播擲骰動畫再加分](#分數用到骰子時一律先播擲骰動畫再加分) — M
+- [冒險結束、公布最終分數前，旁白先公布前幾名](#冒險結束公布最終分數前旁白先公布前幾名) — M
+- [新職業：廚師（被動能力，飽足感多 15%），做完後平衡所有職業](#新職業廚師被動能力飽足感多-15做完後平衡所有職業) — 廚師 S–M，平衡 M
+- [等待隊伍的觀眾反應（表情 / 加油 / 噓聲）](#等待隊伍的觀眾反應表情--加油--噓聲) — M（人工約 2 天 / CC 約 1 小時）
+- [開場與首領房的轉場動畫](#開場與首領房的轉場動畫) — M（人工約 1 天 / CC 約 40 分鐘）
+- [旁白語氣是否耐聽](#旁白語氣是否耐聽) — S（人工約 0.5 天 / CC 約 20 分鐘）
+- [新題型：排序題](#新題型排序題) — M（人工約 3 天 / CC 約 1.5 小時）
+
+### P3
+
+- [把「冒險出現岔路」的選擇加回玩家手機](#把冒險出現岔路的選擇加回玩家手機) — S
+- [遊戲開始後，新隊伍可以中途加入](#遊戲開始後新隊伍可以中途加入) — M
+- [主持人開房時可以用自己的題庫](#主持人開房時可以用自己的題庫) — L
+- [題目比隊伍少時，兩隊可能一直拿同一題](#題目比隊伍少時兩隊可能一直拿同一題) — S
+- [題庫讀不懂期間的小問題](#題庫讀不懂期間的小問題) — S
+- [OpenRouter 一鍵登入拿 key，手機主持人不用複製貼上](#openrouter-一鍵登入拿-key手機主持人不用複製貼上) — M
+- [加入密碼沒有猜錯次數限制](#加入密碼沒有猜錯次數限制) — S
+- [後進王房的隊伍，旁白還在說「推開最後一道門」](#後進王房的隊伍旁白還在說推開最後一道門) — S（人工約半天 / CC 約 15 分鐘）
+- [CI 在 Ubuntu 26 上試跑一次，通過再換掉固定的 ubuntu-24.04](#ci-在-ubuntu-26-上試跑一次通過再換掉固定的-ubuntu-2404) — S
+- [手機答題模式（選擇題 + 自動判定）](#手機答題模式選擇題--自動判定) — L（人工約 1 週 / CC 約半天）
+- [手機答題的剩餘小風險（/review 2026-10-25）](#手機答題的剩餘小風險review-2026-10-25) — 未註明
+- [手機顯示題目的剩餘小風險（/ship 2026-10-29）](#手機顯示題目的剩餘小風險ship-2026-10-29) — 未註明
+- [題庫編輯器：載入或儲存途中的編輯會被蓋掉（/review 2026-10-25）](#題庫編輯器載入或儲存途中的編輯會被蓋掉review-2026-10-25) — 未註明
+- [逃跑・換房（flee-switch-room）](#逃跑換房flee-switch-room) — M（人工約 1-2 天 / CC 約 1 小時）
+- [魔王分階段的兩個小瑕疵（/qa 2026-10-28）](#魔王分階段的兩個小瑕疵qa-2026-10-28) — 未註明
+- [地城料理風格 2：暖色、有生活感的地城畫面](#地城料理風格-2暖色有生活感的地城畫面) — M（人工約 3 天 / CC 約 1.5 小時）
+- [地城料理風格 3：旁白用美食節目／生物學家口吻](#地城料理風格-3旁白用美食節目生物學家口吻) — S（人工約半天 / CC 約 20 分鐘）
+- [上架手機版本](#上架手機版本) — PWA S（人工約半天 / CC 約 30 分鐘）；上架 L（人工約 1–2 週 / CC 約半天，不含審核）
+- [每次行動可以選不同的動作，不只答題](#每次行動可以選不同的動作不只答題) — 未註明
+- [每個職業有自己的動畫和音效](#每個職業有自己的動畫和音效) — 未註明
+- [法師填空題提示：答案帶註記時第一個字會誤導](#法師填空題提示答案帶註記時第一個字會誤導) — 未註明
+- [主持人按錯「答錯」可以改回答對](#主持人按錯答錯可以改回答對) — 未註明
+- [旁白念出戰士擲到幾點](#旁白念出戰士擲到幾點) — 未註明
+- [房間最多只能存在 6 小時](#房間最多只能存在-6-小時) — S（人工約半天 / CC 約 20 分鐘）
+- [不檢查房間代碼格式，任何名字都能開出新房](#不檢查房間代碼格式任何名字都能開出新房) — S（人工約 2 小時 / CC 約 15 分鐘）
+- [一條連線能佔滿 8 隊，60 條連線能鎖死房間](#一條連線能佔滿-8-隊60-條連線能鎖死房間) — S/M
+- [每則訊息都把整個房間序列化一次，而且沒有速率限制](#每則訊息都把整個房間序列化一次而且沒有速率限制) — S（人工約半天 / CC 約 30 分鐘）
+- [HOST_AI_KEY 能被拿來批次驗證偷來的 Anthropic key](#host_ai_key-能被拿來批次驗證偷來的-anthropic-key) — S（人工約 2 小時 / CC 約 20 分鐘）
+- [填空題可以有好幾個要填的欄位](#填空題可以有好幾個要填的欄位) — M（人工約 2 天 / CC 約 1 小時）
+- [研究怎麼加入 D&D 規則，讓遊戲更像 D&D](#研究怎麼加入-dd-規則讓遊戲更像-dd) — M（研究加寫規格，人工約 2 天 / CC 約 1 小時）
+- [房間除了問答怪物，還有事件卡（像大富翁的機會／命運）](#房間除了問答怪物還有事件卡像大富翁的機會命運) — M（人工約 2-3 天 / CC 約 1.5 小時）
+- [不同題型變成不同行動：選擇題是打怪物，問答題是說服怪物](#不同題型變成不同行動選擇題是打怪物問答題是說服怪物) — M（人工約 2-3 天 / CC 約 1.5 小時）
+
+### P4
+
+- [Host 自訂題庫文字進 LLM prompt 前的內容審核](#host-自訂題庫文字進-llm-prompt-前的內容審核) — 未註明
+- [量 e2e 對前端（app/、components/）的實際覆蓋率](#量-e2e-對前端appcomponents的實際覆蓋率) — M
+- [開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）](#開發工具鏈剩-5-個-npm-audit-漏洞上游沒有修補版) — S
+- [/health 補上死碼與 shell 腳本檢查](#health-補上死碼與-shell-腳本檢查) — S
+- [ESLint 10 / TypeScript 7 升級被上游卡住](#eslint-10--typescript-7-升級被上游卡住) — 不確定（等上游）
+
+---
+
 ## 修改現有美術
 
 **What:** 重新調整遊戲現有的美術（像素圖、畫面）。要改哪些部分、改成什麼方向還沒定。
 
 **Why:** 站長 2026-11-04 提出。
 
-**Context:** 所有美術都在程式裡畫：像素圖在 `lib/pixel-art.ts`，元件在 `components/pixel.tsx`，色票和規則在 `DESIGN.md` 與 `app/globals.css`。照規定不用圖片檔。
+**Context:**
+- `lib/pixel-art.ts`
+- `components/pixel.tsx`
+- `DESIGN.md`
+- `app/globals.css`
 
-**Effort:** 未定　**Priority:** P2
+**Effort/Priority:** 未定 / P2
 
-**Depends on / blocked by:** 動手前先跑 `/design-consultation` 或 `/design-review`，定出要改哪些部分、改成什麼方向。
+**Depends on:** 動手前先跑 `/design-consultation` 或 `/design-review`，定出要改哪些部分、改成什麼方向。
 
----
-
-## 精簡 README.md
-
-**What:** 把 README.md（目前 196 行）縮短，只留新讀者需要的部分。
-
-**Why:** 站長 2026-11-04 提出：README 太長。
-
-**Context:** 現在的段落：玩法、技術棧、快速開始、題庫、專案結構、已知限制、路線圖、授權。細節可以搬到 `docs/` 或直接刪掉（專案結構、路線圖跟 TODOS.md 重複的部分）。
-
-**Effort:** S　**Priority:** P3
-
-**Depends on / blocked by:** 無。
-
----
-
-
-## 把「冒險出現岔路」的選擇加回玩家手機
-
-**What:** v0.27.1.0 先把手機上「冒險出現岔路，你們要怎麼做？」拿掉了。改遊戲進行方式時，討論要不要、怎麼加回來。
-
-**Why:** 站長 2026-11-04 實測後決定先拿掉，玩法還沒定案。
-
-**Context:** v0.31.3.0（稽核清理）把伺服器端也拿掉了：`TEAM_BRANCH_CHOICE` 訊息、`lib/game-state.ts` 的 `recordBranchChoice`、`firstPendingBranchRoom`、`BRANCH_OPTIONS`、`BRANCH_LABELS`、隊伍的 `branchChoices`，還有首領房旁白（`lib/narration/llm.ts`）呼應岔路選擇的那句。加回來時要從 git 歷史把它們找回來（`git log -S recordBranchChoice`），再把 `app/room/[code]/play/page.tsx` 的面板接回去。
-
-**Effort:** S　**Priority:** P3
-
-**Depends on / blocked by:** 「每次行動可以選不同的動作」那類玩法改動。
+**Notes:**
+- Context 補充：所有美術都在程式裡畫：像素圖在 `lib/pixel-art.ts`，元件在 `components/pixel.tsx`，色票和規則在 `DESIGN.md` 與 `app/globals.css`。照規定不用圖片檔。
 
 ---
 
 ## 拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞
 
-**What:**
-1. 拿掉「⚙ 更多」裡的「導演筆記」。
-2. 「改寫旁白」從「更多」搬到主持人頁上。
-3. 改寫的介面要變清楚：列出旁白輪到下一隊時會說的**每一句**台詞，主持人選要改哪一條再改。現在只能改第一句（`HOST_EDIT_NARRATION`），也看不出後面還有哪幾句。
+**What:** 處理「拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞」所述事項。
 
 **Why:** 站長 2026-11-04 實測後覺得導演筆記用不到；改寫旁白放在「更多」裡又只能改第一句，看不出自己在改哪一句。
 
-**Pros:** 主持人在一個地方就看得到、改得到旁白。
+**Context:**
+- `app/room/[code]/host/page.tsx`
+- `lib/narration/runner.ts`
+- `lib/room/dungeon-room.ts`
 
-**Cons:** 目前協定只支援改第一句，要讓 `HOST_EDIT_NARRATION` 帶句子的編號，房間要能換掉第 N 句；已經在大螢幕上念完的句子要不能改。AI 旁白是一段一段生成的，要確認「下一隊的所有台詞」在主持人看的時候已經生成好了，還沒好時要怎麼顯示。導演筆記拿掉後，`HOST_SET_NOTES` 和 prompt 裡的筆記要一起清掉。「下一句這樣說」要決定是留在「更多」還是一起搬上來。
+**Effort/Priority:** M / P2
 
-**Context:** `app/room/[code]/host/page.tsx`（導演筆記、下一句這樣說、改寫第一句旁白三個區塊）、`lib/narration/runner.ts`（句數）、`lib/room/dungeon-room.ts`（`HOST_EDIT_NARRATION`、`HOST_SET_NOTES`）。
+**Depends on:** 無。動手前先用 `/plan-design-review` 定主持人頁的版面。
 
-**Effort:** M　**Priority:** P2
-
-**Depends on / blocked by:** 無。動手前先用 `/plan-design-review` 定主持人頁的版面。
+**Notes:**
+- 原 What：1. 拿掉「⚙ 更多」裡的「導演筆記」。 2. 「改寫旁白」從「更多」搬到主持人頁上。 3. 改寫的介面要變清楚：列出旁白輪到下一隊時會說的**每一句**台詞，主持人選要改哪一條再改。現在只能改第一句（`HOST_EDIT_NARRATION`），也看不出後面還有哪幾句。
+- Pros：主持人在一個地方就看得到、改得到旁白。
+- Cons：目前協定只支援改第一句，要讓 `HOST_EDIT_NARRATION` 帶句子的編號，房間要能換掉第 N 句；已經在大螢幕上念完的句子要不能改。AI 旁白是一段一段生成的，要確認「下一隊的所有台詞」在主持人看的時候已經生成好了，還沒好時要怎麼顯示。導演筆記拿掉後，`HOST_SET_NOTES` 和 prompt 裡的筆記要一起清掉。「下一句這樣說」要決定是留在「更多」還是一起搬上來。
+- Context 補充：`app/room/[code]/host/page.tsx`（導演筆記、下一句這樣說、改寫第一句旁白三個區塊）、`lib/narration/runner.ts`（句數）、`lib/room/dungeon-room.ts`（`HOST_EDIT_NARRATION`、`HOST_SET_NOTES`）。
 
 ---
 
@@ -70,15 +109,20 @@
 
 **Why:** 站長 2026-11-04 實測後提出：骰子是 D&D 的樂趣所在，直接跳出數字沒有懸念。
 
-**Pros:** 已經有 `components/d20.tsx` 的 `RollOverlay`，戰士擲骰（`pendingRoll`）在用。
+**Context:**
+- `lib/game-state.ts`
+- `app/room/[code]/screen/page.tsx`
+- `components/d20.tsx`
+- `docs/designs/scoring-and-score-pools.md`
 
-**Cons:** 目前只有戰士的 d20 有動畫。打倒首領的 4d20 獎勵（`rollBossKillBonus`）是直接算好加分，要改成能播 4 顆骰子，分數也要等動畫播完才更新（手機和頒獎台不能先露出新總分）。要先列出所有用到骰子的地方。
+**Effort/Priority:** M / P2
 
-**Context:** `lib/game-state.ts`（`rollD20`、`rollBossKillBonus`、`killBonus`）、`app/room/[code]/screen/page.tsx`（`RollOverlay`）、`components/d20.tsx`。計分設計在 `docs/designs/scoring-and-score-pools.md`。
+**Depends on:** 無。
 
-**Effort:** M　**Priority:** P2
-
-**Depends on / blocked by:** 無。
+**Notes:**
+- Pros：已經有 `components/d20.tsx` 的 `RollOverlay`，戰士擲骰（`pendingRoll`）在用。
+- Cons：目前只有戰士的 d20 有動畫。打倒首領的 4d20 獎勵（`rollBossKillBonus`）是直接算好加分，要改成能播 4 顆骰子，分數也要等動畫播完才更新（手機和頒獎台不能先露出新總分）。要先列出所有用到骰子的地方。
+- Context 補充：`lib/game-state.ts`（`rollD20`、`rollBossKillBonus`、`killBonus`）、`app/room/[code]/screen/page.tsx`（`RollOverlay`）、`components/d20.tsx`。計分設計在 `docs/designs/scoring-and-score-pools.md`。
 
 ---
 
@@ -88,291 +132,50 @@
 
 **Why:** 站長 2026-11-04 實測後提出：直接跳出排行榜太快，少了揭曉的氣氛。
 
-**Pros:** 後記事件已經有排名（`epilogue` 事件的 `ranking`、`winners`），旁白有現成的資料。
+**Context:**
+- `lib/narration/events.ts`
+- `lib/narration/runner.ts`
+- `app/room/[code]/screen/page.tsx`
 
-**Cons:** X 要決定（固定 3 名，還是隊伍少時全部念）；同分時怎麼念；大螢幕要配合旁白一名一名亮出來，不能先露出完整排行。AI 旁白關掉時腳本旁白也要能念。
+**Effort/Priority:** M / P2
 
-**Context:** `lib/narration/events.ts`（`epilogue`）、`lib/narration/runner.ts`（後記只有 1 句）、`app/room/[code]/screen/page.tsx`（頒獎台）。
+**Depends on:** 無。
 
-**Effort:** M　**Priority:** P2
-
-**Depends on / blocked by:** 無。
+**Notes:**
+- Pros：後記事件已經有排名（`epilogue` 事件的 `ranking`、`winners`），旁白有現成的資料。
+- Cons：X 要決定（固定 3 名，還是隊伍少時全部念）；同分時怎麼念；大螢幕要配合旁白一名一名亮出來，不能先露出完整排行。AI 旁白關掉時腳本旁白也要能念。
+- Context 補充：`lib/narration/events.ts`（`epilogue`）、`lib/narration/runner.ts`（後記只有 1 句）、`app/room/[code]/screen/page.tsx`（頒獎台）。
 
 ---
-
 
 ## 新職業：廚師（被動能力，飽足感多 15%），做完後平衡所有職業
 
-**What:**
-1. 新增第 5 個職業「廚師」。能力是被動的：這一隊每次拿到飽足感，都多拿 15%。
-2. 廚師做完以後，把 5 個職業的能力一起做平衡，讓每個職業差不多強。
+**What:** 處理「新職業：廚師（被動能力，飽足感多 15%），做完後平衡所有職業」所述事項。
 
 **Why:** 站長 2026-11-04 提出，配合 v0.27.0.0 的「怪物變料理」主題。
 
-**Pros:** 被動能力不用按按鈕，手機和主持人頁不必多一個操作；「飽足感」本來就是現成的獎勵分（`reward`）。
-
-**Cons:**
-- 現有 4 個職業都是主動能力，每場各用 `ABILITY_USES`（2）次。廚師是唯一的被動職業，整場都有效，平衡時要特別算。
-- 「飽足感」只是題庫有菜時 `reward` 的顯示名稱。要決定題庫沒有菜時廚師還加不加 15%（建議照加，只是顯示成獎勵分）。
-- 15% 要決定怎麼取整數（建議四捨五入，或至少 +1），也要決定首領的 4d20 獎勵和盜賊的加倍是先乘還是後乘。
-- 大螢幕的料理卡和加分要看得出廚師多加的那一份（例如「+12 飽足感（廚師 +2）」）。
-- 平衡要先拿數字：用模擬腳本（類似 `/ship` 用過的 scratchpad `sim.ts`）跑每個職業的平均最終分數和勝率，再調參數，例如 `WARRIOR_TARGET`、廚師的 15%、各職業的使用次數。
-
-**Context:** `lib/game-state.ts`（`CLASS_IDS`、`CLASS_LABELS`、`CLASS_ICONS`、`ABILITY_USES`、`WARRIOR_TARGET`、`reward` 怎麼加）。職業設計在 `docs/designs/class-abilities.md`，計分在 `docs/designs/scoring-and-score-pools.md`，料理在 `docs/designs/monster-cuisine.md`。手機選職業的畫面在 `app/room/[code]/play/page.tsx`。「每個職業有自己的動畫和音效」這條 TODO 也要把廚師算進去。
-
-**Effort:** 廚師 S–M，平衡 M　**Priority:** P2
-
-**Depends on / blocked by:** 平衡要等廚師做完。動手前先用 `/plan-eng-review` 定加成的計算順序。
-
----
-
-
-## 遊戲開始後，新隊伍可以中途加入
-
-**What:** 遊戲開始後有新隊伍要加入時，手機先顯示「等主持人讓你們加入」，主持人頁出現「收這隊」。收了以後，這隊從第一間房開始，排在輪流順序的最後。
-
-**Why:** 現在開始後新隊伍一律被擋下（`game_already_started`），遲到的朋友只能在旁邊看（2026-11-04 盤點功能缺口時找到）。
-
-**Pros:** 加入流程（JOIN、密碼、隊名檢查）都是現成的。
-
-**Cons:** 要決定中途加入的隊伍要不要補一點起始分，不然幾乎不可能贏；有隊伍已經在王房時，新隊伍是不是直接進王房。共用題庫的牌堆和地圖要能多一隊；房間最多 8 隊的上限照舊。
-
-**Context:** `lib/room/dungeon-room.ts`（三處 `game_already_started`）、`lib/game-state.ts`（`turnOrder`、`teams`）、`app/room/[code]/play/page.tsx`、`app/room/[code]/host/page.tsx`。
-
-**Effort:** M　**Priority:** P3
-
-**Depends on / blocked by:** 動手前先用 `/plan-eng-review` 定中途加入的計分規則。
-
----
-
-
-## 主持人開房時可以用自己的題庫
-
-**What:** 主持人開房時可以選題庫：站長的預設題庫，或上傳／貼上自己的題庫。
-
-**Why:** 現在每個房間都只能用站長那一份題庫，想玩自己出的題（例如 `local-banks/` 裡的主題題庫）要站長改正式站的題庫。2026-10 決定「上傳＋多題庫」先延後，但 TODOS.md 裡還沒有這一條（2026-11-04 盤點功能缺口時找到）。
-
-**Pros:** 題庫格式、驗證和編輯器都是現成的。
-
-**Cons:**
-- 主持人上傳的題庫要在伺服器端驗證（大小、格式、圖片網址），題目和答案也不能進大螢幕和手機的 bundle（`npm run check:bundle` 的規則照舊）。
-- 自訂題庫的文字會進 AI 旁白的提示詞，跟「Host 自訂題庫文字進 LLM prompt 前的內容審核」那條 TODO 綁在一起。
-- 要決定上傳的題庫存在哪：只存在房間裡，還是存起來下次再用。
-- 題目比隊伍少的問題（「題目比隊伍少時，兩隊可能一直拿同一題」）會變常見。
-
-**Context:** `lib/bank-store.ts`、`lib/question-bank.ts`（格式與驗證）、`lib/room/dungeon-room.ts`、`app/bank-editor/page.tsx`。
-
-**Effort:** L　**Priority:** P3
-
-**Depends on / blocked by:** 先用 `/office-hours` 或 `/plan-ceo-review` 決定範圍；內容審核那條 TODO 要一起考慮。
-
----
-
-## 題目比隊伍少時，兩隊可能一直拿同一題
-
-**What:** 自訂題庫的題目比隊伍數少時，開局就會有兩隊拿同一題（沒辦法避免）。之後有題目空出來（某隊進王房、被主持人送進王房、或答對換題），只有正在出題的那一隊會換題，共用同一題的兩隊要等其中一隊下次出題才會分開。做法：有題目空出來時，從共用同一題的隊伍裡挑一隊（沒有選錯紀錄的）立刻換到空出來的題目。
-
-**Why:** 共用同一題時，一隊答對公布答案，另一隊就看到自己的答案。
-
-**Pros:** 邏輯集中在 `game-state.ts`，`/ship` 的模擬腳本已經能重現（scratchpad `sim.ts` 的 R1release）。
-
-**Cons:** 會換掉一隊正在等的題目，大螢幕和手機要能接受「沒輪到也換題」；要先決定換哪一隊。預設題庫每池 12～16 題、最多 8 隊，遇不到。
-
-**Context:** 2026-10-26 `/ship`（score-pools，v0.14.0.0）Claude 對抗審查的隨機模擬提出（5 萬場、只在很小的自訂題庫出現）。
-
-**Effort:** S　**Priority:** P3
-
-**Depends on / blocked by:** 無。
-
----
-
-## 題庫讀不懂期間的小問題
-
-**What:** 存著的題庫讀不懂時（v0.15.2.0 起編輯器唯讀、上傳被擋），還有幾個小問題：`runImageCleanup` 遇到讀不懂時把 alarm 往後推一個清理延遲，期間一直白跑；待刪佇列在這段期間不會縮小；`version` 不是數字時被當成 1；延後清理時沒有自己的 log；清理在等 R2 刪除時，一個把圖放回題庫的儲存可能剛好插進來，圖還是被刪（這個競態跟讀不懂無關，平常也可能發生）。
-
-**Why:** 都是少見的情況，但最後一項可能刪掉題庫還在用的圖片。
-
-**Context:** 原本是「題庫讀不懂時的後續」的附帶項目，(1)–(4) 做完後拆出來。
-
-**Effort:** S　**Priority:** P3
-
-**Depends on / blocked by:** 無。
-
----
-
-## OpenRouter 一鍵登入拿 key，手機主持人不用複製貼上
-
-**What:** 主持人頁加「用 OpenRouter 登入」，走 OpenRouter 官方的 PKCE OAuth 流程拿到一把 key，在 `lib/narration/providers.ts` 的 `PROVIDERS` 加一個 `"openrouter"`。
-
-**Why:** 使用者 2026-10-30 提出：用手機當主持人時，從 Anthropic Console 複製 key 再貼上很難。Anthropic 沒有給第三方拿 API key 的 OAuth，OpenRouter 有。
-
-**Context:** spec #102 的 D11 決定先只做 Anthropic 複製貼上。`AiProvider` 介面已經按 provider 分開（`checkKey`、`createNarrator`），加一個 provider 不用動房間邏輯；要新增 OpenRouter 的 narrator（OpenAI 相容的 chat API）和 PKCE 的回呼頁。
-
-**Effort:** M　**Priority:** P3
-
-**Depends on / blocked by:** 無。
-
----
-
-
-## Host 自訂題庫文字進 LLM prompt 前的內容審核
-
-**Priority:** P4
-
-**更新（2026-10-03，`/cso` 稽核）：** 重新確認：`lib/narration/llm.ts` 的 `buildPrompt` 只放隊伍名、怪物名、分數與主持人導演筆記，題目文字與答案都不進 prompt；名稱以「」包起來並移除引號字元。這條只有在旁白開始讀題目文字時才需要，降為 P4。
-
-**What:** 對 host 自訂的題庫文字（問題、答案）進行基本的輸入淨化與 prompt injection 防護，才餵進敘事狀態層生成 DM 旁白的 LLM prompt。
-
-**Why:** 第二輪才會接 LLM API 與敘事狀態層，但 host 題庫編輯 UI 若在那之前就先做，容易忘記在資料流的哪一段加防護。
-
-**Pros:** 避免惡意或不當的 host 輸入內容污染 LLM 輸出（例如注入指令改變旁白行為，或產生不當內容）。
-
-**Cons:** 需要額外設計淨化規則，可能誤傷正常題目內容（過度過濾）。
-
-**Context:** 見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) 的 Open Questions（「Host 自訂題庫的文字內容進入 LLM 旁白 prompt 前」）。
-
-**Depends on / blocked by:** 第二輪的敘事狀態管理層 + LLM API 接入（Next Steps 第 5-6 步）。
-
-**更新（2026-09-20，第二輪實作完成）：** 隊伍名稱進 prompt 的部分已完成並驗證：名稱以「」引起來當資料（並拿掉引號字元）、系統提示明講裡面的指示一律忽略、題目文字與答案完全不進 prompt、輸出驗證（長度、標記、不含題庫答案）。真的 API 測試也確認藏在隊伍名稱裡的指令不會被照做。**仍待處理：** host 自訂題庫文字，等題庫編輯介面出現時再做。
-
-**更新（2026-09-18 /plan-ceo-review）：** 第二輪 LLM 旁白已進入範圍，此項不再被擋住。第二輪只處理「隊伍名稱進 prompt」（資料引號化、答案與答錯時的題目文字不進 prompt、輸出驗證，見 CEO plan D8/D19）；host 自訂題庫文字仍待題庫編輯 UI 出現時再處理。
-
-**更新（2026-09-22，`/plan-eng-review` question-bank-editor）：** 這條 TODO 等的「題庫編輯介面」這輪要做了，但範圍不變——題目文字/答案本來就不進 prompt（見上，已有防護），所以題庫變成可編輯並不會新增暴露面。真正要處理的情境是：如果未來旁白 prompt 改成會讀題目文字（例如題目本身要融入敘事），才需要回頭做這條 TODO 描述的淨化。用戶決定繼續延後，本次只更新現狀說明。見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md)。
-
----
-
-
-
-
-## 加入密碼沒有猜錯次數限制
-
-**What:** 房間的加入密碼（v0.15.1.0）沒有限制猜錯次數。同一條連線可以一直送 JOIN 猜密碼。做法：每個房間記錄猜錯次數，超過門檻就暫時擋掉 JOIN，或是猜錯後關掉那條連線。
-
-**Why:** 主持人如果設了很短的密碼（例如 4 位數字），用程式猜幾分鐘就能猜中。
-
-**Pros:** 邏輯集中在 `lib/room/dungeon-room.ts` 的 `handleJoin`。
-
-**Cons:** 全房間共用的門檻會讓攻擊者把真正的玩家也一起擋在外面，要先決定擋的範圍。目前主持人頁的說明建議公開網址要設密碼，但沒有規定長度。
-
-**Context:** 2026-10-27 做房間密碼時刻意留下的範圍。
-
-**Effort:** S　**Priority:** P3
-
-**Depends on / blocked by:** 無。
-
----
-
-## 量 e2e 對前端（app/、components/）的實際覆蓋率
-
-**What:** 讓 Next.js 在 e2e 建置時產生 source map，用 Playwright 收集 V8 coverage，算出 `app/` 與 `components/`（約 2,400 行）被 e2e 跑到多少。
-
-**Why:** 單元測試只覆蓋 `lib/`；前端完全靠 e2e，但沒有數字知道哪些頁面流程沒被碰過。
-
-**Pros:** 補測試有依據，能找出完全沒被 e2e 走過的頁面流程。
-
-**Cons:** 要加回 `next.config.ts`，而且只能在 e2e 建置開 source map；正式部署帶上 source map 等於公開原始碼。
-
-**Context:** 維護輪（`docs/designs/maintenance-2026-10.md` D3）審查時決定延後。從 `playwright.config.ts` 的 webServer 建置指令開始。
-
-**Effort:** M　**Priority:** P4
-
-**Depends on / blocked by:** 無。
-
----
-
-## 開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）
-
-**What:** `npm audit` 剩 5 個 high，全是同一條：`eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob@3.3.1`（鎖死版本）→ `micromatch` → `braces <=3.0.3`。`braces` 最新版就是 3.0.3，上游沒有修好的版本。
-
-**Why:** 記下結論，之後看到 audit 報 high 不用重查一遍；上游修好時知道要回來升。
-
-**Pros:** 省下重複調查的時間。
-
-**Cons:** 無。
-
-**Context:** 只在跑 lint 時掃專案自己的檔案路徑，不會進到線上程式。v0.9.14.4 升級修掉另外 3 個（`undici` 等）。用 npm overrides 強制 `fast-glob@3.3.3` 沒用，因為 `braces` 仍有漏洞。上游修好的訊號：`@next/eslint-plugin-next` 不再鎖 `fast-glob@3.3.1`，或 `braces` 出修補版。
-
-**Effort:** S　**Priority:** P4
-
-**Depends on / blocked by:** 上游 `braces` 或 `@next/eslint-plugin-next`。
-
----
-
-## /health 補上死碼與 shell 腳本檢查
-
-**What:** 加 `knip`（死碼偵測）當開發依賴、裝 `shellcheck` 檢查 `scripts/*.sh`，再把兩者寫進 CLAUDE.md 的 `## Health Stack`。
-
-**Why:** 第一次 `/health`（2026-10-03）是 10.0/10，但只有 3/6 類別有檢查（型別、lint、測試）；死碼與 shell 腳本沒有工具，分數不完整。
-
-**Pros:** 分數更完整，能抓到沒人用的 export 和腳本錯誤。
-
-**Cons:** knip 第一次跑可能報出一堆要逐一判斷的結果。
-
-**Context:** 歷史紀錄在 `~/.gstack/projects/critical-answer/health-history.jsonl`。加工具後覆蓋類別改變，分數會跟第一次不可比。
-
-**Effort:** S　**Priority:** P4
-
-**Depends on / blocked by:** 無。
-
----
-
-## 後進王房的隊伍，旁白還在說「推開最後一道門」
-
-**What:** 第二隊以後進王房時，旁白改用「加入戰局」的台詞，AI 旁白的 prompt 也告訴它這隊是第幾個進來的。現在每隊進王房都用同一組 `BOSS_ENTER_VARIANTS`（`lib/narration/`），聽起來像第一次開門。
-
-**Why:** 活地圖的 D9 規則讓每隊都會「進王房」，但大螢幕上門早就開了，旁白跟畫面對不上。
-
-**Pros:** 旁白跟大螢幕一致；後進隊伍有自己的進場台詞。
-
-**Cons:** 要寫新台詞、改 `buildPrompt`，旁白測試要跟著改。
-
-**Context:** 2026-10-23 /ship 紅隊審查第 5 點，使用者選 D6=B（記 TODO），跟計分重設計一起處理。`NarrationEvent` 的 `entersBoss` 目前不分第一隊或後進。
-
-**Effort:** S（人工約半天 / CC 約 15 分鐘）　**Priority:** P3
-
-**Depends on / blocked by:** 跟「重新設計計分」一起做。
-
----
-
-
-
-## ESLint 10 / TypeScript 7 升級被上游卡住
-
-**What:** `npm outdated` 列出的兩個 major 版本升級目前做不了：ESLint 9→10（`eslint-config-next@16.3.6` 內建的 `eslint-plugin-react` 用了 ESLint 10 移除的 API，直接噴 `contextOrFilename.getFilename is not a function`）、TypeScript 5→7（`typescript-eslint` 明確拒絕載入，官方公告要等 7.1+ 才支援）。
-
-**Why:** 2026-09-23 逐一嘗試升級時發現，兩者都不是設定問題，是上游套件（`eslint-config-next`、`typescript-eslint`）還沒跟上，沒有繞過的辦法。
-
-**Pros:** 之後升級好處：更快的 lint/typecheck（TS 7 是 Go 原生編譯器，官方號稱 8–12 倍）、ESLint 10 的新規則。
-
-**Cons:** 現在做不了，勉強做會直接打斷開發環境。
-
-**Context:** 已完成同批的其他升級：React 19.2.4→19.3.0、Vitest 4.1.11→5.0.1、`concurrently` 9→10（v0.7.3.0）。
-
-**Effort:** 不確定（等上游）　**Priority:** P4
-
-**Depends on / blocked by:** `eslint-config-next` 支援 ESLint 10；`typescript-eslint` 支援 TypeScript ≥7.1。
-
-**解鎖後：** 把 `.github/dependabot.yml` 裡 `typescript` 和 `eslint` 的 `ignore` 規則拿掉，Dependabot 才會再開這兩個升級 PR。
-
-**重新確認（2026-10-03）：** 仍然卡住。`eslint-config-next@16.3.8` 依賴 `eslint-plugin-react@^7.37.0`，最新 7.37.5 的 peer 是 `eslint ^9.7`（沒有 10）；`typescript-eslint` 最新 8.71.0 的 peer 是 `typescript <6.1.0`（TS 已到 7.0.2）。
-
----
-
-## CI 在 Ubuntu 26 上試跑一次，通過再換掉固定的 ubuntu-24.04
-
-**What:** `.github/workflows/ci.yml` 目前把 `runs-on` 固定在 `ubuntu-24.04`。找一個 PR 把它改成 `ubuntu-26.04`（或 `ubuntu-latest`）跑一次完整 CI，全過就換，不過就記下壞在哪。
-
-**Why:** GitHub 從 2026-10-19 起把 `ubuntu-latest` 換成 Ubuntu 26。先固定版本是為了不在某天突然紅燈；但不能永遠停在 24.04，等它停止支援時會被迫一次升。
-
-**Pros:** 主動、可控地升級；壞的話只影響那一個試跑 PR。
-
-**Cons:** 最可能出問題的是 `npx playwright install --with-deps chromium` 裝的系統套件，可能要跟著調整。
-
-**Context:** v0.9.14.3 固定版本時加的（`docs/designs/maintenance-2026-10.md` B1）。只要改 `runs-on` 那一行；CI 其他步驟不用動。
-
-**Effort:** S　**Priority:** P3
-
-**Depends on / blocked by:** GitHub 的 Ubuntu 26 runner 正式可用。
+**Context:**
+- `lib/game-state.ts`
+- `docs/designs/class-abilities.md`
+- `docs/designs/scoring-and-score-pools.md`
+- `docs/designs/monster-cuisine.md`
+- `app/room/[code]/play/page.tsx`
+
+**Effort/Priority:** 廚師 S–M，平衡 M / P2
+
+**Depends on:** 平衡要等廚師做完。動手前先用 `/plan-eng-review` 定加成的計算順序。
+
+**Notes:**
+- 原 What：1. 新增第 5 個職業「廚師」。能力是被動的：這一隊每次拿到飽足感，都多拿 15%。 2. 廚師做完以後，把 5 個職業的能力一起做平衡，讓每個職業差不多強。
+- Pros：被動能力不用按按鈕，手機和主持人頁不必多一個操作；「飽足感」本來就是現成的獎勵分（`reward`）。
+- Cons：
+  - 現有 4 個職業都是主動能力，每場各用 `ABILITY_USES`（2）次。廚師是唯一的被動職業，整場都有效，平衡時要特別算。
+  - 「飽足感」只是題庫有菜時 `reward` 的顯示名稱。要決定題庫沒有菜時廚師還加不加 15%（建議照加，只是顯示成獎勵分）。
+  - 15% 要決定怎麼取整數（建議四捨五入，或至少 +1），也要決定首領的 4d20 獎勵和盜賊的加倍是先乘還是後乘。
+  - 大螢幕的料理卡和加分要看得出廚師多加的那一份（例如「+12 飽足感（廚師 +2）」）。
+  - 平衡要先拿數字：用模擬腳本（類似 `/ship` 用過的 scratchpad `sim.ts`）跑每個職業的平均最終分數和勝率，再調參數，例如 `WARRIOR_TARGET`、廚師的 15%、各職業的使用次數。
+- Context 補充：`lib/game-state.ts`（`CLASS_IDS`、`CLASS_LABELS`、`CLASS_ICONS`、`ABILITY_USES`、`WARRIOR_TARGET`、`reward` 怎麼加）。職業設計在 `docs/designs/class-abilities.md`，計分在 `docs/designs/scoring-and-score-pools.md`，料理在 `docs/designs/monster-cuisine.md`。
+  - 手機選職業的畫面在 `app/room/[code]/play/page.tsx`。「每個職業有自己的動畫和音效」這條 TODO 也要把廚師算進去。
 
 ---
 
@@ -382,108 +185,19 @@
 
 **Why:** 全域回合制每隊只有 1/N 時間在答題，其餘時間手機只是被動畫面（審查 E5）。若第二次測試後「等待太無聊」仍是主要抱怨，這是首選解法。
 
-**Pros:** 手機從只看狀態變成有事可做；可餵給 DM 旁白。
+**Context:**
+- `docs/designs/phone-answering.md`
 
-**Cons:** 新增玩家輸入面，需要限頻、防洗版與不當內容處理。
+**Effort/Priority:** M（人工約 2 天 / CC 約 1 小時） / P2
 
-**Context:** 見同上 CEO plan。新增 `REACT` 訊息，伺服器限頻後廣播。另一個做法（Codex 的「燈籠」點子，`docs/designs/phone-answering.md`）：等待隊伍在別隊答題時偷偷鎖一個預測，揭曉時在大螢幕顯示，猜對的累積成打首領用的共用燈籠。
+**Depends on:** 第二次真人測試結果。
 
-**Effort:** M（人工約 2 天 / CC 約 1 小時）　**Priority:** P2
-
-**Depends on / blocked by:** 第二次真人測試結果。
-
----
-
-## 手機答題模式（選擇題 + 自動判定）
-
-**What:** 題目改成選擇題，玩家在手機選答案，系統自動判定，host 不再手動按對錯。
-
-**Why:** 手機在遊戲中幾乎閒置，host 也被綁在判定工作上（審查 E6）。
-
-**Pros:** 手機變主角；host 可以下場玩。
-
-**Cons:** 改變第一輪已驗證的核心玩法；題庫要全部重寫並加迷惑選項；重答與逃跑規則要重新設計手機 UI。
-
-**Context:** 見同上 CEO plan。風險最高，應在氛圍假設驗證後再評估。v0.11.0.0 已上第一階段（`docs/designs/phone-answering.md` PR 1）：手機選擇、鎖定、自動判定、重答／逃跑，第一房只有 6 題示範選擇題。第二階段（PR 2）也已完成：預設題庫 52 題全部改成四選一（第一房 12 題，其他房和王各 8 題）。剩下：正式環境的題庫存在 BankStore 裡，要另外重新種子（使用者決定），否則正式環境還是舊的文字題。
-
-**Effort:** L（人工約 1 週 / CC 約半天）　**Priority:** P3
-
-**Depends on / blocked by:** 第二次真人測試結果，題庫格式定案。
+**Notes:**
+- Pros：手機從只看狀態變成有事可做；可餵給 DM 旁白。
+- Cons：新增玩家輸入面，需要限頻、防洗版與不當內容處理。
+- Context 補充：見同上 CEO plan。新增 `REACT` 訊息，伺服器限頻後廣播。另一個做法（Codex 的「燈籠」點子，`docs/designs/phone-answering.md`）：等待隊伍在別隊答題時偷偷鎖一個預測，揭曉時在大螢幕顯示，猜對的累積成打首領用的共用燈籠。
 
 ---
-
-## 手機答題的剩餘小風險（/review 2026-10-25）
-
-**Priority:** P3
-
-**What:** phone-answering 分支 /review 找到、但這次刻意沒修的幾項：
-1. 主持人「等 15 秒才出現重答／逃跑」只擋在主持人頁，伺服器不檢查（主持人本來就是被信任的一方）。
-2. 房間重啟還原 `eliminated`、`pendingWrong` 時沒驗證資料形狀，壞掉的存檔可能讓房間卡住。
-3. 等待重答／逃跑的隊伍離線時一直保留回合；房間重啟後所有隊伍都離線，只能靠主持人的卡住按鈕救。
-4. 鎖定被伺服器丟掉時（離線、重啟、`selection_changed`），手機要等 3 秒才顯示「沒送出」，沒有立即的錯誤。
-5. `scripts/check-bundle.sh` 用選項文字比對選擇題答案，很短的選項（如「6 個」）可能誤判成洩漏。
-6. `eliminated` 整場只增不減的部分已修（題目離開就清掉），但每次 STATE 仍整包廣播。
-7. 大螢幕的選項方塊是 `<button tabIndex={-1}>`，語意上應該是純顯示元素；D8/D9 規格寫 17px 標籤、30px 字母塊，程式是 15px、28px。
-8. 房間只剩 1 題時，答錯後逃跑會再抽到同一題，`eliminated` 沒清掉，上次刪掉的選項還是灰的（程式註解說「重新抽到就從頭開始」，這個情況不成立）。正式房間題目多，不會發生。
-
-**Why:** 都不會在一般派對現場發生，或發生時主持人有辦法處理。這次 PR 先修會影響公平的問題（輪次、選項洩漏、大螢幕溢出、兩支手機搶鎖定）。
-
-**Context:** 審查紀錄在 `.gstack/qa-reports/review-20261025-phone/`；設計見 [docs/designs/phone-answering.md](docs/designs/phone-answering.md)。
-
-**Depends on / blocked by:** 第一次真人試玩手機答題後再決定哪些值得做。
-
----
-
-## 手機顯示題目的剩餘小風險（/ship 2026-10-29）
-
-**Priority:** P3
-
-**What:** phone-question-text 分支 /ship 審查找到、這次沒修的幾項：
-1. 題目橫條沒有長度上限。預設題庫最長 34 字，iPhone 12（390×844）放得下；但本機題庫（`local-banks/`）沒有字數限制，約 100 字的題目會多出 4 行，答錯後的重答／逃跑或魔王房的鎖定答案可能被推到螢幕外。
-2. （v0.27.1.0 手機已拿掉「冒險出現岔路」面板，這點暫時不存在；加回來時再看會不會被媒體推到螢幕外。）
-3. 揭曉時才重新整理或重新連線的手機，看不到剛答對的那題題目（只記得連線期間看過的題目）。設計時已接受。
-4. 還沒有 e2e 檢查「揭曉時重新連線不顯示題目」和「等待中的手機不顯示選擇題橫條」。
-
-**Why:** 預設題庫不會發生 1；2、3 不影響答題。第一次用長題目的本機題庫試玩前再處理 1。
-
-**Context:** 設計見 [docs/designs/phone-question-text.md](docs/designs/phone-question-text.md)，畫面在 `app/room/[code]/play/page.tsx` 的 `QuestionStrip`。
-
-**Depends on / blocked by:** 無。
-
----
-
-## 題庫編輯器：載入或儲存途中的編輯會被蓋掉（/review 2026-10-25）
-
-**Priority:** P3
-
-**What:** 按「載入題庫」之後、資料回來之前，題目欄位仍然可以改；載入完成時 `setBank` 直接整包覆蓋，剛改的內容會不見，也沒有「有未儲存的變更」提醒。儲存也一樣（main 上原本就有）：按下儲存後、回應回來前改的內容，會被 `save()` 成功時的 `setBank(versioned.bank)` 換回送出那一刻的版本，版本號照樣前進，下次儲存不會出現 409 提醒。另外兩個小點：`fetch` 沒有逾時，最新一次載入卡住時按鈕會一直停在「載入中…」；非 403 的載入失敗會保留上一把金鑰載到的題庫；載入前開始上傳的圖片，上傳完成時會寫進剛載入的題庫（題目還在就會被下次儲存一起存進去，題目不在了 R2 圖檔就變孤兒）。
-
-**Why:** 一般使用時，載入只要幾百毫秒，又是主持人自己按的，很少撞到。CI 那次失敗是開發模式（StrictMode）重複自動載入造成的，fix-bank-editor-save-race 已用載入序號處理，儲存和載入兩顆按鈕也改成互斥（一個進行中，另一個不能按）。
-
-**Context:** `app/bank-editor/page.tsx` 的 `load()` 和 `save()`；做法可以是載入／儲存中鎖住題目列，或丟棄前先確認未儲存的變更。注意伺服器存的是 `parseBank` 之後的版本，儲存成功時不能直接改成只更新 `version`。
-
-**Depends on / blocked by:** 無。
-
----
-
-## 逃跑・換房（flee-switch-room）
-
-**What:** 答錯後除了「重答」和「逃跑・同房」，再加一個「逃跑・換房」：跳到另一間房、面對另一隻怪物。
-
-**Why:** 你在 2026-09-18 的 /plan-ceo-review 提出「逃跑可以選擇同一房或換房」。工程審查（/plan-eng-review，T1）決定先延後，改用全域已用題目牌堆解決題目重複，換房是狀態空間最大的新增規則，也還沒有真人測試要求過。
-
-**Pros:** 讓逃跑成為真正的策略選擇，符合設計文件「放棄較高難度換取簡單」的精神。
-
-**Cons:** 每隊需要記錄已通關的房間，「走完」的定義、被放棄的房間難度、`roomIndex` 不再線性都要重新定義，會動到第一輪已驗證的核心。
-
-**Context:** 見 [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md)「Engineering review decisions」T1。預設草案：換到下一間尚未通關的房、難度為該房基礎難度 −1、回頭打被放棄的房恢復基礎難度。
-
-**Effort:** M（人工約 1-2 天 / CC 約 1 小時）　**Priority:** P3
-
-**Depends on / blocked by:** 第二次真人測試結果、牌堆規則穩定。
-
----
-
 
 ## 開場與首領房的轉場動畫
 
@@ -491,15 +205,17 @@
 
 **Why:** 設計審查 3A 選擇延後（決定 `98cb576b`，完整度 3/10）。上限：中段沒有結構性的高潮，30–60 分鐘的遊戲可能像一個平的循環。
 
-**Pros:** 給一場遊戲節奏起伏，首領登場更有份量。
+**Context:**
+- 原文未列檔案路徑。
 
-**Cons:** 要新增場景切換與動畫，還要決定旁白怎麼配合。
+**Effort/Priority:** M（人工約 1 天 / CC 約 40 分鐘） / P2
 
-**Context:** 觸發條件：第二次玩測有人說「太長」或「沒事件」。
+**Depends on:** 第二次真人測試結果。
 
-**Effort:** M（人工約 1 天 / CC 約 40 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 第二次真人測試結果。
+**Notes:**
+- Pros：給一場遊戲節奏起伏，首領登場更有份量。
+- Cons：要新增場景切換與動畫，還要決定旁白怎麼配合。
+- Context 補充：觸發條件：第二次玩測有人說「太長」或「沒事件」。
 
 ---
 
@@ -509,20 +225,20 @@
 
 **Why:** 真的 API 測試（26 句）事實正確、延遲 1.1 秒，但用詞有重複（「應聲倒地」「智慧之光」出現很多次）。是否耐聽只能靠真人一整場來判斷。
 
-**Pros:** 旁白是這一輪的核心賣點。
+**Context:**
+- `lib/narration/llm.ts`
+- `lib/narration/scripted.ts`
 
-**Cons:** 主觀，需要玩測資料（旁白紀錄 JSON 有每句的來源與延遲）。
+**Effort/Priority:** S（人工約 0.5 天 / CC 約 20 分鐘） / P2
 
-**Context:** 提示詞在 `lib/narration/llm.ts`，腳本句在 `lib/narration/scripted.ts`。
+**Depends on:** 第二次真人測試結果。
 
-**Effort:** S（人工約 0.5 天 / CC 約 20 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 第二次真人測試結果。
+**Notes:**
+- Pros：旁白是這一輪的核心賣點。
+- Cons：主觀，需要玩測資料（旁白紀錄 JSON 有每句的來源與延遲）。
+- Context 補充：提示詞在 `lib/narration/llm.ts`，腳本句在 `lib/narration/scripted.ts`。
 
 ---
-
-
-
 
 ## 新題型：排序題
 
@@ -530,31 +246,333 @@
 
 **Why:** 2026-10-26 使用者提出。比四選一更需要討論，適合隊伍一起想；同一組項目換個規則（年齡、出道年份、身高）就能變成新題目。
 
-**Pros:** 可以重用選擇題已有的四格版面和每局打亂選項（`shuffledOptionOrders`）；答案可以自動判定，主持人不用按答對。
+**Context:**
+- `lib/question-bank.ts`
+- `app/room/[code]/play/page.tsx`
+- `lib/room/dungeon-room.ts`
+- `app/bank-editor/page.tsx`
 
-**Cons:** 要決定的事：手機上怎麼排（拖拉或依序點選）；要全對才算對，還是排對幾個給部分分；大螢幕怎麼公布正確順序；題庫編輯器要多一種題型的編輯畫面；`parseBank` 的驗證要支援新題型；題庫格式變了，要把 `lib/bank-store.ts` 的 `BANK_FORMAT` 加 1，舊版本才會把新題庫當成讀不懂、不會存檔時把排序題弄丟。
+**Effort/Priority:** M（人工約 3 天 / CC 約 1.5 小時） / P2
 
-**Context:** 題型定義在 `lib/question-bank.ts`（`BankQuestion` 目前只有 `text` 和 `multipleChoice`，驗證在 `parseQuestions`）。手機作答在 `app/room/[code]/play/page.tsx`，選擇題的鎖定和判定在 `lib/room/dungeon-room.ts`（`TEAM_SELECT_OPTION` / `TEAM_LOCK_OPTION`）。題庫編輯器在 `app/bank-editor/page.tsx`。改 UI 前要先給 PNG。
+**Depends on:** 無。使用者 2026-10-26 說先記下，之後再排。
 
-**Effort:** M（人工約 3 天 / CC 約 1.5 小時）　**Priority:** P2
+**Notes:**
+- Pros：可以重用選擇題已有的四格版面和每局打亂選項（`shuffledOptionOrders`）；答案可以自動判定，主持人不用按答對。
+- Cons：要決定的事：手機上怎麼排（拖拉或依序點選）；要全對才算對，還是排對幾個給部分分；大螢幕怎麼公布正確順序；題庫編輯器要多一種題型的編輯畫面；`parseBank` 的驗證要支援新題型；題庫格式變了，要把 `lib/bank-store.ts` 的 `BANK_FORMAT` 加 1，舊版本才會把新題庫當成讀不懂、不會存檔時把排序題弄丟。
+- Context 補充：題型定義在 `lib/question-bank.ts`（`BankQuestion` 目前只有 `text` 和 `multipleChoice`，驗證在 `parseQuestions`）。手機作答在 `app/room/[code]/play/page.tsx`，選擇題的鎖定和判定在 `lib/room/dungeon-room.ts`（`TEAM_SELECT_OPTION` / `TEAM_LOCK_OPTION`）。題庫編輯器在 `app/bank-editor/page.tsx`。改 UI 前要先給 PNG。
 
-**Depends on / blocked by:** 無。使用者 2026-10-26 說先記下，之後再排。
+---
+
+## 把「冒險出現岔路」的選擇加回玩家手機
+
+**What:** v0.27.1.0 先把手機上「冒險出現岔路，你們要怎麼做？」拿掉了。改遊戲進行方式時，討論要不要、怎麼加回來。
+
+**Why:** 站長 2026-11-04 實測後決定先拿掉，玩法還沒定案。
+
+**Context:**
+- `lib/game-state.ts`
+- `lib/narration/llm.ts`
+- `app/room/[code]/play/page.tsx`
+
+**Effort/Priority:** S / P3
+
+**Depends on:** 「每次行動可以選不同的動作」那類玩法改動。
+
+**Notes:**
+  - Context 補充：v0.31.3.0（稽核清理）把伺服器端也拿掉了：`TEAM_BRANCH_CHOICE` 訊息、`lib/game-state.ts` 的 `recordBranchChoice`、`firstPendingBranchRoom`、`BRANCH_OPTIONS`、`BRANCH_LABELS`、隊伍的 `branchChoices`，還有首領房旁白（`lib/narration/llm.ts`）呼應岔路選擇的那句。
+  - 加回來時要從 git 歷史把它們找回來（`git log -S recordBranchChoice`），再把 `app/room/[code]/play/page.tsx` 的面板接回去。
+
+---
+
+## 遊戲開始後，新隊伍可以中途加入
+
+**What:** 遊戲開始後有新隊伍要加入時，手機先顯示「等主持人讓你們加入」，主持人頁出現「收這隊」。收了以後，這隊從第一間房開始，排在輪流順序的最後。
+
+**Why:** 現在開始後新隊伍一律被擋下（`game_already_started`），遲到的朋友只能在旁邊看（2026-11-04 盤點功能缺口時找到）。
+
+**Context:**
+- `lib/room/dungeon-room.ts`
+- `lib/game-state.ts`
+- `app/room/[code]/play/page.tsx`
+- `app/room/[code]/host/page.tsx`
+
+**Effort/Priority:** M / P3
+
+**Depends on:** 動手前先用 `/plan-eng-review` 定中途加入的計分規則。
+
+**Notes:**
+- Pros：加入流程（JOIN、密碼、隊名檢查）都是現成的。
+- Cons：要決定中途加入的隊伍要不要補一點起始分，不然幾乎不可能贏；有隊伍已經在王房時，新隊伍是不是直接進王房。共用題庫的牌堆和地圖要能多一隊；房間最多 8 隊的上限照舊。
+- Context 補充：`lib/room/dungeon-room.ts`（三處 `game_already_started`）、`lib/game-state.ts`（`turnOrder`、`teams`）、`app/room/[code]/play/page.tsx`、`app/room/[code]/host/page.tsx`。
+
+---
+
+## 主持人開房時可以用自己的題庫
+
+**What:** 主持人開房時可以選題庫：站長的預設題庫，或上傳／貼上自己的題庫。
+
+**Why:** 現在每個房間都只能用站長那一份題庫，想玩自己出的題（例如 `local-banks/` 裡的主題題庫）要站長改正式站的題庫。2026-10 決定「上傳＋多題庫」先延後，但 TODOS.md 裡還沒有這一條（2026-11-04 盤點功能缺口時找到）。
+
+**Context:**
+- `lib/bank-store.ts`
+- `lib/question-bank.ts`
+- `lib/room/dungeon-room.ts`
+- `app/bank-editor/page.tsx`
+
+**Effort/Priority:** L / P3
+
+**Depends on:** 先用 `/office-hours` 或 `/plan-ceo-review` 決定範圍；內容審核那條 TODO 要一起考慮。
+
+**Notes:**
+- Pros：題庫格式、驗證和編輯器都是現成的。
+- Cons：
+  - 主持人上傳的題庫要在伺服器端驗證（大小、格式、圖片網址），題目和答案也不能進大螢幕和手機的 bundle（`npm run check:bundle` 的規則照舊）。
+  - 自訂題庫的文字會進 AI 旁白的提示詞，跟「Host 自訂題庫文字進 LLM prompt 前的內容審核」那條 TODO 綁在一起。
+  - 要決定上傳的題庫存在哪：只存在房間裡，還是存起來下次再用。
+  - 題目比隊伍少的問題（「題目比隊伍少時，兩隊可能一直拿同一題」）會變常見。
+- Context 補充：`lib/bank-store.ts`、`lib/question-bank.ts`（格式與驗證）、`lib/room/dungeon-room.ts`、`app/bank-editor/page.tsx`。
+
+---
+
+## 題目比隊伍少時，兩隊可能一直拿同一題
+
+**What:** 自訂題庫的題目比隊伍數少時，開局就會有兩隊拿同一題（沒辦法避免）。之後有題目空出來（某隊進王房、被主持人送進王房、或答對換題），只有正在出題的那一隊會換題，共用同一題的兩隊要等其中一隊下次出題才會分開。做法：有題目空出來時，從共用同一題的隊伍裡挑一隊（沒有選錯紀錄的）立刻換到空出來的題目。
+
+**Why:** 共用同一題時，一隊答對公布答案，另一隊就看到自己的答案。
+
+**Context:**
+- `/ship`
+
+**Effort/Priority:** S / P3
+
+**Depends on:** 無。
+
+**Notes:**
+- Pros：邏輯集中在 `game-state.ts`，`/ship` 的模擬腳本已經能重現（scratchpad `sim.ts` 的 R1release）。
+- Cons：會換掉一隊正在等的題目，大螢幕和手機要能接受「沒輪到也換題」；要先決定換哪一隊。預設題庫每池 12～16 題、最多 8 隊，遇不到。
+- Context 補充：2026-10-26 `/ship`（score-pools，v0.14.0.0）Claude 對抗審查的隨機模擬提出（5 萬場、只在很小的自訂題庫出現）。
+
+---
+
+## 題庫讀不懂期間的小問題
+
+**What:** 處理「題庫讀不懂期間的小問題」所述事項。
+
+**Why:** 都是少見的情況，但最後一項可能刪掉題庫還在用的圖片。
+
+**Context:**
+- 原文未列檔案路徑。
+
+**Effort/Priority:** S / P3
+
+**Depends on:** 無。
+
+**Notes:**
+- 原 What：存著的題庫讀不懂時（v0.15.2.0 起編輯器唯讀、上傳被擋），還有幾個小問題：`runImageCleanup` 遇到讀不懂時把 alarm 往後推一個清理延遲，期間一直白跑；待刪佇列在這段期間不會縮小；`version` 不是數字時被當成 1；延後清理時沒有自己的 log；清理在等 R2 刪除時，一個把圖放回題庫的儲存可能剛好插進來，圖還是被刪（這個競態跟讀不懂無關，平常也可能發生）。
+- Context 補充：原本是「題庫讀不懂時的後續」的附帶項目，(1)–(4) 做完後拆出來。
+
+---
+
+## OpenRouter 一鍵登入拿 key，手機主持人不用複製貼上
+
+**What:** 主持人頁加「用 OpenRouter 登入」，走 OpenRouter 官方的 PKCE OAuth 流程拿到一把 key，在 `lib/narration/providers.ts` 的 `PROVIDERS` 加一個 `"openrouter"`。
+
+**Why:** 使用者 2026-10-30 提出：用手機當主持人時，從 Anthropic Console 複製 key 再貼上很難。Anthropic 沒有給第三方拿 API key 的 OAuth，OpenRouter 有。
+
+**Context:**
+- 原文未列檔案路徑。
+
+**Effort/Priority:** M / P3
+
+**Depends on:** 無。
+
+**Notes:**
+- Context 補充：spec #102 的 D11 決定先只做 Anthropic 複製貼上。`AiProvider` 介面已經按 provider 分開（`checkKey`、`createNarrator`），加一個 provider 不用動房間邏輯；要新增 OpenRouter 的 narrator（OpenAI 相容的 chat API）和 PKCE 的回呼頁。
+
+---
+
+## 加入密碼沒有猜錯次數限制
+
+**What:** 房間的加入密碼（v0.15.1.0）沒有限制猜錯次數。同一條連線可以一直送 JOIN 猜密碼。做法：每個房間記錄猜錯次數，超過門檻就暫時擋掉 JOIN，或是猜錯後關掉那條連線。
+
+**Why:** 主持人如果設了很短的密碼（例如 4 位數字），用程式猜幾分鐘就能猜中。
+
+**Context:**
+- 原文未列檔案路徑。
+
+**Effort/Priority:** S / P3
+
+**Depends on:** 無。
+
+**Notes:**
+- Pros：邏輯集中在 `lib/room/dungeon-room.ts` 的 `handleJoin`。
+- Cons：全房間共用的門檻會讓攻擊者把真正的玩家也一起擋在外面，要先決定擋的範圍。目前主持人頁的說明建議公開網址要設密碼，但沒有規定長度。
+- Context 補充：2026-10-27 做房間密碼時刻意留下的範圍。
+
+---
+
+## 後進王房的隊伍，旁白還在說「推開最後一道門」
+
+**What:** 第二隊以後進王房時，旁白改用「加入戰局」的台詞，AI 旁白的 prompt 也告訴它這隊是第幾個進來的。現在每隊進王房都用同一組 `BOSS_ENTER_VARIANTS`（`lib/narration/`），聽起來像第一次開門。
+
+**Why:** 活地圖的 D9 規則讓每隊都會「進王房」，但大螢幕上門早就開了，旁白跟畫面對不上。
+
+**Context:**
+- 原文未列檔案路徑。
+
+**Effort/Priority:** S（人工約半天 / CC 約 15 分鐘） / P3
+
+**Depends on:** 跟「重新設計計分」一起做。
+
+**Notes:**
+- Pros：旁白跟大螢幕一致；後進隊伍有自己的進場台詞。
+- Cons：要寫新台詞、改 `buildPrompt`，旁白測試要跟著改。
+- Context 補充：2026-10-23 /ship 紅隊審查第 5 點，使用者選 D6=B（記 TODO），跟計分重設計一起處理。`NarrationEvent` 的 `entersBoss` 目前不分第一隊或後進。
+
+---
+
+## CI 在 Ubuntu 26 上試跑一次，通過再換掉固定的 ubuntu-24.04
+
+**What:** `.github/workflows/ci.yml` 目前把 `runs-on` 固定在 `ubuntu-24.04`。找一個 PR 把它改成 `ubuntu-26.04`（或 `ubuntu-latest`）跑一次完整 CI，全過就換，不過就記下壞在哪。
+
+**Why:** GitHub 從 2026-10-19 起把 `ubuntu-latest` 換成 Ubuntu 26。先固定版本是為了不在某天突然紅燈；但不能永遠停在 24.04，等它停止支援時會被迫一次升。
+
+**Context:**
+- `docs/designs/maintenance-2026-10.md`
+
+**Effort/Priority:** S / P3
+
+**Depends on:** GitHub 的 Ubuntu 26 runner 正式可用。
+
+**Notes:**
+- Pros：主動、可控地升級；壞的話只影響那一個試跑 PR。
+- Cons：最可能出問題的是 `npx playwright install --with-deps chromium` 裝的系統套件，可能要跟著調整。
+- Context 補充：v0.9.14.3 固定版本時加的（`docs/designs/maintenance-2026-10.md` B1）。只要改 `runs-on` 那一行；CI 其他步驟不用動。
+
+---
+
+## 手機答題模式（選擇題 + 自動判定）
+
+**What:** 題目改成選擇題，玩家在手機選答案，系統自動判定，host 不再手動按對錯。
+
+**Why:** 手機在遊戲中幾乎閒置，host 也被綁在判定工作上（審查 E6）。
+
+**Context:**
+- `docs/designs/phone-answering.md`
+
+**Effort/Priority:** L（人工約 1 週 / CC 約半天） / P3
+
+**Depends on:** 第二次真人測試結果，題庫格式定案。
+
+**Notes:**
+- Pros：手機變主角；host 可以下場玩。
+- Cons：改變第一輪已驗證的核心玩法；題庫要全部重寫並加迷惑選項；重答與逃跑規則要重新設計手機 UI。
+- Context 補充：見同上 CEO plan。風險最高，應在氛圍假設驗證後再評估。v0.11.0.0 已上第一階段（`docs/designs/phone-answering.md` PR 1）：手機選擇、鎖定、自動判定、重答／逃跑，第一房只有 6 題示範選擇題。第二階段（PR 2）也已完成：預設題庫 52 題全部改成四選一（第一房 12 題，其他房和王各 8 題）。剩下：正式環境的題庫存在 BankStore 裡，要另外重新種子（使用者決定），否則正式環境還是舊的文字題。
+
+---
+
+## 手機答題的剩餘小風險（/review 2026-10-25）
+
+**What:** 處理「手機答題的剩餘小風險（/review 2026-10-25）」所述事項。
+
+**Why:** 都不會在一般派對現場發生，或發生時主持人有辦法處理。這次 PR 先修會影響公平的問題（輪次、選項洩漏、大螢幕溢出、兩支手機搶鎖定）。
+
+**Context:**
+- `.gstack/qa-reports/review-20261025-phone/`
+- `docs/designs/phone-answering.md`
+
+**Effort/Priority:** 未註明 / P3
+
+**Depends on:** 第一次真人試玩手機答題後再決定哪些值得做。
+
+**Notes:**
+  - 原 What：phone-answering 分支 /review 找到、但這次刻意沒修的幾項： 1. 主持人「等 15 秒才出現重答／逃跑」只擋在主持人頁，伺服器不檢查（主持人本來就是被信任的一方）。 2. 房間重啟還原 `eliminated`、`pendingWrong` 時沒驗證資料形狀，壞掉的存檔可能讓房間卡住。 3. 等待重答／逃跑的隊伍離線時一直保留回合；房間重啟後所有隊伍都離線，只能靠主持人的卡住按鈕救。
+  - 4. 鎖定被伺服器丟掉時（離線、重啟、`selection_changed`），手機要等 3 秒才顯示「沒送出」，沒有立即的錯誤。 5. `scripts/check-bundle.sh` 用選項文字比對選擇題答案，很短的選項（如「6 個」）可能誤判成洩漏。 6. `eliminated` 整場只增不減的部分已修（題目離開就清掉），但每次 STATE 仍整包廣播。
+  - 7. 大螢幕的選項方塊是 `<button tabIndex={-1}>`，語意上應該是純顯示元素；D8/D9 規格寫 17px 標籤、30px 字母塊，程式是 15px、28px。 8. 房間只剩 1 題時，答錯後逃跑會再抽到同一題，`eliminated` 沒清掉，上次刪掉的選項還是灰的（程式註解說「重新抽到就從頭開始」，這個情況不成立）。正式房間題目多，不會發生。
+- Context 補充：審查紀錄在 `.gstack/qa-reports/review-20261025-phone/`；設計見 [docs/designs/phone-answering.md](docs/designs/phone-answering.md)。
+
+---
+
+## 手機顯示題目的剩餘小風險（/ship 2026-10-29）
+
+**What:** 處理「手機顯示題目的剩餘小風險（/ship 2026-10-29）」所述事項。
+
+**Why:** 預設題庫不會發生 1；2、3 不影響答題。第一次用長題目的本機題庫試玩前再處理 1。
+
+**Context:**
+- `app/room/[code]/play/page.tsx`
+- `docs/designs/phone-question-text.md`
+
+**Effort/Priority:** 未註明 / P3
+
+**Depends on:** 無。
+
+**Notes:**
+  - 原 What：phone-question-text 分支 /ship 審查找到、這次沒修的幾項： 1. 題目橫條沒有長度上限。預設題庫最長 34 字，iPhone 12（390×844）放得下；但本機題庫（`local-banks/`）沒有字數限制，約 100 字的題目會多出 4 行，答錯後的重答／逃跑或魔王房的鎖定答案可能被推到螢幕外。
+  - 2. （v0.27.1.0 手機已拿掉「冒險出現岔路」面板，這點暫時不存在；加回來時再看會不會被媒體推到螢幕外。） 3. 揭曉時才重新整理或重新連線的手機，看不到剛答對的那題題目（只記得連線期間看過的題目）。設計時已接受。 4. 還沒有 e2e 檢查「揭曉時重新連線不顯示題目」和「等待中的手機不顯示選擇題橫條」。
+- Context 補充：設計見 [docs/designs/phone-question-text.md](docs/designs/phone-question-text.md)，畫面在 `app/room/[code]/play/page.tsx` 的 `QuestionStrip`。
+
+---
+
+## 題庫編輯器：載入或儲存途中的編輯會被蓋掉（/review 2026-10-25）
+
+**What:** 處理「題庫編輯器：載入或儲存途中的編輯會被蓋掉（/review 2026-10-25）」所述事項。
+
+**Why:** 一般使用時，載入只要幾百毫秒，又是主持人自己按的，很少撞到。CI 那次失敗是開發模式（StrictMode）重複自動載入造成的，fix-bank-editor-save-race 已用載入序號處理，儲存和載入兩顆按鈕也改成互斥（一個進行中，另一個不能按）。
+
+**Context:**
+- `app/bank-editor/page.tsx`
+
+**Effort/Priority:** 未註明 / P3
+
+**Depends on:** 無。
+
+**Notes:**
+  - 原 What：按「載入題庫」之後、資料回來之前，題目欄位仍然可以改；載入完成時 `setBank` 直接整包覆蓋，剛改的內容會不見，也沒有「有未儲存的變更」提醒。儲存也一樣（main 上原本就有）：按下儲存後、回應回來前改的內容，會被 `save()` 成功時的 `setBank(versioned.bank)` 換回送出那一刻的版本，版本號照樣前進，下次儲存不會出現 409 提醒。另外兩個小點：`fetch` 沒有逾時，最新一次載入卡住時按鈕會一直停在「載入中…」；
+  - 非 403 的載入失敗會保留上一把金鑰載到的題庫；載入前開始上傳的圖片，上傳完成時會寫進剛載入的題庫（題目還在就會被下次儲存一起存進去，題目不在了 R2 圖檔就變孤兒）。
+- Context 補充：`app/bank-editor/page.tsx` 的 `load()` 和 `save()`；做法可以是載入／儲存中鎖住題目列，或丟棄前先確認未儲存的變更。注意伺服器存的是 `parseBank` 之後的版本，儲存成功時不能直接改成只更新 `version`。
+
+---
+
+## 逃跑・換房（flee-switch-room）
+
+**What:** 答錯後除了「重答」和「逃跑・同房」，再加一個「逃跑・換房」：跳到另一間房、面對另一隻怪物。
+
+**Why:** 你在 2026-09-18 的 /plan-ceo-review 提出「逃跑可以選擇同一房或換房」。工程審查（/plan-eng-review，T1）決定先延後，改用全域已用題目牌堆解決題目重複，換房是狀態空間最大的新增規則，也還沒有真人測試要求過。
+
+**Context:**
+- `docs/designs/critical-answer-iteration-2.md`
+
+**Effort/Priority:** M（人工約 1-2 天 / CC 約 1 小時） / P3
+
+**Depends on:** 第二次真人測試結果、牌堆規則穩定。
+
+**Notes:**
+- Pros：讓逃跑成為真正的策略選擇，符合設計文件「放棄較高難度換取簡單」的精神。
+- Cons：每隊需要記錄已通關的房間，「走完」的定義、被放棄的房間難度、`roomIndex` 不再線性都要重新定義，會動到第一輪已驗證的核心。
+- Context 補充：見 [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md)「Engineering review decisions」T1。預設草案：換到下一間尚未通關的房、難度為該房基礎難度 −1、回頭打被放棄的房恢復基礎難度。
 
 ---
 
 ## 魔王分階段的兩個小瑕疵（/qa 2026-10-28）
 
-**Priority:** P3
-
-**What:** boss-phases-design 分支 /qa 找到、兩項都是低嚴重度，沒修：
-1. 換階段的轉場卡開著時，主持人頁題目那一行顯示題目 id（例如「題目 p2a」），不是題目文字；下方答案卻已經看得到。按「下一題」關掉卡片後就正常。重現：三階段題庫，打空第 1 階段，按「下一題」開卡片，看主持人頁。
-2. 階段名稱和規則都很長時（約 25 字名稱 + 60 字規則），1280×720 大螢幕上的轉場卡會往下長，蓋住新造型魔王大半個身體，剛好是「換了模樣」那一刻。編輯器的名稱、規則欄位沒有字數上限。
+**What:** 處理「魔王分階段的兩個小瑕疵（/qa 2026-10-28）」所述事項。
 
 **Why:** 1 只有主持人看得到，不影響玩家；2 要題庫作者寫很長的名稱和規則才會發生，平常的名稱（如「主題曲之謎」）不會。
 
-**Context:** 截圖在 `.gstack/qa-reports/run-20261029T002140Z/screenshots/`（`s3-host-card2.jpg`、`s6-screen-card3.jpg`）。主持人頁題目那一行在 `app/room/[code]/host/page.tsx` 的 `host-question`。
+**Context:**
+- `.gstack/qa-reports/run-20261029T002140Z/screenshots/`
+- `s3-host-card2.jpg`
+- `s6-screen-card3.jpg`
+- `app/room/[code]/host/page.tsx`
 
-**Depends on / blocked by:** 第一次真人試玩魔王分階段後再決定。
+**Effort/Priority:** 未註明 / P3
+
+**Depends on:** 第一次真人試玩魔王分階段後再決定。
+
+**Notes:**
+- 原 What：boss-phases-design 分支 /qa 找到、兩項都是低嚴重度，沒修： 1. 換階段的轉場卡開著時，主持人頁題目那一行顯示題目 id（例如「題目 p2a」），不是題目文字；下方答案卻已經看得到。按「下一題」關掉卡片後就正常。重現：三階段題庫，打空第 1 階段，按「下一題」開卡片，看主持人頁。 2. 階段名稱和規則都很長時（約 25 字名稱 + 60 字規則），1280×720 大螢幕上的轉場卡會往下長，蓋住新造型魔王大半個身體，剛好是「換了模樣」那一刻。編輯器的名稱、規則欄位沒有字數上限。
+- Context 補充：截圖在 `.gstack/qa-reports/run-20261029T002140Z/screenshots/`（`s3-host-card2.jpg`、`s6-screen-card3.jpg`）。主持人頁題目那一行在 `app/room/[code]/host/page.tsx` 的 `host-question`。
 
 ---
 
@@ -564,15 +582,18 @@
 
 **Why:** 同上，靠畫風和氛圍貼近「迷宮飯」，而不是使用它的素材。
 
-**Pros:** 大廳營火已經是這個方向，延伸自然；只改視覺，不動規則。
+**Context:**
+- `app/globals.css`
+- `components/`
 
-**Cons:** 要改 DESIGN.md 的色票和多張像素圖；必須是原創或 CC0 素材。
+**Effort/Priority:** M（人工約 3 天 / CC 約 1.5 小時） / P3
 
-**Context:** 色票在 DESIGN.md 與 `app/globals.css`，場景在 `components/` 的 `Stage`、`SceneBackground`。要先走 /plan-design-review，畫 PNG 給使用者選。
+**Depends on:** 無；建議和第 3 項一起做。
 
-**Effort:** M（人工約 3 天 / CC 約 1.5 小時）　**Priority:** P3
-
-**Depends on / blocked by:** 無；建議和第 3 項一起做。
+**Notes:**
+- Pros：大廳營火已經是這個方向，延伸自然；只改視覺，不動規則。
+- Cons：要改 DESIGN.md 的色票和多張像素圖；必須是原創或 CC0 素材。
+- Context 補充：色票在 DESIGN.md 與 `app/globals.css`，場景在 `components/` 的 `Stage`、`SceneBackground`。要先走 /plan-design-review，畫 PNG 給使用者選。
 
 ---
 
@@ -582,159 +603,209 @@
 
 **Why:** 不需要任何素材，就能讓整局語氣最接近「迷宮飯」。
 
-**Pros:** 改動小、效果明顯；只動文字。
+**Context:**
+- `lib/narration/`
 
-**Cons:** 要用真的 API 測幾局，確認不會每句都在講吃而變得膩。
+**Effort/Priority:** S（人工約半天 / CC 約 20 分鐘） / P3
 
-**Context:** `lib/narration/` 的 `buildPrompt`、`VARIANTS`、`BOSS_ENTER_VARIANTS`；參考待辦「旁白語氣是否耐聽」。
+**Depends on:** 無。
 
-**Effort:** S（人工約半天 / CC 約 20 分鐘）　**Priority:** P3
-
-**Depends on / blocked by:** 無。
+**Notes:**
+- Pros：改動小、效果明顯；只動文字。
+- Cons：要用真的 API 測幾局，確認不會每句都在講吃而變得膩。
+- Context 補充：`lib/narration/` 的 `buildPrompt`、`VARIANTS`、`BOSS_ENTER_VARIANTS`；參考待辦「旁白語氣是否耐聽」。
 
 ---
 
 ## 上架手機版本
 
-**Priority:** P3
-
 **What:** 把玩家手機頁做成可以從 App Store／Google Play 安裝的版本。先比較三條路：PWA（加到主畫面，不上架）、用 Capacitor 包現有網頁再上架、或原生 app。
 
 **Why:** 玩家現在要掃 QR 碼開瀏覽器；裝成 app 可以全螢幕、不怕誤關分頁，也方便下次再玩。
 
-**Pros:** 體驗更像遊戲；PWA 路線幾乎不用改程式。
+**Context:**
+- `app/room/[code]/play/`
 
-**Cons:** 上架要開發者帳號（Apple 每年 USD 99）和審核；包殼的 app 可能被 Apple 以「只是網頁」退件；兩個商店都要維護版本。
+**Effort/Priority:** PWA S（人工約半天 / CC 約 30 分鐘）；上架 L（人工約 1–2 週 / CC 約半天，不含審核） / P3
 
-**Context:** 玩家頁在 `app/room/[code]/play/`，連線走 Cloudflare Worker 的 WebSocket。要先走 /office-hours 決定路線，再 /plan-eng-review。
+**Depends on:** 無。
 
-**Effort:** PWA S（人工約半天 / CC 約 30 分鐘）；上架 L（人工約 1–2 週 / CC 約半天，不含審核）
-
-**Depends on / blocked by:** 無。
+**Notes:**
+- Pros：體驗更像遊戲；PWA 路線幾乎不用改程式。
+- Cons：上架要開發者帳號（Apple 每年 USD 99）和審核；包殼的 app 可能被 Apple 以「只是網頁」退件；兩個商店都要維護版本。
+- Context 補充：玩家頁在 `app/room/[code]/play/`，連線走 Cloudflare Worker 的 WebSocket。要先走 /office-hours 決定路線，再 /plan-eng-review。
 
 ---
 
 ## 每次行動可以選不同的動作，不只答題
 
-**Priority:** P3
-
 **What:** 輪到一隊時，現在只能答題。改成可以從幾個動作裡選一個，答題只是其中之一。
 
 **Why:** 使用者 2026-10-29 提出，讓每回合多一點選擇和策略。
 
-**Context:** 回合流程在 `lib/game-state.ts` 和 `lib/room/dungeon-room.ts`；手機畫面在 `app/room/[code]/play/page.tsx`。可以和下面「隊伍職業」一起設計，職業的特殊能力可能就是其中一種動作。
+**Context:**
+- `lib/game-state.ts`
+- `lib/room/dungeon-room.ts`
+- `app/room/[code]/play/page.tsx`
 
-**Depends on / blocked by:** 還沒寫規格，要先走 /office-hours 決定有哪些動作。
+**Effort/Priority:** 未註明 / P3
+
+**Depends on:** 還沒寫規格，要先走 /office-hours 決定有哪些動作。
+
+**Notes:**
+- Context 補充：回合流程在 `lib/game-state.ts` 和 `lib/room/dungeon-room.ts`；手機畫面在 `app/room/[code]/play/page.tsx`。可以和下面「隊伍職業」一起設計，職業的特殊能力可能就是其中一種動作。
 
 ---
 
 ## 每個職業有自己的動畫和音效
 
-**Priority:** P3
-
 **What:** 法師、牧師、盜賊用能力時，TV 有各自的動畫和音效。現在只有戰士的骰子有動畫。
 
 **Why:** 2026-10-29 職業能力的 office hours（Codex 建議），在 eng review 決定先不做（D7）。
 
-**Context:** 設計在 `docs/designs/class-abilities.md`。TV 畫面在 `app/room/[code]/screen/page.tsx`，音效在 `lib/` 的 `SfxNote`。
+**Context:**
+- `docs/designs/class-abilities.md`
+- `app/room/[code]/screen/page.tsx`
+- `lib/`
 
-**Depends on / blocked by:** 職業能力 PR 2（法師、牧師、盜賊）上線，並且試玩過一場。
+**Effort/Priority:** 未註明 / P3
+
+**Depends on:** 職業能力 PR 2（法師、牧師、盜賊）上線，並且試玩過一場。
+
+**Notes:**
+- Context 補充：設計在 `docs/designs/class-abilities.md`。TV 畫面在 `app/room/[code]/screen/page.tsx`，音效在 `lib/` 的 `SfxNote`。
 
 ---
 
 ## 法師填空題提示：答案帶註記時第一個字會誤導
 
-**Priority:** P3
-
 **What:** 題庫編輯器在填空題答案欄旁提醒：「法師可以讓大家看到答案的第一個字或數字」。
 
 **Why:** 2026-10-31 #106 的 /review。法師看的是答案第一個文字或數字（`firstMeaningfulChar`，`lib/game-state.ts`）。答案寫成「約 300」「（皆可）台北」時，提示是「約」「皆」；「−5」的提示是「5」，負號被跳過。出題的人不知道答案欄會被公開一部分。
 
-**Context:** 只改 `app/bank-editor/page.tsx` 的說明文字，不改判定。也可以考慮把註記移到另一個欄位，但那要改題庫格式，先不做。
+**Context:**
+- `app/bank-editor/page.tsx`
+
+**Effort/Priority:** 未註明 / P3
+
+**Notes:**
+- Context 補充：只改 `app/bank-editor/page.tsx` 的說明文字，不改判定。也可以考慮把註記移到另一個欄位，但那要改題庫格式，先不做。
+
+---
 
 ## 主持人按錯「答錯」可以改回答對
-
-**Priority:** P3
 
 **What:** 填空題由主持人判。主持人手滑按了答錯時，可以馬上改成答對。
 
 **Why:** 2026-10-31 #106 的 eng review（D3）。今天的「答錯・重答」也不能改，但牧師填空題答錯後會進入等待（祈禱 / 重答 / 逃跑），等待時畫面上沒有答對鍵，手滑更明顯。
 
-**Context:** `answerQuestion`（`lib/game-state.ts`）在有 `pendingWrong` 時拒絕 `correct: true`。一個做法：`optionIndex` 為 null（主持人判錯的填空題）、還沒祈禱時，允許主持人改判答對，主持人頁等待時保留答對鍵。
+**Context:**
+- `lib/game-state.ts`
 
-**Depends on / blocked by:** #106 的牧師填空題（PR B）上線。
+**Effort/Priority:** 未註明 / P3
+
+**Depends on:** #106 的牧師填空題（PR B）上線。
+
+**Notes:**
+- Context 補充：`answerQuestion`（`lib/game-state.ts`）在有 `pendingWrong` 時拒絕 `correct: true`。一個做法：`optionIndex` 為 null（主持人判錯的填空題）、還沒祈禱時，允許主持人改判答對，主持人頁等待時保留答對鍵。
 
 ---
 
 ## 旁白念出戰士擲到幾點
 
-**Priority:** P3
-
 **What:** 戰士擲骰後，旁白說出點數（例如「擲出 17 點」），不只是一般的答對 / 答錯。
 
 **Why:** eng review D1 選了小範圍，`lib/narration` 不改，所以 PR 1 的旁白不念點數。2026-10-29 決定記成 TODO（D8）。
 
-**Context:** 旁白事件在 `lib/narration/events.ts`（`toNarrationEvent`），點數在 `pendingRoll.value`。設計在 `docs/designs/class-abilities.md`。
+**Context:**
+- `lib/narration/events.ts`
+- `pendingRoll.value`
+- `docs/designs/class-abilities.md`
 
-**Depends on / blocked by:** 無，戰士在 v0.19.0.0 上線。
+**Effort/Priority:** 未註明 / P3
+
+**Depends on:** 無，戰士在 v0.19.0.0 上線。
+
+**Notes:**
+- Context 補充：旁白事件在 `lib/narration/events.ts`（`toNarrationEvent`），點數在 `pendingRoll.value`。設計在 `docs/designs/class-abilities.md`。
 
 ---
 
 ## 房間最多只能存在 6 小時
 
-**Priority:** P3
-
 **What:** 房間從建立起最多存在 6 小時，時間到就關閉。現在是 24 小時（`EXPIRE_MS`），而且房間一直有人在用就會一直往後延。
 
 **Why:** 使用者 2026-10-29 提出。一場遊戲不會玩超過 6 小時，房間留太久只會佔資源。
 
-**Context:** 常數在 `lib/room/dungeon-room.ts` 的 `EXPIRE_MS`（閒置是 `IDLE_MS` 2 小時）。`worker/index.ts` 用同一個到期時間算孤兒圖片的刪除時間，所以改短會讓舊圖片更早被刪，要一起檢查。也要決定：時間快到時要不要先提醒主持人和玩家。
+**Context:**
+- `lib/room/dungeon-room.ts`
+- `worker/index.ts`
 
-**Effort:** S（人工約半天 / CC 約 20 分鐘）
+**Effort/Priority:** S（人工約半天 / CC 約 20 分鐘） / P3
 
-**Depends on / blocked by:** 無。
+**Depends on:** 無。
+
+**Notes:**
+- Context 補充：常數在 `lib/room/dungeon-room.ts` 的 `EXPIRE_MS`（閒置是 `IDLE_MS` 2 小時）。`worker/index.ts` 用同一個到期時間算孤兒圖片的刪除時間，所以改短會讓舊圖片更早被刪，要一起檢查。也要決定：時間快到時要不要先提醒主持人和玩家。
 
 ---
 
 ## 不檢查房間代碼格式，任何名字都能開出新房
 
-**What:** `entryGate` 只檢查 party 名稱是不是 `main` 和 Origin，沒有檢查房間代碼。沒帶 Origin 的請求是允許的，所以腳本可以對 `/parties/main/<任意字串>` 開 WebSocket，每個名字都會建一個 Durable Object、設 alarm、寫一份包含整個題庫的 snapshot，在儲存空間留 24 小時。做法：在 gate 拒絕不符合 `^[BCDEFGHJKLMNPQRSTUVWXYZ]{4}$` 的名字。也可以改成等第一則有效訊息才寫入，這部分是 M。
+**What:** 處理「不檢查房間代碼格式，任何名字都能開出新房」所述事項。
 
 **Why:** 不用登入就能大量佔用 Durable Object 的儲存空間和請求次數；把 4 字代碼全部佔掉也會讓主持人頁的重試用完。
 
-**Context:** `lib/gate.ts:18-25`、`worker/index.ts:192-193`、`lib/room/dungeon-room.ts:753-755`。2026-10-30 系統檢查時找到。
+**Context:**
+- `lib/gate.ts:18-25`
+- `worker/index.ts:192-193`
+- `lib/room/dungeon-room.ts:753-755`
 
-**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P3
+**Effort/Priority:** S（人工約 2 小時 / CC 約 15 分鐘） / P3
 
-**Depends on / blocked by:** 無。
+**Depends on:** 無。
+
+**Notes:**
+- 原 What：`entryGate` 只檢查 party 名稱是不是 `main` 和 Origin，沒有檢查房間代碼。沒帶 Origin 的請求是允許的，所以腳本可以對 `/parties/main/<任意字串>` 開 WebSocket，每個名字都會建一個 Durable Object、設 alarm、寫一份包含整個題庫的 snapshot，在儲存空間留 24 小時。做法：在 gate 拒絕不符合 `^[BCDEFGHJKLMNPQRSTUVWXYZ]{4}$` 的名字。也可以改成等第一則有效訊息才寫入，這部分是 M。
+- Context 補充：`lib/gate.ts:18-25`、`worker/index.ts:192-193`、`lib/room/dungeon-room.ts:753-755`。2026-10-30 系統檢查時找到。
 
 ---
 
 ## 一條連線能佔滿 8 隊，60 條連線能鎖死房間
 
-**What:** 沒有加入密碼時，一條連線可以換 8 個 UUID 送 8 次 JOIN，`MAX_TEAMS` 就滿了；`connTeam` 會被直接覆蓋，沒檢查這條連線是不是已經有隊伍。另外 `MAX_CONNECTIONS = 60` 是整個房間的上限，有代碼的人開 60 個 socket，之後連主持人和斷線重連的手機都進不來。做法：一條連線只能有一隊（S）；連線上限保留名額給主持人，或用 `CF-Connecting-IP` 限制每個 IP 的數量（M）。
+**What:** 處理「一條連線能佔滿 8 隊，60 條連線能鎖死房間」所述事項。
 
 **Why:** 代碼就顯示在電視上，有人搗蛋就能讓整場玩不下去。
 
-**Context:** `lib/room/dungeon-room.ts:67`、`:745-748`、`:925-932`。2026-10-30 系統檢查時找到。
+**Context:**
+- `lib/room/dungeon-room.ts:67`
 
-**Effort:** S/M　**Priority:** P3
+**Effort/Priority:** S/M / P3
 
-**Depends on / blocked by:** 無。
+**Depends on:** 無。
+
+**Notes:**
+- 原 What：沒有加入密碼時，一條連線可以換 8 個 UUID 送 8 次 JOIN，`MAX_TEAMS` 就滿了；`connTeam` 會被直接覆蓋，沒檢查這條連線是不是已經有隊伍。另外 `MAX_CONNECTIONS = 60` 是整個房間的上限，有代碼的人開 60 個 socket，之後連主持人和斷線重連的手機都進不來。做法：一條連線只能有一隊（S）；連線上限保留名額給主持人，或用 `CF-Connecting-IP` 限制每個 IP 的數量（M）。
+- Context 補充：`lib/room/dungeon-room.ts:67`、`:745-748`、`:925-932`。2026-10-30 系統檢查時找到。
 
 ---
 
 ## 每則訊息都把整個房間序列化一次，而且沒有速率限制
 
-**What:** `sendTo` 每次都先呼叫 `persist()`，`persist()` 會先 `JSON.stringify` 整個房間狀態（含題庫，預設約 27 KB、編輯後最多 200 KB），再跟上次比較有沒有變。所以連錯誤回覆也要付一次完整序列化的代價。一條沒驗證的連線一直送 `{}` 或錯的 HOST_CLAIM，就能拖慢正在進行的遊戲。做法：ERROR 回覆不呼叫 persist，或改用 dirty flag；再加每條連線的簡單速率限制。
+**What:** 處理「每則訊息都把整個房間序列化一次，而且沒有速率限制」所述事項。
 
 **Why:** 便宜的請求換到昂貴的 CPU，房間 Durable Object 是單執行緒的。
 
-**Context:** `lib/room/dungeon-room.ts:372-375`、`:414-420`、`:796`。2026-10-30 系統檢查時找到。
+**Context:**
+- `lib/room/dungeon-room.ts:372-375`
 
-**Effort:** S（人工約半天 / CC 約 30 分鐘）　**Priority:** P3
+**Effort/Priority:** S（人工約半天 / CC 約 30 分鐘） / P3
 
-**Depends on / blocked by:** 無。
+**Depends on:** 無。
+
+**Notes:**
+- 原 What：`sendTo` 每次都先呼叫 `persist()`，`persist()` 會先 `JSON.stringify` 整個房間狀態（含題庫，預設約 27 KB、編輯後最多 200 KB），再跟上次比較有沒有變。所以連錯誤回覆也要付一次完整序列化的代價。一條沒驗證的連線一直送 `{}` 或錯的 HOST_CLAIM，就能拖慢正在進行的遊戲。做法：ERROR 回覆不呼叫 persist，或改用 dirty flag；再加每條連線的簡單速率限制。
+- Context 補充：`lib/room/dungeon-room.ts:372-375`、`:414-420`、`:796`。2026-10-30 系統檢查時找到。
 
 ---
 
@@ -744,14 +815,18 @@
 
 **Why:** 我們的 Worker 會變成別人驗證外洩 key 的工具，Cloudflare 的 IP 也可能被 Anthropic 封鎖。
 
-**Context:** `lib/room/dungeon-room.ts:337-364`、`lib/narration/providers.ts:26-37`。v0.21.0.0 加入的路徑。2026-10-30 系統檢查時找到。
+**Context:**
+- `lib/room/dungeon-room.ts:337-364`
+- `lib/narration/providers.ts:26-37`
 
-**Effort:** S（人工約 2 小時 / CC 約 20 分鐘）　**Priority:** P3
+**Effort/Priority:** S（人工約 2 小時 / CC 約 20 分鐘） / P3
 
-**Depends on / blocked by:** 無。
+**Depends on:** 無。
+
+**Notes:**
+- Context 補充：`lib/room/dungeon-room.ts:337-364`、`lib/narration/providers.ts:26-37`。v0.21.0.0 加入的路徑。2026-10-30 系統檢查時找到。
 
 ---
-
 
 ## 填空題可以有好幾個要填的欄位
 
@@ -759,11 +834,15 @@
 
 **Why:** 使用者 2026-10-30 提出，猜歌這類題目一題需要填不只一個答案。
 
-**Context:** 接在「口說題改成填空題（手機打字、主持人判）」之後。題庫格式在 `lib/question-bank.ts`（text 題現在只有一個 `answer` 字串）。
+**Context:**
+- `lib/question-bank.ts`
 
-**Effort:** M（人工約 2 天 / CC 約 1 小時）　**Priority:** P3
+**Effort/Priority:** M（人工約 2 天 / CC 約 1 小時） / P3
 
-**Depends on / blocked by:** 口說題改成填空題。
+**Depends on:** 口說題改成填空題。
+
+**Notes:**
+- Context 補充：接在「口說題改成填空題（手機打字、主持人判）」之後。題庫格式在 `lib/question-bank.ts`（text 題現在只有一個 `answer` 字串）。
 
 ---
 
@@ -773,11 +852,15 @@
 
 **Why:** 使用者 2026-10-30 提出，希望遊戲更像 D&D。
 
-**Context:** 已經有的 D&D 元素：戰士的 d20 擲骰（`WARRIOR_TARGET`）、四個職業、地城房間與魔王。設計文件在 `docs/designs/class-abilities.md`。要注意 SRD 的授權範圍，只用公開的規則。
+**Context:**
+- `docs/designs/class-abilities.md`
 
-**Effort:** M（研究加寫規格，人工約 2 天 / CC 約 1 小時）　**Priority:** P3
+**Effort/Priority:** M（研究加寫規格，人工約 2 天 / CC 約 1 小時） / P3
 
-**Depends on / blocked by:** 還沒寫規格，先走 /office-hours。
+**Depends on:** 還沒寫規格，先走 /office-hours。
+
+**Notes:**
+- Context 補充：已經有的 D&D 元素：戰士的 d20 擲骰（`WARRIOR_TARGET`）、四個職業、地城房間與魔王。設計文件在 `docs/designs/class-abilities.md`。要注意 SRD 的授權範圍，只用公開的規則。
 
 ---
 
@@ -787,11 +870,16 @@
 
 **Why:** 使用者 2026-10-30 提出，讓地城每一間房間不只是答題，多一點意外。
 
-**Context:** 房間和地圖在 `lib/game-state.ts`、`lib/map-layout.ts`；分支選擇（`recordBranchChoice`，v0.31.3.0 已移除，要用得從 git 歷史找回）原本可能是加事件房的好位置。要決定：事件卡放在題庫裡還是寫死在程式、出現機率、大螢幕怎麼演出、AI 旁白怎麼描述。
+**Context:**
+- `lib/game-state.ts`
+- `lib/map-layout.ts`
 
-**Effort:** M（人工約 2-3 天 / CC 約 1.5 小時）　**Priority:** P3
+**Effort/Priority:** M（人工約 2-3 天 / CC 約 1.5 小時） / P3
 
-**Depends on / blocked by:** 還沒寫規格，先走 /office-hours。
+**Depends on:** 還沒寫規格，先走 /office-hours。
+
+**Notes:**
+- Context 補充：房間和地圖在 `lib/game-state.ts`、`lib/map-layout.ts`；分支選擇（`recordBranchChoice`，v0.31.3.0 已移除，要用得從 git 歷史找回）原本可能是加事件房的好位置。要決定：事件卡放在題庫裡還是寫死在程式、出現機率、大螢幕怎麼演出、AI 旁白怎麼描述。
 
 ---
 
@@ -801,866 +889,362 @@
 
 **Why:** 使用者 2026-10-30 提出，讓答題更像在跑團。
 
-**Context:** 跟「每次行動可以選不同的動作，不只答題」很接近，可以一起設計。也牽涉職業能力（法師、牧師在填空題的能力重新設計）和「口說題改成填空題」。
+**Context:**
+- 原文未列檔案路徑。
 
-**Effort:** M（人工約 2-3 天 / CC 約 1.5 小時）　**Priority:** P3
+**Effort/Priority:** M（人工約 2-3 天 / CC 約 1.5 小時） / P3
 
-**Depends on / blocked by:** 口說題改成填空題；還沒寫規格，先走 /office-hours。
+**Depends on:** 口說題改成填空題；還沒寫規格，先走 /office-hours。
+
+**Notes:**
+- Context 補充：跟「每次行動可以選不同的動作，不只答題」很接近，可以一起設計。也牽涉職業能力（法師、牧師在填空題的能力重新設計）和「口說題改成填空題」。
+
+---
+
+## Host 自訂題庫文字進 LLM prompt 前的內容審核
+
+**What:** 對 host 自訂的題庫文字（問題、答案）進行基本的輸入淨化與 prompt injection 防護，才餵進敘事狀態層生成 DM 旁白的 LLM prompt。
+
+**Why:** 第二輪才會接 LLM API 與敘事狀態層，但 host 題庫編輯 UI 若在那之前就先做，容易忘記在資料流的哪一段加防護。
+
+**Context:**
+- `docs/designs/critical-answer-party-game.md`
+
+**Effort/Priority:** 未註明 / P4
+
+  - **Depends on:** 第二輪的敘事狀態管理層 + LLM API 接入（Next Steps 第 5-6 步）。
+  - **更新（2026-09-20，第二輪實作完成）：** 隊伍名稱進 prompt 的部分已完成並驗證：名稱以「」引起來當資料（並拿掉引號字元）、系統提示明講裡面的指示一律忽略、題目文字與答案完全不進 prompt、輸出驗證（長度、標記、不含題庫答案）。真的 API 測試也確認藏在隊伍名稱裡的指令不會被照做。**仍待處理：** host 自訂題庫文字，等題庫編輯介面出現時再做。
+  - **更新（2026-09-18 /plan-ceo-review）：** 第二輪 LLM 旁白已進入範圍，此項不再被擋住。第二輪只處理「隊伍名稱進 prompt」（資料引號化、答案與答錯時的題目文字不進 prompt、輸出驗證，見 CEO plan D8/D19）；host 自訂題庫文字仍待題庫編輯 UI 出現時再處理。
+  - **更新（2026-09-22，`/plan-eng-review` question-bank-editor）：** 這條 TODO 等的「題庫編輯介面」這輪要做了，但範圍不變——題目文字/答案本來就不進 prompt（見上，已有防護），所以題庫變成可編輯並不會新增暴露面。真正要處理的情境是：如果未來旁白 prompt 改成會讀題目文字（例如題目本身要融入敘事），才需要回頭做這條 TODO 描述的淨化。用戶決定繼續延後，本次只更新現狀說明。
+  - 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md)。
+  - **更新（2026-10-03，`/cso` 稽核）：** 重新確認：`lib/narration/llm.ts` 的 `buildPrompt` 只放隊伍名、怪物名、分數與主持人導演筆記，題目文字與答案都不進 prompt；名稱以「」包起來並移除引號字元。這條只有在旁白開始讀題目文字時才需要，降為 P4。
+
+**Notes:**
+- Pros：避免惡意或不當的 host 輸入內容污染 LLM 輸出（例如注入指令改變旁白行為，或產生不當內容）。
+- Cons：需要額外設計淨化規則，可能誤傷正常題目內容（過度過濾）。
+- Context 補充：見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) 的 Open Questions（「Host 自訂題庫的文字內容進入 LLM 旁白 prompt 前」）。
+
+---
+
+## 量 e2e 對前端（app/、components/）的實際覆蓋率
+
+**What:** 讓 Next.js 在 e2e 建置時產生 source map，用 Playwright 收集 V8 coverage，算出 `app/` 與 `components/`（約 2,400 行）被 e2e 跑到多少。
+
+**Why:** 單元測試只覆蓋 `lib/`；前端完全靠 e2e，但沒有數字知道哪些頁面流程沒被碰過。
+
+**Context:**
+- `docs/designs/maintenance-2026-10.md`
+- `playwright.config.ts`
+
+**Effort/Priority:** M / P4
+
+**Depends on:** 無。
+
+**Notes:**
+- Pros：補測試有依據，能找出完全沒被 e2e 走過的頁面流程。
+- Cons：要加回 `next.config.ts`，而且只能在 e2e 建置開 source map；正式部署帶上 source map 等於公開原始碼。
+- Context 補充：維護輪（`docs/designs/maintenance-2026-10.md` D3）審查時決定延後。從 `playwright.config.ts` 的 webServer 建置指令開始。
+
+---
+
+## 開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）
+
+**What:** `npm audit` 剩 5 個 high，全是同一條：`eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob@3.3.1`（鎖死版本）→ `micromatch` → `braces <=3.0.3`。`braces` 最新版就是 3.0.3，上游沒有修好的版本。
+
+**Why:** 記下結論，之後看到 audit 報 high 不用重查一遍；上游修好時知道要回來升。
+
+**Context:**
+- `fast-glob@3.3.3`
+- `@next/eslint-plugin-next`
+- `fast-glob@3.3.1`
+
+**Effort/Priority:** S / P4
+
+**Depends on:** 上游 `braces` 或 `@next/eslint-plugin-next`。
+
+**Notes:**
+- Pros：省下重複調查的時間。
+- Cons：無。
+- Context 補充：只在跑 lint 時掃專案自己的檔案路徑，不會進到線上程式。v0.9.14.4 升級修掉另外 3 個（`undici` 等）。用 npm overrides 強制 `fast-glob@3.3.3` 沒用，因為 `braces` 仍有漏洞。上游修好的訊號：`@next/eslint-plugin-next` 不再鎖 `fast-glob@3.3.1`，或 `braces` 出修補版。
+
+---
+
+## /health 補上死碼與 shell 腳本檢查
+
+**What:** 加 `knip`（死碼偵測）當開發依賴、裝 `shellcheck` 檢查 `scripts/*.sh`，再把兩者寫進 CLAUDE.md 的 `## Health Stack`。
+
+**Why:** 第一次 `/health`（2026-10-03）是 10.0/10，但只有 3/6 類別有檢查（型別、lint、測試）；死碼與 shell 腳本沒有工具，分數不完整。
+
+**Context:**
+- `[家目錄路徑]`
+
+**Effort/Priority:** S / P4
+
+**Depends on:** 無。
+
+**Notes:**
+- Pros：分數更完整，能抓到沒人用的 export 和腳本錯誤。
+- Cons：knip 第一次跑可能報出一堆要逐一判斷的結果。
+- Context 補充：歷史紀錄在 `~/.gstack/projects/critical-answer/health-history.jsonl`。加工具後覆蓋類別改變，分數會跟第一次不可比。
+
+---
+
+## ESLint 10 / TypeScript 7 升級被上游卡住
+
+**What:** 處理「ESLint 10 / TypeScript 7 升級被上游卡住」所述事項。
+
+**Why:** 2026-09-23 逐一嘗試升級時發現，兩者都不是設定問題，是上游套件（`eslint-config-next`、`typescript-eslint`）還沒跟上，沒有繞過的辦法。
+
+**Context:**
+- 原文未列檔案路徑。
+
+**Effort/Priority:** 不確定（等上游） / P4
+
+**Depends on:** `eslint-config-next` 支援 ESLint 10；`typescript-eslint` 支援 TypeScript ≥7.1。
+
+**Notes:**
+  - **解鎖後：** 把 `.github/dependabot.yml` 裡 `typescript` 和 `eslint` 的 `ignore` 規則拿掉，Dependabot 才會再開這兩個升級 PR。
+  - **重新確認（2026-10-03）：** 仍然卡住。`eslint-config-next@16.3.8` 依賴 `eslint-plugin-react@^7.37.0`，最新 7.37.5 的 peer 是 `eslint ^9.7`（沒有 10）；`typescript-eslint` 最新 8.71.0 的 peer 是 `typescript <6.1.0`（TS 已到 7.0.2）。
+
+**Notes:**
+- 原 What：`npm outdated` 列出的兩個 major 版本升級目前做不了：ESLint 9→10（`eslint-config-next@16.3.6` 內建的 `eslint-plugin-react` 用了 ESLint 10 移除的 API，直接噴 `contextOrFilename.getFilename is not a function`）、TypeScript 5→7（`typescript-eslint` 明確拒絕載入，官方公告要等 7.1+ 才支援）。
+- Pros：之後升級好處：更快的 lint/typecheck（TS 7 是 Go 原生編譯器，官方號稱 8–12 倍）、ESLint 10 的新規則。
+- Cons：現在做不了，勉強做會直接打斷開發環境。
+- Context 補充：已完成同批的其他升級：React 19.2.4→19.3.0、Vitest 4.1.11→5.0.1、`concurrently` 9→10（v0.7.3.0）。
 
 ---
 
 ## Completed
 
+細節見 CHANGELOG.md 與 git 歷史。
+
+PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+- **精簡 README.md** · v0.33.1.0 · README 開頭只留一頁：遊戲是什麼、活動當天怎麼玩、本機執行與部署、測試指令；原本的完整說明收進「細節」折疊區（2026-11-05）。
+
 ## 每一題都由主持人宣布答案，選擇題和填空題節奏一樣
 
-**What:** 現在選擇題是手機鎖定後由系統直接判對錯，口說題（之後改成填空題）是主持人判。改成每一題都要主持人按下「公布答案」才揭曉，選擇題也一樣，讓兩種題型的節奏一致。
-
-**Why:** 使用者 2026-10-30 提出：不論是不是選擇題，節奏都要一樣。
-
-**Context:** 選擇題的自動判定在 `lib/room/dungeon-room.ts` 的鎖定流程（lock beat、`autoAdvance`），設計在 `docs/designs/phone-answering.md`。要一起檢查戰士擲骰、牧師祈禱、boss 房答錯換題這些靠自動判定的時間點。排在「口說題改成填空題（手機打字、主持人判）」之後做。
-
-**Effort:** M（人工約 2 天 / CC 約 1 小時）　**Priority:** P2
-
-**Depends on / blocked by:** 口說題改成填空題。
-
-**Completed:** v0.33.0.0 (2026-11-05)：隊伍鎖定選項後，主持人頁出現綠色「公布答案」（鍵盤 1）；按了大螢幕停頓 2 秒再揭曉，答對後等主持人按「下一題」，不再自動跳。戰士擲骰照舊自己判定，但答對也等「下一題」。設計見 `docs/designs/host-reveal.md`。
+- **每一題都由主持人宣布答案，選擇題和填空題節奏一樣** · v0.33.0.0 · 隊伍鎖定選項後，主持人頁出現綠色「公布答案」（鍵盤 1）；按了大螢幕停頓 2 秒再揭曉，答對後等主持人按「下一題」，不再自動跳。
 
 ## 隊伍換手機或換瀏覽器後回不了遊戲
 
-**What:** 遊戲開始後，手機沒電、換瀏覽器或開無痕分頁，那支裝置的 localStorage 裡就是新的 `teamId`，房間會回 `game_already_started`。這隊整場都會被當成離線、一直被跳過。主持人也沒有任何訊息可以重新配對或移除這隊。做法：主持人頁加「把這隊交給新手機」（例如產生一次性的配對碼），或讓新裝置輸入隊名加主持人核准後接手原本的 `teamId`。
-
-**Why:** 派對現場很常有手機沒電或有人換手機，現在只能整隊放棄。
-
-**Context:** `lib/room/dungeon-room.ts:912-915`（`handleJoin`）；`/play` 現在會顯示「遊戲已經開始了」，但還是回不了原本的隊伍。2026-10-30 系統檢查時找到。
-
-**Effort:** M（人工約 1-2 天 / CC 約 1 小時）　**Priority:** P2
-
-**Depends on / blocked by:** 最好跟「手機被拒絕加入時不顯示原因」一起做。
-
-**Completed:** v0.32.0.0 (2026-11-05)：主持人頁每一隊都有「交給新手機」，按了會出現 4 位數配對碼（5 分鐘內有效、只能用一次）。新手機在被拒絕的畫面輸入配對碼，就會接手原本的隊伍，用的是那一隊原本的金鑰。設計見 `docs/designs/team-handoff.md`。
-
----
+- **隊伍換手機或換瀏覽器後回不了遊戲** · v0.32.0.0 · 主持人頁每一隊都有「交給新手機」，按了會出現 4 位數配對碼（5 分鐘內有效、只能用一次）。
 
 ## 兩隊同名時分數會互相覆蓋
 
-**What:** 加入時沒有擋重複的隊名。`scores()` 用 `Object.fromEntries(teams.map(t => [t.name, t.reward]))`，同名的兩隊在每一筆 transcript 裡只會留下一隊的分數，旁白和電視也分不出是哪一隊。做法：加入時遇到同名就回錯誤或自動加上「2」；`scores()` 改用隊伍 id 當 key。
-
-**Why:** 後記和旁白的分數會講錯。
-
-**Context:** `lib/room/dungeon-room.ts:605-607`、`handleJoin`（`:920`）。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P3
-
-**Depends on / blocked by:** 無。
-
-**Completed:** v0.31.1.0 (2026-11-05)：加入時擋下別隊已經在用的名字（不分大小寫和全形半形），和改名用同一個規則。隊名不會重複，所以 `scores()` 照舊用隊名當 key。
-
----
+- **兩隊同名時分數會互相覆蓋** · v0.31.1.0 · 加入時擋下別隊已經在用的名字（不分大小寫和全形半形），和改名用同一個規則。
 
 ## 攻擊成功或失敗的旁白，武器和招式要配合隊伍的職業
 
-**What:** 旁白說到用什麼武器或招式攻擊時，要符合那一隊的職業。例如法師用法術、戰士用劍、牧師用祈禱，不要讓法師「揮劍」。
-
-**Why:** 站長 2026-11-04 實測時發現旁白的武器和職業對不上。
-
-**Pros:** 旁白更有角色感，職業也更有存在感。
-
-**Cons:** AI 旁白要在 prompt 裡帶入隊伍職業，並寫清楚每個職業能用的武器和招式；腳本旁白（`lib/narration/scripted.ts`）的台詞要按職業分開寫。沒選職業的隊伍要有中性的寫法。
-
-**Context:** `lib/narration/events.ts`（`baseEvent`，事件目前沒帶職業）、`lib/narration/llm.ts`、`lib/narration/scripted.ts`。職業設計在 `docs/designs/class-abilities.md`。
-
-**Effort:** S–M　**Priority:** P2
-
-**Depends on / blocked by:** 無。可以跟「旁白念出戰士擲到幾點」一起做，兩個都要在旁白事件裡多帶隊伍資訊。
-
-**Completed:** v0.31.0.0 (2026-11-05)：旁白事件帶上隊伍職業；AI 旁白照職業用武器和招式，腳本旁白的答對與擊中首領台詞也按職業分開寫。沒選職業的隊伍用不提武器的中性台詞。
+- **攻擊成功或失敗的旁白，武器和招式要配合隊伍的職業** · v0.31.0.0 · 旁白事件帶上隊伍職業；AI 旁白照職業用武器和招式，腳本旁白的答對與擊中首領台詞也按職業分開寫。
 
 ## 正式遊戲開始前加玩法說明（文字＋圖片）
 
-**What:** 遊戲正式開始前，給玩家看一段玩法說明，文字配圖片最好。
-
-**Why:** 站長 2026-11-04 提出：新玩家進來不知道怎麼玩。
-
-**Context:** 放在哪裡還沒定：大螢幕（`app/room/[code]/screen/page.tsx`）、玩家手機大廳（`app/room/[code]/play/page.tsx`），或兩邊都放。圖片可以用現有的像素風元件（`components/`）截圖或畫示意圖。
-
-**Effort:** M　**Priority:** P2
-
-**Depends on / blocked by:** 動手前先用 `/plan-design-review` 定版面和要放哪幾張圖。
-
-**Completed:** v0.30.0.0 (2026-11-05)
-
----
+- **正式遊戲開始前加玩法說明（文字＋圖片）** · v0.30.0.0 · 開局前加入大螢幕玩法說明與主持人講稿。
 
 ## 遊戲結束後回到大廳，同一批人不用重新加入就能再玩一場
 
-**What:** 遊戲結束（`phase: "finished"`）時，所有隊伍的手機、主持人頁和大螢幕都要有「回到大廳」。回到大廳後，房間保留原本的隊伍，分數和進度清空，主持人可以直接再開一場。
-
-**Why:** 現在一場打完，想再玩要重新開房、所有人重新掃碼加入（2026-11-04 站長實測後提出）。
-
-**Pros:** 隊伍、職業和連線都還在，第二場可以馬上開始。
-
-**Cons:**
-- 房間目前沒有「從結束回到大廳」的狀態轉換，要在 `lib/room/dungeon-room.ts` 加一個主持人訊息（例如 `HOST_BACK_TO_LOBBY`），把遊戲狀態重設回大廳、保留隊伍。
-- 要決定誰能按：建議只有主持人按了才真的回大廳，手機和大螢幕跟著切換（或顯示「等主持人回到大廳」），避免一隊按了就把大家帶走。
-- 要決定職業、隊名是否保留，題目要不要重新洗牌、避開上一場出過的題。
-- 旁白紀錄、AI 旁白狀態和房間的 6 小時上限要一起想清楚。
-
-**Context:** `lib/game-state.ts`（`GamePhase` 只有 `playing` 和 `finished`）、`lib/room/dungeon-room.ts`、`app/room/[code]/play/page.tsx`、`app/room/[code]/host/page.tsx`、`app/room/[code]/screen/page.tsx`（頒獎台）。相關的 TODO：「隊伍換手機或換瀏覽器後回不了遊戲」、「房間最多只能存在 6 小時」。
-
-**Effort:** M　**Priority:** P2
-
-**Depends on / blocked by:** 無。動手前先用 `/plan-eng-review` 定狀態怎麼重設。
-
-決定（2026-11-04，站長選的）：下一場避開上一場公布過答案的題目，題目不夠才重複。只有主持人能按；隊名、職業、密碼、AI 設定和導演筆記都保留。
-
-**Completed:** v0.29.0.0 (2026-11-04)（已完成）
-
----
+- **遊戲結束後回到大廳，同一批人不用重新加入就能再玩一場** · v0.29.0.0 · 主持人可保留隊伍回大廳重開，並避開前局已公布題目。
 
 ## 主持人可以提早結束遊戲
 
-**What:** 主持人頁的「⚙ 更多」加一個「結束冒險」。按了（要再按一次確認）就直接結束遊戲：照當下的飽足感（獎勵分）排名，大螢幕出頒獎台和後記。
-
-**Why:** 現在只有打倒首領遊戲才會結束（`lib/game-state.ts` 的 `finishGame` 只有一個呼叫點）。派對時間到了首領還沒倒，就看不到頒獎台和後記（2026-11-04 盤點功能缺口時找到）。
-
-**Pros:** `finishGame` 已經會算冠軍，後記和頒獎台照舊能用。
-
-**Cons:** 後記要知道首領沒有被打倒，不能說「最後一擊」；結束畫面「誰打出最後一擊」那行要能沒有。答題、擲骰或揭曉進行到一半時按下去，要先收尾。
-
-**Context:** `lib/game-state.ts`（`finishGame`）、`lib/room/dungeon-room.ts`（要加一個主持人訊息，例如 `HOST_END_GAME`）、`lib/narration/events.ts`（`epilogue`）、`app/room/[code]/host/page.tsx`。
-
-**Effort:** S–M　**Priority:** P2
-
-**Depends on / blocked by:** 無。跟「遊戲結束後回到大廳」一起做最順。
-
-**Completed:** v0.28.0.0 (2026-11-04)（已完成）
-
----
+- **主持人可以提早結束遊戲** · v0.28.0.0 · 主持人可提早結束並依當前分數顯示頒獎台和後記。
 
 ## 大廳裡主持人可以踢掉隊伍、改隊名
 
-**What:** 開始前，主持人頁每隊旁邊有「移除」和「改名」。
-
-**Why:** 現在主持人沒辦法移除加錯的隊伍（同一隊兩支手機各加入一次、亂取的名字）。開局後它會一直佔著輪流順序和地圖上的棋子，也吃掉 8 隊上限的名額（2026-11-04 盤點功能缺口時找到）。
-
-**Pros:** 只動大廳，不碰遊戲中的狀態。
-
-**Cons:** 被移除的手機要顯示原因並回首頁，而且不能用瀏覽器存的隊伍資料立刻再加回來（要決定是擋還是允許重新加入）。改名要過跟加入時一樣的隊名檢查，也要避開「兩隊同名時分數會互相覆蓋」那條 TODO 的問題。
-
-**Context:** `lib/room/dungeon-room.ts`（JOIN、REJOIN、LOBBY）、`lib/join-rejection.ts`（被拒絕的原因）、`app/room/[code]/host/page.tsx`、`app/room/[code]/play/page.tsx`。
-
-**Effort:** S–M　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
-決定（2026-11-04，站長選的）：被移除的那頁不會自己加回去；回首頁重新進房可以再加入。
-
-**Completed:** v0.28.0.0 (2026-11-04)（已完成）
-
----
+- **大廳裡主持人可以踢掉隊伍、改隊名** · v0.28.0.0 · 大廳新增移除隊伍和修改隊名功能。
 
 ## 大螢幕連結搬到主持人頁最上方
 
-**What:** 「大螢幕（在電視或投影機開這個網址）」的連結，從「⚙ 更多」裡搬到主持人頁最上方，一打開就看得到。
-
-**Why:** 開場第一件事就是把大螢幕開起來，藏在「更多」裡要多點一次才找得到（2026-11-04 站長實測後提出）。
-
-**Pros:** 只是把現有的 `<section>` 搬個位置。
-
-**Cons:** 主持人頁最上方多一行，手機畫面會被往下推一點。
-
-**Context:** `app/room/[code]/host/page.tsx` 的「大螢幕」區塊（目前在「更多」面板裡）。
-
-**Effort:** S　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
-**Completed:** v0.27.1.0 (2026-11-04)（已完成）
-
----
+- **大螢幕連結搬到主持人頁最上方** · v0.27.1.0 · 主持人頁頂端顯示大螢幕連結。
 
 ## 玩家手機先拿掉「冒險出現岔路」的選擇
 
-**What:** 隊伍手機上「冒險出現岔路，你們要怎麼做？」那一區先移除。之後改遊戲進行方式時，再討論要怎麼加回來。
-
-**Why:** 站長 2026-11-04 實測後決定先拿掉，玩法還沒定案。
-
-**Pros:** 手機畫面比較單純，玩家只專心答題。
-
-**Cons:** 首領房旁白會用到隊伍一路上的岔路選擇（`lib/narration/llm.ts` 的 `branches`），拿掉之後這段要確認會正確略過，不要變成「一路上的選擇依序是：」後面接空白。協定和房間狀態裡的岔路欄位要決定是留著還是一起拿掉。
-
-**Context:** `app/room/[code]/play/page.tsx`（「冒險出現岔路」區塊）、`lib/narration/llm.ts`（`branches`）。
-
-**Effort:** S　**Priority:** P2
-
-**Depends on / blocked by:** 加回來的方式，等「每次行動可以選不同的動作」那類玩法改動一起討論。
-
-**Completed:** v0.27.1.0 (2026-11-04)（拿掉了；加回來另見「把「冒險出現岔路」的選擇加回玩家手機」）
-
----
+- **玩家手機先拿掉「冒險出現岔路」的選擇** · v0.27.1.0 · （拿掉了；加回來另見「把「冒險出現岔路」的選擇加回玩家手機」）。
 
 ## 題庫編輯器加一個回首頁的按鈕
 
-**What:** 題庫編輯器（`/bank-editor`）加上「回首頁」的連結或按鈕。
-
-**Why:** 現在進了題庫編輯器，只能按瀏覽器的上一頁或自己改網址才回得去（2026-11-04 站長實測後提出）。
-
-**Pros:** 加一個連到 `/` 的連結就好。
-
-**Cons:** 有還沒儲存的修改時，離開前要提醒，不然改到一半的題目會不見。
-
-**Context:** `app/bank-editor/page.tsx`。
-
-**Effort:** S　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
-**Completed:** v0.27.1.0 (2026-11-04)（已完成）
-
----
+- **題庫編輯器加一個回首頁的按鈕** · v0.27.1.0 · 編輯器新增回首頁按鈕。
 
 ## 換一組新的 OWNER_KEY，並在正式站測題庫編輯器
 
-**What:** 站長忘了 OWNER_KEY，正式站的題庫編輯器和站長付費的 AI 旁白都卡住，要換一組新的。
-
-**Completed:** v0.27.1.0 (2026-11-04)：站長 2026-11-04 用 `wrangler secret put` 換好新的 OWNER_KEY 並自己保管。v0.27.1.0 上線後的 /canary 會開正式站題庫編輯器確認畫面正常（不會用金鑰登入）。
-
----
+- **換一組新的 OWNER_KEY，並在正式站測題庫編輯器** · v0.27.1.0 · 站長 2026-11-04 用 `wrangler secret put` 換好新的 OWNER_KEY 並自己保管。
 
 ## 地城料理風格 1：怪物變食材，打倒後端上一道菜
 
-**What:** 每間房的怪物附一張食材卡（可食部位、料理方式、一句評語）。答對打倒時，大螢幕顯示「今晚的菜：○○燉菜」。打倒首領後的結局是一頓大餐，DM 旁白描述每隊吃了什麼。
-
-規則：
-- 食材必須來自那隻怪物本身（例如史萊姆的外膜、曼德拉草的根），菜色也要和那隻怪物有關，不能是不相干的食材。
-- 答對得到的分數改叫「飽足感」：吃完這道菜增加的飽足感就是得分，畫面和旁白都用這個說法，例如「＋3 飽足感」。結局比的是哪一隊吃得最飽。
-
-**Why:** 想讓遊戲更接近「迷宮飯」的感覺：地城是一個可以吃的生態系。但不能用該作品的角色、魔物設計或畫面（著作權），所以只借主題，不借長相。
-
-**Pros:** 主題鮮明，每打倒一隻怪物多一個笑點；料理名稱可以餵給旁白。
-
-**Cons:** 每隻怪物要寫食材資料；怪物要用通用的奇幻魔物（史萊姆、曼德拉草、寶箱怪等），外型自己設計，不能照動畫畫。
-
-**Context:** 怪物在 `lib/` 的 `Monster` 與 `components/` 的 `Sprite`；結局在 `lib/narration/`。要先走 /office-hours → /plan-design-review（附 PNG）。
-
-**Effort:** M（人工約 2 天 / CC 約 1 小時）　**Priority:** P3
-
-**Depends on / blocked by:** 無。
-
-**Completed:** v0.27.0.0 (2026-10-31)：題庫每隻怪物可附一道菜（部位、做法、菜名、評語），答對後大螢幕的正解面板下面出現「今晚的菜」，有菜的題庫分數改叫飽足感，旁白和後記會提到吃了什麼。設計見 `docs/designs/monster-cuisine.md`。
-
----
+- **地城料理風格 1：怪物變食材，打倒後端上一道菜** · v0.27.0.0 · 題庫每隻怪物可附一道菜（部位、做法、菜名、評語），答對後大螢幕的正解面板下面出現「今晚的菜」，有菜的題庫分數改叫飽足感，旁白和後記會提到吃了什麼。
 
 ## 電視和主持人的螢幕會自動休眠
 
-**What:** 程式裡完全沒用 Screen Wake Lock。接電視的筆電或主持人的手機在一輪裡很久沒人碰，螢幕就會暗掉。做法：大螢幕頁和主持人頁呼叫 `navigator.wakeLock.request("screen")`，`visibilitychange` 回到前景時再要一次。
-
-**Why:** 全場看著黑掉的電視，要等有人去喚醒。
-
-**Context:** `app/room/[code]/screen/page.tsx`、`app/room/[code]/host/page.tsx`。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約 2 小時 / CC 約 15 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
-**Completed:** v0.26.0.0 (2026-10-31)：`lib/use-wake-lock.ts`，大螢幕頁和主持人頁都用；回到前景再要一次，瀏覽器不支援或拒絕就照舊。
-
----
+- **電視和主持人的螢幕會自動休眠** · v0.26.0.0 · `lib/use-wake-lock.ts`，大螢幕頁和主持人頁都用；回到前景再要一次，瀏覽器不支援或拒絕就照舊。
 
 ## 前端一當掉就整頁白屏，也沒有回報
 
-**What:** 沒有 `app/error.tsx` 或 `app/global-error.tsx`，也沒有 `window.onerror`、`unhandledrejection` 的處理。一個渲染錯誤（例如版本不一致時 STATE 多了或少了欄位）就會讓電視或手機變成 Next 的「Application error」白頁，只能重新整理，而且我們不會知道發生過。做法：加 `error.tsx` 顯示「出錯了，按這裡重新載入」，再把錯誤送到 Worker 記一筆 log。
-
-**Why:** 派對中電視白屏，主持人不知道要按重新整理。
-
-**Context:** Worker 端已經有 log（`wrangler.jsonc` 開了 `observability`），缺的是前端。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約半天 / CC 約 30 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
-**Completed:** v0.26.0.0 (2026-10-31)：`app/error.tsx`、`app/global-error.tsx` 顯示「畫面出錯了」和「重新載入」，並把錯誤送到 Worker 的 `POST /api/client-error` 記一筆 log。沒做 `window.onerror` / `unhandledrejection`：事件處理或 Promise 裡的錯誤不會白屏，所以也不會回報。
-
----
+- **前端一當掉就整頁白屏，也沒有回報** · v0.26.0.0 · `app/error.tsx`、`app/global-error.tsx` 顯示「畫面出錯了」和「重新載入」，並把錯誤送到 Worker 的 `POST /api/client-error` 記一筆 log。
 
 ## 用真的 API 驗證後記改用 Sonnet 5.5 之後還正常
 
-**What:** 在專案目錄跑 `ANTHROPIC_API_KEY=<金鑰> npm run test:live`，確認旁白（`claude-haiku-4-5`）和後記（`claude-sonnet-5-5`）都打得通、輸出通過我們的驗證。
-
-**Why:** v0.9.14.6 把後記從 Sonnet 5 換成 Sonnet 5.5，關閉思考的參數也從 `disabled` 改成 `between_tools`。單元測試只確認請求長得對，沒有真的打 API；出貨時本機沒有金鑰，這一步跳過了。萬一 Sonnet 5.5 不接受這個請求，線上每場遊戲的後記都會安靜地退回罐頭文字，不會報錯。
-
-**Pros:** 一行指令、幾美分，就能確認新模型真的能用，不用等線上有人玩完一場。
-
-**Cons:** 需要有金鑰的人手動跑；金鑰不該貼進對話或寫進檔案。
-
-**Context:** 測試在 `lib/narration/llm.live.test.ts`，不在 `npm test` 裡，沒有金鑰時會自動跳過。如果失敗，先看錯誤訊息是不是 400 `thinking`（參數問題）或 `refusal`（內容被拒）；設定在 `lib/narration/llm.ts` 的 `EPILOGUE_MODEL` 和後記請求的 `thinking`。也可以看線上大螢幕的後記是不是罐頭版，或主持人「下載旁白紀錄」裡後記那筆的 `fallbackReason`。
-
-**Effort:** S　**Priority:** P2
-
-**Depends on / blocked by:** 有 `ANTHROPIC_API_KEY` 的人。
-
-**Completed:** 2026-10-31（v0.25.0.0 出貨時）：`npm run test:live` 9/9 通過，包含後記（`claude-sonnet-5-5`）留住贏家名字的那一項。
-
----
+- **用真的 API 驗證後記改用 Sonnet 5.5 之後還正常** · v0.25.0.0 · 2026-10-31（v0.25.0.0 出貨時）：`npm run test:live` 9/9 通過，包含後記（`claude-sonnet-5-5`）留住贏家名字的那一項。
 
 ## 「下一句這樣說」：主持人指定下一句旁白
 
-**What:** 主持人在 `⚙ 更多` 輸入一句話，下一次旁白一定會把它自然地說出來，說完就用掉（一次性）。
-
-**Why:** 第二次玩測（2026-09-21）的旁白紀錄顯示，主持人把「下一句是 不怕死的冒險者不知道珍珠是什麼意思？能吃嗎?」寫進導演筆記，但旁白完全沒說。原因是導演筆記在設計上只是語氣和風格的指示，不是逐字台詞。導演筆記的第二條「貨幣是什麼能吃嗎」拖到後記才出現。「改寫目前旁白」也不一樣：它換掉已經出現的那一句，不能預先安排下一句。
-
-**Pros:** 主持人可以臨場插入笑點或情境梗；跟導演筆記（風格）和改寫（事後修正）分工清楚。
-
-**Cons:** 要決定 AI 怎麼「自然地」放進去（要求必須包含這句，還是改寫過也行）、腳本旁白怎麼處理（直接當第一句？）、以及沒開 AI 時是否還有意義。
-
-**Context:** 見 `lib/narration/llm.ts` 的 `buildPrompt`、`lib/room/dungeon-room.ts` 的 `HOST_SET_NOTES` 處理。順手做：導演筆記欄位的說明改成「語氣與風格，不是逐字台詞」。
-
-**Effort:** S（人工約 0.5 天 / CC 約 30 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 下一個階段再做（2026-09-21 決定）。
-
-**Completed:** v0.25.0.0 (2026-10-31)：主持人在 `⚙ 更多` 排一句，下一次旁白的第二句說出來（`docs/designs/host-next-line.md`）。導演筆記的說明也改成「只影響語氣與風格，不是逐字台詞」。
-
----
+- **「下一句這樣說」：主持人指定下一句旁白** · v0.25.0.0 · 主持人在 `⚙ 更多` 排一句，下一次旁白的第二句說出來（`docs/designs/host-next-line.md`）。
 
 ## 第一次連線就失敗時，畫面永遠停在「連線中…」
 
-**What:** 斷線提示只在「曾經連上過」之後才會出現（`onClose` 裡 `if (rested || !openedBefore) return`）。場地 Wi-Fi 要先登入、Worker 掛掉或 CORS 出錯時，手機和電視都永遠顯示「連線中…」，沒有逾時、沒有提示、沒有重試鈕。做法：例如 10 秒還沒連上就顯示「連不上伺服器」和重試鈕。
-
-**Why:** 現場網路出問題時，大家不知道是網路壞了還是遊戲壞了。
-
-**Context:** `app/room/[code]/play/page.tsx:294`、`:444-447`；`app/room/[code]/screen/page.tsx:517`。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約半天 / CC 約 20 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
-**Completed:** v0.24.1.0 (2026-10-31)：手機和大螢幕 10 秒沒連上就顯示「連不上伺服器」和「重試」（`lib/use-room-socket.ts` 的 `unreachable`）。主持人頁在 v0.31.1.0 補上。
-
----
+- **第一次連線就失敗時，畫面永遠停在「連線中…」** · v0.24.1.0 / v0.31.1.0 · 手機和大螢幕 10 秒沒連上就顯示「連不上伺服器」和「重試」（`lib/use-room-socket.ts` 的 `unreachable`）。
 
 ## 手機被拒絕加入時不顯示原因
 
-**What:** 房間會回 `game_already_started`、`invalid_name`、`invalid_action/room_full` 這幾種錯誤，但 `/play` 只處理 `bad_password`。第 9 隊、遊戲開始後才來的人、名字只有空白的人，畫面都一直停在「等待主持人開始遊戲…」，沒人知道為什麼加不進去。做法：每種錯誤各給一句說明。
-
-**Why:** 現場沒人看得懂為什麼加不進去，只能一直問主持人。
-
-**Context:** `app/room/[code]/play/page.tsx:302-304`；伺服器端在 `lib/room/dungeon-room.ts:912-927`。伺服器有單元測試，手機端顯示什麼沒有測試。2026-10-30 系統檢查時找到。
-
-**Effort:** S（人工約半天 / CC 約 20 分鐘）　**Priority:** P2
-
-**Depends on / blocked by:** 無。
-
-**Completed:** v0.24.1.0 (2026-10-31)：每種加入錯誤都有一句說明（`lib/join-rejection.ts`），也包含 `invalid_team_id`、`bad_token`；被拒絕的手機只顯示原因，不顯示遊戲畫面。
-
----
+- **手機被拒絕加入時不顯示原因** · v0.24.1.0 · 每種加入錯誤都有一句說明（`lib/join-rejection.ts`），也包含 `invalid_team_id`、`bad_token`；被拒絕的手機只顯示原因，不顯示遊戲畫面。
 
 ## AI 旁白沒有花費上限：任何人都能開房間觸發付費 LLM 呼叫
 
-**What:** 每局（或每個房間）設一個 AI 旁白次數上限，超過就改用罐頭旁白；必要時再加一個全站每日上限，記在一個 Durable Object 裡。
-
-**Why:** `/cso` 稽核（2026-10-03，發現 `7b53ff168118d30889fe2e95aa9ee99d`）：開房間不用登入、第一個 HOST_CLAIM 就是主持人，AI 旁白在有 `ANTHROPIC_API_KEY` 時預設開啟（正式環境有設），每次判題都打一次 Claude API，結束再打一次。沒有任何次數限制，breaker 只在失敗時跳開。一個腳本開很多房間、一直送「答錯重答」就能持續花費。
-
-**Pros:** 程式內就擋住，額度被打爆時不會連帶讓真的在玩的房間失去 AI 旁白。
-
-**Cons:** 單局上限擋不住「開很多房間」；全站上限要多一個 DO 和計數邏輯。
-
-**Context:** 這次決定（dec-db628e32）只在 Anthropic 後台設花費上限，程式不改；`lib/room/dungeon-room.ts` 的 `handleHostStart` 有 `gstack-shortcut(dec-db628e32)` 標記。升級的觸發點：花費上限被打到，或用量出現異常。從 `narrate()` 計次開始做。
-
-**Effort:** M　**Priority:** P3
-
-**Depends on / blocked by:** 無。
-
-**Completed:** v0.21.0.0 (2026-10-30)：主持人貼自己的 Anthropic key（或用站長金鑰），每房預設 300 句上限（spec #102）。全站上限依 D9 不做，靠 Anthropic Console 的花費上限。
-
----
+- **AI 旁白沒有花費上限：任何人都能開房間觸發付費 LLM 呼叫** · v0.21.0.0 · 主持人貼自己的 Anthropic key（或用站長金鑰），每房預設 300 句上限（spec #102）。
 
 ## 每隊有一個代表職業，戰鬥時有不同的特殊能力
 
-**Priority:** P3
-
-**What:** 每個隊伍選一個代表職業，不同職業在戰鬥時有不同的特殊能力。
-
-**Why:** 使用者 2026-10-29 提出，讓隊伍之間有差異，更像 D&D。
-
-**Context:** 規格在 `docs/designs/class-abilities.md`（四個職業、office hours 與 eng review 的決定）。PR 1（戰士：大廳選職業、擲 d20 代替答題，每場 2 次）在 v0.19.0.0 做完。PR 2（法師、牧師、盜賊的偷襲，大廳四個職業都能選）在 v0.20.0.0 做完。
-
-**Completed:** v0.20.0.0 (2026-10-30)
-
----
+- **每隊有一個代表職業，戰鬥時有不同的特殊能力** · v0.20.0.0 · 加入四種職業、各自的戰鬥能力與普通冒險者選項。
 
 ## 魔王分成多個階段，每階段題目不同
 
-**What:** 魔王戰可以分成多個階段（例如三階段），每個階段用自己的一組題目。打完一個階段才進下一個階段。
-
-**Why:** 2026-10-26 使用者提出。使用者正在準備魔王音樂題，分成「猜歌手＋歌名」和「猜主題曲出處」兩種模式；多階段可以讓每個階段用一種模式或一個分類（廣告歌、運動歌、主題曲…），魔王戰也比較有層次。
-
-**Pros:** 魔王戰更有高潮；題庫的分類可以直接對應到階段。
-
-**Cons:** 要決定的事：每階段的血量怎麼算（各自一條，還是總血量分段）；換階段時要不要有旁白或轉場動畫；某一階段的題目用完怎麼辦；題庫格式要從一組 `boss.questions` 改成多組，舊題庫要能照樣讀（當成只有一個階段），而且要把 `lib/bank-store.ts` 的 `BANK_FORMAT` 加 1，舊版本才不會存檔時把多出來的階段丟掉；題庫編輯器要能編輯各階段。
-
-**Context:** 魔王設定在 `lib/question-bank.ts` 的 `Bank.boss`（`monster`、`maxHp`、`hitReward`、`questions`），魔王題 id 由 `bossQuestionIds` 排出。魔王戰流程在 `lib/room/dungeon-room.ts` 和 `lib/game-state.ts`。本機的魔王題庫草稿在 `local-banks/boss-music.json`。可以參考「開場與首領房的轉場動畫」那條 TODO。
-
-**Effort:** M（人工約 3 天 / CC 約 1.5 小時）　**Priority:** P2
-
-**Depends on / blocked by:** 無。使用者 2026-10-26 說先記下，之後再排。
-
-**Completed:** v0.16.0.0 (2026-10-28)
-
----
+- **魔王分成多個階段，每階段題目不同** · v0.16.0.0 · 首領戰加入分階段血量、規則與題目。
 
 ## 主持人可以指定每一題要出題庫裡的哪一題
 
-**What:** 主持人在遊戲中可以替下一道題，從題庫裡挑要出哪一題，不再只能由遊戲隨機抽。
-
-**Why:** 2026-10-26 使用者在準備活動用的魔王音樂題庫（YouTube 片段，猜歌手＋歌名或猜主題曲出處）時提出。主持人想依現場氣氛和隊伍程度決定下一首播什麼，例如先放大家都會的廣告歌暖場，最後才放難的。
-
-**Pros:** 主持人可以控制節奏和難度。也能避開現場玩家剛好太熟或太陌生的題目。
-
-**Cons:** 要決定的事：主持人沒選時是不是照舊隨機抽；選題畫面不能被大螢幕或玩家手機看到（題目和答案都在上面）；已經出過的題目要標示或擋掉；跟目前「難度池抽題」（`poolQuestionIds`、`bossQuestionIds`）和「答錯換一題」的規則怎麼並存。
-
-**Context:** 現在題目由 `lib/room/dungeon-room.ts` 開局時排好的題目順序決定（`lib/question-bank.ts` 的 `poolQuestionIds` / `bossQuestionIds`）。主持人的訊息在 `lib/protocol.ts`（`HOST_*`）。本機的魔王題庫草稿在 `local-banks/boss-music.json`（只在使用者電腦上，git 不追蹤）。改 UI 前要先給 PNG。
-
-**Effort:** M（人工約 2 天 / CC 約 1 小時）　**Priority:** P2
-
-**Completed:** v0.15.3.0 (2026-10-28)：主持人頁每隊旁邊有「指定下一題」，只能選這隊下一間房難度的題；已公布、別隊正在答、已排給別隊的題不能選；有隊伍在王房時另有「首領房下一題」。選了要等這隊下一次換到這個難度的題目才出，重答不換題。
-
-**Depends on / blocked by:** 無。使用者 2026-10-26 說先不寫規格；當時也提到想上傳本機題庫、有多份主題題庫，這兩件還沒寫成 TODO，排時間時一起考慮。
-
----
+- **主持人可以指定每一題要出題庫裡的哪一題** · v0.15.3.0 · 主持人頁每隊旁邊有「指定下一題」，只能選這隊下一間房難度的題；已公布、別隊正在答、已排給別隊的題不能選；有隊伍在王房時另有「首領房下一題」。
 
 ## 8 支隊伍的大螢幕版面
 
-**What:** 實測 8 隊同時在線時大螢幕上方隊伍卡的版面，太窄的話改成兩排或縮成頭像加分數。
-
-**Why:** 遊戲最多支援 8 隊，但核准的畫面只有 3 隊。隊伍卡設成可以縮小，8 隊時每張只有約 70px 寬，名稱會被截斷。還沒有實測過。
-
-**Pros:** 避免人多的局大螢幕變得看不清。
-
-**Cons:** 要決定人多時捨棄哪些資訊。
-
-**Context:** 隊伍外觀有 8 種（3 種帽型配 8 種顏色），見 [DESIGN.md](DESIGN.md)。
-
-**Effort:** S（人工約 0.5 天 / CC 約 20 分鐘）　**Priority:** P2
-
-**Completed:** v0.15.2.2 (2026-10-28)：實測後只有大廳擠（遊戲中的隊伍卡 8 隊仍看得清），大廳 5 隊以上改成每邊兩排、名字過長加「…」。
-
-**Depends on / blocked by:** 無。
-
----
+- **8 支隊伍的大螢幕版面** · v0.15.2.2 · 實測後只有大廳擠（遊戲中的隊伍卡 8 隊仍看得清），大廳 5 隊以上改成每邊兩排、名字過長加「…」。
 
 ## 主持人頁的大螢幕網址要能直接點開
 
-**What:** 主持人頁「更多」面板裡的大螢幕網址（`/room/<代碼>/screen`）改成可以點的連結，在新分頁開啟。現在只是一行文字（`app/room/[code]/host/page.tsx` 的「大螢幕（在電視或投影機開這個網址）」區塊），只能手動複製。
-
-**Why:** 主持人常常用同一台電腦接電視或投影機，點一下就能開大螢幕，不用複製貼上或手打網址。
-
-**Pros:** 改動很小，只要把文字包成 `<a href target="_blank" rel="noopener">`；開場準備少一個步驟。
-
-**Cons:** 在手機上點開會跳離主持人頁，要用新分頁開，主持人頁才不會斷線。網址不含主持人 token，公開也沒關係。
-
-**Context:** 2026-10-24 使用者在活地圖上線後提出。可以順便考慮加一個「複製網址」按鈕，但使用者只要求可以點擊開啟。改 UI 前要先給 PNG。
-
-**Effort:** S（人工約 30 分 / CC 約 5 分鐘）　**Priority:** P2
-
-**Completed:** v0.15.1.2 (2026-10-28)
-
-**Depends on / blocked by:** 無。
-
----
+- **主持人頁的大螢幕網址要能直接點開** · v0.15.1.2 · 主持人頁「更多」面板裡的大螢幕網址（`/room/<代碼>/screen`）改成可以點的連結，在新分頁開啟。
 
 ## 背景音樂播放器：連點🎵的競態、背景分頁時音符擠成一團
 
-**What:** `lib/bgm-player.ts` 兩個問題：(1) `start()` 在 `await ctx.resume()` 之前才檢查 `timer`，連點 🎵 會開兩個 interval，`stop()` 只清掉一個，`resume()` 還沒好就 `stop()` 會讓 `ctx.currentTime` 拋 TypeError；(2) 大螢幕分頁在背景時瀏覽器把 timer 降到約每秒一次，排程落後，回來時已過時間的音符一次全部響。
-
-**Why:** (1) 主持人連點音樂鍵可能讓音樂和音效卡在關閉狀態；(2) 大螢幕被切到背景再切回來時會聽到一團雜音。
-
-**Pros:** 根因都已找到：(1) 在 await 前設「啟動中」旗標或保存 pending promise，await 後重新檢查 `ctx`；(2) 跳過 `at` 已經過去的音符，或落後時重設 `loopStart`。
-
-**Cons:** 都要在真的瀏覽器裡手動試（連點、切分頁），單元測試很難涵蓋。
-
-**Context:** 2026-10-07 `/ship`（v0.9.15.1，fix-bgm-bass-order）的對抗審查發現，都是既有程式碼，不是那個 PR 造成的。同一份審查也提到空曲目會讓 `schedule()` 每次 tick 都拋錯，但現在的曲子是固定常數、不會是空的，所以沒記。
-
-**Effort:** S　**Priority:** P2
-
-**Completed:** v0.15.1.3 (2026-10-28)
-
-**Depends on / blocked by:** 無。
-
----
+- **背景音樂播放器：連點🎵的競態、背景分頁時音符擠成一團** · v0.15.1.3 · `lib/bgm-player.ts` 兩個問題：(1) `start()` 在 `await ctx.resume()` 之前才檢查 `timer`，連點 🎵 會開兩個 interval，`stop()` 只清掉一個，`resume()` 還沒好就 `stop()` 會讓 `ctx.currentTime` 拋 TypeError；(2) 大螢幕分頁在背景時瀏覽器把 timer 降到約每秒一次，排程落後，回來時已過時間的音符一次全部響。
 
 ## 題庫讀不懂時的後續：格式版本號、編輯器唯讀提示、救援步驟
 
-**What:** v0.13.1.0 讓 `BankStore` 在存著的題庫讀不懂時拒絕儲存、不刪圖片。還沒做的有四件：(1) ~~題庫存一個格式版本號，讀到比自己新的版本就當作讀不懂~~（v0.15.0.2 做完：`lib/bank-store.ts` 的 `BANK_FORMAT`，改題庫格式時加 1）；(2) GET `/api/bank` 帶出「讀不懂」狀態，編輯器載入時就顯示唯讀提示並停用儲存，不要等到存檔才回 400；(3) 這個狀態下擋掉圖片上傳；(4) 在 README 寫「題庫卡住時怎麼救」（往前部署到讀得懂的版本，或修好存著的題庫），並寫明**不要回滾到 v0.13.1.0 以前**：更舊的版本沒有這個保護，存一次就會蓋掉題庫。`BANK_FORMAT` 加過 1 之後，底線變成 **v0.15.0.2**：v0.13.1.0～v0.15.0.1 不看格式號碼，會把新欄位存掉。另外幾個小問題一起看：讀不懂的期間每次上傳都會把清理 alarm 拉回現在、白跑一次；待刪佇列在這段期間不會縮小，上傳很多次可能撐爆單一儲存值；`version` 不是數字時被當成 1；延後清理時沒有自己的 log；還有一個既有的競態：清理在等 R2 刪除時，一個把圖放回題庫的儲存可能剛好插進來，圖還是被刪。
-
-**Why:** (1) 以後的新格式如果只是「加欄位」，舊版讀得懂但會把新欄位丟掉，回滾後存一次就永久遺失，現在的保護攔不到。(2) 主持人看到的是預設題目，可能以為自訂題庫不見了，還白編一場。(3) 上傳的圖永遠存不進題庫。(4) 下次出事時不用臨時想辦法改 Durable Object 儲存。
-
-**Pros:** (1) 在下一次改題庫格式之前做最便宜；(2)(3) 讀取時已經有 `unreadable` 旗標，接到 API 就好。
-
-**Cons:** (2) 是 UI 改動，要先做 PNG 比較；(1) 要決定版本號放哪裡、舊題庫怎麼補。
-
-**Context:** 2026-10-25 `/review`（bank-guard，v0.13.1.0）的 Claude 與 Codex 對抗審查提出。使用者選擇先出小 PR 擋回滾風險，這四件記在這裡。v0.14.0.0 的難度題庫格式在 v0.13.1.0 會直接讀不懂，所以這次回滾已經擋住。
-
-**Effort:** M　**Priority:** P2
-
-**Completed:** (1) v0.15.0.2；(2)(3)(4) v0.15.2.0 (2026-10-28)。「另外幾個小問題」移到新項目「題庫讀不懂期間的小問題」。
-
-**Depends on / blocked by:** 無。
-
----
+- **題庫讀不懂時的後續：格式版本號、編輯器唯讀提示、救援步驟** · v0.15.0.2 / v0.15.2.0 · 完成格式版本、唯讀提示與救援步驟。
 
 ## 房間密碼（知道 4 碼代碼的人都能加入）
 
-**What:** 房間可選擇設定一組加入密碼，或由主持人核准每支隊伍。
-
-**Why:** 2026-09-21 的 /cso 審計：隊伍身分已加上密鑰，別人不能冒用既有隊伍，但知道代碼的人仍可加入、把 8 個隊伍名額佔滿，也可以在伺服器重啟後搶先認領主持人（主持人金鑰是第一個認領者贏，屬於已接受的設計，工程審查 T2）。
-
-**Pros:** 公開網址之後才不會被路人搗亂。
-
-**Cons:** 多一步加入手續；區網朋友聚會用不到。
-
-**Context:** 見 `lib/room/dungeon-room.ts` 的 `handleJoin` 與 `handleHostClaim`。已經加上的：每隊密鑰、每房間 60 條連線上限。
-
-**Effort:** S（人工約 0.5 天 / CC 約 20 分鐘）　**Priority:** P3（公開部署之前升 P1）
-
-**Completed:** v0.15.1.0 (2026-10-27)：主持人可在大廳設定選填的加入密碼。已經公開部署了，所以照註記升為 P1 後做完。沒有做的「主持人核准每支隊伍」不在這次範圍。
-
-**Depends on / blocked by:** 正式部署（見上）。
-
----
+- **房間密碼（知道 4 碼代碼的人都能加入）** · v0.15.1.0 · 主持人可在大廳設定選填的加入密碼。
 
 ## 首領房的選擇題規則重新設計（手機作答之後）
 
-**What:** 手機鎖定作答上線後，重新想首領房的規則。至少要處理：首領房大家共用一題，三隊各答錯一個都選重答，第四隊上場只剩正解，白拿一刀（可能就是拿擊殺獎勵的那刀）。
-
-**Why:** 手機作答設計的 premise 7 說首領房這輪先照一般房間的規則，之後重新設計。工程審查 E8 使用者選「接受，等首領房重新設計」，這條就是那個「之後」。
-
-**Pros:** 首領房的公平性有地方追；E8 的上限和升級條件寫在一起。
-
-**Cons:** 會動 `lib/game-state.ts` 的首領分支，可能也要改 `/play`、`/screen` 的首領畫面（先給 PNG）。
-
-**Context:** 2026-10-24 `/plan-eng-review` of `docs/designs/phone-answering.md`：E6（整場一張「已答錯選項」表，按題目編號）、E8（只剩一個選項時不換題）。從 `lib/game-state.ts` 的首領答錯分支（約 439 行，`nextBossQuestionId`）開始看。
-
-**Effort:** M（人工約 1 天 / CC 約 30 分鐘，不含討論）　**Priority:** P3
-
-**Depends on / blocked by:** 手機作答 PR 1 上線、真的玩過一輪。
-
-**Completed:** v0.15.0.0 (2026-10-26)。首領房選擇題答錯一律換題（D1=A），而且不再問重答／逃跑：紅格停 2 秒後自動換題、輪下一隊（D2=B）。首領題庫維持獨立、所有題算難度 5、題型仍是四選一（D3=A）。見 [docs/designs/phone-answering.md](docs/designs/phone-answering.md) 的「首領房規則（v0.15）」。
-
----
+- **首領房的選擇題規則重新設計（手機作答之後）** · v0.15.0.0 · 首領房選擇題答錯一律換題（D1=A），而且不再問重答／逃跑：紅格停 2 秒後自動換題、輪下一隊（D2=B）。
 
 ## 題庫改成依分數分類，房間依需要的難度抽題
 
-**What:** 題庫不再是「每房一組題」，改成「每種分數（1–5）一組題」的大題庫，每個房間依自己的難度去對應分數的題庫抽題。隊伍逃跑後分數降 1，換題時就抽降級後那個分數的題（使用者 2026-10-25 選 D9=A）。同時讓 `lib/game-state.ts` 的 `deal()` 在沒有空題時，寧可發回這隊自己剛逃的題，也絕不發別隊手上的題。另外每場開局時在 server 端打亂每題的選項順序（`correctIndex` 跟著換，快照、`restore()`、公布答案的格式都要一起改），並在重寫題目時避開兩種可猜的規律：年份題答案常是「第二早」的年份（r3-q5、r3-q6、r3-q7、r3-q8、r4-q4、r4-q8、boss-q6），以及錯誤選項從答案改出來（r3-q1 的「2357 萬元」、r2-q7 的 2-2-8 排列、boss-q7 的富士山／聖母峰高度）。
-
-**Why:** 現在每房只有 8 題（第一房 12 題），8 隊擠在同一房時有一隊逃跑，`deal()` 找不到沒人拿的題，會發別隊手上的題；別隊答對時大螢幕公布答案，這隊就看到了。分數題庫讓題目多、分數和難度一致，逃跑真的變簡單。
-
-**Pros:** 不會再發重複題；分數＝難度，玩家一看就懂；加題時不用管放哪一房。
-
-**Cons:** 題庫格式、題庫編輯器、`parseBank`、`scripts/check-bundle.sh`、正式環境 BankStore 的舊資料都要轉換，測試要大改。1 分題會被多個房間共用，需要更多 1 分題。
-
-**Context:** 2026-10-25 /ship（PR 2，預設題庫改選擇題）紅隊審查發現第一房 8 題＝`MAX_TEAMS`，8 隊時逃跑會發重複題。使用者選 D8=A：這個 PR 先把第一房加到 12 題，分數題庫跟「重新設計計分」一起做，題庫格式只改一次。選項打亂和可猜規律是同一次紅隊審查第 5 輪的發現，使用者選 D11=A 一起放進這一項。
-
-**Effort:** L（人工約 2–3 天 / CC 約 1–2 小時）　**Priority:** P2
-
-**Depends on / blocked by:** 規則已定（[docs/designs/scoring-and-score-pools.md](docs/designs/scoring-and-score-pools.md)），這一項是那份設計的 PR B：分數池、第 6～8 房與 3 隻新怪物、約 20 題新題、選項洗牌。計分本身（PR A）已在 v0.13.0.0 上線。
-
----
-
-**Completed:** v0.14.0.0 (2026-10-26)。格式 v2（依難度分的題庫）、選項每場打亂、第 6～8 房與 20 題新題、編輯器分頁，見 [docs/designs/scoring-and-score-pools.md](docs/designs/scoring-and-score-pools.md) 的「PR B as built」。
+- **題庫改成依分數分類，房間依需要的難度抽題** · v0.14.0.0 · 格式 v2（依難度分的題庫）、選項每場打亂、第 6～8 房與 20 題新題、編輯器分頁，見 [docs/designs/scoring-and-score-pools.md](docs/designs/scoring-and-score-pools.md) 的「PR B as built」。
 
 ## 重新設計計分（首領門檻、提早進王房的分數顯示、冠軍怎麼算）
 
-**What:** 一次想清楚計分：(1) 活地圖上線後，有隊伍先進王房，其他隊答對一題就進王房，這時手機和主持人畫面還顯示「9 / 15」和分數條；(2) 要不要告訴玩家「拿滿 15 分就能打王」（手機其實已經顯示 /15）；(3) 冠軍看總分（`lib/game-state.ts` 的 `finishGame`），但打王答對不加分，只有最後一擊有獎勵分。
-
-**Why:** 活地圖的 D9 規則讓「15 分」只對第一隊有意義。三件事互相牽動，分開改會互相矛盾。
-
-**Pros:** 手機、主持人、大螢幕的分數說法一致；冠軍結果不會讓人意外。
-
-**Cons:** 會動到 `/play`、`/host`、`components/pixel.tsx` 的分數條，可能還有 `finishGame` 的勝負規則。改 UI 前要先給 PNG。
-
-**Context:** 2026-10-23 活地圖工程審查 D5：使用者說「先不動分數 之後我們重新研究分數」，D5b 確認這次 PR 不碰 `/play`、`/host`。取代原本的「要不要告訴玩家 15 分」TODO。Codex outside voice 指出冠軍看分數這一點。從 `lib/turn-info.ts` 的 `BOSS_THRESHOLD` 和 `describeTurn().inBoss` 開始看。
-
-**Effort:** M（人工約 1 天 / CC 約 30 分鐘，不含討論）　**Priority:** P2
-
-**Completed:** v0.13.0.0 (2026-10-25)。規則見 [docs/designs/scoring-and-score-pools.md](docs/designs/scoring-and-score-pools.md)：進度分（只有主持人看得到）決定進王房，獎勵分決定冠軍；主持人可以從「更多」把隊伍送進王房。
-
-**Depends on / blocked by:** 活地圖（D9 規則）上線後再做。
-
----
+- **重新設計計分（首領門檻、提早進王房的分數顯示、冠軍怎麼算）** · v0.13.0.0 · 規則見 [docs/designs/scoring-and-score-pools.md](docs/designs/scoring-and-score-pools.md)：進度分（只有主持人看得到）決定進王房，獎勵分決定冠軍；主持人可以從「更多」把隊伍送進王房。
 
 ## 共享大螢幕活地圖
 
-**What:** 大螢幕顯示地城地圖，各隊棋子從房間移到房間，首領房有血條。設計已定案，見 `docs/designs/live-map.md`（2026-10-23 設計審查：地圖條取代隊伍卡、戰爭迷霧、王房開門，並改了一條遊戲規則：有隊伍進王房後，其他隊答對下一題就能進王房）。
-
-**Why:** 讓等待中的隊伍看到對手進度，緩解全域回合制每隊只有 1/N 時間在答題的問題。設計文件 Next Steps 第 8 步原本就列了這項；2026-09-18 審查（E3）選擇先不做，先測氛圍是否為賣點。
-
-**Pros:** `getSpectatorView()` 已回傳各隊房間、分數、首領血量，只剩 UI 工作。
-
-**Cons:** 美術與版面成本高，隊伍數與房間數要能自適應；視覺方向須先由 /plan-design-review 決定。
-
-**Context:** 見同上 CEO plan。房間規則後來由工程審查 T1 改成：所有隊伍共用一條線性房間，最後一房停在原地重複出題，不再追加額外房間。`/screen` 已經上線（題目、怪物、隊伍卡、頒獎台），只是還沒有地圖。
-
-**Effort:** M（人工約 2 天 / CC 約 1 小時）　**Priority:** P2
-
-**Completed:** v0.10.0.0 (2026-10-23)
-
-**Depends on / blocked by:** 視覺方向已定案（/plan-design-review，2026-10-23）。工程審查已完成（/plan-eng-review，2026-10-23），可以開始做。
-
----
+- **共享大螢幕活地圖** · v0.10.0.0 · 大螢幕顯示地城地圖，各隊棋子從房間移到房間，首領房有血條。
 
 ## 背景音樂的低音全部擠在每圈結尾一起響
 
-**What:** `lib/bgm.ts` 的 `songEvents()` 回傳的音符改成依 `start` 排序（或 `lib/bgm-player.ts` 的 `schedule()` 每個聲部分開排），再補一個單元測試確認事件按時間排列。
-
-**Why:** `songEvents()` 先推完所有旋律、再推所有低音，`schedule()` 遇到第一個超出預排範圍的音符就停。結果每圈約 16 秒只聽得到旋律，低音要等旋律全排完才在圈尾一次全部響起（開始時間都已過去）。大螢幕一開音樂就聽得出來。
-
-**Pros:** 一行排序就修好；根因已確認。
-
-**Cons:** 會改變大螢幕聽到的音樂（這正是目的），要人耳確認一次。
-
-**Context:** 2026-10-07 `/ship`（v0.9.15.0，ponytail-audit-cuts）的測試覆蓋稽核發現，main 上本來就有，不是那個分支造成的；當時 e2e 試過，開音樂後只出現 `square` 振盪器、不出現 `triangle`。為了讓那個重構 PR 保持純重構，決定另開 PR 修。
-
-**Effort:** S　**Priority:** P1
-
-**Completed:** v0.9.15.1 (2026-10-07)
-
-**Depends on / blocked by:** 無。
-
----
-
+- **背景音樂的低音全部擠在每圈結尾一起響** · v0.9.15.1 · `lib/bgm.ts` 的 `songEvents()` 回傳的音符改成依 `start` 排序（或 `lib/bgm-player.ts` 的 `schedule()` 每個聲部分開排），再補一個單元測試確認事件按時間排列。
 
 ## localStorage「讀取，沒有就生成並存起來」邏輯重複
 
-**What:** 把 `useOwnerKey`（`app/bank-editor/page.tsx`）跟 TTS 開關偏好（`app/room/[code]/screen/page.tsx`）裡各自寫一份的「讀 localStorage、沒有就生成一個值存起來」邏輯，抽成一個共用的小工具函式。
-
-**Why:** 純粹 DRY，不是 bug。2026-09-23 比對 `hitster_online` repo 時注意到它把同樣的邏輯抽成 `lib/device-id.ts` 的 `getOrCreatePersistedId(key)`，一行函式，值得抄這個做法。
-
-**Pros:** 少幾行重複程式碼，之後要加第三個用到 localStorage 偏好的功能時直接複用。
-
-**Cons:** 目前只有 2 個地方用到，效益有限；抽出來本身有一點重構風險（要小心兩邊 SSR-hydration-mismatch 的處理方式是否一致）。
-
-**Effort:** XS（人工約 15 分鐘 / CC 約 10 分鐘）　**Priority:** P4
-
-**Depends on / blocked by:** 無。
-
-**Completed:** v0.9.14.0 (2026-10-01)，`lib/stored.ts` 的 `readStored` / `writeStored`，bank editor 與大螢幕都改用它（另見 `lib/room-code.ts` 的 `storedOrCreate`）。
-
----
+- **localStorage「讀取，沒有就生成並存起來」邏輯重複** · v0.9.14.0 · `lib/stored.ts` 的 `readStored` / `writeStored`，bank editor 與大螢幕都改用它（另見 `lib/room-code.ts` 的 `storedOrCreate`）。
 
 ## 首領登場的敘事事件（DM 分支回提用）
 
-**Priority:** P2　**Completed:** v0.9.11.0 (2026-09-29)
-
-**What:** 沒有另開新事件（那會多一個 eventId、也要改 runner「每個事件恰好 emit 一次」的契約）：讓隊伍越過首領門檻的那次答對，`correct` 事件多帶 `entersBoss: { branches }`（隊伍一路上的分支選擇，依房間順序）。時序問題自然消失：事件在那次判定當下產生，而共用首領如果已經被打倒，遊戲早就結束了。LLM 旁白會提到踏進首領房並呼應分支選擇；scripted 備用台詞只宣告進入首領房，不硬塞「你選了 X」模板（T4）。見 `lib/narration/events.ts`、`scripted.ts` 的 `BOSS_ENTER_VARIANTS`、`llm.ts` 的 `describeEvent`。
-
----
+- **首領登場的敘事事件（DM 分支回提用）** · v0.9.11.0 · 沒有另開新事件（那會多一個 eventId、也要改 runner「每個事件恰好 emit 一次」的契約）：讓隊伍越過首領門檻的那次答對，`correct` 事件多帶 `entersBoss: { branches }`（隊伍一路上的分支選擇，依房間順序）。
 
 ## 主持人頁的鍵盤操作
 
-**Priority:** P3　**Completed:** v0.9.10.0 (2026-09-29)
-
-**What:** 主持人頁判分可以用鍵盤：`1` 答對、`2` 答錯・重答、`3` 答錯・逃跑；揭曉答案時 `1` 或 Enter 是「下一題」。按鍵只在對應按鈕可按時生效，加了修飾鍵（Ctrl+1 是瀏覽器切分頁）、長按重複、或正在輸入框（主持人筆記）打字時不作用；對應邏輯在 `lib/host-keys.ts`（單元測試）。有滑鼠的裝置在按鈕上顯示小小的 1/2/3 提示（`aria-hidden`，手機不顯示）。焦點框原本就有（`.px-btn:focus-visible`）。e2e `host-keys.spec.ts` 抓到一個真 bug：`{ ...e }` 不會複製 KeyboardEvent 的 getter，Ctrl+1 會被當成 1，已修正。
-
----
+- **主持人頁的鍵盤操作** · v0.9.10.0 · 主持人頁判分可以用鍵盤：`1` 答對、`2` 答錯・重答、`3` 答錯・逃跑；揭曉答案時 `1` 或 Enter 是「下一題」。
 
 ## 大廳營火
 
-**Priority:** P3　**Completed:** v0.9.12.0 (2026-09-29)
-
-**What:** `/screen` 大廳中央加了一個程式繪製的營火（`lib/pixel-art.ts` 的 `campfire` 精靈，兩格火焰用 CSS 交替閃爍，加上光暈），隊伍角色一半在左、一半在右圍著它跑進來；5 隊以上角色縮小、隊名過長截斷，8 隊也放得下（8 隊時最外側角色會稍微碰到兩側火把）。設計審查 2A 的最後一塊。
-
----
+- **大廳營火** · v0.9.12.0 · `/screen` 大廳中央加了一個程式繪製的營火（`lib/pixel-art.ts` 的 `campfire` 精靈，兩格火焰用 CSS 交替閃爍，加上光暈），隊伍角色一半在左、一半在右圍著它跑進來；5 隊以上角色縮小、隊名過長截斷，8 隊也放得下（8 隊時最外側角色會稍微碰到兩側火把）。
 
 ## 怪物美術：目前只有三張圖
 
-**Priority:** P3　**Completed:** v0.9.13.0 (2026-09-29)
-
-**What:** 第 3–5 房各有自己的角色，不再是換色：迷路史萊姆（藍色，頭上一個大問號）、愛哭幽靈（兩道眼淚、嘴巴扁扁）、守門史萊姆王（紫色，戴王冠拿長矛）。顏色直接畫進精靈（`hue` 設成 0），不再靠 `hue-rotate`，否則王冠、長矛、眼淚也會被換色。`lib/pixel-art.ts` 的 slime 拆成 `slimeBody`／`slimeFace` 共用。注意：題庫編輯器沒有換圖選項，已經存在伺服器上的正式題庫會維持舊的 `sprite`；新圖只套用在重新播種的題庫（`data/question-bank.json`）。
-
----
+- **怪物美術：目前只有三張圖** · v0.9.13.0 · 第 3–5 房各有自己的角色，不再是換色：迷路史萊姆（藍色，頭上一個大問號）、愛哭幽靈（兩道眼淚、嘴巴扁扁）、守門史萊姆王（紫色，戴王冠拿長矛）。
 
 ## 玩家手機與大螢幕的斷線提示
 
-**Priority:** P2　**Completed:** v0.9.9.0 (2026-09-29)
-
-**What:** 手機和大螢幕網路斷線時顯示「連線中斷，重新連線中…」，連回來就自動消失（休息／過期仍用原本的提示）。手機重新連上後比對斷線前後的 `eventId`：斷線時剛好輪到自己、期間有判定，就顯示「斷線時剛好輪到你們，這一回合被跳過了。」；不是自己的回合就顯示期間進行了幾次判定，10 秒後自動消失。判斷邏輯在 `lib/offline-notice.ts`（單元測試），不需要改協議。e2e `disconnect.spec.ts` 模擬斷線期間主持人判了別隊。移除了 host 頁的 `gstack-shortcut(dec-ac659960)` 標記。
-
----
+- **玩家手機與大螢幕的斷線提示** · v0.9.9.0 · 手機和大螢幕網路斷線時顯示「連線中斷，重新連線中…」，連回來就自動消失（休息／過期仍用原本的提示）。
 
 ## 音效與背景氛圍音樂
 
-**Priority:** P3　**Completed:** v0.9.8.0 (2026-09-29)
-
-**What:** 大螢幕 `/screen` 在開始遊戲、答對、答錯重答、逃跑、打中首領、打倒首領時各播一段 8-bit 音效，跟背景音樂一樣用 Web Audio 即時合成（`lib/sfx.ts`），沒有音檔、沒有授權問題。server 在 STATE 帶 `cue`（由該事件的旁白事件類型決定），大螢幕只在 `eventId` 變大時播一次，重新連線不會重播。音效跟著「🎵 音樂」開關，不另外加按鈕；背景音樂的部分在 v0.9.5.0 完成。
-
----
+- **音效與背景氛圍音樂** · v0.9.8.0 · 大螢幕 `/screen` 在開始遊戲、答對、答錯重答、逃跑、打中首領、打倒首領時各播一段 8-bit 音效，跟背景音樂一樣用 Web Audio 即時合成（`lib/sfx.ts`），沒有音檔、沒有授權問題。
 
 ## 語音旁白：語音清單還沒載完時到達的旁白會被永久靜默跳過
 
-**Priority:** P3　**Completed:** v0.9.7.0 (2026-09-29)
-
-**What:** `/screen` 的 `speak()` 在語音開著、但語音清單還沒載入時，改成把最後一句存進 `pendingLines`，等 `voiceschanged` 讓 `ttsVoice` 出現後立刻補念；只保留最新一句，關掉語音或房間重置（LOBBY）時清掉。e2e `narration-tts.spec.ts` 用「語音清單一開始是空的」的 stub 重現：沒修時那句永遠不念，修了之後載入語音就念出來。
-
----
+- **語音旁白：語音清單還沒載完時到達的旁白會被永久靜默跳過** · v0.9.7.0 · `/screen` 的 `speak()` 在語音開著、但語音清單還沒載入時，改成把最後一句存進 `pendingLines`，等 `voiceschanged` 讓 `ttsVoice` 出現後立刻補念；只保留最新一句，關掉語音或房間重置（LOBBY）時清掉。
 
 ## 房間過期時的關閉碼與提示跟「休息」共用，可能誤導
 
-**Priority:** P3　**Completed:** v0.9.6.0 (2026-09-29)
-
-**What:** 過期改用自己的關閉碼 `4002`（`lib/room/close-codes.ts` 的 `CLOSE_EXPIRED`），三個頁面用 `restKindOf` 分辨，顯示「房間已過期：…上一場遊戲已經清除。重新連線會開一個新的空房間。」；休息（`4001`）的文案不變。兩種都停止自動重連、按「重新連線」恢復。e2e `rested.spec.ts` 加了過期的情境。
-
----
+- **房間過期時的關閉碼與提示跟「休息」共用，可能誤導** · v0.9.6.0 · 過期改用自己的關閉碼 `4002`（`lib/room/close-codes.ts` 的 `CLOSE_EXPIRED`），三個頁面用 `restKindOf` 分辨，顯示「房間已過期：…上一場遊戲已經清除。
 
 ## 自動重連（非人為）也算活動，理論上可讓房間永不休息
 
-**Priority:** P3　**Completed:** v0.9.6.0 (2026-09-29)
-
-**What:** 不用重構 `handleJoin`／`handleHostClaim`：`/host`、`/play` 的自動重連在 `HOST_CLAIM`／`JOIN` 上帶 `resume: true`（第一次連線、重新整理、按「重新連線」都不帶），房間照常接受、恢復身分，但不把它算成活動。單元測試確認帶 `resume` 的重連不會延後休息（先在沒修的程式上重現失敗），e2e 確認自動重連帶旗標、手動重連不帶。
-
----
+- **自動重連（非人為）也算活動，理論上可讓房間永不休息** · v0.9.6.0 · 不用重構 `handleJoin`／`handleHostClaim`：`/host`、`/play` 的自動重連在 `HOST_CLAIM`／`JOIN` 上帶 `resume: true`（第一次連線、重新整理、按「重新連線」都不帶），房間照常接受、恢復身分，但不把它算成活動。
 
 ## 增加背景音樂
 
-**Priority:** P3　**Completed:** v0.9.5.0 (2026-09-29)
-
-**What:** 大螢幕 `/screen` 加了背景音樂：一段用 Web Audio API 即時合成的 A 小調 8-bit 地城循環（方波旋律＋三角波低音，`lib/bgm.ts` 是曲子資料、`lib/bgm-player.ts` 負責播放）。跟美術一樣用程式產生，所以沒有素材授權問題、也不用下載音檔。右下角「🎵 音樂」按鈕切換，預設關閉、會記住設定（記住開啟時，重新整理後第一次點擊頁面才開始播，因為瀏覽器規定）；語音旁白在念的時候音樂自動降低音量。只放在大螢幕，手機不播。
-
----
+- **增加背景音樂** · v0.9.5.0 · 大螢幕 `/screen` 加了背景音樂：一段用 Web Audio API 即時合成的 A 小調 8-bit 地城循環（方波旋律＋三角波低音，`lib/bgm.ts` 是曲子資料、`lib/bgm-player.ts` 負責播放）。
 
 ## 語音旁白：重連時剛好落在 GAME_OVER 到 EPILOGUE 之間會漏念後記
 
-**Priority:** P3　**Completed:** v0.9.4.0 (2026-09-29)
-
-**What:** 採用 server 協議改動：`onConnect` 重送的 EPILOGUE 帶 `replay: true`，即時廣播不帶；`lib/narration/tts.ts` 的 `shouldSpeakEpilogue` 改成只看這個欄位，`/screen` 拿掉 `sawLiveGameOver`。連線落在 GAME_OVER 和後記之間時，後記會正常念出來；重整已結束的遊戲仍然不會重念。
-
----
+- **語音旁白：重連時剛好落在 GAME_OVER 到 EPILOGUE 之間會漏念後記** · v0.9.4.0 · 採用 server 協議改動：`onConnect` 重送的 EPILOGUE 帶 `replay: true`，即時廣播不帶；`lib/narration/tts.ts` 的 `shouldSpeakEpilogue` 改成只看這個欄位，`/screen` 拿掉 `sawLiveGameOver`。
 
 ## 上傳但從未存檔的題庫圖片會永久留在 R2
 
-**Priority:** P3　**Completed:** v0.9.3.0 (2026-09-29)
-
-**What:** 不用另寫週期性掃描：圖片一上傳成功就排進 v0.9.1.0 做好的延後刪除佇列（`BankStore.queueUploadedImage`，由 `worker/index.ts` 的上傳路徑呼叫 bank DO 的 `imageUploaded`）。期限內被存進題庫的圖，alarm 會看到它還在使用中而把它移出佇列；從沒存檔的（關分頁、當機、409）期限一到就刪。排隊失敗只記 log，不影響上傳本身。
-
----
+- **上傳但從未存檔的題庫圖片會永久留在 R2** · v0.9.3.0 · 不用另寫週期性掃描：圖片一上傳成功就排進 v0.9.1.0 做好的延後刪除佇列（`BankStore.queueUploadedImage`，由 `worker/index.ts` 的上傳路徑呼叫 bank DO 的 `imageUploaded`）。
 
 ## 旁白 emit() 無條件覆蓋 lastNarration，較慢的舊事件可能在新事件之後 resolve 並蓋掉它
 
-**Priority:** P3　**Completed:** v0.9.2.0 (2026-09-29)
-
-**What:** `lib/room/dungeon-room.ts` 的 `emit()` 現在只接受不比目前 `lastNarration` 舊、也不超過 `eventSeq` 的 eventId：較慢才回來的舊事件旁白直接丟掉，不再蓋掉新旁白，也不會被重播給重連的連線；`reset()` 之前留下、在重置後才回來的旁白（eventId 比歸零後的 `eventSeq` 大）也一併丟掉。測試 `drops an older event's narration that resolves after a newer one's` 先在沒修的程式上重現了 bug。
-
----
+- **旁白 emit() 無條件覆蓋 lastNarration，較慢的舊事件可能在新事件之後 resolve 並蓋掉它** · v0.9.2.0 · 丟棄過期旁白，避免舊事件蓋過新事件。
 
 ## 遊戲進行中在題庫編輯器換圖，會立刻刪掉那一局還在用的 R2 圖片
 
-**Priority:** P2　**Completed:** 2026-09-29
-
-**What:** `BankStore.putBank()` 不再立刻刪掉新題庫沒用到的 R2 圖片，而是把 key 連同刪除時間排進 Durable Object storage 的佇列（`pendingImageDeletes`），等超過房間壽命（`ROOM_EXPIRE_MS`，預設 24 小時，再加 1 小時緩衝）後由 bank DO 的 alarm 呼叫 `runImageCleanup()` 刪除。刪除前會再檢查一次：如果之後的存檔又把這張圖放回題庫（復原），就不刪；拿掉 → 放回 → 再拿掉，會重新計時。已知限制：一局遊戲如果一直有活動、撐超過房間壽命，還是可能丟圖（每次活動都會延後過期），機率很低，先接受。見 `lib/bank-store.ts`、`worker/index.ts` 的 `BankStoreDO.alarm()`。
-
----
+- **遊戲進行中在題庫編輯器換圖，會立刻刪掉那一局還在用的 R2 圖片** · 2026-09-29 · 延後刪除未使用圖片，避免進行中的遊戲失去圖片。
 
 ## 修改主頁的背景圖，換成更有特色、更有內容的圖片
 
-**Priority:** P3　**Completed:** v0.9.1.0 (2026-09-28)
-
-**What:** 主頁背景從單純的石牆換成一整幅程式繪製的地城走廊（第一人稱透視）：兩側磚牆延伸進黑暗、木樑天花板掛著鐵鍊與蜘蛛網、兩側牆上會閃爍的火把、盡頭一扇鐵箍木門與兩盞小壁燈，地上有骷髏、骨頭、寶箱和木桶，牆腳長青苔。第一版做的是「月夜城堡外觀」，使用者回饋要「真的有 dungeon 造型」，改成地城內部。素材授權的阻塞點用 DESIGN.md 既有的「全部用程式畫、不放圖檔」原則解掉——沒有圖檔、零授權問題、首頁不多載任何位元組。場景依視窗大小重新計算格數（`homeSceneCell`），每個場景像素都是整數倍的螢幕像素，不再像舊背景那樣被拉伸變形。見 `lib/pixel-art.ts` 的 `drawHomeScene`、`components/pixel.tsx` 的 `HomeBackground`。
-
----
+- **修改主頁的背景圖，換成更有特色、更有內容的圖片** · v0.9.1.0 · 主頁背景從單純的石牆換成一整幅程式繪製的地城走廊（第一人稱透視）：兩側磚牆延伸進黑暗、木樑天花板掛著鐵鍊與蜘蛛網、兩側牆上會閃爍的火把、盡頭一扇鐵箍木門與兩盞小壁燈，地上有骷髏、骨頭、寶箱和木桶，牆腳長青苔。
 
 ## 問答題／選擇題的題目可以是圖片／YouTube 影片／文字，並移除獨立的「圖片題」類型；公布解答時可加一段可換媒材的詳解
 
-**Priority:** P2　**Completed:** v0.9.0.0 (2026-09-24)
-
-**What:** 問答題跟選擇題的「題目」本身都可以選擇用文字／圖片／YouTube 影片來呈現（同一題型，換媒材），移除了獨立的「圖片題」類型；公布解答時多一個可換媒材的「詳解」欄位。已透過 `/office-hours` → `/plan-eng-review` → `/review` → `/ship` 完整流程實作，見 [docs/designs/question-media-content.md](docs/designs/question-media-content.md)。審查過程發現並修正多個真實 bug（Durable Object 重啟後 `revealedQuestionIds` 未回填、bank editor 圖片上傳按鈕 id 衝突、切換媒材類型的重複點擊會誤刪內容、公布解答的詳解媒體漏掉 React key 導致壞圖狀態卡住）。
-
----
+- **問答題／選擇題的題目可以是圖片／YouTube 影片／文字，並移除獨立的「圖片題」類型；公布解答時可加一段可換媒材的詳解** · v0.9.0.0 · 題目與詳解支援文字、圖片、YouTube。
 
 ## DM 語音旁白（瀏覽器 TTS）
 
-**Priority:** P2　**Completed:** v0.7.0.0 (2026-09-22)
-
-**What:** 大螢幕用瀏覽器內建 Web Speech API（zh-TW 聲音）把旁白念出來，並提供關閉開關。已透過 `/office-hours` → `/plan-eng-review` → `/review` → `/ship` 完整流程實作，見 [docs/designs/dm-voice-narration-tts.md](docs/designs/dm-voice-narration-tts.md)。審查過程發現並修正兩個真實 bug（重播誤判導致語音修正被靜默吞掉、`zh-Hant-HK`/`zh-Hant-MO` 誤判為台灣腔），另有兩個較低嚴重度的邊角案例延後為 P3 待辦項目（見上方「語音旁白：…」兩項）。
-
----
+- **DM 語音旁白（瀏覽器 TTS）** · v0.7.0.0 · 大螢幕用瀏覽器內建 Web Speech API（zh-TW 聲音）把旁白念出來，並提供關閉開關。
 
 ## 題庫編輯器：image 題型 + Cloudflare R2 上傳
 
-**Priority:** P3　**Completed:** v0.6.0.0 (2026-09-22)
-
-**What:** 實作 Cloudflare R2 bucket binding、圖片上傳表單、`image` kind 的 schema、`/play` 顯示圖片。已在 `image-question-type` 分支完成（image kind schema、R2 綁定、上傳 API、bank editor 上傳表單、`/play`・`/screen` 顯示圖片）。
-
----
+- **題庫編輯器：image 題型 + Cloudflare R2 上傳** · v0.6.0.0 · 實作 Cloudflare R2 bucket binding、圖片上傳表單、`image` kind 的 schema、`/play` 顯示圖片。
 
 ## 題庫覆核：AI 起草的 8 題
 
-**Priority:** P1　**Completed:** 2026-09-23 (docs-only PR #23, no version bump — between v0.7.1.0 and v0.7.2.0)
-
-**What:** 每房最後 5 題和首領最後 3 題（共 28 題）是 AI 起草的台灣常識題，需要人工查證答案。
-
-**Why:** 作者沒辦法上網查證。主持人在現場發現答案錯了會很尷尬，也會傷害玩家對答案的信任。
-
-**Context:** [data/question-bank.json](data/question-bank.json)。每房前 3 題（2026 年時事）來自第一輪題庫，不在這次查證範圍內。
-
-**查證結果：** 28 題逐題用 WebSearch 查證，**全數正確，沒有發現任何答案錯誤**。兩個答案用詞可以更精確但不算錯（`r1-q5` 阿里山森林鐵路主要跨嘉義市與嘉義縣，答案「嘉義縣」是通俗但合理的簡化；`r2-q5` 太魯閣峽谷地質範圍橫跨花蓮／台中／南投三縣市，答案「花蓮」是最廣為人知的所在地）——兩者都不影響遊戲使用，不需要改。
-
----
+- **題庫覆核：AI 起草的 8 題** · v0.7.1.0 / v0.7.2.0 · 查證 28 題，答案全數正確。
 
 ## 題庫編輯器：multipleChoice 題型
 
-**Priority:** P3
-
-**What:** 給 `PublicQuestion`（`lib/protocol.ts`）加 `options` 欄位、`/play` 加選項渲染與選擇訊息、host 判分邏輯支援選項判分，然後題庫 schema 才能真的加回 `multipleChoice` kind。
-
-**Why:** `question-bank-editor` PR 的 outside-voice 審查發現一個 P0：原設計想先建 `multipleChoice` 的 schema/CRUD，但遊戲引擎目前完全沒有能力播放它（`PublicQuestion` 只有 `text` 欄位，整個判分流程是「host 念題目、host 判斷對錯」，沒有選項渲染/選擇/判分邏輯）。先建一個沒有消費者的題型只是空的「可擴充性」。這輪因此把 `multipleChoice` 全部切掉，只做 `text` 題型的編輯器。
-
-**Context:** 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md) 的 NOT in scope 段落與 Revision note，以及本項完成時新增的 [docs/designs/multiple-choice-questions.md](docs/designs/multiple-choice-questions.md)。
-
-**Completed:** v0.5.0.0 (2026-09-22)。`lib/question-bank.ts` 的 `kind` 判別聯集、`lib/protocol.ts` 的 `TEAM_SELECT_OPTION`、`lib/game-state.ts` 的 `Team.currentSelection`/`recordOptionSelection`、`lib/room/dungeon-room.ts` 的 `handleTeamSelectOption`、`/play` 選項渲染、`/host` 選擇高亮、題庫編輯器的題型切換 UI，全部完成並有測試覆蓋（433 單元測試 + e2e）。
-
----
+- **題庫編輯器：multipleChoice 題型** · v0.5.0.0 · `lib/question-bank.ts` 的 `kind` 判別聯集、`lib/protocol.ts` 的 `TEAM_SELECT_OPTION`、`lib/game-state.ts` 的 `Team.currentSelection`/`recordOptionSelection`、`lib/room/dungeon-room.ts` 的 `handleTeamSelectOption`、`/play` 選項渲染、`/host` 選擇高亮、題庫編輯器的題型切換 UI，全部完成並有測試覆蓋（433 單元測試 + e2e）。
 
 ## 斷線重連 / 狀態持久化完整方案
 
-**What:** 設計真正的斷線重連與遊戲狀態持久化方案（目前決定：第一輪純 in-memory，伺服器重啟整場遊戲遺失）。
-
-**Why:** 現在的決定只適合第一輪小規模真人測試（朋友聚會、幾十分鐘一場），正式上線後伺服器意外重啟會毀掉整場進行中的遊戲，不適合正式難度。
-
-**Pros:** 提升正式上線後的可靠度；玩家手機斷線也能無縫恢復。
-
-**Cons:** 需要選定持久化層（檔案/SQLite/其他），增加實作與測試複雜度。
-
-**Context:** 見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) 的 Open Questions 與 Architecture Review（/plan-eng-review, 2026-09-17）。決策記錄在該次審查的問題 1B。
-
-**Depends on / blocked by:** 需先完成第一輪範圍（狀態機 + 首領回合制 + 輕量真人測試），驗證玩法後再投入持久化工程。
-
-**Completed:** v0.2.0.0 (2026-09-22)。由 persist-room-state PR（Durable Object 儲存、還原、重連）與 room-lifecycle PR（閒置關連線、24 小時過期）共同完成，見 `lib/room/dungeon-room.ts` 的 `persist()`／`restore()`／`onAlarm()`。
-
----
+- **斷線重連 / 狀態持久化完整方案** · v0.2.0.0 · 由 persist-room-state PR（Durable Object 儲存、還原、重連）與 room-lifecycle PR（閒置關連線、24 小時過期）共同完成，見 `lib/room/dungeon-room.ts` 的 `persist()`／`restore()`／`onAlarm()`。
 
 ## PartyKit 正式部署（卡在工具本身的兩個相容性 bug）
 
-**What:** 把 PartyKit 後端（`party/index.ts`）部署到公開網址，讓不在同一個 Wi-Fi 的人也能玩。
-
-**Why:** 2026-09-17 嘗試部署時，兩條路徑都撞到 PartyKit CLI（0.0.115，當時最新版）本身還沒修的相容性問題：
-1. 預設管理平台（`partykit deploy`）：共用網域 `partykit.dev` 已超過 Cloudflare 10000 個 Workers custom domain 上限，官方 [issue #985](https://github.com/partykit/partykit/issues/985) 開著沒人修（2026-06-18 回報至今）。
-2. Cloud-prem 模式（部署到自己的 Cloudflare 帳號，`CLOUDFLARE_ACCOUNT_ID`/`CLOUDFLARE_API_TOKEN` + `partykit deploy`）：卡在 Cloudflare 2026-07-09 起強制免費方案 Durable Objects 必須用 `new_sqlite_classes` migration，但 PartyKit CLI 產生部署設定時還沒跟進，報錯且無 CLI 參數可覆寫。
-
-**Pros:** 能找不同地點的朋友一起測、也是正式上線的必要條件。
-
-**Cons:** 需要等 PartyKit 修這兩個 bug，或改走重工程的替代方案（見下）。
-
-**Context:** 見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md)。Vercel（前端）跟 wrangler（Cloudflare 帳號）都已登入備妥，卡點純粹是 PartyKit CLI 端。
-
-**替代方案（若不想等 PartyKit 修復）：**
-- 追蹤 PartyKit repo 更新，定期重試 `npx partykit deploy`（管理平台）或 cloud-prem 路徑
-- 改走「繞過 partykit CLI，直接用 wrangler 部署成原生 Cloudflare Worker + Durable Object」——PartyKit 本來就是建在 Workers+DO 上，理論上可行，但需要把 `party/index.ts` 改寫成原生 Workers 專案格式，額外工程量較高
-
-**Depends on / blocked by:** 無（獨立於遊戲玩法開發），但目前選擇不投入這個重工程替代方案，先用 localhost/局域網進行第一輪真人測試。
-
-**Completed（改走替代方案）：** v0.2.0.0 (2026-09-22)。沒有等到 PartyKit 修復，改走上面列的替代方案：繞過 partykit CLI，直接用 `partyserver` + `wrangler` 部署成原生 Cloudflare Worker + Durable Object（cf-minimal-room PR 起）。房間已部署在 `https://critical-answer.aiko-studio.workers.dev`。
-
----
+- **PartyKit 正式部署（卡在工具本身的兩個相容性 bug）** · v0.2.0.0 · 改用 partyserver + wrangler 部署 Worker。
 
 ## 房間重啟時對 BankStore 發出用不到的 RPC
 
@@ -1676,6 +1260,7 @@
 
 **Context:** 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md) 決策 7，以及 `worker/index.ts` 的 `Room.onStart()`。
 
-**更新（2026-10-03，維護輪 /plan-eng-review）：** 不能直接「有存檔就不抓」。`lib/room/dungeon-room.ts` 的 `reset()` 會用醒來時抓到的 `initialBank` 開新局，跳過抓取會讓閒置過期後重開的房間改用內建題庫，你在編輯器改的題目就不見了。正確修法是懶載入：`DungeonRoom` 收一個 `loadBank`，只在沒有存檔、存檔壞掉、`reset()` 時呼叫。決定（dec-f5965fd8）：先不做；`worker/index.ts` 的 `onStart()` 有 `gstack-shortcut` 標記。升級觸發點：房間喚醒延遲或 BankStore 可用性成為實際問題。
+  - **更新（2026-10-03，維護輪 /plan-eng-review）：** 不能直接「有存檔就不抓」。`lib/room/dungeon-room.ts` 的 `reset()` 會用醒來時抓到的 `initialBank` 開新局，跳過抓取會讓閒置過期後重開的房間改用內建題庫，你在編輯器改的題目就不見了。正確修法是懶載入：`DungeonRoom` 收一個 `loadBank`，只在沒有存檔、存檔壞掉、`reset()` 時呼叫。決定（dec-f5965fd8）：先不做；
+  - `worker/index.ts` 的 `onStart()` 有 `gstack-shortcut` 標記。升級觸發點：房間喚醒延遲或 BankStore 可用性成為實際問題。
 
 **Depends on / blocked by:** 無，隨時可做，非阻塞。
