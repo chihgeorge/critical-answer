@@ -2,6 +2,15 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.35.1.0] - 2026-11-06
+
+**Deploy note:** reload open phones after this release deploys to see the new check label. Phones from 0.35.0.0 keep working without a reload.
+
+### Fixed
+- A natural 20 on a persuasion check now wins even when the room restarts during the 2 s roll. Before, the restart dropped the win and the team had to answer normally. The room now gives the win once that team is on turn again, after any judgment, reveal or phase card in progress has finished.
+- A passed check with no hint now says why. The phone shows 「過了！提示法師已經給了」 when the mage already gave the first character, and 「過了！答案太短，沒有提示」 only when the answer is too short. Before, both cases showed the short-answer line.
+- The room now refuses a team id that contains a colon, so two teams' checks can never share one record.
+
 ## [0.35.0.0] - 2026-11-06
 
 **Deploy note:** reload every open phone and big screen after this release deploys. A phone from before this release has no 擲骰說服 button, so the room refuses its fill-in answers until the page is reloaded.
