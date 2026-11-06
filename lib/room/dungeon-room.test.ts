@@ -810,6 +810,41 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(room.game!.teams[0]).toMatchObject({ score: 1, reward: 10 });
       expect(room.game!.teams[0].online).toBe(false);
     });
+
+    // Value: protects=ending the game inside the die drops it unscored and still shows a closed phone's team offline;
+    // fails_when=clearAnswerTimers stops clearing or syncing a crit roll; no_claim=the end screen (e2e)
+    it("ending the game during the die drops it unscored and shows a team whose phone closed offline", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, conns, lockAndReveal } = critGame(2);
+      lockAndReveal(1, 20);
+      vi.advanceTimersByTime(2000);
+      room.onClose(conns[0]);
+      send(room, hostConn, { type: "HOST_END_GAME" });
+      vi.advanceTimersByTime(2000);
+      expect((room as any).pendingRoll).toBeNull();
+      expect(room.game?.teams[0]).toMatchObject({ score: 0, online: false });
+    });
+
+    // Value: protects=a room that expires inside the die comes back usable; fails_when=the next game's judge says roll_pending
+    it("an expiring room drops a crit die still in its beat: the next game is not stuck behind it", async () => {
+      vi.useFakeTimers();
+      const { room, lockAndReveal } = critGame();
+      lockAndReveal(1, 20);
+      vi.advanceTimersByTime(2000);
+      await (room as any).expire();
+      vi.advanceTimersByTime(2000);
+      expect(room.game).toBeNull();
+      const host2 = makeConn("host-conn-2");
+      room.onConnect(host2);
+      claim(room, host2);
+      const { conns: conns2 } = joinTeams(room, host2, 1);
+      send(room, host2, { type: "HOST_START" });
+      const q = room.game!.teams[0].currentQuestionId; // multipleChoice is phone-judged: the next game locks
+      send(room, conns2[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: 1 });
+      send(room, conns2[0], { type: "TEAM_LOCK_OPTION", questionId: q });
+      expect(lastSentTo(conns2[0])?.type).not.toBe("ERROR");
+      expect((room as any).pendingLock).toMatchObject({ questionId: q });
+    });
   });
 
   it("rejects a connection that never joined any team", () => {
@@ -1287,6 +1322,8 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-mc1" });
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { correctIndex: 1 } });
+      expect(room.game!.teams[0].reward).toBe(15); // a warrior's 20 on a multipleChoice question is a crit too
+      expect(lastBroadcast(room)).toMatchObject({ cue: "crit" });
       vi.advanceTimersByTime(60_000);
       expect(revealOpen(room)).toBe(true);
       send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
@@ -2537,6 +2574,16 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
   // Value: protects=a room that expires during a roll's beat comes back usable: the next game's host can judge;
   // fails_when=clearAnswerTimers stops clearing pendingRoll, so every later judge says roll_pending; why_new=the
   // expiry test above covers a lock's beat only; seam=none; no_claim=real Durable Object storage (mock RoomIO)
+  it("ending the game during a warrior's roll drops it with no judgment", () => {
+    vi.useFakeTimers();
+    const { room, hostConn, roll } = warriorGame();
+    roll(20);
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    vi.advanceTimersByTime(2000);
+    expect((room as any).pendingRoll).toBeNull();
+    expect(lastBroadcast(room).reveal ?? null).toBeNull();
+  });
+
   it("an expiring room drops a roll still in its beat: the next game in the room is not stuck behind it", async () => {
     vi.useFakeTimers();
     const { room, roll } = warriorGame();

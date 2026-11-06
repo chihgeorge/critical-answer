@@ -165,7 +165,7 @@ export class DungeonRoom {
   /** Counts the start and every accepted judgment; each gets exactly one NARRATION. */
   private eventSeq = 0;
   private lastNarration: { eventId: number; lines: string[] } | null = null;
-  /** The latest event's sound effect, sent with STATE (memory only: a restart just has none). */
+  /** The latest sound effect (an event's, or a roll's), sent with STATE (memory only: a restart just has none). */
   private cue: SoundCue | null = null;
   /** Goes up with every new cue (setCue), so the big screen plays a roll's cue, which bumps no eventId. */
   private cueSeq = 0;
@@ -196,7 +196,8 @@ export class DungeonRoom {
   private phaseCardTimer: ReturnType<typeof setTimeout> | null = null;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
-  /** A warrior's roll in its beat (memory only: a restart drops it; its use was already spent). Shares lockTimer. */
+  /** A d20 in its beat: a warrior's roll or a correct lock's crit die. Memory only, like pendingLock: a restart drops it
+   * (a warrior's use stays spent; a crit team locks again). Shares lockTimer. */
   private pendingRoll: PendingRoll | null = null;
   /** The beat of a revealed lock or a roll, or a boss miss's red tile. A stale one may be left behind: whether the
    * host revealed a lock is pendingLock.revealing, never this. */
@@ -1756,6 +1757,7 @@ export class DungeonRoom {
     this.pendingRoll = { teamId, questionId, value, kind };
     console.log(JSON.stringify({ event: "roll", kind, value }));
     this.setCue("roll");
+    if (this.lockTimer) clearTimeout(this.lockTimer);
     this.lockTimer = setTimeout(() => this.resolveRoll(), BEAT_MS);
   }
 

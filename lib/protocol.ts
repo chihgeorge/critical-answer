@@ -209,8 +209,8 @@ export type ServerMessage =
       pendingRoll: PendingRoll | null;
       /** Counts judgments (and the start); NARRATION carries the id it belongs to. */
       eventId: number;
-      /** The sound effect for event `eventId` (the big screen plays it once, when eventId goes up).
-       * Absent before any event, and after a server restart. */
+      /** The latest sound effect (an event's, or a roll's): the big screen plays it once, when cueSeq goes up.
+       * Absent before any cue, and after a server restart. */
       cue?: SoundCue;
       /** Goes up each time the room sets a new cue: the big screen plays `cue` then (a roll's cue is not an event). Absent from older servers. */
       cueSeq?: number;
