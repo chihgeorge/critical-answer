@@ -55,10 +55,18 @@ const CLASS_ATTACKS: Record<ClassId, string> = {
   thief: "用匕首、飛刀和暗處一刺攻擊，不用法術；不要寫「偷襲」，那是另一個技能",
 };
 
+/** A natural 20 or 1 behind the hit (dnd design E3): the result line itself says it, no extra line. */
+function describeRoll(e: NarrationEvent): string {
+  if (!("roll" in e) || !e.roll) return "";
+  return e.roll.value === 20
+    ? "\n這一擊擲出 20，是大成功，獎勵多拿一半。第一行要提到大成功。"
+    : "\n這一擊擲出 1，是大失敗，但還是打中了，分數照拿。第一行用好笑的方式說手滑了，但還是打中。";
+}
+
 function describe(e: NarrationEvent): string {
   const cls = "classId" in e && e.classId ? `\n隊伍${q(e.team)}的職業是${CLASS_LABELS[e.classId]}，${CLASS_ATTACKS[e.classId]}。` : "";
   const next = e.type !== "epilogue" && e.next ? `\n接下來輪到隊伍${q(e.next.team)}，他們要面對${e.next.boss ? "首領" : "怪物"}${q(e.next.monster)}。` : "";
-  return describeEvent(e) + cls + next;
+  return describeEvent(e) + describeRoll(e) + cls + next;
 }
 
 function describeEvent(e: NarrationEvent): string {

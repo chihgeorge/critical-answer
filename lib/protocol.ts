@@ -164,11 +164,13 @@ export type ClientMessage =
    * the host judged that attempt) is dropped, like HOST_JUDGE. Optional so a phone on an older build still sends. */
   | { type: "TEAM_SUBMIT_TEXT"; questionId: string; text: string; eventId?: number };
 
-/** The warrior's d20, rolled and shown before it is judged (the beat, like a lock's). */
+/** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, or the crit die
+ * after a correct lock (20 is a critical hit, 1 a fumble). Absent from an older server: a warrior's. */
 export interface PendingRoll {
   teamId: string;
   questionId: string;
   value: number;
+  kind?: "warrior" | "crit";
 }
 
 export type ServerErrorCode =
@@ -187,7 +189,7 @@ export type ServerErrorCode =
   | "invalid_action";
 
 /** One per kind of event: the big screen's sound effect for it (lib/sfx.ts). */
-export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill";
+export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill" | "roll" | "crit" | "fumble";
 
 export type ServerMessage =
   /** `replay`: this room has played a game, so the host page leaves 開始前播放玩法說明 unchecked (eng D5). */
@@ -203,13 +205,15 @@ export type ServerMessage =
       reveal: AnswerReveal | null;
       /** A lock being held for the reveal beat before it is judged (phone-answering.md E2). */
       pendingLock: LockedOption | null;
-      /** A warrior's roll being held for the beat before it is judged (class-abilities.md R2). */
+      /** A d20 being held for the beat before it is judged: a warrior's (class-abilities.md R2) or a correct lock's crit die. */
       pendingRoll: PendingRoll | null;
       /** Counts judgments (and the start); NARRATION carries the id it belongs to. */
       eventId: number;
-      /** The sound effect for event `eventId` (the big screen plays it once, when eventId goes up).
-       * Absent before any event, and after a server restart. */
+      /** The latest sound effect (an event's, or a roll's): the big screen plays it once, when cueSeq goes up.
+       * Absent before any cue, and after a server restart. */
       cue?: SoundCue;
+      /** Goes up each time the room sets a new cue: the big screen plays `cue` then (a roll's cue is not an event). Absent from older servers. */
+      cueSeq?: number;
       /** The boss's phase card is up: `question` is null until the host's 下一題 (docs/designs/boss-phases.md),
        * so the card carries the boss to draw. */
       phaseCard?: { monster: PublicQuestion["monster"] };

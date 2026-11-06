@@ -62,7 +62,7 @@ Before the first question, every player knows:
   | Page | Picture | Big text | Owl line |
   |---|---|---|---|
   | 1 | `TurnRibbon` 「▼ 輪到：{first team's name}」, `hero` sprite facing a `slime` | 各隊輪流上陣，輪到誰，怪物就找誰 | 冒險者們，先聽我說規則……主持人會唸題目。 |
-  | 2 | Two small phones: `McOption` A–D with one selected and an `ok` 「鎖定答案」 button; a text box and 「送出」 | 選擇題：點選、按鎖定；填空題：打字，主持人判 | 題目會出現在大螢幕，答案用輪到的那隊手機送出。 |
+  | 2 | Two small phones: `McOption` A–D with one selected and an `ok` 「鎖定答案」 button; a text box and 「送出」 | 選擇題＝攻擊，答對擲暴擊骰；填空題打字作答 | 答對選擇題會擲骰子，擲到 20 就是大成功！ |
   | 3 | `slime`, the ✕ 答錯 label, `retry` 「重答」 and `flee` 「逃跑」 buttons with a caption under each | 答錯可以重答，或逃跑換一題簡單一點的 | 答錯別慌！可以再試一次，或逃跑換題，怪物還在原地等你。 |
   | 4 | `slime` → a dish (only when the bank has cuisine), the `door` (首領房), the `crown` | 打倒首領會結束冒險，但分數最高的隊伍才是冠軍 | 準備好了嗎？主持人再按一次 ▶，冒險開始！ |
 

@@ -84,7 +84,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     body = (
       <div className="px-bar mt-1 flex items-center gap-3" role="status">
         <D20 value={roll.value} size={54} />
-        <span className="text-[20px]">擲出 {roll.value}！看大螢幕 ▶</span>
+        <span className="text-[20px]">{roll.kind === "crit" ? `答對！暴擊骰擲出 ${roll.value}，看大螢幕 ▶` : roll.value === 20 && !!q?.options ? "擲出 20 大成功！看大螢幕 ▶" : `擲出 ${roll.value}！看大螢幕 ▶`}</span>
       </div>
     );
   } else if (me?.classId === "thief" && me.sneakArmed) {
@@ -157,7 +157,8 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
   // question (after 重答, which bumps eventId) never looks like it is still in flight.
   const [locking, setLocking] = useState<{ qid: string; eventId: number } | null>(null);
   const [lockFailed, setLockFailed] = useState(false);
-  const inFlight = !lock && !wrong && locking?.qid === q.id && locking.eventId === game.eventId;
+  // Not while the crit die rolls: the lock has landed, and the judgment that moves eventId comes after the die.
+  const inFlight = !lock && !wrong && !rolling && locking?.qid === q.id && locking.eventId === game.eventId;
   useEffect(() => {
     if (!inFlight) return;
     const id = setTimeout(() => {

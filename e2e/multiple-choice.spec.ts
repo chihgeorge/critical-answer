@@ -125,8 +125,9 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
   await team.getByRole("button", { name: "綠色" }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  await expect(wall(green)).toHaveAttribute("data-look", "ok");
-  await expect(team.getByText(/答對了！＋10 分/)).toBeVisible();
+  // Judged after the reveal beat and the crit die (2 s each); a natural 20 adds half the reward.
+  await expect(wall(green)).toHaveAttribute("data-look", "ok", { timeout: 10_000 });
+  await expect(team.getByText(/答對了！＋1[05] 分/)).toBeVisible();
   // D4/D6: the reveal keeps the answered question, though the room has already dealt the next one.
   await expect(question).toBeVisible();
   await expect(host.getByTestId("host-reveal")).toContainText("綠色");
@@ -251,7 +252,7 @@ test("phone answering: when the game ends, our own 答對了 panel gives way to 
   await team.getByRole("button", { name: /綠色/ }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  await expect(team.getByText(/答對了！/)).toBeVisible();
+  await expect(team.getByText(/答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the crit die
 
   toPage!.send(JSON.stringify({ type: "GAME_OVER", winners: [] }));
   await expect(team.getByText("遊戲結束！")).toBeVisible();

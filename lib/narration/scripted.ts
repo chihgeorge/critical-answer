@@ -82,6 +82,32 @@ export const CLASS_VARIANTS: Record<ClassId, { correct: string[]; "boss-hit": st
   },
 };
 
+/** A natural 20 (a critical hit) or a 1 (a fumble that still hits) on the die behind a hit (event.roll): this line
+ * replaces the usual one, it is not an extra line (dnd design R1, E3). */
+export const ROLL_VARIANTS: Record<"crit" | "fumble", { correct: string[]; "boss-hit": string[] }> = {
+  crit: {
+    correct: [
+      "大成功！{team}擲出 20，一擊打飛{monster}，+{points}！",
+      "骰子停在 20！{team}的會心一擊，{monster}當場倒地，+{points}！",
+      "天選的 20！{team}暴擊{monster}，多拿一半，+{points}！",
+    ],
+    "boss-hit": [
+      "大成功！{team}擲出 20，重擊首領，只剩 {bossHp} 顆心！",
+      "20 點暴擊！{team}多打掉一顆心，首領還剩 {bossHp} 顆心！",
+    ],
+  },
+  fumble: {
+    correct: [
+      "手一滑……{team}擲出 1，還是打中了{monster}，+{points}。",
+      "骰子停在 1！{team}跌了一跤，{monster}居然還是倒了，+{points}。",
+    ],
+    "boss-hit": [
+      "擲出 1，{team}差點摔倒……還是擊中首領，剩 {bossHp} 顆心。",
+      "手一滑！{team}的攻擊歪了一下，還是打中，首領還剩 {bossHp} 顆心。",
+    ],
+  },
+};
+
 /** A correct answer that cooked its monster (event.dish, docs/designs/monster-cuisine.md). */
 export const DISH_VARIANTS = [
   "{team}答對了！{monster}被煮成了{dish}，+{points} 飽足感。",
@@ -225,6 +251,12 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "boss-phase") return fill(pick(VARIANTS["boss-phase"], "boss-phase"), { ...event, ordinal: ordinal(event.phase) });
       if (event.type === "correct" && event.entersBoss?.phase) return fill(pick(BOSS_ENTER_PHASE_VARIANTS, "boss-enter-phase"), { ...event, phase: event.entersBoss.phase });
       if (event.type === "boss-kill" && event.dish) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
+      if ((event.type === "correct" && !event.entersBoss) || event.type === "boss-hit") {
+        if (event.roll) {
+          const kind = event.roll.value === 20 ? "crit" : "fumble";
+          return fill(pick(ROLL_VARIANTS[kind][event.type], `${kind}-${event.type}`), event);
+        }
+      }
       if (event.type === "correct" && event.dish && !event.entersBoss) return fill(pick(DISH_VARIANTS, "dish"), event);
       const bossEnter = event.type === "correct" && event.entersBoss;
       if (!bossEnter && (event.type === "correct" || event.type === "boss-hit") && event.classId) {

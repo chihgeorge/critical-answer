@@ -306,7 +306,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
         loading={!held && isPending(eventId, narration)}
         lines={held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
       />
-      {pendingRoll && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} />}
+      {pendingRoll && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} kind={pendingRoll.kind ?? "warrior"} critable={!!question?.options} />}
     </>
   );
 }
@@ -576,11 +576,15 @@ export default function ScreenPage() {
           if (msg.intro && msg.intro.page !== introSpoken.current) speak([INTRO_PAGE_TEXT[msg.intro.page - 1]?.owl ?? ""]);
           introSpoken.current = msg.intro?.page ?? null;
           if (narrationBaseline.current === null) narrationBaseline.current = msg.eventId;
-          // A new event: play its effect once (only while the 🎵 music is on, see playCue).
-          if (sfxSeen.current === null) sfxSeen.current = msg.eventId;
-          else if (msg.eventId > sfxSeen.current) {
-            sfxSeen.current = msg.eventId;
-            if (msg.cue) bgm.current?.playCue(SFX[msg.cue]);
+          // A new cue: play it once (only while the 🎵 music is on, see playCue). cueSeq counts cues, a roll's too;
+          // an older server has none, and its cues came only with a new eventId.
+          {
+            const seq = msg.cueSeq ?? msg.eventId;
+            if (sfxSeen.current === null) sfxSeen.current = seq;
+            else if (seq > sfxSeen.current) {
+              sfxSeen.current = seq;
+              if (msg.cue) bgm.current?.playCue(SFX[msg.cue]);
+            }
           }
           break;
         case "NARRATION":

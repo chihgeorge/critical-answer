@@ -2,6 +2,21 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.34.0.0] - 2026-11-06
+
+**Deploy note:** reload every open big screen after this release deploys. A big screen from before this release has no sound for the new 20 and 1 results, and it can show a correct answer's crit die as a warrior roll that missed.
+
+### Added
+- A correct multiple-choice answer now rolls a d20 crit die. After the host reveals a right answer, the big screen shows the die for 2 s. On a 20 (大成功) the team gets half its reward again, and in the boss room the boss loses one more heart. On a 1 (大失敗) the answer still counts, with a fumble line and sound. The 4d20 boss-kill bonus does not change.
+- The die has sounds on the big screen: a roll, a rising run for a 20 and a slide down for a 1.
+- The scripted narrator has its own lines for a 20 and a 1, and the AI narrator is told about them.
+- A warrior's 20 on a multiple-choice question is a crit too: it pays half again, and the big screen and the phone say 大成功.
+- How-to-play page 2 explains the crit die.
+
+### Changed
+- A correct multiple-choice answer now takes about 4 s before it is scored: 2 s for the reveal, then 2 s for the die. The phone shows the number it rolled.
+- A team whose phone closes during the die keeps its right answer. It shows offline once the die lands.
+
 ## [0.33.2.0] - 2026-11-06
 
 ### Fixed
