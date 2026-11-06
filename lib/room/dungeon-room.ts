@@ -128,7 +128,6 @@ function roundActivity(at: number, idleMs: number): number {
 }
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Shallow snapshot validation: a saved pendingWrong must name a team and the question it faces now, or it pins the turn forever. */
 /** Checks saved by v0.35.0.0 under its `${questionId}:${teamId}` keys, rewritten to checkKey's form. */
 function restoredChecks(g: GameState): Pick<GameState, "checks"> | Record<string, never> {
   if (!g.checks) return {};
@@ -154,6 +153,7 @@ function lostCritOf(g: GameState): { teamId: string; questionId: string } | null
   return null;
 }
 
+/** Shallow snapshot validation: a saved pendingWrong must name a team and the question it faces now, or it pins the turn forever. */
 function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
   const p = g.pendingWrong;
   const team = p ? g.teams.find((t) => t?.id === p.teamId) : undefined;
