@@ -9,7 +9,7 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
-import { CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, type ClassId } from "@/lib/game-state";
+import { CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -84,7 +84,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     body = (
       <div className="px-bar mt-1 flex items-center gap-3" role="status">
         <D20 value={roll.value} size={54} />
-        <span className="text-[20px]">{roll.kind === "crit" ? `答對！暴擊骰擲出 ${roll.value}，看大螢幕 ▶` : roll.value === 20 && !!q?.options ? "擲出 20 大成功！看大螢幕 ▶" : `擲出 ${roll.value}！看大螢幕 ▶`}</span>
+        <span className="text-[20px]">{roll.kind === "crit" ? `答對！暴擊骰擲出 ${roll.value}，看大螢幕 ▶` : roll.kind === "check" ? `說服檢定擲出 ${roll.value}，看大螢幕 ▶` : roll.value === 20 && !!q?.options ? "擲出 20 大成功！看大螢幕 ▶" : `擲出 ${roll.value}！看大螢幕 ▶`}</span>
       </div>
     );
   } else if (me?.classId === "thief" && me.sneakArmed) {
@@ -102,7 +102,8 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     );
   } else if (!ready) {
     return null;
-  } else if (me.classId === "warrior") {
+  } else if (me.classId === "warrior" && !(q.options === undefined && game.view.checks !== undefined && !game.view.checks[checkKey(q.id, teamId)])) {
+    // On a fill-in question the warrior rolls only after its persuasion check (dnd design R2).
     body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
   } else if (me.classId === "thief") {
     body = button("🗝️", "偷襲：這題答對加倍", `${scoreName(game.cuisine)}、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
@@ -112,7 +113,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
       setCast({ qid: q.id, eventId: game.eventId, before: gone.length });
       use();
     });
-  } else if (me.classId === "mage" && !q.options && game.view.mageHints[q.id] === undefined) {
+  } else if (me.classId === "mage" && !q.options && game.view.mageHints[q.id] === undefined && game.view.checks?.[checkKey(q.id, teamId)]?.hint === undefined) {
     // The room refused this question (no_hint): a 1-character answer has no first character to give.
     if (noHint) return <div className="px-bar mt-1 !text-[17px]" role="status">🔮 這題答案太短，不能看第一個字・剩 {me.abilityUses} 次</div>;
     body = button("🔮", "看答案第一個字", `大家都看得到・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
@@ -280,6 +281,9 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
   const wrong = game.view.pendingWrong?.teamId === teamId && game.view.pendingWrong.optionIndex === null;
   const me = game.view.teams.find((t) => t.id === teamId);
   const canPray = wrong && game.view.awaitingPrayer === teamId;
+  // Persuasion check (dnd design R6): the box stays locked until this team's check is written. An older server has no checks.
+  const check = game.view.checks?.[checkKey(q.id, teamId)];
+  const needCheck = game.view.checks !== undefined && !check;
 
   return (
     <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
@@ -305,11 +309,29 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
             </PixelButton>
           </div>
         </>
+      ) : needCheck && !rolling && sent === null ? (
+        <PixelButton
+          variant="ok"
+          data-testid="roll-check"
+          className="!m-0 mt-1 flex !min-h-[72px] flex-col !text-[23px]"
+          disabled={offline}
+          onClick={() => send({ type: "TEAM_ROLL_CHECK", questionId: q.id, eventId: game.eventId })}
+        >
+          🎲 擲骰說服
+          <small className="text-[13px]">過了 DC，大螢幕給答案第一個字</small>
+        </PixelButton>
       ) : sent !== null ? (
         <div className="px-bar mt-1 [overflow-wrap:anywhere]" role="status" data-testid="typed-answer-sent">
           已送出：{sent}・等主持人判
         </div>
       ) : (
+        <>
+        {check && (
+          <div className="px-bar mt-1 !text-[17px]" role="status" data-testid="check-result">
+            🗣️ {check.value === 20 ? "說服成功！" : check.value === 1 ? "說服失敗……答對只拿一半" : check.passed ? (check.hint === undefined ? "過了！答案太短，沒有提示" : "過了！看提示") : "沒過，直接答吧"}
+          </div>
+        )}
+        {check?.hint !== undefined && <MageHint hint={check.hint} testId="check-hint" />}
         <form
           className="flex flex-col gap-2"
           onSubmit={(e) => {
@@ -327,14 +349,15 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
             value={text}
             onChange={(e) => setText(e.target.value)}
             maxLength={MAX_TYPED_ANSWER}
-            disabled={inFlight || rolling}
+            disabled={inFlight || rolling || needCheck}
             autoComplete="off"
           />
-          <PixelButton type="submit" variant="ok" disabled={!cleanTypedAnswer(text) || inFlight || rolling || offline} className="!m-0 !min-h-[62px] !text-[23px]">
+          <PixelButton type="submit" variant="ok" disabled={!cleanTypedAnswer(text) || inFlight || rolling || needCheck || offline} className="!m-0 !min-h-[62px] !text-[23px]">
             {inFlight ? "送出中…" : "送出"}
           </PixelButton>
           {failed && !inFlight && <div className="text-center text-[14px]">沒送出，再按一次，或直接唸給主持人聽</div>}
         </form>
+        </>
       )}
       {sent === null && !inFlight && !wrong && <ClassAbility game={game} teamId={teamId} send={send} noHint={noHint} />}
     </Panel>

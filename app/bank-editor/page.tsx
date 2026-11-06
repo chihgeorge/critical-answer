@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton } from "@/components/pixel";
-import { DIFFICULTIES, DISH_FIELDS, DISH_LIMITS, MAX_BOSS_HP, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, hasCuisine, type Bank, type BankDish, type BankMonster, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { DIFFICULTIES, DISH_FIELDS, DISH_LIMITS, MAX_BOSS_HP, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, hasCuisine, textQuestionGaps, type Bank, type BankDish, type BankMonster, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { scoreName } from "@/lib/protocol";
 import type { Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
@@ -424,6 +424,15 @@ export default function BankEditorPage() {
               );
             })()
           )}
+          {(() => {
+            const gaps = textQuestionGaps(bank);
+            const lines = [...gaps.difficulties.map((d) => `難度 ${d} 沒有填空題，這一房只會出選擇題`), ...(gaps.boss ? ["首領沒有填空題，首領戰只會出選擇題"] : [])];
+            return lines.length > 0 && (
+              <div data-testid="bank-text-gaps" role="status" className="text-[15px]" style={{ color: "var(--warn)" }}>
+                {lines.map((l) => <div key={l}>⚠ {l}（不會擲說服檢定）</div>)}
+              </div>
+            );
+          })()}
           <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving || loading || readOnly}>
             {saving ? "儲存中…" : "儲存全部變更"}
           </PixelButton>

@@ -5,6 +5,13 @@ import { asTextBank } from "../lib/text-bank";
 const WORKER = "http://localhost:1996";
 const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
 
+/** 擲骰說服 on a fill-in question (dnd design R6): the answer box shows once the check's beat ends. The e2e
+ * worker fixes every d20 at 10 (playwright.config.ts E2E_DIE), so the check passes a room's DC and never wins outright. */
+export async function rollCheck(team: Page) {
+  await team.getByTestId("roll-check").click();
+  await expect(team.getByRole("textbox", { name: "你們的答案" })).toBeVisible({ timeout: 5000 });
+}
+
 /** 開始遊戲 without the how-to-play intro, the way every test but the intro's own starts a game
  * (docs/designs/how-to-play.md eng D6). The intro itself is tested in host-controls.spec.ts. */
 export async function startGame(host: Page) {

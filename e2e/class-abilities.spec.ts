@@ -59,7 +59,7 @@ test("thief: sneak attack shows on the phone and over the TV's monster until the
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
   // Judged after the reveal beat and the crit die (2 s each).
-  await expect(team.getByText(/答對了！/)).toBeVisible({ timeout: 10_000 });
+  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 });
   await expect(screen.getByText("🗝️ 偷襲！這題答對加倍")).toHaveCount(0);
   await expect(host.getByTitle("偷襲準備好了：這題答對加倍")).toHaveCount(0);
   await expect(team.getByText("盜賊・剩 1 次")).toBeVisible();

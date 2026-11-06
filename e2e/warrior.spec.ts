@@ -70,5 +70,5 @@ test("crit die: a right lock shows the die on the big screen after 公布答案,
 
   // The die's 2 s: then the room judges the answer and the overlay goes.
   await expect(overlay).toHaveCount(0, { timeout: 5000 });
-  await expect(team.getByText(/答對了！/)).toBeVisible();
+  await expect(team.getByText(/^答對了！/)).toBeVisible();
 });

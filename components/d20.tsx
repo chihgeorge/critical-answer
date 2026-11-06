@@ -28,7 +28,7 @@ const TUMBLE_MS = 1200;
 /** The big screen's 2 s over a roll (class-abilities.md D12=A): the scene dims, a big d20 tumbles and lands on the
  * room's `value`. `kind`: a warrior's roll for the answer (12+ hits), or the crit die after a correct answer (20 is a
  * critical hit, 1 a fumble, still a hit). Keyed by the caller per roll, so every roll tumbles again. */
-export function RollOverlay({ teamName, value, kind = "warrior", critable = false }: { teamName: string; value: number; kind?: "warrior" | "crit"; critable?: boolean }) {
+export function RollOverlay({ teamName, value, kind = "warrior", critable = false, bonus = 0, dc = 0 }: { teamName: string; value: number; kind?: "warrior" | "crit" | "check"; critable?: boolean; bonus?: number; dc?: number }) {
   const [face, setFace] = useState<number | null>(null);
   useEffect(() => {
     // Reduced motion: no face flicker either (the CSS tumble already stops), the die shows its value at once.
@@ -45,8 +45,16 @@ export function RollOverlay({ teamName, value, kind = "warrior", critable = fals
   }, []);
   const landed = face === null;
   const crit = kind === "crit";
-  const hit = crit ? value !== 1 : value >= WARRIOR_TARGET;
-  const result = crit
+  const check = kind === "check";
+  // A persuasion check (dnd design R6): die + class bonus against the monster's DC; a 20 wins outright, a 1 halves.
+  const hit = check ? value === 20 || (value !== 1 && value + bonus >= dc) : crit ? value !== 1 : value >= WARRIOR_TARGET;
+  const result = check
+    ? value === 20
+      ? "20！說服成功，免答"
+      : value === 1
+        ? "1……說服失敗，答對只拿一半"
+        : `${value} + ${bonus} = ${value + bonus} ${hit ? "≥" : "<"} DC ${dc}${hit ? " 過了！" : " 沒過"}`
+    : crit
     ? value === 20
       ? "20 大成功！多拿一半"
       : value === 1
@@ -60,7 +68,9 @@ export function RollOverlay({ teamName, value, kind = "warrior", critable = fals
   return (
     <div data-testid="roll-overlay" data-kind={kind} className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>
       <div className="text-[18px]">
-        <LabelChip>{crit ? `✨ ${teamName} 答對！擲暴擊骰，20 是大成功` : `⚔️ ${teamName} 擲骰！${WARRIOR_TARGET} 以上就贏`}</LabelChip>
+        <LabelChip>
+          {check ? `🗣️ ${teamName} 說服檢定：d20 + ${bonus}，DC ${dc}` : crit ? `✨ ${teamName} 答對！擲暴擊骰，20 是大成功` : `⚔️ ${teamName} 擲骰！${WARRIOR_TARGET} 以上就贏`}
+        </LabelChip>
       </div>
       <div className={landed ? undefined : "px-roll-tumble"}>
         <D20 value={landed ? value : face} size={190} />
@@ -71,7 +81,7 @@ export function RollOverlay({ teamName, value, kind = "warrior", critable = fals
         style={{
           visibility: landed ? "visible" : "hidden",
           ...(landed && !hit ? { background: "var(--danger)", color: "#fff" } : {}),
-          ...(landed && (crit || critable) && value === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : {}),
+          ...(landed && (crit || check || critable) && value === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : {}),
         }}
       >
         {result}

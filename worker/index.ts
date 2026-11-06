@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { Server, routePartykitRequest, type Connection, type WSMessage } from "partyserver";
 import { entryGate } from "../lib/gate";
 import { positiveMs } from "../lib/room/positive-ms";
-import { DungeonRoom, EXPIRE_MS } from "../lib/room/dungeon-room";
+import { DungeonRoom, EXPIRE_MS, fixedDie } from "../lib/room/dungeon-room";
 import { BankStore, IMAGE_CLEANUP_MARGIN_MS, type BankConflict, type VersionedBank } from "../lib/bank-store";
 import { bankOrFallback, handleBankApi } from "../lib/bank-api";
 import { handleBankImageApi } from "../lib/bank-image-api";
@@ -34,6 +34,8 @@ export interface Env {
   /** Secret gating the question-bank editor (wrangler secret put OWNER_KEY, >=32 random bytes). There is
    * exactly one owner, so this is a single fixed key, not a per-room trust-on-first-use token like host claims. */
   OWNER_KEY?: string;
+  /** e2e only (playwright.config.ts): every d20 lands on this value, so a test knows the roll. Never set in production. */
+  E2E_DIE?: string;
 }
 
 /** Cloudflare adapter for the question bank: one singleton Durable Object holding it, exposed over
@@ -116,6 +118,7 @@ export class Room extends Server<Env> {
       {
         idleMs: positiveMs(this.env.ROOM_IDLE_MS),
         expireMs: positiveMs(this.env.ROOM_EXPIRE_MS),
+        fixedDie: fixedDie(this.env.E2E_DIE),
         // Undefined (bankOrFallback swallowed a fetch failure) falls through to DungeonRoom's own
         // bundled-bank default: an existing room's restore() overrides this with its own saved bank
         // regardless. See docs/designs/question-bank-editor.md, decision 7.

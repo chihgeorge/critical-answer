@@ -58,6 +58,10 @@ const CLASS_ATTACKS: Record<ClassId, string> = {
 /** A natural 20 or 1 behind the hit (dnd design E3): the result line itself says it, no extra line. */
 function describeRoll(e: NarrationEvent): string {
   if (!("roll" in e) || !e.roll) return "";
+  if (e.roll.kind === "check")
+    return e.roll.value === 20
+      ? "\n這隊說服檢定擲出 20，不用答題就說服了怪物，算答對。第一行要提到說服成功。"
+      : "\n這隊說服檢定擲出 1，講錯話了，雖然答對，獎勵只拿一半。第一行用好笑的方式說他們講錯話。";
   return e.roll.value === 20
     ? "\n這一擊擲出 20，是大成功，獎勵多拿一半。第一行要提到大成功。"
     : "\n這一擊擲出 1，是大失敗，但還是打中了，分數照拿。第一行用好笑的方式說手滑了，但還是打中。";

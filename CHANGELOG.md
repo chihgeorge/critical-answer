@@ -2,6 +2,20 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.35.0.0] - 2026-11-06
+
+**Deploy note:** reload every open phone and big screen after this release deploys. A phone from before this release has no 擲骰說服 button, so the room refuses its fill-in answers until the page is reloaded.
+
+### Added
+- A fill-in question now starts with a persuasion check. Before typing, the team presses 擲骰說服 on the phone and rolls a d20 plus its class bonus (thief +4, cleric +3, mage +2, no class +1, warrior +0). The big screen shows the roll against the monster's DC: 8, 10, 12, 14 or 16 by difficulty, and 16 for the boss.
+- A pass gives the team the first character of the answer. A natural 20 wins the question outright. A natural 1 fails, and a right answer on that question pays only half its base reward.
+- The big screen has sounds for a passed and a failed check, and the narrator has lines for a 20 and a 1 on a check.
+- The bank editor warns when a difficulty or the boss has no fill-in question, because those rooms then never roll a check.
+- How-to-play page 2 explains the check.
+
+### Changed
+- A team must roll its check before it can type an answer or use the warrior's roll on a fill-in question. A mage's hint is not offered once the check has shown the first character.
+
 ## [0.34.0.0] - 2026-11-06
 
 **Deploy note:** reload every open big screen after this release deploys. A big screen from before this release has no sound for the new 20 and 1 results, and it can show a correct answer's crit die as a warrior roll that missed.

@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { textOnlyBank, startGame } from "./answer";
+import { textOnlyBank, startGame, rollCheck } from "./answer";
 
 // A cleric on a fill-in question (#106): the host's one 答錯 waits for 祈禱 / 重答 / 逃跑.
 textOnlyBank();
@@ -17,6 +17,7 @@ async function clericRoom(browser: Browser, beforeWrong?: (host: Page) => Promis
   await team.getByRole("button", { name: /牧師/ }).click();
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
+  await rollCheck(team);
   const box = team.getByRole("textbox", { name: "你們的答案" });
   await box.fill("猜錯了");
   await team.getByRole("button", { name: "送出" }).click();
@@ -152,6 +153,8 @@ test("cleric: the phone's 逃跑 in the wait deals a new question and spends not
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   await expect(question).not.toHaveText(before!);
+  // The new question is a new persuasion check before the box shows (dnd design R6).
+  await rollCheck(team);
   await expect(box).toHaveValue("");
   await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
 });

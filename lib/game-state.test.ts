@@ -28,6 +28,11 @@ import {
   rollD20,
   isClassId,
   submitText,
+  recordCheck,
+  checkTarget,
+  checkKey,
+  CHECK_DC,
+  BOSS_CHECK_DC,
   InvalidActionError,
   type ClassId,
   type GameState,
@@ -1750,5 +1755,102 @@ describe("the crit die (dnd design R4, R5)", () => {
     const fillIn = warriorRoll(g, "T0", q0(g), 20, first).outcome;
     expect(fillIn).toMatchObject({ reward: 10 });
     expect("roll" in fillIn && fillIn.roll).toBeFalsy();
+  });
+});
+
+// Value: protects=the persuasion check's rules (dnd design R6, R8, R3-7, E1-1, E1-2): bonus by class against the pool's
+// DC or the boss's 16, a natural 20 passes with no hint, a 1 fails and halves any success on the question, one roll per
+// team and question, and the record leaves with the question; fails_when=the DC or bonus is wrong, a 1 passes, the hint
+// leaks on a 20, the warrior's hit skips the half, a mage casts a second hint, or a record outlives its question;
+// seam=none; no_claim=the room's beat and broadcast (dungeon-room.test.ts)
+describe("the persuasion check (dnd design R6, R8)", () => {
+  function checkGame(classes: (ClassId | undefined)[], bossThreshold = 15, bossMaxHp = 3): GameState {
+    const teams = classes.map((c, i) => ({ id: `T${i}`, name: `Team ${i}`, ...(c ? { classId: c } : {}) }));
+    return createGame(teams, ...deck(3, 1), ["boss-q1", "boss-q2", "boss-q3"], { bossThreshold }, bossMaxHp, first);
+  }
+  const q0 = (g: GameState) => (isInBossPhase(g, "T0") ? g.boss.currentQuestionId : g.teams[0].currentQuestionId);
+  const check = (g: GameState, value: number, answer = "萬家福") => recordCheck(g, "T0", q0(g), value, answer);
+  const rec = (g: GameState) => g.checks?.[checkKey(q0(g), "T0")];
+
+  it("rolls the class bonus against the pool's DC, or the boss's", () => {
+    const g = checkGame(["thief", "warrior", undefined]);
+    expect(checkTarget(g, "T0", q0(g))).toEqual({ bonus: 4, dc: CHECK_DC[0] });
+    expect(checkTarget(g, "T1", g.teams[1].currentQuestionId)).toEqual({ bonus: 0, dc: CHECK_DC[0] });
+    expect(checkTarget(g, "T2", g.teams[2].currentQuestionId)).toEqual({ bonus: 1, dc: CHECK_DC[0] });
+    const boss = checkGame(["mage"], 0);
+    expect(checkTarget(boss, "T0", q0(boss))).toEqual({ bonus: 2, dc: BOSS_CHECK_DC });
+    expect(getSpectatorView(g).teams[0].checkTarget).toEqual({ bonus: 4, dc: CHECK_DC[0] });
+  });
+
+  it("passes at die + bonus >= DC with the first character as its hint, and fails below it", () => {
+    const g = checkGame([undefined]);
+    expect(rec(check(g, 7))).toEqual({ value: 7, bonus: 1, dc: 8, passed: true, hint: "萬" });
+    expect(rec(check(g, 6))).toEqual({ value: 6, bonus: 1, dc: 8, passed: false });
+    // R8: an answer too short to hint passes with no hint.
+    expect(rec(check(g, 15, "萬"))).toEqual({ value: 15, bonus: 1, dc: 8, passed: true });
+  });
+
+  it("a natural 20 passes with no hint even at the boss's DC; a natural 1 fails whatever the bonus", () => {
+    const boss = checkGame(["thief"], 0);
+    expect(rec(check(boss, 20))).toEqual({ value: 20, bonus: 4, dc: 16, passed: true });
+    expect(rec(check(checkGame(["thief"]), 1))).toMatchObject({ value: 1, passed: false });
+  });
+
+  it("rolls once per team and question, on its own turn and current question only", () => {
+    const g = check(checkGame([undefined, undefined]), 9);
+    expect(() => check(g, 12)).toThrow(/check_done/);
+    expect(() => recordCheck(g, "T1", g.teams[1].currentQuestionId, 9, "萬家福")).toThrow(/not_your_turn/);
+    expect(() => recordCheck(checkGame([undefined]), "T0", "not-mine", 9, "萬家福")).toThrow();
+  });
+
+  it("a natural 1 halves the success on that question, before the sneak, and marks the outcome", () => {
+    const g = check(checkGame([undefined]), 1);
+    expect(answerQuestion(g, "T0", q0(g), true).outcome).toMatchObject({ reward: 5, roll: { kind: "check", value: 1 } });
+    const sneaky = check(armSneak(checkGame(["thief"]), "T0"), 1);
+    expect(answerQuestion(sneaky, "T0", q0(sneaky), true).outcome).toMatchObject({ reward: 10 });
+    const boss = check(checkGame([undefined], 0), 1);
+    expect(answerQuestion(boss, "T0", q0(boss), true).outcome).toMatchObject({ type: "correct-boss-hit", reward: 5 });
+  });
+
+  it("a warrior's 12+ after a natural-1 check is halved too (R3-7)", () => {
+    const g = spendAbility(check(checkGame(["warrior"]), 1), "T0", "warrior");
+    expect(warriorRoll(g, "T0", q0(g), 15).outcome).toMatchObject({ reward: 5 });
+  });
+
+  it("a natural 20's correct outcome is marked as a check, not a crit, and pays the plain reward", () => {
+    const g = check(checkGame([undefined]), 20);
+    expect(answerQuestion(g, "T0", q0(g), true).outcome).toMatchObject({ reward: 10, roll: { kind: "check", value: 20 } });
+  });
+
+  it("a mage cannot cast a hint the team's own check already gave, and spends nothing", () => {
+    const g = check(checkGame(["mage"]), 9);
+    expect(() => mageHint(g, "T0", q0(g), "萬家福")).toThrow(/hint_shown/);
+    expect(g.teams[0].abilityUses).toBe(checkGame(["mage"]).teams[0].abilityUses);
+  });
+
+  it("a check after the mage's hint passes with no second copy of it", () => {
+    const g = mageHint(checkGame(["mage"]), "T0", q0(checkGame(["mage"])), "萬家福");
+    expect(rec(check(g, 9))).toEqual({ value: 9, bonus: 2, dc: 8, passed: true });
+  });
+
+  it("a question leaving play drops only its own checks, even when ids hold a colon", () => {
+    const g = check(checkGame([undefined]), 9);
+    const q = q0(g);
+    const other = { [checkKey(`${q}:x`, "T0")]: { value: 1, bonus: 0, dc: 8, passed: false } };
+    const next = answerQuestion({ ...g, checks: { ...g.checks, ...other } }, "T0", q, true).game;
+    expect(next.checks?.[checkKey(q, "T0")]).toBeUndefined();
+    expect(next.checks?.[checkKey(`${q}:x`, "T0")]).toEqual(other[checkKey(`${q}:x`, "T0")]);
+  });
+
+  it("the record stays on a retry and leaves with a correct answer or a flee; a game saved before checks still plays", () => {
+    const g = check(checkGame([undefined]), 9);
+    const q = q0(g);
+    expect(answerQuestion(g, "T0", q, false, "retry").game.checks?.[checkKey(q, "T0")]).toBeDefined();
+    expect(answerQuestion(g, "T0", q, false, "flee").game.checks?.[checkKey(q, "T0")]).toBeUndefined();
+    expect(answerQuestion(g, "T0", q, true).game.checks?.[checkKey(q, "T0")]).toBeUndefined();
+    const old: Partial<GameState> = { ...checkGame([undefined]) };
+    delete old.checks;
+    expect(answerQuestion(old as GameState, "T0", q, true).outcome).toMatchObject({ reward: 10 });
+    expect(getSpectatorView(old as GameState).checks).toEqual({});
   });
 });

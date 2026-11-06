@@ -335,6 +335,13 @@ export function bossPhaseStates(bank: Bank): { maxHp: number; questionIds: strin
   return bank.boss.phases.map((p) => ({ maxHp: p.maxHp, questionIds: p.questions.map((q) => q.id) }));
 }
 
+/** Where the persuasion check never comes up (dnd design R-E2): a pool, or the boss, that has questions but no fill-in
+ * one, so its turns are all multiple choice. Reads only the bank passed in. */
+export function textQuestionGaps(bank: Bank): { difficulties: Difficulty[]; boss: boolean } {
+  const noText = (qs: BankQuestion[]) => qs.length > 0 && !qs.some((q) => q.kind === "text");
+  return { difficulties: DIFFICULTIES.filter((d) => noText(bank.pools[d])), boss: noText(bossQuestions(bank)) };
+}
+
 /** Every question in a bank, pools 1 to 5 then boss — the "flatten the whole bank" expression every
  * whole-bank scan (allAnswers, validationError, imageKeysOf) needs, in one place. */
 export function allQuestions(bank: Bank): BankQuestion[] {

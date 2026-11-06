@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseBank, roomTemplates, hasCuisine, DISH_LIMITS, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, type MediaContent } from "./question-bank";
+import { parseBank, roomTemplates, hasCuisine, DISH_LIMITS, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, type MediaContent } from "./question-bank";
 import { BANK } from "./question-bank-data";
 import { MAX_TEAMS } from "./protocol";
 
@@ -454,5 +454,22 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     expect(monsters.every((m) => m.dish)).toBe(true);
     const answers = allQuestions(BANK).map(answerText).filter((a) => a.length >= 3);
     for (const m of monsters) for (const v of Object.values(m.dish!)) expect(answers.filter((a) => v.includes(a)), `${m.name}: ${v}`).toEqual([]);
+  });
+});
+
+// Value: protects=the bank editor names every pool and the boss where no persuasion check can come up (dnd design
+// R-E2); fails_when=an all-multiple-choice pool or boss is missed, or an empty pool or a mixed one is flagged; seam=none;
+// no_claim=the editor's rendering
+describe("textQuestionGaps", () => {
+  it("flags only pools and a boss that have questions but no fill-in one", () => {
+    expect(textQuestionGaps(parseBank(valid()))).toEqual({ difficulties: [], boss: false });
+    const mcOnly = parseBank({
+      ...valid(),
+      rooms: [{ ...valid().rooms[0], questions: [mc("a1"), mc("a2")] }],
+      boss: { ...valid().boss, questions: [mc("b1")] },
+    });
+    expect(textQuestionGaps(mcOnly)).toEqual({ difficulties: [1], boss: true });
+    const mixed = parseBank({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [mc("a1"), q("a2")] }] });
+    expect(textQuestionGaps(mixed)).toEqual({ difficulties: [], boss: false });
   });
 });

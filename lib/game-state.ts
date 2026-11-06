@@ -60,6 +60,28 @@ export const ABILITY_USES = 2;
 /** The warrior's d20 counts as a correct answer at this value or more (45%). */
 export const WARRIOR_TARGET = 12;
 
+/** A fill-in question is a persuasion check (dnd design Premise 3): d20 + the team's class bonus against the
+ * monster's DC. A team with no class adds 1. */
+export const CHECK_BONUS: Record<ClassId | "none", number> = { thief: 4, cleric: 3, mage: 2, none: 1, warrior: 0 };
+/** The DC per difficulty 1–5 (dnd design Decision 11); the boss uses difficulty 5's. */
+export const CHECK_DC = [8, 10, 12, 14, 16] as const;
+export const BOSS_CHECK_DC = 16;
+
+/** One team's persuasion check on one question (dnd design R6): `hint` is the answer's first letter or number,
+ * given on a pass that is not a natural 20 (that one wins outright) and only when the answer is long enough (R8). */
+export interface CheckRecord {
+  value: number;
+  bonus: number;
+  dc: number;
+  passed: boolean;
+  hint?: string;
+}
+
+/** Checks are kept per question and team: two teams facing one question (the boss's, or a short pool) each roll. */
+export const checkKey = (questionId: string, teamId: string) => `${questionId}:${teamId}`;
+/** Whether a checks key is some team's check on `questionId`: compared whole, as both ids may hold a colon. */
+const isCheckOn = (game: GameState, key: string, questionId: string) => game.teams.some((t) => key === checkKey(questionId, t.id));
+
 export interface Team {
   id: string;
   name: string;
@@ -185,6 +207,8 @@ export interface GameState {
   mageRemoved?: Record<string, number[]>;
   /** A mage's public hint on a fill-in question, per question id: the answer's first letter or number. */
   mageHints?: Record<string, string>;
+  /** Persuasion checks, per checkKey(questionId, teamId) (dnd design R6). Absent from a game saved before them. */
+  checks?: Record<string, CheckRecord>;
   /** A wrong answer waiting for that team's choice. The team keeps the turn meanwhile, even offline (E9). */
   pendingWrong: WrongAnswer | null;
   /** The cleric whose prayer kept this turn: it cannot pray again until the turn moves on. */
@@ -214,8 +238,9 @@ export interface WrongAnswer {
   prayed?: true;
 }
 
-/** A natural 20 or 1 on the die behind a correct answer (the crit die, or a warrior's 20): narration and the cue use it. */
-export type RollMark = { kind: "crit"; value: 20 | 1 };
+/** A natural 20 or 1 behind a correct answer: the crit die (or a warrior's 20 on a multipleChoice question), or the
+ * question's persuasion check (a 20 won it outright, a 1 halved it). Narration and the cue use it. */
+export type RollMark = { kind: "crit" | "check"; value: 20 | 1 };
 
 export type AnswerOutcome =
   | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
@@ -596,8 +621,18 @@ export function answerQuestion(
   assertPlaying(game);
   // The die behind a correct answer: a 20 adds half the base reward (and a boss hit); a 1 is only a show.
   const crit = correct && critValue === 20;
-  const rollMark: { roll?: RollMark } = correct && (critValue === 20 || critValue === 1) ? { roll: { kind: "crit", value: critValue } } : {};
+  // This team's persuasion check on this question: a natural 1 halves any success on it, a warrior's too (R3-7).
+  const check = game.checks?.[checkKey(questionId, teamId)];
+  const halved = correct && check?.value === 1;
+  const rollMark: { roll?: RollMark } =
+    correct && (critValue === 20 || critValue === 1)
+      ? { roll: { kind: "crit", value: critValue } }
+      : correct && (check?.value === 20 || check?.value === 1)
+        ? { roll: { kind: "check", value: check.value } }
+        : {};
   const critBonus = (base: number) => (crit ? Math.round(base * 0.5) : 0);
+  // R5: the half is taken from the base reward, then the sneak doubles it.
+  const baseOf = (reward: number) => (halved ? Math.round(reward * 0.5) : reward);
 
   const activeTeamId = currentTurnTeamId(game);
   if (activeTeamId === null) {
@@ -644,7 +679,7 @@ export function answerQuestion(
       const bossKilled = newHp === 0 && lastPhase;
       // The 4d20 is not raised by a crit (R4).
       const killBonus = bossKilled ? rollBossKillBonus(rng) * sneak : undefined;
-      const reward = boss.hitReward * sneak + critBonus(boss.hitReward) + (killBonus ?? 0);
+      const reward = baseOf(boss.hitReward) * sneak + critBonus(boss.hitReward) + (killBonus ?? 0);
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}) }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
@@ -706,7 +741,7 @@ export function answerQuestion(
       // The question's own difficulty: an empty, fully held or fully revealed pool deals from another one (deal()).
       const pointsAwarded = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
       const base = game.rooms[team.roomIndex].reward;
-      const reward = base * sneak + critBonus(base);
+      const reward = baseOf(base) * sneak + critBonus(base);
       // A correct answer is always revealed (D5), so the next deal from any pool must not hand it
       // back to a team who hasn't faced it yet.
       const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
@@ -756,7 +791,14 @@ export function answerQuestion(
   // a later deal of it starts clean.
   // Any team: a room short of questions can deal one question to two teams at once.
   const stillFaced = nextGame.teams.some((t) => currentQuestionIdOf(nextGame, t.id) === questionId);
-  if (!stillFaced && (questionId in nextGame.eliminated || questionId in (nextGame.mageHints ?? {}))) nextGame = { ...nextGame, ...dropEliminated(nextGame, questionId) };
+  const checked = Object.keys(nextGame.checks ?? {}).some((k) => isCheckOn(nextGame, k, questionId));
+  if (!stillFaced && (questionId in nextGame.eliminated || questionId in (nextGame.mageHints ?? {}) || checked)) nextGame = { ...nextGame, ...dropEliminated(nextGame, questionId) };
+  // This team's check goes once the question is answered or the team has moved off it; a retry keeps it (R6).
+  else if (checkKey(questionId, teamId) in (nextGame.checks ?? {}) && (correct || currentQuestionIdOf(nextGame, teamId) !== questionId)) {
+    const checks = { ...nextGame.checks };
+    delete checks[checkKey(questionId, teamId)];
+    nextGame = { ...nextGame, checks };
+  }
   // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
   const here = { ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) };
   // A prayed wrong lock keeps the turn (class-abilities.md PR 2): the cleric answers again at once.
@@ -827,10 +869,37 @@ export function mageHint(game: GameState, teamId: string, questionId: string, an
   assertAbilityTurn(game, teamId, "mage");
   assertCurrentQuestion(game, teamId, questionId);
   if (game.mageHints?.[questionId] !== undefined) throw new InvalidActionError("hint_shown");
+  // The team's own check already showed the first character (dnd design E1-1): nothing left to give, nothing spent.
+  if (game.checks?.[checkKey(questionId, teamId)]?.hint !== undefined) throw new InvalidActionError("hint_shown");
   const hint = firstMeaningfulChar(answer);
   if (hint === null) throw new InvalidActionError("no_hint");
   const spent = spendAbility(game, teamId, "mage");
   return { ...spent, mageHints: { ...game.mageHints, [questionId]: hint } };
+}
+
+/** The bonus and DC a team rolls with on `questionId` (dnd design Premise 3): its class bonus, against its question's
+ * difficulty (the pool it was dealt from, like answerQuestion's points), or the boss's 16. */
+export function checkTarget(game: GameState, teamId: string, questionId: string): { bonus: number; dc: number } {
+  const team = getTeam(game, teamId);
+  const bonus = CHECK_BONUS[team.classId ?? "none"];
+  if (isInBossPhase(game, teamId)) return { bonus, dc: BOSS_CHECK_DC };
+  const difficulty = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
+  return { bonus, dc: CHECK_DC[difficulty - 1] };
+}
+
+/** Writes the team's persuasion check on its current fill-in question (dnd design R6, R8). A natural 20 passes, a 1
+ * fails; otherwise die + bonus >= DC passes. Not a judgment: the turn stays, and a natural 20's win is the room's to apply. */
+export function recordCheck(game: GameState, teamId: string, questionId: string, value: number, answer: string): GameState {
+  assertPlaying(game);
+  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError("not_your_turn");
+  assertCurrentQuestion(game, teamId, questionId);
+  if (game.checks?.[checkKey(questionId, teamId)]) throw new InvalidActionError("check_done");
+  const { bonus, dc } = checkTarget(game, teamId, questionId);
+  const passed = value === 20 || (value !== 1 && value + bonus >= dc);
+  // A mage's hint already showed the first character: the check gives no second copy (R8).
+  const hint = passed && value !== 20 && game.mageHints?.[questionId] === undefined ? firstMeaningfulChar(answer) : null;
+  const record: CheckRecord = { value, bonus, dc, passed, ...(hint !== null ? { hint } : {}) };
+  return { ...game, checks: { ...game.checks, [checkKey(questionId, teamId)]: record } };
 }
 
 /** The thief arms a Sneak Attack for its answer to this question, spending the use at once (D16). */
@@ -925,10 +994,11 @@ function ate(team: Team, dish: string | undefined): Pick<Team, "dishes"> | objec
   return dish ? { dishes: [...(team.dishes ?? []), dish] } : {};
 }
 
-/** `eliminated`, `mageRemoved` and `mageHints` without `questionId`: it left play, and a later deal of it starts clean. */
-function dropEliminated(game: GameState, questionId: string): Pick<GameState, "eliminated" | "mageRemoved" | "mageHints"> {
+/** `eliminated`, `mageRemoved`, `mageHints` and every team's check without `questionId`: it left play, and a later deal of it starts clean. */
+function dropEliminated(game: GameState, questionId: string): Pick<GameState, "eliminated" | "mageRemoved" | "mageHints" | "checks"> {
   const drop = <T>(m: Record<string, T>) => Object.fromEntries(Object.entries(m).filter(([id]) => id !== questionId));
-  return { eliminated: drop(game.eliminated), mageRemoved: drop(game.mageRemoved ?? {}), mageHints: drop(game.mageHints ?? {}) };
+  const checks = Object.fromEntries(Object.entries(game.checks ?? {}).filter(([k]) => !isCheckOn(game, k, questionId)));
+  return { eliminated: drop(game.eliminated), mageRemoved: drop(game.mageRemoved ?? {}), mageHints: drop(game.mageHints ?? {}), checks };
 }
 
 /**
@@ -1056,6 +1126,8 @@ export interface SpectatorView {
     /** A cleric that could pray if judged wrong now (canPrayBeforeJudge): the host's one 答錯 key waits for
      * its choice. */
     mayPray?: true;
+    /** The class bonus and DC this team's persuasion check rolls with on its current question (checkTarget). */
+    checkTarget?: { bonus: number; dc: number };
   }[];
   bossHp: number;
   bossMaxHp: number;
@@ -1069,6 +1141,8 @@ export interface SpectatorView {
   mageRemoved: Record<string, number[]>;
   /** The mage's first-character hint per fill-in question id (mageHint). */
   mageHints: Record<string, string>;
+  /** Persuasion checks per checkKey(questionId, teamId), written once their beat ends (dnd design R6). Absent from an older server. */
+  checks?: Record<string, CheckRecord>;
   pendingWrong: WrongAnswer | null;
   /** The cleric whose wrong lock waits for its 祈禱 (canPray), or null. */
   awaitingPrayer: string | null;
@@ -1092,6 +1166,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
       typedAnswer: t.typedAnswer ?? null,
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
+      checkTarget: checkTarget(game, t.id, t.currentQuestionId),
     })),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
@@ -1101,6 +1176,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
     eliminated: game.eliminated,
     mageRemoved: game.mageRemoved ?? {},
     mageHints: game.mageHints ?? {},
+    checks: game.checks ?? {},
     pendingWrong: game.pendingWrong,
     awaitingPrayer: game.pendingWrong && canPray(game, game.pendingWrong.teamId) ? game.pendingWrong.teamId : null,
   };
