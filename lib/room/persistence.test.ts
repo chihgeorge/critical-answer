@@ -387,6 +387,56 @@ describe("restoring after a restart", () => {
     expect(third.room.game!.teams.find((t) => t.id === t0)!.score).toBe(after.score);
   });
 
+  // Value: protects=the lost natural 20 survives another team playing first (review finding); fails_when=only the
+  // crit team's own rejoin applies it; no_claim=more than two teams.
+  it("a lost natural 20 still wins when another team's phone comes back and plays first", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[saved.game.currentTurnIndex];
+    const other = t0 === T1 ? T2 : T1;
+    const q = saved.game.teams.find((t: any) => t.id === t0).currentQuestionId;
+    saved.game.checks = { [checkKey(q, t0)]: { value: 20, bonus: 0, dc: 8, passed: true } };
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    const host = makeConn("host2");
+    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
+    if (other === T1) rejoin(second.room, T1, TEAM_KEY, "a2");
+    else rejoin(second.room, T2, TEAM_KEY + "2", "b2");
+    expect(currentTurnTeamId(second.room.game!)).toBe(other);
+    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN }); // asks again now that someone is on turn
+    judgeCorrect(second.room, host, other);
+    expect(currentTurnTeamId(second.room.game!)).toBe(other); // the crit team's phone is still away
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
+    if (t0 === T1) rejoin(second.room, T1, TEAM_KEY, "a3");
+    else rejoin(second.room, T2, TEAM_KEY + "2", "b3");
+    // The turn passed it while its phone was away: it wins when the turn order reaches it again.
+    send(second.room, host, { type: "HOST_NEXT", eventId: (second.room as any).eventSeq });
+    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
+    judgeCorrect(second.room, host, other);
+    // The turn now reaches the crit team, but the win waits for the answer reveal to close (nobody plays under it).
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
+    send(second.room, host, { type: "HOST_NEXT", eventId: (second.room as any).eventSeq });
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
+  });
+
+  // Value: protects=a check rolled under v0.35.0.0's `q:t` key still counts after the deploy; fails_when=restore keeps
+  // the old key, so the team may roll again and the record is never dropped.
+  it("a check saved under the old question:team key is read back under the new key", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const q = saved.game.teams.find((t: any) => t.id === T1).currentQuestionId;
+    saved.game.checks = { [`${q}:${T1}`]: { value: 3, bonus: 0, dc: 8, passed: false } };
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    expect(second.room.game!.checks).toEqual({ [checkKey(q, T1)]: { value: 3, bonus: 0, dc: 8, passed: false } });
+  });
+
   it("a corrupt snapshot with a null team entry doesn't crash restore (adversarial review, 2026-09-21)", async () => {
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);

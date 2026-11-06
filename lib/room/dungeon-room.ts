@@ -129,6 +129,31 @@ function roundActivity(at: number, idleMs: number): number {
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Shallow snapshot validation: a saved pendingWrong must name a team and the question it faces now, or it pins the turn forever. */
+/** Checks saved by v0.35.0.0 under its `${questionId}:${teamId}` keys, rewritten to checkKey's form. */
+function restoredChecks(g: GameState): Pick<GameState, "checks"> | Record<string, never> {
+  if (!g.checks) return {};
+  const ids = g.teams.flatMap((t) => (t ? [t.id] : []));
+  const entries = Object.entries(g.checks).map(([k, v]) => {
+    if (k.startsWith("[")) return [k, v] as const;
+    const id = ids.find((t) => k.endsWith(`:${t}`));
+    return [id === undefined ? k : checkKey(k.slice(0, -id.length - 1), id), v] as const;
+  });
+  return { checks: Object.fromEntries(entries) };
+}
+
+/** A natural 20 rolled on the turn team's current question and never judged: a restart cut off its beat (R7). Its win
+ * moves the team on and drops the record, so one still there was never applied. */
+function lostCritOf(g: GameState): { teamId: string; questionId: string } | null {
+  if (g.phase !== "playing") return null;
+  // Only the team on turn rolls, so at most one team can hold one (the turn index may point past it at an offline team).
+  for (const team of g.teams) {
+    if (!team || team.typedAnswer !== undefined) continue;
+    const questionId = currentQuestionIdOf(g, team.id);
+    if (g.checks?.[checkKey(questionId, team.id)]?.value === 20) return { teamId: team.id, questionId };
+  }
+  return null;
+}
+
 function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
   const p = g.pendingWrong;
   const team = p ? g.teams.find((t) => t?.id === p.teamId) : undefined;
@@ -210,6 +235,8 @@ export class DungeonRoom {
   /** A d20 in its beat: a warrior's roll or a correct lock's crit die. Memory only, like pendingLock: a restart drops it
    * (a warrior's use stays spent; a crit team locks again). Shares lockTimer. */
   private pendingRoll: PendingRoll | null = null;
+  /** A natural 20 whose beat a restart cut off (R7), applied by applyLostCrit. In memory only: restore() sets it. */
+  private lostCrit: { teamId: string; questionId: string } | null = null;
   /** The beat of a revealed lock or a roll, or a boss miss's red tile. A stale one may be left behind: whether the
    * host revealed a lock is pendingLock.revealing, never this. */
   private lockTimer: ReturnType<typeof setTimeout> | null = null;
@@ -523,7 +550,7 @@ export class DungeonRoom {
       return "discarded";
     }
     this.roomEpoch = s.roomEpoch;
-    this.game = s.game && { ...s.game, pendingWrong: restoredPendingWrong(s.game) };
+    this.game = s.game && { ...s.game, pendingWrong: restoredPendingWrong(s.game), ...restoredChecks(s.game) };
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
     this.teamKeys = new Map(s.teamKeys);
@@ -559,6 +586,11 @@ export class DungeonRoom {
     console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
     // A restart loses the beat that resolves a wrong boss lock.
     this.armBossMiss();
+    try {
+      this.lostCrit = this.game ? lostCritOf(this.game) : null;
+    } catch {
+      this.lostCrit = null; // a damaged save (a null team) restores without it
+    }
     // The story that ends a finished game is written by a promise that a restart loses: ask for it again.
     if (this.game?.phase === "finished" && !this.epilogue) {
       this.epilogueRequested = true;
@@ -714,6 +746,7 @@ export class DungeonRoom {
   }
 
   private broadcastState() {
+    if (this.lostCrit && this.applyLostCrit()) return;
     this.broadcast(this.snapshot());
     // The answer goes only to connections that hold the host token, never to broadcast.
     for (const conn of this.hostConns.values()) this.sendAnswer(conn);
@@ -1100,7 +1133,6 @@ export class DungeonRoom {
     }
     this.connTeam.set(conn.id, teamId);
     if (this.game) this.game = setTeamOnline(this.game, teamId, true);
-    this.applyLostCrit();
     return true;
   }
 
@@ -1546,6 +1578,8 @@ export class DungeonRoom {
   private judge(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: { kind: "warrior" | "crit"; value: number }) {
     const prev = this.game;
     if (!prev) return;
+    // Any ruling on the team (the host's, or the lost natural 20 itself) settles its lost natural 20.
+    if (this.lostCrit?.teamId === teamId) this.lostCrit = null;
     // Captured before `this.game` reassigns to the post-judgment state below: the monster name
     // and the reveal must describe the question that was JUST answered, not whatever
     // currentQuestion() would return afterwards (the next one) — a trap this file's own
@@ -1826,18 +1860,28 @@ export class DungeonRoom {
     this.broadcastState();
   }
 
-  /** A restart during a natural 20's beat lost the win the beat applies (R7). The record is saved, so the win is applied
-   * when a phone comes back (a judgment needs a team online). A natural 20 still on the turn team's current question was
-   * never judged, since its win moves the team on; during a live beat pendingRoll is set and the beat applies it. */
-  private applyLostCrit() {
+  /** A restart during a natural 20's beat lost the win the beat applies (R7). restore() marks it, and the next STATE
+   * with its team on turn applies it (a judgment needs a team online, so not restore itself). The host judging that
+   * team first, or the question leaving play, cancels it. Returns whether it judged (judge sent the STATE). */
+  private applyLostCrit(): boolean {
+    const lost = this.lostCrit;
     const game = this.game;
-    if (game?.phase !== "playing" || game.pendingWrong || this.pendingRoll || this.pendingLock) return;
-    const teamId = currentTurnTeamId(game);
-    if (!teamId) return;
-    const questionId = currentQuestionIdOf(game, teamId);
-    if (game.checks?.[checkKey(questionId, teamId)]?.value !== 20) return;
-    if (game.teams.find((t) => t.id === teamId)?.typedAnswer !== undefined) return;
-    this.judge(teamId, questionId, true, "retry");
+    if (!lost || game?.phase !== "playing") return false;
+    if (game.pendingWrong || this.pendingRoll || this.pendingLock || this.paused()) return false;
+    const team = game.teams.find((t) => t?.id === lost.teamId);
+    if (!team || currentQuestionIdOf(game, lost.teamId) !== lost.questionId || game.checks?.[checkKey(lost.questionId, lost.teamId)]?.value !== 20) {
+      this.lostCrit = null;
+      return false;
+    }
+    if (currentTurnTeamId(game) !== lost.teamId || team.typedAnswer !== undefined) return false;
+    this.lostCrit = null;
+    try {
+      this.judge(lost.teamId, lost.questionId, true, "retry");
+    } catch (err) {
+      console.error(JSON.stringify({ event: "lost_crit_failed", error: String(err) }));
+      return false;
+    }
+    return true;
   }
 
   /** 擲骰說服 (dnd design R-E1, R-E4): the team on turn rolls its check on its own fill-in question, once. */
