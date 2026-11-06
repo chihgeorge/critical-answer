@@ -4,7 +4,7 @@ import { DungeonRoom } from "./dungeon-room";
 import { BANK_KEY, SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { BANK } from "../question-bank-data";
-import { currentTurnTeamId, getSpectatorView } from "../game-state";
+import { checkKey, currentTurnTeamId, getSpectatorView } from "../game-state";
 // Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
 vi.mock("../question-bank-data", async (actual) => {
   const { asTextBank } = await import("../text-bank");
@@ -346,12 +346,16 @@ describe("restoring after a restart", () => {
     await first.room.restore();
     const t0 = first.room.game!.turnOrder[0];
     const conn = t0 === T1 ? rejoin(first.room, T1, TEAM_KEY, "a2") : rejoin(first.room, T2, TEAM_KEY + "2", "b2");
+    // The persuasion check comes first (dnd design R6); its record is saved with the game, so a restart cannot reroll it.
+    const key = checkKey(first.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId, t0);
+    first.room.game = { ...first.room.game!, checks: { [key]: { value: 3, bonus: 0, dc: 8, passed: false } } };
     send(first.room, conn, { type: "TEAM_SUBMIT_TEXT", questionId: first.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId, text: "Don't" });
 
     const second = makeRoom(storage);
     expect(await second.room.restore()).toBe("restored");
     expect(second.room.game!.teams.find((t) => t.id === t0)!.typedAnswer).toBe("Don't");
     expect(currentTurnTeamId(second.room.game!)).toBe(t0); // every phone is offline after a restart
+    expect(second.room.game!.checks?.[key]).toMatchObject({ value: 3, passed: false });
   });
 
   it("a corrupt snapshot with a null team entry doesn't crash restore (adversarial review, 2026-09-21)", async () => {

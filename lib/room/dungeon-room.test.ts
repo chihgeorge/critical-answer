@@ -9,7 +9,7 @@ vi.mock("../question-bank-data", async (actual) => {
   const { asTextBank } = await import("../text-bank");
   return { BANK: asTextBank((await actual<typeof import("../question-bank-data")>()).BANK) };
 });
-import { currentTurnTeamId } from "../game-state";
+import { checkKey, currentTurnTeamId } from "../game-state";
 import { EPILOGUE_MODEL } from "../narration/llm";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
@@ -36,6 +36,15 @@ function makeRoom() {
     broadcast: vi.fn(),
     getConnections: vi.fn(() => []),
   } as unknown as RoomIO;
+}
+
+/** The persuasion check the room asks for before a fill-in answer or a warrior's roll on one (dnd design R2, R6):
+ * written as a plain pass (no hint) for every team's current question, so tests about something else can answer. */
+function passChecks(room: DungeonRoom) {
+  const g = room.game!;
+  const checks = { ...g.checks };
+  for (const t of g.teams) checks[checkKey(t.currentQuestionId, t.id)] ??= { value: 10, bonus: 0, dc: 8, passed: true };
+  room.game = { ...g, checks };
 }
 
 function send(room: DungeonRoom, conn: ReturnType<typeof makeConn>, msg: object) {
@@ -955,6 +964,56 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.advanceTimersByTime(2000);
       expect(room.game!.teams[0].score).toBe(1);
       expect(JSON.stringify(lastBroadcast(room).view.checks ?? {})).not.toContain("萬");
+      // The win plays the correct answer's cue, not the crit die's (dnd design E2).
+      expect(lastBroadcast(room).cue).toBe("correct");
+    });
+
+    // Value: protects=a team cannot throw a bad check away by closing its phone during the beat (state matrix
+    // check × drop-turn-moved); fails_when=onClose lets the turn move, the roll is dropped, the team rolls again.
+    it("a phone that closes during the beat keeps the turn: the check is written, and a second press is refused", () => {
+      vi.useFakeTimers();
+      const { room, ids, conns, roll } = checkGame(2);
+      roll(1);
+      room.onClose(conns[0]);
+      expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+      vi.advanceTimersByTime(2000);
+      expect(room.game!.checks!["r0-t1:" + ids[0]]).toMatchObject({ value: 1, passed: false });
+      // No phone left: the team shows offline now, and the turn moves on.
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    });
+
+    it("ending the game during the beat writes no check and leaves no roll behind", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, roll } = checkGame();
+      roll(20);
+      send(room, hostConn, { type: "HOST_END_GAME" });
+      vi.advanceTimersByTime(2000);
+      expect((room as any).pendingRoll).toBeNull();
+      expect(Object.keys(room.game?.checks ?? {})).toEqual([]);
+    });
+
+    // Value: protects=the room, not only the phone, asks for the check first (Codex P1 in /review), and a typed
+    // answer waiting for the host cannot be beaten by a natural 20; fails_when=a crafted message skips the roll.
+    it("refuses a typed answer and a warrior's roll before the check, and a check after a typed answer", () => {
+      vi.useFakeTimers();
+      const { room, conns, roll } = checkGame();
+      send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: "r0-t1", text: "萬家福", eventId: seqOf(room) });
+      expect(lastSentTo(conns[0])).toMatchObject({ detail: "check_needed" });
+      const warrior = new DungeonRoom(makeRoom() as any, () => 0, { bank: checkBank });
+      const host = makeConn("host-conn");
+      warrior.onConnect(host);
+      claim(warrior, host);
+      const w = joinTeams(warrior, host, 1);
+      send(warrior, w.conns[0], { type: "TEAM_PICK_CLASS", classId: "warrior" });
+      send(warrior, host, { type: "HOST_START" });
+      send(warrior, w.conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
+      expect(lastSentTo(w.conns[0])).toMatchObject({ detail: "check_needed" });
+      expect(warrior.game!.teams[0].abilityUses).toBe(2);
+      passChecks(room);
+      send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: "r0-t1", text: "萬家福", eventId: seqOf(room) });
+      delete room.game!.checks!["r0-t1:" + room.game!.teams[0].id];
+      roll(20);
+      expect(lastSentTo(conns[0])).toMatchObject({ detail: "answer_submitted" });
     });
   });
 
@@ -1966,6 +2025,7 @@ describe("LLM narration and director (T8-T10)", () => {
     const { conns } = joinTeams(r.room, r.hostConn, 2);
     send(r.room, r.hostConn, { type: "HOST_START" });
     const g = r.room.game!;
+    passChecks(r.room);
     send(r.room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: g.teams[0].currentQuestionId, text: "祕密答案ZQX" });
     expect(r.room.game!.teams[0].typedAnswer).toBe("祕密答案ZQX");
     judge(r.room, r.hostConn);
@@ -2571,6 +2631,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     send(room, hostConn, { type: "HOST_START" });
     const roll = (value: number) => {
       r = (value - 1) / 20;
+      passChecks(room);
       send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: room.game!.teams[0].currentQuestionId });
     };
     return { room, hostConn, ids, conns, roll };
@@ -2915,6 +2976,7 @@ describe("cleric on a fill-in question: 祈禱 / 重答 / 逃跑 after the host'
       room.game = { ...room.game!, boss: { ...room.game!.boss, currentQuestionId: "boss-t1" } };
     } else room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t1" } : t)) };
     const q = boss ? "boss-t1" : "r0-t1";
+    passChecks(room);
     send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: q, text: "台中" });
     const host = (fleeChoice: "team" | "pray" | "retry" | "flee", eventId?: number) =>
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: q, correct: false, fleeChoice, ...(eventId !== undefined ? { eventId } : {}) });
@@ -3042,9 +3104,10 @@ describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
     if (warrior) send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "warrior" });
     send(room, hostConn, { type: "HOST_START" });
     const q = () => room.game!.teams[0].currentQuestionId;
-    const submit = (text: string, conn = conns[0]) => send(room, conn, { type: "TEAM_SUBMIT_TEXT", questionId: q(), text });
+    const submit = (text: string, conn = conns[0]) => (passChecks(room), send(room, conn, { type: "TEAM_SUBMIT_TEXT", questionId: q(), text }));
     const rollFor = (value: number) => {
       r = (value - 1) / 20;
+      passChecks(room);
       send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: q() });
     };
     return { room, hostConn, ids, conns, q, submit, rollFor };
@@ -3070,9 +3133,11 @@ describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
     const { room, hostConn, ids, conns, q, submit } = game();
     submit(" \t ");
     expect(err(conns[0])).toBe("invalid_text");
+    passChecks(room);
     send(room, conns[1], { type: "TEAM_SUBMIT_TEXT", questionId: room.game!.teams[1].currentQuestionId, text: "x" });
     expect(lastSentTo(conns[1])).toMatchObject({ type: "ERROR", error: "invalid_action" });
     expect(room.game!.teams[1].typedAnswer).toBeUndefined();
+    passChecks(room);
     send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: "no-such-q", text: "x" });
     expect(err(conns[0])).toBe("not_text_question");
     submit("first");
@@ -3081,6 +3146,7 @@ describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
     expect(room.game!.teams[0].typedAnswer).toBe("first");
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: q(), correct: true });
     expect(room.game!.teams[0].typedAnswer).toBeUndefined();
+    passChecks(room);
     send(room, conns[1], { type: "TEAM_SUBMIT_TEXT", questionId: room.game!.teams[1].currentQuestionId, text: "x" });
     expect(err(conns[1])).toBe("reveal_pending");
   });
@@ -3096,9 +3162,11 @@ describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[1], questionId: room.game!.teams[1].currentQuestionId, correct: false, fleeChoice: "retry" });
     expect(room.game!.currentTurnIndex).toBe(0);
     expect(q()).toBe(first);
+    passChecks(room);
     send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: first, text: "late", eventId: before });
     expect(err(conns[0])).toBe("stale_event");
     expect(room.game!.teams[0].typedAnswer).toBeUndefined();
+    passChecks(room);
     send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: first, text: "now", eventId: seqOf(room) });
     expect(room.game!.teams[0].typedAnswer).toBe("now");
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: first, correct: false, fleeChoice: "retry" });
@@ -3120,6 +3188,7 @@ describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
     claim(room, hostConn);
     const { conns } = joinTeams(room, hostConn, 1);
     send(room, hostConn, { type: "HOST_START" });
+    passChecks(room);
     send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: "r0-mc1", text: "a" });
     expect(err(conns[0])).toBe("not_text_question");
   });

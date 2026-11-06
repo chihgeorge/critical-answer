@@ -102,7 +102,8 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     );
   } else if (!ready) {
     return null;
-  } else if (me.classId === "warrior") {
+  } else if (me.classId === "warrior" && !(q.options === undefined && game.view.checks !== undefined && !game.view.checks[checkKey(q.id, teamId)])) {
+    // On a fill-in question the warrior rolls only after its persuasion check (dnd design R2).
     body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
   } else if (me.classId === "thief") {
     body = button("🗝️", "偷襲：這題答對加倍", `${scoreName(game.cuisine)}、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
@@ -112,7 +113,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
       setCast({ qid: q.id, eventId: game.eventId, before: gone.length });
       use();
     });
-  } else if (me.classId === "mage" && !q.options && game.view.mageHints[q.id] === undefined) {
+  } else if (me.classId === "mage" && !q.options && game.view.mageHints[q.id] === undefined && game.view.checks?.[checkKey(q.id, teamId)]?.hint === undefined) {
     // The room refused this question (no_hint): a 1-character answer has no first character to give.
     if (noHint) return <div className="px-bar mt-1 !text-[17px]" role="status">🔮 這題答案太短，不能看第一個字・剩 {me.abilityUses} 次</div>;
     body = button("🔮", "看答案第一個字", `大家都看得到・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
