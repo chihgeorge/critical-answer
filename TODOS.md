@@ -952,7 +952,7 @@
 **Depends on:** 口說題改成填空題；還沒寫規格，先走 /office-hours。
 
 **Notes:**
-- 2026-11-05 已走完 office-hours、CEO 和 eng review，設計文件在 `~/.gstack/projects/critical-answer/georgechih-dnd-design-20261105-192600.md`（只在本機）。分 2 個 PR：PR 1 選擇題答對擲暴擊骰；PR 2 填空題先擲說服檢定。PR 2 上線後這項就算完成。
+- 2026-11-05 已走完 office-hours、CEO 和 eng review，設計文件在 `~/.gstack/projects/critical-answer/georgechih-dnd-design-20261105-192600.md`（只在本機）。分 2 個 PR：PR 1 選擇題答對擲暴擊骰；PR 2 填空題先擲說服檢定。PR 2 上線後這項就算完成。PR 1 已在 v0.34.0.0（2026-11-06）上線。
 - Context 補充：跟「每次行動可以選不同的動作，不只答題」很接近，可以一起設計。也牽涉職業能力（法師、牧師在填空題的能力重新設計）和「口說題改成填空題」。
 
 ---
