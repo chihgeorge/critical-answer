@@ -252,11 +252,11 @@ test("phone answering: when the game ends, our own 答對了 panel gives way to 
   await team.getByRole("button", { name: /綠色/ }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  await expect(team.getByText(/答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the crit die
+  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the crit die
 
   toPage!.send(JSON.stringify({ type: "GAME_OVER", winners: [] }));
   await expect(team.getByText("遊戲結束！")).toBeVisible();
-  await expect(team.getByText(/答對了！/)).toHaveCount(0);
+  await expect(team.getByText(/^答對了！/)).toHaveCount(0);
 });
 
 // Value: protects=a wrong boss lock shows no 重答/逃跑 and rotates the shared question on its own (boss rules D1/D2);
