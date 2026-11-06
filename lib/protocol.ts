@@ -118,6 +118,8 @@ export type ClientMessage =
   | { type: "HOST_NEXT"; eventId: number }
   /** Host override: take a team into the boss room (docs/designs/scoring-and-score-pools.md S13). */
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
+  /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
+  | { type: "HOST_REVEAL"; teamId: string; questionId: string }
   /** 結束冒險: end the game now, ranked by each team's reward. */
   | { type: "HOST_END_GAME" }
   /** After the game: back to the lobby with the same teams, ready for another game. */
@@ -414,6 +416,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_SEND_TO_BOSS": {
       const teamId = str(m.teamId, MAX_ID);
       return teamId === null ? null : { type: "HOST_SEND_TO_BOSS", teamId };
+    }
+    case "HOST_REVEAL": {
+      const teamId = str(m.teamId, MAX_ID);
+      const questionId = str(m.questionId, MAX_ID);
+      return teamId === null || questionId === null ? null : { type: "HOST_REVEAL", teamId, questionId };
     }
     case "HOST_END_GAME":
       return { type: "HOST_END_GAME" };

@@ -12,7 +12,7 @@ const send = (room: DungeonRoom, c: Conn, msg: object) => room.onMessage(JSON.st
 afterEach(() => vi.useRealTimers());
 
 describe("bundled bank", () => {
-  it("a whole game runs on phone locks alone: no HOST_JUDGE, no HOST_NEXT (docs/designs/phone-answering.md PR 2)", async () => {
+  it("a whole game runs on phone locks, the host's 公布答案 and 下一題: no HOST_JUDGE (phone-answering.md PR 2, host-reveal.md)", async () => {
     vi.useFakeTimers();
     const io = { id: "room-1", broadcast: vi.fn(), getConnections: vi.fn(() => []) } as unknown as RoomIO;
     const room = new DungeonRoom(io, () => 0);
@@ -25,14 +25,16 @@ describe("bundled bank", () => {
 
     let turns = 0;
     while (room.game!.phase === "playing") {
-      expect(++turns, "game never finished: the lock hold or auto-advance got longer than 16 s?").toBeLessThan(200);
+      expect(++turns, "game never finished: a lock or a reveal got stuck?").toBeLessThan(200);
       const team = room.game!.teams[0];
       const qid = team.inBoss ? room.game!.boss.currentQuestionId : team.currentQuestionId;
       const q = findQuestion(BANK, qid)!;
       if (q.kind !== "multipleChoice") throw new Error(`${qid} is not multipleChoice`);
       send(room, phone, { type: "TEAM_SELECT_OPTION", questionId: qid, optionIndex: q.correctIndex });
       send(room, phone, { type: "TEAM_LOCK_OPTION", questionId: qid, optionIndex: q.correctIndex });
-      await vi.advanceTimersByTimeAsync(16_000); // the 2 s lock hold, then auto-advance (capped at 15 s)
+      send(room, host, { type: "HOST_REVEAL", teamId: T1, questionId: qid });
+      await vi.advanceTimersByTimeAsync(2_500); // the 2 s beat
+      send(room, host, { type: "HOST_NEXT", eventId: (room as unknown as { eventSeq: number }).eventSeq });
     }
     expect(room.game!.phase).toBe("finished");
     expect(room.game!.winners).toEqual([T1]);

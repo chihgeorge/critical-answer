@@ -4,8 +4,9 @@
 
 import type { SpectatorView } from "./game-state";
 
-/** "wrong": a cleric's one 答錯 key, which waits for its choice; "pray": 祈禱 in that wait (#106). */
-type HostKeyAction = "correct" | "retry" | "flee" | "next" | "wrong" | "pray";
+/** "wrong": a cleric's one 答錯 key, which waits for its choice; "pray": 祈禱 in that wait (#106).
+ * "reveal": 公布答案 on a team's lock (docs/designs/host-reveal.md). */
+type HostKeyAction = "correct" | "retry" | "flee" | "next" | "wrong" | "pray" | "reveal";
 
 /** The parts of a KeyboardEvent this needs, so a test can pass a plain object. */
 interface KeyLike {
@@ -33,6 +34,8 @@ export const HOST_KEYS = {
   wait: { pray: "2", retry: "3", flee: "4" },
   /** 下一題 while the answer is on show (Enter works too). */
   next: "1",
+  /** 公布答案 while a team's lock waits for the host (host-reveal.md D6). */
+  reveal: "1",
 } as const;
 
 /** A key left to the browser: with a modifier (Ctrl+1 switches browser tabs), held down, or typed into a field. */
@@ -44,11 +47,13 @@ function ignoredKey(e: KeyLike): boolean {
 /** Which button a key presses (HOST_KEYS), or null to leave the key to the browser (ignoredKey). `revealing`: the answer is
  * on show, so the only button is 下一題.
  * `mc`: a multipleChoice turn, judged by the team's lock (docs/designs/phone-answering.md D13), so 1
- * does nothing and 2 / 3 only work once the host's stuck row is showing. `cleric` (clericStage):
- * "before" makes 2 the one 答錯 and 3 nothing; "wait" makes 2 / 3 / 4 祈禱 / 重答 / 逃跑 and 1 nothing. */
-export function hostKeyAction(e: KeyLike, revealing: boolean, mc?: { stuck: boolean }, cleric?: "before" | "wait"): HostKeyAction | null {
+ * does nothing (unless `lockWaiting`) and 2 / 3 only work once the host's stuck row is showing. `cleric` (clericStage):
+ * "before" makes 2 the one 答錯 and 3 nothing; "wait" makes 2 / 3 / 4 祈禱 / 重答 / 逃跑 and 1 nothing.
+ * `lockWaiting`: a team's lock waits for 公布答案 (host-reveal.md), so 1 reveals it. */
+export function hostKeyAction(e: KeyLike, revealing: boolean, mc?: { stuck: boolean }, cleric?: "before" | "wait", lockWaiting?: boolean): HostKeyAction | null {
   if (ignoredKey(e)) return null;
   if (revealing) return e.key === HOST_KEYS.next || e.key === "Enter" ? "next" : null;
+  if (lockWaiting && e.key === HOST_KEYS.reveal) return "reveal";
   if (mc && (e.key === HOST_KEYS.plain.correct || !mc.stuck)) return null;
   const keys: Partial<Record<HostKeyAction, string>> = HOST_KEYS[cleric ?? "plain"];
   return (Object.keys(keys) as HostKeyAction[]).find((a) => keys[a] === e.key) ?? null;

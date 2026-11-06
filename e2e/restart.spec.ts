@@ -97,6 +97,9 @@ test("a game survives the server being killed and started again", async () => {
         p.ws.send(JSON.stringify({ type: "TEAM_SELECT_OPTION", questionId: q.questionId, optionIndex: options.indexOf(q.answer) }));
         p.ws.send(JSON.stringify({ type: "TEAM_LOCK_OPTION", questionId: q.questionId }));
       }
+      // The lock waits for the host's 公布答案 (docs/designs/host-reveal.md).
+      await wait(() => last(host, "STATE")?.pendingLock, "the lock is in");
+      host.ws.send(JSON.stringify({ type: "HOST_REVEAL", teamId: onTurn, questionId: q.questionId }));
     } else host.ws.send(JSON.stringify({ type: "HOST_JUDGE", teamId: onTurn, questionId: q.questionId, correct: true }));
     await wait(() => last(a, "STATE")?.eventId >= 2, "the judgment is applied");
     const before = last(a, "STATE");

@@ -53,5 +53,6 @@ Sprites are drawn in `lib/pixel-art.ts`. Scale them by whole numbers only, so pi
   carried on `STATE` with a `reveal: AnswerReveal | null` field, not a separate `ANSWER_REVEALED`
   broadcast; it stays on screen until the host presses 「下一題」 via `HOST_NEXT` (see `lib/protocol.ts`).
   `HOST_NEXT` carries the STATE's eventId, and the room ignores any `HOST_NEXT` with a mismatched eventId (a stale second-device tap).
-  Exception: a `multipleChoice` question is judged by the team's lock, not by the host, and a correct
-  lock's reveal closes on its own 8–15 s later (`docs/designs/phone-answering.md` D10, E2–E4).
+  A `multipleChoice` question is judged by the team's lock, not by the host's 答對 / 答錯: the lock waits
+  for the host's 公布答案, and a correct reveal also stays until 下一題 (`docs/designs/host-reveal.md`, v0.33;
+  it replaced the 8–15 s auto-close of `docs/designs/phone-answering.md` D10, E2–E4).

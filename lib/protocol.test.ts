@@ -203,6 +203,13 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_HANDOFF" })).toBeNull();
   });
 
+  // Value: protects=the room only sees a reveal naming a team and a question; fails_when=the parser lets a reveal without either through; why_new=new message; seam=none
+  it("HOST_REVEAL takes a team id and a question id (host-reveal.md)", () => {
+    expect(parseClientMessage({ type: "HOST_REVEAL", teamId: "t1", questionId: "q1" })).toEqual({ type: "HOST_REVEAL", teamId: "t1", questionId: "q1" });
+    expect(parseClientMessage({ type: "HOST_REVEAL", teamId: "t1" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_REVEAL", questionId: "q1" })).toBeNull();
+  });
+
   it("TEAM_PICK_CLASS accepts a known class id or null, nothing else (class-abilities.md)", () => {
     expect(parseClientMessage({ type: "TEAM_PICK_CLASS", classId: "warrior" })).toEqual({ type: "TEAM_PICK_CLASS", classId: "warrior" });
     expect(parseClientMessage({ type: "TEAM_PICK_CLASS", classId: null })).toEqual({ type: "TEAM_PICK_CLASS", classId: null });

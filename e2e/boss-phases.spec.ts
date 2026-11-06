@@ -35,7 +35,7 @@ async function restore(request: APIRequestContext) {
 
 // Value: protects=the surprise phase flow end to end on all three pages (reveal at 0 HP, card, phase 2, last-phase kill);
 // fails_when=the card never opens or closes, a page shows phase 2 early, or phase 1's emptied bar ends the game;
-// why_new=room tests cover messages, not the pages; seam=none; no_claim=multiple-choice auto-advance (lib/room/boss-phases.test.ts)
+// why_new=room tests cover messages, not the pages; seam=none; no_claim=multiple-choice reveals (lib/room/boss-phases.test.ts)
 test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the kill", async ({ browser }) => {
   const host = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await host.goto("/");

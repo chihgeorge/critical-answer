@@ -89,6 +89,9 @@ test("an unused room closes its connections after the idle time, keeps the game,
         send(p, { type: "TEAM_SELECT_OPTION", questionId: dealt.questionId, optionIndex: options.indexOf(dealt.answer) });
         send(p, { type: "TEAM_LOCK_OPTION", questionId: dealt.questionId });
       }
+      // The lock waits for the host's 公布答案 (docs/designs/host-reveal.md).
+      await wait(() => last(host, "STATE")?.pendingLock, "the lock is in");
+      send(host, { type: "HOST_REVEAL", teamId: last(host, "STATE").pendingLock.teamId, questionId: dealt.questionId });
     } else send(host, { type: "HOST_JUDGE", teamId: last(a, "STATE").view.currentTurnTeamId, questionId: dealt.questionId, correct: true });
     await wait(() => last(a, "STATE")?.eventId >= 2, "the judgment is applied");
     const before = last(a, "STATE");

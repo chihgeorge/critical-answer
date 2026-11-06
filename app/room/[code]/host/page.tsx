@@ -270,12 +270,16 @@ export default function HostPage() {
   }, [pauseKey]);
   // A warrior's roll in its beat is judged by the room (class-abilities.md R2): the host waits it out too.
   const roll = game?.pendingRoll ?? null;
-  const canJudge = ready && swapArmed && !!turn?.team && pendingTeamId !== turn.team.id && !roll;
+  // A lock waiting for 公布答案 holds every judgment too (the room refuses with lock_pending).
+  const canJudge = ready && swapArmed && !!turn?.team && pendingTeamId !== turn.team.id && !roll && !game?.pendingLock;
 
   // Phone answering (docs/designs/phone-answering.md D3, D11, D13): a multipleChoice turn is judged by
-  // the team's lock, so the host only watches it, and gets 替選・重答 / 逃跑 after 15 s of no progress.
+  // the team's lock, which waits for the host's 公布答案 (host-reveal.md); the host gets 替選・重答 / 逃跑 after 15 s of no progress.
   const isMc = !game?.reveal && !!game?.question?.options;
   const lock = game?.pendingLock ?? null;
+  // The lock waits for the host's 公布答案 (docs/designs/host-reveal.md); its team may no longer be on turn.
+  const lockTeam = lock ? game?.view.teams.find((t) => t.id === lock.teamId)?.name ?? "" : "";
+  const lockWaiting = !!lock && !lock.revealing;
   const wrong = game?.view.pendingWrong ?? null;
   // A wrong boss lock resolves on its own after a beat (D2=B). The stuck row still comes after 15 s,
   // as the way out if that beat never resolves.
@@ -335,9 +339,13 @@ export default function HostPage() {
         revealUp,
         isMc ? { stuck } : undefined,
         cleric,
+        lockWaiting,
       );
       if (!action || !game) return;
-      if (action === "next") {
+      if (action === "reveal") {
+        if (!ready || !lock) return;
+        send({ type: "HOST_REVEAL", teamId: lock.teamId, questionId: lock.questionId });
+      } else if (action === "next") {
         if (!ready || !swapArmed) return;
         send({ type: "HOST_NEXT", eventId: game.eventId });
       } else {
@@ -354,7 +362,15 @@ export default function HostPage() {
     return () => window.removeEventListener("keydown", onKey);
     // judge/send are plain functions over state this effect already depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, ready, swapArmed, canJudge, turn, isMc, stuck, picking, drawer, revealUp, cleric, held]);
+  }, [game, ready, swapArmed, canJudge, turn, isMc, stuck, picking, drawer, revealUp, cleric, held, lock, lockWaiting]);
+
+  // 公布答案 (host-reveal.md D6): under the status panel, where 下一題 takes over key 1 after the beat.
+  const revealButton = lock && (
+    <PixelButton variant="ok" disabled={!ready || !lockWaiting} onClick={() => send({ type: "HOST_REVEAL", teamId: lock.teamId, questionId: lock.questionId })}>
+      {connected ? "公布答案" : "重新連線中"}
+      <span className="px-key" aria-hidden="true">{HOST_KEYS.reveal}</span>
+    </PixelButton>
+  );
 
   const aiPanel = (
     <AiPanel
@@ -687,16 +703,17 @@ export default function HostPage() {
                       {roll
                         ? `${turn.team.name}擲出了骰子…`
                         : lock
-                        ? `${turn.team.name}鎖定了 ${optionLetter(lock.optionIndex)}…`
+                        ? `${lockTeam}鎖定了 ${optionLetter(lock.optionIndex)}…`
                         : bossMiss
                           ? "答錯！首領換一題…"
                           : wrong
                           ? `答錯！等${turn.team.name}選重答或逃跑`
                           : `等${turn.team.name}鎖定答案…`}
                     </div>
-                    <div className="text-[14px]">{lock || roll ? "大螢幕停頓 2 秒後揭曉" : "選擇題由隊伍手機作答，系統自動判定"}</div>
+                    <div className="text-[14px]">{roll || lock?.revealing ? "大螢幕停頓 2 秒後揭曉" : lock ? "按公布答案揭曉" : "選擇題由隊伍手機作答，主持人公布"}</div>
                   </Panel>
                   </div>
+                  {revealButton}
                   {stuck && (
                     <>
                       <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>
@@ -718,6 +735,8 @@ export default function HostPage() {
                 </>
               ) : (
                 <>
+                  {/* A lock whose turn moved on to a fill-in still needs its 公布答案 before anyone is judged. */}
+                  {revealButton}
                   {roll && (
                     <Panel tone="lav" className="px-3 py-2 text-center text-[22px]" role="status">
                       {turn.team.name}擲出了骰子…
@@ -772,6 +791,8 @@ export default function HostPage() {
               )}
             </div>
             )}
+            {/* No team on turn (every phone offline): a waiting lock still gets its 公布答案. */}
+            {!turn?.team && !revealUp && revealButton && <div className="mt-auto flex flex-col">{revealButton}</div>}
           </>
         )}
 

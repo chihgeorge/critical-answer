@@ -53,7 +53,12 @@ function bossGame(bank = phasedBank(), opts: { teams?: number; storage?: RoomSto
   const states = () => msgs(io.broadcast.mock.calls).filter((m) => m.type === "STATE");
   const judge = (correct: boolean) => send(room, host, { type: "HOST_JUDGE", teamId: state().view.currentTurnTeamId, questionId: room.game!.boss.currentQuestionId, correct, fleeChoice: "retry", eventId: state().eventId });
   const next = () => send(room, host, { type: "HOST_NEXT", eventId: state().eventId });
-  return { room, io, host, phones, state, states, judge, next };
+  /** 公布答案 on the waiting lock (docs/designs/host-reveal.md). */
+  const reveal = () => {
+    const lock = (room as unknown as { pendingLock: { teamId: string; questionId: string } }).pendingLock;
+    send(room, host, { type: "HOST_REVEAL", teamId: lock.teamId, questionId: lock.questionId });
+  };
+  return { room, io, host, phones, state, states, judge, next, reveal };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -111,14 +116,18 @@ describe("boss phases in the room", () => {
     expect(g.state().phaseCard).toBeTruthy();
   });
 
-  it("a multiple-choice reveal that closes itself opens the card, and the card waits for 下一題 (D2)", async () => {
+  it("a multiple-choice reveal waits for 下一題, which opens the card, and the card waits too (D2, host-reveal.md)", async () => {
     vi.useFakeTimers();
     const g = bossGame(phasedBank(mc));
     send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "p1-a", optionIndex: 0 });
     send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: "p1-a" });
+    g.reveal();
     await vi.advanceTimersByTimeAsync(2500);
     expect(g.state().reveal).not.toBeNull();
     await vi.advanceTimersByTimeAsync(16_000);
+    expect(g.state().reveal).not.toBeNull();
+    expect(g.state().phaseCard).toBeUndefined();
+    g.next();
     expect(g.state()).toMatchObject({ phaseCard: expect.anything(), reveal: null, cue: "boss-phase" });
     await vi.advanceTimersByTimeAsync(60_000);
     expect(g.state().phaseCard).toBeTruthy();
@@ -130,6 +139,7 @@ describe("boss phases in the room", () => {
     const lockWrong = async (id: string) => {
       send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: id, optionIndex: 1 });
       send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: id });
+      g.reveal();
       await vi.advanceTimersByTimeAsync(5000); // the lock's beat, then the boss miss's beat
     };
     await lockWrong("p1-a");
@@ -176,6 +186,7 @@ describe("boss phases in the room", () => {
     for (const id of ["p1-a", "p1-b"]) {
       send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: id, optionIndex: 1 });
       send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: id });
+      g.reveal();
       await vi.advanceTimersByTimeAsync(5000);
     }
     expect(g.state().phaseCard).toBeUndefined();
