@@ -105,6 +105,16 @@ Performance: no issues. One timer fewer per correct answer.
 
 UI: the 公布答案 button is a green `ok` PixelButton like 下一題, key 1; greyed during the beat. PNG preview approved (D6 = A, 2026-11-05; mockup kept local only).
 
+## Review decisions (/review, 2026-11-05)
+
+- **D9 = A: a lock keeps the turn while it waits.** The phone says 「已鎖定！看大螢幕揭曉」, so teams put it down and it sleeps. Before, the room marked the team offline at once, the turn moved on, and 公布答案 dropped the lock (E9), a correct answer too. Now `onClose` leaves a team with a pending lock online, like a sent fill-in, and the room marks it offline once the lock is gone (`syncLockTeam`).
+- **`revealing` is stored on the lock**, not read from `lockTimer`. A boss miss the host settled inside its beat left a stale timer that made the next lock read as revealing and refused 公布答案 forever.
+- **The host page** shows 公布答案 under the status panel (where 下一題 takes over key 1), also when no team is on turn, and disables the fill-in judge buttons while a lock waits.
+
+## Deploy order (/review, 2026-11-05)
+
+The Vercel page and the Cloudflare Worker deploy on their own when this merges. A host page opened before the deploy has no 公布答案, and the new Worker no longer judges a lock by itself, so the first multiple-choice lock waits until the host reloads. Reload every host page after the deploy, and never merge this during an event. The other order is harmless: the old Worker refuses `HOST_REVEAL` and judges the lock after its own beat.
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
