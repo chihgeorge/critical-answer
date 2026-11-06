@@ -105,8 +105,10 @@ export function AiPanel({
   );
   const after = (c: AiCredential) => {
     onUse(c, remember);
-    // A new limit typed before the key goes with it.
-    if (limitOk && limitN !== status?.limit) send({ type: "HOST_AI_LIMIT", limit: limitN });
+    // A new limit typed before the key goes with it. Before the room's first status the field still holds the default:
+    // sending it would cost a status reply that wipes this key's invalid_key off the panel, and would reset a restored
+    // room's own limit.
+    if (limitOk && limitN !== (status?.limit ?? DEFAULT_AI_LIMIT)) send({ type: "HOST_AI_LIMIT", limit: limitN });
   };
   return (
     <div className="flex flex-col gap-2">
