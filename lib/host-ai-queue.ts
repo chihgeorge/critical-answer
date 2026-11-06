@@ -12,17 +12,17 @@ export function createAiKeyQueue() {
       if (claimed) send(msg);
       else held.set(msg.type, msg);
     },
-    /** Sends the held key choice, else the saved key: a restarted room has forgotten it (and skips the check for a key
-     * it still has). Then the rest held. A HOST_OK while claimed is a password change: sending the saved key then would
+    /** Sends the rest held, then the held key choice, else the saved key: a restarted room has forgotten it (and skips
+     * the check for a key it still has). The key goes last, so its status reply (with any invalid_key) is the last one. A HOST_OK while claimed is a password change: sending the saved key then would
      * cancel the check of a newer one. */
     hostOk(saved: ClientMessage | null, send: Send) {
       if (claimed) return;
       claimed = true;
       const key = held.get("HOST_AI_KEY") ?? saved;
       held.delete("HOST_AI_KEY");
-      if (key) send(key);
       held.forEach((m) => send(m));
       held.clear();
+      if (key) send(key);
     },
     closed() {
       claimed = false;

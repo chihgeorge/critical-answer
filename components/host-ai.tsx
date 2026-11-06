@@ -115,9 +115,10 @@ export function AiPanel({
     </label>
   );
   const after = (c: AiCredential) => {
-    onUse(c, remember);
+    // The limit goes before the key: its status reply carries no error, so sent after it would wipe the key's invalid_key.
     const withKey = limitToSendWithKey(limit, status);
     if (withKey !== null) send({ type: "HOST_AI_LIMIT", limit: withKey });
+    onUse(c, remember);
   };
   return (
     <div className="flex flex-col gap-2">
