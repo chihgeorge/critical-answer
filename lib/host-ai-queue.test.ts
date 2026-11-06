@@ -17,11 +17,12 @@ describe("createAiKeyQueue", () => {
     q.choose(limit(500), send);
     expect(sent).toEqual([]);
     q.hostOk(own("sk-saved"), send);
-    expect(sent).toEqual([own("sk-new"), limit(500)]);
+    // The key goes last: a held limit's status reply would otherwise wipe the key's invalid_key off the panel.
+    expect(sent).toEqual([limit(500), own("sk-new")]);
     // A password change's HOST_OK sends nothing: the saved key would cancel the check of a newer one.
     q.choose(own("sk-newer"), send);
     q.hostOk(own("sk-saved"), send);
-    expect(sent).toEqual([own("sk-new"), limit(500), own("sk-newer")]);
+    expect(sent).toEqual([limit(500), own("sk-new"), own("sk-newer")]);
     // A reconnect resends the saved key, never the held one: it may have been refused.
     q.closed();
     q.hostOk(own("sk-saved"), send);
@@ -45,5 +46,21 @@ describe("createAiKeyQueue", () => {
     expect(sent).toHaveLength(2);
     q.hostOk(null, send);
     expect(sent.at(-1)).toEqual(own("sk-3"));
+  });
+
+  // Value: protects=a held limit goes before the saved key a reconnect resends, and a flush with no key at all still
+  // sends what was held; fails_when=the saved key goes first (its invalid_key is wiped by the limit's status reply) or
+  // the `if (key)` guard drops the held limit; why_new=the coverage audit found both branches unset; seam=none
+  it("sends a held limit before the saved key, and the held limit alone when there is no key", () => {
+    const withSaved = createAiKeyQueue();
+    const sent: ClientMessage[] = [];
+    withSaved.choose(limit(40), (m) => sent.push(m));
+    withSaved.hostOk(own("sk-saved"), (m) => sent.push(m));
+    expect(sent).toEqual([limit(40), own("sk-saved")]);
+    const noKey = createAiKeyQueue();
+    const sentNoKey: ClientMessage[] = [];
+    noKey.choose(limit(40), (m) => sentNoKey.push(m));
+    noKey.hostOk(null, (m) => sentNoKey.push(m));
+    expect(sentNoKey).toEqual([limit(40)]);
   });
 });

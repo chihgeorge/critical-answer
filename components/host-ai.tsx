@@ -8,6 +8,17 @@ import { readStored } from "@/lib/stored";
 import { Panel, PixelButton } from "@/components/pixel";
 
 export type AiStatus = Extract<ServerMessage, { type: "HOST_AI_STATUS" }>;
+
+/**
+ * The limit field's value to send with a new key, or null: a new limit typed before the key goes with it. Before the
+ * room's first status the field still holds the default, so nothing is sent. Sending it would cost a status reply that
+ * wipes this key's invalid_key off the panel, and would reset a restored room's own limit.
+ */
+export function limitToSendWithKey(limit: string, status: Pick<AiStatus, "limit"> | null): number | null {
+  const n = Number(limit);
+  const ok = Number.isInteger(n) && n >= 1 && n <= MAX_AI_LIMIT;
+  return ok && n !== (status?.limit ?? DEFAULT_AI_LIMIT) ? n : null;
+}
 /** What the host typed, kept in this page (and, with 記住這台電腦, in localStorage) to resend after a room restart. */
 export type AiCredential = { source: "own"; key: string } | { source: "owner"; ownerKey: string };
 
@@ -104,9 +115,10 @@ export function AiPanel({
     </label>
   );
   const after = (c: AiCredential) => {
+    // The limit goes before the key: its status reply carries no error, so sent after it would wipe the key's invalid_key.
+    const withKey = limitToSendWithKey(limit, status);
+    if (withKey !== null) send({ type: "HOST_AI_LIMIT", limit: withKey });
     onUse(c, remember);
-    // A new limit typed before the key goes with it.
-    if (limitOk && limitN !== status?.limit) send({ type: "HOST_AI_LIMIT", limit: limitN });
   };
   return (
     <div className="flex flex-col gap-2">

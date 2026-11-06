@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.33.2.0] - 2026-11-06
+
+### Fixed
+- When the host enters an AI key the room refuses, the AI panel now keeps showing why (for example 這把 key 無效). Before, the panel could clear the message right away. This happened when the key was sent before the room had answered the page, or together with a new AI limit, so the host saw no reason for the refusal.
+- A key entered before the room answered no longer resets a restored room's AI limit to the default.
+
 ## [0.33.1.0] - 2026-11-05
 
 ### Changed
