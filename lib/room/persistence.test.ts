@@ -358,6 +358,99 @@ describe("restoring after a restart", () => {
     expect(second.room.game!.checks?.[key]).toMatchObject({ value: 3, passed: false });
   });
 
+  // Value: protects=a natural 20 whose beat a restart cut off still wins (dnd design R7); fails_when=restore ignores
+  // the saved record, so the team keeps a question it already won; no_claim=the narration of that win.
+  it("a natural 20 cut off by a restart wins once the room is back", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[saved.game.currentTurnIndex];
+    const team = saved.game.teams.find((t: any) => t.id === t0);
+    const q = team.currentQuestionId;
+    saved.game.checks = { [checkKey(q, t0)]: { value: 20, bonus: 0, dc: 8, passed: true } };
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored");
+    // Every phone is offline after a restart: the win waits for one to come back.
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
+    if (t0 === T1) rejoin(second.room, T1, TEAM_KEY, "a2");
+    else rejoin(second.room, T2, TEAM_KEY + "2", "b2");
+    const after = second.room.game!.teams.find((t) => t.id === t0)!;
+    expect(after.score).toBeGreaterThan(team.score);
+    expect(after.currentQuestionId).not.toBe(q);
+    // Saved after the win: another restart and rejoin do not win it again.
+    const third = makeRoom(storage);
+    await third.room.restore();
+    if (t0 === T1) rejoin(third.room, T1, TEAM_KEY, "a3");
+    else rejoin(third.room, T2, TEAM_KEY + "2", "b3");
+    expect(third.room.game!.teams.find((t) => t.id === t0)!.score).toBe(after.score);
+  });
+
+  // Value: protects=the lost natural 20 survives another team playing first (review finding); fails_when=only the
+  // crit team's own rejoin applies it; no_claim=more than two teams.
+  it("a lost natural 20 still wins when another team's phone comes back and plays first", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[saved.game.currentTurnIndex];
+    const other = t0 === T1 ? T2 : T1;
+    const q = saved.game.teams.find((t: any) => t.id === t0).currentQuestionId;
+    saved.game.checks = { [checkKey(q, t0)]: { value: 20, bonus: 0, dc: 8, passed: true } };
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    const host = makeConn("host2");
+    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
+    if (other === T1) rejoin(second.room, T1, TEAM_KEY, "a2");
+    else rejoin(second.room, T2, TEAM_KEY + "2", "b2");
+    expect(currentTurnTeamId(second.room.game!)).toBe(other);
+    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN }); // asks again now that someone is on turn
+    judgeCorrect(second.room, host, other);
+    expect(currentTurnTeamId(second.room.game!)).toBe(other); // the crit team's phone is still away
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
+    if (t0 === T1) rejoin(second.room, T1, TEAM_KEY, "a3");
+    else rejoin(second.room, T2, TEAM_KEY + "2", "b3");
+    // The turn passed it while its phone was away: it wins when the turn order reaches it again.
+    send(second.room, host, { type: "HOST_NEXT", eventId: (second.room as any).eventSeq });
+    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
+    judgeCorrect(second.room, host, other);
+    // The turn now reaches the crit team, but the win waits for the answer reveal to close (nobody plays under it).
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
+    send(second.room, host, { type: "HOST_NEXT", eventId: (second.room as any).eventSeq });
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
+  });
+
+  // Value: protects=a lost natural 20 never judges inside another judgment (fix-check finding); fails_when=it runs
+  // from that judgment's own STATE, ahead of its narration and phase card.
+  it("a wrong answer that passes the turn to the crit team finishes before the lost natural 20 wins", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[(saved.game.currentTurnIndex + 1) % 2];
+    const other = t0 === T1 ? T2 : T1;
+    const q = saved.game.teams.find((t: any) => t.id === t0).currentQuestionId;
+    saved.game.checks = { [checkKey(q, t0)]: { value: 20, bonus: 0, dc: 8, passed: true } };
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    const host = makeConn("host2");
+    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
+    rejoin(second.room, T1, TEAM_KEY, "a2");
+    rejoin(second.room, T2, TEAM_KEY + "2", "b2");
+    expect(currentTurnTeamId(second.room.game!)).toBe(other);
+    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
+    const seq = (second.room as any).eventSeq;
+    send(second.room, host, { type: "HOST_JUDGE", teamId: other, questionId: lastOf(host, "HOST_ANSWER").questionId, correct: false, fleeChoice: "flee" });
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
+    // The wrong answer's STATE goes out first, then the natural 20's, each with its own event.
+    const ids = second.io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "STATE" && m.eventId > seq).map((m) => m.eventId);
+    expect(ids[0]).toBe(seq + 1);
+    expect(ids.at(-1)).toBe(seq + 2);
+  });
+
   it("a corrupt snapshot with a null team entry doesn't crash restore (adversarial review, 2026-09-21)", async () => {
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);
