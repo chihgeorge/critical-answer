@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { startGame } from "./answer";
+import { startGame, rollCheck } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 const WORKER = "http://localhost:1996";
@@ -86,6 +86,7 @@ test("image-content question: renders on /play, /screen, and the host's own prev
 
   // Value: protects=an image text question is a fill-in too: the phone has the box and the host sees what
   // was sent (#104 /review D3); fails_when=the box only shows for text content; no_claim=YouTube content.
+  await rollCheck(team);
   await team.getByRole("textbox", { name: "你們的答案" }).fill("松鼠");
   await team.getByRole("button", { name: "送出" }).click();
   await expect(host.getByTestId("host-typed-answer")).toHaveText("隊伍答：松鼠");

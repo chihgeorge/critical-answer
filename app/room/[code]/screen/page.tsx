@@ -10,7 +10,7 @@ import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
 import type { AnswerReveal, LobbyTeams, PendingRoll, PublicQuestion, StateMessage } from "@/lib/protocol";
-import type { LockedOption, SpectatorView, WrongAnswer } from "@/lib/game-state";
+import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -206,6 +206,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
         ? `${nameOf(wrong.teamId)}答錯了！首領換一題……`
         : `${nameOf(wrong.teamId)}答錯了！他們正在決定：重答，還是逃跑……`
       : null;
+  // Persuasion check (dnd design R6): a fill-in turn rolls before it answers; its record shows once the beat ends.
+  const fillIn = !!question && !question.options && !reveal && !card;
+  const check = fillIn && turn ? view.checks?.[checkKey(question!.id, turn.id)] : undefined;
+  // The narration keeps the last outcome; the DC sign carries the waiting line instead.
+  const awaitingCheck = fillIn && !check && !pendingRoll && !wrong;
   const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
 
   return (
@@ -261,6 +266,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
         {!reveal && !card && question && !question.options && (
           <MageHint hint={view.mageHints?.[question.id]} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
         )}
+        {check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />}
         {/* #104: the team's typed answer to a text question, for the room to see. */}
         {!reveal && !card && question && !question.options && turn?.typedAnswer && (
           <div data-testid="screen-typed-answer" className="mt-3 text-[24px] [overflow-wrap:anywhere]">
@@ -273,6 +279,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
       {turn?.sneakArmed && !reveal && !card && (
         <div className="px-chip absolute" style={{ left: "50%", top: 262, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
           🗝️ 偷襲！這題答對加倍
+        </div>
+      )}
+      {fillIn && turn?.checkTarget && !turn.sneakArmed && (
+        <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: 262, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
+          🗣️ 說服 DC {turn.checkTarget.dc}（+{turn.checkTarget.bonus}）{awaitingCheck && `　${turn.name}：按手機上的「擲骰說服」`}
         </div>
       )}
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
@@ -306,7 +317,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
         loading={!held && isPending(eventId, narration)}
         lines={held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
       />
-      {pendingRoll && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} kind={pendingRoll.kind ?? "warrior"} critable={!!question?.options} />}
+      {pendingRoll && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} kind={pendingRoll.kind ?? "warrior"} critable={!!question?.options} bonus={pendingRoll.bonus} dc={pendingRoll.dc} />}
     </>
   );
 }

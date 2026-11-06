@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { DungeonRoom } from "./dungeon-room";
+import { DungeonRoom, fixedDie } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { answerText, bossPhaseStates, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
@@ -863,6 +863,98 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(room.game!.teams[0].reward).toBe(95);
       expect(room.game!.phase).toBe("finished");
       expect(states().at(-1)).toMatchObject({ cue: "boss-kill", cueSeq: seq + 1 });
+    });
+  });
+
+  // Value: protects=the persuasion check's room rules (dnd design R6, R-E1, R-E4): only the team on turn rolls, once per
+  // question, under the current eventId; the hint stays out of every broadcast until the beat ends; a retry keeps the
+  // check instead of rolling again; fails_when=a stale or off-turn press rolls, the hint leaks during the beat, or a
+  // retry re-rolls; seam=none; no_claim=the phone button and DC chip (e2e)
+  describe("the persuasion check (dnd design R6, R-E1)", () => {
+    afterEach(() => vi.useRealTimers());
+    const checkBank: Bank = { ...mcBank, pools: { ...mcBank.pools, 1: [{ kind: "text", id: "r0-t1", content: { kind: "text", value: "？" }, answer: "萬家福" }] } };
+    function checkGame(teamCount = 1) {
+      let r = 0;
+      const room = new DungeonRoom(makeRoom() as any, () => r, { bank: checkBank });
+      const hostConn = makeConn("host-conn");
+      room.onConnect(hostConn);
+      claim(room, hostConn);
+      const { ids, conns } = joinTeams(room, hostConn, teamCount);
+      send(room, hostConn, { type: "HOST_START" });
+      /** Team `i` presses 擲骰說服 with the die set to land on `value`. */
+      const roll = (value: number, i = 0, eventId = seqOf(room)) => {
+        r = (value - 1) / 20;
+        send(room, conns[i], { type: "TEAM_ROLL_CHECK", questionId: "r0-t1", eventId });
+      };
+      return { room, hostConn, ids, conns, roll };
+    }
+
+    it("refuses a stale eventId, a team off turn and a multiple-choice question, rolling nothing", () => {
+      const { room, conns, roll } = checkGame(2);
+      roll(15, 0, seqOf(room) - 1);
+      expect(lastSentTo(conns[0])).toMatchObject({ error: "invalid_action", detail: "stale_event" });
+      roll(15, 1);
+      expect(lastSentTo(conns[1])).toMatchObject({ error: "invalid_action", detail: "not_your_turn" });
+      send(room, conns[0], { type: "TEAM_ROLL_CHECK", questionId: "r0-mc1", eventId: seqOf(room) });
+      expect(lastSentTo(conns[0])).toMatchObject({ error: "invalid_action", detail: "stale_question" });
+      expect(lastBroadcast(room).pendingRoll).toBeNull();
+      expect(room.game!.checks ?? {}).toEqual({});
+    });
+
+    it("holds the hint out of every broadcast during the beat, then shows the check with its first character", () => {
+      vi.useFakeTimers();
+      const { room, ids, roll } = checkGame();
+      roll(15);
+      const held = lastBroadcast(room);
+      expect(held.pendingRoll).toMatchObject({ teamId: ids[0], questionId: "r0-t1", value: 15, kind: "check" });
+      expect(held.view.checks ?? {}).toEqual({});
+      expect(JSON.stringify(held)).not.toContain("萬");
+      vi.advanceTimersByTime(2000);
+      const after = lastBroadcast(room);
+      expect(after.pendingRoll).toBeNull();
+      expect(after.cue).toBe("check-pass");
+      expect(after.view.checks["r0-t1:" + ids[0]]).toMatchObject({ value: 15, passed: true, hint: "萬" });
+    });
+
+    it("rolls once per question: a second press and a press after a wrong retry are refused", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns, roll } = checkGame();
+      roll(3);
+      roll(18);
+      expect(lastSentTo(conns[0])).toMatchObject({ detail: "answer_pending" });
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).cue).toBe("check-fail");
+      roll(18);
+      expect(lastSentTo(conns[0])).toMatchObject({ detail: "check_done" });
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: false, eventId: seqOf(room) });
+      send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "r0-t1", choice: "retry" });
+      roll(18);
+      expect(lastSentTo(conns[0])).toMatchObject({ detail: "check_done" });
+      expect(room.game!.checks!["r0-t1:" + ids[0]]).toMatchObject({ value: 3, passed: false });
+    });
+
+    // Value: protects=the e2e die seam only takes a real die face (worker E2E_DIE); fails_when=a bad var fixes the die
+    it("a fixed die (e2e E2E_DIE) lands every roll on its face, and only a face 1-20 counts", () => {
+      expect([fixedDie("10"), fixedDie("20"), fixedDie("1")]).toEqual([10, 20, 1]);
+      for (const bad of [undefined, "", "0", "21", "9.5", "x"]) expect(fixedDie(bad)).toBeUndefined();
+      vi.useFakeTimers();
+      const room = new DungeonRoom(makeRoom() as any, () => 0.99, { bank: checkBank, fixedDie: 10 });
+      const hostConn = makeConn("host-conn");
+      room.onConnect(hostConn);
+      claim(room, hostConn);
+      const { conns } = joinTeams(room, hostConn, 1);
+      send(room, hostConn, { type: "HOST_START" });
+      send(room, conns[0], { type: "TEAM_ROLL_CHECK", questionId: "r0-t1", eventId: seqOf(room) });
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ value: 10, kind: "check" });
+    });
+
+    it("a natural 20 wins outright with no hint", () => {
+      vi.useFakeTimers();
+      const { room, roll } = checkGame();
+      roll(20);
+      vi.advanceTimersByTime(2000);
+      expect(room.game!.teams[0].score).toBe(1);
+      expect(JSON.stringify(lastBroadcast(room).view.checks ?? {})).not.toContain("萬");
     });
   });
 

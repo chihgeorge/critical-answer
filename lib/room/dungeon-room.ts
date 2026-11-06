@@ -28,6 +28,9 @@ import {
   canPray,
   recordTextWrong,
   warriorRoll,
+  recordCheck,
+  checkKey,
+  checkTarget,
   InvalidActionError,
   type ClassId,
   type GameState,
@@ -102,6 +105,14 @@ export interface RoomOptions {
   expireMs?: number;
   /** The clock (tests). */
   now?: () => number;
+  /** Every d20 lands here instead of on rng (e2e, worker E2E_DIE). */
+  fixedDie?: number;
+}
+
+/** E2E_DIE as a die face: an integer 1-20, anything else is no fixed die. */
+export function fixedDie(raw: string | undefined): number | undefined {
+  const n = Number(raw);
+  return raw && Number.isInteger(n) && n >= 1 && n <= 20 ? n : undefined;
 }
 const STYLE_EXAMPLES = 5;
 /** Server-side only: every answer in a bank, so a narration line that repeats one is rejected. */
@@ -255,6 +266,7 @@ export class DungeonRoom {
   /** The bank this room plays with, and every answer in it (server-side only, so an LLM line that repeats one is rejected). */
   private bank: Bank;
   private bankAnswers: string[];
+  private fixedDie: number | undefined;
 
   constructor(
     readonly room: RoomIO,
@@ -267,6 +279,7 @@ export class DungeonRoom {
     // Below idleMs there would be no rest period: the very first idle check would expire the room outright.
     this.expireMs = Math.max(opts.expireMs ?? EXPIRE_MS, this.idleMs);
     this.now = opts.now ?? Date.now;
+    this.fixedDie = opts.fixedDie;
     this.bankAnswers = allAnswers(this.bank);
     this.scripted = createScriptedProvider(rng);
     this.epilogueDelayMs = opts.epilogueDelayMs ?? EPILOGUE_DELAY_MS;
@@ -976,6 +989,9 @@ export class DungeonRoom {
           break;
         case "TEAM_USE_ABILITY":
           this.handleTeamUseAbility(sender, msg.questionId);
+          break;
+        case "TEAM_ROLL_CHECK":
+          this.handleTeamRollCheck(sender, msg.questionId, msg.eventId);
           break;
         case "TEAM_SUBMIT_TEXT":
           this.handleTeamSubmitText(sender, msg.questionId, msg.text, msg.eventId);
@@ -1752,9 +1768,9 @@ export class DungeonRoom {
 
   /** Rolls the d20 the beat shows (pendingRoll) and arms resolveRoll. Logged here, not on judging, so a roll whose
    * room restarts inside the beat still counts (eng review D10): the event's 20s and 1s are counted from these. */
-  private startRoll(kind: "warrior" | "crit", teamId: string, questionId: string) {
-    const value = rollD20(this.rng);
-    this.pendingRoll = { teamId, questionId, value, kind };
+  private startRoll(kind: "warrior" | "crit" | "check", teamId: string, questionId: string, target?: { bonus: number; dc: number }) {
+    const value = this.fixedDie ?? rollD20(this.rng);
+    this.pendingRoll = { teamId, questionId, value, kind, ...target };
     console.log(JSON.stringify({ event: "roll", kind, value }));
     this.setCue("roll");
     if (this.lockTimer) clearTimeout(this.lockTimer);
@@ -1778,6 +1794,8 @@ export class DungeonRoom {
       // The turn moved on during the beat (the phone dropped): drop the roll, like a lock (E9). The use stays spent.
       if (currentTurnTeamId(game) !== roll.teamId || currentQuestionIdOf(game, roll.teamId) !== roll.questionId) {
         this.broadcastState();
+      } else if (roll.kind === "check") {
+        this.resolveCheck(roll.teamId, roll.questionId, roll.value);
       } else {
         // kind is optional in the protocol (an older server's STATE); this room always sets it.
         this.judge(roll.teamId, roll.questionId, roll.kind === "crit", "retry", { kind: roll.kind ?? "warrior", value: roll.value });
@@ -1787,6 +1805,34 @@ export class DungeonRoom {
       this.broadcastState();
     }
     if (roll.kind === "crit") this.syncLockTeamAndShow(roll.teamId);
+  }
+
+  /** The check's beat is over (dnd design R6): its record is written and shown now, with the hint it earned. A natural
+   * 20 wins outright, along the host's 答對 path (R7). */
+  private resolveCheck(teamId: string, questionId: string, value: number) {
+    const q = this.question(questionId);
+    if (q?.kind !== "text") return this.broadcastState();
+    this.game = recordCheck(this.game!, teamId, questionId, value, q.answer);
+    this.setCue(this.game.checks![checkKey(questionId, teamId)].passed ? "check-pass" : "check-fail");
+    this.broadcastState();
+    if (value === 20) this.judge(teamId, questionId, true, "retry");
+  }
+
+  /** 擲骰說服 (dnd design R-E1, R-E4): the team on turn rolls its check on its own fill-in question, once. */
+  private handleTeamRollCheck(conn: Conn, questionId: string, eventId: number) {
+    const teamId = this.playingTeam(conn);
+    const game = this.game;
+    if (!teamId || !game) return;
+    const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    // Pressed under an older STATE (the host judged meanwhile): it was for another attempt.
+    if (eventId !== this.eventSeq) return reject("stale_event");
+    if (this.paused()) return reject("reveal_pending");
+    if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");
+    if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
+    if (this.question(questionId)?.kind !== "text" || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
+    if (game.checks?.[checkKey(questionId, teamId)]) return reject("check_done");
+    this.startRoll("check", teamId, questionId, checkTarget(game, teamId, questionId));
+    this.broadcastState();
   }
 
   /** 重答 / 逃跑 from the team that just locked wrong. */

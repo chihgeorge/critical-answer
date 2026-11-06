@@ -62,6 +62,16 @@ describe("prompt", () => {
     expect(buildPrompt(event, "", []).user).not.toMatch(/大成功|大失敗/);
   });
 
+  // Value: protects=a check's 20 or 1 is told as 說服, not as an attack (dnd design R7, R8); fails_when=describeRoll ignores kind
+  it("tells the model a check's 20 persuaded the monster and its 1 halved the reward", () => {
+    const won = buildPrompt({ ...event, roll: { kind: "check", value: 20 } } as NarrationEvent, "", []).user;
+    expect(won).toContain("說服成功");
+    expect(won).not.toContain("大成功");
+    const blunder = buildPrompt({ ...event, roll: { kind: "check", value: 1 } } as NarrationEvent, "", []).user;
+    expect(blunder).toContain("一半");
+    expect(blunder).not.toContain("大失敗");
+  });
+
   it("names the team's class and its weapons, and tells the model to fit the attack to it", () => {
     const { system, user } = buildPrompt({ ...event, classId: "mage" }, "", []);
     expect(user).toContain("職業是法師");

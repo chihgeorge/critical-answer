@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { textOnlyBank, startGame } from "./answer";
+import { textOnlyBank, startGame, rollCheck } from "./answer";
 
 // Fill-in (#104): on a text question the team types its answer, the host and the TV show it, the host judges.
 textOnlyBank();
@@ -25,6 +25,7 @@ async function oneTeamRoom(browser: Browser) {
 test("the team types an answer, the host and the TV show it, the host judges it correct", async ({ browser }) => {
   const { host, screen, team } = await oneTeamRoom(browser);
   await expect(host.getByTestId("host-typed-answer")).toHaveText("（還沒送出）");
+  await rollCheck(team);
   await team.getByRole("textbox", { name: "你們的答案" }).fill("Don't Stop");
   await team.getByRole("button", { name: "送出" }).click();
   await expect(team.getByTestId("typed-answer-sent")).toHaveText("已送出：Don't Stop・等主持人判");
@@ -39,6 +40,7 @@ test("the team types an answer, the host and the TV show it, the host judges it 
 // fails_when=judging needs a sent answer, or the old text stays in the box; no_claim=flee.
 test("the host judges wrong before anything is sent; the retry turn starts empty", async ({ browser }) => {
   const { host, team } = await oneTeamRoom(browser);
+  await rollCheck(team);
   const box = team.getByRole("textbox", { name: "你們的答案" });
   await box.fill("還沒按送出");
   await host.getByRole("button", { name: "答錯・重答" }).click();
@@ -59,6 +61,7 @@ test("a send that is never confirmed gives the box back with the text", async ({
       return send.call(this, data);
     };
   });
+  await rollCheck(team);
   const box = team.getByRole("textbox", { name: "你們的答案" });
   await box.fill("掉了");
   await team.getByRole("button", { name: "送出" }).click();

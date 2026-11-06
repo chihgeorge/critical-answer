@@ -25,7 +25,7 @@ export default defineConfig({
       // ANTHROPIC_API_KEY is forced empty so a .env with a real key can never make the tests call the API.
       command:
         `sh -c "rm -rf .wrangler/e2e && npx wrangler dev --port ${WORKER} --persist-to .wrangler/e2e ` +
-        `--var ALLOWED_ORIGINS:* --var ANTHROPIC_API_KEY: --var OWNER_KEY:${E2E_OWNER_KEY}"`,
+        `--var ALLOWED_ORIGINS:* --var ANTHROPIC_API_KEY: --var OWNER_KEY:${E2E_OWNER_KEY} --var E2E_DIE:10"`,
       url: `http://localhost:${WORKER}/healthz`,
       reuseExistingServer: false,
       timeout: 90_000,

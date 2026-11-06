@@ -159,18 +159,23 @@ export type ClientMessage =
   | { type: "TEAM_PICK_CLASS"; classId: ClassId | null }
   /** Spend one use of the team's class ability on `questionId` (PR 1: the warrior's roll). */
   | { type: "TEAM_USE_ABILITY"; questionId: string }
+  /** 擲骰說服 on the team's own fill-in turn (dnd design R6, R-E1): the room rolls the check. `eventId`: the STATE it was pressed under (R-E4). */
+  | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
   /** The team's typed answer to a text question, shown to the host to judge. One per question. */
   /** `eventId` is the STATE eventId the answer was typed under; an older one (a send that arrived after
    * the host judged that attempt) is dropped, like HOST_JUDGE. Optional so a phone on an older build still sends. */
   | { type: "TEAM_SUBMIT_TEXT"; questionId: string; text: string; eventId?: number };
 
-/** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, or the crit die
- * after a correct lock (20 is a critical hit, 1 a fumble). Absent from an older server: a warrior's. */
+/** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the crit die
+ * after a correct lock (20 is a critical hit, 1 a fumble), or a fill-in's persuasion check (`bonus` + the die against
+ * `dc`; nothing of its result is decided before the beat ends). Absent from an older server: a warrior's. */
 export interface PendingRoll {
   teamId: string;
   questionId: string;
   value: number;
-  kind?: "warrior" | "crit";
+  kind?: "warrior" | "crit" | "check";
+  bonus?: number;
+  dc?: number;
 }
 
 export type ServerErrorCode =
@@ -189,7 +194,7 @@ export type ServerErrorCode =
   | "invalid_action";
 
 /** One per kind of event: the big screen's sound effect for it (lib/sfx.ts). */
-export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill" | "roll" | "crit" | "fumble";
+export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill" | "roll" | "crit" | "fumble" | "check-pass" | "check-fail";
 
 export type ServerMessage =
   /** `replay`: this room has played a game, so the host page leaves 開始前播放玩法說明 unchecked (eng D5). */
@@ -482,6 +487,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "TEAM_USE_ABILITY": {
       const questionId = str(m.questionId, MAX_ID);
       return questionId === null ? null : { type: "TEAM_USE_ABILITY", questionId };
+    }
+    case "TEAM_ROLL_CHECK": {
+      const questionId = str(m.questionId, MAX_ID);
+      if (questionId === null || !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
+      return { type: "TEAM_ROLL_CHECK", questionId, eventId: m.eventId as number };
     }
     case "TEAM_SUBMIT_TEXT": {
       const questionId = str(m.questionId, MAX_ID);

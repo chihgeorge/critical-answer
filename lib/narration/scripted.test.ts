@@ -346,6 +346,20 @@ describe("class attack lines (TODOS: 旁白的武器和招式要配合職業)", 
 // Value: protects=a 20 or a 1 swaps the result line, not adds one (dnd design E3, R1); fails_when=the roll is ignored,
 // or a fumble line forgets the hit still landed
 describe("scripted: the crit die", () => {
+  // Value: protects=a persuasion check's 20 or 1 (dnd design R7, R8) gets its own line, not the attack's 大成功 / 手滑
+  it("a check's 20 gets a 說服 win line and its 1 a line that says only half was paid, for room and boss hits", () => {
+    const p = createScriptedProvider(() => 0);
+    const correct = { type: "correct", team: "紅隊", monster: "史萊姆", points: 10 } as const;
+    const won = p.line({ ...correct, roll: { kind: "check", value: 20 } });
+    expect(ROLL_VARIANTS.persuaded.correct.map((t) => t.replace("{team}", "紅隊").replace("{monster}", "史萊姆").replace("{points}", "10"))).toContain(won);
+    expect(won).not.toContain("大成功");
+    const blunder = p.line({ ...correct, points: 5, roll: { kind: "check", value: 1 } });
+    expect(blunder).toContain("一半");
+    expect(blunder).not.toContain("手滑");
+    expect(p.line({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, roll: { kind: "check", value: 1 } })).toContain("2 顆心");
+    for (const kind of ["persuaded", "blunder"] as const) for (const lines of Object.values(ROLL_VARIANTS[kind])) expect(lines.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("a 20 gets a 大成功 line and a 1 a 手滑 line that still hits, for room and boss hits", () => {
     const p = createScriptedProvider(() => 0);
     const correct = { type: "correct", team: "紅隊", monster: "史萊姆", points: 15 } as const;

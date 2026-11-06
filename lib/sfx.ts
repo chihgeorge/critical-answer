@@ -63,4 +63,8 @@ export const SFX: Record<SoundCue, SfxNote[]> = {
   crit: [n(0, 0.1, "C5"), n(0.1, 0.1, "G5"), n(0.2, 0.1, "C6"), n(0.3, 0.45, "E6")],
   // A natural 1: a sad slide down (still a hit).
   fumble: [{ at: 0, duration: 0.6, freq: noteToFreq("E5"), slideTo: noteToFreq("A3"), wave: "triangle" }],
+  // A persuasion check passed: two short rising notes.
+  "check-pass": [n(0, 0.1, "E5", "triangle"), n(0.1, 0.2, "A5", "triangle")],
+  // A persuasion check failed: one low note sliding down (not the sawtooth, that one is a wrong answer's).
+  "check-fail": [{ at: 0, duration: 0.3, freq: noteToFreq("D4"), slideTo: noteToFreq("A3"), wave: "square" }],
 };

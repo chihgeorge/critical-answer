@@ -84,7 +84,7 @@ export const CLASS_VARIANTS: Record<ClassId, { correct: string[]; "boss-hit": st
 
 /** A natural 20 (a critical hit) or a 1 (a fumble that still hits) on the die behind a hit (event.roll): this line
  * replaces the usual one, it is not an extra line (dnd design R1, E3). */
-export const ROLL_VARIANTS: Record<"crit" | "fumble", { correct: string[]; "boss-hit": string[] }> = {
+export const ROLL_VARIANTS: Record<"crit" | "fumble" | "persuaded" | "blunder", { correct: string[]; "boss-hit": string[] }> = {
   crit: {
     correct: [
       "大成功！{team}擲出 20，一擊打飛{monster}，+{points}！",
@@ -104,6 +104,27 @@ export const ROLL_VARIANTS: Record<"crit" | "fumble", { correct: string[]; "boss
     "boss-hit": [
       "擲出 1，{team}差點摔倒……還是擊中首領，剩 {bossHp} 顆心。",
       "手一滑！{team}的攻擊歪了一下，還是打中，首領還剩 {bossHp} 顆心。",
+    ],
+  },
+  // A persuasion check (kind "check"): a natural 20 wins without an answer, a 1 halves the reward.
+  persuaded: {
+    correct: [
+      "說服成功！{team}擲出 20，{monster}直接讓路，不用答題，+{points}！",
+      "20 點！{team}幾句話就說動了{monster}，+{points}！",
+    ],
+    "boss-hit": [
+      "擲出 20！{team}說得首領啞口無言，只剩 {bossHp} 顆心！",
+      "20 點說服！首領聽完{team}的話也動搖了，還剩 {bossHp} 顆心！",
+    ],
+  },
+  blunder: {
+    correct: [
+      "說服擲出 1，{team}講錯話了……還好答對，+{points}，只拿一半。",
+      "{team}一開口就失言，{monster}很不爽，答對也只拿一半，+{points}。",
+    ],
+    "boss-hit": [
+      "說服擲出 1，首領被{team}惹毛了……還是答對，首領剩 {bossHp} 顆心。",
+      "{team}說服失敗，但答案是對的，首領還剩 {bossHp} 顆心。",
     ],
   },
 };
@@ -253,7 +274,8 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "boss-kill" && event.dish) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
       if ((event.type === "correct" && !event.entersBoss) || event.type === "boss-hit") {
         if (event.roll) {
-          const kind = event.roll.value === 20 ? "crit" : "fumble";
+          const twenty = event.roll.value === 20;
+          const kind = event.roll.kind === "check" ? (twenty ? "persuaded" : "blunder") : twenty ? "crit" : "fumble";
           return fill(pick(ROLL_VARIANTS[kind][event.type], `${kind}-${event.type}`), event);
         }
       }

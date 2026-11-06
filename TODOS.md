@@ -9,6 +9,7 @@
 - [分數用到骰子時，一律先播擲骰動畫再加分](#分數用到骰子時一律先播擲骰動畫再加分) — M
 - [冒險結束、公布最終分數前，旁白先公布前幾名](#冒險結束公布最終分數前旁白先公布前幾名) — M
 - [bank-editor 兩個 e2e 測試在 CI 偶發失敗](#bank-editor-兩個-e2e-測試在-ci-偶發失敗) — S
+- [AI key 的錯誤會被之後的狀態訊息蓋掉](#ai-key-的錯誤會被之後的狀態訊息蓋掉) — S
 - [新職業：廚師（被動能力，飽足感多 15%），做完後平衡所有職業](#新職業廚師被動能力飽足感多-15做完後平衡所有職業) — 廚師 S–M，平衡 M
 - [等待隊伍的觀眾反應（表情 / 加油 / 噓聲）](#等待隊伍的觀眾反應表情--加油--噓聲) — M（人工約 2 天 / CC 約 1 小時）
 - [開場與首領房的轉場動畫](#開場與首領房的轉場動畫) — M（人工約 1 天 / CC 約 40 分鐘）
@@ -151,6 +152,27 @@
 - Cons：X 要決定（固定 3 名，還是隊伍少時全部念）；同分時怎麼念；大螢幕要配合旁白一名一名亮出來，不能先露出完整排行。AI 旁白關掉時腳本旁白也要能念。
 - Context 補充：`lib/narration/events.ts`（`epilogue`）、`lib/narration/runner.ts`（後記只有 1 句）、`app/room/[code]/screen/page.tsx`（頒獎台）。
 - 跑團風擲骰的「本場大成功王」（CEO review D5，延後）跟這項一起做：公布名次時順便念出誰擲出最多次 20。
+
+---
+
+## AI key 的錯誤會被之後的狀態訊息蓋掉
+
+**What:** 遊戲中換一把錯的 key，`invalid_key` 只跟著這把 key 的回覆送一次。下一句 AI 旁白的 `spend()` 又送一次 `HOST_AI_STATUS`，沒有錯誤，就把它蓋掉了。主持人看不到 key 被拒。
+
+**Why:** 伺服器把每把 key 的錯誤（`invalid_key`、`wrong_owner_key`、`owner_unavailable`）只當成單次訊息，沒存進 `aiError`。ai-key flake 的修正只排好了面板自己送的訊息順序（先上限、後 key），擋不住伺服器自己送的狀態。
+
+**Context:**
+- `lib/room/dungeon-room.ts`（`handleAiKey`、`sendAiStatus`、`spend`）
+- `components/host-ai.tsx`
+
+**Effort/Priority:** S / P3
+
+**Depends on:** 無。
+
+**Notes:**
+- 做法：把最後一把 key 的錯誤存起來，直到下一個 `HOST_AI_KEY` 才清掉。
+- 同一處的另一個問題：主持人頁收到 `HOST_AI_STATUS` 時，判斷「這把 key 已套用」（`app/room/[code]/host/page.tsx`，`applied`）不看 `msg.error`。房間已經用站長金鑰時，打錯的 OWNER_KEY 會被當成已套用，勾了記住這台電腦還會存進 localStorage，之後每次 HOST_OK 都重送。修法：有這把 key 的錯誤時不算套用。
+- 2026-11-06 /review（ai-key flake 修正）的對抗審查找到。
 
 ---
 
