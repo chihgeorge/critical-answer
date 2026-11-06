@@ -1,5 +1,49 @@
 # Critical Answer（致命答題）
 
+D&D 風格的地城問答派對遊戲，名字是 *Critical Hit*（爆擊）的諧音梗。主持人用大螢幕帶隊伍闖怪物房、挑戰首領；玩家用手機加入、答題和累積分數。
+
+## 活動當天怎麼玩
+
+1. **主持人**：首頁按「主持遊戲」，進主持人頁（`/room/<代碼>/host`）。
+2. **大螢幕**：主持人頁最上方的網址（`/room/<代碼>/screen`）在電視或投影機打開。
+3. **手機**：每隊掃大螢幕的 QR code 或輸入 4 碼房間代碼加入，在大廳選職業。
+4. 隊伍輪流答題。選擇題由手機鎖定答案、主持人按「公布答案」（鍵盤 `1`）揭曉（[設計](docs/designs/host-reveal.md)）；填空題由主持人判對錯。
+5. 闖過怪物房、打倒首領；獎勵分（有料理時叫「飽足感」）最高的隊伍獲勝。
+
+玩法說明見 [docs/designs/how-to-play.md](docs/designs/how-to-play.md)。
+
+## 本機執行
+
+需要 Node.js 22（`.nvmrc`）。
+
+```bash
+npm install
+npm run dev
+```
+
+`npm run dev` 同時啟動 Next.js（`http://localhost:3000`）和房間伺服器（`localhost:8787`）。手機區網試玩時，手機與電腦須在同一個 Wi-Fi：
+
+```bash
+sh scripts/playtest.sh start
+sh scripts/playtest.sh status
+sh scripts/playtest.sh stop
+```
+
+部署：合併進 `main` 後，Vercel（前端）和 Cloudflare Workers Builds（房間伺服器）自動部署。Workers Builds 不等 CI，也不保證比 Vercel 先完成：前端要用新的房間協定時，合併前先在本機 `wrangler deploy`。細節見下面「部署」。
+
+## 測試
+
+```bash
+npm test
+npm run check:bundle
+```
+
+端對端測試（`npm run e2e`）只在 GitHub CI 跑：每個 PR 和每次 push 到 `main`，分兩組平行。本機太吃資源，不要在本機跑。`npm run check:bundle` 必跑，它會擋下答案漏進瀏覽器 bundle。
+
+細節（原本的完整說明）收在下面，點開才看得到。
+
+<details><summary>細節</summary>
+
 D&D 風格的地城問答派對遊戲。名字是 *Critical Hit*（爆擊）的諧音梗。
 
 主持人開一個網頁當共享大螢幕，玩家用手機加入並分隊。各隊輪流答題、闖過一間間怪物房，累積進度分到門檻後挑戰地城首領，最後比獎勵分決勝負。
@@ -197,3 +241,5 @@ TODOS.md                 已知問題與延後事項
 ## 授權
 
 [MIT](LICENSE)。發現安全問題請照 [SECURITY.md](SECURITY.md) 私下回報。
+
+</details>

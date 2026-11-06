@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.33.1.0] - 2026-11-05
+
+### Changed
+- The README now opens with a one-screen guide. It says what the game is, how to run it at an event (host page, big screen, phones), how to run it locally and deploy, and which tests to run. The full original guide is still there, folded under 細節.
+
 ## [0.33.0.0] - 2026-11-05
 
 **Deploy note:** reload every open host page after this release deploys, and do not merge it during an event. A host page from before this release has no 公布答案 button, so a multiple-choice lock would wait until the page is reloaded.
