@@ -1779,7 +1779,7 @@ export class DungeonRoom {
       if (currentTurnTeamId(game) !== roll.teamId || currentQuestionIdOf(game, roll.teamId) !== roll.questionId) {
         this.broadcastState();
       } else {
-        // An older snapshot's roll has no kind: a warrior's.
+        // kind is optional in the protocol (an older server's STATE); this room always sets it.
         this.judge(roll.teamId, roll.questionId, roll.kind === "crit", "retry", { kind: roll.kind ?? "warrior", value: roll.value });
       }
     } catch (err) {

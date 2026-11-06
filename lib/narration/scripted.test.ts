@@ -359,6 +359,28 @@ describe("scripted: the crit die", () => {
     for (const kind of ["crit", "fumble"] as const) for (const lines of Object.values(ROLL_VARIANTS[kind])) expect(lines.length).toBeGreaterThanOrEqual(2);
   });
 
+  // Value: protects=every crit/fumble line fills from its event (dnd design E3); fails_when=a template names a field the
+  // event lacks ({bossHP}, {points} on a boss hit), so the TV shows a raw brace; seam=none; no_claim=wording quality
+  it("every crit and fumble line uses only the placeholders its event fills", () => {
+    const allowed = { correct: ["{team}", "{monster}", "{points}"], "boss-hit": ["{team}", "{bossHp}"] } as const;
+    for (const kind of ["crit", "fumble"] as const)
+      for (const type of ["correct", "boss-hit"] as const)
+        for (const t of ROLL_VARIANTS[kind][type]) for (const ph of t.match(/\{\w+\}/g) ?? []) expect(allowed[type]).toContain(ph);
+    const p = createScriptedProvider(() => 0);
+    const fumbleBoss = p.line({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, roll: { kind: "crit", value: 1 } });
+    expect(fumbleBoss).toContain("2 顆心");
+    expect(fumbleBoss).not.toMatch(/[{}]/);
+  });
+
+  // Value: protects=a 20 or 1 on a cooked room hit says the roll, not the dish (user decision, 2026-11-06: rarer beat wins);
+  // fails_when=the dish branch moves above the roll branch; no_claim=the TV's dish reveal (it still shows)
+  it("a 20 or 1 on a cooked monster says the roll line, not the dish line", () => {
+    const p = createScriptedProvider(() => 0);
+    const line = p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 15, dish: "史萊姆凍", roll: { kind: "crit", value: 20 } });
+    expect(line).not.toContain("史萊姆凍");
+    expect(line).toMatch(/20/);
+  });
+
   it("a team entering the boss room keeps its boss-door line, even on a 20", () => {
     const p = createScriptedProvider(() => 0);
     const line = p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 15, entersBoss: {}, roll: { kind: "crit", value: 20 } });

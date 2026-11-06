@@ -28,7 +28,7 @@ const TUMBLE_MS = 1200;
 /** The big screen's 2 s over a roll (class-abilities.md D12=A): the scene dims, a big d20 tumbles and lands on the
  * room's `value`. `kind`: a warrior's roll for the answer (12+ hits), or the crit die after a correct answer (20 is a
  * critical hit, 1 a fumble, still a hit). Keyed by the caller per roll, so every roll tumbles again. */
-export function RollOverlay({ teamName, value, kind = "warrior" }: { teamName: string; value: number; kind?: "warrior" | "crit" }) {
+export function RollOverlay({ teamName, value, kind = "warrior", critable = false }: { teamName: string; value: number; kind?: "warrior" | "crit"; critable?: boolean }) {
   const [face, setFace] = useState<number | null>(null);
   useEffect(() => {
     // Reduced motion: no face flicker either (the CSS tumble already stops), the die shows its value at once.
@@ -52,9 +52,11 @@ export function RollOverlay({ teamName, value, kind = "warrior" }: { teamName: s
       : value === 1
         ? "1 大失敗……還是打中了"
         : `${value}，答對！`
-    : hit
-      ? `${value} ≥ ${WARRIOR_TARGET} 命中！`
-      : `${value}，差一點……`;
+    : critable && value === 20 // a warrior's 20 on a multipleChoice question is a crit too (game-state warriorRoll)
+      ? "20 大成功！命中，多拿一半"
+      : hit
+        ? `${value} ≥ ${WARRIOR_TARGET} 命中！`
+        : `${value}，差一點……`;
   return (
     <div data-testid="roll-overlay" data-kind={kind} className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>
       <div className="text-[18px]">
@@ -69,7 +71,7 @@ export function RollOverlay({ teamName, value, kind = "warrior" }: { teamName: s
         style={{
           visibility: landed ? "visible" : "hidden",
           ...(landed && !hit ? { background: "var(--danger)", color: "#fff" } : {}),
-          ...(landed && crit && value === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : {}),
+          ...(landed && (crit || critable) && value === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : {}),
         }}
       >
         {result}

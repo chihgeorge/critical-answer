@@ -741,9 +741,9 @@ describe("TEAM_SELECT_OPTION", () => {
       const { ids, conns } = joinTeams(room, hostConn, teamCount);
       send(room, hostConn, { type: "HOST_START" });
       /** Locks option `i` for team 0, sets the die to land on `value`, and presses 公布答案. */
-      const lockAndReveal = (i: number, value: number) => {
-        send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: i });
-        send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+      const lockAndReveal = (i: number, value: number, questionId = "r0-mc1") => {
+        send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId, optionIndex: i });
+        send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId });
         r = (value - 1) / 20;
         reveal(room);
       };
@@ -844,6 +844,25 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, conns2[0], { type: "TEAM_LOCK_OPTION", questionId: q });
       expect(lastSentTo(conns2[0])?.type).not.toBe("ERROR");
       expect((room as any).pendingLock).toMatchObject({ questionId: q });
+    });
+
+    // Value: protects=a crit die that kills the boss pays half the hit reward and keeps the boss-kill sound (dnd design E2);
+    // fails_when=setCue drops the boss-kill exception (cue "crit") or the kill skips the crit bonus; why_new=game-state tests
+    // cover the reward only, cue tests cover room hits only; seam=none; no_claim=the sound itself (cue name only)
+    it("a 20 that kills the boss pays half the hit reward on top and keeps the boss-kill cue", () => {
+      vi.useFakeTimers();
+      const { room, ids, lockAndReveal, states } = critGame();
+      const g = room.game!;
+      (room as any).game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, currentQuestionId: "boss-mc1" } };
+      lockAndReveal(room.game!.optionOrder["boss-mc1"].indexOf(0), 20, "boss-mc1");
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], questionId: "boss-mc1", value: 20, kind: "crit" });
+      const seq = states().at(-1).cueSeq;
+      vi.advanceTimersByTime(2000);
+      // hitReward 10 + half of it 5 + the 4d20 at the same rng, four 20s = 80 (not raised by the crit).
+      expect(room.game!.teams[0].reward).toBe(95);
+      expect(room.game!.phase).toBe("finished");
+      expect(states().at(-1)).toMatchObject({ cue: "boss-kill", cueSeq: seq + 1 });
     });
   });
 

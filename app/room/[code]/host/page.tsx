@@ -298,7 +298,7 @@ export default function HostPage() {
     return () => clearTimeout(t);
   }, [holdKey]);
   const held = !!holdKey && releasedFor !== holdKey;
-  const stuckKey = isMc && turn?.team && !lock ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}` : null;
+  const stuckKey = isMc && turn?.team && !lock && !roll ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}` : null;
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   useEffect(() => {
     if (!stuckKey) return;
