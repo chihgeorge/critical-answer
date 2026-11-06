@@ -237,6 +237,8 @@ export class DungeonRoom {
   private pendingRoll: PendingRoll | null = null;
   /** A natural 20 whose beat a restart cut off (R7), applied by applyLostCrit. In memory only: restore() sets it. */
   private lostCrit: { teamId: string; questionId: string } | null = null;
+  /** True inside judge(): a lost natural 20 waits for it to finish rather than judging inside it. */
+  private judging = false;
   /** The beat of a revealed lock or a roll, or a boss miss's red tile. A stale one may be left behind: whether the
    * host revealed a lock is pendingLock.revealing, never this. */
   private lockTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1578,8 +1580,6 @@ export class DungeonRoom {
   private judge(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: { kind: "warrior" | "crit"; value: number }) {
     const prev = this.game;
     if (!prev) return;
-    // Any ruling on the team (the host's, or the lost natural 20 itself) settles its lost natural 20.
-    if (this.lostCrit?.teamId === teamId) this.lostCrit = null;
     // Captured before `this.game` reassigns to the post-judgment state below: the monster name
     // and the reveal must describe the question that was JUST answered, not whatever
     // currentQuestion() would return afterwards (the next one) — a trap this file's own
@@ -1593,6 +1593,9 @@ export class DungeonRoom {
       roll?.kind === "warrior"
         ? warriorRoll(prev, teamId, questionId, roll.value, this.rng, this.question(questionId)?.kind === "multipleChoice")
         : answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng, roll?.value);
+    // A ruling on the team (the host's, or the lost natural 20 itself) settles its lost natural 20; one refused above does not.
+    if (this.lostCrit?.teamId === teamId) this.lostCrit = null;
+    this.judging = true;
     // Everything up to broadcastState is synchronous: state changes and the eventId are
     // fixed before any narration awaits, so concurrent judgments cannot interleave.
     this.game = game;
@@ -1647,6 +1650,9 @@ export class DungeonRoom {
         }, Math.min(ADVANCE_CAP_MS, Math.max(BEAT_MS, speechMs(lines))));
       });
     }
+    this.judging = false;
+    // Held back while this judgment ran, so it narrates first and its phase card is due: the turn may now be the crit team's.
+    if (this.lostCrit) this.applyLostCrit();
   }
 
   /** A team locks its current pick (E2, E11). It waits for the host's HOST_REVEAL, then the beat, then resolveLock. `shown` is the
@@ -1867,7 +1873,7 @@ export class DungeonRoom {
     const lost = this.lostCrit;
     const game = this.game;
     if (!lost || game?.phase !== "playing") return false;
-    if (game.pendingWrong || this.pendingRoll || this.pendingLock || this.paused()) return false;
+    if (this.judging || game.pendingWrong || this.pendingRoll || this.pendingLock || this.paused()) return false;
     const team = game.teams.find((t) => t?.id === lost.teamId);
     if (!team || currentQuestionIdOf(game, lost.teamId) !== lost.questionId || game.checks?.[checkKey(lost.questionId, lost.teamId)]?.value !== 20) {
       this.lostCrit = null;

@@ -422,6 +422,35 @@ describe("restoring after a restart", () => {
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
   });
 
+  // Value: protects=a lost natural 20 never judges inside another judgment (fix-check finding); fails_when=it runs
+  // from that judgment's own STATE, ahead of its narration and phase card.
+  it("a wrong answer that passes the turn to the crit team finishes before the lost natural 20 wins", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[(saved.game.currentTurnIndex + 1) % 2];
+    const other = t0 === T1 ? T2 : T1;
+    const q = saved.game.teams.find((t: any) => t.id === t0).currentQuestionId;
+    saved.game.checks = { [checkKey(q, t0)]: { value: 20, bonus: 0, dc: 8, passed: true } };
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    const host = makeConn("host2");
+    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
+    rejoin(second.room, T1, TEAM_KEY, "a2");
+    rejoin(second.room, T2, TEAM_KEY + "2", "b2");
+    expect(currentTurnTeamId(second.room.game!)).toBe(other);
+    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
+    const seq = (second.room as any).eventSeq;
+    send(second.room, host, { type: "HOST_JUDGE", teamId: other, questionId: lastOf(host, "HOST_ANSWER").questionId, correct: false, fleeChoice: "flee" });
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
+    // The wrong answer's STATE goes out first, then the natural 20's, each with its own event.
+    const ids = second.io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "STATE" && m.eventId > seq).map((m) => m.eventId);
+    expect(ids[0]).toBe(seq + 1);
+    expect(ids.at(-1)).toBe(seq + 2);
+  });
+
   // Value: protects=a check rolled under v0.35.0.0's `q:t` key still counts after the deploy; fails_when=restore keeps
   // the old key, so the team may roll again and the record is never dropped.
   it("a check saved under the old question:team key is read back under the new key", async () => {
