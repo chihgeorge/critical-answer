@@ -74,11 +74,10 @@ export const EXPIRE_MS = 24 * 60 * 60 * 1000;
 const MAX_CONNECTIONS = 60;
 /** Lets the kill-shot line be read before the story arrives. */
 const EPILOGUE_DELAY_MS = 4000;
-/** Phone answering (docs/designs/phone-answering.md D10, E2–E4): a lock is held this long before it is
- * judged, and a correct multipleChoice reveal closes on its own after ADVANCE_MS, or once the voice has
- * read the narration (estimated at SPEECH_CHARS_PER_S), never later than ADVANCE_CAP_MS. */
+/** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
+ * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
-const ADVANCE_MS = 8000;
+/** A boss phase card that follows a miss waits for the voice (estimated at SPEECH_CHARS_PER_S), never longer than this. */
 const ADVANCE_CAP_MS = 15000;
 const SPEECH_CHARS_PER_S = 4;
 /** How long checking a pasted key may take before the host is told it failed. */
@@ -197,10 +196,8 @@ export class DungeonRoom {
   private pendingLock: LockedOption | null = null;
   /** A warrior's roll in its beat (memory only: a restart drops it; its use was already spent). Shares lockTimer. */
   private pendingRoll: PendingRoll | null = null;
+  /** The beat of a revealed lock or a roll, or a boss miss's red tile. While a lock is pending, set means the host revealed it. */
   private lockTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Closes a correct multipleChoice reveal on its own (E3); cancelled by HOST_NEXT. */
-  private advanceTimer: ReturnType<typeof setTimeout> | null = null;
-  private revealAt = 0;
   private transcript: TranscriptItem[] = [];
   /** Host director: notes for the LLM and the last few hand-edited lines. */
   private notes = "";
@@ -339,7 +336,6 @@ export class DungeonRoom {
         this.lastNarration = { eventId, lines };
         this.broadcast({ type: "NARRATION", eventId, lines });
         if (said) this.sendNextLineState();
-        if (eventId === this.eventSeq) this.rearmAdvance(lines);
       },
       record: (entry) => this.addTranscript(entry),
     });
@@ -642,7 +638,7 @@ export class DungeonRoom {
       ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
       ...this.bossPhaseInfo(),
       ...(hasCuisine(this.bank) ? { cuisine: true as const } : {}),
-      pendingLock: this.pendingLock,
+      pendingLock: this.pendingLock && (this.lockTimer ? { ...this.pendingLock, revealing: true } : this.pendingLock),
       pendingRoll: this.pendingRoll,
       eventId: this.eventSeq,
       ...(this.cue ? { cue: this.cue } : {}),
@@ -755,7 +751,7 @@ export class DungeonRoom {
     // persist() from one) checks this and skips writing, so it cannot resurrect the room storage.deleteAll is
     // about to clear (Claude adversarial review, 2026-09-21).
     this.expiring = true;
-    // A lock beat or auto-advance firing during the awaits below would broadcast into a room being deleted.
+    // A lock beat or a phase-card timer firing during the awaits below would broadcast into a room being deleted.
     this.clearAnswerTimers();
     this.room.closeAll?.(CLOSE_EXPIRED, "expired");
     const storage = this.room.storage;
@@ -945,6 +941,9 @@ export class DungeonRoom {
           break;
         case "HOST_HANDOFF":
           this.handleHandoff(sender, msg.teamId);
+          break;
+        case "HOST_REVEAL":
+          this.handleHostReveal(sender, msg.teamId, msg.questionId);
           break;
         case "TEAM_CLAIM":
           this.handleClaim(sender, msg.code);
@@ -1232,8 +1231,6 @@ export class DungeonRoom {
   }
 
   private closeReveal() {
-    if (this.advanceTimer) clearTimeout(this.advanceTimer);
-    this.advanceTimer = null;
     this.reveal = null;
     // A hit that ended a boss phase showed its answer first; the phase card comes next (boss-phases.md).
     if (this.game?.phase === "playing" && this.game.boss.phasePending) return this.openPhaseCard();
@@ -1268,29 +1265,10 @@ export class DungeonRoom {
 
   private clearAnswerTimers() {
     if (this.lockTimer) clearTimeout(this.lockTimer);
-    if (this.advanceTimer) clearTimeout(this.advanceTimer);
     if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
-    this.lockTimer = this.advanceTimer = this.phaseCardTimer = null;
+    this.lockTimer = this.phaseCardTimer = null;
     this.pendingLock = null;
     this.pendingRoll = null;
-  }
-
-  /**
-   * (Re)arms the auto-advance of the open multipleChoice reveal (E4): 8 s after the reveal, later if the
-   * voice is still reading `lines` (counted from now, when they reached the screens), never past 15 s.
-   * A no-op unless an auto-advancing reveal is open, so text questions keep waiting for HOST_NEXT.
-   */
-  private rearmAdvance(lines?: string[]) {
-    if (!this.reveal || (lines && !this.advanceTimer)) return;
-    if (this.advanceTimer) clearTimeout(this.advanceTimer);
-    const sinceReveal = this.now() - this.revealAt;
-    const due = Math.min(ADVANCE_CAP_MS, Math.max(ADVANCE_MS, lines ? sinceReveal + speechMs(lines) : 0));
-    const eventId = this.eventSeq;
-    this.advanceTimer = setTimeout(() => {
-      this.advanceTimer = null;
-      // Only the reveal this timer was set for (R2-4): HOST_NEXT or a newer judgment already moved on.
-      if (this.reveal && this.eventSeq === eventId) this.closeReveal();
-    }, Math.max(0, due - sinceReveal));
   }
 
   private handleTranscript(conn: Conn) {
@@ -1361,8 +1339,6 @@ export class DungeonRoom {
     this.editedLines = [...this.editedLines, line].slice(-STYLE_EXAMPLES);
     this.addTranscript({ kind: "edit", at: new Date().toISOString(), text: line, eventId });
     this.broadcast({ type: "NARRATION", eventId, lines: newLines });
-    // A longer line read out again must not be cut off by the auto-advance (E12).
-    if (eventId === this.eventSeq) this.rearmAdvance(newLines);
   }
 
   private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean) {
@@ -1455,7 +1431,7 @@ export class DungeonRoom {
       return;
     }
     try {
-      this.judge(teamId, questionId, correct, fleeChoice ?? "retry", false);
+      this.judge(teamId, questionId, correct, fleeChoice ?? "retry");
     } catch (err) {
       this.sendInvalid(conn, err);
     }
@@ -1519,7 +1495,7 @@ export class DungeonRoom {
 
   /** Applies one answer; throws InvalidActionError (from answerQuestion) before changing anything.
    * `roll`: a warrior's d20 stands in for the answer (warriorRoll), and `correct` is ignored. */
-  private judge(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", autoAdvance: boolean, roll?: number) {
+  private judge(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: number) {
     const prev = this.game;
     if (!prev) return;
     // Captured before `this.game` reassigns to the post-judgment state below: the monster name
@@ -1556,10 +1532,8 @@ export class DungeonRoom {
       const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
       const explanation = publicExplanation(this.bank, questionId, imageBaseUrl);
       const q = this.question(questionId);
-      const choice =
-        autoAdvance && q?.kind === "multipleChoice"
-          ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward }
-          : undefined;
+      // The option wall, green tile and points of a correct lock or a warrior's success on a multipleChoice question.
+      const choice = q?.kind === "multipleChoice" ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward } : undefined;
       this.reveal = {
         questionId,
         answer: justAnswered.answer,
@@ -1567,9 +1541,6 @@ export class DungeonRoom {
         ...(choice ? { choice } : {}),
         ...(dish ? { dish: { ...dish, points: outcome.reward } } : {}),
       };
-      this.revealAt = this.now();
-      // Armed before narrate() so the narration's arrival can re-arm it (E4).
-      if (autoAdvance && game.phase === "playing") this.rearmAdvance();
     }
     this.broadcastState();
     const narration = this.narrate(eventId, event);
@@ -1592,7 +1563,7 @@ export class DungeonRoom {
     }
   }
 
-  /** A team locks its current pick (E2, E11). Judged after the beat, in resolveLock. `shown` is the
+  /** A team locks its current pick (E2, E11). It waits for the host's HOST_REVEAL, then the beat, then resolveLock. `shown` is the
    * pick the phone showed when pressed; a different room pick means another phone on the team changed it. */
   private handleTeamLockOption(conn: Conn, questionId: string, shown?: number) {
     const teamId = this.playingTeam(conn);
@@ -1609,6 +1580,18 @@ export class DungeonRoom {
     if (pick === null || pick >= q.options.length || game.eliminated[questionId]?.includes(pick)) return reject("no_selection");
     if (shown !== undefined && shown !== pick) return reject("selection_changed");
     this.pendingLock = { teamId, questionId, optionIndex: pick };
+    this.broadcastState();
+  }
+
+  /** The host's 公布答案 (host-reveal.md): starts the beat of the pending lock. No fallback timer (D5): a lock
+   * waits for the host like a fill-in. A lock whose turn moved on is still revealed, so resolveLock drops it (E9). */
+  private handleHostReveal(conn: Conn, teamId: string, questionId: string) {
+    if (!this.requireHost(conn)) return;
+    const lock = this.pendingLock;
+    const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    if (!this.game || !lock || lock.teamId !== teamId || lock.questionId !== questionId) return reject("no_lock");
+    // A double press: the beat already runs.
+    if (this.lockTimer) return reject("reveal_pending");
     this.lockTimer = setTimeout(() => this.resolveLock(), BEAT_MS);
     this.broadcastState();
   }
@@ -1627,7 +1610,7 @@ export class DungeonRoom {
       if (currentTurnTeamId(game) !== lock.teamId || currentQuestionIdOf(game, lock.teamId) !== lock.questionId) {
         this.broadcastState();
       } else if (q?.kind === "multipleChoice" && q.correctIndex === lock.optionIndex) {
-        this.judge(lock.teamId, lock.questionId, true, "retry", true);
+        this.judge(lock.teamId, lock.questionId, true, "retry");
       } else {
         // No eventSeq bump: nothing is narrated until the team chooses (E7).
         this.game = recordWrongLock(game, lock.teamId, lock.questionId, lock.optionIndex);
@@ -1652,7 +1635,7 @@ export class DungeonRoom {
       if (this.game?.pendingWrong !== pending) return;
       this.lockTimer = null;
       try {
-        this.judge(pending.teamId, pending.questionId, false, "retry", false);
+        this.judge(pending.teamId, pending.questionId, false, "retry");
       } catch (err) {
         console.error(JSON.stringify({ event: "boss_miss_failed", error: String(err) }));
       }
@@ -1713,7 +1696,7 @@ export class DungeonRoom {
    * straight away, keeping the turn. Shared by the team's 祈禱 and the host's. */
   private retryAfterPrayer(teamId: string, questionId: string) {
     try {
-      this.judge(teamId, questionId, false, "retry", false);
+      this.judge(teamId, questionId, false, "retry");
     } catch (err) {
       // The prayer stands; the miss falls back to the host's keys, like a cleric that never chose.
       console.error(JSON.stringify({ event: "prayer_failed", error: String(err) }));
@@ -1733,7 +1716,7 @@ export class DungeonRoom {
       if (currentTurnTeamId(game) !== roll.teamId || currentQuestionIdOf(game, roll.teamId) !== roll.questionId) {
         this.broadcastState();
       } else {
-        this.judge(roll.teamId, roll.questionId, false, "retry", this.question(roll.questionId)?.kind === "multipleChoice", roll.value);
+        this.judge(roll.teamId, roll.questionId, false, "retry", roll.value);
       }
     } catch (err) {
       console.error(JSON.stringify({ event: "roll_failed", error: String(err) }));
@@ -1757,7 +1740,7 @@ export class DungeonRoom {
       return;
     }
     try {
-      this.judge(teamId, questionId, false, choice, false);
+      this.judge(teamId, questionId, false, choice);
     } catch (err) {
       this.sendInvalid(conn, err);
     }

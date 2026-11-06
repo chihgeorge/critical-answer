@@ -27,7 +27,7 @@ The team on turn picks and **locks** an option on its phone, the TV holds a shor
 ## Premises (agreed)
 
 1. Turn order stays the same; waiting teams only watch.
-2. Pick, then lock. A team may change its pick until it presses 鎖定. Lock is final. The server judges the lock against `correctIndex` immediately; the host no longer judges `multipleChoice` questions.
+2. Pick, then lock. A team may change its pick until it presses 鎖定. Lock is final. The server judges the lock against `correctIndex` immediately; the host no longer judges `multipleChoice` questions. *(Superseded by [host-reveal.md](host-reveal.md), v0.33: the lock waits for the host's 公布答案, and a correct reveal waits for 下一題.)*
 3. After a wrong lock the team chooses on its phone: **重答** (the options it already got wrong are greyed out and cannot be picked; it answers again on its next turn) or **逃跑** (easier question, current flee rule).
 4. `text` questions stay host-judged. Both judging flows coexist; auto-judging applies only to `multipleChoice`.
 5. New default bank: about 48 questions, all four-option multiple choice, one theme mix per room (Taiwan general knowledge, pop culture such as music, anime and games, fantasy/adventure), difficulty rising room by room. Claude drafts, the user reviews. Reseeding the production bank is an explicit, separate user decision.

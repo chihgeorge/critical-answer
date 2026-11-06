@@ -37,6 +37,17 @@ describe("hostKeyAction", () => {
     expect(hostKeyAction({ key: "3" }, false, { stuck: true })).toBe("flee");
   });
 
+  // Value: protects=the host can reveal a waiting lock from the keyboard, and 1 still does nothing once the beat runs
+  // or with no lock (host-reveal.md D6).
+  it("1 is 公布答案 while a lock waits, and nothing otherwise on a multipleChoice turn", () => {
+    expect(hostKeyAction({ key: "1" }, false, { stuck: false }, undefined, true)).toBe("reveal");
+    expect(hostKeyAction({ key: "1" }, false, undefined, undefined, true)).toBe("reveal"); // a lock whose turn moved on
+    expect(hostKeyAction({ key: "1" }, false, { stuck: false }, undefined, false)).toBeNull(); // the beat runs
+    expect(hostKeyAction({ key: "2" }, false, { stuck: false }, undefined, true)).toBeNull();
+    expect(hostKeyAction({ key: "1" }, true, { stuck: false }, undefined, true)).toBe("next"); // the answer is on show
+    expect(hostKeyAction({ key: "1", ctrlKey: true }, false, { stuck: false }, undefined, true)).toBeNull();
+  });
+
   // Value: protects=a cleric's fill-in turn gets one 答錯 key, then 祈禱 / 重答 / 逃跑 on 2 / 3 / 4, and a team that may not
   // pray keeps the two keys; fails_when=the host's 2 settles a cleric's answer the team should
   // choose, or a non-praying team's view hides 答錯・逃跑; seam=none; no_claim=the buttons' layout

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, startGame } from "./answer";
+import { restoreRoom0AfterEach, revealLock, startGame } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 restoreRoom0AfterEach();
@@ -97,12 +97,16 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
   const wall = (i: number) => screen.getByTestId(`wall-option-${i}`);
   await team.getByRole("button", { name: "藍色" }).click();
   await lockButton.click();
-  // The beat: everyone sees the lock, nobody sees the result yet.
-  // (The beat lasts 2 s, so these run back to back.)
+  // Everyone sees the lock, nobody sees the result: it waits for the host's 公布答案 (docs/designs/host-reveal.md).
   await expect(team.getByText("已鎖定！看大螢幕揭曉")).toBeVisible();
   await expect(host.getByTestId("host-mc-status")).toContainText(`選擇隊鎖定了 ${"ABC"[blue]}`);
+  await expect(host.getByTestId("host-mc-status")).toContainText("按公布答案揭曉");
   await expect(wall(blue)).toHaveAttribute("data-look", "lock");
   await expect(screen.getByText(`選擇隊鎖定了 ${"ABC"[blue]}……`)).toBeVisible();
+  await revealLock(host);
+  // The beat: the button greys and the host is told the TV pauses (it lasts 2 s, so these run back to back).
+  await expect(host.getByRole("button", { name: /公布答案/ })).toBeDisabled();
+  await expect(host.getByTestId("host-mc-status")).toContainText("大螢幕停頓 2 秒後揭曉");
 
   // Wrong: only the pick turns red on the TV; the answer stays hidden.
   await expect(wall(blue)).toHaveAttribute("data-look", "bad");
@@ -120,6 +124,7 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
   await expect(wall(blue)).toHaveAttribute("data-look", "dim");
   await team.getByRole("button", { name: "綠色" }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
+  await revealLock(host);
   await expect(wall(green)).toHaveAttribute("data-look", "ok");
   await expect(team.getByText(/答對了！＋10 分/)).toBeVisible();
   // D4/D6: the reveal keeps the answered question, though the room has already dealt the next one.
@@ -132,13 +137,14 @@ test("phone answering: the longest default question with four options still fits
   const text = "G-Dragon 在 2026 年金唱片獎以哪首歌拿下「音源大賞」？";
   await seedSingleMcQuestion(request, { text, options: ["〈Power〉", "〈Fantastic Baby〉", "〈Home Sweet Home〉", "〈小蘋果 G-Dragon Remix〉"], correctIndex: 0 });
 
-  const { team } = await startOneTeam(browser, undefined, { width: 390, height: 844 });
+  const { host, team } = await startOneTeam(browser, undefined, { width: 390, height: 844 });
 
   await expect(team.getByRole("heading", { name: text })).toBeVisible();
   const bottom = (name: RegExp) => team.getByRole("button", { name }).evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
   await team.getByRole("button", { name: "〈Fantastic Baby〉" }).click();
   expect(await bottom(/鎖定答案/)).toBeLessThanOrEqual(844);
   await team.getByRole("button", { name: "鎖定答案" }).click();
+  await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   expect(await bottom(/重答/)).toBeLessThanOrEqual(844);
   expect(await bottom(/逃跑/)).toBeLessThanOrEqual(844);
@@ -202,10 +208,11 @@ test("phone answering: 逃跑 after a wrong lock moves the team to the other que
   ];
   expect((await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } })).ok()).toBe(true);
 
-  const { team } = await startOneTeam(browser);
+  const { host, team } = await startOneTeam(browser);
   const onDoor = await team.getByRole("button", { name: "紅門" }).isVisible();
   await team.getByRole("button", { name: onDoor ? "紅門" : "圓鑰" }).click(); // the wrong option of whichever was dealt
   await team.getByRole("button", { name: "鎖定答案" }).click();
+  await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   await team.getByRole("button", { name: /逃跑/ }).click();
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
@@ -235,7 +242,7 @@ test("phone answering: a lock the room never answers shows 沒送出，再按一
 test("phone answering: when the game ends, our own 答對了 panel gives way to 遊戲結束", async ({ browser, request }) => {
   await seedSingleMcQuestion(request);
   let toPage: import("@playwright/test").WebSocketRoute | undefined;
-  const { team } = await startOneTeam(browser, (page) =>
+  const { host, team } = await startOneTeam(browser, (page) =>
     page.routeWebSocket(/localhost:1996/, (ws) => {
       ws.connectToServer();
       toPage = ws;
@@ -243,6 +250,7 @@ test("phone answering: when the game ends, our own 答對了 panel gives way to 
   );
   await team.getByRole("button", { name: /綠色/ }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
+  await revealLock(host);
   await expect(team.getByText(/答對了！/)).toBeVisible();
 
   toPage!.send(JSON.stringify({ type: "GAME_OVER", winners: [] }));
@@ -287,6 +295,7 @@ test("boss room: a wrong lock shows no choice, then the boss brings a new questi
   await expect(team.getByRole("heading", { name: first.q })).toBeVisible();
   await team.getByRole("button", { name: first.wrong }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
+  await revealLock(host);
 
   // The beat after the reveal: the red tile shows, nothing to pick.
   await expect(screen.locator('[data-look="bad"]')).toBeVisible();

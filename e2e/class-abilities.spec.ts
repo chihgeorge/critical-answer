@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { restoreRoom0AfterEach, startGame } from "./answer";
+import { restoreRoom0AfterEach, revealLock, startGame } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 restoreRoom0AfterEach();
@@ -57,6 +57,7 @@ test("thief: sneak attack shows on the phone and over the TV's monster until the
   await expect(host.getByTitle("偷襲準備好了：這題答對加倍")).toBeVisible();
   await option(team, "綠色").click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
+  await revealLock(host);
   await expect(team.getByText(/答對了！/)).toBeVisible({ timeout: 5000 });
   await expect(screen.getByText("🗝️ 偷襲！這題答對加倍")).toHaveCount(0);
   await expect(host.getByTitle("偷襲準備好了：這題答對加倍")).toHaveCount(0);
@@ -64,9 +65,10 @@ test("thief: sneak attack shows on the phone and over the TV's monster until the
 });
 
 test("cleric: after a wrong lock the team prays, spends a use and retries (keep-turn is a room unit test)", async ({ browser }) => {
-  const { screen, team } = await start(browser, "牧師");
+  const { host, screen, team } = await start(browser, "牧師");
   await option(team, "紅色").click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
+  await revealLock(host);
   await expect(team.getByRole("button", { name: /祈禱：這回合再答一次/ })).toBeVisible({ timeout: 5000 });
   await expect(screen.getByText(/牧師祈禱中/)).toBeVisible();
   await team.getByRole("button", { name: /祈禱：這回合再答一次/ }).click();

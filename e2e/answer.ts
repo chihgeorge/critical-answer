@@ -15,7 +15,7 @@ export async function startGame(host: Page) {
 
 /** Answers the current turn correctly, whatever kind of question was dealt: the host presses 答對！
  * on a text question; on a multipleChoice one the host can't judge (docs/designs/phone-answering.md),
- * so the team on turn taps the right option on its phone and locks it. The phone is found among
+ * so the team on turn taps the right option on its phone and locks it, and the host presses 公布答案. The phone is found among
  * this browser's open /play pages for the host's room, so callers don't have to pass it in. */
 export async function answerCorrectly(host: Page) {
   const judge = host.getByRole("button", { name: "答對！" });
@@ -38,9 +38,17 @@ export async function answerCorrectly(host: Page) {
     // The option's name is its letter then its text; anchor both ends, since "2 月 28 日" is inside "12 月 28 日".
     const name = new RegExp(`^[A-D]\\s*${answer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
     await phone.getByRole("button", { name }).click();
-    return phone.getByRole("button", { name: "鎖定答案" }).click();
+    await phone.getByRole("button", { name: "鎖定答案" }).click();
+    return revealLock(host);
   }
   throw new Error(`no phone in room ${code} is on turn`);
+}
+
+/** The host presses 公布答案 on the waiting lock (docs/designs/host-reveal.md): nothing is judged until then. */
+export async function revealLock(host: Page) {
+  const reveal = host.getByRole("button", { name: /公布答案/ });
+  await expect(reveal).toBeEnabled();
+  await reveal.click();
 }
 
 /** What a raw host socket keeps from the room's STATE messages, enough to judge every turn. */
