@@ -1,6 +1,6 @@
 # Design: the host announces every answer
 
-Status: draft for /plan-eng-review (2026-11-05). TODO: 「每一題都由主持人宣布答案，選擇題和填空題節奏一樣」 (P2).
+Status: shipped in v0.33.0.0 (2026-11-05), reviewed with /plan-eng-review and /review. TODO: 「每一題都由主持人宣布答案，選擇題和填空題節奏一樣」 (P2).
 
 ## Problem
 
