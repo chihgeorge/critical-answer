@@ -257,6 +257,33 @@ describe("restoring after a restart", () => {
     expect(lastOf(screen, "STATE").roomEpoch).toBe(epoch);
   });
 
+  // Value: protects=the defeat counts, each team's count at room entry and the variant seed survive a restart, so a reloaded big screen shows the same hats; fails_when=either field is dropped on save or restore; why_new=new GameState fields (monster-catalog.md §3); seam=none; no_claim=a real Durable Object
+  it("a game's monster defeats and variant seed come back after a restart", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage).room;
+    const { host } = startedGame(first);
+    judgeCorrect(first, host, T1);
+    expect(first.game!.defeats).toEqual({ [BANK.rooms[0].monster]: 1 });
+    const second = makeRoom(storage).room;
+    expect(await second.restore()).toBe("restored");
+    expect(second.game!.defeats).toEqual(first.game!.defeats);
+    expect(second.game!.variantSeed).toBe(first.game!.variantSeed);
+    expect(second.game!.teams.map((t) => t.metDefeats)).toEqual(first.game!.teams.map((t) => t.metDefeats));
+  });
+
+  // Value: protects=a save from before the catalog (no defeats, no seed) still restores and plays; fails_when=a missing field fails the restore; why_new=new optional fields; seam=none; no_claim=a real Durable Object
+  it("a save from before monster defeats restores and plays on", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const snap = storage.data.get(SNAPSHOT_KEY) as any;
+    delete snap.game.defeats;
+    delete snap.game.variantSeed;
+    const second = makeRoom(storage).room;
+    expect(await second.restore()).toBe("restored");
+    expect(second.game!.defeats).toBeUndefined();
+    expect(second.game!.variantSeed).toBeUndefined();
+  });
+
   // The branch choice was removed in v0.31.3.0, but a save from before keeps it on every team.
   it("a save whose teams still carry branchChoices restores and plays on", async () => {
     const storage = memoryStorage();

@@ -3,7 +3,8 @@
 // a small canvas filled cell by cell, so the app ships no image assets and the
 // art stays crisp at any integer scale (CSS `image-rendering: pixelated`).
 
-import type { SpriteKind } from "./sprite-kind";
+import { ACCESSORIES, type Accessory } from "./monster-catalog";
+import type { MonsterSprite, SpriteKind } from "./sprite-kind";
 
 const K = "#2a1533"; // the outline colour
 
@@ -101,6 +102,15 @@ function eye(P: Px, x: number, y: number, blink: boolean, big = false) {
   P.set(x + w - 1, y + h - 1, "#7a5a9a");
 }
 
+/** The six hats, drawn without hue-rotate (the monster's recolor never reaches them), outlined like the crown. */
+const ACC: Record<Accessory, { rows: string[]; pal: Record<string, string> }> = {
+  crown: { rows: ["y...y...y", "yy.yyy.yy", "yryyryyry", "ooooooooo"], pal: { y: "#ffdd55", r: "#ff6b6b", o: "#e8a824" } },
+  "party-hat": { rows: ["...w...", "...b...", "..bbb..", "..yyy..", ".bbbbb.", ".yyyyy.", "bbbbbbb"], pal: { w: "#fff4dc", b: "#5ab0f0", y: "#ffcf4a" } },
+  flower: { rows: ["..p.p..", ".ppppp.", "pppyppp", ".ppppp.", "..p.p..", "...g...", "..gg..."], pal: { p: "#ff8fb1", y: "#ffcf4a", g: "#3fa65a" } },
+  headband: { rows: ["rrrrrrrrr", "RRRRRRRRR"], pal: { r: "#ff6b6b", R: "#c94848" } },
+  bow: { rows: ["pp.....pp", "pppp.pppp", "ppppPpppp", "pppp.pppp", "pp.....pp"], pal: { p: "#ff6bb1", P: "#c2448a" } },
+  "pirate-hat": { rows: ["...kkk...", ".kkkkkkk.", "kkkkwkkkk", "kkkwkwkkk", "yyyyyyyyy"], pal: { k: "#4a3a5e", w: "#fff4dc", y: "#ffcf4a" } },
+};
 /** Native pixel size of each sprite; the component scales it with CSS. */
 export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   slime: [32, 30],
@@ -126,6 +136,18 @@ export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   "dish-ice": [26, 32],
   "dish-riceball": [36, 24],
   "dish-skewer": [42, 22],
+  ...(Object.fromEntries(Object.entries(ACC).map(([a, g]) => [`acc-${a}`, [g.rows[0].length + 2, g.rows.length + 2]])) as Record<`acc-${Accessory}`, [number, number]>),
+};
+
+/** Where a hat's bottom-centre cell goes on each monster, in native pixels from the top-left: on top
+ * of the head, low enough that the tallest hat stays inside the sprite (docs/designs/monster-catalog.md §3). */
+export const HEAD_ANCHOR: Record<MonsterSprite, [number, number]> = {
+  slime: [16, 9],
+  "slime-lost": [16, 11],
+  "slime-king": [18, 15],
+  ghost: [16, 8],
+  "ghost-cry": [16, 8],
+  dragon: [26, 8],
 };
 
 /** Body colors: face, shade, highlight. The newer monsters bake in their own instead of relying on
@@ -391,6 +413,14 @@ function crown(cv: HTMLCanvasElement) {
     4,
     3,
   );
+  P.outline(K);
+  P.flush();
+}
+
+function accessory(cv: HTMLCanvasElement, a: Accessory) {
+  const g = ACC[a];
+  const P = new Px(cv, g.rows[0].length + 2, g.rows.length + 2);
+  P.grid(g.rows, g.pal, 1, 1);
   P.outline(K);
   P.flush();
 }
@@ -689,6 +719,7 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   "dish-ice": (cv) => dishIce(cv),
   "dish-riceball": (cv) => dishRiceball(cv),
   "dish-skewer": (cv) => dishSkewer(cv),
+  ...(Object.fromEntries(ACCESSORIES.map((a) => [`acc-${a}`, (cv: HTMLCanvasElement) => accessory(cv, a)])) as Record<`acc-${Accessory}`, (cv: HTMLCanvasElement) => void>),
 };
 
 /**

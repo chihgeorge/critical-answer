@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseBank, roomTemplates, hasCuisine, DISH_LIMITS, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, type MediaContent } from "./question-bank";
+import { parseBank, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, type MediaContent } from "./question-bank";
 import { BANK } from "./question-bank-data";
+import { catalogMonster, variantOf } from "./monster-catalog";
 import { MAX_TEAMS } from "./protocol";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
@@ -21,8 +22,8 @@ const mc = (id: string, options = ["A", "B"], correctIndex = 0, content: MediaCo
   correctIndex,
 });
 const valid = () => ({
-  rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, questions: [q("a1"), q("a2")] }],
-  boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [q("b1")] },
+  rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [q("a1"), q("a2")] }],
+  boss: { monster: "dragon", maxHp: 3, questions: [q("b1")] },
 });
 
 const phase1 = () => ({ maxHp: 3, questions: [q("b1")] });
@@ -49,7 +50,8 @@ describe("shipped bank", () => {
   it("has 8 rooms of difficulty 1/2/2/3/4/4/5/5 paying 10/20/20/30/40/40/50/50 (scoring-and-score-pools.md S9, S12)", () => {
     expect(BANK.rooms.map((r) => r.difficulty)).toEqual([1, 2, 2, 3, 4, 4, 5, 5]);
     expect(BANK.rooms.map((r) => r.reward)).toEqual([10, 20, 20, 30, 40, 40, 50, 50]);
-    expect(new Set(BANK.rooms.map((r) => r.monster.name)).size).toBe(8);
+    expect(new Set(BANK.rooms.map((r) => r.monster))).toEqual(new Set(["slime-soft", "ghost-shy", "ghost-cry"]));
+    expect(BANK.boss.monster).toBe("dragon");
   });
 
   it("has at least MAX_TEAMS + 4 questions in every pool, so a deal always finds one nobody holds", () => {
@@ -104,10 +106,10 @@ describe("parseBank", () => {
   const pooled = () => ({
     pools: { "1": [q("a1"), q("a2")], "3": [q("c1")] },
     rooms: [
-      { monster: { name: "史萊姆", sprite: "slime", hue: 0 }, difficulty: 1, reward: 10 },
-      { monster: { name: "幽靈", sprite: "ghost", hue: 0 }, difficulty: 3, reward: 99 },
+      { monster: "slime-soft", difficulty: 1, reward: 10 },
+      { monster: "ghost-shy", difficulty: 3, reward: 99 },
     ],
-    boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [q("b1")] },
+    boss: { monster: "dragon", maxHp: 3, hitReward: 10, questions: [q("b1")] },
   });
 
   it("reads the pooled format: questions by difficulty, rooms with difficulty and reward, missing pools empty", () => {
@@ -130,10 +132,10 @@ describe("parseBank", () => {
   it("converts the older per-room format: each room's questions join the pool of its baseDifficulty", () => {
     const b = parseBank({
       rooms: [
-        { monster: { name: "A", sprite: "slime" }, baseDifficulty: 2, questions: [q("x1")] },
-        { monster: { name: "B", sprite: "ghost" }, baseDifficulty: 2, questions: [q("x2")] },
+        { monster: "slime-soft", baseDifficulty: 2, questions: [q("x1")] },
+        { monster: "ghost-shy", baseDifficulty: 2, questions: [q("x2")] },
       ],
-      boss: { monster: { name: "龍", sprite: "dragon" }, maxHp: 3, questions: [q("b1")] },
+      boss: { monster: "dragon", maxHp: 3, questions: [q("b1")] },
     });
     expect(b.pools[2].map((x) => x.id)).toEqual(["x1", "x2"]);
     expect(b.rooms.map((r) => [r.difficulty, r.reward])).toEqual([[2, 20], [2, 20]]);
@@ -173,8 +175,8 @@ describe("parseBank", () => {
 
   it("publicQuestion shows the monster of the team's room and the game's option order", () => {
     const b = parseBank({ ...pooled(), pools: { "1": [mc("m1", ["A", "B", "C"], 0)], "3": [q("c1")] } });
-    expect(publicQuestion(b, "m1", 1, "", [2, 1, 0])).toMatchObject({ monster: { name: "幽靈" }, options: ["C", "B", "A"] });
-    expect(publicQuestion(b, "b1", 0, "")).toMatchObject({ monster: { name: "龍" }, boss: true });
+    expect(publicQuestion(b, "m1", 1, "", [2, 1, 0])).toMatchObject({ monster: { id: "ghost-shy", name: "害羞幽靈" }, options: ["C", "B", "A"] });
+    expect(publicQuestion(b, "b1", 0, "")).toMatchObject({ monster: { id: "dragon", name: "深淵小黑龍" }, boss: true });
     expect(publicQuestion(b, "c1", 0, "")?.difficulty).toBe(3); // its own pool, even when dealt to a team at another difficulty
   });
 
@@ -199,11 +201,6 @@ describe("parseBank", () => {
     ["an empty answer", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [q("a1", textContent(), "")] }] })],
     ["a difficulty of 0", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], baseDifficulty: 0 }] })],
     ["a difficulty of 6", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], baseDifficulty: 6 }] })],
-    ["an unknown sprite", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], monster: { name: "x", sprite: "cat" } }] })],
-    // Value: protects=a bank monster may only use a monster sprite (it needs a DISH_SPRITE dish); fails_when=SPRITES is widened
-    // to every SpriteKind; why_new=the only row used a made-up name; seam=none; no_claim=the bank editor's own sprite picker
-    ["a sprite that is not a monster (the pot)", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], monster: { name: "x", sprite: "pot" } }] })],
-    ["a sprite that is not a monster (a dish)", () => ({ ...valid(), boss: { ...valid().boss, monster: { name: "x", sprite: "dish-skewer" } } })],
     ["no boss questions", () => ({ ...valid(), boss: { ...valid().boss, questions: [] } })],
     ["a boss without hp", () => ({ ...valid(), boss: { ...valid().boss, maxHp: 0 } })],
     ["a negative room reward", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], reward: -1 }] })],
@@ -358,7 +355,7 @@ describe("lookups", () => {
   const bank = parseBank(valid());
 
   it("roomTemplates keeps the difficulty and reward per room, and poolQuestionIds the ids per difficulty", () => {
-    expect(roomTemplates(bank)).toEqual([{ baseDifficulty: 1, reward: 10 }]);
+    expect(roomTemplates(bank)).toEqual([{ baseDifficulty: 1, reward: 10, monsterId: "slime-soft", dish: "史萊姆寒天涼拌" }]);
     expect(poolQuestionIds(bank)).toEqual([["a1", "a2"], [], [], [], []]);
   });
 
@@ -459,7 +456,7 @@ describe("lookups", () => {
     const bank = parseBank({
       rooms: [
         {
-          monster: { name: "史萊姆", sprite: "slime", hue: 0 },
+          monster: "slime-soft",
           baseDifficulty: 1,
           questions: [
             q("a1"), // text content, no image
@@ -469,7 +466,7 @@ describe("lookups", () => {
           ],
         },
       ],
-      boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [q("b1", imageContent("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"))] },
+      boss: { monster: "dragon", maxHp: 3, questions: [q("b1", imageContent("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"))] },
     });
     expect(imageKeysOf(bank)).toEqual(
       new Set(["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "cccccccc-cccc-cccc-cccc-cccccccccccc"]),
@@ -477,37 +474,46 @@ describe("lookups", () => {
   });
 });
 
-describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
-  const dish = { part: "外膜", method: "曬乾後涼拌", name: "史萊姆寒天涼拌", comment: "口感像寒天。" };
-  const withDish = (d: unknown) => ({ ...valid(), rooms: [{ ...valid().rooms[0], monster: { name: "史萊姆", sprite: "slime", hue: 0, dish: d } }] });
+describe("catalog monsters (docs/designs/monster-catalog.md §2)", () => {
+  const room0 = (monster: unknown) => ({ ...valid(), rooms: [{ ...valid().rooms[0], monster }] });
 
-  it("reads a dish, trimmed, and passes its name to the room template; a bank without dishes has no cuisine", () => {
-    const bank = parseBank(withDish({ ...dish, name: " 史萊姆寒天涼拌 " }));
-    expect(bank.rooms[0].monster.dish).toEqual(dish);
-    expect(roomTemplates(bank)[0].dish).toBe("史萊姆寒天涼拌");
-    expect(hasCuisine(bank)).toBe(true);
-    expect(hasCuisine(parseBank(valid()))).toBe(false);
-    expect(roomTemplates(parseBank(valid()))[0].dish).toBeUndefined();
+  // Value: protects=a bank from before the catalog is refused with the message the editor shows; fails_when=an object monster is accepted or the message loses 題庫格式太舊; why_new=new format (D6); seam=none; no_claim=how the editor shows it
+  it("refuses a whole monster object as the format before the catalog", () => {
+    expect(() => parseBank(room0({ name: "史萊姆", sprite: "slime", hue: 0 }))).toThrow(/^題庫格式太舊：rooms\[0\]\.monster/);
+    expect(() => parseBank({ ...valid(), boss: { ...valid().boss, monster: { name: "龍", sprite: "dragon" } } })).toThrow(/^題庫格式太舊：boss\.monster/);
   });
 
+  // Value: protects=only catalog ids, room monsters in rooms and bosses on the boss; fails_when=an unknown id or the wrong kind passes; why_new=new format; seam=none; no_claim=the editor's own pickers
   it.each([
-    ["not an object", "外膜", /dish is not an object/],
-    ["missing a field", { part: "外膜", method: "煮", name: "湯" }, /dish has no comment/],
-    ["a blank field", { ...dish, part: "  " }, /dish has no part/],
-    ["a field over its limit", { ...dish, name: "一".repeat(DISH_LIMITS.name + 1) }, /dish name is longer than 16/],
-  ])("refuses a dish that is %s", (_, d, why) => {
-    expect(() => parseBank(withDish(d))).toThrow(why);
+    ["an unknown id", () => room0("cat"), /rooms\[0\]\.monster 不是圖鑑裡的怪物：cat/],
+    ["a missing monster", () => room0(undefined), /不是圖鑑裡的怪物/],
+    ["a boss in a room", () => room0("dragon"), /rooms\[0\]\.monster dragon 只能當首領/],
+    ["a room monster as the boss", () => ({ ...valid(), boss: { ...valid().boss, monster: "slime-soft" } }), /boss\.monster slime-soft 只能當小怪/],
+  ])("refuses %s", (_, bank, why) => {
+    expect(() => parseBank(bank())).toThrow(why);
   });
 
-  it("counts a character outside the BMP as one", () => {
-    expect(parseBank(withDish({ ...dish, name: "𩸽".repeat(DISH_LIMITS.name) })).rooms[0].monster.dish?.name).toHaveLength(DISH_LIMITS.name * 2);
+  // Value: protects=a room template carries its catalog id (the defeats key) and the catalog's dish name; fails_when=roomTemplates drops monsterId or reads a dish from the bank; why_new=catalog; seam=none; no_claim=the dish is served
+  it("keeps the id and takes the dish from the catalog for the room template", () => {
+    const bank = parseBank(valid());
+    expect(bank.rooms[0].monster).toBe("slime-soft");
+    expect(roomTemplates(bank)[0]).toMatchObject({ monsterId: "slime-soft", dish: "史萊姆寒天涼拌" });
   });
 
-  it("the shipped bank cooks every monster, and no dish holds a 3+ character answer (the AI line would be thrown away)", () => {
-    const monsters = [...BANK.rooms.map((r) => r.monster), BANK.boss.monster];
-    expect(monsters.every((m) => m.dish)).toBe(true);
+  // Value: protects=a repeat appearance carries the title, the recolor and the accessory into STATE, and the first stays plain; fails_when=publicQuestion ignores defeats or the hue misses the mod; why_new=new rule (D4/D5); seam=none; no_claim=rendering
+  it("publicQuestion dresses a room monster by its defeats, and never the boss", () => {
+    const b = parseBank(valid());
+    const slime = catalogMonster("slime-soft");
+    expect(publicQuestion(b, "a1", 0, "", undefined, { seed: 7, defeats: {} })?.monster).toEqual({ id: "slime-soft", name: slime.name, sprite: "slime", hue: 0 });
+    const v = variantOf(7, slime, 1)!;
+    expect(publicQuestion(b, "a1", 0, "", undefined, { seed: 7, defeats: { "slime-soft": 1 } })?.monster).toEqual({ id: "slime-soft", name: v.title + slime.name, sprite: "slime", hue: v.hueShift % 360, accessory: v.accessory });
+    expect(publicQuestion(b, "b1", 0, "", undefined, { seed: 7, defeats: { dragon: 5 } })?.monster).toEqual({ id: "dragon", name: "深淵小黑龍", sprite: "dragon", hue: 0 });
+  });
+
+  it("no catalog dish in the shipped bank holds a 3+ character answer (the AI line would be thrown away)", () => {
+    const monsters = [...BANK.rooms.map((r) => r.monster), BANK.boss.monster].map(catalogMonster);
     const answers = allQuestions(BANK).map(answerText).filter((a) => a.length >= 3);
-    for (const m of monsters) for (const v of Object.values(m.dish!)) expect(answers.filter((a) => v.includes(a)), `${m.name}: ${v}`).toEqual([]);
+    for (const m of monsters) for (const v of Object.values(m.dish)) expect(answers.filter((a) => v.includes(a)), `${m.name}: ${v}`).toEqual([]);
   });
 });
 

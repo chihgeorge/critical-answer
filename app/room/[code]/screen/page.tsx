@@ -383,7 +383,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
       {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : cook !== 3 && (
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         <div key={card ? `card-${eventId}` : undefined} className={card ? "px-phase-blink" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}>
-          <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} />
+          <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} accessory={monster.accessory} />
         </div>
       </div>
       )}

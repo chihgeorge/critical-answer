@@ -587,7 +587,7 @@ export default function PlayPage() {
 
       {game && !finished && !revealed && !intro && turn?.team && (
         <Panel className="flex items-center gap-3 px-3 py-[10px]">
-          <Sprite kind={turn.monster.kind} hue={turn.monster.hue} scale={turn.miniScale} className="flex-none" />
+          <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
           <div className="text-[15px]">
             <div>{turn.team.name} 正在面對</div>
             <div className="text-[18px]">{turn.monster.name}</div>

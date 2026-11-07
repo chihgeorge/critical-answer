@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, FINISH_PODIUM_MS, type AnswerReveal } from "@/lib/protocol";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { Panel, prefersReducedMotion, Sprite } from "@/components/pixel";
+import { monsterById } from "@/lib/monster-catalog";
 import { SPRITE_SIZE } from "@/lib/pixel-art";
 
 type Dish = NonNullable<AnswerReveal["dish"]>;
@@ -125,7 +126,8 @@ export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom }: {
         <DishCard dish={dish} title={title} />
       </div>
       <div className="absolute" style={{ left: "50%", bottom, transform: "translateX(-50%)", zIndex: 4 }}>
-        <Sprite kind={kind} scale={scale} hue={dish.monster.hue} />
+        {/* The catalog's own hue: a repeat appearance's recolor stays on the monster (monster-catalog.md §3). */}
+        <Sprite kind={kind} scale={scale} hue={monsterById(dish.monster.id ?? "")?.hue ?? dish.monster.hue} />
       </div>
     </div>
   );

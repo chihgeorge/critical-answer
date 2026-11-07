@@ -1863,3 +1863,52 @@ describe("the persuasion check (dnd design R6, R8)", () => {
     expect(getSpectatorView(old as GameState).checks).toEqual({});
   });
 });
+
+describe("monster defeats (docs/designs/monster-catalog.md §3)", () => {
+  const withMonsters = (): GameState => {
+    const game = makeGame({ teamCount: 1, bossThreshold: 99 });
+    return { ...game, rooms: game.rooms.map((r, i) => ({ ...r, monsterId: i === 1 ? "ghost-shy" : "slime-soft" })) };
+  };
+
+  // Value: protects=only defeating a room monster counts, per catalog id, shared across rooms; fails_when=a wrong answer or a flee counts, or the key is the room; why_new=new counter; seam=none; no_claim=the room's broadcast
+  it("counts a correct answer against the room's monster, and nothing else", () => {
+    let game = withMonsters();
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, false, "retry", first));
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, false, "flee", first));
+    expect(game.defeats).toBeUndefined();
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first)); // room 0: slime
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first)); // room 1: ghost
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first)); // room 2: slime again
+    expect(game.defeats).toEqual({ "slime-soft": 2, "ghost-shy": 1 });
+  });
+
+  // Value: protects=a team records its room monster's defeat count when it walks in, and other teams' defeats meanwhile leave it alone (the look is fixed per room, owner 2026-11-07); fails_when=metDefeats is not set on entry, is read before this defeat counts, or follows the game-wide count; why_new=new field; seam=none; no_claim=the room's broadcast
+  it("fixes each team's count for its room when it walks in", () => {
+    const base = makeGame({ teamCount: 2, bossThreshold: 99 });
+    let game: GameState = { ...base, rooms: base.rooms.map((r, i) => ({ ...r, monsterId: i === 1 ? "ghost-shy" : "slime-soft" })) };
+    expect(game.teams.map((t) => t.metDefeats)).toEqual([0, 0]);
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first)); // T0 beats the slime, walks into the ghost's room
+    expect(game.defeats).toEqual({ "slime-soft": 1 });
+    expect(game.teams.map((t) => [t.roomIndex, t.metDefeats])).toEqual([[1, 0], [0, 0]]); // T1's slime keeps its look
+    ({ game } = answerQuestion(game, "T1", game.teams[1].currentQuestionId, false, "retry", first)); // T1 misses: its turn passes
+    expect(game.teams[1].metDefeats).toBe(0);
+    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first)); // ghost down, room 2 is a slime again
+    expect(game.teams[0]).toMatchObject({ roomIndex: 2, metDefeats: 1 });
+  });
+
+  // Value: protects=a save from before the catalog (rooms without monsterId) counts nothing and does not throw; fails_when=an undefined key is counted; why_new=new optional field; seam=none; no_claim=none beyond protects
+  it("counts nothing for rooms saved without a monster id", () => {
+    const game = makeGame({ teamCount: 1, bossThreshold: 99 });
+    expect(answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first).game.defeats).toBeUndefined();
+  });
+
+  // Value: protects=each game draws its variant seed once, after the deals, from the game's rng; fails_when=the seed is drawn before the deals (shifting them) or not at all; why_new=new field (R1); seam=none; no_claim=how varied real games look
+  it("draws the variant seed from the rng after dealing", () => {
+    expect(makeGame().variantSeed).toBe(0);
+    const drawn: number[] = [];
+    const rng = () => (drawn.push((drawn.length + 1) / 100), drawn.at(-1)!);
+    const game = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], ...deck(3, 1), ["b1"], { bossThreshold: 3 }, 2, rng);
+    expect(drawn.length).toBeGreaterThan(1);
+    expect(game.variantSeed).toBe(Math.floor(drawn.at(-1)! * 2 ** 32));
+  });
+});

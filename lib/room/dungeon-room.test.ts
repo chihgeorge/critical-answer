@@ -2,7 +2,8 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { DungeonRoom, fixedDie } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
-import { answerText, bossPhaseStates, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
+import { DIFFICULTIES, answerText, bossPhaseStates, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
+import { catalogMonster, variantOf } from "../monster-catalog";
 import { BANK } from "../question-bank-data";
 // Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
 vi.mock("../question-bank-data", async (actual) => {
@@ -556,8 +557,8 @@ describe("HOST_SEND_TO_BOSS (scoring-and-score-pools.md S13)", () => {
   });
   it("pays the bank's boss.hitReward on a boss hit, not the default 10", () => {
     const bank = parseBank({
-      rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "？" }, answer: "x" }] }],
-      boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 25, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+      rooms: [{ monster: "slime-soft", baseDifficulty: 1, reward: 10, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "？" }, answer: "x" }] }],
+      boss: { monster: "dragon", maxHp: 3, hitReward: 25, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
     });
     const room = new DungeonRoom(makeRoom() as any, () => 0, { bank });
     const hostConn = makeConn("host-conn");
@@ -692,7 +693,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     const bankWithExplanation = parseBank({
       rooms: [
         {
-          monster: { name: "史萊姆", sprite: "slime", hue: 0 },
+          monster: "slime-soft",
           baseDifficulty: 1, reward: 10,
           questions: [
             {
@@ -705,7 +706,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
           ],
         },
       ],
-      boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+      boss: { monster: "dragon", maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
     });
     const roomIO = { ...(makeRoom() as any), env: { R2_PUBLIC_BASE_URL: "https://pub.example.r2.dev" } } as RoomIO;
     const explanationRoom = new DungeonRoom(roomIO, () => 0, { bank: bankWithExplanation });
@@ -826,13 +827,13 @@ describe("TEAM_SELECT_OPTION", () => {
   const mcBank = parseBank({
     rooms: [
       {
-        monster: { name: "史萊姆", sprite: "slime", hue: 0 },
+        monster: "slime-soft",
         baseDifficulty: 1, reward: 10,
         questions: [{ kind: "multipleChoice", id: "r0-mc1", content: { kind: "text", value: "選哪個？" }, options: ["A", "B", "C"], correctIndex: 1 }],
       },
     ],
     boss: {
-      monster: { name: "龍", sprite: "dragon", hue: 0 },
+      monster: "dragon",
       maxHp: 3, hitReward: 10,
       questions: [
         { kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" },
@@ -2788,12 +2789,12 @@ describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
   const imageBank = parseBank({
     rooms: [
       {
-        monster: { name: "史萊姆", sprite: "slime", hue: 0 },
+        monster: "slime-soft",
         baseDifficulty: 1, reward: 10,
         questions: [{ kind: "text", id: "r0-img1", content: { kind: "image", value: "55555555-5555-5555-5555-555555555555" }, answer: "松鼠" }],
       },
     ],
-    boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+    boss: { monster: "dragon", maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
   });
 
   it("builds the broadcast question's content.url from room.env.R2_PUBLIC_BASE_URL", () => {
@@ -3056,8 +3057,8 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
   afterEach(() => vi.useRealTimers());
   const mc = (id: string) => ({ kind: "multipleChoice" as const, id, content: { kind: "text" as const, value: "選哪個？" }, options: ["A", "B", "C", "D"], correctIndex: 1 });
   const bank = parseBank({
-    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [mc("r0-mc1"), { kind: "text", id: "r0-t1", content: { kind: "text", value: "？" }, answer: "a" }, { kind: "text", id: "r0-t2", content: { kind: "text", value: "？" }, answer: "〈萬家福〉" }] }],
-    boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [mc("boss-mc1"), mc("boss-mc2")] },
+    rooms: [{ monster: "slime-soft", baseDifficulty: 1, reward: 10, questions: [mc("r0-mc1"), { kind: "text", id: "r0-t1", content: { kind: "text", value: "？" }, answer: "a" }, { kind: "text", id: "r0-t2", content: { kind: "text", value: "？" }, answer: "〈萬家福〉" }] }],
+    boss: { monster: "dragon", maxHp: 3, hitReward: 10, questions: [mc("boss-mc1"), mc("boss-mc2")] },
   });
   const err = (conn: Conn) => lastSentTo(conn as never)?.detail ?? lastSentTo(conn as never)?.error;
 
@@ -3231,8 +3232,8 @@ describe("cleric on a fill-in question: 祈禱 / 重答 / 逃跑 after the host'
   afterEach(() => vi.useRealTimers());
   const text = (id: string) => ({ kind: "text" as const, id, content: { kind: "text" as const, value: "？" }, answer: "台北市" });
   const bank = parseBank({
-    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [text("r0-t1"), text("r0-t2"), { kind: "multipleChoice", id: "r0-mc1", content: { kind: "text", value: "？" }, options: ["A", "B"], correctIndex: 1 }] }],
-    boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [text("boss-t1"), text("boss-t2")] },
+    rooms: [{ monster: "slime-soft", baseDifficulty: 1, reward: 10, questions: [text("r0-t1"), text("r0-t2"), { kind: "multipleChoice", id: "r0-mc1", content: { kind: "text", value: "？" }, options: ["A", "B"], correctIndex: 1 }] }],
+    boss: { monster: "dragon", maxHp: 3, hitReward: 10, questions: [text("boss-t1"), text("boss-t2")] },
   });
   const err = (conn: Conn) => lastSentTo(conn as never)?.detail ?? lastSentTo(conn as never)?.error;
 
@@ -3453,8 +3454,8 @@ describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
   // no_claim=the phone never shows the box there (play page).
   it("refuses a multipleChoice question", () => {
     const mcBank = parseBank({
-      rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, reward: 10, questions: [{ kind: "multipleChoice", id: "r0-mc1", content: { kind: "text", value: "？" }, options: ["a", "b"], correctIndex: 0 }] }],
-      boss: { monster: { name: "龍", sprite: "dragon", hue: 0 }, maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+      rooms: [{ monster: "slime-soft", baseDifficulty: 1, reward: 10, questions: [{ kind: "multipleChoice", id: "r0-mc1", content: { kind: "text", value: "？" }, options: ["a", "b"], correctIndex: 0 }] }],
+      boss: { monster: "dragon", maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
     });
     const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: mcBank });
     const hostConn = makeConn("host-conn");
@@ -3500,10 +3501,12 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     send(room, hostConn, { type: "HOST_START" });
     return { room, hostConn, ids, events };
   }
-  const withRoom0Dish = (name: string): Bank => ({
-    ...BANK,
-    rooms: BANK.rooms.map((r, i) => (i === 0 ? { ...r, monster: { ...r.monster, dish: { ...r.monster.dish!, name } } } : r)),
-  });
+  const ROOM0_DISH = catalogMonster(BANK.rooms[0].monster).dish.name;
+  /** The bank with one fill-in answer (not r0-q1's) renamed to room 0's dish, so the dish names an answer. */
+  const withAnswerAsRoom0Dish = (): Bank => {
+    const [d, i] = DIFFICULTIES.flatMap((d) => BANK.pools[d].map((q, i) => [d, i, q] as const)).find(([, , q]) => q.kind === "text" && q.id !== "r0-q1")!;
+    return { ...BANK, pools: { ...BANK.pools, [d]: BANK.pools[d].map((q, j) => (j === i ? { ...q, answer: ROOM0_DISH } : q)) } };
+  };
 
   it("a correct answer reveals the room monster's dish with the points it earned, and STATE says 飽足感", async () => {
     const { room, hostConn, ids, events } = cookRoom();
@@ -3511,13 +3514,13 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     await flush();
     const last = states(room).at(-1);
     expect(last.cuisine).toBe(true);
-    const m = BANK.rooms[0].monster;
-    expect(last.reveal.dish).toEqual({ ...m.dish, points: 10, monster: { name: m.name, sprite: m.sprite, hue: m.hue }, room: 0, teamId: ids[0] });
+    const m = catalogMonster(BANK.rooms[0].monster);
+    expect(last.reveal.dish).toEqual({ ...m.dish, points: 10, monster: { id: m.id, name: m.name, sprite: m.sprite, hue: m.hue }, room: 0, teamId: ids[0] });
     expect(last.reveal.served).toBeUndefined();
     // The narrator hears that it will be cooked, never what into (cooking I1): the dish line waits for 上菜.
     const told = events.find((e) => e.type === "correct");
     expect(told.cooked).toBe(true);
-    expect(JSON.stringify(told)).not.toContain(m.dish!.name);
+    expect(JSON.stringify(told)).not.toContain(m.dish.name);
   });
 
   describe("🍲 上菜 (HOST_SERVE, cooking R5/I2)", () => {
@@ -3573,26 +3576,59 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     });
   });
 
-  it("a wrong answer reveals no dish", () => {
+  // Value: protects=the room passes this game's defeats into STATE: the slime's second appearance (room 3) wears a variant and the reveal keeps the plain look it was defeated in; fails_when=currentQuestion builds the question without the game's defeats or seed; why_new=new wiring (monster-catalog.md §3); seam=none; no_claim=rendering
+  it("a room monster met again wears its next variant on STATE", () => {
+    const { room, hostConn } = cookRoom();
+    const slime = catalogMonster(BANK.rooms[0].monster);
+    for (let i = 0; i < 3; i++) {
+      if (i > 0) serveNext(room, hostConn, seqOf(room));
+      const t = room.game!.teams[0];
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: t.id, questionId: t.currentQuestionId, correct: true });
+    }
+    expect(states(room).at(-1).reveal.dish.monster).toEqual({ id: "ghost-cry", name: "愛哭幽靈", sprite: "ghost-cry", hue: 0 });
+    serveNext(room, hostConn, seqOf(room));
+    expect(BANK.rooms[3].monster).toBe(slime.id);
+    const v = variantOf(room.game!.variantSeed!, slime, 1)!;
+    expect(states(room).at(-1).question.monster).toEqual({ id: slime.id, name: v.title + slime.name, sprite: slime.sprite, hue: v.hueShift, accessory: v.accessory });
+  });
+
+  // Value: protects=STATE draws the team's monster from the count it walked in with, not from defeats other teams made since, and falls back to the game-wide count for a save without one; fails_when=currentQuestion reads only game.defeats, or ignores it when metDefeats is absent; why_new=owner 2026-11-07 (look fixed per room); seam=none; no_claim=rendering
+  it("keeps a team's monster as it walked in, whatever other teams defeat", () => {
+    const { room } = cookRoom();
+    const slime = catalogMonster(BANK.rooms[0].monster);
+    room.game = { ...room.game!, defeats: { [slime.id]: 2 } };
+    (room as any).broadcastState();
+    expect(states(room).at(-1).question.monster).toEqual({ id: slime.id, name: slime.name, sprite: slime.sprite, hue: slime.hue });
+    room.game = { ...room.game!, teams: room.game!.teams.map((t) => ({ ...t, metDefeats: undefined })) };
+    (room as any).broadcastState();
+    expect(states(room).at(-1).question.monster.accessory).toBe(variantOf(room.game!.variantSeed!, slime, 2)!.accessory);
+  });
+
+  // Value: protects=a reveal with no dish can't be served (no STATE, no cook cue), the case a game saved before dishes still hits; fails_when=handleHostServe's no-dish guard goes; why_new=replaces the retired "bank with no dishes" test, since every catalog monster has a dish; seam=none; no_claim=the TV's frames
+  it("a wrong answer reveals no dish, and 🍲 上菜 on it does nothing", () => {
     const { room, hostConn, ids } = cookRoom();
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: false });
     expect(states(room).at(-1).reveal).toBeNull();
     expect(room.game!.teams[0].dishes).toBeUndefined();
+    const count = states(room).length;
+    send(room, hostConn, { type: "HOST_SERVE", eventId: seqOf(room) });
+    expect(states(room)).toHaveLength(count);
+    expect(states(room).at(-1).cue).not.toBe("cook");
   });
 
   it("a dish named after a bank answer is shown on screen but never told to the narrator", async () => {
-    const answer = Object.values(BANK.pools).flat().map((q) => answerText(q)).find((a) => a.length >= 3)!;
-    const { room, hostConn, ids, events } = cookRoom(withRoom0Dish(`${answer}燉菜`));
+    const answer = ROOM0_DISH;
+    const { room, hostConn, ids, events } = cookRoom(withAnswerAsRoom0Dish());
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
     await flush();
-    expect(states(room).at(-1).reveal.dish.name).toBe(`${answer}燉菜`);
+    expect(states(room).at(-1).reveal.dish.name).toBe(answer);
     expect(JSON.stringify(events.find((e) => e.type === "correct"))).not.toContain(answer);
   });
 
   // Review finding (coverage audit, 2026-10-31): the boss branch of the dish lookup and the epilogue filter had no room-level test.
   it("the killing blow serves the boss's dish, and the epilogue lists the team's dishes without one naming an answer", async () => {
-    const answer = Object.values(BANK.pools).flat().map((q) => answerText(q)).find((a) => a.length >= 3)!;
-    const { room, hostConn, events } = cookRoom(withRoom0Dish(`${answer}燉菜`));
+    const answer = ROOM0_DISH;
+    const { room, hostConn, events } = cookRoom(withAnswerAsRoom0Dish());
     for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) {
       const g = room.game!;
       const t = g.teams[0];
@@ -3601,28 +3637,14 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
       landKill(room);
     }
     await new Promise((r) => setTimeout(r, 50));
-    const boss = BANK.boss.monster.dish!;
+    const boss = catalogMonster(BANK.boss.monster).dish;
     expect(states(room).at(-1).reveal.dish).toMatchObject({ name: boss.name, part: boss.part });
-    expect(states(room).at(-1).reveal.dish).toMatchObject({ room: null, monster: { name: BANK.boss.monster.name } });
+    expect(states(room).at(-1).reveal.dish).toMatchObject({ room: null, monster: { name: catalogMonster(BANK.boss.monster).name } });
     expect(events.find((e) => e.type === "boss-kill")?.cooked).toBe(true);
     const epilogue = events.find((e) => e.type === "epilogue");
     expect(epilogue.ranking[0].dishes).toContain(boss.name);
-    expect(epilogue.ranking[0].dishes).not.toContain(`${answer}燉菜`);
-    expect(room.game!.teams[0].dishes).toContain(`${answer}燉菜`); // eaten all the same, just never told
-  });
-
-  it("a bank with no dishes keeps 獎勵分 and reveals none", () => {
-    const plain: Bank = { ...BANK, rooms: BANK.rooms.map((r) => ({ ...r, monster: { ...r.monster, dish: undefined } })), boss: { ...BANK.boss, monster: { ...BANK.boss.monster, dish: undefined } } };
-    const { room, hostConn, ids } = cookRoom(plain);
-    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
-    const last = states(room).at(-1);
-    expect(last.cuisine).toBeUndefined();
-    expect(last.reveal).not.toHaveProperty("dish");
-    // 上菜 on a reveal without a dish does nothing: no STATE, no cook sound.
-    const count = states(room).length;
-    send(room, hostConn, { type: "HOST_SERVE", eventId: seqOf(room) });
-    expect(states(room)).toHaveLength(count);
-    expect(states(room).at(-1).cue).not.toBe("cook");
+    expect(epilogue.ranking[0].dishes).not.toContain(answer);
+    expect(room.game!.teams[0].dishes).toContain(answer); // eaten all the same, just never told
   });
 
   it("after the boss kill ends the game, 上菜 and 下一題 change nothing: the finished screen cooks on its own (cooking R8)", () => {
