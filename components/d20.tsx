@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { WARRIOR_TARGET } from "@/lib/game-state";
 import { LabelChip } from "@/components/pixel";
+import { killRollText } from "@/lib/kill-roll";
 
 /** A pixel-outlined d20 face: the hexagon with its front triangle, `value` in the middle. */
 export function D20({ value, size }: { value: number | string; size: number }) {
@@ -83,6 +84,51 @@ export function RollOverlay({ teamName, value, kind = "warrior", critable = fals
           ...(landed && !hit ? { background: "var(--danger)", color: "#fff" } : {}),
           ...(landed && (crit || check || critable) && value === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : {}),
         }}
+      >
+        {result}
+      </div>
+    </div>
+  );
+}
+
+/** How far apart the kill's four dice land (kill-roll.md: one by one, the total adding up). */
+const KILL_STAGGER_MS = 500;
+
+/** The big screen over a boss kill's 4d20 (docs/designs/kill-roll.md): four dice tumble and land one by one while the
+ * total adds up. The room judges the kill when its 4 s beat ends, so phones and the podium show the new total only after. */
+export function KillRollOverlay({ teamName, values, value }: { teamName: string; values: number[]; value: number }) {
+  // Reduced motion: every die shows its value at once. Only drawn from a live STATE, so never on the server.
+  const still = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const [landed, setLanded] = useState(() => (still() ? values.length : 0));
+  const [faces, setFaces] = useState<number[]>(() => values.map(() => 1));
+  useEffect(() => {
+    if (still()) return;
+    const count = values.length;
+    const tick = setInterval(() => setFaces(Array.from({ length: count }, () => 1 + Math.floor(Math.random() * 20))), 80);
+    const lands = Array.from({ length: count }, (_, i) => setTimeout(() => setLanded(i + 1), TUMBLE_MS + i * KILL_STAGGER_MS));
+    return () => {
+      clearInterval(tick);
+      lands.forEach(clearTimeout);
+    };
+    // Every STATE brings a new values array with the same dice: the caller keys this overlay per roll instead.
+  }, [values.length]);
+  const { chip, result, done } = killRollText(values, value, landed);
+  return (
+    <div data-testid="roll-overlay" data-kind="kill" className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>
+      <div className="text-[18px]">
+        <LabelChip>{`💀 ${teamName} ${chip}`}</LabelChip>
+      </div>
+      <div className="flex gap-6">
+        {values.map((v, i) => (
+          <div key={i} className={i < landed ? undefined : "px-roll-tumble"} style={i < landed ? undefined : { opacity: 0.55 }}>
+            <D20 value={i < landed ? v : faces[i]} size={150} />
+          </div>
+        ))}
+      </div>
+      <div
+        data-testid="roll-result"
+        className="px-bar text-[26px]"
+        style={{ visibility: landed > 0 ? "visible" : "hidden", color: "var(--k)", ...(done ? { background: "var(--warn)", boxShadow: "inset 0 -6px 0 var(--orange)" } : { background: "var(--cream)" }) }}
       >
         {result}
       </div>

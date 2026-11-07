@@ -387,6 +387,32 @@ describe("restoring after a restart", () => {
     expect(third.room.game!.teams.find((t) => t.id === t0)!.score).toBe(after.score);
   });
 
+  // Value: protects=a lost natural 20 that is the killing blow plays the 4d20 beat once the room is back (kill-roll.md);
+  // fails_when=applyLostCrit judges the kill outside judgeNow's deferral, or the kill is lost; no_claim=the dice values
+  it("a lost natural 20 that kills the boss rolls the 4d20 beat once the room is back", async () => {
+    vi.useFakeTimers();
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[saved.game.currentTurnIndex];
+    saved.game.teams = saved.game.teams.map((t: any) => ({ ...t, inBoss: true }));
+    saved.game.boss = { ...saved.game.boss, hp: 1, phaseIndex: saved.game.boss.phases.length - 1 };
+    const q = saved.game.boss.currentQuestionId;
+    saved.game.checks = { [checkKey(q, t0)]: { value: 20, bonus: 0, dc: 8, passed: true } };
+    storage.data.set(SNAPSHOT_KEY, saved);
+
+    const second = makeRoom(storage);
+    expect(await second.room.restore()).toBe("restored");
+    if (t0 === T1) rejoin(second.room, T1, TEAM_KEY, "a2");
+    else rejoin(second.room, T2, TEAM_KEY + "2", "b2");
+    expect((second.room as any).pendingRoll).toMatchObject({ teamId: t0, kind: "kill" });
+    expect(second.room.game!.phase).toBe("playing");
+    vi.advanceTimersByTime(4000);
+    expect(second.room.game!.phase).toBe("finished");
+    expect(second.room.game!.boss.killedByTeamId).toBe(t0);
+    vi.useRealTimers();
+  });
+
   // Value: protects=the lost natural 20 survives another team playing first (review finding); fails_when=only the
   // crit team's own rejoin applies it; no_claim=more than two teams.
   it("a lost natural 20 still wins when another team's phone comes back and plays first", async () => {

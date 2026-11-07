@@ -20,6 +20,7 @@ import {
   currentTurnTeamId,
   isInBossPhase,
   rollD20,
+  rollBossKillDice,
   spendAbility,
   mageEliminate,
   mageHint,
@@ -80,6 +81,14 @@ const EPILOGUE_DELAY_MS = 4000;
 /** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
+/** The boss kill's 4d20 on screen (docs/designs/kill-roll.md): the dice land one by one, then the total stays up. */
+const KILL_BEAT_MS = 4000;
+
+/** A roll whose answer is already right (a crit die, a kill's 4d20) or must not be rerolled (a check): its team keeps
+ * the turn through a dropped phone, like a locked one. */
+function holdsTurn(roll: PendingRoll | null): roll is PendingRoll {
+  return roll?.kind === "crit" || roll?.kind === "check" || roll?.kind === "kill";
+}
 /** A boss phase card that follows a miss waits for the voice (estimated at SPEECH_CHARS_PER_S), never longer than this. */
 const ADVANCE_CAP_MS = 15000;
 const SPEECH_CHARS_PER_S = 4;
@@ -220,9 +229,13 @@ export class DungeonRoom {
   private phaseCardTimer: ReturnType<typeof setTimeout> | null = null;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
-  /** A d20 in its beat: a warrior's roll or a correct lock's crit die. Memory only, like pendingLock: a restart drops it
-   * (a warrior's use stays spent; a crit team locks again). Shares lockTimer. */
+  /** Dice in their beat: a warrior's roll, a correct lock's crit die, a persuasion check, or the kill's 4d20 (value is
+   * then the scored bonus). Memory only, like pendingLock: a restart drops it (a warrior's use stays spent; a crit team
+   * locks again; a cut-off kill, with pendingKill, is lost: the team answers the final blow again, and a lost natural 20 comes back
+   * through lostCrit with fresh dice). Shares lockTimer. */
   private pendingRoll: PendingRoll | null = null;
+  /** The judgment a kill's 4d20 holds back (kill-roll.md): resolveRoll makes it with the shown dice. */
+  private pendingKill: { correct: boolean; fleeChoice: "flee" | "retry"; roll?: { kind: "warrior" | "crit"; value: number } } | null = null;
   /** A natural 20 whose beat a restart cut off (R7), applied by applyLostCrit. In memory only: restore() sets it. */
   private lostCrit: { teamId: string; questionId: string } | null = null;
   /** True inside judge(): a lost natural 20 waits for it to finish rather than judging inside it. */
@@ -892,7 +905,7 @@ export class DungeonRoom {
     if (this.pendingLock?.teamId === teamId) return;
     // So does a correct lock's crit die: the answer is already right, a dropped phone must not lose it. And a persuasion
     // check: a team that closes its phone on a bad roll must not get a fresh one when it comes back.
-    if ((this.pendingRoll?.kind === "crit" || this.pendingRoll?.kind === "check") && this.pendingRoll.teamId === teamId) return;
+    if (holdsTurn(this.pendingRoll) && this.pendingRoll.teamId === teamId) return;
     try {
       this.game = setTeamOnline(this.game, teamId, false);
       this.broadcastState();
@@ -1322,11 +1335,10 @@ export class DungeonRoom {
     if (this.lockTimer) clearTimeout(this.lockTimer);
     if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
     this.lockTimer = this.phaseCardTimer = null;
-    // A crit die's or a check's team was kept on turn like a locked one (onClose): it too may be offline now.
-    const kept = this.pendingRoll?.kind === "crit" || this.pendingRoll?.kind === "check";
-    const lockTeam = this.pendingLock?.teamId ?? (kept ? this.pendingRoll!.teamId : undefined);
+    // A crit die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now.
+    const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : undefined);
     this.pendingLock = null;
-    this.pendingRoll = null;
+    this.pendingRoll = this.pendingKill = null;
     if (lockTeam) this.syncLockTeam(lockTeam);
   }
 
@@ -1577,7 +1589,7 @@ export class DungeonRoom {
     if (this.lostCrit) this.applyLostCrit();
   }
 
-  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: { kind: "warrior" | "crit"; value: number }) {
+  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: { kind: "warrior" | "crit"; value: number }, killDice?: number[]) {
     const prev = this.game;
     if (!prev) return;
     // Captured before `this.game` reassigns to the post-judgment state below: the monster name
@@ -1589,10 +1601,26 @@ export class DungeonRoom {
     // A boss MC miss has no flee (D2=B): the host's stuck row (button or key 3) resolves it as the beat would.
     // A cleric's fill-in wait (optionIndex null) keeps its 逃跑, which rotates the question (#106 D2=A).
     if (!correct && prev.pendingWrong?.teamId === teamId && prev.pendingWrong.optionIndex !== null && isInBossPhase(prev, teamId)) fleeChoice = "retry";
-    const { game, outcome } =
+    const run = (rng: () => number, dice?: number[]) =>
       roll?.kind === "warrior"
-        ? warriorRoll(prev, teamId, questionId, roll.value, this.rng, this.question(questionId)?.kind === "multipleChoice")
-        : answerQuestion(prev, teamId, questionId, correct, fleeChoice, this.rng, roll?.value);
+        ? warriorRoll(prev, teamId, questionId, roll.value, rng, this.question(questionId)?.kind === "multipleChoice", dice)
+        : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.value, dice);
+    // A killing blow waits for its 4d20 on screen (kill-roll.md D1): a trial run, on an rng it must not consume, says
+    // whether this judgment kills; then the room rolls the dice and judges again with them when the beat ends.
+    if (!killDice) {
+      const trial = run(() => 0).outcome;
+      if (trial.type === "correct-boss-hit" && trial.bossKilled) {
+        const dice = this.fixedDie !== undefined ? [this.fixedDie, this.fixedDie, this.fixedDie, this.fixedDie] : rollBossKillDice(this.rng);
+        const shown = run(() => 0, dice).outcome;
+        this.pendingKill = { correct, fleeChoice, roll };
+        // Pin the turn, as a lock does: a skipped offline team whose phone comes back must not take it during the beat.
+        this.game = { ...prev, currentTurnIndex: prev.turnOrder.indexOf(teamId) };
+        this.startRoll("kill", teamId, questionId, { values: dice, value: shown.type === "correct-boss-hit" ? shown.killBonus! : 0 });
+        this.broadcastState();
+        return;
+      }
+    }
+    const { game, outcome } = run(this.rng, killDice);
     // A ruling on the team (the host's, or the lost natural 20 itself) settles its lost natural 20; one refused above does not.
     if (this.lostCrit?.teamId === teamId) this.lostCrit = null;
     // Everything up to broadcastState is synchronous: state changes and the eventId are
@@ -1813,13 +1841,16 @@ export class DungeonRoom {
 
   /** Rolls the d20 the beat shows (pendingRoll) and arms resolveRoll. Logged here, not on judging, so a roll whose
    * room restarts inside the beat still counts (eng review D10): the event's 20s and 1s are counted from these. */
-  private startRoll(kind: "warrior" | "crit" | "check", teamId: string, questionId: string, target?: { bonus: number; dc: number }) {
-    const value = this.fixedDie ?? rollD20(this.rng);
-    this.pendingRoll = { teamId, questionId, value, kind, ...target };
-    console.log(JSON.stringify({ event: "roll", kind, value }));
+  private startRoll(kind: "warrior" | "crit" | "check", teamId: string, questionId: string, target?: { bonus: number; dc: number }): void;
+  /** A kill's 4d20: rolled by judgeNow, which also knows the bonus they score. */
+  private startRoll(kind: "kill", teamId: string, questionId: string, kill: { values: number[]; value: number }): void;
+  private startRoll(kind: PendingRoll["kind"] & string, teamId: string, questionId: string, extra?: { bonus: number; dc: number } | { values: number[]; value: number }) {
+    const value = extra && "value" in extra ? extra.value : (this.fixedDie ?? rollD20(this.rng));
+    this.pendingRoll = { teamId, questionId, value, kind, ...extra };
+    console.log(JSON.stringify({ event: "roll", kind, value, ...(extra && "values" in extra ? { values: extra.values } : {}) }));
     this.setCue("roll");
     if (this.lockTimer) clearTimeout(this.lockTimer);
-    this.lockTimer = setTimeout(() => this.resolveRoll(), BEAT_MS);
+    this.lockTimer = setTimeout(() => this.resolveRoll(), kind === "kill" ? KILL_BEAT_MS : BEAT_MS);
   }
 
   /** The one place a cue is set: a new one bumps cueSeq, so the big screen plays it once. */
@@ -1830,8 +1861,9 @@ export class DungeonRoom {
 
   private resolveRoll() {
     const roll = this.pendingRoll;
+    const kill = this.pendingKill;
     const game = this.game;
-    this.pendingRoll = null;
+    this.pendingRoll = this.pendingKill = null;
     this.lockTimer = null;
     if (!roll || !game) return;
     this.markActivity();
@@ -1841,6 +1873,10 @@ export class DungeonRoom {
         this.broadcastState();
       } else if (roll.kind === "check") {
         this.resolveCheck(roll.teamId, roll.questionId, roll.value);
+      } else if (roll.kind === "kill") {
+        // pendingKill is always set with a kill roll; without it there is nothing to judge.
+        if (kill) this.judge(roll.teamId, roll.questionId, kill.correct, kill.fleeChoice, kill.roll, roll.values);
+        else this.broadcastState();
       } else {
         // kind is optional in the protocol (an older server's STATE); this room always sets it.
         this.judge(roll.teamId, roll.questionId, roll.kind === "crit", "retry", { kind: roll.kind ?? "warrior", value: roll.value });
@@ -1849,7 +1885,8 @@ export class DungeonRoom {
       console.error(JSON.stringify({ event: "roll_failed", error: String(err) }));
       this.broadcastState();
     }
-    if (roll.kind === "crit" || roll.kind === "check") this.syncLockTeamAndShow(roll.teamId);
+    // A crit or check that killed has started the kill's beat: its team stays on turn until that beat lands.
+    if (holdsTurn(roll) && (this.pendingRoll as PendingRoll | null)?.kind !== "kill") this.syncLockTeamAndShow(roll.teamId);
   }
 
   /** The check's beat is over (dnd design R6): its record, written at the roll, shows now with the hint it earned. A

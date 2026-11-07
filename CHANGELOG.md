@@ -2,6 +2,18 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.37.0.0] - 2026-11-06
+
+**Deploy note:** reload the big screen after this release deploys. A big screen from before this release draws the kill's four dice as a single warrior roll for that one beat. Do not deploy during an event. A restart inside the 4 s kill beat drops the kill, and the team answers the final blow again.
+
+### Added
+- The killing blow on the boss now rolls its 4d20 kill bonus on the big screen first. Four dice tumble and land one by one, half a second apart, while the total adds up below them: 「9 + 14 + 3 + 17 = 43 分」. A thief's sneak attack shows the doubling: 「43 × 2 = 86 分」. The points are added and the podium appears only after the dice land, about 4 s later.
+- Phones show a 「?」 die and 「最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶」 during the roll. The host page says 「大螢幕擲 4d20 擊殺獎勵後結算」.
+
+### Changed
+- The rules guide now says the kill bonus dice roll on the big screen before the points are added, and the hosting guide says the podium waits for them.
+- The README's "install it with an AI" step no longer points the AI at AGENTS.md. It points at CLAUDE.md.
+
 ## [0.36.0.0] - 2026-11-06
 
 ### Added

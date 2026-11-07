@@ -48,7 +48,7 @@ npm run playtest:stop
 https://github.com/chihgeorge/critical-answer
 
 目標：本機跑起來，而且同一個 Wi-Fi 的手機能加入。
-1. 先讀 README.md、AGENTS.md、CLAUDE.md、package.json 和 .dev.vars.example；保留我還沒提交的修改。
+1. 先讀 README.md、CLAUDE.md、package.json 和 .dev.vars.example；保留我還沒提交的修改。
 2. 用 Node.js 22.18 以上，npm install，再用 npm run dev 確認前端（3000）和房間伺服器（8787）都起來。
 3. 用 npm run playtest 啟動區網版，告訴我手機要開的網址。
 4. 用預設的腳本旁白，不要設任何付費的 API key。

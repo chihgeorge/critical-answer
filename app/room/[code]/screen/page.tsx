@@ -23,7 +23,7 @@ import { MapStrip } from "@/components/map-strip";
 import { McOption, optionLetter, type OptionLook } from "@/components/mc-option";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
-import { RollOverlay } from "@/components/d20";
+import { KillRollOverlay, RollOverlay } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { readStored, writeStored } from "@/lib/stored";
@@ -317,7 +317,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
         loading={!held && isPending(eventId, narration)}
         lines={held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
       />
-      {pendingRoll && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} kind={pendingRoll.kind ?? "warrior"} critable={!!question?.options} bonus={pendingRoll.bonus} dc={pendingRoll.dc} />}
+      {pendingRoll?.kind === "kill" && pendingRoll.values ? (
+        <KillRollOverlay key={`kill-${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} values={pendingRoll.values} value={pendingRoll.value} />
+      ) : (
+        pendingRoll && pendingRoll.kind !== "kill" && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} kind={pendingRoll.kind ?? "warrior"} critable={!!question?.options} bonus={pendingRoll.bonus} dc={pendingRoll.dc} />
+      )}
     </>
   );
 }

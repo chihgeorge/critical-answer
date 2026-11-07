@@ -9,7 +9,7 @@ import {
   getSpectatorView,
   recordOptionSelection,
   recordWrongLock,
-  rollBossKillBonus,
+  rollBossKillDice,
   sendToBoss,
   queueQuestion,
   pickBlock,
@@ -509,18 +509,18 @@ describe("getSpectatorView (Premise 7 pacing mitigation)", () => {
   });
 });
 
-describe("rollBossKillBonus", () => {
+describe("rollBossKillDice", () => {
   it("is always between 4 and 80 (4d20)", () => {
     for (let i = 0; i < 200; i++) {
-      const bonus = rollBossKillBonus();
+      const bonus = rollBossKillDice().reduce((a, b) => a + b);
       expect(bonus).toBeGreaterThanOrEqual(4);
       expect(bonus).toBeLessThanOrEqual(80);
     }
   });
 
   it("is deterministic when given a fixed rng", () => {
-    expect(rollBossKillBonus(() => 0)).toBe(4); // each d20 floors to 1
-    expect(rollBossKillBonus(() => 0.999)).toBe(80); // each d20 rounds up to 20
+    expect(rollBossKillDice(() => 0).reduce((a, b) => a + b)).toBe(4); // each d20 floors to 1
+    expect(rollBossKillDice(() => 0.999).reduce((a, b) => a + b)).toBe(80); // each d20 rounds up to 20
   });
 });
 
@@ -1354,6 +1354,12 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
     expect(game.phase).toBe("finished");
   });
 
+  it("the final blow scores the kill dice the room already showed (kill-roll.md)", () => {
+    const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 1, teamCount: 1 });
+    const { outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, 12, first, false, [9, 14, 3, 17]);
+    expect(outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: true, killBonus: 43 });
+  });
+
   it("spendAbility takes one use on the team's own turn, and refuses at 0", () => {
     const g = makeGame({ warrior: true, bossThreshold: 15 });
     const once = spendAbility(g, "T0", "warrior");
@@ -1420,8 +1426,11 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first);
     expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 1, reward: 20 });
     const kill = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first);
-    // rollBossKillBonus(first) is 4 (4d20 all ones), doubled; the bar never goes below 0.
+    // rollBossKillDice(first) sums to 4 (4d20 all ones), doubled; the bar never goes below 0.
     expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 8, reward: 28 });
+    // The room's shown dice are doubled the same way (kill-roll.md).
+    const shown = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
+    expect(shown.outcome).toMatchObject({ bossKilled: true, killBonus: 86, reward: 106 });
   });
 
   it("the mage removes 2 wrong options, never the right one, and clears a pick on a removed option", () => {
@@ -1738,7 +1747,7 @@ describe("the crit die (dnd design R4, R5)", () => {
   it("a 20 on the boss's last heart kills it, and the 4d20 is not raised by the crit", () => {
     const g = critGame([undefined], 0, 1);
     const kill = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 20);
-    // rollBossKillBonus(first) is 4 (4d20 all ones): 10 + 5 + 4.
+    // rollBossKillDice(first) sums to 4 (4d20 all ones): 10 + 5 + 4.
     expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 4, reward: 19 });
     expect(kill.game.phase).toBe("finished");
   });

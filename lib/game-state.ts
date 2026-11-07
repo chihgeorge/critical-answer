@@ -257,9 +257,10 @@ export function rollD20(rng: () => number = Math.random): number {
   return Math.floor(rng() * 20) + 1;
 }
 
-/** 4d20 kill bonus (docs/designs/scoring-and-score-pools.md S8). */
-export function rollBossKillBonus(rng: () => number = Math.random): number {
-  return rollD20(rng) + rollD20(rng) + rollD20(rng) + rollD20(rng);
+/** The four d20 of the kill bonus (docs/designs/scoring-and-score-pools.md S8). The room rolls them before the
+ * kill is judged, so the big screen shows them first (docs/designs/kill-roll.md). */
+export function rollBossKillDice(rng: () => number = Math.random): number[] {
+  return [rollD20(rng), rollD20(rng), rollD20(rng), rollD20(rng)];
 }
 
 /** The pool difficulty `d` deals from: its own, else the nearest non-empty one below it, then above
@@ -619,6 +620,8 @@ export function answerQuestion(
   fleeChoice: "flee" | "retry" = "retry",
   rng: () => number = Math.random,
   critValue?: number,
+  /** The kill bonus's four d20, already shown by the room; rolled on `rng` when absent. */
+  killDice?: number[],
 ): { game: GameState; outcome: AnswerOutcome } {
   assertPlaying(game);
   // The die behind a correct answer: a 20 adds half the base reward (and a boss hit); a 1 is only a show.
@@ -680,7 +683,7 @@ export function answerQuestion(
       const newHp = Math.max(0, boss.hp - sneak - (crit ? 1 : 0));
       const bossKilled = newHp === 0 && lastPhase;
       // The 4d20 is not raised by a crit (R4).
-      const killBonus = bossKilled ? rollBossKillBonus(rng) * sneak : undefined;
+      const killBonus = bossKilled ? (killDice ?? rollBossKillDice(rng)).reduce((a, b) => a + b, 0) * sneak : undefined;
       const reward = baseOf(boss.hitReward) * sneak + critBonus(boss.hitReward) + (killBonus ?? 0);
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}) }));
 
@@ -965,9 +968,10 @@ export function warriorRoll(
   value: number,
   rng: () => number = Math.random,
   critable = false,
+  killDice?: number[],
 ): { game: GameState; outcome: AnswerOutcome } {
   assertAbilityTurn(game, teamId, "warrior");
-  return answerQuestion(game, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined);
+  return answerQuestion(game, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined, killDice);
 }
 
 /**
