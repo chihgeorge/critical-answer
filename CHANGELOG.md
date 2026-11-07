@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.43.0.1] - 2026-11-07
+
+### Changed
+- New tests check that a page meeting a monster it does not know still draws a slime and serves the slime's dish. They also check that every monster keeps its own dish picture. Test-only; the game itself is unchanged.
+
 ## [0.42.0.0] - 2026-11-07
 
 **Deploy note:** no reseed is needed. Before you save a bank that uses one of the new monsters, wait until both the room server and the website have finished deploying, then reload the host page, the big screen and the phones. A page opened before the deploy does not know the new monsters.
