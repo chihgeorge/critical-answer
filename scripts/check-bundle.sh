@@ -15,7 +15,10 @@ qs = [q for p in bank["pools"].values() for q in p] + [q for ph in phases for q 
 secrets = [s for ph in phases[1:] for s in (ph.get("name"), ph.get("rule")) if s]
 blob = "".join(p.read_text(errors="ignore") for p in pathlib.Path(".next/static").rglob("*.js"))
 answer = lambda q: q["options"][q["correctIndex"]] if q["kind"] == "multipleChoice" else q["answer"]
-leaks = [q["id"] for q in qs if answer(q) in blob or q["text"] in blob]
+# The question's words: a legacy bare `text`, or `content.value` when the content is text,
+# plus the optional `prompt` an image or YouTube question carries. Image keys and video ids are skipped.
+words = lambda q: [w for w in (q.get("text"), q.get("content", {}).get("value") if q.get("content", {}).get("kind") == "text" else None, q.get("prompt")) if w]
+leaks = [q["id"] for q in qs if answer(q) in blob or any(w in blob for w in words(q))]
 leaks += [s for s in secrets if s in blob]
 if leaks:
     print("LEAK in client bundle:", leaks[:5]); sys.exit(1)
