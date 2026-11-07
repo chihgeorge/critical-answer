@@ -2,12 +2,13 @@
 
 // Shared pixel-dungeon components (see DESIGN.md). Styles live in app/globals.css.
 
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
 import { drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme } from "@/lib/pixel-art";
 import type { Accessory } from "@/lib/monster-catalog";
 import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/sprite-kind";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { youtubeEmbedUrl } from "@/lib/youtube";
+import { firstChange, resumeFrom } from "@/lib/narration/client";
 import type { PublicMediaContent } from "@/lib/protocol";
 
 const cx = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" ");
@@ -301,11 +302,26 @@ function Typewriter({ text, onDone }: { text: string; onDone: () => void }) {
 /**
  * Plays `lines` in order. The ▼ shows only while another line is still to come,
  * so a player learns that ▼ means "the owl has more to say"; the last line has none.
+ * When the host edits a line (same box, new `lines`), an edit at or before the line being read restarts from
+ * the edited line; a later one is simply read when its turn comes (host-narration-edit.md D13).
  */
-function Sequence({ lines }: { lines: string[] }) {
+function Sequence({ lines, onRead }: { lines: string[]; onRead?: (count: number) => void }) {
   const [i, setI] = useState(0);
   const [typed, setTyped] = useState(false);
+  const [seen, setSeen] = useState(lines);
+  if (firstChange(seen, lines) !== -1) {
+    const from = resumeFrom(seen, lines, i);
+    setSeen(lines);
+    if (from !== null) {
+      setI(Math.min(from, lines.length - 1));
+      setTyped(false);
+    }
+  }
   const last = i >= lines.length - 1;
+  const read = useEffectEvent((count: number) => onRead?.(count));
+  useEffect(() => {
+    if (typed) read(i + 1);
+  }, [typed, i]);
   useEffect(() => {
     if (!typed || last) return;
     const id = setTimeout(() => {
@@ -316,7 +332,7 @@ function Sequence({ lines }: { lines: string[] }) {
   }, [typed, last]);
   return (
     <>
-      <Typewriter key={i} text={lines[i]} onDone={() => setTyped(true)} />
+      <Typewriter key={`${i}\n${lines[i]}`} text={lines[i] ?? ""} onDone={() => setTyped(true)} />
       {typed && !last && <span className="more">▼</span>}
     </>
   );
@@ -329,6 +345,8 @@ export function DialogueBox({
   className,
   style,
   compact = false,
+  id,
+  onRead,
 }: {
   /** Played in order with a ▼ between them. Ignored while `loading`. */
   lines: string[];
@@ -340,6 +358,11 @@ export function DialogueBox({
   style?: CSSProperties;
   /** Smaller box for the phone. */
   compact?: boolean;
+  /** Names what the box is reading (a narration's eventId). New `lines` under the same id are a host edit: the
+   * box reads on instead of starting over. Without an id, any new lines start over. */
+  id?: number;
+  /** Called with how many lines have finished typing. */
+  onRead?: (count: number) => void;
 }) {
   const portrait = compact ? 56 : 84; // multiples of the owl's 28px, so pixels stay square
   const shown = lines.length > 0 ? lines : [""];
@@ -366,7 +389,7 @@ export function DialogueBox({
           …
         </span>
       ) : (
-        <Sequence key={shown.join("\n")} lines={shown} />
+        <Sequence key={id !== undefined ? `id:${id}` : shown.join("\n")} lines={shown} onRead={onRead} />
       )}
     </Panel>
   );

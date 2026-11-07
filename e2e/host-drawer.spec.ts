@@ -2,9 +2,8 @@ import { test, expect } from "@playwright/test";
 import { answerCorrectly, startGame, nextQuestion } from "./answer";
 import { readFile } from "node:fs/promises";
 
-/** The host's ⚙ 更多 drawer: director notes are saved into the room, and the narration transcript
- * downloads as a JSON file that includes both the notes and a real narration line. */
-test("the host saves director notes and downloads a transcript that contains them", async ({ browser }) => {
+/** The host's ⚙ 更多 drawer: the narration transcript downloads as a JSON file with a real narration line. */
+test("the host downloads a transcript with the narration lines", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
@@ -16,14 +15,13 @@ test("the host saves director notes and downloads a transcript that contains the
   await expect(team.getByTestId("roster")).toContainText("甲隊");
 
   await startGame(host);
-  // One judged answer, so the transcript has a narration line as well as the notes.
+  // One judged answer, so the transcript has a narration line.
   await answerCorrectly(host);
   await expect(host.getByTestId("host-reveal")).toBeVisible();
 
   await host.getByRole("button", { name: "⚙ 更多" }).click();
-  const notes = "用武俠口吻，甲隊是一群恐龍";
-  await host.getByPlaceholder(/用武俠口吻/).fill(notes);
-  await host.getByRole("button", { name: "儲存導演筆記" }).click();
+  // 導演筆記 and the narration edits left the drawer for the narration panel (host-narration-edit.md).
+  await expect(host.getByText("導演筆記")).toHaveCount(0);
 
   const [download] = await Promise.all([
     host.waitForEvent("download"),
@@ -31,8 +29,7 @@ test("the host saves director notes and downloads a transcript that contains the
   ]);
   expect(download.suggestedFilename()).toBe(`critical-answer-${code}-transcript.json`);
 
-  const entries = JSON.parse(await readFile((await download.path())!, "utf8")) as { kind?: string; text?: string; lines?: string[] }[];
-  expect(entries.some((e) => e.kind === "notes" && e.text === notes)).toBe(true);
+  const entries = JSON.parse(await readFile((await download.path())!, "utf8")) as { lines?: string[] }[];
   expect(entries.some((e) => Array.isArray(e.lines) && e.lines.length > 0)).toBe(true);
 });
 
@@ -85,7 +82,7 @@ test("the big-screen URL at the top of the host page opens the screen in a new t
 });
 
 /** 下一句這樣說 (docs/designs/host-next-line.md): the host queues a line, the next narration's second segment
- * says it on the big screen, and the drawer's 已排入 goes away once it is used. Scripted narration (no AI key). */
+ * says it on the big screen, and the narration panel's 已排入 goes away once it is used. Scripted narration (no AI key). */
 test("the host queues the next line, the big screen says it, and the queue empties", async ({ browser }) => {
   test.setTimeout(60_000); // three pages and two narrated answers
   const host = await (await browser.newContext()).newPage();
@@ -102,28 +99,31 @@ test("the host queues the next line, the big screen says it, and the queue empti
   await startGame(host);
 
   const queued = "不怕死的冒險者問珍珠能吃嗎";
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  const toggle = host.getByTestId("narration-panel").getByRole("button", { name: /地城主旁白/ });
+  await expect(toggle).toContainText(/\d 句・/); // the opening narration is in, so it won't close the panel on arrival (D12)
+  await toggle.click();
   await host.getByPlaceholder(/不怕死的冒險者/).fill(queued);
-  await host.getByRole("button", { name: "排進下一句" }).click();
+  await host.getByRole("button", { name: "排進去" }).click();
   await expect(host.getByText(`已排入：${queued}`)).toBeVisible();
-  await host.getByRole("button", { name: "關閉" }).click();
+  await expect(toggle).toContainText("・已排下一句");
 
   await answerCorrectly(host);
   await expect(screen.locator(".px-say")).toContainText(queued, { timeout: 8000 });
 
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
-  await expect(host.getByText("下一句這樣說（最多 40 字）")).toBeVisible();
+  // The new narration closed the panel (D12); open it again.
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(host.getByText(/下一句這樣說（下一次旁白的第二句/)).toBeVisible();
   await expect(host.getByText(/已排入：/)).toHaveCount(0);
 
   // 取消 empties the queue, so the next narration does not say the cancelled line.
   const cancelled = "這句被取消了不該出現";
   await host.getByPlaceholder(/不怕死的冒險者/).fill(cancelled);
-  await host.getByRole("button", { name: "排進下一句" }).click();
+  await host.getByRole("button", { name: "排進去" }).click();
   const queuedRow = host.getByText(`已排入：${cancelled}`);
   await expect(queuedRow).toBeVisible();
   await queuedRow.locator("..").getByRole("button", { name: "取消" }).click();
   await expect(host.getByText(/已排入：/)).toHaveCount(0);
-  await host.getByRole("button", { name: "關閉" }).click();
 
   await nextQuestion(host);
   await answerCorrectly(host);

@@ -118,7 +118,12 @@ describe("parseSnapshot", () => {
       ["epilogue", 7],
       ["epilogueRequested", "no"],
       ["aiNarration", 0],
-      ["notes", null],
+      // Value: protects=a saved reading progress the room can trust (host-narration-edit.md D14); fails_when=a
+      // negative, fractional or past-the-end `done`, or a bad `rev`, restores and locks lines that were never read.
+      ["lastNarration", { eventId: 3, lines: ["a", "b"], done: 3 }],
+      ["lastNarration", { eventId: 3, lines: ["a", "b"], done: -1 }],
+      ["lastNarration", { eventId: 3, lines: ["a", "b"], done: 1.5 }],
+      ["lastNarration", { eventId: 3, lines: ["a", "b"], rev: "1" }],
       ["editedLines", [1]],
       ["game", { phase: "playing" }],
       ["game", { teams: [], turnOrder: [], phase: "playing", pools: [[]], usedQuestionIds: [[], [], [], [], []] }], // pools not 5 lists: deal() would throw

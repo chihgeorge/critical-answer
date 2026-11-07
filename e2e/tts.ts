@@ -16,7 +16,11 @@ export async function stubSpeechSynthesis(page: Page) {
         getVoices: () => [voice],
         addEventListener: () => {},
         removeEventListener: () => {},
-        speak: (utter: SpeechSynthesisUtterance) => calls.push(utter.text),
+        // Ends each line a moment later, like a real voice: the screen reads one line at a time and waits for onend.
+        speak: (utter: SpeechSynthesisUtterance) => {
+          calls.push(utter.text);
+          setTimeout(() => utter.onend?.(new Event("end") as SpeechSynthesisEvent), 50);
+        },
         cancel: () => {
           cancelCount++;
         },
@@ -26,6 +30,8 @@ export async function stubSpeechSynthesis(page: Page) {
       text: string;
       voice: SpeechSynthesisVoice | null = null;
       lang = "";
+      onend: ((e: SpeechSynthesisEvent) => void) | null = null;
+      onerror: ((e: SpeechSynthesisErrorEvent) => void) | null = null;
       constructor(text = "") {
         this.text = text;
       }

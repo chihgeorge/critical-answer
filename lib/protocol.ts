@@ -138,12 +138,16 @@ export type ClientMessage =
   | { type: "HOST_AI_KEY"; source: "none" }
   /** Most paid AI calls this room may make (1..MAX_AI_LIMIT). */
   | { type: "HOST_AI_LIMIT"; limit: number }
-  /** Director: free-text style notes (<= 500 chars) injected into every LLM call. */
-  | { type: "HOST_SET_NOTES"; notes: string }
   /** Join password for new teams; "" lets anyone with the room code join. */
   | { type: "HOST_SET_PASSWORD"; password: string }
-  /** Director: replace the line now on screen (<= 40 chars). */
-  | { type: "HOST_EDIT_NARRATION"; line: string }
+  /** Director: replace line `index` (0-based) of narration `eventId` as of edit `rev` (cut to MAX_LINE chars). The room
+   * refuses a stale eventId or rev (another host device edited first) and a line the big screen has already read
+   * (docs/designs/host-narration-edit.md D3, D9). */
+  | { type: "HOST_EDIT_NARRATION"; eventId: number; rev: number; index: number; line: string }
+  /** /screen: it has finished reading `done` lines of narration `eventId` at revision `rev` (typed, and spoken
+   * when its voice is on). No key: the worst a forged one does is lock lines early. The room ignores it from a team's phone or a host page
+   * (host-narration-edit.md D3, D14). */
+  | { type: "SCREEN_NARRATION_PROGRESS"; eventId: number; rev: number; done: number }
   /** Director: the next narration's second line says this (<= 40 chars); "" cancels. */
   | { type: "HOST_NEXT_LINE"; line: string }
   | { type: "HOST_GET_TRANSCRIPT" }
@@ -286,16 +290,20 @@ export type ServerMessage =
       media?: MediaCommand;
     }
   | { type: "GAME_OVER"; winners: string[] }
-  /** Exactly one per event (1-3 segments, played in order). Clients keep the highest eventId they
-   * have seen. 3 segments when there's a next team (result + atmosphere + transition), 2 when there
-   * isn't (boss-kill, or the game's last judged event) — see docs/designs/multi-segment-narration.md. */
-  | { type: "NARRATION"; eventId: number; lines: string[] }
+  /** One per event (1-3 segments, played in order), sent again with `rev` + 1 after each host edit of that eventId.
+   * Clients keep the highest eventId they have seen. 3 segments when there's a next team (result + atmosphere +
+   * transition), 2 when there isn't (boss-kill, or the game's last judged event) — see docs/designs/multi-segment-narration.md.
+   * `rev` is absent from older servers (0); /screen echoes it in SCREEN_NARRATION_PROGRESS so a report about the old
+   * text never locks the new one (host-narration-edit.md D14). */
+  | { type: "NARRATION"; eventId: number; lines: string[]; rev?: number }
   /** `replay`: set when onConnect resends an epilogue that was already broadcast, so /screen
    * doesn't speak it again; absent on the live broadcast. Older servers never set it. */
   | { type: "EPILOGUE"; text: string; replay?: true }
   /** Host-only reply to HOST_GET_TRANSCRIPT. */
   | { type: "TRANSCRIPT"; entries: TranscriptItem[] }
   | { type: "HOST_OK"; joinPassword: string }
+  /** Host-only: how many lines of narration `eventId` the big screen has read. Sent on host connect and on every change. */
+  | { type: "HOST_NARRATION_PROGRESS"; eventId: number; done: number }
   /** Host-only: the line queued by HOST_NEXT_LINE, "" when none. Sent on host connect and on every change. */
   | { type: "HOST_NEXT_LINE_STATE"; line: string }
   /** Host-only: who pays for AI narration and how much is left. Never carries the key itself, only its last 4 characters. */
@@ -373,11 +381,11 @@ export function sanitizeText(text: string, max: number): string {
 /** Longest id a client message may carry; the bank refuses to save longer question ids (assertSavable). */
 export const MAX_ID = 64;
 const MAX_RAW_NAME = 100;
-const MAX_RAW_TEXT = 200;
+export const MAX_RAW_TEXT = 200;
 /** A typed answer keeps this many characters (code points). */
 export const MAX_TYPED_ANSWER = 40;
-export const MAX_NOTES = 500;
 export const MAX_PASSWORD = 32;
+/** HOST_NEXT_LINE's limit: the AI may add a few characters around it and still fit MAX_LINE. */
 export const MAX_EDIT_LINE = 40;
 /** How-to-play pages before the first question (docs/designs/how-to-play.md D4). */
 export const INTRO_PAGES = 4;
@@ -401,6 +409,9 @@ function str(v: unknown, max: number): string | null {
 function teamKeyOf(v: unknown): string | null {
   return typeof v === "string" && TEAM_KEY_RE.test(v) ? v : null;
 }
+
+/** A whole number, 0 or more. */
+const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 
 /** `{ resume: true }` only for a literal `true`; anything else is simply dropped. */
 function resumeOf(m: Record<string, unknown>): { resume?: true } {
@@ -460,18 +471,21 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return Number.isInteger(m.limit) && (m.limit as number) >= 1 && (m.limit as number) <= MAX_AI_LIMIT
         ? { type: "HOST_AI_LIMIT", limit: m.limit as number }
         : null;
-    case "HOST_SET_NOTES": {
-      const notes = str(m.notes, MAX_NOTES);
-      return notes !== null ? { type: "HOST_SET_NOTES", notes } : null;
-    }
     case "HOST_SET_PASSWORD": {
       const password = str(m.password, MAX_PASSWORD);
       return password !== null ? { type: "HOST_SET_PASSWORD", password } : null;
     }
     case "HOST_EDIT_NARRATION": {
-      const line = str(m.line, MAX_EDIT_LINE);
-      return line !== null ? { type: "HOST_EDIT_NARRATION", line } : null;
+      // The raw ceiling, not MAX_LINE: a scripted line can run past MAX_LINE (long team and monster names), and its
+      // prefilled edit must still land. The room cuts it to MAX_LINE (D18).
+      const line = str(m.line, MAX_RAW_TEXT);
+      if (line === null || !isCount(m.eventId) || !isCount(m.rev) || !isCount(m.index)) return null;
+      return { type: "HOST_EDIT_NARRATION", eventId: m.eventId, rev: m.rev, index: m.index, line };
     }
+    case "SCREEN_NARRATION_PROGRESS":
+      return isCount(m.eventId) && isCount(m.rev) && isCount(m.done)
+        ? { type: "SCREEN_NARRATION_PROGRESS", eventId: m.eventId, rev: m.rev, done: m.done }
+        : null;
     case "HOST_NEXT_LINE": {
       const line = str(m.line, MAX_EDIT_LINE);
       return line !== null ? { type: "HOST_NEXT_LINE", line } : null;

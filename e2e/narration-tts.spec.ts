@@ -192,14 +192,11 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
   await screen.getByRole("button", { name: /語音/ }).click();
   expect(await ttsCalls(screen)).toEqual([""]); // only the unlock utterance — the replay was NOT spoken
 
-  // The host now corrects that exact (replayed, unspoken) line. It must still be spoken.
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
-  const editSection = host.locator("section", { hasText: "改寫第一句旁白" });
+  // The host now corrects that exact (replayed, unspoken) narration. The edited line must still be spoken.
+  // The last line: the big screen is still typing the first ones, so it has not read it yet.
   const correctedText = "重播後修正的旁白文字";
-  await editSection.locator("input").fill(correctedText);
-  await editSection.getByRole("button", { name: "送出，立刻換上大螢幕" }).click();
+  await editLastLine(host, correctedText);
   await expect.poll(() => ttsCalls(screen)).toContainEqual(correctedText);
-  await host.getByRole("button", { name: "關閉" }).click();
 
   // A live line is spoken, and a correction of that spoken line (same eventId, new text) is spoken too.
   await nextQuestion(host); // close the first answer's reveal
@@ -208,10 +205,8 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
   await expect
     .poll(async () => (await ttsCalls(screen)).slice(spokenBefore))
     .toContainEqual(expect.stringContaining("乙隊"));
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
   const liveCorrection = "測試修正後的旁白文字";
-  await editSection.locator("input").fill(liveCorrection);
-  await editSection.getByRole("button", { name: "送出，立刻換上大螢幕" }).click();
+  await editLastLine(host, liveCorrection);
   await expect.poll(() => ttsCalls(screen)).toContainEqual(liveCorrection);
 });
 
@@ -225,12 +220,13 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
 
   // Play the whole game with no screen open, and wait for the live EPILOGUE to go out.
   const host = await open(partyUrl);
-  const box: { state: HostState | null; epilogue: boolean } = { state: null, epilogue: false };
+  const box: { state: HostState | null; epilogue: boolean; narration: number | null } = { state: null, epilogue: false, narration: null };
   const cur = () => box.state!;
   host.onmessage = (e) => {
     const m = JSON.parse(e.data as string) as HostState;
     if (m.type === "STATE") box.state = m;
     if (m.type === "EPILOGUE") box.epilogue = true;
+    if (m.type === "NARRATION") box.narration = (m as unknown as { eventId: number }).eventId;
   };
   host.send(JSON.stringify({ type: "HOST_CLAIM", token: "epilogue-replay-token-0123456789" }));
   const team = await open(partyUrl);
@@ -254,7 +250,8 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
   // Positive control: the speak path is live on this connection, so the silence above came from
   // the replay flag, not from TTS being off.
   const corrected = "重播測試的修正旁白";
-  host.send(JSON.stringify({ type: "HOST_EDIT_NARRATION", line: corrected }));
+  // No screen was open during the game, so the room has nothing marked read: line 1 can still change.
+  host.send(JSON.stringify({ type: "HOST_EDIT_NARRATION", eventId: box.narration, rev: 0, index: 0, line: corrected }));
   await expect.poll(() => ttsCalls(screen)).toContainEqual(corrected);
   host.close();
   team.close();
@@ -329,7 +326,10 @@ test("screen TTS: blocked localStorage (private browsing) doesn't break the togg
   expect(await ttsCalls(screen)).toEqual([""]);
 });
 
-test("host edit drawer: the label tells the host how many segments there are, since the edit box only reaches the first", async ({ browser }) => {
+// Value: protects=the host panel lists every narration line with its own 改 (host-narration-edit.md D5), and an edit of
+// line N reaches the phone's dialogue box; fails_when=the panel shows only the first line, the 改 buttons are missing,
+// or HOST_EDIT_NARRATION no longer replaces line N; no_claim=read lines locking (unit tests in dungeon-room.test.ts)
+test("host narration panel: every line has its own 改, and an edited line reaches the phone", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
@@ -342,12 +342,35 @@ test("host edit drawer: the label tells the host how many segments there are, si
 
   await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
+  // The opening NARRATION fires right after start. No big screen is open, so nothing is read yet.
+  await answerCorrectly(host);
+  const toggle = host.getByTestId("narration-panel").getByRole("button", { name: /地城主旁白/ });
+  await expect(toggle).toContainText(/\d 句・/);
+  await toggle.click();
+  const lines = host.getByTestId("narration-line");
+  await expect(lines.first()).toBeVisible();
+  const n = await lines.count();
+  expect(n).toBeGreaterThan(1);
+  await expect(host.getByRole("button", { name: /^改第 \d 句$/ })).toHaveCount(n);
 
-  // The opening NARRATION already exists by the time the drawer opens (it fires right after
-  // start), so the label already shows a segment count, not the plain "no count" text.
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
-  await expect(host.getByText(/改寫第一句旁白（共 \d 句，只能改第一句，最多 40 字）/)).toBeVisible();
+  const edited = "主持人改寫：全場安靜！";
+  await editLastLine(host, edited);
+  await expect(team.locator(".px-say")).toContainText(edited, { timeout: 20_000 }); // read after the lines before it
 });
+
+/** Opens the host's narration panel if needed and swaps its last line for `text`. */
+async function editLastLine(host: Page, text: string) {
+  const panel = host.getByTestId("narration-panel");
+  const toggle = panel.getByRole("button", { name: /地城主旁白/ });
+  // The summary counts lines once the narration is in (not 旁白生成中…), so the panel won't close on its arrival (D12).
+  await expect(toggle).toContainText(/\d 句・/);
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await panel.getByRole("button", { name: /^改第 \d 句$/ }).last().click();
+  const input = panel.getByRole("textbox", { name: /的新內容$/ });
+  await input.fill(text);
+  await input.press("Enter");
+  await expect(panel.getByRole("button", { name: /地城主旁白/ })).toHaveAttribute("aria-expanded", "false"); // D12: closes once it lands
+}
 
 // Value: protects=with the voice on, each how-to-play page's owl line is spoken once when the page comes up (how-to-play.md D11);
 // fails_when=the intro speak call is dropped, or the per-page guard is lost so a page's line repeats on a later STATE;

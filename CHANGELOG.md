@@ -2,6 +2,25 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.41.0.0] - 2026-11-07
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the host page, the big screen and the phones. Edits now name a line and a revision, so an old website's edits are refused until it is reloaded. Do not deploy during an event.
+
+### Added
+- A 「地城主旁白」 panel sits right above the host's judge buttons. Collapsed, it is one row with a summary such as 「3 句・念到第 2 句」; opened, it lists every line the big screen will say for the next team.
+- The host can rewrite any line the big screen has not read yet. Tap 「改」 on that line, type, and press Enter or 「換上大螢幕」. The big screen and the phones pick up the new text from that line on, and the voice reads it.
+- The big screen tells the host how far it has read. Lines already read show 「✓ 已念完」 and can no longer be changed; the line being read shows 「▶ 念到這」.
+- While the AI narration is being written, the panel shows 「旁白生成中…」.
+- If a line was read or replaced while the host was typing, the draft is kept with a red note, and 「改排進下一句」 queues it for the next narration instead.
+
+### Changed
+- 「下一句這樣說」 moved from ⚙ 更多 into the narration panel.
+- The big screen speaks one line at a time, and moves on even if the browser never reports that a line finished.
+
+### Removed
+- 導演筆記 is gone from ⚙ 更多, and the AI prompt no longer has a notes section.
+- 「改寫旁白」 is gone from ⚙ 更多; the narration panel replaces it.
+
 ## [0.40.0.0] - 2026-11-07
 
 **Deploy note:** back up the live bank first (`curl` in docs/question-bank.md, rescue item 4), before this merges: after the deploy, the server no longer hands out the old bank. Then deploy the room server (`wrangler deploy`) and the website, reload the bank editor, the host page, the big screen and the phones, and save the bank once in the editor (or convert the backup and save it). Rooms in play when the server restarts are reset. Do not deploy during an event.
