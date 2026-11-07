@@ -258,7 +258,7 @@ describe("boss phases across a restart", () => {
     const g = bossGame(phasedBank(), { storage });
     g.judge(true);
     g.next();
-    send(g.room, g.host, { type: "HOST_SET_NOTES", notes: "x" }); // any later save
+    send(g.room, g.host, { type: "HOST_SET_PASSWORD", password: "x" }); // any later save
     const { stateOf } = await restored(storage);
     expect(stateOf()).toMatchObject({ phaseCard: expect.anything(), question: null });
   });

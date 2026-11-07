@@ -42,7 +42,6 @@ import {
   HANDOFF_MS,
   INTRO_PAGES,
   MAX_EDIT_LINE,
-  MAX_NOTES,
   MAX_TEAMS,
   parseClientMessage,
   sanitizeText,
@@ -65,7 +64,7 @@ import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { createScriptedProvider, type NarrationProvider } from "../narration/scripted";
-import { createRunner, type TranscriptItem } from "../narration/runner";
+import { createRunner, MAX_LINE, type TranscriptItem } from "../narration/runner";
 import { PROVIDERS } from "../narration/providers";
 import { keyHint, withBudget } from "./ai-budget";
 import { createBreaker, withBreaker } from "../narration/breaker";
@@ -200,7 +199,8 @@ export class DungeonRoom {
 
   /** Counts the start and every accepted judgment; each gets exactly one NARRATION. */
   private eventSeq = 0;
-  private lastNarration: { eventId: number; lines: string[] } | null = null;
+  /** `rev` counts host edits of this eventId; `done` is how many lines the big screen has read (host-narration-edit.md D14). */
+  private lastNarration: { eventId: number; lines: string[]; rev: number; done: number } | null = null;
   /** The latest sound effect (an event's, or a roll's), sent with STATE (memory only: a restart just has none). */
   private cue: SoundCue | null = null;
   /** Goes up with every new cue (setCue), so the big screen plays a roll's cue, which bumps no eventId. */
@@ -251,10 +251,9 @@ export class DungeonRoom {
    * host revealed a lock is pendingLock.revealing, never this. */
   private lockTimer: ReturnType<typeof setTimeout> | null = null;
   private transcript: TranscriptItem[] = [];
-  /** Host director: notes for the LLM and the last few hand-edited lines. */
-  private notes = "";
   /** Asked of new teams at JOIN when not "" (HOST_SET_PASSWORD). Known teams rejoin with their key alone. */
   private joinPassword = "";
+  /** The last few hand-edited lines: style examples for the LLM. */
   private editedLines: string[] = [];
   /** The host's line for the next narration's second segment (host-next-line.md). `gen` grows on every queue or
    * cancel, so a narration started before a re-queue of the same text cannot clear the new one (D7). */
@@ -324,7 +323,6 @@ export class DungeonRoom {
     const llmOptions = {
       getApiKey: () => this.credential?.apiKey,
       fetch: opts.fetch,
-      getNotes: () => this.notes,
       getStyleExamples: () => this.editedLines,
       forbidden: () => this.bankAnswers,
     };
@@ -387,8 +385,8 @@ export class DungeonRoom {
         // Cleared before the broadcast, so the one save it triggers cannot bring the line back after a restart.
         const said = gen !== undefined && this.nextLine?.gen === gen;
         if (said) this.nextLine = null;
-        this.lastNarration = { eventId, lines };
-        this.broadcast({ type: "NARRATION", eventId, lines });
+        this.lastNarration = { eventId, lines, rev: 0, done: 0 };
+        this.broadcast({ type: "NARRATION", eventId, lines, rev: 0 });
         if (said) this.sendNextLineState();
       },
       record: (entry) => this.addTranscript(entry),
@@ -489,7 +487,7 @@ export class DungeonRoom {
       epilogue: this.epilogue,
       epilogueRequested: this.epilogueRequested,
       playedQuestionIds: this.playedQuestionIds,
-      notes: this.notes,
+      notes: "",
       joinPassword: this.joinPassword,
       editedLines: this.editedLines,
       nextLine: this.nextLine,
@@ -565,11 +563,10 @@ export class DungeonRoom {
     this.hostToken = s.hostToken;
     this.teamKeys = new Map(s.teamKeys);
     this.eventSeq = s.eventSeq;
-    this.lastNarration = s.lastNarration;
+    this.lastNarration = s.lastNarration && { ...s.lastNarration, rev: s.lastNarration.rev ?? 0, done: s.lastNarration.done ?? 0 };
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
     this.playedQuestionIds = s.playedQuestionIds ?? [];
-    this.notes = s.notes;
     this.joinPassword = s.joinPassword;
     this.editedLines = s.editedLines;
     this.nextLine = s.nextLine ?? null;
@@ -857,7 +854,6 @@ export class DungeonRoom {
     this.intro = null;
     this.clearAnswerTimers();
     this.transcript = [];
-    this.notes = "";
     this.joinPassword = "";
     this.editedLines = [];
     this.nextLine = null;
@@ -896,7 +892,10 @@ export class DungeonRoom {
     if (this.lastActivityAt === null) this.markActivity();
     this.conns.set(conn.id, conn);
     this.sendTo(conn, this.snapshot());
-    if (this.lastNarration) this.sendTo(conn, { type: "NARRATION", ...this.lastNarration });
+    if (this.lastNarration) {
+      const { eventId, lines, rev } = this.lastNarration;
+      this.sendTo(conn, { type: "NARRATION", eventId, lines, rev });
+    }
     if (this.epilogue) this.sendTo(conn, { type: "EPILOGUE", text: this.epilogue, replay: true });
   }
 
@@ -973,9 +972,6 @@ export class DungeonRoom {
           this.aiLimit = msg.limit;
           this.sendAiStatus();
           break;
-        case "HOST_SET_NOTES":
-          this.handleSetNotes(sender, msg.notes);
-          break;
         case "HOST_SET_PASSWORD":
           if (!this.requireHost(sender)) break;
           this.joinPassword = msg.password.trim();
@@ -983,7 +979,10 @@ export class DungeonRoom {
           for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
           break;
         case "HOST_EDIT_NARRATION":
-          this.handleEditNarration(sender, msg.line);
+          this.handleEditNarration(sender, msg.eventId, msg.index, msg.line);
+          break;
+        case "SCREEN_NARRATION_PROGRESS":
+          this.handleNarrationProgress(msg.eventId, msg.rev, msg.done);
           break;
         case "HOST_NEXT_LINE":
           this.handleNextLine(sender, msg.line);
@@ -1055,7 +1054,8 @@ export class DungeonRoom {
       // A transcript download changes nothing; a rejected message did not either; and an automatic
       // reconnect's re-identification (`resume`) is a device, not a person.
       const resumed = "resume" in msg && msg.resume === true;
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && !this.rejected && !resumed) {
+      // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -1078,6 +1078,7 @@ export class DungeonRoom {
     this.hostConns.set(conn.id, conn);
     this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
     this.sendTo(conn, { type: "HOST_NEXT_LINE_STATE", line: this.nextLine?.text ?? "" });
+    if (this.lastNarration) this.sendTo(conn, { type: "HOST_NARRATION_PROGRESS", eventId: this.lastNarration.eventId, done: this.lastNarration.done });
     this.sendAiStatus(undefined, conn);
     this.sendAnswer(conn);
     this.sendPicks(conn);
@@ -1385,12 +1386,6 @@ export class DungeonRoom {
     this.sendTo(conn, { type: "TRANSCRIPT", entries: this.transcript });
   }
 
-  private handleSetNotes(conn: Conn, raw: string) {
-    if (!this.requireHost(conn)) return;
-    this.notes = sanitizeText(raw, MAX_NOTES);
-    this.addTranscript({ kind: "notes", at: new Date().toISOString(), text: this.notes });
-  }
-
   /** The host queues a line for the next narration; "" cancels. */
   private handleNextLine(conn: Conn, raw: string) {
     if (!this.requireHost(conn)) return;
@@ -1426,28 +1421,34 @@ export class DungeonRoom {
     for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_NEXT_LINE_STATE", line: this.nextLine?.text ?? "" });
   }
 
-  /** The host rewrites the line on screen. It wins over anything the LLM does later for that event. */
-  private handleEditNarration(conn: Conn, raw: string) {
+  /** The host rewrites line `index` of narration `eventId` (host-narration-edit.md D9). It wins over anything the LLM
+   * does later for that event. A line the big screen has already read stays as it is (D3). */
+  private handleEditNarration(conn: Conn, eventId: number, index: number, raw: string) {
     if (!this.requireHost(conn)) return;
-    const line = sanitizeText(raw, MAX_EDIT_LINE);
-    if (!this.lastNarration) {
-      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_narration" });
-      return;
-    }
-    if (!line) {
-      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "empty_line" });
-      return;
-    }
-    // Edits only the first segment (the "what happened" line) — the host has no visibility into
-    // which segment a given client is currently displaying (that timing is client-side, in
-    // Sequence), so editing later segments is left for a future redesign. See
-    // docs/designs/multi-segment-narration.md's Open Questions.
-    const { eventId, lines } = this.lastNarration;
-    const newLines = [line, ...lines.slice(1)];
-    this.lastNarration = { eventId, lines: newLines };
+    const n = this.lastNarration;
+    const refuse = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    if (!n) return refuse("no_narration");
+    // The narration changed while the host typed (a new turn, or a second host device): never edit the newer one.
+    if (eventId !== n.eventId) return refuse("stale_narration");
+    if (index >= n.lines.length) return refuse("bad_index");
+    if (index < n.done) return refuse("line_read");
+    // One line in the dialogue box: a raw socket could send newlines the <input> cannot.
+    const line = sanitizeText(raw.replace(/\s+/g, " "), MAX_LINE);
+    if (!line) return refuse("empty_line");
+    const lines = n.lines.map((l, i) => (i === index ? line : l));
+    this.lastNarration = { ...n, lines, rev: n.rev + 1 };
     this.editedLines = [...this.editedLines, line].slice(-STYLE_EXAMPLES);
     this.addTranscript({ kind: "edit", at: new Date().toISOString(), text: line, eventId });
-    this.broadcast({ type: "NARRATION", eventId, lines: newLines });
+    this.broadcast({ type: "NARRATION", eventId, lines, rev: n.rev + 1 });
+  }
+
+  /** The big screen read up to `done` lines. Only a report about the text on screen now, that moves forward, counts:
+   * several screens make the fastest one win, and a reconnecting screen retyping from line 1 changes nothing (D14). */
+  private handleNarrationProgress(eventId: number, rev: number, done: number) {
+    const n = this.lastNarration;
+    if (!n || eventId !== n.eventId || rev !== n.rev || done <= n.done || done > n.lines.length) return;
+    this.lastNarration = { ...n, done };
+    for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_NARRATION_PROGRESS", eventId, done });
   }
 
   private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean) {

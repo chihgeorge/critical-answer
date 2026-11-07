@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { cleanTypedAnswer, parseClientMessage, sanitizeText } from "./protocol";
+import { MAX_LINE } from "./narration/runner";
 
 const TOKEN = "host-token-0123456789abcdef";
 const ID = "00000000-0000-0000-0000-000000000001";
@@ -96,19 +97,31 @@ describe("parseClientMessage", () => {
     for (const page of [0, 6, 2.5, "2", undefined]) expect(parseClientMessage({ type: "HOST_INTRO", page }), String(page)).toBeNull();
   });
 
-  it("HOST_SET_NOTES: a string of at most 500 characters", () => {
-    expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: "用武俠口吻" })).toEqual({ type: "HOST_SET_NOTES", notes: "用武俠口吻" });
-    expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: "" })).toEqual({ type: "HOST_SET_NOTES", notes: "" });
-    expect(parseClientMessage({ type: "HOST_SET_NOTES" })).toBeNull();
-    expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: 5 })).toBeNull();
-    expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: "字".repeat(501) })).toBeNull();
+  // Guards the removal of the director notes (host-narration-edit.md): fails if HOST_SET_NOTES parses again.
+  it("HOST_SET_NOTES is gone", () => {
+    expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: "用武俠口吻" })).toBeNull();
   });
 
-  it("HOST_EDIT_NARRATION: a string of at most 40 characters", () => {
-    expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "改過的一句" })).toEqual({ type: "HOST_EDIT_NARRATION", line: "改過的一句" });
-    expect(parseClientMessage({ type: "HOST_EDIT_NARRATION" })).toBeNull();
-    expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: ["x"] })).toBeNull();
-    expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "字".repeat(41) })).toBeNull();
+  // Guards the edit message's shape (D9, D18): fails if the eventId or line index stops being required, if a
+  // negative or fractional one gets through, or if the limit drifts from MAX_LINE (a prefilled 50-character line).
+  it("HOST_EDIT_NARRATION: an eventId, a line index and a line of at most MAX_LINE characters", () => {
+    const ok = { type: "HOST_EDIT_NARRATION", eventId: 4, index: 2, line: "改過的一句" };
+    expect(parseClientMessage(ok)).toEqual(ok);
+    expect(parseClientMessage({ ...ok, line: "字".repeat(MAX_LINE) })).toEqual({ ...ok, line: "字".repeat(MAX_LINE) });
+    expect(parseClientMessage({ ...ok, line: "字".repeat(MAX_LINE + 1) })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "改過的一句" })).toBeNull(); // the old shape
+    for (const bad of [{ eventId: -1 }, { eventId: 1.5 }, { eventId: "4" }, { index: -1 }, { index: undefined }, { line: ["x"] }]) {
+      expect(parseClientMessage({ ...ok, ...bad }), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  // Guards the big screen's progress report (D3, D14): fails if any of its three counts may be missing, negative or fractional.
+  it("SCREEN_NARRATION_PROGRESS: whole, non-negative eventId, rev and done", () => {
+    const ok = { type: "SCREEN_NARRATION_PROGRESS", eventId: 3, rev: 0, done: 2 };
+    expect(parseClientMessage(ok)).toEqual(ok);
+    for (const key of ["eventId", "rev", "done"]) {
+      for (const v of [undefined, -1, 0.5, "1"]) expect(parseClientMessage({ ...ok, [key]: v }), `${key}=${v}`).toBeNull();
+    }
   });
 
   it("HOST_SERVE: needs a non-negative integer eventId, like HOST_NEXT", () => {

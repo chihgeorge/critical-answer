@@ -358,7 +358,7 @@ describe("when the platform misbehaves", () => {
     const fresh = (setup().room as any).persistedState();
     const used = setup();
     startedGame(used.room);
-    used.room.onMessage(JSON.stringify({ type: "HOST_SET_NOTES", notes: "武俠風" }), conn("h2"));
+    used.room.onMessage(JSON.stringify({ type: "HOST_SET_PASSWORD", password: "武俠風" }), conn("h2"));
     used.clock.t += EXPIRE;
     await used.room.onAlarm();
     const after = (used.room as any).persistedState();
@@ -480,7 +480,7 @@ describe("after a restart", () => {
     send(room, conn("a"), { type: "JOIN", teamId: T1, teamKey: TEAM_KEY, teamName: "甲隊" });
     const before = storage.puts;
     clock.t += 5_000;
-    send(room, host, { type: "HOST_SET_NOTES", notes: "" }); // activity, but the saved state is identical to the minute
+    send(room, host, { type: "HOST_SET_PASSWORD", password: "" }); // activity, but the saved state is identical to the minute
     expect(storage.puts).toBe(before);
   });
 });

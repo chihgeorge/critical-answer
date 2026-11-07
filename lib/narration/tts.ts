@@ -27,8 +27,8 @@ function sameLines(a: readonly string[], b: readonly string[]): boolean {
  * - Every narration after that: speak it iff it differs from what's already been "seen"
  *   (remembered, whether or not it was spoken) — either a genuinely new eventId, or the SAME
  *   eventId with a different segment array (length OR content). That second case is a host
- *   correction (HOST_EDIT_NARRATION re-broadcasts the same eventId with a corrected first
- *   segment) — including a correction to the very narration that was just suppressed as a
+ *   correction (HOST_EDIT_NARRATION re-broadcasts the same eventId with line N
+ *   replaced; the screen reads on from that line, see trackNarration in the screen page) — including a correction to the very narration that was just suppressed as a
  *   replay, which an earlier version of this function got wrong by blocking anything
  *   at-or-below baseline unconditionally (adversarial review finding: the replayed line's own
  *   correction was silently never spoken). Comparing the whole array (not just index 0) also

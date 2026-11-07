@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { keepLatest, type NarrationState } from "@/lib/narration/client";
+import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
@@ -21,6 +21,7 @@ import { INTRO_PAGE_TEXT, introDots } from "@/components/how-to-play";
 import { optionLetter } from "@/components/mc-option";
 import { AI_ERRORS, AI_STORE, AiExhausted, AiPanel, aiKeyMessage, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
+import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
 
@@ -30,6 +31,8 @@ const STUCK_MS = 15_000;
  * double-tap of 答錯 never lands on 祈禱 / 重答, nor one of 祈禱 on the new attempt's 答對 / 答錯 (#106). */
 const CLERIC_WAIT_DELAY_MS = 500;
 const noSubscribe = () => () => {};
+/** HOST_EDIT_NARRATION refusals: the narration panel shows them in its editor, not the page's error line. */
+const NARRATION_REFUSALS = new Set(["no_narration", "stale_narration", "bad_index", "line_read", "empty_line"]);
 
 type Picks = Extract<ServerMessage, { type: "HOST_PICKS" }>;
 
@@ -92,6 +95,10 @@ export default function HostPage() {
   const [joinPassword, setJoinPassword] = useState("");
   const [savedPassword, setSavedPassword] = useState("");
   const [narration, setNarration] = useState<NarrationState>(null);
+  /** How far the big screen has read, per narration (host-narration-edit.md D3). */
+  const [readTo, setReadTo] = useState<{ eventId: number; done: number } | null>(null);
+  /** The room's last refusal of a narration edit, shown in the panel's editor (D10). */
+  const [editRefusal, setEditRefusal] = useState<EditRefusal | null>(null);
   // Team whose judge buttons are disabled while we wait for the server's
   // STATE broadcast to confirm the judgment — doubles as visible click
   // feedback (buttons dim) and blocks accidental double-clicks from firing
@@ -149,6 +156,9 @@ export default function HostPage() {
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
           break;
+        case "HOST_NARRATION_PROGRESS":
+          setReadTo(msg);
+          break;
         case "TRANSCRIPT": {
           // Host-only download of every narration line with provider, latency and fallback reason.
           const blob = new Blob([JSON.stringify(msg.entries, null, 2)], { type: "application/json" });
@@ -180,6 +190,7 @@ export default function HostPage() {
           setHandoffs({});
           // Back from a finished game (回到大廳): its last line and answer are not the next game's.
           setNarration(null);
+          setReadTo(null);
           setAnswer(null);
           break;
         case "STATE":
@@ -206,6 +217,10 @@ export default function HostPage() {
                 break;
               }
             }
+          }
+          if (msg.detail && NARRATION_REFUSALS.has(msg.detail)) {
+            setEditRefusal((r) => ({ detail: msg.detail!, seq: (r?.seq ?? 0) + 1 }));
+            break;
           }
           setError(
             msg.error === "bad_token"
@@ -688,8 +703,18 @@ export default function HostPage() {
               ))}
             </ul>
 
-            {turn?.team && (
             <div className="mt-auto flex flex-col">
+            <NarrationPanel
+              narration={narration}
+              pending={isPending(game.eventId, narration)}
+              done={readTo && readTo.eventId === narration?.eventId ? readTo.done : 0}
+              nextLine={nextLine}
+              refusal={editRefusal}
+              disabled={!ready}
+              send={send}
+            />
+            {turn?.team && (
+            <>
               {!ready && connected && <div className="px-1 text-center text-[14px] text-white">等待主持人驗證…</div>}
               {revealUp ? (
                 // D7: the big screen and every phone show the answer in place of the next
@@ -806,10 +831,11 @@ export default function HostPage() {
                   )}
                 </>
               )}
-            </div>
+            </>
             )}
             {/* No team on turn (every phone offline): a waiting lock still gets its 公布答案. */}
-            {!turn?.team && !revealUp && revealButton && <div className="mt-auto flex flex-col">{revealButton}</div>}
+            {!turn?.team && !revealUp && revealButton}
+            </div>
           </>
         )}
 
@@ -847,11 +873,8 @@ export default function HostPage() {
           code={code}
           onClose={() => setDrawer(false)}
           send={send}
-          lines={narration?.lines ?? []}
-          aiOn={!!aiStatus && aiStatus.source !== "none" && !aiStatus.keyMissing}
           ai={game ? aiPanel : null}
           bossable={game?.phase === "playing" ? game.view.teams.filter((t) => !t.inBossPhase) : []}
-          nextLine={game?.phase === "finished" ? null : nextLine}
           playing={game?.phase === "playing"}
         />
       )}

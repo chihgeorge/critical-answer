@@ -591,6 +591,42 @@ describe("restoring after a restart", () => {
     expect(replayed).not.toHaveProperty("then");
   });
 
+  // Value: protects=the big screen's reading progress and the edit revision survive a restart (host-narration-edit.md D14);
+  // fails_when=a restored room forgets `done` (every read line editable again), forgets `rev` (an old report locks new
+  // text), or a save from before them does not restore at all.
+  it("reading progress and the edit revision survive a restart; an older save without them restores as 0", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(first.room);
+    judgeCorrect(first.room, host, T1);
+    await new Promise((r) => setTimeout(r, 30));
+    const eventId = (storage.data.get(SNAPSHOT_KEY) as any).lastNarration.eventId;
+    send(first.room, host, { type: "HOST_EDIT_NARRATION", eventId, index: 2, line: "改過的第三句" });
+    send(first.room, makeConn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 1, done: 1 });
+    expect((storage.data.get(SNAPSHOT_KEY) as any).lastNarration).toMatchObject({ eventId, rev: 1, done: 1 });
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    const host2 = makeConn("host2");
+    second.room.onConnect(host2);
+    send(second.room, host2, { type: "HOST_CLAIM", token: TOKEN });
+    expect(lastOf(host2, "NARRATION")).toMatchObject({ eventId, rev: 1 });
+    expect(lastOf(host2, "HOST_NARRATION_PROGRESS")).toEqual({ type: "HOST_NARRATION_PROGRESS", eventId, done: 1 });
+    send(second.room, host2, { type: "HOST_EDIT_NARRATION", eventId, index: 0, line: "太晚了" });
+    expect(lastOf(host2, "ERROR")).toMatchObject({ detail: "line_read" });
+
+    const old = structuredClone(storage.data.get(SNAPSHOT_KEY) as any);
+    delete old.lastNarration.rev;
+    delete old.lastNarration.done;
+    storage.data.set(SNAPSHOT_KEY, old);
+    const third = makeRoom(storage);
+    expect(await third.room.restore()).toBe("restored");
+    const host3 = makeConn("host3");
+    third.room.onConnect(host3);
+    send(third.room, host3, { type: "HOST_CLAIM", token: TOKEN });
+    expect(lastOf(host3, "HOST_NARRATION_PROGRESS")).toMatchObject({ done: 0 });
+  });
+
   it("the game keeps the bank it started with, not the bundled one", async () => {
     const custom = structuredClone(BANK);
     custom.pools[1][0].content.value = "自訂題庫的第一題";
@@ -656,7 +692,7 @@ describe("restoring after a restart", () => {
     expect(lastOf(screen, "STATE").question.content).toEqual({ kind: "text", value: "自訂題庫的第一題" });
     const host2 = makeConn("host2");
     send(second, host2, { type: "HOST_CLAIM", token: TOKEN });
-    send(second, host2, { type: "HOST_SET_NOTES", notes: "x" }); // any later save
+    send(second, host2, { type: "HOST_SET_PASSWORD", password: "x" }); // any later save
     expect(storage.data.get(BANK_KEY)).toEqual(saved.bank);
     expect(storage.data.get(SNAPSHOT_KEY)).not.toHaveProperty("bank");
   });
