@@ -4,12 +4,12 @@
 import { DEFAULT_GAME_CONFIG, type SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 import type { SceneTheme } from "./pixel-art";
-import type { SpriteKind } from "./sprite-kind";
+import type { MonsterSprite, SpriteKind } from "./sprite-kind";
 
 export type Monster = { kind: SpriteKind; name: string; scale: number; hue: number; float?: boolean };
 
 /** Sprite size (an integer multiple of its native pixels) and whether it hovers. */
-const LOOK: Record<string, { scale: number; float?: boolean }> = {
+const LOOK: Record<MonsterSprite, { scale: number; float?: boolean }> = {
   slime: { scale: 6 },
   "slime-lost": { scale: 6 },
   "slime-king": { scale: 5 },
@@ -21,6 +21,16 @@ export const FALLBACK_MONSTER: Monster = { kind: "slime", name: "…", scale: 6,
 export const BOSS_THRESHOLD = DEFAULT_GAME_CONFIG.bossThreshold;
 
 const ROOM_THEMES: SceneTheme[] = ["stone", "moss", "stone", "moss", "stone"];
+
+/** How the stage draws a bank monster. */
+export function monsterLook(m: PublicQuestion["monster"], hueShift = 0): Monster {
+  return { ...LOOK[m.sprite], kind: m.sprite, name: m.name, hue: (m.hue + hueShift) % 360 };
+}
+
+/** A room's backdrop; `null` is the boss room. */
+export function roomTheme(room: number | null): SceneTheme {
+  return room === null ? "crimson" : ROOM_THEMES[room % ROOM_THEMES.length];
+}
 
 /** Each boss phase turns the boss's colour by this much (boss-phases.md D9, chosen from the mockup).
  * app/globals.css's px-phase-blink turns it back by the same amount: change both together. */
@@ -37,7 +47,7 @@ export function describeTurn(view: SpectatorView, question: PublicQuestion | nul
   const room = team?.roomIndex ?? 0;
   const m = question?.monster ?? bossMonster;
   const phaseHue = bossScene ? PHASE_HUE_STEP * (view.bossPhase - 1) : 0;
-  const monster: Monster = m ? { ...LOOK[m.sprite], kind: m.sprite, name: m.name, hue: (m.hue + phaseHue) % 360 } : FALLBACK_MONSTER;
+  const monster: Monster = m ? monsterLook(m, phaseHue) : FALLBACK_MONSTER;
   return {
     team,
     teamIndex,
@@ -47,7 +57,7 @@ export function describeTurn(view: SpectatorView, question: PublicQuestion | nul
     monster,
     /** The monster's sprite scale for the phone-size turn card. */
     miniScale: Math.max(1, Math.floor(monster.scale / 3)),
-    theme: bossScene ? ("crimson" as const) : ROOM_THEMES[room % ROOM_THEMES.length],
+    theme: roomTheme(bossScene ? null : room),
     questionId: inBoss ? view.bossCurrentQuestionId : team?.currentQuestionId,
     bossHits: view.bossMaxHp - view.bossHp,
   };

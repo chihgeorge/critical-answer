@@ -200,6 +200,10 @@ describe("parseBank", () => {
     ["a difficulty of 0", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], baseDifficulty: 0 }] })],
     ["a difficulty of 6", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], baseDifficulty: 6 }] })],
     ["an unknown sprite", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], monster: { name: "x", sprite: "cat" } }] })],
+    // Value: protects=a bank monster may only use a monster sprite (it needs a DISH_SPRITE dish); fails_when=SPRITES is widened
+    // to every SpriteKind; why_new=the only row used a made-up name; seam=none; no_claim=the bank editor's own sprite picker
+    ["a sprite that is not a monster (the pot)", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], monster: { name: "x", sprite: "pot" } }] })],
+    ["a sprite that is not a monster (a dish)", () => ({ ...valid(), boss: { ...valid().boss, monster: { name: "x", sprite: "dish-skewer" } } })],
     ["no boss questions", () => ({ ...valid(), boss: { ...valid().boss, questions: [] } })],
     ["a boss without hp", () => ({ ...valid(), boss: { ...valid().boss, maxHp: 0 } })],
     ["a negative room reward", () => ({ ...valid(), rooms: [{ ...valid().rooms[0], reward: -1 }] })],

@@ -129,19 +129,19 @@ export const ROLL_VARIANTS: Record<"crit" | "fumble" | "persuaded" | "blunder", 
   },
 };
 
-/** A correct answer that cooked its monster (event.dish, docs/designs/monster-cuisine.md). */
+/** A correct answer on a monster that will be cooked (event.cooked, docs/designs/monster-cuisine.md). The dish
+ * itself is named only once the host serves it (cooking I1), so these lines never say what it becomes. */
 export const DISH_VARIANTS = [
-  "{team}答對了！{monster}被煮成了{dish}，+{points} 飽足感。",
-  "今晚的菜：{dish}！{team}吃下 {points} 飽足感。",
-  "{team}收拾了{monster}，端上一盤{dish}。",
-  "{monster}倒下，香味飄來——是{dish}！{team} +{points}。",
+  "{team}答對了！{monster}倒下了，+{points} 飽足感。",
+  "{team}收拾了{monster}，鍋子已經在等了。",
+  "{monster}倒下了……{team}的肚子咕嚕叫，+{points}。",
 ];
 
-/** The boss kill when the boss has a dish. */
+/** The boss kill when the boss will be cooked. */
 export const BOSS_DISH_VARIANTS = [
-  "{team}擊倒了{monster}！今晚的大菜是{dish}，再加 {bonus} 飽足感！",
-  "{monster}轟然倒下，{team}把牠做成了{dish}，+{bonus}！",
-  "終結！{team}端出{dish}，整座地城都聞到了香味。",
+  "{team}擊倒了{monster}！再加 {bonus} 飽足感！",
+  "{monster}轟然倒下，{team}拿下最後一擊，+{bonus}！",
+  "終結！{monster}倒下了，今晚要開大鍋。",
 ];
 
 /** A correct answer that takes the team into the boss room (event.entersBoss). */
@@ -271,7 +271,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "boss-hit" && event.bossHp === 0) return fill(pick(BOSS_EMPTIED_VARIANTS, "boss-emptied"), event);
       if (event.type === "boss-phase") return fill(pick(VARIANTS["boss-phase"], "boss-phase"), { ...event, ordinal: ordinal(event.phase) });
       if (event.type === "correct" && event.entersBoss?.phase) return fill(pick(BOSS_ENTER_PHASE_VARIANTS, "boss-enter-phase"), { ...event, phase: event.entersBoss.phase });
-      if (event.type === "boss-kill" && event.dish) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
+      if (event.type === "boss-kill" && event.cooked) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
       if ((event.type === "correct" && !event.entersBoss) || event.type === "boss-hit") {
         if (event.roll) {
           const twenty = event.roll.value === 20;
@@ -279,7 +279,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
           return fill(pick(ROLL_VARIANTS[kind][event.type], `${kind}-${event.type}`), event);
         }
       }
-      if (event.type === "correct" && event.dish && !event.entersBoss) return fill(pick(DISH_VARIANTS, "dish"), event);
+      if (event.type === "correct" && event.cooked && !event.entersBoss) return fill(pick(DISH_VARIANTS, "dish"), event);
       const bossEnter = event.type === "correct" && event.entersBoss;
       if (!bossEnter && (event.type === "correct" || event.type === "boss-hit") && event.classId) {
         return fill(pick([...CLASS_VARIANTS[event.classId][event.type], ...VARIANTS[event.type]], event.type), event);

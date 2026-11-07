@@ -84,7 +84,7 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   // The kill's 4d20 rolls first; the podium waits for it (docs/designs/kill-roll.md).
   await expect(screen.locator('[data-testid="roll-overlay"][data-kind="kill"]')).toBeVisible();
   await expect(screen.getByText(/奪得榜首/)).toHaveCount(0);
-  await expect(screen.getByText(/奪得榜首/)).toBeVisible({ timeout: 8000 });
+  await expect(screen.getByText(/奪得榜首/)).toBeVisible({ timeout: 12_000 }); // the kill dice (4 s), then the boss cooks (FINISH_PODIUM_MS)
 });
 
 // Value: protects=a phase that runs out of questions moves on by itself and never repeats a phase-1 question in phase 2;

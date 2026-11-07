@@ -8,7 +8,7 @@ import { UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notic
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import { HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
+import { HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -211,7 +211,7 @@ export default function HostPage() {
             msg.error === "bad_token"
               ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人"
               : msg.detail === "reveal_pending"
-                ? "大螢幕正在揭曉，先按「下一題」"
+                ? `大螢幕正在揭曉，先按「${toServe ? "🍲 上菜" : "下一題"}」`
                 : msg.detail === "duplicate_name"
                 ? "已經有隊伍叫這個名字了"
                 : msg.error === "invalid_name"
@@ -261,11 +261,15 @@ export default function HostPage() {
   // Keyed on the pause itself, not just "a pause is up": the answer reveal turning into the phase card
   // swaps 下一題 for another 下一題, and a double-tap must not close the card nobody has seen.
   // The intro's pages count too: 下一頁 turns into 開始冒險 in its slot, and then into the judge buttons.
-  const pauseKey = game?.reveal ? `reveal-${game.eventId}` : game?.phaseCard ? `card-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : "";
+  // A dish reveal takes 🍲 上菜 first (monster-cuisine.md cooking R5); serving swaps it for 上菜中… then 下一題.
+  const toServe = game?.phase === "playing" && !!game.reveal?.dish && !game.reveal.served;
+  const servedUp = !!game?.reveal?.served;
+  const pauseKey = game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : "";
   const [armedFor, setArmedFor] = useState(pauseKey);
   const swapArmed = armedFor === pauseKey;
   useEffect(() => {
-    const t = setTimeout(() => setArmedFor(pauseKey), 500);
+    // After 上菜, 下一題 waits out the cooking as the room does (cooking I2).
+    const t = setTimeout(() => setArmedFor(pauseKey), pauseKey.endsWith("-served") ? SERVE_HOLD_MS : 500);
     return () => clearTimeout(t);
   }, [pauseKey]);
   // A warrior's roll in its beat is judged by the room (class-abilities.md R2): the host waits it out too.
@@ -347,7 +351,7 @@ export default function HostPage() {
         send({ type: "HOST_REVEAL", teamId: lock.teamId, questionId: lock.questionId });
       } else if (action === "next") {
         if (!ready || !swapArmed) return;
-        send({ type: "HOST_NEXT", eventId: game.eventId });
+        send({ type: toServe ? "HOST_SERVE" : "HOST_NEXT", eventId: game.eventId });
       } else {
         if (!canJudge || !turn?.team || !turn.questionId) return;
         // No 祈禱 button once the team cannot pray: its key does nothing too.
@@ -703,8 +707,8 @@ export default function HostPage() {
                       <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} />
                     </Panel>
                   )}
-                  <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: "HOST_NEXT", eventId: game.eventId })}>
-                    {connected ? "下一題" : "重新連線中"}
+                  <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: toServe ? "HOST_SERVE" : "HOST_NEXT", eventId: game.eventId })}>
+                    {!connected ? "重新連線中" : toServe ? "🍲 上菜" : servedUp && !swapArmed ? "🍲 上菜中…" : "下一題"}
                     <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
                   </PixelButton>
                 </>

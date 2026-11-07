@@ -2,7 +2,7 @@
 // question hides its picture until the answer, and phones never embed the video. youtube.com is blocked and a fake
 // window.YT records every player call, so nothing here needs the network or a real video.
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { startGame } from "./answer";
+import { startGame, nextQuestion } from "./answer";
 import { stubSpeechSynthesis } from "./tts";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
@@ -141,7 +141,7 @@ test("music question: the lobby asks for a tap, the card hides the video, and th
   await expect(screen.getByTestId("youtube-player")).toHaveAttribute("data-status", "playing");
 
   // 下一題: the video goes, the player with it.
-  await host.getByRole("button", { name: "下一題", exact: true }).click();
+  await nextQuestion(host);
   await expect(screen.getByTestId("youtube-player")).toHaveCount(0);
   await expect.poll(() => calls(screen)).toContain("destroy");
 });

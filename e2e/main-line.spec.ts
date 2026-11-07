@@ -79,10 +79,26 @@ test("create room, join two teams, start, judge; screen and play never see host-
   // answer channel checked above — and stays up until the host moves on.
   await expect(screen.getByText(`正解：${answer}`)).toBeVisible();
   await expect(players[0].page.getByText(`正解：${answer}`)).toBeVisible();
-  // The bundled bank cooks every monster (docs/designs/monster-cuisine.md): the screen serves the dish, and scores are 飽足感.
+  // Before 上菜 (which shows 「上菜！」 on the screen): one narration line about 甲隊's answer reaches the big screen and the other phone alike.
+  await expect(screen.locator(".px-say")).toContainText("甲隊");
+  await expect(players[1].page.locator(".px-say")).toContainText("甲隊");
+
+  // The narrator moves the story on: the result line shows a ▼ (more to come), then the next team is
+  // addressed, and the last line has no ▼.
+  await expect(screen.locator(".px-say .more")).toBeVisible({ timeout: 6000 });
+  await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 8000 }); // the follow-up addresses the next team
+  await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
+
+  // The bundled bank cooks every monster (docs/designs/monster-cuisine.md): the dish waits for the host's 🍲 上菜, then the
+  // screen cooks the monster and serves it (cooking R4/R5), and scores are 飽足感.
+  await expect(screen.getByTestId("dish-card")).toHaveCount(0);
+  await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the ribbon names who eats (cooking I6)
+  await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0); // judging waits for 下一題
+  await host.getByRole("button", { name: /上菜/ }).click();
   await expect(screen.getByTestId("dish-card")).toContainText("今晚的菜");
   await expect(screen.getByTestId("dish-card")).toContainText("飽足感");
-  await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0); // judging waits for 下一題
+  await expect(players[0].page.getByTestId("phone-dish")).toContainText("今晚的菜");
+  await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeEnabled(); // once the cooking is over (cooking I2)
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByText(`正解：${answer}`)).toHaveCount(0);
 
@@ -92,16 +108,6 @@ test("create room, join two teams, start, judge; screen and play never see host-
 
   // The branch choice is off the phones for now (TODOS.md), even right after 甲隊 entered a new room.
   await expect(players[0].page.getByText("冒險出現岔路")).toHaveCount(0);
-
-  // One narration line about 甲隊's answer reaches the big screen and the other phone alike.
-  await expect(screen.locator(".px-say")).toContainText("甲隊");
-  await expect(players[1].page.locator(".px-say")).toContainText("甲隊");
-
-  // The narrator moves the story on: the result line shows a ▼ (more to come), then the next team is
-  // addressed, and the last line has no ▼.
-  await expect(screen.locator(".px-say .more")).toBeVisible({ timeout: 6000 });
-  await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 8000 }); // the follow-up addresses the next team
-  await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
 
   // A phone that reloads (or wakes from sleep) comes back as the same team: it is not left "offline" and skipped.
   await players[1].page.reload();
@@ -150,8 +156,8 @@ test("a browser with no host token cannot start a game", async ({ page }) => {
   await expect(page.getByRole("button", { name: /開始遊戲/ })).toBeDisabled();
 });
 
-test("game over: podium at once, then the epilogue arrives on the big screen", async ({ browser }) => {
-  test.setTimeout(60_000);
+test("game over: the boss cooks, then the podium, then the epilogue arrives on the big screen", async ({ browser }) => {
+  test.setTimeout(90_000); // every cooked monster is served and waited out (cooking I2)
   const code = "EPIL";
   const partyUrl = `ws://localhost:1996/parties/main/${code}`;
   const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
@@ -174,17 +180,35 @@ test("game over: podium at once, then the epilogue arrives on the big screen", a
   expect(await ttsCalls(screen)).toEqual([""]);
   host.send(JSON.stringify({ type: "HOST_START", aiNarration: false })); // never the real API in tests
   await expect.poll(() => box.state?.phase).toBe("playing");
+  // The boss stands on the cooking stage before the pot (cooking R8). Its frame lasts COOK_POT_MS, so watch every frame from now.
+  const bossOnStage = screen.waitForFunction(
+    () => document.body.innerText.includes("冒　險　結　束") && [...document.querySelectorAll("div")].some((e) => e.textContent === "深淵小黑龍"),
+    null,
+    { polling: "raf", timeout: 80_000 },
+  );
   let sawBossRoom = false;
+  let sawDefeated = false;
   await judgeToTheEnd(host, cur, async (t) => {
+    // One team, so the next room's monster differs: the stage shows the monster just defeated, not the next one (cooking R1).
+    const dish = cur().reveal?.dish;
+    if (dish && dish.room !== null && !cur().reveal?.served && !sawDefeated) {
+      await expect(screen.getByText(dish.monster.name, { exact: true })).toBeVisible();
+      await expect(screen.getByText("🍲 終局隊")).toBeVisible();
+      sawDefeated = true;
+    }
     if (t.inBossPhase && !sawBossRoom) {
       await expect(screen.getByTestId("boss-room")).toBeVisible(); // the map's door has opened
       sawBossRoom = true;
     }
   });
   expect(sawBossRoom).toBe(true);
+  expect(sawDefeated).toBe(true);
+  await bossOnStage;
 
-  // Podium is there immediately; the story follows as a single line.
-  await expect(screen.getByText("奪得榜首")).toBeVisible();
+  // The boss kill was seen live, so the boss cooks first and the winner waits (cooking R8): the big dish, then the podium.
+  await expect(screen.getByTestId("dish-card")).toContainText("今晚的大菜");
+  await expect(screen.getByText("奪得榜首")).toHaveCount(0);
+  await expect(screen.getByText("奪得榜首")).toBeVisible({ timeout: 8000 });
   // The boss-kill answer ended the game, so its reveal shows on the podium screen instead (D7).
   await expect(screen.getByTestId("answer-reveal")).toContainText("最後一題正解：");
   await expect(screen.locator(".px-say")).toContainText(EPILOGUE_RE, { timeout: 15_000 });

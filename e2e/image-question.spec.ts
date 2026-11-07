@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { startGame, rollCheck } from "./answer";
+import { startGame, rollCheck, nextQuestion } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 const WORKER = "http://localhost:1996";
@@ -220,7 +220,7 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
   await team.reload();
   await expect(team.getByText("正解：揭曉答案")).toBeVisible();
 
-  await host.getByRole("button", { name: "下一題", exact: true }).click();
+  await nextQuestion(host);
   for (const page of [screen, team]) {
     await expect(page.getByText("正解：揭曉答案")).toHaveCount(0);
     await expect(page.getByText("因為這是補充說明")).toHaveCount(0);

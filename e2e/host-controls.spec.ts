@@ -126,7 +126,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
 
   await answerCorrectly(host);
   // Wait for the reveal: a phone lock is judged after a beat, and only a shown answer makes the next game a replay.
-  await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeVisible();
+  await expect(host.getByTestId("host-reveal")).toBeVisible();
   await host.getByRole("button", { name: "⚙ 更多" }).click();
   await host.getByRole("button", { name: "結束冒險" }).click();
   await host.getByRole("button", { name: "確定結束？" }).click();

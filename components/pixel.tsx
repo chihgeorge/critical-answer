@@ -53,7 +53,7 @@ export function QuestionMedia({ content, maxWidth, maxHeight, className, label =
   );
 }
 
-const prefersReducedMotion = () =>
+export const prefersReducedMotion = () =>
   typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* ---------- Panel ---------- */
@@ -98,6 +98,9 @@ export function LabelChip({ children, tone }: { children: ReactNode; tone?: "tag
 
 /* ---------- Sprite: a program-drawn pixel canvas that blinks ---------- */
 
+/** The sprites with eyes; everything else (props, food, the pot) never blinks. */
+const BLINKS = new Set<SpriteKind>(["slime", "slime-lost", "slime-king", "ghost", "ghost-cry", "dragon", "owl", "hero"]);
+
 export function Sprite({
   kind,
   variant = 0,
@@ -122,7 +125,7 @@ export function Sprite({
     const cv = ref.current;
     if (!cv) return;
     drawSprite(cv, kind, variant, false);
-    if (prefersReducedMotion() || kind === "crown" || kind === "heart" || kind === "torch" || kind === "campfire" || kind === "door" || kind === "cloud" || kind === "zz") return;
+    if (prefersReducedMotion() || !BLINKS.has(kind)) return;
     let reopen: ReturnType<typeof setTimeout>;
     const id = setInterval(() => {
       drawSprite(cv, kind, variant, true);

@@ -257,17 +257,16 @@ describe("a boss phase out of questions", () => {
   });
 });
 
+const fills = (pool: string[], v: Record<string, string | number>) => pool.map((t) => t.replace(/\{(\w+)\}/g, (_, k: string) => String(v[k])));
+
 describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
-  it("a cooked monster's line names the dish, for a room and for the boss", async () => {
+  it("a cooked monster's line comes from the dish lines, never naming a dish (cooking I1)", async () => {
     const p = createScriptedProvider(lcg(3));
-    for (let i = 0; i < DISH_VARIANTS.length; i++) {
-      const line = await p.narrate({ type: "correct", team, monster, points: 10, dish: "史萊姆寒天" });
-      expect(line).toContain("史萊姆寒天");
-      expect(line).not.toMatch(/[{}]/);
-    }
-    for (let i = 0; i < BOSS_DISH_VARIANTS.length; i++) {
-      expect(await p.narrate({ type: "boss-kill", team, monster, bonus: 18, dish: "龍息烤龍尾" })).toContain("龍息烤龍尾");
-    }
+    const room = new Set(fills(DISH_VARIANTS, { team, monster, points: 10 }));
+    for (let i = 0; i < DISH_VARIANTS.length; i++) expect(room.has(await p.narrate({ type: "correct", team, monster, points: 10, cooked: true }))).toBe(true);
+    const boss = new Set(fills(BOSS_DISH_VARIANTS, { team, monster, bonus: 18 }));
+    for (let i = 0; i < BOSS_DISH_VARIANTS.length; i++) expect(boss.has(await p.narrate({ type: "boss-kill", team, monster, bonus: 18, cooked: true }))).toBe(true);
+    for (const l of [...DISH_VARIANTS, ...BOSS_DISH_VARIANTS]) expect(l).not.toContain("{dish}");
   });
 
   it("the epilogue counts 飽足感 and serves the champions' dishes when there are any", () => {
@@ -280,8 +279,6 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
 });
 
 describe("class attack lines (TODOS: 旁白的武器和招式要配合職業)", () => {
-  const fills = (pool: string[], v: Record<string, string | number>) => pool.map((t) => t.replace(/\{(\w+)\}/g, (_, k: string) => String(v[k])));
-
   it("a team with a class hears its own weapons, never another class's", () => {
     const v = { team, monster, points: 12, bossHp: 4 };
     for (const cls of Object.keys(CLASS_VARIANTS) as (keyof typeof CLASS_VARIANTS)[]) {
@@ -313,7 +310,7 @@ describe("class attack lines (TODOS: 旁白的武器和招式要配合職業)", 
     const enter = new Set(fills(BOSS_ENTER_VARIANTS, { team, monster, points: 12 }));
     for (let i = 0; i < 20; i++) {
       expect(enter.has(p.line({ type: "correct", team, monster, points: 12, classId: "mage", entersBoss: {} }))).toBe(true);
-      expect(p.line({ type: "correct", team, monster, points: 12, classId: "warrior", dish: "史萊姆凍" })).toContain("史萊姆凍");
+      expect(fills(DISH_VARIANTS, { team, monster, points: 12 })).toContain(p.line({ type: "correct", team, monster, points: 12, classId: "warrior", cooked: true }));
       // Value: protects=class lines never replace the emptied-bar or exhausted-phase line; fails_when=the class branch moves above those checks; why_new=those tests use no classId; seam=none; no_claim=none beyond protects
       const emptied = p.line({ type: "boss-hit", team, bossHp: 0, bossMaxHp: 3, classId: "thief" });
       expect(fills(BOSS_EMPTIED_VARIANTS, { team, monster, bossHp: 0 })).toContain(emptied);
@@ -390,8 +387,8 @@ describe("scripted: the crit die", () => {
   // fails_when=the dish branch moves above the roll branch; no_claim=the TV's dish reveal (it still shows)
   it("a 20 or 1 on a cooked monster says the roll line, not the dish line", () => {
     const p = createScriptedProvider(() => 0);
-    const line = p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 15, dish: "史萊姆凍", roll: { kind: "crit", value: 20 } });
-    expect(line).not.toContain("史萊姆凍");
+    const line = p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 15, cooked: true, roll: { kind: "crit", value: 20 } });
+    expect(fills(DISH_VARIANTS, { team: "紅隊", monster: "史萊姆", points: 15 })).not.toContain(line);
     expect(line).toMatch(/20/);
   });
 

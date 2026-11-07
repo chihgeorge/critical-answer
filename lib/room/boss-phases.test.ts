@@ -31,6 +31,13 @@ function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
 const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+/** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
+function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
+  send(room, conn, { type: "HOST_SERVE", eventId });
+  (room as unknown as { servedAt: number }).servedAt = -Infinity;
+  send(room, conn, { type: "HOST_NEXT", eventId });
+}
+
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
 /** One team (or two), all sent to the boss room, the game started. */
@@ -52,7 +59,7 @@ function bossGame(bank = phasedBank(), opts: { teams?: number; storage?: RoomSto
   const state = () => msgs(io.broadcast.mock.calls).findLast((m) => m.type === "STATE");
   const states = () => msgs(io.broadcast.mock.calls).filter((m) => m.type === "STATE");
   const judge = (correct: boolean) => send(room, host, { type: "HOST_JUDGE", teamId: state().view.currentTurnTeamId, questionId: room.game!.boss.currentQuestionId, correct, fleeChoice: "retry", eventId: state().eventId });
-  const next = () => send(room, host, { type: "HOST_NEXT", eventId: state().eventId });
+  const next = () => serveNext(room, host, state().eventId);
   /** 公布答案 on the waiting lock (docs/designs/host-reveal.md). */
   const reveal = () => {
     const lock = (room as unknown as { pendingLock: { teamId: string; questionId: string } }).pendingLock;
@@ -112,7 +119,7 @@ describe("boss phases in the room", () => {
     g.judge(true);
     const revealId = g.state().eventId;
     g.next();
-    send(g.room, g.host, { type: "HOST_NEXT", eventId: revealId });
+    serveNext(g.room, g.host, revealId);
     expect(g.state().phaseCard).toBeTruthy();
   });
 

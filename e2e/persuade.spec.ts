@@ -39,5 +39,5 @@ test("a team rolls 擲骰說服, passes the DC, sees the first character, then t
   await team.getByRole("button", { name: "送出" }).click();
   await expect(host.getByTestId("host-typed-answer")).toHaveText("隊伍答：萬家福");
   await host.getByRole("button", { name: "答對！" }).click();
-  await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeEnabled();
+  await expect(host.getByRole("button", { name: "🍲 上菜", exact: true })).toBeEnabled(); // the answer is on show (cooked monster)
 });

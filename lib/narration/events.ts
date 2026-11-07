@@ -25,8 +25,9 @@ export type NarrationEvent =
   /** `entersBoss`: this answer moved the team into the boss room (it reached the boss
    * threshold, or another team was already inside: Team.inBoss).
    * `phase`: the boss phase already under way when a late team walks in, from phase 2 on (boss-phases.md D13). */
-  /** `dish` (correct and boss-kill): what the monster was cooked into; left out when it holds a bank answer. */
-  | WithNext<WithRoll<ByClass<{ type: "correct"; team: string; monster: string; points: number; dish?: string; entersBoss?: { phase?: string } }>>>
+  /** `cooked` (correct and boss-kill): the monster will be cooked; the line counts 飽足感 but keeps the dish for the
+   * big screen's 上菜 (docs/designs/monster-cuisine.md, cooking I1). */
+  | WithNext<WithRoll<ByClass<{ type: "correct"; team: string; monster: string; points: number; cooked?: true; entersBoss?: { phase?: string } }>>>
   /** `boss`: a wrong boss answer, which always brings a new question (boss redesign D2=B).
    * `exhausted`: it used up the boss phase's questions, and the phase card comes next (boss-phases.md). */
   | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true }>>
@@ -36,7 +37,7 @@ export type NarrationEvent =
   | WithNext<WithRoll<ByClass<{ type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number; exhausted?: true }>>>
   /** The phase card opened: the boss is back with a new bar. `phase` counts from 1; nothing about later phases. */
   | WithNext<{ type: "boss-phase"; monster: string; phase: number; name: string; rule: string }>
-  | WithNext<WithRoll<ByClass<{ type: "boss-kill"; team: string; monster: string; bonus: number; dish?: string }>>>
+  | WithNext<WithRoll<ByClass<{ type: "boss-kill"; team: string; monster: string; bonus: number; cooked?: true }>>>
   /** Game over: ranking is sorted high to low. Longer line, longer timeout. */
   // ranking[].score carries reward points (Team.reward), not progress points (Team.score).
   // ranking[].dishes: what the team ate, without any dish holding a bank answer.

@@ -58,6 +58,7 @@ import {
   type PendingRoll,
   type ServerMessage,
   type SoundCue,
+  SERVE_HOLD_MS,
 } from "../protocol";
 import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, hasCuisine, inShownOrder, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
@@ -218,6 +219,8 @@ export class DungeonRoom {
   private removedTeamIds = new Set<string>();
   /** The answer on show until the host moves on (D7). In memory only: a restart simply drops it. */
   private reveal: AnswerReveal | null = null;
+  /** When the host pressed 上菜 on the reveal up now (only read while `reveal.served`). */
+  private servedAt = 0;
   /** The host's last ▶ ⏸ ⟲ (docs/designs/youtube-questions.md). In memory only (D6): a restart forgets it. */
   private media: MediaCommand | null = null;
   /** The boss's phase card is up (docs/designs/boss-phases.md): the next phase has started but its first
@@ -991,6 +994,9 @@ export class DungeonRoom {
         case "HOST_NEXT":
           this.handleHostNext(sender, msg.eventId);
           break;
+        case "HOST_SERVE":
+          this.handleHostServe(sender, msg.eventId);
+          break;
         case "HOST_SEND_TO_BOSS":
           this.handleSendToBoss(sender, msg.teamId);
           break;
@@ -1295,9 +1301,23 @@ export class DungeonRoom {
     // older STATE is stale — ignore it rather than close a reveal nobody has seen.
     // The intro turns pages with HOST_INTRO only.
     if (!this.paused() || this.intro !== null || eventId !== this.eventSeq) return;
+    // A dish is served before 下一題, and the cooking plays out first (cooking I2): a double press or a stale tab can't skip it.
+    if (this.reveal?.dish && (!this.reveal.served || this.now() - this.servedAt < SERVE_HOLD_MS)) return;
     if (this.reveal) return this.closeReveal();
     if (this.phaseCardDue) return this.openPhaseCard();
     this.phaseCard = false;
+    this.broadcastState();
+  }
+
+  /** 🍲 上菜: the screen cooks the revealed monster (monster-cuisine.md cooking R5). Once per reveal; the video stops first (I9). */
+  private handleHostServe(conn: Conn, eventId: number) {
+    if (!this.requireHost(conn)) return;
+    const reveal = this.reveal;
+    if (!reveal?.dish || reveal.served || eventId !== this.eventSeq || this.game?.phase !== "playing") return;
+    this.reveal = { ...reveal, served: true };
+    this.servedAt = this.now();
+    if (this.media?.questionId === reveal.questionId) this.media = { ...this.media, state: "paused" };
+    this.setCue("cook");
     this.broadcastState();
   }
 
@@ -1641,7 +1661,8 @@ export class DungeonRoom {
     const ateDish = (game.teams.find((t) => t.id === teamId)?.dishes?.length ?? 0) > (before?.dishes?.length ?? 0);
     const dish = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bank.boss.monster.dish : this.bank.rooms[before.roomIndex]?.monster.dish;
     const told = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
-    const base = dish && this.sayable(dish.name) && (told.type === "correct" || told.type === "boss-kill") ? { ...told, dish: dish.name } : told;
+    // The dish is named only once it is served on the big screen (cooking I1, I4); the line just counts 飽足感.
+    const base = dish && (told.type === "correct" || told.type === "boss-kill") ? { ...told, cooked: true as const } : told;
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
     const event = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
     // A natural 20 or 1 swaps the correct / boss-hit sound; the boss kill keeps its own (E2).
@@ -1667,7 +1688,7 @@ export class DungeonRoom {
         ...(explanation ? { explanation } : {}),
         ...(video?.kind === "youtube" ? { video } : {}),
         ...(choice ? { choice } : {}),
-        ...(dish ? { dish: { ...dish, points: outcome.reward } } : {}),
+        ...(dish ? { dish: { ...dish, points: outcome.reward, monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };
     }
     this.broadcastState();

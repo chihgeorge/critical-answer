@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { answerCorrectly, startGame } from "./answer";
+import { answerCorrectly, startGame, nextQuestion } from "./answer";
 import { readFile } from "node:fs/promises";
 
 /** The host's ⚙ 更多 drawer: director notes are saved into the room, and the narration transcript
@@ -125,7 +125,7 @@ test("the host queues the next line, the big screen says it, and the queue empti
   await expect(host.getByText(/已排入：/)).toHaveCount(0);
   await host.getByRole("button", { name: "關閉" }).click();
 
-  await host.getByRole("button", { name: "下一題", exact: true }).click();
+  await nextQuestion(host);
   await answerCorrectly(host);
   await expect(screen.locator(".px-say")).not.toContainText(queued, { timeout: 8000 });
   await expect(screen.locator(".px-say")).not.toContainText(cancelled);

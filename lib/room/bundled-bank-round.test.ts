@@ -8,6 +8,13 @@ import { BANK } from "../question-bank-data";
 const T1 = "00000000-0000-0000-0000-000000000001";
 const conn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn;
 const send = (room: DungeonRoom, c: Conn, msg: object) => room.onMessage(JSON.stringify(msg), c);
+/** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
+function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
+  send(room, conn, { type: "HOST_SERVE", eventId });
+  (room as unknown as { servedAt: number }).servedAt = -Infinity;
+  send(room, conn, { type: "HOST_NEXT", eventId });
+}
+
 
 afterEach(() => vi.useRealTimers());
 
@@ -34,7 +41,7 @@ describe("bundled bank", () => {
       send(room, phone, { type: "TEAM_LOCK_OPTION", questionId: qid, optionIndex: q.correctIndex });
       send(room, host, { type: "HOST_REVEAL", teamId: T1, questionId: qid });
       await vi.advanceTimersByTimeAsync(2_500); // the 2 s beat
-      send(room, host, { type: "HOST_NEXT", eventId: (room as unknown as { eventSeq: number }).eventSeq });
+      serveNext(room, host, (room as unknown as { eventSeq: number }).eventSeq);
     }
     expect(room.game!.phase).toBe("finished");
     expect(room.game!.winners).toEqual([T1]);

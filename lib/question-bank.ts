@@ -17,7 +17,7 @@
 
 import { DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./game-state";
 import { MAX_ID, type PublicMediaContent, type PublicQuestion } from "./protocol";
-import type { SpriteKind } from "./sprite-kind";
+import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "./sprite-kind";
 import { YOUTUBE_ID_RE } from "./youtube";
 
 /** A question's (or explanation's) content: text, an uploaded image, or a YouTube video —
@@ -65,7 +65,7 @@ export const DISH_FIELDS = Object.keys(DISH_LIMITS) as (keyof BankDish)[];
 
 export interface BankMonster {
   name: string;
-  sprite: SpriteKind;
+  sprite: MonsterSprite;
   /** CSS hue-rotate degrees, so one sprite can play several monsters. */
   hue: number;
   dish?: BankDish;
@@ -94,7 +94,7 @@ export interface BossPhase {
   questions: BankQuestion[];
 }
 
-const SPRITES: SpriteKind[] = ["slime", "slime-lost", "slime-king", "ghost", "ghost-cry", "dragon"];
+const SPRITES: readonly SpriteKind[] = MONSTER_SPRITES;
 /** Exported so app/bank-editor/page.tsx's client-side pre-save check can't silently drift from
  * this server-side minimum. */
 export const MIN_OPTIONS = 2;
@@ -118,7 +118,7 @@ function parseMonster(raw: unknown, where: string): BankMonster {
   if (!m || typeof m.name !== "string" || !m.name.trim()) fail(`${where} monster has no name`);
   if (!SPRITES.includes(m!.sprite as SpriteKind)) fail(`${where} monster has unknown sprite ${String(m!.sprite)}`);
   const dish = m!.dish === undefined ? undefined : parseDish(m!.dish, where);
-  return { name: m!.name as string, sprite: m!.sprite as SpriteKind, hue: typeof m!.hue === "number" ? m!.hue : 0, ...(dish ? { dish } : {}) };
+  return { name: m!.name as string, sprite: m!.sprite as MonsterSprite, hue: typeof m!.hue === "number" ? m!.hue : 0, ...(dish ? { dish } : {}) };
 }
 
 function parseDish(raw: unknown, where: string): BankDish {

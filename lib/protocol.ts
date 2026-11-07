@@ -30,7 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import { isClassId, type ClassId, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
-import type { SpriteKind } from "./sprite-kind";
+import type { MonsterSprite } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
 export const MAX_TEAMS = 8;
@@ -56,7 +56,7 @@ export interface PublicQuestion {
   prompt?: string;
   difficulty: number;
   boss: boolean;
-  monster: { name: string; sprite: SpriteKind; hue: number };
+  monster: { name: string; sprite: MonsterSprite; hue: number };
   options?: string[];
 }
 
@@ -79,8 +79,32 @@ export type AnswerReveal = {
   choice?: { options: string[]; correctIndex: number; teamId: string; points: number };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
    * Only when the answer defeated a room monster or killed the boss, and that monster has a dish. */
-  dish?: { name: string; part: string; method: string; comment: string; points: number };
+  dish?: {
+    name: string;
+    part: string;
+    method: string;
+    comment: string;
+    points: number;
+    /** The monster that was cooked, and whose room it was (`room` null for the boss), so the stage can show it
+     * during the reveal instead of the next team's monster (docs/designs/monster-cuisine.md, cooking I6). */
+    monster: PublicQuestion["monster"];
+    room: number | null;
+    /** The team that ate it, for the 🍲 ribbon and the dish line. */
+    teamId: string;
+  };
+  /** The host pressed 🍲 上菜 (HOST_SERVE): the panel goes away and the screen cooks the monster. Only with `dish`. */
+  served?: true;
 };
+
+/** 上菜's cooking on the big screen (monster-cuisine.md cooking R7): monster 0–0.4 s, pot to 1.2 s, smoke to 1.6 s, then the dish. */
+export const COOK_MS = 1600;
+/** The pot comes up, then the smoke (the cook sound's bubbles and 砰 land on these too). */
+export const COOK_POT_MS = 400;
+export const COOK_SMOKE_MS = 1200;
+/** The room refuses 下一題 until the cooked dish has been up this long (cooking I2): the cooking plus about a second of dish. */
+export const SERVE_HOLD_MS = COOK_MS + 1000;
+/** The end screen after a boss kill (cooking R8): the boss cooks, its dish holds, and only then the winner, podium and epilogue. */
+export const FINISH_PODIUM_MS = COOK_MS + 3000;
 
 /** What scores are called: 飽足感 when the bank cooks its monsters (STATE `cuisine`), else 獎勵分. */
 export function scoreName(cuisine: boolean | undefined): string {
@@ -124,6 +148,9 @@ export type ClientMessage =
    * eventId the reveal arrived with, so a late HOST_NEXT (second host device, a send buffered
    * across a reconnect) can't close a newer reveal the room hasn't seen yet. */
   | { type: "HOST_NEXT"; eventId: number }
+  /** Director: cook the revealed monster (docs/designs/monster-cuisine.md, cooking R5). Same `eventId` guard as HOST_NEXT;
+   * a second press does nothing. A dish reveal takes this before HOST_NEXT. */
+  | { type: "HOST_SERVE"; eventId: number }
   /** Host override: take a team into the boss room (docs/designs/scoring-and-score-pools.md S13). */
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
   /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
@@ -206,7 +233,7 @@ export type ServerErrorCode =
   | "invalid_action";
 
 /** One per kind of event: the big screen's sound effect for it (lib/sfx.ts). */
-export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill" | "roll" | "crit" | "fumble" | "check-pass" | "check-fail";
+export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill" | "roll" | "crit" | "fumble" | "check-pass" | "check-fail" | "cook";
 
 export const MEDIA_ACTIONS = ["play", "pause", "restart"] as const;
 export type MediaAction = (typeof MEDIA_ACTIONS)[number];
@@ -449,7 +476,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_GET_TRANSCRIPT":
       return { type: "HOST_GET_TRANSCRIPT" };
     case "HOST_NEXT":
-      return Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "HOST_NEXT", eventId: m.eventId as number } : null;
+    case "HOST_SERVE":
+      return Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: m.type, eventId: m.eventId as number } : null;
     case "HOST_SEND_TO_BOSS": {
       const teamId = str(m.teamId, MAX_ID);
       return teamId === null ? null : { type: "HOST_SEND_TO_BOSS", teamId };

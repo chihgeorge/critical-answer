@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
-import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState } from "./answer";
+import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion } from "./answer";
 import { stubSpeechSynthesis, ttsCalls } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
@@ -120,7 +120,7 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
   expect(await ttsCalls(screen)).toEqual([""]); // just the unlock utterance so far
 
   await answerCorrectly(host);
-  await expect(screen.getByText("輪到：乙隊")).toBeVisible();
+  await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the reveal's ribbon names who eats (cooking I6)
 
   // The live NARRATION's line and its "then" (next-team) line both get spoken, in order —
   // not just the result line.
@@ -188,7 +188,7 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesis(screen);
   await screen.goto(`/room/${code}/screen`);
-  await expect(screen.getByText("輪到：乙隊")).toBeVisible();
+  await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the reveal's ribbon names who eats (cooking I6)
   await screen.getByRole("button", { name: /語音/ }).click();
   expect(await ttsCalls(screen)).toEqual([""]); // only the unlock utterance — the replay was NOT spoken
 
@@ -202,7 +202,7 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
   await host.getByRole("button", { name: "關閉" }).click();
 
   // A live line is spoken, and a correction of that spoken line (same eventId, new text) is spoken too.
-  await host.getByRole("button", { name: "下一題", exact: true }).click(); // close the first answer's reveal
+  await nextQuestion(host); // close the first answer's reveal
   const spokenBefore = (await ttsCalls(screen)).length; // the first correction already re-spoke a 乙隊 line
   await answerCorrectly(host);
   await expect
@@ -215,10 +215,10 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
   await expect.poll(() => ttsCalls(screen)).toContainEqual(liveCorrection);
 });
 
-// A live epilogue is read aloud: main-line.spec.ts ("game over: podium at once, then the epilogue ...").
+// A live epilogue is read aloud: main-line.spec.ts ("game over: the boss cooks, then the podium, then the epilogue ...").
 
 test("screen TTS: an epilogue replayed at connect is shown but never spoken", async ({ browser }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000); // every cooked monster is served and waited out (cooking I2)
   const code = "EPI3"; // distinct from EPIL/EPI2 — same shared server
   const partyUrl = `ws://localhost:1996/parties/main/${code}`;
   const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
@@ -271,7 +271,7 @@ test("screen TTS: narration that arrives before the voice list has loaded is spo
 
   // A live narration arrives while there is still no voice to speak it with...
   await answerCorrectly(host);
-  await expect(screen.getByText("輪到：乙隊")).toBeVisible();
+  await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the reveal's ribbon names who eats (cooking I6)
   await screen.waitForTimeout(500);
   expect(await ttsCalls(screen)).toEqual([""]); // just the unlock utterance: nothing to speak with yet
 

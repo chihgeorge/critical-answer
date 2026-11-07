@@ -11,6 +11,7 @@ vi.mock("../question-bank-data", async (actual) => {
 });
 import { checkKey, currentTurnTeamId, setTeamOnline } from "../game-state";
 import { EPILOGUE_MODEL } from "../narration/llm";
+import { SERVE_HOLD_MS } from "../protocol";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";
@@ -58,6 +59,13 @@ function passChecks(room: DungeonRoom) {
 
 function send(room: DungeonRoom, conn: ReturnType<typeof makeConn>, msg: object) {
   room.onMessage(JSON.stringify(msg), conn);
+}
+
+/** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
+function serveNext(room: DungeonRoom, conn: ReturnType<typeof makeConn>, eventId: number) {
+  send(room, conn, { type: "HOST_SERVE", eventId });
+  (room as unknown as { servedAt: number }).servedAt = -Infinity;
+  send(room, conn, { type: "HOST_NEXT", eventId });
 }
 
 /** The host's 公布答案 for whatever lock is pending (host-reveal.md): what every lock waited for before its beat. */
@@ -410,7 +418,7 @@ describe("HOST_JUDGE", () => {
       const g = room.game!;
       const t = g.teams[0];
       const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
-      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
+      serveNext(room, hostConn, seqOf(room)); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: qid, correct: true });
       landKill(room);
     }
@@ -713,11 +721,11 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
   it("reveals the boss question on a correct boss hit (the correct-boss-hit branch, not just room advances)", () => {
     const { room, hostConn, ids } = startedGame(1);
     for (let i = 0; i < 100 && room.game!.teams[0].score < room.game!.config.bossThreshold; i++) {
-      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
+      serveNext(room, hostConn, seqOf(room)); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
     }
     const bossQid = room.game!.boss.currentQuestionId;
-    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    serveNext(room, hostConn, seqOf(room));
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: bossQid, correct: true });
     const revealed = revealOf(room);
     expect(revealed).toMatchObject({ questionId: bossQid, answer: answerText(findQuestion(BANK, bossQid)!) });
@@ -754,7 +762,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
   it("stays up until the host sends HOST_NEXT, which clears it and rebroadcasts (D7)", () => {
     const { room, hostConn, ids } = startedGame(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
-    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    serveNext(room, hostConn, seqOf(room));
     expect(revealOf(room)).toBeNull();
   });
 
@@ -770,10 +778,10 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     const { room, hostConn, ids } = startedGame(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
     const firstRevealEvent = seqOf(room);
-    send(room, hostConn, { type: "HOST_NEXT", eventId: firstRevealEvent });
+    serveNext(room, hostConn, firstRevealEvent);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: room.game!.teams[0].currentQuestionId, correct: true });
     const second = revealOf(room);
-    send(room, hostConn, { type: "HOST_NEXT", eventId: firstRevealEvent }); // a second device's late tap
+    serveNext(room, hostConn, firstRevealEvent); // a second device's late tap
     expect(revealOf(room)).toEqual(second);
     expect(second).not.toBeNull();
   });
@@ -783,6 +791,9 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
     const stranger = makeConn("stranger");
     room.onConnect(stranger);
+    // The host serves and the hold is over, so only the host check stands between the stranger and 下一題.
+    send(room, hostConn, { type: "HOST_SERVE", eventId: seqOf(room) });
+    (room as unknown as { servedAt: number }).servedAt = -Infinity;
     send(room, stranger, { type: "HOST_NEXT", eventId: seqOf(room) });
     expect(lastSentTo(stranger)).toMatchObject({ type: "ERROR", error: "not_host" });
     expect(revealOf(room)).toMatchObject({ questionId: "r0-q1" });
@@ -795,7 +806,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: next, correct: true });
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
     expect(room.game!.teams[0].currentQuestionId).toBe(next);
-    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    serveNext(room, hostConn, seqOf(room));
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: next, correct: false, fleeChoice: "retry" });
     expect(revealOf(room)).toBeNull();
   });
@@ -803,7 +814,7 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
   it("HOST_NEXT with nothing revealed is a no-op (no extra STATE)", () => {
     const { room, hostConn } = startedGame(1);
     const before = broadcastsOf(room).length;
-    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    serveNext(room, hostConn, seqOf(room));
     expect(broadcastsOf(room).length).toBe(before);
   });
 });
@@ -1200,7 +1211,7 @@ describe("TEAM_SELECT_OPTION", () => {
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: next, optionIndex: 0 });
     expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
     expect(room.game!.teams[0].currentSelection).toBeNull();
-    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    serveNext(room, hostConn, seqOf(room));
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: next, optionIndex: 0 });
     expect(room.game!.teams[0].currentSelection).toBe(0);
   });
@@ -1369,7 +1380,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(seqOf(room)).toBe(seq);
       pick(room, conns[0], 2);
       expect(err(conns[0])).toBe("answer_pending");
-      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+      serveNext(room, hostConn, seqOf(room));
       expect(room.game!.pendingWrong).not.toBeNull();
       send(room, conns[1], { type: "TEAM_WRONG_CHOICE", questionId: "r0-mc1", choice: "retry" });
       expect(err(conns[1])).toBe("no_wrong_answer");
@@ -1562,7 +1573,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).reveal.choice).toMatchObject({ correctIndex: 1, points: 10 });
       vi.advanceTimersByTime(60_000);
       expect(revealOpen(room)).toBe(true);
-      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+      serveNext(room, hostConn, seqOf(room));
       expect(revealOpen(room)).toBe(false);
     });
 
@@ -1649,7 +1660,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room)).toMatchObject({ cue: "crit" });
       vi.advanceTimersByTime(60_000);
       expect(revealOpen(room)).toBe(true);
-      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+      serveNext(room, hostConn, seqOf(room));
       expect(revealOpen(room)).toBe(false);
     });
 
@@ -1845,7 +1856,7 @@ describe("questions and answers (T3)", () => {
       const teamId = g.turnOrder[g.currentTurnIndex];
       const t = g.teams.find((x) => x.id === teamId)!;
       const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
-      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
+      serveNext(room, hostConn, seqOf(room)); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
       landKill(room);
     }
@@ -1868,7 +1879,7 @@ describe("questions and answers (T3)", () => {
     const { room, hostConn, ids } = started(1);
     for (let i = 0; i < 100 && room.game!.teams[0].score < 15; i++) {
       const t = room.game!.teams[0];
-      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
+      serveNext(room, hostConn, seqOf(room)); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: t.currentQuestionId, correct: true });
     }
     const state = broadcasts(room).findLast((m) => m.type === "STATE");
@@ -1912,7 +1923,7 @@ describe("narration (T5-T7)", () => {
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
     const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
-    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
+    serveNext(room, hostConn, seqOf(room)); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
     landKill(room);
   }
@@ -2148,7 +2159,7 @@ describe("LLM narration and director (T8-T10)", () => {
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
     const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
-    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
+    serveNext(room, hostConn, seqOf(room)); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
     landKill(room);
   }
@@ -2540,7 +2551,7 @@ describe("story moves on to the next team (two-line narration)", () => {
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
     const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
-    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
+    serveNext(room, hostConn, seqOf(room)); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct });
     landKill(room);
   }
@@ -2759,7 +2770,7 @@ describe("sound cues (big-screen effects)", () => {
     send(room, hostConn, { type: "HOST_JUDGE", teamId: t.id, questionId: t.currentQuestionId, correct: true });
     expect(states(room).at(-1)).toMatchObject({ eventId: 2, cue: "correct" });
 
-    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+    serveNext(room, hostConn, seqOf(room));
     const g2 = room.game!;
     const t2 = g2.teams.find((x) => x.id === g2.turnOrder[g2.currentTurnIndex])!;
     send(room, hostConn, { type: "HOST_JUDGE", teamId: t2.id, questionId: t2.currentQuestionId, correct: false, fleeChoice: "retry" });
@@ -3434,8 +3445,66 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     await flush();
     const last = states(room).at(-1);
     expect(last.cuisine).toBe(true);
-    expect(last.reveal.dish).toEqual({ ...BANK.rooms[0].monster.dish, points: 10 });
-    expect(events.find((e) => e.type === "correct")?.dish).toBe(BANK.rooms[0].monster.dish!.name);
+    const m = BANK.rooms[0].monster;
+    expect(last.reveal.dish).toEqual({ ...m.dish, points: 10, monster: { name: m.name, sprite: m.sprite, hue: m.hue }, room: 0, teamId: ids[0] });
+    expect(last.reveal.served).toBeUndefined();
+    // The narrator hears that it will be cooked, never what into (cooking I1): the dish line waits for 上菜.
+    const told = events.find((e) => e.type === "correct");
+    expect(told.cooked).toBe(true);
+    expect(JSON.stringify(told)).not.toContain(m.dish!.name);
+  });
+
+  describe("🍲 上菜 (HOST_SERVE, cooking R5/I2)", () => {
+    function served(now: { t: number }) {
+      const events: any[] = [];
+      const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: BANK, provider: { name: "spy", narrate: async (e: any) => (events.push(e), "一行") }, holdMs: 30, now: () => now.t });
+      const hostConn = makeConn("host-conn");
+      room.onConnect(hostConn);
+      claim(room, hostConn);
+      const { ids } = joinTeams(room, hostConn, 1);
+      send(room, hostConn, { type: "HOST_START" });
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+      return { room, hostConn };
+    }
+
+    it("下一題 does nothing until the dish is served and has been up for SERVE_HOLD_MS", () => {
+      const now = { t: 1000 };
+      const { room, hostConn } = served(now);
+      const eventId = seqOf(room);
+      send(room, hostConn, { type: "HOST_NEXT", eventId });
+      expect(states(room).at(-1).reveal).not.toBeNull();
+      send(room, hostConn, { type: "HOST_SERVE", eventId });
+      const after = states(room).at(-1);
+      expect(after.reveal.served).toBe(true);
+      expect(after.cue).toBe("cook");
+      now.t += SERVE_HOLD_MS - 1;
+      send(room, hostConn, { type: "HOST_NEXT", eventId });
+      expect(states(room).at(-1).reveal).not.toBeNull();
+      now.t += 1;
+      send(room, hostConn, { type: "HOST_NEXT", eventId });
+      expect(states(room).at(-1).reveal).toBeNull();
+    });
+
+    it("a second press, a stale eventId or a non-host serves nothing more", () => {
+      const now = { t: 0 };
+      const { room, hostConn } = served(now);
+      const eventId = seqOf(room);
+      const stranger = makeConn("stranger");
+      room.onConnect(stranger);
+      send(room, stranger, { type: "HOST_SERVE", eventId });
+      send(room, hostConn, { type: "HOST_SERVE", eventId: eventId - 1 });
+      expect(states(room).at(-1).reveal.served).toBeUndefined();
+      send(room, hostConn, { type: "HOST_SERVE", eventId });
+      const count = states(room).length;
+      const seq = states(room).at(-1).cueSeq;
+      now.t += 1000;
+      send(room, hostConn, { type: "HOST_SERVE", eventId }); // a second host device: the hold does not restart
+      expect(states(room)).toHaveLength(count);
+      now.t += SERVE_HOLD_MS - 1000;
+      send(room, hostConn, { type: "HOST_NEXT", eventId });
+      expect(states(room).at(-1).reveal).toBeNull();
+      expect(states(room).at(-1).cueSeq).toBe(seq);
+    });
   });
 
   it("a wrong answer reveals no dish", () => {
@@ -3451,7 +3520,7 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
     await flush();
     expect(states(room).at(-1).reveal.dish.name).toBe(`${answer}燉菜`);
-    expect(events.find((e) => e.type === "correct")).not.toHaveProperty("dish");
+    expect(JSON.stringify(events.find((e) => e.type === "correct"))).not.toContain(answer);
   });
 
   // Review finding (coverage audit, 2026-10-31): the boss branch of the dish lookup and the epilogue filter had no room-level test.
@@ -3461,14 +3530,15 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) {
       const g = room.game!;
       const t = g.teams[0];
-      send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
+      serveNext(room, hostConn, seqOf(room));
       send(room, hostConn, { type: "HOST_JUDGE", teamId: t.id, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
       landKill(room);
     }
     await new Promise((r) => setTimeout(r, 50));
     const boss = BANK.boss.monster.dish!;
     expect(states(room).at(-1).reveal.dish).toMatchObject({ name: boss.name, part: boss.part });
-    expect(events.find((e) => e.type === "boss-kill")?.dish).toBe(boss.name);
+    expect(states(room).at(-1).reveal.dish).toMatchObject({ room: null, monster: { name: BANK.boss.monster.name } });
+    expect(events.find((e) => e.type === "boss-kill")?.cooked).toBe(true);
     const epilogue = events.find((e) => e.type === "epilogue");
     expect(epilogue.ranking[0].dishes).toContain(boss.name);
     expect(epilogue.ranking[0].dishes).not.toContain(`${answer}燉菜`);
@@ -3482,6 +3552,31 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     const last = states(room).at(-1);
     expect(last.cuisine).toBeUndefined();
     expect(last.reveal).not.toHaveProperty("dish");
+    // 上菜 on a reveal without a dish does nothing: no STATE, no cook sound.
+    const count = states(room).length;
+    send(room, hostConn, { type: "HOST_SERVE", eventId: seqOf(room) });
+    expect(states(room)).toHaveLength(count);
+    expect(states(room).at(-1).cue).not.toBe("cook");
+  });
+
+  it("after the boss kill ends the game, 上菜 and 下一題 change nothing: the finished screen cooks on its own (cooking R8)", () => {
+    const { room, hostConn } = cookRoom();
+    for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) {
+      const g = room.game!;
+      const t = g.teams[0];
+      serveNext(room, hostConn, seqOf(room));
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: t.id, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
+      landKill(room);
+    }
+    expect(room.game!.phase).toBe("finished");
+    const count = states(room).length;
+    const eventId = seqOf(room);
+    send(room, hostConn, { type: "HOST_SERVE", eventId });
+    (room as unknown as { servedAt: number }).servedAt = -Infinity;
+    send(room, hostConn, { type: "HOST_NEXT", eventId });
+    expect(states(room)).toHaveLength(count);
+    expect(states(room).at(-1).reveal.dish).toMatchObject({ room: null });
+    expect(states(room).at(-1).reveal.served).toBeUndefined();
   });
 });
 
