@@ -115,7 +115,7 @@ Mockups: `~/.gstack/projects/critical-answer/designs/scoring-20261025/score-all.
 
 - `Team.score` stays the progress points (renaming it would touch every screen for no gain); `Team.reward` is new. `finishGame` ranks by `reward`.
 - The bank gains optional `rooms[].reward` and `boss.hitReward`. `parseBank` fills them in when missing (difficulty × 10, and 10), which is exactly S8 for today's 1/2/2/3/4 rooms, so neither the bundled JSON nor production's stored bank needs a change. The bank editor does not edit them yet (PR B).
-- The kill roll is fixed at 4d20 in code (`rollBossKillBonus`), not a bank field.
+- The kill roll is fixed at 4d20 in code (`rollBossKillDice`), not a bank field.
 - `HOST_SEND_TO_BOSS { teamId }` calls `sendToBoss`: refused for a team already in the boss room, with a wrong lock waiting, or with a lock still in its 2 s beat. It does not narrate; step 4 (later joiners' lines) can hook in here.
 - `SpectatorView.bossKilledBy` feeds the end screen's 「最後一擊」 line. Snapshot schema 4: a room saved by the old code is discarded on restart.
 
