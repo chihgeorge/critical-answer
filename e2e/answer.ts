@@ -4,6 +4,8 @@ import { asTextBank } from "../lib/text-bank";
 
 const WORKER = "http://localhost:1996";
 const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+/** How long a judgment may take to land: the killing blow waits for its 4 s 4d20 beat (docs/designs/kill-roll.md). */
+const JUDGE_LANDS_MS = 6000;
 
 /** 擲骰說服 on a fill-in question (dnd design R6): the answer box shows once the check's beat ends. The e2e
  * worker fixes every d20 at 10 (playwright.config.ts E2E_DIE), so the check passes a room's DC and never wins outright. */
@@ -74,8 +76,7 @@ export async function judgeToTheEnd(host: WebSocket, cur: () => HostState, onTur
     const before = cur().eventId;
     host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId })); // close the previous answer reveal (D7); no-op if none
     host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
-    // The killing blow is judged only after its 4d20 beat (4 s, docs/designs/kill-roll.md).
-    await expect.poll(() => cur().eventId, { timeout: 6000 }).toBeGreaterThan(before);
+    await expect.poll(() => cur().eventId, { timeout: JUDGE_LANDS_MS }).toBeGreaterThan(before);
   }
   expect(cur().phase).toBe("finished");
 }

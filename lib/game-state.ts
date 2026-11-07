@@ -263,11 +263,6 @@ export function rollBossKillDice(rng: () => number = Math.random): number[] {
   return [rollD20(rng), rollD20(rng), rollD20(rng), rollD20(rng)];
 }
 
-/** 4d20 kill bonus (docs/designs/scoring-and-score-pools.md S8). */
-export function rollBossKillBonus(rng: () => number = Math.random): number {
-  return rollBossKillDice(rng).reduce((a, b) => a + b, 0);
-}
-
 /** The pool difficulty `d` deals from: its own, else the nearest non-empty one below it, then above
  * (a custom bank may leave a pool empty; parseBank only insists on each room's own pool). */
 function poolIndexFor(pools: string[][], d: Difficulty): number {

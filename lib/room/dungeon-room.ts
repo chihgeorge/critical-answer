@@ -229,8 +229,10 @@ export class DungeonRoom {
   private phaseCardTimer: ReturnType<typeof setTimeout> | null = null;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
-  /** A d20 in its beat: a warrior's roll or a correct lock's crit die. Memory only, like pendingLock: a restart drops it
-   * (a warrior's use stays spent; a crit team locks again). Shares lockTimer. */
+  /** Dice in their beat: a warrior's roll, a correct lock's crit die, a persuasion check, or the kill's 4d20 (value is
+   * then the scored bonus). Memory only, like pendingLock: a restart drops it (a warrior's use stays spent; a crit team
+   * locks again; a cut-off kill, with pendingKill, is lost: the team answers the final blow again, and a lost natural 20 comes back
+   * through lostCrit with fresh dice). Shares lockTimer. */
   private pendingRoll: PendingRoll | null = null;
   /** The judgment a kill's 4d20 holds back (kill-roll.md): resolveRoll makes it with the shown dice. */
   private pendingKill: { correct: boolean; fleeChoice: "flee" | "retry"; roll?: { kind: "warrior" | "crit"; value: number } } | null = null;
@@ -1611,6 +1613,8 @@ export class DungeonRoom {
         const dice = this.fixedDie !== undefined ? [this.fixedDie, this.fixedDie, this.fixedDie, this.fixedDie] : rollBossKillDice(this.rng);
         const shown = run(() => 0, dice).outcome;
         this.pendingKill = { correct, fleeChoice, roll };
+        // Pin the turn, as a lock does: a skipped offline team whose phone comes back must not take it during the beat.
+        this.game = { ...prev, currentTurnIndex: prev.turnOrder.indexOf(teamId) };
         this.startRoll("kill", teamId, questionId, { values: dice, value: shown.type === "correct-boss-hit" ? shown.killBonus! : 0 });
         this.broadcastState();
         return;
@@ -1881,7 +1885,8 @@ export class DungeonRoom {
       console.error(JSON.stringify({ event: "roll_failed", error: String(err) }));
       this.broadcastState();
     }
-    if (holdsTurn(roll)) this.syncLockTeamAndShow(roll.teamId);
+    // A crit or check that killed has started the kill's beat: its team stays on turn until that beat lands.
+    if (holdsTurn(roll) && (this.pendingRoll as PendingRoll | null)?.kind !== "kill") this.syncLockTeamAndShow(roll.teamId);
   }
 
   /** The check's beat is over (dnd design R6): its record, written at the roll, shows now with the hint it earned. A

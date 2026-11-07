@@ -9,7 +9,7 @@ vi.mock("../question-bank-data", async (actual) => {
   const { asTextBank } = await import("../text-bank");
   return { BANK: asTextBank((await actual<typeof import("../question-bank-data")>()).BANK) };
 });
-import { checkKey, currentTurnTeamId } from "../game-state";
+import { checkKey, currentTurnTeamId, setTeamOnline } from "../game-state";
 import { EPILOGUE_MODEL } from "../narration/llm";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
@@ -476,6 +476,32 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
     vi.advanceTimersByTime(4000);
     expect(room.game!.phase).toBe("finished");
     expect(room.game!.boss.killedByTeamId).toBe(turn);
+  });
+
+  // Value: protects=a kill is not dropped when a skipped offline team comes back during its beat; fails_when=the stored
+  // turn index still points at the returning team, so resolveRoll sees "turn moved on" and drops the kill
+  it("a skipped team whose phone comes back during the beat does not take the kill's turn", () => {
+    const { room, ids, turn } = lastHit();
+    const other = ids.find((id) => id !== turn)!;
+    room.game = setTeamOnline(room.game!, turn, false);
+    expect(currentTurnTeamId(room.game)).toBe(other);
+    (room as any).judge(other, room.game!.boss.currentQuestionId, true, "retry");
+    expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: other, kind: "kill" });
+    room.game = setTeamOnline(room.game!, turn, true);
+    vi.advanceTimersByTime(4000);
+    expect(room.game!.phase).toBe("finished");
+    expect(room.game!.boss.killedByTeamId).toBe(other);
+  });
+
+  it("ending the game during the beat drops the kill unscored", () => {
+    const { room, hostConn, turn, judge } = lastHit();
+    judge();
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    vi.advanceTimersByTime(4000);
+    expect((room as any).pendingRoll).toBeNull();
+    expect((room as any).pendingKill).toBeNull();
+    expect(room.game!.boss.killedByTeamId ?? null).toBeNull();
+    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(0);
   });
 
   it("an ordinary boss hit is judged at once, with no dice", () => {
@@ -956,6 +982,23 @@ describe("TEAM_SELECT_OPTION", () => {
       // The kill's dice roll with their own cue, then the kill keeps its boss-kill cue.
       expect(states().at(-1)).toMatchObject({ cue: "boss-kill", cueSeq: seq + 2 });
     });
+
+    // Value: protects=a crit that kills still scores when the phone drops during the crit beat; fails_when=resolveRoll
+    // syncs the team offline before the chained kill beat lands (the 4d20 then throws "not T's turn" and never scores)
+    it("a 20 that kills keeps its team on turn through a phone dropped during the crit beat", () => {
+      vi.useFakeTimers();
+      const { room, conns, lockAndReveal } = critGame();
+      const g = room.game!;
+      (room as any).game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, currentQuestionId: "boss-mc1" } };
+      lockAndReveal(room.game!.optionOrder["boss-mc1"].indexOf(0), 20, "boss-mc1");
+      vi.advanceTimersByTime(2000);
+      room.onClose(conns[0]);
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "kill" });
+      vi.advanceTimersByTime(4000);
+      expect(room.game!.phase).toBe("finished");
+      expect(room.game!.teams[0]).toMatchObject({ reward: 95, online: false });
+    });
   });
 
   // Value: protects=the persuasion check's room rules (dnd design R6, R-E1, R-E4): only the team on turn rolls, once per
@@ -1063,6 +1106,22 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(room.game!.checks![checkKey("r0-t1", ids[0])]).toMatchObject({ value: 1, passed: false });
       // No phone left: the team shows offline now, and the turn moves on.
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    });
+
+    // Value: protects=a natural 20 that kills the boss still scores when the phone drops during the check beat (state
+    // matrix check20 x phone-drop); fails_when=resolveRoll syncs the team offline before the chained kill beat lands
+    it("a natural 20 that kills keeps its team on turn through a phone dropped during the check beat", () => {
+      vi.useFakeTimers();
+      const { room, ids, conns, roll } = checkGame(2);
+      const g = room.game!;
+      (room as any).game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, phaseIndex: g.boss.phases.length - 1, currentQuestionId: "r0-t1" } };
+      roll(20);
+      room.onClose(conns[0]);
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "kill" });
+      vi.advanceTimersByTime(4000);
+      expect(room.game!.phase).toBe("finished");
+      expect(room.game!.boss.killedByTeamId).toBe(ids[0]);
     });
 
     it("ending the game during the beat leaves no roll behind, and a natural 20 wins nothing after the end", () => {
@@ -2894,6 +2953,26 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(err(conns[0])).toMatch(/no ability uses/);
     expect((room as any).pendingRoll).toBeNull();
   });
+
+  // Value: protects=a warrior roll that kills the boss goes through the 4d20 beat and scores its dice (kill-roll.md);
+  // fails_when=the warrior path skips the kill beat, or resolveRoll drops pendingKill.roll and judges a plain answer
+  it("a warrior roll that kills the boss shows the 4d20, then scores them", () => {
+    vi.useFakeTimers();
+    const { room, ids, conns } = warriorGame();
+    const g = room.game!;
+    room.game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, phaseIndex: g.boss.phases.length - 1 } };
+    (room as any).rng = () => 19 / 20;
+    const bq = room.game!.boss.currentQuestionId!;
+    room.game = { ...room.game!, checks: { ...room.game!.checks, [checkKey(bq, ids[0])]: { value: 10, bonus: 0, dc: 8, passed: true } } };
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: bq });
+    expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "warrior", value: 20 });
+    vi.advanceTimersByTime(2000);
+    expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "kill", values: [20, 20, 20, 20], value: 80 });
+    expect(room.game!.phase).toBe("playing");
+    vi.advanceTimersByTime(4000);
+    expect(room.game!.phase).toBe("finished");
+    expect(room.game!.boss.killedByTeamId).toBe(ids[0]);
+  });
 });
 
 describe("class abilities: mage, cleric and thief in the room (class-abilities.md PR 2)", () => {
@@ -2980,6 +3059,25 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "r0-mc1", choice: "retry" });
     expect(lastBroadcast(room).view.teams[0].sneakArmed).toBeUndefined();
     expect(room.game!.teams[0].abilityUses).toBe(1);
+  });
+
+  // Value: protects=a thief's sneak kill shows the doubled bonus on the big screen and scores that same value
+  // (kill-roll.md); fails_when=pendingRoll.value is the raw dice sum, so the TV and the score disagree
+  it("a sneak attack that kills shows and scores the doubled 4d20", () => {
+    vi.useFakeTimers();
+    const { room, ids, conns, q, use } = game("thief", true);
+    room.game = { ...room.game!, boss: { ...room.game!.boss, hp: 1, phaseIndex: room.game!.boss.phases.length - 1 } };
+    use();
+    const before = room.game!.teams[0].reward;
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: room.game!.optionOrder[q].indexOf(1) });
+    send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: q });
+    reveal(room);
+    vi.advanceTimersByTime(4000); // the lock's beat, then the crit die's
+    const roll = lastBroadcast(room).pendingRoll;
+    expect(roll).toMatchObject({ teamId: ids[0], kind: "kill", values: [1, 1, 1, 1], value: 8 }); // rng 0: four 1s, doubled
+    vi.advanceTimersByTime(4000);
+    expect(room.game!.phase).toBe("finished");
+    expect(room.game!.teams[0].reward - before).toBeGreaterThanOrEqual(8);
   });
 
   it("a cleric prays on its wrong lock and its 重答 keeps the turn", () => {
