@@ -2,6 +2,20 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.40.0.0] - 2026-11-07
+
+**Deploy note:** back up the live bank first (`curl` in docs/question-bank.md, rescue item 4), before this merges: after the deploy, the server no longer hands out the old bank. Then deploy the room server (`wrangler deploy`) and the website, reload the bank editor, the host page, the big screen and the phones, and save the bank once in the editor (or convert the backup and save it). Rooms in play when the server restarts are reset. Do not deploy during an event.
+
+### Added
+- A monster catalog: each room and the boss now pick their monster from a list (軟趴趴史萊姆, 害羞幽靈, 愛哭幽靈 for rooms, 深淵小黑龍 for the boss). The bank editor shows a picker with each monster's sprite and dish instead of name, sprite, colour and dish fields.
+- A monster met again looks a little different each time it is defeated. It gets a new colour, a hat (crown, party hat, flower, headband, bow or pirate hat) and a matching title before its name, such as 「戴王冠的軟趴趴史萊姆」. The first meeting is plain, and the boss never changes. A team keeps the look it walked into the room with, whatever other teams defeat meanwhile.
+
+### Changed
+- Banks are now format 3, and a room or the boss names its monster by catalog id. The editor refuses a monster that is not in the catalog, a room monster on the boss or the boss in a room.
+- A stored bank in an older format no longer goes read-only. The editor shows a yellow notice with its format, loads the default bank, and saving replaces the old one. The server keeps a copy of the old bank, and holds the old bank's pictures for 14 days before deleting them.
+- A dish now comes from the catalog with its monster, so the editor has no dish fields.
+- If the bank editor opens while the room server is still the old version, it says so in red and does not let you save.
+
 ## [0.39.0.0] - 2026-11-07
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the host page, the big screen and the phones. This release adds a new host message (🍲 上菜) and makes 下一題 wait for it. A host page from before it only sends 下一題, so it gets stuck on a reveal with a dish until it is reloaded. Do not deploy during an event.

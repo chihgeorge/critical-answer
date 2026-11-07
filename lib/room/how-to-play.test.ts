@@ -12,8 +12,8 @@ const TOKEN = "host-token-0123456789abcdef";
 const text = (id: string) => ({ kind: "text", id, content: { kind: "text", value: `題目 ${id}` }, answer: `答案 ${id}` });
 const bank = () =>
   parseBank({
-    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, questions: [text("r1"), text("r2")] }],
-    boss: { monster: { name: "小黑龍", sprite: "dragon", hue: 0 }, maxHp: 1, questions: [text("b1")] },
+    rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [text("r1"), text("r2")] }],
+    boss: { monster: "dragon", maxHp: 1, questions: [text("b1")] },
   });
 
 function makeConn(id: string) {

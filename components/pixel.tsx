@@ -3,8 +3,9 @@
 // Shared pixel-dungeon components (see DESIGN.md). Styles live in app/globals.css.
 
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
-import { drawHomeScene, drawScene, drawSprite, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme } from "@/lib/pixel-art";
-import type { SpriteKind } from "@/lib/sprite-kind";
+import { drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme } from "@/lib/pixel-art";
+import type { Accessory } from "@/lib/monster-catalog";
+import type { MonsterSprite, SpriteKind } from "@/lib/sprite-kind";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { youtubeEmbedUrl } from "@/lib/youtube";
 import type { PublicMediaContent } from "@/lib/protocol";
@@ -106,11 +107,14 @@ export function Sprite({
   variant = 0,
   scale = 4,
   hue = 0,
+  accessory,
   className,
   style,
 }: {
   kind: SpriteKind;
   variant?: number;
+  /** A repeat appearance's hat on the head (docs/designs/monster-catalog.md §3). Never hue-rotated. */
+  accessory?: Accessory;
   /** hue-rotate degrees: lets one drawn monster play several. */
   hue?: number;
   /** Integer multiple of the native pixel size, so pixels stay square. */
@@ -120,6 +124,9 @@ export function Sprite({
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [w, h] = SPRITE_SIZE[kind];
+  // Unknown hats (a newer server than this page) draw none rather than crash the render.
+  const hat = accessory ? (`acc-${accessory}` as SpriteKind) : null;
+  const wearing = !!hat && hat in SPRITE_SIZE && kind in HEAD_ANCHOR;
 
   useEffect(() => {
     const cv = ref.current;
@@ -135,14 +142,20 @@ export function Sprite({
       clearInterval(id);
       clearTimeout(reopen);
     };
-  }, [kind, variant]);
+    // `wearing` swaps the canvas element (bare vs inside the hat's wrapper): the new one needs drawing too.
+  }, [kind, variant, wearing]);
 
+  const box = { width: w * scale, height: h * scale };
+  const hueStyle = hue ? { filter: `hue-rotate(${hue}deg)` } : null;
+  if (!wearing) return <canvas ref={ref} className={cx("px-sprite", className)} style={{ ...box, ...hueStyle, ...style }} />;
+  // The hat sits in the monster's own box, so wearing one never moves the layout.
+  const [aw, ah] = SPRITE_SIZE[hat!];
+  const [ax, ay] = HEAD_ANCHOR[kind as MonsterSprite];
   return (
-    <canvas
-      ref={ref}
-      className={cx("px-sprite", className)}
-      style={{ width: w * scale, height: h * scale, ...(hue ? { filter: `hue-rotate(${hue}deg)` } : null), ...style }}
-    />
+    <span className={cx("relative block", className)} style={{ ...box, ...style }}>
+      <canvas ref={ref} className="px-sprite absolute left-0 top-0" style={{ ...box, ...hueStyle }} />
+      <Sprite kind={hat!} scale={scale} className="absolute" style={{ left: (ax - Math.floor(aw / 2)) * scale, top: (ay - ah + 1) * scale }} />
+    </span>
   );
 }
 

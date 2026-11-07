@@ -781,138 +781,48 @@
   },
   "rooms": [
     {
-      "monster": {
-        "name": "軟趴趴史萊姆",
-        "sprite": "slime",
-        "hue": 0,
-        "dish": {
-          "part": "外膜",
-          "method": "曬乾後涼拌",
-          "name": "史萊姆寒天涼拌",
-          "comment": "口感像寒天，帶點青草香。"
-        }
-      },
+      "monster": "slime-soft",
       "difficulty": 1,
       "reward": 10
     },
     {
-      "monster": {
-        "name": "害羞幽靈",
-        "sprite": "ghost",
-        "hue": 0,
-        "dish": {
-          "part": "霧狀身體",
-          "method": "冰鎮後刨成細雪",
-          "name": "幽靈霧冰沙",
-          "comment": "入口就化，害羞得像沒吃過。"
-        }
-      },
+      "monster": "ghost-shy",
       "difficulty": 2,
       "reward": 20
     },
     {
-      "monster": {
-        "name": "迷路史萊姆",
-        "sprite": "slime-lost",
-        "hue": 0,
-        "dish": {
-          "part": "黏液核心",
-          "method": "文火慢燉",
-          "name": "迷途史萊姆燉湯",
-          "comment": "湯頭會自己在碗裡繞一圈。"
-        }
-      },
+      "monster": "ghost-cry",
       "difficulty": 2,
       "reward": 20
     },
     {
-      "monster": {
-        "name": "愛哭幽靈",
-        "sprite": "ghost-cry",
-        "hue": 0,
-        "dish": {
-          "part": "眼淚",
-          "method": "熬煮收乾成鹽",
-          "name": "淚鹽烤飯糰",
-          "comment": "鹹得剛好，吃完有點想哭。"
-        }
-      },
+      "monster": "slime-soft",
       "difficulty": 3,
       "reward": 30
     },
     {
-      "monster": {
-        "name": "守門史萊姆王",
-        "sprite": "slime-king",
-        "hue": 0,
-        "dish": {
-          "part": "王冠下的凍肉",
-          "method": "切塊炙燒",
-          "name": "炙燒史萊姆王凍",
-          "comment": "外脆內彈，很有王者風範。"
-        }
-      },
+      "monster": "ghost-shy",
       "difficulty": 4,
       "reward": 40
     },
     {
-      "monster": {
-        "name": "暴躁幽靈",
-        "sprite": "ghost",
-        "hue": 300,
-        "dish": {
-          "part": "怒氣",
-          "method": "封進陶罐醃漬",
-          "name": "怒氣泡菜",
-          "comment": "越嚼越辣，脾氣都上來了。"
-        }
-      },
+      "monster": "ghost-cry",
       "difficulty": 4,
       "reward": 40
     },
     {
-      "monster": {
-        "name": "熔岩史萊姆王",
-        "sprite": "slime-king",
-        "hue": 330,
-        "dish": {
-          "part": "熔岩外殼",
-          "method": "敲碎當成石鍋",
-          "name": "熔岩石鍋拌飯",
-          "comment": "鍋底的鍋巴最香。"
-        }
-      },
+      "monster": "slime-soft",
       "difficulty": 5,
       "reward": 50
     },
     {
-      "monster": {
-        "name": "冰霜愛哭鬼",
-        "sprite": "ghost-cry",
-        "hue": 180,
-        "dish": {
-          "part": "冰晶淚珠",
-          "method": "淋上糖漿做剉冰",
-          "name": "霜淚剉冰",
-          "comment": "冰得頭痛，但停不下來。"
-        }
-      },
+      "monster": "ghost-shy",
       "difficulty": 5,
       "reward": 50
     }
   ],
   "boss": {
-    "monster": {
-      "name": "深淵小黑龍",
-      "sprite": "dragon",
-      "hue": 0,
-      "dish": {
-        "part": "尾巴肉",
-        "method": "用牠自己的龍息烤",
-        "name": "龍息烤龍尾",
-        "comment": "外皮焦香，肉汁多到滴下來。"
-      }
-    },
+    "monster": "dragon",
     "maxHp": 5,
     "hitReward": 10,
     "questions": [
