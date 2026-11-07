@@ -2,6 +2,15 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.36.0.0] - 2026-11-06
+
+### Added
+- The README, SECURITY.md and the five guides in `docs/` now have English versions (`README.en.md`, `docs/rules.en.md` and so on). The first line of every doc switches between 繁體中文 and English.
+- CI now checks that each Chinese doc has its English version, that both open with the switch line and have the same headings, and that no English doc is left without a Chinese one.
+
+### Fixed
+- The room-lifecycle end-to-end test no longer fails at random. Its idle time was as short as one beat of a correct answer's reveal, so the room could close before the judgment arrived.
+
 ## [0.35.2.0] - 2026-11-06
 
 ### Changed

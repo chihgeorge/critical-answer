@@ -18,7 +18,6 @@
 
 ### P3
 
-- [所有 Markdown 文件都有中文版和英文版，可用連結切換](#所有-markdown-文件都有中文版和英文版可用連結切換) — L
 - [把「冒險出現岔路」的選擇加回玩家手機](#把冒險出現岔路的選擇加回玩家手機) — S
 - [遊戲開始後，新隊伍可以中途加入](#遊戲開始後新隊伍可以中途加入) — M
 - [主持人開房時可以用自己的題庫](#主持人開房時可以用自己的題庫) — L
@@ -309,31 +308,6 @@
 - Pros：可以重用選擇題已有的四格版面和每局打亂選項（`shuffledOptionOrders`）；答案可以自動判定，主持人不用按答對。
 - Cons：要決定的事：手機上怎麼排（拖拉或依序點選）；要全對才算對，還是排對幾個給部分分；大螢幕怎麼公布正確順序；題庫編輯器要多一種題型的編輯畫面；`parseBank` 的驗證要支援新題型；題庫格式變了，要把 `lib/bank-store.ts` 的 `BANK_FORMAT` 加 1，舊版本才會把新題庫當成讀不懂、不會存檔時把排序題弄丟。
 - Context 補充：題型定義在 `lib/question-bank.ts`（`BankQuestion` 目前只有 `text` 和 `multipleChoice`，驗證在 `parseQuestions`）。手機作答在 `app/room/[code]/play/page.tsx`，選擇題的鎖定和判定在 `lib/room/dungeon-room.ts`（`TEAM_SELECT_OPTION` / `TEAM_LOCK_OPTION`）。題庫編輯器在 `app/bank-editor/page.tsx`。改 UI 前要先給 PNG。
-
----
-
-## 所有 Markdown 文件都有中文版和英文版，可用連結切換
-
-**What:** repo 裡所有 `.md` 檔（目前 28 個）都要有中文版和英文版。每份文件最上方有一行連結，可在兩個語言版本之間切換。
-
-**Why:** 站長 2026-11-06 提出：文件要雙語，中文和英文讀者都能讀。
-
-**Context:**
-- 根目錄：`README.md`、`TODOS.md`、`CHANGELOG.md`、`DESIGN.md`、`SECURITY.md`、`CLAUDE.md`
-- `docs/going-public.md`、`docs/designs/*.md`（21 個）
-
-**Effort/Priority:** L / P3
-
-**Depends on:** 無。動手前先用 `/plan-eng-review` 定命名規則與同步方式。
-
-**Notes:**
-- 要決定的事：
-  - 檔名規則：例如 `README.md`（中文）配 `README.en.md`，或反過來；GitHub 首頁只會顯示 `README.md`，要決定預設語言。
-  - 切換連結的格式，例如每份文件第一行 `中文 | [English](README.en.md)`。
-  - 兩個版本怎麼保持同步：改一邊時另一邊要跟著改；可以加一個 CI 檢查，確認每個 `.md` 都有對應的另一語言版本和切換連結。
-  - `CLAUDE.md` 是給 coding agent 讀的，`next dev` 會重寫其中一段（見 `node_modules/next/dist/server/lib/generate-agent-files.js`），要決定它是否也要雙語、英文版放哪。
-  - `CHANGELOG.md` 現在是英文、`TODOS.md` 和設計文件大多是中文：翻譯方向各檔不同。
-  - `TODOS.md` 的索引用標題當錨點，英文版的錨點會不同，連結要各自產生。
 
 ---
 
@@ -1124,6 +1098,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 所有 Markdown 文件都有中文版和英文版，可用連結切換
+
+- **所有 Markdown 文件都有中文版和英文版，可用連結切換** · v0.36.0.0 · 範圍縮小（2026-11-06 eng review R6）：README、SECURITY.md 和 `docs/` 的 5 份指南有英文版 `X.en.md`，第一行可切換語言，`npm run check:docs` 檢查配對、切換行和標題層級。`TODOS.md`、`CHANGELOG.md`、`DESIGN.md`、`docs/designs/`、`docs/going-public.md` 和 `CLAUDE.md` 維持單一語言。原本以為 `next dev` 會改寫 `CLAUDE.md`，其實它寫的是 git 排除的 `AGENTS.md`。
 
 ## 不同題型變成不同行動：選擇題是打怪物，問答題是說服怪物
 
