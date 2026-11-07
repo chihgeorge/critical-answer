@@ -98,6 +98,9 @@ export type AnswerReveal = {
 
 /** 上菜's cooking on the big screen (monster-cuisine.md cooking R7): monster 0–0.4 s, pot to 1.2 s, smoke to 1.6 s, then the dish. */
 export const COOK_MS = 1600;
+/** The pot comes up, then the smoke (the cook sound's bubbles and 砰 land on these too). */
+export const COOK_POT_MS = 400;
+export const COOK_SMOKE_MS = 1200;
 /** The room refuses 下一題 until the cooked dish has been up this long (cooking I2): the cooking plus about a second of dish. */
 export const SERVE_HOLD_MS = COOK_MS + 1000;
 /** The end screen after a boss kill (cooking R8): the boss cooks, its dish holds, and only then the winner, podium and epilogue. */

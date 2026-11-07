@@ -17,7 +17,7 @@ blob = "".join(p.read_text(errors="ignore") for p in pathlib.Path(".next/static"
 answer = lambda q: q["options"][q["correctIndex"]] if q["kind"] == "multipleChoice" else q["answer"]
 # The question's words: a legacy bare `text`, or `content.value` when the content is text,
 # plus the optional `prompt` an image or YouTube question carries. Image keys and video ids are skipped.
-words = lambda q: [w for w in (q.get("text"), q.get("content", {}).get("value") if q.get("content", {}).get("kind") == "text" else None, q.get("prompt")) if w]
+words = lambda q: [w for w in (q.get("text"), (q.get("content") or {}).get("value") if (q.get("content") or {}).get("kind") == "text" else None, q.get("prompt")) if w]
 leaks = [q["id"] for q in qs if answer(q) in blob or any(w in blob for w in words(q))]
 leaks += [s for s in secrets if s in blob]
 if leaks:

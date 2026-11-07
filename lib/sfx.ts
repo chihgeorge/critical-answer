@@ -1,7 +1,7 @@
 // Sound effects for the big screen, one per kind of event, synthesized like the background music
 // (lib/bgm.ts): no audio files. Pure data here, played by lib/bgm-player.ts's playCue().
 
-import type { SoundCue } from "./protocol";
+import { COOK_POT_MS, COOK_SMOKE_MS, type SoundCue } from "./protocol";
 import { noteToFreq } from "./bgm";
 
 export interface SfxNote {
@@ -69,8 +69,8 @@ export const SFX: Record<SoundCue, SfxNote[]> = {
   "check-fail": [{ at: 0, duration: 0.3, freq: noteToFreq("D4"), slideTo: noteToFreq("A3"), wave: "square" }],
   // 上菜 (monster-cuisine.md cooking I9): two low bubbles while the pot boils, then the 砰 of the smoke, done by 1.6 s.
   cook: [
-    { at: 0.4, duration: 0.12, freq: noteToFreq("C4"), slideTo: noteToFreq("G4"), wave: "triangle" },
-    { at: 0.8, duration: 0.12, freq: noteToFreq("D4"), slideTo: noteToFreq("A4"), wave: "triangle" },
-    { at: 1.2, duration: 0.3, freq: noteToFreq("C3"), slideTo: noteToFreq("C2"), wave: "square" },
+    { at: COOK_POT_MS / 1000, duration: 0.12, freq: noteToFreq("C4"), slideTo: noteToFreq("G4"), wave: "triangle" },
+    { at: (COOK_POT_MS + COOK_SMOKE_MS) / 2000, duration: 0.12, freq: noteToFreq("D4"), slideTo: noteToFreq("A4"), wave: "triangle" },
+    { at: COOK_SMOKE_MS / 1000, duration: 0.3, freq: noteToFreq("C3"), slideTo: noteToFreq("C2"), wave: "square" },
   ],
 };

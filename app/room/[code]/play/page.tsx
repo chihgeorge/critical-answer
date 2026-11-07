@@ -443,6 +443,8 @@ export default function PlayPage() {
   const [disconnected, setDisconnected] = useState(false);
   const [offlineMsg, setOfflineMsg] = useState<string | null>(null);
   const lastGame = useRef<StateMessage | null>(null);
+  // The phase seen on this connection: a phone that reconnects into finished goes to the podium, as the screen does.
+  const livePhase = useRef<StateMessage["phase"] | null>(null);
   /** Text of every question this phone has shown, by id: during a reveal `game.question` is already
    * the next one, so the reveal panel looks up the answered question here (phone-question-text.md D6). */
   const seen = useRef(new Map<string, string>());
@@ -465,6 +467,7 @@ export default function PlayPage() {
       // us before the JOIN is checked; joinRejection still lets a bad key's bad_token through.
       joined.current = false;
       claimed.current = false;
+      livePhase.current = null;
       const id = getOrCreateTeamId();
       setTeamId(id);
       const password = (sentPassword.current = joinPasswordFor(code));
@@ -508,19 +511,21 @@ export default function PlayPage() {
           setPodium(true);
           seen.current.clear();
           lastGame.current = null;
+          livePhase.current = null;
           drop.current = null;
           break;
         case "STATE": {
           { const line = msg.question && questionLine(msg.question); if (line) seen.current.set(msg.question!.id, line); }
           setRevealedText(msg.reveal ? seen.current.get(msg.reveal.questionId) : undefined);
           // A boss kill seen live: the winner waits for the big screen's cooking (cooking I5).
-          if (msg.phase === "finished" && lastGame.current?.phase === "playing" && msg.reveal?.dish) {
+          if (msg.phase === "finished" && livePhase.current === "playing" && msg.reveal?.dish) {
             setFinale(true);
             setPodium(false);
           }
           setGame(msg);
           if (msg.view.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           lastGame.current = msg;
+          livePhase.current = msg.phase;
           if (drop.current) {
             setOfflineMsg(offlineNotice(drop.current, msg.eventId));
             drop.current = null;

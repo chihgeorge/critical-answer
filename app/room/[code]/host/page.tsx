@@ -211,7 +211,7 @@ export default function HostPage() {
             msg.error === "bad_token"
               ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人"
               : msg.detail === "reveal_pending"
-                ? "大螢幕正在揭曉，先按「下一題」"
+                ? `大螢幕正在揭曉，先按「${toServe ? "🍲 上菜" : "下一題"}」`
                 : msg.detail === "duplicate_name"
                 ? "已經有隊伍叫這個名字了"
                 : msg.error === "invalid_name"

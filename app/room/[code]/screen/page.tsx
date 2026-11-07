@@ -197,7 +197,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
   const bossScene = dish ? dish.room === null : turnInfo.bossScene;
   const monster = dish ? monsterLook(dish.monster) : turnInfo.monster;
   const theme = dish ? roomTheme(dish.room) : turnInfo.theme;
-  const line = dish && eater ? dishLine(dish, eater.name, false) : "";
+  // A team removed mid-reveal still leaves its dish line, without the name.
+  const line = dish ? dishLine(dish, eater?.name ?? "", false) : "";
   const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => say([line]));
   const served = cook !== null;
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
@@ -306,7 +307,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
         ) : reveal ? (
           <div data-testid="answer-reveal" className="flex flex-col items-center gap-2">
             <div>正解：{reveal.answer}</div>
-            {/* With the video up, its text explanation and dish stand beside it instead. */}
+            {/* With the video up, its text explanation stands beside it instead. */}
             {!video && reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
             {mediaExplanation && (
               // A video explanation is at least 356×200 (YouTube's minimum, D11). The dish waits for 上菜 (cooking R4).
@@ -516,6 +517,9 @@ export default function ScreenPage() {
   const [finale, setFinale] = useState(false);
   /** The phase of the last STATE on this connection: playing → finished is a kill seen live. */
   const lastPhase = useRef<StateMessage["phase"] | null>(null);
+  /** The eventId of the last served reveal: its late narration line must not cut off 上菜's lines (cooking I1),
+   * nor be read over the next question once 下一題 closes it (closing a reveal does not move eventId). */
+  const servedEvent = useRef<number | null>(null);
   /** False while the finale holds the podium; an epilogue arriving then waits to be read (cooking I4). */
   const podiumReady = useRef(true);
   const heldEpilogue = useRef<string | null>(null);
@@ -718,6 +722,7 @@ export default function ScreenPage() {
           lastPhase.current = null;
           podiumReady.current = true;
           heldEpilogue.current = null;
+          servedEvent.current = null;
           // A room reset can arrive without a socket reconnect, and the next game's eventIds
           // start over from 0 — re-arm the baseline the same way onOpen does.
           narrationBaseline.current = null;
@@ -732,6 +737,7 @@ export default function ScreenPage() {
             podiumReady.current = false;
           }
           lastPhase.current = msg.phase;
+          if (msg.reveal?.served) servedEvent.current = msg.eventId;
           // D11: each how-to-play page's owl line is spoken once, when the page comes up.
           if (msg.intro && msg.intro.page !== introSpoken.current) speak([INTRO_PAGE_TEXT[msg.intro.page - 1]?.owl ?? ""]);
           introSpoken.current = msg.intro?.page ?? null;
@@ -752,7 +758,7 @@ export default function ScreenPage() {
           if (narrationBaseline.current !== null) {
             const speakIt = shouldSpeakNarration(msg, narrationBaseline.current, lastSpokenNarration.current);
             lastSpokenNarration.current = msg; // always, even when not spoken — see the ref's doc comment
-            if (speakIt) speak(msg.lines);
+            if (speakIt && msg.eventId !== servedEvent.current) speak(msg.lines);
           }
           break;
         case "EPILOGUE":

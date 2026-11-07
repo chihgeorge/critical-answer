@@ -4,7 +4,7 @@
 // a puff of smoke and the dish. Every change is a hard cut between frames (cooking I8, DESIGN.md: no tweens).
 
 import { useEffect, useRef, useState } from "react";
-import { COOK_MS, FINISH_PODIUM_MS, type AnswerReveal } from "@/lib/protocol";
+import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, FINISH_PODIUM_MS, type AnswerReveal } from "@/lib/protocol";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { Panel, prefersReducedMotion, Sprite } from "@/components/pixel";
 import { SPRITE_SIZE } from "@/lib/pixel-art";
@@ -15,25 +15,26 @@ type Dish = NonNullable<AnswerReveal["dish"]>;
 export type CookStep = 0 | 1 | 2 | 3;
 /** When each frame comes up, in ms after 上菜. */
 const STEP_AT: [CookStep, number][] = [
-  [1, 400],
-  [2, 1200],
+  [1, COOK_POT_MS],
+  [2, COOK_SMOKE_MS],
   [3, COOK_MS],
 ];
 
 /**
  * Which cooking frame is up. `served` is the key of the served dish (null before 上菜). Only a change seen while the
  * page is open plays the frames (cooking I3): a page that opens on a served dish, or reduced motion, shows the dish.
- * `onPlay` runs when the frames start, `onDish` when the dish comes up after them.
+ * `onPlay` runs when the frames start, `onDish` when the dish comes up after them; under reduced motion a live serve
+ * still calls `onDish` (the dish line is read, only the frames are skipped).
  */
 export function useCookStep(served: string | null, onPlay?: () => void, onDish?: () => void): CookStep | null {
   const [shown, setShown] = useState(served);
   const [step, setStep] = useState<CookStep | null>(served ? 3 : null);
-  /** The served key whose frames are playing, null when none are. */
-  const [play, setPlay] = useState<string | null>(null);
+  /** A serve seen live, and whether its frames play; null when none is. */
+  const [play, setPlay] = useState<{ key: string; animate: boolean } | null>(null);
   if (served !== shown) {
     setShown(served);
     const animate = !!served && !prefersReducedMotion();
-    setPlay(animate ? served : null);
+    setPlay(served ? { key: served, animate } : null);
     setStep(served ? (animate ? 0 : 3) : null);
   }
   const calls = useRef({ onPlay, onDish });
@@ -42,6 +43,7 @@ export function useCookStep(served: string | null, onPlay?: () => void, onDish?:
   });
   useEffect(() => {
     if (!play) return;
+    if (!play.animate) return void calls.current.onDish?.();
     calls.current.onPlay?.();
     const timers = STEP_AT.map(([s, at]) =>
       setTimeout(() => {
@@ -86,7 +88,8 @@ export function useFinaleStep(play: boolean, onPlay?: () => void, onDish?: () =>
 
 /** The narrator's line once the dish is up (cooking I1): typed and read on the big screen. */
 export function dishLine(dish: Dish, team: string, boss: boolean): string {
-  return boss ? `今晚的大菜：${dish.name}！` : `今晚的菜：${dish.name}！${team}吃下 ${dish.points} 飽足感。`;
+  if (boss) return `今晚的大菜：${dish.name}！`;
+  return team ? `今晚的菜：${dish.name}！${team}吃下 ${dish.points} 飽足感。` : `今晚的菜：${dish.name}！`;
 }
 
 const POP = { fontSize: 26, padding: "2px 10px", background: "var(--k)", color: "#fff" } as const;
@@ -129,7 +132,7 @@ export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom }: {
 }
 
 /** The defeated monster, cooked (docs/designs/monster-cuisine.md, approved mockup A). */
-export function DishCard({ dish, title = "今晚的菜" }: { dish: Dish; title?: string }) {
+function DishCard({ dish, title }: { dish: Dish; title: string }) {
   return (
     <Panel tone="lav" className="px-[18px] pt-3 pb-[14px] text-center" style={{ maxWidth: 620 }}>
       <div data-testid="dish-card">
