@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.44.0.1] - 2026-11-07
+
+### Fixed
+- In the bank editor, a question's 題幹 (prompt), a fill-in answer, a multiple-choice option or a new question type could now and then be lost right after typing, and the save then went out without it. The editor now keeps what was typed. This was also why three bank-editor tests failed now and then in CI.
+
 ## [0.44.0.0] - 2026-11-07
 
 **Deploy note:** no reseed is needed. Deploy the room server and the website. The live bank was saved before this change, so it keeps its own monsters: to turn the draw on, open /bank-editor, tick 「每場隨機抽怪」 and save. If you roll back the room server after saving, the older server drops the setting on its next save.
