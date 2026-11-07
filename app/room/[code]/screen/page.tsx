@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
-import type { AnswerReveal, LobbyTeams, PendingRoll, PublicQuestion, StateMessage } from "@/lib/protocol";
+import type { AnswerReveal, LobbyTeams, MediaCommand, PendingRoll, PublicMediaContent, PublicQuestion, StateMessage } from "@/lib/protocol";
 import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
@@ -25,6 +25,7 @@ import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 import { KillRollOverlay, RollOverlay } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
+import { YoutubePlayer } from "@/components/youtube-player";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { readStored, writeStored } from "@/lib/stored";
 
@@ -180,7 +181,11 @@ function WallOptions({ options, gone, magic, lock, wrong, correct, teamName }: {
   );
 }
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, narration, phaseCard, bossPhaseInfo }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"] }) {
+type YoutubeContent = Extract<PublicMediaContent, { kind: "youtube" }>;
+/** A chip that stands in the side column beside a video (D14), at the same 20px as the hints. */
+const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4px solid var(--k)", whiteSpace: "normal", borderRadius: 12 } as const;
+
+function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void }) {
   const { team: turn, teamIndex: turnIdx, inBoss, bossScene, monster, theme, bossHits: hits } = describeTurn(view, question, phaseCard?.monster);
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
   const card = phaseCard && bossPhaseInfo;
@@ -212,6 +217,40 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
   // The narration keeps the last outcome; the DC sign carries the waiting line instead.
   const awaitingCheck = fillIn && !check && !pendingRoll && !wrong;
   const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
+  // A YouTube question, or the reveal showing the answered question's video where it stopped (D17). One slot, one
+  // key, so the player is not rebuilt between the question and its reveal.
+  const asking = !reveal && !card && question?.content.kind === "youtube";
+  const video: { id: string; content: YoutubeContent } | null = reveal?.video
+    ? { id: reveal.questionId, content: reveal.video }
+    : asking
+      ? { id: question!.id, content: question!.content as YoutubeContent }
+      : null;
+  const sneakChip = turn?.sneakArmed && !reveal && !card;
+  const dcChip = fillIn && !turn?.sneakArmed ? turn?.checkTarget : undefined;
+  // On a YouTube question the chips, hints and typed answer stand beside the video, not over it (D14).
+  const beside = (
+    <>
+      {sneakChip && (
+        <div className="px-chip" style={{ ...CHIP, background: "#ff8787" }}>
+          🗝️ 偷襲！這題答對加倍
+        </div>
+      )}
+      {dcChip && (
+        <div data-testid="screen-check-dc" className="px-chip" style={{ ...CHIP, background: "var(--warn)" }}>
+          🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）{awaitingCheck && `　${turn!.name}：按手機上的「擲骰說服」`}
+        </div>
+      )}
+      {question && <MageHint hint={view.mageHints?.[question.id]} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
+      {check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="block w-fit px-3 py-1 text-[20px]" />}
+      {turn?.typedAnswer && (
+        <div data-testid="screen-typed-answer" className="text-[20px] [overflow-wrap:anywhere]">
+          ⚔️ {turn.name}：{turn.typedAnswer}
+        </div>
+      )}
+    </>
+  );
+  const lone = !!reveal && reveal.explanation?.kind !== "text" && !reveal.dish;
+  const mediaExplanation = reveal?.explanation && reveal.explanation.kind !== "text" ? reveal.explanation : null;
 
   return (
     <>
@@ -244,15 +283,51 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
         ) : reveal ? (
           <div data-testid="answer-reveal" className="flex flex-col items-center gap-2">
             <div>正解：{reveal.answer}</div>
-            {reveal.explanation && reveal.explanation.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
-            {reveal.explanation && reveal.explanation.kind !== "text" && (
-              // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
-              <QuestionMedia key={reveal.questionId} content={reveal.explanation} label="詳解" maxWidth={300} maxHeight={140} />
+            {/* With the video up, its text explanation and dish stand beside it instead. */}
+            {!video && reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
+            {mediaExplanation && (
+              // A video explanation is at least 356×200 (YouTube's minimum, D11); a dish stands beside it (D18).
+              <div className="flex items-center justify-center gap-3">
+                {/* key tied to questionId: a 404'd explanation image must not stay hidden on later reveals. */}
+                <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="block" />
+                {reveal.dish && <DishCard dish={reveal.dish} compact />}
+              </div>
             )}
-            {reveal.dish && <DishCard dish={reveal.dish} />}
+            {!mediaExplanation && !video && reveal.dish && <DishCard dish={reveal.dish} />}
           </div>
-        ) : question ? (question.content.kind === "text" ? question.content.value : "") : "……"}
-        {!reveal && question && question.content.kind !== "text" && (
+        ) : question ? (
+          question.content.kind === "text" ? question.content.value : <div style={{ fontSize: 26 }}>{question.prompt ?? ""}</div>
+        ) : "……"}
+        {video && (
+          // A reveal with nothing beside its video centres it (D18); the player stays the first child, so it is kept.
+          <div key={video.id} className={`mt-3 flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
+            <YoutubePlayer
+              videoId={video.content.videoId}
+              start={video.content.start}
+              end={video.content.end}
+              command={media?.questionId === video.id ? media : null}
+              width={384}
+              height={216}
+              cover={!reveal && !!video.content.audioOnly}
+              needsTap={needsTap}
+              onPlayingChange={onVideoPlaying}
+              title={reveal ? "正解影片" : "題目影片"}
+            />
+            {!lone && (
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
+              {reveal ? (
+                <>
+                  {reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
+                  {reveal.dish && <DishCard dish={reveal.dish} compact />}
+                </>
+              ) : (
+                beside
+              )}
+            </div>
+            )}
+          </div>
+        )}
+        {!reveal && question && question.content.kind === "image" && (
           // Inline content inside the Panel, not a second independently-positioned absolute
           // element — the Panel's height already grows with wrapped question text, so a
           // media block positioned at a fixed pixel offset would overlap 2+ line questions
@@ -263,12 +338,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
           // once React reuses this node for the next media question (adversarial review).
           <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
         )}
-        {!reveal && !card && question && !question.options && (
+        {!asking && !reveal && !card && question && !question.options && (
           <MageHint hint={view.mageHints?.[question.id]} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
         )}
-        {check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />}
+        {!asking && check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />}
         {/* #104: the team's typed answer to a text question, for the room to see. */}
-        {!reveal && !card && question && !question.options && turn?.typedAnswer && (
+        {!asking && !reveal && !card && question && !question.options && turn?.typedAnswer && (
           <div data-testid="screen-typed-answer" className="mt-3 text-[24px] [overflow-wrap:anywhere]">
             ⚔️ {turn.name}：{turn.typedAnswer}
           </div>
@@ -276,14 +351,14 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
       </Panel>
 
       {/* D17=A: a thief's armed Sneak Attack hangs over the monster until its answer is judged. */}
-      {turn?.sneakArmed && !reveal && !card && (
+      {sneakChip && !asking && (
         <div className="px-chip absolute" style={{ left: "50%", top: 262, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
           🗝️ 偷襲！這題答對加倍
         </div>
       )}
-      {fillIn && turn?.checkTarget && !turn.sneakArmed && (
+      {dcChip && !asking && (
         <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: 262, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
-          🗣️ 說服 DC {turn.checkTarget.dc}（+{turn.checkTarget.bonus}）{awaitingCheck && `　${turn.name}：按手機上的「擲骰說服」`}
+          🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）{awaitingCheck && `　${turn!.name}：按手機上的「擲骰說服」`}
         </div>
       )}
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
@@ -327,14 +402,15 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
 }
 
 /** The defeated monster, cooked (docs/designs/monster-cuisine.md, approved mockup A): a small card under the answer. */
-function DishCard({ dish }: { dish: NonNullable<AnswerReveal["dish"]> }) {
+function DishCard({ dish, compact = false }: { dish: NonNullable<AnswerReveal["dish"]>; compact?: boolean }) {
+  // compact: beside a reveal's video, where the full card would push past the dialogue box (D18).
   return (
-    <Panel tone="lav" className="mx-auto mt-2 px-[18px] pt-3 pb-[14px]" style={{ maxWidth: 620 }}>
+    <Panel tone="lav" className={compact ? "px-3 pt-2 pb-[10px] text-center" : "mx-auto mt-2 px-[18px] pt-3 pb-[14px]"} style={{ maxWidth: compact ? 270 : 620 }}>
       <div data-testid="dish-card">
-        <div className="text-[30px]">🍲 今晚的菜：{dish.name}</div>
-        <div className="text-[20px]" style={{ color: "#6a4d74" }}>{dish.part}・{dish.method}</div>
-        <div className="text-[22px]">「{dish.comment}」</div>
-        <div className="mt-1 text-[22px]" style={{ color: "var(--ok2)" }}>
+        <div className={compact ? "text-[24px] leading-[1.25]" : "text-[30px]"}>🍲 今晚的菜：{compact && <br />}{dish.name}</div>
+        <div className={compact ? "text-[16px]" : "text-[20px]"} style={{ color: "#6a4d74" }}>{dish.part}・{dish.method}</div>
+        <div className={compact ? "text-[18px]" : "text-[22px]"}>「{dish.comment}」</div>
+        <div className={compact ? "mt-1 text-[20px]" : "mt-1 text-[22px]"} style={{ color: "var(--ok2)" }}>
           <span className="px-num">+{dish.points}</span> 飽足感
         </div>
       </div>
@@ -553,6 +629,32 @@ export default function ScreenPage() {
 
   useEffect(() => () => bgm.current?.stop(), []);
 
+  // --- YouTube questions (docs/designs/youtube-questions.md) ---
+  // The browser blocks a video's sound until someone taps the page: say so in the lobby, and on the video (D16).
+  const [tapped, setTapped] = useState(true);
+  useEffect(() => {
+    function read() {
+      setTapped(navigator.userActivation?.hasBeenActive ?? true);
+    }
+    read();
+    const on = () => setTapped(true);
+    window.addEventListener("pointerdown", on);
+    window.addEventListener("keydown", on);
+    return () => {
+      window.removeEventListener("pointerdown", on);
+      window.removeEventListener("keydown", on);
+    };
+  }, []);
+  /** From the player's real state (the clip stops itself at its end): the music goes silent (D10) and a line still
+   * being read stops, since the host pressed ▶ to hear the song (D20). */
+  function onVideoPlaying(playing: boolean) {
+    player().mute(playing);
+    if (playing && ttsSupported()) {
+      window.speechSynthesis.cancel();
+      pendingLines.current = null;
+    }
+  }
+
   function toggleBgm() {
     const next = !bgmOn;
     // start() runs inside this click, which is what lets the browser play it.
@@ -633,10 +735,16 @@ export default function ScreenPage() {
             <HowToPlay page={game.intro.page} firstTeam={describeTurn(game.view, null).team?.name ?? ""} cuisine={!!game.cuisine} />
           </>
         )}
-        {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} />}
+        {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} cuisine={game.cuisine} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
+          {!game && !tapped && (
+            // 32px tall: it ends above the lobby's title line (top 34).
+            <div role="status" data-testid="tap-for-sound" className="text-center text-[16px] leading-[22px]" style={{ background: "#fff0a8", color: "var(--ink)", padding: 3, borderBottom: "4px solid var(--k)" }}>
+              👆 點一下大螢幕，開啟影片和音樂的聲音
+            </div>
+          )}
           {disconnected && !rested && (
             <div role="status" className="text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
               {DISCONNECTED_NOTICE}

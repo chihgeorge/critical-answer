@@ -8,7 +8,7 @@ import { UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notic
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import { HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, type ClientMessage, type LobbyTeams, type ServerMessage, type StateMessage } from "@/lib/protocol";
+import { HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -567,7 +567,7 @@ export default function HostPage() {
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.monster.name}</div>
                   <div data-testid="host-question" className="text-[20px] leading-snug">
-                    {game.question?.content.kind === "text" ? game.question.content.value : `題目 ${turn.questionId}`}
+                    {game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
                   </div>
                   {/* The host previously never saw question media at all (text-only preview) —
                       a small preview so judging an image/video question doesn't mean squinting
@@ -577,9 +577,16 @@ export default function HostPage() {
                   )}
                   {/* A 120px YouTube embed is below the player's minimum size and won't play — the
                       host watches the big screen instead. */}
-                  {game.question?.content.kind === "youtube" && <div className="mt-1 text-[14px]" style={{ color: "#6b4a2a" }}>影片題（看大螢幕）</div>}
+                  {game.question?.content.kind === "youtube" && (
+                    <div className="mt-1 inline-block bg-[var(--k)] px-2 py-[2px] text-[14px] text-[var(--cream)]">
+                      {game.question.content.audioOnly ? "🎵 聽歌題（聽大螢幕）" : "▶ 影片題（看大螢幕）"}
+                    </div>
+                  )}
                 </div>
               </div>
+              {game.question?.content.kind === "youtube" && !revealUp && (
+                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready} send={send} />
+              )}
               <div className="mt-2">
                 <ScoreMeter score={turn.team.score} active />
               </div>
@@ -690,6 +697,12 @@ export default function HostPage() {
                       大螢幕正在揭曉：{game.reveal ? game.reveal.answer : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}
                     </div>
                   </Panel>
+                  {/* The answered question's video is up again on the big screen (D17). */}
+                  {game.reveal?.video && (
+                    <Panel tone="lav" className="px-3 pb-2 pt-1">
+                      <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} />
+                    </Panel>
+                  )}
                   <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: "HOST_NEXT", eventId: game.eventId })}>
                     {connected ? "下一題" : "重新連線中"}
                     <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
@@ -839,5 +852,36 @@ export default function HostPage() {
         />
       )}
     </main>
+  );
+}
+
+/** ▶ ⏸ ⟲ for the video on the big screen (docs/designs/youtube-questions.md D19). Three buttons, not a toggle: a
+ * second press of ▶ on slow Wi-Fi is still ▶. The lit button is the host's last command (D7): the page cannot see
+ * the clip stop at its end. */
+function MediaControls({ questionId, media, disabled, send }: { questionId: string; media?: MediaCommand; disabled: boolean; send: (m: ClientMessage) => void }) {
+  // A command for another question, or none (an older server), is paused.
+  const playing = media?.questionId === questionId && media.state === "playing";
+  const press = (action: MediaAction) => send({ type: "HOST_MEDIA", questionId, action });
+  const look = (lit: boolean) => ({ minHeight: 56, background: lit ? "var(--ok)" : "var(--cream)" });
+  return (
+    <div data-testid="host-media" className="mt-2">
+      <div className="text-[14px]" role="status">
+        大螢幕：{playing ? "播放中" : "已暫停"}
+      </div>
+      <div className="flex">
+        <PixelButton aria-label="播放" aria-pressed={playing} disabled={disabled} className="flex-1 text-[18px]" style={look(playing)} onClick={() => press("play")}>
+          ▶ 播放
+        </PixelButton>
+        <PixelButton aria-label="暫停" aria-pressed={!playing} disabled={disabled} className="flex-1 text-[18px]" style={look(!playing)} onClick={() => press("pause")}>
+          ⏸ 暫停
+        </PixelButton>
+        <PixelButton aria-label="從頭播放" disabled={disabled} className="flex-1 text-[18px]" style={look(false)} onClick={() => press("restart")}>
+          ⟲ 從頭
+        </PixelButton>
+      </div>
+      <div className="mt-1 text-[13px]" style={{ color: "#6b4a2a" }}>
+        沒聲音？看大螢幕提示
+      </div>
+    </div>
   );
 }
