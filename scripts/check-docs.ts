@@ -15,37 +15,56 @@ export const DOCS = [
   "docs/development.md",
 ];
 
-/** The lines outside ``` fences, with inline `code` blanked so links inside it are ignored. */
-function proseLines(markdown: string): string[] {
-  let fenced = false;
+// shortcut: a line scanner, not a Markdown parser. Not handled: reference-style links, "(" inside a
+// link path, setext (underlined) headings, _emphasis_ in headings. None is used in DOCS; switch to a
+// Markdown parser if one ever is.
+
+/** Each line, or null when it is inside (or opens/closes) a ``` or ~~~ fence. A fence closes only on
+ * the same character, at least as long, as CommonMark says. */
+function unfenced(markdown: string): (string | null)[] {
+  let fence: string | null = null;
   return markdown.split("\n").map((line) => {
-    if (/^\s*```/.test(line)) {
-      fenced = !fenced;
-      return "";
+    // Any indent: a fence nested in a list item is still a fence.
+    const m = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (m && (!fence || (m[1][0] === fence[0] && m[1].length >= fence.length && !/\S/.test(line.slice(m[0].length))))) {
+      fence = fence ? null : m[1];
+      return null;
     }
-    return fenced ? "" : line.replace(/`[^`]*`/g, "``");
+    return fence ? null : line;
   });
 }
 
-/** GitHub's heading ids: lowercase, punctuation and emoji dropped, spaces to "-", repeats get -1, -2... */
+/** The lines outside fences, with inline `code` blanked so links inside it are ignored. */
+function proseLines(markdown: string): string[] {
+  return unfenced(markdown).map((line) => (line === null ? "" : line.replace(/`[^`]*`/g, "``")));
+}
+
+/** GitHub's heading ids: lowercase, punctuation and emoji dropped, spaces to "-", repeats get -1, -2...
+ * skipping any id already taken (so "A", "A", "A-1" give a, a-1, a-1-1). */
 export function headingSlugs(markdown: string): Set<string> {
-  const seen = new Map<string, number>();
   const slugs = new Set<string>();
-  let fenced = false;
-  for (const line of markdown.split("\n")) {
-    if (/^\s*```/.test(line)) fenced = !fenced;
-    const m = fenced ? null : /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
+  for (const line of unfenced(markdown)) {
+    const m = line === null ? null : /^ {0,3}#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
     if (!m) continue;
     const text = m[1]
       .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
       .replace(/<[^>]+>/g, "")
       .replace(/[`*]/g, "");
     const base = text.toLowerCase().replace(/[^\p{L}\p{M}\p{N}_ -]/gu, "").replace(/ /g, "-");
-    const n = seen.get(base) ?? 0;
-    seen.set(base, n + 1);
-    slugs.add(n ? `${base}-${n}` : base);
+    let slug = base;
+    for (let n = 1; slugs.has(slug); n++) slug = `${base}-${n}`;
+    slugs.add(slug);
   }
   return slugs;
+}
+
+/** decodeURIComponent, or the text unchanged when it holds a malformed %-escape. */
+function decode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
 }
 
 /** Relative link targets in a doc, as written (path and optional #anchor). */
@@ -66,10 +85,10 @@ export function brokenLinks(file: string, read: (path: string) => string | null)
   const problems: string[] = [];
   for (const link of relativeLinks(text)) {
     const [path, anchor] = link.split("#", 2);
-    const target = path ? normalize(join(dirname(file), decodeURIComponent(path))) : file;
+    const target = path ? normalize(join(dirname(file), decode(path))) : file;
     const body = read(target);
     if (body === null) problems.push(`${file}: ${link} → ${target} does not exist`);
-    else if (anchor !== undefined && target.endsWith(".md") && !headingSlugs(body).has(decodeURIComponent(anchor).toLowerCase()))
+    else if (anchor !== undefined && target.endsWith(".md") && !headingSlugs(body).has(decode(anchor).toLowerCase()))
       problems.push(`${file}: ${link} → no heading #${anchor} in ${target}`);
   }
   return problems;

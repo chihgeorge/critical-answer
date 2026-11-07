@@ -31,7 +31,7 @@ sh scripts/playtest.sh status
 sh scripts/playtest.sh stop
 ```
 
-它自動抓區網 IP，用 3100（網頁）和 1998（房間伺服器）兩個埠，停止時也只依這兩個埠關閉，不會動到其他專案。手機打不開時，看看 macOS 防火牆有沒有擋 node 的連入連線。（同樣的指令也有 `npm run playtest` / `npm run playtest:stop`。）
+它自動抓區網 IP，用 3100（網頁）和 1998（房間伺服器）兩個埠，停止時會關掉占用這兩個埠的所有程式（不檢查是不是這個專案的），所以別的程式不要用這兩個埠。手機打不開時，看看 macOS 防火牆有沒有擋 node 的連入連線。（同樣的指令也有 `npm run playtest` / `npm run playtest:stop`。）
 
 ## 常用指令
 
@@ -87,7 +87,7 @@ worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable
 lib/room/                房間邏輯（dungeon-room.ts）與它需要的兩個小介面（io.ts），不依賴平台
 lib/gate.ts、origin.ts   Worker 入口規則
 e2e/                     Playwright 端對端測試
-scripts/                 playtest.sh（區網試玩）、check-bundle.sh、pregate-runner.sh（gstack pregate 的本機測試執行器，只跑單元測試；見 .gstack/pregate.json）
+scripts/                 playtest.sh（區網試玩）、check-bundle.sh、pregate-runner.sh（gstack pregate 的本機測試執行器，只跑單元測試；見 .gstack/pregate.json）、check-docs.ts（檢查 README 和 docs/ 指南的連結與錨點）
 public/fonts/            內建字型
 DESIGN.md                像素設計系統
 docs/designs/            設計文件與決策紀錄（含 question-bank-editor.md）

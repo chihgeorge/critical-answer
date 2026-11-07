@@ -13,6 +13,14 @@ describe("headingSlugs", () => {
     expect([...headingSlugs("```bash\n# not a heading\n```\n## Real")]).toEqual(["real"]);
   });
 
+  it("skips ids already taken when numbering repeats", () => {
+    expect([...headingSlugs("# A\n# A\n# A-1")]).toEqual(["a", "a-1", "a-1-1"]);
+  });
+
+  it("handles ~~~ fences and a longer fence holding ``` lines", () => {
+    expect([...headingSlugs("~~~\n# no\n~~~\n````md\n```\n# no\n```\n````\n# Yes")]).toEqual(["yes"]);
+  });
+
   it("uses a link's text, not its URL", () => {
     expect([...headingSlugs("## 見 [規則](rules.md)")]).toEqual(["見-規則"]);
   });
@@ -43,6 +51,15 @@ describe("brokenLinks", () => {
       "docs/a.md: b.md → docs/b.md does not exist",
       "docs/a.md: ../README.md#nope → no heading #nope in README.md",
     ]);
+  });
+
+  it("ignores links in ~~~ fences and reports a malformed %-escape as a missing file instead of crashing", () => {
+    const read = files({ "a.md": "~~~\n[x](gone.md)\n~~~\n[y](bad%zz.md)" });
+    expect(brokenLinks("a.md", read)).toEqual(["a.md: bad%zz.md → bad%zz.md does not exist"]);
+  });
+
+  it("ignores links in a fence indented under a list item", () => {
+    expect(relativeLinks("1. Run:\n\n    ```sh\n    [x](gone.md)\n    ```\n[y](a.md)")).toEqual(["a.md"]);
   });
 
   it("reports a listed doc that is missing", () => {

@@ -16,7 +16,7 @@
 
 1. **Cloudflare 登入**：`npx wrangler login`。想換 Worker 名稱就改 [wrangler.jsonc](../wrangler.jsonc) 的 `name`。
 2. **圖片用的 R2 bucket**：`npx wrangler r2 bucket create critical-answer-images`，再照下面的[圖片上傳（R2）](#圖片上傳r2)開公開讀取、填 `R2_PUBLIC_BASE_URL`。不用圖片題也要建，`wrangler deploy` 需要這個綁定。
-3. **允許的前端網址**：把 `wrangler.jsonc` 的 `ALLOWED_ORIGINS` 換成你自己的 Vercel 網址（逗號分隔；`*` 可以代替網址裡的一段名稱，例如 `https://你的專案-*.vercel.app` 涵蓋預覽網址）。
+3. **允許的前端網址**：把 `wrangler.jsonc` 的 `ALLOWED_ORIGINS` 換成你自己的 Vercel 網址（逗號分隔，建議寫完整的網址）。`*` 可以代替網址裡的一段名稱，例如 `https://你的專案-*.vercel.app` 涵蓋預覽網址；但別人在 Vercel 開一個名字一樣開頭的專案也會被允許，所以只在需要預覽網址時才用。
 4. **部署 Worker**：`npx wrangler deploy`。第一次部署會套用 `wrangler.jsonc` 的兩個 migration，建立 `Room` 和 `BankStoreDO` 兩個 Durable Object。記下印出來的 `*.workers.dev` 網址。
 5. **Worker 的 secret**：`npx wrangler secret put OWNER_KEY`（題庫編輯和站長金鑰用，≥32 bytes 的隨機值）。要用站長的 AI 旁白再加 `npx wrangler secret put ANTHROPIC_API_KEY`。
 6. **Vercel**：匯入這個 repo，環境變數 `NEXT_PUBLIC_PARTYKIT_HOST` 設成第 4 步的 Worker 網址，不含 `https://`（例如 `critical-answer.<你的子網域>.workers.dev`）。沒設的話前端會去連 `localhost:1999`。
