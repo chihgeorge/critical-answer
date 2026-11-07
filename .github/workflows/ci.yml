@@ -35,6 +35,8 @@ jobs:
       - run: npx tsc --noEmit -p worker
       - run: npx eslint
       - run: npm test
+      # Every relative link and #anchor in README, SECURITY.md and docs/*.md still resolves.
+      - run: npm run check:docs
       # Builds, then fails if any question or answer text is in the browser bundle.
       - run: npm run check:bundle
 

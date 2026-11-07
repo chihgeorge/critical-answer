@@ -53,6 +53,7 @@
 - [玩家自己選攻擊或說服](#玩家自己選攻擊或說服) — M
 - [美術方向 A：冒險者公會的怪物食譜](#美術方向-a冒險者公會的怪物食譜) — M
 - [說服檢定的剩餘小風險（/ship 2026-11-06）](#說服檢定的剩餘小風險ship-2026-11-06) — S
+- [在全新的 Cloudflare／Vercel 帳號上照部署指南做一遍](#在全新的-cloudflarevercel-帳號上照部署指南做一遍) — S（人工約 2 小時 / CC 約 30 分鐘）
 
 ### P4
 
@@ -986,6 +987,22 @@
 **Effort/Priority:** M / P3
 
 **Depends on:** 11/21 活動之後。
+
+---
+
+## 在全新的 Cloudflare／Vercel 帳號上照部署指南做一遍
+
+**What:** 用沒部署過這個專案的 Cloudflare 和 Vercel 帳號，照 `docs/deployment.md` 的「第一次部署」從頭做一遍，把卡住或寫錯的地方改掉，然後拿掉指南開頭「還沒在全新的帳號上照著做過一遍」那段提醒。
+
+**Why:** 這份指南是從現在的設定檔整理出來的，沒有人照著做過。要確認的有：沒有 R2 bucket 時 `wrangler deploy` 會不會失敗、兩個 Durable Object 的 migration 第一次部署會不會自動套用、`NEXT_PUBLIC_PARTYKIT_HOST` 要不要加埠號。（README 重整的 eng review，2026-11-06，R10）
+
+**Context:**
+- `docs/deployment.md`
+- `wrangler.jsonc`、`lib/party-host.ts`、`lib/origin.ts`
+
+**Effort/Priority:** S / P3
+
+**Depends on:** README 重整拆出 5 份指南的 PR。
 
 ---
 
