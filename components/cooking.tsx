@@ -118,7 +118,7 @@ export function CookFrame({ step, bottom }: { step: 1 | 2; bottom: number }) {
 /** The cooked dish where the monster stood (step 3), tinted like it, with its card above in the answer panel's place.
  * The picture is at most about 130px tall so it clears the card. */
 export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom }: { dish: Dish; title?: string; cardTop: number; bottom: number }) {
-  const kind = DISH_SPRITE[dish.monster.sprite];
+  const kind = Object.hasOwn(DISH_SPRITE, dish.monster.sprite) ? DISH_SPRITE[dish.monster.sprite] : DISH_SPRITE.slime; // a newer server's sprite: the slime's dish
   const scale = Math.min(5, Math.floor(130 / SPRITE_SIZE[kind][1]));
   return (
     <div data-testid="dish-served">

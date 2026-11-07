@@ -786,22 +786,22 @@
       "reward": 10
     },
     {
+      "monster": "mushroom-crumbly",
+      "difficulty": 2,
+      "reward": 20
+    },
+    {
       "monster": "ghost-shy",
       "difficulty": 2,
       "reward": 20
     },
     {
-      "monster": "ghost-cry",
-      "difficulty": 2,
-      "reward": 20
-    },
-    {
-      "monster": "slime-soft",
+      "monster": "snail-slow",
       "difficulty": 3,
       "reward": 30
     },
     {
-      "monster": "ghost-shy",
+      "monster": "bat-hanging",
       "difficulty": 4,
       "reward": 40
     },
@@ -811,12 +811,12 @@
       "reward": 40
     },
     {
-      "monster": "slime-soft",
+      "monster": "mimic",
       "difficulty": 5,
       "reward": 50
     },
     {
-      "monster": "ghost-shy",
+      "monster": "skeleton-rattle",
       "difficulty": 5,
       "reward": 50
     }

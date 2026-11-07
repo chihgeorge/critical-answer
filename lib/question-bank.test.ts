@@ -50,7 +50,8 @@ describe("shipped bank", () => {
   it("has 8 rooms of difficulty 1/2/2/3/4/4/5/5 paying 10/20/20/30/40/40/50/50 (scoring-and-score-pools.md S9, S12)", () => {
     expect(BANK.rooms.map((r) => r.difficulty)).toEqual([1, 2, 2, 3, 4, 4, 5, 5]);
     expect(BANK.rooms.map((r) => r.reward)).toEqual([10, 20, 20, 30, 40, 40, 50, 50]);
-    expect(new Set(BANK.rooms.map((r) => r.monster))).toEqual(new Set(["slime-soft", "ghost-shy", "ghost-cry"]));
+    // Eight different room monsters (monster-catalog.md PR2 item 5).
+    expect(new Set(BANK.rooms.map((r) => r.monster)).size).toBe(8);
     expect(BANK.boss.monster).toBe("dragon");
   });
 
