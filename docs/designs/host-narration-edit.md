@@ -1,6 +1,6 @@
 # 主持人頁改寫旁白：列出這次旁白的每一句
 
-狀態：design review 完成（2026-11-07），分支 `feat/host-narration-edit`。來源：TODOS.md P2「拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞」。
+狀態：design review 完成（2026-11-07），已在 `feat/host-narration-edit` 實作（T1–T5）。來源：TODOS.md P2「拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞」。
 
 ## 問題
 
@@ -81,18 +81,18 @@
 
 ## Implementation Tasks
 
-- [ ] **T1 (P1, human: ~3h / CC: ~20min)** — protocol/room/llm — 拿掉 `HOST_SET_NOTES`、`notes`、prompt 裡的導演筆記、`DirectorEntry.kind "notes"`，舊存檔的 `notes` 欄位讀取時忽略
+- [x] **T1 (P1, human: ~3h / CC: ~20min)** — protocol/room/llm — 拿掉 `HOST_SET_NOTES`、`notes`、prompt 裡的導演筆記、`DirectorEntry.kind "notes"`，舊存檔的 `notes` 欄位讀取時忽略
   - Files: `lib/protocol.ts`, `lib/room/dungeon-room.ts`, `lib/narration/llm.ts`, `lib/narration/runner.ts`, 對應 test、`e2e/host-drawer.spec.ts`
   - Verify: `npx vitest run`
-- [ ] **T2 (P1, human: ~4h / CC: ~30min)** — protocol/room — `HOST_EDIT_NARRATION { eventId, rev, index, line }`（D9、D18）、`SCREEN_NARRATION_PROGRESS { eventId, rev, done }`（D3、D14），`lastNarration` 存 `done`/`rev`，NARRATION 帶 `rev`，進度用 `HOST_NARRATION_PROGRESS { eventId, done }` 送給主持人，主持人連線時重送
+- [x] **T2 (P1, human: ~4h / CC: ~30min)** — protocol/room — `HOST_EDIT_NARRATION { eventId, rev, index, line }`（D9、D18）、`SCREEN_NARRATION_PROGRESS { eventId, rev, done }`（D3、D14），`lastNarration` 存 `done`/`rev`，NARRATION 帶 `rev`，進度用 `HOST_NARRATION_PROGRESS { eventId, done }` 送給主持人，主持人連線時重送
   - Verify: 單元測試：換第 N 句、已念過被拒、不是主持人被拒、eventId 過期被拒、舊 rev 回報不算、protocol 解析
-- [ ] **T3 (P1, human: ~4h / CC: ~30min)** — screen/DialogueBox/tts — 回報進度（D11）、從改的句子接續（D13）
+- [x] **T3 (P1, human: ~4h / CC: ~30min)** — screen/DialogueBox/tts — 回報進度（D11）、從改的句子接續（D13）
   - Files: `components/pixel.tsx`, `lib/narration/tts.ts`, `app/room/[code]/screen/page.tsx`
   - Verify: 純函式單元測試（接續起點、語音抽換）
-- [ ] **T4 (P1, human: ~4h / CC: ~30min)** — host — 旁白面板（D2、D5、D6、D7、D10、D12、D15、D17），從 `MoreDrawer` 拿掉導演筆記、改寫、下一句
+- [x] **T4 (P1, human: ~4h / CC: ~30min)** — host — 旁白面板（D2、D5、D6、D7、D10、D12、D15、D17），從 `MoreDrawer` 拿掉導演筆記、改寫、下一句
   - Files: 新 `components/narration-panel.tsx`, `app/room/[code]/host/page.tsx`, `components/more-drawer.tsx`
   - Verify: 摘要文案純函式單元測試；e2e（CI）改 `host-drawer.spec.ts`、`narration-tts.spec.ts`
-- [ ] **T5 (P2, human: ~1h / CC: ~10min)** — docs — `docs/hosting.md`／`.en.md`、DESIGN.md 加 NarrationPanel、TODOS.md 移除該項
+- [x] **T5 (P2, human: ~1h / CC: ~10min)** — docs — `docs/hosting.md`／`.en.md`、DESIGN.md 加 NarrationPanel、TODOS.md 移除該項
   - Verify: `npm run check:docs`
 
 ## Design Review Completion Summary
