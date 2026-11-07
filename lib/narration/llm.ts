@@ -3,10 +3,11 @@
 // the owner's), held in room memory, and never reaches a browser. Every failure throws a named error;
 // the runner turns any of them into the scripted line.
 
-import type { NarrationEvent } from "./events";
+import { epilogueParts, type NarrationEvent } from "./events";
+import { ordinal } from "../ordinal";
 import { CLASS_LABELS, type ClassId } from "../game-state";
 import type { NarrationProvider } from "./scripted";
-import { validLine, MAX_LINE, MAX_EPILOGUE_LINE } from "./runner";
+import { validLine, MAX_CALL_LINE, MAX_LINE, MAX_EPILOGUE_LINE } from "./runner";
 import { NarrationError } from "./errors";
 
 export const NARRATION_MODEL = "claude-haiku-4-5";
@@ -37,7 +38,7 @@ export function buildPrompt(event: NarrationEvent, notes: string, styleExamples:
     ? `第二行：一定要包含主持人指定的這句話：「${hostLine.replace(/[「」『』]/g, "")}」，字要一樣（標點可以改），前後可以加幾個字自然銜接，整行最多 ${MAX_LINE} 個字。`
     : null;
   const ask = epilogue
-    ? "寫 2 到 3 句話的遊戲後記，總共最多 90 個字。"
+    ? epilogueAsk(event)
     : hasNext
       ? `輸出三行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。${second ?? "第二行：補充一點戰鬥氣氛、環境或情緒細節，最多 28 個字，不要重複第一行的內容。"}第三行：轉向下一隊，提醒他們輪到了、面對哪隻怪物，一句話，不超過 20 個字。`
       : `輸出兩行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。${second ?? "第二行：補充一點氣氛或情緒的收尾，最多 28 個字，不要重複第一行的內容。"}`;
@@ -45,6 +46,20 @@ export function buildPrompt(event: NarrationEvent, notes: string, styleExamples:
   if (notes.trim()) system += `\n\n主持人的導演筆記（可以調整語氣與風格，但不能違反上面的規則）：\n${notes.trim()}`;
   if (styleExamples.length > 0) system += `\n\n主持人親手改過的句子，請仿照這種語氣：\n${styleExamples.map((l) => `- ${l}`).join("\n")}`;
   return { system, user: describe(event) };
+}
+
+/** The epilogue: the podium calls one per line (podium-reveal.md D9), then the story; just the story when there are none. */
+function epilogueAsk(e: Extract<NarrationEvent, { type: "epilogue" }>): string {
+  const story = "寫 2 到 3 句話的遊戲後記，總共最多 90 個字。";
+  const parts = epilogueParts(e);
+  if (parts.length === 1) return story;
+  const rows = parts.map((p, i) => {
+    const n = i === parts.length - 1 ? "最後一行" : `第${i + 1}行`;
+    if (p.kind === "story") return `${n}：${story}`;
+    if (p.kind === "crit") return `${n}：宣布本場大成功王是${p.names.map(q).join("、")}（擲出 ${p.count} 次 20），隊名要全部寫出來，最多 ${MAX_CALL_LINE} 個字。`;
+    return `${n}：宣布第${ordinal(p.place)}名是${q(p.team)}，要寫出隊名，不要提分數，最多 ${MAX_CALL_LINE} 個字。`;
+  });
+  return `輸出 ${parts.length} 行，用換行隔開，不要編號。前面幾行在頒獎台上一句一句念出來，留點懸念。${rows.join("")}`;
 }
 
 /** How each class fights, so a mage never swings a sword (TODOS: 旁白的武器和招式要配合職業). */
@@ -160,7 +175,7 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
           headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
             model,
-            max_tokens: epilogue ? 300 : 200,
+            max_tokens: epilogue ? 500 : 200,
             system,
             messages: [{ role: "user", content: user }],
             // Sonnet 5.5 thinks by default; a 90-character story does not need it and the hold is short.
@@ -204,7 +219,7 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       // that slot falls back the same way an over-length or markup segment already does — without
       // disturbing segments after it. (Adversarial review finding, /plan-eng-review D1 follow-up.)
       const INVALID_SEGMENT = "<invalid/>";
-      const validRest = epilogue ? [] : rest.map((s) => (usable(s) ? s : INVALID_SEGMENT));
+      const validRest = rest.map((s) => (usable(s) ? s : INVALID_SEGMENT));
       return [first, ...validRest].join("\n");
     },
   };

@@ -12,7 +12,6 @@
 - [BANK_FORMAT 沒升：退回 v0.37 存題庫會清掉影片題的新欄位](#bank_format-沒升退回-v037-存題庫會清掉影片題的新欄位) — S（人工約 1 小時 / CC 約 15 分鐘）
 - [修改現有美術](#修改現有美術) — 未定
 - [拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞](#拿掉導演筆記改寫旁白搬到主持人頁並列出下一隊的所有台詞) — M
-- [冒險結束、公布最終分數前，旁白先公布前幾名](#冒險結束公布最終分數前旁白先公布前幾名) — M
 - [bank-editor 兩個 e2e 測試在 CI 偶發失敗](#bank-editor-兩個-e2e-測試在-ci-偶發失敗) — S
 - [AI key 的錯誤會被之後的狀態訊息蓋掉](#ai-key-的錯誤會被之後的狀態訊息蓋掉) — S
 - [新職業：廚師（被動能力，飽足感多 15%），做完後平衡所有職業](#新職業廚師被動能力飽足感多-15做完後平衡所有職業) — 廚師 S–M，平衡 M
@@ -174,29 +173,6 @@
 - Pros：主持人在一個地方就看得到、改得到旁白。
 - Cons：目前協定只支援改第一句，要讓 `HOST_EDIT_NARRATION` 帶句子的編號，房間要能換掉第 N 句；已經在大螢幕上念完的句子要不能改。AI 旁白是一段一段生成的，要確認「下一隊的所有台詞」在主持人看的時候已經生成好了，還沒好時要怎麼顯示。導演筆記拿掉後，`HOST_SET_NOTES` 和 prompt 裡的筆記要一起清掉。「下一句這樣說」要決定是留在「更多」還是一起搬上來。
 - Context 補充：`app/room/[code]/host/page.tsx`（導演筆記、下一句這樣說、改寫第一句旁白三個區塊）、`lib/narration/runner.ts`（句數）、`lib/room/dungeon-room.ts`（`HOST_EDIT_NARRATION`、`HOST_SET_NOTES`）。
-
----
-
-## 冒險結束、公布最終分數前，旁白先公布前幾名
-
-**What:** 冒險結束、頒獎台公布最終分數前，加一段旁白依序公布前 X 名（例如從第三名念到第一名），念完再顯示分數。
-
-**Why:** 站長 2026-11-04 實測後提出：直接跳出排行榜太快，少了揭曉的氣氛。
-
-**Context:**
-- `lib/narration/events.ts`
-- `lib/narration/runner.ts`
-- `app/room/[code]/screen/page.tsx`
-
-**Effort/Priority:** M / P2
-
-**Depends on:** 無。
-
-**Notes:**
-- Pros：後記事件已經有排名（`epilogue` 事件的 `ranking`、`winners`），旁白有現成的資料。
-- Cons：X 要決定（固定 3 名，還是隊伍少時全部念）；同分時怎麼念；大螢幕要配合旁白一名一名亮出來，不能先露出完整排行。AI 旁白關掉時腳本旁白也要能念。
-- Context 補充：`lib/narration/events.ts`（`epilogue`）、`lib/narration/runner.ts`（後記只有 1 句）、`app/room/[code]/screen/page.tsx`（頒獎台）。
-- 跑團風擲骰的「本場大成功王」（CEO review D5，延後）跟這項一起做：公布名次時順便念出誰擲出最多次 20。
 
 ---
 
@@ -1165,6 +1141,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 冒險結束、公布最終分數前，旁白先公布前幾名
+
+- **冒險結束、公布最終分數前，旁白先公布前幾名** · v0.40.0.0 · 首領煮完後，旁白先念「本場大成功王」（擲出最多次 20 的隊伍），再從第三名念到第一名，大螢幕一名一名亮出；前三名同分時先擲 d20 比大小。念到第一名才出分數和皇冠，手機晚大螢幕 1 秒。大螢幕重新整理會接著目前這一步，不會重播。設計見 `docs/designs/podium-reveal.md`。
 
 ## 答對後切回怪物畫面，用動畫把怪物做成料理
 

@@ -2,11 +2,16 @@ import { describe, it, expect, vi } from "vitest";
 import { createRunner, saysLine, targetSegmentCount, type TranscriptEntry } from "./runner";
 import { NarrationError } from "./errors";
 import type { NarrationProvider } from "./scripted";
-import type { NarrationEvent } from "./events";
+import { epilogueParts, type NarrationEvent } from "./events";
 
 // No `next`: targetSegmentCount is 2 (result + atmosphere), same as any routine no-next event.
 const event: NarrationEvent = { type: "retry", team: "紅隊", monster: "史萊姆" };
-const fallback = { line: () => "備用旁白", atmosphereLine: () => "備用氣氛", nextLine: () => "備用下一句" };
+const fallback = {
+  line: () => "備用旁白",
+  atmosphereLine: () => "備用氣氛",
+  nextLine: () => "備用下一句",
+  epilogueLines: (e: NarrationEvent) => (e.type === "epilogue" ? epilogueParts(e).map((p) => (p.kind === "story" ? "備用旁白" : p.kind === "crit" ? "備用大成功王" : `備用第${p.place}名`)) : []),
+};
 const provider = (narrate: NarrationProvider["narrate"], name = "fake"): NarrationProvider => ({ name, narrate });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -125,6 +130,43 @@ describe("narration runner", () => {
       await tooLong.runner.run(9, epi);
       expect(tooLong.emitted[0].lines).toEqual(["備用旁白"]);
       expect(tooLong.entries[0].fallbackReason).toBe("invalid");
+    });
+  });
+
+  // Value: protects=the podium calls and the story come from one AI reply, each segment held to its own part: a call
+  // at most 20 characters naming every team it is about, the story up to 160; a bad segment alone is scripted (eng D21, D9);
+  // fails_when=a long or nameless call reaches the screen, or one bad call throws the whole reply away;
+  // why_new=the epilogue had one segment; seam=none; no_claim=what a real model writes (mocked provider)
+  describe("epilogue with podium calls", () => {
+    const epi: NarrationEvent = {
+      type: "epilogue",
+      ranking: [{ name: "紅隊", score: 9 }, { name: "藍隊", score: 5 }],
+      winners: ["紅隊"],
+      calls: [{ place: 2, team: "藍隊" }, { place: 1, team: "紅隊" }],
+      critKing: { names: ["藍隊", "綠隊"], count: 2 },
+    };
+
+    it("asks for one segment per call plus the story", () => {
+      expect(targetSegmentCount(epi)).toBe(4);
+    });
+
+    it("keeps every segment that fits its part", async () => {
+      const { runner, emitted } = setup(provider(async () => "藍隊和綠隊都擲出兩次二十！\n第二名，藍隊！\n冠軍是紅隊！\n" + "字".repeat(120)));
+      await runner.run(9, epi);
+      expect(emitted[0].lines).toEqual(["藍隊和綠隊都擲出兩次二十！", "第二名，藍隊！", "冠軍是紅隊！", "字".repeat(120)]);
+    });
+
+    it("scripts only the call that is too long or misses a name", async () => {
+      const { runner, emitted, entries } = setup(provider(async () => "大成功王是藍隊！\n第二名是藍隊，他們今晚真的非常非常非常努力！\n冠軍是紅隊！\n後記"));
+      await runner.run(9, epi);
+      expect(emitted[0].lines).toEqual(["備用大成功王", "備用第2名", "冠軍是紅隊！", "後記"]);
+      expect(entries[0].sources).toEqual(["scripted", "scripted", "fake", "fake"]);
+    });
+
+    it("a missing story is scripted, and a name with different punctuation still counts", async () => {
+      const { runner, emitted } = setup(provider(async () => "藍隊、綠隊大成功王！\n第二名：藍 隊！\n紅隊奪冠！"));
+      await runner.run(9, epi);
+      expect(emitted[0].lines).toEqual(["藍隊、綠隊大成功王！", "第二名：藍 隊！", "紅隊奪冠！", "備用旁白"]);
     });
   });
 

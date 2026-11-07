@@ -30,6 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import { isClassId, type ClassId, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import type { Beat } from "./podium";
 import type { MonsterSprite } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -105,6 +106,16 @@ export const COOK_SMOKE_MS = 1200;
 export const SERVE_HOLD_MS = COOK_MS + 1000;
 /** The end screen after a boss kill (cooking R8): the boss cooks, its dish holds, and only then the winner, podium and epilogue. */
 export const FINISH_PODIUM_MS = COOK_MS + 3000;
+
+/** The podium reveal of a finished game (docs/designs/podium-reveal.md, eng D20): the room's clock, read by /screen and /play. */
+export interface PodiumReveal {
+  /** Team ids best first, podium ties broken by d20. */
+  ranking: string[];
+  /** Null while the room waits for the narrator's lines (名次揭曉中…). */
+  beats: Beat[] | null;
+  /** How far past the first beat the room's clock was when this STATE was sent; negative before it. */
+  elapsedMs: number;
+}
 
 /** What scores are called: 飽足感 when the bank cooks its monsters (STATE `cuisine`), else 獎勵分. */
 export function scoreName(cuisine: boolean | undefined): string {
@@ -281,6 +292,8 @@ export type ServerMessage =
       cuisine?: true;
       /** The host's last ▶ ⏸ ⟲ for the video on screen. Only for that video's question; treat anything else as paused. */
       media?: MediaCommand;
+      /** A finished game's podium reveal. Absent from older servers and from a game finished before it: show the podium. */
+      podium?: PodiumReveal;
     }
   | { type: "GAME_OVER"; winners: string[] }
   /** Exactly one per event (1-3 segments, played in order). Clients keep the highest eventId they

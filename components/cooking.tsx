@@ -4,7 +4,8 @@
 // a puff of smoke and the dish. Every change is a hard cut between frames (cooking I8, DESIGN.md: no tweens).
 
 import { useEffect, useRef, useState } from "react";
-import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, FINISH_PODIUM_MS, type AnswerReveal } from "@/lib/protocol";
+import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, FINISH_PODIUM_MS, type AnswerReveal, type PodiumReveal } from "@/lib/protocol";
+import { revealMarks } from "@/lib/podium";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { Panel, prefersReducedMotion, Sprite } from "@/components/pixel";
 import { SPRITE_SIZE } from "@/lib/pixel-art";
@@ -84,6 +85,37 @@ export function useFinaleStep(play: boolean, onPlay?: () => void, onDish?: () =>
     return () => timers.forEach(clearTimeout);
   }, [start]);
   return step;
+}
+
+/**
+ * The podium reveal's clock (podium-reveal.md eng D20): ms past its first beat, `lagMs` behind, counted from when this
+ * STATE came in, so every page reads the room's clock and never its own. Re-renders only when a beat changes. Null when
+ * there is no reveal to play: an older server or game, or reduced motion; the page shows the end.
+ */
+export function useRevealTime(podium: PodiumReveal | undefined, lagMs = 0): number | null {
+  const [still] = useState(() => prefersReducedMotion());
+  const [seen, setSeen] = useState(podium);
+  const [t, setT] = useState(() => (podium ? podium.elapsedMs - lagMs : 0));
+  if (podium !== seen) {
+    setSeen(podium);
+    setT(podium ? podium.elapsedMs - lagMs : 0);
+  }
+  useEffect(() => {
+    const beats = podium?.beats;
+    if (!beats) return;
+    const anchor = performance.now() - podium.elapsedMs + lagMs;
+    const marks = revealMarks(beats);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const next = () => {
+      const now = performance.now() - anchor;
+      const mark = marks.find((m) => m > now);
+      // Measured each time, so a phone whose timers were held in the background lands on the right beat.
+      if (mark !== undefined) timer = setTimeout(() => (setT(performance.now() - anchor), next()), mark - now + 5);
+    };
+    next();
+    return () => clearTimeout(timer);
+  }, [podium, lagMs]);
+  return !podium || still ? null : t;
 }
 
 /** The narrator's line once the dish is up (cooking I1): typed and read on the big screen. */

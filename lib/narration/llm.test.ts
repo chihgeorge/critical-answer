@@ -37,11 +37,17 @@ describe("request", () => {
     expect(body.thinking).toEqual({ type: "between_tools" });
   });
 
-  it("keeps only the first line for the epilogue even if the model writes several newline-separated ones (the ask is one block of prose, unlike the multi-segment events)", async () => {
-    const f = async () => ok(reply("火把熄滅，冒險結束。\n這是不該出現的第二行\n第三行也不該出現"));
-    await expect(
-      make(f as unknown as typeof fetch).narrate({ type: "epilogue", ranking: [{ name: "紅隊", score: 9 }], winners: ["紅隊"] }),
-    ).resolves.toBe("火把熄滅，冒險結束。");
+  // Value: protects=an epilogue with podium calls asks for one line per call plus the story and returns every line, a bad
+  // one marked so it is scripted alone (eng D21); fails_when=the extra lines are dropped again or a bad one shifts the rest;
+  // why_new=the epilogue used to keep one line; seam=none; no_claim=what a real model writes (mocked fetch)
+  it("asks an epilogue with podium calls for one line each, then the story, and returns every line", async () => {
+    const f = vi.fn(async () => ok(reply("第二名藍隊！\n<b>紅隊</b>\n火把熄滅，冒險結束。")));
+    const e: NarrationEvent = { type: "epilogue", ranking: [{ name: "紅隊", score: 9 }, { name: "藍隊", score: 5 }], winners: ["紅隊"], calls: [{ place: 2, team: "藍隊" }, { place: 1, team: "紅隊" }] };
+    await expect(make(f as unknown as typeof fetch).narrate(e)).resolves.toBe("第二名藍隊！\n<invalid/>\n火把熄滅，冒險結束。");
+    const body = JSON.parse(((f.mock.calls[0] as unknown as [string, RequestInit])[1].body) as string);
+    expect(body.system).toContain("輸出 3 行");
+    expect(body.system).toContain("第1行：宣布第二名是「藍隊」");
+    expect(body.system).toContain("最後一行：寫 2 到 3 句話的遊戲後記");
   });
 
   it("passes the abort signal to fetch", async () => {

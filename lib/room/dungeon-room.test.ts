@@ -2502,11 +2502,15 @@ describe("LLM narration and director (T8-T10)", () => {
     }
 
     it("is written by the bigger model, sent once, and the scripted one is not used", async () => {
-      const r = await llmRoom((req) => textReply(req.model === EPILOGUE_MODEL ? "漫長的一夜，Team 0 走出了地城。" : "行"));
+      // One reply carries the podium calls, then the story (eng D21).
+      const story = (system: string) => `${system.includes("大成功王") ? "Team 0 大成功王！\n" : ""}第一名是 Team 0！\n漫長的一夜，Team 0 走出了地城。`;
+      const r = await llmRoom((req) => textReply(req.model === EPILOGUE_MODEL ? story(req.system) : "行"));
       await finish(r);
       const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
       expect(epi).toHaveLength(1);
       expect(epi[0].text).toBe("漫長的一夜，Team 0 走出了地城。");
+      const podium = all(r.room).filter((m) => m.type === "STATE").at(-1)!.podium!;
+      expect(podium.beats!.at(-1)).toMatchObject({ kind: "place", place: 1, line: "第一名是 Team 0！" });
       expect(r.calls.some((c) => c.model === EPILOGUE_MODEL && c.user.includes("排名"))).toBe(true);
     });
 

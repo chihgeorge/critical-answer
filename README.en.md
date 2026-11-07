@@ -82,7 +82,7 @@ The big-screen URL is at the top of the host page. For keyboard controls, switch
 - **Boss room**: once the progress points from correct answers reach 15, you enter the boss room; after one team goes in, every other team follows on its next correct answer. The boss's HP is shared; each hit is worth 10 points, and the final blow adds 4 d20s.
 - **Dice**: a correct multiple-choice answer rolls a crit die; a 20 gives half the reward points again. Before a fill-in answer you roll a persuasion check; pass it and you see the first character of the answer. The default question bank is all multiple choice, so no persuasion checks are rolled.
 - **Classes**: the Warrior rolls dice instead of answering, the Mage removes wrong options or reveals the first character, the Cleric answers again after a wrong answer, and the Thief's sneak attack doubles the points for that question.
-- **Winning**: the team with the most reward points wins; ties share the win. The team that defeats the boss is not always the champion.
+- **Winning**: the team with the most reward points wins; a tie in the top three is settled by rolling d20s. The team that defeats the boss is not always the champion.
 
 For the full rules, every number and every exception, see the [full rules](docs/rules.en.md).
 

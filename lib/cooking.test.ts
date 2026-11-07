@@ -6,7 +6,8 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { dishLine, useCookStep, useFinaleStep } from "@/components/cooking";
+import { dishLine, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
+import { PHONE_LAG_MS, revealBeats, revealNow } from "@/lib/podium";
 
 const dish = { name: "史萊姆凍", part: "外膜", method: "冰鎮", comment: "冰冰涼涼。", points: 10, monster: { name: "史萊姆", sprite: "slime" as const, hue: 0 }, room: 0, teamId: "t1" };
 
@@ -30,5 +31,34 @@ describe("the first cooking frame (cooking I3, R8)", () => {
   it("useFinaleStep: a boss kill seen live starts on the monster, a page opened on the end screen goes to the podium", () => {
     expect(first(() => useFinaleStep(true))).toBe("0");
     expect(first(() => useFinaleStep(false))).toBe("4");
+  });
+});
+
+// Value: protects=the screen and the phone open on the room's clock: a page that opens mid-reveal starts at the beat
+// the room is on, the phone PHONE_LAG_MS behind, and a page with no reveal shows the end (podium-reveal.md D7, D16,
+// eng D20, D23); fails_when=a page starts its own clock at 0 (replaying the reveal), the lag is dropped so a phone
+// shows the winner with or before the screen, or an older server's STATE hangs on 名次揭曉中…; why_new=new;
+// seam=none; no_claim=the timers moving the beat on (useEffect does not run here; e2e main-line covers the phone)
+describe("the podium reveal's first frame", () => {
+  const beats = revealBeats([{ id: "a", name: "甲" }, { id: "b", name: "乙" }], ["a", "b"], []);
+  /** "beat result done" as the page's first frame sees it. */
+  const show = (n: { beat: number; result: boolean; done: boolean }) => `${n.beat} ${n.result} ${n.done}`;
+  const at = (elapsedMs: number, lag = 0, b: typeof beats | null = beats) =>
+    first(() => show(revealNow({ beats: b }, useRevealTime({ ranking: ["a", "b"], beats: b, elapsedMs }, lag))));
+
+  it("a page opened mid-reveal is on the room's beat, not the first one", () => {
+    expect(at(4000)).toBe("1 true false");
+    expect(at(-500)).toBe("-1 false false");
+  });
+
+  it("the phone is still waiting when the screen puts first place up", () => {
+    expect(at(3500)).toBe("1 true false");
+    expect(at(3500, PHONE_LAG_MS)).toBe("0 false false");
+    expect(at(3500 + PHONE_LAG_MS, PHONE_LAG_MS)).toBe("1 true false");
+  });
+
+  it("waits while the lines are coming; with no reveal at all it is the end", () => {
+    expect(at(0, 0, null)).toBe("-1 false false");
+    expect(first(() => show(revealNow(undefined, useRevealTime(undefined))))).toBe("-1 true true");
   });
 });

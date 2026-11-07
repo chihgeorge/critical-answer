@@ -15,7 +15,8 @@ import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
-import { useCookStep, useFinaleStep } from "@/components/cooking";
+import { useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
+import { PHONE_LAG_MS, revealAt, revealNow } from "@/lib/podium";
 import { McOption } from "@/components/mc-option";
 import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
@@ -400,14 +401,20 @@ function HandoffForm({ send }: { send: (m: ClientMessage) => void }) {
   );
 }
 
-/** The phone's end card. After a boss kill seen live it waits with the big screen's cooking (cooking I5), so no phone
- * names the winner before the podium does. */
-function FinishedPanel({ won, finale, onPodium }: { won: boolean; finale: boolean; onPodium: () => void }) {
-  const step = useFinaleStep(finale, undefined, undefined, onPodium);
+/** The phone's end card. It waits out the big screen's cooking (cooking I5) and the place calls, on the room's clock and
+ * PHONE_LAG_MS behind it, so no phone names the winner before the podium does (podium-reveal.md D16, eng D23). */
+function FinishedPanel({ won, finale, podium, onPodium }: { won: boolean; finale: boolean; podium?: StateMessage["podium"]; onPodium: () => void }) {
+  const step = useFinaleStep(finale);
+  const t = useRevealTime(podium, PHONE_LAG_MS);
+  const up = step === 4 && revealNow(podium, t).result;
+  useEffect(() => {
+    if (up) onPodium();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [up]);
   return (
     <Panel tone="lav" className="px-4 py-5 text-center">
       <div className="text-[26px]">遊戲結束！</div>
-      <div className="mt-2 text-[18px]">{step !== 4 ? "冒險結束！看大螢幕 📺" : won ? "🏆 你們獲勝了！" : "感謝參與！"}</div>
+      <div className="mt-2 text-[18px]">{!up ? "冒險結束！看大螢幕 📺" : won ? "🏆 你們獲勝了！" : "感謝參與！"}</div>
     </Panel>
   );
 }
@@ -522,6 +529,9 @@ export default function PlayPage() {
             setFinale(true);
             setPodium(false);
           }
+          // The places are still being called, even on a phone that just reconnected: the story (it names the winner)
+          // waits for FinishedPanel's onPodium.
+          if (msg.phase === "finished" && msg.podium && !(msg.podium.beats && revealAt(msg.podium.beats, msg.podium.elapsedMs - PHONE_LAG_MS).result)) setPodium(false);
           setGame(msg);
           if (msg.view.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           lastGame.current = msg;
@@ -772,7 +782,7 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {finished && game && <FinishedPanel won={game.winners.includes(teamId)} finale={finale} onPodium={() => setPodium(true)} />}
+        {finished && game && <FinishedPanel won={game.winners.includes(teamId)} finale={finale} podium={game.podium} onPodium={() => setPodium(true)} />}
 
         <div className="mt-auto">
           <DialogueBox

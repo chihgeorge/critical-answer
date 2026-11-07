@@ -52,7 +52,7 @@ test("the host ends the game early from the drawer", async ({ browser }) => {
   await host.getByRole("button", { name: "結束冒險" }).click(); // first tap only arms it
   await host.getByRole("button", { name: "確定結束？" }).click();
 
-  await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible();
+  await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible({ timeout: 15_000 }); // first place is called first
   await expect(screen.getByTestId("final-blow")).toHaveCount(0);
 });
 
@@ -68,7 +68,7 @@ test("the host takes everyone back to the lobby and starts another game", async 
   await host.getByRole("button", { name: "⚙ 更多" }).click();
   await host.getByRole("button", { name: "結束冒險" }).click();
   await host.getByRole("button", { name: "確定結束？" }).click();
-  await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible();
+  await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible({ timeout: 15_000 }); // first place is called first
 
   await host.screenshot({ path: ".gstack/tmp/host-back-to-lobby.png" });
   await host.getByRole("button", { name: "回到大廳，再玩一場" }).click();

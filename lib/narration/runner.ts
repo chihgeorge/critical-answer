@@ -3,7 +3,7 @@
 // with scripted fallbacks segment-by-segment, same as before — see run()).
 // No upgrade, no second message for the same event.
 
-import type { NarrationEvent, NextTurn } from "./events";
+import { epilogueParts, type EpiloguePart, type NarrationEvent, type NextTurn } from "./events";
 import type { NarrationProvider } from "./scripted";
 
 /** One narration segment. 40 was too tight for the tone the model writes; 50 fits the dialogue box in two lines. */
@@ -12,12 +12,21 @@ export const MAX_LINE = 50;
 export const DEFAULT_HOLD_MS = 3000;
 export const DEFAULT_EPILOGUE_HOLD_MS = 15000;
 export const MAX_EPILOGUE_LINE = 160;
+/** A place call or the crit king's line, read in one podium beat (podium-reveal.md D9). */
+export const MAX_CALL_LINE = 20;
+
+/** An AI epilogue segment fits its part: a call is short and names every team it is about; the story is long. */
+export function fitsPart(part: EpiloguePart, line: string): boolean {
+  if (part.kind === "story") return validLine(line, MAX_EPILOGUE_LINE);
+  const names = part.kind === "crit" ? part.names : [part.team];
+  return validLine(line, MAX_CALL_LINE) && names.every((n) => saysLine(line, n));
+}
 
 /** Segment count for a non-epilogue event: 3 (result + atmosphere + transition) when there's a next
  * team, 2 (result + atmosphere) when there isn't — boss-kill, or the game's last judged event. See
  * docs/designs/multi-segment-narration.md's D3. */
 export function targetSegmentCount(event: NarrationEvent): number {
-  if (event.type === "epilogue") return 1;
+  if (event.type === "epilogue") return epilogueParts(event).length;
   return event.next ? 3 : 2;
 }
 
@@ -63,7 +72,12 @@ export function validLine(line: unknown, max = MAX_LINE): line is string {
 
 export function createRunner(opts: {
   provider: NarrationProvider;
-  fallback: { line(event: NarrationEvent): string; atmosphereLine(event: NarrationEvent): string; nextLine(next: NextTurn): string };
+  fallback: {
+    line(event: NarrationEvent): string;
+    atmosphereLine(event: NarrationEvent): string;
+    nextLine(next: NextTurn): string;
+    epilogueLines(event: NarrationEvent): string[];
+  };
   holdMs?: number;
   /** The epilogue is one long call after the game, so it may take longer. */
   epilogueHoldMs?: number;
@@ -105,10 +119,13 @@ export function createRunner(opts: {
       // Fill each segment independently — a good segment 0 from the provider stands even if segment 1
       // came back empty or too long; that segment alone falls back to scripted. Same mix-and-match
       // spirit as the original 2-segment design (the "then" line could fall back on its own).
+      const parts = event.type === "epilogue" ? epilogueParts(event) : null;
+      let scriptedEpilogue: string[] | undefined;
       const fallbackFor = (i: number): string => {
         // event.type === "epilogue" (not the isEpilogue local) narrows event's type here, so
         // .next below is safe to access on the non-epilogue branch.
-        if (event.type === "epilogue" || i === 0) return opts.fallback.line(event);
+        if (event.type === "epilogue") return (scriptedEpilogue ??= opts.fallback.epilogueLines(event))[i];
+        if (i === 0) return opts.fallback.line(event);
         if (i === targetCount - 1 && event.next) return opts.fallback.nextLine(event.next);
         return opts.fallback.atmosphereLine(event);
       };
@@ -116,8 +133,10 @@ export function createRunner(opts: {
       const sources: string[] = [];
       for (let i = 0; i < targetCount; i++) {
         const candidate = providerLines?.[i];
-        // Segment 0 already passed validLine(max) above (that's what set providerLines).
-        if (candidate !== undefined && (i === 0 || validLine(candidate, max))) {
+        // Segment 0 already passed validLine(max) above (that's what set providerLines); an epilogue's every segment
+        // is held to its own part.
+        const fits = parts ? candidate !== undefined && fitsPart(parts[i], candidate) : i === 0 || validLine(candidate, max);
+        if (candidate !== undefined && fits) {
           lines.push(candidate);
           sources.push(providerName);
         } else {
