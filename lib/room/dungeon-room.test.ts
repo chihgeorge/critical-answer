@@ -5,10 +5,11 @@ import type { Conn, RoomIO } from "./io";
 import { DIFFICULTIES, answerText, bossPhaseStates, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
 import { catalogMonster, variantOf } from "../monster-catalog";
 import { BANK } from "../question-bank-data";
-// Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
+// Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions, with
+// the bank's own monsters (no per-game draw) so a test knows which monster stands in which room.
 vi.mock("../question-bank-data", async (actual) => {
   const { asTextBank } = await import("../text-bank");
-  return { BANK: asTextBank((await actual<typeof import("../question-bank-data")>()).BANK) };
+  return { BANK: { ...asTextBank((await actual<typeof import("../question-bank-data")>()).BANK), randomMonsters: undefined } };
 });
 import { checkKey, currentTurnTeamId, setTeamOnline } from "../game-state";
 import { EPILOGUE_MODEL } from "../narration/llm";
@@ -346,6 +347,19 @@ describe("HOST_START", () => {
     expect(room.game!.rooms).toEqual(roomTemplates(BANK));
     expect(room.game!.boss.questionIds).toEqual(bossPhaseStates(BANK)[0].questionIds);
     expect(lastBroadcast(room)).toMatchObject({ type: "STATE", phase: "playing" });
+  });
+
+  it("a bank with randomMonsters draws this game's monsters: different room monsters, any boss, shown on the question", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    (room as any).bank = { ...BANK, randomMonsters: true };
+    joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    const ids = room.game!.rooms.map((r) => r.monsterId!);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.every((id) => !catalogMonster(id).boss)).toBe(true);
+    expect(catalogMonster(room.game!.bossMonsterId!).boss).toBe(true);
+    expect(room.game!.rooms.map((r) => r.dish)).toEqual(ids.map((id) => catalogMonster(id).dish.name));
+    expect(lastBroadcast(room).question.monster.id).toBe(ids[0]);
   });
 
   it("rejects starting twice", () => {

@@ -67,6 +67,30 @@ export function catalogMonster(id: string): CatalogMonster {
   return m;
 }
 
+/** This game's monsters. A bank with `randomMonsters` draws fresh ones each game so every catalog
+ * monster comes up about as often: rooms deal from a shuffled deck of room monsters (no repeat until
+ * the deck runs out), the boss is any boss. Without it, the bank's own picks. */
+export function gameMonsters(
+  bank: { rooms: { monster: string }[]; boss: { monster: string }; randomMonsters?: boolean },
+  rng: () => number,
+): { rooms: string[]; boss: string } {
+  if (!bank.randomMonsters) return { rooms: bank.rooms.map((r) => r.monster), boss: bank.boss.monster };
+  const ids = (boss: boolean) => MONSTERS.filter((m) => m.boss === boss).map((m) => m.id);
+  const deck: string[] = [];
+  const rooms = bank.rooms.map(() => {
+    if (deck.length === 0) {
+      deck.push(...ids(false));
+      for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+      }
+    }
+    return deck.pop()!;
+  });
+  const bosses = ids(true);
+  return { rooms, boss: bosses[Math.floor(rng() * bosses.length)] };
+}
+
 /** Repeat appearances (D4, D5): a recolor, a hat on the head and a title on the nameplate. */
 export const ACCESSORIES = ["crown", "party-hat", "flower", "headband", "bow", "pirate-hat"] as const;
 export type Accessory = (typeof ACCESSORIES)[number];

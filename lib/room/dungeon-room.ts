@@ -59,7 +59,7 @@ import {
   type SoundCue,
   SERVE_HOLD_MS,
 } from "../protocol";
-import { catalogMonster } from "../monster-catalog";
+import { catalogMonster, gameMonsters } from "../monster-catalog";
 import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
@@ -608,9 +608,14 @@ export class DungeonRoom {
     return "restored";
   }
 
+  /** This game's boss (gameMonsters), or the bank's when no game drew one. */
+  private bossId() {
+    return this.game?.bossMonsterId ?? this.bank.boss.monster;
+  }
+
   /** The boss as the stage draws it (a boss never wears a variant). */
   private bossLook() {
-    const m = catalogMonster(this.bank.boss.monster);
+    const m = catalogMonster(this.bossId());
     return { id: m.id, name: m.name, sprite: m.sprite, hue: m.hue };
   }
 
@@ -625,7 +630,7 @@ export class DungeonRoom {
     // The team's own count from when it walked in, so its monster never changes mid-room (monster-catalog.md §3).
     const roomMonster = game.rooms[team.roomIndex]?.monsterId;
     const defeats = team.metDefeats === undefined || !roomMonster ? game.defeats ?? {} : { ...game.defeats, [roomMonster]: team.metDefeats };
-    const pub = publicQuestion(this.bank, id, team.roomIndex, this.room.env?.R2_PUBLIC_BASE_URL ?? "", game.optionOrder[id], { seed: game.variantSeed ?? 0, defeats });
+    const pub = publicQuestion(this.bank, id, team.roomIndex, this.room.env?.R2_PUBLIC_BASE_URL ?? "", game.optionOrder[id], { seed: game.variantSeed ?? 0, defeats }, { room: roomMonster, boss: this.bossId() });
     const q = this.question(id);
     return pub ? { pub, answer: q ? answerText(q) : "" } : null;
   }
@@ -1361,7 +1366,7 @@ export class DungeonRoom {
     this.setCue("boss-phase");
     const phase = this.bank.boss.phases[game.boss.phaseIndex];
     this.broadcastState();
-    const event: NarrationEvent = { type: "boss-phase", monster: catalogMonster(this.bank.boss.monster).name, phase: game.boss.phaseIndex + 1, name: phase.name, rule: phase.rule };
+    const event: NarrationEvent = { type: "boss-phase", monster: catalogMonster(this.bossId()).name, phase: game.boss.phaseIndex + 1, name: phase.name, rule: phase.rule };
     const next = this.nextTurn();
     void this.narrate(eventId, next ? { ...event, next } : event);
   }
@@ -1480,9 +1485,10 @@ export class DungeonRoom {
     }
 
     const [firstPhase, ...laterPhases] = bossPhaseStates(this.bank);
-    this.game = createGame(
+    const monsters = gameMonsters(this.bank, this.rng);
+    const game = createGame(
       this.pendingTeams,
-      roomTemplates(this.bank),
+      roomTemplates(this.bank, monsters.rooms),
       poolQuestionIds(this.bank),
       firstPhase.questionIds,
       DEFAULT_GAME_CONFIG,
@@ -1491,9 +1497,10 @@ export class DungeonRoom {
       this.bank.boss.hitReward,
       shuffledOptionOrders(this.bank, this.rng),
       laterPhases,
-      catalogMonster(this.bank.boss.monster).dish.name,
+      catalogMonster(monsters.boss).dish.name,
       this.playedQuestionIds,
     );
+    this.game = this.bank.randomMonsters ? { ...game, bossMonsterId: monsters.boss } : game;
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.
     this.aiNarration = aiNarration !== false;
     this.intro = intro ? 1 : null;
@@ -1677,7 +1684,7 @@ export class DungeonRoom {
     // The dish the answer just ate: game-state appended it to the team's dishes (a game saved before dishes appends none).
     const before = prev.teams.find((t) => t.id === teamId);
     const ateDish = (game.teams.find((t) => t.id === teamId)?.dishes?.length ?? 0) > (before?.dishes?.length ?? 0);
-    const ateFrom = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bank.boss.monster : this.bank.rooms[before.roomIndex]?.monster;
+    const ateFrom = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bossId() : (prev.rooms[before.roomIndex]?.monsterId ?? this.bank.rooms[before.roomIndex]?.monster);
     const dish = ateFrom ? catalogMonster(ateFrom).dish : undefined;
     const told = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
     // The dish is named only once it is served on the big screen (cooking I1, I4); the line just counts 飽足感.

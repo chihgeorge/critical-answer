@@ -1,6 +1,7 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
 import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState } from "./answer";
 import { stubSpeechSynthesis, ttsCalls } from "./tts";
+import { MONSTERS } from "../lib/monster-catalog";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -176,9 +177,11 @@ test("game over: the boss cooks, then the podium, then the epilogue arrives on t
   host.send(JSON.stringify({ type: "HOST_START", aiNarration: false })); // never the real API in tests
   await expect.poll(() => box.state?.phase).toBe("playing");
   // The boss stands on the cooking stage before the pot (cooking R8). Its frame lasts COOK_POT_MS, so watch every frame from now.
+  // The bundled bank draws its boss per game (gameMonsters), so any boss counts.
+  const bosses = MONSTERS.filter((m) => m.boss).map((m) => m.name);
   const bossOnStage = screen.waitForFunction(
-    () => document.body.innerText.includes("冒　險　結　束") && [...document.querySelectorAll("div")].some((e) => e.textContent === "深淵小黑龍"),
-    null,
+    (names) => document.body.innerText.includes("冒　險　結　束") && [...document.querySelectorAll("div")].some((e) => names.includes(e.textContent ?? "")),
+    bosses,
     { polling: "raf", timeout: 80_000 },
   );
   let sawBossRoom = false;

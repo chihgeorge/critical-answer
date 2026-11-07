@@ -227,6 +227,8 @@ export interface GameState {
   defeats?: Record<string, number>;
   /** Picks each game's first variant (R1). Absent (read as 0) in saves from before the catalog. */
   variantSeed?: number;
+  /** This game's boss when the bank draws monsters per game (gameMonsters). Absent: the bank's own boss. */
+  bossMonsterId?: string;
   config: GameConfig;
   phase: GamePhase;
   /** Team ids tied for first place once phase === "finished". */

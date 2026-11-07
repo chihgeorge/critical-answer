@@ -374,6 +374,13 @@ export default function BankEditorPage() {
               onRoom={updateRoom}
               onHitReward={(hitReward) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, hitReward } } : prev))}
               onBossMonster={(monster) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, monster } } : prev))}
+              onRandomMonsters={(on) =>
+                setBank((prev) => {
+                  if (!prev) return prev;
+                  const { randomMonsters: _, ...rest } = prev; // eslint-disable-line @typescript-eslint/no-unused-vars
+                  return on ? { ...rest, randomMonsters: true } : rest;
+                })
+              }
             />
           ) : tab === "boss" ? (
             <>
@@ -447,11 +454,13 @@ function RoomsEditor({
   onRoom,
   onHitReward,
   onBossMonster,
+  onRandomMonsters,
 }: {
   bank: Bank;
   onRoom: (roomIndex: number, patch: Partial<Bank["rooms"][number]>) => void;
   onHitReward: (hitReward: number) => void;
   onBossMonster: (monster: string) => void;
+  onRandomMonsters: (on: boolean) => void;
 }) {
   const score = scoreName(true);
   return (
@@ -459,6 +468,10 @@ function RoomsEditor({
       <div data-testid="bank-rooms" className="flex flex-col gap-2">
         <h2 className="text-[18px]">房間（{bank.rooms.length} 間）</h2>
         <div className="text-[13px]">難度決定從哪個題庫抽題、答對拿幾點進度分；{score}決定冠軍。打倒怪物會端上牠的菜。同一隻怪物可以放在好幾房，再次登場時會換顏色、戴配件。</div>
+        <label className="flex items-center gap-2 text-[15px]">
+          <input type="checkbox" data-testid="bank-random-monsters" checked={!!bank.randomMonsters} onChange={(e) => onRandomMonsters(e.target.checked)} />
+          每場隨機抽怪（每間房換一隻不重複的小怪、首領也隨機；下面選的怪物這時不用）
+        </label>
         {bank.rooms.map((r, i) => (
           <div key={i} data-testid={`bank-room-${i}`} className="flex flex-wrap items-center gap-2 text-[15px]">
             <span className="w-[64px]">第 {i + 1} 房</span>

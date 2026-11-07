@@ -104,6 +104,12 @@ describe("parseBank", () => {
     expect(parseBank(valid()).pools[1]).toHaveLength(2);
   });
 
+  it("keeps randomMonsters only when it is true", () => {
+    expect(parseBank({ ...valid(), randomMonsters: true }).randomMonsters).toBe(true);
+    expect(parseBank({ ...valid(), randomMonsters: "yes" })).not.toHaveProperty("randomMonsters");
+    expect(parseBank(valid())).not.toHaveProperty("randomMonsters");
+  });
+
   const pooled = () => ({
     pools: { "1": [q("a1"), q("a2")], "3": [q("c1")] },
     rooms: [
