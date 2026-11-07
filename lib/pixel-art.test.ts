@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { drawHomeScene, drawSprite, homeSceneCell, SPRITE_SIZE } from "./pixel-art";
+import { drawHomeScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE } from "./pixel-art";
+import { ACCESSORIES, MONSTERS } from "./monster-catalog";
 import type { SpriteKind } from "./sprite-kind";
 
 // A stand-in canvas: drawHomeScene only sets width/height and asks for a 2D context, and returns
@@ -54,6 +55,24 @@ describe("drawSprite", () => {
         const cv = fakeCanvas();
         drawSprite(cv, kind, variant);
         expect([kind, cv.width, cv.height]).toEqual([kind, w, h]);
+      }
+    }
+  });
+});
+
+describe("hats on a repeat appearance (docs/designs/monster-catalog.md §3)", () => {
+  // Value: protects=every hat, anchored on every room monster's head, stays inside the monster's canvas, and is 8–11 cells wide (R5); fails_when=an anchor or a hat grid grows past the canvas; why_new=new sprites; seam=none; no_claim=how good they look (PNG review)
+  it("fits every hat on every room monster", () => {
+    for (const m of MONSTERS.filter((x) => !x.boss)) {
+      const [mw, mh] = SPRITE_SIZE[m.sprite];
+      const [ax, ay] = HEAD_ANCHOR[m.sprite];
+      for (const a of ACCESSORIES) {
+        const [w, h] = SPRITE_SIZE[`acc-${a}`];
+        expect(w, a).toBeGreaterThanOrEqual(8);
+        expect(w, a).toBeLessThanOrEqual(11);
+        const left = ax - Math.floor(w / 2);
+        const top = ay - h + 1;
+        expect(left >= 0 && top >= 0 && left + w <= mw && ay <= mh - 1, `${a} on ${m.sprite}`).toBe(true);
       }
     }
   });

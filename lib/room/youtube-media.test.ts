@@ -26,10 +26,10 @@ function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
 
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
-function game(questions: object[], dish?: object) {
+function game(questions: object[]) {
   const bank = parseBank({
-    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0, ...(dish ? { dish } : {}) }, baseDifficulty: 1, questions }],
-    boss: { monster: { name: "小黑龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [text("b1")] },
+    rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions }],
+    boss: { monster: "dragon", maxHp: 3, questions: [text("b1")] },
   });
   const io = { broadcast: vi.fn() } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
   const room = new DungeonRoom(io, () => 0, { bank, epilogueDelayMs: 0 });
@@ -99,7 +99,7 @@ describe("HOST_MEDIA", () => {
   });
 
   it("🍲 上菜 pauses the reveal's video before the cooking (cooking I9)", () => {
-    const g = game([video("v1"), video("v2")], { name: "史萊姆凍", part: "外膜", method: "冰鎮", comment: "冰冰涼涼。" });
+    const g = game([video("v1"), video("v2")]);
     const id = g.state().question.id;
     g.correct();
     g.media("play", id);

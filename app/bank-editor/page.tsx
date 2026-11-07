@@ -10,8 +10,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { LabelChip, Panel, PixelButton } from "@/components/pixel";
-import { DIFFICULTIES, DISH_FIELDS, DISH_LIMITS, MAX_BOSS_HP, MAX_PROMPT, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, hasCuisine, textQuestionGaps, type Bank, type BankDish, type BankMonster, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
+import { DIFFICULTIES, MAX_BOSS_HP, MAX_PROMPT, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { MONSTERS, monsterById } from "@/lib/monster-catalog";
+import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { scoreName } from "@/lib/protocol";
 import type { Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
@@ -81,37 +83,7 @@ function contentError(label: string, c: MediaContent | undefined): string | null
   return null;
 }
 
-const DISH_LABELS: Record<keyof BankDish, string> = { part: "部位", method: "做法", name: "菜名", comment: "評語" };
-
-/** A monster whose four dish boxes are all empty has no dish (docs/designs/monster-cuisine.md). */
-function withoutEmptyDishes(bank: Bank): Bank {
-  const clean = (m: BankMonster): BankMonster => {
-    if (!m.dish || DISH_FIELDS.some((k) => m.dish![k].trim())) return m;
-    const rest = { ...m };
-    delete rest.dish;
-    return rest;
-  };
-  return { ...bank, rooms: bank.rooms.map((r) => ({ ...r, monster: clean(r.monster) })), boss: { ...bank.boss, monster: clean(bank.boss.monster) } };
-}
-
-/** The same rules as parseDish (lib/question-bank.ts), worded for the editor. Expects withoutEmptyDishes first. */
-function dishError(where: string, m: BankMonster): string | null {
-  if (!m.dish) return null;
-  for (const k of DISH_FIELDS) {
-    const v = m.dish[k].trim();
-    if (!v) return `${where}的菜：「${DISH_LABELS[k]}」還沒填（四格都空就是沒有菜）`;
-    if (Array.from(v).length > DISH_LIMITS[k]) return `${where}的菜：「${DISH_LABELS[k]}」最多 ${DISH_LIMITS[k]} 個字`;
-  }
-  return null;
-}
-
 function validationError(bank: Bank): string | null {
-  for (const [i, r] of bank.rooms.entries()) {
-    const err = dishError(`第 ${i + 1} 房`, r.monster);
-    if (err) return err;
-  }
-  const bossDish = dishError("首領", bank.boss.monster);
-  if (bossDish) return bossDish;
   for (const [i, r] of bank.rooms.entries()) {
     if (bank.pools[r.difficulty].length === 0) return `第 ${i + 1} 房是難度 ${r.difficulty}，但難度 ${r.difficulty} 題庫沒有題目`;
   }
@@ -152,6 +124,10 @@ export default function BankEditorPage() {
   const [saving, setSaving] = useState(false);
   /** The stored bank can't be read by this version: what's shown is the bundled fallback, and nothing may be saved. */
   const [readOnly, setReadOnly] = useState(false);
+  /** The stored bank is an older format (docs/designs/monster-catalog.md §5): shown is the default bank, and a save replaces the old one. */
+  const [outdated, setOutdated] = useState<number | null>(null);
+  /** The server answered with whole monster objects: a Worker from before the catalog, mid-deploy (R3). */
+  const [staleServer, setStaleServer] = useState(false);
   // Only the latest load may land: dev StrictMode runs the auto-load effect twice, and a response that
   // arrived late used to overwrite edits made after a newer load (CI on main, 2026-10-25).
   const loadSeq = useRef(0);
@@ -174,12 +150,15 @@ export default function BankEditorPage() {
         setError(`Load failed: ${res.status}`);
         return;
       }
-      const versioned: { bank: Bank; version: number; unreadable?: true } = await res.json();
+      const versioned: { bank: Bank; version: number; unreadable?: true; outdated?: number } = await res.json();
       if (seq !== loadSeq.current) return;
+      const stale = [...versioned.bank.rooms.map((r) => r.monster), versioned.bank.boss.monster].some((m) => typeof m !== "string");
       setBank(versioned.bank);
       savedBank.current = versioned.bank;
       setVersion(versioned.version);
-      setReadOnly(!!versioned.unreadable);
+      setReadOnly(!!versioned.unreadable || stale);
+      setStaleServer(stale);
+      setOutdated(versioned.outdated ?? null);
     } catch {
       if (seq === loadSeq.current) setError("Could not reach the server.");
     } finally {
@@ -197,9 +176,8 @@ export default function BankEditorPage() {
 
   const [ownerKey, setOwnerKey] = useOwnerKey((restoredKey) => void load(restoredKey));
 
-  const save = async (edited: Bank) => {
+  const save = async (next: Bank) => {
     if (version === null) return; // no successful load yet — nothing to compare against
-    const next = withoutEmptyDishes(edited);
     const invalid = validationError(next);
     if (invalid) {
       setError(invalid);
@@ -226,6 +204,7 @@ export default function BankEditorPage() {
       setBank(versioned.bank);
       savedBank.current = versioned.bank;
       setVersion(versioned.version);
+      setOutdated(null);
     } catch {
       setError("Could not reach the server.");
     } finally {
@@ -350,7 +329,21 @@ export default function BankEditorPage() {
         )}
       </Panel>
 
-      {bank && readOnly && (
+      {bank && staleServer && (
+        <Panel role="alert" className="p-4 text-[15px]" style={{ background: "#ffd9d9" }}>
+          <span data-testid="bank-editor-stale-server">伺服器還是舊版，等部署完成再重新載入。</span>
+        </Panel>
+      )}
+
+      {bank && outdated !== null && !readOnly && (
+        <Panel role="status" className="p-4 text-[15px]" style={{ background: "var(--warn)", color: "var(--ink)" }}>
+          <span data-testid="bank-editor-outdated">
+            正式站題庫是舊格式（格式 {outdated}），這版讀不懂。畫面上是預設題庫；按「儲存」會把舊題庫蓋掉。要留舊題庫，先照題庫指南備份。
+          </span>
+        </Panel>
+      )}
+
+      {bank && readOnly && !staleServer && (
         <Panel role="alert" className="p-4 text-[15px]" style={{ background: "#ffd9d9" }}>
           <span data-testid="bank-editor-readonly">
             存著的題庫這個版本讀不懂（可能是回滾到比較舊的版本），下面顯示的是預設題目，不是你的題庫。你的題庫還在，沒有被蓋掉；在讀得懂之前不能儲存或上傳圖片。救援步驟見 docs/question-bank.md 的「題庫卡住時怎麼救」。
@@ -380,12 +373,12 @@ export default function BankEditorPage() {
               bank={bank}
               onRoom={updateRoom}
               onHitReward={(hitReward) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, hitReward } } : prev))}
-              onBossDish={(dish) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, monster: { ...prev.boss.monster, dish } } } : prev))}
+              onBossMonster={(monster) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, monster } } : prev))}
             />
           ) : tab === "boss" ? (
             <>
               <Panel className="p-4 text-[16px]">
-                首領 · {bank.boss.monster.name} · {bank.boss.phases.length} 個階段 · {bossQuestions(bank).length} 題
+                首領 · {monsterById(bank.boss.monster)?.name ?? ""} · {bank.boss.phases.length} 個階段 · {bossQuestions(bank).length} 題
                 <div className="text-[13px]">首領房的隊伍輪流回答目前階段的題目。打空一個階段的血（或它的題目都出完）就換下一階段，大螢幕這時才揭曉它的名稱和規則；玩家不會知道總共有幾個階段。</div>
               </Panel>
               {bank.boss.phases.map((p, i) => {
@@ -447,29 +440,29 @@ export default function BankEditorPage() {
   );
 }
 
-/** Each room's difficulty (which pool it draws from) and reward, and the boss's reward per hit. Monster
- * names and sprites are not editable here. */
+/** Each room's monster, difficulty (which pool it draws from) and reward, and the boss and its reward per hit.
+ * Monsters come from the catalog only, each with its own dish (docs/designs/monster-catalog.md §4). */
 function RoomsEditor({
   bank,
   onRoom,
   onHitReward,
-  onBossDish,
+  onBossMonster,
 }: {
   bank: Bank;
   onRoom: (roomIndex: number, patch: Partial<Bank["rooms"][number]>) => void;
   onHitReward: (hitReward: number) => void;
-  onBossDish: (dish: BankDish) => void;
+  onBossMonster: (monster: string) => void;
 }) {
-  const score = scoreName(hasCuisine(withoutEmptyDishes(bank)));
+  const score = scoreName(true);
   return (
     <Panel className="flex flex-col gap-2 p-4">
       <div data-testid="bank-rooms" className="flex flex-col gap-2">
         <h2 className="text-[18px]">房間（{bank.rooms.length} 間）</h2>
-        <div className="text-[13px]">難度決定從哪個題庫抽題、答對拿幾點進度分；{score}決定冠軍。怪物有菜時，打倒牠會端上這道菜，分數改叫飽足感。</div>
+        <div className="text-[13px]">難度決定從哪個題庫抽題、答對拿幾點進度分；{score}決定冠軍。打倒怪物會端上牠的菜。同一隻怪物可以放在好幾房，再次登場時會換顏色、戴配件。</div>
         {bank.rooms.map((r, i) => (
           <div key={i} data-testid={`bank-room-${i}`} className="flex flex-wrap items-center gap-2 text-[15px]">
             <span className="w-[64px]">第 {i + 1} 房</span>
-            <span className="min-w-0 flex-1 truncate">{r.monster.name}</span>
+            <MonsterPicker testId={`bank-room-${i}-monster`} label={`第 ${i + 1} 房的怪物`} value={r.monster} boss={false} onChange={(monster) => onRoom(i, { monster })} />
             <label className="flex items-center gap-1">
               難度
               <select
@@ -488,12 +481,11 @@ function RoomsEditor({
               {score}
               <input type="number" min={0} step={1} className="px-input !w-[72px] !py-1" value={r.reward} onChange={(e) => onRoom(i, { reward: toReward(e.target.value) })} />
             </label>
-            <DishFields testId={`bank-room-${i}-dish`} dish={r.monster.dish} onChange={(dish) => onRoom(i, { monster: { ...r.monster, dish } })} />
           </div>
         ))}
         <div className="flex flex-wrap items-center gap-2 text-[15px]">
           <span className="w-[64px]">首領</span>
-          <span className="min-w-0 flex-1 truncate">{bank.boss.monster.name}</span>
+          <MonsterPicker testId="bank-boss-monster" label="首領" value={bank.boss.monster} boss onChange={onBossMonster} />
           <label className="flex items-center gap-1">
             每打中一下
             <input
@@ -508,33 +500,32 @@ function RoomsEditor({
             分
           </label>
         </div>
-        <DishFields testId="bank-boss-dish" dish={bank.boss.monster.dish} onChange={onBossDish} />
         <div className="text-[13px]">最後一擊另外加 4 顆 D20（4～80 分）。</div>
       </div>
     </Panel>
   );
 }
 
-const NO_DISH: BankDish = { part: "", method: "", name: "", comment: "" };
-
-/** A monster's dish: four boxes, all empty for none (docs/designs/monster-cuisine.md). */
-function DishFields({ testId, dish, onChange }: { testId: string; dish: BankDish | undefined; onChange: (dish: BankDish) => void }) {
-  const d = dish ?? NO_DISH;
+/** A catalog monster picker: room monsters for a room, bosses for the boss, with the monster, its dish and the dish's name. */
+function MonsterPicker({ testId, label, value, boss, onChange }: { testId: string; label: string; value: string; boss: boolean; onChange: (id: string) => void }) {
+  const m = monsterById(value);
   return (
-    <div data-testid={testId} className="flex basis-full flex-wrap items-center gap-2 pl-[72px] text-[13px]">
-      🍲
-      {DISH_FIELDS.map((k) => (
-        <input
-          key={k}
-          aria-label={DISH_LABELS[k]}
-          placeholder={DISH_LABELS[k]}
-          maxLength={DISH_LIMITS[k] * 2}
-          className={`px-input !py-1 ${k === "comment" ? "!w-[240px]" : "!w-[120px]"}`}
-          value={d[k]}
-          onChange={(e) => onChange({ ...d, [k]: e.target.value })}
-        />
-      ))}
-    </div>
+    <span data-testid={testId} className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      <select aria-label={label} className="px-input !w-auto !py-1" value={value} onChange={(e) => onChange(e.target.value)}>
+        {MONSTERS.filter((x) => x.boss === boss).map((x) => (
+          <option key={x.id} value={x.id}>
+            {x.name}
+          </option>
+        ))}
+      </select>
+      {m && (
+        <>
+          <Sprite kind={m.sprite} hue={m.hue} scale={1} />
+          <Sprite kind={DISH_SPRITE[m.sprite]} hue={m.hue} scale={1} />
+          <span className="text-[13px]">🍲 {m.dish.name}</span>
+        </>
+      )}
+    </span>
   );
 }
 

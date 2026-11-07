@@ -29,6 +29,7 @@
 // The first HOST_CLAIM for a room sets it (trust on first use, on a 4-letter
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
+import type { Accessory } from "./monster-catalog";
 import { isClassId, type ClassId, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { MonsterSprite } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
@@ -56,7 +57,9 @@ export interface PublicQuestion {
   prompt?: string;
   difficulty: number;
   boss: boolean;
-  monster: { name: string; sprite: MonsterSprite; hue: number };
+  /** `name` carries a repeat appearance's title and `hue` its recolor; `accessory` only on a repeat
+   * appearance (docs/designs/monster-catalog.md §3). `id` and `accessory` are absent from older servers. */
+  monster: { id?: string; name: string; sprite: MonsterSprite; hue: number; accessory?: Accessory };
   options?: string[];
 }
 
@@ -277,7 +280,7 @@ export type ServerMessage =
       intro?: { page: number };
       /** The boss phase under way, from phase 2 on (phase 1 stays a plain boss). Never a later phase. */
       bossPhaseInfo?: { name: string; rule: string };
-      /** The bank cooks its monsters (hasCuisine): scores read 飽足感 instead of 獎勵分. Absent from older servers. */
+      /** Every catalog monster has a dish, so a server since the catalog always sends it: scores read 飽足感 instead of 獎勵分. Absent from older servers. */
       cuisine?: true;
       /** The host's last ▶ ⏸ ⟲ for the video on screen. Only for that video's question; treat anything else as paused. */
       media?: MediaCommand;

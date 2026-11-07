@@ -4,9 +4,10 @@
 import { DEFAULT_GAME_CONFIG, type SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 import type { SceneTheme } from "./pixel-art";
+import type { Accessory } from "./monster-catalog";
 import type { MonsterSprite, SpriteKind } from "./sprite-kind";
 
-export type Monster = { kind: SpriteKind; name: string; scale: number; hue: number; float?: boolean };
+export type Monster = { kind: SpriteKind; name: string; scale: number; hue: number; float?: boolean; accessory?: Accessory };
 
 /** Sprite size (an integer multiple of its native pixels) and whether it hovers. */
 const LOOK: Record<MonsterSprite, { scale: number; float?: boolean }> = {
@@ -24,7 +25,7 @@ const ROOM_THEMES: SceneTheme[] = ["stone", "moss", "stone", "moss", "stone"];
 
 /** How the stage draws a bank monster. */
 export function monsterLook(m: PublicQuestion["monster"], hueShift = 0): Monster {
-  return { ...LOOK[m.sprite], kind: m.sprite, name: m.name, hue: (m.hue + hueShift) % 360 };
+  return { ...LOOK[m.sprite], kind: m.sprite, name: m.name, hue: (m.hue + hueShift) % 360, ...(m.accessory ? { accessory: m.accessory } : {}) };
 }
 
 /** A room's backdrop; `null` is the boss room. */
