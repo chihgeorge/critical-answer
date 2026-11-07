@@ -1678,6 +1678,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "chef" });
       send(room, hostConn, { type: "HOST_START" });
       send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-mc1" });
+      expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
       expect(room.game!.teams[0].abilityUses).toBe(2);
       expect((room as any).pendingRoll ?? null).toBeNull();
       pick(room, conns[0], 1);
