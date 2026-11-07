@@ -2,7 +2,14 @@
 // share (fair is 25%). Run: node scripts/balance-sim.ts [games]. Each answer is right when the team knows it (KNOW, per
 // difficulty) or guesses among the options left; every question is multipleChoice, like data/question-bank.json.
 // Ability use is a fixed policy (below), so the numbers compare classes, not players.
+import { registerHooks } from "node:module";
 import type * as GT from "../lib/game-state";
+// lib/ imports without ".ts" (Next and vitest resolve that; plain node does not): retry a relative import as ".ts".
+registerHooks({
+  resolve(spec, ctx, next) {
+    try { return next(spec, ctx); } catch (e) { if (spec.startsWith(".") && !spec.endsWith(".ts")) return next(spec + ".ts", ctx); throw e; }
+  },
+});
 const G: typeof GT = await import(new URL("../lib/game-state.ts", import.meta.url).href);
 type C = GT.ClassId | undefined;
 const R = () => Math.random();
