@@ -127,7 +127,7 @@ Mockups: `~/.gstack/projects/critical-answer/designs/scoring-20261025/score-all.
 - `GameState.optionOrder` is the per-game shuffle (`shuffledOptionOrders`, Fisher-Yates counted down so the tests' `() => 0` rng keeps bank order). Every option index in the room, the protocol and the clients is a shown index; `inShownOrder` maps a bank question into it. Snapshot schema 5.
 - The question's monster comes from the team's room, not the question, since one pool serves several rooms.
 - A correct answer scores the difficulty of the pool its question came from, not `team.currentDifficulty` as the Model sketch above says; the two differ after a borrow or an empty-pool fallback. The big screen shows that same difficulty (`publicQuestion`).
-- Default bank: 8 rooms (3 new monsters: 暴躁幽靈, 熔岩史萊姆王, 冰霜愛哭鬼), 20 new questions (p3-q1..4, p4-q1..4, p5-q1..12), the guessable year ladders and answer-built distractors reworked, and two pool-2 option clashes (端午 / 中秋) fixed.
+- Default bank: 8 rooms (3 new monsters: 暴躁幽靈, 熔岩史萊姆王, 冰霜愛哭鬼; v0.40.0.0 replaced them with catalog monsters, see [monster-catalog.md](monster-catalog.md)), 20 new questions (p3-q1..4, p4-q1..4, p5-q1..12), the guessable year ladders and answer-built distractors reworked, and two pool-2 option clashes (端午 / 中秋) fixed.
 - Bank editor (D2=B): tabs 房間 / 難度 1–5 / 首領. The 房間 tab edits each room's difficulty and reward and the boss's hit reward; monster names stay read-only.
 
 ## Next Steps

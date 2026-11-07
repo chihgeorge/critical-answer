@@ -596,7 +596,7 @@ export default function PlayPage() {
 
       {game && !finished && !revealed && !intro && turn?.team && (
         <Panel className="flex items-center gap-3 px-3 py-[10px]">
-          <Sprite kind={turn.monster.kind} hue={turn.monster.hue} scale={turn.miniScale} className="flex-none" />
+          <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
           <div className="text-[15px]">
             <div>{turn.team.name} 正在面對</div>
             <div className="text-[18px]">{turn.monster.name}</div>
@@ -801,6 +801,8 @@ export default function PlayPage() {
                   ? narration.lines
                   : [turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"]
             }
+            // A host edit of this narration reads on from the edited line instead of starting over (D13).
+            id={narration && intro === null && !(finished && epilogue && podium) ? narration.eventId : undefined}
           />
         </div>
       </div>

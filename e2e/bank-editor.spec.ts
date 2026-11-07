@@ -846,7 +846,7 @@ test("the 房間 tab edits a room's difficulty and reward and the boss hit rewar
     await page.getByTestId("bank-tab-rooms").click();
     const room1 = page.getByTestId("bank-room-1");
     await room1.getByRole("spinbutton").fill("25");
-    await room1.getByRole("combobox").selectOption("3");
+    await room1.getByLabel("難度").selectOption("3");
     await page.getByTestId("bank-boss-hit-reward").fill("12");
     await saveAll(page);
     await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
@@ -911,8 +911,9 @@ test("boss phases: add one, an empty name is refused, a filled one saves, and de
   }
 });
 
-// docs/designs/monster-cuisine.md: a room's dish is four fields, all filled or all empty.
-test("a room's dish: a half-filled one is refused, a full one saves, and four empty fields mean no dish", async ({ page, request }) => {
+// docs/designs/monster-catalog.md §4: a room's monster comes from the catalog; its dish comes with it, never typed.
+// Value: protects=picking a room monster saves its catalog id and survives a reload, the boss picker offers only bosses, and no dish field is left; fails_when=the picker saves a name or an object, lists bosses for a room, or the dish boxes come back; why_new=replaces the dish-fields test; seam=none; no_claim=the sprites in the picker look right
+test("a room's monster: picked from the catalog, saved as its id, and kept after a reload", async ({ page, request }) => {
   const WORKER = "http://localhost:1996";
   const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const original = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank;
@@ -921,23 +922,22 @@ test("a room's dish: a half-filled one is refused, a full one saves, and four em
     await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
     await page.getByRole("button", { name: "載入題庫" }).click();
     await page.getByTestId("bank-tab-rooms").click();
-    const dish = page.getByTestId("bank-room-0-dish");
-    await dish.getByLabel("評語").fill("");
-    await saveAll(page);
-    await expect(page.getByTestId("bank-editor-error")).toContainText("第 1 房的菜：「評語」還沒填");
-
-    await dish.getByLabel("評語").fill("滑嫩順口。");
-    await dish.getByLabel("菜名").fill("測試布丁");
-    await saveAll(page);
-    await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
-    let saved = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank;
-    expect(saved.rooms[0].monster.dish).toMatchObject({ name: "測試布丁", comment: "滑嫩順口。" });
-
-    for (const label of ["部位", "做法", "菜名", "評語"]) await dish.getByLabel(label).fill("");
+    await expect(page.getByTestId("bank-rooms").getByRole("textbox")).toHaveCount(0);
+    await expect(page.getByLabel("首領").locator("option")).toHaveText(["深淵小黑龍", "深海大王烏賊", "不死火鳥"]);
+    const room0 = page.getByLabel("第 1 房的怪物");
+    await expect(room0.locator("option", { hasText: "深淵小黑龍" })).toHaveCount(0);
+    await room0.selectOption("ghost-cry");
+    await expect(page.getByTestId("bank-room-0-monster")).toContainText("淚鹽烤飯糰");
     await saveAll(page);
     await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
-    saved = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank;
-    expect(saved.rooms[0].monster).not.toHaveProperty("dish");
+    const saved = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank;
+    expect(saved.rooms[0].monster).toBe("ghost-cry");
+
+    await page.reload();
+    await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+    await page.getByRole("button", { name: "載入題庫" }).click();
+    await page.getByTestId("bank-tab-rooms").click();
+    await expect(page.getByLabel("第 1 房的怪物")).toHaveValue("ghost-cry");
   } finally {
     const { version } = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()) as { version: number };
     expect((await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: original, version } })).ok()).toBe(true);

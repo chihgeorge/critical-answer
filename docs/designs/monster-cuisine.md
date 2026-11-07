@@ -2,6 +2,8 @@
 
 > Note (2026-11-05, v0.29.0.1): the `npm run e2e` / `npx playwright test` steps in this plan now run only in GitHub CI. Do not run them locally (see CLAUDE.md, Testing).
 
+> Note (2026-11-07, v0.40.0.0): dishes now live in the monster catalog, not the bank; the bank's dish fields are gone. See [monster-catalog.md](monster-catalog.md).
+
 狀態：eng review 完成（2026-10-31），已在 `feat/monster-cuisine` 實作（T1–T5）。煮菜動畫見「煮菜動畫（v0.39）」一節。來源：TODOS.md「地城料理風格 1：怪物變食材，打倒後端上一道菜」。
 
 ## 問題

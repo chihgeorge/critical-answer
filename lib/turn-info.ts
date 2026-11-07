@@ -4,9 +4,10 @@
 import { DEFAULT_GAME_CONFIG, type SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 import type { SceneTheme } from "./pixel-art";
+import type { Accessory } from "./monster-catalog";
 import type { MonsterSprite, SpriteKind } from "./sprite-kind";
 
-export type Monster = { kind: SpriteKind; name: string; scale: number; hue: number; float?: boolean };
+export type Monster = { kind: SpriteKind; name: string; scale: number; hue: number; float?: boolean; accessory?: Accessory };
 
 /** Sprite size (an integer multiple of its native pixels) and whether it hovers. */
 const LOOK: Record<MonsterSprite, { scale: number; float?: boolean }> = {
@@ -16,6 +17,25 @@ const LOOK: Record<MonsterSprite, { scale: number; float?: boolean }> = {
   ghost: { scale: 5, float: true },
   "ghost-cry": { scale: 5, float: true },
   dragon: { scale: 4 },
+  mushroom: { scale: 6 },
+  bat: { scale: 6, float: true },
+  skeleton: { scale: 5 },
+  mimic: { scale: 6 },
+  spider: { scale: 6 },
+  snail: { scale: 6 },
+  wisp: { scale: 5, float: true },
+  golem: { scale: 5 },
+  jellyfish: { scale: 5, float: true },
+  frog: { scale: 6 },
+  candle: { scale: 5 },
+  mandrake: { scale: 5 },
+  eyeball: { scale: 6, float: true },
+  crab: { scale: 5 },
+  dice: { scale: 6 },
+  pumpkin: { scale: 6 },
+  cactus: { scale: 5 },
+  kraken: { scale: 4 },
+  phoenix: { scale: 4 },
 };
 export const FALLBACK_MONSTER: Monster = { kind: "slime", name: "…", scale: 6, hue: 0 };
 export const BOSS_THRESHOLD = DEFAULT_GAME_CONFIG.bossThreshold;
@@ -24,7 +44,9 @@ const ROOM_THEMES: SceneTheme[] = ["stone", "moss", "stone", "moss", "stone"];
 
 /** How the stage draws a bank monster. */
 export function monsterLook(m: PublicQuestion["monster"], hueShift = 0): Monster {
-  return { ...LOOK[m.sprite], kind: m.sprite, name: m.name, hue: (m.hue + hueShift) % 360 };
+  // A sprite this page does not know (a newer server than the page) draws as a slime rather than crash.
+  const kind = Object.hasOwn(LOOK, m.sprite) ? m.sprite : "slime";
+  return { ...LOOK[kind], kind, name: m.name, hue: (m.hue + hueShift) % 360, ...(m.accessory ? { accessory: m.accessory } : {}) };
 }
 
 /** A room's backdrop; `null` is the boss room. */

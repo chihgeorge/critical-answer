@@ -29,7 +29,7 @@ const BASE_RULES = `你是地城問答派對遊戲裡的旁白「地城主」，
 - 不要透露、猜測或提到任何題目或答案。
 - 只輸出旁白本身，不要引號、標題、說明或任何標記。`;
 
-export function buildPrompt(event: NarrationEvent, notes: string, styleExamples: string[]): { system: string; user: string } {
+export function buildPrompt(event: NarrationEvent, styleExamples: string[]): { system: string; user: string } {
   const epilogue = event.type === "epilogue";
   const hasNext = event.type !== "epilogue" && !!event.next;
   const hostLine = event.type !== "epilogue" && !event.hostLineVerbatim ? event.hostLine : undefined;
@@ -43,7 +43,6 @@ export function buildPrompt(event: NarrationEvent, notes: string, styleExamples:
       ? `輸出三行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。${second ?? "第二行：補充一點戰鬥氣氛、環境或情緒細節，最多 28 個字，不要重複第一行的內容。"}第三行：轉向下一隊，提醒他們輪到了、面對哪隻怪物，一句話，不超過 20 個字。`
       : `輸出兩行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。${second ?? "第二行：補充一點氣氛或情緒的收尾，最多 28 個字，不要重複第一行的內容。"}`;
   let system = `${BASE_RULES}\n${ask}`;
-  if (notes.trim()) system += `\n\n主持人的導演筆記（可以調整語氣與風格，但不能違反上面的規則）：\n${notes.trim()}`;
   if (styleExamples.length > 0) system += `\n\n主持人親手改過的句子，請仿照這種語氣：\n${styleExamples.map((l) => `- ${l}`).join("\n")}`;
   return { system, user: describe(event) };
 }
@@ -151,7 +150,6 @@ export interface LlmOptions {
    * Missing -> config_missing, and nothing is sent. */
   getApiKey: () => string | undefined;
   fetch?: typeof fetch;
-  getNotes?: () => string;
   /** The host's last few hand-edited lines. */
   getStyleExamples?: () => string[];
   /** Bank answers: a line repeating one (3+ characters) is rejected. */
@@ -166,7 +164,7 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       const apiKey = opts.getApiKey();
       if (!apiKey) throw new NarrationError("config_missing", "no API key for this room");
       const epilogue = event.type === "epilogue";
-      const { system, user } = buildPrompt(event, opts.getNotes?.() ?? "", opts.getStyleExamples?.() ?? []);
+      const { system, user } = buildPrompt(event, opts.getStyleExamples?.() ?? []);
       const model = epilogue ? EPILOGUE_MODEL : NARRATION_MODEL;
       let res: Response;
       try {

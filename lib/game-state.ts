@@ -97,6 +97,10 @@ export interface Team {
   reward: number;
   /** Index into the shared room template this team is currently facing. */
   roomIndex: number;
+  /** How many times this room's monster had been defeated when the team walked in: its look stays put
+   * until the team leaves the room, whatever other teams defeat meanwhile (docs/designs/monster-catalog.md §3).
+   * Absent in saves from before it (the game-wide count is used). */
+  metDefeats?: number;
   /**
    * The difficulty of the monster this team is currently facing at
    * `roomIndex`. Starts at the room template's base difficulty; downgraded
@@ -145,8 +149,10 @@ export interface RoomTemplate {
   baseDifficulty: Difficulty;
   /** Reward points for defeating this room's monster, whatever difficulty the team faced it at (S5). */
   reward: number;
-  /** The name of the dish its monster is cooked into, if the bank gives one. */
+  /** The name of the dish its monster is cooked into. Absent in saves from before dishes. */
   dish?: string;
+  /** Its monster's catalog id (docs/designs/monster-catalog.md). Absent in saves from before the catalog. */
+  monsterId?: string;
 }
 
 export interface BossState {
@@ -220,6 +226,11 @@ export interface GameState {
   /** The cleric whose prayer kept this turn: it cannot pray again until the turn moves on. */
   prayerTurn?: string;
   boss: BossState;
+  /** Room monsters defeated so far, per catalog id: each repeat appearance wears the next variant
+   * (docs/designs/monster-catalog.md §3). Absent until the first, and in saves from before the catalog. */
+  defeats?: Record<string, number>;
+  /** Picks each game's first variant (R1). Absent (read as 0) in saves from before the catalog. */
+  variantSeed?: number;
   config: GameConfig;
   phase: GamePhase;
   /** The one team in first place once phase === "finished": a tie is broken by d20 (podium-reveal.md D4). Empty before. */
@@ -484,6 +495,7 @@ export function createGame(
       score: 0,
       reward: 0,
       roomIndex: 0,
+      metDefeats: 0,
       currentDifficulty: rooms[0].baseDifficulty,
       currentQuestionId: dealt.questionId,
       currentSelection: null,
@@ -515,6 +527,8 @@ export function createGame(
       phases: [{ maxHp: bossMaxHp, questionIds: bossQuestionIds }, ...laterBossPhases],
       phaseIndex: 0,
     },
+    // Drawn last, so the deals above see the same rng values as before the catalog.
+    variantSeed: Math.floor(rng() * 2 ** 32),
     config,
     phase: "playing",
     winners: [],
@@ -771,15 +785,20 @@ export function answerQuestion(
       const dealt = entersBoss
         ? { questionId: team.currentQuestionId, used: game.usedQuestionIds, queuedQuestionId: undefined }
         : dealFor(game, team, game.rooms[nextRoomIndex].baseDifficulty, revealedQuestionIds, rng, questionId);
+      const monsterId = game.rooms[team.roomIndex].monsterId;
+      const defeats = monsterId ? { ...game.defeats, [monsterId]: (game.defeats?.[monsterId] ?? 0) + 1 } : game.defeats;
+      const nextMonsterId = game.rooms[nextRoomIndex].monsterId;
       nextGame = {
         ...game,
         usedQuestionIds: dealt.used,
         revealedQuestionIds,
+        ...(defeats ? { defeats } : {}),
         teams: patchTeam(game.teams, teamId, (t) => ({
           score: t.score + pointsAwarded,
           reward: t.reward + reward,
           ...ate(t, game.rooms[team.roomIndex].dish),
           roomIndex: nextRoomIndex,
+          ...(nextMonsterId ? { metDefeats: defeats?.[nextMonsterId] ?? 0 } : {}),
           currentDifficulty: entersBoss ? t.currentDifficulty : game.rooms[nextRoomIndex].baseDifficulty,
           currentQuestionId: dealt.questionId,
           currentSelection: null,

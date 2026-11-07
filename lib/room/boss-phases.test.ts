@@ -16,9 +16,9 @@ const PHASE2 = { name: "主題曲之謎", rule: "聽前奏，說出作品名" };
 /** Phase 1: two questions, 1 HP. Phase 2: two questions, 2 HP. `q` builds every boss question. */
 function phasedBank(q: (id: string) => object = text, hp1 = 1) {
   return parseBank({
-    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, questions: [text("r1"), text("r2")] }],
+    rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [text("r1"), text("r2")] }],
     boss: {
-      monster: { name: "深淵小黑龍", sprite: "dragon", hue: 0, dish: { part: "龍尾", method: "炭火慢烤", name: "龍息烤龍尾", comment: "外脆內嫩。" } },
+      monster: "dragon",
       phases: [
         { maxHp: hp1, questions: [q("p1-a"), q("p1-b")] },
         { ...PHASE2, maxHp: 2, questions: [q("p2-a"), q("p2-b")] },
@@ -258,7 +258,7 @@ describe("boss phases across a restart", () => {
     const g = bossGame(phasedBank(), { storage });
     g.judge(true);
     g.next();
-    send(g.room, g.host, { type: "HOST_SET_NOTES", notes: "x" }); // any later save
+    send(g.room, g.host, { type: "HOST_SET_PASSWORD", password: "x" }); // any later save
     const { stateOf } = await restored(storage);
     expect(stateOf()).toMatchObject({ phaseCard: expect.anything(), question: null });
   });

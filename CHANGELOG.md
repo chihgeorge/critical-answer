@@ -2,6 +2,53 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.42.0.0] - 2026-11-07
+
+**Deploy note:** no reseed is needed. Before you save a bank that uses one of the new monsters, wait until both the room server and the website have finished deploying, then reload the host page, the big screen and the phones. A page opened before the deploy does not know the new monsters.
+
+### Added
+- 17 new room monsters to pick in the bank editor, each with its own picture and dish: 碎碎蘑菇, 倒掛蝙蝠, 喀啦骷髏兵, 寶箱怪, 毛毛蜘蛛, 慢吞吞蝸牛, 鬼火精, 小石魔像, 地底水母, 沼澤胖蛙, 蠟燭精, 尖叫曼德拉草, 浮游眼球, 鐵殼螃蟹, 骰子怪, 南瓜頭 and 刺刺仙人掌. With the 3 existing ones, there are now 20.
+- 2 new bosses: 深海大王烏賊 (cooked into 大王烤魷魚) and 不死火鳥 (cooked into 不死鳥烤全雞).
+
+### Changed
+- The default bank's 8 rooms now meet 8 different monsters.
+
+### Fixed
+- A page that meets a monster it does not know draws a slime instead of showing 「畫面出錯了」.
+
+## [0.41.0.0] - 2026-11-07
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the host page, the big screen and the phones. Edits now name a line and a revision, so an old website's edits are refused until it is reloaded. Do not deploy during an event.
+
+### Added
+- A 「地城主旁白」 panel sits right above the host's judge buttons. Collapsed, it is one row with a summary such as 「3 句・念到第 2 句」; opened, it lists every line the big screen will say for the next team.
+- The host can rewrite any line the big screen has not read yet. Tap 「改」 on that line, type, and press Enter or 「換上大螢幕」. The big screen and the phones pick up the new text from that line on, and the voice reads it.
+- The big screen tells the host how far it has read. Lines already read show 「✓ 已念完」 and can no longer be changed; the line being read shows 「▶ 念到這」.
+- While the AI narration is being written, the panel shows 「旁白生成中…」.
+- If a line was read or replaced while the host was typing, the draft is kept with a red note, and 「改排進下一句」 queues it for the next narration instead.
+
+### Changed
+- 「下一句這樣說」 moved from ⚙ 更多 into the narration panel.
+- The big screen speaks one line at a time, and moves on even if the browser never reports that a line finished.
+
+### Removed
+- 導演筆記 is gone from ⚙ 更多, and the AI prompt no longer has a notes section.
+- 「改寫旁白」 is gone from ⚙ 更多; the narration panel replaces it.
+
+## [0.40.0.0] - 2026-11-07
+
+**Deploy note:** back up the live bank first (`curl` in docs/question-bank.md, rescue item 4), before this merges: after the deploy, the server no longer hands out the old bank. Then deploy the room server (`wrangler deploy`) and the website, reload the bank editor, the host page, the big screen and the phones, and save the bank once in the editor (or convert the backup and save it). Rooms in play when the server restarts are reset. Do not deploy during an event.
+
+### Added
+- A monster catalog: each room and the boss now pick their monster from a list (軟趴趴史萊姆, 害羞幽靈, 愛哭幽靈 for rooms, 深淵小黑龍 for the boss). The bank editor shows a picker with each monster's sprite and dish instead of name, sprite, colour and dish fields.
+- A monster met again looks a little different each time it is defeated. It gets a new colour, a hat (crown, party hat, flower, headband, bow or pirate hat) and a matching title before its name, such as 「戴王冠的軟趴趴史萊姆」. The first meeting is plain, and the boss never changes. A team keeps the look it walked into the room with, whatever other teams defeat meanwhile.
+
+### Changed
+- Banks are now format 3, and a room or the boss names its monster by catalog id. The editor refuses a monster that is not in the catalog, a room monster on the boss or the boss in a room.
+- A stored bank in an older format no longer goes read-only. The editor shows a yellow notice with its format, loads the default bank, and saving replaces the old one. The server keeps a copy of the old bank, and holds the old bank's pictures for 14 days before deleting them.
+- A dish now comes from the catalog with its monster, so the editor has no dish fields.
+- If the bank editor opens while the room server is still the old version, it says so in red and does not let you save.
+
 ## [0.39.0.0] - 2026-11-07
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the host page, the big screen and the phones. This release adds a new host message (🍲 上菜) and makes 下一題 wait for it. A host page from before it only sends 下一題, so it gets stuck on a reveal with a dish until it is reloaded. Do not deploy during an event.

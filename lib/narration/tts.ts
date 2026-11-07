@@ -27,8 +27,8 @@ function sameLines(a: readonly string[], b: readonly string[]): boolean {
  * - Every narration after that: speak it iff it differs from what's already been "seen"
  *   (remembered, whether or not it was spoken) — either a genuinely new eventId, or the SAME
  *   eventId with a different segment array (length OR content). That second case is a host
- *   correction (HOST_EDIT_NARRATION re-broadcasts the same eventId with a corrected first
- *   segment) — including a correction to the very narration that was just suppressed as a
+ *   correction (HOST_EDIT_NARRATION re-broadcasts the same eventId with line N
+ *   replaced; the screen reads on from that line, see trackNarration in the screen page) — including a correction to the very narration that was just suppressed as a
  *   replay, which an earlier version of this function got wrong by blocking anything
  *   at-or-below baseline unconditionally (adversarial review finding: the replayed line's own
  *   correction was silently never spoken). Comparing the whole array (not just index 0) also
@@ -54,4 +54,11 @@ export function shouldSpeakNarration(narration: SpokenNarration, baselineEventId
 export function pickVoice<V extends { lang: string }>(voices: readonly V[]): V | undefined {
   const candidates = voices.filter((v) => /^(zh|cmn)/i.test(v.lang));
   return candidates.find((v) => /TW/i.test(v.lang)) ?? candidates.find((v) => /Hant/i.test(v.lang) && !/HK|MO/i.test(v.lang));
+}
+
+/** Longest a line may take to speak before the screen gives up on its onend and reads on: some browsers sometimes
+ * never fire onend or onerror, which would stop the voice and freeze the host's progress (host-narration-edit.md D11).
+ * About 0.4 s a character (Mandarin TTS reads roughly 4 a second) plus 3 s for a slow voice to start. */
+export function speechTimeoutMs(line: string): number {
+  return [...line].length * 400 + 3000;
 }

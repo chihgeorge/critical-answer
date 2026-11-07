@@ -26,11 +26,13 @@ export interface RoomSnapshot {
   /** team id -> team secret */
   teamKeys: [string, string][];
   eventSeq: number;
-  lastNarration: { eventId: number; lines: string[] } | null;
+  /** `rev`, `done`: host edits and how many lines the big screen has read (host-narration-edit.md D14). Missing in a save from before them: 0. */
+  lastNarration: { eventId: number; lines: string[]; rev?: number; done?: number } | null;
   epilogue: string | null;
   epilogueRequested: boolean;
   /** Answers earlier games in this room showed, dealt last in the next one (回到大廳). Missing in a save from before it. */
   playedQuestionIds?: string[];
+  /** Always "": the director notes are gone, but a reverted server still requires the field to read the save. */
   notes: string;
   /** "" when the room has none. Missing in a save from before join passwords. */
   joinPassword: string;
@@ -87,8 +89,10 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (typeof raw.eventSeq !== "number" || !Number.isInteger(raw.eventSeq) || raw.eventSeq < 0) return null;
     const n = raw.lastNarration;
     if (n !== null && !(isObject(n) && typeof n.eventId === "number" && Array.isArray(n.lines) && n.lines.length > 0 && n.lines.length <= 3 && n.lines.every(isString))) return null;
+    const count = (v: unknown) => v === undefined || (Number.isInteger(v) && (v as number) >= 0);
+    if (n !== null && !(count(n.rev) && count(n.done) && ((n.done as number | undefined) ?? 0) <= (n.lines as string[]).length)) return null;
     if (raw.epilogue !== null && !isString(raw.epilogue)) return null;
-    if (typeof raw.epilogueRequested !== "boolean" || typeof raw.aiNarration !== "boolean" || !isString(raw.notes)) return null;
+    if (typeof raw.epilogueRequested !== "boolean" || typeof raw.aiNarration !== "boolean") return null;
     if (!Array.isArray(raw.editedLines) || !raw.editedLines.every(isString)) return null;
     const joinPassword = raw.joinPassword ?? "";
     if (!isString(joinPassword)) return null;

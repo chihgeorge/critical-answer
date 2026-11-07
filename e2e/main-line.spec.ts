@@ -122,18 +122,13 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(players[1].page.getByText("輪到我們了！")).toBeVisible({ timeout: 10000 });
   await expect(host.getByText("（離線）")).toHaveCount(0, { timeout: 10000 });
 
-  // Director: the host rewrites the line, and it replaces the line on the big screen and the phone at once.
+  // The host's drawer. (Editing a narration line: narration-tts.spec.ts's host narration panel test.)
   await host.getByRole("button", { name: /更多/ }).click();
   // The drawer keeps only the host-device QR (the one that hands over control), not a second join QR.
   await expect(host.getByText("用另一台裝置主持")).toBeVisible();
-  await expect(host.getByText("不是逐字台詞")).toBeVisible(); // the notes are style guidance, not a script
   await expect(host.getByText("玩家掃描加入")).toHaveCount(0);
   await expect(host.getByRole("img", { name: "掃描加入" })).toHaveCount(0);
   await expect(host.getByRole("img", { name: "主持人 QR" })).toHaveCount(1);
-  await host.locator("section", { hasText: "改寫第一句旁白" }).locator("input").fill("主持人改寫：全場安靜！");
-  await host.getByRole("button", { name: /送出，立刻換上大螢幕/ }).click();
-  await expect(screen.locator(".px-say")).toContainText("主持人改寫：全場安靜！");
-  await expect(players[1].page.locator(".px-say")).toContainText("主持人改寫：全場安靜！");
 
   // Nothing host-only (token confirmation, the host-only answer channel) reaches the public
   // surfaces. STATE.reveal legitimately carries an "answer" field now (D2/D3 — a shared-screen
