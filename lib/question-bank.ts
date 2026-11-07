@@ -62,6 +62,8 @@ export interface Bank {
   rooms: BankRoom[];
   /** `hitReward`: reward points per boss hit (S6). */
   boss: { monster: string; hitReward: number; phases: BossPhase[] };
+  /** Each game draws its own monsters instead of the ones named above (monster-catalog.ts gameMonsters). */
+  randomMonsters?: boolean;
 }
 /** One boss phase with its own HP bar and questions (docs/designs/boss-phases.md). Players learn a
  * phase's name and rule only when it starts, so both are required from the second phase on. */
@@ -253,6 +255,7 @@ export function parseBank(raw: unknown): Bank {
   rooms.forEach((r, i) => {
     if (pools[r.difficulty].length === 0) fail(`room ${i} has difficulty ${r.difficulty} but pool ${r.difficulty} has no questions`);
   });
+  if (b!.randomMonsters !== undefined && typeof b!.randomMonsters !== "boolean") fail("randomMonsters is not true or false");
   const boss = b!.boss as Record<string, unknown> | null;
   if (!boss) fail("no boss");
   // A bank from before phases holds one bar and one question list on the boss itself: that is phase 1.
@@ -277,6 +280,7 @@ export function parseBank(raw: unknown): Bank {
       hitReward: parseReward(boss!.hitReward, DEFAULT_BOSS_HIT_REWARD, "boss"),
       phases,
     },
+    ...(b!.randomMonsters === true ? { randomMonsters: true } : {}),
   };
 }
 
@@ -292,8 +296,9 @@ export function assertSavable(bank: Bank): void {
   if (longId) fail(`question id ${longId.id} is longer than ${MAX_ID} characters`);
 }
 
-export function roomTemplates(bank: Bank): RoomTemplate[] {
-  return bank.rooms.map((r) => ({ baseDifficulty: r.difficulty, reward: r.reward, monsterId: r.monster, dish: catalogMonster(r.monster).dish.name }));
+/** `monsters`: this game's room monsters by room (gameMonsters); the bank's own when absent. */
+export function roomTemplates(bank: Bank, monsters = bank.rooms.map((r) => r.monster)): RoomTemplate[] {
+  return bank.rooms.map((r, i) => ({ baseDifficulty: r.difficulty, reward: r.reward, monsterId: monsters[i], dish: catalogMonster(monsters[i]).dish.name }));
 }
 
 /** Question ids by pool, `[d - 1]` for difficulty d, the shape GameState.pools keeps. */
@@ -403,11 +408,13 @@ export function publicQuestion(
   order?: number[],
   /** This game's variant seed and defeats per catalog id (docs/designs/monster-catalog.md §3). */
   look?: { seed: number; defeats: Record<string, number> },
+  /** This game's monster for the room, and its boss (gameMonsters); the bank's own when absent. */
+  monsters?: { room?: string; boss: string },
 ): PublicQuestion | null {
   const found = findQuestion(bank, id);
   if (!found) return null;
   const q = inShownOrder(found, order);
-  const m = catalogMonster(q.boss ? bank.boss.monster : (bank.rooms[roomIndex] ?? bank.rooms[0]).monster);
+  const m = catalogMonster(q.boss ? (monsters?.boss ?? bank.boss.monster) : (monsters?.room ?? (bank.rooms[roomIndex] ?? bank.rooms[0]).monster));
   const v = look ? variantOf(look.seed, m, look.defeats[m.id] ?? 0) : null;
   return {
     id: q.id,
