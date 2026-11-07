@@ -15,7 +15,7 @@ D&D 風格的地城問答派對遊戲，名字是 *Critical Hit*（爆擊）的�
 
 ### 自己安裝
 
-需要 Node.js 22（`.nvmrc`）。
+需要 Node.js 22.18 以上（`.nvmrc`）。
 
 ```bash
 git clone https://github.com/chihgeorge/critical-answer.git
@@ -47,7 +47,7 @@ https://github.com/chihgeorge/critical-answer
 
 目標：本機跑起來，而且同一個 Wi-Fi 的手機能加入。
 1. 先讀 README.md、AGENTS.md、CLAUDE.md、package.json 和 .dev.vars.example；保留我還沒提交的修改。
-2. 用 Node.js 22，npm install，再用 npm run dev 確認前端（3000）和房間伺服器（8787）都起來。
+2. 用 Node.js 22.18 以上，npm install，再用 npm run dev 確認前端（3000）和房間伺服器（8787）都起來。
 3. 用 npm run playtest 啟動區網版，告訴我手機要開的網址。
 4. 用預設的腳本旁白，不要設任何付費的 API key。
 5. 確認：能開房、大螢幕畫面會同步、手機能加入並答完一題。

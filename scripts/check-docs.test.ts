@@ -62,6 +62,15 @@ describe("brokenLinks", () => {
     expect(relativeLinks("1. Run:\n\n    ```sh\n    [x](gone.md)\n    ```\n[y](a.md)")).toEqual(["a.md"]);
   });
 
+  it("reports an unclosed fence, which would hide every later link", () => {
+    expect(brokenLinks("a.md", files({ "a.md": "```\n[x](gone.md)" }))).toEqual(["a.md: a code fence never closes"]);
+  });
+
+  it("reads a leading / from the repository root and rejects a link that leaves the repository", () => {
+    const read = files({ "docs/a.md": "[r](/README.md) [out](../../x.md)", "README.md": "" });
+    expect(brokenLinks("docs/a.md", read)).toEqual(["docs/a.md: ../../x.md → leaves the repository"]);
+  });
+
   it("reports a listed doc that is missing", () => {
     expect(brokenLinks("docs/gone.md", files({}))).toEqual(["docs/gone.md: file is missing"]);
   });

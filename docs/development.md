@@ -12,7 +12,7 @@
 
 ## 本機執行
 
-需要 Node.js 22（`.nvmrc`；CI 與 Cloudflare 建置也用 22）。
+需要 Node.js 22.18 以上（`.nvmrc`；CI 與 Cloudflare 建置也用 22）。`node scripts/*.ts` 靠 Node 內建的型別剝除，22.18 起才預設開啟。
 
 ```bash
 npm install
@@ -50,7 +50,7 @@ sh scripts/playtest.sh stop
 
 ## 測試
 
-端對端測試（`npm run e2e`）只在 GitHub CI 跑：每個 PR 和每次 push 到 `main`，分兩組平行。本機太吃資源，不要在本機跑。`npm run check:bundle` 必跑，它會擋下答案漏進瀏覽器 bundle。`npm run check:docs` 檢查 README 和這幾份指南裡的相對連結和 `#` 錨點都還連得到。
+端對端測試（`npm run e2e`）只在 GitHub CI 跑：每個 PR 和每次 push 到 `main`，分兩組平行。本機太吃資源，不要在本機跑。`npm run check:bundle` 必跑，它會擋下答案漏進瀏覽器 bundle。`npm run check:docs` 檢查 README、SECURITY.md 和 `docs/` 底下每份 `.md` 裡的相對連結和 `#` 錨點都還連得到。
 
 > 專案根目錄有 `.env` 時，**測試伺服器預設會開 AI**。Playwright 端對端測試已經固定關掉它，不會呼叫真的 API。
 
