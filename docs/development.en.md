@@ -55,7 +55,7 @@ It finds the LAN IP on its own and uses two ports, 3100 (web) and 1998 (room ser
 
 The end-to-end tests (`npm run e2e`) run only on GitHub CI: on every PR and every push to `main`, in two parallel groups. They are too heavy for a local machine; do not run them locally. `npm run check:bundle` must always run; it stops answers from leaking into the browser bundle. `npm run check:docs` checks that the relative links and `#` anchors in README, SECURITY.md and every `.md` at the top level of `docs/` (not `docs/designs/`) still resolve.
 
-**Bilingual docs**: README, SECURITY.md and the guides in `docs/` (except `going-public.md`) each have an English twin `X.en.md`. A PR that changes one language changes the other in the same PR. Both open with the language switch line, keep the same number and levels of headings, and the English docs link to English docs. `npm run check:docs` fails on a missing twin, a wrong switch line or headings whose levels differ. It does not check that a translation is up to date.
+**Bilingual docs**: README, SECURITY.md and the guides in `docs/` (except `going-public.md`) each have an English twin `X.en.md`. A PR that changes one language changes the other in the same PR. Both open with the language switch line, keep the same number and levels of headings, and the English docs link to English docs. `npm run check:docs` fails on a missing twin, an English doc with no Chinese doc to pair with, a wrong switch line or headings whose levels differ. It does not check that a translation is up to date, or that an English doc links to English twins (`rules.en.md`, not `rules.md`).
 
 > When there is a `.env` in the project root, **the test servers turn AI on by default**. The Playwright end-to-end tests always turn it off, so they never call the real API.
 
@@ -71,7 +71,7 @@ Version numbers have four parts (for example `0.16.1.0`). `/ship` picks the numb
 
 ```
 app/                     Next.js pages: home, /room/[code]/host, /play, /screen, /bank-editor (question bank editor), and the error screens (error.tsx, global-error.tsx)
-components/              Shared pixel components (pixel.tsx), error screen (error-screen.tsx), big-screen stage (stage.tsx), big-screen live map (map-strip.tsx), multiple-choice option grid (mc-option.tsx), d20 and the big-screen dice roll (Fighter roll, multiple-choice crit die and fill-in persuasion check, d20.tsx), first-character hint for fill-in questions (Mage and persuasion check, mage-hint.tsx), QR (qr.tsx), and the parts split out of the host page: AI narration settings (host-ai.tsx), the "⚙ More" drawer (more-drawer.tsx), and the "pick the next question" list (question-picker.tsx)
+components/              Shared pixel components (pixel.tsx), error screen (error-screen.tsx), big-screen stage (stage.tsx), big-screen live map (map-strip.tsx), multiple-choice option grid (mc-option.tsx), d20 and the big-screen dice roll (warrior roll, multiple-choice crit die and fill-in persuasion check, d20.tsx), first-character hint for fill-in questions (Mage and persuasion check, mage-hint.tsx), QR (qr.tsx), and the parts split out of the host page: AI narration settings (host-ai.tsx), the "⚙ More" drawer (more-drawer.tsx), and the "pick the next question" list (question-picker.tsx)
 data/question-bank.json  Bundled fallback question bank (new rooms use it when BankStore cannot be reached; the editor shows it read-only when the stored bank cannot be read)
 lib/game-state.ts        Game state machine: rooms, question decks, boss, scoring (pure functions, fully tested)
 lib/protocol.ts          Message formats and validation between host / player / server
@@ -92,7 +92,7 @@ worker/index.ts          Cloudflare Worker: the Room and BankStoreDO Durable Obj
 lib/room/                Room logic (dungeon-room.ts) and the two small interfaces it needs (io.ts), platform independent
 lib/gate.ts、origin.ts   Worker entry rules
 e2e/                     Playwright end-to-end tests
-scripts/                 playtest.sh (LAN playtest), check-bundle.sh, pregate-runner.sh (local test runner for gstack pregate, runs only unit tests; see .gstack/pregate.json), check-docs.ts (checks links and anchors in README and the docs/ guides)
+scripts/                 playtest.sh (LAN playtest), check-bundle.sh, pregate-runner.sh (local test runner for gstack pregate, runs only unit tests; see .gstack/pregate.json), check-docs.ts (checks links and anchors in README and the docs/ guides, and the Chinese/English twin pairing)
 public/fonts/            Bundled fonts
 DESIGN.md                Pixel design system
 docs/designs/            Design docs and decision records (including question-bank-editor.md)
