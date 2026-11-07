@@ -64,7 +64,7 @@ export interface VersionedBank {
   /** Starts at 1 on first seed, increments by 1 on every successful save. */
   version: number;
   /** Set when the stored bank can't be read by this version: `bank` is then the bundled fallback,
-   * and saves and uploads are refused (README's 「題庫卡住時怎麼救」). */
+   * and saves and uploads are refused (docs/question-bank.md 「題庫卡住時怎麼救」). */
   unreadable?: true;
 }
 

@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "check:bundle": "next build && sh scripts/check-bundle.sh",
+    "check:docs": "node scripts/check-docs.ts",
     "test:live": "LIVE=1 vitest run lib/narration/llm.live.test.ts",
     "playtest": "sh scripts/playtest.sh start",
     "playtest:stop": "sh scripts/playtest.sh stop",

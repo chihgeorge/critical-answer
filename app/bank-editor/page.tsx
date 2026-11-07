@@ -348,7 +348,7 @@ export default function BankEditorPage() {
       {bank && readOnly && (
         <Panel role="alert" className="p-4 text-[15px]" style={{ background: "#ffd9d9" }}>
           <span data-testid="bank-editor-readonly">
-            存著的題庫這個版本讀不懂（可能是回滾到比較舊的版本），下面顯示的是預設題目，不是你的題庫。你的題庫還在，沒有被蓋掉；在讀得懂之前不能儲存或上傳圖片。救援步驟見 README 的「題庫卡住時怎麼救」。
+            存著的題庫這個版本讀不懂（可能是回滾到比較舊的版本），下面顯示的是預設題目，不是你的題庫。你的題庫還在，沒有被蓋掉；在讀得懂之前不能儲存或上傳圖片。救援步驟見 docs/question-bank.md 的「題庫卡住時怎麼救」。
           </span>
         </Panel>
       )}
