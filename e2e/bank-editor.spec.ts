@@ -846,7 +846,7 @@ test("the 房間 tab edits a room's difficulty and reward and the boss hit rewar
     await page.getByTestId("bank-tab-rooms").click();
     const room1 = page.getByTestId("bank-room-1");
     await room1.getByRole("spinbutton").fill("25");
-    await room1.getByRole("combobox").selectOption("3");
+    await room1.getByLabel("難度").selectOption("3");
     await page.getByTestId("bank-boss-hit-reward").fill("12");
     await saveAll(page);
     await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
