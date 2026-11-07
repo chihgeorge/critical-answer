@@ -25,6 +25,7 @@
 //
 // Turn order never changes with room progress — this avoids the "arrival
 // order" snowball fairness risk flagged in /plan-eng-review's Outside Voice.
+import { rankTeams, type TieRoll } from "./podium";
 
 export type Difficulty = 1 | 2 | 3 | 4 | 5;
 
@@ -129,6 +130,9 @@ export interface Team {
   classId?: ClassId;
   /** Class ability uses left (ABILITY_USES at the start). */
   abilityUses: number;
+  /** Natural 20s this team rolled: crit dice, warrior rolls, persuasion checks and the kill's 4d20 (podium-reveal.md D5).
+   * Absent until the first one, and in a game saved before them. */
+  natural20s?: number;
   /** The thief's Sneak Attack waits for this team's next judgment: a correct one doubles its reward and
    * boss damage, any judgment uses it up (class-abilities.md D16). */
   sneakArmed?: true;
@@ -229,8 +233,12 @@ export interface GameState {
   variantSeed?: number;
   config: GameConfig;
   phase: GamePhase;
-  /** Team ids tied for first place once phase === "finished". */
+  /** The one team in first place once phase === "finished": a tie is broken by d20 (podium-reveal.md D4). Empty before. */
   winners: string[];
+  /** Team ids best first once finished, ties on the podium broken by `tieRolls`. Absent from a game finished before them. */
+  ranking?: string[];
+  /** The tie-break d20s, in the order they were rolled (lib/podium.ts). */
+  tieRolls?: TieRoll[];
 }
 
 export interface LockedOption {
@@ -605,15 +613,20 @@ export function advanceTurn(game: GameState): GameState {
 }
 
 /** 結束冒險: the host ends a game still being played, ranked by the reward each team has now. */
-export function endGame(game: GameState): GameState {
+export function endGame(game: GameState, rng: () => number = Math.random): GameState {
   if (game.phase === "finished") throw new InvalidActionError("Game already finished");
-  return finishGame({ ...game, pendingWrong: null });
+  return finishGame({ ...game, pendingWrong: null }, rng);
 }
 
-function finishGame(game: GameState): GameState {
-  const maxReward = Math.max(...game.teams.map((t) => t.reward));
-  const winners = game.teams.filter((t) => t.reward === maxReward).map((t) => t.id);
-  return { ...game, phase: "finished", winners };
+/** Ranks the teams, rolling d20s for ties on the podium, so exactly one team wins (podium-reveal.md D4). */
+function finishGame(game: GameState, rng: () => number): GameState {
+  const { ranking, tieRolls } = rankTeams(game.teams, () => rollD20(rng));
+  return { ...game, phase: "finished", winners: ranking.slice(0, 1), ranking, tieRolls };
+}
+
+/** Adds `n` natural 20s to a team's count (D5). */
+function withNatural20s(t: Team, n: number): Partial<Team> {
+  return n > 0 ? { natural20s: (t.natural20s ?? 0) + n } : {};
 }
 
 /**
@@ -670,7 +683,7 @@ export function answerQuestion(
   // Any judgment uses up an armed Sneak Attack; only a correct one doubles (D16).
   const sneak = getTeam(game, teamId).sneakArmed ? 2 : 1;
   // The choice resolves the pending wrong lock.
-  game = { ...game, pendingWrong: null, teams: patchTeam(game.teams, teamId, () => ({ sneakArmed: undefined, typedAnswer: undefined })) };
+  game = { ...game, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice === "flee" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -697,9 +710,10 @@ export function answerQuestion(
       const newHp = Math.max(0, boss.hp - sneak - (crit ? 1 : 0));
       const bossKilled = newHp === 0 && lastPhase;
       // The 4d20 is not raised by a crit (R4).
-      const killBonus = bossKilled ? (killDice ?? rollBossKillDice(rng)).reduce((a, b) => a + b, 0) * sneak : undefined;
+      const kill = bossKilled ? (killDice ?? rollBossKillDice(rng)) : undefined;
+      const killBonus = kill ? kill.reduce((a, b) => a + b, 0) * sneak : undefined;
       const reward = baseOf(boss.hitReward) * sneak + critBonus(boss.hitReward) + (killBonus ?? 0);
-      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}) }));
+      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}), ...withNatural20s(t, kill?.filter((v) => v === 20).length ?? 0) }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
       const phasePending = bossKilled ? undefined : newHp === 0 ? "cleared" : usedUp(revealedNow) ? "exhausted" : undefined;
@@ -729,7 +743,7 @@ export function answerQuestion(
       outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, reward, ...(killBonus === undefined ? {} : { killBonus }), ...rollMark };
 
       if (bossKilled) {
-        return { game: finishGame(nextGame), outcome };
+        return { game: finishGame(nextGame, rng), outcome };
       }
     } else {
       // Wrong boss answer: there's no "downgrade" concept for a shared boss queue. A flee rotates
@@ -923,7 +937,8 @@ export function recordCheck(game: GameState, teamId: string, questionId: string,
   // A mage's hint already showed the first character: the check gives no second copy (R8).
   const hint = passed && value !== 20 && game.mageHints?.[questionId] === undefined ? firstMeaningfulChar(answer) : null;
   const record: CheckRecord = { value, bonus, dc, passed, ...(hint !== null ? { hint } : {}) };
-  return { ...game, checks: { ...game.checks, [checkKey(questionId, teamId)]: record } };
+  const teams = patchTeam(game.teams, teamId, (t) => withNatural20s(t, value === 20 ? 1 : 0));
+  return { ...game, teams, checks: { ...game.checks, [checkKey(questionId, teamId)]: record } };
 }
 
 /** The thief arms a Sneak Attack for its answer to this question, spending the use at once (D16). */
@@ -990,7 +1005,9 @@ export function warriorRoll(
   killDice?: number[],
 ): { game: GameState; outcome: AnswerOutcome } {
   assertAbilityTurn(game, teamId, "warrior");
-  return answerQuestion(game, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined, killDice);
+  // A critable die is counted as the crit die in answerQuestion; any other natural 20 is counted here (D5).
+  const counted = critable ? game : { ...game, teams: patchTeam(game.teams, teamId, (t) => withNatural20s(t, value === 20 ? 1 : 0)) };
+  return answerQuestion(counted, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined, killDice);
 }
 
 /**

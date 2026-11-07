@@ -398,3 +398,29 @@ describe("scripted: the crit die", () => {
     expect(BOSS_ENTER_VARIANTS.map((t) => t.replace("{team}", "紅隊").replace("{monster}", "史萊姆").replace("{points}", "15"))).toContain(line);
   });
 });
+
+// Value: protects=with AI narration off the podium calls are scripted in the order the screen reads them: crit king,
+// places lowest first, then the story (podium-reveal.md D3, D5; eng D21); fails_when=the order flips, a call is missing,
+// or the story moves off the last segment; why_new=new segments; seam=none; no_claim=none beyond protects
+describe("epilogueLines", () => {
+  const p = createScriptedProvider(() => 0);
+  const ranking = [{ name: "紅隊", score: 30 }, { name: "藍隊", score: 20 }, { name: "綠隊", score: 10 }];
+
+  it("calls the crit king, third, second, first, then tells the story", () => {
+    const lines = p.epilogueLines({
+      type: "epilogue",
+      ranking,
+      winners: ["紅隊"],
+      critKing: { names: ["藍隊", "綠隊"], count: 2 },
+      calls: [{ place: 3, team: "綠隊" }, { place: 2, team: "藍隊" }, { place: 1, team: "紅隊" }],
+    });
+    expect(lines.slice(0, 4)).toEqual(["本場大成功王是……藍隊、綠隊，擲出 2 次 20！", "第三名是……綠隊！", "第二名是……藍隊！", "第一名是……紅隊！"]);
+    expect(lines[4]).toBe(scriptedEpilogue(ranking, ["紅隊"], () => 0));
+  });
+
+  it("one team gets its call; no calls is the story alone; any other event has none", () => {
+    expect(p.epilogueLines({ type: "epilogue", ranking: [ranking[0]], winners: ["紅隊"], calls: [{ place: 1, team: "紅隊" }] })[0]).toBe("第一名是……紅隊！");
+    expect(p.epilogueLines({ type: "epilogue", ranking, winners: ["紅隊"] })).toHaveLength(1);
+    expect(p.epilogueLines({ type: "retry", team: "紅隊", monster: "史萊姆" })).toEqual([]);
+  });
+});

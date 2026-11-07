@@ -7,6 +7,25 @@ All notable changes to Critical Answer are documented here.
 ### Changed
 - New tests check that a page meeting a monster it does not know still draws a slime and serves the slime's dish. They also check that every monster keeps its own dish picture. Test-only; the game itself is unchanged.
 
+## [0.43.0.0] - 2026-11-07
+
+**Deploy note:** no reseed is needed. Deploy the room server (`wrangler deploy`) and the website, then reload the big screen and the phones. Until both are deployed, the end screen shows the full podium at once, as before. Do not deploy during an event.
+
+### Added
+- Before the final scores, the narrator calls the podium from third place to first, and the big screen shows each team as it is called. The scores, the crown and the epilogue come up only after first place.
+- First the narrator names 「本場大成功王」, the team that rolled the most natural 20s, with its own card on the big screen. Nobody rolled a 20? This part is skipped.
+- With AI narration on, the AI writes the calls; with it off, or when an AI line would give away a higher place, the calls are scripted.
+- A tie that changes the top three is settled with d20 rolls, shown on the big screen just before the place it decides. Teams that roll the same number roll again.
+- After a boss kill, the reveal starts once the boss is cooked and served.
+
+### Changed
+- Tied teams no longer share first place. The tie-break dice decide the podium.
+- Phones show the places about 1 second after the big screen, so a phone never gives away first place. Until then they show 「冒險結束！看大螢幕 📺」.
+
+### Fixed
+- A big screen that reloads or reconnects during the reveal picks up at the current place instead of starting over. A room server that restarts keeps the reveal's timing.
+- Under reduced motion, the big screen shows the final podium at once.
+
 ## [0.42.0.0] - 2026-11-07
 
 **Deploy note:** no reseed is needed. Before you save a bank that uses one of the new monsters, wait until both the room server and the website have finished deploying, then reload the host page, the big screen and the phones. A page opened before the deploy does not know the new monsters.

@@ -3,11 +3,12 @@
 // opened on a served dish shows the dish at once (cooking I1, I3); fails_when=a dishLine branch swaps or a hook's first
 // frame replays the cooking; why_new=e2e checks the dish card only and never opens a page after 上菜; seam=none;
 // no_claim=the timed frames and callbacks (useEffect does not run in renderToStaticMarkup; e2e covers them)
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { DishOnStage, dishLine, useCookStep, useFinaleStep } from "@/components/cooking";
+import { DishOnStage, dishLine, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { Sprite } from "@/components/pixel";
+import { PHONE_LAG_MS, revealBeats, revealNow } from "@/lib/podium";
 import type { MonsterSprite, SpriteKind } from "@/lib/sprite-kind";
 
 const dish = { name: "史萊姆凍", part: "外膜", method: "冰鎮", comment: "冰冰涼涼。", points: 10, monster: { name: "史萊姆", sprite: "slime" as const, hue: 0 }, room: 0, teamId: "t1" };
@@ -52,5 +53,50 @@ describe("a sprite this page does not know (a newer server)", () => {
   it("DishOnStage serves the slime's dish", () => {
     const served = (sprite: string) => html(createElement(DishOnStage, { dish: { ...dish, monster: { ...dish.monster, sprite: sprite as MonsterSprite } }, cardTop: 0, bottom: 0 }));
     for (const kind of unknown) expect(served(kind)).toBe(served("slime"));
+  });
+});
+
+// Value: protects=the screen and the phone open on the room's clock: a page that opens mid-reveal starts at the beat
+// the room is on, the phone PHONE_LAG_MS behind, and a page with no reveal shows the end (podium-reveal.md D7, D16,
+// eng D20, D23); fails_when=a page starts its own clock at 0 (replaying the reveal), the lag is dropped so a phone
+// shows the winner with or before the screen, or an older server's STATE hangs on 名次揭曉中…; why_new=new;
+// seam=none; no_claim=the timers moving the beat on (useEffect does not run here; e2e main-line covers the phone)
+describe("the podium reveal's first frame", () => {
+  const beats = revealBeats([{ id: "a", name: "甲" }, { id: "b", name: "乙" }], ["a", "b"], []);
+  /** "beat result done" as the page's first frame sees it. */
+  const show = (n: { beat: number; result: boolean; done: boolean }) => `${n.beat} ${n.result} ${n.done}`;
+  const at = (elapsedMs: number, lag = 0, b: typeof beats | null = beats) =>
+    first(() => show(revealNow({ beats: b }, useRevealTime({ ranking: ["a", "b"], beats: b, elapsedMs }, lag))));
+
+  it("a page opened mid-reveal is on the room's beat, not the first one", () => {
+    expect(at(4000)).toBe("1 true false");
+    expect(at(-500)).toBe("-1 false false");
+  });
+
+  it("the phone is still waiting when the screen puts first place up", () => {
+    expect(at(3500)).toBe("1 true false");
+    expect(at(3500, PHONE_LAG_MS)).toBe("0 false false");
+    expect(at(3500 + PHONE_LAG_MS, PHONE_LAG_MS)).toBe("1 true false");
+  });
+
+  it("waits while the lines are coming; with no reveal at all it is the end", () => {
+    expect(at(0, 0, null)).toBe("-1 false false");
+    expect(first(() => show(revealNow(undefined, useRevealTime(undefined))))).toBe("-1 true true");
+  });
+
+  // Value: protects=reduced motion shows the big screen the end at once, but a phone still waits for the room's clock, so it
+  // never names the winner before the screen (podium-reveal.md D16, /review D25-1); fails_when=the phone's clock honors
+  // reduced motion again; why_new=iOS Reduce Motion spoiled first place and then hid the story; seam=matchMedia stub;
+  // no_claim=the phone's later STATEs (the gate follows `up` both ways, e2e main-line)
+  it("under reduced motion the screen shows the end, the phone keeps waiting", () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    try {
+      const view = (motionOnly: boolean) =>
+        first(() => show(revealNow({ beats }, useRevealTime({ ranking: ["a", "b"], beats, elapsedMs: 3500 }, motionOnly ? 0 : PHONE_LAG_MS, motionOnly))));
+      expect(view(true)).toBe("-1 true true");
+      expect(view(false)).toBe("0 false false");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

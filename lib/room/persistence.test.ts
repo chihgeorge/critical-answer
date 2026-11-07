@@ -4,6 +4,7 @@ import { DungeonRoom } from "./dungeon-room";
 import { BANK_KEY, SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { BANK } from "../question-bank-data";
+import { FINISH_PODIUM_MS } from "../protocol";
 import { checkKey, currentTurnTeamId, getSpectatorView } from "../game-state";
 // Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
 vi.mock("../question-bank-data", async (actual) => {
@@ -814,5 +815,154 @@ describe("saved data that cannot be used", () => {
     storage.data.set(SNAPSHOT_KEY, { schemaVersion: 0 });
     await makeRoom(storage).room.restore();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('"event":"state_discarded"'));
+  });
+});
+
+// Value: protects=the room owns the reveal's clock: it waits for the lines, starts the first beat after the lead, and a
+// reconnect or a restart picks the reveal up where it is instead of replaying it (podium-reveal.md D7, eng D20);
+// fails_when=elapsedMs is not measured from the saved start, the start is lost on restart, or an old save hangs on
+// 名次揭曉中…; why_new=new; seam=opts.now (already the room's clock); no_claim=the screen's drawing (screen tests, e2e)
+describe("the podium reveal (podium-reveal.md eng D20)", () => {
+  const broadcasts = (io: { broadcast: ReturnType<typeof vi.fn> }) => io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string));
+  const lastState = (io: { broadcast: ReturnType<typeof vi.fn> }) => broadcasts(io).findLast((m) => m.type === "STATE");
+
+  function ended(storage: ReturnType<typeof memoryStorage>, clock: () => number) {
+    const { room, io } = makeRoom(storage, { now: clock, epilogueDelayMs: 4000, holdMs: 5 });
+    const { host } = startedGame(room);
+    judgeCorrect(room, host, room.game!.turnOrder[0]);
+    send(room, host, { type: "HOST_END_GAME" });
+    return { room, io, host };
+  }
+
+  it("waits for the lines, then runs on the room's clock; a reconnect and a restart pick it up where it is", async () => {
+    let now = 1_000_000;
+    const storage = memoryStorage();
+    const { room, io } = ended(storage, () => now);
+    expect(lastState(io).podium).toEqual({ ranking: room.game!.ranking, beats: null, elapsedMs: 0 });
+    await vi.waitFor(() => expect(lastState(io).podium.beats).not.toBeNull());
+    const podium = lastState(io).podium;
+    // The first beat waits out the lead (the last line read) from when the game finished.
+    expect(podium.elapsedMs).toBe(-4000);
+    expect(podium.beats.map((b: { kind: string; place?: number }) => [b.kind, b.place])).toEqual([["place", 2], ["place", 1]]);
+    expect(broadcasts(io).filter((m) => m.type === "EPILOGUE")).toHaveLength(1);
+
+    now += 6000;
+    const screen = makeConn("screen");
+    room.onConnect(screen);
+    expect(lastOf(screen, "STATE").podium.elapsedMs).toBe(2000);
+
+    const second = makeRoom(storage, { now: () => now }).room;
+    expect(await second.restore()).toBe("restored");
+    const again = makeConn("again");
+    second.onConnect(again);
+    expect(lastOf(again, "STATE").podium).toEqual({ ...podium, elapsedMs: 2000 });
+    expect(sent(again).filter((m) => m.type === "EPILOGUE")).toEqual([{ type: "EPILOGUE", text: lastOf(screen, "EPILOGUE").text, replay: true }]);
+  });
+
+  it("a restart before the lines came in asks again, and the first beat still counts from the finish", async () => {
+    let now = 1_000_000;
+    const storage = memoryStorage();
+    ended(storage, () => now);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    storage.data.set(SNAPSHOT_KEY, { ...saved, epilogue: null, podium: null });
+    now += 1000;
+    const { room, io } = makeRoom(storage, { now: () => now, epilogueDelayMs: 4000, holdMs: 5 });
+    expect(await room.restore()).toBe("restored");
+    await vi.waitFor(() => expect(lastState(io)?.podium.beats).toBeTruthy());
+    expect(lastState(io).podium.elapsedMs).toBe(-3000);
+  });
+
+  /** Two teams answer everything until the boss falls; its dish cooks on screen first (the default bank has dishes). */
+  function killedBoss(storage: ReturnType<typeof memoryStorage>, clock: () => number) {
+    const { room, io } = makeRoom(storage, { now: clock, epilogueDelayMs: 4000, holdMs: 5 });
+    const { host } = startedGame(room);
+    for (let i = 0; i < 400 && room.game!.phase === "playing"; i++) {
+      const g = room.game!;
+      const t = g.teams.find((x) => x.id === currentTurnTeamId(g))!;
+      serveNext(room, host, (room as unknown as { eventSeq: number }).eventSeq);
+      send(room, host, { type: "HOST_JUDGE", teamId: t.id, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
+      const r = room as unknown as { pendingRoll?: { kind: string }; lockTimer: ReturnType<typeof setTimeout>; resolveRoll: () => void };
+      if (r.pendingRoll?.kind === "kill") {
+        clearTimeout(r.lockTimer);
+        r.resolveRoll(); // the kill's 4d20 land at once
+      }
+    }
+    expect(room.game!.phase).toBe("finished");
+    return { room, io };
+  }
+
+  // Value: protects=after a boss kill with a dish the first call waits for the cooking, even across a restart mid-cooking
+  // (cooking R8, /review D25-3); fails_when=the lead is read from the unsaved reveal again, or set after the STATE is
+  // saved; why_new=only 結束冒險 (no dish) was covered; seam=fake clock; no_claim=the screen's own cooking frames
+  it("a boss kill's first call waits for the boss to cook, and a restart mid-cooking still waits", async () => {
+    let now = 1_000_000;
+    const storage = memoryStorage();
+    const { io } = killedBoss(storage, () => now);
+    await vi.waitFor(() => expect(lastState(io).podium.beats).not.toBeNull());
+    expect(lastState(io).podium.elapsedMs).toBe(-FINISH_PODIUM_MS);
+
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    storage.data.set(SNAPSHOT_KEY, { ...saved, epilogue: null, podium: null }); // the lines were not in yet
+    now += 1000;
+    const second = makeRoom(storage, { now: () => now, epilogueDelayMs: 4000, holdMs: 5 });
+    expect(await second.room.restore()).toBe("restored");
+    await vi.waitFor(() => expect(lastState(second.io)?.podium.beats).toBeTruthy());
+    expect(lastState(second.io).podium.elapsedMs).toBe(-(FINISH_PODIUM_MS - 1000));
+  });
+
+  // Value: protects=an epilogue that throws still lets the places be called, on scripted lines (/review pass 2);
+  // fails_when=the failure only logs and podiumView waits for lines forever; why_new=before the reveal a failed epilogue
+  // lost only the story; seam=the runner made to reject; no_claim=what makes it throw
+  it("an epilogue that throws runs the reveal on scripted calls", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const storage = memoryStorage();
+    const { room, io } = makeRoom(storage, { now: () => 0, epilogueDelayMs: 4000, holdMs: 5 });
+    (room as unknown as { runner: { run: () => Promise<void> } }).runner.run = () => Promise.reject(new Error("boom"));
+    const { host } = startedGame(room);
+    judgeCorrect(room, host, room.game!.turnOrder[0]);
+    send(room, host, { type: "HOST_END_GAME" });
+    await vi.waitFor(() => expect(lastState(io).podium.beats).not.toBeNull());
+    expect(lastState(io).podium.beats.map((b: { line: string }) => b.line)).toEqual(["第二名是……乙隊！", "第一名是……甲隊！"]);
+    expect(lastState(io).podium.elapsedMs).toBe(-4000);
+
+    // A restart asks for the story again (it never came): the reveal under way keeps its clock, not start over.
+    const second = makeRoom(storage, { now: () => 10_000, epilogueDelayMs: 4000, holdMs: 5 });
+    expect(await second.room.restore()).toBe("restored");
+    await vi.waitFor(() => expect(broadcasts(second.io).some((m) => m.type === "EPILOGUE")).toBe(true));
+    expect(lastState(second.io).podium.elapsedMs).toBe(10_000 - 4000);
+  });
+
+  // Value: protects=a damaged saved reveal shows the full podium instead of 名次揭曉中… forever (/review D25-2);
+  // fails_when=podiumView waits for lines whenever the podium is missing, though the story is in and nobody asks again;
+  // why_new=the snapshot test only checked parsing; seam=storage edit; no_claim=what corrupts a save
+  it("a damaged saved reveal with its story in shows the full podium", async () => {
+    const storage = memoryStorage();
+    const { io } = ended(storage, () => 0);
+    await vi.waitFor(() => expect(lastState(io).podium.beats).not.toBeNull());
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    storage.data.set(SNAPSHOT_KEY, { ...saved, podium: { lines: "bad", at: 1 } });
+    const { room } = makeRoom(storage);
+    expect(await room.restore()).toBe("restored");
+    const screen = makeConn("screen");
+    room.onConnect(screen);
+    expect(lastOf(screen, "STATE")).not.toHaveProperty("podium");
+    expect(lastOf(screen, "EPILOGUE")).toMatchObject({ replay: true });
+  });
+
+  it("a game finished before the reveal has no podium: the screen shows the full podium", async () => {
+    const storage = memoryStorage();
+    ended(storage, () => 0);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    delete saved.game.ranking;
+    delete saved.game.tieRolls;
+    delete saved.podium;
+    delete saved.revealFrom;
+    storage.data.set(SNAPSHOT_KEY, { ...saved, epilogue: "舊的後記" });
+    const { room } = makeRoom(storage);
+    expect(await room.restore()).toBe("restored");
+    const screen = makeConn("screen");
+    room.onConnect(screen);
+    expect(lastOf(screen, "STATE")).not.toHaveProperty("podium");
+    expect(lastOf(screen, "EPILOGUE")).toMatchObject({ text: "舊的後記", replay: true });
   });
 });
