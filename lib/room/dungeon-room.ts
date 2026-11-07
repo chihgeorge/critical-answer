@@ -64,7 +64,8 @@ import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { createScriptedProvider, type NarrationProvider } from "../narration/scripted";
-import { createRunner, MAX_LINE, type TranscriptItem } from "../narration/runner";
+import { createRunner, type TranscriptItem } from "../narration/runner";
+import { editedLine } from "../narration/client";
 import { PROVIDERS } from "../narration/providers";
 import { keyHint, withBudget } from "./ai-budget";
 import { createBreaker, withBreaker } from "../narration/breaker";
@@ -979,9 +980,11 @@ export class DungeonRoom {
           for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
           break;
         case "HOST_EDIT_NARRATION":
-          this.handleEditNarration(sender, msg.eventId, msg.index, msg.line);
+          this.handleEditNarration(sender, msg.eventId, msg.rev, msg.index, msg.line);
           break;
         case "SCREEN_NARRATION_PROGRESS":
+          // Not from a team's phone or a host page: a player cannot lock the host's edits from their own phone (D3).
+          if (this.connTeam.has(sender.id) || this.hostConns.has(sender.id)) break;
           this.handleNarrationProgress(msg.eventId, msg.rev, msg.done);
           break;
         case "HOST_NEXT_LINE":
@@ -1423,18 +1426,19 @@ export class DungeonRoom {
 
   /** The host rewrites line `index` of narration `eventId` (host-narration-edit.md D9). It wins over anything the LLM
    * does later for that event. A line the big screen has already read stays as it is (D3). */
-  private handleEditNarration(conn: Conn, eventId: number, index: number, raw: string) {
+  private handleEditNarration(conn: Conn, eventId: number, rev: number, index: number, raw: string) {
     if (!this.requireHost(conn)) return;
     const n = this.lastNarration;
     const refuse = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (!n) return refuse("no_narration");
-    // The narration changed while the host typed (a new turn, or a second host device): never edit the newer one.
-    if (eventId !== n.eventId) return refuse("stale_narration");
+    // The narration changed while the host typed (a new turn, or a second host device's edit): never edit the newer text.
+    if (eventId !== n.eventId || rev !== n.rev) return refuse("stale_narration");
     if (index >= n.lines.length) return refuse("bad_index");
     if (index < n.done) return refuse("line_read");
     // One line in the dialogue box: a raw socket could send newlines the <input> cannot.
-    const line = sanitizeText(raw.replace(/\s+/g, " "), MAX_LINE);
-    if (!line) return refuse("empty_line");
+    const line = editedLine(raw);
+    // Its own name, not HOST_NEXT_LINE's "empty_line": the host page shows this one in the narration panel's editor.
+    if (!line) return refuse("empty_edit");
     const lines = n.lines.map((l, i) => (i === index ? line : l));
     this.lastNarration = { ...n, lines, rev: n.rev + 1 };
     this.editedLines = [...this.editedLines, line].slice(-STYLE_EXAMPLES);
@@ -1448,6 +1452,8 @@ export class DungeonRoom {
     const n = this.lastNarration;
     if (!n || eventId !== n.eventId || rev !== n.rev || done <= n.done || done > n.lines.length) return;
     this.lastNarration = { ...n, done };
+    // Saved even with no host page connected (sendTo saves only when it sends), so a restart keeps read lines locked.
+    this.persist();
     for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_NARRATION_PROGRESS", eventId, done });
   }
 

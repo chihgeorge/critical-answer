@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cleanTypedAnswer, parseClientMessage, sanitizeText } from "./protocol";
+import { cleanTypedAnswer, MAX_RAW_TEXT, parseClientMessage, sanitizeText } from "./protocol";
 import { MAX_LINE } from "./narration/runner";
 
 const TOKEN = "host-token-0123456789abcdef";
@@ -102,15 +102,17 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: "用武俠口吻" })).toBeNull();
   });
 
-  // Guards the edit message's shape (D9, D18): fails if the eventId or line index stops being required, if a
-  // negative or fractional one gets through, or if the limit drifts from MAX_LINE (a prefilled 50-character line).
-  it("HOST_EDIT_NARRATION: an eventId, a line index and a line of at most MAX_LINE characters", () => {
-    const ok = { type: "HOST_EDIT_NARRATION", eventId: 4, index: 2, line: "改過的一句" };
+  // Guards the edit message's shape (D9, D18): fails if the eventId, rev or line index stops being required, if a
+  // negative or fractional one gets through, or if a prefilled line over MAX_LINE stops parsing (the room cuts it).
+  it("HOST_EDIT_NARRATION: an eventId, a rev, a line index and a line of at most MAX_LINE characters", () => {
+    const ok = { type: "HOST_EDIT_NARRATION", eventId: 4, rev: 1, index: 2, line: "改過的一句" };
     expect(parseClientMessage(ok)).toEqual(ok);
     expect(parseClientMessage({ ...ok, line: "字".repeat(MAX_LINE) })).toEqual({ ...ok, line: "字".repeat(MAX_LINE) });
-    expect(parseClientMessage({ ...ok, line: "字".repeat(MAX_LINE + 1) })).toBeNull();
+    // A scripted line can run past MAX_LINE; its prefilled edit must parse, and the room cuts it (red-team).
+    expect(parseClientMessage({ ...ok, line: "字".repeat(MAX_LINE + 1) })).toEqual({ ...ok, line: "字".repeat(MAX_LINE + 1) });
+    expect(parseClientMessage({ ...ok, line: "字".repeat(MAX_RAW_TEXT + 1) })).toBeNull();
     expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "改過的一句" })).toBeNull(); // the old shape
-    for (const bad of [{ eventId: -1 }, { eventId: 1.5 }, { eventId: "4" }, { index: -1 }, { index: undefined }, { line: ["x"] }]) {
+    for (const bad of [{ eventId: -1 }, { eventId: 1.5 }, { eventId: "4" }, { index: -1 }, { index: undefined }, { rev: undefined }, { rev: -1 }, { line: ["x"] }]) {
       expect(parseClientMessage({ ...ok, ...bad }), JSON.stringify(bad)).toBeNull();
     }
   });

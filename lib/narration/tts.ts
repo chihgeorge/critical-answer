@@ -55,3 +55,10 @@ export function pickVoice<V extends { lang: string }>(voices: readonly V[]): V |
   const candidates = voices.filter((v) => /^(zh|cmn)/i.test(v.lang));
   return candidates.find((v) => /TW/i.test(v.lang)) ?? candidates.find((v) => /Hant/i.test(v.lang) && !/HK|MO/i.test(v.lang));
 }
+
+/** Longest a line may take to speak before the screen gives up on its onend and reads on: some browsers sometimes
+ * never fire onend or onerror, which would stop the voice and freeze the host's progress (host-narration-edit.md D11).
+ * About 0.4 s a character (Mandarin TTS reads roughly 4 a second) plus 3 s for a slow voice to start. */
+export function speechTimeoutMs(line: string): number {
+  return [...line].length * 400 + 3000;
+}

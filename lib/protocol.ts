@@ -31,7 +31,7 @@
 
 import { isClassId, type ClassId, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { MonsterSprite } from "./sprite-kind";
-import { MAX_LINE, type TranscriptItem } from "./narration/runner";
+import type { TranscriptItem } from "./narration/runner";
 
 export const MAX_TEAMS = 8;
 
@@ -137,11 +137,13 @@ export type ClientMessage =
   | { type: "HOST_AI_LIMIT"; limit: number }
   /** Join password for new teams; "" lets anyone with the room code join. */
   | { type: "HOST_SET_PASSWORD"; password: string }
-  /** Director: replace line `index` (0-based) of narration `eventId` (<= MAX_LINE chars). The room refuses a stale
-   * eventId and a line the big screen has already read (docs/designs/host-narration-edit.md D3, D9). */
-  | { type: "HOST_EDIT_NARRATION"; eventId: number; index: number; line: string }
+  /** Director: replace line `index` (0-based) of narration `eventId` as of edit `rev` (cut to MAX_LINE chars). The room
+   * refuses a stale eventId or rev (another host device edited first) and a line the big screen has already read
+   * (docs/designs/host-narration-edit.md D3, D9). */
+  | { type: "HOST_EDIT_NARRATION"; eventId: number; rev: number; index: number; line: string }
   /** /screen: it has finished reading `done` lines of narration `eventId` at revision `rev` (typed, and spoken
-   * when its voice is on). No key: the worst a forged one does is lock lines early (host-narration-edit.md D3, D14). */
+   * when its voice is on). No key: the worst a forged one does is lock lines early. The room ignores it from a team's phone or a host page
+   * (host-narration-edit.md D3, D14). */
   | { type: "SCREEN_NARRATION_PROGRESS"; eventId: number; rev: number; done: number }
   /** Director: the next narration's second line says this (<= 40 chars); "" cancels. */
   | { type: "HOST_NEXT_LINE"; line: string }
@@ -285,11 +287,11 @@ export type ServerMessage =
       media?: MediaCommand;
     }
   | { type: "GAME_OVER"; winners: string[] }
-  /** Exactly one per event (1-3 segments, played in order). Clients keep the highest eventId they
-   * have seen. 3 segments when there's a next team (result + atmosphere + transition), 2 when there
-   * isn't (boss-kill, or the game's last judged event) — see docs/designs/multi-segment-narration.md. */
-  /** `rev` goes up with every host edit of this eventId (absent from older servers: 0); /screen echoes it in
-   * SCREEN_NARRATION_PROGRESS so a report about the old text never locks the new one (host-narration-edit.md D14). */
+  /** One per event (1-3 segments, played in order), sent again with `rev` + 1 after each host edit of that eventId.
+   * Clients keep the highest eventId they have seen. 3 segments when there's a next team (result + atmosphere +
+   * transition), 2 when there isn't (boss-kill, or the game's last judged event) — see docs/designs/multi-segment-narration.md.
+   * `rev` is absent from older servers (0); /screen echoes it in SCREEN_NARRATION_PROGRESS so a report about the old
+   * text never locks the new one (host-narration-edit.md D14). */
   | { type: "NARRATION"; eventId: number; lines: string[]; rev?: number }
   /** `replay`: set when onConnect resends an epilogue that was already broadcast, so /screen
    * doesn't speak it again; absent on the live broadcast. Older servers never set it. */
@@ -376,7 +378,7 @@ export function sanitizeText(text: string, max: number): string {
 /** Longest id a client message may carry; the bank refuses to save longer question ids (assertSavable). */
 export const MAX_ID = 64;
 const MAX_RAW_NAME = 100;
-const MAX_RAW_TEXT = 200;
+export const MAX_RAW_TEXT = 200;
 /** A typed answer keeps this many characters (code points). */
 export const MAX_TYPED_ANSWER = 40;
 export const MAX_PASSWORD = 32;
@@ -471,10 +473,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return password !== null ? { type: "HOST_SET_PASSWORD", password } : null;
     }
     case "HOST_EDIT_NARRATION": {
-      // Same limit as a narration line itself, so the prefilled original always fits (D18).
-      const line = str(m.line, MAX_LINE);
-      if (line === null || !isCount(m.eventId) || !isCount(m.index)) return null;
-      return { type: "HOST_EDIT_NARRATION", eventId: m.eventId, index: m.index, line };
+      // The raw ceiling, not MAX_LINE: a scripted line can run past MAX_LINE (long team and monster names), and its
+      // prefilled edit must still land. The room cuts it to MAX_LINE (D18).
+      const line = str(m.line, MAX_RAW_TEXT);
+      if (line === null || !isCount(m.eventId) || !isCount(m.rev) || !isCount(m.index)) return null;
+      return { type: "HOST_EDIT_NARRATION", eventId: m.eventId, rev: m.rev, index: m.index, line };
     }
     case "SCREEN_NARRATION_PROGRESS":
       return isCount(m.eventId) && isCount(m.rev) && isCount(m.done)

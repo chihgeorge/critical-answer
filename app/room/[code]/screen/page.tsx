@@ -15,7 +15,7 @@ import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn, monsterLook, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
-import { pickVoice, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
+import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { SFX } from "@/lib/sfx";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
@@ -597,14 +597,19 @@ export default function ScreenPage() {
     utter.lang = ttsVoice.lang;
     q.utter = utter;
     // Guarded by identity: cancel() fires onerror on the cut utterance, which must not advance anything.
-    const next = () => {
+    const next = (stuck = false) => {
       if (speech.current !== q || q.utter !== utter) return;
+      clearTimeout(watchdog);
+      q.utter = null; // before cancel(): its onerror must find nothing to advance
+      if (stuck) window.speechSynthesis.cancel();
       q.at++;
       if (q.eventId !== null) markRead(q.eventId, { spoken: q.at });
       speakAt(q);
     };
-    utter.onend = next;
-    utter.onerror = next;
+    utter.onend = () => next();
+    utter.onerror = () => next();
+    // No onend in time: treat the line as spoken and read on (see speechTimeoutMs).
+    const watchdog = setTimeout(() => next(true), speechTimeoutMs(utter.text));
     window.speechSynthesis.speak(utter);
   }
 
@@ -657,12 +662,19 @@ export default function ScreenPage() {
       return;
     }
     const d = firstChange(p.lines, msg.lines);
+    const newRev = rev !== p.rev;
     p.rev = rev;
     p.lines = msg.lines;
-    if (d === -1) return;
-    p.typed = Math.min(p.typed, d);
-    p.sent = Math.min(p.sent, d);
-    if (!voice) return;
+    if (d !== -1) {
+      p.typed = Math.min(p.typed, d);
+      if (p.spoken !== null) p.spoken = Math.min(p.spoken, d);
+    }
+    // A report sent under the old rev may have crossed the edit and been dropped: say it again under the new one.
+    if (newRev) {
+      p.sent = 0;
+      markRead(msg.eventId, {});
+    }
+    if (d === -1 || !voice) return;
     const q = speech.current;
     if (q && q.eventId === msg.eventId && d > q.at) q.lines = msg.lines;
     else speak(msg.lines, msg.eventId, d);

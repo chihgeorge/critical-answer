@@ -594,6 +594,20 @@ describe("restoring after a restart", () => {
   // Value: protects=the big screen's reading progress and the edit revision survive a restart (host-narration-edit.md D14);
   // fails_when=a restored room forgets `done` (every read line editable again), forgets `rev` (an old report locks new
   // text), or a save from before them does not restore at all.
+  it("reading progress is saved even with no host page connected", async () => {
+    // Value: protects=a read line stays locked after a restart while the host's phone sleeps (D14); fails_when=
+    // handleNarrationProgress saves only through sendTo to host pages, so with none connected nothing is written.
+    const storage = memoryStorage();
+    const first = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(first.room);
+    judgeCorrect(first.room, host, T1);
+    await new Promise((r) => setTimeout(r, 30));
+    const eventId = (storage.data.get(SNAPSHOT_KEY) as any).lastNarration.eventId;
+    first.room.onClose(host);
+    send(first.room, makeConn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 0, done: 2 });
+    expect((storage.data.get(SNAPSHOT_KEY) as any).lastNarration).toMatchObject({ eventId, done: 2 });
+  });
+
   it("reading progress and the edit revision survive a restart; an older save without them restores as 0", async () => {
     const storage = memoryStorage();
     const first = makeRoom(storage, { holdMs: 10 });
@@ -601,7 +615,7 @@ describe("restoring after a restart", () => {
     judgeCorrect(first.room, host, T1);
     await new Promise((r) => setTimeout(r, 30));
     const eventId = (storage.data.get(SNAPSHOT_KEY) as any).lastNarration.eventId;
-    send(first.room, host, { type: "HOST_EDIT_NARRATION", eventId, index: 2, line: "改過的第三句" });
+    send(first.room, host, { type: "HOST_EDIT_NARRATION", eventId, rev: 0, index: 2, line: "改過的第三句" });
     send(first.room, makeConn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 1, done: 1 });
     expect((storage.data.get(SNAPSHOT_KEY) as any).lastNarration).toMatchObject({ eventId, rev: 1, done: 1 });
 
@@ -612,7 +626,7 @@ describe("restoring after a restart", () => {
     send(second.room, host2, { type: "HOST_CLAIM", token: TOKEN });
     expect(lastOf(host2, "NARRATION")).toMatchObject({ eventId, rev: 1 });
     expect(lastOf(host2, "HOST_NARRATION_PROGRESS")).toEqual({ type: "HOST_NARRATION_PROGRESS", eventId, done: 1 });
-    send(second.room, host2, { type: "HOST_EDIT_NARRATION", eventId, index: 0, line: "太晚了" });
+    send(second.room, host2, { type: "HOST_EDIT_NARRATION", eventId, rev: 1, index: 0, line: "太晚了" });
     expect(lastOf(host2, "ERROR")).toMatchObject({ detail: "line_read" });
 
     const old = structuredClone(storage.data.get(SNAPSHOT_KEY) as any);

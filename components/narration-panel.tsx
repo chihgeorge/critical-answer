@@ -1,21 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ClientMessage } from "@/lib/protocol";
 import { MAX_EDIT_LINE } from "@/lib/protocol";
 import { MAX_LINE } from "@/lib/narration/runner";
-import { narrationSummary, type NarrationState } from "@/lib/narration/client";
+import { editedLine, narrationSummary, type NarrationState } from "@/lib/narration/client";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
 
 /** A room refusal of HOST_EDIT_NARRATION; `seq` tells two equal refusals apart. */
 export type EditRefusal = { detail: string; seq: number };
 
-type Edit = { eventId: number; index: number; draft: string; sent: boolean; refused: string | null };
+/** `rev`: the narration's edit revision when the editor opened; another host device's edit makes this one stale (D9). */
+type Edit = { eventId: number; rev: number; index: number; draft: string; sent: boolean; refused: string | null };
 
 const rowBase = "flex min-h-[48px] items-center gap-2 px-2 py-1 text-[15px] leading-[1.3]";
 const num = "px-num flex h-[22px] w-[22px] flex-none items-center justify-center text-[11px]";
 const smallBtn = "!m-0 min-h-[44px] min-w-[52px] !px-3 !py-0 text-[15px]";
-const input = "w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]";
+const input = "px-input w-full";
 
 /**
  * The host's narration panel above the judge buttons (docs/designs/host-narration-edit.md D2–D18): one summary row,
@@ -45,7 +46,8 @@ export function NarrationPanel({
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Edit | null>(null);
   const [nextDraft, setNextDraft] = useState("");
-  const returnTo = useRef<number | null>(null);
+  /** Where focus goes once the editor closes (D17): a line's 改, or -1 for the panel toggle. */
+  const [returnTo, setReturnTo] = useState<number | null>(null);
 
   // D12: a new narration, or our edit landing, closes the panel; an open editor keeps it open.
   const key = narration ? `${narration.eventId}:${narration.rev}` : "";
@@ -53,9 +55,11 @@ export function NarrationPanel({
   if (key !== seenKey) {
     const sameEvent = seenKey.split(":")[0] === String(narration?.eventId ?? "");
     setSeenKey(key);
-    if (edit?.sent && sameEvent) {
+    // Only our own text landing closes it: another device's edit first means ours comes back stale_narration (D9).
+    if (edit?.sent && sameEvent && narration?.lines[edit.index] === editedLine(edit.draft)) {
       setEdit(null);
       setOpen(false);
+      setReturnTo(-1); // the editor's row is gone: focus goes back to the toggle
     } else if (!edit && !sameEvent) setOpen(false);
   }
   // A refused edit stays open with its draft (D10).
@@ -72,39 +76,41 @@ export function NarrationPanel({
   }
 
   useEffect(() => {
-    if (edit || returnTo.current === null) return;
-    document.getElementById(`narration-edit-${returnTo.current}`)?.focus();
-    returnTo.current = null;
-  }, [edit]);
+    if (edit || returnTo === null) return;
+    document.getElementById(returnTo < 0 ? "narration-toggle" : `narration-edit-${returnTo}`)?.focus();
+  }, [edit, returnTo]);
 
   const lines = narration?.lines ?? [];
   const summary = narrationSummary(narration, pending, done, !!nextLine);
   // With no narration yet, the panel still opens for 下一句這樣說 (D7) — just without lines.
   const canOpen = pending || !!narration || nextLine !== null;
   // While the next narration is on its way, the one being edited is already old.
-  const stale = !!edit && (pending || edit.eventId !== narration?.eventId || edit.refused === "stale_narration");
+  const stale =
+    !!edit && (pending || edit.eventId !== narration?.eventId || (!edit.sent && edit.rev !== narration.rev) || edit.refused === "stale_narration");
   const locked = !!edit && !stale && (edit.index < done || edit.refused === "line_read");
 
   function cancel() {
-    if (edit) returnTo.current = edit.index;
+    if (edit) setReturnTo(edit.index);
     setEdit(null);
   }
   function submit() {
-    if (!edit || !edit.draft.trim() || disabled) return;
+    // edit.sent: Enter again while the first one is on its way would edit twice.
+    if (!edit || !edit.draft.trim() || disabled || edit.sent) return;
     if (stale || locked) return queueNext(edit.draft);
-    send({ type: "HOST_EDIT_NARRATION", eventId: edit.eventId, index: edit.index, line: edit.draft });
+    send({ type: "HOST_EDIT_NARRATION", eventId: edit.eventId, rev: edit.rev, index: edit.index, line: edit.draft });
     setEdit({ ...edit, sent: true, refused: null });
   }
   function queueNext(line: string) {
     if (line.trim().length > MAX_EDIT_LINE) return;
     send({ type: "HOST_NEXT_LINE", line });
-    setEdit(null);
+    cancel();
   }
 
   return (
     <Panel tone="lav" className="px-[10px] pb-[10px] pt-2" data-testid="narration-panel">
       <button
         type="button"
+        id="narration-toggle"
         aria-expanded={open}
         aria-controls="narration-lines"
         disabled={!canOpen}
@@ -128,7 +134,7 @@ export function NarrationPanel({
             lines.map((text, i) => {
               const read = i < done;
               const reading = i === done;
-              if (edit && edit.index === i && !stale) return editor(i, read);
+              if (edit && edit.index === i && !stale) return editor(i);
               return (
                 <div
                   key={i}
@@ -154,7 +160,7 @@ export function NarrationPanel({
                       id={`narration-edit-${i}`}
                       aria-label={`改第 ${i + 1} 句`}
                       disabled={disabled || (!!edit && !stale)}
-                      onClick={() => setEdit({ eventId: narration!.eventId, index: i, draft: text, sent: false, refused: null })}
+                      onClick={() => setEdit({ eventId: narration!.eventId, rev: narration!.rev, index: i, draft: text, sent: false, refused: null })}
                       className={smallBtn}
                     >
                       改
@@ -164,7 +170,7 @@ export function NarrationPanel({
               );
             })
           )}
-          {stale && edit && editor(edit.index, false)}
+          {stale && edit && editor(edit.index)}
           {nextLine !== null && (
             <section className="mt-1 flex flex-col gap-2">
               <div className="text-[15px]">下一句這樣說（下一次旁白的第二句，最多 {MAX_EDIT_LINE} 字）</div>
@@ -194,7 +200,7 @@ export function NarrationPanel({
     </Panel>
   );
 
-  function editor(i: number, read: boolean) {
+  function editor(i: number) {
     const e = edit!;
     const blocked = stale || locked;
     const tooLong = blocked && e.draft.trim().length > MAX_EDIT_LINE;
@@ -202,7 +208,7 @@ export function NarrationPanel({
       <div key={`edit-${i}`} className="flex flex-col gap-2 p-2" style={{ background: "#fff", boxShadow: "inset 0 0 0 3px var(--k)" }}>
         <div className="flex items-center gap-2 text-[15px]">
           <span>改第 {i + 1} 句（最多 {MAX_LINE} 字）</span>
-          {(read || locked) && <span className="whitespace-nowrap bg-[var(--dim-line)] px-[6px] text-[12px] text-white">✓ 已念完</span>}
+          {locked && <span className="whitespace-nowrap bg-[var(--dim-line)] px-[6px] text-[12px] text-white">✓ 已念完</span>}
         </div>
         <input
           autoFocus
@@ -216,8 +222,8 @@ export function NarrationPanel({
           }}
           className={input}
         />
-        <div aria-live="polite" className="text-[14px]" style={{ color: "var(--danger)" }}>
-          {stale ? "旁白已換新，沒有送出。可以改排進下一句。" : locked ? "大螢幕剛念完這句，改不了。可以改排進下一句。" : e.refused === "empty_line" ? "不能是空白" : ""}
+        <div aria-live="polite" className="text-[14px]" style={{ color: "var(--wrong)" }}>
+          {stale ? "旁白已換新，沒有送出。可以改排進下一句。" : locked ? "大螢幕剛念完這句，改不了。可以改排進下一句。" : e.refused === "empty_edit" ? "不能是空白" : ""}
           {tooLong && <div>超過 {MAX_EDIT_LINE} 字，請刪短</div>}
         </div>
         <div className="grid grid-cols-2 gap-2">

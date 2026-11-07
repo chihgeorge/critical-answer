@@ -251,7 +251,7 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
   // the replay flag, not from TTS being off.
   const corrected = "重播測試的修正旁白";
   // No screen was open during the game, so the room has nothing marked read: line 1 can still change.
-  host.send(JSON.stringify({ type: "HOST_EDIT_NARRATION", eventId: box.narration, index: 0, line: corrected }));
+  host.send(JSON.stringify({ type: "HOST_EDIT_NARRATION", eventId: box.narration, rev: 0, index: 0, line: corrected }));
   await expect.poll(() => ttsCalls(screen)).toContainEqual(corrected);
   host.close();
   team.close();

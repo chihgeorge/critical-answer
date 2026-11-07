@@ -32,7 +32,7 @@ const STUCK_MS = 15_000;
 const CLERIC_WAIT_DELAY_MS = 500;
 const noSubscribe = () => () => {};
 /** HOST_EDIT_NARRATION refusals: the narration panel shows them in its editor, not the page's error line. */
-const NARRATION_REFUSALS = new Set(["no_narration", "stale_narration", "bad_index", "line_read", "empty_line"]);
+const NARRATION_REFUSALS = new Set(["no_narration", "stale_narration", "bad_index", "line_read", "empty_edit"]);
 
 type Picks = Extract<ServerMessage, { type: "HOST_PICKS" }>;
 
@@ -218,8 +218,10 @@ export default function HostPage() {
               }
             }
           }
+          // The edit refusals go to the panel, not the error line; any other error must not mark an edit in flight refused.
           if (msg.detail && NARRATION_REFUSALS.has(msg.detail)) {
-            setEditRefusal((r) => ({ detail: msg.detail!, seq: (r?.seq ?? 0) + 1 }));
+            const detail = msg.detail;
+            setEditRefusal((r) => ({ detail, seq: (r?.seq ?? 0) + 1 }));
             break;
           }
           setError(

@@ -27,15 +27,15 @@
 對照圖（本機檔，不進 git）：`~/.gstack/projects/critical-answer/designs/host-narration-edit-20261107/`。
 
 - **D2 位置＝答對鈕上方，平常收成一行。** 判題鈕位置不動（DESIGN.md：判題鈕在拇指區）。收合列：owl、`地城主旁白` chip、摘要、右邊「展開 ▾」。點了展開成清單，「收起 ▴」收回。只在 `phase === "playing"`、不在玩法說明時出現。（`d2-placement.png`）
-- **D3 念完＝大螢幕回報。** `/screen` 每念完一句（見 D11）送 `SCREEN_NARRATION_PROGRESS { eventId, rev, done }`，done＝已念完的句數。房間只收 eventId、rev 都等於目前旁白、done 比現在大、而且不超過句數的回報（D14）。沒有密鑰：最多只能被惡作劇「提早鎖住」，內容改不了。
+- **D3 念完＝大螢幕回報。** `/screen` 每念完一句（見 D11）送 `SCREEN_NARRATION_PROGRESS { eventId, rev, done }`，done＝已念完的句數。房間只收 eventId、rev 都等於目前旁白、done 比現在大、而且不超過句數的回報（D14）。沒有密鑰：最多只能被惡作劇「提早鎖住」，內容改不了；已加入隊伍的手機和主持人頁送的回報房間不收，玩家用自己的手機鎖不了。
 - **D4 接續＝從被改的那一句接著念**（D13 細化）。
 - **D5 改法＝就地變輸入框。** 每句一行：編號 chip、句子、右邊「改」（44px）。點「改」那一行變成「改第 N 句（最多 50 字）」＋輸入框（預填原句）＋「取消」「換上大螢幕」。已念完：`--dim-ink` 字、`--dim-line` 虛線框、「✓ 已念完」標籤、沒有「改」。正在念的那一句：`--turn` 底、「▶ 念到這」標籤，仍可改。（`d5-edit.png`）
 - **D6 生成中＝一行。** `isPending` 時：收合列摘要灰色「旁白生成中…」；展開時只有一行「旁白生成中…」，沒有「改」。（`d5-states.png`）
 - **D7 下一句這樣說＝搬進旁白面板。** 展開後清單下方：「下一句這樣說（下一次旁白的第二句，最多 40 字）」＋輸入框＋「排進去」；已排的句子顯示在上面（`--turn` 底），有「取消」。收合列摘要後面加「・已排下一句」。「⚙ 更多」拿掉它。（`d7-next-line.png`）
-- **D9 改寫帶 eventId。** `HOST_EDIT_NARRATION { eventId, index, line }`（不帶 rev：eventId 對上、那句還沒念完就能改）。eventId 對不上（旁白已換新）就拒絕，跟 `HOST_NEXT` 的擋法一樣。
+- **D9 改寫帶 eventId。** `HOST_EDIT_NARRATION { eventId, rev, index, line }`。eventId 或 rev 對不上（旁白已換新，或另一台主持人裝置先改了）就拒絕，跟 `HOST_NEXT` 的擋法一樣。
 - **D10 編輯中那句被鎖。** 編輯框留著、草稿保留，標題旁出現「✓ 已念完」，下方紅字「大螢幕剛念完這句，改不了。可以改排進下一句。」，「換上大螢幕」換成「改排進下一句」（送 `HOST_NEXT_LINE`）。房間拒絕（已念完、旁白已換新）也用同一個顯示，旁白已換新時文字改成「旁白已換新，沒有送出。可以改排進下一句。」。（`final-approved.png`）
 - **D11 念完＝字打完，而且（有開語音時）那句也念完。** 沒開語音或瀏覽器不支援時，只看字。
-- **D12 自動收起。** 新旁白送達（eventId 變了）或「換上大螢幕」成功後自動收起；有編輯框開著時不收。
+- **D12 自動收起。** 新旁白送達（eventId 變了）或「換上大螢幕」成功後自動收起；有編輯框開著時不收。「成功」是指廣播回來的第 N 句等於草稿（照房間的規則整理過）；另一台主持人裝置的改句先到時不收，等房間回 `stale_narration` 再顯示紅字。
 - **D13 接續細節。** 改的句子在正在念的那句之後：目前這句照常念完，接著念新句子；只有改到正在念的那句，才從它重新打字、重新念。已念完的句子不重打、不重念。語音只抽換還沒開始念的句子，不切掉正在念的。`/play` 的對話框用同一個元件，一起變。
 - **D14 進度存在房間。** `lastNarration` 加 `done` 與 `rev`，跟旁白一起存檔；主持人連線（含重連）時送回。多台大螢幕取最大值。每次改寫 `rev + 1`、隨 NARRATION 廣播，舊 rev 的回報不算。
 - **D15 收合列文案。** 沒旁白：「還沒有旁白」，不能展開。有旁白、done=0：「N 句・大螢幕還沒開始念」。0<done<N：「N 句・念到第 done+1 句」。done=N：「N 句・都念完了」。有排下一句時加「・已排下一句」。（`final-approved.png`）
@@ -84,7 +84,7 @@
 - [ ] **T1 (P1, human: ~3h / CC: ~20min)** — protocol/room/llm — 拿掉 `HOST_SET_NOTES`、`notes`、prompt 裡的導演筆記、`DirectorEntry.kind "notes"`，舊存檔的 `notes` 欄位讀取時忽略
   - Files: `lib/protocol.ts`, `lib/room/dungeon-room.ts`, `lib/narration/llm.ts`, `lib/narration/runner.ts`, 對應 test、`e2e/host-drawer.spec.ts`
   - Verify: `npx vitest run`
-- [ ] **T2 (P1, human: ~4h / CC: ~30min)** — protocol/room — `HOST_EDIT_NARRATION { eventId, index, line }`（不帶 rev：eventId 對上、那句還沒念完就能改）（D9、D18）、`SCREEN_NARRATION_PROGRESS { eventId, rev, done }`（D3、D14），`lastNarration` 存 `done`/`rev`，NARRATION 帶 `rev`，進度用 `HOST_NARRATION_PROGRESS { eventId, done }` 送給主持人，主持人連線時重送
+- [ ] **T2 (P1, human: ~4h / CC: ~30min)** — protocol/room — `HOST_EDIT_NARRATION { eventId, rev, index, line }`（D9、D18）、`SCREEN_NARRATION_PROGRESS { eventId, rev, done }`（D3、D14），`lastNarration` 存 `done`/`rev`，NARRATION 帶 `rev`，進度用 `HOST_NARRATION_PROGRESS { eventId, done }` 送給主持人，主持人連線時重送
   - Verify: 單元測試：換第 N 句、已念過被拒、不是主持人被拒、eventId 過期被拒、舊 rev 回報不算、protocol 解析
 - [ ] **T3 (P1, human: ~4h / CC: ~30min)** — screen/DialogueBox/tts — 回報進度（D11）、從改的句子接續（D13）
   - Files: `components/pixel.tsx`, `lib/narration/tts.ts`, `app/room/[code]/screen/page.tsx`

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { firstChange, keepLatest, isPending, narrationSummary, readCount, resumeFrom } from "./client";
+import { editedLine, firstChange, keepLatest, isPending, narrationSummary, readCount, resumeFrom } from "./client";
 
 describe("keepLatest", () => {
   it("takes the first narration, then only narrations with a higher eventId", () => {
@@ -85,5 +85,14 @@ describe("narrationSummary", () => {
     expect(narrationSummary(n, false, 0, false)).toBe("3 句・大螢幕還沒開始念");
     expect(narrationSummary(n, false, 1, false)).toBe("3 句・念到第 2 句");
     expect(narrationSummary(n, false, 3, true)).toBe("3 句・都念完了・已排下一句");
+  });
+});
+
+describe("editedLine", () => {
+  // Protects the panel's D12 close: it closes only when the broadcast line equals editedLine(draft), so this must match
+  // what the room stores. Fails if the room's cleanup and this helper drift apart, and the host's own edit then never closes.
+  it("folds whitespace, strips markup characters and cuts to MAX_LINE, like the room", () => {
+    expect(editedLine("  牠\n  醒了 <b> ")).toBe("牠 醒了 b");
+    expect(editedLine("字".repeat(60))).toBe("字".repeat(50));
   });
 });

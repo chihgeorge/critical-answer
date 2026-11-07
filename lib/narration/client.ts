@@ -1,5 +1,8 @@
 // Client-side bookkeeping for narration lines (safe to import in the browser).
 
+import { sanitizeText } from "../protocol";
+import { MAX_LINE } from "./runner";
+
 /** `lines`: 1-3 segments, played in order (result, atmosphere, transition — see
  * docs/designs/multi-segment-narration.md). `rev` counts host edits of this eventId (host-narration-edit.md D14). */
 export type NarrationState = { eventId: number; lines: string[]; rev: number } | null;
@@ -7,6 +10,11 @@ export type NarrationState = { eventId: number; lines: string[]; rev: number } |
 /** Keep the line with the highest eventId; a late, older line is ignored. The same eventId again is a host edit: take it. */
 export function keepLatest(prev: NarrationState, msg: { eventId: number; lines: string[]; rev?: number }): NarrationState {
   return prev && prev.eventId > msg.eventId ? prev : { eventId: msg.eventId, lines: msg.lines, rev: msg.rev ?? 0 };
+}
+
+/** A host's edit as the room stores it: one line, cleaned, cut to MAX_LINE. The panel compares with it to tell its own edit landing from another device's. */
+export function editedLine(raw: string): string {
+  return sanitizeText(raw.replace(/\s+/g, " "), MAX_LINE);
 }
 
 /** STATE for a new event arrives before its narration: show the `…` loader in between. */
