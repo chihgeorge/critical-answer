@@ -1,6 +1,6 @@
 # 怪物圖鑑與小變化（issue #139）
 
-狀態：/plan-eng-review 進行中（2026-11-07）。審查對象：GitHub issue #139（chihgeorge/critical-answer#139），規格原文如下。
+狀態：eng review 與 design review 完成（2026-11-07）。PR1 在 v0.40.0.0 上線；PR2 在 `feat/monster-catalog-pr2` 實作（v0.42.0.0）。審查對象：GitHub issue #139（chihgeorge/critical-answer#139），規格原文如下。
 
 ## 規格原文（issue #139，審查前）
 
