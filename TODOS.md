@@ -6,7 +6,6 @@
 
 - [修改現有美術](#修改現有美術) — 未定
 - [拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞](#拿掉導演筆記改寫旁白搬到主持人頁並列出下一隊的所有台詞) — M
-- [分數用到骰子時，一律先播擲骰動畫再加分](#分數用到骰子時一律先播擲骰動畫再加分) — M
 - [冒險結束、公布最終分數前，旁白先公布前幾名](#冒險結束公布最終分數前旁白先公布前幾名) — M
 - [bank-editor 兩個 e2e 測試在 CI 偶發失敗](#bank-editor-兩個-e2e-測試在-ci-偶發失敗) — S
 - [AI key 的錯誤會被之後的狀態訊息蓋掉](#ai-key-的錯誤會被之後的狀態訊息蓋掉) — S
@@ -105,29 +104,6 @@
 - Pros：主持人在一個地方就看得到、改得到旁白。
 - Cons：目前協定只支援改第一句，要讓 `HOST_EDIT_NARRATION` 帶句子的編號，房間要能換掉第 N 句；已經在大螢幕上念完的句子要不能改。AI 旁白是一段一段生成的，要確認「下一隊的所有台詞」在主持人看的時候已經生成好了，還沒好時要怎麼顯示。導演筆記拿掉後，`HOST_SET_NOTES` 和 prompt 裡的筆記要一起清掉。「下一句這樣說」要決定是留在「更多」還是一起搬上來。
 - Context 補充：`app/room/[code]/host/page.tsx`（導演筆記、下一句這樣說、改寫第一句旁白三個區塊）、`lib/narration/runner.ts`（句數）、`lib/room/dungeon-room.ts`（`HOST_EDIT_NARRATION`、`HOST_SET_NOTES`）。
-
----
-
-## 分數用到骰子時，一律先播擲骰動畫再加分
-
-**What:** 只要分數是骰出來的，都要先在大螢幕播擲骰動畫，動畫停下後才顯示骰出的點數，再加進總分。
-
-**Why:** 站長 2026-11-04 實測後提出：骰子是 D&D 的樂趣所在，直接跳出數字沒有懸念。
-
-**Context:**
-- `lib/game-state.ts`
-- `app/room/[code]/screen/page.tsx`
-- `components/d20.tsx`
-- `docs/designs/scoring-and-score-pools.md`
-
-**Effort/Priority:** M / P2
-
-**Depends on:** 無。
-
-**Notes:**
-- Pros：已經有 `components/d20.tsx` 的 `RollOverlay`，戰士擲骰（`pendingRoll`）在用。
-- Cons：目前只有戰士的 d20 有動畫。打倒首領的 4d20 獎勵（`rollBossKillBonus`）是直接算好加分，要改成能播 4 顆骰子，分數也要等動畫播完才更新（手機和頒獎台不能先露出新總分）。要先列出所有用到骰子的地方。
-- Context 補充：`lib/game-state.ts`（`rollD20`、`rollBossKillBonus`、`killBonus`）、`app/room/[code]/screen/page.tsx`（`RollOverlay`）、`components/d20.tsx`。計分設計在 `docs/designs/scoring-and-score-pools.md`。
 
 ---
 
@@ -1098,6 +1074,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 分數用到骰子時，一律先播擲骰動畫再加分
+
+- **分數用到骰子時，一律先播擲骰動畫再加分** · v0.37.0.0 · 唯一沒有動畫的計分骰是打倒首領的 4d20。現在最後一擊先在大螢幕擲 4 顆骰子，每 0.5 秒停一顆，總分跟著加；偷襲顯示「43 × 2 = 86 分」。約 4 秒後才加分、出頒獎台，手機和頒獎台不會先露出新總分。設計見 `docs/designs/kill-roll.md`。
 
 ## 所有 Markdown 文件都有中文版和英文版，可用連結切換
 
