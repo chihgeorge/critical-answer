@@ -101,7 +101,7 @@ export function LabelChip({ children, tone }: { children: ReactNode; tone?: "tag
 /* ---------- Sprite: a program-drawn pixel canvas that blinks ---------- */
 
 /** The sprites with eyes; everything else (props, food, the pot) never blinks. */
-const BLINKS = new Set<SpriteKind>([...MONSTER_SPRITES, "owl", "hero"]);
+const BLINKS = new Set<SpriteKind>([...MONSTER_SPRITES.filter((s) => s !== "mandrake"), "owl", "hero"]); // the mandrake has no closed-eye frame
 
 export function Sprite({
   kind: asked,
@@ -125,7 +125,7 @@ export function Sprite({
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   // Unknown sprites (a newer server than this page) draw as a slime rather than crash the render.
-  const kind: SpriteKind = asked in SPRITE_SIZE ? asked : "slime";
+  const kind: SpriteKind = Object.hasOwn(SPRITE_SIZE, asked) ? asked : "slime";
   const [w, h] = SPRITE_SIZE[kind];
   // Unknown hats (a newer server than this page) draw none rather than crash the render.
   const hat = accessory ? (`acc-${accessory}` as SpriteKind) : null;

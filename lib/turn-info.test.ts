@@ -134,5 +134,6 @@ describe("monsterLook", () => {
   it("draws a sprite this page does not know as a slime", () => {
     const look = monsterLook({ ...pq().monster, sprite: "not-yet-drawn" as never });
     expect([look.kind, look.scale]).toEqual(["slime", 6]);
+    expect(monsterLook({ ...pq().monster, sprite: "toString" as never }).kind).toBe("slime"); // not an inherited key
   });
 });
