@@ -56,7 +56,8 @@ export function NarrationPanel({
     const sameEvent = seenKey.split(":")[0] === String(narration?.eventId ?? "");
     setSeenKey(key);
     // Only our own text landing closes it: another device's edit first means ours comes back stale_narration (D9).
-    if (edit?.sent && sameEvent && narration?.lines[edit.index] === editedLine(edit.draft)) {
+    // Not gated on `sent`: an unrelated ERROR may have released the edit before it landed.
+    if (edit && sameEvent && narration?.lines[edit.index] === editedLine(edit.draft)) {
       setEdit(null);
       setOpen(false);
       setReturnTo(-1); // the editor's row is gone: focus goes back to the toggle
@@ -119,7 +120,7 @@ export function NarrationPanel({
       >
         <Sprite kind="owl" scale={1} />
         <LabelChip>地城主旁白</LabelChip>
-        <span aria-live="polite" className="min-w-0 flex-1 truncate text-[14px]" style={pending || !narration ? { color: "var(--dim-ink)" } : undefined}>
+        <span aria-live="polite" className="min-w-0 flex-1 truncate text-[14px]">
           {summary}
         </span>
         {canOpen && <span className="flex-none text-[14px]">{open ? "收起 ▴" : "展開 ▾"}</span>}
@@ -127,7 +128,7 @@ export function NarrationPanel({
       {open && (
         <div id="narration-lines" className="mt-1 flex flex-col gap-2">
           {pending ? (
-            <div className={rowBase} style={{ color: "var(--dim-ink)", boxShadow: "inset 0 0 0 3px var(--dim-line)" }}>
+            <div className={rowBase} style={{ boxShadow: "inset 0 0 0 3px var(--dim-line)" }}>
               旁白生成中…
             </div>
           ) : (
@@ -223,7 +224,15 @@ export function NarrationPanel({
           className={input}
         />
         <div aria-live="polite" className="text-[14px]" style={{ color: "var(--wrong)" }}>
-          {stale ? "旁白已換新，沒有送出。可以改排進下一句。" : locked ? "大螢幕剛念完這句，改不了。可以改排進下一句。" : e.refused === "empty_edit" ? "不能是空白" : ""}
+          {stale
+            ? "旁白已換新，沒有送出。可以改排進下一句。"
+            : locked
+              ? "大螢幕剛念完這句，改不了。可以改排進下一句。"
+              : e.refused === "empty_edit"
+                ? "不能是空白"
+                : e.refused
+                  ? "沒有送出，請再試一次"
+                  : ""}
           {tooLong && <div>超過 {MAX_EDIT_LINE} 字，請刪短</div>}
         </div>
         <div className="grid grid-cols-2 gap-2">

@@ -1442,7 +1442,8 @@ export class DungeonRoom {
     const refuse = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (!n) return refuse("no_narration");
     // The narration changed while the host typed (a new turn, or a second host device's edit): never edit the newer text.
-    if (eventId !== n.eventId || rev !== n.rev) return refuse("stale_narration");
+    // eventSeq ahead: the next narration is on its way, so the big screen no longer shows this one.
+    if (eventId !== n.eventId || rev !== n.rev || this.eventSeq > n.eventId) return refuse("stale_narration");
     if (index >= n.lines.length) return refuse("bad_index");
     if (index < n.done) return refuse("line_read");
     // One line in the dialogue box: a raw socket could send newlines the <input> cannot.

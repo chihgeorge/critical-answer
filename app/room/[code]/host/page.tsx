@@ -218,12 +218,9 @@ export default function HostPage() {
               }
             }
           }
-          // The edit refusals go to the panel, not the error line; any other error must not mark an edit in flight refused.
-          if (msg.detail && NARRATION_REFUSALS.has(msg.detail)) {
-            const detail = msg.detail;
-            setEditRefusal((r) => ({ detail, seq: (r?.seq ?? 0) + 1 }));
-            break;
-          }
+          // Any error releases an edit in flight (no stuck 送出中…); the edit refusals show in the panel, not the error line.
+          setEditRefusal((r) => ({ detail: msg.detail ?? msg.error, seq: (r?.seq ?? 0) + 1 }));
+          if (msg.detail && NARRATION_REFUSALS.has(msg.detail)) break;
           setError(
             msg.error === "bad_token"
               ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人"

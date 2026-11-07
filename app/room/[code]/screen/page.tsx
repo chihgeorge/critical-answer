@@ -791,6 +791,8 @@ export default function ScreenPage() {
       narrationBaseline.current = null;
       sfxSeen.current = null;
       lastPhase.current = null;
+      // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
+      progress.current = null;
     },
     onClose({ rested, openedBefore }) {
       if (!rested && openedBefore) setDisconnected(true);

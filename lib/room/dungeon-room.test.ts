@@ -2372,6 +2372,22 @@ describe("LLM narration and director (T8-T10)", () => {
       expect(sentMsgs(other).filter((m) => m.type === "HOST_NARRATION_PROGRESS")).toEqual([{ type: "HOST_NARRATION_PROGRESS", eventId: r.n.eventId, done: 3 }]);
     });
 
+    // Value: protects=an edit lands only on the narration the big screen shows, and a new narration starts unread and
+    // unedited (D3, D14); fails_when=the room takes an edit of the old narration while the next one is generating (the
+    // screen shows … but would speak the edit), or keeps the old done/rev, so line 0 of the next narration is refused.
+    it("refuses an edit while the next narration is on its way, then takes line 0 of the new one", async () => {
+      const r = await threeLines();
+      progress(r, r.n.eventId, 0, 3);
+      judge(r.room, r.hostConn); // the next narration is generating: lastNarration is still the old one
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 2, line: "太晚了" });
+      expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ error: "invalid_action", detail: "stale_narration" });
+      await sleep(30);
+      const next = narrations(r.room).at(-1);
+      expect(next.eventId).toBeGreaterThan(r.n.eventId);
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: next.eventId, rev: 0, index: 0, line: "新的開場" });
+      expect(narrations(r.room).at(-1)).toMatchObject({ eventId: next.eventId, rev: 1, lines: ["新的開場", "第二句", "第三句"] });
+    });
+
 // Value: protects=the host's queued line is said once, in segment 2, by AI or scripted narration (host-next-line.md);
 // fails_when=the line is lost, said twice, lands in another segment, or a stale narration eats a re-queued line; no_claim=real model behaviour (llm.live.test.ts).
     describe("next line (HOST_NEXT_LINE)", () => {
