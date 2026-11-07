@@ -1,3 +1,5 @@
+繁體中文 | [English](question-bank.en.md)
+
 # 題庫指南
 
 題庫怎麼改、格式規則、出問題怎麼救。

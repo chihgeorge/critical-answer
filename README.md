@@ -1,3 +1,5 @@
+繁體中文 | [English](README.en.md)
+
 # Critical Answer（致命答題）
 
 D&D 風格的地城問答派對遊戲，名字是 *Critical Hit*（爆擊）的諧音梗。主持人用大螢幕帶隊伍闖怪物房、挑戰首領；玩家用手機加入、答題和累積分數。

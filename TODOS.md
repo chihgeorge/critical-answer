@@ -992,12 +992,12 @@
 
 ## 在全新的 Cloudflare／Vercel 帳號上照部署指南做一遍
 
-**What:** 用沒部署過這個專案的 Cloudflare 和 Vercel 帳號，照 `docs/deployment.md` 的「第一次部署」從頭做一遍，把卡住或寫錯的地方改掉，然後拿掉指南開頭「還沒在全新的帳號上照著做過一遍」那段提醒。
+**What:** 用沒部署過這個專案的 Cloudflare 和 Vercel 帳號，照 `docs/deployment.md` 的「第一次部署」從頭做一遍，把卡住或寫錯的地方改掉，然後拿掉指南開頭「還沒在全新的帳號上照著做過一遍」那段提醒（中英兩版都要改）。
 
 **Why:** 這份指南是從現在的設定檔整理出來的，沒有人照著做過。要確認的有：沒有 R2 bucket 時 `wrangler deploy` 會不會失敗、兩個 Durable Object 的 migration 第一次部署會不會自動套用、`NEXT_PUBLIC_PARTYKIT_HOST` 要不要加埠號。（README 重整的 eng review，2026-11-06，R10）
 
 **Context:**
-- `docs/deployment.md`
+- `docs/deployment.md`、`docs/deployment.en.md`
 - `wrangler.jsonc`、`lib/party-host.ts`、`lib/origin.ts`
 
 **Effort/Priority:** S / P3

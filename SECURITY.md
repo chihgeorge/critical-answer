@@ -1,3 +1,5 @@
+繁體中文 | [English](SECURITY.en.md)
+
 # 回報安全問題
 
 發現安全漏洞的話，請私下回報，不要開公開的 issue。

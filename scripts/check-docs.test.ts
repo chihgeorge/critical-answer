@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brokenLinks, headingSlugs, relativeLinks } from "./check-docs";
+import { brokenLinks, headingSlugs, relativeLinks, switchLine, twinProblems } from "./check-docs";
 
 const files = (map: Record<string, string>) => (p: string) => (p in map ? map[p] : null);
 
@@ -77,5 +77,35 @@ describe("brokenLinks", () => {
 
   it("reports a listed doc that is missing", () => {
     expect(brokenLinks("docs/gone.md", files({}))).toEqual(["docs/gone.md: file is missing"]);
+  });
+});
+
+describe("twinProblems", () => {
+  const zh = "繁體中文 | [English](rules.en.md)\n# 規則\n## 判定\n### 細節";
+  const en = "[繁體中文](rules.md) | English\n# Rules\n## Judging\n### Details";
+
+  it("passes when the twin exists, both open with the switch line and the heading levels match", () => {
+    expect(twinProblems("docs/rules.md", files({ "docs/rules.md": zh, "docs/rules.en.md": en }))).toEqual([]);
+  });
+
+  it("reports a missing twin", () => {
+    expect(twinProblems("docs/rules.md", files({ "docs/rules.md": zh }))).toEqual(["docs/rules.md: no English twin docs/rules.en.md"]);
+  });
+
+  it("reports a missing or wrong switch line on either side", () => {
+    const read = files({ "docs/rules.md": zh.split("\n").slice(1).join("\n"), "docs/rules.en.md": en.replace("rules.md", "README.md") });
+    expect(twinProblems("docs/rules.md", read)).toEqual([
+      'docs/rules.md: first line must be "繁體中文 | [English](rules.en.md)"',
+      'docs/rules.en.md: first line must be "[繁體中文](rules.md) | English"',
+    ]);
+  });
+
+  it("reports headings that differ in level or count", () => {
+    expect(twinProblems("a.md", files({ "a.md": switchLine("a.md") + "\n# A\n## B", "a.en.md": switchLine("a.en.md") + "\n# A\n### B" }))).toEqual([
+      "a.en.md: headings differ from a.md at heading 2 (2 vs 2 headings)",
+    ]);
+    expect(twinProblems("a.md", files({ "a.md": switchLine("a.md") + "\n# A\n## B", "a.en.md": switchLine("a.en.md") + "\n# A" }))).toEqual([
+      "a.en.md: headings differ from a.md at heading 2 (2 vs 1 headings)",
+    ]);
   });
 });

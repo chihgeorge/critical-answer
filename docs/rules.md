@@ -1,3 +1,5 @@
+繁體中文 | [English](rules.en.md)
+
 # 完整規則
 
 README 的「一分鐘懂規則」是速查，這裡是完整版。主持人怎麼操作見 [主持指南](hosting.md)。
