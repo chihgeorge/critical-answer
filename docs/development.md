@@ -44,13 +44,14 @@ sh scripts/playtest.sh stop
 | `ANTHROPIC_API_KEY=... npm run test:live` | 用真的金鑰跑 LLM 旁白冒煙測試（會花幾分錢） |
 | `npm run e2e` | Playwright 端對端測試（自己開伺服器，用 3101 和 1996 埠；平常交給 GitHub CI 跑，本機太吃資源。CI 把測試分成兩組平行跑） |
 | `npm run check:bundle` | 建置後檢查題目與答案沒有進到瀏覽器 bundle |
+| `npm run check:docs` | 檢查 README、SECURITY.md 和 `docs/` 指南的相對連結與錨點 |
 | `npm run test:watch` | 監看模式測試 |
 | `npm run lint` | ESLint |
 | `npm run build` | 建置前端 |
 
 ## 測試
 
-端對端測試（`npm run e2e`）只在 GitHub CI 跑：每個 PR 和每次 push 到 `main`，分兩組平行。本機太吃資源，不要在本機跑。`npm run check:bundle` 必跑，它會擋下答案漏進瀏覽器 bundle。`npm run check:docs` 檢查 README、SECURITY.md 和 `docs/` 底下每份 `.md` 裡的相對連結和 `#` 錨點都還連得到。
+端對端測試（`npm run e2e`）只在 GitHub CI 跑：每個 PR 和每次 push 到 `main`，分兩組平行。本機太吃資源，不要在本機跑。`npm run check:bundle` 必跑，它會擋下答案漏進瀏覽器 bundle。`npm run check:docs` 檢查 README、SECURITY.md 和 `docs/` 第一層每份 `.md`（不含 `docs/designs/`）裡的相對連結和 `#` 錨點都還連得到。
 
 > 專案根目錄有 `.env` 時，**測試伺服器預設會開 AI**。Playwright 端對端測試已經固定關掉它，不會呼叫真的 API。
 
