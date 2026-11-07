@@ -27,7 +27,7 @@ import { KillRollOverlay, RollOverlay } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
-import { CookFrame, dishLine, DishServed, useCookStep, useFinaleStep } from "@/components/cooking";
+import { CookFrame, dishLine, DishOnStage, useCookStep, useFinaleStep } from "@/components/cooking";
 import { readStored, writeStored } from "@/lib/stored";
 
 const TTS_ENABLED_STORAGE = "screen-tts-enabled";
@@ -285,11 +285,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
       </div>
 
       {/* 上菜 puts the panel away (cooking R4): the stage is the monster's, then the dish's. */}
-      {cook === 3 && dish && (
-        <div className="absolute" style={{ left: 0, right: 0, top: 110, zIndex: 5 }}>
-          <DishServed dish={dish} />
-        </div>
-      )}
+      {/* The dish stands where the monster stood; its card takes the panel's place. */}
+      {cook === 3 && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} />}
       {!served && (
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
@@ -381,8 +378,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
           🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）{awaitingCheck && `　${turn!.name}：按手機上的「擲骰說服」`}
         </div>
       )}
-      {/* The floor shadow goes with the monster once its dish is up. */}
-      {cook !== 3 && <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />}
+      <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
       {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : cook !== 3 && (
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         <div key={card ? `card-${eventId}` : undefined} className={card ? "px-phase-blink" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}>
@@ -467,11 +463,7 @@ function Finished({ view, winners, reveal, narration, epilogue, cuisine, finale,
           <Nameplate className="mt-2" style={{ color: "#b02a3a" }}>{dish.monster.name}</Nameplate>
         </div>
       )}
-      {!podium && dish && step === 3 && (
-        <div className="absolute" style={{ left: 0, right: 0, top: 150, zIndex: 5 }}>
-          <DishServed dish={dish} title="今晚的大菜" />
-        </div>
-      )}
+      {!podium && dish && step === 3 && <DishOnStage dish={dish} title="今晚的大菜" cardTop={120} bottom={140} />}
       {podium && reveal && (
         <div data-testid="answer-reveal" className="absolute" style={{ left: 18, top: 160, width: 170, zIndex: 6 }}>
           <Panel tone="turn" className="px-3 py-2 text-[16px] leading-snug">

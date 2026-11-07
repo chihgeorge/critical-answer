@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { COOK_MS, FINISH_PODIUM_MS, type AnswerReveal } from "@/lib/protocol";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { Panel, prefersReducedMotion, Sprite } from "@/components/pixel";
+import { SPRITE_SIZE } from "@/lib/pixel-art";
 
 type Dish = NonNullable<AnswerReveal["dish"]>;
 
@@ -110,12 +111,19 @@ export function CookFrame({ step, bottom }: { step: 1 | 2; bottom: number }) {
   );
 }
 
-/** The cooked dish: its picture, tinted like the monster, beside the card (step 3). */
-export function DishServed({ dish, title = "今晚的菜", scale = 5 }: { dish: Dish; title?: string; scale?: number }) {
+/** The cooked dish where the monster stood (step 3), tinted like it, with its card above in the answer panel's place.
+ * The picture is at most about 130px tall so it clears the card. */
+export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom }: { dish: Dish; title?: string; cardTop: number; bottom: number }) {
+  const kind = DISH_SPRITE[dish.monster.sprite];
+  const scale = Math.min(5, Math.floor(130 / SPRITE_SIZE[kind][1]));
   return (
-    <div data-testid="dish-served" className="flex items-center justify-center gap-6">
-      <Sprite kind={DISH_SPRITE[dish.monster.sprite]} scale={scale} hue={dish.monster.hue} />
-      <DishCard dish={dish} title={title} />
+    <div data-testid="dish-served">
+      <div className="absolute flex justify-center" style={{ left: 0, right: 0, top: cardTop, zIndex: 5 }}>
+        <DishCard dish={dish} title={title} />
+      </div>
+      <div className="absolute" style={{ left: "50%", bottom, transform: "translateX(-50%)", zIndex: 4 }}>
+        <Sprite kind={kind} scale={scale} hue={dish.monster.hue} />
+      </div>
     </div>
   );
 }
@@ -123,11 +131,10 @@ export function DishServed({ dish, title = "今晚的菜", scale = 5 }: { dish: 
 /** The defeated monster, cooked (docs/designs/monster-cuisine.md, approved mockup A). */
 export function DishCard({ dish, title = "今晚的菜" }: { dish: Dish; title?: string }) {
   return (
-    <Panel tone="lav" className="px-[18px] pt-3 pb-[14px] text-center" style={{ maxWidth: 360 }}>
+    <Panel tone="lav" className="px-[18px] pt-3 pb-[14px] text-center" style={{ maxWidth: 620 }}>
       <div data-testid="dish-card">
         <div className="text-[28px] leading-[1.25]">
-          🍲 {title}：<br />
-          {dish.name}
+          🍲 {title}：{dish.name}
         </div>
         <div className="text-[18px]" style={{ color: "#6a4d74" }}>
           {dish.part}・{dish.method}
