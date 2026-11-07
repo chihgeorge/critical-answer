@@ -212,6 +212,14 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_REVEAL", questionId: "q1" })).toBeNull();
   });
 
+  it("HOST_MEDIA takes a question id and play, pause or restart (youtube-questions.md)", () => {
+    for (const action of ["play", "pause", "restart"]) {
+      expect(parseClientMessage({ type: "HOST_MEDIA", questionId: "q1", action })).toEqual({ type: "HOST_MEDIA", questionId: "q1", action });
+    }
+    expect(parseClientMessage({ type: "HOST_MEDIA", questionId: "q1", action: "stop" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_MEDIA", action: "play" })).toBeNull();
+  });
+
   it("TEAM_PICK_CLASS accepts a known class id or null, nothing else (class-abilities.md)", () => {
     expect(parseClientMessage({ type: "TEAM_PICK_CLASS", classId: "warrior" })).toEqual({ type: "TEAM_PICK_CLASS", classId: "warrior" });
     expect(parseClientMessage({ type: "TEAM_PICK_CLASS", classId: null })).toEqual({ type: "TEAM_PICK_CLASS", classId: null });

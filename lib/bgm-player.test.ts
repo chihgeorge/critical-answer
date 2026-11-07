@@ -8,6 +8,7 @@ class FakeAudioContext {
   notes: number[] = [];
   closed = false;
   destination = {};
+  gains: { gain: { target: number } }[] = [];
   release!: () => void;
   constructor() {
     FakeAudioContext.all.push(this);
@@ -20,8 +21,18 @@ class FakeAudioContext {
     return Promise.resolve();
   }
   createGain() {
-    const param = { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, setTargetAtTime() {} };
-    return { gain: param, connect: (d: unknown) => d };
+    const param = {
+      value: 0,
+      target: -1,
+      setValueAtTime() {},
+      linearRampToValueAtTime() {},
+      setTargetAtTime(v: number) {
+        this.target = v;
+      },
+    };
+    const node = { gain: param, connect: (d: unknown) => d };
+    this.gains.push(node);
+    return node;
   }
   createOscillator() {
     const freq = { setValueAtTime() {}, exponentialRampToValueAtTime() {} };
@@ -42,6 +53,28 @@ function setup() {
 }
 
 describe("createBgmPlayer", () => {
+  it("mute() silences the music without closing it, and unmuting returns to the ducked or full volume", async () => {
+    const bgm = setup();
+    const a = bgm.start();
+    const [ctx] = FakeAudioContext.all;
+    ctx.release();
+    await a;
+    const master = ctx.gains[0].gain;
+    expect(master.target).toBe(0.05);
+    bgm.mute(true);
+    expect(master.target).toBe(0);
+    bgm.duck(true);
+    expect(master.target).toBe(0);
+    expect(ctx.closed).toBe(false);
+    expect(vi.getTimerCount()).toBe(1);
+    bgm.mute(false);
+    expect(master.target).toBe(0.015);
+    bgm.duck(false);
+    expect(master.target).toBe(0.05);
+    expect(FakeAudioContext.all).toHaveLength(1);
+    bgm.stop();
+  });
+
   it("a second 🎵 click while the first is still starting does not start a second loop", async () => {
     const bgm = setup();
     const a = bgm.start();

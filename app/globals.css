@@ -252,8 +252,12 @@ body {
 @keyframes px-drift { 50% { transform: translateX(4px); } }
 .px-drift { animation: px-drift 2.4s steps(1) infinite; }
 .px-drift2 { animation: px-drift 2.4s steps(1) infinite reverse; }
+/* The music card's equalizer (docs/designs/youtube-questions.md D15): bars jump between two heights. */
+@keyframes px-eq { 50% { transform: scaleY(0.35); } }
+.px-eq { animation: px-eq 0.5s steps(1) infinite; }
+.px-eq2 { animation-direction: reverse; }
 @media (prefers-reduced-motion: reduce) {
-  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge, .px-roll-tumble { animation: none !important; }
+  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq { animation: none !important; }
   .px-tf2 { opacity: 0; }
   /* .px-room-flash keeps running (D13: a pawn must not change rooms unseen). */
 }

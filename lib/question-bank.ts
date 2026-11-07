@@ -27,7 +27,16 @@ import { YOUTUBE_ID_RE } from "./youtube";
 export interface MediaContent {
   kind: "text" | "image" | "youtube";
   value: string;
+  /** youtube only, content slot only: a music question. The screen covers the video and plays the
+   * sound (docs/designs/youtube-questions.md D3). */
+  audioOnly?: boolean;
+  /** youtube only: the clip, in whole seconds of the video. */
+  start?: number;
+  end?: number;
 }
+
+/** Longest question `prompt`, in characters: the same cap as other free text on the wire. */
+export const MAX_PROMPT = 200;
 
 /** `kind` is required on every question (not optional/defaulted) — see
  * docs/designs/multiple-choice-questions.md decision 1 for why, and the
@@ -35,8 +44,8 @@ export interface MediaContent {
  * The standalone `image` kind retired (D1) — an image is now one `content`/`explanation` media
  * type available on either remaining kind, not its own top-level kind. */
 export type BankQuestion =
-  | { kind: "text"; id: string; content: MediaContent; answer: string; explanation?: MediaContent }
-  | { kind: "multipleChoice"; id: string; content: MediaContent; options: string[]; correctIndex: number; explanation?: MediaContent };
+  | { kind: "text"; id: string; content: MediaContent; prompt?: string; answer: string; explanation?: MediaContent }
+  | { kind: "multipleChoice"; id: string; content: MediaContent; prompt?: string; options: string[]; correctIndex: number; explanation?: MediaContent };
 
 /** What a defeated monster is cooked into (docs/designs/monster-cuisine.md). The ingredient comes
  * from the monster itself. */
@@ -140,15 +149,43 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 /** Validates and normalizes one content/explanation slot. Called from both call sites below
  * (content and explanation, on both question kinds) so kind-specific validation can't drift
  * apart via copy-paste — a lesson the design doc's own review caught (R2-2 / Outside Voice). */
-function parseMediaContent(raw: unknown, where: string): MediaContent {
+function parseMediaContent(raw: unknown, where: string, slot: "content" | "explanation"): MediaContent {
   const m = raw as Record<string, unknown> | null;
   if (!m || typeof m !== "object") fail(`${where} has no content`);
-  const { kind, value } = m!;
+  const { kind, value, audioOnly, start, end } = m!;
   if (typeof value !== "string" || !value.trim()) fail(`${where} content has no value`);
   if (kind === "image" && !UUID_RE.test(value as string)) fail(`${where} has an invalid image key`);
   else if (kind === "youtube" && !YOUTUBE_ID_RE.test(value as string)) fail(`${where} has an invalid YouTube video id`);
   else if (kind !== "text" && kind !== "image" && kind !== "youtube") fail(`${where} content has unknown kind ${String(kind)}`);
-  return { kind, value } as MediaContent;
+  const clip = audioOnly !== undefined || start !== undefined || end !== undefined;
+  if (!clip) return { kind, value } as MediaContent;
+  if (kind !== "youtube") fail(`${where} has audioOnly/start/end, which only a YouTube video can have`);
+  // The explanation plays on its own, outside the host's controls, so it can't hide its picture.
+  if (audioOnly !== undefined && slot === "explanation") fail(`${where} explanation cannot be audioOnly`);
+  if (audioOnly !== undefined && typeof audioOnly !== "boolean") fail(`${where} audioOnly is not true or false`);
+  const second = (v: unknown, name: string) => {
+    if (v !== undefined && (typeof v !== "number" || !Number.isInteger(v) || v < 0)) fail(`${where} ${name} is not a whole number of seconds`);
+  };
+  second(start, "start");
+  second(end, "end");
+  if (typeof end === "number" && end <= ((start as number | undefined) ?? 0)) fail(`${where} end must come after start`);
+  return {
+    kind: "youtube",
+    value: value as string,
+    ...(audioOnly === true ? { audioOnly: true } : {}),
+    ...(start !== undefined ? { start: start as number } : {}),
+    ...(end !== undefined ? { end: end as number } : {}),
+  };
+}
+
+/** The line shown above an image or a video (D5). A text question already is its own line. */
+function parsePrompt(r: Record<string, unknown>, content: MediaContent, where: string): string | undefined {
+  const { prompt } = r;
+  if (prompt === undefined) return undefined;
+  if (typeof prompt !== "string" || !prompt.trim()) fail(`${where} has an empty prompt`);
+  if (content.kind === "text") fail(`${where} has a prompt, but its content is already text`);
+  if (Array.from(prompt as string).length > MAX_PROMPT) fail(`${where} prompt is over ${MAX_PROMPT} characters`);
+  return prompt as string;
 }
 
 /** Accepts either the current `content: MediaContent` shape, or a legacy bare `text: string`
@@ -157,23 +194,24 @@ function parseMediaContent(raw: unknown, where: string): MediaContent {
  * bank-loading path every save already goes through. See docs/designs/question-media-content.md's
  * migration decision: a backward-read shim here, not a separate migration script. */
 function parseContent(r: Record<string, unknown>, where: string): MediaContent {
-  if (r.content !== undefined) return parseMediaContent(r.content, where);
-  if (typeof r.imageKey === "string") return parseMediaContent({ kind: "image", value: r.imageKey }, where);
-  if (typeof r.text === "string") return parseMediaContent({ kind: "text", value: r.text }, where);
+  if (r.content !== undefined) return parseMediaContent(r.content, where, "content");
+  if (typeof r.imageKey === "string") return parseMediaContent({ kind: "image", value: r.imageKey }, where, "content");
+  if (typeof r.text === "string") return parseMediaContent({ kind: "text", value: r.text }, where, "content");
   return fail(`${where} has no content`);
 }
 
 function parseExplanation(r: Record<string, unknown>, where: string): MediaContent | undefined {
   if (r.explanation === undefined) return undefined;
-  return parseMediaContent(r.explanation, `${where} explanation`);
+  return parseMediaContent(r.explanation, `${where} explanation`, "explanation");
 }
 
 function parseTextQuestion(r: Record<string, unknown>, id: string): BankQuestion {
   const { answer } = r;
   if (typeof answer !== "string" || !answer.trim()) fail(`question ${id} has an empty answer`);
   const content = parseContent(r, `question ${id}`);
+  const prompt = parsePrompt(r, content, `question ${id}`);
   const explanation = parseExplanation(r, `question ${id}`);
-  return { kind: "text", id, content, answer: answer as string, ...(explanation ? { explanation } : {}) };
+  return { kind: "text", id, content, ...(prompt ? { prompt } : {}), answer: answer as string, ...(explanation ? { explanation } : {}) };
 }
 
 function parseMultipleChoiceQuestion(r: Record<string, unknown>, id: string): BankQuestion {
@@ -186,11 +224,13 @@ function parseMultipleChoiceQuestion(r: Record<string, unknown>, id: string): Ba
     fail(`question ${id} has correctIndex out of range`);
   }
   const content = parseContent(r, `question ${id}`);
+  const prompt = parsePrompt(r, content, `question ${id}`);
   const explanation = parseExplanation(r, `question ${id}`);
   return {
     kind: "multipleChoice",
     id,
     content,
+    ...(prompt ? { prompt } : {}),
     options: options as string[],
     correctIndex: correctIndex as number,
     ...(explanation ? { explanation } : {}),
@@ -373,7 +413,15 @@ export function answerText(q: BankQuestion): string {
  * (adversarial review finding, carried forward from the retired `image` kind). */
 export function publicMediaContent(c: MediaContent, imageBaseUrl: string, questionId: string): PublicMediaContent {
   if (c.kind === "text") return { kind: "text", value: c.value };
-  if (c.kind === "youtube") return { kind: "youtube", videoId: c.value };
+  if (c.kind === "youtube") {
+    return {
+      kind: "youtube",
+      videoId: c.value,
+      ...(c.audioOnly ? { audioOnly: true } : {}),
+      ...(c.start !== undefined ? { start: c.start } : {}),
+      ...(c.end !== undefined ? { end: c.end } : {}),
+    };
+  }
   if (!imageBaseUrl || imageBaseUrl.includes("REPLACE-ME")) {
     console.error(JSON.stringify({ event: "image_base_url_missing", questionId }));
   }
@@ -400,6 +448,7 @@ export function publicQuestion(
   return {
     id: q.id,
     content: publicMediaContent(q.content, imageBaseUrl, q.id),
+    ...(q.prompt ? { prompt: q.prompt } : {}),
     difficulty: q.difficulty,
     boss: q.boss,
     monster: { name: monster.name, sprite: monster.sprite, hue: monster.hue },

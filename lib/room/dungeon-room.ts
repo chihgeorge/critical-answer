@@ -53,11 +53,13 @@ import {
   type AnswerReveal,
   type ClientMessage,
   type HostPick,
+  type MediaAction,
+  type MediaCommand,
   type PendingRoll,
   type ServerMessage,
   type SoundCue,
 } from "../protocol";
-import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, hasCuisine, inShownOrder, poolQuestionIds, publicExplanation, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
+import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, hasCuisine, inShownOrder, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
@@ -216,6 +218,8 @@ export class DungeonRoom {
   private removedTeamIds = new Set<string>();
   /** The answer on show until the host moves on (D7). In memory only: a restart simply drops it. */
   private reveal: AnswerReveal | null = null;
+  /** The host's last ▶ ⏸ ⟲ (docs/designs/youtube-questions.md). In memory only (D6): a restart forgets it. */
+  private media: MediaCommand | null = null;
   /** The boss's phase card is up (docs/designs/boss-phases.md): the next phase has started but its first
    * question waits for the host's 下一題. Saved, unlike the reveal: a restart shows the card again. */
   private phaseCard = false;
@@ -689,6 +693,7 @@ export class DungeonRoom {
       // The card holds the new phase's first question back until the host's 下一題.
       question: this.phaseCard || this.intro !== null ? null : (this.currentQuestion()?.pub ?? null),
       reveal: this.reveal,
+      ...this.liveMedia(),
       // name, sprite and hue only: the boss's dish is served on the kill, not before (monster-cuisine.md).
       ...(this.phaseCard ? { phaseCard: { monster: { name: this.bank.boss.monster.name, sprite: this.bank.boss.monster.sprite, hue: this.bank.boss.monster.hue } } } : {}),
       ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
@@ -1009,6 +1014,9 @@ export class DungeonRoom {
           break;
         case "HOST_REVEAL":
           this.handleHostReveal(sender, msg.teamId, msg.questionId);
+          break;
+        case "HOST_MEDIA":
+          this.handleHostMedia(sender, msg.questionId, msg.action);
           break;
         case "TEAM_CLAIM":
           this.handleClaim(sender, msg.code);
@@ -1650,10 +1658,14 @@ export class DungeonRoom {
       const q = this.question(questionId);
       // The option wall, green tile and points of a correct lock or a warrior's success on a multipleChoice question.
       const choice = q?.kind === "multipleChoice" ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward } : undefined;
+      // The answer stops the clip; the reveal shows the video where it stopped (D17).
+      if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
+      const video = q?.content.kind === "youtube" && (!explanation || explanation.kind === "text") ? publicMediaContent(q.content, imageBaseUrl, questionId) : undefined;
       this.reveal = {
         questionId,
         answer: justAnswered.answer,
         ...(explanation ? { explanation } : {}),
+        ...(video?.kind === "youtube" ? { video } : {}),
         ...(choice ? { choice } : {}),
         ...(dish ? { dish: { ...dish, points: outcome.reward } } : {}),
       };
@@ -1699,6 +1711,34 @@ export class DungeonRoom {
     // Pin the turn to the locking team: the stored index may point at an offline team the turn skipped, and that
     // team coming back must not take the turn while the lock waits for 公布答案 (/review fix pass).
     this.game = { ...game, currentTurnIndex: game.turnOrder.indexOf(teamId) };
+    this.broadcastState();
+  }
+
+  /** The question whose YouTube video the big screen shows now, or null: the question in play, or during a
+   * reveal the answered question, unless an image or a video explanation takes its place (D17). */
+  private shownVideoId(): string | null {
+    if (this.game?.phase !== "playing") return null;
+    if (this.reveal) return this.reveal.video ? this.reveal.questionId : null;
+    if (this.phaseCard || this.intro !== null) return null;
+    const pub = this.currentQuestion()?.pub;
+    return pub?.content.kind === "youtube" ? pub.id : null;
+  }
+
+  /** The media command for the video on screen. One for another question is dropped here, so a question that
+   * comes round again starts paused, whatever path moved the game on. */
+  private liveMedia(): { media?: MediaCommand } {
+    if (this.media && this.media.questionId !== this.shownVideoId()) this.media = null;
+    return this.media ? { media: this.media } : {};
+  }
+
+  /** ▶ ⏸ ⟲ from the host page. Ignored unless it names the video on screen: a second host device may still show
+   * an older question. */
+  private handleHostMedia(conn: Conn, questionId: string, action: MediaAction) {
+    if (!this.requireHost(conn)) return;
+    if (questionId !== this.shownVideoId()) return;
+    const same = this.media?.questionId === questionId ? this.media : null;
+    const seq = same?.seq ?? 0;
+    this.media = { questionId, state: action === "pause" ? "paused" : "playing", seq: action === "restart" ? seq + 1 : seq, press: (same?.press ?? 0) + 1 };
     this.broadcastState();
   }
 

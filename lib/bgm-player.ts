@@ -28,6 +28,8 @@ export function createBgmPlayer() {
   let next = 0;
   let loops = 0;
   let ducked = false;
+  /** A YouTube question is playing on the big screen: the music goes silent but keeps its place (D10). */
+  let muted = false;
   /** Set as soon as start() is called, before its await: a second click must not start a second loop. */
   let wanted = false;
 
@@ -79,7 +81,7 @@ export function createBgmPlayer() {
 
   function setVolume() {
     if (!ctx || !master) return;
-    master.gain.setTargetAtTime(ducked ? DUCKED_VOLUME : VOLUME, ctx.currentTime, 0.15);
+    master.gain.setTargetAtTime(muted ? 0 : ducked ? DUCKED_VOLUME : VOLUME, ctx.currentTime, 0.15);
   }
 
   return {
@@ -117,6 +119,12 @@ export function createBgmPlayer() {
     duck(on: boolean) {
       if (on === ducked) return;
       ducked = on;
+      setVolume();
+    },
+    /** Silence the music while a video plays, without closing the context: it carries on unheard. */
+    mute(on: boolean) {
+      if (on === muted) return;
+      muted = on;
       setVolume();
     },
     /** Play a sound effect now (lib/sfx.ts). Does nothing unless the music is playing: effects

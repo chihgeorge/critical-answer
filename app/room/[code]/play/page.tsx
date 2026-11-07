@@ -8,7 +8,7 @@ import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL, offli
 import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
-import { MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type StateMessage } from "@/lib/protocol";
+import { MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type PublicQuestion, type StateMessage } from "@/lib/protocol";
 import { CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
@@ -125,9 +125,15 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
 /** How long 鎖定中… waits for the room to confirm a lock before offering a retry (phone-answering.md D6). */
 const LOCK_CONFIRM_MS = 3000;
 
+/** The line a question asks: a text question's own text, or the prompt above its image or video (D5). */
+function questionLine(q: PublicQuestion): string | null {
+  return q.content.kind === "text" ? q.content.value : (q.prompt ?? null);
+}
+
 /** The question on the answering team's own turn (docs/designs/phone-question-text.md D2): a dark
  * strip flush with the top of its turn panel, so nobody reads it as a fifth option. The default
  * margins cancel the panel's px-[10px] py-[10px] padding. */
+
 function QuestionStrip({ id, text, className = "-mx-[10px] -mt-[10px] mb-[2px]" }: { id?: string; text: string; className?: string }) {
   return (
     <h2 id={id} className={`bg-[var(--k)] px-3 py-[10px] text-[20px] font-normal leading-[1.35] text-[var(--cream)] [overflow-wrap:anywhere] ${className}`}>
@@ -171,7 +177,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
   }, [inFlight]);
   const frozen = !!lock || !!wrong || inFlight || rolling;
   const stripId = useId();
-  const text = q.content.kind === "text" ? q.content.value : null;
+  const text = questionLine(q);
 
   return (
     <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
@@ -288,7 +294,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
 
   return (
     <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
-      {q.content.kind === "text" && <QuestionStrip text={q.content.value} />}
+      {questionLine(q) && <QuestionStrip text={questionLine(q)!} />}
       <MageHint hint={game.view.mageHints?.[q.id]} testId="mage-hint" />
       {wrong ? (
         <>
@@ -487,7 +493,7 @@ export default function PlayPage() {
           drop.current = null;
           break;
         case "STATE": {
-          if (msg.question?.content.kind === "text") seen.current.set(msg.question.id, msg.question.content.value);
+          { const line = msg.question && questionLine(msg.question); if (line) seen.current.set(msg.question!.id, line); }
           setRevealedText(msg.reveal ? seen.current.get(msg.reveal.questionId) : undefined);
           setGame(msg);
           if (msg.view.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
@@ -702,7 +708,14 @@ export default function PlayPage() {
             (or the ribbon) and the cards go below it; while waiting the cards stay above it. */}
         {!isMyTurn && cards}
 
-        {game && !finished && !revealed && game.question && game.question.content.kind !== "text" && (
+        {/* The video plays on the big screen only (D7): the phone says where to look, and keeps its space for answering (D21). */}
+        {game && !finished && !revealed && game.question?.content.kind === "youtube" && (
+          <div data-testid="play-media-hint" className="self-start border-[3px] border-[var(--k)] bg-[var(--lav)] px-3 py-1 text-[18px]">
+            {game.question.content.audioOnly ? "🎵 聽大螢幕" : "▶ 看大螢幕"}
+          </div>
+        )}
+
+        {game && !finished && !revealed && game.question && game.question.content.kind === "image" && (
           <Panel className="flex justify-center px-3 py-3">
             {/* key tied to the question forces a fresh DOM node per question — without it, React
                 would reuse the same node across consecutive media questions and a broken image

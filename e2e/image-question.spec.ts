@@ -136,10 +136,7 @@ test("image-content question: a broken image URL hides itself on every surface, 
   await expect(host.getByText("輪到")).toBeVisible();
 });
 
-test("youtube-content question: renders an iframe with the embed URL on /play, /screen, and the host's own preview", async ({ browser, request }) => {
-  // A real, well-known 11-char video id — no network fetch of the actual video happens in this
-  // test, only the iframe's src attribute is checked (test-coverage audit finding, /ship: the
-  // youtube content.kind branch had zero test coverage anywhere in the diff).
+test("youtube-content question: the big screen plays it, the phone and the host only say where to look (youtube-questions.md D7)", async ({ browser, request }) => {
   const videoId = "dQw4w9WgXcQ";
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const loaded = await request.get(`${WORKER}/api/bank`, { headers });
@@ -154,7 +151,10 @@ test("youtube-content question: renders an iframe with the embed URL on /play, /
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
 
-  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  // No real YouTube here: e2e/youtube-media.spec.ts drives the player with a fake API.
+  const screenContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  await screenContext.route(/youtube(-nocookie)?\.com/, (r) => r.abort());
+  const screen = await screenContext.newPage();
   await screen.goto(`/room/${code}/screen`);
 
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
@@ -164,12 +164,11 @@ test("youtube-content question: renders an iframe with the embed URL on /play, /
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
-  const embedSrc = new RegExp(`youtube-nocookie\\.com/embed/${videoId}$`);
-  // The host gets a label, not a too-small embed (YouTube's player needs ~200px).
-  await expect(host.getByText("影片題（看大螢幕）")).toBeVisible();
-  await expect(host.getByTitle("題目影片")).toHaveCount(0);
-  await expect(team.getByTitle("題目影片")).toHaveAttribute("src", embedSrc);
-  await expect(screen.getByTitle("題目影片")).toHaveAttribute("src", embedSrc);
+  await expect(host.getByText("▶ 影片題（看大螢幕）")).toBeVisible();
+  await expect(host.locator("iframe")).toHaveCount(0);
+  await expect(team.locator("iframe")).toHaveCount(0);
+  await expect(team.getByTestId("play-media-hint")).toHaveText("▶ 看大螢幕");
+  await expect(screen.getByTestId("youtube-player")).toBeVisible();
 
   await host.getByRole("button", { name: "答對！" }).click();
   await expect(host.getByText("輪到")).toBeVisible();

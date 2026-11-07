@@ -38,7 +38,7 @@ export function QuestionMedia({ content, maxWidth, maxHeight, className, label =
   // the YouTube IFrame Player API, deliberately deferred (design doc R2-4).
   return (
     <iframe
-      src={youtubeEmbedUrl(content.videoId)}
+      src={youtubeEmbedUrl(content.videoId, content.start, content.end)}
       title={`${label}影片`}
       className={className}
       // width: 100% (capped by maxWidth) instead of a hardcoded pixel width — /screen and the

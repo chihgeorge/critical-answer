@@ -246,6 +246,56 @@ describe("parseBank", () => {
     expect(() => parseBank(make())).toThrow(/question bank|content/i);
   });
 
+  describe("YouTube clips and prompts (docs/designs/youtube-questions.md)", () => {
+    const one = (question: Record<string, unknown>) => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [question] }] });
+    const clip = (extra: Record<string, unknown>) => ({ kind: "youtube", value: YT_ID, ...extra }) as unknown as MediaContent;
+
+    it.each([
+      ["audioOnly on an image", () => one(q("a1", { ...imageContent(), audioOnly: true }))],
+      ["start on a text content", () => one(q("a1", { ...textContent(), start: 1 }))],
+      ["audioOnly that is not a boolean", () => one(q("a1", clip({ audioOnly: "yes" })))],
+      ["a negative start", () => one(q("a1", clip({ start: -1 })))],
+      ["a fractional end", () => one(q("a1", clip({ end: 1.5 })))],
+      ["a string start", () => one(q("a1", clip({ start: "10" })))],
+      ["end equal to start", () => one(q("a1", clip({ start: 10, end: 10 })))],
+      ["end before start", () => one(q("a1", clip({ start: 10, end: 5 })))],
+      ["end 0 with no start", () => one(q("a1", clip({ end: 0 })))],
+      ["an audioOnly explanation", () => one({ ...q("a1"), explanation: clip({ audioOnly: true }) })],
+      ["a prompt on a text question", () => one({ ...q("a1"), prompt: "題幹" })],
+      ["an empty prompt", () => one({ ...q("a1", youtubeContent()), prompt: "  " })],
+      ["a prompt that is not a string", () => one({ ...q("a1", youtubeContent()), prompt: 3 })],
+      ["a prompt over 200 characters", () => one({ ...q("a1", youtubeContent()), prompt: "字".repeat(201) })],
+    ])("fails loudly on %s", (_name, make) => {
+      expect(() => parseBank(make())).toThrow(/question bank/i);
+    });
+
+    it("keeps a music clip and a prompt, on both kinds", () => {
+      const music = clip({ audioOnly: true, start: 65, end: 80 });
+      const bank = parseBank(one({ ...q("a1", music), prompt: "這首歌是什麼的主題曲？" }));
+      expect(bank.pools[1][0]).toEqual({ kind: "text", id: "a1", content: { kind: "youtube", value: YT_ID, audioOnly: true, start: 65, end: 80 }, prompt: "這首歌是什麼的主題曲？", answer: "答案" });
+      const mcBank = parseBank(one({ ...mc("a1", ["A", "B"], 0, imageContent()), prompt: "這是哪裡？" }));
+      expect(mcBank.pools[1][0]).toMatchObject({ prompt: "這是哪裡？" });
+    });
+
+    it("accepts a 200-character prompt, a start with no end, and an explanation clip that is not audioOnly", () => {
+      expect(() => parseBank(one({ ...q("a1", clip({ start: 0 })), prompt: "字".repeat(200) }))).not.toThrow();
+      expect(() => parseBank(one({ ...q("a1"), explanation: clip({ start: 5, end: 30 }) }))).not.toThrow();
+    });
+
+    it("drops audioOnly: false instead of storing it", () => {
+      const bank = parseBank(one(q("a1", clip({ audioOnly: false, end: 20 }))));
+      expect(bank.pools[1][0].content).toEqual({ kind: "youtube", value: YT_ID, end: 20 });
+    });
+
+    it("publicQuestion carries the prompt and the clip, never the answer", () => {
+      const bank = parseBank(one({ ...q("a1", clip({ audioOnly: true, start: 65, end: 80 })), prompt: "題幹" }));
+      const pub = publicQuestion(bank, "a1", 0, "")!;
+      expect(pub.content).toEqual({ kind: "youtube", videoId: YT_ID, audioOnly: true, start: 65, end: 80 });
+      expect(pub.prompt).toBe("題幹");
+      expect(JSON.stringify(pub)).not.toContain("答案");
+    });
+  });
+
   it("accepts a valid multipleChoice question", () => {
     const bank = parseBank({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [mc("a1", ["A", "B", "C"], 2)] }] });
     expect(bank.pools[1][0]).toEqual({ kind: "multipleChoice", id: "a1", content: textContent(), options: ["A", "B", "C"], correctIndex: 2 });

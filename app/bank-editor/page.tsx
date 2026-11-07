@@ -11,11 +11,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton } from "@/components/pixel";
-import { DIFFICULTIES, DISH_FIELDS, DISH_LIMITS, MAX_BOSS_HP, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, hasCuisine, textQuestionGaps, type Bank, type BankDish, type BankMonster, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { DIFFICULTIES, DISH_FIELDS, DISH_LIMITS, MAX_BOSS_HP, MAX_PROMPT, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, hasCuisine, textQuestionGaps, type Bank, type BankDish, type BankMonster, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { scoreName } from "@/lib/protocol";
 import type { Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
-import { extractYoutubeId } from "@/lib/youtube";
+import { extractYoutubeId, formatClipTime, parseClipTime } from "@/lib/youtube";
+import { YoutubePlayer } from "@/components/youtube-player";
 import { readStored, writeStored } from "@/lib/stored";
 
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
@@ -74,6 +75,9 @@ const toReward = (v: string) => Math.max(0, Math.floor(Number(v) || 0));
 function contentError(label: string, c: MediaContent | undefined): string | null {
   if (!c) return null;
   if (!c.value.trim()) return `${label}還沒填完（${c.kind === "image" ? "還沒上傳圖片" : c.kind === "youtube" ? "還沒貼網址" : "是空的"}）`;
+  // ClipFields stores NaN for a time it can't read, so 儲存 refuses it instead of keeping the last good one.
+  if (Number.isNaN(c.start) || Number.isNaN(c.end)) return `${label}的時間看不懂（請打 1:05 或 65）`;
+  if (c.end !== undefined && c.end <= (c.start ?? 0)) return `${label}的結束時間要在開始時間之後`;
   return null;
 }
 
@@ -128,6 +132,7 @@ function validationError(bank: Bank): string | null {
     }
     const contentErr = contentError(`${label}的內容`, q.content);
     if (contentErr) return contentErr;
+    if (q.prompt !== undefined && Array.from(q.prompt).length > MAX_PROMPT) return `${label}的題幹最多 ${MAX_PROMPT} 個字`;
     const explanationErr = contentError(`${label}的詳解`, q.explanation);
     if (explanationErr) return explanationErr;
   }
@@ -640,11 +645,14 @@ function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): BankQuestio
   // explanation carries over just like content does — dropping it here would silently discard
   // an uploaded image/video with no warning at all, bypassing MediaPicker's own confirm() gate
   // entirely (adversarial review finding, /ship).
-  if (kind === "text") return { kind: "text", id: q.id, content: q.content, answer: "", explanation: q.explanation };
+  // The prompt (題幹) belongs to the content, so it carries over too.
+  const prompt = q.prompt !== undefined ? { prompt: q.prompt } : {};
+  if (kind === "text") return { kind: "text", id: q.id, content: q.content, ...prompt, answer: "", explanation: q.explanation };
   return {
     kind: "multipleChoice",
     id: q.id,
     content: q.content,
+    ...prompt,
     options: ["", ""],
     correctIndex: UNSET_CORRECT_INDEX,
     explanation: q.explanation,
@@ -710,17 +718,18 @@ function MediaPicker({
     setYoutubeInput(pasted);
     if (!pasted.trim()) {
       setError("");
-      onChange({ kind: "youtube", value: "" });
+      // Keep the clip and 只放聲音: the fields below still show them, and the next paste saves them.
+      onChange({ ...current, kind: "youtube", value: "" });
       return;
     }
     const id = extractYoutubeId(pasted);
     if (!id) {
       setError("看不出這是 YouTube 網址");
-      onChange({ kind: "youtube", value: "" });
+      onChange({ ...current, kind: "youtube", value: "" });
       return;
     }
     setError("");
-    onChange({ kind: "youtube", value: id });
+    onChange({ ...current, kind: "youtube", value: id });
   };
 
   return (
@@ -784,18 +793,81 @@ function MediaPicker({
           {current.value && !uploading && <span className="text-[13px]">已上傳（{current.value.slice(0, 8)}…）</span>}
         </div>
       ) : (
-        <input
-          className="px-input"
-          aria-label={`${label}的 YouTube 網址`}
-          placeholder="貼上 YouTube 網址"
-          value={youtubeInput}
-          onChange={(e) => handleYoutubeInput(e.target.value)}
-        />
+        <>
+          <input
+            className="px-input"
+            aria-label={`${label}的 YouTube 網址`}
+            placeholder="貼上 YouTube 網址"
+            value={youtubeInput}
+            onChange={(e) => handleYoutubeInput(e.target.value)}
+          />
+          <ClipFields label={label} value={current} onChange={onChange} audioOnly={!allowNone} />
+        </>
       )}
       {error && (
         <Panel role="alert" className="text-[13px]" style={{ background: "#ffd9d9" }}>
           {error}
         </Panel>
+      )}
+    </div>
+  );
+}
+
+/** A YouTube slot's clip (docs/designs/youtube-questions.md D22): start and end typed as 1:05 or 65, 只放聲音 on a
+ * question's own video (an explanation plays outside the host's controls), and 試聽片段 to hear it here. */
+function ClipFields({ label, value, onChange, audioOnly }: { label: string; value: MediaContent; onChange: (next: MediaContent) => void; audioOnly: boolean }) {
+  const [startText, setStartText] = useState(value.start === undefined ? "" : formatClipTime(value.start));
+  const [endText, setEndText] = useState(value.end === undefined ? "" : formatClipTime(value.end));
+  // The clip as it was when ▶ 試聽片段 was pressed: typing a time must not reload and replay the preview per key.
+  const [preview, setPreview] = useState<{ seq: number; start?: number; end?: number } | null>(null);
+
+  // From the stored values (NaN = unreadable), so a fix to one field can't hide the other's error.
+  const bad = Number.isNaN(value.start) ? "start" : Number.isNaN(value.end) ? "end" : null;
+  const setTime = (which: "start" | "end", text: string) => {
+    (which === "start" ? setStartText : setEndText)(text);
+    const seconds = text.trim() ? parseClipTime(text) : undefined;
+    const next = { ...value };
+    if (seconds === undefined) delete next[which];
+    else next[which] = seconds ?? NaN;
+    onChange(next);
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-end gap-2">
+        {audioOnly && (
+          <label className="flex items-center gap-1 text-[13px]">
+            <input
+              type="checkbox"
+              checked={!!value.audioOnly}
+              onChange={(e) => {
+                const next = { ...value };
+                if (e.target.checked) next.audioOnly = true;
+                else delete next.audioOnly;
+                onChange(next);
+              }}
+            />
+            只放聲音（聽歌題）
+          </label>
+        )}
+        <label className="flex flex-col text-[13px]">
+          開始
+          <input className="px-input" style={{ width: 90 }} aria-label={`${label}的開始時間`} placeholder="0:00" value={startText} onChange={(e) => setTime("start", e.target.value)} />
+        </label>
+        <label className="flex flex-col text-[13px]">
+          結束
+          <input className="px-input" style={{ width: 90 }} aria-label={`${label}的結束時間`} placeholder="（播到完）" value={endText} onChange={(e) => setTime("end", e.target.value)} />
+        </label>
+        <button type="button" className="px-btn !px-2 !py-1 text-[13px]" disabled={!value.value || bad !== null} onClick={() => setPreview((p) => ({ seq: (p?.seq ?? 0) + 1, start: value.start, end: value.end }))}>
+          ▶ 試聽片段
+        </button>
+      </div>
+      <div className="text-[12px] text-black/60">
+        {bad ? `${bad === "start" ? "開始" : "結束"}時間看不懂：請打 1:05 或 65` : value.end !== undefined ? `片段 ${value.end - (value.start ?? 0)} 秒` : "可以打 1:05 或 65；結束留空就播到完"}
+      </div>
+      {preview && value.value && (
+        // The picture shows here even for a music question, to check where the clip starts and stops.
+        <YoutubePlayer videoId={value.value} start={preview.start} end={preview.end} command={{ state: "playing", seq: preview.seq }} width={320} height={180} controls title={`${label}試聽`} />
       )}
     </div>
   );
@@ -816,7 +888,37 @@ function QuestionRow({
     <div data-testid={`question-${q.id}`} className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
       <div className="flex gap-2">
         <div className="flex-1">
-          <MediaPicker fieldId={`${q.id}-content`} label="題目" value={q.content} onChange={(c) => onUpdate((cur) => ({ ...cur, content: c! }))} onUploadImage={onUploadImage} />
+          <MediaPicker
+            fieldId={`${q.id}-content`}
+            label="題目"
+            value={q.content}
+            onChange={(c) =>
+              onUpdate((cur) => {
+                // A text question is its own line: the bank refuses a prompt on it.
+                if (c!.kind !== "text") return { ...cur, content: c! };
+                const next = { ...cur, content: c! };
+                delete next.prompt;
+                return next;
+              })
+            }
+            onUploadImage={onUploadImage}
+          />
+          {q.content.kind !== "text" && (
+            <input
+              className="px-input mt-1"
+              aria-label="題幹"
+              placeholder="題幹（顯示在圖片或影片上方，例如：這首歌是什麼的主題曲？）"
+              value={q.prompt ?? ""}
+              onChange={(e) =>
+                onUpdate((cur) => {
+                  const next = { ...cur };
+                  if (e.target.value.trim()) next.prompt = e.target.value;
+                  else delete next.prompt;
+                  return next;
+                })
+              }
+            />
+          )}
         </div>
         <select
           className="px-input"
