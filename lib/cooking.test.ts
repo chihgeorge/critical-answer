@@ -6,7 +6,9 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { dishLine, useCookStep, useFinaleStep } from "@/components/cooking";
+import { DishOnStage, dishLine, useCookStep, useFinaleStep } from "@/components/cooking";
+import { Sprite } from "@/components/pixel";
+import type { MonsterSprite, SpriteKind } from "@/lib/sprite-kind";
 
 const dish = { name: "史萊姆凍", part: "外膜", method: "冰鎮", comment: "冰冰涼涼。", points: 10, monster: { name: "史萊姆", sprite: "slime" as const, hue: 0 }, room: 0, teamId: "t1" };
 
@@ -30,5 +32,25 @@ describe("the first cooking frame (cooking I3, R8)", () => {
   it("useFinaleStep: a boss kill seen live starts on the monster, a page opened on the end screen goes to the podium", () => {
     expect(first(() => useFinaleStep(true))).toBe("0");
     expect(first(() => useFinaleStep(false))).toBe("4");
+  });
+});
+
+// Value: protects=a page older than the server draws an unknown monster sprite as a slime and its dish as the slime's dish,
+// instead of crashing the render (monster-catalog.md Rollout 5); fails_when=the Object.hasOwn guard in Sprite or DishOnStage
+// is dropped or swapped for `in` (an inherited key like "toString"); why_new=PR2 tested only monsterLook, not the components;
+// seam=none; no_claim=the canvas pixels (useEffect does not run in renderToStaticMarkup)
+describe("a sprite this page does not know (a newer server)", () => {
+  const html = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
+  const unknown = ["not-yet-drawn", "toString"] as unknown as SpriteKind[];
+
+  it("Sprite draws it in the slime's box", () => {
+    const slime = html(createElement(Sprite, { kind: "slime", scale: 2 }));
+    expect(slime).toContain("width:64px;height:60px");
+    for (const kind of unknown) expect(html(createElement(Sprite, { kind, scale: 2 }))).toBe(slime);
+  });
+
+  it("DishOnStage serves the slime's dish", () => {
+    const served = (sprite: string) => html(createElement(DishOnStage, { dish: { ...dish, monster: { ...dish.monster, sprite: sprite as MonsterSprite } }, cardTop: 0, bottom: 0 }));
+    for (const kind of unknown) expect(served(kind)).toBe(served("slime"));
   });
 });
