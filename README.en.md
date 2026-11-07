@@ -100,7 +100,7 @@ Design records are in [docs/designs/](docs/designs/), pixel design rules in [DES
 
 ## Roadmap
 
-Done: big screen, question bank and question bank editor, scripted and AI narration, voice narration, sound effects and background music, live map, four classes, crit die, persuasion checks, monsters into dishes, production deployment. The next focus is the **second live playtest**: checking whether, with atmosphere added, the game is more fun than the first round. Full designs are in [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md) (second round) and [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) (first round).
+Done: big screen, question bank and question bank editor, scripted and AI narration, voice narration, sound effects and background music, live map, five classes, crit die, persuasion checks, monsters into dishes, production deployment. The next focus is the **second live playtest**: checking whether, with atmosphere added, the game is more fun than the first round. Full designs are in [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md) (second round) and [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) (first round).
 
 ## License
 

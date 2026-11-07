@@ -100,7 +100,7 @@ https://github.com/chihgeorge/critical-answer
 
 ## 路線圖
 
-已完成：大螢幕、題庫與題庫編輯器、腳本與 AI 旁白、語音旁白、音效與背景音樂、活地圖、四個職業、暴擊骰、說服檢定、怪物變料理、正式部署。接下來的重點是**第二次真人測試**：驗證有氣氛之後是不是比第一輪好玩。完整設計見 [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md)（第二輪）和 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md)（第一輪）。
+已完成：大螢幕、題庫與題庫編輯器、腳本與 AI 旁白、語音旁白、音效與背景音樂、活地圖、五個職業、暴擊骰、說服檢定、怪物變料理、正式部署。接下來的重點是**第二次真人測試**：驗證有氣氛之後是不是比第一輪好玩。完整設計見 [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md)（第二輪）和 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md)（第一輪）。
 
 ## 授權
 
