@@ -108,7 +108,9 @@ export function NarrationPanel({
   }
 
   return (
-    <Panel tone="lav" className="px-[10px] pb-[10px] pt-2" data-testid="narration-panel">
+    // Panel takes no data-* props, so the test id sits on a wrapper.
+    <div data-testid="narration-panel">
+    <Panel tone="lav" className="px-[10px] pb-[10px] pt-2">
       <button
         type="button"
         id="narration-toggle"
@@ -199,6 +201,7 @@ export function NarrationPanel({
         </div>
       )}
     </Panel>
+    </div>
   );
 
   function editor(i: number) {
