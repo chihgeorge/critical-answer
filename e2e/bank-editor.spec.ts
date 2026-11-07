@@ -596,6 +596,50 @@ test("YouTube authoring: pasting a full watch URL extracts and stores just the v
   await expect(reloadedRow.getByLabel("題目的 YouTube 網址")).toHaveValue("dQw4w9WgXcQ");
 });
 
+test("YouTube authoring: a prompt, 只放聲音 and a 1:05–1:20 clip save as seconds and come back after a reload (youtube-questions.md D22)", async ({ page, request }) => {
+  const WORKER = "http://localhost:1996";
+  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const original = (await (await request.get(`${WORKER}/api/bank`, { headers })).json()).bank.pools["1"];
+  try {
+    autoAcceptConfirms(page);
+    await page.goto("/bank-editor");
+    await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+    await page.getByRole("button", { name: "載入題庫" }).click();
+    const firstRow = rows(page.getByTestId("bank-pool-1")).first();
+    await firstRow.getByRole("button", { name: "題目：YouTube" }).click();
+    await firstRow.getByLabel("題目的 YouTube 網址").fill("https://youtu.be/dQw4w9WgXcQ");
+    await firstRow.getByLabel("題幹").fill("這首歌是什麼的主題曲？");
+    await firstRow.getByLabel("只放聲音（聽歌題）").check();
+    await firstRow.getByLabel("題目的開始時間").fill("1:05");
+    await firstRow.getByLabel("題目的結束時間").fill("80");
+    await expect(firstRow.getByText("片段 15 秒")).toBeVisible();
+    // A time the editor cannot read says so where it was typed.
+    await firstRow.getByLabel("題目的結束時間").fill("1:75");
+    await expect(firstRow.getByText(/結束時間看不懂/)).toBeVisible();
+    await firstRow.getByLabel("題目的結束時間").fill("1:20");
+
+    await saveAll(page);
+    await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
+    const saved = (await (await request.get(`${WORKER}/api/bank`, { headers })).json()).bank.pools["1"][0];
+    expect(saved).toMatchObject({ content: { kind: "youtube", value: "dQw4w9WgXcQ", audioOnly: true, start: 65, end: 80 }, prompt: "這首歌是什麼的主題曲？" });
+
+    await reloadAndLoad(page);
+    const reloadedRow = rows(page.getByTestId("bank-pool-1")).first();
+    await expect(reloadedRow.getByLabel("題幹")).toHaveValue("這首歌是什麼的主題曲？");
+    await expect(reloadedRow.getByLabel("只放聲音（聽歌題）")).toBeChecked();
+    await expect(reloadedRow.getByLabel("題目的開始時間")).toHaveValue("1:05");
+    await expect(reloadedRow.getByLabel("題目的結束時間")).toHaveValue("1:20");
+
+    // Back to text: a text question is its own line, so the prompt goes with the video.
+    await reloadedRow.getByRole("button", { name: "題目：文字" }).click();
+    await expect(reloadedRow.getByLabel("題幹")).toHaveCount(0);
+  } finally {
+    const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
+    bank.pools["1"] = original;
+    await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } });
+  }
+});
+
 test("YouTube authoring: an unparseable paste shows an inline error and blocks save", async ({ page }) => {
   autoAcceptConfirms(page);
   await page.goto("/bank-editor");
