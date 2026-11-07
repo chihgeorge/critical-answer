@@ -59,27 +59,23 @@ export function useCookStep(served: string | null, onPlay?: () => void, onDish?:
 
 /**
  * The end screen after a boss kill seen live (cooking R8): the boss cooks like any monster (steps 0–3), its dish holds,
- * and at 4 the winner, the podium and the epilogue come up. `play` is read once, when the screen mounts; false (a
- * page opened on the end screen, no dish, reduced motion) goes straight to 4.
+ * and at 4 the cooking is over and the podium reveal (lib/podium.ts) takes the stage. `play` is read once, when the
+ * screen mounts; false (a page opened on the end screen, no dish, reduced motion) goes straight to 4.
  */
-export function useFinaleStep(play: boolean, onPlay?: () => void, onDish?: () => void, onPodium?: () => void): CookStep | 4 {
+export function useFinaleStep(play: boolean, onPlay?: () => void, onDish?: () => void): CookStep | 4 {
   const [start] = useState(() => play && !prefersReducedMotion());
   const [step, setStep] = useState<CookStep | 4>(start ? 0 : 4);
-  const calls = useRef({ onPlay, onDish, onPodium });
+  const calls = useRef({ onPlay, onDish });
   useEffect(() => {
-    calls.current = { onPlay, onDish, onPodium };
+    calls.current = { onPlay, onDish };
   });
   useEffect(() => {
-    if (!start) {
-      calls.current.onPodium?.();
-      return;
-    }
+    if (!start) return;
     calls.current.onPlay?.();
     const timers = [...STEP_AT, [4, FINISH_PODIUM_MS] as const].map(([s, at]) =>
       setTimeout(() => {
         setStep(s);
         if (s === 3) calls.current.onDish?.();
-        if (s === 4) calls.current.onPodium?.();
       }, at),
     );
     return () => timers.forEach(clearTimeout);
@@ -90,10 +86,11 @@ export function useFinaleStep(play: boolean, onPlay?: () => void, onDish?: () =>
 /**
  * The podium reveal's clock (podium-reveal.md eng D20): ms past its first beat, `lagMs` behind, counted from when this
  * STATE came in, so every page reads the room's clock and never its own. Re-renders only when a beat changes. Null when
- * there is no reveal to play: an older server or game, or reduced motion; the page shows the end.
+ * there is no reveal to play: an older server or game, or reduced motion where `motionOnly` (the big screen, whose
+ * reveal is motion); the page shows the end. A phone's wait is no motion, so it keeps the clock and never spoils.
  */
-export function useRevealTime(podium: PodiumReveal | undefined, lagMs = 0): number | null {
-  const [still] = useState(() => prefersReducedMotion());
+export function useRevealTime(podium: PodiumReveal | undefined, lagMs = 0, motionOnly = true): number | null {
+  const [still] = useState(() => motionOnly && prefersReducedMotion());
   const [seen, setSeen] = useState(podium);
   const [t, setT] = useState(() => (podium ? podium.elapsedMs - lagMs : 0));
   if (podium !== seen) {

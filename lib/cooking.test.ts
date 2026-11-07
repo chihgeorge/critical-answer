@@ -3,7 +3,7 @@
 // opened on a served dish shows the dish at once (cooking I1, I3); fails_when=a dishLine branch swaps or a hook's first
 // frame replays the cooking; why_new=e2e checks the dish card only and never opens a page after 上菜; seam=none;
 // no_claim=the timed frames and callbacks (useEffect does not run in renderToStaticMarkup; e2e covers them)
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { dishLine, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
@@ -60,5 +60,21 @@ describe("the podium reveal's first frame", () => {
   it("waits while the lines are coming; with no reveal at all it is the end", () => {
     expect(at(0, 0, null)).toBe("-1 false false");
     expect(first(() => show(revealNow(undefined, useRevealTime(undefined))))).toBe("-1 true true");
+  });
+
+  // Value: protects=reduced motion shows the big screen the end at once, but a phone still waits for the room's clock, so it
+  // never names the winner before the screen (podium-reveal.md D16, /review D25-1); fails_when=the phone's clock honors
+  // reduced motion again; why_new=iOS Reduce Motion spoiled first place and then hid the story; seam=matchMedia stub;
+  // no_claim=the phone's later STATEs (the gate follows `up` both ways, e2e main-line)
+  it("under reduced motion the screen shows the end, the phone keeps waiting", () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    try {
+      const view = (motionOnly: boolean) =>
+        first(() => show(revealNow({ beats }, useRevealTime({ ranking: ["a", "b"], beats, elapsedMs: 3500 }, motionOnly ? 0 : PHONE_LAG_MS, motionOnly))));
+      expect(view(true)).toBe("-1 true true");
+      expect(view(false)).toBe("0 false false");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

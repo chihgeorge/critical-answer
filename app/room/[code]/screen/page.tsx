@@ -19,7 +19,7 @@ import { isPending, keepLatest, type NarrationState } from "@/lib/narration/clie
 import { pickVoice, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { SFX } from "@/lib/sfx";
-import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
+import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, prefersReducedMotion, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { MapStrip } from "@/components/map-strip";
 import { McOption, optionLetter, type OptionLook } from "@/components/mc-option";
 import { Qr } from "@/components/qr";
@@ -463,6 +463,8 @@ function Finished({ view, winners, reveal, podium, narration, epilogue, cuisine,
   const king = beats.find((b) => b.kind === "crit");
   const kingShown = king && (now.result || beats.indexOf(king) <= now.beat);
   const ended = cooked && now.done;
+  // The narrator's calls are still being written: 「…」, not the kill-shot line left over (storyboard row 1).
+  const waiting = cooked && !!podium && podium.beats === null;
   useEffect(() => {
     if (ended) onPodium();
     // onPodium reads refs only: it runs once, when the story may be read.
@@ -548,8 +550,8 @@ function Finished({ view, winners, reveal, podium, narration, epilogue, cuisine,
       <DialogueBox
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
-        loading={!(ended && epilogue) && !current && !narration && step !== 3}
-        lines={step === 3 ? [line] : ended && epilogue ? [epilogue] : current ? [current.line] : (narration?.lines ?? [])}
+        loading={!(ended && epilogue) && !current && (!narration || waiting) && step !== 3}
+        lines={step === 3 ? [line] : ended && epilogue ? [epilogue] : current ? [current.line] : waiting ? [] : (narration?.lines ?? [])}
       />
     </>
   );
@@ -784,8 +786,11 @@ export default function ScreenPage() {
         case "STATE":
           setGame(msg);
           if (msg.phase === "finished" && lastPhase.current === "playing" && msg.reveal?.dish) setFinale(true);
-          // The story waits for the boss to cook (cooking I4) and the places to be called (podium-reveal.md).
-          if (msg.phase === "finished" && lastPhase.current === "playing" && (msg.reveal?.dish || msg.podium)) podiumReady.current = false;
+          // The story waits for the boss to cook (cooking I4) and the places to be called (podium-reveal.md), on every
+          // STATE: a screen that (re)connects mid-reveal must not read the winner's story first. Finished's clock
+          // restarts from this STATE too, so its onPodium comes once the reveal is done.
+          if (msg.phase === "finished" && lastPhase.current === "playing" && msg.reveal?.dish) podiumReady.current = false;
+          if (msg.phase === "finished" && msg.podium && !revealNow(msg.podium, prefersReducedMotion() ? null : msg.podium.elapsedMs).done) podiumReady.current = false;
           lastPhase.current = msg.phase;
           if (msg.reveal?.served) servedEvent.current = msg.eventId;
           // D11: each how-to-play page's owl line is spoken once, when the page comes up.

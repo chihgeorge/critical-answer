@@ -15,11 +15,34 @@ export const MAX_EPILOGUE_LINE = 160;
 /** A place call or the crit king's line, read in one podium beat (podium-reveal.md D9). */
 export const MAX_CALL_LINE = 20;
 
-/** An AI epilogue segment fits its part: a call is short and names every team it is about; the story is long. */
-export function fitsPart(part: EpiloguePart, line: string): boolean {
-  if (part.kind === "story") return validLine(line, MAX_EPILOGUE_LINE);
+/**
+ * An AI epilogue segment fits its part: a call is short, names every team it is about and no team called after it (a
+ * higher place, which would spoil the reveal); the story is longer than any call. `parts` is the whole reveal, in epilogueParts order.
+ */
+export function fitsPart(parts: EpiloguePart[], i: number, line: string): boolean {
+  const part = parts[i];
+  // With calls before it, a call-length story is a call out of place.
+  if (part.kind === "story") return validLine(line, MAX_EPILOGUE_LINE) && (parts.length === 1 || line.trim().length > MAX_CALL_LINE);
   const names = part.kind === "crit" ? part.names : [part.team];
-  return validLine(line, MAX_CALL_LINE) && names.every((n) => saysLine(line, n));
+  const later = parts.slice(i + 1).flatMap((p) => (p.kind === "place" && !names.includes(p.team) ? [p.team] : []));
+  // The crit king is read before any place: it must not crown anyone. A king who also came first is always scripted,
+  // since no word list catches every way to say so.
+  const first = parts.find((p) => p.kind === "place" && p.place === 1);
+  if (part.kind === "crit" && (/冠軍|榜首|奪冠|第.{1,2}名/.test(line) || (first?.kind === "place" && part.names.includes(first.team)))) return false;
+  return validLine(line, MAX_CALL_LINE) && names.every((n) => saysLine(line, n)) && !later.some((n) => saysLine(line, n));
+}
+
+/**
+ * An AI epilogue's lines lined up with its parts. Extra lines are a story written over several lines, joined, when the
+ * calls before them all fit. Otherwise the calls are out of step and are scripted: with too few lines the last one may
+ * be the whole story and is kept; with too many (a header line) it may be a fragment, so the story is scripted too.
+ */
+function epilogueCandidates(parts: EpiloguePart[], raw: string[]): (string | undefined)[] {
+  const n = parts.length;
+  if (raw.length === n) return raw;
+  const calls = raw.slice(0, n - 1);
+  if (raw.length > n && calls.every((line, i) => fitsPart(parts, i, line))) return [...calls, raw.slice(n - 1).join("")];
+  return [...Array<undefined>(n - 1), raw.length < n ? raw.at(-1) : undefined];
 }
 
 /** Segment count for a non-epilogue event: 3 (result + atmosphere + transition) when there's a next
@@ -131,11 +154,12 @@ export function createRunner(opts: {
       };
       const lines: string[] = [];
       const sources: string[] = [];
+      const candidates = parts && providerLines ? epilogueCandidates(parts, providerLines) : providerLines;
       for (let i = 0; i < targetCount; i++) {
-        const candidate = providerLines?.[i];
+        const candidate = candidates?.[i];
         // Segment 0 already passed validLine(max) above (that's what set providerLines); an epilogue's every segment
         // is held to its own part.
-        const fits = parts ? candidate !== undefined && fitsPart(parts[i], candidate) : i === 0 || validLine(candidate, max);
+        const fits = parts ? candidate !== undefined && fitsPart(parts, i, candidate) : i === 0 || validLine(candidate, max);
         if (candidate !== undefined && fits) {
           lines.push(candidate);
           sources.push(providerName);

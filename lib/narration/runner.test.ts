@@ -157,16 +157,69 @@ describe("narration runner", () => {
     });
 
     it("scripts only the call that is too long or misses a name", async () => {
-      const { runner, emitted, entries } = setup(provider(async () => "大成功王是藍隊！\n第二名是藍隊，他們今晚真的非常非常非常努力！\n冠軍是紅隊！\n後記"));
+      const story = "後記".repeat(15);
+      const { runner, emitted, entries } = setup(provider(async () => `大成功王是藍隊！\n第二名是藍隊，他們今晚真的非常非常非常努力！\n冠軍是紅隊！\n${story}`));
       await runner.run(9, epi);
-      expect(emitted[0].lines).toEqual(["備用大成功王", "備用第2名", "冠軍是紅隊！", "後記"]);
+      expect(emitted[0].lines).toEqual(["備用大成功王", "備用第2名", "冠軍是紅隊！", story]);
       expect(entries[0].sources).toEqual(["scripted", "scripted", "fake", "fake"]);
     });
 
-    it("a missing story is scripted, and a name with different punctuation still counts", async () => {
-      const { runner, emitted } = setup(provider(async () => "藍隊、綠隊大成功王！\n第二名：藍 隊！\n紅隊奪冠！"));
+    it("a name with different punctuation still counts", async () => {
+      const story = "字".repeat(30);
+      const { runner, emitted } = setup(provider(async () => `藍隊、綠隊大成功王！\n第二名：藍 隊！\n紅隊奪冠！\n${story}`));
       await runner.run(9, epi);
-      expect(emitted[0].lines).toEqual(["藍隊、綠隊大成功王！", "第二名：藍 隊！", "紅隊奪冠！", "備用旁白"]);
+      expect(emitted[0].lines).toEqual(["藍隊、綠隊大成功王！", "第二名：藍 隊！", "紅隊奪冠！", story]);
+    });
+
+    // Value: protects=an AI call never names a team placed higher than the one it calls, so the reveal is not spoiled
+    // (podium-reveal.md D16, /review D25-4); fails_when=fitsPart stops checking the later calls' teams;
+    // why_new=the old check only asked that the line name its own team; seam=fake provider; no_claim=a real model's lines
+    it("scripts a call that names a team called after it, the crit king's included", async () => {
+      const story = "字".repeat(30);
+      const { runner, emitted } = setup(provider(async () => `藍隊綠隊大成功，紅隊奪冠！\n藍隊第二，紅隊奪冠！\n冠軍是紅隊！\n${story}`));
+      await runner.run(9, epi);
+      expect(emitted[0].lines).toEqual(["備用大成功王", "備用第2名", "冠軍是紅隊！", story]);
+    });
+
+    // Value: protects=a story written over several lines keeps the AI's calls and the whole story (/review pass 2);
+    // fails_when=extra lines script every call or keep only the last sentence; why_new=pass 1's line-count rule did both;
+    // seam=fake provider; no_claim=a real model's line breaks
+    it("a story over several lines is joined, and the calls before it stand", async () => {
+      const { runner, emitted, entries } = setup(provider(async () => `藍隊、綠隊大成功王！\n第二名：藍隊！\n紅隊奪冠！\n${"甲".repeat(25)}\n${"乙".repeat(25)}`));
+      await runner.run(9, epi);
+      expect(emitted[0].lines).toEqual(["藍隊、綠隊大成功王！", "第二名：藍隊！", "紅隊奪冠！", "甲".repeat(25) + "乙".repeat(25)]);
+      expect(entries[0].sources).toEqual(["fake", "fake", "fake", "fake"]);
+    });
+
+    // Value: protects=a crit king who also came first is never named by an AI line, which could crown them in any words
+    // (/review pass 3); fails_when=only the word list guards the crit line; why_new=synonyms like 稱霸 slipped through;
+    // seam=fake provider; no_claim=a real model's wording
+    it("a crit king who came first is always scripted", async () => {
+      const story = "字".repeat(30);
+      const king: NarrationEvent = { ...epi, critKing: { names: ["紅隊"], count: 3 } };
+      const { runner, emitted } = setup(provider(async () => `紅隊擲出三次二十，稱霸全場！\n第二名：藍隊！\n紅隊奪冠！\n${story}`));
+      await runner.run(9, king);
+      expect(emitted[0].lines).toEqual(["備用大成功王", "第二名：藍隊！", "紅隊奪冠！", story]);
+    });
+
+    it("the crit king's line crowns nobody", async () => {
+      const story = "字".repeat(30);
+      const { runner, emitted } = setup(provider(async () => `藍隊綠隊大成功，第一名呢？\n第二名：藍隊！\n紅隊奪冠！\n${story}`));
+      await runner.run(9, epi);
+      expect(emitted[0].lines[0]).toBe("備用大成功王");
+    });
+
+    // Value: protects=a reply with a line too many or too few cannot put calls in the wrong beats or a call where the story
+    // goes (/review D25-4); fails_when=segments are matched by position again, or the story accepts a call-length line;
+    // why_new=a missing line used to shift nothing only because it was the last; seam=fake provider; no_claim=a real model
+    it("a reply a line short or long scripts every call; a short one keeps its last line if it reads as a story", async () => {
+      const short = setup(provider(async () => "藍隊、綠隊大成功王！\n第二名：藍 隊！\n紅隊奪冠！"));
+      await short.runner.run(9, epi);
+      expect(short.emitted[0].lines).toEqual(["備用大成功王", "備用第2名", "備用第1名", "備用旁白"]);
+      const story = "字".repeat(30);
+      const long = setup(provider(async () => `頒獎時間！\n藍隊、綠隊大成功王！\n第二名：藍隊！\n紅隊奪冠！\n${story}`));
+      await long.runner.run(9, epi);
+      expect(long.emitted[0].lines).toEqual(["備用大成功王", "備用第2名", "備用第1名", "備用旁白"]); // its last line may be a fragment
     });
   });
 
