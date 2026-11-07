@@ -255,6 +255,7 @@ export function parseBank(raw: unknown): Bank {
   rooms.forEach((r, i) => {
     if (pools[r.difficulty].length === 0) fail(`room ${i} has difficulty ${r.difficulty} but pool ${r.difficulty} has no questions`);
   });
+  if (b!.randomMonsters !== undefined && typeof b!.randomMonsters !== "boolean") fail("randomMonsters is not true or false");
   const boss = b!.boss as Record<string, unknown> | null;
   if (!boss) fail("no boss");
   // A bank from before phases holds one bar and one question list on the boss itself: that is phase 1.

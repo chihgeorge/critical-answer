@@ -104,9 +104,10 @@ describe("parseBank", () => {
     expect(parseBank(valid()).pools[1]).toHaveLength(2);
   });
 
-  it("keeps randomMonsters only when it is true", () => {
+  it("keeps randomMonsters only when it is true, and refuses a value that is not true or false", () => {
     expect(parseBank({ ...valid(), randomMonsters: true }).randomMonsters).toBe(true);
-    expect(parseBank({ ...valid(), randomMonsters: "yes" })).not.toHaveProperty("randomMonsters");
+    expect(parseBank({ ...valid(), randomMonsters: false })).not.toHaveProperty("randomMonsters");
+    expect(() => parseBank({ ...valid(), randomMonsters: "yes" })).toThrow(/randomMonsters/);
     expect(parseBank(valid())).not.toHaveProperty("randomMonsters");
   });
 
