@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
 import { drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme } from "@/lib/pixel-art";
 import type { Accessory } from "@/lib/monster-catalog";
-import type { MonsterSprite, SpriteKind } from "@/lib/sprite-kind";
+import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/sprite-kind";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { youtubeEmbedUrl } from "@/lib/youtube";
 import type { PublicMediaContent } from "@/lib/protocol";
@@ -100,7 +100,7 @@ export function LabelChip({ children, tone }: { children: ReactNode; tone?: "tag
 /* ---------- Sprite: a program-drawn pixel canvas that blinks ---------- */
 
 /** The sprites with eyes; everything else (props, food, the pot) never blinks. */
-const BLINKS = new Set<SpriteKind>(["slime", "slime-lost", "slime-king", "ghost", "ghost-cry", "dragon", "owl", "hero"]);
+const BLINKS = new Set<SpriteKind>([...MONSTER_SPRITES, "owl", "hero"]);
 
 export function Sprite({
   kind,

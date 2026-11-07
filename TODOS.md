@@ -5,7 +5,6 @@
 ### P1
 
 - [11/21 前在活動用的大螢幕瀏覽器實測 YouTube 聲音](#1121-前在活動用的大螢幕瀏覽器實測-youtube-聲音) — S（人工約 20 分鐘，要真機）
-- [怪物圖鑑 PR2：新畫 17 隻小怪、2 隻首領和 19 道料理圖](#怪物圖鑑-pr2新畫-17-隻小怪2-隻首領和-19-道料理圖) — L（CC 約 1–1.5 天）
 
 ### P2
 
@@ -66,20 +65,6 @@
 - [開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）](#開發工具鏈剩-5-個-npm-audit-漏洞上游沒有修補版) — S
 - [/health 補上死碼與 shell 腳本檢查](#health-補上死碼與-shell-腳本檢查) — S
 - [ESLint 10 / TypeScript 7 升級被上游卡住](#eslint-10--typescript-7-升級被上游卡住) — 不確定（等上游）
-
----
-
-## 怪物圖鑑 PR2：新畫 17 隻小怪、2 隻首領和 19 道料理圖
-
-**What:** 照 `docs/designs/monster-catalog.md` 的 PR2：畫 17 隻新小怪（含南瓜頭、刺刺仙人掌）、2 隻首領（kraken、phoenix）和 19 道料理圖，加進 `lib/monster-catalog.ts`，預設題庫換成 8 隻不同小怪。
-
-**Why:** PR1（v0.40.0.0）只有 3 隻小怪和 1 隻首領，8 間房只能重複用；站長要 20 隻小怪、3 隻首領（D1–D3，2026-11-07）。
-
-**Context:** 名單和料理名照設計文件 R4 的 PNG（本機 `~/.gstack/projects/critical-answer/designs/monster-catalog/v2/roster.png`，不進 repo）。`BANK_FORMAT` 不變，不用重新種子。每個造型加進 `MONSTER_SPRITES` 時要連料理圖一起加（`DISH_SPRITE` 是 Record，缺圖 tsc 失敗）。
-
-**Effort/Priority:** L（CC 約 1–1.5 天）/ P1，期限 2026-11-18；來不及就分批。
-
-**Depends on:** 怪物圖鑑 PR1 合併、正式站重新種子。
 
 ---
 
@@ -1135,6 +1120,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 怪物圖鑑 PR2：新畫 17 隻小怪、2 隻首領和 19 道料理圖
+
+- **怪物圖鑑 PR2：新畫 17 隻小怪、2 隻首領和 19 道料理圖** · v0.41.0.0 · 圖鑑補到 20 隻小怪、3 隻首領（加深海大王烏賊、不死火鳥），每隻一張料理圖；預設題庫 8 間房換成 8 隻不同小怪。站長 2026-11-07 看過 PNG 後確認。設計見 `docs/designs/monster-catalog.md`。
 
 ## 怪物圖鑑：題庫只能從圖鑑選怪物，每被打倒一次換一種小變化
 

@@ -250,7 +250,7 @@ monster: { id: string; name: string; sprite: MonsterSprite; hue: number; accesso
 3. `HEAD_ANCHOR` 涵蓋 23 個造型；6 配件 × 20 小怪造型都落在畫布內（PR1 的測試自動涵蓋）。
 4. 編輯器小怪選單列 20 隻、首領選單列 3 隻。
 5. 預設題庫的 8 房改成 8 隻不同的小怪（可含新怪物）。
-6. 新造型和料理圖都經站長看過 PNG 確認（/plan-design-review 紀錄）。
+6. 新造型和料理圖都經站長看過 PNG 確認（/plan-design-review 紀錄）。站長 2026-11-07 看過 PNG（本機 `~/.gstack/projects/critical-answer/designs/monster-catalog/v3/pr2-sprites.png`，不進 repo）後確認全部採用。
 7. `BANK_FORMAT` 不變（3）：PR2 只增加圖鑑 id，PR1 存的題庫照樣讀得懂。
 8. 每個新測試附 `protects / fails_when / no_claim`。
 
@@ -623,7 +623,7 @@ Critical gaps: 0。
   - Surfaced by: 規格第 6 節；R2（D3）；Outside Voice 1（回滾說明）
   - Files: docs/question-bank.md, docs/question-bank.en.md, docs/hosting.md, docs/hosting.en.md, DESIGN.md, docs/designs/monster-cuisine.md, docs/designs/scoring-and-score-pools.md, TODOS.md
   - Verify: `npm run check:docs`
-- [ ] **T7 (P2, human: ~2 天 / CC: ~1–1.5 天)** — PR2 — 17 小怪＋2 首領造型、19 料理圖、圖鑑補到 23 筆、預設題庫 8 房 8 隻不同（名單 PNG 確認後）
+- [x] **T7 (P2, human: ~2 天 / CC: ~1–1.5 天)** — PR2 — 17 小怪＋2 首領造型、19 料理圖、圖鑑補到 23 筆、預設題庫 8 房 8 隻不同（名單 PNG 確認後）
   - Surfaced by: 規格 PR2 驗收
   - Files: lib/pixel-art.ts, lib/sprite-kind.ts, lib/monster-catalog.ts, data/question-bank.json
   - Verify: `npx vitest run`、tsc

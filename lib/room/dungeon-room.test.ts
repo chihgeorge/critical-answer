@@ -3512,8 +3512,10 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
 
   // Value: protects=the room passes this game's defeats into STATE: the slime's second appearance (room 3) wears a variant and the reveal keeps the plain look it was defeated in; fails_when=currentQuestion builds the question without the game's defeats or seed; why_new=new wiring (monster-catalog.md §3); seam=none; no_claim=rendering
   it("a room monster met again wears its next variant on STATE", () => {
-    const { room, hostConn } = cookRoom();
-    const slime = catalogMonster(BANK.rooms[0].monster);
+    // The shipped bank has eight different monsters, so repeat three here: room 3 meets room 0's again.
+    const bank: Bank = { ...BANK, rooms: BANK.rooms.map((r, i) => ({ ...r, monster: ["slime-soft", "ghost-shy", "ghost-cry"][i % 3] })) };
+    const { room, hostConn } = cookRoom(bank);
+    const slime = catalogMonster(bank.rooms[0].monster);
     for (let i = 0; i < 3; i++) {
       if (i > 0) serveNext(room, hostConn, seqOf(room));
       const t = room.game!.teams[0];
@@ -3521,7 +3523,7 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     }
     expect(states(room).at(-1).reveal.dish.monster).toEqual({ id: "ghost-cry", name: "愛哭幽靈", sprite: "ghost-cry", hue: 0 });
     serveNext(room, hostConn, seqOf(room));
-    expect(BANK.rooms[3].monster).toBe(slime.id);
+    expect(bank.rooms[3].monster).toBe(slime.id);
     const v = variantOf(room.game!.variantSeed!, slime, 1)!;
     expect(states(room).at(-1).question.monster).toEqual({ id: slime.id, name: v.title + slime.name, sprite: slime.sprite, hue: v.hueShift, accessory: v.accessory });
   });

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
 import { asTextBank } from "../lib/text-bank";
 import { SERVE_HOLD_MS } from "../lib/protocol";
@@ -115,6 +115,21 @@ export function restoreRoom0AfterEach() {
     bank.boss.phases = original.boss;
     await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } });
   });
+}
+
+/** Gives room 3 room 0's monster for one test and puts the bank back after it: the bundled bank has eight different
+ * room monsters (docs/designs/monster-catalog.md PR2), so one team walking it never meets a monster twice. */
+export async function withRoom0MonsterAgainAt3(request: APIRequestContext, run: () => Promise<void>) {
+  const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
+  const original = structuredClone(bank);
+  bank.rooms[3].monster = bank.rooms[0].monster;
+  expect((await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } })).ok()).toBe(true);
+  try {
+    await run();
+  } finally {
+    const { version: now } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
+    expect((await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: original, version: now } })).ok()).toBe(true);
+  }
 }
 
 /** For specs about the host judging by hand (keys, 答錯・重答, a whole game driven by HOST_JUDGE):
