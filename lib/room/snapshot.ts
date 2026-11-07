@@ -58,6 +58,10 @@ export interface RoomSnapshot {
   phaseCard?: boolean;
   /** How-to-play page on show (1..INTRO_PAGES). Missing means no intro, as in a save from before it. */
   intro?: number;
+  /** A finished game's podium: the narrator's calls (the story is `epilogue`) and when the first beat starts. */
+  podium?: { lines: string[]; at: number } | null;
+  /** The earliest the podium reveal may start, set when the game finished. Missing in a save from before the reveal. */
+  revealFrom?: number | null;
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -107,8 +111,14 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     const aiLimit = raw.aiLimit ?? DEFAULT_AI_LIMIT;
     if (typeof aiWanted !== "boolean" || !(aiSource === "none" || aiSource === "own" || aiSource === "owner")) return null;
     if (!Number.isInteger(aiUsed) || (aiUsed as number) < 0 || !Number.isInteger(aiLimit) || (aiLimit as number) < 1 || (aiLimit as number) > MAX_AI_LIMIT) return null;
+    // A damaged podium only loses the reveal: the screen shows the full podium.
+    const pod = raw.podium;
+    const podium = isObject(pod) && Array.isArray(pod.lines) && pod.lines.every(isString) && typeof pod.at === "number" && Number.isFinite(pod.at) ? { lines: pod.lines as string[], at: pod.at } : null;
+    const revealFrom = typeof raw.revealFrom === "number" && Number.isFinite(raw.revealFrom) ? raw.revealFrom : null;
     return {
       ...(raw as unknown as RoomSnapshot),
+      ...(raw.podium !== undefined ? { podium } : {}),
+      ...(raw.revealFrom !== undefined ? { revealFrom } : {}),
       game: withUses as GameState | null,
       joinPassword,
       nextLine: nextLine as RoomSnapshot["nextLine"],

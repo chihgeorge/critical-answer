@@ -9,7 +9,6 @@
 ### P2
 
 - [美術改版：冒險者野餐桌](#美術改版冒險者野餐桌) — L（人工約 1–2 週 / CC 約 1–2 天）
-- [冒險結束、公布最終分數前，旁白先公布前幾名](#冒險結束公布最終分數前旁白先公布前幾名) — M
 - [bank-editor 兩個 e2e 測試在 CI 偶發失敗](#bank-editor-兩個-e2e-測試在-ci-偶發失敗) — S
 - [AI key 的錯誤會被之後的狀態訊息蓋掉](#ai-key-的錯誤會被之後的狀態訊息蓋掉) — S
 - [新職業：廚師（被動能力，飽足感多 15%），做完後平衡所有職業](#新職業廚師被動能力飽足感多-15做完後平衡所有職業) — 廚師 S–M，平衡 M
@@ -106,29 +105,6 @@
 - 待驗證：子代理提的字型 jf open 粉圓 2.0（Huninn）、芫荽 Iansui、Fredoka 的授權和檔案大小。中文字集要用常用字表裁切，不能用題庫的字（會洩漏答案，同 `check:bundle`）。
 - 長題目：題目字放大後約 15 字就會換行，要自動縮字，不能壓到怪物。
 - 開始實作時把 DESIGN.md 整份改成這套規格。
-
----
-
-## 冒險結束、公布最終分數前，旁白先公布前幾名
-
-**What:** 冒險結束、頒獎台公布最終分數前，加一段旁白依序公布前 X 名（例如從第三名念到第一名），念完再顯示分數。
-
-**Why:** 站長 2026-11-04 實測後提出：直接跳出排行榜太快，少了揭曉的氣氛。
-
-**Context:**
-- `lib/narration/events.ts`
-- `lib/narration/runner.ts`
-- `app/room/[code]/screen/page.tsx`
-
-**Effort/Priority:** M / P2
-
-**Depends on:** 無。
-
-**Notes:**
-- Pros：後記事件已經有排名（`epilogue` 事件的 `ranking`、`winners`），旁白有現成的資料。
-- Cons：X 要決定（固定 3 名，還是隊伍少時全部念）；同分時怎麼念；大螢幕要配合旁白一名一名亮出來，不能先露出完整排行。AI 旁白關掉時腳本旁白也要能念。
-- Context 補充：`lib/narration/events.ts`（`epilogue`）、`lib/narration/runner.ts`（後記只有 1 句）、`app/room/[code]/screen/page.tsx`（頒獎台）。
-- 跑團風擲骰的「本場大成功王」（CEO review D5，延後）跟這項一起做：公布名次時順便念出誰擲出最多次 20。
 
 ---
 
@@ -1089,6 +1065,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 冒險結束、公布最終分數前，旁白先公布前幾名
+
+- **冒險結束、公布最終分數前，旁白先公布前幾名** · v0.43.0.0 · 首領煮完後，旁白先念「本場大成功王」（擲出最多次 20 的隊伍），再從第三名念到第一名，大螢幕一名一名亮出；前三名同分時先擲 d20 比大小。念到第一名才出分數和皇冠，手機晚大螢幕 1 秒。大螢幕重新整理會接著目前這一步，不會重播。設計見 `docs/designs/podium-reveal.md`。
 
 ## 怪物圖鑑 PR2：新畫 17 隻小怪、2 隻首領和 19 道料理圖
 

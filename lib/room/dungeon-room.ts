@@ -57,8 +57,11 @@ import {
   type PendingRoll,
   type ServerMessage,
   type SoundCue,
+  type PodiumReveal,
+  FINISH_PODIUM_MS,
   SERVE_HOLD_MS,
 } from "../protocol";
+import { revealBeats, revealCalls } from "../podium";
 import { catalogMonster, gameMonsters, monsterById } from "../monster-catalog";
 import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
@@ -80,7 +83,7 @@ const IDLE_MS = 2 * 60 * 60 * 1000;
 export const EXPIRE_MS = 24 * 60 * 60 * 1000;
 /** Sockets per room: players, screens and the host, with room to spare. Stops one client opening thousands. */
 const MAX_CONNECTIONS = 60;
-/** Lets the kill-shot line be read before the story arrives. */
+/** With no boss to cook, the podium reveal starts this long after the game ends, so the last line is read first. */
 const EPILOGUE_DELAY_MS = 4000;
 /** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
@@ -139,7 +142,6 @@ function roundActivity(at: number, idleMs: number): number {
   const granularity = Math.max(1, Math.min(60_000, Math.floor(idleMs / 60)));
   return Math.floor(at / granularity) * granularity;
 }
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** A natural 20 rolled on the turn team's current question and never judged: a restart cut off its beat (R7). Its win
  * moves the team on and drops the record, so one still there was never applied. */
@@ -210,6 +212,12 @@ export class DungeonRoom {
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
+  /** The podium reveal (podium-reveal.md eng D20): the narrator's calls, and when their first beat starts on the room's
+   * clock. Null until the narration is in. Saved, so a restart keeps the reveal where it was. */
+  private podium: { lines: string[]; at: number } | null = null;
+  /** The earliest the reveal's first beat may start, fixed when the game finishes: after the boss cooks, or after the
+   * last line is read. Saved, so a restart mid-cooking still waits for the dish. */
+  private revealFrom: number | null = null;
   /** Narration for an eventId below this is stale and dropped: set by 結束冒險 (a judgment line still in flight
    * would hand the turn on over the podium) and by 回到大廳 (a late epilogue or line from the game just left).
    * Memory only, like the narration calls it guards. */
@@ -370,8 +378,13 @@ export class DungeonRoom {
           return;
         }
         if (event.type === "epilogue") {
-          this.epilogue = lines[0];
-          this.broadcast({ type: "EPILOGUE", text: lines[0] });
+          // The calls come first, the story last (epilogueParts). The first call waits for the boss to cook, or for
+          // the kill-shot line to be read.
+          this.epilogue = lines[lines.length - 1];
+          // A reveal already under way (scripted, after a failed try) keeps its clock: it never starts over.
+          this.podium ??= { lines: lines.slice(0, -1), at: Math.max(this.now(), this.revealFrom ?? this.now() + this.epilogueDelayMs) };
+          this.broadcast({ type: "EPILOGUE", text: this.epilogue });
+          this.broadcast(this.snapshot());
           return;
         }
         // Narrations run concurrently (a judgment never waits for the previous event's line), so an
@@ -488,6 +501,8 @@ export class DungeonRoom {
       lastNarration: this.lastNarration,
       epilogue: this.epilogue,
       epilogueRequested: this.epilogueRequested,
+      podium: this.podium,
+      revealFrom: this.revealFrom,
       playedQuestionIds: this.playedQuestionIds,
       notes: "",
       joinPassword: this.joinPassword,
@@ -568,6 +583,8 @@ export class DungeonRoom {
     this.lastNarration = s.lastNarration && { ...s.lastNarration, rev: s.lastNarration.rev ?? 0, done: s.lastNarration.done ?? 0 };
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
+    this.podium = s.podium ?? null;
+    this.revealFrom = s.revealFrom ?? null;
     this.playedQuestionIds = s.playedQuestionIds ?? [];
     this.joinPassword = s.joinPassword;
     this.editedLines = s.editedLines;
@@ -603,7 +620,7 @@ export class DungeonRoom {
     // The story that ends a finished game is written by a promise that a restart loses: ask for it again.
     if (this.game?.phase === "finished" && !this.epilogue) {
       this.epilogueRequested = true;
-      void this.sendEpilogue(Promise.resolve(), this.eventSeq).catch((err) => console.error("epilogue failed", err));
+      void this.sendEpilogue(Promise.resolve(), this.eventSeq).catch((err) => this.epilogueFailed(err, this.eventSeq));
     }
     return "restored";
   }
@@ -718,10 +735,21 @@ export class DungeonRoom {
       cuisine: true as const,
       pendingLock: this.pendingLock,
       pendingRoll: this.pendingRoll,
+      ...this.podiumView(),
       eventId: this.eventSeq,
       ...(this.cue ? { cue: this.cue } : {}),
       cueSeq: this.cueSeq,
     };
+  }
+
+  /** The reveal on the room's clock (eng D20). Only for a game ranked by finishGame: an older one shows the podium. */
+  private podiumView(): { podium?: PodiumReveal } {
+    const game = this.game;
+    if (game?.phase !== "finished" || !game.ranking) return {};
+    // No calls but the story is in: a damaged save lost them, so show the podium rather than wait for nothing.
+    if (!this.podium) return this.epilogue ? {} : { podium: { ranking: game.ranking, beats: null, elapsedMs: 0 } };
+    const beats = revealBeats(game.teams, game.ranking, game.tieRolls ?? [], this.podium.lines);
+    return { podium: { ranking: game.ranking, beats, elapsedMs: this.now() - this.podium.at } };
   }
 
   private scores(): Record<string, number> {
@@ -752,22 +780,39 @@ export class DungeonRoom {
     return !this.bankAnswers.some((a) => a.length >= 3 && dish.includes(a));
   }
 
+  /** The epilogue threw before its lines came in: the reveal runs on scripted calls rather than wait for nothing. A
+   * failure from a game already left (回到大廳) is dropped, like its lines would be. */
+  private epilogueFailed(err: unknown, eventId: number) {
+    console.error("epilogue failed", err);
+    if (this.game?.phase !== "finished" || this.podium || (this.staleBeforeSeq !== null && eventId < this.staleBeforeSeq)) return;
+    this.podium = { lines: [], at: Math.max(this.now(), this.revealFrom ?? this.now()) };
+    try {
+      this.broadcast(this.snapshot());
+    } catch (e) {
+      console.error("epilogue fallback failed", e); // the snapshot hit the same fault: the next STATE tries again
+    }
+  }
+
   private async sendEpilogue(afterKillShot: Promise<void>, eventId: number) {
     const game = this.game;
     if (!game) return;
     await afterKillShot;
-    await wait(this.epilogueDelayMs);
-    const ranking = game.teams
-      .map((t) => {
-        const dishes = (t.dishes ?? []).filter((d) => this.sayable(d));
-        return { name: t.name, score: t.reward, ...(dishes.length ? { dishes } : {}) };
-      })
-      .sort((a, b) => b.score - a.score);
+    // Best first, ties broken by the d20 (finishGame); a game finished before that by reward.
+    const order = game.ranking ?? [...game.teams].sort((a, b) => b.reward - a.reward).map((t) => t.id);
+    const ranking = order.flatMap((id) => {
+      const t = game.teams.find((x) => x.id === id);
+      if (!t) return [];
+      const dishes = (t.dishes ?? []).filter((d) => this.sayable(d));
+      return [{ name: t.name, score: t.reward, ...(dishes.length ? { dishes } : {}) }];
+    });
     const winners = game.winners.map((id) => game.teams.find((t) => t.id === id)?.name ?? "");
     // The host ended it early (結束冒險): the story must not have anyone slay the boss.
     const bossStanding = game.boss.killedByTeamId === null;
-    // One EPILOGUE, whoever writes it: the LLM within its hold, otherwise the program-built story.
-    await this.runner.run(eventId, { type: "epilogue", ranking, winners, ...(bossStanding ? { bossStanding: true as const } : {}) }, this.scores());
+    const { critKing, calls } = revealCalls(game.teams, order);
+    const podium = game.ranking ? { calls, ...(critKing ? { critKing } : {}) } : {};
+    // One EPILOGUE, whoever writes it: the LLM within its hold, otherwise the program-built story. It carries the
+    // podium calls before the story (eng D21).
+    await this.runner.run(eventId, { type: "epilogue", ranking, winners, ...(bossStanding ? { bossStanding: true as const } : {}), ...podium }, this.scores());
   }
 
   private broadcastState() {
@@ -862,6 +907,8 @@ export class DungeonRoom {
     this.cueSeq = 0;
     this.epilogue = null;
     this.epilogueRequested = false;
+    this.podium = null;
+    this.revealFrom = null;
     this.staleBeforeSeq = null;
     this.playedQuestionIds = [];
     this.removedTeamIds.clear();
@@ -1186,14 +1233,15 @@ export class DungeonRoom {
     this.phaseCard = false;
     this.phaseCardDue = false;
     this.intro = null;
-    this.game = endGame(this.game);
+    this.game = endGame(this.game, this.rng);
+    this.revealFrom = this.now() + this.epilogueDelayMs;
     const eventId = ++this.eventSeq;
     this.staleBeforeSeq = eventId;
     this.cue = null;
     this.broadcastState();
     this.dropUnsaidLine();
     this.epilogueRequested = true;
-    void this.sendEpilogue(Promise.resolve(), eventId).catch((err) => console.error("epilogue failed", err));
+    void this.sendEpilogue(Promise.resolve(), eventId).catch((err) => this.epilogueFailed(err, eventId));
   }
 
   /** 回到大廳: a finished game goes back to the lobby with the same teams (names, classes, keys and connections),
@@ -1217,6 +1265,8 @@ export class DungeonRoom {
     this.intro = null;
     this.epilogue = null;
     this.epilogueRequested = false;
+    this.podium = null;
+    this.revealFrom = null;
     this.lastNarration = null;
     this.cue = null;
     this.staleBeforeSeq = ++this.eventSeq;
@@ -1718,11 +1768,13 @@ export class DungeonRoom {
         ...(dish ? { dish: { ...dish, points: outcome.reward, monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };
     }
+    // Fixed before the STATE is saved: the boss cooks first (cooking R8), otherwise the kill-shot line is read first.
+    if (game.phase === "finished" && !this.epilogueRequested) this.revealFrom = this.now() + (this.reveal?.dish ? FINISH_PODIUM_MS : this.epilogueDelayMs);
     this.broadcastState();
     const narration = this.narrate(eventId, event);
     if (game.phase === "finished" && !this.epilogueRequested) {
       this.epilogueRequested = true;
-      void this.sendEpilogue(narration, eventId).catch((err) => console.error("epilogue failed", err));
+      void this.sendEpilogue(narration, eventId).catch((err) => this.epilogueFailed(err, eventId));
     }
     // A miss that used up a boss phase has no answer to show: its card follows once the retry line has
     // been read (D7), held like a reveal; 下一題 opens it sooner.

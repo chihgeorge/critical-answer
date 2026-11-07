@@ -1,4 +1,6 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
+import { revealMarks } from "../lib/podium";
+import type { PodiumReveal } from "../lib/protocol";
 import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion } from "./answer";
 import { stubSpeechSynthesis, ttsCalls } from "./tts";
 
@@ -213,18 +215,19 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
 // A live epilogue is read aloud: main-line.spec.ts ("game over: the boss cooks, then the podium, then the epilogue ...").
 
 test("screen TTS: an epilogue replayed at connect is shown but never spoken", async ({ browser }) => {
-  test.setTimeout(90_000); // every cooked monster is served and waited out (cooking I2)
+  test.setTimeout(110_000); // every cooked monster is served and waited out (cooking I2), then the podium reveal
   const code = "EPI3"; // distinct from EPIL/EPI2 — same shared server
   const partyUrl = `ws://localhost:1996/parties/main/${code}`;
   const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
 
   // Play the whole game with no screen open, and wait for the live EPILOGUE to go out.
   const host = await open(partyUrl);
-  const box: { state: HostState | null; epilogue: boolean; narration: number | null } = { state: null, epilogue: false, narration: null };
+  const box: { state: HostState | null; epilogue: boolean; revealEnd: number; narration: number | null } = { state: null, epilogue: false, revealEnd: Infinity, narration: null };
   const cur = () => box.state!;
   host.onmessage = (e) => {
-    const m = JSON.parse(e.data as string) as HostState;
+    const m = JSON.parse(e.data as string) as HostState & { podium?: PodiumReveal };
     if (m.type === "STATE") box.state = m;
+    if (m.type === "STATE" && m.podium?.beats) box.revealEnd = Date.now() - m.podium.elapsedMs + revealMarks(m.podium.beats).at(-1)!;
     if (m.type === "EPILOGUE") box.epilogue = true;
     if (m.type === "NARRATION") box.narration = (m as unknown as { eventId: number }).eventId;
   };
@@ -235,6 +238,8 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
   await expect.poll(() => box.state?.phase).toBe("playing");
   await judgeToTheEnd(host, cur);
   await expect.poll(() => box.epilogue, { timeout: 15_000 }).toBe(true);
+  // A screen opened mid-reveal reads the place calls (podium-reveal D20); this one opens after them.
+  await expect.poll(() => Date.now() >= box.revealEnd, { timeout: 25_000 }).toBe(true);
 
   // Now open the screen with TTS already on (remembered from an earlier visit). onConnect
   // replays the EPILOGUE with `replay: true`: it must show, but must not be read aloud again.
