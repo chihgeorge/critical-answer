@@ -12,6 +12,11 @@ All notable changes to Critical Answer are documented here.
 - On the phone's class picker the chef card spans both columns. The phone and the host page show 「被動」 for a chef instead of the uses left.
 - `node scripts/balance-sim.ts [games]` plays many 4-team games and prints each class's average score and win share.
 
+## [0.43.0.1] - 2026-11-07
+
+### Changed
+- New tests check that a page meeting a monster it does not know still draws a slime and serves the slime's dish. They also check that every monster keeps its own dish picture. Test-only; the game itself is unchanged.
+
 ## [0.43.0.0] - 2026-11-07
 
 **Deploy note:** no reseed is needed. Deploy the room server (`wrangler deploy`) and the website, then reload the big screen and the phones. Until both are deployed, the end screen shows the full podium at once, as before. Do not deploy during an event.

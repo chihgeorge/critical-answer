@@ -21,6 +21,11 @@ describe("the monster catalog", () => {
     expect(used).toEqual(MONSTER_SPRITES.filter((s) => s !== "slime-lost" && s !== "slime-king").sort());
   });
 
+  // Value: protects=each monster sprite cooks into its own dish picture; fails_when=two sprites in DISH_SPRITE share a dish (a copy-paste slip tsc cannot see); why_new=PR2 coverage gap; seam=none; no_claim=the dishes look different on screen
+  it("gives every monster sprite a different dish picture", () => {
+    expect(new Set(Object.values(DISH_SPRITE)).size).toBe(MONSTER_SPRITES.length);
+  });
+
   // Value: protects=every dish fits the TV card; fails_when=a dish field is empty or over DISH_LIMITS; why_new=dishes moved from the bank into the catalog; seam=none; no_claim=the wording is good
   it("has every dish field filled and within its limit", () => {
     for (const m of MONSTERS) {
