@@ -21,6 +21,10 @@ describe("headingSlugs", () => {
     expect([...headingSlugs("~~~\n# no\n~~~\n````md\n```\n# no\n```\n````\n# Yes")]).toEqual(["yes"]);
   });
 
+  it("drops HTML tags but keeps their text", () => {
+    expect([...headingSlugs("## <kbd>Esc</kbd> 鍵")]).toEqual(["esc-鍵"]);
+  });
+
   it("uses a link's text, not its URL", () => {
     expect([...headingSlugs("## 見 [規則](rules.md)")]).toEqual(["見-規則"]);
   });

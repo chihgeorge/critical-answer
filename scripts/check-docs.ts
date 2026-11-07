@@ -37,10 +37,14 @@ export function headingSlugs(markdown: string): Set<string> {
   for (const line of unfenced(markdown).lines) {
     const m = line === null ? null : /^ {0,3}#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
     if (!m) continue;
-    const text = m[1]
-      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-      .replace(/<[^>]+>/g, "")
-      .replace(/[`*]/g, "");
+    let text = m[1].replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+    // Strip HTML tags until none is left (a fixed point, so no tag survives one pass). The text is
+    // only compared with anchors, never rendered.
+    for (let prev = ""; prev !== text; ) {
+      prev = text;
+      text = text.replace(/<[^>]*>/g, "");
+    }
+    text = text.replace(/[`*]/g, "");
     const base = text.toLowerCase().replace(/[^\p{L}\p{M}\p{N}_ -]/gu, "").replace(/ /g, "-");
     let slug = base;
     for (let n = 1; slugs.has(slug); n++) slug = `${base}-${n}`;
