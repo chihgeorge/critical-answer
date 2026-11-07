@@ -13,6 +13,11 @@ All notable changes to Critical Answer are documented here.
 ### Changed
 - With the draw on, the bank editor greys out the room and boss monster pickers, because the game does not use them.
 
+## [0.43.0.1] - 2026-11-07
+
+### Changed
+- New tests check that a page meeting a monster it does not know still draws a slime and serves the slime's dish. They also check that every monster keeps its own dish picture. Test-only; the game itself is unchanged.
+
 ## [0.43.0.0] - 2026-11-07
 
 **Deploy note:** no reseed is needed. Deploy the room server (`wrangler deploy`) and the website, then reload the big screen and the phones. Until both are deployed, the end screen shows the full podium at once, as before. Do not deploy during an event.
