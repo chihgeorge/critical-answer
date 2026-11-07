@@ -59,7 +59,7 @@ import {
   type SoundCue,
   SERVE_HOLD_MS,
 } from "../protocol";
-import { catalogMonster, gameMonsters } from "../monster-catalog";
+import { catalogMonster, gameMonsters, monsterById } from "../monster-catalog";
 import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
@@ -608,9 +608,10 @@ export class DungeonRoom {
     return "restored";
   }
 
-  /** This game's boss (gameMonsters), or the bank's when no game drew one. */
+  /** This game's boss (gameMonsters), or the bank's when no game drew one or a save names no catalog boss. */
   private bossId() {
-    return this.game?.bossMonsterId ?? this.bank.boss.monster;
+    const drawn = this.game?.bossMonsterId;
+    return drawn && monsterById(drawn)?.boss ? drawn : this.bank.boss.monster;
   }
 
   /** The boss as the stage draws it (a boss never wears a variant). */

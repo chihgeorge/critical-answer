@@ -374,13 +374,7 @@ export default function BankEditorPage() {
               onRoom={updateRoom}
               onHitReward={(hitReward) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, hitReward } } : prev))}
               onBossMonster={(monster) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, monster } } : prev))}
-              onRandomMonsters={(on) =>
-                setBank((prev) => {
-                  if (!prev) return prev;
-                  const { randomMonsters: _, ...rest } = prev; // eslint-disable-line @typescript-eslint/no-unused-vars
-                  return on ? { ...rest, randomMonsters: true } : rest;
-                })
-              }
+              onRandomMonsters={(randomMonsters) => setBank((prev) => (prev ? { ...prev, randomMonsters } : prev))}
             />
           ) : tab === "boss" ? (
             <>
@@ -475,7 +469,7 @@ function RoomsEditor({
         {bank.rooms.map((r, i) => (
           <div key={i} data-testid={`bank-room-${i}`} className="flex flex-wrap items-center gap-2 text-[15px]">
             <span className="w-[64px]">第 {i + 1} 房</span>
-            <MonsterPicker testId={`bank-room-${i}-monster`} label={`第 ${i + 1} 房的怪物`} value={r.monster} boss={false} onChange={(monster) => onRoom(i, { monster })} />
+            <MonsterPicker testId={`bank-room-${i}-monster`} label={`第 ${i + 1} 房的怪物`} value={r.monster} boss={false} disabled={bank.randomMonsters} onChange={(monster) => onRoom(i, { monster })} />
             <label className="flex items-center gap-1">
               難度
               <select
@@ -498,7 +492,7 @@ function RoomsEditor({
         ))}
         <div className="flex flex-wrap items-center gap-2 text-[15px]">
           <span className="w-[64px]">首領</span>
-          <MonsterPicker testId="bank-boss-monster" label="首領" value={bank.boss.monster} boss onChange={onBossMonster} />
+          <MonsterPicker testId="bank-boss-monster" label="首領" value={bank.boss.monster} boss disabled={bank.randomMonsters} onChange={onBossMonster} />
           <label className="flex items-center gap-1">
             每打中一下
             <input
@@ -520,11 +514,11 @@ function RoomsEditor({
 }
 
 /** A catalog monster picker: room monsters for a room, bosses for the boss, with the monster, its dish and the dish's name. */
-function MonsterPicker({ testId, label, value, boss, onChange }: { testId: string; label: string; value: string; boss: boolean; onChange: (id: string) => void }) {
+function MonsterPicker({ testId, label, value, boss, onChange, disabled }: { testId: string; label: string; value: string; boss: boolean; onChange: (id: string) => void; disabled?: boolean }) {
   const m = monsterById(value);
   return (
-    <span data-testid={testId} className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-      <select aria-label={label} className="px-input !w-auto !py-1" value={value} onChange={(e) => onChange(e.target.value)}>
+    <span data-testid={testId} className={`flex min-w-0 flex-1 flex-wrap items-center gap-2${disabled ? " opacity-50" : ""}`}>
+      <select aria-label={label} className="px-input !w-auto !py-1" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
         {MONSTERS.filter((x) => x.boss === boss).map((x) => (
           <option key={x.id} value={x.id}>
             {x.name}
