@@ -26,9 +26,9 @@ function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
 
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
-function game(questions: object[]) {
+function game(questions: object[], dish?: object) {
   const bank = parseBank({
-    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, baseDifficulty: 1, questions }],
+    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0, ...(dish ? { dish } : {}) }, baseDifficulty: 1, questions }],
     boss: { monster: { name: "小黑龍", sprite: "dragon", hue: 0 }, maxHp: 3, questions: [text("b1")] },
   });
   const io = { broadcast: vi.fn() } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
@@ -96,6 +96,17 @@ describe("HOST_MEDIA", () => {
     // 下一題 closes the reveal: the answered question's command goes with it.
     serveNext(g.room, g.host, g.state().eventId);
     expect(g.state().media).toBeUndefined();
+  });
+
+  it("🍲 上菜 pauses the reveal's video before the cooking (cooking I9)", () => {
+    const g = game([video("v1"), video("v2")], { name: "史萊姆凍", part: "外膜", method: "冰鎮", comment: "冰冰涼涼。" });
+    const id = g.state().question.id;
+    g.correct();
+    g.media("play", id);
+    expect(g.state().media.state).toBe("playing");
+    send(g.room, g.host, { type: "HOST_SERVE", eventId: g.state().eventId });
+    expect(g.state().reveal.served).toBe(true);
+    expect(g.state().media).toMatchObject({ questionId: id, state: "paused" });
   });
 
   it("refuses the reveal's video when a video explanation takes its place", () => {

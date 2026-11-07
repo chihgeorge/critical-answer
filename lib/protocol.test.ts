@@ -111,6 +111,13 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_EDIT_NARRATION", line: "字".repeat(41) })).toBeNull();
   });
 
+  it("HOST_SERVE: needs a non-negative integer eventId, like HOST_NEXT", () => {
+    expect(parseClientMessage({ type: "HOST_SERVE", eventId: 3 })).toEqual({ type: "HOST_SERVE", eventId: 3 });
+    expect(parseClientMessage({ type: "HOST_SERVE" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_SERVE", eventId: "3" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_SERVE", eventId: -1 })).toBeNull();
+  });
+
   it("HOST_NEXT_LINE: a string of at most 40 characters, \"\" to cancel", () => {
     expect(parseClientMessage({ type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" })).toEqual({ type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
     expect(parseClientMessage({ type: "HOST_NEXT_LINE", line: "" })).toEqual({ type: "HOST_NEXT_LINE", line: "" });

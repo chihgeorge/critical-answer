@@ -791,7 +791,10 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
     const stranger = makeConn("stranger");
     room.onConnect(stranger);
-    serveNext(room, stranger, seqOf(room));
+    // The host serves and the hold is over, so only the host check stands between the stranger and 下一題.
+    send(room, hostConn, { type: "HOST_SERVE", eventId: seqOf(room) });
+    (room as unknown as { servedAt: number }).servedAt = -Infinity;
+    send(room, stranger, { type: "HOST_NEXT", eventId: seqOf(room) });
     expect(lastSentTo(stranger)).toMatchObject({ type: "ERROR", error: "not_host" });
     expect(revealOf(room)).toMatchObject({ questionId: "r0-q1" });
   });
@@ -3549,6 +3552,31 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     const last = states(room).at(-1);
     expect(last.cuisine).toBeUndefined();
     expect(last.reveal).not.toHaveProperty("dish");
+    // 上菜 on a reveal without a dish does nothing: no STATE, no cook sound.
+    const count = states(room).length;
+    send(room, hostConn, { type: "HOST_SERVE", eventId: seqOf(room) });
+    expect(states(room)).toHaveLength(count);
+    expect(states(room).at(-1).cue).not.toBe("cook");
+  });
+
+  it("after the boss kill ends the game, 上菜 and 下一題 change nothing: the finished screen cooks on its own (cooking R8)", () => {
+    const { room, hostConn } = cookRoom();
+    for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) {
+      const g = room.game!;
+      const t = g.teams[0];
+      serveNext(room, hostConn, seqOf(room));
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: t.id, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
+      landKill(room);
+    }
+    expect(room.game!.phase).toBe("finished");
+    const count = states(room).length;
+    const eventId = seqOf(room);
+    send(room, hostConn, { type: "HOST_SERVE", eventId });
+    (room as unknown as { servedAt: number }).servedAt = -Infinity;
+    send(room, hostConn, { type: "HOST_NEXT", eventId });
+    expect(states(room)).toHaveLength(count);
+    expect(states(room).at(-1).reveal.dish).toMatchObject({ room: null });
+    expect(states(room).at(-1).reveal.served).toBeUndefined();
   });
 });
 

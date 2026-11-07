@@ -75,7 +75,7 @@ export async function nextQuestion(host: Page) {
 }
 
 /** What a raw host socket keeps from the room's STATE messages, enough to judge every turn. */
-export type HostState = { type: string; phase: string; eventId: number; reveal?: { dish?: unknown; served?: true } | null; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
+export type HostState = { type: string; phase: string; eventId: number; reveal?: { dish?: { room: number | null; monster: { name: string } }; served?: true } | null; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
 
 /** Over a raw host socket, judges a one-team game correct turn after turn until it finishes (the boss kill, after its dice).
  * `onTurn` runs before each judge, e.g. to check the screen once the boss door opens. */

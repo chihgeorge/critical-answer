@@ -180,14 +180,30 @@ test("game over: the boss cooks, then the podium, then the epilogue arrives on t
   expect(await ttsCalls(screen)).toEqual([""]);
   host.send(JSON.stringify({ type: "HOST_START", aiNarration: false })); // never the real API in tests
   await expect.poll(() => box.state?.phase).toBe("playing");
+  // The boss stands on the cooking stage before the pot (cooking R8). Its frame lasts COOK_POT_MS, so watch every frame from now.
+  const bossOnStage = screen.waitForFunction(
+    () => document.body.innerText.includes("冒　險　結　束") && [...document.querySelectorAll("div")].some((e) => e.textContent === "深淵小黑龍"),
+    null,
+    { polling: "raf", timeout: 80_000 },
+  );
   let sawBossRoom = false;
+  let sawDefeated = false;
   await judgeToTheEnd(host, cur, async (t) => {
+    // One team, so the next room's monster differs: the stage shows the monster just defeated, not the next one (cooking R1).
+    const dish = cur().reveal?.dish;
+    if (dish && dish.room !== null && !cur().reveal?.served && !sawDefeated) {
+      await expect(screen.getByText(dish.monster.name, { exact: true })).toBeVisible();
+      await expect(screen.getByText("🍲 終局隊")).toBeVisible();
+      sawDefeated = true;
+    }
     if (t.inBossPhase && !sawBossRoom) {
       await expect(screen.getByTestId("boss-room")).toBeVisible(); // the map's door has opened
       sawBossRoom = true;
     }
   });
   expect(sawBossRoom).toBe(true);
+  expect(sawDefeated).toBe(true);
+  await bossOnStage;
 
   // The boss kill was seen live, so the boss cooks first and the winner waits (cooking R8): the big dish, then the podium.
   await expect(screen.getByTestId("dish-card")).toContainText("今晚的大菜");
