@@ -83,8 +83,9 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
   if (roll) {
     body = (
       <div className="px-bar mt-1 flex items-center gap-3" role="status">
-        <D20 value={roll.value} size={54} />
-        <span className="text-[20px]">{roll.kind === "crit" ? `答對！暴擊骰擲出 ${roll.value}，看大螢幕 ▶` : roll.kind === "check" ? `說服檢定擲出 ${roll.value}，看大螢幕 ▶` : roll.value === 20 && !!q?.options ? "擲出 20 大成功！看大螢幕 ▶" : `擲出 ${roll.value}！看大螢幕 ▶`}</span>
+        {/* A kill's 4d20 has four dice: the big screen shows them (kill-roll.md). */}
+        <D20 value={roll.kind === "kill" ? "?" : roll.value} size={54} />
+        <span className="text-[20px]">{roll.kind === "kill" ? "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶" : roll.kind === "crit" ? `答對！暴擊骰擲出 ${roll.value}，看大螢幕 ▶` : roll.kind === "check" ? `說服檢定擲出 ${roll.value}，看大螢幕 ▶` : roll.value === 20 && !!q?.options ? "擲出 20 大成功！看大螢幕 ▶" : `擲出 ${roll.value}！看大螢幕 ▶`}</span>
       </div>
     );
   } else if (me?.classId === "thief" && me.sneakArmed) {

@@ -22,6 +22,15 @@ const KEY2 = "another-key-0123456789abcd";
 /** A host's pasted Anthropic key (fake, but in the right format). */
 const HOST_KEY = "sk-ant-test-HOSTKEY-0123456789abcdefWXYZ";
 
+/** A killing blow waits for its 4d20 beat (docs/designs/kill-roll.md). Tests that play a game to its end land the dice
+ * now, as the beat's timer would. */
+function landKill(room: DungeonRoom) {
+  const r = room as any;
+  if (r.pendingRoll?.kind !== "kill") return;
+  clearTimeout(r.lockTimer);
+  r.resolveRoll();
+}
+
 function makeConn(id = "conn-1") {
   return {
     id,
@@ -403,10 +412,79 @@ describe("HOST_JUDGE", () => {
       const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
       send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: qid, correct: true });
+      landKill(room);
     }
     expect(room.game!.phase).toBe("finished");
     const broadcastCalls = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
     expect(broadcastCalls.some((m) => m.type === "GAME_OVER")).toBe(true);
+  });
+});
+
+// Value: protects=the boss kill's 4d20 shows before it scores (kill-roll.md): no score, no game over and no podium
+// before the beat ends, then exactly the shown dice are scored; fails_when=the kill is judged at once again, the scored
+// bonus differs from the dice on screen, a second judgment slips in during the beat, or a dropped phone loses the kill;
+// why_new=game-state tests cover killDice only, not the room's beat; seam=none; no_claim=the TV animation (d20 tests)
+describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
+  afterEach(() => vi.useRealTimers());
+  function lastHit(opts: { fixedDie?: number } = {}) {
+    vi.useFakeTimers();
+    const room = new DungeonRoom(makeRoom() as any, () => 0.5, opts);
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids, conns } = joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    const g = room.game!;
+    room.game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, phaseIndex: g.boss.phases.length - 1 } };
+    const turn = currentTurnTeamId(room.game)!;
+    const judge = () => send(room, hostConn, { type: "HOST_JUDGE", teamId: turn, questionId: room.game!.boss.currentQuestionId, correct: true });
+    return { room, hostConn, ids, conns, turn, judge };
+  }
+
+  it("holds the kill for the beat, then scores exactly the dice it showed", () => {
+    const { room, turn, judge } = lastHit();
+    const before = room.game!.teams.find((t) => t.id === turn)!.reward;
+    judge();
+    const roll = lastBroadcast(room).pendingRoll;
+    expect(roll).toMatchObject({ teamId: turn, kind: "kill", values: [11, 11, 11, 11], value: 44 }); // rng 0.5: each d20 is 11
+    expect(room.game!.phase).toBe("playing");
+    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(before);
+    vi.advanceTimersByTime(3999);
+    expect(room.game!.phase).toBe("playing");
+    vi.advanceTimersByTime(1);
+    expect(room.game!.phase).toBe("finished");
+    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(before + 10 + 44);
+  });
+
+  it("refuses another judgment during the beat", () => {
+    const { room, hostConn, turn, judge } = lastHit();
+    judge();
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: turn, questionId: room.game!.boss.currentQuestionId, correct: false, fleeChoice: "retry" });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "roll_pending" });
+  });
+
+  it("lands every die on E2E_DIE", () => {
+    const { room, judge } = lastHit({ fixedDie: 7 });
+    judge();
+    expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "kill", values: [7, 7, 7, 7], value: 28 });
+  });
+
+  it("keeps a team whose phone drops during the beat on turn, and still kills", () => {
+    const { room, ids, conns, turn, judge } = lastHit();
+    judge();
+    room.onClose(conns[ids.indexOf(turn)]);
+    vi.advanceTimersByTime(4000);
+    expect(room.game!.phase).toBe("finished");
+    expect(room.game!.boss.killedByTeamId).toBe(turn);
+  });
+
+  it("an ordinary boss hit is judged at once, with no dice", () => {
+    const { room, turn, judge } = lastHit();
+    room.game = { ...room.game!, boss: { ...room.game!.boss, hp: 3 } };
+    judge();
+    expect(lastBroadcast(room).pendingRoll ?? null).toBeNull();
+    expect(room.game!.boss.hp).toBe(2);
+    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(10);
   });
 });
 
@@ -868,10 +946,15 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], questionId: "boss-mc1", value: 20, kind: "crit" });
       const seq = states().at(-1).cueSeq;
       vi.advanceTimersByTime(2000);
+      // The crit die's beat ends in the kill's 4d20 beat: nothing is scored yet (kill-roll.md).
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "kill", values: [20, 20, 20, 20], value: 80 });
+      expect(room.game!.phase).toBe("playing");
+      vi.advanceTimersByTime(4000);
       // hitReward 10 + half of it 5 + the 4d20 at the same rng, four 20s = 80 (not raised by the crit).
       expect(room.game!.teams[0].reward).toBe(95);
       expect(room.game!.phase).toBe("finished");
-      expect(states().at(-1)).toMatchObject({ cue: "boss-kill", cueSeq: seq + 1 });
+      // The kill's dice roll with their own cue, then the kill keeps its boss-kill cue.
+      expect(states().at(-1)).toMatchObject({ cue: "boss-kill", cueSeq: seq + 2 });
     });
   });
 
@@ -1531,6 +1614,7 @@ describe("TEAM_SELECT_OPTION", () => {
       reveal(room);
       vi.advanceTimersByTime(2000);
       vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
+      vi.advanceTimersByTime(4000); // then the kill's 4d20 (kill-roll.md)
       const reward = room.game!.teams.find((t) => t.id === ids[0])!.reward;
       expect(reward).toBeGreaterThan(10); // the hit reward plus the kill bonus
       expect((room as any).reveal.choice).toMatchObject({ correctIndex: 0, points: reward });
@@ -1704,6 +1788,7 @@ describe("questions and answers (T3)", () => {
       const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
       send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
+      landKill(room);
     }
     expect(room.game!.phase).toBe("finished");
     const messages = [...broadcasts(room), ...conns.flatMap(sent)];
@@ -1770,6 +1855,7 @@ describe("narration (T5-T7)", () => {
     const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
     send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
+    landKill(room);
   }
 
   it("announces the start with one NARRATION after STATE", async () => {
@@ -2005,6 +2091,7 @@ describe("LLM narration and director (T8-T10)", () => {
     const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
     send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
+    landKill(room);
   }
   const narrations = (room: DungeonRoom) => all(room).filter((m) => m.type === "NARRATION");
   const transcript = (room: DungeonRoom, hostConn: ReturnType<typeof makeConn>) => {
@@ -2396,6 +2483,7 @@ describe("story moves on to the next team (two-line narration)", () => {
     const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
     send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) }); // close the previous reveal (D7); no-op if none
     send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct });
+    landKill(room);
   }
 
   it("the opening narration is followed by a line about the first team on turn", async () => {
@@ -3277,6 +3365,7 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
       const t = g.teams[0];
       send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
       send(room, hostConn, { type: "HOST_JUDGE", teamId: t.id, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
+      landKill(room);
     }
     await new Promise((r) => setTimeout(r, 50));
     const boss = BANK.boss.monster.dish!;

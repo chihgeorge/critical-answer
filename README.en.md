@@ -48,7 +48,7 @@ Please install and start Critical Answer on this computer:
 https://github.com/chihgeorge/critical-answer
 
 Goal: it runs locally, and phones on the same Wi-Fi can join.
-1. First read README.md, AGENTS.md, CLAUDE.md, package.json and .dev.vars.example; keep any changes I have not committed.
+1. First read README.md, CLAUDE.md, package.json and .dev.vars.example; keep any changes I have not committed.
 2. Use Node.js 22.18 or later, run npm install, then use npm run dev to confirm the front end (3000) and the room server (8787) both start.
 3. Use npm run playtest to start the LAN version, and tell me the URL to open on the phones.
 4. Use the default scripted narration; do not set any paid API key.

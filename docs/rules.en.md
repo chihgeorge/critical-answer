@@ -33,7 +33,7 @@ A bank can split the boss fight into phases, each with its own name, rules, heal
 
 ## Boss scoring
 
-Each hit on the boss gives **10** reward points; the **finishing blow** (the hit that brings the last phase's health to 0) adds 4 D20 (4–80 points). When the crit die rolls a 20, this hit gets an extra half (5 points by default) and the boss loses one extra heart; the 4 D20 of the finishing blow do not change.
+Each hit on the boss gives **10** reward points; the **finishing blow** (the hit that brings the last phase's health to 0) adds 4 D20 (4–80 points). When the crit die rolls a 20, this hit gets an extra half (5 points by default) and the boss loses one extra heart; the 4 D20 of the finishing blow do not change. The big screen rolls those 4 dice first (they land one by one); the points are added, and the podium shows, only after they stop.
 
 ## Winning and playing again
 

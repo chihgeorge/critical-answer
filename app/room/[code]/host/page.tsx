@@ -710,7 +710,7 @@ export default function HostPage() {
                           ? `答錯！等${turn.team.name}選重答或逃跑`
                           : `等${turn.team.name}鎖定答案…`}
                     </div>
-                    <div className="text-[14px]">{roll || lock?.revealing ? "大螢幕停頓 2 秒後揭曉" : lock ? "按公布答案揭曉" : "選擇題由隊伍手機作答，主持人公布"}</div>
+                    <div className="text-[14px]">{roll?.kind === "kill" ? "大螢幕擲 4d20 擊殺獎勵後結算" : roll || lock?.revealing ? "大螢幕停頓 2 秒後揭曉" : lock ? "按公布答案揭曉" : "選擇題由隊伍手機作答，主持人公布"}</div>
                   </Panel>
                   </div>
                   {revealButton}

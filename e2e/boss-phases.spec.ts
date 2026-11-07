@@ -81,7 +81,10 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await expect(host.getByTestId("host-boss-hp")).toContainText("第 2/2 階段・最後階段");
 
   await host.getByRole("button", { name: "答對！" }).click();
-  await expect(screen.getByText(/奪得榜首/)).toBeVisible();
+  // The kill's 4d20 rolls first; the podium waits for it (docs/designs/kill-roll.md).
+  await expect(screen.locator('[data-testid="roll-overlay"][data-kind="kill"]')).toBeVisible();
+  await expect(screen.getByText(/奪得榜首/)).toHaveCount(0);
+  await expect(screen.getByText(/奪得榜首/)).toBeVisible({ timeout: 8000 });
 });
 
 // Value: protects=a phase that runs out of questions moves on by itself and never repeats a phase-1 question in phase 2;

@@ -1354,6 +1354,12 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
     expect(game.phase).toBe("finished");
   });
 
+  it("the final blow scores the kill dice the room already showed (kill-roll.md)", () => {
+    const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 1, teamCount: 1 });
+    const { outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, 12, first, false, [9, 14, 3, 17]);
+    expect(outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: true, killBonus: 43 });
+  });
+
   it("spendAbility takes one use on the team's own turn, and refuses at 0", () => {
     const g = makeGame({ warrior: true, bossThreshold: 15 });
     const once = spendAbility(g, "T0", "warrior");
@@ -1422,6 +1428,9 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const kill = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first);
     // rollBossKillBonus(first) is 4 (4d20 all ones), doubled; the bar never goes below 0.
     expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 8, reward: 28 });
+    // The room's shown dice are doubled the same way (kill-roll.md).
+    const shown = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
+    expect(shown.outcome).toMatchObject({ bossKilled: true, killBonus: 86, reward: 106 });
   });
 
   it("the mage removes 2 wrong options, never the right one, and clears a pick on a removed option", () => {

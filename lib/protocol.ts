@@ -167,15 +167,17 @@ export type ClientMessage =
   | { type: "TEAM_SUBMIT_TEXT"; questionId: string; text: string; eventId?: number };
 
 /** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the crit die
- * after a correct lock (20 is a critical hit, 1 a fumble), or a fill-in's persuasion check (`bonus` + the die against
- * `dc`; nothing of its result is decided before the beat ends). Absent from an older server: a warrior's. */
+ * after a correct lock (20 is a critical hit, 1 a fumble), a fill-in's persuasion check (`bonus` + the die against
+ * `dc`; nothing of its result is decided before the beat ends), or the boss kill's 4d20 (`values`, the four dice;
+ * `value`, the bonus they score, a thief's sneak included; docs/designs/kill-roll.md). Absent from an older server: a warrior's. */
 export interface PendingRoll {
   teamId: string;
   questionId: string;
   value: number;
-  kind?: "warrior" | "crit" | "check";
+  kind?: "warrior" | "crit" | "check" | "kill";
   bonus?: number;
   dc?: number;
+  values?: number[];
 }
 
 export type ServerErrorCode =
