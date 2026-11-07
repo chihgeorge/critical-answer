@@ -42,7 +42,26 @@ export type NarrationEvent =
   // ranking[].score carries reward points (Team.reward), not progress points (Team.score).
   // ranking[].dishes: what the team ate, without any dish holding a bank answer.
   // bossStanding: the host ended the game early (結束冒險), so nobody slew the boss.
-  | { type: "epilogue"; ranking: { name: string; score: number; dishes?: string[] }[]; winners: string[]; bossStanding?: true };
+  // calls: the places read before the story, lowest first; critKing: the most natural 20s (podium-reveal.md D3, D5).
+  | {
+      type: "epilogue";
+      ranking: { name: string; score: number; dishes?: string[] }[];
+      winners: string[];
+      bossStanding?: true;
+      calls?: { place: number; team: string }[];
+      critKing?: { names: string[]; count: number };
+    };
+
+/** One segment of the epilogue, in order: the crit king, each place lowest first, then the story (eng D21). */
+export type EpiloguePart = { kind: "crit"; names: string[]; count: number } | { kind: "place"; place: number; team: string } | { kind: "story" };
+
+export function epilogueParts(e: Extract<NarrationEvent, { type: "epilogue" }>): EpiloguePart[] {
+  return [
+    ...(e.critKing ? [{ kind: "crit" as const, ...e.critKing }] : []),
+    ...(e.calls ?? []).map((c) => ({ kind: "place" as const, ...c })),
+    { kind: "story" },
+  ];
+}
 
 /**
  * Pure. `prev` is the game before the judgment (it names the team and gives the

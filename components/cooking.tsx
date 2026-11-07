@@ -4,7 +4,8 @@
 // a puff of smoke and the dish. Every change is a hard cut between frames (cooking I8, DESIGN.md: no tweens).
 
 import { useEffect, useRef, useState } from "react";
-import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, FINISH_PODIUM_MS, type AnswerReveal } from "@/lib/protocol";
+import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, FINISH_PODIUM_MS, type AnswerReveal, type PodiumReveal } from "@/lib/protocol";
+import { revealMarks } from "@/lib/podium";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { Panel, prefersReducedMotion, Sprite } from "@/components/pixel";
 import { monsterById } from "@/lib/monster-catalog";
@@ -59,32 +60,60 @@ export function useCookStep(served: string | null, onPlay?: () => void, onDish?:
 
 /**
  * The end screen after a boss kill seen live (cooking R8): the boss cooks like any monster (steps 0–3), its dish holds,
- * and at 4 the winner, the podium and the epilogue come up. `play` is read once, when the screen mounts; false (a
- * page opened on the end screen, no dish, reduced motion) goes straight to 4.
+ * and at 4 the cooking is over and the podium reveal (lib/podium.ts) takes the stage. `play` is read once, when the
+ * screen mounts; false (a page opened on the end screen, no dish, reduced motion) goes straight to 4.
  */
-export function useFinaleStep(play: boolean, onPlay?: () => void, onDish?: () => void, onPodium?: () => void): CookStep | 4 {
+export function useFinaleStep(play: boolean, onPlay?: () => void, onDish?: () => void): CookStep | 4 {
   const [start] = useState(() => play && !prefersReducedMotion());
   const [step, setStep] = useState<CookStep | 4>(start ? 0 : 4);
-  const calls = useRef({ onPlay, onDish, onPodium });
+  const calls = useRef({ onPlay, onDish });
   useEffect(() => {
-    calls.current = { onPlay, onDish, onPodium };
+    calls.current = { onPlay, onDish };
   });
   useEffect(() => {
-    if (!start) {
-      calls.current.onPodium?.();
-      return;
-    }
+    if (!start) return;
     calls.current.onPlay?.();
     const timers = [...STEP_AT, [4, FINISH_PODIUM_MS] as const].map(([s, at]) =>
       setTimeout(() => {
         setStep(s);
         if (s === 3) calls.current.onDish?.();
-        if (s === 4) calls.current.onPodium?.();
       }, at),
     );
     return () => timers.forEach(clearTimeout);
   }, [start]);
   return step;
+}
+
+/**
+ * The podium reveal's clock (podium-reveal.md eng D20): ms past its first beat, `lagMs` behind, counted from when this
+ * STATE came in, so every page reads the room's clock and never its own. Re-renders only when a beat changes. Null when
+ * there is no reveal to play: an older server or game, or reduced motion where `motionOnly` (the big screen, whose
+ * reveal is motion); the page shows the end. A phone's wait is no motion, so it keeps the clock and never spoils.
+ */
+export function useRevealTime(podium: PodiumReveal | undefined, lagMs = 0, motionOnly = true): number | null {
+  const [still] = useState(() => motionOnly && prefersReducedMotion());
+  const [seen, setSeen] = useState(podium);
+  const [t, setT] = useState(() => (podium ? podium.elapsedMs - lagMs : 0));
+  if (podium !== seen) {
+    setSeen(podium);
+    setT(podium ? podium.elapsedMs - lagMs : 0);
+  }
+  useEffect(() => {
+    const beats = podium?.beats;
+    if (!beats) return;
+    const anchor = performance.now() - podium.elapsedMs + lagMs;
+    const marks = revealMarks(beats);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const next = () => {
+      const now = performance.now() - anchor;
+      const mark = marks.find((m) => m > now);
+      // Measured each time, so a phone whose timers were held in the background lands on the right beat.
+      if (mark !== undefined) timer = setTimeout(() => (setT(performance.now() - anchor), next()), mark - now + 5);
+    };
+    next();
+    return () => clearTimeout(timer);
+  }, [podium, lagMs]);
+  return !podium || still ? null : t;
 }
 
 /** The narrator's line once the dish is up (cooking I1): typed and read on the big screen. */

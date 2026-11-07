@@ -16,6 +16,7 @@ import {
   pickableQuestionIds,
   enterNextBossPhase,
   warriorRoll,
+  endGame,
   spendAbility,
   mageEliminate,
   mageHint,
@@ -434,10 +435,25 @@ describe("scoring and winners (docs/designs/scoring-and-score-pools.md)", () => 
     expect(getSpectatorView(g).bossKilledBy).toBeNull();
   });
 
-  it("teams tied on reward share the win (並列第一)", () => {
+  // Value: protects=a tie for first is decided by d20s the game keeps, so one team wins (podium-reveal.md D4);
+  // fails_when=finishGame shares the win again or drops the dice; why_new=the rule replaced 並列第一; seam=none; no_claim=none beyond protects
+  it("teams tied on reward roll a d20: the higher die wins alone, and the dice are kept", () => {
     let g = twoTeams(0, 1);
     g = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, reward: 14 } : t)) };
-    expect(answer(g, "T0").game.winners).toEqual(["T0", "T1"]);
+    // The kill's 4d20 land on 1, then the tie-break: T0 5, T1 18.
+    const rolls = [0, 0, 0, 0, 4 / 20, 17 / 20];
+    const { game } = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", () => rolls.shift() ?? 0);
+    expect(game.winners).toEqual(["T1"]);
+    expect(game.ranking).toEqual(["T1", "T0"]);
+    expect(game.tieRolls).toEqual([{ from: 1, teams: ["T0", "T1"], values: [5, 18] }]);
+  });
+
+  it("結束冒險 ranks the same way, on the room's rng", () => {
+    let g = twoTeams();
+    g = { ...g, teams: g.teams.map((t) => ({ ...t, reward: 7 })) };
+    const rolls = [19 / 20, 0];
+    const game = endGame(g, () => rolls.shift() ?? 0);
+    expect(game).toMatchObject({ phase: "finished", winners: ["T0"], ranking: ["T0", "T1"], tieRolls: [{ from: 1, teams: ["T0", "T1"], values: [20, 1] }] });
   });
 
   it("progress points alone never pick the winner", () => {
@@ -1799,6 +1815,40 @@ describe("the crit die (dnd design R4, R5)", () => {
     const fillIn = warriorRoll(g, "T0", q0(g), 20, first).outcome;
     expect(fillIn).toMatchObject({ reward: 10 });
     expect("roll" in fillIn && fillIn.roll).toBeFalsy();
+  });
+});
+
+// Value: protects=every natural 20 a team rolls is counted for the crit king: crit die, warrior die, persuasion check,
+// each of the kill's 4d20, and a critable warrior die only once (podium-reveal.md D5); fails_when=a source is missed,
+// counted twice, or a wrong answer's ignored die counts; why_new=new counter; seam=none; no_claim=tie-break dice (rankTeams)
+describe("natural 20s (podium-reveal.md D5)", () => {
+  const solo = (classId?: ClassId, bossThreshold = 15, bossMaxHp = 3) =>
+    createGame([{ id: "T0", name: "A", ...(classId ? { classId } : {}) }], makeRooms(3, 1), poolsWith(1, ["q1", "q2", "q3", "q4"]), ["boss-q1"], { bossThreshold }, bossMaxHp, first);
+  const n20 = (g: GameState) => g.teams[0].natural20s;
+  const q0 = (g: GameState) => g.teams[0].currentQuestionId;
+
+  it("a crit die of 20 counts; a 19 or a wrong answer's die does not", () => {
+    const g = solo();
+    expect(n20(answerQuestion(g, "T0", q0(g), true, "retry", first, 20).game)).toBe(1);
+    expect(n20(answerQuestion(g, "T0", q0(g), true, "retry", first, 19).game)).toBeUndefined();
+    expect(n20(answerQuestion(g, "T0", q0(g), false, "retry", first, 20).game)).toBeUndefined();
+  });
+
+  it("a warrior's 20 counts once, critable or not", () => {
+    const g = spendAbility(solo("warrior"), "T0", "warrior");
+    expect(n20(warriorRoll(g, "T0", q0(g), 20, first, true).game)).toBe(1);
+    expect(n20(warriorRoll(g, "T0", q0(g), 20, first).game)).toBe(1);
+  });
+
+  it("a persuasion check of 20 counts", () => {
+    const g = solo();
+    expect(n20(recordCheck(g, "T0", q0(g), 20, "萬家福"))).toBe(1);
+    expect(n20(recordCheck(g, "T0", q0(g), 19, "萬家福"))).toBeUndefined();
+  });
+
+  it("each 20 in the kill's 4d20 counts, on top of the crit die", () => {
+    const g = solo(undefined, 0, 1);
+    expect(n20(answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 20, [20, 3, 20, 20]).game)).toBe(4);
   });
 });
 
