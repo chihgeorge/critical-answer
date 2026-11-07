@@ -1,6 +1,7 @@
 // Checks README.md, SECURITY.md and every docs/*.md: every relative link points at a file that exists, and every
 // #anchor matches a heading in its target (GitHub's slug rules). Each Chinese doc X.md (except MONOLINGUAL) also has
-// an English twin X.en.md: both open with the language switch line and have the same headings, level by level.
+// an English twin X.en.md: both open with the language switch line and have the same headings, level by level. Every
+// X.en.md needs such a Chinese X.md.
 // Run by CI:
 //   node scripts/check-docs.ts
 // Prints one line per problem and exits 1 when there is any.
@@ -94,6 +95,12 @@ export function twinProblems(zh: string, read: (path: string) => string | null):
   return problems;
 }
 
+/** An English doc X.en.md whose Chinese X.md is missing or stays Chinese only (MONOLINGUAL): nothing pairs it. */
+export function orphanTwin(en: string, read: (path: string) => string | null): string[] {
+  const zh = en.replace(/\.en\.md$/, ".md");
+  return MONOLINGUAL.includes(zh) || read(zh) === null ? [`${en}: no Chinese doc ${zh} to pair with`] : [];
+}
+
 /** decodeURIComponent, or the text unchanged when it holds a malformed %-escape. */
 function decode(text: string): string {
   try {
@@ -141,7 +148,11 @@ if (process.argv[1]?.endsWith("check-docs.ts")) {
   const read = (p: string) => (!existsSync(p) ? null : p.endsWith(".md") ? readFileSync(p, "utf8") : "");
   const docs = ["README.md", "README.en.md", "SECURITY.md", "SECURITY.en.md", ...readdirSync("docs").filter((f) => f.endsWith(".md")).map((f) => `docs/${f}`)];
   const zh = docs.filter((f) => !f.endsWith(".en.md") && !MONOLINGUAL.includes(f));
-  const problems = [...docs.flatMap((f) => brokenLinks(f, read)), ...zh.flatMap((f) => twinProblems(f, read))];
+  const problems = [
+    ...docs.flatMap((f) => brokenLinks(f, read)),
+    ...zh.flatMap((f) => twinProblems(f, read)),
+    ...docs.filter((f) => f.endsWith(".en.md")).flatMap((f) => orphanTwin(f, read)),
+  ];
   for (const p of problems) console.log(p);
   if (problems.length) process.exit(1);
   console.log(`check-docs: ${docs.length} docs, all links resolve, ${zh.length} twins match`);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brokenLinks, headingSlugs, relativeLinks, switchLine, twinProblems } from "./check-docs";
+import { brokenLinks, headingSlugs, orphanTwin, relativeLinks, switchLine, twinProblems } from "./check-docs";
 
 const files = (map: Record<string, string>) => (p: string) => (p in map ? map[p] : null);
 
@@ -106,6 +106,19 @@ describe("twinProblems", () => {
     ]);
     expect(twinProblems("a.md", files({ "a.md": switchLine("a.md") + "\n# A\n## B", "a.en.md": switchLine("a.en.md") + "\n# A" }))).toEqual([
       "a.en.md: headings differ from a.md at heading 2 (2 vs 1 headings)",
+    ]);
+  });
+});
+
+describe("orphanTwin", () => {
+  it("passes an English doc whose Chinese doc exists", () => {
+    expect(orphanTwin("docs/rules.en.md", files({ "docs/rules.md": "" }))).toEqual([]);
+  });
+
+  it("reports an English doc with no Chinese doc, or one paired with a Chinese-only doc", () => {
+    expect(orphanTwin("docs/foo.en.md", files({}))).toEqual(["docs/foo.en.md: no Chinese doc docs/foo.md to pair with"]);
+    expect(orphanTwin("docs/going-public.en.md", files({ "docs/going-public.md": "" }))).toEqual([
+      "docs/going-public.en.md: no Chinese doc docs/going-public.md to pair with",
     ]);
   });
 });

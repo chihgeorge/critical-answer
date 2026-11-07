@@ -36,7 +36,7 @@ Client components (for example `app/bank-editor/page.tsx`) may import only the p
 
 ## Bilingual docs
 
-`README.md`, `SECURITY.md` and every `docs/*.md` except `docs/going-public.md` are Traditional Chinese (Taiwan) with an English twin `X.en.md`. A PR that changes one language changes the other in the same PR. Both open with the switch line (`繁體中文 | [English](X.en.md)` / `[繁體中文](X.md) | English`) and keep the same headings, level by level. English docs link to English twins. A new guide in `docs/` needs its twin too. `npm run check:docs` enforces the pairing, the switch line, the heading levels, and every link and anchor. It does not check that a translation is up to date. `TODOS.md`, `CHANGELOG.md`, `DESIGN.md`, `docs/designs/` and this file stay in one language.
+`README.md`, `SECURITY.md` and every `docs/*.md` except `docs/going-public.md` are Traditional Chinese (Taiwan) with an English twin `X.en.md`. A PR that changes one language changes the other in the same PR. Both open with the switch line (`繁體中文 | [English](X.en.md)` / `[繁體中文](X.md) | English`) and keep the same headings, level by level. English docs link to English twins. A new guide in `docs/` needs its twin too. `npm run check:docs` enforces the pairing, the switch line, the heading levels, and every link and anchor. It does not check that a translation is up to date, or that an English doc links to English twins (`rules.en.md`, not `rules.md`). `TODOS.md`, `CHANGELOG.md`, `DESIGN.md`, `docs/designs/` and this file stay in one language.
 
 ## Health Stack
 

@@ -368,10 +368,10 @@ describe("when the platform misbehaves", () => {
 });
 
 describe("after a restart", () => {
-  it("with a short idle time (as e2e/lifecycle.spec.ts configures), a restart right after activity does not expire an active game", async () => {
+  it("with a short idle time (seconds, as e2e/lifecycle.spec.ts uses), a restart right after activity does not expire an active game", async () => {
     // Codex outside review: a fixed one-minute rounding would make this indistinguishable from 59s of
     // silence at short configured durations, wiping an active game on restart. Granularity must scale down.
-    const shortIdle = 2000; // seconds, not hours, like e2e/lifecycle.spec.ts's ROOM_IDLE_MS
+    const shortIdle = 2000;
     const shortExpire = 6000;
     const a = setup();
     const aRoom = new (a.room.constructor as any)(a.io, () => 0, { idleMs: shortIdle, expireMs: shortExpire, now: () => a.clock.t });
