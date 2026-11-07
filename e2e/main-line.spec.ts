@@ -152,7 +152,7 @@ test("a browser with no host token cannot start a game", async ({ page }) => {
 });
 
 test("game over: the boss cooks, then the podium, then the epilogue arrives on the big screen", async ({ browser }) => {
-  test.setTimeout(90_000); // every cooked monster is served and waited out (cooking I2)
+  test.setTimeout(110_000); // every cooked monster is served and waited out (cooking I2), then the podium reveal
   const code = "EPIL";
   const partyUrl = `ws://localhost:1996/parties/main/${code}`;
   const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
@@ -170,6 +170,14 @@ test("game over: the boss cooks, then the podium, then the epilogue arrives on t
   const team = await open(partyUrl);
   team.send(JSON.stringify({ type: "JOIN", teamId: "00000000-0000-0000-0000-0000000000aa", teamKey: "epilogue-team-key-0123456789", teamName: "終局隊" }));
   await expect(screen.getByText("終局隊")).toBeVisible();
+  // The team's phone, as the same team (its id and key), watches the end with the screen (podium-reveal eng D22).
+  const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await phone.addInitScript(() => {
+    localStorage.setItem("critical_answer_team_id", "00000000-0000-0000-0000-0000000000aa");
+    localStorage.setItem("critical_answer_team_key", "epilogue-team-key-0123456789");
+  });
+  await phone.goto(`/room/${code}/play?name=${encodeURIComponent("終局隊")}`);
+  await expect(phone.getByTestId("roster")).toContainText("終局隊");
   // Read aloud too: the unlock utterance is the only speech before the game starts.
   await screen.getByRole("button", { name: /語音/ }).click();
   expect(await ttsCalls(screen)).toEqual([""]);
@@ -203,10 +211,15 @@ test("game over: the boss cooks, then the podium, then the epilogue arrives on t
   // The boss kill was seen live, so the boss cooks first and the winner waits (cooking R8): the big dish, then the podium.
   await expect(screen.getByTestId("dish-card")).toContainText("今晚的大菜");
   await expect(screen.getByText("奪得榜首")).toHaveCount(0);
-  await expect(screen.getByText("奪得榜首")).toBeVisible({ timeout: 8000 });
+  // The phone keeps quiet while the screen calls the places, and shows the result only after the screen does (eng D22, D23).
+  await expect(phone.getByText("冒險結束！看大螢幕 📺")).toBeVisible();
+  const shownAt = (page: typeof screen, text: string) =>
+    page.waitForFunction((t) => document.body.innerText.includes(t) && Date.now(), text, { polling: "raf", timeout: 25_000 }).then(async (h) => Number(await h.jsonValue()));
+  const [screenAt, phoneAt] = await Promise.all([shownAt(screen, "奪得榜首"), shownAt(phone, "你們獲勝了")]);
+  expect(phoneAt).toBeGreaterThanOrEqual(screenAt);
   // The boss-kill answer ended the game, so its reveal shows on the podium screen instead (D7).
   await expect(screen.getByTestId("answer-reveal")).toContainText("最後一題正解：");
-  await expect(screen.locator(".px-say")).toContainText(EPILOGUE_RE, { timeout: 15_000 });
+  await expect(screen.locator(".px-say")).toContainText(EPILOGUE_RE, { timeout: 25_000 });
   // A single last line: no ▼ once the story has finished typing.
   await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
   // The live epilogue (no replay flag) is read aloud, not just the podium narration.

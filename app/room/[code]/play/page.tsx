@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
@@ -15,7 +15,8 @@ import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
-import { useCookStep, useFinaleStep } from "@/components/cooking";
+import { useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
+import { PHONE_LAG_MS, revealNow } from "@/lib/podium";
 import { McOption } from "@/components/mc-option";
 import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
@@ -400,14 +401,22 @@ function HandoffForm({ send }: { send: (m: ClientMessage) => void }) {
   );
 }
 
-/** The phone's end card. After a boss kill seen live it waits with the big screen's cooking (cooking I5), so no phone
- * names the winner before the podium does. */
-function FinishedPanel({ won, finale, onPodium }: { won: boolean; finale: boolean; onPodium: () => void }) {
-  const step = useFinaleStep(finale, undefined, undefined, onPodium);
+/** The phone's end card. It waits out the big screen's cooking (cooking I5) and the place calls, on the room's clock and
+ * PHONE_LAG_MS behind it, so no phone names the winner before the podium does (podium-reveal.md D16, eng D23). */
+function FinishedPanel({ won, finale, podium, onPodium }: { won: boolean; finale: boolean; podium?: StateMessage["podium"]; onPodium: (up: boolean) => void }) {
+  const step = useFinaleStep(finale);
+  // Reduced motion does not end a phone's wait: it has nothing to animate, and showing the end would spoil first place.
+  const t = useRevealTime(podium, PHONE_LAG_MS, false);
+  const up = step === 4 && revealNow(podium, t).result;
+  // The story (it names the winner) shows exactly while `up` holds; before paint, so it never flashes.
+  useLayoutEffect(() => {
+    onPodium(up);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [up]);
   return (
     <Panel tone="lav" className="px-4 py-5 text-center">
       <div className="text-[26px]">遊戲結束！</div>
-      <div className="mt-2 text-[18px]">{step !== 4 ? "冒險結束！看大螢幕 📺" : won ? "🏆 你們獲勝了！" : "感謝參與！"}</div>
+      <div className="mt-2 text-[18px]">{!up ? "冒險結束！看大螢幕 📺" : won ? "🏆 你們獲勝了！" : "感謝參與！"}</div>
     </Panel>
   );
 }
@@ -772,7 +781,7 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {finished && game && <FinishedPanel won={game.winners.includes(teamId)} finale={finale} onPodium={() => setPodium(true)} />}
+        {finished && game && <FinishedPanel won={game.winners.includes(teamId)} finale={finale} podium={game.podium} onPodium={setPodium} />}
 
         <div className="mt-auto">
           <DialogueBox

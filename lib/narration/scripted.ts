@@ -1,8 +1,9 @@
 // The always-available narrator: hand-written lines with template slots, four
 // or five variants per event type, never the same variant twice in a row.
 
-import type { NarrationEvent, NextTurn } from "./events";
+import { epilogueParts, type NarrationEvent, type NextTurn } from "./events";
 import { ordinal } from "../ordinal";
+import { critLine, placeLine } from "../podium";
 import type { ClassId } from "../game-state";
 
 export interface NarrationProvider {
@@ -290,6 +291,13 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     atmosphereLine(event: NarrationEvent): string {
       if (event.type === "epilogue") return ""; // epilogue never uses this — see the module header
       return fill(pick(ATMOSPHERE_VARIANTS[event.type], `atm-${event.type}`), event);
+    },
+    /** Every epilogue segment (epilogueParts): the crit king and place calls, then the story. */
+    epilogueLines(event: NarrationEvent): string[] {
+      if (event.type !== "epilogue") return [];
+      return epilogueParts(event).map((p) =>
+        p.kind === "crit" ? critLine(p.names, p.count) : p.kind === "place" ? placeLine(p.place, p.team) : scriptedEpilogue(event.ranking, event.winners, rng),
+      );
     },
     /** Synchronous like line(): the scripted prompt for whoever is up next. */
     nextLine(next: NextTurn): string {

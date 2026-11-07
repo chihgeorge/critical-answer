@@ -135,3 +135,47 @@ export function KillRollOverlay({ teamName, values, value }: { teamName: string;
     </div>
   );
 }
+
+/** The podium's tie-break (docs/designs/podium-reveal.md D4b): the tied teams' d20s tumble in one row, each over its
+ * team's name, and land together on the room's values; the bar reads who won or that they roll again. Keyed per roll. */
+export function TieRollOverlay({ line, names, values, result }: { line: string; names: string[]; values: number[]; result: string }) {
+  const [landed, setLanded] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [faces, setFaces] = useState<number[]>(() => values.map(() => 1));
+  useEffect(() => {
+    if (landed) return;
+    const count = values.length;
+    const tick = setInterval(() => setFaces(Array.from({ length: count }, () => 1 + Math.floor(Math.random() * 20))), 80);
+    const land = setTimeout(() => {
+      clearInterval(tick);
+      setLanded(true);
+    }, TUMBLE_MS);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(land);
+    };
+    // The caller keys this overlay per roll, so it tumbles once.
+  }, [landed, values.length]);
+  const size = values.length <= 4 ? 150 : 90;
+  return (
+    <div data-testid="roll-overlay" data-kind="tie" className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>
+      <div className="text-[18px]">
+        <LabelChip>{`🎲 ${line}`}</LabelChip>
+      </div>
+      <div className="flex gap-6">
+        {values.map((v, i) => (
+          <div key={i} className="flex flex-col items-center gap-2">
+            <div className={landed ? undefined : "px-roll-tumble"}>
+              <D20 value={landed ? v : faces[i]} size={size} />
+            </div>
+            <div className="truncate text-[18px] text-white" style={{ maxWidth: size + 20, textShadow: "2px 2px 0 var(--k)" }}>
+              {names[i]}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div data-testid="roll-result" className="px-bar text-[26px]" style={{ visibility: landed ? "visible" : "hidden", background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" }}>
+        {result}
+      </div>
+    </div>
+  );
+}
