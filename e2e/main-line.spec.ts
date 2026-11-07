@@ -79,6 +79,16 @@ test("create room, join two teams, start, judge; screen and play never see host-
   // answer channel checked above — and stays up until the host moves on.
   await expect(screen.getByText(`正解：${answer}`)).toBeVisible();
   await expect(players[0].page.getByText(`正解：${answer}`)).toBeVisible();
+  // Before 上菜 (which shows 「上菜！」 on the screen): one narration line about 甲隊's answer reaches the big screen and the other phone alike.
+  await expect(screen.locator(".px-say")).toContainText("甲隊");
+  await expect(players[1].page.locator(".px-say")).toContainText("甲隊");
+
+  // The narrator moves the story on: the result line shows a ▼ (more to come), then the next team is
+  // addressed, and the last line has no ▼.
+  await expect(screen.locator(".px-say .more")).toBeVisible({ timeout: 6000 });
+  await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 8000 }); // the follow-up addresses the next team
+  await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
+
   // The bundled bank cooks every monster (docs/designs/monster-cuisine.md): the dish waits for the host's 🍲 上菜, then the
   // screen cooks the monster and serves it (cooking R4/R5), and scores are 飽足感.
   await expect(screen.getByTestId("dish-card")).toHaveCount(0);
@@ -98,16 +108,6 @@ test("create room, join two teams, start, judge; screen and play never see host-
 
   // The branch choice is off the phones for now (TODOS.md), even right after 甲隊 entered a new room.
   await expect(players[0].page.getByText("冒險出現岔路")).toHaveCount(0);
-
-  // One narration line about 甲隊's answer reaches the big screen and the other phone alike.
-  await expect(screen.locator(".px-say")).toContainText("甲隊");
-  await expect(players[1].page.locator(".px-say")).toContainText("甲隊");
-
-  // The narrator moves the story on: the result line shows a ▼ (more to come), then the next team is
-  // addressed, and the last line has no ▼.
-  await expect(screen.locator(".px-say .more")).toBeVisible({ timeout: 6000 });
-  await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 8000 }); // the follow-up addresses the next team
-  await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
 
   // A phone that reloads (or wakes from sleep) comes back as the same team: it is not left "offline" and skipped.
   await players[1].page.reload();

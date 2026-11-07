@@ -120,7 +120,7 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
   expect(await ttsCalls(screen)).toEqual([""]); // just the unlock utterance so far
 
   await answerCorrectly(host);
-  await expect(screen.getByText("輪到：乙隊")).toBeVisible();
+  await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the reveal's ribbon names who eats (cooking I6)
 
   // The live NARRATION's line and its "then" (next-team) line both get spoken, in order —
   // not just the result line.
@@ -188,7 +188,7 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesis(screen);
   await screen.goto(`/room/${code}/screen`);
-  await expect(screen.getByText("輪到：乙隊")).toBeVisible();
+  await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the reveal's ribbon names who eats (cooking I6)
   await screen.getByRole("button", { name: /語音/ }).click();
   expect(await ttsCalls(screen)).toEqual([""]); // only the unlock utterance — the replay was NOT spoken
 
@@ -271,7 +271,7 @@ test("screen TTS: narration that arrives before the voice list has loaded is spo
 
   // A live narration arrives while there is still no voice to speak it with...
   await answerCorrectly(host);
-  await expect(screen.getByText("輪到：乙隊")).toBeVisible();
+  await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the reveal's ribbon names who eats (cooking I6)
   await screen.waitForTimeout(500);
   expect(await ttsCalls(screen)).toEqual([""]); // just the unlock utterance: nothing to speak with yet
 
