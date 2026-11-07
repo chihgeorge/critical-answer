@@ -2,6 +2,23 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.38.0.0] - 2026-11-07
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the big screen and the host page. This release adds a new host message (▶ ⏸ ⟲) and a new field in the room state. A host page from before it shows no play buttons, and an old big screen cannot play the video. Do not deploy during an event.
+
+### Added
+- YouTube questions now play on the big screen under the host's control: ▶ ⏸ ⟲ on the host page start, pause and restart the video. Each question can set a start and end time (for example 1:05 to 1:20), so only that part plays.
+- Music questions: tick 「只放聲音」 and the big screen covers the video with a pixel music card that reads 「聽歌猜題」. Its equalizer moves while the song plays, and the card shows how long the clip is. The title and the picture stay off the big screen and the phones while the question is open.
+- An image or YouTube question can have a short 題幹 (up to 200 characters) above the video, for example 「這首歌的歌手是誰？」.
+- Phones no longer play the video. They show the 題幹 and 「看大螢幕 ▶」 or 「聽大螢幕 🎵」, so the sound does not echo from every phone.
+- When a team answers, the video pauses. The answer reveal keeps the same video beside the dish card, and the host can play it again.
+- The background music goes quiet and the narration stops while a video plays, then the music comes back when it pauses or ends.
+- If the video cannot load (blocked, removed, no network), the big screen says 「影片無法播放」, and pressing ▶ again tries once more. Until someone taps the big screen, it says 「👆 點一下大螢幕 才能播放聲音」, because browsers block sound before a tap.
+- The bank editor has fields for the 題幹, the start and end times and 「只放聲音」, plus a 「▶ 試聽片段」 preview. It refuses to save a time it cannot read or an end before the start.
+
+### Changed
+- The question-bank and hosting guides (Chinese and English) explain video and music questions, the time format and the ▶ ⏸ ⟲ controls.
+
 ## [0.37.0.0] - 2026-11-06
 
 **Deploy note:** reload the big screen after this release deploys. A big screen from before this release draws the kill's four dice as a single warrior roll for that one beat. Do not deploy during an event. A restart inside the 4 s kill beat drops the kill, and the team answers the final blow again.
