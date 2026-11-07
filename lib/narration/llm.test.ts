@@ -231,6 +231,14 @@ describe("multi-line prompts (result, atmosphere, then the next team)", () => {
     await expect(make(f as unknown as typeof fetch, { forbidden: () => ["新高山"] }).narrate(withNext)).resolves.toBe("紅隊答對了！\n<invalid/>");
   });
 
+  it("catches a bank answer split across a line break: every line it touches is out", async () => {
+    // The runner joins a story written over several lines, so 「…新高」+「山…」 would read the answer out.
+    const f = async () => ok(reply("紅隊答對了！\n大家爬上了新高\n山，看見日出。\n輪到藍隊，史萊姆在等你們。"));
+    await expect(make(f as unknown as typeof fetch, { forbidden: () => ["新高山"] }).narrate(withNext)).resolves.toBe("紅隊答對了！\n<invalid/>\n<invalid/>\n輪到藍隊，史萊姆在等你們。");
+    const g = async () => ok(reply("紅隊爬上新高\n山！"));
+    await expect(make(g as unknown as typeof fetch, { forbidden: () => ["新高山"] }).narrate(withNext)).rejects.toMatchObject({ reason: "invalid_output" });
+  });
+
   it("rejects the whole answer when the first line is unusable", async () => {
     const f = async () => ok(reply("字".repeat(60) + "\n輪到藍隊"));
     await expect(make(f as unknown as typeof fetch).narrate(withNext)).rejects.toMatchObject({ reason: "invalid_output" });

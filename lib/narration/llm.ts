@@ -205,10 +205,24 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       const forbidden = (opts.forbidden?.() ?? []).filter((a) => a.length >= 3);
       // The model echoes the 「」 we put around names; they are prompt scaffolding, not part of the line.
       const clean = (line: string) => fitToLimit(line.replace(/[「」『』"“”]/g, "").trim(), max);
-      const usable = (line: string) => validLine(line, max) && !forbidden.some((a) => line.includes(a));
-      const [first = "", ...rest] = raw.split(/\n+/).map(clean).filter(Boolean);
+      const lines = raw.split(/\n+/).map(clean).filter(Boolean);
+      // A bank answer is looked for across line breaks too: the screen reads the lines one after another, and the
+      // runner joins an epilogue story written over several lines. Every line an answer touches is out.
+      const leaks = new Set<number>();
+      const joined = lines.join("");
+      const lineAt = (pos: number) => {
+        let end = 0;
+        return lines.findIndex((l) => (end += l.length) > pos);
+      };
+      for (const a of forbidden) {
+        for (let pos = joined.indexOf(a); pos >= 0; pos = joined.indexOf(a, pos + 1)) {
+          for (let i = lineAt(pos); i <= lineAt(pos + a.length - 1); i++) leaks.add(i);
+        }
+      }
+      const usable = (line: string, i: number) => validLine(line, max) && !leaks.has(i);
+      const [first = "", ...rest] = lines;
       if (first === "") throw new NarrationError("empty_or_refusal", "no text in the response");
-      if (!usable(first)) throw new NarrationError("invalid_output", "line too long, contains markup or repeats a bank answer");
+      if (!usable(first, 0)) throw new NarrationError("invalid_output", "line too long, contains markup or repeats a bank answer");
       // Every segment after the first is a bonus: a bad one falls back to scripted for that specific
       // slot. Replace it with a marker instead of dropping it — dropping compacts the array, so with
       // 2+ rest segments (atmosphere, transition) an invalid middle one would shift a valid trailing
@@ -217,7 +231,7 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       // that slot falls back the same way an over-length or markup segment already does — without
       // disturbing segments after it. (Adversarial review finding, /plan-eng-review D1 follow-up.)
       const INVALID_SEGMENT = "<invalid/>";
-      const validRest = rest.map((s) => (usable(s) ? s : INVALID_SEGMENT));
+      const validRest = rest.map((s, i) => (usable(s, i + 1) ? s : INVALID_SEGMENT));
       return [first, ...validRest].join("\n");
     },
   };
