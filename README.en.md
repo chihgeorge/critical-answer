@@ -71,7 +71,7 @@ To let people outside your network play, put the front end on Vercel and the roo
 | Gathering | On the home page, press 「主持遊戲」 (Host a game) to open a room | Shows the QR code and the 4-character room code | Each team scans the QR code to join and picks a class |
 | Start | Press 「開始遊戲」 (Start game) to play the how-to-play intro | Plays the 4-page how-to-play intro | Watch the big screen |
 | Each question | Multiple choice: press 「公布答案」 (Reveal answer) (key `1`); fill-in: judge right or wrong | Question, dice, result | Multiple choice: lock in an answer; fill-in: roll persuasion first, then type |
-| Wrap-up | The boss falls or you press 「結束冒險」 (End adventure); you can press 「再玩一場」 (Play again) | Podium and epilogue | See who has the most reward points |
+| Wrap-up | The boss falls or you press 「結束冒險」 (End adventure); you can press 「再玩一場」 (Play again) | Podium and epilogue (when a boss with a dish falls, the boss is cooked and served first) | See who has the most reward points |
 
 The big-screen URL is at the top of the host page. For keyboard controls, switching phones and recovering from disconnects, see the [hosting guide](docs/hosting.en.md).
 
