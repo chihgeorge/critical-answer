@@ -923,7 +923,7 @@ test("a room's monster: picked from the catalog, saved as its id, and kept after
     await page.getByRole("button", { name: "載入題庫" }).click();
     await page.getByTestId("bank-tab-rooms").click();
     await expect(page.getByTestId("bank-rooms").getByRole("textbox")).toHaveCount(0);
-    await expect(page.getByLabel("首領").locator("option")).toHaveText(["深淵小黑龍"]);
+    await expect(page.getByLabel("首領").locator("option")).toHaveText(["深淵小黑龍", "深海大王烏賊", "不死火鳥"]);
     const room0 = page.getByLabel("第 1 房的怪物");
     await expect(room0.locator("option", { hasText: "深淵小黑龍" })).toHaveCount(0);
     await room0.selectOption("ghost-cry");

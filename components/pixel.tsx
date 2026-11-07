@@ -5,7 +5,7 @@
 import { useEffect, useEffectEvent, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
 import { drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme } from "@/lib/pixel-art";
 import type { Accessory } from "@/lib/monster-catalog";
-import type { MonsterSprite, SpriteKind } from "@/lib/sprite-kind";
+import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/sprite-kind";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { youtubeEmbedUrl } from "@/lib/youtube";
 import { firstChange, resumeFrom } from "@/lib/narration/client";
@@ -101,10 +101,10 @@ export function LabelChip({ children, tone }: { children: ReactNode; tone?: "tag
 /* ---------- Sprite: a program-drawn pixel canvas that blinks ---------- */
 
 /** The sprites with eyes; everything else (props, food, the pot) never blinks. */
-const BLINKS = new Set<SpriteKind>(["slime", "slime-lost", "slime-king", "ghost", "ghost-cry", "dragon", "owl", "hero"]);
+const BLINKS = new Set<SpriteKind>([...MONSTER_SPRITES.filter((s) => s !== "mandrake"), "owl", "hero"]); // the mandrake has no closed-eye frame
 
 export function Sprite({
-  kind,
+  kind: asked,
   variant = 0,
   scale = 4,
   hue = 0,
@@ -124,6 +124,8 @@ export function Sprite({
   style?: CSSProperties;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  // Unknown sprites (a newer server than this page) draw as a slime rather than crash the render.
+  const kind: SpriteKind = Object.hasOwn(SPRITE_SIZE, asked) ? asked : "slime";
   const [w, h] = SPRITE_SIZE[kind];
   // Unknown hats (a newer server than this page) draw none rather than crash the render.
   const hat = accessory ? (`acc-${accessory}` as SpriteKind) : null;

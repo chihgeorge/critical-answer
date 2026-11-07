@@ -1,6 +1,6 @@
 # 怪物圖鑑與小變化（issue #139）
 
-狀態：/plan-eng-review 進行中（2026-11-07）。審查對象：GitHub issue #139（chihgeorge/critical-answer#139），規格原文如下。
+狀態：eng review 與 design review 完成（2026-11-07）。PR1 在 v0.40.0.0 上線；PR2 在 `feat/monster-catalog-pr2` 實作（v0.42.0.0）。審查對象：GitHub issue #139（chihgeorge/critical-answer#139），規格原文如下。
 
 ## 規格原文（issue #139，審查前）
 
@@ -70,31 +70,31 @@ export function monsterById(id: string): CatalogMonster | undefined;
 | 1 | `slime-soft` | 軟趴趴史萊姆 | `slime` | 現有：綠色水滴、頭頂兩片葉 | `dish-jelly` | 1 |
 | 2 | `ghost-shy` | 害羞幽靈 | `ghost` | 現有：白色幽靈、臉紅 | `dish-ice` | 1 |
 | 3 | `ghost-cry` | 愛哭幽靈 | `ghost-cry` | 現有 | `dish-riceball` | 1 |
-| 4 | `mushroom` | 碎碎蘑菇 | `mushroom` | 紅傘白點、短腳、小眼睛 | `dish-mushroom`（烤蘑菇串） | 2 |
-| 5 | `bat` | 倒掛蝙蝠 | `bat` | 紫色圓身、張開的翅膀、小尖牙 | `dish-wing`（炸翅） | 2 |
-| 6 | `skeleton` | 喀啦骷髏兵 | `skeleton` | 頭骨＋短身、手拿骨頭 | `dish-bone-soup`（大骨湯） | 2 |
+| 4 | `mushroom-crumbly` | 碎碎蘑菇 | `mushroom` | 紅傘白點、短腳、小眼睛 | `dish-mushroom-skewer`（烤蘑菇串） | 2 |
+| 5 | `bat-hanging` | 倒掛蝙蝠 | `bat` | 紫色圓身、張開的翅膀、小尖牙 | `dish-wings`（酥炸蝙蝠翅） | 2 |
+| 6 | `skeleton-rattle` | 喀啦骷髏兵 | `skeleton` | 頭骨＋短身、手拿骨頭 | `dish-bone-soup`（骷髏大骨湯） | 2 |
 | 7 | `mimic` | 寶箱怪 | `mimic` | 木頭寶箱、張嘴有舌頭 | `dish-bento`（寶箱便當） | 2 |
-| 8 | `spider` | 毛毛蜘蛛 | `spider` | 黑色毛球、八條短腳、大眼睛 | `dish-floss`（蛛絲棉花糖） | 2 |
-| 9 | `snail` | 慢吞吞蝸牛 | `snail` | 螺旋殼、伸出觸角 | `dish-escargot`（焗烤蝸牛） | 2 |
-| 10 | `wisp` | 鬼火精 | `wisp` | 藍色火焰、兩顆白眼 | `dish-flambe`（火焰布蕾） | 2 |
-| 11 | `golem` | 小石魔像 | `golem` | 方塊石頭身、苔蘚、發光眼 | `dish-stone-pot`（石燒鍋） | 2 |
-| 12 | `jellyfish` | 地底水母 | `jellyfish` | 半透明傘、垂下觸手 | `dish-jelly-salad`（涼拌水母） | 2 |
-| 13 | `frog` | 沼澤胖蛙 | `frog` | 圓胖綠蛙、大嘴 | `dish-frog-leg`（三杯田雞） | 2 |
+| 8 | `spider-fuzzy` | 毛毛蜘蛛 | `spider` | 黑色毛球、八條短腳、大眼睛 | `dish-cotton-candy`（蛛絲棉花糖） | 2 |
+| 9 | `snail-slow` | 慢吞吞蝸牛 | `snail` | 螺旋殼、伸出觸角 | `dish-escargot`（焗烤蝸牛） | 2 |
+| 10 | `wisp` | 鬼火精 | `wisp` | 藍色火焰、兩顆白眼 | `dish-brulee`（鬼火烤布蕾） | 2 |
+| 11 | `golem-pebble` | 小石魔像 | `golem` | 方塊石頭身、苔蘚、發光眼 | `dish-stone-pot`（魔像石燒鍋） | 2 |
+| 12 | `jellyfish-deep` | 地底水母 | `jellyfish` | 半透明傘、垂下觸手 | `dish-jelly-salad`（涼拌水母絲） | 2 |
+| 13 | `frog-swamp` | 沼澤胖蛙 | `frog` | 圓胖綠蛙、大嘴 | `dish-three-cup`（三杯田雞） | 2 |
 | 14 | `candle` | 蠟燭精 | `candle` | 融化的白蠟燭、頭上一朵火 | `dish-fondue`（蠟燭起司鍋） | 2 |
-| 15 | `mandrake` | 尖叫曼德拉草 | `mandrake` | 根莖身體、頭頂葉子、張嘴尖叫 | `dish-root-stew`（根菜燉） | 2 |
+| 15 | `mandrake` | 尖叫曼德拉草 | `mandrake` | 根莖身體、頭頂葉子、張嘴尖叫 | `dish-root-stew`（曼德拉根菜燉） | 2 |
 | 16 | `eyeball` | 浮游眼球 | `eyeball` | 大眼球、血絲、小翅膀 | `dish-tangyuan`（眼球湯圓） | 2 |
-| 17 | `crab` | 鐵殼螃蟹 | `crab` | 紅色硬殼、大鉗子 | `dish-crab`（清蒸蟹） | 2 |
+| 17 | `crab-iron` | 鐵殼螃蟹 | `crab` | 紅色硬殼、大鉗子 | `dish-crab`（清蒸鐵殼蟹） | 2 |
 | 18 | `dice` | 骰子怪 | `dice` | 白色方塊骰子、點數當眼睛 | `dish-tofu`（骰子豆腐） | 2 |
 | 19 | `pumpkin` | 南瓜頭 | `pumpkin` | 橘色大南瓜、刻出來的眼睛和嘴、頭頂綠梗 | `dish-pumpkin-soup`（南瓜濃湯） | 2 |
-| 20 | `cactus` | 刺刺仙人掌 | `cactus` | 直立綠柱、兩隻手臂、頭頂粉紅花、小花盆 | `dish-cactus-ice`（仙人掌冰沙） | 2 |
+| 20 | `cactus` | 刺刺仙人掌 | `cactus` | 直立綠柱、兩隻手臂、頭頂粉紅花、小花盆 | `dish-smoothie`（仙人掌冰沙） | 2 |
 
 首領（`boss: true`，體型約 52×46，與龍相當）：
 
 | # | id | 名字 | sprite | 造型 | 料理圖 | PR |
 |---|----|------|--------|------|--------|----|
 | 21 | `dragon` | 深淵小黑龍 | `dragon` | 現有 | `dish-skewer` | 1 |
-| 22 | `kraken` | 深海大王烏賊 | `kraken` | 紫紅大頭、八條觸手揮舞 | `dish-squid`（烤魷魚） | 2 |
-| 23 | `phoenix` | 不死火鳥 | `phoenix` | 火紅大鳥、尾羽是火焰 | `dish-roast-bird`（烤全雞） | 2 |
+| 22 | `kraken` | 深海大王烏賊 | `kraken` | 紫紅大頭、八條觸手揮舞 | `dish-squid`（大王烤魷魚） | 2 |
+| 23 | `phoenix` | 不死火鳥 | `phoenix` | 火紅大鳥、尾羽是火焰 | `dish-roast-chicken`（不死鳥烤全雞） | 2 |
 
 - 現有 4 隻（slime-soft、ghost-shy、ghost-cry、dragon）的料理文字和 hue（都是 0）照搬 `data/question-bank.json`。迷路史萊姆、守門史萊姆王（R4）和 3 隻換色怪物移除，料理一起移除。新 19 隻的料理文字在 PR2 寫，菜名照 R4 的 PNG。
 - **PNG 確認關卡**：/plan-design-review 產生 PNG 到本機 `~/.gstack/projects/critical-answer/designs/monster-catalog/`（不進 git）：`roster.png`、`v2/roster.png`（名單）、`v2/accessories.png`（6 配件戴在 3 隻現有小怪上、換色後的樣子）。2026-11-07 已確認，見 decision ledger R4、R5。
@@ -250,7 +250,7 @@ monster: { id: string; name: string; sprite: MonsterSprite; hue: number; accesso
 3. `HEAD_ANCHOR` 涵蓋 23 個造型；6 配件 × 20 小怪造型都落在畫布內（PR1 的測試自動涵蓋）。
 4. 編輯器小怪選單列 20 隻、首領選單列 3 隻。
 5. 預設題庫的 8 房改成 8 隻不同的小怪（可含新怪物）。
-6. 新造型和料理圖都經站長看過 PNG 確認（/plan-design-review 紀錄）。
+6. 新造型和料理圖都經站長看過 PNG 確認（/plan-design-review 紀錄）。站長 2026-11-07 看過 PNG（本機 `~/.gstack/projects/critical-answer/designs/monster-catalog/v3/pr2-sprites.png`，不進 repo）後確認全部採用。
 7. `BANK_FORMAT` 不變（3）：PR2 只增加圖鑑 id，PR1 存的題庫照樣讀得懂。
 8. 每個新測試附 `protects / fails_when / no_claim`。
 
@@ -276,7 +276,8 @@ e2e 只在 CI 跑，本機不跑。
 1. 照第 6 節清單上線與重新種子（站長本人，OWNER_KEY）。
 2. 活動當天（11/21）不部署。PR1 最晚 11/18 前合併並完成重新種子。
 3. 回滾 PR1：revert 並等自動部署完成。舊程式看到 format 3 → 唯讀，新開的房間用舊預設題庫，可以照常玩；**進行中的房間存檔（新格式題庫副本）會失效，不要在有人玩的時候回滾**（Outside Voice 1）。要把舊題庫放回去，PUT 會被 unreadable 擋，要直接改 Durable Object 的 `bank` 值（用第 6 節第 1 步的備份，做法見 `docs/question-bank.md`「題庫卡住時怎麼救」第 3 點）。
-4. PR2 只加圖鑑，不需要重新種子。回滾 PR2 時，如果正式站題庫已經用了 PR2 的新 id，舊程式（PR1）parse 失敗 → unreadable，唯讀、不覆蓋、開房用預設題庫。所以 PR2 合併後先跑過一場再用新 id。
+4. PR2 只加圖鑑，不需要重新種子。回滾 PR2 時，如果正式站題庫已經用了 PR2 的新 id，舊程式（PR1）parse 失敗 → unreadable，唯讀、不覆蓋、開房用預設題庫。所以 PR2 合併後先跑過一場再用新 id。回滾 PR2 也會讓進行中的房間存檔（裡面的題庫副本若有新 id）失效，不要在有人玩的時候回滾。
+5. 正式站要一直有存著的題庫（PR1 已重新種子成格式 3）：Worker 只有在沒存題庫、或存的題庫過期時才用預設題庫，而 PR2 的預設題庫已經用新 id。存用新 id 的題庫前，先確認 Worker 和 Vercel 都部署完成，再把所有開著的大螢幕、手機頁面重新整理。部署前開著的舊頁面不認得新造型，會整頁出錯（PR2 起的頁面遇到不認得的造型會改畫史萊姆，但這只保護之後的版本）。
 
 ### Effort Estimate
 
@@ -623,7 +624,7 @@ Critical gaps: 0。
   - Surfaced by: 規格第 6 節；R2（D3）；Outside Voice 1（回滾說明）
   - Files: docs/question-bank.md, docs/question-bank.en.md, docs/hosting.md, docs/hosting.en.md, DESIGN.md, docs/designs/monster-cuisine.md, docs/designs/scoring-and-score-pools.md, TODOS.md
   - Verify: `npm run check:docs`
-- [ ] **T7 (P2, human: ~2 天 / CC: ~1–1.5 天)** — PR2 — 17 小怪＋2 首領造型、19 料理圖、圖鑑補到 23 筆、預設題庫 8 房 8 隻不同（名單 PNG 確認後）
+- [x] **T7 (P2, human: ~2 天 / CC: ~1–1.5 天)** — PR2 — 17 小怪＋2 首領造型、19 料理圖、圖鑑補到 23 筆、預設題庫 8 房 8 隻不同（名單 PNG 確認後）
   - Surfaced by: 規格 PR2 驗收
   - Files: lib/pixel-art.ts, lib/sprite-kind.ts, lib/monster-catalog.ts, data/question-bank.json
   - Verify: `npx vitest run`、tsc

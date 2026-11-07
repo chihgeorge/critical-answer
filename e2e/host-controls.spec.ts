@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { answerCorrectly, nextQuestion, startGame } from "./answer";
+import { answerCorrectly, nextQuestion, startGame, withRoom0MonsterAgainAt3 } from "./answer";
 import { TITLE } from "../lib/monster-catalog";
 
 async function hostRoom(browser: Browser) {
@@ -135,16 +135,18 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
   await expect(intro).not.toBeChecked();
 });
 
-// Value: protects=a room monster met again shows its title on the host's turn card, and its first appearance is plain (the bundled bank's rooms 1 and 4 are both slime-soft); fails_when=STATE stops carrying the variant name or defeats stop counting; why_new=monster-catalog.md acceptance 7 (e2e); seam=none; no_claim=which title (seeded per game), the hat's pixels
-test("a monster met again wears a title on its nameplate", async ({ browser }) => {
-  const { host, code } = await hostRoom(browser);
-  await phone(browser, code, "甲隊");
-  await startGame(host);
-  const titled = new RegExp(`(${Object.values(TITLE).join("|")})軟趴趴史萊姆`);
-  await expect(host.getByText(/第 1 房　軟趴趴史萊姆$/)).toBeVisible();
-  for (let i = 0; i < 3; i++) {
-    await answerCorrectly(host);
-    await nextQuestion(host);
-  }
-  await expect(host.getByText(/第 4 房/)).toContainText(titled);
+// Value: protects=a room monster met again shows its title on the host's turn card, and its first appearance is plain (rooms 1 and 4 both get slime-soft for this test); fails_when=STATE stops carrying the variant name or defeats stop counting; why_new=monster-catalog.md acceptance 7 (e2e); seam=none; no_claim=which title (seeded per game), the hat's pixels
+test("a monster met again wears a title on its nameplate", async ({ browser, request }) => {
+  await withRoom0MonsterAgainAt3(request, async () => {
+    const { host, code } = await hostRoom(browser);
+    await phone(browser, code, "甲隊");
+    await startGame(host);
+    const titled = new RegExp(`(${Object.values(TITLE).join("|")})軟趴趴史萊姆`);
+    await expect(host.getByText(/第 1 房　軟趴趴史萊姆$/)).toBeVisible();
+    for (let i = 0; i < 3; i++) {
+      await answerCorrectly(host);
+      await nextQuestion(host);
+    }
+    await expect(host.getByText(/第 4 房/)).toContainText(titled);
+  });
 });

@@ -11,8 +11,14 @@ describe("the monster catalog", () => {
       expect(MONSTER_SPRITES).toContain(m.sprite);
       expect(DISH_SPRITE[m.sprite]).toBeTruthy();
     }
-    expect(MONSTERS.filter((m) => m.boss).map((m) => m.id)).toEqual(["dragon"]);
-    expect(MONSTERS.filter((m) => !m.boss).map((m) => m.id)).toEqual(["slime-soft", "ghost-shy", "ghost-cry"]);
+    expect(MONSTERS.filter((m) => m.boss).map((m) => m.id)).toEqual(["dragon", "kraken", "phoenix"]);
+    expect(MONSTERS.filter((m) => !m.boss)).toHaveLength(20);
+  });
+
+  // Value: protects=MONSTER_SPRITES and the catalog stay one to one (risk 8: a hand-synced list), apart from the two map-only slimes; fails_when=a sprite is added without a catalog entry, or the reverse; why_new=PR2 adds 19 sprites; seam=none; no_claim=the dish art exists (tsc checks DISH_SPRITE)
+  it("gives every monster sprite exactly one catalog monster, except the map-only slimes", () => {
+    const used = MONSTERS.map((m) => m.sprite).sort();
+    expect(used).toEqual(MONSTER_SPRITES.filter((s) => s !== "slime-lost" && s !== "slime-king").sort());
   });
 
   // Value: protects=every dish fits the TV card; fails_when=a dish field is empty or over DISH_LIMITS; why_new=dishes moved from the bank into the catalog; seam=none; no_claim=the wording is good

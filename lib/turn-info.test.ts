@@ -129,4 +129,11 @@ describe("monsterLook", () => {
     expect(monsterLook({ ...pq().monster, accessory: "crown" }).accessory).toBe("crown");
     expect(monsterLook(pq().monster)).not.toHaveProperty("accessory");
   });
+
+  // Value: protects=a page older than the Worker draws a slime for a sprite it does not know, instead of the error screen; fails_when=the fallback is removed; why_new=PR2 adds sprites that pre-deploy pages lack; seam=none; no_claim=Sprite/DishOnStage guards (no DOM test)
+  it("draws a sprite this page does not know as a slime", () => {
+    const look = monsterLook({ ...pq().monster, sprite: "not-yet-drawn" as never });
+    expect([look.kind, look.scale]).toEqual(["slime", 6]);
+    expect(monsterLook({ ...pq().monster, sprite: "toString" as never }).kind).toBe("slime"); // not an inherited key
+  });
 });

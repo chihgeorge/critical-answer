@@ -2,6 +2,20 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.42.0.0] - 2026-11-07
+
+**Deploy note:** no reseed is needed. Before you save a bank that uses one of the new monsters, wait until both the room server and the website have finished deploying, then reload the host page, the big screen and the phones. A page opened before the deploy does not know the new monsters.
+
+### Added
+- 17 new room monsters to pick in the bank editor, each with its own picture and dish: 碎碎蘑菇, 倒掛蝙蝠, 喀啦骷髏兵, 寶箱怪, 毛毛蜘蛛, 慢吞吞蝸牛, 鬼火精, 小石魔像, 地底水母, 沼澤胖蛙, 蠟燭精, 尖叫曼德拉草, 浮游眼球, 鐵殼螃蟹, 骰子怪, 南瓜頭 and 刺刺仙人掌. With the 3 existing ones, there are now 20.
+- 2 new bosses: 深海大王烏賊 (cooked into 大王烤魷魚) and 不死火鳥 (cooked into 不死鳥烤全雞).
+
+### Changed
+- The default bank's 8 rooms now meet 8 different monsters.
+
+### Fixed
+- A page that meets a monster it does not know draws a slime instead of showing 「畫面出錯了」.
+
 ## [0.41.0.0] - 2026-11-07
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the host page, the big screen and the phones. Edits now name a line and a revision, so an old website's edits are refused until it is reloaded. Do not deploy during an event.
