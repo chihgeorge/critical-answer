@@ -1666,6 +1666,27 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(revealOpen(room)).toBe(false);
     });
 
+    // Value: protects=the chef's share on the phone's 答對 line (chef design D5) and a chef never spending a use;
+    // fails_when=the room drops chefBonus from reveal.choice, or a chef's TEAM_USE_ABILITY is accepted; seam=none
+    it("a chef's correct lock carries its share in reveal.choice, and its ability press is refused", () => {
+      vi.useFakeTimers();
+      const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: mcBank });
+      const hostConn = makeConn("host-conn");
+      room.onConnect(hostConn);
+      claim(room, hostConn);
+      const { ids, conns } = joinTeams(room, hostConn, 2);
+      send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "chef" });
+      send(room, hostConn, { type: "HOST_START" });
+      send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-mc1" });
+      expect(room.game!.teams[0].abilityUses).toBe(2);
+      expect((room as any).pendingRoll ?? null).toBeNull();
+      pick(room, conns[0], 1);
+      send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+      send(room, hostConn, { type: "HOST_REVEAL", teamId: ids[0], questionId: "r0-mc1" });
+      vi.advanceTimersByTime(4000);
+      expect(lastBroadcast(room).reveal.choice).toMatchObject({ teamId: ids[0], points: 12, chefBonus: 2 });
+    });
+
     it("the host cannot send a team to the boss while its lock is in its beat", () => {
       vi.useFakeTimers();
       const { room, hostConn, ids, conns } = startedMcGame(1);
@@ -3546,6 +3567,13 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
     await flush();
     expect(states(room).at(-1).reveal.dish).toMatchObject({ points: 12, chefBonus: 2 });
+  });
+
+  it("a team with no class gets no chefBonus on its dish", async () => {
+    const { room, hostConn, ids } = cookRoom();
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    await flush();
+    expect(states(room).at(-1).reveal.dish).not.toHaveProperty("chefBonus");
   });
 
   describe("🍲 上菜 (HOST_SERVE, cooking R5/I2)", () => {

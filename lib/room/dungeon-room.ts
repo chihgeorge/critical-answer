@@ -171,9 +171,9 @@ function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
  * the write fails, so a player never sees a state that was not saved. `restore()` reads it back after a
  * restart. Without storage (tests, the temporary PartyKit adapter) the room is in memory only.
  */
-/** Names a reader can't tell apart (full-width vs half-width, case) count as one team name. */
 /** A chef's share of a reveal's points, left out for every other team. */
 const chefOf = (o: { chefBonus?: number }) => (o.chefBonus ? { chefBonus: o.chefBonus } : {});
+/** Names a reader can't tell apart (full-width vs half-width, case) count as one team name. */
 const sameTeamName = (a: string, b: string) => a.normalize("NFKC").toLowerCase() === b.normalize("NFKC").toLowerCase();
 
 export class DungeonRoom {

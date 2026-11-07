@@ -731,7 +731,7 @@ export default function PlayPage() {
             ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
               答對了！{revealed.choice.points > 0 ? `＋${revealed.choice.points} 分` : ""}
-              {revealed.choice.chefBonus ? <span style={{ color: "#a8470f" }}>（廚師 +{revealed.choice.chefBonus}）</span> : null}
+              {revealed.choice.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 +{revealed.choice.chefBonus}）</span> : null}
             </div>
           </Panel>
         )}

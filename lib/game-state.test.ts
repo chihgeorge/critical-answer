@@ -1459,8 +1459,13 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(kill.game.teams[0].reward).toBe(73);
   });
 
-  it("the chef has no ability to spend", () => {
-    expect(() => spendAbility(classGame(["chef"]), "T0", "warrior")).toThrow();
+  it("the chef's 15% goes on a crit too, and a wrong answer pays it nothing", () => {
+    const g = classGame(["chef", undefined]);
+    // 10 + a crit's 5 = 15, and 15% of 15 rounds to 2.
+    expect(answerQuestion(g, "T0", currentQ(g, "T0"), true, "retry", first, 20).outcome).toMatchObject({ reward: 17, chefBonus: 2, roll: { kind: "crit", value: 20 } });
+    const wrong = answerQuestion(g, "T0", currentQ(g, "T0"), false, "retry");
+    expect(wrong.outcome).not.toHaveProperty("chefBonus");
+    expect(wrong.game.teams[0].reward).toBe(0);
   });
 
   it("the mage removes 2 wrong options, never the right one, and clears a pick on a removed option", () => {

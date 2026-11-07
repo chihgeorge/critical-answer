@@ -681,7 +681,10 @@ export function answerQuestion(
   const sneak = getTeam(game, teamId).sneakArmed ? 2 : 1;
   // The chef's 15% goes on the whole gain, last (eng review D2).
   const chef = getTeam(game, teamId).classId === "chef";
-  const withChef = (gain: number) => (chef ? { reward: gain + chefShare(gain), chefBonus: chefShare(gain) } : { reward: gain });
+  const withChef = (gain: number) => {
+    const share = chef ? chefShare(gain) : 0;
+    return { reward: gain + share, ...(share ? { chefBonus: share } : {}) };
+  };
   // The choice resolves the pending wrong lock.
   game = { ...game, pendingWrong: null, teams: patchTeam(game.teams, teamId, () => ({ sneakArmed: undefined, typedAnswer: undefined })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
