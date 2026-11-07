@@ -27,6 +27,62 @@ export function extractYoutubeId(pasted: string): string | null {
 
 /** The privacy-friendly embed domain — confirmed as 2026 best practice for a plain-iframe
  * embed (no library, no API key) via live web search during /plan-eng-review. */
-export function youtubeEmbedUrl(videoId: string): string {
-  return `https://www.youtube-nocookie.com/embed/${videoId}`;
+export function youtubeEmbedUrl(videoId: string, start?: number, end?: number): string {
+  const clip = new URLSearchParams({ ...(start !== undefined ? { start: String(start) } : {}), ...(end !== undefined ? { end: String(end) } : {}) }).toString();
+  return `https://www.youtube-nocookie.com/embed/${videoId}${clip ? `?${clip}` : ""}`;
+}
+
+/* ---------- The big screen's player (docs/designs/youtube-questions.md) ---------- */
+
+/** What the host asked the video to do, as the player sees it. */
+export interface MediaWant {
+  state: "playing" | "paused";
+  seq: number;
+  /** A new press re-checks the steps even when state and seq are the same (▶ after the clip ended). */
+  press?: number;
+}
+export type PlayerStep = "restart" | "play" | "pause";
+
+/** The player calls that take the video from the last command it carried out (`prev`, null before any)
+ * to `next`. A new `seq` (⟲) or the first command after a (re)connect plays from the clip's start (D6);
+ * so does ▶ after the clip has ended. A repeated ▶ or ⏸ does nothing. */
+export function playerSteps(prev: MediaWant | null, next: MediaWant, ended: boolean): PlayerStep[] {
+  if (next.state === "paused") return prev?.state === "playing" ? ["pause"] : [];
+  if (!prev || prev.seq !== next.seq || ended) return ["restart"];
+  return prev.state === "paused" ? ["play"] : [];
+}
+
+/** The music card's five states (D15). */
+export type ClipStatus = "loading" | "playing" | "paused" | "ended" | "error";
+export const CLIP_STATUS_TEXT: Record<ClipStatus, string> = {
+  loading: "準備中",
+  playing: "播放中",
+  paused: "暫停",
+  ended: "播完",
+  error: "影片無法播放",
+};
+
+/** The music card's state from YouTube's onStateChange code (1 playing, 2 paused, 5 cued, 0 ended; 3 buffering
+ * and -1 unstarted read as loading). Once the clip has ended at its `end`, everything reads as ended. */
+export function clipStatusFromYoutube(ytState: number, ended: boolean): ClipStatus {
+  if (ended || ytState === 0) return "ended";
+  if (ytState === 1) return "playing";
+  if (ytState === 2 || ytState === 5) return "paused";
+  return "loading";
+}
+
+/** A clip time typed in the bank editor: `1:05`, `65` or `0:5`. Whole seconds only; null when it is not one (D22). */
+export function parseClipTime(input: string): number | null {
+  const t = input.trim();
+  const m = t.match(/^(?:(\d+):)?(\d+)$/);
+  if (!m) return null;
+  const minutes = m[1] === undefined ? 0 : Number(m[1]);
+  const seconds = Number(m[2]);
+  if (m[1] !== undefined && seconds >= 60) return null;
+  return minutes * 60 + seconds;
+}
+
+/** 65 → "1:05". */
+export function formatClipTime(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }

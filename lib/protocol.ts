@@ -38,7 +38,10 @@ export const MAX_TEAMS = 8;
 /** A question's (or explanation's) content, wire-safe: `image`'s `url` is a public R2 URL, never
  * the raw storage key; `youtube`'s `videoId` is the extracted id, never the pasted URL. See
  * docs/designs/question-media-content.md's D1 (content replaces the old fixed `text` prompt). */
-export type PublicMediaContent = { kind: "text"; value: string } | { kind: "image"; url: string } | { kind: "youtube"; videoId: string };
+export type PublicMediaContent =
+  | { kind: "text"; value: string }
+  | { kind: "image"; url: string }
+  | { kind: "youtube"; videoId: string; audioOnly?: true; start?: number; end?: number };
 
 /** The question the team in turn faces, without its answer: safe for /screen and /play.
  * `options` is present only for multipleChoice questions (never `correctIndex` — see
@@ -49,6 +52,8 @@ export type PublicMediaContent = { kind: "text"; value: string } | { kind: "imag
 export interface PublicQuestion {
   id: string;
   content: PublicMediaContent;
+  /** The line above an image or a video (docs/designs/youtube-questions.md D5). */
+  prompt?: string;
   difficulty: number;
   boss: boolean;
   monster: { name: string; sprite: SpriteKind; hue: number };
@@ -65,6 +70,9 @@ export type AnswerReveal = {
   questionId: string;
   answer: string;
   explanation?: PublicMediaContent;
+  /** The answered question's own YouTube video, shown again where it stopped, unless an image or a video
+   * explanation takes its place (docs/designs/youtube-questions.md D17). */
+  video?: Extract<PublicMediaContent, { kind: "youtube" }>;
   /** Set when a team's lock was judged (phone answering): the answered question's options, which one
    * was right, who locked it and the points it scored, so every screen can light the tile (D8, D14).
    * Safe to send: it goes out only once the answer is revealed. */
@@ -120,6 +128,8 @@ export type ClientMessage =
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
   /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
   | { type: "HOST_REVEAL"; teamId: string; questionId: string }
+  /** Host: ▶ ⏸ ⟲ for the YouTube video on the big screen (docs/designs/youtube-questions.md). */
+  | { type: "HOST_MEDIA"; questionId: string; action: MediaAction }
   /** 結束冒險: end the game now, ranked by each team's reward. */
   | { type: "HOST_END_GAME" }
   /** After the game: back to the lobby with the same teams, ready for another game. */
@@ -198,6 +208,18 @@ export type ServerErrorCode =
 /** One per kind of event: the big screen's sound effect for it (lib/sfx.ts). */
 export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill" | "roll" | "crit" | "fumble" | "check-pass" | "check-fail";
 
+export const MEDIA_ACTIONS = ["play", "pause", "restart"] as const;
+export type MediaAction = (typeof MEDIA_ACTIONS)[number];
+/** What the host last asked the big screen's video to do. `seq` goes up on each ⟲ 從頭, so the screen
+ * plays from `start` again; `press` on every button. In memory only: absent after a restart, and from older servers (paused). */
+export interface MediaCommand {
+  questionId: string;
+  state: "playing" | "paused";
+  seq: number;
+  /** Goes up on every press, so a ▶ after the clip stopped itself at its end reaches the player (it replays). */
+  press: number;
+}
+
 export type ServerMessage =
   /** `replay`: this room has played a game, so the host page leaves 開始前播放玩法說明 unchecked (eng D5). */
   | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true }
@@ -230,6 +252,8 @@ export type ServerMessage =
       bossPhaseInfo?: { name: string; rule: string };
       /** The bank cooks its monsters (hasCuisine): scores read 飽足感 instead of 獎勵分. Absent from older servers. */
       cuisine?: true;
+      /** The host's last ▶ ⏸ ⟲ for the video on screen. Only for that video's question; treat anything else as paused. */
+      media?: MediaCommand;
     }
   | { type: "GAME_OVER"; winners: string[] }
   /** Exactly one per event (1-3 segments, played in order). Clients keep the highest eventId they
@@ -434,6 +458,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);
       return teamId === null || questionId === null ? null : { type: "HOST_REVEAL", teamId, questionId };
+    }
+    case "HOST_MEDIA": {
+      const questionId = str(m.questionId, MAX_ID);
+      const action = MEDIA_ACTIONS.find((a) => a === m.action);
+      return questionId === null || !action ? null : { type: "HOST_MEDIA", questionId, action };
     }
     case "HOST_END_GAME":
       return { type: "HOST_END_GAME" };
