@@ -2,7 +2,7 @@
 
 > Note (2026-11-05, v0.29.0.1): the `npm run e2e` / `npx playwright test` steps in this plan now run only in GitHub CI. Do not run them locally (see CLAUDE.md, Testing).
 
-狀態：eng review 完成（2026-10-31），已在 `feat/monster-cuisine` 實作（T1–T5）。來源：TODOS.md「地城料理風格 1：怪物變食材，打倒後端上一道菜」。
+狀態：eng review 完成（2026-10-31），已在 `feat/monster-cuisine` 實作（T1–T5）。煮菜動畫見「煮菜動畫（v0.39）」一節。來源：TODOS.md「地城料理風格 1：怪物變食材，打倒後端上一道菜」。
 
 ## 問題
 
@@ -321,6 +321,24 @@ REALITY: pr-count pass 一個 PR，沒有 ship-policy pr_count docs/designs/mons
 - Outside voice: codex (gpt-6-luna), completed, 1 finding (D5)
 - Parallelization: 1 lane, 0 parallel / 1 sequential
 - Lake Score: 4/5（D1、D4、D5 選了 10/10，D3 選了 6/10；D2 不計分）
+
+## 煮菜動畫（v0.39，2026-11-07）
+
+TODOS.md「答對後切回怪物畫面，用動畫把怪物做成料理」。/plan-eng-review 和 /plan-design-review 都在 2026-11-07 做完，決定（R1–R8、I1–I11）的完整紀錄在本機的 review 檔（`~/.gstack/projects/critical-answer/`，只在本機）。這裡記結論：
+
+- **R1、I6 煮哪隻：** 煮剛打倒的那隻。揭曉時下一題已經發好，所以 `AnswerReveal.dish` 帶著 `monster`（名字、圖、色調）、`room`（首領是 `null`）和 `teamId`。揭曉期間大螢幕台上站的是這隻怪物和牠的房間背景，左上角寫「🍲 {吃到的隊伍}」，按下一題才換回下一隊。
+- **R4、R5 順序：** 先照常揭曉正解（可能有影片），主持人按「🍲 上菜」（`HOST_SERVE`，同一個按鈕位置，鍵盤 `1`）後才收起面板開始煮。上菜會先暫停影片。
+- **R7、I8 動畫：** 0–0.4 秒怪物站在台上（自己的名牌），0.4–1.2 秒換成鍋子（泡泡兩格交替，「咕嘟咕嘟」），1.2–1.6 秒一團煙（「砰！」），1.6 秒起是料理圖加菜卡。每一步都是硬切，不滑動（DESIGN.md）。
+- **R6、I11 料理圖：** 每種怪物圖一道料理（`lib/sprite-kind.ts` 的 `DISH_SPRITE`），顏色用怪物的色調。表的型別是 `Record<MonsterSprite, SpriteKind>`，以後加第 7 種怪物圖時沒畫料理會過不了 tsc。自訂題庫的菜名可能跟圖對不上，這個風險接受了。
+- **I1、I4 旁白：** 揭曉的旁白不說菜名（事件只帶 `cooked: true`，句子說飽足感）。上菜時大螢幕打字並念「上菜！」，料理出來時念「今晚的菜：{菜名}！{隊伍}吃下 {分數} 飽足感。」。這兩句是大螢幕自己的固定句，不經過伺服器。
+- **I2 下一題：** 伺服器記 `servedAt`，上菜前或上菜後 `SERVE_HOLD_MS`（2.6 秒）內的 `HOST_NEXT` 都不理。主持人鈕依序是「🍲 上菜」→「🍲 上菜中…」（不能按）→「下一題」。重複按、第二台主持人裝置、舊分頁都跳不過煮菜。
+- **I3 重連：** 只有親眼看到「還沒上菜 → 上菜」的大螢幕會播動畫；開頁、重新整理、減少動態效果都直接顯示料理。
+- **I9 音效：** 新的 `cook` 音效（兩聲冒泡、一聲砰，1.6 秒內結束），跟其他音效一樣只在音樂開著時播。
+- **I10 手機：** 上菜 1.6 秒後，手機的正解下面多一行「🍲 今晚的菜：{菜名}」。
+- **R8、I4、I5 結束畫面：** 打倒首領時沒有上菜鈕（沒有影片），自動在中央煮首領，大菜停約 3 秒，4.6 秒（`FINISH_PODIUM_MS`）才出現「X奪得榜首！」、頒獎台、左邊的正解和菜名、尾聲。尾聲先到也會等到頒獎台才顯示和念出來。手機在那之前顯示「冒險結束！看大螢幕 📺」。只在親眼看到擊倒的畫面播；之後才打開的畫面直接看頒獎台。
+- **I7 菜卡：** 卡片不寫哪一隊吃到，隊名在左上角和旁白裡。
+
+另開的 TODO：題庫編輯器裡打怪物名字，由 AI 產生怪物和料理的像素圖（D23、D24，TODOS.md P1）。
 
 ## GSTACK REVIEW REPORT
 

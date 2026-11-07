@@ -347,9 +347,9 @@ describe("a boss phase out of questions (review finding, 2026-10-28)", () => {
 });
 
 describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
-  it("asks for the dish on a cooked monster and a feast in the epilogue", () => {
-    expect(buildPrompt({ type: "correct", team: "紅隊", monster: "史萊姆", points: 10, dish: "史萊姆寒天" }, "", []).user).toContain("「史萊姆寒天」");
-    expect(buildPrompt({ type: "boss-kill", team: "紅隊", monster: "小黑龍", bonus: 18, dish: "龍息烤龍尾" }, "", []).user).toContain("「龍息烤龍尾」");
+  it("keeps the dish name out of a cooked monster's line (cooking I1) and asks for a feast in the epilogue", () => {
+    expect(buildPrompt({ type: "correct", team: "紅隊", monster: "史萊姆", points: 10, cooked: true }, "", []).user).toContain("不要說會煮成什麼");
+    expect(buildPrompt({ type: "boss-kill", team: "紅隊", monster: "小黑龍", bonus: 18, cooked: true }, "", []).user).toContain("不要說會煮成什麼");
     const feast = buildPrompt({ type: "epilogue", ranking: [{ name: "紅隊", score: 30, dishes: ["湯"] }], winners: ["紅隊"] }, "", []);
     expect(`${feast.system}${feast.user}`).toContain("飽足感");
     expect(`${feast.system}${feast.user}`).toContain("大餐");

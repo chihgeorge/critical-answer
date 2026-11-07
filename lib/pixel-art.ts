@@ -118,6 +118,14 @@ export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   door: [20, 26],
   cloud: [18, 10],
   zz: [9, 9],
+  pot: [40, 34],
+  smoke: [40, 30],
+  "dish-jelly": [34, 24],
+  "dish-stew": [34, 26],
+  "dish-tower": [34, 32],
+  "dish-ice": [26, 32],
+  "dish-riceball": [36, 24],
+  "dish-skewer": [42, 22],
 };
 
 /** Body colors: face, shade, highlight. The newer monsters bake in their own instead of relying on
@@ -508,6 +516,155 @@ function campfire(cv: HTMLCanvasElement, frame: number) {
   P.flush();
 }
 
+/* ---------- cooking (docs/designs/monster-cuisine.md, cooking R7) ---------- */
+
+const PLATE = "#fff4dc";
+const PLATE_DARK = "#d8c8a8";
+const STEAM = "#ffffff";
+
+/** The pot over the fire. `frame` 0/1 moves the bubbles, so the screen flicks between two canvases (DESIGN.md: steps(2)). */
+function pot(cv: HTMLCanvasElement, frame: number) {
+  const P = new Px(cv, 40, 34);
+  // The broth on top, then the iron body, the rim and the two handles.
+  P.ell(20, 9, 15, 4, "#ffb84d");
+  P.ellIn(20, 9, 12, 2.5, "#ffd98a");
+  P.rect(5, 10, 30, 14, "#4a4660");
+  P.ell(20, 23, 15, 4, "#4a4660");
+  P.rect(5, 10, 30, 3, "#6a6688");
+  P.rect(1, 13, 4, 3, "#4a4660");
+  P.rect(35, 13, 4, 3, "#4a4660");
+  P.shade(20, 18, 15, 9, "#35324a", 2, 1);
+  P.outline(K);
+  const bubbles = frame % 2 === 0 ? [[11, 6], [24, 7], [17, 2]] : [[14, 7], [27, 4], [20, 1]];
+  for (const [x, y] of bubbles) {
+    P.rect(x, y, 3, 3, "#fff6c0");
+    P.set(x, y, "#fff");
+    P.set(x + 2, y + 2, "#ffb84d");
+  }
+  // The fire under it: two flame frames, like the torch.
+  const flames =
+    frame % 2 === 0
+      ? ["..y.....y.....y...", ".yoy...yoy...yoy..", "yoOoy.yoOoy.yoOoy.", "oOOOooOOOooOOOoo.."]
+      : ["....y.....y.....y.", "...yoy...yoy...yoy", "..yoOoy.yoOoy.yoOo", "..oOOOooOOOooOOOoo"];
+  P.grid(flames, TORCH_PAL, 11, 28);
+  P.flush();
+}
+
+/** The puff of smoke between the pot and the dish. */
+function smoke(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 40, 30);
+  P.ell(12, 18, 9, 8, "#e9e4f4");
+  P.ell(27, 17, 10, 9, "#e9e4f4");
+  P.ell(19, 10, 9, 8, "#f8f6ff");
+  P.ell(20, 22, 12, 6, "#d8d0ea");
+  P.ellIn(16, 8, 4, 3, "#ffffff");
+  P.outline(K);
+  P.flush();
+}
+
+/** A plate under a dish, `y` its top row. */
+function plate(P: Px, y: number, w: number) {
+  const cx = P.w / 2;
+  P.ell(cx, y + 2, w / 2, 2.5, PLATE);
+  P.ellIn(cx, y + 3, w / 2, 1.2, PLATE_DARK);
+}
+
+/** Two wisps of steam over a hot dish. */
+function steam(P: Px, xs: number[], y: number) {
+  for (const x of xs) P.grid(["s.", ".s", "s.", ".s"], { s: STEAM }, x, y);
+}
+
+/** 史萊姆 → a wobbly green jelly on a plate. */
+function dishJelly(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 34, 24);
+  plate(P, 18, 32);
+  P.ell(17, 15, 12, 9, GREEN_SLIME.body);
+  P.cut((_x, y) => y > 18);
+  P.shade(17, 15, 12, 9, GREEN_SLIME.dark, 2, 2);
+  P.ellIn(13, 9, 5, 3, GREEN_SLIME.light);
+  P.outline(K);
+  P.rect(11, 8, 2, 1, "#fff");
+  P.set(11, 9, "#fff");
+  P.flush();
+}
+
+/** 迷途史萊姆 → a hot bowl of blue stew. */
+function dishStew(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 34, 26);
+  P.rect(3, 13, 28, 4, "#f4ecff");
+  P.ell(17, 17, 14, 7, "#f4ecff");
+  P.cut((_x, y) => y > 23);
+  P.shade(17, 17, 14, 7, "#cdbdf0", 2, 1);
+  // The soup sits in the bowl's mouth, drawn last so the bowl doesn't cover it.
+  P.ell(17, 12, 14, 3.5, BLUE_SLIME.body);
+  P.ellIn(15, 11, 8, 1.5, BLUE_SLIME.light);
+  P.outline(K);
+  P.set(12, 11, "#8f74e8");
+  P.set(20, 12, "#ffb84d");
+  steam(P, [11, 17, 23], 3);
+  P.flush();
+}
+
+/** 史萊姆王 → a tall purple jelly tower, crowned with a gold cherry. */
+function dishTower(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 34, 32);
+  plate(P, 26, 32);
+  P.rect(7, 18, 20, 9, PURPLE_SLIME.body);
+  P.rect(9, 10, 16, 9, PURPLE_SLIME.body);
+  P.rect(11, 4, 12, 7, PURPLE_SLIME.body);
+  P.rect(24, 18, 3, 9, PURPLE_SLIME.dark);
+  P.rect(22, 10, 3, 9, PURPLE_SLIME.dark);
+  P.rect(20, 4, 3, 7, PURPLE_SLIME.dark);
+  P.rect(12, 5, 2, 4, PURPLE_SLIME.light);
+  P.ell(17, 3, 2.5, 2.5, "#ffcf4a");
+  P.outline(K);
+  P.set(16, 2, "#fff6b0");
+  P.flush();
+}
+
+/** 幽靈 → shaved ice in a glass, a ghost-white heap with a little syrup. */
+function dishIce(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 26, 32);
+  P.ell(13, 10, 10, 8, "#f4ecff");
+  P.cut((_x, y) => y > 14);
+  P.ellIn(10, 6, 4, 3, "#ffffff");
+  P.ellIn(16, 11, 5, 3, "#ff9db8");
+  P.grid(["gggggggggggggggggg", ".gggggggggggggggg.", "..gggggggggggggg..", "...gggggggggggg...", "....gggggggggg....", ".....gggggggg.....", "......gggggg......", ".......gggg.......", "........gg........", "........gg........", "........gg........", "......gggggg......", "....gggggggggg...."], { g: "#b8e4ff" }, 4, 15);
+  P.outline(K);
+  P.rect(7, 16, 2, 4, "#ffffff");
+  P.flush();
+}
+
+/** 哭哭幽靈 → two grilled rice balls with a sprinkle of tear salt. */
+function dishRiceball(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 36, 24);
+  plate(P, 18, 34);
+  for (const cx of [11, 25]) {
+    P.ell(cx, 12, 8, 7, "#fff8ec");
+    P.rect(cx - 7, 12, 14, 7, "#fff8ec");
+    P.rect(cx - 4, 13, 8, 6, "#3a3a4a");
+    P.ellIn(cx, 8, 3, 2, "#f0d8a8");
+  }
+  P.outline(K);
+  for (const [x, y] of [[8, 6], [13, 9], [23, 7], [28, 9]]) P.set(x, y, "#8fd4ff");
+  P.flush();
+}
+
+/** 小黑龍 → roasted dragon-tail skewer, charred purple chunks on a stick. */
+function dishSkewer(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 42, 22);
+  P.rect(1, 12, 40, 2, "#b07a4f");
+  for (const x of [5, 15, 25]) {
+    P.rect(x, 6, 9, 13, "#7b5cd6");
+    P.rect(x, 6, 9, 3, "#9a80e8");
+    P.rect(x + 6, 9, 3, 10, "#5a3fb0");
+  }
+  P.outline(K);
+  for (const x of [7, 17, 27]) P.rect(x, 13, 3, 1, "#3a2a5a");
+  steam(P, [10, 20, 30], 0);
+  P.flush();
+}
+
 const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: boolean) => void> = {
   slime: (cv, _v, b) => slime(cv, b),
   "slime-lost": (cv, _v, b) => slimeLost(cv, b),
@@ -524,6 +681,14 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   door: (cv) => door(cv),
   cloud: (cv) => cloud(cv),
   zz: (cv) => zz(cv),
+  pot: (cv, v) => pot(cv, v),
+  smoke: (cv) => smoke(cv),
+  "dish-jelly": (cv) => dishJelly(cv),
+  "dish-stew": (cv) => dishStew(cv),
+  "dish-tower": (cv) => dishTower(cv),
+  "dish-ice": (cv) => dishIce(cv),
+  "dish-riceball": (cv) => dishRiceball(cv),
+  "dish-skewer": (cv) => dishSkewer(cv),
 };
 
 /**

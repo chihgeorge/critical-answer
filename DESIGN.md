@@ -43,7 +43,8 @@ Sprites are drawn in `lib/pixel-art.ts`. Scale them by whole numbers only, so pi
 
 - Big screen (`/screen`): a fixed **960×540** stage (every approved mockup is this size), scaled with `transform: scale()` and letterboxed outside 16:9. 1920×1080 is exactly 2x and 4K exactly 4x, so pixels stay square. (An earlier note said 1920×1080; decision 6A was revised on 2026-09-20.)
 - Judge buttons live in the thumb zone. `PixelButton.ok` is 78px tall.
-- Motion is two-frame `steps()` only. `prefers-reduced-motion` stops blinking, typing, hopping and cloud drift. One exception: when a map pawn changes room, the room it lands in keeps its single `--turn2` outline flash, so no team moves unseen (live map D13).
+- Motion is two-frame `steps()` only. `prefers-reduced-motion` stops blinking, typing, hopping and cloud drift. One exception: when a map pawn changes room, the room it lands in keeps its single `--turn2` outline flash, so no team moves unseen (live map D13). The cooking after 🍲 上菜 is hard cuts between frames (monster, pot, smoke, dish), never a slide; the pot's bubbles flick between two canvases like the torches (`docs/designs/monster-cuisine.md`, cooking I8). Reduced motion shows the dish at once.
+- After a boss kill seen live, the end screen holds the winner, the podium and the epilogue for about 4.6 s while the boss cooks (cooking R8). A screen opened on the end screen shows the podium at once.
 - A question's answer is never shown while it's still in play (the host judges by ear). One exception:
   a mage's fill-in hint, or a passed persuasion check's, shows the answer's first letter or number on every screen (`MageHint`, issue #106 D4). Once a
   team answers CORRECTLY, the answer (and optional explanation media) is shown to `/screen` and `/play`

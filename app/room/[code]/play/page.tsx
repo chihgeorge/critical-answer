@@ -15,6 +15,7 @@ import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
+import { useCookStep, useFinaleStep } from "@/components/cooking";
 import { McOption } from "@/components/mc-option";
 import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
@@ -399,6 +400,18 @@ function HandoffForm({ send }: { send: (m: ClientMessage) => void }) {
   );
 }
 
+/** The phone's end card. After a boss kill seen live it waits with the big screen's cooking (cooking I5), so no phone
+ * names the winner before the podium does. */
+function FinishedPanel({ won, finale, onPodium }: { won: boolean; finale: boolean; onPodium: () => void }) {
+  const step = useFinaleStep(finale, undefined, undefined, onPodium);
+  return (
+    <Panel tone="lav" className="px-4 py-5 text-center">
+      <div className="text-[26px]">遊戲結束！</div>
+      <div className="mt-2 text-[18px]">{step !== 4 ? "冒險結束！看大螢幕 📺" : won ? "🏆 你們獲勝了！" : "感謝參與！"}</div>
+    </Panel>
+  );
+}
+
 export default function PlayPage() {
   const { code } = useParams<{ code: string }>();
   const searchParams = useSearchParams();
@@ -420,6 +433,9 @@ export default function PlayPage() {
   const [game, setGame] = useState<StateMessage | null>(null);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
+  /** A boss kill seen live (cooking I5): the end card and the epilogue wait for the big screen's podium. */
+  const [finale, setFinale] = useState(false);
+  const [podium, setPodium] = useState(true);
 
 
   /** A network drop (not a rest): the room skips an offline team's turn, so the team should know
@@ -488,6 +504,8 @@ export default function PlayPage() {
           setNarration(null);
           setEpilogue(null);
           setRevealedText(undefined);
+          setFinale(false);
+          setPodium(true);
           seen.current.clear();
           lastGame.current = null;
           drop.current = null;
@@ -495,6 +513,11 @@ export default function PlayPage() {
         case "STATE": {
           { const line = msg.question && questionLine(msg.question); if (line) seen.current.set(msg.question!.id, line); }
           setRevealedText(msg.reveal ? seen.current.get(msg.reveal.questionId) : undefined);
+          // A boss kill seen live: the winner waits for the big screen's cooking (cooking I5).
+          if (msg.phase === "finished" && lastGame.current?.phase === "playing" && msg.reveal?.dish) {
+            setFinale(true);
+            setPodium(false);
+          }
           setGame(msg);
           if (msg.view.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           lastGame.current = msg;
@@ -521,6 +544,8 @@ export default function PlayPage() {
   /** The last correct answer, shown in place of the next question until the host presses 下一題
    * (HOST_NEXT, D7 — docs/designs/question-media-content.md). */
   const revealed = game?.reveal ?? null;
+  // The dish line waits for the big screen's cooking (cooking I10); a phone opened after it shows it at once.
+  const cookStep = useCookStep(revealed?.dish && revealed.served ? `${game!.eventId}` : null);
   const roster = game?.view.teams ?? lobby ?? [];
   const myIndex = Math.max(0, roster.findIndex((t) => t.id === teamId));
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
@@ -738,15 +763,11 @@ export default function PlayPage() {
               // other media render site in this diff carries (adversarial review finding, /ship).
               <QuestionMedia key={revealed.questionId} content={revealed.explanation} label="詳解" maxWidth={260} maxHeight={180} />
             )}
+            {cookStep === 3 && revealed.dish && <div data-testid="phone-dish" className="text-[18px]">🍲 今晚的菜：{revealed.dish.name}</div>}
           </Panel>
         )}
 
-        {finished && game && (
-          <Panel tone="lav" className="px-4 py-5 text-center">
-            <div className="text-[26px]">遊戲結束！</div>
-            <div className="mt-2 text-[18px]">{game.winners.includes(teamId) ? "🏆 你們獲勝了！" : "感謝參與！"}</div>
-          </Panel>
-        )}
+        {finished && game && <FinishedPanel won={game.winners.includes(teamId)} finale={finale} onPodium={() => setPodium(true)} />}
 
         <div className="mt-auto">
           <DialogueBox
@@ -755,7 +776,7 @@ export default function PlayPage() {
             loading={!!game && !finished && intro === null && isPending(game.eventId, narration)}
             lines={
               finished
-                ? epilogue
+                ? epilogue && podium
                   ? [epilogue]
                   : narration
                     ? narration.lines

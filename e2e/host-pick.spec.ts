@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, startGame } from "./answer";
+import { textOnlyBank, startGame, nextQuestion } from "./answer";
 
 // Judged by hand with 答對！, which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -44,7 +44,7 @@ test("the host picks a team's next question and it comes up after the team's cor
   await expect(host.getByRole("button", { name: "答對！" })).toBeEnabled();
 
   await host.getByRole("button", { name: "答對！" }).click();
-  await host.getByRole("button", { name: "下一題", exact: true }).click();
+  await nextQuestion(host);
   await expect(host.getByText(label, { exact: true })).toBeVisible();
   await expect(host.getByTestId("queued-pick")).toHaveCount(0);
 });

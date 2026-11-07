@@ -50,6 +50,13 @@ function makeRoom(storage: RoomStorage, opts: ConstructorParameters<typeof Dunge
 }
 
 const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+/** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
+function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
+  send(room, conn, { type: "HOST_SERVE", eventId });
+  (room as unknown as { servedAt: number }).servedAt = -Infinity;
+  send(room, conn, { type: "HOST_NEXT", eventId });
+}
+
 const sent = (conn: { send: ReturnType<typeof vi.fn> }) => conn.send.mock.calls.map((c) => JSON.parse(c[0] as string));
 const lastOf = (conn: { send: ReturnType<typeof vi.fn> }, type: string) => sent(conn).findLast((m) => m.type === type);
 
@@ -439,12 +446,12 @@ describe("restoring after a restart", () => {
     if (t0 === T1) rejoin(second.room, T1, TEAM_KEY, "a3");
     else rejoin(second.room, T2, TEAM_KEY + "2", "b3");
     // The turn passed it while its phone was away: it wins when the turn order reaches it again.
-    send(second.room, host, { type: "HOST_NEXT", eventId: (second.room as any).eventSeq });
+    serveNext(second.room, host, (second.room as any).eventSeq);
     send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
     judgeCorrect(second.room, host, other);
     // The turn now reaches the crit team, but the win waits for the answer reveal to close (nobody plays under it).
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
-    send(second.room, host, { type: "HOST_NEXT", eventId: (second.room as any).eventSeq });
+    serveNext(second.room, host, (second.room as any).eventSeq);
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
   });
 

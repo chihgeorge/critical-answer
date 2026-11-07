@@ -32,7 +32,7 @@ export const HOST_KEYS = {
   plain: { correct: "1", retry: "2", flee: "3" },
   before: { correct: "1", wrong: "2" },
   wait: { pray: "2", retry: "3", flee: "4" },
-  /** 下一題 while the answer is on show (Enter works too). */
+  /** 下一題 (🍲 上菜 first on a dish reveal) while the answer is on show (Enter works too). */
   next: "1",
   /** 公布答案 while a team's lock waits for the host (host-reveal.md D6). */
   reveal: "1",

@@ -12,7 +12,7 @@ import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from
 import type { AnswerReveal, LobbyTeams, MediaCommand, PendingRoll, PublicMediaContent, PublicQuestion, StateMessage } from "@/lib/protocol";
 import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
-import { describeTurn } from "@/lib/turn-info";
+import { describeTurn, monsterLook, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
@@ -27,6 +27,7 @@ import { KillRollOverlay, RollOverlay } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
+import { CookFrame, dishLine, DishServed, useCookStep, useFinaleStep } from "@/components/cooking";
 import { readStored, writeStored } from "@/lib/stored";
 
 const TTS_ENABLED_STORAGE = "screen-tts-enabled";
@@ -185,14 +186,28 @@ type YoutubeContent = Extract<PublicMediaContent, { kind: "youtube" }>;
 /** A chip that stands in the side column beside a video (D14), at the same 20px as the hints. */
 const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4px solid var(--k)", whiteSpace: "normal", borderRadius: 12 } as const;
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void }) {
-  const { team: turn, teamIndex: turnIdx, inBoss, bossScene, monster, theme, bossHits: hits } = describeTurn(view, question, phaseCard?.monster);
+function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, say }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; say: (lines: string[]) => void }) {
+  const turnInfo = describeTurn(view, question, phaseCard?.monster);
+  const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
+  // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
+  // already dealt, so describeTurn would show the next team's monster.
+  const dish = reveal?.dish;
+  const eaterIdx = dish ? view.teams.findIndex((t) => t.id === dish.teamId) : -1;
+  const eater = view.teams[eaterIdx];
+  const bossScene = dish ? dish.room === null : turnInfo.bossScene;
+  const monster = dish ? monsterLook(dish.monster) : turnInfo.monster;
+  const theme = dish ? roomTheme(dish.room) : turnInfo.theme;
+  const line = dish && eater ? dishLine(dish, eater.name, false) : "";
+  const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => say([line]));
+  const served = cook !== null;
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
   const card = phaseCard && bossPhaseInfo;
   const wrong = view.pendingWrong ?? null;
   const nameOf = (id?: string) => view.teams.find((t) => t.id === id)?.name ?? "";
   // During a correct reveal the tiles are the answered question's (the next one is already dealt).
-  const wall = reveal?.choice
+  const wall = served
+    ? null
+    : reveal?.choice
     ? { options: reveal.choice.options, correct: reveal.choice.correctIndex, team: nameOf(reveal.choice.teamId), gone: [] as number[], magic: [] as number[] }
     : !reveal && question?.options && question.options.length <= TILE_SPOTS.length
       ? { options: question.options, correct: null, team: nameOf(pendingLock?.teamId ?? wrong?.teamId), gone: view.eliminated?.[question.id] ?? [], magic: view.mageRemoved?.[question.id] ?? [] }
@@ -249,7 +264,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
       )}
     </>
   );
-  const lone = !!reveal && reveal.explanation?.kind !== "text" && !reveal.dish;
+  const lone = !!reveal && reveal.explanation?.kind !== "text";
   const mediaExplanation = reveal?.explanation && reveal.explanation.kind !== "text" ? reveal.explanation : null;
 
   return (
@@ -261,10 +276,21 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
       {wall && <WallOptions options={wall.options} gone={wall.gone} magic={wall.magic} lock={pendingLock} wrong={wrong} correct={wall.correct} teamName={wall.team} />}
 
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
-        {turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={420 /* a 20-character name must leave the map its width (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>}
+        {dish && eater ? (
+          <TurnRibbon color={look(eaterIdx).hat} maxWidth={420}>🍲 {eater.name}</TurnRibbon>
+        ) : (
+          turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={420 /* a 20-character name must leave the map its width (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>
+        )}
         <MapStrip view={view} />
       </div>
 
+      {/* 上菜 puts the panel away (cooking R4): the stage is the monster's, then the dish's. */}
+      {cook === 3 && dish && (
+        <div className="absolute" style={{ left: 0, right: 0, top: 110, zIndex: 5 }}>
+          <DishServed dish={dish} />
+        </div>
+      )}
+      {!served && (
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <LabelChip>{card ? "還沒結束！" : reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
@@ -286,14 +312,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
             {/* With the video up, its text explanation and dish stand beside it instead. */}
             {!video && reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
             {mediaExplanation && (
-              // A video explanation is at least 356×200 (YouTube's minimum, D11); a dish stands beside it (D18).
-              <div className="flex items-center justify-center gap-3">
-                {/* key tied to questionId: a 404'd explanation image must not stay hidden on later reveals. */}
-                <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="block" />
-                {reveal.dish && <DishCard dish={reveal.dish} compact />}
-              </div>
+              // A video explanation is at least 356×200 (YouTube's minimum, D11). The dish waits for 上菜 (cooking R4).
+              // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
+              <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="mx-auto block" />
             )}
-            {!mediaExplanation && !video && reveal.dish && <DishCard dish={reveal.dish} />}
           </div>
         ) : question ? (
           question.content.kind === "text" ? question.content.value : <div style={{ fontSize: 26 }}>{question.prompt ?? ""}</div>
@@ -316,10 +338,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
             {!lone && (
             <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
               {reveal ? (
-                <>
-                  {reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
-                  {reveal.dish && <DishCard dish={reveal.dish} compact />}
-                </>
+                reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>
               ) : (
                 beside
               )}
@@ -349,6 +368,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
           </div>
         )}
       </Panel>
+      )}
 
       {/* D17=A: a thief's armed Sneak Attack hangs over the monster until its answer is judged. */}
       {sneakChip && !asking && (
@@ -361,12 +381,16 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
           🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）{awaitingCheck && `　${turn!.name}：按手機上的「擲骰說服」`}
         </div>
       )}
-      <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
+      {/* The floor shadow goes with the monster once its dish is up. */}
+      {cook !== 3 && <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />}
+      {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : cook !== 3 && (
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         <div key={card ? `card-${eventId}` : undefined} className={card ? "px-phase-blink" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}>
           <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} />
         </div>
       </div>
+      )}
+      {(cook === null || cook === 0) && (
       <Nameplate className="absolute" style={{ left: "50%", bottom: 112, transform: "translateX(-50%)", zIndex: 5, color: bossScene ? "#b02a3a" : undefined }}>
         <span>{monster.name}</span>
         {bossScene && (
@@ -384,13 +408,14 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
           </span>
         )}
       </Nameplate>
+      )}
 
       <DialogueBox
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         accent={bossScene ? "var(--danger)" : undefined}
-        loading={!held && isPending(eventId, narration)}
-        lines={held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
+        loading={!served && !held && isPending(eventId, narration)}
+        lines={cook === 3 ? [line] : served ? ["上菜！"] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
       />
       {pendingRoll?.kind === "kill" && pendingRoll.values ? (
         <KillRollOverlay key={`kill-${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} values={pendingRoll.values} value={pendingRoll.value} />
@@ -401,23 +426,6 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
   );
 }
 
-/** The defeated monster, cooked (docs/designs/monster-cuisine.md, approved mockup A): a small card under the answer. */
-function DishCard({ dish, compact = false }: { dish: NonNullable<AnswerReveal["dish"]>; compact?: boolean }) {
-  // compact: beside a reveal's video, where the full card would push past the dialogue box (D18).
-  return (
-    <Panel tone="lav" className={compact ? "px-3 pt-2 pb-[10px] text-center" : "mx-auto mt-2 px-[18px] pt-3 pb-[14px]"} style={{ maxWidth: compact ? 270 : 620 }}>
-      <div data-testid="dish-card">
-        <div className={compact ? "text-[24px] leading-[1.25]" : "text-[30px]"}>🍲 今晚的菜：{compact && <br />}{dish.name}</div>
-        <div className={compact ? "text-[16px]" : "text-[20px]"} style={{ color: "#6a4d74" }}>{dish.part}・{dish.method}</div>
-        <div className={compact ? "text-[18px]" : "text-[22px]"}>「{dish.comment}」</div>
-        <div className={compact ? "mt-1 text-[20px]" : "mt-1 text-[22px]"} style={{ color: "var(--ok2)" }}>
-          <span className="px-num">+{dish.points}</span> 飽足感
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
 const PODIUM = [
   { place: 2, bg: "#c9c9d6", h: 108, hero: 5 },
   { place: 1, bg: "#ffcf4a", h: 136, hero: 6 },
@@ -425,7 +433,12 @@ const PODIUM = [
 ];
 const CONFETTI = ["#ff6b6b", "#ffcf4a", "#6fd36a", "#6ab4ff", "#ff9db8", "#fff"];
 
-function Finished({ view, winners, reveal, narration, epilogue, cuisine }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; narration: NarrationState; epilogue: string | null; cuisine?: true }) {
+function Finished({ view, winners, reveal, narration, epilogue, cuisine, finale, say, onCook, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; narration: NarrationState; epilogue: string | null; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onCook: () => void; onPodium: () => void }) {
+  const dish = reveal?.dish;
+  const line = dish ? dishLine(dish, "", true) : "";
+  // The boss cooks first and the winner waits (cooking R8, I4): only a kill this screen saw live plays it.
+  const step = useFinaleStep(finale && !!dish, onCook, () => say([line]), onPodium);
+  const podium = step === 4;
   const ranked = view.teams.map((t, i) => ({ ...t, i })).sort((a, b) => b.reward - a.reward).slice(0, 3);
   const names = winners.map((id) => view.teams.find((t) => t.id === id)?.name ?? id).join("、");
   // The winner is the reward total, not the kill (scoring-and-score-pools.md S7), so the kill gets its own line.
@@ -433,20 +446,33 @@ function Finished({ view, winners, reveal, narration, epilogue, cuisine }: { vie
   return (
     <>
       <SceneBackground theme="moss" arch={false} />
-      {Array.from({ length: 26 }, (_, i) => (
+      {podium && Array.from({ length: 26 }, (_, i) => (
         <i key={i} className="px-confetti" style={{ left: 20 + ((i * 37) % 920), background: CONFETTI[i % 6], animationDelay: `${-((i * 0.37) % 3.6)}s`, animationDuration: `${2.6 + ((i * 0.13) % 2)}s`, zIndex: 6 }} />
       ))}
       <div className="absolute inset-x-0 text-center" style={{ top: 20, zIndex: 6, fontSize: 54, color: "var(--warn)", textShadow: "4px 4px 0 var(--k), -3px -3px 0 var(--k), 3px -3px 0 var(--k), -3px 3px 0 var(--k), 0 6px 0 var(--k)" }}>
         <small className="mb-1 block text-[16px] text-white" style={{ letterSpacing: "0.4em", textShadow: "2px 2px 0 var(--k)" }}>
           冒　險　結　束
         </small>
-        {names}奪得榜首！
+        {podium && <>{names}奪得榜首！</>}
         {killer && <small data-testid="final-blow" className="mt-1 block text-[18px] text-white" style={{ textShadow: "2px 2px 0 var(--k)" }}>最後一擊：{killer}</small>}
       </div>
       {/* The winning answer: the last correct judgment ends the game, so its reveal lands here, not on
           <Playing>. The podium is centered and about 546px wide, which leaves the left margin free
           below the title — a banner up top would sit on the crown. */}
-      {reveal && (
+      {/* Before the podium the boss cooks centre stage, with hard cuts between frames (cooking I8). */}
+      {!podium && dish && (step === 1 || step === 2) && <CookFrame step={step} bottom={150} />}
+      {!podium && dish && step === 0 && (
+        <div className="absolute flex flex-col items-center" style={{ left: "50%", bottom: 140, transform: "translateX(-50%)", zIndex: 4 }}>
+          <Sprite kind={dish.monster.sprite} scale={monsterLook(dish.monster).scale} hue={(dish.monster.hue + PHASE_HUE_STEP * (view.bossPhase - 1)) % 360} />
+          <Nameplate className="mt-2" style={{ color: "#b02a3a" }}>{dish.monster.name}</Nameplate>
+        </div>
+      )}
+      {!podium && dish && step === 3 && (
+        <div className="absolute" style={{ left: 0, right: 0, top: 150, zIndex: 5 }}>
+          <DishServed dish={dish} title="今晚的大菜" />
+        </div>
+      )}
+      {podium && reveal && (
         <div data-testid="answer-reveal" className="absolute" style={{ left: 18, top: 160, width: 170, zIndex: 6 }}>
           <Panel tone="turn" className="px-3 py-2 text-[16px] leading-snug">
             最後一題正解：{reveal.answer}
@@ -454,6 +480,7 @@ function Finished({ view, winners, reveal, narration, epilogue, cuisine }: { vie
           </Panel>
         </div>
       )}
+      {podium && (
       <div className="absolute inset-x-0 flex items-end justify-center gap-12" style={{ bottom: 130, zIndex: 5 }}>
         {PODIUM.map((p) => {
           const t = ranked[p.place - 1];
@@ -471,12 +498,14 @@ function Finished({ view, winners, reveal, narration, epilogue, cuisine }: { vie
           );
         })}
       </div>
-      {/* Rankings show at once. The kill-shot line is read first, then the story arrives as one typewriter line. */}
+      )}
+      {/* Rankings show with the podium. The kill-shot line is read first, then the story arrives as one typewriter
+          line — after a live boss kill, only once the podium is up (cooking I4). */}
       <DialogueBox
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
-        loading={!epilogue && !narration}
-        lines={epilogue ? [epilogue] : (narration?.lines ?? [])}
+        loading={!(podium && epilogue) && !narration && step !== 3}
+        lines={step === 3 ? [line] : podium && epilogue ? [epilogue] : (narration?.lines ?? [])}
       />
     </>
   );
@@ -491,6 +520,18 @@ export default function ScreenPage() {
   const [disconnected, setDisconnected] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
+  /** The boss kill came in live, so the end screen cooks the boss before the podium (cooking R8). */
+  const [finale, setFinale] = useState(false);
+  /** The phase of the last STATE on this connection: playing → finished is a kill seen live. */
+  const lastPhase = useRef<StateMessage["phase"] | null>(null);
+  /** False while the finale holds the podium; an epilogue arriving then waits to be read (cooking I4). */
+  const podiumReady = useRef(true);
+  const heldEpilogue = useRef<string | null>(null);
+  function onPodium() {
+    podiumReady.current = true;
+    if (heldEpilogue.current) speak([heldEpilogue.current]);
+    heldEpilogue.current = null;
+  }
 
   // --- TTS (docs/designs/dm-voice-narration-tts.md) ---
   const [ttsOn, setTtsOn] = useState(false);
@@ -669,6 +710,7 @@ export default function ScreenPage() {
       setDisconnected(false);
       narrationBaseline.current = null;
       sfxSeen.current = null;
+      lastPhase.current = null;
     },
     onClose({ rested, openedBefore }) {
       if (!rested && openedBefore) setDisconnected(true);
@@ -680,6 +722,10 @@ export default function ScreenPage() {
           setGame(null);
           setNarration(null);
           setEpilogue(null);
+          setFinale(false);
+          lastPhase.current = null;
+          podiumReady.current = true;
+          heldEpilogue.current = null;
           // A room reset can arrive without a socket reconnect, and the next game's eventIds
           // start over from 0 — re-arm the baseline the same way onOpen does.
           narrationBaseline.current = null;
@@ -689,6 +735,11 @@ export default function ScreenPage() {
           break;
         case "STATE":
           setGame(msg);
+          if (msg.phase === "finished" && lastPhase.current === "playing" && msg.reveal?.dish) {
+            setFinale(true);
+            podiumReady.current = false;
+          }
+          lastPhase.current = msg.phase;
           // D11: each how-to-play page's owl line is spoken once, when the page comes up.
           if (msg.intro && msg.intro.page !== introSpoken.current) speak([INTRO_PAGE_TEXT[msg.intro.page - 1]?.owl ?? ""]);
           introSpoken.current = msg.intro?.page ?? null;
@@ -715,7 +766,9 @@ export default function ScreenPage() {
         case "EPILOGUE":
           setEpilogue(msg.text);
           // Speak the live broadcast, never onConnect's replay (the server marks it `replay: true`).
-          if (!msg.replay) speak([msg.text]);
+          if (msg.replay) break;
+          if (podiumReady.current) speak([msg.text]);
+          else heldEpilogue.current = msg.text;
           break;
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
@@ -735,8 +788,8 @@ export default function ScreenPage() {
             <HowToPlay page={game.intro.page} firstTeam={describeTurn(game.view, null).team?.name ?? ""} cuisine={!!game.cuisine} />
           </>
         )}
-        {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} />}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} cuisine={game.cuisine} />}
+        {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} say={speak} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
           {!game && !tapped && (

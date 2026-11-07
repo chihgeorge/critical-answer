@@ -91,7 +91,12 @@ function setup(
     const g = room.game!;
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
-    send({ type: "HOST_NEXT", eventId: (room as unknown as { eventSeq: number }).eventSeq });
+    {
+      const eventId = (room as unknown as { eventSeq: number }).eventSeq;
+      send({ type: "HOST_SERVE", eventId }); // 上菜 first (cooking I2), its hold skipped
+      (room as unknown as { servedAt: number }).servedAt = -Infinity;
+      send({ type: "HOST_NEXT", eventId });
+    }
     send({ type: "HOST_JUDGE", teamId, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
     await sleep(20);
   };

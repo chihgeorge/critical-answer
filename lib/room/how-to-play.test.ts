@@ -20,6 +20,13 @@ function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
 const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+/** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
+function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
+  send(room, conn, { type: "HOST_SERVE", eventId });
+  (room as unknown as { servedAt: number }).servedAt = -Infinity;
+  send(room, conn, { type: "HOST_NEXT", eventId });
+}
+
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -98,7 +105,7 @@ describe("how-to-play intro in the room", () => {
     g.start({ intro: true });
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: T1, questionId: g.room.game!.teams[0].currentQuestionId, correct: true, eventId: 0 });
     expect(msgs(g.host.send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
-    send(g.room, g.host, { type: "HOST_NEXT", eventId: 0 }); // 下一題 does not end the intro
+    serveNext(g.room, g.host, 0); // 下一題 does not end the intro
     expect(g.state().intro).toEqual({ page: 1 });
   });
 

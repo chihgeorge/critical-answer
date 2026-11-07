@@ -17,6 +17,13 @@ function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
 const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+/** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
+function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
+  send(room, conn, { type: "HOST_SERVE", eventId });
+  (room as unknown as { servedAt: number }).servedAt = -Infinity;
+  send(room, conn, { type: "HOST_NEXT", eventId });
+}
+
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
 function game(questions: object[]) {
@@ -87,7 +94,7 @@ describe("HOST_MEDIA", () => {
     g.media("play", id);
     expect(g.state().media.state).toBe("playing");
     // 下一題 closes the reveal: the answered question's command goes with it.
-    send(g.room, g.host, { type: "HOST_NEXT", eventId: g.state().eventId });
+    serveNext(g.room, g.host, g.state().eventId);
     expect(g.state().media).toBeUndefined();
   });
 

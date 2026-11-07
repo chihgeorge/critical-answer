@@ -67,4 +67,10 @@ export const SFX: Record<SoundCue, SfxNote[]> = {
   "check-pass": [n(0, 0.1, "E5", "triangle"), n(0.1, 0.2, "A5", "triangle")],
   // A persuasion check failed: one low note sliding down (not the sawtooth, that one is a wrong answer's).
   "check-fail": [{ at: 0, duration: 0.3, freq: noteToFreq("D4"), slideTo: noteToFreq("A3"), wave: "square" }],
+  // 上菜 (monster-cuisine.md cooking I9): two low bubbles while the pot boils, then the 砰 of the smoke, done by 1.6 s.
+  cook: [
+    { at: 0.4, duration: 0.12, freq: noteToFreq("C4"), slideTo: noteToFreq("G4"), wave: "triangle" },
+    { at: 0.8, duration: 0.12, freq: noteToFreq("D4"), slideTo: noteToFreq("A4"), wave: "triangle" },
+    { at: 1.2, duration: 0.3, freq: noteToFreq("C3"), slideTo: noteToFreq("C2"), wave: "square" },
+  ],
 };

@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
 import { asTextBank } from "../lib/text-bank";
+import { SERVE_HOLD_MS } from "../lib/protocol";
 
 const WORKER = "http://localhost:1996";
 const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
@@ -63,8 +64,18 @@ export async function revealLock(host: Page) {
   await reveal.click();
 }
 
+/** 下一題 on the host page. A cooked monster's reveal takes 🍲 上菜 first (docs/designs/monster-cuisine.md, cooking R5), and
+ * 下一題 then waits out the cooking (I2); click() waits for it to enable. */
+export async function nextQuestion(host: Page) {
+  const serve = host.getByRole("button", { name: "🍲 上菜", exact: true });
+  const next = host.getByRole("button", { name: "下一題", exact: true });
+  await expect(serve.or(next)).toBeVisible();
+  if (await serve.isVisible()) await serve.click();
+  await next.click({ timeout: 8000 });
+}
+
 /** What a raw host socket keeps from the room's STATE messages, enough to judge every turn. */
-export type HostState = { type: string; phase: string; eventId: number; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
+export type HostState = { type: string; phase: string; eventId: number; reveal?: { dish?: unknown; served?: true } | null; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
 
 /** Over a raw host socket, judges a one-team game correct turn after turn until it finishes (the boss kill, after its dice).
  * `onTurn` runs before each judge, e.g. to check the screen once the boss door opens. */
@@ -74,7 +85,12 @@ export async function judgeToTheEnd(host: WebSocket, cur: () => HostState, onTur
     await onTurn?.(t);
     const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
     const before = cur().eventId;
-    host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId })); // close the previous answer reveal (D7); no-op if none
+    // Close the previous answer reveal (D7); no-op if none. A cooked monster is served first, and 下一題 waits out its cooking.
+    if (cur().reveal?.dish && !cur().reveal?.served) {
+      host.send(JSON.stringify({ type: "HOST_SERVE", eventId: cur().eventId }));
+      await new Promise((r) => setTimeout(r, SERVE_HOLD_MS + 300));
+    }
+    host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId }));
     host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
     await expect.poll(() => cur().eventId, { timeout: JUDGE_LANDS_MS }).toBeGreaterThan(before);
   }

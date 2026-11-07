@@ -6,9 +6,10 @@ const sfxDuration = (notes: SfxNote[]) => Math.max(...notes.map((x) => x.at + x.
 
 describe("SFX", () => {
   it("every effect is short enough to finish before the narration gets going", () => {
-    for (const notes of Object.values(SFX)) {
+    for (const [cue, notes] of Object.entries(SFX)) {
       expect(notes.length).toBeGreaterThan(0);
-      expect(sfxDuration(notes)).toBeLessThanOrEqual(1.1);
+      // The cooking runs under the 1.6 s animation; its dish line is read only once the dish is up.
+      expect(sfxDuration(notes)).toBeLessThanOrEqual(cue === "cook" ? 1.6 : 1.1);
       for (const x of notes) {
         expect(x.freq).toBeGreaterThan(20);
         expect(x.duration).toBeGreaterThan(0);
