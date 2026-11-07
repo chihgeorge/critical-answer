@@ -1,3 +1,5 @@
+繁體中文 | [English](development.en.md)
+
 # 開發指南
 
 技術棧、指令、測試、版本，以及每個檔案在做什麼。
@@ -44,7 +46,7 @@ sh scripts/playtest.sh stop
 | `ANTHROPIC_API_KEY=... npm run test:live` | 用真的金鑰跑 LLM 旁白冒煙測試（會花幾分錢） |
 | `npm run e2e` | Playwright 端對端測試（自己開伺服器，用 3101 和 1996 埠；平常交給 GitHub CI 跑，本機太吃資源。CI 把測試分成兩組平行跑） |
 | `npm run check:bundle` | 建置後檢查題目與答案沒有進到瀏覽器 bundle |
-| `npm run check:docs` | 檢查 README、SECURITY.md 和 `docs/` 指南的相對連結與錨點 |
+| `npm run check:docs` | 檢查 README、SECURITY.md 和 `docs/` 指南的相對連結與錨點，以及中英文版有沒有配對 |
 | `npm run test:watch` | 監看模式測試 |
 | `npm run lint` | ESLint |
 | `npm run build` | 建置前端 |
@@ -52,6 +54,8 @@ sh scripts/playtest.sh stop
 ## 測試
 
 端對端測試（`npm run e2e`）只在 GitHub CI 跑：每個 PR 和每次 push 到 `main`，分兩組平行。本機太吃資源，不要在本機跑。`npm run check:bundle` 必跑，它會擋下答案漏進瀏覽器 bundle。`npm run check:docs` 檢查 README、SECURITY.md 和 `docs/` 第一層每份 `.md`（不含 `docs/designs/`）裡的相對連結和 `#` 錨點都還連得到。
+
+**雙語文件**：README、SECURITY.md 和 `docs/` 的指南（`going-public.md` 除外）都有英文版 `X.en.md`。改了一種語言，同一個 PR 就要改另一種。兩版第一行都是語言切換行，標題的數量和層級要一樣，英文版連到英文版。`npm run check:docs` 會擋下缺英文版、沒有中文版可配對的英文文件、切換行不對或標題層級不一致的文件，但不會檢查翻譯是不是最新的，也不會檢查英文版連的是不是英文版（`rules.en.md`，不是 `rules.md`）。
 
 > 專案根目錄有 `.env` 時，**測試伺服器預設會開 AI**。Playwright 端對端測試已經固定關掉它，不會呼叫真的 API。
 
@@ -88,7 +92,7 @@ worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable
 lib/room/                房間邏輯（dungeon-room.ts）與它需要的兩個小介面（io.ts），不依賴平台
 lib/gate.ts、origin.ts   Worker 入口規則
 e2e/                     Playwright 端對端測試
-scripts/                 playtest.sh（區網試玩）、check-bundle.sh、pregate-runner.sh（gstack pregate 的本機測試執行器，只跑單元測試；見 .gstack/pregate.json）、check-docs.ts（檢查 README 和 docs/ 指南的連結與錨點）
+scripts/                 playtest.sh（區網試玩）、check-bundle.sh、pregate-runner.sh（gstack pregate 的本機測試執行器，只跑單元測試；見 .gstack/pregate.json）、check-docs.ts（檢查 README 和 docs/ 指南的連結與錨點，以及中英文版配對）
 public/fonts/            內建字型
 DESIGN.md                像素設計系統
 docs/designs/            設計文件與決策紀錄（含 question-bank-editor.md）

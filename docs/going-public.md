@@ -32,7 +32,7 @@
 - ✅ **文件裡的本機路徑**：`docs/designs/` 的 `/Users/<使用者名稱>/...` 改成 `~/...`（這個 PR）。幾份設計文件引用的 gstack 檔名裡還有使用者名稱（例如 `<使用者名稱>-main-design-….md`），保留：名字本來就在 LICENSE 和 commit 作者裡。
 - ✅ **`wrangler.jsonc`**：R2 網址旁邊的舊註解還寫「這是佔位字」，改成說明 fork 要換成自己的 bucket 網址和 `ALLOWED_ORIGINS`。
 - ✅ **`TODOS.md`**：拿掉「本機檔案存有可用的 API token」這種不必要的細節。
-- ✅ **README**：玩法、快速開始、部署、題庫、專案結構、已知限制都有，外人看得懂。全中文，沒有另寫英文版。
+- ✅ **README**：玩法、快速開始、部署、題庫、專案結構、已知限制都有，外人看得懂。當時全中文；v0.35.2.0 起 README 縮成一頁，細節拆到 `docs/` 的 5 份指南，之後 README、SECURITY.md 和這 5 份指南都有英文版（`X.en.md`），第一行可以切換語言。
 - ✅ **`local-banks/`**（你自己寫的活動題）：被 `.gitignore` 擋住，從來沒進過歷史。
 - ✅ `docs/designs/img/` 的兩張 PNG 是首領階段的設計稿，沒有個資。
 - 🙋→✅ **`data/question-bank.json`（預設 84 題，含答案）**：決定照樣公開。辦活動用的是 `local-banks/` 和題庫編輯器存的題，預設題被看到沒關係。注意：歷史裡每一版的預設題都會公開，包括已刪掉的 `docs/question-bank-2026-taiwan.md`。

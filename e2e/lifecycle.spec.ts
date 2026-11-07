@@ -6,13 +6,17 @@ import { rmSync } from "node:fs";
 /**
  * A room that nobody uses stops costing money: after the idle time the real Durable Object closes every
  * connection (the game stays saved), and after the expiry time it forgets the room so the code can be used
- * again. Real alarms in workerd, with the two times cut from 2 hours / 24 hours to 2 / 6 seconds.
+ * again. Real alarms in workerd, with the two times cut from 2 hours / 24 hours to 6 / 10 seconds.
  */
 const PORT = 1994;
 const STORE = ".wrangler/lifecycle-e2e";
 const BASE = `ws://localhost:${PORT}/parties/main/LIFE`;
-const IDLE_MS = 2000;
-const EXPIRE_MS = 6000;
+// The idle time must outlast a correct lock's beats (2 s reveal + 2 s crit die, BEAT_MS in
+// lib/room/dungeon-room.ts). The beats do mark activity, but markActivity only moves the alarm earlier: with
+// an idle time equal to a beat, the alarm set at HOST_REVEAL fires with the reveal beat and closes the room
+// before the judgment.
+const IDLE_MS = 6000;
+const EXPIRE_MS = 10000;
 const CLOSE_IDLE = 4001;
 
 const T1 = "00000000-0000-0000-0000-0000000000b1";
