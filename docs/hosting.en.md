@@ -6,7 +6,7 @@ What the host needs to know on the day of the event: opening a room, running the
 
 ## Opening a room and the lobby
 
-The host presses 「主持遊戲」 (host a game) on the home page and lands on the host page (`/room/<代碼>/host`). The big-screen URL is at the very top of the host page; open it on a TV or projector (`/room/<代碼>/screen`).
+The host presses 「主持遊戲」 (host a game) on the home page and lands on the host page (`/room/<code>/host`). The big-screen URL is at the very top of the host page; open it on a TV or projector (`/room/<code>/screen`).
 Each team joins by entering a team name and the 4-character room code on a phone, or by scanning the QR code in the lobby. A team name cannot match a team that has already joined; names that differ only in upper/lower case or full-width/half-width characters count as the same name. While waiting, the phones show every team that has joined. In the host page's lobby, each team has 「改名」 (rename; same rules as joining) and 「移除」 (remove): a removed phone shows 「主持人把你們的隊伍移除了」 (the host removed your team), it is not added back by reconnecting on its own, and it can join again only by going back to the home page and opening the room again. The host presses 「開始遊戲」 (start game).
 
 While waiting for people, the middle of the big screen is a campfire; as each team joins, its character runs in to stand around the fire. The room code and the join QR code are here too.

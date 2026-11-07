@@ -21,7 +21,7 @@ Merging into `main` deploys automatically. Both sides use the platform's own Git
 3. **Allowed frontend URLs**: replace `ALLOWED_ORIGINS` in `wrangler.jsonc` with your own Vercel URL (comma-separated; full URLs are recommended). `*` can stand for one name segment of a URL, for example `https://你的專案-*.vercel.app` (your project name) covers preview URLs; but anyone who opens a Vercel project whose name starts the same way is allowed too, so use it only when you need preview URLs.
 4. **Deploy the Worker**: `npx wrangler deploy`. The first deploy applies the two migrations in `wrangler.jsonc`, creating the two Durable Objects `Room` and `BankStoreDO`. Note the `*.workers.dev` URL it prints.
 5. **Worker secrets**: `npx wrangler secret put OWNER_KEY` (for bank editing and the owner key; a random value of ≥32 bytes). To use the owner's AI narration, also run `npx wrangler secret put ANTHROPIC_API_KEY`.
-6. **Vercel**: import this repo and set the environment variable `NEXT_PUBLIC_PARTYKIT_HOST` to the Worker URL from step 4, without `https://` (for example `critical-answer.<你的子網域>.workers.dev`, with your subdomain). If it is not set, the frontend connects to `localhost:1999`.
+6. **Vercel**: import this repo and set the environment variable `NEXT_PUBLIC_PARTYKIT_HOST` to the Worker URL from step 4, without `https://` (for example `critical-answer.<your-subdomain>.workers.dev`, with your subdomain). If it is not set, the frontend connects to `localhost:1999`.
 7. **Auto-deploy (optional)**: follow [auto-deploy](#auto-deploy) above to connect Workers Builds to GitHub.
 
 ## Settings at a glance
