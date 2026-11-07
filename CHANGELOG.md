@@ -2,6 +2,25 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.39.0.0] - 2026-11-07
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the host page, the big screen and the phones. This release adds a new host message (🍲 上菜) and makes 下一題 wait for it. A host page from before it only sends 下一題, so it gets stuck on a reveal with a dish until it is reloaded. Do not deploy during an event.
+
+### Added
+- After a correct answer, the big screen shows the monster the team just defeated, and its dish waits for the host. The host's button reads 「🍲 上菜」: the monster goes into the pot, bubbles 「咕嘟咕嘟」, vanishes in a puff of smoke with 「砰！」, and 1.6 s later the dish appears with its card. The button reads 「🍲 上菜中…」 until the cooking is over, then 「下一題」.
+- Each kind of monster has its own pixel dish, drawn in the monster's colour.
+- A short cooking sound (two bubbles and a 砰) plays with it, and a playing video pauses when the host serves.
+- When the boss falls, the end screen cooks the boss first. Only 冒險結束 and 最後一擊 show until the big dish is served, and the podium, the winner and the epilogue appear about 4.6 s later. Phones say 「冒險結束！看大螢幕 📺」 until then.
+- Phones show 「🍲 今晚的菜：{dish}」 once the dish is served.
+
+### Changed
+- The narration no longer names the dish before it is served. The big screen says 「上菜！」, then reads the dish line aloud once it appears.
+- The ribbon over the stage names the team that eats the dish: 「🍲 {team}」.
+- With reduced motion turned on, the big screen skips the frames and shows the dish at once, and the end screen goes straight to the podium. A screen or phone that reloads or reconnects also skips the cooking and goes straight to the dish or the podium.
+
+### Fixed
+- The bundle leak check now also reads each question's text content and 題幹, not only the old text field, and no longer crashes on a question with no content.
+
 ## [0.38.0.0] - 2026-11-07
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the big screen and the host page. This release adds a new host message (▶ ⏸ ⟲) and a new field in the room state. A host page from before it shows no play buttons, and an old big screen cannot play the video. Do not deploy during an event.
