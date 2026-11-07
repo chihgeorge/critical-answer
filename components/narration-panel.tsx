@@ -56,8 +56,8 @@ export function NarrationPanel({
     const sameEvent = seenKey.split(":")[0] === String(narration?.eventId ?? "");
     setSeenKey(key);
     // Only our own text landing closes it: another device's edit first means ours comes back stale_narration (D9).
-    // Not gated on `sent`: an unrelated ERROR may have released the edit before it landed.
-    if (edit && sameEvent && narration?.lines[edit.index] === editedLine(edit.draft)) {
+    // Sent, or released by an ERROR before it landed; an editor opened but never sent stays open.
+    if (edit && (edit.sent || edit.refused !== null) && sameEvent && narration?.lines[edit.index] === editedLine(edit.draft)) {
       setEdit(null);
       setOpen(false);
       setReturnTo(-1); // the editor's row is gone: focus goes back to the toggle
