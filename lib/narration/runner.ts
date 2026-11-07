@@ -39,7 +39,7 @@ export interface TranscriptEntry {
 
 /** Things the host did by hand, kept in the same transcript so a playtest can be reconstructed. */
 export interface DirectorEntry {
-  kind: "notes" | "edit" | "breaker" | "next";
+  kind: "edit" | "breaker" | "next";
   at: string;
   text: string;
   eventId?: number;

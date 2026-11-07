@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldSpeakNarration, pickVoice } from "./tts";
+import { shouldSpeakNarration, pickVoice, speechTimeoutMs } from "./tts";
 
 describe("shouldSpeakNarration", () => {
   it("suppresses onConnect's resent lastNarration (eventId at or below the connection baseline)", () => {
@@ -89,3 +89,13 @@ describe("pickVoice", () => {
   });
 });
 
+
+describe("speechTimeoutMs", () => {
+  // Value: protects=a browser that never fires onend cannot stop the voice for good, yet a normal line is never cut
+  // (D11); fails_when=the limit stops growing with the line, counts UTF-16 units instead of characters, or drops the start-up margin.
+  it("allows about 0.4 s a character plus 3 s, counting characters not UTF-16 units", () => {
+    expect(speechTimeoutMs("")).toBe(3000);
+    expect(speechTimeoutMs("紅隊一刀砍下史萊姆")).toBe(9 * 400 + 3000);
+    expect(speechTimeoutMs("𠮷")).toBe(400 + 3000);
+  });
+});

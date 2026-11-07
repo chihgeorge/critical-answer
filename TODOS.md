@@ -10,7 +10,6 @@
 ### P2
 
 - [修改現有美術](#修改現有美術) — 未定
-- [拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞](#拿掉導演筆記改寫旁白搬到主持人頁並列出下一隊的所有台詞) — M
 - [冒險結束、公布最終分數前，旁白先公布前幾名](#冒險結束公布最終分數前旁白先公布前幾名) — M
 - [bank-editor 兩個 e2e 測試在 CI 偶發失敗](#bank-editor-兩個-e2e-測試在-ci-偶發失敗) — S
 - [AI key 的錯誤會被之後的狀態訊息蓋掉](#ai-key-的錯誤會被之後的狀態訊息蓋掉) — S
@@ -121,29 +120,6 @@
 
 **Notes:**
 - Context 補充：所有美術都在程式裡畫：像素圖在 `lib/pixel-art.ts`，元件在 `components/pixel.tsx`，色票和規則在 `DESIGN.md` 與 `app/globals.css`。照規定不用圖片檔。
-
----
-
-## 拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞
-
-**What:** 處理「拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞」所述事項。
-
-**Why:** 站長 2026-11-04 實測後覺得導演筆記用不到；改寫旁白放在「更多」裡又只能改第一句，看不出自己在改哪一句。
-
-**Context:**
-- `app/room/[code]/host/page.tsx`
-- `lib/narration/runner.ts`
-- `lib/room/dungeon-room.ts`
-
-**Effort/Priority:** M / P2
-
-**Depends on:** 無。動手前先用 `/plan-design-review` 定主持人頁的版面。
-
-**Notes:**
-- 原 What：1. 拿掉「⚙ 更多」裡的「導演筆記」。 2. 「改寫旁白」從「更多」搬到主持人頁上。 3. 改寫的介面要變清楚：列出旁白輪到下一隊時會說的**每一句**台詞，主持人選要改哪一條再改。現在只能改第一句（`HOST_EDIT_NARRATION`），也看不出後面還有哪幾句。
-- Pros：主持人在一個地方就看得到、改得到旁白。
-- Cons：目前協定只支援改第一句，要讓 `HOST_EDIT_NARRATION` 帶句子的編號，房間要能換掉第 N 句；已經在大螢幕上念完的句子要不能改。AI 旁白是一段一段生成的，要確認「下一隊的所有台詞」在主持人看的時候已經生成好了，還沒好時要怎麼顯示。導演筆記拿掉後，`HOST_SET_NOTES` 和 prompt 裡的筆記要一起清掉。「下一句這樣說」要決定是留在「更多」還是一起搬上來。
-- Context 補充：`app/room/[code]/host/page.tsx`（導演筆記、下一句這樣說、改寫第一句旁白三個區塊）、`lib/narration/runner.ts`（句數）、`lib/room/dungeon-room.ts`（`HOST_EDIT_NARRATION`、`HOST_SET_NOTES`）。
 
 ---
 
@@ -1135,6 +1111,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞
+
+- **拿掉導演筆記，改寫旁白搬到主持人頁，並列出下一隊的所有台詞** · v0.41.0.0 · 「⚙ 更多」的導演筆記、`HOST_SET_NOTES` 和 prompt 裡的筆記都拿掉。主持人頁「答對！」上方多了「地城主旁白」面板，列出這次旁白的每一句；還沒念完的句子能改（`HOST_EDIT_NARRATION` 帶 eventId 和句子編號），大螢幕回報念到哪，已念完的句子不能改。「下一句這樣說」也搬進面板。設計見 `docs/designs/host-narration-edit.md`。
 
 ## 怪物圖鑑：題庫只能從圖鑑選怪物，每被打倒一次換一種小變化
 

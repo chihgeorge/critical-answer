@@ -169,6 +169,17 @@ describe("what counts as activity", () => {
     expect(lastActivityAt(storage)).toBe(before);
   });
 
+  // Value: protects=a TV left on cannot keep an idle room awake by retyping narration after each reconnect (host-narration-edit.md);
+  // fails_when=SCREEN_NARRATION_PROGRESS stops being excluded from markActivity.
+  it("a big screen's reading progress is not activity", () => {
+    const { room, storage, clock } = setup();
+    send(room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
+    const before = lastActivityAt(storage);
+    clock.t += 5 * MIN;
+    send(room, conn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId: 0, rev: 0, done: 1 });
+    expect(lastActivityAt(storage)).toBe(before);
+  });
+
   it("a request for a not-yet-started game (no_active_game) is not activity", () => {
     const { room, storage, clock } = setup();
     send(room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
@@ -358,7 +369,7 @@ describe("when the platform misbehaves", () => {
     const fresh = (setup().room as any).persistedState();
     const used = setup();
     startedGame(used.room);
-    used.room.onMessage(JSON.stringify({ type: "HOST_SET_NOTES", notes: "武俠風" }), conn("h2"));
+    used.room.onMessage(JSON.stringify({ type: "HOST_SET_PASSWORD", password: "武俠風" }), conn("h2"));
     used.clock.t += EXPIRE;
     await used.room.onAlarm();
     const after = (used.room as any).persistedState();
@@ -480,7 +491,7 @@ describe("after a restart", () => {
     send(room, conn("a"), { type: "JOIN", teamId: T1, teamKey: TEAM_KEY, teamName: "甲隊" });
     const before = storage.puts;
     clock.t += 5_000;
-    send(room, host, { type: "HOST_SET_NOTES", notes: "" }); // activity, but the saved state is identical to the minute
+    send(room, host, { type: "HOST_SET_PASSWORD", password: "" }); // activity, but the saved state is identical to the minute
     expect(storage.puts).toBe(before);
   });
 });

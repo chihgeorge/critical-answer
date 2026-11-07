@@ -13,11 +13,8 @@ export function MoreDrawer({
   code,
   onClose,
   send,
-  lines,
-  aiOn,
   ai,
   bossable,
-  nextLine,
   playing,
 }: {
   /** The page's origin ("" before hydration). */
@@ -25,36 +22,13 @@ export function MoreDrawer({
   code: string;
   onClose: () => void;
   send: (msg: ClientMessage) => void;
-  /** The current narration's segments (1-3). The edit box below only ever rewrites the first
-   * one, so hosts need to know there may be more they can't reach. */
-  lines: string[];
-  aiOn: boolean;
   /** The AI key and limit settings, mid-game (in the lobby they sit on the page itself). */
   ai: ReactNode;
   /** Teams in play and not yet in the boss room: the host may send one there (scoring-and-score-pools.md S13). */
   bossable: { id: string; name: string }[];
-  /** The line queued for the next narration ("" for none), or null until the room says it supports one (host-next-line.md D5). */
-  nextLine: string | null;
   /** A game is under way, so 結束冒險 can end it. */
   playing: boolean;
 }) {
-  const currentLine = lines[0] ?? "";
-  const totalSegments = lines.length;
-  const [notes, setNotes] = useState("");
-  const [line, setLine] = useState(currentLine);
-  // A new narration line while the drawer is open replaces the draft, so 送出 never puts an old line back.
-  const [seenLine, setSeenLine] = useState(currentLine);
-  if (currentLine !== seenLine) {
-    setSeenLine(currentLine);
-    setLine(currentLine);
-  }
-  const [nextDraft, setNextDraft] = useState("");
-  // Cleared once the room confirms a queued line, so an ERROR (game over, only punctuation) keeps what was typed.
-  const [seenNextLine, setSeenNextLine] = useState(nextLine);
-  if (nextLine !== seenNextLine) {
-    setSeenNextLine(nextLine);
-    if (nextLine) setNextDraft("");
-  }
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
   useEffect(() => {
@@ -112,43 +86,6 @@ export function MoreDrawer({
             </section>
           )}
           {ai && <section>{ai}</section>}
-          <section className="flex flex-col gap-2">
-            <div className="text-[15px]">導演筆記{aiOn ? "（AI 每次寫旁白都會參考）" : "（AI 旁白已關閉，只會記錄）"}</div>
-            <div className="text-[13px]">只影響語氣與風格，不是逐字台詞。想改已經出現的那一句，用下面的「改寫目前旁白」。</div>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} rows={3} placeholder="例如：用武俠口吻，紅隊是一群恐龍" className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
-            <PixelButton onClick={() => send({ type: "HOST_SET_NOTES", notes })} className="!m-0 !px-4 !py-2 text-[16px]">
-              儲存導演筆記
-            </PixelButton>
-          </section>
-          {nextLine !== null && (
-            <section className="flex flex-col gap-2">
-              <div className="text-[15px]">下一句這樣說（最多 40 字）</div>
-              <div className="text-[13px]">下一次旁白的第二句會說出這句（AI 可能在前後加幾個字），說完就清掉。</div>
-              {nextLine && (
-                <div className="flex items-center gap-2 border-4 border-dashed border-[var(--k)] bg-[var(--turn)] p-2 text-[15px]">
-                  <span className="flex-1 break-all">已排入：{nextLine}</span>
-                  <PixelButton onClick={() => send({ type: "HOST_NEXT_LINE", line: "" })} className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]">
-                    取消
-                  </PixelButton>
-                </div>
-              )}
-              <input value={nextDraft} onChange={(e) => setNextDraft(e.target.value)} maxLength={40} placeholder={nextLine ? "再排一句會蓋掉上面這句" : "例如：不怕死的冒險者不知道珍珠是什麼意思？"} className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
-              <PixelButton
-                onClick={() => send({ type: "HOST_NEXT_LINE", line: nextDraft })}
-                disabled={!nextDraft.trim()}
-                className="!m-0 !px-4 !py-2 text-[16px]"
-              >
-                排進下一句
-              </PixelButton>
-            </section>
-          )}
-          <section className="flex flex-col gap-2">
-            <div className="text-[15px]">改寫第一句旁白{totalSegments > 1 ? `（共 ${totalSegments} 句，只能改第一句，最多 40 字）` : "（最多 40 字）"}</div>
-            <input value={line} onChange={(e) => setLine(e.target.value)} maxLength={40} disabled={!currentLine} className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
-            <PixelButton onClick={() => send({ type: "HOST_EDIT_NARRATION", line })} disabled={!currentLine || !line.trim()} className="!m-0 !px-4 !py-2 text-[16px]">
-              送出，立刻換上大螢幕
-            </PixelButton>
-          </section>
           <section>
             <PixelButton onClick={() => send({ type: "HOST_GET_TRANSCRIPT" })} className="!m-0 !px-4 !py-2 text-[16px]">
               下載旁白紀錄（JSON）

@@ -14,8 +14,8 @@ import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } fro
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn, monsterLook, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
-import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
-import { pickVoice, shouldSpeakNarration, type SpokenNarration } from "@/lib/narration/tts";
+import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
+import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { SFX } from "@/lib/sfx";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
@@ -186,7 +186,7 @@ type YoutubeContent = Extract<PublicMediaContent, { kind: "youtube" }>;
 /** A chip that stands in the side column beside a video (D14), at the same 20px as the hints. */
 const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4px solid var(--k)", whiteSpace: "normal", borderRadius: 12 } as const;
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, say }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; say: (lines: string[]) => void }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, say, onRead }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -413,6 +413,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
         accent={bossScene ? "var(--danger)" : undefined}
         loading={!served && !held && isPending(eventId, narration)}
         lines={cook === 3 ? [line] : served ? ["上菜！"] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
+        {...(cook !== 3 && !served && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
       />
       {pendingRoll?.kind === "kill" && pendingRoll.values ? (
         <KillRollOverlay key={`kill-${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} values={pendingRoll.values} value={pendingRoll.value} />
@@ -430,7 +431,7 @@ const PODIUM = [
 ];
 const CONFETTI = ["#ff6b6b", "#ffcf4a", "#6fd36a", "#6ab4ff", "#ff9db8", "#fff"];
 
-function Finished({ view, winners, reveal, narration, epilogue, cuisine, finale, say, onCook, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; narration: NarrationState; epilogue: string | null; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onCook: () => void; onPodium: () => void }) {
+function Finished({ view, winners, reveal, narration, epilogue, cuisine, finale, say, onRead, onCook, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; narration: NarrationState; epilogue: string | null; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onCook: () => void; onPodium: () => void }) {
   const dish = reveal?.dish;
   const line = dish ? dishLine(dish, "", true) : "";
   // The boss cooks first and the winner waits (cooking R8, I4): only a kill this screen saw live plays it.
@@ -499,6 +500,7 @@ function Finished({ view, winners, reveal, narration, epilogue, cuisine, finale,
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         loading={!(podium && epilogue) && !narration && step !== 3}
         lines={step === 3 ? [line] : podium && epilogue ? [epilogue] : (narration?.lines ?? [])}
+        {...(step !== 3 && !(podium && epilogue) && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
       />
     </>
   );
@@ -577,33 +579,113 @@ export default function ScreenPage() {
   /** The latest lines that arrived while TTS was on but the voice list hadn't loaded yet (it loads
    * asynchronously, via voiceschanged). Spoken as soon as a voice turns up, so the first narration
    * after the toggle isn't silently lost. Only the latest is kept: a newer line replaces it. */
-  const pendingLines = useRef<string[] | null>(null);
+  const pendingLines = useRef<{ lines: string[]; eventId: number | null; from: number } | null>(null);
 
-  /** Cancels anything in progress, then queues each line as its own utterance —
-   * speechSynthesis plays consecutive speak() calls in order automatically. No-ops (does not
-   * even cancel) when TTS is off or the API is unsupported; with no voice loaded yet it keeps
-   * the lines in pendingLines instead. */
-  function speak(lines: string[]) {
-    if (!ttsOn || !ttsSupported()) return;
-    if (!ttsVoice) {
-      pendingLines.current = lines;
+  /** What the voice is reading, one line at a time: `at` is the line being spoken. One utterance at a time
+   * (not all queued at once) so a host edit can swap a later line, or restart from the edited one (D13).
+   * `eventId` is the narration's, or null for any other line (intro, 上菜, epilogue). */
+  const speech = useRef<{ lines: string[]; at: number; eventId: number | null; utter: SpeechSynthesisUtterance | null } | null>(null);
+
+  function speakAt(q: NonNullable<typeof speech.current>) {
+    if (speech.current !== q || !ttsVoice) return;
+    if (q.at >= q.lines.length) {
+      speech.current = null;
       return;
     }
-    window.speechSynthesis.cancel();
-    for (const line of lines) {
-      const utter = new SpeechSynthesisUtterance(line);
-      utter.voice = ttsVoice;
-      utter.lang = ttsVoice.lang;
-      window.speechSynthesis.speak(utter);
+    const utter = new SpeechSynthesisUtterance(q.lines[q.at]);
+    utter.voice = ttsVoice;
+    utter.lang = ttsVoice.lang;
+    q.utter = utter;
+    // Guarded by identity: cancel() fires onerror on the cut utterance, which must not advance anything.
+    const next = (stuck = false) => {
+      if (speech.current !== q || q.utter !== utter) return;
+      clearTimeout(watchdog);
+      q.utter = null; // before cancel(): its onerror must find nothing to advance
+      if (stuck) window.speechSynthesis.cancel();
+      q.at++;
+      if (q.eventId !== null) markRead(q.eventId, { spoken: q.at });
+      speakAt(q);
+    };
+    utter.onend = () => next();
+    utter.onerror = () => next();
+    // No onend in time: treat the line as spoken and read on (see speechTimeoutMs).
+    const watchdog = setTimeout(() => next(true), speechTimeoutMs(utter.text));
+    window.speechSynthesis.speak(utter);
+  }
+
+  /** Cancels anything in progress, then reads `lines` from line `from`, one after another. No-ops (does not
+   * even cancel) when TTS is off or the API is unsupported; with no voice loaded yet it keeps the lines in
+   * pendingLines instead. `eventId` marks a narration, whose spoken progress counts toward the host's (D11). */
+  function speak(lines: string[], eventId: number | null = null, from = 0) {
+    if (!ttsOn || !ttsSupported()) return;
+    if (!ttsVoice) {
+      pendingLines.current = { lines, eventId, from };
+      return;
     }
+    const p = progress.current;
+    // Another line cuts the narration's voice short: from here on, only its typing counts.
+    if (p && p.eventId !== eventId) p.spoken = null;
+    else if (p) p.spoken = Math.min(p.spoken ?? from, from);
+    speech.current = null; // before cancel(): see speakAt's guard
+    window.speechSynthesis.cancel();
+    const q = { lines, at: from, eventId, utter: null };
+    speech.current = q;
+    speakAt(q);
+  }
+
+  // --- How far this screen has read the narration (host-narration-edit.md D3, D11, D14) ---
+  /** typed: lines finished typing. spoken: lines finished speaking, or null when the voice isn't reading it.
+   * sent: the last `done` reported to the room. */
+  const progress = useRef<{ eventId: number; rev: number; lines: string[]; typed: number; spoken: number | null; sent: number } | null>(null);
+
+  function markRead(eventId: number, read: { typed?: number; spoken?: number }) {
+    const p = progress.current;
+    if (!p || p.eventId !== eventId) return;
+    if (read.typed !== undefined) p.typed = Math.max(p.typed, read.typed);
+    if (read.spoken !== undefined && p.spoken !== null) p.spoken = Math.max(p.spoken, read.spoken);
+    const done = readCount(p.typed, p.spoken);
+    if (done <= p.sent) return;
+    p.sent = done;
+    send({ type: "SCREEN_NARRATION_PROGRESS", eventId, rev: p.rev, done });
+  }
+
+  /** A NARRATION arrived: a new one starts the count over; the same eventId with changed lines is a host edit
+   * from line `d`, read again from there — the line being spoken finishes first unless it is the edited one.
+   * `voice`: read it aloud (see shouldSpeakNarration). */
+  function trackNarration(msg: { eventId: number; lines: string[]; rev?: number }, voice: boolean) {
+    const p = progress.current;
+    const rev = msg.rev ?? 0;
+    if (p && p.eventId > msg.eventId) return;
+    if (!p || p.eventId !== msg.eventId) {
+      progress.current = { eventId: msg.eventId, rev, lines: msg.lines, typed: 0, spoken: null, sent: 0 };
+      if (voice) speak(msg.lines, msg.eventId);
+      return;
+    }
+    const d = firstChange(p.lines, msg.lines);
+    const newRev = rev !== p.rev;
+    p.rev = rev;
+    p.lines = msg.lines;
+    if (d !== -1) {
+      p.typed = Math.min(p.typed, d);
+      if (p.spoken !== null) p.spoken = Math.min(p.spoken, d);
+    }
+    // A report sent under the old rev may have crossed the edit and been dropped: say it again under the new one.
+    if (newRev) {
+      p.sent = 0;
+      markRead(msg.eventId, {});
+    }
+    if (d === -1 || !voice) return;
+    const q = speech.current;
+    if (q && q.eventId === msg.eventId && d > q.at) q.lines = msg.lines;
+    else speak(msg.lines, msg.eventId, d);
   }
 
   // The voice just loaded: speak whatever arrived while waiting for it (see pendingLines).
   useEffect(() => {
     if (!ttsVoice || !pendingLines.current) return;
-    const lines = pendingLines.current;
+    const { lines, eventId, from } = pendingLines.current;
     pendingLines.current = null;
-    speak(lines);
+    speak(lines, eventId, from);
     // Only a newly loaded voice should trigger this; speak() itself changes every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ttsVoice]);
@@ -616,8 +698,10 @@ export default function ScreenPage() {
       // wouldn't count as "inside the gesture" and can silently fail there.
       window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
     } else if (ttsOn) {
+      speech.current = null;
       window.speechSynthesis.cancel();
       pendingLines.current = null; // turned off: nothing waiting should play later
+      if (progress.current) progress.current.spoken = null;
     }
     setTtsOn((on) => {
       writeStored(TTS_ENABLED_STORAGE, String(!on));
@@ -701,12 +785,14 @@ export default function ScreenPage() {
     writeStored(BGM_ENABLED_STORAGE, String(next));
   }
 
-  const { reset, rested, unreachable, reconnect } = useRoomSocket(code, {
+  const { reset, rested, unreachable, reconnect, send } = useRoomSocket(code, {
     onOpen() {
       setDisconnected(false);
       narrationBaseline.current = null;
       sfxSeen.current = null;
       lastPhase.current = null;
+      // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
+      progress.current = null;
     },
     onClose({ rested, openedBefore }) {
       if (!rested && openedBefore) setDisconnected(true);
@@ -728,6 +814,8 @@ export default function ScreenPage() {
           narrationBaseline.current = null;
           sfxSeen.current = null;
           pendingLines.current = null;
+          speech.current = null;
+          progress.current = null;
           window.speechSynthesis?.cancel();
           break;
         case "STATE":
@@ -755,10 +843,13 @@ export default function ScreenPage() {
           break;
         case "NARRATION":
           setNarration((n) => keepLatest(n, msg));
-          if (narrationBaseline.current !== null) {
-            const speakIt = shouldSpeakNarration(msg, narrationBaseline.current, lastSpokenNarration.current);
-            lastSpokenNarration.current = msg; // always, even when not spoken — see the ref's doc comment
-            if (speakIt && msg.eventId !== servedEvent.current) speak(msg.lines);
+          {
+            let speakIt = false;
+            if (narrationBaseline.current !== null) {
+              speakIt = shouldSpeakNarration(msg, narrationBaseline.current, lastSpokenNarration.current);
+              lastSpokenNarration.current = msg; // always, even when not spoken — see the ref's doc comment
+            }
+            trackNarration(msg, speakIt && msg.eventId !== servedEvent.current);
           }
           break;
         case "EPILOGUE":
@@ -786,8 +877,8 @@ export default function ScreenPage() {
             <HowToPlay page={game.intro.page} firstTeam={describeTurn(game.view, null).team?.name ?? ""} cuisine={!!game.cuisine} />
           </>
         )}
-        {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} say={speak} />}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
+        {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} narration={narration} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
           {!game && !tapped && (

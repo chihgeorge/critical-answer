@@ -13,6 +13,7 @@ vi.mock("../question-bank-data", async (actual) => {
 import { checkKey, currentTurnTeamId, setTeamOnline } from "../game-state";
 import { EPILOGUE_MODEL } from "../narration/llm";
 import { SERVE_HOLD_MS } from "../protocol";
+import { MAX_LINE } from "../narration/runner";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";
@@ -2257,54 +2258,134 @@ describe("LLM narration and director (T8-T10)", () => {
   });
 
   describe("director", () => {
-    it("host notes go into every later LLM call; non-hosts cannot set them", async () => {
+    // Guards the removal of the director notes (host-narration-edit.md): fails if HOST_SET_NOTES is accepted again.
+    it("HOST_SET_NOTES is no longer a message", async () => {
       const r = await llmRoom(() => textReply("行"));
-      begin(r);
-      await sleep(30);
-      send(r.room, r.hostConn, { type: "HOST_SET_NOTES", notes: "用武俠口吻，紅隊是一群恐龍" });
-      judge(r.room, r.hostConn);
-      await sleep(30);
-      expect(r.calls.at(-1)!.system).toContain("用武俠口吻，紅隊是一群恐龍");
-      const intruder = makeConn("nope");
-      send(r.room, intruder, { type: "HOST_SET_NOTES", notes: "駭進來" });
-      expect(sentMsgs(intruder).at(-1)).toMatchObject({ type: "ERROR", error: "not_host" });
-      judge(r.room, r.hostConn);
-      await sleep(30);
-      expect(r.calls.at(-1)!.system).not.toContain("駭進來");
+      send(r.room, r.hostConn, { type: "HOST_SET_NOTES", notes: "用武俠口吻" });
+      expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "bad_message" });
     });
 
-    it("strips markup from notes and records them in the transcript", async () => {
-      const r = await llmRoom(() => textReply("行"));
-      send(r.room, r.hostConn, { type: "HOST_SET_NOTES", notes: "<b>活潑</b>一點" });
-      expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ kind: "notes", text: "b活潑/b一點" });
-    });
-
-    it("host edit replaces the line on screen under the same eventId, and is marked host in the transcript", async () => {
-      const r = await llmRoom(() => textReply("原本的一句"));
+    /** A started game whose latest narration has three lines (the AI's), after one judgment. */
+    async function threeLines() {
+      const r = await llmRoom(() => textReply("第一句\n第二句\n第三句"));
       begin(r);
       await sleep(30);
-      const first = narrations(r.room).at(-1);
-      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: "主持人改寫的一句" });
-      const edited = narrations(r.room).at(-1);
-      expect(edited).toMatchObject({ eventId: first.eventId, lines: ["主持人改寫的一句", ...first.lines.slice(1)] });
-      expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ kind: "edit", text: "主持人改寫的一句", eventId: first.eventId });
+      judge(r.room, r.hostConn);
+      await sleep(30);
+      const n = narrations(r.room).at(-1);
+      expect(n.lines).toEqual(["第一句", "第二句", "第三句"]);
+      return { ...r, n };
+    }
+    const progress = (r: { room: DungeonRoom }, eventId: number, rev: number, done: number) =>
+      send(r.room, makeConn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev, done });
+
+    // Value: protects=the host rewrites any line, not just the first (D9); fails_when=the room still only swaps
+    // lines[0], drops the other lines, forgets the edit for a late joiner, or does not bump rev for the screen.
+    it("replaces line N under the same eventId, bumps rev, and a late joiner gets the edited lines", async () => {
+      const r = await threeLines();
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 2, line: "主持人改寫的第三句" });
+      expect(narrations(r.room).at(-1)).toEqual({ type: "NARRATION", eventId: r.n.eventId, lines: ["第一句", "第二句", "主持人改寫的第三句"], rev: 1 });
+      expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ kind: "edit", text: "主持人改寫的第三句", eventId: r.n.eventId });
       const late = makeConn("late");
       r.room.onConnect(late);
-      expect(sentMsgs(late).find((m) => m.type === "NARRATION").lines[0]).toBe("主持人改寫的一句");
+      expect(sentMsgs(late).find((m) => m.type === "NARRATION")).toMatchObject({ lines: ["第一句", "第二句", "主持人改寫的第三句"], rev: 1 });
     });
 
-    it("rejects an edit from a non-host, an edit with no line on screen, and an empty edit", async () => {
-      const r = await llmRoom(() => textReply("行"));
-      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: "太早了" });
-      expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "no_narration" });
-      begin(r);
-      await sleep(30);
+    // Value: protects=a line the big screen already read stays as the room heard it (D3); fails_when=the room
+    // accepts an edit below `done`, or refuses the line still being read.
+    it("refuses a line the big screen has already read, and still takes the next one", async () => {
+      const r = await threeLines();
+      progress(r, r.n.eventId, 0, 1);
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 0, line: "太晚了" });
+      expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "line_read" });
+      expect(narrations(r.room).at(-1).lines[0]).toBe("第一句");
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 1, line: "來得及" });
+      expect(narrations(r.room).at(-1).lines).toEqual(["第一句", "來得及", "第三句"]);
+    });
+
+    // Value: protects=only the host edits, and only the narration it was looking at (D9); fails_when=a non-host
+    // edit lands, a stale eventId or rev edits the newer text, or a bad index / empty line / no narration slips through.
+    it("refuses a non-host, a stale eventId or rev, a bad index, an empty line, and an edit before any narration", async () => {
+      const early = await llmRoom(() => textReply("行"));
+      send(early.room, early.hostConn, { type: "HOST_EDIT_NARRATION", eventId: 0, rev: 0, index: 0, line: "太早了" });
+      expect(sentMsgs(early.hostConn).at(-1)).toMatchObject({ error: "invalid_action", detail: "no_narration" });
+
+      const r = await threeLines();
       const intruder = makeConn("nope");
-      send(r.room, intruder, { type: "HOST_EDIT_NARRATION", line: "改" });
+      r.room.onConnect(intruder);
+      send(r.room, intruder, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 1, line: "駭進來" });
       expect(sentMsgs(intruder).at(-1)).toMatchObject({ error: "not_host" });
-      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: "   " });
-      expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ error: "invalid_action" });
-      expect(narrations(r.room).at(-1).lines[0]).toBe("行");
+      const refused = (msg: object, detail: string) => {
+        send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 1, line: "改", ...msg });
+        expect(sentMsgs(r.hostConn).at(-1), detail).toMatchObject({ error: "invalid_action", detail });
+      };
+      refused({ eventId: r.n.eventId - 1 }, "stale_narration");
+      refused({ rev: 1 }, "stale_narration"); // another host device's edit landed first: never overwrite it (D9)
+      refused({ index: 3 }, "bad_index");
+      refused({ line: "   " }, "empty_edit"); // not HOST_NEXT_LINE's empty_line: the host page routes this one to the panel
+      expect(narrations(r.room).at(-1).lines).toEqual(["第一句", "第二句", "第三句"]);
+    });
+
+    // Value: protects=an edited line stays one dialogue-box line of at most MAX_LINE, and a prefilled scripted line
+    // longer than MAX_LINE still lands (red-team); fails_when=the whitespace collapse goes, or the room stops cutting to MAX_LINE.
+    it("an edit becomes one line, cut to MAX_LINE", async () => {
+      const r = await threeLines();
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 1, line: "上\n下\t句" });
+      expect(narrations(r.room).at(-1).lines[1]).toBe("上 下 句");
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 1, index: 2, line: "字".repeat(MAX_LINE + 5) });
+      expect(narrations(r.room).at(-1).lines[2]).toBe("字".repeat(MAX_LINE));
+    });
+
+    // Value: protects=a player cannot lock the host's edits from their own phone, nor the host page by mistake (D3);
+    // fails_when=the room takes SCREEN_NARRATION_PROGRESS from a joined team's connection or a host connection.
+    it("takes reading progress only from a connection that is neither a team nor the host", async () => {
+      const r = await threeLines();
+      const told = () => sentMsgs(r.hostConn).filter((m) => m.type === "HOST_NARRATION_PROGRESS");
+      const report = (c: ReturnType<typeof makeConn>) => send(r.room, c, { type: "SCREEN_NARRATION_PROGRESS", eventId: r.n.eventId, rev: 0, done: 3 });
+      report(makeConn("player-conn-0")); // the first team's phone (joinTeams)
+      report(r.hostConn);
+      expect(told()).toEqual([]);
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 2, line: "還能改" });
+      expect(narrations(r.room).at(-1).lines[2]).toBe("還能改");
+      report(makeConn("screen"));
+      expect(told()).toEqual([]); // rev moved on with the edit: this report is about the old text
+    });
+
+    // Value: protects=the big screen's reading progress the host sees (D3, D14); fails_when=a report about old text
+    // (stale rev or eventId) locks a line, progress goes backwards, runs past the line count, or the host is not told.
+    it("keeps the furthest progress about the text on screen now, and tells every host page", async () => {
+      const r = await threeLines();
+      const told = () => sentMsgs(r.hostConn).filter((m) => m.type === "HOST_NARRATION_PROGRESS").map((m) => m.done);
+      progress(r, r.n.eventId, 0, 2);
+      progress(r, r.n.eventId, 0, 1); // a slower second screen, or a reconnect retyping from line 1
+      progress(r, r.n.eventId, 0, 4); // more lines than there are
+      progress(r, r.n.eventId - 1, 0, 3); // another narration
+      expect(told()).toEqual([2]);
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 2, line: "新的第三句" });
+      progress(r, r.n.eventId, 0, 3); // about the old third line: must not lock the new one
+      expect(told()).toEqual([2]);
+      progress(r, r.n.eventId, 1, 3);
+      expect(told()).toEqual([2, 3]);
+      const other = makeConn("host-2");
+      r.room.onConnect(other);
+      claim(r.room, other);
+      expect(sentMsgs(other).filter((m) => m.type === "HOST_NARRATION_PROGRESS")).toEqual([{ type: "HOST_NARRATION_PROGRESS", eventId: r.n.eventId, done: 3 }]);
+    });
+
+    // Value: protects=an edit lands only on the narration the big screen shows, and a new narration starts unread and
+    // unedited (D3, D14); fails_when=the room takes an edit of the old narration while the next one is generating (the
+    // screen shows … but would speak the edit), or keeps the old done/rev, so line 0 of the next narration is refused.
+    it("refuses an edit while the next narration is on its way, then takes line 0 of the new one", async () => {
+      const r = await threeLines();
+      progress(r, r.n.eventId, 0, 3);
+      judge(r.room, r.hostConn); // the next narration is generating: lastNarration is still the old one
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 2, line: "太晚了" });
+      expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ error: "invalid_action", detail: "stale_narration" });
+      await sleep(30);
+      const next = narrations(r.room).at(-1);
+      expect(next.eventId).toBeGreaterThan(r.n.eventId);
+      send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: next.eventId, rev: 0, index: 0, line: "新的開場" });
+      expect(narrations(r.room).at(-1)).toMatchObject({ eventId: next.eventId, rev: 1, lines: ["新的開場", "第二句", "第三句"] });
     });
 
 // Value: protects=the host's queued line is said once, in segment 2, by AI or scripted narration (host-next-line.md);
@@ -2486,7 +2567,8 @@ describe("LLM narration and director (T8-T10)", () => {
       const r = await llmRoom(() => textReply("行"));
       begin(r);
       await sleep(30);
-      for (let i = 1; i <= 6; i++) send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", line: `改寫第${i}句` });
+      const eventId = narrations(r.room).at(-1).eventId;
+      for (let i = 1; i <= 6; i++) send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId, rev: i - 1, index: 0, line: `改寫第${i}句` });
       judge(r.room, r.hostConn);
       await sleep(30);
       const system = r.calls.at(-1)!.system;
@@ -2595,7 +2677,7 @@ describe("story moves on to the next team (two-line narration)", () => {
     await flush();
     judge(room, hostConn);
     await flush();
-    send(room, hostConn, { type: "HOST_EDIT_NARRATION", line: "主持人改的結果句" });
+    send(room, hostConn, { type: "HOST_EDIT_NARRATION", eventId: narrs(room).at(-1).eventId, rev: 0, index: 0, line: "主持人改的結果句" });
     const edited = narrs(room).at(-1);
     expect(edited.lines[0]).toBe("主持人改的結果句");
     expect(edited.lines.at(-1)).toContain("Team 1");
