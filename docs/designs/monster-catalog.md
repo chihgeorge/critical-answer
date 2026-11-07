@@ -70,31 +70,31 @@ export function monsterById(id: string): CatalogMonster | undefined;
 | 1 | `slime-soft` | 軟趴趴史萊姆 | `slime` | 現有：綠色水滴、頭頂兩片葉 | `dish-jelly` | 1 |
 | 2 | `ghost-shy` | 害羞幽靈 | `ghost` | 現有：白色幽靈、臉紅 | `dish-ice` | 1 |
 | 3 | `ghost-cry` | 愛哭幽靈 | `ghost-cry` | 現有 | `dish-riceball` | 1 |
-| 4 | `mushroom` | 碎碎蘑菇 | `mushroom` | 紅傘白點、短腳、小眼睛 | `dish-mushroom`（烤蘑菇串） | 2 |
-| 5 | `bat` | 倒掛蝙蝠 | `bat` | 紫色圓身、張開的翅膀、小尖牙 | `dish-wing`（炸翅） | 2 |
-| 6 | `skeleton` | 喀啦骷髏兵 | `skeleton` | 頭骨＋短身、手拿骨頭 | `dish-bone-soup`（大骨湯） | 2 |
+| 4 | `mushroom-crumbly` | 碎碎蘑菇 | `mushroom` | 紅傘白點、短腳、小眼睛 | `dish-mushroom-skewer`（烤蘑菇串） | 2 |
+| 5 | `bat-hanging` | 倒掛蝙蝠 | `bat` | 紫色圓身、張開的翅膀、小尖牙 | `dish-wings`（酥炸蝙蝠翅） | 2 |
+| 6 | `skeleton-rattle` | 喀啦骷髏兵 | `skeleton` | 頭骨＋短身、手拿骨頭 | `dish-bone-soup`（骷髏大骨湯） | 2 |
 | 7 | `mimic` | 寶箱怪 | `mimic` | 木頭寶箱、張嘴有舌頭 | `dish-bento`（寶箱便當） | 2 |
-| 8 | `spider` | 毛毛蜘蛛 | `spider` | 黑色毛球、八條短腳、大眼睛 | `dish-floss`（蛛絲棉花糖） | 2 |
-| 9 | `snail` | 慢吞吞蝸牛 | `snail` | 螺旋殼、伸出觸角 | `dish-escargot`（焗烤蝸牛） | 2 |
-| 10 | `wisp` | 鬼火精 | `wisp` | 藍色火焰、兩顆白眼 | `dish-flambe`（火焰布蕾） | 2 |
-| 11 | `golem` | 小石魔像 | `golem` | 方塊石頭身、苔蘚、發光眼 | `dish-stone-pot`（石燒鍋） | 2 |
-| 12 | `jellyfish` | 地底水母 | `jellyfish` | 半透明傘、垂下觸手 | `dish-jelly-salad`（涼拌水母） | 2 |
-| 13 | `frog` | 沼澤胖蛙 | `frog` | 圓胖綠蛙、大嘴 | `dish-frog-leg`（三杯田雞） | 2 |
+| 8 | `spider-fuzzy` | 毛毛蜘蛛 | `spider` | 黑色毛球、八條短腳、大眼睛 | `dish-cotton-candy`（蛛絲棉花糖） | 2 |
+| 9 | `snail-slow` | 慢吞吞蝸牛 | `snail` | 螺旋殼、伸出觸角 | `dish-escargot`（焗烤蝸牛） | 2 |
+| 10 | `wisp` | 鬼火精 | `wisp` | 藍色火焰、兩顆白眼 | `dish-brulee`（鬼火烤布蕾） | 2 |
+| 11 | `golem-pebble` | 小石魔像 | `golem` | 方塊石頭身、苔蘚、發光眼 | `dish-stone-pot`（魔像石燒鍋） | 2 |
+| 12 | `jellyfish-deep` | 地底水母 | `jellyfish` | 半透明傘、垂下觸手 | `dish-jelly-salad`（涼拌水母絲） | 2 |
+| 13 | `frog-swamp` | 沼澤胖蛙 | `frog` | 圓胖綠蛙、大嘴 | `dish-three-cup`（三杯田雞） | 2 |
 | 14 | `candle` | 蠟燭精 | `candle` | 融化的白蠟燭、頭上一朵火 | `dish-fondue`（蠟燭起司鍋） | 2 |
-| 15 | `mandrake` | 尖叫曼德拉草 | `mandrake` | 根莖身體、頭頂葉子、張嘴尖叫 | `dish-root-stew`（根菜燉） | 2 |
+| 15 | `mandrake` | 尖叫曼德拉草 | `mandrake` | 根莖身體、頭頂葉子、張嘴尖叫 | `dish-root-stew`（曼德拉根菜燉） | 2 |
 | 16 | `eyeball` | 浮游眼球 | `eyeball` | 大眼球、血絲、小翅膀 | `dish-tangyuan`（眼球湯圓） | 2 |
-| 17 | `crab` | 鐵殼螃蟹 | `crab` | 紅色硬殼、大鉗子 | `dish-crab`（清蒸蟹） | 2 |
+| 17 | `crab-iron` | 鐵殼螃蟹 | `crab` | 紅色硬殼、大鉗子 | `dish-crab`（清蒸鐵殼蟹） | 2 |
 | 18 | `dice` | 骰子怪 | `dice` | 白色方塊骰子、點數當眼睛 | `dish-tofu`（骰子豆腐） | 2 |
 | 19 | `pumpkin` | 南瓜頭 | `pumpkin` | 橘色大南瓜、刻出來的眼睛和嘴、頭頂綠梗 | `dish-pumpkin-soup`（南瓜濃湯） | 2 |
-| 20 | `cactus` | 刺刺仙人掌 | `cactus` | 直立綠柱、兩隻手臂、頭頂粉紅花、小花盆 | `dish-cactus-ice`（仙人掌冰沙） | 2 |
+| 20 | `cactus` | 刺刺仙人掌 | `cactus` | 直立綠柱、兩隻手臂、頭頂粉紅花、小花盆 | `dish-smoothie`（仙人掌冰沙） | 2 |
 
 首領（`boss: true`，體型約 52×46，與龍相當）：
 
 | # | id | 名字 | sprite | 造型 | 料理圖 | PR |
 |---|----|------|--------|------|--------|----|
 | 21 | `dragon` | 深淵小黑龍 | `dragon` | 現有 | `dish-skewer` | 1 |
-| 22 | `kraken` | 深海大王烏賊 | `kraken` | 紫紅大頭、八條觸手揮舞 | `dish-squid`（烤魷魚） | 2 |
-| 23 | `phoenix` | 不死火鳥 | `phoenix` | 火紅大鳥、尾羽是火焰 | `dish-roast-bird`（烤全雞） | 2 |
+| 22 | `kraken` | 深海大王烏賊 | `kraken` | 紫紅大頭、八條觸手揮舞 | `dish-squid`（大王烤魷魚） | 2 |
+| 23 | `phoenix` | 不死火鳥 | `phoenix` | 火紅大鳥、尾羽是火焰 | `dish-roast-chicken`（不死鳥烤全雞） | 2 |
 
 - 現有 4 隻（slime-soft、ghost-shy、ghost-cry、dragon）的料理文字和 hue（都是 0）照搬 `data/question-bank.json`。迷路史萊姆、守門史萊姆王（R4）和 3 隻換色怪物移除，料理一起移除。新 19 隻的料理文字在 PR2 寫，菜名照 R4 的 PNG。
 - **PNG 確認關卡**：/plan-design-review 產生 PNG 到本機 `~/.gstack/projects/critical-answer/designs/monster-catalog/`（不進 git）：`roster.png`、`v2/roster.png`（名單）、`v2/accessories.png`（6 配件戴在 3 隻現有小怪上、換色後的樣子）。2026-11-07 已確認，見 decision ledger R4、R5。
