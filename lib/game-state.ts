@@ -34,7 +34,7 @@ export const MIN_DIFFICULTY: Difficulty = 1;
 export const DEFAULT_BOSS_HIT_REWARD = 10;
 
 /** Fixed class ids (docs/designs/class-abilities.md). Display text is looked up by id. */
-export const CLASS_IDS = ["mage", "cleric", "warrior", "thief"] as const;
+export const CLASS_IDS = ["mage", "cleric", "warrior", "thief", "chef"] as const;
 export type ClassId = (typeof CLASS_IDS)[number];
 
 export function isClassId(v: unknown): v is ClassId {
@@ -46,6 +46,7 @@ export const CLASS_LABELS: Record<ClassId, string> = {
   cleric: "牧師",
   warrior: "戰士",
   thief: "盜賊",
+  chef: "廚師",
 };
 
 export const CLASS_ICONS: Record<ClassId, string> = {
@@ -53,16 +54,24 @@ export const CLASS_ICONS: Record<ClassId, string> = {
   cleric: "✝️",
   warrior: "⚔️",
   thief: "🗝️",
+  chef: "🍳",
 };
 
-/** Ability uses per team per game, every class. */
+/** Ability uses per team per game, every active class (the chef's is passive, CHEF_BONUS_PERCENT). */
 export const ABILITY_USES = 2;
+/** The chef's passive: every reward gain of the team is this much bigger, after the sneak, a crit and the kill's 4d20. */
+export const CHEF_BONUS_PERCENT = 15;
+
+/** The chef's share of one reward gain: rounded half up, at least 1 on any gain (eng review D1–D3). */
+export function chefShare(gain: number): number {
+  return gain > 0 ? Math.max(1, Math.round((gain * CHEF_BONUS_PERCENT) / 100)) : 0;
+}
 /** The warrior's d20 counts as a correct answer at this value or more (45%). */
 export const WARRIOR_TARGET = 12;
 
 /** A fill-in question is a persuasion check (dnd design Premise 3): d20 + the team's class bonus against the
  * monster's DC. A team with no class adds 1. */
-export const CHECK_BONUS: Record<ClassId | "none", number> = { thief: 4, cleric: 3, mage: 2, none: 1, warrior: 0 };
+export const CHECK_BONUS: Record<ClassId | "none", number> = { thief: 4, cleric: 3, mage: 2, chef: 1, none: 1, warrior: 0 };
 /** The DC per difficulty 1–5 (dnd design Decision 11); the boss uses difficulty 5's. */
 export const CHECK_DC = [8, 10, 12, 14, 16] as const;
 export const BOSS_CHECK_DC = 16;
@@ -256,8 +265,9 @@ export interface WrongAnswer {
 export type RollMark = { kind: "crit" | "check"; value: 20 | 1 };
 
 export type AnswerOutcome =
-  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
-  | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; killBonus?: number; roll?: RollMark }
+  /** `reward` is the whole gain; `chefBonus` the chef's share of it, only for a chef. */
+  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; chefBonus?: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
+  | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; chefBonus?: number; killBonus?: number; roll?: RollMark }
   | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty }
   /** `newBossQuestion`: a wrong boss answer rotated the shared question (boss redesign D2=B). */
   | { type: "incorrect-retry"; teamId: string; newBossQuestion?: true };
@@ -669,6 +679,9 @@ export function answerQuestion(
   const prayed = !correct && game.pendingWrong?.prayed === true;
   // Any judgment uses up an armed Sneak Attack; only a correct one doubles (D16).
   const sneak = getTeam(game, teamId).sneakArmed ? 2 : 1;
+  // The chef's 15% goes on the whole gain, last (eng review D2).
+  const chef = getTeam(game, teamId).classId === "chef";
+  const withChef = (gain: number) => (chef ? { reward: gain + chefShare(gain), chefBonus: chefShare(gain) } : { reward: gain });
   // The choice resolves the pending wrong lock.
   game = { ...game, pendingWrong: null, teams: patchTeam(game.teams, teamId, () => ({ sneakArmed: undefined, typedAnswer: undefined })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
@@ -698,7 +711,8 @@ export function answerQuestion(
       const bossKilled = newHp === 0 && lastPhase;
       // The 4d20 is not raised by a crit (R4).
       const killBonus = bossKilled ? (killDice ?? rollBossKillDice(rng)).reduce((a, b) => a + b, 0) * sneak : undefined;
-      const reward = baseOf(boss.hitReward) * sneak + critBonus(boss.hitReward) + (killBonus ?? 0);
+      const gain = withChef(baseOf(boss.hitReward) * sneak + critBonus(boss.hitReward) + (killBonus ?? 0));
+      const { reward } = gain;
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}) }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
@@ -726,7 +740,7 @@ export function answerQuestion(
           ...(phasePending ? { phasePending } : {}),
         },
       };
-      outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, reward, ...(killBonus === undefined ? {} : { killBonus }), ...rollMark };
+      outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, ...gain, ...(killBonus === undefined ? {} : { killBonus }), ...rollMark };
 
       if (bossKilled) {
         return { game: finishGame(nextGame), outcome };
@@ -760,7 +774,8 @@ export function answerQuestion(
       // The question's own difficulty: an empty, fully held or fully revealed pool deals from another one (deal()).
       const pointsAwarded = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
       const base = game.rooms[team.roomIndex].reward;
-      const reward = baseOf(base) * sneak + critBonus(base);
+      const gain = withChef(baseOf(base) * sneak + critBonus(base));
+      const { reward } = gain;
       // A correct answer is always revealed (D5), so the next deal from any pool must not hand it
       // back to a team who hasn't faced it yet.
       const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
@@ -792,7 +807,7 @@ export function answerQuestion(
           queuedQuestionId: dealt.queuedQuestionId,
         })),
       };
-      outcome = { type: "correct-room-advance", teamId, pointsAwarded, reward, nextRoomIndex, entersBoss, ...rollMark };
+      outcome = { type: "correct-room-advance", teamId, pointsAwarded, ...gain, nextRoomIndex, entersBoss, ...rollMark };
     } else if (fleeChoice === "flee") {
       const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
       // Fleeing reveals the answer only after a wrong lock (revealedOnFlee); otherwise only skip

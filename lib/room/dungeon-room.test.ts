@@ -10,7 +10,7 @@ vi.mock("../question-bank-data", async (actual) => {
   const { asTextBank } = await import("../text-bank");
   return { BANK: asTextBank((await actual<typeof import("../question-bank-data")>()).BANK) };
 });
-import { checkKey, currentTurnTeamId, setTeamOnline } from "../game-state";
+import { checkKey, currentTurnTeamId, setTeamOnline, type ClassId } from "../game-state";
 import { EPILOGUE_MODEL } from "../narration/llm";
 import { SERVE_HOLD_MS } from "../protocol";
 import { MAX_LINE } from "../narration/runner";
@@ -3506,14 +3506,15 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
   const flush = () => new Promise((r) => setTimeout(r, 0));
   const states = (room: DungeonRoom) => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE");
   /** A room on `bank` whose narrator records every event it is asked to tell. */
-  function cookRoom(bank: Bank = BANK) {
+  function cookRoom(bank: Bank = BANK, classId?: ClassId) {
     const events: any[] = [];
     const spy = { name: "spy", narrate: async (e: any) => (events.push(e), "一行") };
     const room = new DungeonRoom(makeRoom() as any, () => 0, { bank, provider: spy, holdMs: 30, epilogueDelayMs: 0 });
     const hostConn = makeConn("host-conn");
     room.onConnect(hostConn);
     claim(room, hostConn);
-    const { ids } = joinTeams(room, hostConn, 1);
+    const { ids, conns } = joinTeams(room, hostConn, 1);
+    if (classId) send(room, conns[0], { type: "TEAM_PICK_CLASS", classId });
     send(room, hostConn, { type: "HOST_START" });
     return { room, hostConn, ids, events };
   }
@@ -3537,6 +3538,14 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     const told = events.find((e) => e.type === "correct");
     expect(told.cooked).toBe(true);
     expect(JSON.stringify(told)).not.toContain(m.dish.name);
+  });
+
+  // Value: protects=the chef's share reaching the dish card (chef design D5); fails_when=the room drops chefBonus.
+  it("a chef's dish carries its share of the points", async () => {
+    const { room, hostConn, ids } = cookRoom(BANK, "chef");
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    await flush();
+    expect(states(room).at(-1).reveal.dish).toMatchObject({ points: 12, chefBonus: 2 });
   });
 
   describe("🍲 上菜 (HOST_SERVE, cooking R5/I2)", () => {

@@ -79,7 +79,8 @@ export type AnswerReveal = {
   /** Set when a team's lock was judged (phone answering): the answered question's options, which one
    * was right, who locked it and the points it scored, so every screen can light the tile (D8, D14).
    * Safe to send: it goes out only once the answer is revealed. */
-  choice?: { options: string[]; correctIndex: number; teamId: string; points: number };
+  /** `chefBonus`: a chef's share of `points` (eng review D1–D3), shown as （廚師 +N）. */
+  choice?: { options: string[]; correctIndex: number; teamId: string; points: number; chefBonus?: number };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
    * Only when the answer defeated a room monster or killed the boss, and that monster has a dish. */
   dish?: {
@@ -88,6 +89,8 @@ export type AnswerReveal = {
     method: string;
     comment: string;
     points: number;
+    /** A chef's share of `points`, shown as （廚師 +N）. */
+    chefBonus?: number;
     /** The monster that was cooked, and whose room it was (`room` null for the boss), so the stage can show it
      * during the reveal instead of the next team's monster (docs/designs/monster-cuisine.md, cooking I6). */
     monster: PublicQuestion["monster"];

@@ -52,6 +52,7 @@ const CLASS_ATTACKS: Record<ClassId, string> = {
   cleric: "用聖光、神術和權杖攻擊，不用刀劍；不要寫「祈禱」，那是另一個技能",
   warrior: "用劍、戰斧和盾牌攻擊，不用法術",
   thief: "用匕首、飛刀和暗處一刺攻擊，不用法術；不要寫「偷襲」，那是另一個技能",
+  chef: "用菜刀、平底鍋和爐火攻擊，不用法術",
 };
 
 /** A natural 20 or 1 behind the hit (dnd design E3): the result line itself says it, no extra line. */

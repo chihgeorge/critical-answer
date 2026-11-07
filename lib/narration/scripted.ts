@@ -80,6 +80,10 @@ export const CLASS_VARIANTS: Record<ClassId, { correct: string[]; "boss-hit": st
     correct: ["{team}從暗處射出飛刀，{monster}來不及躲，+{points}！", "{team}繞到背後一刺，{monster}倒下了，+{points}。"],
     "boss-hit": ["{team}的匕首找到破綻，首領只剩 {bossHp} 顆心！", "{team}從暗處一刺，首領還剩 {bossHp} 顆心。"],
   },
+  chef: {
+    correct: ["{team}掄起平底鍋，{monster}被敲暈了，+{points}！", "{team}的菜刀一閃，{monster}已經切好備料，+{points}。"],
+    "boss-hit": ["{team}一鍋砸在首領頭上，只剩 {bossHp} 顆心！", "{team}的爐火燒向首領，還剩 {bossHp} 顆心。"],
+  },
 };
 
 /** A natural 20 (a critical hit) or a 1 (a fumble that still hits) on the die behind a hit (event.roll): this line

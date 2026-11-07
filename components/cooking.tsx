@@ -147,6 +147,11 @@ function DishCard({ dish, title }: { dish: Dish; title: string }) {
         <div className="text-[20px]">「{dish.comment}」</div>
         <div className="mt-1 text-[22px]" style={{ color: "var(--ok2)" }}>
           <span className="px-num">+{dish.points}</span> 飽足感
+          {dish.chefBonus ? (
+            <span style={{ color: "#a8470f" }}>
+              （🍳 廚師 <span className="px-num">+{dish.chefBonus}</span>）
+            </span>
+          ) : null}
         </div>
       </div>
     </Panel>

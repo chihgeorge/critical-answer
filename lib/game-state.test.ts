@@ -21,6 +21,7 @@ import {
   mageHint,
   firstMeaningfulChar,
   armSneak,
+  chefShare,
   pray,
   canPray,
   canPrayBeforeJudge,
@@ -1431,6 +1432,35 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     // The room's shown dice are doubled the same way (kill-roll.md).
     const shown = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
     expect(shown.outcome).toMatchObject({ bossKilled: true, killBonus: 86, reward: 106 });
+  });
+
+  // Value: protects=the chef's 15% (eng review D1–D3); fails_when=it rounds down, skips the 4d20, or leaks to other classes.
+  it("chefShare rounds half up and pays at least 1 on any gain", () => {
+    expect([0, 3, 5, 10, 16, 20, 30, 53].map(chefShare)).toEqual([0, 1, 1, 2, 2, 3, 5, 8]);
+  });
+
+  it("the chef gets 15% more on a room answer; other teams get no chefBonus", () => {
+    const g = classGame(["chef", undefined]);
+    const { game, outcome } = answerQuestion(g, "T0", currentQ(g, "T0"), true);
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 12, chefBonus: 2 });
+    expect(game.teams[0]).toMatchObject({ score: 1, reward: 12, abilityUses: 2 });
+    const other = answerQuestion(game, "T1", currentQ(game, "T1"), true);
+    expect(other.outcome).toMatchObject({ reward: 10 });
+    expect(other.outcome).not.toHaveProperty("chefBonus");
+  });
+
+  it("the chef's 15% goes on the whole boss gain, the kill's 4d20 included", () => {
+    const g = classGame(["chef"], 0, 2);
+    const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first);
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 12, chefBonus: 2 });
+    const kill = answerQuestion(hit.game, "T0", hit.game.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
+    // 10 + 43 = 53, and 15% of 53 rounds to 8.
+    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 61, chefBonus: 8 });
+    expect(kill.game.teams[0].reward).toBe(73);
+  });
+
+  it("the chef has no ability to spend", () => {
+    expect(() => spendAbility(classGame(["chef"]), "T0", "warrior")).toThrow();
   });
 
   it("the mage removes 2 wrong options, never the right one, and clears a pick on a removed option", () => {
