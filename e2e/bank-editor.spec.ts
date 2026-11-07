@@ -926,12 +926,19 @@ test("a room's monster: picked from the catalog, saved as its id, and kept after
     await expect(page.getByLabel("首領").locator("option")).toHaveText(["深淵小黑龍", "深海大王烏賊", "不死火鳥"]);
     const room0 = page.getByLabel("第 1 房的怪物");
     await expect(room0.locator("option", { hasText: "深淵小黑龍" })).toHaveCount(0);
+    // The default bank draws its monsters each game, so the pickers are greyed out until the draw is off.
+    const random = page.getByTestId("bank-random-monsters");
+    await expect(random).toBeChecked();
+    await expect(room0).toBeDisabled();
+    await random.uncheck();
+    await expect(room0).toBeEnabled();
     await room0.selectOption("ghost-cry");
     await expect(page.getByTestId("bank-room-0-monster")).toContainText("淚鹽烤飯糰");
     await saveAll(page);
     await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
     const saved = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank;
     expect(saved.rooms[0].monster).toBe("ghost-cry");
+    expect(saved.randomMonsters).toBeUndefined();
 
     await page.reload();
     await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);

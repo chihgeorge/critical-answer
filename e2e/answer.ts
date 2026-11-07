@@ -123,6 +123,7 @@ export async function withRoom0MonsterAgainAt3(request: APIRequestContext, run: 
   const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
   const original = structuredClone(bank);
   bank.rooms[3].monster = bank.rooms[0].monster;
+  delete bank.randomMonsters; // the bank's own picks, not a fresh draw per game
   expect((await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } })).ok()).toBe(true);
   try {
     await run();

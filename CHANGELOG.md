@@ -2,6 +2,17 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.44.0.0] - 2026-11-07
+
+**Deploy note:** no reseed is needed. Deploy the room server and the website. The live bank was saved before this change, so it keeps its own monsters: to turn the draw on, open /bank-editor, tick 「每場隨機抽怪」 and save. If you roll back the room server after saving, the older server drops the setting on its next save.
+
+### Added
+- A bank can draw its monsters fresh each game. With 「每場隨機抽怪」 ticked in the bank editor, every room gets a different room monster (no repeat until all 20 have appeared) and the boss is any of the 3 bosses. Over many games, each monster comes up about as often as the others.
+- The default bank has the draw on.
+
+### Changed
+- With the draw on, the bank editor greys out the room and boss monster pickers, because the game does not use them.
+
 ## [0.43.0.1] - 2026-11-07
 
 ### Changed

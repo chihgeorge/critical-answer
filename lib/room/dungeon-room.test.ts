@@ -3,12 +3,13 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import { DungeonRoom, fixedDie } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { DIFFICULTIES, answerText, bossPhaseStates, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
-import { catalogMonster, variantOf } from "../monster-catalog";
+import { MONSTERS, catalogMonster, variantOf } from "../monster-catalog";
 import { BANK } from "../question-bank-data";
-// Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
+// Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions, with
+// the bank's own monsters (no per-game draw) so a test knows which monster stands in which room.
 vi.mock("../question-bank-data", async (actual) => {
   const { asTextBank } = await import("../text-bank");
-  return { BANK: asTextBank((await actual<typeof import("../question-bank-data")>()).BANK) };
+  return { BANK: { ...asTextBank((await actual<typeof import("../question-bank-data")>()).BANK), randomMonsters: undefined } };
 });
 import { checkKey, currentTurnTeamId, setTeamOnline } from "../game-state";
 import { EPILOGUE_MODEL } from "../narration/llm";
@@ -346,6 +347,19 @@ describe("HOST_START", () => {
     expect(room.game!.rooms).toEqual(roomTemplates(BANK));
     expect(room.game!.boss.questionIds).toEqual(bossPhaseStates(BANK)[0].questionIds);
     expect(lastBroadcast(room)).toMatchObject({ type: "STATE", phase: "playing" });
+  });
+
+  it("a bank with randomMonsters draws this game's monsters: different room monsters, any boss, shown on the question", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    (room as any).bank = { ...BANK, randomMonsters: true };
+    joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    const ids = room.game!.rooms.map((r) => r.monsterId!);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.every((id) => !catalogMonster(id).boss)).toBe(true);
+    expect(catalogMonster(room.game!.bossMonsterId!).boss).toBe(true);
+    expect(room.game!.rooms.map((r) => r.dish)).toEqual(ids.map((id) => catalogMonster(id).dish.name));
+    expect(lastBroadcast(room).question.monster.id).toBe(ids[0]);
   });
 
   it("rejects starting twice", () => {
@@ -3594,6 +3608,26 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
       expect(states(room).at(-1).reveal).toBeNull();
       expect(states(room).at(-1).cueSeq).toBe(seq);
     });
+  });
+
+  // Value: protects=with randomMonsters every reader uses the drawn monsters (question, dish served, boss look, boss dish), and a save naming no catalog boss falls back to the bank's; fails_when=any call site reads bank.rooms[].monster or bank.boss.monster again, or bossId trusts a bad save; why_new=owner 2026-11-07 (每場隨機抽怪); seam=none; no_claim=rendering
+  it("a randomMonsters game uses the drawn monsters everywhere, not the bank's", () => {
+    // The constant rng draws the catalog's first boss (dragon), so the bank names another to tell them apart.
+    const bank: Bank = { ...BANK, randomMonsters: true, boss: { ...BANK.boss, monster: "kraken" } };
+    const { room, hostConn } = cookRoom(bank);
+    const drawn = catalogMonster(room.game!.rooms[0].monsterId!);
+    expect(room.game!.bossMonsterId).toBe("dragon");
+    expect((room as any).bossLook().id).toBe("dragon");
+    expect(room.game!.boss.dish).toBe(catalogMonster("dragon").dish.name);
+    expect(states(room).at(-1).question.monster.id).toBe(drawn.id);
+    // Every bank room names another monster from here on, so a dish read from the bank would differ.
+    const other = MONSTERS.find((m) => !m.boss && m.id !== drawn.id)!.id;
+    (room as any).bank = { ...bank, rooms: bank.rooms.map((r) => ({ ...r, monster: other })) };
+    const t = room.game!.teams[0];
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: t.id, questionId: t.currentQuestionId, correct: true });
+    expect(states(room).at(-1).reveal.dish.name).toBe(drawn.dish.name);
+    room.game = { ...room.game!, bossMonsterId: "not-a-boss" };
+    expect((room as any).bossLook().id).toBe("kraken");
   });
 
   // Value: protects=the room passes this game's defeats into STATE: the slime's second appearance (room 3) wears a variant and the reveal keeps the plain look it was defeated in; fails_when=currentQuestion builds the question without the game's defeats or seed; why_new=new wiring (monster-catalog.md §3); seam=none; no_claim=rendering

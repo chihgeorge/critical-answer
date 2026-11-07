@@ -374,6 +374,7 @@ export default function BankEditorPage() {
               onRoom={updateRoom}
               onHitReward={(hitReward) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, hitReward } } : prev))}
               onBossMonster={(monster) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, monster } } : prev))}
+              onRandomMonsters={(randomMonsters) => setBank((prev) => (prev ? { ...prev, randomMonsters } : prev))}
             />
           ) : tab === "boss" ? (
             <>
@@ -447,11 +448,13 @@ function RoomsEditor({
   onRoom,
   onHitReward,
   onBossMonster,
+  onRandomMonsters,
 }: {
   bank: Bank;
   onRoom: (roomIndex: number, patch: Partial<Bank["rooms"][number]>) => void;
   onHitReward: (hitReward: number) => void;
   onBossMonster: (monster: string) => void;
+  onRandomMonsters: (on: boolean) => void;
 }) {
   const score = scoreName(true);
   return (
@@ -459,10 +462,14 @@ function RoomsEditor({
       <div data-testid="bank-rooms" className="flex flex-col gap-2">
         <h2 className="text-[18px]">房間（{bank.rooms.length} 間）</h2>
         <div className="text-[13px]">難度決定從哪個題庫抽題、答對拿幾點進度分；{score}決定冠軍。打倒怪物會端上牠的菜。同一隻怪物可以放在好幾房，再次登場時會換顏色、戴配件。</div>
+        <label className="flex items-center gap-2 text-[15px]">
+          <input type="checkbox" data-testid="bank-random-monsters" checked={!!bank.randomMonsters} onChange={(e) => onRandomMonsters(e.target.checked)} />
+          每場隨機抽怪（每間房換一隻不重複的小怪、首領也隨機；下面選的怪物這時不用）
+        </label>
         {bank.rooms.map((r, i) => (
           <div key={i} data-testid={`bank-room-${i}`} className="flex flex-wrap items-center gap-2 text-[15px]">
             <span className="w-[64px]">第 {i + 1} 房</span>
-            <MonsterPicker testId={`bank-room-${i}-monster`} label={`第 ${i + 1} 房的怪物`} value={r.monster} boss={false} onChange={(monster) => onRoom(i, { monster })} />
+            <MonsterPicker testId={`bank-room-${i}-monster`} label={`第 ${i + 1} 房的怪物`} value={r.monster} boss={false} disabled={bank.randomMonsters} onChange={(monster) => onRoom(i, { monster })} />
             <label className="flex items-center gap-1">
               難度
               <select
@@ -485,7 +492,7 @@ function RoomsEditor({
         ))}
         <div className="flex flex-wrap items-center gap-2 text-[15px]">
           <span className="w-[64px]">首領</span>
-          <MonsterPicker testId="bank-boss-monster" label="首領" value={bank.boss.monster} boss onChange={onBossMonster} />
+          <MonsterPicker testId="bank-boss-monster" label="首領" value={bank.boss.monster} boss disabled={bank.randomMonsters} onChange={onBossMonster} />
           <label className="flex items-center gap-1">
             每打中一下
             <input
@@ -507,11 +514,11 @@ function RoomsEditor({
 }
 
 /** A catalog monster picker: room monsters for a room, bosses for the boss, with the monster, its dish and the dish's name. */
-function MonsterPicker({ testId, label, value, boss, onChange }: { testId: string; label: string; value: string; boss: boolean; onChange: (id: string) => void }) {
+function MonsterPicker({ testId, label, value, boss, onChange, disabled }: { testId: string; label: string; value: string; boss: boolean; onChange: (id: string) => void; disabled?: boolean }) {
   const m = monsterById(value);
   return (
-    <span data-testid={testId} className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-      <select aria-label={label} className="px-input !w-auto !py-1" value={value} onChange={(e) => onChange(e.target.value)}>
+    <span data-testid={testId} className={`flex min-w-0 flex-1 flex-wrap items-center gap-2${disabled ? " opacity-50" : ""}`}>
+      <select aria-label={label} className="px-input !w-auto !py-1" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
         {MONSTERS.filter((x) => x.boss === boss).map((x) => (
           <option key={x.id} value={x.id}>
             {x.name}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ACCESSORIES, DISH_LIMITS, HUE_SHIFTS, MONSTERS, TITLE, catalogMonster, fnv1a, monsterById, variantOf, type BankDish } from "./monster-catalog";
+import { ACCESSORIES, DISH_LIMITS, HUE_SHIFTS, MONSTERS, TITLE, catalogMonster, fnv1a, gameMonsters, monsterById, variantOf, type BankDish } from "./monster-catalog";
 import { DISH_SPRITE, MONSTER_SPRITES } from "./sprite-kind";
 
 describe("the monster catalog", () => {
@@ -70,5 +70,31 @@ describe("variantOf", () => {
   it("hashes with FNV-1a 32-bit", () => {
     expect(fnv1a("")).toBe(2166136261);
     expect(fnv1a("a")).toBe(0xe40c292c);
+  });
+});
+
+describe("gameMonsters", () => {
+  const rooms = (n: number) => Array.from({ length: n }, () => ({ monster: "slime-soft" }));
+  const seq = (seed: number) => () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+
+  it("keeps the bank's own monsters without randomMonsters", () => {
+    expect(gameMonsters({ rooms: [{ monster: "bat-hanging" }], boss: { monster: "kraken" } }, Math.random)).toEqual({ rooms: ["bat-hanging"], boss: "kraken" });
+  });
+
+  it("deals different room monsters until the catalog runs out, then a fresh deck", () => {
+    const roomCount = MONSTERS.filter((m) => !m.boss).length;
+    const { rooms: ids, boss } = gameMonsters({ rooms: rooms(roomCount + 3), boss: { monster: "dragon" }, randomMonsters: true }, seq(7));
+    expect(new Set(ids.slice(0, roomCount)).size).toBe(roomCount);
+    expect(ids.every((id) => !catalogMonster(id).boss)).toBe(true);
+    expect(catalogMonster(boss).boss).toBe(true);
+  });
+
+  it("uses every monster about equally over many games", () => {
+    const count = new Map<string, number>();
+    const rng = seq(42);
+    for (let g = 0; g < 2000; g++) for (const id of gameMonsters({ rooms: rooms(8), boss: { monster: "dragon" }, randomMonsters: true }, rng).rooms) count.set(id, (count.get(id) ?? 0) + 1);
+    const n = [...count.values()];
+    expect(count.size).toBe(MONSTERS.filter((m) => !m.boss).length);
+    expect(Math.max(...n) / Math.min(...n)).toBeLessThan(1.25);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { parseBank, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, type MediaContent } from "./question-bank";
 import { BANK } from "./question-bank-data";
-import { catalogMonster, variantOf } from "./monster-catalog";
+import { MONSTERS, catalogMonster, variantOf } from "./monster-catalog";
 import { MAX_TEAMS } from "./protocol";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
@@ -102,6 +102,13 @@ describe("shipped bank", () => {
 describe("parseBank", () => {
   it("accepts a valid bank", () => {
     expect(parseBank(valid()).pools[1]).toHaveLength(2);
+  });
+
+  it("keeps randomMonsters only when it is true, and refuses a value that is not true or false", () => {
+    expect(parseBank({ ...valid(), randomMonsters: true }).randomMonsters).toBe(true);
+    expect(parseBank({ ...valid(), randomMonsters: false })).not.toHaveProperty("randomMonsters");
+    expect(() => parseBank({ ...valid(), randomMonsters: "yes" })).toThrow(/randomMonsters/);
+    expect(parseBank(valid())).not.toHaveProperty("randomMonsters");
   });
 
   const pooled = () => ({
@@ -512,9 +519,10 @@ describe("catalog monsters (docs/designs/monster-catalog.md §2)", () => {
   });
 
   it("no catalog dish in the shipped bank holds a 3+ character answer (the AI line would be thrown away)", () => {
-    const monsters = [...BANK.rooms.map((r) => r.monster), BANK.boss.monster].map(catalogMonster);
+    // With randomMonsters any catalog monster can come up, and its name is spoken too.
+    const monsters = BANK.randomMonsters ? [...MONSTERS] : [...BANK.rooms.map((r) => r.monster), BANK.boss.monster].map(catalogMonster);
     const answers = allQuestions(BANK).map(answerText).filter((a) => a.length >= 3);
-    for (const m of monsters) for (const v of Object.values(m.dish)) expect(answers.filter((a) => v.includes(a)), `${m.name}: ${v}`).toEqual([]);
+    for (const m of monsters) for (const v of [m.name, ...Object.values(m.dish)]) expect(answers.filter((a) => v.includes(a)), `${m.name}: ${v}`).toEqual([]);
   });
 });
 
