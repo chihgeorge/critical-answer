@@ -2,6 +2,17 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.35.2.0] - 2026-11-06
+
+### Changed
+- The README now fits on one screen. It covers what you need, how to install it yourself or hand the install to an AI, how to let phones join, and a table of who does what on the day. A screenshot shows the host page, big screen and a phone side by side.
+- The rest moved into five guides under `docs/`: full rules, a hosting guide, a deployment guide for your own Vercel and Cloudflare accounts, a question-bank guide and a development guide.
+- The bank editor's read-only warning now points to the question-bank guide's 「題庫卡住時怎麼救」 section.
+- The docs now say Node.js 22.18 or later is needed.
+
+### Added
+- CI now checks that every relative link and `#` anchor in the README, SECURITY.md and the `docs/` guides still resolves.
+
 ## [0.35.1.0] - 2026-11-06
 
 **Deploy note:** reload open phones after this release deploys to see the new check label. Phones from 0.35.0.0 keep working without a reload.
