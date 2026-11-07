@@ -759,7 +759,7 @@ const BLUSH = "#ff9db8";
 const mirror = (rows: string[]) => rows.map((r) => [...r].reverse().join(""));
 /** A one-cell line from (x0, y0) to (x1, y1). */
 function line(P: Px, x0: number, y0: number, x1: number, y1: number, c: string) {
-  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+  const n = Math.max(1, Math.abs(x1 - x0), Math.abs(y1 - y0));
   for (let i = 0; i <= n; i++) P.set(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n, c);
 }
 /** A small smile: two corners and a centre dip. */

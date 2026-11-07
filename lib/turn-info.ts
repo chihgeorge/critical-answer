@@ -44,7 +44,9 @@ const ROOM_THEMES: SceneTheme[] = ["stone", "moss", "stone", "moss", "stone"];
 
 /** How the stage draws a bank monster. */
 export function monsterLook(m: PublicQuestion["monster"], hueShift = 0): Monster {
-  return { ...LOOK[m.sprite], kind: m.sprite, name: m.name, hue: (m.hue + hueShift) % 360, ...(m.accessory ? { accessory: m.accessory } : {}) };
+  // A sprite this page does not know (a newer server than the page) draws as a slime rather than crash.
+  const kind = m.sprite in LOOK ? m.sprite : "slime";
+  return { ...LOOK[kind], kind, name: m.name, hue: (m.hue + hueShift) % 360, ...(m.accessory ? { accessory: m.accessory } : {}) };
 }
 
 /** A room's backdrop; `null` is the boss room. */

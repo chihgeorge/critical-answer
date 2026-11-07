@@ -103,7 +103,7 @@ export function LabelChip({ children, tone }: { children: ReactNode; tone?: "tag
 const BLINKS = new Set<SpriteKind>([...MONSTER_SPRITES, "owl", "hero"]);
 
 export function Sprite({
-  kind,
+  kind: asked,
   variant = 0,
   scale = 4,
   hue = 0,
@@ -123,6 +123,8 @@ export function Sprite({
   style?: CSSProperties;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  // Unknown sprites (a newer server than this page) draw as a slime rather than crash the render.
+  const kind: SpriteKind = asked in SPRITE_SIZE ? asked : "slime";
   const [w, h] = SPRITE_SIZE[kind];
   // Unknown hats (a newer server than this page) draw none rather than crash the render.
   const hat = accessory ? (`acc-${accessory}` as SpriteKind) : null;
