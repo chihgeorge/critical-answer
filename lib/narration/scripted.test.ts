@@ -411,11 +411,14 @@ describe("scripted: the crit die", () => {
   });
 
   // Value: protects=a warrior's d20 is said once (TODOS: 旁白念出戰士擲到幾點); fails_when=a 20 line also gets the prefix
-  it("a warrior's roll leads the line with its number and hit or miss, except a 20 or 1 line, which already says it", () => {
+  it("a warrior's roll leads the line with its number and hit or miss, except a crit die's 大成功 or 手滑 line, which already says it", () => {
     const p = createScriptedProvider(() => 0);
     expect(p.line({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 3 })).toMatch(/^戰士擲出 3 點，沒打中。.+/);
     expect(p.line({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, warriorRoll: 9 })).toMatch(/^戰士擲出 9 點，命中！.*2 顆心/);
     expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 15, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).not.toContain("戰士擲出");
+    // The boss kill has no 大成功 line, and a check's 1 is the persuasion die (its 答對 line would be wrong): both say the warrior's number.
+    expect(p.line({ type: "boss-kill", team: "紅隊", monster: "魔王", bonus: 40, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).toMatch(/^戰士擲出 20 點，命中！/);
+    expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 5, warriorRoll: 9, roll: { kind: "check", value: 1 } })).toMatch(/^戰士擲出 9 點，命中！(?!.*說服)/);
   });
 
   it("a 20 gets a 大成功 line and a 1 a 手滑 line that still hits, for room and boss hits", () => {

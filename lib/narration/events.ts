@@ -19,8 +19,8 @@ type WithNext<T> = T & { next?: NextTurn; hostLine?: string; hostLineVerbatim?: 
 /** `classId`: the acting team's class, so the weapons and spells in the line fit it. Left out for a team with no class. */
 type ByClass<T> = T & { classId?: ClassId };
 
-/** `roll`: the die behind this hit landed on a natural 20 (a critical hit) or a 1 (a fumble that still hit). */
-/** `warriorRoll`: a warrior rolled instead of answering, and its d20 landed here (WARRIOR_TARGET or more hits). */
+/** `roll`: the die behind this hit landed on a natural 20 (a critical hit) or a 1 (a fumble that still hit).
+ * `warriorRoll`: a warrior rolled instead of answering, and its d20 landed here (WARRIOR_TARGET or more hits). */
 type WithRoll<T> = T & { roll?: RollMark; warriorRoll?: number };
 
 export type NarrationEvent =
