@@ -19,15 +19,16 @@ test("a team walks into an event room, opens it from its phone, everyone sees th
   await screen.goto(`/room/${code}/screen`);
   await expect(screen.getByText(code)).toBeVisible();
 
-  const [eventTeam, plain] = await Promise.all(
-    ["EventTeam", "Plain"].map(async (name) => {
-      const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-      await page.goto(`/room/${code}/play?name=${name}`);
-      await expect(page.getByText("等待主持人開始遊戲")).toBeVisible();
-      return page;
-    }),
-  );
-  await expect(host.getByText("Plain")).toBeVisible();
+  // One after the other: 擲先攻 ties every team under E2E_DIE and keeps the lobby order, so EventTeam must join first.
+  const join = async (name: string) => {
+    const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+    await page.goto(`/room/${code}/play?name=${name}`);
+    await expect(page.getByText("等待主持人開始遊戲")).toBeVisible();
+    await expect(host.getByText(name)).toBeVisible();
+    return page;
+  };
+  const eventTeam = await join("EventTeam");
+  const plain = await join("Plain");
   await startGame(host);
 
   // EventTeam answers right and walks into room 2, which holds an event; Plain plays its turn as usual.
