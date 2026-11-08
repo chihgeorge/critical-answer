@@ -752,7 +752,7 @@ export class DungeonRoom {
 
   /** The 答錯 改判答對 may undo now: the one being judged, or the last one while nothing has moved since. */
   private undoWrong(): { undoWrong?: { teamId: string; questionId: string } } {
-    const undo = this.undoPending ?? (this.undo?.after === this.game ? this.undo : null);
+    const undo = this.undoPending ? (this.undoHeld() ? null : this.undoPending) : this.undoOpen(this.undo) ? this.undo : null;
     return undo ? { undoWrong: { teamId: undo.teamId, questionId: undo.questionId } } : {};
   }
 
@@ -907,6 +907,7 @@ export class DungeonRoom {
   private reset() {
     this.lastPicks = null;
     this.game = null;
+    this.undo = null;
     this.pendingTeams = [];
     this.hostToken = "";
     this.hostConns.clear();
@@ -1643,9 +1644,23 @@ export class DungeonRoom {
 
   /** setTeamOnline, keeping an undoable 答錯 undoable: a phone dropping or coming back is not a move in the game. */
   private setOnline(teamId: string, online: boolean) {
-    const game = setTeamOnline(this.game!, teamId, online);
+    this.keepUndoOpen(setTeamOnline(this.game!, teamId, online));
+  }
+
+  /** Sets the game, carrying an open undo along: for changes that are not a move (a phone dropping, an option tapped). */
+  private keepUndoOpen(game: GameState) {
     if (this.undo?.after === this.game) this.undo.after = game;
     this.game = game;
+  }
+
+  /** Whether 改判答對 may undo `undo` now: nothing has moved since, and no answer, card or beat is on show. A boss phase the
+   * 答錯 used up has not opened its card yet (phaseCardDue): opening it is a move, waiting is not. */
+  private undoOpen(undo: { after: GameState } | null): boolean {
+    return !!undo && this.game === undo.after && !this.undoHeld();
+  }
+
+  private undoHeld(): boolean {
+    return !!this.reveal || this.phaseCard || this.intro !== null || !!this.pendingLock || !!this.pendingRoll;
   }
 
   /** Runs `judge`, a 答錯 on a fill-in, so that 改判答對 may undo it. A cleric's wait and the 重答 / 逃跑 after it chain to the
@@ -1674,12 +1689,20 @@ export class DungeonRoom {
     if (eventId !== this.eventSeq) return;
     const undo = this.undo;
     const now = this.game;
-    // A boss phase the 答錯 used up has not opened its card yet (phaseCardDue): opening it is a move, waiting is not.
-    if (!undo || !now || now !== undo.after || undo.teamId !== teamId || undo.questionId !== questionId || this.reveal || this.phaseCard || this.intro !== null || this.pendingLock || this.pendingRoll) {
+    if (!undo || !now || !this.undoOpen(undo) || undo.teamId !== teamId || undo.questionId !== questionId) {
       return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_undo" });
     }
-    const online = new Map(now.teams.map((t) => [t.id, t.online]));
-    this.game = { ...undo.prev, teams: undo.prev.teams.map((t) => ({ ...t, online: online.get(t.id) ?? t.online })) };
+    // What changed since without being a move (keepUndoOpen) stays: phones on or offline, other teams' tapped options.
+    const live = new Map(now.teams.map((t) => [t.id, t]));
+    this.game = {
+      ...undo.prev,
+      teams: undo.prev.teams.map((t) => {
+        const n = live.get(t.id);
+        // A tap is kept only on the question it was made on.
+        const tapped = t.id !== teamId && currentQuestionIdOf(undo.prev, t.id) === currentQuestionIdOf(now, t.id);
+        return !n ? t : { ...t, online: n.online, ...(tapped ? { currentSelection: n.currentSelection } : {}) };
+      }),
+    };
     this.undo = null;
     try {
       this.judge(teamId, questionId, true, "retry");
@@ -2129,9 +2152,13 @@ export class DungeonRoom {
     }
     if (currentTurnTeamId(game) !== lost.teamId || team.typedAnswer !== undefined) return false;
     this.lostCrit = null;
+    // Applied right after a 答錯 (inside withUndo): undoing that 答錯 would wipe this win for good, so it is not undoable.
+    const pending = this.undoPending;
+    this.undoPending = null;
     try {
       this.judge(lost.teamId, lost.questionId, true, "retry");
     } catch (err) {
+      this.undoPending = pending;
       console.error(JSON.stringify({ event: "lost_crit_failed", error: String(err) }));
       return false;
     }
@@ -2248,7 +2275,7 @@ export class DungeonRoom {
     // button (adversarial review finding).
     if (this.game.teams.find((t) => t.id === teamId)?.currentSelection === optionIndex) return;
     try {
-      this.game = recordOptionSelection(this.game, teamId, questionId, optionIndex);
+      this.keepUndoOpen(recordOptionSelection(this.game, teamId, questionId, optionIndex));
       this.broadcastState();
     } catch (err) {
       this.sendInvalid(conn, err);

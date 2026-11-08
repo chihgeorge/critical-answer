@@ -286,6 +286,15 @@ export default function HostPage() {
     const t = setTimeout(() => setArmedFor(pauseKey), pauseKey.endsWith("-served") ? SERVE_HOLD_MS : 500);
     return () => clearTimeout(t);
   }, [pauseKey]);
+  // 改判答對 shows up under the judge buttons, which the bottom-anchored column then pushes up: it waits out a double tap
+  // on 答錯 like every other swap (red-team review).
+  const undoKey = game?.undoWrong ? `${game.undoWrong.teamId}|${game.undoWrong.questionId}|${game.eventId}` : "";
+  const [undoArmedFor, setUndoArmedFor] = useState(undoKey);
+  useEffect(() => {
+    const t = setTimeout(() => setUndoArmedFor(undoKey), 500);
+    return () => clearTimeout(t);
+  }, [undoKey]);
+  const canUndo = ready && !!game?.undoWrong && undoArmedFor === undoKey;
   // A warrior's roll in its beat is judged by the room (class-abilities.md R2): the host waits it out too.
   const roll = game?.pendingRoll ?? null;
   // A lock waiting for 公布答案 holds every judgment too (the room refuses with lock_pending).
@@ -361,7 +370,7 @@ export default function HostPage() {
       );
       if (!action || !game) return;
       if (action === "undo") {
-        if (!ready || !game.undoWrong) return;
+        if (!canUndo || !game.undoWrong) return;
         send({ type: "HOST_UNDO_WRONG", ...game.undoWrong, eventId: game.eventId });
       } else if (action === "reveal") {
         if (!ready || !lock) return;
@@ -383,7 +392,7 @@ export default function HostPage() {
     return () => window.removeEventListener("keydown", onKey);
     // judge/send are plain functions over state this effect already depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, ready, swapArmed, canJudge, turn, isMc, stuck, picking, drawer, revealUp, cleric, held, lock, lockWaiting]);
+  }, [game, ready, swapArmed, canJudge, canUndo, turn, isMc, stuck, picking, drawer, revealUp, cleric, held, lock, lockWaiting]);
 
   // 公布答案 (host-reveal.md D6): under the status panel, where 下一題 takes over key 1 after the beat.
   const revealButton = lock && (
@@ -835,9 +844,9 @@ export default function HostPage() {
               )}
             </>
             )}
-            {/* 改判答對 (TODOS.md): under the judge buttons, so it shows up without moving them under a double tap. */}
+            {/* 改判答對 (TODOS.md): under the judge buttons, held for half a second after it shows up (canUndo). */}
             {game.undoWrong && !revealUp && (
-              <PixelButton className="!mt-4 text-[16px]" style={{ background: "#fff" }} disabled={!ready} onClick={() => send({ type: "HOST_UNDO_WRONG", ...game.undoWrong!, eventId: game.eventId })}>
+              <PixelButton className="!mt-4 text-[16px]" style={{ background: "#fff" }} disabled={!canUndo} onClick={() => send({ type: "HOST_UNDO_WRONG", ...game.undoWrong!, eventId: game.eventId })}>
                 ↩ 剛才的{teamName(game.undoWrong.teamId)}改判答對
                 <span className="px-key" aria-hidden="true">{HOST_KEYS.undo}</span>
               </PixelButton>
