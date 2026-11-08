@@ -124,8 +124,8 @@ function Lobby({ code, teams }: { code: string; teams: LobbyTeams }) {
 function TeamGroup({ teams, from, to, align }: { teams: LobbyTeams; from: number; to: number; align: "start" | "end" }) {
   const crowded = teams.length > 4;
   // Two rows of two cells per side when crowded: a cell's nameplate fits about 8 CJK characters, and a
-  // longer name ends in "…" (names are capped at 20). Up to 4 teams, two cells of 140 (about 8 CJK characters) fit a side inside the torches.
-  const cell = crowded ? 190 : 140;
+  // longer name ends in "…" (names are capped at 20). Up to 4 teams, two cells of 132 fit a side inside the torches (a side is 397 wide, the torch ends at x 120).
+  const cell = crowded ? 190 : 132;
   return (
     <div
       className={`flex flex-1 flex-wrap items-end gap-x-2 gap-y-1 ${align === "end" ? "justify-end" : "justify-start"}`}
@@ -463,9 +463,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         </div>
       </div>
       )}
-      {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster. */}
+      {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster; with tiles on the wall, a pill under B/D,
+          above the dialogue box (z 7) so a three-row narration line never hides it. */}
       {typeof answerLeft === "number" && !reveal && !card && (
-        <div className="absolute" style={wall || sortWall ? { right: 22, bottom: 116, zIndex: 6 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 6 }}>
+        <div className="absolute" style={wall || sortWall ? { right: 22, bottom: 116, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 6 }}>
           <AnswerClock key={answerLeft} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} />
         </div>
       )}
