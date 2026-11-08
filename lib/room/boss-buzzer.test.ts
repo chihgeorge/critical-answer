@@ -155,6 +155,15 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { out: [IDS[1]] } } });
   });
 
+  it("no answer countdown runs in a buzzer phase, before or after a buzz (answer-countdown.md vs boss-buzzer.md)", () => {
+    const g = buzzerGame(text);
+    (g.room as unknown as { answerSeconds: number }).answerSeconds = 60;
+    send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "b-a" });
+    expect(g.state().answerClock).toBeUndefined();
+    g.buzz(0);
+    expect(g.state().answerClock).toBeUndefined();
+  });
+
   it("a buzzing team cannot roll a persuasion check, and the host cannot skip a question a team is answering", () => {
     const g = buzzerGame(text);
     g.buzz(0);

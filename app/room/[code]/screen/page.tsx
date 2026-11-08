@@ -18,7 +18,9 @@ import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { BOSS_ALARM, SFX } from "@/lib/sfx";
+import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, SFX } from "@/lib/sfx";
+import { AnswerClock } from "@/components/answer-clock";
+import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { IN_LOBBY, nextTransition, UNSEEN, type Transition } from "@/lib/transitions";
 import { TransitionOverlay } from "@/components/transition-overlay";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, prefersReducedMotion, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
@@ -230,7 +232,7 @@ type YoutubeContent = Extract<PublicMediaContent, { kind: "youtube" }>;
 /** A chip that stands in the side column beside a video (D14), at the same 20px as the hints. */
 const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4px solid var(--k)", whiteSpace: "normal", borderRadius: 12 } as const;
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, say, onRead }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, onClipEnded, answerLeft, onClockSecond, say, onRead }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -403,6 +405,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               cover={!reveal && !!video.content.audioOnly}
               needsTap={needsTap}
               onPlayingChange={onVideoPlaying}
+              onEnded={reveal ? undefined : () => onClipEnded(video.id)}
               title={reveal ? "正解影片" : "題目影片"}
             />
             {!lone && (
@@ -459,6 +462,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} accessory={monster.accessory} />
         </div>
       </div>
+      )}
+      {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster. */}
+      {typeof answerLeft === "number" && !reveal && !card && (
+        <div className="absolute" style={{ left: "calc(50% + 170px)", bottom: 150, zIndex: 6 }}>
+          <AnswerClock key={answerLeft} ms={answerLeft} variant="big" onSecond={onClockSecond} />
+        </div>
       )}
       {(cook === null || cook === 0) && (
       <Nameplate className="absolute" style={{ left: "50%", bottom: 112, transform: "translateX(-50%)", zIndex: 5, color: bossScene ? "#b02a3a" : undefined }}>
@@ -974,6 +983,21 @@ export default function ScreenPage() {
     }
   }
 
+  function onClipEnded(questionId: string) {
+    send({ type: "SCREEN_CLIP_ENDED", questionId });
+  }
+  /** The lowest second the answer clock has shown. A STATE remounts the clock, which can show the same second or one
+   * above it again (network delay): neither ticks twice. A jump of more than a second up is a new count. */
+  const lastTick = useRef<number | null>(null);
+  const onClockSecond = useCallback((s: number) => {
+    const last = lastTick.current;
+    if (last !== null && s >= last && s <= last + 1) return;
+    lastTick.current = s;
+    if (last !== null && s > last) return; // a new count starts silent
+    if (s === 0) bgm.current?.playCue(ANSWER_TIME_UP);
+    else if (s <= ANSWER_WARN_SECONDS) bgm.current?.playCue(ANSWER_TICK);
+  }, []);
+
   function toggleBgm() {
     const next = !bgmOn;
     // start() runs inside this click, which is what lets the browser play it.
@@ -1096,7 +1120,7 @@ export default function ScreenPage() {
         )}
         {game?.phase === "playing" && !game.intro && !game.initiative && (game.eventReveal || (!game.reveal && !game.phaseCard && describeTurn(game.view, null).team?.eventScene)) ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal ?? null} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}

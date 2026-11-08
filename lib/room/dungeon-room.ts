@@ -74,6 +74,7 @@ import {
 import { revealBeats, revealCalls } from "../podium";
 import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
 import { gameLog } from "../game-log";
+import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
 import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
@@ -291,6 +292,12 @@ export class DungeonRoom {
    * locks again; a cut-off kill, with pendingKill, is lost: the team answers the final blow again, and a lost natural 20 comes back
    * through lostCrit with fresh dice). Shares lockTimer. */
   private pendingRoll: PendingRoll | null = null;
+  /** 每題作答倒數 (docs/designs/answer-countdown.md): this game's seconds (0 is off), the running count, and the last
+   * question whose video clip the big screen reported ended (D4). Saved with a wall-clock deadline: a restart keeps
+   * the count going, and time spent down counts, as it does for the players watching. */
+  private answerSeconds = 0;
+  private answerClock: AnswerClock | null = null;
+  private clipEnded: string | null = null;
   /** The judgment a kill's 4d20 holds back (kill-roll.md): resolveRoll makes it with the shown dice. */
   private pendingKill: { correct: boolean; fleeChoice: "flee" | "retry"; roll?: { kind: "warrior" | "crit"; value: number } } | null = null;
   /** A natural 20 whose beat a restart cut off (R7), applied by applyLostCrit. In memory only: restore() sets it. */
@@ -562,6 +569,7 @@ export class DungeonRoom {
 
   /** What survives a restart. Teams are saved offline: after a restart nobody is connected until a phone says so. */
   private persistedState(): RoomSnapshot {
+    this.syncAnswerClock();
     return {
       schemaVersion: SCHEMA_VERSION,
       roomEpoch: this.roomEpoch,
@@ -594,6 +602,7 @@ export class DungeonRoom {
       ...(this.intro !== null ? { intro: this.intro } : {}),
       ...(this.initiative ? { initiative: this.initiative } : {}),
       ...(this.initiativeOn && this.opening() ? { initiativeOn: true as const } : {}),
+      ...(this.answerSeconds ? { answerSeconds: this.answerSeconds, answerClock: this.answerClock, clipEnded: this.clipEnded } : {}),
     };
   }
 
@@ -679,6 +688,9 @@ export class DungeonRoom {
     // An initiative without a game in play (a damaged save) is dropped: its timer would start a game that is not there.
     this.initiative = this.game?.phase === "playing" ? (s.initiative ?? null) : null;
     this.initiativeOn = s.initiativeOn === true;
+    this.answerSeconds = s.answerSeconds ?? 0;
+    this.answerClock = s.answerClock ?? null;
+    this.clipEnded = s.clipEnded ?? null;
     if (this.initiative) this.armInitiative(this.initiative.order ? (this.initiative.tieRolls?.length ?? 0) * INITIATIVE_TIE_MS + this.initiativeHoldMs : INITIATIVE_MS);
     // The answer reveal does not survive a restart, so a phase that ended under it goes straight to its card.
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
@@ -743,6 +755,41 @@ export class DungeonRoom {
     const pub = publicQuestion(this.bank, id, team.roomIndex, this.room.env?.R2_PUBLIC_BASE_URL ?? "", game.optionOrder[id], { seed: game.variantSeed ?? 0, defeats }, { room: roomMonster, boss: this.bossId() });
     const q = this.question(id);
     return pub ? { pub, answer: q ? answerText(q) : "" } : null;
+  }
+
+  /** The turn answering now (answer-countdown.md D3), or null: nobody is answering while an answer waits for the host,
+   * a die other than a persuasion check is in its beat, or the screen shows something other than the question.
+   * "hold": every phone is offline (a restart, a Wi-Fi drop), so the count is kept for whoever comes back. */
+  private answering(): { key: string; questionId: string; video: boolean } | null | "hold" {
+    const game = this.game;
+    if (!this.answerSeconds || game?.phase !== "playing" || this.paused()) return null;
+    if (this.pendingLock || game.pendingWrong || (this.pendingRoll && this.pendingRoll.kind !== "check")) return null;
+    // A buzzer phase is its own race: the team that buzzed answers out loud at once, so no count runs (boss-buzzer.md).
+    if (isBuzzPhase(game)) return null;
+    const teamId = currentTurnTeamId(game);
+    if (!teamId) return "hold";
+    const pub = this.currentQuestion()?.pub;
+    if (!pub || game.teams.find((t) => t.id === teamId)?.typedAnswer !== undefined) return null;
+    return { key: `${teamId}:${pub.id}`, questionId: pub.id, video: pub.content.kind === "youtube" };
+  }
+
+  /** Brings the countdown up to date with the room and returns what STATE shows of it. Called whenever the room is
+   * saved or sent, so it needs no hooks of its own. */
+  private syncAnswerClock(): { answerClock?: { left: number | null } } {
+    const want = this.answering();
+    if (want === "hold") return {};
+    const waiting = !!want?.video && this.clipEnded !== want.questionId;
+    this.answerClock = nextAnswerClock(this.answerClock, want && !waiting ? want.key : null, this.now(), this.answerSeconds * 1000);
+    if (waiting) return { answerClock: { left: null } };
+    return this.answerClock ? { answerClock: { left: Math.max(0, this.answerClock.endsAt - this.now()) } } : {};
+  }
+
+  /** SCREEN_CLIP_ENDED (D4): for the question video on screen right now, even while an answer waits (a 重答 then
+   * counts at once). The first report counts. */
+  private handleClipEnded(questionId: string) {
+    if (!this.answerSeconds || this.reveal || this.shownVideoId() !== questionId || this.clipEnded === questionId) return;
+    this.clipEnded = questionId;
+    this.broadcastState();
   }
 
   /** A bank question as this game shows it (options in the game's shuffled order). */
@@ -844,6 +891,7 @@ export class DungeonRoom {
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
       ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
       ...(this.initiative ? { initiative: { ...this.initiative, left: Math.max(0, this.initiativeEndsAt - this.now()) } } : {}),
+      ...this.syncAnswerClock(),
       ...this.bossPhaseInfo(),
       cuisine: true as const,
       pendingLock: this.pendingLock,
@@ -1147,7 +1195,7 @@ export class DungeonRoom {
           this.handleRejoin(sender, msg.teamId, msg.teamKey);
           break;
         case "HOST_START":
-          this.handleHostStart(sender, msg.aiNarration, msg.intro, msg.initiative);
+          this.handleHostStart(sender, msg.aiNarration, msg.intro, msg.initiative, msg.answerSeconds);
           break;
         case "HOST_INTRO":
           this.handleHostIntro(sender, msg.page);
@@ -1173,6 +1221,10 @@ export class DungeonRoom {
           // Not from a team's phone or a host page: a player cannot lock the host's edits from their own phone (D3).
           if (this.connTeam.has(sender.id) || this.hostConns.has(sender.id)) break;
           this.handleNarrationProgress(msg.eventId, msg.rev, msg.done);
+          break;
+        case "SCREEN_CLIP_ENDED":
+          if (this.connTeam.has(sender.id) || this.hostConns.has(sender.id)) break;
+          this.handleClipEnded(msg.questionId);
           break;
         case "HOST_NEXT_LINE":
           this.handleNextLine(sender, msg.line);
@@ -1268,7 +1320,7 @@ export class DungeonRoom {
       // reconnect's re-identification (`resume`) is a device, not a person.
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && !this.rejected && !resumed) {
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -1700,7 +1752,7 @@ export class DungeonRoom {
     this.broadcast(this.snapshot());
   }
 
-  private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean) {
+  private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean, answerSeconds?: number) {
     if (!this.requireHost(conn)) return;
     if (this.game) {
       this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
@@ -1732,6 +1784,9 @@ export class DungeonRoom {
     this.aiNarration = aiNarration !== false;
     this.intro = intro ? 1 : null;
     this.initiativeOn = !!initiative;
+    this.answerSeconds = answerSeconds ?? 0;
+    this.answerClock = null;
+    this.clipEnded = null;
     if (intro) {
       this.broadcastState();
       return;

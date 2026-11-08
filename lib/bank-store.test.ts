@@ -337,6 +337,13 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     expect(await new BankStore(memoryStorage({ bank: validBank, version: 6, format: 3 })).getVersionedBank()).toEqual({ bank: validBank, version: 6 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
   });
 
+  it("a bank stored at format 4 (before the buzzer phase) still loads as itself, not outdated", async () => {
+    const got = await new BankStore(memoryStorage({ bank: validBank, version: 3, format: 4 })).getVersionedBank();
+    expect(got.outdated).toBeUndefined();
+    expect(got.unreadable).toBeUndefined();
+    expect(got.version).toBe(3);
+  });
+
   it("reads format 2, and a bank with no format, as outdated with the stored version", async () => {
     expect(await new BankStore(memoryStorage({ bank: oldBank, version: 9, format: 2 })).getVersionedBank()).toEqual({ bank: BANK, version: 9, outdated: 2 });
     expect(await new BankStore(memoryStorage({ bank: oldBank, version: 4 })).getVersionedBank()).toEqual({ bank: BANK, version: 4, outdated: 1 });

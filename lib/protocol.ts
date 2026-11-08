@@ -33,6 +33,7 @@ import type { Accessory } from "./monster-catalog";
 import { isClassId, type ClassId, type EventResult, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
 import type { InitiativeView } from "./initiative";
+import { isAnswerSeconds } from "./answer-clock";
 import type { MonsterSprite } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -146,7 +147,8 @@ export type ClientMessage =
   /** `intro`: play the 4-page how-to-play first (docs/designs/how-to-play.md). Missing means no intro,
    * so a host page from before the intro can't get stuck on a page it has no button for (eng D2). */
   /** `initiative`: every team rolls 擲先攻 for the turn order (lib/initiative.ts). Missing keeps the lobby order, like `intro`. */
-  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean }
+  /** `answerSeconds`: 每題作答倒數, one of ANSWER_SECONDS (lib/answer-clock.ts); missing or 0 is off. */
+  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean; answerSeconds?: number }
   /** How-to-play: go to `page` (1..4); 5 ends the intro and deals the first question. The room takes
    * only the current page ±1, so a double tap or a second host tab turns one page, not two (eng D4). */
   | { type: "HOST_INTRO"; page: number }
@@ -169,6 +171,8 @@ export type ClientMessage =
    * when its voice is on). No key: the worst a forged one does is lock lines early. The room ignores it from a team's phone or a host page
    * (host-narration-edit.md D3, D14). */
   | { type: "SCREEN_NARRATION_PROGRESS"; eventId: number; rev: number; done: number }
+  /** /screen: the question video's clip has ended, so its answer countdown may start (answer-countdown.md D4). Same trust as above. */
+  | { type: "SCREEN_CLIP_ENDED"; questionId: string }
   /** Director: the next narration's second line says this (<= 40 chars); "" cancels. */
   | { type: "HOST_NEXT_LINE"; line: string }
   | { type: "HOST_GET_TRANSCRIPT" }
@@ -331,6 +335,9 @@ export type ServerMessage =
       media?: MediaCommand;
       /** A finished game's podium reveal. Absent from older servers and from a game finished before it: show the podium. */
       podium?: PodiumReveal;
+      /** 每題作答倒數 (answer-countdown.md): ms left when this STATE was sent, or null while the question's video clip
+       * has not ended. Absent while nobody is answering, or with the countdown off. */
+      answerClock?: { left: number | null };
       /** An opened event on show until the host's 下一題, like `reveal` (docs/designs/event-rooms.md). The turn has moved on. */
       eventReveal?: EventReveal;
     }
@@ -506,7 +513,14 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.aiNarration !== undefined && typeof m.aiNarration !== "boolean") return null;
       if (m.intro !== undefined && typeof m.intro !== "boolean") return null;
       if (m.initiative !== undefined && typeof m.initiative !== "boolean") return null;
-      return { type: "HOST_START", aiNarration: m.aiNarration, ...(m.intro ? { intro: true } : {}), ...(m.initiative ? { initiative: true } : {}) };
+      if (m.answerSeconds !== undefined && !isAnswerSeconds(m.answerSeconds)) return null;
+      return {
+        type: "HOST_START",
+        aiNarration: m.aiNarration,
+        ...(m.intro ? { intro: true } : {}),
+        ...(m.initiative ? { initiative: true } : {}),
+        ...(m.answerSeconds ? { answerSeconds: m.answerSeconds } : {}),
+      };
     case "HOST_INTRO":
       return Number.isInteger(m.page) && (m.page as number) >= 1 && (m.page as number) <= INTRO_PAGES + 1
         ? { type: "HOST_INTRO", page: m.page as number }
@@ -544,6 +558,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return isCount(m.eventId) && isCount(m.rev) && isCount(m.done)
         ? { type: "SCREEN_NARRATION_PROGRESS", eventId: m.eventId, rev: m.rev, done: m.done }
         : null;
+    case "SCREEN_CLIP_ENDED": {
+      const questionId = str(m.questionId, MAX_RAW_TEXT);
+      return questionId ? { type: "SCREEN_CLIP_ENDED", questionId } : null;
+    }
     case "HOST_NEXT_LINE": {
       const line = str(m.line, MAX_EDIT_LINE);
       return line !== null ? { type: "HOST_NEXT_LINE", line } : null;

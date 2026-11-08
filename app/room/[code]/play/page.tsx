@@ -1,5 +1,6 @@
 "use client";
 
+import { AnswerClock } from "@/components/answer-clock";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
@@ -772,6 +773,8 @@ export default function PlayPage() {
               )}
             </div>
           </div>
+          {/* 每題作答倒數 (answer-countdown.md D5): only the turn's own phone, and silent. */}
+          {isMyTurn && typeof game.answerClock?.left === "number" && <AnswerClock key={game.answerClock.left} ms={game.answerClock.left} variant="chip" />}
         </Panel>
       )}
 
