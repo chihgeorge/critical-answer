@@ -2,7 +2,7 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [Unreleased]
+## [0.55.0.0] - 2026-11-08
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website, and save a bank with a buzzer phase only after both are live. The bank format goes up to 5 for a bank with a buzzer phase; an older version opens such a bank read-only instead of dropping the phase. No migration. Do not roll back while a game is in a buzzer phase: an older room server would restore it as an ordinary turn-based phase.
 
