@@ -2,7 +2,7 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [Unreleased]
+## [0.47.0.1] - 2026-11-08
 
 ### Added
 - Two e2e tests for the cleric in the boss room. After a wrong lock the phone offers 祈禱 and 不用. 祈禱 spends a use and gives the team a new boss question in the same turn. 不用 spends nothing, and the boss moves on to a new question.
