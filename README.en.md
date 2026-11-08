@@ -70,7 +70,7 @@ To let people outside your network play, put the front end on Vercel and the roo
 | Before the event | Check the question bank answers, test the connection | Open `/room/<code>/screen`, test the volume | Get the phones online |
 | Gathering | On the home page, press 「主持遊戲」 (Host a game) to open a room | Shows the QR code and the 4-character room code | Each team scans the QR code to join and picks a class |
 | Start | Press 「開始遊戲」 (Start game) to play the how-to-play intro | Plays the 4-page how-to-play intro | Watch the big screen |
-| Each question | Multiple choice: press 「公布答案」 (Reveal answer) (key `1`); fill-in: judge right or wrong | Question, dice, result | Multiple choice: lock in an answer; fill-in: roll persuasion first, then type |
+| Each question | Multiple choice and sort: press 「公布答案」 (Reveal answer) (key `1`); fill-in: judge right or wrong | Question, dice, result | Multiple choice: lock in an answer; sort: drag the items into order, then lock; fill-in: roll persuasion first, then type |
 | Wrap-up | The boss falls or you press 「結束冒險」 (End adventure); you can press 「再玩一場」 (Play again) | Podium and epilogue (when a boss with a dish falls, the boss is cooked and served first) | See who has the most reward points |
 
 The big-screen URL is at the top of the host page. For keyboard controls, switching phones and recovering from disconnects, see the [hosting guide](docs/hosting.en.md).
@@ -80,8 +80,8 @@ The big-screen URL is at the top of the host page. For keyboard controls, switch
 - **Take turns**: all teams answer in a fixed order. Each room has one monster; answer correctly to defeat it, earn reward points and move into the next room.
 - **Wrong answer**: choose 「重答」 (Retry) to answer the same question again, or 「逃跑」 (Flee) to swap it for one a level easier.
 - **Boss room**: once the progress points from correct answers reach 15, you enter the boss room; after one team goes in, every other team follows on its next correct answer. The boss's HP is shared; each hit is worth 10 points, and the final blow adds 4 d20s.
-- **Dice**: a correct multiple-choice answer rolls a crit die; a 20 gives half the reward points again. Before a fill-in answer you roll a persuasion check; pass it and you see the first character of the answer. The default question bank is all multiple choice, so no persuasion checks are rolled.
-- **Classes**: the Warrior rolls dice instead of answering, the Mage removes wrong options or reveals the first character, the Cleric answers again after a wrong answer, the Thief's sneak attack doubles the points for that question, and the Chef (passive) gets 15% more on every gain.
+- **Dice**: a correct multiple-choice or sort answer rolls a crit die; a 20 gives half the reward points again. Before a fill-in answer you roll a persuasion check; pass it and you see the first character of the answer. The default question bank is all multiple choice, so no persuasion checks are rolled.
+- **Classes**: the Warrior rolls dice instead of answering, the Mage removes wrong options, reveals the first character or a sort question's first item, the Cleric answers again after a wrong answer, the Thief's sneak attack doubles the points for that question, and the Chef (passive) gets 15% more on every gain.
 - **Winning**: the team with the most reward points wins; a tie in the top three is settled by rolling d20s. The team that defeats the boss is not always the champion.
 
 For the full rules, every number and every exception, see the [full rules](docs/rules.en.md).
@@ -90,7 +90,7 @@ For the full rules, every number and every exception, see the [full rules](docs/
 
 | Doc | Contents |
 | --- | --- |
-| [Full rules](docs/rules.en.md) | Judging, multiple choice, persuasion checks, the boss, scoring, classes, monsters into dishes |
+| [Full rules](docs/rules.en.md) | Judging, multiple choice, sort questions, persuasion checks, the boss, scoring, classes, monsters into dishes |
 | [Hosting guide](docs/hosting.en.md) | Opening a room, how-to-play intro, big screen, AI narration, when things go wrong, known limits |
 | [Deployment guide](docs/deployment.en.md) | First deployment, settings overview, keys, R2, deployment order |
 | [Question bank guide](docs/question-bank.en.md) | Default question bank, question bank editor, how to recover when the bank is stuck |
