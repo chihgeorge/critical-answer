@@ -61,11 +61,11 @@ sh scripts/playtest.sh stop
 
 ## 存檔與回滾
 
-**房間會存檔**：每次對外說話之前，房間先把自己存進 Durable Object 儲存空間（遊戲狀態、牌堆、主持人與隊伍金鑰、題庫、後記、名次揭曉的開始時間和台詞、主持人排好的下一句旁白；題庫另外存成一筆，只在題庫變動時才寫）。伺服器被殺掉、重新部署或回收之後會自動還原：分數、輪到誰、主持人身分都在，重啟後所有隊伍先視為離線，手機重新加入才恢復（沒有隊伍在線時沒有人輪到）。存檔格式不認得時（版本不符，或是首領階段上線前的舊存檔）會丟棄並顯示「遊戲已重置」。Worker 不要回滾到 v0.31.3.0 以前：舊版讀不懂新的存檔，進行中的房間都會重置。不存的：連線清單、換手機的配對碼、旁白紀錄（只是主持人的下載檔）。本機的 `wrangler dev` 也一樣，存在 `.wrangler/`。
+**房間會存檔**：每次對外說話之前，房間先把自己存進 Durable Object 儲存空間（遊戲狀態、牌堆、主持人與隊伍金鑰、題庫、後記與翻到第幾頁、名次揭曉的開始時間和台詞、主持人排好的下一句旁白；題庫另外存成一筆，只在題庫變動時才寫）。伺服器被殺掉、重新部署或回收之後會自動還原：分數、輪到誰、主持人身分都在，重啟後所有隊伍先視為離線，手機重新加入才恢復（沒有隊伍在線時沒有人輪到）。存檔格式不認得時（版本不符，或是首領階段上線前的舊存檔）會丟棄並顯示「遊戲已重置」。Worker 不要回滾到 v0.31.3.0 以前：舊版讀不懂新的存檔，進行中的房間都會重置。不存的：連線清單、換手機的配對碼、旁白紀錄（只是主持人的下載檔）。本機的 `wrangler dev` 也一樣，存在 `.wrangler/`。
 
 ## 版本與 Release
 
-版本號有四段（例如 `0.16.1.0`），由 `/ship` 依改動決定，寫進 `VERSION` 和 `CHANGELOG.md`。合併進 `main` 的版本如果是 `X.Y.0.0`（第二段以上變了，也就是有新功能），[.github/workflows/release.yml](../.github/workflows/release.yml) 會自動打 tag `vX.Y.0.0`，並發一個 GitHub Release，內容是從上一個 release 到這一版的所有 CHANGELOG 段落（[scripts/release-notes.ts](../scripts/release-notes.ts) 整理）。後兩段的小修和熱修不自動發，會收進下一個 release；要單獨發的話，到 Actions → Release → Run workflow，就會把 `main` 現在的版本發出去。repo 裡還沒有任何 `v` tag 時 workflow 會直接失敗（不然說明會是整份 CHANGELOG），要先補發歷史版本。
+版本號有四段（例如 `0.16.1.0`）。PR 不改 `VERSION` 和 `CHANGELOG.md`，只在 [changelog.d/](../changelog.d/README.md) 加一個小檔，寫這次的改動；新功能在檔頭寫 `bump: minor`。所以兩個開著的 PR 不會在版本號上衝突，CI 全綠（必過檢查 `check`）就能由 GitHub 自動合併。版本號只在發版 PR 裡改：`gstack-release-stamp open` 把 `changelog.d/` 的小檔整理成一段新的 CHANGELOG，依最大的 `bump` 升版，並刪掉小檔。發版 PR 用 `gstack-ship-queue land --pr <n> --pin <head>` 合併，不走自動合併：`main` 在它之後又動過的話 land 會拒絕，這樣中間合併的小檔不會漏掉。規則在 [.gstack/ship-policy.json](../.gstack/ship-policy.json)。發版 PR 合併後，如果版本是 `X.Y.0.0`（第二段以上變了，也就是有新功能），[.github/workflows/release.yml](../.github/workflows/release.yml) 會自動打 tag `vX.Y.0.0`，並發一個 GitHub Release，內容是從上一個 release 到這一版的所有 CHANGELOG 段落（[scripts/release-notes.ts](../scripts/release-notes.ts) 整理）。後兩段的小修和熱修不自動發，會收進下一個 release；要單獨發的話，到 Actions → Release → Run workflow，就會把 `main` 現在的版本發出去。repo 裡還沒有任何 `v` tag 時 workflow 會直接失敗（不然說明會是整份 CHANGELOG），要先補發歷史版本。
 
 ## 專案結構
 

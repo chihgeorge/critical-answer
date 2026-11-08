@@ -1,5 +1,5 @@
+import { ROOM_CODE_CHARS } from "./gate";
 import { readStored, writeStored } from "./stored";
-const ROOM_CODE_CHARS = "BCDEFGHJKLMNPQRSTUVWXYZ";
 
 export function generateRoomCode(): string {
   return Array.from({ length: 4 }, () => ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)]).join(

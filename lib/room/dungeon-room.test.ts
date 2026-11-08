@@ -88,6 +88,14 @@ function lastBroadcast(room: DungeonRoom) {
 /** The room's current eventSeq — what a real host echoes back in HOST_NEXT (the eventId of the STATE it saw). */
 const seqOf = (room: DungeonRoom) => (room as unknown as { eventSeq: number }).eventSeq;
 
+/** A /screen page's socket: connected, then announced with SCREEN_HELLO, as the page does on every open. */
+function screenConn(room: DungeonRoom, id = "screen") {
+  const conn = makeConn(id);
+  room.onConnect(conn);
+  send(room, conn, { type: "SCREEN_HELLO" });
+  return conn;
+}
+
 function lastSentTo(conn: ReturnType<typeof makeConn>) {
   const calls = (conn.send as ReturnType<typeof vi.fn>).mock.calls;
   const last = calls.at(-1)?.[0];
@@ -237,15 +245,34 @@ describe("JOIN", () => {
   // Value: protects=two lobby teams never share a name (the epilogue and transcript match teams by name); fails_when=JOIN stops checking names already taken; why_new=only rename checked duplicates; seam=none; no_claim=none beyond protects
   it("rejects a name another team already has, like a rename does", () => {
     const { room } = makeRoomWithHost();
-    send(room, makeConn(), { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "紅隊" });
-    const second = makeConn();
+    send(room, makeConn("c1"), { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "紅隊" });
+    const second = makeConn("c2");
     send(room, second, { type: "JOIN", teamId: T2, teamKey: KEY, teamName: " 紅隊 " });
     expect(lastSentTo(second)).toMatchObject({ type: "ERROR", error: "invalid_name", detail: "duplicate_name" });
     // Full-width and letter case look the same on the big screen, so they count as the same name.
     send(room, second, { type: "JOIN", teamId: T2, teamKey: KEY, teamName: "ｒｅｄ" });
-    const third = makeConn();
+    const third = makeConn("c3");
     send(room, third, { type: "JOIN", teamId: "00000000-0000-0000-0000-000000000003", teamKey: KEY2, teamName: "RED" });
     expect(lastSentTo(third)).toMatchObject({ type: "ERROR", error: "invalid_name", detail: "duplicate_name" });
+  });
+
+  // Value: protects=one socket cannot fill all MAX_TEAMS slots by JOINing new ids (TODOS: 一條連線能佔滿 8 隊);
+  // fails_when=JOIN or REJOIN rebinds a connection that already plays for another team.
+  it("one connection plays for one team: a different id is refused, the same id again still works", () => {
+    const { room } = makeRoomWithHost();
+    const conn = makeConn("c1");
+    send(room, conn, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "紅隊" });
+    send(room, conn, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "藍隊" });
+    expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "already_in_team" });
+    expect(lastBroadcast(room).teams.map((t: { id: string }) => t.id)).toEqual([T1]);
+    // A second team made elsewhere cannot be taken over from this socket with REJOIN either.
+    send(room, makeConn("c2"), { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "藍隊" });
+    send(room, conn, { type: "REJOIN", teamId: T2, teamKey: KEY2 });
+    expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "already_in_team" });
+    // A resend of its own JOIN, or a REJOIN as itself, is fine.
+    send(room, conn, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "紅隊" });
+    send(room, conn, { type: "REJOIN", teamId: T1, teamKey: KEY });
+    expect(lastSentTo(conn)).not.toMatchObject({ type: "ERROR" });
   });
 
   it("strips HTML-special characters from a team name", () => {
@@ -1989,7 +2016,7 @@ describe("narration (T5-T7)", () => {
       const { room, hostConn } = start(2, { holdMs: 30, epilogueDelayMs: 4000, now: () => clock.t, ...opts });
       await sleep(40);
       const n = all(room).filter((m) => m.type === "NARRATION").at(-1);
-      const readOut = (done = n.lines.length) => send(room, makeConn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId: n.eventId, rev: n.rev ?? 0, done });
+      const readOut = (done = n.lines.length) => send(room, screenConn(room), { type: "SCREEN_NARRATION_PROGRESS", eventId: n.eventId, rev: n.rev ?? 0, done });
       if (read) readOut();
       send(room, hostConn, { type: "HOST_END_GAME" });
       await sleep(40);
@@ -2389,7 +2416,7 @@ describe("LLM narration and director (T8-T10)", () => {
       return { ...r, n };
     }
     const progress = (r: { room: DungeonRoom }, eventId: number, rev: number, done: number) =>
-      send(r.room, makeConn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev, done });
+      send(r.room, screenConn(r.room), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev, done });
 
     // Value: protects=the host rewrites any line, not just the first (D9); fails_when=the room still only swaps
     // lines[0], drops the other lines, forgets the edit for a late joiner, or does not bump rev for the screen.
@@ -2450,16 +2477,21 @@ describe("LLM narration and director (T8-T10)", () => {
 
     // Value: protects=a player cannot lock the host's edits from their own phone, nor the host page by mistake (D3);
     // fails_when=the room takes SCREEN_NARRATION_PROGRESS from a joined team's connection or a host connection.
-    it("takes reading progress only from a connection that is neither a team nor the host", async () => {
+    it("takes reading progress only from an announced screen that is neither a team nor the host", async () => {
       const r = await threeLines();
       const told = () => sentMsgs(r.hostConn).filter((m) => m.type === "HOST_NARRATION_PROGRESS");
       const report = (c: ReturnType<typeof makeConn>) => send(r.room, c, { type: "SCREEN_NARRATION_PROGRESS", eventId: r.n.eventId, rev: 0, done: 3 });
       report(makeConn("player-conn-0")); // the first team's phone (joinTeams)
       report(r.hostConn);
+      const stray = makeConn("devtools"); // a second socket that never joined a team, nor said SCREEN_HELLO
+      r.room.onConnect(stray);
+      report(stray);
+      send(r.room, makeConn("player-conn-0"), { type: "SCREEN_HELLO" }); // a phone cannot announce itself either
+      report(makeConn("player-conn-0"));
       expect(told()).toEqual([]);
       send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 2, line: "還能改" });
       expect(narrations(r.room).at(-1).lines[2]).toBe("還能改");
-      report(makeConn("screen"));
+      report(screenConn(r.room));
       expect(told()).toEqual([]); // rev moved on with the edit: this report is about the old text
     });
 
@@ -2899,16 +2931,54 @@ describe("team identity and reconnect (audit findings)", () => {
     expect(currentTurnAny(room)).toBe(ids[0]);
   });
 
-  it("caps the connections to one room", () => {
-    const room = new DungeonRoom(makeRoom() as any, () => 0);
-    const conns = Array.from({ length: 61 }, (_, i) => makeConn(`c${i}`));
-    conns.forEach((c) => room.onConnect(c));
-    expect((conns[59].close as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
-    expect((conns[60].close as ReturnType<typeof vi.fn>)).toHaveBeenCalled();
-    room.onClose(conns[0]);
-    const next = makeConn("after-a-slot-frees");
+  // Value: protects=60 junk sockets cannot keep the host, the TV or a team's phone out (TODOS: 60 條連線能鎖死房間);
+  // fails_when=a full room refuses the newcomer instead of closing its oldest spare socket, or closes a host, one of
+  // the first two screens, or a team's only connection.
+  it("a full room closes its oldest spare socket, never the host, the first screens or a team's only phone", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    const closed = (c: ReturnType<typeof makeConn>) => (c.close as ReturnType<typeof vi.fn>).mock.calls.length > 0;
+    const tv = screenConn(room, "tv");
+    const tv2 = screenConn(room, "tv2");
+    const phone = makeConn("phone");
+    room.onConnect(phone);
+    send(room, phone, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "紅隊" });
+    const twin = makeConn("twin"); // a second socket for the same team (a reload): the older of the two is a spare
+    room.onConnect(twin);
+    send(room, twin, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "紅隊" });
+    const tv3 = screenConn(room, "tv3"); // a third screen: a spare
+    const junk = Array.from({ length: 54 }, (_, i) => makeConn(`junk${i}`));
+    junk.forEach((c) => room.onConnect(c));
+    expect(junk.some(closed)).toBe(false); // 60 sockets, none closed yet
+
+    const late = makeConn("late");
+    room.onConnect(late);
+    expect(closed(late)).toBe(false);
+    expect(closed(phone)).toBe(true); // the oldest spare: the team keeps its newer socket
+    room.onConnect(makeConn("later"));
+    expect(closed(tv3)).toBe(true);
+    room.onConnect(makeConn("latest"));
+    expect(closed(junk[0])).toBe(true);
+    for (const c of [hostConn, tv, tv2, twin]) expect(closed(c)).toBe(false);
+  });
+
+  it("refuses a newcomer when every socket in a full room is a host, a kept screen or a team's only phone", () => {
+    const { room } = makeRoomWithHost();
+    screenConn(room, "tv");
+    screenConn(room, "tv2");
+    for (let i = 0; i < 8; i++) {
+      const c = makeConn(`p${i}`);
+      room.onConnect(c);
+      send(room, c, { type: "JOIN", teamId: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`, teamKey: KEY, teamName: `隊${i}` });
+    }
+    // The rest are host pages (every device the host opened): 1 + 2 + 8 + 49 = 60.
+    for (let i = 0; i < 49; i++) {
+      const c = makeConn(`h${i}`);
+      room.onConnect(c);
+      claim(room, c);
+    }
+    const next = makeConn("next");
     room.onConnect(next);
-    expect((next.close as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+    expect((next.close as ReturnType<typeof vi.fn>)).toHaveBeenCalled();
   });
 });
 
@@ -3878,6 +3948,33 @@ describe("host controls: HOST_END_GAME, HOST_REMOVE_TEAM, HOST_RENAME_TEAM", () 
     // Once over, it cannot be ended again.
     send(room, hostConn, { type: "HOST_END_GAME" });
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "no_active_game" });
+  });
+
+  // Regression: a long epilogue grew the narrator box over the podium's 2nd and 3rd places (/qa on production,
+  // 2026-11-08). It is now split into pages that the host turns.
+  it("the host turns a long epilogue's pages one at a time; a player cannot, and 回到大廳 starts over at page 1", async () => {
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { epilogueDelayMs: 0, holdMs: 10 });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { conns } = joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    await vi.waitFor(() => expect(broadcasts(room).some((m) => m.type === "EPILOGUE")).toBe(true));
+    const lastState = () => broadcasts(room).filter((m) => m.type === "STATE").at(-1);
+    (room as any).epilogue = "甲".repeat(100) + "。" + "乙".repeat(100) + "。"; // two pages
+    send(room, hostConn, { type: "HOST_EPILOGUE_PAGE", page: 1 });
+    expect(lastState().epiloguePage).toEqual({ page: 1, of: 2 });
+    send(room, hostConn, { type: "HOST_EPILOGUE_PAGE", page: 2 }); // past the last page: dropped
+    send(room, hostConn, { type: "HOST_EPILOGUE_PAGE", page: 3 });
+    expect(lastState().epiloguePage).toEqual({ page: 1, of: 2 });
+    send(room, conns[0], { type: "HOST_EPILOGUE_PAGE", page: 0 }); // a phone is not the host
+    expect(lastState().epiloguePage).toEqual({ page: 1, of: 2 });
+    send(room, hostConn, { type: "HOST_EPILOGUE_PAGE", page: 0 });
+    expect(lastState().epiloguePage).toEqual({ page: 0, of: 2 });
+    send(room, hostConn, { type: "HOST_EPILOGUE_PAGE", page: 1 });
+    send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });
+    expect((room as any).epiloguePage).toBe(0);
   });
 
   // Value: protects=every finished game reaches the owner's log, and a failing store never breaks the room;

@@ -2,10 +2,22 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [Unreleased]
+## [0.56.0.2] - 2026-11-08
 
-### Added
-- Waiting teams can react. A team whose turn it is not has four buttons above the narration box on its phone: 👏 鼓掌, 😱 好險, 😂 笑死 and 👎 噓～. A tap makes the emoji, with the team's name, rise on the big screen up the side walls for about 2 seconds, drawn behind the question, the options, the countdown and the narration box, so it never covers them. There is no free text. Each team can send one every 2 seconds, and the room passes at most 7 at once, so with 8 teams the other 7 can all react together. There are no buttons on a team's own turn, in a buzzer phase, during the intro or initiative, or while the phone is offline, and the server refuses reactions at those times too. Reactions score nothing and are not saved. `docs/rules.md` and `docs/designs/audience-reactions.md` have the details.
+**Deploy note:** deploy the room server (`wrangler deploy`) and the website together. A big screen from an older website never announces itself, so a newer room server ignores its "clip ended" and narration messages. No migration.
+
+### Fixed
+- One phone connection can join only one team. Before, one connection could fill all 8 team slots.
+- A full room no longer locks out the host or the TV. When all 60 connections are taken, the room closes the oldest spare one (a second phone of a team, a third screen, a connection in no team) to let the new one in. The host, the first two big screens and each team's only phone are never closed.
+- A TV or phone that reconnects after a Wi-Fi blip keeps getting the room's updates. Before, the old connection's late close could cut the new one off.
+- Only a big screen that has announced itself can tell the room that a clip ended or how far the narration has read.
+- The room server opens a room only for a valid 4-letter room code. Any other name gets 404 instead of a new empty room.
+- On the home page, a wrong room code says 「房間代碼不對，請照電視上的 4 個字母輸入」.
+
+## [0.56.0.1] - 2026-11-08
+
+### Fixed
+- A long epilogue no longer covers the podium at the end. When it is too long for one page on the big screen, it is split into pages of at most three lines. The host page shows 「◀ 上一頁」, 「後記 1／2」 and 「下一頁 ▶」, and the host turns the pages. With the big screen's voice on, each page is read aloud as it turns, and a restart keeps the page on show.
 
 ## [0.56.0.0] - 2026-11-08
 

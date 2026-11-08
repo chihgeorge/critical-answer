@@ -75,7 +75,7 @@ import {
   REACT_ROOM_MAX,
   type Reaction,
 } from "../protocol";
-import { revealBeats, revealCalls } from "../podium";
+import { epiloguePages, revealBeats, revealCalls } from "../podium";
 import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
@@ -101,6 +101,8 @@ const IDLE_MS = 2 * 60 * 60 * 1000;
 export const EXPIRE_MS = 24 * 60 * 60 * 1000;
 /** Sockets per room: players, screens and the host, with room to spare. Stops one client opening thousands. */
 const MAX_CONNECTIONS = 60;
+/** A full room makes space by closing its oldest spare socket; this many announced screens are never spare. */
+const KEPT_SCREENS = 2;
 /** With no boss to cook, the podium reveal starts this long after the game ends, so the last line is read first. */
 const EPILOGUE_DELAY_MS = 4000;
 /** 結束冒險 while the big screen is still reading the last narration: the reveal waits for it to finish, at most this
@@ -229,6 +231,8 @@ export class DungeonRoom {
   private handoffWrong = 0;
   /** Live connections we accepted, for the per-room cap. */
   private conns = new Map<string, Conn>();
+  /** Connections that sent SCREEN_HELLO, oldest first: only they may send SCREEN_* messages. */
+  private screenConns = new Set<string>();
 
   /** Counts the start and every accepted judgment; each gets exactly one NARRATION. */
   private eventSeq = 0;
@@ -244,6 +248,8 @@ export class DungeonRoom {
   /** The podium reveal (podium-reveal.md eng D20): the narrator's calls, and when their first beat starts on the room's
    * clock. Null until the narration is in. Saved, so a restart keeps the reveal where it was. */
   private podium: { lines: string[]; at: number } | null = null;
+  /** The epilogue page on the big screen, turned by the host (HOST_EPILOGUE_PAGE). */
+  private epiloguePage = 0;
   /** The earliest the reveal's first beat may start, set when the game finishes: after the boss cooks, after the last
    * line is read, or at most END_READ_CAP_MS after 結束冒險, when revealAfterRead may move it up once the screen has
    * read the last narration. Saved, so a restart mid-cooking still waits for the dish. */
@@ -447,6 +453,7 @@ export class DungeonRoom {
           // The calls come first, the story last (epilogueParts). The first call waits for the boss to cook, or for
           // the kill-shot line to be read.
           this.epilogue = lines[lines.length - 1];
+          this.epiloguePage = 0; // a new story (scripted, after a failed try) starts on its first page
           // A reveal already under way (scripted, after a failed try) keeps its clock: it never starts over.
           this.podium ??= { lines: lines.slice(0, -1), at: Math.max(this.now(), this.revealFrom ?? this.now() + this.epilogueDelayMs) };
           this.broadcast({ type: "EPILOGUE", text: this.epilogue });
@@ -589,6 +596,7 @@ export class DungeonRoom {
       epilogue: this.epilogue,
       epilogueRequested: this.epilogueRequested,
       podium: this.podium,
+      epiloguePage: this.epiloguePage,
       revealFrom: this.revealFrom,
       playedQuestionIds: this.playedQuestionIds,
       notes: "",
@@ -674,6 +682,8 @@ export class DungeonRoom {
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
     this.podium = s.podium ?? null;
+    const pages = this.epilogue ? epiloguePages(this.epilogue).length : 1;
+    this.epiloguePage = Number.isInteger(s.epiloguePage) && s.epiloguePage! >= 0 && s.epiloguePage! < pages ? s.epiloguePage! : 0; // a damaged save shows the first page
     this.revealFrom = s.revealFrom ?? null;
     this.playedQuestionIds = s.playedQuestionIds ?? [];
     this.joinPassword = s.joinPassword;
@@ -906,6 +916,7 @@ export class DungeonRoom {
       pendingRoll: this.pendingRoll,
       ...this.wrongSlots(),
       ...this.podiumView(),
+      ...(this.epilogue ? { epiloguePage: { page: this.epiloguePage, of: epiloguePages(this.epilogue).length } } : {}),
       eventId: this.eventSeq,
       ...this.undoWrong(),
       ...(this.cue ? { cue: this.cue } : {}),
@@ -1075,6 +1086,7 @@ export class DungeonRoom {
     this.hostToken = "";
     this.hostConns.clear();
     this.connTeam.clear();
+    this.screenConns.clear();
     this.teamKeys.clear();
     this.handoffs.clear();
     this.handoffWrong = 0;
@@ -1086,6 +1098,7 @@ export class DungeonRoom {
     this.epilogue = null;
     this.epilogueRequested = false;
     this.podium = null;
+    this.epiloguePage = 0;
     this.revealFrom = null;
     this.revealOnRead = false;
     this.staleBeforeSeq = null;
@@ -1125,11 +1138,15 @@ export class DungeonRoom {
       conn.close();
       return;
     }
-    if (this.conns.size >= MAX_CONNECTIONS) {
+    // A reconnect reuses its id (partysocket's _pk): close the old socket, so one client cannot hold many sockets
+    // under one id, outside the cap below, each getting every broadcast. Its later close is ignored by onClose.
+    const prev = this.conns.get(conn.id);
+    if (prev && prev !== conn) prev.close();
+    else if (this.conns.size >= MAX_CONNECTIONS && !this.closeSpareConn()) {
       conn.close();
       return;
     }
-    // /screen never sends a message at all, so a room that only ever gets watched (never played) needs its own
+    // /screen sends only device messages (SCREEN_*), so a room that only ever gets watched (never played) needs its own
     // baseline: prime the clock once so it is still eventually rested. Later screen-only reconnects (after that
     // first tick) do NOT touch this again — only an accepted message does — or leaving a TV on would postpone
     // resting forever exactly the way this whole feature exists to prevent.
@@ -1143,9 +1160,33 @@ export class DungeonRoom {
     if (this.epilogue) this.sendTo(conn, { type: "EPILOGUE", text: this.epilogue, replay: true });
   }
 
+  /**
+   * Room full: close the oldest socket that is not a host, not one of the first KEPT_SCREENS screens, and not a team's
+   * only connection — an unannounced socket, a later screen, or a team's extra one. So 60 junk sockets cannot keep the
+   * host, the TV or a reconnecting phone out. Returns false when every socket is one of those.
+   */
+  private closeSpareConn(): boolean {
+    const kept = new Set([...this.screenConns].slice(0, KEPT_SCREENS));
+    const perTeam = new Map<string, number>();
+    for (const t of this.connTeam.values()) perTeam.set(t, (perTeam.get(t) ?? 0) + 1);
+    for (const c of this.conns.values()) {
+      const team = this.connTeam.get(c.id);
+      if (this.hostConns.has(c.id) || kept.has(c.id) || (team && perTeam.get(team) === 1)) continue;
+      c.close();
+      this.onClose(c); // the platform's own close event comes later; onClose is safe to run twice
+      return true;
+    }
+    return false;
+  }
+
   onClose(conn: Conn) {
+    // Ids come from the client (partysocket's _pk) and survive a reconnect: an old socket's late close must not
+    // unregister the new socket that already took its id (a TV that re-sent SCREEN_HELLO, a host, a phone).
+    const live = this.conns.get(conn.id);
+    if (live && live !== conn) return;
     this.conns.delete(conn.id);
     this.hostConns.delete(conn.id);
+    this.screenConns.delete(conn.id);
     const teamId = this.connTeam.get(conn.id);
     this.connTeam.delete(conn.id);
     if (!teamId || !this.game) return;
@@ -1163,6 +1204,11 @@ export class DungeonRoom {
     } catch {
       // Team no longer exists in this game instance — nothing to do.
     }
+  }
+
+  /** Sent SCREEN_HELLO, and is not also a team's phone or a host page. */
+  private isScreen(conn: Conn): boolean {
+    return this.screenConns.has(conn.id) && !this.connTeam.has(conn.id) && !this.hostConns.has(conn.id);
   }
 
   private isHost(conn: Conn): boolean {
@@ -1225,13 +1271,17 @@ export class DungeonRoom {
         case "HOST_EDIT_NARRATION":
           this.handleEditNarration(sender, msg.eventId, msg.rev, msg.index, msg.line);
           break;
+        case "SCREEN_HELLO":
+          if (this.conns.has(sender.id)) this.screenConns.add(sender.id);
+          break;
         case "SCREEN_NARRATION_PROGRESS":
-          // Not from a team's phone or a host page: a player cannot lock the host's edits from their own phone (D3).
-          if (this.connTeam.has(sender.id) || this.hostConns.has(sender.id)) break;
+          // Only from a /screen page: a player cannot lock the host's edits from their own phone (D3), nor from a
+          // second socket that never joined a team.
+          if (!this.isScreen(sender)) break;
           this.handleNarrationProgress(msg.eventId, msg.rev, msg.done);
           break;
         case "SCREEN_CLIP_ENDED":
-          if (this.connTeam.has(sender.id) || this.hostConns.has(sender.id)) break;
+          if (!this.isScreen(sender)) break;
           this.handleClipEnded(msg.questionId);
           break;
         case "HOST_NEXT_LINE":
@@ -1265,6 +1315,9 @@ export class DungeonRoom {
           break;
         case "HOST_BACK_TO_LOBBY":
           this.handleBackToLobby(sender);
+          break;
+        case "HOST_EPILOGUE_PAGE":
+          this.handleEpiloguePage(sender, msg.page);
           break;
         case "HOST_REMOVE_TEAM":
           this.handleRemoveTeam(sender, msg.teamId);
@@ -1332,7 +1385,7 @@ export class DungeonRoom {
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
       // A reaction changes no saved state, so it neither counts as activity nor saves.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && !this.rejected && !resumed) {
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -1366,6 +1419,7 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_team_id" });
       return;
     }
+    if (this.inOtherTeam(conn, teamId)) return;
     const known = this.teamKeys.get(teamId);
     if (known !== undefined) {
       // An existing team: only the client holding its key may speak for it. During a game this is a
@@ -1410,6 +1464,7 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_team_id" });
       return;
     }
+    if (this.inOtherTeam(conn, teamId)) return;
     const known = this.teamKeys.get(teamId);
     if (known === undefined) {
       this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
@@ -1418,6 +1473,15 @@ export class DungeonRoom {
     if (!this.claimTeam(conn, teamId, teamKey, known)) return;
     if (this.game) this.broadcastState();
     else this.sendTo(conn, this.snapshot());
+  }
+
+  /** One team per connection: else one socket could JOIN eight fresh ids and fill the room. The same id again (a
+   * resend, a reconnect) is fine. Sends the refusal itself. */
+  private inOtherTeam(conn: Conn, teamId: string): boolean {
+    const bound = this.connTeam.get(conn.id);
+    if (bound === undefined || bound === teamId) return false;
+    this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "already_in_team" });
+    return true;
   }
 
   /** Binds `conn` to an existing team if `teamKey` matches the team's key `known`, and marks the team online. */
@@ -1481,6 +1545,7 @@ export class DungeonRoom {
     this.epilogue = null;
     this.epilogueRequested = false;
     this.podium = null;
+    this.epiloguePage = 0;
     this.revealFrom = null;
     this.revealOnRead = false;
     this.lastNarration = null;
@@ -1871,6 +1936,15 @@ export class DungeonRoom {
     this.broadcastState();
     const next = this.nextTurn();
     void this.narrate(eventId, { type: "start", teams: this.game!.turnOrder.flatMap((id) => this.game!.teams.find((t) => t.id === id)?.name ?? []), ...(this.initiativeOn ? { initiative: true as const } : {}), ...(next ? { next } : {}) });
+  }
+
+  /** The epilogue's pages on the big screen: the host turns them one at a time. */
+  private handleEpiloguePage(conn: Conn, page: number) {
+    if (!this.requireHost(conn) || !this.epilogue) return;
+    // Like the intro: only one page away from the one on show, so a double tap or a second tab turns it once.
+    if (Math.abs(page - this.epiloguePage) !== 1 || page >= epiloguePages(this.epilogue).length) return;
+    this.epiloguePage = page;
+    this.broadcastState();
   }
 
   /** How-to-play: one page at a time (eng D4). A page past the last one ends the intro. */

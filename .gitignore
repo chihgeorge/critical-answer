@@ -45,6 +45,7 @@ next-env.d.ts
 
 .gstack/*
 !.gstack/pregate.json
+!.gstack/ship-policy.json
 
 # playwright
 /test-results/
@@ -57,4 +58,3 @@ next-env.d.ts
 
 # local question-bank drafts (may hold answers) — never commit
 /local-banks/
-.gstack/

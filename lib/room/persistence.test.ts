@@ -42,6 +42,14 @@ function makeConn(id: string, log: string[] = []) {
   return { id, send: vi.fn(() => void log.push("send")), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
 
+/** A /screen socket, announced the way the page does on open. */
+function screenOf(room: DungeonRoom) {
+  const conn = makeConn("screen");
+  room.onConnect(conn);
+  send(room, conn, { type: "SCREEN_HELLO" });
+  return conn;
+}
+
 function makeRoom(storage: RoomStorage, opts: ConstructorParameters<typeof DungeonRoom>[2] = {}, log: string[] = []) {
   const io: RoomIO & { broadcast: ReturnType<typeof vi.fn> } = {
     broadcast: vi.fn(() => void log.push("broadcast")),
@@ -179,6 +187,25 @@ describe("restoring after a restart", () => {
     const stranger = makeConn("stranger");
     send(second, stranger, { type: "JOIN", teamId: T1, teamKey: TEAM_KEY, teamName: "甲隊" });
     expect(lastOf(stranger, "ERROR")).toMatchObject({ error: "bad_password" });
+  });
+
+  // Value: protects=the big screen keeps the epilogue page the host turned to across a restart; fails_when=the page is
+  // not saved, or a save whose page is past the last one is restored as is (a blank TV page)
+  it("the epilogue page the host turned to comes back after a restart, and a page past the last one starts over", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage).room;
+    const host = makeConn("host");
+    send(first, host, { type: "HOST_CLAIM", token: TOKEN });
+    (first as any).epilogue = "甲".repeat(100) + "。" + "乙".repeat(100) + "。"; // two pages
+    (first as any).epiloguePage = 1;
+    send(first, host, { type: "HOST_CLAIM", token: TOKEN }); // any message saves the change
+    const second = makeRoom(storage).room;
+    expect(await second.restore()).toBe("restored");
+    expect((second as any).epiloguePage).toBe(1);
+    (storage.data.get(SNAPSHOT_KEY) as any).epiloguePage = 5;
+    const third = makeRoom(storage).room;
+    expect(await third.restore()).toBe("restored");
+    expect((third as any).epiloguePage).toBe(0);
   });
 
   it("after 回到大廳 a restart still deals the first game's shown answers last", async () => {
@@ -632,7 +659,7 @@ describe("restoring after a restart", () => {
     await new Promise((r) => setTimeout(r, 30));
     const eventId = (storage.data.get(SNAPSHOT_KEY) as any).lastNarration.eventId;
     first.room.onClose(host);
-    send(first.room, makeConn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 0, done: 2 });
+    send(first.room, screenOf(first.room), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 0, done: 2 });
     expect((storage.data.get(SNAPSHOT_KEY) as any).lastNarration).toMatchObject({ eventId, done: 2 });
   });
 
@@ -644,7 +671,7 @@ describe("restoring after a restart", () => {
     await new Promise((r) => setTimeout(r, 30));
     const eventId = (storage.data.get(SNAPSHOT_KEY) as any).lastNarration.eventId;
     send(first.room, host, { type: "HOST_EDIT_NARRATION", eventId, rev: 0, index: 2, line: "改過的第三句" });
-    send(first.room, makeConn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 1, done: 1 });
+    send(first.room, screenOf(first.room), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 1, done: 1 });
     expect((storage.data.get(SNAPSHOT_KEY) as any).lastNarration).toMatchObject({ eventId, rev: 1, done: 1 });
 
     const second = makeRoom(storage);
