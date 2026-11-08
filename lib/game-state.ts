@@ -151,6 +151,10 @@ export interface Team {
   /** Dish names this team ate, in order: one per defeated room monster or boss that has a dish
    * (docs/designs/monster-cuisine.md). Absent until the first, and in saves from before dishes. */
   dishes?: string[];
+  /** Turns this team has played: one per answer that passed the turn on (lib/game-log.ts). Absent until the first. */
+  turns?: number;
+  /** The game round and this team's turn count when it walked into the boss room (lib/game-log.ts). */
+  bossAt?: { round: number; turns: number };
 }
 
 export interface RoomTemplate {
@@ -243,6 +247,11 @@ export interface GameState {
   /** This game's boss when the bank draws monsters per game (gameMonsters). Absent: the bank's own boss. */
   bossMonsterId?: string;
   config: GameConfig;
+  /** The round under way, from 1: it grows each time the turn wraps past the end of turnOrder (lib/game-log.ts).
+   * Absent (read as 1) until the first wrap, and in saves from before it. */
+  round?: number;
+  /** When the room started this game (ms since epoch), for lib/game-log.ts. Absent in saves from before it. */
+  startedAt?: number;
   phase: GamePhase;
   /** The one team in first place once phase === "finished": a tie is broken by d20 (podium-reveal.md D4). Empty before. */
   winners: string[];
@@ -762,7 +771,8 @@ export function answerQuestion(
       outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, ...gain, ...(killBonus === undefined ? {} : { killBonus }), ...rollMark };
 
       if (bossKilled) {
-        return { game: finishGame(nextGame, rng), outcome };
+        // The killing blow is this team's last turn (lib/game-log.ts).
+        return { game: finishGame({ ...nextGame, teams: patchTeam(nextGame.teams, teamId, (t) => ({ turns: (t.turns ?? 0) + 1 })) }, rng), outcome };
       }
     } else {
       // Wrong boss answer: there's no "downgrade" concept for a shared boss queue. A flee rotates
@@ -823,6 +833,7 @@ export function answerQuestion(
           currentQuestionId: dealt.questionId,
           currentSelection: null,
           inBoss: entersBoss,
+          ...(entersBoss ? { bossAt: { round: game.round ?? 1, turns: (t.turns ?? 0) + 1 } } : {}),
           queuedQuestionId: dealt.queuedQuestionId,
         })),
       };
@@ -861,7 +872,10 @@ export function answerQuestion(
   const here = { ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) };
   // A prayed wrong lock keeps the turn (class-abilities.md PR 2): the cleric answers again at once.
   if (prayed) return { game: { ...here, prayerTurn: teamId }, outcome };
-  return { game: advanceTurn({ ...here, prayerTurn: undefined }), outcome };
+  const played = { ...here, prayerTurn: undefined, teams: patchTeam(here.teams, teamId, (t) => ({ turns: (t.turns ?? 0) + 1 })) };
+  const next = advanceTurn(played);
+  // The turn wrapped past the end of turnOrder: a new round starts.
+  return { game: next.currentTurnIndex <= here.currentTurnIndex ? { ...next, round: (here.round ?? 1) + 1 } : next, outcome };
 }
 
 /** Throws unless it is `teamId`'s turn as a `classId` with no wrong lock waiting (that waits for
@@ -1044,7 +1058,7 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   // A sneak armed for the room question is for that question only (D16): drop it and give the use back.
   // (A boss-room sneak can outlive a question rotation while the thief is offline; accepted, /review D4=A.)
   const sneak = team.sneakArmed ? { sneakArmed: undefined, abilityUses: team.abilityUses + 1 } : {};
-  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null, queuedQuestionId: undefined, typedAnswer: undefined, ...sneak }));
+  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, bossAt: { round: game.round ?? 1, turns: team.turns ?? 0 }, currentSelection: null, queuedQuestionId: undefined, typedAnswer: undefined, ...sneak }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);

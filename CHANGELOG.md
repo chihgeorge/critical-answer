@@ -2,6 +2,14 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [Unreleased]
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website. Until it is, the bank editor's download link returns 404. No migration: the records live in the existing bank Durable Object.
+
+### Added
+- Every finished game leaves a record, for tuning the boss HP and the boss-entry score: how many rounds each team took to reach the boss room, how many rounds the boss fight took, the boss's HP per phase and the HP left, each team's class and score, the entry score, the rewards, and the start and end time. No question or answer text. It is stored next to the question bank and also printed to the Worker log. A failed store never stops the game.
+- In the bank editor, 「⬇ 下載對局紀錄（JSON）」 under 「載入題庫」 downloads every game's record (owner key only, `GET /api/game-logs`).
+
 ## [0.45.0.0] - 2026-11-07
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the host page, the big screen and the phones. An old room server refuses the new class, so a phone that taps 🍳 廚師 before the room server is updated gets nothing. Do not roll the room server back to an older version while a game with a chef is running: the older version cannot read that room and starts it over.

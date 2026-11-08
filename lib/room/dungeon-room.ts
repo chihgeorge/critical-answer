@@ -62,6 +62,7 @@ import {
   SERVE_HOLD_MS,
 } from "../protocol";
 import { revealBeats, revealCalls } from "../podium";
+import { gameLog } from "../game-log";
 import { catalogMonster, gameMonsters, monsterById } from "../monster-catalog";
 import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
 import { BANK } from "../question-bank-data";
@@ -625,6 +626,17 @@ export class DungeonRoom {
       void this.sendEpilogue(Promise.resolve(), this.eventSeq).catch((err) => this.epilogueFailed(err, this.eventSeq));
     }
     return "restored";
+  }
+
+  /** Hands the finished game's record to the platform, and to the logs. A failure is logged and dropped: the room never waits. */
+  private logGame(game: GameState) {
+    try {
+      const log = gameLog(game, this.now());
+      console.log(JSON.stringify({ event: "game_log", log }));
+      void Promise.resolve(this.room.logGame?.(log)).catch((err) => console.error(JSON.stringify({ event: "game_log_failed", error: String(err) })));
+    } catch (err) {
+      console.error(JSON.stringify({ event: "game_log_failed", error: String(err) }));
+    }
   }
 
   /** This game's boss (gameMonsters), or the bank's when no game drew one or a save names no catalog boss. */
@@ -1236,6 +1248,7 @@ export class DungeonRoom {
     this.phaseCardDue = false;
     this.intro = null;
     this.game = endGame(this.game, this.rng);
+    this.logGame(this.game);
     this.revealFrom = this.now() + this.epilogueDelayMs;
     const eventId = ++this.eventSeq;
     this.staleBeforeSeq = eventId;
@@ -1553,7 +1566,7 @@ export class DungeonRoom {
       catalogMonster(monsters.boss).dish.name,
       this.playedQuestionIds,
     );
-    this.game = this.bank.randomMonsters ? { ...game, bossMonsterId: monsters.boss } : game;
+    this.game = { ...game, startedAt: this.now(), ...(this.bank.randomMonsters ? { bossMonsterId: monsters.boss } : {}) };
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.
     this.aiNarration = aiNarration !== false;
     this.intro = intro ? 1 : null;
@@ -1775,6 +1788,7 @@ export class DungeonRoom {
     this.broadcastState();
     const narration = this.narrate(eventId, event);
     if (game.phase === "finished" && !this.epilogueRequested) {
+      this.logGame(game);
       this.epilogueRequested = true;
       void this.sendEpilogue(narration, eventId).catch((err) => this.epilogueFailed(err, eventId));
     }

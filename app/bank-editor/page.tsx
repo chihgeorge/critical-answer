@@ -176,6 +176,26 @@ export default function BankEditorPage() {
 
   const [ownerKey, setOwnerKey] = useOwnerKey((restoredKey) => void load(restoredKey));
 
+  /** Every finished game's record as a JSON file (lib/game-log.ts): for tuning boss HP and the entry score. */
+  const downloadGameLogs = async () => {
+    setError("");
+    try {
+      const res = await fetch(`${partyHttpBase()}/api/game-logs`, { headers: { Authorization: `Bearer ${ownerKey}` } });
+      if (!res.ok) {
+        setError(res.status === 403 ? "Owner key rejected." : `Download failed: ${res.status}`);
+        return;
+      }
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `game-logs-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Could not reach the server.");
+    }
+  };
+
   const save = async (next: Bank) => {
     if (version === null) return; // no successful load yet — nothing to compare against
     const invalid = validationError(next);
@@ -318,6 +338,14 @@ export default function BankEditorPage() {
         >
           {loading ? "載入中…" : "載入題庫"}
         </PixelButton>
+        <button
+          type="button"
+          className="self-start text-[14px] underline underline-offset-2 disabled:opacity-55"
+          onClick={() => void downloadGameLogs()}
+          disabled={!ownerKey}
+        >
+          ⬇ 下載對局紀錄（JSON）
+        </button>
         {error && (
           // Panel doesn't forward arbitrary props (no data-testid passthrough), so the test id sits
           // on this inner span; role="alert" on the Panel itself is the real screen-reader semantics.
