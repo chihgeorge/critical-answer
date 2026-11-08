@@ -628,12 +628,12 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   const shownEpilogue = epilogue && (epiloguePages(epilogue)[page] ?? epilogue);
   const turned = useRef(page);
   useEffect(() => {
-    // Read out a page the host just turned to; a page already on show when this screen joined stays quiet.
-    if (page === turned.current || !shownEpilogue || !ended) return;
+    // Read out a page the host just turned to; a page already on show when this screen joined stays quiet, and a turn
+    // during the places is read by onPodium.
+    if (page === turned.current) return;
     turned.current = page;
-    say([shownEpilogue]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+    if (ended && shownEpilogue) say([shownEpilogue]);
+  }, [page, ended, shownEpilogue, say]);
   return (
     <>
       <SceneBackground theme="moss" arch={false} />
@@ -736,7 +736,8 @@ export default function ScreenPage() {
   const heldEpilogue = useRef<string | null>(null);
   function onPodium() {
     podiumReady.current = true;
-    if (heldEpilogue.current) speak([epiloguePages(heldEpilogue.current)[0]]); // the first page: the host turns the rest
+    // The page on show: the host may have turned it while the places were called.
+    if (heldEpilogue.current) speak([epiloguePages(heldEpilogue.current)[game?.epiloguePage?.page ?? 0] ?? heldEpilogue.current]);
     heldEpilogue.current = null;
   }
 

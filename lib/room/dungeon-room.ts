@@ -670,7 +670,8 @@ export class DungeonRoom {
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
     this.podium = s.podium ?? null;
-    this.epiloguePage = Number.isInteger(s.epiloguePage) && s.epiloguePage! >= 0 ? s.epiloguePage! : 0; // a damaged save shows the first page
+    const pages = this.epilogue ? epiloguePages(this.epilogue).length : 1;
+    this.epiloguePage = Number.isInteger(s.epiloguePage) && s.epiloguePage! >= 0 && s.epiloguePage! < pages ? s.epiloguePage! : 0; // a damaged save shows the first page
     this.revealFrom = s.revealFrom ?? null;
     this.playedQuestionIds = s.playedQuestionIds ?? [];
     this.joinPassword = s.joinPassword;
@@ -1872,7 +1873,7 @@ export class DungeonRoom {
     void this.narrate(eventId, { type: "start", teams: this.game!.turnOrder.flatMap((id) => this.game!.teams.find((t) => t.id === id)?.name ?? []), ...(this.initiativeOn ? { initiative: true as const } : {}), ...(next ? { next } : {}) });
   }
 
-  /** How-to-play: one page at a time (eng D4). A page past the last one ends the intro. */
+  /** The epilogue's pages on the big screen: the host turns them one at a time. */
   private handleEpiloguePage(conn: Conn, page: number) {
     if (!this.requireHost(conn) || !this.epilogue) return;
     // Like the intro: only one page away from the one on show, so a double tap or a second tab turns it once.
@@ -1881,6 +1882,7 @@ export class DungeonRoom {
     this.broadcastState();
   }
 
+  /** How-to-play: one page at a time (eng D4). A page past the last one ends the intro. */
   private handleHostIntro(conn: Conn, page: number) {
     if (!this.requireHost(conn)) return;
     // Not current ±1: a double tap or a second tab already turned this page. Dropped quietly, like a stale HOST_NEXT.
