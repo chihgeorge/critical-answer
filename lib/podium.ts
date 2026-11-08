@@ -156,3 +156,31 @@ export function revealNow(podium: { beats: Beat[] | null } | undefined, t: numbe
   if (!podium || t === null) return { beat: -1, result: true, done: true };
   return podium.beats ? revealAt(podium.beats, t) : { beat: -1, result: false, done: false };
 }
+
+/** An epilogue page on the big screen holds at most this many characters: three rows of the narrator box at the
+ * podium's 22px (786px of text per row, a CJK character 22px wide), so the box stays under the steps (bottom 130).
+ * One character a row is spare, for punctuation the browser will not start a row with. */
+export const EPILOGUE_PAGE_CHARS = 3 * (Math.floor(786 / 22) - 1);
+
+/** The epilogue as the big screen's pages, turned by the host (owner, 2026-11-08): whole sentences per page where they
+ * fit, a sentence longer than a page cut at the page's length. An epilogue that fits is one page. */
+export function epiloguePages(text: string): string[] {
+  const pages: string[] = [];
+  let page = "";
+  for (const sentence of text.match(/[^。！？!?]+[。！？!?」』）)]*|[。！？!?]+/g) ?? []) {
+    // Counted by code point, like the cut below, so an emoji counts once.
+    if ([...page + sentence].length <= EPILOGUE_PAGE_CHARS) {
+      page += sentence;
+      continue;
+    }
+    if (page) pages.push(page);
+    // By code point, so an emoji is never cut in half.
+    const chars = [...sentence];
+    while (chars.length > EPILOGUE_PAGE_CHARS) pages.push(chars.splice(0, EPILOGUE_PAGE_CHARS).join(""));
+    page = chars.join("");
+  }
+  if (page) pages.push(page);
+  // A page of only spaces or line breaks (trailing whitespace after the last sentence) is not a page.
+  const shown = pages.map((p) => p.trim()).filter(Boolean);
+  return shown.length ? shown : [text];
+}

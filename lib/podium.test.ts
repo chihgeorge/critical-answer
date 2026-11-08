@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { PHONE_LAG_MS, beatMs, critKing, rankTeams, revealAt, revealBeats, revealMarks, type Beat } from "@/lib/podium";
+import { EPILOGUE_PAGE_CHARS, PHONE_LAG_MS, beatMs, critKing, epiloguePages, rankTeams, revealAt, revealBeats, revealMarks, type Beat } from "@/lib/podium";
+import { MAX_EPILOGUE_LINE } from "@/lib/narration/runner";
 
 /** A d20 that lands on `values` in order. */
 const dice = (...values: number[]) => () => values.shift() ?? 1;
@@ -156,5 +157,34 @@ describe("revealAt", () => {
 
   it("no teams: done at once", () => {
     expect(revealAt([], 0)).toEqual({ beat: -1, result: true, done: true });
+  });
+});
+
+// Regression: a long epilogue grew the narrator box over the podium's 2nd and 3rd places (/qa on production, 2026-11-08).
+describe("epiloguePages", () => {
+  it("keeps an epilogue that fits three rows as one page (the scripted one)", () => {
+    const text = "貓頭鷹魔法師闔上書：盜賊隊以 190 飽足感成為傳說，戰士隊 189 飽足感、牧師隊 180 飽足感緊追在後。盜賊隊吃了焗烤蝸牛、清蒸鐵殼蟹、骷髏大骨湯，最飽。";
+    expect(epiloguePages(text)).toEqual([text]);
+  });
+  it("splits a long one between sentences, every page within three rows, nothing lost", () => {
+    const a = "甲".repeat(60) + "。";
+    const b = "乙".repeat(60) + "！";
+    const c = "丙".repeat(30) + "。";
+    expect(epiloguePages(a + b + c)).toEqual([a, b + c]);
+  });
+  it("cuts a sentence longer than a page, and the longest epilogue is at most two pages", () => {
+    const long = "字".repeat(MAX_EPILOGUE_LINE);
+    const pages = epiloguePages(long);
+    expect(pages.join("")).toBe(long);
+    expect(pages.length).toBe(2);
+    for (const p of pages) expect(p.length).toBeLessThanOrEqual(EPILOGUE_PAGE_CHARS);
+  });
+  it("drops a page that is only whitespace", () => {
+    const a = "甲".repeat(EPILOGUE_PAGE_CHARS - 1) + "。";
+    expect(epiloguePages(a + "\n ")).toEqual([a]);
+  });
+  it("never cuts an emoji in half", () => {
+    const text = "字".repeat(EPILOGUE_PAGE_CHARS - 1) + "🍲🍲";
+    expect(epiloguePages(text)).toEqual(["字".repeat(EPILOGUE_PAGE_CHARS - 1) + "🍲", "🍲"]);
   });
 });

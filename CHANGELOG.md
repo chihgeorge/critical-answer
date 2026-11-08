@@ -10,6 +10,11 @@ All notable changes to Critical Answer are documented here.
 ### Fixed
 - The browser test for a returning monster's title no longer times out at random. It walks three rooms and took 25–29 seconds on CI, right under the 30-second limit, so it once ran out of time. It now has 60 seconds, like the other long walkthrough tests. A missing title still fails the test within 5 seconds.
 
+## [0.56.0.1] - 2026-11-08
+
+### Fixed
+- A long epilogue no longer covers the podium at the end. When it is too long for one page on the big screen, it is split into pages of at most three lines. The host page shows 「◀ 上一頁」, 「後記 1／2」 and 「下一頁 ▶」, and the host turns the pages. With the big screen's voice on, each page is read aloud as it turns, and a restart keeps the page on show.
+
 ## [0.56.0.0] - 2026-11-08
 
 ### Changed
