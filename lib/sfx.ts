@@ -77,3 +77,7 @@ export const SFX: Record<SoundCue, SfxNote[]> = {
 
 /** The boss's alarm banner (components/transition-overlay.tsx): a two-tone siren, twice, under the banner's blinks. */
 export const BOSS_ALARM: SfxNote[] = [n(0.4, 0.25, "A5"), n(0.65, 0.25, "E5"), n(0.9, 0.25, "A5"), n(1.15, 0.25, "E5")];
+
+/** 每題作答倒數 (answer-countdown.md D5): a soft tick for each of the last seconds, and a short buzz at 0. */
+export const ANSWER_TICK: SfxNote[] = [n(0, 0.05, "A5", "triangle")];
+export const ANSWER_TIME_UP: SfxNote[] = [n(0, 0.15, "E5"), n(0.18, 0.3, "C5")];

@@ -29,7 +29,7 @@ function memoryStorage(): RoomStorage & { data: Map<string, unknown> } {
   return { data, get: async (k: string) => data.get(k), put: async (k: string, v: unknown) => void data.set(k, structuredClone(v)), delete: async (k: string) => data.delete(k), setAlarm: async () => {}, deleteAlarm: async () => {} } as never;
 }
 
-function setup(opts: { eventTeam?: string; rng?: () => number; storage?: RoomStorage } = {}) {
+function setup(opts: { eventTeam?: string; rng?: () => number; storage?: RoomStorage; answerSeconds?: number } = {}) {
   const io = { id: "room-1", broadcast: vi.fn(), getConnections: vi.fn(() => []), ...(opts.storage ? { storage: opts.storage } : {}) } as unknown as RoomIO;
   const room = new DungeonRoom(io, opts.rng ?? (() => 0), { bank, e2eEventTeam: opts.eventTeam ?? "EventTeam", epilogueDelayMs: 0 });
   const host = makeConn("host");
@@ -40,7 +40,7 @@ function setup(opts: { eventTeam?: string; rng?: () => number; storage?: RoomSto
     room.onConnect(phones[i]);
     send(room, phones[i], { type: "JOIN", teamId: id, teamKey: "team-key-0123456789abcdef", teamName: i === 0 ? "EventTeam" : "Plain" });
   });
-  send(room, host, { type: "HOST_START" });
+  send(room, host, { type: "HOST_START", ...(opts.answerSeconds ? { answerSeconds: opts.answerSeconds } : {}) });
   return { room, host, phones };
 }
 
@@ -59,6 +59,29 @@ async function answerRight(s: ReturnType<typeof setup>, i: number) {
 }
 
 describe("event rooms in the room", () => {
+  // Value: protects=answer-countdown.md D3 in an event room; fails_when=the clock runs on an event turn or under its
+  // result; no_claim=the clock's own rules (answer-clock.test.ts).
+  it("no answer countdown on an event turn or under its result; the next team's starts after 下一題", async () => {
+    vi.useFakeTimers();
+    const s = setup({ answerSeconds: 30 });
+    const { room, host, phones } = s;
+    expect(state(room).answerClock).toEqual({ left: 30000 });
+    await answerRight(s, 0);
+    await answerRight(s, 1);
+    expect(currentTurnTeamId(room.game!)).toBe(T1);
+    expect(room.game!.teams[0].event).toBeDefined();
+    expect(state(room).answerClock).toBeUndefined();
+    send(room, phones[0], { type: "TEAM_OPEN_EVENT", eventId: state(room).eventId });
+    const opened = state(room);
+    expect(opened.eventReveal).toBeDefined();
+    expect(opened.answerClock).toBeUndefined();
+    await vi.runAllTimersAsync();
+    send(room, host, { type: "HOST_NEXT", eventId: state(room).eventId });
+    expect(currentTurnTeamId(room.game!)).toBe(T2);
+    expect(state(room).answerClock).toEqual({ left: 30000 });
+    vi.useRealTimers();
+  });
+
   it("a correct answer walks the event team into an event room; the phone opens it; 下一題 passes on to a monster", async () => {
     vi.useFakeTimers();
     const s = setup();
