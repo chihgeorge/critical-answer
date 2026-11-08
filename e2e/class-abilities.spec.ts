@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 import { restoreRoom0AfterEach, revealLock, startGame } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
@@ -81,4 +81,57 @@ test("cleric: after a wrong lock the team prays, spends a use and retries (keep-
   // fails_when=the mage label rule hides every eliminated label; why_new=no test read the label; seam=none; no_claim=TV wall label
   await expect(team.getByText("✕ 答錯")).toHaveCount(1);
   await expect(team.getByText("牧師・剩 1 次")).toBeVisible();
+});
+
+/** Gives the boss three multiple-choice questions (right answer 綠色, so 紅色 is always wrong), sends the cleric team to the
+ * boss room from the host's ⚙ 更多, and locks a wrong answer there. restoreRoom0AfterEach puts the boss phases back. */
+async function wrongBossLock(browser: Browser, request: APIRequestContext) {
+  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
+  const mc = (id: string) => ({ kind: "multipleChoice", id, content: { kind: "text", value: `王題 ${id}` }, options: ["紅色", "綠色", "藍色", "黃色"], correctIndex: 1 });
+  bank.boss.phases = [{ name: "", rule: "", maxHp: 3, questions: [mc("A"), mc("B"), mc("C")] }];
+  expect((await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } })).ok()).toBe(true);
+  const room = await start(browser, "牧師");
+  const { host, team } = room;
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await host.getByRole("button", { name: "送王房" }).click();
+  await host.getByRole("button", { name: "確定送？" }).click();
+  await host.getByRole("button", { name: "關閉" }).click();
+  const question = team.getByRole("heading", { level: 2 });
+  await expect(question).toHaveText(/^王題 [ABC]$/);
+  const before = (await question.textContent())!;
+  await option(team, "紅色").click();
+  await team.getByRole("button", { name: "鎖定答案" }).click();
+  await revealLock(host);
+  await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
+  return { ...room, question, before };
+}
+
+// Value: protects=a cleric's wrong boss lock offers 祈禱 / 不用 on the phone, and 祈禱 spends a use for a new boss question in
+// the same turn; fails_when=the boss miss skips the prayer wait, or 祈禱 keeps the old question or ends the turn;
+// why_new=the boss-room prayer had only room unit tests (retro 2026-10-30); seam=none; no_claim=a second miss in the kept turn (unit test)
+test("cleric in the boss room: a wrong lock waits for 祈禱, which spends a use and deals a new boss question", async ({ browser, request }) => {
+  const { screen, team, question, before } = await wrongBossLock(browser, request);
+  await expect(screen.getByText(/牧師祈禱中/)).toBeVisible();
+  await expect(team.getByRole("button", { name: /不用/ })).toBeVisible();
+  await team.getByRole("button", { name: /祈禱/ }).click();
+  await expect(question).not.toHaveText(before);
+  await expect(question).toHaveText(/^王題 [ABC]$/);
+  await expect(team.getByText("輪到我們了！")).toBeVisible();
+  await expect(team.getByRole("button", { name: "鎖定答案" })).toBeVisible();
+  await expect(team.getByText("牧師・剩 1 次")).toBeVisible();
+  await expect(screen.getByText(/牧師祈禱中/)).toHaveCount(0);
+});
+
+// Value: protects=不用 in the boss room resolves the miss as usual (a new boss question for the next team) and spends nothing;
+// fails_when=不用 spends a use or leaves the wait up; why_new=as above; seam=none; no_claim=turn order with more teams (unit test)
+test("cleric in the boss room: 不用 spends nothing and the boss moves on to a new question", async ({ browser, request }) => {
+  const { screen, team, question, before } = await wrongBossLock(browser, request);
+  await team.getByRole("button", { name: /不用/ }).click();
+  await expect(team.getByRole("button", { name: /祈禱/ })).toHaveCount(0);
+  await expect(screen.getByText(/牧師祈禱中/)).toHaveCount(0);
+  // The only team is also the next one: its new turn faces the boss's next question.
+  await expect(question).not.toHaveText(before);
+  await expect(team.getByRole("button", { name: "鎖定答案" })).toBeVisible();
+  await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
 });
