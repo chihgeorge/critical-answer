@@ -20,6 +20,14 @@ const FRAGMENT = /^changelog\.d\/[^/]+\.md$/;
 
 const version = (json: string | null): unknown => (json === null ? undefined : JSON.parse(json).version);
 
+/** Parses `git diff -z --name-status --no-renames`: NUL-separated status and path pairs, never C-quoted. */
+export function parseNameStatus(z: string): Change[] {
+  const parts = z.split("\0");
+  const changes: Change[] = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) changes.push({ status: parts[i], path: parts[i + 1] });
+  return changes;
+}
+
 /** The body of a fragment: its text without the `---` front matter, trimmed. */
 export function fragmentBody(text: string): string {
   return text.replace(/^---\r?\n[\s\S]*?\r?\n---(\r?\n|$)/, "").trim();
@@ -50,20 +58,17 @@ export function fragmentProblems(pr: PrInput): string[] {
 }
 
 if (process.argv[1]?.endsWith("check-fragment.ts")) {
-  const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  // maxBuffer: package-lock.json can outgrow the 1 MiB default.
+  const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 << 20 });
   const base = git("merge-base", `origin/${process.env.BASE_REF || "main"}`, "HEAD").trim();
-  const changes = git("diff", "--name-status", "--no-renames", base, "HEAD")
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const [status, path] = line.split("\t");
-      return { status, path };
-    });
+  const changes = parseNameStatus(git("diff", "-z", "--name-status", "--no-renames", base, "HEAD"));
   const show = (rev: "base" | "head", path: string) => {
     try {
       return git("show", `${rev === "base" ? base : "HEAD"}:${path}`);
-    } catch {
-      return null;
+    } catch (e) {
+      // Only "not at this revision" means absent; any other git failure must not pass as "no version".
+      if (/does not exist in|exists on disk, but not in/.test(String((e as { stderr?: unknown }).stderr))) return null;
+      throw e;
     }
   };
   const branch = process.env.HEAD_REF || git("rev-parse", "--abbrev-ref", "HEAD").trim();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fragmentBody, fragmentProblems, type PrInput } from "./check-fragment";
+import { fragmentBody, fragmentProblems, parseNameStatus, type PrInput } from "./check-fragment";
 
 const FRAGMENT = "### Fixed\n- A thing.\n";
 const pkg = (version: string, extra = "") => JSON.stringify({ name: "x", version, extra });
@@ -62,8 +62,9 @@ describe("fragmentProblems", () => {
     expect(fragmentProblems(pr(head, { base }))).toEqual([]);
   });
 
-  it("skips everything on a release/* branch", () => {
+  it("skips everything on a release/* branch, and only there", () => {
     expect(fragmentProblems(pr({ VERSION: "0.2.0.0" }, { branch: "release/0.2.0.0", base: { VERSION: "0.1.0.0" } }))).toEqual([]);
+    expect(fragmentProblems(pr({ VERSION: "0.2.0.0" }, { branch: "releases/x", base: { VERSION: "0.1.0.0" } }))).toHaveLength(2);
   });
 
   it("lets dependabot skip the fragment but not the version rules", () => {
@@ -72,7 +73,22 @@ describe("fragmentProblems", () => {
   });
 });
 
+describe("parseNameStatus", () => {
+  // Value: protects=a non-ASCII fragment name counting as a fragment; fails_when=paths are parsed from C-quoted line output
+  it("reads NUL-separated pairs with raw paths", () => {
+    expect(parseNameStatus("A\0changelog.d/修正 x.md\0M\0VERSION\0")).toEqual([
+      { status: "A", path: "changelog.d/修正 x.md" },
+      { status: "M", path: "VERSION" },
+    ]);
+    expect(parseNameStatus("")).toEqual([]);
+  });
+});
+
 describe("fragmentBody", () => {
+  it("drops CRLF front matter too", () => {
+    expect(fragmentBody("---\r\nbump: minor\r\n---\r\n### Added\r\n")).toBe("### Added");
+  });
+
   it("drops front matter only at the top", () => {
     expect(fragmentBody("---\nbump: minor\n---\n### Added\n- x\n")).toBe("### Added\n- x");
     expect(fragmentBody("### Added\n---\n- x")).toBe("### Added\n---\n- x");
