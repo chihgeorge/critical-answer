@@ -149,6 +149,44 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().question.id).toBe("b-a");
   });
 
+  // Value: protects=a buzz sent while a reveal is up is refused, so it cannot take the next question early; fails_when=the paused() guard in handleTeamBuzz is dropped; why_new=review gap, no test sends TEAM_BUZZ mid-reveal; seam=none; no_claim=roll/lock pending refusals (same guard line, not driven)
+  it("a buzz sent while the answer is still on show is refused and holds nothing", () => {
+    const g = buzzerGame(text);
+    g.buzz(0);
+    g.judge(IDS[0], true); // the reveal is up; the next question's id is already current
+    g.buzz(1);
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "reveal_pending" });
+    expect(g.room.game!.buzz?.teamId).toBeUndefined();
+  });
+
+  // Value: protects=a laptop 逃跑 on a wrong buzz only shuts the team out; fails_when=the buzzer-phase fleeChoice override is removed; why_new=the room tests judge with retry only; seam=none; no_claim=the host key binding (not driven)
+  it("a wrong buzz judged with 逃跑 still only shuts the team out", () => {
+    const g = buzzerGame(text);
+    g.buzz(1);
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: IDS[1], questionId: "b-a", correct: false, fleeChoice: "flee", eventId: g.state().eventId });
+    expect(g.room.game!.buzz).toEqual({ questionId: "b-a", out: [IDS[1]] });
+    expect(g.room.game!.boss.currentQuestionId).toBe("b-a");
+  });
+
+  // Value: protects=two right buzzes through the room empty the last phase and kill the boss; fails_when=a buzz-phase hit stops reaching the kill path in the room; why_new=the kill is tested only in game-state; seam=none; no_claim=the epilogue after the kill
+  it("the last right buzz of the final phase kills the boss", () => {
+    const g = buzzerGame(text);
+    g.buzz(0);
+    g.judge(IDS[0], true);
+    g.next();
+    g.buzz(2);
+    vi.useFakeTimers();
+    try {
+      g.judge(IDS[2], true);
+      expect(g.room.game!.phase).toBe("playing"); // the kill's 4d20 beat comes first
+      vi.advanceTimersByTime(10000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(g.room.game!.phase).toBe("finished");
+    expect(g.state()).toMatchObject({ cue: "boss-kill" });
+  });
+
   it("the buzz is saved: a restarted room keeps who is shut out", async () => {
     const storage = memoryStorage();
     const g = buzzerGame(text, storage);
