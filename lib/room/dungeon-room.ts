@@ -256,8 +256,6 @@ export class DungeonRoom {
   private initiativeTimer: ReturnType<typeof setTimeout> | null = null;
   /** This game's HOST_START asked for 擲先攻: it follows the intro. Saved, so a restart mid-intro still rolls. */
   private initiativeOn = false;
-  /** A restart mid-roll: wait out the restarted INITIATIVE_MS instead of finishing once the online teams have rolled. Memory only. */
-  private initiativeWaitsOut = false;
   /** When initiativeTimer fires, for the countdown on the big screen. Memory only. */
   private initiativeEndsAt = 0;
   private phaseCardTimer: ReturnType<typeof setTimeout> | null = null;
@@ -654,8 +652,6 @@ export class DungeonRoom {
     // An initiative without a game in play (a damaged save) is dropped: its timer would start a game that is not there.
     this.initiative = this.game?.phase === "playing" ? (s.initiative ?? null) : null;
     this.initiativeOn = s.initiativeOn === true;
-    // Every team restores offline: the first phone back must not count as "every online team has rolled".
-    this.initiativeWaitsOut = !!this.initiative && !this.initiative.order;
     if (this.initiative) this.armInitiative(this.initiative.order ? (this.initiative.tieRolls?.length ?? 0) * INITIATIVE_TIE_MS + this.initiativeHoldMs : INITIATIVE_MS);
     // The answer reveal does not survive a restart, so a phase that ended under it goes straight to its card.
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
@@ -1075,7 +1071,7 @@ export class DungeonRoom {
     if (holdsTurn(this.pendingRoll) && this.pendingRoll.teamId === teamId) return;
     try {
       this.setOnline(teamId, false);
-      if (!this.finishIfRolled()) this.broadcastState();
+      this.broadcastState();
     } catch {
       // Team no longer exists in this game instance — nothing to do.
     }
@@ -1682,7 +1678,6 @@ export class DungeonRoom {
   private beginInitiative() {
     if (!this.initiativeOn) return this.announceStart();
     this.initiative = { rolls: {} };
-    this.initiativeWaitsOut = false;
     this.armInitiative(INITIATIVE_MS);
     this.broadcastState();
   }
@@ -1709,10 +1704,10 @@ export class DungeonRoom {
     if (!this.finishIfRolled()) this.broadcastState();
   }
 
-  /** Every phone still here has rolled: the offline teams are rolled for now, not after the wait. */
+  /** Every team has rolled. An offline team is not rolled for early: a phone locked during the intro gets the whole wait. */
   private finishIfRolled(): boolean {
     const ini = this.initiative;
-    if (!ini || ini.order || this.initiativeWaitsOut || !this.game!.teams.every((t) => !t.online || ini.rolls[t.id] !== undefined)) return false;
+    if (!ini || ini.order || !this.game!.teams.every((t) => ini.rolls[t.id] !== undefined)) return false;
     this.finishInitiative();
     return true;
   }

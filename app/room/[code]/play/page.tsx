@@ -849,7 +849,7 @@ export default function PlayPage() {
               <>
                 <D20 value={myRoll} size={90} />
                 <div className="text-[18px]">
-                  {initiative.order ? `你們擲出 ${myRoll}，第${ordinal(initiative.order.indexOf(teamId!) + 1)}個上場` : `你們擲出 ${myRoll}，看大螢幕 👀`}
+                  {initiative.order?.includes(teamId!) ? `你們擲出 ${myRoll}，第${ordinal(initiative.order.indexOf(teamId!) + 1)}個上場` : `你們擲出 ${myRoll}，看大螢幕 👀`}
                 </div>
               </>
             )}

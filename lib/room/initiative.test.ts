@@ -121,13 +121,37 @@ describe("擲先攻 in the room", () => {
     expect(g.state().initiative).toMatchObject({ rolls: { [A]: 19, [B]: 2, [C]: 12 }, order: [A, C, B] });
   });
 
-  it("an offline team is rolled for as soon as every phone still here has rolled", () => {
+  it("an offline team gets the whole wait: it can come back and roll, or is rolled for when time is up", () => {
+    for (const comesBack of [true, false]) {
+      const g = started();
+      g.room.onClose(g.phones[2]); // e.g. a phone locked during the intro
+      g.roll(0, 5);
+      g.roll(1, 7);
+      expect(g.state().initiative.order).toBeUndefined();
+      if (comesBack) {
+        g.room.onConnect(g.phones[2]);
+        send(g.room, g.phones[2], { type: "JOIN", teamId: C, teamKey: "team-key-0123456789abcde2", teamName: "丙隊" });
+        g.roll(2, 14);
+      } else {
+        g.queue.push(14);
+        vi.advanceTimersByTime(INITIATIVE_MS);
+      }
+      expect(g.state().initiative).toMatchObject({ rolls: { [A]: 5, [B]: 7, [C]: 14 }, order: [C, B, A] });
+    }
+  });
+
+  it("no turn action gets through while the phones roll or the order holds", () => {
     const g = started();
-    g.room.onClose(g.phones[2]);
-    g.roll(0, 5);
-    g.queue.push(7, 14); // B's own roll, then C's, rolled for it
-    send(g.room, g.phones[1], { type: "TEAM_ROLL_INITIATIVE" });
-    expect(g.state().initiative).toMatchObject({ rolls: { [A]: 5, [B]: 7, [C]: 14 }, order: [C, B, A] });
+    const refused = () => {
+      send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "r1", text: "答案 r1" });
+      expect(msgs(g.phones[0].send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
+    };
+    refused();
+    [4, 18, 11].forEach((face, i) => g.roll(i, face));
+    const eventId = g.state().eventId;
+    refused();
+    expect(g.state().eventId).toBe(eventId);
+    expect(g.turnOrder()).toEqual([B, C, A]);
   });
 
   it("全部代擲 rolls the rest at once; only the host may press it, and a phone cannot roll after the order is set", () => {
@@ -147,15 +171,6 @@ describe("擲先攻 in the room", () => {
     for (const page of [2, 3, 4, 5]) send(g.room, g.host, { type: "HOST_INTRO", page });
     expect(g.state()).toMatchObject({ initiative: { rolls: {} }, question: null });
     expect(g.state().intro).toBeUndefined();
-  });
-
-  it("a phone that drops while it is the only one left to roll is rolled for at once", () => {
-    const g = started();
-    g.roll(0, 5);
-    g.roll(1, 7);
-    g.queue.push(14);
-    g.room.onClose(g.phones[2]);
-    expect(g.state().initiative).toMatchObject({ rolls: { [A]: 5, [B]: 7, [C]: 14 }, order: [C, B, A] });
   });
 
   it("once the order is set, 全部代擲 and a dropped phone change nothing; the first online team plays", () => {
@@ -247,6 +262,21 @@ describe("擲先攻 across a restart", () => {
     second.queue.push(12);
     send(second.room, back, { type: "TEAM_ROLL_INITIATIVE" });
     expect((second.room as any).initiative).toEqual({ rolls: { [A]: 8, [B]: 12 } });
+  });
+
+  it("after a restart mid-roll, the order is set as soon as every team is back and has rolled", async () => {
+    const g = started();
+    g.roll(0, 8);
+    const second = makeRoom(g.storage);
+    expect(await second.room.restore()).toBe("restored");
+    [[B, 1, 12], [C, 2, 3]].forEach(([id, i, face]) => {
+      const back = makeConn(`back${i}`);
+      second.room.onConnect(back);
+      send(second.room, back, { type: "JOIN", teamId: id, teamKey: `team-key-0123456789abcde${i}`, teamName: ["甲隊", "乙隊", "丙隊"][i as number] });
+      second.queue.push(face as number);
+      send(second.room, back, { type: "TEAM_ROLL_INITIATIVE" });
+    });
+    expect((second.room as any).initiative).toMatchObject({ rolls: { [A]: 8, [B]: 12, [C]: 3 }, order: [B, A, C] });
   });
 
   it("drops a saved 擲先攻 when the save has no game in play", async () => {
