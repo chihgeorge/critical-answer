@@ -46,6 +46,16 @@ describe("parseSnapshot", () => {
 
   // Value: protects=a v5 save from before boss phases is discarded, not restored to throw in boss play; fails_when=the
   // boss.phases check is removed; why_new=the restore backfill and its test were removed; seam=none
+  it("keeps a saved 擲先攻 and drops a damaged one, keeping the rest of the save", () => {
+    const ini = { rolls: { a: 5, b: 20 }, order: ["b", "a"], tieRolls: [{ from: 1, teams: ["a"], values: [3] }] };
+    expect(parseSnapshot({ ...valid(), initiative: ini })?.initiative).toEqual(ini);
+    for (const bad of [{ rolls: { a: 21 } }, { rolls: { a: 5 }, order: [1] }, { rolls: { a: 5 }, tieRolls: [{ from: 1, teams: ["a"], values: [0] }] }, "x"]) {
+      const s = parseSnapshot({ ...valid(), initiative: bad });
+      expect(s).not.toBeNull();
+      expect(s?.initiative).toBeUndefined();
+    }
+  });
+
   it("discards a game saved before boss phases", () => {
     const game = gameWithTeams((t) => t);
     expect(parseSnapshot({ ...valid(), game })?.game).toBeTruthy();

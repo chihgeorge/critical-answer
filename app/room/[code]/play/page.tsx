@@ -713,7 +713,7 @@ export default function PlayPage() {
     <>
       {/* While waiting, the roster above already highlights our own team. */}
       {game && (
-        <Panel tone={isMyTurn ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
+        <Panel tone={isMyTurn && !initiative ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
           <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>

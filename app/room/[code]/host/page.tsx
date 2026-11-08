@@ -18,6 +18,7 @@ import { Qr } from "@/components/qr";
 import { MageHint } from "@/components/mage-hint";
 import { clericStage, HOST_KEYS, hostKeyAction, introKeyAction } from "@/lib/host-keys";
 import { INTRO_PAGE_TEXT, introDots } from "@/components/how-to-play";
+import { INITIATIVE_MS } from "@/lib/initiative";
 import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
 import { AI_ERRORS, AI_STORE, AiExhausted, AiPanel, aiKeyMessage, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
@@ -597,7 +598,7 @@ export default function HostPage() {
               <div className="mt-1 text-[15px]" style={{ color: "#6a5a7a" }}>
                 {game.initiative.order
                   ? game.initiative.order.map((id) => game.view.teams.find((t) => t.id === id)?.name ?? "").join(" → ")
-                  : `已擲 ${Object.keys(game.initiative.rolls).length}／${game.view.teams.length} 隊，15 秒後沒擲的隊由系統代擲`}
+                  : `已擲 ${Object.keys(game.initiative.rolls).length}／${game.view.teams.length} 隊，${INITIATIVE_MS / 1000} 秒後沒擲的隊由系統代擲`}
               </div>
             </Panel>
             <PixelButton variant="primary" disabled={!ready || !!game.initiative.order} className="!m-0 mt-auto min-h-[78px] text-[26px]" onClick={() => send({ type: "HOST_ROLL_INITIATIVE" })}>

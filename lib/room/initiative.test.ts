@@ -149,6 +149,53 @@ describe("擲先攻 in the room", () => {
     expect(g.state().intro).toBeUndefined();
   });
 
+  it("a phone that drops while it is the only one left to roll is rolled for at once", () => {
+    const g = started();
+    g.roll(0, 5);
+    g.roll(1, 7);
+    g.queue.push(14);
+    g.room.onClose(g.phones[2]);
+    expect(g.state().initiative).toMatchObject({ rolls: { [A]: 5, [B]: 7, [C]: 14 }, order: [C, B, A] });
+  });
+
+  it("once the order is set, 全部代擲 and a dropped phone change nothing; the first online team plays", () => {
+    const g = started();
+    g.roll(0, 4);
+    g.roll(1, 18);
+    g.roll(2, 11);
+    const before = g.state().initiative;
+    send(g.room, g.host, { type: "HOST_ROLL_INITIATIVE" });
+    g.room.onClose(g.phones[1]);
+    expect(g.state().initiative.order).toEqual(before.order);
+    expect(g.state().initiative.rolls).toEqual(before.rolls);
+    vi.advanceTimersByTime(INITIATIVE_ORDER_MS);
+    expect(g.state().view.currentTurnTeamId).toBe(C);
+  });
+
+  it("a room that expires mid-roll or mid-hold never starts a game afterwards", async () => {
+    for (const hold of [false, true]) {
+      const g = started();
+      if (hold) [4, 18, 11].forEach((face, i) => g.roll(i, face));
+      await (g.room as any).expire();
+      g.io.broadcast.mockClear();
+      vi.advanceTimersByTime(INITIATIVE_MS + INITIATIVE_ORDER_MS);
+      expect((g.room as any).initiative).toBeNull();
+      expect(g.io.broadcast).not.toHaveBeenCalled();
+    }
+  });
+
+  it("結束冒險 during the order hold: no start fires later", () => {
+    const g = started();
+    g.roll(0, 4);
+    g.roll(1, 18);
+    g.roll(2, 11);
+    send(g.room, g.host, { type: "HOST_END_GAME" });
+    vi.advanceTimersByTime(INITIATIVE_ORDER_MS);
+    expect(g.state().phase).toBe("finished");
+    expect(g.state().initiative).toBeUndefined();
+    expect(g.state().cue).not.toBe("start");
+  });
+
   it("結束冒險 during the rolling drops it: no start fires later", () => {
     const g = started();
     send(g.room, g.host, { type: "HOST_END_GAME" });
@@ -172,6 +219,45 @@ describe("擲先攻 across a restart", () => {
     vi.advanceTimersByTime(INITIATIVE_ORDER_MS);
     expect((second.room as any).initiative).toBeNull();
     expect((second.room as any).game.turnOrder).toEqual([B, C, A]);
+  });
+
+  it("a restart mid-hold re-holds every tie's reroll too, and the start still says the order was rolled", async () => {
+    const g = started();
+    g.roll(0, 9);
+    g.roll(1, 15);
+    g.queue.push(9, 3, 17);
+    send(g.room, g.phones[2], { type: "TEAM_ROLL_INITIATIVE" });
+    const second = makeRoom(g.storage);
+    expect(await second.room.restore()).toBe("restored");
+    expect((second.room as any).initiativeOn).toBe(true);
+    vi.advanceTimersByTime(INITIATIVE_ORDER_MS);
+    expect((second.room as any).initiative).not.toBeNull();
+    vi.advanceTimersByTime(INITIATIVE_TIE_MS);
+    expect((second.room as any).initiative).toBeNull();
+  });
+
+  it("after a restart mid-roll, the first phone back does not end the wait for the teams still reconnecting", async () => {
+    const g = started();
+    g.roll(0, 8);
+    const second = makeRoom(g.storage);
+    expect(await second.room.restore()).toBe("restored");
+    const back = makeConn("back");
+    second.room.onConnect(back);
+    send(second.room, back, { type: "JOIN", teamId: B, teamKey: "team-key-0123456789abcde1", teamName: "乙隊" });
+    second.queue.push(12);
+    send(second.room, back, { type: "TEAM_ROLL_INITIATIVE" });
+    expect((second.room as any).initiative).toEqual({ rolls: { [A]: 8, [B]: 12 } });
+  });
+
+  it("drops a saved 擲先攻 when the save has no game in play", async () => {
+    const g = started();
+    g.roll(0, 8);
+    const snap = [...g.storage.data.entries()].find(([, v]) => (v as any)?.initiative)!;
+    g.storage.data.set(snap[0], { ...(snap[1] as any), game: null });
+    const second = makeRoom(g.storage);
+    await second.room.restore();
+    expect((second.room as any).initiative).toBeNull();
+    vi.advanceTimersByTime(INITIATIVE_MS + INITIATIVE_ORDER_MS); // no timer reads the missing game
   });
 
   it("rolls made before a restart are kept, and the wait starts again", async () => {

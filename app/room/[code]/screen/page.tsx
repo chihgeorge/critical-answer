@@ -986,7 +986,7 @@ export default function ScreenPage() {
           <>
             <SceneBackground theme="stone" />
             <Torches />
-            <HowToPlay page={game.intro.page} firstTeam={describeTurn(game.view, null).team?.name ?? ""} cuisine={!!game.cuisine} />
+            <HowToPlay page={game.intro.page} cuisine={!!game.cuisine} />
           </>
         )}
         {game?.phase === "playing" && !game.intro && game.initiative && (

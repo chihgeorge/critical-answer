@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { WARRIOR_TARGET } from "@/lib/game-state";
 import { LabelChip } from "@/components/pixel";
 import { killRollText } from "@/lib/kill-roll";
-import { INITIATIVE_TIE_MS, type InitiativeView } from "@/lib/initiative";
+import { INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, type InitiativeView } from "@/lib/initiative";
 
 /** A pixel-outlined d20 face: the hexagon with its front triangle, `value` in the middle. */
 export function D20({ value, size }: { value: number | string; size: number }) {
@@ -183,9 +183,10 @@ export function TieRollOverlay({ line, names, values, result }: { line: string; 
 
 /** A d20 that tumbles once when it mounts, then shows `value`: key it by its value so a new roll tumbles again. */
 function TumbleDie({ value, size }: { value: number; size: number }) {
-  const [face, setFace] = useState<number | null>(() => (window.matchMedia("(prefers-reduced-motion: reduce)").matches ? null : 1));
+  const [still] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [face, setFace] = useState<number | null>(still ? null : 1);
   useEffect(() => {
-    if (face === null) return;
+    if (still) return;
     const tick = setInterval(() => setFace(1 + Math.floor(Math.random() * 20)), 80);
     const land = setTimeout(() => {
       clearInterval(tick);
@@ -195,9 +196,7 @@ function TumbleDie({ value, size }: { value: number; size: number }) {
       clearInterval(tick);
       clearTimeout(land);
     };
-    // Tumbles once, from mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [still]);
   return (
     <div className={face === null ? undefined : "px-roll-tumble"}>
       <D20 value={face ?? value} size={size} />
@@ -222,7 +221,8 @@ function Countdown({ ms }: { ms: number }) {
  */
 export function InitiativeOverlay({ ini, teams }: { ini: InitiativeView; teams: { id: string; name: string }[] }) {
   const ties = ini.tieRolls ?? [];
-  const [beat, setBeat] = useState(0);
+  // A screen that (re)connects mid-hold skips the rerolls already past, by the room's `left`.
+  const [beat, setBeat] = useState(() => (ini.order ? Math.max(0, ties.length - Math.ceil(Math.max(0, ini.left - INITIATIVE_ORDER_MS) / INITIATIVE_TIE_MS)) : 0));
   useEffect(() => {
     if (!ini.order || beat >= ties.length) return;
     const t = setTimeout(() => setBeat((b) => b + 1), INITIATIVE_TIE_MS);
