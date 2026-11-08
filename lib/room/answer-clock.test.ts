@@ -218,6 +218,7 @@ describe("每題作答倒數 on a video question (D4)", () => {
     const g = started({ answerSeconds: 30 }, bank(video("v1")));
     const screen = makeConn("screen");
     g.room.onConnect(screen);
+    send(g.room, screen, { type: "SCREEN_HELLO" });
     // The team answers before the clip ends; the host judges it wrong while the clip is still playing.
     send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "v1", eventId: g.state().eventId });
     vi.advanceTimersByTime(5000);
@@ -242,6 +243,10 @@ describe("每題作答倒數 on a video question (D4)", () => {
     expect(g.state().answerClock).toEqual({ left: null });
     const screen = makeConn("screen");
     g.room.onConnect(screen);
+    // A socket that never announced itself as a screen (a player's devtools) cannot start it either.
+    send(g.room, screen, { type: "SCREEN_CLIP_ENDED", questionId: "v1" });
+    expect(g.state().answerClock).toEqual({ left: null });
+    send(g.room, screen, { type: "SCREEN_HELLO" });
     send(g.room, screen, { type: "SCREEN_CLIP_ENDED", questionId: "other" });
     expect(g.state().answerClock).toEqual({ left: null });
     vi.advanceTimersByTime(4000);

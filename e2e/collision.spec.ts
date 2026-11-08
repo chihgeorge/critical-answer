@@ -23,9 +23,9 @@ async function takeCode(code: string) {
 }
 
 test("a new room whose code is already taken moves to another code by itself", async ({ page }) => {
-  const owner = await takeCode("COLA");
-  await page.goto(`/room/COLA/host#k=${NEWCOMER_TOKEN}&new=1`);
-  await page.waitForURL((u) => /\/room\/[A-Z]{4}\/host/.test(u.pathname) && !u.pathname.includes("/COLA/"));
+  const owner = await takeCode("CLSN");
+  await page.goto(`/room/CLSN/host#k=${NEWCOMER_TOKEN}&new=1`);
+  await page.waitForURL((u) => /\/room\/[A-Z]{4}\/host/.test(u.pathname) && !u.pathname.includes("/CLSN/"));
   await expect(page.getByText("等待隊伍加入")).toBeVisible(); // it claimed the new room
   // Once the room is ours the link no longer carries new=1, so a refresh can never swap it again.
   await expect.poll(() => new URL(page.url()).hash).toBe(`#k=${NEWCOMER_TOKEN}`);
@@ -45,17 +45,17 @@ test("five taken codes in a row give up and show the error, instead of retrying 
       if (msg.type === "HOST_CLAIM") ws.send(JSON.stringify({ type: "ERROR", error: "bad_token" }));
     });
   });
-  await page.goto(`/room/COLZ/host#k=${NEWCOMER_TOKEN}&new=1`);
+  await page.goto(`/room/CLSZ/host#k=${NEWCOMER_TOKEN}&new=1`);
   await expect(page.getByText("主持人金鑰不符")).toBeVisible({ timeout: 15_000 });
   // Exactly MAX_FRESH_ATTEMPTS distinct codes: the loop stopped instead of running forever.
   expect(roomsTried.size).toBe(5);
 });
 
 test("a link to an existing room never jumps to another one", async ({ page }) => {
-  const owner = await takeCode("COLB");
-  await page.goto(`/room/COLB/host#k=${NEWCOMER_TOKEN}`);
+  const owner = await takeCode("CLSB");
+  await page.goto(`/room/CLSB/host#k=${NEWCOMER_TOKEN}`);
   await expect(page.getByText("主持人金鑰不符")).toBeVisible();
   await page.waitForTimeout(1000);
-  expect(new URL(page.url()).pathname).toBe("/room/COLB/host");
+  expect(new URL(page.url()).pathname).toBe("/room/CLSB/host");
   owner.close();
 });

@@ -1,5 +1,11 @@
 import { originAllowed } from "./origin";
 
+/** generateRoomCode's alphabet (no A, I or O). Lives here, not in room-code.ts, which
+ * uses the browser's storage and so cannot be in the Worker. */
+export const ROOM_CODE_CHARS = "BCDEFGHJKLMNPQRSTUVWXYZ";
+/** Every code generateRoomCode can make, and nothing else. */
+export const ROOM_CODE_RE = new RegExp(`^[${ROOM_CODE_CHARS}]{4}$`);
+
 /**
  * The Worker's front door for everything routePartykitRequest would route.
  *
@@ -13,10 +19,13 @@ import { originAllowed } from "./origin";
  * `className` is also typed as `Extract<keyof Env, string>`, not a bare `string`, so a typo here would
  * be a compile error instead of a silent always-404.
  *
+ * The room name must be a code generateRoomCode could make: any other name would create a fresh Durable Object
+ * (alarm, snapshot with the whole bank, 24 h of storage) for anyone who scripts the path.
+ *
  * Returns a Response to stop the request, or undefined to let it through.
  */
-export function entryGate(req: Request, lobby: { className: string }, allowedOrigins: string): Response | undefined {
-  if (lobby.className !== "main") return new Response("Not found", { status: 404 });
+export function entryGate(req: Request, lobby: { className: string; name: string }, allowedOrigins: string): Response | undefined {
+  if (lobby.className !== "main" || !ROOM_CODE_RE.test(lobby.name)) return new Response("Not found", { status: 404 });
   const origin = req.headers.get("Origin");
   if (!originAllowed(origin, allowedOrigins)) {
     console.warn(JSON.stringify({ event: "origin_rejected", origin }));

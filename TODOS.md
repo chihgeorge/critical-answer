@@ -38,10 +38,7 @@
 - [每個職業有自己的動畫和音效](#每個職業有自己的動畫和音效) — 未註明
 - [法師填空題提示：答案帶註記時第一個字會誤導](#法師填空題提示答案帶註記時第一個字會誤導) — 未註明
 - [房間最多只能存在 6 小時](#房間最多只能存在-6-小時) — S（人工約半天 / CC 約 20 分鐘）
-- [不檢查房間代碼格式，任何名字都能開出新房](#不檢查房間代碼格式任何名字都能開出新房) — S（人工約 2 小時 / CC 約 15 分鐘）
-- [一條連線能佔滿 8 隊，60 條連線能鎖死房間](#一條連線能佔滿-8-隊60-條連線能鎖死房間) — S/M
 - [每則訊息都把整個房間序列化一次，而且沒有速率限制](#每則訊息都把整個房間序列化一次而且沒有速率限制) — S（人工約半天 / CC 約 30 分鐘）
-- [沒加入隊伍的連線也能送 SCREEN_* 訊息](#沒加入隊伍的連線也能送-screen_-訊息) — S（人工約 1 小時 / CC 約 15 分鐘）
 - [HOST_AI_KEY 能被拿來批次驗證偷來的 Anthropic key](#host_ai_key-能被拿來批次驗證偷來的-anthropic-key) — S（人工約 2 小時 / CC 約 20 分鐘）
 - [填空題可以有好幾個要填的欄位](#填空題可以有好幾個要填的欄位) — M（人工約 2 天 / CC 約 1 小時）
 - [⭐ 靈感：主持人給，下一次擲骰取優勢](#-靈感主持人給下一次擲骰取優勢) — S
@@ -615,46 +612,6 @@
 
 ---
 
-## 不檢查房間代碼格式，任何名字都能開出新房
-
-**What:** 處理「不檢查房間代碼格式，任何名字都能開出新房」所述事項。
-
-**Why:** 不用登入就能大量佔用 Durable Object 的儲存空間和請求次數；把 4 字代碼全部佔掉也會讓主持人頁的重試用完。
-
-**Context:**
-- `lib/gate.ts:18-25`
-- `worker/index.ts:192-193`
-- `lib/room/dungeon-room.ts:753-755`
-
-**Effort/Priority:** S（人工約 2 小時 / CC 約 15 分鐘） / P3
-
-**Depends on:** 無。
-
-**Notes:**
-- 原 What：`entryGate` 只檢查 party 名稱是不是 `main` 和 Origin，沒有檢查房間代碼。沒帶 Origin 的請求是允許的，所以腳本可以對 `/parties/main/<任意字串>` 開 WebSocket，每個名字都會建一個 Durable Object、設 alarm、寫一份包含整個題庫的 snapshot，在儲存空間留 24 小時。做法：在 gate 拒絕不符合 `^[BCDEFGHJKLMNPQRSTUVWXYZ]{4}$` 的名字。也可以改成等第一則有效訊息才寫入，這部分是 M。
-- Context 補充：`lib/gate.ts:18-25`、`worker/index.ts:192-193`、`lib/room/dungeon-room.ts:753-755`。2026-10-30 系統檢查時找到。
-
----
-
-## 一條連線能佔滿 8 隊，60 條連線能鎖死房間
-
-**What:** 處理「一條連線能佔滿 8 隊，60 條連線能鎖死房間」所述事項。
-
-**Why:** 代碼就顯示在電視上，有人搗蛋就能讓整場玩不下去。
-
-**Context:**
-- `lib/room/dungeon-room.ts:67`
-
-**Effort/Priority:** S/M / P3
-
-**Depends on:** 無。
-
-**Notes:**
-- 原 What：沒有加入密碼時，一條連線可以換 8 個 UUID 送 8 次 JOIN，`MAX_TEAMS` 就滿了；`connTeam` 會被直接覆蓋，沒檢查這條連線是不是已經有隊伍。另外 `MAX_CONNECTIONS = 60` 是整個房間的上限，有代碼的人開 60 個 socket，之後連主持人和斷線重連的手機都進不來。做法：一條連線只能有一隊（S）；連線上限保留名額給主持人，或用 `CF-Connecting-IP` 限制每個 IP 的數量（M）。
-- Context 補充：`lib/room/dungeon-room.ts:67`、`:745-748`、`:925-932`。2026-10-30 系統檢查時找到。
-
----
-
 ## 每則訊息都把整個房間序列化一次，而且沒有速率限制
 
 **What:** 處理「每則訊息都把整個房間序列化一次，而且沒有速率限制」所述事項。
@@ -673,23 +630,6 @@
 - Context 補充：`lib/room/dungeon-room.ts:372-375`、`:414-420`、`:796`。2026-10-30 系統檢查時找到。
 
 ---
-
-## 沒加入隊伍的連線也能送 SCREEN_* 訊息
-
-**What:** `SCREEN_CLIP_ENDED` 和 `SCREEN_NARRATION_PROGRESS` 只擋已加入的隊伍和主持人。玩家在 devtools 另開一條沒加入隊伍的 socket，就能讓影片題的作答倒數提早開始，也能鎖住主持人改旁白。
-
-**Why:** 房間代碼就顯示在電視上，任何在場的人都能這樣搗蛋。影響只限遊戲公平性，答案和金鑰不會外洩。
-
-**Context:**
-- `lib/room/dungeon-room.ts` 訊息分派的 `case "SCREEN_NARRATION_PROGRESS"` / `case "SCREEN_CLIP_ENDED"`，以及 `handleClipEnded`
-- 2026-11-08 /cso 稽核（C5）找到。
-
-**Effort/Priority:** S / P3
-
-**Depends on:** 無。
-
-**Notes:**
-- 做法：/screen 頁面連線時先送一則宣告訊息，伺服器只接受做過宣告的連線送 SCREEN_*。也可以每條連線只能送一次，或每台螢幕各算一次。
 
 ## HOST_AI_KEY 能被拿來批次驗證偷來的 Anthropic key
 
@@ -906,6 +846,12 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 搗蛋防護：連線一隊、滿房讓位、大螢幕宣告、房間代碼格式
+
+- **一條連線只能有一隊，滿房讓位給主持人和大螢幕** · 版號合併時定 · 已經屬於一隊的連線再送不同 id 的 JOIN 或 REJOIN 會被拒（`already_in_team`），同一隊重送或重連照舊。房間滿 60 條連線時，新連線不再被拒：先關掉最舊的「多出來的」連線（沒宣告身分的、第三台以後的大螢幕、一隊的第二條連線），主持人、前兩台大螢幕和每隊唯一的連線不會被關。每個 IP 的連線上限（M）沒做。
+- **只有大螢幕能送 SCREEN_* 訊息** · 版號合併時定 · /screen 每次連上先送 `SCREEN_HELLO`，房間只收宣告過的連線送來的 `SCREEN_CLIP_ENDED` 和 `SCREEN_NARRATION_PROGRESS`（隊伍手機和主持人頁照舊擋）。宣告不算活動，電視開著不會讓房間一直不休息。
+- **房間代碼格式** · 版號合併時定 · Worker 的入口只放行 `generateRoomCode` 做得出來的代碼（`^[BCDEFGHJKLMNPQRSTUVWXYZ]{4}$`），其他名字一律 404，不會再開出新的 Durable Object。首頁的加入表單也用同一條規則。e2e 裡幾個不合規則的固定代碼（EPIL、EPI3、LIFE、COLA/COLB/COLZ）改成合規的。
 
 ## 旁白念出戰士擲到幾點
 

@@ -147,6 +147,11 @@ describe("parseClientMessage", () => {
   });
 
   // Guards the big screen's progress report (D3, D14): fails if any of its three counts may be missing, negative or fractional.
+  it("SCREEN_HELLO: carries nothing, extra fields are dropped", () => {
+    expect(parseClientMessage({ type: "SCREEN_HELLO" })).toEqual({ type: "SCREEN_HELLO" });
+    expect(parseClientMessage({ type: "SCREEN_HELLO", teamId: "x" })).toEqual({ type: "SCREEN_HELLO" });
+  });
+
   it("SCREEN_NARRATION_PROGRESS: whole, non-negative eventId, rev and done", () => {
     const ok = { type: "SCREEN_NARRATION_PROGRESS", eventId: 3, rev: 0, done: 2 };
     expect(parseClientMessage(ok)).toEqual(ok);

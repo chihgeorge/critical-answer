@@ -10,7 +10,7 @@ import { rmSync } from "node:fs";
  */
 const PORT = 1994;
 const STORE = ".wrangler/lifecycle-e2e";
-const BASE = `ws://localhost:${PORT}/parties/main/LIFE`;
+const BASE = `ws://localhost:${PORT}/parties/main/LFCY`;
 // The idle time must outlast a correct lock's beats (2 s reveal + 2 s crit die, BEAT_MS in
 // lib/room/dungeon-room.ts). The beats do mark activity, but markActivity only moves the alarm earlier: with
 // an idle time equal to a beat, the alarm set at HOST_REVEAL fires with the reveal beat and closes the room

@@ -1013,6 +1013,8 @@ export default function ScreenPage() {
 
   const { reset, rested, unreachable, reconnect, send } = useRoomSocket(code, {
     onOpen() {
+      // First, so the room takes this socket's SCREEN_* reports: it ignores them from an unannounced socket.
+      send({ type: "SCREEN_HELLO" });
       setDisconnected(false);
       narrationBaseline.current = null;
       sfxSeen.current = null;
