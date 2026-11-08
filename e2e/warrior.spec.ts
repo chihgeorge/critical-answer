@@ -33,7 +33,7 @@ test("warrior: a team picks 戰士 in the lobby, rolls instead of answering, the
   await expect(host.getByText("戰士隊擲出了骰子…")).toBeVisible();
   await expect(team.getByText("戰士・剩 3 次")).toBeVisible();
   // The die lands on the room's value and the verdict bar reads it.
-  await expect(screen.getByTestId("roll-overlay")).toContainText(/([6-9]|1\d) ≥ 6 命中！|20 大成功！命中|[1-5]，差一點/);
+  await expect(screen.getByTestId("roll-overlay")).toContainText(/(9|1\d) ≥ 9 命中！|20 大成功！命中|[1-8]，差一點/);
 
   // After the 2 s beat the room judges the roll and the overlay goes away.
   await expect(screen.getByTestId("roll-overlay")).toHaveCount(0, { timeout: 5000 });

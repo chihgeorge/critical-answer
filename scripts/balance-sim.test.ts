@@ -6,6 +6,6 @@ describe("balance-sim", () => {
   it("plays a short run to the end and prints all six options", () => {
     const out = execFileSync(process.execPath, ["--no-warnings", "scripts/balance-sim.ts", "30"], { encoding: "utf8" });
     expect(out).toContain("games=30 unfinished=0");
-    for (const c of ["mage", "cleric", "warrior", "thief", "chef", "none"]) expect(out).toMatch(new RegExp(`^${c} +avg`, "m"));
+    for (const c of ["mage", "cleric", "warrior", "thief", "chef", "none"]) expect(out).toMatch(new RegExp(`^${c} +win%`, "m"));
   });
 });
