@@ -1982,6 +1982,38 @@ describe("narration (T5-T7)", () => {
     landKill(room);
   }
 
+  describe("結束冒險 and the narration on screen", () => {
+    /** A game whose start narration is in, ended by the host; `read` the screen read it out first. */
+    async function ended(read: boolean) {
+      const clock = { t: 10_000 };
+      const { room, hostConn } = start(2, { holdMs: 30, epilogueDelayMs: 4000, now: () => clock.t });
+      await sleep(40);
+      const n = all(room).filter((m) => m.type === "NARRATION").at(-1);
+      const readOut = () => send(room, makeConn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId: n.eventId, rev: n.rev ?? 0, done: n.lines.length });
+      if (read) readOut();
+      send(room, hostConn, { type: "HOST_END_GAME" });
+      await sleep(40);
+      const podium = () => all(room).filter((m) => m.type === "STATE").at(-1)!.podium!;
+      return { clock, readOut, podium };
+    }
+
+    // Value: protects=the first place call never cuts off the narration the big screen is still reading (owner,
+    // 2026-11-08); fails_when=the reveal starts 4 s after 結束冒險 while that narration is unread, or does not move up
+    // once the screen reports it read.
+    it("holds the reveal until the screen has read the last narration, then starts a second later", async () => {
+      const { clock, readOut, podium } = await ended(false);
+      expect(podium().elapsedMs).toBe(-20_000);
+      clock.t += 5_000;
+      readOut();
+      expect(podium().elapsedMs).toBe(-1000);
+    });
+
+    it("starts after the usual delay when the narration was already read", async () => {
+      const { podium } = await ended(true);
+      expect(podium().elapsedMs).toBe(-4000);
+    });
+  });
+
   it("announces the start with one NARRATION after STATE", async () => {
     const { room } = start();
     await flush();

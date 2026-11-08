@@ -99,13 +99,25 @@ describe("revealBeats", () => {
     expect(beats[0]).toMatchObject({ kind: "roll", line: "第 1、2、3 名同分！擲 d20 比大小", result: "甲隊 9、乙隊 5、丙隊 5，同點的重擲" });
   });
 
-  it("over four teams rolling, the result names nobody (the names are under the dice)", () => {
-    const ids = ["甲", "乙", "丙", "丁", "戊"];
-    const roll = { from: 1, teams: ids, values: [9, 5, 5, 3, 1] };
-    const beats = revealBeats(teams(...ids.map((id) => [id, 0] as [string, number])), ids, [roll]);
-    expect(beats[0]).toMatchObject({ kind: "roll", line: "第 1、2、3 名同分！擲 d20 搶上台", result: "點數最高的 3 隊上台，同點的重擲" });
-    const four = revealBeats(teams(...ids.slice(0, 4).map((id) => [id, 0] as [string, number])), ids.slice(0, 4), [{ ...roll, teams: ids.slice(0, 4), values: [9, 5, 3, 1] }]);
-    expect(four[0]).toMatchObject({ result: "甲隊 9、乙隊 5、丙隊 3、丁隊 1" });
+  // Value: protects=5–8 dice fit the big screen and the result only promises a reroll that follows; fails_when=over
+  // four teams the result lists every team again, says 同點的重擲 for a tie below the podium, or miscounts the places.
+  it("over four teams rolling, the result names nobody and promises a reroll only on the podium", () => {
+    const ids = ["甲", "乙", "丙", "丁", "戊", "己"];
+    const t = teams(...ids.map((id) => [id, 0] as [string, number]));
+    const result = (from: number, values: number[]) => revealBeats(t, ids, [{ from, teams: ids.slice(from - 1, from - 1 + values.length), values }]).find((b) => b.kind === "roll");
+    expect(result(1, [9, 7, 5, 3, 1])).toMatchObject({ line: "第 1、2、3 名同分！擲 d20 搶上台", result: "點數最高的 3 隊上台" });
+    expect(result(2, [9, 7, 5, 3, 1])).toMatchObject({ result: "點數最高的 2 隊上台" });
+    // The 3s are fourth and fifth: nobody rerolls.
+    expect(result(1, [9, 8, 7, 3, 3])).toMatchObject({ result: "點數最高的 3 隊上台" });
+    expect(result(1, [9, 8, 5, 5, 1])).toMatchObject({ result: "同點的重擲！" });
+    expect(result(1, [9, 8, 5, 5])).toMatchObject({ result: "甲隊 9、乙隊 8、丙隊 5、丁隊 5，同點的重擲" });
+    expect(result(1, [9, 8, 7, 3])).toMatchObject({ result: "甲隊 9、乙隊 8、丙隊 7、丁隊 3" });
+  });
+
+  it("a four-team list promises no reroll for a tie below the podium", () => {
+    const t = teams(["甲", 9], ["乙", 5], ["丙", 5], ["丁", 5], ["戊", 5]);
+    const roll = revealBeats(t, ["甲", "乙", "丙", "丁", "戊"], [{ from: 2, teams: ["乙", "丙", "丁", "戊"], values: [9, 8, 3, 3] }]).find((b) => b.kind === "roll");
+    expect(roll).toMatchObject({ result: "乙隊 9、丙隊 8、丁隊 3、戊隊 3" });
   });
 
   it("uses the narration's lines in order and scripts only the missing ones", () => {
