@@ -46,7 +46,7 @@ describe("BankStore.getVersionedBank", () => {
   });
 
   it("falls back to the bundled bank at version 1 when storage holds something corrupt, without throwing", async () => {
-    const storage = memoryStorage({ format: BANK_FORMAT, bank: { rooms: "not an array" }, version: 3 });
+    const storage = memoryStorage({ format: BANK_FORMAT, bank: { rooms: "not an array" }, version: 3 }); // pregate-literal: BANK_FORMAT=3 the 3 here is the stored version, not the format
     const versioned = await new BankStore(storage).getVersionedBank();
     expect(versioned).toEqual({ bank: BANK, version: 1, unreadable: true });
   });
