@@ -1878,6 +1878,11 @@ describe("the persuasion check (dnd design R6, R8)", () => {
   const check = (g: GameState, value: number, answer = "萬家福") => recordCheck(g, "T0", q0(g), value, answer);
   const rec = (g: GameState) => g.checks?.[checkKey(q0(g), "T0")];
 
+  it("pins the 2026-11-08 class balance (docs/designs/class-abilities.md)", () => {
+    expect(CHECK_BONUS).toEqual({ mage: 4, thief: 3, cleric: 2, chef: 1, none: 1, warrior: 0 });
+    expect(WARRIOR_TARGET).toBe(9);
+  });
+
   it("rolls the class bonus against the pool's DC, or the boss's", () => {
     const g = checkGame(["thief", "warrior", undefined]);
     expect(checkTarget(g, "T0", q0(g))).toEqual({ bonus: CHECK_BONUS.thief, dc: CHECK_DC[0] });
