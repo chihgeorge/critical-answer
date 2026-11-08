@@ -9,7 +9,7 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type PublicQuestion, type StateMessage } from "@/lib/protocol";
-import { CHEF_BONUS_PERCENT, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, checkKey, type ClassId } from "@/lib/game-state";
+import { ABILITY_USES, CHEF_BONUS_PERCENT, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -36,7 +36,7 @@ const CLASS_HINTS: Record<ClassId, string> = {
 function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMessage) => void }) {
   return (
     <Panel tone="lav" className="flex flex-col gap-2 px-[10px] py-[10px]">
-      <div className="text-[18px]">選一個職業（技能一場用 2 次）</div>
+      <div className="text-[18px]">選一個職業（戰士、法師技能一場 {MORE_ABILITY_USES} 次，其他 {ABILITY_USES} 次）</div>
       <div className="grid grid-cols-2 gap-2">
         {CLASS_IDS.map((id) => {
           const picked = current === id;

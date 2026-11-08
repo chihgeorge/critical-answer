@@ -20,7 +20,7 @@
 // spendAbility() takes the use when the room rolls, then warriorRoll() judges the d20 as the
 // answer (WARRIOR_TARGET or more is correct) through answerQuestion, so the turn still advances
 // exactly once. The mage removes wrong options (mageEliminate), the thief arms a Sneak Attack
-// that doubles this answer's reward and boss damage (armSneak), and the cleric prays on a wrong
+// that raises this answer's reward ×1.5 and doubles its boss damage (armSneak), and the cleric prays on a wrong
 // lock (pray) so that its 重答 / 逃跑 keeps the turn instead of advancing it (prayerTurn).
 //
 // Turn order never changes with room progress — this avoids the "arrival
@@ -152,8 +152,8 @@ export interface Team {
   /** Natural 20s this team rolled: crit dice, warrior rolls, persuasion checks and the kill's 4d20 (podium-reveal.md D5).
    * Absent until the first one, and in a game saved before them. */
   natural20s?: number;
-  /** The thief's Sneak Attack waits for this team's next judgment: a correct one doubles its reward and
-   * boss damage, any judgment uses it up (class-abilities.md D16). */
+  /** The thief's Sneak Attack waits for this team's next judgment: a correct one gives ×1.5 its reward
+   * and ×2 its boss damage; any judgment uses it up (class-abilities.md D16). */
   sneakArmed?: true;
   /** The team's typed answer to its text question (submitText), waiting for the host. Only the turn's
    * team can hold one, and it keeps the turn until judged; answerQuestion and sendToBoss clear it. */
