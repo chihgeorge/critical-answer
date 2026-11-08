@@ -126,6 +126,29 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().view.buzz).toMatchObject({ teamId: IDS[1], out: [] });
   });
 
+  it("the buzzing phone drops: the music it stopped plays on; a pause the host chose stays through a wrong buzz", () => {
+    const g = buzzerGame();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.room.onClose(g.phones[1]);
+    expect(g.state()).toMatchObject({ media: { state: "playing" }, view: { buzz: { out: [] } } });
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "pause" });
+    g.buzz(2);
+    g.judge(IDS[2], false);
+    expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { out: [IDS[2]] } } });
+  });
+
+  it("a buzzing team cannot roll a persuasion check, and the host cannot skip a question a team is answering", () => {
+    const g = buzzerGame(text);
+    g.buzz(0);
+    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "b-a", eventId: g.state().eventId });
+    expect(g.lastError(g.phones[0])).toMatchObject({ detail: "buzzer_phase" });
+    expect((g.room as unknown as { pendingRoll: unknown }).pendingRoll).toBeNull();
+    send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "b-a" });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "buzz_taken" });
+    expect(g.state().question.id).toBe("b-a");
+  });
+
   it("the buzz is saved: a restarted room keeps who is shut out", async () => {
     const storage = memoryStorage();
     const g = buzzerGame(text, storage);

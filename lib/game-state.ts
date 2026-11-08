@@ -666,11 +666,18 @@ export function buzzIn(game: GameState, teamId: string, questionId: string, open
   return { ...game, buzz: { ...buzz, teamId }, currentTurnIndex: game.turnOrder.indexOf(teamId) };
 }
 
+/** The buzz once the boss question moved on: none for a new question; the same one (the phase's last unrevealed
+ * question came round again) starts over, everyone in, still open if its music was (adversarial review). */
+function rotatedBuzz(game: GameState, nextQuestionId: string): BuzzState | undefined {
+  return nextQuestionId === game.boss.currentQuestionId ? { questionId: nextQuestionId, ...(currentBuzz(game).open ? { open: true as const } : {}), out: [] } : undefined;
+}
+
 /** 沒人答對，換下一題 (D4): the boss question moves on, unrevealed, so it may come round again. */
 export function skipBuzz(game: GameState): GameState {
   if (!isBuzzPhase(game)) throw new InvalidActionError("not_buzzer_phase");
   if (game.buzz?.questionId === game.boss.currentQuestionId && game.buzz.teamId) throw new InvalidActionError("buzz_taken");
-  return { ...game, buzz: undefined, teams: resetBossSelections(game.teams), boss: { ...game.boss, ...rotateBoss(game.boss, game.revealedQuestionIds) } };
+  const rotated = rotateBoss(game.boss, game.revealedQuestionIds);
+  return { ...game, buzz: rotatedBuzz(game, rotated.currentQuestionId), teams: resetBossSelections(game.teams), boss: { ...game.boss, ...rotated } };
 }
 
 /** No class ability, check, prayer or typed answer in a buzzer phase (D6): answers are spoken after a buzz. */
@@ -882,7 +889,7 @@ export function answerQuestion(
         revealedQuestionIds: revealed,
         teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game.teams) : game.teams,
         boss: { ...boss, ...rotated, ...(phasePending ? { phasePending } : {}) },
-        ...(buzzing ? { buzz: allOut ? undefined : { ...game.buzz!, teamId: undefined, out } } : {}),
+        ...(buzzing ? { buzz: allOut ? rotatedBuzz(game, rotatedBossQuestionId) : { ...game.buzz!, teamId: undefined, out } } : {}),
       };
       outcome =
         fleeChoice === "flee"

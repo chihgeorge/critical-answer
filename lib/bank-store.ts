@@ -48,10 +48,12 @@ export const BANK_FORMAT = 5;
  * docs/designs/monster-catalog.md §5): the bundled bank comes back `outdated` with the stored version, and a
  * save may overwrite it. Format 4 only added sort questions, so format 3 still reads as is. */
 const OLDEST_PARSED_FORMAT = 3;
+/** The format that added sort questions. */
+const SORT_FORMAT = 4;
 /** The format a bank is stored at: the oldest whose code keeps everything in it. 5 for a buzzer phase (boss-buzzer.md),
  * 4 for a sort question, else 3, so a rollback to the previous version still reads it (/review, 2026-11-07). */
 export const formatOf = (bank: Bank): number =>
-  bank.boss.phases.some((p) => p.buzzer) ? 5 : allQuestions(bank).some((q) => q.kind === "sort") ? 4 : OLDEST_PARSED_FORMAT;
+  bank.boss.phases.some((p) => p.buzzer) ? BANK_FORMAT : allQuestions(bank).some((q) => q.kind === "sort") ? SORT_FORMAT : OLDEST_PARSED_FORMAT;
 /** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
 const PENDING_KEY = "pendingImageDeletes";
 /** Default wait before an orphaned image is deleted: a room's default 24-hour expiry plus an hour

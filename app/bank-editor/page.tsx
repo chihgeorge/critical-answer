@@ -633,8 +633,9 @@ function BossPhaseEditor({
             onChange={(e) => onChange({ rule: e.target.value })}
           />
         </label>
-        {/* docs/designs/boss-buzzer.md: every team buzzes in, answers aloud, the host judges. Never phase 1. */}
-        {required && (
+        {/* docs/designs/boss-buzzer.md: every team buzzes in, answers aloud, the host judges. Never phase 1: a buzzer phase
+            deleted up into phase 1 keeps its box so the save error can be cleared. */}
+        {(required || phase.buzzer) && (
           <label className="flex items-center gap-2 text-[15px]">
             <input type="checkbox" data-testid={`bank-boss-phase-${index + 1}-buzzer`} checked={!!phase.buzzer} onChange={(e) => onChange({ buzzer: e.target.checked ? true : undefined })} />
             搶答階段：所有隊伍一起搶，搶到的口頭作答（只能放填空題）

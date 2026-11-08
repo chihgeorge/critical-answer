@@ -235,10 +235,10 @@ const BOSS_ENTER_PHASE_VARIANTS = [
   "答對！{team}走進最深處，迎面就是「{phase}」的首領。",
 ];
 
-/** A wrong boss answer: the boss brings a new question, there is nothing to answer again (D2=B). */
 /** A wrong buzz (boss-buzzer.md): short, the music is playing again. */
 export const BUZZ_OUT_VARIANTS = ["{team}答錯了！這題出局，其他隊快搶！", "不對！{team}這題不能再搶，音樂繼續！", "{monster}大笑，{team}出局！還有誰知道？"];
 
+/** A wrong boss answer: the boss brings a new question, there is nothing to answer again (D2=B). */
 export const BOSS_MISS_VARIANTS = [
   "{team}答錯了！{monster}大笑一聲，換出新的難題。",
   "{team}落空！{monster}甩甩尾巴，丟出下一道題。",

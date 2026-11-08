@@ -2012,9 +2012,9 @@ describe("monster defeats (docs/designs/monster-catalog.md §3)", () => {
 
 describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
   /** Three teams; T0 alone in the boss room. Phase 1 is p1-a with 1 HP, phase 2 a buzzer phase b-a/b-b/b-c with 2 HP. */
-  function buzzer(): GameState {
+  function buzzer(questionIds = ["b-a", "b-b", "b-c"]): GameState {
     const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
-    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["b-a", "b-b", "b-c"], buzzer: true }]);
+    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds, buzzer: true }]);
     g = sendToBoss(g, "T0");
     g = { ...g, currentTurnIndex: 0 };
     g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
@@ -2069,6 +2069,16 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     expect(game.revealedQuestionIds).not.toContain("b-a");
     expect(game.buzz).toBeUndefined();
     expect(() => buzzIn(game, "T2", "b-b", true)).toThrow("cannot_buzz");
+  });
+
+  it("a one-question buzzer phase: everyone out, or a skip, brings the same question back open to all", () => {
+    let g = openBuzz(buzzer(["b-a"]), "b-a");
+    g = judge(buzzIn(g, "T0", "b-a", false), "T0", false).game;
+    g = judge(buzzIn(g, "T1", "b-a", false), "T1", false).game;
+    g = judge(buzzIn(g, "T2", "b-a", false), "T2", false).game;
+    expect(g.boss.currentQuestionId).toBe("b-a");
+    expect(g.buzz).toEqual({ questionId: "b-a", open: true, out: [] });
+    expect(skipBuzz(g).buzz).toEqual({ questionId: "b-a", open: true, out: [] });
   });
 
   it("a buzzing team that drops lets go of the buzz without being shut out", () => {

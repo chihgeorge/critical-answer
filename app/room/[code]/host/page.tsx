@@ -282,10 +282,11 @@ export default function HostPage() {
   // Keyed on the pause itself, not just "a pause is up": the answer reveal turning into the phase card
   // swaps 下一題 for another 下一題, and a double-tap must not close the card nobody has seen.
   // The intro's pages count too: 下一頁 turns into 開始冒險 in its slot, and then into the judge buttons.
+  // So does a new buzz (boss-buzzer.md): 答錯 tapped twice must not judge the next team before it speaks.
   // A dish reveal takes 🍲 上菜 first (monster-cuisine.md cooking R5); serving swaps it for 上菜中… then 下一題.
   const toServe = game?.phase === "playing" && !!game.reveal?.dish && !game.reveal.served;
   const servedUp = !!game?.reveal?.served;
-  const pauseKey = game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : "";
+  const pauseKey = game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : buzz?.teamId ? `buzz-${buzz.teamId}-${game!.eventId}` : "";
   const [armedFor, setArmedFor] = useState(pauseKey);
   const swapArmed = armedFor === pauseKey;
   useEffect(() => {

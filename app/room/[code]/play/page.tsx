@@ -564,17 +564,18 @@ function FinishedPanel({ won, finale, podium, onPodium }: { won: boolean; finale
 function BuzzButton({ game, buzz, teamId, send }: { game: StateMessage; buzz: NonNullable<StateMessage["view"]["buzz"]>; teamId: string; send: (m: ClientMessage) => void }) {
   const holder = game.view.teams.find((t) => t.id === buzz.teamId);
   const waiting = game.question?.content.kind === "youtube" && !buzz.open;
+  const GREY = "#5a4a60";
   const [look, label]: [string, React.ReactNode] =
     buzz.teamId === teamId
       ? ["var(--warn)", <>你們搶到了！<span className="block text-[18px]">大聲說答案</span></>]
       : holder
-        ? ["#5a4a60", `${holder.name}搶到了`]
+        ? [GREY, `${holder.name}搶到了`]
         : buzz.out.includes(teamId)
-          ? ["#5a4a60", <>這題答錯了<span className="block text-[16px]">等下一題</span></>]
+          ? [GREY, <>這題答錯了<span className="block text-[16px]">等下一題</span></>]
           : waiting
-            ? ["#5a4a60", "等音樂開始…"]
+            ? [GREY, "等音樂開始…"]
             : ["#ff5050", "搶答！"];
-  const live = look === "#ff5050";
+  const live = !buzz.teamId && !buzz.out.includes(teamId) && !waiting;
   return (
     <div data-testid="buzz" className="flex justify-center py-2">
       <button
