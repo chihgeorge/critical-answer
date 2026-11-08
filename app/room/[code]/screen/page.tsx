@@ -124,8 +124,8 @@ function Lobby({ code, teams }: { code: string; teams: LobbyTeams }) {
 function TeamGroup({ teams, from, to, align }: { teams: LobbyTeams; from: number; to: number; align: "start" | "end" }) {
   const crowded = teams.length > 4;
   // Two rows of two cells per side when crowded: a cell's nameplate fits about 8 CJK characters, and a
-  // longer name ends in "…" (names are capped at 20).
-  const cell = crowded ? 190 : 96;
+  // longer name ends in "…" (names are capped at 20). Up to 4 teams, two cells of 140 (about 8 CJK characters) fit a side inside the torches.
+  const cell = crowded ? 190 : 140;
   return (
     <div
       className={`flex flex-1 flex-wrap items-end gap-x-2 gap-y-1 ${align === "end" ? "justify-end" : "justify-start"}`}
