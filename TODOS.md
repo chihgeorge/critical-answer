@@ -9,7 +9,6 @@
 ### P2
 
 - [美術改版：冒險者野餐桌](#美術改版冒險者野餐桌) — L（人工約 1–2 週 / CC 約 1–2 天）
-- [bank-editor 兩個 e2e 測試在 CI 偶發失敗](#bank-editor-兩個-e2e-測試在-ci-偶發失敗) — S
 - [AI key 的錯誤會被之後的狀態訊息蓋掉](#ai-key-的錯誤會被之後的狀態訊息蓋掉) — S
 - [平衡五個職業：盜賊太強，法師和戰士太弱](#平衡五個職業盜賊太強法師和戰士太弱) — M（人工約 1 天 / CC 約 1 小時）
 - [等待隊伍的觀眾反應（表情 / 加油 / 噓聲）](#等待隊伍的觀眾反應表情--加油--噓聲) — M（人工約 2 天 / CC 約 1 小時）
@@ -20,6 +19,7 @@
 
 ### P3
 
+- [頒獎排名的 9 個小問題（/ship 2026-11-07）](#頒獎排名的-9-個小問題ship-2026-11-07) — S–M
 - [把「冒險出現岔路」的選擇加回玩家手機](#把冒險出現岔路的選擇加回玩家手機) — S
 - [遊戲開始後，新隊伍可以中途加入](#遊戲開始後新隊伍可以中途加入) — M
 - [主持人開房時可以用自己的題庫](#主持人開房時可以用自己的題庫) — L
@@ -126,27 +126,6 @@
 - 做法：把最後一把 key 的錯誤存起來，直到下一個 `HOST_AI_KEY` 才清掉。
 - 同一處的另一個問題：主持人頁收到 `HOST_AI_STATUS` 時，判斷「這把 key 已套用」（`app/room/[code]/host/page.tsx`，`applied`）不看 `msg.error`。房間已經用站長金鑰時，打錯的 OWNER_KEY 會被當成已套用，勾了記住這台電腦還會存進 localStorage，之後每次 HOST_OK 都重送。修法：有這把 key 的錯誤時不算套用。
 - 2026-11-06 /review（ai-key flake 修正）的對抗審查找到。
-
----
-
-## bank-editor 兩個 e2e 測試在 CI 偶發失敗
-
-**What:** `e2e/bank-editor.spec.ts:355`（伺服器驗證失敗要顯示錯誤）和 `:871`（菜填一半要擋下）在 main 的 CI run 42145135761（v0.33.0.0）各失敗一次：等 5 秒，`bank-editor-error` 都沒出現。
-
-**Why:** 同一份程式碼在其他 CI 都通過，所以是 flaky。失敗時的頁面快照顯示，測試剛清空的欄位又變回伺服器上的值，所以存進去的是合法題庫。
-
-**Context:**
-- `app/bank-editor/page.tsx`（`useOwnerKey` 自動載入、`load()` 的 `loadSeq`）
-- `e2e/bank-editor.spec.ts`
-
-**Effort/Priority:** S / P2
-
-**Depends on:** 無。
-
-**Notes:**
-- 已排除：CI 同時跑多組（兩個 shard 各有自己的 wrangler 和 next dev）、v0.33 的改動。
-- 2026-11-06 在 CI 上用探針重跑 5 次都沒重現。同一批探針抓到 `e2e/ai-key.spec.ts:9` 的原因（另外修）。
-- 下一步：再失敗時看頁面有沒有中途重新載入。記住的 owner key 會讓頁面自動再載入一次，蓋掉剛做的編輯。
 
 ---
 
@@ -1362,5 +1341,28 @@ PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partyki
 - `app/room/[code]/play/page.tsx`（檢定標籤）
 
 **Effort/Priority:** S / P3
+
+**Depends on:** 無。
+
+---
+
+## 頒獎排名的 9 個小問題（/ship 2026-11-07）
+
+**What:** v0.43.0.0（#143）審查時記下、沒擋合併的 9 個 Low：
+- 隊名會進 AI 的 system prompt。
+- AI 重寫最多 5 輪（`MAX_ROUNDS=5`）。
+- 平手時，骰子列會先露出較高的名次。
+- 瀏覽器的開發者工具看得到排名。
+- 隊名太長時一律改用腳本台詞。
+- 沒有料理時，揭曉的起點從 `epilogueDelayMs` 開始算。
+- 8 隊同分時，骰子列很擠。
+- 一隊的隊名包含另一隊的隊名時，會判斷錯。
+- AI 第一行不合格時，整段改用腳本。
+
+**Why:** 單一都不影響比賽，但活動前值得挑幾個修。頁面層的等待、暫停和「…」也只有 e2e 測，沒有單元測試。
+
+**Context:** `lib/podium.ts`、`lib/room/dungeon-room.ts`、#143 的 PR 說明。
+
+**Effort/Priority:** S–M / P3
 
 **Depends on:** 無。
