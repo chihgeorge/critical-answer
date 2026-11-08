@@ -985,6 +985,18 @@ export default function HostPage() {
             <div className="mt-2 text-[18px]">
               {game.winners.map((id) => game.view.teams.find((t) => t.id === id)?.name ?? id).join("、")} 獲勝
             </div>
+            {/* A long epilogue is split into pages on the big screen; the host turns them, like the intro. */}
+            {game.epiloguePage && game.epiloguePage.of > 1 && (
+              <div data-testid="host-epilogue-pages" className="mt-6 flex items-center justify-center gap-3">
+                <PixelButton disabled={!ready || game.epiloguePage.page === 0} className="!m-0 min-h-[56px] text-[18px]" onClick={() => send({ type: "HOST_EPILOGUE_PAGE", page: game.epiloguePage!.page - 1 })}>
+                  ◀ 上一頁
+                </PixelButton>
+                <span className="text-[18px]">後記 {game.epiloguePage.page + 1}／{game.epiloguePage.of}</span>
+                <PixelButton disabled={!ready || game.epiloguePage.page >= game.epiloguePage.of - 1} className="!m-0 min-h-[56px] text-[18px]" onClick={() => send({ type: "HOST_EPILOGUE_PAGE", page: game.epiloguePage!.page + 1 })}>
+                  下一頁 ▶
+                </PixelButton>
+              </div>
+            )}
             <PixelButton variant="primary" className="!mx-auto !mt-6 !block min-h-[64px] text-[22px]" disabled={!ready} onClick={() => send({ type: "HOST_BACK_TO_LOBBY" })}>
               回到大廳，再玩一場
             </PixelButton>

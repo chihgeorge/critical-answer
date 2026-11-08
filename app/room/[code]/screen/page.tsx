@@ -10,7 +10,7 @@ import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
 import type { AnswerReveal, EventReveal, LobbyTeams, MediaCommand, PendingRoll, PodiumReveal, PublicMediaContent, PublicQuestion, StateMessage } from "@/lib/protocol";
-import { revealNow, type Beat } from "@/lib/podium";
+import { epiloguePages, revealNow, type Beat } from "@/lib/podium";
 import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn, monsterLook, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
@@ -583,7 +583,7 @@ function CritKingCard({ names, count }: { names: string[]; count: number }) {
   );
 }
 
-function Finished({ view, winners, reveal, podium, narration, unread, typedTo, epilogue, cuisine, finale, say, onRead, onCook, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; podium?: PodiumReveal; narration: NarrationState; unread: boolean; typedTo: number; epilogue: string | null; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onCook: () => void; onPodium: () => void }) {
+function Finished({ view, winners, reveal, podium, narration, unread, typedTo, epilogue, page, cuisine, finale, say, onRead, onCook, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; podium?: PodiumReveal; narration: NarrationState; unread: boolean; typedTo: number; epilogue: string | null; page: number; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onCook: () => void; onPodium: () => void }) {
   const dish = reveal?.dish;
   const line = dish ? dishLine(dish, "", true) : "";
   // The boss cooks first and the winner waits (cooking R8, I4): only a kill this screen saw live plays it.
@@ -607,7 +607,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   const [from] = useState(() => (dish || !narration ? 0 : Math.min(typedTo, narration.lines.length - 1)));
   useEffect(() => {
     if (ended) onPodium();
-    // onPodium reads refs only: it runs once, when the story may be read.
+    // It runs once, when the story may be read; onPodium also reads the epilogue page from this render's state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ended]);
   // Each beat's line is read as it comes up (a roll's chip too).
@@ -624,6 +624,16 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   // The winner is the reward total, not the kill (scoring-and-score-pools.md S7), so the kill gets its own line. It
   // hides while the places are called (D13).
   const killer = view.teams.find((t) => t.id === view.bossKilledBy)?.name;
+  // A long epilogue shows one page at a time (≤ 3 rows, so the box stays under the steps); the host turns them.
+  const shownEpilogue = epilogue && (epiloguePages(epilogue)[page] ?? epilogue);
+  const turned = useRef(page);
+  useEffect(() => {
+    // Read out a page the host just turned to; a page already on show when this screen joined stays quiet, and a turn
+    // during the places is read by onPodium.
+    if (page === turned.current) return;
+    turned.current = page;
+    if (ended && shownEpilogue) say([shownEpilogue]);
+  }, [page, ended, shownEpilogue, say]);
   return (
     <>
       <SceneBackground theme="moss" arch={false} />
@@ -694,7 +704,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
         // The epilogue runs three lines or more; at 22px it stays under the podium (bottom 130) instead of covering the names.
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7, ...(ended && epilogue ? { fontSize: 22, lineHeight: 1.35 } : {}) }}
         loading={!(ended && epilogue) && !current && (!narration || waiting) && step !== 3}
-        lines={step === 3 ? [line] : ended && epilogue ? [epilogue] : current ? [current.line] : waiting ? [] : (narration?.lines.slice(from) ?? [])}
+        lines={step === 3 ? [line] : ended && shownEpilogue ? [shownEpilogue] : current ? [current.line] : waiting ? [] : (narration?.lines.slice(from) ?? [])}
         {...(step !== 3 && !(ended && epilogue) && !current && !waiting && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count + from) } : {})}
       />
     </>
@@ -726,7 +736,8 @@ export default function ScreenPage() {
   const heldEpilogue = useRef<string | null>(null);
   function onPodium() {
     podiumReady.current = true;
-    if (heldEpilogue.current) speak([heldEpilogue.current]);
+    // The page on show: the host may have turned it while the places were called.
+    if (heldEpilogue.current) speak([epiloguePages(heldEpilogue.current)[game?.epiloguePage?.page ?? 0] ?? heldEpilogue.current]);
     heldEpilogue.current = null;
   }
 
@@ -1094,7 +1105,7 @@ export default function ScreenPage() {
           setEpilogue(msg.text);
           // Speak the live broadcast, never onConnect's replay (the server marks it `replay: true`).
           if (msg.replay) break;
-          if (podiumReady.current) speak([msg.text]);
+          if (podiumReady.current) speak([epiloguePages(msg.text)[0]]);
           else heldEpilogue.current = msg.text;
           break;
         case "GAME_OVER":
@@ -1125,7 +1136,7 @@ export default function ScreenPage() {
         {game?.phase === "playing" && !game.intro && !game.initiative && (game.eventReveal || (!game.reveal && !game.phaseCard && !game.phaseCardDue && describeTurn(game.view, null).team?.eventScene)) ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal ?? null} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>

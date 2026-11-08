@@ -3880,6 +3880,33 @@ describe("host controls: HOST_END_GAME, HOST_REMOVE_TEAM, HOST_RENAME_TEAM", () 
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "no_active_game" });
   });
 
+  // Regression: a long epilogue grew the narrator box over the podium's 2nd and 3rd places (/qa on production,
+  // 2026-11-08). It is now split into pages that the host turns.
+  it("the host turns a long epilogue's pages one at a time; a player cannot, and 回到大廳 starts over at page 1", async () => {
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { epilogueDelayMs: 0, holdMs: 10 });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { conns } = joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    await vi.waitFor(() => expect(broadcasts(room).some((m) => m.type === "EPILOGUE")).toBe(true));
+    const lastState = () => broadcasts(room).filter((m) => m.type === "STATE").at(-1);
+    (room as any).epilogue = "甲".repeat(100) + "。" + "乙".repeat(100) + "。"; // two pages
+    send(room, hostConn, { type: "HOST_EPILOGUE_PAGE", page: 1 });
+    expect(lastState().epiloguePage).toEqual({ page: 1, of: 2 });
+    send(room, hostConn, { type: "HOST_EPILOGUE_PAGE", page: 2 }); // past the last page: dropped
+    send(room, hostConn, { type: "HOST_EPILOGUE_PAGE", page: 3 });
+    expect(lastState().epiloguePage).toEqual({ page: 1, of: 2 });
+    send(room, conns[0], { type: "HOST_EPILOGUE_PAGE", page: 0 }); // a phone is not the host
+    expect(lastState().epiloguePage).toEqual({ page: 1, of: 2 });
+    send(room, hostConn, { type: "HOST_EPILOGUE_PAGE", page: 0 });
+    expect(lastState().epiloguePage).toEqual({ page: 0, of: 2 });
+    send(room, hostConn, { type: "HOST_EPILOGUE_PAGE", page: 1 });
+    send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });
+    expect((room as any).epiloguePage).toBe(0);
+  });
+
   // Value: protects=every finished game reaches the owner's log, and a failing store never breaks the room;
   // fails_when=logGame is not called on 結束冒險, or its rejection escapes
   it("結束冒險 hands the game's log over once, and a store that fails leaves the room playing on", async () => {

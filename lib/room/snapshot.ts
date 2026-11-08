@@ -66,6 +66,8 @@ export interface RoomSnapshot {
   initiativeOn?: true;
   /** A finished game's podium: the narrator's calls (the story is `epilogue`) and when the first beat starts. */
   podium?: { lines: string[]; at: number } | null;
+  /** The epilogue page on the big screen (HOST_EPILOGUE_PAGE). Missing means the first, as in a save from before pages. */
+  epiloguePage?: number;
   /** The earliest the podium reveal may start, set when the game finished. Missing in a save from before the reveal. */
   revealFrom?: number | null;
   /** 每題作答倒數 (answer-countdown.md): the game's seconds, the running count, and the question whose clip has ended.
