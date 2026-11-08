@@ -2022,6 +2022,18 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
   }
   const judge = (g: GameState, team: string, correct: boolean) => answerQuestion(g, team, g.boss.currentQuestionId, correct, "retry", first);
 
+  it("a sneak armed in the phase before is given back when a buzzer phase starts (no abilities, D6)", () => {
+    const teams = [0, 1].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
+    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["b-a"], buzzer: true }]);
+    g = sendToBoss(g, "T0");
+    g = { ...g, currentTurnIndex: 0 };
+    g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
+    g = { ...g, teams: g.teams.map((t) => (t.id === "T0" ? { ...t, sneakArmed: true as const, abilityUses: 0 } : t)) };
+    const t0 = enterNextBossPhase(g).teams.find((t) => t.id === "T0")!;
+    expect(t0.sneakArmed).toBeUndefined();
+    expect(t0.abilityUses).toBe(1);
+  });
+
   it("the buzzer phase pulls every team into the boss room, and only the view of that phase carries a buzz", () => {
     const g = buzzer();
     expect(g.teams.every((t) => t.inBoss)).toBe(true);

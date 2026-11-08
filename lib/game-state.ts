@@ -625,7 +625,8 @@ export function enterNextBossPhase(game: GameState): GameState {
     ...pulled,
     ...cleared,
     buzz: undefined,
-    teams: resetBossSelections(pulled.teams),
+    // A buzzer phase has no abilities (D6): a sneak armed in the phase before is given back, as sendToBoss does.
+    teams: resetBossSelections(phase.buzzer ? pulled.teams.map((t) => (t.sneakArmed ? { ...t, sneakArmed: undefined, abilityUses: t.abilityUses + 1 } : t)) : pulled.teams),
     boss: {
       ...boss,
       phaseIndex,

@@ -138,6 +138,23 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { out: [IDS[2]] } } });
   });
 
+  it("a ▶ pressed while the phase card is up does not open buzzing (the card shows no video)", () => {
+    const g = buzzerGame();
+    g.room.game = { ...g.room.game!, buzz: { questionId: "b-a", out: [] } };
+    (g.room as unknown as { phaseCard: boolean }).phaseCard = true;
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    expect(g.room.game!.buzz?.open).toBeUndefined();
+  });
+
+  it("a pause the host presses after a buzz stays through the wrong answer", () => {
+    const g = buzzerGame();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "pause" });
+    g.judge(IDS[1], false);
+    expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { out: [IDS[1]] } } });
+  });
+
   it("a buzzing team cannot roll a persuasion check, and the host cannot skip a question a team is answering", () => {
     const g = buzzerGame(text);
     g.buzz(0);
@@ -185,6 +202,25 @@ describe("buzzer boss phase in the room", () => {
     }
     expect(g.room.game!.phase).toBe("finished");
     expect(g.state()).toMatchObject({ cue: "boss-kill" });
+  });
+
+  it("a buzzing phone that drops during the kill dice still takes the kill (onClose keeps a kill beat's team)", () => {
+    const g = buzzerGame(text);
+    g.buzz(0);
+    g.judge(IDS[0], true);
+    g.next();
+    g.buzz(2);
+    vi.useFakeTimers();
+    try {
+      g.judge(IDS[2], true);
+      g.room.onClose(g.phones[2]);
+      g.buzz(1);
+      vi.advanceTimersByTime(10000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(g.room.game!.phase).toBe("finished");
+    expect(g.state()).toMatchObject({ view: { bossKilledBy: IDS[2] } });
   });
 
   it("the buzz is saved: a restarted room keeps who is shut out", async () => {

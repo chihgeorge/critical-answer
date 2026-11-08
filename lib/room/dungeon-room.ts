@@ -2178,6 +2178,8 @@ export class DungeonRoom {
     const same = this.media?.questionId === questionId ? this.media : null;
     const seq = same?.seq ?? 0;
     this.media = { questionId, state: action === "pause" ? "paused" : "playing", seq: action === "restart" ? seq + 1 : seq, press: (same?.press ?? 0) + 1 };
+    // The host took the controls after a buzz: a wrong answer or a drop leaves the music as the host set it (outside-voice review).
+    this.buzzPaused = false;
     // The first ▶ on a buzzer phase's video opens buzzing (boss-buzzer.md D5).
     // A reveal's video is the answered question's, even when the same question comes round again (red-team review).
     if (action !== "pause" && this.game && !this.reveal) this.keepUndoOpen(openBuzz(this.game, questionId));
