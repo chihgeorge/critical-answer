@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [Unreleased]
+
+### Changed
+- Class balance for the two-phase boss. A warrior's roll now counts as a correct answer on 9 or higher (60%), down from 6 or higher (75%). Persuasion check bonuses are now mage +4, thief +3, cleric +2, chef +1, no class +1, warrior +0 (were mage +2, thief +4, cleric +3). The DCs are unchanged. In two independent simulations the warrior led at 34–37% before; now the five classes land within about 2–4 points of each other. `docs/rules.md` and `docs/designs/class-abilities.md` have the details.
+
 ## [0.55.0.3] - 2026-11-08
 
 ### Fixed
