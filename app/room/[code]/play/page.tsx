@@ -9,7 +9,7 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type PublicQuestion, type StateMessage } from "@/lib/protocol";
-import { CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, checkKey, type ClassId } from "@/lib/game-state";
+import { CHEF_BONUS_PERCENT, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -28,13 +28,14 @@ const CLASS_HINTS: Record<ClassId, string> = {
   mage: "選擇題刪 2 個錯的選項；填空題看答案第一個字",
   cleric: "答錯後，這回合再答一次",
   thief: "偷襲：這題答對，獎勵分和 boss 扣血 ×2",
+  chef: `被動：每次拿到獎勵分都多 ${CHEF_BONUS_PERCENT}%，不用按`,
 };
 
-/** The lobby's class picker (D10=A): four cards and 不選. */
+/** The lobby's class picker (D10=A): five cards and 不選; the passive chef takes a whole row (chef design D6). */
 function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMessage) => void }) {
   return (
     <Panel tone="lav" className="flex flex-col gap-2 px-[10px] py-[10px]">
-      <div className="text-[18px]">選一個職業（一場用 2 次）</div>
+      <div className="text-[18px]">選一個職業（技能一場用 2 次）</div>
       <div className="grid grid-cols-2 gap-2">
         {CLASS_IDS.map((id) => {
           const picked = current === id;
@@ -45,7 +46,7 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
               aria-pressed={picked}
               onClick={() => send({ type: "TEAM_PICK_CLASS", classId: id })}
               className="px-opt !flex-col !items-start !gap-[2px] !px-[10px] !py-2"
-              style={{ minHeight: 96, ...(picked ? { background: "var(--turn)", outline: "4px solid var(--turn2)", outlineOffset: -2 } : {}) }}
+              style={{ minHeight: id === "chef" ? 64 : 96, ...(id === "chef" ? { gridColumn: "span 2" } : {}), ...(picked ? { background: "var(--turn)", outline: "4px solid var(--turn2)", outlineOffset: -2 } : {}) }}
             >
               <span className="text-[22px]">
                 {CLASS_ICONS[id]} {CLASS_LABELS[id]}
@@ -578,7 +579,7 @@ export default function PlayPage() {
             <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
             {myTeam?.classId && (
               <div className="text-[15px]">
-                {CLASS_ICONS[myTeam.classId]} {CLASS_LABELS[myTeam.classId]}・剩 {myTeam.abilityUses} 次
+                {CLASS_ICONS[myTeam.classId]} {CLASS_LABELS[myTeam.classId]}・{myTeam.classId === "chef" ? "被動" : `剩 ${myTeam.abilityUses} 次`}
               </div>
             )}
             <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
@@ -739,6 +740,7 @@ export default function PlayPage() {
             ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
               答對了！{revealed.choice.points > 0 ? `＋${revealed.choice.points} 分` : ""}
+              {revealed.choice.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 +{revealed.choice.chefBonus}）</span> : null}
             </div>
           </Panel>
         )}

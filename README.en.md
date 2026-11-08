@@ -81,7 +81,7 @@ The big-screen URL is at the top of the host page. For keyboard controls, switch
 - **Wrong answer**: choose 「重答」 (Retry) to answer the same question again, or 「逃跑」 (Flee) to swap it for one a level easier.
 - **Boss room**: once the progress points from correct answers reach 15, you enter the boss room; after one team goes in, every other team follows on its next correct answer. The boss's HP is shared; each hit is worth 10 points, and the final blow adds 4 d20s.
 - **Dice**: a correct multiple-choice answer rolls a crit die; a 20 gives half the reward points again. Before a fill-in answer you roll a persuasion check; pass it and you see the first character of the answer. The default question bank is all multiple choice, so no persuasion checks are rolled.
-- **Classes**: the Warrior rolls dice instead of answering, the Mage removes wrong options or reveals the first character, the Cleric answers again after a wrong answer, and the Thief's sneak attack doubles the points for that question.
+- **Classes**: the Warrior rolls dice instead of answering, the Mage removes wrong options or reveals the first character, the Cleric answers again after a wrong answer, the Thief's sneak attack doubles the points for that question, and the Chef (passive) gets 15% more on every gain.
 - **Winning**: the team with the most reward points wins; a tie in the top three is settled by rolling d20s. The team that defeats the boss is not always the champion.
 
 For the full rules, every number and every exception, see the [full rules](docs/rules.en.md).
@@ -100,7 +100,7 @@ Design records are in [docs/designs/](docs/designs/), pixel design rules in [DES
 
 ## Roadmap
 
-Done: big screen, question bank and question bank editor, scripted and AI narration, voice narration, sound effects and background music, live map, four classes, crit die, persuasion checks, monsters into dishes, production deployment. The next focus is the **second live playtest**: checking whether, with atmosphere added, the game is more fun than the first round. Full designs are in [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md) (second round) and [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) (first round).
+Done: big screen, question bank and question bank editor, scripted and AI narration, voice narration, sound effects and background music, live map, five classes, crit die, persuasion checks, monsters into dishes, production deployment. The next focus is the **second live playtest**: checking whether, with atmosphere added, the game is more fun than the first round. Full designs are in [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md) (second round) and [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) (first round).
 
 ## License
 
