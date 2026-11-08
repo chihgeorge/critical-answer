@@ -45,12 +45,12 @@ Every room in the dungeon is a quiz monster. The owner asked on 2026-10-30 for a
 
 ## Engineering
 - **State** (`lib/game-state.ts`): `Team.event?: { scene, outcome }`. scene ∈ chest, spring, idol, fairy, fortune; outcome ∈ feast, rotten, spring, curse, blessing, great, good, bad. Both are drawn together when the team enters the room, so a restart cannot reroll them. `Team.boon?: "curse" | "blessing"` holds the next-answer effect. The broadcast `SpectatorView` carries the scene only, never the outcome, until the press. Absent fields read as no event, so saves from before this change load.
-- **Draw in the room, not in `answerQuestion`.** After a `correct-room-advance` that `eventEligible` allows, `DungeonRoom` rolls `rng() < EVENT_CHANCE` and calls `enterEventRoom(game, teamId, drawEvent(rng))`. `answerQuestion` takes no extra rng call, so every existing deterministic test keeps its deals. In e2e (`E2E_EVENT_TEAM` worker var), a team with that exact name always draws an event and every other team never does, so the existing e2e specs see no events.
+- **Draw in the room, not in `answerQuestion`.** After a `correct-room-advance` that `eventEligible` allows, `DungeonRoom` rolls `rng() >= 1 - EVENT_CHANCE` (the top of the range, so the room tests' `() => 0` never draws one) and calls `enterEventRoom(game, teamId, drawEvent(rng))`. `answerQuestion` takes no extra rng call, so every existing deterministic test keeps its deals. In e2e (`E2E_EVENT_TEAM` worker var), a team with that exact name always draws an event and every other team never does, so the existing e2e specs see no events.
 - **Press** (`openEvent(game, teamId)`): applies the effect, counts the turn (turns, round), moves the team to the next room with a fresh deal (its held question passed as `own`), clears `event`, and advances the turn, like `answerQuestion`. It returns an outcome; the room holds it as `eventReveal` (a pause like `reveal`) until 下一題.
 - **Guards:** a team with `event` set cannot answer, lock, submit, check or use an ability (`InvalidActionError("event_room")`). Host judge buttons are replaced by the event panel. `sendToBoss` clears `event`.
-- **Messages:** client `OPEN_EVENT { eventId }` from the turn team's phone; host `HOST_OPEN_EVENT { teamId, eventId }`. The STATE gains `eventReveal`; the question is null while the turn team stands in an event room.
+- **Messages:** client `TEAM_OPEN_EVENT { eventId }` from the turn team's phone; host `HOST_OPEN_EVENT { teamId, eventId }`. The STATE gains `eventReveal`; the question is null while the turn team stands in an event room.
 - **Art** (`lib/pixel-art.ts`): new sprites chest-closed, chest-open, rotten dish, spring, idol, fairy, fortune teller, lot. 美味料理 shows a random dish sprite that already exists.
-- **Sound:** cue `event` on the press, and `fumble` on a bad outcome. Both are notes that already exist.
+- **Sound:** cue `correct` on the press, and `fumble` on a bad outcome (rotten, curse, 凶). Both are cues that already exist.
 
 ## Success Criteria
 - At 25%, roughly one team in four meets an event per room entry, verified by a unit test over many draws.

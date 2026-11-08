@@ -4,7 +4,8 @@
 import { epilogueParts, type NarrationEvent, type NextTurn } from "./events";
 import { ordinal } from "../ordinal";
 import { critLine, placeLine } from "../podium";
-import type { ClassId } from "../game-state";
+import type { ClassId, EventOutcome } from "../game-state";
+import { EVENT_SCENE_TEXT } from "../event-text";
 
 export interface NarrationProvider {
   name: string;
@@ -53,6 +54,7 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
     "{monster}發出一聲長嘯，血量全滿——第{ordinal}階段：{name}。",
     "地城劇烈搖晃，{monster}換了模樣，迎來第{ordinal}階段！",
   ],
+  "event-room": [], // never read: line() picks from EVENT_VARIANTS
   "boss-kill": [
     "{team}擊倒了{monster}！額外 {bonus} 分！",
     "{monster}轟然倒下，{team}拿下致命一擊，+{bonus}！",
@@ -204,6 +206,11 @@ export const ATMOSPHERE_VARIANTS: Record<Exclude<NarrationEvent["type"], "epilog
     "這次的考驗是：{rule}",
     "聽好了——{rule}",
   ],
+  "event-room": [
+    "這間房沒有怪物，卻一點也不平靜。",
+    "地城裡的意外，總是來得剛好。",
+    "火把晃了一下，像是在偷笑。",
+  ],
   "boss-kill": [
     "地城陷入一片寂靜。",
     "塵埃落定，勝利的氣息瀰漫。",
@@ -242,6 +249,49 @@ export const BOSS_MISS_VARIANTS = [
   "{monster}閃過{team}這一擊，題目也跟著換了。",
   "{team}沒打中，{monster}出了新的考驗。",
 ];
+
+/** An opened event room (docs/designs/event-rooms.md D11), per outcome. {points}: the satiety it gave or took. */
+export const EVENT_VARIANTS: Record<EventOutcome, string[]> = {
+  feast: [
+    "寶箱一打開，香味撲鼻：是{dish}！{team}吃得好飽，飽足感 +{points}。",
+    "{team}掀開寶箱，裡面是熱騰騰的{dish}！飽足感 +{points}。",
+    "寶箱裡藏著一道{dish}，{team}一口接一口，飽足感 +{points}！",
+  ],
+  rotten: [
+    "寶箱一打開，一股怪味衝出來……是黑暗料理！{team}硬吞下去，飽足感 −{points}。",
+    "{team}掀開寶箱，裡面的菜冒著紫煙……吃下去肚子好痛，飽足感 −{points}。",
+    "黑暗料理！{team}吃了一口就後悔了，飽足感 −{points}。",
+  ],
+  spring: [
+    "{team}喝了一口泉水，力量湧了上來：職業能力多一次！",
+    "泉水甜甜的，{team}精神大振，職業能力 +1！",
+  ],
+  curse: [
+    "{team}一摸雕像，紫煙冒了出來……被詛咒了！下次答對只拿一半。",
+    "骷髏雕像咯咯笑了起來：{team}中了詛咒，下次答對獎勵減半！",
+  ],
+  blessing: [
+    "小精靈在{team}頭上灑下金粉：下次答對多拿一半！",
+    "精靈眨眨眼，祝福了{team}：下次答對，獎勵多一半！",
+  ],
+  great: [
+    "占卜師的水晶球亮起金光——大吉！{team}收到一桌好菜，飽足感 +{points}！",
+    "籤紙飄落：大吉！{team}飽足感 +{points}！",
+  ],
+  good: [
+    "水晶球閃了閃——中吉！{team}的職業能力多一次。",
+    "占卜師點點頭：中吉！{team}職業能力 +1。",
+  ],
+  bad: [
+    "水晶球暗了下來……凶！{team}下次答對只拿一半。",
+    "占卜師搖搖頭：凶。{team}下次答對獎勵減半……",
+  ],
+};
+/** The spring's and 中吉's line for a chef or a team with no class: satiety instead of an ability use. */
+const EVENT_SATIETY_VARIANTS = ["{team}喝了一口甜甜的泉水，飽足感 +{points}！", "清涼的泉水讓{team}精神一振，飽足感 +{points}。"];
+
+/** The next line before an event turn: it sets the scene ({story}) and never says what will happen. */
+const NEXT_EVENT_VARIANTS = ["輪到{team}。{team}推開門，{story}……", "{team}走進下一間房：沒有怪物，只有{story}。", "換{team}上場。這間房很安靜，{story}……"];
 
 /** The transition segment (last of 3, when there's a next team): the narrator turns to the team now on turn. */
 export const NEXT_VARIANTS = {
@@ -282,6 +332,10 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if ((event.type === "retry" || event.type === "boss-hit") && event.exhausted) return fill(pick(BOSS_EXHAUSTED_VARIANTS, "boss-exhausted"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
       if (event.type === "boss-hit" && event.bossHp === 0) return fill(pick(BOSS_EMPTIED_VARIANTS, "boss-emptied"), event);
+      if (event.type === "event-room") {
+        const pool = event.satiety > 0 && (event.outcome === "spring" || event.outcome === "good") ? EVENT_SATIETY_VARIANTS : EVENT_VARIANTS[event.outcome];
+        return fill(pick(pool, `event-${event.outcome}`), { ...event, points: Math.abs(event.satiety) });
+      }
       if (event.type === "boss-phase") return fill(pick(VARIANTS["boss-phase"], "boss-phase"), { ...event, ordinal: ordinal(event.phase) });
       // A phase under way means a team is already inside, so the phase lines are join lines too (none says 推開).
       if (event.type === "correct" && event.entersBoss?.phase) return fill(pick(BOSS_ENTER_PHASE_VARIANTS, "boss-enter-phase"), { ...event, phase: event.entersBoss.phase });
@@ -315,6 +369,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     },
     /** Synchronous like line(): the scripted prompt for whoever is up next. */
     nextLine(next: NextTurn): string {
+      if (next.event) return fill(pick(NEXT_EVENT_VARIANTS, "next-event"), { team: next.team, story: EVENT_SCENE_TEXT[next.event].story });
       return fill(pick(next.boss ? NEXT_VARIANTS.boss : NEXT_VARIANTS.room, next.boss ? "next-boss" : "next-room"), next);
     },
     async narrate(event: NarrationEvent): Promise<string> {

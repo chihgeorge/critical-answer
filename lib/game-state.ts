@@ -155,6 +155,12 @@ export interface Team {
   turns?: number;
   /** The game round and this team's turn count when it walked into the boss room (lib/game-log.ts). */
   bossAt?: { round: number; turns: number };
+  /** The event room this team stands in (docs/designs/event-rooms.md), drawn as it walked in: its next turn opens it. */
+  event?: RoomEvent;
+  /** A curse or blessing waiting for this team's next correct answer (event-rooms.md D12). */
+  boon?: Boon;
+  /** Every event outcome this team opened, in order, for lib/game-log.ts. Absent until the first. */
+  events?: EventOutcome[];
 }
 
 export interface RoomTemplate {
@@ -679,14 +685,17 @@ export function answerQuestion(
   const crit = correct && critValue === 20;
   // This team's persuasion check on this question: a natural 1 halves any success on it, a warrior's too (R3-7).
   const check = game.checks?.[checkKey(questionId, teamId)];
-  const halved = correct && check?.value === 1;
+  // An event's curse or blessing waits for the next correct answer (event-rooms.md D12): the curse halves like a natural-1
+  // check (never twice), the blessing adds half the base like a crit 20.
+  const boon = correct ? game.teams.find((t) => t.id === teamId)?.boon : undefined;
+  const halved = correct && (check?.value === 1 || boon === "curse");
   const rollMark: { roll?: RollMark } =
     correct && (critValue === 20 || critValue === 1)
       ? { roll: { kind: "crit", value: critValue } }
       : correct && (check?.value === 20 || check?.value === 1)
         ? { roll: { kind: "check", value: check.value } }
         : {};
-  const critBonus = (base: number) => (crit ? Math.round(base * 0.5) : 0);
+  const critBonus = (base: number) => (crit ? Math.round(base * 0.5) : 0) + (boon === "blessing" ? Math.round(base * 0.5) : 0);
   // R5: the half is taken from the base reward, then the sneak doubles it.
   const baseOf = (reward: number) => (halved ? Math.round(reward * 0.5) : reward);
 
@@ -719,7 +728,7 @@ export function answerQuestion(
     lastTurnIndex: order,
   };
   // The choice resolves the pending wrong lock.
-  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
+  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, ...(correct ? { boon: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice === "flee" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -889,6 +898,7 @@ function assertAbilityTurn(game: GameState, teamId: string, classId: ClassId) {
   assertPlaying(game);
   assertTurn(game, teamId);
   if (getTeam(game, teamId).classId !== classId) throw new InvalidActionError(`${teamId} is not a ${classId}`);
+  if (getTeam(game, teamId).event) throw new InvalidActionError("event_room");
   if (game.pendingWrong) throw new InvalidActionError(`${teamId} already locked a wrong answer`);
   if (getTeam(game, teamId).typedAnswer !== undefined) throw new InvalidActionError("answer_submitted");
 }
@@ -1064,11 +1074,114 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   // A sneak armed for the room question is for that question only (D16): drop it and give the use back.
   // (A boss-room sneak can outlive a question rotation while the thief is offline; accepted, /review D4=A.)
   const sneak = team.sneakArmed ? { sneakArmed: undefined, abilityUses: team.abilityUses + 1 } : {};
-  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, bossAt: { round: game.round ?? 1, turns: team.turns ?? 0 }, currentSelection: null, queuedQuestionId: undefined, typedAnswer: undefined, ...sneak }));
+  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, bossAt: { round: game.round ?? 1, turns: team.turns ?? 0 }, currentSelection: null, queuedQuestionId: undefined, typedAnswer: undefined, event: undefined, ...sneak }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
   return { ...game, teams, ...(stillFaced ? {} : dropEliminated(game, left)) };
+}
+
+/* ---------- Event rooms (docs/designs/event-rooms.md) ---------- */
+
+/** The chance that a correct answer walks a team into an event room instead of the next room's monster (D5). */
+export const EVENT_CHANCE = 0.25;
+/** What stands on stage. A chest hides a feast or a rotten dish; the fortune teller draws 大吉, 中吉 or 凶. */
+export type EventScene = "chest" | "spring" | "idol" | "fairy" | "fortune";
+export type EventOutcome = "feast" | "rotten" | "spring" | "curse" | "blessing" | "great" | "good" | "bad";
+export interface RoomEvent {
+  scene: EventScene;
+  outcome: EventOutcome;
+}
+export type Boon = "curse" | "blessing";
+/** Satiety each outcome gives or takes (D4, D9); the spring's goes only to a chef or a team with no class. */
+export const EVENT_SATIETY = { feast: 20, rotten: -10, great: 25, spring: 10 } as const;
+
+/** The six events, one each (D4): the chest twice, since it hides two. The fortune teller draws its lot here too. */
+export function drawEvent(rng: () => number = Math.random): RoomEvent {
+  const deck: RoomEvent[] = [
+    { scene: "chest", outcome: "feast" },
+    { scene: "chest", outcome: "rotten" },
+    { scene: "spring", outcome: "spring" },
+    { scene: "idol", outcome: "curse" },
+    { scene: "fairy", outcome: "blessing" },
+  ];
+  const i = Math.floor(rng() * (deck.length + 1));
+  if (i < deck.length) return deck[i];
+  return { scene: "fortune", outcome: (["great", "good", "bad"] as const)[Math.min(2, Math.floor(rng() * 3))] };
+}
+
+/** Whether this correct answer may walk its team into an event room (D5, D12): only into a room before the last,
+ * never into the boss room. The last room and leaving an event room never roll. */
+export function eventEligible(game: GameState, outcome: AnswerOutcome): boolean {
+  return outcome.type === "correct-room-advance" && !outcome.entersBoss && outcome.nextRoomIndex < game.rooms.length - 1 && !getTeam(game, outcome.teamId).event;
+}
+
+/** The team walked into an event room: `event` waits for its next turn. Not a turn. */
+export function enterEventRoom(game: GameState, teamId: string, event: RoomEvent): GameState {
+  assertPlaying(game);
+  if (getTeam(game, teamId).inBoss) throw new InvalidActionError("no events in the boss room");
+  return { ...game, teams: patchTeam(game.teams, teamId, () => ({ event })) };
+}
+
+/** What opening an event did, for the room's reveal, narration and the phone. `satiety` is the change actually made
+ * (a rotten dish takes no more than the team has), chef bonus included. */
+export interface EventResult {
+  teamId: string;
+  scene: EventScene;
+  outcome: EventOutcome;
+  satiety: number;
+  chefBonus?: number;
+  /** The spring's (or 中吉's) extra ability use. */
+  abilityUse?: true;
+  boon?: Boon;
+}
+
+/**
+ * The turn's team opens its event (D3): the effect lands, the turn counts, the team walks on into the next room
+ * with a fresh deal, and the turn passes, as answerQuestion does. The room holds the result on show until 下一題.
+ */
+export function openEvent(game: GameState, teamId: string, rng: () => number = Math.random): { game: GameState; result: EventResult } {
+  assertPlaying(game);
+  assertTurn(game, teamId);
+  const team = getTeam(game, teamId);
+  const event = team.event;
+  if (!event) throw new InvalidActionError("no_event");
+  const result: EventResult = { teamId, scene: event.scene, outcome: event.outcome, satiety: 0 };
+  // The chef's 15% goes on satiety an event gives, never on what it takes (D12).
+  const give = (n: number) => {
+    const share = team.classId === "chef" ? chefShare(n) : 0;
+    result.satiety = n + share;
+    if (share) result.chefBonus = share;
+  };
+  const o = event.outcome;
+  if (o === "feast" || o === "great") give(EVENT_SATIETY[o]);
+  else if (o === "rotten") result.satiety = -Math.min(-EVENT_SATIETY.rotten, team.reward);
+  else if (o === "spring" || o === "good") {
+    if (team.classId && team.classId !== "chef") result.abilityUse = true;
+    else give(EVENT_SATIETY.spring);
+  } else result.boon = o === "blessing" ? "blessing" : "curse";
+
+  const order = game.turnOrder.indexOf(teamId);
+  const round = (game.round ?? 1) + (game.lastTurnIndex !== undefined && order <= game.lastTurnIndex ? 1 : 0);
+  const next = Math.min(team.roomIndex + 1, game.rooms.length - 1);
+  const dealt = dealFor(game, team, game.rooms[next].baseDifficulty, game.revealedQuestionIds, rng, team.currentQuestionId);
+  const monsterId = game.rooms[next].monsterId;
+  const teams = patchTeam(game.teams, teamId, (t) => ({
+    event: undefined,
+    events: [...(t.events ?? []), o],
+    reward: t.reward + result.satiety,
+    abilityUses: t.abilityUses + (result.abilityUse ? 1 : 0),
+    ...(result.boon ? { boon: result.boon } : {}),
+    turns: (t.turns ?? 0) + 1,
+    roomIndex: next,
+    ...(monsterId ? { metDefeats: game.defeats?.[monsterId] ?? 0 } : {}),
+    currentDifficulty: game.rooms[next].baseDifficulty,
+    currentQuestionId: dealt.questionId,
+    currentSelection: null,
+    queuedQuestionId: dealt.queuedQuestionId,
+  }));
+  const moved = { ...game, teams, usedQuestionIds: dealt.used, round, lastTurnIndex: order, currentTurnIndex: order, prayerTurn: undefined };
+  return { game: advanceTurn(moved), result };
 }
 
 /** The team's dishes with `dish` eaten, or nothing when the monster has none. */
@@ -1149,6 +1262,8 @@ export function currentQuestionIdOf(game: GameState, teamId: string): string {
 }
 
 function assertCurrentQuestion(game: GameState, teamId: string, questionId: string) {
+  // A team in an event room has no question to answer until it opens the event (event-rooms.md).
+  if (getTeam(game, teamId).event) throw new InvalidActionError("event_room");
   const expectedQuestionId = currentQuestionIdOf(game, teamId);
   if (questionId !== expectedQuestionId) {
     throw new InvalidActionError(`Stale question submission for ${teamId}: expected ${expectedQuestionId}, got ${questionId}`);
@@ -1210,6 +1325,9 @@ export interface SpectatorView {
     mayPray?: true;
     /** The class bonus and DC this team's persuasion check rolls with on its current question (checkTarget). */
     checkTarget?: { bonus: number; dc: number };
+    /** The event room this team stands in: the scene only, never its outcome until it is opened (event-rooms.md). */
+    eventScene?: EventScene;
+    boon?: Boon;
   }[];
   bossHp: number;
   bossMaxHp: number;
@@ -1249,6 +1367,8 @@ export function getSpectatorView(game: GameState): SpectatorView {
       typedAnswer: t.typedAnswer ?? null,
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
       checkTarget: checkTarget(game, t.id, t.currentQuestionId),
+      ...(t.event ? { eventScene: t.event.scene } : {}),
+      ...(t.boon ? { boon: t.boon } : {}),
     })),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
