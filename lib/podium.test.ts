@@ -179,6 +179,10 @@ describe("epiloguePages", () => {
     expect(pages.length).toBe(2);
     for (const p of pages) expect(p.length).toBeLessThanOrEqual(EPILOGUE_PAGE_CHARS);
   });
+  it("drops a page that is only whitespace", () => {
+    const a = "甲".repeat(EPILOGUE_PAGE_CHARS - 1) + "。";
+    expect(epiloguePages(a + "\n ")).toEqual([a]);
+  });
   it("never cuts an emoji in half", () => {
     const text = "字".repeat(EPILOGUE_PAGE_CHARS - 1) + "🍲🍲";
     expect(epiloguePages(text)).toEqual(["字".repeat(EPILOGUE_PAGE_CHARS - 1) + "🍲", "🍲"]);

@@ -168,7 +168,8 @@ export function epiloguePages(text: string): string[] {
   const pages: string[] = [];
   let page = "";
   for (const sentence of text.match(/[^。！？!?]+[。！？!?」』）)]*|[。！？!?]+/g) ?? []) {
-    if ((page + sentence).length <= EPILOGUE_PAGE_CHARS) {
+    // Counted by code point, like the cut below, so an emoji counts once.
+    if ([...page + sentence].length <= EPILOGUE_PAGE_CHARS) {
       page += sentence;
       continue;
     }
@@ -179,5 +180,7 @@ export function epiloguePages(text: string): string[] {
     page = chars.join("");
   }
   if (page) pages.push(page);
-  return pages.length ? pages : [text];
+  // A page of only spaces or line breaks (trailing whitespace after the last sentence) is not a page.
+  const shown = pages.map((p) => p.trim()).filter(Boolean);
+  return shown.length ? shown : [text];
 }

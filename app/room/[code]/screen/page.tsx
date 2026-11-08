@@ -607,7 +607,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   const [from] = useState(() => (dish || !narration ? 0 : Math.min(typedTo, narration.lines.length - 1)));
   useEffect(() => {
     if (ended) onPodium();
-    // onPodium reads refs only: it runs once, when the story may be read.
+    // It runs once, when the story may be read; onPodium also reads the epilogue page from this render's state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ended]);
   // Each beat's line is read as it comes up (a roll's chip too).
