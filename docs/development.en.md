@@ -77,7 +77,8 @@ lib/game-state.ts        Game state machine: rooms, question decks, boss, scorin
 lib/protocol.ts          Message formats and validation between host / player / server
 lib/question-bank.ts     Question bank types, validation, public questions (without answers)
 lib/bank-store.ts        BankStore: Durable Object storage layer for the question bank, version check (pure-function logic)
-lib/bank-api.ts          HTTP handling for /api/bank (OWNER_KEY check, CORS, 409 conflict), platform independent
+lib/bank-api.ts          HTTP handling for /api/bank and /api/game-logs (OWNER_KEY check, CORS, 409 conflict), platform independent
+lib/game-log.ts          Game log: when a game ends, builds one record from the game state and stores it in BankStoreDO; the download reads the newest 1000 games
 lib/narration/           Narration: events, scripted lines, LLM, circuit breaker, runner, browser TTS playback decisions (tts.ts)
 lib/pixel-art.ts         Pixel characters and scenes drawn in code
 lib/turn-info.ts         Works out from the public state whose turn it is and which monster they face
@@ -88,7 +89,7 @@ lib/stored.ts            localStorage reads and writes that never throw (also wo
 lib/use-wake-lock.ts     Keeps the screen awake on the host page and the big screen
 lib/report-client-error.ts、client-error-api.ts  Front-end crash reports (sendBeacon) and handling for /api/client-error (origin check, 4 KB limit, writes one log line)
 lib/bank-image-api.ts    /api/bank/image image upload (file type and size checks; returns 409 when the bank cannot be read, 503 when it cannot be reached)
-worker/index.ts          Cloudflare Worker: the Room and BankStoreDO Durable Objects, the /api/bank and /api/client-error routes, entry rules
+worker/index.ts          Cloudflare Worker: the Room and BankStoreDO Durable Objects, the /api/bank, /api/game-logs and /api/client-error routes, entry rules
 lib/room/                Room logic (dungeon-room.ts) and the two small interfaces it needs (io.ts), platform independent
 lib/gate.ts、origin.ts   Worker entry rules
 e2e/                     Playwright end-to-end tests
