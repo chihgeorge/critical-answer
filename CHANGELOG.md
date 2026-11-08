@@ -2,6 +2,16 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [Unreleased]
+
+### Fixed
+- The big screen's answer countdown no longer covers options B and D. On a multiple-choice or sort question it becomes a small 「⏱ 42」 pill under the tiles; a fill-in question keeps the round clock.
+- The podium stays readable at the end. A long epilogue no longer covers the 2nd and 3rd place names and scores, and 「最後一擊」 moves off the winner's crown into the result card on the left.
+- Two-digit numbers (10–20) fit inside the d20 on initiative, crits, kills and ties.
+- On a phone, a long team name on the buzz button wraps inside the circle instead of running out of it.
+- Small outlined titles (an event room's result, a boss phase card) use a thinner outline, so their strokes no longer fill in.
+- In the big screen's lobby, team nameplates are wider, so names like 「EventTeam」 are no longer cut to 「Event…」.
+
 ## [0.55.0.2] - 2026-11-08
 
 ### Fixed
