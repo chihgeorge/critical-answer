@@ -22,8 +22,9 @@ export function limitToSendWithKey(limit: string, status: Pick<AiStatus, "limit"
 export type AiCredential = { source: "own"; key: string } | { source: "owner"; ownerKey: string };
 
 /** Whether this status shows the key sent with `keyId` in use. Nothing else in a status tells: with the owner key in
- * use a wrong OWNER_KEY still reads source "owner", and an own key can share the hint of the key in use. */
-export const aiKeyApplied = (keyId: string, msg: AiStatus): boolean => !msg.error && msg.appliedKeyId === keyId;
+ * use a wrong OWNER_KEY still reads source "owner", and an own key can share the hint of the key in use. A refused key
+ * never gets its id named, and an error alongside the id is about something later (AI stopped). */
+export const aiKeyApplied = (keyId: string, msg: AiStatus): boolean => msg.appliedKeyId === keyId;
 /** Unique across page loads too: the room keeps the last applied id, so a reloaded page must not reuse it. */
 export const newKeyId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 export const AI_STORE = { own: "ai-key:own", owner: "ai-key:owner" } as const;

@@ -15,8 +15,9 @@ describe("aiKeyApplied", () => {
     expect(aiKeyApplied("b", status({ appliedKeyId: "a" }))).toBe(false);
     expect(aiKeyApplied("b", status({}))).toBe(false);
   });
-  it("a status with an error never says it is applied", () => {
-    expect(aiKeyApplied("b", status({ appliedKeyId: "b", error: "ai_stopped" }))).toBe(false);
+  it("the id decides, not an error that came later", () => {
+    expect(aiKeyApplied("b", status({ appliedKeyId: "b", error: "ai_stopped" }))).toBe(true);
+    expect(aiKeyApplied("b", status({ appliedKeyId: "a", error: "wrong_owner_key" }))).toBe(false);
   });
   it("ids do not repeat", () => {
     expect(new Set(Array.from({ length: 100 }, newKeyId)).size).toBe(100);

@@ -463,6 +463,7 @@ export class DungeonRoom {
     this.aiSource = source;
     this.credential = credential && { ...credential, generation: ++this.credentialGeneration };
     this.aiError = undefined;
+    this.keyError = undefined; // the newest outcome wins
     // Whatever tripped the breaker (a dead key, no credit) may be fixed by this key.
     if (credential) this.breaker.reset();
     this.sendAiStatus();
@@ -480,6 +481,11 @@ export class DungeonRoom {
       const serverKey = this.room.env?.ANTHROPIC_API_KEY;
       if (!ownerKey || !serverKey) return this.refuseKey("owner_unavailable");
       if (!tokensEqual(ownerKey, msg.ownerKey)) return this.refuseKey("wrong_owner_key");
+      // Already in use (the page's resend on reconnect): nothing to apply, and a keyless resend keeps the page's keyId.
+      if (this.aiSource === "owner" && this.credential && !this.aiError) {
+        if (msg.keyId) this.credential.keyId = msg.keyId;
+        return this.sendAiStatus();
+      }
       return this.applyCredential("owner", { provider: "anthropic", apiKey: serverKey, keyId: msg.keyId });
     }
     const provider = PROVIDERS[msg.provider];
@@ -488,7 +494,7 @@ export class DungeonRoom {
     // After "AI stopped" the host pastes it again on purpose (credit topped up): apply it, which resets the breaker.
     if (this.aiSource === "own" && this.credential?.provider === msg.provider && this.credential.apiKey === msg.key) {
       if (this.aiError) return this.applyCredential("own", { provider: msg.provider, apiKey: msg.key, keyId: msg.keyId });
-      this.credential.keyId = msg.keyId;
+      if (msg.keyId) this.credential.keyId = msg.keyId;
       return this.sendAiStatus();
     }
     const check = new AbortController();

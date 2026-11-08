@@ -364,6 +364,23 @@ describe("restarts and key changes", () => {
     expect(r.status()).toMatchObject({ keyMissing: false, error: "wrong_owner_key" });
   });
 
+  it("a keyless resend that succeeds clears its own earlier refusal; one of a key in use keeps the page's keyId", async () => {
+    let ok = false;
+    const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY }, models: () => (ok ? json({ data: [] }) : json({}, 500)) });
+    await r.useKey(); // keyless, as the page's resend after a restart
+    expect(r.status().error).toBe("check_failed");
+    ok = true;
+    await r.useKey();
+    expect(r.status()).toMatchObject({ keyMissing: false });
+    expect(r.status()).not.toHaveProperty("error");
+    r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY, keyId: "p" });
+    await r.useKey(); // a second tab's resend of the same key
+    expect(r.status()).toMatchObject({ appliedKeyId: "p" });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY, keyId: "q" });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY });
+    expect(r.status()).toMatchObject({ source: "owner", appliedKeyId: "q" });
+  });
+
   it("appliedKeyId names the HOST_AI_KEY whose key is in use, never a refused one", async () => {
     const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY }, models: (key) => (key === OTHER_KEY ? json({}, 401) : json({ data: [] })) });
     r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY, keyId: "a" });
@@ -373,7 +390,7 @@ describe("restarts and key changes", () => {
     expect(r.status()).toMatchObject({ appliedKeyId: "a", error: "wrong_owner_key" });
     // The page reconnects and resends its saved key: "b" never becomes the applied one.
     r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY });
-    expect(r.status()).not.toHaveProperty("appliedKeyId");
+    expect(r.status()).toMatchObject({ appliedKeyId: "a" });
     // Own keys: the same key resent under a new id is applied under that id; a refused one never is.
     r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY, keyId: "c" });
     await sleep(0);
