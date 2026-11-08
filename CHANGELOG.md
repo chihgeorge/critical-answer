@@ -2,6 +2,21 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.45.0.0] - 2026-11-07
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the host page, the big screen and the phones. An old room server refuses the new class, so a phone that taps 🍳 廚師 before the room server is updated gets nothing. Do not roll the room server back to an older version while a game with a chef is running: the older version cannot read that room and starts it over.
+
+### Added
+- A 5th class, 🍳 廚師. It has no button: every time the team scores, it gets 15% more, rounded, at least +1. The 15% is on the whole score, after the thief's sneak, a critical hit and the boss's 4d20.
+- The big screen's dish card shows the chef's share, for example 「+23 飽足感（🍳 廚師 +3）」. The phone's correct-answer line shows 「答對了！＋23 分（廚師 +3）」.
+- On the phone's class picker the chef card spans both columns. The phone and the host page show 「被動」 for a chef instead of the uses left.
+- `node scripts/balance-sim.ts [games]` plays many 4-team games and prints each class's average score and win share.
+
+## [0.44.0.1] - 2026-11-07
+
+### Fixed
+- In the bank editor, a question's 題幹 (prompt), a fill-in answer, a multiple-choice option or a new question type could now and then be lost right after typing, and the save then went out without it. The editor now keeps what was typed. This was also why three bank-editor tests failed now and then in CI.
+
 ## [0.44.0.0] - 2026-11-07
 
 **Deploy note:** no reseed is needed. Deploy the room server and the website. The live bank was saved before this change, so it keeps its own monsters: to turn the draw on, open /bank-editor, tick 「每場隨機抽怪」 and save. If you roll back the room server after saving, the older server drops the setting on its next save.

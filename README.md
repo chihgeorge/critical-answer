@@ -81,7 +81,7 @@ https://github.com/chihgeorge/critical-answer
 - **答錯**：選「重答」再答同一題，或「逃跑」換一題簡單一級的。
 - **首領房**：答對累積的進度分到 15 就進首領房；有一隊進去後，其他隊下一次答對就跟進。首領血量共用，打中一下 10 分，尾刀再加 4 顆 d20。
 - **骰子**：選擇題答對擲暴擊骰，20 多拿一半獎勵分。填空題作答前擲說服檢定，過了看到答案第一個字。預設題庫全是選擇題，所以不會擲說服檢定。
-- **職業**：戰士擲骰代替答題、法師刪錯誤選項或給第一個字、牧師答錯再答一次、盜賊偷襲讓這題分數加倍。
+- **職業**：戰士擲骰代替答題、法師刪錯誤選項或給第一個字、牧師答錯再答一次、盜賊偷襲讓這題分數加倍、廚師（被動）每次拿分多 15%。
 - **勝負**：獎勵分最高的隊伍獲勝；前三名同分時擲 d20 比大小。打倒首領的隊伍不一定是冠軍。
 
 完整規則、每個數字和例外見[完整規則](docs/rules.md)。
@@ -100,7 +100,7 @@ https://github.com/chihgeorge/critical-answer
 
 ## 路線圖
 
-已完成：大螢幕、題庫與題庫編輯器、腳本與 AI 旁白、語音旁白、音效與背景音樂、活地圖、四個職業、暴擊骰、說服檢定、怪物變料理、正式部署。接下來的重點是**第二次真人測試**：驗證有氣氛之後是不是比第一輪好玩。完整設計見 [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md)（第二輪）和 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md)（第一輪）。
+已完成：大螢幕、題庫與題庫編輯器、腳本與 AI 旁白、語音旁白、音效與背景音樂、活地圖、五個職業、暴擊骰、說服檢定、怪物變料理、正式部署。接下來的重點是**第二次真人測試**：驗證有氣氛之後是不是比第一輪好玩。完整設計見 [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md)（第二輪）和 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md)（第一輪）。
 
 ## 授權
 
