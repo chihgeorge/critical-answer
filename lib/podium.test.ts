@@ -99,6 +99,15 @@ describe("revealBeats", () => {
     expect(beats[0]).toMatchObject({ kind: "roll", line: "第 1、2、3 名同分！擲 d20 比大小", result: "甲隊 9、乙隊 5、丙隊 5，同點的重擲" });
   });
 
+  it("over four teams rolling, the result names nobody (the names are under the dice)", () => {
+    const ids = ["甲", "乙", "丙", "丁", "戊"];
+    const roll = { from: 1, teams: ids, values: [9, 5, 5, 3, 1] };
+    const beats = revealBeats(teams(...ids.map((id) => [id, 0] as [string, number])), ids, [roll]);
+    expect(beats[0]).toMatchObject({ kind: "roll", line: "第 1、2、3 名同分！擲 d20 搶上台", result: "點數最高的 3 隊上台，同點的重擲" });
+    const four = revealBeats(teams(...ids.slice(0, 4).map((id) => [id, 0] as [string, number])), ids.slice(0, 4), [{ ...roll, teams: ids.slice(0, 4), values: [9, 5, 3, 1] }]);
+    expect(four[0]).toMatchObject({ result: "甲隊 9、乙隊 5、丙隊 3、丁隊 1" });
+  });
+
   it("uses the narration's lines in order and scripts only the missing ones", () => {
     const t = teams(["甲", 40, 1], ["乙", 30]);
     expect(lines(revealBeats(t, ["甲", "乙"], [], ["甲的二十閃閃發光！", "乙穩穩拿下第二！"]))).toEqual([

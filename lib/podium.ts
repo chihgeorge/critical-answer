@@ -17,6 +17,9 @@ export interface TieRoll {
   values: number[];
 }
 
+/** Above this many teams in one tie roll the dice shrink and the result row drops the names (TieRollOverlay). */
+export const ROW_NAMES = 4;
+
 // shortcut: a tie still unbroken after this many rounds keeps the team order; only a fixed die (tests) gets there.
 const MAX_ROUNDS = 5;
 
@@ -78,6 +81,8 @@ function rollTexts(roll: TieRoll, name: (id: string) => string): { line: string;
   const order = roll.teams.map((id, i) => ({ id, v: roll.values[i] })).sort((a, b) => b.v - a.v);
   if (order.length === 2) return { line, result: `${order[0].v} 比 ${order[1].v}，${name(order[0].id)}勝！` };
   const again = new Set(roll.values).size < roll.values.length ? "，同點的重擲" : "";
+  // Over ROW_NAMES teams the names under the dice say who rolled what; listing them again wraps the result row.
+  if (order.length > ROW_NAMES) return { line, result: `點數最高的 ${places.length} 隊上台${again}` };
   return { line, result: order.map((o) => `${name(o.id)} ${o.v}`).join("、") + again };
 }
 

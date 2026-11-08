@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [Unreleased]
+
+### Fixed
+- When 5 to 8 teams roll a podium tie-break together, every die now stays on the big screen. Each name under a die is cut to the die's width, so 8 teams with long names no longer push the outer dice off the stage. The result bar now says 「點數最高的 N 隊上台」 instead of listing every team and roll again; with 8 teams that list ran to 2–4 lines. A tie of 4 teams or fewer looks the same as before.
+
 ## [0.49.0.0] - 2026-11-08
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website. Until it is, the bank editor's download link returns 404. No migration: the records live in the existing bank Durable Object.
