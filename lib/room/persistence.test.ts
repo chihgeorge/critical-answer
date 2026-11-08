@@ -189,6 +189,21 @@ describe("restoring after a restart", () => {
     expect(lastOf(stranger, "ERROR")).toMatchObject({ error: "bad_password" });
   });
 
+  // Value: protects=a junk or refused message does not serialize the whole room (bank included) on the single-threaded
+  // room; fails_when=an ERROR reply saves the room first
+  it("an ERROR reply does not serialize the room to save it", () => {
+    const { room } = makeRoom(memoryStorage());
+    const stranger = makeConn("stranger");
+    room.onConnect(stranger);
+    const snapshots = vi.spyOn(room as any, "persistedState");
+    for (let i = 0; i < 5; i++) {
+      room.onMessage("{}", stranger);
+      send(room, stranger, { type: "HOST_START" });
+    }
+    expect(lastOf(stranger, "ERROR")).toMatchObject({ error: "not_host" });
+    expect(snapshots).not.toHaveBeenCalled();
+  });
+
   // Value: protects=the big screen keeps the epilogue page the host turned to across a restart; fails_when=the page is
   // not saved, or a save whose page is past the last one is restored as is (a blank TV page)
   it("the epilogue page the host turned to comes back after a restart, and a page past the last one starts over", async () => {
