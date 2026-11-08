@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_MISS_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 
 const team = "六個字的隊伍";
@@ -218,6 +218,32 @@ describe("scripted: entering the boss room", () => {
       const line = p.line(event);
       expect(BOSS_ENTER_VARIANTS.some((v) => line === v.replace("{team}", "紅隊").replace("{monster}", "史萊姆").replace("{points}", "3"))).toBe(true);
     }
+  });
+});
+
+describe("scripted: a later team joining the boss room", () => {
+  it("uses the join lines, never the door-opening ones", () => {
+    const p = createScriptedProvider(lcg(5));
+    const fill = (v: string) => v.replace("{team}", "藍隊").replace("{monster}", "史萊姆").replace("{points}", "3");
+    for (let i = 0; i < 8; i++) {
+      const line = p.line({ type: "correct", team: "藍隊", monster: "史萊姆", points: 3, entersBoss: { order: 2 } });
+      expect(BOSS_JOIN_VARIANTS.map(fill)).toContain(line);
+      expect(line).not.toContain("推開");
+    }
+    expect(BOSS_JOIN_VARIANTS.filter((v) => v.includes("推開"))).toEqual([]);
+  });
+
+  it("a later team entering mid-phase hears the phase, never the door being pushed open", () => {
+    const p = createScriptedProvider(lcg(9));
+    for (let i = 0; i < 8; i++) {
+      const line = p.line({ type: "correct", team: "藍隊", monster: "史萊姆", points: 3, entersBoss: { phase: "主題曲之謎", order: 2 } });
+      expect(line).toContain("主題曲之謎");
+      expect(line).not.toContain("推開");
+    }
+  });
+
+  it("the next-team boss lines never mention the door, which may have been open for a while", () => {
+    expect(NEXT_VARIANTS.boss.filter((v) => v.includes("門"))).toEqual([]);
   });
 });
 

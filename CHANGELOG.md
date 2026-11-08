@@ -9,6 +9,28 @@ All notable changes to Critical Answer are documented here.
 - A tie-break result no longer says 「同點的重擲」 when the tied teams are all below third place. Nobody rerolls there, so the big screen promised a roll that never came.
 - When the host presses 結束冒險 while the big screen is still reading the last narration, the podium waits for it. The first place call starts 1 second after the screen reports the last line read, or after 20 seconds at most if no screen reports. Before, the reveal started 4 seconds after 結束冒險, and the first call cut the narration off.
 
+## [0.51.0.1] - 2026-11-08
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website. A new host page talking to an old room server never sees its key confirmed, so 記住這台電腦 saves nothing until the server is updated. No migration.
+
+### Fixed
+- The host now keeps seeing why a key was refused. A refused key's error (`invalid_key`, `wrong_owner_key`, `owner_unavailable`, `check_failed`) went out once; the next AI narration's status had no error and replaced it. The room now keeps the last key's error and sends it with every AI status until the host sends another key. A newer failure of the key in use (AI stopped, or the key refused mid-game) replaces it.
+- With the owner key already in use, a wrong OWNER_KEY counted as applied on the host page. With 記住這台電腦 ticked it was saved in the browser and resent after every reconnect. The page guessed from what the status looked like, so a narration's status, a reconnect, or an own key with the same last 4 characters could also make a refused key count. Each key the host sends now carries an id, and the room's status names the id of the key in use; the page saves a key only when its own id comes back.
+
+## [0.51.0.0] - 2026-11-08
+
+### Changed
+- The five classes are closer to even. In a simulation of 4 teams with random classes, the thief used to win 35–46% of games, while the warrior and the mage did no better than a team with no class. Now every class wins 21–32% at low, normal and high accuracy (a team with no class: about 14%).
+  - Thief: a correct answer after 偷襲 gives 1.5× the reward points (was 2×), rounded half up. The boss still loses 2 hearts.
+  - Warrior: 4 rolls per game (was 2), and 6 or higher on the d20 counts as correct (was 12).
+  - Mage: 4 uses per game (was 2).
+  - The cleric and the chef are unchanged.
+
+## [0.50.0.0] - 2026-11-08
+
+### Changed
+- Narration tells the first team into the boss room from the teams that come after. The first team still gets the door-opening lines. The 2nd and later teams get new 「加入戰局」 lines, because on the big screen the door is already open. Teams the host sent with 送去魔王 count in the order. The line for a team that walks in after phase 2 has started no longer says it pushed the door open. The AI narration prompt now says whether this team opened the door or is the Nth team to join the fight. The line that hands the turn to a team in the boss room no longer says the boss 「擋在最後一道門前」.
+
 ## [0.49.0.0] - 2026-11-08
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website. Until it is, the bank editor's download link returns 404. No migration: the records live in the existing bank Durable Object.
