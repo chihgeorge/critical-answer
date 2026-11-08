@@ -149,7 +149,7 @@ export const BOSS_DISH_VARIANTS = [
   "終結！{monster}倒下了，今晚要開大鍋。",
 ];
 
-/** A correct answer that takes the team into the boss room (event.entersBoss). */
+/** The first team into the boss room opens the door (event.entersBoss without order or phase). */
 export const BOSS_ENTER_VARIANTS = [
   "{team}答對了，推開最後一道門——首領就在眼前！",
   "{monster}倒下，{team}踏進了首領的巢穴，+{points}！",
@@ -157,7 +157,7 @@ export const BOSS_ENTER_VARIANTS = [
   "{team}拿下 {points} 分，地城最深處的大門為他們打開了。",
 ];
 
-/** A later team joining the boss fight (event.entersBoss.order): the door is already open (TODOS, 2026-11-07). */
+/** A later team joining the boss fight (event.entersBoss.order): the door is already open (live-map.md D9). */
 export const BOSS_JOIN_VARIANTS = [
   "{team}也趕到了首領房，加入戰局，+{points}！",
   "答對！{team}衝進敞開的大門，和大家並肩作戰。",
@@ -255,7 +255,7 @@ export const NEXT_VARIANTS = {
   boss: [
     "{team}，首領{monster}在等你們，看題目！",
     "換{team}上場，{monster}怒目而視。",
-    "輪到{team}！{monster}擋在最後一道門前。",
+    "輪到{team}！{monster}正等著你們。",
     "{team}挺身而出，直面{monster}！",
   ],
 };
@@ -283,6 +283,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
       if (event.type === "boss-hit" && event.bossHp === 0) return fill(pick(BOSS_EMPTIED_VARIANTS, "boss-emptied"), event);
       if (event.type === "boss-phase") return fill(pick(VARIANTS["boss-phase"], "boss-phase"), { ...event, ordinal: ordinal(event.phase) });
+      // A phase under way means a team is already inside, so the phase lines are join lines too (none says 推開).
       if (event.type === "correct" && event.entersBoss?.phase) return fill(pick(BOSS_ENTER_PHASE_VARIANTS, "boss-enter-phase"), { ...event, phase: event.entersBoss.phase });
       if (event.type === "boss-kill" && event.cooked) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
       if ((event.type === "correct" && !event.entersBoss) || event.type === "boss-hit") {

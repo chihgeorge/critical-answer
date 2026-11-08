@@ -230,6 +230,20 @@ describe("scripted: a later team joining the boss room", () => {
       expect(BOSS_JOIN_VARIANTS.map(fill)).toContain(line);
       expect(line).not.toContain("推開");
     }
+    expect(BOSS_JOIN_VARIANTS.filter((v) => v.includes("推開"))).toEqual([]);
+  });
+
+  it("a later team entering mid-phase hears the phase, never the door being pushed open", () => {
+    const p = createScriptedProvider(lcg(9));
+    for (let i = 0; i < 8; i++) {
+      const line = p.line({ type: "correct", team: "藍隊", monster: "史萊姆", points: 3, entersBoss: { phase: "主題曲之謎", order: 2 } });
+      expect(line).toContain("主題曲之謎");
+      expect(line).not.toContain("推開");
+    }
+  });
+
+  it("the next-team boss lines never mention the door, which may have been open for a while", () => {
+    expect(NEXT_VARIANTS.boss.filter((v) => v.includes("門"))).toEqual([]);
   });
 });
 

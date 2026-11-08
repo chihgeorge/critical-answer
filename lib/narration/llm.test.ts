@@ -342,6 +342,9 @@ describe("buildPrompt: entering the boss room", () => {
     expect(later).toContain("第 3 隊進首領房");
     expect(later).toContain("加入戰局");
     expect(later).not.toContain("第一隊");
+    const midPhase = buildPrompt({ type: "correct", team: "藍隊", monster: "史萊姆", points: 3, entersBoss: { phase: "主題曲之謎", order: 2 } }, []).user;
+    expect(midPhase).toContain("主題曲之謎");
+    expect(midPhase).toContain("第 2 隊進首領房");
   });
 });
 
