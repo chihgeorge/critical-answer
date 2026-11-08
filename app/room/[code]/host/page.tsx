@@ -277,6 +277,8 @@ export default function HostPage() {
   // Both stay disabled for a beat after every swap.
   // The boss's phase card is a pause like a reveal: 下一題 closes it (docs/designs/boss-phases.md D3).
   const revealUp = !!game?.reveal || !!game?.phaseCard;
+  /** A buzzer boss phase (docs/designs/boss-buzzer.md): teams buzz in, the host judges the one that buzzed first. */
+  const buzz = game?.phase === "playing" && !revealUp ? game.view.buzz : undefined;
   // Keyed on the pause itself, not just "a pause is up": the answer reveal turning into the phase card
   // swaps 下一題 for another 下一題, and a double-tap must not close the card nobody has seen.
   // The intro's pages count too: 下一頁 turns into 開始冒險 in its slot, and then into the judge buttons.
@@ -401,6 +403,27 @@ export default function HostPage() {
     // judge/send are plain functions over state this effect already depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game, ready, swapArmed, canJudge, canUndo, turn, isMc, stuck, picking, drawer, revealUp, cleric, held, lock, lockWaiting]);
+
+  // 下一題 (or 上菜) under an answer reveal or a phase card, with the revealed video's controls.
+  const revealPanel = game && revealUp && (
+    <>
+      <Panel tone="lav" className="px-3 py-2 text-center text-[16px]">
+        <div data-testid="host-reveal">
+          大螢幕正在揭曉：{game.reveal ? game.reveal.answer : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}
+        </div>
+      </Panel>
+      {/* The answered question's video is up again on the big screen (D17). */}
+      {game.reveal?.video && (
+        <Panel tone="lav" className="px-3 pb-2 pt-1">
+          <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} />
+        </Panel>
+      )}
+      <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: toServe ? "HOST_SERVE" : "HOST_NEXT", eventId: game.eventId })}>
+        {!connected ? "重新連線中" : toServe ? "🍲 上菜" : servedUp && !swapArmed ? "🍲 上菜中…" : "下一題"}
+        <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
+      </PixelButton>
+    </>
+  );
 
   // 公布答案 (host-reveal.md D6): under the status panel, where 下一題 takes over key 1 after the beat.
   const revealButton = lock && (
@@ -614,9 +637,9 @@ export default function HostPage() {
         {game && game.phase === "playing" && !game.intro && !game.initiative && (
           <>
             {/* No team on turn (every phone offline): the team rows and their 交給新手機 still show. */}
-            {turn?.team && (
+            {turn && (turn.team || buzz) && (
             <>
-            <TurnRibbon>{turn.inBoss ? "首領戰　" : ""}輪到：{turn.team.name}</TurnRibbon>
+            <TurnRibbon>{buzz ? (turn.team ? `搶答：${turn.team.name}搶到了` : "首領戰　搶答中") : `${turn.inBoss ? "首領戰　" : ""}輪到：${turn.team?.name}`}</TurnRibbon>
             <Panel tone="turn" className="px-3 py-[10px]">
               <div className="flex items-center gap-3">
                 <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
@@ -643,14 +666,33 @@ export default function HostPage() {
               {game.question?.content.kind === "youtube" && !revealUp && (
                 <MediaControls questionId={game.question.id} media={game.media} disabled={!ready} send={send} />
               )}
+              {buzz && (
+                <div data-testid="host-buzz" className="mt-2 flex flex-col gap-1 text-[16px]">
+                  <div>
+                    {buzz.teamId
+                      ? `${teamName(buzz.teamId)} 搶到了：聽他們說答案，按下方答對／答錯`
+                      : game.question?.content.kind === "youtube" && !buzz.open
+                        ? "按 ▶ 播放後開放搶答"
+                        : "等隊伍搶答…"}
+                  </div>
+                  {buzz.out.length > 0 && <div className="text-[14px]">已鎖住：{buzz.out.map(teamName).join("、")}</div>}
+                  {!buzz.teamId && (
+                    <PixelButton className="!m-0 min-h-[44px] text-[15px]" disabled={!ready} onClick={() => send({ type: "HOST_BUZZ_SKIP", questionId: buzz.questionId })}>
+                      沒人答對，換下一題
+                    </PixelButton>
+                  )}
+                </div>
+              )}
+              {turn.team && !buzz && (
               <div className="mt-2">
                 <ScoreMeter score={turn.team.score} active />
               </div>
+              )}
               {game.question && !game.question.options && (
                 <MageHint hint={game.view.mageHints?.[game.question.id]} sort={!!game.question.items} testId="host-mage-hint" className="mt-2 inline-block px-2 py-1 text-[18px]" />
               )}
               {/* #104: a text question's typed answer, judged with the buttons below. */}
-              {game.question && !game.question.options && !game.question.items && (
+              {turn.team && !buzz && game.question && !game.question.options && !game.question.items && (
                 <div data-testid="host-typed-answer" className="mt-2 text-[18px] [overflow-wrap:anywhere]">
                   {turn.team.typedAnswer ? `隊伍答：${turn.team.typedAnswer}` : "（還沒送出）"}
                 </div>
@@ -665,14 +707,14 @@ export default function HostPage() {
                       data-testid={`host-option-${i}`}
                       className="flex items-center gap-2 px-3 py-1 text-[16px]"
                       style={
-                        turn.team!.currentSelection === i
+                        turn.team?.currentSelection === i
                           ? { background: "var(--turn)", boxShadow: "inset 0 0 0 3px var(--turn2)" }
                           : { background: "var(--cream2)" }
                       }
                     >
                       <b className="px-num inline-flex h-6 w-6 flex-none items-center justify-center text-[11px]" style={{ background: "var(--k)", color: "var(--turn2)" }}>{optionLetter(i)}</b>
                       <span className={game.view.eliminated?.[game.question!.id]?.includes(i) ? "line-through" : ""}>{opt}</span>
-                      {turn.team!.currentSelection === i && <span className="ml-2 text-[13px]">← 隊伍目前選的</span>}
+                      {turn.team?.currentSelection === i && <span className="ml-2 text-[13px]">← 隊伍目前選的</span>}
                     </div>
                   ))}
                 </div>
@@ -750,30 +792,14 @@ export default function HostPage() {
               disabled={!ready}
               send={send}
             />
-            {turn?.team && (
+            {turn?.team ? (
             <>
               {!ready && connected && <div className="px-1 text-center text-[14px] text-white">等待主持人驗證…</div>}
               {revealUp ? (
                 // D7: the big screen and every phone show the answer in place of the next
                 // question until the host moves on — judging waits until then. The boss's phase card
                 // waits the same way (boss-phases.md D3).
-                <>
-                  <Panel tone="lav" className="px-3 py-2 text-center text-[16px]">
-                    <div data-testid="host-reveal">
-                      大螢幕正在揭曉：{game.reveal ? game.reveal.answer : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}
-                    </div>
-                  </Panel>
-                  {/* The answered question's video is up again on the big screen (D17). */}
-                  {game.reveal?.video && (
-                    <Panel tone="lav" className="px-3 pb-2 pt-1">
-                      <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} />
-                    </Panel>
-                  )}
-                  <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: toServe ? "HOST_SERVE" : "HOST_NEXT", eventId: game.eventId })}>
-                    {!connected ? "重新連線中" : toServe ? "🍲 上菜" : servedUp && !swapArmed ? "🍲 上菜中…" : "下一題"}
-                    <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
-                  </PixelButton>
-                </>
+                revealPanel
               ) : isMc ? (
                 <>
                   <div data-testid="host-mc-status">
@@ -847,7 +873,12 @@ export default function HostPage() {
                     {connected ? "答對！" : "重新連線中"}
                     <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.correct}</span>
                   </PixelButton>
-                  {cleric === "before" ? (
+                  {buzz ? (
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                      答錯（這題不能再搶）
+                      <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
+                    </PixelButton>
+                  ) : cleric === "before" ? (
                     <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "team")}>
                       答錯
                       <span className="px-key" aria-hidden="true">{HOST_KEYS.before.wrong}</span>
@@ -869,6 +900,9 @@ export default function HostPage() {
                 </>
               )}
             </>
+            ) : (
+              // A buzzer phase has nobody on turn between buzzes (boss-buzzer.md): the reveal and the phase card still get 下一題.
+              revealPanel
             )}
             {/* 改判答對 (TODOS.md): under the judge buttons, held for half a second after it shows up (canUndo). */}
             {game.undoWrong && !revealUp && (

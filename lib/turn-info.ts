@@ -62,10 +62,12 @@ export const PHASE_HUE_STEP = 90;
 export function describeTurn(view: SpectatorView, question: PublicQuestion | null, bossMonster?: PublicQuestion["monster"]) {
   const teamIndex = view.teams.findIndex((t) => t.id === view.currentTurnTeamId);
   const team = view.teams[teamIndex];
-  const inBoss = team?.inBossPhase ?? false;
+  // Nobody on turn in a buzzer phase still means the boss (boss-buzzer.md).
+  const inBoss = team?.inBossPhase ?? !!view.buzz;
   // The phase card is the boss's moment whoever is on turn (the turn order runs on after the answer, D9):
   // draw the boss scene, while labels about the team on turn still follow `inBoss`.
-  const bossScene = inBoss || (!question && !!bossMonster);
+  // A buzzer phase is all boss, with or without a team on turn (boss-buzzer.md).
+  const bossScene = inBoss || !!view.buzz || (!question && !!bossMonster);
   const room = team?.roomIndex ?? 0;
   const m = question?.monster ?? bossMonster;
   const phaseHue = bossScene ? PHASE_HUE_STEP * (view.bossPhase - 1) : 0;

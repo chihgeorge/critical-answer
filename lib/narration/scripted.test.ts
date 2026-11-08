@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 
 const team = "六個字的隊伍";
@@ -32,6 +32,16 @@ describe("scripted lines", () => {
     const boss = new Set(BOSS_MISS_VARIANTS.map((t) => t.replace("{team}", team).replace("{monster}", monster)));
     for (let i = 0; i < 20; i++) expect(boss.has(p.line({ type: "retry", team, monster, boss: true }))).toBe(true);
     expect(BOSS_MISS_VARIANTS.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("a wrong buzz says the team is out, never that it may answer again (boss-buzzer.md)", () => {
+    const p = createScriptedProvider(lcg(3));
+    const out = new Set(BUZZ_OUT_VARIANTS.map((t) => t.replace("{team}", team).replace("{monster}", monster)));
+    for (let i = 0; i < 20; i++) {
+      const line = p.line({ type: "retry", team, monster, buzzOut: true });
+      expect(out.has(line)).toBe(true);
+      expect(line.length).toBeLessThanOrEqual(40);
+    }
   });
 
   it("fills in the team, monster and numbers and leaves no template braces", async () => {

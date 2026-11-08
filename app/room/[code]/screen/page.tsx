@@ -247,6 +247,22 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const card = phaseCard && bossPhaseInfo;
   const wrong = view.pendingWrong ?? null;
   const nameOf = (id?: string) => view.teams.find((t) => t.id === id)?.name ?? "";
+  // A buzzer boss phase (docs/designs/boss-buzzer.md D7): who buzzed, who is out, or the call to buzz.
+  const buzz = !reveal && !card && question ? view.buzz : undefined;
+  const buzzBox = buzz && (
+    <div data-testid="screen-buzz" className="flex flex-col items-center gap-2">
+      <div className="px-chip" style={{ ...CHIP, fontSize: buzz.teamId ? 30 : 22, background: buzz.teamId ? "var(--turn)" : "var(--lav)" }}>
+        {buzz.teamId ? `${nameOf(buzz.teamId)} 搶到了！` : question?.content.kind === "youtube" && !buzz.open ? "等主持人按 ▶" : "♪ 快搶！"}
+      </div>
+      <div className="flex flex-wrap justify-center gap-2 text-[18px]">
+        {view.teams.filter((t) => t.online).map((t) => (
+          <span key={t.id} className="px-chip" style={{ ...CHIP, fontSize: 18, background: t.id === buzz.teamId ? "var(--turn)" : buzz.out.includes(t.id) ? "#5a4a60" : "var(--lav)", color: buzz.out.includes(t.id) ? "#ccc" : "var(--k)", textDecoration: buzz.out.includes(t.id) ? "line-through" : undefined }}>
+            {t.name}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
   // During a correct reveal the tiles are the answered question's (the next one is already dealt).
   const wall = served
     ? null
@@ -257,7 +273,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       : null;
   const sortWall = served ? null : sortTiles(question, reveal, pendingLock, wrong, wrongSlots);
   // Fixed lines, not an LLM call (D8, D9): nothing is narrated until the outcome is known.
-  const held = pendingRoll
+  const held = buzz?.teamId
+    ? `${nameOf(buzz.teamId)}搶到了！大聲說出答案！`
+    : pendingRoll
     ? `${nameOf(pendingRoll.teamId)}擲出了骰子……`
     : pendingLock
     ? `${nameOf(pendingLock.teamId)}鎖定了 ${question?.items ? "順序" : optionLetter(pendingLock.optionIndex)}……`
@@ -285,10 +303,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       ? { id: question!.id, content: question!.content as YoutubeContent }
       : null;
   const sneakChip = turn?.sneakArmed && !reveal && !card;
-  const dcChip = fillIn && !turn?.sneakArmed ? turn?.checkTarget : undefined;
+  // A buzzer phase has no persuasion check (boss-buzzer.md D6).
+  const dcChip = fillIn && !buzz && !turn?.sneakArmed ? turn?.checkTarget : undefined;
   // On a YouTube question the chips, hints and typed answer stand beside the video, not over it (D14).
   const beside = (
     <>
+      {buzzBox}
       {sneakChip && (
         <div className="px-chip" style={{ ...CHIP, background: "#ff8787" }}>
           🗝️ 偷襲！這題答對加碼
@@ -324,7 +344,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         {dish && eater ? (
           <TurnRibbon color={look(eaterIdx).hat} maxWidth={420}>🍲 {eater.name}</TurnRibbon>
         ) : (
-          turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={420 /* a 20-character name must leave the map its width (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>
+          buzz ? (
+            <TurnRibbon color={turn ? look(turnIdx).hat : undefined} maxWidth={420}>{turn ? `${turn.name} 搶到了！` : "首領戰　搶答！"}</TurnRibbon>
+          ) : (
+            turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={420 /* a 20-character name must leave the map its width (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>
+          )
         )}
         <MapStrip view={view} />
       </div>
@@ -399,6 +423,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           // once React reuses this node for the next media question (adversarial review).
           <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
         )}
+        {!asking && buzzBox && <div className="mt-3">{buzzBox}</div>}
         {!asking && !reveal && !card && question && !question.options && (
           <MageHint hint={view.mageHints?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
         )}

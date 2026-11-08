@@ -15,6 +15,9 @@ import {
   pickBlock,
   pickableQuestionIds,
   enterNextBossPhase,
+  buzzIn,
+  openBuzz,
+  skipBuzz,
   warriorRoll,
   endGame,
   spendAbility,
@@ -2004,5 +2007,109 @@ describe("monster defeats (docs/designs/monster-catalog.md §3)", () => {
     const game = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], ...deck(3, 1), ["b1"], { bossThreshold: 3 }, 2, rng);
     expect(drawn.length).toBeGreaterThan(1);
     expect(game.variantSeed).toBe(Math.floor(drawn.at(-1)! * 2 ** 32));
+  });
+});
+
+describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
+  /** Three teams; T0 alone in the boss room. Phase 1 is p1-a with 1 HP, phase 2 a buzzer phase b-a/b-b/b-c with 2 HP. */
+  function buzzer(): GameState {
+    const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
+    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["b-a", "b-b", "b-c"], buzzer: true }]);
+    g = sendToBoss(g, "T0");
+    g = { ...g, currentTurnIndex: 0 };
+    g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
+    return enterNextBossPhase(g);
+  }
+  const judge = (g: GameState, team: string, correct: boolean) => answerQuestion(g, team, g.boss.currentQuestionId, correct, "retry", first);
+
+  it("the buzzer phase pulls every team into the boss room, and only the view of that phase carries a buzz", () => {
+    const g = buzzer();
+    expect(g.teams.every((t) => t.inBoss)).toBe(true);
+    expect(getSpectatorView(g).buzz).toEqual({ questionId: "b-a", out: [] });
+    expect(getSpectatorView(sendToBoss(createGame([{ id: "T0", name: "A" }], ...deck(1), ["x"], { bossThreshold: 15 }, 1, first), "T0")).buzz).toBeUndefined();
+  });
+
+  it("a video waits for ▶; the first buzz wins and takes the turn; later buzzes are refused", () => {
+    let g = buzzer();
+    expect(() => buzzIn(g, "T2", "b-a", false)).toThrow("buzz_closed");
+    g = openBuzz(g, "b-a");
+    g = buzzIn(g, "T2", "b-a", false);
+    expect(g.buzz).toMatchObject({ questionId: "b-a", teamId: "T2", open: true });
+    expect(currentTurnTeamId(g)).toBe("T2");
+    expect(() => buzzIn(g, "T1", "b-a", true)).toThrow("buzz_taken");
+    expect(() => buzzIn(g, "T1", "b-b", true)).toThrow("stale_question");
+    // Only the buzzing team is judged.
+    expect(() => judge(g, "T1", true)).toThrow(InvalidActionError);
+  });
+
+  it("a right buzz is a plain hit: one HP, the hit reward, a new question that needs a new buzz", () => {
+    const g = buzzIn(buzzer(), "T1", "b-a", true);
+    const { game, outcome } = judge(g, "T1", true);
+    expect(outcome).toMatchObject({ type: "correct-boss-hit", teamId: "T1", bossHpRemaining: 1, reward: 10 });
+    expect(game.boss.currentQuestionId).toBe("b-b");
+    expect(game.buzz).toBeUndefined();
+    expect(getSpectatorView(game).buzz).toEqual({ questionId: "b-b", out: [] });
+  });
+
+  it("a wrong buzz shuts that team out of the question; the others may still buzz", () => {
+    const { game, outcome } = judge(buzzIn(buzzer(), "T1", "b-a", true), "T1", false);
+    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T1" });
+    expect(game.boss.currentQuestionId).toBe("b-a");
+    expect(game.buzz).toEqual({ questionId: "b-a", out: ["T1"] });
+    expect(() => buzzIn(game, "T1", "b-a", true)).toThrow("buzz_out");
+    expect(buzzIn(game, "T0", "b-a", true).buzz?.teamId).toBe("T0");
+  });
+
+  it("once every online team is out, the question moves on unrevealed; an offline team does not hold it up", () => {
+    let g = setTeamOnline(buzzer(), "T2", false);
+    g = judge(buzzIn(g, "T0", "b-a", true), "T0", false).game;
+    const { game, outcome } = judge(buzzIn(g, "T1", "b-a", true), "T1", false);
+    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T1", newBossQuestion: true });
+    expect(game.boss.currentQuestionId).toBe("b-b");
+    expect(game.revealedQuestionIds).not.toContain("b-a");
+    expect(game.buzz).toBeUndefined();
+    expect(() => buzzIn(game, "T2", "b-b", true)).toThrow("cannot_buzz");
+  });
+
+  it("a buzzing team that drops lets go of the buzz without being shut out", () => {
+    const g = setTeamOnline(buzzIn(buzzer(), "T1", "b-a", true), "T1", false);
+    expect(g.buzz).toMatchObject({ questionId: "b-a", out: [] });
+    expect(g.buzz?.teamId).toBeUndefined();
+    expect(buzzIn(setTeamOnline(g, "T1", true), "T1", "b-a", true).buzz?.teamId).toBe("T1");
+  });
+
+  it("the host's skip moves the question on unrevealed, but not while a team holds the buzz", () => {
+    const g = buzzer();
+    expect(() => skipBuzz(buzzIn(g, "T0", "b-a", true))).toThrow("buzz_taken");
+    const skipped = skipBuzz(judge(buzzIn(g, "T0", "b-a", true), "T0", false).game);
+    expect(skipped.boss.currentQuestionId).toBe("b-b");
+    expect(skipped.revealedQuestionIds).not.toContain("b-a");
+    expect(getSpectatorView(skipped).buzz).toEqual({ questionId: "b-b", out: [] });
+    expect(() => skipBuzz(createGame([{ id: "T0", name: "A" }], ...deck(1), ["x"], { bossThreshold: 0 }, 1, first))).toThrow("not_buzzer_phase");
+  });
+
+  it("no class ability, check, prayer or typed answer in a buzzer phase", () => {
+    let g = buzzer();
+    g = { ...g, teams: g.teams.map((t) => (t.id === "T0" ? { ...t, classId: "cleric" as const, abilityUses: 2 } : t)) };
+    g = buzzIn(g, "T0", "b-a", true);
+    expect(() => spendAbility(g, "T0", "cleric")).toThrow("buzzer_phase");
+    expect(() => recordCheck(g, "T0", "b-a", 10, "答案")).toThrow("buzzer_phase");
+    expect(() => submitText(g, "T0", "b-a", "x")).toThrow("buzzer_phase");
+    expect(canPrayBeforeJudge(g, "T0")).toBe(false);
+  });
+
+  it("the final blow of a buzzer phase still kills with the 4d20", () => {
+    const g = judge(buzzIn(buzzer(), "T0", "b-a", true), "T0", true).game;
+    const { game, outcome } = judge(buzzIn(g, "T2", "b-b", true), "T2", true);
+    expect(outcome).toMatchObject({ type: "correct-boss-hit", teamId: "T2", bossKilled: true });
+    expect(game.phase).toBe("finished");
+    expect(getSpectatorView(game).buzz).toBeUndefined();
+  });
+
+  it("the buzz survives a JSON round trip (snapshot save and restore)", () => {
+    const g = judge(buzzIn(buzzer(), "T1", "b-a", true), "T1", false).game;
+    const restored = JSON.parse(JSON.stringify(g)) as GameState;
+    expect(restored.buzz).toEqual({ questionId: "b-a", out: ["T1"] });
+    expect(() => buzzIn(restored, "T1", "b-a", true)).toThrow("buzz_out");
   });
 });

@@ -559,6 +559,38 @@ function FinishedPanel({ won, finale, podium, onPodium }: { won: boolean; finale
   );
 }
 
+/** The buzzer phase's one button (boss-buzzer.md D7): grey while the music waits for ▶, red to buzz, gold once we
+ * buzzed first, grey again when another team holds it or we were judged wrong on this question. */
+function BuzzButton({ game, buzz, teamId, send }: { game: StateMessage; buzz: NonNullable<StateMessage["view"]["buzz"]>; teamId: string; send: (m: ClientMessage) => void }) {
+  const holder = game.view.teams.find((t) => t.id === buzz.teamId);
+  const waiting = game.question?.content.kind === "youtube" && !buzz.open;
+  const [look, label]: [string, React.ReactNode] =
+    buzz.teamId === teamId
+      ? ["var(--warn)", <>你們搶到了！<span className="block text-[18px]">大聲說答案</span></>]
+      : holder
+        ? ["#5a4a60", `${holder.name}搶到了`]
+        : buzz.out.includes(teamId)
+          ? ["#5a4a60", <>這題答錯了<span className="block text-[16px]">等下一題</span></>]
+          : waiting
+            ? ["#5a4a60", "等音樂開始…"]
+            : ["#ff5050", "搶答！"];
+  const live = look === "#ff5050";
+  return (
+    <div data-testid="buzz" className="flex justify-center py-2">
+      <button
+        type="button"
+        disabled={!live}
+        aria-live="polite"
+        onClick={() => send({ type: "TEAM_BUZZ", questionId: buzz.questionId })}
+        className="flex aspect-square w-[min(72vw,280px)] flex-col items-center justify-center rounded-full text-center text-[34px]"
+        style={{ background: look, color: live ? "#fff" : look === "var(--warn)" ? "var(--ink)" : "#ccc", boxShadow: "0 0 0 5px var(--k), inset 0 -12px 0 #0004", textShadow: live ? "3px 3px 0 var(--k)" : undefined }}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+
 export default function PlayPage() {
   const { code } = useParams<{ code: string }>();
   const searchParams = useSearchParams();
@@ -704,6 +736,8 @@ export default function PlayPage() {
   const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
   const finished = game?.phase === "finished";
+  /** A buzzer boss phase (docs/designs/boss-buzzer.md): one big 搶答 button, answers spoken aloud. */
+  const buzz = !finished && !game?.phaseCard ? game?.view.buzz : undefined;
   /** The how-to-play page on the big screen: the phone points there and never repeats the rules (D7). */
   const intro = !finished ? (game?.intro?.page ?? null) : null;
   /** 擲先攻 (lib/initiative.ts): the phone rolls here, the big screen shows every team's die. */
@@ -861,7 +895,7 @@ export default function PlayPage() {
 
         {game && !finished && !intro && !initiative && turn && (
           <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
-            {isMyTurn ? "輪到我們了！" : `輪到：${turn.team?.name ?? "…"}`}
+            {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? "輪到我們了！" : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
         )}
 
@@ -878,7 +912,7 @@ export default function PlayPage() {
         )}
 
         {/* From phase 2 on, a boss turn keeps the phase's rule in view (D5). */}
-        {game && !finished && !game.phaseCard && turn?.inBoss && game.bossPhaseInfo && (
+        {game && !finished && !game.phaseCard && (turn?.inBoss || buzz) && game.bossPhaseInfo && (
           <div data-testid="phone-phase-rule">
             <Panel tone="turn" className="px-3 py-[6px] text-[16px]">
               {game.bossPhaseInfo.name}：{game.bossPhaseInfo.rule}
@@ -887,10 +921,12 @@ export default function PlayPage() {
         )}
 
         {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
-        {game && !finished && !revealed && isMyTurn && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} />}
+        {game && buzz && !revealed && game.question && <BuzzButton game={game} buzz={buzz} teamId={teamId} send={send} />}
+
+        {game && !finished && !buzz && !revealed && isMyTurn && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} />}
 
         {/* #104: our own host-judged text turn is a fill-in: the team types its answer for the host. */}
-        {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && !game.question.items && (
+        {game && !finished && !buzz && !revealed && isMyTurn && game.question && !game.question.options && !game.question.items && (
           <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint={noHintQid === game.question.id} />
         )}
 

@@ -235,7 +235,11 @@ export type ClientMessage =
   /** The team's typed answer to a text question, shown to the host to judge. One per question. */
   /** `eventId` is the STATE eventId the answer was typed under; an older one (a send that arrived after
    * the host judged that attempt) is dropped, like HOST_JUDGE. Optional so a phone on an older build still sends. */
-  | { type: "TEAM_SUBMIT_TEXT"; questionId: string; text: string; eventId?: number };
+  | { type: "TEAM_SUBMIT_TEXT"; questionId: string; text: string; eventId?: number }
+  /** 搶答 on the boss question of a buzzer phase (docs/designs/boss-buzzer.md): the first the room handles wins. */
+  | { type: "TEAM_BUZZ"; questionId: string }
+  /** 沒人答對，換下一題: the buzzer phase's question moves on unrevealed (boss-buzzer.md D4). */
+  | { type: "HOST_BUZZ_SKIP"; questionId: string };
 
 /** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the crit die
  * after a correct lock (20 is a critical hit, 1 a fumble), a fill-in's persuasion check (`bonus` + the die against
@@ -267,7 +271,7 @@ export type ServerErrorCode =
   | "invalid_action";
 
 /** One per kind of event: the big screen's sound effect for it (lib/sfx.ts). */
-export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill" | "roll" | "crit" | "fumble" | "check-pass" | "check-fail" | "cook";
+export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill" | "roll" | "crit" | "fumble" | "check-pass" | "check-fail" | "cook" | "buzz";
 
 export const MEDIA_ACTIONS = ["play", "pause", "restart"] as const;
 export type MediaAction = (typeof MEDIA_ACTIONS)[number];
@@ -585,6 +589,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.correct && (m.fleeChoice === "team" || m.fleeChoice === "pray")) return null;
       if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       return { type: "HOST_JUDGE", teamId, questionId, correct: m.correct, fleeChoice: m.fleeChoice, ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}) };
+    }
+    case "TEAM_BUZZ":
+    case "HOST_BUZZ_SKIP": {
+      const questionId = str(m.questionId, MAX_ID);
+      return questionId === null ? null : { type: m.type, questionId };
     }
     case "HOST_UNDO_WRONG": {
       const teamId = str(m.teamId, MAX_ID);

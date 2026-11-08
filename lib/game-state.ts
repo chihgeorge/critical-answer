@@ -202,6 +202,20 @@ export interface BossState {
 export interface BossPhaseState {
   maxHp: number;
   questionIds: string[];
+  /** Every team buzzes in on this phase's questions (docs/designs/boss-buzzer.md). Never the first phase. */
+  buzzer?: true;
+}
+
+/** The buzz on the boss question of a buzzer phase (boss-buzzer.md). Saved with the game. */
+export interface BuzzState {
+  /** The boss question this buzz is about: a buzz for any other question is stale. */
+  questionId: string;
+  /** Buzzing is open: the host pressed ▶ on a video question (D5). The room treats any other question as open. */
+  open?: true;
+  /** The team that buzzed first and answers aloud now. */
+  teamId?: string;
+  /** Teams judged wrong on this question: they cannot buzz on it again (D4). */
+  out: string[];
 }
 
 export interface GameConfig {
@@ -249,6 +263,8 @@ export interface GameState {
   /** The cleric whose prayer kept this turn: it cannot pray again until the turn moves on. */
   prayerTurn?: string;
   boss: BossState;
+  /** The buzz on the current boss question while a buzzer phase runs; absent otherwise (boss-buzzer.md). */
+  buzz?: BuzzState;
   /** Room monsters defeated so far, per catalog id: each repeat appearance wears the next variant
    * (docs/designs/monster-catalog.md §3). Absent until the first, and in saves from before the catalog. */
   defeats?: Record<string, number>;
@@ -595,12 +611,15 @@ export function enterNextBossPhase(game: GameState): GameState {
   const phaseIndex = boss.phaseIndex + 1;
   const phase = boss.phases[phaseIndex];
   if (!boss.phasePending || !phase) throw new InvalidActionError("no boss phase is waiting to start");
+  // A buzzer phase is everyone's final fight (boss-buzzer.md D2): every team still in a room walks in.
+  const pulled = phase.buzzer ? game.teams.reduce<GameState>((g, t) => (t.inBoss ? g : sendToBoss(g, t.id)), { ...game, pendingWrong: null }) : game;
   // The old phase's question leaves play, so its wrong tiles go with it.
-  const cleared = dropEliminated(game, boss.currentQuestionId);
+  const cleared = dropEliminated(pulled, boss.currentQuestionId);
   return {
-    ...game,
+    ...pulled,
     ...cleared,
-    teams: resetBossSelections(game.teams),
+    buzz: undefined,
+    teams: resetBossSelections(pulled.teams),
     boss: {
       ...boss,
       phaseIndex,
@@ -612,6 +631,51 @@ export function enterNextBossPhase(game: GameState): GameState {
       phasePending: undefined,
     },
   };
+}
+
+/** Whether a buzzer phase is being fought now: every team buzzes in, nobody takes turns (boss-buzzer.md). */
+export function isBuzzPhase(game: GameState): boolean {
+  const boss = game.boss;
+  return game.phase === "playing" && !boss.phasePending && boss.phases[boss.phaseIndex]?.buzzer === true;
+}
+
+/** The buzz on the current boss question: the saved one, or a fresh one when the question moved on. */
+function currentBuzz(game: GameState): BuzzState {
+  const id = game.boss.currentQuestionId;
+  return game.buzz?.questionId === id ? game.buzz : { questionId: id, out: [] };
+}
+
+/** The host pressed ▶ on the boss question's video: buzzing opens (D5). A no-op outside a buzzer phase. */
+export function openBuzz(game: GameState, questionId: string): GameState {
+  if (!isBuzzPhase(game) || questionId !== game.boss.currentQuestionId) return game;
+  const buzz = currentBuzz(game);
+  return buzz.open ? game : { ...game, buzz: { ...buzz, open: true } };
+}
+
+/** `teamId` buzzes in on `questionId`. The first buzz the room handles wins (D: latency). `open`: buzzing is open
+ * for this question (the room's call: a video waits for ▶, D5). The winner takes the turn, so HOST_JUDGE judges it. */
+export function buzzIn(game: GameState, teamId: string, questionId: string, open: boolean): GameState {
+  if (!isBuzzPhase(game)) throw new InvalidActionError("not_buzzer_phase");
+  if (questionId !== game.boss.currentQuestionId) throw new InvalidActionError("stale_question");
+  const team = getTeam(game, teamId);
+  const buzz = currentBuzz(game);
+  if (!open && !buzz.open) throw new InvalidActionError("buzz_closed");
+  if (buzz.teamId) throw new InvalidActionError("buzz_taken");
+  if (buzz.out.includes(teamId)) throw new InvalidActionError("buzz_out");
+  if (!team.online || !team.inBoss) throw new InvalidActionError("cannot_buzz");
+  return { ...game, buzz: { ...buzz, teamId }, currentTurnIndex: game.turnOrder.indexOf(teamId) };
+}
+
+/** 沒人答對，換下一題 (D4): the boss question moves on, unrevealed, so it may come round again. */
+export function skipBuzz(game: GameState): GameState {
+  if (!isBuzzPhase(game)) throw new InvalidActionError("not_buzzer_phase");
+  if (game.buzz?.questionId === game.boss.currentQuestionId && game.buzz.teamId) throw new InvalidActionError("buzz_taken");
+  return { ...game, buzz: undefined, teams: resetBossSelections(game.teams), boss: { ...game.boss, ...rotateBoss(game.boss, game.revealedQuestionIds) } };
+}
+
+/** No class ability, check, prayer or typed answer in a buzzer phase (D6): answers are spoken after a buzz. */
+function assertNotBuzz(game: GameState) {
+  if (isBuzzPhase(game)) throw new InvalidActionError("buzzer_phase");
 }
 
 /** The id of the team whose turn it currently is, skipping offline teams (T7). */
@@ -748,6 +812,9 @@ export function answerQuestion(
   let outcome: AnswerOutcome;
 
   if (inBoss && boss.phasePending) throw new InvalidActionError("the next boss phase has not started yet");
+  // A buzzer phase judges only the team that buzzed first (boss-buzzer.md).
+  const buzzing = isBuzzPhase(game);
+  if (buzzing && game.buzz?.teamId !== teamId) throw new InvalidActionError("no_buzz");
 
   if (inBoss) {
     const lastPhase = boss.phaseIndex >= boss.phases.length - 1;
@@ -787,6 +854,7 @@ export function answerQuestion(
           ...next,
           ...(phasePending ? { phasePending } : {}),
         },
+        buzz: undefined,
       };
       outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, ...gain, ...(killBonus === undefined ? {} : { killBonus }), ...rollMark };
 
@@ -801,7 +869,10 @@ export function answerQuestion(
       const shownWrong = (game.eliminated[questionId]?.length ?? 0) > 0;
       const revealed = shownWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
       const phasePending = usedUp(revealed) ? ("exhausted" as const) : undefined;
-      const rotated = !phasePending && (fleeChoice === "flee" || shownWrong) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
+      // A wrong buzz shuts this team out of the question (D4); once every online team is out, the question moves on unrevealed.
+      const out = buzzing ? [...game.buzz!.out, teamId] : [];
+      const allOut = buzzing && game.teams.every((t) => !t.online || !t.inBoss || out.includes(t.id));
+      const rotated = !phasePending && (fleeChoice === "flee" || shownWrong || allOut) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
       const rotatedBossQuestionId = rotated.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a rotation changes
       // the question for every team in boss phase, so every one of their picks resets —
@@ -811,6 +882,7 @@ export function answerQuestion(
         revealedQuestionIds: revealed,
         teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game.teams) : game.teams,
         boss: { ...boss, ...rotated, ...(phasePending ? { phasePending } : {}) },
+        ...(buzzing ? { buzz: allOut ? undefined : { ...game.buzz!, teamId: undefined, out } } : {}),
       };
       outcome =
         fleeChoice === "flee"
@@ -898,6 +970,7 @@ export function answerQuestion(
  * retry/flee). The room checks its own beats (locks, rolls). */
 function assertAbilityTurn(game: GameState, teamId: string, classId: ClassId) {
   assertPlaying(game);
+  assertNotBuzz(game);
   assertTurn(game, teamId);
   if (getTeam(game, teamId).classId !== classId) throw new InvalidActionError(`${teamId} is not a ${classId}`);
   if (game.pendingWrong) throw new InvalidActionError(`${teamId} already locked a wrong answer`);
@@ -980,6 +1053,7 @@ export function checkTarget(game: GameState, teamId: string, questionId: string)
  * fails; otherwise die + bonus >= DC passes. Not a judgment: the turn stays, and a natural 20's win is the room's to apply. */
 export function recordCheck(game: GameState, teamId: string, questionId: string, value: number, answer: string): GameState {
   assertPlaying(game);
+  assertNotBuzz(game);
   if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError("not_your_turn");
   assertCurrentQuestion(game, teamId, questionId);
   if (game.checks?.[checkKey(questionId, teamId)]) throw new InvalidActionError("check_done");
@@ -1003,7 +1077,7 @@ export function armSneak(game: GameState, teamId: string): GameState {
 /** Whether `teamId` is a cleric that may pray this turn: the game on, a use left, no prayer yet this turn. */
 function clericMayPray(game: GameState, teamId: string): boolean {
   const team = game.teams.find((t) => t.id === teamId);
-  return game.phase === "playing" && team?.classId === "cleric" && team.abilityUses > 0 && game.prayerTurn !== teamId;
+  return game.phase === "playing" && !isBuzzPhase(game) && team?.classId === "cleric" && team.abilityUses > 0 && game.prayerTurn !== teamId;
 }
 
 /** Whether `teamId` is a cleric that could pray on a wrong answer now: a use left, no prayer yet this turn. */
@@ -1127,6 +1201,7 @@ export function recordOptionSelection(game: GameState, teamId: string, questionI
  */
 export function submitText(game: GameState, teamId: string, questionId: string, text: string): GameState {
   assertPlaying(game);
+  assertNotBuzz(game);
   if (game.pendingWrong) throw new InvalidActionError("A wrong answer is already waiting for its choice");
   assertTurn(game, teamId);
   assertCurrentQuestion(game, teamId, questionId);
@@ -1182,8 +1257,11 @@ function patchTeam(teams: Team[], teamId: string, patch: (t: Team) => Partial<Te
 /** Mark a team offline/online — a disconnected team is skipped by advanceTurn (T7). */
 export function setTeamOnline(game: GameState, teamId: string, online: boolean): GameState {
   getTeam(game, teamId); // throws if unknown
+  // A buzzing team that drops lets go of the buzz, not judged (boss-buzzer.md): another team may buzz.
+  const dropped = !online && game.buzz?.teamId === teamId ? { buzz: { ...game.buzz, teamId: undefined } } : {};
   return {
     ...game,
+    ...dropped,
     teams: patchTeam(game.teams, teamId, () => ({ online })),
   };
 }
@@ -1237,13 +1315,17 @@ export interface SpectatorView {
   /** Persuasion checks per checkKey(questionId, teamId), written once their beat ends (dnd design R6). Absent from an older server. */
   checks?: Record<string, CheckRecord>;
   pendingWrong: WrongAnswer | null;
+  /** The buzz on the boss question, only while a buzzer phase is fought (boss-buzzer.md). Its presence is what tells
+   * every screen the phase is a buzzer one. */
+  buzz?: BuzzState;
   /** The cleric whose wrong lock waits for its 祈禱 (canPray), or null. */
   awaitingPrayer: string | null;
 }
 
 export function getSpectatorView(game: GameState): SpectatorView {
   return {
-    currentTurnTeamId: currentTurnTeamId(game),
+    // A buzzer phase has no turns: the team that buzzed answers, nobody else is on turn (boss-buzzer.md).
+    currentTurnTeamId: isBuzzPhase(game) ? (currentBuzz(game).teamId ?? null) : currentTurnTeamId(game),
     teams: game.teams.map((t) => ({
       id: t.id,
       name: t.name,
@@ -1271,6 +1353,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
     mageHints: game.mageHints ?? {},
     checks: game.checks ?? {},
     pendingWrong: game.pendingWrong,
+    ...(isBuzzPhase(game) ? { buzz: currentBuzz(game) } : {}),
     awaitingPrayer: game.pendingWrong && canPray(game, game.pendingWrong.teamId) ? game.pendingWrong.teamId : null,
   };
 }
