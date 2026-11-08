@@ -1,6 +1,20 @@
 import { test, expect, type Page, type Locator, type Request } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
+// PROBE (draft probe PR only, never merged): one line per test with navigations, bank requests and page logs.
+const probeLog = new WeakMap<Page, string[]>();
+test.beforeEach(({ page }) => {
+  const t0 = Date.now(), ev: string[] = [];
+  probeLog.set(page, ev);
+  page.on("framenavigated", (f) => { if (f === page.mainFrame()) ev.push(`nav@${Date.now() - t0} ${f.url().replace(/^https?:\/\/[^/]+/, "")}`); });
+  page.on("request", (r) => { if (/\/api\/bank$/.test(r.url())) ev.push(`${r.method()}@${Date.now() - t0}`); });
+  page.on("console", (m) => ev.push(`con@${Date.now() - t0} ${m.type()} ${m.text().slice(0, 140)}`));
+  page.on("pageerror", (e) => ev.push(`err@${Date.now() - t0} ${String(e).slice(0, 140)}`));
+});
+test.afterEach(({ page }, info) => {
+  console.log(`PROBE ${info.status} ${info.title.slice(0, 40)} :: ${(probeLog.get(page) ?? []).join(" | ")}`);
+});
+
 /** Every question row carries `data-testid="question-{id}"` (app/bank-editor/page.tsx) — far more
  * robust than climbing from a labeled field via xpath now that a row's content/explanation
  * MediaPicker adds extra wrapper divs around the actual text input (docs/designs/

@@ -43,6 +43,7 @@ function useOwnerKey(onRestored: (key: string) => void) {
     // A named function, not the effect body itself: react-hooks/set-state-in-effect.
     function restore() {
       const stored = readStored(OWNER_KEY_STORAGE);
+      console.log(`PROBE restore stored=${!!stored} t=${Math.round(performance.now())}`);
       if (stored) {
         setKey(stored);
         onRestored(stored);
@@ -141,6 +142,7 @@ export default function BankEditorPage() {
   const load = async (key: string) => {
     if (!key) return;
     const seq = ++loadSeq.current;
+    console.log(`PROBE load start seq=${seq} t=${Math.round(performance.now())}`);
     setLoading(true);
     setError("");
     try {
@@ -159,6 +161,7 @@ export default function BankEditorPage() {
       const versioned: { bank: Bank; version: number; unreadable?: true; outdated?: number } = await res.json();
       if (seq !== loadSeq.current) return;
       const stale = [...versioned.bank.rooms.map((r) => r.monster), versioned.bank.boss.monster].some((m) => typeof m !== "string");
+      console.log(`PROBE load land seq=${seq} t=${Math.round(performance.now())}`);
       setBank(versioned.bank);
       savedBank.current = versioned.bank;
       setVersion(versioned.version);
