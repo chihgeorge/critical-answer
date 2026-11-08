@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.48.0.1] - 2026-11-08
+
+### Fixed
+- In the bank editor, an edit made right after the bank appeared could be lost. If the owner key was typed before the page was ready, the page also loaded the bank on its own. That load could land first, and the 載入題庫 click's load then replaced the edit. The questions are now locked while a load or a save is in flight. This was why the bank-editor multiple-choice test failed now and then in CI (on main, after #150).
+
 ## [0.48.0.0] - 2026-11-08
 
 ### Added

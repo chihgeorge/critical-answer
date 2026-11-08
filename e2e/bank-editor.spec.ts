@@ -307,7 +307,7 @@ test("an older load finishing never clears the loading state while the newest lo
 // Value: protects=儲存 is disabled while a load is in flight and 載入題庫 while a save is in flight;
 // fails_when=`|| loading` or `|| saving` is dropped from either button's disabled; why_new=no test holds a request
 // to observe the in-flight button state; seam=none; no_claim=keyboard or programmatic submits bypassing the button
-test("save and load are mutually exclusive: each button is disabled while the other request is in flight", async ({ page }) => {
+test("save and load are mutually exclusive, and the questions are locked while either request is in flight", async ({ page }) => {
   await page.goto("/bank-editor");
   await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
@@ -321,12 +321,16 @@ test("save and load are mutually exclusive: each button is disabled while the ot
     await route.continue();
   });
 
-  // Load in flight: the bank stays on screen, but its save button is locked.
+  // Load in flight: the bank stays on screen, but it is locked, save button and fields alike, so no edit
+  // can be made that the landing load would drop.
+  const kind = rows(page.getByTestId("bank-pool-1")).first().getByLabel("題型");
   await page.getByRole("button", { name: "載入題庫" }).click();
   await expect(page.getByRole("button", { name: "載入中…" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "儲存全部變更" })).toBeDisabled();
+  await expect(kind).toBeDisabled();
   release();
   await expect(page.getByRole("button", { name: "儲存全部變更" })).toBeEnabled();
+  await expect(kind).toBeEnabled();
 
   // Save in flight: the load button is locked.
   held = new Promise<void>((r) => (release = r));
@@ -334,6 +338,7 @@ test("save and load are mutually exclusive: each button is disabled while the ot
   await page.getByRole("button", { name: "儲存全部變更" }).click();
   await expect(page.getByRole("button", { name: "儲存中…" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "載入題庫" })).toBeDisabled();
+  await expect(kind).toBeDisabled();
   release();
   await expect(page.getByRole("button", { name: "載入題庫" })).toBeEnabled();
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);

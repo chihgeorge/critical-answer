@@ -358,7 +358,11 @@ export default function BankEditorPage() {
       )}
 
       {bank && (
-        <div className="flex flex-col gap-4">
+        <>
+        {/* Locked while a load or save is in flight: either one ends in setBank with the server's bank, which
+            would drop an edit made meanwhile (an auto-load landing before the clicked load did, CI on main #150).
+            The save button stays outside, so it keeps focus while it saves. */}
+        <fieldset disabled={loading || saving} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
           <div role="tablist" className="flex flex-wrap gap-2">
             {(["rooms", ...DIFFICULTIES, "boss"] as Tab[]).map((t) => (
               <PixelButton
@@ -438,10 +442,11 @@ export default function BankEditorPage() {
               </div>
             );
           })()}
+        </fieldset>
           <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving || loading || readOnly}>
             {saving ? "儲存中…" : "儲存全部變更"}
           </PixelButton>
-        </div>
+        </>
       )}
     </main>
   );
