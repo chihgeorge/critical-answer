@@ -373,7 +373,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             next question never shows underneath (or behind) the previous answer. */}
         {card ? (
           <div data-testid="phase-card" className="flex flex-col items-center gap-2">
-            <div className="px-title-danger" style={{ fontSize: 34, lineHeight: 1.25 }}>
+            <div className="px-title-danger px-title-sm" style={{ fontSize: 34, lineHeight: 1.25 }}>
               第{ordinal(view.bossPhase)}階段：{card.name}
             </div>
             <div className="text-[22px]">{card.rule}</div>
@@ -530,7 +530,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
         </div>
         {reveal ? (
           <div data-testid="event-result" className="flex flex-col items-center gap-1">
-            <div className="px-title-gold" style={{ fontSize: 38, lineHeight: 1.2 }}>{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
+            <div className="px-title-gold px-title-sm" style={{ fontSize: 38, lineHeight: 1.2 }}>{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
             <div className="text-[24px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{name} {eventEffectLine(reveal)}</div>
           </div>
         ) : (

@@ -265,6 +265,8 @@ body {
 @keyframes px-out { to { visibility: hidden; } }
 .px-door-title { animation: px-out 0s 0.6s both; }
 .px-title-gold { color: var(--warn); text-shadow: 4px 4px 0 var(--k), -4px -4px 0 var(--k), 4px -4px 0 var(--k), -4px 4px 0 var(--k), 0 6px 0 var(--k); }
+/* Titles under ~40px: the 3–4px outline filled in their strokes, so they get a 2px one. */
+.px-title-sm { text-shadow: 2px 2px 0 var(--k), -2px -2px 0 var(--k), 2px -2px 0 var(--k), -2px 2px 0 var(--k), 0 3px 0 var(--k); }
 .px-alarm-tint { background: #ff2a2a40; animation: px-out 0s 2.4s both; }
 .px-alarm-band { background: repeating-linear-gradient(-45deg, var(--warn) 0 28px, var(--k) 28px 56px); border-block: 6px solid var(--k);
   animation: px-alarm-band 2.4s steps(1) both; }
