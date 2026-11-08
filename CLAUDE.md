@@ -38,6 +38,10 @@ Client components (for example `app/bank-editor/page.tsx`) may import only the p
 
 `README.md`, `SECURITY.md` and every `docs/*.md` except `docs/going-public.md` are Traditional Chinese (Taiwan) with an English twin `X.en.md`. A PR that changes one language changes the other in the same PR. Both open with the switch line (`繁體中文 | [English](X.en.md)` / `[繁體中文](X.md) | English`) and keep the same headings, level by level. English docs link to English twins. A new guide in `docs/` needs its twin too. `npm run check:docs` enforces the pairing, the switch line, the heading levels, and every link and anchor. It does not check that a translation is up to date, or that an English doc links to English twins (`rules.en.md`, not `rules.md`). `TODOS.md`, `CHANGELOG.md`, `DESIGN.md`, `docs/designs/` and this file stay in one language.
 
+## Versions and changelog
+
+A PR never edits `VERSION`, the `package.json` version or `CHANGELOG.md`. It adds `changelog.d/<branch-slug>.md` (format in `changelog.d/README.md`; a feature opens with `bump: minor` front matter). The policy is `.gstack/ship-policy.json` (`changelog_fragments` + `merge: direct`), so `/ship` writes the fragment and no version. Once a PR's CI is green, it merges with `gh pr merge <n> --auto --squash --match-head-commit <sha>`: the ruleset's required check `check` waits for `static` and every e2e shard. Only a release PR (`gstack-release-stamp open`) moves the version and folds the fragments.
+
 ## Health Stack
 
 - typecheck: npx tsc --noEmit -p . && npx tsc --noEmit -p worker

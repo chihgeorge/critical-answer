@@ -45,6 +45,7 @@ next-env.d.ts
 
 .gstack/*
 !.gstack/pregate.json
+!.gstack/ship-policy.json
 
 # playwright
 /test-results/

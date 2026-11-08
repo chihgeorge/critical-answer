@@ -1,0 +1,2 @@
+### Changed
+- Pull requests no longer change `VERSION` or `CHANGELOG.md`. Each one adds a short file in `changelog.d/`, so two open pull requests never conflict on the version, and a green pull request can merge on its own (GitHub auto-merge). A release pull request sets the version and folds those files into the CHANGELOG. The rules are in `.gstack/ship-policy.json`, `changelog.d/README.md` and `docs/development.md`.
