@@ -223,8 +223,9 @@ export class DungeonRoom {
   /** The podium reveal (podium-reveal.md eng D20): the narrator's calls, and when their first beat starts on the room's
    * clock. Null until the narration is in. Saved, so a restart keeps the reveal where it was. */
   private podium: { lines: string[]; at: number } | null = null;
-  /** The earliest the reveal's first beat may start, fixed when the game finishes: after the boss cooks, or after the
-   * last line is read. Saved, so a restart mid-cooking still waits for the dish. */
+  /** The earliest the reveal's first beat may start, set when the game finishes: after the boss cooks, after the last
+   * line is read, or at most END_READ_CAP_MS after 結束冒險, when revealAfterRead may move it up once the screen has
+   * read the last narration. Saved, so a restart mid-cooking still waits for the dish. */
   private revealFrom: number | null = null;
   /** 結束冒險 came while the screen was still reading the last narration: its last line read moves revealFrom up.
    * shortcut: not saved, so a restarted room waits the whole END_READ_CAP_MS; fine for a one-off pause. */

@@ -1984,17 +1984,17 @@ describe("narration (T5-T7)", () => {
 
   describe("結束冒險 and the narration on screen", () => {
     /** A game whose start narration is in, ended by the host; `read` the screen read it out first. */
-    async function ended(read: boolean) {
+    async function ended(read: boolean, opts: ConstructorParameters<typeof DungeonRoom>[2] = {}) {
       const clock = { t: 10_000 };
-      const { room, hostConn } = start(2, { holdMs: 30, epilogueDelayMs: 4000, now: () => clock.t });
+      const { room, hostConn } = start(2, { holdMs: 30, epilogueDelayMs: 4000, now: () => clock.t, ...opts });
       await sleep(40);
       const n = all(room).filter((m) => m.type === "NARRATION").at(-1);
-      const readOut = () => send(room, makeConn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId: n.eventId, rev: n.rev ?? 0, done: n.lines.length });
+      const readOut = (done = n.lines.length) => send(room, makeConn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId: n.eventId, rev: n.rev ?? 0, done });
       if (read) readOut();
       send(room, hostConn, { type: "HOST_END_GAME" });
       await sleep(40);
       const podium = () => all(room).filter((m) => m.type === "STATE").at(-1)!.podium!;
-      return { clock, readOut, podium };
+      return { room, clock, readOut, podium };
     }
 
     // Value: protects=the first place call never cuts off the narration the big screen is still reading (owner,
@@ -2011,6 +2011,26 @@ describe("narration (T5-T7)", () => {
     it("starts after the usual delay when the narration was already read", async () => {
       const { podium } = await ended(true);
       expect(podium().elapsedMs).toBe(-4000);
+    });
+
+    it("a narration read only in part keeps the reveal held", async () => {
+      const { room, clock, readOut } = await ended(false);
+      clock.t += 5_000;
+      readOut(1);
+      expect((room as unknown as { revealFrom: number }).revealFrom).toBe(30_000);
+    });
+
+    it("a read reported before the AI's calls are in still starts the reveal a second after it", async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const provider = { name: "slow", narrate: async (e: { type: string }) => (e.type === "epilogue" ? (await gate, "太短") : "一行") };
+      const { clock, readOut, podium } = await ended(false, { provider, epilogueHoldMs: 5000 });
+      expect(podium().beats).toBeNull();
+      clock.t += 5_000;
+      readOut();
+      release();
+      await sleep(40);
+      expect(podium().elapsedMs).toBe(-1000);
     });
   });
 

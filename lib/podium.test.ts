@@ -102,11 +102,12 @@ describe("revealBeats", () => {
   // Value: protects=5–8 dice fit the big screen and the result only promises a reroll that follows; fails_when=over
   // four teams the result lists every team again, says 同點的重擲 for a tie below the podium, or miscounts the places.
   it("over four teams rolling, the result names nobody and promises a reroll only on the podium", () => {
-    const ids = ["甲", "乙", "丙", "丁", "戊", "己"];
+    const ids = ["甲", "乙", "丙", "丁", "戊", "己", "庚"];
     const t = teams(...ids.map((id) => [id, 0] as [string, number]));
     const result = (from: number, values: number[]) => revealBeats(t, ids, [{ from, teams: ids.slice(from - 1, from - 1 + values.length), values }]).find((b) => b.kind === "roll");
     expect(result(1, [9, 7, 5, 3, 1])).toMatchObject({ line: "第 1、2、3 名同分！擲 d20 搶上台", result: "點數最高的 3 隊上台" });
     expect(result(2, [9, 7, 5, 3, 1])).toMatchObject({ result: "點數最高的 2 隊上台" });
+    expect(result(3, [9, 7, 5, 3, 1])).toMatchObject({ result: "點數最高的上台" });
     // The 3s are fourth and fifth: nobody rerolls.
     expect(result(1, [9, 8, 7, 3, 3])).toMatchObject({ result: "點數最高的 3 隊上台" });
     expect(result(1, [9, 8, 5, 5, 1])).toMatchObject({ result: "同點的重擲！" });

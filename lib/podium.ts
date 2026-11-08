@@ -90,7 +90,7 @@ function rollTexts(roll: TieRoll, name: (id: string) => string): { line: string;
   }
   const again = rerolls ? "，同點的重擲" : "";
   // Over ROW_NAMES teams the names under the dice say who rolled what; listing them again wraps the result row.
-  if (order.length > ROW_NAMES) return { line, result: rerolls ? "同點的重擲！" : `點數最高的 ${places.length} 隊上台` };
+  if (order.length > ROW_NAMES) return { line, result: rerolls ? "同點的重擲！" : `點數最高的${places.length > 1 ? ` ${places.length} 隊` : ""}上台` };
   return { line, result: order.map((o) => `${name(o.id)} ${o.v}`).join("、") + again };
 }
 

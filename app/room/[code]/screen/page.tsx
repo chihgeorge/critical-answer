@@ -492,7 +492,7 @@ function CritKingCard({ names, count }: { names: string[]; count: number }) {
   );
 }
 
-function Finished({ view, winners, reveal, podium, narration, epilogue, cuisine, finale, say, onRead, onCook, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; podium?: PodiumReveal; narration: NarrationState; epilogue: string | null; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onCook: () => void; onPodium: () => void }) {
+function Finished({ view, winners, reveal, podium, narration, unread, epilogue, cuisine, finale, say, onRead, onCook, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; podium?: PodiumReveal; narration: NarrationState; unread: boolean; epilogue: string | null; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onCook: () => void; onPodium: () => void }) {
   const dish = reveal?.dish;
   const line = dish ? dishLine(dish, "", true) : "";
   // The boss cooks first and the winner waits (cooking R8, I4): only a kill this screen saw live plays it.
@@ -508,7 +508,8 @@ function Finished({ view, winners, reveal, podium, narration, epilogue, cuisine,
   const kingShown = king && (now.result || beats.indexOf(king) <= now.beat);
   const ended = cooked && now.done;
   // The narrator's calls are still being written: 「…」, not the kill-shot line left over (storyboard row 1).
-  const waiting = cooked && !!podium && podium.beats === null;
+  // A narration still being read after 結束冒險 stays up: the room starts the reveal once this screen has read it.
+  const waiting = cooked && !!podium && podium.beats === null && !unread;
   useEffect(() => {
     if (ended) onPodium();
     // onPodium reads refs only: it runs once, when the story may be read.
@@ -737,6 +738,8 @@ export default function ScreenPage() {
   /** typed: lines finished typing. spoken: lines finished speaking, or null when the voice isn't reading it.
    * sent: the last `done` reported to the room. */
   const progress = useRef<{ eventId: number; rev: number; lines: string[]; typed: number; spoken: number | null; sent: number } | null>(null);
+  /** The narration this screen has not read out yet (the end screen keeps it up after 結束冒險), or null. */
+  const [unreadId, setUnreadId] = useState<number | null>(null);
 
   function markRead(eventId: number, read: { typed?: number; spoken?: number }) {
     const p = progress.current;
@@ -746,6 +749,7 @@ export default function ScreenPage() {
     const done = readCount(p.typed, p.spoken);
     if (done <= p.sent) return;
     p.sent = done;
+    if (done >= p.lines.length) setUnreadId(null);
     send({ type: "SCREEN_NARRATION_PROGRESS", eventId, rev: p.rev, done });
   }
 
@@ -758,6 +762,7 @@ export default function ScreenPage() {
     if (p && p.eventId > msg.eventId) return;
     if (!p || p.eventId !== msg.eventId) {
       progress.current = { eventId: msg.eventId, rev, lines: msg.lines, typed: 0, spoken: null, sent: 0 };
+      setUnreadId(msg.eventId);
       if (voice) speak(msg.lines, msg.eventId);
       return;
     }
@@ -768,6 +773,7 @@ export default function ScreenPage() {
     if (d !== -1) {
       p.typed = Math.min(p.typed, d);
       if (p.spoken !== null) p.spoken = Math.min(p.spoken, d);
+      setUnreadId(msg.eventId);
     }
     // A report sent under the old rev may have crossed the edit and been dropped: say it again under the new one.
     if (newRev) {
@@ -990,7 +996,7 @@ export default function ScreenPage() {
           </>
         )}
         {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
