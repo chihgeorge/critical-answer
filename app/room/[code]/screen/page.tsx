@@ -124,8 +124,8 @@ function Lobby({ code, teams }: { code: string; teams: LobbyTeams }) {
 function TeamGroup({ teams, from, to, align }: { teams: LobbyTeams; from: number; to: number; align: "start" | "end" }) {
   const crowded = teams.length > 4;
   // Two rows of two cells per side when crowded: a cell's nameplate fits about 8 CJK characters, and a
-  // longer name ends in "…" (names are capped at 20).
-  const cell = crowded ? 190 : 96;
+  // longer name ends in "…" (names are capped at 20). Up to 4 teams, two cells of 132 fit a side inside the torches (a side is 397 wide, the torch ends at x 120).
+  const cell = crowded ? 190 : 132;
   return (
     <div
       className={`flex flex-1 flex-wrap items-end gap-x-2 gap-y-1 ${align === "end" ? "justify-end" : "justify-start"}`}
@@ -373,7 +373,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             next question never shows underneath (or behind) the previous answer. */}
         {card ? (
           <div data-testid="phase-card" className="flex flex-col items-center gap-2">
-            <div className="px-title-danger" style={{ fontSize: 34, lineHeight: 1.25 }}>
+            <div className="px-title-danger px-title-sm" style={{ fontSize: 34, lineHeight: 1.25 }}>
               第{ordinal(view.bossPhase)}階段：{card.name}
             </div>
             <div className="text-[22px]">{card.rule}</div>
@@ -463,10 +463,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         </div>
       </div>
       )}
-      {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster. */}
+      {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster; with tiles on the wall, a pill under B/D,
+          above the dialogue box (z 7) so a three-row narration line never hides it. */}
       {typeof answerLeft === "number" && !reveal && !card && (
-        <div className="absolute" style={{ left: "calc(50% + 170px)", bottom: 150, zIndex: 6 }}>
-          <AnswerClock key={answerLeft} ms={answerLeft} variant="big" onSecond={onClockSecond} />
+        <div className="absolute" style={wall || sortWall ? { right: 22, bottom: 116, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 6 }}>
+          <AnswerClock key={answerLeft} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} />
         </div>
       )}
       {(cook === null || cook === 0) && (
@@ -530,7 +531,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
         </div>
         {reveal ? (
           <div data-testid="event-result" className="flex flex-col items-center gap-1">
-            <div className="px-title-gold" style={{ fontSize: 38, lineHeight: 1.2 }}>{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
+            <div className="px-title-gold px-title-sm" style={{ fontSize: 38, lineHeight: 1.2 }}>{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
             <div className="text-[24px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{name} {eventEffectLine(reveal)}</div>
           </div>
         ) : (
@@ -635,7 +636,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
         </small>
         {result && <>{names}奪得榜首！</>}
         {cooked && !result && <span style={{ fontSize: 36 }}>名次揭曉中…</span>}
-        {killer && (!cooked || result) && <small data-testid="final-blow" className="mt-1 block text-[18px] text-white" style={{ textShadow: "2px 2px 0 var(--k)" }}>最後一擊：{killer}</small>}
+        {killer && !cooked && <small data-testid="final-blow" className="mt-1 block text-[18px] text-white" style={{ textShadow: "2px 2px 0 var(--k)" }}>最後一擊：{killer}</small>}
       </div>
       {/* The winning answer: the last correct judgment ends the game, so its reveal lands here, not on
           <Playing>. The podium is centered and about 546px wide, which leaves the left margin free
@@ -649,11 +650,13 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
         </div>
       )}
       {!cooked && dish && step === 3 && <DishOnStage dish={dish} title="今晚的大菜" cardTop={120} bottom={140} />}
-      {result && reveal && (
+      {result && (reveal || killer) && (
         <div data-testid="answer-reveal" className="absolute" style={{ left: 18, top: 160, width: 170, zIndex: 6 }}>
           <Panel tone="turn" className="px-3 py-2 text-[16px] leading-snug">
-            最後一題正解：{reveal.answer}
-            {reveal.dish && <div data-testid="dish-card">🍲 今晚的大菜：{reveal.dish.name}</div>}
+            {/* With the podium up, the kill line lives here: under the title it sat on the winner's crown. */}
+            {killer && <div data-testid="final-blow">最後一擊：{killer}</div>}
+            {reveal && <>最後一題正解：{reveal.answer}</>}
+            {reveal?.dish && <div data-testid="dish-card">🍲 今晚的大菜：{reveal.dish.name}</div>}
           </Panel>
         </div>
       )}
@@ -688,7 +691,8 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
           that saw the game end, only once first place's beat is over (cooking I4). */}
       <DialogueBox
         className="absolute"
-        style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
+        // The epilogue runs three lines or more; at 22px it stays under the podium (bottom 130) instead of covering the names.
+        style={{ left: 18, right: 18, bottom: 12, zIndex: 7, ...(ended && epilogue ? { fontSize: 22, lineHeight: 1.35 } : {}) }}
         loading={!(ended && epilogue) && !current && (!narration || waiting) && step !== 3}
         lines={step === 3 ? [line] : ended && epilogue ? [epilogue] : current ? [current.line] : waiting ? [] : (narration?.lines.slice(from) ?? [])}
         {...(step !== 3 && !(ended && epilogue) && !current && !waiting && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count + from) } : {})}

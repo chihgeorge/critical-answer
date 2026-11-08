@@ -571,7 +571,7 @@ function BuzzButton({ game, buzz, teamId, send }: { game: StateMessage; buzz: No
     buzz.teamId === teamId
       ? ["var(--warn)", <>你們搶到了！<span className="block text-[18px]">大聲說答案</span></>]
       : holder
-        ? [GREY, `${holder.name}搶到了`]
+        ? [GREY, <><span className="block px-8 text-[22px] [overflow-wrap:anywhere]">{holder.name}</span>搶到了</>]
         : buzz.out.includes(teamId)
           ? [GREY, <>這題答錯了<span className="block text-[16px]">等下一題</span></>]
           : waiting
@@ -914,7 +914,7 @@ export default function PlayPage() {
           <div data-testid="phone-phase-card">
             <Panel tone="lav" role="status" className="flex flex-col items-center gap-2 px-3 py-[14px] text-center">
               <LabelChip>還沒結束！</LabelChip>
-              <div className="px-title-danger text-[24px]">第{ordinal(game.view.bossPhase)}階段：{game.bossPhaseInfo.name}</div>
+              <div className="px-title-danger px-title-sm text-[24px]">第{ordinal(game.view.bossPhase)}階段：{game.bossPhaseInfo.name}</div>
               <div className="text-[18px]">{game.bossPhaseInfo.rule}</div>
             </Panel>
           </div>
@@ -1065,7 +1065,7 @@ function EventPanel({ game, teamId, send }: { game: StateMessage; teamId: string
       <div data-testid="phone-event-result" className="flex flex-col gap-3">
         <Panel className="flex flex-col items-center gap-1 px-3 py-[12px] text-center">
           <LabelChip>❓ 事件房</LabelChip>
-          <div className="px-title-gold text-[26px]">{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
+          <div className="px-title-gold px-title-sm text-[26px]">{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
           <div className="text-[18px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{eventEffectLine({ ...reveal, chefBonus: undefined })}</div>
           {reveal.chefBonus ? <div className="text-[15px]">（廚師 +{reveal.chefBonus}）</div> : null}
         </Panel>

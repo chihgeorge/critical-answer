@@ -18,7 +18,8 @@ export function D20({ value, size }: { value: number | string; size: number }) {
         const [a, b] = l.split(" ").map((p) => p.split(",").map(Number));
         return <line key={l} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} {...edge} />;
       })}
-      <text x="50" y="62" textAnchor="middle" fontFamily="'Press Start 2P', monospace" fontSize="20" fill="var(--k)">
+      {/* Two digits at 20 ran over the triangle's edges; 16 sits inside it, a little lower where the triangle is wider. */}
+      <text x="50" y={String(value).length > 1 ? 66 : 62} textAnchor="middle" fontFamily="'Press Start 2P', monospace" fontSize={String(value).length > 1 ? 16 : 20} fill="var(--k)">
         {value}
       </text>
     </svg>
