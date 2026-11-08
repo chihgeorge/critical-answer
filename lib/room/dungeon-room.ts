@@ -62,6 +62,7 @@ import {
   SERVE_HOLD_MS,
 } from "../protocol";
 import { revealBeats, revealCalls } from "../podium";
+import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
 import { gameLog } from "../game-log";
 import { catalogMonster, gameMonsters, monsterById } from "../monster-catalog";
 import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
@@ -129,6 +130,8 @@ export interface RoomOptions {
   now?: () => number;
   /** Every d20 lands here instead of on rng (e2e, worker E2E_DIE). */
   fixedDie?: number;
+  /** How long the 擲先攻 order holds before the first question (e2e, worker INITIATIVE_HOLD_MS). Default INITIATIVE_ORDER_MS. */
+  initiativeHoldMs?: number;
 }
 
 /** E2E_DIE as a die face: an integer 1-20, anything else is no fixed die. */
@@ -255,6 +258,14 @@ export class DungeonRoom {
    * first question, the start cue and the start narration wait for the host to leave the last page (eng D3).
    * Saved, like the phase card: a restart shows the same page (D9). */
   private intro: number | null = null;
+  /** 擲先攻 (lib/initiative.ts), after the intro and before the first question, or null. Saved: a restart keeps the
+   * rolls and starts the wait again. */
+  private initiative: Initiative | null = null;
+  private initiativeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** This game's HOST_START asked for 擲先攻: it follows the intro. Saved, so a restart mid-intro still rolls. */
+  private initiativeOn = false;
+  /** When initiativeTimer fires, for the countdown on the big screen. Memory only. */
+  private initiativeEndsAt = 0;
   private phaseCardTimer: ReturnType<typeof setTimeout> | null = null;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
@@ -332,6 +343,7 @@ export class DungeonRoom {
   private bank: Bank;
   private bankAnswers: string[];
   private fixedDie: number | undefined;
+  private initiativeHoldMs: number;
 
   constructor(
     readonly room: RoomIO,
@@ -345,6 +357,7 @@ export class DungeonRoom {
     this.expireMs = Math.max(opts.expireMs ?? EXPIRE_MS, this.idleMs);
     this.now = opts.now ?? Date.now;
     this.fixedDie = opts.fixedDie;
+    this.initiativeHoldMs = opts.initiativeHoldMs ?? INITIATIVE_ORDER_MS;
     this.bankAnswers = allAnswers(this.bank);
     this.scripted = createScriptedProvider(rng);
     this.epilogueDelayMs = opts.epilogueDelayMs ?? EPILOGUE_DELAY_MS;
@@ -560,6 +573,8 @@ export class DungeonRoom {
       lastActivityAt: this.lastActivityAt === null ? null : roundActivity(this.lastActivityAt, this.idleMs),
       phaseCard: this.phaseCard,
       ...(this.intro !== null ? { intro: this.intro } : {}),
+      ...(this.initiative ? { initiative: this.initiative } : {}),
+      ...(this.initiativeOn && this.opening() ? { initiativeOn: true as const } : {}),
     };
   }
 
@@ -642,6 +657,10 @@ export class DungeonRoom {
     this.savedBank = stored;
     this.phaseCard = s.phaseCard ?? false;
     this.intro = s.intro ?? null;
+    // An initiative without a game in play (a damaged save) is dropped: its timer would start a game that is not there.
+    this.initiative = this.game?.phase === "playing" ? (s.initiative ?? null) : null;
+    this.initiativeOn = s.initiativeOn === true;
+    if (this.initiative) this.armInitiative(this.initiative.order ? (this.initiative.tieRolls?.length ?? 0) * INITIATIVE_TIE_MS + this.initiativeHoldMs : INITIATIVE_MS);
     // The answer reveal does not survive a restart, so a phase that ended under it goes straight to its card.
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
@@ -795,12 +814,13 @@ export class DungeonRoom {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       // The card holds the new phase's first question back until the host's 下一題.
-      question: this.phaseCard || this.intro !== null ? null : (this.currentQuestion()?.pub ?? null),
+      question: this.phaseCard || this.opening() ? null : (this.currentQuestion()?.pub ?? null),
       reveal: this.reveal,
       ...this.liveMedia(),
       // No dish: the boss's dish is served on the kill, not before (monster-cuisine.md).
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
       ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
+      ...(this.initiative ? { initiative: { ...this.initiative, left: Math.max(0, this.initiativeEndsAt - this.now()) } } : {}),
       ...this.bossPhaseInfo(),
       cuisine: true as const,
       pendingLock: this.pendingLock,
@@ -1104,7 +1124,7 @@ export class DungeonRoom {
           this.handleRejoin(sender, msg.teamId, msg.teamKey);
           break;
         case "HOST_START":
-          this.handleHostStart(sender, msg.aiNarration, msg.intro);
+          this.handleHostStart(sender, msg.aiNarration, msg.intro, msg.initiative);
           break;
         case "HOST_INTRO":
           this.handleHostIntro(sender, msg.page);
@@ -1196,6 +1216,12 @@ export class DungeonRoom {
           break;
         case "TEAM_ROLL_CHECK":
           this.handleTeamRollCheck(sender, msg.questionId, msg.eventId);
+          break;
+        case "TEAM_ROLL_INITIATIVE":
+          this.handleTeamRollInitiative(sender);
+          break;
+        case "HOST_ROLL_INITIATIVE":
+          this.handleHostRollInitiative(sender);
           break;
         case "TEAM_SUBMIT_TEXT":
           this.handleTeamSubmitText(sender, msg.questionId, msg.text, msg.eventId);
@@ -1459,7 +1485,7 @@ export class DungeonRoom {
     // The reveal is always set in the same judgment that bumps eventSeq, so a HOST_NEXT for an
     // older STATE is stale — ignore it rather than close a reveal nobody has seen.
     // The intro turns pages with HOST_INTRO only.
-    if (!this.paused() || this.intro !== null || eventId !== this.eventSeq) return;
+    if (!this.paused() || this.opening() || eventId !== this.eventSeq) return;
     // A dish is served before 下一題, and the cooking plays out first (cooking I2): a double press or a stale tab can't skip it.
     if (this.reveal?.dish && (!this.reveal.served || this.now() - this.servedAt < SERVE_HOLD_MS)) return;
     if (this.reveal) return this.closeReveal();
@@ -1482,7 +1508,12 @@ export class DungeonRoom {
 
   /** An answer reveal or the boss's phase card is up: nobody answers until the host moves on. */
   private paused(): boolean {
-    return !!this.reveal || this.phaseCard || this.phaseCardDue || this.intro !== null;
+    return !!this.reveal || this.phaseCard || this.phaseCardDue || this.opening();
+  }
+
+  /** The intro or 擲先攻 is on: the game exists, but no question is dealt yet. */
+  private opening(): boolean {
+    return this.intro !== null || !!this.initiative;
   }
 
   private closeReveal() {
@@ -1522,6 +1553,10 @@ export class DungeonRoom {
     if (this.lockTimer) clearTimeout(this.lockTimer);
     if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
     this.lockTimer = this.phaseCardTimer = null;
+    // The game this 擲先攻 was for has ended or gone.
+    if (this.initiativeTimer) clearTimeout(this.initiativeTimer);
+    this.initiativeTimer = null;
+    this.initiative = null;
     // A crit die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now.
     const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : undefined);
     this.pendingLock = null;
@@ -1624,7 +1659,7 @@ export class DungeonRoom {
     this.broadcast(this.snapshot());
   }
 
-  private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean) {
+  private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean) {
     if (!this.requireHost(conn)) return;
     if (this.game) {
       this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
@@ -1655,11 +1690,70 @@ export class DungeonRoom {
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.
     this.aiNarration = aiNarration !== false;
     this.intro = intro ? 1 : null;
+    this.initiativeOn = !!initiative;
     if (intro) {
       this.broadcastState();
       return;
     }
-    this.announceStart();
+    this.beginInitiative();
+  }
+
+  /** 擲先攻 (lib/initiative.ts): every phone rolls, then the order shows, then the start (announceStart). */
+  private beginInitiative() {
+    if (!this.initiativeOn) return this.announceStart();
+    this.initiative = { rolls: {} };
+    this.armInitiative(INITIATIVE_MS);
+    this.broadcastState();
+  }
+
+  /** While rolling: rolls for the teams left after `ms`. Once the order is set: starts the game after `ms`. */
+  private armInitiative(ms: number) {
+    if (this.initiativeTimer) clearTimeout(this.initiativeTimer);
+    this.initiativeEndsAt = this.now() + ms;
+    this.initiativeTimer = setTimeout(() => {
+      this.initiativeTimer = null;
+      if (!this.initiative?.order) return this.finishInitiative();
+      this.initiative = null;
+      this.announceStart();
+    }, ms);
+  }
+
+  /** A phone's 擲先攻 roll: once per team, while the room still waits for rolls. */
+  private handleTeamRollInitiative(conn: Conn) {
+    const teamId = this.playingTeam(conn);
+    const ini = this.initiative;
+    if (!teamId || !ini || ini.order || ini.rolls[teamId] !== undefined) return;
+    this.initiative = { rolls: { ...ini.rolls, [teamId]: this.fixedDie ?? rollD20(this.rng) } };
+    this.setCue("roll");
+    if (!this.finishIfRolled()) this.broadcastState();
+  }
+
+  /** Every team has rolled. An offline team is not rolled for early: a phone locked during the intro gets the whole wait. */
+  private finishIfRolled(): boolean {
+    const ini = this.initiative;
+    if (!ini || ini.order || !this.game!.teams.every((t) => ini.rolls[t.id] !== undefined)) return false;
+    this.finishInitiative();
+    return true;
+  }
+
+  /** 全部代擲: the host rolls for every team that has not rolled yet. */
+  private handleHostRollInitiative(conn: Conn) {
+    if (!this.requireHost(conn)) return;
+    if (this.initiative && !this.initiative.order) this.finishInitiative();
+  }
+
+  /** Rolls for the teams left, sets the turn order (ties rerolled), and holds it on screen before the first question. */
+  private finishInitiative() {
+    const game = this.game!;
+    const ids = game.turnOrder;
+    const rolls = { ...this.initiative!.rolls };
+    for (const id of ids) rolls[id] ??= this.fixedDie ?? rollD20(this.rng);
+    // A fixed die (e2e) ties every team on every reroll: keep the lobby order instead.
+    const { order, tieRolls } = this.fixedDie === undefined ? initiativeOrder(ids, rolls, () => rollD20(this.rng)) : { order: ids, tieRolls: [] };
+    this.game = { ...game, turnOrder: order, currentTurnIndex: 0 };
+    this.initiative = { rolls, order, tieRolls };
+    this.armInitiative(tieRolls.length * INITIATIVE_TIE_MS + this.initiativeHoldMs);
+    this.broadcastState();
   }
 
   /** The start's fanfare and narration: at HOST_START, or when the host leaves the intro's last page (eng D3). */
@@ -1668,7 +1762,7 @@ export class DungeonRoom {
     this.setCue("start");
     this.broadcastState();
     const next = this.nextTurn();
-    void this.narrate(eventId, { type: "start", teams: this.pendingTeams.map((t) => t.name), ...(next ? { next } : {}) });
+    void this.narrate(eventId, { type: "start", teams: this.game!.turnOrder.flatMap((id) => this.game!.teams.find((t) => t.id === id)?.name ?? []), ...(this.initiativeOn ? { initiative: true as const } : {}), ...(next ? { next } : {}) });
   }
 
   /** How-to-play: one page at a time (eng D4). A page past the last one ends the intro. */
@@ -1678,7 +1772,7 @@ export class DungeonRoom {
     if (this.intro === null || Math.abs(page - this.intro) !== 1) return;
     if (page > INTRO_PAGES) {
       this.intro = null;
-      this.announceStart();
+      this.beginInitiative();
       return;
     }
     this.intro = page;
@@ -1742,7 +1836,7 @@ export class DungeonRoom {
   }
 
   private undoHeld(): boolean {
-    return !!this.reveal || this.phaseCard || this.intro !== null || !!this.pendingLock || !!this.pendingRoll;
+    return !!this.reveal || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll;
   }
 
   /** Runs `judge`, a 答錯 on a fill-in, so that 改判答對 may undo it. A cleric's wait and the 重答 / 逃跑 after it chain to the
@@ -2002,7 +2096,7 @@ export class DungeonRoom {
   private shownVideoId(): string | null {
     if (this.game?.phase !== "playing") return null;
     if (this.reveal) return this.reveal.video ? this.reveal.questionId : null;
-    if (this.phaseCard || this.intro !== null) return null;
+    if (this.phaseCard || this.opening()) return null;
     const pub = this.currentQuestion()?.pub;
     return pub?.content.kind === "youtube" ? pub.id : null;
   }

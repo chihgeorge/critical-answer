@@ -21,6 +21,14 @@ export async function startGame(host: Page) {
   const intro = host.getByRole("checkbox", { name: "開始前播放玩法說明" });
   await intro.uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await skipInitiative(host);
+}
+
+/** 全部代擲: the host rolls 擲先攻 for every team. E2E_DIE ties them all, so the lobby order stands, and the worker's
+ * INITIATIVE_HOLD_MS (playwright.config.ts) holds it only a moment. The phones' own rolls are in initiative.spec.ts. */
+export async function skipInitiative(host: Page) {
+  await host.getByRole("button", { name: "🎲 全部代擲" }).click();
+  await expect(host.getByTestId("host-initiative")).toHaveCount(0);
 }
 
 /** Answers the current turn correctly, whatever kind of question was dealt: the host presses 答對！

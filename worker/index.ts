@@ -37,6 +37,8 @@ export interface Env {
   OWNER_KEY?: string;
   /** e2e only (playwright.config.ts): every d20 lands on this value, so a test knows the roll. Never set in production. */
   E2E_DIE?: string;
+  /** How long the 擲先攻 order holds before the first question, in ms (e2e shortens it). */
+  INITIATIVE_HOLD_MS?: string;
 }
 
 /** Cloudflare adapter for the question bank: one singleton Durable Object holding it, exposed over
@@ -130,6 +132,7 @@ export class Room extends Server<Env> {
         idleMs: positiveMs(this.env.ROOM_IDLE_MS),
         expireMs: positiveMs(this.env.ROOM_EXPIRE_MS),
         fixedDie: fixedDie(this.env.E2E_DIE),
+        initiativeHoldMs: positiveMs(this.env.INITIATIVE_HOLD_MS),
         // Undefined (bankOrFallback swallowed a fetch failure) falls through to DungeonRoom's own
         // bundled-bank default: an existing room's restore() overrides this with its own saved bank
         // regardless. See docs/designs/question-bank-editor.md, decision 7.

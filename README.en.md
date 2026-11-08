@@ -69,7 +69,7 @@ To let people outside your network play, put the front end on Vercel and the roo
 | --- | --- | --- | --- |
 | Before the event | Check the question bank answers, test the connection | Open `/room/<code>/screen`, test the volume | Get the phones online |
 | Gathering | On the home page, press 「主持遊戲」 (Host a game) to open a room | Shows the QR code and the 4-character room code | Each team scans the QR code to join and picks a class |
-| Start | Press 「開始遊戲」 (Start game) to play the how-to-play intro | Plays the 4-page how-to-play intro | Watch the big screen |
+| Start | Press 「開始遊戲」 (Start game) to play the how-to-play intro | Plays the 4-page how-to-play intro, then shows the initiative roll's order | Watch the big screen, then roll initiative on the phone |
 | Each question | Multiple choice and sort: press 「公布答案」 (Reveal answer) (key `1`); fill-in: judge right or wrong | Question, dice, result | Multiple choice: lock in an answer; sort: drag the items into order, then lock; fill-in: roll persuasion first, then type |
 | Wrap-up | The boss falls or you press 「結束冒險」 (End adventure); you can press 「再玩一場」 (Play again) | Podium and epilogue (when a boss with a dish falls, the boss is cooked and served first) | See who has the most reward points |
 
@@ -77,7 +77,7 @@ The big-screen URL is at the top of the host page. For keyboard controls, switch
 
 ## The rules in one minute
 
-- **Take turns**: all teams answer in a fixed order. Each room has one monster; answer correctly to defeat it, earn reward points and move into the next room.
+- **Take turns**: at the start each team rolls a d20 on its phone (initiative roll); the highest goes first, and the teams answer in that order all game. Each room has one monster; answer correctly to defeat it, earn reward points and move into the next room.
 - **Wrong answer**: choose 「重答」 (Retry) to answer the same question again, or 「逃跑」 (Flee) to swap it for one a level easier.
 - **Boss room**: once the progress points from correct answers reach 15, you enter the boss room; after one team goes in, every other team follows on its next correct answer. The boss's HP is shared; each hit is worth 10 points, and the final blow adds 4 d20s.
 - **Dice**: a correct multiple-choice or sort answer rolls a crit die; a 20 gives half the reward points again. Before a fill-in answer you roll a persuasion check; pass it and you see the first character of the answer. The default question bank is all multiple choice, so no persuasion checks are rolled.
