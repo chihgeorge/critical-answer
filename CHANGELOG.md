@@ -2,7 +2,7 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [Unreleased]
+## [0.55.0.2] - 2026-11-08
 
 ### Fixed
 - An event room no longer flashes on screen just before a boss phase card. When a wrong answer used up a boss phase, the card opens a moment later, and during that moment the next team's event room showed on the TV, the phone and the host page, though its button was refused. Now the room tells every screen that the card is coming, and the event waits behind it.
