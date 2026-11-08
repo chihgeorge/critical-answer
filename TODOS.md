@@ -121,6 +121,7 @@
 **Notes:**
 - 做法：HOST_OK 時有 `aiPending` 就重送它（帶原本的 keyId）。但被拒的 key 也會留在 `aiPending`，重送它會在房間重啟後蓋掉好的 key，所以要先讓房間在狀態裡回報「被拒的是哪個 keyId」，頁面收到就丟掉那把。
 - 2026-11-08 /review（AI key 錯誤修正）第 3 輪對抗審查找到；改用 keyId 之前就存在。
+- 同一處的兩個舊問題（/ship 對抗審查找到，可一起修）：(1) AI 停了之後，單純重連的重送（沒有 keyId）就會重新套用 key、重開 AI；只有帶 keyId 的重送才該這樣做。(2) 房間重啟後（`keyMissing`），主持人貼一把格式錯的 key，頁面會把記住的好 key 一起刪掉（`page.tsx` 的 `invalid_key` + `keyMissing` 條件）；應該只在房間丟掉正在用的 key 時才刪。
 
 ---
 
