@@ -7,7 +7,7 @@ All notable changes to Critical Answer are documented here.
 ### Fixed
 - When 5 to 8 teams roll a podium tie-break together, every die now stays on the big screen. Each name under a die is cut to the die's width, so 8 teams with long names no longer push the outer dice off the stage. The result bar now says 「點數最高的 N 隊上台」 instead of listing every team and roll again; with 8 teams that list ran to 2–4 lines. When a tie on the podium has to roll again, it says 「同點的重擲！」. A tie of 4 teams or fewer looks the same as before.
 - A tie-break result no longer says 「同點的重擲」 when the tied teams are all below third place. Nobody rerolls there, so the big screen promised a roll that never came.
-- When the host presses 結束冒險 while the big screen is still reading the last narration, the podium waits for it. The first place call starts 1 second after the screen reports the last line read, or after 20 seconds at most if no screen reports. While it waits, the big screen keeps that narration up instead of 「…」, so it can finish typing it. Before, the reveal started 4 seconds after 結束冒險, and the first call cut the narration off.
+- When the host presses 結束冒險 while the big screen is still reading the last narration, the podium waits for it. The first place call starts 1 second after the screen reports the last line read, or after 20 seconds at most if no screen reports. While it waits, the big screen keeps that narration up instead of 「…」 and goes on from the line it had reached, rather than typing it again from the top. Before, the reveal started 4 seconds after 結束冒險, and the first call cut the narration off.
 
 ## [0.51.0.1] - 2026-11-08
 

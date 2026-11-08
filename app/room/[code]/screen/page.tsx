@@ -492,7 +492,7 @@ function CritKingCard({ names, count }: { names: string[]; count: number }) {
   );
 }
 
-function Finished({ view, winners, reveal, podium, narration, unread, epilogue, cuisine, finale, say, onRead, onCook, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; podium?: PodiumReveal; narration: NarrationState; unread: boolean; epilogue: string | null; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onCook: () => void; onPodium: () => void }) {
+function Finished({ view, winners, reveal, podium, narration, unread, typedTo, epilogue, cuisine, finale, say, onRead, onCook, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; podium?: PodiumReveal; narration: NarrationState; unread: boolean; typedTo: number; epilogue: string | null; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onCook: () => void; onPodium: () => void }) {
   const dish = reveal?.dish;
   const line = dish ? dishLine(dish, "", true) : "";
   // The boss cooks first and the winner waits (cooking R8, I4): only a kill this screen saw live plays it.
@@ -509,7 +509,11 @@ function Finished({ view, winners, reveal, podium, narration, unread, epilogue, 
   const ended = cooked && now.done;
   // The narrator's calls are still being written: 「…」, not the kill-shot line left over (storyboard row 1).
   // A narration still being read after 結束冒險 stays up: the room starts the reveal once this screen has read it.
-  const waiting = cooked && !!podium && podium.beats === null && !unread;
+  // Only after 結束冒險 (no dish): after a boss kill the kill-shot line has had the cooking to be read (storyboard row 1).
+  const holdNarration = unread && !dish;
+  const waiting = cooked && !!podium && podium.beats === null && !holdNarration;
+  // After 結束冒險 the box picks up at the line the game screen had reached, so the room's wait is not a second pass.
+  const [from] = useState(() => (dish || !narration ? 0 : Math.min(typedTo, narration.lines.length - 1)));
   useEffect(() => {
     if (ended) onPodium();
     // onPodium reads refs only: it runs once, when the story may be read.
@@ -596,8 +600,8 @@ function Finished({ view, winners, reveal, podium, narration, unread, epilogue, 
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         loading={!(ended && epilogue) && !current && (!narration || waiting) && step !== 3}
-        lines={step === 3 ? [line] : ended && epilogue ? [epilogue] : current ? [current.line] : waiting ? [] : (narration?.lines ?? [])}
-        {...(step !== 3 && !(ended && epilogue) && !current && !waiting && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+        lines={step === 3 ? [line] : ended && epilogue ? [epilogue] : current ? [current.line] : waiting ? [] : (narration?.lines.slice(from) ?? [])}
+        {...(step !== 3 && !(ended && epilogue) && !current && !waiting && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count + from) } : {})}
       />
     </>
   );
@@ -740,11 +744,16 @@ export default function ScreenPage() {
   const progress = useRef<{ eventId: number; rev: number; lines: string[]; typed: number; spoken: number | null; sent: number } | null>(null);
   /** The narration this screen has not read out yet (the end screen keeps it up after 結束冒險), or null. */
   const [unreadId, setUnreadId] = useState<number | null>(null);
+  /** Lines of the current narration typed so far, so the end screen picks up there instead of typing it over. */
+  const [typedTo, setTypedTo] = useState(0);
 
   function markRead(eventId: number, read: { typed?: number; spoken?: number }) {
     const p = progress.current;
     if (!p || p.eventId !== eventId) return;
-    if (read.typed !== undefined) p.typed = Math.max(p.typed, read.typed);
+    if (read.typed !== undefined) {
+      p.typed = Math.max(p.typed, read.typed);
+      setTypedTo(p.typed);
+    }
     if (read.spoken !== undefined && p.spoken !== null) p.spoken = Math.max(p.spoken, read.spoken);
     const done = readCount(p.typed, p.spoken);
     if (done <= p.sent) return;
@@ -763,6 +772,7 @@ export default function ScreenPage() {
     if (!p || p.eventId !== msg.eventId) {
       progress.current = { eventId: msg.eventId, rev, lines: msg.lines, typed: 0, spoken: null, sent: 0 };
       setUnreadId(msg.eventId);
+      setTypedTo(0);
       if (voice) speak(msg.lines, msg.eventId);
       return;
     }
@@ -774,6 +784,7 @@ export default function ScreenPage() {
       p.typed = Math.min(p.typed, d);
       if (p.spoken !== null) p.spoken = Math.min(p.spoken, d);
       setUnreadId(msg.eventId);
+      setTypedTo(p.typed);
     }
     // A report sent under the old rev may have crossed the edit and been dropped: say it again under the new one.
     if (newRev) {
@@ -996,7 +1007,7 @@ export default function ScreenPage() {
           </>
         )}
         {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>

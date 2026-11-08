@@ -2013,6 +2013,14 @@ describe("narration (T5-T7)", () => {
       expect(podium().elapsedMs).toBe(-4000);
     });
 
+    it("a read after the 20 s cap never moves a reveal already playing", async () => {
+      const { room, clock, readOut, podium } = await ended(false);
+      clock.t += 25_000;
+      readOut();
+      expect((room as unknown as { revealFrom: number }).revealFrom).toBe(30_000);
+      expect(podium().elapsedMs).toBe(-20_000); // no new STATE: the reveal on screens keeps its clock
+    });
+
     it("a narration read only in part keeps the reveal held", async () => {
       const { room, clock, readOut } = await ended(false);
       clock.t += 5_000;
