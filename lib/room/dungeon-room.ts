@@ -442,6 +442,7 @@ export class DungeonRoom {
           // The calls come first, the story last (epilogueParts). The first call waits for the boss to cook, or for
           // the kill-shot line to be read.
           this.epilogue = lines[lines.length - 1];
+          this.epiloguePage = 0; // a new story (scripted, after a failed try) starts on its first page
           // A reveal already under way (scripted, after a failed try) keeps its clock: it never starts over.
           this.podium ??= { lines: lines.slice(0, -1), at: Math.max(this.now(), this.revealFrom ?? this.now() + this.epilogueDelayMs) };
           this.broadcast({ type: "EPILOGUE", text: this.epilogue });
