@@ -889,6 +889,7 @@ export class DungeonRoom {
       ...this.liveMedia(),
       // No dish: the boss's dish is served on the kill, not before (monster-cuisine.md).
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
+      ...(this.phaseCardDue ? { phaseCardDue: true as const } : {}),
       ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
       ...(this.initiative ? { initiative: { ...this.initiative, left: Math.max(0, this.initiativeEndsAt - this.now()) } } : {}),
       ...this.syncAnswerClock(),
@@ -2165,6 +2166,10 @@ export class DungeonRoom {
     }
     // Fixed before the STATE is saved: the boss cooks first (cooking R8), otherwise the kill-shot line is read first.
     if (game.phase === "finished" && !this.epilogueRequested) this.revealFrom = this.now() + (this.reveal?.dish ? FINISH_PODIUM_MS : this.epilogueDelayMs);
+    // A miss that used up a boss phase has no answer to show: its card follows once the retry line has
+    // been read (D7), held like a reveal; 下一題 opens it sooner. Set before the STATE, which tells the clients.
+    const cardDue = game.phase === "playing" && !!game.boss.phasePending && !this.reveal;
+    if (cardDue) this.phaseCardDue = true;
     this.broadcastState();
     const narration = this.narrate(eventId, event);
     if (game.phase === "finished" && !this.epilogueRequested) {
@@ -2172,10 +2177,7 @@ export class DungeonRoom {
       this.epilogueRequested = true;
       void this.sendEpilogue(narration, eventId).catch((err) => this.epilogueFailed(err, eventId));
     }
-    // A miss that used up a boss phase has no answer to show: its card follows once the retry line has
-    // been read (D7), held like a reveal; 下一題 opens it sooner.
-    if (game.phase === "playing" && game.boss.phasePending && !this.reveal) {
-      this.phaseCardDue = true;
+    if (cardDue) {
       void narration.then(() => {
         if (!this.phaseCardDue) return;
         const lines = this.lastNarration?.eventId === eventId ? this.lastNarration.lines : [];
