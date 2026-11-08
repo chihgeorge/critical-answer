@@ -77,7 +77,7 @@ describe("BankStore.putBank", () => {
 
   it("refuses to save over a stored bank in a newer format, even one its parseBank accepts", async () => {
     // A newer format that only adds fields would parse fine here, and a save would drop those fields.
-    const stored = { bank: validBank, version: 3, format: BANK_FORMAT + 1 };
+    const stored = { bank: validBank, version: 7, format: BANK_FORMAT + 1 };
     const storage = memoryStorage(stored);
     const store = new BankStore(storage);
     expect(await store.getVersionedBank()).toEqual({ bank: BANK, version: 1, unreadable: true });
@@ -87,7 +87,7 @@ describe("BankStore.putBank", () => {
 
   it("treats a format that is not a known number as unreadable too", async () => {
     for (const format of ["2", null, Number.NaN, {}]) {
-      const stored = { bank: validBank, version: 3, format };
+      const stored = { bank: validBank, version: 7, format };
       const storage = memoryStorage(stored);
       await expect(new BankStore(storage).putBank(validBank, 3)).rejects.toThrow(/unreadable/);
     }
@@ -116,11 +116,11 @@ describe("BankStore.putBank", () => {
   it("still loads a stored multipleChoice question with 5 options, but refuses to save one (the TV has 4 tiles)", async () => {
     const five = { kind: "multipleChoice" as const, id: "mc5", content: { kind: "text" as const, value: "?" }, options: ["A", "B", "C", "D", "E"], correctIndex: 0 };
     const legacy: Bank = { ...validBank, pools: { ...validBank.pools, 1: [...validBank.pools[1], five] } };
-    const storage = memoryStorage({ format: BANK_FORMAT, bank: legacy, version: 3 });
+    const storage = memoryStorage({ format: BANK_FORMAT, bank: legacy, version: 7 });
     const store = new BankStore(storage);
-    expect(await store.getVersionedBank()).toEqual({ bank: legacy, version: 3 });
-    await expect(store.putBank(legacy, 3)).rejects.toThrow(/more than 4 options/);
-    expect(await storage.get("bank")).toEqual({ bank: legacy, version: 3, format: BANK_FORMAT });
+    expect(await store.getVersionedBank()).toEqual({ bank: legacy, version: 7 });
+    await expect(store.putBank(legacy, 7)).rejects.toThrow(/more than 4 options/);
+    expect(await storage.get("bank")).toEqual({ bank: legacy, version: 7, format: BANK_FORMAT });
   });
 
   // Regression: boss HP had no upper bound, and the big screen draws one heart per HP
@@ -202,7 +202,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
   });
 
   it("deletes nothing while the stored bank is unreadable (the fallback bank is not what's stored)", async () => {
-    const { store, storage, alarms, onImagesOrphaned, at } = setup({ format: BANK_FORMAT, bank: { rooms: "a format this version can't read" }, version: 3 });
+    const { store, storage, alarms, onImagesOrphaned, at } = setup({ format: BANK_FORMAT, bank: { rooms: "a format this version can't read" }, version: 7 });
     await storage.put("pendingImageDeletes", [{ key: KEY, deleteAt: 0 }]);
     at(DELAY);
     await store.runImageCleanup();
@@ -324,13 +324,13 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     expect(formatOf(validBank)).toBe(3);
     const sorted = { ...validBank, pools: { ...validBank.pools, 1: [{ kind: "sort" as const, id: "s1", content: { kind: "text" as const, value: "排" }, items: ["A", "B", "C", "D"] }] } };
     expect(formatOf(sorted)).toBe(BANK_FORMAT);
-    const storage = memoryStorage({ format: 3, bank: validBank, version: 1 });
+    const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
     await new BankStore(storage).putBank(sorted, 1);
     expect(await storage.get("bank")).toMatchObject({ version: 2, format: BANK_FORMAT });
   });
 
   it("still reads a format-3 bank as is", async () => {
-    expect(await new BankStore(memoryStorage({ bank: validBank, version: 6, format: 3 })).getVersionedBank()).toEqual({ bank: validBank, version: 6 });
+    expect(await new BankStore(memoryStorage({ bank: validBank, version: 6, format: 3 })).getVersionedBank()).toEqual({ bank: validBank, version: 6 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
   });
 
   it("reads format 2, and a bank with no format, as outdated with the stored version", async () => {
