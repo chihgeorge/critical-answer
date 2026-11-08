@@ -151,6 +151,10 @@ export interface Team {
   /** Dish names this team ate, in order: one per defeated room monster or boss that has a dish
    * (docs/designs/monster-cuisine.md). Absent until the first, and in saves from before dishes. */
   dishes?: string[];
+  /** Turns this team has played: one per answer that passed the turn on (lib/game-log.ts). Absent until the first. */
+  turns?: number;
+  /** The game round and this team's turn count when it walked into the boss room (lib/game-log.ts). */
+  bossAt?: { round: number; turns: number };
 }
 
 export interface RoomTemplate {
@@ -243,6 +247,13 @@ export interface GameState {
   /** This game's boss when the bank draws monsters per game (gameMonsters). Absent: the bank's own boss. */
   bossMonsterId?: string;
   config: GameConfig;
+  /** The round of the last turn played, from 1 (lib/game-log.ts): a turn starts a new round when its team does not
+   * come after the last team that played in turnOrder, skipped offline teams included. Absent (read as 1) until then. */
+  round?: number;
+  /** turnOrder index of the last team that played a turn, for `round`. */
+  lastTurnIndex?: number;
+  /** When the room started this game (ms since epoch), for lib/game-log.ts. Absent in saves from before it. */
+  startedAt?: number;
   phase: GamePhase;
   /** The one team in first place once phase === "finished": a tie is broken by d20 (podium-reveal.md D4). Empty before. */
   winners: string[];
@@ -512,6 +523,7 @@ export function createGame(
       currentQuestionId: dealt.questionId,
       currentSelection: null,
       inBoss: config.bossThreshold <= 0, // score starts at 0
+      ...(config.bossThreshold <= 0 ? { bossAt: { round: 1, turns: 0 } } : {}),
       ...(seed.classId ? { classId: seed.classId } : {}),
       abilityUses: ABILITY_USES,
     });
@@ -700,8 +712,14 @@ export function answerQuestion(
     const share = chef ? chefShare(gain) : 0;
     return { reward: gain + share, ...(share ? { chefBonus: share } : {}) };
   };
+  // This turn counts once, for lib/game-log.ts: a cleric's prayed wrong lock keeps the turn, so its answer after counts.
+  const order = game.turnOrder.indexOf(teamId);
+  const played = prayed ? {} : {
+    round: (game.round ?? 1) + (game.lastTurnIndex !== undefined && order <= game.lastTurnIndex ? 1 : 0),
+    lastTurnIndex: order,
+  };
   // The choice resolves the pending wrong lock.
-  game = { ...game, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
+  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice === "flee" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -823,6 +841,7 @@ export function answerQuestion(
           currentQuestionId: dealt.questionId,
           currentSelection: null,
           inBoss: entersBoss,
+          ...(entersBoss ? { bossAt: { round: game.round ?? 1, turns: t.turns ?? 0 } } : {}),
           queuedQuestionId: dealt.queuedQuestionId,
         })),
       };
@@ -1045,7 +1064,7 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   // A sneak armed for the room question is for that question only (D16): drop it and give the use back.
   // (A boss-room sneak can outlive a question rotation while the thief is offline; accepted, /review D4=A.)
   const sneak = team.sneakArmed ? { sneakArmed: undefined, abilityUses: team.abilityUses + 1 } : {};
-  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, currentSelection: null, queuedQuestionId: undefined, typedAnswer: undefined, ...sneak }));
+  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, bossAt: { round: game.round ?? 1, turns: team.turns ?? 0 }, currentSelection: null, queuedQuestionId: undefined, typedAnswer: undefined, ...sneak }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
