@@ -2,7 +2,7 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [Unreleased]
+## [0.56.0.2] - 2026-11-08
 
 **Deploy note:** deploy the room server (`wrangler deploy`) and the website together. A big screen from an older website never announces itself, so a newer room server ignores its "clip ended" and narration messages. No migration.
 
