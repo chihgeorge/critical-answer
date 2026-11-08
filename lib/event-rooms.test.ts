@@ -120,7 +120,7 @@ describe("openEvent", () => {
     expect(result).toMatchObject({ satiety: 20, entersBoss: true });
     const t = team(after);
     expect(t.inBoss).toBe(true);
-    expect(t.bossAt).toBeDefined();
+    expect(t.bossAt?.turns).toBe((before.turns ?? 0) + 1);
     expect(t.roomIndex).toBe(before.roomIndex);
     expect(t.reward).toBe(before.reward + 20);
     expect(t.event).toBeUndefined();

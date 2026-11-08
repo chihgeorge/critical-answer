@@ -1188,7 +1188,8 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
     currentQuestionId: dealt.questionId,
     currentSelection: null,
     queuedQuestionId: dealt.queuedQuestionId,
-    ...(entersBoss ? { inBoss: true, bossAt: { round: game.round ?? 1, turns: t.turns ?? 0 } } : {}),
+    // This turn counts, as answerQuestion counts the answering turn before it writes bossAt.
+    ...(entersBoss ? { inBoss: true, bossAt: { round: game.round ?? 1, turns: (t.turns ?? 0) + 1 } } : {}),
   }));
   const moved = { ...game, teams, usedQuestionIds: dealt.used, round, lastTurnIndex: order, currentTurnIndex: order, prayerTurn: undefined };
   return { game: advanceTurn(moved), result };
