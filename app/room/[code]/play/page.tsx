@@ -866,7 +866,7 @@ export default function PlayPage() {
         )}
 
         {/* An event room (event-rooms.md D10): the team's one button, then its result; every other phone looks up. */}
-        {game && !finished && !intro && (eventRevealed || turn?.team?.eventScene) && <EventPanel game={game} teamId={teamId} send={send} />}
+        {game && !finished && !intro && (eventRevealed || (!revealed && !game.phaseCard && turn?.team?.eventScene)) && <EventPanel game={game} teamId={teamId} send={send} />}
 
         {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
         {game && !finished && !held && isMyTurn && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} />}
@@ -978,6 +978,12 @@ function EventPanel({ game, teamId, send }: { game: StateMessage; teamId: string
   const team = game.view.teams.find((t) => t.id === (reveal ? reveal.teamId : game.view.currentTurnTeamId));
   // A press waiting for the room, keyed to the eventId so a later event turn starts with a live button.
   const [pressed, setPressed] = useState<number | null>(null);
+  // A press the room refused leaves the eventId as it was: give the button back rather than wait forever.
+  useEffect(() => {
+    if (pressed === null) return;
+    const t = setTimeout(() => setPressed(null), 5000);
+    return () => clearTimeout(t);
+  }, [pressed]);
   const scene = reveal?.scene ?? team?.eventScene;
   if (!team || !scene) return null;
   const text = EVENT_SCENE_TEXT[scene];
@@ -997,7 +1003,7 @@ function EventPanel({ game, teamId, send }: { game: StateMessage; teamId: string
           <div className="text-[18px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{eventEffectLine({ ...reveal, chefBonus: undefined })}</div>
           {reveal.chefBonus ? <div className="text-[15px]">（廚師 +{reveal.chefBonus}）</div> : null}
         </Panel>
-        <Panel className="px-3 py-[10px] text-[16px]">看大螢幕 📺　主持人按「下一題」後，我們走到下一間房</Panel>
+        <Panel className="px-3 py-[10px] text-[16px]">看大螢幕 📺　主持人按「下一題」後，我們{reveal.entersBoss ? "走進首領房" : "走到下一間房"}</Panel>
       </div>
     );
   }

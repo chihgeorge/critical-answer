@@ -36,6 +36,8 @@ Every room in the dungeon is a quiz monster. The owner asked on 2026-10-30 for a
 - **D11 Narration, scripted and AI.** (1) The "next" line before an event turn sets the scene without spoiling it: 「{隊名}推開門，房間正中央擺著一個寶箱……」. (2) After the press, a new narration event `event-room` reads the outcome with its numbers, then the usual next line. The scripted bank has 2–3 lines per event and outcome. The AI gets the event, outcome, numbers and next turn on the same pipeline, and falls back to the scripted lines as today.
 - **D12 Rules where events meet the rest:**
   - No events in the boss room. A team in an event room can still be sent to the boss by the host; the event is dropped.
+  - Once any team is in the boss room, opening an event walks the team into the boss room, like a correct answer (review, owner call 2026-11-07). The effect still lands.
+  - A room the host picked the question for (指定下一題) never draws an event, so the pick is not burned.
   - The next-answer effects (curse, blessing, 凶) last until the team's next correct answer, room or boss. A wrong answer does not use them up. A new effect replaces an older one. The curse does not stack with a persuasion natural 1: the base is halved at most once. The blessing stacks with a crit 20. The kill's 4d20 is never changed. The TV and the phone show 「💀 詛咒：下次答對減半」 or 「✨ 祝福：下次答對多一半」 over the team's question.
   - The chef's 15% applies to satiety an event gives, not to what it takes. Satiety never goes below 0.
   - An event turn has no abilities: no sneak attack, warrior roll, mage hint, persuasion check or prayer.

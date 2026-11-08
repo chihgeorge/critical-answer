@@ -112,6 +112,20 @@ describe("openEvent", () => {
     expect(result).toMatchObject({ satiety: 29, chefBonus: 4 });
   });
 
+  it("once a team is in the boss room, opening an event walks the team into the boss room, effect and all", () => {
+    const g = inEvent("feast");
+    const open = { ...g, teams: g.teams.map((t) => (t.id === "t1" ? { ...t, inBoss: true } : t)) };
+    const before = team(open);
+    const { game: after, result } = openEvent(open, "t0", first);
+    expect(result).toMatchObject({ satiety: 20, entersBoss: true });
+    const t = team(after);
+    expect(t.inBoss).toBe(true);
+    expect(t.bossAt).toBeDefined();
+    expect(t.roomIndex).toBe(before.roomIndex);
+    expect(t.reward).toBe(before.reward + 20);
+    expect(t.event).toBeUndefined();
+  });
+
   it("a rotten dish takes 10, never below 0", () => {
     const g = inEvent("rotten");
     expect(team(g).reward).toBe(10);
@@ -120,6 +134,8 @@ describe("openEvent", () => {
     expect(team(after).reward).toBe(0);
     const poor = { ...g, teams: g.teams.map((t) => (t.id === "t0" ? { ...t, reward: 4 } : t)) };
     expect(openEvent(poor, "t0", first).result.satiety).toBe(-4);
+    const empty = { ...g, teams: g.teams.map((t) => (t.id === "t0" ? { ...t, reward: 0 } : t)) };
+    expect(Object.is(openEvent(empty, "t0", first).result.satiety, 0)).toBe(true);
   });
 
   it("the spring (and 中吉) gives an ability use, or 10 to a chef or a team with no class", () => {

@@ -1134,6 +1134,8 @@ export interface EventResult {
   /** The spring's (or 中吉's) extra ability use. */
   abilityUse?: true;
   boon?: Boon;
+  /** The boss door was already open: the team walked on into the boss room, as a correct answer would. */
+  entersBoss?: true;
 }
 
 /**
@@ -1155,7 +1157,8 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
   };
   const o = event.outcome;
   if (o === "feast" || o === "great") give(EVENT_SATIETY[o]);
-  else if (o === "rotten") result.satiety = -Math.min(-EVENT_SATIETY.rotten, team.reward);
+  // No more than the team has, and a plain 0 (not -0) when it has nothing left.
+  else if (o === "rotten") result.satiety = team.reward > 0 ? -Math.min(-EVENT_SATIETY.rotten, team.reward) : 0;
   else if (o === "spring" || o === "good") {
     if (team.classId && team.classId !== "chef") result.abilityUse = true;
     else give(EVENT_SATIETY.spring);
@@ -1163,8 +1166,14 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
 
   const order = game.turnOrder.indexOf(teamId);
   const round = (game.round ?? 1) + (game.lastTurnIndex !== undefined && order <= game.lastTurnIndex ? 1 : 0);
-  const next = Math.min(team.roomIndex + 1, game.rooms.length - 1);
-  const dealt = dealFor(game, team, game.rooms[next].baseDifficulty, game.revealedQuestionIds, rng, team.currentQuestionId);
+  // Once a team is in the boss room, everyone's next room is the boss's (answerQuestion's entersBoss): the event
+  // counts as that step, and like a correct answer it deals nothing, since the boss room has its own questions.
+  const entersBoss = game.teams.some((t) => t.inBoss);
+  if (entersBoss) result.entersBoss = true;
+  const next = entersBoss ? team.roomIndex : Math.min(team.roomIndex + 1, game.rooms.length - 1);
+  const dealt = entersBoss
+    ? { questionId: team.currentQuestionId, used: game.usedQuestionIds, queuedQuestionId: undefined }
+    : dealFor(game, team, game.rooms[next].baseDifficulty, game.revealedQuestionIds, rng, team.currentQuestionId);
   const monsterId = game.rooms[next].monsterId;
   const teams = patchTeam(game.teams, teamId, (t) => ({
     event: undefined,
@@ -1179,6 +1188,7 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
     currentQuestionId: dealt.questionId,
     currentSelection: null,
     queuedQuestionId: dealt.queuedQuestionId,
+    ...(entersBoss ? { inBoss: true, bossAt: { round: game.round ?? 1, turns: t.turns ?? 0 } } : {}),
   }));
   const moved = { ...game, teams, usedQuestionIds: dealt.used, round, lastTurnIndex: order, currentTurnIndex: order, prayerTurn: undefined };
   return { game: advanceTurn(moved), result };

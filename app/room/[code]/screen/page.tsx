@@ -487,7 +487,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
       <Torches />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
-        {team && <TurnRibbon color={look(idx).hat} maxWidth={420}>輪到：{name}</TurnRibbon>}
+        {team && <TurnRibbon color={look(idx).hat} maxWidth={420}>{reveal ? `❓ ${name}` : `輪到：${name}`}</TurnRibbon>}
         <MapStrip view={view} />
       </div>
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
@@ -1045,7 +1045,7 @@ export default function ScreenPage() {
             <HowToPlay page={game.intro.page} firstTeam={describeTurn(game.view, null).team?.name ?? ""} cuisine={!!game.cuisine} />
           </>
         )}
-        {game?.phase === "playing" && !game.intro && (game.eventReveal || describeTurn(game.view, null).team?.eventScene) ? (
+        {game?.phase === "playing" && !game.intro && (game.eventReveal || (!game.reveal && !game.phaseCard && describeTurn(game.view, null).team?.eventScene)) ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal ?? null} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}

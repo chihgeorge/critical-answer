@@ -78,6 +78,8 @@ describe("event rooms in the room", () => {
     expect(narrations(room).at(-1).lines.join("")).toMatch(/EventTeam推開門，.*(寶箱|泉水|雕像|精靈|占卜師)/);
 
     // A team on an event turn cannot answer.
+    send(room, phones[0], { type: "TEAM_SELECT_OPTION", questionId: t0.currentQuestionId, optionIndex: 0 });
+    expect(lastSent(phones[0])).toMatchObject({ type: "ERROR", detail: "event_room" });
     send(room, phones[0], { type: "TEAM_LOCK_OPTION", questionId: t0.currentQuestionId });
     expect(room.game!.teams[0].event).toBeDefined();
 
@@ -111,6 +113,34 @@ describe("event rooms in the room", () => {
     expect(lastSent(host)).toMatchObject({ type: "ERROR" });
     send(room, host, { type: "HOST_OPEN_EVENT", teamId: T1, eventId: state(room).eventId });
     expect(state(room).eventReveal?.teamId).toBe(T1);
+    vi.useRealTimers();
+  });
+
+  it("a press while the last answer's reveal is still up is refused, and the event waits", async () => {
+    vi.useFakeTimers();
+    const s = setup();
+    const { room, host, phones } = s;
+    await answerRight(s, 0);
+    // Team 1 answers right; its reveal is up when team 0's phone presses.
+    const q = room.game!.teams[1].currentQuestionId;
+    send(room, phones[1], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: room.game!.optionOrder[q]?.indexOf(0) ?? 0 });
+    send(room, phones[1], { type: "TEAM_LOCK_OPTION", questionId: q });
+    send(room, host, { type: "HOST_REVEAL", teamId: T2, questionId: q });
+    await vi.runAllTimersAsync();
+    send(room, phones[0], { type: "TEAM_OPEN_EVENT", eventId: state(room).eventId });
+    expect(lastSent(phones[0])).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
+    expect(room.game!.teams[0].event).toBeDefined();
+    vi.useRealTimers();
+  });
+
+  it("a room the host picked the question for keeps its monster: no event burns the pick", async () => {
+    vi.useFakeTimers();
+    const s = setup();
+    const { room, host } = s;
+    send(room, host, { type: "HOST_QUEUE_QUESTION", target: T1, questionId: "r1-c" });
+    await answerRight(s, 0);
+    expect(room.game!.teams[0].event).toBeUndefined();
+    expect(room.game!.teams[0].currentQuestionId).toBe("r1-c");
     vi.useRealTimers();
   });
 

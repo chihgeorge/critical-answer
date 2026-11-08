@@ -32,6 +32,8 @@ export function eventEffectLine(r: Pick<EventResult, "satiety" | "chefBonus" | "
   if (r.abilityUse) return "職業能力 +1 次";
   if (r.boon === "curse") return "下次答對獎勵減半";
   if (r.boon === "blessing") return "下次答對多拿一半";
+  // A rotten dish on an empty belly takes nothing.
+  if (r.satiety === 0) return "飽足感已經見底，沒被扣";
   const chef = r.chefBonus ? `（廚師 +${r.chefBonus}）` : "";
   return `${r.satiety >= 0 ? "+" : "−"}${Math.abs(r.satiety)} 飽足感${chef}`;
 }

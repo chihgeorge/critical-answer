@@ -210,6 +210,7 @@ export const ATMOSPHERE_VARIANTS: Record<Exclude<NarrationEvent["type"], "epilog
     "這間房沒有怪物，卻一點也不平靜。",
     "地城裡的意外，總是來得剛好。",
     "火把晃了一下，像是在偷笑。",
+    "門後傳來一陣奇怪的聲響。",
   ],
   "boss-kill": [
     "地城陷入一片寂靜。",
@@ -288,6 +289,8 @@ export const EVENT_VARIANTS: Record<EventOutcome, string[]> = {
   ],
 };
 /** The spring's and 中吉's line for a chef or a team with no class: satiety instead of an ability use. */
+/** A rotten dish on an empty belly: nothing to take, so no −0. */
+const EVENT_ROTTEN_EMPTY_VARIANTS = ["寶箱裡是黑暗料理！幸好{team}肚子早就空了，沒得扣。", "{team}聞了一口黑暗料理就放下了，飽足感本來就見底。"];
 const EVENT_SATIETY_VARIANTS = ["{team}喝了一口甜甜的泉水，飽足感 +{points}！", "清涼的泉水讓{team}精神一振，飽足感 +{points}。"];
 
 /** The next line before an event turn: it sets the scene ({story}) and never says what will happen. */
@@ -333,7 +336,12 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
       if (event.type === "boss-hit" && event.bossHp === 0) return fill(pick(BOSS_EMPTIED_VARIANTS, "boss-emptied"), event);
       if (event.type === "event-room") {
-        const pool = event.satiety > 0 && (event.outcome === "spring" || event.outcome === "good") ? EVENT_SATIETY_VARIANTS : EVENT_VARIANTS[event.outcome];
+        const pool =
+          event.satiety > 0 && (event.outcome === "spring" || event.outcome === "good")
+            ? EVENT_SATIETY_VARIANTS
+            : event.outcome === "rotten" && event.satiety === 0
+              ? EVENT_ROTTEN_EMPTY_VARIANTS
+              : EVENT_VARIANTS[event.outcome];
         return fill(pick(pool, `event-${event.outcome}`), { ...event, points: Math.abs(event.satiety) });
       }
       if (event.type === "boss-phase") return fill(pick(VARIANTS["boss-phase"], "boss-phase"), { ...event, ordinal: ordinal(event.phase) });

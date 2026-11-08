@@ -78,6 +78,33 @@ describe("scripted lines", () => {
   });
 });
 
+describe("scripted: an opened event room", () => {
+  const events: NarrationEvent[] = [
+    { type: "event-room", team, scene: "chest", outcome: "feast", satiety: 23, dish: "烤史萊姆凍" },
+    { type: "event-room", team, scene: "chest", outcome: "rotten", satiety: -10 },
+    { type: "event-room", team, scene: "chest", outcome: "rotten", satiety: 0 },
+    { type: "event-room", team, scene: "spring", outcome: "spring", satiety: 10 },
+    { type: "event-room", team, scene: "spring", outcome: "spring", satiety: 0, abilityUse: true },
+    { type: "event-room", team, scene: "idol", outcome: "curse", satiety: 0 },
+    { type: "event-room", team, scene: "fortune", outcome: "bad", satiety: 0 },
+  ];
+
+  it("names the team and the dish, fills every brace, and never says −0", () => {
+    const p = createScriptedProvider(lcg(8));
+    for (const e of events) {
+      for (let i = 0; i < 10; i++) {
+        const line = p.line(e);
+        expect(line).toContain(team);
+        expect(line).not.toMatch(/[{}]|[−-]0/);
+        expect(line.length).toBeLessThanOrEqual(40);
+        if (e.type === "event-room" && e.dish) expect(line).toContain(e.dish);
+        expect(p.atmosphereLine(e)).not.toMatch(/[{}]/);
+      }
+    }
+    expect(ATMOSPHERE_VARIANTS["event-room"].length).toBeGreaterThanOrEqual(4);
+  });
+});
+
 describe("atmosphereLine", () => {
   it("has at least 4 variants for every event type", () => {
     for (const e of samples) {

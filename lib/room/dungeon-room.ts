@@ -1887,7 +1887,10 @@ export class DungeonRoom {
     const judged = run(this.rng, killDice);
     const { outcome } = judged;
     // The next room may hold an event instead of its monster (event-rooms.md D2, D5): drawn now, so a restart cannot reroll it.
-    const game = eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterEventRoom(judged.game, teamId, drawEvent(this.rng)) : judged.game;
+    // A room the host picked the question for (指定下一題) keeps its monster: an event there would burn the pick.
+    const queued = prev.teams.find((t) => t.id === teamId)?.queuedQuestionId;
+    const picked = queued !== undefined && judged.game.teams.find((t) => t.id === teamId)?.currentQuestionId === queued;
+    const game = !picked && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterEventRoom(judged.game, teamId, drawEvent(this.rng)) : judged.game;
     // A ruling on the team (the host's, or the lost natural 20 itself) settles its lost natural 20; one refused above does not.
     if (this.lostCrit?.teamId === teamId) this.lostCrit = null;
     // Everything up to broadcastState is synchronous: state changes and the eventId are
@@ -2235,7 +2238,6 @@ export class DungeonRoom {
     return true;
   }
 
-  /** 擲骰說服 (dnd design R-E1, R-E4): the team on turn rolls its check on its own fill-in question, once. */
   /** Whether the team that just walked into a new room finds an event there (D5). e2e names its one event team. */
   private rollsEvent(teamId: string): boolean {
     if (this.e2eEventTeam !== undefined) return this.game?.teams.find((t) => t.id === teamId)?.name === this.e2eEventTeam;
@@ -2263,10 +2265,11 @@ export class DungeonRoom {
     this.game = opened.game;
     const id = ++this.eventSeq;
     // A feast serves a dish from the catalog: the room monsters', since the boss's is the last night's feast.
-    const pool = MONSTERS.filter((m) => !m.boss);
-    const m = result.outcome === "feast" ? pool[Math.floor(this.rng() * pool.length)] : undefined;
+    // Only a dish the room may say aloud, like the dishes the epilogue names; none left means no dish.
+    const pool = MONSTERS.filter((m) => !m.boss && this.sayable(m.dish.name));
+    const m = result.outcome === "feast" && pool.length ? pool[Math.floor(this.rng() * pool.length)] : undefined;
     this.eventReveal = { ...result, ...(m ? { dish: { name: m.dish.name, sprite: m.sprite, hue: m.hue } } : {}) };
-    const bad = result.satiety < 0 || result.boon === "curse";
+    const bad = result.outcome === "rotten" || result.outcome === "bad" || result.boon === "curse";
     this.setCue(bad ? "fumble" : "correct");
     this.broadcastState();
     const team = game.teams.find((t) => t.id === teamId)!;
@@ -2284,6 +2287,7 @@ export class DungeonRoom {
     });
   }
 
+  /** 擲骰說服 (dnd design R-E1, R-E4): the team on turn rolls its check on its own fill-in question, once. */
   private handleTeamRollCheck(conn: Conn, questionId: string, eventId: number) {
     const teamId = this.playingTeam(conn);
     const game = this.game;
@@ -2294,6 +2298,8 @@ export class DungeonRoom {
     if (this.paused()) return reject("reveal_pending");
     if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
+    // An event room holds no question to roll on: its held deal stays hidden.
+    if (game.teams.find((t) => t.id === teamId)?.event) return reject("event_room");
     if (this.question(questionId)?.kind !== "text" || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
     if (game.checks?.[checkKey(questionId, teamId)]) return reject("check_done");
     // A typed answer already waits for the host: a natural 20 must not win over it.

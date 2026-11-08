@@ -24,7 +24,7 @@ export function nextTransition(seen: TransitionSeen, msg: StateMessage): { seen:
   if (msg.intro) return { seen: { open: true, boss: false }, play: null };
   const turn = describeTurn(msg.view, msg.question, msg.phaseCard?.monster);
   // A reveal still shows the room monster that was just beaten: the boss is called once the room is the boss's.
-  const bossOnScreen = turn.bossScene && !msg.reveal;
+  const bossOnScreen = turn.bossScene && !msg.reveal && !msg.eventReveal;
   // A screen (re)connecting mid-game counts the boss as seen once any team got that far, on screen now or not.
   const bossReached = msg.view.teams.some((t) => t.inBossPhase) || msg.view.bossHp < msg.view.bossMaxHp || msg.view.bossPhase > 1;
   if (seen.open) {
