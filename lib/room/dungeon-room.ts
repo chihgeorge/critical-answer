@@ -276,7 +276,8 @@ export class DungeonRoom {
    * through lostCrit with fresh dice). Shares lockTimer. */
   private pendingRoll: PendingRoll | null = null;
   /** 每題作答倒數 (docs/designs/answer-countdown.md): this game's seconds (0 is off), the running count, and the last
-   * question whose video clip the big screen reported ended (D4). Saved: a restart keeps the remaining time. */
+   * question whose video clip the big screen reported ended (D4). Saved with a wall-clock deadline: a restart keeps
+   * the count going, and time spent down counts, as it does for the players watching. */
   private answerSeconds = 0;
   private answerClock: AnswerClock | null = null;
   private clipEnded: string | null = null;
@@ -750,24 +751,21 @@ export class DungeonRoom {
     return { key: `${teamId}:${pub.id}`, questionId: pub.id, video: pub.content.kind === "youtube" };
   }
 
-  /** Brings the countdown up to date with the room: called whenever the room is saved or sent, so it needs no hooks of its own. */
-  private syncAnswerClock(): { waiting: boolean } {
+  /** Brings the countdown up to date with the room and returns what STATE shows of it. Called whenever the room is
+   * saved or sent, so it needs no hooks of its own. */
+  private syncAnswerClock(): { answerClock?: { left: number | null } } {
     const want = this.answering();
-    if (want === "hold") return { waiting: false };
+    if (want === "hold") return {};
     const waiting = !!want?.video && this.clipEnded !== want.questionId;
     this.answerClock = nextAnswerClock(this.answerClock, want && !waiting ? want.key : null, this.now(), this.answerSeconds * 1000);
-    return { waiting };
+    if (waiting) return { answerClock: { left: null } };
+    return this.answerClock ? { answerClock: { left: Math.max(0, this.answerClock.endsAt - this.now()) } } : {};
   }
 
-  private answerClockView(): { answerClock?: { left: number | null } } {
-    if (this.syncAnswerClock().waiting) return { answerClock: { left: null } };
-    return this.answerClock && this.answering() !== "hold" ? { answerClock: { left: Math.max(0, this.answerClock.endsAt - this.now()) } } : {};
-  }
-
-  /** SCREEN_CLIP_ENDED (D4): only for the question video on screen right now; the first report starts the count. */
+  /** SCREEN_CLIP_ENDED (D4): for the question video on screen right now, even while an answer waits (a 重答 then
+   * counts at once). The first report counts. */
   private handleClipEnded(questionId: string) {
-    const want = this.answering();
-    if (want === "hold" || !want?.video || want.questionId !== questionId || this.clipEnded === questionId) return;
+    if (!this.answerSeconds || this.reveal || this.shownVideoId() !== questionId || this.clipEnded === questionId) return;
     this.clipEnded = questionId;
     this.broadcastState();
   }
@@ -868,7 +866,7 @@ export class DungeonRoom {
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
       ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
       ...(this.initiative ? { initiative: { ...this.initiative, left: Math.max(0, this.initiativeEndsAt - this.now()) } } : {}),
-      ...this.answerClockView(),
+      ...this.syncAnswerClock(),
       ...this.bossPhaseInfo(),
       cuisine: true as const,
       pendingLock: this.pendingLock,
@@ -1283,7 +1281,7 @@ export class DungeonRoom {
       // reconnect's re-identification (`resume`) is a device, not a person.
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && !this.rejected && !resumed) {
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.

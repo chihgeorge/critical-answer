@@ -436,7 +436,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
       {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster. */}
       {typeof answerLeft === "number" && !reveal && !card && (
-        <div className="absolute" style={{ left: "calc(50% + 170px)", bottom: 170, zIndex: 6 }}>
+        <div className="absolute" style={{ left: "calc(50% + 170px)", bottom: 150, zIndex: 6 }}>
           <AnswerClock key={answerLeft} ms={answerLeft} variant="big" onSecond={onClockSecond} />
         </div>
       )}
@@ -905,11 +905,14 @@ export default function ScreenPage() {
   function onClipEnded(questionId: string) {
     send({ type: "SCREEN_CLIP_ENDED", questionId });
   }
-  /** The last second the answer clock ticked for: a STATE remounts the clock on the same second, which must not tick twice. */
+  /** The lowest second the answer clock has shown. A STATE remounts the clock, which can show the same second or one
+   * above it again (network delay): neither ticks twice. A jump of more than a second up is a new count. */
   const lastTick = useRef<number | null>(null);
   const onClockSecond = useCallback((s: number) => {
-    if (s === lastTick.current) return;
+    const last = lastTick.current;
+    if (last !== null && s >= last && s <= last + 1) return;
     lastTick.current = s;
+    if (last !== null && s > last) return; // a new count starts silent
     if (s === 0) bgm.current?.playCue(ANSWER_TIME_UP);
     else if (s <= ANSWER_WARN_SECONDS) bgm.current?.playCue(ANSWER_TICK);
   }, []);

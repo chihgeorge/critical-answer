@@ -12,8 +12,9 @@ const IDS = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-00
 const [A, B] = IDS;
 const TOKEN = "host-token-0123456789abcdef";
 const text = (id: string) => ({ kind: "text", id, content: { kind: "text", value: `題目 ${id}` }, answer: `答案 ${id}` });
+const mc = (id: string) => ({ kind: "multipleChoice", id, content: { kind: "text", value: `題目 ${id}` }, options: ["甲", "乙", "丙", "丁"], correctIndex: 0 });
 const video = (id: string) => ({ kind: "text", id, content: { kind: "youtube", value: "dQw4w9WgXcQ" }, prompt: "這首歌是？", answer: `答案 ${id}` });
-const bank = (first = text("r1")) =>
+const bank = (first: object = text("r1")) =>
   parseBank({
     rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [first, text("r2"), text("r3"), text("r4")] }],
     boss: { monster: "dragon", maxHp: 1, questions: [text("b1")] },
@@ -88,6 +89,10 @@ describe("HOST_START answerSeconds", () => {
     expect(parseClientMessage(({ type: "HOST_START", answerSeconds: 45 }))).toMatchObject({ answerSeconds: 45 });
     expect(parseClientMessage(({ type: "HOST_START", answerSeconds: 0 }))).not.toHaveProperty("answerSeconds");
     expect(parseClientMessage(({ type: "HOST_START", answerSeconds: 7 }))).toBeNull();
+    expect(parseClientMessage(({ type: "HOST_START", answerSeconds: "60" }))).toBeNull();
+    expect(parseClientMessage(({ type: "SCREEN_CLIP_ENDED", questionId: "" }))).toBeNull();
+    expect(parseClientMessage(({ type: "SCREEN_CLIP_ENDED", questionId: 5 }))).toBeNull();
+    expect(parseClientMessage(({ type: "SCREEN_CLIP_ENDED", questionId: "q1" }))).toEqual({ type: "SCREEN_CLIP_ENDED", questionId: "q1" });
   });
 });
 
@@ -147,6 +152,32 @@ describe("每題作答倒數 in the room", () => {
     expect(g.state().answerClock).toEqual({ left: 60000 });
   });
 
+  it("does not run during the how-to-play intro or 擲先攻; the first question then gets the full time", () => {
+    const g = started({ answerSeconds: 45, intro: true, initiative: true });
+    expect(g.state().intro).toBeDefined();
+    expect(g.state().answerClock).toBeUndefined();
+    for (let page = 2; page <= 5; page++) send(g.room, g.host, { type: "HOST_INTRO", page });
+    expect(g.state().initiative).toBeDefined();
+    expect(g.state().answerClock).toBeUndefined();
+    vi.advanceTimersByTime(10000);
+    send(g.room, g.host, { type: "HOST_ROLL_INITIATIVE" });
+    vi.advanceTimersByTime(30000); // the order holds, then the first question
+    expect(g.state().initiative).toBeUndefined();
+    expect(g.state().question).not.toBeNull();
+    expect(g.state().answerClock).toEqual({ left: 45000 });
+  });
+
+  it("a locked choice stops it while it waits for 公布答案", () => {
+    const g = started({ answerSeconds: 30 }, bank(mc("m1")));
+    expect(g.state().question.id).toBe("m1");
+    vi.advanceTimersByTime(7000);
+    send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "m1", optionIndex: 1 });
+    expect(g.state().answerClock).toEqual({ left: 23000 }); // picking is not answering yet
+    send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: "m1", optionIndex: 1 });
+    expect(g.state().pendingLock).not.toBeNull();
+    expect(g.state().answerClock).toBeUndefined();
+  });
+
   it("a restart keeps the remaining time", async () => {
     const g = started();
     vi.advanceTimersByTime(15000);
@@ -183,6 +214,25 @@ describe("每題作答倒數 in the room", () => {
 });
 
 describe("每題作答倒數 on a video question (D4)", () => {
+  it("a clip that ends while the answer waits still counts: 重答 starts the clock without waiting again", () => {
+    const g = started({ answerSeconds: 30 }, bank(video("v1")));
+    const screen = makeConn("screen");
+    g.room.onConnect(screen);
+    // The team answers before the clip ends; the host judges it wrong while the clip is still playing.
+    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "v1", eventId: g.state().eventId });
+    vi.advanceTimersByTime(5000);
+    send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "v1", text: "猜一首" });
+    send(g.room, screen, { type: "SCREEN_CLIP_ENDED", questionId: "v1" });
+    expect(g.state().answerClock).toBeUndefined();
+    g.judge(false, "retry");
+    // B's turn: its own question, a text one, counts at once.
+    expect(g.state().view.currentTurnTeamId).toBe(B);
+    g.judge(false, "retry");
+    expect(g.state().view.currentTurnTeamId).toBe(A);
+    expect(g.state().question.id).toBe("v1");
+    expect(g.state().answerClock).toEqual({ left: 30000 });
+  });
+
   it("waits for the big screen's clip end; a phone or the host cannot start it, and a second report does nothing", () => {
     const g = started({ answerSeconds: 30 }, bank(video("v1")));
     expect(g.state().question.id).toBe("v1");
