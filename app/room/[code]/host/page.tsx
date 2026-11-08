@@ -360,7 +360,10 @@ export default function HostPage() {
         lockWaiting,
       );
       if (!action || !game) return;
-      if (action === "reveal") {
+      if (action === "undo") {
+        if (!ready || !game.undoWrong) return;
+        send({ type: "HOST_UNDO_WRONG", ...game.undoWrong, eventId: game.eventId });
+      } else if (action === "reveal") {
         if (!ready || !lock) return;
         send({ type: "HOST_REVEAL", teamId: lock.teamId, questionId: lock.questionId });
       } else if (action === "next") {
@@ -831,6 +834,13 @@ export default function HostPage() {
                 </>
               )}
             </>
+            )}
+            {/* 改判答對 (TODOS.md): under the judge buttons, so it shows up without moving them under a double tap. */}
+            {game.undoWrong && !revealUp && (
+              <PixelButton className="!mt-4 text-[16px]" style={{ background: "#fff" }} disabled={!ready} onClick={() => send({ type: "HOST_UNDO_WRONG", ...game.undoWrong!, eventId: game.eventId })}>
+                ↩ 剛才的{teamName(game.undoWrong.teamId)}改判答對
+                <span className="px-key" aria-hidden="true">{HOST_KEYS.undo}</span>
+              </PixelButton>
             )}
             {/* No team on turn (every phone offline): a waiting lock still gets its 公布答案. */}
             {!turn?.team && !revealUp && revealButton}

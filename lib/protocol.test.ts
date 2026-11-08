@@ -7,6 +7,13 @@ const ID = "00000000-0000-0000-0000-000000000001";
 const KEY = "team-key-0123456789abcdef";
 
 describe("parseClientMessage", () => {
+  it("HOST_UNDO_WRONG needs a team, a question and the eventId it was pressed under", () => {
+    expect(parseClientMessage({ type: "HOST_UNDO_WRONG", teamId: ID, questionId: "q1", eventId: 3 })).toEqual({ type: "HOST_UNDO_WRONG", teamId: ID, questionId: "q1", eventId: 3 });
+    expect(parseClientMessage({ type: "HOST_UNDO_WRONG", teamId: ID, questionId: "q1" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_UNDO_WRONG", teamId: ID, questionId: "q1", eventId: -1 })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_UNDO_WRONG", questionId: "q1", eventId: 3 })).toBeNull();
+  });
+
   it("returns null for non-objects and unknown types", () => {
     for (const v of [null, undefined, 5, "JOIN", [], { type: "NOPE" }, {}]) {
       expect(parseClientMessage(v)).toBeNull();

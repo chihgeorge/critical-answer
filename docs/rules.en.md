@@ -14,6 +14,7 @@ The host reads the question out (the question is on the big screen; the answer i
 - **Correct**: the team defeats this room's monster, gets its **reward points** (by default rooms 1–8 give 10/20/20/30/40/40/50/50), and moves on to the next room.
 - **Wrong, retry**: the team stays in the same room and answers the same question again.
 - **Wrong, flee**: the team stays in the same room, facing the same monster, but gets a new question from the bank one level lower, difficulty −1 (the reward points still follow this monster; nothing is deducted).
+- **Change to correct**: when the host presses 「答錯」 (wrong) on a fill-in question by mistake, 「↩ 剛才的{隊名}改判答對」 (change {team}'s answer to correct) shows below the judge buttons (keyboard `0`). Pressing it counts that question as correct: score, reward points, dish and narration all go as for a correct answer, and a cleric's wait (with the retry or flee chosen after it) is taken back too. It works only until the game's next move: once the next team submits an answer, locks, rolls or uses a class ability, the host judges anything else, or the cleric prays, the button goes away. A phone disconnecting or reconnecting is not a move.
 
 ## Multiple-choice questions
 
