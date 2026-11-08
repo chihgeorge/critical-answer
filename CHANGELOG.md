@@ -10,6 +10,11 @@ All notable changes to Critical Answer are documented here.
 - Every finished game leaves a record, for tuning the boss HP and the boss-entry score: how many rounds each team took to reach the boss room, how many rounds the boss fight took, the boss's HP per phase and the HP left, each team's class and score, the entry score, the rewards, and the start and end time. No question or answer text. It is stored next to the question bank and also printed to the Worker log. A failed store never stops the game. A game ended before anyone answered is not recorded, the download has the newest 1000 games, and a game already running at deploy time is marked `partial`.
 - In the bank editor, 「⬇ 下載對局紀錄（JSON）」 under 「載入題庫」 downloads the newest games' records (owner key only, `GET /api/game-logs`).
 
+## [0.48.0.1] - 2026-11-08
+
+### Fixed
+- In the bank editor, an edit made right after the bank appeared could be lost. If the owner key was typed before the page was ready, the page also loaded the bank on its own. That load could land first, and the 載入題庫 click's load then replaced the edit. The questions are now locked while a load or a save is in flight. This was why the bank-editor multiple-choice test failed now and then in CI (on main, after #150).
+
 ## [0.48.0.0] - 2026-11-08
 
 ### Added
