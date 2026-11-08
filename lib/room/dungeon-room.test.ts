@@ -11,7 +11,7 @@ vi.mock("../question-bank-data", async (actual) => {
   const { asTextBank } = await import("../text-bank");
   return { BANK: { ...asTextBank((await actual<typeof import("../question-bank-data")>()).BANK), randomMonsters: undefined } };
 });
-import { checkKey, currentTurnTeamId, setTeamOnline, type ClassId } from "../game-state";
+import { WARRIOR_TARGET, checkKey, currentTurnTeamId, setTeamOnline, type ClassId } from "../game-state";
 import { sortCode } from "../sort-order";
 import { EPILOGUE_MODEL } from "../narration/llm";
 import { SERVE_HOLD_MS } from "../protocol";
@@ -2955,18 +2955,18 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     }
   });
 
-  it("spends the use at the roll, holds a 12 for 2 s (host judging and a second roll refused), then judges it correct", () => {
+  it("spends the use at the roll, holds a hit for 2 s (host judging and a second roll refused), then judges it correct", () => {
     vi.useFakeTimers();
     const { room, hostConn, conns, roll } = warriorGame();
     const q = room.game!.teams[0].currentQuestionId;
     const seq = seqOf(room);
-    roll(12);
+    roll(WARRIOR_TARGET);
     const held = lastBroadcast(room);
-    expect(held.pendingRoll).toMatchObject({ questionId: q, value: 12 });
+    expect(held.pendingRoll).toMatchObject({ questionId: q, value: WARRIOR_TARGET });
     expect(held.view.teams[0].abilityUses).toBe(3);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: room.game!.teams[0].id, questionId: q, correct: true, eventId: seq });
     expect(err(hostConn)).toBe("roll_pending");
-    roll(12);
+    roll(WARRIOR_TARGET);
     expect(err(conns[0])).toBe("answer_pending");
     vi.advanceTimersByTime(2000);
     const out = lastBroadcast(room);
@@ -3013,7 +3013,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     vi.useFakeTimers();
     const { room, hostConn, ids, conns, roll } = warriorGame();
     const q = room.game!.teams[0].currentQuestionId;
-    roll(12);
+    roll(WARRIOR_TARGET);
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: 0 });
     expect(err(conns[0])).toBe("answer_pending");
     send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: q });
@@ -3029,10 +3029,10 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
   it("a roll while a reveal is open is refused", () => {
     vi.useFakeTimers();
     const { room, conns, roll } = warriorGame();
-    roll(12);
+    roll(WARRIOR_TARGET);
     vi.advanceTimersByTime(2000);
     expect(lastBroadcast(room).reveal).not.toBeNull();
-    roll(12);
+    roll(WARRIOR_TARGET);
     expect(err(conns[0])).toBe("reveal_pending");
   });
 
@@ -3586,7 +3586,7 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     const { room, hostConn, ids } = cookRoom(BANK, "chef");
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
     await flush();
-    expect(states(room).at(-1).reveal.dish).toMatchObject({ points: 12, chefBonus: 2 });
+    expect(states(room).at(-1).reveal.dish).toMatchObject({ points: 12, chefBonus: 2 }); // pregate-literal: WARRIOR_TARGET=12 not the warrior target
   });
 
   it("a team with no class gets no chefBonus on its dish", async () => {

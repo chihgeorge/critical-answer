@@ -991,13 +991,13 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(above.teams[0].currentQuestionId).toBe("p3-1");
   });
 
-  it("8 teams in one 12-question pool never hold the same question, however often they flee", () => {
+  it("8 teams in one 12-question pool never hold the same question, however often they flee", () => { // pregate-literal: WARRIOR_TARGET=12 a pool size, not the warrior target
     const seeds = Array.from({ length: 8 }, (_, i) => ({ id: `T${i}`, name: `${i}` }));
     // Seeded so a failure reproduces.
     for (const seed of [1, 2, 3]) {
       let s = seed;
       const rng = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32);
-      let g = createGame(seeds, [{ baseDifficulty: 1, reward: 10 }], [ids("q", 12), [], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, rng);
+      let g = createGame(seeds, [{ baseDifficulty: 1, reward: 10 }], [ids("q", 12), [], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, rng); // pregate-literal: WARRIOR_TARGET=12 a pool size, not the warrior target
       for (let n = 0; n < 200; n++) {
         const id = currentTurnTeamId(g)!;
         const team = g.teams.find((t) => t.id === id)!;
@@ -1369,14 +1369,14 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
 
   it("the final blow still rolls the 4d20 kill bonus", () => {
     const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 1, teamCount: 1 });
-    const { game, outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, 12, first);
+    const { game, outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, WARRIOR_TARGET, first);
     expect(outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: true, killBonus: 4 });
     expect(game.phase).toBe("finished");
   });
 
   it("the final blow scores the kill dice the room already showed (kill-roll.md)", () => {
     const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 1, teamCount: 1 });
-    const { outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, 12, first, false, [9, 14, 3, 17]);
+    const { outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, WARRIOR_TARGET, first, false, [9, 14, 3, 17]);
     expect(outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: true, killBonus: 43 });
   });
 
@@ -1466,8 +1466,8 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
   it("the chef gets 15% more on a room answer; other teams get no chefBonus", () => {
     const g = classGame(["chef", undefined]);
     const { game, outcome } = answerQuestion(g, "T0", currentQ(g, "T0"), true);
-    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 12, chefBonus: 2 });
-    expect(game.teams[0]).toMatchObject({ score: 1, reward: 12, abilityUses: 2 });
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 12, chefBonus: 2 }); // pregate-literal: WARRIOR_TARGET=12 not the warrior target
+    expect(game.teams[0]).toMatchObject({ score: 1, reward: 12, abilityUses: 2 }); // pregate-literal: WARRIOR_TARGET=12 not the warrior target
     const other = answerQuestion(game, "T1", currentQ(game, "T1"), true);
     expect(other.outcome).toMatchObject({ reward: 10 });
     expect(other.outcome).not.toHaveProperty("chefBonus");
@@ -1476,7 +1476,7 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
   it("the chef's 15% goes on the whole boss gain, the kill's 4d20 included", () => {
     const g = classGame(["chef"], 0, 2);
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first);
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 12, chefBonus: 2 });
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 12, chefBonus: 2 }); // pregate-literal: WARRIOR_TARGET=12 not the warrior target
     const kill = answerQuestion(hit.game, "T0", hit.game.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
     // 10 + 43 = 53, and 15% of 53 rounds to 8.
     expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 61, chefBonus: 8 });
@@ -1900,7 +1900,7 @@ describe("the persuasion check (dnd design R6, R8)", () => {
 
   it("rolls once per team and question, on its own turn and current question only", () => {
     const g = check(checkGame([undefined, undefined]), 9);
-    expect(() => check(g, 12)).toThrow(/check_done/);
+    expect(() => check(g, 12)).toThrow(/check_done/); // pregate-literal: WARRIOR_TARGET=12 not the warrior target
     expect(() => recordCheck(g, "T1", g.teams[1].currentQuestionId, 9, "萬家福")).toThrow(/not_your_turn/);
     expect(() => recordCheck(checkGame([undefined]), "T0", "not-mine", 9, "萬家福")).toThrow();
   });
