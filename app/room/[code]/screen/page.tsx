@@ -3,7 +3,7 @@
 // The shared big screen. Public: it only ever receives the spectator view and
 // never a host-only message, so it can be cast to a TV without leaking answers.
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
@@ -18,7 +18,9 @@ import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { SFX } from "@/lib/sfx";
+import { BOSS_ALARM, SFX } from "@/lib/sfx";
+import { IN_LOBBY, nextTransition, UNSEEN, type Transition } from "@/lib/transitions";
+import { TransitionOverlay } from "@/components/transition-overlay";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, prefersReducedMotion, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { MapStrip } from "@/components/map-strip";
 import { McOption, optionLetter, type OptionLook } from "@/components/mc-option";
@@ -613,6 +615,10 @@ export default function ScreenPage() {
   const [finale, setFinale] = useState(false);
   /** The phase of the last STATE on this connection: playing → finished is a kill seen live. */
   const lastPhase = useRef<StateMessage["phase"] | null>(null);
+  /** The doors and the boss alarm (lib/transitions.ts): what this connection has seen, and the one playing. */
+  const transitionSeen = useRef(UNSEEN);
+  const [transition, setTransition] = useState<Transition | null>(null);
+  const endTransition = useCallback(() => setTransition(null), []);
   /** The eventId of the last served reveal: its late narration line must not cut off 上菜's lines (cooking I1),
    * nor be read over the next question once 下一題 closes it (closing a reveal does not move eventId). */
   const servedEvent = useRef<number | null>(null);
@@ -885,6 +891,8 @@ export default function ScreenPage() {
       narrationBaseline.current = null;
       sfxSeen.current = null;
       lastPhase.current = null;
+      transitionSeen.current = UNSEEN;
+      setTransition(null);
       // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
       progress.current = null;
     },
@@ -900,6 +908,8 @@ export default function ScreenPage() {
           setEpilogue(null);
           setFinale(false);
           lastPhase.current = null;
+          transitionSeen.current = IN_LOBBY;
+          setTransition(null);
           podiumReady.current = true;
           heldEpilogue.current = null;
           servedEvent.current = null;
@@ -914,6 +924,12 @@ export default function ScreenPage() {
           break;
         case "STATE":
           setGame(msg);
+          {
+            const t = nextTransition(transitionSeen.current, msg);
+            transitionSeen.current = t.seen;
+            if (t.play) setTransition(t.play);
+            if (t.play?.kind === "boss") bgm.current?.playCue(BOSS_ALARM);
+          }
           if (msg.phase === "finished" && lastPhase.current === "playing" && msg.reveal?.dish) setFinale(true);
           // The story waits for the boss to cook (cooking I4) and the places to be called (podium-reveal.md), on every
           // STATE: a screen that (re)connects mid-reveal must not read the winner's story first. Finished's clock
@@ -975,6 +991,7 @@ export default function ScreenPage() {
         )}
         {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
+        {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
           {!game && !tapped && (
