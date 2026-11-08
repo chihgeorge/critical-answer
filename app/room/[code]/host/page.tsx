@@ -352,7 +352,7 @@ export default function HostPage() {
   }, [stuckKey]);
   const stuck = !!stuckKey && stuckShownFor === stuckKey;
   // A team in an event room presses its own button; after 15 s the host may press it for them (event-rooms.md D10).
-  const eventScene = !revealUp ? turn?.team?.eventScene : undefined;
+  const eventScene = !revealUp && !game?.phaseCardDue ? turn?.team?.eventScene : undefined;
   const eventKey = eventScene && turn?.team ? `${turn.team.id}|${game?.eventId}` : null;
   const [eventStuckFor, setEventStuckFor] = useState<string | null>(null);
   useEffect(() => {

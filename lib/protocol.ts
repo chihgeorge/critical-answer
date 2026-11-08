@@ -323,6 +323,8 @@ export type ServerMessage =
       /** The boss's phase card is up: `question` is null until the host's 下一題 (docs/designs/boss-phases.md),
        * so the card carries the boss to draw. */
       phaseCard?: { monster: PublicQuestion["monster"] };
+      /** A 答錯 used up the boss phase and its card opens in a moment: an event turn waits for it (event-rooms.md). */
+      phaseCardDue?: true;
       /** How-to-play page on show (1..4); `question` is null until the host leaves page 4. */
       intro?: { page: number };
       /** 擲先攻 between the intro and the first question: `question` is null until the order has been shown. */
