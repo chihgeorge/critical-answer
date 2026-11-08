@@ -2,7 +2,7 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [Unreleased]
+## [0.51.0.1] - 2026-11-08
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website. A new host page talking to an old room server never sees its key confirmed, so 記住這台電腦 saves nothing until the server is updated. No migration.
 
