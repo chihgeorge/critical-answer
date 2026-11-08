@@ -1,13 +1,15 @@
 // Typed narration events, derived from what just happened in the game. This is
 // the seam every narration provider (scripted now, LLM later) reads.
 
-import { type AnswerOutcome, type ClassId, type GameState, type RollMark } from "../game-state";
+import { type AnswerOutcome, type ClassId, type EventOutcome, type EventScene, type GameState, type RollMark } from "../game-state";
 
 /** Who is up next and what they face: the story moves on to them after the result line. */
 export interface NextTurn {
   team: string;
   monster: string;
   boss: boolean;
+  /** The team stands in an event room (docs/designs/event-rooms.md): the line sets this scene, with no monster and no spoiler. */
+  event?: EventScene;
 }
 
 /** `hostLine`: the line the host queued for this narration (HOST_NEXT_LINE); segment 2 always says it
@@ -39,6 +41,8 @@ export type NarrationEvent =
   | WithNext<WithRoll<ByClass<{ type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number; exhausted?: true }>>>
   /** The phase card opened: the boss is back with a new bar. `phase` counts from 1; nothing about later phases. */
   | WithNext<{ type: "boss-phase"; monster: string; phase: number; name: string; rule: string }>
+  /** A team opened its event room (event-rooms.md D11): `satiety` is the change made, `dish` the feast's catalog dish. */
+  | WithNext<ByClass<{ type: "event-room"; team: string; scene: EventScene; outcome: EventOutcome; satiety: number; abilityUse?: true; dish?: string }>>
   | WithNext<WithRoll<ByClass<{ type: "boss-kill"; team: string; monster: string; bonus: number; cooked?: true }>>>
   /** Game over: ranking is sorted high to low. Longer line, longer timeout. */
   // ranking[].score carries reward points (Team.reward), not progress points (Team.score).

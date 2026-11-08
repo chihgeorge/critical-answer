@@ -8,6 +8,8 @@ export type SpriteKind = "slime" | "slime-lost" | "slime-king" | "ghost" | "ghos
   // Cooking (docs/designs/monster-cuisine.md, cooking R6/R7): the pot, its smoke, and one dish per monster sprite.
   | "pot" | "smoke" | "dish-jelly" | "dish-stew" | "dish-tower" | "dish-ice" | "dish-riceball" | "dish-skewer"
   | "dish-mushroom-skewer" | "dish-wings" | "dish-bone-soup" | "dish-bento" | "dish-cotton-candy" | "dish-escargot" | "dish-brulee" | "dish-stone-pot" | "dish-jelly-salad" | "dish-three-cup" | "dish-fondue" | "dish-root-stew" | "dish-tangyuan" | "dish-crab" | "dish-tofu" | "dish-pumpkin-soup" | "dish-smoothie" | "dish-squid" | "dish-roast-chicken"
+  // Event rooms (docs/designs/event-rooms.md): what stands in the arch instead of a monster.
+  | "chest" | "chest-open" | "dish-rotten" | "spring" | "idol" | "fairy" | "fortune-teller" | "lot"
   // A repeat appearance's hat (docs/designs/monster-catalog.md §3).
   | `acc-${Accessory}`;
 

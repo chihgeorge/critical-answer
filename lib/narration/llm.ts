@@ -6,6 +6,7 @@
 import { epilogueParts, type NarrationEvent } from "./events";
 import { ordinal } from "../ordinal";
 import { CLASS_LABELS, type ClassId } from "../game-state";
+import { EVENT_SCENE_TEXT } from "../event-text";
 import type { NarrationProvider } from "./scripted";
 import { validLine, MAX_CALL_LINE, MAX_LINE, MAX_EPILOGUE_LINE } from "./runner";
 import { NarrationError } from "./errors";
@@ -84,7 +85,12 @@ function describeRoll(e: NarrationEvent): string {
 
 function describe(e: NarrationEvent): string {
   const cls = "classId" in e && e.classId ? `\n隊伍${q(e.team)}的職業是${CLASS_LABELS[e.classId]}，${CLASS_ATTACKS[e.classId]}。` : "";
-  const next = e.type !== "epilogue" && e.next ? `\n接下來輪到隊伍${q(e.next.team)}，他們要面對${e.next.boss ? "首領" : "怪物"}${q(e.next.monster)}。` : "";
+  const next =
+    e.type === "epilogue" || !e.next
+      ? ""
+      : e.next.event
+        ? `\n接下來輪到隊伍${q(e.next.team)}，他們走進一間沒有怪物的事件房：${EVENT_SCENE_TEXT[e.next.event].story}。不要說接下來會發生什麼。`
+        : `\n接下來輪到隊伍${q(e.next.team)}，他們要面對${e.next.boss ? "首領" : "怪物"}${q(e.next.monster)}。`;
   return describeEvent(e) + describeRoll(e) + cls + next;
 }
 
@@ -118,6 +124,17 @@ function describeEvent(e: NarrationEvent): string {
       return e.bossHp === 0
         ? `事件：隊伍${q(e.team)}一擊打空了首領的血條。不要說首領倒下、被擊敗或戰鬥結束，結果留待揭曉。`
         : `事件：隊伍${q(e.team)}擊中首領，首領還剩 ${e.bossHp}/${e.bossMaxHp} 顆心。`;
+    case "event-room": {
+      const what = e.abilityUse
+        ? "職業能力多一次"
+        : e.outcome === "curse" || e.outcome === "bad"
+          ? "被詛咒了，下次答對獎勵只拿一半"
+          : e.outcome === "blessing"
+            ? "得到祝福，下次答對獎勵多拿一半"
+            : `飽足感${e.satiety >= 0 ? "加" : "扣"} ${Math.abs(e.satiety)}`;
+      const scene = { feast: `打開寶箱，裡面是一道美味的${q(e.dish ?? "料理")}`, rotten: "打開寶箱，裡面是一道冒紫煙的黑暗料理，難吃極了", spring: "喝了一口發光的泉水", curse: "摸了古老的骷髏雕像", blessing: "跟小精靈說了話", great: "請占卜師算了一卦，抽到大吉", good: "請占卜師算了一卦，抽到中吉", bad: "請占卜師算了一卦，抽到凶" }[e.outcome];
+      return `事件：隊伍${q(e.team)}走進沒有怪物的事件房，${scene}，結果${what}。數字必須照寫。`;
+    }
     case "boss-phase":
       return `事件：首領${q(e.monster)}沒有倒下，血量全滿重新站起，戰鬥進入第${e.phase}階段${q(e.name)}。新的規則：${q(e.rule)}。不要提還有沒有下一個階段。`;
     case "boss-kill":

@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
-import type { AnswerReveal, LobbyTeams, MediaCommand, PendingRoll, PodiumReveal, PublicMediaContent, PublicQuestion, StateMessage } from "@/lib/protocol";
+import type { AnswerReveal, EventReveal, LobbyTeams, MediaCommand, PendingRoll, PodiumReveal, PublicMediaContent, PublicQuestion, StateMessage } from "@/lib/protocol";
 import { revealNow, type Beat } from "@/lib/podium";
 import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
@@ -35,6 +35,8 @@ import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { readStored, writeStored } from "@/lib/stored";
 import { sortOrderOf } from "@/lib/sort-order";
+import { EventStage } from "@/components/event-room";
+import { BOON_TEXT, EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT, eventEffectLine } from "@/lib/event-text";
 
 const TTS_ENABLED_STORAGE = "screen-tts-enabled";
 const BGM_ENABLED_STORAGE = "screen-bgm-enabled";
@@ -340,6 +342,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           <LabelChip>{card ? "還沒結束！" : reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
           {/* From phase 2 on the chip names the phase under way (D5); phase 1 looks like any boss. */}
           {!reveal && !card && inBoss && <LabelChip>{bossPhaseInfo?.name ?? "最後的挑戰！"}</LabelChip>}
+          {/* A curse or blessing waits on the team's next correct answer (event-rooms.md D12). */}
+          {!reveal && !card && turn?.boon && <span data-testid="screen-boon"><LabelChip>{BOON_TEXT[turn.boon]}</LabelChip></span>}
         </div>
         {/* The reveal takes the question's own slot until the host presses 下一題 (D7), so the
             next question never shows underneath (or behind) the previous answer. */}
@@ -473,6 +477,58 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       ) : (
         pendingRoll && pendingRoll.kind !== "kill" && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} kind={pendingRoll.kind ?? "warrior"} critable={!!(question?.options || question?.items)} bonus={pendingRoll.bonus} dc={pendingRoll.dc} />
       )}
+    </>
+  );
+}
+
+/** An event room on the big screen (docs/designs/event-rooms.md D6): the scene stands in the arch, the panel carries
+ * its line, then, once the team presses, the outcome until 下一題. */
+function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: SpectatorView; reveal: EventReveal | null; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
+  // After the press the turn has passed on: the stage stays the event team's, one room back.
+  const idx = view.teams.findIndex((t) => t.id === (reveal ? reveal.teamId : view.currentTurnTeamId));
+  const team = view.teams[idx];
+  const scene = reveal?.scene ?? team?.eventScene ?? "chest";
+  const text = EVENT_SCENE_TEXT[scene];
+  const name = team?.name ?? "";
+  return (
+    <>
+      <SceneBackground theme={roomTheme(Math.max(0, (team?.roomIndex ?? 0) - (reveal ? 1 : 0)))} />
+      <Torches />
+      <Sparks />
+      <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
+        {team && <TurnRibbon color={look(idx).hat} maxWidth={420}>{reveal ? `❓ ${name}` : `輪到：${name}`}</TurnRibbon>}
+        <MapStrip view={view} />
+      </div>
+      <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
+        <div className="absolute flex justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
+          <LabelChip>❓ 事件房</LabelChip>
+        </div>
+        {reveal ? (
+          <div data-testid="event-result" className="flex flex-col items-center gap-1">
+            <div className="px-title-gold" style={{ fontSize: 38, lineHeight: 1.2 }}>{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
+            <div className="text-[24px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{name} {eventEffectLine(reveal)}</div>
+          </div>
+        ) : (
+          <>
+            <div data-testid="event-line">{text.line}</div>
+            <div className="text-[20px]">{name}：按手機上的「{text.button.replace(/^\S+\s/, "")}」</div>
+          </>
+        )}
+      </Panel>
+      <div className="absolute" style={{ left: "50%", bottom: 136, width: 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
+      <div key={`${scene}-${reveal ? "open" : "shut"}`} className="absolute" style={{ left: "50%", bottom: 146, transform: "translateX(-50%)", zIndex: 4 }}>
+        <EventStage scene={scene} reveal={reveal} height={120} />
+      </div>
+      <Nameplate className="absolute" style={{ left: "50%", bottom: 112, transform: "translateX(-50%)", zIndex: 5 }}>
+        <span>{text.name}</span>
+      </Nameplate>
+      <DialogueBox
+        className="absolute"
+        style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
+        loading={isPending(eventId, narration)}
+        lines={narration ? narration.lines : [`${name}走進了事件房……`]}
+        {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+      />
     </>
   );
 }
@@ -1037,7 +1093,9 @@ export default function ScreenPage() {
             <InitiativeOverlay key={game.initiative.order ? "order" : "rolling"} ini={game.initiative} teams={game.view.teams} />
           </>
         )}
-        {game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
+        {game?.phase === "playing" && !game.intro && !game.initiative && (game.eventReveal || (!game.reveal && !game.phaseCard && describeTurn(game.view, null).team?.eventScene)) ? (
+          <EventRoomScreen view={game.view} reveal={game.eventReveal ?? null} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}

@@ -9,6 +9,11 @@ All notable changes to Critical Answer are documented here.
 ### Added
 - 每題作答倒數 (answer countdown). In the lobby the host picks 每題作答時間: off, 30, 45, 60 or 90 seconds, 60 by default. Once a question is up, the big screen shows a large round clock right of the monster, and the turn's phone and the host page show 「⏱ 42」. The last 5 seconds turn red, the big screen ticks each second, and at 0 it buzzes and shows 「⏰ 時間到」. It is only a nudge: the host still judges. Locking, sending a typed answer, a warrior's roll or the host's judgment stops it; 重答, 逃跑 and the next team start it again. A video or music question starts counting once the big screen has played its clip. The room holds the deadline, so every page shows the same time, and a server restart keeps the time left.
 
+## [0.53.0.0] - 2026-11-08
+
+### Added
+- Event rooms. When a correct answer walks a team into its next room, there is a 25% chance the room holds an event instead of a monster. There is no draw on entering the boss room or the last room, or on leaving an event room. The team's phone shows one button, and pressing it is the team's whole turn: the big screen acts the event out, and the host presses 下一題 to pass the turn. The six events, drawn evenly: a chest with a delicious dish (+20 satiety) or a terrible one (−10, never below 0); a spring (one more class ability use, or +10 for a chef or a team with no class); a skull idol (curse: the next correct answer pays half its base reward); a fairy (blessing: the next correct answer pays an extra half); and a fortune teller whose lot is 大吉 (+25), 中吉 (the spring) or 凶 (the curse). The curse or blessing lasts until the team's next correct answer, and the big screen and the phone show it over the team's question. After 15 seconds without a press, the host page offers 「替{隊名}按」. Scripted and AI narration set the scene without spoiling it and read the outcome. The game record lists each team's events. A room restart keeps a drawn event; nothing is redrawn.
+
 ## [0.52.0.1] - 2026-11-08
 
 ### Fixed

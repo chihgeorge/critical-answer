@@ -20,5 +20,5 @@ Owner request, 2026-11-08: 「新增一功能是每題有倒數計時回答時�
 
 ## Sibling lanes
 
-- Event cards: a room holding an event has no current question, so no clock.
+- Event rooms (merged in v0.53.0.0): a team in an event room has no current question, so no clock; while the opened event's result is on show (`eventReveal`) the room is paused, so the next team's clock starts only after 下一題 (event-rooms.test.ts).
 - Boss music buzzer: not designed yet. If it adds a turn that is not "the turn's team answers the current question", it should return no `want` for that state.
