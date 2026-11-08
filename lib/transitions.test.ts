@@ -48,6 +48,8 @@ describe("nextTransition", () => {
     expect(run(UNSEEN, [state(), state({ inBoss: true })])).toEqual([null, { kind: "boss", name: "魔王" }]);
     expect(run(UNSEEN, [state({ inBoss: true }), state({ inBoss: true })])).toEqual([null, null]);
     expect(run(UNSEEN, [state({ phase: "finished" })])).toEqual([null]);
+    // An ended game disarms both, so a late playing STATE plays neither.
+    expect(run(IN_LOBBY, [state({ phase: "finished" }), state({ inBoss: true })])).toEqual([null, null]);
   });
 
   it("does not replay the boss to a screen that reconnects after any team reached it", () => {

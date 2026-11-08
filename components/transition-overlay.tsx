@@ -28,7 +28,7 @@ export function TransitionOverlay({ play, onDone }: { play: Transition; onDone: 
           <div className={`px-door px-door-r${cls}`} />
           <div className={`px-door-title absolute inset-x-0 text-center${cls}`} style={{ top: 190 }}>
             <div className="px-title-gold" style={{ fontSize: 64 }}>冒險開始！</div>
-            {play.team && <div className="mt-4 text-[30px] text-[var(--cream)] [text-shadow:3px_3px_0_var(--k)]">第一隊：{play.team}</div>}
+            {play.team && <div className="mx-auto mt-4 max-w-[860px] truncate text-[30px] text-[var(--cream)] [text-shadow:3px_3px_0_var(--k)]">第一隊：{play.team}</div>}
           </div>
         </>
       ) : (
@@ -37,7 +37,7 @@ export function TransitionOverlay({ play, onDone }: { play: Transition; onDone: 
           <div className={`px-alarm-band absolute inset-x-0${cls}`} style={{ top: 180, height: 150 }}>
             <div className={`px-alarm-text absolute inset-0 flex flex-col items-center justify-center${cls}`}>
               <div className="px-title-danger" style={{ fontSize: 60, lineHeight: 1.1 }}>首領出現！</div>
-              <div className="mt-2 text-[30px] text-[var(--cream)] [text-shadow:3px_3px_0_var(--k)]">{play.name}</div>
+              <div className="mt-2 max-w-[860px] truncate text-[30px] text-[var(--cream)] [text-shadow:3px_3px_0_var(--k)]">{play.name}</div>
             </div>
           </div>
         </>
