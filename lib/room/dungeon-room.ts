@@ -2132,7 +2132,9 @@ export class DungeonRoom {
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
     const exhaustedEvent = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
     // A wrong buzz that leaves the question to the others (boss-buzzer.md): no "try again" line.
-    const event = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, buzzOut: true as const } : exhaustedEvent;
+    const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, buzzOut: true as const } : exhaustedEvent;
+    // The narrator says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); a flee never follows a roll.
+    const event = roll?.kind === "warrior" && buzzed.type !== "flee" ? { ...buzzed, warriorRoll: roll.value } : buzzed;
     // A natural 20 or 1 swaps the correct / boss-hit sound; the boss kill keeps its own (E2).
     const mark = "roll" in outcome ? outcome.roll : undefined;
     this.setCue(event.type === "epilogue" || event.type === "event-room" ? null : event.type !== "boss-kill" && mark?.kind === "crit" ? (mark.value === 20 ? "crit" : "fumble") : event.type);

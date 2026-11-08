@@ -68,6 +68,18 @@ describe("prompt", () => {
     expect(buildPrompt(event, []).user).not.toMatch(/大成功|大失敗/);
   });
 
+  // Value: protects=the AI line says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); fails_when=describeRoll ignores warriorRoll
+  it("tells the model the warrior's roll and whether it hit", () => {
+    const hit = buildPrompt({ ...event, warriorRoll: 14 } as NarrationEvent, []).user;
+    expect(hit).toMatch(/擲出 14 點（\d+ 點以上算命中），命中。/);
+    expect(hit).not.toContain("沒打中");
+    // A check's 1 is the persuasion die, whose line says 答對: the warrior's roll is told instead.
+    const both = buildPrompt({ ...event, warriorRoll: 9, roll: { kind: "check", value: 1 } } as NarrationEvent, []).user;
+    expect(both).toContain("擲出 9 點");
+    expect(both).not.toContain("說服");
+    expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 4 }, []).user).toMatch(/擲出 4 點（\d+ 點以上算命中），沒打中/);
+  });
+
   // Value: protects=a check's 20 or 1 is told as 說服, not as an attack (dnd design R7, R8); fails_when=describeRoll ignores kind
   it("tells the model a check's 20 persuaded the monster and its 1 halved the reward", () => {
     const won = buildPrompt({ ...event, roll: { kind: "check", value: 20 } } as NarrationEvent, []).user;

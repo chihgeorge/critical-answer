@@ -330,10 +330,20 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     last[key] = pool[i];
     return pool[i];
   }
+  /** Set by plainLine when it picked a crit die's line, which says the number itself. */
+  let saidDie = false;
   const provider = {
     name: "scripted",
     /** Synchronous, so it can back up a slow provider without awaiting anything. */
     line(event: NarrationEvent): string {
+      saidDie = false;
+      const text = provider.plainLine(event);
+      // A 大成功 / 手滑 line already says the warrior's die.
+      const said = "warriorRoll" in event && event.warriorRoll !== undefined && !saidDie;
+      return said ? `戰士擲出 ${event.warriorRoll} 點，${event.type === "retry" ? "沒打中。" : "命中！"}${text}` : text;
+    },
+    /** line() without the warrior's number. */
+    plainLine(event: NarrationEvent): string {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
       if ((event.type === "retry" || event.type === "boss-hit") && event.exhausted) return fill(pick(BOSS_EXHAUSTED_VARIANTS, "boss-exhausted"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
@@ -353,9 +363,11 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "correct" && event.entersBoss?.phase) return fill(pick(BOSS_ENTER_PHASE_VARIANTS, "boss-enter-phase"), { ...event, phase: event.entersBoss.phase });
       if (event.type === "boss-kill" && event.cooked) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
       if ((event.type === "correct" && !event.entersBoss) || event.type === "boss-hit") {
-        if (event.roll) {
+        // A warrior answered with its own d20, so a check's line (說服, 答對) would tell the wrong story.
+        if (event.roll && !(event.roll.kind === "check" && event.warriorRoll !== undefined)) {
           const twenty = event.roll.value === 20;
           const kind = event.roll.kind === "check" ? (twenty ? "persuaded" : "blunder") : twenty ? "crit" : "fumble";
+          saidDie = event.roll.kind === "crit";
           return fill(pick(ROLL_VARIANTS[kind][event.type], `${kind}-${event.type}`), event);
         }
       }

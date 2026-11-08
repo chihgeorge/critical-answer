@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.55.0.1] - 2026-11-08
+
+### Added
+- The narrator says what the warrior rolled. When a warrior rolls instead of answering, the line opens with 「戰士擲出 17 點，命中！」 or 「戰士擲出 3 點，沒打中。」, then the usual hit or retry line. The AI narration is told the number too and asked to say it. A 20 or a 1 on a multiple-choice or sort question keeps its 大成功 or 手滑 line, which already says the number. After a persuasion check of 1, the warrior's line replaces the check's line, which said the team had answered.
+- The site has an icon. It is the green slime, drawn pixel for pixel from the game's own sprite. Browser tabs show it at 64px, and an iPhone home-screen shortcut shows it at 180px on the game's dark purple. Every page now links the icon, so browsers stop asking for the missing `/favicon.ico`.
+
 ## [0.55.0.0] - 2026-11-08
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website, and save a bank with a buzzer phase only after both are live. The bank format goes up to 5 for a bank with a buzzer phase; an older version opens such a bank read-only instead of dropping the phase. No migration. Do not roll back while a game is in a buzzer phase: an older room server would restore it as an ordinary turn-based phase.

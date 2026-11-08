@@ -19,8 +19,9 @@ type WithNext<T> = T & { next?: NextTurn; hostLine?: string; hostLineVerbatim?: 
 /** `classId`: the acting team's class, so the weapons and spells in the line fit it. Left out for a team with no class. */
 type ByClass<T> = T & { classId?: ClassId };
 
-/** `roll`: the die behind this hit landed on a natural 20 (a critical hit) or a 1 (a fumble that still hit). */
-type WithRoll<T> = T & { roll?: RollMark };
+/** `roll`: the die behind this hit landed on a natural 20 (a critical hit) or a 1 (a fumble that still hit).
+ * `warriorRoll`: a warrior rolled instead of answering, and its d20 landed here (WARRIOR_TARGET or more hits). */
+type WithRoll<T> = T & { roll?: RollMark; warriorRoll?: number };
 
 export type NarrationEvent =
   /** `initiative`: `teams` is the turn order the teams just rolled (lib/initiative.ts). */
@@ -35,7 +36,7 @@ export type NarrationEvent =
   /** `boss`: a wrong boss answer, which always brings a new question (boss redesign D2=B).
    * `exhausted`: it used up the boss phase's questions, and the phase card comes next (boss-phases.md).
    * `buzzOut`: a wrong buzz in a buzzer phase (boss-buzzer.md): this team is out of the question, the others may still buzz. */
-  | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true }>>
+  | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; warriorRoll?: number }>>
   | WithNext<{ type: "flee"; team: string; monster: string }>
   /** `bossHp` 0 without a kill: an earlier phase's bar emptied, and the next phase is still a secret.
    * `exhausted`: the hit used up the phase's questions with HP left, and the phase card comes next. */
