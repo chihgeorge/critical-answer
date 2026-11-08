@@ -2,6 +2,18 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.56.0.2] - 2026-11-08
+
+**Deploy note:** deploy the room server (`wrangler deploy`) and the website together. A big screen from an older website never announces itself, so a newer room server ignores its "clip ended" and narration messages. No migration.
+
+### Fixed
+- One phone connection can join only one team. Before, one connection could fill all 8 team slots.
+- A full room no longer locks out the host or the TV. When all 60 connections are taken, the room closes the oldest spare one (a second phone of a team, a third screen, a connection in no team) to let the new one in. The host, the first two big screens and each team's only phone are never closed.
+- A TV or phone that reconnects after a Wi-Fi blip keeps getting the room's updates. Before, the old connection's late close could cut the new one off.
+- Only a big screen that has announced itself can tell the room that a clip ended or how far the narration has read.
+- The room server opens a room only for a valid 4-letter room code. Any other name gets 404 instead of a new empty room.
+- On the home page, a wrong room code says 「房間代碼不對，請照電視上的 4 個字母輸入」.
+
 ## [0.56.0.1] - 2026-11-08
 
 ### Fixed
