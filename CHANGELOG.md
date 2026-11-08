@@ -2,7 +2,7 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [Unreleased]
+## [0.49.0.0] - 2026-11-08
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website. Until it is, the bank editor's download link returns 404. No migration: the records live in the existing bank Durable Object.
 
