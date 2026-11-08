@@ -2,7 +2,7 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [Unreleased]
+## [0.55.0.3] - 2026-11-08
 
 ### Fixed
 - The big screen's answer countdown no longer covers options B and D. On a multiple-choice or sort question it becomes a small 「⏱ 42」 pill under the tiles; a fill-in question keeps the round clock.
