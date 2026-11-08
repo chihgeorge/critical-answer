@@ -126,6 +126,11 @@ describe("parseClientMessage", () => {
     for (const page of [0, 6, 2.5, "2", undefined]) expect(parseClientMessage({ type: "HOST_INTRO", page }), String(page)).toBeNull();
   });
 
+  it("HOST_EPILOGUE_PAGE: a whole page from 0", () => {
+    expect(parseClientMessage({ type: "HOST_EPILOGUE_PAGE", page: 0 })).toEqual({ type: "HOST_EPILOGUE_PAGE", page: 0 });
+    for (const page of [-1, 1.5, "1", undefined]) expect(parseClientMessage({ type: "HOST_EPILOGUE_PAGE", page }), String(page)).toBeNull();
+  });
+
   // Guards the removal of the director notes (host-narration-edit.md): fails if HOST_SET_NOTES parses again.
   it("HOST_SET_NOTES is gone", () => {
     expect(parseClientMessage({ type: "HOST_SET_NOTES", notes: "用武俠口吻" })).toBeNull();

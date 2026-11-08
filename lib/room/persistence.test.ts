@@ -181,6 +181,25 @@ describe("restoring after a restart", () => {
     expect(lastOf(stranger, "ERROR")).toMatchObject({ error: "bad_password" });
   });
 
+  // Value: protects=the big screen keeps the epilogue page the host turned to across a restart; fails_when=the page is
+  // not saved, or a save whose page is past the last one is restored as is (a blank TV page)
+  it("the epilogue page the host turned to comes back after a restart, and a page past the last one starts over", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage).room;
+    const host = makeConn("host");
+    send(first, host, { type: "HOST_CLAIM", token: TOKEN });
+    (first as any).epilogue = "甲".repeat(100) + "。" + "乙".repeat(100) + "。"; // two pages
+    (first as any).epiloguePage = 1;
+    send(first, host, { type: "HOST_CLAIM", token: TOKEN }); // any message saves the change
+    const second = makeRoom(storage).room;
+    expect(await second.restore()).toBe("restored");
+    expect((second as any).epiloguePage).toBe(1);
+    (storage.data.get(SNAPSHOT_KEY) as any).epiloguePage = 5;
+    const third = makeRoom(storage).room;
+    expect(await third.restore()).toBe("restored");
+    expect((third as any).epiloguePage).toBe(0);
+  });
+
   it("after 回到大廳 a restart still deals the first game's shown answers last", async () => {
     const storage = memoryStorage();
     const first = makeRoom(storage).room;
