@@ -635,7 +635,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
         </small>
         {result && <>{names}奪得榜首！</>}
         {cooked && !result && <span style={{ fontSize: 36 }}>名次揭曉中…</span>}
-        {killer && (!cooked || result) && <small data-testid="final-blow" className="mt-1 block text-[18px] text-white" style={{ textShadow: "2px 2px 0 var(--k)" }}>最後一擊：{killer}</small>}
+        {killer && !cooked && <small data-testid="final-blow" className="mt-1 block text-[18px] text-white" style={{ textShadow: "2px 2px 0 var(--k)" }}>最後一擊：{killer}</small>}
       </div>
       {/* The winning answer: the last correct judgment ends the game, so its reveal lands here, not on
           <Playing>. The podium is centered and about 546px wide, which leaves the left margin free
@@ -649,11 +649,13 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
         </div>
       )}
       {!cooked && dish && step === 3 && <DishOnStage dish={dish} title="今晚的大菜" cardTop={120} bottom={140} />}
-      {result && reveal && (
+      {result && (reveal || killer) && (
         <div data-testid="answer-reveal" className="absolute" style={{ left: 18, top: 160, width: 170, zIndex: 6 }}>
           <Panel tone="turn" className="px-3 py-2 text-[16px] leading-snug">
-            最後一題正解：{reveal.answer}
-            {reveal.dish && <div data-testid="dish-card">🍲 今晚的大菜：{reveal.dish.name}</div>}
+            {/* With the podium up, the kill line lives here: under the title it sat on the winner's crown. */}
+            {killer && <div data-testid="final-blow">最後一擊：{killer}</div>}
+            {reveal && <>最後一題正解：{reveal.answer}</>}
+            {reveal?.dish && <div data-testid="dish-card">🍲 今晚的大菜：{reveal.dish.name}</div>}
           </Panel>
         </div>
       )}
@@ -688,7 +690,8 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
           that saw the game end, only once first place's beat is over (cooking I4). */}
       <DialogueBox
         className="absolute"
-        style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
+        // The epilogue runs three lines or more; at 22px it stays under the podium (bottom 130) instead of covering the names.
+        style={{ left: 18, right: 18, bottom: 12, zIndex: 7, ...(ended && epilogue ? { fontSize: 22, lineHeight: 1.35 } : {}) }}
         loading={!(ended && epilogue) && !current && (!narration || waiting) && step !== 3}
         lines={step === 3 ? [line] : ended && epilogue ? [epilogue] : current ? [current.line] : waiting ? [] : (narration?.lines.slice(from) ?? [])}
         {...(step !== 3 && !(ended && epilogue) && !current && !waiting && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count + from) } : {})}
