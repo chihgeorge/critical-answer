@@ -1280,6 +1280,8 @@ export class DungeonRoom {
         case "HOST_SET_PASSWORD":
           if (!this.requireHost(sender)) break;
           this.joinPassword = msg.password.trim();
+          // A new password makes earlier guesses worthless: the host can lift a guessing lock this way.
+          this.passwordWrong = 0;
           // Every host page shows the room's real password only once the room has it.
           for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
           break;

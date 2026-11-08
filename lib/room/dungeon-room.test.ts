@@ -339,6 +339,11 @@ describe("JOIN", () => {
     clock.t += 60_000;
     send(room, friend, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Friend", password: "1234" });
     expect(lastBroadcast(room).teams.map((t: { name: string }) => t.name)).toEqual(["Friend"]);
+    // A new password lifts a lock at once.
+    for (let i = 0; i < 10; i++) send(room, guesser, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess", password: String(i) });
+    send(room, hostConn, { type: "HOST_SET_PASSWORD", password: "5678" });
+    send(room, makeConn("late"), { type: "JOIN", teamId: T3, teamKey: KEY2, teamName: "Late", password: "5678" });
+    expect(lastBroadcast(room).teams.map((t: { name: string }) => t.name)).toEqual(["Friend", "Late"]);
   });
 
   it("rejects a 9th distinct team once the room is full (max 8)", () => {
@@ -2996,9 +3001,11 @@ describe("team identity and reconnect (audit findings)", () => {
     const phone = makeConn("phone");
     room.onConnect(phone);
     room.onClose(phone);
+    const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.length;
     send(room, phone, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Ghost" });
     expect(phone.send).toHaveBeenCalledTimes(1); // only the snapshot on connect
-    expect(room.game).toBeNull();
+    expect((room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.length).toBe(broadcasts);
+    expect((room as any).pendingTeams).toEqual([]);
 
     const newHostSocket = makeConn(hostConn.id);
     room.onConnect(newHostSocket);

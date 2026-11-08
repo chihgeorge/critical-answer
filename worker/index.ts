@@ -192,8 +192,14 @@ export class Room extends Server<Env> {
     this.game.onClose(conn);
   }
 
-  /** A socket that errors may never get a close event: without this it would keep its slot and its team online. */
+  /** A socket that errors may never get a close event: without this it would keep its slot and its team online.
+   * Closed too, so the phone or TV sees it and reconnects instead of sitting there cut off. */
   onError(conn: Connection) {
+    try {
+      conn.close(1011, "Unexpected error");
+    } catch {
+      // already closing
+    }
     this.onClose(conn);
   }
 }
