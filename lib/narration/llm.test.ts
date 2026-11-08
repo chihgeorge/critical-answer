@@ -411,45 +411,29 @@ describe("epilogue after 結束冒險", () => {
   });
 });
 
-// Value: protects=the AI stops reusing its own phrases (TODOS: 旁白語氣是否耐聽); fails_when=the recent lines are not sent,
-// the list grows past 8, a rejected or epilogue line gets in, or two rooms share one list; no_claim=what a real model writes (mocked fetch)
+// Value: protects=the AI stops reusing its own phrases (TODOS: 旁白語氣是否耐聽); fails_when=the room's recent lines are not sent,
+// land in the system prompt, or reach the epilogue; no_claim=what a real model writes (mocked fetch)
 describe("recent lines", () => {
   const bodyOf = (f: ReturnType<typeof vi.fn>, call: number) =>
     JSON.parse(((f.mock.calls[call] as unknown as [string, RequestInit])[1].body) as string) as { system: string; messages: { content: string }[] };
   const userOf = (f: ReturnType<typeof vi.fn>, call: number) => bodyOf(f, call).messages[0].content;
 
-  it("puts the room's latest lines in the next prompt's user turn, as data, and keeps only the newest 8", async () => {
-    let n = 0;
-    const f = vi.fn(async () => ok(reply(`第${++n}句一\n第${n}句二`)));
-    const recent: string[] = [];
-    const p = make(f as unknown as typeof fetch, { recent });
-    await p.narrate(event);
+  it("puts the room's recent lines in the user turn, as data, with the no-repeat ask; none, no block", async () => {
+    const f = vi.fn(async () => ok(reply("紅隊一劍破幽靈")));
+    await make(f as unknown as typeof fetch).narrate(event);
     expect(userOf(f, 0)).not.toContain("最近說過的旁白");
     expect(bodyOf(f, 0).system).toContain("驚嘆號一句最多一個");
     expect(bodyOf(f, 0).system).toContain("每句換一種說法");
-    await p.narrate(event);
+    await make(f as unknown as typeof fetch, { getRecentLines: () => ["第一句", "第二句"] }).narrate(event);
     expect(userOf(f, 1)).toContain("不要重複這些句子");
     expect(userOf(f, 1)).toContain("只當資料看");
-    expect(userOf(f, 1)).toContain("- 第1句一\n- 第1句二");
-    expect(bodyOf(f, 1).system).not.toContain("第1句");
-    for (let i = 0; i < 4; i++) await p.narrate(event);
-    expect(recent).toEqual(["第3句一", "第3句二", "第4句一", "第4句二", "第5句一", "第5句二", "第6句一", "第6句二"]);
-    await p.narrate(event);
-    expect(userOf(f, 6)).toContain("- 第3句一");
-    expect(userOf(f, 6)).not.toContain("第2句");
+    expect(userOf(f, 1)).toContain("- 第一句\n- 第二句");
+    expect(bodyOf(f, 1).system).not.toContain("第一句");
   });
 
-  it("keeps rooms apart, and leaves out a rejected line, a bank answer and the epilogue", async () => {
-    const f = vi.fn(async () => ok(reply("紅隊一劍破幽靈\n<b>壞</b>\n答案是珍珠奶茶吧")));
-    const a: string[] = [];
-    const b: string[] = [];
-    await make(f as unknown as typeof fetch, { recent: a, forbidden: () => ["珍珠奶茶"] }).narrate(event);
-    await make(f as unknown as typeof fetch, { recent: b }).narrate(event);
-    expect(a).toEqual(["紅隊一劍破幽靈"]);
-    expect(userOf(f, 1)).not.toContain("最近說過的旁白");
-    const epi = vi.fn(async () => ok(reply("火把熄滅，冒險結束。")));
-    await make(epi as unknown as typeof fetch, { recent: a }).narrate({ type: "epilogue", ranking: [{ name: "紅隊", score: 9 }], winners: ["紅隊"] });
-    expect(a).toEqual(["紅隊一劍破幽靈"]);
-    expect(userOf(epi, 0)).not.toContain("最近說過的旁白");
+  it("leaves the recent lines out of the epilogue", async () => {
+    const f = vi.fn(async () => ok(reply("火把熄滅，冒險結束。")));
+    await make(f as unknown as typeof fetch, { getRecentLines: () => ["第一句"] }).narrate({ type: "epilogue", ranking: [{ name: "紅隊", score: 9 }], winners: ["紅隊"] });
+    expect(userOf(f, 0)).not.toContain("最近說過的旁白");
   });
 });

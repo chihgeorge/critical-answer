@@ -199,9 +199,8 @@ export interface LlmOptions {
   getStyleExamples?: () => string[];
   /** Bank answers: a line repeating one (3+ characters) is rejected. */
   forbidden?: () => string[];
-  /** The room's latest AI lines, oldest first. Owned by the room (one array per room, gone on restart):
-   * read into the prompt, then the new lines the model returned are pushed and the array trimmed to RECENT_LINES. */
-  recent?: string[];
+  /** The room's latest AI lines on screen, oldest first (at most RECENT_LINES): the room keeps them, this only reads them. */
+  getRecentLines?: () => string[];
 }
 
 export function createLlmProvider(opts: LlmOptions): NarrationProvider {
@@ -212,7 +211,7 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       const apiKey = opts.getApiKey();
       if (!apiKey) throw new NarrationError("config_missing", "no API key for this room");
       const epilogue = event.type === "epilogue";
-      const { system, user } = buildPrompt(event, opts.getStyleExamples?.() ?? [], opts.recent);
+      const { system, user } = buildPrompt(event, opts.getStyleExamples?.() ?? [], opts.getRecentLines?.());
       const model = epilogue ? EPILOGUE_MODEL : NARRATION_MODEL;
       let res: Response;
       try {
@@ -280,11 +279,6 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       // disturbing segments after it. (Adversarial review finding, /plan-eng-review D1 follow-up.)
       const INVALID_SEGMENT = "<invalid/>";
       const validRest = rest.map((s, i) => (usable(s, i + 1) ? s : INVALID_SEGMENT));
-      // The epilogue's podium calls repeat names by design; a line the runner already gave up on was never heard.
-      if (opts.recent && !epilogue && !o.signal?.aborted) {
-        opts.recent.push(first, ...validRest.filter((s) => s !== INVALID_SEGMENT));
-        opts.recent.splice(0, opts.recent.length - RECENT_LINES);
-      }
       return [first, ...validRest].join("\n");
     },
   };
