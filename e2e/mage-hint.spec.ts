@@ -32,7 +32,7 @@ test.describe("a fill-in answer with a first character", () => {
     await expect(team.getByTestId("mage-hint")).toHaveText("🔮 第一個字：萬");
     await expect(host.getByTestId("host-mage-hint")).toHaveText("🔮 第一個字：萬");
     await expect(screen.getByTestId("screen-mage-hint")).toHaveText("🔮 第一個字：萬");
-    await expect(team.getByText("法師・剩 1 次")).toBeVisible();
+    await expect(team.getByText("法師・剩 3 次")).toBeVisible();
     // One hint per question: the button is gone.
     await expect(team.getByRole("button", { name: /看答案第一個字/ })).toHaveCount(0);
   });
@@ -46,7 +46,7 @@ test.describe("a 1-character fill-in answer", () => {
   test("mage: a cast on a 1-character answer is refused with a note, and no use is spent", async ({ browser }) => {
     const { host, team } = await mageRoom(browser);
     await team.getByRole("button", { name: /看答案第一個字/ }).click();
-    await expect(team.getByText("🔮 這題答案太短，不能看第一個字・剩 2 次")).toBeVisible();
+    await expect(team.getByText("🔮 這題答案太短，不能看第一個字・剩 4 次")).toBeVisible();
     await expect(team.getByRole("button", { name: /看答案第一個字/ })).toHaveCount(0);
     await expect(host.getByTestId("host-mage-hint")).toHaveCount(0);
   });
