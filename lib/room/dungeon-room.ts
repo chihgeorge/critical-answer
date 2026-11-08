@@ -63,7 +63,8 @@ import {
 } from "../protocol";
 import { revealBeats, revealCalls } from "../podium";
 import { catalogMonster, gameMonsters, monsterById } from "../monster-catalog";
-import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, type Bank } from "../question-bank";
+import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
+import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
@@ -666,6 +667,23 @@ export class DungeonRoom {
     return q && inShownOrder(q, this.game?.optionOrder[id]);
   }
 
+  /** How many picks a lock on `q` may name: its options, or every order of a sort question's items. */
+  private pickCount(q: ReturnType<DungeonRoom["question"]>): number {
+    return q?.kind === "multipleChoice" ? q.options.length : q?.kind === "sort" ? SORT_ORDERS.length : 0;
+  }
+
+  /** Per slot, whether a sort pick put the right item there (lib/sort-order.ts). */
+  private sortSlotsOf(questionId: string, code: number): boolean[] {
+    return sortSlots(code, sortShownOrder(this.game?.optionOrder[questionId]));
+  }
+
+  /** A wrong sort lock waiting for its 重答 / 逃跑: which slots it got right. Never the correct order (D5). */
+  private wrongSlots(): { wrongSlots?: boolean[] } {
+    const wrong = this.game?.pendingWrong;
+    if (!wrong || wrong.optionIndex === null || this.question(wrong.questionId)?.kind !== "sort") return {};
+    return { wrongSlots: this.sortSlotsOf(wrong.questionId, wrong.optionIndex) };
+  }
+
   /** Who is on turn now and what they face, for the narrator's second line. Null when the game is over. */
   private nextTurn(): NextTurn | null {
     const game = this.game;
@@ -742,6 +760,7 @@ export class DungeonRoom {
       cuisine: true as const,
       pendingLock: this.pendingLock,
       pendingRoll: this.pendingRoll,
+      ...this.wrongSlots(),
       ...this.podiumView(),
       eventId: this.eventSeq,
       ...this.undoWrong(),
@@ -1627,9 +1646,9 @@ export class DungeonRoom {
       return;
     }
     if (fleeChoice === "team" || fleeChoice === "pray") return this.hostClericWrong(conn, teamId, questionId, fleeChoice);
-    // A multipleChoice question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
+    // A multipleChoice or sort question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
     // team (E5), never 答對.
-    if (correct && this.question(questionId)?.kind === "multipleChoice") {
+    if (correct && isAutoJudged(this.question(questionId))) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "auto_judged" });
       return;
     }
@@ -1778,7 +1797,7 @@ export class DungeonRoom {
 
   /** Applies one answer; throws InvalidActionError (from answerQuestion) before changing anything.
    * `roll`: a warrior's d20 stands in for the answer (warriorRoll), and `correct` is ignored; on a
-   * multipleChoice question it is the crit die too. A crit die (`kind: "crit"`) rides on a correct answer. */
+   * multipleChoice or sort question it is the crit die too. A crit die (`kind: "crit"`) rides on a correct answer. */
   /** judgeNow, with a lost natural 20 held back until it is done (it narrates first and its phase card is due) and
    * tried after: the turn may now be the crit team's. */
   private judge(...args: Parameters<DungeonRoom["judgeNow"]>) {
@@ -1805,7 +1824,7 @@ export class DungeonRoom {
     if (!correct && prev.pendingWrong?.teamId === teamId && prev.pendingWrong.optionIndex !== null && isInBossPhase(prev, teamId)) fleeChoice = "retry";
     const run = (rng: () => number, dice?: number[]) =>
       roll?.kind === "warrior"
-        ? warriorRoll(prev, teamId, questionId, roll.value, rng, this.question(questionId)?.kind === "multipleChoice", dice)
+        ? warriorRoll(prev, teamId, questionId, roll.value, rng, isAutoJudged(this.question(questionId)), dice)
         : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.value, dice);
     // A killing blow waits for its 4d20 on screen (kill-roll.md D1): a trial run, on an rng it must not consume, says
     // whether this judgment kills; then the room rolls the dice and judges again with them when the beat ends.
@@ -1854,6 +1873,7 @@ export class DungeonRoom {
       const q = this.question(questionId);
       // The option wall, green tile and points of a correct lock or a warrior's success on a multipleChoice question.
       const choice = q?.kind === "multipleChoice" ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward, ...chefOf(outcome) } : undefined;
+      const sorted = q?.kind === "sort" ? { items: q.items, teamId, points: outcome.reward, ...chefOf(outcome) } : undefined;
       // The answer stops the clip; the reveal shows the video where it stopped (D17).
       if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
       const video = q?.content.kind === "youtube" && (!explanation || explanation.kind === "text") ? publicMediaContent(q.content, imageBaseUrl, questionId) : undefined;
@@ -1863,6 +1883,7 @@ export class DungeonRoom {
         ...(explanation ? { explanation } : {}),
         ...(video?.kind === "youtube" ? { video } : {}),
         ...(choice ? { choice } : {}),
+        ...(sorted ? { sorted } : {}),
         ...(dish ? { dish: { ...dish, points: outcome.reward, ...chefOf(outcome), monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };
     }
@@ -1901,9 +1922,9 @@ export class DungeonRoom {
     if (this.paused()) return reject("reveal_pending");
     if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
-    if (q?.kind !== "multipleChoice" || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
+    if (!isAutoJudged(q) || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
     const pick = team?.currentSelection ?? null;
-    if (pick === null || pick >= q.options.length || game.eliminated[questionId]?.includes(pick)) return reject("no_selection");
+    if (pick === null || pick >= this.pickCount(q) || game.eliminated[questionId]?.includes(pick)) return reject("no_selection");
     if (shown !== undefined && shown !== pick) return reject("selection_changed");
     this.pendingLock = { teamId, questionId, optionIndex: pick };
     // Pin the turn to the locking team: the stored index may point at an offline team the turn skipped, and that
@@ -1971,7 +1992,7 @@ export class DungeonRoom {
       // drop the lock; it locks again.
       if (currentTurnTeamId(game) !== lock.teamId || currentQuestionIdOf(game, lock.teamId) !== lock.questionId) {
         this.broadcastState();
-      } else if (q?.kind === "multipleChoice" && q.correctIndex === lock.optionIndex) {
+      } else if ((q?.kind === "multipleChoice" && q.correctIndex === lock.optionIndex) || (q?.kind === "sort" && this.sortSlotsOf(lock.questionId, lock.optionIndex).every(Boolean))) {
         // Right: the crit die shows for a beat, then resolveRoll judges it (R9). Nothing is scored before.
         this.startRoll("crit", lock.teamId, lock.questionId);
         this.broadcastState();
@@ -2048,6 +2069,8 @@ export class DungeonRoom {
       else if (classId === "mage") {
         if (q?.kind === "multipleChoice") next = mageEliminate(game, teamId, questionId, q.correctIndex, q.options.length, this.rng);
         else if (q?.kind === "text") next = mageHint(game, teamId, questionId, q.answer);
+        // The first item, whole: the phone and the screen label it 第 1 個 on a sort question.
+        else if (q?.kind === "sort") next = mageHint(game, teamId, questionId, q.items[0], true);
         else return reject("stale_question"); // not in the bank
       } else next = spendAbility(game, teamId, "warrior");
     } catch (err) {
@@ -2264,7 +2287,7 @@ export class DungeonRoom {
     // The protocol layer only checked optionIndex >= 0; the real bounds check needs the
     // live question's actual options.length, which only this layer (with bank access) has.
     const q = this.question(questionId);
-    if (!q || q.kind !== "multipleChoice" || optionIndex >= q.options.length) {
+    if (!q || optionIndex >= this.pickCount(q)) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: `bad optionIndex for ${questionId}` });
       return;
     }

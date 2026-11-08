@@ -3,7 +3,7 @@
 // The shared big screen. Public: it only ever receives the spectator view and
 // never a host-only message, so it can be cast to a TV without leaking answers.
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
@@ -18,7 +18,9 @@ import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { SFX } from "@/lib/sfx";
+import { BOSS_ALARM, SFX } from "@/lib/sfx";
+import { IN_LOBBY, nextTransition, UNSEEN, type Transition } from "@/lib/transitions";
+import { TransitionOverlay } from "@/components/transition-overlay";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, prefersReducedMotion, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { MapStrip } from "@/components/map-strip";
 import { McOption, optionLetter, type OptionLook } from "@/components/mc-option";
@@ -30,6 +32,7 @@ import { YoutubePlayer } from "@/components/youtube-player";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { readStored, writeStored } from "@/lib/stored";
+import { sortOrderOf } from "@/lib/sort-order";
 
 const TTS_ENABLED_STORAGE = "screen-tts-enabled";
 const BGM_ENABLED_STORAGE = "screen-bgm-enabled";
@@ -183,11 +186,49 @@ function WallOptions({ options, gone, magic, lock, wrong, correct, teamName }: {
   );
 }
 
+/** A sort question's tiles (no option index of their own): the items while the team thinks, then in the team's
+ * locked order, its wrong order marked per place (only which places are right, never the answer, D5), or the answer. */
+type SortTile = { text: string; look: OptionLook; label?: string };
+function sortTiles(question: PublicQuestion | null, reveal: AnswerReveal | null, lock: LockedOption | null, wrong: WrongAnswer | null, wrongSlots: boolean[] | undefined): SortTile[] | null {
+  if (reveal) return reveal.sorted ? reveal.sorted.items.map((text) => ({ text, look: "ok", label: "✓" })) : null;
+  const items = question?.items;
+  if (!items) return null;
+  const inOrder = (code: number) => (sortOrderOf(code) ?? []).map((i) => items[i]);
+  if (lock?.questionId === question.id) return inOrder(lock.optionIndex).map((text) => ({ text, look: "lock", label: "🔒" }));
+  if (wrong?.questionId === question.id && wrong.optionIndex !== null && wrongSlots) {
+    return inOrder(wrong.optionIndex).map((text, i) => (wrongSlots[i] ? { text, look: "ok", label: "✓" } : { text, look: "bad", label: "✕" }));
+  }
+  return items.map((text) => ({ text, look: "plain" }));
+}
+
+/** Numbered 1–4 like the phone's rows, before the lock too (the phone starts from the same order). */
+function SortWall({ tiles }: { tiles: SortTile[] }) {
+  return (
+    <>
+      {tiles.slice(0, TILE_SPOTS.length).map((t, i) => (
+        <McOption
+          key={i}
+          index={i}
+          badge={i + 1}
+          text={t.text}
+          look={t.look}
+          label={t.label}
+          tabIndex={-1}
+          data-testid={`wall-sort-${i}`}
+          data-look={t.look}
+          className="wall absolute !text-[24px] leading-[1.05]"
+          style={{ ...TILE_SPOTS[i], width: 316, height: 62, zIndex: 5 }}
+        />
+      ))}
+    </>
+  );
+}
+
 type YoutubeContent = Extract<PublicMediaContent, { kind: "youtube" }>;
 /** A chip that stands in the side column beside a video (D14), at the same 20px as the hints. */
 const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4px solid var(--k)", whiteSpace: "normal", borderRadius: 12 } as const;
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, say, onRead }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, say, onRead }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -214,11 +255,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
     : !reveal && question?.options && question.options.length <= TILE_SPOTS.length
       ? { options: question.options, correct: null, team: nameOf(pendingLock?.teamId ?? wrong?.teamId), gone: view.eliminated?.[question.id] ?? [], magic: view.mageRemoved?.[question.id] ?? [] }
       : null;
+  const sortWall = served ? null : sortTiles(question, reveal, pendingLock, wrong, wrongSlots);
   // Fixed lines, not an LLM call (D8, D9): nothing is narrated until the outcome is known.
   const held = pendingRoll
     ? `${nameOf(pendingRoll.teamId)}擲出了骰子……`
     : pendingLock
-    ? `${nameOf(pendingLock.teamId)}鎖定了 ${optionLetter(pendingLock.optionIndex)}……`
+    ? `${nameOf(pendingLock.teamId)}鎖定了 ${question?.items ? "順序" : optionLetter(pendingLock.optionIndex)}……`
     : wrong
       ? view.awaitingPrayer === wrong.teamId
         ? `${nameOf(wrong.teamId)}答錯了！牧師祈禱中……`
@@ -229,7 +271,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
         : `${nameOf(wrong.teamId)}答錯了！他們正在決定：重答，還是逃跑……`
       : null;
   // Persuasion check (dnd design R6): a fill-in turn rolls before it answers; its record shows once the beat ends.
-  const fillIn = !!question && !question.options && !reveal && !card;
+  const fillIn = !!question && !question.options && !question.items && !reveal && !card;
   const check = fillIn && turn ? view.checks?.[checkKey(question!.id, turn.id)] : undefined;
   // The narration keeps the last outcome; the DC sign carries the waiting line instead.
   const awaitingCheck = fillIn && !check && !pendingRoll && !wrong;
@@ -257,7 +299,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
           🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）{awaitingCheck && `　${turn!.name}：按手機上的「擲骰說服」`}
         </div>
       )}
-      {question && <MageHint hint={view.mageHints?.[question.id]} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
+      {question && <MageHint hint={view.mageHints?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
       {check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="block w-fit px-3 py-1 text-[20px]" />}
       {turn?.typedAnswer && (
         <div data-testid="screen-typed-answer" className="text-[20px] [overflow-wrap:anywhere]">
@@ -273,9 +315,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
     <>
       <SceneBackground theme={theme} />
       {/* D1: the tiles stand where the torches hang. */}
-      {!wall && <Torches />}
+      {!wall && !sortWall && <Torches />}
       <Sparks />
       {wall && <WallOptions options={wall.options} gone={wall.gone} magic={wall.magic} lock={pendingLock} wrong={wrong} correct={wall.correct} teamName={wall.team} />}
+      {sortWall && <SortWall tiles={sortWall} />}
 
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
         {dish && eater ? (
@@ -357,11 +400,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
           <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
         )}
         {!asking && !reveal && !card && question && !question.options && (
-          <MageHint hint={view.mageHints?.[question.id]} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
+          <MageHint hint={view.mageHints?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
         )}
         {!asking && check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />}
         {/* #104: the team's typed answer to a text question, for the room to see. */}
-        {!asking && !reveal && !card && question && !question.options && turn?.typedAnswer && (
+        {!asking && !reveal && !card && question && !question.options && !question.items && turn?.typedAnswer && (
           <div data-testid="screen-typed-answer" className="mt-3 text-[24px] [overflow-wrap:anywhere]">
             ⚔️ {turn.name}：{turn.typedAnswer}
           </div>
@@ -419,7 +462,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, eventId, na
       {pendingRoll?.kind === "kill" && pendingRoll.values ? (
         <KillRollOverlay key={`kill-${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} values={pendingRoll.values} value={pendingRoll.value} />
       ) : (
-        pendingRoll && pendingRoll.kind !== "kill" && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} kind={pendingRoll.kind ?? "warrior"} critable={!!question?.options} bonus={pendingRoll.bonus} dc={pendingRoll.dc} />
+        pendingRoll && pendingRoll.kind !== "kill" && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} kind={pendingRoll.kind ?? "warrior"} critable={!!(question?.options || question?.items)} bonus={pendingRoll.bonus} dc={pendingRoll.dc} />
       )}
     </>
   );
@@ -572,6 +615,10 @@ export default function ScreenPage() {
   const [finale, setFinale] = useState(false);
   /** The phase of the last STATE on this connection: playing → finished is a kill seen live. */
   const lastPhase = useRef<StateMessage["phase"] | null>(null);
+  /** The doors and the boss alarm (lib/transitions.ts): what this connection has seen, and the one playing. */
+  const transitionSeen = useRef(UNSEEN);
+  const [transition, setTransition] = useState<Transition | null>(null);
+  const endTransition = useCallback(() => setTransition(null), []);
   /** The eventId of the last served reveal: its late narration line must not cut off 上菜's lines (cooking I1),
    * nor be read over the next question once 下一題 closes it (closing a reveal does not move eventId). */
   const servedEvent = useRef<number | null>(null);
@@ -844,6 +891,8 @@ export default function ScreenPage() {
       narrationBaseline.current = null;
       sfxSeen.current = null;
       lastPhase.current = null;
+      transitionSeen.current = UNSEEN;
+      setTransition(null);
       // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
       progress.current = null;
     },
@@ -859,6 +908,8 @@ export default function ScreenPage() {
           setEpilogue(null);
           setFinale(false);
           lastPhase.current = null;
+          transitionSeen.current = IN_LOBBY;
+          setTransition(null);
           podiumReady.current = true;
           heldEpilogue.current = null;
           servedEvent.current = null;
@@ -873,6 +924,12 @@ export default function ScreenPage() {
           break;
         case "STATE":
           setGame(msg);
+          {
+            const t = nextTransition(transitionSeen.current, msg);
+            transitionSeen.current = t.seen;
+            if (t.play) setTransition(t.play);
+            if (t.play?.kind === "boss") bgm.current?.playCue(BOSS_ALARM);
+          }
           if (msg.phase === "finished" && lastPhase.current === "playing" && msg.reveal?.dish) setFinale(true);
           // The story waits for the boss to cook (cooking I4) and the places to be called (podium-reveal.md), on every
           // STATE: a screen that (re)connects mid-reveal must not read the winner's story first. Finished's clock
@@ -932,8 +989,9 @@ export default function ScreenPage() {
             <HowToPlay page={game.intro.page} firstTeam={describeTurn(game.view, null).team?.name ?? ""} cuisine={!!game.cuisine} />
           </>
         )}
-        {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
+        {game?.phase === "playing" && !game.intro && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
+        {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
           {!game && !tapped && (
