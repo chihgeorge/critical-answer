@@ -22,6 +22,8 @@ export const IN_LOBBY: TransitionSeen = { open: true, boss: false };
 export function nextTransition(seen: TransitionSeen, msg: StateMessage): { seen: TransitionSeen; play: Transition | null } {
   if (msg.phase !== "playing") return { seen: { open: false, boss: true }, play: null };
   if (msg.intro) return { seen: { open: true, boss: false }, play: null };
+  // The doors open on 擲先攻 (lib/initiative.ts), before the order is known: they name no first team.
+  if (msg.initiative) return seen.open ? { seen: { open: false, boss: false }, play: { kind: "open", team: "" } } : { seen, play: null };
   const turn = describeTurn(msg.view, msg.question, msg.phaseCard?.monster);
   // A reveal still shows the room monster that was just beaten: the boss is called once the room is the boss's.
   const bossOnScreen = turn.bossScene && !msg.reveal && !msg.eventReveal;

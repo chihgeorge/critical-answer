@@ -139,9 +139,10 @@ describe("openEvent", () => {
   });
 
   it("the spring (and 中吉) gives an ability use, or 10 to a chef or a team with no class", () => {
-    const mage = openEvent(inEvent("spring", game(["mage", undefined])), "t0", first);
+    const inSpring = inEvent("spring", game(["mage", undefined]));
+    const mage = openEvent(inSpring, "t0", first);
     expect(mage.result).toMatchObject({ abilityUse: true, satiety: 0 });
-    expect(team(mage.game).abilityUses).toBe(3);
+    expect(team(mage.game).abilityUses).toBe(team(inSpring).abilityUses + 1);
     const none = openEvent(inEvent("good"), "t0", first);
     expect(none.result).toMatchObject({ satiety: 10 });
     expect(none.result.abilityUse).toBeUndefined();

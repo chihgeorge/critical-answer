@@ -61,7 +61,7 @@ Before the first question, every player knows:
 
   | Page | Picture | Big text | Owl line |
   |---|---|---|---|
-  | 1 | `TurnRibbon` 「▼ 輪到：{first team's name}」, `hero` sprite facing a `slime` | 各隊輪流上陣，輪到誰，怪物就找誰 | 冒險者們，先聽我說規則……主持人會唸題目。 |
+  | 1 | `TurnRibbon` 「▼ 輪到：擲先攻第一名」 (the order is rolled after the intro, so no team is named; it named the first team before 擲先攻), `hero` sprite facing a `slime` | 各隊輪流上陣，輪到誰，怪物就找誰 | 冒險者們，先聽我說規則……主持人會唸題目。 |
   | 2 | Two small phones: `McOption` A–D with one selected and an `ok` 「鎖定答案」 button; a text box and 「送出」 | 選擇題＝攻擊擲暴擊；填空題＝說服先擲檢定 | 說服怪物前先擲骰，過了 DC 就送你答案第一個字。 |
   | 3 | `slime`, the ✕ 答錯 label, `retry` 「重答」 and `flee` 「逃跑」 buttons with a caption under each | 答錯可以重答，或逃跑換一題簡單一點的 | 答錯別慌！可以再試一次，或逃跑換題，怪物還在原地等你。 |
   | 4 | `slime` → a dish (only when the bank has cuisine), the `door` (首領房), the `crown` | 打倒首領會結束冒險，但分數最高的隊伍才是冠軍 | 準備好了嗎？主持人再按一次 ▶，冒險開始！ |
@@ -107,7 +107,7 @@ Before the first question, every player knows:
 | Step | User does | User feels | Plan specifies |
 |---|---|---|---|
 | 1 | Host checks 「開始前播放玩法說明」 and presses 開始遊戲 | in charge | D8 |
-| 2 | The room looks up at the TV: 「怎麼玩？ 1/4」, the first team's name on the ribbon | curious: "that's us!" | D4 page 1 |
+| 2 | The room looks up at the TV: 「怎麼玩？ 1/4」, the ribbon's 「擲先攻第一名」 (the first team's name before 擲先攻) | curious: "that's us!" | D4 page 1 |
 | 3 | Host reads 講稿提示 and presses 下一頁 ▶ three times | confident, not reading cold | D7 |
 | 4 | Players see how to answer and what 重答／逃跑 mean | relieved: "so that's what to do" | D4 pages 2–3 |
 | 5 | Page 4: the boss and the crown, then 「開始冒險 ▶」 | excited | D4 page 4 |

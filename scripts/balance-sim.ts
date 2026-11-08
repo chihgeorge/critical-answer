@@ -33,7 +33,7 @@ function play(classes: C[], maxTurns = 400) {
     try {
       if (t.classId === "thief" && t.abilityUses > 0 && hard && !t.sneakArmed) g = G.armSneak(g, id);
       if (t.classId === "mage" && t.abilityUses > 0 && hard && (gone[key] ?? 0) === 0) { g = G.mageEliminate(g, id, q, 0, 4, R); gone[key] = 2; }
-      if (t.classId === "warrior" && t.abilityUses > 0 && hard && pOf() < 0.45) {
+      if (t.classId === "warrior" && t.abilityUses > 0 && hard && pOf() < (21 - G.WARRIOR_TARGET) / 20) {
         g = G.spendAbility(g, id, "warrior"); const v = d20();
         g = G.warriorRoll(g, id, q, v, R, true).game; continue;
       }

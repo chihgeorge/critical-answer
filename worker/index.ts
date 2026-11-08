@@ -39,6 +39,8 @@ export interface Env {
   E2E_DIE?: string;
   /** e2e only (playwright.config.ts): the team with this exact name always walks into an event room; no other team does. Never set in production. */
   E2E_EVENT_TEAM?: string;
+  /** How long the 擲先攻 order holds before the first question, in ms (e2e shortens it). */
+  INITIATIVE_HOLD_MS?: string;
 }
 
 /** Cloudflare adapter for the question bank: one singleton Durable Object holding it, exposed over
@@ -133,6 +135,7 @@ export class Room extends Server<Env> {
         expireMs: positiveMs(this.env.ROOM_EXPIRE_MS),
         fixedDie: fixedDie(this.env.E2E_DIE),
         e2eEventTeam: this.env.E2E_EVENT_TEAM || undefined,
+        initiativeHoldMs: positiveMs(this.env.INITIATIVE_HOLD_MS),
         // Undefined (bankOrFallback swallowed a fetch failure) falls through to DungeonRoom's own
         // bundled-bank default: an existing room's restore() overrides this with its own saved bank
         // regardless. See docs/designs/question-bank-editor.md, decision 7.

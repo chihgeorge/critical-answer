@@ -32,6 +32,7 @@
 import type { Accessory } from "./monster-catalog";
 import { isClassId, type ClassId, type EventResult, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
+import type { InitiativeView } from "./initiative";
 import type { MonsterSprite } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -144,14 +145,16 @@ export type ClientMessage =
   | { type: "HOST_CLAIM"; token: string; resume?: true }
   /** `intro`: play the 4-page how-to-play first (docs/designs/how-to-play.md). Missing means no intro,
    * so a host page from before the intro can't get stuck on a page it has no button for (eng D2). */
-  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean }
+  /** `initiative`: every team rolls 擲先攻 for the turn order (lib/initiative.ts). Missing keeps the lobby order, like `intro`. */
+  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean }
   /** How-to-play: go to `page` (1..4); 5 ends the intro and deals the first question. The room takes
    * only the current page ±1, so a double tap or a second host tab turns one page, not two (eng D4). */
   | { type: "HOST_INTRO"; page: number }
-  /** Which key pays for AI narration in this room. The key stays in the room's memory and is never sent back. */
-  | { type: "HOST_AI_KEY"; source: "own"; provider: AiProviderId; key: string }
+  /** Which key pays for AI narration in this room. The key stays in the room's memory and is never sent back.
+   * `keyId` (any page-made id) comes back as HOST_AI_STATUS.appliedKeyId once this key is the one in use. */
+  | { type: "HOST_AI_KEY"; source: "own"; provider: AiProviderId; key: string; keyId?: string }
   /** The server's own key, for whoever knows OWNER_KEY. */
-  | { type: "HOST_AI_KEY"; source: "owner"; ownerKey: string }
+  | { type: "HOST_AI_KEY"; source: "owner"; ownerKey: string; keyId?: string }
   /** Forget the key: scripted narration from now on. */
   | { type: "HOST_AI_KEY"; source: "none" }
   /** Most paid AI calls this room may make (1..MAX_AI_LIMIT). */
@@ -229,6 +232,10 @@ export type ClientMessage =
   | { type: "TEAM_OPEN_EVENT"; eventId: number }
   /** 擲骰說服 on the team's own fill-in turn (dnd design R6, R-E1): the room rolls the check. `eventId`: the STATE it was pressed under (R-E4). */
   | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
+  /** 擲先攻 (lib/initiative.ts): this team's d20, once, while the room waits for rolls. */
+  | { type: "TEAM_ROLL_INITIATIVE" }
+  /** 全部代擲: the room rolls for every team that has not rolled 擲先攻 yet. */
+  | { type: "HOST_ROLL_INITIATIVE" }
   /** The team's typed answer to a text question, shown to the host to judge. One per question. */
   /** `eventId` is the STATE eventId the answer was typed under; an older one (a send that arrived after
    * the host judged that attempt) is dropped, like HOST_JUDGE. Optional so a phone on an older build still sends. */
@@ -310,6 +317,8 @@ export type ServerMessage =
       phaseCard?: { monster: PublicQuestion["monster"] };
       /** How-to-play page on show (1..4); `question` is null until the host leaves page 4. */
       intro?: { page: number };
+      /** 擲先攻 between the intro and the first question: `question` is null until the order has been shown. */
+      initiative?: InitiativeView;
       /** The boss phase under way, from phase 2 on (phase 1 stays a plain boss). Never a later phase. */
       bossPhaseInfo?: { name: string; rule: string };
       /** Every catalog monster has a dish, so a server since the catalog always sends it: scores read 飽足感 instead of 獎勵分. Absent from older servers. */
@@ -350,6 +359,9 @@ export type ServerMessage =
       limit: number;
       exhausted: boolean;
       error?: AiKeyError;
+      /** The keyId of the HOST_AI_KEY whose key is in use. Only this tells the host page its key was applied: a status
+       * sent for anything else (a narration, another tab's key) looks the same otherwise. */
+      appliedKeyId?: string;
     }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   | { type: "HOST_ANSWER"; questionId: string; answer: string }
@@ -394,6 +406,7 @@ export type AiSource = "none" | "own" | "owner";
 /** invalid_key: refused by the provider or not a key at all. ai_stopped: the breaker switched AI off after repeated failures. */
 export type AiKeyError = "invalid_key" | "wrong_owner_key" | "owner_unavailable" | "check_failed" | "ai_stopped";
 const MAX_AI_KEY = 256;
+const MAX_KEY_ID = 64;
 /** A room's cap on paid AI narration calls: the default, and the most a host may set. */
 export const DEFAULT_AI_LIMIT = 300;
 export const MAX_AI_LIMIT = 5000;
@@ -488,21 +501,25 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_START":
       if (m.aiNarration !== undefined && typeof m.aiNarration !== "boolean") return null;
       if (m.intro !== undefined && typeof m.intro !== "boolean") return null;
-      return { type: "HOST_START", aiNarration: m.aiNarration, ...(m.intro ? { intro: true } : {}) };
+      if (m.initiative !== undefined && typeof m.initiative !== "boolean") return null;
+      return { type: "HOST_START", aiNarration: m.aiNarration, ...(m.intro ? { intro: true } : {}), ...(m.initiative ? { initiative: true } : {}) };
     case "HOST_INTRO":
       return Number.isInteger(m.page) && (m.page as number) >= 1 && (m.page as number) <= INTRO_PAGES + 1
         ? { type: "HOST_INTRO", page: m.page as number }
         : null;
     case "HOST_AI_KEY": {
       if (m.source === "none") return { type: "HOST_AI_KEY", source: "none" };
+      const keyId = m.keyId === undefined ? undefined : str(m.keyId, MAX_KEY_ID);
+      if (keyId === null || keyId === "") return null;
+      const id = keyId ? { keyId } : {};
       if (m.source === "owner") {
         const ownerKey = str(m.ownerKey, MAX_AI_KEY);
-        return ownerKey ? { type: "HOST_AI_KEY", source: "owner", ownerKey } : null;
+        return ownerKey ? { type: "HOST_AI_KEY", source: "owner", ownerKey, ...id } : null;
       }
       // The key's format is the room's check (invalid_key), not a malformed message.
       const key = str(m.key, MAX_AI_KEY);
       const provider = AI_PROVIDER_IDS.find((p) => p === m.provider);
-      return m.source === "own" && key && provider ? { type: "HOST_AI_KEY", source: "own", provider, key } : null;
+      return m.source === "own" && key && provider ? { type: "HOST_AI_KEY", source: "own", provider, key, ...id } : null;
     }
     case "HOST_AI_LIMIT":
       return Number.isInteger(m.limit) && (m.limit as number) >= 1 && (m.limit as number) <= MAX_AI_LIMIT
@@ -615,6 +632,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const questionId = str(m.questionId, MAX_ID);
       return questionId === null ? null : { type: "TEAM_USE_ABILITY", questionId };
     }
+    case "TEAM_ROLL_INITIATIVE":
+    case "HOST_ROLL_INITIATIVE":
+      return { type: m.type };
     case "TEAM_ROLL_CHECK": {
       const questionId = str(m.questionId, MAX_ID);
       if (questionId === null || !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;

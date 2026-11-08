@@ -68,6 +68,7 @@ import {
   SERVE_HOLD_MS,
 } from "../protocol";
 import { revealBeats, revealCalls } from "../podium";
+import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
 import { gameLog } from "../game-log";
 import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
 import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
@@ -93,6 +94,10 @@ export const EXPIRE_MS = 24 * 60 * 60 * 1000;
 const MAX_CONNECTIONS = 60;
 /** With no boss to cook, the podium reveal starts this long after the game ends, so the last line is read first. */
 const EPILOGUE_DELAY_MS = 4000;
+/** 結束冒險 while the big screen is still reading the last narration: the reveal waits for it to finish, at most this
+ * long (a screen gone or stuck never reports), then starts within READ_GAP_MS of the last line. */
+const END_READ_CAP_MS = 20_000;
+const READ_GAP_MS = 1000;
 /** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
@@ -134,6 +139,8 @@ export interface RoomOptions {
   /** e2e only (worker E2E_EVENT_TEAM): the team with this exact name always walks into an event room when it may, and
    * no other team ever does, so other specs never meet one (docs/designs/event-rooms.md). */
   e2eEventTeam?: string;
+  /** How long the 擲先攻 order holds before the first question (e2e, worker INITIATIVE_HOLD_MS). Default INITIATIVE_ORDER_MS. */
+  initiativeHoldMs?: number;
 }
 
 /** E2E_DIE as a die face: an integer 1-20, anything else is no fixed die. */
@@ -228,9 +235,13 @@ export class DungeonRoom {
   /** The podium reveal (podium-reveal.md eng D20): the narrator's calls, and when their first beat starts on the room's
    * clock. Null until the narration is in. Saved, so a restart keeps the reveal where it was. */
   private podium: { lines: string[]; at: number } | null = null;
-  /** The earliest the reveal's first beat may start, fixed when the game finishes: after the boss cooks, or after the
-   * last line is read. Saved, so a restart mid-cooking still waits for the dish. */
+  /** The earliest the reveal's first beat may start, set when the game finishes: after the boss cooks, after the last
+   * line is read, or at most END_READ_CAP_MS after 結束冒險, when revealAfterRead may move it up once the screen has
+   * read the last narration. Saved, so a restart mid-cooking still waits for the dish. */
   private revealFrom: number | null = null;
+  /** 結束冒險 came while the screen was still reading the last narration: its last line read moves revealFrom up.
+   * shortcut: not saved, so a restarted room waits the whole END_READ_CAP_MS; fine for a one-off pause. */
+  private revealOnRead = false;
   /** Narration for an eventId below this is stale and dropped: set by 結束冒險 (a judgment line still in flight
    * would hand the turn on over the podium) and by 回到大廳 (a late epilogue or line from the game just left).
    * Memory only, like the narration calls it guards. */
@@ -258,6 +269,14 @@ export class DungeonRoom {
    * first question, the start cue and the start narration wait for the host to leave the last page (eng D3).
    * Saved, like the phase card: a restart shows the same page (D9). */
   private intro: number | null = null;
+  /** 擲先攻 (lib/initiative.ts), after the intro and before the first question, or null. Saved: a restart keeps the
+   * rolls and starts the wait again. */
+  private initiative: Initiative | null = null;
+  private initiativeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** This game's HOST_START asked for 擲先攻: it follows the intro. Saved, so a restart mid-intro still rolls. */
+  private initiativeOn = false;
+  /** When initiativeTimer fires, for the countdown on the big screen. Memory only. */
+  private initiativeEndsAt = 0;
   private phaseCardTimer: ReturnType<typeof setTimeout> | null = null;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
@@ -296,12 +315,14 @@ export class DungeonRoom {
   /** Who pays (saved), and the key itself (memory only: never saved, logged, broadcast or sent back). Each applied
    * key gets a new generation, so a late 401 from a key the host already replaced cannot drop the new one. */
   private aiSource: AiSource = "none";
-  private credential: { provider: AiProviderId; apiKey: string; generation: number } | null = null;
+  private credential: { provider: AiProviderId; apiKey: string; generation: number; keyId?: string } | null = null;
   private credentialGeneration = 0;
   private aiUsed = 0;
   private aiLimit = DEFAULT_AI_LIMIT;
-  /** Shown to the host until the next key is applied: the key was refused mid-game, or the breaker tripped. */
+  /** The key in use failed: refused mid-game, or the breaker tripped. Shown to the host until the next key is applied. */
   private aiError: AiKeyError | undefined;
+  /** Why the host's last HOST_AI_KEY was refused. Every status carries it until the next HOST_AI_KEY, so a narration's status cannot wipe it. */
+  private keyError: AiKeyError | undefined;
   /** The pasted key being checked now, if any: a newer HOST_AI_KEY aborts it. */
   private keyCheck: AbortController | null = null;
   private fetchImpl: typeof fetch | undefined;
@@ -334,6 +355,7 @@ export class DungeonRoom {
   private bankAnswers: string[];
   private fixedDie: number | undefined;
   private e2eEventTeam: string | undefined;
+  private initiativeHoldMs: number;
 
   constructor(
     readonly room: RoomIO,
@@ -348,6 +370,7 @@ export class DungeonRoom {
     this.now = opts.now ?? Date.now;
     this.fixedDie = opts.fixedDie;
     this.e2eEventTeam = opts.e2eEventTeam;
+    this.initiativeHoldMs = opts.initiativeHoldMs ?? INITIATIVE_ORDER_MS;
     this.bankAnswers = allAnswers(this.bank);
     this.scripted = createScriptedProvider(rng);
     this.epilogueDelayMs = opts.epilogueDelayMs ?? EPILOGUE_DELAY_MS;
@@ -374,6 +397,7 @@ export class DungeonRoom {
         onAuthRejected: () => {
           this.credential = null;
           this.aiError = "invalid_key";
+          this.keyError = undefined; // the newest error wins
           this.sendAiStatus();
         },
       }),
@@ -440,12 +464,15 @@ export class DungeonRoom {
     console.warn(JSON.stringify({ narration: "breaker_open", why }));
     this.addTranscript({ kind: "breaker", at: new Date().toISOString(), text: `LLM narration switched off: ${why}` });
     // A refused key already says invalid_key (onAuthRejected dropped it); anything else is "AI stopped".
-    if (this.credential) this.aiError = "ai_stopped";
+    if (this.credential) {
+      this.aiError = "ai_stopped";
+      this.keyError = undefined; // the newest error wins
+    }
     this.sendAiStatus();
   }
 
-  /** To one host connection, or every one. `error` is for this message only (a key that failed to apply). */
-  private sendAiStatus(error?: AiKeyError, only?: Conn) {
+  /** To one host connection, or every one. */
+  private sendAiStatus(only?: Conn) {
     const msg: ServerMessage = {
       type: "HOST_AI_STATUS",
       source: this.aiSource,
@@ -455,15 +482,22 @@ export class DungeonRoom {
       used: this.aiUsed,
       limit: this.aiLimit,
       exhausted: this.aiUsed >= this.aiLimit,
-      ...((error ?? this.aiError) ? { error: error ?? this.aiError } : {}),
+      ...((this.keyError ?? this.aiError) ? { error: this.keyError ?? this.aiError } : {}),
+      ...(this.credential?.keyId ? { appliedKeyId: this.credential.keyId } : {}),
     };
     for (const conn of only ? [only] : this.hostConns.values()) this.sendTo(conn, msg);
   }
 
-  private applyCredential(source: AiSource, credential: { provider: AiProviderId; apiKey: string } | null) {
+  private refuseKey(error: AiKeyError) {
+    this.keyError = error;
+    this.sendAiStatus();
+  }
+
+  private applyCredential(source: AiSource, credential: { provider: AiProviderId; apiKey: string; keyId?: string } | null) {
     this.aiSource = source;
     this.credential = credential && { ...credential, generation: ++this.credentialGeneration };
     this.aiError = undefined;
+    this.keyError = undefined; // the newest outcome wins
     // Whatever tripped the breaker (a dead key, no credit) may be fixed by this key.
     if (credential) this.breaker.reset();
     this.sendAiStatus();
@@ -473,20 +507,30 @@ export class DungeonRoom {
     if (!this.requireHost(conn)) return;
     this.keyCheck?.abort();
     this.keyCheck = null;
+    // A key the host chose (only those carry a keyId) answers the last refusal; the page's resend on reconnect does not.
+    if (msg.source === "none" || msg.keyId) this.keyError = undefined;
     if (msg.source === "none") return this.applyCredential("none", null);
     if (msg.source === "owner") {
       const ownerKey = this.room.env?.OWNER_KEY;
       const serverKey = this.room.env?.ANTHROPIC_API_KEY;
-      if (!ownerKey || !serverKey) return this.sendAiStatus("owner_unavailable");
-      if (!tokensEqual(ownerKey, msg.ownerKey)) return this.sendAiStatus("wrong_owner_key");
-      return this.applyCredential("owner", { provider: "anthropic", apiKey: serverKey });
+      if (!ownerKey || !serverKey) return this.refuseKey("owner_unavailable");
+      if (!tokensEqual(ownerKey, msg.ownerKey)) return this.refuseKey("wrong_owner_key");
+      // Already in use (the page's resend on reconnect): nothing to apply, and a keyless resend keeps the page's keyId.
+      if (this.aiSource === "owner" && this.credential && !this.aiError) {
+        if (msg.keyId) this.credential.keyId = msg.keyId;
+        return this.sendAiStatus();
+      }
+      return this.applyCredential("owner", { provider: "anthropic", apiKey: serverKey, keyId: msg.keyId });
     }
     const provider = PROVIDERS[msg.provider];
-    if (!provider.keyFormat.test(msg.key)) return this.sendAiStatus("invalid_key");
+    if (!provider.keyFormat.test(msg.key)) return this.refuseKey("invalid_key");
     // The host page resends its key after every reconnect: the same key needs no new check, and a flaky check must not drop it.
     // After "AI stopped" the host pastes it again on purpose (credit topped up): apply it, which resets the breaker.
-    if (this.aiSource === "own" && this.credential?.provider === msg.provider && this.credential.apiKey === msg.key)
-      return this.aiError ? this.applyCredential("own", { provider: msg.provider, apiKey: msg.key }) : this.sendAiStatus();
+    if (this.aiSource === "own" && this.credential?.provider === msg.provider && this.credential.apiKey === msg.key) {
+      if (this.aiError) return this.applyCredential("own", { provider: msg.provider, apiKey: msg.key, keyId: msg.keyId });
+      if (msg.keyId) this.credential.keyId = msg.keyId;
+      return this.sendAiStatus();
+    }
     const check = new AbortController();
     this.keyCheck = check;
     void provider.checkKey(msg.key, { fetch: this.fetchImpl, signal: AbortSignal.any([check.signal, AbortSignal.timeout(KEY_CHECK_MS)]) }).then((result) => {
@@ -494,8 +538,8 @@ export class DungeonRoom {
       if (check.signal.aborted) return;
       this.keyCheck = null;
       // A failed check leaves the key the room already had in place.
-      if (result === "ok") this.applyCredential("own", { provider: msg.provider, apiKey: msg.key });
-      else this.sendAiStatus(result === "invalid" ? "invalid_key" : "check_failed");
+      if (result === "ok") this.applyCredential("own", { provider: msg.provider, apiKey: msg.key, keyId: msg.keyId });
+      else this.refuseKey(result === "invalid" ? "invalid_key" : "check_failed");
     });
   }
 
@@ -542,6 +586,8 @@ export class DungeonRoom {
       lastActivityAt: this.lastActivityAt === null ? null : roundActivity(this.lastActivityAt, this.idleMs),
       phaseCard: this.phaseCard,
       ...(this.intro !== null ? { intro: this.intro } : {}),
+      ...(this.initiative ? { initiative: this.initiative } : {}),
+      ...(this.initiativeOn && this.opening() ? { initiativeOn: true as const } : {}),
     };
   }
 
@@ -624,6 +670,10 @@ export class DungeonRoom {
     this.savedBank = stored;
     this.phaseCard = s.phaseCard ?? false;
     this.intro = s.intro ?? null;
+    // An initiative without a game in play (a damaged save) is dropped: its timer would start a game that is not there.
+    this.initiative = this.game?.phase === "playing" ? (s.initiative ?? null) : null;
+    this.initiativeOn = s.initiativeOn === true;
+    if (this.initiative) this.armInitiative(this.initiative.order ? (this.initiative.tieRolls?.length ?? 0) * INITIATIVE_TIE_MS + this.initiativeHoldMs : INITIATIVE_MS);
     // The answer reveal does not survive a restart, so a phase that ended under it goes straight to its card.
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
@@ -779,13 +829,14 @@ export class DungeonRoom {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       // The card holds the new phase's first question back until the host's 下一題.
-      question: this.phaseCard || this.intro !== null ? null : (this.currentQuestion()?.pub ?? null),
+      question: this.phaseCard || this.opening() ? null : (this.currentQuestion()?.pub ?? null),
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.liveMedia(),
       // No dish: the boss's dish is served on the kill, not before (monster-cuisine.md).
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
       ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
+      ...(this.initiative ? { initiative: { ...this.initiative, left: Math.max(0, this.initiativeEndsAt - this.now()) } } : {}),
       ...this.bossPhaseInfo(),
       cuisine: true as const,
       pendingLock: this.pendingLock,
@@ -973,6 +1024,7 @@ export class DungeonRoom {
     this.epilogueRequested = false;
     this.podium = null;
     this.revealFrom = null;
+    this.revealOnRead = false;
     this.staleBeforeSeq = null;
     this.playedQuestionIds = [];
     this.removedTeamIds.clear();
@@ -995,6 +1047,7 @@ export class DungeonRoom {
     this.aiUsed = 0;
     this.aiLimit = DEFAULT_AI_LIMIT;
     this.aiError = undefined;
+    this.keyError = undefined;
     this.bank = this.initialBank;
     this.bankAnswers = allAnswers(this.bank);
     this.roomEpoch = crypto.randomUUID();
@@ -1087,7 +1140,7 @@ export class DungeonRoom {
           this.handleRejoin(sender, msg.teamId, msg.teamKey);
           break;
         case "HOST_START":
-          this.handleHostStart(sender, msg.aiNarration, msg.intro);
+          this.handleHostStart(sender, msg.aiNarration, msg.intro, msg.initiative);
           break;
         case "HOST_INTRO":
           this.handleHostIntro(sender, msg.page);
@@ -1188,6 +1241,12 @@ export class DungeonRoom {
         case "TEAM_ROLL_CHECK":
           this.handleTeamRollCheck(sender, msg.questionId, msg.eventId);
           break;
+        case "TEAM_ROLL_INITIATIVE":
+          this.handleTeamRollInitiative(sender);
+          break;
+        case "HOST_ROLL_INITIATIVE":
+          this.handleHostRollInitiative(sender);
+          break;
         case "TEAM_SUBMIT_TEXT":
           this.handleTeamSubmitText(sender, msg.questionId, msg.text, msg.eventId);
           break;
@@ -1220,7 +1279,7 @@ export class DungeonRoom {
     this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
     this.sendTo(conn, { type: "HOST_NEXT_LINE_STATE", line: this.nextLine?.text ?? "" });
     if (this.lastNarration) this.sendTo(conn, { type: "HOST_NARRATION_PROGRESS", eventId: this.lastNarration.eventId, done: this.lastNarration.done });
-    this.sendAiStatus(undefined, conn);
+    this.sendAiStatus(conn);
     this.sendAnswer(conn);
     this.sendPicks(conn);
   }
@@ -1310,7 +1369,10 @@ export class DungeonRoom {
     this.intro = null;
     this.game = endGame(this.game, this.rng);
     this.logGame(this.game);
-    this.revealFrom = this.now() + this.epilogueDelayMs;
+    // The first place call would cut off the narration still being read on the big screen (speak() cancels it).
+    const n = this.lastNarration;
+    this.revealOnRead = !!n && n.done < n.lines.length;
+    this.revealFrom = this.now() + (this.revealOnRead ? END_READ_CAP_MS : this.epilogueDelayMs);
     const eventId = ++this.eventSeq;
     this.staleBeforeSeq = eventId;
     this.cue = null;
@@ -1343,6 +1405,7 @@ export class DungeonRoom {
     this.epilogueRequested = false;
     this.podium = null;
     this.revealFrom = null;
+    this.revealOnRead = false;
     this.lastNarration = null;
     this.cue = null;
     this.staleBeforeSeq = ++this.eventSeq;
@@ -1446,7 +1509,7 @@ export class DungeonRoom {
     // The reveal is always set in the same judgment that bumps eventSeq, so a HOST_NEXT for an
     // older STATE is stale — ignore it rather than close a reveal nobody has seen.
     // The intro turns pages with HOST_INTRO only.
-    if (!this.paused() || this.intro !== null || eventId !== this.eventSeq) return;
+    if (!this.paused() || this.opening() || eventId !== this.eventSeq) return;
     // A dish is served before 下一題, and the cooking plays out first (cooking I2): a double press or a stale tab can't skip it.
     if (this.reveal?.dish && (!this.reveal.served || this.now() - this.servedAt < SERVE_HOLD_MS)) return;
     if (this.reveal) return this.closeReveal();
@@ -1473,7 +1536,12 @@ export class DungeonRoom {
 
   /** An answer reveal or the boss's phase card is up: nobody answers until the host moves on. */
   private paused(): boolean {
-    return !!this.reveal || !!this.eventReveal || this.phaseCard || this.phaseCardDue || this.intro !== null;
+    return !!this.reveal || !!this.eventReveal || this.phaseCard || this.phaseCardDue || this.opening();
+  }
+
+  /** The intro or 擲先攻 is on: the game exists, but no question is dealt yet. */
+  private opening(): boolean {
+    return this.intro !== null || !!this.initiative;
   }
 
   private closeReveal() {
@@ -1513,6 +1581,10 @@ export class DungeonRoom {
     if (this.lockTimer) clearTimeout(this.lockTimer);
     if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
     this.lockTimer = this.phaseCardTimer = null;
+    // The game this 擲先攻 was for has ended or gone.
+    if (this.initiativeTimer) clearTimeout(this.initiativeTimer);
+    this.initiativeTimer = null;
+    this.initiative = null;
     // A crit die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now.
     const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : undefined);
     this.pendingLock = null;
@@ -1602,9 +1674,20 @@ export class DungeonRoom {
     // Saved even with no host page connected (sendTo saves only when it sends), so a restart keeps read lines locked.
     this.persist();
     for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_NARRATION_PROGRESS", eventId, done });
+    if (this.revealOnRead && done === n.lines.length && this.game?.phase === "finished") this.revealAfterRead();
   }
 
-  private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean) {
+  /** The screen has read the last narration out after 結束冒險: the reveal starts shortly, calls already in or not. */
+  private revealAfterRead() {
+    this.revealOnRead = false;
+    const from = this.now() + Math.min(this.epilogueDelayMs, READ_GAP_MS);
+    if (this.revealFrom !== null && from >= this.revealFrom) return;
+    this.revealFrom = from;
+    if (this.podium && this.podium.at > from) this.podium = { ...this.podium, at: from };
+    this.broadcast(this.snapshot());
+  }
+
+  private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean) {
     if (!this.requireHost(conn)) return;
     if (this.game) {
       this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
@@ -1635,11 +1718,70 @@ export class DungeonRoom {
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.
     this.aiNarration = aiNarration !== false;
     this.intro = intro ? 1 : null;
+    this.initiativeOn = !!initiative;
     if (intro) {
       this.broadcastState();
       return;
     }
-    this.announceStart();
+    this.beginInitiative();
+  }
+
+  /** 擲先攻 (lib/initiative.ts): every phone rolls, then the order shows, then the start (announceStart). */
+  private beginInitiative() {
+    if (!this.initiativeOn) return this.announceStart();
+    this.initiative = { rolls: {} };
+    this.armInitiative(INITIATIVE_MS);
+    this.broadcastState();
+  }
+
+  /** While rolling: rolls for the teams left after `ms`. Once the order is set: starts the game after `ms`. */
+  private armInitiative(ms: number) {
+    if (this.initiativeTimer) clearTimeout(this.initiativeTimer);
+    this.initiativeEndsAt = this.now() + ms;
+    this.initiativeTimer = setTimeout(() => {
+      this.initiativeTimer = null;
+      if (!this.initiative?.order) return this.finishInitiative();
+      this.initiative = null;
+      this.announceStart();
+    }, ms);
+  }
+
+  /** A phone's 擲先攻 roll: once per team, while the room still waits for rolls. */
+  private handleTeamRollInitiative(conn: Conn) {
+    const teamId = this.playingTeam(conn);
+    const ini = this.initiative;
+    if (!teamId || !ini || ini.order || ini.rolls[teamId] !== undefined) return;
+    this.initiative = { rolls: { ...ini.rolls, [teamId]: this.fixedDie ?? rollD20(this.rng) } };
+    this.setCue("roll");
+    if (!this.finishIfRolled()) this.broadcastState();
+  }
+
+  /** Every team has rolled. An offline team is not rolled for early: a phone locked during the intro gets the whole wait. */
+  private finishIfRolled(): boolean {
+    const ini = this.initiative;
+    if (!ini || ini.order || !this.game!.teams.every((t) => ini.rolls[t.id] !== undefined)) return false;
+    this.finishInitiative();
+    return true;
+  }
+
+  /** 全部代擲: the host rolls for every team that has not rolled yet. */
+  private handleHostRollInitiative(conn: Conn) {
+    if (!this.requireHost(conn)) return;
+    if (this.initiative && !this.initiative.order) this.finishInitiative();
+  }
+
+  /** Rolls for the teams left, sets the turn order (ties rerolled), and holds it on screen before the first question. */
+  private finishInitiative() {
+    const game = this.game!;
+    const ids = game.turnOrder;
+    const rolls = { ...this.initiative!.rolls };
+    for (const id of ids) rolls[id] ??= this.fixedDie ?? rollD20(this.rng);
+    // A fixed die (e2e) ties every team on every reroll: keep the lobby order instead.
+    const { order, tieRolls } = this.fixedDie === undefined ? initiativeOrder(ids, rolls, () => rollD20(this.rng)) : { order: ids, tieRolls: [] };
+    this.game = { ...game, turnOrder: order, currentTurnIndex: 0 };
+    this.initiative = { rolls, order, tieRolls };
+    this.armInitiative(tieRolls.length * INITIATIVE_TIE_MS + this.initiativeHoldMs);
+    this.broadcastState();
   }
 
   /** The start's fanfare and narration: at HOST_START, or when the host leaves the intro's last page (eng D3). */
@@ -1648,7 +1790,7 @@ export class DungeonRoom {
     this.setCue("start");
     this.broadcastState();
     const next = this.nextTurn();
-    void this.narrate(eventId, { type: "start", teams: this.pendingTeams.map((t) => t.name), ...(next ? { next } : {}) });
+    void this.narrate(eventId, { type: "start", teams: this.game!.turnOrder.flatMap((id) => this.game!.teams.find((t) => t.id === id)?.name ?? []), ...(this.initiativeOn ? { initiative: true as const } : {}), ...(next ? { next } : {}) });
   }
 
   /** How-to-play: one page at a time (eng D4). A page past the last one ends the intro. */
@@ -1658,7 +1800,7 @@ export class DungeonRoom {
     if (this.intro === null || Math.abs(page - this.intro) !== 1) return;
     if (page > INTRO_PAGES) {
       this.intro = null;
-      this.announceStart();
+      this.beginInitiative();
       return;
     }
     this.intro = page;
@@ -1722,7 +1864,7 @@ export class DungeonRoom {
   }
 
   private undoHeld(): boolean {
-    return !!this.reveal || this.phaseCard || this.intro !== null || !!this.pendingLock || !!this.pendingRoll;
+    return !!this.reveal || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll;
   }
 
   /** Runs `judge`, a 答錯 on a fill-in, so that 改判答對 may undo it. A cleric's wait and the 重答 / 逃跑 after it chain to the
@@ -1988,7 +2130,7 @@ export class DungeonRoom {
   private shownVideoId(): string | null {
     if (this.game?.phase !== "playing") return null;
     if (this.reveal) return this.reveal.video ? this.reveal.questionId : null;
-    if (this.phaseCard || this.intro !== null) return null;
+    if (this.phaseCard || this.opening()) return null;
     const pub = this.currentQuestion()?.pub;
     return pub?.content.kind === "youtube" ? pub.id : null;
   }

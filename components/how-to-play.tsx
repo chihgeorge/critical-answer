@@ -54,12 +54,13 @@ function MiniPhone({ children }: { children: ReactNode }) {
   );
 }
 
-function Picture({ page, firstTeam, cuisine }: { page: number; firstTeam: string; cuisine: boolean }) {
+function Picture({ page, cuisine }: { page: number; cuisine: boolean }) {
   const hop = "px-hop";
   if (page === 1)
     return (
       <div className="flex flex-col items-center gap-3">
-        <TurnRibbon>▼ 輪到：{firstTeam}</TurnRibbon>
+        {/* The order is rolled after the intro (擲先攻), so no team is named yet. */}
+        <TurnRibbon>▼ 輪到：擲先攻第一名</TurnRibbon>
         <div className="flex items-end gap-24">
           <Sprite kind="hero" variant={0} scale={5} className={hop} />
           <Sprite kind="slime" scale={5} className={hop} />
@@ -118,7 +119,7 @@ function Picture({ page, firstTeam, cuisine }: { page: number; firstTeam: string
 }
 
 /** The slideshow on the 960×540 stage. Pages swap at once (D10); the sprites hop unless motion is reduced. */
-export function HowToPlay({ page, firstTeam, cuisine }: { page: number; firstTeam: string; cuisine: boolean }) {
+export function HowToPlay({ page, cuisine }: { page: number; cuisine: boolean }) {
   const text = INTRO_PAGE_TEXT[page - 1];
   if (!text) return null;
   return (
@@ -129,7 +130,7 @@ export function HowToPlay({ page, firstTeam, cuisine }: { page: number; firstTea
         </LabelChip>
       </div>
       <Panel className="absolute flex flex-col items-center justify-center gap-4 text-center" style={{ left: 60, right: 60, top: 60, height: 300, zIndex: 5 }}>
-        <Picture page={page} firstTeam={firstTeam} cuisine={cuisine} />
+        <Picture page={page} cuisine={cuisine} />
         <div style={{ fontSize: 34, lineHeight: 1.25 }}>{text.big}</div>
       </Panel>
       <DialogueBox className="absolute" style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }} lines={[text.owl]} />

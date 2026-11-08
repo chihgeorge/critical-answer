@@ -23,7 +23,8 @@ type ByClass<T> = T & { classId?: ClassId };
 type WithRoll<T> = T & { roll?: RollMark };
 
 export type NarrationEvent =
-  | WithNext<{ type: "start"; teams: string[] }>
+  /** `initiative`: `teams` is the turn order the teams just rolled (lib/initiative.ts). */
+  | WithNext<{ type: "start"; teams: string[]; initiative?: true }>
   /** `entersBoss`: this answer moved the team into the boss room (it reached the boss
    * threshold, or another team was already inside: Team.inBoss).
    * `phase`: the boss phase already under way when a late team walks in, from phase 2 on (boss-phases.md D13).

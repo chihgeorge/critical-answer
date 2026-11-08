@@ -69,6 +69,7 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key })).toEqual({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key });
     expect(parseClientMessage({ type: "HOST_AI_KEY", source: "owner", ownerKey: "x" })).toEqual({ type: "HOST_AI_KEY", source: "owner", ownerKey: "x" });
     expect(parseClientMessage({ type: "HOST_AI_KEY", source: "none", key })).toEqual({ type: "HOST_AI_KEY", source: "none" });
+    expect(parseClientMessage({ type: "HOST_AI_KEY", source: "owner", ownerKey: "x", keyId: "k1" })).toEqual({ type: "HOST_AI_KEY", source: "owner", ownerKey: "x", keyId: "k1" });
     // A key in the wrong format still parses: the room answers it with invalid_key, not bad_message.
     expect(parseClientMessage({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: "oops" })).not.toBeNull();
     for (const bad of [
@@ -77,6 +78,9 @@ describe("parseClientMessage", () => {
       { source: "own", provider: "anthropic", key: "" },
       { source: "own", provider: "anthropic", key: "k".repeat(257) },
       { source: "owner", ownerKey: "" },
+      { source: "owner", ownerKey: "x", keyId: 1 },
+      { source: "owner", ownerKey: "x", keyId: "" },
+      { source: "own", provider: "anthropic", key, keyId: "i".repeat(65) },
       { source: "everyone" },
     ]) expect(parseClientMessage({ type: "HOST_AI_KEY", ...bad })).toBeNull();
   });
@@ -90,6 +94,17 @@ describe("parseClientMessage", () => {
   it("HOST_START: aiNarration is optional and must be a boolean", () => {
     expect(parseClientMessage({ type: "HOST_START", aiNarration: false })).toEqual({ type: "HOST_START", aiNarration: false });
     expect(parseClientMessage({ type: "HOST_START", aiNarration: "yes" })).toBeNull();
+  });
+
+  it("HOST_START: initiative is optional and must be a boolean; false is the same as missing", () => {
+    expect(parseClientMessage({ type: "HOST_START", initiative: true })).toEqual({ type: "HOST_START", initiative: true });
+    expect(parseClientMessage({ type: "HOST_START", initiative: false })).toEqual({ type: "HOST_START" });
+    expect(parseClientMessage({ type: "HOST_START", initiative: 1 })).toBeNull();
+  });
+
+  it("TEAM_ROLL_INITIATIVE and HOST_ROLL_INITIATIVE carry nothing else", () => {
+    expect(parseClientMessage({ type: "TEAM_ROLL_INITIATIVE", value: 20 })).toEqual({ type: "TEAM_ROLL_INITIATIVE" });
+    expect(parseClientMessage({ type: "HOST_ROLL_INITIATIVE" })).toEqual({ type: "HOST_ROLL_INITIATIVE" });
   });
 
   it("HOST_START: intro is optional and must be a boolean; false is the same as missing", () => {

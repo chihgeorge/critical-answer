@@ -9,7 +9,7 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, cleanTypedAnswer, scoreName, type ClientMessage, type LobbyTeams, type PublicQuestion, type StateMessage } from "@/lib/protocol";
-import { CHEF_BONUS_PERCENT, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, WARRIOR_TARGET, checkKey, type ClassId } from "@/lib/game-state";
+import { ABILITY_USES, CHEF_BONUS_PERCENT, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -29,7 +29,7 @@ const CLASS_HINTS: Record<ClassId, string> = {
   warrior: `擲 1d20 代替答題，${WARRIOR_TARGET} 以上算答對`,
   mage: "選擇題刪 2 個錯的選項；填空題看答案第一個字",
   cleric: "答錯後，這回合再答一次",
-  thief: "偷襲：這題答對，獎勵分和 boss 扣血 ×2",
+  thief: `偷襲：這題答對，獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`,
   chef: `被動：每次拿到獎勵分都多 ${CHEF_BONUS_PERCENT}%，不用按`,
 };
 
@@ -37,7 +37,7 @@ const CLASS_HINTS: Record<ClassId, string> = {
 function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMessage) => void }) {
   return (
     <Panel tone="lav" className="flex flex-col gap-2 px-[10px] py-[10px]">
-      <div className="text-[18px]">選一個職業（技能一場用 2 次）</div>
+      <div className="text-[18px]">選一個職業（戰士、法師技能一場 {MORE_ABILITY_USES} 次，其他 {ABILITY_USES} 次）</div>
       <div className="grid grid-cols-2 gap-2">
         {CLASS_IDS.map((id) => {
           const picked = current === id;
@@ -97,7 +97,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     body = (
       <div className="px-bar mt-1 flex-col !gap-0 !text-[19px]" role="status" style={{ background: "#ff8787", boxShadow: "inset 0 -5px 0 #e03131" }}>
         <span>🗝️ 偷襲準備好了！</span>
-        <small className="text-[13px]">這題答對加倍・答錯就沒了・剩 {me.abilityUses} 次</small>
+        <small className="text-[13px]">這題答對獎勵分 ×{SNEAK_REWARD_MULTIPLIER}・答錯就沒了・剩 {me.abilityUses} 次</small>
       </div>
     );
   } else if (me?.classId === "mage" && q && cast?.qid === q.id && cast.eventId === game.eventId && gone.length > cast.before) {
@@ -112,7 +112,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     // On a fill-in question the warrior rolls only after its persuasion check (dnd design R2).
     body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
   } else if (me.classId === "thief") {
-    body = button("🗝️", "偷襲：這題答對加倍", `${scoreName(game.cuisine)}、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
+    body = button("🗝️", "偷襲：這題答對加碼", `${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
   } else if (me.classId === "mage" && q.options && q.options.length - 1 - gone.length >= 2) {
     // The room keeps one wrong option: with 2 left it removes 1.
     body = button("🔮", `刪掉 ${Math.min(2, q.options.length - 2 - gone.length)} 個錯的選項`, `剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
@@ -710,11 +710,14 @@ export default function PlayPage() {
   const finished = game?.phase === "finished";
   /** The how-to-play page on the big screen: the phone points there and never repeats the rules (D7). */
   const intro = !finished ? (game?.intro?.page ?? null) : null;
+  /** 擲先攻 (lib/initiative.ts): the phone rolls here, the big screen shows every team's die. */
+  const initiative = !finished ? (game?.initiative ?? null) : null;
+  const myRoll = initiative && teamId ? initiative.rolls[teamId] : undefined;
   const cards = (
     <>
       {/* While waiting, the roster above already highlights our own team. */}
       {game && (
-        <Panel tone={isMyTurn ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
+        <Panel tone={isMyTurn && !initiative ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
           <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
@@ -737,7 +740,7 @@ export default function PlayPage() {
         </Panel>
       )}
 
-      {game && !finished && !held && !intro && turn?.team && !turn.team.eventScene && (
+      {game && !finished && !held && !intro && !initiative && turn?.team && !turn.team.eventScene && (
         <Panel className="flex items-center gap-3 px-3 py-[10px]">
           <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
           <div className="text-[15px]">
@@ -838,7 +841,30 @@ export default function PlayPage() {
           </div>
         )}
 
-        {game && !finished && !intro && turn && (
+        {initiative && (
+          // Panel takes no data-testid, so the wrapper carries it.
+          <div data-testid="phone-initiative">
+            <Panel tone="lav" role="status" className="flex flex-col items-center gap-2 px-3 py-5 text-center">
+              {myRoll === undefined ? (
+                <>
+                  <div className="text-[20px]">擲先攻！點數大的先上場</div>
+                  <PixelButton variant="ok" className="!m-0 !min-h-[72px] !text-[23px]" onClick={() => send({ type: "TEAM_ROLL_INITIATIVE" })}>
+                    🎲 擲骰
+                  </PixelButton>
+                </>
+              ) : (
+                <>
+                  <D20 value={myRoll} size={90} />
+                  <div className="text-[18px]">
+                    {initiative.order?.includes(teamId!) ? `你們擲出 ${myRoll}，第${ordinal(initiative.order.indexOf(teamId!) + 1)}個上場` : `你們擲出 ${myRoll}，看大螢幕 👀`}
+                  </div>
+                </>
+              )}
+            </Panel>
+          </div>
+        )}
+
+        {game && !finished && !intro && !initiative && turn && (
           <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
             {isMyTurn ? "輪到我們了！" : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
@@ -948,7 +974,7 @@ export default function PlayPage() {
           <DialogueBox
             compact
             // The intro narrates nothing: after a replay eventId is past the last narration, so it must not spin.
-            loading={!!game && !finished && intro === null && isPending(game.eventId, narration)}
+            loading={!!game && !finished && intro === null && !initiative && isPending(game.eventId, narration)}
             lines={
               finished
                 ? epilogue && podium
@@ -956,14 +982,14 @@ export default function PlayPage() {
                   : narration
                     ? narration.lines
                     : ["冒險結束了，大螢幕正在頒獎。"]
-                : intro !== null
-                  ? ["說明結束後，輪到你們時這裡會出現題目"]
+                : intro !== null || initiative
+                  ? [initiative ? "擲完先攻，輪到你們時這裡會出現題目" : "說明結束後，輪到你們時這裡會出現題目"]
                   : narration
                   ? narration.lines
                   : [turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"]
             }
             // A host edit of this narration reads on from the edited line instead of starting over (D13).
-            id={narration && intro === null && !(finished && epilogue && podium) ? narration.eventId : undefined}
+            id={narration && intro === null && !initiative && !(finished && epilogue && podium) ? narration.eventId : undefined}
           />
         </div>
       </div>

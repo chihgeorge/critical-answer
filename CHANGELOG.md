@@ -7,6 +7,37 @@ All notable changes to Critical Answer are documented here.
 ### Added
 - Event rooms. When a correct answer walks a team into its next room, there is a 25% chance the room holds an event instead of a monster. There is no draw on entering the boss room or the last room, or on leaving an event room. The team's phone shows one button, and pressing it is the team's whole turn: the big screen acts the event out, and the host presses 下一題 to pass the turn. The six events, drawn evenly: a chest with a delicious dish (+20 satiety) or a terrible one (−10, never below 0); a spring (one more class ability use, or +10 for a chef or a team with no class); a skull idol (curse: the next correct answer pays half its base reward); a fairy (blessing: the next correct answer pays an extra half); and a fortune teller whose lot is 大吉 (+25), 中吉 (the spring) or 凶 (the curse). The curse or blessing lasts until the team's next correct answer, and the big screen and the phone show it over the team's question. After 15 seconds without a press, the host page offers 「替{隊名}按」. Scripted and AI narration set the scene without spoiling it and read the outcome. The game record lists each team's events. A room restart keeps a drawn event; nothing is redrawn.
 
+## [0.52.0.1] - 2026-11-08
+
+### Fixed
+- When 5 to 8 teams roll a podium tie-break together, every die now stays on the big screen. Each name under a die is cut to the die's width, so 8 teams with long names no longer push the outer dice off the stage. The result bar now says 「點數最高的 N 隊上台」 instead of listing every team and roll again; with 8 teams that list ran to 2–4 lines. When a tie on the podium has to roll again, it says 「同點的重擲！」. A tie of 4 teams or fewer looks the same as before.
+- A tie-break result no longer says 「同點的重擲」 when the tied teams are all below third place. Nobody rerolls there, so the big screen promised a roll that never came.
+- When the host presses 結束冒險 while the big screen is still reading the last narration, the podium waits for it. The first place call starts 1 second after the screen reports the last line read, or after 20 seconds at most if no screen reports. While it waits, the big screen keeps that narration up instead of 「…」 and goes on from the line it had reached, rather than typing it again from the top. Before, the reveal started 4 seconds after 結束冒險, and the first call cut the narration off.
+
+## [0.52.0.0] - 2026-11-08
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website. Until it is, a game started from the new host page starts as before, in lobby order.
+
+### Added
+- 擲先攻 (initiative roll) at the start of every game. After the stone doors open, each team presses 「🎲 擲骰」 on its phone to roll a d20, and the big screen shows every team's die in a row, with a countdown. The highest roll goes first; tied teams are rerolled by the room until the tie is broken, and the big screen shows each reroll. A team that has not rolled after 15 seconds is rolled for. An offline team gets the same 15 seconds, so a phone that locked during the intro can still come back and roll. The host page has 「🎲 全部代擲」 to roll for everyone left at once. The order holds on the big screen for about 4 seconds, then the first team plays. The opening narration introduces the teams in this order. The order and the rolls survive a server restart. The doors and page 1 of the how-to-play picture no longer name the first team, because it is not known yet.
+
+## [0.51.0.1] - 2026-11-08
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website. A new host page talking to an old room server never sees its key confirmed, so 記住這台電腦 saves nothing until the server is updated. No migration.
+
+### Fixed
+- The host now keeps seeing why a key was refused. A refused key's error (`invalid_key`, `wrong_owner_key`, `owner_unavailable`, `check_failed`) went out once; the next AI narration's status had no error and replaced it. The room now keeps the last key's error and sends it with every AI status until the host sends another key. A newer failure of the key in use (AI stopped, or the key refused mid-game) replaces it.
+- With the owner key already in use, a wrong OWNER_KEY counted as applied on the host page. With 記住這台電腦 ticked it was saved in the browser and resent after every reconnect. The page guessed from what the status looked like, so a narration's status, a reconnect, or an own key with the same last 4 characters could also make a refused key count. Each key the host sends now carries an id, and the room's status names the id of the key in use; the page saves a key only when its own id comes back.
+
+## [0.51.0.0] - 2026-11-08
+
+### Changed
+- The five classes are closer to even. In a simulation of 4 teams with random classes, the thief used to win 35–46% of games, while the warrior and the mage did no better than a team with no class. Now every class wins 21–32% at low, normal and high accuracy (a team with no class: about 14%).
+  - Thief: a correct answer after 偷襲 gives 1.5× the reward points (was 2×), rounded half up. The boss still loses 2 hearts.
+  - Warrior: 4 rolls per game (was 2), and 6 or higher on the d20 counts as correct (was 12).
+  - Mage: 4 uses per game (was 2).
+  - The cleric and the chef are unchanged.
+
 ## [0.50.0.0] - 2026-11-08
 
 ### Changed

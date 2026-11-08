@@ -20,7 +20,7 @@
 // spendAbility() takes the use when the room rolls, then warriorRoll() judges the d20 as the
 // answer (WARRIOR_TARGET or more is correct) through answerQuestion, so the turn still advances
 // exactly once. The mage removes wrong options (mageEliminate), the thief arms a Sneak Attack
-// that doubles this answer's reward and boss damage (armSneak), and the cleric prays on a wrong
+// that raises this answer's reward ×1.5 and doubles its boss damage (armSneak), and the cleric prays on a wrong
 // lock (pray) so that its 重答 / 逃跑 keeps the turn instead of advancing it (prayerTurn).
 //
 // Turn order never changes with room progress — this avoids the "arrival
@@ -58,8 +58,18 @@ export const CLASS_ICONS: Record<ClassId, string> = {
   chef: "🍳",
 };
 
-/** Ability uses per team per game, every active class (the chef's is passive, CHEF_BONUS_PERCENT). */
+/** Ability uses per team per game for the thief and the cleric (the chef's is passive, CHEF_BONUS_PERCENT). */
 export const ABILITY_USES = 2;
+/** The warrior and the mage get more: their abilities only raise the odds on one question (owner, 2026-11-08 balance). */
+export const MORE_ABILITY_USES = 4;
+
+/** A team's ability uses at the start of a game. */
+export function abilityUsesFor(classId: ClassId | undefined): number {
+  return classId === "warrior" || classId === "mage" ? MORE_ABILITY_USES : ABILITY_USES;
+}
+
+/** A correct answer after Sneak Attack gives this times the reward (rounded half up); the boss still loses 2 hearts. */
+export const SNEAK_REWARD_MULTIPLIER = 1.5;
 /** The chef's passive: every reward gain of the team is this much bigger, after the sneak, a crit and the kill's 4d20. */
 export const CHEF_BONUS_PERCENT = 15;
 
@@ -67,8 +77,8 @@ export const CHEF_BONUS_PERCENT = 15;
 export function chefShare(gain: number): number {
   return gain > 0 ? Math.max(1, Math.round((gain * CHEF_BONUS_PERCENT) / 100)) : 0;
 }
-/** The warrior's d20 counts as a correct answer at this value or more (45%). */
-export const WARRIOR_TARGET = 12;
+/** The warrior's d20 counts as a correct answer at this value or more (75%). */
+export const WARRIOR_TARGET = 6;
 
 /** A fill-in question is a persuasion check (dnd design Premise 3): d20 + the team's class bonus against the
  * monster's DC. A team with no class adds 1. */
@@ -142,8 +152,8 @@ export interface Team {
   /** Natural 20s this team rolled: crit dice, warrior rolls, persuasion checks and the kill's 4d20 (podium-reveal.md D5).
    * Absent until the first one, and in a game saved before them. */
   natural20s?: number;
-  /** The thief's Sneak Attack waits for this team's next judgment: a correct one doubles its reward and
-   * boss damage, any judgment uses it up (class-abilities.md D16). */
+  /** The thief's Sneak Attack waits for this team's next judgment: a correct one gives ×1.5 its reward
+   * and ×2 its boss damage; any judgment uses it up (class-abilities.md D16). */
   sneakArmed?: true;
   /** The team's typed answer to its text question (submitText), waiting for the host. Only the turn's
    * team can hold one, and it keeps the turn until judged; answerQuestion and sendToBoss clear it. */
@@ -209,7 +219,7 @@ export type GamePhase = "playing" | "finished";
 
 export interface GameState {
   teams: Team[];
-  /** Fixed team order — does not change with room progress (see header diagram). */
+  /** Team order: the lobby's, or the one 擲先攻 rolled (lib/initiative.ts). Fixed for the game, whatever the room progress. */
   turnOrder: string[];
   currentTurnIndex: number;
   rooms: RoomTemplate[];
@@ -531,7 +541,7 @@ export function createGame(
       inBoss: config.bossThreshold <= 0, // score starts at 0
       ...(config.bossThreshold <= 0 ? { bossAt: { round: 1, turns: 0 } } : {}),
       ...(seed.classId ? { classId: seed.classId } : {}),
-      abilityUses: ABILITY_USES,
+      abilityUses: abilityUsesFor(seed.classId),
     });
   }
 
@@ -696,7 +706,7 @@ export function answerQuestion(
         ? { roll: { kind: "check", value: check.value } }
         : {};
   const critBonus = (base: number) => (crit ? Math.round(base * 0.5) : 0) + (boon === "blessing" ? Math.round(base * 0.5) : 0);
-  // R5: the half is taken from the base reward, then the sneak doubles it.
+  // R5: the half is taken from the base reward, then the sneak raises it.
   const baseOf = (reward: number) => (halved ? Math.round(reward * 0.5) : reward);
 
   const activeTeamId = currentTurnTeamId(game);
@@ -713,8 +723,9 @@ export function answerQuestion(
     throw new InvalidActionError(`${teamId} already locked a wrong answer; only retry or flee is left`);
   }
   const prayed = !correct && game.pendingWrong?.prayed === true;
-  // Any judgment uses up an armed Sneak Attack; only a correct one doubles (D16).
+  // Any judgment uses up an armed Sneak Attack; only a correct one pays (D16): ×2 boss damage, ×1.5 reward.
   const sneak = getTeam(game, teamId).sneakArmed ? 2 : 1;
+  const sneakPay = (reward: number) => (sneak === 2 ? Math.round(reward * SNEAK_REWARD_MULTIPLIER) : reward);
   // The chef's 15% goes on the whole gain, last (eng review D2).
   const chef = getTeam(game, teamId).classId === "chef";
   const withChef = (gain: number) => {
@@ -756,8 +767,8 @@ export function answerQuestion(
       const bossKilled = newHp === 0 && lastPhase;
       // The 4d20 is not raised by a crit (R4).
       const kill = bossKilled ? (killDice ?? rollBossKillDice(rng)) : undefined;
-      const killBonus = kill ? kill.reduce((a, b) => a + b, 0) * sneak : undefined;
-      const gain = withChef(baseOf(boss.hitReward) * sneak + critBonus(boss.hitReward) + (killBonus ?? 0));
+      const killBonus = kill ? sneakPay(kill.reduce((a, b) => a + b, 0)) : undefined;
+      const gain = withChef(sneakPay(baseOf(boss.hitReward)) + critBonus(boss.hitReward) + (killBonus ?? 0));
       const { reward } = gain;
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}), ...withNatural20s(t, kill?.filter((v) => v === 20).length ?? 0) }));
 
@@ -820,7 +831,7 @@ export function answerQuestion(
       // The question's own difficulty: an empty, fully held or fully revealed pool deals from another one (deal()).
       const pointsAwarded = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
       const base = game.rooms[team.roomIndex].reward;
-      const gain = withChef(baseOf(base) * sneak + critBonus(base));
+      const gain = withChef(sneakPay(baseOf(base)) + critBonus(base));
       const { reward } = gain;
       // A correct answer is always revealed (D5), so the next deal from any pool must not hand it
       // back to a team who hasn't faced it yet.

@@ -11,8 +11,7 @@ export type AiStatus = Extract<ServerMessage, { type: "HOST_AI_STATUS" }>;
 
 /**
  * The limit field's value to send with a new key, or null: a new limit typed before the key goes with it. Before the
- * room's first status the field still holds the default, so nothing is sent. Sending it would cost a status reply that
- * wipes this key's invalid_key off the panel, and would reset a restored room's own limit.
+ * room's first status the field still holds the default, so nothing is sent: that would reset a restored room's own limit.
  */
 export function limitToSendWithKey(limit: string, status: Pick<AiStatus, "limit"> | null): number | null {
   const n = Number(limit);
@@ -22,6 +21,12 @@ export function limitToSendWithKey(limit: string, status: Pick<AiStatus, "limit"
 /** What the host typed, kept in this page (and, with 記住這台電腦, in localStorage) to resend after a room restart. */
 export type AiCredential = { source: "own"; key: string } | { source: "owner"; ownerKey: string };
 
+/** Whether this status shows the key sent with `keyId` in use. Nothing else in a status tells: with the owner key in
+ * use a wrong OWNER_KEY still reads source "owner", and an own key can share the hint of the key in use. A refused key
+ * never gets its id named, and an error alongside the id is about something later (AI stopped). */
+export const aiKeyApplied = (keyId: string, msg: AiStatus): boolean => msg.appliedKeyId === keyId;
+/** Unique across page loads too: the room keeps the last applied id, so a reloaded page must not reuse it. */
+export const newKeyId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 export const AI_STORE = { own: "ai-key:own", owner: "ai-key:owner" } as const;
 export const AI_ERRORS: Record<AiKeyError, string> = {
   invalid_key: "這把 key 無效（格式不對，或 Anthropic 拒絕了它）",
@@ -30,8 +35,10 @@ export const AI_ERRORS: Record<AiKeyError, string> = {
   check_failed: "暫時無法驗證這把 key，請再試一次",
   ai_stopped: "AI 旁白已暫停：連續失敗。檢查 Anthropic Console 的餘額後，重新貼一次 key",
 };
-export const aiKeyMessage = (c: AiCredential): ClientMessage =>
-  c.source === "own" ? { type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: c.key } : { type: "HOST_AI_KEY", source: "owner", ownerKey: c.ownerKey };
+export const aiKeyMessage = (c: AiCredential, keyId?: string): ClientMessage =>
+  c.source === "own"
+    ? { type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: c.key, ...(keyId ? { keyId } : {}) }
+    : { type: "HOST_AI_KEY", source: "owner", ownerKey: c.ownerKey, ...(keyId ? { keyId } : {}) };
 
 export function readSavedAiKey(): AiCredential | null {
   const key = readStored(AI_STORE.own);
@@ -115,7 +122,7 @@ export function AiPanel({
     </label>
   );
   const after = (c: AiCredential) => {
-    // The limit goes before the key: its status reply carries no error, so sent after it would wipe the key's invalid_key.
+    // The limit goes before the key, so the key's status (with any error) is the last one the panel gets.
     const withKey = limitToSendWithKey(limit, status);
     if (withKey !== null) send({ type: "HOST_AI_LIMIT", limit: withKey });
     onUse(c, remember);

@@ -12,15 +12,16 @@ import { HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, type C
 import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
-import { CLASS_ICONS, CLASS_LABELS } from "@/lib/game-state";
+import { CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { MageHint } from "@/components/mage-hint";
 import { clericStage, HOST_KEYS, hostKeyAction, introKeyAction } from "@/lib/host-keys";
 import { INTRO_PAGE_TEXT, introDots } from "@/components/how-to-play";
+import { INITIATIVE_MS } from "@/lib/initiative";
 import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
-import { AI_ERRORS, AI_STORE, AiExhausted, AiPanel, aiKeyMessage, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
+import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, AiPanel, aiKeyMessage, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
@@ -78,7 +79,7 @@ export default function HostPage() {
   /** The key the room last accepted. The room keeps keys in memory only, so this is resent after every HOST_OK. */
   const aiSaved = useRef<AiCredential | null>(null);
   /** A key sent but not yet confirmed by HOST_AI_STATUS. */
-  const aiPending = useRef<{ credential: AiCredential; remember: boolean } | null>(null);
+  const aiPending = useRef<{ credential: AiCredential; remember: boolean; keyId: string } | null>(null);
   const [aiQueue] = useState(createAiKeyQueue);
   const aiSend = (msg: ClientMessage) => aiQueue.choose(msg, send);
   const [aiRemembered, setAiRemembered] = useState(false);
@@ -88,12 +89,15 @@ export default function HostPage() {
     aiSaved.current = readSavedAiKey();
     setAiRemembered(aiSaved.current !== null);
   }, []);
-  const forgetAiKey = () => {
+  const forgetSavedAiKey = () => {
     aiSaved.current = null;
-    aiPending.current = null;
     forgetStored(AI_STORE.own);
     forgetStored(AI_STORE.owner);
     setAiRemembered(false);
+  };
+  const forgetAiKey = () => {
+    forgetSavedAiKey();
+    aiPending.current = null;
   };
   const [joinPassword, setJoinPassword] = useState("");
   const [savedPassword, setSavedPassword] = useState("");
@@ -137,10 +141,9 @@ export default function HostPage() {
           const p = aiPending.current;
           if (p) {
             const c = p.credential;
-            const applied = c.source === "own" ? msg.source === "own" && msg.keyHint === `…${c.key.slice(-4)}` : msg.source === "owner" && !msg.keyMissing;
-            // No clearing on an error: a status sent for something else (a limit change) can carry the room's
-            // old error while this key is still being checked. A refused key simply never gets applied.
-            if (applied) {
+            // Applied only when the room names this key's id; a refused key never gets it. No clearing on an error:
+            // a status sent before the room got this key can carry an older refusal.
+            if (aiKeyApplied(p.keyId, msg)) {
               aiPending.current = null;
               aiSaved.current = c;
               forgetStored(AI_STORE.own);
@@ -150,7 +153,8 @@ export default function HostPage() {
             }
           }
           // The host's own key refused mid-game: never resend it. (In owner mode the server's key is at fault, not OWNER_KEY.)
-          if (msg.error === "invalid_key" && msg.keyMissing && msg.source === "own") forgetAiKey();
+          // The key being pasted stays pending: this status may be an older paste's refusal, sent before the room got it.
+          if (msg.error === "invalid_key" && msg.keyMissing && msg.source === "own") forgetSavedAiKey();
           break;
         }
         case "HOST_NEXT_LINE_STATE":
@@ -372,7 +376,7 @@ export default function HostPage() {
   }, [introPage, ready, picking, drawer, swapArmed]);
 
   useLayoutEffect(() => {
-    if (game?.phase !== "playing" || game.intro) return;
+    if (game?.phase !== "playing" || game.intro || game.initiative) return;
     function onKey(e: KeyboardEvent) {
       // An open picker or drawer covers the turn: a key there must not judge it or close a reveal.
       if (picking || drawer) return;
@@ -425,8 +429,9 @@ export default function HostPage() {
       remembered={aiRemembered}
       send={aiSend}
       onUse={(credential, remember) => {
-        aiPending.current = { credential, remember };
-        aiSend(aiKeyMessage(credential));
+        const keyId = newKeyId();
+        aiPending.current = { credential, remember, keyId };
+        aiSend(aiKeyMessage(credential, keyId));
       }}
       onForget={() => {
         forgetAiKey();
@@ -566,7 +571,7 @@ export default function HostPage() {
               className="min-h-[78px] text-[26px]"
               disabled={!ready || lobby.length === 0}
               // AI narration follows the room's key (HOST_AI_KEY), so a key added mid-game still takes effect.
-              onClick={() => send({ type: "HOST_START", intro: introOn })}
+              onClick={() => send({ type: "HOST_START", intro: introOn, initiative: true })}
             >
               開始遊戲 ▶
             </PixelButton>
@@ -602,7 +607,24 @@ export default function HostPage() {
           </section>
         )}
 
-        {game && game.phase === "playing" && !game.intro && (
+        {game?.phase === "playing" && !game.intro && game.initiative && (
+          <section data-testid="host-initiative" className="flex flex-1 flex-col gap-3">
+            <Panel className="px-3 py-3 text-center">
+              <span className="px-chip">擲先攻</span>
+              <div className="mt-2 text-[20px]">{game.initiative.order ? "先攻順序出爐，即將開始" : "各隊用手機擲骰，大螢幕在看"}</div>
+              <div className="mt-1 text-[15px]" style={{ color: "#6a5a7a" }}>
+                {game.initiative.order
+                  ? game.initiative.order.map((id) => game.view.teams.find((t) => t.id === id)?.name ?? "").join(" → ")
+                  : `已擲 ${Object.keys(game.initiative.rolls).length}／${game.view.teams.length} 隊，${INITIATIVE_MS / 1000} 秒後沒擲的隊由系統代擲`}
+              </div>
+            </Panel>
+            <PixelButton variant="primary" disabled={!ready || !!game.initiative.order} className="!m-0 mt-auto min-h-[78px] text-[26px]" onClick={() => send({ type: "HOST_ROLL_INITIATIVE" })}>
+              🎲 全部代擲
+            </PixelButton>
+          </section>
+        )}
+
+        {game && game.phase === "playing" && !game.intro && !game.initiative && (
           <>
             {/* No team on turn (every phone offline): the team rows and their 交給新手機 still show. */}
             {turn?.team && (
@@ -706,7 +728,7 @@ export default function HostPage() {
                   <Sprite kind="hero" variant={i} scale={1} className="flex-none" />
                   <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
                   {t.classId && <span className="text-[13px]" title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "" : t.abilityUses}</span>}
-                  {t.sneakArmed && <span className="text-[13px]" title="偷襲準備好了：這題答對加倍">🗝️×2</span>}
+                  {t.sneakArmed && <span className="text-[13px]" title={`偷襲準備好了：這題答對獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
                   {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}
