@@ -2,6 +2,13 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.47.0.0] - 2026-11-08
+
+### Added
+- The big screen opens the game with stone doors: 冒險開始！ and the first team's name, then the doors part to show the first room (about 2 seconds).
+- The first time the boss room comes up, a 首領出現！ alarm banner sweeps across the big screen with the boss's name (about 2.5 seconds), with a siren when 🎵 music is on.
+- With the computer's reduce-motion setting on, each transition shows one still frame instead. A big screen opened or reconnected mid-game never replays either one. The question and narration underneath carry on as usual.
+
 ## [0.46.0.0] - 2026-11-08
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website. Then reload every phone, big screen, host page and bank-editor tab before you save or play a bank with a sort question. An old tab does not know sort questions. A bank without a sort question is still saved at format 3, so a rollback reads it as before. After a sort question is saved, rolling the room server back makes it load the bundled bank instead and resets the rooms that are running.

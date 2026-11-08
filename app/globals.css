@@ -252,6 +252,29 @@ body {
 @keyframes px-drift { 50% { transform: translateX(4px); } }
 .px-drift { animation: px-drift 2.4s steps(1) infinite; }
 .px-drift2 { animation: px-drift 2.4s steps(1) infinite reverse; }
+/* Transitions (components/transition-overlay.tsx): the opening's stone doors part, the boss's alarm banner sweeps
+   through. Two-frame steps() like the rest; .px-still is reduced motion's one still frame (the doors shut,
+   the banner up with its text). Change a duration here and MS in that component together. */
+.px-door { position: absolute; top: 0; bottom: 0; width: 50%; background:
+  repeating-linear-gradient(90deg, #0000 0 76px, #4d405c 76px 80px),
+  repeating-linear-gradient(#6b5c7a 0 36px, #4d405c 36px 40px); box-shadow: inset 0 -10px 0 #0003; }
+.px-door-l { left: 0; border-right: 6px solid var(--k); animation: px-door-l 1s steps(8) 0.6s both; }
+.px-door-r { right: 0; border-left: 6px solid var(--k); animation: px-door-r 1s steps(8) 0.6s both; }
+@keyframes px-door-l { to { transform: translateX(-100%); } }
+@keyframes px-door-r { to { transform: translateX(100%); } }
+@keyframes px-out { to { visibility: hidden; } }
+.px-door-title { animation: px-out 0s 0.6s both; }
+.px-title-gold { color: var(--warn); text-shadow: 4px 4px 0 var(--k), -4px -4px 0 var(--k), 4px -4px 0 var(--k), -4px 4px 0 var(--k), 0 6px 0 var(--k); }
+.px-alarm-tint { background: #ff2a2a40; animation: px-out 0s 2.4s both; }
+.px-alarm-band { background: repeating-linear-gradient(-45deg, var(--warn) 0 28px, var(--k) 28px 56px); border-block: 6px solid var(--k);
+  animation: px-alarm-band 2.4s steps(1) both; }
+@keyframes px-alarm-band {
+  0% { transform: translateX(100%); } 6% { transform: translateX(66%); } 11% { transform: translateX(33%); } 16% { transform: none; }
+  84% { transform: none; } 88% { transform: translateX(-33%); } 92% { transform: translateX(-66%); } 96%, 100% { transform: translateX(-100%); }
+}
+.px-alarm-text { background: var(--k); border-block: 8px solid var(--warn); animation: px-alarm-text 2.4s steps(1) both; }
+@keyframes px-alarm-text { 0%, 16% { opacity: 0; } 17%, 30% { opacity: 1; } 31%, 36% { opacity: 0; } 37%, 50% { opacity: 1; } 51%, 56% { opacity: 0; } 57%, 100% { opacity: 1; } }
+.px-door.px-still, .px-door-title.px-still, .px-alarm-tint.px-still, .px-alarm-band.px-still, .px-alarm-text.px-still { animation: none; }
 /* The music card's equalizer (docs/designs/youtube-questions.md D15): bars jump between two heights. */
 @keyframes px-eq { 50% { transform: scaleY(0.35); } }
 .px-eq { animation: px-eq 0.5s steps(1) infinite; }
