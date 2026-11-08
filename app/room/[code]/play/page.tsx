@@ -837,23 +837,26 @@ export default function PlayPage() {
         )}
 
         {initiative && (
-          <Panel data-testid="phone-initiative" tone="lav" role="status" className="flex flex-col items-center gap-2 px-3 py-5 text-center">
-            {myRoll === undefined ? (
-              <>
-                <div className="text-[20px]">擲先攻！點數大的先上場</div>
-                <PixelButton variant="ok" className="!m-0 !min-h-[72px] !text-[23px]" onClick={() => send({ type: "TEAM_ROLL_INITIATIVE" })}>
-                  🎲 擲骰
-                </PixelButton>
-              </>
-            ) : (
-              <>
-                <D20 value={myRoll} size={90} />
-                <div className="text-[18px]">
-                  {initiative.order?.includes(teamId!) ? `你們擲出 ${myRoll}，第${ordinal(initiative.order.indexOf(teamId!) + 1)}個上場` : `你們擲出 ${myRoll}，看大螢幕 👀`}
-                </div>
-              </>
-            )}
-          </Panel>
+          // Panel takes no data-testid, so the wrapper carries it.
+          <div data-testid="phone-initiative">
+            <Panel tone="lav" role="status" className="flex flex-col items-center gap-2 px-3 py-5 text-center">
+              {myRoll === undefined ? (
+                <>
+                  <div className="text-[20px]">擲先攻！點數大的先上場</div>
+                  <PixelButton variant="ok" className="!m-0 !min-h-[72px] !text-[23px]" onClick={() => send({ type: "TEAM_ROLL_INITIATIVE" })}>
+                    🎲 擲骰
+                  </PixelButton>
+                </>
+              ) : (
+                <>
+                  <D20 value={myRoll} size={90} />
+                  <div className="text-[18px]">
+                    {initiative.order?.includes(teamId!) ? `你們擲出 ${myRoll}，第${ordinal(initiative.order.indexOf(teamId!) + 1)}個上場` : `你們擲出 ${myRoll}，看大螢幕 👀`}
+                  </div>
+                </>
+              )}
+            </Panel>
+          </div>
         )}
 
         {game && !finished && !intro && !initiative && turn && (
