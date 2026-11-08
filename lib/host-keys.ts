@@ -6,7 +6,7 @@ import type { SpectatorView } from "./game-state";
 
 /** "wrong": a cleric's one 答錯 key, which waits for its choice; "pray": 祈禱 in that wait (#106).
  * "reveal": 公布答案 on a team's lock (docs/designs/host-reveal.md). */
-type HostKeyAction = "correct" | "retry" | "flee" | "next" | "wrong" | "pray" | "reveal";
+type HostKeyAction = "correct" | "retry" | "flee" | "next" | "wrong" | "pray" | "reveal" | "undo";
 
 /** The parts of a KeyboardEvent this needs, so a test can pass a plain object. */
 interface KeyLike {
@@ -36,6 +36,8 @@ export const HOST_KEYS = {
   next: "1",
   /** 公布答案 while a team's lock waits for the host (host-reveal.md D6). */
   reveal: "1",
+  /** 改判答對 under the judge buttons, while the host's last 答錯 on a fill-in may still be undone (any turn). */
+  undo: "0",
 } as const;
 
 /** A key left to the browser: with a modifier (Ctrl+1 switches browser tabs), held down, or typed into a field. */
@@ -53,6 +55,7 @@ function ignoredKey(e: KeyLike): boolean {
 export function hostKeyAction(e: KeyLike, revealing: boolean, mc?: { stuck: boolean }, cleric?: "before" | "wait", lockWaiting?: boolean): HostKeyAction | null {
   if (ignoredKey(e)) return null;
   if (revealing) return e.key === HOST_KEYS.next || e.key === "Enter" ? "next" : null;
+  if (e.key === HOST_KEYS.undo) return "undo";
   if (lockWaiting && e.key === HOST_KEYS.reveal) return "reveal";
   if (mc && (e.key === HOST_KEYS.plain.correct || !mc.stuck)) return null;
   const keys: Partial<Record<HostKeyAction, string>> = HOST_KEYS[cleric ?? "plain"];
