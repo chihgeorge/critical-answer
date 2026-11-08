@@ -20,7 +20,7 @@ import { clericStage, HOST_KEYS, hostKeyAction, introKeyAction } from "@/lib/hos
 import { INTRO_PAGE_TEXT, introDots } from "@/components/how-to-play";
 import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
-import { AI_ERRORS, AI_STORE, AiExhausted, AiPanel, aiKeyMessage, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
+import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, AiPanel, aiKeyMessage, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
@@ -76,7 +76,7 @@ export default function HostPage() {
   /** The key the room last accepted. The room keeps keys in memory only, so this is resent after every HOST_OK. */
   const aiSaved = useRef<AiCredential | null>(null);
   /** A key sent but not yet confirmed by HOST_AI_STATUS. */
-  const aiPending = useRef<{ credential: AiCredential; remember: boolean } | null>(null);
+  const aiPending = useRef<{ credential: AiCredential; remember: boolean; keyId: string } | null>(null);
   const [aiQueue] = useState(createAiKeyQueue);
   const aiSend = (msg: ClientMessage) => aiQueue.choose(msg, send);
   const [aiRemembered, setAiRemembered] = useState(false);
@@ -86,12 +86,15 @@ export default function HostPage() {
     aiSaved.current = readSavedAiKey();
     setAiRemembered(aiSaved.current !== null);
   }, []);
-  const forgetAiKey = () => {
+  const forgetSavedAiKey = () => {
     aiSaved.current = null;
-    aiPending.current = null;
     forgetStored(AI_STORE.own);
     forgetStored(AI_STORE.owner);
     setAiRemembered(false);
+  };
+  const forgetAiKey = () => {
+    forgetSavedAiKey();
+    aiPending.current = null;
   };
   const [joinPassword, setJoinPassword] = useState("");
   const [savedPassword, setSavedPassword] = useState("");
@@ -135,10 +138,9 @@ export default function HostPage() {
           const p = aiPending.current;
           if (p) {
             const c = p.credential;
-            const applied = c.source === "own" ? msg.source === "own" && msg.keyHint === `…${c.key.slice(-4)}` : msg.source === "owner" && !msg.keyMissing;
-            // No clearing on an error: a status sent for something else (a limit change) can carry the room's
-            // old error while this key is still being checked. A refused key simply never gets applied.
-            if (applied) {
+            // Applied only when the room names this key's id; a refused key never gets it. No clearing on an error:
+            // a status sent before the room got this key can carry an older refusal.
+            if (aiKeyApplied(p.keyId, msg)) {
               aiPending.current = null;
               aiSaved.current = c;
               forgetStored(AI_STORE.own);
@@ -148,7 +150,8 @@ export default function HostPage() {
             }
           }
           // The host's own key refused mid-game: never resend it. (In owner mode the server's key is at fault, not OWNER_KEY.)
-          if (msg.error === "invalid_key" && msg.keyMissing && msg.source === "own") forgetAiKey();
+          // The key being pasted stays pending: this status may be an older paste's refusal, sent before the room got it.
+          if (msg.error === "invalid_key" && msg.keyMissing && msg.source === "own") forgetSavedAiKey();
           break;
         }
         case "HOST_NEXT_LINE_STATE":
@@ -412,8 +415,9 @@ export default function HostPage() {
       remembered={aiRemembered}
       send={aiSend}
       onUse={(credential, remember) => {
-        aiPending.current = { credential, remember };
-        aiSend(aiKeyMessage(credential));
+        const keyId = newKeyId();
+        aiPending.current = { credential, remember, keyId };
+        aiSend(aiKeyMessage(credential, keyId));
       }}
       onForget={() => {
         forgetAiKey();

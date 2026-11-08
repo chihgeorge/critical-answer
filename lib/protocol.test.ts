@@ -69,6 +69,7 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key })).toEqual({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key });
     expect(parseClientMessage({ type: "HOST_AI_KEY", source: "owner", ownerKey: "x" })).toEqual({ type: "HOST_AI_KEY", source: "owner", ownerKey: "x" });
     expect(parseClientMessage({ type: "HOST_AI_KEY", source: "none", key })).toEqual({ type: "HOST_AI_KEY", source: "none" });
+    expect(parseClientMessage({ type: "HOST_AI_KEY", source: "owner", ownerKey: "x", keyId: "k1" })).toEqual({ type: "HOST_AI_KEY", source: "owner", ownerKey: "x", keyId: "k1" });
     // A key in the wrong format still parses: the room answers it with invalid_key, not bad_message.
     expect(parseClientMessage({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: "oops" })).not.toBeNull();
     for (const bad of [
@@ -77,6 +78,9 @@ describe("parseClientMessage", () => {
       { source: "own", provider: "anthropic", key: "" },
       { source: "own", provider: "anthropic", key: "k".repeat(257) },
       { source: "owner", ownerKey: "" },
+      { source: "owner", ownerKey: "x", keyId: 1 },
+      { source: "owner", ownerKey: "x", keyId: "" },
+      { source: "own", provider: "anthropic", key, keyId: "i".repeat(65) },
       { source: "everyone" },
     ]) expect(parseClientMessage({ type: "HOST_AI_KEY", ...bad })).toBeNull();
   });

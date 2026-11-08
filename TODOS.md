@@ -9,7 +9,6 @@
 ### P2
 
 - [美術改版：冒險者野餐桌](#美術改版冒險者野餐桌) — L（人工約 1–2 週 / CC 約 1–2 天）
-- [AI key 的錯誤會被之後的狀態訊息蓋掉](#ai-key-的錯誤會被之後的狀態訊息蓋掉) — S
 - [平衡五個職業：盜賊太強，法師和戰士太弱](#平衡五個職業盜賊太強法師和戰士太弱) — M（人工約 1 天 / CC 約 1 小時）
 - [等待隊伍的觀眾反應（表情 / 加油 / 噓聲）](#等待隊伍的觀眾反應表情--加油--噓聲) — M（人工約 2 天 / CC 約 1 小時）
 - [旁白語氣是否耐聽](#旁白語氣是否耐聽) — S（人工約 0.5 天 / CC 約 20 分鐘）
@@ -17,6 +16,7 @@
 
 ### P3
 
+- [重連時主持人頁重送舊 key，會蓋掉剛套用的新 key](#重連時主持人頁重送舊-key會蓋掉剛套用的新-key) — S
 - [頒獎排名的 9 個小問題（/ship 2026-11-07）](#頒獎排名的-9-個小問題ship-2026-11-07) — S–M
 - [把「冒險出現岔路」的選擇加回玩家手機](#把冒險出現岔路的選擇加回玩家手機) — S
 - [遊戲開始後，新隊伍可以中途加入](#遊戲開始後新隊伍可以中途加入) — M
@@ -104,24 +104,23 @@
 
 ---
 
-## AI key 的錯誤會被之後的狀態訊息蓋掉
+## 重連時主持人頁重送舊 key，會蓋掉剛套用的新 key
 
-**What:** 遊戲中換一把錯的 key，`invalid_key` 只跟著這把 key 的回覆送一次。下一句 AI 旁白的 `spend()` 又送一次 `HOST_AI_STATUS`，沒有錯誤，就把它蓋掉了。主持人看不到 key 被拒。
+**What:** 主持人貼了新 key B，房間已套用，但狀態還沒回到頁面時連線斷了。重連時頁面（HOST_OK）先重送記住的舊 key A，房間又換回 A；頁面隨後收到「B 已套用」，把 B 存起來。之後每次重連都在 A、B 之間換來換去，每次多一次 key 檢查。另外，貼的 key 檢查到一半被重連的重送打斷時，頁面一直停在「等待中」，沒有任何訊息。
 
-**Why:** 伺服器把每把 key 的錯誤（`invalid_key`、`wrong_owner_key`、`owner_unavailable`）只當成單次訊息，沒存進 `aiError`。ai-key flake 的修正只排好了面板自己送的訊息順序（先上限、後 key），擋不住伺服器自己送的狀態。
+**Why:** 頁面在 HOST_OK 只重送 `aiSaved`，不管還在等的那把。
 
 **Context:**
-- `lib/room/dungeon-room.ts`（`handleAiKey`、`sendAiStatus`、`spend`）
-- `components/host-ai.tsx`
+- `app/room/[code]/host/page.tsx`（HOST_OK、`aiPending`）、`lib/host-ai-queue.ts`、`lib/room/dungeon-room.ts`（`handleAiKey`）
 
 **Effort/Priority:** S / P3
 
 **Depends on:** 無。
 
 **Notes:**
-- 做法：把最後一把 key 的錯誤存起來，直到下一個 `HOST_AI_KEY` 才清掉。
-- 同一處的另一個問題：主持人頁收到 `HOST_AI_STATUS` 時，判斷「這把 key 已套用」（`app/room/[code]/host/page.tsx`，`applied`）不看 `msg.error`。房間已經用站長金鑰時，打錯的 OWNER_KEY 會被當成已套用，勾了記住這台電腦還會存進 localStorage，之後每次 HOST_OK 都重送。修法：有這把 key 的錯誤時不算套用。
-- 2026-11-06 /review（ai-key flake 修正）的對抗審查找到。
+- 做法：HOST_OK 時有 `aiPending` 就重送它（帶原本的 keyId）。但被拒的 key 也會留在 `aiPending`，重送它會在房間重啟後蓋掉好的 key，所以要先讓房間在狀態裡回報「被拒的是哪個 keyId」，頁面收到就丟掉那把。
+- 2026-11-08 /review（AI key 錯誤修正）第 3 輪對抗審查找到；改用 keyId 之前就存在。
+- 同一處的兩個舊問題（/ship 對抗審查找到，可一起修）：(1) AI 停了之後，單純重連的重送（沒有 keyId）就會重新套用 key、重開 AI；只有帶 keyId 的重送才該這樣做。(2) 房間重啟後（`keyMissing`），主持人貼一把格式錯的 key，頁面會把記住的好 key 一起刪掉（`page.tsx` 的 `invalid_key` + `keyMissing` 條件）；應該只在房間丟掉正在用的 key 時才刪。
 
 ---
 
@@ -948,6 +947,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## AI key 的錯誤會被之後的狀態訊息蓋掉
+
+- **AI key 的錯誤會被之後的狀態訊息蓋掉** · 版號合併時定 · 伺服器把最後一把 key 的錯誤（`invalid_key`、`wrong_owner_key`、`owner_unavailable`、`check_failed`）存在房間裡，之後每個 `HOST_AI_STATUS` 都帶著，直到下一個 `HOST_AI_KEY` 才清掉，AI 旁白的狀態不會再蓋掉它。key 本身之後出事（AI 停了、被拒）時，新的錯誤蓋過舊的。主持人頁送 key 時帶一個 id，房間的狀態回報「生效的是哪個 id」，頁面只在自己的 id 回來時才算套用：打錯的 OWNER_KEY 不會存進 localStorage，也不會每次 HOST_OK 重送（原本靠狀態長相判斷，重連、旁白的狀態、末四碼相同的 key 都會誤判）。
 
 ## 後進王房的隊伍，旁白還在說「推開最後一道門」
 

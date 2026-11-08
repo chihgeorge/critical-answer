@@ -2,6 +2,14 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.51.0.1] - 2026-11-08
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website. A new host page talking to an old room server never sees its key confirmed, so 記住這台電腦 saves nothing until the server is updated. No migration.
+
+### Fixed
+- The host now keeps seeing why a key was refused. A refused key's error (`invalid_key`, `wrong_owner_key`, `owner_unavailable`, `check_failed`) went out once; the next AI narration's status had no error and replaced it. The room now keeps the last key's error and sends it with every AI status until the host sends another key. A newer failure of the key in use (AI stopped, or the key refused mid-game) replaces it.
+- With the owner key already in use, a wrong OWNER_KEY counted as applied on the host page. With 記住這台電腦 ticked it was saved in the browser and resent after every reconnect. The page guessed from what the status looked like, so a narration's status, a reconnect, or an own key with the same last 4 characters could also make a refused key count. Each key the host sends now carries an id, and the room's status names the id of the key in use; the page saves a key only when its own id comes back.
+
 ## [0.51.0.0] - 2026-11-08
 
 ### Changed
