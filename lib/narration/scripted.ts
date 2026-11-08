@@ -331,6 +331,12 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     name: "scripted",
     /** Synchronous, so it can back up a slow provider without awaiting anything. */
     line(event: NarrationEvent): string {
+      // A natural 20 or 1 line already says the die (ROLL_VARIANTS), so only the other lines get the warrior's number.
+      const said = "warriorRoll" in event && event.warriorRoll !== undefined && !("roll" in event && event.roll);
+      return said ? `戰士擲出 ${event.warriorRoll} 點，${event.type === "retry" ? "沒打中。" : "命中！"}${provider.plainLine(event)}` : provider.plainLine(event);
+    },
+    /** line() without the warrior's number. */
+    plainLine(event: NarrationEvent): string {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
       if ((event.type === "retry" || event.type === "boss-hit") && event.exhausted) return fill(pick(BOSS_EXHAUSTED_VARIANTS, "boss-exhausted"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);

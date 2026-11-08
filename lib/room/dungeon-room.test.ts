@@ -3062,6 +3062,20 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
   });
 
+  // Value: protects=the narrator says the warrior's d20 and whether it hit (TODOS: 旁白念出戰士擲到幾點);
+  // fails_when=the room drops the die from the narration event, so the line is a plain correct / retry one.
+  it("the narration says the warrior's roll and whether it hit", async () => {
+    vi.useFakeTimers();
+    const { room, roll } = warriorGame(1);
+    const said = () => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "NARRATION").at(-1).lines[0];
+    roll(5);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(said()).toMatch(/^戰士擲出 5 點，沒打中。/);
+    roll(17);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(said()).toMatch(/^戰士擲出 17 點，命中！/);
+  });
+
   it("drops a roll whose turn moved on during the beat, and the use stays spent (R3, reversed in /review)", () => {
     // A phone that reloads during the beat must not throw a bad die away for free and roll again.
     vi.useFakeTimers();

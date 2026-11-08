@@ -5,7 +5,7 @@
 
 import { epilogueParts, type NarrationEvent } from "./events";
 import { ordinal } from "../ordinal";
-import { CLASS_LABELS, type ClassId } from "../game-state";
+import { CLASS_LABELS, WARRIOR_TARGET, type ClassId } from "../game-state";
 import { EVENT_SCENE_TEXT } from "../event-text";
 import type { NarrationProvider } from "./scripted";
 import { validLine, MAX_CALL_LINE, MAX_LINE, MAX_EPILOGUE_LINE } from "./runner";
@@ -71,8 +71,10 @@ const CLASS_ATTACKS: Record<ClassId, string> = {
   chef: "用菜刀、平底鍋和爐火攻擊，不用法術",
 };
 
-/** A natural 20 or 1 behind the hit (dnd design E3): the result line itself says it, no extra line. */
+/** A natural 20 or 1 behind the hit (dnd design E3), or else the warrior's d20: the result line itself says it, no extra line. */
 function describeRoll(e: NarrationEvent): string {
+  if ("warriorRoll" in e && e.warriorRoll !== undefined && !("roll" in e && e.roll))
+    return `\n這隊戰士不答題，改擲 d20，擲出 ${e.warriorRoll} 點（${WARRIOR_TARGET} 點以上算命中），${e.type === "retry" ? "沒打中" : "命中"}。第一行要說出點數。`;
   if (!("roll" in e) || !e.roll) return "";
   if (e.roll.kind === "check")
     return e.roll.value === 20

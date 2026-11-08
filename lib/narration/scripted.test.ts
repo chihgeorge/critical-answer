@@ -410,6 +410,14 @@ describe("scripted: the crit die", () => {
     for (const kind of ["persuaded", "blunder"] as const) for (const lines of Object.values(ROLL_VARIANTS[kind])) expect(lines.length).toBeGreaterThanOrEqual(2);
   });
 
+  // Value: protects=a warrior's d20 is said once (TODOS: 旁白念出戰士擲到幾點); fails_when=a 20 line also gets the prefix
+  it("a warrior's roll leads the line with its number and hit or miss, except a 20 or 1 line, which already says it", () => {
+    const p = createScriptedProvider(() => 0);
+    expect(p.line({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 3 })).toMatch(/^戰士擲出 3 點，沒打中。.+/);
+    expect(p.line({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, warriorRoll: 9 })).toMatch(/^戰士擲出 9 點，命中！.*2 顆心/);
+    expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 15, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).not.toContain("戰士擲出");
+  });
+
   it("a 20 gets a 大成功 line and a 1 a 手滑 line that still hits, for room and boss hits", () => {
     const p = createScriptedProvider(() => 0);
     const correct = { type: "correct", team: "紅隊", monster: "史萊姆", points: 15 } as const;

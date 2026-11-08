@@ -2049,7 +2049,9 @@ export class DungeonRoom {
     // The dish is named only once it is served on the big screen (cooking I1, I4); the line just counts 飽足感.
     const base = dish && (told.type === "correct" || told.type === "boss-kill") ? { ...told, cooked: true as const } : told;
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
-    const event = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
+    const spent = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
+    // The narrator says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); a flee never follows a roll.
+    const event = roll?.kind === "warrior" && spent.type !== "flee" ? { ...spent, warriorRoll: roll.value } : spent;
     // A natural 20 or 1 swaps the correct / boss-hit sound; the boss kill keeps its own (E2).
     const mark = "roll" in outcome ? outcome.roll : undefined;
     this.setCue(event.type === "epilogue" || event.type === "event-room" ? null : event.type !== "boss-kill" && mark?.kind === "crit" ? (mark.value === 20 ? "crit" : "fumble") : event.type);
