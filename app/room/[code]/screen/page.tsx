@@ -465,8 +465,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
       {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster. */}
       {typeof answerLeft === "number" && !reveal && !card && (
-        <div className="absolute" style={{ left: "calc(50% + 170px)", bottom: 150, zIndex: 6 }}>
-          <AnswerClock key={answerLeft} ms={answerLeft} variant="big" onSecond={onClockSecond} />
+        <div className="absolute" style={wall || sortWall ? { right: 22, bottom: 116, zIndex: 6 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 6 }}>
+          <AnswerClock key={answerLeft} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} />
         </div>
       )}
       {(cook === null || cook === 0) && (
