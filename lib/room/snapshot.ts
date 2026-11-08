@@ -1,6 +1,7 @@
 import { abilityUsesFor, isClassId, type ClassId, type GameState } from "../game-state";
 import { parseBank, type Bank } from "../question-bank";
 import type { Initiative } from "../initiative";
+import { isAnswerSeconds, type AnswerClock } from "../answer-clock";
 import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, type AiSource } from "../protocol";
 
 /**
@@ -67,6 +68,11 @@ export interface RoomSnapshot {
   podium?: { lines: string[]; at: number } | null;
   /** The earliest the podium reveal may start, set when the game finished. Missing in a save from before the reveal. */
   revealFrom?: number | null;
+  /** 每題作答倒數 (answer-countdown.md): the game's seconds, the running count, and the question whose clip has ended.
+   * Missing (or damaged) means off, none, none. */
+  answerSeconds?: number;
+  answerClock?: AnswerClock | null;
+  clipEnded?: string | null;
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -125,12 +131,16 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     const iniOk =
       isObject(ini) && isObject(ini.rolls) && Object.values(ini.rolls).every(d20) && (ini.order === undefined || (Array.isArray(ini.order) && ini.order.every(isString))) &&
       (ini.tieRolls === undefined || (Array.isArray(ini.tieRolls) && ini.tieRolls.every((r) => isObject(r) && Number.isInteger(r.from) && Array.isArray(r.teams) && r.teams.every(isString) && Array.isArray(r.values) && r.values.every(d20))));
+    // A damaged countdown only loses the countdown: it is a nudge (D1).
+    const ac = raw.answerClock;
+    const answerClock = isObject(ac) && isString(ac.key) && typeof ac.endsAt === "number" && Number.isFinite(ac.endsAt) ? { key: ac.key, endsAt: ac.endsAt } : null;
     const revealFrom = typeof raw.revealFrom === "number" && Number.isFinite(raw.revealFrom) ? raw.revealFrom : null;
     return {
       ...(raw as unknown as RoomSnapshot),
       ...(raw.podium !== undefined ? { podium } : {}),
       ...(raw.revealFrom !== undefined ? { revealFrom } : {}),
       initiative: iniOk ? (ini as unknown as Initiative) : undefined,
+      ...(raw.answerSeconds !== undefined ? { answerSeconds: isAnswerSeconds(raw.answerSeconds) ? raw.answerSeconds : 0, answerClock, clipEnded: isString(raw.clipEnded) ? raw.clipEnded : null } : {}),
       game: withUses as GameState | null,
       joinPassword,
       nextLine: nextLine as RoomSnapshot["nextLine"],

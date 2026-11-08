@@ -78,6 +78,12 @@ describe("parseSnapshot", () => {
     expect(s).toEqual(valid());
   });
 
+  it("keeps the answer countdown, and drops a damaged one to off or none (answer-countdown.md)", () => {
+    const clock = { answerSeconds: 45, answerClock: { key: "a:q1", endsAt: 123 }, clipEnded: "q1" };
+    expect(parseSnapshot({ ...valid(), ...clock })).toMatchObject(clock);
+    expect(parseSnapshot({ ...valid(), answerSeconds: 7, answerClock: { key: 1 }, clipEnded: 3 })).toMatchObject({ answerSeconds: 0, answerClock: null, clipEnded: null });
+  });
+
   it("reads a save from before activity was tracked, as 'unknown time'", () => {
     const { lastActivityAt: _omit, ...legacy } = valid();
     void _omit;
