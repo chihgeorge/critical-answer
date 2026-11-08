@@ -22,7 +22,7 @@ const valid = (): RoomSnapshot => ({
   aiNarration: false,
   aiWanted: true,
   aiSource: "own" as const,
-  aiUsed: 12,
+  aiUsed: 12, // pregate-literal: WARRIOR_TARGET=12 an AI usage count, not the warrior target
   aiLimit: 300,
   lastActivityAt: 1_700_000_000_000,
   bank: BANK,

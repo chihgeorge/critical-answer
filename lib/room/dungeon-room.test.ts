@@ -1700,7 +1700,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
       send(room, hostConn, { type: "HOST_REVEAL", teamId: ids[0], questionId: "r0-mc1" });
       vi.advanceTimersByTime(4000);
-      expect(lastBroadcast(room).reveal.choice).toMatchObject({ teamId: ids[0], points: 12, chefBonus: 2 });
+      expect(lastBroadcast(room).reveal.choice).toMatchObject({ teamId: ids[0], points: 12, chefBonus: 2 }); // pregate-literal: WARRIOR_TARGET=12 a room reward, not the warrior target
     });
 
     it("the host cannot send a team to the boss while its lock is in its beat", () => {

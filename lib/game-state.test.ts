@@ -607,7 +607,7 @@ describe("question deck (T2)", () => {
 
   it("does not hand two teams the same question while the deck has spares, even after a reshuffle", () => {
     let game = createGame(seeds(2), ...deck(1, 1, 4), boss, cfg, 1, first);
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 12; i++) { // pregate-literal: WARRIOR_TARGET=12 a loop count, not the warrior target
       const [a, b] = game.teams;
       expect(a.currentQuestionId).not.toBe(b.currentQuestionId);
       const turn = currentTurnTeamId(game)!;
