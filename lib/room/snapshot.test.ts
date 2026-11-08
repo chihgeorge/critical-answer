@@ -22,7 +22,7 @@ const valid = (): RoomSnapshot => ({
   aiNarration: false,
   aiWanted: true,
   aiSource: "own" as const,
-  aiUsed: 12,
+  aiUsed: 12, // pregate-literal: WARRIOR_TARGET=12 an AI usage count, not the warrior target
   aiLimit: 300,
   lastActivityAt: 1_700_000_000_000,
   bank: BANK,
@@ -52,9 +52,9 @@ describe("parseSnapshot", () => {
     expect(parseSnapshot({ ...valid(), game: { ...game, boss: omit(game.boss as unknown as Record<string, unknown>, "phases") } })).toBeNull();
   });
 
-  it("gives a team with a class but no abilityUses 2 uses, and refuses an unknown class", () => {
-    const game = gameWithTeams((t, i) => (i === 0 ? { ...omit(t, "abilityUses"), classId: "warrior" } : omit(t, "abilityUses")));
-    expect(parseSnapshot({ ...valid(), game })?.game?.teams[0]).toMatchObject({ classId: "warrior", abilityUses: 2 });
+  it("gives a team with a class but no abilityUses its class's starting uses, and refuses an unknown class", () => {
+    const game = gameWithTeams((t, i) => (i === 0 ? { ...omit(t, "abilityUses"), classId: "warrior" } : { ...omit(t, "abilityUses"), classId: "thief" }));
+    expect(parseSnapshot({ ...valid(), game })?.game?.teams.map((t) => [t.classId, t.abilityUses])).toEqual([["warrior", 4], ["thief", 2]]);
     expect(parseSnapshot({ ...valid(), game: gameWithTeams((t) => ({ ...t, classId: "bard" })) })).toBeNull();
     expect(parseSnapshot({ ...valid(), pendingTeams: [{ id: "x", name: "甲隊", classId: "warrior" }] })?.pendingTeams[0].classId).toBe("warrior");
     expect(parseSnapshot({ ...valid(), pendingTeams: [{ id: "x", name: "甲隊", classId: "bard" }] })).toBeNull();

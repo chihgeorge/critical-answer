@@ -2,6 +2,15 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.51.0.0] - 2026-11-08
+
+### Changed
+- The five classes are closer to even. In a simulation of 4 teams with random classes, the thief used to win 35–46% of games, while the warrior and the mage did no better than a team with no class. Now every class wins 21–32% at low, normal and high accuracy (a team with no class: about 14%).
+  - Thief: a correct answer after 偷襲 gives 1.5× the reward points (was 2×), rounded half up. The boss still loses 2 hearts.
+  - Warrior: 4 rolls per game (was 2), and 6 or higher on the d20 counts as correct (was 12).
+  - Mage: 4 uses per game (was 2).
+  - The cleric and the chef are unchanged.
+
 ## [0.50.0.0] - 2026-11-08
 
 ### Changed
