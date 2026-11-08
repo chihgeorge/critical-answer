@@ -30,7 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import type { Accessory } from "./monster-catalog";
-import { isClassId, type ClassId, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { isClassId, type ClassId, type EventResult, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
 import type { InitiativeView } from "./initiative";
 import type { MonsterSprite } from "./sprite-kind";
@@ -181,6 +181,8 @@ export type ClientMessage =
   | { type: "HOST_SERVE"; eventId: number }
   /** Host override: take a team into the boss room (docs/designs/scoring-and-score-pools.md S13). */
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
+  /** Host: open the event for the turn's team when its phone does not (docs/designs/event-rooms.md D10). `eventId`: the STATE it was pressed under. */
+  | { type: "HOST_OPEN_EVENT"; teamId: string; eventId: number }
   /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
   | { type: "HOST_REVEAL"; teamId: string; questionId: string }
   /** Host: ▶ ⏸ ⟲ for the YouTube video on the big screen (docs/designs/youtube-questions.md). */
@@ -226,6 +228,8 @@ export type ClientMessage =
   | { type: "TEAM_PICK_CLASS"; classId: ClassId | null }
   /** Spend one use of the team's class ability on `questionId` (PR 1: the warrior's roll). */
   | { type: "TEAM_USE_ABILITY"; questionId: string }
+  /** The turn's team opens the event in its event room (event-rooms.md D3). `eventId`: the STATE it was pressed under. */
+  | { type: "TEAM_OPEN_EVENT"; eventId: number }
   /** 擲骰說服 on the team's own fill-in turn (dnd design R6, R-E1): the room rolls the check. `eventId`: the STATE it was pressed under (R-E4). */
   | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
   /** 擲先攻 (lib/initiative.ts): this team's d20, once, while the room waits for rolls. */
@@ -323,6 +327,8 @@ export type ServerMessage =
       media?: MediaCommand;
       /** A finished game's podium reveal. Absent from older servers and from a game finished before it: show the podium. */
       podium?: PodiumReveal;
+      /** An opened event on show until the host's 下一題, like `reveal` (docs/designs/event-rooms.md). The turn has moved on. */
+      eventReveal?: EventReveal;
     }
   | { type: "GAME_OVER"; winners: string[] }
   /** One per event (1-3 segments, played in order), sent again with `rev` + 1 after each host edit of that eventId.
@@ -377,6 +383,11 @@ export type ServerMessage =
   /** To the phone whose TEAM_CLAIM matched: the team's id and key, to store and JOIN with. */
   | { type: "TEAM_CLAIMED"; teamId: string; teamKey: string }
   | { type: "ERROR"; error: ServerErrorCode; detail?: string };
+
+/** An opened event: what game-state's openEvent did, and for a feast the catalog dish it served. */
+export interface EventReveal extends EventResult {
+  dish?: { name: string; sprite: MonsterSprite; hue: number };
+}
 
 /** One bank question in the host's picker: a short label for its content, its answer, and why it can't be picked now. */
 export interface HostPick {
@@ -542,6 +553,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const teamId = str(m.teamId, MAX_ID);
       return teamId === null ? null : { type: "HOST_SEND_TO_BOSS", teamId };
     }
+    case "HOST_OPEN_EVENT": {
+      const teamId = str(m.teamId, MAX_ID);
+      return teamId === null || !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0) ? null : { type: "HOST_OPEN_EVENT", teamId, eventId: m.eventId as number };
+    }
+    case "TEAM_OPEN_EVENT":
+      return Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "TEAM_OPEN_EVENT", eventId: m.eventId as number } : null;
     case "HOST_REVEAL": {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);

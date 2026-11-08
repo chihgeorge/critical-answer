@@ -3,7 +3,7 @@
 // answer text. The room hands it to RoomIO.logGame; worker/index.ts stores it in the bank's Durable
 // Object, and the bank editor downloads them all from GET /api/game-logs (owner key only).
 
-import type { ClassId, GameState } from "./game-state";
+import type { ClassId, EventOutcome, GameState } from "./game-state";
 
 export interface GameLog {
   /** True for a game started before game logs existed: its counts cover only the turns played since. */
@@ -37,6 +37,8 @@ export interface GameLog {
     bossRound: number | null;
     turnsToBoss: number | null;
     killedBoss: boolean;
+    /** The event rooms this team opened, in order (docs/designs/event-rooms.md). */
+    events: EventOutcome[];
   }[];
 }
 
@@ -69,6 +71,7 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
       bossRound: t.bossAt?.round ?? null,
       turnsToBoss: t.bossAt?.turns ?? null,
       killedBoss: game.boss.killedByTeamId === t.id,
+      events: t.events ?? [],
     })),
   };
 }
