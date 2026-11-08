@@ -44,7 +44,7 @@ It finds the LAN IP on its own and uses two ports, 3100 (web) and 1998 (room ser
 | `npm run playtest` / `npm run playtest:stop` | Builds the production version and starts / stops it on the LAN (see [Let phones join](#let-phones-join-lan-playtest) above) |
 | `npm test` | Runs the unit tests (without the tests that call Claude) |
 | `ANTHROPIC_API_KEY=... npm run test:live` | Runs the LLM narration smoke test with a real key (costs a few cents) |
-| `npm run e2e` | Playwright end-to-end tests (starts its own servers on ports 3101 and 1996; normally left to GitHub CI, because it is too heavy for a local machine. CI splits the tests into two groups that run in parallel) |
+| `npm run e2e` | Playwright end-to-end tests (starts its own servers on ports 3101 and 1996; normally left to GitHub CI, because it is too heavy for a local machine. CI splits the tests into three groups that run in parallel) |
 | `npm run check:bundle` | After a build, checks that no questions or answers got into the browser bundle |
 | `npm run check:docs` | Checks the relative links and anchors in README, SECURITY.md and the `docs/` guides, and that each Chinese doc has its English twin |
 | `npm run test:watch` | Tests in watch mode |
@@ -53,7 +53,7 @@ It finds the LAN IP on its own and uses two ports, 3100 (web) and 1998 (room ser
 
 ## Tests
 
-The end-to-end tests (`npm run e2e`) run only on GitHub CI: on every PR and every push to `main`, in two parallel groups. They are too heavy for a local machine; do not run them locally. `npm run check:bundle` must always run; it stops answers from leaking into the browser bundle. `npm run check:docs` checks that the relative links and `#` anchors in README, SECURITY.md and every `.md` at the top level of `docs/` (not `docs/designs/`) still resolve.
+The end-to-end tests (`npm run e2e`) run only on GitHub CI: on every PR and every push to `main`, in three parallel groups. They are too heavy for a local machine; do not run them locally. `npm run check:bundle` must always run; it stops answers from leaking into the browser bundle. `npm run check:docs` checks that the relative links and `#` anchors in README, SECURITY.md and every `.md` at the top level of `docs/` (not `docs/designs/`) still resolve.
 
 **Bilingual docs**: README, SECURITY.md and the guides in `docs/` (except `going-public.md`) each have an English twin `X.en.md`. A PR that changes one language changes the other in the same PR. Both open with the language switch line, keep the same number and levels of headings, and the English docs link to English docs. `npm run check:docs` fails on a missing twin, an English doc with no Chinese doc to pair with, a wrong switch line or headings whose levels differ. It does not check that a translation is up to date, or that an English doc links to English twins (`rules.en.md`, not `rules.md`).
 
