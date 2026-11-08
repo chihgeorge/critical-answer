@@ -2,7 +2,7 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [Unreleased]
+## [0.47.0.0] - 2026-11-08
 
 ### Added
 - The big screen opens the game with stone doors: 冒險開始！ and the first team's name, then the doors part to show the first room (about 2 seconds).
