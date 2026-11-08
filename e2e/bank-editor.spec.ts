@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Locator, type Request } from "@playwright/test";
+import "./probe-setup";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 /** Every question row carries `data-testid="question-{id}"` (app/bank-editor/page.tsx) — far more

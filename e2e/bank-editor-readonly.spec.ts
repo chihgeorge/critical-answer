@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import "./probe-setup";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 /** A stored bank this version can't read (BankStore's `unreadable`): the editor says so on load and won't save. */
