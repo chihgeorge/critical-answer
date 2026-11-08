@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { toNarrationEvent } from "./events";
-import { createGame, type AnswerOutcome, type GameState } from "../game-state";
+import { createGame, sendToBoss, type AnswerOutcome, type GameState } from "../game-state";
 
 const game: GameState = createGame(
   [{ id: "a", name: "紅隊" }, { id: "b", name: "藍隊" }],
@@ -74,6 +74,13 @@ describe("toNarrationEvent: entering the boss room", () => {
 
   it("flags a correct answer that enters the boss room", () => {
     expect(toNarrationEvent(game, advance(true), "史萊姆")).toMatchObject({ type: "correct", entersBoss: {} });
+  });
+
+  it("marks the first team in as first (no order), and a later team, host-sent ones counted, by its join order", () => {
+    expect((toNarrationEvent(game, advance(true), "史萊姆") as { entersBoss: object }).entersBoss).not.toHaveProperty("order");
+    const oneInside = { ...game, teams: game.teams.map((t) => (t.id === "b" ? { ...t, inBoss: true } : t)) };
+    expect(toNarrationEvent(oneInside, advance(true), "史萊姆")).toMatchObject({ entersBoss: { order: 2 } });
+    expect(toNarrationEvent(sendToBoss(game, "b"), advance(true), "史萊姆", undefined, "主題曲之謎")).toMatchObject({ entersBoss: { phase: "主題曲之謎", order: 2 } });
   });
 
   it("does not flag an answer that stays out of the boss room", () => {
