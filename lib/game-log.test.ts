@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { answerQuestion, createGame, endGame, pray, recordWrongLock, sendToBoss, setTeamOnline, type GameState } from "./game-state";
-import { appendGameLog, gameLog, readGameLogs } from "./game-log";
+import { MAX_GAME_LOGS, appendGameLog, gameLog, readGameLogs } from "./game-log";
 import { handleGameLogsApi } from "./bank-api";
 
 const first = () => 0;
@@ -95,12 +95,37 @@ describe("game log", () => {
 
   it("stores one key per game and reads them back oldest first", async () => {
     const data = new Map<string, unknown>();
-    const storage = { put: (k: string, v: unknown) => void data.set(k, v), list: async ({ prefix }: { prefix: string }) => new Map([...data].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => a.localeCompare(b))) };
+    // Durable Object storage's list: sorted by key, `reverse` from the end, `limit` after that.
+    const storage = {
+      put: (k: string, v: unknown) => void data.set(k, v),
+      list: async ({ prefix, reverse, limit }: { prefix: string; reverse?: boolean; limit?: number }) => {
+        const sorted = [...data].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => a.localeCompare(b));
+        return new Map((reverse ? sorted.reverse() : sorted).slice(0, limit));
+      },
+    };
     data.set("bank", {});
     const g = endGame(twoTeams(), first);
     await appendGameLog(storage, gameLog(g, 2000));
     await appendGameLog(storage, gameLog(g, 1000));
     expect((await readGameLogs(storage)).map((l) => l.endedAt)).toEqual([new Date(1000).toISOString(), new Date(2000).toISOString()]);
+  });
+
+  it("reads only the newest MAX_GAME_LOGS games, still oldest first", async () => {
+    const data = new Map<string, unknown>();
+    for (let i = 0; i < MAX_GAME_LOGS + 2; i++) data.set(`gameLog:${String(i).padStart(5, "0")}`, { endedAt: String(i) });
+    const storage = {
+      put: () => {},
+      list: async ({ reverse, limit }: { prefix: string; reverse?: boolean; limit?: number }) => new Map((reverse ? [...data].reverse() : [...data]).slice(0, limit)),
+    };
+    const logs = await readGameLogs(storage);
+    expect(logs).toHaveLength(MAX_GAME_LOGS);
+    expect([logs[0].endedAt, logs.at(-1)!.endedAt]).toEqual(["2", String(MAX_GAME_LOGS + 1)]);
+  });
+
+  it("a boss-only game counts every team in the boss room from round 1, and a game ended before any turn has 0 rounds", () => {
+    const rooms = [{ baseDifficulty: 1 as const, reward: 10 }];
+    const g = createGame([{ id: "A", name: "A" }], rooms, [["q0"], [], [], [], []], ["b1"], { bossThreshold: 0 }, 2, first);
+    expect(gameLog(endGame(g, first), 0)).toMatchObject({ rounds: 0, firstBossRound: 1, teams: [{ bossRound: 1, turnsToBoss: 0 }] });
   });
 
   it("GET /api/game-logs needs the owner key", async () => {

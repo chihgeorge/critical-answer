@@ -3819,7 +3819,7 @@ describe("host controls: HOST_END_GAME, HOST_REMOVE_TEAM, HOST_RENAME_TEAM", () 
     send(room, hostConn, { type: "HOST_START" });
     send(room, hostConn, { type: "HOST_END_GAME" });
     expect(logGame).toHaveBeenCalledTimes(1);
-    expect(logGame.mock.calls[0]).toMatchObject([{ endedBy: "host", rounds: 1, teams: [{ name: "Team 0" }, { name: "Team 1" }] }]);
+    expect(logGame.mock.calls[0]).toMatchObject([{ endedBy: "host", rounds: 0, teams: [{ name: "Team 0" }, { name: "Team 1" }] }]);
     expect((logGame.mock.calls[0] as unknown[])[0]).toMatchObject({ startedAt: expect.any(String) });
     await vi.waitFor(() => expect(error).toHaveBeenCalledWith(expect.stringContaining("game_log_failed")));
     await vi.waitFor(() => expect(broadcasts(room).some((m) => m.type === "EPILOGUE")).toBe(true));

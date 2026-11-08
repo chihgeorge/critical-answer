@@ -39,7 +39,8 @@ export interface GameLog {
 }
 
 export function gameLog(game: GameState, endedAt: number): GameLog {
-  const rounds = game.round ?? 1;
+  // No turn played yet (the host ended it at once): no round either.
+  const rounds = game.lastTurnIndex === undefined ? 0 : (game.round ?? 1);
   const entries = game.teams.flatMap((t) => (t.bossAt ? [t.bossAt.round] : []));
   const firstBossRound = entries.length ? Math.min(...entries) : null;
   return {
@@ -72,7 +73,7 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
 /** The Durable Object storage calls the log needs. */
 export interface GameLogStorage {
   put(key: string, value: unknown): void | Promise<void>;
-  list(options: { prefix: string }): Promise<Map<string, unknown>>;
+  list(options: { prefix: string; reverse?: boolean; limit?: number }): Promise<Map<string, unknown>>;
 }
 
 const PREFIX = "gameLog:";
@@ -82,7 +83,10 @@ export async function appendGameLog(storage: GameLogStorage, log: GameLog): Prom
   await storage.put(`${PREFIX}${log.endedAt}:${crypto.randomUUID()}`, log);
 }
 
-/** Every stored game, oldest first. */
+/** The newest stored games, at most this many: one download stays small however many events have been played. */
+export const MAX_GAME_LOGS = 1000;
+
+/** The newest MAX_GAME_LOGS games, oldest first. */
 export async function readGameLogs(storage: GameLogStorage): Promise<GameLog[]> {
-  return [...(await storage.list({ prefix: PREFIX })).values()] as GameLog[];
+  return ([...(await storage.list({ prefix: PREFIX, reverse: true, limit: MAX_GAME_LOGS })).values()] as GameLog[]).reverse();
 }

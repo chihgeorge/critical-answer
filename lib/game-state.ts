@@ -523,6 +523,7 @@ export function createGame(
       currentQuestionId: dealt.questionId,
       currentSelection: null,
       inBoss: config.bossThreshold <= 0, // score starts at 0
+      ...(config.bossThreshold <= 0 ? { bossAt: { round: 1, turns: 0 } } : {}),
       ...(seed.classId ? { classId: seed.classId } : {}),
       abilityUses: ABILITY_USES,
     });
