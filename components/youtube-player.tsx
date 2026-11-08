@@ -92,6 +92,7 @@ export function YoutubePlayer({
   controls = false,
   needsTap = false,
   onPlayingChange,
+  onEnded,
   title = "題目影片",
 }: {
   videoId: string;
@@ -109,6 +110,8 @@ export function YoutubePlayer({
   needsTap?: boolean;
   /** Called with the player's real state, not the host's command: the clip stops itself at `end` (D10 correction). */
   onPlayingChange?: (playing: boolean) => void;
+  /** The clip reached its end (YouTube's own end, or `end`): the answer countdown starts (answer-countdown.md D4). */
+  onEnded?: () => void;
   title?: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -120,9 +123,11 @@ export function YoutubePlayer({
   /** Goes up to build the player again: a ▶ or ⟲ while it shows 影片無法播放 retries (venue Wi-Fi, D26). */
   const [attempt, setAttempt] = useState(0);
   const report = useRef(onPlayingChange);
+  const reportEnd = useRef(onEnded);
   useEffect(() => {
     report.current = onPlayingChange;
-  }, [onPlayingChange]);
+    reportEnd.current = onEnded;
+  }, [onPlayingChange, onEnded]);
 
   useEffect(() => {
     let gone = false;
@@ -132,6 +137,7 @@ export function YoutubePlayer({
       setStatus(s);
       // A stall mid-clip (buffering reads as loading) must not bring the music back for a moment.
       if (s !== "loading") report.current?.(s === "playing");
+      if (s === "ended") reportEnd.current?.();
     };
     loadYoutubeApi().then(
       (YT) => {
@@ -220,6 +226,7 @@ export function YoutubePlayer({
       p.pauseVideo();
       setStatus("ended");
       report.current?.(false);
+      reportEnd.current?.();
     }, END_POLL_MS);
     return () => clearInterval(timer);
   }, [status, end]);

@@ -1,5 +1,7 @@
 "use client";
 
+import { AnswerClock } from "@/components/answer-clock";
+import { ANSWER_SECONDS, DEFAULT_ANSWER_SECONDS } from "@/lib/answer-clock";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
@@ -51,6 +53,8 @@ export default function HostPage() {
   const [introPick, setIntroPick] = useState<{ replay: boolean; on: boolean } | null>(null);
   const introOn = introPick && introPick.replay === replay ? introPick.on : !replay;
   const [game, setGame] = useState<StateMessage | null>(null);
+  /** 每題作答倒數 for the next game (answer-countdown.md D2): this page's pick, so a replay keeps it. */
+  const [answerSeconds, setAnswerSeconds] = useState<number>(DEFAULT_ANSWER_SECONDS);
   const [error, setError] = useState<string | null>(null);
   const [noToken, setNoToken] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -552,13 +556,28 @@ export default function HostPage() {
                 />
                 開始前播放玩法說明
               </label>
+              <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
+                每題作答時間
+                <select
+                  data-testid="answer-seconds"
+                  value={answerSeconds}
+                  onChange={(e) => setAnswerSeconds(Number(e.target.value))}
+                  className="border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px]"
+                >
+                  {ANSWER_SECONDS.map((s) => (
+                    <option key={s} value={s}>
+                      {s === 0 ? "關" : `${s} 秒`}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </Panel>
             <PixelButton
               variant="primary"
               className="min-h-[78px] text-[26px]"
               disabled={!ready || lobby.length === 0}
               // AI narration follows the room's key (HOST_AI_KEY), so a key added mid-game still takes effect.
-              onClick={() => send({ type: "HOST_START", intro: introOn, initiative: true })}
+              onClick={() => send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds })}
             >
               開始遊戲 ▶
             </PixelButton>
@@ -636,6 +655,16 @@ export default function HostPage() {
                   {game.question?.content.kind === "youtube" && (
                     <div className="mt-1 inline-block bg-[var(--k)] px-2 py-[2px] text-[14px] text-[var(--cream)]">
                       {game.question.content.audioOnly ? "🎵 聽歌題（聽大螢幕）" : "▶ 影片題（看大螢幕）"}
+                    </div>
+                  )}
+                  {/* 每題作答倒數 (answer-countdown.md): only a nudge, the host still judges (D1). */}
+                  {game.answerClock && (
+                    <div className="mt-1">
+                      {game.answerClock.left === null ? (
+                        <span data-testid="answer-clock-wait" className="text-[14px]">⏱ 影片播完後開始倒數</span>
+                      ) : (
+                        <AnswerClock key={game.answerClock.left} ms={game.answerClock.left} variant="chip" />
+                      )}
                     </div>
                   )}
                 </div>

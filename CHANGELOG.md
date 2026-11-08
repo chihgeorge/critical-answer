@@ -2,6 +2,13 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [Unreleased]
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website. Until it is, the lobby's 每題作答時間 does nothing and no countdown shows.
+
+### Added
+- 每題作答倒數 (answer countdown). In the lobby the host picks 每題作答時間: off, 30, 45, 60 or 90 seconds, 60 by default. Once a question is up, the big screen shows a large round clock right of the monster, and the turn's phone and the host page show 「⏱ 42」. The last 5 seconds turn red, the big screen ticks each second, and at 0 it buzzes and shows 「⏰ 時間到」. It is only a nudge: the host still judges. Locking, sending a typed answer, a warrior's roll or the host's judgment stops it; 重答, 逃跑 and the next team start it again. A video or music question starts counting once the big screen has played its clip. The room holds the deadline, so every page shows the same time, and a server restart keeps the time left.
+
 ## [0.52.0.1] - 2026-11-08
 
 ### Fixed
