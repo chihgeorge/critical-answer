@@ -1,2 +1,2 @@
 ### Changed
-- AI narration repeats itself less: the prompt carries the room's last 8 AI lines and asks the model not to reuse those sentences or their pet phrases, to word each line differently, and to use at most one exclamation mark per line. The list is kept per room and forgotten on a server restart.
+- AI narration repeats itself less: each request carries the room's last 8 AI lines (as data, in the user turn) and asks the model not to reuse those sentences or their pet phrases. Two new prompt rules: word each line differently, and at most one exclamation mark per line. The list is kept per room, skips the epilogue, and is cleared on a server restart or when the room code passes to the next host.

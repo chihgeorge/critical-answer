@@ -323,6 +323,9 @@ export class DungeonRoom {
   private joinPassword = "";
   /** The last few hand-edited lines: style examples for the LLM. */
   private editedLines: string[] = [];
+  /** This room's latest AI lines, so the next prompt avoids them. Memory only: a restart forgets them. Kept across
+   * 回到大廳 (same audience), cleared on reset (the next host of this code). */
+  private readonly recentLines: string[] = [];
   /** The host's line for the next narration's second segment (host-next-line.md). `gen` grows on every queue or
    * cancel, so a narration started before a re-queue of the same text cannot clear the new one (D7). */
   private nextLine: { text: string; gen: number } | null = null;
@@ -399,7 +402,7 @@ export class DungeonRoom {
       fetch: opts.fetch,
       getStyleExamples: () => this.editedLines,
       forbidden: () => this.bankAnswers,
-      recent: [] as string[], // this room's latest AI lines, so the next prompt avoids them
+      recent: this.recentLines,
     };
     const byProvider: NarrationProvider = {
       name: "llm",
@@ -1106,6 +1109,7 @@ export class DungeonRoom {
     this.transcript = [];
     this.joinPassword = "";
     this.editedLines = [];
+    this.recentLines.length = 0;
     this.nextLine = null;
     this.hostLineGens.clear();
     this.aiNarration = false;

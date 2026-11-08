@@ -53,13 +53,13 @@ function setup(
   } = {},
 ) {
   const calls: Call[] = [];
-  /** The system prompt of every narration call. */
-  const systems: string[] = [];
+  /** The user turn of every narration call, where the room's recent lines go. */
+  const prompts: string[] = [];
   const fake = async (url: unknown, init?: RequestInit) => {
     const apiKey = (init!.headers as Record<string, string>)["x-api-key"];
     calls.push({ url: String(url), apiKey });
     if (String(url).includes("/v1/models")) return (opts.models ?? (() => json({ data: [] })))(apiKey);
-    systems.push(JSON.parse(init!.body as string).system);
+    prompts.push(JSON.parse(init!.body as string).messages[0].content);
     return (opts.messages ?? (() => line("地城主開口了")))(apiKey);
   };
   const io = { broadcast: vi.fn(), env: opts.env ?? {}, storage: opts.storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
@@ -103,7 +103,7 @@ function setup(
     send({ type: "HOST_JUDGE", teamId, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
     await sleep(20);
   };
-  return { room, io, host, calls, systems, send, sent, status, narrationCalls, transcript, useKey, joinTeams, start, judge };
+  return { room, io, host, calls, prompts, send, sent, status, narrationCalls, transcript, useKey, joinTeams, start, judge };
 }
 
 // Value: protects=one room's AI lines never reach another room's prompt (TODOS: 旁白語氣是否耐聽);
@@ -114,14 +114,32 @@ describe("recent lines", () => {
     await a.useKey();
     await a.start();
     await a.judge();
-    expect(a.systems.length).toBeGreaterThan(1);
-    expect(a.systems.at(-1)).toContain("- 甲房的第一句");
+    expect(a.prompts.length).toBeGreaterThan(1);
+    expect(a.prompts.at(-1)).toContain("- 甲房的第一句");
     const b = setup();
     await b.useKey();
     await b.start();
     await b.judge();
-    expect(b.systems.length).toBeGreaterThan(1);
-    expect(b.systems.join("")).not.toContain("甲房");
+    expect(b.prompts.length).toBeGreaterThan(1);
+    expect(b.prompts.join("")).not.toContain("甲房");
+  });
+
+  it("the next host of an expired room's code does not get its lines", async () => {
+    const r = setup({ messages: () => line("上一位主持人的句子") });
+    await r.useKey();
+    await r.start();
+    expect(r.prompts.length).toBe(1);
+    (r.room as unknown as { reset(): void }).reset();
+    const next = makeConn("next-host");
+    r.room.onConnect(next);
+    r.room.onMessage(JSON.stringify({ type: "HOST_CLAIM", token: "another-token-0123456789abc" }), next);
+    r.room.onMessage(JSON.stringify({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: OTHER_KEY }), next);
+    await sleep(0);
+    r.joinTeams();
+    r.room.onMessage(JSON.stringify({ type: "HOST_START" }), next);
+    await sleep(20);
+    expect(r.prompts.length).toBe(2);
+    expect(r.prompts.at(-1)).not.toContain("上一位主持人");
   });
 });
 
