@@ -78,6 +78,9 @@ export interface BossPhase {
   rule: string;
   maxHp: number;
   questions: BankQuestion[];
+  /** Every team buzzes in on this phase's questions and answers aloud (docs/designs/boss-buzzer.md D1). Never the
+   * first phase, and only fill-in questions (D3): the host judges a spoken answer. */
+  buzzer?: true;
 }
 
 /** Exported so app/bank-editor/page.tsx's client-side pre-save check can't silently drift from
@@ -289,7 +292,11 @@ export function parseBank(raw: unknown): Bank {
       if (i > 0 && !t) fail(`${where} has no ${what}`);
       return t;
     };
-    return { name: text(r.name, "name"), rule: text(r.rule, "rule"), maxHp: r.maxHp as number, questions: parseQuestions(r.questions, where, seen) };
+    const questions = parseQuestions(r.questions, where, seen);
+    if (r.buzzer !== undefined && typeof r.buzzer !== "boolean") fail(`${where} buzzer is not true or false`);
+    if (r.buzzer === true && i === 0) fail("the first boss phase cannot be a buzzer phase");
+    if (r.buzzer === true && questions.some((q) => q.kind !== "text")) fail(`${where} is a buzzer phase, so every question in it must be a fill-in`);
+    return { name: text(r.name, "name"), rule: text(r.rule, "rule"), maxHp: r.maxHp as number, questions, ...(r.buzzer === true ? { buzzer: true as const } : {}) };
   });
   return {
     pools,
@@ -358,8 +365,8 @@ export function bossQuestions(bank: Bank): BankQuestion[] {
 }
 
 /** Each phase's HP and question ids, the shape GameState's boss keeps. */
-export function bossPhaseStates(bank: Bank): { maxHp: number; questionIds: string[] }[] {
-  return bank.boss.phases.map((p) => ({ maxHp: p.maxHp, questionIds: p.questions.map((q) => q.id) }));
+export function bossPhaseStates(bank: Bank): { maxHp: number; questionIds: string[]; buzzer?: true }[] {
+  return bank.boss.phases.map((p) => ({ maxHp: p.maxHp, questionIds: p.questions.map((q) => q.id), ...(p.buzzer ? { buzzer: true as const } : {}) }));
 }
 
 /** Where the persuasion check never comes up (dnd design R-E2): a pool, or the boss, that has questions but no fill-in

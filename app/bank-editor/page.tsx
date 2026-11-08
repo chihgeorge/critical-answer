@@ -91,6 +91,9 @@ function validationError(bank: Bank): string | null {
   }
   // From phase 2 on, players meet a phase through its card, so it needs a name and a rule (boss-phases.md D5, D6).
   for (const [i, p] of bank.boss.phases.entries()) {
+    // 搶答 (boss-buzzer.md D1, D3): from phase 2 on, fill-ins only; parseBank refuses the rest too.
+    if (p.buzzer && i === 0) return "首領第 1 階段不能是搶答階段";
+    if (p.buzzer && p.questions.some((q) => q.kind !== "text")) return `首領第 ${i + 1} 階段是搶答階段：只能放填空題`;
     if (i === 0) continue;
     if (!p.name.trim()) return `首領第 ${i + 1} 階段：名稱不能空白`;
     if (!p.rule.trim()) return `首領第 ${i + 1} 階段：規則不能空白`;
@@ -630,6 +633,14 @@ function BossPhaseEditor({
             onChange={(e) => onChange({ rule: e.target.value })}
           />
         </label>
+        {/* docs/designs/boss-buzzer.md: every team buzzes in, answers aloud, the host judges. Never phase 1: a buzzer phase
+            deleted up into phase 1 keeps its box so the save error can be cleared. */}
+        {(required || phase.buzzer) && (
+          <label className="flex items-center gap-2 text-[15px]">
+            <input type="checkbox" data-testid={`bank-boss-phase-${index + 1}-buzzer`} checked={!!phase.buzzer} onChange={(e) => onChange({ buzzer: e.target.checked ? true : undefined })} />
+            搶答階段：所有隊伍一起搶，搶到的口頭作答（只能放填空題）
+          </label>
+        )}
       </div>
     </Panel>
   );

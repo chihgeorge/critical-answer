@@ -124,6 +124,7 @@ function describeEvent(e: NarrationEvent): string {
     }
     case "retry":
       if (e.exhausted) return `事件：隊伍${q(e.team)}答錯了，這一輪首領的題目都出完了。不要說可以重答，也不要說首領倒下，結果留待揭曉。`;
+      if (e.buzzOut) return `事件：搶答中，隊伍${q(e.team)}搶到了卻答錯，這題他們不能再搶，音樂繼續放，其他隊伍快搶。不要說可以重答。`;
       return e.boss
         ? `事件：隊伍${q(e.team)}答錯了，首領${q(e.monster)}換出了新的考驗。`
         : `事件：隊伍${q(e.team)}答錯了，${q(e.monster)}還擋在原地，可以重答。`;

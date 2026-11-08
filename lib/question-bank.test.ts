@@ -29,6 +29,15 @@ const valid = () => ({
 const phase1 = () => ({ maxHp: 3, questions: [q("b1")] });
 
 describe("boss phases", () => {
+  it("a buzzer phase (boss-buzzer.md) is kept, never the first phase, and holds only fill-in questions", () => {
+    const later = (extra: object) => ({ ...valid(), boss: { monster: "dragon", phases: [phase1(), { name: "搶答", rule: "聽前奏搶答", maxHp: 2, questions: [q("c1")], ...extra }] } });
+    expect(parseBank(later({ buzzer: true })).boss.phases[1].buzzer).toBe(true);
+    expect(parseBank(later({ buzzer: false })).boss.phases[1]).not.toHaveProperty("buzzer");
+    expect(() => parseBank(later({ buzzer: "yes" }))).toThrow(/buzzer/);
+    expect(() => parseBank(later({ buzzer: true, questions: [mc("c1")] }))).toThrow(/fill-in/);
+    expect(() => parseBank({ ...valid(), boss: { monster: "dragon", phases: [{ ...phase1(), buzzer: true }] } })).toThrow(/first boss phase/);
+  });
+
   it("reads a bank without phases as one phase with an empty name and rule", () => {
     expect(parseBank(valid()).boss.phases).toEqual([{ name: "", rule: "", maxHp: 3, questions: [q("b1")] }]);
   });

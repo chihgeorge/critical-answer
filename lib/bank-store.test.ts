@@ -211,6 +211,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
     expect(alarms).toEqual([2 * DELAY]); // re-armed, so the queue is not stranded once the bank is readable again
 
     // Readable again (a roll-forward): the re-armed alarm finishes the job.
+    // pregate-literal: BANK_FORMAT=4 the 4 is the bank's save version, not its format
     await storage.put("bank", { bank: validBank, version: 4, format: BANK_FORMAT });
     at(2 * DELAY);
     await store.runImageCleanup();
@@ -323,14 +324,24 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
   it("stores format 4 only for a bank with a sort question", async () => {
     expect(formatOf(validBank)).toBe(3);
     const sorted = { ...validBank, pools: { ...validBank.pools, 1: [{ kind: "sort" as const, id: "s1", content: { kind: "text" as const, value: "排" }, items: ["A", "B", "C", "D"] }] } };
-    expect(formatOf(sorted)).toBe(BANK_FORMAT);
+    expect(formatOf(sorted)).toBe(4);
+    // A buzzer phase (boss-buzzer.md) is what format-4 code would drop: it stores at 5.
+    const buzzer = { ...sorted, boss: { ...validBank.boss, phases: [...validBank.boss.phases, { name: "搶答", rule: "聽前奏搶答", maxHp: 1, buzzer: true as const, questions: [{ kind: "text" as const, id: "z1", content: { kind: "text" as const, value: "聽" }, answer: "歌" }] }] } };
+    expect(formatOf(buzzer)).toBe(BANK_FORMAT);
     const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
     await new BankStore(storage).putBank(sorted, 1);
-    expect(await storage.get("bank")).toMatchObject({ version: 2, format: BANK_FORMAT });
+    expect(await storage.get("bank")).toMatchObject({ version: 2, format: 4 });
   });
 
   it("still reads a format-3 bank as is", async () => {
     expect(await new BankStore(memoryStorage({ bank: validBank, version: 6, format: 3 })).getVersionedBank()).toEqual({ bank: validBank, version: 6 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
+  });
+
+  it("a bank stored at format 4 (before the buzzer phase) still loads as itself, not outdated", async () => {
+    const got = await new BankStore(memoryStorage({ bank: validBank, version: 3, format: 4 })).getVersionedBank();
+    expect(got.outdated).toBeUndefined();
+    expect(got.unreadable).toBeUndefined();
+    expect(got.version).toBe(3);
   });
 
   it("reads format 2, and a bank with no format, as outdated with the stored version", async () => {
