@@ -17,6 +17,13 @@ describe("hostKeyAction", () => {
     expect(hostKeyAction({ key: "3" }, true)).toBeNull();
   });
 
+  it("0 is 改判答對 on any turn, but not while the answer is on show", () => {
+    expect(hostKeyAction({ key: "0" }, false)).toBe("undo");
+    expect(hostKeyAction({ key: "0" }, false, { stuck: false })).toBe("undo");
+    expect(hostKeyAction({ key: "0" }, false, undefined, "wait")).toBe("undo");
+    expect(hostKeyAction({ key: "0" }, true)).toBeNull();
+  });
+
   it("leaves modified, held-down and typed-in-a-field keys to the browser", () => {
     expect(hostKeyAction({ key: "1", ctrlKey: true }, false)).toBeNull(); // Ctrl+1 switches tabs
     expect(hostKeyAction({ key: "1", metaKey: true }, false)).toBeNull();

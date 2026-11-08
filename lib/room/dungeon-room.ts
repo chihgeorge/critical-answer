@@ -259,6 +259,11 @@ export class DungeonRoom {
   private pendingKill: { correct: boolean; fleeChoice: "flee" | "retry"; roll?: { kind: "warrior" | "crit"; value: number } } | null = null;
   /** A natural 20 whose beat a restart cut off (R7), applied by applyLostCrit. In memory only: restore() sets it. */
   private lostCrit: { teamId: string; questionId: string } | null = null;
+  /** The host's last 答錯 on a fill-in, which 改判答對 undoes while the game is still `after`: any later move in the game
+   * ends it, a phone going on or offline does not (setOnline). `prev` is the game before that 答錯. Memory only. */
+  private undo: { prev: GameState; after: GameState; teamId: string; questionId: string } | null = null;
+  /** The undo a 答錯 being judged right now will leave (withUndo), so the STATE it sends already offers it. */
+  private undoPending: { prev: GameState; teamId: string; questionId: string } | null = null;
   /** True inside judge(): a lost natural 20 waits for it to finish rather than judging inside it. */
   private judging = false;
   /** The beat of a revealed lock or a roll, or a boss miss's red tile. A stale one may be left behind: whether the
@@ -772,9 +777,16 @@ export class DungeonRoom {
       ...this.wrongSlots(),
       ...this.podiumView(),
       eventId: this.eventSeq,
+      ...this.undoWrong(),
       ...(this.cue ? { cue: this.cue } : {}),
       cueSeq: this.cueSeq,
     };
+  }
+
+  /** The 答錯 改判答對 may undo now: the one being judged, or the last one while nothing has moved since. */
+  private undoWrong(): { undoWrong?: { teamId: string; questionId: string } } {
+    const undo = this.undoPending ? (this.undoHeld() ? null : this.undoPending) : this.undoOpen(this.undo) ? this.undo : null;
+    return undo ? { undoWrong: { teamId: undo.teamId, questionId: undo.questionId } } : {};
   }
 
   /** The reveal on the room's clock (eng D20). Only for a game ranked by finishGame: an older one shows the podium. */
@@ -928,6 +940,7 @@ export class DungeonRoom {
   private reset() {
     this.lastPicks = null;
     this.game = null;
+    this.undo = null;
     this.pendingTeams = [];
     this.hostToken = "";
     this.hostConns.clear();
@@ -1013,7 +1026,7 @@ export class DungeonRoom {
     // check: a team that closes its phone on a bad roll must not get a fresh one when it comes back.
     if (holdsTurn(this.pendingRoll) && this.pendingRoll.teamId === teamId) return;
     try {
-      this.game = setTeamOnline(this.game, teamId, false);
+      this.setOnline(teamId, false);
       this.broadcastState();
     } catch {
       // Team no longer exists in this game instance — nothing to do.
@@ -1129,6 +1142,9 @@ export class DungeonRoom {
           break;
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice, msg.eventId);
+          break;
+        case "HOST_UNDO_WRONG":
+          this.handleHostUndoWrong(sender, msg.teamId, msg.questionId, msg.eventId);
           break;
         case "TEAM_SELECT_OPTION":
           this.handleTeamSelectOption(sender, msg.questionId, msg.optionIndex);
@@ -1251,7 +1267,7 @@ export class DungeonRoom {
       return false;
     }
     this.connTeam.set(conn.id, teamId);
-    if (this.game) this.game = setTeamOnline(this.game, teamId, true);
+    if (this.game) this.setOnline(teamId, true);
     return true;
   }
 
@@ -1480,7 +1496,7 @@ export class DungeonRoom {
   private syncLockTeam(teamId: string) {
     if (!this.game || [...this.connTeam.values()].includes(teamId)) return;
     try {
-      this.game = setTeamOnline(this.game, teamId, false);
+      this.setOnline(teamId, false);
     } catch {
       // Team no longer exists in this game instance — nothing to do.
     }
@@ -1652,10 +1668,88 @@ export class DungeonRoom {
       return;
     }
     try {
-      this.judge(teamId, questionId, correct, fleeChoice ?? "retry");
+      const judge = () => this.judge(teamId, questionId, correct, fleeChoice ?? "retry");
+      if (correct) judge();
+      else this.withUndo(teamId, questionId, judge);
     } catch (err) {
       this.sendInvalid(conn, err);
     }
+  }
+
+  /** setTeamOnline, keeping an undoable 答錯 undoable: a phone dropping or coming back is not a move in the game. */
+  private setOnline(teamId: string, online: boolean) {
+    this.keepUndoOpen(setTeamOnline(this.game!, teamId, online));
+  }
+
+  /** Sets the game, carrying an open undo along: for changes that are not a move (a phone dropping, an option tapped). */
+  private keepUndoOpen(game: GameState) {
+    if (this.undo?.after === this.game) this.undo.after = game;
+    this.game = game;
+  }
+
+  /** Whether 改判答對 may undo `undo` now: nothing has moved since, and no answer, card or beat is on show. A boss phase the
+   * 答錯 used up has not opened its card yet (phaseCardDue): opening it is a move, waiting is not. */
+  private undoOpen(undo: { after: GameState } | null): boolean {
+    return !!undo && this.game === undo.after && !this.undoHeld();
+  }
+
+  private undoHeld(): boolean {
+    return !!this.reveal || this.phaseCard || this.intro !== null || !!this.pendingLock || !!this.pendingRoll;
+  }
+
+  /** Runs `judge`, a 答錯 on a fill-in, so that 改判答對 may undo it. A cleric's wait and the 重答 / 逃跑 after it chain to the
+   * first 答錯, so the undo goes back to before the wait. A 祈禱 ends the chain: it is a move. Throws what `judge` throws. */
+  private withUndo(teamId: string, questionId: string, judge: () => void) {
+    const prev = this.game!;
+    const chained = this.undo?.after === prev && this.undo.teamId === teamId && this.undo.questionId === questionId;
+    // A wait the chain no longer reaches cannot be undone: answerQuestion refuses 答對 while a wrong answer waits.
+    const undoable = this.question(questionId)?.kind === "text" && (chained || !prev.pendingWrong);
+    this.undoPending = undoable ? { prev: chained ? this.undo!.prev : prev, teamId, questionId } : null;
+    try {
+      judge();
+    } finally {
+      const pending = this.undoPending;
+      this.undoPending = null;
+      if (pending && this.game && this.game !== prev) this.undo = { ...pending, after: this.game };
+    }
+  }
+
+  /** 改判答對 (TODOS.md): the host's last 答錯 on a fill-in becomes 答對, judged from the game before it, so score,
+   * rewards, abilities, dishes and narration all go as if it had been judged right. Only while nothing has moved since
+   * (withUndo); phones that went on or offline meanwhile stay so. */
+  private handleHostUndoWrong(conn: Conn, teamId: string, questionId: string, eventId: number) {
+    if (!this.requireHost(conn)) return;
+    // Pressed under an older STATE (a double press, or a judgment meanwhile): dropped, like a stale HOST_JUDGE.
+    if (eventId !== this.eventSeq) return;
+    const undo = this.undo;
+    const now = this.game;
+    if (!undo || !now || !this.undoOpen(undo) || undo.teamId !== teamId || undo.questionId !== questionId) {
+      return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_undo" });
+    }
+    // What changed since without being a move (keepUndoOpen) stays: phones on or offline, other teams' tapped options.
+    const live = new Map(now.teams.map((t) => [t.id, t]));
+    this.game = {
+      ...undo.prev,
+      teams: undo.prev.teams.map((t) => {
+        const n = live.get(t.id);
+        // A tap is kept only on the question it was made on.
+        const tapped = t.id !== teamId && currentQuestionIdOf(undo.prev, t.id) === currentQuestionIdOf(now, t.id);
+        return !n ? t : { ...t, online: n.online, ...(tapped ? { currentSelection: n.currentSelection } : {}) };
+      }),
+    };
+    this.undo = null;
+    try {
+      this.judge(teamId, questionId, true, "retry");
+    } catch (err) {
+      // E.g. the team's phones all went offline, so it is not on turn in the old game: the 答錯 stands, still undoable.
+      this.game = now;
+      this.undo = undo;
+      return this.sendInvalid(conn, err);
+    }
+    // A boss phase the 答錯 used up was not used up after all. A correct answer never sets phaseCardDue: its reveal comes first.
+    this.phaseCardDue = false;
+    if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
+    this.phaseCardTimer = null;
   }
 
   /** The host's 答錯 on a cleric's fill-in (#106): "team" waits for the team's 祈禱 / 重答 / 逃跑, "pray" picks
@@ -1666,8 +1760,10 @@ export class DungeonRoom {
     if (this.question(questionId)?.kind !== "text") return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "not_text" });
     try {
       if (choice === "team") {
-        this.game = recordTextWrong(game, teamId, questionId);
-        return this.broadcastState();
+        return this.withUndo(teamId, questionId, () => {
+          this.game = recordTextWrong(game, teamId, questionId);
+          this.broadcastState();
+        });
       }
       const wrong = game.pendingWrong;
       if (wrong?.teamId !== teamId || wrong.questionId !== questionId || wrong.optionIndex !== null) {
@@ -2095,9 +2191,13 @@ export class DungeonRoom {
     }
     if (currentTurnTeamId(game) !== lost.teamId || team.typedAnswer !== undefined) return false;
     this.lostCrit = null;
+    // Applied right after a 答錯 (inside withUndo): undoing that 答錯 would wipe this win for good, so it is not undoable.
+    const pending = this.undoPending;
+    this.undoPending = null;
     try {
       this.judge(lost.teamId, lost.questionId, true, "retry");
     } catch (err) {
+      this.undoPending = pending;
       console.error(JSON.stringify({ event: "lost_crit_failed", error: String(err) }));
       return false;
     }
@@ -2143,7 +2243,7 @@ export class DungeonRoom {
       return;
     }
     try {
-      this.judge(teamId, questionId, false, choice);
+      this.withUndo(teamId, questionId, () => this.judge(teamId, questionId, false, choice));
     } catch (err) {
       this.sendInvalid(conn, err);
     }
@@ -2214,7 +2314,7 @@ export class DungeonRoom {
     // button (adversarial review finding).
     if (this.game.teams.find((t) => t.id === teamId)?.currentSelection === optionIndex) return;
     try {
-      this.game = recordOptionSelection(this.game, teamId, questionId, optionIndex);
+      this.keepUndoOpen(recordOptionSelection(this.game, teamId, questionId, optionIndex));
       this.broadcastState();
     } catch (err) {
       this.sendInvalid(conn, err);
