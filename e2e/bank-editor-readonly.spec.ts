@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
+// A test can pass while an older GET is still inside its route handler. On a slow runner the typed key is
+// already remembered when the page mounts (most likely typed before hydration), so it auto-loads twice (dev
+// StrictMode) besides the click's load, and the newest load lands first (probe PR #149). If the test ends then,
+// route.fetch throws "Test ended", and that kills the next spec file (CI, PR #146). So wait for every handler.
+test.afterEach(async ({ page }) => page.unrouteAll({ behavior: "wait" }));
+
 /** A stored bank this version can't read (BankStore's `unreadable`): the editor says so on load and won't save. */
 test("an unreadable stored bank loads read-only, with the notice up front and saving disabled", async ({ page }) => {
   let unreadable = true;

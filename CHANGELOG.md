@@ -2,6 +2,15 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [Unreleased]
+
+### Added
+- Two e2e tests for the cleric in the boss room. After a wrong lock the phone offers 祈禱 and 不用. 祈禱 spends a use and gives the team a new boss question in the same turn. 不用 spends nothing, and the boss moves on to a new question.
+- A lint rule rejects reading `e.target` or `event.target` inside a function passed to a `set*`, `update*` or `onUpdate` updater. React can run that updater after the input was reset, so the typed value is lost (the bug fixed in 0.44.0.1).
+
+### Fixed
+- A bank-editor read-only test could end while an older load was still inside its route handler. Its `route.fetch` then threw "Test ended", and the next spec file did not run (CI on PR #146). The test now waits for every route handler before it ends.
+
 ## [0.45.0.0] - 2026-11-07
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the host page, the big screen and the phones. An old room server refuses the new class, so a phone that taps 🍳 廚師 before the room server is updated gets nothing. Do not roll the room server back to an older version while a game with a chef is running: the older version cannot read that room and starts it over.
