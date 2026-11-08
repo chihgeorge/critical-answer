@@ -322,6 +322,20 @@ describe("restarts and key changes", () => {
     expect(r.status()).toMatchObject({ keyHint: "…WXYZ", error: "invalid_key" });
     await r.start();
     expect(r.narrationCalls().map((c) => c.apiKey)).toEqual([HOST_KEY]);
+    // The narration's status (spend) still says the pasted key was refused.
+    expect(r.status()).toMatchObject({ keyHint: "…WXYZ", used: 1, error: "invalid_key" });
+  });
+
+  it("a wrong OWNER_KEY with the owner key in use: every later status says so, until the next HOST_AI_KEY", async () => {
+    const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY } });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: "guess" });
+    await r.start();
+    expect(r.status()).toMatchObject({ source: "owner", keyMissing: false, used: 1, error: "wrong_owner_key" });
+    r.send({ type: "HOST_AI_LIMIT", limit: 50 });
+    expect(r.status()).toMatchObject({ limit: 50, error: "wrong_owner_key" });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY });
+    expect(r.status()).not.toHaveProperty("error");
   });
 
   it("D8: a late 401 from a key the host already replaced does not drop the new key or stop AI", async () => {

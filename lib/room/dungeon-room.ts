@@ -291,6 +291,8 @@ export class DungeonRoom {
   private aiLimit = DEFAULT_AI_LIMIT;
   /** Shown to the host until the next key is applied: the key was refused mid-game, or the breaker tripped. */
   private aiError: AiKeyError | undefined;
+  /** Why the host's last HOST_AI_KEY was refused. Every status carries it until the next HOST_AI_KEY, so a narration's status cannot wipe it. */
+  private keyError: AiKeyError | undefined;
   /** The pasted key being checked now, if any: a newer HOST_AI_KEY aborts it. */
   private keyCheck: AbortController | null = null;
   private fetchImpl: typeof fetch | undefined;
@@ -431,8 +433,8 @@ export class DungeonRoom {
     this.sendAiStatus();
   }
 
-  /** To one host connection, or every one. `error` is for this message only (a key that failed to apply). */
-  private sendAiStatus(error?: AiKeyError, only?: Conn) {
+  /** To one host connection, or every one. */
+  private sendAiStatus(only?: Conn) {
     const msg: ServerMessage = {
       type: "HOST_AI_STATUS",
       source: this.aiSource,
@@ -442,9 +444,14 @@ export class DungeonRoom {
       used: this.aiUsed,
       limit: this.aiLimit,
       exhausted: this.aiUsed >= this.aiLimit,
-      ...((error ?? this.aiError) ? { error: error ?? this.aiError } : {}),
+      ...((this.keyError ?? this.aiError) ? { error: this.keyError ?? this.aiError } : {}),
     };
     for (const conn of only ? [only] : this.hostConns.values()) this.sendTo(conn, msg);
+  }
+
+  private refuseKey(error: AiKeyError) {
+    this.keyError = error;
+    this.sendAiStatus();
   }
 
   private applyCredential(source: AiSource, credential: { provider: AiProviderId; apiKey: string } | null) {
@@ -460,16 +467,17 @@ export class DungeonRoom {
     if (!this.requireHost(conn)) return;
     this.keyCheck?.abort();
     this.keyCheck = null;
+    this.keyError = undefined;
     if (msg.source === "none") return this.applyCredential("none", null);
     if (msg.source === "owner") {
       const ownerKey = this.room.env?.OWNER_KEY;
       const serverKey = this.room.env?.ANTHROPIC_API_KEY;
-      if (!ownerKey || !serverKey) return this.sendAiStatus("owner_unavailable");
-      if (!tokensEqual(ownerKey, msg.ownerKey)) return this.sendAiStatus("wrong_owner_key");
+      if (!ownerKey || !serverKey) return this.refuseKey("owner_unavailable");
+      if (!tokensEqual(ownerKey, msg.ownerKey)) return this.refuseKey("wrong_owner_key");
       return this.applyCredential("owner", { provider: "anthropic", apiKey: serverKey });
     }
     const provider = PROVIDERS[msg.provider];
-    if (!provider.keyFormat.test(msg.key)) return this.sendAiStatus("invalid_key");
+    if (!provider.keyFormat.test(msg.key)) return this.refuseKey("invalid_key");
     // The host page resends its key after every reconnect: the same key needs no new check, and a flaky check must not drop it.
     // After "AI stopped" the host pastes it again on purpose (credit topped up): apply it, which resets the breaker.
     if (this.aiSource === "own" && this.credential?.provider === msg.provider && this.credential.apiKey === msg.key)
@@ -482,7 +490,7 @@ export class DungeonRoom {
       this.keyCheck = null;
       // A failed check leaves the key the room already had in place.
       if (result === "ok") this.applyCredential("own", { provider: msg.provider, apiKey: msg.key });
-      else this.sendAiStatus(result === "invalid" ? "invalid_key" : "check_failed");
+      else this.refuseKey(result === "invalid" ? "invalid_key" : "check_failed");
     });
   }
 
@@ -979,6 +987,7 @@ export class DungeonRoom {
     this.aiUsed = 0;
     this.aiLimit = DEFAULT_AI_LIMIT;
     this.aiError = undefined;
+    this.keyError = undefined;
     this.bank = this.initialBank;
     this.bankAnswers = allAnswers(this.bank);
     this.roomEpoch = crypto.randomUUID();
@@ -1196,7 +1205,7 @@ export class DungeonRoom {
     this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
     this.sendTo(conn, { type: "HOST_NEXT_LINE_STATE", line: this.nextLine?.text ?? "" });
     if (this.lastNarration) this.sendTo(conn, { type: "HOST_NARRATION_PROGRESS", eventId: this.lastNarration.eventId, done: this.lastNarration.done });
-    this.sendAiStatus(undefined, conn);
+    this.sendAiStatus(conn);
     this.sendAnswer(conn);
     this.sendPicks(conn);
   }

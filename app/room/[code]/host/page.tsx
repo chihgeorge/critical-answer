@@ -20,7 +20,7 @@ import { clericStage, HOST_KEYS, hostKeyAction, introKeyAction } from "@/lib/hos
 import { INTRO_PAGE_TEXT, introDots } from "@/components/how-to-play";
 import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
-import { AI_ERRORS, AI_STORE, AiExhausted, AiPanel, aiKeyMessage, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
+import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, AiPanel, aiKeyMessage, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
@@ -135,10 +135,9 @@ export default function HostPage() {
           const p = aiPending.current;
           if (p) {
             const c = p.credential;
-            const applied = c.source === "own" ? msg.source === "own" && msg.keyHint === `…${c.key.slice(-4)}` : msg.source === "owner" && !msg.keyMissing;
             // No clearing on an error: a status sent for something else (a limit change) can carry the room's
             // old error while this key is still being checked. A refused key simply never gets applied.
-            if (applied) {
+            if (aiKeyApplied(c, msg)) {
               aiPending.current = null;
               aiSaved.current = c;
               forgetStored(AI_STORE.own);

@@ -9,7 +9,6 @@
 ### P2
 
 - [美術改版：冒險者野餐桌](#美術改版冒險者野餐桌) — L（人工約 1–2 週 / CC 約 1–2 天）
-- [AI key 的錯誤會被之後的狀態訊息蓋掉](#ai-key-的錯誤會被之後的狀態訊息蓋掉) — S
 - [平衡五個職業：盜賊太強，法師和戰士太弱](#平衡五個職業盜賊太強法師和戰士太弱) — M（人工約 1 天 / CC 約 1 小時）
 - [等待隊伍的觀眾反應（表情 / 加油 / 噓聲）](#等待隊伍的觀眾反應表情--加油--噓聲) — M（人工約 2 天 / CC 約 1 小時）
 - [旁白語氣是否耐聽](#旁白語氣是否耐聽) — S（人工約 0.5 天 / CC 約 20 分鐘）
@@ -102,27 +101,6 @@
 - 待驗證：子代理提的字型 jf open 粉圓 2.0（Huninn）、芫荽 Iansui、Fredoka 的授權和檔案大小。中文字集要用常用字表裁切，不能用題庫的字（會洩漏答案，同 `check:bundle`）。
 - 長題目：題目字放大後約 15 字就會換行，要自動縮字，不能壓到怪物。
 - 開始實作時把 DESIGN.md 整份改成這套規格。
-
----
-
-## AI key 的錯誤會被之後的狀態訊息蓋掉
-
-**What:** 遊戲中換一把錯的 key，`invalid_key` 只跟著這把 key 的回覆送一次。下一句 AI 旁白的 `spend()` 又送一次 `HOST_AI_STATUS`，沒有錯誤，就把它蓋掉了。主持人看不到 key 被拒。
-
-**Why:** 伺服器把每把 key 的錯誤（`invalid_key`、`wrong_owner_key`、`owner_unavailable`）只當成單次訊息，沒存進 `aiError`。ai-key flake 的修正只排好了面板自己送的訊息順序（先上限、後 key），擋不住伺服器自己送的狀態。
-
-**Context:**
-- `lib/room/dungeon-room.ts`（`handleAiKey`、`sendAiStatus`、`spend`）
-- `components/host-ai.tsx`
-
-**Effort/Priority:** S / P3
-
-**Depends on:** 無。
-
-**Notes:**
-- 做法：把最後一把 key 的錯誤存起來，直到下一個 `HOST_AI_KEY` 才清掉。
-- 同一處的另一個問題：主持人頁收到 `HOST_AI_STATUS` 時，判斷「這把 key 已套用」（`app/room/[code]/host/page.tsx`，`applied`）不看 `msg.error`。房間已經用站長金鑰時，打錯的 OWNER_KEY 會被當成已套用，勾了記住這台電腦還會存進 localStorage，之後每次 HOST_OK 都重送。修法：有這把 key 的錯誤時不算套用。
-- 2026-11-06 /review（ai-key flake 修正）的對抗審查找到。
 
 ---
 
@@ -969,6 +947,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## AI key 的錯誤會被之後的狀態訊息蓋掉
+
+- **AI key 的錯誤會被之後的狀態訊息蓋掉** · 版號合併時定 · 伺服器把最後一把 key 的錯誤（`invalid_key`、`wrong_owner_key`、`owner_unavailable`、`check_failed`）存在房間裡，之後每個 `HOST_AI_STATUS` 都帶著，直到下一個 `HOST_AI_KEY` 才清掉，AI 旁白的狀態不會再蓋掉它。主持人頁收到有錯誤的狀態時，這把 key 不算套用：打錯的 OWNER_KEY 不會存進 localStorage，也不會每次 HOST_OK 重送。
 
 ## 主持人按錯「答錯」可以改回答對
 

@@ -22,6 +22,10 @@ export function limitToSendWithKey(limit: string, status: Pick<AiStatus, "limit"
 /** What the host typed, kept in this page (and, with 記住這台電腦, in localStorage) to resend after a room restart. */
 export type AiCredential = { source: "own"; key: string } | { source: "owner"; ownerKey: string };
 
+/** Whether this status shows the pending key in use. A status with an error is a refusal: with the owner key already
+ * in use, a wrong OWNER_KEY still reads source "owner" with no key missing. */
+export const aiKeyApplied = (c: AiCredential, msg: AiStatus): boolean =>
+  !msg.error && (c.source === "own" ? msg.source === "own" && msg.keyHint === `…${c.key.slice(-4)}` : msg.source === "owner" && !msg.keyMissing);
 export const AI_STORE = { own: "ai-key:own", owner: "ai-key:owner" } as const;
 export const AI_ERRORS: Record<AiKeyError, string> = {
   invalid_key: "這把 key 無效（格式不對，或 Anthropic 拒絕了它）",
@@ -115,7 +119,7 @@ export function AiPanel({
     </label>
   );
   const after = (c: AiCredential) => {
-    // The limit goes before the key: its status reply carries no error, so sent after it would wipe the key's invalid_key.
+    // The limit goes before the key, so the key's status (with any error) is the last one the panel gets.
     const withKey = limitToSendWithKey(limit, status);
     if (withKey !== null) send({ type: "HOST_AI_LIMIT", limit: withKey });
     onUse(c, remember);
