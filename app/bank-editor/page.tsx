@@ -196,7 +196,7 @@ export default function BankEditorPage() {
       a.href = url;
       a.download = `game-logs-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000); // revoked on the next tick, some browsers drop the download
+      setTimeout(() => URL.revokeObjectURL(url), 1000); // revoking at once makes some browsers drop the download
     } catch {
       setError("Could not reach the server.");
     }
