@@ -1189,7 +1189,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(warrior, host, { type: "HOST_START" });
       send(warrior, w.conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
       expect(lastSentTo(w.conns[0])).toMatchObject({ detail: "check_needed" });
-      expect(warrior.game!.teams[0].abilityUses).toBe(2);
+      expect(warrior.game!.teams[0].abilityUses).toBe(4);
       passChecks(room);
       send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: "r0-t1", text: "萬家福", eventId: seqOf(room) });
       delete room.game!.checks![checkKey("r0-t1", room.game!.teams[0].id)];
@@ -2940,7 +2940,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     send(room, conns[1], { type: "TEAM_PICK_CLASS", classId: null });
     expect(lastBroadcast(room).teams.map((t: { classId?: string }) => t.classId)).toEqual(["warrior", undefined]);
     send(room, hostConn, { type: "HOST_START" });
-    expect(room.game!.teams.map((t) => [t.classId, t.abilityUses])).toEqual([["warrior", 2], [undefined, 2]]);
+    expect(room.game!.teams.map((t) => [t.classId, t.abilityUses])).toEqual([["warrior", 4], [undefined, 2]]);
     send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "thief" });
     expect(err(conns[0])).toBe("game_already_started");
     expect(room.game!.teams[0].classId).toBe("warrior");
@@ -2963,7 +2963,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     roll(12);
     const held = lastBroadcast(room);
     expect(held.pendingRoll).toMatchObject({ questionId: q, value: 12 });
-    expect(held.view.teams[0].abilityUses).toBe(1);
+    expect(held.view.teams[0].abilityUses).toBe(3);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: room.game!.teams[0].id, questionId: q, correct: true, eventId: seq });
     expect(err(hostConn)).toBe("roll_pending");
     roll(12);
@@ -2972,18 +2972,18 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     const out = lastBroadcast(room);
     expect(out.pendingRoll).toBeNull();
     expect(out.reveal).toMatchObject({ questionId: q });
-    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 1, roomIndex: 1 });
+    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 3, roomIndex: 1 });
     expect(seqOf(room)).toBe(seq + 1);
   });
 
-  it("an 11 is a retry: same question, the turn passes, one use spent", () => {
+  it("a 5 is a retry: same question, the turn passes, one use spent", () => {
     vi.useFakeTimers();
     const { room, ids, roll } = warriorGame();
     const q = room.game!.teams[0].currentQuestionId;
-    roll(11);
+    roll(5);
     vi.advanceTimersByTime(2000);
     expect(lastBroadcast(room).reveal).toBeNull();
-    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 1, currentQuestionId: q, roomIndex: 0 });
+    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 3, currentQuestionId: q, roomIndex: 0 });
     expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
   });
 
@@ -2996,7 +2996,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
     vi.advanceTimersByTime(2000);
     expect(lastBroadcast(room).pendingRoll).toBeNull();
-    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 1, roomIndex: 0 });
+    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 3, roomIndex: 0 });
   });
 
   it("a classless team is refused on its own turn, and nothing is spent", () => {
@@ -3082,7 +3082,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(err(conns[1])).toMatch(/turn/);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "boss-q1" });
     expect(err(conns[0])).toBe("stale_question");
-    expect(room.game!.teams[0].abilityUses).toBe(2);
+    expect(room.game!.teams[0].abilityUses).toBe(4);
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, abilityUses: 0 } : t)) };
     roll(20);
     expect(err(conns[0])).toMatch(/no ability uses/);
@@ -3150,13 +3150,13 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     const removed = lastBroadcast(room).view.eliminated[q];
     expect(removed).toHaveLength(2);
     expect(removed).not.toContain(room.game!.optionOrder[q].indexOf(1));
-    expect(room.game!.teams[0].abilityUses).toBe(1);
+    expect(room.game!.teams[0].abilityUses).toBe(3);
     use();
     expect(err(conns[0])).toBe("no_option_to_remove");
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t1" } : t)) };
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
     expect(err(conns[0])).toBe("no_hint");
-    expect(room.game!.teams[0].abilityUses).toBe(1);
+    expect(room.game!.teams[0].abilityUses).toBe(3);
   });
 
   // Value: protects=the mage on a fill-in question shows the answer's first character to every screen and
@@ -3167,10 +3167,10 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t2" } : t)) };
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
     expect(lastBroadcast(room).view.mageHints).toEqual({ "r0-t2": "萬" });
-    expect(room.game!.teams[0].abilityUses).toBe(1);
+    expect(room.game!.teams[0].abilityUses).toBe(3);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
     expect(err(conns[0])).toBe("hint_shown");
-    expect(room.game!.teams[0].abilityUses).toBe(1);
+    expect(room.game!.teams[0].abilityUses).toBe(3);
   });
 
   // Value: protects=a mage cast on a question id the bank lacks is refused as stale and spends nothing (/review);
@@ -3180,7 +3180,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "nope" } : t)) };
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "nope" });
     expect(err(conns[0])).toBe("stale_question");
-    expect(room.game!.teams[0].abilityUses).toBe(2);
+    expect(room.game!.teams[0].abilityUses).toBe(4);
   });
 
   it("the thief's sneak attack shows on every screen until its answer is judged, and cannot be armed twice", () => {
@@ -3196,9 +3196,9 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     expect(room.game!.teams[0].abilityUses).toBe(1);
   });
 
-  // Value: protects=a thief's sneak kill shows the doubled bonus on the big screen and scores that same value
+  // Value: protects=a thief's sneak kill shows the 1.5× bonus on the big screen and scores that same value
   // (kill-roll.md); fails_when=pendingRoll.value is the raw dice sum, so the TV and the score disagree
-  it("a sneak attack that kills shows and scores the doubled 4d20", () => {
+  it("a sneak attack that kills shows and scores the 1.5× 4d20", () => {
     vi.useFakeTimers();
     const { room, ids, conns, q, use } = game("thief", true);
     room.game = { ...room.game!, boss: { ...room.game!.boss, hp: 1, phaseIndex: room.game!.boss.phases.length - 1 } };
@@ -3209,10 +3209,10 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     reveal(room);
     vi.advanceTimersByTime(4000); // the lock's beat, then the crit die's
     const roll = lastBroadcast(room).pendingRoll;
-    expect(roll).toMatchObject({ teamId: ids[0], kind: "kill", values: [1, 1, 1, 1], value: 8 }); // rng 0: four 1s, doubled
+    expect(roll).toMatchObject({ teamId: ids[0], kind: "kill", values: [1, 1, 1, 1], value: 6 }); // rng 0: four 1s, × 1.5
     vi.advanceTimersByTime(4000);
     expect(room.game!.phase).toBe("finished");
-    expect(room.game!.teams[0].reward - before).toBeGreaterThanOrEqual(8);
+    expect(room.game!.teams[0].reward - before).toBeGreaterThanOrEqual(6);
   });
 
   it("a cleric prays on its wrong lock and its 重答 keeps the turn", () => {
@@ -3534,7 +3534,7 @@ describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
     sent.submit("x");
     sent.rollFor(20);
     expect(err(sent.conns[0])).toBe("answer_submitted");
-    expect(sent.room.game!.teams[0].abilityUses).toBe(2);
+    expect(sent.room.game!.teams[0].abilityUses).toBe(4);
     const rolling = game(true);
     rolling.rollFor(20);
     rolling.submit("x");

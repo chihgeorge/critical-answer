@@ -18,6 +18,9 @@ import {
   warriorRoll,
   endGame,
   spendAbility,
+  ABILITY_USES,
+  MORE_ABILITY_USES,
+  WARRIOR_TARGET,
   mageEliminate,
   mageHint,
   firstMeaningfulChar,
@@ -1328,33 +1331,33 @@ describe("boss phases (docs/designs/boss-phases.md)", () => {
 });
 
 describe("warriorRoll (docs/designs/class-abilities.md)", () => {
-  it("every team starts with 2 uses; only a seeded class is set", () => {
+  it("a warrior starts with 4 uses and a team with no class with 2; only a seeded class is set", () => {
     const g = makeGame({ warrior: true });
-    expect(g.teams.map((t) => t.abilityUses)).toEqual([2, 2, 2]);
+    expect(g.teams.map((t) => t.abilityUses)).toEqual([MORE_ABILITY_USES, ABILITY_USES, ABILITY_USES]);
     expect(g.teams.map((t) => t.classId)).toEqual(["warrior", undefined, undefined]);
-    expect(getSpectatorView(g).teams[0]).toMatchObject({ classId: "warrior", abilityUses: 2 });
+    expect(getSpectatorView(g).teams[0]).toMatchObject({ classId: "warrior", abilityUses: 4 });
   });
 
-  it("12 is a correct answer: the team advances and the turn passes", () => {
+  it("6 is a correct answer: the team advances and the turn passes", () => {
     const g = makeGame({ warrior: true, bossThreshold: 15 });
-    const { game, outcome } = warriorRoll(g, "T0", g.teams[0].currentQuestionId, 12, first);
+    const { game, outcome } = warriorRoll(g, "T0", g.teams[0].currentQuestionId, WARRIOR_TARGET, first);
     expect(outcome).toMatchObject({ type: "correct-room-advance", teamId: "T0", nextRoomIndex: 1 });
     expect(game.revealedQuestionIds).toContain(g.teams[0].currentQuestionId);
-    expect(game.teams[0].abilityUses).toBe(2); // spendAbility takes the use, not the judgment
+    expect(game.teams[0].abilityUses).toBe(MORE_ABILITY_USES); // spendAbility takes the use, not the judgment
     expect(currentTurnTeamId(game)).toBe("T1");
   });
 
-  it("11 is a wrong answer with retry: same question, nothing eliminated", () => {
+  it("5 is a wrong answer with retry: same question, nothing eliminated", () => {
     const g = makeGame({ warrior: true, bossThreshold: 15 });
     const q = g.teams[0].currentQuestionId;
-    const { game, outcome } = warriorRoll(g, "T0", q, 11, first);
+    const { game, outcome } = warriorRoll(g, "T0", q, WARRIOR_TARGET - 1, first);
     expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" });
     expect(game.teams[0].currentQuestionId).toBe(q);
     expect(game.eliminated).toEqual({});
     expect(currentTurnTeamId(game)).toBe("T1");
   });
 
-  it("in the boss room 12+ is a hit; a miss with nothing eliminated keeps the question", () => {
+  it("in the boss room 6+ is a hit; a miss with nothing eliminated keeps the question", () => {
     const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 3, teamCount: 1 });
     const hit = warriorRoll(g, "T0", g.boss.currentQuestionId, 20, first);
     expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 2, reward: 10 });
@@ -1380,8 +1383,9 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
   it("spendAbility takes one use on the team's own turn, and refuses at 0", () => {
     const g = makeGame({ warrior: true, bossThreshold: 15 });
     const once = spendAbility(g, "T0", "warrior");
-    expect(once.teams.map((t) => t.abilityUses)).toEqual([1, 2, 2]);
-    const none = spendAbility(once, "T0", "warrior");
+    expect(once.teams.map((t) => t.abilityUses)).toEqual([3, 2, 2]);
+    let none = once;
+    for (let i = 1; i < MORE_ABILITY_USES; i++) none = spendAbility(none, "T0", "warrior");
     expect(none.teams[0].abilityUses).toBe(0);
     expect(() => spendAbility(none, "T0", "warrior")).toThrow(/no ability uses/);
   });
@@ -1414,14 +1418,18 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
   const wrongLock = (g: GameState, id: string) => recordWrongLock(g, id, currentQ(g, id), 0);
   const currentQ = (g: GameState, id: string) => (isInBossPhase(g, id) ? g.boss.currentQuestionId : g.teams.find((t) => t.id === id)!.currentQuestionId);
 
-  it("sneak attack: a correct answer doubles the room reward but not the progress points, and is used up", () => {
+  it("abilityUsesFor: a warrior and a mage start with 4 uses, a thief and a cleric with 2", () => {
+    expect(classGame(["warrior", "mage", "thief", "cleric"]).teams.map((t) => t.abilityUses)).toEqual([4, 4, 2, 2]);
+  });
+
+  it("sneak attack: a correct answer gives 1.5× the room reward but not the progress points, and is used up", () => {
     const g = armSneak(classGame(["thief", undefined]), "T0");
     expect(g.teams[0]).toMatchObject({ sneakArmed: true, abilityUses: 1 });
     expect(getSpectatorView(g).teams[0].sneakArmed).toBe(true);
     expect(() => armSneak(g, "T0")).toThrow(/sneak_armed/);
     const { game, outcome } = answerQuestion(g, "T0", currentQ(g, "T0"), true);
-    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 20 });
-    expect(game.teams[0]).toMatchObject({ score: 1, reward: 20, abilityUses: 1 });
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 15 });
+    expect(game.teams[0]).toMatchObject({ score: 1, reward: 15, abilityUses: 1 });
     expect(game.teams[0].sneakArmed).toBeUndefined();
   });
 
@@ -1438,16 +1446,16 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(g.teams[0].sneakArmed).toBeUndefined();
   });
 
-  it("sneak attack in the boss room takes 2 HP and doubles the hit reward and the kill bonus", () => {
+  it("sneak attack in the boss room takes 2 HP and gives 1.5× the hit reward and the kill bonus", () => {
     const g = armSneak(classGame(["thief"], 0, 3), "T0");
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first);
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 1, reward: 20 });
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 1, reward: 15 });
     const kill = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first);
-    // rollBossKillDice(first) sums to 4 (4d20 all ones), doubled; the bar never goes below 0.
-    expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 8, reward: 28 });
-    // The room's shown dice are doubled the same way (kill-roll.md).
+    // rollBossKillDice(first) sums to 4 (4d20 all ones), ×1.5 = 6; the bar never goes below 0.
+    expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 6, reward: 21 });
+    // The room's shown dice get the same 1.5× (kill-roll.md): 43 × 1.5 = 64.5 rounds to 65.
     const shown = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
-    expect(shown.outcome).toMatchObject({ bossKilled: true, killBonus: 86, reward: 106 });
+    expect(shown.outcome).toMatchObject({ bossKilled: true, killBonus: 65, reward: 80 });
   });
 
   // Value: protects=the chef's 15% (eng review D1–D3); fails_when=it rounds down, skips the 4d20, or leaks to other classes.
@@ -1491,7 +1499,7 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const after = mageEliminate(g, "T0", q, 1, 4, first);
     expect(after.eliminated[q]).toEqual([0, 2]);
     expect(getSpectatorView(after).mageRemoved[q]).toEqual([0, 2]);
-    expect(after.teams[0]).toMatchObject({ abilityUses: 1, currentSelection: null });
+    expect(after.teams[0]).toMatchObject({ abilityUses: 3, currentSelection: null });
     // One wrong option left: nothing to remove, and nothing spent.
     expect(() => mageEliminate(after, "T0", q, 1, 4, first)).toThrow(/no_option_to_remove/);
     expect(mageEliminate(g, "T0", q, 1, 4, () => 1).eliminated[q]).toHaveLength(2); // an rng of 1 cannot hang it
@@ -1515,7 +1523,7 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const g = classGame(["mage", undefined]);
     const q = currentQ(g, "T0");
     const hinted = mageHint(g, "T0", q, "萬家福");
-    expect(hinted.teams[0].abilityUses).toBe(1);
+    expect(hinted.teams[0].abilityUses).toBe(3);
     expect(getSpectatorView(hinted).mageHints).toEqual({ [q]: "萬" });
     expect(() => mageHint(hinted, "T0", q, "萬家福")).toThrow(/hint_shown/);
     expect(() => mageHint(g, "T0", q, "萬")).toThrow(/no_hint/);
@@ -1777,9 +1785,9 @@ describe("the crit die (dnd design R4, R5)", () => {
     expect("roll" in plain && plain.roll).toBeFalsy();
   });
 
-  it("a sneak and a 20 add up from the base reward, not multiplied (reward × 2 + half)", () => {
+  it("a sneak and a 20 add up from the base reward, not multiplied (reward × 1.5 + half)", () => {
     const g = armSneak(critGame(["thief"]), "T0");
-    expect(answerQuestion(g, "T0", q0(g), true, "retry", first, 20).outcome).toMatchObject({ reward: 25 });
+    expect(answerQuestion(g, "T0", q0(g), true, "retry", first, 20).outcome).toMatchObject({ reward: 20 });
   });
 
   it("half a reward rounds with Math.round (25 → 13)", () => {
@@ -1792,7 +1800,7 @@ describe("the crit die (dnd design R4, R5)", () => {
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 20);
     expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 3, reward: 15, roll: { kind: "crit", value: 20 } });
     const sneaky = armSneak(critGame(["thief"], 0, 5), "T0");
-    expect(answerQuestion(sneaky, "T0", sneaky.boss.currentQuestionId, true, "retry", first, 20).outcome).toMatchObject({ bossHpRemaining: 2, reward: 25 });
+    expect(answerQuestion(sneaky, "T0", sneaky.boss.currentQuestionId, true, "retry", first, 20).outcome).toMatchObject({ bossHpRemaining: 2, reward: 20 });
   });
 
   it("a 20 on the boss's last heart kills it, and the 4d20 is not raised by the crit", () => {
@@ -1900,13 +1908,14 @@ describe("the persuasion check (dnd design R6, R8)", () => {
   it("a natural 1 halves the success on that question, before the sneak, and marks the outcome", () => {
     const g = check(checkGame([undefined]), 1);
     expect(answerQuestion(g, "T0", q0(g), true).outcome).toMatchObject({ reward: 5, roll: { kind: "check", value: 1 } });
+    // 10 halved is 5, then the sneak's ×1.5 = 7.5 rounds to 8.
     const sneaky = check(armSneak(checkGame(["thief"]), "T0"), 1);
-    expect(answerQuestion(sneaky, "T0", q0(sneaky), true).outcome).toMatchObject({ reward: 10 });
+    expect(answerQuestion(sneaky, "T0", q0(sneaky), true).outcome).toMatchObject({ reward: 8 });
     const boss = check(checkGame([undefined], 0), 1);
     expect(answerQuestion(boss, "T0", q0(boss), true).outcome).toMatchObject({ type: "correct-boss-hit", reward: 5 });
   });
 
-  it("a warrior's 12+ after a natural-1 check is halved too (R3-7)", () => {
+  it("a warrior's 6+ after a natural-1 check is halved too (R3-7)", () => {
     const g = spendAbility(check(checkGame(["warrior"]), 1), "T0", "warrior");
     expect(warriorRoll(g, "T0", q0(g), 15).outcome).toMatchObject({ reward: 5 });
   });

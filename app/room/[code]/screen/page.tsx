@@ -291,7 +291,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
     <>
       {sneakChip && (
         <div className="px-chip" style={{ ...CHIP, background: "#ff8787" }}>
-          🗝️ 偷襲！這題答對加倍
+          🗝️ 偷襲！這題答對加碼
         </div>
       )}
       {dcChip && (
@@ -415,7 +415,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {/* D17=A: a thief's armed Sneak Attack hangs over the monster until its answer is judged. */}
       {sneakChip && !asking && (
         <div className="px-chip absolute" style={{ left: "50%", top: 262, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
-          🗝️ 偷襲！這題答對加倍
+          🗝️ 偷襲！這題答對加碼
         </div>
       )}
       {dcChip && !asking && (
