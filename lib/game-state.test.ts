@@ -39,6 +39,7 @@ import {
   recordCheck,
   checkTarget,
   checkKey,
+  CHECK_BONUS,
   CHECK_DC,
   BOSS_CHECK_DC,
   InvalidActionError,
@@ -1360,7 +1361,7 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
     expect(currentTurnTeamId(game)).toBe("T1");
   });
 
-  it("in the boss room 6+ is a hit; a miss with nothing eliminated keeps the question", () => {
+  it("in the boss room WARRIOR_TARGET+ is a hit; a miss with nothing eliminated keeps the question", () => {
     const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 3, teamCount: 1 });
     const hit = warriorRoll(g, "T0", g.boss.currentQuestionId, 20, first);
     expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 2, reward: 10 });
@@ -1879,12 +1880,12 @@ describe("the persuasion check (dnd design R6, R8)", () => {
 
   it("rolls the class bonus against the pool's DC, or the boss's", () => {
     const g = checkGame(["thief", "warrior", undefined]);
-    expect(checkTarget(g, "T0", q0(g))).toEqual({ bonus: 4, dc: CHECK_DC[0] });
-    expect(checkTarget(g, "T1", g.teams[1].currentQuestionId)).toEqual({ bonus: 0, dc: CHECK_DC[0] });
-    expect(checkTarget(g, "T2", g.teams[2].currentQuestionId)).toEqual({ bonus: 1, dc: CHECK_DC[0] });
+    expect(checkTarget(g, "T0", q0(g))).toEqual({ bonus: CHECK_BONUS.thief, dc: CHECK_DC[0] });
+    expect(checkTarget(g, "T1", g.teams[1].currentQuestionId)).toEqual({ bonus: CHECK_BONUS.warrior, dc: CHECK_DC[0] });
+    expect(checkTarget(g, "T2", g.teams[2].currentQuestionId)).toEqual({ bonus: CHECK_BONUS.none, dc: CHECK_DC[0] });
     const boss = checkGame(["mage"], 0);
-    expect(checkTarget(boss, "T0", q0(boss))).toEqual({ bonus: 2, dc: BOSS_CHECK_DC });
-    expect(getSpectatorView(g).teams[0].checkTarget).toEqual({ bonus: 4, dc: CHECK_DC[0] });
+    expect(checkTarget(boss, "T0", q0(boss))).toEqual({ bonus: CHECK_BONUS.mage, dc: BOSS_CHECK_DC });
+    expect(getSpectatorView(g).teams[0].checkTarget).toEqual({ bonus: CHECK_BONUS.thief, dc: CHECK_DC[0] });
   });
 
   it("passes at die + bonus >= DC with the first character as its hint, and fails below it", () => {
@@ -1897,7 +1898,7 @@ describe("the persuasion check (dnd design R6, R8)", () => {
 
   it("a natural 20 passes with no hint even at the boss's DC; a natural 1 fails whatever the bonus", () => {
     const boss = checkGame(["thief"], 0);
-    expect(rec(check(boss, 20))).toEqual({ value: 20, bonus: 4, dc: 16, passed: true });
+    expect(rec(check(boss, 20))).toEqual({ value: 20, bonus: CHECK_BONUS.thief, dc: 16, passed: true });
     expect(rec(check(checkGame(["thief"]), 1))).toMatchObject({ value: 1, passed: false });
   });
 
@@ -1918,7 +1919,7 @@ describe("the persuasion check (dnd design R6, R8)", () => {
     expect(answerQuestion(boss, "T0", q0(boss), true).outcome).toMatchObject({ type: "correct-boss-hit", reward: 5 });
   });
 
-  it("a warrior's 6+ after a natural-1 check is halved too (R3-7)", () => {
+  it("a warrior's hit after a natural-1 check is halved too (R3-7)", () => {
     const g = spendAbility(check(checkGame(["warrior"]), 1), "T0", "warrior");
     expect(warriorRoll(g, "T0", q0(g), 15).outcome).toMatchObject({ reward: 5 });
   });
@@ -1936,7 +1937,7 @@ describe("the persuasion check (dnd design R6, R8)", () => {
 
   it("a check after the mage's hint passes with no second copy of it", () => {
     const g = mageHint(checkGame(["mage"]), "T0", q0(checkGame(["mage"])), "萬家福");
-    expect(rec(check(g, 9))).toEqual({ value: 9, bonus: 2, dc: 8, passed: true });
+    expect(rec(check(g, 9))).toEqual({ value: 9, bonus: CHECK_BONUS.mage, dc: 8, passed: true });
   });
 
   it("a question leaving play drops only its own checks, even when ids hold a colon", () => {

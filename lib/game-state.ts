@@ -77,12 +77,12 @@ export const CHEF_BONUS_PERCENT = 15;
 export function chefShare(gain: number): number {
   return gain > 0 ? Math.max(1, Math.round((gain * CHEF_BONUS_PERCENT) / 100)) : 0;
 }
-/** The warrior's d20 counts as a correct answer at this value or more (75%). */
-export const WARRIOR_TARGET = 6;
+/** The warrior's d20 counts as a correct answer at this value or more (60%; owner, 2026-11-08 two-phase boss balance). */
+export const WARRIOR_TARGET = 9;
 
 /** A fill-in question is a persuasion check (dnd design Premise 3): d20 + the team's class bonus against the
  * monster's DC. A team with no class adds 1. */
-export const CHECK_BONUS: Record<ClassId | "none", number> = { thief: 4, cleric: 3, mage: 2, chef: 1, none: 1, warrior: 0 };
+export const CHECK_BONUS: Record<ClassId | "none", number> = { mage: 4, thief: 3, cleric: 2, chef: 1, none: 1, warrior: 0 };
 /** The DC per difficulty 1–5 (dnd design Decision 11); the boss uses difficulty 5's. */
 export const CHECK_DC = [8, 10, 12, 14, 16] as const;
 export const BOSS_CHECK_DC = 16;
