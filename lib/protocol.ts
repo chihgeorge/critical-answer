@@ -167,8 +167,11 @@ export type ClientMessage =
    * refuses a stale eventId or rev (another host device edited first) and a line the big screen has already read
    * (docs/designs/host-narration-edit.md D3, D9). */
   | { type: "HOST_EDIT_NARRATION"; eventId: number; rev: number; index: number; line: string }
+  /** /screen: sent first on every connect, so the room takes SCREEN_* messages only from a big screen. No key: it
+   * keeps a stray socket from a phone's devtools out, not a determined forger. */
+  | { type: "SCREEN_HELLO" }
   /** /screen: it has finished reading `done` lines of narration `eventId` at revision `rev` (typed, and spoken
-   * when its voice is on). No key: the worst a forged one does is lock lines early. The room ignores it from a team's phone or a host page
+   * when its voice is on). No key: the worst a forged one does is lock lines early. The room takes it only after SCREEN_HELLO, and never from a team's phone or a host page
    * (host-narration-edit.md D3, D14). */
   | { type: "SCREEN_NARRATION_PROGRESS"; eventId: number; rev: number; done: number }
   /** /screen: the question video's clip has ended, so its answer countdown may start (answer-countdown.md D4). Same trust as above. */
@@ -560,6 +563,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (line === null || !isCount(m.eventId) || !isCount(m.rev) || !isCount(m.index)) return null;
       return { type: "HOST_EDIT_NARRATION", eventId: m.eventId, rev: m.rev, index: m.index, line };
     }
+    case "SCREEN_HELLO":
+      return { type: "SCREEN_HELLO" };
     case "SCREEN_NARRATION_PROGRESS":
       return isCount(m.eventId) && isCount(m.rev) && isCount(m.done)
         ? { type: "SCREEN_NARRATION_PROGRESS", eventId: m.eventId, rev: m.rev, done: m.done }

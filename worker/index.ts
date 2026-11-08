@@ -115,18 +115,40 @@ export class Room extends Server<Env> {
   static options = { hibernate: false };
 
   private game!: DungeonRoom;
+  /**
+   * Open sockets, by object. partyserver's own list is keyed by the client's connection id (partysocket's _pk, the
+   * same on every reconnect) and an old socket's late close deletes that id, so after a Wi-Fi blip the reconnected
+   * TV or phone would silently stop getting broadcasts and escape the idle close. Broadcast and closeAll use this.
+   */
+  private sockets = new Set<Connection>();
+
+  /** Open sockets only; a socket that errored without a close event is dropped here. */
+  private *openSockets() {
+    for (const conn of this.sockets) {
+      if (conn.readyState === WebSocket.READY_STATE_OPEN) yield conn;
+      else this.sockets.delete(conn);
+    }
+  }
 
   /** Runs once each time the object starts, before any connection is served: read the saved room back. */
   async onStart() {
     this.game = new DungeonRoom(
       {
-        broadcast: (message) => this.broadcast(message),
+        broadcast: (message) => {
+          for (const conn of this.openSockets()) {
+            try {
+              conn.send(message);
+            } catch {
+              conn.close(1011, "Unexpected error"); // as partyserver's own broadcast does
+            }
+          }
+        },
         env: this.env,
         // The room saves without awaiting; Cloudflare holds its messages until the write is durable.
         storage: this.ctx.storage,
         logGame: (log) => this.env.bank.getByName(BANK_DO_NAME).appendGameLog(log),
         closeAll: (code, reason) => {
-          for (const conn of this.getConnections()) conn.close(code, reason);
+          for (const conn of [...this.openSockets()]) conn.close(code, reason);
         },
       },
       undefined,
@@ -153,6 +175,7 @@ export class Room extends Server<Env> {
   }
 
   onConnect(conn: Connection) {
+    this.sockets.add(conn);
     this.game.onConnect(conn);
   }
 
@@ -162,6 +185,7 @@ export class Room extends Server<Env> {
   }
 
   onClose(conn: Connection) {
+    this.sockets.delete(conn);
     this.game.onClose(conn);
   }
 }
@@ -218,7 +242,7 @@ export default {
       });
     }
 
-    const gate = (req: Request, lobby: { className: string }) => entryGate(req, lobby, env.ALLOWED_ORIGINS ?? "");
+    const gate = (req: Request, lobby: { className: string; name: string }) => entryGate(req, lobby, env.ALLOWED_ORIGINS ?? "");
     return (await routePartykitRequest(request, env, { onBeforeConnect: gate, onBeforeRequest: gate })) ?? notFound();
   },
 } satisfies ExportedHandler<Env>;

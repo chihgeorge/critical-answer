@@ -154,7 +154,7 @@ test("a browser with no host token cannot start a game", async ({ page }) => {
 
 test("game over: the boss cooks, then the podium, then the epilogue arrives on the big screen", async ({ browser }) => {
   test.setTimeout(110_000); // every cooked monster is served and waited out (cooking I2), then the podium reveal
-  const code = "EPIL";
+  const code = "EPLG";
   const partyUrl = `ws://localhost:1996/parties/main/${code}`;
   const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
 

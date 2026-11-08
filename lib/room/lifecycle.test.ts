@@ -170,13 +170,16 @@ describe("what counts as activity", () => {
   });
 
   // Value: protects=a TV left on cannot keep an idle room awake by retyping narration after each reconnect (host-narration-edit.md);
-  // fails_when=SCREEN_NARRATION_PROGRESS stops being excluded from markActivity.
-  it("a big screen's reading progress is not activity", () => {
+  // fails_when=SCREEN_HELLO or SCREEN_NARRATION_PROGRESS stops being excluded from markActivity.
+  it("a big screen's hello and reading progress are not activity", () => {
     const { room, storage, clock } = setup();
     send(room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
     const before = lastActivityAt(storage);
     clock.t += 5 * MIN;
-    send(room, conn("screen"), { type: "SCREEN_NARRATION_PROGRESS", eventId: 0, rev: 0, done: 1 });
+    const screen = conn("screen");
+    room.onConnect(screen);
+    send(room, screen, { type: "SCREEN_HELLO" });
+    send(room, screen, { type: "SCREEN_NARRATION_PROGRESS", eventId: 0, rev: 0, done: 1 });
     expect(lastActivityAt(storage)).toBe(before);
   });
 

@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ROOM_CODE_RE } from "@/lib/gate";
 import { freshHostPath, generateRoomCode, newHostToken } from "@/lib/room-code";
 import { MAX_PASSWORD } from "@/lib/protocol";
 import { rememberJoinPassword } from "@/lib/stored";
@@ -31,8 +32,8 @@ function HomeForm() {
       setError("請輸入隊伍名稱");
       return;
     }
-    if (code.length !== 4) {
-      setError("請輸入 4 碼房間代碼");
+    if (!ROOM_CODE_RE.test(code)) {
+      setError("房間代碼不對，請照電視上的 4 個字母輸入");
       return;
     }
     rememberJoinPassword(code, password.trim());
