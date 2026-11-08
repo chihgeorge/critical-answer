@@ -156,3 +156,28 @@ export function revealNow(podium: { beats: Beat[] | null } | undefined, t: numbe
   if (!podium || t === null) return { beat: -1, result: true, done: true };
   return podium.beats ? revealAt(podium.beats, t) : { beat: -1, result: false, done: false };
 }
+
+/** An epilogue page on the big screen holds at most this many characters: three rows of the narrator box at the
+ * podium's 22px (786px of text per row, a CJK character 22px wide), so the box stays under the steps (bottom 130). */
+export const EPILOGUE_PAGE_CHARS = 3 * Math.floor(786 / 22);
+
+/** The epilogue as the big screen's pages, turned by the host (owner, 2026-11-08): whole sentences per page where they
+ * fit, a sentence longer than a page cut at the page's length. An epilogue that fits is one page. */
+export function epiloguePages(text: string): string[] {
+  const pages: string[] = [];
+  let page = "";
+  for (const sentence of text.match(/[^。！？!?]+[。！？!?」』）)]*|[。！？!?]+/g) ?? []) {
+    if ((page + sentence).length <= EPILOGUE_PAGE_CHARS) {
+      page += sentence;
+      continue;
+    }
+    if (page) pages.push(page);
+    page = sentence;
+    while (page.length > EPILOGUE_PAGE_CHARS) {
+      pages.push(page.slice(0, EPILOGUE_PAGE_CHARS));
+      page = page.slice(EPILOGUE_PAGE_CHARS);
+    }
+  }
+  if (page) pages.push(page);
+  return pages.length ? pages : [text];
+}

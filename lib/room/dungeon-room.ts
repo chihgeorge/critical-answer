@@ -71,7 +71,7 @@ import {
   FINISH_PODIUM_MS,
   SERVE_HOLD_MS,
 } from "../protocol";
-import { revealBeats, revealCalls } from "../podium";
+import { epiloguePages, revealBeats, revealCalls } from "../podium";
 import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
@@ -240,6 +240,8 @@ export class DungeonRoom {
   /** The podium reveal (podium-reveal.md eng D20): the narrator's calls, and when their first beat starts on the room's
    * clock. Null until the narration is in. Saved, so a restart keeps the reveal where it was. */
   private podium: { lines: string[]; at: number } | null = null;
+  /** The epilogue page on the big screen, turned by the host (HOST_EPILOGUE_PAGE). */
+  private epiloguePage = 0;
   /** The earliest the reveal's first beat may start, set when the game finishes: after the boss cooks, after the last
    * line is read, or at most END_READ_CAP_MS after 結束冒險, when revealAfterRead may move it up once the screen has
    * read the last narration. Saved, so a restart mid-cooking still waits for the dish. */
@@ -582,6 +584,7 @@ export class DungeonRoom {
       epilogue: this.epilogue,
       epilogueRequested: this.epilogueRequested,
       podium: this.podium,
+      epiloguePage: this.epiloguePage,
       revealFrom: this.revealFrom,
       playedQuestionIds: this.playedQuestionIds,
       notes: "",
@@ -667,6 +670,7 @@ export class DungeonRoom {
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
     this.podium = s.podium ?? null;
+    this.epiloguePage = Number.isInteger(s.epiloguePage) && s.epiloguePage! >= 0 ? s.epiloguePage! : 0; // a damaged save shows the first page
     this.revealFrom = s.revealFrom ?? null;
     this.playedQuestionIds = s.playedQuestionIds ?? [];
     this.joinPassword = s.joinPassword;
@@ -899,6 +903,7 @@ export class DungeonRoom {
       pendingRoll: this.pendingRoll,
       ...this.wrongSlots(),
       ...this.podiumView(),
+      ...(this.epilogue ? { epiloguePage: { page: this.epiloguePage, of: epiloguePages(this.epilogue).length } } : {}),
       eventId: this.eventSeq,
       ...this.undoWrong(),
       ...(this.cue ? { cue: this.cue } : {}),
@@ -1079,6 +1084,7 @@ export class DungeonRoom {
     this.epilogue = null;
     this.epilogueRequested = false;
     this.podium = null;
+    this.epiloguePage = 0;
     this.revealFrom = null;
     this.revealOnRead = false;
     this.staleBeforeSeq = null;
@@ -1258,6 +1264,9 @@ export class DungeonRoom {
           break;
         case "HOST_BACK_TO_LOBBY":
           this.handleBackToLobby(sender);
+          break;
+        case "HOST_EPILOGUE_PAGE":
+          this.handleEpiloguePage(sender, msg.page);
           break;
         case "HOST_REMOVE_TEAM":
           this.handleRemoveTeam(sender, msg.teamId);
@@ -1470,6 +1479,7 @@ export class DungeonRoom {
     this.epilogue = null;
     this.epilogueRequested = false;
     this.podium = null;
+    this.epiloguePage = 0;
     this.revealFrom = null;
     this.revealOnRead = false;
     this.lastNarration = null;
@@ -1863,6 +1873,14 @@ export class DungeonRoom {
   }
 
   /** How-to-play: one page at a time (eng D4). A page past the last one ends the intro. */
+  private handleEpiloguePage(conn: Conn, page: number) {
+    if (!this.requireHost(conn) || !this.epilogue) return;
+    // Like the intro: only one page away from the one on show, so a double tap or a second tab turns it once.
+    if (Math.abs(page - this.epiloguePage) !== 1 || page >= epiloguePages(this.epilogue).length) return;
+    this.epiloguePage = page;
+    this.broadcastState();
+  }
+
   private handleHostIntro(conn: Conn, page: number) {
     if (!this.requireHost(conn)) return;
     // Not current ±1: a double tap or a second tab already turned this page. Dropped quietly, like a stale HOST_NEXT.
