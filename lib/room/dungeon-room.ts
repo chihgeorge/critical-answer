@@ -285,11 +285,11 @@ export class DungeonRoom {
   /** Who pays (saved), and the key itself (memory only: never saved, logged, broadcast or sent back). Each applied
    * key gets a new generation, so a late 401 from a key the host already replaced cannot drop the new one. */
   private aiSource: AiSource = "none";
-  private credential: { provider: AiProviderId; apiKey: string; generation: number } | null = null;
+  private credential: { provider: AiProviderId; apiKey: string; generation: number; keyId?: string } | null = null;
   private credentialGeneration = 0;
   private aiUsed = 0;
   private aiLimit = DEFAULT_AI_LIMIT;
-  /** Shown to the host until the next key is applied: the key was refused mid-game, or the breaker tripped. */
+  /** The key in use failed: refused mid-game, or the breaker tripped. Shown to the host until the next key is applied. */
   private aiError: AiKeyError | undefined;
   /** Why the host's last HOST_AI_KEY was refused. Every status carries it until the next HOST_AI_KEY, so a narration's status cannot wipe it. */
   private keyError: AiKeyError | undefined;
@@ -363,6 +363,7 @@ export class DungeonRoom {
         onAuthRejected: () => {
           this.credential = null;
           this.aiError = "invalid_key";
+          this.keyError = undefined; // the newest error wins
           this.sendAiStatus();
         },
       }),
@@ -429,7 +430,10 @@ export class DungeonRoom {
     console.warn(JSON.stringify({ narration: "breaker_open", why }));
     this.addTranscript({ kind: "breaker", at: new Date().toISOString(), text: `LLM narration switched off: ${why}` });
     // A refused key already says invalid_key (onAuthRejected dropped it); anything else is "AI stopped".
-    if (this.credential) this.aiError = "ai_stopped";
+    if (this.credential) {
+      this.aiError = "ai_stopped";
+      this.keyError = undefined; // the newest error wins
+    }
     this.sendAiStatus();
   }
 
@@ -445,6 +449,7 @@ export class DungeonRoom {
       limit: this.aiLimit,
       exhausted: this.aiUsed >= this.aiLimit,
       ...((this.keyError ?? this.aiError) ? { error: this.keyError ?? this.aiError } : {}),
+      ...(this.credential?.keyId ? { appliedKeyId: this.credential.keyId } : {}),
     };
     for (const conn of only ? [only] : this.hostConns.values()) this.sendTo(conn, msg);
   }
@@ -454,7 +459,7 @@ export class DungeonRoom {
     this.sendAiStatus();
   }
 
-  private applyCredential(source: AiSource, credential: { provider: AiProviderId; apiKey: string } | null) {
+  private applyCredential(source: AiSource, credential: { provider: AiProviderId; apiKey: string; keyId?: string } | null) {
     this.aiSource = source;
     this.credential = credential && { ...credential, generation: ++this.credentialGeneration };
     this.aiError = undefined;
@@ -474,14 +479,17 @@ export class DungeonRoom {
       const serverKey = this.room.env?.ANTHROPIC_API_KEY;
       if (!ownerKey || !serverKey) return this.refuseKey("owner_unavailable");
       if (!tokensEqual(ownerKey, msg.ownerKey)) return this.refuseKey("wrong_owner_key");
-      return this.applyCredential("owner", { provider: "anthropic", apiKey: serverKey });
+      return this.applyCredential("owner", { provider: "anthropic", apiKey: serverKey, keyId: msg.keyId });
     }
     const provider = PROVIDERS[msg.provider];
     if (!provider.keyFormat.test(msg.key)) return this.refuseKey("invalid_key");
     // The host page resends its key after every reconnect: the same key needs no new check, and a flaky check must not drop it.
     // After "AI stopped" the host pastes it again on purpose (credit topped up): apply it, which resets the breaker.
-    if (this.aiSource === "own" && this.credential?.provider === msg.provider && this.credential.apiKey === msg.key)
-      return this.aiError ? this.applyCredential("own", { provider: msg.provider, apiKey: msg.key }) : this.sendAiStatus();
+    if (this.aiSource === "own" && this.credential?.provider === msg.provider && this.credential.apiKey === msg.key) {
+      if (this.aiError) return this.applyCredential("own", { provider: msg.provider, apiKey: msg.key, keyId: msg.keyId });
+      this.credential.keyId = msg.keyId;
+      return this.sendAiStatus();
+    }
     const check = new AbortController();
     this.keyCheck = check;
     void provider.checkKey(msg.key, { fetch: this.fetchImpl, signal: AbortSignal.any([check.signal, AbortSignal.timeout(KEY_CHECK_MS)]) }).then((result) => {
@@ -489,7 +497,7 @@ export class DungeonRoom {
       if (check.signal.aborted) return;
       this.keyCheck = null;
       // A failed check leaves the key the room already had in place.
-      if (result === "ok") this.applyCredential("own", { provider: msg.provider, apiKey: msg.key });
+      if (result === "ok") this.applyCredential("own", { provider: msg.provider, apiKey: msg.key, keyId: msg.keyId });
       else this.refuseKey(result === "invalid" ? "invalid_key" : "check_failed");
     });
   }

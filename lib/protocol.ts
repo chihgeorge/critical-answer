@@ -148,10 +148,11 @@ export type ClientMessage =
   /** How-to-play: go to `page` (1..4); 5 ends the intro and deals the first question. The room takes
    * only the current page ±1, so a double tap or a second host tab turns one page, not two (eng D4). */
   | { type: "HOST_INTRO"; page: number }
-  /** Which key pays for AI narration in this room. The key stays in the room's memory and is never sent back. */
-  | { type: "HOST_AI_KEY"; source: "own"; provider: AiProviderId; key: string }
+  /** Which key pays for AI narration in this room. The key stays in the room's memory and is never sent back.
+   * `keyId` (any page-made id) comes back as HOST_AI_STATUS.appliedKeyId once this key is the one in use. */
+  | { type: "HOST_AI_KEY"; source: "own"; provider: AiProviderId; key: string; keyId?: string }
   /** The server's own key, for whoever knows OWNER_KEY. */
-  | { type: "HOST_AI_KEY"; source: "owner"; ownerKey: string }
+  | { type: "HOST_AI_KEY"; source: "owner"; ownerKey: string; keyId?: string }
   /** Forget the key: scripted narration from now on. */
   | { type: "HOST_AI_KEY"; source: "none" }
   /** Most paid AI calls this room may make (1..MAX_AI_LIMIT). */
@@ -344,6 +345,9 @@ export type ServerMessage =
       limit: number;
       exhausted: boolean;
       error?: AiKeyError;
+      /** The keyId of the HOST_AI_KEY whose key is in use. Only this tells the host page its key was applied: a status
+       * sent for anything else (a narration, another tab's key) looks the same otherwise. */
+      appliedKeyId?: string;
     }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   | { type: "HOST_ANSWER"; questionId: string; answer: string }
@@ -383,6 +387,7 @@ export type AiSource = "none" | "own" | "owner";
 /** invalid_key: refused by the provider or not a key at all. ai_stopped: the breaker switched AI off after repeated failures. */
 export type AiKeyError = "invalid_key" | "wrong_owner_key" | "owner_unavailable" | "check_failed" | "ai_stopped";
 const MAX_AI_KEY = 256;
+const MAX_KEY_ID = 64;
 /** A room's cap on paid AI narration calls: the default, and the most a host may set. */
 export const DEFAULT_AI_LIMIT = 300;
 export const MAX_AI_LIMIT = 5000;
@@ -484,14 +489,17 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         : null;
     case "HOST_AI_KEY": {
       if (m.source === "none") return { type: "HOST_AI_KEY", source: "none" };
+      const keyId = m.keyId === undefined ? undefined : str(m.keyId, MAX_KEY_ID);
+      if (keyId === null || keyId === "") return null;
+      const id = keyId ? { keyId } : {};
       if (m.source === "owner") {
         const ownerKey = str(m.ownerKey, MAX_AI_KEY);
-        return ownerKey ? { type: "HOST_AI_KEY", source: "owner", ownerKey } : null;
+        return ownerKey ? { type: "HOST_AI_KEY", source: "owner", ownerKey, ...id } : null;
       }
       // The key's format is the room's check (invalid_key), not a malformed message.
       const key = str(m.key, MAX_AI_KEY);
       const provider = AI_PROVIDER_IDS.find((p) => p === m.provider);
-      return m.source === "own" && key && provider ? { type: "HOST_AI_KEY", source: "own", provider, key } : null;
+      return m.source === "own" && key && provider ? { type: "HOST_AI_KEY", source: "own", provider, key, ...id } : null;
     }
     case "HOST_AI_LIMIT":
       return Number.isInteger(m.limit) && (m.limit as number) >= 1 && (m.limit as number) <= MAX_AI_LIMIT

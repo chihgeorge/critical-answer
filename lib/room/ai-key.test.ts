@@ -245,6 +245,16 @@ describe("the per-room budget", () => {
     r.room.onMessage(JSON.stringify({ type: "HOST_CLAIM", token: "another-token-0123456789abc" }), next);
     expect(r.sent(next).findLast((m) => m.type === "HOST_AI_STATUS")).toMatchObject({ source: "none", keyHint: null, used: 0, limit: 300 });
   });
+
+  it("a refused key's error does not pass to the next host of the code", () => {
+    const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY } });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: "guess" });
+    (r.room as unknown as { reset(): void }).reset();
+    const next = makeConn("next-host");
+    r.room.onConnect(next);
+    r.room.onMessage(JSON.stringify({ type: "HOST_CLAIM", token: "another-token-0123456789abc" }), next);
+    expect(r.sent(next).findLast((m) => m.type === "HOST_AI_STATUS")).not.toHaveProperty("error");
+  });
 });
 
 describe("restarts and key changes", () => {
@@ -297,6 +307,17 @@ describe("restarts and key changes", () => {
     expect(r.status()).toMatchObject({ source: "own", keyMissing: false, error: "ai_stopped" });
   });
 
+  it("D4: AI stopping after a refused paste says ai_stopped, not the older refusal", async () => {
+    const r = setup({ models: (key) => (key === OTHER_KEY ? json({}, 401) : json({ data: [] })), messages: () => json({ error: { message: "credit balance too low" } }, 400) });
+    await r.useKey();
+    await r.useKey(OTHER_KEY);
+    expect(r.status().error).toBe("invalid_key");
+    await r.start();
+    await r.judge();
+    await r.judge();
+    expect(r.status()).toMatchObject({ keyHint: "…WXYZ", error: "ai_stopped" });
+  });
+
   it("D4: after AI stopped, pasting the same key again (once credit is topped up) brings AI back", async () => {
     let broke = true;
     const r = setup({ messages: () => (broke ? json({ error: { message: "credit balance too low" } }, 400) : line("又能說話了")) });
@@ -324,6 +345,27 @@ describe("restarts and key changes", () => {
     expect(r.narrationCalls().map((c) => c.apiKey)).toEqual([HOST_KEY]);
     // The narration's status (spend) still says the pasted key was refused.
     expect(r.status()).toMatchObject({ keyHint: "…WXYZ", used: 1, error: "invalid_key" });
+  });
+
+  it("appliedKeyId names the HOST_AI_KEY whose key is in use, never a refused one", async () => {
+    const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY }, models: (key) => (key === OTHER_KEY ? json({}, 401) : json({ data: [] })) });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY, keyId: "a" });
+    expect(r.status()).toMatchObject({ source: "owner", appliedKeyId: "a" });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: "guess", keyId: "b" });
+    await r.start(); // a narration's status after the refusal still names "a"
+    expect(r.status()).toMatchObject({ appliedKeyId: "a", error: "wrong_owner_key" });
+    // The page reconnects and resends its saved key: "a" is in use again, "b" never was.
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY });
+    expect(r.status()).not.toHaveProperty("appliedKeyId");
+    expect(r.status()).not.toHaveProperty("error");
+    // Own keys: the same key resent under a new id is applied under that id; a refused one never is.
+    r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY, keyId: "c" });
+    await sleep(0);
+    r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY, keyId: "d" });
+    expect(r.status()).toMatchObject({ appliedKeyId: "d" });
+    r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: OTHER_KEY, keyId: "e" });
+    await sleep(0);
+    expect(r.status()).toMatchObject({ appliedKeyId: "d", error: "invalid_key" });
   });
 
   it("a wrong OWNER_KEY with the owner key in use: every later status says so, until the next HOST_AI_KEY", async () => {
