@@ -6,6 +6,8 @@
 import type { ClassId, GameState } from "./game-state";
 
 export interface GameLog {
+  /** True for a game started before game logs existed: its counts cover only the turns played since. */
+  partial: boolean;
   startedAt: string | null;
   endedAt: string;
   /** "kill": a team slew the boss. "host": the host pressed 結束冒險. */
@@ -44,6 +46,7 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
   const entries = game.teams.flatMap((t) => (t.bossAt ? [t.bossAt.round] : []));
   const firstBossRound = entries.length ? Math.min(...entries) : null;
   return {
+    partial: game.startedAt === undefined,
     startedAt: game.startedAt === undefined ? null : new Date(game.startedAt).toISOString(),
     endedAt: new Date(endedAt).toISOString(),
     endedBy: game.boss.killedByTeamId === null ? "host" : "kill",
@@ -74,17 +77,21 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
 export interface GameLogStorage {
   put(key: string, value: unknown): void | Promise<void>;
   list(options: { prefix: string; reverse?: boolean; limit?: number }): Promise<Map<string, unknown>>;
+  delete(keys: string[]): unknown;
 }
 
 const PREFIX = "gameLog:";
 
-/** One key per game, so a game's write never rewrites the others. Keys sort by end time. */
+/** The newest stored games, at most this many: older ones are deleted, so storage and one download stay small. */
+export const MAX_GAME_LOGS = 1000;
+
+/** One key per game, so a game's write never rewrites the others. Keys sort by end time. Then the oldest
+ * games past MAX_GAME_LOGS are deleted (a few at a time: each append adds only one). */
 export async function appendGameLog(storage: GameLogStorage, log: GameLog): Promise<void> {
   await storage.put(`${PREFIX}${log.endedAt}:${crypto.randomUUID()}`, log);
+  const newest = [...(await storage.list({ prefix: PREFIX, reverse: true, limit: MAX_GAME_LOGS + 100 })).keys()];
+  if (newest.length > MAX_GAME_LOGS) await storage.delete(newest.slice(MAX_GAME_LOGS));
 }
-
-/** The newest stored games, at most this many: one download stays small however many events have been played. */
-export const MAX_GAME_LOGS = 1000;
 
 /** The newest MAX_GAME_LOGS games, oldest first. */
 export async function readGameLogs(storage: GameLogStorage): Promise<GameLog[]> {

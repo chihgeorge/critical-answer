@@ -631,6 +631,8 @@ export class DungeonRoom {
 
   /** Hands the finished game's record to the platform, and to the logs. A failure is logged and dropped: the room never waits. */
   private logGame(game: GameState) {
+    // A game nobody answered in says nothing about tuning, and skipping it stops 開始/結束 spam filling the log.
+    if (game.lastTurnIndex === undefined) return;
     try {
       const log = gameLog(game, this.now());
       console.log(JSON.stringify({ event: "game_log", log }));

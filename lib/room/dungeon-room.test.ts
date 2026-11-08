@@ -3817,13 +3817,31 @@ describe("host controls: HOST_END_GAME, HOST_REMOVE_TEAM, HOST_RENAME_TEAM", () 
     claim(room, hostConn);
     joinTeams(room, hostConn, 2);
     send(room, hostConn, { type: "HOST_START" });
+    const first = currentTurnTeamId(room.game!)!;
+    const q = room.game!.teams.find((t) => t.id === first)!.currentQuestionId;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: first, questionId: q, correct: true, fleeChoice: "retry" });
     send(room, hostConn, { type: "HOST_END_GAME" });
     expect(logGame).toHaveBeenCalledTimes(1);
-    expect(logGame.mock.calls[0]).toMatchObject([{ endedBy: "host", rounds: 0, teams: [{ name: "Team 0" }, { name: "Team 1" }] }]);
+    expect(logGame.mock.calls[0]).toMatchObject([{ endedBy: "host", rounds: 1, teams: [{ name: "Team 0" }, { name: "Team 1" }] }]);
     expect((logGame.mock.calls[0] as unknown[])[0]).toMatchObject({ startedAt: expect.any(String) });
     await vi.waitFor(() => expect(error).toHaveBeenCalledWith(expect.stringContaining("game_log_failed")));
     await vi.waitFor(() => expect(broadcasts(room).some((m) => m.type === "EPILOGUE")).toBe(true));
     error.mockRestore();
+  });
+
+  // Value: protects=starting and ending at once cannot fill the owner's log with empty games;
+  // fails_when=a game with no turn played is logged
+  it("結束冒險 before any turn is played logs nothing", () => {
+    const logGame = vi.fn();
+    const room = new DungeonRoom({ ...(makeRoom() as any), logGame }, () => 0, { epilogueDelayMs: 0, holdMs: 10 });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    expect(room.game!.phase).toBe("finished");
+    expect(logGame).not.toHaveBeenCalled();
   });
 
   it("結束冒險 is host-only and needs a game", () => {
