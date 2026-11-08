@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { WARRIOR_TARGET } from "@/lib/game-state";
 import { LabelChip } from "@/components/pixel";
 import { killRollText } from "@/lib/kill-roll";
+import { ROW_NAMES } from "@/lib/podium";
 import { INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, type InitiativeView } from "@/lib/initiative";
 
 /** A pixel-outlined d20 face: the hexagon with its front triangle, `value` in the middle. */
@@ -156,7 +157,7 @@ export function TieRollOverlay({ line, names, values, result }: { line: string; 
     };
     // The caller keys this overlay per roll, so it tumbles once.
   }, [landed, values.length]);
-  const size = values.length <= 4 ? 150 : 90;
+  const size = values.length <= ROW_NAMES ? 150 : 90;
   return (
     <div data-testid="roll-overlay" data-kind="tie" className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>
       <div className="text-[18px]">
@@ -168,7 +169,7 @@ export function TieRollOverlay({ line, names, values, result }: { line: string; 
             <div className={landed ? undefined : "px-roll-tumble"}>
               <D20 value={landed ? v : faces[i]} size={size} />
             </div>
-            <div className="truncate text-[18px] text-white" style={{ maxWidth: size + 20, textShadow: "2px 2px 0 var(--k)" }}>
+            <div className="truncate text-[18px] text-white" style={{ maxWidth: values.length <= ROW_NAMES ? size + 20 : size, textShadow: "2px 2px 0 var(--k)" }}>
               {names[i]}
             </div>
           </div>

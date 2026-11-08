@@ -88,6 +88,10 @@ export const EXPIRE_MS = 24 * 60 * 60 * 1000;
 const MAX_CONNECTIONS = 60;
 /** With no boss to cook, the podium reveal starts this long after the game ends, so the last line is read first. */
 const EPILOGUE_DELAY_MS = 4000;
+/** 結束冒險 while the big screen is still reading the last narration: the reveal waits for it to finish, at most this
+ * long (a screen gone or stuck never reports), then starts within READ_GAP_MS of the last line. */
+const END_READ_CAP_MS = 20_000;
+const READ_GAP_MS = 1000;
 /** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
@@ -222,9 +226,13 @@ export class DungeonRoom {
   /** The podium reveal (podium-reveal.md eng D20): the narrator's calls, and when their first beat starts on the room's
    * clock. Null until the narration is in. Saved, so a restart keeps the reveal where it was. */
   private podium: { lines: string[]; at: number } | null = null;
-  /** The earliest the reveal's first beat may start, fixed when the game finishes: after the boss cooks, or after the
-   * last line is read. Saved, so a restart mid-cooking still waits for the dish. */
+  /** The earliest the reveal's first beat may start, set when the game finishes: after the boss cooks, after the last
+   * line is read, or at most END_READ_CAP_MS after 結束冒險, when revealAfterRead may move it up once the screen has
+   * read the last narration. Saved, so a restart mid-cooking still waits for the dish. */
   private revealFrom: number | null = null;
+  /** 結束冒險 came while the screen was still reading the last narration: its last line read moves revealFrom up.
+   * shortcut: not saved, so a restarted room waits the whole END_READ_CAP_MS; fine for a one-off pause. */
+  private revealOnRead = false;
   /** Narration for an eventId below this is stale and dropped: set by 結束冒險 (a judgment line still in flight
    * would hand the turn on over the podium) and by 回到大廳 (a late epilogue or line from the game just left).
    * Memory only, like the narration calls it guards. */
@@ -1000,6 +1008,7 @@ export class DungeonRoom {
     this.epilogueRequested = false;
     this.podium = null;
     this.revealFrom = null;
+    this.revealOnRead = false;
     this.staleBeforeSeq = null;
     this.playedQuestionIds = [];
     this.removedTeamIds.clear();
@@ -1336,7 +1345,10 @@ export class DungeonRoom {
     this.intro = null;
     this.game = endGame(this.game, this.rng);
     this.logGame(this.game);
-    this.revealFrom = this.now() + this.epilogueDelayMs;
+    // The first place call would cut off the narration still being read on the big screen (speak() cancels it).
+    const n = this.lastNarration;
+    this.revealOnRead = !!n && n.done < n.lines.length;
+    this.revealFrom = this.now() + (this.revealOnRead ? END_READ_CAP_MS : this.epilogueDelayMs);
     const eventId = ++this.eventSeq;
     this.staleBeforeSeq = eventId;
     this.cue = null;
@@ -1369,6 +1381,7 @@ export class DungeonRoom {
     this.epilogueRequested = false;
     this.podium = null;
     this.revealFrom = null;
+    this.revealOnRead = false;
     this.lastNarration = null;
     this.cue = null;
     this.staleBeforeSeq = ++this.eventSeq;
@@ -1633,6 +1646,17 @@ export class DungeonRoom {
     // Saved even with no host page connected (sendTo saves only when it sends), so a restart keeps read lines locked.
     this.persist();
     for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_NARRATION_PROGRESS", eventId, done });
+    if (this.revealOnRead && done === n.lines.length && this.game?.phase === "finished") this.revealAfterRead();
+  }
+
+  /** The screen has read the last narration out after 結束冒險: the reveal starts shortly, calls already in or not. */
+  private revealAfterRead() {
+    this.revealOnRead = false;
+    const from = this.now() + Math.min(this.epilogueDelayMs, READ_GAP_MS);
+    if (this.revealFrom !== null && from >= this.revealFrom) return;
+    this.revealFrom = from;
+    if (this.podium && this.podium.at > from) this.podium = { ...this.podium, at: from };
+    this.broadcast(this.snapshot());
   }
 
   private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean) {
