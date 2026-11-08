@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [Unreleased]
+
+### Fixed
+- A long epilogue no longer covers the podium at the end. When it is too long for one page on the big screen, it is split into pages of at most three lines. The host page shows 「◀ 上一頁」, 「後記 1／2」 and 「下一頁 ▶」, and the host turns the pages. With the big screen's voice on, each page is read aloud as it turns, and a restart keeps the page on show.
+
 ## [0.55.0.3] - 2026-11-08
 
 ### Fixed
