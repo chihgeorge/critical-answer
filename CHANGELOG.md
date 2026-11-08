@@ -2,7 +2,7 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [Unreleased]
+## [0.46.0.0] - 2026-11-08
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website. Then reload every phone, big screen, host page and bank-editor tab before you save or play a bank with a sort question. An old tab does not know sort questions. A bank without a sort question is still saved at format 3, so a rollback reads it as before. After a sort question is saved, rolling the room server back makes it load the bundled bank instead and resets the rooms that are running.
 
