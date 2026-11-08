@@ -53,10 +53,13 @@ function setup(
   } = {},
 ) {
   const calls: Call[] = [];
+  /** The user turn of every narration call, where the room's recent lines go. */
+  const prompts: string[] = [];
   const fake = async (url: unknown, init?: RequestInit) => {
     const apiKey = (init!.headers as Record<string, string>)["x-api-key"];
     calls.push({ url: String(url), apiKey });
     if (String(url).includes("/v1/models")) return (opts.models ?? (() => json({ data: [] })))(apiKey);
+    prompts.push(JSON.parse(init!.body as string).messages[0].content);
     return (opts.messages ?? (() => line("地城主開口了")))(apiKey);
   };
   const io = { broadcast: vi.fn(), env: opts.env ?? {}, storage: opts.storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
@@ -100,8 +103,59 @@ function setup(
     send({ type: "HOST_JUDGE", teamId, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
     await sleep(20);
   };
-  return { room, io, host, calls, send, sent, status, narrationCalls, transcript, useKey, joinTeams, start, judge };
+  return { room, io, host, calls, prompts, send, sent, status, narrationCalls, transcript, useKey, joinTeams, start, judge };
 }
+
+// Value: protects=one room's AI lines never reach another room's prompt (TODOS: 旁白語氣是否耐聽);
+// fails_when=the recent-lines list is shared across rooms or not kept per room; no_claim=what a real model writes
+describe("recent lines", () => {
+  it("a room's next prompt lists its own earlier lines, and another room's prompt does not", async () => {
+    const a = setup({ messages: () => line("甲房的第一句") });
+    await a.useKey();
+    await a.start();
+    await a.judge();
+    expect(a.prompts.length).toBeGreaterThan(1);
+    expect(a.prompts.at(-1)).toContain("- 甲房的第一句");
+    const b = setup();
+    await b.useKey();
+    await b.start();
+    await b.judge();
+    expect(b.prompts.length).toBeGreaterThan(1);
+    expect(b.prompts.join("")).not.toContain("甲房");
+  });
+
+  it("keeps only the newest 8 AI lines that reached the screen, not the scripted ones", async () => {
+    let n = 0;
+    // The middle line has markup, so the screen gets a scripted line there instead.
+    const r = setup({ messages: () => line(`第${++n}回一\n<b>壞</b>\n第${n}回三`) });
+    await r.useKey();
+    await r.start();
+    for (let i = 0; i < 5; i++) await r.judge();
+    expect(r.prompts.length).toBe(6);
+    const last = r.prompts.at(-1)!;
+    expect(last).not.toContain("第1回");
+    for (let k = 2; k <= 5; k++) expect(last).toContain(`- 第${k}回一\n- 第${k}回三`);
+    expect(last).not.toContain("壞");
+  });
+
+  it("the next host of an expired room's code does not get its lines", async () => {
+    const r = setup({ messages: () => line("上一位主持人的句子") });
+    await r.useKey();
+    await r.start();
+    expect(r.prompts.length).toBe(1);
+    (r.room as unknown as { reset(): void }).reset();
+    const next = makeConn("next-host");
+    r.room.onConnect(next);
+    r.room.onMessage(JSON.stringify({ type: "HOST_CLAIM", token: "another-token-0123456789abc" }), next);
+    r.room.onMessage(JSON.stringify({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: OTHER_KEY }), next);
+    await sleep(0);
+    r.joinTeams();
+    r.room.onMessage(JSON.stringify({ type: "HOST_START" }), next);
+    await sleep(20);
+    expect(r.prompts.length).toBe(2);
+    expect(r.prompts.at(-1)).not.toContain("上一位主持人");
+  });
+});
 
 describe("who pays for AI narration", () => {
   it("AC1: a room whose host gave no key never calls Anthropic, even with a server key configured", async () => {

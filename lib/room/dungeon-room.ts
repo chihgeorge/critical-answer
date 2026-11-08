@@ -89,6 +89,7 @@ import { createScriptedProvider, type NarrationProvider } from "../narration/scr
 import { createRunner, type TranscriptItem } from "../narration/runner";
 import { editedLine } from "../narration/client";
 import { PROVIDERS } from "../narration/providers";
+import { RECENT_LINES } from "../narration/llm";
 import { keyHint, withBudget } from "./ai-budget";
 import { createBreaker, withBreaker } from "../narration/breaker";
 
@@ -330,6 +331,9 @@ export class DungeonRoom {
   private joinPassword = "";
   /** The last few hand-edited lines: style examples for the LLM. */
   private editedLines: string[] = [];
+  /** This room's latest AI lines that reached the screens, so the next prompt avoids them. Memory only: a restart
+   * forgets them. Kept across 回到大廳 (same audience), cleared on reset (the next host of this code). */
+  private recentLines: string[] = [];
   /** The host's line for the next narration's second segment (host-next-line.md). `gen` grows on every queue or
    * cancel, so a narration started before a re-queue of the same text cannot clear the new one (D7). */
   private nextLine: { text: string; gen: number } | null = null;
@@ -406,6 +410,7 @@ export class DungeonRoom {
       fetch: opts.fetch,
       getStyleExamples: () => this.editedLines,
       forbidden: () => this.bankAnswers,
+      getRecentLines: () => this.recentLines,
     };
     const byProvider: NarrationProvider = {
       name: "llm",
@@ -477,7 +482,14 @@ export class DungeonRoom {
         this.broadcast({ type: "NARRATION", eventId, lines, rev: 0 });
         if (said) this.sendNextLineState();
       },
-      record: (entry) => this.addTranscript(entry),
+      record: (entry) => {
+        this.addTranscript(entry);
+        // Called right after emit: only a narration emit just put on the screens counts, and only its AI lines
+        // (not scripted fallbacks or the host's line). The epilogue's podium calls repeat names by design.
+        if (entry.event.type === "epilogue" || entry.eventId !== this.lastNarration?.eventId) return;
+        const ai = entry.lines.filter((_, i) => entry.sources[i] === "llm");
+        if (ai.length) this.recentLines = [...this.recentLines, ...ai].slice(-RECENT_LINES);
+      },
     });
   }
 
@@ -1112,6 +1124,7 @@ export class DungeonRoom {
     this.transcript = [];
     this.joinPassword = "";
     this.editedLines = [];
+    this.recentLines = [];
     this.nextLine = null;
     this.hostLineGens.clear();
     this.aiNarration = false;
