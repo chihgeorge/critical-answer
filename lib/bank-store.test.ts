@@ -69,7 +69,7 @@ describe("BankStore.putBank", () => {
 
   it("refuses to save over a stored bank it cannot read, and keeps it (a rollback below a newer format)", async () => {
     // The fallback bank is version 1, so a save at version 1 would otherwise replace every custom question.
-    const stored = { bank: { rooms: "a format this version can't read" }, version: 3, format: BANK_FORMAT }; // pregate-literal: BANK_FORMAT=3 the 3 here is the stored version, not the format
+    const stored = { bank: { rooms: "a format this version can't read" }, version: 7, format: BANK_FORMAT };
     const storage = memoryStorage(stored);
     await expect(new BankStore(storage).putBank(validBank, 1)).rejects.toThrow(/unreadable/);
     expect(await storage.get("bank")).toEqual(stored);
