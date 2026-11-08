@@ -1,0 +1,56 @@
+{
+  "$schema": "https://github.com/garrytan/gstack/docs/ship-policy.md#schema-v1",
+  "bump": "patch",
+  "queue_mode": "stamp-at-merge",
+  "release_tool": null,
+  "release_outputs": [],
+  "stamp_paths": [],
+  "changelog": "CHANGELOG.md",
+  "changelog_fragments": {
+    "dir": "changelog.d",
+    "required_checks": [
+      "check"
+    ]
+  },
+  "mirror": null,
+  "history": "squash-ok",
+  "preregistration_shas": [],
+  "stamp_sensitive_gates": [],
+  "review_scope": "frozen",
+  "review_exclude_paths": [],
+  "review": {
+    "panel": "all",
+    "reader_model": "lane",
+    "platform": "off",
+    "risk_paths": []
+  },
+  "pr_count": {
+    "default_pr_count": 1,
+    "split_requires_owner": true
+  },
+  "maintainers": [],
+  "stamp_files": [],
+  "stamp_patterns": [],
+  "stamp_placeholders": [],
+  "restamp_command": null,
+  "migrations": null,
+  "gate_command": null,
+  "full_e2e": false,
+  "min_gstack_version": "1.98.0.0",
+  "train": null,
+  "docs": null,
+  "base_red": null,
+  "merge": "direct",
+  "land": null,
+  "bookkeeping": [],
+  "mechanical_retake": [],
+  "test_code": [],
+  "release_gate": null,
+  "readers": {
+    "forbid_fetch": [],
+    "forbid_paths": [],
+    "brief_note": null
+  },
+  "ci_record_timeout_s": 600,
+  "plan_record": "off"
+}
