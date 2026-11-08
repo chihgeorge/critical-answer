@@ -4,7 +4,8 @@ import { entryGate } from "../lib/gate";
 import { positiveMs } from "../lib/room/positive-ms";
 import { DungeonRoom, EXPIRE_MS, fixedDie } from "../lib/room/dungeon-room";
 import { BankStore, IMAGE_CLEANUP_MARGIN_MS, type BankConflict, type VersionedBank } from "../lib/bank-store";
-import { bankOrFallback, handleBankApi } from "../lib/bank-api";
+import { bankOrFallback, handleBankApi, handleGameLogsApi } from "../lib/bank-api";
+import { appendGameLog, readGameLogs, type GameLog } from "../lib/game-log";
 import { handleBankImageApi } from "../lib/bank-image-api";
 import { handleClientError } from "../lib/client-error-api";
 
@@ -88,6 +89,15 @@ export class BankStoreDO extends DurableObject<Env> {
   putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict> {
     return this.store.putBank(candidate, expectedVersion);
   }
+
+  /** Finished games' records (lib/game-log.ts) live next to the bank: one owner, one place to read them. */
+  appendGameLog(log: GameLog): Promise<void> {
+    return appendGameLog(this.ctx.storage, log);
+  }
+
+  gameLogs(): Promise<GameLog[]> {
+    return readGameLogs(this.ctx.storage);
+  }
 }
 
 const BANK_DO_NAME = "singleton"; // one bank this round — see docs/designs/question-bank-editor.md NOT in scope
@@ -110,6 +120,7 @@ export class Room extends Server<Env> {
         env: this.env,
         // The room saves without awaiting; Cloudflare holds its messages until the write is durable.
         storage: this.ctx.storage,
+        logGame: (log) => this.env.bank.getByName(BANK_DO_NAME).appendGameLog(log),
         closeAll: (code, reason) => {
           for (const conn of this.getConnections()) conn.close(code, reason);
         },
@@ -182,6 +193,13 @@ export default {
           return { key };
         },
         bankUnreadable: async () => !!(await env.bank.getByName(BANK_DO_NAME).getVersionedBank()).unreadable,
+      });
+    }
+    if (pathname === "/api/game-logs") {
+      return handleGameLogsApi(request, {
+        ownerKey: env.OWNER_KEY,
+        allowedOrigins: env.ALLOWED_ORIGINS ?? "",
+        readLogs: () => env.bank.getByName(BANK_DO_NAME).gameLogs(),
       });
     }
     if (pathname === "/api/bank" || pathname.startsWith("/api/bank/")) {

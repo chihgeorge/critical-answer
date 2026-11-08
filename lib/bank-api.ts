@@ -6,6 +6,7 @@ import { tokensEqual } from "./tokens";
 import { originAllowed } from "./origin";
 import type { BankConflict, VersionedBank } from "./bank-store";
 import type { Bank } from "./question-bank";
+import type { GameLog } from "./game-log";
 
 export interface BankApiDeps {
   ownerKey: string | undefined;
@@ -114,4 +115,17 @@ export async function bankOrFallback(getBank: () => Promise<Bank>): Promise<Bank
     console.error(JSON.stringify({ event: "bank_fetch_failed", error: String(err) }));
     return undefined;
   }
+}
+
+/** Owner-only download of every finished game's record (lib/game-log.ts), for tuning boss HP and the entry score. */
+export async function handleGameLogsApi(
+  request: Request,
+  deps: { ownerKey: string | undefined; allowedOrigins: string; readLogs(): Promise<GameLog[]> },
+): Promise<Response> {
+  const cors = corsHeaders(request.headers.get("Origin"), deps.allowedOrigins, "GET, OPTIONS");
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  const authError = ownerAuthResponse(request, deps.ownerKey, cors);
+  if (authError) return authError;
+  if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: cors });
+  return Response.json(await deps.readLogs(), { headers: cors });
 }

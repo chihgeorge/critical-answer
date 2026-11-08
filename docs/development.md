@@ -77,7 +77,8 @@ lib/game-state.ts        遊戲狀態機：房間、題目牌堆、首領、計�
 lib/protocol.ts          host / player / server 之間的訊息格式與驗證
 lib/question-bank.ts     題庫型別、驗證、公開題目（不含答案）
 lib/bank-store.ts        BankStore：題庫的 Durable Object 儲存層，版本檢查（純函式邏輯）
-lib/bank-api.ts          /api/bank 的 HTTP 處理（OWNER_KEY 驗證、CORS、409 衝突），平台無關
+lib/bank-api.ts          /api/bank 與 /api/game-logs 的 HTTP 處理（OWNER_KEY 驗證、CORS、409 衝突），平台無關
+lib/game-log.ts          對局紀錄：遊戲結束時從遊戲狀態整理出一筆紀錄，存進 BankStoreDO，下載只拿最新的 1000 場
 lib/narration/           旁白：事件、腳本句、LLM、斷路器、執行器、瀏覽器 TTS 播放決策（tts.ts）
 lib/pixel-art.ts         程式繪製的像素角色與場景
 lib/turn-info.ts         從公開狀態算出輪到誰、面對哪隻怪
@@ -88,7 +89,7 @@ lib/stored.ts            不會丟錯的 localStorage 讀寫（無痕模式也�
 lib/use-wake-lock.ts     主持人頁和大螢幕的螢幕不休眠 hook
 lib/report-client-error.ts、client-error-api.ts  前端當掉的回報（sendBeacon）與 /api/client-error 的處理（來源檢查、4 KB 上限、寫一行 log）
 lib/bank-image-api.ts    /api/bank/image 圖片上傳（檔案類型、大小檢查；題庫讀不懂時回 409、連不上時回 503）
-worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable Object、/api/bank 與 /api/client-error 路由、入口規則
+worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable Object、/api/bank、/api/game-logs 與 /api/client-error 路由、入口規則
 lib/room/                房間邏輯（dungeon-room.ts）與它需要的兩個小介面（io.ts），不依賴平台
 lib/gate.ts、origin.ts   Worker 入口規則
 e2e/                     Playwright 端對端測試

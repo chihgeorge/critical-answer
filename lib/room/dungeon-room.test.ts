@@ -451,9 +451,9 @@ describe("HOST_JUDGE", () => {
 // why_new=game-state tests cover killDice only, not the room's beat; seam=none; no_claim=the TV animation (d20 tests)
 describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
   afterEach(() => vi.useRealTimers());
-  function lastHit(opts: { fixedDie?: number } = {}) {
+  function lastHit(opts: { fixedDie?: number } = {}, io: Partial<RoomIO> = {}) {
     vi.useFakeTimers();
-    const room = new DungeonRoom(makeRoom() as any, () => 0.5, opts);
+    const room = new DungeonRoom({ ...(makeRoom() as any), ...io }, () => 0.5, opts);
     const hostConn = makeConn("host-conn");
     room.onConnect(hostConn);
     claim(room, hostConn);
@@ -465,6 +465,21 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
     const judge = () => send(room, hostConn, { type: "HOST_JUDGE", teamId: turn, questionId: room.game!.boss.currentQuestionId, correct: true });
     return { room, hostConn, ids, conns, turn, judge };
   }
+
+  // Value: protects=a game won by the kill reaches the owner's log once; fails_when=the kill path stops calling
+  // logGame, or a 結束冒險 after the finish logs the game a second time
+  it("a kill logs the game once, as won by the killer", () => {
+    const logGame = vi.fn();
+    const { room, hostConn, turn, judge } = lastHit({}, { logGame });
+    judge();
+    vi.advanceTimersByTime(4000);
+    expect(room.game!.phase).toBe("finished");
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    expect(logGame).toHaveBeenCalledTimes(1);
+    const log = logGame.mock.calls[0][0];
+    expect(log).toMatchObject({ endedBy: "kill", bossHpLeft: 0 });
+    expect(log.teams.find((t: { killedBoss: boolean }) => t.killedBoss).name).toBe(room.game!.teams.find((t) => t.id === turn)!.name);
+  });
 
   it("holds the kill for the beat, then scores exactly the dice it showed", () => {
     const { room, turn, judge } = lastHit();
@@ -3789,6 +3804,44 @@ describe("host controls: HOST_END_GAME, HOST_REMOVE_TEAM, HOST_RENAME_TEAM", () 
     // Once over, it cannot be ended again.
     send(room, hostConn, { type: "HOST_END_GAME" });
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "no_active_game" });
+  });
+
+  // Value: protects=every finished game reaches the owner's log, and a failing store never breaks the room;
+  // fails_when=logGame is not called on 結束冒險, or its rejection escapes
+  it("結束冒險 hands the game's log over once, and a store that fails leaves the room playing on", async () => {
+    const logGame = vi.fn(() => Promise.reject(new Error("bank DO down")));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const room = new DungeonRoom({ ...(makeRoom() as any), logGame }, () => 0, { epilogueDelayMs: 0, holdMs: 10 });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    const first = currentTurnTeamId(room.game!)!;
+    const q = room.game!.teams.find((t) => t.id === first)!.currentQuestionId;
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: first, questionId: q, correct: true, fleeChoice: "retry" });
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    expect(logGame).toHaveBeenCalledTimes(1);
+    expect(logGame.mock.calls[0]).toMatchObject([{ endedBy: "host", rounds: 1, teams: [{ name: "Team 0" }, { name: "Team 1" }] }]);
+    expect((logGame.mock.calls[0] as unknown[])[0]).toMatchObject({ startedAt: expect.any(String) });
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith(expect.stringContaining("game_log_failed")));
+    await vi.waitFor(() => expect(broadcasts(room).some((m) => m.type === "EPILOGUE")).toBe(true));
+    error.mockRestore();
+  });
+
+  // Value: protects=starting and ending at once cannot fill the owner's log with empty games;
+  // fails_when=a game with no turn played is logged
+  it("結束冒險 before any turn is played logs nothing", () => {
+    const logGame = vi.fn();
+    const room = new DungeonRoom({ ...(makeRoom() as any), logGame }, () => 0, { epilogueDelayMs: 0, holdMs: 10 });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    joinTeams(room, hostConn, 2);
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    expect(room.game!.phase).toBe("finished");
+    expect(logGame).not.toHaveBeenCalled();
   });
 
   it("結束冒險 is host-only and needs a game", () => {

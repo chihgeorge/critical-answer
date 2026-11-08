@@ -1,3 +1,4 @@
+import type { GameLog } from "../game-log";
 /**
  * What the game room needs from whatever carries its messages (Cloudflare, PartyKit, a test).
  * Kept this small on purpose: the room logic imports no platform types.
@@ -33,6 +34,8 @@ export interface RoomIO {
   };
   /** Where the room saves itself. Without it (tests, the temporary PartyKit adapter) the room lives in memory only. */
   storage?: RoomStorage;
+  /** Keep a finished game's record (lib/game-log.ts). Best-effort: the room never waits on it. */
+  logGame?(log: GameLog): void | Promise<void>;
   /** Close every open connection with an application close code (see close-codes.ts). */
   closeAll?(code: number, reason: string): void;
 }

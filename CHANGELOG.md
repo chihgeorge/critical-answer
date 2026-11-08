@@ -11,6 +11,14 @@ All notable changes to Critical Answer are documented here.
   - Mage: 4 uses per game (was 2).
   - The cleric and the chef are unchanged.
 
+## [0.49.0.0] - 2026-11-08
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website. Until it is, the bank editor's download link returns 404. No migration: the records live in the existing bank Durable Object.
+
+### Added
+- Every finished game leaves a record, for tuning the boss HP and the boss-entry score: how many rounds each team took to reach the boss room, how many rounds the boss fight took, the boss's HP per phase and the HP left, each team's class and score, the entry score, the rewards, and the start and end time. No question or answer text. It is stored next to the question bank and also printed to the Worker log. A failed store never stops the game. A game ended before anyone answered is not recorded, the download has the newest 1000 games, and a game already running at deploy time is marked `partial`.
+- In the bank editor, 「⬇ 下載對局紀錄（JSON）」 under 「載入題庫」 downloads the newest games' records (owner key only, `GET /api/game-logs`).
+
 ## [0.48.0.1] - 2026-11-08
 
 ### Fixed
