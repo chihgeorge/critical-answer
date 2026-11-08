@@ -99,7 +99,6 @@ describe("game log", () => {
     // Durable Object storage's list: sorted by key, `reverse` from the end, `limit` after that.
     const storage = {
       put: (k: string, v: unknown) => void data.set(k, v),
-      delete: (keys: string[]) => keys.forEach((k) => data.delete(k)),
       list: async ({ prefix, reverse, limit }: { prefix: string; reverse?: boolean; limit?: number }) => {
         const sorted = [...data].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => a.localeCompare(b));
         return new Map((reverse ? sorted.reverse() : sorted).slice(0, limit));
@@ -117,29 +116,11 @@ describe("game log", () => {
     for (let i = 0; i < MAX_GAME_LOGS + 2; i++) data.set(`gameLog:${String(i).padStart(5, "0")}`, { endedAt: String(i) });
     const storage = {
       put: () => {},
-      delete: () => {},
       list: async ({ reverse, limit }: { prefix: string; reverse?: boolean; limit?: number }) => new Map((reverse ? [...data].reverse() : [...data]).slice(0, limit)),
     };
     const logs = await readGameLogs(storage);
     expect(logs).toHaveLength(MAX_GAME_LOGS);
     expect([logs[0].endedAt, logs.at(-1)!.endedAt]).toEqual(["2", String(MAX_GAME_LOGS + 1)]);
-  });
-
-  it("an append deletes the oldest games past MAX_GAME_LOGS", async () => {
-    const data = new Map<string, unknown>();
-    for (let i = 0; i < MAX_GAME_LOGS; i++) data.set(`gameLog:0000-${String(i).padStart(5, "0")}`, {});
-    const storage = {
-      put: (k: string, v: unknown) => void data.set(k, v),
-      delete: (keys: string[]) => keys.forEach((k) => data.delete(k)),
-      list: async ({ prefix, reverse, limit }: { prefix: string; reverse?: boolean; limit?: number }) => {
-        const sorted = [...data].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => a.localeCompare(b));
-        return new Map((reverse ? sorted.reverse() : sorted).slice(0, limit));
-      },
-    };
-    await appendGameLog(storage, gameLog(endGame(twoTeams(), first), 1000));
-    expect(data.size).toBe(MAX_GAME_LOGS);
-    expect(data.has("gameLog:0000-00000")).toBe(false);
-    expect([...data.keys()].some((k) => k.startsWith("gameLog:1970"))).toBe(true);
   });
 
   it("a boss-only game counts every team in the boss room from round 1, and a game ended before any turn has 0 rounds", () => {

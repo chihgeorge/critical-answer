@@ -77,21 +77,19 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
 export interface GameLogStorage {
   put(key: string, value: unknown): void | Promise<void>;
   list(options: { prefix: string; reverse?: boolean; limit?: number }): Promise<Map<string, unknown>>;
-  delete(keys: string[]): unknown;
 }
 
 const PREFIX = "gameLog:";
 
-/** The newest stored games, at most this many: older ones are deleted, so storage and one download stay small. */
-export const MAX_GAME_LOGS = 1000;
-
-/** One key per game, so a game's write never rewrites the others. Keys sort by end time. Then the oldest
- * games past MAX_GAME_LOGS are deleted (a few at a time: each append adds only one). */
+/** One key per game, so a game's write never rewrites the others. Keys sort by end time. Nothing is ever
+ * deleted (owner, 2026-11-07): pruning would let a flood of fake games erase the real ones. */
 export async function appendGameLog(storage: GameLogStorage, log: GameLog): Promise<void> {
   await storage.put(`${PREFIX}${log.endedAt}:${crypto.randomUUID()}`, log);
-  const newest = [...(await storage.list({ prefix: PREFIX, reverse: true, limit: MAX_GAME_LOGS + 100 })).keys()];
-  if (newest.length > MAX_GAME_LOGS) await storage.delete(newest.slice(MAX_GAME_LOGS));
 }
+
+/** The newest stored games, at most this many: one download stays small however many games are stored.
+ * shortcut: older games stay stored but out of the download; add paging if they are ever needed. */
+export const MAX_GAME_LOGS = 1000;
 
 /** The newest MAX_GAME_LOGS games, oldest first. */
 export async function readGameLogs(storage: GameLogStorage): Promise<GameLog[]> {
