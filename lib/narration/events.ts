@@ -24,10 +24,11 @@ export type NarrationEvent =
   | WithNext<{ type: "start"; teams: string[] }>
   /** `entersBoss`: this answer moved the team into the boss room (it reached the boss
    * threshold, or another team was already inside: Team.inBoss).
-   * `phase`: the boss phase already under way when a late team walks in, from phase 2 on (boss-phases.md D13). */
+   * `phase`: the boss phase already under way when a late team walks in, from phase 2 on (boss-phases.md D13).
+   * `order`: this team is the Nth in (2 and up), so the door is already open; left out for the first team. */
   /** `cooked` (correct and boss-kill): the monster will be cooked; the line counts 飽足感 but keeps the dish for the
    * big screen's 上菜 (docs/designs/monster-cuisine.md, cooking I1). */
-  | WithNext<WithRoll<ByClass<{ type: "correct"; team: string; monster: string; points: number; cooked?: true; entersBoss?: { phase?: string } }>>>
+  | WithNext<WithRoll<ByClass<{ type: "correct"; team: string; monster: string; points: number; cooked?: true; entersBoss?: { phase?: string; order?: number } }>>>
   /** `boss`: a wrong boss answer, which always brings a new question (boss redesign D2=B).
    * `exhausted`: it used up the boss phase's questions, and the phase card comes next (boss-phases.md). */
   | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true }>>
@@ -84,6 +85,8 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bos
     case "correct-room-advance": {
       // A team already in the boss room answers correct-boss-hit, never this, so entersBoss fires once per team.
       const entersBoss = !!t && outcome.entersBoss;
+      // Teams already inside, host-sent (sendToBoss) ones included: they opened the door before this one.
+      const order = prev.teams.filter((x) => x.inBoss).length + 1;
       return {
         type: "correct",
         team,
@@ -91,7 +94,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bos
         ...roll,
         monster,
         points: outcome.reward,
-        ...(entersBoss ? { entersBoss: bossPhase ? { phase: bossPhase } : {} } : {}),
+        ...(entersBoss ? { entersBoss: { ...(bossPhase ? { phase: bossPhase } : {}), ...(order > 1 ? { order } : {}) } } : {}),
       };
     }
     case "incorrect-retry":
