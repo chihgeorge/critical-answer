@@ -657,15 +657,15 @@ export default function HostPage() {
             <Panel tone="turn" className="px-3 py-[10px]">
               <div className="flex items-center gap-3">
                 {/* An event room holds no monster and no question (event-rooms.md D1). */}
-                {turn.team.eventScene ? (
+                {turn.team?.eventScene ? (
                   <div className="flex-none"><EventStage scene={turn.team.eventScene} height={48} /></div>
                 ) : (
                   <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.team.eventScene ? "❓ 事件房" : turn.monster.name}</div>
+                  <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.team?.eventScene ? "❓ 事件房" : turn.monster.name}</div>
                   <div data-testid="host-question" className="text-[20px] leading-snug">
-                    {turn.team.eventScene ? EVENT_SCENE_TEXT[turn.team.eventScene].line : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
+                    {turn.team?.eventScene ? EVENT_SCENE_TEXT[turn.team.eventScene].line : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
                   </div>
                   {/* The host previously never saw question media at all (text-only preview) —
                       a small preview so judging an image/video question doesn't mean squinting
