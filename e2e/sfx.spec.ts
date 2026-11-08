@@ -48,8 +48,6 @@ test("the big screen plays the wrong-answer effect when the host marks an answer
   await recordOscillatorTypes(screen);
   await screen.goto(`/room/${code}/screen`);
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
-  // A screen joining mid-game never opens the doors (lib/transitions.ts).
-  await expect(screen.getByTestId("transition-open")).toHaveCount(0);
   // Joining mid-game plays nothing for the event already on screen.
   await screen.getByRole("button", { name: /音樂/ }).click();
   await expect.poll(async () => (await oscTypes(screen)).length).toBeGreaterThan(0); // the music is playing

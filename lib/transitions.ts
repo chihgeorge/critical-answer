@@ -28,8 +28,8 @@ export function nextTransition(seen: TransitionSeen, msg: StateMessage): { seen:
   // A screen (re)connecting mid-game counts the boss as seen once any team got that far, on screen now or not.
   const bossReached = msg.view.teams.some((t) => t.inBossPhase) || msg.view.bossHp < msg.view.bossMaxHp || msg.view.bossPhase > 1;
   if (seen.open) {
-    // The doors play first; a boss already on the first question gets its alarm on the next STATE.
-    return { seen: { open: false, boss: false }, play: { kind: "open", team: turn.team?.name ?? "" } };
+    // A boss already on the first question rides in on the doors: its alarm would land mid-answer on a later STATE.
+    return { seen: { open: false, boss: bossOnScreen }, play: { kind: "open", team: turn.team?.name ?? "" } };
   }
   const play: Transition | null = seen.boss === false && bossOnScreen ? { kind: "boss", name: turn.monster.name } : null;
   return { seen: { open: false, boss: (seen.boss ?? bossReached) || bossOnScreen }, play };

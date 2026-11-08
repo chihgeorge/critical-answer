@@ -851,6 +851,7 @@ export default function ScreenPage() {
       sfxSeen.current = null;
       lastPhase.current = null;
       transitionSeen.current = UNSEEN;
+      setTransition(null);
       // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
       progress.current = null;
     },

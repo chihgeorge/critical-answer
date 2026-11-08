@@ -55,8 +55,8 @@ describe("nextTransition", () => {
     expect(run(UNSEEN, [state({ inBoss: true, reveal: true }), state({ inBoss: true })])).toEqual([null, null]);
   });
 
-  it("calls the boss right after the doors when the first question is already the boss's", () => {
-    expect(run(IN_LOBBY, [state({ inBoss: true }), state({ inBoss: true })])).toEqual([{ kind: "open", team: "紅隊" }, { kind: "boss", name: "魔王" }]);
+  it("plays only the doors when the first question is already the boss's", () => {
+    expect(run(IN_LOBBY, [state({ inBoss: true }), state({ inBoss: true })])).toEqual([{ kind: "open", team: "紅隊" }, null]);
   });
 
   it("counts a phase card (no question, the boss drawn from the card) as the boss on screen", () => {
