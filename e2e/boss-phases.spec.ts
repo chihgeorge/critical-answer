@@ -76,7 +76,7 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByText("題目 phase2-a")).toBeVisible();
   await expect(screen.getByTestId("phase-card")).toHaveCount(0);
-  await expect(screen.getByText("主題曲之謎")).toBeVisible(); // the chip names the phase from now on
+  await expect(screen.locator(".px-chip", { hasText: "主題曲之謎" })).toBeVisible(); // the chip names the phase from now on
   await expect(team.getByTestId("phone-phase-rule")).toContainText("聽前奏");
   await expect(host.getByTestId("host-boss-hp")).toContainText("第 2/2 階段・最後階段");
 

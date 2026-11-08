@@ -243,6 +243,9 @@ const BOSS_ENTER_PHASE_VARIANTS = [
   "答對！{team}走進最深處，迎面就是「{phase}」的首領。",
 ];
 
+/** A wrong buzz (boss-buzzer.md): short, the music is playing again. */
+export const BUZZ_OUT_VARIANTS = ["{team}答錯了！這題出局，其他隊快搶！", "不對！{team}這題不能再搶，音樂繼續！", "{monster}大笑，{team}出局！還有誰知道？"];
+
 /** A wrong boss answer: the boss brings a new question, there is nothing to answer again (D2=B). */
 export const BOSS_MISS_VARIANTS = [
   "{team}答錯了！{monster}大笑一聲，換出新的難題。",
@@ -334,6 +337,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
       if ((event.type === "retry" || event.type === "boss-hit") && event.exhausted) return fill(pick(BOSS_EXHAUSTED_VARIANTS, "boss-exhausted"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
+      if (event.type === "retry" && event.buzzOut) return fill(pick(BUZZ_OUT_VARIANTS, "buzz-out"), event);
       if (event.type === "boss-hit" && event.bossHp === 0) return fill(pick(BOSS_EMPTIED_VARIANTS, "boss-emptied"), event);
       if (event.type === "event-room") {
         const pool =

@@ -14,6 +14,13 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_UNDO_WRONG", questionId: "q1", eventId: 3 })).toBeNull();
   });
 
+  it("TEAM_BUZZ and HOST_BUZZ_SKIP need the question they were pressed for", () => {
+    expect(parseClientMessage({ type: "TEAM_BUZZ", questionId: "q1", extra: 1 })).toEqual({ type: "TEAM_BUZZ", questionId: "q1" });
+    expect(parseClientMessage({ type: "HOST_BUZZ_SKIP", questionId: "q1" })).toEqual({ type: "HOST_BUZZ_SKIP", questionId: "q1" });
+    expect(parseClientMessage({ type: "TEAM_BUZZ" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_BUZZ_SKIP", questionId: 5 })).toBeNull();
+  });
+
   it("returns null for non-objects and unknown types", () => {
     for (const v of [null, undefined, 5, "JOIN", [], { type: "NOPE" }, {}]) {
       expect(parseClientMessage(v)).toBeNull();
