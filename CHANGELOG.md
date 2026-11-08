@@ -2,6 +2,13 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.52.0.0] - 2026-11-08
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website. Until it is, a game started from the new host page starts as before, in lobby order.
+
+### Added
+- 擲先攻 (initiative roll) at the start of every game. After the stone doors open, each team presses 「🎲 擲骰」 on its phone to roll a d20, and the big screen shows every team's die in a row, with a countdown. The highest roll goes first; tied teams are rerolled by the room until the tie is broken, and the big screen shows each reroll. A team that has not rolled after 15 seconds is rolled for. An offline team gets the same 15 seconds, so a phone that locked during the intro can still come back and roll. The host page has 「🎲 全部代擲」 to roll for everyone left at once. The order holds on the big screen for about 4 seconds, then the first team plays. The opening narration introduces the teams in this order. The order and the rolls survive a server restart. The doors and page 1 of the how-to-play picture no longer name the first team, because it is not known yet.
+
 ## [0.51.0.1] - 2026-11-08
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website. A new host page talking to an old room server never sees its key confirmed, so 記住這台電腦 saves nothing until the server is updated. No migration.

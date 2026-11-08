@@ -96,6 +96,17 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_START", aiNarration: "yes" })).toBeNull();
   });
 
+  it("HOST_START: initiative is optional and must be a boolean; false is the same as missing", () => {
+    expect(parseClientMessage({ type: "HOST_START", initiative: true })).toEqual({ type: "HOST_START", initiative: true });
+    expect(parseClientMessage({ type: "HOST_START", initiative: false })).toEqual({ type: "HOST_START" });
+    expect(parseClientMessage({ type: "HOST_START", initiative: 1 })).toBeNull();
+  });
+
+  it("TEAM_ROLL_INITIATIVE and HOST_ROLL_INITIATIVE carry nothing else", () => {
+    expect(parseClientMessage({ type: "TEAM_ROLL_INITIATIVE", value: 20 })).toEqual({ type: "TEAM_ROLL_INITIATIVE" });
+    expect(parseClientMessage({ type: "HOST_ROLL_INITIATIVE" })).toEqual({ type: "HOST_ROLL_INITIATIVE" });
+  });
+
   it("HOST_START: intro is optional and must be a boolean; false is the same as missing", () => {
     expect(parseClientMessage({ type: "HOST_START", intro: true })).toEqual({ type: "HOST_START", intro: true });
     expect(parseClientMessage({ type: "HOST_START", intro: false })).toEqual({ type: "HOST_START" });

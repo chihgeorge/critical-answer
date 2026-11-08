@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { WARRIOR_TARGET } from "@/lib/game-state";
 import { LabelChip } from "@/components/pixel";
 import { killRollText } from "@/lib/kill-roll";
+import { INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, type InitiativeView } from "@/lib/initiative";
 
 /** A pixel-outlined d20 face: the hexagon with its front triangle, `value` in the middle. */
 export function D20({ value, size }: { value: number | string; size: number }) {
@@ -174,6 +175,98 @@ export function TieRollOverlay({ line, names, values, result }: { line: string; 
         ))}
       </div>
       <div data-testid="roll-result" className="px-bar text-[26px]" style={{ visibility: landed ? "visible" : "hidden", background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" }}>
+        {result}
+      </div>
+    </div>
+  );
+}
+
+/** A d20 that tumbles once when it mounts, then shows `value`: key it by its value so a new roll tumbles again. */
+function TumbleDie({ value, size }: { value: number; size: number }) {
+  const [still] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [face, setFace] = useState<number | null>(still ? null : 1);
+  useEffect(() => {
+    if (still) return;
+    const tick = setInterval(() => setFace(1 + Math.floor(Math.random() * 20)), 80);
+    const land = setTimeout(() => {
+      clearInterval(tick);
+      setFace(null);
+    }, TUMBLE_MS);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(land);
+    };
+  }, [still]);
+  return (
+    <div className={face === null ? undefined : "px-roll-tumble"}>
+      <D20 value={face ?? value} size={size} />
+    </div>
+  );
+}
+
+/** Seconds left of `ms`, counted down from mount: key it by `ms` so each STATE restarts it from the room's figure. */
+function Countdown({ ms }: { ms: number }) {
+  const [end] = useState(() => Date.now() + ms);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, []);
+  return <>⏱ {Math.max(0, Math.ceil((end - now) / 1000))}</>;
+}
+
+/**
+ * 擲先攻 on the big screen (lib/initiative.ts): one d20 per team in a row, grey `?` until its phone rolls. Once the
+ * order is set, each tie's reroll holds INITIATIVE_TIE_MS, then the order shows in the bar until the first question.
+ */
+export function InitiativeOverlay({ ini, teams }: { ini: InitiativeView; teams: { id: string; name: string }[] }) {
+  const ties = ini.tieRolls ?? [];
+  // A screen that (re)connects mid-hold skips the rerolls already past, by the room's `left`.
+  const [beat, setBeat] = useState(() => (ini.order ? Math.max(0, ties.length - Math.ceil(Math.max(0, ini.left - INITIATIVE_ORDER_MS) / INITIATIVE_TIE_MS)) : 0));
+  useEffect(() => {
+    if (!ini.order || beat >= ties.length) return;
+    const t = setTimeout(() => setBeat((b) => b + 1), INITIATIVE_TIE_MS);
+    return () => clearTimeout(t);
+  }, [ini.order, beat, ties.length]);
+  const name = (id: string) => teams.find((t) => t.id === id)?.name ?? "";
+  const tie = ini.order && beat < ties.length ? ties[beat] : null;
+  const ids = tie ? tie.teams : (ini.order ?? teams.map((t) => t.id));
+  const value = (id: string, i: number) => (tie ? tie.values[i] : ini.rolls[id]);
+  const size = ids.length <= 4 ? 150 : 90;
+  const left = ids.filter((id) => ini.rolls[id] === undefined).length;
+  const chip = tie
+    ? `🎲 ${tie.teams.map(name).join("、")} 同點，重擲！`
+    : ini.order
+      ? "🎲 先攻順序"
+      : null;
+  const result = tie
+    ? tie.teams.map((id, i) => `${name(id)} ${tie.values[i]}`).join("、")
+    : ini.order
+      ? ini.order.map(name).join(" → ")
+      : `還有 ${left} 隊沒擲`;
+  return (
+    <div data-testid="initiative" data-done={ini.order ? true : undefined} className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>
+      <div className="text-[18px]">
+        <LabelChip>{chip ?? <>🎲 擲先攻！用手機按「擲骰」　<Countdown key={ini.left} ms={ini.left} /></>}</LabelChip>
+      </div>
+      <div className="flex gap-6">
+        {ids.map((id, i) => {
+          const v = value(id, i);
+          return (
+            <div key={id} className="flex flex-col items-center gap-2" style={v === undefined ? { opacity: 0.45 } : undefined}>
+              {v === undefined ? <D20 value="?" size={size} /> : <TumbleDie key={tie ? `t${beat}-${v}` : v} value={v} size={size} />}
+              <div className="truncate text-[18px] text-white" style={{ maxWidth: size + 20, textShadow: "2px 2px 0 var(--k)" }}>
+                {name(id)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div
+        data-testid="initiative-result"
+        className="px-bar text-[26px]"
+        style={ini.order ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : { background: "var(--cream)", color: "var(--k)" }}
+      >
         {result}
       </div>
     </div>

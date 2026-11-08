@@ -91,7 +91,9 @@ function describe(e: NarrationEvent): string {
 function describeEvent(e: NarrationEvent): string {
   switch (e.type) {
     case "start":
-      return `事件：遊戲開始。參賽隊伍：${e.teams.map(q).join("、")}。`;
+      return e.initiative
+        ? `事件：遊戲開始。各隊剛擲完先攻，輪流順序是：${e.teams.map(q).join("、")}。`
+        : `事件：遊戲開始。參賽隊伍：${e.teams.map(q).join("、")}。`;
     case "correct": {
       const base = e.cooked
         ? `事件：隊伍${q(e.team)}答對了，打倒${q(e.monster)}，得到 ${e.points} 飽足感。牠等一下會被煮成料理，不要說會煮成什麼。`

@@ -6,7 +6,7 @@ const team = (id: string, name: string, inBossPhase = false) => ({ id, name, inB
 const room = { id: "q1", content: { kind: "text", value: "題目" }, difficulty: 1, boss: false, monster: { name: "史萊姆", sprite: "slime", hue: 0 } };
 const boss = { ...room, id: "b1", boss: true, monster: { name: "魔王", sprite: "dragon", hue: 0 } };
 
-function state(over: { phase?: "playing" | "finished"; intro?: boolean; inBoss?: boolean; reveal?: boolean; otherInBoss?: boolean } = {}): StateMessage {
+function state(over: { phase?: "playing" | "finished"; intro?: boolean; initiative?: boolean; inBoss?: boolean; reveal?: boolean; otherInBoss?: boolean } = {}): StateMessage {
   return {
     type: "STATE",
     phase: over.phase ?? "playing",
@@ -15,6 +15,7 @@ function state(over: { phase?: "playing" | "finished"; intro?: boolean; inBoss?:
     question: over.inBoss ? boss : room,
     reveal: over.reveal ? { questionId: "q1", answer: "x" } : null,
     ...(over.intro ? { intro: { page: 1 } } : {}),
+    ...(over.initiative ? { initiative: { rolls: {}, left: 15000 }, question: null } : {}),
   } as unknown as StateMessage;
 }
 
@@ -32,6 +33,12 @@ describe("nextTransition", () => {
   it("opens the doors once, on the first question after the intro or the lobby", () => {
     expect(run(IN_LOBBY, [state({ intro: true }), state({ intro: true }), state(), state()])).toEqual([null, null, { kind: "open", team: "紅隊" }, null]);
     expect(run(IN_LOBBY, [state()])).toEqual([{ kind: "open", team: "紅隊" }]);
+  });
+
+  it("opens the doors on 擲先攻, naming no team, and not again on the first question", () => {
+    expect(run(IN_LOBBY, [state({ intro: true }), state({ initiative: true }), state({ initiative: true }), state()])).toEqual([null, { kind: "open", team: "" }, null, null]);
+    // A screen that connects mid-roll saw no start: no doors.
+    expect(run(UNSEEN, [state({ initiative: true }), state()])).toEqual([null, null]);
   });
 
   it("calls the boss once, when the boss room first comes on screen after the reveal", () => {

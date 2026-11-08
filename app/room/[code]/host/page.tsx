@@ -18,6 +18,7 @@ import { Qr } from "@/components/qr";
 import { MageHint } from "@/components/mage-hint";
 import { clericStage, HOST_KEYS, hostKeyAction, introKeyAction } from "@/lib/host-keys";
 import { INTRO_PAGE_TEXT, introDots } from "@/components/how-to-play";
+import { INITIATIVE_MS } from "@/lib/initiative";
 import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
 import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, AiPanel, aiKeyMessage, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
@@ -362,7 +363,7 @@ export default function HostPage() {
   }, [introPage, ready, picking, drawer, swapArmed]);
 
   useLayoutEffect(() => {
-    if (game?.phase !== "playing" || game.intro) return;
+    if (game?.phase !== "playing" || game.intro || game.initiative) return;
     function onKey(e: KeyboardEvent) {
       // An open picker or drawer covers the turn: a key there must not judge it or close a reveal.
       if (picking || drawer) return;
@@ -557,7 +558,7 @@ export default function HostPage() {
               className="min-h-[78px] text-[26px]"
               disabled={!ready || lobby.length === 0}
               // AI narration follows the room's key (HOST_AI_KEY), so a key added mid-game still takes effect.
-              onClick={() => send({ type: "HOST_START", intro: introOn })}
+              onClick={() => send({ type: "HOST_START", intro: introOn, initiative: true })}
             >
               開始遊戲 ▶
             </PixelButton>
@@ -593,7 +594,24 @@ export default function HostPage() {
           </section>
         )}
 
-        {game && game.phase === "playing" && !game.intro && (
+        {game?.phase === "playing" && !game.intro && game.initiative && (
+          <section data-testid="host-initiative" className="flex flex-1 flex-col gap-3">
+            <Panel className="px-3 py-3 text-center">
+              <span className="px-chip">擲先攻</span>
+              <div className="mt-2 text-[20px]">{game.initiative.order ? "先攻順序出爐，即將開始" : "各隊用手機擲骰，大螢幕在看"}</div>
+              <div className="mt-1 text-[15px]" style={{ color: "#6a5a7a" }}>
+                {game.initiative.order
+                  ? game.initiative.order.map((id) => game.view.teams.find((t) => t.id === id)?.name ?? "").join(" → ")
+                  : `已擲 ${Object.keys(game.initiative.rolls).length}／${game.view.teams.length} 隊，${INITIATIVE_MS / 1000} 秒後沒擲的隊由系統代擲`}
+              </div>
+            </Panel>
+            <PixelButton variant="primary" disabled={!ready || !!game.initiative.order} className="!m-0 mt-auto min-h-[78px] text-[26px]" onClick={() => send({ type: "HOST_ROLL_INITIATIVE" })}>
+              🎲 全部代擲
+            </PixelButton>
+          </section>
+        )}
+
+        {game && game.phase === "playing" && !game.intro && !game.initiative && (
           <>
             {/* No team on turn (every phone offline): the team rows and their 交給新手機 still show. */}
             {turn?.team && (
