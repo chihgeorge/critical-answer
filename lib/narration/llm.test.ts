@@ -332,7 +332,17 @@ describe("failures are named", () => {
 describe("buildPrompt: entering the boss room", () => {
   it("asks the model to mention the entrance", () => {
     const { user } = buildPrompt({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, entersBoss: {} }, []);
-    expect(user).toContain("這一答讓他們踏進了首領房。第一行要提到他們踏進首領房。");
+    expect(user).toContain("這一答讓他們踏進了首領房。");
+    expect(user).toContain("第一行要提到他們踏進首領房。");
+  });
+
+  it("tells the model the first team opens the door and a later team joins the fight", () => {
+    const first = buildPrompt({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, entersBoss: {} }, []).user;
+    expect(first).toContain("第一隊進首領房");
+    const later = buildPrompt({ type: "correct", team: "藍隊", monster: "史萊姆", points: 3, entersBoss: { order: 3 } }, []).user;
+    expect(later).toContain("第 3 隊進首領房");
+    expect(later).toContain("加入戰局");
+    expect(later).not.toContain("第一隊");
   });
 });
 

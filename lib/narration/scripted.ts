@@ -157,6 +157,14 @@ export const BOSS_ENTER_VARIANTS = [
   "{team}拿下 {points} 分，地城最深處的大門為他們打開了。",
 ];
 
+/** A later team joining the boss fight (event.entersBoss.order): the door is already open (TODOS, 2026-11-07). */
+export const BOSS_JOIN_VARIANTS = [
+  "{team}也趕到了首領房，加入戰局，+{points}！",
+  "答對！{team}衝進敞開的大門，和大家並肩作戰。",
+  "{monster}倒下，{team}跟上腳步，首領又多了一個對手！",
+  "{team}拿下 {points} 分，殺進首領房支援戰場！",
+];
+
 /** The middle line: a short atmosphere/detail beat, one per event type — added for multi-segment
  * narration (docs/designs/multi-segment-narration.md). Every event gets one of these, whether or
  * not it has a next team, so it's a flat pool keyed by event type, same shape as VARIANTS. */
@@ -222,7 +230,7 @@ export const BOSS_EXHAUSTED_VARIANTS = [
 
 /** A team walking into the boss room after phase 2 has started: the phase everyone has already seen (D13). */
 const BOSS_ENTER_PHASE_VARIANTS = [
-  "{team}推開最後一道門，首領正處於「{phase}」！",
+  "{team}趕進首領房，首領正處於「{phase}」！",
   "{team}踏進首領房，戰鬥已經進入「{phase}」。",
   "答對！{team}走進最深處，迎面就是「{phase}」的首領。",
 ];
@@ -289,6 +297,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (!bossEnter && (event.type === "correct" || event.type === "boss-hit") && event.classId) {
         return fill(pick([...CLASS_VARIANTS[event.classId][event.type], ...VARIANTS[event.type]], event.type), event);
       }
+      if (bossEnter && event.entersBoss?.order) return fill(pick(BOSS_JOIN_VARIANTS, "boss-join"), event);
       return fill(pick(bossEnter ? BOSS_ENTER_VARIANTS : VARIANTS[event.type], bossEnter ? "boss-enter" : event.type), event);
     },
     /** Synchronous like line(): a short atmosphere/detail beat, the new middle segment. */

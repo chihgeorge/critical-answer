@@ -76,6 +76,12 @@ describe("toNarrationEvent: entering the boss room", () => {
     expect(toNarrationEvent(game, advance(true), "史萊姆")).toMatchObject({ type: "correct", entersBoss: {} });
   });
 
+  it("marks the first team in as first (no order), and a later team, host-sent ones counted, by its join order", () => {
+    expect((toNarrationEvent(game, advance(true), "史萊姆") as { entersBoss: object }).entersBoss).not.toHaveProperty("order");
+    const oneInside = { ...game, teams: game.teams.map((t) => (t.id === "b" ? { ...t, inBoss: true } : t)) };
+    expect(toNarrationEvent(oneInside, advance(true), "史萊姆")).toMatchObject({ entersBoss: { order: 2 } });
+  });
+
   it("does not flag an answer that stays out of the boss room", () => {
     expect(toNarrationEvent(game, advance(false), "史萊姆")).not.toHaveProperty("entersBoss");
   });
