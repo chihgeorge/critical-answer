@@ -247,7 +247,17 @@ export type ClientMessage =
   /** 搶答 on the boss question of a buzzer phase (docs/designs/boss-buzzer.md): the first the room handles wins. */
   | { type: "TEAM_BUZZ"; questionId: string }
   /** 沒人答對，換下一題: the buzzer phase's question moves on unrevealed (boss-buzzer.md D4). */
-  | { type: "HOST_BUZZ_SKIP"; questionId: string };
+  | { type: "HOST_BUZZ_SKIP"; questionId: string }
+  /** 觀眾反應 (docs/designs/audience-reactions.md): a waiting team taps one fixed reaction; the room rate-limits it. */
+  | { type: "REACT"; reaction: Reaction };
+
+/** The only reactions a phone can send: fixed, so there is no free text to filter. */
+export const REACTIONS = { clap: { emoji: "👏", label: "鼓掌" }, wow: { emoji: "😱", label: "好險" }, lol: { emoji: "😂", label: "笑死" }, boo: { emoji: "👎", label: "噓～" } } as const;
+export type Reaction = keyof typeof REACTIONS;
+/** One reaction per team per this many ms (the phone greys its buttons for as long). */
+export const REACT_GAP_MS = 2000;
+/** At most this many reactions per room in any REACT_GAP_MS, so the big screen never fills up. */
+export const REACT_ROOM_MAX = 6;
 
 /** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the crit die
  * after a correct lock (20 is a critical hit, 1 a fumble), a fill-in's persuasion check (`bonus` + the die against
@@ -344,6 +354,8 @@ export type ServerMessage =
       eventReveal?: EventReveal;
     }
   | { type: "GAME_OVER"; winners: string[] }
+  /** A waiting team's reaction, for the big screen to float up for a moment. Never stored. */
+  | { type: "REACTION"; teamId: string; reaction: Reaction }
   /** One per event (1-3 segments, played in order), sent again with `rev` + 1 after each host edit of that eventId.
    * Clients keep the highest eventId they have seen. 3 segments when there's a next team (result + atmosphere +
    * transition), 2 when there isn't (boss-kill, or the game's last judged event) — see docs/designs/multi-segment-narration.md.
@@ -676,6 +688,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       return { type: "TEAM_SUBMIT_TEXT", questionId, text, ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}) };
     }
+    case "REACT":
+      return typeof m.reaction === "string" && Object.hasOwn(REACTIONS, m.reaction) ? { type: "REACT", reaction: m.reaction as Reaction } : null;
     default:
       return null;
   }

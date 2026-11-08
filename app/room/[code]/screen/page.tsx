@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
-import type { AnswerReveal, EventReveal, LobbyTeams, MediaCommand, PendingRoll, PodiumReveal, PublicMediaContent, PublicQuestion, StateMessage } from "@/lib/protocol";
+import { REACTIONS, type AnswerReveal, type EventReveal, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type StateMessage } from "@/lib/protocol";
 import { revealNow, type Beat } from "@/lib/podium";
 import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
@@ -187,6 +187,28 @@ function WallOptions({ options, gone, magic, lock, wrong, correct, teamName }: {
         );
       })}
     </>
+  );
+}
+
+/** 觀眾反應 (docs/designs/audience-reactions.md): waiting teams' reactions float up behind everything on the stage
+ * (z 2: above the wall, under the torches, tiles, panels and dialogue box), so they show only in the gaps and never
+ * cover the question, the options or the countdown. Each climbs out from behind the option tiles in its lane and fades. */
+type Float = { id: number; teamId: string; reaction: Reaction; x: number };
+let floatSeq = 0;
+const FLOAT_MS = 2400;
+const MAX_FLOATS = 8;
+/** Where the wall shows on every scene: the gutters beside the question panel (x < 110, x > 850) and the arch's sides. */
+const FLOAT_LANES = [24, 878, 352, 560, 64, 838];
+function ReactionFloats({ floats, teams }: { floats: Float[]; teams: SpectatorView["teams"] }) {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden" style={{ zIndex: 2 }}>
+      {floats.map((f) => (
+        <div key={f.id} data-testid="reaction-float" className="px-rise absolute flex flex-col items-center" style={{ left: f.x, top: 120, filter: "drop-shadow(3px 3px 0 var(--k))" }}>
+          <span className="text-[38px] leading-none">{REACTIONS[f.reaction].emoji}</span>
+          <span className="max-w-[120px] truncate text-[13px] text-[var(--cream)]">{teams.find((t) => t.id === f.teamId)?.name ?? ""}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -710,6 +732,7 @@ export default function ScreenPage() {
   const [disconnected, setDisconnected] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
+  const [floats, setFloats] = useState<Float[]>([]);
   /** The boss kill came in live, so the end screen cooks the boss before the podium (cooking R8). */
   const [finale, setFinale] = useState(false);
   /** The phase of the last STATE on this connection: playing → finished is a kill seen live. */
@@ -1100,6 +1123,13 @@ export default function ScreenPage() {
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
           break;
+        case "REACTION": {
+          const id = ++floatSeq;
+          const f: Float = { id, teamId: msg.teamId, reaction: msg.reaction, x: FLOAT_LANES[id % FLOAT_LANES.length] };
+          setFloats((fs) => [...fs.slice(-(MAX_FLOATS - 1)), f]);
+          setTimeout(() => setFloats((fs) => fs.filter((o) => o !== f)), FLOAT_MS);
+          break;
+        }
       }
     },
   });
@@ -1126,6 +1156,7 @@ export default function ScreenPage() {
           <EventRoomScreen view={game.view} reveal={game.eventReveal ?? null} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onPodium={onPodium} />}
+        {game?.phase === "playing" && <ReactionFloats floats={floats} teams={game.view.teams} />}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
