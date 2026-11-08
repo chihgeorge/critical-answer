@@ -92,7 +92,7 @@ worker/index.ts          Cloudflare Worker: the Room and BankStoreDO Durable Obj
 lib/room/                Room logic (dungeon-room.ts) and the two small interfaces it needs (io.ts), platform independent
 lib/gate.ts、origin.ts   Worker entry rules
 e2e/                     Playwright end-to-end tests
-scripts/                 playtest.sh (LAN playtest), check-bundle.sh, pregate-runner.sh (local test runner for gstack pregate, runs only unit tests; see .gstack/pregate.json), check-docs.ts (checks links and anchors in README and the docs/ guides, and the Chinese/English twin pairing)
+scripts/                 playtest.sh (LAN playtest), check-bundle.sh, pregate-runner.sh (local test runner for gstack pregate, runs only unit tests; see .gstack/pregate.json), check-docs.ts (checks links and anchors in README and the docs/ guides, and the Chinese/English twin pairing), balance-sim.ts (class balance simulation: `node scripts/balance-sim.ts [games]` prints each class's average score and win share)
 public/fonts/            Bundled fonts
 DESIGN.md                Pixel design system
 docs/designs/            Design docs and decision records (including question-bank-editor.md)

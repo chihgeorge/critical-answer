@@ -705,3 +705,18 @@ Approval readiness: PASS (R1, R1b, R2, R3, R4, D1)
 **VERDICT:** ENG REVIEW done at 8d82c09. All decisions resolved. UI scope exists (phone picker, TV die): /plan-design-review is optional.
 
 NO UNRESOLVED DECISIONS
+
+## 廚師（第 5 個職業，2026-11-07）
+
+被動能力，不用按：這隊每次拿到獎勵分（飽足感）都多 `CHEF_BONUS_PERCENT`（15%）。站長在 /plan-eng-review 和 /plan-design-review 定了這些：
+
+- D1：取整數用四捨五入，只要這次有拿分，至少 +1（`chefShare` 用整數運算，10→+2、20→+3、30→+5、5→+1）。
+- D2：15% 算在整筆分數上，也就是偷襲 ×2、大成功的一半和首領 4d20 都算進去之後。
+- D3：題庫沒有料理時照加，只是字樣是「分」。
+- D4：說服檢定加值 `CHECK_BONUS.chef = 1`，和沒選職業一樣。
+- D5：大螢幕料理卡寫「+23 飽足感（🍳 廚師 +3）」，手機答對列寫「答對了！＋23 分（廚師 +3）」，都在同一行。
+- D6：手機選職業時，廚師卡橫跨兩欄（只有它是被動）。
+
+`answerQuestion` 的兩個加分點（一般房、首領房）都經過 `withChef`；`AnswerOutcome` 帶 `chefBonus`，房間把它放進 `reveal.dish` 和 `reveal.choice`。廚師沒有主動技能：`abilityUses` 照樣是 2 但用不到，手機和主持人頁顯示「被動」，不顯示次數。旁白的武器是菜刀、平底鍋和爐火。
+
+平衡（五個職業一起調）是另一件事，見 TODOS.md。

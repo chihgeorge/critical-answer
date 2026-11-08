@@ -173,6 +173,8 @@ function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
  * the write fails, so a player never sees a state that was not saved. `restore()` reads it back after a
  * restart. Without storage (tests, the temporary PartyKit adapter) the room is in memory only.
  */
+/** A chef's share of a reveal's points, left out for every other team. */
+const chefOf = (o: { chefBonus?: number }) => (o.chefBonus ? { chefBonus: o.chefBonus } : {});
 /** Names a reader can't tell apart (full-width vs half-width, case) count as one team name. */
 const sameTeamName = (a: string, b: string) => a.normalize("NFKC").toLowerCase() === b.normalize("NFKC").toLowerCase();
 
@@ -1755,7 +1757,7 @@ export class DungeonRoom {
       const explanation = publicExplanation(this.bank, questionId, imageBaseUrl);
       const q = this.question(questionId);
       // The option wall, green tile and points of a correct lock or a warrior's success on a multipleChoice question.
-      const choice = q?.kind === "multipleChoice" ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward } : undefined;
+      const choice = q?.kind === "multipleChoice" ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward, ...chefOf(outcome) } : undefined;
       // The answer stops the clip; the reveal shows the video where it stopped (D17).
       if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
       const video = q?.content.kind === "youtube" && (!explanation || explanation.kind === "text") ? publicMediaContent(q.content, imageBaseUrl, questionId) : undefined;
@@ -1765,7 +1767,7 @@ export class DungeonRoom {
         ...(explanation ? { explanation } : {}),
         ...(video?.kind === "youtube" ? { video } : {}),
         ...(choice ? { choice } : {}),
-        ...(dish ? { dish: { ...dish, points: outcome.reward, monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
+        ...(dish ? { dish: { ...dish, points: outcome.reward, ...chefOf(outcome), monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };
     }
     // Fixed before the STATE is saved: the boss cooks first (cooking R8), otherwise the kill-shot line is read first.
