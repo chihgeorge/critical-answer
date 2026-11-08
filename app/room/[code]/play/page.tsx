@@ -67,7 +67,7 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
 
 /** The team's class ability on its own turn (D11=A: under 鎖定答案). The warrior's button or its die
  * while the room holds it; the mage's button (multipleChoice, while 2+ wrong options are left; a fill-in
- * question without a hint yet) or what it removed; the thief's button or its armed bar (D16). The cleric prays in MyChoicePanel's wrong panel. */
+ * or sort question without a hint yet) or what it removed; the thief's button or its armed bar (D16). The cleric prays in MyChoicePanel's wrong panel. */
 function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; frozen?: boolean; noHint?: boolean }) {
   const me = game.view.teams.find((t) => t.id === teamId);
   const roll = game.pendingRoll?.teamId === teamId ? game.pendingRoll : null;
@@ -187,7 +187,9 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
   // A sort question: this phone's own order until it locks, kept across a 重答 so the team fixes only the ✕ places.
   const [mine, setMine] = useState<{ qid: string; order: number[] } | null>(null);
   const sorting = !!q.items;
-  const myOrder = mine?.qid === q.id ? mine.order : Array.from({ length: SORT_ITEMS }, (_, i) => i);
+  // A reload mid-question starts from the team's pick, else its last wrong order (so a 重答 keeps its ✓ places).
+  const seed = sorting ? sortOrderOf(pick ?? gone.at(-1) ?? -1) : undefined;
+  const myOrder = mine?.qid === q.id ? mine.order : (seed ?? Array.from({ length: SORT_ITEMS }, (_, i) => i));
   const shownOrder = (lock && sortOrderOf(lock.optionIndex)) || (wrong?.optionIndex != null && sortOrderOf(wrong.optionIndex)) || myOrder;
   const myCode = sortCode(myOrder);
   const pickable = sorting ? !gone.includes(myCode) : pick !== null && !gone.includes(pick);
@@ -299,22 +301,61 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
  * A sort question's items, top to bottom (the owner's mockup A): drag a row's ☰ up or down to move it. Only the
  * handle takes the touch (touch-action: none), so the rest of the page still scrolls under a finger; the arrow
  * keys move a focused handle too. `order` is shown indices; `marks`, after a wrong lock, says which places are right.
+ * Rows are keyed by place, not item, so a drag never moves the DOM node under the finger (iOS can drop a pointer
+ * whose node React reinserts); the drag listens on window and ends on up, cancel, a freeze or unmount.
  */
 function SortList({ items, order, marks, locked, frozen, labelledBy, onChange }: { items: string[]; order: number[]; marks?: boolean[]; locked: boolean; frozen: boolean; labelledBy?: string; onChange: (order: number[]) => void }) {
   const rows = useRef<(HTMLLIElement | null)[]>([]);
   const [dragging, setDragging] = useState<number | null>(null);
+  // The latest order and callback for window listeners, ahead of the rerender a move causes.
+  const live = useRef({ order, onChange });
+  const at = useRef<number | null>(null);
+  const stop = useRef<() => void>(() => {});
+  const focusTo = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    live.current = { order, onChange };
+    if (focusTo.current !== null) rows.current[focusTo.current]?.querySelector("button")?.focus();
+    focusTo.current = null;
+  });
+  useEffect(() => () => stop.current(), []);
+  useEffect(() => {
+    if (frozen) stop.current();
+  }, [frozen]);
   const move = (from: number, to: number) => {
-    if (to < 0 || to >= order.length || to === from) return;
-    const next = [...order];
+    const { order: cur, onChange: change } = live.current;
+    if (to < 0 || to >= cur.length || to === from) return false;
+    const next = [...cur];
     next.splice(to, 0, ...next.splice(from, 1));
-    onChange(next);
-    setDragging((d) => (d === null ? d : to));
+    live.current = { ...live.current, order: next };
+    change(next);
+    return true;
   };
-  const onMove = (e: React.PointerEvent) => {
-    if (dragging === null) return;
-    // The new place: how many other rows have their middle above the finger.
-    const to = rows.current.filter((r, j) => r && j !== dragging && r.getBoundingClientRect().top + r.offsetHeight / 2 < e.clientY).length;
-    move(dragging, to);
+  const start = (i: number) => {
+    stop.current();
+    at.current = i;
+    setDragging(i);
+    const onMove = (e: PointerEvent) => {
+      const from = at.current;
+      if (from === null) return;
+      // The new place: how many other rows have their middle above the finger.
+      const to = rows.current.filter((r, j) => r && j !== from && r.getBoundingClientRect().top + r.offsetHeight / 2 < e.clientY).length;
+      if (move(from, to)) {
+        at.current = to;
+        setDragging(to);
+      }
+    };
+    const end = () => {
+      at.current = null;
+      setDragging(null);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      stop.current = () => {};
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    stop.current = end;
   };
   return (
     <ol aria-labelledby={labelledBy} aria-label={labelledBy ? undefined : "排序"} className="flex flex-col gap-2" data-testid="sort-list">
@@ -323,7 +364,7 @@ function SortList({ items, order, marks, locked, frozen, labelledBy, onChange }:
         const look = mark === true ? "ok" : mark === false ? "bad" : locked ? "lock" : dragging === i ? "sel" : frozen ? "dim" : "";
         return (
           <li
-            key={shown}
+            key={i}
             ref={(el) => {
               rows.current[i] = el;
             }}
@@ -343,16 +384,14 @@ function SortList({ items, order, marks, locked, frozen, labelledBy, onChange }:
                 disabled={frozen}
                 className="-my-1 flex h-[48px] w-[48px] flex-none touch-none items-center justify-center text-[26px]"
                 onPointerDown={(e) => {
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  setDragging(i);
+                  e.preventDefault();
+                  start(i);
                 }}
-                onPointerMove={onMove}
-                onPointerUp={() => setDragging(null)}
-                onPointerCancel={() => setDragging(null)}
                 onKeyDown={(e) => {
                   if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
                   e.preventDefault();
-                  move(i, e.key === "ArrowUp" ? i - 1 : i + 1);
+                  const to = e.key === "ArrowUp" ? i - 1 : i + 1;
+                  if (move(i, to)) focusTo.current = to;
                 }}
               >
                 ☰

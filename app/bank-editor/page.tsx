@@ -984,7 +984,11 @@ function QuestionRow({
                 className="px-input flex-1"
                 aria-label={`排序第 ${i + 1} 個`}
                 value={item}
-                onChange={(e) => onUpdate((cur) => (cur.kind === "sort" ? { ...cur, items: cur.items.map((o, j) => (j === i ? e.target.value : o)) } : cur))}
+                onChange={(e) => {
+                  // Read the value now, not in the deferred updater (the #147 flake).
+                  const value = e.target.value;
+                  onUpdate((cur) => (cur.kind === "sort" ? { ...cur, items: cur.items.map((o, j) => (j === i ? value : o)) } : cur));
+                }}
               />
             </div>
           ))}

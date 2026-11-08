@@ -27,5 +27,8 @@ export function sortOrderOf(code: number): number[] | undefined {
  * order, so slot k is right when the shown item placed there is bank item k. `shownToBank[shown] = bank index` is
  * the game's option order; without one the shown order is the bank order. */
 export function sortSlots(code: number, shownToBank?: number[]): boolean[] {
-  return (sortOrderOf(code) ?? []).map((shown, k) => (shownToBank?.[shown] ?? shown) === k);
+  const order = sortOrderOf(code);
+  // Fails closed: a code that is no order marks every place wrong, never an empty (all-true) list.
+  if (!order) return Array<boolean>(SORT_ITEMS).fill(false);
+  return order.map((shown, k) => (shownToBank?.[shown] ?? shown) === k);
 }

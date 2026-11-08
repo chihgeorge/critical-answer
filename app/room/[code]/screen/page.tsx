@@ -187,26 +187,27 @@ function WallOptions({ options, gone, magic, lock, wrong, correct, teamName }: {
 /** A sort question's tiles (no option index of their own): the items while the team thinks, then in the team's
  * locked order, its wrong order marked per place (only which places are right, never the answer, D5), or the answer. */
 type SortTile = { text: string; look: OptionLook; label?: string };
-function sortTiles(question: PublicQuestion | null, reveal: AnswerReveal | null, lock: LockedOption | null, wrong: WrongAnswer | null, wrongSlots: boolean[] | undefined): { tiles: SortTile[]; ordered: boolean } | null {
-  if (reveal) return reveal.sorted ? { tiles: reveal.sorted.items.map((text) => ({ text, look: "ok", label: "✓" })), ordered: true } : null;
+function sortTiles(question: PublicQuestion | null, reveal: AnswerReveal | null, lock: LockedOption | null, wrong: WrongAnswer | null, wrongSlots: boolean[] | undefined): SortTile[] | null {
+  if (reveal) return reveal.sorted ? reveal.sorted.items.map((text) => ({ text, look: "ok", label: "✓" })) : null;
   const items = question?.items;
   if (!items) return null;
   const inOrder = (code: number) => (sortOrderOf(code) ?? []).map((i) => items[i]);
-  if (lock?.questionId === question.id) return { tiles: inOrder(lock.optionIndex).map((text) => ({ text, look: "lock", label: "🔒" })), ordered: true };
+  if (lock?.questionId === question.id) return inOrder(lock.optionIndex).map((text) => ({ text, look: "lock", label: "🔒" }));
   if (wrong?.questionId === question.id && wrong.optionIndex !== null && wrongSlots) {
-    return { tiles: inOrder(wrong.optionIndex).map((text, i) => (wrongSlots[i] ? { text, look: "ok", label: "✓" } : { text, look: "bad", label: "✕" })), ordered: true };
+    return inOrder(wrong.optionIndex).map((text, i) => (wrongSlots[i] ? { text, look: "ok", label: "✓" } : { text, look: "bad", label: "✕" }));
   }
-  return { tiles: items.map((text) => ({ text, look: "plain" })), ordered: false };
+  return items.map((text) => ({ text, look: "plain" }));
 }
 
-function SortWall({ tiles, ordered }: { tiles: SortTile[]; ordered: boolean }) {
+/** Numbered 1–4 like the phone's rows, before the lock too (the phone starts from the same order). */
+function SortWall({ tiles }: { tiles: SortTile[] }) {
   return (
     <>
       {tiles.slice(0, TILE_SPOTS.length).map((t, i) => (
         <McOption
           key={i}
           index={i}
-          badge={ordered ? i + 1 : undefined}
+          badge={i + 1}
           text={t.text}
           look={t.look}
           label={t.label}
@@ -315,7 +316,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {!wall && !sortWall && <Torches />}
       <Sparks />
       {wall && <WallOptions options={wall.options} gone={wall.gone} magic={wall.magic} lock={pendingLock} wrong={wrong} correct={wall.correct} teamName={wall.team} />}
-      {sortWall && <SortWall tiles={sortWall.tiles} ordered={sortWall.ordered} />}
+      {sortWall && <SortWall tiles={sortWall} />}
 
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
         {dish && eater ? (

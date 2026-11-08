@@ -4097,9 +4097,9 @@ describe("sort questions", () => {
   const RIGHT = sortCode([3, 2, 1, 0]);
   const HALF = sortCode([3, 2, 0, 1]); // A B right, then D C
 
-  function sortGame(classId?: string) {
+  function sortGame(classId?: string, die?: number) {
     vi.useFakeTimers();
-    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: sortBank });
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: sortBank, fixedDie: die });
     const hostConn = makeConn("host-conn");
     room.onConnect(hostConn);
     claim(room, hostConn);
@@ -4150,6 +4150,33 @@ describe("sort questions", () => {
     expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
     send(room, hostConn, { type: "HOST_JUDGE", teamId: T1, questionId: "r0-s1", correct: true });
     expect(lastSentTo(hostConn)).toMatchObject({ detail: "auto_judged" });
+  });
+
+  it("a flee after a wrong order clears the marks and reveals nothing", () => {
+    const { room, conns } = sortGame();
+    lockOrder(room, conns[0], HALF);
+    send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "r0-s1", choice: "flee" });
+    expect(room.game!.pendingWrong).toBeFalsy();
+    const state = lastBroadcast(room);
+    expect(state.wrongSlots).toBeUndefined();
+    expect(state.reveal?.sorted).toBeUndefined();
+  });
+
+  it("a cleric's prayer keeps the marks up and the turn", () => {
+    const { room, conns } = sortGame("cleric");
+    lockOrder(room, conns[0], HALF);
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-s1" });
+    expect(room.game!.pendingWrong).toMatchObject({ prayed: true });
+    expect(lastBroadcast(room).wrongSlots).toEqual([true, true, false, false]);
+  });
+
+  it("a warrior's 20 answers it, crits and reveals the order", () => {
+    const { room, conns } = sortGame("warrior", 20);
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-s1" });
+    expect((room as any).pendingRoll).toMatchObject({ kind: "warrior", value: 20 });
+    vi.advanceTimersByTime(2000);
+    expect(room.game!.teams[0].reward).toBe(15); // 10, plus half for the 20 (critable like multiple choice)
+    expect(lastBroadcast(room).reveal).toMatchObject({ sorted: { items: ["A", "B", "C", "D"], teamId: T1 } });
   });
 
   it("the mage names the first item", () => {

@@ -1630,7 +1630,7 @@ export class DungeonRoom {
       return;
     }
     if (fleeChoice === "team" || fleeChoice === "pray") return this.hostClericWrong(conn, teamId, questionId, fleeChoice);
-    // A multipleChoice question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
+    // A multipleChoice or sort question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
     // team (E5), never 答對.
     if (correct && isAutoJudged(this.question(questionId))) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "auto_judged" });
@@ -1701,7 +1701,7 @@ export class DungeonRoom {
 
   /** Applies one answer; throws InvalidActionError (from answerQuestion) before changing anything.
    * `roll`: a warrior's d20 stands in for the answer (warriorRoll), and `correct` is ignored; on a
-   * multipleChoice question it is the crit die too. A crit die (`kind: "crit"`) rides on a correct answer. */
+   * multipleChoice or sort question it is the crit die too. A crit die (`kind: "crit"`) rides on a correct answer. */
   /** judgeNow, with a lost natural 20 held back until it is done (it narrates first and its phase card is due) and
    * tried after: the turn may now be the crit team's. */
   private judge(...args: Parameters<DungeonRoom["judgeNow"]>) {

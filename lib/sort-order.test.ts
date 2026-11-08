@@ -18,5 +18,8 @@ describe("sort-order", () => {
     expect(sortSlots(sortCode([3, 2, 1, 0]), reversed)).toEqual([true, true, true, true]);
     expect(sortSlots(sortCode([3, 2, 0, 1]), reversed)).toEqual([true, true, false, false]);
     expect(sortSlots(sortCode([0, 1, 2, 3]))).toEqual([true, true, true, true]);
+    // Fails closed: a code that is no order is never all right.
+    expect(sortSlots(24)).toEqual([false, false, false, false]);
+    expect(sortSlots(-1)).toEqual([false, false, false, false]);
   });
 });

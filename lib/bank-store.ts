@@ -34,7 +34,7 @@
 // (queueUploadedImage), so one the editor never saves is deleted too.
 
 import { BANK } from "./question-bank-data";
-import { assertSavable, parseBank, imageKeysOf, type Bank } from "./question-bank";
+import { allQuestions, assertSavable, parseBank, imageKeysOf, type Bank } from "./question-bank";
 import type { RoomStorage } from "./room/io";
 
 const BANK_KEY = "bank";
@@ -48,6 +48,9 @@ export const BANK_FORMAT = 4;
  * docs/designs/monster-catalog.md §5): the bundled bank comes back `outdated` with the stored version, and a
  * save may overwrite it. Format 4 only added sort questions, so format 3 still reads as is. */
 const OLDEST_PARSED_FORMAT = 3;
+/** The format a bank is stored at: 4 only when it holds a sort question, the one thing format-3 code would lose.
+ * A bank without one stays at 3, so a rollback to the previous version still reads it (/review, 2026-11-07). */
+export const formatOf = (bank: Bank): number => (allQuestions(bank).some((q) => q.kind === "sort") ? BANK_FORMAT : OLDEST_PARSED_FORMAT);
 /** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
 const PENDING_KEY = "pendingImageDeletes";
 /** Default wait before an orphaned image is deleted: a room's default 24-hour expiry plus an hour
@@ -161,7 +164,7 @@ export class BankStore {
     const raw = await this.storage.get(BANK_KEY);
     if (raw === undefined) {
       const seeded: VersionedBank = { bank: BANK, version: 1 };
-      await this.storage.put(BANK_KEY, { ...seeded, format: BANK_FORMAT });
+      await this.storage.put(BANK_KEY, { ...seeded, format: formatOf(BANK) });
       return { current: seeded, unreadable: false };
     }
     try {
@@ -193,7 +196,7 @@ export class BankStore {
     assertSavable(validated);
     const next: VersionedBank = { bank: validated, version: current.version + 1 };
     if (outdated) await this.storage.put(LEGACY_BANK_KEY, { bank: outdated.raw, format: outdated.format, version: current.version });
-    await this.storage.put(BANK_KEY, { ...next, format: BANK_FORMAT });
+    await this.storage.put(BANK_KEY, { ...next, format: formatOf(validated) });
     // An outdated bank was never parsed: its images come from walking the raw stored value.
     const oldKeys = outdated ? legacyImageKeys(outdated.raw) : imageKeysOf(current.bank);
     const newKeys = imageKeysOf(validated);
