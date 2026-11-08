@@ -907,14 +907,17 @@ function QuestionRow({
               aria-label="題幹"
               placeholder="題幹（顯示在圖片或影片上方，例如：這首歌是什麼的主題曲？）"
               value={q.prompt ?? ""}
-              onChange={(e) =>
+              onChange={(e) => {
+                // Read the value now: React may run or rerun the updater later, after the input
+                // was put back to its old value, and the prompt would be dropped (a CI flake).
+                const prompt = e.target.value;
                 onUpdate((cur) => {
                   const next = { ...cur };
-                  if (e.target.value.trim()) next.prompt = e.target.value;
+                  if (prompt.trim()) next.prompt = prompt;
                   else delete next.prompt;
                   return next;
-                })
-              }
+                });
+              }}
             />
           )}
         </div>
@@ -929,7 +932,10 @@ function QuestionRow({
           style={{ width: "auto" }}
           aria-label="題型"
           value={q.kind}
-          onChange={(e) => onUpdate((cur) => blankQuestion(cur, e.target.value as BankQuestion["kind"]))}
+          onChange={(e) => {
+            const kind = e.target.value as BankQuestion["kind"];
+            onUpdate((cur) => blankQuestion(cur, kind));
+          }}
         >
           <option value="text">填空</option>
           <option value="multipleChoice">選擇</option>
@@ -951,7 +957,10 @@ function QuestionRow({
             className="px-input flex-1"
             aria-label="答案"
             value={q.answer}
-            onChange={(e) => onUpdate((cur) => (cur.kind === "text" ? { ...cur, answer: e.target.value } : cur))}
+            onChange={(e) => {
+              const answer = e.target.value;
+              onUpdate((cur) => (cur.kind === "text" ? { ...cur, answer } : cur));
+            }}
           />
           <PixelButton variant="flee" onClick={onDelete}>
             刪除
@@ -972,13 +981,12 @@ function QuestionRow({
                 className="px-input flex-1"
                 aria-label={`選項 ${i + 1}`}
                 value={opt}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const value = e.target.value;
                   onUpdate((cur) =>
-                    cur.kind === "multipleChoice"
-                      ? { ...cur, options: cur.options.map((o, j) => (j === i ? e.target.value : o)) }
-                      : cur,
-                  )
-                }
+                    cur.kind === "multipleChoice" ? { ...cur, options: cur.options.map((o, j) => (j === i ? value : o)) } : cur,
+                  );
+                }}
               />
               <PixelButton
                 variant="flee"
