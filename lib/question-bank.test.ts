@@ -542,3 +542,34 @@ describe("textQuestionGaps", () => {
     expect(textQuestionGaps(mixed)).toEqual({ difficulties: [], boss: false });
   });
 });
+
+// Value: protects=the sort kind's bank rules and its public shape: exactly four distinct items, never shown in the
+// answer's order (even without a game order), answer text for the host; fails_when=a 3-item or duplicate sort parses,
+// the correct order reaches publicQuestion, or the shuffle can return the bank order; seam=none; no_claim=room judging
+describe("sort questions", () => {
+  const sortQ = (items: unknown) => ({ kind: "sort", id: "s1", content: { kind: "text", value: "依年齡排" }, items });
+  const bankWith = (q: unknown) => ({
+    pools: { 1: [q] },
+    rooms: [{ monster: "slime-soft", difficulty: 1, reward: 10 }],
+    boss: { monster: "dragon", phases: [{ maxHp: 1, questions: [{ kind: "text", id: "b", content: { kind: "text", value: "?" }, answer: "x" }] }] },
+  });
+
+  it("parses four distinct items and refuses anything else", () => {
+    const bank = parseBank(bankWith(sortQ(["A", "B", "C", "D"])));
+    expect(bank.pools[1][0]).toMatchObject({ kind: "sort", items: ["A", "B", "C", "D"] });
+    expect(answerText(bank.pools[1][0])).toBe("A → B → C → D");
+    expect(() => parseBank(bankWith(sortQ(["A", "B", "C"])))).toThrow(/exactly 4 items/);
+    expect(() => parseBank(bankWith(sortQ(["A", "B", "C", " "])))).toThrow(/empty item/);
+    expect(() => parseBank(bankWith(sortQ(["A", "B", "C", "A "])))).toThrow(/same item twice/);
+  });
+
+  it("is never shown in the answer's order", () => {
+    const bank = parseBank(bankWith(sortQ(["A", "B", "C", "D"])));
+    const order = shuffledOptionOrders(bank, () => 0)["s1"];
+    expect(order).toEqual([3, 2, 1, 0]);
+    expect(publicQuestion(bank, "s1", 0, "", order)?.items).toEqual(["D", "C", "B", "A"]);
+    // No order (added after the game started): still not the bank order.
+    expect(publicQuestion(bank, "s1", 0, "")?.items).toEqual(["D", "C", "B", "A"]);
+    for (let i = 0; i < 50; i++) expect(shuffledOptionOrders(bank, Math.random)["s1"]).not.toEqual([0, 1, 2, 3]);
+  });
+});

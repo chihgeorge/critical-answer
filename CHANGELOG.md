@@ -11,6 +11,17 @@ All notable changes to Critical Answer are documented here.
 ### Fixed
 - A bank-editor read-only test could end while an older load was still inside its route handler. Its `route.fetch` then threw "Test ended", and the next spec file did not run (CI on PR #146). The test now waits for every route handler before it ends.
 
+## [0.46.0.0] - 2026-11-08
+
+**Deploy note:** deploy the room server (`wrangler deploy`) before the website. Then reload every phone, big screen, host page and bank-editor tab before you save or play a bank with a sort question. An old tab does not know sort questions. A bank without a sort question is still saved at format 3, so a rollback reads it as before. After a sort question is saved, rolling the room server back makes it load the bundled bank instead and resets the rooms that are running.
+
+### Added
+- A new question type, 排序題 (sort question). The team gets four items in a shuffled order. On the phone, they drag each row by its ☰ handle (or move it with the arrow keys) into the order the question asks for, then lock. The host taps 公布答案 and the room judges it. Only a fully correct order counts.
+- After a wrong lock, the phone and the big screen mark each place ✓ or ✕ and never show the answer. The team may 重答 from the same order or flee, as for a multiple-choice question.
+- When the answer is right, the big screen shows the correct order, numbered 1 to 4. The host page shows the locked order and the answer.
+- Classes work on sort questions as on multiple choice. The warrior's 20 counts as correct, a correct answer can crit, the cleric can pray, and the chef adds its share. The mage shows the first item to everyone (「🔮 第 1 個：…」), once per question.
+- The bank editor can write sort questions: four items, entered in the correct order. It refuses an empty or repeated item.
+
 ## [0.45.0.0] - 2026-11-07
 
 **Deploy note:** deploy the room server (`wrangler deploy`) before the website, then reload the host page, the big screen and the phones. An old room server refuses the new class, so a phone that taps 🍳 廚師 before the room server is updated gets nothing. Do not roll the room server back to an older version while a game with a chef is running: the older version cannot read that room and starts it over.
