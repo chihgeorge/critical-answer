@@ -40,7 +40,7 @@ Client components (for example `app/bank-editor/page.tsx`) may import only the p
 
 ## Versions and changelog
 
-A PR never edits `VERSION`, the `package.json` version or `CHANGELOG.md`. It adds `changelog.d/<branch-slug>.md` (format in `changelog.d/README.md`; a feature opens with `bump: minor` front matter). The policy is `.gstack/ship-policy.json` (`changelog_fragments` + `merge: direct`), so `/ship` writes the fragment and no version. Once a PR's CI is green, it merges with `gh pr merge <n> --auto --squash --match-head-commit <sha>`: the ruleset's required check `check` waits for `static` and every e2e shard. Only a release PR (`gstack-release-stamp open`) moves the version and folds the fragments.
+A PR never edits `VERSION`, the `package.json` version or `CHANGELOG.md`. It adds `changelog.d/<branch-slug>.md` (format in `changelog.d/README.md`; a feature opens with `bump: minor` front matter). The policy is `.gstack/ship-policy.json` (`changelog_fragments` + `merge: direct`), so `/ship` writes the fragment and no version. Once a PR's CI is green, it merges with `gh pr merge <n> --auto --squash --match-head-commit <sha>`: the ruleset's required check `check` waits for `static` and every e2e shard. Only a release PR (`gstack-release-stamp open`) moves the version and folds the fragments. It lands with `gstack-ship-queue land --pr <n> --pin <head>`, not auto-merge: land refuses when `main` moved past the release, so a fragment merged meanwhile is never left out of the version it ships in. Nothing in CI enforces the no-version rule yet; it is followed by convention.
 
 ## Health Stack
 
