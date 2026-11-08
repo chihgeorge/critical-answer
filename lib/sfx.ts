@@ -74,3 +74,6 @@ export const SFX: Record<SoundCue, SfxNote[]> = {
     { at: COOK_SMOKE_MS / 1000, duration: 0.3, freq: noteToFreq("C3"), slideTo: noteToFreq("C2"), wave: "square" },
   ],
 };
+
+/** The boss's alarm banner (components/transition-overlay.tsx): a two-tone siren, twice, under the banner's blinks. */
+export const BOSS_ALARM: SfxNote[] = [n(0.4, 0.25, "A5"), n(0.65, 0.25, "E5"), n(0.9, 0.25, "A5"), n(1.15, 0.25, "E5")];

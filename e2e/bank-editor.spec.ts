@@ -451,6 +451,32 @@ test("multipleChoice authoring: switch kind, edit options, mark correct, and del
   await expect(reloadedRow.getByLabel("第 1 個選項為正解")).toBeChecked();
 });
 
+// Value: protects=authoring a sort question: 排序 gives four empty places, a blank or repeated item blocks save, and the
+// order saves and reloads; fails_when=the editor lets through a sort the server refuses, or drops or reorders items;
+// seam=none; no_claim=playing it (e2e/sort-question.spec.ts)
+test("sort authoring: four places in order, blank and repeated items block save, and the order persists", async ({ page, request }) => {
+  await resetFirstQuestion(request);
+  const firstRow = await loadEditor(page);
+  await firstRow.getByLabel("題型").selectOption("sort");
+  await expect(firstRow.getByLabel(/^排序第 /)).toHaveCount(4);
+  await expect(firstRow.getByLabel("答案")).toHaveCount(0);
+  for (const [i, item] of ["甲", "乙", "丙", "甲"].entries()) await firstRow.getByLabel(`排序第 ${i + 1} 個`).fill(item);
+  await saveAll(page);
+  await expect(page.getByTestId("bank-editor-error")).toContainText(/重複的排序項目/);
+  await firstRow.getByLabel("排序第 4 個").fill("");
+  await saveAll(page);
+  await expect(page.getByTestId("bank-editor-error")).toContainText(/空白的排序項目/);
+  await firstRow.getByLabel("排序第 4 個").fill("丁");
+  await saveAll(page);
+  await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
+
+  await reloadAndLoad(page);
+  const reloadedRow = rows(page.getByTestId("bank-pool-1")).first();
+  await expect(reloadedRow.getByLabel("題型")).toHaveValue("sort");
+  for (const [i, item] of ["甲", "乙", "丙", "丁"].entries()) await expect(reloadedRow.getByLabel(`排序第 ${i + 1} 個`)).toHaveValue(item);
+  await resetFirstQuestion(request); // later tests expect a text question here
+});
+
 test("multipleChoice question-text field stays wide and editable, not squeezed by the 題型 select (2026-09-23 regression)", async ({ page }) => {
   // The 題型 <select> reuses the .px-input class, which sets width:100% as unlayered CSS — that
   // beats any Tailwind width utility (Tailwind's utilities live inside a cascade layer, and

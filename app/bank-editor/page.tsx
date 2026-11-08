@@ -2,8 +2,9 @@
 
 // Owner-only question-bank editor. Linked from the homepage, but not from anywhere in the game's
 // actual play flow — gated by the OWNER_KEY the Worker checks on every /api/bank request. Supports
-// two question kinds: text (fill-in: the team types its answer, the host judges it) and
-// multipleChoice (options[] + correctIndex, judged by the room from the team's lock). Each kind's content — and its optional
+// three question kinds: text (fill-in: the team types its answer, the host judges it),
+// multipleChoice (options[] + correctIndex, judged by the room from the team's lock) and sort (four
+// items in the correct order, the question states the rule; judged from the lock too). Each kind's content — and its optional
 // answer-reveal explanation — can independently be text, an uploaded image, or a YouTube video
 // (see docs/designs/question-media-content.md's D1: content REPLACES the old fixed prompt text,
 // it doesn't decorate it; the standalone `image` kind from image-question-type.md retired).
@@ -11,6 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
+import { SORT_ITEMS } from "@/lib/sort-order";
 import { DIFFICULTIES, MAX_BOSS_HP, MAX_PROMPT, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
@@ -101,6 +103,10 @@ function validationError(bank: Bank): string | null {
       if (q.options.length > MAX_OPTIONS) return `${label}最多 ${MAX_OPTIONS} 個選項`;
       if (q.options.some((o) => !o.trim())) return `${label}有空白選項`;
       if (q.correctIndex < 0 || q.correctIndex >= q.options.length) return `${label}還沒標記正解`;
+    }
+    if (q.kind === "sort") {
+      if (q.items.some((o) => !o.trim())) return `${label}有空白的排序項目`;
+      if (new Set(q.items.map((o) => o.trim())).size !== q.items.length) return `${label}有重複的排序項目`;
     }
     const contentErr = contentError(`${label}的內容`, q.content);
     if (contentErr) return contentErr;
@@ -674,6 +680,7 @@ function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): BankQuestio
   // The prompt (題幹) belongs to the content, so it carries over too.
   const prompt = q.prompt !== undefined ? { prompt: q.prompt } : {};
   if (kind === "text") return { kind: "text", id: q.id, content: q.content, ...prompt, answer: "", explanation: q.explanation };
+  if (kind === "sort") return { kind: "sort", id: q.id, content: q.content, ...prompt, items: Array<string>(SORT_ITEMS).fill(""), explanation: q.explanation };
   return {
     kind: "multipleChoice",
     id: q.id,
@@ -967,6 +974,7 @@ function QuestionRow({
         >
           <option value="text">填空</option>
           <option value="multipleChoice">選擇</option>
+          <option value="sort">排序</option>
         </select>
       </div>
 
@@ -992,6 +1000,28 @@ function QuestionRow({
           />
           <PixelButton variant="flee" onClick={onDelete}>
             刪除
+          </PixelButton>
+        </div>
+      ) : q.kind === "sort" ? (
+        <div className="flex flex-col gap-1">
+          <small className="text-[14px]">題目寫排序規則（例如：依年齡由大到小排），下面照正確順序填，遊戲裡會打亂。</small>
+          {q.items.map((item, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-[4.5em] shrink-0">第 {i + 1} 個</span>
+              <input
+                className="px-input flex-1"
+                aria-label={`排序第 ${i + 1} 個`}
+                value={item}
+                onChange={(e) => {
+                  // Read the value now, not in the deferred updater (the #147 flake).
+                  const value = e.target.value;
+                  onUpdate((cur) => (cur.kind === "sort" ? { ...cur, items: cur.items.map((o, j) => (j === i ? value : o)) } : cur));
+                }}
+              />
+            </div>
+          ))}
+          <PixelButton variant="flee" onClick={onDelete}>
+            刪除題目
           </PixelButton>
         </div>
       ) : (

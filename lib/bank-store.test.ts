@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { BANK_FORMAT, BankStore, LEGACY_IMAGE_DELAY_MS, legacyImageKeys, type BankStorage } from "./bank-store";
+import { BANK_FORMAT, BankStore, formatOf, LEGACY_IMAGE_DELAY_MS, legacyImageKeys, type BankStorage } from "./bank-store";
 import { type Bank } from "./question-bank";
 import { BANK } from "./question-bank-data";
 
@@ -26,7 +26,7 @@ describe("BankStore.getVersionedBank", () => {
     const { bank } = await store.getVersionedBank();
     expect(bank).toEqual(BANK);
     // The seed is persisted, not re-computed every call.
-    expect(await storage.get("bank")).toEqual({ bank: BANK, version: 1, format: BANK_FORMAT });
+    expect(await storage.get("bank")).toEqual({ bank: BANK, version: 1, format: formatOf(BANK) });
   });
 
   it("returns the stored bank and version unchanged when one already exists", async () => {
@@ -46,7 +46,7 @@ describe("BankStore.getVersionedBank", () => {
   });
 
   it("falls back to the bundled bank at version 1 when storage holds something corrupt, without throwing", async () => {
-    const storage = memoryStorage({ format: BANK_FORMAT, bank: { rooms: "not an array" }, version: 3 });
+    const storage = memoryStorage({ format: BANK_FORMAT, bank: { rooms: "not an array" }, version: 3 }); // pregate-literal: BANK_FORMAT=3 the 3 here is the stored version, not the format
     const versioned = await new BankStore(storage).getVersionedBank();
     expect(versioned).toEqual({ bank: BANK, version: 1, unreadable: true });
   });
@@ -64,12 +64,12 @@ describe("BankStore.putBank", () => {
     const store = new BankStore(storage);
     const result = await store.putBank(validBank, 1);
     expect(result).toEqual({ bank: validBank, version: 2 });
-    expect(await storage.get("bank")).toEqual({ bank: validBank, version: 2, format: BANK_FORMAT }); // pregate-literal: BANK_FORMAT=2 the 2 here is the version after one save, not the format
+    expect(await storage.get("bank")).toEqual({ bank: validBank, version: 2, format: formatOf(validBank) }); // pregate-literal: BANK_FORMAT=2 the 2 here is the version after one save, not the format
   });
 
   it("refuses to save over a stored bank it cannot read, and keeps it (a rollback below a newer format)", async () => {
     // The fallback bank is version 1, so a save at version 1 would otherwise replace every custom question.
-    const stored = { bank: { rooms: "a format this version can't read" }, version: 3, format: BANK_FORMAT };
+    const stored = { bank: { rooms: "a format this version can't read" }, version: 7, format: BANK_FORMAT };
     const storage = memoryStorage(stored);
     await expect(new BankStore(storage).putBank(validBank, 1)).rejects.toThrow(/unreadable/);
     expect(await storage.get("bank")).toEqual(stored);
@@ -77,7 +77,7 @@ describe("BankStore.putBank", () => {
 
   it("refuses to save over a stored bank in a newer format, even one its parseBank accepts", async () => {
     // A newer format that only adds fields would parse fine here, and a save would drop those fields.
-    const stored = { bank: validBank, version: 3, format: BANK_FORMAT + 1 };
+    const stored = { bank: validBank, version: 7, format: BANK_FORMAT + 1 };
     const storage = memoryStorage(stored);
     const store = new BankStore(storage);
     expect(await store.getVersionedBank()).toEqual({ bank: BANK, version: 1, unreadable: true });
@@ -87,7 +87,7 @@ describe("BankStore.putBank", () => {
 
   it("treats a format that is not a known number as unreadable too", async () => {
     for (const format of ["2", null, Number.NaN, {}]) {
-      const stored = { bank: validBank, version: 3, format };
+      const stored = { bank: validBank, version: 7, format };
       const storage = memoryStorage(stored);
       await expect(new BankStore(storage).putBank(validBank, 3)).rejects.toThrow(/unreadable/);
     }
@@ -116,11 +116,11 @@ describe("BankStore.putBank", () => {
   it("still loads a stored multipleChoice question with 5 options, but refuses to save one (the TV has 4 tiles)", async () => {
     const five = { kind: "multipleChoice" as const, id: "mc5", content: { kind: "text" as const, value: "?" }, options: ["A", "B", "C", "D", "E"], correctIndex: 0 };
     const legacy: Bank = { ...validBank, pools: { ...validBank.pools, 1: [...validBank.pools[1], five] } };
-    const storage = memoryStorage({ format: BANK_FORMAT, bank: legacy, version: 3 });
+    const storage = memoryStorage({ format: BANK_FORMAT, bank: legacy, version: 7 });
     const store = new BankStore(storage);
-    expect(await store.getVersionedBank()).toEqual({ bank: legacy, version: 3 });
-    await expect(store.putBank(legacy, 3)).rejects.toThrow(/more than 4 options/);
-    expect(await storage.get("bank")).toEqual({ bank: legacy, version: 3, format: BANK_FORMAT });
+    expect(await store.getVersionedBank()).toEqual({ bank: legacy, version: 7 });
+    await expect(store.putBank(legacy, 7)).rejects.toThrow(/more than 4 options/);
+    expect(await storage.get("bank")).toEqual({ bank: legacy, version: 7, format: BANK_FORMAT });
   });
 
   // Regression: boss HP had no upper bound, and the big screen draws one heart per HP
@@ -202,7 +202,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
   });
 
   it("deletes nothing while the stored bank is unreadable (the fallback bank is not what's stored)", async () => {
-    const { store, storage, alarms, onImagesOrphaned, at } = setup({ format: BANK_FORMAT, bank: { rooms: "a format this version can't read" }, version: 3 });
+    const { store, storage, alarms, onImagesOrphaned, at } = setup({ format: BANK_FORMAT, bank: { rooms: "a format this version can't read" }, version: 7 });
     await storage.put("pendingImageDeletes", [{ key: KEY, deleteAt: 0 }]);
     at(DELAY);
     await store.runImageCleanup();
@@ -315,6 +315,24 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
   };
 
   // Value: protects=an older-format bank loads as the default bank with its stored version and the `outdated` flag; fails_when=format < 3 is parsed, or treated as unreadable, or loses its version; why_new=new state; seam=none; no_claim=a real Durable Object (memory storage)
+  // Value: protects=the live bank across the format-4 bump (sort questions): a format-3 bank still loads as is;
+  // fails_when=bumping BANK_FORMAT turns every format-3 bank into the bundled one; seam=none; no_claim=a real Durable Object
+  // Value: protects=a rollback after this version: a bank without a sort question is still stored at format 3, one
+  // with a sort question at 4; fails_when=every save writes 4 (a rollback silently swaps in the default bank) or a sort
+  // bank is written at 3 (older code drops its sort questions on save); seam=none; no_claim=a real Durable Object
+  it("stores format 4 only for a bank with a sort question", async () => {
+    expect(formatOf(validBank)).toBe(3);
+    const sorted = { ...validBank, pools: { ...validBank.pools, 1: [{ kind: "sort" as const, id: "s1", content: { kind: "text" as const, value: "排" }, items: ["A", "B", "C", "D"] }] } };
+    expect(formatOf(sorted)).toBe(BANK_FORMAT);
+    const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
+    await new BankStore(storage).putBank(sorted, 1);
+    expect(await storage.get("bank")).toMatchObject({ version: 2, format: BANK_FORMAT });
+  });
+
+  it("still reads a format-3 bank as is", async () => {
+    expect(await new BankStore(memoryStorage({ bank: validBank, version: 6, format: 3 })).getVersionedBank()).toEqual({ bank: validBank, version: 6 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
+  });
+
   it("reads format 2, and a bank with no format, as outdated with the stored version", async () => {
     expect(await new BankStore(memoryStorage({ bank: oldBank, version: 9, format: 2 })).getVersionedBank()).toEqual({ bank: BANK, version: 9, outdated: 2 });
     expect(await new BankStore(memoryStorage({ bank: oldBank, version: 4 })).getVersionedBank()).toEqual({ bank: BANK, version: 4, outdated: 1 });
@@ -328,7 +346,7 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     const next: Bank = { ...validBank, pools: { ...validBank.pools, 1: [{ kind: "text", id: "n1", content: { kind: "image", value: KEPT_KEY }, answer: "b" }] } };
     expect(await store.putBank(next, 8)).toEqual({ conflict: true, currentVersion: 9 });
     expect(await store.putBank(next, 9)).toEqual({ bank: next, version: 10 });
-    expect(await storage.get("bank")).toEqual({ bank: next, version: 10, format: BANK_FORMAT });
+    expect(await storage.get("bank")).toEqual({ bank: next, version: 10, format: formatOf(next) });
     expect(await storage.get("pendingImageDeletes")).toEqual([{ key: OLD_KEY, deleteAt: LEGACY_IMAGE_DELAY_MS }]); // 14 days, not the usual delay
     // Value: protects=the old bank survives the overwrite on the server; fails_when=putBank drops it; why_new=adversarial review (no server-side copy); seam=none; no_claim=a way to read it back
     expect(await storage.get("legacyBank")).toEqual({ bank: oldBank, format: 2, version: 9 });

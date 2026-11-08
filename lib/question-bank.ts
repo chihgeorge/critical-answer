@@ -19,6 +19,7 @@ import { DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./g
 import { MAX_ID, type PublicMediaContent, type PublicQuestion } from "./protocol";
 import { catalogMonster, monsterById, variantOf } from "./monster-catalog";
 import { YOUTUBE_ID_RE } from "./youtube";
+import { SORT_ITEMS } from "./sort-order";
 
 /** A question's (or explanation's) content: text, an uploaded image, or a YouTube video —
  * interchangeable, picked at write time (docs/designs/question-media-content.md's D1: `content`
@@ -45,7 +46,12 @@ export const MAX_PROMPT = 200;
  * type available on either remaining kind, not its own top-level kind. */
 export type BankQuestion =
   | { kind: "text"; id: string; content: MediaContent; prompt?: string; answer: string; explanation?: MediaContent }
-  | { kind: "multipleChoice"; id: string; content: MediaContent; prompt?: string; options: string[]; correctIndex: number; explanation?: MediaContent };
+  | { kind: "multipleChoice"; id: string; content: MediaContent; prompt?: string; options: string[]; correctIndex: number; explanation?: MediaContent }
+  /** A sort question: `items` in the correct order; the question line (content or prompt) states the rule. */
+  | { kind: "sort"; id: string; content: MediaContent; prompt?: string; items: string[]; explanation?: MediaContent };
+
+/** Judged by the room from the team's lock, never by the host's 答對 (multiple choice and sort). */
+export const isAutoJudged = (q: { kind: BankQuestion["kind"] } | undefined): boolean => q?.kind === "multipleChoice" || q?.kind === "sort";
 
 export const DIFFICULTIES = [1, 2, 3, 4, 5] as const satisfies readonly Difficulty[];
 export interface BankRoom {
@@ -200,6 +206,18 @@ function parseMultipleChoiceQuestion(r: Record<string, unknown>, id: string): Ba
   };
 }
 
+function parseSortQuestion(r: Record<string, unknown>, id: string): BankQuestion {
+  const items = r.items;
+  if (!Array.isArray(items) || items.length !== SORT_ITEMS) fail(`question ${id} needs exactly ${SORT_ITEMS} items`);
+  if (!(items as unknown[]).every((o) => typeof o === "string" && o.trim())) fail(`question ${id} has an empty item`);
+  // Two equal items would make two orders right, and the phone could not tell them apart.
+  if (new Set((items as string[]).map((o) => o.trim())).size !== SORT_ITEMS) fail(`question ${id} has the same item twice`);
+  const content = parseContent(r, `question ${id}`);
+  const prompt = parsePrompt(r, content, `question ${id}`);
+  const explanation = parseExplanation(r, `question ${id}`);
+  return { kind: "sort", id, content, ...(prompt ? { prompt } : {}), items: items as string[], ...(explanation ? { explanation } : {}) };
+}
+
 function parseQuestions(raw: unknown, where: string, seen: Set<string>): BankQuestion[] {
   if (!Array.isArray(raw) || raw.length === 0) fail(`${where} has no questions`);
   return (raw as Record<string, unknown>[]).map((r) => {
@@ -211,6 +229,7 @@ function parseQuestions(raw: unknown, where: string, seen: Set<string>): BankQue
     // content happens to be an image, same as parseContent's imageKey fallback handles it.
     if (kind === "text" || kind === "image") return parseTextQuestion(r, id as string);
     if (kind === "multipleChoice") return parseMultipleChoiceQuestion(r, id as string);
+    if (kind === "sort") return parseSortQuestion(r, id as string);
     return fail(`question ${String(id)} has unknown kind ${String(kind)}`);
   });
 }
@@ -306,18 +325,20 @@ export function poolQuestionIds(bank: Bank): string[][] {
   return DIFFICULTIES.map((d) => bank.pools[d].map((q) => q.id));
 }
 
-/** A fresh shown order for every multipleChoice question, so a game's answers are not always in the
- * slot the bank wrote them in: `order[shown] = bank index` (Fisher-Yates over `rng`). */
+/** A fresh shown order for every multipleChoice and sort question, so a game's answers are not always in the
+ * slot the bank wrote them in: `order[shown] = bank index` (Fisher-Yates over `rng`). A sort question's bank
+ * order is its answer, so it is never shown in that order. */
 export function shuffledOptionOrders(bank: Bank, rng: () => number): Record<string, number[]> {
   const orders: Record<string, number[]> = {};
   for (const q of allQuestions(bank)) {
-    if (q.kind !== "multipleChoice") continue;
-    const order = q.options.map((_, i) => i);
+    if (q.kind === "text") continue;
+    const order = (q.kind === "sort" ? q.items : q.options).map((_, i) => i);
     for (let i = order.length - 1; i > 0; i--) {
       // Counted down from i, so a constant rng() of 0 (the tests' deterministic rng) keeps the bank order.
       const j = i - Math.floor(rng() * (i + 1));
       [order[i], order[j]] = [order[j], order[i]];
     }
+    if (q.kind === "sort" && order.every((v, i) => v === i)) order.reverse();
     orders[q.id] = order;
   }
   return orders;
@@ -367,6 +388,7 @@ export function findQuestion(bank: Bank, id: string) {
  * the answer (HOST_ANSWER, the narration answer-leak check) don't need to branch on kind themselves. */
 export function answerText(q: BankQuestion): string {
   if (q.kind === "multipleChoice") return q.options[q.correctIndex];
+  if (q.kind === "sort") return q.items.join(" → ");
   return q.answer;
 }
 
@@ -424,7 +446,16 @@ export function publicQuestion(
     boss: q.boss,
     monster: { id: m.id, name: v ? v.title + m.name : m.name, sprite: m.sprite, hue: (m.hue + (v?.hueShift ?? 0)) % 360, ...(v ? { accessory: v.accessory } : {}) },
     ...(q.kind === "multipleChoice" ? { options: q.options } : {}),
+    ...(q.kind === "sort" ? { items: sortShownOrder(order).map((i) => q.items[i]) } : {}),
   };
+}
+
+/** A sort question's shown order (`[shown] = bank index`): the game's, or, without a valid one (a question added to
+ * the bank after the game started), reversed — the bank order is the answer and must never be shown as is.
+ * shortcut: reversed is guessable, but only for a question added mid-game; give it a shuffled order if that matters. */
+export function sortShownOrder(order: number[] | undefined): number[] {
+  const all = Array.from({ length: SORT_ITEMS }, (_, i) => i);
+  return order && order.length === SORT_ITEMS && all.every((i) => order.includes(i)) ? order : all.reverse();
 }
 
 /** The public-safe explanation for a question that was just answered CORRECTLY — built

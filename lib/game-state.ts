@@ -216,7 +216,7 @@ export interface GameState {
    * already faced until the pool runs out.
    */
   usedQuestionIds: string[][];
-  /** Per multipleChoice question id, the option order this game shows: `optionOrder[id][shown] = bank index`.
+  /** Per multipleChoice and sort question id, the option (item) order this game shows: `optionOrder[id][shown] = bank index`.
    * Every option index the room and clients use (picks, locks, eliminated, reveals) is a shown index. */
   optionOrder: Record<string, number[]>;
   /** Every question id a team has actually gotten right, globally, across the whole game — never
@@ -939,15 +939,16 @@ export function firstMeaningfulChar(answer: string): string | null {
   return chars.length >= 2 ? chars[0]! : null;
 }
 
-/** The mage shows the first character of a fill-in answer to everyone and spends a use. A second cast on
- * the same question, or an answer too short to hint, is refused before anything is spent. */
-export function mageHint(game: GameState, teamId: string, questionId: string, answer: string): GameState {
+/** The mage shows the first character of a fill-in answer to everyone and spends a use; with `whole`, `answer` itself
+ * (a sort question's first item). A second cast on the same question, or an answer too short to hint, is refused
+ * before anything is spent. */
+export function mageHint(game: GameState, teamId: string, questionId: string, answer: string, whole = false): GameState {
   assertAbilityTurn(game, teamId, "mage");
   assertCurrentQuestion(game, teamId, questionId);
   if (game.mageHints?.[questionId] !== undefined) throw new InvalidActionError("hint_shown");
   // The team's own check already showed the first character (dnd design E1-1): nothing left to give, nothing spent.
   if (game.checks?.[checkKey(questionId, teamId)]?.hint !== undefined) throw new InvalidActionError("hint_shown");
-  const hint = firstMeaningfulChar(answer);
+  const hint = whole ? answer : firstMeaningfulChar(answer);
   if (hint === null) throw new InvalidActionError("no_hint");
   const spent = spendAbility(game, teamId, "mage");
   return { ...spent, mageHints: { ...game.mageHints, [questionId]: hint } };
