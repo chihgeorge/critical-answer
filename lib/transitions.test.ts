@@ -6,12 +6,12 @@ const team = (id: string, name: string, inBossPhase = false) => ({ id, name, inB
 const room = { id: "q1", content: { kind: "text", value: "題目" }, difficulty: 1, boss: false, monster: { name: "史萊姆", sprite: "slime", hue: 0 } };
 const boss = { ...room, id: "b1", boss: true, monster: { name: "魔王", sprite: "dragon", hue: 0 } };
 
-function state(over: { phase?: "playing" | "finished"; intro?: boolean; inBoss?: boolean; reveal?: boolean } = {}): StateMessage {
+function state(over: { phase?: "playing" | "finished"; intro?: boolean; inBoss?: boolean; reveal?: boolean; otherInBoss?: boolean } = {}): StateMessage {
   return {
     type: "STATE",
     phase: over.phase ?? "playing",
     eventId: 1,
-    view: { currentTurnTeamId: "a", teams: [team("a", "紅隊", over.inBoss)], bossHp: 5, bossMaxHp: 5, bossPhase: 1, bossCurrentQuestionId: "b1" },
+    view: { currentTurnTeamId: "a", teams: [team("a", "紅隊", over.inBoss), team("b", "藍隊", over.otherInBoss)], bossHp: 5, bossMaxHp: 5, bossPhase: 1, bossCurrentQuestionId: "b1" },
     question: over.inBoss ? boss : room,
     reveal: over.reveal ? { questionId: "q1", answer: "x" } : null,
     ...(over.intro ? { intro: { page: 1 } } : {}),
@@ -48,5 +48,19 @@ describe("nextTransition", () => {
     expect(run(UNSEEN, [state(), state({ inBoss: true })])).toEqual([null, { kind: "boss", name: "魔王" }]);
     expect(run(UNSEEN, [state({ inBoss: true }), state({ inBoss: true })])).toEqual([null, null]);
     expect(run(UNSEEN, [state({ phase: "finished" })])).toEqual([null]);
+  });
+
+  it("does not replay the boss to a screen that reconnects after any team reached it", () => {
+    expect(run(UNSEEN, [state({ otherInBoss: true }), state({ inBoss: true })])).toEqual([null, null]);
+    expect(run(UNSEEN, [state({ inBoss: true, reveal: true }), state({ inBoss: true })])).toEqual([null, null]);
+  });
+
+  it("calls the boss right after the doors when the first question is already the boss's", () => {
+    expect(run(IN_LOBBY, [state({ inBoss: true }), state({ inBoss: true })])).toEqual([{ kind: "open", team: "紅隊" }, { kind: "boss", name: "魔王" }]);
+  });
+
+  it("counts a phase card (no question, the boss drawn from the card) as the boss on screen", () => {
+    const card = { ...state(), question: null, phaseCard: { monster: boss.monster } } as unknown as StateMessage;
+    expect(run({ open: false, boss: false }, [card])).toEqual([{ kind: "boss", name: "魔王" }]);
   });
 });

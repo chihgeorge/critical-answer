@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { prefersReducedMotion } from "@/components/pixel";
 import type { Transition } from "@/lib/transitions";
 
-/** How long each transition covers the stage; reduced motion holds one still frame for less. */
+/** How long each transition covers the stage; reduced motion holds one still frame for less.
+ * Keep MS just past the .px-door-* and .px-alarm-* animations in app/globals.css (doors 0.6 s + 1 s, alarm 2.4 s). */
 const MS = { open: 1700, boss: 2500 } as const;
 const STILL_MS = { open: 1000, boss: 1500 } as const;
 
 /**
- * The opening's stone doors and the boss's alarm banner, over the stage (TODOS「開場與首領房的轉場動畫」).
+ * The opening's stone doors and the boss's alarm banner, over the stage (lib/transitions.ts decides when).
  * They only cover: the question and narration underneath carry on. Reduced motion shows one still frame.
  */
 export function TransitionOverlay({ play, onDone }: { play: Transition; onDone: () => void }) {

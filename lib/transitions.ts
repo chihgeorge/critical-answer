@@ -1,4 +1,4 @@
-// Big-screen transitions (TODOS「開場與首領房的轉場動畫」): the stone doors open before the first question,
+// Big-screen transitions: the stone doors open before the first question,
 // and the alarm banner calls the boss the first time the boss room comes on screen. Live only: a screen that
 // connects mid-game never replays either.
 
@@ -25,10 +25,12 @@ export function nextTransition(seen: TransitionSeen, msg: StateMessage): { seen:
   const turn = describeTurn(msg.view, msg.question, msg.phaseCard?.monster);
   // A reveal still shows the room monster that was just beaten: the boss is called once the room is the boss's.
   const bossOnScreen = turn.bossScene && !msg.reveal;
-  const play: Transition | null = seen.open
-    ? { kind: "open", team: turn.team?.name ?? "" }
-    : seen.boss === false && bossOnScreen
-      ? { kind: "boss", name: turn.monster.name }
-      : null;
-  return { seen: { open: false, boss: (seen.boss ?? false) || bossOnScreen }, play };
+  // A screen (re)connecting mid-game counts the boss as seen once any team got that far, on screen now or not.
+  const bossReached = msg.view.teams.some((t) => t.inBossPhase) || msg.view.bossHp < msg.view.bossMaxHp || msg.view.bossPhase > 1;
+  if (seen.open) {
+    // The doors play first; a boss already on the first question gets its alarm on the next STATE.
+    return { seen: { open: false, boss: false }, play: { kind: "open", team: turn.team?.name ?? "" } };
+  }
+  const play: Transition | null = seen.boss === false && bossOnScreen ? { kind: "boss", name: turn.monster.name } : null;
+  return { seen: { open: false, boss: (seen.boss ?? bossReached) || bossOnScreen }, play };
 }
