@@ -97,8 +97,11 @@ function describeEvent(e: NarrationEvent): string {
         ? `事件：隊伍${q(e.team)}答對了，打倒${q(e.monster)}，得到 ${e.points} 飽足感。牠等一下會被煮成料理，不要說會煮成什麼。`
         : `事件：隊伍${q(e.team)}答對了，打退${q(e.monster)}，得 ${e.points} 分。`;
       if (!e.entersBoss) return base;
-      if (e.entersBoss.phase) return `${base}這一答讓他們踏進了首領房，首領戰已經進入階段${q(e.entersBoss.phase)}。第一行要提到他們踏進首領房和這個階段，不要提還有沒有別的階段。`;
-      return `${base}這一答讓他們踏進了首領房。第一行要提到他們踏進首領房。`;
+      const join = e.entersBoss.order
+        ? `他們是第 ${e.entersBoss.order} 隊進首領房，門早就開了，別的隊伍已經在跟首領戰鬥；要說他們加入戰局，不要說推開門或第一次見到首領。`
+        : "他們是第一隊進首領房，大門是他們推開的。";
+      if (e.entersBoss.phase) return `${base}這一答讓他們踏進了首領房，首領戰已經進入階段${q(e.entersBoss.phase)}。${join}第一行要提到他們踏進首領房和這個階段，不要提還有沒有別的階段。`;
+      return `${base}這一答讓他們踏進了首領房。${join}第一行要提到他們踏進首領房。`;
     }
     case "retry":
       if (e.exhausted) return `事件：隊伍${q(e.team)}答錯了，這一輪首領的題目都出完了。不要說可以重答，也不要說首領倒下，結果留待揭曉。`;

@@ -332,7 +332,19 @@ describe("failures are named", () => {
 describe("buildPrompt: entering the boss room", () => {
   it("asks the model to mention the entrance", () => {
     const { user } = buildPrompt({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, entersBoss: {} }, []);
-    expect(user).toContain("這一答讓他們踏進了首領房。第一行要提到他們踏進首領房。");
+    expect(user).toContain("這一答讓他們踏進了首領房。他們是第一隊進首領房，大門是他們推開的。第一行要提到他們踏進首領房。");
+  });
+
+  it("tells the model the first team opens the door and a later team joins the fight", () => {
+    const first = buildPrompt({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, entersBoss: {} }, []).user;
+    expect(first).toContain("第一隊進首領房");
+    const later = buildPrompt({ type: "correct", team: "藍隊", monster: "史萊姆", points: 3, entersBoss: { order: 3 } }, []).user;
+    expect(later).toContain("第 3 隊進首領房");
+    expect(later).toContain("加入戰局");
+    expect(later).not.toContain("第一隊");
+    const midPhase = buildPrompt({ type: "correct", team: "藍隊", monster: "史萊姆", points: 3, entersBoss: { phase: "主題曲之謎", order: 2 } }, []).user;
+    expect(midPhase).toContain("主題曲之謎");
+    expect(midPhase).toContain("第 2 隊進首領房");
   });
 });
 
