@@ -14,6 +14,11 @@ All notable changes to Critical Answer are documented here.
 - The room server opens a room only for a valid 4-letter room code. Any other name gets 404 instead of a new empty room.
 - On the home page, a wrong room code says 「房間代碼不對，請照電視上的 4 個字母輸入」.
 
+## [0.56.0.1] - 2026-11-08
+
+### Fixed
+- A long epilogue no longer covers the podium at the end. When it is too long for one page on the big screen, it is split into pages of at most three lines. The host page shows 「◀ 上一頁」, 「後記 1／2」 and 「下一頁 ▶」, and the host turns the pages. With the big screen's voice on, each page is read aloud as it turns, and a restart keeps the page on show.
+
 ## [0.56.0.0] - 2026-11-08
 
 ### Changed

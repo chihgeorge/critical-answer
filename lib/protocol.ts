@@ -198,6 +198,8 @@ export type ClientMessage =
   | { type: "HOST_END_GAME" }
   /** After the game: back to the lobby with the same teams, ready for another game. */
   | { type: "HOST_BACK_TO_LOBBY" }
+  /** After the game: turn the big screen's epilogue to this page (from 0), one away from the one on show (lib/podium.ts epiloguePages). */
+  | { type: "HOST_EPILOGUE_PAGE"; page: number }
   /** Lobby only: take a team out; its phones get team_removed. */
   | { type: "HOST_REMOVE_TEAM"; teamId: string }
   /** Lobby only: rename a team, with JOIN's name check and no other team's name. */
@@ -340,6 +342,8 @@ export type ServerMessage =
       media?: MediaCommand;
       /** A finished game's podium reveal. Absent from older servers and from a game finished before it: show the podium. */
       podium?: PodiumReveal;
+      /** The epilogue page on the big screen (from 0) and how many there are, once the epilogue is in. Absent from older servers: one page. */
+      epiloguePage?: { page: number; of: number };
       /** 每題作答倒數 (answer-countdown.md): ms left when this STATE was sent, or null while the question's video clip
        * has not ended. Absent while nobody is answering, or with the countdown off. */
       answerClock?: { left: number | null };
@@ -602,6 +606,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: "HOST_END_GAME" };
     case "HOST_BACK_TO_LOBBY":
       return { type: "HOST_BACK_TO_LOBBY" };
+    case "HOST_EPILOGUE_PAGE":
+      return Number.isInteger(m.page) && (m.page as number) >= 0 ? { type: "HOST_EPILOGUE_PAGE", page: m.page as number } : null;
     case "HOST_REMOVE_TEAM": {
       const teamId = str(m.teamId, MAX_ID);
       return teamId === null ? null : { type: "HOST_REMOVE_TEAM", teamId };
