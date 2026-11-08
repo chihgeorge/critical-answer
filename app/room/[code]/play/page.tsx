@@ -22,6 +22,7 @@ import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { SORT_ITEMS, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
+import { BOON_TEXT, EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT, eventEffectLine } from "@/lib/event-text";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
 const CLASS_HINTS: Record<ClassId, string> = {
@@ -729,6 +730,9 @@ export default function PlayPage() {
   /** The last correct answer, shown in place of the next question until the host presses 下一題
    * (HOST_NEXT, D7 — docs/designs/question-media-content.md). */
   const revealed = game?.reveal ?? null;
+  // An event room's result holds the room too (event-rooms.md D3): the next team's question waits for 下一題.
+  const eventRevealed = game?.eventReveal ?? null;
+  const held = !!revealed || !!eventRevealed;
   // The dish line waits for the big screen's cooking (cooking I10); a phone opened after it shows it at once.
   const cookStep = useCookStep(revealed?.dish && revealed.served ? `${game!.eventId}` : null);
   const roster = game?.view.teams ?? lobby ?? [];
@@ -757,6 +761,7 @@ export default function PlayPage() {
                 {CLASS_ICONS[myTeam.classId]} {CLASS_LABELS[myTeam.classId]}・{myTeam.classId === "chef" ? "被動" : `剩 ${myTeam.abilityUses} 次`}
               </div>
             )}
+            {myTeam?.boon && <div data-testid="phone-boon" className="text-[15px]">{BOON_TEXT[myTeam.boon]}</div>}
             <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
               {myTeam ? (
                 <>
@@ -770,7 +775,7 @@ export default function PlayPage() {
         </Panel>
       )}
 
-      {game && !finished && !revealed && !intro && !initiative && turn?.team && (
+      {game && !finished && !held && !intro && !initiative && turn?.team && !turn.team.eventScene && (
         <Panel className="flex items-center gap-3 px-3 py-[10px]">
           <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
           <div className="text-[15px]">
@@ -921,13 +926,16 @@ export default function PlayPage() {
           </div>
         )}
 
-        {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
-        {game && buzz && !revealed && game.question && <BuzzButton game={game} buzz={buzz} teamId={teamId} send={send} />}
+        {/* An event room (event-rooms.md D10): the team's one button, then its result; every other phone looks up. */}
+        {game && !finished && !intro && (eventRevealed || (!revealed && !game.phaseCard && turn?.team?.eventScene)) && <EventPanel game={game} teamId={teamId} send={send} />}
 
-        {game && !finished && !buzz && !revealed && isMyTurn && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} />}
+        {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
+        {game && buzz && !held && game.question && <BuzzButton game={game} buzz={buzz} teamId={teamId} send={send} />}
+
+        {game && !finished && !buzz && !held && isMyTurn && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} />}
 
         {/* #104: our own host-judged text turn is a fill-in: the team types its answer for the host. */}
-        {game && !finished && !buzz && !revealed && isMyTurn && game.question && !game.question.options && !game.question.items && (
+        {game && !finished && !buzz && !held && isMyTurn && game.question && !game.question.options && !game.question.items && (
           <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint={noHintQid === game.question.id} />
         )}
 
@@ -964,13 +972,13 @@ export default function PlayPage() {
         {!isMyTurn && cards}
 
         {/* The video plays on the big screen only (D7): the phone says where to look, and keeps its space for answering (D21). */}
-        {game && !finished && !revealed && game.question?.content.kind === "youtube" && (
+        {game && !finished && !held && game.question?.content.kind === "youtube" && (
           <div data-testid="play-media-hint" className="self-start border-[3px] border-[var(--k)] bg-[var(--lav)] px-3 py-1 text-[18px]">
             {game.question.content.audioOnly ? "🎵 聽大螢幕" : "▶ 看大螢幕"}
           </div>
         )}
 
-        {game && !finished && !revealed && game.question && game.question.content.kind === "image" && (
+        {game && !finished && !held && game.question && game.question.content.kind === "image" && (
           <Panel className="flex justify-center px-3 py-3">
             {/* key tied to the question forces a fresh DOM node per question — without it, React
                 would reuse the same node across consecutive media questions and a broken image
@@ -1023,5 +1031,62 @@ export default function PlayPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+/** An event room on a phone (event-rooms.md D10). The team on turn presses its one button; after the press it reads
+ * the outcome; every other phone reads that the team walked into an event room. */
+function EventPanel({ game, teamId, send }: { game: StateMessage; teamId: string; send: (msg: ClientMessage) => void }) {
+  const reveal = game.eventReveal;
+  const team = game.view.teams.find((t) => t.id === (reveal ? reveal.teamId : game.view.currentTurnTeamId));
+  // A press waiting for the room, keyed to the eventId so a later event turn starts with a live button.
+  const [pressed, setPressed] = useState<number | null>(null);
+  // A press the room refused leaves the eventId as it was: give the button back rather than wait forever.
+  useEffect(() => {
+    if (pressed === null) return;
+    const t = setTimeout(() => setPressed(null), 5000);
+    return () => clearTimeout(t);
+  }, [pressed]);
+  const scene = reveal?.scene ?? team?.eventScene;
+  if (!team || !scene) return null;
+  const text = EVENT_SCENE_TEXT[scene];
+  if (team.id !== teamId) {
+    return (
+      <Panel className="px-3 py-[10px] text-[17px]">
+        <span data-testid="phone-event-watch">{team.name}走進了事件房……看大螢幕 📺</span>
+      </Panel>
+    );
+  }
+  if (reveal) {
+    return (
+      <div data-testid="phone-event-result" className="flex flex-col gap-3">
+        <Panel className="flex flex-col items-center gap-1 px-3 py-[12px] text-center">
+          <LabelChip>❓ 事件房</LabelChip>
+          <div className="px-title-gold text-[26px]">{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
+          <div className="text-[18px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{eventEffectLine({ ...reveal, chefBonus: undefined })}</div>
+          {reveal.chefBonus ? <div className="text-[15px]">（廚師 +{reveal.chefBonus}）</div> : null}
+        </Panel>
+        <Panel className="px-3 py-[10px] text-[16px]">看大螢幕 📺　主持人按「下一題」後，我們{reveal.entersBoss ? "走進首領房" : "走到下一間房"}</Panel>
+      </div>
+    );
+  }
+  const waiting = pressed === game.eventId;
+  return (
+    <div data-testid="phone-event" className="flex flex-col gap-2">
+      <Panel className="flex flex-col items-start gap-1 px-3 py-[12px]">
+        <LabelChip>❓ 事件房</LabelChip>
+        <div className="text-[18px]">{text.line}</div>
+      </Panel>
+      <PixelButton
+        data-testid="phone-event-open"
+        disabled={waiting}
+        onClick={() => {
+          setPressed(game.eventId);
+          send({ type: "TEAM_OPEN_EVENT", eventId: game.eventId });
+        }}
+        className="!m-0 w-full !py-4 text-[24px]"
+      >{text.button}</PixelButton>
+      <div className="text-center text-[15px] text-white">按下去，大螢幕就會演出來</div>
+    </div>
   );
 }

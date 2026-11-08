@@ -26,6 +26,8 @@ import { MoreDrawer } from "@/components/more-drawer";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
+import { EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT } from "@/lib/event-text";
+import { EventStage } from "@/components/event-room";
 
 /** D11: the stuck-team row waits this long with no lock (or no choice after a wrong lock). */
 const STUCK_MS = 15_000;
@@ -276,7 +278,8 @@ export default function HostPage() {
   // on one would land on the other (judging the next question, or closing a reveal nobody saw).
   // Both stay disabled for a beat after every swap.
   // The boss's phase card is a pause like a reveal: 下一題 closes it (docs/designs/boss-phases.md D3).
-  const revealUp = !!game?.reveal || !!game?.phaseCard;
+  // An event room's result is one more (event-rooms.md D3).
+  const revealUp = !!game?.reveal || !!game?.phaseCard || !!game?.eventReveal;
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): teams buzz in, the host judges the one that buzzed first. */
   const buzz = game?.phase === "playing" && !revealUp ? game.view.buzz : undefined;
   // Keyed on the pause itself, not just "a pause is up": the answer reveal turning into the phase card
@@ -286,7 +289,7 @@ export default function HostPage() {
   // A dish reveal takes 🍲 上菜 first (monster-cuisine.md cooking R5); serving swaps it for 上菜中… then 下一題.
   const toServe = game?.phase === "playing" && !!game.reveal?.dish && !game.reveal.served;
   const servedUp = !!game?.reveal?.served;
-  const pauseKey = game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : buzz?.teamId ? `buzz-${buzz.teamId}-${game!.eventId}` : "";
+  const pauseKey = game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.eventReveal ? `event-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : buzz?.teamId ? `buzz-${buzz.teamId}-${game!.eventId}` : "";
   const [armedFor, setArmedFor] = useState(pauseKey);
   const swapArmed = armedFor === pauseKey;
   useEffect(() => {
@@ -344,6 +347,16 @@ export default function HostPage() {
     return () => clearTimeout(t);
   }, [stuckKey]);
   const stuck = !!stuckKey && stuckShownFor === stuckKey;
+  // A team in an event room presses its own button; after 15 s the host may press it for them (event-rooms.md D10).
+  const eventScene = !revealUp ? turn?.team?.eventScene : undefined;
+  const eventKey = eventScene && turn?.team ? `${turn.team.id}|${game?.eventId}` : null;
+  const [eventStuckFor, setEventStuckFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!eventKey) return;
+    const t = setTimeout(() => setEventStuckFor(eventKey), STUCK_MS);
+    return () => clearTimeout(t);
+  }, [eventKey]);
+  const eventStuck = !!eventKey && eventStuckFor === eventKey;
 
   // Keyboard shortcuts for a host on a laptop (lib/host-keys.ts): each key does exactly what its
   // button does, and only while that button is enabled. A layout effect, so the listener already
@@ -410,7 +423,7 @@ export default function HostPage() {
     <>
       <Panel tone="lav" className="px-3 py-2 text-center text-[16px]">
         <div data-testid="host-reveal">
-          大螢幕正在揭曉：{game.reveal ? game.reveal.answer : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}
+          大螢幕正在揭曉：{game.eventReveal ? `${EVENT_SCENE_TEXT[game.eventReveal.scene].name}－${EVENT_OUTCOME_TITLE[game.eventReveal.outcome]}` : game.reveal ? game.reveal.answer : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}
         </div>
       </Panel>
       {/* The answered question's video is up again on the big screen (D17). */}
@@ -643,11 +656,16 @@ export default function HostPage() {
             <TurnRibbon>{buzz ? (turn.team ? `搶答：${turn.team.name}搶到了` : "首領戰　搶答中") : `${turn.inBoss ? "首領戰　" : ""}輪到：${turn.team?.name}`}</TurnRibbon>
             <Panel tone="turn" className="px-3 py-[10px]">
               <div className="flex items-center gap-3">
-                <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
+                {/* An event room holds no monster and no question (event-rooms.md D1). */}
+                {turn.team.eventScene ? (
+                  <div className="flex-none"><EventStage scene={turn.team.eventScene} height={48} /></div>
+                ) : (
+                  <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
+                )}
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.monster.name}</div>
+                  <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.team.eventScene ? "❓ 事件房" : turn.monster.name}</div>
                   <div data-testid="host-question" className="text-[20px] leading-snug">
-                    {game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
+                    {turn.team.eventScene ? EVENT_SCENE_TEXT[turn.team.eventScene].line : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
                   </div>
                   {/* The host previously never saw question media at all (text-only preview) —
                       a small preview so judging an image/video question doesn't mean squinting
@@ -801,6 +819,20 @@ export default function HostPage() {
                 // question until the host moves on — judging waits until then. The boss's phase card
                 // waits the same way (boss-phases.md D3).
                 revealPanel
+              ) : eventScene ? (
+                <>
+                  <div data-testid="host-event">
+                    <Panel tone="lav" className="px-3 py-2 text-center">
+                      <div className="text-[22px]">{turn.team.name}走進了事件房：{EVENT_SCENE_TEXT[eventScene].name}</div>
+                      <div className="text-[14px]">等{turn.team.name}按手機上的「{EVENT_SCENE_TEXT[eventScene].button}」</div>
+                    </Panel>
+                  </div>
+                  {eventStuck && (
+                    <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!ready} onClick={() => send({ type: "HOST_OPEN_EVENT", teamId: turn.team!.id, eventId: game.eventId })}>
+                      替{turn.team.name}按
+                    </PixelButton>
+                  )}
+                </>
               ) : isMc ? (
                 <>
                   <div data-testid="host-mc-status">

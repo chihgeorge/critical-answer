@@ -36,6 +36,11 @@ import {
   recordCheck,
   checkKey,
   checkTarget,
+  drawEvent,
+  enterEventRoom,
+  eventEligible,
+  openEvent,
+  EVENT_CHANCE,
   InvalidActionError,
   type ClassId,
   type GameState,
@@ -55,6 +60,7 @@ import {
   type AiSource,
   type AnswerReveal,
   type ClientMessage,
+  type EventReveal,
   type HostPick,
   type MediaAction,
   type MediaCommand,
@@ -68,7 +74,7 @@ import {
 import { revealBeats, revealCalls } from "../podium";
 import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
 import { gameLog } from "../game-log";
-import { catalogMonster, gameMonsters, monsterById } from "../monster-catalog";
+import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
 import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
@@ -134,6 +140,9 @@ export interface RoomOptions {
   now?: () => number;
   /** Every d20 lands here instead of on rng (e2e, worker E2E_DIE). */
   fixedDie?: number;
+  /** e2e only (worker E2E_EVENT_TEAM): the team with this exact name always walks into an event room when it may, and
+   * no other team ever does, so other specs never meet one (docs/designs/event-rooms.md). */
+  e2eEventTeam?: string;
   /** How long the 擲先攻 order holds before the first question (e2e, worker INITIATIVE_HOLD_MS). Default INITIATIVE_ORDER_MS. */
   initiativeHoldMs?: number;
 }
@@ -250,6 +259,8 @@ export class DungeonRoom {
   private reveal: AnswerReveal | null = null;
   /** The last buzz stopped playing music (boss-buzzer.md D5): a wrong answer or a dropped phone plays it on. Memory only, like media. */
   private buzzPaused = false;
+  /** An opened event on show until 下一題 (docs/designs/event-rooms.md). Memory only, like the reveal: its effect is saved. */
+  private eventReveal: EventReveal | null = null;
   /** When the host pressed 上菜 on the reveal up now (only read while `reveal.served`). */
   private servedAt = 0;
   /** The host's last ▶ ⏸ ⟲ (docs/designs/youtube-questions.md). In memory only (D6): a restart forgets it. */
@@ -349,6 +360,7 @@ export class DungeonRoom {
   private bank: Bank;
   private bankAnswers: string[];
   private fixedDie: number | undefined;
+  private e2eEventTeam: string | undefined;
   private initiativeHoldMs: number;
 
   constructor(
@@ -363,6 +375,7 @@ export class DungeonRoom {
     this.expireMs = Math.max(opts.expireMs ?? EXPIRE_MS, this.idleMs);
     this.now = opts.now ?? Date.now;
     this.fixedDie = opts.fixedDie;
+    this.e2eEventTeam = opts.e2eEventTeam;
     this.initiativeHoldMs = opts.initiativeHoldMs ?? INITIATIVE_ORDER_MS;
     this.bankAnswers = allAnswers(this.bank);
     this.scripted = createScriptedProvider(rng);
@@ -721,7 +734,8 @@ export class DungeonRoom {
     if (!game || game.phase !== "playing") return null;
     const teamId = currentTurnTeamId(game);
     const team = game.teams.find((t) => t.id === teamId);
-    if (!team) return null;
+    // A team in an event room has no question until it walks out (event-rooms.md): its held deal stays hidden.
+    if (!team || team.event) return null;
     const id = currentQuestionIdOf(game, team.id);
     // The team's own count from when it walked in, so its monster never changes mid-room (monster-catalog.md §3).
     const roomMonster = game.rooms[team.roomIndex]?.monsterId;
@@ -761,6 +775,7 @@ export class DungeonRoom {
     // A buzzer phase has no turns: nobody is up next until someone buzzes (boss-buzzer.md).
     const teamId = game && !isBuzzPhase(game) && currentTurnTeamId(game);
     const team = game?.teams.find((t) => t.id === teamId);
+    if (team?.event) return { team: team.name, monster: "", boss: false, event: team.event.scene };
     return q && team ? { team: team.name, monster: q.pub.monster.name, boss: q.pub.boss } : null;
   }
 
@@ -823,6 +838,7 @@ export class DungeonRoom {
       // The card holds the new phase's first question back until the host's 下一題.
       question: this.phaseCard || this.opening() ? null : (this.currentQuestion()?.pub ?? null),
       reveal: this.reveal,
+      ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.liveMedia(),
       // No dish: the boss's dish is served on the kill, not before (monster-cuisine.md).
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
@@ -1019,7 +1035,7 @@ export class DungeonRoom {
     this.staleBeforeSeq = null;
     this.playedQuestionIds = [];
     this.removedTeamIds.clear();
-    this.reveal = null;
+    this.reveal = this.eventReveal = null;
     this.phaseCard = false;
     this.phaseCardDue = false;
     this.intro = null;
@@ -1173,6 +1189,14 @@ export class DungeonRoom {
         case "HOST_SEND_TO_BOSS":
           this.handleSendToBoss(sender, msg.teamId);
           break;
+        case "HOST_OPEN_EVENT":
+          if (this.requireHost(sender)) this.handleOpenEvent(sender, msg.teamId, msg.eventId);
+          break;
+        case "TEAM_OPEN_EVENT": {
+          const teamId = this.playingTeam(sender);
+          if (teamId) this.handleOpenEvent(sender, teamId, msg.eventId);
+          break;
+        }
         case "HOST_QUEUE_QUESTION":
           this.handleQueueQuestion(sender, msg.target, msg.questionId);
           break;
@@ -1352,7 +1376,7 @@ export class DungeonRoom {
       return;
     }
     this.clearAnswerTimers();
-    this.reveal = null;
+    this.reveal = this.eventReveal = null;
     this.phaseCard = false;
     this.phaseCardDue = false;
     this.intro = null;
@@ -1386,7 +1410,7 @@ export class DungeonRoom {
     this.game = null;
     this.handoffs.clear();
     this.clearAnswerTimers();
-    this.reveal = null;
+    this.reveal = this.eventReveal = null;
     this.phaseCard = false;
     this.phaseCardDue = false;
     this.intro = null;
@@ -1502,6 +1526,10 @@ export class DungeonRoom {
     // A dish is served before 下一題, and the cooking plays out first (cooking I2): a double press or a stale tab can't skip it.
     if (this.reveal?.dish && (!this.reveal.served || this.now() - this.servedAt < SERVE_HOLD_MS)) return;
     if (this.reveal) return this.closeReveal();
+    if (this.eventReveal) {
+      this.eventReveal = null;
+      return this.broadcastState();
+    }
     if (this.phaseCardDue) return this.openPhaseCard();
     this.phaseCard = false;
     this.broadcastState();
@@ -1521,7 +1549,7 @@ export class DungeonRoom {
 
   /** An answer reveal or the boss's phase card is up: nobody answers until the host moves on. */
   private paused(): boolean {
-    return !!this.reveal || this.phaseCard || this.phaseCardDue || this.opening();
+    return !!this.reveal || !!this.eventReveal || this.phaseCard || this.phaseCardDue || this.opening();
   }
 
   /** The intro or 擲先攻 is on: the game exists, but no question is dealt yet. */
@@ -2022,7 +2050,13 @@ export class DungeonRoom {
         return;
       }
     }
-    const { game, outcome } = run(this.rng, killDice);
+    const judged = run(this.rng, killDice);
+    const { outcome } = judged;
+    // The next room may hold an event instead of its monster (event-rooms.md D2, D5): drawn now, so a restart cannot reroll it.
+    // A room the host picked the question for (指定下一題) keeps its monster: an event there would burn the pick.
+    const queued = prev.teams.find((t) => t.id === teamId)?.queuedQuestionId;
+    const picked = queued !== undefined && judged.game.teams.find((t) => t.id === teamId)?.currentQuestionId === queued;
+    const game = !picked && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterEventRoom(judged.game, teamId, drawEvent(this.rng)) : judged.game;
     // A wrong buzz: the music picks up where the buzz stopped it, for the teams still in (boss-buzzer.md D5).
     if (isBuzzPhase(prev) && outcome.type === "incorrect-retry" && !outcome.newBossQuestion) this.resumeBuzzMusic(questionId);
     // A ruling on the team (the host's, or the lost natural 20 itself) settles its lost natural 20; one refused above does not.
@@ -2046,7 +2080,7 @@ export class DungeonRoom {
     const event = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, buzzOut: true as const } : exhaustedEvent;
     // A natural 20 or 1 swaps the correct / boss-hit sound; the boss kill keeps its own (E2).
     const mark = "roll" in outcome ? outcome.roll : undefined;
-    this.setCue(event.type === "epilogue" ? null : event.type !== "boss-kill" && mark?.kind === "crit" ? (mark.value === 20 ? "crit" : "fumble") : event.type);
+    this.setCue(event.type === "epilogue" || event.type === "event-room" ? null : event.type !== "boss-kill" && mark?.kind === "crit" ? (mark.value === 20 ? "crit" : "fumble") : event.type);
     // Shown to everyone (D3), but only on a genuinely correct answer (D5): a retry or a flee
     // must never reveal it, or the question loses its point; game-state.ts's deal()/boss ring
     // treat a revealed question (answered, or fled after a wrong lock) as not safe to redeal. Set before broadcastState so the reveal and the post-judgment state arrive
@@ -2408,6 +2442,55 @@ export class DungeonRoom {
     return true;
   }
 
+  /** Whether the team that just walked into a new room finds an event there (D5). e2e names its one event team. */
+  private rollsEvent(teamId: string): boolean {
+    if (this.e2eEventTeam !== undefined) return this.game?.teams.find((t) => t.id === teamId)?.name === this.e2eEventTeam;
+    // The top of the range, so a test room on rng () => 0 never meets an event.
+    return this.rng() >= 1 - EVENT_CHANCE;
+  }
+
+  /** The turn's team (its phone, or the host for it) opens its event (event-rooms.md D3, D10): the effect lands and the
+   * turn passes at once, and the result stays on show until 下一題, like an answer reveal. */
+  private handleOpenEvent(conn: Conn, teamId: string, eventId: number) {
+    const game = this.game;
+    if (!game) return;
+    const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    // A double press, or a second phone of the team: the first one already opened it.
+    if (eventId !== this.eventSeq) return reject("stale_event");
+    if (this.paused() || this.pendingLock || this.pendingRoll) return reject("reveal_pending");
+    let opened: ReturnType<typeof openEvent>;
+    try {
+      opened = openEvent(game, teamId, this.rng);
+    } catch (err) {
+      if (err instanceof InvalidActionError) return reject(err.message);
+      throw err;
+    }
+    const { result } = opened;
+    this.game = opened.game;
+    const id = ++this.eventSeq;
+    // A feast serves a dish from the catalog: the room monsters', since the boss's is the last night's feast.
+    // Only a dish the room may say aloud, like the dishes the epilogue names; none left means no dish.
+    const pool = MONSTERS.filter((m) => !m.boss && this.sayable(m.dish.name));
+    const m = result.outcome === "feast" && pool.length ? pool[Math.floor(this.rng() * pool.length)] : undefined;
+    this.eventReveal = { ...result, ...(m ? { dish: { name: m.dish.name, sprite: m.sprite, hue: m.hue } } : {}) };
+    const bad = result.outcome === "rotten" || result.outcome === "bad" || result.boon === "curse";
+    this.setCue(bad ? "fumble" : "correct");
+    this.broadcastState();
+    const team = game.teams.find((t) => t.id === teamId)!;
+    const next = this.nextTurn();
+    void this.narrate(id, {
+      type: "event-room",
+      team: team.name,
+      ...(team.classId ? { classId: team.classId } : {}),
+      scene: result.scene,
+      outcome: result.outcome,
+      satiety: result.satiety,
+      ...(result.abilityUse ? { abilityUse: true as const } : {}),
+      ...(m ? { dish: m.dish.name } : {}),
+      ...(next ? { next } : {}),
+    });
+  }
+
   /** 擲骰說服 (dnd design R-E1, R-E4): the team on turn rolls its check on its own fill-in question, once. */
   private handleTeamRollCheck(conn: Conn, questionId: string, eventId: number) {
     const teamId = this.playingTeam(conn);
@@ -2421,6 +2504,8 @@ export class DungeonRoom {
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
     // No checks in a buzzer phase (boss-buzzer.md D6): refused before the die rolls, not after.
     if (isBuzzPhase(game)) return reject("buzzer_phase");
+    // An event room holds no question to roll on: its held deal stays hidden.
+    if (game.teams.find((t) => t.id === teamId)?.event) return reject("event_room");
     if (this.question(questionId)?.kind !== "text" || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
     if (game.checks?.[checkKey(questionId, teamId)]) return reject("check_done");
     // A typed answer already waits for the host: a natural 20 must not win over it.

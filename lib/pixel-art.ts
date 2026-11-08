@@ -174,6 +174,14 @@ export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   "dish-smoothie": [26, 32],
   "dish-squid": [30, 34],
   "dish-roast-chicken": [40, 28],
+  chest: [26, 20],
+  "chest-open": [26, 26],
+  "dish-rotten": [34, 30],
+  spring: [36, 26],
+  idol: [24, 36],
+  fairy: [24, 22],
+  "fortune-teller": [36, 36],
+  lot: [10, 24],
   ...(Object.fromEntries(Object.entries(ACC).map(([a, g]) => [`acc-${a}`, [g.rows[0].length + 2, g.rows.length + 2]])) as Record<`acc-${Accessory}`, [number, number]>),
 };
 
@@ -1593,6 +1601,147 @@ function dishRoastChicken(cv: HTMLCanvasElement) {
   P.flush();
 }
 
+/* ---------- event rooms (docs/designs/event-rooms.md, Art) ---------- */
+
+const WOOD = "#b07a4f";
+const WOOD_DARK = "#8a5a3e";
+const GOLD = "#ffcf4a";
+const GOLD_DARK = "#e8a824";
+
+/** The locked chest, or the same chest thrown open with gold light inside (the dish or smoke stands over it). */
+function chest(cv: HTMLCanvasElement, open: boolean) {
+  const P = new Px(cv, 26, open ? 26 : 20);
+  const y = open ? 7 : 1; // the top of the lid on the closed chest, of the base's mouth when open
+  if (open) {
+    // The lid tipped back: its dark inside faces us.
+    P.rect(2, 1, 22, 5, WOOD_DARK);
+    P.rect(2, 1, 22, 1, WOOD);
+    P.rect(4, 1, 2, 5, GOLD_DARK);
+    P.rect(20, 1, 2, 5, GOLD_DARK);
+    P.rect(1, 7, 24, 3, GOLD);
+    P.rect(3, 7, 20, 1, "#fff6c0");
+  } else {
+    P.rect(1, y, 24, 7, WOOD);
+    P.cut((x, yy) => yy === y && (x === 1 || x === 24));
+    P.rect(1, y + 3, 24, 1, WOOD_DARK);
+  }
+  const b = open ? 10 : 8; // the gold band over the base
+  P.rect(1, b, 24, 2, GOLD);
+  P.rect(1, b + 2, 24, open ? 13 : 9, WOOD);
+  P.rect(1, b + 7, 24, 1, WOOD_DARK);
+  for (const x of [4, 20]) P.rect(x, open ? b : y, 2, open ? 15 : 18, GOLD_DARK);
+  P.rect(11, b - 1, 4, 5, GOLD);
+  P.rect(12, b + 1, 2, 2, K);
+  P.outline(K);
+  if (open) for (const [x, yy] of [[6, 4], [13, 2], [19, 5]]) P.set(x, yy, "#fff");
+  P.flush();
+}
+
+/** 黑暗料理: a purple-grey lump with green spots, smoking purple. */
+function dishRotten(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 34, 30);
+  plate(P, 24, 32);
+  P.ell(17, 21, 11, 6, "#6b5a7a");
+  P.cut((_x, y) => y > 24);
+  P.shade(17, 21, 11, 6, "#4a3a5e", 2, 2);
+  P.ellIn(13, 18, 4, 2, "#8a7a9a");
+  P.outline(K);
+  for (const [x, y] of [[11, 21], [19, 19], [22, 22], [15, 23]]) P.set(x, y, "#7ad36a");
+  // Three purple wisps over it.
+  for (const x of [9, 16, 23]) P.grid([".s", "s.", ".s", "s.", ".s", "s."], { s: "#b48ae0" }, x, 3 + (x % 3));
+  P.flush();
+}
+
+/** 回復泉水: a stone basin brimming with glowing water. */
+function spring(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 36, 26);
+  P.ell(18, 17, 16, 7, "#8a86a0");
+  P.rect(2, 17, 32, 5, "#8a86a0");
+  P.ell(18, 22, 16, 3, "#6a6688");
+  P.shade(18, 18, 16, 7, "#6a6688", 2, 1);
+  P.ell(18, 15, 13, 3.5, "#6ab4ff");
+  P.ellIn(16, 14, 8, 1.5, "#bfe4ff");
+  P.outline(K);
+  // Droplets of light rising off the water.
+  for (const [x, y] of [[10, 9], [18, 4], [26, 8], [14, 2], [23, 1]]) {
+    P.set(x, y, "#bfe4ff");
+    P.set(x, y + 1, "#6ab4ff");
+  }
+  P.flush();
+}
+
+/** 骷髏雕像: a skull on a pedestal; its eyes glow red. */
+function idol(cv: HTMLCanvasElement, blink: boolean) {
+  const P = new Px(cv, 24, 36);
+  P.rect(4, 22, 16, 12, "#8a86a0");
+  P.rect(2, 20, 20, 3, "#a6a2bc");
+  P.rect(2, 32, 20, 3, "#a6a2bc");
+  P.rect(4, 26, 16, 1, "#6a6688");
+  P.ell(12, 10, 9, 8, "#f2ead8");
+  P.rect(7, 15, 10, 5, "#f2ead8");
+  P.shade(12, 10, 9, 8, "#d8ccb4", 2, 2);
+  P.outline(K);
+  for (const x of [6, 14]) {
+    P.rect(x, 9, 4, 4, K);
+    if (!blink) {
+      P.rect(x + 1, 10, 2, 2, "#ff4d4d");
+      P.set(x + 1, 10, "#ffb0b0");
+    }
+  }
+  P.rect(11, 14, 2, 2, K);
+  for (const x of [8, 10, 12, 14]) P.set(x, 18, K);
+  P.flush();
+}
+
+/** 小精靈: a tiny glowing fairy with blue wings. */
+function fairy(cv: HTMLCanvasElement, blink: boolean) {
+  const P = new Px(cv, 24, 22);
+  P.ell(6, 8, 5, 4, "#bfe4ff");
+  P.ell(18, 8, 5, 4, "#bfe4ff");
+  P.ell(7, 15, 4, 3, "#9fd0f8");
+  P.ell(17, 15, 4, 3, "#9fd0f8");
+  P.ell(12, 14, 3, 5, "#7ad36a");
+  P.ell(12, 7, 4, 4, "#ffe0c0");
+  P.rect(8, 3, 8, 2, "#ffcf4a");
+  P.outline(K);
+  for (const x of [10, 13]) P.rect(x, blink ? 8 : 7, 1, blink ? 1 : 2, K);
+  P.set(11, 10, "#ff8fb1");
+  P.set(12, 10, "#ff8fb1");
+  for (const [x, y] of [[2, 2], [21, 1], [1, 19], [22, 18]]) P.set(x, y, "#fff6c0");
+  P.flush();
+}
+
+/** 占卜師: a hooded fortune teller behind a table with a crystal ball. */
+function fortuneTeller(cv: HTMLCanvasElement, blink: boolean) {
+  const P = new Px(cv, 36, 36);
+  P.ell(18, 15, 11, 12, "#7a4fb0");
+  P.rect(7, 15, 22, 10, "#7a4fb0");
+  P.ell(18, 12, 6, 6, "#f2c79a");
+  P.cut((_x, y) => y < 2);
+  P.ell(18, 6, 8, 5, "#7a4fb0");
+  P.shade(18, 15, 11, 12, "#5b3a8a", 2, 1);
+  P.rect(2, 24, 32, 3, "#c94848");
+  P.rect(4, 27, 28, 8, "#8a5a3e");
+  P.rect(2, 24, 32, 1, "#ff6b6b");
+  P.ell(18, 21, 5, 5, "#bfe4ff");
+  P.ellIn(17, 20, 2, 2, "#ffffff");
+  P.outline(K);
+  if (blink) for (const x of [15, 20]) P.rect(x, 12, 2, 1, K);
+  else for (const x of [15, 20]) P.rect(x, 11, 2, 2, K);
+  for (const [x, y] of [[13, 7], [23, 8], [18, 3]]) P.set(x, y, "#ffcf4a");
+  P.flush();
+}
+
+/** The fortune teller's lot: a bamboo stick with a paper strip, `variant` 0 大吉 (red), 1 中吉 (gold), 2 凶 (grey). */
+function lot(cv: HTMLCanvasElement, variant: number) {
+  const P = new Px(cv, 10, 24);
+  P.rect(4, 1, 2, 22, "#d8b878");
+  P.rect(2, 4, 6, 12, ["#ff6b6b", "#ffcf4a", "#a6a2bc"][variant] ?? "#a6a2bc");
+  P.outline(K);
+  for (const y of [6, 9, 12]) P.rect(4, y, 2, 1, K);
+  P.flush();
+}
+
 const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: boolean) => void> = {
   slime: (cv, _v, b) => slime(cv, b),
   "slime-lost": (cv, _v, b) => slimeLost(cv, b),
@@ -1655,6 +1804,14 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   "dish-smoothie": (cv) => dishSmoothie(cv),
   "dish-squid": (cv) => dishSquid(cv),
   "dish-roast-chicken": (cv) => dishRoastChicken(cv),
+  chest: (cv) => chest(cv, false),
+  "chest-open": (cv) => chest(cv, true),
+  "dish-rotten": (cv) => dishRotten(cv),
+  spring: (cv) => spring(cv),
+  idol: (cv, _v, b) => idol(cv, b),
+  fairy: (cv, _v, b) => fairy(cv, b),
+  "fortune-teller": (cv, _v, b) => fortuneTeller(cv, b),
+  lot: (cv, v) => lot(cv, v),
   ...(Object.fromEntries(ACCESSORIES.map((a) => [`acc-${a}`, (cv: HTMLCanvasElement) => accessory(cv, a)])) as Record<`acc-${Accessory}`, (cv: HTMLCanvasElement) => void>),
 };
 
