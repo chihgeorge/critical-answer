@@ -211,6 +211,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
     expect(alarms).toEqual([2 * DELAY]); // re-armed, so the queue is not stranded once the bank is readable again
 
     // Readable again (a roll-forward): the re-armed alarm finishes the job.
+    // pregate-literal: BANK_FORMAT=4 the 4 is the bank's save version, not its format
     await storage.put("bank", { bank: validBank, version: 4, format: BANK_FORMAT });
     at(2 * DELAY);
     await store.runImageCleanup();
