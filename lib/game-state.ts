@@ -203,7 +203,7 @@ export type GamePhase = "playing" | "finished";
 
 export interface GameState {
   teams: Team[];
-  /** Fixed team order — does not change with room progress (see header diagram). */
+  /** Team order: the lobby's, or the one 擲先攻 rolled (lib/initiative.ts). Fixed for the game, whatever the room progress. */
   turnOrder: string[];
   currentTurnIndex: number;
   rooms: RoomTemplate[];

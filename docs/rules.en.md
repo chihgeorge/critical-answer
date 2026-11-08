@@ -6,7 +6,9 @@ The README's "rules in one minute" section is the quick reference; this is the f
 
 ## Turns and question banks
 
-**Global turns**: all teams answer in turn, in a fixed order (A → B → C → …). When a team's turn comes, the big screen shows the question, its difficulty and the monster the team faces. Questions are split into five banks by difficulty 1–5. Each room draws from the bank of its own difficulty. All teams share one deck, so two teams never get the same question at the same time. The order of multiple-choice options is shuffled again at the start of every game. So are the items of a sort question, and they never come up in the correct order.
+**Initiative roll**: after the stone doors open at the start, each team presses 「🎲 擲骰」 (roll) on its phone to roll a d20. The big screen lines up every team's die, and the highest roll goes first. The room rerolls tied teams for them until the tie is broken. A team that has not rolled 15 seconds after the start (an offline one included) is rolled for by the room; once every online team has rolled, the offline teams are rolled for at once. The host page has 「🎲 全部代擲」 (roll for everyone), which rolls for every team that has not rolled yet. After the order is set, the big screen holds it for about 4 seconds (2.5 seconds more for each reroll), then the first team starts answering, and the opening narration introduces the teams in this order.
+
+**Global turns**: all teams answer in turn, in the order the initiative roll set, which stays the same all game. When a team's turn comes, the big screen shows the question, its difficulty and the monster the team faces. Questions are split into five banks by difficulty 1–5. Each room draws from the bank of its own difficulty. All teams share one deck, so two teams never get the same question at the same time. The order of multiple-choice options is shuffled again at the start of every game. So are the items of a sort question, and they never come up in the correct order.
 
 ## Judging
 

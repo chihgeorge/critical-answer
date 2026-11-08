@@ -22,14 +22,14 @@ const MAX_ROUNDS = 5;
 
 /**
  * Teams best first by reward. Teams tied where the order changes the podium each roll a d20 (`roll`), highest
- * first; teams still tied roll again among themselves (D4). Ties wholly below the podium keep the team order.
+ * first; teams still tied roll again among themselves (D4). Ties wholly below the podium (`places`) keep the team order.
  */
-export function rankTeams(teams: { id: string; reward: number }[], roll: () => number): { ranking: string[]; tieRolls: TieRoll[] } {
+export function rankTeams(teams: { id: string; reward: number }[], roll: () => number, places = PODIUM_PLACES): { ranking: string[]; tieRolls: TieRoll[] } {
   const sorted = [...teams].sort((a, b) => b.reward - a.reward);
   const ranking: string[] = [];
   const tieRolls: TieRoll[] = [];
   const resolve = (ids: string[], from: number, round: number) => {
-    if (ids.length === 1 || from > PODIUM_PLACES || round >= MAX_ROUNDS) return void ranking.push(...ids);
+    if (ids.length === 1 || from > places || round >= MAX_ROUNDS) return void ranking.push(...ids);
     const values = ids.map(() => roll());
     tieRolls.push({ from, teams: ids, values });
     let at = from;

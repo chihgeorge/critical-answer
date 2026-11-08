@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { answerCorrectly, nextQuestion, startGame, withRoom0MonsterAgainAt3 } from "./answer";
+import { answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3 } from "./answer";
 import { TITLE } from "../lib/monster-catalog";
 
 async function hostRoom(browser: Browser) {
@@ -123,6 +123,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
 
   await host.getByRole("button", { name: "開始冒險 ▶" }).click();
   await expect(screen.getByTestId("how-to-play")).toHaveCount(0);
+  await skipInitiative(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
   await answerCorrectly(host);

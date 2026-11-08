@@ -706,6 +706,9 @@ export default function PlayPage() {
   const finished = game?.phase === "finished";
   /** The how-to-play page on the big screen: the phone points there and never repeats the rules (D7). */
   const intro = !finished ? (game?.intro?.page ?? null) : null;
+  /** 擲先攻 (lib/initiative.ts): the phone rolls here, the big screen shows every team's die. */
+  const initiative = !finished ? (game?.initiative ?? null) : null;
+  const myRoll = initiative && teamId ? initiative.rolls[teamId] : undefined;
   const cards = (
     <>
       {/* While waiting, the roster above already highlights our own team. */}
@@ -732,7 +735,7 @@ export default function PlayPage() {
         </Panel>
       )}
 
-      {game && !finished && !revealed && !intro && turn?.team && (
+      {game && !finished && !revealed && !intro && !initiative && turn?.team && (
         <Panel className="flex items-center gap-3 px-3 py-[10px]">
           <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
           <div className="text-[15px]">
@@ -833,7 +836,27 @@ export default function PlayPage() {
           </div>
         )}
 
-        {game && !finished && !intro && turn && (
+        {initiative && (
+          <Panel data-testid="phone-initiative" tone="lav" role="status" className="flex flex-col items-center gap-2 px-3 py-5 text-center">
+            {myRoll === undefined ? (
+              <>
+                <div className="text-[20px]">擲先攻！點數大的先上場</div>
+                <PixelButton variant="ok" className="!m-0 !min-h-[72px] !text-[23px]" onClick={() => send({ type: "TEAM_ROLL_INITIATIVE" })}>
+                  🎲 擲骰
+                </PixelButton>
+              </>
+            ) : (
+              <>
+                <D20 value={myRoll} size={90} />
+                <div className="text-[18px]">
+                  {initiative.order ? `你們擲出 ${myRoll}，第${ordinal(initiative.order.indexOf(teamId!) + 1)}個上場` : `你們擲出 ${myRoll}，看大螢幕 👀`}
+                </div>
+              </>
+            )}
+          </Panel>
+        )}
+
+        {game && !finished && !intro && !initiative && turn && (
           <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
             {isMyTurn ? "輪到我們了！" : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
@@ -940,7 +963,7 @@ export default function PlayPage() {
           <DialogueBox
             compact
             // The intro narrates nothing: after a replay eventId is past the last narration, so it must not spin.
-            loading={!!game && !finished && intro === null && isPending(game.eventId, narration)}
+            loading={!!game && !finished && intro === null && !initiative && isPending(game.eventId, narration)}
             lines={
               finished
                 ? epilogue && podium
@@ -948,14 +971,14 @@ export default function PlayPage() {
                   : narration
                     ? narration.lines
                     : ["冒險結束了，大螢幕正在頒獎。"]
-                : intro !== null
-                  ? ["說明結束後，輪到你們時這裡會出現題目"]
+                : intro !== null || initiative
+                  ? [initiative ? "擲完先攻，輪到你們時這裡會出現題目" : "說明結束後，輪到你們時這裡會出現題目"]
                   : narration
                   ? narration.lines
                   : [turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"]
             }
             // A host edit of this narration reads on from the edited line instead of starting over (D13).
-            id={narration && intro === null && !(finished && epilogue && podium) ? narration.eventId : undefined}
+            id={narration && intro === null && !initiative && !(finished && epilogue && podium) ? narration.eventId : undefined}
           />
         </div>
       </div>

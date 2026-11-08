@@ -1,5 +1,6 @@
 import { ABILITY_USES, isClassId, type ClassId, type GameState } from "../game-state";
 import { parseBank, type Bank } from "../question-bank";
+import type { Initiative } from "../initiative";
 import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, type AiSource } from "../protocol";
 
 /**
@@ -58,6 +59,10 @@ export interface RoomSnapshot {
   phaseCard?: boolean;
   /** How-to-play page on show (1..INTRO_PAGES). Missing means no intro, as in a save from before it. */
   intro?: number;
+  /** 擲先攻 under way (lib/initiative.ts). Missing means none, as in a save from before it. */
+  initiative?: Initiative;
+  /** The HOST_START asked for 擲先攻, saved while the intro is on so it still follows the intro after a restart. */
+  initiativeOn?: true;
   /** A finished game's podium: the narrator's calls (the story is `epilogue`) and when the first beat starts. */
   podium?: { lines: string[]; at: number } | null;
   /** The earliest the podium reveal may start, set when the game finished. Missing in a save from before the reveal. */
@@ -114,11 +119,18 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     // A damaged podium only loses the reveal: the screen shows the full podium.
     const pod = raw.podium;
     const podium = isObject(pod) && Array.isArray(pod.lines) && pod.lines.every(isString) && typeof pod.at === "number" && Number.isFinite(pod.at) ? { lines: pod.lines as string[], at: pod.at } : null;
+    // A damaged 擲先攻 is dropped: the game goes on in the lobby order, with no start narration.
+    const ini = raw.initiative;
+    const d20 = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 20;
+    const iniOk =
+      isObject(ini) && isObject(ini.rolls) && Object.values(ini.rolls).every(d20) && (ini.order === undefined || (Array.isArray(ini.order) && ini.order.every(isString))) &&
+      (ini.tieRolls === undefined || (Array.isArray(ini.tieRolls) && ini.tieRolls.every((r) => isObject(r) && Number.isInteger(r.from) && Array.isArray(r.teams) && r.teams.every(isString) && Array.isArray(r.values) && r.values.every(d20))));
     const revealFrom = typeof raw.revealFrom === "number" && Number.isFinite(raw.revealFrom) ? raw.revealFrom : null;
     return {
       ...(raw as unknown as RoomSnapshot),
       ...(raw.podium !== undefined ? { podium } : {}),
       ...(raw.revealFrom !== undefined ? { revealFrom } : {}),
+      initiative: iniOk ? (ini as unknown as Initiative) : undefined,
       game: withUses as GameState | null,
       joinPassword,
       nextLine: nextLine as RoomSnapshot["nextLine"],

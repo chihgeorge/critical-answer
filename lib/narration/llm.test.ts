@@ -100,6 +100,11 @@ describe("prompt", () => {
     expect(user.match(/「/g)!.length).toBe(user.match(/」/g)!.length);
   });
 
+  it("start: names the teams in the order they rolled when the game opened with 擲先攻", () => {
+    expect(buildPrompt({ type: "start", teams: ["乙", "甲"], initiative: true }, []).user).toContain("各隊剛擲完先攻，輪流順序是：「乙」、「甲」。");
+    expect(buildPrompt({ type: "start", teams: ["甲", "乙"] }, []).user).toContain("參賽隊伍：「甲」、「乙」。");
+  });
+
   it("carries no question text or answer for any event", () => {
     const events: NarrationEvent[] = [
       { type: "start", teams: ["甲", "乙"] },
