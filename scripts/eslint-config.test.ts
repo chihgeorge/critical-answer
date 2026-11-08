@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ESLint } from "eslint";
 
 // eslint.config.mjs's guard for the #147 bug class: an event read inside a deferred state updater.
-const eslint = new ESLint({ cwd: new URL("..", import.meta.url).pathname });
+const eslint = new ESLint({ cwd: new URL("..", import.meta.url).pathname, overrideConfigFile: new URL("../eslint.config.mjs", import.meta.url).pathname });
 const ruleHits = async (code: string, filePath = "components/probe.tsx") => {
   const [result] = await eslint.lintText(code, { filePath });
   return result.messages.filter((m) => m.ruleId === "no-restricted-syntax").length;
