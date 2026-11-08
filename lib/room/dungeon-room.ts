@@ -71,6 +71,7 @@ import {
   FINISH_PODIUM_MS,
   SERVE_HOLD_MS,
   REACT_GAP_MS,
+  REACT_JITTER_MS,
   REACT_ROOM_MAX,
   type Reaction,
 } from "../protocol";
@@ -1330,7 +1331,7 @@ export class DungeonRoom {
       // reconnect's re-identification (`resume`) is a device, not a person.
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
-      // A reaction changes no saved state, so it writes nothing to storage either.
+      // A reaction changes no saved state, so it neither counts as activity nor saves.
       if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
@@ -2275,19 +2276,23 @@ export class DungeonRoom {
   }
 
   /** A waiting team's reaction (audience-reactions.md): dropped without a reply when it is not a joined team's, the
-   * team is the one answering (or every team is, in a buzzer phase), the team reacted in the last REACT_GAP_MS, or the
-   * room already sent REACT_ROOM_MAX in that time. The phone greys its buttons for the gap, so a drop needs no ERROR. */
+   * game has not reached its first question (intro, initiative), the team is the one answering (or every team is, in
+   * a buzzer phase), the team reacted in the last REACT_GAP_MS (less REACT_JITTER_MS), or the room already sent
+   * REACT_ROOM_MAX in that time. The phone hides or greys its buttons in all of these, so a drop needs no ERROR. */
   private handleReact(conn: Conn, reaction: Reaction) {
     const teamId = this.connTeam.get(conn.id);
-    if (!teamId || this.game?.phase !== "playing") return;
+    if (!teamId || this.game?.phase !== "playing" || this.opening()) return;
     if (currentTurnTeamId(this.game) === teamId || isBuzzPhase(this.game)) return;
     const now = this.now();
-    if (now - (this.reactedAt.get(teamId) ?? -Infinity) < REACT_GAP_MS) return;
-    this.roomReacts = this.roomReacts.filter((t) => now - t < REACT_GAP_MS);
+    // One window for both limits, so a team tapping as fast as it may never counts twice against the room's cap.
+    const gap = REACT_GAP_MS - REACT_JITTER_MS;
+    if (now - (this.reactedAt.get(teamId) ?? -Infinity) < gap) return;
+    this.roomReacts = this.roomReacts.filter((t) => now - t < gap);
     if (this.roomReacts.length >= REACT_ROOM_MAX) return;
     this.reactedAt.set(teamId, now);
     this.roomReacts.push(now);
-    this.broadcast({ type: "REACTION", teamId, reaction });
+    // Straight to the sockets, not this.broadcast: a reaction changes nothing to save, so it skips persist().
+    this.room.broadcast(JSON.stringify({ type: "REACTION", teamId, reaction } satisfies ServerMessage));
   }
 
   /** 沒人答對，換下一題 (boss-buzzer.md D4): a new question, the old one unrevealed. Not narrated. */

@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
-import { REACTIONS, type AnswerReveal, type EventReveal, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type StateMessage } from "@/lib/protocol";
+import { REACTIONS, REACT_ROOM_MAX, type AnswerReveal, type EventReveal, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type StateMessage } from "@/lib/protocol";
 import { revealNow, type Beat } from "@/lib/podium";
 import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
@@ -196,16 +196,17 @@ function WallOptions({ options, gone, magic, lock, wrong, correct, teamName }: {
 type Float = { id: number; teamId: string; reaction: Reaction; x: number };
 let floatSeq = 0;
 const FLOAT_MS = 2400;
-const MAX_FLOATS = 8;
+/** Two full rooms' worth: a second burst may start while the first is still climbing. */
+const MAX_FLOATS = 2 * REACT_ROOM_MAX;
 /** Where the wall shows on every scene: the gutters beside the question panel (x < 110, x > 850) and the arch's sides. */
 const FLOAT_LANES = [24, 878, 352, 560, 64, 838];
 function ReactionFloats({ floats, teams }: { floats: Float[]; teams: SpectatorView["teams"] }) {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden" style={{ zIndex: 2 }}>
       {floats.map((f) => (
-        <div key={f.id} data-testid="reaction-float" className="px-rise absolute flex flex-col items-center" style={{ left: f.x, top: 120, filter: "drop-shadow(3px 3px 0 var(--k))" }}>
+        <div key={f.id} data-testid="reaction-float" className="px-react-rise absolute flex flex-col items-center" style={{ left: f.x, top: 120, filter: "drop-shadow(3px 3px 0 var(--k))" }}>
           <span className="text-[38px] leading-none">{REACTIONS[f.reaction].emoji}</span>
-          <span className="max-w-[120px] truncate text-[13px] text-[var(--cream)]">{teams.find((t) => t.id === f.teamId)?.name ?? ""}</span>
+          <span className="max-w-[80px] truncate text-[13px] text-[var(--cream)]">{teams.find((t) => t.id === f.teamId)?.name ?? ""}</span>
         </div>
       ))}
     </div>
@@ -1052,6 +1053,7 @@ export default function ScreenPage() {
       switch (msg.type) {
         case "LOBBY":
           setLobby(msg.teams);
+          setFloats([]);
           setGame(null);
           setNarration(null);
           setEpilogue(null);

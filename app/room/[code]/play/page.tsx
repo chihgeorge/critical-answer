@@ -561,21 +561,20 @@ function FinishedPanel({ won, finale, podium, onPodium }: { won: boolean; finale
   );
 }
 
-/** The buzzer phase's one button (boss-buzzer.md D7): grey while the music waits for ▶, red to buzz, gold once we
- * buzzed first, grey again when another team holds it or we were judged wrong on this question. */
+type ReactSent = { reaction: Reaction; at: number };
 /** 觀眾反應 (docs/designs/audience-reactions.md): a waiting team's four fixed reactions, in one row above the
- * dialogue box. After a tap all four go grey for REACT_GAP_MS, the room's own limit, so a tap is never silently lost. */
-function ReactBar({ send }: { send: (m: ClientMessage) => void }) {
-  const [sent, setSent] = useState<Reaction | null>(null);
+ * dialogue box. After a tap all four go grey for REACT_GAP_MS, the room's own limit (it allows REACT_JITTER_MS of network delay). */
+function ReactBar({ send, sent, setSent }: { send: (m: ClientMessage) => void; sent: ReactSent | null; setSent: (s: ReactSent | null) => void }) {
+  // The cooldown is the page's, not this bar's: the bar unmounts on our own turn, and may come back inside the gap.
   useEffect(() => {
     if (!sent) return;
-    const t = setTimeout(() => setSent(null), REACT_GAP_MS);
+    const t = setTimeout(() => setSent(null), Math.max(0, sent.at + REACT_GAP_MS - Date.now()));
     return () => clearTimeout(t);
-  }, [sent]);
+  }, [sent, setSent]);
   return (
     <div data-testid="react-bar" className="mb-5 flex flex-col gap-1">
       <div role="status" className="text-center text-[15px] text-[var(--cream)]" style={{ textShadow: "2px 2px 0 var(--k)" }}>
-        {sent ? `已送出 ${REACTIONS[sent].emoji}，2 秒後可再按` : "點一下，大螢幕會飄出來"}
+        {sent ? `已送出 ${REACTIONS[sent.reaction].emoji}，${REACT_GAP_MS / 1000} 秒後可再按` : "點一下，大螢幕會飄出來"}
       </div>
       <div className="grid grid-cols-4 gap-[6px]">
         {(Object.keys(REACTIONS) as Reaction[]).map((r) => (
@@ -588,7 +587,7 @@ function ReactBar({ send }: { send: (m: ClientMessage) => void }) {
             onClick={() => {
               if (sent) return;
               send({ type: "REACT", reaction: r });
-              setSent(r);
+              setSent({ reaction: r, at: Date.now() });
             }}
           >
             <span aria-hidden className="text-[30px] leading-[1.1]">{REACTIONS[r].emoji}</span>
@@ -600,6 +599,8 @@ function ReactBar({ send }: { send: (m: ClientMessage) => void }) {
   );
 }
 
+/** The buzzer phase's one button (boss-buzzer.md D7): grey while the music waits for ▶, red to buzz, gold once we
+ * buzzed first, grey again when another team holds it or we were judged wrong on this question. */
 function BuzzButton({ game, buzz, teamId, send }: { game: StateMessage; buzz: NonNullable<StateMessage["view"]["buzz"]>; teamId: string; send: (m: ClientMessage) => void }) {
   const holder = game.view.teams.find((t) => t.id === buzz.teamId);
   const waiting = game.question?.content.kind === "youtube" && !buzz.open;
@@ -778,6 +779,7 @@ export default function PlayPage() {
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
   const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
+  const [reactSent, setReactSent] = useState<ReactSent | null>(null);
   const finished = game?.phase === "finished";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): one big 搶答 button, answers spoken aloud. */
   const buzz = !finished && !game?.phaseCard ? game?.view.buzz : undefined;
@@ -1048,8 +1050,9 @@ export default function PlayPage() {
         {finished && game && <FinishedPanel won={game.winners.includes(teamId)} finale={finale} podium={game.podium} onPodium={setPodium} />}
 
         <div className="mt-auto">
-          {/* Waiting teams only: never on our own turn, nor in a buzzer phase where every team is answering. */}
-          {game && !finished && !isMyTurn && !buzz && !intro && !initiative && <ReactBar send={send} />}
+          {/* Waiting teams only: never on our own turn, nor in a buzzer phase where every team is answering; and only
+              while connected, since a tap sent offline reaches the room before the phone has rejoined its team. */}
+          {game && !finished && !isMyTurn && !game.view.buzz && !intro && !initiative && !disconnected && !unreachable && !rested && <ReactBar send={send} sent={reactSent} setSent={setReactSent} />}
           <DialogueBox
             compact
             // The intro narrates nothing: after a replay eventId is past the last narration, so it must not spin.

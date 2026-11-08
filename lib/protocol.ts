@@ -256,8 +256,10 @@ export const REACTIONS = { clap: { emoji: "👏", label: "鼓掌" }, wow: { emoj
 export type Reaction = keyof typeof REACTIONS;
 /** One reaction per team per this many ms (the phone greys its buttons for as long). */
 export const REACT_GAP_MS = 2000;
-/** At most this many reactions per room in any REACT_GAP_MS, so the big screen never fills up. */
-export const REACT_ROOM_MAX = 6;
+/** The room lets a team's next tap arrive this much early: venue Wi-Fi can deliver the first one late. */
+export const REACT_JITTER_MS = 300;
+/** At most this many reactions per room in any REACT_GAP_MS: one from every waiting team of a full room. */
+export const REACT_ROOM_MAX = MAX_TEAMS - 1;
 
 /** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the crit die
  * after a correct lock (20 is a critical hit, 1 a fumble), a fill-in's persuasion check (`bonus` + the die against
