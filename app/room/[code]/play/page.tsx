@@ -571,7 +571,7 @@ function BuzzButton({ game, buzz, teamId, send }: { game: StateMessage; buzz: No
     buzz.teamId === teamId
       ? ["var(--warn)", <>你們搶到了！<span className="block text-[18px]">大聲說答案</span></>]
       : holder
-        ? [GREY, `${holder.name}搶到了`]
+        ? [GREY, <><span className="block px-8 text-[22px] [overflow-wrap:anywhere]">{holder.name}</span>搶到了</>]
         : buzz.out.includes(teamId)
           ? [GREY, <>這題答錯了<span className="block text-[16px]">等下一題</span></>]
           : waiting
