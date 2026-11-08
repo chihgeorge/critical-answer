@@ -315,6 +315,12 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
   };
 
   // Value: protects=an older-format bank loads as the default bank with its stored version and the `outdated` flag; fails_when=format < 3 is parsed, or treated as unreadable, or loses its version; why_new=new state; seam=none; no_claim=a real Durable Object (memory storage)
+  // Value: protects=the live bank across the format-4 bump (sort questions): a format-3 bank still loads as is;
+  // fails_when=bumping BANK_FORMAT turns every format-3 bank into the bundled one; seam=none; no_claim=a real Durable Object
+  it("still reads a format-3 bank as is", async () => {
+    expect(await new BankStore(memoryStorage({ bank: validBank, version: 6, format: 3 })).getVersionedBank()).toEqual({ bank: validBank, version: 6 });
+  });
+
   it("reads format 2, and a bank with no format, as outdated with the stored version", async () => {
     expect(await new BankStore(memoryStorage({ bank: oldBank, version: 9, format: 2 })).getVersionedBank()).toEqual({ bank: BANK, version: 9, outdated: 2 });
     expect(await new BankStore(memoryStorage({ bank: oldBank, version: 4 })).getVersionedBank()).toEqual({ bank: BANK, version: 4, outdated: 1 });

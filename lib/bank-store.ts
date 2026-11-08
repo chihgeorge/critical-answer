@@ -43,10 +43,11 @@ const LEGACY_BANK_KEY = "legacyBank";
 /** The stored bank's format. Bump it when older code reading a newly saved bank would lose data on
  * its next save (e.g. a new field its parseBank drops): older code sees a higher number, treats the
  * stored bank as unreadable and refuses to save. A stored bank without one is format 1. */
-export const BANK_FORMAT = 3;
-// An OLDER stored format is not parsed either (format 2 names whole monsters, format 3 catalog ids;
-// docs/designs/monster-catalog.md §5): the bundled bank comes back `outdated` with the stored
-// version, and a save may overwrite it.
+export const BANK_FORMAT = 4;
+/** A stored format older than this is not parsed (format 2 names whole monsters, format 3 catalog ids;
+ * docs/designs/monster-catalog.md §5): the bundled bank comes back `outdated` with the stored version, and a
+ * save may overwrite it. Format 4 only added sort questions, so format 3 still reads as is. */
+const OLDEST_PARSED_FORMAT = 3;
 /** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
 const PENDING_KEY = "pendingImageDeletes";
 /** Default wait before an orphaned image is deleted: a room's default 24-hour expiry plus an hour
@@ -168,7 +169,7 @@ export class BankStore {
       // Fails closed: anything but a missing format or one this code knows could be a newer writer's.
       if (r.format !== undefined && !(typeof r.format === "number" && r.format <= BANK_FORMAT)) throw new Error(`stored bank format ${String(r.format)} is not one this version (${BANK_FORMAT}) can read`);
       const format = (r.format as number | undefined) ?? 1;
-      if (format < BANK_FORMAT) return { current: { bank: BANK, version: typeof r.version === "number" ? r.version : 1 }, unreadable: false, outdated: { format, raw: r.bank } };
+      if (format < OLDEST_PARSED_FORMAT) return { current: { bank: BANK, version: typeof r.version === "number" ? r.version : 1 }, unreadable: false, outdated: { format, raw: r.bank } };
       return { current: { bank: parseBank(r.bank), version: typeof r.version === "number" ? r.version : 1 }, unreadable: false };
     } catch (err) {
       // Corrupt storage must not crash whatever called this (a room trying to start a game, the

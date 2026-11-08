@@ -19,6 +19,7 @@ import { MageHint } from "@/components/mage-hint";
 import { clericStage, HOST_KEYS, hostKeyAction, introKeyAction } from "@/lib/host-keys";
 import { INTRO_PAGE_TEXT, introDots } from "@/components/how-to-play";
 import { optionLetter } from "@/components/mc-option";
+import { sortOrderOf } from "@/lib/sort-order";
 import { AI_ERRORS, AI_STORE, AiExhausted, AiPanel, aiKeyMessage, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
@@ -293,11 +294,14 @@ export default function HostPage() {
 
   // Phone answering (docs/designs/phone-answering.md D3, D11, D13): a multipleChoice turn is judged by
   // the team's lock, which waits for the host's 公布答案 (host-reveal.md); the host gets 替選・重答 / 逃跑 after 15 s of no progress.
-  const isMc = !game?.reveal && !!game?.question?.options;
+  const isMc = !game?.reveal && !!(game?.question?.options || game?.question?.items);
   const lock = game?.pendingLock ?? null;
   // The lock waits for the host's 公布答案 (docs/designs/host-reveal.md); its team may no longer be on turn.
   const lockTeam = lock ? game?.view.teams.find((t) => t.id === lock.teamId)?.name ?? "" : "";
   const lockWaiting = !!lock && !lock.revealing;
+  // A sort lock names a whole order: the host reads it out against the answer.
+  const sortItems = lock && game?.question?.id === lock.questionId ? game.question.items : undefined;
+  const sortedLock = sortItems && sortOrderOf(lock!.optionIndex)?.map((i) => sortItems[i]).join(" → ");
   const wrong = game?.view.pendingWrong ?? null;
   // A wrong boss lock resolves on its own after a beat (D2=B). The stuck row still comes after 15 s,
   // as the way out if that beat never resolves.
@@ -609,10 +613,10 @@ export default function HostPage() {
                 <ScoreMeter score={turn.team.score} active />
               </div>
               {game.question && !game.question.options && (
-                <MageHint hint={game.view.mageHints?.[game.question.id]} testId="host-mage-hint" className="mt-2 inline-block px-2 py-1 text-[18px]" />
+                <MageHint hint={game.view.mageHints?.[game.question.id]} sort={!!game.question.items} testId="host-mage-hint" className="mt-2 inline-block px-2 py-1 text-[18px]" />
               )}
               {/* #104: a text question's typed answer, judged with the buttons below. */}
-              {game.question && !game.question.options && (
+              {game.question && !game.question.options && !game.question.items && (
                 <div data-testid="host-typed-answer" className="mt-2 text-[18px] [overflow-wrap:anywhere]">
                   {turn.team.typedAnswer ? `隊伍答：${turn.team.typedAnswer}` : "（還沒送出）"}
                 </div>
@@ -744,14 +748,14 @@ export default function HostPage() {
                       {roll
                         ? `${turn.team.name}擲出了骰子…`
                         : lock
-                        ? `${lockTeam}鎖定了 ${optionLetter(lock.optionIndex)}…`
+                        ? `${lockTeam}鎖定了 ${sortedLock ?? optionLetter(lock.optionIndex)}…`
                         : bossMiss
                           ? "答錯！首領換一題…"
                           : wrong
                           ? `答錯！等${turn.team.name}選重答或逃跑`
                           : `等${turn.team.name}鎖定答案…`}
                     </div>
-                    <div className="text-[14px]">{roll?.kind === "kill" ? "大螢幕擲 4d20 擊殺獎勵後結算" : roll || lock?.revealing ? "大螢幕停頓 2 秒後揭曉" : lock ? "按公布答案揭曉" : "選擇題由隊伍手機作答，主持人公布"}</div>
+                    <div className="text-[14px]">{roll?.kind === "kill" ? "大螢幕擲 4d20 擊殺獎勵後結算" : roll || lock?.revealing ? "大螢幕停頓 2 秒後揭曉" : lock ? "按公布答案揭曉" : `${game.question?.items ? "排序題" : "選擇題"}由隊伍手機作答，主持人公布`}</div>
                   </Panel>
                   </div>
                   {revealButton}

@@ -5,18 +5,20 @@ export type OptionLook = "plain" | "sel" | "lock" | "ok" | "bad" | "dim";
 
 export const optionLetter = (i: number) => String.fromCharCode(65 + i);
 
-/** One A–D option tile: a letter chip, the text, and an optional right-hand label (◀ 已選, ✕ 答錯…). */
+/** One A–D option tile: a letter chip, the text, and an optional right-hand label (◀ 已選, ✕ 答錯…). `badge`
+ * replaces the letter (a sort question's place, 1–4). */
 export function McOption({
   index,
   text,
   look = "plain",
   label,
+  badge,
   className,
   ...rest
-}: { index: number; text: ReactNode; look?: OptionLook; label?: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>) {
+}: { index: number; text: ReactNode; look?: OptionLook; label?: ReactNode; badge?: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button type="button" className={["px-opt", look !== "plain" && look, className].filter(Boolean).join(" ")} {...rest}>
-      <b>{optionLetter(index)}</b>
+      <b>{badge ?? optionLetter(index)}</b>
       <span className="min-w-0">{text}</span>
       {label && <i>{label}</i>}
     </button>

@@ -15,7 +15,6 @@
 - [等待隊伍的觀眾反應（表情 / 加油 / 噓聲）](#等待隊伍的觀眾反應表情--加油--噓聲) — M（人工約 2 天 / CC 約 1 小時）
 - [開場與首領房的轉場動畫](#開場與首領房的轉場動畫) — M（人工約 1 天 / CC 約 40 分鐘）
 - [旁白語氣是否耐聽](#旁白語氣是否耐聽) — S（人工約 0.5 天 / CC 約 20 分鐘）
-- [新題型：排序題](#新題型排序題) — M（人工約 3 天 / CC 約 1.5 小時）
 - [反 AI 作弊：玩家用手機問 AI 查答案](#反-ai-作弊玩家用手機問-ai-查答案) — 未定（先決定做法）
 
 ### P3
@@ -260,29 +259,6 @@
 **Notes:**
 - Pros：保住知識題的公平性。
 - Cons：完全擋不住（玩家可以用第二支手機）；做太嚴會影響正常作答體驗。
-
----
-
-## 新題型：排序題
-
-**What:** 新增第三種題型「排序題」。題目給四個項目，隊伍要依照規則把它們排成一列，例如「四個角色依年齡由大到小排」。排序規則和正確順序在建立題目時決定。
-
-**Why:** 2026-10-26 使用者提出。比四選一更需要討論，適合隊伍一起想；同一組項目換個規則（年齡、出道年份、身高）就能變成新題目。
-
-**Context:**
-- `lib/question-bank.ts`
-- `app/room/[code]/play/page.tsx`
-- `lib/room/dungeon-room.ts`
-- `app/bank-editor/page.tsx`
-
-**Effort/Priority:** M（人工約 3 天 / CC 約 1.5 小時） / P2
-
-**Depends on:** 無。使用者 2026-10-26 說先記下，之後再排。
-
-**Notes:**
-- Pros：可以重用選擇題已有的四格版面和每局打亂選項（`shuffledOptionOrders`）；答案可以自動判定，主持人不用按答對。
-- Cons：要決定的事：手機上怎麼排（拖拉或依序點選）；要全對才算對，還是排對幾個給部分分；大螢幕怎麼公布正確順序；題庫編輯器要多一種題型的編輯畫面；`parseBank` 的驗證要支援新題型；題庫格式變了，要把 `lib/bank-store.ts` 的 `BANK_FORMAT` 加 1，舊版本才會把新題庫當成讀不懂、不會存檔時把排序題弄丟。
-- Context 補充：題型定義在 `lib/question-bank.ts`（`BankQuestion` 目前只有 `text` 和 `multipleChoice`，驗證在 `parseQuestions`）。手機作答在 `app/room/[code]/play/page.tsx`，選擇題的鎖定和判定在 `lib/room/dungeon-room.ts`（`TEAM_SELECT_OPTION` / `TEAM_LOCK_OPTION`）。題庫編輯器在 `app/bank-editor/page.tsx`。改 UI 前要先給 PNG。
 
 ---
 

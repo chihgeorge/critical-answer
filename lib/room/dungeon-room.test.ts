@@ -12,6 +12,7 @@ vi.mock("../question-bank-data", async (actual) => {
   return { BANK: { ...asTextBank((await actual<typeof import("../question-bank-data")>()).BANK), randomMonsters: undefined } };
 });
 import { checkKey, currentTurnTeamId, setTeamOnline } from "../game-state";
+import { sortCode } from "../sort-order";
 import { EPILOGUE_MODEL } from "../narration/llm";
 import { SERVE_HOLD_MS } from "../protocol";
 import { MAX_LINE } from "../narration/runner";
@@ -4034,5 +4035,88 @@ describe("team handoff: HOST_HANDOFF, TEAM_CLAIM (docs/designs/team-handoff.md)"
     joinTeams(room, hostConn, 2);
     send(room, hostConn, { type: "HOST_HANDOFF", teamId: T1 });
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "no_active_game" });
+  });
+});
+
+// Value: protects=the sort question's room flow: items go out shuffled and never in the answer's order, a lock is
+// judged on 公布答案 only when all four places are right, a wrong lock shows which places are right but not the answer,
+// the host cannot press 答對, and the mage names the first item; fails_when=the order leaks before the answer, a
+// partial order scores, wrongSlots is wrong or missing, or a wrong order can be locked twice; seam=none;
+// no_claim=the phone's drag (pointer events, e2e)
+describe("sort questions", () => {
+  afterEach(() => vi.useRealTimers());
+  const sortBank = parseBank({
+    rooms: [
+      {
+        monster: "slime-soft",
+        baseDifficulty: 1, reward: 10,
+        questions: [{ kind: "sort", id: "r0-s1", content: { kind: "text", value: "依字母排" }, items: ["A", "B", "C", "D"] }],
+      },
+    ],
+    boss: { monster: "dragon", maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+  });
+  // rng 0 keeps the bank order, which a sort question never shows: it is reversed, D C B A.
+  const RIGHT = sortCode([3, 2, 1, 0]);
+  const HALF = sortCode([3, 2, 0, 1]); // A B right, then D C
+
+  function sortGame(classId?: string) {
+    vi.useFakeTimers();
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: sortBank });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { conns } = joinTeams(room, hostConn, 1);
+    if (classId) send(room, conns[0], { type: "TEAM_PICK_CLASS", classId });
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn, conns };
+  }
+  const lockOrder = (room: DungeonRoom, conn: ReturnType<typeof makeConn>, code: number) => {
+    send(room, conn, { type: "TEAM_SELECT_OPTION", questionId: "r0-s1", optionIndex: code });
+    send(room, conn, { type: "TEAM_LOCK_OPTION", questionId: "r0-s1", optionIndex: code });
+    reveal(room);
+    vi.advanceTimersByTime(2000);
+  };
+
+  it("sends the items shuffled, without the answer", () => {
+    const { room } = sortGame();
+    const state = lastBroadcast(room);
+    expect(state.question.items).toEqual(["D", "C", "B", "A"]);
+    expect(JSON.stringify(state)).not.toContain("A → B");
+  });
+
+  it("a wrong order shows which places are right, never the answer, and cannot be locked again", () => {
+    const { room, conns } = sortGame();
+    lockOrder(room, conns[0], HALF);
+    expect(room.game!.pendingWrong).toMatchObject({ teamId: T1, optionIndex: HALF });
+    const state = lastBroadcast(room);
+    expect(state.wrongSlots).toEqual([true, true, false, false]);
+    expect(state.reveal).toBeNull();
+    send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "r0-s1", choice: "retry" });
+    expect(lastBroadcast(room).wrongSlots).toBeUndefined();
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-s1", optionIndex: HALF });
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
+  });
+
+  it("the right order rolls the crit die, then scores and reveals the order", () => {
+    const { room, conns } = sortGame();
+    lockOrder(room, conns[0], RIGHT);
+    expect((room as any).pendingRoll).toMatchObject({ kind: "crit" });
+    vi.advanceTimersByTime(2000);
+    expect(room.game!.teams[0].reward).toBeGreaterThan(0);
+    expect(lastBroadcast(room).reveal).toMatchObject({ answer: "A → B → C → D", sorted: { items: ["A", "B", "C", "D"], teamId: T1 } });
+  });
+
+  it("refuses an order code out of range and the host's 答對", () => {
+    const { room, hostConn, conns } = sortGame();
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-s1", optionIndex: 24 });
+    expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: T1, questionId: "r0-s1", correct: true });
+    expect(lastSentTo(hostConn)).toMatchObject({ detail: "auto_judged" });
+  });
+
+  it("the mage names the first item", () => {
+    const { room, conns } = sortGame("mage");
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-s1" });
+    expect(room.game!.mageHints?.["r0-s1"]).toBe("A");
   });
 });

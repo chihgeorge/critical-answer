@@ -14,7 +14,7 @@ qs = [q for p in bank["pools"].values() for q in p] + [q for ph in phases for q 
 # A later phase's name and rule are secret until its card opens (docs/designs/boss-phases.md).
 secrets = [s for ph in phases[1:] for s in (ph.get("name"), ph.get("rule")) if s]
 blob = "".join(p.read_text(errors="ignore") for p in pathlib.Path(".next/static").rglob("*.js"))
-answer = lambda q: q["options"][q["correctIndex"]] if q["kind"] == "multipleChoice" else q["answer"]
+answer = lambda q: q["options"][q["correctIndex"]] if q["kind"] == "multipleChoice" else " → ".join(q["items"]) if q["kind"] == "sort" else q["answer"]
 # The question's words: a legacy bare `text`, or `content.value` when the content is text,
 # plus the optional `prompt` an image or YouTube question carries. Image keys and video ids are skipped.
 words = lambda q: [w for w in (q.get("text"), (q.get("content") or {}).get("value") if (q.get("content") or {}).get("kind") == "text" else None, q.get("prompt")) if w]
