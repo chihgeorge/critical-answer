@@ -247,9 +247,11 @@ export interface GameState {
   /** This game's boss when the bank draws monsters per game (gameMonsters). Absent: the bank's own boss. */
   bossMonsterId?: string;
   config: GameConfig;
-  /** The round under way, from 1: it grows each time the turn wraps past the end of turnOrder (lib/game-log.ts).
-   * Absent (read as 1) until the first wrap, and in saves from before it. */
+  /** The round of the last turn played, from 1 (lib/game-log.ts): a turn starts a new round when its team does not
+   * come after the last team that played in turnOrder, skipped offline teams included. Absent (read as 1) until then. */
   round?: number;
+  /** turnOrder index of the last team that played a turn, for `round`. */
+  lastTurnIndex?: number;
   /** When the room started this game (ms since epoch), for lib/game-log.ts. Absent in saves from before it. */
   startedAt?: number;
   phase: GamePhase;
@@ -709,8 +711,14 @@ export function answerQuestion(
     const share = chef ? chefShare(gain) : 0;
     return { reward: gain + share, ...(share ? { chefBonus: share } : {}) };
   };
+  // This turn counts once, for lib/game-log.ts: a cleric's prayed wrong lock keeps the turn, so its answer after counts.
+  const order = game.turnOrder.indexOf(teamId);
+  const played = prayed ? {} : {
+    round: (game.round ?? 1) + (game.lastTurnIndex !== undefined && order <= game.lastTurnIndex ? 1 : 0),
+    lastTurnIndex: order,
+  };
   // The choice resolves the pending wrong lock.
-  game = { ...game, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
+  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice === "flee" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -771,8 +779,7 @@ export function answerQuestion(
       outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, ...gain, ...(killBonus === undefined ? {} : { killBonus }), ...rollMark };
 
       if (bossKilled) {
-        // The killing blow is this team's last turn (lib/game-log.ts).
-        return { game: finishGame({ ...nextGame, teams: patchTeam(nextGame.teams, teamId, (t) => ({ turns: (t.turns ?? 0) + 1 })) }, rng), outcome };
+        return { game: finishGame(nextGame, rng), outcome };
       }
     } else {
       // Wrong boss answer: there's no "downgrade" concept for a shared boss queue. A flee rotates
@@ -833,7 +840,7 @@ export function answerQuestion(
           currentQuestionId: dealt.questionId,
           currentSelection: null,
           inBoss: entersBoss,
-          ...(entersBoss ? { bossAt: { round: game.round ?? 1, turns: (t.turns ?? 0) + 1 } } : {}),
+          ...(entersBoss ? { bossAt: { round: game.round ?? 1, turns: t.turns ?? 0 } } : {}),
           queuedQuestionId: dealt.queuedQuestionId,
         })),
       };
@@ -872,10 +879,7 @@ export function answerQuestion(
   const here = { ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) };
   // A prayed wrong lock keeps the turn (class-abilities.md PR 2): the cleric answers again at once.
   if (prayed) return { game: { ...here, prayerTurn: teamId }, outcome };
-  const played = { ...here, prayerTurn: undefined, teams: patchTeam(here.teams, teamId, (t) => ({ turns: (t.turns ?? 0) + 1 })) };
-  const next = advanceTurn(played);
-  // The turn wrapped past the end of turnOrder: a new round starts.
-  return { game: next.currentTurnIndex <= here.currentTurnIndex ? { ...next, round: (here.round ?? 1) + 1 } : next, outcome };
+  return { game: advanceTurn({ ...here, prayerTurn: undefined }), outcome };
 }
 
 /** Throws unless it is `teamId`'s turn as a `classId` with no wrong lock waiting (that waits for

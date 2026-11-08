@@ -17,7 +17,7 @@ export interface GameLog {
   /** The phase the game ended in, from 1, and its HP left then. */
   bossPhaseReached: number;
   bossHpLeft: number;
-  /** The round the game ended in, from 1: a round is one turn for every team. */
+  /** The round of the last turn played, from 1: a round is one turn for every team still online. */
   rounds: number;
   /** The round the first team walked into the boss room, or null if none did. */
   firstBossRound: number | null;

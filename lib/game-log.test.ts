@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { answerQuestion, createGame, endGame, sendToBoss, type GameState } from "./game-state";
+import { answerQuestion, createGame, endGame, sendToBoss, setTeamOnline, type GameState } from "./game-state";
 import { appendGameLog, gameLog, readGameLogs } from "./game-log";
 import { handleGameLogsApi } from "./bank-api";
 
@@ -47,6 +47,29 @@ describe("game log", () => {
     expect(JSON.stringify(log)).not.toMatch(/"q\d|"b\d/);
   });
 
+  // Value: protects=rounds stay right when phones drop (adversarial review); fails_when=a turn that skips an offline
+  // team past the end of turnOrder is not counted as a new round
+  it("counts a new round when the last team is offline and the turn skips back to the first", () => {
+    const rooms = [1, 1, 1].map(() => ({ baseDifficulty: 1 as const, reward: 10 }));
+    const pools = [Array.from({ length: 9 }, (_, i) => `q${i}`), [], [], [], []];
+    let g = createGame(["A", "B", "C"].map((id) => ({ id, name: id })), rooms, pools, ["b1"], { bossThreshold: 99 }, 2, first);
+    g = answer(g, "A", false);
+    g = answer(g, "B", false); // the stored turn is now C
+    g = setTeamOnline(g, "C", false);
+    g = answer(g, "A", false); // skips C: round 2
+    expect(g.round).toBe(2);
+    g = answer(g, "B", false);
+    g = answer(g, "A", false); // round 3
+    expect(gameLog(endGame(g, first), 0)).toMatchObject({ rounds: 3 });
+  });
+
+  // Value: protects=a host end right after a round wraps; fails_when=the round counts up before anyone plays in it
+  it("a host end before anyone plays in the next round does not count that round", () => {
+    let g = answer(twoTeams(), "A", false);
+    g = answer(g, "B", false);
+    expect(gameLog(endGame(g, first), 0).rounds).toBe(1);
+  });
+
   it("logs a host-ended game, and a team the host sent in at its own turn count", () => {
     let g = answer(twoTeams(), "A", false);
     g = sendToBoss(g, "B");
@@ -75,5 +98,10 @@ describe("game log", () => {
     const ok = await handleGameLogsApi(new Request("https://x/api/game-logs", { headers: { Authorization: `Bearer ${key}` } }), deps);
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual([]);
+    const wrong = await handleGameLogsApi(new Request("https://x/api/game-logs", { headers: { Authorization: `Bearer ${"x".repeat(32)}` } }), deps);
+    expect(wrong.status).toBe(403);
+    const post = await handleGameLogsApi(new Request("https://x/api/game-logs", { method: "POST", headers: { Authorization: `Bearer ${key}` } }), deps);
+    expect(post.status).toBe(405);
+    expect(readLogs).toHaveBeenCalledTimes(1);
   });
 });

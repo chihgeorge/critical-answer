@@ -450,9 +450,9 @@ describe("HOST_JUDGE", () => {
 // why_new=game-state tests cover killDice only, not the room's beat; seam=none; no_claim=the TV animation (d20 tests)
 describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
   afterEach(() => vi.useRealTimers());
-  function lastHit(opts: { fixedDie?: number } = {}) {
+  function lastHit(opts: { fixedDie?: number } = {}, io: Partial<RoomIO> = {}) {
     vi.useFakeTimers();
-    const room = new DungeonRoom(makeRoom() as any, () => 0.5, opts);
+    const room = new DungeonRoom({ ...(makeRoom() as any), ...io }, () => 0.5, opts);
     const hostConn = makeConn("host-conn");
     room.onConnect(hostConn);
     claim(room, hostConn);
@@ -464,6 +464,21 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
     const judge = () => send(room, hostConn, { type: "HOST_JUDGE", teamId: turn, questionId: room.game!.boss.currentQuestionId, correct: true });
     return { room, hostConn, ids, conns, turn, judge };
   }
+
+  // Value: protects=a game won by the kill reaches the owner's log once; fails_when=the kill path stops calling
+  // logGame, or a 結束冒險 after the finish logs the game a second time
+  it("a kill logs the game once, as won by the killer", () => {
+    const logGame = vi.fn();
+    const { room, hostConn, turn, judge } = lastHit({}, { logGame });
+    judge();
+    vi.advanceTimersByTime(4000);
+    expect(room.game!.phase).toBe("finished");
+    send(room, hostConn, { type: "HOST_END_GAME" });
+    expect(logGame).toHaveBeenCalledTimes(1);
+    const log = logGame.mock.calls[0][0];
+    expect(log).toMatchObject({ endedBy: "kill", bossHpLeft: 0 });
+    expect(log.teams.find((t: { killedBoss: boolean }) => t.killedBoss).name).toBe(room.game!.teams.find((t) => t.id === turn)!.name);
+  });
 
   it("holds the kill for the beat, then scores exactly the dice it showed", () => {
     const { room, turn, judge } = lastHit();
