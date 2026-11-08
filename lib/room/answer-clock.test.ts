@@ -258,3 +258,46 @@ describe("每題作答倒數 on a video question (D4)", () => {
     expect(g.peek().answerClock).toEqual({ left: 20000 });
   });
 });
+
+// partysocket keeps one connection id (_pk) for every reconnect, so the server can see the new socket before the old
+// one's close. Value: protects=a Wi-Fi blip on the TV leaves video questions waiting forever for a clip end the room
+// now ignores; fails_when=onClose unregisters a socket that already replaced the closed one under the same id.
+describe("connections that come back under the same id", () => {
+  it("an old socket's late close leaves the reconnected TV and host in place", () => {
+    const g = started({ answerSeconds: 30 }, bank(video("v1")));
+    const oldTv = makeConn("tv");
+    g.room.onConnect(oldTv);
+    send(g.room, oldTv, { type: "SCREEN_HELLO" });
+    const tv = makeConn("tv");
+    g.room.onConnect(tv);
+    send(g.room, tv, { type: "SCREEN_HELLO" });
+    const host = makeConn("host");
+    g.room.onConnect(host);
+    send(g.room, host, { type: "HOST_CLAIM", token: TOKEN });
+    expect(oldTv.close).toHaveBeenCalled(); // one socket per id: the newcomer replaces the old one
+    expect(g.host.close).toHaveBeenCalled();
+    g.room.onClose(oldTv);
+    g.room.onClose(g.host);
+    send(g.room, host, { type: "HOST_AI_LIMIT", limit: 5 });
+    expect(msgs(host.send.mock.calls).some((m) => m.error === "not_host")).toBe(false);
+    vi.advanceTimersByTime(4000);
+    send(g.room, tv, { type: "SCREEN_CLIP_ENDED", questionId: "v1" });
+    expect(g.state().answerClock).toEqual({ left: 30000 });
+  });
+
+  // Value: protects=a full room making space mid-game never costs a team its online mark or its turn;
+  // fails_when=closing a team's older spare socket runs the disconnect path as if the team left.
+  it("a full room closing a team's older socket mid-game keeps the team online and on turn", () => {
+    const g = started();
+    const onTurn = g.state().view.currentTurnTeamId;
+    const i = IDS.indexOf(onTurn);
+    const twin = makeConn("twin");
+    g.room.onConnect(twin);
+    send(g.room, twin, { type: "JOIN", teamId: onTurn, teamKey: `team-key-0123456789abcde${i}`, teamName: ["甲隊", "乙隊"][i] });
+    for (let n = 0; n < 56; n++) g.room.onConnect(makeConn(`junk${n}`)); // host, 2 phones, twin + 56 = 60
+    g.room.onConnect(makeConn("late"));
+    expect(g.phones[i].close).toHaveBeenCalled(); // the team's older socket was the oldest spare
+    expect(g.room.game!.teams.find((t) => t.id === onTurn)!.online).toBe(true);
+    expect(g.state().view.currentTurnTeamId).toBe(onTurn);
+  });
+});

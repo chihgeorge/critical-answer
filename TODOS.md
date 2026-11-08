@@ -39,6 +39,7 @@
 - [法師填空題提示：答案帶註記時第一個字會誤導](#法師填空題提示答案帶註記時第一個字會誤導) — 未註明
 - [房間最多只能存在 6 小時](#房間最多只能存在-6-小時) — S（人工約半天 / CC 約 20 分鐘）
 - [每則訊息都把整個房間序列化一次，而且沒有速率限制](#每則訊息都把整個房間序列化一次而且沒有速率限制) — S（人工約半天 / CC 約 30 分鐘）
+- [任何人都能宣告自己是大螢幕](#任何人都能宣告自己是大螢幕) — M（人工約 1 天 / CC 約 1 小時）
 - [HOST_AI_KEY 能被拿來批次驗證偷來的 Anthropic key](#host_ai_key-能被拿來批次驗證偷來的-anthropic-key) — S（人工約 2 小時 / CC 約 20 分鐘）
 - [填空題可以有好幾個要填的欄位](#填空題可以有好幾個要填的欄位) — M（人工約 2 天 / CC 約 1 小時）
 - [⭐ 靈感：主持人給，下一次擲骰取優勢](#-靈感主持人給下一次擲骰取優勢) — S
@@ -609,6 +610,28 @@
 
 **Notes:**
 - Context 補充：常數在 `lib/room/dungeon-room.ts` 的 `EXPIRE_MS`（閒置是 `IDLE_MS` 2 小時）。`worker/index.ts` 用同一個到期時間算孤兒圖片的刪除時間，所以改短會讓舊圖片更早被刪，要一起檢查。也要決定：時間快到時要不要先提醒主持人和玩家。
+
+---
+
+## 任何人都能宣告自己是大螢幕
+
+**What:** /screen 連上時送的 `SCREEN_HELLO` 不帶任何憑證，有房間代碼的人開 devtools 就能宣告自己是大螢幕，然後送 `SCREEN_CLIP_ENDED`（影片題提早開始作答倒數）或 `SCREEN_NARRATION_PROGRESS`（鎖住主持人改旁白）。另外，房間滿 60 條連線時只保護「最早宣告的兩台螢幕」：搗蛋的人先宣告兩次，真電視斷線重連後就排到後面，再一直開新連線就能把真電視擠掉。做法：主持人頁給的大螢幕網址帶一把螢幕金鑰（像主持人的 `#k=`），房間只認帶對金鑰的連線是大螢幕，保護名額也只給它們。電視開網址的方式會變（網址變長或改掃 QR），`docs/hosting.md` 要一起改。
+
+相關的舊問題（2026-11-08 /review 找到，沒擋這個 PR）：
+- 同一個連線 id（partysocket 的 `_pk`）再連上時，房間現在會關掉舊的那條。但 `onMessage` 不檢查送訊息的是不是房間登記的那條 socket：被拒絕或被關掉、卻不理會關閉的客戶端，可能還能送 JOIN 等訊息。做法：`onMessage` 開頭比對 `this.conns.get(sender.id) === sender`（要先改測試，很多測試沒呼叫 onConnect 就送訊息）。
+- 同 id 重連後、新 socket 重送 HOST_CLAIM 之前，`hostConns` 還指著舊 socket，主持人專屬訊息會送到已關的連線。主持人頁每次連上都會重送 HOST_CLAIM，所以空窗很短。
+- `worker/index.ts` 的 Room 沒有 `onError`：只出錯、沒有關閉事件的 socket 會留在 `conns`、`connTeam`，佔上限名額，隊伍也一直顯示在線。做法：`onError(conn) { this.onClose(conn); }`。
+
+**Why:** 房間代碼就顯示在電視上。現在只擋得住隨手亂送的連線，擋不住會寫腳本的人。
+
+**Context:**
+- `lib/room/dungeon-room.ts` 的 `SCREEN_HELLO`、`isScreen`、`closeSpareConn`（`KEPT_SCREENS`）
+- `app/room/[code]/screen/page.tsx` 的 `onOpen`
+- 2026-11-08 搗蛋防護 PR 的 /review（security 專家和 Codex）找到。站長 2026-11-08 選了先記 TODO，活動後再做。
+
+**Effort/Priority:** M / P3
+
+**Depends on:** 無。
 
 ---
 

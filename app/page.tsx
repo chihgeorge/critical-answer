@@ -33,7 +33,7 @@ function HomeForm() {
       return;
     }
     if (!ROOM_CODE_RE.test(code)) {
-      setError("請輸入 4 碼房間代碼");
+      setError("房間代碼不對，請照電視上的 4 個字母輸入");
       return;
     }
     rememberJoinPassword(code, password.trim());

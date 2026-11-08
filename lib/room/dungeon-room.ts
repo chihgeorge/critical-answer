@@ -1072,6 +1072,7 @@ export class DungeonRoom {
     this.hostToken = "";
     this.hostConns.clear();
     this.connTeam.clear();
+    this.screenConns.clear();
     this.teamKeys.clear();
     this.handoffs.clear();
     this.handoffWrong = 0;
@@ -1122,7 +1123,11 @@ export class DungeonRoom {
       conn.close();
       return;
     }
-    if (this.conns.size >= MAX_CONNECTIONS && !this.closeSpareConn()) {
+    // A reconnect reuses its id (partysocket's _pk): close the old socket, so one client cannot hold many sockets
+    // under one id, outside the cap below, each getting every broadcast. Its later close is ignored by onClose.
+    const prev = this.conns.get(conn.id);
+    if (prev && prev !== conn) prev.close();
+    else if (this.conns.size >= MAX_CONNECTIONS && !this.closeSpareConn()) {
       conn.close();
       return;
     }
@@ -1160,6 +1165,10 @@ export class DungeonRoom {
   }
 
   onClose(conn: Conn) {
+    // Ids come from the client (partysocket's _pk) and survive a reconnect: an old socket's late close must not
+    // unregister the new socket that already took its id (a TV that re-sent SCREEN_HELLO, a host, a phone).
+    const live = this.conns.get(conn.id);
+    if (live && live !== conn) return;
     this.conns.delete(conn.id);
     this.hostConns.delete(conn.id);
     this.screenConns.delete(conn.id);
