@@ -42,7 +42,6 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
   const rounds = game.round ?? 1;
   const entries = game.teams.flatMap((t) => (t.bossAt ? [t.bossAt.round] : []));
   const firstBossRound = entries.length ? Math.min(...entries) : null;
-  const ranking = game.ranking ?? [...game.teams].sort((a, b) => b.reward - a.reward).map((t) => t.id);
   return {
     startedAt: game.startedAt === undefined ? null : new Date(game.startedAt).toISOString(),
     endedAt: new Date(endedAt).toISOString(),
@@ -59,7 +58,7 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
     teams: game.teams.map((t) => ({
       name: t.name,
       classId: t.classId ?? null,
-      rank: ranking.indexOf(t.id) + 1,
+      rank: (game.ranking ?? []).indexOf(t.id) + 1, // 0: a game saved before rankings
       score: t.score,
       reward: t.reward,
       turns: t.turns ?? 0,

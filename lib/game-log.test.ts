@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { answerQuestion, createGame, endGame, sendToBoss, setTeamOnline, type GameState } from "./game-state";
+import { answerQuestion, createGame, endGame, pray, recordWrongLock, sendToBoss, setTeamOnline, type GameState } from "./game-state";
 import { appendGameLog, gameLog, readGameLogs } from "./game-log";
 import { handleGameLogsApi } from "./bank-api";
 
@@ -79,6 +79,20 @@ describe("game log", () => {
     expect(log.teams[0]).toMatchObject({ bossRound: null, turnsToBoss: null, turns: 1 });
   });
 
+  // Value: protects=a cleric's prayer keeps one turn, not two; fails_when=the prayed wrong lock counts as a turn
+  it("a cleric's prayed wrong lock and its retry count as one turn", () => {
+    const rooms = [1, 1].map(() => ({ baseDifficulty: 1 as const, reward: 10 }));
+    let g = createGame([{ id: "A", name: "A", classId: "cleric" }, { id: "B", name: "B" }], rooms, [["q0", "q1", "q2"], [], [], [], []], ["b1"], { bossThreshold: 99 }, 2, first);
+    const q = g.teams[0].currentQuestionId;
+    g = pray(recordWrongLock(g, "A", q, 0), "A");
+    g = answerQuestion(g, "A", q, false, "retry", first).game; // prayed: A keeps the turn
+    expect(g.teams[0].turns ?? 0).toBe(0);
+    g = answer(g, "A", false);
+    expect(g.teams[0].turns).toBe(1);
+    const log = gameLog(endGame(g, first), 0);
+    expect(log).toMatchObject({ rounds: 1, firstBossRound: null, bossRounds: null });
+  });
+
   it("stores one key per game and reads them back oldest first", async () => {
     const data = new Map<string, unknown>();
     const storage = { put: (k: string, v: unknown) => void data.set(k, v), list: async ({ prefix }: { prefix: string }) => new Map([...data].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => a.localeCompare(b))) };
@@ -92,7 +106,10 @@ describe("game log", () => {
   it("GET /api/game-logs needs the owner key", async () => {
     const key = "k".repeat(32);
     const readLogs = vi.fn(async () => []);
-    const deps = { ownerKey: key, allowedOrigins: "", readLogs };
+    const deps = { ownerKey: key, allowedOrigins: "https://editor.example", readLogs };
+    const preflight = await handleGameLogsApi(new Request("https://x/api/game-logs", { method: "OPTIONS", headers: { Origin: "https://editor.example" } }), deps);
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("Access-Control-Allow-Origin")).toBe("https://editor.example");
     expect((await handleGameLogsApi(new Request("https://x/api/game-logs"), deps)).status).toBe(403);
     expect(readLogs).not.toHaveBeenCalled();
     const ok = await handleGameLogsApi(new Request("https://x/api/game-logs", { headers: { Authorization: `Bearer ${key}` } }), deps);
