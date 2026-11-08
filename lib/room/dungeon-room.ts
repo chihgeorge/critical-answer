@@ -472,7 +472,8 @@ export class DungeonRoom {
     if (!this.requireHost(conn)) return;
     this.keyCheck?.abort();
     this.keyCheck = null;
-    this.keyError = undefined;
+    // A key the host chose (only those carry a keyId) answers the last refusal; the page's resend on reconnect does not.
+    if (msg.source === "none" || msg.keyId) this.keyError = undefined;
     if (msg.source === "none") return this.applyCredential("none", null);
     if (msg.source === "owner") {
       const ownerKey = this.room.env?.OWNER_KEY;

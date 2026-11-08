@@ -347,6 +347,23 @@ describe("restarts and key changes", () => {
     expect(r.status()).toMatchObject({ keyHint: "…WXYZ", used: 1, error: "invalid_key" });
   });
 
+  it("a 401 on the key in use replaces an older refused paste's error", async () => {
+    const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY }, messages: () => json({}, 401) });
+    await r.useKey();
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: "guess", keyId: "x" });
+    expect(r.status().error).toBe("wrong_owner_key");
+    await r.start();
+    expect(r.status()).toMatchObject({ keyMissing: true, error: "invalid_key" });
+  });
+
+  it("the page's resend on reconnect (no keyId) leaves a refused paste's error on the panel", async () => {
+    const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY } });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY, keyId: "a" });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: "guess", keyId: "b" });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY });
+    expect(r.status()).toMatchObject({ keyMissing: false, error: "wrong_owner_key" });
+  });
+
   it("appliedKeyId names the HOST_AI_KEY whose key is in use, never a refused one", async () => {
     const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY }, models: (key) => (key === OTHER_KEY ? json({}, 401) : json({ data: [] })) });
     r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY, keyId: "a" });
@@ -354,10 +371,9 @@ describe("restarts and key changes", () => {
     r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: "guess", keyId: "b" });
     await r.start(); // a narration's status after the refusal still names "a"
     expect(r.status()).toMatchObject({ appliedKeyId: "a", error: "wrong_owner_key" });
-    // The page reconnects and resends its saved key: "a" is in use again, "b" never was.
+    // The page reconnects and resends its saved key: "b" never becomes the applied one.
     r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY });
     expect(r.status()).not.toHaveProperty("appliedKeyId");
-    expect(r.status()).not.toHaveProperty("error");
     // Own keys: the same key resent under a new id is applied under that id; a refused one never is.
     r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY, keyId: "c" });
     await sleep(0);
@@ -371,12 +387,12 @@ describe("restarts and key changes", () => {
   it("a wrong OWNER_KEY with the owner key in use: every later status says so, until the next HOST_AI_KEY", async () => {
     const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY } });
     r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY });
-    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: "guess" });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: "guess", keyId: "x" });
     await r.start();
     expect(r.status()).toMatchObject({ source: "owner", keyMissing: false, used: 1, error: "wrong_owner_key" });
     r.send({ type: "HOST_AI_LIMIT", limit: 50 });
     expect(r.status()).toMatchObject({ limit: 50, error: "wrong_owner_key" });
-    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY, keyId: "y" });
     expect(r.status()).not.toHaveProperty("error");
   });
 

@@ -86,12 +86,15 @@ export default function HostPage() {
     aiSaved.current = readSavedAiKey();
     setAiRemembered(aiSaved.current !== null);
   }, []);
-  const forgetAiKey = () => {
+  const forgetSavedAiKey = () => {
     aiSaved.current = null;
-    aiPending.current = null;
     forgetStored(AI_STORE.own);
     forgetStored(AI_STORE.owner);
     setAiRemembered(false);
+  };
+  const forgetAiKey = () => {
+    forgetSavedAiKey();
+    aiPending.current = null;
   };
   const [joinPassword, setJoinPassword] = useState("");
   const [savedPassword, setSavedPassword] = useState("");
@@ -135,8 +138,8 @@ export default function HostPage() {
           const p = aiPending.current;
           if (p) {
             const c = p.credential;
-            // No clearing on an error: a status sent for something else (a limit change) can carry the room's
-            // old error while this key is still being checked. A refused key simply never gets applied.
+            // Applied only when the room names this key's id; a refused key never gets it. No clearing on an error:
+            // a status sent before the room got this key can carry an older refusal.
             if (aiKeyApplied(p.keyId, msg)) {
               aiPending.current = null;
               aiSaved.current = c;
@@ -147,7 +150,8 @@ export default function HostPage() {
             }
           }
           // The host's own key refused mid-game: never resend it. (In owner mode the server's key is at fault, not OWNER_KEY.)
-          if (msg.error === "invalid_key" && msg.keyMissing && msg.source === "own") forgetAiKey();
+          // The key being pasted stays pending: this status may be an older paste's refusal, sent before the room got it.
+          if (msg.error === "invalid_key" && msg.keyMissing && msg.source === "own") forgetSavedAiKey();
           break;
         }
         case "HOST_NEXT_LINE_STATE":
