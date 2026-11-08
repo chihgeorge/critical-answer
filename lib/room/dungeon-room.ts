@@ -70,6 +70,10 @@ import {
   type PodiumReveal,
   FINISH_PODIUM_MS,
   SERVE_HOLD_MS,
+  REACT_GAP_MS,
+  REACT_JITTER_MS,
+  REACT_ROOM_MAX,
+  type Reaction,
 } from "../protocol";
 import { epiloguePages, revealBeats, revealCalls } from "../podium";
 import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
@@ -303,6 +307,9 @@ export class DungeonRoom {
    * the count going, and time spent down counts, as it does for the players watching. */
   private answerSeconds = 0;
   private answerClock: AnswerClock | null = null;
+  /** 觀眾反應 (docs/designs/audience-reactions.md): each team's last reaction, and the room's recent ones. In memory only. */
+  private reactedAt = new Map<string, number>();
+  private roomReacts: number[] = [];
   private clipEnded: string | null = null;
   /** The judgment a kill's 4d20 holds back (kill-roll.md): resolveRoll makes it with the shown dice. */
   private pendingKill: { correct: boolean; fleeChoice: "flee" | "retry"; roll?: { kind: "warrior" | "crit"; value: number } } | null = null;
@@ -1369,12 +1376,16 @@ export class DungeonRoom {
         case "HOST_BUZZ_SKIP":
           this.handleHostBuzzSkip(sender, msg.questionId);
           break;
+        case "REACT":
+          this.handleReact(sender, msg.reaction);
+          break;
       }
       // A transcript download changes nothing; a rejected message did not either; and an automatic
       // reconnect's re-identification (`resume`) is a device, not a person.
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && !this.rejected && !resumed) {
+      // A reaction changes no saved state, so it neither counts as activity nor saves.
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -2336,6 +2347,26 @@ export class DungeonRoom {
     if (this.buzzPaused) this.media = { ...this.media!, state: "paused", press: this.media!.press + 1 };
     this.setCue("buzz");
     this.broadcastState();
+  }
+
+  /** A waiting team's reaction (audience-reactions.md): dropped without a reply when it is not a joined team's, the
+   * game has not reached its first question (intro, initiative), the team is the one answering (or every team is, in
+   * a buzzer phase), the team reacted in the last REACT_GAP_MS (less REACT_JITTER_MS), or the room already sent
+   * REACT_ROOM_MAX in that time. The phone hides or greys its buttons in all of these, so a drop needs no ERROR. */
+  private handleReact(conn: Conn, reaction: Reaction) {
+    const teamId = this.connTeam.get(conn.id);
+    if (!teamId || this.game?.phase !== "playing" || this.opening()) return;
+    if (currentTurnTeamId(this.game) === teamId || isBuzzPhase(this.game)) return;
+    const now = this.now();
+    // One window for both limits, so a team tapping as fast as it may never counts twice against the room's cap.
+    const gap = REACT_GAP_MS - REACT_JITTER_MS;
+    if (now - (this.reactedAt.get(teamId) ?? -Infinity) < gap) return;
+    this.roomReacts = this.roomReacts.filter((t) => now - t < gap);
+    if (this.roomReacts.length >= REACT_ROOM_MAX) return;
+    this.reactedAt.set(teamId, now);
+    this.roomReacts.push(now);
+    // Straight to the sockets, not this.broadcast: a reaction changes nothing to save, so it skips persist().
+    this.room.broadcast(JSON.stringify({ type: "REACTION", teamId, reaction } satisfies ServerMessage));
   }
 
   /** 沒人答對，換下一題 (boss-buzzer.md D4): a new question, the old one unrevealed. Not narrated. */

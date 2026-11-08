@@ -281,8 +281,12 @@ body {
 @keyframes px-eq { 50% { transform: scaleY(0.35); } }
 .px-eq { animation: px-eq 0.5s steps(1) infinite; }
 .px-eq2 { animation-direction: reverse; }
+/* 觀眾反應 (docs/designs/audience-reactions.md): a waiting team's reaction climbs behind the stage in 12 hard steps,
+   from behind the option tiles (y 250) to the map (y 90). Reduced motion holds it still at its resting place (top 120). */
+@keyframes px-react-rise { 0% { transform: translateY(130px); opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(-30px); opacity: 0; } }
+.px-react-rise { animation: px-react-rise 2.4s steps(12) 1 both; }
 @media (prefers-reduced-motion: reduce) {
-  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq { animation: none !important; }
+  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise { animation: none !important; }
   .px-tf2 { opacity: 0; }
   /* .px-room-flash keeps running (D13: a pawn must not change rooms unseen). */
 }
