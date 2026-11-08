@@ -20,6 +20,7 @@ import { PHONE_LAG_MS, revealNow } from "@/lib/podium";
 import { McOption } from "@/components/mc-option";
 import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
+import { SORT_ITEMS, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
@@ -66,7 +67,7 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
 
 /** The team's class ability on its own turn (D11=A: under 鎖定答案). The warrior's button or its die
  * while the room holds it; the mage's button (multipleChoice, while 2+ wrong options are left; a fill-in
- * question without a hint yet) or what it removed; the thief's button or its armed bar (D16). The cleric prays in MyChoicePanel's wrong panel. */
+ * or sort question without a hint yet) or what it removed; the thief's button or its armed bar (D16). The cleric prays in MyChoicePanel's wrong panel. */
 function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; frozen?: boolean; noHint?: boolean }) {
   const me = game.view.teams.find((t) => t.id === teamId);
   const roll = game.pendingRoll?.teamId === teamId ? game.pendingRoll : null;
@@ -88,7 +89,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
       <div className="px-bar mt-1 flex items-center gap-3" role="status">
         {/* A kill's 4d20 has four dice: the big screen shows them (kill-roll.md). */}
         <D20 value={roll.kind === "kill" ? "?" : roll.value} size={54} />
-        <span className="text-[20px]">{roll.kind === "kill" ? "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶" : roll.kind === "crit" ? `答對！暴擊骰擲出 ${roll.value}，看大螢幕 ▶` : roll.kind === "check" ? `說服檢定擲出 ${roll.value}，看大螢幕 ▶` : roll.value === 20 && !!q?.options ? "擲出 20 大成功！看大螢幕 ▶" : `擲出 ${roll.value}！看大螢幕 ▶`}</span>
+        <span className="text-[20px]">{roll.kind === "kill" ? "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶" : roll.kind === "crit" ? `答對！暴擊骰擲出 ${roll.value}，看大螢幕 ▶` : roll.kind === "check" ? `說服檢定擲出 ${roll.value}，看大螢幕 ▶` : roll.value === 20 && !!(q?.options || q?.items) ? "擲出 20 大成功！看大螢幕 ▶" : `擲出 ${roll.value}！看大螢幕 ▶`}</span>
       </div>
     );
   } else if (me?.classId === "thief" && me.sneakArmed) {
@@ -106,7 +107,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     );
   } else if (!ready) {
     return null;
-  } else if (me.classId === "warrior" && !(q.options === undefined && game.view.checks !== undefined && !game.view.checks[checkKey(q.id, teamId)])) {
+  } else if (me.classId === "warrior" && !(q.options === undefined && q.items === undefined && game.view.checks !== undefined && !game.view.checks[checkKey(q.id, teamId)])) {
     // On a fill-in question the warrior rolls only after its persuasion check (dnd design R2).
     body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
   } else if (me.classId === "thief") {
@@ -117,7 +118,9 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
       setCast({ qid: q.id, eventId: game.eventId, before: gone.length });
       use();
     });
-  } else if (me.classId === "mage" && !q.options && game.view.mageHints[q.id] === undefined && game.view.checks?.[checkKey(q.id, teamId)]?.hint === undefined) {
+  } else if (me.classId === "mage" && q.items && game.view.mageHints[q.id] === undefined) {
+    body = button("🔮", "看第 1 個是誰", `大家都看得到・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
+  } else if (me.classId === "mage" && !q.options && !q.items && game.view.mageHints[q.id] === undefined && game.view.checks?.[checkKey(q.id, teamId)]?.hint === undefined) {
     // The room refused this question (no_hint): a 1-character answer has no first character to give.
     if (noHint) return <div className="px-bar mt-1 !text-[17px]" role="status">🔮 這題答案太短，不能看第一個字・剩 {me.abilityUses} 次</div>;
     body = button("🔮", "看答案第一個字", `大家都看得到・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
@@ -151,7 +154,7 @@ function QuestionStrip({ id, text, className = "-mx-[10px] -mt-[10px] mb-[2px]" 
  */
 function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void }) {
   const q = game.question!;
-  const options = q.options!;
+  const options = q.options ?? [];
   const pick = game.view.teams.find((t) => t.id === teamId)?.currentSelection ?? null;
   const gone = game.view.eliminated?.[q.id] ?? [];
   const magic = game.view.mageRemoved?.[q.id] ?? [];
@@ -181,6 +184,15 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
   const frozen = !!lock || !!wrong || inFlight || rolling;
   const stripId = useId();
   const text = questionLine(q);
+  // A sort question: this phone's own order until it locks, kept across a 重答 so the team fixes only the ✕ places.
+  const [mine, setMine] = useState<{ qid: string; order: number[] } | null>(null);
+  const sorting = !!q.items;
+  // A reload mid-question starts from the team's pick, else its last wrong order (so a 重答 keeps its ✓ places).
+  const seed = sorting ? sortOrderOf(pick ?? gone.at(-1) ?? -1) : undefined;
+  const myOrder = mine?.qid === q.id ? mine.order : (seed ?? Array.from({ length: SORT_ITEMS }, (_, i) => i));
+  const shownOrder = (lock && sortOrderOf(lock.optionIndex)) || (wrong?.optionIndex != null && sortOrderOf(wrong.optionIndex)) || myOrder;
+  const myCode = sortCode(myOrder);
+  const pickable = sorting ? !gone.includes(myCode) : pick !== null && !gone.includes(pick);
 
   return (
     <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
@@ -191,6 +203,21 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
           {prayed ? "祈禱了！這回合再答一次" : bossMiss && !canPray ? "答錯了！" : "答錯了！要怎麼辦？"}
         </div>
       )}
+      {sorting && <MageHint hint={game.view.mageHints?.[q.id]} sort testId="mage-hint" />}
+      {sorting ? (
+        <SortList
+          items={q.items!}
+          order={shownOrder}
+          marks={wrong ? game.wrongSlots : undefined}
+          locked={!!lock}
+          frozen={frozen}
+          labelledBy={text ? stripId : undefined}
+          onChange={(order) => {
+            setLockFailed(false);
+            setMine({ qid: q.id, order });
+          }}
+        />
+      ) : (
       <div role="group" aria-labelledby={text ? stripId : undefined} aria-label={text ? undefined : "選項"} className="flex flex-col gap-2">
         {options.map((opt, i) => {
           const out = gone.includes(i);
@@ -214,6 +241,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
           );
         })}
       </div>
+      )}
       {bossMiss && canPray ? (
         <div className="mt-1 flex gap-2">
           <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
@@ -250,20 +278,129 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
       ) : (
         <PixelButton
           variant="ok"
-          disabled={pick === null || gone.includes(pick)}
+          disabled={!pickable}
           className="!m-0 mt-1 !min-h-[62px] !text-[23px]"
           onClick={() => {
             setLockFailed(false);
             setLocking({ qid: q.id, eventId: game.eventId });
-            send({ type: "TEAM_LOCK_OPTION", questionId: q.id, optionIndex: pick! });
+            // A sort order is picked here, all at once: the room keeps the pick, the lock names it.
+            if (sorting) send({ type: "TEAM_SELECT_OPTION", questionId: q.id, optionIndex: myCode });
+            send({ type: "TEAM_LOCK_OPTION", questionId: q.id, optionIndex: sorting ? myCode : pick! });
           }}
         >
-          鎖定答案
+          {sorting && !pickable ? "這個順序答錯過了，換一下" : "鎖定答案"}
         </PixelButton>
       )}
       {!wrong && !rolling && <ClassAbility game={game} teamId={teamId} send={send} frozen={frozen} />}
       {lockFailed && !frozen && <div className="text-center text-[14px]">沒送出，再按一次</div>}
     </Panel>
+  );
+}
+
+/**
+ * A sort question's items, top to bottom (the owner's mockup A): drag a row's ☰ up or down to move it. Only the
+ * handle takes the touch (touch-action: none), so the rest of the page still scrolls under a finger; the arrow
+ * keys move a focused handle too. `order` is shown indices; `marks`, after a wrong lock, says which places are right.
+ * Rows are keyed by place, not item, so a drag never moves the DOM node under the finger (iOS can drop a pointer
+ * whose node React reinserts); the drag listens on window and ends on up, cancel, a freeze or unmount.
+ */
+function SortList({ items, order, marks, locked, frozen, labelledBy, onChange }: { items: string[]; order: number[]; marks?: boolean[]; locked: boolean; frozen: boolean; labelledBy?: string; onChange: (order: number[]) => void }) {
+  const rows = useRef<(HTMLLIElement | null)[]>([]);
+  const [dragging, setDragging] = useState<number | null>(null);
+  // The latest order and callback for window listeners, ahead of the rerender a move causes.
+  const live = useRef({ order, onChange });
+  const at = useRef<number | null>(null);
+  const stop = useRef<() => void>(() => {});
+  const focusTo = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    live.current = { order, onChange };
+    if (focusTo.current !== null) rows.current[focusTo.current]?.querySelector("button")?.focus();
+    focusTo.current = null;
+  });
+  useEffect(() => () => stop.current(), []);
+  useEffect(() => {
+    if (frozen) stop.current();
+  }, [frozen]);
+  const move = (from: number, to: number) => {
+    const { order: cur, onChange: change } = live.current;
+    if (to < 0 || to >= cur.length || to === from) return false;
+    const next = [...cur];
+    next.splice(to, 0, ...next.splice(from, 1));
+    live.current = { ...live.current, order: next };
+    change(next);
+    return true;
+  };
+  const start = (i: number) => {
+    stop.current();
+    at.current = i;
+    setDragging(i);
+    const onMove = (e: PointerEvent) => {
+      const from = at.current;
+      if (from === null) return;
+      // The new place: how many other rows have their middle above the finger.
+      const to = rows.current.filter((r, j) => r && j !== from && r.getBoundingClientRect().top + r.offsetHeight / 2 < e.clientY).length;
+      if (move(from, to)) {
+        at.current = to;
+        setDragging(to);
+      }
+    };
+    const end = () => {
+      at.current = null;
+      setDragging(null);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      stop.current = () => {};
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    stop.current = end;
+  };
+  return (
+    <ol aria-labelledby={labelledBy} aria-label={labelledBy ? undefined : "排序"} className="flex flex-col gap-2" data-testid="sort-list">
+      {order.map((shown, i) => {
+        const mark = marks?.[i];
+        const look = mark === true ? "ok" : mark === false ? "bad" : locked ? "lock" : dragging === i ? "sel" : frozen ? "dim" : "";
+        return (
+          <li
+            key={i}
+            ref={(el) => {
+              rows.current[i] = el;
+            }}
+            data-testid={`sort-item-${i}`}
+            className={`px-opt min-h-[56px] text-[21px] ${look}`}
+          >
+            <b>{i + 1}</b>
+            <span>{items[shown]}</span>
+            {mark !== undefined ? (
+              <i>{mark ? "✓" : "✕"}</i>
+            ) : locked ? (
+              <i>🔒</i>
+            ) : (
+              <button
+                type="button"
+                aria-label={`移動「${items[shown]}」（第 ${i + 1} 個，上下鍵移動）`}
+                disabled={frozen}
+                className="-my-1 flex h-[48px] w-[48px] flex-none touch-none items-center justify-center text-[26px]"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  start(i);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+                  e.preventDefault();
+                  const to = e.key === "ArrowUp" ? i - 1 : i + 1;
+                  if (move(i, to)) focusTo.current = to;
+                }}
+              >
+                ☰
+              </button>
+            )}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -724,10 +861,10 @@ export default function PlayPage() {
         )}
 
         {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
-        {game && !finished && !revealed && isMyTurn && game.question?.options && <MyChoicePanel game={game} teamId={teamId} send={send} />}
+        {game && !finished && !revealed && isMyTurn && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} />}
 
         {/* #104: our own host-judged text turn is a fill-in: the team types its answer for the host. */}
-        {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && (
+        {game && !finished && !revealed && isMyTurn && game.question && !game.question.options && !game.question.items && (
           <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint={noHintQid === game.question.id} />
         )}
 
@@ -741,6 +878,20 @@ export default function PlayPage() {
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
               答對了！{revealed.choice.points > 0 ? `＋${revealed.choice.points} 分` : ""}
               {revealed.choice.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 +{revealed.choice.chefBonus}）</span> : null}
+            </div>
+          </Panel>
+        )}
+
+        {/* A sort question we got right: the correct order, every place ✓. */}
+        {game && !finished && revealed?.sorted && revealed.sorted.teamId === teamId && (
+          <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
+            {revealedText && <QuestionStrip text={revealedText} />}
+            {revealed.sorted.items.map((item, i) => (
+              <McOption key={i} index={i} badge={i + 1} text={item} disabled look="ok" label="✓" className="min-h-[56px] text-[21px]" />
+            ))}
+            <div className="px-bar ok mt-1 !text-[22px]" role="status">
+              答對了！{revealed.sorted.points > 0 ? `＋${revealed.sorted.points} 分` : ""}
+              {revealed.sorted.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 +{revealed.sorted.chefBonus}）</span> : null}
             </div>
           </Panel>
         )}

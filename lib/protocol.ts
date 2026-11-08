@@ -62,6 +62,9 @@ export interface PublicQuestion {
    * appearance (docs/designs/monster-catalog.md §3). `id` and `accessory` are absent from older servers. */
   monster: { id?: string; name: string; sprite: MonsterSprite; hue: number; accessory?: Accessory };
   options?: string[];
+  /** A sort question's items in this game's shown order (never the correct order). A pick or lock on it is a
+   * sort code (lib/sort-order.ts), not an option index. */
+  items?: string[];
 }
 
 /** Shown to everyone (D2/D3 — a shared-screen, in-person party game, so hiding the answer from
@@ -81,6 +84,8 @@ export type AnswerReveal = {
    * was right, who locked it and the points it scored, so every screen can light the tile (D8, D14).
    * Safe to send: it goes out only once the answer is revealed. `chefBonus`: a chef's share of `points`, shown as （廚師 +N）. */
   choice?: { options: string[]; correctIndex: number; teamId: string; points: number; chefBonus?: number };
+  /** Set when a sort question was answered right: its items in the correct order, who answered and the points (`chefBonus` as in `choice`). */
+  sorted?: { items: string[]; teamId: string; points: number; chefBonus?: number };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
    * Only when the answer defeated a room monster or killed the boss, and that monster has a dish. */
   dish?: {
@@ -283,6 +288,8 @@ export type ServerMessage =
       pendingLock: LockedOption | null;
       /** A d20 being held for the beat before it is judged: a warrior's (class-abilities.md R2) or a correct lock's crit die. */
       pendingRoll: PendingRoll | null;
+      /** A wrong sort lock waiting for its 重答 / 逃跑: per slot, top to bottom, whether the team's item there is right. */
+      wrongSlots?: boolean[];
       /** Counts judgments (and the start); NARRATION carries the id it belongs to. */
       eventId: number;
       /** The latest sound effect (an event's, or a roll's): the big screen plays it once, when cueSeq goes up.
