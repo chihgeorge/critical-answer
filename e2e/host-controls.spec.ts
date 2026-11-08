@@ -138,6 +138,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
 
 // Value: protects=a room monster met again shows its title on the host's turn card, and its first appearance is plain (rooms 1 and 4 both get slime-soft for this test); fails_when=STATE stops carrying the variant name or defeats stop counting; why_new=monster-catalog.md acceptance 7 (e2e); seam=none; no_claim=which title (seeded per game), the hat's pixels
 test("a monster met again wears a title on its nameplate", async ({ browser, request }) => {
+  test.setTimeout(60_000); // three rooms of reveal, crit and cooking beats: 25-29 s on CI, so 30 s timed out once
   await withRoom0MonsterAgainAt3(request, async () => {
     const { host, code } = await hostRoom(browser);
     await phone(browser, code, "甲隊");

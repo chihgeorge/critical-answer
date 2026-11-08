@@ -41,13 +41,13 @@ jobs:
       - run: npm run check:bundle
 
   e2e:
-    # Two shards, each with its own wrangler and Next servers, so the shared question bank stays per shard.
+    # Three shards, each with its own wrangler and Next servers, so the shared question bank stays per shard.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -57,7 +57,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       # `next dev`, not `next start`: the bank-editor stale-load tests rely on dev mode's double effects.
-      - run: npx playwright test --shard=${{ matrix.shard }}/2
+      - run: npx playwright test --shard=${{ matrix.shard }}/3
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
