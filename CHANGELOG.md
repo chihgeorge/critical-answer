@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.48.0.0] - 2026-11-08
+
+### Added
+- The host can turn a mistaken 答錯 on a fill-in question into 答對. After 答錯 (also 答錯・重答, 答錯・逃跑, or a cleric's wait and the 重答 or 逃跑 after it), a white button 「↩ 剛才的〇〇改判答對」 appears under the judge buttons, with key 0 as its shortcut. Pressing it ends the turn exactly as if the host had judged it right: score, reward, class abilities, the dish and the narration all follow the correct path. The button stays until the game's next move; a phone going offline or coming back does not close it. A 祈禱, a multiple-choice or sort question and a warrior's roll cannot be changed. The button waits half a second before it takes a press, so a double tap on 答錯 cannot land on it.
+
 ## [0.47.0.1] - 2026-11-08
 
 ### Added

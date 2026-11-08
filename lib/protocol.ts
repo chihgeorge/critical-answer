@@ -207,6 +207,8 @@ export type ClientMessage =
       /** The eventId of the STATE the host judged from; an older one is a stale press and is dropped. */
       eventId?: number;
     }
+  /** 改判答對: the host's last 答錯 on a fill-in (STATE's undoWrong) becomes 答對. `eventId`: the STATE it was pressed under. */
+  | { type: "HOST_UNDO_WRONG"; teamId: string; questionId: string; eventId: number }
   /** MultipleChoice pick, sent by the team's own phone. Re-selectable — see the module header.
    * `optionIndex` is only type-checked here (non-negative integer); the real bounds check
    * against the live question's actual options.length happens in dungeon-room.ts, which is
@@ -292,6 +294,8 @@ export type ServerMessage =
       wrongSlots?: boolean[];
       /** Counts judgments (and the start); NARRATION carries the id it belongs to. */
       eventId: number;
+      /** The host's last 答錯 on a fill-in, while HOST_UNDO_WRONG may still turn it into 答對 (nothing has moved since). */
+      undoWrong?: { teamId: string; questionId: string };
       /** The latest sound effect (an event's, or a roll's): the big screen plays it once, when cueSeq goes up.
        * Absent before any cue, and after a server restart. */
       cue?: SoundCue;
@@ -564,6 +568,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.correct && (m.fleeChoice === "team" || m.fleeChoice === "pray")) return null;
       if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       return { type: "HOST_JUDGE", teamId, questionId, correct: m.correct, fleeChoice: m.fleeChoice, ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}) };
+    }
+    case "HOST_UNDO_WRONG": {
+      const teamId = str(m.teamId, MAX_ID);
+      const questionId = str(m.questionId, MAX_ID);
+      if (teamId === null || questionId === null || !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
+      return { type: "HOST_UNDO_WRONG", teamId, questionId, eventId: m.eventId as number };
     }
     case "TEAM_SELECT_OPTION": {
       const questionId = str(m.questionId, MAX_ID);
