@@ -2,7 +2,7 @@
 
 All notable changes to Critical Answer are documented here.
 
-## [Unreleased]
+## [0.50.0.0] - 2026-11-08
 
 ### Changed
 - Narration tells the first team into the boss room from the teams that come after. The first team still gets the door-opening lines. The 2nd and later teams get new 「加入戰局」 lines, because on the big screen the door is already open. Teams the host sent with 送去魔王 count in the order. The line for a team that walks in after phase 2 has started no longer says it pushed the door open. The AI narration prompt now says whether this team opened the door or is the Nth team to join the fight. The line that hands the turn to a team in the boss room no longer says the boss 「擋在最後一道門前」.
