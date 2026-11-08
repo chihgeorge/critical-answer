@@ -156,12 +156,15 @@ describe("boss phases in the room", () => {
     // Review finding (red team, 2026-10-28): the card opened in the same tick, so the retry line was never read.
     expect(g.state()).toMatchObject({ cue: "retry", question: { id: "p1-b" } });
     expect(g.state().phaseCard).toBeUndefined();
+    // Clients hear the card is coming, so an event turn's button waits for it (event-rooms review, 2026-11-08).
+    expect(g.state().phaseCardDue).toBe(true);
     send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "p1-b", optionIndex: 0 });
     expect(msgs(g.phones[0].send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
     await vi.advanceTimersByTimeAsync(15_000); // the retry line read out, never past the reveal's cap
     // The first STATE of each new event: what the screens play.
     const events = g.states().filter((m, i, all) => m.eventId > before && m.eventId !== all[i - 1].eventId);
     expect(events.map((m) => [m.cue, !!m.phaseCard])).toEqual([["retry", false], ["boss-phase", true]]);
+    expect(g.state().phaseCardDue).toBeUndefined();
     expect(g.state().view).toMatchObject({ bossPhase: 2, bossHp: 2 });
   });
 

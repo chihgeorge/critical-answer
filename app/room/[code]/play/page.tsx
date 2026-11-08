@@ -930,7 +930,7 @@ export default function PlayPage() {
         )}
 
         {/* An event room (event-rooms.md D10): the team's one button, then its result; every other phone looks up. */}
-        {game && !finished && !intro && (eventRevealed || (!revealed && !game.phaseCard && turn?.team?.eventScene)) && <EventPanel game={game} teamId={teamId} send={send} />}
+        {game && !finished && !intro && (eventRevealed || (!revealed && !game.phaseCard && !game.phaseCardDue && turn?.team?.eventScene)) && <EventPanel game={game} teamId={teamId} send={send} />}
 
         {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
         {game && buzz && !held && game.question && <BuzzButton game={game} buzz={buzz} teamId={teamId} send={send} />}
