@@ -53,10 +53,13 @@ function setup(
   } = {},
 ) {
   const calls: Call[] = [];
+  /** The system prompt of every narration call. */
+  const systems: string[] = [];
   const fake = async (url: unknown, init?: RequestInit) => {
     const apiKey = (init!.headers as Record<string, string>)["x-api-key"];
     calls.push({ url: String(url), apiKey });
     if (String(url).includes("/v1/models")) return (opts.models ?? (() => json({ data: [] })))(apiKey);
+    systems.push(JSON.parse(init!.body as string).system);
     return (opts.messages ?? (() => line("地城主開口了")))(apiKey);
   };
   const io = { broadcast: vi.fn(), env: opts.env ?? {}, storage: opts.storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
@@ -100,8 +103,27 @@ function setup(
     send({ type: "HOST_JUDGE", teamId, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
     await sleep(20);
   };
-  return { room, io, host, calls, send, sent, status, narrationCalls, transcript, useKey, joinTeams, start, judge };
+  return { room, io, host, calls, systems, send, sent, status, narrationCalls, transcript, useKey, joinTeams, start, judge };
 }
+
+// Value: protects=one room's AI lines never reach another room's prompt (TODOS: 旁白語氣是否耐聽);
+// fails_when=the recent-lines list is shared across rooms or not kept per room; no_claim=what a real model writes
+describe("recent lines", () => {
+  it("a room's next prompt lists its own earlier lines, and another room's prompt does not", async () => {
+    const a = setup({ messages: () => line("甲房的第一句") });
+    await a.useKey();
+    await a.start();
+    await a.judge();
+    expect(a.systems.length).toBeGreaterThan(1);
+    expect(a.systems.at(-1)).toContain("- 甲房的第一句");
+    const b = setup();
+    await b.useKey();
+    await b.start();
+    await b.judge();
+    expect(b.systems.length).toBeGreaterThan(1);
+    expect(b.systems.join("")).not.toContain("甲房");
+  });
+});
 
 describe("who pays for AI narration", () => {
   it("AC1: a room whose host gave no key never calls Anthropic, even with a server key configured", async () => {

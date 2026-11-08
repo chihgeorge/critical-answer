@@ -172,6 +172,8 @@
 **Depends on:** 第二次真人測試結果。
 
 **Notes:**
+- 已做（防重複）：提示詞附上同一房間最近 8 句 AI 旁白，要求不要重複其中的句子和招牌用詞；另加兩條規則「每句換一種說法」「驚嘆號一句最多一個」。只對 AI 旁白有效，腳本句不變。
+- 仍待決定：一般回合減少句數（3 句改 2 句）、擴充腳本句庫。評估見 `~/.gstack/projects/chihgeorge-critical-answer/captain/narration-tone-2026-11-08.md`（只在本機）。
 - Pros：旁白是這一輪的核心賣點。
 - Cons：主觀，需要玩測資料（旁白紀錄 JSON 有每句的來源與延遲）。
 - Context 補充：提示詞在 `lib/narration/llm.ts`，腳本句在 `lib/narration/scripted.ts`。

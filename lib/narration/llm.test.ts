@@ -410,3 +410,38 @@ describe("epilogue after 結束冒險", () => {
     expect(buildPrompt({ type: "epilogue", ranking: [{ name: "紅隊", score: 30 }], winners: ["紅隊"] }, []).user).not.toContain("首領還沒被打倒");
   });
 });
+
+// Value: protects=the AI stops reusing its own phrases (TODOS: 旁白語氣是否耐聽); fails_when=the recent lines are not sent,
+// the list grows past 8, or two rooms share one list; no_claim=what a real model writes (mocked fetch)
+describe("recent lines", () => {
+  const systemOf = (f: ReturnType<typeof vi.fn>, call: number) =>
+    JSON.parse(((f.mock.calls[call] as unknown as [string, RequestInit])[1].body) as string).system as string;
+
+  it("puts the room's latest lines in the next prompt with the no-repeat ask, and keeps only the newest 8", async () => {
+    let n = 0;
+    const f = vi.fn(async () => ok(reply(`第${++n}句一\n第${n}句二`)));
+    const recent: string[] = [];
+    const p = make(f as unknown as typeof fetch, { recent });
+    await p.narrate(event);
+    expect(systemOf(f, 0)).not.toContain("最近說過的旁白");
+    expect(systemOf(f, 0)).toContain("驚嘆號一句最多一個");
+    await p.narrate(event);
+    expect(systemOf(f, 1)).toContain("不要重複這些句子");
+    expect(systemOf(f, 1)).toContain("- 第1句一\n- 第1句二");
+    for (let i = 0; i < 4; i++) await p.narrate(event);
+    expect(recent).toEqual(["第3句一", "第3句二", "第4句一", "第4句二", "第5句一", "第5句二", "第6句一", "第6句二"]);
+    await p.narrate(event);
+    expect(systemOf(f, 6)).toContain("- 第3句一");
+    expect(systemOf(f, 6)).not.toContain("第2句");
+  });
+
+  it("keeps rooms apart, and leaves a rejected line out", async () => {
+    const f = vi.fn(async () => ok(reply("紅隊一劍破幽靈\n<b>壞</b>")));
+    const a: string[] = [];
+    const b: string[] = [];
+    await make(f as unknown as typeof fetch, { recent: a }).narrate(event);
+    await make(f as unknown as typeof fetch, { recent: b }).narrate(event);
+    expect(a).toEqual(["紅隊一劍破幽靈"]);
+    expect(systemOf(f, 1)).not.toContain("最近說過的旁白");
+  });
+});

@@ -399,6 +399,7 @@ export class DungeonRoom {
       fetch: opts.fetch,
       getStyleExamples: () => this.editedLines,
       forbidden: () => this.bankAnswers,
+      recent: [] as string[], // this room's latest AI lines, so the next prompt avoids them
     };
     const byProvider: NarrationProvider = {
       name: "llm",

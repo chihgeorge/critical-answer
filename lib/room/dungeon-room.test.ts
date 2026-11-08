@@ -2538,7 +2538,7 @@ describe("LLM narration and director (T8-T10)", () => {
       const states = (conn: ReturnType<typeof makeConn>) => sentMsgs(conn).filter((m) => m.type === "HOST_NEXT_LINE_STATE").map((m) => m.line);
 
       it("the AI's second line keeps it when it says the line; the next narration has no line; every host page is told", async () => {
-        const r = await llmRoom((req) => textReply(req.system.includes("珍珠能吃嗎") ? "紅隊答對了\n冒險者問：珍珠能吃嗎？\n輪到藍隊" : "結果\n氣氛\n換人"));
+        const r = await llmRoom((req) => textReply(req.system.includes("指定的這句話：「珍珠能吃嗎」") ? "紅隊答對了\n冒險者問：珍珠能吃嗎？\n輪到藍隊" : "結果\n氣氛\n換人"));
         const other = makeConn("host-2");
         r.room.onConnect(other);
         claim(r.room, other);
@@ -2555,7 +2555,8 @@ describe("LLM narration and director (T8-T10)", () => {
         for (const c of [r.hostConn, other]) expect(states(c).at(-1)).toBe("");
         judge(r.room, r.hostConn);
         await sleep(30);
-        expect(r.calls.at(-1)!.system).not.toContain("珍珠能吃嗎");
+        // The said line is still in the recent-lines list; only the host's request is gone.
+        expect(r.calls.at(-1)!.system).not.toContain("指定的這句話");
         expect(narrations(r.room).at(-1).lines).toEqual(["結果", "氣氛", "換人"]);
       });
 

@@ -28,9 +28,14 @@ const BASE_RULES = `你是地城問答派對遊戲裡的旁白「地城主」，
 - 寫到攻擊用的武器或招式時，要符合事件裡寫的隊伍職業；事件沒寫職業，就不要指定武器或招式。
 - 首領的血量一律說「還剩幾顆心」，不要寫成分數或百分比。
 - 不要透露、猜測或提到任何題目或答案。
+- 每句換一種說法，不要老是用同一個詞形容倒下或答對。
+- 語氣平實，驚嘆號一句最多一個。
 - 只輸出旁白本身，不要引號、標題、說明或任何標記。`;
 
-export function buildPrompt(event: NarrationEvent, styleExamples: string[]): { system: string; user: string } {
+/** How many of a room's latest AI lines go back into its prompts, so the model stops reusing them. */
+export const RECENT_LINES = 8;
+
+export function buildPrompt(event: NarrationEvent, styleExamples: string[], recent: string[] = []): { system: string; user: string } {
   const epilogue = event.type === "epilogue";
   const hasNext = event.type !== "epilogue" && !!event.next;
   const hostLine = event.type !== "epilogue" && !event.hostLineVerbatim ? event.hostLine : undefined;
@@ -45,6 +50,7 @@ export function buildPrompt(event: NarrationEvent, styleExamples: string[]): { s
       : `輸出兩行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。${second ?? "第二行：補充一點氣氛或情緒的收尾，最多 28 個字，不要重複第一行的內容。"}`;
   let system = `${BASE_RULES}\n${ask}`;
   if (styleExamples.length > 0) system += `\n\n主持人親手改過的句子，請仿照這種語氣：\n${styleExamples.map((l) => `- ${l}`).join("\n")}`;
+  if (recent.length > 0) system += `\n\n這場最近說過的旁白。不要重複這些句子，也不要再用裡面的招牌用詞（例如「應聲倒地」「智慧之光」），動詞、形容詞和比喻都換新的：\n${recent.map((l) => `- ${l}`).join("\n")}`;
   return { system, user: describe(event) };
 }
 
@@ -189,6 +195,9 @@ export interface LlmOptions {
   getStyleExamples?: () => string[];
   /** Bank answers: a line repeating one (3+ characters) is rejected. */
   forbidden?: () => string[];
+  /** The room's latest AI lines, oldest first. Owned by the room (one array per room, gone on restart):
+   * read into the prompt, then the new lines are pushed and the array trimmed to RECENT_LINES. */
+  recent?: string[];
 }
 
 export function createLlmProvider(opts: LlmOptions): NarrationProvider {
@@ -199,7 +208,7 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       const apiKey = opts.getApiKey();
       if (!apiKey) throw new NarrationError("config_missing", "no API key for this room");
       const epilogue = event.type === "epilogue";
-      const { system, user } = buildPrompt(event, opts.getStyleExamples?.() ?? []);
+      const { system, user } = buildPrompt(event, opts.getStyleExamples?.() ?? [], opts.recent);
       const model = epilogue ? EPILOGUE_MODEL : NARRATION_MODEL;
       let res: Response;
       try {
@@ -267,6 +276,10 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       // disturbing segments after it. (Adversarial review finding, /plan-eng-review D1 follow-up.)
       const INVALID_SEGMENT = "<invalid/>";
       const validRest = rest.map((s, i) => (usable(s, i + 1) ? s : INVALID_SEGMENT));
+      if (opts.recent) {
+        opts.recent.push(first, ...validRest.filter((s) => s !== INVALID_SEGMENT));
+        opts.recent.splice(0, opts.recent.length - RECENT_LINES);
+      }
       return [first, ...validRest].join("\n");
     },
   };
