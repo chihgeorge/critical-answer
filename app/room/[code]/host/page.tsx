@@ -651,7 +651,7 @@ export default function HostPage() {
               disabled={!ready || lobby.length === 0}
               // AI narration follows the room's key (HOST_AI_KEY), so a key added mid-game still takes effect.
               onClick={() => {
-                // Fewer questions than teams can hand two teams the same question at once, so that one asks first.
+                // A room pool smaller than the team count deals repeats or another difficulty's questions, so that one asks first.
                 if (sizeWarning?.thin.length && !window.confirm(`${bankSizeWarningText(sizeWarning, lobby.length)}\n確定要開始？`)) return;
                 send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds });
               }}
