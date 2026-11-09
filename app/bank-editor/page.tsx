@@ -1072,33 +1072,41 @@ function QuestionRow({
           </div>
         </div>
       ) : q.kind === "text" ? (
-        <div className="flex gap-2">
-          <input
-            className="px-input flex-1"
-            aria-label="答案"
-            value={q.answer}
-            onChange={(e) => {
-              const answer = e.target.value;
-              onUpdate((cur) => (cur.kind === "text" ? { ...cur, answer } : cur));
-            }}
-          />
-          {/* Only a buzzer phase's music question may have fields (multi-field.md F3). */}
-          {category && isMusicQuestion(q) && (
-            <PixelButton
-              onClick={() =>
-                onUpdate((cur) =>
-                  cur.kind === "text"
-                    ? { ...cur, fields: [{ label: "", answer: cur.answer }, { label: "", answer: "" }] }
-                    : cur,
-                )
-              }
-            >
-              + 加答案欄位
-            </PixelButton>
+        <div className="flex flex-col gap-1">
+          {/* Mirrors firstMeaningfulChar (lib/game-state.ts), shown by the mage and a passed check; a buzzer phase has neither. */}
+          {!category && (
+            <small className="text-[14px]">
+              法師和說服檢定成功時，大家會看到答案的第一個字或數字（中文字、英文字母都算；跳過空白、標點和符號，負號也跳過；少於兩個時不給）。「約」「（皆可）」這類註記請放答案後面，別放開頭。
+            </small>
           )}
-          <PixelButton variant="flee" onClick={onDelete}>
-            刪除
-          </PixelButton>
+          <div className="flex gap-2">
+            <input
+              className="px-input flex-1"
+              aria-label="答案"
+              value={q.answer}
+              onChange={(e) => {
+                const answer = e.target.value;
+                onUpdate((cur) => (cur.kind === "text" ? { ...cur, answer } : cur));
+              }}
+            />
+            {/* Only a buzzer phase's music question may have fields (multi-field.md F3). */}
+            {category && isMusicQuestion(q) && (
+              <PixelButton
+                onClick={() =>
+                  onUpdate((cur) =>
+                    cur.kind === "text"
+                      ? { ...cur, fields: [{ label: "", answer: cur.answer }, { label: "", answer: "" }] }
+                      : cur,
+                  )
+                }
+              >
+                + 加答案欄位
+              </PixelButton>
+            )}
+            <PixelButton variant="flee" onClick={onDelete}>
+              刪除
+            </PixelButton>
+          </div>
         </div>
       ) : q.kind === "sort" ? (
         <div className="flex flex-col gap-1">
