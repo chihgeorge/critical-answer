@@ -30,6 +30,7 @@ export interface BankSizeWarning {
 export function bankSizeWarning(size: BankSize, teams: number): BankSizeWarning | null {
   if (teams <= 0) return null;
   const thin = [...new Set(size.rooms)].sort((a, b) => a - b).flatMap((d) => (size.pools[d - 1] < teams ? [{ difficulty: d, count: size.pools[d - 1] }] : []));
+  // Every pool, not just the rooms' own: a flee deals from a lower pool and an emptied pool borrows (game-state.ts poolIndexFor).
   const total = size.pools.reduce((a, b) => a + b, 0);
   const needed = teams * QUESTIONS_PER_TEAM;
   return thin.length > 0 || total < needed ? { thin, total, needed } : null;

@@ -11,7 +11,7 @@ describe("bankSizeWarning", () => {
   });
 
   it("stays quiet at the exact boundaries: a pool of exactly as many questions as teams, a total of exactly teams x 9", () => {
-    expect(bankSizeWarning({ pools: [36, 0, 0, 0, 0], rooms: [1] }, 4)).toBeNull();
+    expect(bankSizeWarning({ pools: [4, 32, 0, 0, 0], rooms: [1, 2] }, 4)).toBeNull();
     expect(bankSizeWarning({ pools: [3, 0, 0, 0, 0], rooms: [1] }, 4)?.thin).toEqual([{ difficulty: 1, count: 3 }]);
   });
 
