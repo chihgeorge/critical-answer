@@ -174,6 +174,7 @@ export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   "dish-smoothie": [26, 32],
   "dish-squid": [30, 34],
   "dish-roast-chicken": [40, 28],
+  "plate-empty": [34, 12],
   chest: [26, 20],
   "chest-open": [26, 26],
   "dish-rotten": [34, 30],
@@ -667,6 +668,68 @@ function plate(P: Px, y: number, w: number) {
 /** Two wisps of steam over a hot dish. */
 function steam(P: Px, xs: number[], y: number) {
   for (const x of xs) P.grid(["s.", ".s", "s.", ".s"], { s: STEAM }, x, y);
+}
+
+/** The empty plate after the dish is eaten (docs/designs/eat-dish.md): a plate with a few crumbs of sauce. */
+function plateEmpty(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 34, 12);
+  P.ell(17, 6, 15.5, 4.5, PLATE);
+  P.ellIn(17, 5.5, 10, 2.5, PLATE_DARK);
+  for (let x = 0; x < 34; x++) for (let y = 8; y < 12; y++) if (P.a[y * 34 + x] === PLATE) P.a[y * 34 + x] = PLATE_DARK;
+  P.outline(K);
+  for (const [x, y] of [[12, 5], [13, 5], [20, 4], [22, 6], [16, 7]]) P.set(x, y, "#c97a2a");
+  P.flush();
+}
+
+/** RGBA of the colours that are not food: the plate, its shade and the steam. */
+const NOT_FOOD = [PLATE, PLATE_DARK, STEAM].map(rgb);
+
+/**
+ * Take `n` (0–3) bites out of a dish's RGBA pixels (docs/designs/eat-dish.md, eng F2): circles at the top right, top and
+ * top left of the food, every bitten edge outlined in K. Bites land only inside the food's box (the opaque cells that are
+ * not plate, steam or outline, plus the outline ring around them), so the plate and the steam above stay whole.
+ * Returns a new array; `data` is not touched.
+ */
+export function biteCells(data: Uint8ClampedArray, w: number, h: number, n: number): Uint8ClampedArray {
+  const d = new Uint8ClampedArray(data);
+  if (n <= 0) return d;
+  const k = rgb(K);
+  const at = (x: number, y: number) => (y * w + x) * 4;
+  const is = (i: number, c: number[]) => d[i] === c[0] && d[i + 1] === c[1] && d[i + 2] === c[2];
+  let x0 = w, x1 = -1, y0 = h, y1 = -1;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = at(x, y);
+      if (!d[i + 3] || is(i, k) || NOT_FOOD.some((c) => is(i, c))) continue;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+  if (x1 < 0) return d;
+  // The outline ring belongs to the food too.
+  x0 = Math.max(0, x0 - 1); y0 = Math.max(0, y0 - 1); x1 = Math.min(w - 1, x1 + 1); y1 = Math.min(h - 1, y1 + 1);
+  const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+  const bites = [[x1 + 1, y0 + bh * 0.2, bw * 0.24], [x0 + bw * 0.62, y0 - 1, bw * 0.24], [x0 + bw * 0.22, y0 + bh * 0.05, bw * 0.26]].slice(0, n);
+  const gone = new Uint8Array(w * h);
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++)
+      if (d[at(x, y) + 3] && bites.some(([cx, cy, r]) => (x - cx) ** 2 + (y - cy) ** 2 < r * r)) {
+        gone[y * w + x] = 1;
+        d[at(x, y) + 3] = 0;
+      }
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = at(x, y);
+      if (d[i + 3] && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => x + a >= 0 && x + a < w && y + b >= 0 && y + b < h && gone[(y + b) * w + x + a])) d.set(k, i);
+    }
+  return d;
+}
+
+/** Bite an already drawn sprite's canvas (`Sprite`'s `bites`). */
+export function biteSprite(cv: HTMLCanvasElement, n: number) {
+  const ctx = cv.getContext("2d");
+  if (!ctx || n <= 0) return;
+  const img = ctx.getImageData(0, 0, cv.width, cv.height);
+  img.data.set(biteCells(img.data, cv.width, cv.height, n));
+  ctx.putImageData(img, 0, 0);
 }
 
 /** 史萊姆 → a wobbly green jelly on a plate. */
@@ -1804,6 +1867,7 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   "dish-smoothie": (cv) => dishSmoothie(cv),
   "dish-squid": (cv) => dishSquid(cv),
   "dish-roast-chicken": (cv) => dishRoastChicken(cv),
+  "plate-empty": (cv) => plateEmpty(cv),
   chest: (cv) => chest(cv, false),
   "chest-open": (cv) => chest(cv, true),
   "dish-rotten": (cv) => dishRotten(cv),

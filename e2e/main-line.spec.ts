@@ -99,7 +99,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.getByTestId("dish-card")).toContainText("今晚的菜");
   await expect(screen.getByTestId("dish-card")).toContainText("飽足感");
   await expect(players[0].page.getByTestId("phone-dish")).toContainText("今晚的菜");
-  await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeEnabled(); // once the cooking is over (cooking I2)
+  await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeEnabled({ timeout: 10_000 }); // once the dish is cooked and eaten (cooking I2, eat-dish.md)
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByText(`正解：${answer}`)).toHaveCount(0);
 

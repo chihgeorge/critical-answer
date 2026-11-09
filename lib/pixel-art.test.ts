@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drawHomeScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE } from "./pixel-art";
+import { biteCells, drawHomeScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE } from "./pixel-art";
 import { ACCESSORIES, MONSTERS } from "./monster-catalog";
 import type { SpriteKind } from "./sprite-kind";
 
@@ -73,6 +73,51 @@ describe("hats on a repeat appearance (docs/designs/monster-catalog.md §3)", ()
         const left = ax - Math.floor(w / 2);
         const top = ay - h + 1;
         expect(left >= 0 && top >= 0 && left + w <= mw && ay <= mh - 1, `${a} on ${m.sprite}`).toBe(true);
+      }
+    }
+  });
+});
+
+// Value: protects=the three bites eat the food and never the plate, every bitten edge is outlined, and no bite adds a
+// cell (docs/designs/eat-dish.md eng F2); fails_when=the bite circles move onto the plate, the gap is left unoutlined, a
+// bite eats nothing, or 0 bites changes the dish; why_new=new feature; seam=a canvas stand-in that keeps the pixels
+// Px.flush writes; no_claim=how good the bites look (the 25-dish PNG review in the PR)
+describe("biteCells", () => {
+  /** Draw a sprite and keep its RGBA, without a browser. */
+  const pixels = (kind: SpriteKind) => {
+    let data: Uint8ClampedArray = new Uint8ClampedArray(0);
+    const ctx = { createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData: (img: { data: Uint8ClampedArray }) => (data = img.data) };
+    const cv = { width: 0, height: 0, getContext: () => ctx } as unknown as HTMLCanvasElement;
+    drawSprite(cv, kind);
+    return { data, w: cv.width, h: cv.height };
+  };
+  const opaque = (d: Uint8ClampedArray) => d.filter((v, i) => i % 4 === 3 && v > 0).length;
+  const rgbAt = (d: Uint8ClampedArray, i: number) => `${d[i]},${d[i + 1]},${d[i + 2]}`;
+  const dishes = Object.keys(SPRITE_SIZE).filter((k) => k.startsWith("dish-")) as SpriteKind[];
+
+  it("0 bites leaves the dish as it was", () => {
+    const { data, w, h } = pixels("dish-jelly");
+    expect(biteCells(data, w, h, 0)).toEqual(data);
+  });
+
+  it.each(dishes)("%s: each bite eats more, the gap is outlined, the plate stays", (kind) => {
+    const { data, w, h } = pixels(kind);
+    let prev = opaque(data);
+    for (const n of [1, 2, 3]) {
+      const out = biteCells(data, w, h, n);
+      const left = opaque(out);
+      expect(left, `${kind} bite ${n}`).toBeLessThan(prev);
+      prev = left;
+      for (let i = 0; i < out.length; i += 4) {
+        // Nothing appears: a cell is only ever cleared or outlined.
+        if (!data[i + 3]) expect(out[i + 3]).toBe(0);
+        if (!data[i + 3] || out[i + 3]) continue;
+        // The plate's shade (#d8c8a8) is never eaten.
+        expect(rgbAt(data, i)).not.toBe("216,200,168");
+        // A cleared cell's opaque neighbours are outlined.
+        const x = (i / 4) % w;
+        for (const [j, nx] of [[i - 4, x - 1], [i + 4, x + 1], [i - w * 4, x], [i + w * 4, x]])
+          if (j >= 0 && j < out.length && nx >= 0 && nx < w && out[j + 3]) expect(rgbAt(out, j)).toBe("42,21,51");
       }
     }
   });

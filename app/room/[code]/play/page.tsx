@@ -17,7 +17,7 @@ import { sprintSeen } from "@/lib/transitions";
 import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
-import { useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
+import { dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { PHONE_LAG_MS, revealNow } from "@/lib/podium";
 import { McOption } from "@/components/mc-option";
 import { D20 } from "@/components/d20";
@@ -1071,7 +1071,7 @@ export default function PlayPage() {
               // other media render site in this diff carries (adversarial review finding, /ship).
               <QuestionMedia key={revealed.questionId} content={revealed.explanation} label="詳解" maxWidth={260} maxHeight={180} />
             )}
-            {cookStep === 3 && revealed.dish && <div data-testid="phone-dish" className="text-[18px]">🍲 今晚的菜：{revealed.dish.name}</div>}
+            {dishUp(cookStep) && revealed.dish && <div data-testid="phone-dish" className="text-[18px]">🍲 今晚的菜：{revealed.dish.name}</div>}
           </Panel>
         )}
 

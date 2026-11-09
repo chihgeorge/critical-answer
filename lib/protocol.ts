@@ -114,8 +114,12 @@ export const COOK_MS = 1600;
 /** The pot comes up, then the smoke (the cook sound's bubbles and 砰 land on these too). */
 export const COOK_POT_MS = 400;
 export const COOK_SMOKE_MS = 1200;
-/** The room refuses 下一題 until the cooked dish has been up this long (cooking I2): the cooking plus about a second of dish. */
-export const SERVE_HOLD_MS = COOK_MS + 1000;
+/** The eater's team eats the dish (docs/designs/eat-dish.md): a second after it is up, three bites EAT_BITE_MS apart, then the empty plate at EAT_MS. */
+export const EAT_AT_MS = COOK_MS + 1000;
+export const EAT_BITE_MS = 400;
+export const EAT_MS = EAT_AT_MS + 3 * EAT_BITE_MS;
+/** The room refuses 下一題 until the dish has been eaten and the empty plate up about a second (cooking I2, eat-dish.md). */
+export const SERVE_HOLD_MS = EAT_MS + 1000;
 /** The end screen after a boss kill (cooking R8): the boss cooks, its dish holds, and only then the winner, podium and epilogue. */
 export const FINISH_PODIUM_MS = COOK_MS + 3000;
 

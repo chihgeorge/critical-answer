@@ -79,7 +79,7 @@ export async function nextQuestion(host: Page) {
   const next = host.getByRole("button", { name: "下一題", exact: true });
   await expect(serve.or(next)).toBeVisible();
   if (await serve.isVisible()) await serve.click();
-  await next.click({ timeout: 8000 });
+  await next.click({ timeout: 10_000 });
 }
 
 /** What a raw host socket keeps from the room's STATE messages, enough to judge every turn. */

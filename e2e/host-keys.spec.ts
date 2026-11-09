@@ -33,7 +33,7 @@ test("the host judges with the keyboard: 2 marks a wrong answer, 1 a correct one
   await expect(host.getByTestId("host-reveal")).toBeVisible();
 
   await host.keyboard.press("1"); // 🍲 上菜: the same key serves the cooked monster first (cooking R5)
-  await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeEnabled({ timeout: 8000 });
+  await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeEnabled({ timeout: 10_000 });
   await host.keyboard.press("1"); // 下一題
   await expect(host.getByTestId("host-reveal")).toHaveCount(0);
 });

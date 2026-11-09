@@ -6,7 +6,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { DishOnStage, dishLine, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
+import { DishOnStage, dishLine, dishUp, EAT_STEP_AT, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
+import { COOK_MS, EAT_MS, SERVE_HOLD_MS } from "@/lib/protocol";
 import { Sprite } from "@/components/pixel";
 import { PHONE_LAG_MS, revealBeats, revealNow } from "@/lib/podium";
 import type { MonsterSprite, SpriteKind } from "@/lib/sprite-kind";
@@ -27,7 +28,7 @@ const first = (hook: () => unknown) => renderToStaticMarkup(createElement(() => 
 describe("the first cooking frame (cooking I3, R8)", () => {
   it("useCookStep: nothing before 上菜, the dish at once on a page opened after it", () => {
     expect(first(() => useCookStep(null))).toBe("null");
-    expect(first(() => useCookStep("7"))).toBe("3");
+    expect(first(() => useCookStep("7"))).toBe("7"); // the end of the meal: the empty plate (eat-dish.md)
   });
 
   it("useFinaleStep: a boss kill seen live starts on the monster, a page opened on the end screen goes to the podium", () => {
@@ -99,5 +100,43 @@ describe("the podium reveal's first frame", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+// Value: protects=the team eats the dish in three 400 ms bites a second after it is up, the empty plate comes before 下一題
+// unlocks, and every eating step keeps the dish on stage (the five `=== 3` spots); the eater shows only when its team is
+// still in the room (docs/designs/eat-dish.md); fails_when=a step's time drifts, SERVE_HOLD_MS undercuts the meal, dishUp
+// drops a step, or the eater/plate render on the wrong step; why_new=new feature; seam=none; no_claim=the timers firing
+// and the bitten pixels (useEffect does not run in renderToStaticMarkup; biteCells is tested in lib/pixel-art.test.ts)
+describe("eating the dish (eat-dish.md)", () => {
+  it("bites at 2.6, 3.0, 3.4 s, the empty plate at 3.8 s, and 下一題 a second later", () => {
+    expect(EAT_STEP_AT).toEqual([[4, 2600], [5, 3000], [6, 3400], [7, 3800]]);
+    expect(EAT_MS).toBe(3800);
+    expect(SERVE_HOLD_MS).toBe(4800);
+    expect(EAT_STEP_AT[0][1]).toBeGreaterThan(COOK_MS);
+  });
+
+  it("the dish stays up from step 3 to the empty plate", () => {
+    expect([null, 0, 1, 2, 3, 4, 5, 6, 7].map((s) => dishUp(s as Parameters<typeof dishUp>[0]))).toEqual([false, false, false, false, true, true, true, true, true]);
+  });
+
+  const at = (step: 3 | 4 | 5 | 6 | 7, eater = 2) => renderToStaticMarkup(createElement(DishOnStage, { dish, cardTop: 0, bottom: 146, step, eater }));
+  it("the eater comes on at the first bite, chews on 5 and 6, and the plate is empty at 7 with the dish's scale", () => {
+    expect(at(3)).not.toContain("width:96px;height:96px");
+    expect(at(4)).toContain("啊嗚！");
+    expect(at(5)).toContain("嚼嚼");
+    expect(at(5)).toContain("px-tf2");
+    const end = at(7);
+    expect(end).toContain("嗝～");
+    expect(end).toContain("width:96px;height:96px"); // the hero at scale 4
+    expect(end).toContain("width:170px;height:60px"); // the 34×12 plate at the jelly's scale 5
+    expect(end).toContain("data-step=\"7\"");
+  });
+
+  it("a team gone before the meal leaves no eater, no hearts, no 嗝", () => {
+    const end = at(7, -1);
+    expect(end).not.toContain("width:96px;height:96px");
+    expect(end).not.toContain("嗝～");
+    expect(end).toContain("width:170px;height:60px");
   });
 });

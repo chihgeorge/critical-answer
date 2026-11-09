@@ -3,7 +3,7 @@
 // Shared pixel-dungeon components (see DESIGN.md). Styles live in app/globals.css.
 
 import { useEffect, useEffectEvent, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
-import { drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme } from "@/lib/pixel-art";
+import { biteSprite, drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme } from "@/lib/pixel-art";
 import type { Accessory } from "@/lib/monster-catalog";
 import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/sprite-kind";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
@@ -109,10 +109,16 @@ export function Sprite({
   scale = 4,
   hue = 0,
   accessory,
+  bites = 0,
+  blink,
   className,
   style,
 }: {
   kind: SpriteKind;
+  /** Bites taken out of a dish (docs/designs/eat-dish.md); only for dishes, which never blink. */
+  bites?: number;
+  /** Fixes the eyes open (false) or shut (true) and stops the blink timer: a frame of the eater's chew. */
+  blink?: boolean;
   variant?: number;
   /** A repeat appearance's hat on the head (docs/designs/monster-catalog.md §3). Never hue-rotated. */
   accessory?: Accessory;
@@ -134,8 +140,9 @@ export function Sprite({
   useEffect(() => {
     const cv = ref.current;
     if (!cv) return;
-    drawSprite(cv, kind, variant, false);
-    if (prefersReducedMotion() || !BLINKS.has(kind)) return;
+    drawSprite(cv, kind, variant, !!blink);
+    if (bites) biteSprite(cv, bites);
+    if (blink !== undefined || prefersReducedMotion() || !BLINKS.has(kind)) return;
     let reopen: ReturnType<typeof setTimeout>;
     const id = setInterval(() => {
       drawSprite(cv, kind, variant, true);
@@ -146,7 +153,7 @@ export function Sprite({
       clearTimeout(reopen);
     };
     // `wearing` swaps the canvas element (bare vs inside the hat's wrapper): the new one needs drawing too.
-  }, [kind, variant, wearing]);
+  }, [kind, variant, wearing, bites, blink]);
 
   const box = { width: w * scale, height: h * scale };
   const hueStyle = hue ? { filter: `hue-rotate(${hue}deg)` } : null;
