@@ -16,7 +16,9 @@ describe("bankSizeWarning", () => {
   });
 
   it("warns on the total alone once it is below teams x 9", () => {
-    expect(bankSizeWarning({ ...size, rooms: [...size.rooms] }, 8)).toEqual({ thin: [], total: 64, needed: 72 });
+    const w = bankSizeWarning({ ...size, rooms: [...size.rooms] }, 8)!;
+    expect(w).toEqual({ thin: [], total: 64, needed: 72 });
+    expect(bankSizeWarningText(w, 8)).toBe("題目可能不夠：房間題共 64 題，少於建議的 72 題（8 隊）。同一場可能重複出題。");
   });
 
   it("lists each room difficulty with fewer questions than teams, once, and ignores pools no room uses", () => {
