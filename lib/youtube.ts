@@ -86,3 +86,14 @@ export function parseClipTime(input: string): number | null {
 export function formatClipTime(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
+
+/** The host's 大螢幕： status. After a clip error and the 🎤 open, the host plays the song live (boss-music-buzzer.md M4). */
+export function hostMediaStatus(playing: boolean, liveOpen: boolean): string {
+  return liveOpen ? "現場放歌中" : playing ? "播放中" : "已暫停";
+}
+
+/** The host's line while no team holds the buzz. None on a clip error: the red warning and its 🎤 button say what to do. */
+export function hostBuzzWait(youtube: boolean, open: boolean, clipError: boolean): string | null {
+  if (!youtube || open) return "等隊伍搶答…";
+  return clipError ? null : "按 ▶ 播放後開放搶答";
+}

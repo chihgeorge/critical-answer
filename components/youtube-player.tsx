@@ -254,8 +254,9 @@ export function YoutubePlayer({
           )}
         </div>
       )}
+      {/* Opaque over a music card: its own text must not show through and mix with this one. */}
       {needsTap && status !== "error" && (
-        <div role="status" className="absolute inset-0 flex items-center justify-center text-center text-[22px] leading-[1.4]" style={{ background: "rgba(42,21,51,0.88)", color: "#fff0a8" }}>
+        <div role="status" className="absolute inset-0 flex items-center justify-center text-center text-[22px] leading-[1.4]" style={{ background: cover ? "rgb(42,21,51)" : "rgba(42,21,51,0.88)", color: "#fff0a8" }}>
           👆 點一下大螢幕
           <br />
           才能播放聲音

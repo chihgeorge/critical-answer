@@ -603,7 +603,7 @@ function BossPhaseEditor({
       <div data-testid={`bank-boss-phase-${index + 1}`} className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2 text-[15px]">
           <LabelChip>第 {index + 1} 階段</LabelChip>
-          <label className="flex min-w-0 flex-1 items-center gap-1">
+          <label className="flex min-w-0 flex-1 items-center gap-1 whitespace-nowrap">
             名稱
             <input
               className="px-input !py-1"
@@ -624,7 +624,7 @@ function BossPhaseEditor({
             </PixelButton>
           )}
         </div>
-        <label className="flex items-center gap-1 text-[15px]">
+        <label className="flex items-center gap-1 whitespace-nowrap text-[15px]">
           規則
           <input
             className="px-input !py-1"
@@ -640,7 +640,7 @@ function BossPhaseEditor({
         {(required || phase.buzzer) && (
           <label className="flex items-center gap-2 text-[15px]">
             <input type="checkbox" data-testid={`bank-boss-phase-${index + 1}-buzzer`} checked={!!phase.buzzer} onChange={(e) => onChange({ buzzer: e.target.checked ? true : undefined })} />
-            搶答階段：所有隊伍一起搶，搶到的口頭作答（只能放填空題）
+            搶答階段：所有隊伍一起搶，搶到的隊伍口頭或打字作答（只能放填空題）
           </label>
         )}
       </div>
@@ -1003,7 +1003,7 @@ function QuestionRow({
       </div>
 
       {category && (
-        <label className="flex items-center gap-1 text-[15px]">
+        <label className="flex items-center gap-1 whitespace-nowrap text-[15px]">
           類別
           <input
             className="px-input !py-1"

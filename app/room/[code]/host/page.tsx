@@ -30,6 +30,7 @@ import { QuestionPicker } from "@/components/question-picker";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
 import { EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT } from "@/lib/event-text";
 import { EventStage } from "@/components/event-room";
+import { hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
 
 /** D11: the stuck-team row waits this long with no lock (or no choice after a wrong lock). */
 const STUCK_MS = 15_000;
@@ -724,17 +725,15 @@ export default function HostPage() {
                 </div>
               )}
               {game.question?.content.kind === "youtube" && !revealUp && (
-                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready} send={send} />
+                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
               )}
               {buzz && (
                 <div data-testid="host-buzz" className="mt-2 flex flex-col gap-1 text-[16px]">
-                  <div>
-                    {buzz.teamId
+                  {((line) => line && <div>{line}</div>)(
+                    buzz.teamId
                       ? `${teamName(buzz.teamId)} 搶到了：聽他們說答案，按下方答對／答錯`
-                      : game.question?.content.kind === "youtube" && !buzz.open
-                        ? "按 ▶ 播放後開放搶答"
-                        : "等隊伍搶答…"}
-                  </div>
+                      : hostBuzzWait(game.question?.content.kind === "youtube", !!buzz.open, !!game.clipError),
+                  )}
                   {/* The buzzing team may also type its answer (boss-music-buzzer.md M2). */}
                   {buzz.teamId && (
                     <div data-testid="host-typed-answer" className="text-[18px] [overflow-wrap:anywhere]">
@@ -1060,7 +1059,7 @@ export default function HostPage() {
 /** ▶ ⏸ ⟲ for the video on the big screen (docs/designs/youtube-questions.md D19). Three buttons, not a toggle: a
  * second press of ▶ on slow Wi-Fi is still ▶. The lit button is the host's last command (D7): the page cannot see
  * the clip stop at its end. */
-function MediaControls({ questionId, media, disabled, send }: { questionId: string; media?: MediaCommand; disabled: boolean; send: (m: ClientMessage) => void }) {
+function MediaControls({ questionId, media, disabled, send, liveOpen = false }: { questionId: string; media?: MediaCommand; disabled: boolean; send: (m: ClientMessage) => void; liveOpen?: boolean }) {
   // A command for another question, or none (an older server), is paused.
   const playing = media?.questionId === questionId && media.state === "playing";
   const press = (action: MediaAction) => send({ type: "HOST_MEDIA", questionId, action });
@@ -1068,7 +1067,7 @@ function MediaControls({ questionId, media, disabled, send }: { questionId: stri
   return (
     <div data-testid="host-media" className="mt-2">
       <div className="text-[14px]" role="status">
-        大螢幕：{playing ? "播放中" : "已暫停"}
+        大螢幕：{hostMediaStatus(playing, liveOpen)}
       </div>
       <div className="flex">
         <PixelButton aria-label="播放" aria-pressed={playing} disabled={disabled} className="flex-1 text-[18px]" style={look(playing)} onClick={() => press("play")}>
