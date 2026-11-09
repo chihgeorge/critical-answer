@@ -172,7 +172,7 @@ export interface Team {
   /** Wrong answers this team fled from, boss room too (🏃 逃跑大師, podium-titles.md). Absent until the first. */
   flees?: number;
   /** The room question this team answered wrong on and stayed (重答): splitShared moves the other team off it first.
-   * Only compared with currentQuestionId, so it needs no clearing. Absent until the first. */
+   * Cleared once the team leaves it, so a later deal of the same id starts without it. Absent until the first. */
   wrongOn?: string;
   /** The event room this team stands in (docs/designs/event-rooms.md), drawn as it walked in: its next turn opens it. */
   event?: RoomEvent;
@@ -490,22 +490,24 @@ function dealFor(game: GameState, team: Team, difficulty: Difficulty, revealed: 
  * A revealed one would hand over a known answer, so then they stay together. In a bank big enough nobody
  * shares, so this changes nothing there (and draws no rng).
  * Never moved: the team on turn (it may be mid-answer; the screen and phones show only its question, so a
- * move of anyone else shows up on that team's next turn), a wrong lock or typed answer waiting for its
- * choice or judgment (it would land on a question the team no longer faces), or a team in an event room.
+ * move of anyone else shows up on that team's next turn), counted both ways: the team at currentTurnIndex even
+ * offline (its lock or roll may be in its beat, or it just answered) and the team currentTurnTeamId names. Nor a
+ * wrong lock or typed answer waiting for its choice or judgment (it would land on a question the team no longer
+ * faces), or a team in an event room. deal(), not dealFor(): the host's queued pick waits for the team's next room.
  */
 function splitShared(game: GameState, rng: () => number): GameState {
-  const turn = currentTurnTeamId(game);
+  const keep = [game.turnOrder[game.currentTurnIndex], currentTurnTeamId(game)];
   for (;;) {
     const room = game.teams.filter((t) => !t.inBoss);
     const shared = (t: Team) => room.some((o) => o.id !== t.id && o.currentQuestionId === t.currentQuestionId);
-    const movable = room.filter((t) => t.id !== turn && game.pendingWrong?.teamId !== t.id && t.typedAnswer === undefined && !t.event && shared(t));
+    const movable = room.filter((t) => !keep.includes(t.id) && game.pendingWrong?.teamId !== t.id && t.typedAnswer === undefined && !t.event && shared(t));
     // A team with no wrong answer on the question moves first: the other keeps the question it has worked on
     // and its red tiles. Then the later team in turn order: createGame deals in that order, so it got the repeat.
     const rank = (t: Team) => (t.wrongOn === t.currentQuestionId ? 0 : game.turnOrder.length) + game.turnOrder.indexOf(t.id);
     movable.sort((a, b) => rank(b) - rank(a));
-    let move: { t: Team; dealt: ReturnType<typeof dealFor> } | undefined;
+    let move: { t: Team; dealt: ReturnType<typeof deal> } | undefined;
     for (const t of movable) {
-      const dealt = dealFor(game, t, t.currentDifficulty, game.revealedQuestionIds, rng, t.currentQuestionId);
+      const dealt = deal(game.pools, game.usedQuestionIds, game.revealedQuestionIds, game.teams, t.currentDifficulty, rng, t.currentQuestionId);
       if (!room.some((o) => o.currentQuestionId === dealt.questionId) && !game.revealedQuestionIds.includes(dealt.questionId)) {
         move = { t, dealt };
         break;
@@ -519,7 +521,7 @@ function splitShared(game: GameState, rng: () => number): GameState {
       ...game,
       usedQuestionIds: dealt.used,
       ...(game.checks ? { checks } : {}),
-      teams: patchTeam(game.teams, t.id, () => ({ currentQuestionId: dealt.questionId, currentSelection: null, queuedQuestionId: dealt.queuedQuestionId })),
+      teams: patchTeam(game.teams, t.id, () => ({ currentQuestionId: dealt.questionId, currentSelection: null, wrongOn: undefined })),
     };
   }
 }
@@ -1082,6 +1084,8 @@ export function answerQuestion(
     nextGame = { ...nextGame, checks };
   }
   if (outcome.type === "incorrect-flee") nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, (t) => ({ flees: (t.flees ?? 0) + 1 })) };
+  const left = getTeam(nextGame, teamId).wrongOn;
+  if (left !== undefined && left !== currentQuestionIdOf(nextGame, teamId)) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ wrongOn: undefined })) };
   // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
   // Split before the turn passes, so the team that just answered is the one splitShared leaves alone.
   const here = splitShared({ ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) }, rng);

@@ -1183,10 +1183,40 @@ describe("teams sharing a question split once one comes free (TODOS 題目比隊
   });
 
   it("a freed question whose answer was shown is not handed over: the two stay together", () => {
-    let g = { ...start(), config: { bossThreshold: 1 } };
-    g = advanceTurn(g); // T1's turn
-    ({ game: g } = answerQuestion(g, "T1", "b", true, "retry", first)); // T1 enters the boss room; b is revealed
-    expect(held(g)).toEqual(["a", "b", "a"]);
+    const g = { ...onTurn(start(), "T1"), revealedQuestionIds: ["b"] };
+    expect(held(sendToBoss(g, "T1", first))).toEqual(["a", "b", "a"]);
+  });
+
+  it("a team waiting on its typed answer or its wrong lock's choice is not moved", () => {
+    const g = onTurn(start(), "T1");
+    const typed = { ...g, teams: g.teams.map((t) => (t.id === "T2" ? { ...t, typedAnswer: "x" } : t)) };
+    expect(held(sendToBoss(typed, "T1", first))).toEqual(["b", "b", "a"]);
+    const locked = recordWrongLock(onTurn(start(), "T2"), "T2", "a", 1);
+    expect(held(sendToBoss(locked, "T1", first))).toEqual(["b", "b", "a"]);
+  });
+
+  it("an answer splits them too, the answering team staying, and the host's queued pick is kept", () => {
+    // A question comes free outside the deal (here: added to the pool) and the next judgment splits the pair.
+    let g = { ...start(), pools: [["a", "b", "c"], [], [], [], []] };
+    g = queueQuestion(g, "T2", "c");
+    ({ game: g } = answerQuestion(g, "T0", "a", false, "retry", first));
+    expect(held(g)).toEqual(["a", "b", "a"]); // c is the host's pick for T2's next room, not a free question
+    g = queueQuestion(g, "T2", null);
+    g = { ...g, pools: [["a", "b", "c", "d"], [], [], [], []] };
+    g = queueQuestion(g, "T2", "c");
+    ({ game: g } = answerQuestion(g, "T1", "b", false, "retry", first));
+    expect(held(g)).toEqual(["a", "b", "d"]);
+    expect(g.teams[2].queuedQuestionId).toBe("c");
+  });
+
+  it("a wrong lock then 重答 keeps the question and its red tile with the locker; a flee clears its mark", () => {
+    let g = recordWrongLock(start(), "T0", "a", 1);
+    ({ game: g } = answerQuestion(g, "T0", "a", false, "retry", first));
+    expect(g.teams[0].wrongOn).toBe("a");
+    expect(held(sendToBoss(onTurn(g, "T0"), "T1", first))).toEqual(["a", "b", "b"]);
+    g = { ...onTurn(g, "T0"), pools: [["a", "b", "c"], [], [], [], []] };
+    ({ game: g } = answerQuestion(g, "T0", "a", false, "flee", first));
+    expect(g.teams[0]).toMatchObject({ currentQuestionId: "c", wrongOn: undefined });
   });
 
   it("a bank big enough for every team: other teams' questions never change", () => {
