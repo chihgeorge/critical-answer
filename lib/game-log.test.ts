@@ -19,7 +19,7 @@ describe("game log", () => {
   it("records each team's potions given and drunk, 0 for none", () => {
     const g = giveItem(spendPotion(giveItem(twoTeams(), "A"), "A"), "A");
     expect(gameLog(endGame(g, first), 0).teams).toEqual([
-      expect.objectContaining({ name: "Alpha", potionsGiven: 2, potionsDrunk: 1 }),
+      expect.objectContaining({ name: "Alpha", potionsGiven: 2, potionsDrunk: 1, titles: expect.arrayContaining(["potions"]) }),
       expect.objectContaining({ name: "Bravo", potionsGiven: 0, potionsDrunk: 0 }),
     ]);
   });
