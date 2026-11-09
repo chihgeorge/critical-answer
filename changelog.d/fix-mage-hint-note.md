@@ -1,0 +1,2 @@
+### Fixed
+- The question bank editor now tells the writer of a fill-in question, above its answer box, that the mage and a passed persuasion check show everyone the answer's first character or number (spaces, punctuation and symbols are skipped, a minus sign too; with fewer than two there is no hint), and to put a note such as 「約」 or 「（皆可）」 after the answer, not at its start, where it would become the hint. Fill-in questions in a buzzer phase, where neither can be used, do not show it. Judging and the bank format are unchanged.
