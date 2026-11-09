@@ -38,5 +38,7 @@ export function bankSizeWarning(size: BankSize, teams: number): BankSizeWarning 
 
 export function bankSizeWarningText(w: BankSizeWarning, teams: number): string {
   const parts = [...w.thin.map((t) => `難度 ${t.difficulty} 只有 ${t.count} 題`), ...(w.total < w.needed ? [`房間題共 ${w.total} 題，少於建議的 ${w.needed} 題`] : [])];
-  return `題目可能不夠：${parts.join("，")}（${teams} 隊）。同一場可能重複出題${w.thin.length > 0 ? "，甚至兩隊同時拿到同一題" : ""}。`;
+  // deal() borrows from another pool before two teams share a question; only a bank smaller than the team count shares.
+  const worst = w.total < teams ? "，甚至兩隊同時拿到同一題" : w.thin.length > 0 ? "，或改出別的難度的題" : "";
+  return `題目可能不夠：${parts.join("，")}（${teams} 隊）。同一場可能重複出題${worst}。`;
 }

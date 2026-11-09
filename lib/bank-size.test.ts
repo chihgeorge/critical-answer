@@ -24,7 +24,7 @@ describe("bankSizeWarning", () => {
   it("lists each room difficulty with fewer questions than teams, once, and ignores pools no room uses", () => {
     const w = bankSizeWarning({ pools: [1, 40, 3, 40, 40], rooms: [3, 2, 3] }, 4);
     expect(w).toEqual({ thin: [{ difficulty: 3, count: 3 }], total: 124, needed: 36 });
-    expect(bankSizeWarningText(w!, 4)).toBe("題目可能不夠：難度 3 只有 3 題（4 隊）。同一場可能重複出題，甚至兩隊同時拿到同一題。");
+    expect(bankSizeWarningText(w!, 4)).toBe("題目可能不夠：難度 3 只有 3 題（4 隊）。同一場可能重複出題，或改出別的難度的題。");
   });
 
   it("says both reasons when both hold", () => {
