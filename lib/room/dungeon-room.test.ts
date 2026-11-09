@@ -2503,12 +2503,14 @@ describe("LLM narration and director (T8-T10)", () => {
     });
 
     /** A started game whose latest narration has three lines (the AI's): the opening, since an ordinary turn has two. */
+    // The handoff names the next team, or the runner scripts it (runner.ts alignToSlots).
+    const THIRD = "第三句：Team 0、Team 1";
     async function threeLines() {
-      const r = await llmRoom(() => textReply("第一句\n第二句\n第三句"));
+      const r = await llmRoom(() => textReply(`第一句\n第二句\n${THIRD}`));
       begin(r);
       await sleep(30);
       const n = narrations(r.room).at(-1);
-      expect(n.lines).toEqual(["第一句", "第二句", "第三句"]);
+      expect(n.lines).toEqual(["第一句", "第二句", THIRD]);
       return { ...r, n };
     }
     const progress = (r: { room: DungeonRoom }, eventId: number, rev: number, done: number) =>
@@ -2535,7 +2537,7 @@ describe("LLM narration and director (T8-T10)", () => {
       expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "line_read" });
       expect(narrations(r.room).at(-1).lines[0]).toBe("第一句");
       send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 1, line: "來得及" });
-      expect(narrations(r.room).at(-1).lines).toEqual(["第一句", "來得及", "第三句"]);
+      expect(narrations(r.room).at(-1).lines).toEqual(["第一句", "來得及", THIRD]);
     });
 
     // Value: protects=only the host edits, and only the narration it was looking at (D9); fails_when=a non-host
@@ -2558,7 +2560,7 @@ describe("LLM narration and director (T8-T10)", () => {
       refused({ rev: 1 }, "stale_narration"); // another host device's edit landed first: never overwrite it (D9)
       refused({ index: 3 }, "bad_index");
       refused({ line: "   " }, "empty_edit"); // not HOST_NEXT_LINE's empty_line: the host page routes this one to the panel
-      expect(narrations(r.room).at(-1).lines).toEqual(["第一句", "第二句", "第三句"]);
+      expect(narrations(r.room).at(-1).lines).toEqual(["第一句", "第二句", THIRD]);
     });
 
     // Value: protects=an edited line stays one dialogue-box line of at most MAX_LINE, and a prefilled scripted line
@@ -2625,7 +2627,7 @@ describe("LLM narration and director (T8-T10)", () => {
       const next = narrations(r.room).at(-1);
       expect(next.eventId).toBeGreaterThan(r.n.eventId);
       send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: next.eventId, rev: 0, index: 0, line: "新的開場" });
-      expect(narrations(r.room).at(-1)).toMatchObject({ eventId: next.eventId, rev: 1, lines: ["新的開場", next.lines[1]] }); // an ordinary turn: no line names the next team, so the handoff is scripted
+      expect(narrations(r.room).at(-1)).toMatchObject({ eventId: next.eventId, rev: 1, lines: ["新的開場", THIRD] }); // an ordinary turn: result + the line that names the next team
     });
 
 // Value: protects=the host's queued line is said once, in segment 2, by AI or scripted narration (host-next-line.md);
@@ -2636,7 +2638,7 @@ describe("LLM narration and director (T8-T10)", () => {
       const states = (conn: ReturnType<typeof makeConn>) => sentMsgs(conn).filter((m) => m.type === "HOST_NEXT_LINE_STATE").map((m) => m.line);
 
       it("the AI's second line keeps it when it says the line; the next narration has no line; every host page is told", async () => {
-        const r = await llmRoom((req) => textReply(req.system.includes("珍珠能吃嗎") ? "紅隊答對了\n冒險者問：珍珠能吃嗎？\n輪到藍隊" : `結果\n氣氛\n${HANDOFF}`));
+        const r = await llmRoom((req) => textReply(req.system.includes("珍珠能吃嗎") ? `紅隊答對了\n冒險者問：珍珠能吃嗎？\n${HANDOFF}` : `結果\n氣氛\n${HANDOFF}`));
         const other = makeConn("host-2");
         r.room.onConnect(other);
         claim(r.room, other);
@@ -2648,7 +2650,7 @@ describe("LLM narration and director (T8-T10)", () => {
         judge(r.room, r.hostConn);
         await sleep(30);
         expect(r.calls.at(-1)!.system).toContain("一定要包含主持人指定的這句話：「珍珠能吃嗎」");
-        expect(narrations(r.room).at(-1).lines).toEqual(["紅隊答對了", "冒險者問：珍珠能吃嗎？", "輪到藍隊"]);
+        expect(narrations(r.room).at(-1).lines).toEqual(["紅隊答對了", "冒險者問：珍珠能吃嗎？", HANDOFF]);
         expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ sources: ["llm", "llm", "llm"], event: { hostLine: "珍珠能吃嗎" } });
         for (const c of [r.hostConn, other]) expect(states(c).at(-1)).toBe("");
         judge(r.room, r.hostConn);

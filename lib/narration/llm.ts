@@ -9,7 +9,7 @@ import { ordinal } from "../ordinal";
 import { CLASS_LABELS, WARRIOR_TARGET, type ClassId } from "../game-state";
 import { EVENT_SCENE_TEXT } from "../event-text";
 import type { NarrationProvider } from "./scripted";
-import { hasMiddleLine, validLine, MAX_CALL_LINE, MAX_LINE, MAX_MODEL_LINE, MAX_EPILOGUE_LINE } from "./runner";
+import { hasMiddleLine, saysLine, validLine, MAX_CALL_LINE, MAX_LINE, MAX_MODEL_LINE, MAX_EPILOGUE_LINE } from "./runner";
 import { NarrationError } from "./errors";
 
 export const NARRATION_MODEL = "claude-haiku-4-5";
@@ -277,12 +277,20 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       const hostLine = !epilogue && !event.hostLineVerbatim && !!event.hostLine;
       const limit = (i: number) => (epilogue ? MAX_EPILOGUE_LINE : hostLine && i === 1 ? MAX_LINE : MAX_MODEL_LINE);
       const forbidden = (opts.forbidden?.() ?? []).filter((a) => a.length >= 3);
+      // See the marker's note below: a line that cannot be used keeps its slot and is scripted there.
+      const INVALID_SEGMENT = "<invalid/>";
+      // A cut that drops a team the line named loses its point (the result, or whose turn it is): that slot is scripted.
+      const names = epilogue ? [] : ["team" in event ? event.team : "", event.next?.team ?? ""].filter(Boolean);
+      const cut = (line: string, max: number) => {
+        const fit = fitToLimit(line, max);
+        return names.some((n) => saysLine(line, n) && !saysLine(fit, n)) ? INVALID_SEGMENT : fit;
+      };
       // The model echoes the 「」 we put around names; they are prompt scaffolding, not part of the line.
       const lines = raw
         .split(/\n+/)
         .map((line) => line.replace(/[「」『』"“”]/g, "").trim())
         .filter(Boolean)
-        .map((line, i) => fitToLimit(line, limit(i)));
+        .map((line, i) => cut(line, limit(i)));
       // A bank answer is looked for across line breaks too: the screen reads the lines one after another, and the
       // runner joins an epilogue story written over several lines. Every line an answer touches is out.
       const leaks = new Set<number>();
@@ -305,7 +313,6 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       // marker always fails runner.ts's own per-segment validLine() (it contains markup chars), so
       // that slot falls back the same way an over-length or markup segment already does — without
       // disturbing segments after it. (Adversarial review finding, /plan-eng-review D1 follow-up.)
-      const INVALID_SEGMENT = "<invalid/>";
       return lines.map((s, i) => (usable(s, i) ? s : INVALID_SEGMENT)).join("\n");
     },
   };

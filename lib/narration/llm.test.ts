@@ -308,6 +308,14 @@ describe("multi-line prompts (result, atmosphere, then the next team)", () => {
     await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe(`紅隊一劍命中！\n${at22}\n<invalid/>`);
   });
 
+  it("marks a line whose cut would drop the team it named, so the result or the handoff never loses its team", async () => {
+    // withNext: 紅隊 acts, 藍隊 is next.
+    const f = async () => ok(reply("史萊姆瞪大眼睛愣在原地。紅隊答對了，拿下三分！\n史萊姆在前方咆哮，口水直流。藍隊，輪到你們了！"));
+    await expect(make(f as unknown as typeof fetch).narrate(withNext)).rejects.toMatchObject({ reason: "invalid_output" });
+    const g = async () => ok(reply("紅隊答對了！\n史萊姆在前方咆哮，口水直流。藍隊，輪到你們了！"));
+    await expect(make(g as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！\n<invalid/>");
+  });
+
   it("lets the host's line in line 2 run to MAX_LINE, but not the lines around it", async () => {
     const host: NarrationEvent = { ...withNext, hostLine: "珍珠能吃嗎" };
     const line2 = "說到這裡，" + "字".repeat(20) + "珍珠能吃嗎";

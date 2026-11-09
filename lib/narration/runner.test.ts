@@ -319,6 +319,21 @@ describe("narration runner", () => {
       expect(short.emitted[0].lines).toEqual(["紅隊答對了！", "塵埃落定", "備用下一句"]);
     });
 
+    it("with the right line count, a last line that names no next team is scripted, and a middle line that names it is too", async () => {
+      const noName = setup(provider(async () => "紅隊答對了！\n塵埃落定\n史萊姆在前方咆哮。"));
+      await noName.runner.run(1, withNext);
+      expect(noName.emitted[0].lines).toEqual(["紅隊答對了！", "塵埃落定", "備用下一句"]);
+      const twice = setup(provider(async () => "紅隊答對了！\n藍隊看傻了\n輪到藍隊了。"));
+      await twice.runner.run(1, withNext);
+      expect(twice.emitted[0].lines).toEqual(["紅隊答對了！", "備用氣氛", "輪到藍隊了。"]);
+    });
+
+    it("a marked line never takes the middle slot from a good one when the reply is too long", async () => {
+      const { runner, emitted } = setup(provider(async () => "紅隊答對了！\n<invalid/>\n塵埃落定\n輪到藍隊了。"));
+      await runner.run(1, withNext);
+      expect(emitted[0].lines).toEqual(["紅隊答對了！", "塵埃落定", "輪到藍隊了。"]);
+    });
+
     it("uses the model's later lines when only its first line was marked unusable", async () => {
       const { runner, emitted, entries } = setup(provider(async () => "<invalid/>\n塵埃落定\n輪到藍隊了。"));
       await runner.run(1, withNext);

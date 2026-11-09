@@ -55,15 +55,14 @@ function epilogueCandidates(parts: EpiloguePart[], raw: string[]): (string | und
 }
 
 /**
- * A model reply with too few or too many lines, lined up with the slots of a turn with a next team. The line that names the
- * next team (after the result) is the handoff and goes last; a middle slot takes only a line that does not name it, so
- * the team is never called twice; a slot left empty is scripted, and so is the handoff when no line names the team.
+ * A model reply lined up with the slots of a turn with a next team, whatever its line count. The line that names the
+ * next team (after the result) is the handoff and goes last; a middle slot takes only a usable line that does not name
+ * it, so the team is never called twice; a slot left empty is scripted, and so is the handoff when no line names the team.
  */
 export function alignToSlots(raw: string[], target: number, nextTeam: string): (string | undefined)[] {
-  if (raw.length === target) return raw;
   let h = -1;
   for (let i = 1; i < raw.length; i++) if (saysLine(raw[i], nextTeam)) h = i;
-  const middle = raw.slice(1).filter((line) => !saysLine(line, nextTeam));
+  const middle = raw.slice(1).filter((line) => validLine(line) && !saysLine(line, nextTeam));
   return [raw[0], ...Array.from({ length: target - 2 }, (_, k) => middle[k]), h > 0 ? raw[h] : undefined];
 }
 
