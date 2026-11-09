@@ -333,8 +333,6 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     // A music question's answer fields (multi-field.md) are what format-6 code would drop: they store at 7.
     const fields = [{ label: "歌名", answer: "A" }, { label: "歌手", answer: "B" }];
     expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "f1", content: { kind: "text" as const, value: "聽" }, answer: "A／B", fields }] } })).toBe(BANK_FORMAT);
-    // So is a boss phase above format-6 code's 20 HP cap (E5): that code would read the bank as broken.
-    expect(formatOf({ ...validBank, boss: { ...validBank.boss, phases: validBank.boss.phases.map((p, i) => (i === 0 ? { ...p, maxHp: 21 } : p)) } })).toBe(BANK_FORMAT);
     const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
     await new BankStore(storage).putBank(sorted, 1);
     expect(await storage.get("bank")).toMatchObject({ version: 2, format: 4 });

@@ -54,13 +54,11 @@ const SORT_FORMAT = 4;
 const BUZZER_FORMAT = 5;
 /** The format that added question categories (boss-music-buzzer.md). */
 const CATEGORY_FORMAT = 6;
-/** Format-6 code's boss HP cap: a phase above it needs format 7 code too (multi-field.md E5). */
-const FORMAT_6_MAX_HP = 20;
 /** The format a bank is stored at: the oldest whose code keeps everything in it. 7 for a music question's answer fields
- * or a boss phase above 20 HP (multi-field.md), 6 for a question category (boss-music-buzzer.md), 5 for a buzzer phase (boss-buzzer.md), 4 for a sort question, else 3, so a rollback to the
+ * (multi-field.md), 6 for a question category (boss-music-buzzer.md), 5 for a buzzer phase (boss-buzzer.md), 4 for a sort question, else 3, so a rollback to the
  * previous version still reads it (/review, 2026-11-07). */
 export const formatOf = (bank: Bank): number =>
-  allQuestions(bank).some((q) => q.kind === "text" && q.fields) || bank.boss.phases.some((p) => p.maxHp > FORMAT_6_MAX_HP) ? BANK_FORMAT : allQuestions(bank).some((q) => q.category) ? CATEGORY_FORMAT : bank.boss.phases.some((p) => p.buzzer) ? BUZZER_FORMAT : allQuestions(bank).some((q) => q.kind === "sort") ? SORT_FORMAT : OLDEST_PARSED_FORMAT;
+  allQuestions(bank).some((q) => q.kind === "text" && q.fields) ? BANK_FORMAT : allQuestions(bank).some((q) => q.category) ? CATEGORY_FORMAT : bank.boss.phases.some((p) => p.buzzer) ? BUZZER_FORMAT : allQuestions(bank).some((q) => q.kind === "sort") ? SORT_FORMAT : OLDEST_PARSED_FORMAT;
 /** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
 const PENDING_KEY = "pendingImageDeletes";
 /** Default wait before an orphaned image is deleted: a room's default 24-hour expiry plus an hour
