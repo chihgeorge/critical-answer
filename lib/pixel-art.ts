@@ -174,7 +174,6 @@ export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   "dish-smoothie": [26, 32],
   "dish-squid": [30, 34],
   "dish-roast-chicken": [40, 28],
-  "plate-empty": [34, 12],
   chest: [26, 20],
   "chest-open": [26, 26],
   "dish-rotten": [34, 30],
@@ -670,14 +669,33 @@ function steam(P: Px, xs: number[], y: number) {
   for (const x of xs) P.grid(["s.", ".s", "s.", ".s"], { s: STEAM }, x, y);
 }
 
-/** The empty plate after the dish is eaten (docs/designs/eat-dish.md): a plate with a few crumbs of sauce. */
-function plateEmpty(cv: HTMLCanvasElement) {
-  const P = new Px(cv, 34, 12);
-  P.ell(17, 6, 15.5, 4.5, PLATE);
-  P.ellIn(17, 5.5, 10, 2.5, PLATE_DARK);
-  for (let x = 0; x < 34; x++) for (let y = 8; y < 12; y++) if (P.a[y * 34 + x] === PLATE) P.a[y * 34 + x] = PLATE_DARK;
+/** Each plated dish's plate (top row, width): the dish draws it, and its empty plate is the same plate (eat-dish.md). */
+const PLATE_AT = {
+  "dish-jelly": [18, 32],
+  "dish-tower": [26, 32],
+  "dish-riceball": [18, 34],
+  "dish-wings": [18, 34],
+  "dish-escargot": [18, 34],
+  "dish-jelly-salad": [16, 34],
+  "dish-crab": [18, 36],
+  "dish-tofu": [16, 34],
+  "dish-roast-chicken": [22, 38],
+  "dish-rotten": [24, 32],
+} as const satisfies Partial<Record<SpriteKind, readonly [number, number]>>;
+
+/**
+ * What is left of `kind` once it is eaten (docs/designs/eat-dish.md): its own plate on its own canvas size, with a few
+ * crumbs, so only the food goes at the last cut. A dish served without a plate (a bowl, a glass, a skewer) leaves a plate
+ * as wide as its canvas, on its bottom rows.
+ */
+export function drawEmptyPlate(cv: HTMLCanvasElement, kind: SpriteKind) {
+  const [w, h] = SPRITE_SIZE[kind];
+  const P = new Px(cv, w, h);
+  const [y, pw] = (PLATE_AT as Partial<Record<SpriteKind, readonly [number, number]>>)[kind] ?? [h - 5, w - 2];
+  plate(P, y, pw);
   P.outline(K);
-  for (const [x, y] of [[12, 5], [13, 5], [20, 4], [22, 6], [16, 7]]) P.set(x, y, "#c97a2a");
+  const cx = Math.floor(w / 2);
+  for (const dx of [-5, -4, -1, 3, 5]) P.set(cx + dx, y + 1, "#c97a2a"); // crumbs on the light rim, the shade stays whole
   P.flush();
 }
 
@@ -686,9 +704,10 @@ const NOT_FOOD = [PLATE, PLATE_DARK, STEAM].map(rgb);
 
 /**
  * Take `n` (0–3) bites out of a dish's RGBA pixels (docs/designs/eat-dish.md, eng F2): circles at the top right, top and
- * top left of the food, every bitten edge outlined in K. Bites land only inside the food's box (the opaque cells that are
- * not plate, steam or outline, plus the outline ring around them), so the plate below and the steam above stay whole;
- * a plate or steam cell beside the food, inside a bite, goes with it.
+ * top left of the food, every bitten edge outlined in K. The first bite is the biggest, so it reads from the back of the
+ * room. From the third bite on the steam is gone (white cells that touch no food; a highlight on the food stays).
+ * Bites land only inside the food's box (the opaque cells that are not plate, steam or outline, plus the outline ring
+ * around them), so the plate below stays whole; a plate or steam cell beside the food, inside a bite, goes with it.
  * Returns a new array; `data` is not touched.
  */
 export function biteCells(data: Uint8ClampedArray, w: number, h: number, n: number): Uint8ClampedArray {
@@ -705,10 +724,33 @@ export function biteCells(data: Uint8ClampedArray, w: number, h: number, n: numb
       x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
     }
   if (x1 < 0) return d;
+  if (n >= 3) {
+    // Steam: a run of white cells that touches no food. A highlight is white too, but it sits on the food.
+    const white = (x: number, y: number) => d[at(x, y) + 3] > 0 && is(at(x, y), rgb(STEAM));
+    const near = (x: number, y: number) => [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([a, b]) => [x + a, y + b]).filter(([a, b]) => a >= 0 && a < w && b >= 0 && b < h);
+    const seen = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        if (seen[y * w + x] || !white(x, y)) continue;
+        const run = [[x, y]];
+        seen[y * w + x] = 1;
+        let onFood = false;
+        for (let r = 0; r < run.length; r++)
+          for (const [a, b] of near(run[r][0], run[r][1])) {
+            if (white(a, b)) {
+              if (!seen[b * w + a]) {
+                seen[b * w + a] = 1;
+                run.push([a, b]);
+              }
+            } else if (d[at(a, b) + 3] && !is(at(a, b), k)) onFood = true;
+          }
+        if (!onFood) for (const [a, b] of run) d[at(a, b) + 3] = 0;
+      }
+  }
   // The outline ring belongs to the food too.
   x0 = Math.max(0, x0 - 1); y0 = Math.max(0, y0 - 1); x1 = Math.min(w - 1, x1 + 1); y1 = Math.min(h - 1, y1 + 1);
   const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
-  const bites = [[x1 + 1, y0 + bh * 0.2, bw * 0.24], [x0 + bw * 0.62, y0 - 1, bw * 0.24], [x0 + bw * 0.22, y0 + bh * 0.05, bw * 0.26]].slice(0, n);
+  const bites = [[x1 - bw * 0.04, y0 + bh * 0.2, bw * 0.3], [x0 + bw * 0.62, y0 - 1, bw * 0.24], [x0 + bw * 0.22, y0 + bh * 0.05, bw * 0.26]].slice(0, n);
   const gone = new Uint8Array(w * h);
   for (let y = y0; y <= y1; y++)
     for (let x = x0; x <= x1; x++)
@@ -736,7 +778,7 @@ export function biteSprite(cv: HTMLCanvasElement, n: number) {
 /** 史萊姆 → a wobbly green jelly on a plate. */
 function dishJelly(cv: HTMLCanvasElement) {
   const P = new Px(cv, 34, 24);
-  plate(P, 18, 32);
+  plate(P, ...PLATE_AT["dish-jelly"]);
   P.ell(17, 15, 12, 9, GREEN_SLIME.body);
   P.cut((_x, y) => y > 18);
   P.shade(17, 15, 12, 9, GREEN_SLIME.dark, 2, 2);
@@ -767,7 +809,7 @@ function dishStew(cv: HTMLCanvasElement) {
 /** 史萊姆王 → a tall purple jelly tower, crowned with a gold cherry. */
 function dishTower(cv: HTMLCanvasElement) {
   const P = new Px(cv, 34, 32);
-  plate(P, 26, 32);
+  plate(P, ...PLATE_AT["dish-tower"]);
   P.rect(7, 18, 20, 9, PURPLE_SLIME.body);
   P.rect(9, 10, 16, 9, PURPLE_SLIME.body);
   P.rect(11, 4, 12, 7, PURPLE_SLIME.body);
@@ -797,7 +839,7 @@ function dishIce(cv: HTMLCanvasElement) {
 /** 哭哭幽靈 → two grilled rice balls with a sprinkle of tear salt. */
 function dishRiceball(cv: HTMLCanvasElement) {
   const P = new Px(cv, 36, 24);
-  plate(P, 18, 34);
+  plate(P, ...PLATE_AT["dish-riceball"]);
   for (const cx of [11, 25]) {
     P.ell(cx, 12, 8, 7, "#fff8ec");
     P.rect(cx - 7, 12, 14, 7, "#fff8ec");
@@ -1369,7 +1411,7 @@ function dishMushroomSkewer(cv: HTMLCanvasElement) {
 /** 蝙蝠 → two golden fried wings on a plate. */
 function dishWings(cv: HTMLCanvasElement) {
   const P = new Px(cv, 36, 24);
-  plate(P, 18, 34);
+  plate(P, ...PLATE_AT["dish-wings"]);
   const wing = ["....ggg", "..ggggg", ".gggggg", "ggggggg", "gggggg.", "g.gg.g."];
   P.grid(wing, { g: "#e8a83a" }, 6, 11);
   P.grid(mirror(wing), { g: "#e8a83a" }, 19, 11);
@@ -1435,7 +1477,7 @@ function dishCottonCandy(cv: HTMLCanvasElement) {
 /** 蝸牛 → snail shells baked with bubbling cheese. */
 function dishEscargot(cv: HTMLCanvasElement) {
   const P = new Px(cv, 36, 24);
-  plate(P, 18, 34);
+  plate(P, ...PLATE_AT["dish-escargot"]);
   for (const x of [9, 18, 27]) {
     P.ell(x, 13, 5, 5, "#d88a38");
     P.ellIn(x, 13, 3, 3, "#f0a850");
@@ -1488,7 +1530,7 @@ function dishStonePot(cv: HTMLCanvasElement) {
 /** 水母 → cold jellyfish strands dressed with chili and coriander. */
 function dishJellySalad(cv: HTMLCanvasElement) {
   const P = new Px(cv, 36, 22);
-  plate(P, 16, 34);
+  plate(P, ...PLATE_AT["dish-jelly-salad"]);
   P.ell(18, 13, 12, 5, "#e8dcf8");
   P.cut((_x, y) => y > 16);
   P.outline(K);
@@ -1569,7 +1611,7 @@ function dishTangyuan(cv: HTMLCanvasElement) {
 /** 螃蟹 → a whole steamed crab on a plate, a lemon wedge on the side. */
 function dishCrab(cv: HTMLCanvasElement) {
   const P = new Px(cv, 38, 24);
-  plate(P, 18, 36);
+  plate(P, ...PLATE_AT["dish-crab"]);
   for (let i = 0; i < 3; i++) {
     P.rect(6 + i, 14 + i * 2, 4, 1, "#d8503c");
     P.rect(28 - i, 14 + i * 2, 4, 1, "#d8503c");
@@ -1592,7 +1634,7 @@ function dishCrab(cv: HTMLCanvasElement) {
 /** 骰子 → cubes of tofu with sauce dots like a die's pips. */
 function dishTofu(cv: HTMLCanvasElement) {
   const P = new Px(cv, 36, 22);
-  plate(P, 16, 34);
+  plate(P, ...PLATE_AT["dish-tofu"]);
   for (const [x, y] of [[7, 9], [15, 7], [23, 9], [11, 12], [20, 12]]) {
     P.rect(x, y, 6, 6, "#fffaf0");
     P.rect(x + 4, y, 2, 6, "#e8e0d0");
@@ -1649,7 +1691,7 @@ function dishSquid(cv: HTMLCanvasElement) {
 /** 不死鳥 → a whole roast bird on a plate, still flickering. */
 function dishRoastChicken(cv: HTMLCanvasElement) {
   const P = new Px(cv, 40, 28);
-  plate(P, 22, 38);
+  plate(P, ...PLATE_AT["dish-roast-chicken"]);
   P.rect(6, 11, 6, 3, "#c97a2a");
   P.ell(5, 12, 2, 2, "#fff4dc");
   P.rect(28, 11, 6, 3, "#c97a2a");
@@ -1704,7 +1746,7 @@ function chest(cv: HTMLCanvasElement, open: boolean) {
 /** 黑暗料理: a purple-grey lump with green spots, smoking purple. */
 function dishRotten(cv: HTMLCanvasElement) {
   const P = new Px(cv, 34, 30);
-  plate(P, 24, 32);
+  plate(P, ...PLATE_AT["dish-rotten"]);
   P.ell(17, 21, 11, 6, "#6b5a7a");
   P.cut((_x, y) => y > 24);
   P.shade(17, 21, 11, 6, "#4a3a5e", 2, 2);
@@ -1868,7 +1910,6 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   "dish-smoothie": (cv) => dishSmoothie(cv),
   "dish-squid": (cv) => dishSquid(cv),
   "dish-roast-chicken": (cv) => dishRoastChicken(cv),
-  "plate-empty": (cv) => plateEmpty(cv),
   chest: (cv) => chest(cv, false),
   "chest-open": (cv) => chest(cv, true),
   "dish-rotten": (cv) => dishRotten(cv),
