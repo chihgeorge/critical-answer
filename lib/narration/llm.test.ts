@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createLlmProvider, buildPrompt, NARRATION_MODEL, EPILOGUE_MODEL } from "./llm";
-import { MAX_LINE } from "./runner";
+import { MAX_MODEL_LINE } from "./runner";
 import { NarrationError } from "./errors";
 import type { NarrationEvent } from "./events";
 
@@ -295,9 +295,24 @@ describe("multi-line prompts (result, atmosphere, then the next team)", () => {
     await expect(make(g as unknown as typeof fetch, { forbidden: () => ["新高山"] }).narrate(withNext)).rejects.toMatchObject({ reason: "invalid_output" });
   });
 
-  it("rejects the whole answer when the first line is unusable", async () => {
+  it("marks an unusable first line but keeps a good later one, and rejects the answer when no line is usable", async () => {
     const f = async () => ok(reply("字".repeat(60) + "\n輪到藍隊"));
-    await expect(make(f as unknown as typeof fetch).narrate(withNext)).rejects.toMatchObject({ reason: "invalid_output" });
+    await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe("<invalid/>\n輪到藍隊");
+    const g = async () => ok(reply("字".repeat(60) + "\n<b>輪到</b>"));
+    await expect(make(g as unknown as typeof fetch).narrate(withNext)).rejects.toMatchObject({ reason: "invalid_output" });
+  });
+
+  it("holds every model line to 22 characters: cut at a sentence break when that fits, else marked for the scripted line", async () => {
+    const at22 = "字".repeat(MAX_MODEL_LINE);
+    const f = async () => ok(reply(`紅隊一劍命中！史萊姆搖搖晃晃地一路退到了石牆角邊。\n${at22}\n${"字".repeat(MAX_MODEL_LINE + 1)}`));
+    await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe(`紅隊一劍命中！\n${at22}\n<invalid/>`);
+  });
+
+  it("lets the host's line in line 2 run to MAX_LINE, but not the lines around it", async () => {
+    const host: NarrationEvent = { ...withNext, hostLine: "珍珠能吃嗎" };
+    const line2 = "說到這裡，" + "字".repeat(20) + "珍珠能吃嗎";
+    const f = async () => ok(reply(`紅隊答對了！\n${line2}\n${"字".repeat(30)}`));
+    await expect(make(f as unknown as typeof fetch).narrate(host)).resolves.toBe(`紅隊答對了！\n${line2}\n<invalid/>`);
   });
 });
 
@@ -324,10 +339,10 @@ describe("output", () => {
   });
 
   it("keeps the first sentences that fit when the model writes too much", async () => {
-    const long = "藍隊揮舞著魔法劍，一記致命一擊戳進小黑龍的心臟！那傢伙發出慘叫，倒地身亡，藍隊額外獲得 11 分的獎勵呢！";
-    expect([...long].length).toBeGreaterThan(MAX_LINE);
+    const long = "藍隊揮劍刺進小黑龍的心臟！牠慘叫一聲倒地。藍隊額外獲得 11 分的獎勵，可喜可賀！";
+    expect([...long].length).toBeGreaterThan(MAX_MODEL_LINE);
     const f = async () => ok(reply(long));
-    await expect(make(f as unknown as typeof fetch).narrate(event)).resolves.toBe("藍隊揮舞著魔法劍，一記致命一擊戳進小黑龍的心臟！");
+    await expect(make(f as unknown as typeof fetch).narrate(event)).resolves.toBe("藍隊揮劍刺進小黑龍的心臟！牠慘叫一聲倒地。");
   });
 
   it("removes 「」 quote marks the model echoes from the prompt", async () => {

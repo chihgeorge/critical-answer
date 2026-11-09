@@ -9,7 +9,7 @@ import { ordinal } from "../ordinal";
 import { CLASS_LABELS, WARRIOR_TARGET, type ClassId } from "../game-state";
 import { EVENT_SCENE_TEXT } from "../event-text";
 import type { NarrationProvider } from "./scripted";
-import { hasMiddleLine, validLine, MAX_CALL_LINE, MAX_LINE, MAX_EPILOGUE_LINE } from "./runner";
+import { hasMiddleLine, validLine, MAX_CALL_LINE, MAX_LINE, MAX_MODEL_LINE, MAX_EPILOGUE_LINE } from "./runner";
 import { NarrationError } from "./errors";
 
 export const NARRATION_MODEL = "claude-haiku-4-5";
@@ -45,9 +45,9 @@ export function buildPrompt(event: NarrationEvent, styleExamples: string[], rece
   const second = hostLine
     ? `第二行：一定要包含主持人指定的這句話：「${hostLine.replace(/[「」『』]/g, "")}」，字要一樣（標點可以改），前後可以加幾個字自然銜接，整行最多 ${MAX_LINE} 個字。`
     : !epilogue && hasMiddleLine(event)
-      ? `第二行：補充一點${hasNext ? "戰鬥氣氛、環境或情緒細節" : "氣氛或情緒的收尾"}，最多 22 個字，不要重複第一行的內容。`
+      ? `第二行：補充一點${hasNext ? "戰鬥氣氛、環境或情緒細節" : "氣氛或情緒的收尾"}，最多 ${MAX_MODEL_LINE} 個字，不要重複第一行的內容。`
       : null;
-  const first = "第一行：交代剛剛發生的事，最多 22 個字，寧可短一點。";
+  const first = `第一行：交代剛剛發生的事，最多 ${MAX_MODEL_LINE} 個字，寧可短一點。`;
   const handoff = "轉向下一隊，提醒他們輪到了、面對哪隻怪物，一句話，不超過 20 個字。";
   const ask = epilogue
     ? epilogueAsk(event)
@@ -272,10 +272,17 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
         .join("");
       if (!raw.trim()) throw new NarrationError("empty_or_refusal", "no text in the response");
       const max = epilogue ? MAX_EPILOGUE_LINE : MAX_LINE;
+      // A result, atmosphere or handoff line is held to the prompt's 22 characters; only the host's line (line 2) and
+      // the epilogue may run to their own ceilings.
+      const hostLine = !epilogue && !event.hostLineVerbatim && !!event.hostLine;
+      const limit = (i: number) => (epilogue ? MAX_EPILOGUE_LINE : hostLine && i === 1 ? MAX_LINE : MAX_MODEL_LINE);
       const forbidden = (opts.forbidden?.() ?? []).filter((a) => a.length >= 3);
       // The model echoes the 「」 we put around names; they are prompt scaffolding, not part of the line.
-      const clean = (line: string) => fitToLimit(line.replace(/[「」『』"“”]/g, "").trim(), max);
-      const lines = raw.split(/\n+/).map(clean).filter(Boolean);
+      const lines = raw
+        .split(/\n+/)
+        .map((line) => line.replace(/[「」『』"“”]/g, "").trim())
+        .filter(Boolean)
+        .map((line, i) => fitToLimit(line, limit(i)));
       // A bank answer is looked for across line breaks too: the screen reads the lines one after another, and the
       // runner joins an epilogue story written over several lines. Every line an answer touches is out.
       const leaks = new Set<number>();
@@ -289,20 +296,17 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
           for (let i = lineAt(pos); i <= lineAt(pos + a.length - 1); i++) leaks.add(i);
         }
       }
-      const usable = (line: string, i: number) => validLine(line, max) && !leaks.has(i);
-      const [first = "", ...rest] = lines;
-      if (first === "") throw new NarrationError("empty_or_refusal", "no text in the response");
-      if (!usable(first, 0)) throw new NarrationError("invalid_output", "line too long, contains markup or repeats a bank answer");
-      // Every segment after the first is a bonus: a bad one falls back to scripted for that specific
-      // slot. Replace it with a marker instead of dropping it — dropping compacts the array, so with
-      // 2+ rest segments (atmosphere, transition) an invalid middle one would shift a valid trailing
+      const usable = (line: string, i: number) => validLine(line, max) && [...line].length <= limit(i) && !leaks.has(i);
+      if (lines.length === 0) throw new NarrationError("empty_or_refusal", "no text in the response");
+      if (!lines.some(usable)) throw new NarrationError("invalid_output", "line too long, contains markup or repeats a bank answer");
+      // A bad segment falls back to scripted for that specific slot. Replace it with a marker instead of
+      // dropping it — dropping compacts the array, so with 2+ segments (atmosphere, transition) an invalid middle one would shift a valid trailing
       // one into the wrong position (e.g. the transition line landing in the atmosphere slot). The
       // marker always fails runner.ts's own per-segment validLine() (it contains markup chars), so
       // that slot falls back the same way an over-length or markup segment already does — without
       // disturbing segments after it. (Adversarial review finding, /plan-eng-review D1 follow-up.)
       const INVALID_SEGMENT = "<invalid/>";
-      const validRest = rest.map((s, i) => (usable(s, i + 1) ? s : INVALID_SEGMENT));
-      return [first, ...validRest].join("\n");
+      return lines.map((s, i) => (usable(s, i) ? s : INVALID_SEGMENT)).join("\n");
     },
   };
 }

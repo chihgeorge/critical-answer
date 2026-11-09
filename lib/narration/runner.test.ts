@@ -295,6 +295,37 @@ describe("narration runner", () => {
       expect(three.emitted[0].lines).toEqual(["紅隊答對了！", "輪到藍隊。"]);
     });
 
+    it("two lines on a three-line turn: the handoff stays last and the scripted atmosphere fills the middle, so the team is called once", async () => {
+      const { runner, emitted, entries } = setup(provider(async () => "紅隊答對了！\n輪到藍隊，害羞幽靈在等你們。"));
+      await runner.run(1, withNext);
+      expect(emitted[0].lines).toEqual(["紅隊答對了！", "備用氣氛", "輪到藍隊，害羞幽靈在等你們。"]);
+      expect(entries[0].sources).toEqual(["fake", "scripted", "fake"]);
+    });
+
+    it("three lines on a two-line turn with the handoff in the middle: the handoff is kept, the atmosphere dropped", async () => {
+      const plain: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next: { team: "藍隊", monster: "害羞幽靈", boss: false } };
+      const { runner, emitted } = setup(provider(async () => "紅隊答對了！\n輪到藍隊了。\n塵埃落定"));
+      await runner.run(1, plain);
+      expect(emitted[0].lines).toEqual(["紅隊答對了！", "輪到藍隊了。"]);
+    });
+
+    it("a reply a line short or long that names no next team gets the scripted handoff", async () => {
+      const plain: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next: { team: "藍隊", monster: "害羞幽靈", boss: false } };
+      const long = setup(provider(async () => "紅隊答對了！\n塵埃落定\n風停了"));
+      await long.runner.run(1, plain);
+      expect(long.emitted[0].lines).toEqual(["紅隊答對了！", "備用下一句"]);
+      const short = setup(provider(async () => "紅隊答對了！\n塵埃落定"));
+      await short.runner.run(1, withNext);
+      expect(short.emitted[0].lines).toEqual(["紅隊答對了！", "塵埃落定", "備用下一句"]);
+    });
+
+    it("uses the model's later lines when only its first line was marked unusable", async () => {
+      const { runner, emitted, entries } = setup(provider(async () => "<invalid/>\n塵埃落定\n輪到藍隊了。"));
+      await runner.run(1, withNext);
+      expect(emitted[0].lines).toEqual(["備用旁白", "塵埃落定", "輪到藍隊了。"]);
+      expect(entries[0]).toMatchObject({ sources: ["scripted", "fake", "fake"], provider: "fake" });
+    });
+
     it("sends no transition segment when the event has no next team, even if the provider wrote three lines", async () => {
       const { runner, emitted } = setup(provider(async () => "藍隊擊倒了首領！\n塵埃落定\n多餘的第三行"));
       await runner.run(1, { type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9 });
