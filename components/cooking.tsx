@@ -167,7 +167,7 @@ export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom, ste
   const scale = Math.min(5, Math.floor(130 / SPRITE_SIZE[kind][1]));
   // The catalog's own hue: a repeat appearance's recolor stays on the monster (monster-catalog.md §3).
   const hue = monsterById(dish.monster.id ?? "")?.hue ?? dish.monster.hue;
-  const at = (left: number, bottom: number, zIndex = 4) => ({ left, bottom, transform: "translateX(-50%)", zIndex }) as const;
+  const at = (left: number, bottom: number) => ({ left, bottom, transform: "translateX(-50%)", zIndex: 4 }) as const;
   const chew = step === 5 || step === 6;
   return (
     <div data-testid="dish-served" data-step={step}>

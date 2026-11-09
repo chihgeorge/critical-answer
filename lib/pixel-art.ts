@@ -742,7 +742,7 @@ export function biteCells(data: Uint8ClampedArray, w: number, h: number, n: numb
                 seen[b * w + a] = 1;
                 run.push([a, b]);
               }
-            } else if (d[at(a, b) + 3] && !is(at(a, b), k)) onFood = true;
+            } else if (d[at(a, b) + 3] && !is(at(a, b), k) && !NOT_FOOD.some((c) => is(at(a, b), c))) onFood = true;
           }
         if (!onFood) for (const [a, b] of run) d[at(a, b) + 3] = 0;
       }

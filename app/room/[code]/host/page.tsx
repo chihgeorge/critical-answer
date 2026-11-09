@@ -301,11 +301,14 @@ export default function HostPage() {
   const serveSeconds = serveLeft.key === pauseKey ? serveLeft.left : serveSecondsLeft(0);
   useEffect(() => {
     // After 上菜, 下一題 waits out the cooking as the room does (cooking I2).
-    const t = setTimeout(() => setArmedFor(pauseKey), pauseKey.endsWith("-served") ? SERVE_HOLD_MS : 500);
-    if (!pauseKey.endsWith("-served")) return () => clearTimeout(t);
+    const served = pauseKey.endsWith("-served");
     // The seconds left on 「🍲 上菜中…」, so the host knows how long the meal still runs.
     const start = Date.now();
-    const tick = setInterval(() => setServeLeft({ key: pauseKey, left: serveSecondsLeft(Date.now() - start) }), 250);
+    const tick = served ? setInterval(() => setServeLeft({ key: pauseKey, left: serveSecondsLeft(Date.now() - start) }), 250) : undefined;
+    const t = setTimeout(() => {
+      clearInterval(tick);
+      setArmedFor(pauseKey);
+    }, served ? SERVE_HOLD_MS : 500);
     return () => {
       clearTimeout(t);
       clearInterval(tick);
