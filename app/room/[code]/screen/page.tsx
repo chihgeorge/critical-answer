@@ -18,7 +18,7 @@ import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, SFX, SPRINT_FANFARE } from "@/lib/sfx";
+import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, EAT_DONE, SFX, SPRINT_FANFARE } from "@/lib/sfx";
 import { AnswerClock } from "@/components/answer-clock";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { IN_LOBBY, nextTransition, UNSEEN, type Transition } from "@/lib/transitions";
@@ -32,7 +32,7 @@ import { InitiativeOverlay, KillRollOverlay, RollOverlay, TieRollOverlay } from 
 import { MageHint } from "@/components/mage-hint";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
-import { CookFrame, dishLine, DishOnStage, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
+import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { readStored, writeStored } from "@/lib/stored";
 import { sortOrderOf } from "@/lib/sort-order";
 import { EventStage } from "@/components/event-room";
@@ -255,7 +255,7 @@ type YoutubeContent = Extract<PublicMediaContent, { kind: "youtube" }>;
 /** A chip that stands in the side column beside a video (D14), at the same 20px as the hints. */
 const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4px solid var(--k)", whiteSpace: "normal", borderRadius: 12 } as const;
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, onClipEnded, answerLeft, onClockSecond, say, onRead }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, onClipEnded, answerLeft, onClockSecond, say, onRead, onEaten }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -268,7 +268,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const theme = dish ? roomTheme(dish.room) : turnInfo.theme;
   // A team removed mid-reveal still leaves its dish line, without the name.
   const line = dish ? dishLine(dish, eater?.name ?? "", false) : "";
-  const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => say([line]));
+  const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => say([line]), eater ? onEaten : undefined); // no 嗝 when the eater's team has left (no one is shown eating)
   const served = cook !== null;
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
   const card = phaseCard && bossPhaseInfo;
@@ -382,7 +382,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
 
       {/* 上菜 puts the panel away (cooking R4): the stage is the monster's, then the dish's. */}
       {/* The dish stands where the monster stood; its card takes the panel's place. */}
-      {cook === 3 && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} />}
+      {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={eaterIdx} />}
       {!served && (
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
@@ -479,7 +479,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         </div>
       )}
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
-      {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : cook !== 3 && (
+      {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : !dishUp(cook) && (
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         <div key={card ? `card-${eventId}` : undefined} className={card ? "px-phase-blink" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}>
           <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} accessory={monster.accessory} />
@@ -518,8 +518,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         accent={bossScene ? "var(--danger)" : undefined}
         loading={!served && !held && isPending(eventId, narration)}
-        lines={cook === 3 ? [line] : served ? ["上菜！"] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
-        {...(cook !== 3 && !served && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+        lines={dishUp(cook) ? [line] : served ? ["上菜！"] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
+        {...(!served && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
       />
       {pendingRoll?.kind === "kill" && pendingRoll.values ? (
         <KillRollOverlay key={`kill-${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} values={pendingRoll.values} value={pendingRoll.value} />
@@ -1209,7 +1209,7 @@ export default function ScreenPage() {
         )}
         {game?.phase === "playing" && !game.intro && !game.initiative && (game.eventReveal || (!game.reveal && !game.phaseCard && !game.phaseCardDue && describeTurn(game.view, null).team?.eventScene)) ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal ?? null} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} />}
         {game?.phase === "playing" && <ReactionFloats floats={floats} teams={game.view.teams} />}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}
