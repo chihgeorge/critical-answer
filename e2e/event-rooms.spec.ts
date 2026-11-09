@@ -43,7 +43,7 @@ async function toTheFork(browser: Browser) {
   await expect(screen.getByTestId("fork-doors")).toContainText("左門");
   await expect(screen.getByTestId("fork-doors")).toContainText("右門");
   await expect(screen.getByTestId("fork-doors")).not.toContainText(/怪物房|神秘房/);
-  await expect(screen.getByText("🔀 岔路！")).toBeVisible();
+  await expect(screen.getByText("🔀 叉路！")).toBeVisible();
   await expect(host.getByTestId("host-fork")).toContainText("EventTeam在岔路口");
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
   await expect(plain.getByTestId("phone-fork-watch")).toContainText("EventTeam在岔路口猶豫中");

@@ -11,7 +11,7 @@ bump: minor
 - The host's bank-size warning no longer counts room questions against teams × 9; it warns, and 開始遊戲 asks for one more confirmation, only when a room difficulty has fewer questions than teams.
 - The narration and the podium title call event rooms 神秘房.
 - CLAUDE.md routes architecture questions to /autoplan.
-- The 🔀 岔路！ title on the big screen and the phone shows 「岔」 in the system's bold CJK face: the pixel font's 11-pixel glyph read as a different character.
+- The title on the big screen and the phone reads 🔀 叉路！: the pixel font's 11-pixel 「岔」 read as a different character.
 
 ### Fixed
 - A room whose last narration had more than three lines (a fork line, a potion, a buzzer reopening appended to it) no longer loses its save on restart; appended lines stop at 20, the most a save restores.

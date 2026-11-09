@@ -38,8 +38,9 @@ between two doors and lives with the result.
   (after a wrong answer, which has no reveal to wait under, the clock starts at once and that turn's line is never
   shown), lines held for it (a 🧪 give, the sprint line) move into the fork's narration before the opening line, and
   ⚔️'s line is appended to this narration.
-- **「岔」 in titles.** Cubic 11 has the glyph, but its 11-pixel 「岔」 squeezes 山 into one stroke. The big-screen title
-  and the phone's fork header show that one character in the system's bold CJK face (`.px-glyph-fix`).
+- **The title reads 「🔀 叉路！」.** Cubic 11's 11-pixel 「岔」 squeezes 山 into one stroke and reads as a different
+  character, so the big-screen title and the phone's fork header use the synonym 「叉路」, which the pixel font draws
+  clearly. The feature, the rules and the host page still call it 岔路.
 - **15 seconds, server clock** (`FORK_MS`). The deadline is an absolute time saved with the room; a restart re-arms it,
   and a deadline already past takes ⚔️ at once. A press at or after the deadline counts as a timeout. A team that drops
   while choosing keeps the turn (the `currentTurnTeamId` exception, like a pending wrong answer); a team already offline
