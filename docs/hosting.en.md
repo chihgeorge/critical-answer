@@ -9,6 +9,8 @@ What the host needs to know on the day of the event: opening a room, running the
 The host presses 「主持遊戲」 (host a game) on the home page and lands on the host page (`/room/<code>/host`). The big-screen URL is at the very top of the host page; open it on a TV or projector (`/room/<code>/screen`).
 Each team joins by entering a team name and the 4-character room code on a phone, or by scanning the QR code in the lobby. A team name cannot match a team that has already joined; names that differ only in upper/lower case or full-width/half-width characters count as the same name. While waiting, the phones show every team that has joined. In the host page's lobby, each team has 「改名」 (rename; same rules as joining) and 「移除」 (remove): a removed phone shows 「主持人把你們的隊伍移除了」 (the host removed your team), it is not added back by reconnecting on its own, and it can join again only by going back to the home page and opening the room again. The host presses 「開始遊戲」 (start game).
 
+When the bank may be too small for this many teams (a room difficulty has fewer questions than teams, or the room questions total less than teams × 9), a warning shows above 「開始遊戲」: the same game may repeat questions or deal questions from another difficulty. When a room difficulty has fewer questions than teams, 「開始遊戲」 asks for one more confirmation. The bank editor shows the same warning above 「儲存全部變更」 (save all changes), sized for 8 teams, but does not block saving.
+
 While waiting for people, the middle of the big screen is a campfire; as each team joins, its character runs in to stand around the fire. The room code and the join QR code are here too.
 
 ## How-to-play slides
