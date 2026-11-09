@@ -30,7 +30,7 @@ import { FieldJudge } from "@/components/field-judge";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
-import { EVENT_OUTCOME_TITLE } from "@/lib/event-text";
+import { EVENT_OUTCOME_TITLE, FORK_DOOR_LABEL, FORK_SIDE_LABEL } from "@/lib/event-text";
 import { hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
 
 /** D11: the stuck-team row waits this long with no lock (or no choice after a wrong lock). */
@@ -906,10 +906,11 @@ export default function HostPage() {
                 <div data-testid="host-fork">
                   <Panel tone="lav" className="flex items-center justify-center gap-2 px-3 py-2 text-center text-[20px]">
                     {game.forkBeat ? (
-                      <span>大螢幕正在開門……</span>
+                      // Only the opened door is named: the room never tells the host which side hid what.
+                      <span data-testid="host-fork-beat">{game.forkBeat.timeout ? "⏳ 時間到，" : ""}大螢幕正在打開{FORK_SIDE_LABEL[game.forkBeat.side]}：{FORK_DOOR_LABEL[game.forkBeat.door]}</span>
                     ) : (
                       <>
-                        <span>{turn.team.name}在岔路口</span>
+                        <span>{turn.team.name}在岔路口，選左門或右門</span>
                         {typeof game.forkLeft === "number" && <AnswerClock key={game.forkLeft} ms={game.forkLeft} variant="chip" />}
                       </>
                     )}

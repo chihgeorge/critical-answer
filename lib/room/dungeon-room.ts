@@ -169,6 +169,8 @@ export interface RoomOptions {
   /** e2e only (worker E2E_EVENT_TEAM): the team with this exact name always walks into an event room when it may, and
    * no other team ever does, so other specs never meet one (docs/designs/event-rooms.md). */
   e2eEventTeam?: string;
+  /** e2e only (worker E2E_MONSTER_SIDE): ⚔️ always behind this door, so a spec knows which button opens ❓ (branch-fork.md). */
+  e2eMonsterSide?: ForkSide;
   /** How long the 擲先攻 order holds before the first question (e2e, worker INITIATIVE_HOLD_MS). Default INITIATIVE_ORDER_MS. */
   initiativeHoldMs?: number;
 }
@@ -439,6 +441,7 @@ export class DungeonRoom {
   private bankAnswers: string[];
   private fixedDie: number | undefined;
   private e2eEventTeam: string | undefined;
+  private e2eMonsterSide: ForkSide | undefined;
   private initiativeHoldMs: number;
 
   constructor(
@@ -454,6 +457,7 @@ export class DungeonRoom {
     this.now = opts.now ?? Date.now;
     this.fixedDie = opts.fixedDie;
     this.e2eEventTeam = opts.e2eEventTeam;
+    this.e2eMonsterSide = opts.e2eMonsterSide;
     this.initiativeHoldMs = opts.initiativeHoldMs ?? INITIATIVE_ORDER_MS;
     this.bankAnswers = allAnswers(this.bank);
     this.scripted = createScriptedProvider(rng);
@@ -2889,7 +2893,7 @@ export class DungeonRoom {
     const team = game.teams.find((t) => t.id === currentTurnTeamId(game));
     if (team?.fork?.phase !== "waiting") return;
     // Which side hides ⚔️: drawn now, saved with the game, never in any STATE (branch-fork.md).
-    this.keepUndoOpen(startForkChoice(game, team.id, this.now() + FORK_MS, this.rng() < 0.5 ? "left" : "right"));
+    this.keepUndoOpen(startForkChoice(game, team.id, this.now() + FORK_MS, this.e2eMonsterSide ?? (this.rng() < 0.5 ? "left" : "right")));
     this.armFork();
   }
 

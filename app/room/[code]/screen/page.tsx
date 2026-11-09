@@ -12,7 +12,7 @@ import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from
 import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, type AnswerReveal, type EventReveal, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type SoundCue, type StateMessage } from "@/lib/protocol";
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
-import { TEAM_LOOKS } from "@/lib/pixel-art";
+import { FORK_ARCH, sceneFloor, TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn, monsterLook, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
@@ -37,7 +37,7 @@ import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, u
 import { readStored, writeStored } from "@/lib/stored";
 import { sortOrderOf } from "@/lib/sort-order";
 import { EventStage } from "@/components/event-room";
-import { BOON_TEXT, EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT, eventEffectLine } from "@/lib/event-text";
+import { BOON_TEXT, EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT, eventEffectLine, FORK_DOOR_LABEL, FORK_SIDE_LABEL } from "@/lib/event-text";
 
 const TTS_ENABLED_STORAGE = "screen-tts-enabled";
 const BGM_ENABLED_STORAGE = "screen-bgm-enabled";
@@ -624,20 +624,19 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
   );
 }
 
-const DOORS = [
-  { door: "monster", label: "⚔️ 怪物房" },
-  { door: "mystery", label: "❓ 神秘房" },
-] as const;
-
-/** 岔路 on the big screen (branch-fork.md): two doors with nothing written under them and the team's clock; once a door
- * is picked (forkBeat) it opens and the other dims, a timeout marked ⏳ first. Nothing behind either door shows here. */
+/** 岔路 on the big screen (branch-fork.md): the middle arch is bricked up and a door stands in each of two doorways, 左門
+ * and 右門, nothing behind either told. Once a side is picked (forkBeat) its door swings open and names what was behind it;
+ * the other dims and stays unnamed. A timeout is marked ⏳ first. */
 function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: SpectatorView; beat?: StateMessage["forkBeat"]; left?: number; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
   const idx = view.teams.findIndex((t) => t.id === (beat ? beat.teamId : view.currentTurnTeamId));
   const team = view.teams[idx];
   const name = team?.name ?? "";
+  // The doors sit on the background's doorways: scene pixels (160x90) times the stage's 6 (960x540).
+  const px = 960 / 160;
+  const doorTop = (sceneFloor(90) - FORK_ARCH.h) * px;
   return (
     <>
-      <SceneBackground theme={roomTheme(team?.roomIndex ?? 0)} />
+      <SceneBackground theme={roomTheme(team?.roomIndex ?? 0)} arch="fork" />
       <Torches />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
@@ -654,18 +653,20 @@ function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: Sp
           <AnswerClock key={left} ms={left} variant="big" />
         ) : null}
       </div>
-      <div data-testid="fork-doors" className="absolute flex items-end justify-center" style={{ left: 0, right: 0, bottom: 140, gap: 200, zIndex: 4 }}>
-        {DOORS.map(({ door, label }) => {
-          const open = beat?.door === door;
+      <div data-testid="fork-doors" className="pointer-events-none absolute inset-0">
+        {(["left", "right"] as const).map((side) => {
+          const open = beat?.side === side;
           const dim = !!beat && !open;
+          const x = (80 + (side === "left" ? -FORK_ARCH.dx : FORK_ARCH.dx) - FORK_ARCH.w / 2) * px;
           return (
-            <div key={door} {...(open ? { "data-testid": "fork-door-open" } : {})} data-door={door} className="flex flex-col items-center gap-3" style={{ opacity: dim ? 0.3 : 1, filter: dim ? "grayscale(1)" : undefined }}>
-              <div className={open ? "px-hop" : "px-idle"}>
-                <Sprite kind="door" scale={6} />
-              </div>
-              <Nameplate>
-                <span style={{ fontSize: 26 }}>{label}</span>
+            <div key={side} data-side={side} {...(open ? { "data-testid": "fork-door-open", "data-door": beat.door } : {})} style={{ opacity: dim ? 0.3 : 1, filter: dim ? "grayscale(1)" : undefined }}>
+              <Nameplate className="absolute" style={{ left: x + (FORK_ARCH.w * px) / 2, top: doorTop - 62, transform: "translateX(-50%)", zIndex: 5 }}>
+                <span>{open ? FORK_DOOR_LABEL[beat.door] : FORK_SIDE_LABEL[side]}</span>
               </Nameplate>
+              {/* The opened door swings in on its hinge, leaving the dark doorway behind it. */}
+              <div className="absolute" style={{ left: x, top: doorTop, zIndex: 4, transformOrigin: "left center", transform: open ? "perspective(600px) rotateY(-80deg)" : undefined, transition: "transform 700ms ease-out" }}>
+                <Sprite kind="door" scale={px} />
+              </div>
             </div>
           );
         })}

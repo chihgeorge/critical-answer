@@ -1939,11 +1939,18 @@ const THEME = {
   crimson: { b: ["#7a3560", "#86406c", "#6b2c54"], m: "#3c1530", hi: "#a85a8a", f: ["#a0507e", "#8e426e"], fm: "#3a1230", arch: "#1a0716", rim: "#c07aa4" },
 } as const;
 
-/** Brick wall, tiled floor, optional arch and a dithered vignette. Seeded, so it never flickers between renders. */
-export function drawScene(cv: HTMLCanvasElement, name: SceneTheme, W = 160, H = 90, arch = true) {
+/** 岔路's two doorways (branch-fork.md), in scene pixels on the 160x90 scene: each centre this far from the middle, sized
+ * so the 20x26 door sprite sits inside one with a pixel to spare. The screen lays the doors on the same numbers. */
+export const FORK_ARCH = { dx: 24, w: 20, h: 26 } as const;
+/** The floor line of a scene `H` pixels tall: walls above, tiles below. */
+export const sceneFloor = (H: number) => Math.floor(H * 0.74);
+
+/** Brick wall, tiled floor, a dithered vignette and the arch: one in the middle, none, or "fork"'s two doorways with the
+ * middle bricked up. Seeded, so it never flickers between renders. */
+export function drawScene(cv: HTMLCanvasElement, name: SceneTheme, W = 160, H = 90, arch: boolean | "fork" = true) {
   const T = THEME[name];
   const P = new Px(cv, W, H);
-  const fy = Math.floor(H * 0.74);
+  const fy = sceneFloor(H);
   const bh = 7;
   const bw = 14;
   let s = 11;
@@ -1970,7 +1977,18 @@ export function drawScene(cv: HTMLCanvasElement, name: SceneTheme, W = 160, H = 
   const cx = W / 2;
   const aw = W > 100 ? 22 : 11;
   const ah = W > 100 ? 21 : 20;
-  if (W > 100 && arch) {
+  if (W > 100 && arch === "fork") {
+    // The middle stays wall; each doorway is the door's own shape, a pixel wider and taller, in a 2-pixel rim.
+    const hw = FORK_ARCH.w / 2 + 1;
+    const top = fy - FORK_ARCH.h + 4;
+    for (const dx of [-FORK_ARCH.dx, FORK_ARCH.dx]) {
+      const x = cx + dx;
+      P.ell(x, top, hw + 2, 8, T.rim);
+      P.rect(x - hw - 2, top, hw * 2 + 4, fy - top, T.rim);
+      P.ell(x, top, hw, 6, T.arch);
+      P.rect(x - hw, top, hw * 2, fy - top, T.arch);
+    }
+  } else if (W > 100 && arch) {
     P.ell(cx, fy - ah, aw + 2, 12, T.rim);
     P.rect(cx - aw - 2, fy - ah, aw * 2 + 4, ah, T.rim);
     P.ell(cx, fy - ah, aw, 10, T.arch);

@@ -24,7 +24,7 @@ import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { SORT_ITEMS, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
-import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine } from "@/lib/event-text";
+import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, FORK_DOOR_LABEL, FORK_SIDE_LABEL } from "@/lib/event-text";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
 const CLASS_HINTS: Record<ClassId, string> = {
@@ -1220,8 +1220,8 @@ function EventPanel({ reveal, game, teamId }: { reveal: EventReveal; game: State
   );
 }
 
-/** 岔路 on a phone (branch-fork.md): the team on turn gets two big doors, nothing written under them, pinned to the bottom of
- * the screen so nothing pushes them away; a door opening locks them. Every other phone reads that the team is at a fork. */
+/** 岔路 on a phone (branch-fork.md): the team on turn gets two big unmarked doors, 左門 and 右門, pinned to the bottom of
+ * the screen so nothing pushes them away; a door opening locks them and names only the opened one. Every other phone reads that the team is at a fork. */
 function ForkPanel({ game, teamId, send }: { game: StateMessage; teamId: string; send: (msg: ClientMessage) => void }) {
   const beat = game.forkBeat;
   const team = game.view.teams.find((t) => t.id === (beat ? beat.teamId : game.view.currentTurnTeamId));
@@ -1249,19 +1249,19 @@ function ForkPanel({ game, teamId, send }: { game: StateMessage; teamId: string;
       </Panel>
       {/* Sticky, so the doors stay in view however long the page gets (TODOS: the old event panel was pushed off screen). */}
       <div data-testid="phone-fork" className="sticky bottom-2 z-30 flex gap-3">
-        {(["monster", "mystery"] as const).map((door) => (
+        {(["left", "right"] as const).map((side) => (
           <PixelButton
-            key={door}
-            data-testid={`phone-fork-${door}`}
+            key={side}
+            data-testid={`phone-fork-${side}`}
             disabled={locked}
             onClick={() => {
               setPressed(game.eventId);
-              send({ type: "TEAM_CHOOSE_FORK", door, eventId: game.eventId });
+              send({ type: "TEAM_CHOOSE_FORK", side, eventId: game.eventId });
             }}
             className="!m-0 min-h-[72px] flex-1 text-[24px]"
-            // The picked door stays bright during the opening, so the team sees which one it took.
-            style={beat ? { opacity: beat.door === door ? 1 : 0.35 } : undefined}
-          >{door === "monster" ? "⚔️ 怪物房" : "❓ 神秘房"}</PixelButton>
+            // The picked door stays bright during the opening and shows what was behind it; the other is never told.
+            style={beat ? { opacity: beat.side === side ? 1 : 0.35 } : undefined}
+          >{beat?.side === side ? FORK_DOOR_LABEL[beat.door] : FORK_SIDE_LABEL[side]}</PixelButton>
         ))}
       </div>
     </>

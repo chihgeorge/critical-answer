@@ -1,7 +1,11 @@
 // The words of ❓ 神秘房 events (docs/designs/event-rooms.md, branch-fork.md), shared by the big screen, the phones, the
 // host page and the narrator. Pure data, no question or answer, so client components may import it.
 
-import type { Boon, EventOutcome, EventResult, EventScene } from "./game-state";
+import type { Boon, EventOutcome, EventResult, EventScene, ForkDoor, ForkSide } from "./game-state";
+
+/** 岔路's doors are unmarked (branch-fork.md): a side until one opens, then what was behind that one only. */
+export const FORK_SIDE_LABEL: Record<ForkSide, string> = { left: "左門", right: "右門" };
+export const FORK_DOOR_LABEL: Record<ForkDoor, string> = { monster: "⚔️ 怪物房", mystery: "❓ 神秘房" };
 
 export const EVENT_SCENE_TEXT: Record<EventScene, { name: string }> = {
   chest: { name: "寶箱" },

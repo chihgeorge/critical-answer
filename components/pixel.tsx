@@ -182,7 +182,8 @@ export function SceneBackground({
   theme: SceneTheme;
   cols?: number;
   rows?: number;
-  arch?: boolean;
+  /** "fork": the middle arch bricked up and two doorways either side (lib/pixel-art.ts FORK_ARCH). */
+  arch?: boolean | "fork";
   className?: string;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
