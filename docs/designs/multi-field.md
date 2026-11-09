@@ -101,3 +101,38 @@ Status: APPROVED（F1–F8 由站長決定，細節由實作 lane 依現有做�
 - 自動比對打字答案。
 - 一般房間或非聽歌題的多欄位。
 - 每欄不同的分數權重。
+
+## Design Review 決定（2026-11-09，/plan-design-review，覆蓋前文）
+
+| # | 決定 |
+|---|---|
+| D2 | 傷害不再乘比例：**每答對一欄打 1 格血**（2 欄全對＝2 格，3 欄對 1＝1 格）。獎勵照答對比例拿。魔王血量由題庫每個階段的 `maxHp` 自己設，不自動加；文件（question-bank.md）要提醒出題者：多欄位題會打出比 1 格多的血，血量要跟著調高。取代 F6 的傷害縮放與待決問題 1。 |
+| D3 | 手機至少一格有字才能送出；全空時「送出」灰掉，旁邊寫「不打字就直接講答案」。（待決問題 3） |
+| D4 | 有欄位的題目停用主持人頁的鍵盤快捷鍵，只能用畫面上的逐欄 ✓／✗＋「送出判定」。（待決問題 4） |
+| D5 | 大螢幕揭曉時，部分對才多一行「{隊名} 對 {k}/{n}：打掉 {k} 格血、獎勵拿 {比例}」；全對、全錯不顯示。（待決問題 9） |
+| D6 | 手機揭曉照舊「正解：晴天／周杰倫」，不逐欄標。（待決問題 10） |
+
+待決問題 2、5、6、7、8 交給 /plan-eng-review。
+
+## Eng Review 決定（2026-11-09，/plan-eng-review，覆蓋前文）
+
+| # | 決定 |
+|---|---|
+| E1 | 打倒首領的 4d20 不打折；只有這一擊本身的獎勵照比例。（待決問題 2） |
+| E2 | 「改判答對」在有欄位的題目上重新打開逐欄 ✓／✗，主持人改完再送；不會一鍵變全對。（待決問題 5） |
+| E3 | 題目不再是聽歌題時，欄位留著、存檔擋下並說明原因。（待決問題 7） |
+| E4 | 搶到的隊伍打的字（`typedAnswer` 與 `typedFields`）只傳給主持人，不放進給手機／大螢幕的公開狀態（修 #182 補審查 P2：別隊能從 STATE 讀到）。 |
+| E5 | `MAX_BOSS_HP` 從 20 拉到 60；確認大螢幕血條 60 格看得清楚，不清楚就改成連續血條。 |
+| E6 | 旁白不說對了幾欄，照用答對台詞。（待決問題 8） |
+| — | 欄位名稱上限 10 字（實作者的預設，沒有異議）。（待決問題 6） |
+
+## GSTACK REVIEW REPORT
+
+| Review | Runs | Status | Findings |
+|---|---|---|---|
+| /plan-design-review | 1 | DONE | 5 decisions (D2–D6), scope narrowed by user to UI-facing questions; mockups pre-existing (phone/host/screen/editor.png); outside voices skipped |
+| /plan-eng-review | 1 | DONE | 6 decisions (E1–E6) + label limit default |
+
+VERDICT: DESIGN + ENG CLEARED
+
+NO UNRESOLVED DECISIONS

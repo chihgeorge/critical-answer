@@ -362,16 +362,22 @@ describe("boss combat", () => {
     expect(g2.teams.find((t) => t.id === "T1")!.reward).toBe(0); // non-participating team gets nothing from the kill
   });
 
-  // Value: protects=multi-field.md F6's scaling and its rounding; fails_when=a partial hit pays or hurts in full, or
-  // rounds a different way; why_new=new rule; seam=none; no_claim=the room passing the share (lib/room/boss-buzzer.test.ts)
-  it("a music question's share of right fields scales the hit's damage and reward, each rounded half up", () => {
-    const game = makeGame({ bossThreshold: 0, bossMaxHp: 3, teamCount: 1 });
-    const hit = (share: number, crit?: number) => answerQuestion(game, "T0", game.boss.currentQuestionId, true, "retry", first, crit, undefined, share).outcome;
-    expect(hit(1 / 2)).toMatchObject({ bossHpRemaining: 2, reward: 5 });
-    expect(hit(1 / 3)).toMatchObject({ bossHpRemaining: 3, reward: 3 }); // 0.33 HP rounds to none
-    expect(hit(2 / 3)).toMatchObject({ bossHpRemaining: 2, reward: 7 });
-    expect(hit(1 / 3, 20)).toMatchObject({ bossHpRemaining: 2, reward: 5 }); // (1 + 1) × ⅓ → 1 HP, (10 + 5) × ⅓ → 5
-    expect(hit(1)).toMatchObject({ bossHpRemaining: 2, reward: 10 });
+  // Value: protects=multi-field.md D2/E1: one HP per right field, reward scaled by right / total and rounded half up, the
+  // kill's 4d20 unscaled; fails_when=a partial hit hurts or pays in full, or rounds another way; why_new=new rule;
+  // seam=none; no_claim=the room passing the counts (lib/room/boss-buzzer.test.ts)
+  it("a music question's right fields each hit for 1 HP; its reward is scaled by right / total, rounded half up", () => {
+    const game = makeGame({ bossThreshold: 0, bossMaxHp: 5, teamCount: 1 });
+    const hit = (right: number, total: number, crit?: number) => answerQuestion(game, "T0", game.boss.currentQuestionId, true, "retry", first, crit, undefined, { right, total }).outcome;
+    expect(hit(1, 2)).toMatchObject({ bossHpRemaining: 4, reward: 5 });
+    expect(hit(2, 2)).toMatchObject({ bossHpRemaining: 3, reward: 10 });
+    expect(hit(1, 3)).toMatchObject({ bossHpRemaining: 4, reward: 3 });
+    expect(hit(2, 3)).toMatchObject({ bossHpRemaining: 3, reward: 7 });
+    expect(hit(3, 3)).toMatchObject({ bossHpRemaining: 2, reward: 10 });
+    expect(hit(1, 3, 20)).toMatchObject({ bossHpRemaining: 3, reward: 5 }); // a crit adds its 1 HP; (10 + 5) × ⅓ → 5
+    // The killing blow's 4d20 is not scaled (E1): 1/2 of the 10-point hit plus the whole kill bonus.
+    const low = { ...game, boss: { ...game.boss, hp: 1 } };
+    const kill = answerQuestion(low, "T0", low.boss.currentQuestionId, true, "retry", first, undefined, [5, 5, 5, 5], { right: 1, total: 2 }).outcome;
+    expect(kill).toMatchObject({ bossKilled: true, killBonus: 20, reward: 25 });
   });
 
   it("finishes the game the moment the boss dies", () => {

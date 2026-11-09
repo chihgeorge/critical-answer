@@ -809,9 +809,10 @@ export function answerQuestion(
   critValue?: number,
   /** The kill bonus's four d20, already shown by the room; rolled on `rng` when absent. */
   killDice?: number[],
-  /** The share of a music question's fields judged right, 0 to 1 (docs/designs/multi-field.md F6): a correct boss hit's
-   * damage and reward (not the kill's 4d20) are scaled by it, each rounded half up. */
-  share = 1,
+  /** A music question's fields judged right out of how many (docs/designs/multi-field.md D2, E1): a correct boss hit
+   * deals one HP per right field (the base HP of a plain hit), and its reward (not the kill's 4d20) is scaled by
+   * right / total, rounded half up. */
+  fields?: { right: number; total: number },
 ): { game: GameState; outcome: AnswerOutcome } {
   assertPlaying(game);
   // The die behind a correct answer: a 20 adds half the base reward (and a boss hit); a 1 is only a show.
@@ -889,12 +890,14 @@ export function answerQuestion(
     // An earlier phase out of unrevealed questions moves on; the last one repeats them (premise 3).
     const usedUp = (revealed: string[]) => !lastPhase && boss.questionIds.every((id) => revealed.includes(id));
     if (correct) {
-      const newHp = Math.max(0, boss.hp - Math.round((sneak + (crit ? 1 : 0)) * share));
+      const hits = fields?.right ?? 1;
+      const newHp = Math.max(0, boss.hp - hits * sneak - (crit ? 1 : 0));
       const bossKilled = newHp === 0 && lastPhase;
       // The 4d20 is not raised by a crit (R4).
       const kill = bossKilled ? (killDice ?? rollBossKillDice(rng)) : undefined;
       const killBonus = kill ? sneakPay(kill.reduce((a, b) => a + b, 0)) : undefined;
-      const gain = withChef(Math.round((sneakPay(baseOf(boss.hitReward)) + critBonus(boss.hitReward)) * share) + (killBonus ?? 0));
+      const hit = sneakPay(baseOf(boss.hitReward)) + critBonus(boss.hitReward);
+      const gain = withChef((fields ? Math.round((hit * fields.right) / fields.total) : hit) + (killBonus ?? 0));
       const { reward } = gain;
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}), ...withNatural20s(t, kill?.filter((v) => v === 20).length ?? 0) }));
 

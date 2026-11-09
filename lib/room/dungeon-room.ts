@@ -901,7 +901,10 @@ export class DungeonRoom {
 
   private sendAnswer(conn: Conn) {
     const q = this.currentQuestion();
-    if (q) this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer });
+    if (!q) return;
+    const buzzer = this.game && isBuzzPhase(this.game) ? this.game.teams.find((t) => t.id === this.game!.buzz?.teamId && t.typedAnswer !== undefined) : undefined;
+    const typed = buzzer ? { teamId: buzzer.id, text: buzzer.typedAnswer!, ...(buzzer.typedFields ? { fields: buzzer.typedFields } : {}) } : undefined;
+    this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer, ...(typed ? { typed } : {}) });
   }
 
   /** Host-only: the picker's questions with their answers, what each target may queue and what is queued. */
@@ -949,6 +952,15 @@ export class DungeonRoom {
     // A check is written when its die is rolled, so a restart inside the beat cannot reroll it; it shows once the beat ends.
     const rolling = this.pendingRoll?.kind === "check" ? checkKey(this.pendingRoll.questionId, this.pendingRoll.teamId) : null;
     if (rolling && view.checks) view.checks = Object.fromEntries(Object.entries(view.checks).filter(([k]) => k !== rolling));
+    // A buzzer phase's typed answer goes to the host only (HOST_ANSWER): the other teams could still buzz on it
+    // (multi-field.md E4). "" still tells the team's own phone it was sent.
+    if (isBuzzPhase(this.game)) {
+      view.teams = view.teams.map((t) => {
+        const hidden = { ...t, typedAnswer: t.typedAnswer === null ? null : "" };
+        delete hidden.typedFields;
+        return hidden;
+      });
+    }
     return {
       type: "STATE",
       view,
@@ -2197,6 +2209,16 @@ export class DungeonRoom {
       }),
     };
     this.undo = null;
+    // A music question with fields is not made all right at one press (multi-field.md E2): the game goes back to before
+    // the 答錯, buzz and all, so the host judges it field by field again.
+    const q = this.question(questionId);
+    if (q?.kind === "text" && q.fields) {
+      // The team holds the buzz again, so the music the 答錯 played on stops, as a buzz stops it.
+      this.buzzPaused = this.media?.questionId === questionId && this.media.state === "playing";
+      if (this.buzzPaused) this.media = { ...this.media!, state: "paused", press: this.media!.press + 1 };
+      this.broadcastState();
+      return;
+    }
     try {
       this.judge(teamId, questionId, true, "retry");
     } catch (err) {
@@ -2293,6 +2315,9 @@ export class DungeonRoom {
     // currentQuestion() would return afterwards (the next one) — a trap this file's own
     // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
     const justAnswered = this.currentQuestion();
+    // A correct answer on a music question with fields: the host's verdicts, or every field right (multi-field.md D2).
+    const fieldQ = this.question(questionId);
+    const marks = correct && fieldQ?.kind === "text" && fieldQ.fields ? (fields ?? fieldQ.fields.map(() => true)) : undefined;
     const monster = justAnswered?.pub.monster.name ?? "怪物";
     // A boss MC miss has no flee (D2=B): the host's stuck row (button or key 3) resolves it as the beat would.
     // A cleric's fill-in wait (optionIndex null) keeps its 逃跑, which rotates the question (#106 D2=A).
@@ -2302,7 +2327,7 @@ export class DungeonRoom {
     const run = (rng: () => number, dice?: number[]) =>
       roll?.kind === "warrior"
         ? warriorRoll(prev, teamId, questionId, roll.value, rng, isAutoJudged(this.question(questionId)), dice)
-        : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.value, dice, fields ? fields.filter(Boolean).length / fields.length : 1);
+        : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.value, dice, marks && { right: marks.filter(Boolean).length, total: marks.length });
     // A killing blow waits for its 4d20 on screen (kill-roll.md D1): a trial run, on an rng it must not consume, says
     // whether this judgment kills; then the room rolls the dice and judges again with them when the beat ends.
     if (!killDice) {
@@ -2368,7 +2393,7 @@ export class DungeonRoom {
       const choice = q?.kind === "multipleChoice" ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward, ...chefOf(outcome) } : undefined;
       const sorted = q?.kind === "sort" ? { items: q.items, teamId, points: outcome.reward, ...chefOf(outcome) } : undefined;
       // Which fields of a music question the team got (multi-field.md F7); without verdicts, all of them.
-      const fieldMarks = q?.kind === "text" && q.fields ? q.fields.map((f, i) => ({ label: f.label, answer: f.answer, right: fields?.[i] ?? true })) : undefined;
+      const fieldMarks = q?.kind === "text" && q.fields && marks ? { teamId, marks: q.fields.map((f, i) => ({ label: f.label, answer: f.answer, right: marks[i] })) } : undefined;
       // The answer stops the clip; the reveal shows the video where it stopped (D17).
       if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
       const video = q?.content.kind === "youtube" && (!explanation || explanation.kind === "text") ? publicMediaContent(q.content, imageBaseUrl, questionId) : undefined;

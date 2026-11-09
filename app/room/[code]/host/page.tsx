@@ -64,7 +64,7 @@ export default function HostPage() {
   const [connected, setConnected] = useState(false);
   const [claimed, setClaimed] = useState(false);
   /** Host-only: the answer to the question in play. Never shown on /screen or /play. */
-  const [answer, setAnswer] = useState<{ questionId: string; answer: string } | null>(null);
+  const [answer, setAnswer] = useState<Pick<Extract<ServerMessage, { type: "HOST_ANSWER" }>, "questionId" | "answer" | "typed"> | null>(null);
   const [drawer, setDrawer] = useState(false);
   /** Host-only: what the host may queue as a team's (or the boss's) next question, with answers. */
   const [picks, setPicks] = useState<Picks | null>(null);
@@ -184,7 +184,7 @@ export default function HostPage() {
           break;
         }
         case "HOST_ANSWER":
-          setAnswer({ questionId: msg.questionId, answer: msg.answer });
+          setAnswer({ questionId: msg.questionId, answer: msg.answer, typed: msg.typed });
           break;
         case "HOST_PICKS":
           setPicks(msg);
@@ -399,6 +399,8 @@ export default function HostPage() {
         lockWaiting,
       );
       if (!action || !game) return;
+      // A music question with fields is judged field by field on screen only (multi-field.md D4): no judge key.
+      if (game.question?.fields && !revealUp && action !== "next" && action !== "reveal" && action !== "undo") return;
       if (action === "undo") {
         if (!canUndo || !game.undoWrong) return;
         send({ type: "HOST_UNDO_WRONG", ...game.undoWrong, eventId: game.eventId });
@@ -738,7 +740,8 @@ export default function HostPage() {
                   {/* The buzzing team may also type its answer (boss-music-buzzer.md M2). */}
                   {buzz.teamId && (
                     <div data-testid="host-typed-answer" className="text-[18px] [overflow-wrap:anywhere]">
-                      {((typed) => (typed ? `隊伍打字：${typed}` : "（口頭作答，或等他們打字）"))(game.view.teams.find((t) => t.id === buzz.teamId)?.typedAnswer)}
+                      {/* Host-only (HOST_ANSWER): STATE hides it from the other teams (multi-field.md E4). */}
+                      {((typed) => (typed ? `隊伍打字：${typed}` : "（口頭作答，或等他們打字）"))(answer?.typed?.teamId === buzz.teamId ? answer.typed.text : undefined)}
                     </div>
                   )}
                   {buzz.category && <div className="text-[14px]">{teamName(buzz.picker ?? "")} 選的類別：{buzz.category}</div>}
@@ -957,7 +960,7 @@ export default function HostPage() {
                     <FieldJudge
                       key={`${turn.questionId}:${turn.team.id}:${game.eventId}`}
                       labels={game.question.fields}
-                      typed={turn.team.typedFields}
+                      typed={answer?.typed?.teamId === turn.team.id ? answer.typed.fields : undefined}
                       disabled={!canJudge || held}
                       onJudge={(fields) => judge(turn.team!.id, turn.questionId!, fields.some(Boolean), fields.some(Boolean) ? undefined : "retry", fields)}
                     />
@@ -1001,7 +1004,8 @@ export default function HostPage() {
             {/* 改判答對 (TODOS.md): under the judge buttons, held for half a second after it shows up (canUndo). */}
             {game.undoWrong && !revealUp && (
               <PixelButton className="!mt-4 text-[16px]" style={{ background: "#fff" }} disabled={!canUndo} onClick={() => send({ type: "HOST_UNDO_WRONG", ...game.undoWrong!, eventId: game.eventId })}>
-                ↩ 剛才的{teamName(game.undoWrong.teamId)}改判答對
+                {/* A music question with fields reopens its per-field judging instead (multi-field.md E2). */}
+                ↩ 剛才的{teamName(game.undoWrong.teamId)}{game.question?.id === game.undoWrong.questionId && game.question.fields ? "重新逐欄判定" : "改判答對"}
                 <span className="px-key" aria-hidden="true">{HOST_KEYS.undo}</span>
               </PixelButton>
             )}

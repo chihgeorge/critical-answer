@@ -60,10 +60,11 @@ function buzzerGame(q?: (id: string) => object, storage: RoomStorage = memorySto
     send(room, host, { type: "HOST_JUDGE", teamId, questionId: room.game!.boss.currentQuestionId, correct, fleeChoice: "retry", eventId: state().eventId });
   const buzz = (i: number, questionId = room.game!.boss.currentQuestionId) => send(room, phones[i], { type: "TEAM_BUZZ", questionId });
   const lastError = (conn: { send: ReturnType<typeof vi.fn> }) => msgs(conn.send.mock.calls).findLast((m) => m.type === "ERROR");
+  const lastHostAnswer = () => msgs((host as unknown as { send: ReturnType<typeof vi.fn> }).send.mock.calls).findLast((m) => m.type === "HOST_ANSWER");
   judge(IDS[0], true); // phase 1's only HP
   next(); // the phase card
   next(); // the buzzer phase's first question
-  return { room, host, phones, state, judge, buzz, lastError, next };
+  return { room, host, phones, state, judge, buzz, lastError, lastHostAnswer, next };
 }
 
 describe("buzzer boss phase in the room", () => {
@@ -250,7 +251,10 @@ describe("buzzer boss phase in the room", () => {
     expect(g.lastError(g.phones[0])).toMatchObject({ detail: "no_buzz" });
     g.buzz(1);
     send(g.room, g.phones[1], { type: "TEAM_SUBMIT_TEXT", questionId: "b-a", text: " 麻辣鮮師 ", eventId: g.state().eventId });
-    expect(g.state().view.teams[1].typedAnswer).toBe("麻辣鮮師");
+    // Host only (multi-field.md E4): STATE, which every phone gets, says only that it was sent.
+    expect(g.state().view.teams[1].typedAnswer).toBe("");
+    expect(JSON.stringify(g.state())).not.toContain("麻辣鮮師");
+    expect(g.lastHostAnswer()).toMatchObject({ typed: { teamId: IDS[1], text: "麻辣鮮師" } });
   });
 
   it("a video the big screen cannot play: the host is told, and 現場放歌 opens buzzing without it (boss-music-buzzer.md M4)", () => {
@@ -314,7 +318,9 @@ describe("buzzer boss phase in the room", () => {
     submit([" ", ""]);
     expect(g.lastError(g.phones[1])).toMatchObject({ detail: "invalid_text" });
     submit([" 晴天 ", ""]);
-    expect(g.state().view.teams[1]).toMatchObject({ typedAnswer: "晴天／—", typedFields: ["晴天", ""] });
+    expect(g.lastHostAnswer()).toMatchObject({ typed: { teamId: IDS[1], text: "晴天／—", fields: ["晴天", ""] } });
+    expect(g.state().view.teams[1].typedFields).toBeUndefined();
+    expect(JSON.stringify(g.state())).not.toContain("晴天");
   });
 
   it("half the fields right is a hit scaled by half; the reveal marks each field (multi-field.md F6, F7)", () => {
@@ -329,10 +335,10 @@ describe("buzzer boss phase in the room", () => {
     const before = g.room.game!.teams[1].reward;
     judge([true, false]);
     const s = g.state();
-    // 1 HP × ½ rounds up to 1; the 10-point hit reward × ½ is 5.
+    // One right field hits for 1 HP (D2); the 10-point hit reward × ½ is 5.
     expect(s.view.bossHp).toBe(1);
     expect(g.room.game!.teams[1].reward - before).toBe(5);
-    expect(s.reveal).toMatchObject({ answer: "歌 b-a／人 b-a", fields: [{ label: "歌名", answer: "歌 b-a", right: true }, { label: "歌手", answer: "人 b-a", right: false }] });
+    expect(s.reveal).toMatchObject({ answer: "歌 b-a／人 b-a", fields: { teamId: IDS[1], marks: [{ label: "歌名", answer: "歌 b-a", right: true }, { label: "歌手", answer: "人 b-a", right: false }] } });
     // A partial answer still earns the category pick (F6).
     expect(s.view.buzz).toMatchObject({ picker: IDS[1] });
   });
@@ -350,7 +356,21 @@ describe("buzzer boss phase in the room", () => {
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
     g.buzz(1);
     g.judge(IDS[1], true);
-    expect(g.state().reveal.fields.map((f: { right: boolean }) => f.right)).toEqual([true, true]);
+    // Both fields right: 2 HP, the whole 2-HP last phase (D2), so the kill's 4d20 rolls first.
+    expect(g.state().pendingRoll).toMatchObject({ kind: "kill", teamId: IDS[1] });
+  });
+
+  it("改判答對 on a question with fields reopens the buzz for per-field judging, not all right (multi-field.md E2)", () => {
+    const g = buzzerGame(fielded);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], false);
+    expect(g.state().view.buzz).toMatchObject({ out: [IDS[1]] });
+    send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: IDS[1], questionId: "b-a", eventId: g.state().eventId });
+    const s = g.state();
+    expect(s).toMatchObject({ reveal: null, media: { state: "paused" }, view: { bossHp: 2, buzz: { teamId: IDS[1], out: [] } } });
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: IDS[1], questionId: "b-a", correct: true, fields: [false, true], eventId: g.state().eventId });
+    expect(g.state()).toMatchObject({ view: { bossHp: 1 }, reveal: { fields: { marks: [{ right: false }, { right: true }] } } });
   });
 
   it("the buzz is saved: a restarted room keeps who is shut out", async () => {

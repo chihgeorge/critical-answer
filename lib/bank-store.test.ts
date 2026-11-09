@@ -125,11 +125,11 @@ describe("BankStore.putBank", () => {
 
   // Regression: boss HP had no upper bound, and the big screen draws one heart per HP
   // Found by /review on 2026-10-28
-  it.each([[21], [2.5]])("refuses to save a boss phase with %s HP (a whole number from 1 to 20), and keeps the stored bank", async (maxHp) => {
+  it.each([[61], [2.5]])("refuses to save a boss phase with %s HP (a whole number from 1 to 60), and keeps the stored bank", async (maxHp) => {
     const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
     const store = new BankStore(storage);
     const big: Bank = { ...validBank, boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], maxHp }] } };
-    await expect(store.putBank(big, 1)).rejects.toThrow(/hp must be a whole number from 1 to 20/);
+    await expect(store.putBank(big, 1)).rejects.toThrow(/hp must be a whole number from 1 to 60/);
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1, format: BANK_FORMAT });
   });
 
@@ -143,11 +143,11 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1, format: BANK_FORMAT });
   });
 
-  // Value: protects=20 HP, the documented top, still saves; fails_when=the bound turns into >= or MAX_BOSS_HP drops;
+  // Value: protects=60 HP, the documented top (multi-field.md E5), still saves; fails_when=the bound turns into >= or MAX_BOSS_HP drops;
   // why_new=the rows above only test refusals; seam=none; no_claim=the editor's own input limits (e2e)
-  it("saves a boss phase with exactly 20 HP", async () => {
+  it("saves a boss phase with exactly 60 HP", async () => {
     const store = new BankStore(memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 }));
-    const top: Bank = { ...validBank, boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], maxHp: 20 }] } };
+    const top: Bank = { ...validBank, boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], maxHp: 60 }] } };
     await expect(store.putBank(top, 1)).resolves.toMatchObject({ version: 2 });
   });
 

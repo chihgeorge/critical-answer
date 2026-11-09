@@ -92,7 +92,7 @@ export type AnswerReveal = {
   /** Set when a sort question was answered right: its items in the correct order, who answered and the points (`chefBonus` as in `choice`). */
   sorted?: { items: string[]; teamId: string; points: number; chefBonus?: number };
   /** A music question with fields: each field's answer and whether the team got it (docs/designs/multi-field.md F7). */
-  fields?: { label: string; answer: string; right: boolean }[];
+  fields?: { teamId: string; marks: { label: string; answer: string; right: boolean }[] };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
    * Only when the answer defeated a room monster or killed the boss, and that monster has a dish. */
   dish?: {
@@ -428,7 +428,9 @@ export type ServerMessage =
       appliedKeyId?: string;
     }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
-  | { type: "HOST_ANSWER"; questionId: string; answer: string }
+  /** `typed`: in a buzzer phase, what the team that buzzed typed (`fields`: a music question's boxes, "" for a blank).
+   * Host-only: STATE hides it, since the other teams could still buzz (docs/designs/multi-field.md E4). */
+  | { type: "HOST_ANSWER"; questionId: string; answer: string; typed?: { teamId: string; text: string; fields?: string[] } }
   /** Host-only, sent with every STATE: what the host may queue (HOST_QUEUE_QUESTION) and what is queued.
    * Carries answers, so it goes out with sendTo, never broadcast. */
   | {
