@@ -59,10 +59,12 @@ function epilogueCandidates(parts: EpiloguePart[], raw: string[]): (string | und
  * next team (after the result) is the handoff and goes last; a middle slot takes only a usable line that does not name
  * it, so the team is never called twice; a slot left empty is scripted, and so is the handoff when no line names the team.
  */
-export function alignToSlots(raw: string[], target: number, nextTeam: string): (string | undefined)[] {
+export function alignToSlots(raw: string[], target: number, nextTeam: string, hostLine?: string): (string | undefined)[] {
   let h = -1;
-  for (let i = 1; i < raw.length; i++) if (saysLine(raw[i], nextTeam)) h = i;
-  const middle = raw.slice(1).filter((line) => validLine(line) && !saysLine(line, nextTeam));
+  // The host's line is the middle beat even when it names the next team; the runner writes it there anyway.
+  const isHost = (line: string) => !!hostLine && saysLine(line, hostLine);
+  for (let i = 1; i < raw.length; i++) if (saysLine(raw[i], nextTeam) && !isHost(raw[i])) h = i;
+  const middle = raw.slice(1).filter((line) => validLine(line) && (isHost(line) || !saysLine(line, nextTeam)));
   return [raw[0], ...Array.from({ length: target - 2 }, (_, k) => middle[k]), h > 0 ? raw[h] : undefined];
 }
 
@@ -190,8 +192,9 @@ export function createRunner(opts: {
       const candidates =
         parts && providerLines
           ? epilogueCandidates(parts, providerLines)
-          : providerLines && event.type !== "epilogue" && event.next
-            ? alignToSlots(providerLines, targetCount, event.next.team)
+          : // The same team on turn again (the last team standing) is named in every line, so position decides.
+            providerLines && event.type !== "epilogue" && event.next && !("team" in event && event.team === event.next.team)
+            ? alignToSlots(providerLines, targetCount, event.next.team, event.hostLine)
             : providerLines;
       for (let i = 0; i < targetCount; i++) {
         const candidate = candidates?.[i];

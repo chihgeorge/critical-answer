@@ -328,6 +328,20 @@ describe("narration runner", () => {
       expect(twice.emitted[0].lines).toEqual(["紅隊答對了！", "備用氣氛", "輪到藍隊了。"]);
     });
 
+    it("a host line that names the next team stays the middle beat, never the handoff", async () => {
+      const host: NarrationEvent = { ...withNext, hostLine: "藍隊加油" };
+      const { runner, emitted } = setup(provider(async () => "紅隊答對了！\n藍隊加油！\n下一位上場"));
+      await runner.run(1, host);
+      expect(emitted[0].lines).toEqual(["紅隊答對了！", "藍隊加油！", "備用下一句"]);
+    });
+
+    it("when the same team is on turn again, the lines keep their places", async () => {
+      const again: NarrationEvent = { ...withNext, next: { team: "紅隊", monster: "史萊姆", boss: false } };
+      const { runner, emitted } = setup(provider(async () => "紅隊答對了！\n紅隊滿頭大汗\n再來一題！"));
+      await runner.run(1, again);
+      expect(emitted[0].lines).toEqual(["紅隊答對了！", "紅隊滿頭大汗", "再來一題！"]);
+    });
+
     it("a marked line never takes the middle slot from a good one when the reply is too long", async () => {
       const { runner, emitted } = setup(provider(async () => "紅隊答對了！\n<invalid/>\n塵埃落定\n輪到藍隊了。"));
       await runner.run(1, withNext);
