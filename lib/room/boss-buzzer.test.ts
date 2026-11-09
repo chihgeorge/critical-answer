@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
+import { BUZZ_REOPEN_LINE } from "../narration/scripted";
 
 const IDS = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003"];
 const TOKEN = "host-token-0123456789abcdef";
@@ -297,6 +298,128 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().buzzCategories).toBeUndefined();
     send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "遊戲" });
     expect(g.lastError(g.phones[1])).toMatchObject({ detail: "too_late" });
+  });
+
+  it("the last team still in drops while holding the buzz: the same song reopens, the music stays paused until ▶", async () => {
+    const g = buzzerGame();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    for (const i of [0, 1]) {
+      g.buzz(i);
+      g.judge(IDS[i], false);
+    }
+    g.buzz(2);
+    g.room.onClose(g.phones[2]);
+    expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { questionId: "b-a", open: true, out: [] } } });
+    // The owl says it, as after all-wrong.
+    const room = g.room as unknown as { lastNarration: { lines: string[] } | null; heldLines: { lines: string[] } | null };
+    await vi.waitFor(() => expect([...(room.lastNarration?.lines ?? []), ...(room.heldLines?.lines ?? [])].join()).toContain(BUZZ_REOPEN_LINE));
+    // A ▶ plays it again, and the teams still online may buzz.
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    expect(g.state().media.state).toBe("playing");
+    g.buzz(0);
+    expect(g.state().view.buzz.teamId).toBe(IDS[0]);
+  });
+
+  it("the last team still in drops without holding the buzz: the playing song pauses and reopens to all", () => {
+    const g = buzzerGame();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    for (const i of [0, 1]) {
+      g.buzz(i);
+      g.judge(IDS[i], false);
+    }
+    expect(g.state().media.state).toBe("playing"); // resumed for team 2
+    g.room.onClose(g.phones[2]);
+    expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { questionId: "b-a", open: true, out: [] } } });
+  });
+
+  it("SCREEN_CLIP_ERROR is taken from any socket that sent SCREEN_HELLO and joined no team (accepted risk, retro P2-3)", () => {
+    const g = buzzerGame();
+    const rogue = makeConn("rogue");
+    g.room.onConnect(rogue);
+    send(g.room, rogue, { type: "SCREEN_HELLO" });
+    send(g.room, rogue, { type: "SCREEN_CLIP_ERROR", questionId: "b-a" });
+    expect(g.state().clipError).toBe(true);
+    // A team's phone is never a screen, even after SCREEN_HELLO.
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    send(g.room, g.phones[0], { type: "SCREEN_HELLO" });
+    send(g.room, g.phones[0], { type: "SCREEN_CLIP_ERROR", questionId: "b-a" });
+    expect(g.state().clipError).toBeUndefined();
+  });
+
+  it("a pick that lands on a non-video question opens buzzing once the reveal closes; a second pick is too_late", () => {
+    const mixed = (id: string) => (id === "b-c" ? { ...text(id), category: "遊戲" } : { ...video(id), category: "動漫" });
+    const g = buzzerGame(mixed);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "遊戲" });
+    expect(g.state().question.id).toBe("b-c");
+    g.next();
+    expect(g.state().buzzCategories).toBeUndefined();
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "動漫" });
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "too_late" });
+    g.buzz(0);
+    expect(g.state().view.buzz.teamId).toBe(IDS[0]);
+  });
+
+  it("restart in the pick window keeps the picker and the categories; restart after all-wrong keeps out [] and open", async () => {
+    const cat = (id: string) => ({ ...video(id), category: id === "b-c" ? "遊戲" : "動漫" });
+    const restart = async (storage: RoomStorage) => {
+      const io = { broadcast: vi.fn(), storage } as unknown as RoomIO;
+      const room = new DungeonRoom(io, () => 0, { bank: bank(cat), epilogueDelayMs: 0 });
+      expect(await room.restore()).toBe("restored");
+      return room;
+    };
+    const picking = memoryStorage();
+    const g = buzzerGame(cat, picking);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    const second = await restart(picking);
+    expect(second.game!.buzz).toMatchObject({ picker: IDS[1] });
+    expect((second as unknown as { snapshot: () => { buzzCategories?: string[] } }).snapshot().buzzCategories).toEqual(["動漫", "遊戲"]);
+
+    const missed = memoryStorage();
+    const h = buzzerGame(cat, missed);
+    send(h.room, h.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    for (const i of [0, 1, 2]) {
+      h.buzz(i);
+      h.judge(IDS[i], false);
+    }
+    expect((await restart(missed)).game!.buzz).toEqual({ questionId: "b-a", open: true, out: [] });
+  });
+
+  it("the last buzzer phase with every question revealed offers no categories", () => {
+    const g = buzzerGame((id) => ({ ...video(id), category: "動漫" }));
+    g.room.game = { ...g.room.game!, revealedQuestionIds: [...g.room.game!.revealedQuestionIds, "b-a", "b-b", "b-c"], buzz: { questionId: "b-a", out: [], picker: IDS[1] } };
+    (g.room as unknown as { broadcastState: () => void }).broadcastState();
+    expect(g.state().buzzCategories).toBeUndefined();
+  });
+
+  it("a stale TEAM_SUBMIT_TEXT from the first attempt, after the same team buzzes again on the reopened song, is dropped", () => {
+    const g = buzzerGame(text);
+    g.buzz(0);
+    const first = g.state().eventId;
+    for (const i of [0, 1, 2]) {
+      if (i > 0) g.buzz(i);
+      g.judge(IDS[i], false);
+    }
+    g.buzz(0);
+    send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "b-a", text: "舊答案", eventId: first });
+    expect(g.lastError(g.phones[0])).toMatchObject({ detail: "stale_event" });
+    expect(g.state().view.teams[0].typedAnswer ?? null).toBeNull();
+  });
+
+  it("HOST_BUZZ_OPEN outside a buzzer phase is refused; on a text question it changes nothing a buzz needs", () => {
+    const g = buzzerGame(text);
+    send(g.room, g.host, { type: "HOST_BUZZ_OPEN", questionId: "b-a" });
+    expect(g.state().media).toBeUndefined();
+    g.buzz(1);
+    expect(g.state().view.buzz.teamId).toBe(IDS[1]);
+    g.room.game = { ...g.room.game!, buzz: undefined, boss: { ...g.room.game!.boss, phaseIndex: 0, currentQuestionId: "p1-a" } };
+    send(g.room, g.host, { type: "HOST_BUZZ_OPEN", questionId: "p1-a" });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "stale_question" });
+    expect(g.room.game!.buzz).toBeUndefined();
   });
 
   it("the buzz is saved: a restarted room keeps who is shut out", async () => {

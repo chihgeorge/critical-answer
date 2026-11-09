@@ -1,5 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait } from "./youtube";
+import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError } from "./youtube";
+
+describe("resendClipError (boss-music-buzzer.md M4)", () => {
+  const seen = { questionId: "b-a", press: 2 };
+  it("reports the error again after a reconnect: the room restarted (no media), nobody pressed since, or only paused", () => {
+    expect(resendClipError(seen, undefined)).toBe(true);
+    expect(resendClipError(seen, { questionId: "b-a", press: 2, state: "playing" })).toBe(true);
+    expect(resendClipError(seen, { questionId: "b-b", press: 9, state: "playing" })).toBe(true); // the room drops it unless b-a shows
+    // A buzz or a drop pauses with a new press, but a pause makes the player retry nothing.
+    expect(resendClipError(seen, { questionId: "b-a", press: 3, state: "paused" })).toBe(true);
+  });
+  it("not after a newer ▶ while the screen was away (that press retries the video), nor with no error", () => {
+    expect(resendClipError(seen, { questionId: "b-a", press: 3, state: "playing" })).toBe(false);
+    expect(resendClipError(null, undefined)).toBe(false);
+  });
+});
 
 describe("hostMediaStatus", () => {
   it("says the host plays the song live after the 🎤 open", () => expect(hostMediaStatus(false, true)).toBe("現場放歌中"));

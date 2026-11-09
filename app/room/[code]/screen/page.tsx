@@ -31,6 +31,7 @@ import { Stage } from "@/components/stage";
 import { InitiativeOverlay, KillRollOverlay, RollOverlay, TieRollOverlay } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { YoutubePlayer } from "@/components/youtube-player";
+import { resendClipError, type ClipErrorSeen } from "@/lib/youtube";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { readStored, writeStored } from "@/lib/stored";
@@ -1080,9 +1081,15 @@ export default function ScreenPage() {
       window.removeEventListener("keydown", on);
     };
   }, []);
+  /** The video this screen's player shows 影片無法播放 for, re-sent after a reconnect (resendClipError). Any playing /
+   * paused report clears it, and so does the player's cleanup (a retry or unmount reports not playing). */
+  const clipErrored = useRef<ClipErrorSeen | null>(null);
+  /** Set by onOpen: the next STATE decides whether to report clipErrored again. */
+  const clipResendDue = useRef(false);
   /** From the player's real state (the clip stops itself at its end): the music goes silent (D10) and a line still
    * being read stops, since the host pressed ▶ to hear the song (D20). */
   function onVideoPlaying(playing: boolean) {
+    clipErrored.current = null;
     videoPlaying.current = playing;
     player().mute(playing || bgmHeld.current);
     if (playing && ttsSupported()) {
@@ -1095,6 +1102,7 @@ export default function ScreenPage() {
     send({ type: "SCREEN_CLIP_ENDED", questionId });
   }
   function onClipError(questionId: string) {
+    clipErrored.current = { questionId, press: game?.media?.questionId === questionId ? game.media.press : 0 };
     send({ type: "SCREEN_CLIP_ERROR", questionId });
   }
   /** The lowest second the answer clock has shown. A STATE remounts the clock, which can show the same second or one
@@ -1122,6 +1130,7 @@ export default function ScreenPage() {
     onOpen() {
       // First, so the room takes this socket's SCREEN_* reports: it ignores them from an unannounced socket.
       send({ type: "SCREEN_HELLO" });
+      clipResendDue.current = true;
       setDisconnected(false);
       narrationBaseline.current = null;
       sfxSeen.current = null;
@@ -1160,6 +1169,11 @@ export default function ScreenPage() {
           break;
         case "STATE":
           setGame(msg);
+          if (clipResendDue.current) {
+            clipResendDue.current = false;
+            const seen = clipErrored.current;
+            if (seen && resendClipError(seen, msg.media)) send({ type: "SCREEN_CLIP_ERROR", questionId: seen.questionId });
+          }
           {
             const t = nextTransition(transitionSeen.current, msg);
             transitionSeen.current = t.seen;

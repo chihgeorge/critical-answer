@@ -85,6 +85,20 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual(stored);
   });
 
+  it("a bank with a category is stored at the category format, which code one format older refuses and keeps (rollback)", async () => {
+    const categorized: Bank = { ...validBank, pools: { ...validBank.pools, 1: [{ ...validBank.pools[1][0], category: "動漫" }] } };
+    const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
+    await new BankStore(storage).putBank(categorized, 1);
+    const stored = (await storage.get("bank")) as { format: number };
+    expect(stored.format).toBe(BANK_FORMAT);
+    // Code at the format before reads it as this code reads one format ahead: unreadable, and a save may not replace it.
+    const ahead = memoryStorage({ ...stored, format: stored.format + 1 });
+    const older = new BankStore(ahead);
+    expect(await older.getVersionedBank()).toMatchObject({ unreadable: true });
+    await expect(older.putBank(validBank, 1)).rejects.toThrow(/unreadable/);
+    expect(await ahead.get("bank")).toEqual({ ...stored, format: stored.format + 1 });
+  });
+
   it("treats a format that is not a known number as unreadable too", async () => {
     for (const format of ["2", null, Number.NaN, {}]) {
       const stored = { bank: validBank, version: 7, format };

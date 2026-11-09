@@ -91,7 +91,7 @@ import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
 import { epilogueParts, titleFacts, toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
-import { createScriptedProvider, type NarrationProvider } from "../narration/scripted";
+import { BUZZ_REOPEN_LINE, createScriptedProvider, type NarrationProvider } from "../narration/scripted";
 import { createRunner, type TranscriptItem } from "../narration/runner";
 import { editedLine } from "../narration/client";
 import { PROVIDERS } from "../narration/providers";
@@ -2121,10 +2121,21 @@ export class DungeonRoom {
 
   /** setTeamOnline, keeping an undoable 答錯 undoable: a phone dropping or coming back is not a move in the game. */
   private setOnline(teamId: string, online: boolean) {
-    const holding = this.game!.buzz?.teamId === teamId;
-    this.keepUndoOpen(setTeamOnline(this.game!, teamId, online));
-    // The buzzing phone dropped and let go of the buzz: the music it stopped plays on for the others (codex review).
-    if (holding && !online) this.resumeBuzzMusic(this.game!.boss.currentQuestionId);
+    const prev = this.game!;
+    const holding = prev.buzz?.teamId === teamId;
+    this.keepUndoOpen(setTeamOnline(prev, teamId, online));
+    if (online) return;
+    // The last team still in dropped (holding the buzz or not) and the same song reopened to all: as after all-wrong,
+    // the music waits for the host's ▶ and the owl says so (boss-music-buzzer.md M1).
+    if (prev.buzz?.out.length && this.game!.buzz?.out.length === 0) {
+      this.buzzPaused = false;
+      const m = this.media;
+      if (m?.questionId === this.game!.boss.currentQuestionId && m.state === "playing") this.media = { ...m, state: "paused", press: m.press + 1 };
+      this.appendLine(this.eventSeq, BUZZ_REOPEN_LINE);
+    } else if (holding) {
+      // The buzzing phone dropped and let go of the buzz: the music it stopped plays on for the others (codex review).
+      this.resumeBuzzMusic(this.game!.boss.currentQuestionId);
+    }
   }
 
   /** Plays on the music a buzz stopped (handleTeamBuzz), if it still shows. */
