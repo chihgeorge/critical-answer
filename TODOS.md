@@ -795,7 +795,7 @@ PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partyki
 
 ## 上架手機版本：PWA 部分
 
-- **玩家可以把手機頁加到主畫面，全螢幕打開** · 版號合併時定 · `app/manifest.ts` 加 web app manifest（`display: standalone`、史萊姆 192／512 圖示），根版面加 `appleWebApp`。在 `/room/<code>/play` 加的，連到這個房間自己的 manifest（`start_url` 是這個房間的手機頁），Android 從圖示打開直接回到房間；iPhone 本來就用加入時的網址。不加 service worker、不做離線快取。上架 App Store／Google Play 的部分留在 P3。
+- **玩家可以把手機頁加到主畫面，全螢幕打開** · 版號合併時定 · `app/manifest.ts` 加 web app manifest（`display: standalone`、史萊姆 192／512 圖示），根版面加 `appleWebApp`。在 `/room/<code>/play` 加的，連到這個房間自己的 manifest（`start_url` 是這個房間的手機頁），Android 從圖示打開直接回到房間；iPhone 本來就用加入時的網址，但主畫面版本不和 Safari 共用資料，在 Safari 加入的隊伍從圖示打開算新手機（主持指南寫了怎麼接回）。不加 service worker、不做離線快取。上架 App Store／Google Play 的部分留在 P3。
 
 ## 題目比隊伍少時，兩隊可能一直拿同一題
 

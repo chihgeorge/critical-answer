@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { GET } from "@/app/room/[code]/manifest.webmanifest/route";
+import { generateMetadata } from "@/app/room/[code]/play/layout";
+
+it("the phone page links its own room's manifest", async () => {
+  expect((await generateMetadata({ params: Promise.resolve({ code: "BCDF" }) })).manifest).toBe("/room/BCDF/manifest.webmanifest");
+});
 
 const get = (code: string) =>
   GET(new Request(`http://x/room/${code}/manifest.webmanifest`), { params: Promise.resolve({ code }) });
