@@ -1082,7 +1082,11 @@ export default function ScreenPage() {
   }, []);
   /** From the player's real state (the clip stops itself at its end): the music goes silent (D10) and a line still
    * being read stops, since the host pressed ▶ to hear the song (D20). */
+  /** The question whose video this screen's player shows 影片無法播放 for: re-sent on every SCREEN_HELLO, so a room that
+   * restarted (clipError lives in memory) gets the warning back. Any playing / paused report means the player recovered. */
+  const clipErrored = useRef<string | null>(null);
   function onVideoPlaying(playing: boolean) {
+    clipErrored.current = null;
     videoPlaying.current = playing;
     player().mute(playing || bgmHeld.current);
     if (playing && ttsSupported()) {
@@ -1095,6 +1099,7 @@ export default function ScreenPage() {
     send({ type: "SCREEN_CLIP_ENDED", questionId });
   }
   function onClipError(questionId: string) {
+    clipErrored.current = questionId;
     send({ type: "SCREEN_CLIP_ERROR", questionId });
   }
   /** The lowest second the answer clock has shown. A STATE remounts the clock, which can show the same second or one
@@ -1122,6 +1127,8 @@ export default function ScreenPage() {
     onOpen() {
       // First, so the room takes this socket's SCREEN_* reports: it ignores them from an unannounced socket.
       send({ type: "SCREEN_HELLO" });
+      // shortcut: a stale id (the player unmounted while in error) is re-sent too; the room drops it unless that video shows.
+      if (clipErrored.current) send({ type: "SCREEN_CLIP_ERROR", questionId: clipErrored.current });
       setDisconnected(false);
       narrationBaseline.current = null;
       sfxSeen.current = null;

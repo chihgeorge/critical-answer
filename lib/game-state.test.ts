@@ -2194,6 +2194,27 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
       expect(() => pickCategory(g, "T1", "動漫", cats, true)).toThrow("too_late");
     });
 
+    it("a category pick onto the host-queued boss question clears the queue", () => {
+      const g = pickCategory(queueQuestion(won(), "boss", "b-c"), "T1", "遊戲", cats, false);
+      expect(g.boss.currentQuestionId).toBe("b-c");
+      expect(g.boss.queuedQuestionId).toBeUndefined();
+    });
+
+    it("a pick away from a question the host queued drops that queued question; the question stays in the ring", () => {
+      const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
+      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 4, questionIds: ["b-a", "b-b", "b-c", "b-d"], buzzer: true }]);
+      g = sendToBoss(g, "T0");
+      g = { ...g, currentTurnIndex: 0, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
+      g = queueQuestion(enterNextBossPhase(answerQuestion(g, "T0", "p1-a", true, "retry", first).game), "boss", "b-c");
+      const won = judge(buzzIn(g, "T1", "b-a", true), "T1", true).game;
+      expect(won.boss.currentQuestionId).toBe("b-c"); // the queued question came up
+      const picked = pickCategory(won, "T1", "動漫", cats, false);
+      expect(picked.boss.currentQuestionId).toBe("b-b");
+      expect(picked.boss.queuedQuestionId).toBeUndefined();
+      expect(picked.revealedQuestionIds).not.toContain("b-c");
+      expect(pickableCategories(picked, cats, false)).toContain("遊戲");
+    });
+
     it("refuses another team, a category with nothing left, and a question already buzzed", () => {
       const g = won();
       expect(() => pickCategory(g, "T0", "遊戲", cats, false)).toThrow("not_picker");

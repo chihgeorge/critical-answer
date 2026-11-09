@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
-import { SORT_ITEMS } from "@/lib/sort-order";
+import { UNSET_CORRECT_INDEX, blankQuestion, withCategory } from "@/lib/bank-editor-question";
 import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_PROMPT, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
@@ -26,10 +26,6 @@ import { readStored, writeStored } from "@/lib/stored";
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
 const bankApiBase = () => `${partyHttpBase()}/api/bank`;
 const bankImageApiBase = () => `${bankApiBase()}/image`;
-// Sentinel for "no correct option marked yet" — happens right after switching a question to
-// multipleChoice, or after deleting the option that was marked correct. Never a valid saved
-// state: validate() below blocks 儲存全部變更 while any question is stuck at this value.
-const UNSET_CORRECT_INDEX = -1;
 const TEXT_CONTENT: MediaContent = { kind: "text", value: "" };
 
 /** Reads the owner key from localStorage — a per-browser convenience, not the source of truth (the
@@ -691,29 +687,6 @@ function RoomEditor({
   );
 }
 
-/** A fresh question of the given outer kind, keeping only `id`/`content` — switching kind never
- * carries over the other kind's fields (no auto-conversion; the two kinds' extra fields aren't
- * comparable). The standalone `image` kind retired (D1) — content/explanation media type is
- * chosen independently via MediaPicker, not by the outer kind selector. */
-function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): BankQuestion {
-  // explanation carries over just like content does — dropping it here would silently discard
-  // an uploaded image/video with no warning at all, bypassing MediaPicker's own confirm() gate
-  // entirely (adversarial review finding, /ship).
-  // The prompt (題幹) belongs to the content, so it carries over too, and so does the category.
-  const prompt = { ...(q.prompt !== undefined ? { prompt: q.prompt } : {}), ...(q.category !== undefined ? { category: q.category } : {}) };
-  if (kind === "text") return { kind: "text", id: q.id, content: q.content, ...prompt, answer: "", explanation: q.explanation };
-  if (kind === "sort") return { kind: "sort", id: q.id, content: q.content, ...prompt, items: Array<string>(SORT_ITEMS).fill(""), explanation: q.explanation };
-  return {
-    kind: "multipleChoice",
-    id: q.id,
-    content: q.content,
-    ...prompt,
-    options: ["", ""],
-    correctIndex: UNSET_CORRECT_INDEX,
-    explanation: q.explanation,
-  };
-}
-
 /** Picks text / uploaded image / YouTube video for one content slot (a question's `content`, or
  * its optional `explanation`). Switching media type discards the prior value immediately — no
  * draft-preservation across kinds — with a native `confirm()` first if the slot being switched
@@ -1014,12 +987,7 @@ function QuestionRow({
             onChange={(e) => {
               // Read now, as the 題幹 field does: the updater may run after the input is put back.
               const category = e.target.value;
-              onUpdate((cur) => {
-                const next = { ...cur };
-                if (category.trim()) next.category = category;
-                else delete next.category;
-                return next;
-              });
+              onUpdate((cur) => withCategory(cur, category));
             }}
           />
         </label>
