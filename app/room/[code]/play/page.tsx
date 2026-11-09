@@ -434,7 +434,8 @@ function SortList({ items, order, marks, locked, frozen, labelledBy, onChange }:
  * The team's own text turn (fill-in, #104): type one answer, send it once, then wait for the host.
  * Mounted per question and eventId, so a 重答 turn starts with an empty box.
  */
-function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; offline: boolean; noHint: boolean }) {
+/** `buzzed`: we buzzed first in a buzzer phase, so typing is optional, with no check and no ability (boss-music-buzzer.md M2). */
+function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; offline: boolean; noHint: boolean; buzzed?: boolean }) {
   const q = game.question!;
   const sent = game.view.teams.find((t) => t.id === teamId)?.typedAnswer ?? null;
   const [text, setText] = useState("");
@@ -456,12 +457,12 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
   const canPray = wrong && game.view.awaitingPrayer === teamId;
   // Persuasion check (dnd design R6): the box stays locked until this team's check is written. An older server has no checks.
   const check = game.view.checks?.[checkKey(q.id, teamId)];
-  const needCheck = game.view.checks !== undefined && !check;
+  const needCheck = !buzzed && game.view.checks !== undefined && !check;
 
   return (
     <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
-      {questionLine(q) && <QuestionStrip text={questionLine(q)!} />}
-      <MageHint hint={game.view.mageHints?.[q.id]} testId="mage-hint" />
+      {!buzzed && questionLine(q) && <QuestionStrip text={questionLine(q)!} />}
+      {!buzzed && <MageHint hint={game.view.mageHints?.[q.id]} testId="mage-hint" />}
       {wrong ? (
         <>
           <div className="flex items-center gap-2 text-[22px]" role="status">
@@ -521,7 +522,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
             type="text"
             className="px-input text-[20px]"
             aria-label="你們的答案"
-            placeholder="打你們的答案"
+            placeholder={buzzed ? "也可以打字給主持人看（選填）" : "打你們的答案"}
             value={text}
             onChange={(e) => setText(e.target.value)}
             maxLength={MAX_TYPED_ANSWER}
@@ -535,7 +536,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint }: { game: StateM
         </form>
         </>
       )}
-      {sent === null && !inFlight && !wrong && <ClassAbility game={game} teamId={teamId} send={send} noHint={noHint} />}
+      {!buzzed && sent === null && !inFlight && !wrong && <ClassAbility game={game} teamId={teamId} send={send} noHint={noHint} />}
     </Panel>
   );
 }
@@ -655,6 +656,25 @@ function BuzzButton({ game, buzz, teamId, send }: { game: StateMessage; buzz: No
       >
         {label}
       </button>
+    </div>
+  );
+}
+
+/** The buzz winner picks the next song's category (boss-music-buzzer.md M5), and may change it until the host's ▶. */
+function CategoryPanel({ categories, chosen, send }: { categories: string[]; chosen?: string; send: (m: ClientMessage) => void }) {
+  return (
+    <div data-testid="pick-category">
+    <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
+      <div className="text-[20px]">答對了！選下一首的類別</div>
+      <div className="grid grid-cols-2 gap-2">
+        {categories.map((c) => (
+          <PixelButton key={c} aria-pressed={c === chosen} className="!m-0 !min-h-[56px] !text-[20px] [overflow-wrap:anywhere]" style={{ background: c === chosen ? "var(--ok)" : "var(--cream)" }} onClick={() => send({ type: "TEAM_PICK_CATEGORY", category: c })}>
+            {c}
+          </PixelButton>
+        ))}
+      </div>
+      <div className="text-[13px]">{chosen ? `已選：${chosen}・主持人按 ▶ 前都能改` : "不選就照順序出下一首"}</div>
+    </Panel>
     </div>
   );
 }
@@ -1033,6 +1053,12 @@ export default function PlayPage() {
 
         {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
         {game && buzz && !held && game.question && <BuzzButton game={game} buzz={buzz} teamId={teamId} send={send} />}
+
+        {game && buzz && !held && buzz.teamId === teamId && game.question && (
+          <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint buzzed />
+        )}
+
+        {game && buzz?.picker === teamId && game.buzzCategories && <CategoryPanel categories={game.buzzCategories} chosen={buzz.category} send={send} />}
 
         {game && !finished && !buzz && !held && isMyTurn && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} />}
 

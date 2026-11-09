@@ -44,11 +44,19 @@ export const MAX_PROMPT = 200;
  * accepted risk of making it required instead of backward-compatible.
  * The standalone `image` kind retired (D1) — an image is now one `content`/`explanation` media
  * type available on either remaining kind, not its own top-level kind. */
-export type BankQuestion =
+export type BankQuestion = (
   | { kind: "text"; id: string; content: MediaContent; prompt?: string; answer: string; explanation?: MediaContent }
   | { kind: "multipleChoice"; id: string; content: MediaContent; prompt?: string; options: string[]; correctIndex: number; explanation?: MediaContent }
   /** A sort question: `items` in the correct order; the question line (content or prompt) states the rule. */
-  | { kind: "sort"; id: string; content: MediaContent; prompt?: string; items: string[]; explanation?: MediaContent };
+  | { kind: "sort"; id: string; content: MediaContent; prompt?: string; items: string[]; explanation?: MediaContent }
+) & {
+  /** Free text the owner groups questions by (動漫, 遊戲音樂…): a buzzer phase's winner picks the next one's
+   * (docs/designs/boss-music-buzzer.md). */
+  category?: string;
+};
+
+/** Longest question `category`, in characters: it is a button on a phone. */
+export const MAX_CATEGORY = 20;
 
 /** Judged by the room from the team's lock, never by the host's 答對 (multiple choice and sort). */
 export const isAutoJudged = (q: { kind: BankQuestion["kind"] } | undefined): boolean => q?.kind === "multipleChoice" || q?.kind === "sort";
@@ -221,6 +229,15 @@ function parseSortQuestion(r: Record<string, unknown>, id: string): BankQuestion
   return { kind: "sort", id, content, ...(prompt ? { prompt } : {}), items: items as string[], ...(explanation ? { explanation } : {}) };
 }
 
+/** An optional category, trimmed; blank reads as none. */
+function parseCategory(v: unknown, id: string): string | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v !== "string") fail(`question ${id} category is not text`);
+  const t = (v as string).trim();
+  if (Array.from(t).length > MAX_CATEGORY) fail(`question ${id} category is longer than ${MAX_CATEGORY} characters`);
+  return t || undefined;
+}
+
 function parseQuestions(raw: unknown, where: string, seen: Set<string>): BankQuestion[] {
   if (!Array.isArray(raw) || raw.length === 0) fail(`${where} has no questions`);
   return (raw as Record<string, unknown>[]).map((r) => {
@@ -228,11 +245,13 @@ function parseQuestions(raw: unknown, where: string, seen: Set<string>): BankQue
     if (typeof id !== "string" || !id) fail(`${where} has a question without an id`);
     if (seen.has(id as string)) fail(`duplicate question id ${String(id)}`);
     seen.add(id as string);
+    const category = parseCategory(r.category, id as string);
+    const extra = category ? { category } : {};
     // "image" is a legacy top-level kind (pre-D1): it converts to a text-kind question whose
     // content happens to be an image, same as parseContent's imageKey fallback handles it.
-    if (kind === "text" || kind === "image") return parseTextQuestion(r, id as string);
-    if (kind === "multipleChoice") return parseMultipleChoiceQuestion(r, id as string);
-    if (kind === "sort") return parseSortQuestion(r, id as string);
+    if (kind === "text" || kind === "image") return { ...parseTextQuestion(r, id as string), ...extra };
+    if (kind === "multipleChoice") return { ...parseMultipleChoiceQuestion(r, id as string), ...extra };
+    if (kind === "sort") return { ...parseSortQuestion(r, id as string), ...extra };
     return fail(`question ${String(id)} has unknown kind ${String(kind)}`);
   });
 }

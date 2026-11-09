@@ -78,6 +78,10 @@ test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut o
   await expect(screen.getByTestId("screen-buzz")).toContainText("乙隊 搶到了！");
   await expect(a.getByTestId("buzz")).toContainText("乙隊搶到了");
   await expect(b.getByTestId("buzz")).toContainText("你們搶到了！");
+  // The team that buzzed may also type its answer for the host (boss-music-buzzer.md M2).
+  await b.getByLabel("你們的答案").fill("我猜的");
+  await b.getByRole("button", { name: "送出", exact: true }).click();
+  await expect(host.getByTestId("host-typed-answer")).toContainText("我猜的");
 
   await host.getByRole("button", { name: "答錯（這題不能再搶）" }).click();
   await expect(b.getByTestId("buzz")).toContainText("這題答錯了");

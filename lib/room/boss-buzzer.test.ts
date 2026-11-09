@@ -232,6 +232,73 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state()).toMatchObject({ view: { bossKilledBy: IDS[2] } });
   });
 
+  it("everyone missing the song reopens the same one to all; the music waits for the host's ▶ (boss-music-buzzer.md M1)", () => {
+    const g = buzzerGame();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    for (const i of [0, 1, 2]) {
+      g.buzz(i);
+      g.judge(IDS[i], false);
+    }
+    expect(g.state()).toMatchObject({ question: { id: "b-a" }, media: { state: "paused" }, view: { buzz: { questionId: "b-a", open: true, out: [] } } });
+    g.buzz(1);
+    expect(g.state().view.buzz.teamId).toBe(IDS[1]);
+  });
+
+  it("the team that buzzed may type its answer for the host; nobody else may (boss-music-buzzer.md M2)", () => {
+    const g = buzzerGame(text);
+    send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "b-a", text: "早到", eventId: g.state().eventId });
+    expect(g.lastError(g.phones[0])).toMatchObject({ detail: "no_buzz" });
+    g.buzz(1);
+    send(g.room, g.phones[1], { type: "TEAM_SUBMIT_TEXT", questionId: "b-a", text: " 麻辣鮮師 ", eventId: g.state().eventId });
+    expect(g.state().view.teams[1].typedAnswer).toBe("麻辣鮮師");
+  });
+
+  it("a video the big screen cannot play: the host is told, and 現場放歌 opens buzzing without it (boss-music-buzzer.md M4)", () => {
+    const g = buzzerGame();
+    const screen = makeConn("screen");
+    g.room.onConnect(screen);
+    send(g.room, screen, { type: "SCREEN_HELLO" });
+    send(g.room, g.phones[0], { type: "SCREEN_CLIP_ERROR", questionId: "b-a" });
+    expect(g.state().clipError).toBeUndefined();
+    send(g.room, screen, { type: "SCREEN_CLIP_ERROR", questionId: "b-a" });
+    expect(g.state().clipError).toBe(true);
+    send(g.room, g.phones[0], { type: "HOST_BUZZ_OPEN", questionId: "b-a" });
+    expect(g.state().view.buzz.open).toBeUndefined();
+    send(g.room, g.host, { type: "HOST_BUZZ_OPEN", questionId: "b-a" });
+    expect(g.state()).toMatchObject({ clipError: true, view: { buzz: { open: true } } });
+    expect(g.state().media).toBeUndefined();
+    send(g.room, g.host, { type: "HOST_BUZZ_OPEN", questionId: "b-c" });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "stale_question" });
+    // A ▶ makes the screen try again, so the warning goes until it fails again.
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    expect(g.state().clipError).toBeUndefined();
+  });
+
+  it("the buzz winner picks the next song's category until the host's ▶ (boss-music-buzzer.md M5)", () => {
+    const cat = (id: string) => ({ ...video(id), category: id === "b-c" ? "遊戲" : "動漫" });
+    const g = buzzerGame(cat);
+    expect(g.state().buzzCategories).toBeUndefined();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    expect(g.state()).toMatchObject({ buzzCategories: ["動漫", "遊戲"], view: { buzz: { questionId: "b-b", picker: IDS[1] } } });
+    send(g.room, g.phones[0], { type: "TEAM_PICK_CATEGORY", category: "遊戲" });
+    expect(g.lastError(g.phones[0])).toMatchObject({ detail: "not_picker" });
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "遊戲" });
+    expect(g.state()).toMatchObject({ question: { id: "b-c" }, view: { buzz: { category: "遊戲" } } });
+    // 現場放歌 cannot open the next song while the answer is still on show.
+    send(g.room, g.host, { type: "HOST_BUZZ_OPEN", questionId: "b-c" });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "stale_question" });
+    expect(g.room.game!.buzz?.open).toBeUndefined();
+    g.next();
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "動漫" });
+    expect(g.state().question.id).toBe("b-b");
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-b", action: "play" });
+    expect(g.state().buzzCategories).toBeUndefined();
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "遊戲" });
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "too_late" });
+  });
+
   it("the buzz is saved: a restarted room keeps who is shut out", async () => {
     const storage = memoryStorage();
     const g = buzzerGame(text, storage);

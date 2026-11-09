@@ -93,6 +93,8 @@ export function YoutubePlayer({
   needsTap = false,
   onPlayingChange,
   onEnded,
+  onError,
+  errorNote,
   title = "題目影片",
 }: {
   videoId: string;
@@ -112,6 +114,10 @@ export function YoutubePlayer({
   onPlayingChange?: (playing: boolean) => void;
   /** The clip reached its end (YouTube's own end, or `end`): the answer countdown starts (answer-countdown.md D4). */
   onEnded?: () => void;
+  /** The video cannot play here: the room tells the host (boss-music-buzzer.md M4). */
+  onError?: () => void;
+  /** A line under 影片無法播放, e.g. that the host plays the song live instead. */
+  errorNote?: string;
   title?: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -124,10 +130,12 @@ export function YoutubePlayer({
   const [attempt, setAttempt] = useState(0);
   const report = useRef(onPlayingChange);
   const reportEnd = useRef(onEnded);
+  const reportError = useRef(onError);
   useEffect(() => {
     report.current = onPlayingChange;
     reportEnd.current = onEnded;
-  }, [onPlayingChange, onEnded]);
+    reportError.current = onError;
+  }, [onPlayingChange, onEnded, onError]);
 
   useEffect(() => {
     let gone = false;
@@ -138,6 +146,7 @@ export function YoutubePlayer({
       // A stall mid-clip (buffering reads as loading) must not bring the music back for a moment.
       if (s !== "loading") report.current?.(s === "playing");
       if (s === "ended") reportEnd.current?.();
+      if (s === "error") reportError.current?.();
     };
     loadYoutubeApi().then(
       (YT) => {
@@ -236,8 +245,13 @@ export function YoutubePlayer({
       <div ref={host} aria-label={title} style={{ width, height }} />
       {cover && status !== "error" && <MusicCard status={status} start={start} end={end} />}
       {status === "error" && (
-        <div role="status" className="absolute inset-0 flex items-center justify-center bg-[var(--k)] text-[24px] text-[var(--cream)]">
+        <div role="status" className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--k)] text-[24px] text-[var(--cream)]">
           {CLIP_STATUS_TEXT.error}
+          {errorNote && (
+            <span data-testid="clip-error-note" className="px-chip text-[20px]" style={{ background: "var(--warn)", color: "var(--k)" }}>
+              {errorNote}
+            </span>
+          )}
         </div>
       )}
       {needsTap && status !== "error" && (

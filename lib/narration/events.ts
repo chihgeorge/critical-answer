@@ -36,8 +36,9 @@ export type NarrationEvent =
   | WithNext<WithRoll<ByClass<{ type: "correct"; team: string; monster: string; points: number; cooked?: true; entersBoss?: { phase?: string; order?: number } }>>>
   /** `boss`: a wrong boss answer, which always brings a new question (boss redesign D2=B).
    * `exhausted`: it used up the boss phase's questions, and the phase card comes next (boss-phases.md).
-   * `buzzOut`: a wrong buzz in a buzzer phase (boss-buzzer.md): this team is out of the question, the others may still buzz. */
-  | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; warriorRoll?: number }>>
+   * `buzzOut`: a wrong buzz in a buzzer phase (boss-buzzer.md): this team is out of the question, the others may still buzz.
+   * `buzzAgain`: that wrong buzz was the last online team's, so everyone buzzes on the same song again (boss-music-buzzer.md M1). */
+  | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; buzzAgain?: true; warriorRoll?: number }>>
   | WithNext<{ type: "flee"; team: string; monster: string }>
   /** `bossHp` 0 without a kill: an earlier phase's bar emptied, and the next phase is still a secret.
    * `exhausted`: the hit used up the phase's questions with HP left, and the phase card comes next. */

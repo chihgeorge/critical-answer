@@ -10,6 +10,8 @@ import {
   buzzIn,
   isBuzzPhase,
   openBuzz,
+  pickableCategories,
+  pickCategory,
   skipBuzz,
   sendToBoss,
   queueQuestion,
@@ -300,6 +302,9 @@ export class DungeonRoom {
   private reveal: AnswerReveal | null = null;
   /** The last buzz stopped playing music (boss-buzzer.md D5): a wrong answer or a dropped phone plays it on. Memory only, like media. */
   private buzzPaused = false;
+  /** The question whose video the big screen reported it cannot play (SCREEN_CLIP_ERROR, boss-music-buzzer.md M4).
+   * Memory only, like media; a ▶ clears it, since the screen then tries again. */
+  private clipError: string | null = null;
   /** An opened event on show until 下一題 (docs/designs/event-rooms.md). Memory only, like the reveal: its effect is saved. */
   private eventReveal: EventReveal | null = null;
   /** When the host pressed 上菜 on the reveal up now (only read while `reveal.served`). */
@@ -955,6 +960,8 @@ export class DungeonRoom {
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.liveMedia(),
+      ...(this.clipError !== null && this.clipError === this.shownVideoId() ? { clipError: true as const } : {}),
+      ...this.buzzCategories(),
       // No dish: the boss's dish is served on the kill, not before (monster-cuisine.md).
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
       ...(this.phaseCardDue ? { phaseCardDue: true as const } : {}),
@@ -1350,6 +1357,11 @@ export class DungeonRoom {
           if (!this.isScreen(sender)) break;
           this.handleClipEnded(msg.questionId);
           break;
+        case "SCREEN_CLIP_ERROR":
+          if (!this.isScreen(sender) || msg.questionId !== this.shownVideoId() || this.clipError === msg.questionId) break;
+          this.clipError = msg.questionId;
+          this.broadcastState();
+          break;
         case "HOST_NEXT_LINE":
           this.handleNextLine(sender, msg.line);
           break;
@@ -1448,6 +1460,12 @@ export class DungeonRoom {
         case "HOST_BUZZ_SKIP":
           this.handleHostBuzzSkip(sender, msg.questionId);
           break;
+        case "HOST_BUZZ_OPEN":
+          this.handleHostBuzzOpen(sender, msg.questionId);
+          break;
+        case "TEAM_PICK_CATEGORY":
+          this.handleTeamPickCategory(sender, msg.category);
+          break;
         case "REACT":
           this.handleReact(sender, msg.reaction);
           break;
@@ -1457,7 +1475,7 @@ export class DungeonRoom {
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
       // A reaction changes no saved state, so it neither counts as activity nor saves.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && !this.rejected && !resumed) {
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -2299,8 +2317,12 @@ export class DungeonRoom {
     const queued = prev.teams.find((t) => t.id === teamId)?.queuedQuestionId;
     const picked = queued !== undefined && judged.game.teams.find((t) => t.id === teamId)?.currentQuestionId === queued;
     const game = !picked && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterEventRoom(judged.game, teamId, drawEvent(this.rng)) : judged.game;
-    // A wrong buzz: the music picks up where the buzz stopped it, for the teams still in (boss-buzzer.md D5).
-    if (isBuzzPhase(prev) && outcome.type === "incorrect-retry" && !outcome.newBossQuestion) this.resumeBuzzMusic(questionId);
+    // Every online team got it wrong: they all buzz on the same question again (boss-music-buzzer.md M1).
+    const again = isBuzzPhase(prev) && outcome.type === "incorrect-retry" && judged.game.buzz?.out.length === 0;
+    // A wrong buzz: the music picks up where the buzz stopped it, for the teams still in (boss-buzzer.md D5). After
+    // everyone missed it waits for the host's ▶ (M1).
+    if (again) this.buzzPaused = false;
+    else if (isBuzzPhase(prev) && outcome.type === "incorrect-retry" && !outcome.newBossQuestion) this.resumeBuzzMusic(questionId);
     // A ruling on the team (the host's, or the lost natural 20 itself) settles its lost natural 20; one refused above does not.
     if (this.lostCrit?.teamId === teamId) this.lostCrit = null;
     // Everything up to broadcastState is synchronous: state changes and the eventId are
@@ -2319,7 +2341,7 @@ export class DungeonRoom {
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
     const exhaustedEvent = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
     // A wrong buzz that leaves the question to the others (boss-buzzer.md): no "try again" line.
-    const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, buzzOut: true as const } : exhaustedEvent;
+    const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, ...(again ? { buzzAgain: true as const } : { buzzOut: true as const }) } : exhaustedEvent;
     // The narrator says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); a flee never follows a roll.
     const event = roll?.kind === "warrior" && buzzed.type !== "flee" ? { ...buzzed, warriorRoll: roll.value } : buzzed;
     // A natural 20 or 1 swaps the correct / boss-hit sound; the boss kill keeps its own (E2).
@@ -2430,6 +2452,8 @@ export class DungeonRoom {
     this.media = { questionId, state: action === "pause" ? "paused" : "playing", seq: action === "restart" ? seq + 1 : seq, press: (same?.press ?? 0) + 1 };
     // The host took the controls after a buzz: a wrong answer or a drop leaves the music as the host set it (outside-voice review).
     this.buzzPaused = false;
+    // The screen tries the video again on a ▶ (youtube-player.tsx), and reports again if it still fails.
+    if (action !== "pause") this.clipError = null;
     // The first ▶ on a buzzer phase's video opens buzzing (boss-buzzer.md D5).
     // A reveal's video is the answered question's, even when the same question comes round again (red-team review).
     if (action !== "pause" && this.game && !this.reveal) this.keepUndoOpen(openBuzz(this.game, questionId));
@@ -2473,6 +2497,42 @@ export class DungeonRoom {
     this.roomReacts.push(now);
     // Straight to the sockets, not this.broadcast: a reaction changes nothing to save, so it skips persist().
     this.room.broadcast(JSON.stringify({ type: "REACTION", teamId, reaction } satisfies ServerMessage));
+  }
+
+  /** 現場放歌，開放搶答 (boss-music-buzzer.md M4): the big screen's video failed, the host plays the song from their own
+   * device, so buzzing opens without the clip. */
+  private handleHostBuzzOpen(conn: Conn, questionId: string) {
+    if (!this.requireHost(conn) || !this.game) return;
+    if (this.paused() || questionId !== this.game.boss.currentQuestionId || !isBuzzPhase(this.game)) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
+    this.keepUndoOpen(openBuzz(this.game, questionId));
+    this.broadcastState();
+  }
+
+  /** Each question's bank category, for the buzz winner's pick (boss-music-buzzer.md M5). */
+  private categoryOf(): Record<string, string | undefined> {
+    return Object.fromEntries(allQuestions(this.bank).map((q) => [q.id, q.category]));
+  }
+
+  /** Whether the boss question is open to buzzing without a ▶: shown, and not a video (as handleTeamBuzz decides). */
+  private openWithoutPlay(): boolean {
+    return !this.paused() && !!this.game && this.question(this.game.boss.currentQuestionId)?.content.kind !== "youtube";
+  }
+
+  private buzzCategories(): { buzzCategories?: string[] } {
+    const cats = this.game ? pickableCategories(this.game, this.categoryOf(), this.openWithoutPlay()) : [];
+    return cats.length ? { buzzCategories: cats } : {};
+  }
+
+  /** The buzz winner picks the next song's category (boss-music-buzzer.md M5), until the host's ▶ opens buzzing. */
+  private handleTeamPickCategory(conn: Conn, category: string) {
+    const teamId = this.playingTeam(conn);
+    if (!teamId || !this.game) return;
+    try {
+      this.game = pickCategory(this.game, teamId, category, this.categoryOf(), this.openWithoutPlay());
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    this.broadcastState();
   }
 
   /** 沒人答對，換下一題 (boss-buzzer.md D4): a new question, the old one unrevealed. Not narrated. */
@@ -2885,7 +2945,8 @@ export class DungeonRoom {
     if (this.pendingRoll) return reject("roll_pending");
     if (this.question(questionId)?.kind !== "text") return reject("not_text_question");
     // The persuasion check comes before the answer (dnd design R6): the phone locks the box, the room enforces it.
-    if (!this.game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
+    // No check in a buzzer phase (boss-buzzer.md D6): the team that buzzed may type at once (boss-music-buzzer.md M2).
+    if (!isBuzzPhase(this.game) && !this.game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
     const text = cleanTypedAnswer(raw);
     if (!text) return reject("invalid_text");
     try {

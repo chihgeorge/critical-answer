@@ -180,6 +180,9 @@ export type ClientMessage =
   | { type: "SCREEN_NARRATION_PROGRESS"; eventId: number; rev: number; done: number }
   /** /screen: the question video's clip has ended, so its answer countdown may start (answer-countdown.md D4). Same trust as above. */
   | { type: "SCREEN_CLIP_ENDED"; questionId: string }
+  /** /screen: the question video cannot play there (blocked, removed, no network), so the host page warns and offers
+   * 現場放歌 (docs/designs/boss-music-buzzer.md M4). Same trust as above. */
+  | { type: "SCREEN_CLIP_ERROR"; questionId: string }
   /** Director: the next narration's second line says this (<= 40 chars); "" cancels. */
   | { type: "HOST_NEXT_LINE"; line: string }
   | { type: "HOST_GET_TRANSCRIPT" }
@@ -262,6 +265,10 @@ export type ClientMessage =
   | { type: "TEAM_BUZZ"; questionId: string }
   /** 沒人答對，換下一題: the buzzer phase's question moves on unrevealed (boss-buzzer.md D4). */
   | { type: "HOST_BUZZ_SKIP"; questionId: string }
+  /** 現場放歌，開放搶答: the host plays the song from their own device, so buzzing opens without the clip (boss-music-buzzer.md M4). */
+  | { type: "HOST_BUZZ_OPEN"; questionId: string }
+  /** The buzz winner picks the category of the next song (boss-music-buzzer.md M5); one of STATE `buzzCategories`. */
+  | { type: "TEAM_PICK_CATEGORY"; category: string }
   /** 觀眾反應 (docs/designs/audience-reactions.md): a waiting team taps one fixed reaction; the room rate-limits it. */
   | { type: "REACT"; reaction: Reaction };
 
@@ -362,6 +369,10 @@ export type ServerMessage =
       cuisine?: true;
       /** The host's last ▶ ⏸ ⟲ for the video on screen. Only for that video's question; treat anything else as paused. */
       media?: MediaCommand;
+      /** The big screen reported that the video in play cannot play (SCREEN_CLIP_ERROR): the host page warns (boss-music-buzzer.md M4). */
+      clipError?: true;
+      /** The categories the buzz winner (`view.buzz.picker`) may pick for the next song, while it may (boss-music-buzzer.md M5). */
+      buzzCategories?: string[];
       /** A finished game's podium reveal. Absent from older servers and from a game finished before it: show the podium. */
       podium?: PodiumReveal;
       /** The epilogue page on the big screen (from 0) and how many there are, once the epilogue is in. Absent from older servers: one page. */
@@ -593,9 +604,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return isCount(m.eventId) && isCount(m.rev) && isCount(m.done)
         ? { type: "SCREEN_NARRATION_PROGRESS", eventId: m.eventId, rev: m.rev, done: m.done }
         : null;
-    case "SCREEN_CLIP_ENDED": {
+    case "SCREEN_CLIP_ENDED":
+    case "SCREEN_CLIP_ERROR": {
       const questionId = str(m.questionId, MAX_RAW_TEXT);
-      return questionId ? { type: "SCREEN_CLIP_ENDED", questionId } : null;
+      return questionId ? { type: m.type, questionId } : null;
     }
     case "HOST_NEXT_LINE": {
       const line = str(m.line, MAX_EDIT_LINE);
@@ -671,7 +683,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       return { type: "HOST_JUDGE", teamId, questionId, correct: m.correct, fleeChoice: m.fleeChoice, ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}) };
     }
+    case "TEAM_PICK_CATEGORY": {
+      const category = str(m.category, MAX_ID);
+      return category ? { type: "TEAM_PICK_CATEGORY", category } : null;
+    }
     case "TEAM_BUZZ":
+    case "HOST_BUZZ_OPEN":
     case "HOST_BUZZ_SKIP": {
       const questionId = str(m.questionId, MAX_ID);
       return questionId === null ? null : { type: m.type, questionId };
