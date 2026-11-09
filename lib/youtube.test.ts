@@ -3,13 +3,15 @@ import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, 
 
 describe("resendClipError (boss-music-buzzer.md M4)", () => {
   const seen = { questionId: "b-a", press: 2 };
-  it("reports the error again after a reconnect: the room restarted (no media) or nobody pressed since", () => {
+  it("reports the error again after a reconnect: the room restarted (no media), nobody pressed since, or only paused", () => {
     expect(resendClipError(seen, undefined)).toBe(true);
-    expect(resendClipError(seen, { questionId: "b-a", press: 2 })).toBe(true);
-    expect(resendClipError(seen, { questionId: "b-b", press: 9 })).toBe(true); // the room drops it unless b-a shows
+    expect(resendClipError(seen, { questionId: "b-a", press: 2, state: "playing" })).toBe(true);
+    expect(resendClipError(seen, { questionId: "b-b", press: 9, state: "playing" })).toBe(true); // the room drops it unless b-a shows
+    // A buzz or a drop pauses with a new press, but a pause makes the player retry nothing.
+    expect(resendClipError(seen, { questionId: "b-a", press: 3, state: "paused" })).toBe(true);
   });
-  it("not after the host pressed again while the screen was away (that press retries the video), nor with no error", () => {
-    expect(resendClipError(seen, { questionId: "b-a", press: 3 })).toBe(false);
+  it("not after a newer ▶ while the screen was away (that press retries the video), nor with no error", () => {
+    expect(resendClipError(seen, { questionId: "b-a", press: 3, state: "playing" })).toBe(false);
     expect(resendClipError(null, undefined)).toBe(false);
   });
 });

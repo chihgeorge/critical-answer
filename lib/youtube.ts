@@ -59,11 +59,11 @@ export interface ClipErrorSeen {
 }
 
 /** Whether the big screen reports `seen` again on the first STATE after a reconnect (boss-music-buzzer.md M4): the room
- * keeps clipError in memory, so a restart lost it. Not when the host pressed again meanwhile: that press retries the
- * video, so the old error would be a false warning. shortcut: a restart and a few new presses while the screen is
- * offline can still look like no new press; the host's next ▶ clears it. */
-export function resendClipError(seen: ClipErrorSeen | null, media: { questionId: string; press: number } | undefined): boolean {
-  return !!seen && !(media?.questionId === seen.questionId && media.press > seen.press);
+ * keeps clipError in memory, so a restart lost it. Not when a newer press says play: the player retries the video on
+ * it, so the old error would be a false warning (a pause press retries nothing). shortcut: after a restart the room
+ * counts presses from 0 again, so a ▶ then may look old and the error goes back up; the host's next ▶ clears it. */
+export function resendClipError(seen: ClipErrorSeen | null, media: { questionId: string; press: number; state: "playing" | "paused" } | undefined): boolean {
+  return !!seen && !(media?.questionId === seen.questionId && media.press > seen.press && media.state === "playing");
 }
 
 /** The music card's five states (D15). */
