@@ -1,5 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime } from "./youtube";
+import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait } from "./youtube";
+
+describe("hostMediaStatus", () => {
+  it("says the host plays the song live after the 🎤 open", () => expect(hostMediaStatus(false, true)).toBe("現場放歌中"));
+  it("follows the player otherwise", () => {
+    expect(hostMediaStatus(true, false)).toBe("播放中");
+    expect(hostMediaStatus(false, false)).toBe("已暫停");
+  });
+});
+
+describe("hostBuzzWait", () => {
+  it("asks for ▶ before a song is open", () => expect(hostBuzzWait(true, false, false)).toBe("按 ▶ 播放後開放搶答"));
+  it("says nothing on a clip error: the red warning leads", () => expect(hostBuzzWait(true, false, true)).toBeNull());
+  it("waits for a buzz once open, or on a text question", () => {
+    expect(hostBuzzWait(true, true, true)).toBe("等隊伍搶答…");
+    expect(hostBuzzWait(false, false, false)).toBe("等隊伍搶答…");
+  });
+});
 
 describe("extractYoutubeId", () => {
   it.each([

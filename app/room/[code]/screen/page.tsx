@@ -392,10 +392,17 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={eaterIdx} />}
       {!served && (
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
-        <div className="absolute flex justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
+        <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <LabelChip>{card ? "還沒結束！" : reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
           {/* From phase 2 on the chip names the phase under way (D5); phase 1 looks like any boss. */}
           {!reveal && !card && inBoss && <LabelChip>{bossPhaseInfo?.name ?? "最後的挑戰！"}</LabelChip>}
+          {/* The buzz winner picked the next song's category (boss-music-buzzer.md M5). Up here: under the reveal's
+              video the boss nameplate and the narrator box cover it. */}
+          {reveal && !card && view.buzz?.category && (
+            <span data-testid="screen-next-category" className="px-chip text-[20px]" style={{ background: "var(--warn)", color: "var(--k)" }}>
+              下一題：{view.buzz.category}
+            </span>
+          )}
           {/* A curse or blessing waits on the team's next correct answer (event-rooms.md D12). */}
           {!reveal && !card && turn?.boon && <span data-testid="screen-boon"><LabelChip>{BOON_TEXT[turn.boon]}</LabelChip></span>}
           {/* 🧪 The team on turn holds a potion, or drank it on this question (lucky-potion.md D1, D8). */}
@@ -470,12 +477,6 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
         )}
         {!asking && buzzBox && <div className="mt-3">{buzzBox}</div>}
-        {/* The buzz winner picked the next song's category while the answer is on show (boss-music-buzzer.md M5). */}
-        {reveal && !card && view.buzz?.category && (
-          <div data-testid="screen-next-category" className="px-chip mx-auto mt-3 w-fit" style={{ ...CHIP, fontSize: 22, background: "var(--warn)" }}>
-            下一題：{view.buzz.category}
-          </div>
-        )}
         {!asking && !reveal && !card && question && !question.options && (
           <MageHint hint={view.mageHints?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
         )}
