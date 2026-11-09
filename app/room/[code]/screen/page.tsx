@@ -399,7 +399,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           {/* The buzz winner picked the next song's category (boss-music-buzzer.md M5). Up here: under the reveal's
               video the boss nameplate and the narrator box cover it. */}
           {reveal && !card && view.buzz?.category && (
-            <span data-testid="screen-next-category" className="px-chip text-[20px]" style={{ background: "var(--warn)", color: "var(--k)" }}>
+            <span data-testid="screen-next-category" className="px-chip text-[20px] leading-none" style={{ background: "var(--warn)", color: "var(--k)" }}>
               下一題：{view.buzz.category}
             </span>
           )}

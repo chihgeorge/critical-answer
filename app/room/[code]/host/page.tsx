@@ -725,7 +725,7 @@ export default function HostPage() {
                 </div>
               )}
               {game.question?.content.kind === "youtube" && !revealUp && (
-                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready} send={send} liveOpen={!!game.clipError && !!buzz?.open} />
+                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
               )}
               {buzz && (
                 <div data-testid="host-buzz" className="mt-2 flex flex-col gap-1 text-[16px]">
