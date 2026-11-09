@@ -299,6 +299,60 @@ describe("buzzer boss phase in the room", () => {
     expect(g.lastError(g.phones[1])).toMatchObject({ detail: "too_late" });
   });
 
+  // multi-field.md: a music question with fields, judged one by one.
+  const fielded = (id: string) => ({ ...video(id), answer: undefined, fields: [{ label: "歌名", answer: `歌 ${id}` }, { label: "歌手", answer: `人 ${id}` }] });
+
+  it("a music question with fields: one box each, blanks allowed, at least one filled (multi-field.md F4)", () => {
+    const g = buzzerGame(fielded);
+    expect(g.state().question.fields).toEqual(["歌名", "歌手"]);
+    expect(JSON.stringify(g.state().question)).not.toContain("歌 b-a");
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    const submit = (fields?: string[]) => send(g.room, g.phones[1], { type: "TEAM_SUBMIT_TEXT", questionId: "b-a", text: "x", eventId: g.state().eventId, ...(fields ? { fields } : {}) });
+    submit();
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "fields_mismatch" });
+    submit([" ", ""]);
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "invalid_text" });
+    submit([" 晴天 ", ""]);
+    expect(g.state().view.teams[1]).toMatchObject({ typedAnswer: "晴天／—", typedFields: ["晴天", ""] });
+  });
+
+  it("half the fields right is a hit scaled by half; the reveal marks each field (multi-field.md F6, F7)", () => {
+    const g = buzzerGame(fielded);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    const judge = (fields: boolean[]) => send(g.room, g.host, { type: "HOST_JUDGE", teamId: IDS[1], questionId: "b-a", correct: fields.some(Boolean), fields, eventId: g.state().eventId });
+    judge([true, false, true]);
+    expect(g.lastError(g.host)).toMatchObject({ detail: "fields_mismatch" });
+    // No 最後衝刺 blessing on top, so the sum is the plain hit reward.
+    g.room.game = { ...g.room.game!, teams: g.room.game!.teams.map((t) => ({ ...t, boon: undefined })) };
+    const before = g.room.game!.teams[1].reward;
+    judge([true, false]);
+    const s = g.state();
+    // 1 HP × ½ rounds up to 1; the 10-point hit reward × ½ is 5.
+    expect(s.view.bossHp).toBe(1);
+    expect(g.room.game!.teams[1].reward - before).toBe(5);
+    expect(s.reveal).toMatchObject({ answer: "歌 b-a／人 b-a", fields: [{ label: "歌名", answer: "歌 b-a", right: true }, { label: "歌手", answer: "人 b-a", right: false }] });
+    // A partial answer still earns the category pick (F6).
+    expect(s.view.buzz).toMatchObject({ picker: IDS[1] });
+  });
+
+  it("every field wrong is a wrong buzz: the team is shut out (multi-field.md F6)", () => {
+    const g = buzzerGame(fielded);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: IDS[1], questionId: "b-a", correct: false, fleeChoice: "retry", fields: [false, false], eventId: g.state().eventId });
+    expect(g.state()).toMatchObject({ reveal: null, view: { buzz: { out: [IDS[1]] } } });
+  });
+
+  it("a plain 答對 on a question with fields is every field right", () => {
+    const g = buzzerGame(fielded);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    expect(g.state().reveal.fields.map((f: { right: boolean }) => f.right)).toEqual([true, true]);
+  });
+
   it("the buzz is saved: a restarted room keeps who is shut out", async () => {
     const storage = memoryStorage();
     const g = buzzerGame(text, storage);

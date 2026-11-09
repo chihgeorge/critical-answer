@@ -362,6 +362,18 @@ describe("boss combat", () => {
     expect(g2.teams.find((t) => t.id === "T1")!.reward).toBe(0); // non-participating team gets nothing from the kill
   });
 
+  // Value: protects=multi-field.md F6's scaling and its rounding; fails_when=a partial hit pays or hurts in full, or
+  // rounds a different way; why_new=new rule; seam=none; no_claim=the room passing the share (lib/room/boss-buzzer.test.ts)
+  it("a music question's share of right fields scales the hit's damage and reward, each rounded half up", () => {
+    const game = makeGame({ bossThreshold: 0, bossMaxHp: 3, teamCount: 1 });
+    const hit = (share: number, crit?: number) => answerQuestion(game, "T0", game.boss.currentQuestionId, true, "retry", first, crit, undefined, share).outcome;
+    expect(hit(1 / 2)).toMatchObject({ bossHpRemaining: 2, reward: 5 });
+    expect(hit(1 / 3)).toMatchObject({ bossHpRemaining: 3, reward: 3 }); // 0.33 HP rounds to none
+    expect(hit(2 / 3)).toMatchObject({ bossHpRemaining: 2, reward: 7 });
+    expect(hit(1 / 3, 20)).toMatchObject({ bossHpRemaining: 2, reward: 5 }); // (1 + 1) × ⅓ → 1 HP, (10 + 5) × ⅓ → 5
+    expect(hit(1)).toMatchObject({ bossHpRemaining: 2, reward: 10 });
+  });
+
   it("finishes the game the moment the boss dies", () => {
     const game = makeGame({ bossThreshold: 0, bossMaxHp: 1, teamCount: 1 });
     const { game: g2 } = answerQuestion(game, "T0", game.boss.currentQuestionId, true);

@@ -30,6 +30,23 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "x".repeat(65) })).toBeNull();
   });
 
+  it("HOST_JUDGE and TEAM_SUBMIT_TEXT carry a music question's fields (multi-field.md)", () => {
+    const judge = { type: "HOST_JUDGE", teamId: "t", questionId: "q1", correct: true };
+    expect(parseClientMessage({ ...judge, fields: [true, false] })).toEqual({ ...judge, fleeChoice: undefined, fields: [true, false] });
+    expect(parseClientMessage({ ...judge, correct: false, fields: [false, false] })).toMatchObject({ correct: false, fields: [false, false] });
+    // `correct` must say whether any field is right.
+    expect(parseClientMessage({ ...judge, fields: [false, false] })).toBeNull();
+    expect(parseClientMessage({ ...judge, correct: false, fields: [true, false] })).toBeNull();
+    expect(parseClientMessage({ ...judge, fields: [] })).toBeNull();
+    expect(parseClientMessage({ ...judge, fields: [true, true, true, true] })).toBeNull();
+    expect(parseClientMessage({ ...judge, fields: ["yes", true] })).toBeNull();
+    const submit = { type: "TEAM_SUBMIT_TEXT", questionId: "q1", text: "" };
+    expect(parseClientMessage({ ...submit, fields: ["晴天", ""] })).toEqual({ ...submit, fields: ["晴天", ""] });
+    expect(parseClientMessage({ ...submit, fields: ["a", "b", "c", "d"] })).toBeNull();
+    expect(parseClientMessage({ ...submit, fields: ["a", 1] })).toBeNull();
+    expect(parseClientMessage({ ...submit, fields: ["x".repeat(201)] })).toBeNull();
+  });
+
   it("returns null for non-objects and unknown types", () => {
     for (const v of [null, undefined, 5, "JOIN", [], { type: "NOPE" }, {}]) {
       expect(parseClientMessage(v)).toBeNull();

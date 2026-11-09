@@ -439,6 +439,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
   const q = game.question!;
   const sent = game.view.teams.find((t) => t.id === teamId)?.typedAnswer ?? null;
   const [text, setText] = useState("");
+  const [boxes, setBoxes] = useState<string[]>(() => (q.fields ?? []).map(() => ""));
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
   const inFlight = sending && sent === null;
@@ -515,9 +516,31 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
             e.preventDefault();
             setFailed(false);
             setSending(true);
-            send({ type: "TEAM_SUBMIT_TEXT", questionId: q.id, text, eventId: game.eventId });
+            send({ type: "TEAM_SUBMIT_TEXT", questionId: q.id, text, eventId: game.eventId, ...(q.fields ? { fields: boxes } : {}) });
           }}
         >
+          {/* A music question with fields: one box each, any may stay blank (docs/designs/multi-field.md F4). */}
+          {q.fields ? (
+            q.fields.map((label, i) => (
+              <label key={i} className="flex flex-col gap-1 text-[16px]">
+                {label}
+                <input
+                  type="text"
+                  className="px-input text-[20px]"
+                  aria-label={label}
+                  placeholder="選填，可空白"
+                  value={boxes[i] ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setBoxes((b) => b.map((x, j) => (j === i ? v : x)));
+                  }}
+                  maxLength={MAX_TYPED_ANSWER}
+                  disabled={inFlight || rolling || needCheck}
+                  autoComplete="off"
+                />
+              </label>
+            ))
+          ) : (
           <input
             type="text"
             className="px-input text-[20px]"
@@ -529,7 +552,8 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
             disabled={inFlight || rolling || needCheck}
             autoComplete="off"
           />
-          <PixelButton type="submit" variant="ok" disabled={!cleanTypedAnswer(text) || inFlight || rolling || needCheck || offline} className="!m-0 !min-h-[62px] !text-[23px]">
+          )}
+          <PixelButton type="submit" variant="ok" disabled={!(q.fields ? boxes.some(cleanTypedAnswer) : cleanTypedAnswer(text)) || inFlight || rolling || needCheck || offline} className="!m-0 !min-h-[62px] !text-[23px]">
             {inFlight ? "送出中…" : "送出"}
           </PixelButton>
           {failed && !inFlight && <div className="text-center text-[14px]">沒送出，再按一次，或直接唸給主持人聽</div>}

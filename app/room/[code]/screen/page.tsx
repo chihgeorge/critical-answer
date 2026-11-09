@@ -423,7 +423,18 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           </div>
         ) : reveal ? (
           <div data-testid="answer-reveal" className="flex flex-col items-center gap-2">
-            <div>正解：{reveal.answer}</div>
+            {/* A music question with fields: which ones the team got (docs/designs/multi-field.md F7). */}
+            {reveal.fields ? (
+              <ul data-testid="reveal-fields" className="flex flex-col gap-1">
+                {reveal.fields.map((f, i) => (
+                  <li key={i} style={f.right ? undefined : { opacity: 0.6 }}>
+                    <span aria-label={f.right ? "答對" : "沒答對"}>{f.right ? "✓" : "✗"}</span> {f.label}：{f.answer}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div>正解：{reveal.answer}</div>
+            )}
             {/* With the video up, its text explanation stands beside it instead. */}
             {!video && reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
             {mediaExplanation && (

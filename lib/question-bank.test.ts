@@ -48,6 +48,34 @@ describe("boss phases", () => {
     expect(parseBank({ ...valid(), rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [{ ...mc("a1"), category: "遊戲" }] }] }).pools[1][0].category).toBe("遊戲");
   });
 
+  it("a buzzer phase's music question may have 2–3 fields; its answer is theirs joined; anywhere else they are refused (multi-field.md F1)", () => {
+    const music = (extra: object) => ({ kind: "text", id: "m1", content: { kind: "youtube", value: YT_ID, audioOnly: true }, answer: "舊", ...extra });
+    const two = [{ label: " 歌名 ", answer: " 晴天 " }, { label: "歌手", answer: "周杰倫" }];
+    const at = (question: object, buzzer = true) => parseBank({ ...valid(), boss: { monster: "dragon", phases: [phase1(), { name: "搶答", rule: "聽", maxHp: 2, ...(buzzer ? { buzzer: true } : {}), questions: [question] }] } });
+    expect(at(music({ fields: two })).boss.phases[1].questions[0]).toMatchObject({ answer: "晴天／周杰倫", fields: [{ label: "歌名", answer: "晴天" }, { label: "歌手", answer: "周杰倫" }] });
+    expect(at(music({ answer: undefined, fields: two })).boss.phases[1].questions[0]).toMatchObject({ answer: "晴天／周杰倫" });
+    expect(at(music({})).boss.phases[1].questions[0]).not.toHaveProperty("fields");
+    expect(() => at(music({ fields: [two[0]] }))).toThrow(/2 to 3 fields/);
+    expect(() => at(music({ fields: [...two, ...two] }))).toThrow(/2 to 3 fields/);
+    expect(() => at(music({ fields: [two[0], { label: "", answer: "x" }] }))).toThrow(/label/);
+    expect(() => at(music({ fields: [two[0], { label: "歌手", answer: " " }] }))).toThrow(/answer/);
+    expect(() => at(music({ fields: [two[0], { label: "字".repeat(11), answer: "x" }] }))).toThrow(/label/);
+    // Not a buzzer phase, not sound only, or not in the boss at all.
+    expect(() => at(music({ fields: two }), false)).toThrow(/fields/);
+    expect(() => at({ ...music({ fields: two }), content: { kind: "youtube", value: YT_ID } })).toThrow(/fields/);
+    expect(() => at({ ...q("m1"), fields: two })).toThrow(/fields/);
+    expect(() => parseBank({ ...valid(), rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [music({ fields: two })] }] })).toThrow(/fields/);
+    expect(() => at({ ...mc("m1"), fields: two })).toThrow(/fields/);
+  });
+
+  it("publicQuestion carries a music question's field labels, never their answers", () => {
+    const bank = parseBank({ ...valid(), boss: { monster: "dragon", phases: [phase1(), { name: "搶答", rule: "聽", maxHp: 2, buzzer: true, questions: [{ kind: "text", id: "m1", content: { kind: "youtube", value: YT_ID, audioOnly: true }, fields: [{ label: "歌名", answer: "晴天" }, { label: "歌手", answer: "周杰倫" }] }] }] } });
+    const pub = publicQuestion(bank, "m1", 0, "");
+    expect(pub?.fields).toEqual(["歌名", "歌手"]);
+    expect(JSON.stringify(pub)).not.toMatch(/晴天|周杰倫/);
+    expect(publicQuestion(bank, "b1", 0, "")).not.toHaveProperty("fields");
+  });
+
   it("reads a bank without phases as one phase with an empty name and rule", () => {
     expect(parseBank(valid()).boss.phases).toEqual([{ name: "", rule: "", maxHp: 3, questions: [q("b1")] }]);
   });

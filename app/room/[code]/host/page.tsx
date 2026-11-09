@@ -25,6 +25,7 @@ import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
 import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, AiPanel, aiKeyMessage, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
+import { FieldJudge } from "@/components/field-judge";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
@@ -270,9 +271,9 @@ export default function HostPage() {
     room.send(msg);
   }
 
-  function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "flee" | "retry" | "team" | "pray") {
+  function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "flee" | "retry" | "team" | "pray", fields?: boolean[]) {
     setPendingTeamId(teamId);
-    send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice, ...(game ? { eventId: game.eventId } : {}) });
+    send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice, ...(game ? { eventId: game.eventId } : {}), ...(fields ? { fields } : {}) });
   }
 
   // Disconnect UI: judge buttons disable and "重新連線中" shows here; /play and /screen show their own
@@ -951,6 +952,15 @@ export default function HostPage() {
                         </PixelButton>
                       </div>
                     </>
+                  ) : buzz && game.question?.fields ? (
+                    // A music question with fields: the host judges each one (docs/designs/multi-field.md F5).
+                    <FieldJudge
+                      key={`${turn.questionId}:${turn.team.id}:${game.eventId}`}
+                      labels={game.question.fields}
+                      typed={turn.team.typedFields}
+                      disabled={!canJudge || held}
+                      onJudge={(fields) => judge(turn.team!.id, turn.questionId!, fields.some(Boolean), fields.some(Boolean) ? undefined : "retry", fields)}
+                    />
                   ) : (
                   <>
                   <PixelButton variant="ok" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, true)}>

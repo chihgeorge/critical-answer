@@ -16,7 +16,7 @@
 // lib/question-bank-data.ts.
 
 import { DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./game-state";
-import { MAX_ID, type PublicMediaContent, type PublicQuestion } from "./protocol";
+import { MAX_FIELDS, MAX_ID, type PublicMediaContent, type PublicQuestion } from "./protocol";
 import { catalogMonster, monsterById, variantOf } from "./monster-catalog";
 import { YOUTUBE_ID_RE } from "./youtube";
 import { SORT_ITEMS } from "./sort-order";
@@ -45,7 +45,9 @@ export const MAX_PROMPT = 200;
  * The standalone `image` kind retired (D1) — an image is now one `content`/`explanation` media
  * type available on either remaining kind, not its own top-level kind. */
 export type BankQuestion = (
-  | { kind: "text"; id: string; content: MediaContent; prompt?: string; answer: string; explanation?: MediaContent }
+  /** `fields`: a music question's 2–3 answers, judged one by one (docs/designs/multi-field.md); `answer` is then
+   * their answers joined with FIELD_SEP. */
+  | { kind: "text"; id: string; content: MediaContent; prompt?: string; answer: string; fields?: AnswerField[]; explanation?: MediaContent }
   | { kind: "multipleChoice"; id: string; content: MediaContent; prompt?: string; options: string[]; correctIndex: number; explanation?: MediaContent }
   /** A sort question: `items` in the correct order; the question line (content or prompt) states the rule. */
   | { kind: "sort"; id: string; content: MediaContent; prompt?: string; items: string[]; explanation?: MediaContent }
@@ -57,6 +59,22 @@ export type BankQuestion = (
 
 /** Longest question `category`, in characters: it is a button on a phone. */
 export const MAX_CATEGORY = 20;
+
+/** One answer of a music question with fields (docs/designs/multi-field.md F1). */
+export interface AnswerField {
+  label: string;
+  answer: string;
+}
+export const MIN_FIELDS = 2;
+export { MAX_FIELDS };
+/** Longest field `label`, in characters: it labels a box on a phone. */
+export const MAX_FIELD_LABEL = 10;
+/** Joins a question's field answers into its `answer`. */
+export const FIELD_SEP = "／";
+export const fieldsAnswer = (fields: AnswerField[]): string => fields.map((f) => f.answer.trim()).join(FIELD_SEP);
+/** A music question: a fill-in whose content is a YouTube video played as sound only. Only these may have fields, and
+ * only in a buzzer phase (docs/designs/multi-field.md). */
+export const isMusicQuestion = (q: BankQuestion): boolean => q.kind === "text" && q.content.kind === "youtube" && q.content.audioOnly === true;
 
 /** Judged by the room from the team's lock, never by the host's 答對 (multiple choice and sort). */
 export const isAutoJudged = (q: { kind: BankQuestion["kind"] } | undefined): boolean => q?.kind === "multipleChoice" || q?.kind === "sort";
@@ -185,13 +203,28 @@ function parseExplanation(r: Record<string, unknown>, where: string): MediaConte
   return parseMediaContent(r.explanation, `${where} explanation`, "explanation");
 }
 
+/** A music question's fields (multi-field.md F1): 2–3, each with a label and an answer. Where they may be is parseBank's call. */
+function parseFields(v: unknown, id: string): AnswerField[] | undefined {
+  if (v === undefined) return undefined;
+  if (!Array.isArray(v) || v.length < MIN_FIELDS || v.length > MAX_FIELDS) fail(`question ${id} needs ${MIN_FIELDS} to ${MAX_FIELDS} fields`);
+  return (v as unknown[]).map((f) => {
+    const { label, answer } = (f ?? {}) as Record<string, unknown>;
+    if (typeof label !== "string" || !label.trim()) fail(`question ${id} has a field without a label`);
+    if (Array.from((label as string).trim()).length > MAX_FIELD_LABEL) fail(`question ${id} field label is longer than ${MAX_FIELD_LABEL} characters`);
+    if (typeof answer !== "string" || !answer.trim()) fail(`question ${id} has a field without an answer`);
+    return { label: (label as string).trim(), answer: (answer as string).trim() };
+  });
+}
+
 function parseTextQuestion(r: Record<string, unknown>, id: string): BankQuestion {
-  const { answer } = r;
+  const fields = parseFields(r.fields, id);
+  // With fields, `answer` is theirs joined: whatever the JSON says is replaced.
+  const answer = fields ? fieldsAnswer(fields) : r.answer;
   if (typeof answer !== "string" || !answer.trim()) fail(`question ${id} has an empty answer`);
   const content = parseContent(r, `question ${id}`);
   const prompt = parsePrompt(r, content, `question ${id}`);
   const explanation = parseExplanation(r, `question ${id}`);
-  return { kind: "text", id, content, ...(prompt ? { prompt } : {}), answer: answer as string, ...(explanation ? { explanation } : {}) };
+  return { kind: "text", id, content, ...(prompt ? { prompt } : {}), answer: answer as string, ...(fields ? { fields } : {}), ...(explanation ? { explanation } : {}) };
 }
 
 function parseMultipleChoiceQuestion(r: Record<string, unknown>, id: string): BankQuestion {
@@ -250,10 +283,18 @@ function parseQuestions(raw: unknown, where: string, seen: Set<string>): BankQue
     // "image" is a legacy top-level kind (pre-D1): it converts to a text-kind question whose
     // content happens to be an image, same as parseContent's imageKey fallback handles it.
     if (kind === "text" || kind === "image") return { ...parseTextQuestion(r, id as string), ...extra };
+    if (r.fields !== undefined) fail(`question ${String(id)} has fields, which only a fill-in music question can have`);
     if (kind === "multipleChoice") return { ...parseMultipleChoiceQuestion(r, id as string), ...extra };
     if (kind === "sort") return { ...parseSortQuestion(r, id as string), ...extra };
     return fail(`question ${String(id)} has unknown kind ${String(kind)}`);
   });
+}
+
+/** Fields belong to a buzzer phase's music questions only (multi-field.md F1). Returns `qs`. */
+function noFields(qs: BankQuestion[], where: string): BankQuestion[] {
+  const q = qs.find((x) => x.kind === "text" && x.fields);
+  if (q) fail(`question ${q.id} in ${where} has fields: only a buzzer phase's music question (YouTube, sound only) can`);
+  return qs;
 }
 
 function parseDifficulty(d: unknown, where: string): Difficulty {
@@ -280,13 +321,13 @@ export function parseBank(raw: unknown): Bank {
       if (key !== String(d)) fail(`pool key ${key} is not one of 1–5`); // "01" would overwrite pool 1
       // An empty pool is fine; a room that needs it is caught below.
       if (Array.isArray(list) && list.length === 0) continue;
-      pools[d] = parseQuestions(list, `pool ${d}`, seen);
+      pools[d] = noFields(parseQuestions(list, `pool ${d}`, seen), `pool ${d}`);
     }
   }
   const rooms = (b!.rooms as Record<string, unknown>[]).map((r, i): BankRoom => {
     const d = parseDifficulty(pooled ? r.difficulty : r.baseDifficulty, `room ${i}`);
     if (pooled && r.questions !== undefined) fail(`room ${i} has questions, but this bank keeps them in pools`);
-    if (!pooled) pools[d] = [...pools[d], ...parseQuestions(r.questions, `room ${i}`, seen)];
+    if (!pooled) pools[d] = [...pools[d], ...noFields(parseQuestions(r.questions, `room ${i}`, seen), `room ${i}`)];
     return {
       monster: parseMonster(r.monster, `rooms[${i}]`, false),
       difficulty: d,
@@ -315,6 +356,8 @@ export function parseBank(raw: unknown): Bank {
     if (r.buzzer !== undefined && typeof r.buzzer !== "boolean") fail(`${where} buzzer is not true or false`);
     if (r.buzzer === true && i === 0) fail("the first boss phase cannot be a buzzer phase");
     if (r.buzzer === true && questions.some((q) => q.kind !== "text")) fail(`${where} is a buzzer phase, so every question in it must be a fill-in`);
+    // Fields only on a buzzer phase's music questions (multi-field.md F1).
+    noFields(r.buzzer === true ? questions.filter((q) => !isMusicQuestion(q)) : questions, r.buzzer === true ? where : `${where} (not a buzzer phase)`);
     return { name: text(r.name, "name"), rule: text(r.rule, "rule"), maxHp: r.maxHp as number, questions, ...(r.buzzer === true ? { buzzer: true as const } : {}) };
   });
   return {
@@ -473,6 +516,8 @@ export function publicQuestion(
     monster: { id: m.id, name: v ? v.title + m.name : m.name, sprite: m.sprite, hue: (m.hue + (v?.hueShift ?? 0)) % 360, ...(v ? { accessory: v.accessory } : {}) },
     ...(q.kind === "multipleChoice" ? { options: q.options } : {}),
     ...(q.kind === "sort" ? { items: sortShownOrder(order).map((i) => q.items[i]) } : {}),
+    // The labels only, never the answers (multi-field.md).
+    ...(q.kind === "text" && q.fields ? { fields: q.fields.map((f) => f.label) } : {}),
   };
 }
 

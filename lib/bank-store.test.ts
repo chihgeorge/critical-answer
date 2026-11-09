@@ -329,7 +329,10 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     const buzzer = { ...sorted, boss: { ...validBank.boss, phases: [...validBank.boss.phases, { name: "搶答", rule: "聽前奏搶答", maxHp: 1, buzzer: true as const, questions: [{ kind: "text" as const, id: "z1", content: { kind: "text" as const, value: "聽" }, answer: "歌" }] }] } };
     expect(formatOf(buzzer)).toBe(5);
     // A question category (boss-music-buzzer.md) is what format-5 code would drop: it stores at 6.
-    expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ ...buzzer.pools[1][0], category: "動漫" }] } })).toBe(BANK_FORMAT);
+    expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ ...buzzer.pools[1][0], category: "動漫" }] } })).toBe(6); // pregate-literal: BANK_FORMAT=6 a category bank stays at format 6
+    // A music question's answer fields (multi-field.md) are what format-6 code would drop: they store at 7.
+    const fields = [{ label: "歌名", answer: "A" }, { label: "歌手", answer: "B" }];
+    expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "f1", content: { kind: "text" as const, value: "聽" }, answer: "A／B", fields }] } })).toBe(BANK_FORMAT);
     const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
     await new BankStore(storage).putBank(sorted, 1);
     expect(await storage.get("bank")).toMatchObject({ version: 2, format: 4 });

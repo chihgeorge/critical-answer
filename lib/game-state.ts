@@ -158,6 +158,9 @@ export interface Team {
   /** The team's typed answer to its text question (submitText), waiting for the host. Only the turn's
    * team can hold one, and it keeps the turn until judged; answerQuestion and sendToBoss clear it. */
   typedAnswer?: string;
+  /** A music question's typed boxes, in field order, "" for a blank (docs/designs/multi-field.md F4). Set and cleared
+   * with `typedAnswer`, which then holds them joined. */
+  typedFields?: string[];
   /** Dish names this team ate, in order: one per defeated room monster or boss that has a dish
    * (docs/designs/monster-cuisine.md). Absent until the first, and in saves from before dishes. */
   dishes?: string[];
@@ -806,6 +809,9 @@ export function answerQuestion(
   critValue?: number,
   /** The kill bonus's four d20, already shown by the room; rolled on `rng` when absent. */
   killDice?: number[],
+  /** The share of a music question's fields judged right, 0 to 1 (docs/designs/multi-field.md F6): a correct boss hit's
+   * damage and reward (not the kill's 4d20) are scaled by it, each rounded half up. */
+  share = 1,
 ): { game: GameState; outcome: AnswerOutcome } {
   assertPlaying(game);
   // The die behind a correct answer: a 20 adds half the base reward (and a boss hit); a 1 is only a show.
@@ -856,7 +862,7 @@ export function answerQuestion(
     lastTurnIndex: order,
   };
   // The choice resolves the pending wrong lock.
-  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, ...(correct ? { boon: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
+  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice === "flee" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -883,12 +889,12 @@ export function answerQuestion(
     // An earlier phase out of unrevealed questions moves on; the last one repeats them (premise 3).
     const usedUp = (revealed: string[]) => !lastPhase && boss.questionIds.every((id) => revealed.includes(id));
     if (correct) {
-      const newHp = Math.max(0, boss.hp - sneak - (crit ? 1 : 0));
+      const newHp = Math.max(0, boss.hp - Math.round((sneak + (crit ? 1 : 0)) * share));
       const bossKilled = newHp === 0 && lastPhase;
       // The 4d20 is not raised by a crit (R4).
       const kill = bossKilled ? (killDice ?? rollBossKillDice(rng)) : undefined;
       const killBonus = kill ? sneakPay(kill.reduce((a, b) => a + b, 0)) : undefined;
-      const gain = withChef(sneakPay(baseOf(boss.hitReward)) + critBonus(boss.hitReward) + (killBonus ?? 0));
+      const gain = withChef(Math.round((sneakPay(baseOf(boss.hitReward)) + critBonus(boss.hitReward)) * share) + (killBonus ?? 0));
       const { reward } = gain;
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}), ...withNatural20s(t, kill?.filter((v) => v === 20).length ?? 0) }));
 
@@ -1217,7 +1223,7 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   // A sneak armed for the room question is for that question only (D16): drop it and give the use back.
   // (A boss-room sneak can outlive a question rotation while the thief is offline; accepted, /review D4=A.)
   const sneak = team.sneakArmed ? { sneakArmed: undefined, abilityUses: team.abilityUses + 1 } : {};
-  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, bossAt: { round: game.round ?? 1, turns: team.turns ?? 0 }, currentSelection: null, queuedQuestionId: undefined, typedAnswer: undefined, event: undefined, ...sneak }));
+  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, bossAt: { round: game.round ?? 1, turns: team.turns ?? 0 }, currentSelection: null, queuedQuestionId: undefined, typedAnswer: undefined, typedFields: undefined, event: undefined, ...sneak }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
@@ -1425,7 +1431,7 @@ export function recordOptionSelection(game: GameState, teamId: string, questionI
  * The turn's team sends its typed answer (already cleaned by the room) to its current question. One per
  * question: a second is refused. Like recordOptionSelection, the room has checked the question is a text one.
  */
-export function submitText(game: GameState, teamId: string, questionId: string, text: string): GameState {
+export function submitText(game: GameState, teamId: string, questionId: string, text: string, fields?: string[]): GameState {
   assertPlaying(game);
   // In a buzzer phase only the team that buzzed may type, if it likes (boss-music-buzzer.md M2).
   if (isBuzzPhase(game) && game.buzz?.teamId !== teamId) throw new InvalidActionError("no_buzz");
@@ -1433,7 +1439,7 @@ export function submitText(game: GameState, teamId: string, questionId: string, 
   assertTurn(game, teamId);
   assertCurrentQuestion(game, teamId, questionId);
   if (getTeam(game, teamId).typedAnswer !== undefined) throw new InvalidActionError("already_submitted");
-  return { ...game, teams: patchTeam(game.teams, teamId, () => ({ typedAnswer: text })) };
+  return { ...game, teams: patchTeam(game.teams, teamId, () => ({ typedAnswer: text, ...(fields ? { typedFields: fields } : {}) })) };
 }
 
 /**
@@ -1489,7 +1495,7 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
   // A buzzing team that drops lets go of the buzz, not judged (boss-buzzer.md): another team may buzz.
   const drops = !online && game.buzz?.teamId === teamId;
   // Its typed answer goes with the buzz (boss-music-buzzer.md M2): it may buzz and type again.
-  const next = { ...game, ...(drops ? { buzz: { ...game.buzz!, teamId: undefined } } : {}), teams: patchTeam(game.teams, teamId, () => ({ online, ...(drops ? { typedAnswer: undefined } : {}) })) };
+  const next = { ...game, ...(drops ? { buzz: { ...game.buzz!, teamId: undefined } } : {}), teams: patchTeam(game.teams, teamId, () => ({ online, ...(drops ? { typedAnswer: undefined, typedFields: undefined } : {}) })) };
   // The last team still in dropped: everyone online is out, so the same question opens to all again (M1).
   const buzz = next.buzz;
   const stuck = !online && isBuzzPhase(next) && buzz?.questionId === next.boss.currentQuestionId && buzz.out.length > 0 && !buzz.teamId && next.teams.every((t) => !t.online || !t.inBoss || buzz.out.includes(t.id));
@@ -1524,6 +1530,8 @@ export interface SpectatorView {
     sneakArmed?: true;
     /** The typed answer waiting for the host (text questions), or null. */
     typedAnswer: string | null;
+    /** A music question's typed boxes, "" for a blank (multi-field.md F4). Only with `typedAnswer`. */
+    typedFields?: string[];
     /** A cleric that could pray if judged wrong now (canPrayBeforeJudge): the host's one 答錯 key waits for
      * its choice. */
     mayPray?: true;
@@ -1580,6 +1588,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       abilityUses: t.abilityUses,
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
       typedAnswer: t.typedAnswer ?? null,
+      ...(t.typedFields ? { typedFields: t.typedFields } : {}),
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
       checkTarget: checkTarget(game, t.id, t.currentQuestionId),
       ...(t.event ? { eventScene: t.event.scene } : {}),
