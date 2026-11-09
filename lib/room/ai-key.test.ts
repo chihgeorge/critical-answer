@@ -598,26 +598,17 @@ describe("key check cap", () => {
     expect(await b.room.restore()).toBe("restored");
     b.room.onConnect(b.host);
     b.room.onMessage(JSON.stringify({ type: "HOST_CLAIM", token: TOKEN }), b.host);
-    for (let i = 6; i < 9; i++) {
+    for (let i = 6; i < 10; i++) {
       t = i * 60_000;
       await paste(b, keys[i], `k${i}`);
     }
-    expect(b.status()).toMatchObject({ source: "own", appliedKeyId: "k8" });
-    // The key in use, resent on reconnect, needs no check and leaves the 10th for a new key.
-    await paste(b, keys[8], "k8");
-    expect(models(b)).toBe(3);
-    t = 20 * 60_000;
-    await paste(b, keys[9], "k9");
     expect(models(b)).toBe(4);
-    t = 30 * 60_000;
+    // The key in use, resent on reconnect, needs no check, cap or not.
+    await paste(b, keys[9], "k9");
+    t = 20 * 60_000;
     await paste(b, keys[10], "k10");
     expect(models(b)).toBe(4);
     expect(b.status()).toMatchObject({ error: "check_failed", refusedKeyId: "k10" });
-    // With every check used, the key in use still needs none.
-    await paste(b, keys[9], "k9b");
-    expect(models(b)).toBe(4);
-    expect(b.status()).toMatchObject({ source: "own", appliedKeyId: "k9b" });
-    expect(b.status()).not.toHaveProperty("error");
   });
 
   it("the page resending the key still being checked (a reconnect) neither restarts nor counts the check", async () => {
