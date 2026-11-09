@@ -25,6 +25,14 @@ export type AiCredential = { source: "own"; key: string } | { source: "owner"; o
  * use a wrong OWNER_KEY still reads source "owner", and an own key can share the hint of the key in use. A refused key
  * never gets its id named, and an error alongside the id is about something later (AI stopped). */
 export const aiKeyApplied = (keyId: string, msg: AiStatus): boolean => msg.appliedKeyId === keyId;
+/** Whether this status refuses the key sent with `keyId`: the page drops it and stops resending it. */
+export const aiKeyRefused = (keyId: string, msg: AiStatus): boolean => msg.refusedKeyId === keyId;
+/** Whether the room dropped the host's own key it was using (a 401 mid-game, or the saved key refused after a restart),
+ * so the saved copy is dead too. A refused paste (it has a refusedKeyId) says nothing about the saved key, and with a key
+ * pending the dropped one may be that key, applied with its status lost: the saved key is kept, and a later refusal of
+ * the saved key itself (resent once the pending one is gone) forgets it then. */
+export const aiSavedKeyDead = (msg: AiStatus, pending: boolean): boolean =>
+  !pending && msg.error === "invalid_key" && msg.keyMissing && msg.source === "own" && !msg.refusedKeyId;
 /** Unique across page loads too: the room keeps the last applied id, so a reloaded page must not reuse it. */
 export const newKeyId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 export const AI_STORE = { own: "ai-key:own", owner: "ai-key:owner" } as const;
@@ -39,6 +47,16 @@ export const aiKeyMessage = (c: AiCredential, keyId?: string): ClientMessage =>
   c.source === "own"
     ? { type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: c.key, ...(keyId ? { keyId } : {}) }
     : { type: "HOST_AI_KEY", source: "owner", ownerKey: c.ownerKey, ...(keyId ? { keyId } : {}) };
+
+/** What HOST_OK resends: the key still waiting for its status (with its keyId, so the room treats it as the host's
+ * choice and its status names it), else the saved key. */
+export const aiResendMessage = (pending: { credential: AiCredential; keyId: string } | null, saved: AiCredential | null): ClientMessage | null =>
+  pending ? aiKeyMessage(pending.credential, pending.keyId) : saved && aiKeyMessage(saved);
+
+/** After the room refuses the pending key: HOST_OK may have sent a restarted room that key instead of the saved one,
+ * so a room left without a key gets the saved key back (keyless: a resend, not a new choice). */
+export const aiResendAfterRefusal = (msg: AiStatus, saved: AiCredential | null): ClientMessage | null =>
+  msg.keyMissing && saved ? aiKeyMessage(saved) : null;
 
 export function readSavedAiKey(): AiCredential | null {
   const key = readStored(AI_STORE.own);
