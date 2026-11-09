@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSavedBank, parseSnapshot, SCHEMA_VERSION, type RoomSnapshot } from "./snapshot";
+import { NARRATION_MAX_LINES, parseSavedBank, parseSnapshot, SCHEMA_VERSION, type RoomSnapshot } from "./snapshot";
 import { BANK } from "../question-bank-data";
 import { spendAbility, createGame, DEFAULT_GAME_CONFIG } from "../game-state";
 import { bossPhaseStates, poolQuestionIds, roomTemplates } from "../question-bank";
@@ -57,6 +57,16 @@ describe("parseSnapshot", () => {
       const back = parseSnapshot(JSON.parse(JSON.stringify({ ...valid(), game: g })));
       expect(back?.game?.teams[1]).toMatchObject({ fork, forks: ["timeout"] });
     }
+    // A fork in a shape the room cannot run (a choosing one with no deadline would never time out) waits instead.
+    for (const fork of [{ phase: "choosing" }, { phase: "choosing", deadline: "soon" }, { phase: "lost" }, "x"]) {
+      const g = gameWithTeams((t, i) => (i === 1 ? { ...t, fork } : t));
+      expect(parseSnapshot(JSON.parse(JSON.stringify({ ...valid(), game: g })))?.game?.teams[1].fork).toEqual({ phase: "waiting" });
+    }
+  });
+
+  it("restores a narration with scripted lines appended after the narrated ones, up to NARRATION_MAX_LINES", () => {
+    const lines = Array.from({ length: NARRATION_MAX_LINES }, (_, i) => `l${i}`);
+    expect(parseSnapshot(JSON.parse(JSON.stringify({ ...valid(), lastNarration: { eventId: 3, lines, rev: 2, done: 0 } })))?.lastNarration?.lines).toHaveLength(NARRATION_MAX_LINES);
   });
 
   // Value: protects=a save mid-擲先攻 restores its rolls and order, and a damaged one is dropped without losing the game;

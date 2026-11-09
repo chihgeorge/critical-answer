@@ -659,7 +659,7 @@ function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: Sp
           const open = beat?.door === door;
           const dim = !!beat && !open;
           return (
-            <div key={door} {...(open ? { "data-testid": "fork-door-open" } : {})} data-door={door} className="flex flex-col items-center gap-3" style={{ opacity: dim ? 0.3 : 1, filter: dim ? "grayscale(1)" : open ? "drop-shadow(0 0 22px #ffcf4a)" : undefined, transform: open ? "scale(1.12)" : undefined, transition: "transform .4s, opacity .4s, filter .4s" }}>
+            <div key={door} {...(open ? { "data-testid": "fork-door-open" } : {})} data-door={door} className="flex flex-col items-center gap-3" style={{ opacity: dim ? 0.3 : 1, filter: dim ? "grayscale(1)" : undefined }}>
               <div className={open ? "px-hop" : "px-idle"}>
                 <Sprite kind="door" scale={6} />
               </div>

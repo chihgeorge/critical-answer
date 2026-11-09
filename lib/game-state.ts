@@ -1315,7 +1315,7 @@ export function applySprint(prev: GameState, next: GameState): GameState {
 
 /* ---------- Event rooms (docs/designs/event-rooms.md) ---------- */
 
-/** The chance that a correct answer walks a team into an event room instead of the next room's monster (D5). */
+/** The chance that a correct answer brings a team to a 岔路, whose ❓ door holds an event (D5, branch-fork.md). */
 export const EVENT_CHANCE = 0.25;
 /** What stands on stage. A chest hides a feast or a rotten dish; the fortune teller draws 大吉, 中吉 or 凶. */
 export type EventScene = "chest" | "spring" | "idol" | "fairy" | "fortune";
@@ -1405,7 +1405,9 @@ export function enterFork(game: GameState, teamId: string): GameState {
 /** The fork team's turn came (the room decides when): its door clock starts. */
 export function startForkChoice(game: GameState, teamId: string, deadline: number): GameState {
   if (getTeam(game, teamId).fork?.phase !== "waiting") throw new InvalidActionError("no_fork");
-  return { ...game, teams: patchTeam(game.teams, teamId, () => ({ fork: { phase: "choosing", deadline } })) };
+  // The turn is pinned on the fork team, as answerQuestion does: the stored index can point at an offline team the turn
+  // skipped, which would take the turn back the moment the door clears the choosing exception (or its phone wakes).
+  return { ...game, currentTurnIndex: game.turnOrder.indexOf(teamId), teams: patchTeam(game.teams, teamId, () => ({ fork: { phase: "choosing", deadline } })) };
 }
 
 /**
@@ -1701,7 +1703,8 @@ export function getSpectatorView(game: GameState): SpectatorView {
       typedAnswer: t.typedAnswer ?? null,
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
       checkTarget: checkTarget(game, t.id, t.currentQuestionId),
-      ...(atFork(t) ? { fork: t.fork!.phase as "waiting" | "choosing" } : {}),
+      // A game ended at a fork shows no door on the podium.
+      ...(game.phase === "playing" && atFork(t) ? { fork: t.fork!.phase as "waiting" | "choosing" } : {}),
       ...(t.boon ? { boon: t.boon } : {}),
       ...(t.item ? { item: t.item } : {}),
       ...(potionArmed(game, t.id) ? { itemArmed: true as const } : {}),

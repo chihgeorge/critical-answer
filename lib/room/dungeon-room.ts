@@ -1,6 +1,6 @@
 import type { Conn, RoomIO } from "./io";
 import { CLOSE_EXPIRED, CLOSE_IDLE } from "./close-codes";
-import { BANK_KEY, parseSavedBank, parseSnapshot, SCHEMA_VERSION, SNAPSHOT_KEY, type RoomSnapshot } from "./snapshot";
+import { BANK_KEY, NARRATION_MAX_LINES, parseSavedBank, parseSnapshot, SCHEMA_VERSION, SNAPSHOT_KEY, type RoomSnapshot } from "./snapshot";
 import {
   createGame,
   DEFAULT_GAME_CONFIG,
@@ -50,6 +50,7 @@ import {
   EVENT_CHANCE,
   FORK_MS,
   type ForkChoice,
+  type ForkDoor,
   InvalidActionError,
   type ClassId,
   type GameState,
@@ -319,7 +320,7 @@ export class DungeonRoom {
    * meanwhile, so no score, room or turn moves before the door opens (the choice is applied and saved already).
    * `reveal`: the ❓ outcome, shown when the beat ends; `line`: ⚔️'s scripted line, said then. Memory only: a
    * restart drops the beat, and with it a ❓ outcome's screen and line (its effect stays). */
-  private forkBeat: { teamId: string; door: "monster" | "mystery"; timeout: boolean; before: GameState; reveal?: EventReveal; line?: { eventId: number; text: string } } | null = null;
+  private forkBeat: { teamId: string; door: ForkDoor; timeout: boolean; before: GameState; reveal?: EventReveal; line?: { eventId: number; text: string } } | null = null;
   private forkBeatTimer: ReturnType<typeof setTimeout> | null = null;
   /** When the host pressed 上菜 on the reveal up now (only read while `reveal.served`). */
   private servedAt = 0;
@@ -997,7 +998,7 @@ export class DungeonRoom {
       question: this.phaseCard || this.opening() || this.forkBeat ? null : (this.currentQuestion()?.pub ?? null),
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
-      ...(choosing?.phase === "choosing" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
+      ...(this.game.phase === "playing" && choosing?.phase === "choosing" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
       ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, door: this.forkBeat.door, ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
       ...this.liveMedia(),
       ...(this.clipError !== null && this.clipError === this.shownVideoId() ? { clipError: true as const } : {}),
@@ -1937,6 +1938,8 @@ export class DungeonRoom {
     if (!line || this.game?.phase !== "playing") return;
     const n = this.lastNarration;
     if (n?.eventId === eventId) {
+      // A save past the limit would not restore: a line more is dropped rather than the game (buzzer drops can pile up).
+      if (n.lines.length >= NARRATION_MAX_LINES) return;
       this.lastNarration = { ...n, lines: [...n.lines, line], rev: n.rev + 1 };
       this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1 });
     } else if (!n || n.eventId < eventId) {
@@ -2312,8 +2315,9 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
       return;
     }
-    // A lock in its beat would then be judged against a room question the team no longer faces.
-    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId) {
+    // A lock in its beat would then be judged against a room question the team no longer faces; a door opening would
+    // then show a room the team has left.
+    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.forkBeat?.teamId === teamId) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
       return;
     }
@@ -2905,7 +2909,7 @@ export class DungeonRoom {
   }
 
   /** TEAM_CHOOSE_FORK: the turn's team picks a door. A press at or after the deadline is the clock's: ⚔️ by timeout. */
-  private handleChooseFork(conn: Conn, door: "monster" | "mystery", eventId: number) {
+  private handleChooseFork(conn: Conn, door: ForkDoor, eventId: number) {
     const teamId = this.playingTeam(conn);
     const game = this.game;
     if (!teamId || !game) return;
@@ -2938,7 +2942,6 @@ export class DungeonRoom {
     let reveal: EventReveal | undefined;
     let line: { eventId: number; text: string } | undefined;
     if (result) {
-      ++this.eventSeq;
       // A feast serves a dish from the catalog: the room monsters', since the boss's is the last night's feast.
       // Only a dish the room may say aloud, like the dishes the epilogue names; none left means no dish.
       const pool = MONSTERS.filter((m) => !m.boss && this.sayable(m.dish.name));
@@ -2970,6 +2973,8 @@ export class DungeonRoom {
       if (line) this.appendLine(line.eventId, line.text);
       return;
     }
+    // eventSeq moves only now, with the narration it keys: a restart inside the opening leaves no eventSeq without one.
+    ++this.eventSeq;
     this.eventReveal = reveal;
     const bad = reveal.outcome === "rotten" || reveal.outcome === "bad" || reveal.boon === "curse";
     this.setCue(bad ? "fumble" : "correct");

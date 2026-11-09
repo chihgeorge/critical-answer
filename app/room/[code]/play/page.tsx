@@ -1259,7 +1259,8 @@ function ForkPanel({ game, teamId, send }: { game: StateMessage; teamId: string;
               send({ type: "TEAM_CHOOSE_FORK", door, eventId: game.eventId });
             }}
             className="!m-0 min-h-[72px] flex-1 text-[24px]"
-            style={beat && beat.door !== door ? { opacity: 0.35 } : undefined}
+            // The picked door stays bright during the opening, so the team sees which one it took.
+            style={beat ? { opacity: beat.door === door ? 1 : 0.35 } : undefined}
           >{door === "monster" ? "⚔️ 怪物房" : "❓ 神秘房"}</PixelButton>
         ))}
       </div>

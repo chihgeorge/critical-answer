@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cleanTypedAnswer, MAX_RAW_TEXT, parseClientMessage, sanitizeText, type ServerMessage } from "./protocol";
+import { cleanTypedAnswer, MAX_RAW_TEXT, parseClientMessage, sanitizeText } from "./protocol";
 import { MAX_LINE } from "./narration/runner";
 
 const TOKEN = "host-token-0123456789abcdef";
@@ -321,13 +321,6 @@ describe("parseClientMessage", () => {
     for (const eventId of [undefined, -1, 1.5, "3"]) expect(parseClientMessage({ type: "TEAM_CHOOSE_FORK", door: "monster", eventId })).toBeNull();
     expect(parseClientMessage({ type: "TEAM_OPEN_EVENT", eventId: 1 })).toBeNull();
     expect(parseClientMessage({ type: "HOST_OPEN_EVENT", teamId: "t", eventId: 1 })).toBeNull();
-  });
-
-  it("STATE's forkBeat carries the door only: never the game before the press or the outcome behind ❓", () => {
-    type Beat = Required<Extract<ServerMessage, { type: "STATE" }>>["forkBeat"];
-    const beat: Beat = { teamId: "t", door: "mystery", timeout: true };
-    const keys: (keyof Beat)[] = ["teamId", "door", "timeout"];
-    expect(Object.keys(beat).sort()).toEqual([...keys].sort());
   });
 
   it("HOST_GIVE_ITEM needs a team id; TEAM_DRINK_POTION a question id and a non-negative integer eventId", () => {

@@ -12,4 +12,4 @@ bump: minor
 - The narration and the podium title call event rooms 神秘房.
 
 ### Fixed
-- A room whose last narration had more than three lines (a fork line appended to it) no longer loses its save on restart.
+- A room whose last narration had more than three lines (a fork line, a potion, a buzzer reopening appended to it) no longer loses its save on restart; appended lines stop at 20, the most a save restores.

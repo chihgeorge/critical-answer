@@ -65,7 +65,14 @@ between two doors and lives with the result.
   current (`deadline`, `this.forkBeat === beat`), and `clearAnswerTimers` (reset, end game, back to lobby, expiry) clears
   them with `forkBeat`. An opening holds 撤銷答錯 too (`undoHeld`).
 - ⚔️ and the timeout do not bump `eventSeq`: their line is appended to the current narration, so no spinner waits for a
-  narration that never comes. The ❓ press bumps it, as an event press did.
+  narration that never comes. ❓ bumps it when the opening ends, right before its `event-room` narration (review
+  2026-11-09): bumped at the press, a restart inside the opening left an eventId with no narration, and the screens
+  spun until the next judgment. A second press during the opening is refused as paused (`reveal_pending`).
+- `startForkChoice` pins `currentTurnIndex` on the fork team (as `answerQuestion` does), so a team that dropped on its
+  own turn and comes back mid-fork cannot take the turn back or make ❓ fail as not its turn (review 2026-11-09).
+- The host cannot send the team to the boss during its opening. `appendLine` stops at `NARRATION_MAX_LINES` (20), the
+  limit `parseSnapshot` restores, so piled-up scripted lines drop a line, never the save. A saved fork in a shape the
+  room cannot run loads as waiting. A game ended at a fork shows no 🚪 and no door clock.
 - **One shared `this.rng`.** ⚔️ draws nothing, ❓ draws the event and the dish, so the choice changes every later roll's
   order. Accepted: nothing replays a game from its seed.
 - **Restart during an opening** loses the opening (memory only, like `eventReveal`). A ❓ restart keeps the applied effect

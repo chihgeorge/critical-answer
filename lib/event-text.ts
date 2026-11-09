@@ -1,14 +1,14 @@
-// The words of event rooms (docs/designs/event-rooms.md), shared by the big screen, the phones, the host page and
-// the scripted narrator. Pure data, no question or answer, so client components may import it.
+// The words of ❓ 神秘房 events (docs/designs/event-rooms.md, branch-fork.md), shared by the big screen, the phones, the
+// host page and the narrator. Pure data, no question or answer, so client components may import it.
 
 import type { Boon, EventOutcome, EventResult, EventScene } from "./game-state";
 
-export const EVENT_SCENE_TEXT: Record<EventScene, { name: string; line: string; button: string; story: string }> = {
-  chest: { name: "寶箱", line: "房間裡沒有怪物，只有一個上了鎖的寶箱……", button: "🗝️ 打開寶箱", story: "房間正中央擺著一個上了鎖的寶箱" },
-  spring: { name: "回復泉水", line: "房間正中央有一口發光的泉水……", button: "🥤 喝一口", story: "房間正中央冒著一口發光的泉水" },
-  idol: { name: "骷髏雕像", line: "角落立著一尊古老的骷髏雕像，眼睛好像在發光……", button: "✋ 摸一下", story: "角落立著一尊眼睛發光的骷髏雕像" },
-  fairy: { name: "小精靈", line: "一隻小精靈在房間裡飛來飛去……", button: "💬 跟精靈說話", story: "一隻小精靈在房間裡飛來飛去" },
-  fortune: { name: "占卜師", line: "一位占卜師坐在水晶球後面，對你們招手……", button: "🔮 請她算一卦", story: "一位占卜師坐在水晶球後面招手" },
+export const EVENT_SCENE_TEXT: Record<EventScene, { name: string }> = {
+  chest: { name: "寶箱" },
+  spring: { name: "回復泉水" },
+  idol: { name: "骷髏雕像" },
+  fairy: { name: "小精靈" },
+  fortune: { name: "占卜師" },
 };
 
 export const EVENT_OUTCOME_TITLE: Record<EventOutcome, string> = {

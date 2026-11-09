@@ -6,7 +6,7 @@ import type { Conn, RoomIO, RoomStorage } from "./io";
 import type { NarrationProvider } from "../narration/scripted";
 import { parseBank } from "../question-bank";
 import { currentTurnTeamId, FORK_MS } from "../game-state";
-import { SNAPSHOT_KEY } from "./snapshot";
+import { NARRATION_MAX_LINES, SNAPSHOT_KEY } from "./snapshot";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";
@@ -192,7 +192,8 @@ describe("岔路 in the room", () => {
     expect(during.eventReveal).toBeUndefined();
     expect(during.question).toBeNull();
     expect(during.cueSeq).toBe(before.cueSeq);
-    expect(during.eventId).toBe(before.eventId + 1);
+    // eventSeq moves with the narration at the end of the opening, so a restart inside it leaves none unnarrated.
+    expect(during.eventId).toBe(before.eventId);
     expect(JSON.stringify(during)).not.toMatch(/"scene"|"outcome"|"before"|"dish"/);
     expect(narrated).toEqual([]);
     // A phone reconnecting meanwhile gets the same STATE, door and all.
@@ -200,9 +201,9 @@ describe("岔路 in the room", () => {
     room.onConnect(late);
     send(room, late, { type: "REJOIN", teamId: T2, teamKey: KEY });
     expect(sentStates(late).at(-1)).toMatchObject({ forkBeat: { teamId: T1, door: "mystery" }, view: { currentTurnTeamId: T1 } });
-    // A second press is stale; the host's 下一題 does nothing.
+    // A second press waits on the opening; the host's 下一題 does nothing.
     send(room, s.phones[0], { type: "TEAM_CHOOSE_FORK", door: "mystery", eventId: before.eventId });
-    expect(lastSent(s.phones[0])).toMatchObject({ type: "ERROR", detail: "stale_event" });
+    expect(lastSent(s.phones[0])).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
     send(room, host, { type: "HOST_NEXT", eventId: during.eventId });
     expect(state(room).forkBeat).toBeDefined();
 
@@ -214,6 +215,7 @@ describe("岔路 in the room", () => {
     expect(after.view.currentTurnTeamId).toBe(T2);
     expect(["correct", "fumble"]).toContain(after.cue);
     expect(after.cueSeq).toBe(before.cueSeq + 1);
+    expect(after.eventId).toBe(before.eventId + 1);
     await vi.advanceTimersByTimeAsync(0);
     expect(narrated).toEqual(["event-room"]);
     expect(narrations(room).at(-1).eventId).toBe(after.eventId);
@@ -417,6 +419,83 @@ describe("岔路 in the room", () => {
     expect(r2.game!.teams[0].fork).toEqual({ phase: "monster" });
   });
 
+  // Value: protects=the fork team keeps its turn when the team it skipped comes back; fails_when=❓ is refused as
+  // "not your turn" or ⚔️ hands the turn back (review 2026-11-09, red team).
+  it("a team that dropped on its own turn and comes back mid-fork does not take the turn: both doors still open", () => {
+    vi.useFakeTimers();
+    for (const door of ["mystery", "monster"] as const) {
+      const s = setup();
+      const { room } = s;
+      answerRight(s, 0);
+      room.onClose(s.phones[1]);
+      expect(room.game!.teams[0].fork?.phase).toBe("choosing");
+      const back = makeConn("p1b");
+      room.onConnect(back);
+      send(room, back, { type: "REJOIN", teamId: T2, teamKey: KEY });
+      expect(currentTurnTeamId(room.game!)).toBe(T1);
+      choose(s, door);
+      expect(room.game!.teams[0].forks).toEqual([door]);
+      expect(currentTurnTeamId(room.game!)).toBe(door === "monster" ? T1 : T2);
+    }
+  });
+
+  it("⚔️ or a timeout, then 结束冒險 or a restart inside the beat: no line after, the save holds the ⚔️ mark", async () => {
+    for (const timeout of [false, true]) {
+      vi.useFakeTimers();
+      const s = setup();
+      toChoosing(s);
+      if (timeout) await vi.advanceTimersByTimeAsync(FORK_MS);
+      else choose(s, "monster");
+      expect(state(s.room).forkBeat).toBeDefined();
+      const lines = narrations(s.room).at(-1)?.lines.length ?? 0;
+      send(s.room, s.host, { type: "HOST_END_GAME" });
+      await vi.advanceTimersByTimeAsync(FORK_BEAT_MS);
+      expect(narrations(s.room).at(-1)?.lines.length ?? 0).toBe(lines);
+
+      const storage = memoryStorage();
+      const s2 = setup({ storage });
+      toChoosing(s2);
+      if (timeout) await vi.advanceTimersByTimeAsync(FORK_MS);
+      else choose(s2, "monster");
+      await vi.advanceTimersByTimeAsync(0);
+      const io = { id: "room-1", broadcast: vi.fn(), getConnections: vi.fn(() => []), storage } as unknown as RoomIO;
+      const r = new DungeonRoom(io, () => 0, { bank });
+      await r.restore();
+      expect(r.game!.teams[0].fork).toEqual({ phase: "monster" });
+      expect(r.game!.teams[0].forks).toEqual([timeout ? "timeout" : "monster"]);
+      const phone = makeConn("p0b");
+      r.onConnect(phone);
+      send(r, phone, { type: "REJOIN", teamId: T1, teamKey: KEY });
+      const st = state(r);
+      expect(st.forkBeat).toBeUndefined();
+      expect(st.question?.id).toBe(r.game!.teams[0].currentQuestionId);
+      vi.useRealTimers();
+    }
+  });
+
+  it("a narration already at NARRATION_MAX_LINES takes no ⚔️ line, so the save still restores", async () => {
+    vi.useFakeTimers();
+    const s = setup();
+    toChoosing(s);
+    await vi.advanceTimersByTimeAsync(10);
+    const full = Array.from({ length: NARRATION_MAX_LINES }, (_, i) => `l${i}`);
+    const r = s.room as unknown as { lastNarration: { eventId: number; lines: string[]; rev: number } };
+    r.lastNarration = { ...r.lastNarration, lines: full };
+    choose(s, "monster");
+    await vi.advanceTimersByTimeAsync(FORK_BEAT_MS);
+    expect(r.lastNarration.lines).toEqual(full);
+  });
+
+  it("the host cannot send the team to the boss while its door opens", () => {
+    vi.useFakeTimers();
+    const s = setup();
+    toChoosing(s);
+    choose(s, "monster");
+    send(s.room, s.host, { type: "HOST_SEND_TO_BOSS", teamId: T1 });
+    expect(lastSent(s.host)).toMatchObject({ type: "ERROR", detail: "lock_pending" });
+    expect(s.room.game!.teams[0].inBoss).toBe(false);
+  });
+
   it("a restart inside the ❓ beat: no beat, real values, no replay; the next team can play", async () => {
     vi.useFakeTimers();
     const storage = memoryStorage();
@@ -435,6 +514,8 @@ describe("岔路 in the room", () => {
     expect(st.eventReveal).toBeUndefined();
     expect(st.view.teams[0].roomIndex).toBe(s.room.game!.teams[0].roomIndex);
     expect(st.question?.id).toBe(r.game!.teams[1].currentQuestionId);
+    // eventSeq moves only when the opening ends, so no eventId is left without its narration (no endless spinner).
+    expect(st.eventId).toBe(narrations(s.room).at(-1).eventId);
   });
 
   it("the room picks ⚔️ led to and a room the host picked rolls no fork; with no e2e team the top quarter of the rng is a fork", () => {
