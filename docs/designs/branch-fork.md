@@ -34,8 +34,10 @@ between two doors and lives with the result.
   fork, the room has no current question (`null` to every screen), and the narration gets a neutral line
   (`NEXT_FORK_VARIANTS`); the AI prompt is told not to guess what is behind the doors. When the door clock starts, the
   room opens a narration of its own with one neutral scripted line (`FORK_OPEN_VARIANTS`, no AI wait; owner,
-  2026-11-09), so the doors never show under the last team's story; a late AI line for that turn is dropped as older,
-  and ⚔️'s line is appended to this narration.
+  2026-11-09), so the doors never show under the last team's story; a late AI line for that turn is dropped as older
+  (after a wrong answer, which has no reveal to wait under, the clock starts at once and that turn's line is never
+  shown), lines held for it (a 🧪 give, the sprint line) move into the fork's narration before the opening line, and
+  ⚔️'s line is appended to this narration.
 - **「岔」 in titles.** Cubic 11 has the glyph, but its 11-pixel 「岔」 squeezes 山 into one stroke. The big-screen title
   and the phone's fork header show that one character in the system's bold CJK face (`.px-glyph-fix`).
 - **15 seconds, server clock** (`FORK_MS`). The deadline is an absolute time saved with the room; a restart re-arms it,

@@ -2897,10 +2897,13 @@ export class DungeonRoom {
     // Which side hides ⚔️: drawn now, saved with the game, never in any STATE (branch-fork.md).
     this.keepUndoOpen(startForkChoice(game, team.id, this.now() + FORK_MS, this.e2eMonsterSide ?? (this.rng() < 0.5 ? "left" : "right")));
     this.armFork();
-    // A narration of its own, scripted (no AI wait): a later AI line for the last turn is dropped as older, and ⚔️'s
-    // line is appended to this one. broadcastState sends it.
+    // A narration of its own, scripted (no AI wait): a later AI line for the last turn is dropped as older (the doors
+    // never show under that story), and ⚔️'s line is appended to this one. broadcastState sends it. Lines held for that
+    // older narration (a 🧪 give, the sprint line) come along, before the opening line, which stays last.
     const eventId = ++this.eventSeq;
-    this.lastNarration = { eventId, lines: [this.scripted.forkOpening(team.name)], rev: 0, done: 0 };
+    const held = this.heldLines && this.heldLines.eventId < eventId ? this.heldLines.lines : [];
+    if (held.length) this.heldLines = null;
+    this.lastNarration = { eventId, lines: [...held.slice(-(NARRATION_MAX_LINES - 1)), this.scripted.forkOpening(team.name)], rev: 0, done: 0 };
     return true;
   }
 

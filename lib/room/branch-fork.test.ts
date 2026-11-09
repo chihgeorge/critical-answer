@@ -599,6 +599,24 @@ describe("岔路 in the room", () => {
     expect(after.lines[1]).toMatch(/⚔️/);
   });
 
+  it("a line held for the last turn's narration (a 🧪 give) comes along into the fork's, before the opening line", async () => {
+    vi.useFakeTimers();
+    const provider: NarrationProvider = { name: "test", narrate: () => new Promise<string>(() => {}) };
+    const s = setup({ provider });
+    answerRight(s, 0);
+    answerRight(s, 1, false);
+    send(s.room, s.host, { type: "HOST_GIVE_ITEM", teamId: T2 });
+    const eventId = state(s.room).eventId;
+    send(s.room, s.host, { type: "HOST_SERVE", eventId });
+    (s.room as unknown as { servedAt: number }).servedAt = -Infinity;
+    send(s.room, s.host, { type: "HOST_NEXT", eventId });
+    expect(s.room.game!.teams[0].fork?.phase).toBe("choosing");
+    const lines = narrations(s.room).at(-1).lines;
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/🧪 Plain/);
+    expect(FORK_OPEN_VARIANTS.map((v) => v.replace("{team}", "EventTeam"))).toContain(lines[1]);
+  });
+
   // Value: protects=the e2e specs' seam (E2E_MONSTER_SIDE); fails_when=the seam stops overriding the rng, so CI's two
   // fork specs pass or fail by coin flip.
   it("e2eMonsterSide pins the ⚔️ door whatever the rng draws", () => {
