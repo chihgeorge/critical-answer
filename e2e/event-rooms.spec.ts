@@ -86,15 +86,28 @@ test("a team at a fork opens ❓ from its phone, the door opens, everyone sees t
 test("a team at a fork takes ⚔️ and then faces the room's monster", async ({ browser }) => {
   const { host, screen, eventTeam } = await toTheFork(browser);
   // Regression: ISSUE-001 — the host page showed the ⚔️ question's answer under the fork card while the door opened.
-  // Found by /qa on 2026-11-09. Read in the same frame the opening line appears, so the 1.5 s beat cannot end in between.
-  const answerUpDuringOpening = host
-    .waitForFunction(() => document.querySelector('[data-testid="host-fork-beat"]') && { answer: !!document.querySelector('[data-testid="host-answer"]') }, null, { polling: "raf" })
-    .then((h) => h.jsonValue());
+  // Found by /qa on 2026-11-09. Watched in the page, every frame from the opening line's first to its last: the answer
+  // comes in its own message after STATE, and the 1.5 s beat must not end between two checks made from here.
+  const answerUpDuringOpening = host.evaluate(
+    () =>
+      new Promise<boolean>((resolve) => {
+        let opening = false;
+        let answer = false;
+        const frame = () => {
+          if (document.querySelector('[data-testid="host-fork-beat"]')) {
+            opening = true;
+            answer ||= !!document.querySelector('[data-testid="host-answer"]');
+          } else if (opening) return resolve(answer);
+          requestAnimationFrame(frame);
+        };
+        frame();
+      }),
+  );
   await eventTeam.getByTestId("phone-fork-left").click();
 
-  expect(await answerUpDuringOpening).toEqual({ answer: false });
   await expect(screen.getByTestId("fork-door-open")).toHaveAttribute("data-door", "monster");
   await expect(screen.getByTestId("fork-door-open")).toContainText("⚔️ 怪物房");
+  expect(await answerUpDuringOpening).toBe(false); // resolves when the opening ends
   await expect(host.getByRole("button", { name: "答對！" })).toBeVisible({ timeout: 5000 });
   await expect(screen.getByTestId("fork-doors")).toHaveCount(0);
   await expect(host.getByText("輪到：EventTeam")).toBeVisible();

@@ -498,7 +498,7 @@ export default function BankEditorPage() {
           <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving || loading || readOnly}>
             {saving ? "儲存中…" : "儲存全部變更"}
           </PixelButton>
-          {lastSaved !== null && lastSaved === bank && <div data-testid="bank-saved" role="status" className="text-[15px]" style={{ color: "var(--ok)" }}>✓ 已儲存</div>}
+          {lastSaved !== null && lastSaved === bank && !error && <div data-testid="bank-saved" role="status" className="text-[15px]" style={{ color: "var(--ok)" }}>✓ 已儲存</div>}
         </>
       )}
     </main>
