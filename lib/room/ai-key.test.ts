@@ -613,30 +613,11 @@ describe("key check cap", () => {
     await paste(b, keys[10], "k10");
     expect(models(b)).toBe(4);
     expect(b.status()).toMatchObject({ error: "check_failed", refusedKeyId: "k10" });
-  });
-
-  it("after a restart, the page's keyless resend of its saved key is checked even with every check used up, once", async () => {
-    let t = 0;
-    const storage = memoryStorage();
-    const a = setup({ storage, now: () => t });
-    for (let i = 0; i < 10; i++) {
-      t = i * 60_000;
-      await paste(a, keys[i], `k${i}`);
-    }
-    expect(models(a)).toBe(10);
-
-    const b = setup({ storage, noClaim: true, now: () => t });
-    expect(await b.room.restore()).toBe("restored");
-    b.room.onConnect(b.host);
-    b.room.onMessage(JSON.stringify({ type: "HOST_CLAIM", token: TOKEN }), b.host);
-    await b.useKey(keys[9]); // keyless, as the page's resend after a restart
-    expect(models(b)).toBe(1);
-    expect(b.status()).toMatchObject({ source: "own", keyMissing: false });
+    // With every check used, the key in use still needs none.
+    await paste(b, keys[9], "k9b");
+    expect(models(b)).toBe(4);
+    expect(b.status()).toMatchObject({ source: "own", appliedKeyId: "k9b" });
     expect(b.status()).not.toHaveProperty("error");
-    t += 60_000;
-    await b.useKey(keys[10]); // a second keyless key is counted, so refused
-    expect(models(b)).toBe(1);
-    expect(b.status()).toMatchObject({ error: "check_failed" });
   });
 
   it("the page resending the key still being checked (a reconnect) neither restarts nor counts the check", async () => {

@@ -403,9 +403,6 @@ export class DungeonRoom {
   private keyChecks = 0;
   private keyChecksInWindow = 0;
   private keyCheckWindowAt = 0;
-  /** A restart forgot the host's key: the page's keyless resend of it is not counted in keyChecks, so deploys cannot use up a
-   * real host's checks. Once per restart (the room cannot tell a resend from a stranger's key), and the window still counts it. */
-  private resendUncounted = false;
   private fetchImpl: typeof fetch | undefined;
   private llm: NarrationProvider;
   private breaker = createBreaker({ onTrip: (why) => this.onBreakerTrip(why) });
@@ -639,12 +636,10 @@ export class DungeonRoom {
       this.keyCheckWindowAt = t;
       this.keyChecksInWindow = 0;
     }
-    const uncounted = this.resendUncounted && msg.keyId === undefined;
-    this.resendUncounted = false;
     // The same answer as a flaky check, so a refused key says nothing about whether it works.
-    if (this.keyChecksInWindow >= KEY_CHECK_MAX_PER_WINDOW || (!uncounted && this.keyChecks >= KEY_CHECK_MAX_TOTAL)) return this.refuseKey("check_failed", msg.keyId);
+    if (this.keyChecksInWindow >= KEY_CHECK_MAX_PER_WINDOW || this.keyChecks >= KEY_CHECK_MAX_TOTAL) return this.refuseKey("check_failed", msg.keyId);
     this.keyChecksInWindow++;
-    if (!uncounted) this.keyChecks++;
+    this.keyChecks++;
     const check = new AbortController();
     this.keyCheck = { ctl: check, key: msg.key, keyId: msg.keyId };
     void provider.checkKey(msg.key, { fetch: this.fetchImpl, signal: AbortSignal.any([check.signal, AbortSignal.timeout(KEY_CHECK_MS)]) }).then((result) => {
@@ -788,7 +783,6 @@ export class DungeonRoom {
     this.aiUsed = s.aiUsed ?? 0;
     this.aiLimit = s.aiLimit ?? DEFAULT_AI_LIMIT;
     this.keyChecks = s.keyChecks ?? 0;
-    this.resendUncounted = this.aiSource === "own";
     this.bank = bank;
     this.bankAnswers = allAnswers(bank);
     this.savedBank = stored;
@@ -1221,7 +1215,6 @@ export class DungeonRoom {
     this.keyCheck?.ctl.abort();
     this.keyCheck = null;
     this.keyChecks = this.keyChecksInWindow = 0;
-    this.resendUncounted = false;
     this.aiSource = "none";
     this.credential = null;
     this.aiUsed = 0;
