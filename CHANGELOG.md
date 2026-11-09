@@ -2,6 +2,104 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.57.0.0] - 2026-11-09
+
+### Added
+- Waiting teams can react. A team whose turn it is not has four buttons above the narration box on its phone: 👏 鼓掌, 😱 好險, 😂 笑死 and 👎 噓～. A tap makes the emoji, with the team's name, rise on the big screen up the side walls for about 2 seconds, drawn behind the question, the options, the countdown and the narration box, so it never covers them. There is no free text. Each team can send one every 2 seconds, and the room passes at most 7 at once, so with 8 teams the other 7 can all react together. There are no buttons on a team's own turn, in a buzzer phase, during the intro or initiative, or while the phone is offline, and the server refuses reactions at those times too. Reactions score nothing and are not saved. `docs/rules.md` and `docs/designs/audience-reactions.md` have the details.
+
+### Changed
+- Pull requests no longer change `VERSION` or `CHANGELOG.md`. Each one adds a short file in `changelog.d/`, so two open pull requests never conflict on the version, and a green pull request can merge on its own (GitHub auto-merge). A release pull request sets the version and folds those files into the CHANGELOG. The rules are in `.gstack/ship-policy.json`, `changelog.d/README.md` and `docs/development.md`.
+
+### Changed
+- CI runs the browser tests in three parallel parts instead of two, so a pull request's checks finish in about 6 minutes instead of about 10. Every test still runs on every pull request and every push to main.
+
+### Fixed
+- The browser test for a returning monster's title no longer times out at random. It walks three rooms and took 25–29 seconds on CI, right under the 30-second limit, so it once ran out of time. It now has 60 seconds, like the other long walkthrough tests. A missing title still fails the test within 5 seconds.
+
+### Fixed
+- One connection can no longer slow a live game with a flood of messages. Each connection may send 30 messages at once and 10 more every second; the rest are dropped without a reply, which normal tapping never reaches. A refused message no longer makes the room serialize its whole state (question bank included) to save it.
+- A script can no longer guess a short join password in minutes. The room takes at most 10 wrong passwords a minute; past that, every join that needs the password waits for the next minute, and the phone says 「密碼猜錯太多次，請等一分鐘再試」. An empty password (a phone that has not asked for it yet) does not count, and setting a new password lifts the lock at once.
+- A connection the room closed, or one a reconnect replaced, can no longer keep acting if its client ignores the close; a reconnecting host page claims the host role again before it gets host-only messages; and a connection that errors without closing is now closed and cleaned up, so the phone or TV reconnects.
+
+### Added
+- **Boss music buzzer, part 2.** When every online team gets a song wrong, the same song opens again for everyone instead of moving on; only the host's 「沒人答對，換下一題」 changes it. The narrator says so (「都沒答對！同一首再搶一次！」).
+- The team that buzzed can type its answer on the phone if it wants; the text shows on the host page next to 「搶到了」. Answering out loud still works, and the host still judges.
+- The big screen's background music stays quiet from a buzz until the host judges, so the room hears the answer.
+- When the big screen cannot play a YouTube clip, the host page shows a red warning and a 「🎤 現場放歌，開放搶答」 button: the host plays the song from their own phone or speaker and buzzing opens without the clip.
+- Questions can carry an optional 「類別」 (category). In a buzzer phase the editor shows the field; after a right answer, the winning team's phone offers the categories that still have songs left, and the next song comes from the one it picks (it can change its mind until the host presses ▶). The big screen shows 「下一題：{類別}」. A bank with a category saves as bank format 6. Design: `docs/designs/boss-music-buzzer.md`.
+
+### Added
+- 🍲 The team now eats its dish on the big screen. A second after the dish is served, the eating team's hero hard-cuts in beside it and takes three bites, 0.4 s apart: 「啊嗚！」, then 「嚼嚼」 while it chews. At 3.8 s only an empty plate is left, with two hearts and a 「嗝～」 and one short rising sound (only with 🎵 on). Each bite is cut out of the dish's own pixels (`biteCells`) and never touches the plate or the steam. Reduced motion, and a screen opened or refreshed after the serve, show the empty plate at once. The boss's final dish is not eaten, and the podium timing is unchanged. See `docs/designs/eat-dish.md`.
+
+### Changed
+- After 🍲 上菜, 下一題 now unlocks after 4.8 s instead of 2.6 s (`SERVE_HOLD_MS`), so the meal finishes before the next question.
+
+### Added
+- The trailing team gets a comeback push when the boss door opens (⚔️ 最後衝刺). The first time any team enters the boss room, on a correct answer or sent in by the host, the team with the lowest 飽足感 still outside it gets a ✨ blessing (tied teams all get one): its next correct answer pays half the base reward extra, the same as the event room's blessing. It replaces a curse, does not stack on a blessing already held, and happens once per game. The big screen plays a purple 「⚔️ 魔王門開了！」 banner naming the blessed teams, with a fanfare when 🎵 music is on; the owl adds a line saying who walked in and who was blessed (not when the host sent the team in); the blessed team's phone shows 「✨ 你們拿到祝福！」 for 3 seconds and vibrates once. A screen or phone that connects later does not replay it. The boss alarm, if due at the same moment, waits for the banner to finish.
+- The live map marks a team that holds a blessing or a curse with a small ✨ or 💀 on its pawn's name tag.
+- The game log records which teams the sprint blessed (`sprintBlessed`).
+
+### Added
+- 🧪 幸運藥水：主持人頁每隊有「🧪 給藥水」，任何時候都能給，一隊一次一瓶（有了就變灰「🧪 已有」）。給的時候貓頭鷹多念一句「🧪 {隊名}拿到一瓶幸運藥水！」，地圖上的名牌角落出現 🧪，手機隊伍卡寫「🧪 有一瓶幸運藥水」。
+- 輪到自己時，手機在「鎖定答案」或「🎲 擲骰說服」上方有「🧪 喝下幸運藥水」。喝下後，這題的下一顆暴擊骰或說服檢定擲兩次取高：大螢幕兩顆骰子一起滾，高的那顆亮起來。戰士的答題骰和首領的 4d20 不受影響。這一輪沒擲到骰時藥水會還回來。
+- 對局紀錄每隊多記 `potionsGiven` 和 `potionsDrunk`；頒獎時喝最多藥水的隊拿「🧪 藥水成癮」（排在 🏃 逃跑大師後面）。設計見 `docs/designs/lucky-potion.md`。
+
+### Added
+- **Music questions can ask for 2–3 answers at once.** In a buzzer phase, a sound-only YouTube question can split its answer into named fields, such as 「歌名」 and 「歌手」. The bank editor shows 「+ 加答案欄位」 on those questions only. The buzzing team's phone shows one box per field; boxes may stay blank, but at least one needs text before 送出 (or the team just answers out loud).
+- The host judges each field with ✓/✗ and then presses 送出判定. Each right field takes 1 HP off the boss, and the hit reward is paid in proportion to the fields right; the kill's 4d20 bonus is not scaled. Judge keyboard shortcuts are off on these questions, and 「↩ 重新逐欄判定」 reopens the per-field panel after a wrong call.
+- The big screen marks each field ✓ or ✗ in the reveal and, on a partial answer, adds 「{隊名} 對 k/n：打掉 k 格血、獎勵拿 X%」.
+- A boss phase can now have up to 60 HP. Above 20 the big screen draws an HP bar with the number instead of hearts. Raise a phase's HP when it holds multi-field questions.
+- A bank with answer fields saves as bank format 7. Design: `docs/designs/multi-field.md`.
+
+### Changed
+- In a buzzer phase, what a team types goes to the host only; other teams' phones no longer receive it.
+- The `minimatch` used by the TypeScript lint tooling is pinned to 11.0.1 or later.
+
+### Changed
+- **The narrator talks less on ordinary turns.** A plain correct answer, wrong answer or flee is now two lines: what happened, then whose turn it is. The atmosphere line is kept for the opening, boss hits, a new boss phase, the boss kill, event rooms, a natural 20 or 1, and the game's last line. A turn with a host-queued 「下一句這樣說」 line still has three lines, with the host's line second. The AI is also asked for shorter lines (22 characters, down from 28).
+- **Scripted lines repeat less.** Each kind of event now has 10 atmosphere lines instead of 4, and a room monster has 10 handoff lines instead of 5. Every line of a set plays once before any repeats, and the same line never plays twice in a row. A few lines that said one thing twice are gone.
+
+### Fixed
+- When the AI writes more lines than a turn needs, its last line is used as the handoff, so the next team is still called.
+
+### Added
+- Every team is named at the podium. Before the places are called, the narrator hands out honor titles, one 2.5-second beat each, with a yellow card in the middle of the big screen showing the title, the heroes, the team names and the reason: 🗺️ 探險家, ✨ 女神的寵兒, 💀 詛咒磁鐵 (the fortune teller's 凶 counts), 🤢 腐肉品嚐家, 🏃 逃跑大師, 🍲 大胃王, ⚡ 閃電突擊 (fewest turns to reach the boss room by the team's own correct answer) and 🎲 大成功王 last. Each title goes to every team tied on the best value, in team order, never for a value of 0. A team with no title gets a 🌟 title the AI makes up from its own play (no score, no place, no other team's name; a line that hints at a place falls back), or 🛡️ 堅持到最後的冒險者 when the AI is off or fails. Each title beat opens on the 🎵 correct chime (🎲 on the crit chime), and emoji are not read aloud. Titles add no points and do not change the places. Under reduced motion the end screen lists each team's title icons in a still card instead. The game log records each team's data titles by id (`teams[].titles`), and teams now count their flees. `docs/rules.md` and `docs/designs/podium-titles.md` have the details.
+
+### Removed
+- The separate 本場大成功王 beat and its card on the right of the end screen: 🎲 大成功王 is now one of the titles.
+
+### Fixed
+- After the team eats the dish, 「嗝～」 now sits beside the eater, below the dish card. It no longer covers the card, even when the dish name and comment each wrap to two lines. The two hearts sit 20px lower, under the card.
+- The empty plate is the dish's own plate, at the same size and in the same place. Only the food goes at the last cut. A dish served without a plate leaves a plate as wide as the dish.
+- The steam stops at the third bite. Before, it kept rising over a nearly empty plate.
+- The eater stands a little further left, clear of the doorway's left pillar.
+- The first bite is now the biggest, so the audience can see from the back of the room that eating has started.
+- While the team eats, the host's button counts down the seconds until 下一題 unlocks: 「🍲 上菜中… 3」.
+
+### Fixed
+- 魔王音樂搶答: on the answer reveal, the big screen's 「下一題：{類別}」 chip now sits at the top right of the panel. Before, the boss nameplate and the narrator box covered it at 1280x720.
+- 「👆 點一下大螢幕才能播放聲音」 is now opaque over a 聽歌題's cover, so the cover's ♪ / 聽歌猜題 / 暫停 text no longer shows through it.
+- Host page on a clip error: the 「按 ▶ 播放後開放搶答」 line is gone, so the red warning and its 🎤 button are the only instruction. ▶ ⏸ ⟲ stay (▶ retries the clip).
+- Host page after the 🎤 live open: the status says 「大螢幕：現場放歌中」, not 「已暫停」.
+- Bank editor: the 名稱, 規則 and 類別 labels no longer wrap one character per line. The buzzer-phase checkbox says 「搶到的隊伍口頭或打字作答」, since typing is optional.
+
+### Fixed
+- 魔王音樂搶答: when the last team still in drops (holding the buzz or not), the same song reopens to everyone as after all-wrong. The music now pauses and waits for the host's ▶ instead of playing on, and the narrator says 「最後一隊斷線了！同一首再搶一次！」.
+- 魔王音樂搶答: when the winner's category pick lands on the boss question the host queued with 指定下一題, the queue entry is cleared. Before, the host page kept showing a pick that would never be used.
+- The big screen reports 影片無法播放 again after it reconnects, unless the host pressed ▶ meanwhile, so the host's red warning and 🎤 現場放歌 button come back after the room restarts.
+
+### Fixed
+- Narration: the AI line that names the next team always plays last as the handoff, even when the AI writes one line too few or too many. A middle line never calls the next team, so the owl no longer says 「輪到X」 twice on a boss hit, and never drops the handoff on an ordinary turn. If no AI line names the next team, the scripted handoff plays.
+- Narration: every AI result, atmosphere and handoff line is held to 22 characters in code, not just in the prompt. A longer line is cut at a sentence break when that fits and keeps every team it named; otherwise that one slot uses the scripted line (the other AI lines still play). The host's queued line keeps its 50-character limit.
+- The scripted result lines for a correct answer, a wrong answer and a flee grow from 5 to 10 each, so six teams hear the same line less often.
+- Fixed the idiom 「磨牙霍霍」 → 「磨刀霍霍」 in a handoff line.
+
+### Added
+- CI now checks every pull request against the release flow: it must add a `changelog.d/` file and must not change `VERSION`, the `package.json` or `package-lock.json` version, or `CHANGELOG.md` (`scripts/check-fragment.ts`). A `release/*` branch skips the check, and a Dependabot pull request needs no `changelog.d/` file.
+
+### Changed
+- AI narration repeats itself less. Each request now carries the room's last 8 AI lines that reached the screens (as data, in the user turn) and asks the model not to reuse those sentences or their pet phrases. The prompt also gains two rules. Each line is worded differently, and a line has at most one exclamation mark. The list is kept per room, skips the epilogue, and is cleared on a server restart or when the room code passes to the next host.
+
 ## [0.56.0.2] - 2026-11-08
 
 **Deploy note:** deploy the room server (`wrangler deploy`) and the website together. A big screen from an older website never announces itself, so a newer room server ignores its "clip ended" and narration messages. No migration.
