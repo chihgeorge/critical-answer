@@ -281,7 +281,8 @@ export default function HostPage() {
   const ready = connected && claimed;
   const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
   // Fresh per-field marks for each buzz: a new question, team or event remounts FieldJudge.
-  const fieldJudgeId = turn && game ? `${turn.questionId}:${turn.team.id}:${game.eventId}` : "";
+  // Nobody may be on turn (a buzzer phase, a reveal): `team` is then undefined at run time though typed as present.
+  const fieldJudgeId = game ? `${turn?.questionId}:${turn?.team?.id}:${game.eventId}` : "";
   // The judge buttons and 下一題 swap in the same slot the moment a STATE arrives, so a double-tap
   // on one would land on the other (judging the next question, or closing a reveal nobody saw).
   // Both stay disabled for a beat after every swap.
