@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SFX, type SfxNote } from "./sfx";
+import { EAT_DONE, SFX, type SfxNote } from "./sfx";
 
 /** Seconds from the effect's start to its last note ending. */
 const sfxDuration = (notes: SfxNote[]) => Math.max(...notes.map((x) => x.at + x.duration));
@@ -20,5 +20,11 @@ describe("SFX", () => {
   it("keeps the wrong-answer buzz as the only sawtooth, so it can't be mistaken for music", () => {
     const saw = Object.entries(SFX).filter(([, notes]) => notes.some((x) => x.wave === "sawtooth")).map(([k]) => k);
     expect(saw).toEqual(["retry"]);
+  });
+});
+
+describe("EAT_DONE (eat-dish.md eng F1)", () => {
+  it("is the meal's only sound, and short", () => {
+    expect(sfxDuration(EAT_DONE)).toBeLessThanOrEqual(0.4);
   });
 });

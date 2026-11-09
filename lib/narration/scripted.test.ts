@@ -154,6 +154,42 @@ describe("atmosphereLine", () => {
     }
   });
 
+  // Value: protects=a scripted hour repeats each atmosphere and room transition about four times, not ten (TODOS 旁白語氣是否耐聽);
+  // fails_when=pick() forgets the bag and repeats a line before the pool runs out, or a pool shrinks back
+  it("plays every line of a pool once before any repeats, and never the same line twice across a reshuffle", () => {
+    for (const seed of [1, 2, 3]) {
+      const p = createScriptedProvider(lcg(seed));
+      const n = ATMOSPHERE_VARIANTS.correct.length;
+      const said = Array.from({ length: n * 3 }, () => p.atmosphereLine(samples[1]));
+      for (let r = 0; r < 3; r++) expect(new Set(said.slice(r * n, (r + 1) * n)).size).toBe(n);
+      said.slice(1).forEach((line, i) => expect(line).not.toBe(said[i]));
+      const nextRoom = { team, monster, boss: false };
+      expect(new Set(Array.from({ length: NEXT_VARIANTS.room.length }, () => p.nextLine(nextRoom))).size).toBe(NEXT_VARIANTS.room.length);
+    }
+  });
+
+  it("keeps a class team's own lines in the bag when it shares a key with teams of no class, and never repeats in a row", () => {
+    const p = createScriptedProvider(lcg(5));
+    const base = { type: "correct" as const, team, monster, points: 12 };
+    const fill = (v: string) => v.replace("{team}", team).replace("{monster}", monster).replace("{points}", "12");
+    const plain = VARIANTS.correct.map(fill);
+    const warrior = CLASS_VARIANTS.warrior.correct.map(fill);
+    const said: string[] = [];
+    for (let i = 0; i < 30; i++) said.push(i % 3 === 0 ? p.line({ ...base, classId: "warrior" }) : p.line(base));
+    said.forEach((line, i) => expect(i % 3 === 0 ? [...plain, ...warrior] : plain).toContain(line));
+    said.slice(1).forEach((line, i) => expect(line).not.toBe(said[i]));
+    expect(said.filter((l) => warrior.includes(l)).length).toBeGreaterThan(0);
+  });
+
+  it("has ten atmosphere lines per event (boss-phase's say its rule), ten room transitions, at most one 「！」 and no 喵", () => {
+    for (const [type, pool] of Object.entries(ATMOSPHERE_VARIANTS)) if (type !== "boss-phase") expect(pool, type).toHaveLength(10);
+    expect(NEXT_VARIANTS.room).toHaveLength(10);
+    for (const line of [...Object.values(ATMOSPHERE_VARIANTS).flat(), ...NEXT_VARIANTS.room]) {
+      expect(line.split("！").length - 1, line).toBeLessThanOrEqual(1);
+      expect(line).not.toMatch(/喵/);
+    }
+  });
+
   it("rotates independently from line() — picking one doesn't affect the other's rotation state", () => {
     const p = createScriptedProvider(lcg(7));
     const e = samples[1];

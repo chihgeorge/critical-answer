@@ -174,6 +174,15 @@ export interface Team {
   boon?: Boon;
   /** Every event outcome this team opened, in order, for lib/game-log.ts. Absent until the first. */
   events?: EventOutcome[];
+  /** The one item the team holds (docs/designs/lucky-potion.md): given by the host, spent by the team. Not a boon. */
+  item?: Item;
+  /** The question id the potion was drunk on (E1), and the team's `turns` then: armed only on that question in that
+   * turn, so a retry next round or the same id dealt again later finds it held, not armed (/review). */
+  itemArmedFor?: string;
+  itemArmedTurn?: number;
+  /** Potions the host gave and the team drank, for lib/game-log.ts (lucky-potion.md E8). Absent until the first. */
+  potionsGiven?: number;
+  potionsDrunk?: number;
 }
 
 export interface RoomTemplate {
@@ -1241,6 +1250,36 @@ export interface RoomEvent {
   outcome: EventOutcome;
 }
 export type Boon = "curse" | "blessing";
+/** 🧪 幸運藥水: the only item so far (docs/designs/lucky-potion.md). */
+export type Item = "luckyPotion";
+
+/** 🧪 給藥水: the host gives `teamId` a potion, at any time of the game (premise 1). One at a time (premise 4). */
+export function giveItem(game: GameState, teamId: string): GameState {
+  if (game.phase !== "playing") throw new InvalidActionError("not_playing");
+  if (getTeam(game, teamId).item) throw new InvalidActionError("item_held");
+  return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ item: "luckyPotion", potionsGiven: (t.potionsGiven ?? 0) + 1 })) };
+}
+
+/** Whether `teamId`'s potion doubles its next crit or check die: drunk on the question it faces now, this turn (E1). */
+export function potionArmed(game: GameState, teamId: string): boolean {
+  const t = getTeam(game, teamId);
+  return !!t.item && t.itemArmedFor === currentQuestionIdOf(game, teamId) && t.itemArmedTurn === (t.turns ?? 0);
+}
+
+/** 🧪 喝下: the team arms its potion for its current question. The room checks the turn and D6's cases first. */
+export function drinkPotion(game: GameState, teamId: string): GameState {
+  assertPlaying(game);
+  assertTurn(game, teamId);
+  if (!getTeam(game, teamId).item) throw new InvalidActionError("no_item");
+  if (potionArmed(game, teamId)) throw new InvalidActionError("already_drunk");
+  const questionId = currentQuestionIdOf(game, teamId);
+  return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ itemArmedFor: questionId, itemArmedTurn: t.turns ?? 0 })) };
+}
+
+/** A die rolled with the potion: it is gone (E3). */
+export function spendPotion(game: GameState, teamId: string): GameState {
+  return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ item: undefined, itemArmedFor: undefined, itemArmedTurn: undefined, potionsDrunk: (t.potionsDrunk ?? 0) + 1 })) };
+}
 /** Satiety each outcome gives or takes (D4, D9); the spring's goes only to a chef or a team with no class. */
 export const EVENT_SATIETY = { feast: 20, rotten: -10, great: 25, spring: 10 } as const;
 
@@ -1493,6 +1532,11 @@ export interface SpectatorView {
     /** The event room this team stands in: the scene only, never its outcome until it is opened (event-rooms.md). */
     eventScene?: EventScene;
     boon?: Boon;
+    /** The item the team holds; whether it is drunk for the question this turn (potionArmed); the question it was last
+     * drunk on, which tells a potion that came back (lucky-potion.md E1, E2). */
+    item?: Item;
+    itemArmed?: true;
+    itemArmedFor?: string;
   }[];
   bossHp: number;
   bossMaxHp: number;
@@ -1540,6 +1584,9 @@ export function getSpectatorView(game: GameState): SpectatorView {
       checkTarget: checkTarget(game, t.id, t.currentQuestionId),
       ...(t.event ? { eventScene: t.event.scene } : {}),
       ...(t.boon ? { boon: t.boon } : {}),
+      ...(t.item ? { item: t.item } : {}),
+      ...(potionArmed(game, t.id) ? { itemArmed: true as const } : {}),
+      ...(t.itemArmedFor ? { itemArmedFor: t.itemArmedFor } : {}),
     })),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,

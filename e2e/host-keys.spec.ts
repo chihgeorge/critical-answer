@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, startGame } from "./answer";
+import { NEXT_WAIT_MS, textOnlyBank, startGame } from "./answer";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -33,7 +33,7 @@ test("the host judges with the keyboard: 2 marks a wrong answer, 1 a correct one
   await expect(host.getByTestId("host-reveal")).toBeVisible();
 
   await host.keyboard.press("1"); // 🍲 上菜: the same key serves the cooked monster first (cooking R5)
-  await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeEnabled({ timeout: 8000 });
+  await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeEnabled({ timeout: NEXT_WAIT_MS });
   await host.keyboard.press("1"); // 下一題
   await expect(host.getByTestId("host-reveal")).toHaveCount(0);
 });

@@ -186,7 +186,12 @@ describe("prompt", () => {
     expect(queued).toContain("第一行：交代剛剛發生的事");
     expect(queued).toContain("第三行：轉向下一隊");
     expect(queued).not.toContain("補充一點戰鬥氣氛");
-    expect(buildPrompt({ ...withNext, hostLine: "珍珠能吃嗎", hostLineVerbatim: true }, []).system).toBe(plain);
+    expect(plain).toMatch(/兩行/);
+    // A bank answer the model never sees: segment 2 is still there for the room to write the line over, so the model writes atmosphere into it.
+    const verbatim = buildPrompt({ ...withNext, hostLine: "珍珠能吃嗎", hostLineVerbatim: true }, []).system;
+    expect(verbatim).not.toContain("珍珠");
+    expect(verbatim).toContain("第二行：補充一點戰鬥氣氛");
+    expect(verbatim).toContain("第三行：轉向下一隊");
     expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", hostLine: "珍珠能吃嗎" }, []).system).toContain("「珍珠能吃嗎」");
   });
 
@@ -210,9 +215,9 @@ describe("prompt", () => {
     expect(system).toMatch(/不要.*「隊」/);
   });
 
-  it("holds the transition (third) line to a firm 20 characters (real answers ran to 50)", () => {
+  it("holds the transition line to a firm 20 characters (real answers ran to 50)", () => {
     const { system } = buildPrompt({ ...event, next: { team: "T", monster: "史萊姆", boss: false } }, []);
-    expect(system).toMatch(/第三行[^。]*不超過 20 個字/);
+    expect(system).toMatch(/第二行：轉向下一隊[^。]*不超過 20 個字/);
   });
 
   it("leaves those sections out when there are none", () => {
@@ -222,15 +227,24 @@ describe("prompt", () => {
 });
 
 describe("multi-line prompts (result, atmosphere, then the next team)", () => {
-  const withNext: NarrationEvent = { type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2, next: { team: "藍隊", monster: "軟趴趴史萊姆", boss: false } };
+  const ordinary: NarrationEvent = { type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2, next: { team: "藍隊", monster: "軟趴趴史萊姆", boss: false } };
+  const withNext: NarrationEvent = { ...ordinary, points: 3, roll: { kind: "crit", value: 20 } };
 
-  it("asks for three lines and names the next team and its monster as quoted data", () => {
+  it("asks a big moment (here a natural 20) for three lines and names the next team and its monster as quoted data", () => {
     const { system, user } = buildPrompt(withNext, []);
     expect(system).toMatch(/三行/);
-    expect(system).toMatch(/第二行/);
-    expect(system).toMatch(/第三行/);
+    expect(system).toContain("第二行：補充一點戰鬥氣氛");
+    expect(system).toMatch(/第三行：轉向下一隊/);
     expect(user).toContain("「藍隊」");
     expect(user).toContain("「軟趴趴史萊姆」");
+  });
+
+  it("asks an ordinary turn for two lines, the result then the next team, with no atmosphere line", () => {
+    const { system } = buildPrompt(ordinary, []);
+    expect(system).toMatch(/兩行/);
+    expect(system).not.toMatch(/三行|氣氛/);
+    expect(system).toMatch(/第一行[^。]*最多 22 個字/);
+    expect(system).toMatch(/第二行：轉向下一隊/);
   });
 
   it("says 首領 in the third-line (transition) ask when the next team faces the boss", () => {

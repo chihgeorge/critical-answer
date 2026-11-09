@@ -86,3 +86,6 @@ export const SPRINT_FANFARE: SfxNote[] = [n(0, 0.08, "G4"), n(0.08, 0.08, "C5"),
 /** 每題作答倒數 (answer-countdown.md D5): a soft tick for each of the last seconds, and a short buzz at 0. */
 export const ANSWER_TICK: SfxNote[] = [n(0, 0.05, "A5", "triangle")];
 export const ANSWER_TIME_UP: SfxNote[] = [n(0, 0.15, "E5"), n(0.18, 0.3, "C5")];
+
+/** The eaten dish's empty plate (docs/designs/eat-dish.md, eng F1): the one sound of the meal, a two-note rising 嗝, like check-pass. */
+export const EAT_DONE: SfxNote[] = [n(0, 0.1, "C5", "triangle"), n(0.1, 0.2, "G5", "triangle")];

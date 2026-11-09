@@ -9,7 +9,7 @@ import { ordinal } from "../ordinal";
 import { CLASS_LABELS, WARRIOR_TARGET, type ClassId } from "../game-state";
 import { EVENT_SCENE_TEXT } from "../event-text";
 import type { NarrationProvider } from "./scripted";
-import { validLine, MAX_CALL_LINE, MAX_LINE, MAX_EPILOGUE_LINE } from "./runner";
+import { hasMiddleLine, validLine, MAX_CALL_LINE, MAX_LINE, MAX_EPILOGUE_LINE } from "./runner";
 import { NarrationError } from "./errors";
 
 export const NARRATION_MODEL = "claude-haiku-4-5";
@@ -41,14 +41,19 @@ export function buildPrompt(event: NarrationEvent, styleExamples: string[], rece
   const hasNext = event.type !== "epilogue" && !!event.next;
   const hostLine = event.type !== "epilogue" && !event.hostLineVerbatim ? event.hostLine : undefined;
   // The host's line goes in line 2 (the slot runner.ts falls back to), so lines 1 and 3 keep the result and the handoff.
+  // Ordinary turns have no middle line (runner.ts hasMiddleLine): result, then straight to the next team.
   const second = hostLine
     ? `第二行：一定要包含主持人指定的這句話：「${hostLine.replace(/[「」『』]/g, "")}」，字要一樣（標點可以改），前後可以加幾個字自然銜接，整行最多 ${MAX_LINE} 個字。`
-    : null;
+    : !epilogue && hasMiddleLine(event)
+      ? `第二行：補充一點${hasNext ? "戰鬥氣氛、環境或情緒細節" : "氣氛或情緒的收尾"}，最多 22 個字，不要重複第一行的內容。`
+      : null;
+  const first = "第一行：交代剛剛發生的事，最多 22 個字，寧可短一點。";
+  const handoff = "轉向下一隊，提醒他們輪到了、面對哪隻怪物，一句話，不超過 20 個字。";
   const ask = epilogue
     ? epilogueAsk(event)
-    : hasNext
-      ? `輸出三行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。${second ?? "第二行：補充一點戰鬥氣氛、環境或情緒細節，最多 28 個字，不要重複第一行的內容。"}第三行：轉向下一隊，提醒他們輪到了、面對哪隻怪物，一句話，不超過 20 個字。`
-      : `輸出兩行，用換行隔開，不要編號。第一行：交代剛剛發生的事，最多 28 個字，寧可短一點。${second ?? "第二行：補充一點氣氛或情緒的收尾，最多 28 個字，不要重複第一行的內容。"}`;
+    : hasNext && second
+      ? `輸出三行，用換行隔開，不要編號。${first}${second}第三行：${handoff}`
+      : `輸出兩行，用換行隔開，不要編號。${first}${second ?? `第二行：${handoff}`}`;
   let system = `${BASE_RULES}\n${ask}`;
   if (styleExamples.length > 0) system += `\n\n主持人親手改過的句子，請仿照這種語氣：\n${styleExamples.map((l) => `- ${l}`).join("\n")}`;
   // In the user turn, not the system prompt: the lines carry player-typed team names, so they are data.

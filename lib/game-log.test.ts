@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { answerQuestion, createGame, endGame, pray, recordWrongLock, sendToBoss, setTeamOnline, type GameState } from "./game-state";
+import { answerQuestion, createGame, endGame, giveItem, pray, spendPotion, recordWrongLock, sendToBoss, setTeamOnline, type GameState } from "./game-state";
 import { MAX_GAME_LOGS, appendGameLog, gameLog, readGameLogs } from "./game-log";
 import { handleGameLogsApi } from "./bank-api";
 
@@ -15,6 +15,15 @@ const answer = (g: GameState, id: string, correct: boolean) => {
 };
 
 describe("game log", () => {
+  // Value: protects=the 🧪 藥水成癮 podium title's source (lucky-potion.md E8); fails_when=the counts stop reaching the log
+  it("records each team's potions given and drunk, 0 for none", () => {
+    const g = giveItem(spendPotion(giveItem(twoTeams(), "A"), "A"), "A");
+    expect(gameLog(endGame(g, first), 0).teams).toEqual([
+      expect.objectContaining({ name: "Alpha", potionsGiven: 2, potionsDrunk: 1, titles: expect.arrayContaining(["potions"]) }),
+      expect.objectContaining({ name: "Bravo", potionsGiven: 0, potionsDrunk: 0 }),
+    ]);
+  });
+
   // Value: protects=the owner's rounds-to-boss and boss-fight rounds; fails_when=round, turns or bossAt stop counting
   it("counts rounds to the boss, the boss fight's rounds and each team's turns", () => {
     let g: GameState = { ...twoTeams(), startedAt: Date.UTC(2026, 10, 21, 10) };

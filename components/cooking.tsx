@@ -1,10 +1,11 @@
 "use client";
 
 // 🍲 上菜 on the big screen (docs/designs/monster-cuisine.md, cooking R7): the defeated monster, then the pot,
-// a puff of smoke and the dish. Every change is a hard cut between frames (cooking I8, DESIGN.md: no tweens).
+// a puff of smoke and the dish, then the eater's team eats it in three bites (docs/designs/eat-dish.md). Every change is
+// a hard cut between frames (cooking I8, DESIGN.md: no tweens).
 
 import { useEffect, useRef, useState } from "react";
-import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, FINISH_PODIUM_MS, type AnswerReveal, type PodiumReveal } from "@/lib/protocol";
+import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, EAT_AT_MS, EAT_BITE_MS, EAT_MS, FINISH_PODIUM_MS, type AnswerReveal, type PodiumReveal } from "@/lib/protocol";
 import { revealMarks } from "@/lib/podium";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { Panel, prefersReducedMotion, Sprite } from "@/components/pixel";
@@ -22,35 +23,49 @@ const STEP_AT: [CookStep, number][] = [
   [3, COOK_MS],
 ];
 
+/** A room's serve goes on past the dish (eat-dish.md): 4, 5, 6 the three bites, 7 the empty plate. Kept apart from
+ * useFinaleStep's 4 (the podium), since the boss's dish is not eaten. */
+export type ServeStep = CookStep | 4 | 5 | 6 | 7;
+export const EAT_STEP_AT: [ServeStep, number][] = [
+  [4, EAT_AT_MS],
+  [5, EAT_AT_MS + EAT_BITE_MS],
+  [6, EAT_AT_MS + 2 * EAT_BITE_MS],
+  [7, EAT_MS],
+];
+/** The dish (or what is left of it) is on stage. */
+export const dishUp = (step: ServeStep | null): step is 3 | 4 | 5 | 6 | 7 => step !== null && step >= 3;
+
 /**
  * Which cooking frame is up. `served` is the key of the served dish (null before 上菜). Only a change seen while the
- * page is open plays the frames (cooking I3): a page that opens on a served dish, or reduced motion, shows the dish.
- * `onPlay` runs when the frames start, `onDish` when the dish comes up after them; under reduced motion a live serve
- * still calls `onDish` (the dish line is read, only the frames are skipped).
+ * page is open plays the frames (cooking I3): a page that opens on a served dish, or reduced motion, shows the end
+ * (7, the empty plate). `onPlay` runs when the frames start, `onDish` when the dish comes up after them, `onEaten` at
+ * the empty plate; under reduced motion a live serve still calls `onDish` (the dish line is read, only the frames are
+ * skipped) but not `onEaten`.
  */
-export function useCookStep(served: string | null, onPlay?: () => void, onDish?: () => void): CookStep | null {
+export function useCookStep(served: string | null, onPlay?: () => void, onDish?: () => void, onEaten?: () => void): ServeStep | null {
   const [shown, setShown] = useState(served);
-  const [step, setStep] = useState<CookStep | null>(served ? 3 : null);
+  const [step, setStep] = useState<ServeStep | null>(served ? 7 : null);
   /** A serve seen live, and whether its frames play; null when none is. */
   const [play, setPlay] = useState<{ key: string; animate: boolean } | null>(null);
   if (served !== shown) {
     setShown(served);
     const animate = !!served && !prefersReducedMotion();
     setPlay(served ? { key: served, animate } : null);
-    setStep(served ? (animate ? 0 : 3) : null);
+    setStep(served ? (animate ? 0 : 7) : null);
   }
-  const calls = useRef({ onPlay, onDish });
+  const calls = useRef({ onPlay, onDish, onEaten });
   useEffect(() => {
-    calls.current = { onPlay, onDish };
+    calls.current = { onPlay, onDish, onEaten };
   });
   useEffect(() => {
     if (!play) return;
     if (!play.animate) return void calls.current.onDish?.();
     calls.current.onPlay?.();
-    const timers = STEP_AT.map(([s, at]) =>
+    const timers = [...STEP_AT, ...EAT_STEP_AT].map(([s, at]) =>
       setTimeout(() => {
         setStep(s);
         if (s === 3) calls.current.onDish?.();
+        if (s === 7) calls.current.onEaten?.();
       }, at),
     );
     return () => timers.forEach(clearTimeout);
@@ -145,22 +160,52 @@ export function CookFrame({ step, bottom }: { step: 1 | 2; bottom: number }) {
 }
 
 /** The cooked dish where the monster stood (step 3), tinted like it, with its card above in the answer panel's place.
- * The picture is at most about 130px tall so it clears the card. */
-export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom }: { dish: Dish; title?: string; cardTop: number; bottom: number }) {
+ * The picture is at most about 130px tall so it clears the card. From step 4 the eater (`eater`, the team's look index;
+ * none when the team has left) stands left of it and eats it in three bites, then the empty plate (eat-dish.md). */
+export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom, step = 3, eater = -1 }: { dish: Dish; title?: string; cardTop: number; bottom: number; step?: ServeStep; eater?: number }) {
   const kind = Object.hasOwn(DISH_SPRITE, dish.monster.sprite) ? DISH_SPRITE[dish.monster.sprite] : DISH_SPRITE.slime; // a newer server's sprite: the slime's dish
+  // The empty plate keeps the dish's scale, so the plate never jumps in size.
   const scale = Math.min(5, Math.floor(130 / SPRITE_SIZE[kind][1]));
+  // The catalog's own hue: a repeat appearance's recolor stays on the monster (monster-catalog.md §3).
+  const hue = monsterById(dish.monster.id ?? "")?.hue ?? dish.monster.hue;
+  const at = (left: number, bottom: number, zIndex = 4) => ({ left, bottom, transform: "translateX(-50%)", zIndex }) as const;
+  const chew = step === 5 || step === 6;
   return (
-    <div data-testid="dish-served">
+    <div data-testid="dish-served" data-step={step}>
       <div className="absolute flex justify-center" style={{ left: 0, right: 0, top: cardTop, zIndex: 5 }}>
         <DishCard dish={dish} title={title} />
       </div>
-      <div className="absolute" style={{ left: "50%", bottom, transform: "translateX(-50%)", zIndex: 4 }}>
-        {/* The catalog's own hue: a repeat appearance's recolor stays on the monster (monster-catalog.md §3). */}
-        <Sprite kind={kind} scale={scale} hue={monsterById(dish.monster.id ?? "")?.hue ?? dish.monster.hue} />
+      <div className="absolute" style={at(480, bottom)}>
+        {step === 7 ? <Sprite kind="plate-empty" scale={scale} hue={hue} /> : <Sprite kind={kind} scale={scale} hue={hue} bites={Math.max(0, step - 3)} />}
       </div>
+      {step >= 4 && eater >= 0 && (
+        <div className="absolute" style={at(EATER_X, bottom)}>
+          {chew ? (
+            // The chew: eyes open, then shut and squashed like px-idle, flicked like the pot.
+            <div className="relative" style={{ width: 96, height: 96 }}>
+              <Sprite kind="hero" variant={eater} scale={4} blink={false} className="px-tf1 absolute inset-0" />
+              <Sprite kind="hero" variant={eater} scale={4} blink className="px-tf2 absolute inset-0" style={{ transform: "scale(1.05, 0.95)", transformOrigin: "50% 100%" }} />
+            </div>
+          ) : (
+            <Sprite kind="hero" variant={eater} scale={4} blink={false} />
+          )}
+        </div>
+      )}
+      {step === 7 && eater >= 0 && (
+        <>
+          <div className="absolute" style={at(EATER_X - 8, bottom + 104, 8)}><Sprite kind="heart" variant={1} scale={3} /></div>
+          <div className="absolute" style={at(EATER_X + 14, bottom + 118, 8)}><Sprite kind="heart" variant={1} scale={3} /></div>
+          <div className="absolute whitespace-nowrap" style={{ ...POP, fontSize: 34, left: 370, top: 250, zIndex: 6, background: "var(--turn)", color: "var(--k)", border: "4px solid var(--k)" }}>嗝～</div>
+        </>
+      )}
+      {step === 4 && <div className="absolute whitespace-nowrap" style={{ ...POP, left: 560, top: 300, zIndex: 6 }}>啊嗚！</div>}
+      {chew && eater >= 0 && <div className="absolute whitespace-nowrap" style={{ ...POP, left: 170, top: 270, zIndex: 6 }}>嚼嚼</div>}
     </div>
   );
 }
+
+/** Where the eater stands on the 960px stage: left of the dish (eat-dish.md, mockup A). */
+const EATER_X = 300;
 
 /** The defeated monster, cooked (docs/designs/monster-cuisine.md, approved mockup A). */
 function DishCard({ dish, title }: { dish: Dish; title: string }) {

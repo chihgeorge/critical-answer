@@ -30,8 +30,17 @@ function setup(p: NarrationProvider, holdMs = 30, epilogueHoldMs = 60) {
 }
 
 describe("targetSegmentCount", () => {
-  it("is 3 for an event with a next team, 2 without, 1 for epilogue", () => {
-    expect(targetSegmentCount({ type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next: { team: "藍隊", monster: "幽靈", boss: false } })).toBe(3);
+  const next = { team: "藍隊", monster: "幽靈", boss: false };
+  it("is 2 for an ordinary turn with a next team (result + transition), 3 for a big moment, 2 without a next team, 1 for epilogue", () => {
+    expect(targetSegmentCount({ type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next })).toBe(2);
+    expect(targetSegmentCount({ type: "retry", team: "紅隊", monster: "史萊姆", next })).toBe(2);
+    expect(targetSegmentCount({ type: "flee", team: "紅隊", monster: "史萊姆", next })).toBe(2);
+    expect(targetSegmentCount({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 5, next })).toBe(3);
+    expect(targetSegmentCount({ type: "start", teams: ["紅隊"], next })).toBe(3);
+    expect(targetSegmentCount({ type: "correct", team: "紅隊", monster: "史萊姆", points: 1, roll: { kind: "crit", value: 1 }, next })).toBe(3);
+    expect(targetSegmentCount({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1, next })).toBe(3);
+    expect(targetSegmentCount({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 7, next })).toBe(2);
+    expect(targetSegmentCount({ type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next, hostLine: "珍珠能吃嗎" })).toBe(3);
     expect(targetSegmentCount({ type: "correct", team: "紅隊", monster: "史萊姆", points: 2 })).toBe(2);
     expect(targetSegmentCount({ type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9 })).toBe(2);
     expect(targetSegmentCount({ type: "epilogue", ranking: [], winners: [] })).toBe(1);
@@ -225,8 +234,8 @@ describe("narration runner", () => {
     });
   });
 
-  describe("events with a next team (3 segments: result, atmosphere, transition)", () => {
-    const withNext: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next: { team: "藍隊", monster: "害羞幽靈", boss: false } };
+  describe("big moments with a next team (3 segments: result, atmosphere, transition)", () => {
+    const withNext: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 3, roll: { kind: "crit", value: 20 }, next: { team: "藍隊", monster: "害羞幽靈", boss: false } };
 
     it("uses all three provider segments when it writes all three", async () => {
       const { runner, emitted, entries } = setup(provider(async () => "紅隊答對了！\n塵埃落定\n輪到藍隊，害羞幽靈在等你們。"));
@@ -270,6 +279,20 @@ describe("narration runner", () => {
       await slow.runner.run(1, withNext);
       expect(slow.emitted[0].lines).toEqual(["備用旁白", "備用氣氛", "備用下一句"]);
       expect(slow.entries[0].provider).toBe("scripted");
+    });
+
+    it("an ordinary turn is the result and the transition, with no atmosphere line between them", async () => {
+      const plain: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next: { team: "藍隊", monster: "害羞幽靈", boss: false } };
+      const both = setup(provider(async () => "紅隊答對了！\n輪到藍隊，害羞幽靈在等你們。"));
+      await both.runner.run(1, plain);
+      expect(both.emitted[0].lines).toEqual(["紅隊答對了！", "輪到藍隊，害羞幽靈在等你們。"]);
+      const one = setup(provider(async () => "紅隊答對了！"));
+      await one.runner.run(1, plain);
+      expect(one.emitted[0].lines).toEqual(["紅隊答對了！", "備用下一句"]);
+      // Three lines for a two-line turn: the last one is the handoff, so the atmosphere never takes its slot.
+      const three = setup(provider(async () => "紅隊答對了！\n塵埃落定\n輪到藍隊。"));
+      await three.runner.run(1, plain);
+      expect(three.emitted[0].lines).toEqual(["紅隊答對了！", "輪到藍隊。"]);
     });
 
     it("sends no transition segment when the event has no next team, even if the provider wrote three lines", async () => {

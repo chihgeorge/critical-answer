@@ -17,7 +17,7 @@ import { sprintSeen } from "@/lib/transitions";
 import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
-import { useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
+import { dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { PHONE_LAG_MS, revealNow } from "@/lib/podium";
 import { McOption } from "@/components/mc-option";
 import { D20 } from "@/components/d20";
@@ -66,6 +66,26 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
       </PixelButton>
     </Panel>
   );
+}
+
+/** 🧪 喝下幸運藥水 (docs/designs/lucky-potion.md D2, D6), right above the control it affects. The caller shows it only while
+ * a crit or check die can still roll; this hides it in a buzzer phase, without a potion, or once drunk on this question. */
+function PotionButton({ game, teamId, questionId, send }: { game: StateMessage; teamId: string; questionId: string; send: (m: ClientMessage) => void }) {
+  const me = game.view.teams.find((t) => t.id === teamId);
+  if (!me?.item || me.itemArmed || game.view.buzz) return null;
+  return (
+    <PixelButton data-testid="drink-potion" className="!m-0 mt-1 !min-h-[56px] !text-[20px]" onClick={() => send({ type: "TEAM_DRINK_POTION", questionId, eventId: game.eventId })}>
+      🧪 喝下幸運藥水
+    </PixelButton>
+  );
+}
+
+/** The team card's potion line (D2, D4, D5): held, drunk on the question it faces now, or back after a question with no roll
+ * (E2: until the team's next turn). */
+function potionLine(team: StateMessage["view"]["teams"][number] | undefined, myTurn: boolean): { text: string; drunk?: true } | null {
+  if (!team?.item) return null;
+  if (team.itemArmed) return { text: "🧪 已喝下：這題的下一顆骰擲兩次取高", drunk: true };
+  return { text: team.itemArmedFor && !myTurn ? "🧪 藥水還在：這題沒擲到骰" : "🧪 有一瓶幸運藥水" };
 }
 
 /** The team's class ability on its own turn (D11=A: under 鎖定答案). The warrior's button or its die
@@ -279,6 +299,8 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
       ) : inFlight ? (
         <div className="px-bar ok mt-1" role="status">鎖定中…</div>
       ) : (
+        <>
+        <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />
         <PixelButton
           variant="ok"
           disabled={!pickable}
@@ -293,6 +315,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
         >
           {sorting && !pickable ? "這個順序答錯過了，換一下" : "鎖定答案"}
         </PixelButton>
+        </>
       )}
       {!wrong && !rolling && <ClassAbility game={game} teamId={teamId} send={send} frozen={frozen} />}
       {lockFailed && !frozen && <div className="text-center text-[14px]">沒送出，再按一次</div>}
@@ -461,6 +484,8 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
           </div>
         </>
       ) : needCheck && !rolling && sent === null ? (
+        <>
+        <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />
         <PixelButton
           variant="ok"
           data-testid="roll-check"
@@ -471,6 +496,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
           🎲 擲骰說服
           <small className="text-[13px]">過了 DC，大螢幕給答案第一個字</small>
         </PixelButton>
+        </>
       ) : sent !== null ? (
         <div className="px-bar mt-1 [overflow-wrap:anywhere]" role="status" data-testid="typed-answer-sent">
           已送出：{sent}・等主持人判
@@ -818,6 +844,7 @@ export default function PlayPage() {
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
   const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
+  const potion = game ? potionLine(myTeam, isMyTurn) : null;
   const [reactSent, setReactSent] = useState<ReactSent | null>(null);
   const finished = game?.phase === "finished";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): one big 搶答 button, answers spoken aloud. */
@@ -841,6 +868,11 @@ export default function PlayPage() {
               </div>
             )}
             {myTeam?.boon && <div data-testid="phone-boon" className="text-[15px]">{BOON_TEXT[myTeam.boon]}</div>}
+            {potion && (
+              <div data-testid="phone-potion" className="text-[15px]" style={potion.drunk ? { background: "var(--lav)" } : undefined}>
+                {potion.text}
+              </div>
+            )}
             <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
               {myTeam ? (
                 <>
@@ -1097,7 +1129,7 @@ export default function PlayPage() {
               // other media render site in this diff carries (adversarial review finding, /ship).
               <QuestionMedia key={revealed.questionId} content={revealed.explanation} label="詳解" maxWidth={260} maxHeight={180} />
             )}
-            {cookStep === 3 && revealed.dish && <div data-testid="phone-dish" className="text-[18px]">🍲 今晚的菜：{revealed.dish.name}</div>}
+            {dishUp(cookStep) && revealed.dish && <div data-testid="phone-dish" className="text-[18px]">🍲 今晚的菜：{revealed.dish.name}</div>}
           </Panel>
         )}
 
