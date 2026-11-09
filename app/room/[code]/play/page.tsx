@@ -1244,7 +1244,7 @@ function ForkPanel({ game, teamId, send }: { game: StateMessage; teamId: string;
   return (
     <>
       <Panel className="flex items-center justify-between px-3 py-[10px] text-[20px]">
-        <span>🔀 岔路！走哪一扇門？</span>
+        <span>🔀 <span className="px-glyph-fix">岔</span>路！走哪一扇門？</span>
         {beat?.timeout ? <span className="px-chip">⏳ 時間到</span> : typeof game.forkLeft === "number" && !beat ? <AnswerClock key={game.forkLeft} ms={game.forkLeft} variant="chip" /> : null}
       </Panel>
       {/* Sticky, so the doors stay in view however long the page gets (TODOS: the old event panel was pushed off screen). */}

@@ -644,7 +644,7 @@ function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: Sp
         <MapStrip view={view} />
       </div>
       <Panel className="absolute text-center" style={{ left: 250, right: 250, top: 104, padding: "10px 24px", zIndex: 5 }}>
-        <div className="px-title-gold px-title-sm" style={{ fontSize: 40, lineHeight: 1.2 }}>🔀 岔路！</div>
+        <div className="px-title-gold px-title-sm" style={{ fontSize: 40, lineHeight: 1.2 }}>🔀 <span className="px-glyph-fix">岔</span>路！</div>
       </Panel>
       <div className="absolute" style={{ right: 60, top: 108, zIndex: 6 }}>
         {beat?.timeout ? (
