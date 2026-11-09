@@ -91,6 +91,13 @@ test("回首頁 does not ask after a save, nor after the owner key is rejected",
   const original = await text.inputValue();
   await text.fill("暫時改掉");
   await text.fill(original);
+  // Regression: ISSUE-003 — a save that worked said nothing. Found by /qa on 2026-11-09.
+  await expect(page.getByTestId("bank-saved")).toHaveCount(0);
+  await saveAll(page);
+  await expect(page.getByTestId("bank-saved")).toHaveText("✓ 已儲存");
+  await text.fill("又改了"); // an unsaved edit takes the line away
+  await expect(page.getByTestId("bank-saved")).toHaveCount(0);
+  await text.fill(original);
   await saveAll(page);
   await page.getByRole("link", { name: "← 回首頁" }).click();
   await expect(page).toHaveURL(/\/$/);

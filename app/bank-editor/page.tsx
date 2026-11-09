@@ -139,6 +139,8 @@ export default function BankEditorPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** The bank the last save returned: while it is still the one shown, the page says 已儲存. An edit or a load makes a new object. */
+  const [lastSaved, setLastSaved] = useState<Bank | null>(null);
   /** The stored bank can't be read by this version: what's shown is the bundled fallback, and nothing may be saved. */
   const [readOnly, setReadOnly] = useState(false);
   /** The stored bank is an older format (docs/designs/monster-catalog.md §5): shown is the default bank, and a save replaces the old one. */
@@ -215,6 +217,7 @@ export default function BankEditorPage() {
 
   const save = async (next: Bank) => {
     if (version === null) return; // no successful load yet — nothing to compare against
+    setLastSaved(null); // a save that fails must not leave the last one's 已儲存 up
     const invalid = validationError(next);
     if (invalid) {
       setError(invalid);
@@ -240,6 +243,7 @@ export default function BankEditorPage() {
       const versioned: { bank: Bank; version: number } = await res.json();
       setBank(versioned.bank);
       savedBank.current = versioned.bank;
+      setLastSaved(versioned.bank);
       setVersion(versioned.version);
       setOutdated(null);
     } catch {
@@ -495,6 +499,7 @@ export default function BankEditorPage() {
           <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving || loading || readOnly}>
             {saving ? "儲存中…" : "儲存全部變更"}
           </PixelButton>
+          {lastSaved !== null && lastSaved === bank && <div data-testid="bank-saved" role="status" className="text-[15px]" style={{ color: "var(--ok)" }}>✓ 已儲存</div>}
         </>
       )}
     </main>
