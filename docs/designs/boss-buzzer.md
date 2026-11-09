@@ -6,6 +6,8 @@ Status: APPROVED（D1–D7 由站長逐題決定）
 Mode: Builder
 活動：2026-11-21，功能截止 2026-11-18
 
+> 2026-11-08 補強：全部答錯改成同一題再搶、搶到的隊伍可以打字、YouTube 出錯的備案、音樂類別，見 [boss-music-buzzer.md](boss-music-buzzer.md)（M1–M5），D4、D5 以那份為準。
+
 > e2e 只在 GitHub CI 跑，不要在本機跑 `npm run e2e`（見 CLAUDE.md, Testing）。
 
 ## 要做什麼

@@ -38,6 +38,16 @@ describe("boss phases", () => {
     expect(() => parseBank({ ...valid(), boss: { monster: "dragon", phases: [{ ...phase1(), buzzer: true }] } })).toThrow(/first boss phase/);
   });
 
+  it("keeps a question's category trimmed, drops a blank one, refuses one that is not text or too long (boss-music-buzzer.md)", () => {
+    const withCat = (category: unknown) => parseBank({ ...valid(), boss: { monster: "dragon", phases: [{ maxHp: 3, questions: [{ ...q("b1"), category }] }] } }).boss.phases[0].questions[0];
+    expect(withCat(" 動漫 ").category).toBe("動漫");
+    expect(withCat("  ")).not.toHaveProperty("category");
+    expect(parseBank(valid()).boss.phases[0].questions[0]).not.toHaveProperty("category");
+    expect(() => withCat(3)).toThrow(/category/);
+    expect(() => withCat("字".repeat(21))).toThrow(/category/);
+    expect(parseBank({ ...valid(), rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [{ ...mc("a1"), category: "遊戲" }] }] }).pools[1][0].category).toBe("遊戲");
+  });
+
   it("reads a bank without phases as one phase with an empty name and rule", () => {
     expect(parseBank(valid()).boss.phases).toEqual([{ name: "", rule: "", maxHp: 3, questions: [q("b1")] }]);
   });

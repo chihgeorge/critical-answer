@@ -21,6 +21,15 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_BUZZ_SKIP", questionId: 5 })).toBeNull();
   });
 
+  it("HOST_BUZZ_OPEN, SCREEN_CLIP_ERROR and TEAM_PICK_CATEGORY (boss-music-buzzer.md)", () => {
+    expect(parseClientMessage({ type: "HOST_BUZZ_OPEN", questionId: "q1" })).toEqual({ type: "HOST_BUZZ_OPEN", questionId: "q1" });
+    expect(parseClientMessage({ type: "SCREEN_CLIP_ERROR", questionId: "q1" })).toEqual({ type: "SCREEN_CLIP_ERROR", questionId: "q1" });
+    expect(parseClientMessage({ type: "SCREEN_CLIP_ERROR" })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "動漫" })).toEqual({ type: "TEAM_PICK_CATEGORY", category: "動漫" });
+    expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "" })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "x".repeat(65) })).toBeNull();
+  });
+
   it("returns null for non-objects and unknown types", () => {
     for (const v of [null, undefined, 5, "JOIN", [], { type: "NOPE" }, {}]) {
       expect(parseClientMessage(v)).toBeNull();

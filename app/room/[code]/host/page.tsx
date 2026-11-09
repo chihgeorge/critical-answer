@@ -711,6 +711,18 @@ export default function HostPage() {
                   )}
                 </div>
               </div>
+              {/* The big screen cannot play this video (boss-music-buzzer.md M4): the host plays the song live. */}
+              {game.question?.content.kind === "youtube" && !revealUp && game.clipError && (
+                <div data-testid="host-clip-error" role="alert" className="mt-2 flex flex-col gap-1 p-2 text-[15px]" style={{ background: "#ffd6dc", boxShadow: "0 0 0 3px var(--k)" }}>
+                  <div className="text-[16px]">大螢幕：這支影片放不出來</div>
+                  <div className="text-[13px]">（影片無法播放／被擋）{buzz && !buzz.open ? "用你的手機或喇叭放歌，再按下面的鈕開放搶答。" : "用你的手機或喇叭放歌。"}</div>
+                  {buzz && !buzz.open && (
+                    <PixelButton className="!m-0 min-h-[48px] text-[16px]" style={{ background: "var(--turn)" }} disabled={!ready} onClick={() => send({ type: "HOST_BUZZ_OPEN", questionId: buzz.questionId })}>
+                      🎤 現場放歌，開放搶答
+                    </PixelButton>
+                  )}
+                </div>
+              )}
               {game.question?.content.kind === "youtube" && !revealUp && (
                 <MediaControls questionId={game.question.id} media={game.media} disabled={!ready} send={send} />
               )}
@@ -723,6 +735,13 @@ export default function HostPage() {
                         ? "按 ▶ 播放後開放搶答"
                         : "等隊伍搶答…"}
                   </div>
+                  {/* The buzzing team may also type its answer (boss-music-buzzer.md M2). */}
+                  {buzz.teamId && (
+                    <div data-testid="host-typed-answer" className="text-[18px] [overflow-wrap:anywhere]">
+                      {game.view.teams.find((t) => t.id === buzz.teamId)?.typedAnswer ? `隊伍打字：${game.view.teams.find((t) => t.id === buzz.teamId)!.typedAnswer}` : "（口頭作答，或等他們打字）"}
+                    </div>
+                  )}
+                  {buzz.category && <div className="text-[14px]">{teamName(buzz.picker ?? "")} 選的類別：{buzz.category}</div>}
                   {buzz.out.length > 0 && <div className="text-[14px]">已鎖住：{buzz.out.map(teamName).join("、")}</div>}
                   {!buzz.teamId && (
                     <PixelButton className="!m-0 min-h-[44px] text-[15px]" disabled={!ready} onClick={() => send({ type: "HOST_BUZZ_SKIP", questionId: buzz.questionId })}>

@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
 import { SORT_ITEMS } from "@/lib/sort-order";
-import { DIFFICULTIES, MAX_BOSS_HP, MAX_PROMPT, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_PROMPT, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { scoreName } from "@/lib/protocol";
@@ -114,6 +114,7 @@ function validationError(bank: Bank): string | null {
     const contentErr = contentError(`${label}的內容`, q.content);
     if (contentErr) return contentErr;
     if (q.prompt !== undefined && Array.from(q.prompt).length > MAX_PROMPT) return `${label}的題幹最多 ${MAX_PROMPT} 個字`;
+    if (q.category !== undefined && Array.from(q.category.trim()).length > MAX_CATEGORY) return `${label}的類別最多 ${MAX_CATEGORY} 個字`;
     const explanationErr = contentError(`${label}的詳解`, q.explanation);
     if (explanationErr) return explanationErr;
   }
@@ -433,6 +434,7 @@ export default function BankEditorPage() {
                       title={`第 ${i + 1} 階段的題目 · ${p.questions.length} 題`}
                       note={i === 0 ? "第 1 階段看起來就是普通的首領。" : `第 ${i} 階段打完後出現。`}
                       questions={p.questions}
+                      categories={!!p.buzzer}
                       onUpdate={(id, updater) => updateQuestion(loc, id, updater)}
                       onDelete={(id) => deleteQuestion(loc, id)}
                       onAdd={() => addQuestion(loc)}
@@ -655,11 +657,14 @@ function RoomEditor({
   onDelete,
   onAdd,
   onUploadImage,
+  categories = false,
 }: {
   testId: string;
   title: string;
   note: string;
   questions: BankQuestion[];
+  /** A 類別 field per question: a buzzer phase's winner picks the next song's (boss-music-buzzer.md M5). */
+  categories?: boolean;
   onUpdate: (id: string, updater: (q: BankQuestion) => BankQuestion) => void;
   onDelete: (id: string) => void;
   onAdd: () => void;
@@ -677,6 +682,7 @@ function RoomEditor({
             onUpdate={(updater) => onUpdate(q.id, updater)}
             onDelete={() => onDelete(q.id)}
             onUploadImage={onUploadImage}
+            category={categories}
           />
         ))}
         <PixelButton onClick={onAdd}>+ 新增題目</PixelButton>
@@ -694,7 +700,7 @@ function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): BankQuestio
   // an uploaded image/video with no warning at all, bypassing MediaPicker's own confirm() gate
   // entirely (adversarial review finding, /ship).
   // The prompt (題幹) belongs to the content, so it carries over too.
-  const prompt = q.prompt !== undefined ? { prompt: q.prompt } : {};
+  const prompt = { ...(q.prompt !== undefined ? { prompt: q.prompt } : {}), ...(q.category !== undefined ? { category: q.category } : {}) };
   if (kind === "text") return { kind: "text", id: q.id, content: q.content, ...prompt, answer: "", explanation: q.explanation };
   if (kind === "sort") return { kind: "sort", id: q.id, content: q.content, ...prompt, items: Array<string>(SORT_ITEMS).fill(""), explanation: q.explanation };
   return {
@@ -927,7 +933,9 @@ function QuestionRow({
   onUpdate,
   onDelete,
   onUploadImage,
+  category = false,
 }: {
+  category?: boolean;
   question: BankQuestion;
   onUpdate: (updater: (q: BankQuestion) => BankQuestion) => void;
   onDelete: () => void;
@@ -993,6 +1001,29 @@ function QuestionRow({
           <option value="sort">排序</option>
         </select>
       </div>
+
+      {category && (
+        <label className="flex items-center gap-1 text-[15px]">
+          類別
+          <input
+            className="px-input !py-1"
+            aria-label="類別"
+            placeholder="例如：動漫、遊戲音樂（答對的隊伍可選下一首的類別，可空白）"
+            maxLength={MAX_CATEGORY}
+            value={q.category ?? ""}
+            onChange={(e) => {
+              // Read now, as the 題幹 field does: the updater may run after the input is put back.
+              const category = e.target.value;
+              onUpdate((cur) => {
+                const next = { ...cur };
+                if (category.trim()) next.category = category;
+                else delete next.category;
+                return next;
+              });
+            }}
+          />
+        </label>
+      )}
 
       <MediaPicker
         fieldId={`${q.id}-explanation`}

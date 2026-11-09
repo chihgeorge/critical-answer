@@ -223,8 +223,12 @@ export interface BuzzState {
   open?: true;
   /** The team that buzzed first and answers aloud now. */
   teamId?: string;
-  /** Teams judged wrong on this question: they cannot buzz on it again (D4). */
+  /** Teams judged wrong on this question: they cannot buzz on it again (D4), until every online team is (boss-music-buzzer.md M1). */
   out: string[];
+  /** The team judged right on the question before: it may pick this question's category until buzzing opens (M5). */
+  picker?: string;
+  /** The category `picker` chose; this question was drawn from it. */
+  category?: string;
 }
 
 export interface GameConfig {
@@ -685,6 +689,32 @@ function rotatedBuzz(game: GameState, nextQuestionId: string): BuzzState | undef
   return nextQuestionId === game.boss.currentQuestionId ? { questionId: nextQuestionId, ...(currentBuzz(game).open ? { open: true as const } : {}), out: [] } : undefined;
 }
 
+/** The categories a buzz winner may pick for the next question: those of the phase's unrevealed questions, in bank
+ * order. `categoryOf` maps a question id to its bank category (the room's, from the bank). Empty when no pick is due. */
+export function pickableCategories(game: GameState, categoryOf: Record<string, string | undefined>, open: boolean): string[] {
+  if (!isBuzzPhase(game)) return [];
+  const buzz = currentBuzz(game);
+  if (!buzz.picker || open || buzz.open || buzz.teamId) return [];
+  const found = game.boss.questionIds.filter((id) => !game.revealedQuestionIds.includes(id)).map((id) => categoryOf[id]);
+  return [...new Set(found.filter((c): c is string => !!c))];
+}
+
+/** The buzz winner picks the next question's category (boss-music-buzzer.md M5): the boss question becomes the
+ * current one if it has that category, else the next unrevealed one in the ring that does. It may change its mind
+ * until buzzing opens (`open`: the room's call, as in buzzIn). Nobody has heard the question it replaces. */
+export function pickCategory(game: GameState, teamId: string, category: string, categoryOf: Record<string, string | undefined>, open: boolean): GameState {
+  if (!isBuzzPhase(game)) throw new InvalidActionError("not_buzzer_phase");
+  const buzz = currentBuzz(game);
+  if (buzz.picker !== teamId) throw new InvalidActionError("not_picker");
+  if (open || buzz.open || buzz.teamId) throw new InvalidActionError("too_late");
+  const { questionIds, currentQuestionId } = game.boss;
+  const start = questionIds.indexOf(currentQuestionId);
+  const ring = questionIds.map((_, i) => questionIds[(start + i) % questionIds.length]);
+  const id = ring.find((q) => categoryOf[q] === category && !game.revealedQuestionIds.includes(q));
+  if (!id) throw new InvalidActionError("no_such_category");
+  return { ...game, boss: { ...game.boss, currentQuestionId: id }, buzz: { ...buzz, questionId: id, category } };
+}
+
 /** 沒人答對，換下一題 (D4): the boss question moves on, unrevealed, so it may come round again. */
 export function skipBuzz(game: GameState): GameState {
   if (!isBuzzPhase(game)) throw new InvalidActionError("not_buzzer_phase");
@@ -693,7 +723,7 @@ export function skipBuzz(game: GameState): GameState {
   return { ...game, buzz: rotatedBuzz(game, rotated.currentQuestionId), teams: resetBossSelections(game.teams), boss: { ...game.boss, ...rotated } };
 }
 
-/** No class ability, check, prayer or typed answer in a buzzer phase (D6): answers are spoken after a buzz. */
+/** No class ability, check or prayer in a buzzer phase (D6): answers are spoken after a buzz. */
 function assertNotBuzz(game: GameState) {
   if (isBuzzPhase(game)) throw new InvalidActionError("buzzer_phase");
 }
@@ -877,7 +907,8 @@ export function answerQuestion(
           ...next,
           ...(phasePending ? { phasePending } : {}),
         },
-        buzz: undefined,
+        // A buzz winner picks the next question's category until buzzing opens (boss-music-buzzer.md M5).
+        buzz: buzzing && !stay ? { questionId: next.currentQuestionId, out: [], picker: teamId } : undefined,
       };
       outcome = { type: "correct-boss-hit", teamId, bossHpRemaining: newHp, bossKilled, ...gain, ...(killBonus === undefined ? {} : { killBonus }), ...rollMark };
 
@@ -892,10 +923,11 @@ export function answerQuestion(
       const shownWrong = (game.eliminated[questionId]?.length ?? 0) > 0;
       const revealed = shownWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
       const phasePending = usedUp(revealed) ? ("exhausted" as const) : undefined;
-      // A wrong buzz shuts this team out of the question (D4); once every online team is out, the question moves on unrevealed.
+      // A wrong buzz shuts this team out of the question (D4); once every online team is out, they all buzz on the same
+      // question again (boss-music-buzzer.md M1): only the host's 換下一題 moves it on.
       const out = buzzing ? [...game.buzz!.out, teamId] : [];
       const allOut = buzzing && game.teams.every((t) => !t.online || !t.inBoss || out.includes(t.id));
-      const rotated = !phasePending && (fleeChoice === "flee" || shownWrong || allOut) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
+      const rotated = !phasePending && (fleeChoice === "flee" || shownWrong) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
       const rotatedBossQuestionId = rotated.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a rotation changes
       // the question for every team in boss phase, so every one of their picks resets —
@@ -905,7 +937,7 @@ export function answerQuestion(
         revealedQuestionIds: revealed,
         teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game.teams) : game.teams,
         boss: { ...boss, ...rotated, ...(phasePending ? { phasePending } : {}) },
-        ...(buzzing ? { buzz: allOut ? rotatedBuzz(game, rotatedBossQuestionId) : { ...game.buzz!, teamId: undefined, out } } : {}),
+        ...(buzzing ? { buzz: { ...game.buzz!, teamId: undefined, out: allOut ? [] : out } } : {}),
       };
       outcome =
         fleeChoice === "flee"
@@ -1356,7 +1388,8 @@ export function recordOptionSelection(game: GameState, teamId: string, questionI
  */
 export function submitText(game: GameState, teamId: string, questionId: string, text: string): GameState {
   assertPlaying(game);
-  assertNotBuzz(game);
+  // In a buzzer phase only the team that buzzed may type, if it likes (boss-music-buzzer.md M2).
+  if (isBuzzPhase(game) && game.buzz?.teamId !== teamId) throw new InvalidActionError("no_buzz");
   if (game.pendingWrong) throw new InvalidActionError("A wrong answer is already waiting for its choice");
   assertTurn(game, teamId);
   assertCurrentQuestion(game, teamId, questionId);
@@ -1415,11 +1448,13 @@ function patchTeam(teams: Team[], teamId: string, patch: (t: Team) => Partial<Te
 export function setTeamOnline(game: GameState, teamId: string, online: boolean): GameState {
   getTeam(game, teamId); // throws if unknown
   // A buzzing team that drops lets go of the buzz, not judged (boss-buzzer.md): another team may buzz.
-  const dropped = !online && game.buzz?.teamId === teamId ? { buzz: { ...game.buzz, teamId: undefined } } : {};
+  const drops = !online && game.buzz?.teamId === teamId;
+  const dropped = drops ? { buzz: { ...game.buzz!, teamId: undefined } } : {};
   return {
     ...game,
     ...dropped,
-    teams: patchTeam(game.teams, teamId, () => ({ online })),
+    // Its typed answer goes with the buzz (boss-music-buzzer.md M2): it may buzz and type again.
+    teams: patchTeam(game.teams, teamId, () => ({ online, ...(drops ? { typedAnswer: undefined } : {}) })),
   };
 }
 

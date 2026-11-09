@@ -22,6 +22,8 @@ import {
   buzzIn,
   openBuzz,
   skipBuzz,
+  pickCategory,
+  pickableCategories,
   warriorRoll,
   endGame,
   spendAbility,
@@ -2070,8 +2072,8 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     const { game, outcome } = judge(g, "T1", true);
     expect(outcome).toMatchObject({ type: "correct-boss-hit", teamId: "T1", bossHpRemaining: 1, reward: 10 });
     expect(game.boss.currentQuestionId).toBe("b-b");
-    expect(game.buzz).toBeUndefined();
-    expect(getSpectatorView(game).buzz).toEqual({ questionId: "b-b", out: [] });
+    // The winner may pick the next question's category (boss-music-buzzer.md M5).
+    expect(game.buzz).toEqual({ questionId: "b-b", out: [], picker: "T1" });
   });
 
   it("a wrong buzz shuts that team out of the question; the others may still buzz", () => {
@@ -2083,15 +2085,18 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     expect(buzzIn(game, "T0", "b-a", true).buzz?.teamId).toBe("T0");
   });
 
-  it("once every online team is out, the question moves on unrevealed; an offline team does not hold it up", () => {
-    let g = setTeamOnline(buzzer(), "T2", false);
-    g = judge(buzzIn(g, "T0", "b-a", true), "T0", false).game;
-    const { game, outcome } = judge(buzzIn(g, "T1", "b-a", true), "T1", false);
-    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T1", newBossQuestion: true });
-    expect(game.boss.currentQuestionId).toBe("b-b");
+  it("once every online team is out, everyone buzzes on the same question again (boss-music-buzzer.md M1); an offline team does not hold it up", () => {
+    let g = setTeamOnline(openBuzz(buzzer(), "b-a"), "T2", false);
+    g = judge(buzzIn(g, "T0", "b-a", false), "T0", false).game;
+    const { game, outcome } = judge(buzzIn(g, "T1", "b-a", false), "T1", false);
+    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T1" });
+    expect(game.boss.currentQuestionId).toBe("b-a");
     expect(game.revealedQuestionIds).not.toContain("b-a");
-    expect(game.buzz).toBeUndefined();
-    expect(() => buzzIn(game, "T2", "b-b", true)).toThrow("cannot_buzz");
+    expect(game.buzz).toEqual({ questionId: "b-a", open: true, out: [] });
+    expect(buzzIn(game, "T0", "b-a", false).buzz?.teamId).toBe("T0");
+    expect(() => buzzIn(game, "T2", "b-a", true)).toThrow("cannot_buzz");
+    // The host's 換下一題 still moves it on.
+    expect(skipBuzz(game).boss.currentQuestionId).toBe("b-b");
   });
 
   it("a one-question buzzer phase: everyone out, or a skip, brings the same question back open to all", () => {
@@ -2121,14 +2126,74 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     expect(() => skipBuzz(createGame([{ id: "T0", name: "A" }], ...deck(1), ["x"], { bossThreshold: 0 }, 1, first))).toThrow("not_buzzer_phase");
   });
 
-  it("no class ability, check, prayer or typed answer in a buzzer phase", () => {
+  it("no class ability, check or prayer in a buzzer phase", () => {
     let g = buzzer();
     g = { ...g, teams: g.teams.map((t) => (t.id === "T0" ? { ...t, classId: "cleric" as const, abilityUses: 2 } : t)) };
     g = buzzIn(g, "T0", "b-a", true);
     expect(() => spendAbility(g, "T0", "cleric")).toThrow("buzzer_phase");
     expect(() => recordCheck(g, "T0", "b-a", 10, "答案")).toThrow("buzzer_phase");
-    expect(() => submitText(g, "T0", "b-a", "x")).toThrow("buzzer_phase");
     expect(canPrayBeforeJudge(g, "T0")).toBe(false);
+  });
+
+  it("only the team that buzzed may type its answer; the judgment or a drop clears it (boss-music-buzzer.md M2)", () => {
+    const g = buzzIn(buzzer(), "T0", "b-a", true);
+    expect(() => submitText(buzzer(), "T0", "b-a", "x")).toThrow("no_buzz");
+    expect(() => submitText(g, "T1", "b-a", "x")).toThrow("no_buzz");
+    const typed = submitText(g, "T0", "b-a", "麻辣鮮師");
+    expect(getSpectatorView(typed).teams[0].typedAnswer).toBe("麻辣鮮師");
+    expect(judge(typed, "T0", false).game.teams[0].typedAnswer).toBeUndefined();
+    const back = setTeamOnline(setTeamOnline(typed, "T0", false), "T0", true);
+    expect(back.teams[0].typedAnswer).toBeUndefined();
+    expect(submitText(buzzIn(back, "T0", "b-a", true), "T0", "b-a", "y").teams[0].typedAnswer).toBe("y");
+  });
+
+  describe("category pick (boss-music-buzzer.md M5)", () => {
+    const cats = { "b-a": "動漫", "b-b": "動漫", "b-c": "遊戲", "b-d": "遊戲" };
+    /** T1 answered b-a right: b-b is next, T1 picks. 4 HP so nobody dies. */
+    function won(): GameState {
+      const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
+      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 4, questionIds: ["b-a", "b-b", "b-c", "b-d"], buzzer: true }]);
+      g = sendToBoss(g, "T0");
+      g = { ...g, currentTurnIndex: 0, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
+      g = enterNextBossPhase(answerQuestion(g, "T0", "p1-a", true, "retry", first).game);
+      return judge(buzzIn(g, "T1", "b-a", true), "T1", true).game;
+    }
+
+    it("offers the categories with unrevealed questions left, only to the winner and only until buzzing opens", () => {
+      const g = won();
+      expect(pickableCategories(g, cats, false)).toEqual(["動漫", "遊戲"]);
+      expect(pickableCategories(g, cats, true)).toEqual([]);
+      expect(pickableCategories(g, {}, false)).toEqual([]);
+      expect(pickableCategories(openBuzz(g, "b-b"), cats, false)).toEqual([]);
+      expect(pickableCategories(judge(buzzIn(g, "T0", "b-b", true), "T0", true).game, cats, false)).toEqual(["遊戲"]);
+    });
+
+    it("draws the next question from the picked category, and may change its mind until ▶", () => {
+      const g = pickCategory(won(), "T1", "遊戲", cats, false);
+      expect(g.boss.currentQuestionId).toBe("b-c");
+      expect(g.buzz).toEqual({ questionId: "b-c", out: [], picker: "T1", category: "遊戲" });
+      expect(getSpectatorView(g).buzz?.category).toBe("遊戲");
+      const back = pickCategory(g, "T1", "動漫", cats, false);
+      expect(back.boss.currentQuestionId).toBe("b-b");
+      // The same category keeps the question already drawn.
+      expect(pickCategory(g, "T1", "遊戲", cats, false).boss.currentQuestionId).toBe("b-c");
+      const opened = openBuzz(g, "b-c");
+      expect(() => pickCategory(opened, "T1", "動漫", cats, false)).toThrow("too_late");
+      expect(() => pickCategory(g, "T1", "動漫", cats, true)).toThrow("too_late");
+    });
+
+    it("refuses another team, a category with nothing left, and a question already buzzed", () => {
+      const g = won();
+      expect(() => pickCategory(g, "T0", "遊戲", cats, false)).toThrow("not_picker");
+      expect(() => pickCategory(g, "T1", "流行", cats, false)).toThrow("no_such_category");
+      expect(() => pickCategory(buzzIn(g, "T0", "b-b", true), "T1", "遊戲", cats, false)).toThrow("too_late");
+      expect(() => pickCategory(buzzer(), "T0", "遊戲", cats, false)).toThrow("not_picker");
+    });
+
+    it("without a pick the ring goes on as before; a skip drops the pick", () => {
+      expect(won().boss.currentQuestionId).toBe("b-b");
+      expect(skipBuzz(won()).buzz?.picker).toBeUndefined();
+    });
   });
 
   it("the final blow of a buzzer phase still kills with the 4d20", () => {

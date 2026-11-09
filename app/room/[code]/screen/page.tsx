@@ -255,7 +255,7 @@ type YoutubeContent = Extract<PublicMediaContent, { kind: "youtube" }>;
 /** A chip that stands in the side column beside a video (D14), at the same 20px as the hints. */
 const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4px solid var(--k)", whiteSpace: "normal", borderRadius: 12 } as const;
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, onClipEnded, answerLeft, onClockSecond, say, onRead }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -281,6 +281,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       <div className="px-chip" style={{ ...CHIP, fontSize: buzz.teamId ? 30 : 22, background: buzz.teamId ? "var(--turn)" : "var(--lav)" }}>
         {buzz.teamId ? `${nameOf(buzz.teamId)} 搶到了！` : question?.content.kind === "youtube" && !buzz.open ? "等主持人按 ▶" : "♪ 快搶！"}
       </div>
+      {/* The category the last winner picked (boss-music-buzzer.md M5). */}
+      {buzz.category && !buzz.open && !buzz.teamId && (
+        <div data-testid="screen-buzz-category" className="px-chip" style={{ ...CHIP, fontSize: 20, background: "var(--warn)" }}>
+          下一題：{buzz.category}
+        </div>
+      )}
       <div className="flex flex-wrap justify-center gap-2 text-[18px]">
         {view.teams.filter((t) => t.online).map((t) => (
           <span key={t.id} className="px-chip" style={{ ...CHIP, fontSize: 18, background: t.id === buzz.teamId ? "var(--turn)" : buzz.out.includes(t.id) ? "#5a4a60" : "var(--lav)", color: buzz.out.includes(t.id) ? "#ccc" : "var(--k)", textDecoration: buzz.out.includes(t.id) ? "line-through" : undefined }}>
@@ -429,6 +435,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               needsTap={needsTap}
               onPlayingChange={onVideoPlaying}
               onEnded={reveal ? undefined : () => onClipEnded(video.id)}
+              onError={reveal ? undefined : () => onClipError(video.id)}
+              // The host plays the song from their own device (boss-music-buzzer.md M4).
+              errorNote={!reveal && clipError && view.buzz?.open ? "🎤 主持人現場放歌" : undefined}
               title={reveal ? "正解影片" : "題目影片"}
             />
             {!lone && (
@@ -454,6 +463,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
         )}
         {!asking && buzzBox && <div className="mt-3">{buzzBox}</div>}
+        {/* The buzz winner picked the next song's category while the answer is on show (boss-music-buzzer.md M5). */}
+        {reveal && !card && view.buzz?.category && (
+          <div data-testid="screen-next-category" className="px-chip mx-auto mt-3 w-fit" style={{ ...CHIP, fontSize: 22, background: "var(--warn)" }}>
+            下一題：{view.buzz.category}
+          </div>
+        )}
         {!asking && !reveal && !card && question && !question.options && (
           <MageHint hint={view.mageHints?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
         )}
@@ -995,6 +1010,16 @@ export default function ScreenPage() {
   const showBgmToggle = useSyncExternalStore(noSubscribe, bgmSupported, () => false);
   const bgm = useRef<BgmPlayer | null>(null);
   const player = () => (bgm.current ??= createBgmPlayer());
+  // The music stays silent from a buzz until the host judges it, and while the host plays the song from their own
+  // device (boss-music-buzzer.md M3, M4): the room must hear the answer, and the song.
+  const videoPlaying = useRef(false);
+  const bgmHeld = useRef(false);
+  const buzzView = game?.phase === "playing" ? game.view.buzz : undefined;
+  const held = !!buzzView?.teamId || (!!game?.clipError && !!buzzView?.open);
+  useEffect(() => {
+    bgmHeld.current = held;
+    player().mute(held || videoPlaying.current);
+  }, [held]);
 
   useEffect(() => {
     // Read in an effect so SSR and the first render agree.
@@ -1050,7 +1075,8 @@ export default function ScreenPage() {
   /** From the player's real state (the clip stops itself at its end): the music goes silent (D10) and a line still
    * being read stops, since the host pressed ▶ to hear the song (D20). */
   function onVideoPlaying(playing: boolean) {
-    player().mute(playing);
+    videoPlaying.current = playing;
+    player().mute(playing || bgmHeld.current);
     if (playing && ttsSupported()) {
       window.speechSynthesis.cancel();
       pendingLines.current = null;
@@ -1059,6 +1085,9 @@ export default function ScreenPage() {
 
   function onClipEnded(questionId: string) {
     send({ type: "SCREEN_CLIP_ENDED", questionId });
+  }
+  function onClipError(questionId: string) {
+    send({ type: "SCREEN_CLIP_ERROR", questionId });
   }
   /** The lowest second the answer clock has shown. A STATE remounts the clock, which can show the same second or one
    * above it again (network delay): neither ticks twice. A jump of more than a second up is a new count. */
@@ -1209,7 +1238,7 @@ export default function ScreenPage() {
         )}
         {game?.phase === "playing" && !game.intro && !game.initiative && (game.eventReveal || (!game.reveal && !game.phaseCard && !game.phaseCardDue && describeTurn(game.view, null).team?.eventScene)) ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal ?? null} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} />}
         {game?.phase === "playing" && <ReactionFloats floats={floats} teams={game.view.teams} />}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}
