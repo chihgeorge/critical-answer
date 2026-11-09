@@ -4,6 +4,8 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Critical Answer：致命答題",
   description: "D&D 皮、答題骨的地城問答派對遊戲 — iteration 1 lightweight playtest build.",
+  // iPhone「加入主畫面」opens full screen (older iOS reads these tags, not the manifest).
+  appleWebApp: { capable: true, title: "致命答題", statusBarStyle: "black" },
 };
 
 export const viewport: Viewport = {

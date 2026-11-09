@@ -1,0 +1,28 @@
+import { describe, expect, it } from "vitest";
+import { GET } from "@/app/room/[code]/manifest.webmanifest/route";
+import { generateMetadata } from "@/app/room/[code]/play/layout";
+import manifest from "@/app/manifest";
+
+it("the site-wide manifest (app/manifest.ts) opens the home page full screen", () => {
+  expect(manifest()).toMatchObject({ start_url: "/", scope: "/", display: "standalone" });
+});
+
+it("the phone page links its own room's manifest", async () => {
+  expect((await generateMetadata({ params: Promise.resolve({ code: "BCDF" }) })).manifest).toBe("/room/BCDF/manifest.webmanifest");
+});
+
+const get = (code: string) =>
+  GET(new Request(`http://x/room/${code}/manifest.webmanifest`), { params: Promise.resolve({ code }) });
+
+describe("room manifest", () => {
+  it("opens the room's phone page from the home screen", async () => {
+    const res = await get("BCDF");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/manifest+json");
+    expect(await res.json()).toMatchObject({ start_url: "/room/BCDF/play", scope: "/", display: "standalone" });
+  });
+
+  it("refuses anything that is not a room code", async () => {
+    for (const code of ["bcdf", "ABCD", "BCD", "BC%2F"]) expect((await get(code)).status).toBe(404);
+  });
+});

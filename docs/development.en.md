@@ -70,7 +70,7 @@ Version numbers have four parts (for example `0.16.1.0`). A pull request does no
 ## Project structure
 
 ```
-app/                     Next.js pages: home, /room/[code]/host, /play, /screen, /bank-editor (question bank editor), and the error screens (error.tsx, global-error.tsx)
+app/                     Next.js pages: home, /room/[code]/host, /play, /screen, /bank-editor (question bank editor), the error screens (error.tsx, global-error.tsx), and the home-screen manifests (site-wide manifest.ts and each room's /room/[code]/manifest.webmanifest, built by lib/web-manifest.ts)
 components/              Shared pixel components (pixel.tsx), error screen (error-screen.tsx), big-screen stage (stage.tsx), big-screen live map (map-strip.tsx), multiple-choice option grid (mc-option.tsx), d20 and the big-screen dice roll (warrior roll, multiple-choice crit die, fill-in persuasion check and the boss finishing blow's 4d20, d20.tsx), first-character hint for fill-in questions (Mage and persuasion check, mage-hint.tsx), QR (qr.tsx), and the parts split out of the host page: AI narration settings (host-ai.tsx), the 「地城主旁白」 (dungeon master's narration) panel above the judge buttons (narration-panel.tsx), the "⚙ More" drawer (more-drawer.tsx), the "pick the next question" list (question-picker.tsx), and the per-field judging of multi-field music questions (field-judge.tsx)
 data/question-bank.json  Bundled fallback question bank (new rooms use it when BankStore cannot be reached; the editor shows it read-only when the stored bank cannot be read)
 lib/game-state.ts        Game state machine: rooms, question decks, boss, scoring (pure functions, fully tested)
@@ -95,6 +95,7 @@ lib/gate.ts、origin.ts   Worker entry rules
 e2e/                     Playwright end-to-end tests
 scripts/                 playtest.sh (LAN playtest), check-bundle.sh, pregate-runner.sh (local test runner for gstack pregate, runs only unit tests; see .gstack/pregate.json), check-docs.ts (checks links and anchors in README and the docs/ guides, and the Chinese/English twin pairing), balance-sim.ts (class balance simulation: `node scripts/balance-sim.ts [games]` prints each class's average score and win share)
 public/fonts/            Bundled fonts
+public/icon-192.png、icon-512.png  Home-screen icons (the slime)
 DESIGN.md                Pixel design system
 docs/designs/            Design docs and decision records (including question-bank-editor.md)
 docs/going-public.md     Checklist before making the repo public
