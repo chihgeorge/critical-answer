@@ -30,7 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import type { Accessory } from "./monster-catalog";
-import { isClassId, type ClassId, type EventResult, type ForkDoor, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { isClassId, type ClassId, type EventResult, type ForkDoor, type ForkSide, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
 import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
@@ -256,7 +256,7 @@ export type ClientMessage =
   /** Spend one use of the team's class ability on `questionId` (PR 1: the warrior's roll). */
   | { type: "TEAM_USE_ABILITY"; questionId: string }
   /** The team on turn at a fork picks its door (docs/designs/branch-fork.md). `eventId`: the STATE it was pressed under. */
-  | { type: "TEAM_CHOOSE_FORK"; door: ForkDoor; eventId: number }
+  | { type: "TEAM_CHOOSE_FORK"; side: ForkSide; eventId: number }
   /** 擲骰說服 on the team's own fill-in turn (dnd design R6, R-E1): the room rolls the check. `eventId`: the STATE it was pressed under (R-E4). */
   | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
   /** 🧪 喝下幸運藥水 on the team's own turn: its next crit or check die on `questionId` rolls twice, keeping the higher
@@ -396,8 +396,9 @@ export type ServerMessage =
       /** The door clock of the team choosing at a fork: ms left when this STATE was sent (branch-fork.md). */
       forkLeft?: number;
       /** The door that just opened, on show for FORK_BEAT_MS (branch-fork.md): `question` is null and the view still
-       * shows the team as it was before the press, so nothing behind the door shows early. Memory only. */
-      forkBeat?: { teamId: string; door: ForkDoor; timeout?: true };
+       * shows the team as it was before the press, so nothing behind the door shows early. Memory only. The side opened
+       * and what was behind it; the other door is never named, nor which side hides what before a pick. */
+      forkBeat?: { teamId: string; side: ForkSide; door: ForkDoor; timeout?: true };
     }
   | { type: "GAME_OVER"; winners: string[] }
   /** A waiting team's reaction, for the big screen to float up for a moment. Never stored. */
@@ -656,7 +657,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: "TEAM_DRINK_POTION", questionId, eventId: m.eventId as number };
     }
     case "TEAM_CHOOSE_FORK":
-      return (m.door === "monster" || m.door === "mystery") && Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "TEAM_CHOOSE_FORK", door: m.door, eventId: m.eventId as number } : null;
+      return (m.side === "left" || m.side === "right") && Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "TEAM_CHOOSE_FORK", side: m.side, eventId: m.eventId as number } : null;
     case "HOST_REVEAL": {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);

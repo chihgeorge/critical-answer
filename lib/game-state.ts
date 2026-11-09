@@ -180,7 +180,7 @@ export interface Team {
   /** 岔路 (docs/designs/branch-fork.md): at a fork, choosing its door, or in the room it chose ⚔️ for. Absent otherwise. */
   fork?: Fork;
   /** Every door this team took at a fork, in order, for lib/game-log.ts. Absent until the first. */
-  forks?: ForkChoice[];
+  forks?: ForkRecord[];
   /** A curse or blessing waiting for this team's next correct answer (event-rooms.md D12). */
   boon?: Boon;
   /** Every event outcome this team opened, in order, for lib/game-log.ts. Absent until the first. */
@@ -1383,10 +1383,16 @@ export function eventEligible(game: GameState, outcome: AnswerOutcome): boolean 
 /* ---------- 岔路 (docs/designs/branch-fork.md) ---------- */
 
 /** waiting: at the fork, its turn not come yet (no clock). choosing: its turn, until `deadline` (ms epoch, the room's
- * clock). monster: it took ⚔️ (or timed out), so this room's correct answer rolls no fork. */
-export type Fork = { phase: "waiting" } | { phase: "choosing"; deadline: number } | { phase: "monster" };
+ * clock), with the ⚔️ door on `monsterSide` (drawn by the room, never sent to any screen). monster: it took ⚔️ (or timed
+ * out), so this room's correct answer rolls no fork. */
+export type Fork = { phase: "waiting" } | { phase: "choosing"; deadline: number; monsterSide: ForkSide } | { phase: "monster" };
 export type ForkDoor = "monster" | "mystery";
-export type ForkChoice = ForkDoor | "timeout";
+/** The doors are unmarked: a team picks a side, and only the opened door shows what it was. */
+export type ForkSide = "left" | "right";
+/** A team's pick, or the clock running out (the room's only). */
+export type ForkChoice = ForkSide | "timeout";
+/** One fork in the game log: the side opened, what was behind it, and whether the clock picked it. */
+export type ForkRecord = { side: ForkSide; door: ForkDoor; timeout?: true };
 /** How long the team on turn has to pick a door; then the room takes ⚔️ for it. */
 export const FORK_MS = 15_000;
 
@@ -1402,26 +1408,30 @@ export function enterFork(game: GameState, teamId: string): GameState {
   return { ...game, teams: patchTeam(game.teams, teamId, () => ({ fork: { phase: "waiting" } })) };
 }
 
-/** The fork team's turn came (the room decides when): its door clock starts. */
-export function startForkChoice(game: GameState, teamId: string, deadline: number): GameState {
+/** The fork team's turn came (the room decides when): its door clock starts, ⚔️ behind `monsterSide`. */
+export function startForkChoice(game: GameState, teamId: string, deadline: number, monsterSide: ForkSide): GameState {
   if (getTeam(game, teamId).fork?.phase !== "waiting") throw new InvalidActionError("no_fork");
   // The turn is pinned on the fork team, as answerQuestion does: the stored index can point at an offline team the turn
   // skipped, which would take the turn back the moment the door clears the choosing exception (or its phone wakes).
-  return { ...game, currentTurnIndex: game.turnOrder.indexOf(teamId), teams: patchTeam(game.teams, teamId, () => ({ fork: { phase: "choosing", deadline } })) };
+  return { ...game, currentTurnIndex: game.turnOrder.indexOf(teamId), teams: patchTeam(game.teams, teamId, () => ({ fork: { phase: "choosing", deadline, monsterSide } })) };
 }
 
 /**
- * The team on turn picks its door, or the clock ran out ("timeout", the room's only). ⚔️: the room is as if there
- * had been no fork (the question it holds, the same turn). ❓: the event is drawn now and opened at once, as
+ * The team on turn picks a side, or the clock ran out ("timeout", the room's only: the ⚔️ door opens). ⚔️: the room is
+ * as if there had been no fork (the question it holds, the same turn). ❓: the event is drawn now and opened at once, as
  * openEvent does (the effect lands, the team walks on, the turn passes).
  */
-export function chooseFork(game: GameState, teamId: string, choice: ForkChoice, rng: () => number = Math.random): { game: GameState; result?: EventResult } {
+export function chooseFork(game: GameState, teamId: string, choice: ForkChoice, rng: () => number = Math.random): { game: GameState; record: ForkRecord; result?: EventResult } {
   assertPlaying(game);
   assertTurn(game, teamId);
-  if (getTeam(game, teamId).fork?.phase !== "choosing") throw new InvalidActionError("no_fork");
-  const chose = patchTeam(game.teams, teamId, (t) => ({ fork: choice === "mystery" ? undefined : { phase: "monster" as const }, forks: [...(t.forks ?? []), choice] }));
-  if (choice !== "mystery") return { game: { ...game, teams: chose } };
-  return openEvent(enterEventRoom({ ...game, teams: chose }, teamId, drawEvent(rng)), teamId, rng);
+  const fork = getTeam(game, teamId).fork;
+  if (fork?.phase !== "choosing") throw new InvalidActionError("no_fork");
+  const side = choice === "timeout" ? fork.monsterSide : choice;
+  const door: ForkDoor = side === fork.monsterSide ? "monster" : "mystery";
+  const record: ForkRecord = { side, door, ...(choice === "timeout" ? { timeout: true as const } : {}) };
+  const chose = patchTeam(game.teams, teamId, (t) => ({ fork: door === "mystery" ? undefined : { phase: "monster" as const }, forks: [...(t.forks ?? []), record] }));
+  if (door === "monster") return { game: { ...game, teams: chose }, record };
+  return { record, ...openEvent(enterEventRoom({ ...game, teams: chose }, teamId, drawEvent(rng)), teamId, rng) };
 }
 
 /** The event behind the ❓ door, just drawn: chooseFork opens it in the same call. */

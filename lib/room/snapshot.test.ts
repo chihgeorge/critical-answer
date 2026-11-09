@@ -52,13 +52,14 @@ describe("parseSnapshot", () => {
     expect(s?.game?.teams[0].event).toBeUndefined();
     expect(s?.game?.teams[0].fork).toEqual({ phase: "waiting" });
     expect(s?.game?.teams[1].fork).toBeUndefined();
-    for (const fork of [{ phase: "waiting" }, { phase: "choosing", deadline: 123 }, { phase: "monster" }]) {
-      const g = gameWithTeams((t, i) => (i === 1 ? { ...t, fork, forks: ["timeout"] } : t));
+    for (const fork of [{ phase: "waiting" }, { phase: "choosing", deadline: 123, monsterSide: "right" }, { phase: "monster" }]) {
+      const g = gameWithTeams((t, i) => (i === 1 ? { ...t, fork, forks: [{ side: "left", door: "monster", timeout: true }] } : t));
       const back = parseSnapshot(JSON.parse(JSON.stringify({ ...valid(), game: g })));
-      expect(back?.game?.teams[1]).toMatchObject({ fork, forks: ["timeout"] });
+      expect(back?.game?.teams[1]).toMatchObject({ fork, forks: [{ side: "left", door: "monster", timeout: true }] });
     }
-    // A fork in a shape the room cannot run (a choosing one with no deadline would never time out) waits instead.
-    for (const fork of [{ phase: "choosing" }, { phase: "choosing", deadline: "soon" }, { phase: "lost" }, "x"]) {
+    // A fork in a shape the room cannot run (a choosing one with no deadline would never time out, one with no ⚔️ side
+    // has no door to open) waits instead, and draws its side again.
+    for (const fork of [{ phase: "choosing" }, { phase: "choosing", deadline: "soon", monsterSide: "left" }, { phase: "choosing", deadline: 123 }, { phase: "choosing", deadline: 123, monsterSide: "up" }, { phase: "lost" }, "x"]) {
       const g = gameWithTeams((t, i) => (i === 1 ? { ...t, fork } : t));
       expect(parseSnapshot(JSON.parse(JSON.stringify({ ...valid(), game: g })))?.game?.teams[1].fork).toEqual({ phase: "waiting" });
     }

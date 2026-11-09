@@ -3,7 +3,7 @@
 // answer text. The room hands it to RoomIO.logGame; worker/index.ts stores it in the bank's Durable
 // Object, and the bank editor downloads them all from GET /api/game-logs (owner key only).
 
-import type { ClassId, EventOutcome, ForkChoice, GameState } from "./game-state";
+import type { ClassId, EventOutcome, ForkRecord, GameState } from "./game-state";
 import { awardTitles } from "./podium";
 
 export interface GameLog {
@@ -41,7 +41,7 @@ export interface GameLog {
     /** The event rooms this team opened, in order (docs/designs/event-rooms.md). */
     events: EventOutcome[];
     /** Every door this team took at a fork, timeouts too (docs/designs/branch-fork.md); ❓ outcomes are in `events`. Empty in older logs. */
-    forks: ForkChoice[];
+    forks: ForkRecord[];
     /** ⚔️ 最後衝刺 blessed this team (docs/designs/last-sprint.md E4): kept apart from event blessings. Absent (false) in older logs. */
     sprintBlessed: boolean;
     /** The data titles this team won at the podium (podium-titles.md), by id: never the AI's or the fallback, which

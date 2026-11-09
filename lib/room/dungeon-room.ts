@@ -51,6 +51,7 @@ import {
   FORK_MS,
   type ForkChoice,
   type ForkDoor,
+  type ForkSide,
   InvalidActionError,
   type ClassId,
   type GameState,
@@ -320,7 +321,7 @@ export class DungeonRoom {
    * meanwhile, so no score, room or turn moves before the door opens (the choice is applied and saved already).
    * `reveal`: the ❓ outcome, shown when the beat ends; `line`: ⚔️'s scripted line, said then. Memory only: a
    * restart drops the beat, and with it a ❓ outcome's screen and line (its effect stays). */
-  private forkBeat: { teamId: string; door: ForkDoor; timeout: boolean; before: GameState; reveal?: EventReveal; line?: { eventId: number; text: string } } | null = null;
+  private forkBeat: { teamId: string; side: ForkSide; door: ForkDoor; timeout: boolean; before: GameState; reveal?: EventReveal; line?: { eventId: number; text: string } } | null = null;
   private forkBeatTimer: ReturnType<typeof setTimeout> | null = null;
   /** When the host pressed 上菜 on the reveal up now (only read while `reveal.served`). */
   private servedAt = 0;
@@ -999,7 +1000,7 @@ export class DungeonRoom {
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...(this.game.phase === "playing" && choosing?.phase === "choosing" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
-      ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, door: this.forkBeat.door, ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
+      ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, side: this.forkBeat.side, door: this.forkBeat.door, ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
       ...this.liveMedia(),
       ...(this.clipError !== null && this.clipError === this.shownVideoId() ? { clipError: true as const } : {}),
       ...this.buzzCategories(),
@@ -1426,7 +1427,7 @@ export class DungeonRoom {
           this.handleTeamDrinkPotion(sender, msg.questionId, msg.eventId);
           break;
         case "TEAM_CHOOSE_FORK":
-          this.handleChooseFork(sender, msg.door, msg.eventId);
+          this.handleChooseFork(sender, msg.side, msg.eventId);
           break;
         case "HOST_QUEUE_QUESTION":
           this.handleQueueQuestion(sender, msg.target, msg.questionId);
@@ -2887,7 +2888,8 @@ export class DungeonRoom {
     if (game?.phase !== "playing" || isBuzzPhase(game) || this.paused()) return;
     const team = game.teams.find((t) => t.id === currentTurnTeamId(game));
     if (team?.fork?.phase !== "waiting") return;
-    this.keepUndoOpen(startForkChoice(game, team.id, this.now() + FORK_MS));
+    // Which side hides ⚔️: drawn now, saved with the game, never in any STATE (branch-fork.md).
+    this.keepUndoOpen(startForkChoice(game, team.id, this.now() + FORK_MS, this.rng() < 0.5 ? "left" : "right"));
     this.armFork();
   }
 
@@ -2908,8 +2910,8 @@ export class DungeonRoom {
     }, Math.max(0, deadline - this.now()));
   }
 
-  /** TEAM_CHOOSE_FORK: the turn's team picks a door. A press at or after the deadline is the clock's: ⚔️ by timeout. */
-  private handleChooseFork(conn: Conn, door: ForkDoor, eventId: number) {
+  /** TEAM_CHOOSE_FORK: the turn's team picks a side. A press at or after the deadline is the clock's: ⚔️ by timeout. */
+  private handleChooseFork(conn: Conn, side: ForkSide, eventId: number) {
     const teamId = this.playingTeam(conn);
     const game = this.game;
     if (!teamId || !game) return;
@@ -2919,12 +2921,12 @@ export class DungeonRoom {
     if (this.paused() || this.pendingLock || this.pendingRoll) return reject("reveal_pending");
     const fork = game.teams.find((t) => t.id === teamId)?.fork;
     const late = fork?.phase === "choosing" && this.now() >= fork.deadline;
-    this.applyForkChoice(teamId, late ? "timeout" : door, conn);
+    this.applyForkChoice(teamId, late ? "timeout" : side, conn);
   }
 
   /** ⚔️, ❓ or the clock: the choice is applied and saved now (chooseFork), and the door opens for FORK_BEAT_MS while
-   * STATE still shows the game from before (forkBeat.before). ❓ moves eventSeq on now, so a second press is stale; its
-   * feast dish is drawn now too, keeping the rng order. */
+   * STATE still shows the game from before (forkBeat.before). ❓'s feast dish is drawn now too, keeping the rng order;
+   * eventSeq moves when the door is open (endForkBeat). */
   private applyForkChoice(teamId: string, choice: ForkChoice, conn?: Conn) {
     const before = this.game!;
     let chosen: ReturnType<typeof chooseFork>;
@@ -2952,7 +2954,8 @@ export class DungeonRoom {
       const monster = this.currentQuestion()?.pub.monster.name ?? "";
       line = { eventId: this.eventSeq, text: this.scripted.forkLine(choice === "timeout", name, monster) };
     }
-    const beat = { teamId, door: result ? ("mystery" as const) : ("monster" as const), timeout: choice === "timeout", before, ...(reveal ? { reveal } : {}), ...(line ? { line } : {}) };
+    // The opened door is revealed, and only it: the other side's door is never named.
+    const beat = { teamId, side: chosen.record.side, door: chosen.record.door, timeout: choice === "timeout", before, ...(reveal ? { reveal } : {}), ...(line ? { line } : {}) };
     this.forkBeat = beat;
     if (this.forkBeatTimer) clearTimeout(this.forkBeatTimer);
     this.forkBeatTimer = setTimeout(() => {

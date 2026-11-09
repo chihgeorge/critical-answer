@@ -70,7 +70,17 @@ function toChoosing(s: S) {
   answerRight(s, 1);
 }
 
-const choose = (s: S, door: "monster" | "mystery", phone = 0) => send(s.room, s.phones[phone], { type: "TEAM_CHOOSE_FORK", door, eventId: state(s.room).eventId });
+/** The side the room hid `door` behind (read from the game state, which no screen gets). */
+function sideOf(s: S, door: "monster" | "mystery"): "left" | "right" {
+  const fork = s.room.game!.teams[0].fork;
+  const monster = fork?.phase === "choosing" ? fork.monsterSide : "left";
+  return door === "monster" ? monster : monster === "left" ? "right" : "left";
+}
+const choose = (s: S, door: "monster" | "mystery", phone = 0) => send(s.room, s.phones[phone], { type: "TEAM_CHOOSE_FORK", side: sideOf(s, door), eventId: state(s.room).eventId });
+// rng 0 hides ⚔️ on the left.
+const M = { side: "left", door: "monster" };
+const Q = { side: "right", door: "mystery" };
+const TO = { side: "left", door: "monster", timeout: true };
 
 afterEach(() => {
   vi.useRealTimers();
@@ -101,7 +111,7 @@ describe("岔路 in the room", () => {
     send(room, s.host, { type: "HOST_SERVE", eventId });
     (room as unknown as { servedAt: number }).servedAt = -Infinity;
     send(room, s.host, { type: "HOST_NEXT", eventId });
-    expect(room.game!.teams[0].fork).toEqual({ phase: "choosing", deadline: Date.now() + FORK_MS });
+    expect(room.game!.teams[0].fork).toEqual({ phase: "choosing", deadline: Date.now() + FORK_MS, monsterSide: "left" });
     const st = state(room);
     expect(st.forkLeft).toBe(FORK_MS);
     expect(st.question).toBeNull();
@@ -137,11 +147,11 @@ describe("岔路 in the room", () => {
     const eventId = state(room).eventId;
     choose(s, "monster");
     expect(room.game!.teams[0].fork).toEqual({ phase: "monster" });
-    expect(room.game!.teams[0].forks).toEqual(["monster"]);
+    expect(room.game!.teams[0].forks).toEqual([M]);
     expect(room.game!.teams[0].currentQuestionId).toBe(held);
     expect(room.game!.teams[0].turns).toBe(turns);
     const during = state(room);
-    expect(during.forkBeat).toEqual({ teamId: T1, door: "monster" });
+    expect(during.forkBeat).toEqual({ teamId: T1, side: "left", door: "monster" });
     expect(during.question).toBeNull();
     expect(during.eventId).toBe(eventId);
     // The door beat holds the room: no 下一題, no judging.
@@ -173,19 +183,19 @@ describe("岔路 in the room", () => {
     choose(s, "mystery");
     // Applied: the team walked on, the turn passed, the choice and outcome are saved.
     const real = room.game!.teams[0];
-    expect(real.forks).toEqual(["mystery"]);
+    expect(real.forks).toEqual([Q]);
     expect(real.events).toHaveLength(1);
     expect(real.event).toBeUndefined();
     expect(real.fork).toBeUndefined();
     expect(real.roomIndex).toBe(t0.roomIndex + 1);
     expect(currentTurnTeamId(room.game!)).toBe(T2);
     await Promise.resolve();
-    const saved = (storage.data.get(SNAPSHOT_KEY) as { game: { teams: { forks?: string[]; events?: string[] }[] } }).game.teams[0];
-    expect(saved.forks).toEqual(["mystery"]);
+    const saved = (storage.data.get(SNAPSHOT_KEY) as { game: { teams: { forks?: unknown[]; events?: string[] }[] } }).game.teams[0];
+    expect(saved.forks).toEqual([Q]);
     expect(saved.events).toHaveLength(1);
     // Shown: the team as before the press, the turn still its own, nothing behind the door.
     const during = state(room);
-    expect(during.forkBeat).toEqual({ teamId: T1, door: "mystery" });
+    expect(during.forkBeat).toEqual({ teamId: T1, side: "right", door: "mystery" });
     expect(during.view.currentTurnTeamId).toBe(T1);
     expect(during.view.teams[0]).toMatchObject({ reward: t0.reward, roomIndex: t0.roomIndex, abilityUses: t0.abilityUses });
     expect(during.view.teams[0].boon).toBe(t0.boon);
@@ -200,9 +210,9 @@ describe("岔路 in the room", () => {
     const late = makeConn("late");
     room.onConnect(late);
     send(room, late, { type: "REJOIN", teamId: T2, teamKey: KEY });
-    expect(sentStates(late).at(-1)).toMatchObject({ forkBeat: { teamId: T1, door: "mystery" }, view: { currentTurnTeamId: T1 } });
+    expect(sentStates(late).at(-1)).toMatchObject({ forkBeat: { teamId: T1, side: "right", door: "mystery" }, view: { currentTurnTeamId: T1 } });
     // A second press waits on the opening; the host's 下一題 does nothing.
-    send(room, s.phones[0], { type: "TEAM_CHOOSE_FORK", door: "mystery", eventId: before.eventId });
+    send(room, s.phones[0], { type: "TEAM_CHOOSE_FORK", side: "right", eventId: before.eventId });
     expect(lastSent(s.phones[0])).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
     send(room, host, { type: "HOST_NEXT", eventId: during.eventId });
     expect(state(room).forkBeat).toBeDefined();
@@ -248,8 +258,8 @@ describe("岔路 in the room", () => {
     expect(state(room).forkLeft).toBeLessThanOrEqual(FORK_MS);
     await vi.advanceTimersByTimeAsync(1);
     expect(room.game!.teams[0].fork).toEqual({ phase: "monster" });
-    expect(room.game!.teams[0].forks).toEqual(["timeout"]);
-    expect(state(room).forkBeat).toEqual({ teamId: T1, door: "monster", timeout: true });
+    expect(room.game!.teams[0].forks).toEqual([TO]);
+    expect(state(room).forkBeat).toEqual({ teamId: T1, side: "left", door: "monster", timeout: true });
     await vi.advanceTimersByTimeAsync(FORK_BEAT_MS);
     expect(state(room).question).not.toBeNull();
     expect(narrations(room).at(-1).lines.at(-1)).toMatch(/⚔️/);
@@ -280,8 +290,8 @@ describe("岔路 in the room", () => {
     answerRight({ room, host, phones: [phone] }, 0);
     expect(room.game!.teams[0].fork?.phase).toBe("choosing");
     now += FORK_MS;
-    send(room, phone, { type: "TEAM_CHOOSE_FORK", door: "mystery", eventId: state(room).eventId });
-    expect(room.game!.teams[0].forks).toEqual(["timeout"]);
+    send(room, phone, { type: "TEAM_CHOOSE_FORK", side: "right", eventId: state(room).eventId });
+    expect(room.game!.teams[0].forks).toEqual([TO]);
   });
 
   it("one team alone: its clock starts only once its own reveal is gone", () => {
@@ -307,8 +317,8 @@ describe("岔路 in the room", () => {
     const back = makeConn("p0b");
     room.onConnect(back);
     send(room, back, { type: "REJOIN", teamId: T1, teamKey: KEY });
-    send(room, back, { type: "TEAM_CHOOSE_FORK", door: "monster", eventId: state(room).eventId });
-    expect(room.game!.teams[0].forks).toEqual(["monster"]);
+    send(room, back, { type: "TEAM_CHOOSE_FORK", side: "left", eventId: state(room).eventId });
+    expect(room.game!.teams[0].forks).toEqual([M]);
 
     // Waiting and offline when its turn comes: skipped, still waiting, no deadline.
     const s2 = setup();
@@ -410,9 +420,9 @@ describe("岔路 in the room", () => {
     };
     await vi.advanceTimersByTimeAsync(5000);
     const r1 = await restoreAt();
-    expect(r1.game!.teams[0].fork).toEqual({ phase: "choosing", deadline });
+    expect(r1.game!.teams[0].fork).toEqual({ phase: "choosing", deadline, monsterSide: "left" });
     await vi.advanceTimersByTimeAsync(FORK_MS - 5000);
-    expect(r1.game!.teams[0].forks).toEqual(["timeout"]);
+    expect(r1.game!.teams[0].forks).toEqual([TO]);
     // Past the deadline already at the restart: ⚔️ straight away.
     const r2 = await restoreAt();
     await vi.advanceTimersByTimeAsync(0);
@@ -434,7 +444,7 @@ describe("岔路 in the room", () => {
       send(room, back, { type: "REJOIN", teamId: T2, teamKey: KEY });
       expect(currentTurnTeamId(room.game!)).toBe(T1);
       choose(s, door);
-      expect(room.game!.teams[0].forks).toEqual([door]);
+      expect(room.game!.teams[0].forks).toEqual([door === "monster" ? M : Q]);
       expect(currentTurnTeamId(room.game!)).toBe(door === "monster" ? T1 : T2);
     }
   });
@@ -462,7 +472,7 @@ describe("岔路 in the room", () => {
       const r = new DungeonRoom(io, () => 0, { bank });
       await r.restore();
       expect(r.game!.teams[0].fork).toEqual({ phase: "monster" });
-      expect(r.game!.teams[0].forks).toEqual([timeout ? "timeout" : "monster"]);
+      expect(r.game!.teams[0].forks).toEqual([timeout ? TO : M]);
       const phone = makeConn("p0b");
       r.onConnect(phone);
       send(r, phone, { type: "REJOIN", teamId: T1, teamKey: KEY });
@@ -541,5 +551,33 @@ describe("岔路 in the room", () => {
     expect(state(s.room).eventReveal).toBeDefined();
     expect(state(s.room).question).not.toBeNull();
     expect(s.room.game!.teams[0].fork).toBeUndefined();
+  });
+
+  // Value: protects=the doors stay blind (站長 2026-11-09); fails_when=any screen, the host's too, can tell which side
+  // hides ⚔️ before a pick, or the room trusts a door name instead of a side.
+  it("which side hides ⚔️ is the room's draw and goes to no connection, the host's included; the pick is a side", async () => {
+    vi.useFakeTimers();
+    // rng 0.9: no fork roll needed (EventTeam always forks), ⚔️ goes to the right.
+    const s = setup({ rng: () => 0.9 });
+    toChoosing(s);
+    expect(s.room.game!.teams[0].fork).toMatchObject({ phase: "choosing", monsterSide: "right" });
+    const all = [s.host, ...s.phones].flatMap((c) => (c.send as unknown as Spy).mock.calls.map((x) => x[0] as string));
+    const told = [...all, ...(s.room.room.broadcast as Spy).mock.calls.map((x) => x[0] as string)];
+    expect(told.some((m) => m.includes("monsterSide"))).toBe(false);
+    // An old door-name press is no message at all.
+    send(s.room, s.phones[0], { type: "TEAM_CHOOSE_FORK", door: "monster", eventId: state(s.room).eventId });
+    expect(s.room.game!.teams[0].fork?.phase).toBe("choosing");
+    send(s.room, s.phones[0], { type: "TEAM_CHOOSE_FORK", side: "left", eventId: state(s.room).eventId });
+    expect(s.room.game!.teams[0].forks).toEqual([{ side: "left", door: "mystery" }]);
+    expect(state(s.room).forkBeat).toEqual({ teamId: T1, side: "left", door: "mystery" });
+  });
+
+  it("a timeout opens the ⚔️ side, wherever the room hid it", async () => {
+    vi.useFakeTimers();
+    const s = setup({ rng: () => 0.9 });
+    toChoosing(s);
+    await vi.advanceTimersByTimeAsync(FORK_MS);
+    expect(s.room.game!.teams[0].forks).toEqual([{ side: "right", door: "monster", timeout: true }]);
+    expect(state(s.room).forkBeat).toEqual({ teamId: T1, side: "right", door: "monster", timeout: true });
   });
 });

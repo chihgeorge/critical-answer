@@ -103,7 +103,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     // An event room saved before 岔路 (branch-fork.md) has no button left to open it: the team stands at a fork instead,
     // and ❓ draws its event again.
     // A fork in any other shape (a choosing one with no usable deadline would never time out) waits for the team's turn.
-    const forkOk = (f: unknown) => f === undefined || (isObject(f) && (f.phase === "waiting" || f.phase === "monster" || (f.phase === "choosing" && Number.isFinite(f.deadline))));
+    const forkOk = (f: unknown) => f === undefined || (isObject(f) && (f.phase === "waiting" || f.phase === "monster" || (f.phase === "choosing" && Number.isFinite(f.deadline) && (f.monsterSide === "left" || f.monsterSide === "right"))));
     const forked = (t: Record<string, unknown>) => (t.event === undefined && forkOk(t.fork) ? t : { ...t, event: undefined, fork: { phase: "waiting" } });
     const withUses = game === null ? null : { ...game, teams: (game.teams as unknown[]).map((t) => (isObject(t) ? { ...forked(t), abilityUses: t.abilityUses ?? abilityUsesFor(isClassId(t.classId) ? t.classId : undefined) } : t)) };
     if (!Array.isArray(raw.teamKeys) || !raw.teamKeys.every((p) => Array.isArray(p) && p.length === 2 && isString(p[0]) && isString(p[1]))) return null;
