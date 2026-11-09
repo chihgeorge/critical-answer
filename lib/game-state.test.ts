@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { awardTitles } from "./podium";
 import {
   createGame,
   answerQuestion,
@@ -2157,6 +2158,16 @@ describe("⚔️ 最後衝刺 (docs/designs/last-sprint.md)", () => {
     expect(g.sprint).toEqual({ teamIds: ["T2"] });
     expect(boons(g)).toEqual([undefined, undefined, "blessing"]);
     expect(getSpectatorView(g).sprint).toEqual({ teamIds: ["T2"] });
+  });
+
+  // Value: protects=✨ 女神的寵兒 counts only an event room's blessing (podium-titles.md); fails_when=the sprint's
+  // blessing is written into events or awardTitles reads boons; why_new=two lanes shipped side by side; seam=none
+  it("the sprint's blessing is no event-room blessing: it never earns ✨ 女神的寵兒", () => {
+    let g = enter(withReward(makeGame({ bossThreshold: 1 }), { T1: 5, T2: 3 }));
+    g = answerQuestion(g, "T1", g.teams[1].currentQuestionId, false, "retry", first).game;
+    g = answerQuestion(g, "T2", g.teams[2].currentQuestionId, true, "retry", first).game; // spends the sprint boon
+    expect(g.teams[2].events ?? []).toEqual([]);
+    expect(awardTitles(g.teams).map((a) => a.id)).not.toContain("blessing");
   });
 
   it("blesses every team tied for lowest, offline ones too", () => {

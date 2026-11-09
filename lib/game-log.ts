@@ -4,6 +4,7 @@
 // Object, and the bank editor downloads them all from GET /api/game-logs (owner key only).
 
 import type { ClassId, EventOutcome, GameState } from "./game-state";
+import { awardTitles } from "./podium";
 
 export interface GameLog {
   /** True for a game started before game logs existed: its counts cover only the turns played since. */
@@ -41,6 +42,9 @@ export interface GameLog {
     events: EventOutcome[];
     /** ⚔️ 最後衝刺 blessed this team (docs/designs/last-sprint.md E4): kept apart from event blessings. Absent (false) in older logs. */
     sprintBlessed: boolean;
+    /** The data titles this team won at the podium (podium-titles.md), by id: never the AI's or the fallback, which
+     * come after the log is written. */
+    titles: string[];
   }[];
 }
 
@@ -49,6 +53,7 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
   const rounds = game.lastTurnIndex === undefined ? 0 : (game.round ?? 1);
   const entries = game.teams.flatMap((t) => (t.bossAt ? [t.bossAt.round] : []));
   const firstBossRound = entries.length ? Math.min(...entries) : null;
+  const awards = awardTitles(game.teams);
   return {
     partial: game.startedAt === undefined,
     startedAt: game.startedAt === undefined ? null : new Date(game.startedAt).toISOString(),
@@ -75,6 +80,7 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
       killedBoss: game.boss.killedByTeamId === t.id,
       events: t.events ?? [],
       sprintBlessed: game.sprint?.teamIds.includes(t.id) ?? false,
+      titles: awards.filter((a) => a.teamIds.includes(t.id)).map((a) => a.id),
     })),
   };
 }

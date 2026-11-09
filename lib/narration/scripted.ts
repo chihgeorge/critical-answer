@@ -3,7 +3,7 @@
 
 import { epilogueParts, type NarrationEvent, type NextTurn } from "./events";
 import { ordinal } from "../ordinal";
-import { critLine, placeLine } from "../podium";
+import { placeLine } from "../podium";
 import type { ClassId, EventOutcome } from "../game-state";
 import { EVENT_SCENE_TEXT } from "../event-text";
 
@@ -384,11 +384,12 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "epilogue") return ""; // epilogue never uses this — see the module header
       return fill(pick(ATMOSPHERE_VARIANTS[event.type], `atm-${event.type}`), event);
     },
-    /** Every epilogue segment (epilogueParts): the crit king and place calls, then the story. */
+    /** Every epilogue segment (epilogueParts): the titles, the place calls, then the story. A title is left empty:
+     * revealBeats reads that as the 🛡️ fallback (podium-titles.md eng 2). */
     epilogueLines(event: NarrationEvent): string[] {
       if (event.type !== "epilogue") return [];
       return epilogueParts(event).map((p) =>
-        p.kind === "crit" ? critLine(p.names, p.count) : p.kind === "place" ? placeLine(p.place, p.team) : scriptedEpilogue(event.ranking, event.winners, rng),
+        p.kind === "title" ? "" : p.kind === "place" ? placeLine(p.place, p.team) : scriptedEpilogue(event.ranking, event.winners, rng),
       );
     },
     /** Synchronous like line(): the scripted prompt for whoever is up next. */

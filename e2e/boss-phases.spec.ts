@@ -37,6 +37,7 @@ async function restore(request: APIRequestContext) {
 // fails_when=the card never opens or closes, a page shows phase 2 early, or phase 1's emptied bar ends the game;
 // why_new=room tests cover messages, not the pages; seam=none; no_claim=multiple-choice reveals (lib/room/boss-phases.test.ts)
 test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the kill", async ({ browser }) => {
+  test.setTimeout(75_000); // the podium titles come before the places (podium-titles.md)
   const host = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
@@ -84,7 +85,7 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   // The kill's 4d20 rolls first; the podium waits for it (docs/designs/kill-roll.md).
   await expect(screen.locator('[data-testid="roll-overlay"][data-kind="kill"]')).toBeVisible();
   await expect(screen.getByText(/奪得榜首/)).toHaveCount(0);
-  await expect(screen.getByText(/奪得榜首/)).toBeVisible({ timeout: 25_000 }); // the kill dice (4 s), the boss cooks (FINISH_PODIUM_MS), then the places are called
+  await expect(screen.getByText(/奪得榜首/)).toBeVisible({ timeout: 45_000 }); // the kill dice (4 s), the boss cooks (FINISH_PODIUM_MS), the titles (2.5 s each), then the places
 });
 
 // Value: protects=a phase that runs out of questions moves on by itself and never repeats a phase-1 question in phase 2;

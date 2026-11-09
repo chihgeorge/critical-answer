@@ -64,8 +64,9 @@ export interface RoomSnapshot {
   initiative?: Initiative;
   /** The HOST_START asked for 擲先攻, saved while the intro is on so it still follows the intro after a restart. */
   initiativeOn?: true;
-  /** A finished game's podium: the narrator's calls (the story is `epilogue`) and when the first beat starts. */
-  podium?: { lines: string[]; at: number } | null;
+  /** A finished game's podium: the narrator's calls (the story is `epilogue`), its 「稱號｜理由」 titles for the teams
+   * with no data title (podium-titles.md; missing in an older save: every one is the fallback), and when the first beat starts. */
+  podium?: { lines: string[]; titles?: string[]; at: number } | null;
   /** The epilogue page on the big screen (HOST_EPILOGUE_PAGE). Missing means the first, as in a save from before pages. */
   epiloguePage?: number;
   /** The earliest the podium reveal may start, set when the game finished. Missing in a save from before the reveal. */
@@ -126,7 +127,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (!Number.isInteger(aiUsed) || (aiUsed as number) < 0 || !Number.isInteger(aiLimit) || (aiLimit as number) < 1 || (aiLimit as number) > MAX_AI_LIMIT) return null;
     // A damaged podium only loses the reveal: the screen shows the full podium.
     const pod = raw.podium;
-    const podium = isObject(pod) && Array.isArray(pod.lines) && pod.lines.every(isString) && typeof pod.at === "number" && Number.isFinite(pod.at) ? { lines: pod.lines as string[], at: pod.at } : null;
+    const podium = isObject(pod) && Array.isArray(pod.lines) && pod.lines.every(isString) && typeof pod.at === "number" && Number.isFinite(pod.at) ? { lines: pod.lines as string[], ...(Array.isArray(pod.titles) && pod.titles.every(isString) ? { titles: pod.titles as string[] } : {}), at: pod.at } : null;
     // A damaged 擲先攻 is dropped: the game goes on in the lobby order, with no start narration.
     const ini = raw.initiative;
     const d20 = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 20;

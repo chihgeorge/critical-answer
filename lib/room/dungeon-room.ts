@@ -84,7 +84,7 @@ import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inSho
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
-import { toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
+import { epilogueParts, titleFacts, toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { createScriptedProvider, type NarrationProvider } from "../narration/scripted";
 import { createRunner, type TranscriptItem } from "../narration/runner";
 import { editedLine } from "../narration/client";
@@ -273,7 +273,7 @@ export class DungeonRoom {
   private epilogueRequested = false;
   /** The podium reveal (podium-reveal.md eng D20): the narrator's calls, and when their first beat starts on the room's
    * clock. Null until the narration is in. Saved, so a restart keeps the reveal where it was. */
-  private podium: { lines: string[]; at: number } | null = null;
+  private podium: { lines: string[]; titles?: string[]; at: number } | null = null;
   /** The epilogue page on the big screen, turned by the host (HOST_EPILOGUE_PAGE). */
   private epiloguePage = 0;
   /** The earliest the reveal's first beat may start, set when the game finishes: after the boss cooks, after the last
@@ -487,7 +487,9 @@ export class DungeonRoom {
           this.epilogue = lines[lines.length - 1];
           this.epiloguePage = 0; // a new story (scripted, after a failed try) starts on its first page
           // A reveal already under way (scripted, after a failed try) keeps its clock: it never starts over.
-          this.podium ??= { lines: lines.slice(0, -1), at: Math.max(this.now(), this.revealFrom ?? this.now() + this.epilogueDelayMs) };
+          // The titles come before the calls (epilogueParts); both are fixed with the first emit, like the clock.
+          const titles = epilogueParts(event).filter((p) => p.kind === "title").length;
+          this.podium ??= { lines: lines.slice(titles, -1), titles: lines.slice(0, titles), at: Math.max(this.now(), this.revealFrom ?? this.now() + this.epilogueDelayMs) };
           this.broadcast({ type: "EPILOGUE", text: this.epilogue });
           this.broadcast(this.snapshot());
           return;
@@ -981,7 +983,7 @@ export class DungeonRoom {
     if (game?.phase !== "finished" || !game.ranking) return {};
     // No calls but the story is in: a damaged save lost them, so show the podium rather than wait for nothing.
     if (!this.podium) return this.epilogue ? {} : { podium: { ranking: game.ranking, beats: null, elapsedMs: 0 } };
-    const beats = revealBeats(game.teams, game.ranking, game.tieRolls ?? [], this.podium.lines);
+    const beats = revealBeats(game.teams, game.ranking, game.tieRolls ?? [], this.podium.lines, this.podium.titles);
     return { podium: { ranking: game.ranking, beats, elapsedMs: this.now() - this.podium.at } };
   }
 
@@ -1041,8 +1043,8 @@ export class DungeonRoom {
     const winners = game.winners.map((id) => game.teams.find((t) => t.id === id)?.name ?? "");
     // The host ended it early (結束冒險): the story must not have anyone slay the boss.
     const bossStanding = game.boss.killedByTeamId === null;
-    const { critKing, calls } = revealCalls(game.teams, order);
-    const podium = game.ranking ? { calls, ...(critKing ? { critKing } : {}) } : {};
+    const { titles, calls } = revealCalls(game.teams, order);
+    const podium = game.ranking ? { calls, ...(titles.length ? { titles: titles.map((t) => ({ team: t.name, facts: titleFacts(t) })) } : {}) } : {};
     // One EPILOGUE, whoever writes it: the LLM within its hold, otherwise the program-built story. It carries the
     // podium calls before the story (eng D21).
     await this.runner.run(eventId, { type: "epilogue", ranking, winners, ...(bossStanding ? { bossStanding: true as const } : {}), ...podium }, this.scores());

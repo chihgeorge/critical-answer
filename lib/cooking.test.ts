@@ -62,7 +62,8 @@ describe("a sprite this page does not know (a newer server)", () => {
 // shows the winner with or before the screen, or an older server's STATE hangs on 名次揭曉中…; why_new=new;
 // seam=none; no_claim=the timers moving the beat on (useEffect does not run here; e2e main-line covers the phone)
 describe("the podium reveal's first frame", () => {
-  const beats = revealBeats([{ id: "a", name: "甲" }, { id: "b", name: "乙" }], ["a", "b"], []);
+  // The places only: the two 🛡️ titles before them would only shift every time here.
+  const beats = revealBeats([{ id: "a", name: "甲" }, { id: "b", name: "乙" }], ["a", "b"], []).filter((b) => b.kind !== "award");
   /** "beat result done" as the page's first frame sees it. */
   const show = (n: { beat: number; result: boolean; done: boolean }) => `${n.beat} ${n.result} ${n.done}`;
   const at = (elapsedMs: number, lag = 0, b: typeof beats | null = beats) =>

@@ -239,7 +239,7 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
   await judgeToTheEnd(host, cur);
   await expect.poll(() => box.epilogue, { timeout: 15_000 }).toBe(true);
   // A screen opened mid-reveal reads the place calls (podium-reveal D20); this one opens after them.
-  await expect.poll(() => Date.now() >= box.revealEnd, { timeout: 25_000 }).toBe(true);
+  await expect.poll(() => Date.now() >= box.revealEnd, { timeout: 45_000 }).toBe(true); // the titles add 2.5 s each
 
   // Now open the screen with TTS already on (remembered from an earlier visit). onConnect
   // replays the EPILOGUE with `replay: true`: it must show, but must not be read aloud again.

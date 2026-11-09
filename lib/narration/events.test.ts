@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toNarrationEvent } from "./events";
+import { epilogueParts, titleFacts, toNarrationEvent } from "./events";
 import { createGame, sendToBoss, type AnswerOutcome, type GameState } from "../game-state";
 
 const game: GameState = createGame(
@@ -11,6 +11,31 @@ const game: GameState = createGame(
   5,
   () => 0,
 );
+
+// Value: protects=the AI's title facts carry the team's own play only, and a title is checked against every other
+// team's name except one inside its own (podium-titles.md); fails_when=facts leak satiety or place, an old save throws,
+// or 老王 blocks 隔壁老王's own title; why_new=new; seam=none; no_claim=the prompt wording (llm.test.ts)
+describe("titles", () => {
+  it("titleFacts reads the team's own play, missing counts as 0", () => {
+    const t = { ...game.teams[0], turns: 4, flees: 2, dishes: ["湯"], events: ["rotten" as const, "bad" as const], natural20s: 1, bossAt: { round: 2, turns: 3 } };
+    expect(titleFacts(t)).toEqual({ turns: 4, dishes: 1, flees: 2, events: ["寶箱：黑暗料理……", "占卜師：凶……"], natural20s: 1, boss: true });
+    expect(titleFacts(game.teams[1])).toEqual({ turns: 0, dishes: 0, flees: 0, events: [], natural20s: 0, boss: false });
+  });
+
+  it("puts the titles first, each with the other teams it must not name", () => {
+    const facts = titleFacts(game.teams[0]);
+    const parts = epilogueParts({
+      type: "epilogue",
+      ranking: [{ name: "紅隊", score: 3 }, { name: "隔壁老王", score: 2 }, { name: "老王", score: 1 }],
+      winners: ["紅隊"],
+      calls: [{ place: 1, team: "紅隊" }],
+      titles: [{ team: "隔壁老王", facts }, { team: "老王", facts }],
+    });
+    expect(parts.map((p) => p.kind)).toEqual(["title", "title", "place", "story"]);
+    expect(parts[0]).toMatchObject({ team: "隔壁老王", others: ["紅隊"] });
+    expect(parts[1]).toMatchObject({ team: "老王", others: ["紅隊", "隔壁老王"] });
+  });
+});
 
 describe("toNarrationEvent", () => {
   it("maps a correct room answer to a 'correct' event with team, monster and points", () => {

@@ -217,7 +217,7 @@ test("game over: the boss cooks, then the podium, then the epilogue arrives on t
   // The phone keeps quiet while the screen calls the places, and shows the result only after the screen does (eng D22, D23).
   await expect(phone.getByText("冒險結束！看大螢幕 📺")).toBeVisible();
   const shownAt = (page: typeof screen, text: string) =>
-    page.waitForFunction((t) => document.body.innerText.includes(t) && Date.now(), text, { polling: "raf", timeout: 25_000 }).then(async (h) => Number(await h.jsonValue()));
+    page.waitForFunction((t) => document.body.innerText.includes(t) && Date.now(), text, { polling: "raf", timeout: 45_000 }).then(async (h) => Number(await h.jsonValue()));
   const [screenAt, phoneAt] = await Promise.all([shownAt(screen, "奪得榜首"), shownAt(phone, "你們獲勝了")]);
   expect(phoneAt).toBeGreaterThanOrEqual(screenAt);
   // The boss-kill answer ended the game, so its reveal shows on the podium screen instead (D7).

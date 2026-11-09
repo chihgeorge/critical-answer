@@ -473,23 +473,25 @@ describe("scripted: the crit die", () => {
   });
 });
 
-// Value: protects=with AI narration off the podium calls are scripted in the order the screen reads them: crit king,
-// places lowest first, then the story (podium-reveal.md D3, D5; eng D21); fails_when=the order flips, a call is missing,
-// or the story moves off the last segment; why_new=new segments; seam=none; no_claim=none beyond protects
+// Value: protects=with AI narration off the podium segments are scripted in the order the screen reads them: an empty
+// title per untitled team (the 🛡️ fallback, podium-titles.md eng 2), places lowest first, then the story (podium-reveal.md
+// D3; eng D21); fails_when=the order flips, a call is missing, a title gets text, or the story moves off the last
+// segment; why_new=new segments; seam=none; no_claim=none beyond protects
 describe("epilogueLines", () => {
   const p = createScriptedProvider(() => 0);
   const ranking = [{ name: "紅隊", score: 30 }, { name: "藍隊", score: 20 }, { name: "綠隊", score: 10 }];
 
-  it("calls the crit king, third, second, first, then tells the story", () => {
+  it("leaves each title empty, calls third, second, first, then tells the story", () => {
+    const facts = { turns: 3, dishes: 0, flees: 0, events: [], natural20s: 0, boss: false };
     const lines = p.epilogueLines({
       type: "epilogue",
       ranking,
       winners: ["紅隊"],
-      critKing: { names: ["藍隊", "綠隊"], count: 2 },
+      titles: [{ team: "藍隊", facts }, { team: "綠隊", facts }],
       calls: [{ place: 3, team: "綠隊" }, { place: 2, team: "藍隊" }, { place: 1, team: "紅隊" }],
     });
-    expect(lines.slice(0, 4)).toEqual(["本場大成功王是……藍隊、綠隊，擲出 2 次 20！", "第三名是……綠隊！", "第二名是……藍隊！", "第一名是……紅隊！"]);
-    expect(lines[4]).toBe(scriptedEpilogue(ranking, ["紅隊"], () => 0));
+    expect(lines.slice(0, 5)).toEqual(["", "", "第三名是……綠隊！", "第二名是……藍隊！", "第一名是……紅隊！"]);
+    expect(lines[5]).toBe(scriptedEpilogue(ranking, ["紅隊"], () => 0));
   });
 
   it("one team gets its call; no calls is the story alone; any other event has none", () => {

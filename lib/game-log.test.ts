@@ -47,6 +47,37 @@ describe("game log", () => {
     expect(log.teams.map((t) => t.rank).sort()).toEqual([1, 2]);
     // No question or answer text.
     expect(JSON.stringify(log)).not.toMatch(/"q\d|"b\d/);
+    // Alpha's own answer reached the threshold: ⚡ is its. Bravo walked through the open door: no earned entry.
+    expect(g.teams.map((t) => t.bossAt?.earned)).toEqual([true, undefined]);
+    expect(log.teams.map((t) => t.titles)).toEqual([["rush"], []]);
+  });
+
+  // Value: protects=🏃 counts every flee, room and boss alike, and the log keeps only the data titles' ids
+  // (podium-titles.md); fails_when=a flee is not counted, a retry is, or the log records a consolation;
+  // why_new=new counter; seam=none; no_claim=the AI's titles (never logged)
+  it("counts each team's flees, in a room and at the boss, and logs the data titles by id", () => {
+    const rooms = [1, 1, 1].map(() => ({ baseDifficulty: 1 as const, reward: 10 }));
+    const pools = [Array.from({ length: 8 }, (_, i) => `q${i}`), [], [], [], []];
+    let g = createGame([{ id: "A", name: "Alpha" }, { id: "B", name: "Bravo" }], rooms, pools, ["b1", "b2", "b3"], { bossThreshold: 99 }, 2, first);
+    const flee = (x: GameState, id: string) => {
+      const t = x.teams.find((y) => y.id === id)!;
+      return answerQuestion(x, id, t.inBoss ? x.boss.currentQuestionId : t.currentQuestionId, false, "flee", first).game;
+    };
+    g = flee(g, "A");
+    g = answer(g, "B", false); // a retry is no flee
+    g = sendToBoss(g, "A");
+    g = flee(g, "A");
+    expect(g.teams.map((t) => t.flees)).toEqual([2, undefined]);
+    // Sent by the host: in the boss room, but not earned.
+    expect(g.teams[0].inBoss).toBe(true);
+    expect(g.teams[0].bossAt?.earned).toBeUndefined();
+    expect(gameLog(endGame(g), 0).teams.map((t) => t.titles)).toEqual([["flees"], []]);
+  });
+
+  it("a boss threshold of 0 lets every team in at the start, none of them earned", () => {
+    const rooms = [{ baseDifficulty: 1 as const, reward: 10 }];
+    const g = createGame([{ id: "A", name: "Alpha" }], rooms, [["q0", "q1"], [], [], [], []], ["b1"], { bossThreshold: 0 }, 2, first);
+    expect(g.teams[0].bossAt).toEqual({ round: 1, turns: 0 });
   });
 
   // Value: protects=rounds stay right when phones drop (adversarial review); fails_when=a turn that skips an offline

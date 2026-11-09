@@ -42,6 +42,7 @@ test("the host renames and removes lobby teams", async ({ browser }) => {
 
 /** 結束冒險: the host ends the game before the boss falls; the TV shows the podium without a final blow. */
 test("the host ends the game early from the drawer", async ({ browser }) => {
+  test.setTimeout(60_000); // the titles, then the places (podium-titles.md)
   const { host, code } = await hostRoom(browser);
   await phone(browser, code, "甲隊");
   const screen = await (await browser.newContext()).newPage();
@@ -53,12 +54,14 @@ test("the host ends the game early from the drawer", async ({ browser }) => {
   await host.getByRole("button", { name: "結束冒險" }).click(); // first tap only arms it
   await host.getByRole("button", { name: "確定結束？" }).click();
 
-  await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible({ timeout: 15_000 }); // first place is called first
+  // The titles come first, 2.5 s each (a lone team can take every data title: podium-titles.md), then the places.
+  await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible({ timeout: 35_000 });
   await expect(screen.getByTestId("final-blow")).toHaveCount(0);
 });
 
 /** 回到大廳: after the game, the same teams are back in the lobby without joining again, and a new game starts. */
 test("the host takes everyone back to the lobby and starts another game", async ({ browser }) => {
+  test.setTimeout(60_000); // the titles, then the places (podium-titles.md)
   const { host, code } = await hostRoom(browser);
   const team = await phone(browser, code, "甲隊");
   const screen = await (await browser.newContext()).newPage();
@@ -69,7 +72,8 @@ test("the host takes everyone back to the lobby and starts another game", async 
   await host.getByRole("button", { name: "⚙ 更多" }).click();
   await host.getByRole("button", { name: "結束冒險" }).click();
   await host.getByRole("button", { name: "確定結束？" }).click();
-  await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible({ timeout: 15_000 }); // first place is called first
+  // The titles come first, 2.5 s each (a lone team can take every data title: podium-titles.md), then the places.
+  await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible({ timeout: 35_000 });
 
   await host.screenshot({ path: ".gstack/tmp/host-back-to-lobby.png" });
   await host.getByRole("button", { name: "回到大廳，再玩一場" }).click();

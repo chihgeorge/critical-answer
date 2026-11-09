@@ -1,7 +1,8 @@
 // Typed narration events, derived from what just happened in the game. This is
 // the seam every narration provider (scripted now, LLM later) reads.
 
-import { type AnswerOutcome, type ClassId, type EventOutcome, type EventScene, type GameState, type RollMark } from "../game-state";
+import { type AnswerOutcome, type ClassId, type EventOutcome, type EventScene, type GameState, type RollMark, type Team } from "../game-state";
+import { EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT } from "../event-text";
 
 /** Who is up next and what they face: the story moves on to them after the result line. */
 export interface NextTurn {
@@ -50,22 +51,52 @@ export type NarrationEvent =
   // ranking[].score carries reward points (Team.reward), not progress points (Team.score).
   // ranking[].dishes: what the team ate, without any dish holding a bank answer.
   // bossStanding: the host ended the game early (結束冒險), so nobody slew the boss.
-  // calls: the places read before the story, lowest first; critKing: the most natural 20s (podium-reveal.md D3, D5).
+  // calls: the places read before the story, lowest first (podium-reveal.md D3); titles: the teams no data title went
+  // to, in team order, each to get an AI title before the calls (podium-titles.md).
   | {
       type: "epilogue";
       ranking: { name: string; score: number; dishes?: string[] }[];
       winners: string[];
       bossStanding?: true;
       calls?: { place: number; team: string }[];
-      critKing?: { names: string[]; count: number };
+      titles?: { team: string; facts: TitleFacts }[];
     };
 
-/** One segment of the epilogue, in order: the crit king, each place lowest first, then the story (eng D21). */
-export type EpiloguePart = { kind: "crit"; names: string[]; count: number } | { kind: "place"; place: number; team: string } | { kind: "story" };
+/** What the AI may know to title a team (podium-titles.md): its own play only, no satiety, score or place. */
+export interface TitleFacts {
+  turns: number;
+  dishes: number;
+  flees: number;
+  /** Each event room it opened: 「寶箱：黑暗料理……」. */
+  events: string[];
+  natural20s: number;
+  boss: boolean;
+}
+
+const OUTCOME_SCENE: Record<EventOutcome, EventScene> = { feast: "chest", rotten: "chest", spring: "spring", curse: "idol", blessing: "fairy", great: "fortune", good: "fortune", bad: "fortune" };
+
+export function titleFacts(t: Team): TitleFacts {
+  return {
+    turns: t.turns ?? 0,
+    dishes: t.dishes?.length ?? 0,
+    flees: t.flees ?? 0,
+    events: (t.events ?? []).map((o) => `${EVENT_SCENE_TEXT[OUTCOME_SCENE[o]].name}：${EVENT_OUTCOME_TITLE[o]}`),
+    natural20s: t.natural20s ?? 0,
+    boss: !!t.bossAt,
+  };
+}
+
+/** One segment of the epilogue, in order: each untitled team's title, each place lowest first, then the story (eng D21).
+ * A title's `others`: every other team's name it must not say, except one inside its own name (老王 in 隔壁老王). */
+export type EpiloguePart =
+  | { kind: "title"; team: string; facts: TitleFacts; others: string[] }
+  | { kind: "place"; place: number; team: string }
+  | { kind: "story" };
 
 export function epilogueParts(e: Extract<NarrationEvent, { type: "epilogue" }>): EpiloguePart[] {
+  const names = e.ranking.map((r) => r.name);
   return [
-    ...(e.critKing ? [{ kind: "crit" as const, ...e.critKing }] : []),
+    ...(e.titles ?? []).map((t) => ({ kind: "title" as const, ...t, others: names.filter((n) => n !== t.team && !t.team.includes(n)) })),
     ...(e.calls ?? []).map((c) => ({ kind: "place" as const, ...c })),
     { kind: "story" },
   ];

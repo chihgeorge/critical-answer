@@ -5,6 +5,8 @@ import { BANK_KEY, SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { BANK } from "../question-bank-data";
 import { FINISH_PODIUM_MS } from "../protocol";
+import type { Beat } from "../podium";
+import type { NarrationEvent } from "../narration/events";
 import { checkKey, currentTurnTeamId, getSpectatorView } from "../game-state";
 // Room tests judge turns with HOST_JUDGE, so they play the bundled bank as text questions.
 vi.mock("../question-bank-data", async (actual) => {
@@ -885,7 +887,12 @@ describe("the podium reveal (podium-reveal.md eng D20)", () => {
     const podium = lastState(io).podium;
     // The first beat waits out the lead (the last line read) from when the game finished.
     expect(podium.elapsedMs).toBe(-4000);
-    expect(podium.beats.map((b: { kind: string; place?: number }) => [b.kind, b.place])).toEqual([["place", 2], ["place", 1]]);
+    // The titles first (podium-titles.md), every team named at least once, then the places.
+    const kinds = podium.beats.map((b: { kind: string; place?: number }) => (b.kind === "place" ? `place ${b.place}` : b.kind));
+    expect(kinds.slice(-2)).toEqual(["place 2", "place 1"]);
+    expect(kinds.slice(0, -2).every((k: string) => k === "award")).toBe(true);
+    const named = new Set(podium.beats.flatMap((b: { kind: string; teamIds?: string[] }) => b.teamIds ?? []));
+    expect(named).toEqual(new Set(room.game!.teams.map((t) => t.id)));
     expect(broadcasts(io).filter((m) => m.type === "EPILOGUE")).toHaveLength(1);
 
     now += 6000;
@@ -964,7 +971,12 @@ describe("the podium reveal (podium-reveal.md eng D20)", () => {
     judgeCorrect(room, host, room.game!.turnOrder[0]);
     send(room, host, { type: "HOST_END_GAME" });
     await vi.waitFor(() => expect(lastState(io).podium.beats).not.toBeNull());
-    expect(lastState(io).podium.beats.map((b: { line: string }) => b.line)).toEqual(["第二名是……乙隊！", "第一名是……甲隊！"]);
+    const beats = lastState(io).podium.beats as Beat[];
+    expect(beats.flatMap((b) => (b.kind === "place" ? [b.line] : []))).toEqual(["第二名是……乙隊！", "第一名是……甲隊！"]);
+    // Every consolation is the 🛡️ fallback: no AI title came in.
+    const untitled = beats.filter((b) => b.kind === "award" && b.title === "堅持到最後的冒險者");
+    expect(untitled.length).toBeGreaterThan(0);
+    expect(beats.filter((b) => b.kind === "award" && (b.icon === "🌟" || b.icon === "🛡️"))).toEqual(untitled);
     expect(lastState(io).podium.elapsedMs).toBe(-4000);
 
     // A restart asks for the story again (it never came): the reveal under way keeps its clock, not start over.
@@ -972,6 +984,40 @@ describe("the podium reveal (podium-reveal.md eng D20)", () => {
     expect(await second.room.restore()).toBe("restored");
     await vi.waitFor(() => expect(broadcasts(second.io).some((m) => m.type === "EPILOGUE")).toBe(true));
     expect(lastState(second.io).podium.elapsedMs).toBe(10_000 - 4000);
+  });
+
+  // Value: protects=the AI's titles land with the calls in one emit and never change after (podium-titles.md eng E2);
+  // fails_when=a later epilogue emit (a retry) rewrites the titles under a reveal already running, or the titles and
+  // the calls are split at the wrong segment; why_new=new; seam=opts.provider; no_claim=a real model's lines
+  it("the AI's titles are saved with the calls in one emit, and a later emit changes no beat", async () => {
+    let call = 0;
+    let epilogue: NarrationEvent | undefined;
+    const provider = {
+      name: "llm",
+      narrate: async (e: NarrationEvent) => {
+        if (e.type !== "epilogue") return "旁白";
+        epilogue = e;
+        const n = (e.titles ?? []).length;
+        return [...Array.from({ length: n }, () => (call === 0 ? "書呆子｜一直在想答案" : "換掉了｜不該出現")), "x", "x", "字".repeat(30)].join("\n");
+      },
+    };
+    const storage = memoryStorage();
+    const { room, io } = makeRoom(storage, { now: () => 0, epilogueDelayMs: 4000, holdMs: 5, provider });
+    const { host } = startedGame(room);
+    judgeCorrect(room, host, room.game!.turnOrder[0]);
+    send(room, host, { type: "HOST_END_GAME" });
+    await vi.waitFor(() => expect(lastState(io).podium.beats).not.toBeNull());
+    const before = lastState(io).podium.beats as Beat[];
+    expect(epilogue?.type === "epilogue" && epilogue.titles?.length).toBeGreaterThan(0);
+    expect(before.filter((b) => b.kind === "award" && b.icon === "🌟").map((b) => b.kind === "award" && b.title)).toEqual(
+      Array((epilogue as { titles: unknown[] }).titles.length).fill("書呆子"),
+    );
+    const saved = storage.data.get(SNAPSHOT_KEY) as { podium: { lines: string[]; titles: string[] } };
+    expect(saved.podium.titles).toEqual(Array((epilogue as { titles: unknown[] }).titles.length).fill("書呆子｜一直在想答案"));
+    expect(saved.podium.lines).toHaveLength(2);
+    call = 1;
+    await (room as unknown as { runner: { run: (id: number, e: NarrationEvent) => Promise<void> } }).runner.run(99, epilogue!);
+    expect(lastState(io).podium.beats).toEqual(before);
   });
 
   // Value: protects=a damaged saved reveal shows the full podium instead of 名次揭曉中… forever (/review D25-2);
@@ -989,6 +1035,26 @@ describe("the podium reveal (podium-reveal.md eng D20)", () => {
     room.onConnect(screen);
     expect(lastOf(screen, "STATE")).not.toHaveProperty("podium");
     expect(lastOf(screen, "EPILOGUE")).toMatchObject({ replay: true });
+  });
+
+  // Value: protects=a save from before titles (the crit king's line first, no titles) still calls each place right and
+  // gives every untitled team the 🛡️ fallback; damaged titles are dropped, not the reveal (podium-titles.md eng 1);
+  // fails_when=the old crit line is read as third/second place, or a bad titles field loses the podium; why_new=new field
+  it("a save from before titles keeps its calls on their places, and every consolation is the fallback", async () => {
+    const storage = memoryStorage();
+    const { io } = ended(storage, () => 0);
+    await vi.waitFor(() => expect(lastState(io).podium.beats).not.toBeNull());
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    for (const titles of [undefined, [1, 2]]) {
+      storage.data.set(SNAPSHOT_KEY, { ...saved, podium: { lines: ["本場大成功王是……甲隊！", "二", "一"], ...(titles ? { titles } : {}), at: 0 } });
+      const { room } = makeRoom(storage);
+      expect(await room.restore()).toBe("restored");
+      const screen = makeConn("screen");
+      room.onConnect(screen);
+      const beats = lastOf(screen, "STATE").podium.beats as Beat[];
+      expect(beats.flatMap((b) => (b.kind === "place" ? [b.line] : []))).toEqual(["二", "一"]);
+      expect(beats.filter((b) => b.kind === "award" && b.icon === "🌟")).toEqual([]);
+    }
   });
 
   it("a game finished before the reveal has no podium: the screen shows the full podium", async () => {

@@ -163,8 +163,11 @@ export interface Team {
   dishes?: string[];
   /** Turns this team has played: one per answer that passed the turn on (lib/game-log.ts). Absent until the first. */
   turns?: number;
-  /** The game round and this team's turn count when it walked into the boss room (lib/game-log.ts). */
-  bossAt?: { round: number; turns: number };
+  /** The game round and this team's turn count when it walked into the boss room (lib/game-log.ts). `earned`: its own
+   * correct answer reached bossThreshold (answerQuestion), not the host, an open door or an event room (⚡ 閃電突擊). */
+  bossAt?: { round: number; turns: number; earned?: true };
+  /** Wrong answers this team fled from, boss room too (🏃 逃跑大師, podium-titles.md). Absent until the first. */
+  flees?: number;
   /** The event room this team stands in (docs/designs/event-rooms.md), drawn as it walked in: its next turn opens it. */
   event?: RoomEvent;
   /** A curse or blessing waiting for this team's next correct answer (event-rooms.md D12). */
@@ -919,7 +922,8 @@ export function answerQuestion(
       // A correct answer is always revealed (D5), so the next deal from any pool must not hand it
       // back to a team who hasn't faced it yet.
       const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
-      const entersBoss = team.score + pointsAwarded >= game.config.bossThreshold || game.teams.some((t) => t.inBoss);
+      const earned = team.score + pointsAwarded >= game.config.bossThreshold;
+      const entersBoss = earned || game.teams.some((t) => t.inBoss);
       // A team walking into the boss room stays at its room: no next-room question is dealt (it would burn one).
       const nextRoomIndex = entersBoss ? team.roomIndex : Math.min(team.roomIndex + 1, game.rooms.length - 1);
       // Its queued pick goes with it: the boss room has its own.
@@ -944,7 +948,7 @@ export function answerQuestion(
           currentQuestionId: dealt.questionId,
           currentSelection: null,
           inBoss: entersBoss,
-          ...(entersBoss ? { bossAt: { round: game.round ?? 1, turns: t.turns ?? 0 } } : {}),
+          ...(entersBoss ? { bossAt: { round: game.round ?? 1, turns: t.turns ?? 0, ...(earned ? { earned: true as const } : {}) } } : {}),
           queuedQuestionId: dealt.queuedQuestionId,
         })),
       };
@@ -980,6 +984,7 @@ export function answerQuestion(
     delete checks[checkKey(questionId, teamId)];
     nextGame = { ...nextGame, checks };
   }
+  if (outcome.type === "incorrect-flee") nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, (t) => ({ flees: (t.flees ?? 0) + 1 })) };
   // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
   const here = { ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) };
   // A prayed wrong lock keeps the turn (class-abilities.md PR 2): the cleric answers again at once.

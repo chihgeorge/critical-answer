@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { EPILOGUE_PAGE_CHARS, PHONE_LAG_MS, beatMs, critKing, epiloguePages, rankTeams, revealAt, revealBeats, revealMarks, type Beat } from "@/lib/podium";
+import { EPILOGUE_PAGE_CHARS, MAX_AWARD_LINE, PHONE_LAG_MS, awardLine, awardTitles, beatMs, epiloguePages, parseTitle, rankTeams, revealAt, revealBeats, revealMarks, unemoji, type Beat, type TitleTeam } from "@/lib/podium";
 import { MAX_EPILOGUE_LINE } from "@/lib/narration/runner";
+import type { EventOutcome } from "@/lib/game-state";
 
 /** A d20 that lands on `values` in order. */
 const dice = (...values: number[]) => () => values.shift() ?? 1;
@@ -45,27 +46,127 @@ describe("rankTeams", () => {
   });
 });
 
-// Value: protects=the crit king is the most natural 20s, ties named together, nobody when no 20 (D5, D15);
-// fails_when=a zero count crowns everyone or a tie keeps one name; why_new=new; seam=none; no_claim=none beyond protects
-describe("critKing", () => {
-  it("names the most 20s, every team tied for it, and nobody with none", () => {
-    expect(critKing([{ name: "甲", natural20s: 2 }, { name: "乙", natural20s: 1 }])).toEqual({ names: ["甲"], count: 2 });
-    expect(critKing([{ name: "甲", natural20s: 1 }, { name: "乙", natural20s: 1 }, { name: "丙" }])).toEqual({ names: ["甲", "乙"], count: 1 });
-    expect(critKing([{ name: "甲" }, { name: "乙", natural20s: 0 }])).toBeNull();
+// Value: protects=each data title goes to the best teams in team order, none for 0, ⚡ to the fewest earned turns
+// (podium-titles.md); fails_when=a tie keeps one team, a zero count is awarded, ⚡ counts a host-sent or open-door
+// entry, 凶 is not a curse, or a save without the counts throws; why_new=new; seam=none; no_claim=the screen (e2e)
+describe("awardTitles", () => {
+  const team = (id: string, more: Partial<TitleTeam> = {}): TitleTeam => ({ id, name: `${id}隊`, ...more });
+
+  it("gives each title to every team tied on the best value, in team order, and none for a value of 0", () => {
+    const awards = awardTitles([team("甲", { flees: 2 }), team("乙", { flees: 3, natural20s: 0 }), team("丙", { flees: 3 })]);
+    expect(awards).toEqual([{ id: "flees", icon: "🏃", title: "逃跑大師", teamIds: ["乙", "丙"], reason: "逃跑 3 次" }]);
+  });
+
+  it("counts 凶 as a curse, a blessing only from an event room, and every event room for the explorer", () => {
+    const awards = awardTitles([team("甲", { events: ["curse", "bad", "great"] }), team("乙", { events: ["blessing", "rotten"] })]);
+    expect(awards.map((a) => [a.id, a.teamIds, a.reason])).toEqual([
+      ["explorer", ["甲"], "開了 3 間事件房"],
+      ["blessing", ["乙"], "被祝福 1 次"],
+      ["curse", ["甲"], "被詛咒 2 次"],
+      ["rotten", ["乙"], "吃到 1 次腐肉"],
+    ]);
+  });
+
+  it("⚡ goes to the fewest turns, only for a team that answered its way in", () => {
+    const awards = awardTitles([
+      team("甲", { bossAt: { turns: 5, earned: true } }),
+      team("乙", { bossAt: { turns: 3, earned: true } }),
+      // Sent by the host, through an open door or an event room: no earned, however quick.
+      team("丙", { bossAt: { turns: 1 } }),
+    ]);
+    expect(awards).toEqual([{ id: "rush", icon: "⚡", title: "閃電突擊", teamIds: ["乙"], reason: "3 回合就進魔王房" }]);
+    expect(awardTitles([team("甲", { bossAt: { turns: 2 } })])).toEqual([]);
+  });
+
+  it("a save with none of the counts awards nothing and throws nothing", () => {
+    expect(awardTitles([team("甲"), team("乙")])).toEqual([]);
+    expect(awardTitles([])).toEqual([]);
+  });
+
+  it("awards in the table's order, 🎲 last", () => {
+    const all = team("甲", { events: ["blessing", "curse", "rotten"], flees: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true }, natural20s: 1 });
+    expect(awardTitles([all]).map((a) => a.icon)).toEqual(["🗺️", "✨", "💀", "🤢", "🏃", "🍲", "⚡", "🎲"]);
   });
 });
 
-// Value: protects=the beat order the screen and phones share: crit king, then places lowest first, each roll just before
-// the first place it decides, scripted lines where the narration gave none (D3, D10, D11, D14);
+describe("awardLine, parseTitle and unemoji", () => {
+  it("strips emoji and variation selectors before the voice reads a line", () => {
+    expect(unemoji("🛡️堅持到最後的冒險者……甲隊！")).toBe("堅持到最後的冒險者……甲隊！");
+    expect(unemoji("🎲大成功王……乙隊！")).toBe("大成功王……乙隊！");
+    expect(unemoji("🗺️探險家……丙隊！")).toBe("探險家……丙隊！");
+  });
+
+  it("every title, a 20-character name and a 2-team tie all fit one row", () => {
+    const long = "長".repeat(20);
+    for (const icon of ["🗺️", "✨", "💀", "🤢", "🏃", "🍲", "⚡", "🎲", "🌟", "🛡️"]) {
+      for (const title of ["女神的寵兒", "腐肉品嚐家", "堅持到最後的冒險者", "十個字的稱號十個字"]) {
+        for (const names of [[long], [long, long], [long, "乙", "丙", "丁", "戊", "己", "庚", "辛"], ["甲"]]) {
+          expect(awardLine(icon, title, names).length).toBeLessThanOrEqual(MAX_AWARD_LINE);
+        }
+      }
+    }
+    expect(awardLine("🏃", "逃跑大師", ["甲隊", "乙隊"])).toBe("🏃逃跑大師……甲隊、乙隊！");
+    expect(awardLine("🏃", "逃跑大師", [long, long])).toMatch(/^🏃逃跑大師……長+等 2 隊！$/);
+  });
+
+  it("splits on a full- or half-width bar, and refuses an empty or too-long half", () => {
+    expect(parseTitle("閃避專家｜逃了 3 次還在笑")).toEqual({ title: "閃避專家", reason: "逃了 3 次還在笑" });
+    expect(parseTitle("閃避專家 | 逃了 3 次")).toEqual({ title: "閃避專家", reason: "逃了 3 次" });
+    expect(parseTitle("閃避專家")).toBeNull();
+    expect(parseTitle("｜逃了 3 次")).toBeNull();
+    expect(parseTitle("閃避專家｜")).toBeNull();
+    expect(parseTitle("一二三四五六七八九十一｜理由")).toBeNull();
+    expect(parseTitle(`稱號｜${"字".repeat(17)}`)).toBeNull();
+    expect(parseTitle("")).toBeNull();
+    expect(parseTitle(undefined)).toBeNull();
+  });
+});
+
+// Value: protects=the beat order the screen and phones share: the titles, then places lowest first, each roll just before
+// the first place it decides, scripted lines where the narration gave none (D3, D10, D11, D14; podium-titles.md);
 // fails_when=places are called highest first, a roll lands after its place, or fewer than 3 teams calls a missing place;
 // why_new=new; seam=none; no_claim=what the screen draws per beat (screen tests, e2e)
 describe("revealBeats", () => {
-  const lines = (beats: Beat[]) => beats.map((b) => (b.kind === "roll" ? `[${b.line}｜${b.result}]` : b.line));
+  // The place and roll beats; the titles are checked on their own below.
+  const lines = (beats: Beat[]) => beats.flatMap((b) => (b.kind === "award" ? [] : [b.kind === "roll" ? `[${b.line}｜${b.result}]` : b.line]));
 
-  it("calls the crit king, then third, second and first, nothing below third", () => {
+  it("hands out the data titles, then each untitled team's, then third, second and first", () => {
+    const t = [...teams(["甲", 40, 1], ["乙", 30, 2], ["丙", 20]), { id: "丁", name: "丁隊", reward: 10, flees: 1, turns: 7 }];
+    const beats = revealBeats(t, ["甲", "乙", "丙", "丁"], [], ["三", "二", "一"], ["閃避專家｜逃了也不怕", "壞掉"]);
+    expect(beats.map((b) => b.line)).toEqual(["🏃逃跑大師……丁隊！", "🎲大成功王……乙隊！", "🌟閃避專家……甲隊！", "🛡️堅持到最後的冒險者……丙隊！", "三", "二", "一"]);
+    expect(beats[0]).toMatchObject({ kind: "award", reason: "逃跑 1 次", teamIds: ["丁"] });
+    expect(beats[2]).toMatchObject({ kind: "award", icon: "🌟", title: "閃避專家", reason: "逃了也不怕", teamIds: ["甲"] });
+    expect(beats[3]).toMatchObject({ kind: "award", icon: "🛡️", reason: "撐了 0 回合" });
+  });
+
+  it("an empty, missing or bad title is the fallback, with the team's own turns", () => {
+    const t = [{ id: "甲", name: "甲隊", reward: 9, turns: 4 }, { id: "乙", name: "乙隊", reward: 5, turns: 6 }];
+    const beats = revealBeats(t, ["甲", "乙"], [], [], [""]);
+    expect(beats.slice(0, 2)).toMatchObject([
+      { kind: "award", icon: "🛡️", title: "堅持到最後的冒險者", reason: "撐了 4 回合", line: "🛡️堅持到最後的冒險者……甲隊！" },
+      { kind: "award", icon: "🛡️", reason: "撐了 6 回合" },
+    ]);
+  });
+
+  it("a save from before titles (the crit line first, no titles) puts each call on its own place", () => {
+    const t = teams(["甲", 40, 1], ["乙", 30], ["丙", 20]);
+    expect(lines(revealBeats(t, ["甲", "乙", "丙"], [], ["舊的大成功王", "三", "二", "一"]))).toEqual(["三", "二", "一"]);
+  });
+
+  it("8 teams at worst: every data title to one team, then 7 consolations, is 15 title beats before the places", () => {
+    const ids = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛"];
+    const star = { id: "甲", name: "甲隊", reward: 1, events: ["blessing", "curse", "rotten"] as EventOutcome[], flees: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true as const }, natural20s: 1 };
+    const t = [star, ...ids.slice(1).map((id) => ({ id, name: `${id}隊`, reward: 1 }))];
+    const beats = revealBeats(t, ids, []);
+    expect(beats.filter((b) => b.kind === "award")).toHaveLength(15);
+    // 8 data titles + 7 consolations, then the 3 places (the design's 17 counts 🧪, added with the lucky potion).
+    expect(beats).toHaveLength(18);
+    expect(revealMarks(beats).at(-1)).toBe(15 * 2500 + 3500 + 3500 + 4000);
+  });
+
+  it("calls third, second and first, nothing below third", () => {
     const t = teams(["甲", 40, 1], ["乙", 30, 2], ["丙", 20], ["丁", 10]);
     expect(lines(revealBeats(t, ["甲", "乙", "丙", "丁"], []))).toEqual([
-      "本場大成功王是……乙隊，擲出 2 次 20！",
       "第三名是……丙隊！",
       "第二名是……乙隊！",
       "第一名是……甲隊！",
@@ -97,7 +198,7 @@ describe("revealBeats", () => {
 
   it("three teams rolling read their dice in order", () => {
     const beats = revealBeats(teams(["甲", 9], ["乙", 9], ["丙", 9]), ["甲", "丙", "乙"], [{ from: 1, teams: ["甲", "乙", "丙"], values: [9, 5, 5] }]);
-    expect(beats[0]).toMatchObject({ kind: "roll", line: "第 1、2、3 名同分！擲 d20 比大小", result: "甲隊 9、乙隊 5、丙隊 5，同點的重擲" });
+    expect(beats.find((b) => b.kind === "roll")).toMatchObject({ kind: "roll", line: "第 1、2、3 名同分！擲 d20 比大小", result: "甲隊 9、乙隊 5、丙隊 5，同點的重擲" });
   });
 
   // Value: protects=5–8 dice fit the big screen and the result only promises a reroll that follows; fails_when=over
@@ -123,12 +224,8 @@ describe("revealBeats", () => {
   });
 
   it("uses the narration's lines in order and scripts only the missing ones", () => {
-    const t = teams(["甲", 40, 1], ["乙", 30]);
-    expect(lines(revealBeats(t, ["甲", "乙"], [], ["甲的二十閃閃發光！", "乙穩穩拿下第二！"]))).toEqual([
-      "甲的二十閃閃發光！",
-      "乙穩穩拿下第二！",
-      "第一名是……甲隊！",
-    ]);
+    const t = teams(["甲", 40], ["乙", 30], ["丙", 20]);
+    expect(lines(revealBeats(t, ["甲", "乙", "丙"], [], ["丙穩穩站上第三！"]))).toEqual(["丙穩穩站上第三！", "第二名是……乙隊！", "第一名是……甲隊！"]);
   });
 });
 
@@ -136,7 +233,7 @@ describe("revealBeats", () => {
 // lags so it never spoils (D9, D20, D23); fails_when=a beat boundary is off by one, the result comes before first place,
 // or the lag is dropped; why_new=new; seam=none; no_claim=the network delay itself (unit only)
 describe("revealAt", () => {
-  const beats = revealBeats(teams(["甲", 40], ["乙", 30], ["丙", 20]), ["甲", "乙", "丙"], []);
+  const beats = revealBeats(teams(["甲", 40], ["乙", 30], ["丙", 20]), ["甲", "乙", "丙"], []).filter((b) => b.kind !== "award");
 
   it("walks the beats on their durations, the result at first place, done after it", () => {
     expect(beats.map(beatMs)).toEqual([3500, 3500, 4000]);
