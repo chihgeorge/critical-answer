@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 import { MAX_MODEL_LINE } from "./runner";
 
@@ -282,6 +282,18 @@ describe("next-team prompt (the second line)", () => {
       expect(line).not.toMatch(/[{}]/);
       expect(line.length).toBeLessThanOrEqual(40);
     }
+  });
+
+  // Value: protects=a fork's lines never give away a door (branch-fork.md); fails_when=a line names a scene or outcome.
+  it("a fork turn's line names the team and two doors, never a monster or anything behind a door; ⚔️'s lines fit 22 characters", () => {
+    const p = createScriptedProvider(lcg(8));
+    for (let i = 0; i < 10; i++) {
+      const line = p.nextLine({ team: "炸雞小隊", monster: "", boss: false, fork: true });
+      expect(NEXT_FORK_VARIANTS.map((v) => v.replaceAll("{team}", "炸雞小隊"))).toContain(line);
+      expect(line).not.toMatch(/寶箱|泉水|雕像|精靈|占卜|詛咒|祝福|[{}]/);
+      expect(p.forkLine(i % 2 === 0, "炸雞小隊", "史萊姆")).toMatch(i % 2 === 0 ? /炸雞小隊.*⚔️|⚔️.*炸雞小隊/ : /史萊姆/);
+    }
+    for (const v of [...NEXT_FORK_VARIANTS, ...FORK_MONSTER_VARIANTS, ...FORK_TIMEOUT_VARIANTS]) expect(v.replaceAll("{team}", "炸雞小隊").replaceAll("{monster}", "史萊姆").length).toBeLessThanOrEqual(22);
   });
 
   it("uses the boss variants in the boss room", () => {

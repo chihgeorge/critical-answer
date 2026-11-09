@@ -9,8 +9,8 @@ export interface NextTurn {
   team: string;
   monster: string;
   boss: boolean;
-  /** The team stands in an event room (docs/designs/event-rooms.md): the line sets this scene, with no monster and no spoiler. */
-  event?: EventScene;
+  /** The team stands at a fork (docs/designs/branch-fork.md): two doors, no monster, and nothing behind either door. */
+  fork?: true;
 }
 
 /** `hostLine`: the line the host queued for this narration (HOST_NEXT_LINE); segment 2 always says it

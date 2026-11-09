@@ -42,11 +42,14 @@ import {
   recordCheck,
   checkKey,
   checkTarget,
-  drawEvent,
-  enterEventRoom,
+  atFork,
+  chooseFork,
+  enterFork,
   eventEligible,
-  openEvent,
+  startForkChoice,
   EVENT_CHANCE,
+  FORK_MS,
+  type ForkChoice,
   InvalidActionError,
   type ClassId,
   type GameState,
@@ -124,6 +127,8 @@ const READ_GAP_MS = 1000;
 /** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
+/** A fork's door opening on show (docs/designs/branch-fork.md): the question, or the ❓ outcome, waits for it. */
+export const FORK_BEAT_MS = 1500;
 /** The boss kill's 4d20 on screen (docs/designs/kill-roll.md): the dice land one by one, then the total stays up. */
 const KILL_BEAT_MS = 4000;
 
@@ -308,6 +313,14 @@ export class DungeonRoom {
   private clipError: string | null = null;
   /** An opened event on show until 下一題 (docs/designs/event-rooms.md). Memory only, like the reveal: its effect is saved. */
   private eventReveal: EventReveal | null = null;
+  /** The fork team's door clock (branch-fork.md): runs out at its saved deadline. Memory only: restore() arms it again. */
+  private forkTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The door that just opened, on show for FORK_BEAT_MS. `before` is the game before the press: STATE shows it
+   * meanwhile, so no score, room or turn moves before the door opens (the choice is applied and saved already).
+   * `reveal`: the ❓ outcome, shown when the beat ends; `line`: ⚔️'s scripted line, said then. Memory only: a
+   * restart drops the beat, and with it a ❓ outcome's screen and line (its effect stays). */
+  private forkBeat: { teamId: string; door: "monster" | "mystery"; timeout: boolean; before: GameState; reveal?: EventReveal; line?: { eventId: number; text: string } } | null = null;
+  private forkBeatTimer: ReturnType<typeof setTimeout> | null = null;
   /** When the host pressed 上菜 on the reveal up now (only read while `reveal.served`). */
   private servedAt = 0;
   /** The host's last ▶ ⏸ ⟲ (docs/designs/youtube-questions.md). In memory only (D6): a restart forgets it. */
@@ -783,6 +796,13 @@ export class DungeonRoom {
     console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
     // A restart loses the beat that resolves a wrong boss lock.
     this.armBossMiss();
+    // A door clock keeps its saved deadline (time spent down counts); one already past picks ⚔️ at once.
+    try {
+      this.armFork();
+      this.syncFork();
+    } catch {
+      // a damaged save (a null team) restores without its door clock
+    }
     try {
       this.lostCrit = this.game ? lostCritOf(this.game) : null;
     } catch {
@@ -827,8 +847,8 @@ export class DungeonRoom {
     if (!game || game.phase !== "playing") return null;
     const teamId = currentTurnTeamId(game);
     const team = game.teams.find((t) => t.id === teamId);
-    // A team in an event room has no question until it walks out (event-rooms.md): its held deal stays hidden.
-    if (!team || team.event) return null;
+    // A team at a fork has no question until it picks ⚔️ (branch-fork.md): its held deal stays hidden.
+    if (!team || atFork(team)) return null;
     const id = currentQuestionIdOf(game, team.id);
     // The team's own count from when it walked in, so its monster never changes mid-room (monster-catalog.md §3).
     const roomMonster = game.rooms[team.roomIndex]?.monsterId;
@@ -903,7 +923,7 @@ export class DungeonRoom {
     // A buzzer phase has no turns: nobody is up next until someone buzzes (boss-buzzer.md).
     const teamId = game && !isBuzzPhase(game) && currentTurnTeamId(game);
     const team = game?.teams.find((t) => t.id === teamId);
-    if (team?.event) return { team: team.name, monster: "", boss: false, event: team.event.scene };
+    if (team && atFork(team)) return { team: team.name, monster: "", boss: false, fork: true };
     return q && team ? { team: team.name, monster: q.pub.monster.name, boss: q.pub.boss } : null;
   }
 
@@ -956,7 +976,11 @@ export class DungeonRoom {
       const replay = this.playedQuestionIds.length > 0;
       return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}), bankSize: bankSize(this.bank) };
     }
-    const view = getSpectatorView(this.game);
+    // A door opening shows the game from before the press (branch-fork.md); online is live, phones come and go meanwhile.
+    const shown = this.forkBeat?.before ?? this.game;
+    const view = getSpectatorView(shown);
+    if (shown !== this.game) view.teams = view.teams.map((t) => ({ ...t, online: this.game!.teams.find((r) => r.id === t.id)?.online ?? t.online }));
+    const choosing = this.forkBeat ? undefined : this.game.teams.find((t) => t.fork?.phase === "choosing")?.fork;
     // A check is written when its die is rolled, so a restart inside the beat cannot reroll it; it shows once the beat ends.
     const rolling = this.pendingRoll?.kind === "check" ? checkKey(this.pendingRoll.questionId, this.pendingRoll.teamId) : null;
     if (rolling && view.checks) view.checks = Object.fromEntries(Object.entries(view.checks).filter(([k]) => k !== rolling));
@@ -970,9 +994,11 @@ export class DungeonRoom {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       // The card holds the new phase's first question back until the host's 下一題.
-      question: this.phaseCard || this.opening() ? null : (this.currentQuestion()?.pub ?? null),
+      question: this.phaseCard || this.opening() || this.forkBeat ? null : (this.currentQuestion()?.pub ?? null),
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
+      ...(choosing?.phase === "choosing" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
+      ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, door: this.forkBeat.door, ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
       ...this.liveMedia(),
       ...(this.clipError !== null && this.clipError === this.shownVideoId() ? { clipError: true as const } : {}),
       ...this.buzzCategories(),
@@ -1077,6 +1103,7 @@ export class DungeonRoom {
 
   private broadcastState() {
     if (this.lostCrit && this.applyLostCrit()) return;
+    this.syncFork();
     this.broadcast(this.snapshot());
     // The answer goes only to connections that hold the host token, never to broadcast.
     for (const conn of this.hostConns.values()) this.sendAnswer(conn);
@@ -1397,14 +1424,9 @@ export class DungeonRoom {
         case "TEAM_DRINK_POTION":
           this.handleTeamDrinkPotion(sender, msg.questionId, msg.eventId);
           break;
-        case "HOST_OPEN_EVENT":
-          if (this.requireHost(sender)) this.handleOpenEvent(sender, msg.teamId, msg.eventId);
+        case "TEAM_CHOOSE_FORK":
+          this.handleChooseFork(sender, msg.door, msg.eventId);
           break;
-        case "TEAM_OPEN_EVENT": {
-          const teamId = this.playingTeam(sender);
-          if (teamId) this.handleOpenEvent(sender, teamId, msg.eventId);
-          break;
-        }
         case "HOST_QUEUE_QUESTION":
           this.handleQueueQuestion(sender, msg.target, msg.questionId);
           break;
@@ -1769,7 +1791,7 @@ export class DungeonRoom {
     // The reveal is always set in the same judgment that bumps eventSeq, so a HOST_NEXT for an
     // older STATE is stale — ignore it rather than close a reveal nobody has seen.
     // The intro turns pages with HOST_INTRO only.
-    if (!this.paused() || this.opening() || eventId !== this.eventSeq) return;
+    if (!this.paused() || this.opening() || this.forkBeat || eventId !== this.eventSeq) return;
     // A dish is served before 下一題, and the cooking plays out first (cooking I2): a double press or a stale tab can't skip it.
     if (this.reveal?.dish && (!this.reveal.served || this.now() - this.servedAt < SERVE_HOLD_MS)) return;
     if (this.reveal) return this.closeReveal();
@@ -1796,7 +1818,7 @@ export class DungeonRoom {
 
   /** An answer reveal or the boss's phase card is up: nobody answers until the host moves on. */
   private paused(): boolean {
-    return !!this.reveal || !!this.eventReveal || this.phaseCard || this.phaseCardDue || this.opening();
+    return !!this.reveal || !!this.eventReveal || this.phaseCard || this.phaseCardDue || this.opening() || !!this.forkBeat;
   }
 
   /** The intro or 擲先攻 is on: the game exists, but no question is dealt yet. */
@@ -1845,6 +1867,11 @@ export class DungeonRoom {
     if (this.initiativeTimer) clearTimeout(this.initiativeTimer);
     this.initiativeTimer = null;
     this.initiative = null;
+    // A door clock or a door opening belongs to the game that ended or went: a finished game shows its real scores.
+    if (this.forkTimer) clearTimeout(this.forkTimer);
+    if (this.forkBeatTimer) clearTimeout(this.forkBeatTimer);
+    this.forkTimer = this.forkBeatTimer = null;
+    this.forkBeat = null;
     // A crit die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now.
     const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : undefined);
     this.pendingLock = null;
@@ -2178,7 +2205,7 @@ export class DungeonRoom {
   }
 
   private undoHeld(): boolean {
-    return !!this.reveal || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll;
+    return !!this.reveal || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat;
   }
 
   /** Runs `judge`, a 答錯 on a fill-in, so that 改判答對 may undo it. A cleric's wait and the 重答 / 逃跑 after it chain to the
@@ -2367,11 +2394,13 @@ export class DungeonRoom {
     }
     const judged = run(this.rng, killDice);
     const { outcome } = judged;
-    // The next room may hold an event instead of its monster (event-rooms.md D2, D5): drawn now, so a restart cannot reroll it.
-    // A room the host picked the question for (指定下一題) keeps its monster: an event there would burn the pick.
+    // The next room may be a fork (branch-fork.md, event-rooms.md D5): nothing behind its doors is drawn until ❓.
+    // A room the host picked the question for (指定下一題) keeps its monster: an event there would burn the pick. The
+    // room ⚔️ led to rolls no fork as the team walks out, so two forks always have a plain room between them.
     const queued = prev.teams.find((t) => t.id === teamId)?.queuedQuestionId;
     const picked = queued !== undefined && judged.game.teams.find((t) => t.id === teamId)?.currentQuestionId === queued;
-    const game = !picked && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterEventRoom(judged.game, teamId, drawEvent(this.rng)) : judged.game;
+    const afterMonster = prev.teams.find((t) => t.id === teamId)?.fork?.phase === "monster";
+    const game = !picked && !afterMonster && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterFork(judged.game, teamId) : judged.game;
     // Every online team got it wrong: they all buzz on the same question again (boss-music-buzzer.md M1).
     const again = isBuzzPhase(prev) && outcome.type === "incorrect-retry" && judged.game.buzz?.out.length === 0;
     // A wrong buzz: the music picks up where the buzz stopped it, for the teams still in (boss-buzzer.md D5). After
@@ -2488,7 +2517,8 @@ export class DungeonRoom {
   private shownVideoId(): string | null {
     if (this.game?.phase !== "playing") return null;
     if (this.reveal) return this.reveal.video ? this.reveal.questionId : null;
-    if (this.phaseCard || this.opening()) return null;
+    // A door opening: the real turn may have passed on, and the next team's video must not start under it.
+    if (this.phaseCard || this.opening() || this.forkBeat) return null;
     const pub = this.currentQuestion()?.pub;
     return pub?.content.kind === "youtube" ? pub.id : null;
   }
@@ -2845,44 +2875,116 @@ export class DungeonRoom {
     return this.rng() >= 1 - EVENT_CHANCE;
   }
 
-  /** The turn's team (its phone, or the host for it) opens its event (event-rooms.md D3, D10): the effect lands and the
-   * turn passes at once, and the result stays on show until 下一題, like an answer reveal. */
-  private handleOpenEvent(conn: Conn, teamId: string, eventId: number) {
+  /** waiting → choosing (branch-fork.md): once the fork team holds the turn and the screen shows it (no reveal, card,
+   * intro or door on show), its 15 seconds start. Called on every broadcast and on restore, so no path that hands the
+   * turn on is missed. Not a move: an undoable 答錯 stays undoable (undo brings the team back to waiting). */
+  private syncFork() {
     const game = this.game;
-    if (!game) return;
+    if (game?.phase !== "playing" || isBuzzPhase(game) || this.paused()) return;
+    const team = game.teams.find((t) => t.id === currentTurnTeamId(game));
+    if (team?.fork?.phase !== "waiting") return;
+    this.keepUndoOpen(startForkChoice(game, team.id, this.now() + FORK_MS));
+    this.armFork();
+  }
+
+  /** Times the choosing team's door clock to its deadline. A stale firing (the team chose, went to the boss, the game
+   * ended) finds no choosing team with that deadline and does nothing. */
+  private armFork() {
+    if (this.forkTimer) clearTimeout(this.forkTimer);
+    this.forkTimer = null;
+    const team = this.game?.phase === "playing" ? this.game.teams.find((t) => t.fork?.phase === "choosing") : undefined;
+    if (team?.fork?.phase !== "choosing") return;
+    const { id } = team;
+    const { deadline } = team.fork;
+    this.forkTimer = setTimeout(() => {
+      this.forkTimer = null;
+      const fork = this.game?.teams.find((t) => t.id === id)?.fork;
+      if (this.game?.phase !== "playing" || fork?.phase !== "choosing" || fork.deadline !== deadline) return;
+      this.applyForkChoice(id, "timeout");
+    }, Math.max(0, deadline - this.now()));
+  }
+
+  /** TEAM_CHOOSE_FORK: the turn's team picks a door. A press at or after the deadline is the clock's: ⚔️ by timeout. */
+  private handleChooseFork(conn: Conn, door: "monster" | "mystery", eventId: number) {
+    const teamId = this.playingTeam(conn);
+    const game = this.game;
+    if (!teamId || !game) return;
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
-    // A double press, or a second phone of the team: the first one already opened it.
+    // A tap from an earlier fork, or a second phone after the first opened ❓.
     if (eventId !== this.eventSeq) return reject("stale_event");
     if (this.paused() || this.pendingLock || this.pendingRoll) return reject("reveal_pending");
-    let opened: ReturnType<typeof openEvent>;
+    const fork = game.teams.find((t) => t.id === teamId)?.fork;
+    const late = fork?.phase === "choosing" && this.now() >= fork.deadline;
+    this.applyForkChoice(teamId, late ? "timeout" : door, conn);
+  }
+
+  /** ⚔️, ❓ or the clock: the choice is applied and saved now (chooseFork), and the door opens for FORK_BEAT_MS while
+   * STATE still shows the game from before (forkBeat.before). ❓ moves eventSeq on now, so a second press is stale; its
+   * feast dish is drawn now too, keeping the rng order. */
+  private applyForkChoice(teamId: string, choice: ForkChoice, conn?: Conn) {
+    const before = this.game!;
+    let chosen: ReturnType<typeof chooseFork>;
     try {
-      opened = openEvent(game, teamId, this.rng);
+      chosen = chooseFork(before, teamId, choice, this.rng);
     } catch (err) {
-      if (err instanceof InvalidActionError) return reject(err.message);
-      throw err;
+      if (conn) return this.sendInvalid(conn, err);
+      return console.error(JSON.stringify({ event: "fork_failed", error: String(err) }));
     }
-    const { result } = opened;
-    this.game = opened.game;
-    const id = ++this.eventSeq;
-    // A feast serves a dish from the catalog: the room monsters', since the boss's is the last night's feast.
-    // Only a dish the room may say aloud, like the dishes the epilogue names; none left means no dish.
-    const pool = MONSTERS.filter((m) => !m.boss && this.sayable(m.dish.name));
-    const m = result.outcome === "feast" && pool.length ? pool[Math.floor(this.rng() * pool.length)] : undefined;
-    this.eventReveal = { ...result, ...(m ? { dish: { name: m.dish.name, sprite: m.sprite, hue: m.hue } } : {}) };
-    const bad = result.outcome === "rotten" || result.outcome === "bad" || result.boon === "curse";
+    if (this.forkTimer) clearTimeout(this.forkTimer);
+    this.forkTimer = null;
+    this.game = chosen.game;
+    const name = before.teams.find((t) => t.id === teamId)?.name ?? "";
+    const { result } = chosen;
+    let reveal: EventReveal | undefined;
+    let line: { eventId: number; text: string } | undefined;
+    if (result) {
+      ++this.eventSeq;
+      // A feast serves a dish from the catalog: the room monsters', since the boss's is the last night's feast.
+      // Only a dish the room may say aloud, like the dishes the epilogue names; none left means no dish.
+      const pool = MONSTERS.filter((m) => !m.boss && this.sayable(m.dish.name));
+      const m = result.outcome === "feast" && pool.length ? pool[Math.floor(this.rng() * pool.length)] : undefined;
+      reveal = { ...result, ...(m ? { dish: { name: m.dish.name, sprite: m.sprite, hue: m.hue } } : {}) };
+    } else {
+      // ⚔️'s line follows the fork narration on screen (no new eventId: nothing new is narrated by the AI).
+      const monster = this.currentQuestion()?.pub.monster.name ?? "";
+      line = { eventId: this.eventSeq, text: this.scripted.forkLine(choice === "timeout", name, monster) };
+    }
+    const beat = { teamId, door: result ? ("mystery" as const) : ("monster" as const), timeout: choice === "timeout", before, ...(reveal ? { reveal } : {}), ...(line ? { line } : {}) };
+    this.forkBeat = beat;
+    if (this.forkBeatTimer) clearTimeout(this.forkBeatTimer);
+    this.forkBeatTimer = setTimeout(() => {
+      this.forkBeatTimer = null;
+      if (this.forkBeat === beat) this.endForkBeat();
+    }, FORK_BEAT_MS);
+    this.broadcastState();
+  }
+
+  /** The door is open: STATE shows the real game. ❓'s outcome goes on show until 下一題 (event-rooms.md D3), with its
+   * cue and line; ⚔️ shows the room's question, and the owl says who walked in. */
+  private endForkBeat() {
+    const beat = this.forkBeat!;
+    this.forkBeat = null;
+    const { reveal, line } = beat;
+    if (!reveal) {
+      this.broadcastState();
+      if (line) this.appendLine(line.eventId, line.text);
+      return;
+    }
+    this.eventReveal = reveal;
+    const bad = reveal.outcome === "rotten" || reveal.outcome === "bad" || reveal.boon === "curse";
     this.setCue(bad ? "fumble" : "correct");
     this.broadcastState();
-    const team = game.teams.find((t) => t.id === teamId)!;
+    const team = beat.before.teams.find((t) => t.id === beat.teamId)!;
     const next = this.nextTurn();
-    void this.narrate(id, {
+    void this.narrate(this.eventSeq, {
       type: "event-room",
       team: team.name,
       ...(team.classId ? { classId: team.classId } : {}),
-      scene: result.scene,
-      outcome: result.outcome,
-      satiety: result.satiety,
-      ...(result.abilityUse ? { abilityUse: true as const } : {}),
-      ...(m ? { dish: m.dish.name } : {}),
+      scene: reveal.scene,
+      outcome: reveal.outcome,
+      satiety: reveal.satiety,
+      ...(reveal.abilityUse ? { abilityUse: true as const } : {}),
+      ...(reveal.dish ? { dish: reveal.dish.name } : {}),
       ...(next ? { next } : {}),
     });
   }
@@ -2900,8 +3002,9 @@ export class DungeonRoom {
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
     // No checks in a buzzer phase (boss-buzzer.md D6): refused before the die rolls, not after.
     if (isBuzzPhase(game)) return reject("buzzer_phase");
-    // An event room holds no question to roll on: its held deal stays hidden.
-    if (game.teams.find((t) => t.id === teamId)?.event) return reject("event_room");
+    // A fork holds no question to roll on: its held deal stays hidden.
+    const forkTeam = game.teams.find((t) => t.id === teamId);
+    if (forkTeam && atFork(forkTeam)) return reject("fork");
     if (this.question(questionId)?.kind !== "text" || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
     if (game.checks?.[checkKey(questionId, teamId)]) return reject("check_done");
     // A typed answer already waits for the host: a natural 20 must not win over it.
@@ -2942,7 +3045,7 @@ export class DungeonRoom {
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
     if (isBuzzPhase(game)) return reject("buzzer_phase");
     const team = game.teams.find((t) => t.id === teamId);
-    if (team?.event) return reject("event_room");
+    if (team && atFork(team)) return reject("fork");
     const q = this.question(questionId);
     if (!q || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
     // A fill-in rolls only its persuasion check: none left once it is rolled or an answer waits for the host.

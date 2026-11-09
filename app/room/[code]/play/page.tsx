@@ -9,7 +9,7 @@ import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL, offli
 import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
-import { MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type PublicQuestion, type StateMessage } from "@/lib/protocol";
+import { MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
 import { ABILITY_USES, CHEF_BONUS_PERCENT, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
@@ -24,7 +24,7 @@ import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { SORT_ITEMS, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
-import { BOON_TEXT, EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT, eventEffectLine } from "@/lib/event-text";
+import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine } from "@/lib/event-text";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
 const CLASS_HINTS: Record<ClassId, string> = {
@@ -915,7 +915,7 @@ export default function PlayPage() {
         </Panel>
       )}
 
-      {game && !finished && !held && !intro && !initiative && turn?.team && !turn.team.eventScene && (
+      {game && !finished && !held && !intro && !initiative && turn?.team && !turn.team.fork && !game.forkBeat && (
         <Panel className="flex items-center gap-3 px-3 py-[10px]">
           <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
           <div className="text-[15px]">
@@ -1075,8 +1075,12 @@ export default function PlayPage() {
           </div>
         )}
 
-        {/* An event room (event-rooms.md D10): the team's one button, then its result; every other phone looks up. */}
-        {game && !finished && !intro && (eventRevealed || (!revealed && !game.phaseCard && !game.phaseCardDue && turn?.team?.eventScene)) && <EventPanel game={game} teamId={teamId} send={send} />}
+        {/* 岔路 (branch-fork.md): a door opening first, then a ❓ outcome, then the doors, so a beat never shows live buttons. */}
+        {game && !finished && !intro && (game.forkBeat || (!eventRevealed && !revealed && !game.phaseCard && !game.phaseCardDue && turn?.team?.fork === "choosing")) ? (
+          <ForkPanel game={game} teamId={teamId} send={send} />
+        ) : game && !finished && !intro && eventRevealed ? (
+          <EventPanel reveal={eventRevealed} game={game} teamId={teamId} />
+        ) : null}
 
         {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
         {game && buzz && !held && game.question && <BuzzButton game={game} buzz={buzz} teamId={teamId} send={send} />}
@@ -1192,59 +1196,73 @@ export default function PlayPage() {
   );
 }
 
-/** An event room on a phone (event-rooms.md D10). The team on turn presses its one button; after the press it reads
- * the outcome; every other phone reads that the team walked into an event room. */
-function EventPanel({ game, teamId, send }: { game: StateMessage; teamId: string; send: (msg: ClientMessage) => void }) {
-  const reveal = game.eventReveal;
-  const team = game.view.teams.find((t) => t.id === (reveal ? reveal.teamId : game.view.currentTurnTeamId));
-  // A press waiting for the room, keyed to the eventId so a later event turn starts with a live button.
+/** ❓ 神秘房's outcome on a phone (event-rooms.md D10, branch-fork.md): the team reads what it got; every other phone looks up. */
+function EventPanel({ reveal, game, teamId }: { reveal: EventReveal; game: StateMessage; teamId: string }) {
+  const team = game.view.teams.find((t) => t.id === reveal.teamId);
+  if (!team) return null;
+  if (team.id !== teamId) {
+    return (
+      <Panel className="px-3 py-[10px] text-[17px]">
+        <span data-testid="phone-event-watch">{team.name}打開了神秘房……看大螢幕 📺</span>
+      </Panel>
+    );
+  }
+  return (
+    <div data-testid="phone-event-result" className="flex flex-col gap-3">
+      <Panel className="flex flex-col items-center gap-1 px-3 py-[12px] text-center">
+        <LabelChip>❓ 神秘房</LabelChip>
+        <div className="px-title-gold px-title-sm text-[26px]">{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
+        <div className="text-[18px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{eventEffectLine({ ...reveal, chefBonus: undefined })}</div>
+        {reveal.chefBonus ? <div className="text-[15px]">（廚師 +{reveal.chefBonus}）</div> : null}
+      </Panel>
+      <Panel className="px-3 py-[10px] text-[16px]">看大螢幕 📺　主持人按「下一題」後，我們{reveal.entersBoss ? "走進首領房" : "走到下一間房"}</Panel>
+    </div>
+  );
+}
+
+/** 岔路 on a phone (branch-fork.md): the team on turn gets two big doors, nothing written under them, pinned to the bottom of
+ * the screen so nothing pushes them away; a door opening locks them. Every other phone reads that the team is at a fork. */
+function ForkPanel({ game, teamId, send }: { game: StateMessage; teamId: string; send: (msg: ClientMessage) => void }) {
+  const beat = game.forkBeat;
+  const team = game.view.teams.find((t) => t.id === (beat ? beat.teamId : game.view.currentTurnTeamId));
+  // A press waiting for the room, keyed to the eventId; a refused one gives the doors back.
   const [pressed, setPressed] = useState<number | null>(null);
-  // A press the room refused leaves the eventId as it was: give the button back rather than wait forever.
   useEffect(() => {
     if (pressed === null) return;
     const t = setTimeout(() => setPressed(null), 5000);
     return () => clearTimeout(t);
   }, [pressed]);
-  const scene = reveal?.scene ?? team?.eventScene;
-  if (!team || !scene) return null;
-  const text = EVENT_SCENE_TEXT[scene];
+  if (!team) return null;
   if (team.id !== teamId) {
     return (
       <Panel className="px-3 py-[10px] text-[17px]">
-        <span data-testid="phone-event-watch">{team.name}走進了事件房……看大螢幕 📺</span>
+        <span data-testid="phone-fork-watch">{beat ? `${team.name}推開了門……看大螢幕 📺` : `${team.name}在岔路口猶豫中……看大螢幕 📺`}</span>
       </Panel>
     );
   }
-  if (reveal) {
-    return (
-      <div data-testid="phone-event-result" className="flex flex-col gap-3">
-        <Panel className="flex flex-col items-center gap-1 px-3 py-[12px] text-center">
-          <LabelChip>❓ 事件房</LabelChip>
-          <div className="px-title-gold px-title-sm text-[26px]">{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
-          <div className="text-[18px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{eventEffectLine({ ...reveal, chefBonus: undefined })}</div>
-          {reveal.chefBonus ? <div className="text-[15px]">（廚師 +{reveal.chefBonus}）</div> : null}
-        </Panel>
-        <Panel className="px-3 py-[10px] text-[16px]">看大螢幕 📺　主持人按「下一題」後，我們{reveal.entersBoss ? "走進首領房" : "走到下一間房"}</Panel>
-      </div>
-    );
-  }
-  const waiting = pressed === game.eventId;
+  const locked = !!beat || pressed === game.eventId;
   return (
-    <div data-testid="phone-event" className="flex flex-col gap-2">
-      <Panel className="flex flex-col items-start gap-1 px-3 py-[12px]">
-        <LabelChip>❓ 事件房</LabelChip>
-        <div className="text-[18px]">{text.line}</div>
+    <>
+      <Panel className="flex items-center justify-between px-3 py-[10px] text-[20px]">
+        <span>🔀 岔路！走哪一扇門？</span>
+        {beat?.timeout ? <span className="px-chip">⏳ 時間到</span> : typeof game.forkLeft === "number" && !beat ? <AnswerClock key={game.forkLeft} ms={game.forkLeft} variant="chip" /> : null}
       </Panel>
-      <PixelButton
-        data-testid="phone-event-open"
-        disabled={waiting}
-        onClick={() => {
-          setPressed(game.eventId);
-          send({ type: "TEAM_OPEN_EVENT", eventId: game.eventId });
-        }}
-        className="!m-0 w-full !py-4 text-[24px]"
-      >{text.button}</PixelButton>
-      <div className="text-center text-[15px] text-white">按下去，大螢幕就會演出來</div>
-    </div>
+      {/* Sticky, so the doors stay in view however long the page gets (TODOS: the old event panel was pushed off screen). */}
+      <div data-testid="phone-fork" className="sticky bottom-2 z-30 flex gap-3">
+        {(["monster", "mystery"] as const).map((door) => (
+          <PixelButton
+            key={door}
+            data-testid={`phone-fork-${door}`}
+            disabled={locked}
+            onClick={() => {
+              setPressed(game.eventId);
+              send({ type: "TEAM_CHOOSE_FORK", door, eventId: game.eventId });
+            }}
+            className="!m-0 min-h-[72px] flex-1 text-[24px]"
+            style={beat && beat.door !== door ? { opacity: 0.35 } : undefined}
+          >{door === "monster" ? "⚔️ 怪物房" : "❓ 神秘房"}</PixelButton>
+        ))}
+      </div>
+    </>
   );
 }

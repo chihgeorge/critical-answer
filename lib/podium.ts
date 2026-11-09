@@ -78,7 +78,7 @@ const outcomes = (t: TitleTeam, ...kinds: EventOutcome[]) => (t.events ?? []).fi
 
 /** In award order, 🎲 last. `value` null: the team is not in the running (a count of 0). `fewest`: least wins. */
 const TITLES: { id: string; icon: string; title: string; value: (t: TitleTeam) => number | null; reason: (n: number) => string; fewest?: true }[] = [
-  { id: "explorer", icon: "🗺️", title: "探險家", value: (t) => t.events?.length || null, reason: (n) => `開了 ${n} 間事件房` },
+  { id: "explorer", icon: "🗺️", title: "探險家", value: (t) => t.events?.length || null, reason: (n) => `開了 ${n} 間神秘房` },
   // Only an event room's blessing: 大吉 (great) gives satiety, not a blessing, and the last sprint's is no event room.
   { id: "blessing", icon: "✨", title: "女神的寵兒", value: (t) => outcomes(t, "blessing") || null, reason: (n) => `被祝福 ${n} 次` },
   // The fortune teller's 凶 (bad) curses too (openEvent).

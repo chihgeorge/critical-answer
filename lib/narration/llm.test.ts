@@ -68,7 +68,7 @@ describe("request", () => {
     const body = JSON.parse(((f.mock.calls[0] as unknown as [string, RequestInit])[1].body) as string);
     expect(body.system).toContain("輸出 11 行");
     expect(body.system).toContain("第1行：幫隊伍「乙」想一個好笑的榮譽稱號");
-    expect(body.system).toContain("玩了 6 回合，吃了 2 道料理，逃跑 1 次，開了事件房（寶箱：黑暗料理……），有進魔王房");
+    expect(body.system).toContain("玩了 6 回合，吃了 2 道料理，逃跑 1 次，開了神秘房（寶箱：黑暗料理……），有進魔王房");
     expect(body.system).toContain("「稱號｜理由」");
     expect(body.system).toContain("不要暗示名次或分數");
     expect(body.system).toContain("第8行：宣布第三名是「丙」");

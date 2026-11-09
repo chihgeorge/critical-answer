@@ -2,6 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   answerQuestion,
   armSneak,
+  chooseFork,
+  drinkPotion,
+  enterFork,
+  giveItem,
+  setTeamOnline,
+  startForkChoice,
   createGame,
   currentTurnTeamId,
   drawEvent,
@@ -184,20 +190,6 @@ describe("openEvent", () => {
     expect(() => openEvent(opened, "t1", first)).toThrow("no_event");
   });
 
-  it("a team in an event room cannot answer, submit or use an ability", () => {
-    const g = inEvent("feast", game(["thief", undefined]));
-    const q = team(g).currentQuestionId;
-    expect(() => answerQuestion(g, "t0", q, true, "retry", first)).toThrow("event_room");
-    expect(() => submitText(g, "t0", q, "x")).toThrow("event_room");
-    expect(() => armSneak(g, "t0")).toThrow("event_room");
-  });
-
-  it("the broadcast view shows the scene, never the outcome", () => {
-    const view = getSpectatorView(inEvent("rotten"));
-    expect(view.teams[0].eventScene).toBe("chest");
-    expect(JSON.stringify(view)).not.toContain("rotten");
-  });
-
   it("sending a team in an event room to the boss drops its event", () => {
     const g = sendToBoss(inEvent("feast"), "t0");
     expect(team(g).event).toBeUndefined();
@@ -216,5 +208,118 @@ describe("openEvent", () => {
     const log = gameLog(opened, 0);
     expect(log.teams[0].events).toEqual(["curse"]);
     expect(log.teams[1].events).toEqual([]);
+  });
+});
+describe("岔路 (branch-fork.md)", () => {
+  /** t0 answers right and comes to a fork; t1 answers wrong, so it is t0's turn again. `choosing` starts its clock. */
+  function atForkGame(choosing = true, g = game()): GameState {
+    const { game: after } = answerQuestion(g, "t0", g.teams[0].currentQuestionId, true, "retry", first);
+    const forked = enterFork(after, "t0");
+    const back = answerQuestion(forked, "t1", forked.teams[1].currentQuestionId, false, "retry", first).game;
+    return choosing ? startForkChoice(back, "t0", 1000) : back;
+  }
+
+  it("enterFork waits with nothing drawn and is no turn; never in the boss room", () => {
+    const g = game();
+    const { game: after } = answerQuestion(g, "t0", g.teams[0].currentQuestionId, true, "retry", first);
+    const forked = enterFork(after, "t0");
+    expect(team(forked).fork).toEqual({ phase: "waiting" });
+    expect(team(forked).event).toBeUndefined();
+    expect(team(forked).turns).toBe(team(after).turns);
+    expect(() => enterFork(sendToBoss(after, "t0"), "t0")).toThrow(InvalidActionError);
+    expect(() => startForkChoice(after, "t0", 1)).toThrow("no_fork");
+  });
+
+  it("a choosing team keeps the turn offline; a waiting one is skipped and keeps waiting", () => {
+    const choosing = setTeamOnline(atForkGame(), "t0", false);
+    expect(currentTurnTeamId(choosing)).toBe("t0");
+    const waiting = setTeamOnline(atForkGame(false), "t0", false);
+    expect(currentTurnTeamId(waiting)).toBe("t1");
+    expect(team(waiting).fork).toEqual({ phase: "waiting" });
+  });
+
+  it("⚔️ and timeout: the held question, turns and room stay; the mark is monster; forks records the choice", () => {
+    const g = atForkGame();
+    for (const choice of ["monster", "timeout"] as const) {
+      const { game: chosen, result } = chooseFork(g, "t0", choice, first);
+      expect(result).toBeUndefined();
+      expect(team(chosen)).toMatchObject({ fork: { phase: "monster" }, forks: [choice], currentQuestionId: team(g).currentQuestionId, turns: team(g).turns, roomIndex: team(g).roomIndex });
+      expect(currentTurnTeamId(chosen)).toBe("t0");
+    }
+  });
+
+  it("❓ draws the event now and opens it, as openEvent does: effect, next room, the turn passes", () => {
+    const g = atForkGame();
+    const { game: chosen, result } = chooseFork(g, "t0", "mystery", first);
+    // rng 0 draws the chest's feast.
+    expect(result).toMatchObject({ teamId: "t0", outcome: "feast", satiety: 20 });
+    expect(team(chosen)).toMatchObject({ forks: ["mystery"], events: ["feast"], roomIndex: team(g).roomIndex + 1, reward: team(g).reward + 20 });
+    expect(team(chosen).fork).toBeUndefined();
+    expect(team(chosen).event).toBeUndefined();
+    expect(currentTurnTeamId(chosen)).toBe("t1");
+  });
+
+  it("❓ once a team is in the boss room walks the team in", () => {
+    const g = sendToBoss(atForkGame(), "t1");
+    const { result, game: chosen } = chooseFork(g, "t0", "mystery", first);
+    expect(result?.entersBoss).toBe(true);
+    expect(team(chosen).inBoss).toBe(true);
+  });
+
+  it("only the turn's team, only while choosing", () => {
+    expect(() => chooseFork(atForkGame(false), "t0", "monster", first)).toThrow("no_fork");
+    expect(() => chooseFork(atForkGame(), "t1", "monster", first)).toThrow(InvalidActionError);
+  });
+
+  it("at a fork a team cannot answer, submit, use an ability or drink; with the ⚔️ mark it can", () => {
+    for (const g of [atForkGame(false, game(["thief", undefined])), atForkGame(true, game(["thief", undefined]))]) {
+      const q = team(g).currentQuestionId;
+      expect(() => answerQuestion(g, "t0", q, true, "retry", first)).toThrow("fork");
+      expect(() => submitText(g, "t0", q, "x")).toThrow("fork");
+      expect(() => armSneak(g, "t0")).toThrow("fork");
+      expect(() => drinkPotion(giveItem(g, "t0"), "t0")).toThrow("fork");
+    }
+    const monster = chooseFork(atForkGame(true, game(["thief", undefined])), "t0", "monster", first).game;
+    expect(() => armSneak(monster, "t0")).not.toThrow();
+  });
+
+  it("the ⚔️ mark stays through a wrong answer and a flee, and goes on the correct answer, the boss room's too", () => {
+    const monster = chooseFork(atForkGame(), "t0", "monster", first).game;
+    const wrong = answerQuestion(monster, "t0", team(monster).currentQuestionId, false, "flee", first).game;
+    expect(team(wrong).fork).toEqual({ phase: "monster" });
+    const back = answerQuestion(wrong, "t1", team(wrong, "t1").currentQuestionId, false, "retry", first).game;
+    const right = answerQuestion(back, "t0", team(back).currentQuestionId, true, "retry", first).game;
+    expect(team(right).fork).toBeUndefined();
+    // Into the boss room (no roll there): the mark goes too.
+    const boss = sendToBoss(monster, "t1");
+    const intoBoss = answerQuestion(boss, "t0", team(boss).currentQuestionId, true, "retry", first).game;
+    expect(team(intoBoss).inBoss).toBe(true);
+    expect(team(intoBoss).fork).toBeUndefined();
+  });
+
+  it("a send to the boss drops a fork in any phase", () => {
+    for (const g of [atForkGame(false), atForkGame(), chooseFork(atForkGame(), "t0", "monster", first).game]) expect(team(sendToBoss(g, "t0")).fork).toBeUndefined();
+  });
+
+  it("the view says waiting or choosing, never the ⚔️ mark, never anything behind a door", () => {
+    expect(getSpectatorView(atForkGame(false)).teams[0].fork).toBe("waiting");
+    expect(getSpectatorView(atForkGame()).teams[0].fork).toBe("choosing");
+    expect(getSpectatorView(chooseFork(atForkGame(), "t0", "monster", first).game).teams[0].fork).toBeUndefined();
+  });
+
+  it("a team waiting at a fork may be moved off a shared question and stays at the fork", () => {
+    // One question per pool: both teams share theirs; t0's correct answer frees nothing for t1 to move to, so give d2 two.
+    const g0 = createGame([{ id: "t0", name: "A" }, { id: "t1", name: "B" }, { id: "t2", name: "C" }], rooms(5), [["a"], ["b", "c"], ["d"], ["e"], ["f"]], ["b1", "b2"], { bossThreshold: 15 }, 3, first);
+    const forked = { ...g0, teams: g0.teams.map((t) => (t.id === "t1" ? { ...t, fork: { phase: "waiting" as const } } : t)) };
+    // t0 answers: splitShared runs and may move t1 (not on turn) off the shared question; its fork stays.
+    const after = answerQuestion(forked, "t0", forked.teams[0].currentQuestionId, true, "retry", first).game;
+    expect(team(after, "t1").fork).toEqual({ phase: "waiting" });
+    expect(team(after, "t1").currentQuestionId).not.toBe(team(after, "t2").currentQuestionId);
+  });
+
+  it("the game log lists each team's doors", () => {
+    const g = chooseFork(atForkGame(), "t0", "timeout", first).game;
+    expect(gameLog(g, 0).teams[0].forks).toEqual(["timeout"]);
+    expect(gameLog(g, 0).teams[1].forks).toEqual([]);
   });
 });

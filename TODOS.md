@@ -16,7 +16,8 @@
 - [觀眾反應的後續：旁白提到反應、燈籠預測](#觀眾反應的後續旁白提到反應燈籠預測) — S／M
 - [頒獎排名的 9 個小問題（/ship 2026-11-07）](#頒獎排名的-9-個小問題ship-2026-11-07) — S，活動後
 - [縮短超過 22 字的舊腳本句](#縮短超過-22-字的舊腳本句) — S，活動後
-- [把「冒險出現岔路」的選擇加回玩家手機](#把冒險出現岔路的選擇加回玩家手機) — S
+- [觀眾投票決定走哪扇門（岔路 Approach C）](#觀眾投票決定走哪扇門岔路-approach-c) — M（人工約 1–2 天 / CC 約 1 小時），活動後
+- [題庫指定岔路位置、難度門和類別門（岔路 Approach B）](#題庫指定岔路位置難度門和類別門岔路-approach-b) — L（人工約 1 週 / CC 約半天），活動後
 - [遊戲開始後，新隊伍可以中途加入](#遊戲開始後新隊伍可以中途加入) — M
 - [主持人開房時可以用自己的題庫](#主持人開房時可以用自己的題庫) — L
 - [活動後用對局紀錄對一次職業勝率](#活動後用對局紀錄對一次職業勝率) — S，活動後
@@ -171,24 +172,37 @@
 
 ---
 
-## 把「冒險出現岔路」的選擇加回玩家手機
+## 觀眾投票決定走哪扇門（岔路 Approach C）
 
-**What:** v0.27.1.0 先把手機上「冒險出現岔路，你們要怎麼做？」拿掉了。改遊戲進行方式時，討論要不要、怎麼加回來。
+**What:** 岔路口（`docs/designs/branch-fork.md`）改成讓其他隊伍（觀眾）用手機投票，或讓投票當作輪到的隊伍的參考。
 
-**Why:** 站長 2026-11-04 實測後決定先拿掉，玩法還沒定案。
+**Why:** 岔路現在只有輪到的隊伍在選，其他隊伍只能看；投票能讓全場都有事做。/autoplan 2026-11-09 評估過，超出這次範圍，延後。
 
 **Context:**
-- `lib/game-state.ts`
-- `lib/narration/llm.ts`
-- `app/room/[code]/play/page.tsx`
+- `lib/room/dungeon-room.ts`（`handleChooseFork`、`syncFork`）
+- `app/room/[code]/play/page.tsx`（`ForkPanel`）
+- `app/room/[code]/screen/page.tsx`（`ForkScreen`）
 
-**Effort/Priority:** S / P3
+**Effort/Priority:** M（人工約 1–2 天 / CC 約 1 小時） / P3
 
-**Depends on:** 「每次行動可以選不同的動作」那類玩法改動。
+**Depends on:** 岔路上線，且活動彩排的遊戲紀錄看過大家怎麼選。
 
-**Notes:**
-  - Context 補充：v0.31.3.0（稽核清理）把伺服器端也拿掉了：`TEAM_BRANCH_CHOICE` 訊息、`lib/game-state.ts` 的 `recordBranchChoice`、`firstPendingBranchRoom`、`BRANCH_OPTIONS`、`BRANCH_LABELS`、隊伍的 `branchChoices`，還有首領房旁白（`lib/narration/llm.ts`）呼應岔路選擇的那句。
-  - 加回來時要從 git 歷史把它們找回來（`git log -S recordBranchChoice`），再把 `app/room/[code]/play/page.tsx` 的面板接回去。
+---
+
+## 題庫指定岔路位置、難度門和類別門（岔路 Approach B）
+
+**What:** 讓題庫或題庫編輯器指定哪幾間房一定是岔路，門也可以是「難一點的題目」或「某個類別」，不只 ⚔️／❓。
+
+**Why:** 現在岔路是 25% 隨機，主持人沒辦法安排節奏；門的種類固定兩種。/autoplan 2026-11-09 評估過，要升題庫格式，違反這次「不升題庫格式」的限制，延後。
+
+**Context:**
+- `lib/question-bank.ts`（題庫格式）
+- `app/bank-editor/page.tsx`
+- `lib/game-state.ts`（`Fork`、`enterFork`、`eventEligible`）
+
+**Effort/Priority:** L（人工約 1 週 / CC 約半天） / P3
+
+**Depends on:** 題庫格式升版。
 
 ---
 
@@ -357,7 +371,7 @@
 
 **Notes:**
   - 原 What：phone-question-text 分支 /ship 審查找到、這次沒修的幾項： 1. 題目橫條沒有長度上限。預設題庫最長 34 字，iPhone 12（390×844）放得下；但本機題庫（`local-banks/`）沒有字數限制，約 100 字的題目會多出 4 行，答錯後的重答／逃跑或魔王房的鎖定答案可能被推到螢幕外。
-  - 2. （v0.27.1.0 手機已拿掉「冒險出現岔路」面板，這點暫時不存在；加回來時再看會不會被媒體推到螢幕外。） 3. 揭曉時才重新整理或重新連線的手機，看不到剛答對的那題題目（只記得連線期間看過的題目）。設計時已接受。 4. 還沒有 e2e 檢查「揭曉時重新連線不顯示題目」和「等待中的手機不顯示選擇題橫條」。
+  - 2. （已處理：岔路加回來時，手機的兩顆門按鈕放在 sticky 列，不會被題目或媒體推到螢幕外，見 Completed。） 3. 揭曉時才重新整理或重新連線的手機，看不到剛答對的那題題目（只記得連線期間看過的題目）。設計時已接受。 4. 還沒有 e2e 檢查「揭曉時重新連線不顯示題目」和「等待中的手機不顯示選擇題橫條」。
 - Context 補充：設計見 [docs/designs/phone-question-text.md](docs/designs/phone-question-text.md)，畫面在 `app/room/[code]/play/page.tsx` 的 `QuestionStrip`。
 
 ---
@@ -792,6 +806,11 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 把「冒險出現岔路」的選擇加回玩家手機
+
+- **岔路：⚔️ 怪物房或 ❓ 神秘房** · 版號合併時定 · 原本抽到事件房的時機改成岔路：這隊下一次輪到時先選門，15 秒沒選就走 ⚔️。⚔️ 照常打這間房的怪物；❓ 按下去就抽事件、套用效果，放棄這間房的獎勵和進度分。選門後有 1.5 秒開門演出，❓ 的結果等演完才顯示。畫面上不說明門後是什麼，主持人不能替選。拿掉事件房的按鈕和主持人的「替{隊名}按」。設計見 `docs/designs/branch-fork.md`。
+- **手機的門按鈕一直留在畫面上** · 版號合併時定 · 兩顆門按鈕（72px 高）放在 sticky 列，不會被題目或媒體推出畫面（「手機顯示題目的剩餘小風險」第 2 點）。
 
 ## 題目比隊伍少時，兩隊可能一直拿同一題
 

@@ -1,14 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Browser } from "@playwright/test";
 import { answerCorrectly, nextQuestion, startGame, textOnlyBank } from "./answer";
 
-// Event rooms (docs/designs/event-rooms.md). The e2e worker runs with E2E_EVENT_TEAM=EventTeam (playwright.config.ts):
-// the team named EventTeam draws an event on every eligible room entry, and no other team ever does.
+// 岔路 (docs/designs/branch-fork.md). The e2e worker runs with E2E_EVENT_TEAM=EventTeam (playwright.config.ts): the team
+// named EventTeam comes to a fork on every eligible room entry, and no other team ever does.
 textOnlyBank();
 
-// Value: protects=an event turn end to end (draw → phone press → TV and phone outcome → 下一題 → a monster again);
-// fails_when=the event stays hidden, the press never lands, the result never clears, or the team is stuck in the
-// room; why_new=no spec covered event rooms; seam=worker E2E_EVENT_TEAM; no_claim=which event is drawn (random)
-test("a team walks into an event room, opens it from its phone, everyone sees the outcome, and its next turn is a monster", async ({ browser }) => {
+/** A game where EventTeam (first in turn order) answers right, Plain plays its turn, and EventTeam stands at a fork. */
+async function toTheFork(browser: Browser) {
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
@@ -31,7 +29,6 @@ test("a team walks into an event room, opens it from its phone, everyone sees th
   const plain = await join("Plain");
   await startGame(host);
 
-  // EventTeam answers right and walks into room 2, which holds an event; Plain plays its turn as usual.
   await expect(host.getByText("輪到：EventTeam")).toBeVisible();
   await answerCorrectly(host);
   await nextQuestion(host);
@@ -39,27 +36,52 @@ test("a team walks into an event room, opens it from its phone, everyone sees th
   await answerCorrectly(host);
   await nextQuestion(host);
 
-  // EventTeam's turn is the event: the scene on the TV, one button on its phone, a pointer to the TV on the other.
-  await expect(screen.getByText("❓ 事件房")).toBeVisible();
-  await expect(screen.getByTestId("event-line")).toBeVisible();
-  await expect(screen.getByTestId("event-stage")).toBeVisible();
-  await expect(host.getByTestId("host-event")).toBeVisible();
+  // EventTeam's turn is the fork: two doors on the TV with nothing written under them, two buttons on its phone kept in
+  // view, the host only watching, a pointer to the TV on the other phone.
+  await expect(screen.getByTestId("fork-doors")).toBeVisible();
+  await expect(screen.getByText("🔀 岔路！")).toBeVisible();
+  await expect(host.getByTestId("host-fork")).toContainText("EventTeam在岔路口");
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
-  await expect(plain.getByTestId("phone-event-watch")).toContainText("EventTeam走進了事件房");
-  await eventTeam.getByTestId("phone-event-open").click();
+  await expect(plain.getByTestId("phone-fork-watch")).toContainText("EventTeam在岔路口猶豫中");
+  await expect(eventTeam.getByTestId("phone-fork-monster")).toBeInViewport();
+  await expect(eventTeam.getByTestId("phone-fork-mystery")).toBeInViewport();
+  return { host, screen, eventTeam, plain };
+}
 
-  // The outcome shows on the TV and the phone and holds the room until 下一題.
-  await expect(screen.getByTestId("event-result")).toBeVisible();
+// Value: protects=a ❓ fork end to end (fork → phone press → door beat → TV and phone outcome → 下一題 → a monster
+// again); fails_when=the doors stay hidden, the press never lands, the outcome shows before the door opens, the result
+// never clears, or the team is stuck; why_new=the fork replaced the event-room button; seam=worker E2E_EVENT_TEAM;
+// no_claim=which event is drawn (random)
+test("a team at a fork opens ❓ from its phone, the door opens, everyone sees the outcome, and its next turn is a monster", async ({ browser }) => {
+  const { host, screen, eventTeam } = await toTheFork(browser);
+  await eventTeam.getByTestId("phone-fork-mystery").click();
+
+  // The door opens first; the outcome waits for the end of the beat (branch-fork.md d1b).
+  await expect(screen.getByTestId("fork-door-open")).toHaveAttribute("data-door", "mystery");
+  await expect(screen.getByTestId("event-result")).toBeVisible({ timeout: 5000 });
+  await expect(screen.getByText("❓ 神秘房")).toBeVisible();
   await expect(eventTeam.getByTestId("phone-event-result")).toBeVisible();
   await expect(host.getByTestId("host-reveal")).toContainText("大螢幕正在揭曉");
   await nextQuestion(host);
   await expect(screen.getByTestId("event-result")).toHaveCount(0);
 
-  // Plain plays; then EventTeam, one room on, faces a monster again.
+  // Plain plays; then EventTeam, one room on, faces a monster.
   await expect(host.getByText("輪到：Plain")).toBeVisible();
   await answerCorrectly(host);
   await nextQuestion(host);
   await expect(host.getByText("輪到：EventTeam")).toBeVisible();
   await expect(host.getByRole("button", { name: "答對！" })).toBeVisible();
-  await expect(screen.getByTestId("event-line")).toHaveCount(0);
+  await expect(screen.getByTestId("fork-doors")).toHaveCount(0);
+});
+
+// Value: protects=a ⚔️ fork (press → door beat → the room's monster and question); fails_when=⚔️ never leaves the
+// fork or skips the room's question; why_new=the fork is new; seam=worker E2E_EVENT_TEAM; no_claim=the narration line
+test("a team at a fork takes ⚔️ and then faces the room's monster", async ({ browser }) => {
+  const { host, screen, eventTeam } = await toTheFork(browser);
+  await eventTeam.getByTestId("phone-fork-monster").click();
+
+  await expect(screen.getByTestId("fork-door-open")).toHaveAttribute("data-door", "monster");
+  await expect(host.getByRole("button", { name: "答對！" })).toBeVisible({ timeout: 5000 });
+  await expect(screen.getByTestId("fork-doors")).toHaveCount(0);
+  await expect(host.getByText("輪到：EventTeam")).toBeVisible();
 });

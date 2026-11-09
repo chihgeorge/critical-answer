@@ -581,43 +581,34 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   );
 }
 
-/** An event room on the big screen (docs/designs/event-rooms.md D6): the scene stands in the arch, the panel carries
- * its line, then, once the team presses, the outcome until 下一題. */
-function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: SpectatorView; reveal: EventReveal | null; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
-  // After the press the turn has passed on: the stage stays the event team's, one room back.
-  const idx = view.teams.findIndex((t) => t.id === (reveal ? reveal.teamId : view.currentTurnTeamId));
+/** ❓ 神秘房's outcome on the big screen (event-rooms.md D6, branch-fork.md): the scene in the arch and what it did, until
+ * 下一題. The turn has passed on: the stage stays the event team's, one room back. */
+function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: SpectatorView; reveal: EventReveal; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
+  const idx = view.teams.findIndex((t) => t.id === reveal.teamId);
   const team = view.teams[idx];
-  const scene = reveal?.scene ?? team?.eventScene ?? "chest";
-  const text = EVENT_SCENE_TEXT[scene];
+  const text = EVENT_SCENE_TEXT[reveal.scene];
   const name = team?.name ?? "";
   return (
     <>
-      <SceneBackground theme={roomTheme(Math.max(0, (team?.roomIndex ?? 0) - (reveal ? 1 : 0)))} />
+      <SceneBackground theme={roomTheme(Math.max(0, (team?.roomIndex ?? 0) - 1))} />
       <Torches />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
-        {team && <TurnRibbon color={look(idx).hat} maxWidth={420}>{reveal ? `❓ ${name}` : `輪到：${name}`}</TurnRibbon>}
+        {team && <TurnRibbon color={look(idx).hat} maxWidth={420}>{`❓ ${name}`}</TurnRibbon>}
         <MapStrip view={view} />
       </div>
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
-          <LabelChip>❓ 事件房</LabelChip>
+          <LabelChip>❓ 神秘房</LabelChip>
         </div>
-        {reveal ? (
-          <div data-testid="event-result" className="flex flex-col items-center gap-1">
-            <div className="px-title-gold px-title-sm" style={{ fontSize: 38, lineHeight: 1.2 }}>{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
-            <div className="text-[24px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{name} {eventEffectLine(reveal)}</div>
-          </div>
-        ) : (
-          <>
-            <div data-testid="event-line">{text.line}</div>
-            <div className="text-[20px]">{name}：按手機上的「{text.button.replace(/^\S+\s/, "")}」</div>
-          </>
-        )}
+        <div data-testid="event-result" className="flex flex-col items-center gap-1">
+          <div className="px-title-gold px-title-sm" style={{ fontSize: 38, lineHeight: 1.2 }}>{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
+          <div className="text-[24px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{name} {eventEffectLine(reveal)}</div>
+        </div>
       </Panel>
       <div className="absolute" style={{ left: "50%", bottom: 136, width: 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
-      <div key={`${scene}-${reveal ? "open" : "shut"}`} className="absolute" style={{ left: "50%", bottom: 146, transform: "translateX(-50%)", zIndex: 4 }}>
-        <EventStage scene={scene} reveal={reveal} height={120} />
+      <div key={`${reveal.scene}-open`} className="absolute" style={{ left: "50%", bottom: 146, transform: "translateX(-50%)", zIndex: 4 }}>
+        <EventStage scene={reveal.scene} reveal={reveal} height={120} />
       </div>
       <Nameplate className="absolute" style={{ left: "50%", bottom: 112, transform: "translateX(-50%)", zIndex: 5 }}>
         <span>{text.name}</span>
@@ -626,7 +617,64 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         loading={isPending(eventId, narration)}
-        lines={narration ? narration.lines : [`${name}走進了事件房……`]}
+        lines={narration ? narration.lines : [`${name}打開了神秘房……`]}
+        {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+      />
+    </>
+  );
+}
+
+const DOORS = [
+  { door: "monster", label: "⚔️ 怪物房" },
+  { door: "mystery", label: "❓ 神秘房" },
+] as const;
+
+/** 岔路 on the big screen (branch-fork.md): two doors with nothing written under them and the team's clock; once a door
+ * is picked (forkBeat) it opens and the other dims, a timeout marked ⏳ first. Nothing behind either door shows here. */
+function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: SpectatorView; beat?: StateMessage["forkBeat"]; left?: number; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
+  const idx = view.teams.findIndex((t) => t.id === (beat ? beat.teamId : view.currentTurnTeamId));
+  const team = view.teams[idx];
+  const name = team?.name ?? "";
+  return (
+    <>
+      <SceneBackground theme={roomTheme(team?.roomIndex ?? 0)} />
+      <Torches />
+      <Sparks />
+      <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
+        {team && <TurnRibbon color={look(idx).hat} maxWidth={420}>{`輪到：${name}`}</TurnRibbon>}
+        <MapStrip view={view} />
+      </div>
+      <Panel className="absolute text-center" style={{ left: 250, right: 250, top: 104, padding: "10px 24px", zIndex: 5 }}>
+        <div className="px-title-gold px-title-sm" style={{ fontSize: 40, lineHeight: 1.2 }}>🔀 岔路！</div>
+      </Panel>
+      <div className="absolute" style={{ right: 60, top: 108, zIndex: 6 }}>
+        {beat?.timeout ? (
+          <span data-testid="fork-timeout" className="px-chip" style={{ fontSize: 26, background: "var(--danger)", color: "var(--k)" }}>⏳ 時間到</span>
+        ) : typeof left === "number" && !beat ? (
+          <AnswerClock key={left} ms={left} variant="big" />
+        ) : null}
+      </div>
+      <div data-testid="fork-doors" className="absolute flex items-end justify-center" style={{ left: 0, right: 0, bottom: 140, gap: 200, zIndex: 4 }}>
+        {DOORS.map(({ door, label }) => {
+          const open = beat?.door === door;
+          const dim = !!beat && !open;
+          return (
+            <div key={door} {...(open ? { "data-testid": "fork-door-open" } : {})} data-door={door} className="flex flex-col items-center gap-3" style={{ opacity: dim ? 0.3 : 1, filter: dim ? "grayscale(1)" : open ? "drop-shadow(0 0 22px #ffcf4a)" : undefined, transform: open ? "scale(1.12)" : undefined, transition: "transform .4s, opacity .4s, filter .4s" }}>
+              <div className={open ? "px-hop" : "px-idle"}>
+                <Sprite kind="door" scale={6} />
+              </div>
+              <Nameplate>
+                <span style={{ fontSize: 26 }}>{label}</span>
+              </Nameplate>
+            </div>
+          );
+        })}
+      </div>
+      <DialogueBox
+        className="absolute"
+        style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
+        loading={isPending(eventId, narration)}
+        lines={narration ? narration.lines : [`${name}走到了岔路口……`]}
         {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
       />
     </>
@@ -1285,8 +1333,11 @@ export default function ScreenPage() {
             <InitiativeOverlay key={game.initiative.order ? "order" : "rolling"} ini={game.initiative} teams={game.view.teams} />
           </>
         )}
-        {game?.phase === "playing" && !game.intro && !game.initiative && (game.eventReveal || (!game.reveal && !game.phaseCard && !game.phaseCardDue && describeTurn(game.view, null).team?.eventScene)) ? (
-          <EventRoomScreen view={game.view} reveal={game.eventReveal ?? null} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
+        {/* A door opening first (its view is the game before the press), then a ❓ outcome, then a team choosing its door. */}
+        {game?.phase === "playing" && !game.intro && !game.initiative && (game.forkBeat || (!game.eventReveal && !game.reveal && !game.phaseCard && !game.phaseCardDue && describeTurn(game.view, null).team?.fork === "choosing")) ? (
+          <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
+          <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} />}
         {game?.phase === "playing" && <ReactionFloats floats={floats} teams={game.view.teams} />}

@@ -6,6 +6,8 @@ Repo: chihgeorge/critical-answer
 Status: APPROVED
 Mode: Builder
 
+> **Superseded in part by [branch-fork.md](branch-fork.md) (2026-11-09).** The draw now brings a team to a fork; the event happens only if it picks ❓ 神秘房, which draws and applies it in one press. D2, D3, D5, D6's chip and line, D10 and parts of D12 are replaced as noted below. The six events, their effects and their outcome screens stand.
+
 ## Problem Statement
 Every room in the dungeon is a quiz monster. The owner asked on 2026-10-30 for a surprise now and then: a room that holds an event instead, good or bad, in the spirit of the chance squares in board games. It must be ready, and fun, for the event on 2026-11-21.
 
@@ -16,8 +18,8 @@ Every room in the dungeon is a quiz monster. The owner asked on 2026-10-30 for a
 
 ## Decisions
 - **D1 Event room replaces the monster.** The team that draws one skips that room's monster (no dish, no reward, no progress points). Rejected: a card shown on room entry with the monster still there.
-- **D2 Drawn per team, on room entry.** When a correct answer walks a team into its next room, the room rolls; the same room can be a monster for one team and an event for another. The map is unchanged. Rejected: fixed event rooms marked ❓ on the map (more map work).
-- **D3 The event is the team's whole turn.** The team's phone shows one action button. Pressing it plays the event on the TV and applies the effect. The host presses 下一題, and the next team plays. The event team walks into its next room and faces that room's monster on its next turn.
+- **D2 Drawn per team, on room entry.** When a correct answer walks a team into its next room, the room rolls; the same room can be a monster for one team and an event for another. The map is unchanged. Rejected: fixed event rooms marked ❓ on the map (more map work). *Superseded: the roll now brings the team to a fork; the event is drawn when it picks ❓ (branch-fork.md).*
+- **D3 The event is the team's whole turn.** The team's phone shows one action button. Pressing it plays the event on the TV and applies the effect. The host presses 下一題, and the next team plays. The event team walks into its next room and faces that room's monster on its next turn. *Superseded: the team's turn is the fork's choice; ❓ draws and applies the event in one press, after a 1.5 s door opening (branch-fork.md).*
 - **D4, D7, D8, D9 The six events** (uniform draw, 1/6 each):
 
   | Event | On stage | Phone button | Effect |
@@ -30,9 +32,9 @@ Every room in the dungeon is a quiz monster. The owner asked on 2026-10-30 for a
   | 占卜屋 | fortune teller | 🔮 請她算一卦 | a lot, 1/3 each: 大吉 +25 satiety · 中吉 = the spring's effect · 凶 = the curse |
 
   The merchant was dropped: buying with satiety made no sense to the owner, and a merchant who gives things away is not a merchant. The fortune teller replaced it.
-- **D5 Chance 25%** (`EVENT_CHANCE`). It is rolled only when a correct answer moves a team to a new room. It is not rolled when the team walks into the boss room, into the last room, or out of an event room. So two event rooms never come in a row, and a team stuck in the last room keeps fighting. Expect about 8 events in a 6-team game. Tune it later from the game logs.
-- **D6 TV** (mockup `img/event-rooms-screen.png`): the event sprite stands in the arch, with a nameplate. The question panel carries a ❓ 事件房 chip and the scene line, for example 「房間裡沒有怪物，只有一個寶箱……」 and 「{隊名}：按手機上的「打開寶箱」」. After the press, the stage shows the outcome sprite (an open chest with the dish, the smoke, the lot). The panel shows the outcome title in gold and the effect line. The panel stays up until 下一題, like an answer reveal.
-- **D10 Phone** (mockup `img/event-rooms-phone.png`): the turn team sees the scene line and one big action button; after the press it sees the outcome and 「看大螢幕 📺」. Other phones read 「{隊名}走進了事件房……看大螢幕 📺」. The host page shows the event and a 「替{隊名}按」 button after 15 seconds without a press, like the stuck row.
+- **D5 Chance 25%** (`EVENT_CHANCE`). It is rolled only when a correct answer moves a team to a new room. It is not rolled when the team walks into the boss room, into the last room, or out of an event room. So two event rooms never come in a row, and a team stuck in the last room keeps fighting. Expect about 8 events in a 6-team game. Tune it later from the game logs. *Now the chance of a fork; a room entered through ⚔️ draws nothing on the way out either (branch-fork.md).*
+- **D6 TV** (mockup `img/event-rooms-screen.png`): the event sprite stands in the arch, with a nameplate. The question panel carries a ❓ 事件房 chip and the scene line, for example 「房間裡沒有怪物，只有一個寶箱……」 and 「{隊名}：按手機上的「打開寶箱」」. After the press, the stage shows the outcome sprite (an open chest with the dish, the smoke, the lot). The panel shows the outcome title in gold and the effect line. The panel stays up until 下一題, like an answer reveal. *Superseded: before the choice the big screen shows the two doors; the outcome panel's chip reads 「❓ 神秘房」 (branch-fork.md).*
+- **D10 Phone** (mockup `img/event-rooms-phone.png`): the turn team sees the scene line and one big action button; after the press it sees the outcome and 「看大螢幕 📺」. Other phones read 「{隊名}走進了事件房……看大螢幕 📺」. The host page shows the event and a 「替{隊名}按」 button after 15 seconds without a press, like the stuck row. *Superseded: the phone shows two door buttons, other phones 「{隊名}在岔路口猶豫中……」, and the host only watches; no 替按 (branch-fork.md).*
 - **D11 Narration, scripted and AI.** (1) The "next" line before an event turn sets the scene without spoiling it: 「{隊名}推開門，房間正中央擺著一個寶箱……」. (2) After the press, a new narration event `event-room` reads the outcome with its numbers, then the usual next line. The scripted bank has 2–3 lines per event and outcome. The AI gets the event, outcome, numbers and next turn on the same pipeline, and falls back to the scripted lines as today.
 - **D12 Rules where events meet the rest:**
   - No events in the boss room. A team in an event room can still be sent to the boss by the host; the event is dropped.
@@ -41,7 +43,7 @@ Every room in the dungeon is a quiz monster. The owner asked on 2026-10-30 for a
   - The next-answer effects (curse, blessing, 凶) last until the team's next correct answer, room or boss. A wrong answer does not use them up. A new effect replaces an older one. The curse does not stack with a persuasion natural 1: the base is halved at most once. The blessing stacks with a crit 20. The kill's 4d20 is never changed. The TV and the phone show 「💀 詛咒：下次答對減半」 or 「✨ 祝福：下次答對多一半」 over the team's question.
   - The chef's 15% applies to satiety an event gives, not to what it takes. Satiety never goes below 0.
   - An event turn has no abilities: no sneak attack, warrior roll, mage hint, persuasion check or prayer.
-  - 指定下一題 for a team in an event room deals when the team walks out.
+  - 指定下一題 for a team in an event room deals when the team walks out. *Superseded: a team at a fork follows branch-fork.md (sent to the boss drops the fork; 指定下一題 deals in the next room; a picked room never becomes a fork).*
   - Game log (#155): each team's events and outcomes, to tune the chance and the numbers.
   - A room restart keeps the drawn event and its outcome; nothing is redrawn. Like an answer reveal, the outcome screen itself is memory only: a restart after the press shows the next turn, with the effect already applied.
 
