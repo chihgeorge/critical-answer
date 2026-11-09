@@ -394,7 +394,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           {/* 🧪 The team on turn holds a potion, or drank it on this question (lucky-potion.md D1, D8). */}
           {!reveal && !card && turn?.item && (
             <span data-testid="screen-potion">
-              <LabelChip>{turn.itemArmedFor === (turn.inBossPhase ? view.bossCurrentQuestionId : turn.currentQuestionId) ? "🧪 已喝下！" : "🧪 有幸運藥水"}</LabelChip>
+              <LabelChip>{turn.itemArmed ? "🧪 已喝下！" : "🧪 有幸運藥水"}</LabelChip>
             </span>
           )}
         </div>

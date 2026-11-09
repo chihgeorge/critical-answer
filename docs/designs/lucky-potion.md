@@ -202,7 +202,7 @@ Synthesized from the design and eng reviews.
 
 ### Decisions
 
-- **E1 Armed state is a question id.** `itemArmedFor?: string`. The potion is armed only while `itemArmedFor === currentQuestionIdOf(game, teamId)`. When the team leaves the question by any path (answer, flee, sent to the boss, buzzer phase, event room), the id no longer matches and the potion is simply held again. No clearing code at each exit. Rejected: a boolean like `sneakArmed`, which needs a reset at every exit.
+- **E1 Armed state is a question id.** `itemArmedFor?: string`. The potion is armed only while `itemArmedFor === currentQuestionIdOf(game, teamId)`. When the team leaves the question by any path (answer, flee, sent to the boss, buzzer phase, event room), the id no longer matches and the potion is simply held again. No clearing code at each exit. Rejected: a boolean like `sneakArmed`, which needs a reset at every exit. (Implementation /review, 2026-11-08: the arm also records the team's `turns` as `itemArmedTurn`, so a 重答 on the same question next round, or the same id dealt again later, finds the potion held, not armed. The public view carries the result as `itemArmed`.)
 - **E2 Returned-potion text (D5).** The phone shows 「🧪 藥水還在：這題沒擲到骰」 while `itemArmedFor` is set, does not match the current question, and it is not the team's turn. On its next turn the normal 「🧪 有一瓶幸運藥水」 shows. This is D5's "until the next question starts" with no extra state. `itemArmedFor` is overwritten by the next drink.
 - **E3 Spent at the roll.** `startRoll` clears `item` and `itemArmedFor` in `this.game` before it broadcasts, so a restart mid-beat cannot hand the potion back and roll again. A roll dropped in its beat keeps it spent (warrior R3).
 - **E4 Room checks.**

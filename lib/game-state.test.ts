@@ -2270,10 +2270,19 @@ describe("🧪 lucky potion (docs/designs/lucky-potion.md)", () => {
     expect(potionArmed(spent, "T0")).toBe(false);
   });
 
-  it("the public view carries item and itemArmedFor", () => {
+  it("a retry on the same question, or the same id dealt again later, finds the potion held, not armed", () => {
+    let g = drinkPotion(giveItem(makeGame(), "T0"), "T0");
+    const q = g.teams[0].currentQuestionId;
+    ({ game: g } = answerQuestion(g, "T0", q, false, "retry", first));
+    expect(g.teams[0].currentQuestionId).toBe(q);
+    expect(potionArmed(g, "T0")).toBe(false);
+    expect(g.teams[0].item).toBe("luckyPotion");
+  });
+
+  it("the public view carries item, itemArmed and itemArmedFor", () => {
     const g = drinkPotion(giveItem(makeGame(), "T0"), "T0");
     const [t0, t1] = getSpectatorView(g).teams;
-    expect(t0).toMatchObject({ item: "luckyPotion", itemArmedFor: g.teams[0].currentQuestionId });
+    expect(t0).toMatchObject({ item: "luckyPotion", itemArmed: true, itemArmedFor: g.teams[0].currentQuestionId });
     expect(t1.item).toBeUndefined();
   });
 });

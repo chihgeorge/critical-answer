@@ -72,7 +72,7 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
  * a crit or check die can still roll; this hides it in a buzzer phase, without a potion, or once drunk on this question. */
 function PotionButton({ game, teamId, questionId, send }: { game: StateMessage; teamId: string; questionId: string; send: (m: ClientMessage) => void }) {
   const me = game.view.teams.find((t) => t.id === teamId);
-  if (!me?.item || me.itemArmedFor === questionId || game.view.buzz) return null;
+  if (!me?.item || me.itemArmed || game.view.buzz) return null;
   return (
     <PixelButton data-testid="drink-potion" className="!m-0 mt-1 !min-h-[56px] !text-[20px]" onClick={() => send({ type: "TEAM_DRINK_POTION", questionId, eventId: game.eventId })}>
       🧪 喝下幸運藥水
@@ -82,9 +82,9 @@ function PotionButton({ game, teamId, questionId, send }: { game: StateMessage; 
 
 /** The team card's potion line (D2, D4, D5): held, drunk on the question it faces now, or back after a question with no roll
  * (E2: until the team's next turn). */
-function potionLine(team: StateMessage["view"]["teams"][number] | undefined, bossQuestionId: string, myTurn: boolean): { text: string; drunk?: true } | null {
+function potionLine(team: StateMessage["view"]["teams"][number] | undefined, myTurn: boolean): { text: string; drunk?: true } | null {
   if (!team?.item) return null;
-  if (team.itemArmedFor === (team.inBossPhase ? bossQuestionId : team.currentQuestionId)) return { text: "🧪 已喝下：這題的下一顆骰擲兩次取高", drunk: true };
+  if (team.itemArmed) return { text: "🧪 已喝下：這題的下一顆骰擲兩次取高", drunk: true };
   return { text: team.itemArmedFor && !myTurn ? "🧪 藥水還在：這題沒擲到骰" : "🧪 有一瓶幸運藥水" };
 }
 
@@ -824,7 +824,7 @@ export default function PlayPage() {
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
   const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
-  const potion = game ? potionLine(myTeam, game.view.bossCurrentQuestionId, isMyTurn) : null;
+  const potion = game ? potionLine(myTeam, isMyTurn) : null;
   const [reactSent, setReactSent] = useState<ReactSent | null>(null);
   const finished = game?.phase === "finished";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): one big 搶答 button, answers spoken aloud. */

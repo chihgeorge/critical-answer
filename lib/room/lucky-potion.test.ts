@@ -160,8 +160,14 @@ describe("🧪 lucky potion in the room", () => {
 
     const l = started();
     l.give(A);
-    send(l.room, l.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "m1", optionIndex: 0 });
+    send(l.room, l.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "m1", optionIndex: l.room.game!.optionOrder.m1.indexOf(1) });
     send(l.room, l.phones[0], { type: "TEAM_LOCK_OPTION", questionId: "m1" });
+    l.drink();
+    expect(l.lastTo(l.phones[0])).toMatchObject({ detail: "answer_pending" });
+    // A wrong lock waiting for 重答／逃跑: no die can roll.
+    send(l.room, l.host, { type: "HOST_REVEAL", teamId: A, questionId: "m1" });
+    vi.advanceTimersByTime(2000);
+    expect(l.room.game!.pendingWrong).not.toBeNull();
     l.drink();
     expect(l.lastTo(l.phones[0])).toMatchObject({ detail: "answer_pending" });
 
