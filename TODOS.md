@@ -36,7 +36,6 @@
 - [房間最多只能存在 6 小時](#房間最多只能存在-6-小時) — S（人工約半天 / CC 約 20 分鐘）
 - [任何人都能宣告自己是大螢幕](#任何人都能宣告自己是大螢幕) — M（人工約 1 天 / CC 約 1 小時）
 - [加入密碼鎖改成按連線來源（IP）計數，避免亂猜擋住新隊伍](#加入密碼鎖改成按連線來源ip計數避免亂猜擋住新隊伍) — S（人工約半天 / CC 約 30 分鐘），活動後
-- [HOST_AI_KEY 能被拿來批次驗證偷來的 Anthropic key](#host_ai_key-能被拿來批次驗證偷來的-anthropic-key) — S（人工約 2 小時 / CC 約 20 分鐘）
 - [每個職業技能都靠擲骰](#每個職業技能都靠擲骰) — M，活動後
 - [玩家自己選攻擊或說服](#玩家自己選攻擊或說服) — M
 - [說服檢定的剩餘小風險（/ship 2026-11-06）](#說服檢定的剩餘小風險ship-2026-11-06) — S
@@ -561,25 +560,6 @@
 
 ---
 
-## HOST_AI_KEY 能被拿來批次驗證偷來的 Anthropic key
-
-**What:** 任何人都能搶到一個新代碼當主持人，然後連續送 HOST_AI_KEY（`own`）。每把格式正確的 key 都會從 Cloudflare 的 IP 打一次 `GET /v1/models`，回覆會告訴對方哪把 key 有效。新訊息會中止舊的檢查，但沒有次數或冷卻限制。做法：每個房間每分鐘只檢查幾次，超過就回 `check_failed`。
-
-**Why:** 我們的 Worker 會變成別人驗證外洩 key 的工具，Cloudflare 的 IP 也可能被 Anthropic 封鎖。
-
-**Context:**
-- `lib/room/dungeon-room.ts:337-364`
-- `lib/narration/providers.ts:26-37`
-
-**Effort/Priority:** S（人工約 2 小時 / CC 約 20 分鐘） / P3
-
-**Depends on:** 無。
-
-**Notes:**
-- Context 補充：`lib/room/dungeon-room.ts:337-364`、`lib/narration/providers.ts:26-37`。v0.21.0.0 加入的路徑。2026-10-30 系統檢查時找到。
-
----
-
 ## 每個職業技能都靠擲骰
 
 **What:** 讓五個職業的技能都經過一次 d20：例如法師刪選項、盜賊偷襲、牧師祈禱先擲骰，結果決定效果大小。
@@ -775,6 +755,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## HOST_AI_KEY 能被拿來批次驗證偷來的 Anthropic key
+
+- **每個房間限制 key 檢查次數** · 版號合併時定 · 主持人貼上的新 key 每個房間每分鐘最多檢查 3 把、整個房間最多 10 把（總數存進快照，伺服器重啟也算數；房間代碼交給下一位主持人時歸零）。超過就回 `check_failed`、不打 `GET /v1/models`，和檢查失敗一樣，不透露 key 有沒有效。格式不對的 key、正在用的那把重送、重連時重送還在檢查中的同一把（同 keyId）都不算次數，後者也不再中止重開檢查。還剩的：同一個人搶很多個新代碼，每個房間各有 10 次；要擋就得做跨房間（例如按 IP）的限制。另外伺服器重啟（每次部署）後主持人頁重送記住的 key 也算一次，同一個房間經過很多次部署可能用光 10 次；不算這次的話，攻擊者等房間被回收再連回來就能一直檢查，所以沒有豁免。
 
 ## 法師填空題提示：答案帶註記時第一個字會誤導
 
