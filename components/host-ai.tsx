@@ -28,9 +28,11 @@ export const aiKeyApplied = (keyId: string, msg: AiStatus): boolean => msg.appli
 /** Whether this status refuses the key sent with `keyId`: the page drops it and stops resending it. */
 export const aiKeyRefused = (keyId: string, msg: AiStatus): boolean => msg.refusedKeyId === keyId;
 /** Whether the room dropped the host's own key it was using (a 401 mid-game, or the saved key refused after a restart),
- * so the saved copy is dead too. A refused paste (it has a refusedKeyId) says nothing about the saved key. */
-export const aiSavedKeyDead = (msg: AiStatus): boolean =>
-  msg.error === "invalid_key" && msg.keyMissing && msg.source === "own" && !msg.refusedKeyId;
+ * so the saved copy is dead too. A refused paste (it has a refusedKeyId) says nothing about the saved key, and with a key
+ * pending the dropped one may be that key, applied with its status lost: the saved key is kept, and a later refusal of
+ * the saved key itself (resent once the pending one is gone) forgets it then. */
+export const aiSavedKeyDead = (msg: AiStatus, pending: boolean): boolean =>
+  !pending && msg.error === "invalid_key" && msg.keyMissing && msg.source === "own" && !msg.refusedKeyId;
 /** Unique across page loads too: the room keeps the last applied id, so a reloaded page must not reuse it. */
 export const newKeyId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 export const AI_STORE = { own: "ai-key:own", owner: "ai-key:owner" } as const;

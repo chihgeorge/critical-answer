@@ -468,6 +468,11 @@ describe("restarts and key changes", () => {
     r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: OTHER_KEY, keyId: "c" });
     await sleep(0);
     expect(r.status()).toMatchObject({ error: "invalid_key", refusedKeyId: "c" });
+    // A flaky check is a refusal too: the page drops the key and the host pastes it again.
+    const flaky = setup({ models: () => json({}, 500) });
+    flaky.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY, keyId: "d" });
+    await sleep(0);
+    expect(flaky.status()).toMatchObject({ error: "check_failed", refusedKeyId: "d" });
     // A keyless resend's refusal names no key; an applied key clears both.
     r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: "guess" });
     expect(r.status()).toMatchObject({ error: "wrong_owner_key" });

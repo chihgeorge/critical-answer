@@ -48,9 +48,11 @@ describe("reconnect resend", () => {
   });
   it("the saved key is dead only when the room dropped its own key, not when a paste is refused", () => {
     const dropped = status({ source: "own", keyMissing: true, error: "invalid_key" });
-    expect(aiSavedKeyDead(dropped)).toBe(true);
-    expect(aiSavedKeyDead({ ...dropped, refusedKeyId: "b" })).toBe(false);
-    expect(aiSavedKeyDead({ ...dropped, source: "owner" })).toBe(false);
-    expect(aiSavedKeyDead({ ...dropped, keyMissing: false })).toBe(false);
+    expect(aiSavedKeyDead(dropped, false)).toBe(true);
+    expect(aiSavedKeyDead({ ...dropped, refusedKeyId: "b" }, false)).toBe(false);
+    expect(aiSavedKeyDead({ ...dropped, source: "owner" }, false)).toBe(false);
+    expect(aiSavedKeyDead({ ...dropped, keyMissing: false }, false)).toBe(false);
+    // The dropped key may be the pending one, applied with its status lost.
+    expect(aiSavedKeyDead(dropped, true)).toBe(false);
   });
 });

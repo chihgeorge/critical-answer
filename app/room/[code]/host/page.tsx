@@ -159,11 +159,15 @@ export default function HostPage() {
               forgetStored(AI_STORE.owner);
               if (p.remember) writeStored(AI_STORE[c.source], c.source === "own" ? c.key : c.ownerKey);
               setAiRemembered(p.remember);
-            } else if (aiKeyRefused(p.keyId, msg)) aiPending.current = null;
+            } else if (aiKeyRefused(p.keyId, msg)) {
+              aiPending.current = null;
+              // HOST_OK sent a restarted room this key instead of the saved one: give it the saved key back.
+              if (msg.keyMissing && aiSaved.current) aiSend(aiKeyMessage(aiSaved.current));
+            }
           }
           // The host's own key refused mid-game: never resend it. (In owner mode the server's key is at fault, not OWNER_KEY.)
           // A refused paste (named by refusedKeyId) is not the saved key, so it keeps it.
-          if (aiSavedKeyDead(msg)) forgetSavedAiKey();
+          if (aiSavedKeyDead(msg, aiPending.current !== null)) forgetSavedAiKey();
           break;
         }
         case "HOST_NEXT_LINE_STATE":
