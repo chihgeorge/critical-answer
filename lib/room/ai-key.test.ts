@@ -50,6 +50,7 @@ function setup(
     storage?: RoomStorage;
     /** Leave the host unconnected, for a test that restores the room first (anything sent would save over the snapshot). */
     noClaim?: boolean;
+    now?: () => number;
   } = {},
 ) {
   const calls: Call[] = [];
@@ -63,7 +64,7 @@ function setup(
     return (opts.messages ?? (() => line("地城主開口了")))(apiKey);
   };
   const io = { broadcast: vi.fn(), env: opts.env ?? {}, storage: opts.storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
-  const room = new DungeonRoom(io, () => 0, { bank, holdMs: 200, epilogueDelayMs: 0, epilogueHoldMs: 200, fetch: fake as unknown as typeof fetch });
+  const room = new DungeonRoom(io, () => 0, { bank, holdMs: 200, epilogueDelayMs: 0, epilogueHoldMs: 200, fetch: fake as unknown as typeof fetch, now: opts.now });
   const host = makeConn("host");
   if (!opts.noClaim) {
     room.onConnect(host);
@@ -544,5 +545,101 @@ describe("restarts and key changes", () => {
     await r.judge();
     expect(r.narrationCalls()).toHaveLength(1);
     expect(r.status()).toMatchObject({ source: "none", keyHint: null, keyMissing: false });
+  });
+});
+
+// Value: protects=the room cannot be used to test stolen keys one after another (TODOS: HOST_AI_KEY 能被拿來批次驗證偷來的 Anthropic key);
+// fails_when=key checks are not capped, a capped key still reaches the provider, or a capped refusal differs from a flaky check; seam=fetch
+describe("key check cap", () => {
+  const keys = Array.from({ length: 12 }, (_, i) => `sk-ant-test-GUESS${String(i).padStart(2, "0")}-0123456789abcdef`);
+  const paste = async (r: ReturnType<typeof setup>, key: string, keyId: string) => {
+    r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key, keyId });
+    await sleep(0);
+  };
+  const models = (r: ReturnType<typeof setup>) => r.calls.filter((c) => c.url.includes("/v1/models")).length;
+
+  it("checks 3 keys a minute; the 4th is refused as check_failed with no request, and the next minute checks again", async () => {
+    let t = 0;
+    const r = setup({ now: () => t, models: (key) => (key === keys[3] ? json({ data: [] }) : json({}, 401)) });
+    for (let i = 0; i < 3; i++) await paste(r, keys[i], `k${i}`);
+    expect(models(r)).toBe(3);
+    expect(r.status()).toMatchObject({ error: "invalid_key", refusedKeyId: "k2" });
+    await paste(r, keys[3], "k3"); // a key that works
+    expect(models(r)).toBe(3);
+    expect(r.status()).toMatchObject({ error: "check_failed", refusedKeyId: "k3", keyHint: null });
+    t = 60_000;
+    await paste(r, keys[3], "k3b");
+    expect(models(r)).toBe(4);
+    expect(r.status()).toMatchObject({ source: "own", appliedKeyId: "k3b" });
+    expect(r.status()).not.toHaveProperty("error");
+  });
+
+  it("a capped paste leaves the key in use in place", async () => {
+    const r = setup({ models: (key) => (key === HOST_KEY ? json({ data: [] }) : json({}, 401)) });
+    await paste(r, HOST_KEY, "ok");
+    for (let i = 0; i < 3; i++) await paste(r, keys[i], `k${i}`);
+    expect(models(r)).toBe(3);
+    expect(r.status()).toMatchObject({ source: "own", appliedKeyId: "ok", error: "check_failed", refusedKeyId: "k2" });
+  });
+
+  it("checks 10 keys over the room's life, through a restart; a typo or the key in use is never counted", async () => {
+    let t = 0;
+    const storage = memoryStorage();
+    const a = setup({ storage, now: () => t, models: () => json({}, 401) });
+    for (let i = 0; i < 6; i++) {
+      t = i * 60_000;
+      await paste(a, keys[i], `k${i}`);
+    }
+    await paste(a, "sk-ant-typo", "typo");
+    expect(a.status()).toMatchObject({ error: "invalid_key", refusedKeyId: "typo" });
+    expect(models(a)).toBe(6);
+
+    const b = setup({ storage, noClaim: true, now: () => t });
+    expect(await b.room.restore()).toBe("restored");
+    b.room.onConnect(b.host);
+    b.room.onMessage(JSON.stringify({ type: "HOST_CLAIM", token: TOKEN }), b.host);
+    for (let i = 6; i < 10; i++) {
+      t = i * 60_000;
+      await paste(b, keys[i], `k${i}`);
+    }
+    expect(models(b)).toBe(4);
+    // The key in use, resent on reconnect, needs no check, cap or not.
+    await paste(b, keys[9], "k9");
+    t = 20 * 60_000;
+    await paste(b, keys[10], "k10");
+    expect(models(b)).toBe(4);
+    expect(b.status()).toMatchObject({ error: "check_failed", refusedKeyId: "k10" });
+  });
+
+  it("the page resending the key still being checked (a reconnect) neither restarts nor counts the check", async () => {
+    let answer: (r: Response) => void = () => {};
+    const r = setup({ models: () => new Promise<Response>((res) => (answer = res)) });
+    r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY, keyId: "p" });
+    await sleep(0);
+    const again = makeConn("host2");
+    r.room.onConnect(again);
+    r.room.onMessage(JSON.stringify({ type: "HOST_CLAIM", token: TOKEN }), again);
+    r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY, keyId: "p" }, again);
+    await sleep(0);
+    expect(models(r)).toBe(1);
+    answer(json({ data: [] }));
+    await sleep(0);
+    expect(r.sent(again).findLast((m) => m.type === "HOST_AI_STATUS")).toMatchObject({ source: "own", appliedKeyId: "p" });
+    // Two more checks fit the minute: the resend did not use one up.
+    await paste(r, OTHER_KEY, "q");
+    await paste(r, keys[0], "r");
+    expect(models(r)).toBe(3);
+  });
+
+  it("the next host of an expired room's code gets every check back", async () => {
+    const r = setup({ models: () => json({}, 401) });
+    for (let i = 0; i < 3; i++) await paste(r, keys[i], `k${i}`);
+    (r.room as unknown as { reset(): void }).reset();
+    const next = makeConn("next");
+    r.room.onConnect(next);
+    r.room.onMessage(JSON.stringify({ type: "HOST_CLAIM", token: "another-token-0123456789abc" }), next);
+    r.room.onMessage(JSON.stringify({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: keys[3], keyId: "n" }), next);
+    await sleep(0);
+    expect(models(r)).toBe(4);
   });
 });

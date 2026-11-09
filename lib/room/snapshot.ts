@@ -53,6 +53,8 @@ export interface RoomSnapshot {
   /** Paid AI calls made so far, and the most this room may make. */
   aiUsed?: number;
   aiLimit?: number;
+  /** Pasted keys checked with the provider so far (KEY_CHECK_MAX_TOTAL). Missing in a save from before the cap. */
+  keyChecks?: number;
   /** When someone last did something that changes the room, rounded down to the minute so it does not make every message a write. Null in a save from before this field existed. */
   lastActivityAt: number | null;
   /** The full bank the game is dealt from, not just question ids: editing or deleting a bank must not change a game in progress.
@@ -132,6 +134,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     const aiUsed = raw.aiUsed ?? 0;
     const aiLimit = raw.aiLimit ?? DEFAULT_AI_LIMIT;
     if (typeof aiWanted !== "boolean" || !(aiSource === "none" || aiSource === "own" || aiSource === "owner")) return null;
+    if (raw.keyChecks !== undefined && !(Number.isInteger(raw.keyChecks) && (raw.keyChecks as number) >= 0)) return null;
     if (!Number.isInteger(aiUsed) || (aiUsed as number) < 0 || !Number.isInteger(aiLimit) || (aiLimit as number) < 1 || (aiLimit as number) > MAX_AI_LIMIT) return null;
     // A damaged podium only loses the reveal: the screen shows the full podium.
     const pod = raw.podium;

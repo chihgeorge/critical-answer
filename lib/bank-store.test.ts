@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { BANK_FORMAT, BankStore, formatOf, LEGACY_IMAGE_DELAY_MS, legacyImageKeys, type BankStorage } from "./bank-store";
-import { type Bank } from "./question-bank";
+import { assertSavable, type Bank } from "./question-bank";
 import { BANK } from "./question-bank-data";
 
 /** In-memory stand-in for a Durable Object's storage, same convention as lib/room's tests. */
@@ -156,6 +156,40 @@ describe("BankStore.putBank", () => {
     const long: Bank = { ...validBank, pools: { ...validBank.pools, 1: [{ ...q, id: "x".repeat(65) }, ...rest] } };
     await expect(store.putBank(long, 1)).rejects.toThrow(/longer than 64 characters/);
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1, format: BANK_FORMAT });
+  });
+
+  // Value: protects=the big screen's phase card stays short enough to leave the new boss visible (/qa 2026-10-28 ISSUE-002);
+  // fails_when=assertSavable stops checking phase name or rule length, or the bound turns into >=; why_new=parseBank accepts any length; seam=none;
+  // no_claim=banks stored before this check (they still load, see the test below)
+  it.each([
+    ["name", { name: "名".repeat(13), rule: "規" }, /phase 2 name is over 12 characters/],
+    ["rule", { name: "名", rule: "規".repeat(41) }, /phase 2 rule is over 40 characters/],
+    ["name and rule at the cap", { name: "名".repeat(12), rule: "規".repeat(40) }, null],
+  ])("boss phase %s: saves only within 12 / 40 characters, and keeps the stored bank on a refusal", async (_, text, refusal) => {
+    const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
+    const store = new BankStore(storage);
+    const p2 = { ...text, maxHp: 1, questions: [{ kind: "text" as const, id: "p2-q1", content: { kind: "text" as const, value: "?" }, answer: "x" }] };
+    const bank: Bank = { ...validBank, boss: { ...validBank.boss, phases: [validBank.boss.phases[0], p2] } };
+    if (!refusal) return expect(store.putBank(bank, 1)).resolves.toMatchObject({ version: 2 });
+    await expect(store.putBank(bank, 1)).rejects.toThrow(refusal);
+    expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1, format: BANK_FORMAT });
+  });
+
+  // Value: protects=assertSavable counts a phase name and rule after trimming, as the editor's check does (one count, not two);
+  // fails_when=assertSavable counts untrimmed text; why_new=putBank trims first, so only a direct call reaches untrimmed text; seam=none; no_claim=the editor
+  it("counts a boss phase name and rule after trimming, as the editor does", () => {
+    const p2 = { name: `  ${"名".repeat(12)}  `, rule: ` ${"規".repeat(40)} `, maxHp: 1, questions: [] };
+    expect(() => assertSavable({ ...validBank, boss: { ...validBank.boss, phases: [validBank.boss.phases[0], p2] } })).not.toThrow();
+    expect(() => assertSavable({ ...validBank, boss: { ...validBank.boss, phases: [validBank.boss.phases[0], { ...p2, name: ` ${"名".repeat(13)} ` }] } })).toThrow(/name is over 12/);
+  });
+
+  // Value: protects=a bank stored before the phase caps still loads (else rooms fall back to the bundled bank); fails_when=the cap moves into parseBank;
+  // why_new=the rows above only test saving; seam=none; no_claim=the editor's own save check
+  it("still loads a stored bank whose boss phase name and rule are over the caps", async () => {
+    const p2 = { name: "名".repeat(25), rule: "規".repeat(60), maxHp: 1, questions: [{ kind: "text" as const, id: "p2-q1", content: { kind: "text" as const, value: "?" }, answer: "x" }] };
+    const old: Bank = { ...validBank, boss: { ...validBank.boss, phases: [validBank.boss.phases[0], p2] } };
+    const store = new BankStore(memoryStorage({ format: BANK_FORMAT, bank: old, version: 1 }));
+    expect((await store.getVersionedBank()).bank.boss.phases[1].name).toBe("名".repeat(25));
   });
 
   // Value: protects=60 HP, the documented top (multi-field.md E5), still saves; fails_when=the bound turns into >= or MAX_BOSS_HP drops;
