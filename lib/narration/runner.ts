@@ -52,12 +52,23 @@ function epilogueCandidates(parts: EpiloguePart[], raw: string[]): (string | und
   return [...Array<undefined>(n - 1), raw.length < n ? raw.at(-1) : undefined];
 }
 
-/** Segment count for a non-epilogue event: 3 (result + atmosphere + transition) when there's a next
- * team, 2 (result + atmosphere) when there isn't — boss-kill, or the game's last judged event. See
- * docs/designs/multi-segment-narration.md's D3. */
+/**
+ * Whether a non-epilogue event gets a middle line (atmosphere, or the host's queued line) between the result and the
+ * handoff. Ordinary correct / retry / flee turns skip the atmosphere, so a whole event is less tiring to listen to
+ * (TODOS 旁白語氣是否耐聽); the big moments and a natural 20 or 1 keep it. With no next team it is the closing beat.
+ */
+export function hasMiddleLine(event: Exclude<NarrationEvent, { type: "epilogue" }>): boolean {
+  if (!event.next || event.hostLine) return true;
+  if (event.type !== "correct" && event.type !== "retry" && event.type !== "flee") return true;
+  const warrior = "warriorRoll" in event ? event.warriorRoll : undefined;
+  return ("roll" in event && event.roll !== undefined) || warrior === 20 || warrior === 1;
+}
+
+/** Segment count for a non-epilogue event: the result, the middle line when hasMiddleLine, and the transition when
+ * there's a next team (none after boss-kill or the game's last judged event). See docs/designs/multi-segment-narration.md's D3. */
 export function targetSegmentCount(event: NarrationEvent): number {
   if (event.type === "epilogue") return epilogueParts(event).length;
-  return event.next ? 3 : 2;
+  return 1 + (hasMiddleLine(event) ? 1 : 0) + (event.next ? 1 : 0);
 }
 
 export interface TranscriptEntry {

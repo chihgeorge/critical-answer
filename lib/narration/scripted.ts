@@ -1,5 +1,5 @@
-// The always-available narrator: hand-written lines with template slots, four
-// or five variants per event type, never the same variant twice in a row.
+// The always-available narrator: hand-written lines with template slots, drawn
+// from a shuffle bag per pool, so every line plays once before any repeats.
 
 import { epilogueParts, type NarrationEvent, type NextTurn } from "./events";
 import { ordinal } from "../ordinal";
@@ -168,38 +168,69 @@ export const BOSS_JOIN_VARIANTS = [
 ];
 
 /** The middle line: a short atmosphere/detail beat, one per event type — added for multi-segment
- * narration (docs/designs/multi-segment-narration.md). Every event gets one of these, whether or
- * not it has a next team, so it's a flat pool keyed by event type, same shape as VARIANTS. */
+ * narration (docs/designs/multi-segment-narration.md). Only events with a middle line read one (runner.ts
+ * hasMiddleLine), so ordinary turns with a next team skip it. A flat pool keyed by event type, same shape as VARIANTS;
+ * ten lines each so a scripted hour repeats a line about four times, not ten (boss-phase's lines say the rule). */
 export const ATMOSPHERE_VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, string[]> = {
   start: [
     "火把的光在石牆上搖曳。",
     "空氣裡有股潮濕的塵土味。",
     "遠處傳來滴水聲，一滴、又一滴。",
     "石廊深處，看不見盡頭。",
+    "牆上的古老符文微微發亮。",
+    "一陣冷風從深處吹了上來。",
+    "地圖攤開了，路還很長。",
+    "每一位冒險者都握緊了拳頭。",
+    "書頁翻動，第一章的墨跡還沒乾。",
+    "黑暗裡，有什麼東西睜開了眼睛。",
   ],
   correct: [
     "石屑從天花板簌簌落下。",
     "空氣裡還殘留著戰鬥的餘熱。",
-    "冒險者們喘了口氣，稍作喘息。",
     "地城彷彿也鬆了一口氣。",
+    "回音在石廊裡慢慢散去。",
+    "火把的光又亮了幾分。",
+    "塵土飄落，前方的路清楚了。",
+    "牆上的影子退開了一步。",
+    "貓頭鷹在書上記下了這一筆。",
+    "遠處傳來一聲不甘心的嘶吼。",
+    "地上只剩幾道新的刮痕。",
   ],
   retry: [
     "汗水滴落，緊張感沒有散去。",
     "時間彷彿慢了下來。",
     "石廊裡一片寂靜，等著下一步。",
     "{monster}的影子在牆上晃動。",
+    "火把劈啪一響，火光晃了晃。",
+    "空氣好像突然變重了。",
+    "遠處的滴水聲聽得格外清楚。",
+    "錯了不要緊，地城很有耐心。",
+    "牆上的符文閃了一下，又暗了。",
+    "{monster}歪著頭，像在等什麼。",
   ],
   flee: [
     "腳步聲漸漸遠去，又漸漸靠近。",
     "喘息聲在石廊裡迴盪。",
     "撤退不是恥辱，是策略。",
-    "重新整隊的片刻，也是片刻的喘息。",
+    "地上留下一串凌亂的腳印。",
+    "轉過彎，總算能喘口氣。",
+    "{monster}得意地哼了一聲。",
+    "換條路走，也許更近。",
+    "火把在奔跑中忽明忽暗。",
+    "退一步，是為了走更遠。",
+    "留得青山在，下次再來。",
   ],
   "boss-hit": [
     "地城為之一震。",
     "碎石從天花板落下。",
     "首領的怒吼震得人耳鳴。",
     "戰鬥的氣息瀰漫整個房間。",
+    "大廳的柱子嗡嗡作響。",
+    "首領的眼神變得更兇了。",
+    "煙塵中，誰也看不清下一步。",
+    "牆上的火把一齊晃了晃。",
+    "首領低吼一聲，地面跟著發顫。",
+    "所有人都屏住了呼吸。",
   ],
   "boss-phase": [
     "規則變了：{rule}",
@@ -211,12 +242,24 @@ export const ATMOSPHERE_VARIANTS: Record<Exclude<NarrationEvent["type"], "epilog
     "地城裡的意外，總是來得剛好。",
     "火把晃了一下，像是在偷笑。",
     "門後傳來一陣奇怪的聲響。",
+    "角落的蜘蛛網輕輕晃動。",
+    "命運的骰子，有時不用自己擲。",
+    "這裡的空氣聞起來有點不一樣。",
+    "地城總愛跟冒險者開點玩笑。",
+    "牆上的壁畫好像在看著他們。",
+    "好事壞事，都寫在下一頁。",
   ],
   "boss-kill": [
     "地城陷入一片寂靜。",
     "塵埃落定，勝利的氣息瀰漫。",
     "石廊裡迴盪著最後一聲回音。",
     "這一刻，值得被記住。",
+    "火把一根接一根亮了起來。",
+    "貓頭鷹闔上了這一章。",
+    "遠處傳來歡呼，一路傳到地面。",
+    "首領的寶座空了。",
+    "塵土慢慢落下，像一場細雪。",
+    "這段故事，會被說上很多年。",
   ],
 };
 
@@ -307,6 +350,11 @@ export const NEXT_VARIANTS = {
     "下一位：{team}。{monster}磨牙霍霍，準備好了嗎？",
     "{team}上前一步，{monster}攔住了去路。",
     "接下來輪到{team}，面對{monster}！",
+    "{team}轉過彎，迎面撞上{monster}。",
+    "換{team}上場，{monster}已經擋在門口。",
+    "{monster}盯上了{team}，請看題目。",
+    "火光照出{monster}的身影，輪到{team}了。",
+    "{team}，{monster}在前方等著，準備好了嗎？",
   ],
   boss: [
     "{team}，首領{monster}在等你們，看題目！",
@@ -322,13 +370,19 @@ function fill(template: string, vars: object): string {
 }
 
 export function createScriptedProvider(rng: () => number = Math.random) {
-  /** The last line picked per key, so the same line never plays twice in a row, even across a class pool and the plain one. */
+  /** A shuffle bag per key: every line of the pool plays once before any repeats. `last` keeps the same line from
+   * playing twice in a row across a reshuffle, and across a class pool and the plain one sharing a key. */
+  const bags: Record<string, string[]> = {};
   const last: Record<string, string> = {};
   function pick(pool: string[], key: string): string {
-    let i = Math.floor(rng() * pool.length);
-    if (pool[i] === last[key]) i = (i + 1) % pool.length;
-    last[key] = pool[i];
-    return pool[i];
+    let left = (bags[key] ?? []).filter((l) => pool.includes(l));
+    if (left.length === 0) left = [...pool]; // a new round; a pool switched mid-round starts over too
+    let i = Math.floor(rng() * left.length);
+    if (left[i] === last[key] && left.length > 1) i = (i + 1) % left.length;
+    const line = left[i];
+    bags[key] = left.filter((_, j) => j !== i);
+    last[key] = line;
+    return line;
   }
   /** Set by plainLine when it picked a crit die's line, which says the number itself. */
   let saidDie = false;

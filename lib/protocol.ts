@@ -366,8 +366,8 @@ export type ServerMessage =
   /** A waiting team's reaction, for the big screen to float up for a moment. Never stored. */
   | { type: "REACTION"; teamId: string; reaction: Reaction }
   /** One per event (1-3 segments, played in order), sent again with `rev` + 1 after each host edit of that eventId.
-   * Clients keep the highest eventId they have seen. 3 segments when there's a next team (result + atmosphere +
-   * transition), 2 when there isn't (boss-kill, or the game's last judged event) — see docs/designs/multi-segment-narration.md.
+   * Clients keep the highest eventId they have seen. Result, an atmosphere (or host) line on big moments, and a
+   * transition when there's a next team — see runner.ts targetSegmentCount and docs/designs/multi-segment-narration.md.
    * `rev` is absent from older servers (0); /screen echoes it in SCREEN_NARRATION_PROGRESS so a report about the old
    * text never locks the new one (host-narration-edit.md D14). */
   | { type: "NARRATION"; eventId: number; lines: string[]; rev?: number }
