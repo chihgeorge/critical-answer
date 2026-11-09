@@ -52,6 +52,20 @@ export function playerSteps(prev: MediaWant | null, next: MediaWant, ended: bool
   return prev.state === "paused" ? ["play"] : [];
 }
 
+/** A clip error the big screen reported: the video, and the host's last press on it then (0 if none). */
+export interface ClipErrorSeen {
+  questionId: string;
+  press: number;
+}
+
+/** Whether the big screen reports `seen` again on the first STATE after a reconnect (boss-music-buzzer.md M4): the room
+ * keeps clipError in memory, so a restart lost it. Not when the host pressed again meanwhile: that press retries the
+ * video, so the old error would be a false warning. shortcut: a restart and a few new presses while the screen is
+ * offline can still look like no new press; the host's next ▶ clears it. */
+export function resendClipError(seen: ClipErrorSeen | null, media: { questionId: string; press: number } | undefined): boolean {
+  return !!seen && !(media?.questionId === seen.questionId && media.press > seen.press);
+}
+
 /** The music card's five states (D15). */
 export type ClipStatus = "loading" | "playing" | "paused" | "ended" | "error";
 export const CLIP_STATUS_TEXT: Record<ClipStatus, string> = {

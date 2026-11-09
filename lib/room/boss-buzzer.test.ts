@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
+import { BUZZ_REOPEN_LINE } from "../narration/scripted";
 
 const IDS = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003"];
 const TOKEN = "host-token-0123456789abcdef";
@@ -311,12 +312,24 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { questionId: "b-a", open: true, out: [] } } });
     // The owl says it, as after all-wrong.
     const room = g.room as unknown as { lastNarration: { lines: string[] } | null; heldLines: { lines: string[] } | null };
-    await vi.waitFor(() => expect([...(room.lastNarration?.lines ?? []), ...(room.heldLines?.lines ?? [])].join()).toContain("同一首再搶一次"));
+    await vi.waitFor(() => expect([...(room.lastNarration?.lines ?? []), ...(room.heldLines?.lines ?? [])].join()).toContain(BUZZ_REOPEN_LINE));
     // A ▶ plays it again, and the teams still online may buzz.
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
     expect(g.state().media.state).toBe("playing");
     g.buzz(0);
     expect(g.state().view.buzz.teamId).toBe(IDS[0]);
+  });
+
+  it("the last team still in drops without holding the buzz: the playing song pauses and reopens to all", () => {
+    const g = buzzerGame();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    for (const i of [0, 1]) {
+      g.buzz(i);
+      g.judge(IDS[i], false);
+    }
+    expect(g.state().media.state).toBe("playing"); // resumed for team 2
+    g.room.onClose(g.phones[2]);
+    expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { questionId: "b-a", open: true, out: [] } } });
   });
 
   it("SCREEN_CLIP_ERROR is taken from any socket that sent SCREEN_HELLO and joined no team (accepted risk, retro P2-3)", () => {

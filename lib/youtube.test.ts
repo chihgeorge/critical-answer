@@ -1,5 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait } from "./youtube";
+import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError } from "./youtube";
+
+describe("resendClipError (boss-music-buzzer.md M4)", () => {
+  const seen = { questionId: "b-a", press: 2 };
+  it("reports the error again after a reconnect: the room restarted (no media) or nobody pressed since", () => {
+    expect(resendClipError(seen, undefined)).toBe(true);
+    expect(resendClipError(seen, { questionId: "b-a", press: 2 })).toBe(true);
+    expect(resendClipError(seen, { questionId: "b-b", press: 9 })).toBe(true); // the room drops it unless b-a shows
+  });
+  it("not after the host pressed again while the screen was away (that press retries the video), nor with no error", () => {
+    expect(resendClipError(seen, { questionId: "b-a", press: 3 })).toBe(false);
+    expect(resendClipError(null, undefined)).toBe(false);
+  });
+});
 
 describe("hostMediaStatus", () => {
   it("says the host plays the song live after the 🎤 open", () => expect(hostMediaStatus(false, true)).toBe("現場放歌中"));

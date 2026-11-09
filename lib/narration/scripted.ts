@@ -291,6 +291,8 @@ export const BUZZ_OUT_VARIANTS = ["{team}答錯了！這題出局，其他隊快
 
 /** Every online team missed the song (boss-music-buzzer.md M1): the same one again, everyone in. */
 export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一首再搶一次！", "{team}也答錯，全員出局……重來！同一首，大家再搶一次！", "{monster}得意大笑：沒人答得出來！同一首，再搶一次！"];
+/** The last team still in dropped instead, so nobody answered wrong: the same song reopens to all (M1). */
+export const BUZZ_REOPEN_LINE = "最後一隊斷線了！同一首再搶一次！";
 
 /** A wrong boss answer: the boss brings a new question, there is nothing to answer again (D2=B). */
 export const BOSS_MISS_VARIANTS = [
