@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiKeyApplied, aiKeyMessage, aiKeyRefused, aiResendMessage, aiSavedKeyDead, newKeyId, type AiStatus } from "@/components/host-ai";
+import { aiKeyApplied, aiKeyMessage, aiKeyRefused, aiResendAfterRefusal, aiResendMessage, aiSavedKeyDead, newKeyId, type AiStatus } from "@/components/host-ai";
 
 // Value: protects=a refused key (a wrong OWNER_KEY, a refused own key) is never saved to localStorage and resent on
 // every HOST_OK; fails_when=the host page reads a status sent for something else (a narration, a reconnect's resend of
@@ -45,6 +45,12 @@ describe("reconnect resend", () => {
     expect(aiKeyRefused("b", status({ error: "invalid_key", refusedKeyId: "b" }))).toBe(true);
     expect(aiKeyRefused("b", status({ error: "invalid_key", refusedKeyId: "a" }))).toBe(false);
     expect(aiKeyRefused("b", status({ error: "invalid_key" }))).toBe(false);
+  });
+  it("a refused pending key gives a room left without a key the saved key back, keyless", () => {
+    const refused = status({ source: "own", keyMissing: true, error: "invalid_key", refusedKeyId: "b" });
+    expect(aiResendAfterRefusal(refused, saved)).toEqual(aiKeyMessage(saved));
+    expect(aiResendAfterRefusal({ ...refused, keyMissing: false }, saved)).toBeNull();
+    expect(aiResendAfterRefusal(refused, null)).toBeNull();
   });
   it("the saved key is dead only when the room dropped its own key, not when a paste is refused", () => {
     const dropped = status({ source: "own", keyMissing: true, error: "invalid_key" });

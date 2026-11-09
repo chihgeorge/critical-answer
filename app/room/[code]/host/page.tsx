@@ -23,7 +23,7 @@ import { INTRO_PAGE_TEXT, introDots } from "@/components/how-to-play";
 import { INITIATIVE_MS } from "@/lib/initiative";
 import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
-import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, aiKeyRefused, AiPanel, aiKeyMessage, aiResendMessage, aiSavedKeyDead, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
+import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, aiKeyRefused, AiPanel, aiKeyMessage, aiResendAfterRefusal, aiResendMessage, aiSavedKeyDead, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
 import { FieldJudge } from "@/components/field-judge";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
@@ -161,8 +161,8 @@ export default function HostPage() {
               setAiRemembered(p.remember);
             } else if (aiKeyRefused(p.keyId, msg)) {
               aiPending.current = null;
-              // HOST_OK sent a restarted room this key instead of the saved one: give it the saved key back.
-              if (msg.keyMissing && aiSaved.current) aiSend(aiKeyMessage(aiSaved.current));
+              const back = aiResendAfterRefusal(msg, aiSaved.current);
+              if (back) aiSend(back);
             }
           }
           // The host's own key refused mid-game: never resend it. (In owner mode the server's key is at fault, not OWNER_KEY.)

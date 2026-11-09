@@ -53,6 +53,11 @@ export const aiKeyMessage = (c: AiCredential, keyId?: string): ClientMessage =>
 export const aiResendMessage = (pending: { credential: AiCredential; keyId: string } | null, saved: AiCredential | null): ClientMessage | null =>
   pending ? aiKeyMessage(pending.credential, pending.keyId) : saved && aiKeyMessage(saved);
 
+/** After the room refuses the pending key: HOST_OK may have sent a restarted room that key instead of the saved one,
+ * so a room left without a key gets the saved key back (keyless: a resend, not a new choice). */
+export const aiResendAfterRefusal = (msg: AiStatus, saved: AiCredential | null): ClientMessage | null =>
+  msg.keyMissing && saved ? aiKeyMessage(saved) : null;
+
 export function readSavedAiKey(): AiCredential | null {
   const key = readStored(AI_STORE.own);
   if (key) return { source: "own", key };
