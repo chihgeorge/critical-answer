@@ -1109,8 +1109,10 @@ export class DungeonRoom {
 
   private broadcastState() {
     if (this.lostCrit && this.applyLostCrit()) return;
-    this.syncFork();
+    const forkOpened = this.syncFork();
     this.broadcast(this.snapshot());
+    // After the STATE that carries its eventId: the fork's opening line replaces the last team's story on every screen.
+    if (forkOpened && this.lastNarration) this.broadcast({ type: "NARRATION", eventId: this.lastNarration.eventId, lines: this.lastNarration.lines, rev: 0 });
     // The answer goes only to connections that hold the host token, never to broadcast.
     for (const conn of this.hostConns.values()) this.sendAnswer(conn);
     this.sendPicks();
@@ -2887,14 +2889,19 @@ export class DungeonRoom {
   /** waiting → choosing (branch-fork.md): once the fork team holds the turn and the screen shows it (no reveal, card,
    * intro or door on show), its 15 seconds start. Called on every broadcast and on restore, so no path that hands the
    * turn on is missed. Not a move: an undoable 答錯 stays undoable (undo brings the team back to waiting). */
-  private syncFork() {
+  private syncFork(): boolean {
     const game = this.game;
-    if (game?.phase !== "playing" || isBuzzPhase(game) || this.paused()) return;
+    if (game?.phase !== "playing" || isBuzzPhase(game) || this.paused()) return false;
     const team = game.teams.find((t) => t.id === currentTurnTeamId(game));
-    if (team?.fork?.phase !== "waiting") return;
+    if (team?.fork?.phase !== "waiting") return false;
     // Which side hides ⚔️: drawn now, saved with the game, never in any STATE (branch-fork.md).
     this.keepUndoOpen(startForkChoice(game, team.id, this.now() + FORK_MS, this.e2eMonsterSide ?? (this.rng() < 0.5 ? "left" : "right")));
     this.armFork();
+    // A narration of its own, scripted (no AI wait): a later AI line for the last turn is dropped as older, and ⚔️'s
+    // line is appended to this one. broadcastState sends it.
+    const eventId = ++this.eventSeq;
+    this.lastNarration = { eventId, lines: [this.scripted.forkOpening(team.name)], rev: 0, done: 0 };
+    return true;
   }
 
   /** Times the choosing team's door clock to its deadline. A stale firing (the team chose, went to the boss, the game

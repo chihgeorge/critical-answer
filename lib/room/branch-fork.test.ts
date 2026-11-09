@@ -7,6 +7,7 @@ import type { NarrationProvider } from "../narration/scripted";
 import { parseBank } from "../question-bank";
 import { currentTurnTeamId, FORK_MS } from "../game-state";
 import { NARRATION_MAX_LINES, SNAPSHOT_KEY } from "./snapshot";
+import { FORK_OPEN_VARIANTS } from "../narration/scripted";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";
@@ -570,6 +571,32 @@ describe("岔路 in the room", () => {
     send(s.room, s.phones[0], { type: "TEAM_CHOOSE_FORK", side: "left", eventId: state(s.room).eventId });
     expect(s.room.game!.teams[0].forks).toEqual([{ side: "left", door: "mystery" }]);
     expect(state(s.room).forkBeat).toEqual({ teamId: T1, side: "left", door: "mystery" });
+  });
+
+  // Value: protects=the fork screen's own narration (站長 2026-11-09); fails_when=the doors show under the last team's
+  // story, the line names a room, or a late AI line for the last turn replaces it.
+  it("the door clock starts a narration of its own: one neutral scripted line, the ⚔️ line appended after it", async () => {
+    vi.useFakeTimers();
+    let release: (s: string) => void = () => {};
+    const provider: NarrationProvider = { name: "test", narrate: () => new Promise<string>((r) => (release = r)) };
+    const s = setup({ provider });
+    toChoosing(s);
+    const st = state(s.room);
+    const opening = narrations(s.room).at(-1);
+    expect(opening.eventId).toBe(st.eventId);
+    expect(opening.lines).toHaveLength(1);
+    expect(FORK_OPEN_VARIANTS.map((v) => v.replace("{team}", "EventTeam"))).toContain(opening.lines[0]);
+    expect(opening.lines[0]).not.toMatch(/怪物|神秘|⚔️|❓/);
+    // The last turn's AI narration lands late: older than the opening, so it is dropped.
+    release("遲到的旁白。");
+    await vi.advanceTimersByTimeAsync(10);
+    expect(narrations(s.room).at(-1).eventId).toBe(st.eventId);
+    choose(s, "monster");
+    await vi.advanceTimersByTimeAsync(FORK_BEAT_MS);
+    const after = narrations(s.room).at(-1);
+    expect(after.eventId).toBe(st.eventId);
+    expect(after.lines).toHaveLength(2);
+    expect(after.lines[1]).toMatch(/⚔️/);
   });
 
   // Value: protects=the e2e specs' seam (E2E_MONSTER_SIDE); fails_when=the seam stops overriding the rng, so CI's two

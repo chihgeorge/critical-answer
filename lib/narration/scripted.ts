@@ -360,6 +360,9 @@ const EVENT_SATIETY_VARIANTS = ["{team}喝了一口甜甜的泉水，飽足感 +
 
 /** The next line before a fork turn (docs/designs/branch-fork.md): two doors, and never what is behind them. */
 export const NEXT_FORK_VARIANTS = ["輪到{team}。眼前出現兩扇門……", "{team}走到岔路口，兩扇門靜靜等著。", "換{team}上場。前方的路分成了兩條……"];
+/** The fork's own narration, once the team's door clock starts (scripted only): the screen leaves the last team's story
+ * for the doors. Neutral: never what is behind either door. */
+export const FORK_OPEN_VARIANTS = ["{team}走到了岔路口……左邊還是右邊？", "兩扇門擋在{team}面前，走哪一扇？", "{team}停在岔路口。左門，還是右門？"];
 /** Said once the ⚔️ door opens (scripted only, no AI wait): the room's monster steps out. */
 export const FORK_MONSTER_VARIANTS = ["{team}推開 ⚔️ 門，{monster}擋在面前！", "⚔️ 門後，{monster}正等著{team}。"];
 /** Said when the clock picked ⚔️ for the team. */
@@ -482,6 +485,10 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     },
     async narrate(event: NarrationEvent): Promise<string> {
       return provider.line(event);
+    },
+    /** The fork's opening line, when the team's door clock starts. */
+    forkOpening(team: string): string {
+      return fill(pick(FORK_OPEN_VARIANTS, "fork-open"), { team });
     },
     /** The line once a fork's ⚔️ door opened: picked, or `timeout`. */
     forkLine(timeout: boolean, team: string, monster: string): string {
