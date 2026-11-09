@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
 import { UNSET_CORRECT_INDEX, blankQuestion, withCategory, withField } from "@/lib/bank-editor-question";
-import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { MAX_TEAMS, scoreName } from "@/lib/protocol";
@@ -91,6 +91,8 @@ function validationError(bank: Bank): string | null {
     // 搶答 (boss-buzzer.md D1, D3): from phase 2 on, fill-ins only; parseBank refuses the rest too.
     if (p.buzzer && i === 0) return "首領第 1 階段不能是搶答階段";
     if (p.buzzer && p.questions.some((q) => q.kind !== "text")) return `首領第 ${i + 1} 階段是搶答階段：只能放填空題`;
+    if (Array.from(p.name.trim()).length > MAX_PHASE_NAME) return `首領第 ${i + 1} 階段：名稱最多 ${MAX_PHASE_NAME} 個字`;
+    if (Array.from(p.rule.trim()).length > MAX_PHASE_RULE) return `首領第 ${i + 1} 階段：規則最多 ${MAX_PHASE_RULE} 個字`;
     if (i === 0) continue;
     if (!p.name.trim()) return `首領第 ${i + 1} 階段：名稱不能空白`;
     if (!p.rule.trim()) return `首領第 ${i + 1} 階段：規則不能空白`;
@@ -622,6 +624,7 @@ function BossPhaseEditor({
             <input
               className="px-input !py-1"
               value={phase.name}
+              maxLength={MAX_PHASE_NAME}
               placeholder={required ? "例如：主題曲之謎" : "（第 1 階段可空白）"}
               aria-invalid={!!missing(phase.name)}
               style={missing(phase.name)}
@@ -643,6 +646,7 @@ function BossPhaseEditor({
           <input
             className="px-input !py-1"
             value={phase.rule}
+            maxLength={MAX_PHASE_RULE}
             placeholder={required ? "例如：聽前奏，說出這首是哪部作品的主題曲" : "（第 1 階段不顯示，可空白）"}
             aria-invalid={!!missing(phase.rule)}
             style={missing(phase.rule)}

@@ -117,6 +117,10 @@ export const MAX_OPTIONS = 4;
 /** The big screen draws one heart per HP on the boss's nameplate up to MAX_HEARTS (lib/protocol.ts), a bar above (multi-field.md E5: a phase of
  * multi-field questions loses more than 1 HP a hit). */
 export const MAX_BOSS_HP = 60;
+/** Longest boss phase `name` and `rule`, in characters: at these the big screen's phase card keeps the title to one
+ * line and the rule to two, so the new boss still shows under it (TODOS: /qa 2026-10-28). */
+export const MAX_PHASE_NAME = 12;
+export const MAX_PHASE_RULE = 40;
 const fail = (why: string): never => {
   throw new Error(`Invalid question bank: ${why}`);
 };
@@ -380,6 +384,8 @@ export function assertSavable(bank: Bank): void {
   if (tooMany) fail(`question ${tooMany.id} has more than ${MAX_OPTIONS} options`);
   const hp = bank.boss.phases.findIndex((p) => !Number.isInteger(p.maxHp) || p.maxHp > MAX_BOSS_HP);
   if (hp >= 0) fail(`boss phase ${hp + 1} hp must be a whole number from 1 to ${MAX_BOSS_HP}`);
+  const long = bank.boss.phases.findIndex((p) => Array.from(p.name).length > MAX_PHASE_NAME || Array.from(p.rule).length > MAX_PHASE_RULE);
+  if (long >= 0) fail(`boss phase ${long + 1} name is over ${MAX_PHASE_NAME} or rule over ${MAX_PHASE_RULE} characters`);
   // Save time only: a stored bank with a long id must still load, but phones could never answer that question.
   const longId = allQuestions(bank).find((q) => q.id.length > MAX_ID);
   if (longId) fail(`question id ${longId.id} is longer than ${MAX_ID} characters`);

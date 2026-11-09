@@ -724,7 +724,7 @@ export default function HostPage() {
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.team?.eventScene ? "❓ 事件房" : turn.monster.name}</div>
                   <div data-testid="host-question" className="text-[20px] leading-snug">
-                    {turn.team?.eventScene ? EVENT_SCENE_TEXT[turn.team.eventScene].line : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
+                    {turn.team?.eventScene ? EVENT_SCENE_TEXT[turn.team.eventScene].line : game.phaseCard ? "新階段的第一題（按「下一題」後出題）" : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
                   </div>
                   {/* The host previously never saw question media at all (text-only preview) —
                       a small preview so judging an image/video question doesn't mean squinting
@@ -825,7 +825,8 @@ export default function HostPage() {
                   ))}
                 </div>
               )}
-              {answer && answer.questionId === turn.questionId && (
+              {/* The phase card holds the question back (STATE's question is null), so its answer waits too. */}
+              {answer && answer.questionId === turn.questionId && !game.phaseCard && (
                 <div className="mt-2 px-3 py-1" style={{ background: "#d6f5c2", color: "#1e5a1c", boxShadow: "inset 0 0 0 3px #6fd36a" }}>
                   <div className="text-[11px]" style={{ color: "#2f6a2c" }}>答案（只有你看得到）</div>
                   <div data-testid="host-answer" className="text-[19px]">{answer.answer}</div>
