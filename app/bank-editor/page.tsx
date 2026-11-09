@@ -12,8 +12,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
-import { UNSET_CORRECT_INDEX, blankQuestion, withCategory } from "@/lib/bank-editor-question";
-import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_PROMPT, MAX_OPTIONS, MIN_OPTIONS, allQuestions, bossQuestions, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { UNSET_CORRECT_INDEX, blankQuestion, withCategory, withField } from "@/lib/bank-editor-question";
+import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { scoreName } from "@/lib/protocol";
@@ -95,8 +95,16 @@ function validationError(bank: Bank): string | null {
     if (!p.rule.trim()) return `首領第 ${i + 1} 階段：規則不能空白`;
   }
   const all = allQuestions(bank);
+  // Answer fields only on a buzzer phase's music questions (multi-field.md F1, E3): parseBank refuses the rest too.
+  const fieldsOk = new Set(bank.boss.phases.flatMap((p) => (p.buzzer ? p.questions.filter(isMusicQuestion).map((q) => q.id) : [])));
   for (const q of all) {
     const label = `題目「${q.content.value || q.id}」`;
+    if (q.kind === "text" && q.fields) {
+      if (!fieldsOk.has(q.id)) return `${label}有答案欄位，但只有搶答階段裡「只放聲音」的 YouTube 題能有：改回聽歌題，或按「移除欄位」`;
+      if (q.fields.length < MIN_FIELDS || q.fields.length > MAX_FIELDS) return `${label}的答案欄位要 ${MIN_FIELDS}–${MAX_FIELDS} 欄`;
+      if (q.fields.some((f) => !f.label.trim() || !f.answer.trim())) return `${label}有答案欄位的名稱或答案是空白`;
+      if (q.fields.some((f) => Array.from(f.label.trim()).length > MAX_FIELD_LABEL)) return `${label}的欄位名稱最多 ${MAX_FIELD_LABEL} 個字`;
+    }
     if (q.kind === "multipleChoice") {
       if (q.options.length < MIN_OPTIONS) return `${label}至少要有 ${MIN_OPTIONS} 個選項`;
       if (q.options.length > MAX_OPTIONS) return `${label}最多 ${MAX_OPTIONS} 個選項`;
@@ -1002,7 +1010,58 @@ function QuestionRow({
         allowNone
       />
 
-      {q.kind === "text" ? (
+      {q.kind === "text" && q.fields ? (
+        // A music question's answer fields (docs/designs/multi-field.md F3); `answer` is kept as theirs joined. Shown
+        // even once the question is no longer a music one, so the save error that says so can be cleared (E3).
+        <div className="flex flex-col gap-1" data-testid={`fields-${q.id}`}>
+          <small className="text-[14px]">答案欄位（{MIN_FIELDS}–{MAX_FIELDS} 欄）：主持人一欄一欄判，答對幾欄打幾格血。</small>
+          {q.fields.map((f, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-[4em] shrink-0">欄位 {i + 1}</span>
+              <input
+                className="px-input"
+                style={{ width: "8em" }}
+                aria-label={`欄位 ${i + 1} 名稱`}
+                placeholder="例如：歌名"
+                maxLength={MAX_FIELD_LABEL}
+                value={f.label}
+                onChange={(e) => {
+                  const label = e.target.value;
+                  onUpdate((cur) => withField(cur, i, { label }));
+                }}
+              />
+              <input
+                className="px-input flex-1"
+                aria-label={`欄位 ${i + 1} 答案`}
+                value={f.answer}
+                onChange={(e) => {
+                  const answer = e.target.value;
+                  onUpdate((cur) => withField(cur, i, { answer }));
+                }}
+              />
+            </div>
+          ))}
+          <div className="flex gap-2">
+            {q.fields.length < MAX_FIELDS && (
+              <PixelButton onClick={() => onUpdate((cur) => (cur.kind === "text" && cur.fields ? { ...cur, fields: [...cur.fields, { label: "", answer: "" }] } : cur))}>+ 再加一欄</PixelButton>
+            )}
+            <PixelButton
+              onClick={() =>
+                onUpdate((cur) => {
+                  if (cur.kind !== "text") return cur;
+                  const { fields, ...rest } = cur;
+                  return { ...rest, answer: fields?.[0]?.answer ?? cur.answer };
+                })
+              }
+            >
+              移除欄位（改回單一答案）
+            </PixelButton>
+            <PixelButton variant="flee" onClick={onDelete}>
+              刪除
+            </PixelButton>
+          </div>
+        </div>
+      ) : q.kind === "text" ? (
         <div className="flex gap-2">
           <input
             className="px-input flex-1"
@@ -1013,6 +1072,20 @@ function QuestionRow({
               onUpdate((cur) => (cur.kind === "text" ? { ...cur, answer } : cur));
             }}
           />
+          {/* Only a buzzer phase's music question may have fields (multi-field.md F3). */}
+          {category && isMusicQuestion(q) && (
+            <PixelButton
+              onClick={() =>
+                onUpdate((cur) =>
+                  cur.kind === "text"
+                    ? { ...cur, fields: [{ label: "", answer: cur.answer }, { label: "", answer: "" }] }
+                    : cur,
+                )
+              }
+            >
+              + 加答案欄位
+            </PixelButton>
+          )}
           <PixelButton variant="flee" onClick={onDelete}>
             刪除
           </PixelButton>

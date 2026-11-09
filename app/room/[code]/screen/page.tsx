@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
-import { REACTIONS, REACT_ROOM_MAX, type AnswerReveal, type EventReveal, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type SoundCue, type StateMessage } from "@/lib/protocol";
+import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, type AnswerReveal, type EventReveal, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type SoundCue, type StateMessage } from "@/lib/protocol";
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
@@ -424,7 +424,25 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           </div>
         ) : reveal ? (
           <div data-testid="answer-reveal" className="flex flex-col items-center gap-2">
-            <div>正解：{reveal.answer}</div>
+            {/* A music question with fields: which ones the team got (docs/designs/multi-field.md F7). */}
+            {reveal.fields ? (
+              <ul data-testid="reveal-fields" className="flex flex-col gap-1">
+                {reveal.fields.marks.map((f, i) => (
+                  <li key={i} style={f.right ? undefined : { opacity: 0.6 }}>
+                    <span aria-label={f.right ? "答對" : "沒答對"}>{f.right ? "✓" : "✗"}</span> {f.label}：{f.answer}
+                  </li>
+                ))}
+                {/* Only a partial answer says what it earned (multi-field.md D5). */}
+                {((k, n) =>
+                  k > 0 && k < n && (
+                    <li data-testid="reveal-fields-partial" className="text-[18px]">
+                      {view.teams.find((t) => t.id === reveal.fields!.teamId)?.name} 對 {k}/{n}：打掉 {k} 格血、獎勵拿 {Math.round((k / n) * 100)}%
+                    </li>
+                  ))(reveal.fields.marks.filter((f) => f.right).length, reveal.fields.marks.length)}
+              </ul>
+            ) : (
+              <div>正解：{reveal.answer}</div>
+            )}
             {/* With the video up, its text explanation stands beside it instead. */}
             {!video && reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
             {mediaExplanation && (
@@ -520,7 +538,16 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {(cook === null || cook === 0) && (
       <Nameplate className="absolute" style={{ left: "50%", bottom: 112, transform: "translateX(-50%)", zIndex: 5, color: bossScene ? "#b02a3a" : undefined }}>
         <span>{monster.name}</span>
-        {bossScene && (
+        {/* Over 20 HP (multi-field.md E5) hearts no longer fit 1280 px (25 px each): one continuous bar with the count. */}
+        {bossScene && view.bossMaxHp > MAX_HEARTS && (
+          <span data-testid="boss-hp-bar" className="ml-[14px] flex items-center gap-2">
+            <span className="relative inline-block h-[16px] w-[300px]" style={{ background: "#3a2b55", boxShadow: "0 0 0 3px var(--k)" }}>
+              <span className="absolute inset-y-0 left-0" style={{ width: `${(100 * (card ? view.bossMaxHp : view.bossHp)) / view.bossMaxHp}%`, background: "var(--danger)" }} />
+            </span>
+            <span className="px-num text-[14px]">{card ? view.bossMaxHp : view.bossHp}/{view.bossMaxHp}</span>
+          </span>
+        )}
+        {bossScene && view.bossMaxHp <= MAX_HEARTS && (
           <span className="ml-[14px] flex gap-[3px]">
             {Array.from({ length: view.bossMaxHp }, (_, i) =>
               card ? (

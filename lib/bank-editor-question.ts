@@ -1,7 +1,7 @@
 // The bank editor's pure question edits (app/bank-editor/page.tsx), here so they have unit tests. Client-safe: types
 // and constants only, never the parsed bank (CLAUDE.md, check:bundle).
 import { SORT_ITEMS } from "./sort-order";
-import type { BankQuestion } from "./question-bank";
+import { fieldsAnswer, type AnswerField, type BankQuestion } from "./question-bank";
 
 // Sentinel for "no correct option marked yet" — happens right after switching a question to
 // multipleChoice, or after deleting the option that was marked correct. Never a valid saved
@@ -37,4 +37,11 @@ export function withCategory(q: BankQuestion, category: string): BankQuestion {
   if (category.trim()) next.category = category;
   else delete next.category;
   return next;
+}
+
+/** `q` with field `i` patched and `answer` kept as the fields joined (multi-field.md F1). */
+export function withField(q: BankQuestion, i: number, patch: Partial<AnswerField>): BankQuestion {
+  if (q.kind !== "text" || !q.fields) return q;
+  const fields = q.fields.map((f, j) => (j === i ? { ...f, ...patch } : f));
+  return { ...q, fields, answer: fieldsAnswer(fields) };
 }

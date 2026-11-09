@@ -20,7 +20,7 @@ describe("asTextBank", () => {
   // Value: protects=asTextBank keeps a multipleChoice question's prompt (題幹) when it turns it into text; fails_when=the
   // prompt spread in toText is dropped; why_new=the test above has no prompt; seam=none; no_claim=none beyond protects
   it("keeps the prompt above a YouTube clip when it turns multipleChoice into text (youtube-questions.md D5)", () => {
-    const content = { kind: "youtube", value: "dQw4w9WgXcQ", audioOnly: true, start: 5, end: 20 } as const;
+    const content = { kind: "youtube", value: "dQw4w9WgXcQ", audioOnly: true, start: 5, end: 20 } as const; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     const bank = {
       pools: { 1: [{ kind: "multipleChoice", id: "a", content, prompt: "這首歌是什麼的主題曲？", options: ["x", "y"], correctIndex: 0 }], 2: [], 3: [], 4: [], 5: [] },
       rooms: [],

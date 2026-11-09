@@ -86,7 +86,7 @@ import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder,
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
-import { UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
+import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
 import { tokensEqual } from "../tokens";
@@ -347,7 +347,7 @@ export class DungeonRoom {
   private roomReacts: number[] = [];
   private clipEnded: string | null = null;
   /** The judgment a kill's 4d20 holds back (kill-roll.md): resolveRoll makes it with the shown dice. */
-  private pendingKill: { correct: boolean; fleeChoice: "flee" | "retry"; roll?: { kind: "warrior" | "crit"; value: number } } | null = null;
+  private pendingKill: { correct: boolean; fleeChoice: "flee" | "retry"; roll?: { kind: "warrior" | "crit"; value: number }; fields?: boolean[] } | null = null;
   /** A natural 20 whose beat a restart cut off (R7), applied by applyLostCrit. In memory only: restore() sets it. */
   private lostCrit: { teamId: string; questionId: string } | null = null;
   /** The host's last 答錯 on a fill-in, which 改判答對 undoes while the game is still `after`: any later move in the game
@@ -901,7 +901,10 @@ export class DungeonRoom {
 
   private sendAnswer(conn: Conn) {
     const q = this.currentQuestion();
-    if (q) this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer });
+    if (!q) return;
+    const buzzer = this.game && isBuzzPhase(this.game) ? this.game.teams.find((t) => t.id === this.game!.buzz?.teamId && t.typedAnswer !== undefined) : undefined;
+    const typed = buzzer ? { teamId: buzzer.id, text: buzzer.typedAnswer!, ...(buzzer.typedFields ? { fields: buzzer.typedFields } : {}) } : undefined;
+    this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer, ...(typed ? { typed } : {}) });
   }
 
   /** Host-only: the picker's questions with their answers, what each target may queue and what is queued. */
@@ -949,6 +952,9 @@ export class DungeonRoom {
     // A check is written when its die is rolled, so a restart inside the beat cannot reroll it; it shows once the beat ends.
     const rolling = this.pendingRoll?.kind === "check" ? checkKey(this.pendingRoll.questionId, this.pendingRoll.teamId) : null;
     if (rolling && view.checks) view.checks = Object.fromEntries(Object.entries(view.checks).filter(([k]) => k !== rolling));
+    // A buzzer phase's typed answer goes to the host only (HOST_ANSWER): the other teams could still buzz on it
+    // (multi-field.md E4). "" still tells the team's own phone it was sent. A game ended mid-buzz keeps it hidden too.
+    if (isBuzzPhase(this.game) || this.game.phase === "finished") view.teams = view.teams.map((t) => (t.typedAnswer === null ? t : { ...t, typedAnswer: "" }));
     return {
       type: "STATE",
       view,
@@ -1422,7 +1428,7 @@ export class DungeonRoom {
           this.handleClaim(sender, msg.code);
           break;
         case "HOST_JUDGE":
-          this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice, msg.eventId);
+          this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice, msg.eventId, msg.fields);
           break;
         case "HOST_UNDO_WRONG":
           this.handleHostUndoWrong(sender, msg.teamId, msg.questionId, msg.eventId);
@@ -1452,7 +1458,7 @@ export class DungeonRoom {
           this.handleHostRollInitiative(sender);
           break;
         case "TEAM_SUBMIT_TEXT":
-          this.handleTeamSubmitText(sender, msg.questionId, msg.text, msg.eventId);
+          this.handleTeamSubmitText(sender, msg.questionId, msg.text, msg.eventId, msg.fields);
           break;
         case "TEAM_BUZZ":
           this.handleTeamBuzz(sender, msg.questionId);
@@ -2087,6 +2093,7 @@ export class DungeonRoom {
     correct: boolean,
     fleeChoice?: "flee" | "retry" | "team" | "pray",
     eventId?: number,
+    fields?: boolean[],
   ) {
     if (!this.requireHost(conn)) return;
     // Judged from an older STATE (a key pressed as the turn moved on): drop it, like a stale HOST_NEXT.
@@ -2110,8 +2117,14 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "auto_judged" });
       return;
     }
+    // Per-field verdicts only for a question with that many fields (multi-field.md F5).
+    const q = this.question(questionId);
+    if (fields && (q?.kind !== "text" || q.fields?.length !== fields.length)) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "fields_mismatch" });
+      return;
+    }
     try {
-      const judge = () => this.judge(teamId, questionId, correct, fleeChoice ?? "retry");
+      const judge = () => this.judge(teamId, questionId, correct, fleeChoice ?? "retry", undefined, undefined, correct ? fields : undefined);
       if (correct) judge();
       else this.withUndo(teamId, questionId, judge);
     } catch (err) {
@@ -2201,6 +2214,25 @@ export class DungeonRoom {
       }),
     };
     this.undo = null;
+    // A music question with fields is not made all right at one press (multi-field.md E2): the game goes back to before
+    // the 答錯, buzz and all, so the host judges it field by field again.
+    const q = this.question(questionId);
+    if (q?.kind === "text" && q.fields) {
+      // A team whose phone dropped since cannot hold the buzz again: nobody could judge it or buzz past it (/review).
+      if (!this.game.teams.find((t) => t.id === teamId)?.online) {
+        this.game = now;
+        this.undo = undo;
+        return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_undo" });
+      }
+      this.phaseCardDue = false;
+      if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
+      this.phaseCardTimer = null;
+      // The team holds the buzz again, so the music the 答錯 played on stops, as a buzz stops it.
+      this.buzzPaused = this.media?.questionId === questionId && this.media.state === "playing";
+      if (this.buzzPaused) this.media = { ...this.media!, state: "paused", press: this.media!.press + 1 };
+      this.broadcastState();
+      return;
+    }
     try {
       this.judge(teamId, questionId, true, "retry");
     } catch (err) {
@@ -2288,7 +2320,8 @@ export class DungeonRoom {
     if (this.lostCrit) this.applyLostCrit();
   }
 
-  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: { kind: "warrior" | "crit"; value: number }, killDice?: number[]) {
+  /** `fields`: a correct answer's per-field verdicts on a music question (multi-field.md F6); absent, every field is right. */
+  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: { kind: "warrior" | "crit"; value: number }, killDice?: number[], fields?: boolean[]) {
     const prev = this.game;
     if (!prev) return;
     // Captured before `this.game` reassigns to the post-judgment state below: the monster name
@@ -2296,6 +2329,9 @@ export class DungeonRoom {
     // currentQuestion() would return afterwards (the next one) — a trap this file's own
     // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
     const justAnswered = this.currentQuestion();
+    // A correct answer on a music question with fields: the host's verdicts, or every field right (multi-field.md D2).
+    const fieldQ = this.question(questionId);
+    const marks = correct && fieldQ?.kind === "text" && fieldQ.fields ? (fields ?? fieldQ.fields.map(() => true)) : undefined;
     const monster = justAnswered?.pub.monster.name ?? "怪物";
     // A boss MC miss has no flee (D2=B): the host's stuck row (button or key 3) resolves it as the beat would.
     // A cleric's fill-in wait (optionIndex null) keeps its 逃跑, which rotates the question (#106 D2=A).
@@ -2305,7 +2341,7 @@ export class DungeonRoom {
     const run = (rng: () => number, dice?: number[]) =>
       roll?.kind === "warrior"
         ? warriorRoll(prev, teamId, questionId, roll.value, rng, isAutoJudged(this.question(questionId)), dice)
-        : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.value, dice);
+        : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.value, dice, marks && { right: marks.filter(Boolean).length, total: marks.length });
     // A killing blow waits for its 4d20 on screen (kill-roll.md D1): a trial run, on an rng it must not consume, says
     // whether this judgment kills; then the room rolls the dice and judges again with them when the beat ends.
     if (!killDice) {
@@ -2313,7 +2349,7 @@ export class DungeonRoom {
       if (trial.type === "correct-boss-hit" && trial.bossKilled) {
         const dice = this.fixedDie !== undefined ? [this.fixedDie, this.fixedDie, this.fixedDie, this.fixedDie] : rollBossKillDice(this.rng);
         const shown = run(() => 0, dice).outcome;
-        this.pendingKill = { correct, fleeChoice, roll };
+        this.pendingKill = { correct, fleeChoice, roll, ...(fields ? { fields } : {}) };
         // Pin the turn, as a lock does: a skipped offline team whose phone comes back must not take it during the beat.
         this.game = { ...prev, currentTurnIndex: prev.turnOrder.indexOf(teamId) };
         this.startRoll("kill", teamId, questionId, { values: dice, value: shown.type === "correct-boss-hit" ? shown.killBonus! : 0 });
@@ -2370,6 +2406,8 @@ export class DungeonRoom {
       // The option wall, green tile and points of a correct lock or a warrior's success on a multipleChoice question.
       const choice = q?.kind === "multipleChoice" ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward, ...chefOf(outcome) } : undefined;
       const sorted = q?.kind === "sort" ? { items: q.items, teamId, points: outcome.reward, ...chefOf(outcome) } : undefined;
+      // Which fields of a music question the team got (multi-field.md F7); without verdicts, all of them.
+      const fieldMarks = q?.kind === "text" && q.fields && marks ? { teamId, marks: q.fields.map((f, i) => ({ label: f.label, answer: f.answer, right: marks[i] })) } : undefined;
       // The answer stops the clip; the reveal shows the video where it stopped (D17).
       if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
       const video = q?.content.kind === "youtube" && (!explanation || explanation.kind === "text") ? publicMediaContent(q.content, imageBaseUrl, questionId) : undefined;
@@ -2380,6 +2418,7 @@ export class DungeonRoom {
         ...(video?.kind === "youtube" ? { video } : {}),
         ...(choice ? { choice } : {}),
         ...(sorted ? { sorted } : {}),
+        ...(fieldMarks ? { fields: fieldMarks } : {}),
         ...(dish ? { dish: { ...dish, points: outcome.reward, ...chefOf(outcome), monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };
     }
@@ -2739,7 +2778,7 @@ export class DungeonRoom {
         this.resolveCheck(roll.teamId, roll.questionId, roll.value);
       } else if (roll.kind === "kill") {
         // pendingKill is always set with a kill roll; without it there is nothing to judge.
-        if (kill) this.judge(roll.teamId, roll.questionId, kill.correct, kill.fleeChoice, kill.roll, roll.values);
+        if (kill) this.judge(roll.teamId, roll.questionId, kill.correct, kill.fleeChoice, kill.roll, roll.values, kill.fields);
         else this.broadcastState();
       } else {
         // kind is optional in the protocol (an older server's STATE); this room always sets it.
@@ -2945,7 +2984,7 @@ export class DungeonRoom {
   }
 
   /** A typed answer to a text question, shown to the host to judge (fill-in, #104). Not narrated. */
-  private handleTeamSubmitText(conn: Conn, questionId: string, raw: string, eventId?: number) {
+  private handleTeamSubmitText(conn: Conn, questionId: string, raw: string, eventId?: number, rawFields?: string[]) {
     const teamId = this.playingTeam(conn);
     if (!teamId || !this.game) return;
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
@@ -2954,14 +2993,18 @@ export class DungeonRoom {
     if (eventId !== undefined && eventId !== this.eventSeq) return reject("stale_event");
     if (this.paused()) return reject("reveal_pending");
     if (this.pendingRoll) return reject("roll_pending");
-    if (this.question(questionId)?.kind !== "text") return reject("not_text_question");
+    const q = this.question(questionId);
+    if (q?.kind !== "text") return reject("not_text_question");
     // The persuasion check comes before the answer (dnd design R6): the phone locks the box, the room enforces it.
     // No check in a buzzer phase (boss-buzzer.md D6): the team that buzzed may type at once (boss-music-buzzer.md M2).
     if (!isBuzzPhase(this.game) && !this.game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
-    const text = cleanTypedAnswer(raw);
+    // A music question with fields: one box per field, blanks allowed, at least one filled (multi-field.md F4).
+    if (q.fields && rawFields?.length !== q.fields.length) return reject("fields_mismatch");
+    const fields = q.fields ? rawFields!.map(cleanTypedAnswer) : undefined;
+    const text = fields ? (fields.some(Boolean) ? fields.map((f) => f || "—").join(FIELD_SEP) : "") : cleanTypedAnswer(raw);
     if (!text) return reject("invalid_text");
     try {
-      this.game = submitText(this.game, teamId, questionId, text);
+      this.game = submitText(this.game, teamId, questionId, text, fields);
       this.broadcastState();
     } catch (err) {
       this.sendInvalid(conn, err);

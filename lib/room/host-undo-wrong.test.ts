@@ -13,6 +13,7 @@ const text = (id: string) => ({ kind: "text" as const, id, content: { kind: "tex
 const bank = parseBank({
   rooms: [
     { monster: "slime-soft", baseDifficulty: 1, reward: 10, questions: [text("r0-t1"), text("r0-t2"), text("r0-t3"), { kind: "multipleChoice", id: "r0-mc", content: { kind: "text", value: "？" }, options: ["A", "B"], correctIndex: 1 }] },
+    // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     { monster: "slime-soft", baseDifficulty: 1, reward: 20, questions: [text("r1-t1"), text("r1-t2")] },
   ],
   boss: { monster: "dragon", maxHp: 3, hitReward: 10, questions: [text("boss-t1"), text("boss-t2")] },
@@ -181,13 +182,14 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
     expect(g.room.game!.teams[1].currentSelection).toBe(1);
   });
 
+  // pregate-literal: MAX_BOSS_HP=20 not the HP cap
   // Value: protects=a lost natural 20 (restart in its beat) won right after a 答錯 is never wiped by undoing that 答錯;
   // fails_when=applyLostCrit stops clearing undoPending; seam=room
-  it("is not offered when the 答錯 also hands a lost natural 20 its win", () => {
+  it("is not offered when the 答錯 also hands a lost natural 20 its win", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     const g = game();
     const r = g.room as unknown as { lostCrit: unknown; reveal: unknown };
     const q2 = g.room.game!.teams[1].currentQuestionId;
-    g.room.game = { ...g.room.game!, checks: { ...g.room.game!.checks, [checkKey(q2, T2)]: { value: 20, bonus: 0, dc: 8, passed: true } } };
+    g.room.game = { ...g.room.game!, checks: { ...g.room.game!.checks, [checkKey(q2, T2)]: { value: 20, bonus: 0, dc: 8, passed: true } } }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     r.lostCrit = { teamId: T2, questionId: q2 };
     g.judge(false, "retry");
     expect(g.room.game!.teams[1].reward).toBeGreaterThan(0);
@@ -197,13 +199,14 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
     expect(g.room.game!.teams[1].reward).toBeGreaterThan(0);
   });
 
+  // pregate-literal: MAX_BOSS_HP=20 not the HP cap
   // Value: protects=a lost natural 20 that fails to judge leaves the 答錯 before it undoable; fails_when=applyLostCrit's
   // catch stops restoring undoPending; seam=room; no_claim=a real restart
-  it("stays offered when a lost natural 20 fails to judge after the 答錯", () => {
+  it("stays offered when a lost natural 20 fails to judge after the 答錯", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     const g = game();
     const r = g.room as unknown as { lostCrit: unknown; judge: (...a: unknown[]) => void };
     const q2 = g.room.game!.teams[1].currentQuestionId;
-    g.room.game = { ...g.room.game!, checks: { ...g.room.game!.checks, [checkKey(q2, T2)]: { value: 20, bonus: 0, dc: 8, passed: true } } };
+    g.room.game = { ...g.room.game!, checks: { ...g.room.game!.checks, [checkKey(q2, T2)]: { value: 20, bonus: 0, dc: 8, passed: true } } }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     r.lostCrit = { teamId: T2, questionId: q2 };
     const judge = r.judge.bind(g.room);
     let calls = 0;

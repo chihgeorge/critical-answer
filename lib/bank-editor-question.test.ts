@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blankQuestion, withCategory } from "./bank-editor-question";
+import { blankQuestion, withCategory, withField } from "./bank-editor-question";
 import { allQuestions, parseBank, type BankQuestion } from "./question-bank";
 
 const base: BankQuestion = { kind: "text", id: "b-a", content: { kind: "text", value: "前奏" }, answer: "答案", category: "動漫" };
@@ -17,5 +17,12 @@ describe("bank editor: question category (boss-music-buzzer.md M5)", () => {
     expect(withCategory(blank, "遊戲").category).toBe("遊戲");
     // A raw blank category (an older editor, a hand-edited file) is read as none.
     expect(saveAndReload({ ...base, category: "  " }).category).toBeUndefined();
+  });
+
+  it("withField edits one field and keeps the answer as the fields joined (multi-field.md F1)", () => {
+    const q: BankQuestion = { ...base, answer: "晴天／周杰倫", fields: [{ label: "歌名", answer: "晴天" }, { label: "歌手", answer: "周杰倫" }] };
+    const next = withField(q, 1, { answer: "Jay" });
+    expect(next).toMatchObject({ answer: "晴天／Jay", fields: [{ label: "歌名", answer: "晴天" }, { label: "歌手", answer: "Jay" }] });
+    expect(withField(base, 0, { answer: "x" })).toBe(base);
   });
 });

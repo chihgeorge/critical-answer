@@ -67,6 +67,9 @@ export interface PublicQuestion {
   /** A sort question's items in this game's shown order (never the correct order). A pick or lock on it is a
    * sort code (lib/sort-order.ts), not an option index. */
   items?: string[];
+  /** A music question's field labels (歌名, 歌手…), never their answers: one box per field on the phone, one ✓／✗ row each
+   * on the host page (docs/designs/multi-field.md). */
+  fields?: string[];
 }
 
 /** Shown to everyone (D2/D3 — a shared-screen, in-person party game, so hiding the answer from
@@ -88,6 +91,8 @@ export type AnswerReveal = {
   choice?: { options: string[]; correctIndex: number; teamId: string; points: number; chefBonus?: number };
   /** Set when a sort question was answered right: its items in the correct order, who answered and the points (`chefBonus` as in `choice`). */
   sorted?: { items: string[]; teamId: string; points: number; chefBonus?: number };
+  /** A music question with fields: each field's answer and whether the team got it (docs/designs/multi-field.md F7). */
+  fields?: { teamId: string; marks: { label: string; answer: string; right: boolean }[] };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
    * Only when the answer defeated a room monster or killed the boss, and that monster has a dish. */
   dish?: {
@@ -231,6 +236,9 @@ export type ClientMessage =
       fleeChoice?: "flee" | "retry" | "team" | "pray";
       /** The eventId of the STATE the host judged from; an older one is a stale press and is dropped. */
       eventId?: number;
+      /** A music question with fields: each field right or not (docs/designs/multi-field.md F5); `correct` is then
+       * "at least one right". Absent: every field is as `correct` says. */
+      fields?: boolean[];
     }
   /** 改判答對: the host's last 答錯 on a fill-in (STATE's undoWrong) becomes 答對. `eventId`: the STATE it was pressed under. */
   | { type: "HOST_UNDO_WRONG"; teamId: string; questionId: string; eventId: number }
@@ -262,7 +270,8 @@ export type ClientMessage =
   /** The team's typed answer to a text question, shown to the host to judge. One per question. */
   /** `eventId` is the STATE eventId the answer was typed under; an older one (a send that arrived after
    * the host judged that attempt) is dropped, like HOST_JUDGE. Optional so a phone on an older build still sends. */
-  | { type: "TEAM_SUBMIT_TEXT"; questionId: string; text: string; eventId?: number }
+  /** `fields`: a music question's boxes, in field order, blanks allowed (docs/designs/multi-field.md F4); `text` is then ignored. */
+  | { type: "TEAM_SUBMIT_TEXT"; questionId: string; text: string; eventId?: number; fields?: string[] }
   /** 搶答 on the boss question of a buzzer phase (docs/designs/boss-buzzer.md): the first the room handles wins. */
   | { type: "TEAM_BUZZ"; questionId: string }
   /** 沒人答對，換下一題: the buzzer phase's question moves on unrevealed (boss-buzzer.md D4). */
@@ -421,7 +430,9 @@ export type ServerMessage =
       appliedKeyId?: string;
     }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
-  | { type: "HOST_ANSWER"; questionId: string; answer: string }
+  /** `typed`: in a buzzer phase, what the team that buzzed typed (`fields`: a music question's boxes, "" for a blank).
+   * Host-only: STATE hides it, since the other teams could still buzz (docs/designs/multi-field.md E4). */
+  | { type: "HOST_ANSWER"; questionId: string; answer: string; typed?: { teamId: string; text: string; fields?: string[] } }
   /** Host-only, sent with every STATE: what the host may queue (HOST_QUEUE_QUESTION) and what is queued.
    * Carries answers, so it goes out with sendTo, never broadcast. */
   | {
@@ -491,6 +502,10 @@ const MAX_RAW_NAME = 100;
 export const MAX_RAW_TEXT = 200;
 /** A typed answer keeps this many characters (code points). */
 export const MAX_TYPED_ANSWER = 40;
+/** Most boss HP the big screen draws as hearts; more is one bar (docs/designs/multi-field.md E5). */
+export const MAX_HEARTS = 20;
+/** Most answer fields a music question has (docs/designs/multi-field.md). */
+export const MAX_FIELDS = 3;
 export const MAX_PASSWORD = 32;
 /** HOST_NEXT_LINE's limit: the AI may add a few characters around it and still fit MAX_LINE. */
 export const MAX_EDIT_LINE = 40;
@@ -683,7 +698,18 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.fleeChoice !== undefined && m.fleeChoice !== "flee" && m.fleeChoice !== "retry" && m.fleeChoice !== "team" && m.fleeChoice !== "pray") return null;
       if (m.correct && (m.fleeChoice === "team" || m.fleeChoice === "pray")) return null;
       if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
-      return { type: "HOST_JUDGE", teamId, questionId, correct: m.correct, fleeChoice: m.fleeChoice, ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}) };
+      // Per-field verdicts must agree with `correct`: right when at least one field is (multi-field.md F6).
+      const fields = m.fields;
+      if (fields !== undefined && !(Array.isArray(fields) && fields.length >= 1 && fields.length <= MAX_FIELDS && fields.every((f) => typeof f === "boolean") && fields.some(Boolean) === m.correct)) return null;
+      return {
+        type: "HOST_JUDGE",
+        teamId,
+        questionId,
+        correct: m.correct,
+        fleeChoice: m.fleeChoice,
+        ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}),
+        ...(fields !== undefined ? { fields: fields as boolean[] } : {}),
+      };
     }
     case "TEAM_PICK_CATEGORY": {
       const category = str(m.category, MAX_ID);
@@ -737,7 +763,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const text = str(m.text, MAX_RAW_TEXT);
       if (questionId === null || text === null) return null;
       if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
-      return { type: "TEAM_SUBMIT_TEXT", questionId, text, ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}) };
+      const fields = m.fields;
+      if (fields !== undefined && !(Array.isArray(fields) && fields.length >= 1 && fields.length <= MAX_FIELDS && fields.every((f) => str(f, MAX_RAW_TEXT) !== null))) return null;
+      return { type: "TEAM_SUBMIT_TEXT", questionId, text, ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}), ...(fields !== undefined ? { fields: fields as string[] } : {}) };
     }
     case "REACT":
       return typeof m.reaction === "string" && Object.hasOwn(REACTIONS, m.reaction) ? { type: "REACT", reaction: m.reaction as Reaction } : null;

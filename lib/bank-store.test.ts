@@ -90,13 +90,14 @@ describe("BankStore.putBank", () => {
     const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
     await new BankStore(storage).putBank(categorized, 1);
     const stored = (await storage.get("bank")) as { format: number };
-    expect(stored.format).toBe(BANK_FORMAT);
-    // Code at the format before reads it as this code reads one format ahead: unreadable, and a save may not replace it.
-    const ahead = memoryStorage({ ...stored, format: stored.format + 1 });
+    // The category format sits one below BANK_FORMAT, since answer fields (multi-field.md) came after it.
+    expect(stored.format).toBe(BANK_FORMAT - 1);
+    // Code at the format before reads it as this code reads a format ahead of its own: unreadable, and a save may not replace it.
+    const ahead = memoryStorage({ ...stored, format: BANK_FORMAT + 1 });
     const older = new BankStore(ahead);
     expect(await older.getVersionedBank()).toMatchObject({ unreadable: true });
     await expect(older.putBank(validBank, 1)).rejects.toThrow(/unreadable/);
-    expect(await ahead.get("bank")).toEqual({ ...stored, format: stored.format + 1 });
+    expect(await ahead.get("bank")).toEqual({ ...stored, format: BANK_FORMAT + 1 });
   });
 
   it("treats a format that is not a known number as unreadable too", async () => {
@@ -137,13 +138,13 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual({ bank: legacy, version: 7, format: BANK_FORMAT });
   });
 
-  // Regression: boss HP had no upper bound, and the big screen draws one heart per HP
+  // Regression: boss HP had no upper bound; the big screen draws hearts up to MAX_HEARTS, then a bar, and 60 is the cap (multi-field.md E5)
   // Found by /review on 2026-10-28
-  it.each([[21], [2.5]])("refuses to save a boss phase with %s HP (a whole number from 1 to 20), and keeps the stored bank", async (maxHp) => {
+  it.each([[61], [2.5]])("refuses to save a boss phase with %s HP (a whole number from 1 to 60), and keeps the stored bank", async (maxHp) => {
     const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
     const store = new BankStore(storage);
     const big: Bank = { ...validBank, boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], maxHp }] } };
-    await expect(store.putBank(big, 1)).rejects.toThrow(/hp must be a whole number from 1 to 20/);
+    await expect(store.putBank(big, 1)).rejects.toThrow(/hp must be a whole number from 1 to 60/);
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1, format: BANK_FORMAT });
   });
 
@@ -157,11 +158,11 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1, format: BANK_FORMAT });
   });
 
-  // Value: protects=20 HP, the documented top, still saves; fails_when=the bound turns into >= or MAX_BOSS_HP drops;
+  // Value: protects=60 HP, the documented top (multi-field.md E5), still saves; fails_when=the bound turns into >= or MAX_BOSS_HP drops;
   // why_new=the rows above only test refusals; seam=none; no_claim=the editor's own input limits (e2e)
-  it("saves a boss phase with exactly 20 HP", async () => {
+  it("saves a boss phase with exactly 60 HP", async () => {
     const store = new BankStore(memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 }));
-    const top: Bank = { ...validBank, boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], maxHp: 20 }] } };
+    const top: Bank = { ...validBank, boss: { ...validBank.boss, phases: [{ ...validBank.boss.phases[0], maxHp: 60 }] } };
     await expect(store.putBank(top, 1)).resolves.toMatchObject({ version: 2 });
   });
 
@@ -343,14 +344,17 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     const buzzer = { ...sorted, boss: { ...validBank.boss, phases: [...validBank.boss.phases, { name: "搶答", rule: "聽前奏搶答", maxHp: 1, buzzer: true as const, questions: [{ kind: "text" as const, id: "z1", content: { kind: "text" as const, value: "聽" }, answer: "歌" }] }] } };
     expect(formatOf(buzzer)).toBe(5);
     // A question category (boss-music-buzzer.md) is what format-5 code would drop: it stores at 6.
-    expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ ...buzzer.pools[1][0], category: "動漫" }] } })).toBe(BANK_FORMAT);
+    expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ ...buzzer.pools[1][0], category: "動漫" }] } })).toBe(6); // pregate-literal: BANK_FORMAT=6 a category bank stays at format 6
+    // A music question's answer fields (multi-field.md) are what format-6 code would drop: they store at 7.
+    const fields = [{ label: "歌名", answer: "A" }, { label: "歌手", answer: "B" }];
+    expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "f1", content: { kind: "text" as const, value: "聽" }, answer: "A／B", fields }] } })).toBe(BANK_FORMAT);
     const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
     await new BankStore(storage).putBank(sorted, 1);
     expect(await storage.get("bank")).toMatchObject({ version: 2, format: 4 });
   });
 
   it("still reads a format-3 bank as is", async () => {
-    expect(await new BankStore(memoryStorage({ bank: validBank, version: 6, format: 3 })).getVersionedBank()).toEqual({ bank: validBank, version: 6 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
+    expect(await new BankStore(memoryStorage({ bank: validBank, version: 5, format: 3 })).getVersionedBank()).toEqual({ bank: validBank, version: 5 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
   });
 
   it("a bank stored at format 4 (before the buzzer phase) still loads as itself, not outdated", async () => {

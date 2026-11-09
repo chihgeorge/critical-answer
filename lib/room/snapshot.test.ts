@@ -47,7 +47,7 @@ describe("parseSnapshot", () => {
   // Value: protects=a save mid-擲先攻 restores its rolls and order, and a damaged one is dropped without losing the game;
   // fails_when=parseSnapshot stops checking initiative; why_new=擲先攻 is new state in the save; seam=none
   it("keeps a saved 擲先攻 and drops a damaged one, keeping the rest of the save", () => {
-    const ini = { rolls: { a: 5, b: 20 }, order: ["b", "a"], tieRolls: [{ from: 1, teams: ["a"], values: [3] }] };
+    const ini = { rolls: { a: 5, b: 20 }, order: ["b", "a"], tieRolls: [{ from: 1, teams: ["a"], values: [3] }] }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(parseSnapshot({ ...valid(), initiative: ini })?.initiative).toEqual(ini);
     for (const bad of [{ rolls: { a: 21 } }, { rolls: { a: 5 }, order: [1] }, { rolls: { a: 5 }, tieRolls: [{ from: 1, teams: ["a"], values: [0] }] }, "x"]) {
       const s = parseSnapshot({ ...valid(), initiative: bad });
