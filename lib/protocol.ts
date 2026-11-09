@@ -500,6 +500,8 @@ const MAX_RAW_NAME = 100;
 export const MAX_RAW_TEXT = 200;
 /** A typed answer keeps this many characters (code points). */
 export const MAX_TYPED_ANSWER = 40;
+/** Most boss HP the big screen draws as hearts; more is one bar (docs/designs/multi-field.md E5). */
+export const MAX_HEARTS = 20;
 /** Most answer fields a music question has (docs/designs/multi-field.md). */
 export const MAX_FIELDS = 3;
 export const MAX_PASSWORD = 32;

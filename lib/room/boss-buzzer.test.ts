@@ -360,6 +360,45 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().pendingRoll).toMatchObject({ kind: "kill", teamId: IDS[1] });
   });
 
+  it("a partial answer that kills keeps its per-field verdicts through the 4d20 beat (multi-field.md D2, E1)", () => {
+    const g = buzzerGame(fielded);
+    g.room.game = { ...g.room.game!, boss: { ...g.room.game!.boss, hp: 1 }, teams: g.room.game!.teams.map((t) => ({ ...t, boon: undefined })) };
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    const before = g.room.game!.teams[1].reward;
+    vi.useFakeTimers();
+    try {
+      send(g.room, g.host, { type: "HOST_JUDGE", teamId: IDS[1], questionId: "b-a", correct: true, fields: [true, false], eventId: g.state().eventId });
+      expect(g.state().pendingRoll).toMatchObject({ kind: "kill" });
+      vi.advanceTimersByTime(10000);
+    } finally {
+      vi.useRealTimers();
+    }
+    const s = g.state();
+    expect(s.reveal.fields.marks.map((f: { right: boolean }) => f.right)).toEqual([true, false]);
+    // Half the 10-point hit, plus the whole kill bonus (rng 0 → four 1s).
+    expect(g.room.game!.teams[1].reward - before).toBe(5 + 4);
+  });
+
+  it("HOST_JUDGE with fields on a question without them is refused", () => {
+    const g = buzzerGame(text);
+    g.buzz(1);
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: IDS[1], questionId: "b-a", correct: true, fields: [true, false], eventId: g.state().eventId });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "fields_mismatch" });
+    expect(g.state().view.buzz.teamId).toBe(IDS[1]);
+  });
+
+  it("重新逐欄判定 is refused once the team's phone dropped (/review)", () => {
+    const g = buzzerGame(fielded);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], false);
+    g.room.onClose(g.phones[1]);
+    send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: IDS[1], questionId: "b-a", eventId: g.state().eventId });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "no_undo" });
+    expect(g.state().view.buzz.teamId).toBeUndefined();
+  });
+
   it("改判答對 on a question with fields reopens the buzz for per-field judging, not all right (multi-field.md E2)", () => {
     const g = buzzerGame(fielded);
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });

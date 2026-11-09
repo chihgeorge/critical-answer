@@ -114,7 +114,7 @@ export interface BossPhase {
 export const MIN_OPTIONS = 2;
 /** The TV wall has four tile spots (app/room/[code]/screen/page.tsx TILE_SPOTS). */
 export const MAX_OPTIONS = 4;
-/** The big screen draws one heart per HP on the boss's nameplate up to 20, a bar above (multi-field.md E5: a phase of
+/** The big screen draws one heart per HP on the boss's nameplate up to MAX_HEARTS (lib/protocol.ts), a bar above (multi-field.md E5: a phase of
  * multi-field questions loses more than 1 HP a hit). */
 export const MAX_BOSS_HP = 60;
 const fail = (why: string): never => {

@@ -953,14 +953,8 @@ export class DungeonRoom {
     const rolling = this.pendingRoll?.kind === "check" ? checkKey(this.pendingRoll.questionId, this.pendingRoll.teamId) : null;
     if (rolling && view.checks) view.checks = Object.fromEntries(Object.entries(view.checks).filter(([k]) => k !== rolling));
     // A buzzer phase's typed answer goes to the host only (HOST_ANSWER): the other teams could still buzz on it
-    // (multi-field.md E4). "" still tells the team's own phone it was sent.
-    if (isBuzzPhase(this.game)) {
-      view.teams = view.teams.map((t) => {
-        const hidden = { ...t, typedAnswer: t.typedAnswer === null ? null : "" };
-        delete hidden.typedFields;
-        return hidden;
-      });
-    }
+    // (multi-field.md E4). "" still tells the team's own phone it was sent. A game ended mid-buzz keeps it hidden too.
+    if (isBuzzPhase(this.game) || this.game.phase === "finished") view.teams = view.teams.map((t) => (t.typedAnswer === null ? t : { ...t, typedAnswer: "" }));
     return {
       type: "STATE",
       view,
@@ -2213,6 +2207,15 @@ export class DungeonRoom {
     // the 答錯, buzz and all, so the host judges it field by field again.
     const q = this.question(questionId);
     if (q?.kind === "text" && q.fields) {
+      // A team whose phone dropped since cannot hold the buzz again: nobody could judge it or buzz past it (/review).
+      if (!this.game.teams.find((t) => t.id === teamId)?.online) {
+        this.game = now;
+        this.undo = undo;
+        return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_undo" });
+      }
+      this.phaseCardDue = false;
+      if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
+      this.phaseCardTimer = null;
       // The team holds the buzz again, so the music the 答錯 played on stops, as a buzz stops it.
       this.buzzPaused = this.media?.questionId === questionId && this.media.state === "playing";
       if (this.buzzPaused) this.media = { ...this.media!, state: "paused", press: this.media!.press + 1 };

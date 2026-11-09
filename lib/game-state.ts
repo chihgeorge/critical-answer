@@ -1533,8 +1533,6 @@ export interface SpectatorView {
     sneakArmed?: true;
     /** The typed answer waiting for the host (text questions), or null. */
     typedAnswer: string | null;
-    /** A music question's typed boxes, "" for a blank (multi-field.md F4). Only with `typedAnswer`. */
-    typedFields?: string[];
     /** A cleric that could pray if judged wrong now (canPrayBeforeJudge): the host's one 答錯 key waits for
      * its choice. */
     mayPray?: true;
@@ -1591,7 +1589,6 @@ export function getSpectatorView(game: GameState): SpectatorView {
       abilityUses: t.abilityUses,
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
       typedAnswer: t.typedAnswer ?? null,
-      ...(t.typedFields ? { typedFields: t.typedFields } : {}),
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
       checkTarget: checkTarget(game, t.id, t.currentQuestionId),
       ...(t.event ? { eventScene: t.event.scene } : {}),
