@@ -97,6 +97,10 @@ const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TRANSCRIPT = 500;
 /** 5 wrong claims in the room burn every live handoff code (team-handoff.md D4). */
 const HANDOFF_MAX_WRONG = 5;
+/** Wrong join passwords the whole room takes per window; past it every password JOIN waits for the next window, so a
+ * script needs hours for a 4-digit password. Room-wide, since a script picks a fresh connection id for free. */
+const JOIN_PASSWORD_MAX_WRONG = 10;
+const JOIN_PASSWORD_WINDOW_MS = 60_000;
 /** Long enough for a pizza break, short enough that a TV left on overnight is not billed all night. */
 const IDLE_MS = 2 * 60 * 60 * 1000;
 export const EXPIRE_MS = 24 * 60 * 60 * 1000;
@@ -234,6 +238,11 @@ export class DungeonRoom {
   private conns = new Map<string, Conn>();
   /** Connections that sent SCREEN_HELLO, oldest first: only they may send SCREEN_* messages. */
   private screenConns = new Set<string>();
+  /** Sockets the room closed or replaced: whatever they still send is ignored. */
+  private gone = new WeakSet<Conn>();
+  /** Wrong join passwords since passwordWindowAt (JOIN_PASSWORD_MAX_WRONG). Memory only. */
+  private passwordWrong = 0;
+  private passwordWindowAt = 0;
 
   /** Counts the start and every accepted judgment; each gets exactly one NARRATION. */
   private eventSeq = 0;
@@ -588,7 +597,9 @@ export class DungeonRoom {
   }
 
   private sendTo(conn: Conn, msg: ServerMessage) {
-    this.persist();
+    // A refusal carries no room state, so it need not wait for a save: serializing the whole room (bank included)
+    // for every junk message is what let one socket slow a live game.
+    if (msg.type !== "ERROR") this.persist();
     conn.send(JSON.stringify(msg));
     if (msg.type === "ERROR" && conn === this.dispatching) this.rejected = true;
   }
@@ -1147,15 +1158,22 @@ export class DungeonRoom {
   }
 
   onConnect(conn: Conn) {
+    this.gone.delete(conn);
     if (this.expiring) {
+      this.gone.add(conn);
       conn.close();
       return;
     }
     // A reconnect reuses its id (partysocket's _pk): close the old socket, so one client cannot hold many sockets
     // under one id, outside the cap below, each getting every broadcast. Its later close is ignored by onClose.
     const prev = this.conns.get(conn.id);
-    if (prev && prev !== conn) prev.close();
-    else if (this.conns.size >= MAX_CONNECTIONS && !this.closeSpareConn()) {
+    if (prev && prev !== conn) {
+      this.gone.add(prev);
+      prev.close();
+      // Host-only messages would go to the closed socket until the new one re-sends HOST_CLAIM (it does on open).
+      this.hostConns.delete(conn.id);
+    } else if (this.conns.size >= MAX_CONNECTIONS && !this.closeSpareConn()) {
+      this.gone.add(conn);
       conn.close();
       return;
     }
@@ -1193,6 +1211,7 @@ export class DungeonRoom {
   }
 
   onClose(conn: Conn) {
+    this.gone.add(conn);
     // Ids come from the client (partysocket's _pk) and survive a reconnect: an old socket's late close must not
     // unregister the new socket that already took its id (a TV that re-sent SCREEN_HELLO, a host, a phone).
     const live = this.conns.get(conn.id);
@@ -1236,6 +1255,9 @@ export class DungeonRoom {
   }
 
   onMessage(message: string, sender: Conn) {
+    // A socket the room closed, or one a reconnect replaced, may keep talking if its client ignores the close.
+    const live = this.conns.get(sender.id);
+    if (this.gone.has(sender) || (live && live !== sender)) return;
     let raw: unknown;
     try {
       raw = JSON.parse(message);
@@ -1278,6 +1300,8 @@ export class DungeonRoom {
         case "HOST_SET_PASSWORD":
           if (!this.requireHost(sender)) break;
           this.joinPassword = msg.password.trim();
+          // A new password makes earlier guesses worthless: the host can lift a guessing lock this way.
+          this.passwordWrong = 0;
           // Every host page shows the room's real password only once the room has it.
           for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
           break;
@@ -1451,9 +1475,22 @@ export class DungeonRoom {
       }
       this.removedTeamIds.delete(teamId);
     }
-    if (this.joinPassword && !tokensEqual(this.joinPassword, password.trim())) {
-      this.sendTo(conn, { type: "ERROR", error: "bad_password" });
-      return;
+    if (this.joinPassword) {
+      const t = this.now();
+      if (t - this.passwordWindowAt >= JOIN_PASSWORD_WINDOW_MS) {
+        this.passwordWindowAt = t;
+        this.passwordWrong = 0;
+      }
+      if (this.passwordWrong >= JOIN_PASSWORD_MAX_WRONG) {
+        this.sendTo(conn, { type: "ERROR", error: "bad_password", detail: "too_many_attempts" });
+        return;
+      }
+      if (!tokensEqual(this.joinPassword, password.trim())) {
+        // An empty password is a phone that has not asked its team for one yet, not a guess.
+        if (password.trim()) this.passwordWrong++;
+        this.sendTo(conn, { type: "ERROR", error: "bad_password" });
+        return;
+      }
     }
     const name = sanitizeText(rawName, MAX_TEAM_NAME_LENGTH);
     // Same rule as handleRenameTeam: the epilogue and the transcript tell teams apart by name.

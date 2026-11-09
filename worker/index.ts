@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { Server, routePartykitRequest, type Connection, type WSMessage } from "partyserver";
 import { entryGate } from "../lib/gate";
 import { positiveMs } from "../lib/room/positive-ms";
+import { RateLimiter } from "../lib/room/rate-limit";
 import { DungeonRoom, EXPIRE_MS, fixedDie } from "../lib/room/dungeon-room";
 import { BankStore, IMAGE_CLEANUP_MARGIN_MS, type BankConflict, type VersionedBank } from "../lib/bank-store";
 import { bankOrFallback, handleBankApi, handleGameLogsApi } from "../lib/bank-api";
@@ -121,6 +122,8 @@ export class Room extends Server<Env> {
    * TV or phone would silently stop getting broadcasts and escape the idle close. Broadcast and closeAll use this.
    */
   private sockets = new Set<Connection>();
+  /** Per-socket message budget: a flood from one socket is dropped before the room parses it. */
+  private limiter = new RateLimiter();
 
   /** Open sockets only; a socket that errored without a close event is dropped here. */
   private *openSockets() {
@@ -181,12 +184,23 @@ export class Room extends Server<Env> {
 
   onMessage(conn: Connection, message: WSMessage) {
     // The protocol is JSON text; a binary frame is not a message we understand.
-    if (typeof message === "string") this.game.onMessage(message, conn);
+    if (typeof message === "string" && this.limiter.allow(conn)) this.game.onMessage(message, conn);
   }
 
   onClose(conn: Connection) {
     this.sockets.delete(conn);
     this.game.onClose(conn);
+  }
+
+  /** A socket that errors may never get a close event: without this it would keep its slot and its team online.
+   * Closed too, so the phone or TV sees it and reconnects instead of sitting there cut off. */
+  onError(conn: Connection) {
+    try {
+      conn.close(1011, "Unexpected error");
+    } catch {
+      // already closing
+    }
+    this.onClose(conn);
   }
 }
 

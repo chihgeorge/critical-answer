@@ -7,6 +7,7 @@ describe("joinRejection", () => {
   it("explains every way the room turns a JOIN away", () => {
     expect(joinRejection("bad_password", undefined, true, false)).toEqual({ text: "房間密碼不對", link: "password" });
     expect(joinRejection("bad_password", undefined, false, false)).toEqual({ text: "這個房間要密碼才能加入", link: "password" });
+    expect(joinRejection("bad_password", "too_many_attempts", true, false)).toEqual({ text: "密碼猜錯太多次，請等一分鐘再試", link: "password" });
     expect(joinRejection("game_already_started", undefined, false, false)?.text).toBe("遊戲已經開始了，新隊伍不能再加入");
     expect(joinRejection("invalid_name", undefined, false, false)?.text).toBe("隊伍名稱不能用，請換一個名字");
     expect(joinRejection("invalid_name", "duplicate_name", false, false)?.text).toBe("這個隊名已經有人用了，請換一個名字");

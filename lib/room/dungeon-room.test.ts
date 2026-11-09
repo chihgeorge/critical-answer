@@ -170,10 +170,13 @@ describe("HOST_CLAIM", () => {
   it("drops host rights when that connection closes", () => {
     const { room, hostConn } = makeRoomWithHost();
     room.onClose(hostConn);
-    joinTeams(room, hostConn, 1);
-    send(room, hostConn, { type: "HOST_START" });
+    // The same client back on a new socket must claim again.
+    const reconnected = makeConn(hostConn.id);
+    room.onConnect(reconnected);
+    joinTeams(room, reconnected, 1);
+    send(room, reconnected, { type: "HOST_START" });
     expect(room.game).toBeNull();
-    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "not_host" });
+    expect(lastSentTo(reconnected)).toMatchObject({ type: "ERROR", error: "not_host" });
   });
 
   it("rejects a token that is too short", () => {
@@ -312,6 +315,35 @@ describe("JOIN", () => {
     expect(lastSentTo(noPw)).toMatchObject({ type: "ERROR", error: "not_host" });
     claim(room, makeConn("host-reload"));
     expect((room as any).joinPassword).toBe("dragon");
+  });
+
+  // Value: protects=a script cannot guess a short join password in minutes, and a phone that has not typed one yet
+  // does not use up the room's guesses; fails_when=wrong guesses are unlimited, an empty password counts, or the
+  // room stays locked after the window
+  it("takes 10 wrong join passwords a minute, then refuses every password JOIN until the minute is up", () => {
+    const clock = { t: 1_000_000 };
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { now: () => clock.t });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    send(room, hostConn, { type: "HOST_SET_PASSWORD", password: "1234" });
+    const guesser = makeConn("guesser");
+    for (let i = 0; i < 20; i++) send(room, guesser, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess" }); // no password: not a guess
+    for (let i = 0; i < 10; i++) {
+      send(room, guesser, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess", password: String(i) });
+      expect(lastSentTo(guesser)).toEqual({ type: "ERROR", error: "bad_password" });
+    }
+    const friend = makeConn("friend");
+    send(room, friend, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Friend", password: "1234" });
+    expect(lastSentTo(friend)).toEqual({ type: "ERROR", error: "bad_password", detail: "too_many_attempts" });
+    clock.t += 60_000;
+    send(room, friend, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Friend", password: "1234" });
+    expect(lastBroadcast(room).teams.map((t: { name: string }) => t.name)).toEqual(["Friend"]);
+    // A new password lifts a lock at once.
+    for (let i = 0; i < 10; i++) send(room, guesser, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess", password: String(i) });
+    send(room, hostConn, { type: "HOST_SET_PASSWORD", password: "5678" });
+    send(room, makeConn("late"), { type: "JOIN", teamId: T3, teamKey: KEY2, teamName: "Late", password: "5678" });
+    expect(lastBroadcast(room).teams.map((t: { name: string }) => t.name)).toEqual(["Friend", "Late"]);
   });
 
   it("rejects a 9th distinct team once the room is full (max 8)", () => {
@@ -2959,6 +2991,30 @@ describe("team identity and reconnect (audit findings)", () => {
     room.onConnect(makeConn("latest"));
     expect(closed(junk[0])).toBe(true);
     for (const c of [hostConn, tv, tv2, twin]) expect(closed(c)).toBe(false);
+  });
+
+  // Value: protects=a socket the room closed (or a reconnect replaced) cannot keep acting if its client ignores the
+  // close, and host-only messages stop going to a dead socket; fails_when=a closed or superseded socket's message is
+  // handled, or the replaced host socket keeps host rights before the new one claims
+  it("ignores a socket it closed or replaced, and a reconnecting host page must claim again", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    const phone = makeConn("phone");
+    room.onConnect(phone);
+    room.onClose(phone);
+    const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.length;
+    send(room, phone, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Ghost" });
+    expect(phone.send).toHaveBeenCalledTimes(1); // only the snapshot on connect
+    expect((room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.length).toBe(broadcasts);
+    expect((room as any).pendingTeams).toEqual([]);
+
+    const newHostSocket = makeConn(hostConn.id);
+    room.onConnect(newHostSocket);
+    expect(hostConn.close).toHaveBeenCalled();
+    expect((room as any).isHost(newHostSocket)).toBe(false);
+    send(room, hostConn, { type: "HOST_SET_PASSWORD", password: "x" });
+    expect((room as any).joinPassword).toBe("");
+    claim(room, newHostSocket);
+    expect((room as any).isHost(newHostSocket)).toBe(true);
   });
 
   it("refuses a newcomer when every socket in a full room is a host, a kept screen or a team's only phone", () => {
