@@ -397,7 +397,7 @@ export class DungeonRoom {
   private keyError: AiKeyError | undefined;
   /** The keyId of the HOST_AI_KEY keyError refuses (none for a keyless resend). Only reported while keyError is set. */
   private refusedKeyId: string | undefined;
-  /** The pasted key being checked now, if any: a newer HOST_AI_KEY aborts it. */
+  /** The pasted key being checked now, if any: a newer HOST_AI_KEY aborts it, except a resend of this key under the same keyId. */
   private keyCheck: { ctl: AbortController; key: string; keyId?: string } | null = null;
   /** Key checks this room made: in all (saved, so a restart does not reset it), and since keyCheckWindowAt (memory only). */
   private keyChecks = 0;

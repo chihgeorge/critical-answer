@@ -574,6 +574,14 @@ describe("key check cap", () => {
     expect(r.status()).not.toHaveProperty("error");
   });
 
+  it("a capped paste leaves the key in use in place", async () => {
+    const r = setup({ models: (key) => (key === HOST_KEY ? json({ data: [] }) : json({}, 401)) });
+    await paste(r, HOST_KEY, "ok");
+    for (let i = 0; i < 3; i++) await paste(r, keys[i], `k${i}`);
+    expect(models(r)).toBe(3);
+    expect(r.status()).toMatchObject({ source: "own", appliedKeyId: "ok", error: "check_failed", refusedKeyId: "k2" });
+  });
+
   it("checks 10 keys over the room's life, through a restart; a typo or the key in use is never counted", async () => {
     let t = 0;
     const storage = memoryStorage();
