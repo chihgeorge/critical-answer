@@ -686,14 +686,14 @@
 
 ---
 
-## 吃料理動畫的兩個小瑕疵
+## 吃料理動畫：小烏賊的空盤太小
 
-**What:** 隊伍吃完第三口之後，`dish-skewer` 和 `dish-mushroom-skewer` 的熱氣還飄在只剩竹籤的地方，幾個碗類料理（燉菜、南瓜湯、三杯、石鍋）也有一點，碗快空了熱氣還在。另外 `dish-squid` 在台上是 ×3，空盤沿用料理的倍率，所以看起來特別小。可能的修法：最後一口咬下去之後把熱氣那幾列藏起來；空盤給一個最小倍率。
+**What:** `dish-squid` 在台上是 ×3，空盤沿用料理的倍率和畫布（`drawEmptyPlate`），所以看起來特別小。可能的修法：沒有盤子的料理，空盤給一個最小寬度。（第三口後的熱氣已在 eat-dish polish PR 修好：第三口起熱氣消失。）
 
 **Why:** 吃料理動畫（PR #177，`docs/designs/eat-dish.md`）的 25 道菜截圖檢查時發現的。不影響玩法，只是畫面上看起來有點怪。截圖在本機 `~/.gstack/projects/critical-answer/designs/eat-dish-20261108/bites/`（不進 git）。
 
 **Context:**
-- `lib/pixel-art.ts` 的 `biteCells`（咬痕不碰熱氣和盤子）
+- `lib/pixel-art.ts` 的 `drawEmptyPlate`（沒有盤子的料理：畫布一樣寬的盤子）
 - `components/cooking.tsx` 的 `DishOnStage`（空盤用料理的 `scale`）
 
 **Effort/Priority:** S / P3

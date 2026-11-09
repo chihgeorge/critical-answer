@@ -10,7 +10,7 @@ import { UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notic
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import { HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
+import { HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, serveSecondsLeft, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -297,10 +297,22 @@ export default function HostPage() {
   const pauseKey = game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.eventReveal ? `event-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : buzz?.teamId ? `buzz-${buzz.teamId}-${game!.eventId}` : "";
   const [armedFor, setArmedFor] = useState(pauseKey);
   const swapArmed = armedFor === pauseKey;
+  const [serveLeft, setServeLeft] = useState({ key: "", left: 0 });
+  const serveSeconds = serveLeft.key === pauseKey ? serveLeft.left : serveSecondsLeft(0);
   useEffect(() => {
     // After 上菜, 下一題 waits out the cooking as the room does (cooking I2).
-    const t = setTimeout(() => setArmedFor(pauseKey), pauseKey.endsWith("-served") ? SERVE_HOLD_MS : 500);
-    return () => clearTimeout(t);
+    const served = pauseKey.endsWith("-served");
+    // The seconds left on 「🍲 上菜中…」, so the host knows how long the meal still runs.
+    const start = Date.now();
+    const tick = served ? setInterval(() => setServeLeft({ key: pauseKey, left: serveSecondsLeft(Date.now() - start) }), 250) : undefined;
+    const t = setTimeout(() => {
+      clearInterval(tick);
+      setArmedFor(pauseKey);
+    }, served ? SERVE_HOLD_MS : 500);
+    return () => {
+      clearTimeout(t);
+      clearInterval(tick);
+    };
   }, [pauseKey]);
   // 改判答對 shows up under the judge buttons, which the bottom-anchored column then pushes up: it waits out a double tap
   // on 答錯 like every other swap (red-team review).
@@ -438,7 +450,7 @@ export default function HostPage() {
         </Panel>
       )}
       <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: toServe ? "HOST_SERVE" : "HOST_NEXT", eventId: game.eventId })}>
-        {!connected ? "重新連線中" : toServe ? "🍲 上菜" : servedUp && !swapArmed ? "🍲 上菜中…" : "下一題"}
+        {!connected ? "重新連線中" : toServe ? "🍲 上菜" : servedUp && !swapArmed ? `🍲 上菜中… ${serveSeconds}` : "下一題"}
         <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
       </PixelButton>
     </>
