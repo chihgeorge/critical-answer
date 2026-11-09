@@ -19,8 +19,16 @@ between two doors and lives with the result.
 - **When the team chooses.** The draw only marks the team (`{ phase: "waiting" }`, 🚪 on the map, 「🚪 在岔路口」 on the
   host page). Its next turn opens with the choice (`{ phase: "choosing", deadline }`), and only once the room is not paused
   (a reveal, an event result, a phase card, the intro), the same rule as the answer countdown. Other teams never wait.
-- **Two doors, no descriptions** (owner, 2026-11-09). The big screen and the team's phone show only ⚔️ 怪物房 and ❓ 神秘房.
-  The trade-off (give up the room's reward, dish and progress for an event, and skip the room) is written in
+- **Two unmarked doors, sides drawn by the room** (owner, 2026-11-09, replacing the first labelled doors). The big
+  screen, the team's phone and the host page show only 左門 and 右門. When the door clock starts, the room draws which side
+  hides ⚔️ with its own `rng` (`Fork.monsterSide`, saved with the game, so a restart keeps it) and sends it to no screen,
+  the host's included; tests check that no message to any connection names it. The team presses a side
+  (`TEAM_CHOOSE_FORK { side, eventId }`), and the room maps it to a door. A save with a choosing fork and no usable side
+  loads as waiting and draws again. e2e pins the side with the worker var `E2E_MONSTER_SIDE`.
+- **Layout B on the big screen** (owner, 2026-11-09). The fork's background bricks up the middle arch with the room's own
+  wall and opens a doorway on each side (`drawScene(..., "fork")`, `FORK_ARCH`); each door sprite sits inside its doorway
+  with a pixel to spare, the 左門 / 右門 nameplate above it.
+- **What each door means** stays off screen. The trade-off (give up the room's reward, dish and progress for an event, and skip the room) is written in
   [docs/rules.md](../rules.md) for the host, never on screen.
 - **Nothing to spoil.** The event is drawn when ❓ is pressed (`drawEvent`), not at the fork. While the team is at the
   fork, the room has no current question (`null` to every screen), and the narration gets a neutral line
@@ -32,18 +40,19 @@ between two doors and lives with the result.
 - **Choose on the team's turn** (d2a), **no host hint** (d3a), **no switching doors** (d4a). The host cannot choose for the
   team; the host's 「替{隊名}按」 and its 15-second timer are gone with the event button.
 - **⚔️**: the room's monster and question as usual. A scripted line introduces the monster (`FORK_MONSTER_VARIANTS`), or
-  a funny one on a timeout (`FORK_TIMEOUT_VARIANTS`); no AI wait. The answer countdown starts when the question is up,
+  a funny one on a timeout (`FORK_TIMEOUT_VARIANTS`); no AI wait. A timeout opens the ⚔️ side. The answer countdown starts when the question is up,
   after the door opening; the fork's 15 seconds do not count.
 - **❓**: one press draws the event and applies it (`enterEventRoom` + `openEvent`), with the effects, chef bonus and
   boss-room rule of [event-rooms.md](event-rooms.md). The result screen gains a 「❓ 神秘房」 chip.
-- **Door opening, 1.5 s, for every choice** (`FORK_BEAT_MS`; ❓ added by the owner, d1b). The chosen door lights up and
-  the other dims; a timeout shows 「⏳ 時間到」 first. The opening counts as a pause (`paused()`): no lock, send, ability,
+- **Door opening, 1.5 s, for every choice** (`FORK_BEAT_MS`; ❓ added by the owner, d1b). The chosen door swings open
+  and only it is revealed: its nameplate (and its phone button) turns from 左門 / 右門 into ⚔️ 怪物房 or ❓ 神秘房. The other
+  dims and is never named. A timeout shows 「⏳ 時間到」 first, then the ⚔️ side opens. The opening counts as a pause (`paused()`): no lock, send, ability,
   potion or 下一題 until it ends.
 - **❓ is decided at the press but shown after the opening** (d1b). The event is drawn and its effect applied to the game
   state at the press, and the feast dish rolled; the room keeps the state from before the press (`forkBeat.before`) and
   `snapshot()` projects that to every screen (`getSpectatorView(forkBeat.before ?? game)`, online flags from the live game)
   until the opening ends. Only then does it set `eventReveal`, play the outcome cue, and start the `event-room`
-  narration. The public STATE carries only `forkBeat: { teamId, door, timeout? }`; the scene, outcome and dish never leave
+  narration. The public STATE carries only `forkBeat: { teamId, side, door, timeout? }` (the opened side and what was behind it); the scene, outcome and dish never leave
   the room early.
 - **Pages check the opening first.** Screen, phone and host check `forkBeat`, then `eventReveal`, then the fork, so the
   door buttons never come back during an opening. The host's double-tap guard keys the opening as `fork-${eventId}`.
@@ -51,16 +60,17 @@ between two doors and lives with the result.
   push them off screen (TODOS.md note on the old branch panel).
 - **Sent to the boss** clears the fork in any phase (`sendToBoss`), which also covers the buzzer phase pulling every team
   in. The ⚔️ mark survives a wrong answer, a retry, fleeing and a restart.
-- **Game log** (#155): `Team.forks` records each door (`monster`, `mystery`, `timeout`); the ❓ outcome stays in `events`.
+- **Game log** (#155): `Team.forks` records each fork as `{ side, door, timeout? }`: the side opened, the room behind it,
+  and whether the clock chose; the ❓ outcome stays in `events`.
 - **Old saves.** A save from before this change with a team in an unopened event room (`Team.event`) loads as
   `fork: { phase: "waiting" }`; the old event is dropped and ❓ draws again. No schema bump.
 
 ## Engineering
 
-- `lib/game-state.ts`: `Fork`, `ForkDoor`, `ForkChoice`, `FORK_MS`, `atFork`, `enterFork`, `startForkChoice`, `chooseFork`.
+- `lib/game-state.ts`: `Fork`, `ForkDoor`, `ForkSide`, `ForkChoice` (a side or `timeout`), `ForkRecord`, `FORK_MS`, `atFork`, `enterFork`, `startForkChoice`, `chooseFork`.
   `atFork` guards `answerQuestion`, `assertCurrentQuestion`, `assertAbilityTurn` and `drinkPotion` (`InvalidActionError("fork")`).
 - `lib/room/dungeon-room.ts`: `syncFork()` runs at the start of every broadcast and after a restore: it moves the team on
-  turn from waiting to choosing when the room is live, and arms `forkTimer`. `TEAM_CHOOSE_FORK { door, eventId }` and the
+  turn from waiting to choosing when the room is live, and arms `forkTimer`. `TEAM_CHOOSE_FORK { side, eventId }` and the
   timer both go through `applyForkChoice`; one `endForkBeat` ends every opening. Both timers check that their state is still
   current (`deadline`, `this.forkBeat === beat`), and `clearAnswerTimers` (reset, end game, back to lobby, expiry) clears
   them with `forkBeat`. An opening holds 撤銷答錯 too (`undoHeld`).
@@ -83,6 +93,7 @@ between two doors and lives with the result.
 
 - `lib/bank-size.ts`: the host warning drops the total < teams × 9 rule and keeps only a thin room pool; the host's
   confirm uses the same condition.
+- `CLAUDE.md`: architecture questions route to /autoplan.
 
 ## Success Criteria
 
