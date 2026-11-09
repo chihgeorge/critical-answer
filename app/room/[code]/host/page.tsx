@@ -804,6 +804,10 @@ export default function HostPage() {
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
                   {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}
+                  {/* 🧪 幸運藥水 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. */}
+                  <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-3 !py-0 text-[14px]" disabled={!!t.item} onClick={() => send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
+                    {t.item ? "🧪 已有" : "🧪 給藥水"}
+                  </PixelButton>
                   <PixelButton
                     className="!m-0 min-h-[44px] !px-3 !py-0 text-[14px]"
                     onClick={() => (!t.online || confirm(`${t.name}還在線上，確定要交給新手機？`)) && send({ type: "HOST_HANDOFF", teamId: t.id })}

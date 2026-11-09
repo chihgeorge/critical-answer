@@ -45,6 +45,9 @@ export interface GameLog {
     /** The data titles this team won at the podium (podium-titles.md), by id: never the AI's or the fallback, which
      * come after the log is written. */
     titles: string[];
+    /** 🧪 幸運藥水 the host gave this team, and the ones it drank (docs/designs/lucky-potion.md E8). */
+    potionsGiven: number;
+    potionsDrunk: number;
   }[];
 }
 
@@ -81,6 +84,8 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
       events: t.events ?? [],
       sprintBlessed: game.sprint?.teamIds.includes(t.id) ?? false,
       titles: awards.filter((a) => a.teamIds.includes(t.id)).map((a) => a.id),
+      potionsGiven: t.potionsGiven ?? 0,
+      potionsDrunk: t.potionsDrunk ?? 0,
     })),
   };
 }

@@ -47,6 +47,10 @@ import {
   CHECK_DC,
   BOSS_CHECK_DC,
   InvalidActionError,
+  giveItem,
+  drinkPotion,
+  potionArmed,
+  spendPotion,
   type ClassId,
   type GameState,
   type RoomTemplate,
@@ -2235,5 +2239,41 @@ describe("⚔️ 最後衝刺 (docs/designs/last-sprint.md)", () => {
     const cursed = openEvent(enterEventRoom(g, "T1", { scene: "idol", outcome: "curse" }), "T1", first).game;
     expect(cursed.teams[1].boon).toBe("curse");
     expect(cursed.sprint).toEqual({ teamIds: ["T1"] });
+  });
+});
+
+describe("🧪 lucky potion (docs/designs/lucky-potion.md)", () => {
+  it("giveItem: gives one, refuses a second while held, and refuses a finished game", () => {
+    const g = giveItem(makeGame(), "T1");
+    expect(g.teams[1]).toMatchObject({ item: "luckyPotion", potionsGiven: 1 });
+    expect(() => giveItem(g, "T1")).toThrow(/item_held/);
+    expect(() => giveItem(endGame(makeGame(), first), "T0")).toThrow(/not_playing/);
+  });
+
+  it("drinkPotion: arms it for the current question on the team's turn; no item, a second drink, or off turn are refused", () => {
+    expect(() => drinkPotion(makeGame(), "T0")).toThrow(/no_item/);
+    const held = giveItem(giveItem(makeGame(), "T0"), "T1");
+    expect(() => drinkPotion(held, "T1")).toThrow(InvalidActionError);
+    const g = drinkPotion(held, "T0");
+    expect(g.teams[0].itemArmedFor).toBe(g.teams[0].currentQuestionId);
+    expect(potionArmed(g, "T0")).toBe(true);
+    expect(() => drinkPotion(g, "T0")).toThrow(/already_drunk/);
+  });
+
+  it("a question left without a roll keeps the potion, no longer armed; spendPotion takes it and counts it", () => {
+    let g = drinkPotion(giveItem(makeGame(), "T0"), "T0");
+    ({ game: g } = answerQuestion(g, "T0", g.teams[0].currentQuestionId, false, "flee", first));
+    expect(g.teams[0].item).toBe("luckyPotion");
+    expect(potionArmed(g, "T0")).toBe(false);
+    const spent = spendPotion(g, "T0");
+    expect(spent.teams[0]).toMatchObject({ item: undefined, itemArmedFor: undefined, potionsDrunk: 1 });
+    expect(potionArmed(spent, "T0")).toBe(false);
+  });
+
+  it("the public view carries item and itemArmedFor", () => {
+    const g = drinkPotion(giveItem(makeGame(), "T0"), "T0");
+    const [t0, t1] = getSpectatorView(g).teams;
+    expect(t0).toMatchObject({ item: "luckyPotion", itemArmedFor: g.teams[0].currentQuestionId });
+    expect(t1.item).toBeUndefined();
   });
 });
