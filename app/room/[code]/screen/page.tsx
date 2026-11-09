@@ -705,7 +705,8 @@ function AwardCard({ beat, teams }: { beat: Extract<Beat, { kind: "award" }>; te
             </div>
           ))}
         </div>
-        {beat.teamIds.length > 2 && <div className="text-[18px]">等 {beat.teamIds.length - 2} 隊</div>}
+        {/* N is every holder, as in the narration's 「{first}等 N 隊」 (lib/podium.ts): 「等 1 隊」 after two names read as one team. */}
+        {beat.teamIds.length > 2 && <div className="text-[18px]">等 {beat.teamIds.length} 隊</div>}
         <div data-testid="award-reason" className="text-[20px]">{beat.reason}</div>
       </Panel>
     </div>
