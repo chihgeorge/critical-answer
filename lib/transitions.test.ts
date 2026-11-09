@@ -1,17 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { IN_LOBBY, nextTransition, UNSEEN, type TransitionSeen } from "./transitions";
+import { IN_LOBBY, nextTransition, sprintSeen, UNSEEN, type TransitionSeen } from "./transitions";
 import type { StateMessage } from "./protocol";
 
 const team = (id: string, name: string, inBossPhase = false) => ({ id, name, inBossPhase, roomIndex: 0, currentQuestionId: "q1" });
 const room = { id: "q1", content: { kind: "text", value: "題目" }, difficulty: 1, boss: false, monster: { name: "史萊姆", sprite: "slime", hue: 0 } };
 const boss = { ...room, id: "b1", boss: true, monster: { name: "魔王", sprite: "dragon", hue: 0 } };
 
-function state(over: { phase?: "playing" | "finished"; intro?: boolean; initiative?: boolean; inBoss?: boolean; reveal?: boolean; otherInBoss?: boolean } = {}): StateMessage {
+function state(over: { phase?: "playing" | "finished"; intro?: boolean; initiative?: boolean; inBoss?: boolean; reveal?: boolean; otherInBoss?: boolean; sprint?: string[] } = {}): StateMessage {
   return {
     type: "STATE",
     phase: over.phase ?? "playing",
     eventId: 1,
-    view: { currentTurnTeamId: "a", teams: [team("a", "紅隊", over.inBoss), team("b", "藍隊", over.otherInBoss)], bossHp: 5, bossMaxHp: 5, bossPhase: 1, bossCurrentQuestionId: "b1" },
+    view: { currentTurnTeamId: "a", teams: [team("a", "紅隊", over.inBoss), team("b", "藍隊", over.otherInBoss)], bossHp: 5, bossMaxHp: 5, bossPhase: 1, bossCurrentQuestionId: "b1", ...(over.sprint ? { sprint: { teamIds: over.sprint } } : {}) },
     question: over.inBoss ? boss : room,
     reveal: over.reveal ? { questionId: "q1", answer: "x" } : null,
     ...(over.intro ? { intro: { page: 1 } } : {}),
@@ -70,6 +70,39 @@ describe("nextTransition", () => {
 
   it("counts a phase card (no question, the boss drawn from the card) as the boss on screen", () => {
     const card = { ...state(), question: null, phaseCard: { monster: boss.monster } } as unknown as StateMessage;
-    expect(run({ open: false, boss: false }, [card])).toEqual([{ kind: "boss", name: "魔王" }]);
+    expect(run({ open: false, boss: false, sprint: false }, [card])).toEqual([{ kind: "boss", name: "魔王" }]);
+  });
+
+  it("plays the sprint banner once, live, on the reveal that opened the boss door, then the boss alarm", () => {
+    expect(run(IN_LOBBY, [state(), state({ otherInBoss: true, reveal: true, sprint: ["a"] }), state({ otherInBoss: true, sprint: ["a"] }), state({ inBoss: true, sprint: ["a"] }), state({ inBoss: true, sprint: ["a"] })])).toEqual([
+      { kind: "open", team: "紅隊" },
+      { kind: "sprint", names: ["紅隊"] },
+      null,
+      { kind: "boss", name: "魔王" },
+      null,
+    ]);
+  });
+
+  it("plays the sprint first when the host's 送進魔王房 also puts the boss on screen, and the alarm on the next STATE", () => {
+    expect(run(IN_LOBBY, [state(), state({ inBoss: true, sprint: ["b", "a"] }), state({ inBoss: true, sprint: ["b", "a"] })])).toEqual([
+      { kind: "open", team: "紅隊" },
+      { kind: "sprint", names: ["藍隊", "紅隊"] },
+      { kind: "boss", name: "魔王" },
+    ]);
+  });
+
+  it("never replays the sprint to a screen that (re)connects after it", () => {
+    expect(run(UNSEEN, [state({ otherInBoss: true, sprint: ["a"] }), state({ otherInBoss: true, sprint: ["a"] })])).toEqual([null, null]);
+    // Connected before it: plays live.
+    expect(run(UNSEEN, [state(), state({ otherInBoss: true, sprint: ["a"] })])).toEqual([null, { kind: "sprint", names: ["紅隊"] }]);
+  });
+});
+
+describe("sprintSeen (the phone card's rule)", () => {
+  it("plays only when this connection saw no sprint before", () => {
+    expect(sprintSeen(false, { sprint: { teamIds: ["a"] } })).toEqual({ seen: true, play: true });
+    expect(sprintSeen(null, { sprint: { teamIds: ["a"] } })).toEqual({ seen: true, play: false });
+    expect(sprintSeen(null, {})).toEqual({ seen: false, play: false });
+    expect(sprintSeen(true, { sprint: { teamIds: ["a"] } })).toEqual({ seen: true, play: false });
   });
 });

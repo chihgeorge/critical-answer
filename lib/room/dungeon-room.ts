@@ -165,6 +165,22 @@ export function fixedDie(raw: string | undefined): number | undefined {
   return raw && Number.isInteger(n) && n >= 1 && n <= 20 ? n : undefined;
 }
 const STYLE_EXAMPLES = 5;
+/** `s` cut to `max` UTF-16 units (as sanitizeText counts), its 「…」 included, never splitting a code point. */
+function capUnits(s: string, max: number): string {
+  if (s.length <= max) return s;
+  let out = "";
+  for (const ch of s) {
+    if (out.length + ch.length + 1 > max) break;
+    out += ch;
+  }
+  return `${out}…`;
+}
+
+/** ⚔️ 最後衝刺's owl line (last-sprint.md): 14 fixed units, names capped to 10 and 14, so at most 38 of MAX_EDIT_LINE's 40. */
+export function sprintLine(entering: string, blessed: string[]): string {
+  return `🦉 ${capUnits(entering, 10)}進魔王房了！${capUnits(blessed.join("、"), 14)}獲得祝福！`;
+}
+
 /** Server-side only: every answer in a bank, so a narration line that repeats one is rejected. */
 const allAnswers = (bank: Bank) => allQuestions(bank).map(answerText);
 
@@ -347,6 +363,8 @@ export class DungeonRoom {
    * cancel, so a narration started before a re-queue of the same text cannot clear the new one (D7). */
   private nextLine: { text: string; gen: number } | null = null;
   private nextLineGen = 0;
+  /** Scripted lines for narration `eventId` that has not landed yet (appendLine). Memory only. */
+  private heldLines: { eventId: number; lines: string[] } | null = null;
   /** eventId -> the nextLine gen its narration carries, until that narration is emitted. */
   private hostLineGens = new Map<number, number>();
   /** The host's choice at HOST_START. Only effective while the room has a key and budget left. */
@@ -480,6 +498,8 @@ export class DungeonRoom {
         // eventSeq is a leftover from before a reset(), which zeroes eventSeq.
         const gen = this.hostLineGens.get(eventId);
         this.hostLineGens.delete(eventId);
+        const held = this.heldLines?.eventId === eventId ? this.heldLines.lines : [];
+        if (held.length) this.heldLines = null;
         if (eventId > this.eventSeq || (this.lastNarration && eventId < this.lastNarration.eventId)) {
           this.dropUnsaidLine();
           return;
@@ -487,6 +507,8 @@ export class DungeonRoom {
         // Cleared before the broadcast, so the one save it triggers cannot bring the line back after a restart.
         const said = gen !== undefined && this.nextLine?.gen === gen;
         if (said) this.nextLine = null;
+        // A held line goes out with its narration, unless the game ended meanwhile.
+        if (this.game?.phase === "playing") lines = [...lines, ...held];
         this.lastNarration = { eventId, lines, rev: 0, done: 0 };
         this.broadcast({ type: "NARRATION", eventId, lines, rev: 0 });
         if (said) this.sendNextLineState();
@@ -1116,6 +1138,7 @@ export class DungeonRoom {
     this.conns.clear();
     this.eventSeq = 0;
     this.lastNarration = null;
+    this.heldLines = null;
     this.cue = null;
     this.cueSeq = 0;
     this.epilogue = null;
@@ -1599,6 +1622,7 @@ export class DungeonRoom {
     this.revealFrom = null;
     this.revealOnRead = false;
     this.lastNarration = null;
+    this.heldLines = null;
     this.cue = null;
     this.staleBeforeSeq = ++this.eventSeq;
     // A line queued in the game just left belongs to it, even if a narration still in flight carries it.
@@ -1832,6 +1856,21 @@ export class DungeonRoom {
 
   private sendNextLineState() {
     for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_NEXT_LINE_STATE", line: this.nextLine?.text ?? "" });
+  }
+
+  /** Adds a scripted line after narration `eventId` (last-sprint.md E5, shared with lucky-potion.md E5): at once with
+   * `rev + 1`, as a host edit goes out, or held until that narration lands. Cut to MAX_EDIT_LINE (team names are user
+   * text); dropped once the game is over. */
+  private appendLine(eventId: number, raw: string) {
+    const line = sanitizeText(raw, MAX_EDIT_LINE);
+    if (!line || this.game?.phase !== "playing") return;
+    const n = this.lastNarration;
+    if (n?.eventId === eventId) {
+      this.lastNarration = { ...n, lines: [...n.lines, line], rev: n.rev + 1 };
+      this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1 });
+    } else if (!n || n.eventId < eventId) {
+      this.heldLines = { eventId, lines: [...(this.heldLines?.eventId === eventId ? this.heldLines.lines : []), line] };
+    }
   }
 
   /** The host rewrites line `index` of narration `eventId` (host-narration-edit.md D9). It wins over anything the LLM
@@ -2307,6 +2346,11 @@ export class DungeonRoom {
     if (cardDue) this.phaseCardDue = true;
     this.broadcastState();
     const narration = this.narrate(eventId, event);
+    // ⚔️ 最後衝刺 fired on this answer: the owl names who walked in and who was blessed (last-sprint.md).
+    if (!prev.sprint && game.sprint) {
+      const name = (id: string) => game.teams.find((t) => t.id === id)?.name ?? "";
+      this.appendLine(eventId, sprintLine(name(teamId), game.sprint.teamIds.map(name)));
+    }
     if (game.phase === "finished" && !this.epilogueRequested) {
       this.logGame(game);
       this.epilogueRequested = true;

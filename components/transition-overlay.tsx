@@ -6,11 +6,11 @@ import type { Transition } from "@/lib/transitions";
 
 /** How long each transition covers the stage; reduced motion holds one still frame for less.
  * Keep MS just past the .px-door-* and .px-alarm-* animations in app/globals.css (doors 0.6 s + 1 s, alarm 2.4 s). */
-const MS = { open: 1700, boss: 2500 } as const;
-const STILL_MS = { open: 1000, boss: 1500 } as const;
+const MS = { open: 1700, boss: 2500, sprint: 2500 } as const;
+const STILL_MS = { open: 1000, boss: 1500, sprint: 1500 } as const;
 
 /**
- * The opening's stone doors and the boss's alarm banner, over the stage (lib/transitions.ts decides when).
+ * The opening's stone doors, the boss's alarm banner and ⚔️ 最後衝刺's banner (last-sprint.md), over the stage (lib/transitions.ts decides when).
  * They only cover: the question and narration underneath carry on. Reduced motion shows one still frame.
  */
 export function TransitionOverlay({ play, onDone }: { play: Transition; onDone: () => void }) {
@@ -31,6 +31,15 @@ export function TransitionOverlay({ play, onDone }: { play: Transition; onDone: 
             {play.team && <div className="mx-auto mt-4 max-w-[860px] truncate text-[30px] text-[var(--cream)] [text-shadow:3px_3px_0_var(--k)]">第一隊：{play.team}</div>}
           </div>
         </>
+      ) : play.kind === "sprint" ? (
+        // The alarm band's geometry, in --lav2 stripes, 190px for three lines.
+        <div className={`px-alarm-band px-sprint-band absolute inset-x-0${cls}`} style={{ top: 160, height: 190 }}>
+          <div className={`px-alarm-text px-sprint-text absolute inset-0 flex flex-col items-center justify-center${cls}`}>
+            <div className="px-title-gold" style={{ fontSize: 52, lineHeight: 1.1 }}>⚔️ 魔王門開了！</div>
+            <div className="mt-2 text-[26px] text-[var(--cream)] [text-shadow:3px_3px_0_var(--k)]">最後衝刺：其他隊答對一題就能進魔王房</div>
+            <div className="mt-1 max-w-[860px] truncate text-[26px] text-[var(--turn)] [text-shadow:3px_3px_0_var(--k)]">{play.names.join("、")} 獲得 ✨祝福（下次答對多一半）</div>
+          </div>
+        </div>
       ) : (
         <>
           <div className={`px-alarm-tint absolute inset-0${cls}`} />

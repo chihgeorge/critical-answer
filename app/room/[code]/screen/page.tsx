@@ -18,7 +18,7 @@ import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, SFX } from "@/lib/sfx";
+import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, SFX, SPRINT_FANFARE } from "@/lib/sfx";
 import { AnswerClock } from "@/components/answer-clock";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { IN_LOBBY, nextTransition, UNSEEN, type Transition } from "@/lib/transitions";
@@ -1093,6 +1093,7 @@ export default function ScreenPage() {
             transitionSeen.current = t.seen;
             if (t.play) setTransition(t.play);
             if (t.play?.kind === "boss") bgm.current?.playCue(BOSS_ALARM);
+            if (t.play?.kind === "sprint") bgm.current?.playCue(SPRINT_FANFARE);
           }
           if (msg.phase === "finished" && lastPhase.current === "playing" && msg.reveal?.dish) setFinale(true);
           // The story waits for the boss to cook (cooking I4) and the places to be called (podium-reveal.md), on every

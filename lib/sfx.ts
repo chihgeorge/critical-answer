@@ -80,6 +80,9 @@ export const SFX: Record<SoundCue, SfxNote[]> = {
 /** The boss's alarm banner (components/transition-overlay.tsx): a two-tone siren, twice, under the banner's blinks. */
 export const BOSS_ALARM: SfxNote[] = [n(0.4, 0.25, "A5"), n(0.65, 0.25, "E5"), n(0.9, 0.25, "A5"), n(1.15, 0.25, "E5")];
 
+/** ⚔️ 最後衝刺's banner (last-sprint.md D3): four quick rising notes and a held one, crit's trumpet family, another tune. */
+export const SPRINT_FANFARE: SfxNote[] = [n(0, 0.08, "G4"), n(0.08, 0.08, "C5"), n(0.16, 0.08, "E5"), n(0.24, 0.08, "G5"), n(0.32, 0.45, "C6")];
+
 /** 每題作答倒數 (answer-countdown.md D5): a soft tick for each of the last seconds, and a short buzz at 0. */
 export const ANSWER_TICK: SfxNote[] = [n(0, 0.05, "A5", "triangle")];
 export const ANSWER_TIME_UP: SfxNote[] = [n(0, 0.15, "E5"), n(0.18, 0.3, "C5")];

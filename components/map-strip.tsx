@@ -39,7 +39,7 @@ export function MapStrip({ view }: { view: SpectatorView }) {
     const key = placeKey(t);
     const arrived = !mounted.has(key);
     return (
-      <div key={key} role="img" aria-label={`${t.name}${turn ? "（輪到）" : ""}${t.online ? "" : "（離線）"}`} className="absolute" style={{ left: p.x, top, width: PAWN }}>
+      <div key={key} role="img" aria-label={`${t.name}${turn ? "（輪到）" : ""}${t.online ? "" : "（離線）"}${t.boon === "blessing" ? "（祝福）" : t.boon === "curse" ? "（詛咒）" : ""}`} className="absolute" style={{ left: p.x, top, width: PAWN }}>
         {arrived && <div className="px-room-flash pointer-events-none absolute" style={{ left: box.x - p.x, top: box.top - top, width: box.w, height: box.h }} />}
         <div className={arrived ? (t.inBossPhase ? "px-charge" : "px-hop-in") : ""}>
         {turn && (
@@ -47,8 +47,14 @@ export function MapStrip({ view }: { view: SpectatorView }) {
             ▼
           </span>
         )}
-        <div className="flex justify-center">
+        <div className="relative flex justify-center">
           <LabelChip tone="tag">{tags[i]}</LabelChip>
+          {/* A boon held (last-sprint.md D4): 12px on the tag's top-right corner, never widening the tag. */}
+          {t.boon && (
+            <span data-testid="pawn-boon" aria-hidden className="absolute text-[12px] leading-none" style={{ right: -6, top: -10 }}>
+              {t.boon === "blessing" ? "✨" : "💀"}
+            </span>
+          )}
         </div>
         <div className={`relative mx-auto w-[24px] ${turn ? "px-turn" : ""}`} style={{ opacity: t.online ? 1 : 0.5 }}>
           <Sprite kind="hero" variant={i} scale={1} />
