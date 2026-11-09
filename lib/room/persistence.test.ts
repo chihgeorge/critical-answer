@@ -687,7 +687,7 @@ describe("restoring after a restart", () => {
     judgeCorrect(first.room, host, T1);
     await new Promise((r) => setTimeout(r, 30));
     const eventId = (storage.data.get(SNAPSHOT_KEY) as any).lastNarration.eventId;
-    send(first.room, host, { type: "HOST_EDIT_NARRATION", eventId, rev: 0, index: 2, line: "改過的第三句" });
+    send(first.room, host, { type: "HOST_EDIT_NARRATION", eventId, rev: 0, index: 1, line: "改過的第二句" });
     send(first.room, screenOf(first.room), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 1, done: 1 });
     expect((storage.data.get(SNAPSHOT_KEY) as any).lastNarration).toMatchObject({ eventId, rev: 1, done: 1 });
 

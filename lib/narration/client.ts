@@ -3,8 +3,8 @@
 import { sanitizeText } from "../protocol";
 import { MAX_LINE } from "./runner";
 
-/** `lines`: 1-3 segments, played in order (result, atmosphere, transition — see
- * docs/designs/multi-segment-narration.md). `rev` counts host edits of this eventId (host-narration-edit.md D14). */
+/** `lines`: 1-3 segments, played in order (the result, an atmosphere or host line on big moments, a transition when
+ * there's a next team — see runner.ts targetSegmentCount and docs/designs/multi-segment-narration.md). `rev` counts host edits of this eventId (host-narration-edit.md D14). */
 export type NarrationState = { eventId: number; lines: string[]; rev: number } | null;
 
 /** Keep the line with the highest eventId; a late, older line is ignored. The same eventId again is a host edit: take it. */

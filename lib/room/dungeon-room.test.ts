@@ -2502,12 +2502,10 @@ describe("LLM narration and director (T8-T10)", () => {
       expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "bad_message" });
     });
 
-    /** A started game whose latest narration has three lines (the AI's), after one judgment. */
+    /** A started game whose latest narration has three lines (the AI's): the opening, since an ordinary turn has two. */
     async function threeLines() {
       const r = await llmRoom(() => textReply("第一句\n第二句\n第三句"));
       begin(r);
-      await sleep(30);
-      judge(r.room, r.hostConn);
       await sleep(30);
       const n = narrations(r.room).at(-1);
       expect(n.lines).toEqual(["第一句", "第二句", "第三句"]);
@@ -2627,7 +2625,7 @@ describe("LLM narration and director (T8-T10)", () => {
       const next = narrations(r.room).at(-1);
       expect(next.eventId).toBeGreaterThan(r.n.eventId);
       send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: next.eventId, rev: 0, index: 0, line: "新的開場" });
-      expect(narrations(r.room).at(-1)).toMatchObject({ eventId: next.eventId, rev: 1, lines: ["新的開場", "第二句", "第三句"] });
+      expect(narrations(r.room).at(-1)).toMatchObject({ eventId: next.eventId, rev: 1, lines: ["新的開場", "第三句"] }); // an ordinary turn: result + the reply's last line as the handoff
     });
 
 // Value: protects=the host's queued line is said once, in segment 2, by AI or scripted narration (host-next-line.md);
@@ -2654,7 +2652,7 @@ describe("LLM narration and director (T8-T10)", () => {
         judge(r.room, r.hostConn);
         await sleep(30);
         expect(r.calls.at(-1)!.system).not.toContain("珍珠能吃嗎");
-        expect(narrations(r.room).at(-1).lines).toEqual(["結果", "氣氛", "換人"]);
+        expect(narrations(r.room).at(-1).lines).toEqual(["結果", "換人"]); // an ordinary turn: result + the reply's last line as the handoff
       });
 
       it("writes the line over segment 2 when the AI left it out, and scripted narration says it word for word", async () => {
@@ -2704,7 +2702,7 @@ describe("LLM narration and director (T8-T10)", () => {
         expect(states(r.hostConn).at(-1)).toBe("");
         judge(r.room, r.hostConn);
         await sleep(30);
-        expect(narrations(r.room).at(-1).lines[1]).toBe("氣氛");
+        expect(narrations(r.room).at(-1).lines[1]).toBe("換人");
         expect(transcript(r.room, r.hostConn).filter((e: { kind?: string }) => e.kind === "next").map((e: { text: string }) => e.text)).toEqual(["珍珠能吃嗎", ""]);
       });
 
@@ -2738,7 +2736,7 @@ describe("LLM narration and director (T8-T10)", () => {
         await sleep(10);
         releases[1]();
         await sleep(30);
-        expect(narrations(r.room).map((n: { lines: string[] }) => n.lines[1]).slice(-2)).toEqual(["珍珠能吃嗎", "氣氛"]);
+        expect(narrations(r.room).map((n: { lines: string[] }) => n.lines[1]).slice(-2)).toEqual(["珍珠能吃嗎", "換人"]);
         expect(states(r.hostConn).at(-1)).toBe("");
       });
 
@@ -2755,7 +2753,7 @@ describe("LLM narration and director (T8-T10)", () => {
         await sleep(10);
         releases[0](); // narration 1 lands after 2: dropped as stale
         await sleep(30);
-        expect(narrations(r.room).at(-1).lines[1]).toBe("氣氛");
+        expect(narrations(r.room).at(-1).lines[1]).toBe("換人");
         expect(states(r.hostConn).at(-1)).toBe("珍珠能吃嗎");
         judge(r.room, r.hostConn);
         releases[2]();

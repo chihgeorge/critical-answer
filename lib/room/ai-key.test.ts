@@ -126,15 +126,15 @@ describe("recent lines", () => {
 
   it("keeps only the newest 8 AI lines that reached the screen, not the scripted ones", async () => {
     let n = 0;
-    // The middle line has markup, so the screen gets a scripted line there instead.
-    const r = setup({ messages: () => line(`第${++n}回一\n<b>壞</b>\n第${n}回三`) });
+    // The second line has markup and there is no third, so the screen gets scripted lines after the first: one AI line per event.
+    const r = setup({ messages: () => line(`第${++n}回一\n<b>壞</b>`) });
     await r.useKey();
     await r.start();
-    for (let i = 0; i < 5; i++) await r.judge();
-    expect(r.prompts.length).toBe(6);
+    for (let i = 0; i < 9; i++) await r.judge();
+    expect(r.prompts.length).toBe(10);
     const last = r.prompts.at(-1)!;
     expect(last).not.toContain("第1回");
-    for (let k = 2; k <= 5; k++) expect(last).toContain(`- 第${k}回一\n- 第${k}回三`);
+    expect(last).toContain(Array.from({ length: 8 }, (_, k) => `- 第${k + 2}回一`).join("\n"));
     expect(last).not.toContain("壞");
   });
 

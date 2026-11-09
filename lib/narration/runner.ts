@@ -52,12 +52,23 @@ function epilogueCandidates(parts: EpiloguePart[], raw: string[]): (string | und
   return [...Array<undefined>(n - 1), raw.length < n ? raw.at(-1) : undefined];
 }
 
-/** Segment count for a non-epilogue event: 3 (result + atmosphere + transition) when there's a next
- * team, 2 (result + atmosphere) when there isn't — boss-kill, or the game's last judged event. See
- * docs/designs/multi-segment-narration.md's D3. */
+/**
+ * Whether a non-epilogue event gets a middle line (atmosphere, or the host's queued line) between the result and the
+ * handoff. Ordinary correct / retry / flee turns skip the atmosphere, so a whole event is less tiring to listen to
+ * (TODOS 旁白語氣是否耐聽); the big moments and a natural 20 or 1 keep it. With no next team it is the closing beat.
+ */
+export function hasMiddleLine(event: Exclude<NarrationEvent, { type: "epilogue" }>): boolean {
+  if (!event.next || event.hostLine) return true;
+  if (event.type !== "correct" && event.type !== "retry" && event.type !== "flee") return true;
+  const warrior = "warriorRoll" in event ? event.warriorRoll : undefined;
+  return ("roll" in event && event.roll !== undefined) || warrior === 20 || warrior === 1;
+}
+
+/** Segment count for a non-epilogue event: the result, the middle line when hasMiddleLine, and the transition when
+ * there's a next team (none after boss-kill or the game's last judged event). See docs/designs/multi-segment-narration.md's D3. */
 export function targetSegmentCount(event: NarrationEvent): number {
   if (event.type === "epilogue") return epilogueParts(event).length;
-  return event.next ? 3 : 2;
+  return 1 + (hasMiddleLine(event) ? 1 : 0) + (event.next ? 1 : 0);
 }
 
 export interface TranscriptEntry {
@@ -161,7 +172,14 @@ export function createRunner(opts: {
       };
       const lines: string[] = [];
       const sources: string[] = [];
-      const candidates = parts && providerLines ? epilogueCandidates(parts, providerLines) : providerLines;
+      // Too many lines before a next team (3 for a 2-line turn): the handoff is the model's last line, not whatever
+      // sits in the last slot, so the team on turn is still named.
+      const candidates =
+        parts && providerLines
+          ? epilogueCandidates(parts, providerLines)
+          : providerLines && event.type !== "epilogue" && event.next && providerLines.length > targetCount
+            ? [...providerLines.slice(0, targetCount - 1), providerLines[providerLines.length - 1]]
+            : providerLines;
       for (let i = 0; i < targetCount; i++) {
         const candidate = candidates?.[i];
         // Segment 0 already passed validLine(max) above (that's what set providerLines); an epilogue's every segment
