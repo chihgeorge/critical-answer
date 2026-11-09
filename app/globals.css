@@ -276,6 +276,9 @@ body {
 }
 .px-alarm-text { background: var(--k); border-block: 8px solid var(--warn); animation: px-alarm-text 2.4s steps(1) both; }
 @keyframes px-alarm-text { 0%, 16% { opacity: 0; } 17%, 30% { opacity: 1; } 31%, 36% { opacity: 0; } 37%, 50% { opacity: 1; } 51%, 56% { opacity: 0; } 57%, 100% { opacity: 1; } }
+/* ⚔️ 最後衝刺 (last-sprint.md): the alarm band's sweep and blinks, in --lav2 instead of --warn. */
+.px-sprint-band { background: repeating-linear-gradient(-45deg, var(--lav2) 0 28px, var(--k) 28px 56px); }
+.px-sprint-text { border-block-color: var(--lav2); }
 .px-door.px-still, .px-door-title.px-still, .px-alarm-tint.px-still, .px-alarm-band.px-still, .px-alarm-text.px-still { animation: none; }
 /* The music card's equalizer (docs/designs/youtube-questions.md D15): bars jump between two heights. */
 @keyframes px-eq { 50% { transform: scaleY(0.35); } }

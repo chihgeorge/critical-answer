@@ -40,8 +40,9 @@ describe("game log", () => {
       bossRounds: 2,
     });
     expect(log.teams).toEqual([
-      expect.objectContaining({ name: "Alpha", classId: "chef", turns: 3, bossRound: 2, turnsToBoss: 2, killedBoss: false }),
-      expect.objectContaining({ name: "Bravo", classId: null, turns: 3, bossRound: 2, turnsToBoss: 2, killedBoss: true }),
+      expect.objectContaining({ name: "Alpha", classId: "chef", turns: 3, bossRound: 2, turnsToBoss: 2, killedBoss: false, sprintBlessed: false }),
+      // ⚔️ 最後衝刺: A's entry blessed B, still outside (last-sprint.md E4).
+      expect.objectContaining({ name: "Bravo", classId: null, turns: 3, bossRound: 2, turnsToBoss: 2, killedBoss: true, sprintBlessed: true }),
     ]);
     expect(log.teams.map((t) => t.rank).sort()).toEqual([1, 2]);
     // No question or answer text.

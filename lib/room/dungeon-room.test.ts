@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { DungeonRoom, fixedDie } from "./dungeon-room";
+import { DungeonRoom, fixedDie, sprintLine } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { DIFFICULTIES, answerText, bossPhaseStates, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
 import { MONSTERS, catalogMonster, variantOf } from "../monster-catalog";
@@ -2147,6 +2147,72 @@ describe("narration (T5-T7)", () => {
     await flush();
     expect(all(room).filter((m) => m.type === "NARRATION")).toHaveLength(before);
     expect(all(room).filter((m) => m.type === "STATE").at(-1).eventId).toBe(1);
+  });
+
+  describe("⚔️ 最後衝刺's owl line (last-sprint.md)", () => {
+    const lowThreshold = (room: DungeonRoom) => (room.game = { ...room.game!, config: { ...room.game!.config, bossThreshold: 1 } });
+
+    it("rides on the narration of the answer that opened the door, held until it lands", async () => {
+      const { room, hostConn } = start(3);
+      await flush();
+      lowThreshold(room);
+      judgeCorrect(room, hostConn);
+      expect(room.game!.sprint?.teamIds).toHaveLength(2);
+      await flush();
+      const narr = all(room).filter((m) => m.type === "NARRATION" && m.eventId === 2);
+      expect(narr).toHaveLength(1);
+      expect(narr[0].lines.at(-1)).toBe("🦉 Team 0進魔王房了！Team 1、Team 2獲得祝福！");
+    });
+
+    it("is appended with rev + 1 to a narration already on screen, and dropped once the game is over", async () => {
+      const { room } = start(2);
+      await flush();
+      (room as any).appendLine(1, "🦉 一行");
+      const last = all(room).filter((m) => m.type === "NARRATION").at(-1);
+      expect(last).toMatchObject({ eventId: 1, rev: 1 });
+      expect(last.lines.at(-1)).toBe("🦉 一行");
+      const count = all(room).length;
+      room.game = { ...room.game!, phase: "finished" };
+      (room as any).appendLine(1, "🦉 兩行");
+      expect(all(room)).toHaveLength(count);
+    });
+
+    it("drops a held line when the game ends before its narration lands, and a reset forgets any hold", async () => {
+      const { room, hostConn } = start(3);
+      await flush();
+      lowThreshold(room);
+      judgeCorrect(room, hostConn);
+      expect((room as any).heldLines).toMatchObject({ eventId: 2 });
+      room.game = { ...room.game!, phase: "finished" };
+      await flush();
+      const narr = all(room).filter((m) => m.type === "NARRATION" && m.eventId === 2);
+      expect(narr.flatMap((m) => m.lines).some((l: string) => l.startsWith("🦉"))).toBe(false);
+      expect((room as any).heldLines).toBeNull();
+      // reset() restarts eventIds at 0: an old hold must not ride the next game's narration of the same id.
+      (room as any).heldLines = { eventId: 2, lines: ["🦉 舊的"] };
+      (room as any).reset();
+      expect((room as any).heldLines).toBeNull();
+    });
+
+    it("has no owl line on the host's 送進魔王房", async () => {
+      const { room, hostConn, ids } = start(3);
+      await flush();
+      const before = all(room).filter((m) => m.type === "NARRATION").length;
+      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+      await flush();
+      expect(room.game!.sprint).toBeDefined();
+      expect(all(room).filter((m) => m.type === "NARRATION")).toHaveLength(before);
+      expect(all(room).filter((m) => m.type === "STATE").at(-1).view.sprint).toEqual(room.game!.sprint);
+    });
+
+    it("caps the names, never the 獲得祝福！, and fits MAX_EDIT_LINE with two 20-character tied names", () => {
+      const long = "一二三四五六七八九十一二三四五六七八九十";
+      const line = sprintLine(long, [long, long]);
+      expect(line).toBe("🦉 一二三四五六七八九…進魔王房了！一二三四五六七八九十一二三…獲得祝福！");
+      expect(line.length).toBe(38);
+      // An emoji (2 units) is never split.
+      expect(sprintLine("隊🐉🐉🐉🐉🐉🐉", ["乙"])).toBe("🦉 隊🐉🐉🐉🐉…進魔王房了！乙獲得祝福！");
+    });
   });
 
   it("replays the last narration to a connection that arrives later", async () => {

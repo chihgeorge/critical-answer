@@ -13,6 +13,7 @@ import { MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName,
 import { ABILITY_USES, CHEF_BONUS_PERCENT, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
+import { sprintSeen } from "@/lib/transitions";
 import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
@@ -656,6 +657,14 @@ export default function PlayPage() {
   /** A boss kill seen live (cooking I5): the end card and the epilogue wait for the big screen's podium. */
   const [finale, setFinale] = useState(false);
   const [podium, setPodium] = useState(true);
+  /** ⚔️ 最後衝刺 seen on this connection (lib/transitions.ts sprintSeen), and its 3-second card for a blessed team. */
+  const sprintSeenRef = useRef<boolean | null>(null);
+  const [sprintCard, setSprintCard] = useState(false);
+  useEffect(() => {
+    if (!sprintCard) return;
+    const id = setTimeout(() => setSprintCard(false), 3000);
+    return () => clearTimeout(id);
+  }, [sprintCard]);
 
 
   /** A network drop (not a rest): the room skips an offline team's turn, so the team should know
@@ -688,6 +697,7 @@ export default function PlayPage() {
       joined.current = false;
       claimed.current = false;
       livePhase.current = null;
+      sprintSeenRef.current = null;
       const id = getOrCreateTeamId();
       setTeamId(id);
       const password = (sentPassword.current = joinPasswordFor(code));
@@ -732,6 +742,7 @@ export default function PlayPage() {
           seen.current.clear();
           lastGame.current = null;
           livePhase.current = null;
+          sprintSeenRef.current = false;
           drop.current = null;
           break;
         case "STATE": {
@@ -743,6 +754,14 @@ export default function PlayPage() {
             setPodium(false);
           }
           setGame(msg);
+          {
+            const s = sprintSeen(sprintSeenRef.current, msg.view);
+            sprintSeenRef.current = s.seen;
+            if (s.play && msg.view.sprint!.teamIds.includes(getOrCreateTeamId())) {
+              setSprintCard(true);
+              navigator.vibrate?.(80);
+            }
+          }
           if (msg.view.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           lastGame.current = msg;
           livePhase.current = msg.phase;
@@ -849,6 +868,15 @@ export default function PlayPage() {
     <main className="relative min-h-screen overflow-hidden">
       <SceneBackground theme={turn?.theme ?? "stone"} cols={48} rows={100} arch={false} className="fixed inset-0" />
 
+      {sprintCard && (
+        // Covers for 3 s and takes no input (last-sprint.md D2).
+        <div data-testid="sprint-card" className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center px-6">
+          <Panel tone="turn" role="status" className="px-5 py-5 text-center">
+            <div className="text-[24px]">✨ 你們拿到祝福！</div>
+            <div className="mt-2 text-[14px]">魔王門開了：下次答對多一半</div>
+          </Panel>
+        </div>
+      )}
       <div className="relative z-10 flex min-h-screen flex-col gap-4 px-[14px] pb-4 pt-5">
         {reset && (
           <div className="px-panel text-center text-[15px]" style={{ background: "var(--danger)", color: "#fff" }}>

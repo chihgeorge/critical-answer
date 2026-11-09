@@ -293,6 +293,9 @@ export interface GameState {
   ranking?: string[];
   /** The tie-break d20s, in the order they were rolled (lib/podium.ts). */
   tieRolls?: TieRoll[];
+  /** ⚔️ 最後衝刺 (docs/designs/last-sprint.md): set once, when the first team entered the boss room, naming the trailing
+   * teams it blessed. Never empty; its presence is the once-per-game guard. Absent in saves from before it. */
+  sprint?: { teamIds: string[] };
 }
 
 export interface LockedOption {
@@ -945,6 +948,7 @@ export function answerQuestion(
           queuedQuestionId: dealt.queuedQuestionId,
         })),
       };
+      nextGame = applySprint(game, nextGame);
       outcome = { type: "correct-room-advance", teamId, pointsAwarded, ...gain, nextRoomIndex, entersBoss, ...rollMark };
     } else if (fleeChoice === "flee") {
       const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
@@ -1171,7 +1175,21 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
-  return { ...game, teams, ...(stillFaced ? {} : dropEliminated(game, left)) };
+  return applySprint(game, { ...game, teams, ...(stillFaced ? {} : dropEliminated(game, left)) });
+}
+
+/**
+ * ⚔️ 最後衝刺 (docs/designs/last-sprint.md): the first time any team enters the boss room, the trailing teams still
+ * outside (lowest 飽足感, ties all) get the event room's blessing, which replaces a curse and never stacks. Once per game.
+ */
+export function applySprint(prev: GameState, next: GameState): GameState {
+  if (prev.sprint || prev.teams.some((t) => t.inBoss) || !next.teams.some((t) => t.inBoss) || next.config.bossThreshold <= 0) return next;
+  // Offline teams count: they are still in the game.
+  const outside = next.teams.filter((t) => !t.inBoss);
+  if (next.teams.length < 2 || outside.length === 0) return next;
+  const low = Math.min(...outside.map((t) => t.reward));
+  const teamIds = outside.filter((t) => t.reward === low).map((t) => t.id);
+  return { ...next, sprint: { teamIds }, teams: next.teams.map((t) => (teamIds.includes(t.id) ? { ...t, boon: "blessing" as const } : t)) };
 }
 
 /* ---------- Event rooms (docs/designs/event-rooms.md) ---------- */
@@ -1457,6 +1475,8 @@ export interface SpectatorView {
   buzz?: BuzzState;
   /** The cleric whose wrong lock waits for its 祈禱 (canPray), or null. */
   awaitingPrayer: string | null;
+  /** ⚔️ 最後衝刺 once it fired (GameState.sprint): the screen and phones name the blessed teams. */
+  sprint?: { teamIds: string[] };
 }
 
 export function getSpectatorView(game: GameState): SpectatorView {
@@ -1494,5 +1514,6 @@ export function getSpectatorView(game: GameState): SpectatorView {
     pendingWrong: game.pendingWrong,
     ...(isBuzzPhase(game) ? { buzz: currentBuzz(game) } : {}),
     awaitingPrayer: game.pendingWrong && canPray(game, game.pendingWrong.teamId) ? game.pendingWrong.teamId : null,
+    ...(game.sprint ? { sprint: game.sprint } : {}),
   };
 }

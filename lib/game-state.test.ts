@@ -11,6 +11,9 @@ import {
   recordWrongLock,
   rollBossKillDice,
   sendToBoss,
+  applySprint,
+  enterEventRoom,
+  openEvent,
   queueQuestion,
   pickBlock,
   pickableQuestionIds,
@@ -2022,7 +2025,8 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
     let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds, buzzer: true }]);
     g = sendToBoss(g, "T0");
-    g = { ...g, currentTurnIndex: 0 };
+    // Plain hits here: drop the ⚔️ 最後衝刺 blessing T0's entry gave the others.
+    g = { ...g, currentTurnIndex: 0, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
     g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
     return enterNextBossPhase(g);
   }
@@ -2139,5 +2143,86 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     const restored = JSON.parse(JSON.stringify(g)) as GameState;
     expect(restored.buzz).toEqual({ questionId: "b-a", out: ["T1"] });
     expect(() => buzzIn(restored, "T1", "b-a", true)).toThrow("buzz_out");
+  });
+});
+
+describe("⚔️ 最後衝刺 (docs/designs/last-sprint.md)", () => {
+  const withReward = (g: GameState, rewards: Record<string, number>): GameState => ({ ...g, teams: g.teams.map((t) => (t.id in rewards ? { ...t, reward: rewards[t.id] } : t)) });
+  const boons = (g: GameState) => g.teams.map((t) => t.boon);
+  /** T0 answers right and walks into the boss room (threshold 1). */
+  const enter = (g: GameState) => answerQuestion(g, "T0", g.teams[0].currentQuestionId, true, "retry", first).game;
+
+  it("blesses the lowest-飽足感 team outside the boss room when the first team walks in on a correct answer", () => {
+    const g = enter(withReward(makeGame({ bossThreshold: 1 }), { T1: 5, T2: 3 }));
+    expect(g.sprint).toEqual({ teamIds: ["T2"] });
+    expect(boons(g)).toEqual([undefined, undefined, "blessing"]);
+    expect(getSpectatorView(g).sprint).toEqual({ teamIds: ["T2"] });
+  });
+
+  it("blesses every team tied for lowest, offline ones too", () => {
+    const g = enter(setTeamOnline(makeGame({ bossThreshold: 1 }), "T2", false));
+    expect(g.sprint).toEqual({ teamIds: ["T1", "T2"] });
+    expect(boons(g)).toEqual([undefined, "blessing", "blessing"]);
+  });
+
+  it("replaces a curse, and a blessing already held is named but does not stack", () => {
+    const g0 = makeGame({ bossThreshold: 1 });
+    const g = enter({ ...g0, teams: g0.teams.map((t) => (t.id === "T1" ? { ...t, boon: "curse" as const } : t.id === "T2" ? { ...t, boon: "blessing" as const } : t)) });
+    expect(g.sprint).toEqual({ teamIds: ["T1", "T2"] });
+    expect(boons(g)).toEqual([undefined, "blessing", "blessing"]);
+  });
+
+  it("fires once: a second entry changes nothing", () => {
+    const g = enter(withReward(makeGame({ bossThreshold: 1 }), { T1: 5, T2: 3 }));
+    const g2 = sendToBoss(withReward({ ...g, teams: g.teams.map((t) => ({ ...t, boon: undefined })) }, { T1: 0 }), "T2");
+    expect(g2.sprint).toEqual({ teamIds: ["T2"] });
+    expect(boons(g2)).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("does not fire with a boss threshold of 0, with one team, or with no team left outside", () => {
+    const zero = makeGame({ bossThreshold: 0 });
+    expect(applySprint({ ...zero, teams: zero.teams.map((t) => ({ ...t, inBoss: false })) }, zero).sprint).toBeUndefined();
+    expect(enter(makeGame({ bossThreshold: 1, teamCount: 1 })).sprint).toBeUndefined();
+    const two = makeGame({ bossThreshold: 15, teamCount: 2 });
+    const allIn = { ...two, teams: two.teams.map((t) => ({ ...t, inBoss: true })) };
+    expect(applySprint(two, allIn).sprint).toBeUndefined();
+  });
+
+  it("never fires late in a restored game that already has a team in the boss room", () => {
+    const g = sendToBoss({ ...makeGame({ bossThreshold: 15 }), sprint: undefined }, "T0");
+    const restored: GameState = { ...g, sprint: undefined, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
+    expect(sendToBoss(restored, "T1").sprint).toBeUndefined();
+  });
+
+  it("fires on the host's sendToBoss, and the blessing pays on that team's first boss hit", () => {
+    const g = sendToBoss(withReward(makeGame({ bossThreshold: 15 }), { T0: 20, T2: 10 }), "T2");
+    expect(g.sprint).toEqual({ teamIds: ["T1"] });
+    const inBoss = sendToBoss(g, "T1");
+    const turn = { ...inBoss, currentTurnIndex: 1 };
+    const { outcome } = answerQuestion(turn, "T1", turn.boss.currentQuestionId, true, "retry", first);
+    expect(outcome).toMatchObject({ type: "correct-boss-hit", reward: 15 });
+  });
+
+  it("does not fire on a buzzer phase's pull: a team is already in the boss room", () => {
+    const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
+    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["b-a"], buzzer: true }]);
+    g = sendToBoss(g, "T0");
+    const blessed = g.sprint;
+    g = answerQuestion({ ...g, currentTurnIndex: 0 }, "T0", "p1-a", true, "retry", first).game;
+    expect(enterNextBossPhase(g).sprint).toEqual(blessed);
+  });
+
+  it("the blessing pays +50% on the next correct room answer", () => {
+    const g = enter(withReward(makeGame({ bossThreshold: 1 }), { T1: 5, T2: 3 }));
+    const { outcome } = answerQuestion({ ...g, currentTurnIndex: 2 }, "T2", g.teams[2].currentQuestionId, true, "retry", first);
+    expect(outcome).toMatchObject({ type: "correct-room-advance", reward: 15 });
+  });
+
+  it("a curse event opened later still replaces the sprint blessing", () => {
+    const g = enter(withReward(makeGame({ bossThreshold: 1 }), { T2: 5 }));
+    expect(g.teams[1].boon).toBe("blessing");
+    const cursed = openEvent(enterEventRoom(g, "T1", { scene: "idol", outcome: "curse" }), "T1", first).game;
+    expect(cursed.teams[1].boon).toBe("curse");
+    expect(cursed.sprint).toEqual({ teamIds: ["T1"] });
   });
 });

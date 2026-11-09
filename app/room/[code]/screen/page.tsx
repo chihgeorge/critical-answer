@@ -18,7 +18,7 @@ import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, SFX } from "@/lib/sfx";
+import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, SFX, SPRINT_FANFARE } from "@/lib/sfx";
 import { AnswerClock } from "@/components/answer-clock";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { IN_LOBBY, nextTransition, UNSEEN, type Transition } from "@/lib/transitions";
@@ -751,7 +751,21 @@ export default function ScreenPage() {
   /** The doors and the boss alarm (lib/transitions.ts): what this connection has seen, and the one playing. */
   const transitionSeen = useRef(UNSEEN);
   const [transition, setTransition] = useState<Transition | null>(null);
-  const endTransition = useCallback(() => setTransition(null), []);
+  /** A boss alarm due while ⚔️ 最後衝刺's banner shows waits for it to end, sound included (last-sprint.md: the sprint wins). */
+  const queuedBoss = useRef<Transition | null>(null);
+  const sprintShowing = useRef(false);
+  const stopTransitions = () => {
+    queuedBoss.current = null;
+    sprintShowing.current = false;
+    setTransition(null);
+  };
+  const endTransition = useCallback(() => {
+    const next = queuedBoss.current;
+    queuedBoss.current = null;
+    sprintShowing.current = false;
+    setTransition(next);
+    if (next) bgm.current?.playCue(BOSS_ALARM);
+  }, []);
   /** The eventId of the last served reveal: its late narration line must not cut off 上菜's lines (cooking I1),
    * nor be read over the next question once 下一題 closes it (closing a reveal does not move eventId). */
   const servedEvent = useRef<number | null>(null);
@@ -1055,7 +1069,7 @@ export default function ScreenPage() {
       sfxSeen.current = null;
       lastPhase.current = null;
       transitionSeen.current = UNSEEN;
-      setTransition(null);
+      stopTransitions();
       // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
       progress.current = null;
     },
@@ -1073,7 +1087,7 @@ export default function ScreenPage() {
           setFinale(false);
           lastPhase.current = null;
           transitionSeen.current = IN_LOBBY;
-          setTransition(null);
+          stopTransitions();
           podiumReady.current = true;
           heldEpilogue.current = null;
           servedEvent.current = null;
@@ -1091,8 +1105,13 @@ export default function ScreenPage() {
           {
             const t = nextTransition(transitionSeen.current, msg);
             transitionSeen.current = t.seen;
-            if (t.play) setTransition(t.play);
-            if (t.play?.kind === "boss") bgm.current?.playCue(BOSS_ALARM);
+            if (t.play?.kind === "boss" && sprintShowing.current) queuedBoss.current = t.play;
+            else if (t.play) {
+              setTransition(t.play);
+              sprintShowing.current = t.play.kind === "sprint";
+              if (t.play.kind === "boss") bgm.current?.playCue(BOSS_ALARM);
+              if (t.play.kind === "sprint") bgm.current?.playCue(SPRINT_FANFARE);
+            }
           }
           if (msg.phase === "finished" && lastPhase.current === "playing" && msg.reveal?.dish) setFinale(true);
           // The story waits for the boss to cook (cooking I4) and the places to be called (podium-reveal.md), on every

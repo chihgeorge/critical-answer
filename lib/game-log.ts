@@ -39,6 +39,8 @@ export interface GameLog {
     killedBoss: boolean;
     /** The event rooms this team opened, in order (docs/designs/event-rooms.md). */
     events: EventOutcome[];
+    /** ⚔️ 最後衝刺 blessed this team (docs/designs/last-sprint.md E4): kept apart from event blessings. Absent (false) in older logs. */
+    sprintBlessed: boolean;
   }[];
 }
 
@@ -72,6 +74,7 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
       turnsToBoss: t.bossAt?.turns ?? null,
       killedBoss: game.boss.killedByTeamId === t.id,
       events: t.events ?? [],
+      sprintBlessed: game.sprint?.teamIds.includes(t.id) ?? false,
     })),
   };
 }
