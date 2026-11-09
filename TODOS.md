@@ -30,7 +30,7 @@
 - [逃跑・換房（flee-switch-room）](#逃跑換房flee-switch-room) — M（人工約 1-2 天 / CC 約 1 小時）
 - [魔王分階段的兩個小瑕疵（/qa 2026-10-28）](#魔王分階段的兩個小瑕疵qa-2026-10-28) — 未註明
 - [地城料理風格 3：旁白用美食節目／生物學家口吻](#地城料理風格-3旁白用美食節目生物學家口吻) — S（人工約半天 / CC 約 20 分鐘）
-- [上架手機版本](#上架手機版本) — PWA S（人工約半天 / CC 約 30 分鐘）；上架 L（人工約 1–2 週 / CC 約半天，不含審核）
+- [上架手機版本](#上架手機版本) — 上架 L（人工約 1–2 週 / CC 約半天，不含審核）；PWA 已做
 - [每次行動可以選不同的動作，不只答題](#每次行動可以選不同的動作不只答題) — 未註明
 - [每個職業有自己的動畫和音效](#每個職業有自己的動畫和音效) — 未註明
 - [法師填空題提示：答案帶註記時第一個字會誤導](#法師填空題提示答案帶註記時第一個字會誤導) — 未註明
@@ -445,14 +445,14 @@
 
 ## 上架手機版本
 
-**What:** 把玩家手機頁做成可以從 App Store／Google Play 安裝的版本。先比較三條路：PWA（加到主畫面，不上架）、用 Capacitor 包現有網頁再上架、或原生 app。
+**What:** 把玩家手機頁做成可以從 App Store／Google Play 安裝的版本：用 Capacitor 包現有網頁再上架，或原生 app。PWA（加到主畫面，不上架）已做，見 Completed；站長 2026-11-09 決定先只做 PWA，上架這部分留著。
 
 **Why:** 玩家現在要掃 QR 碼開瀏覽器；裝成 app 可以全螢幕、不怕誤關分頁，也方便下次再玩。
 
 **Context:**
 - `app/room/[code]/play/`
 
-**Effort/Priority:** PWA S（人工約半天 / CC 約 30 分鐘）；上架 L（人工約 1–2 週 / CC 約半天，不含審核） / P3
+**Effort/Priority:** 上架 L（人工約 1–2 週 / CC 約半天，不含審核） / P3
 
 **Depends on:** 無。
 
@@ -792,6 +792,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 上架手機版本：PWA 部分
+
+- **玩家可以把手機頁加到主畫面，全螢幕打開** · 版號合併時定 · `app/manifest.ts` 加 web app manifest（`display: standalone`、史萊姆 192／512 圖示），根版面加 `appleWebApp`。在 `/room/<code>/play` 加的，連到這個房間自己的 manifest（`start_url` 是這個房間的手機頁），Android 從圖示打開直接回到房間；iPhone 本來就用加入時的網址，但主畫面版本不和 Safari 共用資料，在 Safari 加入的隊伍從圖示打開算新手機（主持指南寫了怎麼接回）。不加 service worker、不做離線快取。上架 App Store／Google Play 的部分留在 P3。
 
 ## 題目比隊伍少時，兩隊可能一直拿同一題
 
