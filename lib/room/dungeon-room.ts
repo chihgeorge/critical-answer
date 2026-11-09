@@ -2290,7 +2290,7 @@ export class DungeonRoom {
       return;
     }
     try {
-      this.game = sendToBoss(this.game, teamId);
+      this.game = sendToBoss(this.game, teamId, this.rng);
       this.broadcastState();
     } catch (err) {
       this.sendInvalid(conn, err);

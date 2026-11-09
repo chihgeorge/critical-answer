@@ -171,6 +171,9 @@ export interface Team {
   bossAt?: { round: number; turns: number; earned?: true };
   /** Wrong answers this team fled from, boss room too (🏃 逃跑大師, podium-titles.md). Absent until the first. */
   flees?: number;
+  /** The room question this team answered wrong on and stayed (重答): splitShared moves the other team off it first.
+   * Cleared once the team leaves it, so a later deal of the same id starts without it. Absent until the first. */
+  wrongOn?: string;
   /** The event room this team stands in (docs/designs/event-rooms.md), drawn as it walked in: its next turn opens it. */
   event?: RoomEvent;
   /** A curse or blessing waiting for this team's next correct answer (event-rooms.md D12). */
@@ -480,6 +483,50 @@ function dealFor(game: GameState, team: Team, difficulty: Difficulty, revealed: 
   return { ...deal(game.pools, game.usedQuestionIds, revealed, game.teams, difficulty, rng, own), queuedQuestionId: q };
 }
 
+/**
+ * A bank with fewer questions than teams can leave two teams on one room question (deal()); then one team's
+ * correct answer shows the other its answer. Whenever a question may have come free (a team answered, fled,
+ * opened an event or went to the boss room), move one team of each shared question to a free, unrevealed one.
+ * A revealed one would hand over a known answer, so then they stay together. In a bank big enough nobody
+ * shares, so this changes nothing there (and draws no rng).
+ * Never moved: the team on turn (it may be mid-answer; the screen and phones show only its question, so a
+ * move of anyone else shows up on that team's next turn), counted both ways: the team at currentTurnIndex even
+ * offline (its lock or roll may be in its beat, or it just answered) and the team currentTurnTeamId names. Nor a
+ * wrong lock or typed answer waiting for its choice or judgment (it would land on a question the team no longer
+ * faces), or a team in an event room. deal(), not dealFor(): the host's queued pick waits for the team's next room.
+ */
+function splitShared(game: GameState, rng: () => number): GameState {
+  const keep = [game.turnOrder[game.currentTurnIndex], currentTurnTeamId(game)];
+  for (;;) {
+    const room = game.teams.filter((t) => !t.inBoss);
+    const shared = (t: Team) => room.some((o) => o.id !== t.id && o.currentQuestionId === t.currentQuestionId);
+    const movable = room.filter((t) => !keep.includes(t.id) && game.pendingWrong?.teamId !== t.id && t.typedAnswer === undefined && !t.event && shared(t));
+    // A team with no wrong answer on the question moves first: the other keeps the question it has worked on
+    // and its red tiles. Then the later team in turn order, just a fixed rule both screens can predict (without
+    // 擲先攻 it is also the team createGame dealt the repeat to; initiative reorders turnOrder after the deal).
+    const rank = (t: Team) => (t.wrongOn === t.currentQuestionId ? 0 : game.turnOrder.length) + game.turnOrder.indexOf(t.id);
+    movable.sort((a, b) => rank(b) - rank(a));
+    let move: { t: Team; dealt: ReturnType<typeof deal> } | undefined;
+    for (const t of movable) {
+      const dealt = deal(game.pools, game.usedQuestionIds, game.revealedQuestionIds, game.teams, t.currentDifficulty, rng, t.currentQuestionId);
+      if (!room.some((o) => o.currentQuestionId === dealt.questionId) && !game.revealedQuestionIds.includes(dealt.questionId)) {
+        move = { t, dealt };
+        break;
+      }
+    }
+    if (!move) return game;
+    const { t, dealt } = move;
+    const checks = { ...game.checks };
+    delete checks[checkKey(t.currentQuestionId, t.id)];
+    game = {
+      ...game,
+      usedQuestionIds: dealt.used,
+      ...(game.checks ? { checks } : {}),
+      teams: patchTeam(game.teams, t.id, () => ({ currentQuestionId: dealt.questionId, currentSelection: null, wrongOn: undefined })),
+    };
+  }
+}
+
 /** The difficulty a team's next correct answer deals from: its next room's (the last room repeats). */
 function nextRoomDifficulty(game: GameState, team: Team): Difficulty {
   return game.rooms[Math.min(team.roomIndex + 1, game.rooms.length - 1)].baseDifficulty;
@@ -640,7 +687,9 @@ export function enterNextBossPhase(game: GameState): GameState {
   const phase = boss.phases[phaseIndex];
   if (!boss.phasePending || !phase) throw new InvalidActionError("no boss phase is waiting to start");
   // A buzzer phase is everyone's final fight (boss-buzzer.md D2): every team still in a room walks in.
-  const pulled = phase.buzzer ? game.teams.reduce<GameState>((g, t) => (t.inBoss ? g : sendToBoss(g, t.id)), { ...game, pendingWrong: null }) : game;
+  const pulledAll = phase.buzzer ? game.teams.reduce<GameState>((g, t) => (t.inBoss ? g : sendToBoss(g, t.id)), { ...game, pendingWrong: null }) : game;
+  // Every room team walks into the boss room here, so a split sendToBoss made on the way dealt nothing that stays in play.
+  const pulled = { ...pulledAll, usedQuestionIds: game.usedQuestionIds };
   // The old phase's question leaves play, so its wrong tiles go with it.
   const cleared = dropEliminated(pulled, boss.currentQuestionId);
   return {
@@ -1020,6 +1069,7 @@ export function answerQuestion(
       outcome = { type: "incorrect-flee", teamId, newDifficulty };
     } else {
       // Retry: same room, same question, waits for this team's next turn.
+      nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ wrongOn: questionId })) };
       outcome = { type: "incorrect-retry", teamId };
     }
   }
@@ -1037,8 +1087,11 @@ export function answerQuestion(
     nextGame = { ...nextGame, checks };
   }
   if (outcome.type === "incorrect-flee") nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, (t) => ({ flees: (t.flees ?? 0) + 1 })) };
+  const left = getTeam(nextGame, teamId).wrongOn;
+  if (left !== undefined && left !== currentQuestionIdOf(nextGame, teamId)) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ wrongOn: undefined })) };
   // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
-  const here = { ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) };
+  // Split before the turn passes, so the team that just answered is the one splitShared leaves alone.
+  const here = splitShared({ ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) }, rng);
   // A prayed wrong lock keeps the turn (class-abilities.md PR 2): the cleric answers again at once.
   if (prayed) return { game: { ...here, prayerTurn: teamId }, outcome };
   return { game: advanceTurn({ ...here, prayerTurn: undefined }), outcome };
@@ -1220,7 +1273,7 @@ export function warriorRoll(
  * are. Refused while the team's wrong lock waits for retry/flee, so that choice never lands on a
  * question the team no longer faces.
  */
-export function sendToBoss(game: GameState, teamId: string): GameState {
+export function sendToBoss(game: GameState, teamId: string, rng: () => number = Math.random): GameState {
   assertPlaying(game);
   const team = getTeam(game, teamId);
   if (team.inBoss) throw new InvalidActionError(`${teamId} is already in the boss room`);
@@ -1232,7 +1285,7 @@ export function sendToBoss(game: GameState, teamId: string): GameState {
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
-  return applySprint(game, { ...game, teams, ...(stillFaced ? {} : dropEliminated(game, left)) });
+  return splitShared(applySprint(game, { ...game, teams, ...(stillFaced ? {} : dropEliminated(game, left)) }), rng);
 }
 
 /**
@@ -1390,7 +1443,7 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
     ...(entersBoss ? { inBoss: true, bossAt: { round: game.round ?? 1, turns: (t.turns ?? 0) + 1 } } : {}),
   }));
   const moved = { ...game, teams, usedQuestionIds: dealt.used, round, lastTurnIndex: order, currentTurnIndex: order, prayerTurn: undefined };
-  return { game: advanceTurn(moved), result };
+  return { game: advanceTurn(splitShared(moved, rng)), result };
 }
 
 /** The team's dishes with `dish` eaten, or nothing when the monster has none. */
