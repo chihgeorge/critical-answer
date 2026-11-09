@@ -46,6 +46,7 @@
 - [說服檢定的剩餘小風險（/ship 2026-11-06）](#說服檢定的剩餘小風險ship-2026-11-06) — S
 - [在全新的 Cloudflare／Vercel 帳號上照部署指南做一遍](#在全新的-cloudflarevercel-帳號上照部署指南做一遍) — S（人工約 2 小時 / CC 約 30 分鐘）
 - [旁白訊息依場次區分](#旁白訊息依場次區分) — S
+- [吃料理動畫的兩個小瑕疵](#吃料理動畫的兩個小瑕疵) — S
 
 ### P4
 
@@ -701,6 +702,22 @@
 **What:** 旁白訊息帶場次 id，伺服器只收目前場次的。
 
 **Why:** partysocket 的佇列如果跨過「回到大廳」才送出，舊局的 `HOST_EDIT_NARRATION` 可能因 eventId/rev 撞號套到新局。來源：#141 (v0.41.0.0) 已知風險。
+
+**Effort/Priority:** S / P3
+
+**Depends on:** 無。
+
+---
+
+## 吃料理動畫的兩個小瑕疵
+
+**What:** 隊伍吃完第三口之後，`dish-skewer` 和 `dish-mushroom-skewer` 的熱氣還飄在只剩竹籤的地方，幾個碗類料理（燉菜、南瓜湯、三杯、石鍋）也有一點，碗快空了熱氣還在。另外 `dish-squid` 在台上是 ×3，空盤沿用料理的倍率，所以看起來特別小。可能的修法：最後一口咬下去之後把熱氣那幾列藏起來；空盤給一個最小倍率。
+
+**Why:** 吃料理動畫（PR #177，`docs/designs/eat-dish.md`）的 25 道菜截圖檢查時發現的。不影響玩法，只是畫面上看起來有點怪。截圖在本機 `~/.gstack/projects/critical-answer/designs/eat-dish-20261108/bites/`（不進 git）。
+
+**Context:**
+- `lib/pixel-art.ts` 的 `biteCells`（咬痕不碰熱氣和盤子）
+- `components/cooking.tsx` 的 `DishOnStage`（空盤用料理的 `scale`）
 
 **Effort/Priority:** S / P3
 
