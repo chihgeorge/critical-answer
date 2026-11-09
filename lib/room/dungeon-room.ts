@@ -595,14 +595,16 @@ export class DungeonRoom {
     // A key the host chose (only those carry a keyId) answers the last refusal; the page's resend on reconnect does not.
     if (msg.source === "none" || msg.keyId) this.keyError = undefined;
     if (msg.source === "none") return this.applyCredential("none", null);
+    // Pasted again after "AI stopped": a new keyId. A reconnect resends the saved key with none, or a pending key under the
+    // id the room already applied (its status lost with the socket): neither restarts AI.
+    const chosenAgain = msg.keyId !== undefined && msg.keyId !== this.credential?.keyId;
     if (msg.source === "owner") {
       const ownerKey = this.room.env?.OWNER_KEY;
       const serverKey = this.room.env?.ANTHROPIC_API_KEY;
       if (!ownerKey || !serverKey) return this.refuseKey("owner_unavailable", msg.keyId);
       if (!tokensEqual(ownerKey, msg.ownerKey)) return this.refuseKey("wrong_owner_key", msg.keyId);
       // Already in use (the page's resend on reconnect): nothing to apply, and a keyless resend keeps the page's keyId.
-      // After "AI stopped" only a key the host chose (with a keyId) restarts AI, not a reconnect's resend.
-      if (this.aiSource === "owner" && this.credential && (!this.aiError || !msg.keyId)) {
+      if (this.aiSource === "owner" && this.credential && (!this.aiError || !chosenAgain)) {
         if (msg.keyId) this.credential.keyId = msg.keyId;
         return this.sendAiStatus();
       }
@@ -611,10 +613,9 @@ export class DungeonRoom {
     const provider = PROVIDERS[msg.provider];
     if (!provider.keyFormat.test(msg.key)) return this.refuseKey("invalid_key", msg.keyId);
     // The host page resends its key after every reconnect: the same key needs no new check, and a flaky check must not drop it.
-    // After "AI stopped" the host pastes it again on purpose (credit topped up, so it has a keyId): apply it, which resets
-    // the breaker. A reconnect's keyless resend must not restart AI.
+    // After "AI stopped" the host pastes it again on purpose (credit topped up): apply it, which resets the breaker.
     if (this.aiSource === "own" && this.credential?.provider === msg.provider && this.credential.apiKey === msg.key) {
-      if (this.aiError && msg.keyId) return this.applyCredential("own", { provider: msg.provider, apiKey: msg.key, keyId: msg.keyId });
+      if (this.aiError && chosenAgain) return this.applyCredential("own", { provider: msg.provider, apiKey: msg.key, keyId: msg.keyId });
       if (msg.keyId) this.credential.keyId = msg.keyId;
       return this.sendAiStatus();
     }

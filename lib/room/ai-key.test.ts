@@ -484,10 +484,10 @@ describe("restarts and key changes", () => {
 
   // Value: protects=AI that stopped (no credit) stays stopped across reconnects until the host pastes the key again;
   // fails_when=a keyless resend re-applies the key and resets the breaker; seam=none
-  it("after AI stops, only a resend with a keyId restarts it, not a reconnect's keyless resend", async () => {
+  it("after AI stops, only a paste under a new keyId restarts it, not a reconnect's resend", async () => {
     for (const msg of [
-      { type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY },
-      { type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY },
+      { type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY, keyId: "first" },
+      { type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY, keyId: "first" },
     ]) {
       const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY }, messages: () => json({ error: { message: "credit balance too low" } }, 400) });
       r.send(msg);
@@ -496,7 +496,11 @@ describe("restarts and key changes", () => {
       await r.judge();
       await r.judge();
       expect(r.status()).toMatchObject({ error: "ai_stopped" });
+      // The pending key resent under the id already applied (its status was lost), then the saved key, keyless.
       r.send(msg);
+      await sleep(0);
+      expect(r.status()).toMatchObject({ error: "ai_stopped", appliedKeyId: "first" });
+      r.send({ ...msg, keyId: undefined });
       await sleep(0);
       expect(r.status()).toMatchObject({ error: "ai_stopped" });
       r.send({ ...msg, keyId: "k" });
