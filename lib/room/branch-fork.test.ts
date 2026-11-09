@@ -35,9 +35,9 @@ function memoryStorage(): RoomStorage & { data: Map<string, unknown> } {
   return { data, get: async (k: string) => data.get(k), put: async (k: string, v: unknown) => void data.set(k, structuredClone(v)), delete: async (k: string) => data.delete(k), setAlarm: async () => {}, deleteAlarm: async () => {} } as never;
 }
 
-function setup(opts: { eventTeam?: string | null; rng?: () => number; storage?: RoomStorage; teams?: number; provider?: NarrationProvider } = {}) {
+function setup(opts: { eventTeam?: string | null; rng?: () => number; storage?: RoomStorage; teams?: number; provider?: NarrationProvider; monsterSide?: "left" | "right" } = {}) {
   const io = { id: "room-1", broadcast: vi.fn(), getConnections: vi.fn(() => []), ...(opts.storage ? { storage: opts.storage } : {}) } as unknown as RoomIO;
-  const room = new DungeonRoom(io, opts.rng ?? (() => 0), { bank, ...(opts.eventTeam === null ? {} : { e2eEventTeam: opts.eventTeam ?? "EventTeam" }), epilogueDelayMs: 0, ...(opts.provider ? { provider: opts.provider } : {}) });
+  const room = new DungeonRoom(io, opts.rng ?? (() => 0), { bank, ...(opts.eventTeam === null ? {} : { e2eEventTeam: opts.eventTeam ?? "EventTeam" }), epilogueDelayMs: 0, ...(opts.provider ? { provider: opts.provider } : {}), ...(opts.monsterSide ? { e2eMonsterSide: opts.monsterSide } : {}) });
   const host = makeConn("host");
   room.onConnect(host);
   send(room, host, { type: "HOST_CLAIM", token: TOKEN });
@@ -570,6 +570,15 @@ describe("岔路 in the room", () => {
     send(s.room, s.phones[0], { type: "TEAM_CHOOSE_FORK", side: "left", eventId: state(s.room).eventId });
     expect(s.room.game!.teams[0].forks).toEqual([{ side: "left", door: "mystery" }]);
     expect(state(s.room).forkBeat).toEqual({ teamId: T1, side: "left", door: "mystery" });
+  });
+
+  // Value: protects=the e2e specs' seam (E2E_MONSTER_SIDE); fails_when=the seam stops overriding the rng, so CI's two
+  // fork specs pass or fail by coin flip.
+  it("e2eMonsterSide pins the ⚔️ door whatever the rng draws", () => {
+    vi.useFakeTimers();
+    const s = setup({ rng: () => 0.9, monsterSide: "left" });
+    toChoosing(s);
+    expect(s.room.game!.teams[0].fork).toMatchObject({ phase: "choosing", monsterSide: "left" });
   });
 
   it("a timeout opens the ⚔️ side, wherever the room hid it", async () => {

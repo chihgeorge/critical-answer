@@ -664,7 +664,7 @@ function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: Sp
                 <span>{open ? FORK_DOOR_LABEL[beat.door] : FORK_SIDE_LABEL[side]}</span>
               </Nameplate>
               {/* The opened door swings in on its hinge, leaving the dark doorway behind it. */}
-              <div className="absolute" style={{ left: x, top: doorTop, zIndex: 4, transformOrigin: "left center", transform: open ? "perspective(600px) rotateY(-80deg)" : undefined, transition: "transform 700ms ease-out" }}>
+              <div className="absolute" style={{ left: x, top: doorTop, zIndex: 4, transformOrigin: "left center", transform: open ? "perspective(600px) rotateY(-80deg)" : undefined, transition: prefersReducedMotion() ? undefined : "transform 700ms ease-out" }}>
                 <Sprite kind="door" scale={px} />
               </div>
             </div>
