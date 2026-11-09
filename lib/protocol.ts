@@ -32,6 +32,7 @@
 import type { Accessory } from "./monster-catalog";
 import { isClassId, type ClassId, type EventResult, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
+import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
 import { isAnswerSeconds } from "./answer-clock";
 import type { MonsterSprite } from "./sprite-kind";
@@ -339,8 +340,9 @@ export interface MediaCommand {
 }
 
 export type ServerMessage =
-  /** `replay`: this room has played a game, so the host page leaves 開始前播放玩法說明 unchecked (eng D5). */
-  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true }
+  /** `replay`: this room has played a game, so the host page leaves 開始前播放玩法說明 unchecked (eng D5).
+   * `bankSize`: question counts only (no content), so the host page can warn a bank is too small for its teams. */
+  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true; bankSize?: BankSize }
   | {
       type: "STATE";
       view: SpectatorView;

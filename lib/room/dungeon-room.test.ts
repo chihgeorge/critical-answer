@@ -220,6 +220,13 @@ describe("onConnect", () => {
     expect(lastSentTo(conn)).toMatchObject({ type: "LOBBY", teams: [{ id: T1 }] });
   });
 
+  it("tells the lobby only how many questions each difficulty has and each room's difficulty, never the questions", () => {
+    const { room } = makeRoomWithHost();
+    const conn = makeConn("late-joiner");
+    room.onConnect(conn);
+    expect(lastSentTo(conn).bankSize).toEqual({ pools: DIFFICULTIES.map((d) => BANK.pools[d].length), rooms: BANK.rooms.map((r) => r.difficulty) });
+  });
+
   it("sends a STATE message once the game has started", () => {
     const { room, hostConn } = makeRoomWithHost();
     joinTeams(room, hostConn, 1);

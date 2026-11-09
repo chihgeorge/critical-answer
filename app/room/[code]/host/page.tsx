@@ -14,6 +14,7 @@ import { HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, serveS
 import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
+import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
 import { CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
@@ -56,6 +57,9 @@ export default function HostPage() {
   /** The host's own tick of the intro checkbox, kept only for the replay state it was made in. */
   const [introPick, setIntroPick] = useState<{ replay: boolean; on: boolean } | null>(null);
   const introOn = introPick && introPick.replay === replay ? introPick.on : !replay;
+  /** The room bank's question counts (LOBBY `bankSize`), for the too-few-questions warning by 開始遊戲. */
+  const [bankSize, setBankSize] = useState<BankSize | null>(null);
+  const sizeWarning = bankSize && bankSizeWarning(bankSize, lobby.length);
   const [game, setGame] = useState<StateMessage | null>(null);
   /** 每題作答倒數 for the next game (answer-countdown.md D2): this page's pick, so a replay keeps it. */
   const [answerSeconds, setAnswerSeconds] = useState<number>(DEFAULT_ANSWER_SECONDS);
@@ -204,6 +208,7 @@ export default function HostPage() {
         case "LOBBY":
           setLobby(msg.teams);
           setReplay(!!msg.replay);
+          setBankSize(msg.bankSize ?? null);
           setGame(null);
           setPicks(null);
           setPicking(null);
@@ -635,12 +640,21 @@ export default function HostPage() {
                 </select>
               </label>
             </Panel>
+            {sizeWarning && (
+              <div data-testid="host-bank-size" role="status" className="text-[15px]" style={{ color: "var(--warn)" }}>
+                ⚠ {bankSizeWarningText(sizeWarning, lobby.length)}
+              </div>
+            )}
             <PixelButton
               variant="primary"
               className="min-h-[78px] text-[26px]"
               disabled={!ready || lobby.length === 0}
               // AI narration follows the room's key (HOST_AI_KEY), so a key added mid-game still takes effect.
-              onClick={() => send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds })}
+              onClick={() => {
+                // Fewer questions than teams can hand two teams the same question at once, so that one asks first.
+                if (sizeWarning?.thin.length && !window.confirm(`${bankSizeWarningText(sizeWarning, lobby.length)}\n確定要開始？`)) return;
+                send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds });
+              }}
             >
               開始遊戲 ▶
             </PixelButton>

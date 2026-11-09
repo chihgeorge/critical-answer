@@ -16,7 +16,8 @@ import { UNSET_CORRECT_INDEX, blankQuestion, withCategory, withField } from "@/l
 import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
-import { scoreName } from "@/lib/protocol";
+import { MAX_TEAMS, scoreName } from "@/lib/protocol";
+import { bankSize, bankSizeWarning, bankSizeWarningText } from "@/lib/bank-size";
 import type { Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId, formatClipTime, parseClipTime } from "@/lib/youtube";
@@ -480,6 +481,15 @@ export default function BankEditorPage() {
             );
           })()}
         </fieldset>
+          {(() => {
+            // Sized for a full room; a warning, not a block: a small themed bank may still be what the host wants.
+            const w = bankSizeWarning(bankSize(bank), MAX_TEAMS);
+            return w && (
+              <div data-testid="bank-size-warning" role="status" className="text-[15px]" style={{ color: "var(--warn)" }}>
+                ⚠ {bankSizeWarningText(w, MAX_TEAMS)}
+              </div>
+            );
+          })()}
           <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving || loading || readOnly}>
             {saving ? "儲存中…" : "儲存全部變更"}
           </PixelButton>

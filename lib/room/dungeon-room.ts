@@ -89,6 +89,7 @@ import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-
 import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
+import { bankSize } from "../bank-size";
 import { tokensEqual } from "../tokens";
 import { epilogueParts, titleFacts, toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { BUZZ_REOPEN_LINE, createScriptedProvider, type NarrationProvider } from "../narration/scripted";
@@ -953,7 +954,7 @@ export class DungeonRoom {
     if (!this.game) {
       // A game that showed a question counts as played: the host page then leaves the intro unchecked (eng D5).
       const replay = this.playedQuestionIds.length > 0;
-      return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}) };
+      return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}), bankSize: bankSize(this.bank) };
     }
     const view = getSpectatorView(this.game);
     // A check is written when its die is rolled, so a restart inside the beat cannot reroll it; it shows once the beat ends.
