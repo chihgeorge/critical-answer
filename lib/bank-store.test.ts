@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { BANK_FORMAT, BankStore, formatOf, LEGACY_IMAGE_DELAY_MS, legacyImageKeys, type BankStorage } from "./bank-store";
-import { type Bank } from "./question-bank";
+import { assertSavable, type Bank } from "./question-bank";
 import { BANK } from "./question-bank-data";
 
 /** In-memory stand-in for a Durable Object's storage, same convention as lib/room's tests. */
@@ -173,6 +173,14 @@ describe("BankStore.putBank", () => {
     if (!refusal) return expect(store.putBank(bank, 1)).resolves.toMatchObject({ version: 2 });
     await expect(store.putBank(bank, 1)).rejects.toThrow(refusal);
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1, format: BANK_FORMAT });
+  });
+
+  // Value: protects=assertSavable counts a phase name and rule after trimming, as the editor's check does (one count, not two);
+  // fails_when=assertSavable counts untrimmed text; why_new=putBank trims first, so only a direct call reaches untrimmed text; seam=none; no_claim=the editor
+  it("counts a boss phase name and rule after trimming, as the editor does", () => {
+    const p2 = { name: `  ${"名".repeat(12)}  `, rule: ` ${"規".repeat(40)} `, maxHp: 1, questions: [] };
+    expect(() => assertSavable({ ...validBank, boss: { ...validBank.boss, phases: [validBank.boss.phases[0], p2] } })).not.toThrow();
+    expect(() => assertSavable({ ...validBank, boss: { ...validBank.boss, phases: [validBank.boss.phases[0], { ...p2, name: ` ${"名".repeat(13)} ` }] } })).toThrow(/name is over 12/);
   });
 
   // Value: protects=a bank stored before the phase caps still loads (else rooms fall back to the bundled bank); fails_when=the cap moves into parseBank;
