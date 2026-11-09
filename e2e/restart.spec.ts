@@ -21,9 +21,11 @@ const HOST_TOKEN = "restart-host-token-0123456789";
 
 function startWorker(): ChildProcess {
   // detached: the whole process group (npx, wrangler, workerd) can be killed at once.
+  // E2E_EVENT_TEAM names a team this spec never has, so no fork is drawn: a fork's door clock starts on restore and
+  // moves eventId, which this spec checks stays the same (branch-fork.md).
   return spawn(
     "npx",
-    ["wrangler", "dev", "--port", String(PORT), "--persist-to", STORE, "--var", "ALLOWED_ORIGINS:*", "--var", "ANTHROPIC_API_KEY:"],
+    ["wrangler", "dev", "--port", String(PORT), "--persist-to", STORE, "--var", "ALLOWED_ORIGINS:*", "--var", "ANTHROPIC_API_KEY:", "--var", "E2E_EVENT_TEAM:EventTeam"],
     { detached: true, stdio: "ignore" },
   );
 }
