@@ -267,6 +267,8 @@ describe("buzzer boss phase in the room", () => {
     send(g.room, g.host, { type: "HOST_BUZZ_OPEN", questionId: "b-a" });
     expect(g.state()).toMatchObject({ clipError: true, view: { buzz: { open: true } } });
     expect(g.state().media).toBeUndefined();
+    send(g.room, g.host, { type: "HOST_BUZZ_OPEN", questionId: "b-c" });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "stale_question" });
     // A ▶ makes the screen try again, so the warning goes until it fails again.
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
     expect(g.state().clipError).toBeUndefined();
@@ -284,6 +286,10 @@ describe("buzzer boss phase in the room", () => {
     expect(g.lastError(g.phones[0])).toMatchObject({ detail: "not_picker" });
     send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "遊戲" });
     expect(g.state()).toMatchObject({ question: { id: "b-c" }, view: { buzz: { category: "遊戲" } } });
+    // 現場放歌 cannot open the next song while the answer is still on show.
+    send(g.room, g.host, { type: "HOST_BUZZ_OPEN", questionId: "b-c" });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "stale_question" });
+    expect(g.room.game!.buzz?.open).toBeUndefined();
     g.next();
     send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "動漫" });
     expect(g.state().question.id).toBe("b-b");

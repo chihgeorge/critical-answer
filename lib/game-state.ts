@@ -1449,13 +1449,12 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
   getTeam(game, teamId); // throws if unknown
   // A buzzing team that drops lets go of the buzz, not judged (boss-buzzer.md): another team may buzz.
   const drops = !online && game.buzz?.teamId === teamId;
-  const dropped = drops ? { buzz: { ...game.buzz!, teamId: undefined } } : {};
-  return {
-    ...game,
-    ...dropped,
-    // Its typed answer goes with the buzz (boss-music-buzzer.md M2): it may buzz and type again.
-    teams: patchTeam(game.teams, teamId, () => ({ online, ...(drops ? { typedAnswer: undefined } : {}) })),
-  };
+  // Its typed answer goes with the buzz (boss-music-buzzer.md M2): it may buzz and type again.
+  const next = { ...game, ...(drops ? { buzz: { ...game.buzz!, teamId: undefined } } : {}), teams: patchTeam(game.teams, teamId, () => ({ online, ...(drops ? { typedAnswer: undefined } : {}) })) };
+  // The last team still in dropped: everyone online is out, so the same question opens to all again (M1).
+  const buzz = next.buzz;
+  const stuck = !online && isBuzzPhase(next) && buzz?.questionId === next.boss.currentQuestionId && buzz.out.length > 0 && !buzz.teamId && next.teams.every((t) => !t.online || !t.inBoss || buzz.out.includes(t.id));
+  return stuck ? { ...next, buzz: { ...buzz!, out: [] } } : next;
 }
 
 /**

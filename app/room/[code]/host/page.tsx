@@ -738,7 +738,7 @@ export default function HostPage() {
                   {/* The buzzing team may also type its answer (boss-music-buzzer.md M2). */}
                   {buzz.teamId && (
                     <div data-testid="host-typed-answer" className="text-[18px] [overflow-wrap:anywhere]">
-                      {game.view.teams.find((t) => t.id === buzz.teamId)?.typedAnswer ? `隊伍打字：${game.view.teams.find((t) => t.id === buzz.teamId)!.typedAnswer}` : "（口頭作答，或等他們打字）"}
+                      {((typed) => (typed ? `隊伍打字：${typed}` : "（口頭作答，或等他們打字）"))(game.view.teams.find((t) => t.id === buzz.teamId)?.typedAnswer)}
                     </div>
                   )}
                   {buzz.category && <div className="text-[14px]">{teamName(buzz.picker ?? "")} 選的類別：{buzz.category}</div>}

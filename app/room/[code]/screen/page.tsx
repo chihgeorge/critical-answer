@@ -282,7 +282,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         {buzz.teamId ? `${nameOf(buzz.teamId)} 搶到了！` : question?.content.kind === "youtube" && !buzz.open ? "等主持人按 ▶" : "♪ 快搶！"}
       </div>
       {/* The category the last winner picked (boss-music-buzzer.md M5). */}
-      {buzz.category && !buzz.open && !buzz.teamId && (
+      {buzz.category && question?.content.kind === "youtube" && !buzz.open && !buzz.teamId && (
         <div data-testid="screen-buzz-category" className="px-chip" style={{ ...CHIP, fontSize: 20, background: "var(--warn)" }}>
           下一題：{buzz.category}
         </div>
@@ -354,7 +354,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
       {question && <MageHint hint={view.mageHints?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
       {check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="block w-fit px-3 py-1 text-[20px]" />}
-      {turn?.typedAnswer && (
+      {/* A buzzer phase's typed answer is for the host only (boss-music-buzzer.md M2): the others could still buzz. */}
+      {turn?.typedAnswer && !buzz && (
         <div data-testid="screen-typed-answer" className="text-[20px] [overflow-wrap:anywhere]">
           ⚔️ {turn.name}：{turn.typedAnswer}
         </div>
@@ -474,7 +475,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         )}
         {!asking && check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />}
         {/* #104: the team's typed answer to a text question, for the room to see. */}
-        {!asking && !reveal && !card && question && !question.options && !question.items && turn?.typedAnswer && (
+        {!asking && !reveal && !card && !buzz && question && !question.options && !question.items && turn?.typedAnswer && (
           <div data-testid="screen-typed-answer" className="mt-3 text-[24px] [overflow-wrap:anywhere]">
             ⚔️ {turn.name}：{turn.typedAnswer}
           </div>

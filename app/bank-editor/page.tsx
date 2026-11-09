@@ -699,7 +699,7 @@ function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): BankQuestio
   // explanation carries over just like content does — dropping it here would silently discard
   // an uploaded image/video with no warning at all, bypassing MediaPicker's own confirm() gate
   // entirely (adversarial review finding, /ship).
-  // The prompt (題幹) belongs to the content, so it carries over too.
+  // The prompt (題幹) belongs to the content, so it carries over too, and so does the category.
   const prompt = { ...(q.prompt !== undefined ? { prompt: q.prompt } : {}), ...(q.category !== undefined ? { category: q.category } : {}) };
   if (kind === "text") return { kind: "text", id: q.id, content: q.content, ...prompt, answer: "", explanation: q.explanation };
   if (kind === "sort") return { kind: "sort", id: q.id, content: q.content, ...prompt, items: Array<string>(SORT_ITEMS).fill(""), explanation: q.explanation };

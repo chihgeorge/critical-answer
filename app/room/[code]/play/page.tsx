@@ -647,7 +647,7 @@ function CategoryPanel({ categories, chosen, send }: { categories: string[]; cho
           </PixelButton>
         ))}
       </div>
-      <div className="text-[13px]">{chosen ? `已選：${chosen}・主持人按 ▶ 前都能改` : "不選就隨機"}</div>
+      <div className="text-[13px]">{chosen ? `已選：${chosen}・主持人按 ▶ 前都能改` : "不選就照順序出下一首"}</div>
     </Panel>
     </div>
   );

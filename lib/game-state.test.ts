@@ -2135,6 +2135,14 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     expect(canPrayBeforeJudge(g, "T0")).toBe(false);
   });
 
+  it("the last team still in going offline reopens the same question to all (boss-music-buzzer.md M1)", () => {
+    const g = judge(buzzIn(setTeamOnline(buzzer(), "T2", false), "T0", "b-a", true), "T0", false).game;
+    expect(g.buzz?.out).toEqual(["T0"]);
+    const dropped = setTeamOnline(g, "T1", false);
+    expect(dropped.buzz).toEqual({ questionId: "b-a", out: [] });
+    expect(dropped.boss.currentQuestionId).toBe("b-a");
+  });
+
   it("only the team that buzzed may type its answer; the judgment or a drop clears it (boss-music-buzzer.md M2)", () => {
     const g = buzzIn(buzzer(), "T0", "b-a", true);
     expect(() => submitText(buzzer(), "T0", "b-a", "x")).toThrow("no_buzz");

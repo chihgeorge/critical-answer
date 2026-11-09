@@ -50,11 +50,13 @@ export const BANK_FORMAT = 6;
 const OLDEST_PARSED_FORMAT = 3;
 /** The format that added sort questions. */
 const SORT_FORMAT = 4;
+/** The format that added buzzer phases (boss-buzzer.md). */
+const BUZZER_FORMAT = 5;
 /** The format a bank is stored at: the oldest whose code keeps everything in it. 6 for a question category
  * (boss-music-buzzer.md), 5 for a buzzer phase (boss-buzzer.md), 4 for a sort question, else 3, so a rollback to the
  * previous version still reads it (/review, 2026-11-07). */
 export const formatOf = (bank: Bank): number =>
-  allQuestions(bank).some((q) => q.category) ? BANK_FORMAT : bank.boss.phases.some((p) => p.buzzer) ? 5 : allQuestions(bank).some((q) => q.kind === "sort") ? SORT_FORMAT : OLDEST_PARSED_FORMAT;
+  allQuestions(bank).some((q) => q.category) ? BANK_FORMAT : bank.boss.phases.some((p) => p.buzzer) ? BUZZER_FORMAT : allQuestions(bank).some((q) => q.kind === "sort") ? SORT_FORMAT : OLDEST_PARSED_FORMAT;
 /** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
 const PENDING_KEY = "pendingImageDeletes";
 /** Default wait before an orphaned image is deleted: a room's default 24-hour expiry plus an hour
