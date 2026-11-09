@@ -384,8 +384,10 @@ export function assertSavable(bank: Bank): void {
   if (tooMany) fail(`question ${tooMany.id} has more than ${MAX_OPTIONS} options`);
   const hp = bank.boss.phases.findIndex((p) => !Number.isInteger(p.maxHp) || p.maxHp > MAX_BOSS_HP);
   if (hp >= 0) fail(`boss phase ${hp + 1} hp must be a whole number from 1 to ${MAX_BOSS_HP}`);
-  const long = bank.boss.phases.findIndex((p) => Array.from(p.name).length > MAX_PHASE_NAME || Array.from(p.rule).length > MAX_PHASE_RULE);
-  if (long >= 0) fail(`boss phase ${long + 1} name is over ${MAX_PHASE_NAME} or rule over ${MAX_PHASE_RULE} characters`);
+  const longName = bank.boss.phases.findIndex((p) => Array.from(p.name).length > MAX_PHASE_NAME);
+  if (longName >= 0) fail(`boss phase ${longName + 1} name is over ${MAX_PHASE_NAME} characters`);
+  const longRule = bank.boss.phases.findIndex((p) => Array.from(p.rule).length > MAX_PHASE_RULE);
+  if (longRule >= 0) fail(`boss phase ${longRule + 1} rule is over ${MAX_PHASE_RULE} characters`);
   // Save time only: a stored bank with a long id must still load, but phones could never answer that question.
   const longId = allQuestions(bank).find((q) => q.id.length > MAX_ID);
   if (longId) fail(`question id ${longId.id} is longer than ${MAX_ID} characters`);

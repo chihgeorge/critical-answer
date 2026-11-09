@@ -72,6 +72,9 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await expect(screen.getByText("還沒結束！", { exact: true })).toBeVisible();
   await expect(team.getByTestId("phone-phase-card")).toContainText("第二階段：主題曲之謎");
   await expect(host.getByTestId("host-reveal")).toHaveText("大螢幕正在揭曉：第二階段－主題曲之謎");
+  // The card holds the question back: the host sees neither its id nor its answer yet (/qa 2026-10-28 ISSUE-001).
+  await expect(host.getByTestId("host-question")).toHaveText("新階段的第一題（按「下一題」後出題）");
+  await expect(host.getByTestId("host-answer")).toHaveCount(0);
   await expect(screen.getByText("題目 phase2-a")).toHaveCount(0); // held back until 下一題
 
   await host.getByRole("button", { name: "下一題", exact: true }).click();
