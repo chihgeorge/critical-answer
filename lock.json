@@ -1,8 +1,5 @@
 {
-  "pr": "188",
-  "holder": "Georges-Mac-mini.local:78766",
-  "started_at": "2026-11-09T17:33:46.983Z",
-  "phase": "merging",
-  "journal": "land-pin:9b372be77d3c3b3a0eaea9bea58583b1d2eff899",
-  "phase_at": "2026-11-09T17:33:49.884Z"
+  "released": true,
+  "by": "Georges-Mac-mini.local:78766",
+  "at": "2026-11-09T17:33:58.276Z"
 }
