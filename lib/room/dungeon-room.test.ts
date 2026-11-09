@@ -2177,6 +2177,23 @@ describe("narration (T5-T7)", () => {
       expect(all(room)).toHaveLength(count);
     });
 
+    it("drops a held line when the game ends before its narration lands, and a reset forgets any hold", async () => {
+      const { room, hostConn } = start(3);
+      await flush();
+      lowThreshold(room);
+      judgeCorrect(room, hostConn);
+      expect((room as any).heldLines).toMatchObject({ eventId: 2 });
+      room.game = { ...room.game!, phase: "finished" };
+      await flush();
+      const narr = all(room).filter((m) => m.type === "NARRATION" && m.eventId === 2);
+      expect(narr.flatMap((m) => m.lines).some((l: string) => l.startsWith("🦉"))).toBe(false);
+      expect((room as any).heldLines).toBeNull();
+      // reset() restarts eventIds at 0: an old hold must not ride the next game's narration of the same id.
+      (room as any).heldLines = { eventId: 2, lines: ["🦉 舊的"] };
+      (room as any).reset();
+      expect((room as any).heldLines).toBeNull();
+    });
+
     it("has no owl line on the host's 送進魔王房", async () => {
       const { room, hostConn, ids } = start(3);
       await flush();

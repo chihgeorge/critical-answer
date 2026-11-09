@@ -16,9 +16,9 @@ export interface TransitionSeen {
   sprint: boolean | null;
 }
 
-/** A fresh connection: neither transition is armed until a STATE or LOBBY says what came before. */
+/** A fresh connection: no transition is armed until a STATE or LOBBY says what came before. */
 export const UNSEEN: TransitionSeen = { open: false, boss: null, sprint: null };
-/** A LOBBY: the next game's doors and boss are both still ahead. */
+/** A LOBBY: the next game's doors, sprint and boss are all still ahead. */
 export const IN_LOBBY: TransitionSeen = { open: true, boss: false, sprint: false };
 
 /** ⚔️ 最後衝刺's live-only rule, shared by the screen's banner and the phone's card (last-sprint.md E3): it plays when

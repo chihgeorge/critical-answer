@@ -47,14 +47,16 @@ export function MapStrip({ view }: { view: SpectatorView }) {
             ▼
           </span>
         )}
-        <div className="relative flex justify-center">
-          <LabelChip tone="tag">{tags[i]}</LabelChip>
-          {/* A boon held (last-sprint.md D4): 12px on the tag's top-right corner, never widening the tag. */}
-          {t.boon && (
-            <span data-testid="pawn-boon" aria-hidden className="absolute text-[12px] leading-none" style={{ right: -6, top: -10 }}>
-              {t.boon === "blessing" ? "✨" : "💀"}
-            </span>
-          )}
+        <div className="flex justify-center">
+          <span className="relative inline-block">
+            <LabelChip tone="tag">{tags[i]}</LabelChip>
+            {/* A boon held (last-sprint.md D4): 12px on the tag's own top-right corner, never widening the tag. */}
+            {t.boon && (
+              <span data-testid="pawn-boon" aria-hidden className="absolute text-[12px] leading-none" style={{ right: -6, top: -10 }}>
+                {t.boon === "blessing" ? "✨" : "💀"}
+              </span>
+            )}
+          </span>
         </div>
         <div className={`relative mx-auto w-[24px] ${turn ? "px-turn" : ""}`} style={{ opacity: t.online ? 1 : 0.5 }}>
           <Sprite kind="hero" variant={i} scale={1} />
