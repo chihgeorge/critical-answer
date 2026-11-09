@@ -1158,6 +1158,48 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
   });
 });
 
+describe("teams sharing a question split once one comes free (TODOS 題目比隊伍少時)", () => {
+  // Two questions, three teams: T2 is dealt T0's question at the start, the one repeat a small bank can't avoid.
+  const start = () => createGame([0, 1, 2].map((i) => ({ id: `T${i}`, name: `${i}` })), [{ baseDifficulty: 1, reward: 1 }], [["a", "b"], [], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 3, first);
+  const held = (g: GameState) => g.teams.map((t) => t.currentQuestionId);
+  const onTurn = (g: GameState, id: string) => ({ ...g, currentTurnIndex: g.turnOrder.indexOf(id) });
+
+  it("a question freed by the boss room goes at once to the later of the two teams sharing one", () => {
+    const g = onTurn(start(), "T1");
+    expect(held(g)).toEqual(["a", "b", "a"]);
+    expect(held(sendToBoss(g, "T1", first))).toEqual(["a", "b", "b"]);
+  });
+
+  it("the team that answered the shared question wrong and stayed keeps it", () => {
+    let g = start();
+    ({ game: g } = answerQuestion(g, "T0", "a", false, "retry", first));
+    expect(g.teams[0].wrongOn).toBe("a");
+    g = { ...g, teams: g.teams.map((t) => (t.id === "T2" ? { ...t, wrongOn: "a" } : t.id === "T0" ? { ...t, wrongOn: undefined } : t)) };
+    expect(held(sendToBoss(g, "T1", first))).toEqual(["b", "b", "a"]);
+  });
+
+  it("the team on turn is never moved mid-turn", () => {
+    expect(held(sendToBoss(onTurn(start(), "T2"), "T1", first))).toEqual(["b", "b", "a"]);
+  });
+
+  it("a freed question whose answer was shown is not handed over: the two stay together", () => {
+    let g = { ...start(), config: { bossThreshold: 1 } };
+    g = advanceTurn(g); // T1's turn
+    ({ game: g } = answerQuestion(g, "T1", "b", true, "retry", first)); // T1 enters the boss room; b is revealed
+    expect(held(g)).toEqual(["a", "b", "a"]);
+  });
+
+  it("a bank big enough for every team: other teams' questions never change", () => {
+    let g = makeGame();
+    const before = held(g);
+    ({ game: g } = answerQuestion(g, "T0", before[0], true, "retry", first));
+    ({ game: g } = answerQuestion(g, "T1", before[1], false, "flee", first));
+    g = sendToBoss(g, "T0", first);
+    expect(held(g)[2]).toBe(before[2]);
+    expect(new Set(held(g).slice(1)).size).toBe(2);
+  });
+});
+
 describe("queueQuestion (the host picks the next question)", () => {
   it("hands a team its queued question on its next correct answer, then deals as usual", () => {
     const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7");
