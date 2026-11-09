@@ -379,7 +379,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     const round = (used[key] ??= new Set());
     let left = pool.filter((l) => !round.has(l));
     if (left.length === 0) {
-      round.clear();
+      for (const l of pool) round.delete(l); // a new round for this pool only: a class team's unused lines stay unused
       left = pool;
     }
     let i = Math.floor(rng() * left.length);
