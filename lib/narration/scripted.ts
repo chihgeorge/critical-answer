@@ -5,7 +5,6 @@ import { epilogueParts, type NarrationEvent, type NextTurn } from "./events";
 import { ordinal } from "../ordinal";
 import { placeLine } from "../podium";
 import type { ClassId, EventOutcome } from "../game-state";
-import { EVENT_SCENE_TEXT } from "../event-text";
 
 export interface NarrationProvider {
   name: string;
@@ -359,8 +358,15 @@ export const EVENT_VARIANTS: Record<EventOutcome, string[]> = {
 const EVENT_ROTTEN_EMPTY_VARIANTS = ["寶箱裡是黑暗料理！幸好{team}肚子早就空了，沒得扣。", "{team}聞了一口黑暗料理就放下了，飽足感本來就見底。"];
 const EVENT_SATIETY_VARIANTS = ["{team}喝了一口甜甜的泉水，飽足感 +{points}！", "清涼的泉水讓{team}精神一振，飽足感 +{points}。"];
 
-/** The next line before an event turn: it sets the scene ({story}) and never says what will happen. */
-const NEXT_EVENT_VARIANTS = ["輪到{team}。{team}推開門，{story}……", "{team}走進下一間房：沒有怪物，只有{story}。", "換{team}上場。這間房很安靜，{story}……"];
+/** The next line before a fork turn (docs/designs/branch-fork.md): two doors, and never what is behind them. */
+export const NEXT_FORK_VARIANTS = ["輪到{team}。眼前出現兩扇門……", "{team}走到岔路口，兩扇門靜靜等著。", "換{team}上場。前方的路分成了兩條……"];
+/** The fork's own narration, once the team's door clock starts (scripted only): the screen leaves the last team's story
+ * for the doors. Neutral: never what is behind either door. */
+export const FORK_OPEN_VARIANTS = ["{team}走到了岔路口……左邊還是右邊？", "兩扇門擋在{team}面前，走哪一扇？", "{team}停在岔路口。左門，還是右門？"];
+/** Said once the ⚔️ door opens (scripted only, no AI wait): the room's monster steps out. */
+export const FORK_MONSTER_VARIANTS = ["{team}推開 ⚔️ 門，{monster}擋在面前！", "⚔️ 門後，{monster}正等著{team}。"];
+/** Said when the clock picked ⚔️ for the team. */
+export const FORK_TIMEOUT_VARIANTS = ["{team}猶豫太久，被推進了 ⚔️ 門！", "時間到！一陣風把{team}吹進 ⚔️ 門。"];
 
 /** The transition segment (last of 3, when there's a next team): the narrator turns to the team now on turn. */
 export const NEXT_VARIANTS = {
@@ -474,11 +480,19 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     },
     /** Synchronous like line(): the scripted prompt for whoever is up next. */
     nextLine(next: NextTurn): string {
-      if (next.event) return fill(pick(NEXT_EVENT_VARIANTS, "next-event"), { team: next.team, story: EVENT_SCENE_TEXT[next.event].story });
+      if (next.fork) return fill(pick(NEXT_FORK_VARIANTS, "next-fork"), next);
       return fill(pick(next.boss ? NEXT_VARIANTS.boss : NEXT_VARIANTS.room, next.boss ? "next-boss" : "next-room"), next);
     },
     async narrate(event: NarrationEvent): Promise<string> {
       return provider.line(event);
+    },
+    /** The fork's opening line, when the team's door clock starts. */
+    forkOpening(team: string): string {
+      return fill(pick(FORK_OPEN_VARIANTS, "fork-open"), { team });
+    },
+    /** The line once a fork's ⚔️ door opened: picked, or `timeout`. */
+    forkLine(timeout: boolean, team: string, monster: string): string {
+      return timeout ? fill(pick(FORK_TIMEOUT_VARIANTS, "fork-timeout"), { team }) : fill(pick(FORK_MONSTER_VARIANTS, "fork-monster"), { team, monster });
     },
   };
   return provider;

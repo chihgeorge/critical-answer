@@ -30,7 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import type { Accessory } from "./monster-catalog";
-import { isClassId, type ClassId, type EventResult, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { isClassId, type ClassId, type EventResult, type ForkDoor, type ForkSide, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
 import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
@@ -205,8 +205,6 @@ export type ClientMessage =
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
   /** 🧪 給藥水 (docs/designs/lucky-potion.md): the host gives a team a potion, at any time of the game; refused while it holds one. */
   | { type: "HOST_GIVE_ITEM"; teamId: string }
-  /** Host: open the event for the turn's team when its phone does not (docs/designs/event-rooms.md D10). `eventId`: the STATE it was pressed under. */
-  | { type: "HOST_OPEN_EVENT"; teamId: string; eventId: number }
   /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
   | { type: "HOST_REVEAL"; teamId: string; questionId: string }
   /** Host: ▶ ⏸ ⟲ for the YouTube video on the big screen (docs/designs/youtube-questions.md). */
@@ -257,8 +255,8 @@ export type ClientMessage =
   | { type: "TEAM_PICK_CLASS"; classId: ClassId | null }
   /** Spend one use of the team's class ability on `questionId` (PR 1: the warrior's roll). */
   | { type: "TEAM_USE_ABILITY"; questionId: string }
-  /** The turn's team opens the event in its event room (event-rooms.md D3). `eventId`: the STATE it was pressed under. */
-  | { type: "TEAM_OPEN_EVENT"; eventId: number }
+  /** The team on turn at a fork picks its door (docs/designs/branch-fork.md). `eventId`: the STATE it was pressed under. */
+  | { type: "TEAM_CHOOSE_FORK"; side: ForkSide; eventId: number }
   /** 擲骰說服 on the team's own fill-in turn (dnd design R6, R-E1): the room rolls the check. `eventId`: the STATE it was pressed under (R-E4). */
   | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
   /** 🧪 喝下幸運藥水 on the team's own turn: its next crit or check die on `questionId` rolls twice, keeping the higher
@@ -395,6 +393,12 @@ export type ServerMessage =
       answerClock?: { left: number | null };
       /** An opened event on show until the host's 下一題, like `reveal` (docs/designs/event-rooms.md). The turn has moved on. */
       eventReveal?: EventReveal;
+      /** The door clock of the team choosing at a fork: ms left when this STATE was sent (branch-fork.md). */
+      forkLeft?: number;
+      /** The door that just opened, on show for FORK_BEAT_MS (branch-fork.md): `question` is null and the view still
+       * shows the team as it was before the press, so nothing behind the door shows early. Memory only. The side opened
+       * and what was behind it; the other door is never named, nor which side hides what before a pick. */
+      forkBeat?: { teamId: string; side: ForkSide; door: ForkDoor; timeout?: true };
     }
   | { type: "GAME_OVER"; winners: string[] }
   /** A waiting team's reaction, for the big screen to float up for a moment. Never stored. */
@@ -652,12 +656,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (questionId === null || !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       return { type: "TEAM_DRINK_POTION", questionId, eventId: m.eventId as number };
     }
-    case "HOST_OPEN_EVENT": {
-      const teamId = str(m.teamId, MAX_ID);
-      return teamId === null || !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0) ? null : { type: "HOST_OPEN_EVENT", teamId, eventId: m.eventId as number };
-    }
-    case "TEAM_OPEN_EVENT":
-      return Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "TEAM_OPEN_EVENT", eventId: m.eventId as number } : null;
+    case "TEAM_CHOOSE_FORK":
+      return (m.side === "left" || m.side === "right") && Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "TEAM_CHOOSE_FORK", side: m.side, eventId: m.eventId as number } : null;
     case "HOST_REVEAL": {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);

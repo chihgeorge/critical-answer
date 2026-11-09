@@ -314,6 +314,16 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "TEAM_PICK_CLASS" })).toBeNull();
   });
 
+  it("TEAM_CHOOSE_FORK takes only a side (the doors are unmarked) and a non-negative integer eventId; timeout is the room's, and the old event messages are gone", () => {
+    expect(parseClientMessage({ type: "TEAM_CHOOSE_FORK", side: "right", eventId: 3 })).toEqual({ type: "TEAM_CHOOSE_FORK", side: "right", eventId: 3 });
+    expect(parseClientMessage({ type: "TEAM_CHOOSE_FORK", side: "left", eventId: 0, teamId: "x" })).toEqual({ type: "TEAM_CHOOSE_FORK", side: "left", eventId: 0 });
+    for (const side of ["timeout", "monster", "mystery", "", undefined, 1]) expect(parseClientMessage({ type: "TEAM_CHOOSE_FORK", side, eventId: 1 })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_CHOOSE_FORK", door: "monster", eventId: 1 })).toBeNull();
+    for (const eventId of [undefined, -1, 1.5, "3"]) expect(parseClientMessage({ type: "TEAM_CHOOSE_FORK", side: "left", eventId })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_OPEN_EVENT", eventId: 1 })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_OPEN_EVENT", teamId: "t", eventId: 1 })).toBeNull();
+  });
+
   it("HOST_GIVE_ITEM needs a team id; TEAM_DRINK_POTION a question id and a non-negative integer eventId", () => {
     expect(parseClientMessage({ type: "HOST_GIVE_ITEM", teamId: "t1", item: "x" })).toEqual({ type: "HOST_GIVE_ITEM", teamId: "t1" });
     expect(parseClientMessage({ type: "HOST_GIVE_ITEM" })).toBeNull();

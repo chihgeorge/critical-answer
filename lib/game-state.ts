@@ -174,8 +174,13 @@ export interface Team {
   /** The room question this team answered wrong on and stayed (重答): splitShared moves the other team off it first.
    * Cleared once the team leaves it, so a later deal of the same id starts without it. Absent until the first. */
   wrongOn?: string;
-  /** The event room this team stands in (docs/designs/event-rooms.md), drawn as it walked in: its next turn opens it. */
+  /** The event behind the ❓ door, only inside chooseFork: drawn on the press and opened at once (docs/designs/branch-fork.md).
+   * A save from before the fork has one standing; parseSnapshot turns it into a fork. */
   event?: RoomEvent;
+  /** 岔路 (docs/designs/branch-fork.md): at a fork, choosing its door, or in the room it chose ⚔️ for. Absent otherwise. */
+  fork?: Fork;
+  /** Every door this team took at a fork, in order, for lib/game-log.ts. Absent until the first. */
+  forks?: ForkRecord[];
   /** A curse or blessing waiting for this team's next correct answer (event-rooms.md D12). */
   boon?: Boon;
   /** Every event outcome this team opened, in order, for lib/game-log.ts. Absent until the first. */
@@ -493,14 +498,15 @@ function dealFor(game: GameState, team: Team, difficulty: Difficulty, revealed: 
  * move of anyone else shows up on that team's next turn), counted both ways: the team at currentTurnIndex even
  * offline (its lock or roll may be in its beat, or it just answered) and the team currentTurnTeamId names. Nor a
  * wrong lock or typed answer waiting for its choice or judgment (it would land on a question the team no longer
- * faces), or a team in an event room. deal(), not dealFor(): the host's queued pick waits for the team's next room.
+ * faces). A team at a fork may move: its question shows on no screen until it picks ⚔️, and stays at the fork.
+ * deal(), not dealFor(): the host's queued pick waits for the team's next room.
  */
 function splitShared(game: GameState, rng: () => number): GameState {
   const keep = [game.turnOrder[game.currentTurnIndex], currentTurnTeamId(game)];
   for (;;) {
     const room = game.teams.filter((t) => !t.inBoss);
     const shared = (t: Team) => room.some((o) => o.id !== t.id && o.currentQuestionId === t.currentQuestionId);
-    const movable = room.filter((t) => !keep.includes(t.id) && game.pendingWrong?.teamId !== t.id && t.typedAnswer === undefined && !t.event && shared(t));
+    const movable = room.filter((t) => !keep.includes(t.id) && game.pendingWrong?.teamId !== t.id && t.typedAnswer === undefined && shared(t));
     // A team with no wrong answer on the question moves first: the other keeps the question it has worked on
     // and its red tiles. Then the later team in turn order, just a fixed rule both screens can predict (without
     // 擲先攻 it is also the team createGame dealt the repeat to; initiative reorders turnOrder after the deal).
@@ -798,6 +804,9 @@ export function currentTurnTeamId(game: GameState): string | null {
   // So does a team whose typed answer waits for the host: it puts the phone down after sending.
   const typed = game.teams.find((t) => t.typedAnswer !== undefined);
   if (typed) return typed.id;
+  // So does a team choosing its door: its 15 seconds run on, and it may come back to pick (branch-fork.md).
+  const choosing = game.teams.find((t) => t.fork?.phase === "choosing");
+  if (choosing) return choosing.id;
   const idx = nextOnlineIndex(game, 0);
   // null: every team is offline, so no one can take a turn.
   return idx === null ? null : game.turnOrder[idx];
@@ -894,6 +903,8 @@ export function answerQuestion(
     );
   }
 
+  // Before the patch below clears a correct answer's fork: a team at a fork has nothing to answer yet.
+  if (atFork(getTeam(game, teamId))) throw new InvalidActionError("fork");
   if (correct && game.pendingWrong) {
     throw new InvalidActionError(`${teamId} already locked a wrong answer; only retry or flee is left`);
   }
@@ -914,7 +925,7 @@ export function answerQuestion(
     lastTurnIndex: order,
   };
   // The choice resolves the pending wrong lock.
-  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
+  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice === "flee" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -1104,7 +1115,7 @@ function assertAbilityTurn(game: GameState, teamId: string, classId: ClassId) {
   assertNotBuzz(game);
   assertTurn(game, teamId);
   if (getTeam(game, teamId).classId !== classId) throw new InvalidActionError(`${teamId} is not a ${classId}`);
-  if (getTeam(game, teamId).event) throw new InvalidActionError("event_room");
+  if (atFork(getTeam(game, teamId))) throw new InvalidActionError("fork");
   if (game.pendingWrong) throw new InvalidActionError(`${teamId} already locked a wrong answer`);
   if (getTeam(game, teamId).typedAnswer !== undefined) throw new InvalidActionError("answer_submitted");
 }
@@ -1281,7 +1292,7 @@ export function sendToBoss(game: GameState, teamId: string, rng: () => number = 
   // A sneak armed for the room question is for that question only (D16): drop it and give the use back.
   // (A boss-room sneak can outlive a question rotation while the thief is offline; accepted, /review D4=A.)
   const sneak = team.sneakArmed ? { sneakArmed: undefined, abilityUses: team.abilityUses + 1 } : {};
-  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, bossAt: { round: game.round ?? 1, turns: team.turns ?? 0 }, currentSelection: null, queuedQuestionId: undefined, typedAnswer: undefined, typedFields: undefined, event: undefined, ...sneak }));
+  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, bossAt: { round: game.round ?? 1, turns: team.turns ?? 0 }, currentSelection: null, queuedQuestionId: undefined, typedAnswer: undefined, typedFields: undefined, event: undefined, fork: undefined, ...sneak }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
@@ -1304,7 +1315,7 @@ export function applySprint(prev: GameState, next: GameState): GameState {
 
 /* ---------- Event rooms (docs/designs/event-rooms.md) ---------- */
 
-/** The chance that a correct answer walks a team into an event room instead of the next room's monster (D5). */
+/** The chance that a correct answer brings a team to a 岔路, whose ❓ door holds an event (D5, branch-fork.md). */
 export const EVENT_CHANCE = 0.25;
 /** What stands on stage. A chest hides a feast or a rotten dish; the fortune teller draws 大吉, 中吉 or 凶. */
 export type EventScene = "chest" | "spring" | "idol" | "fairy" | "fortune";
@@ -1334,6 +1345,7 @@ export function potionArmed(game: GameState, teamId: string): boolean {
 export function drinkPotion(game: GameState, teamId: string): GameState {
   assertPlaying(game);
   assertTurn(game, teamId);
+  if (atFork(getTeam(game, teamId))) throw new InvalidActionError("fork");
   if (!getTeam(game, teamId).item) throw new InvalidActionError("no_item");
   if (potionArmed(game, teamId)) throw new InvalidActionError("already_drunk");
   const questionId = currentQuestionIdOf(game, teamId);
@@ -1361,13 +1373,68 @@ export function drawEvent(rng: () => number = Math.random): RoomEvent {
   return { scene: "fortune", outcome: (["great", "good", "bad"] as const)[Math.min(2, Math.floor(rng() * 3))] };
 }
 
-/** Whether this correct answer may walk its team into an event room (D5, D12): only into a room before the last,
- * never into the boss room. The last room and leaving an event room never roll. */
+/** Whether this correct answer may bring its team to a fork (D5, D12; branch-fork.md): only into a room before the
+ * last, never into the boss room. The last room never rolls; the room picks ⚔️ led to, and an opened event, never
+ * come through here (the room checks the first, openEvent is no answer). */
 export function eventEligible(game: GameState, outcome: AnswerOutcome): boolean {
-  return outcome.type === "correct-room-advance" && !outcome.entersBoss && outcome.nextRoomIndex < game.rooms.length - 1 && !getTeam(game, outcome.teamId).event;
+  return outcome.type === "correct-room-advance" && !outcome.entersBoss && outcome.nextRoomIndex < game.rooms.length - 1;
 }
 
-/** The team walked into an event room: `event` waits for its next turn. Not a turn. */
+/* ---------- 岔路 (docs/designs/branch-fork.md) ---------- */
+
+/** waiting: at the fork, its turn not come yet (no clock). choosing: its turn, until `deadline` (ms epoch, the room's
+ * clock), with the ⚔️ door on `monsterSide` (drawn by the room, never sent to any screen). monster: it took ⚔️ (or timed
+ * out), so this room's correct answer rolls no fork. */
+export type Fork = { phase: "waiting" } | { phase: "choosing"; deadline: number; monsterSide: ForkSide } | { phase: "monster" };
+export type ForkDoor = "monster" | "mystery";
+/** The doors are unmarked: a team picks a side, and only the opened door shows what it was. */
+export type ForkSide = "left" | "right";
+/** A team's pick, or the clock running out (the room's only). */
+export type ForkChoice = ForkSide | "timeout";
+/** One fork in the game log: the side opened, what was behind it, and whether the clock picked it. */
+export type ForkRecord = { side: ForkSide; door: ForkDoor; timeout?: true };
+/** How long the team on turn has to pick a door; then the room takes ⚔️ for it. */
+export const FORK_MS = 15_000;
+
+/** At a fork: no question to answer, no ability, no potion, until it picks ⚔️. */
+export function atFork(team: Team): boolean {
+  return team.fork?.phase === "waiting" || team.fork?.phase === "choosing";
+}
+
+/** A correct answer brought the team to a fork: nothing behind the doors is drawn yet. Not a turn. */
+export function enterFork(game: GameState, teamId: string): GameState {
+  assertPlaying(game);
+  if (getTeam(game, teamId).inBoss) throw new InvalidActionError("no forks in the boss room");
+  return { ...game, teams: patchTeam(game.teams, teamId, () => ({ fork: { phase: "waiting" } })) };
+}
+
+/** The fork team's turn came (the room decides when): its door clock starts, ⚔️ behind `monsterSide`. */
+export function startForkChoice(game: GameState, teamId: string, deadline: number, monsterSide: ForkSide): GameState {
+  if (getTeam(game, teamId).fork?.phase !== "waiting") throw new InvalidActionError("no_fork");
+  // The turn is pinned on the fork team, as answerQuestion does: the stored index can point at an offline team the turn
+  // skipped, which would take the turn back the moment the door clears the choosing exception (or its phone wakes).
+  return { ...game, currentTurnIndex: game.turnOrder.indexOf(teamId), teams: patchTeam(game.teams, teamId, () => ({ fork: { phase: "choosing", deadline, monsterSide } })) };
+}
+
+/**
+ * The team on turn picks a side, or the clock ran out ("timeout", the room's only: the ⚔️ door opens). ⚔️: the room is
+ * as if there had been no fork (the question it holds, the same turn). ❓: the event is drawn now and opened at once, as
+ * openEvent does (the effect lands, the team walks on, the turn passes).
+ */
+export function chooseFork(game: GameState, teamId: string, choice: ForkChoice, rng: () => number = Math.random): { game: GameState; record: ForkRecord; result?: EventResult } {
+  assertPlaying(game);
+  assertTurn(game, teamId);
+  const fork = getTeam(game, teamId).fork;
+  if (fork?.phase !== "choosing") throw new InvalidActionError("no_fork");
+  const side = choice === "timeout" ? fork.monsterSide : choice;
+  const door: ForkDoor = side === fork.monsterSide ? "monster" : "mystery";
+  const record: ForkRecord = { side, door, ...(choice === "timeout" ? { timeout: true as const } : {}) };
+  const chose = patchTeam(game.teams, teamId, (t) => ({ fork: door === "mystery" ? undefined : { phase: "monster" as const }, forks: [...(t.forks ?? []), record] }));
+  if (door === "monster") return { game: { ...game, teams: chose }, record };
+  return { record, ...openEvent(enterEventRoom({ ...game, teams: chose }, teamId, drawEvent(rng)), teamId, rng) };
+}
+
+/** The event behind the ❓ door, just drawn: chooseFork opens it in the same call. */
 export function enterEventRoom(game: GameState, teamId: string, event: RoomEvent): GameState {
   assertPlaying(game);
   if (getTeam(game, teamId).inBoss) throw new InvalidActionError("no events in the boss room");
@@ -1526,8 +1593,8 @@ export function currentQuestionIdOf(game: GameState, teamId: string): string {
 }
 
 function assertCurrentQuestion(game: GameState, teamId: string, questionId: string) {
-  // A team in an event room has no question to answer until it opens the event (event-rooms.md).
-  if (getTeam(game, teamId).event) throw new InvalidActionError("event_room");
+  // A team at a fork has no question to answer until it picks ⚔️ (branch-fork.md).
+  if (atFork(getTeam(game, teamId))) throw new InvalidActionError("fork");
   const expectedQuestionId = currentQuestionIdOf(game, teamId);
   if (questionId !== expectedQuestionId) {
     throw new InvalidActionError(`Stale question submission for ${teamId}: expected ${expectedQuestionId}, got ${questionId}`);
@@ -1593,8 +1660,8 @@ export interface SpectatorView {
     mayPray?: true;
     /** The class bonus and DC this team's persuasion check rolls with on its current question (checkTarget). */
     checkTarget?: { bonus: number; dc: number };
-    /** The event room this team stands in: the scene only, never its outcome until it is opened (event-rooms.md). */
-    eventScene?: EventScene;
+    /** 岔路 (branch-fork.md): at a fork waiting for its turn, or choosing its door now. Never what is behind a door. */
+    fork?: "waiting" | "choosing";
     boon?: Boon;
     /** The item the team holds; whether it is drunk for the question this turn (potionArmed); the question it was last
      * drunk on, which tells a potion that came back (lucky-potion.md E1, E2). */
@@ -1646,7 +1713,8 @@ export function getSpectatorView(game: GameState): SpectatorView {
       typedAnswer: t.typedAnswer ?? null,
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
       checkTarget: checkTarget(game, t.id, t.currentQuestionId),
-      ...(t.event ? { eventScene: t.event.scene } : {}),
+      // A game ended at a fork shows no door on the podium.
+      ...(game.phase === "playing" && atFork(t) ? { fork: t.fork!.phase as "waiting" | "choosing" } : {}),
       ...(t.boon ? { boon: t.boon } : {}),
       ...(t.item ? { item: t.item } : {}),
       ...(potionArmed(game, t.id) ? { itemArmed: true as const } : {}),

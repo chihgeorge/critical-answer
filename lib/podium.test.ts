@@ -60,7 +60,7 @@ describe("awardTitles", () => {
   it("counts 凶 as a curse, a blessing only from an event room, and every event room for the explorer", () => {
     const awards = awardTitles([team("甲", { events: ["curse", "bad", "great"] }), team("乙", { events: ["blessing", "rotten"] })]);
     expect(awards.map((a) => [a.id, a.teamIds, a.reason])).toEqual([
-      ["explorer", ["甲"], "開了 3 間事件房"],
+      ["explorer", ["甲"], "開了 3 間神秘房"],
       ["blessing", ["乙"], "被祝福 1 次"],
       ["curse", ["甲"], "被詛咒 2 次"],
       ["rotten", ["乙"], "吃到 1 次腐肉"],

@@ -13,6 +13,8 @@ import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, type AiSource } from "../p
  *
  * Bump SCHEMA_VERSION whenever a field changes meaning. An unreadable snapshot is discarded, never guessed at.
  */
+/** Narrated lines plus the scripted ones appendLine adds after them (⚔️ door, 最後衝刺, potions, buzzer reopenings). */
+export const NARRATION_MAX_LINES = 20;
 export const SCHEMA_VERSION = 5; // questions moved to pools by difficulty, games gained optionOrder (scoring-and-score-pools.md); see the comment above.
 export const SNAPSHOT_KEY = "room";
 /** The room's bank, saved on its own and only when it changes, so a message's save does not rewrite it. */
@@ -100,11 +102,17 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (!Array.isArray(raw.pendingTeams) || !raw.pendingTeams.every((t) => isObject(t) && isString(t.id) && isString(t.name) && classOk(t))) return null;
     // A non-object team entry is left as it is, like before classes (persistence.test.ts covers a null one).
     if (game !== null && !(game.teams as unknown[]).every((t) => !isObject(t) || (classOk(t) && (t.abilityUses === undefined || Number.isInteger(t.abilityUses))))) return null;
-    const withUses = game === null ? null : { ...game, teams: (game.teams as unknown[]).map((t) => (isObject(t) ? { ...t, abilityUses: t.abilityUses ?? abilityUsesFor(isClassId(t.classId) ? t.classId : undefined) } : t)) };
+    // An event room saved before 岔路 (branch-fork.md) has no button left to open it: the team stands at a fork instead,
+    // and ❓ draws its event again.
+    // A fork in any other shape (a choosing one with no usable deadline would never time out) waits for the team's turn.
+    const forkOk = (f: unknown) => f === undefined || (isObject(f) && (f.phase === "waiting" || f.phase === "monster" || (f.phase === "choosing" && Number.isFinite(f.deadline) && (f.monsterSide === "left" || f.monsterSide === "right"))));
+    const forked = (t: Record<string, unknown>) => (t.event === undefined && forkOk(t.fork) ? t : { ...t, event: undefined, fork: { phase: "waiting" } });
+    const withUses = game === null ? null : { ...game, teams: (game.teams as unknown[]).map((t) => (isObject(t) ? { ...forked(t), abilityUses: t.abilityUses ?? abilityUsesFor(isClassId(t.classId) ? t.classId : undefined) } : t)) };
     if (!Array.isArray(raw.teamKeys) || !raw.teamKeys.every((p) => Array.isArray(p) && p.length === 2 && isString(p[0]) && isString(p[1]))) return null;
     if (typeof raw.eventSeq !== "number" || !Number.isInteger(raw.eventSeq) || raw.eventSeq < 0) return null;
     const n = raw.lastNarration;
-    if (n !== null && !(isObject(n) && typeof n.eventId === "number" && Array.isArray(n.lines) && n.lines.length > 0 && n.lines.length <= 3 && n.lines.every(isString))) return null;
+    // Up to 3 narrated lines, plus the scripted ones appendLine adds after them (⚔️ door, 最後衝刺, potions).
+    if (n !== null && !(isObject(n) && typeof n.eventId === "number" && Array.isArray(n.lines) && n.lines.length > 0 && n.lines.length <= NARRATION_MAX_LINES && n.lines.every(isString))) return null;
     const count = (v: unknown) => v === undefined || (Number.isInteger(v) && (v as number) >= 0);
     if (n !== null && !(count(n.rev) && count(n.done) && ((n.done as number | undefined) ?? 0) <= (n.lines as string[]).length)) return null;
     if (raw.epilogue !== null && !isString(raw.epilogue)) return null;

@@ -137,7 +137,7 @@ describe("🧪 lucky potion in the room", () => {
     expect(g.room.game!.teams[0].itemArmedFor).not.toBe(g.room.game!.teams[0].currentQuestionId);
   });
 
-  it("refuses a drink off turn, under a stale STATE, with no potion, twice, after the check, with a lock in, or in an event room", () => {
+  it("refuses a drink off turn, under a stale STATE, with no potion, twice, after the check, with a lock in, or at a fork", () => {
     const g = started(text("t1"));
     g.drink();
     expect(g.lastTo(g.phones[0])).toMatchObject({ detail: "no_item" });
@@ -174,9 +174,9 @@ describe("🧪 lucky potion in the room", () => {
     const e = started();
     e.give(A);
     const game = e.room.game!;
-    e.room.game = { ...game, teams: game.teams.map((t) => (t.id === A ? { ...t, event: { scene: "chest", outcome: "feast" } } : t)) };
+    e.room.game = { ...game, teams: game.teams.map((t) => (t.id === A ? { ...t, fork: { phase: "waiting" as const } } : t)) };
     e.drink();
-    expect(e.lastTo(e.phones[0])).toMatchObject({ detail: "event_room" });
+    expect(e.lastTo(e.phones[0])).toMatchObject({ detail: "fork" });
     expect(e.room.game!.teams[0].itemArmedFor).toBeUndefined();
   });
 

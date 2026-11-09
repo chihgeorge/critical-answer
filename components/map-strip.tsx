@@ -39,7 +39,7 @@ export function MapStrip({ view }: { view: SpectatorView }) {
     const key = placeKey(t);
     const arrived = !mounted.has(key);
     return (
-      <div key={key} role="img" aria-label={`${t.name}${turn ? "（輪到）" : ""}${t.online ? "" : "（離線）"}${t.boon === "blessing" ? "（祝福）" : t.boon === "curse" ? "（詛咒）" : ""}${t.item ? "（有幸運藥水）" : ""}`} className="absolute" style={{ left: p.x, top, width: PAWN }}>
+      <div key={key} role="img" aria-label={`${t.name}${turn ? "（輪到）" : ""}${t.online ? "" : "（離線）"}${t.boon === "blessing" ? "（祝福）" : t.boon === "curse" ? "（詛咒）" : ""}${t.item ? "（有幸運藥水）" : ""}${t.fork ? "（在岔路口）" : ""}`} className="absolute" style={{ left: p.x, top, width: PAWN }}>
         {arrived && <div className="px-room-flash pointer-events-none absolute" style={{ left: box.x - p.x, top: box.top - top, width: box.w, height: box.h }} />}
         <div className={arrived ? (t.inBossPhase ? "px-charge" : "px-hop-in") : ""}>
         {turn && (
@@ -50,12 +50,13 @@ export function MapStrip({ view }: { view: SpectatorView }) {
         <div className="flex justify-center">
           <span className="relative inline-block">
             <LabelChip tone="tag">{tags[i]}</LabelChip>
-            {/* A boon held (last-sprint.md D4) and a 🧪 lucky potion (lucky-potion.md D11), side by side on the tag's own
-                top-right corner, never widening the tag. */}
-            {(t.boon || t.item) && (
+            {/* A boon held (last-sprint.md D4), a 🧪 lucky potion (lucky-potion.md D11) and 🚪 at a fork (branch-fork.md),
+                side by side on the tag's own top-right corner, never widening the tag. */}
+            {(t.boon || t.item || t.fork) && (
               <span aria-hidden className="absolute flex text-[12px] leading-none" style={{ right: -6, top: -10 }}>
                 {t.boon && <span data-testid="pawn-boon">{t.boon === "blessing" ? "✨" : "💀"}</span>}
                 {t.item && <span data-testid="pawn-potion">🧪</span>}
+                {t.fork && <span data-testid="pawn-fork">🚪</span>}
               </span>
             )}
           </span>
