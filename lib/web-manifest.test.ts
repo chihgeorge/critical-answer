@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { GET } from "@/app/room/[code]/manifest.webmanifest/route";
 import { generateMetadata } from "@/app/room/[code]/play/layout";
+import manifest from "@/app/manifest";
+
+it("the site-wide manifest (app/manifest.ts) opens the home page full screen", () => {
+  expect(manifest()).toMatchObject({ start_url: "/", scope: "/", display: "standalone" });
+});
 
 it("the phone page links its own room's manifest", async () => {
   expect((await generateMetadata({ params: Promise.resolve({ code: "BCDF" }) })).manifest).toBe("/room/BCDF/manifest.webmanifest");
