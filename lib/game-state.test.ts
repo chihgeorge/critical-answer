@@ -1178,8 +1178,11 @@ describe("teams sharing a question split once one comes free (TODOS 題目比隊
     expect(held(sendToBoss(g, "T1", first))).toEqual(["b", "b", "a"]);
   });
 
-  it("the team on turn is never moved mid-turn", () => {
+  it("the team on turn is never moved mid-turn, even with its phone offline", () => {
     expect(held(sendToBoss(onTurn(start(), "T2"), "T1", first))).toEqual(["b", "b", "a"]);
+    const offline = setTeamOnline(onTurn(start(), "T2"), "T2", false);
+    // T0 is kept too: currentTurnTeamId names the next online team. Nobody may move, so the pair waits.
+    expect(held(sendToBoss(offline, "T1", first))).toEqual(["a", "b", "a"]);
   });
 
   it("a freed question whose answer was shown is not handed over: the two stay together", () => {

@@ -502,7 +502,8 @@ function splitShared(game: GameState, rng: () => number): GameState {
     const shared = (t: Team) => room.some((o) => o.id !== t.id && o.currentQuestionId === t.currentQuestionId);
     const movable = room.filter((t) => !keep.includes(t.id) && game.pendingWrong?.teamId !== t.id && t.typedAnswer === undefined && !t.event && shared(t));
     // A team with no wrong answer on the question moves first: the other keeps the question it has worked on
-    // and its red tiles. Then the later team in turn order: createGame deals in that order, so it got the repeat.
+    // and its red tiles. Then the later team in turn order, just a fixed rule both screens can predict (without
+    // 擲先攻 it is also the team createGame dealt the repeat to; initiative reorders turnOrder after the deal).
     const rank = (t: Team) => (t.wrongOn === t.currentQuestionId ? 0 : game.turnOrder.length) + game.turnOrder.indexOf(t.id);
     movable.sort((a, b) => rank(b) - rank(a));
     let move: { t: Team; dealt: ReturnType<typeof deal> } | undefined;
@@ -686,7 +687,9 @@ export function enterNextBossPhase(game: GameState): GameState {
   const phase = boss.phases[phaseIndex];
   if (!boss.phasePending || !phase) throw new InvalidActionError("no boss phase is waiting to start");
   // A buzzer phase is everyone's final fight (boss-buzzer.md D2): every team still in a room walks in.
-  const pulled = phase.buzzer ? game.teams.reduce<GameState>((g, t) => (t.inBoss ? g : sendToBoss(g, t.id)), { ...game, pendingWrong: null }) : game;
+  const pulledAll = phase.buzzer ? game.teams.reduce<GameState>((g, t) => (t.inBoss ? g : sendToBoss(g, t.id)), { ...game, pendingWrong: null }) : game;
+  // Every room team walks into the boss room here, so a split sendToBoss made on the way dealt nothing that stays in play.
+  const pulled = { ...pulledAll, usedQuestionIds: game.usedQuestionIds };
   // The old phase's question leaves play, so its wrong tiles go with it.
   const cleared = dropEliminated(pulled, boss.currentQuestionId);
   return {
