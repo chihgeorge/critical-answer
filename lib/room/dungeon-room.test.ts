@@ -2512,12 +2512,14 @@ describe("LLM narration and director (T8-T10)", () => {
     });
 
     /** A started game whose latest narration has three lines (the AI's): the opening, since an ordinary turn has two. */
+    // The handoff names the next team, or the runner scripts it (runner.ts alignToSlots).
+    const THIRD = "第三句：Team 0、Team 1";
     async function threeLines() {
-      const r = await llmRoom(() => textReply("第一句\n第二句\n第三句"));
+      const r = await llmRoom(() => textReply(`第一句\n第二句\n${THIRD}`));
       begin(r);
       await sleep(30);
       const n = narrations(r.room).at(-1);
-      expect(n.lines).toEqual(["第一句", "第二句", "第三句"]);
+      expect(n.lines).toEqual(["第一句", "第二句", THIRD]);
       return { ...r, n };
     }
     const progress = (r: { room: DungeonRoom }, eventId: number, rev: number, done: number) =>
@@ -2544,7 +2546,7 @@ describe("LLM narration and director (T8-T10)", () => {
       expect(sentMsgs(r.hostConn).at(-1)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "line_read" });
       expect(narrations(r.room).at(-1).lines[0]).toBe("第一句");
       send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 1, line: "來得及" });
-      expect(narrations(r.room).at(-1).lines).toEqual(["第一句", "來得及", "第三句"]);
+      expect(narrations(r.room).at(-1).lines).toEqual(["第一句", "來得及", THIRD]);
     });
 
     // Value: protects=only the host edits, and only the narration it was looking at (D9); fails_when=a non-host
@@ -2567,7 +2569,7 @@ describe("LLM narration and director (T8-T10)", () => {
       refused({ rev: 1 }, "stale_narration"); // another host device's edit landed first: never overwrite it (D9)
       refused({ index: 3 }, "bad_index");
       refused({ line: "   " }, "empty_edit"); // not HOST_NEXT_LINE's empty_line: the host page routes this one to the panel
-      expect(narrations(r.room).at(-1).lines).toEqual(["第一句", "第二句", "第三句"]);
+      expect(narrations(r.room).at(-1).lines).toEqual(["第一句", "第二句", THIRD]);
     });
 
     // Value: protects=an edited line stays one dialogue-box line of at most MAX_LINE, and a prefilled scripted line
@@ -2634,16 +2636,18 @@ describe("LLM narration and director (T8-T10)", () => {
       const next = narrations(r.room).at(-1);
       expect(next.eventId).toBeGreaterThan(r.n.eventId);
       send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: next.eventId, rev: 0, index: 0, line: "新的開場" });
-      expect(narrations(r.room).at(-1)).toMatchObject({ eventId: next.eventId, rev: 1, lines: ["新的開場", "第三句"] }); // an ordinary turn: result + the reply's last line as the handoff
+      expect(narrations(r.room).at(-1)).toMatchObject({ eventId: next.eventId, rev: 1, lines: ["新的開場", THIRD] }); // an ordinary turn: result + the line that names the next team
     });
 
 // Value: protects=the host's queued line is said once, in segment 2, by AI or scripted narration (host-next-line.md);
 // fails_when=the line is lost, said twice, lands in another segment, or a stale narration eats a re-queued line; no_claim=real model behaviour (llm.live.test.ts).
     describe("next line (HOST_NEXT_LINE)", () => {
+      // A reply a line long on an ordinary turn keeps the line that names the next team (runner.ts alignToSlots).
+      const HANDOFF = "換人：Team 0、Team 1";
       const states = (conn: ReturnType<typeof makeConn>) => sentMsgs(conn).filter((m) => m.type === "HOST_NEXT_LINE_STATE").map((m) => m.line);
 
       it("the AI's second line keeps it when it says the line; the next narration has no line; every host page is told", async () => {
-        const r = await llmRoom((req) => textReply(req.system.includes("珍珠能吃嗎") ? "紅隊答對了\n冒險者問：珍珠能吃嗎？\n輪到藍隊" : "結果\n氣氛\n換人"));
+        const r = await llmRoom((req) => textReply(req.system.includes("珍珠能吃嗎") ? `紅隊答對了\n冒險者問：珍珠能吃嗎？\n${HANDOFF}` : `結果\n氣氛\n${HANDOFF}`));
         const other = makeConn("host-2");
         r.room.onConnect(other);
         claim(r.room, other);
@@ -2655,23 +2659,23 @@ describe("LLM narration and director (T8-T10)", () => {
         judge(r.room, r.hostConn);
         await sleep(30);
         expect(r.calls.at(-1)!.system).toContain("一定要包含主持人指定的這句話：「珍珠能吃嗎」");
-        expect(narrations(r.room).at(-1).lines).toEqual(["紅隊答對了", "冒險者問：珍珠能吃嗎？", "輪到藍隊"]);
+        expect(narrations(r.room).at(-1).lines).toEqual(["紅隊答對了", "冒險者問：珍珠能吃嗎？", HANDOFF]);
         expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ sources: ["llm", "llm", "llm"], event: { hostLine: "珍珠能吃嗎" } });
         for (const c of [r.hostConn, other]) expect(states(c).at(-1)).toBe("");
         judge(r.room, r.hostConn);
         await sleep(30);
         expect(r.calls.at(-1)!.system).not.toContain("珍珠能吃嗎");
-        expect(narrations(r.room).at(-1).lines).toEqual(["結果", "換人"]); // an ordinary turn: result + the reply's last line as the handoff
+        expect(narrations(r.room).at(-1).lines).toEqual(["結果", HANDOFF]); // an ordinary turn: result + the line that names the next team
       });
 
       it("writes the line over segment 2 when the AI left it out, and scripted narration says it word for word", async () => {
-        const r = await llmRoom(() => textReply("結果\n氣氛\n換人"));
+        const r = await llmRoom(() => textReply(`結果\n氣氛\n${HANDOFF}`));
         begin(r);
         await sleep(30);
         send(r.room, r.hostConn, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
         judge(r.room, r.hostConn);
         await sleep(30);
-        expect(narrations(r.room).at(-1).lines).toEqual(["結果", "珍珠能吃嗎", "換人"]);
+        expect(narrations(r.room).at(-1).lines).toEqual(["結果", "珍珠能吃嗎", HANDOFF]);
         expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ sources: ["llm", "host", "llm"] });
 
         const s = await llmRoom(() => textReply("x"), { key: null });
@@ -2685,7 +2689,7 @@ describe("LLM narration and director (T8-T10)", () => {
       });
 
       it("keeps a line holding a bank answer out of the prompt and says it word for word", async () => {
-        const r = await llmRoom(() => textReply("結果\n氣氛\n換人"));
+        const r = await llmRoom(() => textReply(`結果\n氣氛\n${HANDOFF}`));
         begin(r);
         await sleep(30);
         const answer = (r.room as unknown as { bankAnswers: string[] }).bankAnswers.find((a) => a.length >= 3 && a.length <= 30)!;
@@ -2697,7 +2701,7 @@ describe("LLM narration and director (T8-T10)", () => {
       });
 
       it("cancels on \"\", rejects text that cleans to nothing, and only the host may queue", async () => {
-        const r = await llmRoom(() => textReply("結果\n氣氛\n換人"));
+        const r = await llmRoom(() => textReply(`結果\n氣氛\n${HANDOFF}`));
         begin(r);
         await sleep(30);
         send(r.room, r.hostConn, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
@@ -2711,13 +2715,13 @@ describe("LLM narration and director (T8-T10)", () => {
         expect(states(r.hostConn).at(-1)).toBe("");
         judge(r.room, r.hostConn);
         await sleep(30);
-        expect(narrations(r.room).at(-1).lines[1]).toBe("換人");
+        expect(narrations(r.room).at(-1).lines[1]).toBe(HANDOFF);
         expect(transcript(r.room, r.hostConn).filter((e: { kind?: string }) => e.kind === "next").map((e: { text: string }) => e.text)).toEqual(["珍珠能吃嗎", ""]);
       });
 
       it("a narration already running when the host cancels and re-queues the same text leaves the new one queued", async () => {
         let release!: () => void;
-        const r = await llmRoom(() => new Promise<Response>((res) => (release = () => res(textReply("結果\n氣氛\n換人")))));
+        const r = await llmRoom(() => new Promise<Response>((res) => (release = () => res(textReply(`結果\n氣氛\n${HANDOFF}`)))));
         begin(r);
         release();
         await sleep(30);
@@ -2734,7 +2738,7 @@ describe("LLM narration and director (T8-T10)", () => {
       // /review: two narrations in flight both carried the line, so a quick second judgment said it twice.
       it("only one narration in flight carries the line, so two quick judgments never say it twice", async () => {
         const releases: (() => void)[] = [];
-        const r = await llmRoom(() => new Promise<Response>((res) => releases.push(() => res(textReply("結果\n氣氛\n換人")))));
+        const r = await llmRoom(() => new Promise<Response>((res) => releases.push(() => res(textReply(`結果\n氣氛\n${HANDOFF}`)))));
         begin(r);
         releases.shift()!();
         await sleep(30);
@@ -2745,13 +2749,13 @@ describe("LLM narration and director (T8-T10)", () => {
         await sleep(10);
         releases[1]();
         await sleep(30);
-        expect(narrations(r.room).map((n: { lines: string[] }) => n.lines[1]).slice(-2)).toEqual(["珍珠能吃嗎", "換人"]);
+        expect(narrations(r.room).map((n: { lines: string[] }) => n.lines[1]).slice(-2)).toEqual(["珍珠能吃嗎", HANDOFF]);
         expect(states(r.hostConn).at(-1)).toBe("");
       });
 
       it("a narration the room drops as stale does not use up the line: the next one says it", async () => {
         const releases: (() => void)[] = [];
-        const r = await llmRoom(() => new Promise<Response>((res) => releases.push(() => res(textReply("結果\n氣氛\n換人")))));
+        const r = await llmRoom(() => new Promise<Response>((res) => releases.push(() => res(textReply(`結果\n氣氛\n${HANDOFF}`)))));
         begin(r);
         releases.shift()!();
         await sleep(30);
@@ -2762,7 +2766,7 @@ describe("LLM narration and director (T8-T10)", () => {
         await sleep(10);
         releases[0](); // narration 1 lands after 2: dropped as stale
         await sleep(30);
-        expect(narrations(r.room).at(-1).lines[1]).toBe("換人");
+        expect(narrations(r.room).at(-1).lines[1]).toBe(HANDOFF);
         expect(states(r.hostConn).at(-1)).toBe("珍珠能吃嗎");
         judge(r.room, r.hostConn);
         releases[2]();
@@ -2772,7 +2776,7 @@ describe("LLM narration and director (T8-T10)", () => {
       });
 
       it("a room reset drops the queued line: the next host of the code starts with none", async () => {
-        const r = await llmRoom(() => textReply("結果\n氣氛\n換人"));
+        const r = await llmRoom(() => textReply(`結果\n氣氛\n${HANDOFF}`));
         begin(r);
         await sleep(30);
         send(r.room, r.hostConn, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
@@ -2784,7 +2788,7 @@ describe("LLM narration and director (T8-T10)", () => {
       });
 
       it("folds newlines a raw socket sends into one line", async () => {
-        const r = await llmRoom(() => textReply("結果\n氣氛\n換人"));
+        const r = await llmRoom(() => textReply(`結果\n氣氛\n${HANDOFF}`));
         begin(r);
         await sleep(30);
         send(r.room, r.hostConn, { type: "HOST_NEXT_LINE", line: "珍珠\n\n能吃嗎" });

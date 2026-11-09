@@ -3,7 +3,7 @@
 // Shared pixel-dungeon components (see DESIGN.md). Styles live in app/globals.css.
 
 import { useEffect, useEffectEvent, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
-import { biteSprite, drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme } from "@/lib/pixel-art";
+import { biteSprite, drawEmptyPlate, drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme } from "@/lib/pixel-art";
 import type { Accessory } from "@/lib/monster-catalog";
 import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/sprite-kind";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
@@ -115,7 +115,7 @@ export function Sprite({
   style,
 }: {
   kind: SpriteKind;
-  /** Bites taken out of a dish (docs/designs/eat-dish.md); only for dishes, which never blink. */
+  /** Bites taken out of a dish (docs/designs/eat-dish.md), 4 for the empty plate; only for dishes, which never blink. */
   bites?: number;
   /** Fixes the eyes open (false) or shut (true) and stops the blink timer: a frame of the eater's chew. */
   blink?: boolean;
@@ -141,7 +141,8 @@ export function Sprite({
     const cv = ref.current;
     if (!cv) return;
     drawSprite(cv, kind, variant, !!blink);
-    if (bites) biteSprite(cv, bites);
+    if (bites >= 4) drawEmptyPlate(cv, kind);
+    else if (bites) biteSprite(cv, bites);
     if (blink !== undefined || prefersReducedMotion() || !BLINKS.has(kind)) return;
     let reopen: ReturnType<typeof setTimeout>;
     const id = setInterval(() => {

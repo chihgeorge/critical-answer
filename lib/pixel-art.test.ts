@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { biteCells, drawHomeScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE } from "./pixel-art";
+import { biteCells, drawEmptyPlate, drawHomeScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE } from "./pixel-art";
 import { ACCESSORIES, MONSTERS } from "./monster-catalog";
 import type { SpriteKind } from "./sprite-kind";
 
@@ -120,5 +120,57 @@ describe("biteCells", () => {
           if (j >= 0 && j < out.length && nx >= 0 && nx < w && out[j + 3]) expect(rgbAt(out, j)).toBe("42,21,51");
       }
     }
+  });
+
+  // Value: protects=the retro design review fixes (P2-3, P2-5): the first bite reads from afar, and the steam stops at the
+  // third bite while a highlight on the food stays; fails_when=the first bite shrinks back to a notch, steam outlives bite 3
+  // or goes early; why_new=retro fix; seam=the same canvas stand-in; no_claim=how the bites look (the PR's contact sheet)
+  /** White cells in the open (no opaque cell beside them): the steam's diagonal wisps (`steam()` in pixel-art.ts). */
+  const steamCells = (d: Uint8ClampedArray, w: number) => {
+    const filled = (j: number) => j >= 0 && j < d.length && d[j + 3] > 0;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const x = (i / 4) % w;
+      if (d[i + 3] && rgbAt(d, i) === "255,255,255" && !((x > 0 && filled(i - 4)) || (x < w - 1 && filled(i + 4)) || filled(i - w * 4) || filled(i + w * 4))) n++;
+    }
+    return n;
+  };
+  it.each(dishes)("%s: the first bite is about as big as the second, and the steam goes at the third", (kind) => {
+    const { data, w, h } = pixels(kind);
+    const [b1, b2] = [1, 2].map((n) => biteCells(data, w, h, n));
+    expect(opaque(data) - opaque(b1)).toBeGreaterThanOrEqual(0.7 * (opaque(b1) - opaque(b2)));
+    if (steamCells(data, w)) expect(steamCells(b2, w), `${kind} steam at bite 2`).toBeGreaterThan(0);
+    expect(steamCells(biteCells(data, w, h, 3), w)).toBe(0);
+  });
+  it("a steaming dish keeps all its steam for two bites", () => {
+    const { data, w, h } = pixels("dish-skewer");
+    expect(steamCells(data, w)).toBe(12); // three wisps of four
+    expect(steamCells(biteCells(data, w, h, 2), w)).toBe(12);
+  });
+});
+
+// Value: protects=the empty plate is the dish's own plate on the dish's own canvas, so the last cut only takes the food
+// (retro design review P2-2); fails_when=PLATE_AT drifts from a dish's plate() call, or the empty plate changes size;
+// why_new=retro fix; seam=a canvas stand-in that keeps the pixels Px.flush writes; no_claim=how the crumbs look
+describe("drawEmptyPlate", () => {
+  const pixels = (kind: SpriteKind, draw: (cv: HTMLCanvasElement, kind: SpriteKind) => void) => {
+    let data: Uint8ClampedArray = new Uint8ClampedArray(0);
+    const ctx = { createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData: (img: { data: Uint8ClampedArray }) => (data = img.data) };
+    const cv = { width: 0, height: 0, getContext: () => ctx } as unknown as HTMLCanvasElement;
+    draw(cv, kind);
+    return { data, w: cv.width, h: cv.height };
+  };
+  const dishes = Object.keys(SPRITE_SIZE).filter((k) => k.startsWith("dish-")) as SpriteKind[];
+  const SHADE = [216, 200, 168];
+  const shadeAt = (d: Uint8ClampedArray, i: number) => d[i + 3] > 0 && d[i] === SHADE[0] && d[i + 1] === SHADE[1] && d[i + 2] === SHADE[2];
+
+  it.each(dishes)("%s: the same canvas, and every plate shade cell of the dish is still there", (kind) => {
+    const dish = pixels(kind, (cv, k) => drawSprite(cv, k));
+    const empty = pixels(kind, drawEmptyPlate);
+    expect([empty.w, empty.h]).toEqual([dish.w, dish.h]);
+    for (let i = 0; i < dish.data.length; i += 4) if (shadeAt(dish.data, i)) expect(shadeAt(empty.data, i), `${kind} cell ${i / 4}`).toBe(true);
+    // The plate sits on the canvas's bottom rows, as the dish does.
+    const lastRow = Math.max(...[...Array(dish.h).keys()].filter((y) => empty.data.slice(y * dish.w * 4, (y + 1) * dish.w * 4).some((v, j) => j % 4 === 3 && v > 0)));
+    expect(lastRow).toBeGreaterThanOrEqual(dish.h - 8);
   });
 });

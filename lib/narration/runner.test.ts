@@ -295,6 +295,66 @@ describe("narration runner", () => {
       expect(three.emitted[0].lines).toEqual(["紅隊答對了！", "輪到藍隊。"]);
     });
 
+    it("two lines on a three-line turn: the handoff stays last and the scripted atmosphere fills the middle, so the team is called once", async () => {
+      const { runner, emitted, entries } = setup(provider(async () => "紅隊答對了！\n輪到藍隊，害羞幽靈在等你們。"));
+      await runner.run(1, withNext);
+      expect(emitted[0].lines).toEqual(["紅隊答對了！", "備用氣氛", "輪到藍隊，害羞幽靈在等你們。"]);
+      expect(entries[0].sources).toEqual(["fake", "scripted", "fake"]);
+    });
+
+    it("three lines on a two-line turn with the handoff in the middle: the handoff is kept, the atmosphere dropped", async () => {
+      const plain: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next: { team: "藍隊", monster: "害羞幽靈", boss: false } };
+      const { runner, emitted } = setup(provider(async () => "紅隊答對了！\n輪到藍隊了。\n塵埃落定"));
+      await runner.run(1, plain);
+      expect(emitted[0].lines).toEqual(["紅隊答對了！", "輪到藍隊了。"]);
+    });
+
+    it("a reply a line short or long that names no next team gets the scripted handoff", async () => {
+      const plain: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next: { team: "藍隊", monster: "害羞幽靈", boss: false } };
+      const long = setup(provider(async () => "紅隊答對了！\n塵埃落定\n風停了"));
+      await long.runner.run(1, plain);
+      expect(long.emitted[0].lines).toEqual(["紅隊答對了！", "備用下一句"]);
+      const short = setup(provider(async () => "紅隊答對了！\n塵埃落定"));
+      await short.runner.run(1, withNext);
+      expect(short.emitted[0].lines).toEqual(["紅隊答對了！", "塵埃落定", "備用下一句"]);
+    });
+
+    it("with the right line count, a last line that names no next team is scripted, and a middle line that names it is too", async () => {
+      const noName = setup(provider(async () => "紅隊答對了！\n塵埃落定\n史萊姆在前方咆哮。"));
+      await noName.runner.run(1, withNext);
+      expect(noName.emitted[0].lines).toEqual(["紅隊答對了！", "塵埃落定", "備用下一句"]);
+      const twice = setup(provider(async () => "紅隊答對了！\n藍隊看傻了\n輪到藍隊了。"));
+      await twice.runner.run(1, withNext);
+      expect(twice.emitted[0].lines).toEqual(["紅隊答對了！", "備用氣氛", "輪到藍隊了。"]);
+    });
+
+    it("a host line that names the next team stays the middle beat, never the handoff", async () => {
+      const host: NarrationEvent = { ...withNext, hostLine: "藍隊加油" };
+      const { runner, emitted } = setup(provider(async () => "紅隊答對了！\n藍隊加油！\n下一位上場"));
+      await runner.run(1, host);
+      expect(emitted[0].lines).toEqual(["紅隊答對了！", "藍隊加油！", "備用下一句"]);
+    });
+
+    it("when the same team is on turn again, the lines keep their places", async () => {
+      const again: NarrationEvent = { ...withNext, next: { team: "紅隊", monster: "史萊姆", boss: false } };
+      const { runner, emitted } = setup(provider(async () => "紅隊答對了！\n紅隊滿頭大汗\n再來一題！"));
+      await runner.run(1, again);
+      expect(emitted[0].lines).toEqual(["紅隊答對了！", "紅隊滿頭大汗", "再來一題！"]);
+    });
+
+    it("a marked line never takes the middle slot from a good one when the reply is too long", async () => {
+      const { runner, emitted } = setup(provider(async () => "紅隊答對了！\n<invalid/>\n塵埃落定\n輪到藍隊了。"));
+      await runner.run(1, withNext);
+      expect(emitted[0].lines).toEqual(["紅隊答對了！", "塵埃落定", "輪到藍隊了。"]);
+    });
+
+    it("uses the model's later lines when only its first line was marked unusable", async () => {
+      const { runner, emitted, entries } = setup(provider(async () => "<invalid/>\n塵埃落定\n輪到藍隊了。"));
+      await runner.run(1, withNext);
+      expect(emitted[0].lines).toEqual(["備用旁白", "塵埃落定", "輪到藍隊了。"]);
+      expect(entries[0]).toMatchObject({ sources: ["scripted", "fake", "fake"], provider: "fake" });
+    });
+
     it("sends no transition segment when the event has no next team, even if the provider wrote three lines", async () => {
       const { runner, emitted } = setup(provider(async () => "藍隊擊倒了首領！\n塵埃落定\n多餘的第三行"));
       await runner.run(1, { type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9 });

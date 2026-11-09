@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
+import { MAX_MODEL_LINE } from "./runner";
 
 const team = "六個字的隊伍";
 const monster = "守門史萊姆王";
@@ -24,6 +25,13 @@ describe("scripted lines", () => {
   it("has at least 4 variants for every event type", () => {
     for (const e of samples) {
       expect(VARIANTS[e.type].length).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it("the per-turn correct / retry / flee pools hold 10 distinct lines, each at most 22 characters with a 4-character team and 3-character monster", () => {
+    for (const type of ["correct", "retry", "flee"] as const) {
+      expect(new Set(VARIANTS[type]).size).toBe(10);
+      for (const t of VARIANTS[type]) expect([...t.replace(/\{team\}/g, "冒險小隊").replace(/\{monster\}/g, "史萊姆").replace(/\{points\}/g, "3")].length).toBeLessThanOrEqual(MAX_MODEL_LINE);
     }
   });
 
@@ -175,7 +183,7 @@ describe("atmosphereLine", () => {
     const plain = VARIANTS.correct.map(fill);
     const warrior = CLASS_VARIANTS.warrior.correct.map(fill);
     const said: string[] = [];
-    for (let i = 0; i < 30; i++) said.push(i % 3 === 0 ? p.line({ ...base, classId: "warrior" }) : p.line(base));
+    for (let i = 0; i < 60; i++) said.push(i % 3 === 0 ? p.line({ ...base, classId: "warrior" }) : p.line(base));
     said.forEach((line, i) => expect(i % 3 === 0 ? [...plain, ...warrior] : plain).toContain(line));
     said.slice(1).forEach((line, i) => expect(line).not.toBe(said[i]));
     expect(said.filter((l) => warrior.includes(l)).length).toBeGreaterThan(0);

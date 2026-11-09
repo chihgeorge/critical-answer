@@ -16,6 +16,7 @@
 - [重連時主持人頁重送舊 key，會蓋掉剛套用的新 key](#重連時主持人頁重送舊-key會蓋掉剛套用的新-key) — S
 - [觀眾反應的後續：旁白提到反應、燈籠預測](#觀眾反應的後續旁白提到反應燈籠預測) — S／M
 - [頒獎排名的 9 個小問題（/ship 2026-11-07）](#頒獎排名的-9-個小問題ship-2026-11-07) — S，活動後
+- [縮短超過 22 字的舊腳本句](#縮短超過-22-字的舊腳本句) — S，活動後
 - [把「冒險出現岔路」的選擇加回玩家手機](#把冒險出現岔路的選擇加回玩家手機) — S
 - [遊戲開始後，新隊伍可以中途加入](#遊戲開始後新隊伍可以中途加入) — M
 - [主持人開房時可以用自己的題庫](#主持人開房時可以用自己的題庫) — L
@@ -132,6 +133,22 @@
 **Effort/Priority:** S / P3（活動後）
 
 **Depends on:** 11/21 活動的對局紀錄。
+
+---
+
+## 縮短超過 22 字的舊腳本句
+
+**What:** 206 句腳本句裡有 57 句，填入 4 字隊名、3 字怪物名後超過 22 個字。最長的是 `EVENT_VARIANTS` 的 rotten（38）、great（35）、feast（34）。把這些句子縮到 22 字以內，再加一個測試：每句填入 20 字隊名後不超過 `MAX_LINE`。
+
+**Why:** AI 旁白現在在程式裡限 22 字，腳本句沒有。隊名最長 20 字（`lib/room/dungeon-room.ts`），所以 rotten 第一句可以到約 54 字，超過 `MAX_LINE` 50（對話框兩行放得下的長度）。腳本句不經過 `validLine`，會原樣顯示。
+
+**Context:**
+- `lib/narration/scripted.ts`（所有句庫）
+- 2026-11-08 旁白回顧（retro review C，P2「Scripted lines are not held to 22 characters」）
+
+**Effort/Priority:** S / P3（活動後）
+
+**Depends on:** 無。
 
 ---
 
@@ -667,14 +684,14 @@
 
 ---
 
-## 吃料理動畫的兩個小瑕疵
+## 吃料理動畫：小烏賊的空盤太小
 
-**What:** 隊伍吃完第三口之後，`dish-skewer` 和 `dish-mushroom-skewer` 的熱氣還飄在只剩竹籤的地方，幾個碗類料理（燉菜、南瓜湯、三杯、石鍋）也有一點，碗快空了熱氣還在。另外 `dish-squid` 在台上是 ×3，空盤沿用料理的倍率，所以看起來特別小。可能的修法：最後一口咬下去之後把熱氣那幾列藏起來；空盤給一個最小倍率。
+**What:** `dish-squid` 在台上是 ×3，空盤沿用料理的倍率和畫布（`drawEmptyPlate`），所以看起來特別小。可能的修法：沒有盤子的料理，空盤給一個最小寬度。（第三口後的熱氣已在 eat-dish polish PR 修好：第三口起熱氣消失。）
 
 **Why:** 吃料理動畫（PR #177，`docs/designs/eat-dish.md`）的 25 道菜截圖檢查時發現的。不影響玩法，只是畫面上看起來有點怪。截圖在本機 `~/.gstack/projects/critical-answer/designs/eat-dish-20261108/bites/`（不進 git）。
 
 **Context:**
-- `lib/pixel-art.ts` 的 `biteCells`（咬痕不碰熱氣和盤子）
+- `lib/pixel-art.ts` 的 `drawEmptyPlate`（沒有盤子的料理：畫布一樣寬的盤子）
 - `components/cooking.tsx` 的 `DishOnStage`（空盤用料理的 `scale`）
 
 **Effort/Priority:** S / P3

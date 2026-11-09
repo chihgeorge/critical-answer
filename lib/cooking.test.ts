@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DishOnStage, dishLine, dishUp, EAT_STEP_AT, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
-import { COOK_MS, EAT_MS, SERVE_HOLD_MS } from "@/lib/protocol";
+import { COOK_MS, EAT_MS, SERVE_HOLD_MS, serveSecondsLeft } from "@/lib/protocol";
 import { Sprite } from "@/components/pixel";
 import { PHONE_LAG_MS, revealBeats, revealNow } from "@/lib/podium";
 import type { MonsterSprite, SpriteKind } from "@/lib/sprite-kind";
@@ -129,7 +129,7 @@ describe("eating the dish (eat-dish.md)", () => {
     const end = at(7);
     expect(end).toContain("嗝～");
     expect(end).toContain("width:96px;height:96px"); // the hero at scale 4
-    expect(end).toContain("width:170px;height:60px"); // the 34×12 plate at the jelly's scale 5
+    expect(end).toContain("width:170px;height:120px"); // the jelly's own 34×24 canvas at scale 5: the plate never jumps
     expect(end).toContain("data-step=\"7\"");
   });
 
@@ -143,6 +143,16 @@ describe("eating the dish (eat-dish.md)", () => {
     const end = at(7, -1);
     expect(end).not.toContain("width:96px;height:96px");
     expect(end).not.toContain("嗝～");
-    expect(end).toContain("width:170px;height:60px");
+    expect(end).toContain("width:170px;height:120px");
+  });
+});
+
+// Value: protects=the host's 「🍲 上菜中… n」 counts down whole seconds to the moment 下一題 unlocks and never shows 0
+// (retro design review P2-6); fails_when=the count rounds the wrong way, outlives SERVE_HOLD_MS, or reaches 0 before the
+// button swaps; why_new=new countdown; seam=none; no_claim=the 250 ms interval in the host page
+describe("the host's serve countdown", () => {
+  it("counts 5, 4, 3, 2, 1 over the 4.8 s hold", () => {
+    expect([0, 799, 800, 1799, 1800, 2800, 3800, 4799, 4800, 9000].map(serveSecondsLeft)).toEqual([5, 5, 4, 4, 3, 2, 1, 1, 1, 1]);
+    expect(serveSecondsLeft(0)).toBe(Math.ceil(SERVE_HOLD_MS / 1000));
   });
 });

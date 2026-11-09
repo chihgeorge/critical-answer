@@ -9,6 +9,8 @@ import { MAX_TITLE, MAX_TITLE_REASON, parseTitle } from "../podium";
 
 /** One narration segment. 40 was too tight for the tone the model writes; 50 fits the dialogue box in two lines. */
 export const MAX_LINE = 50;
+/** An AI result, atmosphere or handoff line: the prompt asks for 22 characters, and llm.ts holds the model to it. */
+export const MAX_MODEL_LINE = 22;
 /** 2 s timed out 3 of 21 lines in a real game (answers took up to 1.9 s once every line has two parts). */
 export const DEFAULT_HOLD_MS = 3000;
 export const DEFAULT_EPILOGUE_HOLD_MS = 15000;
@@ -53,6 +55,20 @@ function epilogueCandidates(parts: EpiloguePart[], raw: string[]): (string | und
 }
 
 /**
+ * A model reply lined up with the slots of a turn with a next team, whatever its line count. The line that names the
+ * next team (after the result) is the handoff and goes last; a middle slot takes only a usable line that does not name
+ * it, so the team is never called twice; a slot left empty is scripted, and so is the handoff when no line names the team.
+ */
+export function alignToSlots(raw: string[], target: number, nextTeam: string, hostLine?: string): (string | undefined)[] {
+  let h = -1;
+  // The host's line is the middle beat even when it names the next team; the runner writes it there anyway.
+  const isHost = (line: string) => !!hostLine && saysLine(line, hostLine);
+  for (let i = 1; i < raw.length; i++) if (saysLine(raw[i], nextTeam) && !isHost(raw[i])) h = i;
+  const middle = raw.slice(1).filter((line) => validLine(line) && (isHost(line) || !saysLine(line, nextTeam)));
+  return [raw[0], ...Array.from({ length: target - 2 }, (_, k) => middle[k]), h > 0 ? raw[h] : undefined];
+}
+
+/**
  * Whether a non-epilogue event gets a middle line (atmosphere, or the host's queued line) between the result and the
  * handoff. Ordinary correct / retry / flee turns skip the atmosphere, so a whole event is less tiring to listen to
  * (TODOS 旁白語氣是否耐聽); the big moments and a natural 20 or 1 keep it. With no next team it is the closing beat.
@@ -80,10 +96,10 @@ export interface TranscriptEntry {
   lines: string[];
   /** Same length as lines: each segment's source ("scripted", or the live provider's name). */
   sources: string[];
-  /** The overall provider used — the live provider's name if segment 0 came from it, else "scripted". */
+  /** The overall provider used — the live provider's name if any segment could come from it, else "scripted". */
   provider: string;
   latencyMs: number;
-  /** Why the live provider's attempt failed for this event as a whole: a named LLM failure, timeout, or invalid output. Unset when segment 0 succeeded. */
+  /** Why the live provider's attempt failed for this event as a whole: a named LLM failure, timeout, or invalid output. Unset when any segment was usable. */
   fallbackReason?: string;
 }
 
@@ -145,7 +161,8 @@ export function createRunner(opts: {
         if (got === null) reason = "timeout";
         else {
           const raw = got.split(/\n+/).map((s) => s.trim()).filter(Boolean);
-          if (validLine(raw[0], max)) providerLines = raw;
+          // llm.ts marks a line it could not use, so the first may be a marker while later lines stand.
+          if (raw.some((line) => validLine(line, max))) providerLines = raw;
           else reason = "invalid";
         }
       } catch (err) {
@@ -172,19 +189,17 @@ export function createRunner(opts: {
       };
       const lines: string[] = [];
       const sources: string[] = [];
-      // Too many lines before a next team (3 for a 2-line turn): the handoff is the model's last line, not whatever
-      // sits in the last slot, so the team on turn is still named.
       const candidates =
         parts && providerLines
           ? epilogueCandidates(parts, providerLines)
-          : providerLines && event.type !== "epilogue" && event.next && providerLines.length > targetCount
-            ? [...providerLines.slice(0, targetCount - 1), providerLines[providerLines.length - 1]]
+          : // The same team on turn again (the last team standing) is named in every line, so position decides.
+            providerLines && event.type !== "epilogue" && event.next && !("team" in event && event.team === event.next.team)
+            ? alignToSlots(providerLines, targetCount, event.next.team, event.hostLine)
             : providerLines;
       for (let i = 0; i < targetCount; i++) {
         const candidate = candidates?.[i];
-        // Segment 0 already passed validLine(max) above (that's what set providerLines); an epilogue's every segment
-        // is held to its own part.
-        const fits = parts ? candidate !== undefined && fitsPart(parts, i, candidate) : i === 0 || validLine(candidate, max);
+        // An epilogue's every segment is held to its own part.
+        const fits = parts ? candidate !== undefined && fitsPart(parts, i, candidate) : validLine(candidate, max);
         if (candidate !== undefined && fits) {
           lines.push(candidate);
           sources.push(providerName);
