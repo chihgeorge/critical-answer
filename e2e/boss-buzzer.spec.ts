@@ -5,9 +5,17 @@ import { E2E_OWNER_KEY } from "../playwright.config";
 const WORKER = "http://localhost:1996";
 const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
 const text = (id: string) => ({ kind: "text", id, content: { kind: "text", value: `題目 ${id}` }, answer: `答案 ${id}` });
+/** A music question with two answer fields (docs/designs/multi-field.md): it opens on the host's ▶. */
+const music = (id: string) => ({
+  kind: "text",
+  id,
+  content: { kind: "youtube", value: "dQw4w9WgXcQ", audioOnly: true },
+  prompt: `題目 ${id}`,
+  fields: [{ label: "歌名", answer: "晴天" }, { label: "歌手", answer: "周杰倫" }],
+});
 
-/** Phase 1 is one question with 1 HP; phase 2 is a buzzer phase (docs/designs/boss-buzzer.md) with 2 HP over three
- * text questions, so it opens for buzzing as soon as each shows (a video would wait for ▶, covered in lib/room/boss-buzzer.test.ts).
+/** Phase 1 is one question with 1 HP; phase 2 is a buzzer phase (docs/designs/boss-buzzer.md) with 3 HP over two
+ * text questions, which open for buzzing as soon as each shows, and a music question with answer fields, which opens on ▶.
  * The bank is put back after the test. */
 let original: unknown;
 test.beforeEach(async ({ request }) => {
@@ -19,7 +27,7 @@ test.beforeEach(async ({ request }) => {
       ...bank.boss,
       phases: [
         { name: "", rule: "", maxHp: 1, questions: [text("buzz-p1")] },
-        { name: "最終決戰", rule: "聽前奏搶答", maxHp: 2, buzzer: true, questions: [text("buzz-a"), text("buzz-b"), text("buzz-c")] },
+        { name: "最終決戰", rule: "聽前奏搶答", maxHp: 3, buzzer: true, questions: [text("buzz-a"), text("buzz-b"), music("buzz-c")] },
       ],
     },
   };
@@ -95,5 +103,19 @@ test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut o
   await expect(screen.getByText("題目 buzz-b")).toBeVisible();
   await host.getByRole("button", { name: "沒人答對，換下一題" }).click();
   await expect(screen.getByText("題目 buzz-c")).toBeVisible();
-  await expect(b.getByRole("button", { name: "搶答！" })).toBeEnabled();
+
+  // A music question with fields (multi-field.md): one box each, judged field by field, a partial answer still hits.
+  await host.getByRole("button", { name: "播放", exact: true }).click();
+  await b.getByRole("button", { name: "搶答！" }).click();
+  await b.getByLabel("歌名").fill("晴天");
+  await b.getByRole("button", { name: "送出", exact: true }).click();
+  await expect(b.getByTestId("typed-answer-sent")).toContainText("已送出");
+  // Host only (E4): the other phone never sees the typed text.
+  await expect(host.getByTestId("host-field-judge")).toContainText("晴天");
+  await expect(a.getByText("晴天")).toHaveCount(0);
+  await host.getByRole("button", { name: "歌名 答對" }).click();
+  await host.getByRole("button", { name: "歌手 答錯" }).click();
+  await host.getByRole("button", { name: "送出判定：對 1/2" }).click();
+  await expect(screen.getByTestId("reveal-fields")).toContainText("歌名：晴天");
+  await expect(screen.getByTestId("reveal-fields-partial")).toContainText("乙隊 對 1/2：打掉 1 格血");
 });
