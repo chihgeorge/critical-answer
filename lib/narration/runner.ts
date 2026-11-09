@@ -172,7 +172,14 @@ export function createRunner(opts: {
       };
       const lines: string[] = [];
       const sources: string[] = [];
-      const candidates = parts && providerLines ? epilogueCandidates(parts, providerLines) : providerLines;
+      // Too many lines before a next team (3 for a 2-line turn): the handoff is the model's last line, not whatever
+      // sits in the last slot, so the team on turn is still named.
+      const candidates =
+        parts && providerLines
+          ? epilogueCandidates(parts, providerLines)
+          : providerLines && event.type !== "epilogue" && event.next && providerLines.length > targetCount
+            ? [...providerLines.slice(0, targetCount - 1), providerLines[providerLines.length - 1]]
+            : providerLines;
       for (let i = 0; i < targetCount; i++) {
         const candidate = candidates?.[i];
         // Segment 0 already passed validLine(max) above (that's what set providerLines); an epilogue's every segment

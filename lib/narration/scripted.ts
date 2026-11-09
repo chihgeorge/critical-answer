@@ -370,17 +370,22 @@ function fill(template: string, vars: object): string {
 }
 
 export function createScriptedProvider(rng: () => number = Math.random) {
-  /** A shuffle bag per key: every line of the pool plays once before any repeats. `last` keeps the same line from
-   * playing twice in a row across a reshuffle, and across a class pool and the plain one sharing a key. */
-  const bags: Record<string, string[]> = {};
+  /** A shuffle bag per key: every line of the pool plays once before any repeats. Kept as the lines used this round,
+   * so a class pool and the plain one sharing a key each keep their unused lines. `last` keeps the same line from
+   * playing twice in a row across a reshuffle and across those pools. */
+  const used: Record<string, Set<string>> = {};
   const last: Record<string, string> = {};
   function pick(pool: string[], key: string): string {
-    let left = (bags[key] ?? []).filter((l) => pool.includes(l));
-    if (left.length === 0) left = [...pool]; // a new round; a pool switched mid-round starts over too
+    const round = (used[key] ??= new Set());
+    let left = pool.filter((l) => !round.has(l));
+    if (left.length === 0) {
+      round.clear();
+      left = pool;
+    }
     let i = Math.floor(rng() * left.length);
     if (left[i] === last[key] && left.length > 1) i = (i + 1) % left.length;
     const line = left[i];
-    bags[key] = left.filter((_, j) => j !== i);
+    round.add(line);
     last[key] = line;
     return line;
   }

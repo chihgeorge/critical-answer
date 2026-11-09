@@ -158,6 +158,19 @@ describe("atmosphereLine", () => {
     }
   });
 
+  it("keeps a class team's own lines in the bag when it shares a key with teams of no class, and never repeats in a row", () => {
+    const p = createScriptedProvider(lcg(5));
+    const base = { type: "correct" as const, team, monster, points: 12 };
+    const fill = (v: string) => v.replace("{team}", team).replace("{monster}", monster).replace("{points}", "12");
+    const plain = VARIANTS.correct.map(fill);
+    const warrior = CLASS_VARIANTS.warrior.correct.map(fill);
+    const said: string[] = [];
+    for (let i = 0; i < 30; i++) said.push(i % 3 === 0 ? p.line({ ...base, classId: "warrior" }) : p.line(base));
+    said.forEach((line, i) => expect(i % 3 === 0 ? [...plain, ...warrior] : plain).toContain(line));
+    said.slice(1).forEach((line, i) => expect(line).not.toBe(said[i]));
+    expect(said.filter((l) => warrior.includes(l)).length).toBeGreaterThan(0);
+  });
+
   it("has ten atmosphere lines per event (boss-phase's say its rule), ten room transitions, at most one 「！」 and no 喵", () => {
     for (const [type, pool] of Object.entries(ATMOSPHERE_VARIANTS)) if (type !== "boss-phase") expect(pool, type).toHaveLength(10);
     expect(NEXT_VARIANTS.room).toHaveLength(10);

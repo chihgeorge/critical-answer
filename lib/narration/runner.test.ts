@@ -289,6 +289,10 @@ describe("narration runner", () => {
       const one = setup(provider(async () => "紅隊答對了！"));
       await one.runner.run(1, plain);
       expect(one.emitted[0].lines).toEqual(["紅隊答對了！", "備用下一句"]);
+      // Three lines for a two-line turn: the last one is the handoff, so the atmosphere never takes its slot.
+      const three = setup(provider(async () => "紅隊答對了！\n塵埃落定\n輪到藍隊。"));
+      await three.runner.run(1, plain);
+      expect(three.emitted[0].lines).toEqual(["紅隊答對了！", "輪到藍隊。"]);
     });
 
     it("sends no transition segment when the event has no next team, even if the provider wrote three lines", async () => {
