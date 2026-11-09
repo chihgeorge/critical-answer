@@ -2828,8 +2828,8 @@ describe("LLM narration and director (T8-T10)", () => {
 
     it("is written by the bigger model, sent once, and the scripted one is not used", async () => {
       // One reply carries the podium calls, then the story (eng D21).
-      const story = (system: string) => `${system.includes("大成功王") ? "Team 0 大成功王！\n" : ""}第一名是 Team 0！\n漫長的一夜過去了，Team 0 帶著滿滿的戰利品走出了地城。`;
-      const r = await llmRoom((req) => textReply(req.model === EPILOGUE_MODEL ? story(req.system) : "行"));
+      const story = () => "第一名是 Team 0！\n漫長的一夜過去了，Team 0 帶著滿滿的戰利品走出了地城。";
+      const r = await llmRoom((req) => textReply(req.model === EPILOGUE_MODEL ? story() : "行"));
       await finish(r);
       const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
       expect(epi).toHaveLength(1);

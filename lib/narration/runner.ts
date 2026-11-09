@@ -5,6 +5,7 @@
 
 import { epilogueParts, type EpiloguePart, type NarrationEvent, type NextTurn } from "./events";
 import type { NarrationProvider } from "./scripted";
+import { MAX_TITLE, MAX_TITLE_REASON, parseTitle } from "../podium";
 
 /** One narration segment. 40 was too tight for the tone the model writes; 50 fits the dialogue box in two lines. */
 export const MAX_LINE = 50;
@@ -12,24 +13,30 @@ export const MAX_LINE = 50;
 export const DEFAULT_HOLD_MS = 3000;
 export const DEFAULT_EPILOGUE_HOLD_MS = 15000;
 export const MAX_EPILOGUE_LINE = 160;
-/** A place call or the crit king's line, read in one podium beat (podium-reveal.md D9). */
+/** A place call, read in one podium beat (podium-reveal.md D9). */
 export const MAX_CALL_LINE = 20;
+/** The longest raw AI title line 「稱號｜理由」 (podium-titles.md R2-4): a story must be longer. */
+export const MAX_TITLE_LINE = MAX_TITLE + 1 + MAX_TITLE_REASON;
+/** Words that place a team or hint at its score: a title is read before every place, so it says none (eng E1). */
+export const RANK_WORDS = /冠軍|[亞季]軍|榜首|奪冠|第.{1,2}名|第[一二三1-3]|[金銀銅]牌|頭號|No\.?\s*1|墊底|倒數|最後一|吊車尾|殿後|上台|頒獎|名次|前三|領先|落後|最飽|飽足|分數|最高分|贏|輸/i;
 
 /**
- * An AI epilogue segment fits its part: a call is short, names every team it is about and no team called after it (a
- * higher place, which would spoil the reveal); the story is longer than any call. `parts` is the whole reveal, in epilogueParts order.
+ * An AI epilogue segment fits its part: a title splits into 稱號｜理由 and says no place and no other team; a call is
+ * short, names its team and no team called after it (a higher place, which would spoil the reveal); the story is
+ * longer than any title. Only a title holds a ｜, so a line out of step never passes as another part. `parts` is the
+ * whole reveal, in epilogueParts order.
  */
 export function fitsPart(parts: EpiloguePart[], i: number, line: string): boolean {
   const part = parts[i];
-  // With calls before it, a call-length story is a call out of place.
-  if (part.kind === "story") return validLine(line, MAX_EPILOGUE_LINE) && (parts.length === 1 || line.trim().length > MAX_CALL_LINE);
-  const names = part.kind === "crit" ? part.names : [part.team];
-  const later = parts.slice(i + 1).flatMap((p) => (p.kind === "place" && !names.includes(p.team) ? [p.team] : []));
-  // The crit king is read before any place: it must not crown anyone. A king who also came first is always scripted,
-  // since no word list catches every way to say so.
-  const first = parts.find((p) => p.kind === "place" && p.place === 1);
-  if (part.kind === "crit" && (/冠軍|榜首|奪冠|第.{1,2}名/.test(line) || (first?.kind === "place" && part.names.includes(first.team)))) return false;
-  return validLine(line, MAX_CALL_LINE) && names.every((n) => saysLine(line, n)) && !later.some((n) => saysLine(line, n));
+  if (part.kind === "title") {
+    const t = parseTitle(line);
+    return !!t && validLine(line, MAX_EPILOGUE_LINE) && !RANK_WORDS.test(t.title + t.reason) && !part.others.some((n) => saysLine(line, n));
+  }
+  if (/[｜|]/.test(line)) return false;
+  // With titles or calls before it, a title-length story is one of them out of place.
+  if (part.kind === "story") return validLine(line, MAX_EPILOGUE_LINE) && (parts.length === 1 || line.trim().length > MAX_TITLE_LINE);
+  const later = parts.slice(i + 1).flatMap((p) => (p.kind === "place" && p.team !== part.team ? [p.team] : []));
+  return validLine(line, MAX_CALL_LINE) && saysLine(line, part.team) && !later.some((n) => saysLine(line, n));
 }
 
 /**

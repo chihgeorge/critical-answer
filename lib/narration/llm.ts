@@ -3,7 +3,8 @@
 // the owner's), held in room memory, and never reaches a browser. Every failure throws a named error;
 // the runner turns any of them into the scripted line.
 
-import { epilogueParts, type NarrationEvent } from "./events";
+import { epilogueParts, type NarrationEvent, type TitleFacts } from "./events";
+import { MAX_TITLE, MAX_TITLE_REASON } from "../podium";
 import { ordinal } from "../ordinal";
 import { CLASS_LABELS, WARRIOR_TARGET, type ClassId } from "../game-state";
 import { EVENT_SCENE_TEXT } from "../event-text";
@@ -58,7 +59,21 @@ export function buildPrompt(event: NarrationEvent, styleExamples: string[], rece
   return { system, user: describe(event) + avoid };
 }
 
-/** The epilogue: the podium calls one per line (podium-reveal.md D9), then the story; just the story when there are none. */
+/** A team's own play, for its AI title (podium-titles.md): no satiety, score or place. */
+function describeFacts(f: TitleFacts): string {
+  const did = [
+    `玩了 ${f.turns} 回合`,
+    f.dishes ? `吃了 ${f.dishes} 道料理` : "沒吃到料理",
+    ...(f.flees ? [`逃跑 ${f.flees} 次`] : []),
+    ...(f.events.length ? [`開了事件房（${f.events.join("、")}）`] : []),
+    ...(f.natural20s ? [`擲出 ${f.natural20s} 次 20`] : []),
+    f.boss ? "有進魔王房" : "沒進魔王房",
+  ];
+  return did.join("，");
+}
+
+/** The epilogue: a title for each untitled team, the podium calls one per line (podium-reveal.md D9), then the story;
+ * just the story when there are none. */
 function epilogueAsk(e: Extract<NarrationEvent, { type: "epilogue" }>): string {
   const story = "寫 2 到 3 句話的遊戲後記，總共最多 90 個字。";
   const parts = epilogueParts(e);
@@ -66,7 +81,8 @@ function epilogueAsk(e: Extract<NarrationEvent, { type: "epilogue" }>): string {
   const rows = parts.map((p, i) => {
     const n = i === parts.length - 1 ? "最後一行" : `第${i + 1}行`;
     if (p.kind === "story") return `${n}：${story}`;
-    if (p.kind === "crit") return `${n}：宣布本場大成功王是${p.names.map(q).join("、")}（擲出 ${p.count} 次 20），隊名要全部寫出來，最多 ${MAX_CALL_LINE} 個字。`;
+    if (p.kind === "title")
+      return `${n}：幫隊伍${q(p.team)}想一個好笑的榮譽稱號，根據他們這場的表現：${describeFacts(p.facts)}。格式是「稱號｜理由」，中間用全形「｜」隔開，稱號最多 ${MAX_TITLE} 個字，理由最多 ${MAX_TITLE_REASON} 個字。不要寫隊名，也不要寫別隊，不要暗示名次或分數。`;
     return `${n}：宣布第${ordinal(p.place)}名是${q(p.team)}，要寫出隊名，不要提分數，最多 ${MAX_CALL_LINE} 個字。`;
   });
   return `輸出 ${parts.length} 行，用換行隔開，不要編號。前面幾行在頒獎台上一句一句念出來，留點懸念。${rows.join("")}`;
@@ -220,7 +236,8 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
           headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
             model,
-            max_tokens: epilogue ? 500 : 200,
+            // Up to 8 title rows before the calls and the story (podium-titles.md eng 3).
+            max_tokens: epilogue ? 1000 : 200,
             system,
             messages: [{ role: "user", content: user }],
             // Sonnet 5.5 thinks by default; a 90-character story does not need it and the hold is short.

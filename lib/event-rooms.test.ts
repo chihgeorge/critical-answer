@@ -121,6 +121,8 @@ describe("openEvent", () => {
     const t = team(after);
     expect(t.inBoss).toBe(true);
     expect(t.bossAt?.turns).toBe((before.turns ?? 0) + 1);
+    // Through an event room is no earned entry: ⚡ 閃電突擊 counts only a team's own answer (podium-titles.md R2-3).
+    expect(t.bossAt?.earned).toBeUndefined();
     expect(t.roomIndex).toBe(before.roomIndex);
     expect(t.reward).toBe(before.reward + 20);
     expect(t.event).toBeUndefined();

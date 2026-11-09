@@ -50,6 +50,31 @@ describe("request", () => {
     expect(body.system).toContain("最後一行：寫 2 到 3 句話的遊戲後記");
   });
 
+  // Value: protects=each untitled team gets a title row with its own play only, before the calls, and the budget fits
+  // 8 teams (podium-titles.md eng 3, E1); fails_when=the rows are missing, carry a score or place, or max_tokens cuts
+  // the reply short; why_new=new segments; seam=none; no_claim=what a real model writes (mocked fetch)
+  it("asks an 8-team epilogue for a title row per untitled team, then the calls, with room for every line", async () => {
+    const f = vi.fn(async () => ok(reply("火把熄滅，冒險結束。")));
+    const names = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛"];
+    const facts = { turns: 6, dishes: 2, flees: 1, events: ["寶箱：黑暗料理……"], natural20s: 0, boss: true };
+    const e: NarrationEvent = {
+      type: "epilogue",
+      ranking: names.map((name, i) => ({ name, score: 90 - i })),
+      winners: ["甲"],
+      calls: [{ place: 3, team: "丙" }, { place: 2, team: "乙" }, { place: 1, team: "甲" }],
+      titles: names.slice(1).map((team) => ({ team, facts })),
+    };
+    await make(f as unknown as typeof fetch).narrate(e);
+    const body = JSON.parse(((f.mock.calls[0] as unknown as [string, RequestInit])[1].body) as string);
+    expect(body.system).toContain("輸出 11 行");
+    expect(body.system).toContain("第1行：幫隊伍「乙」想一個好笑的榮譽稱號");
+    expect(body.system).toContain("玩了 6 回合，吃了 2 道料理，逃跑 1 次，開了事件房（寶箱：黑暗料理……），有進魔王房");
+    expect(body.system).toContain("「稱號｜理由」");
+    expect(body.system).toContain("不要暗示名次或分數");
+    expect(body.system).toContain("第8行：宣布第三名是「丙」");
+    expect(body.max_tokens).toBeGreaterThanOrEqual(1000);
+  });
+
   it("passes the abort signal to fetch", async () => {
     const f = vi.fn(async () => ok(reply("行")));
     const ac = new AbortController();

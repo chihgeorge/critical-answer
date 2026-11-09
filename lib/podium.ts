@@ -1,8 +1,9 @@
-// The podium reveal at the game's end (docs/designs/podium-reveal.md): the d20 tie-break, the crit king, and the
+// The podium reveal at the game's end (docs/designs/podium-reveal.md): the d20 tie-break, the titles (podium-titles.md), and the
 // beats the narrator calls before the scores come up. Shared by the room, /screen and /play, so it is pure and
 // imports nothing that holds the bank.
 
 import { ordinal } from "./ordinal";
+import type { EventOutcome } from "./game-state";
 
 /** The podium has three steps: only ties that reach them are rolled, and only these places are called (D3, D4). */
 export const PODIUM_PLACES = 3;
@@ -51,25 +52,109 @@ export function rankTeams(teams: { id: string; reward: number }[], roll: () => n
   return { ranking, tieRolls };
 }
 
-/** The teams with the most natural 20s, or null when nobody rolled one (D5). */
-export function critKing(teams: { name: string; natural20s?: number }[]): { names: string[]; count: number } | null {
-  const count = Math.max(0, ...teams.map((t) => t.natural20s ?? 0));
-  return count > 0 ? { names: teams.filter((t) => (t.natural20s ?? 0) === count).map((t) => t.name), count } : null;
+/** What awardTitles reads from a team: missing counts (a save from before them) are 0. */
+export interface TitleTeam {
+  id: string;
+  name: string;
+  events?: EventOutcome[];
+  dishes?: string[];
+  flees?: number;
+  natural20s?: number;
+  turns?: number;
+  bossAt?: { turns: number; earned?: true };
 }
 
-export const critLine = (names: string[], count: number) => `本場大成功王是……${names.join("、")}，擲出 ${count} 次 20！`;
+/** A data title (docs/designs/podium-titles.md): every team tied on the best value gets it, in team order (eng 10). */
+export interface Award {
+  id: string;
+  icon: string;
+  title: string;
+  teamIds: string[];
+  reason: string;
+}
+
+const outcomes = (t: TitleTeam, ...kinds: EventOutcome[]) => (t.events ?? []).filter((e) => kinds.includes(e)).length;
+
+/** In award order, 🎲 last. `value` null: the team is not in the running (a count of 0). `fewest`: least wins. */
+const TITLES: { id: string; icon: string; title: string; value: (t: TitleTeam) => number | null; reason: (n: number) => string; fewest?: true }[] = [
+  { id: "explorer", icon: "🗺️", title: "探險家", value: (t) => t.events?.length || null, reason: (n) => `開了 ${n} 間事件房` },
+  // Only an event room's blessing: 大吉 (great) gives satiety, not a blessing, and the last sprint's is no event room.
+  { id: "blessing", icon: "✨", title: "女神的寵兒", value: (t) => outcomes(t, "blessing") || null, reason: (n) => `被祝福 ${n} 次` },
+  // The fortune teller's 凶 (bad) curses too (openEvent).
+  { id: "curse", icon: "💀", title: "詛咒磁鐵", value: (t) => outcomes(t, "curse", "bad") || null, reason: (n) => `被詛咒 ${n} 次` },
+  { id: "rotten", icon: "🤢", title: "腐肉品嚐家", value: (t) => outcomes(t, "rotten") || null, reason: (n) => `吃到 ${n} 次腐肉` },
+  { id: "flees", icon: "🏃", title: "逃跑大師", value: (t) => t.flees || null, reason: (n) => `逃跑 ${n} 次` },
+  { id: "dishes", icon: "🍲", title: "大胃王", value: (t) => t.dishes?.length || null, reason: (n) => `吃了 ${n} 道料理` },
+  // Only a team that answered its way in (earned): one sent by the host or let through an open door is not quick.
+  { id: "rush", icon: "⚡", title: "閃電突擊", value: (t) => (t.bossAt?.earned ? t.bossAt.turns : null), reason: (n) => `${n} 回合就進魔王房`, fewest: true },
+  { id: "crit", icon: "🎲", title: "大成功王", value: (t) => t.natural20s || null, reason: (n) => `擲出 ${n} 次 20` },
+];
+
+/** The data titles this game earned, in award order: each to the teams with the best value, none for a value of 0. */
+export function awardTitles(teams: TitleTeam[]): Award[] {
+  return TITLES.flatMap(({ id, icon, title, value, reason, fewest }) => {
+    const held = teams.flatMap((t) => {
+      const v = value(t);
+      return v === null ? [] : [{ id: t.id, v }];
+    });
+    if (!held.length) return [];
+    const best = (fewest ? Math.min : Math.max)(...held.map((h) => h.v));
+    return [{ id, icon, title, teamIds: held.filter((h) => h.v === best).map((h) => h.id), reason: reason(best) }];
+  });
+}
+
+/** A beat's spoken line holds one row of the podium's narrator box: 27px text, 786px wide, so 29 a row, one spare
+ * for punctuation (UTF-16 units, so an emoji counts as two). */
+export const MAX_AWARD_LINE = 28;
+
+/** 「{icon}{title}……{names}！」 in one row: a tie too long becomes 「{first}等 N 隊」, and a name still too long is cut. */
+export function awardLine(icon: string, title: string, names: string[]): string {
+  const say = (who: string) => `${icon}${title}……${who}！`;
+  if (say(names.join("、")).length <= MAX_AWARD_LINE) return say(names.join("、"));
+  const tail = names.length > 1 ? `等 ${names.length} 隊` : "";
+  const head = [...(names[0] ?? "")];
+  while (head.length && say(head.join("") + tail).length > MAX_AWARD_LINE) head.pop();
+  return say(head.join("") + tail);
+}
+
+/** Emoji read aloud come out as words (🎲 「骰子」): the voice skips them (podium-titles.md eng 7). */
+export const unemoji = (line: string) => line.replace(/[\p{Extended_Pictographic}\uFE0F]/gu, "");
+
+/** An AI title's halves, at most this long (UTF-16 units). */
+export const MAX_TITLE = 10;
+export const MAX_TITLE_REASON = 16;
+
+/** The AI's title for a team with none (「稱號｜理由」, a half-width | too): null when it does not split into two
+ * non-empty halves within their limits. The one parser, for the runner's check and the beats. */
+export function parseTitle(line: string | undefined): { title: string; reason: string } | null {
+  const at = line?.search(/[｜|]/) ?? -1;
+  if (!line || at < 0) return null;
+  const title = line.slice(0, at).trim();
+  const reason = line.slice(at + 1).trim();
+  return title && reason && title.length <= MAX_TITLE && reason.length <= MAX_TITLE_REASON ? { title, reason } : null;
+}
+
+/** The fallback for a team the AI did not title (D4): its own turns. */
+const fallbackTitle = (t: TitleTeam) => ({ title: "堅持到最後的冒險者", reason: `撐了 ${t.turns ?? 0} 回合` });
+
+/** The teams no data title went to, in team order: each gets a consolation title (AI 🌟, else 🛡️). */
+export function untitledTeams<T extends TitleTeam>(teams: T[], awards = awardTitles(teams)): T[] {
+  const held = new Set(awards.flatMap((a) => a.teamIds));
+  return teams.filter((t) => !held.has(t.id));
+}
+
 export const placeLine = (place: number, name: string) => `第${ordinal(place)}名是……${name}！`;
 
 /** One beat of the reveal. Each `line` is read on the big screen; a roll's line is its chip. */
 export type Beat =
-  | { kind: "crit"; line: string; names: string[]; count: number }
+  /** A title: a data title, or a team's consolation (🌟 the AI's, 🛡️ the fallback). `reason` is on the card only (D2). */
+  | { kind: "award"; line: string; icon: string; title: string; names: string[]; teamIds: string[]; reason: string }
   | { kind: "roll"; line: string; names: string[]; values: number[]; result: string }
   | { kind: "place"; line: string; place: number; teamId: string };
 
 /** How long each beat holds (D9). First place is the last beat; the story is read after it. */
 export function beatMs(beat: Beat): number {
-  if (beat.kind === "crit") return 3000;
-  if (beat.kind === "roll") return 2500;
+  if (beat.kind === "award" || beat.kind === "roll") return 2500;
   return beat.place === 1 ? 4000 : 3500;
 }
 
@@ -94,28 +179,35 @@ function rollTexts(roll: TieRoll, name: (id: string) => string): { line: string;
   return { line, result: order.map((o) => `${name(o.id)} ${o.v}`).join("、") + again };
 }
 
-/** What the narration is asked to write: the crit king, then each place lowest first (the story comes after). */
-export function revealCalls(teams: { id: string; name: string; natural20s?: number }[], ranking: string[]) {
+/** What the narration is asked to write: a title for each team with none (`titles`, in team order), then each place
+ * lowest first (the story comes after). */
+export function revealCalls<T extends TitleTeam>(teams: T[], ranking: string[]) {
   const name = (id: string) => teams.find((t) => t.id === id)?.name ?? "";
   const calls = ranking.slice(0, PODIUM_PLACES).map((id, i) => ({ place: i + 1, team: name(id) })).reverse();
-  return { critKing: critKing(teams), calls };
+  return { titles: untitledTeams(teams), calls };
 }
 
 /**
- * The beats, in order: the crit king (if any), then each place lowest first, each tie roll just before the first
- * place it decides (D10). `lines` are the narration's segments, in revealCalls' order; a missing one is scripted.
+ * The beats, in order: every data title, each untitled team's consolation, then each place lowest first, each tie
+ * roll just before the first place it decides (D10). `lines` are the narration's place calls in revealCalls' order and
+ * `titles` its 「稱號｜理由」 lines in `titles` order; a missing call is scripted, a missing or bad title is 🛡️.
  */
-export function revealBeats(
-  teams: { id: string; name: string; natural20s?: number }[],
-  ranking: string[],
-  tieRolls: TieRoll[],
-  lines: string[] = [],
-): Beat[] {
+export function revealBeats(teams: TitleTeam[], ranking: string[], tieRolls: TieRoll[], lines: string[] = [], titles: string[] = []): Beat[] {
   const name = (id: string) => teams.find((t) => t.id === id)?.name ?? "";
-  const { critKing: king, calls } = revealCalls(teams, ranking);
-  const said = [...lines];
-  const beats: Beat[] = [];
-  if (king) beats.push({ kind: "crit", line: said.shift() ?? critLine(king.names, king.count), ...king });
+  const awards = awardTitles(teams);
+  const { calls } = revealCalls(teams, ranking);
+  // A save from before titles holds [crit, p3, p2, p1]: the calls are always the last lines.
+  const said = lines.slice(Math.max(0, lines.length - calls.length));
+  const beats: Beat[] = awards.map((a) => {
+    const names = a.teamIds.map(name);
+    return { kind: "award", line: awardLine(a.icon, a.title, names), icon: a.icon, title: a.title, names, teamIds: a.teamIds, reason: a.reason };
+  });
+  untitledTeams(teams, awards).forEach((t, i) => {
+    const ai = parseTitle(titles[i]);
+    const icon = ai ? "🌟" : "🛡️";
+    const { title, reason } = ai ?? fallbackTitle(t);
+    beats.push({ kind: "award", line: awardLine(icon, title, [t.name]), icon, title, names: [t.name], teamIds: [t.id], reason });
+  });
   const shown = new Set<TieRoll>();
   for (const call of calls) {
     for (const roll of tieRolls) {
