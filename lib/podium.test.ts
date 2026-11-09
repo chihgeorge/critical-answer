@@ -84,8 +84,14 @@ describe("awardTitles", () => {
   });
 
   it("awards in the table's order, 🎲 last", () => {
-    const all = team("甲", { events: ["blessing", "curse", "rotten"], flees: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true }, natural20s: 1 });
-    expect(awardTitles([all]).map((a) => a.icon)).toEqual(["🗺️", "✨", "💀", "🤢", "🏃", "🍲", "⚡", "🎲"]);
+    const all = team("甲", { events: ["blessing", "curse", "rotten"], flees: 1, potionsDrunk: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true }, natural20s: 1 });
+    expect(awardTitles([all]).map((a) => a.icon)).toEqual(["🗺️", "✨", "💀", "🤢", "🏃", "🧪", "🍲", "⚡", "🎲"]);
+  });
+
+  it("🧪 goes to the team that drank the most lucky potions; none drunk gives no title", () => {
+    const awards = awardTitles([team("甲", { potionsDrunk: 2 }), team("乙", { potionsDrunk: 3 }), team("丙")]);
+    expect(awards).toEqual([{ id: "potions", icon: "🧪", title: "藥水成癮", teamIds: ["乙"], reason: "喝了 3 瓶幸運藥水" }]);
+    expect(awardTitles([team("甲", { potionsDrunk: 0 })])).toEqual([]);
   });
 });
 
@@ -153,15 +159,15 @@ describe("revealBeats", () => {
     expect(lines(revealBeats(t, ["甲", "乙", "丙"], [], ["舊的大成功王", "三", "二", "一"]))).toEqual(["三", "二", "一"]);
   });
 
-  it("8 teams at worst: every data title to one team, then 7 consolations, is 15 title beats before the places", () => {
+  it("8 teams at worst: every data title to one team, then 7 consolations, is 16 title beats before the places", () => {
     const ids = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛"];
-    const star = { id: "甲", name: "甲隊", reward: 1, events: ["blessing", "curse", "rotten"] as EventOutcome[], flees: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true as const }, natural20s: 1 };
+    const star = { id: "甲", name: "甲隊", reward: 1, events: ["blessing", "curse", "rotten"] as EventOutcome[], flees: 1, potionsDrunk: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true as const }, natural20s: 1 };
     const t = [star, ...ids.slice(1).map((id) => ({ id, name: `${id}隊`, reward: 1 }))];
     const beats = revealBeats(t, ids, []);
-    expect(beats.filter((b) => b.kind === "award")).toHaveLength(15);
-    // 8 data titles + 7 consolations, then the 3 places (the design's 17 counts 🧪, added with the lucky potion).
-    expect(beats).toHaveLength(18);
-    expect(revealMarks(beats).at(-1)).toBe(15 * 2500 + 3500 + 3500 + 4000);
+    expect(beats.filter((b) => b.kind === "award")).toHaveLength(16);
+    // 9 data titles (🧪 included) + 7 consolations, then the 3 places.
+    expect(beats).toHaveLength(19);
+    expect(revealMarks(beats).at(-1)).toBe(16 * 2500 + 3500 + 3500 + 4000);
   });
 
   it("calls third, second and first, nothing below third", () => {

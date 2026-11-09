@@ -391,6 +391,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           {!reveal && !card && inBoss && <LabelChip>{bossPhaseInfo?.name ?? "最後的挑戰！"}</LabelChip>}
           {/* A curse or blessing waits on the team's next correct answer (event-rooms.md D12). */}
           {!reveal && !card && turn?.boon && <span data-testid="screen-boon"><LabelChip>{BOON_TEXT[turn.boon]}</LabelChip></span>}
+          {/* 🧪 The team on turn holds a potion, or drank it on this question (lucky-potion.md D1, D8). */}
+          {!reveal && !card && turn?.item && (
+            <span data-testid="screen-potion">
+              <LabelChip>{turn.itemArmed ? "🧪 已喝下！" : "🧪 有幸運藥水"}</LabelChip>
+            </span>
+          )}
         </div>
         {/* The reveal takes the question's own slot until the host presses 下一題 (D7), so the
             next question never shows underneath (or behind) the previous answer. */}
@@ -524,7 +530,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {pendingRoll?.kind === "kill" && pendingRoll.values ? (
         <KillRollOverlay key={`kill-${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} values={pendingRoll.values} value={pendingRoll.value} />
       ) : (
-        pendingRoll && pendingRoll.kind !== "kill" && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} kind={pendingRoll.kind ?? "warrior"} critable={!!(question?.options || question?.items)} bonus={pendingRoll.bonus} dc={pendingRoll.dc} />
+        pendingRoll && pendingRoll.kind !== "kill" && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} values={pendingRoll.values} kind={pendingRoll.kind ?? "warrior"} critable={!!(question?.options || question?.items)} bonus={pendingRoll.bonus} dc={pendingRoll.dc} />
       )}
     </>
   );

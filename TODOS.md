@@ -40,7 +40,7 @@
 - [加入密碼鎖改成按連線來源（IP）計數，避免亂猜擋住新隊伍](#加入密碼鎖改成按連線來源ip計數避免亂猜擋住新隊伍) — S（人工約半天 / CC 約 30 分鐘），活動後
 - [HOST_AI_KEY 能被拿來批次驗證偷來的 Anthropic key](#host_ai_key-能被拿來批次驗證偷來的-anthropic-key) — S（人工約 2 小時 / CC 約 20 分鐘）
 - [填空題可以有好幾個要填的欄位](#填空題可以有好幾個要填的欄位) — M（人工約 2 天 / CC 約 1 小時）
-- [⭐ 靈感：主持人給，下一次擲骰取優勢](#-靈感主持人給下一次擲骰取優勢) — S
+- [每個職業技能都靠擲骰](#每個職業技能都靠擲骰) — M，活動後
 - [玩家自己選攻擊或說服](#玩家自己選攻擊或說服) — M
 - [說服檢定的剩餘小風險（/ship 2026-11-06）](#說服檢定的剩餘小風險ship-2026-11-06) — S
 - [在全新的 Cloudflare／Vercel 帳號上照部署指南做一遍](#在全新的-cloudflarevercel-帳號上照部署指南做一遍) — S（人工約 2 小時 / CC 約 30 分鐘）
@@ -641,19 +641,20 @@
 
 ---
 
-## ⭐ 靈感：主持人給，下一次擲骰取優勢
+## 每個職業技能都靠擲骰
 
-**What:** 主持人看到隊伍演得好或答得漂亮，給一個 ⭐ 靈感。這隊下一次擲骰（暴擊骰、說服檢定或戰士骰）擲兩次取高。
+**What:** 讓五個職業的技能都經過一次 d20：例如法師刪選項、盜賊偷襲、牧師祈禱先擲骰，結果決定效果大小。
 
-**Why:** 跑團風擲骰的 office-hours（2026-11-05，Decision 9）：使用者說「先不加靈感 之後再說」。
+**Why:** 🧪 幸運藥水（原本的「⭐ 靈感」，`docs/designs/lucky-potion.md`）只影響 d20：暴擊骰和說服檢定。不擲骰的職業技能完全用不到藥水，戰士的答題骰為了平衡也排除在外。技能都走擲骰後，藥水對每個職業都一樣有用。lucky-potion office-hours（2026-11-08）估 1–2 天，活動前不做。
 
 **Context:**
-- `lib/room/dungeon-room.ts`（`startRoll`）
-- `app/room/[code]/host/page.tsx`
+- `lib/game-state.ts`（`mageEliminate`、`armSneak`、`pray`）
+- `lib/room/dungeon-room.ts`（`startRoll`、`handleTeamUseAbility`）
+- `components/d20.tsx`（`RollOverlay`）
 
-**Effort/Priority:** S / P3
+**Effort/Priority:** M / P3（活動後）
 
-**Depends on:** 無（跑團風擲骰 PR 2 已在 v0.35.0.0 上線）。
+**Depends on:** 幸運藥水上線。要先討論職業平衡。
 
 ---
 

@@ -288,6 +288,14 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "TEAM_PICK_CLASS" })).toBeNull();
   });
 
+  it("HOST_GIVE_ITEM needs a team id; TEAM_DRINK_POTION a question id and a non-negative integer eventId", () => {
+    expect(parseClientMessage({ type: "HOST_GIVE_ITEM", teamId: "t1", item: "x" })).toEqual({ type: "HOST_GIVE_ITEM", teamId: "t1" });
+    expect(parseClientMessage({ type: "HOST_GIVE_ITEM" })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_DRINK_POTION", questionId: "q1", eventId: 2 })).toEqual({ type: "TEAM_DRINK_POTION", questionId: "q1", eventId: 2 });
+    for (const eventId of [undefined, -1, 1.5, "3"]) expect(parseClientMessage({ type: "TEAM_DRINK_POTION", questionId: "q1", eventId })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_DRINK_POTION", eventId: 0 })).toBeNull();
+  });
+
   it("TEAM_ROLL_CHECK carries the question id and a non-negative integer eventId only", () => {
     expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId: 3, value: 20 })).toEqual({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId: 3 });
     for (const eventId of [undefined, -1, 1.5, "3"]) expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId })).toBeNull();

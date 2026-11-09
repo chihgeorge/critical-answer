@@ -29,6 +29,10 @@ import {
   mageEliminate,
   mageHint,
   armSneak,
+  giveItem,
+  drinkPotion,
+  potionArmed,
+  spendPotion,
   pray,
   canPray,
   recordTextWrong,
@@ -1361,6 +1365,12 @@ export class DungeonRoom {
         case "HOST_SEND_TO_BOSS":
           this.handleSendToBoss(sender, msg.teamId);
           break;
+        case "HOST_GIVE_ITEM":
+          this.handleHostGiveItem(sender, msg.teamId);
+          break;
+        case "TEAM_DRINK_POTION":
+          this.handleTeamDrinkPotion(sender, msg.questionId, msg.eventId);
+          break;
         case "HOST_OPEN_EVENT":
           if (this.requireHost(sender)) this.handleOpenEvent(sender, msg.teamId, msg.eventId);
           break;
@@ -2622,9 +2632,15 @@ export class DungeonRoom {
   /** A kill's 4d20: rolled by judgeNow, which also knows the bonus they score. */
   private startRoll(kind: "kill", teamId: string, questionId: string, kill: { values: number[]; value: number }): void;
   private startRoll(kind: PendingRoll["kind"] & string, teamId: string, questionId: string, extra?: { bonus: number; dc: number } | { values: number[]; value: number }) {
-    const value = extra && "value" in extra ? extra.value : (this.fixedDie ?? rollD20(this.rng));
-    this.pendingRoll = { teamId, questionId, value, kind, ...extra };
-    console.log(JSON.stringify({ event: "roll", kind, value, ...(extra && "values" in extra ? { values: extra.values } : {}) }));
+    const die = () => this.fixedDie ?? rollD20(this.rng);
+    // 🧪 A potion drunk on this question doubles a crit or check die, never the warrior's or the kill's (lucky-potion.md
+    // premise 3), and is spent before the STATE goes out, so a restart in the beat cannot roll it again (E3).
+    const potion = (kind === "crit" || kind === "check") && this.game !== null && potionArmed(this.game, teamId) ? [die(), die()] : null;
+    if (potion) this.game = spendPotion(this.game!, teamId);
+    const value = extra && "value" in extra ? extra.value : potion ? Math.max(...potion) : die();
+    this.pendingRoll = { teamId, questionId, value, kind, ...extra, ...(potion ? { values: potion } : {}) };
+    const values = potion ?? (extra && "values" in extra ? extra.values : undefined);
+    console.log(JSON.stringify({ event: "roll", kind, value, ...(values ? { values } : {}) }));
     this.setCue("roll");
     if (this.lockTimer) clearTimeout(this.lockTimer);
     this.lockTimer = setTimeout(() => this.resolveRoll(), kind === "kill" ? KILL_BEAT_MS : BEAT_MS);
@@ -2776,7 +2792,48 @@ export class DungeonRoom {
     if (q?.kind !== "text") return reject("stale_question");
     this.startRoll("check", teamId, questionId, checkTarget(game, teamId, questionId));
     // Written now and persisted with the STATE, but hidden until the beat ends (snapshot): a restart cannot reroll it.
-    this.game = recordCheck(game, teamId, questionId, this.pendingRoll!.value, q.answer);
+    // this.game, not game: startRoll may have spent a potion.
+    this.game = recordCheck(this.game!, teamId, questionId, this.pendingRoll!.value, q.answer);
+    this.broadcastState();
+  }
+
+  /** 🧪 給藥水 (lucky-potion.md D3, E4): any team, any time of the game, one potion at a time. The owl says so (D7). */
+  private handleHostGiveItem(conn: Conn, teamId: string) {
+    if (!this.requireHost(conn)) return;
+    if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+    try {
+      this.game = giveItem(this.game, teamId);
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    const name = this.game.teams.find((t) => t.id === teamId)!.name;
+    this.appendLine(this.eventSeq, `🧪 ${name}拿到一瓶幸運藥水！`);
+    this.broadcastState();
+  }
+
+  /** 🧪 喝下幸運藥水 (lucky-potion.md D6, E4): only on the team's own turn, while a crit or check die can still roll on this
+   * question. The phone shows the button in the same cases, so a refusal only happens on a race. */
+  private handleTeamDrinkPotion(conn: Conn, questionId: string, eventId: number) {
+    const teamId = this.playingTeam(conn);
+    const game = this.game;
+    if (!teamId || !game) return;
+    const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    if (eventId !== this.eventSeq) return reject("stale_event");
+    if (this.paused()) return reject("reveal_pending");
+    if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");
+    if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
+    if (isBuzzPhase(game)) return reject("buzzer_phase");
+    const team = game.teams.find((t) => t.id === teamId);
+    if (team?.event) return reject("event_room");
+    const q = this.question(questionId);
+    if (!q || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
+    // A fill-in rolls only its persuasion check: none left once it is rolled or an answer waits for the host.
+    if (q.kind === "text" && (game.checks?.[checkKey(questionId, teamId)] || team?.typedAnswer !== undefined)) return reject("check_done");
+    try {
+      this.game = drinkPotion(game, teamId);
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
     this.broadcastState();
   }
 

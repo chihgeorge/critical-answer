@@ -7,19 +7,21 @@ import { killRollText } from "@/lib/kill-roll";
 import { ROW_NAMES } from "@/lib/podium";
 import { INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, type InitiativeView } from "@/lib/initiative";
 
-/** A pixel-outlined d20 face: the hexagon with its front triangle, `value` in the middle. */
-export function D20({ value, size }: { value: number | string; size: number }) {
-  const edge = { stroke: "var(--k)", strokeWidth: 3 };
+/** A pixel-outlined d20 face: the hexagon with its front triangle, `value` in the middle. `tone`: a 🧪 potion's two dice
+ * (lucky-potion.md D10), the kept one on `--turn`, the other dimmed. */
+export function D20({ value, size, tone }: { value: number | string; size: number; tone?: "kept" | "dim" }) {
+  const line = tone === "dim" ? "var(--dim-line)" : "var(--k)";
+  const edge = { stroke: line, strokeWidth: 3 };
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden style={{ display: "block", filter: "drop-shadow(0 6px 0 var(--k))" }}>
-      <polygon points="50,3 93,27 93,73 50,97 7,73 7,27" fill="#ffa94d" stroke="var(--k)" strokeWidth={5} />
-      <polygon points="50,18 84,74 16,74" fill="#ffd9a3" {...edge} />
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden data-tone={tone} style={{ display: "block", filter: "drop-shadow(0 6px 0 var(--k))" }}>
+      <polygon points="50,3 93,27 93,73 50,97 7,73 7,27" fill={tone === "kept" ? "var(--turn)" : "#ffa94d"} stroke={line} strokeWidth={5} />
+      <polygon points="50,18 84,74 16,74" fill={tone === "kept" ? "var(--turn)" : "#ffd9a3"} {...edge} />
       {["50,3 50,18", "7,27 50,18", "93,27 50,18", "16,74 7,73", "84,74 93,73", "16,74 50,97", "84,74 50,97"].map((l) => {
         const [a, b] = l.split(" ").map((p) => p.split(",").map(Number));
         return <line key={l} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} {...edge} />;
       })}
       {/* Two digits at 20 ran over the triangle's edges; 16 sits inside it, a little lower where the triangle is wider. */}
-      <text x="50" y={String(value).length > 1 ? 66 : 62} textAnchor="middle" fontFamily="'Press Start 2P', monospace" fontSize={String(value).length > 1 ? 16 : 20} fill="var(--k)">
+      <text x="50" y={String(value).length > 1 ? 66 : 62} textAnchor="middle" fontFamily="'Press Start 2P', monospace" fontSize={String(value).length > 1 ? 16 : 20} fill={tone === "dim" ? "var(--dim-ink)" : "var(--k)"}>
         {value}
       </text>
     </svg>
@@ -31,8 +33,9 @@ const TUMBLE_MS = 1200;
 
 /** The big screen's 2 s over a roll (class-abilities.md D12=A): the scene dims, a big d20 tumbles and lands on the
  * room's `value`. `kind`: a warrior's roll for the answer (12+ hits), or the crit die after a correct answer (20 is a
- * critical hit, 1 a fumble, still a hit). Keyed by the caller per roll, so every roll tumbles again. */
-export function RollOverlay({ teamName, value, kind = "warrior", critable = false, bonus = 0, dc = 0 }: { teamName: string; value: number; kind?: "warrior" | "crit" | "check"; critable?: boolean; bonus?: number; dc?: number }) {
+ * critical hit, 1 a fumble, still a hit). Keyed by the caller per roll, so every roll tumbles again. `values`: a 🧪 potion's
+ * two dice (lucky-potion.md D10), tumbling and landing together; `value` is the higher, and a tie shows both as kept. */
+export function RollOverlay({ teamName, value, values, kind = "warrior", critable = false, bonus = 0, dc = 0 }: { teamName: string; value: number; values?: number[]; kind?: "warrior" | "crit" | "check"; critable?: boolean; bonus?: number; dc?: number }) {
   const [face, setFace] = useState<number | null>(null);
   useEffect(() => {
     // Reduced motion: no face flicker either (the CSS tumble already stops), the die shows its value at once.
@@ -69,16 +72,27 @@ export function RollOverlay({ teamName, value, kind = "warrior", critable = fals
       : hit
         ? `${value} ≥ ${WARRIOR_TARGET} 命中！`
         : `${value}，差一點……`;
+  const potion = values && values.length > 1 ? values : null;
   return (
     <div data-testid="roll-overlay" data-kind={kind} className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>
       <div className="text-[18px]">
         <LabelChip>
-          {check ? `🗣️ ${teamName} 說服檢定：d20 + ${bonus}，DC ${dc}` : crit ? `✨ ${teamName} 答對！擲暴擊骰，20 是大成功` : `⚔️ ${teamName} 擲骰！${WARRIOR_TARGET} 以上就贏`}
+          {potion ? `🧪 ${teamName} 幸運藥水！擲兩次取高` : check ? `🗣️ ${teamName} 說服檢定：d20 + ${bonus}，DC ${dc}` : crit ? `✨ ${teamName} 答對！擲暴擊骰，20 是大成功` : `⚔️ ${teamName} 擲骰！${WARRIOR_TARGET} 以上就贏`}
         </LabelChip>
       </div>
-      <div className={landed ? undefined : "px-roll-tumble"}>
-        <D20 value={landed ? value : face} size={190} />
-      </div>
+      {potion ? (
+        <div className="flex gap-6">
+          {potion.map((v, i) => (
+            <div key={i} data-testid="potion-die" className={landed ? undefined : "px-roll-tumble"}>
+              <D20 value={landed ? v : face} size={150} tone={landed ? (v === value ? "kept" : "dim") : undefined} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={landed ? undefined : "px-roll-tumble"}>
+          <D20 value={landed ? value : face} size={190} />
+        </div>
+      )}
       <div
         data-testid="roll-result"
         className={`px-bar text-[26px] ${landed && hit ? "ok" : ""}`}
@@ -88,7 +102,7 @@ export function RollOverlay({ teamName, value, kind = "warrior", critable = fals
           ...(landed && (crit || check || critable) && value === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : {}),
         }}
       >
-        {result}
+        {potion ? `取高：${value}　${result}` : result}
       </div>
     </div>
   );

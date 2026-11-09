@@ -192,6 +192,8 @@ export type ClientMessage =
   | { type: "HOST_SERVE"; eventId: number }
   /** Host override: take a team into the boss room (docs/designs/scoring-and-score-pools.md S13). */
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
+  /** 🧪 給藥水 (docs/designs/lucky-potion.md): the host gives a team a potion, at any time of the game; refused while it holds one. */
+  | { type: "HOST_GIVE_ITEM"; teamId: string }
   /** Host: open the event for the turn's team when its phone does not (docs/designs/event-rooms.md D10). `eventId`: the STATE it was pressed under. */
   | { type: "HOST_OPEN_EVENT"; teamId: string; eventId: number }
   /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
@@ -245,6 +247,9 @@ export type ClientMessage =
   | { type: "TEAM_OPEN_EVENT"; eventId: number }
   /** 擲骰說服 on the team's own fill-in turn (dnd design R6, R-E1): the room rolls the check. `eventId`: the STATE it was pressed under (R-E4). */
   | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
+  /** 🧪 喝下幸運藥水 on the team's own turn: its next crit or check die on `questionId` rolls twice, keeping the higher
+   * (lucky-potion.md). `eventId`: the STATE it was pressed under. */
+  | { type: "TEAM_DRINK_POTION"; questionId: string; eventId: number }
   /** 擲先攻 (lib/initiative.ts): this team's d20, once, while the room waits for rolls. */
   | { type: "TEAM_ROLL_INITIATIVE" }
   /** 全部代擲: the room rolls for every team that has not rolled 擲先攻 yet. */
@@ -273,7 +278,8 @@ export const REACT_ROOM_MAX = MAX_TEAMS - 1;
 /** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the crit die
  * after a correct lock (20 is a critical hit, 1 a fumble), a fill-in's persuasion check (`bonus` + the die against
  * `dc`; nothing of its result is decided before the beat ends), or the boss kill's 4d20 (`values`, the four dice;
- * `value`, the bonus they score, a thief's sneak included; docs/designs/kill-roll.md). Absent from an older server: a warrior's. */
+ * `value`, the bonus they score, a thief's sneak included; docs/designs/kill-roll.md). A crit or check rolled with a 🧪
+ * potion has `values`, its two dice, and `value`, the higher (lucky-potion.md E6). Absent from an older server: a warrior's. */
 export interface PendingRoll {
   teamId: string;
   questionId: string;
@@ -603,6 +609,15 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_SEND_TO_BOSS": {
       const teamId = str(m.teamId, MAX_ID);
       return teamId === null ? null : { type: "HOST_SEND_TO_BOSS", teamId };
+    }
+    case "HOST_GIVE_ITEM": {
+      const teamId = str(m.teamId, MAX_ID);
+      return teamId === null ? null : { type: "HOST_GIVE_ITEM", teamId };
+    }
+    case "TEAM_DRINK_POTION": {
+      const questionId = str(m.questionId, MAX_ID);
+      if (questionId === null || !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
+      return { type: "TEAM_DRINK_POTION", questionId, eventId: m.eventId as number };
     }
     case "HOST_OPEN_EVENT": {
       const teamId = str(m.teamId, MAX_ID);
