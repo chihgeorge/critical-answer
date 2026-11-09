@@ -381,7 +381,9 @@ describe("restarts and key changes", () => {
     await r.judge();
     expect(r.status().error).toBe("ai_stopped");
     broke = false;
-    await r.useKey();
+    // A paste carries a keyId (the page's keyless resend on reconnect must not restart AI).
+    r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY, keyId: "again" });
+    await sleep(0);
     expect(r.status().error).toBeUndefined();
     const before = r.narrationCalls().length;
     await r.judge();
@@ -453,6 +455,50 @@ describe("restarts and key changes", () => {
     r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: OTHER_KEY, keyId: "e" });
     await sleep(0);
     expect(r.status()).toMatchObject({ appliedKeyId: "d", error: "invalid_key" });
+  });
+
+  // Value: protects=the host page drops a refused pending key instead of resending it on every reconnect (TODOS: 重連時主持人頁
+  // 重送舊 key); fails_when=refusedKeyId is missing, names another key, or outlives its error; seam=none
+  it("refusedKeyId names the HOST_AI_KEY its error refuses, only while that error stands", async () => {
+    const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY }, models: (key) => (key === OTHER_KEY ? json({}, 401) : json({ data: [] })) });
+    r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: "not-a-key", keyId: "a" });
+    expect(r.status()).toMatchObject({ error: "invalid_key", refusedKeyId: "a" });
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: "guess", keyId: "b" });
+    expect(r.status()).toMatchObject({ error: "wrong_owner_key", refusedKeyId: "b" });
+    r.send({ type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: OTHER_KEY, keyId: "c" });
+    await sleep(0);
+    expect(r.status()).toMatchObject({ error: "invalid_key", refusedKeyId: "c" });
+    // A keyless resend's refusal names no key; an applied key clears both.
+    r.send({ type: "HOST_AI_KEY", source: "owner", ownerKey: "guess" });
+    expect(r.status()).toMatchObject({ error: "wrong_owner_key" });
+    expect(r.status()).not.toHaveProperty("refusedKeyId");
+    await r.useKey();
+    expect(r.status()).not.toHaveProperty("error");
+    expect(r.status()).not.toHaveProperty("refusedKeyId");
+  });
+
+  // Value: protects=AI that stopped (no credit) stays stopped across reconnects until the host pastes the key again;
+  // fails_when=a keyless resend re-applies the key and resets the breaker; seam=none
+  it("after AI stops, only a resend with a keyId restarts it, not a reconnect's keyless resend", async () => {
+    for (const msg of [
+      { type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: HOST_KEY },
+      { type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY },
+    ]) {
+      const r = setup({ env: { ANTHROPIC_API_KEY: ENV_KEY, OWNER_KEY }, messages: () => json({ error: { message: "credit balance too low" } }, 400) });
+      r.send(msg);
+      await sleep(0);
+      await r.start();
+      await r.judge();
+      await r.judge();
+      expect(r.status()).toMatchObject({ error: "ai_stopped" });
+      r.send(msg);
+      await sleep(0);
+      expect(r.status()).toMatchObject({ error: "ai_stopped" });
+      r.send({ ...msg, keyId: "k" });
+      await sleep(0);
+      expect(r.status()).toMatchObject({ appliedKeyId: "k" });
+      expect(r.status()).not.toHaveProperty("error");
+    }
   });
 
   it("a wrong OWNER_KEY with the owner key in use: every later status says so, until the next HOST_AI_KEY", async () => {
