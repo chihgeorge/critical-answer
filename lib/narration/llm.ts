@@ -130,7 +130,7 @@ function describe(e: NarrationEvent): string {
     e.type === "epilogue" || !e.next
       ? ""
       : e.next.fork
-        ? `\n接下來輪到隊伍${q(e.next.team)}，他們站在岔路口的兩扇門前：一扇畫著劍，一扇畫著問號。不要猜門後是什麼。`
+        ? `\n接下來輪到隊伍${q(e.next.team)}，他們站在叉路口的兩扇門前：一扇畫著劍，一扇畫著問號。不要猜門後是什麼。`
         : `\n接下來輪到隊伍${q(e.next.team)}，他們要面對${e.next.boss ? "首領" : "怪物"}${q(e.next.monster)}。`;
   return describeEvent(e) + describeRoll(e) + cls + next;
 }

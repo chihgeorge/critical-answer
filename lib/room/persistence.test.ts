@@ -930,11 +930,8 @@ describe("the podium reveal (podium-reveal.md eng D20)", () => {
       const t = g.teams.find((x) => x.id === currentTurnTeamId(g))!;
       serveNext(room, host, (room as unknown as { eventSeq: number }).eventSeq);
       send(room, host, { type: "HOST_JUDGE", teamId: t.id, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
-      const r = room as unknown as { pendingRoll?: { kind: string }; lockTimer: ReturnType<typeof setTimeout>; resolveRoll: () => void };
-      if (r.pendingRoll?.kind === "kill") {
-        clearTimeout(r.lockTimer);
-        r.resolveRoll(); // the kill's 4d20 land at once
-      }
+      const r = room as unknown as { pendingRoll?: { kind: string }; resolveRoll: () => void };
+      if (r.pendingRoll?.kind === "kill") r.resolveRoll(); // the kill's 4d20 land at once (and drop the beat's timer)
     }
     expect(room.game!.phase).toBe("finished");
     return { room, io };

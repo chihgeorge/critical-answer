@@ -80,6 +80,10 @@ export interface RoomSnapshot {
   answerSeconds?: number;
   answerClock?: AnswerClock | null;
   clipEnded?: string | null;
+  /** 手動停頓 (manual-pacing.md). Missing means auto, as in a save from before it. */
+  pacing?: "manual";
+  /** A finished game's podium waits for the host's ▶ 下一步. Missing means it does not. */
+  revealHeld?: true;
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -102,7 +106,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (!Array.isArray(raw.pendingTeams) || !raw.pendingTeams.every((t) => isObject(t) && isString(t.id) && isString(t.name) && classOk(t))) return null;
     // A non-object team entry is left as it is, like before classes (persistence.test.ts covers a null one).
     if (game !== null && !(game.teams as unknown[]).every((t) => !isObject(t) || (classOk(t) && (t.abilityUses === undefined || Number.isInteger(t.abilityUses))))) return null;
-    // An event room saved before 岔路 (branch-fork.md) has no button left to open it: the team stands at a fork instead,
+    // An event room saved before 叉路 (branch-fork.md) has no button left to open it: the team stands at a fork instead,
     // and ❓ draws its event again.
     // A fork in any other shape (a choosing one with no usable deadline would never time out) waits for the team's turn.
     const forkOk = (f: unknown) => f === undefined || (isObject(f) && (f.phase === "waiting" || f.phase === "monster" || (f.phase === "choosing" && Number.isFinite(f.deadline) && (f.monsterSide === "left" || f.monsterSide === "right"))));
@@ -154,6 +158,9 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       ...(raw.podium !== undefined ? { podium } : {}),
       ...(raw.revealFrom !== undefined ? { revealFrom } : {}),
       initiative: iniOk ? (ini as unknown as Initiative) : undefined,
+      // Anything but the two values we write is auto, and no held podium.
+      pacing: raw.pacing === "manual" ? "manual" : undefined,
+      revealHeld: raw.revealHeld === true ? true : undefined,
       ...(raw.answerSeconds !== undefined ? { answerSeconds: isAnswerSeconds(raw.answerSeconds) ? raw.answerSeconds : 0, answerClock, clipEnded: isString(raw.clipEnded) ? raw.clipEnded : null } : {}),
       game: withUses as GameState | null,
       joinPassword,

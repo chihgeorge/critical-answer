@@ -1075,7 +1075,7 @@ export default function PlayPage() {
           </div>
         )}
 
-        {/* 岔路 (branch-fork.md): a door opening first, then a ❓ outcome, then the doors, so a beat never shows live buttons. */}
+        {/* 叉路 (branch-fork.md): a door opening first, then a ❓ outcome, then the doors, so a beat never shows live buttons. */}
         {game && !finished && !intro && (game.forkBeat || (!eventRevealed && !revealed && !game.phaseCard && !game.phaseCardDue && turn?.team?.fork === "choosing")) ? (
           <ForkPanel game={game} teamId={teamId} send={send} />
         ) : game && !finished && !intro && eventRevealed ? (
@@ -1220,7 +1220,7 @@ function EventPanel({ reveal, game, teamId }: { reveal: EventReveal; game: State
   );
 }
 
-/** 岔路 on a phone (branch-fork.md): the team on turn gets two big unmarked doors, 左門 and 右門, pinned to the bottom of
+/** 叉路 on a phone (branch-fork.md): the team on turn gets two big unmarked doors, 左門 and 右門, pinned to the bottom of
  * the screen so nothing pushes them away; a door opening locks them and names only the opened one. Every other phone reads that the team is at a fork. */
 function ForkPanel({ game, teamId, send }: { game: StateMessage; teamId: string; send: (msg: ClientMessage) => void }) {
   const beat = game.forkBeat;
@@ -1236,7 +1236,7 @@ function ForkPanel({ game, teamId, send }: { game: StateMessage; teamId: string;
   if (team.id !== teamId) {
     return (
       <Panel className="px-3 py-[10px] text-[17px]">
-        <span data-testid="phone-fork-watch">{beat ? `${team.name}推開了門……看大螢幕 📺` : `${team.name}在岔路口猶豫中……看大螢幕 📺`}</span>
+        <span data-testid="phone-fork-watch">{beat ? `${team.name}推開了門……看大螢幕 📺` : `${team.name}在叉路口猶豫中……看大螢幕 📺`}</span>
       </Panel>
     );
   }

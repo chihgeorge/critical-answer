@@ -140,6 +140,14 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_ROLL_INITIATIVE" })).toEqual({ type: "HOST_ROLL_INITIATIVE" });
   });
 
+  it("HOST_PACING takes auto or manual; HOST_STEP needs both ids as non-negative integers (manual-pacing.md)", () => {
+    expect(parseClientMessage({ type: "HOST_PACING", mode: "manual", extra: 1 })).toEqual({ type: "HOST_PACING", mode: "manual" });
+    expect(parseClientMessage({ type: "HOST_PACING", mode: "auto" })).toEqual({ type: "HOST_PACING", mode: "auto" });
+    expect(parseClientMessage({ type: "HOST_PACING", mode: "fast" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_STEP", eventId: 3, step: 7 })).toEqual({ type: "HOST_STEP", eventId: 3, step: 7 });
+    for (const bad of [{ eventId: 3 }, { step: 7 }, { eventId: -1, step: 7 }, { eventId: 3, step: 1.5 }, { eventId: "3", step: 7 }]) expect(parseClientMessage({ type: "HOST_STEP", ...bad })).toBeNull();
+  });
+
   it("HOST_START: intro is optional and must be a boolean; false is the same as missing", () => {
     expect(parseClientMessage({ type: "HOST_START", intro: true })).toEqual({ type: "HOST_START", intro: true });
     expect(parseClientMessage({ type: "HOST_START", intro: false })).toEqual({ type: "HOST_START" });

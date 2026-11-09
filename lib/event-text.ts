@@ -3,7 +3,7 @@
 
 import type { Boon, EventOutcome, EventResult, EventScene, ForkDoor, ForkSide } from "./game-state";
 
-/** 岔路's doors are unmarked (branch-fork.md): a side until one opens, then what was behind that one only. */
+/** 叉路's doors are unmarked (branch-fork.md): a side until one opens, then what was behind that one only. */
 export const FORK_SIDE_LABEL: Record<ForkSide, string> = { left: "左門", right: "右門" };
 export const FORK_DOOR_LABEL: Record<ForkDoor, string> = { monster: "⚔️ 怪物房", mystery: "❓ 神秘房" };
 

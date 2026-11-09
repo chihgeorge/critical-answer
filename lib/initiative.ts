@@ -10,7 +10,7 @@ export const INITIATIVE_MS = 15000;
 export const INITIATIVE_TIE_MS = 2500;
 export const INITIATIVE_ORDER_MS = 4000;
 /** The big screen's view: `left` is how long the room still waits for rolls (or holds the order), when the STATE was sent. */
-export type InitiativeView = Initiative & { left: number };
+export type InitiativeView = Initiative & { left: number; /** Manual pacing: no countdown, the rolls wait for the host. */ untimed?: true };
 
 export interface Initiative {
   /** Each team's d20, by team id, as it comes in. */

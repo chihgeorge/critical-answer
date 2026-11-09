@@ -32,8 +32,7 @@ const HOST_KEY = "sk-ant-test-HOSTKEY-0123456789abcdefWXYZ";
 function landKill(room: DungeonRoom) {
   const r = room as any;
   if (r.pendingRoll?.kind !== "kill") return;
-  clearTimeout(r.lockTimer);
-  r.resolveRoll();
+  r.resolveRoll(); // drops the beat's own timer
 }
 
 function makeConn(id = "conn-1") {
@@ -1825,7 +1824,7 @@ describe("TEAM_SELECT_OPTION", () => {
       pick(room, conns[0], 1);
       lock(room, conns[0]);
       await (room as any).expire();
-      expect((room as any).lockTimer).toBeNull();
+      expect((room as any).steps.size).toBe(0);
       expect(room.game).toBeNull();
       vi.advanceTimersByTime(2000);
       expect(room.game).toBeNull();

@@ -210,7 +210,7 @@ describe("openEvent", () => {
     expect(log.teams[1].events).toEqual([]);
   });
 });
-describe("岔路 (branch-fork.md)", () => {
+describe("叉路 (branch-fork.md)", () => {
   /** t0 answers right and comes to a fork; t1 answers wrong, so it is t0's turn again. `choosing` starts its clock, ⚔️ on the left. */
   function atForkGame(choosing = true, g = game()): GameState {
     const { game: after } = answerQuestion(g, "t0", g.teams[0].currentQuestionId, true, "retry", first);

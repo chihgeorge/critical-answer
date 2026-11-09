@@ -1,7 +1,7 @@
 import { test, expect, type Browser } from "@playwright/test";
 import { answerCorrectly, nextQuestion, startGame, textOnlyBank } from "./answer";
 
-// 岔路 (docs/designs/branch-fork.md). The e2e worker runs with E2E_EVENT_TEAM=EventTeam (playwright.config.ts): the team
+// 叉路 (docs/designs/branch-fork.md). The e2e worker runs with E2E_EVENT_TEAM=EventTeam (playwright.config.ts): the team
 // named EventTeam comes to a fork on every eligible room entry, and no other team ever does; E2E_MONSTER_SIDE=left hides
 // ⚔️ behind the left door, so 右門 opens ❓.
 textOnlyBank();
@@ -44,9 +44,9 @@ async function toTheFork(browser: Browser) {
   await expect(screen.getByTestId("fork-doors")).toContainText("右門");
   await expect(screen.getByTestId("fork-doors")).not.toContainText(/怪物房|神秘房/);
   await expect(screen.getByText("🔀 叉路！")).toBeVisible();
-  await expect(host.getByTestId("host-fork")).toContainText("EventTeam在岔路口");
+  await expect(host.getByTestId("host-fork")).toContainText("EventTeam在叉路口");
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
-  await expect(plain.getByTestId("phone-fork-watch")).toContainText("EventTeam在岔路口猶豫中");
+  await expect(plain.getByTestId("phone-fork-watch")).toContainText("EventTeam在叉路口猶豫中");
   await expect(eventTeam.getByTestId("phone-fork-left")).toHaveText("左門");
   await expect(eventTeam.getByTestId("phone-fork-right")).toHaveText("右門");
   await expect(eventTeam.getByTestId("phone-fork-left")).toBeInViewport();

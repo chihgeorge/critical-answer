@@ -263,7 +263,7 @@ export function InitiativeOverlay({ ini, teams }: { ini: InitiativeView; teams: 
   return (
     <div data-testid="initiative" data-done={ini.order ? true : undefined} className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>
       <div className="text-[18px]">
-        <LabelChip>{chip ?? <>🎲 擲先攻！用手機按「擲骰」　<Countdown key={ini.left} ms={ini.left} /></>}</LabelChip>
+        <LabelChip>{chip ?? <>🎲 擲先攻！用手機按「擲骰」{/* Manual pacing: no countdown, the host rolls for the rest. */}{!ini.untimed && <>　<Countdown key={ini.left} ms={ini.left} /></>}</>}</LabelChip>
       </div>
       <div className="flex gap-6">
         {ids.map((id, i) => {

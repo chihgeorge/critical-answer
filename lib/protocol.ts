@@ -146,6 +146,14 @@ export function scoreName(cuisine: boolean | undefined): string {
   return cuisine ? "飽足感" : "獎勵分";
 }
 
+export type Pacing = "auto" | "manual";
+/** What a manual room waits on (manual-pacing.md). `id` goes back in HOST_STEP; `label` is the host page's text. */
+export interface Hold {
+  id: number;
+  kind: "initiative" | "phase-card" | "lock" | "roll" | "boss-miss" | "fork" | "fork-beat" | "podium";
+  label: string;
+}
+
 export type ClientMessage =
   /** `teamKey` is the team's secret. teamId is public (every STATE broadcasts it), so the key is what proves a connection owns the team. */
   /** `resume`: sent by a page's automatic reconnect (a network hiccup, a server restart), not by a
@@ -266,6 +274,12 @@ export type ClientMessage =
   | { type: "TEAM_ROLL_INITIATIVE" }
   /** 全部代擲: the room rolls for every team that has not rolled 擲先攻 yet. */
   | { type: "HOST_ROLL_INITIATIVE" }
+  /** 手動停頓 (docs/designs/manual-pacing.md): "manual" holds every pause the room would time itself (but the answer
+   * clock) until HOST_STEP. Any time, lobby included; saved with the room. */
+  | { type: "HOST_PACING"; mode: Pacing }
+  /** ▶ 下一步: runs the step STATE `hold` shows. `eventId` and `step` are the ones that STATE carried, so a second
+   * press (or a second host tab) cannot run the step after it. */
+  | { type: "HOST_STEP"; eventId: number; step: number }
   /** The team's typed answer to a text question, shown to the host to judge. One per question. */
   /** `eventId` is the STATE eventId the answer was typed under; an older one (a send that arrived after
    * the host judged that attempt) is dropped, like HOST_JUDGE. Optional so a phone on an older build still sends. */
@@ -340,7 +354,7 @@ export interface MediaCommand {
 export type ServerMessage =
   /** `replay`: this room has played a game, so the host page leaves 開始前播放玩法說明 unchecked (eng D5).
    * `bankSize`: question counts only (no content), so the host page can warn a bank is too small for its teams. */
-  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true; bankSize?: BankSize }
+  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true; bankSize?: BankSize; pacing?: "manual" }
   | {
       type: "STATE";
       view: SpectatorView;
@@ -395,6 +409,9 @@ export type ServerMessage =
       eventReveal?: EventReveal;
       /** The door clock of the team choosing at a fork: ms left when this STATE was sent (branch-fork.md). */
       forkLeft?: number;
+      /** The host switched the room to manual (HOST_PACING); absent means auto. `hold`: the step it waits on now. */
+      pacing?: "manual";
+      hold?: Hold;
       /** The door that just opened, on show for FORK_BEAT_MS (branch-fork.md): `question` is null and the view still
        * shows the team as it was before the press, so nothing behind the door shows early. Memory only. The side opened
        * and what was behind it; the other door is never named, nor which side hides what before a pick. */
@@ -754,6 +771,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const questionId = str(m.questionId, MAX_ID);
       return questionId === null ? null : { type: "TEAM_USE_ABILITY", questionId };
     }
+    case "HOST_PACING":
+      return m.mode === "auto" || m.mode === "manual" ? { type: "HOST_PACING", mode: m.mode } : null;
+    case "HOST_STEP":
+      return isCount(m.eventId) && isCount(m.step) ? { type: "HOST_STEP", eventId: m.eventId, step: m.step } : null;
     case "TEAM_ROLL_INITIATIVE":
     case "HOST_ROLL_INITIATIVE":
       return { type: m.type };
