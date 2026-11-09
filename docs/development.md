@@ -71,7 +71,7 @@ sh scripts/playtest.sh stop
 
 ```
 app/                     Next.js 頁面：首頁、/room/[code]/host、/play、/screen、/bank-editor（題庫編輯），以及出錯時的畫面（error.tsx、global-error.tsx）
-components/              共用像素元件（pixel.tsx）、出錯畫面（error-screen.tsx）、大螢幕舞台（stage.tsx）、大螢幕活地圖（map-strip.tsx）、選擇題選項格（mc-option.tsx）、d20 與大螢幕擲骰畫面（戰士擲骰、選擇題的暴擊骰、填空題的說服檢定和首領尾刀的 4d20，d20.tsx）、填空題的第一個字提示（法師和說服檢定，mage-hint.tsx）、QR（qr.tsx），以及主持人頁拆出來的 AI 旁白設定（host-ai.tsx）、判題鈕上方的「地城主旁白」面板（narration-panel.tsx）、「⚙ 更多」抽屜（more-drawer.tsx）、「指定下一題」選題清單（question-picker.tsx）
+components/              共用像素元件（pixel.tsx）、出錯畫面（error-screen.tsx）、大螢幕舞台（stage.tsx）、大螢幕活地圖（map-strip.tsx）、選擇題選項格（mc-option.tsx）、d20 與大螢幕擲骰畫面（戰士擲骰、選擇題的暴擊骰、填空題的說服檢定和首領尾刀的 4d20，d20.tsx）、填空題的第一個字提示（法師和說服檢定，mage-hint.tsx）、QR（qr.tsx），以及主持人頁拆出來的 AI 旁白設定（host-ai.tsx）、判題鈕上方的「地城主旁白」面板（narration-panel.tsx）、「⚙ 更多」抽屜（more-drawer.tsx）、「指定下一題」選題清單（question-picker.tsx）、多欄位聽歌題的逐欄判定（field-judge.tsx）
 data/question-bank.json  題庫的 bundle 備援（BankStore 連不上時新開的房間用這份；存著的題庫讀不懂時編輯器唯讀顯示這份）
 lib/game-state.ts        遊戲狀態機：房間、題目牌堆、首領、計分（純函式，有完整測試）
 lib/protocol.ts          host / player / server 之間的訊息格式與驗證
