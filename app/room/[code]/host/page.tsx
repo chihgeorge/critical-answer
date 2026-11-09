@@ -816,8 +816,9 @@ export default function HostPage() {
                   ))}
                 </div>
               )}
-              {/* The phase card holds the question back (STATE's question is null), so its answer waits too. */}
-              {answer && answer.questionId === turn.questionId && !game.phaseCard && (
+              {/* The phase card holds the question back (STATE's question is null), so its answer waits too.
+                  So does a door opening (branch-fork.md): ⚔️'s question is not up until the door has opened. */}
+              {answer && answer.questionId === turn.questionId && !game.phaseCard && !game.forkBeat && (
                 <div className="mt-2 px-3 py-1" style={{ background: "#d6f5c2", color: "#1e5a1c", boxShadow: "inset 0 0 0 3px #6fd36a" }}>
                   <div className="text-[11px]" style={{ color: "#2f6a2c" }}>答案（只有你看得到）</div>
                   <div data-testid="host-answer" className="text-[19px]">{answer.answer}</div>

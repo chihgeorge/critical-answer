@@ -85,8 +85,14 @@ test("a team at a fork opens ❓ from its phone, the door opens, everyone sees t
 // fork or skips the room's question; why_new=the fork is new; seam=worker E2E_EVENT_TEAM; no_claim=the narration line
 test("a team at a fork takes ⚔️ and then faces the room's monster", async ({ browser }) => {
   const { host, screen, eventTeam } = await toTheFork(browser);
+  // Regression: ISSUE-001 — the host page showed the ⚔️ question's answer under the fork card while the door opened.
+  // Found by /qa on 2026-11-09. Read in the same frame the opening line appears, so the 1.5 s beat cannot end in between.
+  const answerUpDuringOpening = host
+    .waitForFunction(() => document.querySelector('[data-testid="host-fork-beat"]') && { answer: !!document.querySelector('[data-testid="host-answer"]') }, null, { polling: "raf" })
+    .then((h) => h.jsonValue());
   await eventTeam.getByTestId("phone-fork-left").click();
 
+  expect(await answerUpDuringOpening).toEqual({ answer: false });
   await expect(screen.getByTestId("fork-door-open")).toHaveAttribute("data-door", "monster");
   await expect(screen.getByTestId("fork-door-open")).toContainText("⚔️ 怪物房");
   await expect(host.getByRole("button", { name: "答對！" })).toBeVisible({ timeout: 5000 });
