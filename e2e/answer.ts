@@ -74,12 +74,15 @@ export async function revealLock(host: Page) {
 
 /** 下一題 on the host page. A cooked monster's reveal takes 🍲 上菜 first (docs/designs/monster-cuisine.md, cooking R5), and
  * 下一題 then waits out the cooking (I2); click() waits for it to enable. */
+/** How long a test waits for 下一題 to enable after 🍲 上菜: the server's hold (cooking and eating, eat-dish.md) plus margin. */
+export const NEXT_WAIT_MS = SERVE_HOLD_MS + 5_000;
+
 export async function nextQuestion(host: Page) {
   const serve = host.getByRole("button", { name: "🍲 上菜", exact: true });
   const next = host.getByRole("button", { name: "下一題", exact: true });
   await expect(serve.or(next)).toBeVisible();
   if (await serve.isVisible()) await serve.click();
-  await next.click({ timeout: 10_000 });
+  await next.click({ timeout: NEXT_WAIT_MS });
 }
 
 /** What a raw host socket keeps from the room's STATE messages, enough to judge every turn. */

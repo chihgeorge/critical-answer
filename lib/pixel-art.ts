@@ -687,7 +687,8 @@ const NOT_FOOD = [PLATE, PLATE_DARK, STEAM].map(rgb);
 /**
  * Take `n` (0–3) bites out of a dish's RGBA pixels (docs/designs/eat-dish.md, eng F2): circles at the top right, top and
  * top left of the food, every bitten edge outlined in K. Bites land only inside the food's box (the opaque cells that are
- * not plate, steam or outline, plus the outline ring around them), so the plate and the steam above stay whole.
+ * not plate, steam or outline, plus the outline ring around them), so the plate below and the steam above stay whole;
+ * a plate or steam cell beside the food, inside a bite, goes with it.
  * Returns a new array; `data` is not touched.
  */
 export function biteCells(data: Uint8ClampedArray, w: number, h: number, n: number): Uint8ClampedArray {

@@ -133,6 +133,12 @@ describe("eating the dish (eat-dish.md)", () => {
     expect(end).toContain("data-step=\"7\"");
   });
 
+  it("the eater stands by the dish from the first bite, only while its team is in the room", () => {
+    expect(at(4)).toContain("width:96px;height:96px");
+    expect(at(4, -1)).not.toContain("width:96px;height:96px");
+    expect(at(5, -1)).not.toContain("嚼嚼");
+  });
+
   it("a team gone before the meal leaves no eater, no hearts, no 嗝", () => {
     const end = at(7, -1);
     expect(end).not.toContain("width:96px;height:96px");

@@ -268,7 +268,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const theme = dish ? roomTheme(dish.room) : turnInfo.theme;
   // A team removed mid-reveal still leaves its dish line, without the name.
   const line = dish ? dishLine(dish, eater?.name ?? "", false) : "";
-  const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => say([line]), onEaten);
+  const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => say([line]), eater ? onEaten : undefined); // no 嗝 when the eater's team has left (no one is shown eating)
   const served = cook !== null;
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
   const card = phaseCard && bossPhaseInfo;
