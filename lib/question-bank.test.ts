@@ -94,9 +94,9 @@ describe("boss phases", () => {
 describe("shipped bank", () => {
   const all = allQuestions(BANK);
 
-  it("has 8 rooms of difficulty 1/2/2/3/4/4/5/5 paying 10/20/20/30/40/40/50/50 (scoring-and-score-pools.md S9, S12)", () => {
+  it("has 8 rooms of difficulty 1/2/2/3/4/4/5/5 paying 10/20/20/30/40/40/50/50 (scoring-and-score-pools.md S9, S12)", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(BANK.rooms.map((r) => r.difficulty)).toEqual([1, 2, 2, 3, 4, 4, 5, 5]);
-    expect(BANK.rooms.map((r) => r.reward)).toEqual([10, 20, 20, 30, 40, 40, 50, 50]);
+    expect(BANK.rooms.map((r) => r.reward)).toEqual([10, 20, 20, 30, 40, 40, 50, 50]); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     // Eight different room monsters (monster-catalog.md PR2 item 5).
     expect(new Set(BANK.rooms.map((r) => r.monster)).size).toBe(8);
     expect(BANK.boss.monster).toBe("dragon");
@@ -193,7 +193,7 @@ describe("parseBank", () => {
       boss: { monster: "dragon", maxHp: 3, questions: [q("b1")] },
     });
     expect(b.pools[2].map((x) => x.id)).toEqual(["x1", "x2"]);
-    expect(b.rooms.map((r) => [r.difficulty, r.reward])).toEqual([[2, 20], [2, 20]]);
+    expect(b.rooms.map((r) => [r.difficulty, r.reward])).toEqual([[2, 20], [2, 20]]); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(parseBank(JSON.parse(JSON.stringify(b)))).toEqual(b); // a converted bank saves and loads as itself
   });
 
@@ -339,8 +339,8 @@ describe("parseBank", () => {
     });
 
     it("drops audioOnly: false instead of storing it", () => {
-      const bank = parseBank(one(q("a1", clip({ audioOnly: false, end: 20 }))));
-      expect(bank.pools[1][0].content).toEqual({ kind: "youtube", value: YT_ID, end: 20 });
+      const bank = parseBank(one(q("a1", clip({ audioOnly: false, end: 20 })))); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      expect(bank.pools[1][0].content).toEqual({ kind: "youtube", value: YT_ID, end: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     });
 
     it("publicQuestion carries the prompt and the clip, never the answer", () => {

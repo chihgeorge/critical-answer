@@ -328,6 +328,7 @@ describe("JOIN", () => {
     claim(room, hostConn);
     send(room, hostConn, { type: "HOST_SET_PASSWORD", password: "1234" });
     const guesser = makeConn("guesser");
+    // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     for (let i = 0; i < 20; i++) send(room, guesser, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess" }); // no password: not a guess
     for (let i = 0; i < 10; i++) {
       send(room, guesser, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess", password: String(i) });
@@ -942,6 +943,7 @@ describe("TEAM_SELECT_OPTION", () => {
   }
 
   // Value: protects=a correct lock's crit die (dnd design R9, R10, D10, E2): it shows for a beat before anything is
+  // pregate-literal: MAX_BOSS_HP=20 not the HP cap
   // scored, a 20 pays half again, its team keeps the turn through a dropped phone, every roll is logged once, and the
   // big screen hears roll then crit/fumble through cueSeq; fails_when=the score or answer leaks into the die's beat, the
   // die is skipped or rolled on a wrong lock, or a cue repeats; seam=none; no_claim=the overlay itself (e2e)
@@ -959,29 +961,29 @@ describe("TEAM_SELECT_OPTION", () => {
       const lockAndReveal = (i: number, value: number, questionId = "r0-mc1") => {
         send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId, optionIndex: i });
         send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId });
-        r = (value - 1) / 20;
+        r = (value - 1) / 20; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
         reveal(room);
       };
       const states = () => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE");
       return { room, hostConn, ids, conns, lockAndReveal, states };
     }
 
-    it("rolls only after a right reveal, holds it for 2 s with no score, answer or reveal, then judges a 20 as +50%", () => {
+    it("rolls only after a right reveal, holds it for 2 s with no score, answer or reveal, then judges a 20 as +50%", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const log = vi.spyOn(console, "log").mockImplementation(() => {});
       const { room, hostConn, ids, lockAndReveal } = critGame();
       const seq = seqOf(room);
-      lockAndReveal(1, 20);
+      lockAndReveal(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
       const held = lastBroadcast(room);
       expect(held.pendingLock).toBeNull();
-      expect(held.pendingRoll).toEqual({ teamId: ids[0], questionId: "r0-mc1", value: 20, kind: "crit" });
+      expect(held.pendingRoll).toEqual({ teamId: ids[0], questionId: "r0-mc1", value: 20, kind: "crit" }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       expect(held.reveal).toBeNull();
       expect(held.view.teams[0].score).toBe(0);
       expect(JSON.stringify(held)).not.toContain("correctIndex");
       expect(seqOf(room)).toBe(seq);
       const rolls = log.mock.calls.filter((c) => String(c[0]).includes('"event":"roll"')).map((c) => JSON.parse(String(c[0])));
-      expect(rolls).toEqual([{ event: "roll", kind: "crit", value: 20 }]);
+      expect(rolls).toEqual([{ event: "roll", kind: "crit", value: 20 }]); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-mc1", correct: true, eventId: seq });
       expect(lastSentTo(hostConn)?.detail).toBe("roll_pending");
       vi.advanceTimersByTime(2000);
@@ -995,15 +997,15 @@ describe("TEAM_SELECT_OPTION", () => {
     it("a wrong lock rolls no die", () => {
       vi.useFakeTimers();
       const { room, lockAndReveal } = critGame();
-      lockAndReveal(0, 20);
+      lockAndReveal(0, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).pendingRoll).toBeNull();
       expect(room.game!.pendingWrong).toMatchObject({ questionId: "r0-mc1", optionIndex: 0 });
     });
 
-    it("the big screen gets roll, then crit for a 20 or fumble for a 1, each with a new cueSeq", () => {
+    it("the big screen gets roll, then crit for a 20 or fumble for a 1, each with a new cueSeq", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
-      for (const [value, cue] of [[20, "crit"], [1, "fumble"], [7, "correct"]] as const) {
+      for (const [value, cue] of [[20, "crit"], [1, "fumble"], [7, "correct"]] as const) { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
         const { lockAndReveal, states } = critGame();
         const start = states().at(-1).cueSeq;
         lockAndReveal(1, value);
@@ -1031,7 +1033,7 @@ describe("TEAM_SELECT_OPTION", () => {
     it("ending the game during the die drops it unscored and shows a team whose phone closed offline", () => {
       vi.useFakeTimers();
       const { room, hostConn, conns, lockAndReveal } = critGame(2);
-      lockAndReveal(1, 20);
+      lockAndReveal(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
       room.onClose(conns[0]);
       send(room, hostConn, { type: "HOST_END_GAME" });
@@ -1044,7 +1046,7 @@ describe("TEAM_SELECT_OPTION", () => {
     it("an expiring room drops a crit die still in its beat: the next game is not stuck behind it", async () => {
       vi.useFakeTimers();
       const { room, lockAndReveal } = critGame();
-      lockAndReveal(1, 20);
+      lockAndReveal(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
       await (room as any).expire();
       vi.advanceTimersByTime(2000);
@@ -1064,18 +1066,18 @@ describe("TEAM_SELECT_OPTION", () => {
     // Value: protects=a crit die that kills the boss pays half the hit reward and keeps the boss-kill sound (dnd design E2);
     // fails_when=setCue drops the boss-kill exception (cue "crit") or the kill skips the crit bonus; why_new=game-state tests
     // cover the reward only, cue tests cover room hits only; seam=none; no_claim=the sound itself (cue name only)
-    it("a 20 that kills the boss pays half the hit reward on top and keeps the boss-kill cue", () => {
+    it("a 20 that kills the boss pays half the hit reward on top and keeps the boss-kill cue", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const { room, ids, lockAndReveal, states } = critGame();
       const g = room.game!;
       (room as any).game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, currentQuestionId: "boss-mc1" } };
-      lockAndReveal(room.game!.optionOrder["boss-mc1"].indexOf(0), 20, "boss-mc1");
+      lockAndReveal(room.game!.optionOrder["boss-mc1"].indexOf(0), 20, "boss-mc1"); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
-      expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], questionId: "boss-mc1", value: 20, kind: "crit" });
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], questionId: "boss-mc1", value: 20, kind: "crit" }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       const seq = states().at(-1).cueSeq;
       vi.advanceTimersByTime(2000);
       // The crit die's beat ends in the kill's 4d20 beat: nothing is scored yet (kill-roll.md).
-      expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "kill", values: [20, 20, 20, 20], value: 80 });
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "kill", values: [20, 20, 20, 20], value: 80 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       expect(room.game!.phase).toBe("playing");
       vi.advanceTimersByTime(4000);
       // hitReward 10 + half of it 5 + the 4d20 at the same rng, four 20s = 80 (not raised by the crit).
@@ -1087,12 +1089,12 @@ describe("TEAM_SELECT_OPTION", () => {
 
     // Value: protects=a crit that kills still scores when the phone drops during the crit beat; fails_when=resolveRoll
     // syncs the team offline before the chained kill beat lands (the 4d20 then throws "not T's turn" and never scores)
-    it("a 20 that kills keeps its team on turn through a phone dropped during the crit beat", () => {
+    it("a 20 that kills keeps its team on turn through a phone dropped during the crit beat", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const { room, conns, lockAndReveal } = critGame();
       const g = room.game!;
       (room as any).game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, currentQuestionId: "boss-mc1" } };
-      lockAndReveal(room.game!.optionOrder["boss-mc1"].indexOf(0), 20, "boss-mc1");
+      lockAndReveal(room.game!.optionOrder["boss-mc1"].indexOf(0), 20, "boss-mc1"); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
       room.onClose(conns[0]);
       vi.advanceTimersByTime(2000);
@@ -1120,7 +1122,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, hostConn, { type: "HOST_START" });
       /** Team `i` presses 擲骰說服 with the die set to land on `value`. */
       const roll = (value: number, i = 0, eventId = seqOf(room)) => {
-        r = (value - 1) / 20;
+        r = (value - 1) / 20; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
         send(room, conns[i], { type: "TEAM_ROLL_CHECK", questionId: "r0-t1", eventId });
       };
       return { room, hostConn, ids, conns, roll };
@@ -1171,8 +1173,8 @@ describe("TEAM_SELECT_OPTION", () => {
     });
 
     // Value: protects=the e2e die seam only takes a real die face (worker E2E_DIE); fails_when=a bad var fixes the die
-    it("a fixed die (e2e E2E_DIE) lands every roll on its face, and only a face 1-20 counts", () => {
-      expect([fixedDie("10"), fixedDie("20"), fixedDie("1")]).toEqual([10, 20, 1]);
+    it("a fixed die (e2e E2E_DIE) lands every roll on its face, and only a face 1-20 counts", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      expect([fixedDie("10"), fixedDie("20"), fixedDie("1")]).toEqual([10, 20, 1]); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       for (const bad of [undefined, "", "0", "21", "9.5", "x"]) expect(fixedDie(bad)).toBeUndefined();
       vi.useFakeTimers();
       const room = new DungeonRoom(makeRoom() as any, () => 0.99, { bank: checkBank, fixedDie: 10 });
@@ -1185,10 +1187,10 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ value: 10, kind: "check" });
     });
 
-    it("a natural 20 wins outright with no hint", () => {
+    it("a natural 20 wins outright with no hint", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const { room, roll } = checkGame();
-      roll(20);
+      roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
       expect(room.game!.teams[0].score).toBe(1);
       expect(JSON.stringify(lastBroadcast(room).view.checks ?? {})).not.toContain("萬");
@@ -1210,14 +1212,15 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
     });
 
+    // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     // Value: protects=a natural 20 that kills the boss still scores when the phone drops during the check beat (state
     // matrix check20 x phone-drop); fails_when=resolveRoll syncs the team offline before the chained kill beat lands
-    it("a natural 20 that kills keeps its team on turn through a phone dropped during the check beat", () => {
+    it("a natural 20 that kills keeps its team on turn through a phone dropped during the check beat", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const { room, ids, conns, roll } = checkGame(2);
       const g = room.game!;
       (room as any).game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, phaseIndex: g.boss.phases.length - 1, currentQuestionId: "r0-t1" } };
-      roll(20);
+      roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       room.onClose(conns[0]);
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "kill" });
@@ -1226,10 +1229,10 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(room.game!.boss.killedByTeamId).toBe(ids[0]);
     });
 
-    it("ending the game during the beat leaves no roll behind, and a natural 20 wins nothing after the end", () => {
+    it("ending the game during the beat leaves no roll behind, and a natural 20 wins nothing after the end", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const { room, hostConn, ids, roll } = checkGame();
-      roll(20);
+      roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       send(room, hostConn, { type: "HOST_END_GAME" });
       vi.advanceTimersByTime(2000);
       expect((room as any).pendingRoll).toBeNull();
@@ -1238,6 +1241,7 @@ describe("TEAM_SELECT_OPTION", () => {
     });
 
     // Value: protects=a check written at the roll survives a restart inside the beat, so the team cannot reroll a 1
+    // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     // (Codex outside voice); fails_when=the record is written only when the beat ends; no_claim=the natural 20's win.
     it("the rolled check is in the saved game during the beat, so a restart cannot roll it again", () => {
       vi.useFakeTimers();
@@ -1248,6 +1252,7 @@ describe("TEAM_SELECT_OPTION", () => {
     });
 
     // Value: protects=the room, not only the phone, asks for the check first (Codex P1 in /review), and a typed
+    // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     // answer waiting for the host cannot be beaten by a natural 20; fails_when=a crafted message skips the roll.
     it("refuses a typed answer and a warrior's roll before the check, and a check after a typed answer", () => {
       vi.useFakeTimers();
@@ -1267,7 +1272,7 @@ describe("TEAM_SELECT_OPTION", () => {
       passChecks(room);
       send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: "r0-t1", text: "萬家福", eventId: seqOf(room) });
       delete room.game!.checks![checkKey("r0-t1", room.game!.teams[0].id)];
-      roll(20);
+      roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       expect(lastSentTo(conns[0])).toMatchObject({ detail: "answer_submitted" });
     });
   });
@@ -1327,6 +1332,7 @@ describe("TEAM_SELECT_OPTION", () => {
     vi.advanceTimersByTime(2000);
     vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
     vi.useRealTimers();
+    // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(room.game!.teams[0].reward).toBe(15); // rng 0.99 rolls the crit die to 20: 10 plus half
     expect(lastBroadcast(room).reveal.choice).toMatchObject({ options: shown, correctIndex: right });
   });
@@ -1733,7 +1739,8 @@ describe("TEAM_SELECT_OPTION", () => {
     // Value: protects=a warrior's success on a multipleChoice question keeps its option wall and waits for 下一題 (host-reveal.md R1, finding 1);
     // fails_when=choice is gated on the lock path again, or the roll's reveal gets a timer; why_new=room roll tests play text questions;
     // seam=none; no_claim=the TV's green tile rendering (e2e)
-    it("a warrior's 20 on a multipleChoice question reveals the option wall and waits for 下一題", () => {
+    // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    it("a warrior's 20 on a multipleChoice question reveals the option wall and waits for 下一題", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       let r = 0;
       const room = new DungeonRoom(makeRoom() as any, () => r, { bank: mcBank });
@@ -1743,10 +1750,12 @@ describe("TEAM_SELECT_OPTION", () => {
       const { conns } = joinTeams(room, hostConn, 1);
       send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "warrior" });
       send(room, hostConn, { type: "HOST_START" });
+      // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       r = 19 / 20; // a 20
       send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-mc1" });
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { correctIndex: 1 } });
+      // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       expect(room.game!.teams[0].reward).toBe(15); // a warrior's 20 on a multipleChoice question is a crit too
       expect(lastBroadcast(room)).toMatchObject({ cue: "crit" });
       vi.advanceTimersByTime(60_000);
@@ -2072,7 +2081,7 @@ describe("narration (T5-T7)", () => {
       expect(podium().elapsedMs).toBe(-4000);
     });
 
-    it("a read after the 20 s cap never moves a reveal already playing", async () => {
+    it("a read after the 20 s cap never moves a reveal already playing", async () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       const { room, clock, readOut, podium } = await ended(false);
       clock.t += 25_000;
       readOut();
@@ -2205,7 +2214,7 @@ describe("narration (T5-T7)", () => {
       expect(all(room).filter((m) => m.type === "STATE").at(-1).view.sprint).toEqual(room.game!.sprint);
     });
 
-    it("caps the names, never the 獲得祝福！, and fits MAX_EDIT_LINE with two 20-character tied names", () => {
+    it("caps the names, never the 獲得祝福！, and fits MAX_EDIT_LINE with two 20-character tied names", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       const long = "一二三四五六七八九十一二三四五六七八九十";
       const line = sprintLine(long, [long, long]);
       expect(line).toBe("🦉 一二三四五六七八九…進魔王房了！一二三四五六七八九十一二三…獲得祝福！");
@@ -2226,7 +2235,7 @@ describe("narration (T5-T7)", () => {
 
   it("falls back to the scripted line when the provider is slower than the hold, without delaying STATE", async () => {
     const slow = { name: "slow", narrate: async () => (await sleep(200), "太慢的一行") };
-    const { room, hostConn } = start(2, { holdMs: 20, epilogueDelayMs: 0, provider: slow });
+    const { room, hostConn } = start(2, { holdMs: 20, epilogueDelayMs: 0, provider: slow }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     await sleep(60);
     const narr = all(room).filter((m) => m.type === "NARRATION");
     expect(narr).toHaveLength(1);
@@ -2489,7 +2498,7 @@ describe("LLM narration and director (T8-T10)", () => {
   it("opens the breaker after three failures in a row", async () => {
     const r = await llmRoom(() => json({ error: {} }, 500));
     begin(r);
-    for (let i = 0; i < 4; i++) { judge(r.room, r.hostConn); await sleep(20); }
+    for (let i = 0; i < 4; i++) { judge(r.room, r.hostConn); await sleep(20); } // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     await sleep(30);
     expect(r.calls).toHaveLength(3);
   });
@@ -3177,6 +3186,7 @@ describe("sound cues (big-screen effects)", () => {
 
 describe("class abilities: lobby pick and the warrior's roll (class-abilities.md)", () => {
   afterEach(() => vi.useRealTimers());
+  // pregate-literal: MAX_BOSS_HP=20 not the HP cap
   // The room's rng both deals questions and rolls the d20: rollD20 gives floor(r * 20) + 1.
   function warriorGame(teamCount = 2) {
     let r = 0;
@@ -3188,7 +3198,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "warrior" });
     send(room, hostConn, { type: "HOST_START" });
     const roll = (value: number) => {
-      r = (value - 1) / 20;
+      r = (value - 1) / 20; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       passChecks(room);
       send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: room.game!.teams[0].currentQuestionId });
     };
@@ -3321,7 +3331,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
   it("ending the game during a warrior's roll drops it with no judgment", () => {
     vi.useFakeTimers();
     const { room, hostConn, roll } = warriorGame();
-    roll(20);
+    roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     send(room, hostConn, { type: "HOST_END_GAME" });
     vi.advanceTimersByTime(2000);
     expect((room as any).pendingRoll).toBeNull();
@@ -3331,7 +3341,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
   it("an expiring room drops a roll still in its beat: the next game in the room is not stuck behind it", async () => {
     vi.useFakeTimers();
     const { room, roll } = warriorGame();
-    roll(20);
+    roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     await (room as any).expire();
     vi.advanceTimersByTime(2000);
     expect(room.game).toBeNull();
@@ -3363,7 +3373,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(err(conns[0])).toBe("stale_question");
     expect(room.game!.teams[0].abilityUses).toBe(4);
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, abilityUses: 0 } : t)) };
-    roll(20);
+    roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(err(conns[0])).toMatch(/no ability uses/);
     expect((room as any).pendingRoll).toBeNull();
   });
@@ -3375,13 +3385,13 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     const { room, ids, conns } = warriorGame();
     const g = room.game!;
     room.game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, phaseIndex: g.boss.phases.length - 1 } };
-    (room as any).rng = () => 19 / 20;
+    (room as any).rng = () => 19 / 20; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     const bq = room.game!.boss.currentQuestionId!;
     room.game = { ...room.game!, checks: { ...room.game!.checks, [checkKey(bq, ids[0])]: { value: 10, bonus: 0, dc: 8, passed: true } } };
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: bq });
-    expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "warrior", value: 20 });
+    expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "warrior", value: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     vi.advanceTimersByTime(2000);
-    expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "kill", values: [20, 20, 20, 20], value: 80 });
+    expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "kill", values: [20, 20, 20, 20], value: 80 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(room.game!.phase).toBe("playing");
     vi.advanceTimersByTime(4000);
     expect(room.game!.phase).toBe("finished");
@@ -3717,7 +3727,7 @@ describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
     const q = () => room.game!.teams[0].currentQuestionId;
     const submit = (text: string, conn = conns[0]) => (passChecks(room), send(room, conn, { type: "TEAM_SUBMIT_TEXT", questionId: q(), text }));
     const rollFor = (value: number) => {
-      r = (value - 1) / 20;
+      r = (value - 1) / 20; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       passChecks(room);
       send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: q() });
     };
@@ -3811,11 +3821,11 @@ describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
     vi.useFakeTimers();
     const sent = game(true);
     sent.submit("x");
-    sent.rollFor(20);
+    sent.rollFor(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(err(sent.conns[0])).toBe("answer_submitted");
     expect(sent.room.game!.teams[0].abilityUses).toBe(4);
     const rolling = game(true);
-    rolling.rollFor(20);
+    rolling.rollFor(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     rolling.submit("x");
     expect(err(rolling.conns[0])).toBe("roll_pending");
     expect(rolling.room.game!.teams[0].typedAnswer).toBeUndefined();
@@ -4514,11 +4524,13 @@ describe("sort questions", () => {
     expect(lastBroadcast(room).wrongSlots).toEqual([true, true, false, false]);
   });
 
-  it("a warrior's 20 answers it, crits and reveals the order", () => {
-    const { room, conns } = sortGame("warrior", 20);
+  // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+  it("a warrior's 20 answers it, crits and reveals the order", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    const { room, conns } = sortGame("warrior", 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-s1" });
-    expect((room as any).pendingRoll).toMatchObject({ kind: "warrior", value: 20 });
+    expect((room as any).pendingRoll).toMatchObject({ kind: "warrior", value: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     vi.advanceTimersByTime(2000);
+    // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(room.game!.teams[0].reward).toBe(15); // 10, plus half for the 20 (critable like multiple choice)
     expect(lastBroadcast(room).reveal).toMatchObject({ sorted: { items: ["A", "B", "C", "D"], teamId: T1 } });
   });

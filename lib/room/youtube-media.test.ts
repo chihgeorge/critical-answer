@@ -10,7 +10,7 @@ import { checkKey } from "../game-state";
 const T1 = "00000000-0000-0000-0000-000000000001";
 const TOKEN = "host-token-0123456789abcdef";
 const VIDEO = "dQw4w9WgXcQ";
-const video = (id: string, extra: object = {}) => ({ kind: "text", id, content: { kind: "youtube", value: VIDEO, audioOnly: true, start: 5, end: 20 }, answer: `答案 ${id}`, ...extra });
+const video = (id: string, extra: object = {}) => ({ kind: "text", id, content: { kind: "youtube", value: VIDEO, audioOnly: true, start: 5, end: 20 }, answer: `答案 ${id}`, ...extra }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
 const text = (id: string) => ({ kind: "text", id, content: { kind: "text", value: `題目 ${id}` }, answer: `答案 ${id}` });
 
 function makeConn(id: string) {
@@ -89,7 +89,7 @@ describe("HOST_MEDIA", () => {
     g.media("play");
     g.correct();
     expect(g.state().reveal.questionId).toBe(id);
-    expect(g.state().reveal.video).toEqual({ kind: "youtube", videoId: VIDEO, audioOnly: true, start: 5, end: 20 });
+    expect(g.state().reveal.video).toEqual({ kind: "youtube", videoId: VIDEO, audioOnly: true, start: 5, end: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(g.state().media).toEqual({ questionId: id, state: "paused", seq: 0, press: 1 });
     g.media("play", id);
     expect(g.state().media.state).toBe("playing");

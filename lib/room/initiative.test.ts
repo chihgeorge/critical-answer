@@ -29,7 +29,7 @@ function memoryStorage() {
 /** The room's rng: each queued d20 face once, then 0 (the deals and shuffles). */
 function dice() {
   const queue: number[] = [];
-  return { queue, rng: () => (queue.length ? (queue.shift()! - 1) / 20 + 0.001 : 0) };
+  return { queue, rng: () => (queue.length ? (queue.shift()! - 1) / 20 + 0.001 : 0) }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
 }
 
 function makeRoom(storage = memoryStorage()) {
@@ -159,9 +159,9 @@ describe("擲先攻 in the room", () => {
     g.roll(0, 10);
     send(g.room, g.phones[1], { type: "HOST_ROLL_INITIATIVE" });
     expect(g.state().initiative.order).toBeUndefined();
-    g.queue.push(1, 20);
+    g.queue.push(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     send(g.room, g.host, { type: "HOST_ROLL_INITIATIVE" });
-    expect(g.state().initiative).toMatchObject({ rolls: { [A]: 10, [B]: 1, [C]: 20 }, order: [C, A, B] });
+    expect(g.state().initiative).toMatchObject({ rolls: { [A]: 10, [B]: 1, [C]: 20 }, order: [C, A, B] }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     send(g.room, g.phones[1], { type: "TEAM_ROLL_INITIATIVE" });
     expect(g.state().initiative.rolls[B]).toBe(1);
   });

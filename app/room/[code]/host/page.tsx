@@ -280,6 +280,8 @@ export default function HostPage() {
   // notice (lib/offline-notice.ts), and a phone is told after reconnecting if its turn was skipped.
   const ready = connected && claimed;
   const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
+  // Fresh per-field marks for each buzz: a new question, team or event remounts FieldJudge.
+  const fieldJudgeId = turn && game ? `${turn.questionId}:${turn.team.id}:${game.eventId}` : "";
   // The judge buttons and 下一題 swap in the same slot the moment a STATE arrives, so a double-tap
   // on one would land on the other (judging the next question, or closing a reveal nobody saw).
   // Both stay disabled for a beat after every swap.
@@ -958,7 +960,7 @@ export default function HostPage() {
                   ) : buzz && game.question?.fields ? (
                     // A music question with fields: the host judges each one (docs/designs/multi-field.md F5).
                     <FieldJudge
-                      key={`${turn.questionId}:${turn.team.id}:${game.eventId}`}
+                      key={fieldJudgeId}
                       labels={game.question.fields}
                       typed={answer?.typed?.teamId === turn.team.id ? answer.typed.fields : undefined}
                       disabled={!canJudge || held}

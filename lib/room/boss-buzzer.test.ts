@@ -9,7 +9,7 @@ import { parseBank } from "../question-bank";
 const IDS = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003"];
 const TOKEN = "host-token-0123456789abcdef";
 const text = (id: string) => ({ kind: "text", id, content: { kind: "text", value: `題目 ${id}` }, answer: `答案 ${id}` });
-const video = (id: string) => ({ kind: "text", id, content: { kind: "youtube", value: "dQw4w9WgXcQ", audioOnly: true, start: 5, end: 20 }, answer: `答案 ${id}` });
+const video = (id: string) => ({ kind: "text", id, content: { kind: "youtube", value: "dQw4w9WgXcQ", audioOnly: true, start: 5, end: 20 }, answer: `答案 ${id}` }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
 
 const bank = (q: (id: string) => object = video) =>
   parseBank({
@@ -97,6 +97,7 @@ describe("buzzer boss phase in the room", () => {
     g.buzz(0);
     g.judge(IDS[0], true);
     expect(g.state()).toMatchObject({ cue: "boss-hit", reveal: { questionId: "b-a" }, view: { bossHp: 1 } });
+    // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(g.room.game!.teams.find((t) => t.id === IDS[0])!.reward).toBe(20); // a phase-1 hit and this one
   });
 

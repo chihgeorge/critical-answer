@@ -123,7 +123,7 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual({ bank: legacy, version: 7, format: BANK_FORMAT });
   });
 
-  // Regression: boss HP had no upper bound; the big screen draws hearts up to 20, then a bar, and 60 is the cap (multi-field.md E5)
+  // Regression: boss HP had no upper bound; the big screen draws hearts up to MAX_HEARTS, then a bar, and 60 is the cap (multi-field.md E5)
   // Found by /review on 2026-10-28
   it.each([[61], [2.5]])("refuses to save a boss phase with %s HP (a whole number from 1 to 60), and keeps the stored bank", async (maxHp) => {
     const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
@@ -339,7 +339,7 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
   });
 
   it("still reads a format-3 bank as is", async () => {
-    expect(await new BankStore(memoryStorage({ bank: validBank, version: 6, format: 3 })).getVersionedBank()).toEqual({ bank: validBank, version: 6 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
+    expect(await new BankStore(memoryStorage({ bank: validBank, version: 5, format: 3 })).getVersionedBank()).toEqual({ bank: validBank, version: 5 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
   });
 
   it("a bank stored at format 4 (before the buzzer phase) still loads as itself, not outdated", async () => {

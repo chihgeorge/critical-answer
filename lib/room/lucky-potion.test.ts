@@ -21,7 +21,7 @@ const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unkn
 const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 /** rollD20 of each value. */
-const die = (v: number) => (v - 1) / 20;
+const die = (v: number) => (v - 1) / 20; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
 
 function memoryStorage() {
   const data = new Map<string, unknown>();
