@@ -724,7 +724,9 @@ export function pickCategory(game: GameState, teamId: string, category: string, 
   const ring = questionIds.map((_, i) => questionIds[(start + i) % questionIds.length]);
   const id = ring.find((q) => categoryOf[q] === category && !game.revealedQuestionIds.includes(q));
   if (!id) throw new InvalidActionError("no_such_category");
-  return { ...game, boss: { ...game.boss, currentQuestionId: id }, buzz: { ...buzz, questionId: id, category } };
+  // A pick onto the question the host queued (指定下一題) plays it now: the queue entry is used up.
+  const queuedQuestionId = game.boss.queuedQuestionId === id ? undefined : game.boss.queuedQuestionId;
+  return { ...game, boss: { ...game.boss, currentQuestionId: id, queuedQuestionId }, buzz: { ...buzz, questionId: id, category } };
 }
 
 /** 沒人答對，換下一題 (D4): the boss question moves on, unrevealed, so it may come round again. */
