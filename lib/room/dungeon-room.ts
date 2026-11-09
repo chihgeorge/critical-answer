@@ -137,6 +137,11 @@ const ADVANCE_CAP_MS = 15000;
 const SPEECH_CHARS_PER_S = 4;
 /** How long checking a pasted key may take before the host is told it failed. */
 const KEY_CHECK_MS = 5000;
+/** Pasted keys a room checks with the provider, per window and over its life. Past either, the room refuses a new key as
+ * check_failed with no network call: else anyone hosting a room could have it test stolen keys one after another. */
+const KEY_CHECK_MAX_PER_WINDOW = 3;
+const KEY_CHECK_WINDOW_MS = 60_000;
+const KEY_CHECK_MAX_TOTAL = 10;
 const speechMs = (lines: string[]) => (lines.join("").length / SPEECH_CHARS_PER_S) * 1000 + 1000;
 
 export interface RoomOptions {
@@ -392,8 +397,12 @@ export class DungeonRoom {
   private keyError: AiKeyError | undefined;
   /** The keyId of the HOST_AI_KEY keyError refuses (none for a keyless resend). Only reported while keyError is set. */
   private refusedKeyId: string | undefined;
-  /** The pasted key being checked now, if any: a newer HOST_AI_KEY aborts it. */
-  private keyCheck: AbortController | null = null;
+  /** The pasted key being checked now, if any: a newer HOST_AI_KEY aborts it, except a resend of this key under the same keyId. */
+  private keyCheck: { ctl: AbortController; key: string; keyId?: string } | null = null;
+  /** Key checks this room made: in all (saved, so a restart does not reset it), and since keyCheckWindowAt (memory only). */
+  private keyChecks = 0;
+  private keyChecksInWindow = 0;
+  private keyCheckWindowAt = 0;
   private fetchImpl: typeof fetch | undefined;
   private llm: NarrationProvider;
   private breaker = createBreaker({ onTrip: (why) => this.onBreakerTrip(why) });
@@ -591,7 +600,9 @@ export class DungeonRoom {
 
   private handleAiKey(conn: Conn, msg: Extract<ClientMessage, { type: "HOST_AI_KEY" }>) {
     if (!this.requireHost(conn)) return;
-    this.keyCheck?.abort();
+    // The page's resend on reconnect of the key still being checked: that check's answer reaches every host connection.
+    if (msg.source === "own" && this.keyCheck?.key === msg.key && this.keyCheck.keyId === msg.keyId) return;
+    this.keyCheck?.ctl.abort();
     this.keyCheck = null;
     // A key the host chose (only those carry a keyId) answers the last refusal; the page's resend on reconnect does not.
     if (msg.source === "none" || msg.keyId) this.keyError = undefined;
@@ -620,8 +631,17 @@ export class DungeonRoom {
       if (msg.keyId) this.credential.keyId = msg.keyId;
       return this.sendAiStatus();
     }
+    const t = this.now();
+    if (t - this.keyCheckWindowAt >= KEY_CHECK_WINDOW_MS) {
+      this.keyCheckWindowAt = t;
+      this.keyChecksInWindow = 0;
+    }
+    // The same answer as a flaky check, so a refused key says nothing about whether it works.
+    if (this.keyChecksInWindow >= KEY_CHECK_MAX_PER_WINDOW || this.keyChecks >= KEY_CHECK_MAX_TOTAL) return this.refuseKey("check_failed", msg.keyId);
+    this.keyChecksInWindow++;
+    this.keyChecks++;
     const check = new AbortController();
-    this.keyCheck = check;
+    this.keyCheck = { ctl: check, key: msg.key, keyId: msg.keyId };
     void provider.checkKey(msg.key, { fetch: this.fetchImpl, signal: AbortSignal.any([check.signal, AbortSignal.timeout(KEY_CHECK_MS)]) }).then((result) => {
       // Superseded by a newer HOST_AI_KEY, or the room expired meanwhile.
       if (check.signal.aborted) return;
@@ -672,6 +692,7 @@ export class DungeonRoom {
       aiSource: this.aiSource,
       aiUsed: this.aiUsed,
       aiLimit: this.aiLimit,
+      keyChecks: this.keyChecks,
       // Rounded so a run of messages with no other state change does not force a write every time (persist()
       // skips a write when the JSON is unchanged). The granularity scales down with idleMs so a short test
       // duration (seconds) is never rounded away entirely; production's 2-hour default still rounds to the
@@ -761,6 +782,7 @@ export class DungeonRoom {
     this.aiSource = s.aiSource ?? "none";
     this.aiUsed = s.aiUsed ?? 0;
     this.aiLimit = s.aiLimit ?? DEFAULT_AI_LIMIT;
+    this.keyChecks = s.keyChecks ?? 0;
     this.bank = bank;
     this.bankAnswers = allAnswers(bank);
     this.savedBank = stored;
@@ -1190,8 +1212,9 @@ export class DungeonRoom {
     this.hostLineGens.clear();
     this.aiNarration = false;
     // The next host of this code must not inherit this host's key or budget.
-    this.keyCheck?.abort();
+    this.keyCheck?.ctl.abort();
     this.keyCheck = null;
+    this.keyChecks = this.keyChecksInWindow = 0;
     this.aiSource = "none";
     this.credential = null;
     this.aiUsed = 0;

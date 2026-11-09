@@ -1,0 +1,2 @@
+### Fixed
+- A room can no longer be used to test stolen Anthropic keys one after another. The room now checks at most 3 pasted keys a minute and 10 over its life (a server restart does not reset the count). Past that it refuses the key as "could not check this key" without asking Anthropic, so the reply says nothing about whether the key works. A host pasting a key once or twice is not affected: a mistyped key, a resend of the key in use, and the host page resending the key still being checked after a reconnect do not count.
