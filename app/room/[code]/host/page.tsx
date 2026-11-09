@@ -23,7 +23,7 @@ import { INTRO_PAGE_TEXT, introDots } from "@/components/how-to-play";
 import { INITIATIVE_MS } from "@/lib/initiative";
 import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
-import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, AiPanel, aiKeyMessage, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
+import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, aiKeyRefused, AiPanel, aiKeyMessage, aiResendAfterRefusal, aiResendMessage, aiSavedKeyDead, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
 import { FieldJudge } from "@/components/field-judge";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
@@ -82,7 +82,8 @@ export default function HostPage() {
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   /** null until the room reports its queued line: an older room would not understand HOST_NEXT_LINE (D5). */
   const [nextLine, setNextLine] = useState<string | null>(null);
-  /** The key the room last accepted. The room keeps keys in memory only, so this is resent after every HOST_OK. */
+  /** The key the room last accepted. The room keeps keys in memory only, so this is resent after every HOST_OK
+   * (unless a key is pending: that one is resent instead). */
   const aiSaved = useRef<AiCredential | null>(null);
   /** A key sent but not yet confirmed by HOST_AI_STATUS. */
   const aiPending = useRef<{ credential: AiCredential; remember: boolean; keyId: string } | null>(null);
@@ -138,7 +139,9 @@ export default function HostPage() {
           setClaimed(true);
           // The room is ours: from now on this link can no longer swap its code.
           if (isFreshRoomHash(location.hash)) history.replaceState(null, "", location.pathname + location.search + settledHash(location.hash));
-          aiQueue.hostOk(aiSaved.current && aiKeyMessage(aiSaved.current), room.send);
+          // A pending key may already be in use (its status lost with the socket) or mid-check: resending the saved key
+          // would swap the room back to it, or cancel the check and leave the panel waiting.
+          aiQueue.hostOk(aiResendMessage(aiPending.current, aiSaved.current), room.send);
           setJoinPassword(msg.joinPassword);
           setSavedPassword(msg.joinPassword);
           break;
@@ -147,8 +150,8 @@ export default function HostPage() {
           const p = aiPending.current;
           if (p) {
             const c = p.credential;
-            // Applied only when the room names this key's id; a refused key never gets it. No clearing on an error:
-            // a status sent before the room got this key can carry an older refusal.
+            // Applied only when the room names this key's id; a refused key never gets it. Dropped only when the room
+            // names it refused: a status sent before the room got this key can carry an older refusal.
             if (aiKeyApplied(p.keyId, msg)) {
               aiPending.current = null;
               aiSaved.current = c;
@@ -156,11 +159,15 @@ export default function HostPage() {
               forgetStored(AI_STORE.owner);
               if (p.remember) writeStored(AI_STORE[c.source], c.source === "own" ? c.key : c.ownerKey);
               setAiRemembered(p.remember);
+            } else if (aiKeyRefused(p.keyId, msg)) {
+              aiPending.current = null;
+              const back = aiResendAfterRefusal(msg, aiSaved.current);
+              if (back) aiSend(back);
             }
           }
           // The host's own key refused mid-game: never resend it. (In owner mode the server's key is at fault, not OWNER_KEY.)
-          // The key being pasted stays pending: this status may be an older paste's refusal, sent before the room got it.
-          if (msg.error === "invalid_key" && msg.keyMissing && msg.source === "own") forgetSavedAiKey();
+          // A refused paste (named by refusedKeyId) is not the saved key, so it keeps it.
+          if (aiSavedKeyDead(msg, aiPending.current !== null)) forgetSavedAiKey();
           break;
         }
         case "HOST_NEXT_LINE_STATE":

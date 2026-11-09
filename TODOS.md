@@ -13,7 +13,6 @@
 
 ### P3
 
-- [重連時主持人頁重送舊 key，會蓋掉剛套用的新 key](#重連時主持人頁重送舊-key會蓋掉剛套用的新-key) — S
 - [觀眾反應的後續：旁白提到反應、燈籠預測](#觀眾反應的後續旁白提到反應燈籠預測) — S／M
 - [頒獎排名的 9 個小問題（/ship 2026-11-07）](#頒獎排名的-9-個小問題ship-2026-11-07) — S，活動後
 - [縮短超過 22 字的舊腳本句](#縮短超過-22-字的舊腳本句) — S，活動後
@@ -96,26 +95,6 @@
 - 待驗證：子代理提的字型 jf open 粉圓 2.0（Huninn）、芫荽 Iansui、Fredoka 的授權和檔案大小。中文字集要用常用字表裁切，不能用題庫的字（會洩漏答案，同 `check:bundle`）。
 - 長題目：題目字放大後約 15 字就會換行，要自動縮字，不能壓到怪物。
 - 開始實作時把 DESIGN.md 整份改成這套規格。
-
----
-
-## 重連時主持人頁重送舊 key，會蓋掉剛套用的新 key
-
-**What:** 主持人貼了新 key B，房間已套用，但狀態還沒回到頁面時連線斷了。重連時頁面（HOST_OK）先重送記住的舊 key A，房間又換回 A；頁面隨後收到「B 已套用」，把 B 存起來。之後每次重連都在 A、B 之間換來換去，每次多一次 key 檢查。另外，貼的 key 檢查到一半被重連的重送打斷時，頁面一直停在「等待中」，沒有任何訊息。
-
-**Why:** 頁面在 HOST_OK 只重送 `aiSaved`，不管還在等的那把。
-
-**Context:**
-- `app/room/[code]/host/page.tsx`（HOST_OK、`aiPending`）、`lib/host-ai-queue.ts`、`lib/room/dungeon-room.ts`（`handleAiKey`）
-
-**Effort/Priority:** S / P3
-
-**Depends on:** 無。
-
-**Notes:**
-- 做法：HOST_OK 時有 `aiPending` 就重送它（帶原本的 keyId）。但被拒的 key 也會留在 `aiPending`，重送它會在房間重啟後蓋掉好的 key，所以要先讓房間在狀態裡回報「被拒的是哪個 keyId」，頁面收到就丟掉那把。
-- 2026-11-08 /review（AI key 錯誤修正）第 3 輪對抗審查找到；改用 keyId 之前就存在。
-- 同一處的兩個舊問題（/ship 對抗審查找到，可一起修）：(1) AI 停了之後，單純重連的重送（沒有 keyId）就會重新套用 key、重開 AI；只有帶 keyId 的重送才該這樣做。(2) 房間重啟後（`keyMissing`），主持人貼一把格式錯的 key，頁面會把記住的好 key 一起刪掉（`page.tsx` 的 `invalid_key` + `keyMissing` 條件）；應該只在房間丟掉正在用的 key 時才刪。
 
 ---
 
@@ -834,6 +813,12 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 重連時主持人頁重送舊 key，會蓋掉剛套用的新 key
+
+- **重連時重送還在等的 key，被拒的 key 丟掉** · 版號合併時定 · 主持人頁在 HOST_OK 有還沒確認的 key 就重送它（帶原本的 keyId），沒有才送記住的 key，房間不會再換回舊 key，檢查到一半被重連打斷的 key 也會重新檢查、不再一直停在「等待中」。房間的 HOST_AI_STATUS 多一個 `refusedKeyId`（只回給主持人，不含 key 本身），說明錯誤拒絕的是哪個 keyId，頁面收到就丟掉那把，不再重送。
+- **AI 停了之後，單純重連不會重開 AI** · 版號合併時定 · 同一把 key 只有帶 keyId 的重送（主持人重新貼上）才重新套用、重開 AI；重連的重送（沒有 keyId）維持「AI 已暫停」。
+- **被拒的貼上不再刪掉記住的 key** · 版號合併時定 · 頁面只在房間丟掉正在用的自己的 key（遊戲中 401，或重啟後記住的 key 被拒）時刪掉記住的 key；房間重啟後貼一把格式錯的 key（狀態帶 `refusedKeyId`）不會刪。
 
 ## 填空題可以有好幾個要填的欄位
 

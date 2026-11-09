@@ -389,6 +389,8 @@ export class DungeonRoom {
   private aiError: AiKeyError | undefined;
   /** Why the host's last HOST_AI_KEY was refused. Every status carries it until the next HOST_AI_KEY, so a narration's status cannot wipe it. */
   private keyError: AiKeyError | undefined;
+  /** The keyId of the HOST_AI_KEY keyError refuses (none for a keyless resend). Only reported while keyError is set. */
+  private refusedKeyId: string | undefined;
   /** The pasted key being checked now, if any: a newer HOST_AI_KEY aborts it. */
   private keyCheck: AbortController | null = null;
   private fetchImpl: typeof fetch | undefined;
@@ -565,12 +567,14 @@ export class DungeonRoom {
       exhausted: this.aiUsed >= this.aiLimit,
       ...((this.keyError ?? this.aiError) ? { error: this.keyError ?? this.aiError } : {}),
       ...(this.credential?.keyId ? { appliedKeyId: this.credential.keyId } : {}),
+      ...(this.keyError && this.refusedKeyId ? { refusedKeyId: this.refusedKeyId } : {}),
     };
     for (const conn of only ? [only] : this.hostConns.values()) this.sendTo(conn, msg);
   }
 
-  private refuseKey(error: AiKeyError) {
+  private refuseKey(error: AiKeyError, keyId: string | undefined) {
     this.keyError = error;
+    this.refusedKeyId = keyId;
     this.sendAiStatus();
   }
 
@@ -591,24 +595,27 @@ export class DungeonRoom {
     // A key the host chose (only those carry a keyId) answers the last refusal; the page's resend on reconnect does not.
     if (msg.source === "none" || msg.keyId) this.keyError = undefined;
     if (msg.source === "none") return this.applyCredential("none", null);
+    // Pasted again after "AI stopped": a new keyId. A reconnect resends the saved key with none, or a pending key under the
+    // id the room already applied (its status lost with the socket): neither restarts AI.
+    const chosenAgain = msg.keyId !== undefined && msg.keyId !== this.credential?.keyId;
     if (msg.source === "owner") {
       const ownerKey = this.room.env?.OWNER_KEY;
       const serverKey = this.room.env?.ANTHROPIC_API_KEY;
-      if (!ownerKey || !serverKey) return this.refuseKey("owner_unavailable");
-      if (!tokensEqual(ownerKey, msg.ownerKey)) return this.refuseKey("wrong_owner_key");
+      if (!ownerKey || !serverKey) return this.refuseKey("owner_unavailable", msg.keyId);
+      if (!tokensEqual(ownerKey, msg.ownerKey)) return this.refuseKey("wrong_owner_key", msg.keyId);
       // Already in use (the page's resend on reconnect): nothing to apply, and a keyless resend keeps the page's keyId.
-      if (this.aiSource === "owner" && this.credential && !this.aiError) {
+      if (this.aiSource === "owner" && this.credential && (!this.aiError || !chosenAgain)) {
         if (msg.keyId) this.credential.keyId = msg.keyId;
         return this.sendAiStatus();
       }
       return this.applyCredential("owner", { provider: "anthropic", apiKey: serverKey, keyId: msg.keyId });
     }
     const provider = PROVIDERS[msg.provider];
-    if (!provider.keyFormat.test(msg.key)) return this.refuseKey("invalid_key");
+    if (!provider.keyFormat.test(msg.key)) return this.refuseKey("invalid_key", msg.keyId);
     // The host page resends its key after every reconnect: the same key needs no new check, and a flaky check must not drop it.
     // After "AI stopped" the host pastes it again on purpose (credit topped up): apply it, which resets the breaker.
     if (this.aiSource === "own" && this.credential?.provider === msg.provider && this.credential.apiKey === msg.key) {
-      if (this.aiError) return this.applyCredential("own", { provider: msg.provider, apiKey: msg.key, keyId: msg.keyId });
+      if (this.aiError && chosenAgain) return this.applyCredential("own", { provider: msg.provider, apiKey: msg.key, keyId: msg.keyId });
       if (msg.keyId) this.credential.keyId = msg.keyId;
       return this.sendAiStatus();
     }
@@ -620,7 +627,7 @@ export class DungeonRoom {
       this.keyCheck = null;
       // A failed check leaves the key the room already had in place.
       if (result === "ok") this.applyCredential("own", { provider: msg.provider, apiKey: msg.key, keyId: msg.keyId });
-      else this.refuseKey(result === "invalid" ? "invalid_key" : "check_failed");
+      else this.refuseKey(result === "invalid" ? "invalid_key" : "check_failed", msg.keyId);
     });
   }
 

@@ -428,6 +428,8 @@ export type ServerMessage =
       /** The keyId of the HOST_AI_KEY whose key is in use. Only this tells the host page its key was applied: a status
        * sent for anything else (a narration, another tab's key) looks the same otherwise. */
       appliedKeyId?: string;
+      /** The keyId of the HOST_AI_KEY that `error` refuses, so the host page stops resending that key. */
+      refusedKeyId?: string;
     }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   /** `typed`: in a buzzer phase, what the team that buzzed typed (`fields`: a music question's boxes, "" for a blank).
