@@ -258,6 +258,19 @@ describe("buzzer boss phase in the room", () => {
     expect(g.lastHostAnswer()).toMatchObject({ typed: { teamId: IDS[1], text: "麻辣鮮師" } });
   });
 
+  // Value: protects=a game ended mid-buzz keeps the typed answer out of STATE (multi-field.md E4); fails_when=the
+  // `phase === "finished"` arm of the STATE mask is dropped; why_new=only the live buzzer phase was tested; seam=none;
+  // no_claim=the podium UI on screen (e2e)
+  it("a game ended mid-buzz still hides the typed answer from STATE", () => {
+    const g = buzzerGame(text);
+    g.buzz(1);
+    send(g.room, g.phones[1], { type: "TEAM_SUBMIT_TEXT", questionId: "b-a", text: "麻辣鮮師", eventId: g.state().eventId });
+    send(g.room, g.host, { type: "HOST_END_GAME" });
+    expect(g.room.game!.phase).toBe("finished");
+    expect(g.state().view.teams[1].typedAnswer).toBe("");
+    expect(JSON.stringify(g.state())).not.toContain("麻辣鮮師");
+  });
+
   it("a video the big screen cannot play: the host is told, and 現場放歌 opens buzzing without it (boss-music-buzzer.md M4)", () => {
     const g = buzzerGame();
     const screen = makeConn("screen");
