@@ -227,11 +227,31 @@ describe("the screen key", () => {
     expect(closed.send).not.toHaveBeenCalled();
   });
 
-  it("sends nothing for a question that is not a video, and never the answer's explanation video in its place", () => {
+  it("sends nothing for a question that is not a video", () => {
     const t = game([text("t1"), text("t2")]);
     const keyed = screen(t.room, "keyed", keyOf(t.host));
     t.correct();
     for (const conn of [t.host, keyed]) expect(videoOf(conn)).toBeUndefined();
+  });
+
+  it("sends no SCREEN_VIDEO for a reveal whose video explanation takes the video's place", () => {
+    const g = game([video("v1", { explanation: { kind: "youtube", value: VIDEO } }), video("v2", { explanation: { kind: "youtube", value: VIDEO } })]);
+    const keyed = screen(g.room, "keyed", keyOf(g.host));
+    keyed.send.mockClear();
+    g.host.send.mockClear();
+    g.correct();
+    expect(g.state().reveal.video).toBeUndefined();
+    for (const conn of [g.host, keyed]) expect(videoOf(conn)).toBeUndefined();
+  });
+
+  it("tells a big screen whether its key was taken, so it can say it will play no video", () => {
+    const g = game([video("v1"), video("v2")]);
+    const ack = (conn: { send: ReturnType<typeof vi.fn> }) => sentTo(conn).findLast((m) => m.type === "SCREEN_KEY");
+    expect(ack(screen(g.room, "keyed", keyOf(g.host)))).toEqual({ type: "SCREEN_KEY", ok: true });
+    expect(ack(screen(g.room, "bare"))).toEqual({ type: "SCREEN_KEY", ok: false });
+    expect(ack(screen(g.room, "wrong", "not-the-key"))).toEqual({ type: "SCREEN_KEY", ok: false });
+    // The key itself never goes to a screen, and never to everyone.
+    expect(JSON.stringify([sentTo(g.phone), g.io.broadcast.mock.calls])).not.toContain(keyOf(g.host));
   });
 
   it("drops a key that is not a short string instead of comparing it", () => {

@@ -19,7 +19,7 @@ export async function rollCheck(team: Page) {
  * question videos (docs/designs/screen-video-key.md). The key comes with the room's HOST_OK, so wait for it. */
 export async function screenUrl(host: Page): Promise<string> {
   const link = host.getByTestId("screen-link");
-  await expect(link).toHaveAttribute("href", /\/screen#k=./);
+  await expect(link).toHaveAttribute("href", /\/screen#s=./);
   return (await link.getAttribute("href"))!;
 }
 

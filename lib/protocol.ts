@@ -439,6 +439,8 @@ export type ServerMessage =
   | { type: "TRANSCRIPT"; entries: TranscriptItem[] }
   /** `screenKey`: the room's screen key, for the big screen link on the host page (absent from older servers). */
   | { type: "HOST_OK"; joinPassword: string; screenKey?: string }
+  /** The reply to SCREEN_HELLO: whether its key was the room's screen key, so this socket is sent SCREEN_VIDEO. */
+  | { type: "SCREEN_KEY"; ok: boolean }
   /** The YouTube video on the big screen now (the question's, or the reveal's). Never broadcast: it goes only to host
    * pages and to big screens whose SCREEN_HELLO carried the screen key. */
   | { type: "SCREEN_VIDEO"; questionId: string; video: Extract<PublicMediaContent, { kind: "youtube" }> }
@@ -651,7 +653,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: "HOST_EDIT_NARRATION", eventId: m.eventId, rev: m.rev, index: m.index, line };
     }
     case "SCREEN_HELLO":
-      return { type: "SCREEN_HELLO", ...(typeof m.key === "string" && m.key.length <= 64 ? { key: m.key } : {}) };
+      return { type: "SCREEN_HELLO", ...(str(m.key, MAX_KEY_ID) !== null ? { key: m.key as string } : {}) };
     case "SCREEN_NARRATION_PROGRESS":
       return isCount(m.eventId) && isCount(m.rev) && isCount(m.done)
         ? { type: "SCREEN_NARRATION_PROGRESS", eventId: m.eventId, rev: m.rev, done: m.done }

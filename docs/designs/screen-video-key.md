@@ -16,8 +16,13 @@ picture.
   (`RoomSnapshot.screenKey`), replaced when the room is reset. A snapshot from before the key gets a new one on
   restore, and the next save writes it.
 - The host page gets the key in `HOST_OK` (so a reload gets it again) and shows the big screen link as
-  `/room/<code>/screen#k=<key>`. The key is in the URL fragment, like the host token: a browser sends a fragment
-  neither in a request nor in a Referer, so it reaches no server log.
+  `/room/<code>/screen#s=<key>`, once the room has sent the key (「連線中…」 until then). The key is in the URL
+  fragment, like the host token: a browser sends a fragment neither in a request nor in a Referer, so it reaches no
+  server log. It is `#s=`, not the host token's `#k=`, so a screen link edited into a host link cannot overwrite the
+  stored host token.
+- The big screen page (`getScreenKey` in `lib/room-code.ts`) stores the key for this room in the browser and removes
+  the fragment from the address bar: a big screen's address bar is projected to the whole room. A reload, or the
+  plain `/room/<code>/screen` in the same browser, still has the key.
 - The big screen sends it in `SCREEN_HELLO { key }` on every connect. The room compares it with `tokensEqual`
   (constant time, as for `OWNER_KEY` and the host token) and remembers the connection in `keyedScreens`. A reconnect
   must prove it again. The key is never logged.
@@ -28,8 +33,12 @@ picture.
   host pages and the keyed screens: before every `STATE`, on `HOST_CLAIM`, and on a `SCREEN_HELLO` with the right key.
   It is the video on the big screen now (`shownVideoId()`): the question in play, or the answered question during
   its reveal.
-- A big screen with no key, or a wrong one, works as before for everything else. Where the video would be it shows
-  「🔒 請用主持人頁上的大螢幕網址開啟，才會播放影片」.
+- The room answers every `SCREEN_HELLO` with `SCREEN_KEY { ok }`. A big screen with no key, or a wrong one, works as
+  before for everything else. It says 「🔒 這台大螢幕不會播影片題的影片：請用主持人頁上的大螢幕網址開啟」 at the top
+  of the lobby, and 「🔒 請用主持人頁上的大螢幕網址開啟，才會播放影片」 where a video would be. A keyed screen that has
+  not been sent the id yet (a moment after connecting) shows an empty frame, not the hint.
+- An unkeyed screen does not report `SCREEN_CLIP_ERROR`: a player who opens `/screen` on a phone would otherwise raise
+  the host's 「影片無法播放」 warning on every video question.
 
 ## Why a separate message, not one STATE per role
 
@@ -65,12 +74,22 @@ Not changed, on purpose:
   That is a nuisance, not a leak, and is left for after the event.
 - A big screen link from before a room reset has the old key: it shows the hint until it is opened again from the
   host page.
+- The host page is not told when no keyed screen is connected. The lobby line on the screen itself is the warning.
+  With no keyed screen, a video question's clip never ends, so its answer countdown does not start; ▶ still opens
+  buzzing and the host can still judge.
+- The link holds a 36-character UUID: fine to click or paste, long to type with a TV remote. A QR on the host page
+  is a possible follow-up.
+- Deploy order: the web app and the Worker deploy separately. An old big screen tab with the new Worker, or the
+  reverse, plays no question video until both are current and the screen is opened again from the host page. A room
+  saved before the key gets a new key, so its big screen must be opened again too. Deploy when no game is live.
 
 ## Tests
 
 `lib/room/youtube-media.test.ts` (「the screen key」): a phone, a screen with no key, a wrong key or an empty key, and a
 socket that connects during the reveal never receive the id, in any message, through the question, ▶ ⏸ ⟲, the reveal
 and the next question; nothing broadcast holds it; the host and a keyed screen get it before the `STATE`; a reconnect
-or a later hello without the key loses it. `lib/room/persistence.test.ts`: the key survives a restart, and a
+or a later hello without the key loses it; `SCREEN_KEY` says which. `lib/room-code.test.ts`: the `#s=` fragment is
+stored, removed from the address bar, and never taken for the host token. `lib/room/persistence.test.ts`: the key survives a restart, and a
 snapshot with no key or a damaged one gets a new key that is then kept. `e2e/image-question.spec.ts`: a big screen
-opened without the key shows the hint and no player.
+opened without the key shows both hints and no player; `e2e/host-drawer.spec.ts`: the link carries the key and the
+opened screen's address bar does not.

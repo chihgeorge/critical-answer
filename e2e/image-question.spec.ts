@@ -157,8 +157,13 @@ test("youtube-content question: the big screen plays it, the phone and the host 
   const screen = await screenContext.newPage();
   await screen.goto(await screenUrl(host));
   // Opened by the room code alone, without the screen key (screen-video-key.md): the way a player would.
-  const keyless = await screenContext.newPage();
+  // Its own context: the keyed screen's browser remembers the key.
+  const keylessContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  await keylessContext.route(/youtube(-nocookie)?\.com/, (r) => r.abort());
+  const keyless = await keylessContext.newPage();
   await keyless.goto(`/room/${code}/screen`);
+  await expect(keyless.getByTestId("screen-locked")).toContainText("請用主持人頁上的大螢幕網址開啟");
+  await expect(screen.getByTestId("screen-locked")).toHaveCount(0);
 
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("影片隊")}`);

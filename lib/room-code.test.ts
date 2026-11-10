@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, getOrCreateTeamId, getOrCreateTeamKey, isFreshRoomHash, storeTeam, MAX_FRESH_ATTEMPTS, newHostToken, settledHash } from "./room-code";
+import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, getScreenKey, getOrCreateTeamId, getOrCreateTeamKey, isFreshRoomHash, storeTeam, MAX_FRESH_ATTEMPTS, newHostToken, settledHash } from "./room-code";
 import { TEAM_KEY_RE } from "./protocol";
 
 // The only test that needs a browser API: a Map-backed localStorage is enough.
@@ -153,6 +153,43 @@ describe("fresh room links", () => {
     expect(path).toBe("/room/ABCD/host#k=0123456789abcdef&new=1");
     expect(isFreshRoomHash(path.slice(path.indexOf("#")))).toBe(true);
     expect(settledHash(path.slice(path.indexOf("#")))).toBe("#k=0123456789abcdef");
+  });
+});
+
+describe("getScreenKey (docs/designs/screen-video-key.md)", () => {
+  const replaceState = vi.fn();
+  beforeEach(() => {
+    localStorage.clear();
+    replaceState.mockClear();
+    vi.stubGlobal("history", { replaceState });
+    vi.stubGlobal("location", { hash: "", pathname: "/room/ABCD/screen", search: "" });
+  });
+  afterEach(() => {
+    delete (globalThis as { location?: unknown }).location;
+    delete (globalThis as { history?: unknown }).history;
+  });
+
+  it("is null with no #s= fragment and nothing stored, and leaves the address bar alone", () => {
+    expect(getScreenKey("ABCD")).toBeNull();
+    expect(replaceState).not.toHaveBeenCalled();
+  });
+
+  it("takes the #s= fragment, takes it out of the address bar, and remembers it for this room only", () => {
+    vi.stubGlobal("location", { hash: "#s=the-screen-key", pathname: "/room/ABCD/screen", search: "" });
+    expect(getScreenKey("ABCD")).toBe("the-screen-key");
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/room/ABCD/screen");
+    vi.stubGlobal("location", { hash: "", pathname: "/room/ABCD/screen", search: "" });
+    expect(getScreenKey("ABCD")).toBe("the-screen-key");
+    expect(getScreenKey("WXYZ")).toBeNull();
+  });
+
+  it("is not the host token: a #k= fragment is not a screen key, and a screen key is not stored as the host token", () => {
+    vi.stubGlobal("location", { hash: "#k=host-token", pathname: "/room/ABCD/screen", search: "" });
+    expect(getScreenKey("ABCD")).toBeNull();
+    vi.stubGlobal("location", { hash: "#s=the-screen-key", pathname: "/room/ABCD/screen", search: "" });
+    getScreenKey("ABCD");
+    vi.stubGlobal("location", { hash: "", pathname: "/room/ABCD/host", search: "" });
+    expect(getHostToken("ABCD")).toBeNull();
   });
 });
 

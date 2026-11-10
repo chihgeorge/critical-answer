@@ -520,10 +520,11 @@ export function publicQuestion(
   const q = inShownOrder(found, order);
   const m = catalogMonster(q.boss ? (monsters?.boss ?? bank.boss.monster) : (monsters?.room ?? (bank.rooms[roomIndex] ?? bank.rooms[0]).monster));
   const v = look ? variantOf(look.seed, m, look.defeats[m.id] ?? 0) : null;
+  const content = publicMediaContent(q.content, imageBaseUrl, q.id);
   return {
     id: q.id,
     // A video's id never rides on the question: its YouTube title gives a music question away (HiddenVideo).
-    content: q.content.kind === "youtube" ? hiddenVideo(q.content) : (publicMediaContent(q.content, imageBaseUrl, q.id) as Exclude<PublicMediaContent, { kind: "youtube" }>),
+    content: content.kind === "youtube" ? hiddenVideo(content) : content,
     ...(q.prompt ? { prompt: q.prompt } : {}),
     difficulty: q.difficulty,
     boss: q.boss,

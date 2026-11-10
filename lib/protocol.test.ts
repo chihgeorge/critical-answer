@@ -186,9 +186,16 @@ describe("parseClientMessage", () => {
   });
 
   // Guards the big screen's progress report (D3, D14): fails if any of its three counts may be missing, negative or fractional.
-  it("SCREEN_HELLO: carries nothing, extra fields are dropped", () => {
+  it("SCREEN_HELLO: carries at most the screen key, extra fields are dropped", () => {
     expect(parseClientMessage({ type: "SCREEN_HELLO" })).toEqual({ type: "SCREEN_HELLO" });
     expect(parseClientMessage({ type: "SCREEN_HELLO", teamId: "x" })).toEqual({ type: "SCREEN_HELLO" });
+  });
+
+  // Guards the screen key's size (screen-video-key.md): fails if a key of any length or type reaches the room's compare.
+  it("SCREEN_HELLO: keeps a string key of at most 64 characters, drops any other", () => {
+    expect(parseClientMessage({ type: "SCREEN_HELLO", key: "k".repeat(64) })).toEqual({ type: "SCREEN_HELLO", key: "k".repeat(64) });
+    expect(parseClientMessage({ type: "SCREEN_HELLO", key: "" })).toEqual({ type: "SCREEN_HELLO", key: "" });
+    for (const key of ["k".repeat(65), 7, null, { length: 1 }, ["a"]]) expect(parseClientMessage({ type: "SCREEN_HELLO", key })).toEqual({ type: "SCREEN_HELLO" });
   });
 
   it("SCREEN_NARRATION_PROGRESS: whole, non-negative eventId, rev and done", () => {

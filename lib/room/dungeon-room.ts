@@ -1580,15 +1580,18 @@ export class DungeonRoom {
         case "HOST_EDIT_NARRATION":
           this.handleEditNarration(sender, msg.eventId, msg.rev, msg.index, msg.line);
           break;
-        case "SCREEN_HELLO":
+        case "SCREEN_HELLO": {
           if (!this.conns.has(sender.id)) break;
           this.screenConns.add(sender.id);
           // No key, or a wrong one (a link from before the room was reset): the screen works, without videos.
-          if (msg.key !== undefined && tokensEqual(this.screenKey, msg.key)) {
-            this.keyedScreens.add(sender.id);
-            this.sendVideo(sender);
-          } else this.keyedScreens.delete(sender.id);
+          const keyed = msg.key !== undefined && tokensEqual(this.screenKey, msg.key);
+          if (keyed) this.keyedScreens.add(sender.id);
+          else this.keyedScreens.delete(sender.id);
+          // The screen says so itself when it will get no videos, before a video question finds out.
+          this.sendTo(sender, { type: "SCREEN_KEY", ok: keyed });
+          if (keyed) this.sendVideo(sender);
           break;
+        }
         case "SCREEN_NARRATION_PROGRESS":
           // Only from a /screen page: a player cannot lock the host's edits from their own phone (D3), nor from a
           // second socket that never joined a team.

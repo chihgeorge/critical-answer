@@ -1,5 +1,5 @@
 import { abilityUsesFor, isClassId, type ClassId, type GameState } from "../game-state";
-import { parseBank, type Bank } from "../question-bank";
+import { UUID_RE, parseBank, type Bank } from "../question-bank";
 import type { Initiative } from "../initiative";
 import { isAnswerSeconds, type AnswerClock } from "../answer-clock";
 import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, type AiSource } from "../protocol";
@@ -167,7 +167,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       ...(raw.answerSeconds !== undefined ? { answerSeconds: isAnswerSeconds(raw.answerSeconds) ? raw.answerSeconds : 0, answerClock, clipEnded: isString(raw.clipEnded) ? raw.clipEnded : null } : {}),
       game: withUses as GameState | null,
       // Anything but a key we wrote is none: the room then makes a new one, never matches a damaged value.
-      screenKey: isString(raw.screenKey) && raw.screenKey.length >= 32 ? raw.screenKey : undefined,
+      screenKey: isString(raw.screenKey) && UUID_RE.test(raw.screenKey) ? raw.screenKey : undefined,
       joinPassword,
       nextLine: nextLine as RoomSnapshot["nextLine"],
       lastActivityAt: at,
