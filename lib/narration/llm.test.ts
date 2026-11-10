@@ -499,3 +499,37 @@ describe("recent lines", () => {
     expect(userOf(f, 0)).not.toContain("最近說過的旁白");
   });
 });
+
+// Value: protects=the AI narrator's food talk (TODOS 地城料理風格 3) is asked for with a share, a no-two-in-a-row rule
+// and the catalog's edible part, and never reaches the epilogue; fails_when=FOODIE_RULES drops out of buildPrompt, loses
+// its share or its limit, or the part leaks in unquoted or without a cooked monster.
+describe("prompt: 美食節目／生物學家口吻", () => {
+  const cooked: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 3, cooked: true, part: "外膜", next: { team: "藍隊", monster: "幽靈", boss: false } };
+
+  it("asks for about 30% food talk at the right moments, at most one line per reply, never right after a food line", () => {
+    const { system } = buildPrompt(cooked, []);
+    expect(system).toContain("美食節目主持人兼生物學家");
+    expect(system).toContain("大約三成的句子");
+    expect(system).toContain("交代答錯、逃跑、擲骰、詛咒、祝福和規則說明的那一行不要講吃");
+    expect(system).toContain("這次輸出最多一行講吃");
+    expect(system).toContain("最後一句如果已經在講吃，這次就都不要講吃");
+    expect(system).toContain("不要自己取菜名");
+    // The length rules are untouched.
+    expect(system).toMatch(/第一行[^。]*最多 22 個字/);
+    expect(system).toContain("不超過 20 個字");
+    expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆" }, []).system).toContain("大約三成的句子");
+  });
+
+  it("gives the edible part as quoted data only for a monster about to be cooked, and still hides the dish", () => {
+    const { user } = buildPrompt(cooked, []);
+    expect(user).toContain("牠能吃的部位是「外膜」。");
+    expect(user).toContain("不要說會煮成什麼");
+    expect(buildPrompt({ type: "boss-kill", team: "紅隊", monster: "小黑龍", bonus: 5, cooked: true, part: "尾巴」肉" }, []).user).toContain("牠能吃的部位是「尾巴肉」");
+    expect(buildPrompt({ ...cooked, part: undefined }, []).user).not.toContain("能吃的部位");
+    expect(buildPrompt({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, part: "外膜" }, []).user).not.toContain("能吃的部位");
+  });
+
+  it("leaves the epilogue alone", () => {
+    expect(buildPrompt({ type: "epilogue", ranking: [{ name: "紅隊", score: 9 }], winners: ["紅隊"] }, []).system).not.toContain("美食節目");
+  });
+});

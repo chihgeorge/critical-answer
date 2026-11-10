@@ -32,8 +32,9 @@ export type NarrationEvent =
    * `phase`: the boss phase already under way when a late team walks in, from phase 2 on (boss-phases.md D13).
    * `order`: this team is the Nth in (2 and up), so the door is already open; left out for the first team. */
   /** `cooked` (correct and boss-kill): the monster will be cooked; the line counts 飽足感 but keeps the dish for the
-   * big screen's 上菜 (docs/designs/monster-cuisine.md, cooking I1). */
-  | WithNext<WithRoll<ByClass<{ type: "correct"; team: string; monster: string; points: number; cooked?: true; entersBoss?: { phase?: string; order?: number } }>>>
+   * big screen's 上菜 (docs/designs/monster-cuisine.md, cooking I1). `part`: its edible part from the catalog (外膜), for
+   * the narrator's food talk; left out when it holds a bank answer. */
+  | WithNext<WithRoll<ByClass<{ type: "correct"; team: string; monster: string; points: number; cooked?: true; part?: string; entersBoss?: { phase?: string; order?: number } }>>>
   /** `boss`: a wrong boss answer, which always brings a new question (boss redesign D2=B).
    * `exhausted`: it used up the boss phase's questions, and the phase card comes next (boss-phases.md).
    * `buzzOut`: a wrong buzz in a buzzer phase (boss-buzzer.md): this team is out of the question, the others may still buzz.
@@ -47,7 +48,7 @@ export type NarrationEvent =
   | WithNext<{ type: "boss-phase"; monster: string; phase: number; name: string; rule: string }>
   /** A team opened its event room (event-rooms.md D11): `satiety` is the change made, `dish` the feast's catalog dish. */
   | WithNext<ByClass<{ type: "event-room"; team: string; scene: EventScene; outcome: EventOutcome; satiety: number; abilityUse?: true; dish?: string }>>
-  | WithNext<WithRoll<ByClass<{ type: "boss-kill"; team: string; monster: string; bonus: number; cooked?: true }>>>
+  | WithNext<WithRoll<ByClass<{ type: "boss-kill"; team: string; monster: string; bonus: number; cooked?: true; part?: string }>>>
   /** Game over: ranking is sorted high to low. Longer line, longer timeout. */
   // ranking[].score carries reward points (Team.reward), not progress points (Team.score).
   // ranking[].dishes: what the team ate, without any dish holding a bank answer.
