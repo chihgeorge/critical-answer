@@ -103,6 +103,8 @@ export interface BankConflict {
 export class BankStore {
   private cleanupDelayMs: number;
   private now: () => number;
+  /** Keys runImageCleanup is deleting right now: R2 I/O lets a save run in between, and it must not put one back. */
+  private deleting = new Set<string>();
 
   /** `onImagesOrphaned`: deletes R2 objects the bank no longer references — see
    * docs/designs/image-question-type.md's "R2 cleanup mechanism" decision. It is NOT called at save
@@ -149,15 +151,21 @@ export class BankStore {
     const { current, unreadable, outdated } = await this.read();
     // The fallback bank is not what's stored: deleting by it would drop images the stored bank still uses.
     // Try again later; this alarm is spent, and the queue would otherwise wait for the next save or upload.
-    if (unreadable || outdated) return void (await this.storage.setAlarm?.(now + this.cleanupDelayMs));
+    if (unreadable || outdated) {
+      console.warn(JSON.stringify({ event: "image_cleanup_deferred", reason: unreadable ? "unreadable" : "outdated", pending: pending.length }));
+      return void (await this.storage.setAlarm?.(now + this.cleanupDelayMs));
+    }
     const inUse = imageKeysOf(current.bank);
     const due = pending.filter((p) => p.deleteAt <= now && !inUse.has(p.key)).map((p) => p.key);
     // Back in the bank: drop it from the queue; the save that removes it again re-queues it.
     await this.setPending(pending.filter((p) => p.deleteAt > now && !inUse.has(p.key)));
     if (due.length > 0 && this.onImagesOrphaned) {
-      await this.onImagesOrphaned(due).catch((err: unknown) => {
-        console.error(JSON.stringify({ event: "image_cleanup_failed", keys: due, error: String(err) }));
-      });
+      for (const k of due) this.deleting.add(k);
+      await this.onImagesOrphaned(due)
+        .catch((err: unknown) => {
+          console.error(JSON.stringify({ event: "image_cleanup_failed", keys: due, error: String(err) }));
+        })
+        .finally(() => due.forEach((k) => this.deleting.delete(k)));
     }
   }
 
@@ -180,8 +188,11 @@ export class BankStore {
       // Fails closed: anything but a missing format or one this code knows could be a newer writer's.
       if (r.format !== undefined && !(typeof r.format === "number" && r.format <= BANK_FORMAT)) throw new Error(`stored bank format ${String(r.format)} is not one this version (${BANK_FORMAT}) can read`);
       const format = (r.format as number | undefined) ?? 1;
-      if (format < OLDEST_PARSED_FORMAT) return { current: { bank: BANK, version: typeof r.version === "number" ? r.version : 1 }, unreadable: false, outdated: { format, raw: r.bank } };
-      return { current: { bank: parseBank(r.bank), version: typeof r.version === "number" ? r.version : 1 }, unreadable: false };
+      // A missing version is a pre-version save (1); any other non-integer is corrupt, not 1 (a save at 1 would overwrite it).
+      const version = r.version === undefined ? 1 : r.version;
+      if (!Number.isSafeInteger(version)) throw new Error(`stored bank version ${String(r.version)} is not an integer`);
+      if (format < OLDEST_PARSED_FORMAT) return { current: { bank: BANK, version: version as number }, unreadable: false, outdated: { format, raw: r.bank } };
+      return { current: { bank: parseBank(r.bank), version: version as number }, unreadable: false };
     } catch (err) {
       // Corrupt storage must not crash whatever called this (a room trying to start a game, the
       // editor trying to load) — same class of defensive fallback as dungeon-room.ts's restore().
@@ -202,6 +213,8 @@ export class BankStore {
     if (current.version !== expectedVersion) return { conflict: true, currentVersion: current.version };
     const validated = parseBank(candidate);
     assertSavable(validated);
+    const gone = [...imageKeysOf(validated)].filter((k) => this.deleting.has(k));
+    if (gone.length > 0) throw new Error(`圖片已過期、正在刪除，請重新上傳：${gone.join(", ")}`);
     const next: VersionedBank = { bank: validated, version: current.version + 1 };
     if (outdated) await this.storage.put(LEGACY_BANK_KEY, { bank: outdated.raw, format: outdated.format, version: current.version });
     await this.storage.put(BANK_KEY, { ...next, format: formatOf(validated) });

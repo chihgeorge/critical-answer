@@ -56,6 +56,16 @@ describe("BankStore.getVersionedBank", () => {
     const versioned = await new BankStore(storage).getVersionedBank();
     expect(versioned.version).toBe(1);
   });
+
+  it("treats a version that is present but not an integer as unreadable, not as 1 (a save at 1 would overwrite it)", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const version of ["5", null, 1.5]) {
+      const store = new BankStore(memoryStorage({ format: BANK_FORMAT, bank: validBank, version }));
+      expect((await store.getVersionedBank()).unreadable).toBe(true);
+      await expect(store.putBank(validBank, 1)).rejects.toThrow(/unreadable/);
+    }
+    spy.mockRestore();
+  });
 });
 
 describe("BankStore.putBank", () => {
@@ -254,7 +264,12 @@ describe("BankStore: orphaned images wait out running games before they're delet
     const { store, storage, alarms, onImagesOrphaned, at } = setup({ format: BANK_FORMAT, bank: { rooms: "a format this version can't read" }, version: 7 });
     await storage.put("pendingImageDeletes", [{ key: KEY, deleteAt: 0 }]);
     at(DELAY);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await store.runImageCleanup();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("image_cleanup_deferred"));
+    err.mockRestore();
+    warn.mockRestore();
     expect(onImagesOrphaned).not.toHaveBeenCalled();
     expect(await storage.get("pendingImageDeletes")).toEqual([{ key: KEY, deleteAt: 0 }]);
     expect(alarms).toEqual([2 * DELAY]); // re-armed, so the queue is not stranded once the bank is readable again
@@ -343,6 +358,22 @@ describe("BankStore: orphaned images wait out running games before they're delet
     await expect(store.runImageCleanup()).resolves.toBeUndefined();
   });
 
+  it("refuses a save that puts back an image while its delete is in flight, and accepts saves again once it is done", async () => {
+    const { store, onImagesOrphaned, at } = setup();
+    let finishDelete = () => {};
+    onImagesOrphaned.mockImplementationOnce(() => new Promise<void>((resolve) => (finishDelete = resolve)));
+    await store.putBank(validBank, 1);
+    at(DELAY);
+    const cleanup = store.runImageCleanup();
+    await vi.waitFor(() => expect(onImagesOrphaned).toHaveBeenCalledWith([KEY]));
+    // The R2 delete is awaiting: a stale editor tab saves the image back in.
+    await expect(store.putBank(bankWithImage, 2)).rejects.toThrow(KEY);
+    await expect(store.putBank(validBank, 2)).resolves.toMatchObject({ version: 3 }); // other saves still work
+    finishDelete();
+    await cleanup;
+    await expect(store.putBank(validBank, 3)).resolves.toMatchObject({ version: 4 });
+  });
+
   it("logs a failing delete instead of throwing out of the alarm", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const { store, onImagesOrphaned, at } = setup();
@@ -423,7 +454,10 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     const alarms: number[] = [];
     const storage = { ...memoryStorage({ bank: oldBank, version: 9, format: 2 }), setAlarm: async (at: number) => void alarms.push(at) };
     await storage.put("pendingImageDeletes", [{ key: OLD_KEY, deleteAt: 0 }]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await new BankStore(storage, onImagesOrphaned, { now: () => 5, cleanupDelayMs: 100 }).runImageCleanup();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('"reason":"outdated"'));
+    warn.mockRestore();
     expect(onImagesOrphaned).not.toHaveBeenCalled();
     expect(alarms).toEqual([105]);
     expect(await storage.get("pendingImageDeletes")).toEqual([{ key: OLD_KEY, deleteAt: 0 }]);
