@@ -371,7 +371,21 @@ describe("BankStore: orphaned images wait out running games before they're delet
     await expect(store.putBank(validBank, 2)).resolves.toMatchObject({ version: 3 }); // other saves still work
     finishDelete();
     await cleanup;
-    await expect(store.putBank(validBank, 3)).resolves.toMatchObject({ version: 4 });
+    // Released once the delete is done (a re-upload under the same key is not possible in production; this checks the set is cleared).
+    await expect(store.putBank(bankWithImage, 3)).resolves.toMatchObject({ version: 4 });
+  });
+
+  it("releases the in-flight keys when the delete fails, even with a synchronous throw", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { store, onImagesOrphaned, at } = setup();
+    onImagesOrphaned.mockImplementationOnce(() => {
+      throw new Error("R2 binding broke");
+    });
+    await store.putBank(validBank, 1);
+    at(DELAY);
+    await expect(store.runImageCleanup()).resolves.toBeUndefined();
+    await expect(store.putBank(bankWithImage, 2)).resolves.toMatchObject({ version: 3 });
+    spy.mockRestore();
   });
 
   it("logs a failing delete instead of throwing out of the alarm", async () => {

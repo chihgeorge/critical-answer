@@ -157,15 +157,20 @@ export class BankStore {
     }
     const inUse = imageKeysOf(current.bank);
     const due = pending.filter((p) => p.deleteAt <= now && !inUse.has(p.key)).map((p) => p.key);
-    // Back in the bank: drop it from the queue; the save that removes it again re-queues it.
-    await this.setPending(pending.filter((p) => p.deleteAt > now && !inUse.has(p.key)));
-    if (due.length > 0 && this.onImagesOrphaned) {
-      for (const k of due) this.deleting.add(k);
-      await this.onImagesOrphaned(due)
-        .catch((err: unknown) => {
+    // Marked before the next await, so the guard does not depend on which awaits let a save in.
+    for (const k of due) this.deleting.add(k);
+    try {
+      // Back in the bank: drop it from the queue; the save that removes it again re-queues it.
+      await this.setPending(pending.filter((p) => p.deleteAt > now && !inUse.has(p.key)));
+      if (due.length > 0 && this.onImagesOrphaned) {
+        try {
+          await this.onImagesOrphaned(due);
+        } catch (err) {
           console.error(JSON.stringify({ event: "image_cleanup_failed", keys: due, error: String(err) }));
-        })
-        .finally(() => due.forEach((k) => this.deleting.delete(k)));
+        }
+      }
+    } finally {
+      for (const k of due) this.deleting.delete(k);
     }
   }
 
