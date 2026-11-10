@@ -314,7 +314,7 @@ export default function HostPage() {
     room.send(msg);
   }
 
-  function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "flee" | "retry" | "team" | "pray", fields?: boolean[]) {
+  function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "flee" | "retry" | "switch" | "team" | "pray", fields?: boolean[]) {
     setPendingTeamId(teamId);
     send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice, ...(game ? { eventId: game.eventId } : {}), ...(fields ? { fields } : {}) });
   }
@@ -473,7 +473,8 @@ export default function HostPage() {
         if (held || (cleric === "wait" && action === "pray" && game.view.awaitingPrayer !== turn.team.id)) return;
         if (action === "correct") judge(turn.team.id, turn.questionId, true);
         else if (action === "wrong") judge(turn.team.id, turn.questionId, false, "team");
-        else if (!(bossMiss && action === "flee")) judge(turn.team.id, turn.questionId, false, action); // no 逃跑 button on a boss miss
+        // No 逃跑 button on a boss miss, and no 逃跑・換房 in the boss room.
+        else if (!(bossMiss && action === "flee") && !(turn.inBoss && action === "switch")) judge(turn.team.id, turn.questionId, false, action);
       }
       e.preventDefault();
     }
@@ -1066,16 +1067,22 @@ export default function HostPage() {
                   {stuck && (
                     <>
                       <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>
-                      <div className="px-1 pt-1 text-[14px] text-white">隊伍卡住時：</div>
-                      <div className={bossMiss ? "grid" : "grid grid-cols-2"}>
-                        <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
-                          <span className="text-balance">替{turn.team.name}選・重答</span>
+                      <div className="px-1 pt-1 text-[14px] text-white">隊伍卡住時，替{turn.team.name}選：</div>
+                      <div className={bossMiss ? "grid" : turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
+                        <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・重答`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                          重答
                           <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                         </PixelButton>
                         {!bossMiss && (
-                          <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                            <span className="text-balance">替{turn.team.name}選・逃跑</span>
+                          <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・${turn.inBoss ? "逃跑" : "逃跑・同房"}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                            <span className="whitespace-nowrap">{turn.inBoss ? "逃跑" : "逃跑・同房"}</span>
                             <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
+                          </PixelButton>
+                        )}
+                        {!turn.inBoss && (
+                          <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・逃跑・換房`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
+                            <span className="whitespace-nowrap">逃跑・換房</span>
+                            <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.switch}</span>
                           </PixelButton>
                         )}
                       </div>
@@ -1094,7 +1101,7 @@ export default function HostPage() {
                   {cleric === "wait" ? (
                     <>
                       <div className="px-1 pt-1 text-center text-[20px] text-white" role="status">答錯了！等{turn.team.name}選，或替他們選：</div>
-                      <div className="grid grid-cols-3">
+                      <div className={turn.inBoss ? "grid grid-cols-3" : "grid grid-cols-2"}>
                         {game.view.awaitingPrayer === turn.team.id && (
                           <PixelButton className="text-[16px]" style={{ background: "#ffe066" }} disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "pray")}>
                             祈禱
@@ -1106,9 +1113,15 @@ export default function HostPage() {
                           <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.retry}</span>
                         </PixelButton>
                         <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                          逃跑
+                          {turn.inBoss ? "逃跑" : "逃跑・同房"}
                           <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.flee}</span>
                         </PixelButton>
+                        {!turn.inBoss && (
+                          <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
+                            <span className="whitespace-nowrap">逃跑・換房</span>
+                            <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.switch}</span>
+                          </PixelButton>
+                        )}
                       </div>
                     </>
                   ) : buzz && game.question?.fields ? (
@@ -1137,15 +1150,21 @@ export default function HostPage() {
                       <span className="px-key" aria-hidden="true">{HOST_KEYS.before.wrong}</span>
                     </PixelButton>
                   ) : (
-                  <div className="grid grid-cols-2">
-                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
-                      答錯・重答
+                  <div className={turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} aria-label="答錯・重答" onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                      {turn.inBoss ? "答錯・重答" : <TwoLine top="答錯・" bottom="重答" />}
                       <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                     </PixelButton>
-                    <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                      答錯・逃跑
+                    <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} aria-label={turn.inBoss ? "答錯・逃跑" : "答錯・逃跑・同房"} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                      {turn.inBoss ? "答錯・逃跑" : <TwoLine top="答錯・" bottom="逃跑・同房" />}
                       <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
                     </PixelButton>
+                    {!turn.inBoss && (
+                      <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} aria-label="答錯・逃跑・換房" onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
+                        <TwoLine top="答錯・" bottom="逃跑・換房" />
+                        <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.switch}</span>
+                      </PixelButton>
+                    )}
                   </div>
                   )}
                   </>
@@ -1224,6 +1243,17 @@ export default function HostPage() {
         />
       )}
     </main>
+  );
+}
+
+/** A judge button's label on two lines, the prefix small, so a three-button row never breaks inside 「逃跑・換房」. */
+// Its two block lines read as "答錯・ 重答" to screen readers, so each button using it carries an aria-label.
+function TwoLine({ top, bottom }: { top: string; bottom: string }) {
+  return (
+    <span className="flex min-w-0 flex-1 flex-col">
+      <span className="text-[12px]">{top}</span>
+      <span className="whitespace-nowrap">{bottom}</span>
+    </span>
   );
 }
 

@@ -1,7 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { textOnlyBank, startGame, rollCheck } from "./answer";
 
-// A cleric on a fill-in question (#106): the host's one 答錯 waits for 祈禱 / 重答 / 逃跑.
+// A cleric on a fill-in question (#106): the host's one 答錯 waits for 祈禱 / 重答 / 逃跑・同房 / 逃跑・換房.
 textOnlyBank();
 
 async function clericRoom(browser: Browser, beforeWrong?: (host: Page) => Promise<void>) {
@@ -51,7 +51,7 @@ test("cleric: the phone prays after the host's 答錯 and the team answers again
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   await expect(host.getByRole("button", { name: "祈禱", exact: true })).toBeVisible();
   await expect(host.getByRole("button", { name: "重答", exact: true })).toBeVisible();
-  await expect(host.getByRole("button", { name: "逃跑", exact: true })).toBeVisible();
+  await expect(host.getByRole("button", { name: "逃跑・同房", exact: true })).toBeVisible();
   await team.getByRole("button", { name: /^祈禱/ }).click();
   await expect(box).toHaveValue("");
   await expect(team.getByRole("button", { name: "送出" })).toBeVisible();
@@ -149,7 +149,7 @@ test("cleric: the phone's 逃跑 in the wait deals a new question and spends not
   const { team, box } = await clericRoom(browser);
   const question = team.getByRole("heading", { level: 2 });
   const before = await question.textContent();
-  await team.getByRole("button", { name: /^逃跑/ }).click();
+  await team.getByRole("button", { name: /^逃跑・同房/ }).click();
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   await expect(question).not.toHaveText(before!);

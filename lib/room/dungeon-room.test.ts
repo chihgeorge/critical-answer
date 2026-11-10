@@ -1494,6 +1494,24 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useRealTimers();
     });
 
+    it("逃跑・換房 from the phone: same room, and the screen shows the new monster", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, conns } = startedMcGame(1);
+      const before = lastBroadcast(room).question.monster.id;
+      pick(room, conns[0], 0);
+      lock(room, conns[0]);
+      vi.advanceTimersByTime(2000);
+      serveNext(room, hostConn, seqOf(room));
+      send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "r0-mc1", choice: "switch" });
+      const team = room.game!.teams[0];
+      expect(team).toMatchObject({ roomIndex: 0, flees: 1 });
+      expect(team.swappedMonsterId).toBeDefined();
+      expect(team.swappedMonsterId).not.toBe(before);
+      serveNext(room, hostConn, seqOf(room));
+      expect(lastBroadcast(room).question.monster.id).toBe(team.swappedMonsterId);
+      vi.useRealTimers();
+    });
+
     it("HOST_JUDGE on multipleChoice: 答對 is refused, 重答/逃跑 resolves a stuck team, nothing during the beat (E5, E10)", () => {
       vi.useFakeTimers();
       const { room, hostConn, ids, conns } = startedMcGame(2);

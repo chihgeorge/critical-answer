@@ -6,7 +6,7 @@ import type { SpectatorView } from "./game-state";
 
 /** "wrong": a cleric's one 答錯 key, which waits for its choice; "pray": 祈禱 in that wait (#106).
  * "reveal": 公布答案 on a team's lock (docs/designs/host-reveal.md). */
-type HostKeyAction = "correct" | "retry" | "flee" | "next" | "wrong" | "pray" | "reveal" | "undo";
+type HostKeyAction = "correct" | "retry" | "flee" | "switch" | "next" | "wrong" | "pray" | "reveal" | "undo";
 
 /** The parts of a KeyboardEvent this needs, so a test can pass a plain object. */
 interface KeyLike {
@@ -20,18 +20,18 @@ interface KeyLike {
 }
 
 /** Where a cleric's fill-in turn stands for the host's keys (#106): "before" while a 答錯 would wait for the team
- * (one 答錯 key), "wait" while it waits (祈禱 / 重答 / 逃跑). Undefined otherwise, so the host keeps 答錯・重答 / 答錯・逃跑. */
+ * (one 答錯 key), "wait" while it waits (祈禱 / 重答 / 逃跑・同房 / 逃跑・換房). Undefined otherwise, so the host keeps 答錯・重答 / 答錯・逃跑. */
 export function clericStage(view: Pick<SpectatorView, "teams" | "pendingWrong">, teamId: string): "before" | "wait" | undefined {
   const wrong = view.pendingWrong;
   if (wrong?.teamId === teamId && wrong.optionIndex === null) return "wait";
   return view.teams.find((t) => t.id === teamId)?.mayPray ? "before" : undefined;
 }
 
-/** The digit on each judge button, per clericStage ("plain" for any other turn). The host page prints these. */
+/** The digit on each judge button, per clericStage ("plain" for any other turn). The host page prints these. `switch`: 逃跑・換房, never in the boss room. */
 export const HOST_KEYS = {
-  plain: { correct: "1", retry: "2", flee: "3" },
+  plain: { correct: "1", retry: "2", flee: "3", switch: "4" },
   before: { correct: "1", wrong: "2" },
-  wait: { pray: "2", retry: "3", flee: "4" },
+  wait: { pray: "2", retry: "3", flee: "4", switch: "5" },
   /** 下一題 (🍲 上菜 first on a dish reveal) while the answer is on show (Enter works too). */
   next: "1",
   /** 公布答案 while a team's lock waits for the host (host-reveal.md D6). */
@@ -49,8 +49,8 @@ function ignoredKey(e: KeyLike): boolean {
 /** Which button a key presses (HOST_KEYS), or null to leave the key to the browser (ignoredKey). `revealing`: the answer is
  * on show, so the only button is 下一題.
  * `mc`: a multipleChoice turn, judged by the team's lock (docs/designs/phone-answering.md D13), so 1
- * does nothing (unless `lockWaiting`) and 2 / 3 only work once the host's stuck row is showing. `cleric` (clericStage):
- * "before" makes 2 the one 答錯 and 3 nothing; "wait" makes 2 / 3 / 4 祈禱 / 重答 / 逃跑 and 1 nothing.
+ * does nothing (unless `lockWaiting`) and 2 / 3 / 4 only work once the host's stuck row is showing. `cleric` (clericStage):
+ * "before" makes 2 the one 答錯 and 3 nothing; "wait" makes 2 / 3 / 4 / 5 祈禱 / 重答 / 逃跑・同房 / 逃跑・換房 and 1 nothing.
  * `lockWaiting`: a team's lock waits for 公布答案 (host-reveal.md), so 1 reveals it. */
 export function hostKeyAction(e: KeyLike, revealing: boolean, mc?: { stuck: boolean }, cleric?: "before" | "wait", lockWaiting?: boolean): HostKeyAction | null {
   if (ignoredKey(e)) return null;

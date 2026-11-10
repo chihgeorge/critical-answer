@@ -113,9 +113,9 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
   await expect(wall(green)).toHaveAttribute("data-look", "plain");
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   await expect(question).toBeVisible();
-  // D2: the options and the 重答/逃跑 row fit 375x667 without scrolling (the cards below may run under the fold).
+  // D2: the options and the 重答 / 逃跑・同房 / 逃跑・換房 buttons fit 375x667 without scrolling (the cards below may run under the fold).
   // Measured from the top of the page, since the earlier 鎖定答案 click may have scrolled it.
-  const fleeBottom = await team.getByRole("button", { name: /逃跑/ }).evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
+  const fleeBottom = await team.getByRole("button", { name: /逃跑・換房/ }).evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
   expect(fleeBottom).toBeLessThanOrEqual(667);
   await team.getByRole("button", { name: /重答/ }).click();
 
@@ -148,7 +148,7 @@ test("phone answering: the longest default question with four options still fits
   await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   expect(await bottom(/重答/)).toBeLessThanOrEqual(844);
-  expect(await bottom(/逃跑/)).toBeLessThanOrEqual(844);
+  expect(await bottom(/逃跑・換房/)).toBeLessThanOrEqual(844);
 });
 
 // Value: protects=after 15 s with no lock the host gets 替…選・逃跑 and it moves the stuck team on; fails_when=the stuck timer, its key or the rescue button breaks, leaving the host no way past an MC turn; why_new=no spec waits out STUCK_MS; seam=none; no_claim=重答 rescue and keys 2/3 (host clock faked; server timers real)
@@ -172,7 +172,7 @@ test("phone answering: a team that never locks gets the host's stuck row after 1
   await expect(stuckRow).toHaveCount(0);
   await host.clock.fastForward(1_500);
   await expect(stuckRow).toBeVisible();
-  await host.getByRole("button", { name: /替選擇隊選・逃跑/ }).click();
+  await host.getByRole("button", { name: /替選擇隊選・逃跑・同房/ }).click();
   // The flee is a judgment (new eventId), so the row resets and waits another 15 s.
   await expect(stuckRow).toHaveCount(0);
   await expect(host.getByTestId("host-mc-status")).toContainText("等選擇隊鎖定答案");
@@ -215,9 +215,35 @@ test("phone answering: 逃跑 after a wrong lock moves the team to the other que
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
-  await team.getByRole("button", { name: /逃跑/ }).click();
+  await team.getByRole("button", { name: /逃跑・同房/ }).click();
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
   await expect(team.getByRole("button", { name: onDoor ? "圓鑰" : "紅門" })).toBeVisible();
+});
+
+// Value: protects=the phone's 逃跑・換房 sends switch: same room, a new monster and the other question; fails_when=the button sends
+// flee or retry, or the monster stays; why_new=逃跑・換房 is new; seam=none; no_claim=which monster comes (unit tests)
+test("phone answering: 逃跑・換房 after a wrong lock brings a new monster in the same room", async ({ browser, request }) => {
+  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
+  bank.pools["1"] = [
+    { kind: "multipleChoice", id: "r0-mc-e2e-a", text: "門是什麼顏色？", options: ["紅門", "綠門"], correctIndex: 1 },
+    { kind: "multipleChoice", id: "r0-mc-e2e-b", text: "鑰匙是什麼形狀？", options: ["圓鑰", "方鑰"], correctIndex: 1 },
+  ];
+  expect((await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } })).ok()).toBe(true);
+
+  const { host, team } = await startOneTeam(browser);
+  const room = host.getByText(/^第 1 房　/);
+  const monster = await room.textContent();
+  const onDoor = await team.getByRole("button", { name: "紅門" }).isVisible();
+  await team.getByRole("button", { name: onDoor ? "紅門" : "圓鑰" }).click();
+  await team.getByRole("button", { name: "鎖定答案" }).click();
+  await revealLock(host);
+  await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
+  await team.getByRole("button", { name: /逃跑・換房/ }).click();
+  await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
+  await expect(team.getByRole("button", { name: onDoor ? "圓鑰" : "紅門" })).toBeVisible();
+  await expect(room).toBeVisible(); // still room 1
+  await expect(room).not.toHaveText(monster!);
 });
 
 // Value: protects=a lock the room never confirms un-freezes the phone after 3 s with 沒送出，再按一次; fails_when=inFlight never clears and the team is stuck on 鎖定中…; why_new=no test drops the lock message; seam=routeWebSocket drops TEAM_LOCK_OPTION; no_claim=real network loss

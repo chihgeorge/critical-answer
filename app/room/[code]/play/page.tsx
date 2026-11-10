@@ -283,14 +283,10 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
               ✝️ 祈禱：這回合再答一次<small className="text-[13px]">剩 {me!.abilityUses} 次</small>
             </PixelButton>
           )}
-          <div className="mt-1 flex gap-2">
-            <PixelButton variant="ok" className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
-              重答<small className="text-[13px]">{prayed ? "立刻再答這題" : "下一輪再挑一次"}</small>
-            </PixelButton>
-            <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "var(--lav)" }} onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "flee" })}>
-              逃跑<small className="text-[13px]">{prayed ? "換一題，還是你們答" : "換一題簡單的"}</small>
-            </PixelButton>
-          </div>
+          <PixelButton variant="ok" className="!m-0 mt-1 flex !min-h-[64px] flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
+            重答<small className="text-[13px]">{prayed ? "立刻再答這題" : "下一輪再挑一次"}</small>
+          </PixelButton>
+          <FleeButtons questionId={q.id} send={send} prayed={prayed} />
         </>
       ) : rolling ? (
         <ClassAbility game={game} teamId={teamId} send={send} />
@@ -320,6 +316,24 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
       {!wrong && !rolling && <ClassAbility game={game} teamId={teamId} send={send} frozen={frozen} />}
       {lockFailed && !frozen && <div className="text-center text-[14px]">沒送出，再按一次</div>}
     </Panel>
+  );
+}
+
+/** After a wrong answer: 逃跑・同房 and 逃跑・換房 (a new monster, same room). The boss room has one 逃跑, a new question. */
+function FleeButtons({ questionId, send, prayed = false, boss = false }: { questionId: string; send: (m: ClientMessage) => void; prayed?: boolean; boss?: boolean }) {
+  const flee = (choice: "flee" | "switch") => () => send({ type: "TEAM_WRONG_CHOICE", questionId, choice });
+  const cls = "!m-0 flex !min-h-[72px] flex-1 flex-col whitespace-nowrap !text-[21px]";
+  return (
+    <div className="mt-1 flex gap-2">
+      <PixelButton className={cls} style={{ background: "var(--lav)" }} onClick={flee("flee")}>
+        {boss ? "逃跑" : "逃跑・同房"}<small className="text-[13px]">{boss ? "換一題" : prayed ? "同一隻怪，你們再答" : "同一隻怪，換簡單題"}</small>
+      </PixelButton>
+      {!boss && (
+        <PixelButton className={cls} style={{ background: "var(--lav)" }} onClick={flee("switch")}>
+          逃跑・換房<small className="text-[13px]">{prayed ? "換一隻怪，你們再答" : "換一隻怪，換簡單題"}</small>
+        </PixelButton>
+      )}
+    </div>
   );
 }
 
@@ -479,10 +493,8 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
             <PixelButton variant="ok" className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
               重答<small className="text-[13px]">換下一隊</small>
             </PixelButton>
-            <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "var(--lav)" }} onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "flee" })}>
-              逃跑<small className="text-[13px]">換一題</small>
-            </PixelButton>
           </div>
+          <FleeButtons questionId={q.id} send={send} boss={!!me?.inBossPhase} />
         </>
       ) : needCheck && !rolling && sent === null ? (
         <>

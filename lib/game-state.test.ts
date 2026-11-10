@@ -56,7 +56,9 @@ import {
   type ClassId,
   type GameState,
   type RoomTemplate,
+  teamMonsterId,
 } from "./game-state";
+import { monsterById } from "./monster-catalog";
 
 function makeRooms(count: number, baseDifficulty: 1 | 2 | 3 | 4 | 5 = 1): RoomTemplate[] {
   return Array.from({ length: count }, () => ({ baseDifficulty, reward: baseDifficulty * 10 }));
@@ -174,6 +176,55 @@ describe("answerQuestion — normal room, incorrect answer", () => {
     const t0 = g2.teams[0];
     expect(t0.roomIndex).toBe(0); // same room
     expect(t0.currentDifficulty).toBe(2); // downgraded from 3
+  });
+
+  it("逃跑・換房 (switch) keeps the room and score, lowers the difficulty like a flee, and brings a new monster of the same tier", () => {
+    const rooms: RoomTemplate[] = [
+      { baseDifficulty: 3, reward: 30, monsterId: "slime-soft", dish: "史萊姆寒天涼拌" },
+      { baseDifficulty: 3, reward: 30, monsterId: "ghost-shy", dish: "幽靈霧冰沙" },
+      { baseDifficulty: 4, reward: 40, monsterId: "mimic", dish: "寶箱便當" },
+    ];
+    const pools = [1, 2, 3, 4, 5].map((d) => Array.from({ length: 4 }, (_, q) => `d${d}-q${q + 1}`));
+    const game = createGame([{ id: "T0", name: "A" }], rooms, pools, ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    const { game: g2, outcome } = answerQuestion(game, "T0", "d3-q1", false, "switch", first);
+    expect(outcome).toEqual({ type: "incorrect-flee", teamId: "T0", newDifficulty: 2, switchedTo: "ghost-shy" });
+    const t0 = g2.teams[0];
+    expect(t0).toMatchObject({ roomIndex: 0, score: 0, currentDifficulty: 2, swappedMonsterId: "ghost-shy", flees: 1, metDefeats: 0 });
+    expect(t0.currentQuestionId).toBe("d2-q1");
+    expect(teamMonsterId(g2, t0)).toBe("ghost-shy");
+    // Beating it counts the new monster, cooks its dish, and the next room has its own monster again.
+    const { game: g3 } = answerQuestion(g2, "T0", "d2-q1", true, "retry", first);
+    expect(g3.defeats).toEqual({ "ghost-shy": 1 });
+    expect(g3.teams[0].dishes).toEqual(["幽靈霧冰沙"]);
+    expect(g3.teams[0].swappedMonsterId).toBeUndefined();
+    expect(teamMonsterId(g3, g3.teams[0])).toBe("ghost-shy"); // room 1's own monster
+  });
+
+  it("逃跑・換房 with no other monster of the tier draws any other room monster from the catalog", () => {
+    const rooms: RoomTemplate[] = [{ baseDifficulty: 1, reward: 10, monsterId: "slime-soft" }];
+    const game = createGame([{ id: "T0", name: "A" }], rooms, poolsWith(1, ["a", "b", "c"]), ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    const { game: g2 } = answerQuestion(game, "T0", "a", false, "switch", first);
+    const to = g2.teams[0].swappedMonsterId!;
+    expect(to).not.toBe("slime-soft");
+    expect(monsterById(to)?.boss).toBe(false);
+  });
+
+  it("逃跑・換房's monster goes when the team leaves the room another way: an event room or the host's 送進首領房", () => {
+    const game = createGame([{ id: "T0", name: "A" }], [{ baseDifficulty: 1, reward: 10, monsterId: "slime-soft" }, { baseDifficulty: 1, reward: 10, monsterId: "ghost-shy" }], poolsWith(1, ["a", "b", "c", "d"]), ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    const { game: swapped } = answerQuestion(game, "T0", "a", false, "switch", first);
+    expect(swapped.teams[0].swappedMonsterId).toBe("ghost-shy");
+    const evented = openEvent(enterEventRoom(swapped, "T0", { scene: "chest", outcome: "feast" }), "T0", first).game;
+    expect(evented.teams[0].swappedMonsterId).toBeUndefined();
+    expect(sendToBoss(swapped, "T0", first).teams[0].swappedMonsterId).toBeUndefined();
+  });
+
+  it("逃跑・換房 in the boss room is a plain flee: the boss question rotates, no monster changes", () => {
+    let game = makeGame({ teamCount: 1, bossThreshold: 1 });
+    ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first));
+    const { game: g2, outcome } = answerQuestion(game, "T0", "boss-q1", false, "switch", first);
+    expect(outcome).toEqual({ type: "incorrect-flee", teamId: "T0", newDifficulty: 1 });
+    expect(g2.boss.currentQuestionId).toBe("boss-q2");
+    expect(g2.teams[0].swappedMonsterId).toBeUndefined();
   });
 
   it("flee never downgrades below MIN_DIFFICULTY (1)", () => {
