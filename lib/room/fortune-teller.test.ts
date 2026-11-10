@@ -328,6 +328,26 @@ describe("占卜師 in the room", () => {
     send(s.room, s.host, { type: "HOST_PACING", mode: "auto" });
     expect(s.room.game!.fortune!.deadline).toBe(Date.now() + FORTUNE_INTRO_MS + FORK_MS);
   });
+
+  // Value: protects=💫's narration: a skip made by the fortune's turn change is said once, after 下一題 and before the
+  // next team's line; fails_when=the skip is said under the card, twice, or not at all; no_claim=the turn rules (unit)
+  it("💫 on the next team: skipped at once, said after 下一題, before the next team's line", async () => {
+    vi.useFakeTimers();
+    const s = setup({ teams: 3 });
+    await toFortune(s);
+    s.room.game = { ...s.room.game!, fortune: { ...s.room.game!.fortune!, matchIds: [T2] } };
+    await vi.advanceTimersByTimeAsync(FORTUNE_INTRO_MS);
+    pick(s, "stun");
+    expect(currentTurnTeamId(s.room.game!)).toBe(T3);
+    await vi.advanceTimersByTimeAsync(FORTUNE_BEAT_MS);
+    expect(state(s.room).cue).toBe("fumble");
+    expect(narrations(s.room).at(-1).lines.join("")).not.toMatch(/頭暈/);
+    send(s.room, s.host, { type: "HOST_NEXT", eventId: state(s.room).eventId });
+    const lines = narrations(s.room).at(-1).lines;
+    expect(lines.at(-2)).toMatch(/💫 Plain1/);
+    expect(lines.at(-1)).toMatch(/Plain2/);
+    expect(s.room.game!.stunSkipped).toBeUndefined();
+  });
 });
 
 describe("占卜師 across a restart", () => {
@@ -413,6 +433,9 @@ describe("占卜師 across a restart", () => {
       expect(snap.game!.teams[0].event).toBeUndefined();
       expect(snap.game!.teams[0].fork).toEqual({ phase: "waiting" });
     }
+    // A damaged 💫 skip list is dropped rather than throw on every broadcast; a good one stays.
+    expect(parseSnapshot({ ...raw, game: { ...raw.game, stunSkipped: { length: 1 } } })!.game!.stunSkipped).toBeUndefined();
+    expect(parseSnapshot({ ...raw, game: { ...raw.game, stunSkipped: [T2] } })!.game!.stunSkipped).toEqual([T2]);
     // Both good shapes load as they are.
     expect(parseSnapshot(raw)!.game!.fortune).toMatchObject({ teamId: T1 });
     const card = { ...raw.game, fortune: { ...raw.game.fortune, effect: "curse" }, teams: raw.game.teams.map((t) => ({ ...t, event: undefined })) };

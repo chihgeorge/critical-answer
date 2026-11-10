@@ -467,6 +467,8 @@ export const FORTUNE_TIMEOUT_VARIANTS = ["時間到！占卜師替{team}挑了{e
 export const FORTUNE_HIT_VARIANTS = ["命運落在{names}身上！", "中的是……{names}！", "水晶球照出了{names}！"];
 /** The drawing team matched its own condition: the room laughs. */
 export const FORTUNE_SELF_VARIANTS = ["中的是……{names}！挖坑給自己跳！", "{team}自己也中了！占卜師笑到水晶球都在抖。", "選的人自己也中了！{names}，這就是命運。"];
+/** 💫 暈眩 skipped these teams' turn (fortune-teller.md Narration): one line, appended to the narration on show. */
+export const stunSkipLine = (names: string) => `💫 ${names}還在頭暈，這回合跳過！`;
 
 /** The transition segment (last of 3, when there's a next team): the narrator turns to the team now on turn. */
 export const NEXT_VARIANTS = {

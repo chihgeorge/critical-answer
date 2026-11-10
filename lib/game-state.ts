@@ -194,6 +194,8 @@ export interface Team {
   forks?: ForkRecord[];
   /** Every fortune this team drew (docs/designs/fortune-teller.md), for the podium and lib/game-log.ts. Absent until the first. */
   fortunes?: FortuneRecord[];
+  /** 💫 暈眩 (fortune-teller.md): this team loses its next turn, or sits out the next buzz question, whichever comes first. */
+  stunned?: true;
   /** A curse or blessing waiting for this team's next correct answer (event-rooms.md D12). */
   boon?: Boon;
   /** Every event outcome this team opened, in order, for lib/game-log.ts. Absent until the first. */
@@ -341,6 +343,8 @@ export interface GameState {
   sprint?: { teamIds: string[] };
   /** 占卜師 (docs/designs/fortune-teller.md): from the ❓ door until the host's 下一題 after the effect card. */
   fortune?: FortuneState;
+  /** Teams a 💫 stun just skipped, for the room to say once and clear (fortune-teller.md Narration). */
+  stunSkipped?: string[];
 }
 
 export interface LockedOption {
@@ -766,7 +770,8 @@ export function enterNextBossPhase(game: GameState): GameState {
   const pulled = { ...pulledAll, usedQuestionIds: game.usedQuestionIds };
   // The old phase's question leaves play, so its wrong tiles go with it.
   const cleared = dropEliminated(pulled, boss.currentQuestionId);
-  return {
+  // A 💫 stun the phase card held back (landTurn waits while it is pending) takes its turn now; a buzzer phase keeps it.
+  return landTurn({
     ...pulled,
     ...cleared,
     buzz: undefined,
@@ -782,7 +787,7 @@ export function enterNextBossPhase(game: GameState): GameState {
       queuedQuestionId: undefined,
       phasePending: undefined,
     },
-  };
+  });
 }
 
 /** Whether a buzzer phase is being fought now: every team buzzes in, nobody takes turns (boss-buzzer.md). */
@@ -815,7 +820,13 @@ export function buzzIn(game: GameState, teamId: string, questionId: string, open
   if (buzz.teamId) throw new InvalidActionError("buzz_taken");
   if (buzz.out.includes(teamId)) throw new InvalidActionError("buzz_out");
   if (!team.online || !team.inBoss) throw new InvalidActionError("cannot_buzz");
-  return { ...game, buzz: { ...buzz, teamId }, currentTurnIndex: game.turnOrder.indexOf(teamId) };
+  // 💫 sits out this buzz question (R5), unless every online team in the boss room is stunned: then all flags clear.
+  let teams = game.teams;
+  if (team.stunned) {
+    if (!game.teams.every((t) => !t.online || !t.inBoss || t.stunned)) throw new InvalidActionError("stunned");
+    teams = unstun(teams, (t) => !!t.inBoss);
+  }
+  return { ...game, teams, buzz: { ...buzz, teamId }, currentTurnIndex: game.turnOrder.indexOf(teamId) };
 }
 
 /** The buzz once the boss question moved on: none for a new question; the same one (the phase's last unrevealed
@@ -857,7 +868,9 @@ export function skipBuzz(game: GameState): GameState {
   if (!isBuzzPhase(game)) throw new InvalidActionError("not_buzzer_phase");
   if (game.buzz?.questionId === game.boss.currentQuestionId && game.buzz.teamId) throw new InvalidActionError("buzz_taken");
   const rotated = rotateBoss(game.boss, game.revealedQuestionIds);
-  return { ...game, buzz: rotatedBuzz(game, rotated.currentQuestionId), teams: resetBossSelections(game.teams), boss: { ...game.boss, ...rotated } };
+  // A new question ends the stunned teams' sit-out (R5); the same one coming round again does not.
+  const teams = rotated.currentQuestionId !== game.boss.currentQuestionId ? unstun(game.teams, (t) => !!t.inBoss) : game.teams;
+  return { ...game, buzz: rotatedBuzz(game, rotated.currentQuestionId), teams: resetBossSelections(teams), boss: { ...game.boss, ...rotated } };
 }
 
 /** No class ability, check or prayer in a buzzer phase (D6): answers are spoken after a buzz. */
@@ -899,7 +912,36 @@ function nextOnlineIndex(game: GameState, from: number): number | null {
  */
 export function advanceTurn(game: GameState): GameState {
   const idx = nextOnlineIndex(game, 1);
-  return idx === null ? game : { ...game, currentTurnIndex: idx };
+  return idx === null ? game : landTurn({ ...game, currentTurnIndex: idx });
+}
+
+/** Every 💫 flag cleared, or only those of teams `which` picks. */
+function unstun(teams: Team[], which: (t: Team) => boolean = () => true): Team[] {
+  return teams.map((t) => (t.stunned && which(t) ? { ...t, stunned: undefined } : t));
+}
+
+/** The turn lands on the first online team at or after currentTurnIndex that is not 💫 stunned (fortune-teller.md G1):
+ * each stunned team passed loses that turn, which counts for `round` and `lastTurnIndex` but adds no `turns`, and its
+ * flag clears. Every online team stunned: all flags clear, nobody is skipped. Never in a buzzer phase or with a boss
+ * phase card pending (R5). */
+function landTurn(game: GameState): GameState {
+  if (isBuzzPhase(game) || game.boss.phasePending) return game;
+  const online = game.teams.filter((t) => t.online);
+  if (!online.some((t) => t.stunned)) return game;
+  if (online.every((t) => t.stunned)) return { ...game, teams: unstun(game.teams) };
+  let g = game;
+  const skipped: string[] = [];
+  for (let idx = nextOnlineIndex(g, 0); idx !== null; idx = nextOnlineIndex(g, 1)) {
+    const id = g.turnOrder[idx];
+    if (!getTeam(g, id).stunned) {
+      g = { ...g, currentTurnIndex: idx };
+      break;
+    }
+    const round = (g.round ?? 1) + (g.lastTurnIndex !== undefined && idx <= g.lastTurnIndex ? 1 : 0);
+    g = { ...g, currentTurnIndex: idx, round, lastTurnIndex: idx, teams: patchTeam(g.teams, id, () => ({ stunned: undefined })) };
+    skipped.push(id);
+  }
+  return skipped.length ? { ...g, stunSkipped: [...(game.stunSkipped ?? []), ...skipped] } : g;
 }
 
 /** 結束冒險: the host ends a game still being played, ranked by the reward each team has now. */
@@ -1048,9 +1090,11 @@ export function answerQuestion(
       // picks, or a team's stale index from the old question could line up with a
       // different option on the new one and mislead the host into judging against
       // a pick that team never made for this question (adversarial review finding).
+      // A correct buzz ends the question: the stunned teams' sit-out is over (R5).
+      const settled = buzzing ? unstun(teams, (t) => !!t.inBoss) : teams;
       nextGame = {
         ...game,
-        teams: stay ? teams : resetBossSelections(teams),
+        teams: stay ? settled : resetBossSelections(settled),
         // A correct answer is always revealed (D5) — the current boss question just got right,
         // so it joins the never-redeal set before nextBossQuestionId's own next call sees it.
         revealedQuestionIds: revealedNow,
@@ -1080,16 +1124,20 @@ export function answerQuestion(
       // A wrong buzz shuts this team out of the question (D4); once every online team is out, they all buzz on the same
       // question again (boss-music-buzzer.md M1): only the host's 換下一題 moves it on.
       const out = buzzing ? [...game.buzz!.out, teamId] : [];
-      const allOut = buzzing && game.teams.every((t) => !t.online || !t.inBoss || out.includes(t.id));
+      // A stunned team sits the question out, so it counts as out (R5).
+      const allOut = buzzing && game.teams.every((t) => !t.online || !t.inBoss || out.includes(t.id) || t.stunned);
       const rotated = !phasePending && (fleeChoice !== "retry" || shownWrong) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
       const rotatedBossQuestionId = rotated.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a rotation changes
       // the question for every team in boss phase, so every one of their picks resets —
       // unless it stayed on the same question (a one-question boss bank, or no option shown), where picks still apply.
+      const moved = rotatedBossQuestionId !== boss.currentQuestionId;
+      // A new question or the phase's end is the end of this buzz question for the stunned teams (R5).
+      const settled = buzzing && (moved || phasePending) ? unstun(game.teams, (t) => !!t.inBoss) : game.teams;
       nextGame = {
         ...game,
         revealedQuestionIds: revealed,
-        teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game.teams) : game.teams,
+        teams: moved ? resetBossSelections(settled) : settled,
         boss: { ...boss, ...rotated, ...(phasePending ? { phasePending } : {}) },
         ...(buzzing ? { buzz: { ...game.buzz!, teamId: undefined, out: allOut ? [] : out } } : {}),
       };
@@ -1475,7 +1523,7 @@ export function drawEvent(game: GameState, teamId: string, rng: () => number = M
 
 export const FORTUNE_CONDITIONS = ["natural20s", "natural1s", "flees", "potions", "wrong", "correct", "mystery", "dishes", "rotten"] as const;
 export type FortuneCondition = (typeof FORTUNE_CONDITIONS)[number];
-export const FORTUNE_EFFECTS = ["blessing", "curse", "potion", "tribute", "relief"] as const;
+export const FORTUNE_EFFECTS = ["blessing", "curse", "potion", "tribute", "relief", "stun"] as const;
 export type FortuneEffect = (typeof FORTUNE_EFFECTS)[number];
 export const isFortuneCondition = (v: unknown): v is FortuneCondition => typeof v === "string" && (FORTUNE_CONDITIONS as readonly string[]).includes(v);
 export const isFortuneEffect = (v: unknown): v is FortuneEffect => typeof v === "string" && (FORTUNE_EFFECTS as readonly string[]).includes(v);
@@ -1542,6 +1590,8 @@ function applyFortuneEffect(game: GameState, matchIds: string[], effect: Fortune
   const matched = (t: Team) => matchIds.includes(t.id);
   if (effect === "blessing" || effect === "curse") return { ...game, teams: game.teams.map((t) => (matched(t) ? { ...t, boon: effect } : t)) };
   if (effect === "potion") return { ...game, teams: game.teams.map((t) => (matched(t) && !t.item ? { ...t, item: "luckyPotion" as const } : t)) };
+  // Lands before openEvent's turn change, so that change already skips a stunned next team (G10).
+  if (effect === "stun") return { ...game, teams: game.teams.map((t) => (matched(t) ? { ...t, stunned: true as const } : t)) };
   const pay = new Map<string, number>();
   const get = new Map<string, number>();
   if (effect === "tribute") {
@@ -1843,8 +1893,18 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
   const next = { ...game, ...(drops ? { buzz: { ...game.buzz!, teamId: undefined } } : {}), teams: patchTeam(game.teams, teamId, () => ({ online, ...(drops ? { typedAnswer: undefined, typedFields: undefined } : {}) })) };
   // The last team still in dropped: everyone online is out, so the same question opens to all again (M1).
   const buzz = next.buzz;
-  const stuck = !online && isBuzzPhase(next) && buzz?.questionId === next.boss.currentQuestionId && buzz.out.length > 0 && !buzz.teamId && next.teams.every((t) => !t.online || !t.inBoss || buzz.out.includes(t.id));
-  return stuck ? { ...next, buzz: { ...buzz!, out: [] } } : next;
+  const stuck = !online && isBuzzPhase(next) && buzz?.questionId === next.boss.currentQuestionId && buzz.out.length > 0 && !buzz.teamId && next.teams.every((t) => !t.online || !t.inBoss || buzz.out.includes(t.id) || t.stunned);
+  const after = stuck ? { ...next, buzz: { ...buzz!, out: [] } } : next;
+  // 💫 (R4): the turn passing to a stunned team this way (the turn team dropped, or a stunned team reconnected into the
+  // turn) skips it, unless a team holds the turn; the index is then pinned on the team that plays.
+  if (after.phase !== "playing" || turnHeld(after)) return after;
+  const idx = nextOnlineIndex(after, 0);
+  return idx !== null && getTeam(after, after.turnOrder[idx]).stunned ? landTurn(after) : after;
+}
+
+/** A team keeps the turn whatever its phone does: a wrong answer, a typed answer, a door or a fortune being picked. */
+function turnHeld(game: GameState): boolean {
+  return !!game.pendingWrong || game.teams.some((t) => t.typedAnswer !== undefined || t.fork?.phase === "choosing") || (!!game.fortune && !game.fortune.effect);
 }
 
 /**
@@ -1883,6 +1943,8 @@ export interface SpectatorView {
     /** 叉路 (branch-fork.md): at a fork waiting for its turn, or choosing its door now. Never what is behind a door. */
     fork?: "waiting" | "choosing";
     boon?: Boon;
+    /** 💫 暈眩: loses its next turn or sits out the next buzz question (fortune-teller.md). */
+    stunned?: true;
     /** The item the team holds; whether it is drunk for the question this turn (potionArmed); the question it was last
      * drunk on, which tells a potion that came back (lucky-potion.md E1, E2). */
     item?: Item;
@@ -1936,6 +1998,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       // A game ended at a fork shows no door on the podium.
       ...(game.phase === "playing" && atFork(t) ? { fork: t.fork!.phase as "waiting" | "choosing" } : {}),
       ...(t.boon ? { boon: t.boon } : {}),
+      ...(t.stunned ? { stunned: true as const } : {}),
       ...(t.item ? { item: t.item } : {}),
       ...(potionArmed(game, t.id) ? { itemArmed: true as const } : {}),
       ...(t.itemArmedFor ? { itemArmedFor: t.itemArmedFor } : {}),

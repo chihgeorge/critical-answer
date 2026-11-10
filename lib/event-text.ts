@@ -65,4 +65,5 @@ export const FORTUNE_EFFECT_TEXT: Record<FortuneEffect, { icon: string; name: st
   potion: { icon: "🧪", name: "藥水", line: "送一瓶，已有就沒效", tone: "good" },
   tribute: { icon: "🙇", name: "進貢", line: "其他隊各給他們 10", tone: "swap" },
   relief: { icon: "🎁", name: "救濟", line: "給飽足感最少的隊伍", tone: "swap" },
+  stun: { icon: "💫", name: "暈眩", line: "跳過下一回合，搶答時停一首", tone: "bad" },
 };

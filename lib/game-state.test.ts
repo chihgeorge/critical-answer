@@ -53,6 +53,7 @@ import {
   drinkPotion,
   potionArmed,
   spendPotion,
+  resolveFortune,
   type ClassId,
   type GameState,
   type RoomTemplate,
@@ -2561,5 +2562,161 @@ describe("🧪 lucky potion (docs/designs/lucky-potion.md)", () => {
     const [t0, t1] = getSpectatorView(g).teams;
     expect(t0).toMatchObject({ item: "luckyPotion", itemArmed: true, itemArmedFor: g.teams[0].currentQuestionId });
     expect(t1.item).toBeUndefined();
+  });
+});
+
+// Value: protects=💫 暈眩 (fortune-teller.md G1, G10, R4, R5, R14): a stunned team loses exactly one turn or sits out one
+// buzz question; fails_when=a team is skipped twice or never, the fortune's own turn change does not skip, a skip writes
+// turns, a dropped or returning phone double-skips, or a stunned team buzzes; no_claim=the room's narration (room tests)
+describe("💫 暈眩 (fortune-teller.md)", () => {
+  /** Three teams T0, T1, T2 in that order, T0 at the fortune teller on 逃跑最多次 matching `matchIds`. */
+  function fortuneGame(matchIds: string[], patch: (t: GameState["teams"][number]) => object = () => ({})): GameState {
+    const seeds = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
+    let g = createGame(seeds, ...deck(4), ["b"], { bossThreshold: 99 }, 1, first);
+    g = { ...g, turnOrder: ["T0", "T1", "T2"], currentTurnIndex: 0, teams: g.teams.map((t) => ({ ...t, ...patch(t) })) };
+    const fortune = { condition: "flees" as const, value: 1, matchIds };
+    g = enterEventRoom(g, "T0", { scene: "fortune", outcome: "fortune", fortune });
+    return { ...g, fortune: { teamId: "T0", ...fortune } };
+  }
+  const stun = (matchIds: string[], patch?: (t: GameState["teams"][number]) => object) => resolveFortune(fortuneGame(matchIds, patch), "stun", false, first);
+  const wrong = (g: GameState) => {
+    const id = currentTurnTeamId(g)!;
+    return answerQuestion(g, id, g.teams.find((t) => t.id === id)!.currentQuestionId, false, "retry", first).game;
+  };
+  const t = (g: GameState, id: string) => g.teams.find((x) => x.id === id)!;
+
+  it("the drawing team stuns itself: the next team plays, and its own next turn is lost, counted for the round but not as a turn", () => {
+    let g = stun(["T0"]);
+    expect(currentTurnTeamId(g)).toBe("T1");
+    expect(g.stunSkipped).toBeUndefined();
+    const turns = t(g, "T0").turns;
+    g = wrong(wrong(g));
+    expect(currentTurnTeamId(g)).toBe("T1");
+    expect(g.stunSkipped).toEqual(["T0"]);
+    expect(t(g, "T0")).toMatchObject({ turns });
+    expect(t(g, "T0").stunned).toBeUndefined();
+    expect(g).toMatchObject({ round: 2, lastTurnIndex: 0 });
+    // Once only.
+    g = wrong(wrong({ ...g, stunSkipped: undefined }));
+    expect(currentTurnTeamId(g)).toBe("T0");
+  });
+
+  it("the very next team stunned is skipped by the fortune's own turn change (G10)", () => {
+    const g = stun(["T1"]);
+    expect(currentTurnTeamId(g)).toBe("T2");
+    expect(g.stunSkipped).toEqual(["T1"]);
+    expect(t(g, "T1").stunned).toBeUndefined();
+  });
+
+  it("a team further on keeps its flag until the turn reaches it", () => {
+    let g = stun(["T2"]);
+    expect(currentTurnTeamId(g)).toBe("T1");
+    expect(t(g, "T2").stunned).toBe(true);
+    g = wrong(g);
+    expect(currentTurnTeamId(g)).toBe("T0");
+    expect(g.stunSkipped).toEqual(["T2"]);
+  });
+
+  it("several stunned in a row are each skipped once; every online team stunned clears every flag and skips nobody", () => {
+    const row = stun(["T1", "T2"]);
+    expect(currentTurnTeamId(row)).toBe("T0");
+    expect(row.stunSkipped).toEqual(["T1", "T2"]);
+    const all = stun(["T0", "T1", "T2"]);
+    expect(currentTurnTeamId(all)).toBe("T1");
+    expect(all.teams.some((x) => x.stunned)).toBe(false);
+    expect(all.stunSkipped).toBeUndefined();
+  });
+
+  it("a stunned team at a fork loses the turn and its fork stays waiting", () => {
+    const g = stun(["T1"], (x) => (x.id === "T1" ? { fork: { phase: "waiting" } } : {}));
+    expect(currentTurnTeamId(g)).toBe("T2");
+    expect(t(g, "T1").fork).toEqual({ phase: "waiting" });
+  });
+
+  it("R4: the turn team dropping onto a stunned team skips it and pins the index; a held turn does not", () => {
+    const g = stun(["T2"]);
+    expect(currentTurnTeamId(g)).toBe("T1");
+    const dropped = setTeamOnline(g, "T1", false);
+    expect(currentTurnTeamId(dropped)).toBe("T0");
+    expect(dropped.currentTurnIndex).toBe(0);
+    expect(dropped.stunSkipped).toEqual(["T2"]);
+    // Back online: T1's turn comes next, nobody is skipped again.
+    expect(currentTurnTeamId(setTeamOnline(dropped, "T1", true))).toBe("T0");
+    // A wrong answer waiting holds the turn: no skip.
+    const held = setTeamOnline({ ...g, pendingWrong: { teamId: "T1", questionId: t(g, "T1").currentQuestionId } } as GameState, "T1", false);
+    expect(t(held, "T2").stunned).toBe(true);
+  });
+
+  it("R4: a stunned team reconnecting into the turn is skipped", () => {
+    let g = stun(["T2"]);
+    g = setTeamOnline(g, "T2", false);
+    g = wrong(g);
+    // T2 offline: T0 plays; T2 coming back while the index points at it loses that turn.
+    expect(currentTurnTeamId(g)).toBe("T0");
+    g = { ...g, currentTurnIndex: 2 };
+    const back = setTeamOnline(g, "T2", true);
+    expect(currentTurnTeamId(back)).toBe("T0");
+    expect(back.stunSkipped).toEqual(["T2"]);
+  });
+
+  describe("in a buzzer phase (R5)", () => {
+    function buzzer(): GameState {
+      const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
+      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 3, questionIds: ["b-a", "b-b", "b-c"], buzzer: true }]);
+      g = sendToBoss(g, "T0");
+      g = { ...g, currentTurnIndex: 0, teams: g.teams.map((x) => ({ ...x, boon: undefined })) };
+      g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
+      g = enterNextBossPhase(g);
+      return { ...g, teams: g.teams.map((x) => (x.id === "T1" ? { ...x, stunned: true as const } : x)) };
+    }
+    const judge = (g: GameState, team: string, correct: boolean) => answerQuestion(g, team, g.boss.currentQuestionId, correct, "retry", first).game;
+
+    it("a stunned team cannot buzz and counts as out; reopening the question keeps the flag, 換下一題 clears it", () => {
+      let g = openBuzz(buzzer(), "b-a");
+      expect(() => buzzIn(g, "T1", "b-a", false)).toThrow("stunned");
+      g = judge(buzzIn(g, "T0", "b-a", false), "T0", false);
+      g = judge(buzzIn(g, "T2", "b-a", false), "T2", false);
+      expect(g.buzz).toMatchObject({ questionId: "b-a", out: [] });
+      expect(t(g, "T1").stunned).toBe(true);
+      g = skipBuzz(g);
+      expect(t(g, "T1").stunned).toBeUndefined();
+      expect(buzzIn(g, "T1", "b-b", true).buzz?.teamId).toBe("T1");
+    });
+
+    it("a right buzz ends the question and the sit-out; the turn order never skips here", () => {
+      const g = judge(buzzIn(buzzer(), "T0", "b-a", true), "T0", true);
+      expect(t(g, "T1").stunned).toBeUndefined();
+      expect(advanceTurn(buzzer()).stunSkipped).toBeUndefined();
+    });
+
+    it("a wrong buzz that moves the question ends the sit-out; one that keeps it does not", () => {
+      const stay = judge(buzzIn(buzzer(), "T0", "b-a", true), "T0", false);
+      expect(stay.boss.currentQuestionId).toBe("b-a");
+      expect(t(stay, "T1").stunned).toBe(true);
+      const moved = answerQuestion(buzzIn(buzzer(), "T0", "b-a", true), "T0", "b-a", false, "flee", first).game;
+      expect(moved.boss.currentQuestionId).not.toBe("b-a");
+      expect(t(moved, "T1").stunned).toBeUndefined();
+    });
+
+    it("a stun held back by a phase card takes the turn when the next phase is not a buzzer phase", () => {
+      const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
+      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["p2-a", "p2-b"] }]);
+      g = sendToBoss(g, "T0");
+      g = { ...g, turnOrder: ["T0", "T1", "T2"], currentTurnIndex: 0, teams: g.teams.map((x) => ({ ...x, boon: undefined, ...(x.id === "T1" ? { stunned: true as const } : {}) })) };
+      g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
+      expect(g.boss.phasePending).toBe("cleared");
+      // The card is pending: the turn passed to T1 without the skip.
+      expect(currentTurnTeamId(g)).toBe("T1");
+      g = enterNextBossPhase(g);
+      expect(currentTurnTeamId(g)).toBe("T2");
+      expect(g.stunSkipped).toEqual(["T1"]);
+    });
+
+    it("every online team in the boss room stunned: the buzz clears every flag and goes on", () => {
+      const all = { ...buzzer(), teams: buzzer().teams.map((x) => ({ ...x, stunned: true as const })) };
+      const g = buzzIn(all, "T1", "b-a", true);
+      expect(g.buzz?.teamId).toBe("T1");
+      expect(g.teams.some((x) => x.stunned)).toBe(false);
+    });
   });
 });

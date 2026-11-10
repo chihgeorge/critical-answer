@@ -112,7 +112,7 @@ import { bankSize } from "../bank-size";
 import { tokensEqual } from "../tokens";
 import { epilogueParts, titleFacts, toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { createCrowdTally } from "../narration/crowd";
-import { BUZZ_REOPEN_LINE, createScriptedProvider, type NarrationProvider } from "../narration/scripted";
+import { BUZZ_REOPEN_LINE, createScriptedProvider, stunSkipLine, type NarrationProvider } from "../narration/scripted";
 import { createRunner, type TranscriptItem } from "../narration/runner";
 import { editedLine } from "../narration/client";
 import { PROVIDERS } from "../narration/providers";
@@ -1441,6 +1441,7 @@ export class DungeonRoom {
   private broadcastState() {
     if (this.lostCrit && this.applyLostCrit()) return;
     const forkOpened = this.syncFork();
+    this.sayStunSkips();
     this.broadcast(this.snapshot());
     // After the STATE that carries its eventId: the fork's opening line replaces the last team's story on every screen.
     if (forkOpened && this.lastNarration) this.broadcast({ type: "NARRATION", eventId: this.lastNarration.eventId, lines: this.lastNarration.lines, rev: 0 });
@@ -3718,11 +3719,22 @@ export class DungeonRoom {
     const game = this.game;
     const fortune = game?.phase === "playing" ? game.fortune : undefined;
     if (!game || !fortune?.effect) return this.broadcastState();
-    this.setCue(fortune.effect === "curse" ? "fumble" : "correct");
+    this.setCue(fortune.effect === "curse" || fortune.effect === "stun" ? "fumble" : "correct");
     const name = (id: string) => game.teams.find((t) => t.id === id)?.name ?? "";
     this.writeScripted(this.scripted.fortuneResult(fortune.effect, !!fortune.timeout, name(fortune.teamId), capUnits(fortune.matchIds.map(name).join("、"), 24), fortune.matchIds.includes(fortune.teamId)));
     this.broadcastState();
     this.sendNarration();
+  }
+
+  /** 💫 skips are said once, appended to the narration of the current eventSeq (held until it lands); a skip made by a
+   * fortune's own turn change waits for 下一題 on its card (fortune-teller.md Narration). */
+  private sayStunSkips() {
+    const game = this.game;
+    if (game?.phase !== "playing" || !game.stunSkipped?.length || this.fortuneActive()) return;
+    const names = game.stunSkipped.map((id) => game.teams.find((t) => t.id === id)?.name ?? "").filter(Boolean);
+    // A skip made by a phone coming back is no move of the host's: 改判答對 stays open.
+    this.keepUndoOpen({ ...game, stunSkipped: undefined });
+    if (names.length) this.appendLine(this.eventSeq, stunSkipLine(capUnits(names.join("、"), 14)));
   }
 
   /** 下一題 on the effect card: the fortune is over, the next team's fork clock may start, and the owl names who is up. */

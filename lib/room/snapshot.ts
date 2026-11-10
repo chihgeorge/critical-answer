@@ -139,7 +139,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       (f.effect === undefined ? isObject(holder(f.teamId)?.event) && (holder(f.teamId)!.event as Record<string, unknown>).outcome === "fortune" : isFortuneEffect(f.effect));
     const fortuneEvent = (t: Record<string, unknown>) => fortuneOk && f!.effect === undefined && t.id === f!.teamId;
     const forked = (t: Record<string, unknown>) => ((t.event === undefined || fortuneEvent(t)) && forkOk(t.fork) ? t : { ...t, event: undefined, fork: { phase: "waiting" } });
-    const withUses = game === null ? null : { ...game, ...(f !== undefined && !fortuneOk ? { fortune: undefined } : {}), teams: (game.teams as unknown[]).map((t) => (isObject(t) ? { ...forked(t), abilityUses: t.abilityUses ?? abilityUsesFor(isClassId(t.classId) ? t.classId : undefined) } : t)) };
+    const withUses = game === null ? null : { ...game, ...(f !== undefined && !fortuneOk ? { fortune: undefined } : {}), ...(game.stunSkipped !== undefined && !(Array.isArray(game.stunSkipped) && game.stunSkipped.every(isString)) ? { stunSkipped: undefined } : {}), teams: (game.teams as unknown[]).map((t) => (isObject(t) ? { ...forked(t), abilityUses: t.abilityUses ?? abilityUsesFor(isClassId(t.classId) ? t.classId : undefined) } : t)) };
     if (!Array.isArray(raw.teamKeys) || !raw.teamKeys.every((p) => Array.isArray(p) && p.length === 2 && isString(p[0]) && isString(p[1]))) return null;
     if (typeof raw.eventSeq !== "number" || !Number.isInteger(raw.eventSeq) || raw.eventSeq < 0) return null;
     const n = raw.lastNarration;
