@@ -13,6 +13,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
 import { UNSET_CORRECT_INDEX, blankQuestion, withCategory, withField } from "@/lib/bank-editor-question";
+import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
 import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
@@ -139,6 +140,9 @@ export default function BankEditorPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** Image uploads in flight: they lock the editor like a load or save (editorBusy). */
+  const [uploads, setUploads] = useState(0);
+  const busy = editorBusy({ loading, saving, uploads });
   /** The bank the last save returned: while it is still the one shown, the page says 已儲存. An edit or a load makes a new object. */
   const [lastSaved, setLastSaved] = useState<Bank | null>(null);
   /** The stored bank can't be read by this version: what's shown is the bundled fallback, and nothing may be saved. */
@@ -157,7 +161,7 @@ export default function BankEditorPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(bankApiBase(), { headers: { Authorization: `Bearer ${key}` } });
+      const res = await fetch(bankApiBase(), { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(BANK_LOAD_TIMEOUT_MS) });
       if (seq !== loadSeq.current) return;
       if (res.status === 403) {
         setError("Owner key rejected.");
@@ -307,14 +311,24 @@ export default function BankEditorPage() {
    * suitable for display. Called from MediaPicker; kept here so it can use the same ownerKey the
    * rest of the page already has. */
   const uploadImage = async (file: File): Promise<string> => {
-    const res = await fetch(bankImageApiBase(), {
-      method: "POST",
-      headers: { Authorization: `Bearer ${ownerKey}`, "Content-Type": file.type },
-      body: file,
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const { key } = (await res.json()) as { key: string };
-    return key;
+    // The count drops just before MediaPicker's onChange writes the key: both land in the same render, before any click.
+    setUploads((n) => n + 1);
+    try {
+      const res = await fetch(bankImageApiBase(), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${ownerKey}`, "Content-Type": file.type },
+        body: file,
+        signal: AbortSignal.timeout(IMAGE_UPLOAD_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { key } = (await res.json()) as { key: string };
+      return key;
+    } catch (err) {
+      // A timed-out fetch rejects with the browser's own English text.
+      throw err instanceof DOMException && err.name === "TimeoutError" ? new Error("上傳逾時，請再試一次") : err;
+    } finally {
+      setUploads((n) => n - 1);
+    }
   };
 
   return (
@@ -355,9 +369,9 @@ export default function BankEditorPage() {
             if (bank !== savedBank.current && !window.confirm("還沒儲存的修改會不見，確定重新載入？")) return;
             void load(ownerKey);
           }}
-          disabled={!ownerKey || loading || saving}
+          disabled={!ownerKey || busy}
         >
-          {loading ? "載入中…" : "載入題庫"}
+          {loading ? "載入中…" : uploads > 0 ? "圖片上傳中…" : "載入題庫"}
         </PixelButton>
         <button
           type="button"
@@ -402,10 +416,9 @@ export default function BankEditorPage() {
 
       {bank && (
         <>
-        {/* Locked while a load or save is in flight: either one ends in setBank with the server's bank, which
-            would drop an edit made meanwhile (an auto-load landing before the clicked load did, CI on main #150).
-            The save button stays outside, so it keeps focus while it saves. */}
-        <fieldset disabled={loading || saving} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
+        {/* Locked while a load, save or image upload is in flight (editorBusy): an auto-load landing before the clicked load
+            once dropped an edit (CI on main #150). The save button stays outside, so it keeps focus while it saves. */}
+        <fieldset disabled={busy} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
           <div role="tablist" className="flex flex-wrap gap-2">
             {(["rooms", ...DIFFICULTIES, "boss"] as Tab[]).map((t) => (
               <PixelButton
@@ -496,8 +509,8 @@ export default function BankEditorPage() {
               </div>
             );
           })()}
-          <PixelButton variant="primary" onClick={() => void save(bank)} disabled={saving || loading || readOnly}>
-            {saving ? "儲存中…" : "儲存全部變更"}
+          <PixelButton variant="primary" onClick={() => void save(bank)} disabled={busy || readOnly}>
+            {saving ? "儲存中…" : uploads > 0 ? "圖片上傳中…" : "儲存全部變更"}
           </PixelButton>
           {lastSaved !== null && lastSaved === bank && <div data-testid="bank-saved" role="status" className="text-[15px]" style={{ color: "var(--ok)" }}>✓ 已儲存</div>}
         </>
