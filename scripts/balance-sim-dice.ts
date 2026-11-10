@@ -40,6 +40,10 @@
 // is expected-value greedy on its guess of who matches (others' counters seen with N(0, ESTSD) noise, default 1; its own
 // exact; 20 samples), "rand" uniform. TRIB=A: non-matchers pay 10 each, split among matchers; TRIB=B: 10 to each matcher.
 // Transfers go to the "fortune" source; a fortune boon pays later under "boon". A FORTUNE line prints the effect mix.
+// DECK=3 (owner, 2026-11-10; needs FT): the deck is 3 scenes at 1/3 each, drawn when the team opens the ❓ room: chest
+// (feast / rotten 50/50), statue (blessing / curse 50/50), 占卜師. No spring. The pool drops "events" on the game's first
+// mystery room, and keeps a condition only if 2+ teams are above 0 or the max is 2+; an empty pool redraws chest / statue.
+// DECK=3 also discards the tribute leftover, and a matcher that is itself among the lowest pays no relief.
 // Not modelled: sort questions (they play like multipleChoice here), a potion wasted on a wrong answer, the host's
 // 改判, a mage that casts again on a question after a 1.
 import { registerHooks } from "node:module";
@@ -161,11 +165,11 @@ const mids = Array.from({ length: SONGS2 }, (_, j) => `m${j}`);
 const dice = { n: 0, one: 0, twenty: 0 };
 /** The team whose dice are being rolled (占卜師's natural1s / natural20s). */
 let cur: Book | undefined;
-const FT = process.env.FT, ESTSD = env("ESTSD", 1), TRIB = process.env.TRIB ?? "A";
+const FT = process.env.FT, ESTSD = env("ESTSD", 1), TRIB = process.env.TRIB ?? "A", DECK3 = process.env.DECK === "3";
 const EFFECTS = ["blessing", "curse", "potion", "stun", "tribute", "relief"] as const;
 const COND = ["n20", "n1", "flee", "potion", "wrong", "correct", "events", "dishes", "rotten"] as const;
 /** Fortunes drawn, effects picked, the drawer matched, matchers, all matched, satiety moved, stunned turns / songs, conditions. */
-const FTS = { n: 0, eff: EFFECTS.map(() => 0), self: 0, matchers: 0, all: 0, moved: 0, skipTurn: 0, skipSong: 0, cond: COND.map(() => 0) };
+const FTS = { drawn: 0, empty: 0, zero: 0, n: 0, eff: EFFECTS.map(() => 0), self: 0, matchers: 0, all: 0, moved: 0, skipTurn: 0, skipSong: 0, cond: COND.map(() => 0) };
 const gauss = () => Math.sqrt(-2 * Math.log(1 - R())) * Math.cos(2 * Math.PI * R());
 const skill = new Map<string, number[]>();
 const d20 = () => {
@@ -228,10 +232,15 @@ function play(classes: C[], maxTurns = 600) {
   const seen = [new Set<string>(), new Set<string>(), new Set<string>()];
   const songKnow = (t: GT.Team, q: string, p: number) => { const k = `${t.id}:${q}`; if (!latent.has(k)) latent.set(k, { known: know(t.id, p), h: 0, ex: [] }); return latent.get(k)!.known; };
   const stunned = new Set<string>();
+  // DECK=3's pool (call after the opener's events counter counted this room).
+  const poolOf = () => {
+    const vals = COND.map((c) => book.map((b) => b[c])), firstRoom = book.reduce((a, b) => a + b.events, 0) === 1;
+    return COND.map((_, k) => k).filter((k) => !(firstRoom && COND[k] === "events") && (vals[k].filter((x) => x > 0).length >= 2 || Math.max(...vals[k]) >= 2));
+  };
   // 占卜師: the drawer `id` picks an effect for the teams that match a drawn condition.
   const fortune = (id: string) => {
     const me = idx(id), vals = COND.map((c) => book.map((b) => b[c]));
-    const pool = COND.map((_, k) => k).filter((k) => Math.max(...vals[k]) > 0);
+    const pool = DECK3 ? poolOf() : COND.map((_, k) => k).filter((k) => Math.max(...vals[k]) > 0);
     const c = pool[Math.floor(R() * pool.length)], top = (v: number[]) => v.map((x) => x === Math.max(...v));
     const match = top(vals[c]);
     const base = (t: GT.Team) => (t.inBoss ? g.boss.hitReward : g.rooms[t.roomIndex].reward);
@@ -244,12 +253,12 @@ function play(classes: C[], maxTurns = 600) {
           let pot = 0, last = -1;
           for (const j of NM) { const p = Math.min(10, r[j]); d[j] -= p; pot += p; if (p) last = j; }
           const each = Math.floor(pot / M.length);
-          M.forEach((j) => (d[j] += each)); if (last >= 0) d[last] += pot - each * M.length;
+          M.forEach((j) => (d[j] += each)); if (last >= 0 && !DECK3) d[last] += pot - each * M.length;
         } else for (const j of NM) { const p = Math.min(10 * M.length, r[j]), each = Math.floor(p / M.length); d[j] -= each * M.length; M.forEach((i) => (d[i] += each)); }
       }
       if (e === "relief") {
         const lo = Math.min(...r), recv = r.flatMap((x, i) => (x === lo ? [i] : []));
-        for (const j of M) { const to = recv.filter((i) => i !== j), each = to.length ? Math.floor(Math.min(20, r[j]) / to.length) : 0; d[j] -= each * to.length; to.forEach((i) => (d[i] += each)); }
+        for (const j of M) { if (DECK3 && recv.includes(j)) continue; const to = recv.filter((i) => i !== j), each = to.length ? Math.floor(Math.min(20, r[j]) / to.length) : 0; d[j] -= each * to.length; to.forEach((i) => (d[i] += each)); }
       }
       return d;
     };
@@ -280,6 +289,7 @@ function play(classes: C[], maxTurns = 600) {
       if (e === "stun") stunned.add(t.id);
     });
   };
+  const ft0 = FTS.n;
   for (let turn = 0; turn < maxTurns && g.phase === "playing"; turn++) {
     cur = undefined;
     const before = g.teams.map((t) => t.reward), wasIn = g.teams.map((t) => t.inBoss);
@@ -322,6 +332,14 @@ function play(classes: C[], maxTurns = 600) {
     if (POTION > 0 && !potions.has(id) && R() < POTION) potions.add(id);
     if (team().event) {
       actor = idx(id); cat = "event"; LEN.events++; book[actor].events++;
+      if (DECK3) {
+        const pick = (k: number): GT.RoomEvent => k ? (R() < 0.5 ? { scene: "fairy", outcome: "blessing" } : { scene: "idol", outcome: "curse" })
+          : R() < 0.5 ? { scene: "chest", outcome: "feast" } : { scene: "chest", outcome: "rotten" };
+        const k = Math.floor(R() * 3);
+        let ev: GT.RoomEvent = k < 2 ? pick(k) : { scene: "fortune", outcome: "great" };
+        if (k === 2) { FTS.drawn++; if (!poolOf().length) { FTS.empty++; ev = pick(Math.floor(R() * 2)); } }
+        patch(id, () => ({ event: ev }));
+      }
       if (FT && team().event!.scene === "fortune") {
         // lib's 大吉 opens the room (records, boss entry, next turn); its satiety is taken back.
         cat = "fortune";
@@ -517,6 +535,7 @@ function play(classes: C[], maxTurns = 600) {
       });
     }
   }
+  if (FTS.n === ft0) FTS.zero++;
   LEN.boss1Q += seen[0].size; USED.p1.push(seen[0].size); USED.p2.push(seen[HP3 > 0 ? 2 : 1].size);
   seen.forEach((x, k) => PH.q[k].push(x.size));
   g.teams.forEach((t) => { for (let k = 0; k <= t.roomIndex; k++) REACH[k]++; });
@@ -613,7 +632,7 @@ console.log(`dice per game ${(dice.n / N).toFixed(1)}: ones ${(dice.one / N).toF
   console.log(`PHASES ${PH.n.slice(0, nP).map((n, k) => `p${k + 1}${buzz(k) ? "(buzz)" : ""} ${(n / N).toFixed(1)} distinct ${(PH.q[k].reduce((a, b) => a + b, 0) / N).toFixed(1)}/p99 ${q(PH.q[k], 0.99)}/max ${Math.max(...PH.q[k])}`).join("  ")}  room ${(LEN.room / N).toFixed(1)} total ${((LEN.room + PH.n.reduce((a, b) => a + b, 0)) / N).toFixed(1)} min ${min.toFixed(0)}`);
   console.log(`PULLED teams/game ${(PULLED.teams / N).toFixed(2)} games with a pull ${((100 * PULLED.games) / N).toFixed(0)}%  skipped rewards per pulled team ${(PULLED.skipped / Math.max(1, PULLED.teams)).toFixed(1)}  pulled team wins ${((100 * PULLED.wins) / Math.max(1, PULLED.teams)).toFixed(1)}%`);
 }
-if (FT) console.log(`FORTUNE ${FT} trib ${TRIB} per game ${(FTS.n / N).toFixed(2)}  effects ${EFFECTS.map((e, k) => `${e} ${((100 * FTS.eff[k]) / Math.max(1, FTS.n)).toFixed(0)}%`).join(" ")}  drawer matches ${((100 * FTS.self) / Math.max(1, FTS.n)).toFixed(0)}%  matchers ${(FTS.matchers / Math.max(1, FTS.n)).toFixed(2)} (all ${((100 * FTS.all) / Math.max(1, FTS.n)).toFixed(0)}%)  moved/fortune ${(FTS.moved / Math.max(1, FTS.n)).toFixed(1)}  stun turns ${FTS.skipTurn} songs ${FTS.skipSong}  conds ${COND.map((c, k) => `${c} ${((100 * FTS.cond[k]) / Math.max(1, FTS.n)).toFixed(0)}%`).join(" ")}`);
+if (FT) console.log(`FORTUNE ${FT} trib ${TRIB}${DECK3 ? ` deck3 drawn/game ${(FTS.drawn / N).toFixed(3)} emptyPool ${FTS.empty} (${((100 * FTS.empty) / Math.max(1, FTS.drawn)).toFixed(2)}%)` : ""} zeroGames ${((100 * FTS.zero) / N).toFixed(1)}% per game ${(FTS.n / N).toFixed(3)}  effects ${EFFECTS.map((e, k) => `${e} ${((100 * FTS.eff[k]) / Math.max(1, FTS.n)).toFixed(0)}%`).join(" ")}  drawer matches ${((100 * FTS.self) / Math.max(1, FTS.n)).toFixed(0)}%  matchers ${(FTS.matchers / Math.max(1, FTS.n)).toFixed(2)} (all ${((100 * FTS.all) / Math.max(1, FTS.n)).toFixed(0)}%)  moved/fortune ${(FTS.moved / Math.max(1, FTS.n)).toFixed(1)}  stun turns ${FTS.skipTurn} songs ${FTS.skipSong}  conds ${COND.map((c, k) => `${c} ${((100 * FTS.cond[k]) / Math.max(1, FTS.n)).toFixed(0)}%`).join(" ")}`);
 console.log(`REACH ${REACH.map((n, k) => `r${k + 1}(${ROOMR[k]}) ${((100 * n) / N / 4).toFixed(0)}%`).join("  ")}`);
 // One line to compare runs: win share per class, then the widest gap from 27 among the five classes.
 const five = CLASSES.filter((k) => k !== "none");
