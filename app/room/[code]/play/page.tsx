@@ -329,15 +329,15 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
 /** After a wrong answer: 逃跑・同房 and 逃跑・換房 (a new monster, same room). The boss room has one 逃跑, a new question. */
 function FleeButtons({ questionId, send, prayed = false, boss = false }: { questionId: string; send: (m: ClientMessage) => void; prayed?: boolean; boss?: boolean }) {
   const flee = (choice: "flee" | "switch") => () => send({ type: "TEAM_WRONG_CHOICE", questionId, choice });
-  const cls = "!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]";
+  const cls = "!m-0 flex !min-h-[72px] flex-1 flex-col whitespace-nowrap !text-[21px]";
   return (
     <div className="mt-1 flex gap-2">
       <PixelButton className={cls} style={{ background: "var(--lav)" }} onClick={flee("flee")}>
-        {boss ? "逃跑" : "逃跑・同房"}<small className="text-[13px]">{boss ? "換一題" : prayed ? "同一隻怪，還是你們答" : "同一隻怪・題目變簡單"}</small>
+        {boss ? "逃跑" : "逃跑・同房"}<small className="text-[13px]">{boss ? "換一題" : prayed ? "同一隻怪，你們再答" : "同一隻怪，換簡單題"}</small>
       </PixelButton>
       {!boss && (
         <PixelButton className={cls} style={{ background: "var(--lav)" }} onClick={flee("switch")}>
-          逃跑・換房<small className="text-[13px]">{prayed ? "換一隻怪，還是你們答" : "換一隻怪・題目變簡單"}</small>
+          逃跑・換房<small className="text-[13px]">{prayed ? "換一隻怪，你們再答" : "換一隻怪，換簡單題"}</small>
         </PixelButton>
       )}
     </div>
