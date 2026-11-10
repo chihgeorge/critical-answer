@@ -33,8 +33,8 @@ export function QuestionPicker({
       <Panel tone="lav" className="max-h-[85vh] w-full overflow-y-auto p-4">
         <div onClick={(e) => e.stopPropagation()} className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[19px]">{title}</span>
-            <PixelButton onClick={onClose} className="!m-0 !px-4 !py-1 text-[16px]">
+            <span className="min-w-0 text-[19px]">{title}</span>
+            <PixelButton onClick={onClose} className="!m-0 flex-none whitespace-nowrap !px-4 !py-1 text-[16px]">
               關閉
             </PixelButton>
           </div>
