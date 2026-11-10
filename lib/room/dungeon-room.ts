@@ -112,7 +112,7 @@ import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder,
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
-import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, hiddenVideo, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
+import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, hiddenVideo, instagramVideo, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
@@ -798,10 +798,13 @@ export class DungeonRoom {
    * question's video id has its title, which is the answer. Straight to the sockets: there is nothing to save. */
   private sendVideo(only?: Conn) {
     const questionId = this.shownVideoId();
-    const content = questionId === null ? undefined : this.question(questionId)?.content;
-    if (questionId === null || content?.kind !== "youtube") return;
-    const video = publicMediaContent(content, "", questionId);
-    if (video.kind !== "youtube") return;
+    const q = questionId === null ? undefined : this.question(questionId);
+    if (questionId === null || !q) return;
+    // A reveal with an Instagram explanation shows that, not the question's own video (instagram-explanations.md).
+    const insta = this.reveal?.explanation?.kind === "instagram" && q.explanation?.kind === "instagram";
+    if (!insta && q.content.kind !== "youtube") return;
+    const video = insta ? instagramVideo(q.explanation!) : publicMediaContent(q.content, "", questionId);
+    if (video.kind !== "youtube" && video.kind !== "instagram") return;
     const text = JSON.stringify({ type: "SCREEN_VIDEO", questionId, video } satisfies ServerMessage);
     const to = only ? [only] : [...this.hostConns.values(), ...[...this.keyedScreens].flatMap((id) => this.conns.get(id) ?? [])];
     for (const conn of to) {
@@ -3135,7 +3138,7 @@ export class DungeonRoom {
    * reveal the answered question, unless an image or a video explanation takes its place (D17). */
   private shownVideoId(): string | null {
     if (this.game?.phase !== "playing") return null;
-    if (this.reveal) return this.reveal.video ? this.reveal.questionId : null;
+    if (this.reveal) return this.reveal.video || this.reveal.explanation?.kind === "instagram" ? this.reveal.questionId : null;
     // A door opening: the real turn may have passed on, and the next team's video must not start under it.
     if (this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides()) return null;
     // Not before the check: the video is part of the question.

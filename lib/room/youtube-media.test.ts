@@ -281,6 +281,24 @@ describe("the screen key", () => {
     for (const conn of [g.host, keyed]) expect(videoOf(conn)).toBeUndefined();
   });
 
+  // Value: protects=an Instagram explanation's shortcode reaches only the host and a keyed screen, and ▶ ⏸ ⟲ work on it (instagram-explanations.md); fails_when=the shortcode rides on STATE, or SCREEN_VIDEO sends the question's video instead; seam=none; no_claim=the embed itself
+  it("an Instagram explanation: STATE says only that it is one; the host and a keyed screen get its shortcode; ▶ works on it", () => {
+    const SHORT = "DPPHHjlkTgr";
+    const explanation = { kind: "instagram", value: SHORT, end: 30 };
+    const g = game([video("v1", { explanation }), video("v2", { explanation })]);
+    const keyed = screen(g.room, "keyed", keyOf(g.host));
+    const bare = screen(g.room, "bare");
+    g.correct();
+    const reveal = g.state().reveal;
+    expect(reveal.explanation).toEqual({ kind: "instagram" });
+    expect(reveal.video).toBeUndefined();
+    for (const conn of [g.host, keyed]) expect(videoOf(conn)).toEqual({ type: "SCREEN_VIDEO", questionId: reveal.questionId, video: { kind: "instagram", shortcode: SHORT, end: 30 } });
+    g.media("play", reveal.questionId);
+    expect(g.state().media).toMatchObject({ questionId: reveal.questionId, state: "playing" });
+    for (const conn of [g.phone, bare]) expect(JSON.stringify(sentTo(conn))).not.toContain(SHORT);
+    expect(JSON.stringify(g.io.broadcast.mock.calls)).not.toContain(SHORT);
+  });
+
   it("tells a big screen whether its key was taken, so it can say it will play no video", () => {
     const g = game([video("v1"), video("v2")]);
     const ack = (conn: { send: ReturnType<typeof vi.fn> }) => sentTo(conn).findLast((m) => m.type === "SCREEN_KEY");

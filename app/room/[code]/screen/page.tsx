@@ -31,6 +31,7 @@ import { Stage } from "@/components/stage";
 import { InitiativeOverlay, KillRollOverlay, RollOverlay, TieRollOverlay } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { YoutubePlayer } from "@/components/youtube-player";
+import { InstagramPlayer } from "@/components/instagram-player";
 import { resendClipError, type ClipErrorSeen } from "@/lib/youtube";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
@@ -342,7 +343,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // `content` is null while the room has not sent this video's id: for a moment after connecting, or for good when
   // the page was opened without the screen key (`locked`).
   const video: { id: string; content: YoutubeContent | null } | null =
-    videoQuestion === null ? null : { id: videoQuestion, content: !locked && shownVideo?.questionId === videoQuestion ? shownVideo.video : null };
+    videoQuestion === null ? null : { id: videoQuestion, content: !locked && shownVideo?.questionId === videoQuestion && shownVideo.video.kind === "youtube" ? shownVideo.video : null };
   const sneakChip = turn?.sneakArmed && !reveal && !card;
   // A buzzer phase has no persuasion check (boss-buzzer.md D6).
   const dcChip = fillIn && !buzz && !turn?.sneakArmed ? turn?.checkTarget : undefined;
@@ -371,7 +372,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
     </>
   );
   const lone = !!reveal && reveal.explanation?.kind !== "text";
-  const mediaExplanation = reveal?.explanation && reveal.explanation.kind !== "text" ? reveal.explanation : null;
+  const mediaExplanation = reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" ? reveal.explanation : null;
+  // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
+  const instagram = reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
 
   return (
     <>
@@ -480,6 +483,15 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
               <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="mx-auto block" zhCaptions />
             )}
+            {instagram &&
+              (instagram.content ? (
+                // Portrait, so it gets a tall box of its own rather than the 356×200 a YouTube explanation has.
+                <InstagramPlayer key={reveal.questionId} shortcode={instagram.content.shortcode} end={instagram.content.end} command={media?.questionId === reveal.questionId ? media : null} maxWidth={260} maxHeight={400} onPlayingChange={onVideoPlaying} />
+              ) : (
+                <div data-testid={locked ? "video-locked" : undefined} className="flex items-center justify-center bg-[var(--lav)] p-4 text-center text-[20px] text-[var(--k)]" style={{ width: 260, height: 160, boxShadow: "0 0 0 4px var(--k)" }}>
+                  {locked && "🔒 請用主持人頁上的大螢幕網址開啟，才會播放影片"}
+                </div>
+              ))}
           </div>
         ) : question ? (
           // Check first, question after: the room sends no text until the die's beat ends.

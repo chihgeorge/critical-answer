@@ -23,6 +23,8 @@ import type { Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId, formatClipTime, parseClipTime } from "@/lib/youtube";
 import { YoutubePlayer } from "@/components/youtube-player";
+import { InstagramPlayer } from "@/components/instagram-player";
+import { extractInstagramShortcode } from "@/lib/instagram";
 import { readStored, writeStored } from "@/lib/stored";
 
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
@@ -76,7 +78,7 @@ const toReward = (v: string) => Math.max(0, Math.floor(Number(v) || 0));
  * reasoning multipleChoice's correctIndex sentinel already needed. */
 function contentError(label: string, c: MediaContent | undefined): string | null {
   if (!c) return null;
-  if (!c.value.trim()) return `${label}還沒填完（${c.kind === "image" ? "還沒上傳圖片" : c.kind === "youtube" ? "還沒貼網址" : "是空的"}）`;
+  if (!c.value.trim()) return `${label}還沒填完（${c.kind === "image" ? "還沒上傳圖片" : c.kind === "youtube" || c.kind === "instagram" ? "還沒貼網址" : "是空的"}）`;
   // ClipFields stores NaN for a time it can't read, so 儲存 refuses it instead of keeping the last good one.
   if (Number.isNaN(c.start) || Number.isNaN(c.end)) return `${label}的時間看不懂（請打 1:05 或 65）`;
   if (c.end !== undefined && c.end <= (c.start ?? 0)) return `${label}的結束時間要在開始時間之後`;
@@ -813,8 +815,9 @@ function MediaPicker({
       <div className="flex items-center gap-2">
         <span className="text-[13px] text-black/60">{label}</span>
         <div className="flex gap-1">
-          {(["text", "image", "youtube", ...(allowNone ? ["none" as const] : [])] as const).map((kind) => {
-            const kindLabel = { text: "文字", image: "圖片", youtube: "YouTube", none: "無" }[kind];
+          {/* Instagram only as an explanation: the host cannot play it (docs/designs/instagram-explanations.md). */}
+          {(["text", "image", "youtube", ...(allowNone ? (["instagram", "none"] as const) : [])] as const).map((kind) => {
+            const kindLabel = { text: "文字", image: "圖片", youtube: "YouTube", instagram: "Instagram", none: "無" }[kind];
             const pressed = kind === "none" ? value === undefined : current.kind === kind;
             return (
               <button
@@ -868,6 +871,8 @@ function MediaPicker({
           {uploading && <span className="text-[13px]">上傳中…</span>}
           {current.value && !uploading && <span className="text-[13px]">已上傳（{current.value.slice(0, 8)}…）</span>}
         </div>
+      ) : current.kind === "instagram" ? (
+        <InstagramFields label={label} value={current} onChange={onChange} />
       ) : (
         <>
           <input
@@ -885,6 +890,53 @@ function MediaPicker({
           {error}
         </Panel>
       )}
+    </div>
+  );
+}
+
+/** An Instagram explanation (docs/designs/instagram-explanations.md): the link, its optional length (the big screen
+ * brings the music back that long after someone clicks the video), and the embed itself to check it plays. */
+function InstagramFields({ label, value, onChange }: { label: string; value: MediaContent; onChange: (next: MediaContent) => void }) {
+  const [link, setLink] = useState(value.value);
+  const [lengthText, setLengthText] = useState(value.end === undefined ? "" : formatClipTime(value.end));
+  const unreadable = !!link.trim() && !value.value;
+  return (
+    <div className="flex flex-col gap-1">
+      <input
+        className="px-input"
+        aria-label={`${label}的 Instagram 網址`}
+        placeholder="貼上 Instagram 貼文或 Reels 網址"
+        value={link}
+        onChange={(e) => {
+          setLink(e.target.value);
+          onChange({ ...value, value: extractInstagramShortcode(e.target.value) ?? "" });
+        }}
+      />
+      <label className="flex flex-col text-[13px]">
+        影片長度（選填）
+        <input
+          className="px-input"
+          style={{ width: 90 }}
+          aria-label={`${label}的影片長度`}
+          placeholder="0:30"
+          value={lengthText}
+          onChange={(e) => {
+            setLengthText(e.target.value);
+            const seconds = e.target.value.trim() ? parseClipTime(e.target.value) : undefined;
+            const next = { ...value };
+            if (seconds === undefined) delete next.end;
+            else next.end = seconds ?? NaN;
+            onChange(next);
+          }}
+        />
+      </label>
+      <div className="text-[12px] text-black/60">大螢幕要有人點影片才會播。影片上方會顯示發文帳號：帳號名稱別洩答案。私人帳號、限制級、用了版權音樂的 Reels 可能放不出來，先在下面點播看看。</div>
+      {unreadable && (
+        <Panel role="alert" className="text-[13px]" style={{ background: "#ffd9d9" }}>
+          看不出這是 Instagram 網址
+        </Panel>
+      )}
+      {value.value && <InstagramPlayer key={value.value} shortcode={value.value} maxWidth={260} maxHeight={420} title={`${label}預覽`} />}
     </div>
   );
 }

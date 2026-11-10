@@ -21,7 +21,6 @@
 - [抓包與神諭：用平衡模擬看分數對勝率的影響](#抓包與神諭用平衡模擬看分數對勝率的影響) — M，活動後
 - [抓包與神諭：首領房也能用](#抓包與神諭首領房也能用) — M，活動後
 - [抓包與神諭：主持人撤回一次裁決](#抓包與神諭主持人撤回一次裁決) — S，活動後
-- [影片題支援 Instagram](#影片題支援-instagram) — 未定（先確認嵌入方式），活動後
 - [主持人開房時可以用自己的題庫](#主持人開房時可以用自己的題庫) — L
 - [活動後用對局紀錄對一次職業勝率](#活動後用對局紀錄對一次職業勝率) — S，活動後
 - [存檔可能放回已經刪掉的圖片](#存檔可能放回已經刪掉的圖片) — S，活動後
@@ -58,6 +57,7 @@
 **Context:**
 - 播放器在 `components/youtube-player.tsx`，聲音要開之前大螢幕要先有一次使用者操作（看 BGM 的解鎖方式）。
 - 如果被擋：先在大螢幕點一下畫面再開始遊戲，或改用 Chrome。
+- 順便測 Instagram 詳解（`docs/designs/instagram-explanations.md`）：公布答案後在大螢幕點影片，確認有聲音、背景音樂會靜音。無頭瀏覽器測不到聲音。
 
 **Effort/Priority:** S（人工約 20 分鐘，要真機）/ P1，期限 2026-11-21 活動前
 
@@ -238,26 +238,6 @@
 
 ---
 
-## 影片題支援 Instagram
-
-**What:** 影片題除了 YouTube，也能用 Instagram 影片（Reels／貼文影片）當題目。
-
-**Why:** 站長想用 Instagram 上的影片出題；現在只支援 YouTube（站長 2026-11-10 提出）。
-
-**Context:**
-- 現有播放器在 `components/youtube-player.tsx`，設計見 `docs/designs/youtube-questions.md`，題庫格式見 `BANK_FORMAT`。
-- 影片 id 只給主持人頁和帶螢幕金鑰的大螢幕（`docs/designs/screen-video-key.md`），Instagram 也要守住這條。
-- 要先確認 Instagram 官方嵌入能不能由主持人按鍵控制播放／暫停、偵測播完（`SCREEN_CLIP_ENDED`）、自動播放聲音，以及需不需要登入或 oEmbed token。做不到就只能當「大螢幕放影片、不計時到播完」的弱版本。
-
-**Effort/Priority:** 未定（先確認嵌入方式）/ P3
-
-**Depends on:** 無；活動（2026-11-21）後再做。
-
-**Notes:**
-- Pros：題目來源變多，站長可以直接用 Instagram 上的影片。
-- Cons：Instagram 嵌入沒有像 YouTube IFrame API 的播放控制，可能要登入、可能被移除或改版，題庫格式要升版。
-
----
 
 ## 主持人開房時可以用自己的題庫
 
