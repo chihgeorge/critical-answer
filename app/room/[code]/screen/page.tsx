@@ -1206,6 +1206,16 @@ export default function ScreenPage() {
     else if (s <= ANSWER_WARN_SECONDS) bgm.current?.playCue(ANSWER_TICK);
   }, []);
 
+  // The keyed link pasted into this open tab changes only the fragment: no reload, no new socket. Load the page again,
+  // so it says hello with the key (getScreenKey then takes it out of the address bar, which fires no hashchange).
+  useEffect(() => {
+    const onHash = () => {
+      if (new URLSearchParams(location.hash.slice(1)).get("s")) location.reload();
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
   function toggleBgm() {
     const next = !bgmOn;
     // start() runs inside this click, which is what lets the browser play it.
@@ -1369,7 +1379,7 @@ export default function ScreenPage() {
           {!game && locked ? (
             // In the lobby, before a video question finds out. In place of the tap notice: there is room for one line.
             <div role="status" data-testid="screen-locked" className="text-center text-[16px] leading-[22px]" style={{ background: "#fff0a8", color: "var(--ink)", padding: 3, borderBottom: "4px solid var(--k)" }}>
-              🔒 這台大螢幕不會播影片題的影片：請用主持人頁上的大螢幕網址開啟
+              🔒 這台大螢幕不會播影片題的影片：請用主持人頁上的大螢幕網址開啟{!tapped && "　👆 並點一下大螢幕開啟聲音"}
             </div>
           ) : !game && !tapped && (
             // 32px tall: it ends above the lobby's title line (top 34).

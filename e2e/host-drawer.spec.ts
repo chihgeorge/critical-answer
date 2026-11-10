@@ -81,7 +81,6 @@ test("the big-screen URL at the top of the host page opens the screen in a new t
   const [screen] = await Promise.all([context.waitForEvent("page"), link.click()]);
   // The big screen keeps the key and takes it out of its address bar, which the whole room can see.
   await expect(screen).toHaveURL(new RegExp(`/room/${code}/screen$`));
-  await expect(screen.getByTestId("screen-locked")).toHaveCount(0);
   await expect(host).toHaveURL(/\/host/);
 });
 

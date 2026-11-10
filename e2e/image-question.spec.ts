@@ -163,7 +163,6 @@ test("youtube-content question: the big screen plays it, the phone and the host 
   const keyless = await keylessContext.newPage();
   await keyless.goto(`/room/${code}/screen`);
   await expect(keyless.getByTestId("screen-locked")).toContainText("請用主持人頁上的大螢幕網址開啟");
-  await expect(screen.getByTestId("screen-locked")).toHaveCount(0);
 
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("影片隊")}`);

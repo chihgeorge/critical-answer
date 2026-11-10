@@ -164,7 +164,8 @@ test("a video question shows its picture, a video the API cannot load says so, a
   // This screen has no fake API: the script is blocked, so the player gives up with its error, not a blank box.
   const bare = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await bare.route(/youtube(-nocookie)?\.com/, (r) => r.abort());
-  await bare.goto(screen.url());
+  // By the host's link, not screen.url(): the big screen takes the key out of its address bar.
+  await bare.goto(await screenUrl(host));
 
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
