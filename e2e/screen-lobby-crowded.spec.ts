@@ -1,4 +1,5 @@
 import { test, expect, type Locator } from "@playwright/test";
+import { screenUrl } from "./answer";
 
 type Box = { x: number; y: number; width: number; height: number };
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
@@ -14,7 +15,7 @@ test("the big-screen lobby fits 4 and 8 teams without covering any nameplate", a
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
 
   // The 20-character name (the server cap) is cut with an ellipsis, never spilling onto a neighbour.
   const names = ["紅龍騎士團", "藍色閃電", "第三隊", "綠", "黃金獵人", "紫羅蘭", "資工系第一屆勇者小隊永遠不會輸的那一隊", "白夜"];

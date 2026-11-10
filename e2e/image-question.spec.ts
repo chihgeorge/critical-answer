@@ -60,7 +60,7 @@ test("image-content question: renders on /play, /screen, and the host's own prev
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
 
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("圖片隊")}`);
@@ -116,7 +116,7 @@ test("image-content question: a broken image URL hides itself on every surface, 
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
 
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("壞圖隊")}`);
@@ -201,7 +201,7 @@ async function startWithExplanation(browser: import("@playwright/test").Browser,
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("揭曉隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();

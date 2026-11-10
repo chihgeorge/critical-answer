@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { screenUrl } from "./answer";
 import { ERROR_TITLE } from "../components/error-screen";
 
 /** A fake navigator.wakeLock that counts requests, since headless Chromium cannot hold a real one. */
@@ -21,7 +22,6 @@ test("the host page and the big screen keep the screen awake, and ask again when
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
-  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   await expect.poll(() => wakeLocks(host)).toBeGreaterThanOrEqual(1);
   const before = await wakeLocks(host);
   await comeBack(host);
@@ -29,7 +29,7 @@ test("the host page and the big screen keep the screen awake, and ask again when
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await countWakeLocks(screen);
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   await expect.poll(() => wakeLocks(screen)).toBeGreaterThanOrEqual(1);
 });
 
