@@ -1281,6 +1281,74 @@ describe("TEAM_SELECT_OPTION", () => {
       roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       expect(lastSentTo(conns[0])).toMatchObject({ detail: "answer_submitted" });
     });
+
+    // Value: protects=the host's 替○○擲骰 rolls the stuck team's check under the team's own rules (owner, 2026-11-09);
+    // fails_when=a team phone can send it, a stale press rolls, or the host's roll skips the record; no_claim=the 15 s row (host page)
+    it("the host rolls the check for the team on turn; a team phone and a stale press are refused", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns } = checkGame();
+      const hostRoll = (conn: ReturnType<typeof makeConn>, eventId = seqOf(room)) => send(room, conn, { type: "HOST_ROLL_CHECK", teamId: ids[0], questionId: "r0-t1", eventId });
+      hostRoll(conns[0]);
+      expect(lastSentTo(conns[0])).toMatchObject({ error: "not_host" });
+      hostRoll(hostConn, seqOf(room) - 1);
+      expect(lastSentTo(hostConn)).toMatchObject({ detail: "stale_event" });
+      expect(lastBroadcast(room).pendingRoll).toBeNull();
+      hostRoll(hostConn);
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], questionId: "r0-t1", kind: "check" });
+      expect(room.game!.checks?.[checkKey("r0-t1", ids[0])]).toBeDefined();
+      vi.advanceTimersByTime(2000);
+      hostRoll(hostConn);
+      expect(lastSentTo(hostConn)).toMatchObject({ detail: "check_done" });
+    });
+
+    // Value: protects=a fill-in won before its question was shown reveals the question with 正解 (owner, 2026-11-09);
+    // fails_when=the reveal lacks `asked` on a natural 20 or a judge before the roll, or carries it after a shown question
+    it("a reveal carries the question only when it was never shown", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.useFakeTimers();
+      const nat = checkGame();
+      nat.roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(nat.room).reveal).toMatchObject({ answer: "萬家福", asked: { content: { kind: "text", value: "？" } } });
+      const early = checkGame();
+      send(early.room, early.hostConn, { type: "HOST_JUDGE", teamId: early.ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(early.room) });
+      expect(lastBroadcast(early.room).reveal).toMatchObject({ asked: { content: { kind: "text", value: "？" } } });
+      const shown = checkGame();
+      shown.roll(15);
+      vi.advanceTimersByTime(2000);
+      send(shown.room, shown.hostConn, { type: "HOST_JUDGE", teamId: shown.ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(shown.room) });
+      expect(lastBroadcast(shown.room).reveal.answer).toBe("萬家福");
+      expect(lastBroadcast(shown.room).reveal).not.toHaveProperty("asked");
+      // A dropped 20 (the host judged first) left the question up: no second copy on the reveal.
+      const dropped = checkGame();
+      passChecks(dropped.room);
+      const key = checkKey("r0-t1", dropped.ids[0]);
+      dropped.room.game = { ...dropped.room.game!, checks: { [key]: { value: 20, bonus: 0, dc: 8, passed: true, dropped: true } } }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      send(dropped.room, dropped.hostConn, { type: "HOST_JUDGE", teamId: dropped.ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(dropped.room) });
+      expect(lastBroadcast(dropped.room).reveal).not.toHaveProperty("asked");
+      // The host's 替○○擲骰 landing a 20 wins the same way.
+      const host = checkGame();
+      host.roll(20, 0, seqOf(host.room) - 1); // pregate-literal: MAX_BOSS_HP=20 not the HP cap — stale: only sets the die
+      send(host.room, host.hostConn, { type: "HOST_ROLL_CHECK", teamId: host.ids[0], questionId: "r0-t1", eventId: seqOf(host.room) });
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(host.room).reveal).toMatchObject({ answer: "萬家福", asked: { content: { kind: "text", value: "？" } } });
+    });
+
+    // Value: protects=the thief's 偷襲 waits for the question on a fill-in (owner, 2026-11-09); fails_when=the room arms it before the check
+    it("refuses the thief's sneak attack before the check, and arms it after", () => {
+      const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: checkBank });
+      const host = makeConn("host-conn");
+      room.onConnect(host);
+      claim(room, host);
+      const { conns } = joinTeams(room, host, 1);
+      send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "thief" });
+      send(room, host, { type: "HOST_START" });
+      send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
+      expect(lastSentTo(conns[0])).toMatchObject({ detail: "check_needed" });
+      expect(room.game!.teams[0].sneakArmed).toBeUndefined();
+      passChecks(room);
+      send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
+      expect(room.game!.teams[0].sneakArmed).toBe(true);
+    });
   });
 
   it("rejects a connection that never joined any team", () => {
@@ -3211,6 +3279,23 @@ describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
     const state = (late.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).findLast((m) => m.type === "STATE");
     expect(state.question.content).toEqual({ kind: "image", url: "https://pub.example.r2.dev/55555555-5555-5555-5555-555555555555" });
     expect(state.question).not.toHaveProperty("answer");
+  });
+
+  // Value: protects=an image fill-in won before its check reveals its picture (and prompt) with 正解 (owner, 2026-11-09);
+  // fails_when=asked drops the image content or the prompt; no_claim=rendering on the pages
+  it("a reveal of an unseen image question carries its image and prompt", () => {
+    const promptBank = parseBank({
+      rooms: [{ monster: "slime-soft", baseDifficulty: 1, reward: 10, questions: [{ kind: "text", id: "r0-img1", prompt: "這是什麼動物？", content: { kind: "image", value: "55555555-5555-5555-5555-555555555555" }, answer: "松鼠" }] }],
+      boss: { monster: "dragon", maxHp: 3, hitReward: 10, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
+    });
+    const room = new DungeonRoom({ ...(makeRoom() as any), env: { R2_PUBLIC_BASE_URL: "https://pub.example.r2.dev" } } as RoomIO, () => 0, { bank: promptBank });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    const { ids } = joinTeams(room, hostConn, 1);
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-img1", correct: true, eventId: seqOf(room) });
+    expect(lastBroadcast(room).reveal.asked).toEqual({ content: { kind: "image", url: "https://pub.example.r2.dev/55555555-5555-5555-5555-555555555555" }, prompt: "這是什麼動物？" });
   });
 
   it("falls back to a base-less path (never throws) when R2_PUBLIC_BASE_URL is unset", () => {

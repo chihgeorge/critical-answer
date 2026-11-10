@@ -1858,6 +1858,9 @@ export class DungeonRoom {
         case "TEAM_ROLL_CHECK":
           this.handleTeamRollCheck(sender, msg.questionId, msg.eventId);
           break;
+        case "HOST_ROLL_CHECK":
+          this.handleHostRollCheck(sender, msg.teamId, msg.questionId, msg.eventId);
+          break;
         case "TEAM_ROLL_INITIATIVE":
           this.handleTeamRollInitiative(sender);
           break;
@@ -2804,6 +2807,10 @@ export class DungeonRoom {
     // currentQuestion() would return afterwards (the next one) — a trap this file's own
     // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
     const justAnswered = this.currentQuestion();
+    // Resolved before its question was ever shown: the host judged before the check, or the check's natural 20 won it.
+    // A dropped 20 left the question up. shortcut: a 20 won after a restart (lost crit) was shown first and still counts as unseen; harmless repeat.
+    const check = prev.checks?.[checkKey(questionId, teamId)];
+    const unseen = this.awaitingCheck() || (check?.value === 20 && !check.dropped);
     // A correct answer on a music question with fields: the host's verdicts, or every field right (multi-field.md D2).
     const fieldQ = this.question(questionId);
     const marks = correct && fieldQ?.kind === "text" && fieldQ.fields ? (fields ?? fieldQ.fields.map(() => true)) : undefined;
@@ -2905,6 +2912,7 @@ export class DungeonRoom {
         ...(choice ? { choice } : {}),
         ...(sorted ? { sorted } : {}),
         ...(fieldMarks ? { fields: fieldMarks } : {}),
+        ...(unseen ? { asked: { content: justAnswered.pub.content, ...(justAnswered.pub.prompt ? { prompt: justAnswered.pub.prompt } : {}) } } : {}),
         scored: { teamId, points: outcome.reward },
         ...(dish ? { dish: { ...dish, points: outcome.reward, ...chefOf(outcome), monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };
@@ -3202,7 +3210,8 @@ export class DungeonRoom {
     // tell something about the hidden answer.
     // Only on the team's own turn outside a buzzer phase: elsewhere the usual refusals answer (not_your_turn, buzzer_phase).
     const ownFillIn = q?.kind === "text" && currentTurnTeamId(game) === teamId && !isBuzzPhase(game) && currentQuestionIdOf(game, teamId) === questionId;
-    if ((classId === "warrior" || classId === "mage") && ownFillIn && !game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
+    // The thief's 偷襲 too: armed only once the question is up (owner, 2026-11-09).
+    if ((classId === "warrior" || classId === "mage" || classId === "thief") && ownFillIn && !game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
     let next: GameState;
     try {
       if (classId === "cleric") next = pray(game, teamId);
@@ -3498,8 +3507,17 @@ export class DungeonRoom {
   /** 擲骰說服 (dnd design R-E1, R-E4): the team on turn rolls its check on its own fill-in question, once. */
   private handleTeamRollCheck(conn: Conn, questionId: string, eventId: number) {
     const teamId = this.playingTeam(conn);
+    if (teamId) this.rollCheck(conn, teamId, questionId, eventId);
+  }
+
+  /** 替○○擲骰: the host's stuck row rolls the check for the team on turn, under the team's own rules (potion included). */
+  private handleHostRollCheck(conn: Conn, teamId: string, questionId: string, eventId: number) {
+    if (this.requireHost(conn)) this.rollCheck(conn, teamId, questionId, eventId);
+  }
+
+  private rollCheck(conn: Conn, teamId: string, questionId: string, eventId: number) {
     const game = this.game;
-    if (!teamId || !game) return;
+    if (!game) return;
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     // Pressed under an older STATE (the host judged meanwhile): it was for another attempt.
     if (eventId !== this.eventSeq) return reject("stale_event");

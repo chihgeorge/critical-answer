@@ -391,6 +391,9 @@ export const FLEE_SWITCH_VARIANTS = [
   "{team}換了個戰場，這回對上{to}。",
 ];
 
+/** A cleric's prayer on a miss: the team answers again now, keeping the turn, so never "next round". */
+export const PRAYER_VARIANTS = ["聖光降臨，{team}再答一次！", "{team}的祈禱得到回應，馬上再答一次！", "一道聖光落下，{team}重整旗鼓，現在再答！"];
+
 /** A wrong boss answer: the boss brings a new question, there is nothing to answer again (D2=B). */
 export const BOSS_MISS_VARIANTS = [
   "{team}答錯了！{monster}大笑一聲，換出新的難題。",
@@ -535,6 +538,8 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
       if ((event.type === "retry" || event.type === "boss-hit") && event.exhausted) return fill(pick(BOSS_EXHAUSTED_VARIANTS, "boss-exhausted"), event);
       if (event.type === "flee" && event.to) return fill(pick(FLEE_SWITCH_VARIANTS, "flee-switch"), event);
+      // In the boss room the prayer brings a new question: the boss-miss lines say so and never say "next round".
+      if (event.type === "retry" && event.prayed && !event.boss) return fill(pick(PRAYER_VARIANTS, "prayer"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
       if (event.type === "retry" && event.buzzAgain) return fill(pick(BUZZ_AGAIN_VARIANTS, "buzz-again"), event);
       if (event.type === "retry" && event.buzzOut) return fill(pick(BUZZ_OUT_VARIANTS, "buzz-out"), event);

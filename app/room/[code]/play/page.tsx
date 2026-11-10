@@ -133,7 +133,8 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
   } else if (me.classId === "warrior" && !(q.options === undefined && q.items === undefined && game.view.checks !== undefined && !game.view.checks[checkKey(q.id, teamId)])) {
     // On a fill-in question the warrior rolls only after its persuasion check (dnd design R2).
     body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
-  } else if (me.classId === "thief") {
+  } else if (me.classId === "thief" && !q.checkFirst) {
+    // Not before the check: 偷襲 is armed once the question is up.
     body = button("🗝️", "偷襲：這題答對加碼", `${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
   } else if (me.classId === "mage" && q.options && q.options.length - 1 - gone.length >= 2) {
     // The room keeps one wrong option: with 2 left it removes 1.
@@ -1230,6 +1231,11 @@ export default function PlayPage() {
         {/* The game over card takes its place: the last question's answer is old news by then. */}
         {game && revealed && !finished && (
           <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-3 text-center">
+            {/* Won before its question was shown (a persuasion 20, or judged before the roll): the question comes with its answer. */}
+            {revealed.asked && (revealed.asked.content.kind === "text" ? revealed.asked.content.value : revealed.asked.prompt) && (
+              <div data-testid="phone-reveal-question" className="text-[18px] [overflow-wrap:anywhere]">{revealed.asked.content.kind === "text" ? revealed.asked.content.value : revealed.asked.prompt}</div>
+            )}
+            {revealed.asked?.content.kind === "image" && <QuestionMedia key={`asked-${revealed.questionId}`} content={revealed.asked.content} maxWidth={260} maxHeight={180} />}
             <div className="text-[18px]">正解：{revealed.answer}</div>
             {revealed.explanation && revealed.explanation.kind === "text" && (
               <div className="text-[16px]">{revealed.explanation.value}</div>

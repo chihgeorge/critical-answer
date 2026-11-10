@@ -427,6 +427,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           </div>
         ) : reveal ? (
           <div data-testid="answer-reveal" className="flex flex-col items-center gap-2">
+            {/* Won before its question was shown (a persuasion 20, or judged before the roll): the question comes with its answer. */}
+            {reveal.asked && (reveal.asked.content.kind === "text" ? reveal.asked.content.value : reveal.asked.prompt) && (
+              <div data-testid="reveal-question" className="text-[24px] [overflow-wrap:anywhere]">{reveal.asked.content.kind === "text" ? reveal.asked.content.value : reveal.asked.prompt}</div>
+            )}
+            {reveal.asked?.content.kind === "image" && <QuestionMedia key={`asked-${reveal.questionId}`} content={reveal.asked.content} maxWidth={260} maxHeight={160} className="mx-auto block" />}
             {/* A music question with fields: which ones the team got (docs/designs/multi-field.md F7). */}
             {reveal.fields ? (
               <ul data-testid="reveal-fields" className="flex flex-col gap-1">

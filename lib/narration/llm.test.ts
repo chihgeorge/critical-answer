@@ -169,6 +169,15 @@ describe("prompt", () => {
     expect(buildPrompt({ type: "retry", team: "甲", monster: "史萊姆" }, []).user).toContain("下一輪再答同一題");
   });
 
+  // Value: protects=a prayed miss's prompt says the team answers again now (owner, 2026-11-09); fails_when=describeEvent ignores e.prayed
+  it("tells the model a cleric's prayer means answering again now, not next round", () => {
+    const { user } = buildPrompt({ type: "retry", team: "甲", monster: "史萊姆", prayed: true }, []);
+    expect(user).toContain("馬上再答一次");
+    expect(user).not.toContain("他們下一輪再答同一題");
+    // In the boss room the prayer's new question is named too.
+    expect(buildPrompt({ type: "retry", team: "甲", monster: "小黑龍", prayed: true, boss: true }, []).user).toContain("首領「小黑龍」換了一題");
+  });
+
   // Guards the host's hand-edited lines reaching the prompt, and the removed director notes staying gone
   // (host-narration-edit.md): fails if the style examples are dropped or a 導演筆記 section comes back.
   it("adds the last edited lines as style examples, and no director notes", () => {

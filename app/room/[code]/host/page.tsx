@@ -407,7 +407,9 @@ export default function HostPage() {
     return () => clearTimeout(t);
   }, [holdKey]);
   const held = !!holdKey && releasedFor !== holdKey;
-  const stuckKey = isMc && turn?.team && !lock && !roll ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}|${game?.answerClock?.left === null ? "clip" : "count"}` : null;
+  // A fill-in whose team has not rolled its persuasion check: no count runs, so the row offers 替○○擲骰 after 15 s.
+  const checkStuck = !isMc && !!turn?.team && !!game?.question?.checkFirst && !roll && !wrong && !revealUp && !game.forkBeat;
+  const stuckKey = isMc && turn?.team && !lock && !roll ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}|${game?.answerClock?.left === null ? "clip" : "count"}` : checkStuck ? `${turn!.team!.id}|${turn!.questionId}|check|${game?.eventId}` : null;
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   // With the countdown on, the row waits for its 0; off (or no count running), 15 s (lib/answer-clock.ts stuckDelayMs).
   // The key carries "clip" while a clip has not ended, so a row shown during the clip goes away and re-arms for the count.
@@ -1058,6 +1060,14 @@ export default function HostPage() {
                     <Panel tone="lav" className="px-3 py-2 text-center text-[22px]" role="status">
                       {turn.team.name}擲出了骰子…
                     </Panel>
+                  )}
+                  {stuck && checkStuck && (
+                    <>
+                      <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>
+                      <PixelButton data-testid="host-roll-check" variant="primary" className="!min-h-[48px] text-[16px]" disabled={!ready} onClick={() => send({ type: "HOST_ROLL_CHECK", teamId: turn.team!.id, questionId: turn.questionId!, eventId: game.eventId })}>
+                        🎲 替{turn.team.name}擲骰
+                      </PixelButton>
+                    </>
                   )}
                   {cleric === "wait" ? (
                     <>
