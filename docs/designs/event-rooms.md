@@ -8,6 +8,8 @@ Mode: Builder
 
 > **Superseded in part by [branch-fork.md](branch-fork.md) (2026-11-09).** The draw now brings a team to a fork; the event happens only if it picks ❓ 神秘房, which draws and applies it in one press. D2, D3, D5, D6's chip and line, D10 and parts of D12 are replaced as noted below. The six events, their effects and their outcome screens stand.
 
+> **Superseded in part by [fortune-teller.md](fortune-teller.md) (2026-11-10).** The six events are now three scenes, one third each: the chest (feast or rotten), the statue (blessing or curse) and the fortune teller, who names a condition and lets the drawing team pick an effect for every team it fits. The spring, the fairy and the old lot are no longer drawn; their types stay for old saves.
+
 ## Problem Statement
 Every room in the dungeon is a quiz monster. The owner asked on 2026-10-30 for a surprise now and then: a room that holds an event instead, good or bad, in the spirit of the chance squares in board games. It must be ready, and fun, for the event on 2026-11-21.
 
