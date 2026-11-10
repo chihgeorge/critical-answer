@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption } from "./youtube";
+import { describe, it, expect, vi } from "vitest";
+import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, type CaptionPlayer } from "./youtube";
 
 describe("resendClipError (boss-music-buzzer.md M4)", () => {
   const seen = { questionId: "b-a", press: 2 };
@@ -149,9 +149,15 @@ describe("pickZhCaption (youtube-questions.md 公布答案後的中文字幕)", 
     expect(pickZhCaption([{ languageCode: "zh" }])).toEqual({ track: { languageCode: "zh" }, translate: false });
     expect(pickZhCaption([{ languageCode: "zh-HK" }, { languageCode: "zh-Hans" }])?.track.languageCode).toBe("zh-HK");
   });
-  it("auto-translates an English track, hand-made first", () => {
-    expect(pickZhCaption([enAsr, en])).toEqual({ track: en, translate: true });
-    expect(pickZhCaption([enAsr])).toEqual({ track: enAsr, translate: true });
+  it("auto-translates from English first: en hand-made, other hand-made, en auto-generated, other auto-generated", () => {
+    const ja = { languageCode: "ja", kind: "" };
+    const jaAsr = { languageCode: "ja", kind: "asr" };
+    const enUS = { languageCode: "en-US", kind: "" };
+    expect(pickZhCaption([ja, { languageCode: "es-419" }, en, { languageCode: "de-DE" }])).toEqual({ track: en, translate: true });
+    expect(pickZhCaption([ja, enUS])).toEqual({ track: enUS, translate: true });
+    expect(pickZhCaption([enAsr, ja])).toEqual({ track: ja, translate: true });
+    expect(pickZhCaption([jaAsr, enAsr])).toEqual({ track: enAsr, translate: true });
+    expect(pickZhCaption([jaAsr])).toEqual({ track: jaAsr, translate: true });
   });
   it("skips a track YouTube says it cannot translate", () => {
     expect(pickZhCaption([{ languageCode: "ja", is_translateable: false }, enAsr])).toEqual({ track: enAsr, translate: true });
@@ -168,5 +174,51 @@ describe("pickZhCaption (youtube-questions.md 公布答案後的中文字幕)", 
 describe("youtubeEmbedUrl with Chinese captions", () => {
   it("adds the caption hints and the JS API only when asked", () => {
     expect(youtubeEmbedUrl("dQw4w9WgXcQ", 5, undefined, true)).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=5&enablejsapi=1&cc_load_policy=1&cc_lang_pref=zh-TW&hl=zh-TW");
+  });
+});
+
+describe("syncZhCaptions (youtube-questions.md 公布答案後的中文字幕)", () => {
+  const fake = (options: Record<string, unknown>) => ({
+    unloadModule: vi.fn(),
+    setOption: vi.fn(),
+    getOption: vi.fn((_module: string, option: string) => options[option]),
+  });
+  it("keeps captions off while answering: unloads, never sets a track, and keeps checking", () => {
+    const p = fake({ tracklist: [{ languageCode: "zh-TW" }] });
+    expect(syncZhCaptions(p, false)).toBe(false);
+    expect(p.unloadModule).toHaveBeenCalledWith("captions");
+    expect(p.setOption).not.toHaveBeenCalled();
+  });
+  it("sets a Chinese track as it is", () => {
+    const p = fake({ tracklist: [{ languageCode: "en" }, { languageCode: "zh-TW" }] });
+    expect(syncZhCaptions(p, true)).toBe(true);
+    expect(p.setOption).toHaveBeenCalledWith("captions", "track", { languageCode: "zh-TW" });
+  });
+  it("translates with YouTube's own zh-Hant entry, or a bare one when the list is missing", () => {
+    const target = { languageCode: "zh-Hant", languageName: "中文（繁體）" };
+    const p = fake({ tracklist: [{ languageCode: "en" }], translationLanguages: [{ languageCode: "fr" }, target] });
+    syncZhCaptions(p, true);
+    expect(p.setOption).toHaveBeenCalledWith("captions", "track", { languageCode: "en", translationLanguage: target });
+    const bare = fake({ tracklist: [{ languageCode: "en" }] });
+    syncZhCaptions(bare, true);
+    expect(bare.setOption).toHaveBeenCalledWith("captions", "track", { languageCode: "en", translationLanguage: { languageCode: "zh-Hant" } });
+  });
+  it("waits while the track list is not there yet", () => {
+    const p = fake({ tracklist: undefined });
+    expect(syncZhCaptions(p, true)).toBe(false);
+    expect(p.setOption).not.toHaveBeenCalled();
+  });
+  it("never throws: a missing or broken captions module only means no captions", () => {
+    const broken: CaptionPlayer = {
+      getOption: () => {
+        throw new Error("no module");
+      },
+      unloadModule: () => {
+        throw new Error("no module");
+      },
+    };
+    expect(syncZhCaptions(broken, true)).toBe(false);
+    expect(syncZhCaptions(broken, false)).toBe(false);
+    expect(syncZhCaptions({}, true)).toBe(false);
   });
 });

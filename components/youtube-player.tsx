@@ -1,27 +1,23 @@
 "use client";
 
 // The big screen's YouTube player (docs/designs/youtube-questions.md D2, D4): the official IFrame API,
-// driven by the host's ▶ ⏸ ⟲. The decisions live in lib/youtube.ts (playerSteps, clipStatusFromYoutube);
-// this file only wires them to window.YT.
+// driven by the host's ▶ ⏸ ⟲. The decisions live in lib/youtube.ts (playerSteps, clipStatusFromYoutube,
+// syncZhCaptions); this file only wires them to window.YT. It also exports loadYoutubeApi for QuestionMedia's
+// video explanation, which attaches the API to its own iframe only to pick Chinese captions.
 //
 // gstack-shortcut(dec-b741774e): the host page sees only its own commands, not the real playback state
 // (stopped at the clip's end, video blocked); upgrade when someone hosts away from the big screen, or a
 // broken video costs a turn at an event.
 
 import { useEffect, useRef, useState } from "react";
-import { CLIP_STATUS_TEXT, clipStatusFromYoutube, pickZhCaption, playerSteps, ZH_CAPTION_VARS, ZH_HANT, type CaptionTrack, type ClipStatus, type MediaWant } from "@/lib/youtube";
+import { CLIP_STATUS_TEXT, clipStatusFromYoutube, loadCaptions, playerSteps, syncZhCaptions, ZH_CAPTION_VARS, type CaptionPlayer, type ClipStatus, type MediaWant } from "@/lib/youtube";
 
-interface YTPlayer {
+interface YTPlayer extends CaptionPlayer {
   playVideo(): void;
   pauseVideo(): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
   destroy(): void;
-  // The captions module: not in YouTube's documented API, so every call may be missing or throw (syncZhCaptions).
-  loadModule?(name: string): void;
-  unloadModule?(name: string): void;
-  getOption?(module: string, option: string): unknown;
-  setOption?(module: string, option: string, value: unknown): void;
 }
 interface YTNamespace {
   Player: new (
@@ -83,39 +79,6 @@ export function loadYoutubeApi(): Promise<YTNamespace> {
     document.head.appendChild(script);
   });
   return api;
-}
-
-/** Turns on Chinese captions (`on`), or keeps captions off, through YouTube's unofficial captions module
- * (docs/designs/youtube-questions.md「公布答案後的中文字幕」). True once a track is set; the caller tries again on
- * the next onApiChange or play until then, and always while captions must stay off. It never loads the module, so it
- * cannot set off another onApiChange. Any failure only means no captions: the video plays on. */
-export function syncZhCaptions(p: YTPlayer, on: boolean): boolean {
-  try {
-    if (!on) {
-      // A caption choice YouTube remembers from an earlier reveal must not show a music question's lyrics.
-      // Unloading does not fire onApiChange (tried in a browser, 2026-11-09), so calling it again is safe.
-      p.unloadModule?.("captions");
-      return false;
-    }
-    const list = p.getOption?.("captions", "tracklist");
-    const pick = pickZhCaption(Array.isArray(list) ? (list as CaptionTrack[]) : []);
-    if (!pick) return false;
-    const langs = p.getOption?.("captions", "translationLanguages");
-    const target = Array.isArray(langs) ? langs.find((l) => l?.languageCode === ZH_HANT) : undefined;
-    p.setOption?.("captions", "track", pick.translate ? { ...pick.track, translationLanguage: target ?? { languageCode: ZH_HANT } } : pick.track);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Asks the player to load its captions module; onApiChange fires once it has the track list. */
-export function loadCaptions(p: YTPlayer) {
-  try {
-    p.loadModule?.("captions");
-  } catch {
-    // no captions, the video still plays
-  }
 }
 
 const PAUSED: MediaWant = { state: "paused", seq: 0 };

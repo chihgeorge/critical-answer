@@ -7,8 +7,8 @@ import { biteSprite, drawEmptyPlate, drawHomeScene, drawScene, drawSprite, HEAD_
 import type { Accessory } from "@/lib/monster-catalog";
 import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/sprite-kind";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
-import { youtubeEmbedUrl } from "@/lib/youtube";
-import { loadCaptions, loadYoutubeApi, syncZhCaptions } from "@/components/youtube-player";
+import { loadCaptions, syncZhCaptions, youtubeEmbedUrl, type CaptionPlayer } from "@/lib/youtube";
+import { loadYoutubeApi } from "@/components/youtube-player";
 import { firstChange, resumeFrom } from "@/lib/narration/client";
 import type { PublicMediaContent } from "@/lib/protocol";
 
@@ -64,7 +64,7 @@ function YoutubeFrame({ content, maxWidth, maxHeight, className, label, zhCaptio
     if (!zhCaptions) return;
     let gone = false;
     let done = false;
-    const captions = (p: Parameters<typeof syncZhCaptions>[0]) => {
+    const captions = (p: CaptionPlayer) => {
       if (!gone && !done) done = syncZhCaptions(p, true);
     };
     loadYoutubeApi().then(

@@ -132,16 +132,66 @@ export interface CaptionTrack {
   is_translateable?: boolean;
 }
 
-/** Which caption track to show after the reveal: Traditional Chinese, then any other Chinese, then any track
+/** Which caption track to show after the reveal: Traditional Chinese, then any other Chinese, then a track
  * auto-translated to Traditional Chinese; null when the video has no track at all. Hand-made beats auto-generated
- * within each step. */
+ * within each Chinese step. The translation source is English first (it translates best), hand-made before
+ * auto-generated: en hand-made → other hand-made → en auto-generated → other auto-generated. */
 export function pickZhCaption<T extends CaptionTrack>(tracks: readonly T[]): { track: T; translate: boolean } | null {
   const code = (t: T) => (typeof t?.languageCode === "string" ? t.languageCode.toLowerCase() : "");
-  const best = (ok: (t: T) => boolean) => tracks.find((t) => ok(t) && t.kind !== "asr") ?? tracks.find(ok);
+  const asr = (t: T) => t.kind === "asr";
+  const best = (ok: (t: T) => boolean) => tracks.find((t) => ok(t) && !asr(t)) ?? tracks.find(ok);
   const hant = best((t) => ["zh-tw", "zh-hant"].includes(code(t)) || code(t).startsWith("zh-hant-"));
   if (hant) return { track: hant, translate: false };
   const zh = best((t) => code(t) === "zh" || code(t).startsWith("zh-"));
   if (zh) return { track: zh, translate: false };
-  const source = best((t) => code(t) !== "" && t.is_translateable !== false);
+  const ok = (t: T) => code(t) !== "" && t.is_translateable !== false;
+  const en = (t: T) => code(t) === "en" || code(t).startsWith("en-");
+  const source =
+    tracks.find((t) => ok(t) && en(t) && !asr(t)) ??
+    tracks.find((t) => ok(t) && !asr(t)) ??
+    tracks.find((t) => ok(t) && en(t)) ??
+    tracks.find(ok);
   return source ? { track: source, translate: true } : null;
+}
+
+/** The player methods the captions code uses. The captions module is not in YouTube's documented API, so every
+ * method may be missing or throw. */
+export interface CaptionPlayer {
+  loadModule?(name: string): void;
+  unloadModule?(name: string): void;
+  getOption?(module: string, option: string): unknown;
+  setOption?(module: string, option: string, value: unknown): void;
+}
+
+/** Turns on Chinese captions (`on`), or keeps captions off, through YouTube's unofficial captions module
+ * (docs/designs/youtube-questions.md「公布答案後的中文字幕」). True once a track is set; the caller tries again on
+ * the next onApiChange or play until then, and always while captions must stay off. It never loads the module, so it
+ * cannot set off another onApiChange. Any failure only means no captions: the video plays on. */
+export function syncZhCaptions(p: CaptionPlayer, on: boolean): boolean {
+  try {
+    if (!on) {
+      // A caption choice YouTube remembers from an earlier reveal must not show a music question's lyrics.
+      // Unloading does not fire onApiChange (tried in a browser, 2026-11-09), so calling it again is safe.
+      p.unloadModule?.("captions");
+      return false;
+    }
+    const list = p.getOption?.("captions", "tracklist");
+    const pick = pickZhCaption(Array.isArray(list) ? (list as CaptionTrack[]) : []);
+    if (!pick) return false;
+    const langs = p.getOption?.("captions", "translationLanguages");
+    const target = Array.isArray(langs) ? langs.find((l) => l?.languageCode === ZH_HANT) : undefined;
+    p.setOption?.("captions", "track", pick.translate ? { ...pick.track, translationLanguage: target ?? { languageCode: ZH_HANT } } : pick.track);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Asks the player to load its captions module; onApiChange fires once it has the track list. */
+export function loadCaptions(p: CaptionPlayer) {
+  try {
+    p.loadModule?.("captions");
+  } catch {
+    // no captions, the video still plays
+  }
 }
