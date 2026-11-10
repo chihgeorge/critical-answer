@@ -6,7 +6,7 @@ import type { SpectatorView } from "./game-state";
 
 /** "wrong": a cleric's one 答錯 key, which waits for its choice; "pray": 祈禱 in that wait (#106).
  * "reveal": 公布答案 on a team's lock (docs/designs/host-reveal.md). */
-type HostKeyAction = "correct" | "retry" | "flee" | "switch" | "next" | "wrong" | "pray" | "reveal" | "undo";
+type HostKeyAction = "correct" | "retry" | "flee" | "switch" | "next" | "wrong" | "pray" | "reveal" | "undo" | "uphold" | "dismiss";
 
 /** The parts of a KeyboardEvent this needs, so a test can pass a plain object. */
 interface KeyLike {
@@ -38,6 +38,8 @@ export const HOST_KEYS = {
   reveal: "1",
   /** 改判答對 under the judge buttons, while the host's last 答錯 on a fill-in may still be undone (any turn). */
   undo: "0",
+  /** The ruling card on an open catch (docs/designs/anti-ai-cheating.md): 🚨 成立 / 🛡️ 冤枉. */
+  ruling: { uphold: "7", dismiss: "8" },
 } as const;
 
 /** A key left to the browser: with a modifier (Ctrl+1 switches browser tabs), held down, or typed into a field. */
@@ -51,9 +53,11 @@ function ignoredKey(e: KeyLike): boolean {
  * `mc`: a multipleChoice turn, judged by the team's lock (docs/designs/phone-answering.md D13), so 1
  * does nothing (unless `lockWaiting`) and 2 / 3 / 4 only work once the host's stuck row is showing. `cleric` (clericStage):
  * "before" makes 2 the one 答錯 and 3 nothing; "wait" makes 2 / 3 / 4 / 5 祈禱 / 重答 / 逃跑・同房 / 逃跑・換房 and 1 nothing.
- * `lockWaiting`: a team's lock waits for 公布答案 (host-reveal.md), so 1 reveals it. */
-export function hostKeyAction(e: KeyLike, revealing: boolean, mc?: { stuck: boolean }, cleric?: "before" | "wait", lockWaiting?: boolean): HostKeyAction | null {
+ * `lockWaiting`: a team's lock waits for 公布答案 (host-reveal.md), so 1 reveals it.
+ * `ruling`: a catch waits for the host's ruling, so only 7 / 8 work (anti-ai-cheating.md); 0–5 are inert. */
+export function hostKeyAction(e: KeyLike, revealing: boolean, mc?: { stuck: boolean }, cleric?: "before" | "wait", lockWaiting?: boolean, ruling?: boolean): HostKeyAction | null {
   if (ignoredKey(e)) return null;
+  if (ruling) return e.key === HOST_KEYS.ruling.uphold ? "uphold" : e.key === HOST_KEYS.ruling.dismiss ? "dismiss" : null;
   if (revealing) return e.key === HOST_KEYS.next || e.key === "Enter" ? "next" : null;
   if (e.key === HOST_KEYS.undo) return "undo";
   if (lockWaiting && e.key === HOST_KEYS.reveal) return "reveal";

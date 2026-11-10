@@ -381,6 +381,12 @@ export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一首再搶一次！", "
 export const BUZZ_REOPEN_LINE = "最後一隊斷線了！同一首再搶一次！";
 
 /** 逃跑・換房: the team ran from {monster} into {to}, its new monster in the same room. */
+/** 🚨 成立 (anti-ai-cheating.md): {team} was caught asking an AI by {caught}. */
+export const CAUGHT_VARIANTS = [
+  "🚨 抓包成立！{team}偷問 AI 被{caught}逮個正著，這題不算，換一題重來！",
+  "🚨 主持人判定成立！{team}這題沒分還被趕去換題，{caught}拿走賞金！",
+  "🚨 {caught}眼睛真利！{team}被抓到偷問 AI，這題作廢，換一題！",
+];
 export const FLEE_SWITCH_VARIANTS = [
   "{team}逃進隔壁房，迎面是{to}！",
   "{team}甩開{monster}，撞上了{to}。",
@@ -552,6 +558,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     plainLine(event: NarrationEvent): string {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
       if ((event.type === "retry" || event.type === "boss-hit") && event.exhausted) return fill(pick(BOSS_EXHAUSTED_VARIANTS, "boss-exhausted"), event);
+      if (event.type === "flee" && event.caught) return fill(pick(CAUGHT_VARIANTS, "caught"), event);
       if (event.type === "flee" && event.to) return fill(pick(FLEE_SWITCH_VARIANTS, "flee-switch"), event);
       // In the boss room the prayer brings a new question: the boss-miss lines say so and never say "next round".
       if (event.type === "retry" && event.prayed && !event.boss) return fill(pick(PRAYER_VARIANTS, "prayer"), event);

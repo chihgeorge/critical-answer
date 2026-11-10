@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { IN_LOBBY, nextTransition, sprintSeen, UNSEEN, type TransitionSeen } from "./transitions";
+import { antiCheatBanner, IN_LOBBY, nextTransition, sprintSeen, UNSEEN, type TransitionSeen } from "./transitions";
 import type { StateMessage } from "./protocol";
 
 const team = (id: string, name: string, inBossPhase = false) => ({ id, name, inBossPhase, roomIndex: 0, currentQuestionId: "q1" });
@@ -104,5 +104,22 @@ describe("sprintSeen (the phone card's rule)", () => {
     expect(sprintSeen(null, { sprint: { teamIds: ["a"] } })).toEqual({ seen: true, play: false });
     expect(sprintSeen(null, {})).toEqual({ seen: false, play: false });
     expect(sprintSeen(true, { sprint: { teamIds: ["a"] } })).toEqual({ seen: true, play: false });
+  });
+});
+
+describe("antiCheatBanner (anti-ai-cheating.md)", () => {
+  const teams = [{ id: "a", name: "甲" }, { id: "b", name: "乙" }] as never;
+  const view = (antiCheat?: object) => ({ teams, antiCheat }) as never;
+  it("plays nothing on the first STATE after connecting, whatever is on", () => {
+    expect(antiCheatBanner(null, view({ on: true, onCount: 1, openCatch: { by: "b", teamId: "a", questionId: "q" } })).play).toBeNull();
+  });
+  it("plays the switch-on banner when the on count grows, and not on switch-off", () => {
+    expect(antiCheatBanner({ on: 0, open: false }, view({ on: true, onCount: 1 })).play).toEqual({ kind: "cheat" });
+    expect(antiCheatBanner({ on: 1, open: false }, view({ on: false, onCount: 1 })).play).toBeNull();
+  });
+  it("plays the catch banner once when a catch opens", () => {
+    const opened = antiCheatBanner({ on: 1, open: false }, view({ on: true, onCount: 1, openCatch: { by: "b", teamId: "a", questionId: "q" } }));
+    expect(opened.play).toEqual({ kind: "catch", by: "乙", team: "甲" });
+    expect(antiCheatBanner(opened.seen, view({ on: true, onCount: 1, openCatch: { by: "b", teamId: "a", questionId: "q" } })).play).toBeNull();
   });
 });

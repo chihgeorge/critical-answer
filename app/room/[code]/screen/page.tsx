@@ -11,7 +11,7 @@ import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
 import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ServerMessage, type SoundCue, type StateMessage } from "@/lib/protocol";
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
-import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
+import { CATCH_PAY, checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { FORK_ARCH, sceneFloor, TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn, monsterLook, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -21,7 +21,7 @@ import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, EAT_DONE, SFX, SPRINT_FANFARE } from "@/lib/sfx";
 import { AnswerClock } from "@/components/answer-clock";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
-import { IN_LOBBY, nextTransition, UNSEEN, type Transition } from "@/lib/transitions";
+import { antiCheatBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
 import { TransitionOverlay } from "@/components/transition-overlay";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, prefersReducedMotion, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { MapStrip } from "@/components/map-strip";
@@ -313,7 +313,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       : null;
   const sortWall = served ? null : sortTiles(question, reveal, pendingLock, wrong, wrongSlots);
   // Fixed lines, not an LLM call (D8, D9): nothing is narrated until the outcome is known.
-  const held = buzz?.teamId
+  const caught = !reveal ? view.antiCheat?.openCatch : undefined;
+  const held = caught
+    ? `🚨 ${nameOf(caught.by)}說${nameOf(caught.teamId)}在問 AI！等主持人裁決……`
+    : buzz?.teamId
     ? `${nameOf(buzz.teamId)}搶到了！大聲說出答案！`
     : pendingRoll
     ? `${nameOf(pendingRoll.teamId)}擲出了骰子……`
@@ -410,6 +413,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           )}
           {/* A curse or blessing waits on the team's next correct answer (event-rooms.md D12). */}
           {!reveal && !card && turn?.boon && <span data-testid="screen-boon"><LabelChip>{BOON_TEXT[turn.boon]}</LabelChip></span>}
+          {/* 🔮 The team on turn asked the oracle about this question (anti-ai-cheating.md): everyone knows it pays half. */}
+          {!reveal && !card && turn?.oracle && (
+            <span data-testid="screen-oracle" className="px-chip text-[18px] leading-none" style={{ background: "#c9b3ff", color: "var(--k)" }}>
+              🔮 {turn.name}請示了神諭（獎勵減半）
+            </span>
+          )}
           {/* 🧪 The team on turn holds a potion, or drank it on this question (lucky-potion.md D1, D8). */}
           {!reveal && !card && turn?.item && (
             <span data-testid="screen-potion">
@@ -454,6 +463,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             )}
             {/* Who scored, the one line the room reads off the reveal (no scoreboard: the meters say the rest). A partial
                 music answer has its own 「對 k/n」 line above, so it gets no 「答對」. */}
+            {reveal.caught && (
+              <div data-testid="reveal-caught" className="text-[24px] [overflow-wrap:anywhere]" style={{ color: "var(--danger)" }}>
+                🚨 抓包成立：{nameOf(reveal.caught.teamId)} 這題不算，{nameOf(reveal.caught.by)} +{CATCH_PAY.bounty}
+              </div>
+            )}
             {reveal.scored && scorer && !reveal.fields?.marks.some((f) => !f.right) && (
               <div data-testid="reveal-result" className="text-[24px] [overflow-wrap:anywhere]">
                 ✅ {scorer.name} 答對 +{reveal.scored.points} {scoreName(cuisine)}
@@ -950,6 +964,8 @@ export default function ScreenPage() {
   const lastPhase = useRef<StateMessage["phase"] | null>(null);
   /** The doors and the boss alarm (lib/transitions.ts): what this connection has seen, and the one playing. */
   const transitionSeen = useRef(UNSEEN);
+  /** 抓包與神諭's banners (anti-ai-cheating.md): what this connection last saw; null until a STATE after connecting. */
+  const cheatSeen = useRef<CheatSeen | null>(null);
   const [transition, setTransition] = useState<Transition | null>(null);
   /** A boss alarm due while ⚔️ 最後衝刺's banner shows waits for it to end, sound included (last-sprint.md: the sprint wins). */
   const queuedBoss = useRef<Transition | null>(null);
@@ -1308,6 +1324,7 @@ export default function ScreenPage() {
       sfxSeen.current = null;
       lastPhase.current = null;
       transitionSeen.current = UNSEEN;
+      cheatSeen.current = null;
       stopTransitions();
       // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
       progress.current = null;
@@ -1327,6 +1344,7 @@ export default function ScreenPage() {
           setFinale(false);
           lastPhase.current = null;
           transitionSeen.current = IN_LOBBY;
+          cheatSeen.current = null;
           stopTransitions();
           podiumReady.current = true;
           heldEpilogue.current = null;
@@ -1364,6 +1382,13 @@ export default function ScreenPage() {
               sprintShowing.current = t.play.kind === "sprint";
               if (t.play.kind === "boss") bgm.current?.playCue(BOSS_ALARM);
               if (t.play.kind === "sprint") bgm.current?.playCue(SPRINT_FANFARE);
+            }
+            const c = antiCheatBanner(cheatSeen.current, msg.view);
+            cheatSeen.current = c.seen;
+            // A door, boss or sprint banner in the same STATE wins; the catch stays on screen in its own line anyway.
+            if (c.play && !t.play && !queuedBoss.current) {
+              setTransition(c.play);
+              bgm.current?.playCue(BOSS_ALARM);
             }
           }
           if (msg.phase === "finished" && lastPhase.current === "playing" && msg.reveal?.dish) setFinale(true);

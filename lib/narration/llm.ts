@@ -188,6 +188,7 @@ function describeEvent(e: NarrationEvent): string {
         ? `事件：隊伍${q(e.team)}答錯了，首領${q(e.monster)}換出了新的考驗。`
         : `事件：隊伍${q(e.team)}答錯了，${q(e.monster)}還擋在原地，先換下一隊，他們下一輪再答同一題。`;
     case "flee":
+      if (e.caught) return `事件：隊伍${q(e.team)}被隊伍${q(e.caught)}抓包偷問 AI，主持人裁定成立：這題不算分、扣分，換一題較簡單的，檢舉的隊伍拿到賞金。不要說他們答錯或逃跑。`;
       return e.to
         ? `事件：隊伍${q(e.team)}答錯後甩開${q(e.monster)}，在同一間房遇上新的怪物${q(e.to)}，換一題較簡單的。不要說他們前進到下一間房。`
         : `事件：隊伍${q(e.team)}答錯後逃跑，換一題較簡單的。`;

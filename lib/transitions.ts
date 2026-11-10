@@ -3,9 +3,10 @@
 // Live only: a screen that connects mid-game never replays any.
 
 import type { StateMessage } from "./protocol";
+import type { SpectatorView } from "./game-state";
 import { describeTurn } from "./turn-info";
 
-export type Transition = { kind: "open"; team: string } | { kind: "boss"; name: string } | { kind: "sprint"; names: string[] };
+export type Transition = { kind: "open"; team: string } | { kind: "boss"; name: string } | { kind: "sprint"; names: string[] } | { kind: "cheat" } | { kind: "catch"; by: string; team: string };
 
 /** `open`: this connection saw the lobby or the intro, so the first question is a start seen live.
  * `boss`: whether the boss room has been on screen; null until the first STATE after connecting. */
@@ -27,6 +28,19 @@ export const IN_LOBBY: TransitionSeen = { open: true, boss: false, sprint: false
 export function sprintSeen(seen: boolean | null, view: { sprint?: unknown }): { seen: boolean; play: boolean } {
   const now = !!view.sprint;
   return { seen: (seen ?? now) || now, play: seen === false && now };
+}
+
+/** What this connection last saw of 抓包與神諭 (docs/designs/anti-ai-cheating.md): the switch's on count, and whether a catch was open. */
+export type CheatSeen = { on: number; open: boolean };
+
+/** The switch-on banner and the catch banner, live only like the sprint's: null `seen` (the first STATE after connecting) plays nothing. */
+export function antiCheatBanner(seen: CheatSeen | null, view: Pick<SpectatorView, "antiCheat" | "teams">): { seen: CheatSeen; play: Transition | null } {
+  const ac = view.antiCheat;
+  const now = { on: ac?.onCount ?? 0, open: !!ac?.openCatch };
+  if (!seen) return { seen: now, play: null };
+  const name = (id: string) => view.teams.find((t) => t.id === id)?.name ?? "";
+  if (ac?.openCatch && !seen.open) return { seen: now, play: { kind: "catch", by: name(ac.openCatch.by), team: name(ac.openCatch.teamId) } };
+  return { seen: now, play: ac?.on && now.on > seen.on ? { kind: "cheat" } : null };
 }
 
 export function nextTransition(seen: TransitionSeen, msg: StateMessage): { seen: TransitionSeen; play: Transition | null } {

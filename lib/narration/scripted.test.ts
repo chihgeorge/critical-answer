@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, PRAYER_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, CROWD_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, PRAYER_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, CAUGHT_VARIANTS, CROWD_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 import { MAX_MODEL_LINE, targetSegmentCount } from "./runner";
 
@@ -701,5 +701,15 @@ describe("觀眾反應 (CROWD_VARIANTS)", () => {
     expect(targetSegmentCount(loud)).toBe(3);
     expect(CROWD_VARIANTS.boo.map((l) => l.replace("{by}", "藍莓"))).toContain(p.atmosphereLine(loud));
     expect(ATMOSPHERE_VARIANTS.correct).toContain(p.atmosphereLine({ ...turn, roll: { kind: "crit", value: 20 } }));
+  });
+});
+
+describe("🚨 成立 line (anti-ai-cheating.md)", () => {
+  it("a caught flee says the catch, naming both teams, never a plain flee line", () => {
+    const p = createScriptedProvider(() => 0);
+    const said = new Set(CAUGHT_VARIANTS.map((t) => t.replace("{team}", "紅隊").replace("{caught}", "藍隊")));
+    const line = p.line({ type: "flee", team: "紅隊", monster: "史萊姆", caught: "藍隊" });
+    expect(said.has(line)).toBe(true);
+    expect(line).toContain("紅隊");
   });
 });

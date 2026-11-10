@@ -212,7 +212,36 @@ export interface Team {
   /** Let in mid-game with the last-place team's score (docs/designs/late-join.md): its boss entry is never `earned`,
    * so the few turns it took win no ⚡ 閃電突擊. */
   late?: true;
+  /** 抓包與神諭 (docs/designs/anti-ai-cheating.md): uses left, given once (absent until the switch first met this team). */
+  oracleLeft?: number;
+  catchesLeft?: number;
+  /** The question this team asked the oracle about: it halves and cannot be caught only while it is still the team's
+   * current room question (oracleActive). */
+  oracleQ?: string;
+  /** For lib/game-log.ts: oracles used, and this team's catches filed / upheld / dismissed / cancelled. */
+  oracles?: number;
+  catchesFiled?: number;
+  catchesUpheld?: number;
+  catchesDismissed?: number;
+  catchesCancelled?: number;
 }
+
+/** 抓包與神諭's switch and the open catch (docs/designs/anti-ai-cheating.md). */
+export interface AntiCheatState {
+  on: boolean;
+  /** Times the host switched it on, for lib/game-log.ts. */
+  onCount: number;
+  /** A catch waiting for the host's ruling: `by` reported `teamId` on `questionId`. */
+  openCatch?: { by: string; teamId: string; questionId: string };
+  /** `${teamId}:${questionId}:${turns}` of the last catch filed: one catch per question-turn. */
+  caughtTurn?: string;
+}
+
+/** Uses each team gets once (anti-ai-cheating.md). */
+export const ORACLE_USES = 1;
+export const CATCH_USES = 2;
+/** 成立: the reporter gains, the caught team loses. 冤枉: the reporter loses, the accused gains when it holds a potion. */
+export const CATCH_PAY = { bounty: 15, caught: 10, falseReport: 10, wronged: 10 } as const;
 
 export interface RoomTemplate {
   /** Base difficulty for this room, before any per-team flee downgrades. */
@@ -345,6 +374,8 @@ export interface GameState {
   fortune?: FortuneState;
   /** Teams a 💫 stun just skipped, for the room to say once and clear (fortune-teller.md Narration). */
   stunSkipped?: string[];
+  /** 抓包與神諭 (docs/designs/anti-ai-cheating.md). Absent: switched off, as in every save from before it. */
+  antiCheat?: AntiCheatState;
 }
 
 export interface LockedOption {
@@ -569,7 +600,7 @@ function splitShared(game: GameState, rng: () => number): GameState {
       ...game,
       usedQuestionIds: dealt.used,
       ...(game.checks ? { checks } : {}),
-      teams: patchTeam(game.teams, t.id, () => ({ currentQuestionId: dealt.questionId, currentSelection: null, wrongOn: undefined })),
+      teams: patchTeam(game.teams, t.id, () => ({ currentQuestionId: dealt.questionId, currentSelection: null, wrongOn: undefined, oracleQ: undefined })),
     };
   }
 }
@@ -734,6 +765,8 @@ export function addLateTeam(game: GameState, seed: { id: string; name: string; c
     ...(seed.classId ? { classId: seed.classId } : {}),
     abilityUses: abilityUsesFor(seed.classId),
     late: true,
+    // Let in while 抓包與神諭 is on: its uses now, as every team got them at the switch (anti-ai-cheating.md).
+    ...(game.antiCheat?.on ? { oracleLeft: ORACLE_USES, catchesLeft: CATCH_USES } : {}),
   };
   return { ...game, teams: [...game.teams, team], turnOrder: [...game.turnOrder, seed.id], usedQuestionIds: dealt.used };
 }
@@ -882,6 +915,8 @@ function assertNotBuzz(game: GameState) {
 export function currentTurnTeamId(game: GameState): string | null {
   // A team deciding 重答 / 逃跑 keeps the turn even if its phone sleeps (phone-answering.md E9).
   if (game.pendingWrong) return game.pendingWrong.teamId;
+  // So does a team caught asking an AI, until the host rules (anti-ai-cheating.md).
+  if (game.antiCheat?.openCatch) return game.antiCheat.openCatch.teamId;
   // So does a team whose typed answer waits for the host: it puts the phone down after sending.
   const typed = game.teams.find((t) => t.typedAnswer !== undefined);
   if (typed) return typed.id;
@@ -952,6 +987,8 @@ export function endGame(game: GameState, rng: () => number = Math.random): GameS
 
 /** Ranks the teams, rolling d20s for ties on the podium, so exactly one team wins (podium-reveal.md D4). */
 function finishGame(game: GameState, rng: () => number): GameState {
+  // A catch never ruled is called off, the reporter's use given back (anti-ai-cheating.md).
+  game = cancelCatch(game);
   const { ranking, tieRolls } = rankTeams(game.teams, () => rollD20(rng));
   // A fortune still running ends with the game (fortune-teller.md R11).
   return { ...game, phase: "finished", winners: ranking.slice(0, 1), ranking, tieRolls, fortune: undefined };
@@ -998,7 +1035,8 @@ export function answerQuestion(
   // An event's curse or blessing waits for the next correct answer (event-rooms.md D12): the curse halves like a natural-1
   // check (never twice), the blessing adds half the base like a crit 20.
   const boon = correct ? game.teams.find((t) => t.id === teamId)?.boon : undefined;
-  const halved = correct && (check?.value === 1 || boon === "curse");
+  // A question the team asked the oracle about halves the same way (anti-ai-cheating.md); never in the boss room.
+  const halved = correct && (check?.value === 1 || boon === "curse" || oracleActive(game, teamId));
   const rollMark: { roll?: RollMark } =
     correct && (critValue === 20 || critValue === 1)
       ? { roll: { kind: "crit", value: critValue } }
@@ -1230,6 +1268,8 @@ export function answerQuestion(
     nextGame = { ...nextGame, checks };
   }
   if (outcome.type === "incorrect-flee") nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, (t) => ({ flees: (t.flees ?? 0) + 1 })) };
+  // The oracle goes with its question: answered, fled or switched away (a retry keeps it).
+  if ((correct || fleeChoice !== "retry") && getTeam(nextGame, teamId).oracleQ !== undefined) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ oracleQ: undefined })) };
   const left = getTeam(nextGame, teamId).wrongOn;
   if (left !== undefined && left !== currentQuestionIdOf(nextGame, teamId)) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ wrongOn: undefined })) };
   // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
@@ -1422,10 +1462,12 @@ export function sendToBoss(game: GameState, teamId: string, rng: () => number = 
   const team = getTeam(game, teamId);
   if (team.inBoss) throw new InvalidActionError(`${teamId} is already in the boss room`);
   if (game.pendingWrong?.teamId === teamId) throw new InvalidActionError(`${teamId} has a wrong lock waiting for retry or flee`);
+  // A catch on this team's room question is called off with it (anti-ai-cheating.md).
+  if (game.antiCheat?.openCatch?.teamId === teamId) game = cancelCatch(game);
   // A sneak armed for the room question is for that question only (D16): drop it and give the use back.
   // (A boss-room sneak can outlive a question rotation while the thief is offline; accepted, /review D4=A.)
   const sneak = team.sneakArmed ? { sneakArmed: undefined, abilityUses: team.abilityUses + 1 } : {};
-  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, bossAt: { round: game.round ?? 1, turns: team.turns ?? 0 }, currentSelection: null, queuedQuestionId: undefined, swappedMonsterId: undefined, typedAnswer: undefined, typedFields: undefined, event: undefined, fork: undefined, ...sneak }));
+  const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, bossAt: { round: game.round ?? 1, turns: team.turns ?? 0 }, currentSelection: null, queuedQuestionId: undefined, swappedMonsterId: undefined, typedAnswer: undefined, typedFields: undefined, event: undefined, fork: undefined, oracleQ: undefined, ...sneak }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
   const stillFaced = teams.some((t) => !t.inBoss && t.currentQuestionId === left);
@@ -1904,7 +1946,126 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
 
 /** A team keeps the turn whatever its phone does: a wrong answer, a typed answer, a door or a fortune being picked. */
 function turnHeld(game: GameState): boolean {
-  return !!game.pendingWrong || game.teams.some((t) => t.typedAnswer !== undefined || t.fork?.phase === "choosing") || (!!game.fortune && !game.fortune.effect);
+  return !!game.pendingWrong || !!game.antiCheat?.openCatch || game.teams.some((t) => t.typedAnswer !== undefined || t.fork?.phase === "choosing") || (!!game.fortune && !game.fortune.effect);
+}
+
+/* ---------- 抓包與神諭 (docs/designs/anti-ai-cheating.md) ---------- */
+
+/** Whether `teamId` asked the oracle about the room question it faces now: that answer halves and cannot be caught. */
+export function oracleActive(game: GameState, teamId: string): boolean {
+  const t = game.teams.find((x) => x.id === teamId);
+  return !!t && !t.inBoss && t.oracleQ !== undefined && t.oracleQ === t.currentQuestionId;
+}
+
+/** The host's switch. On: every team the switch never met gets its uses (a re-on refills nothing). Off: an open catch is
+ * called off and refunded; an oracle already asked keeps halving its question. */
+export function setAntiCheat(game: GameState, on: boolean): GameState {
+  assertPlaying(game);
+  const ac = game.antiCheat;
+  if ((ac?.on ?? false) === on) return game;
+  if (!on) {
+    const off = cancelCatch(game);
+    return { ...off, antiCheat: { ...off.antiCheat!, on: false } };
+  }
+  return {
+    ...game,
+    antiCheat: { ...ac, on: true, onCount: (ac?.onCount ?? 0) + 1 },
+    teams: game.teams.map((t) => (t.catchesLeft === undefined ? { ...t, oracleLeft: ORACLE_USES, catchesLeft: CATCH_USES } : t)),
+  };
+}
+
+/** What both actions refuse alike: the switch off, a buzzer phase, a catch waiting, a team not answering a room question
+ * now. The room checks its own beats and screens first (one window predicate). */
+function assertAntiCheatTurn(game: GameState, teamId: string, questionId: string) {
+  assertPlaying(game);
+  if (!game.antiCheat?.on) throw new InvalidActionError("anti_cheat_off");
+  assertNotBuzz(game);
+  if (game.antiCheat.openCatch) throw new InvalidActionError("catch_pending");
+  const team = getTeam(game, teamId);
+  if (team.inBoss) throw new InvalidActionError("boss_room");
+  if (game.fortune && !game.fortune.effect) throw new InvalidActionError("fortune");
+  if (game.pendingWrong) throw new InvalidActionError("answer_pending");
+  if (atFork(team)) throw new InvalidActionError("fork");
+  if (questionId !== team.currentQuestionId) throw new InvalidActionError("stale_question");
+}
+
+/** 🔮 公開問神諭: the team on turn asks the oracle about its room question, once a game, before its answer is in. */
+export function askOracle(game: GameState, teamId: string, questionId: string): GameState {
+  assertAntiCheatTurn(game, teamId, questionId);
+  if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError("not_your_turn");
+  const team = getTeam(game, teamId);
+  if (team.typedAnswer !== undefined) throw new InvalidActionError("answer_submitted");
+  if ((team.oracleLeft ?? 0) <= 0) throw new InvalidActionError("oracle_used");
+  return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ oracleLeft: (t.oracleLeft ?? 0) - 1, oracleQ: questionId, oracles: (t.oracles ?? 0) + 1 })) };
+}
+
+/** 🚨 抓包: `reporterId` (the room's connection team, never the message) says the team on turn asks an AI about
+ * `questionId`. One catch per question-turn; none on an oracle question or on oneself. */
+export function fileCatch(game: GameState, reporterId: string, questionId: string): GameState {
+  const reporter = getTeam(game, reporterId);
+  const accused = currentTurnTeamId(game);
+  if (accused === null) throw new InvalidActionError("not_your_turn");
+  assertAntiCheatTurn(game, accused, questionId);
+  if (accused === reporterId) throw new InvalidActionError("self_catch");
+  if (oracleActive(game, accused)) throw new InvalidActionError("oracle_question");
+  const turn = `${accused}:${questionId}:${getTeam(game, accused).turns ?? 0}`;
+  if (game.antiCheat!.caughtTurn === turn) throw new InvalidActionError("already_caught");
+  if ((reporter.catchesLeft ?? 0) <= 0) throw new InvalidActionError("no_catches");
+  return {
+    ...game,
+    antiCheat: { ...game.antiCheat!, openCatch: { by: reporterId, teamId: accused, questionId }, caughtTurn: turn },
+    teams: patchTeam(game.teams, reporterId, (t) => ({ catchesLeft: (t.catchesLeft ?? 0) - 1, catchesFiled: (t.catchesFiled ?? 0) + 1 })),
+  };
+}
+
+/** A catch never ruled (switch off, game over, the accused sent to the boss room): gone, the reporter's use given back. */
+export function cancelCatch(game: GameState): GameState {
+  const c = game.antiCheat?.openCatch;
+  if (!c) return game;
+  return {
+    ...game,
+    antiCheat: { ...game.antiCheat!, openCatch: undefined },
+    teams: patchTeam(game.teams, c.by, (t) => ({ catchesLeft: (t.catchesLeft ?? 0) + 1, catchesCancelled: (t.catchesCancelled ?? 0) + 1 })),
+  };
+}
+
+function openCatchOf(game: GameState) {
+  assertPlaying(game);
+  const c = game.antiCheat?.openCatch;
+  if (!c) throw new InvalidActionError("no_catch");
+  return c;
+}
+
+/** 🚨 成立: the question is marked revealed, the accused flees it (same room, a new question one easier, the turn passes;
+ * an armed sneak is used up), counted as a wrong answer but not a flee, and loses CATCH_PAY.caught (never below 0); the
+ * reporter gains CATCH_PAY.bounty, flat (no chef share). */
+export function upholdCatch(game: GameState, rng: () => number = Math.random): { game: GameState; outcome: AnswerOutcome } {
+  const c = openCatchOf(game);
+  // Revealed first, so the flee's deal does not hand the same question back while another is left.
+  const marked = { ...game, revealedQuestionIds: withRevealed(game.revealedQuestionIds, c.questionId) };
+  // Judged while the catch still holds the turn, so an offline accused is still the team on turn.
+  const { game: fled, outcome } = answerQuestion(marked, c.teamId, c.questionId, false, "flee", rng);
+  const teams = fled.teams.map((t) =>
+    t.id === c.teamId
+      ? { ...t, flees: (t.flees ?? 1) - 1 || undefined, wrongAnswers: (t.wrongAnswers ?? 0) + 1, reward: Math.max(0, t.reward - CATCH_PAY.caught) }
+      : t.id === c.by
+        ? { ...t, reward: t.reward + CATCH_PAY.bounty, catchesUpheld: (t.catchesUpheld ?? 0) + 1 }
+        : t,
+  );
+  return { game: { ...fled, teams, antiCheat: { ...fled.antiCheat!, openCatch: undefined } }, outcome };
+}
+
+/** 🛡️ 冤枉: the reporter loses CATCH_PAY.falseReport (never below 0); the accused gets a lucky potion (giveItem, counted in
+ * potionsGiven), or CATCH_PAY.wronged when it holds one already, and answers on. `potion` says which. */
+export function dismissCatch(game: GameState): { game: GameState; potion: boolean } {
+  const c = openCatchOf(game);
+  const g: GameState = {
+    ...game,
+    antiCheat: { ...game.antiCheat!, openCatch: undefined },
+    teams: patchTeam(game.teams, c.by, (t) => ({ reward: Math.max(0, t.reward - CATCH_PAY.falseReport), catchesDismissed: (t.catchesDismissed ?? 0) + 1 })),
+  };
+  const potion = !getTeam(g, c.teamId).item;
+  return { game: potion ? giveItem(g, c.teamId) : { ...g, teams: patchTeam(g.teams, c.teamId, (t) => ({ reward: t.reward + CATCH_PAY.wronged })) }, potion };
 }
 
 /**
@@ -1950,6 +2111,10 @@ export interface SpectatorView {
     item?: Item;
     itemArmed?: true;
     itemArmedFor?: string;
+    /** 抓包與神諭 uses left once given; `oracle`: this team asked the oracle about the room question it faces now. */
+    oracleLeft?: number;
+    catchesLeft?: number;
+    oracle?: true;
   }[];
   bossHp: number;
   bossMaxHp: number;
@@ -1973,6 +2138,9 @@ export interface SpectatorView {
   awaitingPrayer: string | null;
   /** ⚔️ 最後衝刺 once it fired (GameState.sprint): the screen and phones name the blessed teams. */
   sprint?: { teamIds: string[] };
+  /** 抓包與神諭 once the host ever switched it on (anti-ai-cheating.md). `caught`: the team on turn was already caught
+   * on this question this turn, so no second catch. */
+  antiCheat?: { on: boolean; onCount: number; openCatch?: { by: string; teamId: string; questionId: string }; caught?: true };
 }
 
 export function getSpectatorView(game: GameState): SpectatorView {
@@ -2002,6 +2170,9 @@ export function getSpectatorView(game: GameState): SpectatorView {
       ...(t.item ? { item: t.item } : {}),
       ...(potionArmed(game, t.id) ? { itemArmed: true as const } : {}),
       ...(t.itemArmedFor ? { itemArmedFor: t.itemArmedFor } : {}),
+      ...(t.oracleLeft !== undefined ? { oracleLeft: t.oracleLeft } : {}),
+      ...(t.catchesLeft !== undefined ? { catchesLeft: t.catchesLeft } : {}),
+      ...(oracleActive(game, t.id) ? { oracle: true as const } : {}),
     })),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
@@ -2016,5 +2187,13 @@ export function getSpectatorView(game: GameState): SpectatorView {
     ...(isBuzzPhase(game) ? { buzz: currentBuzz(game) } : {}),
     awaitingPrayer: game.pendingWrong && canPray(game, game.pendingWrong.teamId) ? game.pendingWrong.teamId : null,
     ...(game.sprint ? { sprint: game.sprint } : {}),
+    ...(game.antiCheat ? { antiCheat: antiCheatView(game, game.antiCheat) } : {}),
   };
+}
+
+function antiCheatView(game: GameState, ac: AntiCheatState): NonNullable<SpectatorView["antiCheat"]> {
+  const turn = currentTurnTeamId(game);
+  const t = game.teams.find((x) => x.id === turn);
+  const caught = !!t && ac.caughtTurn === `${t.id}:${t.currentQuestionId}:${t.turns ?? 0}`;
+  return { on: ac.on, onCount: ac.onCount, ...(ac.openCatch ? { openCatch: ac.openCatch } : {}), ...(caught ? { caught: true as const } : {}) };
 }

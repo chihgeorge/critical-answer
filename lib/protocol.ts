@@ -105,6 +105,9 @@ export type AnswerReveal = {
   /** The question itself, only when it was never shown: its fill-in resolved before the persuasion check was done (a
    * natural 20, or the host judging before the roll). Shown above 正解; a video stays in `video`. */
   asked?: Pick<PublicQuestion, "content" | "prompt">;
+  /** 🚨 成立 (docs/designs/anti-ai-cheating.md): `teamId` was caught asking an AI on this question, reported by `by`.
+   * The answer shows, nothing is scored: no `scored`, `choice`, `sorted` or `dish`. */
+  caught?: { teamId: string; by: string };
   /** Who answered and what it scored in all (dish included), for the big screen's 「✅ {隊名} 答對 +N」 line. Absent from older servers. */
   scored?: { teamId: string; points: number };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
@@ -245,6 +248,10 @@ export type ClientMessage =
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
   /** 🧪 給藥水 (docs/designs/lucky-potion.md): the host gives a team a potion, at any time of the game; refused while it holds one. */
   | { type: "HOST_GIVE_ITEM"; teamId: string }
+  /** 🚨 開啟抓包與神諭 (docs/designs/anti-ai-cheating.md): the host's switch, any time of a game. */
+  | { type: "HOST_ANTI_CHEAT"; on: boolean }
+  /** The host rules the open catch: 🚨 成立 (`upheld`) or 🛡️ 冤枉. */
+  | { type: "HOST_RULE_CATCH"; upheld: boolean }
   /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
   | { type: "HOST_REVEAL"; teamId: string; questionId: string }
   /** Host: ▶ ⏸ ⟲ for the YouTube video on the big screen (docs/designs/youtube-questions.md). */
@@ -309,6 +316,10 @@ export type ClientMessage =
   /** 🧪 喝下幸運藥水 on the team's own turn: its next crit or check die on `questionId` rolls twice, keeping the higher
    * (lucky-potion.md). `eventId`: the STATE it was pressed under. */
   | { type: "TEAM_DRINK_POTION"; questionId: string; eventId: number }
+  /** 🔮 公開問神諭 on the team's own room question (anti-ai-cheating.md). */
+  | { type: "TEAM_ORACLE"; questionId: string }
+  /** 🚨 抓包: the sender's team says the team on turn asks an AI about `questionId`, the question its phone shows. */
+  | { type: "TEAM_CATCH"; questionId: string }
   /** 擲先攻 (lib/initiative.ts): this team's d20, once, while the room waits for rolls. */
   | { type: "TEAM_ROLL_INITIATIVE" }
   /** 全部代擲: the room rolls for every team that has not rolled 擲先攻 yet. */
@@ -737,6 +748,15 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (questionId === null || !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       return { type: "TEAM_DRINK_POTION", questionId, eventId: m.eventId as number };
     }
+    case "TEAM_ORACLE":
+    case "TEAM_CATCH": {
+      const questionId = str(m.questionId, MAX_ID);
+      return questionId === null ? null : { type: m.type, questionId };
+    }
+    case "HOST_ANTI_CHEAT":
+      return typeof m.on === "boolean" ? { type: "HOST_ANTI_CHEAT", on: m.on } : null;
+    case "HOST_RULE_CATCH":
+      return typeof m.upheld === "boolean" ? { type: "HOST_RULE_CATCH", upheld: m.upheld } : null;
     case "TEAM_CHOOSE_FORK":
       return (m.side === "left" || m.side === "right") && Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "TEAM_CHOOSE_FORK", side: m.side, eventId: m.eventId as number } : null;
     case "TEAM_CHOOSE_FORTUNE":
