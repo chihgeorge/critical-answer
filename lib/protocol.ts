@@ -30,7 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import type { Accessory } from "./monster-catalog";
-import { isClassId, type ClassId, type EventResult, type ForkDoor, type ForkSide, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { isClassId, isFortuneEffect, type ClassId, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
 import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
@@ -159,11 +159,22 @@ export function scoreName(cuisine: boolean | undefined): string {
   return cuisine ? "飽足感" : "獎勵分";
 }
 
+/** What STATE says of a fortune at each step (docs/designs/fortune-teller.md): the matching teams only on the card. */
+export interface FortuneView {
+  teamId: string;
+  condition: FortuneCondition;
+  step: "intro" | "choose" | "beat" | "card";
+  effect?: FortuneEffect;
+  timeout?: true;
+  value?: number;
+  matchIds?: string[];
+}
+
 export type Pacing = "auto" | "manual";
 /** What a manual room waits on (manual-pacing.md). `id` goes back in HOST_STEP; `label` is the host page's text. */
 export interface Hold {
   id: number;
-  kind: "initiative" | "phase-card" | "lock" | "roll" | "boss-miss" | "fork" | "fork-beat" | "podium";
+  kind: "initiative" | "phase-card" | "lock" | "roll" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
   label: string;
 }
 
@@ -226,6 +237,8 @@ export type ClientMessage =
   /** Director: cook the revealed monster (docs/designs/monster-cuisine.md, cooking R5). Same `eventId` guard as HOST_NEXT;
    * a second press does nothing. A dish reveal takes this before HOST_NEXT. */
   | { type: "HOST_SERVE"; eventId: number }
+  /** 立即隨機 (docs/designs/fortune-teller.md): 2 s past a fortune's deadline with no pick, a random effect, as time running out. */
+  | { type: "HOST_FORTUNE_RANDOM"; eventId: number }
   /** Host override: take a team into the boss room (docs/designs/scoring-and-score-pools.md S13). */
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
   /** 🧪 給藥水 (docs/designs/lucky-potion.md): the host gives a team a potion, at any time of the game; refused while it holds one. */
@@ -285,6 +298,8 @@ export type ClientMessage =
   | { type: "TEAM_USE_ABILITY"; questionId: string }
   /** The team on turn at a fork picks its door (docs/designs/branch-fork.md). `eventId`: the STATE it was pressed under. */
   | { type: "TEAM_CHOOSE_FORK"; side: ForkSide; eventId: number }
+  /** The team that drew the fortune teller picks an effect (docs/designs/fortune-teller.md). `eventId`: the STATE it was pressed under. */
+  | { type: "TEAM_CHOOSE_FORTUNE"; effect: FortuneEffect; eventId: number }
   /** 擲骰說服 on the team's own fill-in turn (dnd design R6, R-E1): the room rolls the check. `eventId`: the STATE it was pressed under (R-E4). */
   | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
   /** 替○○擲骰: the host's stuck row when the team on turn has not rolled its check; the room rolls it as for TEAM_ROLL_CHECK. */
@@ -441,6 +456,12 @@ export type ServerMessage =
        * shows the team as it was before the press, so nothing behind the door shows early. Memory only. The side opened
        * and what was behind it; the other door is never named, nor which side hides what before a pick. */
       forkBeat?: { teamId: string; side: ForkSide; door: ForkDoor; timeout?: true };
+      /** 占卜師 (docs/designs/fortune-teller.md), from the crystal ball to the host's 下一題 after the effect card. `step`:
+       * "intro" the ball (no pick yet), "choose" the pizza, "beat" the picked slice lit, "card" the effect card. `effect`
+       * and `timeout` only from "beat"; `value` and `matchIds` only on "card". Never during the door opening. */
+      fortune?: FortuneView;
+      /** The fortune's clock, auto pacing only: ms left when this STATE was sent, like `forkLeft`. */
+      fortuneLeft?: number;
     }
   | { type: "GAME_OVER"; winners: string[] }
   /** A waiting team's reaction, for the big screen to float up for a moment. Never stored. */
@@ -699,6 +720,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: "HOST_EXTEND_ROOM" };
     case "HOST_NEXT":
     case "HOST_SERVE":
+    case "HOST_FORTUNE_RANDOM":
       return Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: m.type, eventId: m.eventId as number } : null;
     case "HOST_SEND_TO_BOSS": {
       const teamId = str(m.teamId, MAX_ID);
@@ -715,6 +737,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "TEAM_CHOOSE_FORK":
       return (m.side === "left" || m.side === "right") && Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "TEAM_CHOOSE_FORK", side: m.side, eventId: m.eventId as number } : null;
+    case "TEAM_CHOOSE_FORTUNE":
+      return isFortuneEffect(m.effect) && Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "TEAM_CHOOSE_FORTUNE", effect: m.effect, eventId: m.eventId as number } : null;
     case "HOST_REVEAL": {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);

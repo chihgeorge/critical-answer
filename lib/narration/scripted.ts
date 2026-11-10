@@ -4,7 +4,8 @@
 import { epilogueParts, type NarrationEvent, type NextTurn } from "./events";
 import { ordinal } from "../ordinal";
 import { placeLine } from "../podium";
-import type { ClassId, EventOutcome } from "../game-state";
+import type { ClassId, EventOutcome, FortuneCondition, FortuneEffect } from "../game-state";
+import { FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "../event-text";
 import type { Reaction } from "../protocol";
 
 export interface NarrationProvider {
@@ -457,6 +458,16 @@ export const FORK_MONSTER_VARIANTS = ["{team}推開 ⚔️ 門，{monster}擋在
 /** Said when the clock picked ⚔️ for the team. */
 export const FORK_TIMEOUT_VARIANTS = ["{team}猶豫太久，被推進了 ⚔️ 門！", "時間到！一陣風把{team}吹進 ⚔️ 門。"];
 
+/** 占卜師 (docs/designs/fortune-teller.md), all scripted: the crystal ball names the condition, never who matches. */
+export const FORTUNE_CONDITION_VARIANTS = ["水晶球浮現一行字：「{condition}」……", "占卜師盯著水晶球：「我看見了……{condition}。」", "水晶球亮了起來：命運落在「{condition}」身上。"];
+export const FORTUNE_PICK_VARIANTS = ["{team}，替他們挑一片吧！", "{team}，命運交給你們了，挑一片！", "{team}，是送禮還是挖坑？挑一片吧！"];
+/** Said with the effect card: what was picked, then who it hit. */
+export const FORTUNE_CHOSEN_VARIANTS = ["{team}挑了{effect}！", "{team}毫不猶豫：{effect}！"];
+export const FORTUNE_TIMEOUT_VARIANTS = ["時間到！占卜師替{team}挑了{effect}。", "{team}想太久，水晶球自己轉到了{effect}。"];
+export const FORTUNE_HIT_VARIANTS = ["命運落在{names}身上！", "中的是……{names}！", "水晶球照出了{names}！"];
+/** The drawing team matched its own condition: the room laughs. */
+export const FORTUNE_SELF_VARIANTS = ["中的是……{names}！挖坑給自己跳！", "{team}自己也中了！占卜師笑到水晶球都在抖。", "選的人自己也中了！{names}，這就是命運。"];
+
 /** The transition segment (last of 3, when there's a next team): the narrator turns to the team now on turn. */
 export const NEXT_VARIANTS = {
   room: [
@@ -601,6 +612,16 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     /** The fork's opening line, when the team's door clock starts. */
     forkOpening(team: string): string {
       return fill(pick(FORK_OPEN_VARIANTS, "fork-open"), { team });
+    },
+    /** The fortune's crystal ball: the condition, then the drawing team is asked to pick. */
+    fortuneOpening(condition: FortuneCondition, team: string): string[] {
+      return [fill(pick(FORTUNE_CONDITION_VARIANTS, "fortune-condition"), { condition: FORTUNE_CONDITION_TEXT[condition].text }), fill(pick(FORTUNE_PICK_VARIANTS, "fortune-pick"), { team })];
+    },
+    /** The effect card: what was picked (by the team, or the clock), then who it hit; `self` mocks the drawing team. */
+    fortuneResult(effect: FortuneEffect, timeout: boolean, team: string, names: string, self: boolean): string[] {
+      const e = FORTUNE_EFFECT_TEXT[effect];
+      const chosen = fill(pick(timeout ? FORTUNE_TIMEOUT_VARIANTS : FORTUNE_CHOSEN_VARIANTS, timeout ? "fortune-timeout" : "fortune-chosen"), { team, effect: `${e.icon}${e.name}` });
+      return [chosen, fill(pick(self ? FORTUNE_SELF_VARIANTS : FORTUNE_HIT_VARIANTS, self ? "fortune-self" : "fortune-hit"), { team, names })];
     },
     /** The line once a fork's ⚔️ door opened: picked, or `timeout`. */
     forkLine(timeout: boolean, team: string, monster: string): string {

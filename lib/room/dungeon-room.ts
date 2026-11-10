@@ -47,6 +47,11 @@ import {
   enterFork,
   eventEligible,
   startForkChoice,
+  resolveFortune,
+  endFortune,
+  FORTUNE_EFFECTS,
+  FORTUNE_INTRO_MS,
+  type FortuneEffect,
   EVENT_CHANCE,
   FORK_MS,
   type ForkChoice,
@@ -76,6 +81,7 @@ import {
   type AnswerReveal,
   type ClientMessage,
   type EventReveal,
+  type FortuneView,
   type HostPick,
   type MediaAction,
   type MediaCommand,
@@ -123,7 +129,7 @@ const JOIN_PASSWORD_MAX_WRONG = 10;
 const JOIN_PASSWORD_WINDOW_MS = 60_000;
 
 /** The pauses the room times itself (manual-pacing.md), in the order HOST_STEP looks for a live one. */
-const STEP_SLOTS = ["initiative", "forkBeat", "lock", "phaseCard", "fork"] as const;
+const STEP_SLOTS = ["initiative", "forkBeat", "fortuneBeat", "lock", "phaseCard", "fork", "fortune"] as const;
 type StepSlot = (typeof STEP_SLOTS)[number];
 interface Step {
   id: number;
@@ -167,6 +173,10 @@ const BEAT_MS = 2000;
 export const LOST_CRIT_GAP_MS = 4000;
 /** A fork's door opening on show (docs/designs/branch-fork.md): the question, or the ❓ outcome, waits for it. */
 export const FORK_BEAT_MS = 1500;
+/** The fortune's picked slice lit on the pizza before the effect card (docs/designs/fortune-teller.md step 3). */
+export const FORTUNE_BEAT_MS = 1000;
+/** How long past a fortune's deadline the host's 立即隨機 waits, for a clock that never fired. */
+export const FORTUNE_HOST_GRACE_MS = 2000;
 /** The boss kill's 4d20 on screen (docs/designs/kill-roll.md): the dice land one by one, then the total stays up. */
 const KILL_BEAT_MS = 4000;
 
@@ -381,7 +391,12 @@ export class DungeonRoom {
    * meanwhile, so no score, room or turn moves before the door opens (the choice is applied and saved already).
    * `reveal`: the ❓ outcome, shown when the beat ends; `line`: ⚔️'s scripted line, said then. Memory only: a
    * restart drops the beat, and with it a ❓ outcome's screen and line (its effect stays). */
-  private forkBeat: { teamId: string; side: ForkSide; door: ForkDoor; timeout: boolean; before: GameState; reveal?: EventReveal; line?: { eventId: number; text: string } } | null = null;
+  private forkBeat: { teamId: string; side: ForkSide; door: ForkDoor; timeout: boolean; before: GameState; reveal?: EventReveal; line?: { eventId: number; text: string }; fortune?: true } | null = null;
+  /** 占卜師 step 3 (docs/designs/fortune-teller.md): the picked slice lit for FORTUNE_BEAT_MS. The effect is applied and
+   * saved already; STATE shows `before` meanwhile. Memory only: a restart goes straight to the effect card. */
+  private fortuneBeat: { effect: FortuneEffect; timeout: boolean; before: GameState } | null = null;
+  /** Ends the crystal ball (step 1) with a STATE, so the phones get their buttons. Memory only: restore() arms it again. */
+  private fortuneIntroTimer: ReturnType<typeof setTimeout> | null = null;
   /** When the host pressed 上菜 on the reveal up now (only read while `reveal.served`). */
   private servedAt = 0;
   /** The host's last ▶ ⏸ ⟲ (docs/designs/youtube-questions.md). In memory only (D6): a restart forgets it. */
@@ -961,6 +976,16 @@ export class DungeonRoom {
     } catch {
       // a damaged save (a null team) restores without its door clock
     }
+    // A fortune keeps its saved deadline the same way (fortune-teller.md); one saved inside the door opening has none yet,
+    // so its crystal ball starts now. One saved with its effect is on its card until 下一題.
+    try {
+      if (this.game?.phase === "playing" && this.game.fortune && !this.game.fortune.effect) {
+        if (this.game.fortune.deadline === undefined) this.startFortune();
+        else this.armFortune();
+      }
+    } catch {
+      // a damaged save restores without the fortune's clock
+    }
     try {
       this.lostCrit = this.game ? lostCritOf(this.game) : null;
     } catch {
@@ -1005,8 +1030,9 @@ export class DungeonRoom {
     if (!game || game.phase !== "playing") return null;
     const teamId = currentTurnTeamId(game);
     const team = game.teams.find((t) => t.id === teamId);
-    // A team at a fork has no question until it picks ⚔️ (branch-fork.md): its held deal stays hidden.
-    if (!team || atFork(team)) return null;
+    // A team at a fork has no question until it picks ⚔️ (branch-fork.md): its held deal stays hidden. Nor does a team
+    // picking a fortune's effect: it is walking out of that room (fortune-teller.md).
+    if (!team || atFork(team) || (game.fortune && !game.fortune.effect)) return null;
     const id = currentQuestionIdOf(game, team.id);
     // The team's own count from when it walked in, so its monster never changes mid-room (monster-catalog.md §3).
     const roomMonster = teamMonsterId(game, team);
@@ -1160,7 +1186,8 @@ export class DungeonRoom {
       return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}), bankSize: bankSize(this.bank), ...this.pacingView() };
     }
     // A door opening shows the game from before the press (branch-fork.md); online is live, phones come and go meanwhile.
-    const shown = this.forkBeat?.before ?? this.game;
+    // So does a fortune's lit slice: the effect shows on the card (fortune-teller.md).
+    const shown = this.forkBeat?.before ?? this.fortuneBeat?.before ?? this.game;
     const view = getSpectatorView(shown);
     if (shown !== this.game) view.teams = view.teams.map((t) => ({ ...t, online: this.game!.teams.find((r) => r.id === t.id)?.online ?? t.online }));
     const choosing = this.forkBeat ? undefined : this.game.teams.find((t) => t.fork?.phase === "choosing")?.fork;
@@ -1183,7 +1210,7 @@ export class DungeonRoom {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       // The card holds the new phase's first question back until the host's 下一題.
-      question: this.phaseCard || this.opening() || this.forkBeat ? null : this.shownQuestion(),
+      question: this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides() ? null : this.shownQuestion(),
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.pacingView(),
@@ -1191,6 +1218,7 @@ export class DungeonRoom {
       // No door clock in manual: the doors wait for the team, or for the host's ▶ 下一步.
       ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.pacing === "auto" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
       ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, side: this.forkBeat.side, door: this.forkBeat.door, ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
+      ...this.fortuneView(),
       ...this.liveMedia(),
       ...(this.clipError !== null && this.clipError === this.shownVideoId() ? { clipError: true as const } : {}),
       ...this.buzzCategories(),
@@ -1282,8 +1310,21 @@ export class DungeonRoom {
         this.keepUndoOpen({ ...this.game!, teams: this.game!.teams.map((t) => (t === team ? { ...t, fork } : t)) });
         this.armFork();
       }
+      // A fortune's pizza gets a fresh 15 seconds; its crystal ball plays again only if it was still up (fortune-teller.md R8).
+      const fortune = this.steps.has("fortune") && this.game?.phase === "playing" ? this.game.fortune : undefined;
+      if (fortune && !fortune.effect && !this.fortuneBeat) {
+        const deadline = now + (this.fortuneStep() === "intro" ? FORTUNE_INTRO_MS : 0) + FORK_MS;
+        this.keepUndoOpen({ ...this.game!, fortune: { ...fortune, deadline } });
+        this.armFortune();
+      }
       for (const [slot, step] of this.steps) {
         if (step.timer) continue;
+        // The lit slice was held: the card comes at once.
+        if (slot === "fortuneBeat") {
+          this.steps.delete(slot);
+          step.run();
+          continue;
+        }
         if (slot === "initiative") this.initiativeEndsAt = now + step.ms;
         this.startStep(slot, step);
       }
@@ -1801,6 +1842,12 @@ export class DungeonRoom {
         case "TEAM_CHOOSE_FORK":
           this.handleChooseFork(sender, msg.side, msg.eventId);
           break;
+        case "TEAM_CHOOSE_FORTUNE":
+          this.handleChooseFortune(sender, msg.effect, msg.eventId);
+          break;
+        case "HOST_FORTUNE_RANDOM":
+          this.handleHostFortuneRandom(sender, msg.eventId);
+          break;
         case "HOST_QUEUE_QUESTION":
           this.handleQueueQuestion(sender, msg.target, msg.questionId);
           break;
@@ -2131,7 +2178,7 @@ export class DungeonRoom {
       this.dropTeam(teamId, "not_admitted");
       return this.broadcastState();
     }
-    if (!this.game || !lateJoinOpen(this.game) || this.opening() || this.forkBeat) {
+    if (!this.game || !lateJoinOpen(this.game) || this.opening() || this.forkBeat || this.fortuneActive()) {
       return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "late_closed" });
     }
     try {
@@ -2229,6 +2276,10 @@ export class DungeonRoom {
     // older STATE is stale — ignore it rather than close a reveal nobody has seen.
     // The intro turns pages with HOST_INTRO only.
     if (!this.paused() || this.opening() || this.forkBeat || eventId !== this.eventSeq) return;
+    // A fortune moves on only from its effect card (fortune-teller.md).
+    const fortune = this.game?.phase === "playing" ? this.game.fortune : undefined;
+    if (this.fortuneBeat || (fortune && !fortune.effect)) return;
+    if (fortune) return this.closeFortune();
     // A dish is served before 下一題, and the cooking plays out first (cooking I2): a double press or a stale tab can't skip it.
     if (this.reveal?.dish && (!this.reveal.served || this.now() - this.servedAt < SERVE_HOLD_MS)) return;
     if (this.reveal) return this.closeReveal();
@@ -2255,7 +2306,40 @@ export class DungeonRoom {
 
   /** An answer reveal or the boss's phase card is up: nobody answers until the host moves on. */
   private paused(): boolean {
-    return !!this.reveal || !!this.eventReveal || this.phaseCard || this.phaseCardDue || this.opening() || !!this.forkBeat;
+    return !!this.reveal || !!this.eventReveal || this.phaseCard || this.phaseCardDue || this.opening() || !!this.forkBeat || this.fortuneActive();
+  }
+
+  /** A fortune runs (docs/designs/fortune-teller.md), from the crystal ball to the effect card's 下一題. */
+  private fortuneActive(): boolean {
+    return !!this.fortuneBeat || (this.game?.phase === "playing" && !!this.game.fortune);
+  }
+
+  /** Which step of the fortune is on: the crystal ball, the pizza, the lit slice, or the effect card. */
+  private fortuneStep(): FortuneView["step"] | null {
+    if (this.fortuneBeat) return "beat";
+    const f = this.game?.phase === "playing" ? this.game.fortune : undefined;
+    if (!f) return null;
+    if (f.effect) return "card";
+    return f.deadline === undefined || this.now() < f.deadline - FORK_MS ? "intro" : "choose";
+  }
+
+  /** Steps 1–3 hold the question back: the drawing team's old one is still dealt, and the next team's turn has not come. */
+  private fortuneHides(): boolean {
+    const step = this.fortuneStep();
+    return step !== null && step !== "card";
+  }
+
+  /** STATE's fortune (fortune-teller.md R12): the condition only, the effect from the lit slice, the matching teams and
+   * their count only on the card. Nothing while the door opens. */
+  private fortuneView(): { fortune?: FortuneView; fortuneLeft?: number } {
+    const step = this.forkBeat ? null : this.fortuneStep();
+    const f = (this.fortuneBeat?.before ?? this.game)?.fortune;
+    if (!step || !f) return {};
+    const base = { teamId: f.teamId, condition: f.condition, step };
+    if (step === "card") return { fortune: { ...base, effect: f.effect, ...(f.timeout ? { timeout: true as const } : {}), value: f.value, matchIds: f.matchIds } };
+    if (step === "beat") return { fortune: { ...base, effect: this.fortuneBeat!.effect, ...(this.fortuneBeat!.timeout ? { timeout: true as const } : {}) } };
+    // No clock in manual: the pizza waits for the team, or for the host's ▶ 下一步.
+    return { fortune: base, ...(step === "choose" && this.pacing === "auto" && f.deadline !== undefined ? { fortuneLeft: Math.max(0, f.deadline - this.now()) } : {}) };
   }
 
   /** The intro or 擲先攻 is on: the game exists, but no question is dealt yet. */
@@ -2301,6 +2385,9 @@ export class DungeonRoom {
     this.initiative = null;
     // A door clock or a door opening belongs to the game that ended or went: a finished game shows its real scores.
     this.forkBeat = null;
+    this.fortuneBeat = null;
+    if (this.fortuneIntroTimer) clearTimeout(this.fortuneIntroTimer);
+    this.fortuneIntroTimer = null;
     // A crit die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now.
     const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : undefined);
     this.pendingLock = null;
@@ -2645,7 +2732,7 @@ export class DungeonRoom {
   }
 
   private undoHeld(): boolean {
-    return !!this.reveal || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat;
+    return !!this.reveal || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat || this.fortuneActive();
   }
 
   /** Runs `judge`, a 答錯 on a fill-in, so that 改判答對 may undo it. A cleric's wait and the 重答 / 逃跑 after it chain to the
@@ -2756,6 +2843,8 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
       return;
     }
+    // A fortune's matching teams and turn are fixed until its card closes (fortune-teller.md E3).
+    if (this.fortuneActive()) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
     try {
       const onTurn = !isBuzzPhase(this.game) && currentTurnTeamId(this.game) === teamId;
       this.game = sendToBoss(this.game, teamId, this.rng);
@@ -2981,7 +3070,7 @@ export class DungeonRoom {
     if (this.game?.phase !== "playing") return null;
     if (this.reveal) return this.reveal.video ? this.reveal.questionId : null;
     // A door opening: the real turn may have passed on, and the next team's video must not start under it.
-    if (this.phaseCard || this.opening() || this.forkBeat) return null;
+    if (this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides()) return null;
     // Not before the check: the video is part of the question.
     const pub = this.awaitingCheck() ? null : this.currentQuestion()?.pub;
     return pub?.content.kind === "youtube" ? pub.id : null;
@@ -3450,9 +3539,13 @@ export class DungeonRoom {
     this.game = chosen.game;
     const name = before.teams.find((t) => t.id === teamId)?.name ?? "";
     const { result } = chosen;
+    // ❓ drew the fortune teller: no outcome to show and no monster to name; her crystal ball follows the door (R3).
+    const fortune = !!chosen.game.fortune && !before.fortune;
     let reveal: EventReveal | undefined;
     let line: { eventId: number; text: string } | undefined;
-    if (result) {
+    if (fortune) {
+      // nothing drawn for the screen until the crystal ball
+    } else if (result) {
       // A feast serves a dish from the catalog: the room monsters', since the boss's is the last night's feast.
       // Only a dish the room may say aloud, like the dishes the epilogue names; none left means no dish.
       const pool = MONSTERS.filter((m) => !m.boss && this.sayable(m.dish.name));
@@ -3464,7 +3557,7 @@ export class DungeonRoom {
       line = { eventId: this.eventSeq, text: this.scripted.forkLine(choice === "timeout", name, monster) };
     }
     // The opened door is revealed, and only it: the other side's door is never named.
-    const beat = { teamId, side: chosen.record.side, door: chosen.record.door, timeout: choice === "timeout", before, ...(reveal ? { reveal } : {}), ...(line ? { line } : {}) };
+    const beat = { teamId, side: chosen.record.side, door: chosen.record.door, timeout: choice === "timeout", before, ...(reveal ? { reveal } : {}), ...(line ? { line } : {}), ...(fortune ? { fortune: true as const } : {}) };
     this.forkBeat = beat;
     this.pace("forkBeat", "fork-beat", FORK_BEAT_MS, () => (this.forkBeat === beat ? "接下來走進門後的房間" : null), () => {
       if (this.forkBeat === beat) this.endForkBeat();
@@ -3478,6 +3571,14 @@ export class DungeonRoom {
     const beat = this.forkBeat!;
     this.forkBeat = null;
     const { reveal, line } = beat;
+    if (beat.fortune) {
+      // Ended with the game, or by a restart before: nothing left to start.
+      if (this.game?.phase !== "playing" || !this.game.fortune || this.game.fortune.effect) return this.broadcastState();
+      this.startFortune();
+      this.broadcastState();
+      this.sendNarration();
+      return;
+    }
     if (!reveal) {
       this.broadcastState();
       if (line) this.appendLine(line.eventId, line.text);
@@ -3502,6 +3603,138 @@ export class DungeonRoom {
       ...(reveal.dish ? { dish: reveal.dish.name } : {}),
       ...(next ? { next } : {}),
     });
+  }
+
+  /** 占卜師 step 1 (docs/designs/fortune-teller.md): the crystal ball comes up with the condition, the 3 s and then the 15 s
+   * start (deadline saved with the game), and the scripted lines are written under a new eventId. The caller broadcasts. */
+  private startFortune() {
+    const game = this.game!;
+    const fortune = game.fortune!;
+    this.game = { ...game, fortune: { ...fortune, deadline: this.now() + FORTUNE_INTRO_MS + FORK_MS } };
+    this.armFortune();
+    const name = game.teams.find((t) => t.id === fortune.teamId)?.name ?? "";
+    this.writeScripted(this.scripted.fortuneOpening(fortune.condition, name));
+  }
+
+  /** A scripted narration of its own (no AI wait), keyed by a new eventId; lines held for an older one come first. */
+  private writeScripted(lines: string[]) {
+    const eventId = ++this.eventSeq;
+    const held = this.heldLines && this.heldLines.eventId < eventId ? this.heldLines.lines : [];
+    if (held.length) this.heldLines = null;
+    this.lastNarration = { eventId, lines: [...held.slice(-(NARRATION_MAX_LINES - lines.length)), ...lines], rev: 0, done: 0 };
+  }
+
+  /** Sends the narration writeScripted wrote, after the STATE that carries its eventId. */
+  private sendNarration() {
+    const n = this.lastNarration;
+    if (n) this.broadcast({ type: "NARRATION", eventId: n.eventId, lines: n.lines, rev: n.rev });
+  }
+
+  /** Times the fortune's crystal ball and its pizza clock to the saved deadline. A stale firing finds another fortune (or
+   * none, or one already picked) and does nothing. */
+  private armFortune() {
+    this.unpace("fortune");
+    if (this.fortuneIntroTimer) clearTimeout(this.fortuneIntroTimer);
+    this.fortuneIntroTimer = null;
+    const game = this.game;
+    const fortune = game?.phase === "playing" ? game.fortune : undefined;
+    if (!fortune || fortune.effect || fortune.deadline === undefined) return;
+    const { deadline } = fortune;
+    const name = game!.teams.find((t) => t.id === fortune.teamId)?.name ?? "";
+    const live = () => {
+      const f = this.game?.phase === "playing" ? this.game.fortune : undefined;
+      return !!f && !f.effect && f.deadline === deadline && !this.fortuneBeat;
+    };
+    const intro = deadline - FORK_MS - this.now();
+    if (intro > 0) {
+      this.fortuneIntroTimer = setTimeout(() => {
+        this.fortuneIntroTimer = null;
+        if (live()) this.broadcastState();
+      }, intro);
+    }
+    // In manual the pizza waits for the team; ▶ 下一步 (offered once the ball is down) is the clock running out.
+    this.pace("fortune", "fortune", Math.max(0, deadline - this.now()), () => (live() && this.fortuneStep() === "choose" ? `等${name}挑命運；按「下一步」算時間到` : null), () => {
+      if (live()) this.applyFortune(this.randomFortuneEffect(), true);
+    });
+  }
+
+  private randomFortuneEffect(): FortuneEffect {
+    return FORTUNE_EFFECTS[Math.min(FORTUNE_EFFECTS.length - 1, Math.floor(this.rng() * FORTUNE_EFFECTS.length))];
+  }
+
+  /** TEAM_CHOOSE_FORTUNE (fortune-teller.md E12, R8): only the drawing team, only on the pizza, once. A press at or after
+   * the deadline is the clock's: a random effect. */
+  private handleChooseFortune(conn: Conn, effect: FortuneEffect, eventId: number) {
+    const teamId = this.playingTeam(conn);
+    const game = this.game;
+    if (!teamId || !game) return;
+    const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    if (eventId !== this.eventSeq) return reject("stale_event");
+    const fortune = game.phase === "playing" ? game.fortune : undefined;
+    // A second phone, or a double tap, after the first pick landed.
+    if (!fortune || fortune.effect || this.fortuneBeat) return reject("no_fortune");
+    if (fortune.teamId !== teamId) return reject("not_your_turn");
+    if (this.fortuneStep() !== "choose") return reject("fortune_intro");
+    const late = this.pacing === "auto" && fortune.deadline !== undefined && this.now() >= fortune.deadline;
+    this.applyFortune(late ? this.randomFortuneEffect() : effect, late, conn);
+  }
+
+  /** 立即隨機: the host's way out of a fortune whose clock never fired, FORTUNE_HOST_GRACE_MS past its deadline. The host
+   * never picks the effect. */
+  private handleHostFortuneRandom(conn: Conn, eventId: number) {
+    if (!this.requireHost(conn)) return;
+    if (eventId !== this.eventSeq) return;
+    const fortune = this.game?.phase === "playing" ? this.game.fortune : undefined;
+    if (!fortune || fortune.effect || this.fortuneBeat || fortune.deadline === undefined || this.now() < fortune.deadline + FORTUNE_HOST_GRACE_MS) {
+      return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "too_early" });
+    }
+    this.applyFortune(this.randomFortuneEffect(), true, conn);
+  }
+
+  /** The pick lands (resolveFortune: effect, event, the turn passes) and is saved now; the slice lights for FORTUNE_BEAT_MS
+   * while STATE still shows the game from before (step 3). */
+  private applyFortune(effect: FortuneEffect, timeout: boolean, conn?: Conn) {
+    const before = this.game!;
+    try {
+      this.game = resolveFortune(before, effect, timeout, this.rng);
+    } catch (err) {
+      if (conn) return this.sendInvalid(conn, err);
+      return console.error(JSON.stringify({ event: "fortune_failed", error: String(err) }));
+    }
+    this.unpace("fortune");
+    if (this.fortuneIntroTimer) clearTimeout(this.fortuneIntroTimer);
+    this.fortuneIntroTimer = null;
+    const beat = { effect, timeout, before };
+    this.fortuneBeat = beat;
+    this.setCue("check-pass");
+    this.pace("fortuneBeat", "fortune-beat", FORTUNE_BEAT_MS, () => (this.fortuneBeat === beat ? "接下來揭曉占卜結果" : null), () => {
+      if (this.fortuneBeat === beat) this.endFortuneBeat();
+    });
+    this.broadcastState();
+  }
+
+  /** Step 4: the effect card, with its cue and scripted lines, until the host's 下一題. */
+  private endFortuneBeat() {
+    this.fortuneBeat = null;
+    const game = this.game;
+    const fortune = game?.phase === "playing" ? game.fortune : undefined;
+    if (!game || !fortune?.effect) return this.broadcastState();
+    this.setCue(fortune.effect === "curse" ? "fumble" : "correct");
+    const name = (id: string) => game.teams.find((t) => t.id === id)?.name ?? "";
+    this.writeScripted(this.scripted.fortuneResult(fortune.effect, !!fortune.timeout, name(fortune.teamId), capUnits(fortune.matchIds.map(name).join("、"), 24), fortune.matchIds.includes(fortune.teamId)));
+    this.broadcastState();
+    this.sendNarration();
+  }
+
+  /** 下一題 on the effect card: the fortune is over, the next team's fork clock may start, and the owl names who is up. */
+  private closeFortune() {
+    this.game = endFortune(this.game!);
+    const seq = this.eventSeq;
+    this.broadcastState();
+    // A fork that just opened says its own opening line.
+    if (this.eventSeq !== seq) return;
+    const next = this.nextTurn();
+    if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next));
   }
 
   /** 擲骰說服 (dnd design R-E1, R-E4): the team on turn rolls its check on its own fill-in question, once. */
@@ -3546,6 +3779,8 @@ export class DungeonRoom {
   private handleHostGiveItem(conn: Conn, teamId: string) {
     if (!this.requireHost(conn)) return;
     if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+    // A potion given now could change what the fortune's 🧪 does (fortune-teller.md E3).
+    if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
     try {
       this.game = giveItem(this.game, teamId);
     } catch (err) {

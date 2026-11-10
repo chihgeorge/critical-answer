@@ -1,4 +1,4 @@
-import { abilityUsesFor, isClassId, type ClassId, type GameState } from "../game-state";
+import { abilityUsesFor, isClassId, isFortuneCondition, isFortuneEffect, type ClassId, type GameState } from "../game-state";
 import { UUID_RE, parseBank, type Bank } from "../question-bank";
 import type { Initiative } from "../initiative";
 import { isAnswerSeconds, type AnswerClock } from "../answer-clock";
@@ -122,8 +122,24 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     // and ❓ draws its event again.
     // A fork in any other shape (a choosing one with no usable deadline would never time out) waits for the team's turn.
     const forkOk = (f: unknown) => f === undefined || (isObject(f) && (f.phase === "waiting" || f.phase === "monster" || (f.phase === "choosing" && Number.isFinite(f.deadline) && (f.monsterSide === "left" || f.monsterSide === "right"))));
-    const forked = (t: Record<string, unknown>) => (t.event === undefined && forkOk(t.fork) ? t : { ...t, event: undefined, fork: { phase: "waiting" } });
-    const withUses = game === null ? null : { ...game, teams: (game.teams as unknown[]).map((t) => (isObject(t) ? { ...forked(t), abilityUses: t.abilityUses ?? abilityUsesFor(isClassId(t.classId) ? t.classId : undefined) } : t)) };
+    // 占卜師 (fortune-teller.md E1, R10): a fortune of a known shape keeps its drawing team's fortune event (steps 1–2) or
+    // stands as the effect card (step 4); any other shape is dropped and its team goes back to a waiting fork.
+    const f = game?.fortune;
+    const teamIds = game === null ? [] : (game.teams as unknown[]).flatMap((t) => (isObject(t) && isString(t.id) ? [t.id] : []));
+    const holder = (id: unknown) => (game!.teams as unknown[]).find((t) => isObject(t) && t.id === id) as Record<string, unknown> | undefined;
+    const fortuneOk =
+      isObject(f) &&
+      isFortuneCondition(f.condition) &&
+      Number.isInteger(f.value) &&
+      Array.isArray(f.matchIds) &&
+      f.matchIds.length > 0 &&
+      f.matchIds.every((id) => teamIds.includes(id as string)) &&
+      teamIds.includes(f.teamId as string) &&
+      (f.deadline === undefined || Number.isFinite(f.deadline)) &&
+      (f.effect === undefined ? isObject(holder(f.teamId)?.event) && (holder(f.teamId)!.event as Record<string, unknown>).outcome === "fortune" : isFortuneEffect(f.effect));
+    const fortuneEvent = (t: Record<string, unknown>) => fortuneOk && f!.effect === undefined && t.id === f!.teamId;
+    const forked = (t: Record<string, unknown>) => ((t.event === undefined || fortuneEvent(t)) && forkOk(t.fork) ? t : { ...t, event: undefined, fork: { phase: "waiting" } });
+    const withUses = game === null ? null : { ...game, ...(f !== undefined && !fortuneOk ? { fortune: undefined } : {}), teams: (game.teams as unknown[]).map((t) => (isObject(t) ? { ...forked(t), abilityUses: t.abilityUses ?? abilityUsesFor(isClassId(t.classId) ? t.classId : undefined) } : t)) };
     if (!Array.isArray(raw.teamKeys) || !raw.teamKeys.every((p) => Array.isArray(p) && p.length === 2 && isString(p[0]) && isString(p[1]))) return null;
     if (typeof raw.eventSeq !== "number" || !Number.isInteger(raw.eventSeq) || raw.eventSeq < 0) return null;
     const n = raw.lastNarration;
