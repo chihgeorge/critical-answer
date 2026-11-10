@@ -26,6 +26,8 @@ export interface RoomSnapshot {
   roomEpoch: string;
   game: GameState | null;
   pendingTeams: { id: string; name: string; classId?: ClassId }[];
+  /** Teams waiting for the host's 收這隊 (docs/designs/late-join.md). Missing means none, as in a save from before it. */
+  lateTeams?: { id: string; name: string; classId?: ClassId }[];
   hostToken: string;
   /** team id -> team secret */
   teamKeys: [string, string][];
@@ -107,6 +109,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     // Classes came later (class-abilities.md) without a version bump: a missing class is none, missing uses are a full set.
     const classOk = (t: Record<string, unknown>) => t.classId === undefined || isClassId(t.classId);
     if (!Array.isArray(raw.pendingTeams) || !raw.pendingTeams.every((t) => isObject(t) && isString(t.id) && isString(t.name) && classOk(t))) return null;
+    // A damaged waiting list only loses the waiting teams: their phones JOIN again.
+    const lateTeams = Array.isArray(raw.lateTeams) && raw.lateTeams.every((t) => isObject(t) && isString(t.id) && isString(t.name) && classOk(t)) ? (raw.lateTeams as RoomSnapshot["lateTeams"]) : undefined;
     // A non-object team entry is left as it is, like before classes (persistence.test.ts covers a null one).
     if (game !== null && !(game.teams as unknown[]).every((t) => !isObject(t) || (classOk(t) && (t.abilityUses === undefined || Number.isInteger(t.abilityUses))))) return null;
     // An event room saved before 叉路 (branch-fork.md) has no button left to open it: the team stands at a fork instead,
@@ -166,6 +170,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       revealHeld: raw.revealHeld === true ? true : undefined,
       ...(raw.answerSeconds !== undefined ? { answerSeconds: isAnswerSeconds(raw.answerSeconds) ? raw.answerSeconds : 0, answerClock, clipEnded: isString(raw.clipEnded) ? raw.clipEnded : null } : {}),
       game: withUses as GameState | null,
+      lateTeams,
       // Anything but a key we wrote is none: the room then makes a new one, never matches a damaged value.
       screenKey: isString(raw.screenKey) && UUID_RE.test(raw.screenKey) ? raw.screenKey : undefined,
       joinPassword,

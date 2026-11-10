@@ -26,6 +26,7 @@ import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
 import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, aiKeyRefused, AiPanel, aiKeyMessage, aiResendAfterRefusal, aiResendMessage, aiSavedKeyDead, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
+import { LateTeams } from "@/components/late-teams";
 import { FieldJudge } from "@/components/field-judge";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
@@ -258,6 +259,8 @@ export default function HostPage() {
               ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人"
               : msg.detail === "reveal_pending"
                 ? `大螢幕正在揭曉，先按「${toServe ? "🍲 上菜" : "下一題"}」`
+                : msg.detail === "late_closed"
+                ? "現在不能收這隊：首領戰開始了，或大螢幕還在開場、開門"
                 : msg.detail === "duplicate_name"
                 ? "已經有隊伍叫這個名字了"
                 : msg.error === "invalid_name"
@@ -958,6 +961,7 @@ export default function HostPage() {
                 </Panel>
               ))}
             </ul>
+            {game.late && <LateTeams late={game.late} disabled={!ready || !!game.forkBeat} send={send} />}
 
             <div className="mt-auto flex flex-col">
             <NarrationPanel

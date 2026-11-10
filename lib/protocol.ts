@@ -231,6 +231,9 @@ export type ClientMessage =
   | { type: "HOST_EPILOGUE_PAGE"; page: number }
   /** Lobby only: take a team out; its phones get team_removed. */
   | { type: "HOST_REMOVE_TEAM"; teamId: string }
+  /** During a game: let a waiting late team in (`admit`), or turn it away; its phones then get team_removed
+   * (docs/designs/late-join.md). */
+  | { type: "HOST_LATE_TEAM"; teamId: string; admit: boolean }
   /** Lobby only: rename a team, with JOIN's name check and no other team's name. */
   | { type: "HOST_RENAME_TEAM"; teamId: string; teamName: string }
   /** During a game: a one-time code that hands the team to a new phone (docs/designs/team-handoff.md). */
@@ -418,6 +421,9 @@ export type ServerMessage =
       /** The host switched the room to manual (HOST_PACING); absent means auto. `hold`: the step it waits on now. */
       pacing?: "manual";
       hold?: Hold;
+      /** Teams that joined after the start and wait for the host (docs/designs/late-join.md). `closed`: the boss fight
+       * has begun or the game is over, so they wait for the next game. Absent while nobody waits. */
+      late?: { teams: { id: string; name: string; classId?: ClassId }[]; closed?: true };
       /** The door that just opened, on show for FORK_BEAT_MS (branch-fork.md): `question` is null and the view still
        * shows the team as it was before the press, so nothing behind the door shows early. Memory only. The side opened
        * and what was behind it; the other door is never named, nor which side hides what before a pick. */
@@ -706,6 +712,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_REMOVE_TEAM": {
       const teamId = str(m.teamId, MAX_ID);
       return teamId === null ? null : { type: "HOST_REMOVE_TEAM", teamId };
+    }
+    case "HOST_LATE_TEAM": {
+      const teamId = str(m.teamId, MAX_ID);
+      return teamId === null || typeof m.admit !== "boolean" ? null : { type: "HOST_LATE_TEAM", teamId, admit: m.admit };
     }
     case "HOST_RENAME_TEAM": {
       const teamId = str(m.teamId, MAX_ID);

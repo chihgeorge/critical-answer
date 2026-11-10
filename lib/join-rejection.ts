@@ -24,7 +24,10 @@ export function joinRejection(error: ServerErrorCode, detail: string | undefined
       return { text: sentPassword ? "房間密碼不對" : "這個房間要密碼才能加入", link: "password" };
     // Sent to a team's own phones only (HOST_REMOVE_TEAM): joining again from the home page is allowed.
     case "team_removed":
-      return { text: "主持人把你們的隊伍移除了", link: "home" };
+      // not_admitted: the host's 不收 on a team that joined after the start (docs/designs/late-join.md).
+      return { text: detail === "not_admitted" ? "主持人這場沒有收你們的隊伍" : "主持人把你們的隊伍移除了", link: "home" };
+    // No JOIN gets it since late joining (a class pick that races HOST_START does, and `joined` hides that one).
+    // Kept for a page that still talks to a Worker from before late joining, while a deploy rolls out.
     case "game_already_started":
       return { text: "遊戲已經開始了，新隊伍不能再加入", link: "home", handoff: true };
     // Only TEAM_CLAIM sends it, so it is a refusal even after `joined`: the screen keeps its code input for another try.

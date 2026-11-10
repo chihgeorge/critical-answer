@@ -14,6 +14,9 @@ describe("joinRejection", () => {
     expect(joinRejection("invalid_action", "room_full", false, false)).toEqual({ text: "房間已滿（最多 8 隊）", link: "home" });
     expect(joinRejection("invalid_team_id", undefined, false, false)?.link).toBe("home");
     expect(joinRejection("bad_token", undefined, false, false)?.link).toBe("home");
+    // 不收 on a waiting late team (late-join.md): the phone has seen itself waiting, so `joined` is true.
+    expect(joinRejection("team_removed", "not_admitted", false, true)).toEqual({ text: "主持人這場沒有收你們的隊伍", link: "home" });
+    expect(joinRejection("team_removed", undefined, false, true)?.text).toBe("主持人把你們的隊伍移除了");
   });
 
   // /review: a joined team's class tap that races HOST_START gets game_already_started (dungeon-room.ts

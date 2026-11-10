@@ -194,6 +194,9 @@ export interface Team {
   /** Potions the host gave and the team drank, for lib/game-log.ts (lucky-potion.md E8). Absent until the first. */
   potionsGiven?: number;
   potionsDrunk?: number;
+  /** Let in mid-game with the last-place team's score (docs/designs/late-join.md): its boss entry is never `earned`,
+   * so the few turns it took win no ⚡ 閃電突擊. */
+  late?: true;
 }
 
 export interface RoomTemplate {
@@ -666,6 +669,37 @@ export function createGame(
   };
 }
 
+/** A late team may still be let in (docs/designs/late-join.md): the game is being played and no team is in the boss room. */
+export function lateJoinOpen(game: GameState): boolean {
+  return game.phase === "playing" && !game.teams.some((t) => t.inBoss);
+}
+
+/** The host lets a team in mid-game (docs/designs/late-join.md): room 1, last in turnOrder, and level with the team in
+ * last place on both counts (reward decides the winner, score the boss door). No 擲先攻 for it. */
+export function addLateTeam(game: GameState, seed: { id: string; name: string; classId?: ClassId }, rng: () => number = Math.random): GameState {
+  if (!lateJoinOpen(game)) throw new InvalidActionError("late_closed");
+  if (game.teams.some((t) => t.id === seed.id)) throw new InvalidActionError("already_in_game");
+  const room = game.rooms[0];
+  const dealt = deal(game.pools, game.usedQuestionIds, game.revealedQuestionIds, game.teams, room.baseDifficulty, rng);
+  const team: Team = {
+    id: seed.id,
+    name: seed.name,
+    online: true,
+    score: Math.min(...game.teams.map((t) => t.score)),
+    reward: Math.min(...game.teams.map((t) => t.reward)),
+    roomIndex: 0,
+    metDefeats: (room.monsterId && game.defeats?.[room.monsterId]) || 0,
+    currentDifficulty: room.baseDifficulty,
+    currentQuestionId: dealt.questionId,
+    currentSelection: null,
+    inBoss: false,
+    ...(seed.classId ? { classId: seed.classId } : {}),
+    abilityUses: abilityUsesFor(seed.classId),
+    late: true,
+  };
+  return { ...game, teams: [...game.teams, team], turnOrder: [...game.turnOrder, seed.id], usedQuestionIds: dealt.used };
+}
+
 function getTeam(game: GameState, teamId: string): Team {
   const team = game.teams.find((t) => t.id === teamId);
   if (!team) throw new InvalidActionError(`Unknown team: ${teamId}`);
@@ -1034,8 +1068,9 @@ export function answerQuestion(
       // A correct answer is always revealed (D5), so the next deal from any pool must not hand it
       // back to a team who hasn't faced it yet.
       const revealedQuestionIds = withRevealed(game.revealedQuestionIds, questionId);
-      const earned = team.score + pointsAwarded >= game.config.bossThreshold;
-      const entersBoss = earned || game.teams.some((t) => t.inBoss);
+      const reached = team.score + pointsAwarded >= game.config.bossThreshold;
+      const earned = reached && !team.late;
+      const entersBoss = reached || game.teams.some((t) => t.inBoss);
       // A team walking into the boss room stays at its room: no next-room question is dealt (it would burn one).
       const nextRoomIndex = entersBoss ? team.roomIndex : Math.min(team.roomIndex + 1, game.rooms.length - 1);
       // Its queued pick goes with it: the boss room has its own.

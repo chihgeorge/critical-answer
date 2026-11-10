@@ -53,6 +53,8 @@ import {
   type ForkDoor,
   type ForkSide,
   InvalidActionError,
+  addLateTeam,
+  lateJoinOpen,
   type ClassId,
   type GameState,
   type LockedOption,
@@ -267,6 +269,9 @@ const sameTeamName = (a: string, b: string) => a.normalize("NFKC").toLowerCase()
 export class DungeonRoom {
   game: GameState | null = null;
   private pendingTeams: { id: string; name: string; classId?: ClassId }[] = [];
+  /** Teams that joined after the start and wait for the host's 收這隊 (docs/designs/late-join.md). Saved: their keys
+   * are saved in teamKeys anyway, and a restart mid-game must not make latecomers type their name again. Empty in the lobby. */
+  private lateTeams: { id: string; name: string; classId?: ClassId }[] = [];
   /**
    * Trust on first use: the first HOST_CLAIM sets the token, later claims must
    * match. The only protection is the 4-letter room code (23^4) plus this token.
@@ -736,6 +741,7 @@ export class DungeonRoom {
       roomEpoch: this.roomEpoch,
       game: this.game && { ...this.game, teams: this.game.teams.map((t) => ({ ...t, online: false })) },
       pendingTeams: this.pendingTeams,
+      ...(this.lateTeams.length ? { lateTeams: this.lateTeams } : {}),
       hostToken: this.hostToken,
       teamKeys: [...this.teamKeys],
       screenKey: this.screenKey,
@@ -827,7 +833,10 @@ export class DungeonRoom {
     this.game = s.game && { ...s.game, pendingWrong: restoredPendingWrong(s.game) };
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
-    this.teamKeys = new Map(s.teamKeys);
+    this.lateTeams = s.lateTeams ?? [];
+    // A key whose team is in no list (a damaged waiting list) would bind its phone to nothing: forget it, so the phone's JOIN starts over.
+    const known = new Set([...s.pendingTeams, ...this.lateTeams, ...(s.game?.teams ?? [])].map((t) => t?.id));
+    this.teamKeys = new Map(s.teamKeys.filter(([id]) => known.has(id)));
     // A save from before the screen key keeps the one this room just made: the next save writes it.
     this.screenKey = s.screenKey ?? this.screenKey;
     this.eventSeq = s.eventSeq;
@@ -1082,6 +1091,7 @@ export class DungeonRoom {
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.pacingView(),
+      ...(this.lateTeams.length ? { late: { teams: this.lateTeams, ...(lateJoinOpen(this.game) ? {} : { closed: true as const }) } } : {}),
       // No door clock in manual: the doors wait for the team, or for the host's ▶ 下一步.
       ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.pacing === "auto" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
       ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, side: this.forkBeat.side, door: this.forkBeat.door, ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
@@ -1368,6 +1378,7 @@ export class DungeonRoom {
     this.game = null;
     this.undo = null;
     this.pendingTeams = [];
+    this.lateTeams = [];
     this.hostToken = "";
     this.hostConns.clear();
     this.connTeam.clear();
@@ -1646,6 +1657,9 @@ export class DungeonRoom {
         case "HOST_REMOVE_TEAM":
           this.handleRemoveTeam(sender, msg.teamId);
           break;
+        case "HOST_LATE_TEAM":
+          this.handleLateTeam(sender, msg.teamId, msg.admit);
+          break;
         case "HOST_RENAME_TEAM":
           this.handleRenameTeam(sender, msg.teamId, msg.teamName);
           break;
@@ -1764,10 +1778,6 @@ export class DungeonRoom {
       if (this.claimTeam(conn, teamId, teamKey, known)) this.broadcastState();
       return;
     }
-    if (this.game) {
-      this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
-      return;
-    }
     if (this.removedTeamIds.has(teamId)) {
       if (resume) {
         this.sendTo(conn, { type: "ERROR", error: "team_removed" });
@@ -1794,18 +1804,20 @@ export class DungeonRoom {
     }
     const name = sanitizeText(rawName, MAX_TEAM_NAME_LENGTH);
     // Same rule as handleRenameTeam: the epilogue and the transcript tell teams apart by name.
-    if (!name || this.pendingTeams.some((t) => sameTeamName(t.name, name))) {
+    if (!name || [...this.pendingTeams, ...this.lateTeams].some((t) => sameTeamName(t.name, name))) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_name", ...(name ? { detail: "duplicate_name" } : {}) });
       return;
     }
-    if (this.pendingTeams.length >= MAX_TEAMS) {
+    // Waiting teams count: each may be let in, or goes to the lobby of the next game.
+    if (this.pendingTeams.length + this.lateTeams.length >= MAX_TEAMS) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "room_full" });
       return;
     }
 
     this.teamKeys.set(teamId, teamKey);
     this.connTeam.set(conn.id, teamId);
-    this.pendingTeams.push({ id: teamId, name });
+    // Once the game is on, a new team waits for the host (docs/designs/late-join.md).
+    (this.game ? this.lateTeams : this.pendingTeams).push({ id: teamId, name });
     this.broadcastState();
   }
 
@@ -1841,7 +1853,8 @@ export class DungeonRoom {
       return false;
     }
     this.connTeam.set(conn.id, teamId);
-    if (this.game) this.setOnline(teamId, true);
+    // A waiting late team is not in the game yet.
+    if (this.game?.teams.some((t) => t.id === teamId)) this.setOnline(teamId, true);
     return true;
   }
 
@@ -1887,6 +1900,9 @@ export class DungeonRoom {
     // Once every question has been shown, start avoiding over with just this game's.
     this.playedQuestionIds = played.length >= all.size ? [...this.game.revealedQuestionIds] : played;
     this.game = null;
+    // Teams still waiting play the next game (late-join.md).
+    this.pendingTeams.push(...this.lateTeams);
+    this.lateTeams = [];
     this.handoffs.clear();
     this.clearAnswerTimers();
     this.reveal = this.eventReveal = null;
@@ -1920,15 +1936,46 @@ export class DungeonRoom {
   /** Lobby only: the host takes a team out. Its phones are told why; their page won't JOIN again by itself. */
   private handleRemoveTeam(conn: Conn, teamId: string) {
     if (!this.lobbyTeamFor(conn, teamId)) return;
+    this.dropTeam(teamId);
+    this.broadcastState();
+  }
+
+  /** Takes a lobby or waiting team out and forgets its key. Its phones are told team_removed (with `detail`), and
+   * their page won't JOIN again by itself; `null` tells them nothing (the phone is taking another team over). */
+  private dropTeam(teamId: string, detail?: "not_admitted" | null) {
     this.pendingTeams = this.pendingTeams.filter((t) => t.id !== teamId);
+    this.lateTeams = this.lateTeams.filter((t) => t.id !== teamId);
     this.teamKeys.delete(teamId);
-    this.removedTeamIds.add(teamId);
+    if (detail !== null) this.removedTeamIds.add(teamId);
     for (const [connId, tid] of [...this.connTeam]) {
       if (tid !== teamId) continue;
       this.connTeam.delete(connId);
       const phone = this.conns.get(connId);
-      if (phone) this.sendTo(phone, { type: "ERROR", error: "team_removed" });
+      if (phone && detail !== null) this.sendTo(phone, { type: "ERROR", error: "team_removed", ...(detail ? { detail } : {}) });
     }
+  }
+
+  /** 收這隊 / 不收 (docs/designs/late-join.md). Let in: room 1, last in turn, level with the last-place team; the class
+   * it picked while waiting is fixed now. Not while the intro or 擲先攻 is on (it would roll with everyone), nor while a
+   * door opens (STATE shows the game from before), nor once the boss fight has begun. 不收 always works. */
+  private handleLateTeam(conn: Conn, teamId: string, admit: boolean) {
+    if (!this.requireHost(conn)) return;
+    const team = this.lateTeams.find((t) => t.id === teamId);
+    // No longer waiting: a second press, or a second host page's. Dropped, like a stale HOST_JUDGE.
+    if (!team) return;
+    if (!admit) {
+      this.dropTeam(teamId, "not_admitted");
+      return this.broadcastState();
+    }
+    if (!this.game || !lateJoinOpen(this.game) || this.opening() || this.forkBeat) {
+      return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "late_closed" });
+    }
+    // Not keepUndoOpen: 改判答對 would judge from a game without this team.
+    this.game = addLateTeam(this.game, team, this.rng);
+    this.lateTeams = this.lateTeams.filter((t) => t !== team);
+    this.pendingTeams.push(team);
+    if (![...this.connTeam.values()].includes(teamId)) this.game = setTeamOnline(this.game, teamId, false);
+    this.appendLine(this.eventSeq, `🚪 ${team.name}中途加入冒險，排在最後一個！`);
     this.broadcastState();
   }
 
@@ -1951,7 +1998,10 @@ export class DungeonRoom {
   /** A phone types the host's code: it gets the team's id and key and JOINs with them (D2: the key is shared, not replaced). */
   private handleClaim(conn: Conn, code: string) {
     // A phone already playing for a team would leave that team marked online when its JOIN rebinds the connection.
-    if (this.connTeam.has(conn.id)) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "already_in_team" });
+    // A waiting late team's phone may: it stops waiting and takes the team over (late-join.md).
+    const bound = this.connTeam.get(conn.id);
+    const waiting = bound !== undefined && this.lateTeams.some((t) => t.id === bound);
+    if (bound !== undefined && !waiting) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "already_in_team" });
     this.pruneHandoffs();
     const hit = [...this.handoffs].find(([, h]) => h.code === code);
     const teamId = hit?.[0];
@@ -1965,6 +2015,10 @@ export class DungeonRoom {
       return void this.sendTo(conn, { type: "ERROR", error: "bad_code" });
     }
     this.handoffs.delete(teamId);
+    if (waiting) {
+      this.dropTeam(bound, null);
+      this.broadcastState();
+    }
     this.sendTo(conn, { type: "TEAM_CLAIMED", teamId, teamKey });
   }
 
@@ -2784,6 +2838,7 @@ export class DungeonRoom {
   private handleReact(conn: Conn, reaction: Reaction) {
     const teamId = this.connTeam.get(conn.id);
     if (!teamId || this.game?.phase !== "playing" || this.opening()) return;
+    if (!this.game.teams.some((t) => t.id === teamId)) return; // a waiting late team
     if (currentTurnTeamId(this.game) === teamId || isBuzzPhase(this.game)) return;
     const now = this.now();
     // One window for both limits, so a team tapping as fast as it may never counts twice against the room's cap.
@@ -2920,9 +2975,11 @@ export class DungeonRoom {
   /** Lobby only (class-abilities.md): any phone of the team may pick; the last pick before HOST_START counts. */
   private handleTeamPickClass(conn: Conn, classId: ClassId | null) {
     const teamId = this.connTeam.get(conn.id);
-    const team = this.pendingTeams.find((t) => t.id === teamId);
+    // A waiting late team picks as in the lobby, until the host lets it in (late-join.md).
+    const late = this.lateTeams.find((t) => t.id === teamId);
+    const team = late ?? this.pendingTeams.find((t) => t.id === teamId);
     if (!team) return void this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
-    if (this.game) return void this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
+    if (this.game && !late) return void this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
     if ((team.classId ?? null) === classId) return;
     if (classId) team.classId = classId;
     else delete team.classId;
@@ -3306,7 +3363,8 @@ export class DungeonRoom {
   /** The connection's own team while a game runs; otherwise sends the matching ERROR and returns null. */
   private playingTeam(conn: Conn): string | null {
     const teamId = this.connTeam.get(conn.id);
-    if (!teamId) this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
+    // A waiting late team's phone is bound too, but it is not in the game (late-join.md).
+    if (!teamId || this.lateTeams.some((t) => t.id === teamId)) this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
     else if (!this.game) this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
     else return teamId;
     return null;
