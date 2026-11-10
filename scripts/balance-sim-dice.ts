@@ -25,6 +25,11 @@
 // Room length (50 questions, 2026-11-09): ROOMD="1,2,2,3,4,4,5,5" room base difficulties (one per room; ROOMR needs as many
 // rewards), PULL=all: once the first team is in, the host sends every other team in at once (lib's sendToBoss) instead of
 // D9's "next correct answer". A REACH line prints the share of teams that played each room.
+// Songs in both boss phases (2026-11-09): P1=0.6 makes every phase-1 boss question a turn-based song, a fill-in the team
+// knows with chance P1 (no options; the check, mage hint, warrior roll, sneak and prayer work as on any fill-in), in place
+// of a difficulty-5 general question. T1 = seconds per phase-1 turn in the LENGTH minutes (default 75). A SONGS line
+// prints the phase-1 hit rate per turn and the distinct songs each phase used per game (mean / p95 / p99 / max).
+// MAGESONG="0,0.3,0.7,1": a dice mage's hint on a phase-1 song cracks it with these chances by tier (default: Cfg.mageText).
 // Not modelled: sort questions (they play like multipleChoice here), a potion wasted on a wrong answer, the host's
 // 改判, a mage that casts again on a question after a 1.
 import { registerHooks } from "node:module";
@@ -53,6 +58,10 @@ const REACH = ROOMD.map(() => 0);
 Object.assign(G.EVENT_SATIETY, JSON.parse(process.env.EVS ?? "{}"));
 const EVCH = env("EVCH", G.EVENT_CHANCE), FORK = env("FORK", 0.5), BUZZHIT = env("BUZZHIT", HIT), SKILL = env("SKILL", 0);
 const FIRSTBONUS = env("FIRSTBONUS", 0), PULLPAY = env("PULLPAY", 0);
+const P1 = process.env.P1 === undefined ? undefined : Number(process.env.P1), T1 = env("T1", 75);
+const MAGESONG = process.env.MAGESONG?.split(",").map(Number);
+/** Per game: distinct phase-1 songs, distinct buzzer songs; phase-1 turns that hit. */
+const USED: { p1: number[]; p2: number[]; hit1: number } = { p1: [], p2: [], hit1: 0 };
 const BOSSQ = env("BOSSQ", 160), SONGS = env("SONGS", 80), SONGMEM = process.env.SONGMEM === "1";
 /** Per game: room answers, phase-1 boss answers, buzzer songs played (skips too), events; games stalled in the buzzer phase. */
 const LEN = { room: 0, boss1: 0, songs: 0, events: 0, boss1Q: 0, stalled: 0, kills: 0, killSum: 0 };
@@ -190,7 +199,7 @@ function play(classes: C[], maxTurns = 600) {
     return k;
   };
   const boonOf = (b: GT.Boon | undefined, base: number) => (b === "blessing" ? Math.round(base * 0.5) : b === "curse" ? Math.round(base * 0.5) - base : 0);
-  const seen1 = new Set<string>();
+  const seen1 = new Set<string>(), seen2 = new Set<string>();
   for (let turn = 0; turn < maxTurns && g.phase === "playing"; turn++) {
     const before = g.teams.map((t) => t.reward), wasIn = g.teams.map((t) => t.inBoss);
     let cat: Src = "room", actor = -1, killAmt = 0, boonAmt = 0;
@@ -204,7 +213,7 @@ function play(classes: C[], maxTurns = 600) {
       const bq = g.boss.currentQuestionId;
       const songKnow = (t: GT.Team, q: string) => { const k = `${t.id}:${q}`; if (!latent.has(k)) latent.set(k, { known: know(t.id, KB), h: 0, ex: [] }); return latent.get(k)!.known; };
       if (SONGMEM && g.boss.questionIds.filter((q) => !g.revealedQuestionIds.includes(q)).every((q) => !g.teams.some((t) => songKnow(t, q)))) { LEN.stalled++; break; }
-      LEN.songs++;
+      LEN.songs++; seen2.add(bq);
       const knowers = g.teams.filter((t) => (SONGMEM ? songKnow(t, bq) : know(t.id, KB)));
       if (knowers.length === 0) { g = G.skipBuzz(g); continue; }
       const w = knowers[Math.floor(R() * knowers.length)].id;
@@ -238,17 +247,19 @@ function play(classes: C[], maxTurns = 600) {
     const boon0 = team().boon, base0 = inBoss ? g.boss.hitReward : g.rooms[team().roomIndex].reward;
     const q = inBoss ? g.boss.currentQuestionId : team().currentQuestionId;
     const d = inBoss ? 5 : team().currentDifficulty;
-    const text = isText(q);
+    const song1 = inBoss && P1 !== undefined;
+    const text = song1 || isText(q);
     const key = `${id}:${q}`;
     if (!latent.has(key)) {
       const r = R();
       // The wrong options (1–3) this team rules out by itself on this question.
-      latent.set(key, { known: know(id, KNOW[d - 1] * (text ? TEXTK : 1)), h: R(), ex: shuffle([1, 2, 3]).slice(0, r < EX[0] ? 0 : r < EX[0] + EX[1] ? 1 : 2) });
+      latent.set(key, { known: know(id, song1 ? P1! : KNOW[d - 1] * (text ? TEXTK : 1)), h: R(), ex: shuffle([1, 2, 3]).slice(0, r < EX[0] ? 0 : r < EX[0] + EX[1] ? 1 : 2) });
     }
     const L = latent.get(key)!;
     const settle = (r: { game: GT.GameState; outcome: GT.AnswerOutcome }, ok: boolean) => {
       g = r.game;
       if (!ok) return;
+      if (inBoss) USED.hit1++;
       book[actor].correct++;
       boonAmt = boonOf(boon0, base0);
       killAmt = killFix(id, r.outcome);
@@ -313,7 +324,7 @@ function play(classes: C[], maxTurns = 600) {
           g = G.spendAbility(g, id, "mage");
           refund(id, cfg.mageRefund[k]);
           if (k >= 2) spelled.add(key);
-          if (text) given.set(q, cfg.mageText[k]);
+          if (text) given.set(q, (song1 && MAGESONG ? MAGESONG : cfg.mageText)[k]);
           else {
             // Option 0 is the right one. Below 3, one wrong option always stays (mageEliminate's cap).
             const wrong = shuffle([1, 2, 3].filter((i) => !gone().includes(i)));
@@ -383,7 +394,7 @@ function play(classes: C[], maxTurns = 600) {
       });
     }
   }
-  LEN.boss1Q += seen1.size;
+  LEN.boss1Q += seen1.size; USED.p1.push(seen1.size); USED.p2.push(seen2.size);
   g.teams.forEach((t) => { for (let k = 0; k <= t.roomIndex; k++) REACH[k]++; });
   return { g, book };
 }
@@ -461,9 +472,14 @@ console.log(`FIRST first-in wins ${pct(L.first)}%  lead at entry ${(L.lead / L.f
 console.log(`FIRST first: room ${(L.fin.room / L.fin.n).toFixed(1)} boss+buzz+kill ${(L.fin.bossSide / L.fin.n).toFixed(1)} | later: room ${(L.pul.room / L.pul.n).toFixed(1)} boss+buzz+kill ${(L.pul.bossSide / L.pul.n).toFixed(1)} skipped rooms' rewards ${(L.pul.skipped / L.pul.n).toFixed(1)}`);
 console.log(`dice per game ${(dice.n / N).toFixed(1)}: ones ${(dice.one / N).toFixed(2)}, twenties ${(dice.twenty / N).toFixed(2)} (the kill's 4d20 not counted)`);
 {
-  const per = (x: number) => x / N, min = (per(LEN.room + LEN.boss1) * 75 + per(LEN.songs) * 60 + per(LEN.events) * 30) / 60;
+  const per = (x: number) => x / N, min = (per(LEN.room) * 75 + per(LEN.boss1) * T1 + per(LEN.songs) * 60 + per(LEN.events) * 30) / 60;
   const hits = (sh.boss.all + sh.buzz.all) / N / 4;
   console.log(`LENGTH room ${per(LEN.room).toFixed(1)} boss1 ${per(LEN.boss1).toFixed(1)} (distinct ${per(LEN.boss1Q).toFixed(1)}) songs ${per(LEN.songs).toFixed(1)} events ${per(LEN.events).toFixed(1)} total ${per(LEN.room + LEN.boss1 + LEN.songs).toFixed(1)} min ${min.toFixed(0)} (75s room/boss, 60s song, 30s event) stalled ${(100 * per(LEN.stalled)).toFixed(1)}%  perTeamBossHits ${hits.toFixed(1)} kill ${(LEN.killSum / Math.max(1, LEN.kills)).toFixed(1)} in ${(100 * per(LEN.kills)).toFixed(1)}% of games  killFlip ${((100 * sh.kill.flip) / L.games).toFixed(1)}%`);
+}
+{
+  const q = (a: number[], f: number) => [...a].sort((x, y) => x - y)[Math.min(a.length - 1, Math.floor(f * a.length))];
+  const d = (a: number[]) => `${(a.reduce((x, y) => x + y, 0) / a.length).toFixed(1)}/${q(a, 0.95)}/${q(a, 0.99)}/${Math.max(...a)}`;
+  console.log(`SONGS phase1 hit/turn ${(100 * USED.hit1 / Math.max(1, LEN.boss1)).toFixed(1)}%  distinct p1 ${d(USED.p1)}  distinct p2 ${d(USED.p2)} (mean/p95/p99/max)`);
 }
 console.log(`REACH ${REACH.map((n, k) => `r${k + 1}(${ROOMR[k]}) ${((100 * n) / N / 4).toFixed(0)}%`).join("  ")}`);
 // One line to compare runs: win share per class, then the widest gap from 27 among the five classes.
