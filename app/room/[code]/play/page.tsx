@@ -721,6 +721,11 @@ export default function PlayPage() {
   const removed = useRef(false);
   /** This connection's TEAM_CLAIM succeeded: a second claim sent by a double tap gets bad_code, which is not a refusal. */
   const claimed = useRef(false);
+  /** A waiting late team typed a wrong handoff code: said on the waiting screen, which it must not lose (late-join.md). */
+  const [badCode, setBadCode] = useState(false);
+  /** This connection has shown the waiting screen: a wrong code typed there is never a refused JOIN, even when the
+   * host lets the team in (or goes back to the lobby) before the room's bad_code arrives. */
+  const waited = useRef(false);
 
   const [teamId, setTeamId] = useState("");
   const [lobby, setLobby] = useState<LobbyTeams | null>(null);
@@ -769,6 +774,7 @@ export default function PlayPage() {
       // us before the JOIN is checked; joinRejection still lets a bad key's bad_token through.
       joined.current = false;
       claimed.current = false;
+      waited.current = false;
       livePhase.current = null;
       sprintSeenRef.current = null;
       const id = getOrCreateTeamId();
@@ -787,6 +793,11 @@ export default function PlayPage() {
       switch (msg.type) {
         case "ERROR": {
           if (msg.error === "bad_code" && claimed.current) break;
+          // Not once turned away: the refusal screen has its own wrong-code sentence.
+          if (msg.error === "bad_code" && waited.current && !removed.current) {
+            setBadCode(true);
+            break;
+          }
           const refused = joinRejection(msg.error, msg.detail, !!sentPassword.current, joined.current);
           if (msg.error === "team_removed") removed.current = true;
           if (refused) setRejected(refused);
@@ -796,6 +807,8 @@ export default function PlayPage() {
         case "TEAM_CLAIMED":
           // The host handed us this team: be it from now on, and JOIN as it (its key skips the password and name checks).
           claimed.current = true;
+          // A phone the host turned away (不收, 移除) is this team now: its reconnects must JOIN again.
+          removed.current = false;
           storeTeam(msg.teamId, msg.teamKey);
           setTeamId(msg.teamId);
           setRejected(null);
@@ -835,7 +848,8 @@ export default function PlayPage() {
               navigator.vibrate?.(80);
             }
           }
-          if (msg.view.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
+          if ([...msg.view.teams, ...(msg.late?.teams ?? [])].some((t) => t.id === getOrCreateTeamId())) joined.current = true;
+          if (msg.late?.teams.some((t) => t.id === getOrCreateTeamId())) waited.current = true;
           lastGame.current = msg;
           livePhase.current = msg.phase;
           if (drop.current) {
@@ -935,8 +949,45 @@ export default function PlayPage() {
         <div className="relative z-10 flex min-h-screen flex-col gap-4 px-[14px] pb-4 pt-5">
           <Panel role="alert" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]" style={{ background: "#ffd9d9" }}>
             {rejected.text}
-            {rejected.handoff && <HandoffForm send={send} />}
+            {/* Mid-game every refusal keeps the code input (team-handoff.md): a replacement phone that types its team's own
+                name, or finds the room full, is refused before it could wait (late-join.md L12). */}
+            {(rejected.handoff || game) && <HandoffForm send={send} />}
             <a href={`/?code=${code}`} className="text-[16px] underline underline-offset-2">{rejected.link === "password" ? "回首頁輸入密碼" : "回首頁"}</a>
+          </Panel>
+        </div>
+      </main>
+    );
+  }
+
+  // Joined after the start (docs/designs/late-join.md): nothing of the running game shows until the host lets us in.
+  const waiting = game?.late?.teams.find((t) => t.id === teamId);
+  if (game && waiting) {
+    const closed = !!game.late!.closed;
+    return (
+      <main className="relative min-h-screen overflow-hidden">
+        <SceneBackground theme="stone" cols={48} rows={100} arch={false} className="fixed inset-0" />
+        <div className="relative z-10 flex min-h-screen flex-col gap-4 px-[14px] pb-4 pt-5">
+          {disconnected && !rested && (
+            <Panel tone="turn" role="status" className="px-3 py-2 text-center text-[16px]">
+              {DISCONNECTED_NOTICE}
+            </Panel>
+          )}
+          <div data-testid="late-wait">
+            <Panel tone="lav" role="status" className="px-4 py-5 text-center">
+              <div className="text-[20px]">{closed ? "這場快結束了，等下一場" : "等主持人讓你們加入…"}</div>
+              <div className="mt-2 text-[15px]">{closed ? `下一場開始前，${waiting.name}會自動進大廳。` : `${waiting.name}會從第一間房開始，排在最後一個。可以先選職業。`}</div>
+            </Panel>
+          </div>
+          <ClassPicker current={waiting.classId} send={send} />
+          {/* A phone that only wants to take a team over still can (docs/designs/team-handoff.md). */}
+          <Panel className="px-4 py-3">
+            {badCode && <div role="alert" className="mb-2 text-[16px]" style={{ color: "var(--danger)" }}>配對碼不對或過期了，請主持人再按一次</div>}
+            <HandoffForm
+              send={(m) => {
+                setBadCode(false);
+                send(m);
+              }}
+            />
           </Panel>
         </div>
       </main>

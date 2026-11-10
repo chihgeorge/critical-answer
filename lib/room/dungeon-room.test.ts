@@ -385,14 +385,7 @@ describe("JOIN", () => {
     expect(lastSentTo(rejoinConn)).toBeNull();
   });
 
-  it("rejects joining after the game has already started", () => {
-    const { room, hostConn } = makeRoomWithHost();
-    joinTeams(room, hostConn, 1);
-    send(room, hostConn, { type: "HOST_START" });
-    const conn = makeConn("latecomer");
-    send(room, conn, { type: "JOIN", teamId: T2, teamKey: KEY, teamName: "Late Team" });
-    expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "game_already_started" });
-  });
+  // A JOIN after the start waits for the host: lib/room/late-join.test.ts.
 });
 
 describe("HOST_START", () => {
@@ -3034,13 +3027,6 @@ describe("team identity and reconnect (audit findings)", () => {
     expect(online(room)).toEqual([true, true]);
   });
 
-  it("an unknown team still cannot join once the game has started", () => {
-    const { room } = twoTeamGame();
-    const late = makeConn("late");
-    send(room, late, { type: "JOIN", teamId: T3, teamKey: KEY, teamName: "Late" });
-    expect(lastSentTo(late)).toMatchObject({ error: "game_already_started" });
-  });
-
   it("a page reload: the old connection closing after the new one joined does not take the team offline", () => {
     const { room, ids, conns } = twoTeamGame();
     send(room, makeConn("reloaded"), { type: "JOIN", teamId: ids[0], teamKey: KEY, teamName: "Team 0" });
@@ -4365,8 +4351,9 @@ describe("team handoff: HOST_HANDOFF, TEAM_CLAIM (docs/designs/team-handoff.md)"
   // recovery path existed; seam=none
   it("hands the team to a new phone: the code goes to the host only, and a JOIN with the claimed id plays as the team", () => {
     const { room, hostConn, fresh } = gameWithLostPhone();
+    // The new phone joined after the start, so it waits as a late team (late-join.md) until it types the code.
     send(room, fresh, { type: "JOIN", teamId: T3, teamKey: KEY2, teamName: "x" });
-    expect(lastSentTo(fresh)).toMatchObject({ type: "ERROR", error: "game_already_started" });
+    expect(lastBroadcast(room).late.teams).toEqual([{ id: T3, name: "x" }]);
     const code = codeFor(room, hostConn, T1);
     expect(code).toMatch(/^\d{4}$/);
     expect(JSON.stringify((room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls)).not.toContain(`"code":"${code}"`);
@@ -4374,6 +4361,7 @@ describe("team handoff: HOST_HANDOFF, TEAM_CLAIM (docs/designs/team-handoff.md)"
     expect(lastSentTo(fresh)).toEqual({ type: "TEAM_CLAIMED", teamId: T1, teamKey: KEY });
     send(room, fresh, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "x" });
     expect(lastBroadcast(room).view.teams.find((t: any) => t.id === T1).online).toBe(true);
+    expect(lastBroadcast(room).late).toBeUndefined();
     // One use: the same code again is refused.
     const other = makeConn("other-phone");
     send(room, other, { type: "TEAM_CLAIM", code });

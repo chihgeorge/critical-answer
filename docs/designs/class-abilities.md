@@ -72,7 +72,7 @@ Approach A。兩個 PR：
 **PR 1：職業的基礎 + 戰士**
 - `Team` 加 `classId?: "mage" | "cleric" | "warrior" | "thief"` 和 `abilityUses: number`（開始時是 2）。
 - 舊 snapshot：不升 `SCHEMA_VERSION`。讀取時，沒有 `classId` 就當普通冒險者，沒有 `abilityUses` 就給 2。加兩個測試：舊格式的 snapshot 讀進來後，每隊都是 `classId` undefined、`abilityUses` 2，`use-ability` 被拒絕；有 `classId` 但沒有 `abilityUses` 的 snapshot 讀進來後是 2 次。預設值在 `lib/room/snapshot.ts` 的 `parseSnapshot` 裡補：隊伍沒有 `abilityUses` 就給 2；`pendingTeams` 的 `classId` 可以沒有。
-- 大廳：手機上選職業，存在 `pendingTeams` 的那一隊上，遊戲開始時帶進 `Team`，之後鎖定。遊戲開始後才加入的隊伍沒有職業。這隊任何一支手機都能選，遊戲開始前最後一次選的算。主持人頁面顯示每隊的職業，但不能改。PR 1 時還沒做好的職業在大廳顯示鎖住，房間也拒絕；PR 2 四個職業都能選，這個鎖已經拿掉。
+- 大廳：手機上選職業，存在 `pendingTeams` 的那一隊上，遊戲開始時帶進 `Team`，之後鎖定。遊戲開始後才加入的隊伍在等待畫面選職業，主持人按「收這隊」時鎖定（`docs/designs/late-join.md` L2）。這隊任何一支手機都能選，遊戲開始前最後一次選的算。主持人頁面顯示每隊的職業，但不能改。PR 1 時還沒做好的職業在大廳顯示鎖住，房間也拒絕；PR 2 四個職業都能選，這個鎖已經拿掉。
 - 新的 action `use-ability`，檢查見上面的共通規則。
 - 擲骰有 2 秒懸念：伺服器先擲，廣播 `pendingRoll {teamId, questionId, value}`。TV 轉骰子，停在 value。2000 ms 後才判。等待時拒絕 HOST_JUDGE 和鎖定。輪次已經換了，就丟掉這次擲骰。次數在伺服器擲骰的那一刻就扣，所以丟掉的擲骰也算用掉（Eng Review R2；R3 原本選判定時才扣，/review 改成擲骰時扣，見 R3 的 History）。
 - 戰士成功（12 以上）：完全等於答對。揭曉答案（`AnswerReveal`），題目記進 `revealedQuestionIds`，加進度分（等於難度）和獎勵，前進到下一個房間。boss 房算一次命中（10 分、扣血）。打到最後一擊一樣擲 4d20。

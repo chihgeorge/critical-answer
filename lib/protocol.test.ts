@@ -307,6 +307,12 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_HANDOFF" })).toBeNull();
   });
 
+  it("HOST_LATE_TEAM takes a team id and a boolean admit (late-join.md)", () => {
+    expect(parseClientMessage({ type: "HOST_LATE_TEAM", teamId: "t1", admit: false })).toEqual({ type: "HOST_LATE_TEAM", teamId: "t1", admit: false });
+    expect(parseClientMessage({ type: "HOST_LATE_TEAM", teamId: "t1", admit: "false" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_LATE_TEAM", admit: true })).toBeNull();
+  });
+
   // Value: protects=the room only sees a reveal naming a team and a question; fails_when=the parser lets a reveal without either through; why_new=new message; seam=none
   it("HOST_REVEAL takes a team id and a question id (host-reveal.md)", () => {
     expect(parseClientMessage({ type: "HOST_REVEAL", teamId: "t1", questionId: "q1" })).toEqual({ type: "HOST_REVEAL", teamId: "t1", questionId: "q1" });

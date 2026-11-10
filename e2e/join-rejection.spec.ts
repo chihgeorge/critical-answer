@@ -69,11 +69,11 @@ test("a big screen that never connects says it can't reach the server", async ({
   await expect(screen.getByText(UNREACHABLE)).toHaveCount(0);
 });
 
-// Value: protects=a phone that joins after the start is told why and sees none of the running game (eng review
-// D1), and the host can hand it a team whose phone died (team-handoff.md); fails_when=game_already_started is
-// ignored, the STATE broadcast still renders the game for it, or the handoff code does not bind it to the team;
-// no_claim=room_full (lib/join-rejection.test.ts), wrong or expired codes (lib/room/dungeon-room.test.ts).
-test("a phone that joins after the game started is told why, sees no game, and takes over a team with the host's code", async ({ browser }) => {
+// Value: protects=a phone that joins after the start waits and sees none of the running game (late-join.md), and
+// the host can hand it a team whose phone died (team-handoff.md); fails_when=the STATE broadcast still renders the
+// game for it, the waiting screen has no code input, or the handoff code does not bind it to the team;
+// no_claim=room_full (lib/join-rejection.test.ts), wrong or expired codes (lib/room/dungeon-room.test.ts), 收這隊 (late-join.spec.ts).
+test("a phone that joins after the game started waits, sees no game, and takes over a team with the host's code", async ({ browser }) => {
   const { host, code } = await hostRoom(browser);
   const first = await phone(browser);
   // Drop the phone at the server end too, so the room sees it go at once (as disconnect.spec.ts does).
@@ -90,8 +90,12 @@ test("a phone that joins after the game started is told why, sees no game, and t
   await expect(first.getByText("輪到我們了！")).toBeVisible();
   const late = await phone(browser);
   await late.goto(`/room/${code}/play?name=${encodeURIComponent("遲到隊")}`);
-  await expect(late.getByText("遊戲已經開始了，新隊伍不能再加入")).toBeVisible();
-  await expect(late.getByRole("link", { name: "回首頁" })).toBeVisible();
+  await expect(late.getByTestId("late-wait")).toBeVisible();
+  // A replacement phone that types its team's own name is refused, and still gets the code input.
+  const same = await phone(browser);
+  await same.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
+  await expect(same.getByText("這個隊名已經有人用了，請換一個名字")).toBeVisible();
+  await expect(same.getByLabel("換了手機？輸入主持人給的配對碼：")).toBeVisible();
   await expect(late.getByText(/輪到/)).toHaveCount(0);
 
   // The first phone dies: the host hands 甲隊 to the late phone with a one-time code (docs/designs/team-handoff.md).
