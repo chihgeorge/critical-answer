@@ -30,7 +30,7 @@ At the top of the host page, between the room code and 「⚙ 更多」, is the 
 In manual, none of the pauses below ends by itself. The host page shows a dashed panel, 「⏸ 停在這裡：接下來是……」 (held here: next is ...), and the game goes on only when the host presses 「▶ 下一步」 (next step; keyboard `1` or Enter):
 
 - Initiative roll: no countdown while the teams roll, and 「下一步」 rolls for the teams that have not; once the order is up, one more press brings the first question.
-- The reveal after 「公布答案」, the crit and kill dice, a boss miss, and the boss's phase card.
+- The reveal after 「公布答案」, the crit die, the persuasion check, the warrior's die and the kill dice, a boss miss, and the boss's phase card.
 - A fork: no countdown, the team picks in its own time. 「下一步」 is the same as time running out and opens the monster room's door. Once the door is open, one more press enters the room.
 - The podium after the game: 「下一步」 starts the reveal. Once started it plays to the end, and the host turns the epilogue's pages as before.
 
