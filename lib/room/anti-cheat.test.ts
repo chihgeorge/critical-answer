@@ -29,9 +29,9 @@ function memoryStorage() {
 }
 
 /** Three teams (甲 on turn) and a host, the switch on unless `off`. */
-function started({ qs = MCS, off = false, start = {}, storage = memoryStorage() }: { qs?: object[]; off?: boolean; start?: object; storage?: RoomStorage } = {}) {
+function started({ qs = MCS, off = false, start = {}, storage = memoryStorage(), rng = () => 0 }: { qs?: object[]; off?: boolean; start?: object; storage?: RoomStorage; rng?: () => number } = {}) {
   const io = { broadcast: vi.fn(), storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
-  const room = new DungeonRoom(io, () => 0, { bank: bank(qs), epilogueDelayMs: 0 });
+  const room = new DungeonRoom(io, rng, { bank: bank(qs), epilogueDelayMs: 0 });
   const host = makeConn("host");
   room.onConnect(host);
   send(room, host, { type: "HOST_CLAIM", token: TOKEN });
@@ -114,6 +114,22 @@ describe("the answering window", () => {
     expect(g.lastTo(g.phones[0])).toMatchObject({ detail: "not_now" });
     g.catchBy(1, "t1");
     expect(g.state().view.antiCheat.openCatch).toMatchObject({ by: B, teamId: A });
+  });
+
+  // Value: protects=a locked multipleChoice answer can't be caught or oracled (spec: 已鎖定 不能按); fails_when=antiCheatWindow drops its
+  // pendingLock check (askOracle has no lock check of its own); why_new=window tests cover reveal, check and typed only; seam=none;
+  // no_claim=the phone hiding its buttons (room messages only)
+  it("refuses a catch and the oracle once a multipleChoice answer is locked", () => {
+    const g = started();
+    const q = g.qid();
+    send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: 0 });
+    send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: q });
+    g.catchBy(1, q);
+    expect(g.lastTo(g.phones[1])).toMatchObject({ detail: "not_now" });
+    send(g.room, g.phones[0], { type: "TEAM_ORACLE", questionId: q });
+    expect(g.lastTo(g.phones[0])).toMatchObject({ detail: "not_now" });
+    expect(g.state().view.teams[0].oracleLeft).toBe(1);
+    expect(g.state().view.antiCheat.openCatch).toBeUndefined();
   });
 
   it("the oracle tags the question for every screen and the owl says so", () => {
@@ -224,6 +240,21 @@ describe("the rulings", () => {
     expect(g.lastTo(g.host)).toMatchObject({ detail: "no_catch" });
   });
 
+  // Value: protects=冤枉 on an accused already holding a potion pays +10 and the owl says +10, not a potion; fails_when=the room's
+  // potion ternary is inverted or dismissCatch's flag ignored; why_new=room tests only cover the potion case; seam=none;
+  // no_claim=the TV rendering of the line (narration messages only)
+  it("冤枉 on an accused holding a potion pays +10 and the owl says so", async () => {
+    const g = started();
+    send(g.room, g.host, { type: "HOST_GIVE_ITEM", teamId: A });
+    const before = g.state().view.teams[0].reward;
+    g.catchBy(1);
+    g.rule(false);
+    expect(g.state().view.teams[0].reward).toBe(before + CATCH_PAY.wronged);
+    await vi.advanceTimersByTimeAsync(5_000);
+    const said = g.all().filter((m) => m.type === "NARRATION").flatMap((m) => m.lines as string[]).join("\n");
+    expect(said).toContain(`🛡️ 甲隊是冤枉的！乙隊扣 ${CATCH_PAY.falseReport} 分，甲隊加 ${CATCH_PAY.wronged} 分`);
+  });
+
   it("an open 改判答對 is cleared by the catch: key 0 does nothing after 成立", () => {
     const g = started({ qs: TEXTS });
     send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
@@ -300,6 +331,27 @@ describe("review follow-ups", () => {
     send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: A, questionId: "t1", eventId: g.state().eventId });
     expect(g.state().view.antiCheat).toMatchObject({ on: true });
     expect(g.room.game!.teams[1]).toMatchObject({ oracleLeft: 0, oracleQ: "t2" });
+  });
+
+  it("改判答對 after a flee brings back the team's own oracle, so the reward stays halved", () => {
+    const score = (oracle: boolean) => {
+      // A mid roll: a 1 would halve the reward on its own.
+      const g = started({ qs: TEXTS, rng: () => 0.5 });
+      const teamId = g.state().view.currentTurnTeamId;
+      const i = IDS.indexOf(teamId);
+      const questionId = g.qid();
+      send(g.room, g.phones[i], { type: "TEAM_ROLL_CHECK", questionId, eventId: g.state().eventId });
+      vi.advanceTimersByTime(2000);
+      if (oracle) send(g.room, g.phones[i], { type: "TEAM_ORACLE", questionId });
+      send(g.room, g.host, { type: "HOST_JUDGE", teamId, questionId, correct: false, fleeChoice: "flee", eventId: g.state().eventId });
+      expect(g.state().undoWrong).toMatchObject({ teamId, questionId });
+      send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId, questionId, eventId: g.state().eventId });
+      expect(g.room.game!.teams[i]).toMatchObject({ oracleLeft: oracle ? 0 : 1, oracleQ: undefined });
+      return g.room.game!.teams[i].reward;
+    };
+    const full = score(false);
+    expect(full).toBeGreaterThan(1);
+    expect(score(true)).toBe(Math.round(full / 2));
   });
 
   it("a restart drops a saved catch whose question is no longer the accused's, refunding the reporter", async () => {

@@ -302,7 +302,7 @@ function restoredCatch(g: GameState): GameState {
   const c = g.antiCheat?.openCatch;
   if (!c) return g;
   const accused = g.teams.find((t) => t?.id === c.teamId);
-  const fits = !!accused && !accused.inBoss && accused.currentQuestionId === c.questionId && g.teams.some((t) => t?.id === c.by);
+  const fits = !!g.antiCheat?.on && !!accused && !accused.inBoss && accused.currentQuestionId === c.questionId && g.teams.some((t) => t?.id === c.by);
   return fits ? g : g.teams.some((t) => t?.id === c.by) ? cancelCatch(g) : { ...g, antiCheat: { ...g.antiCheat!, openCatch: undefined } };
 }
 
@@ -2825,7 +2825,8 @@ export class DungeonRoom {
         // A tap is kept only on the question it was made on.
         const tapped = t.id !== teamId && currentQuestionIdOf(undo.prev, t.id) === currentQuestionIdOf(now, t.id);
         // 抓包與神諭 uses and an oracle asked since are not moves either (anti-ai-cheating.md): kept.
-        const ac = n?.catchesLeft !== undefined ? { oracleLeft: n.oracleLeft, catchesLeft: n.catchesLeft, oracleQ: n.oracleQ, oracles: n.oracles } : {};
+        // A flee clears the team's own oracle, so it comes back with the question unless a new one was asked since.
+        const ac = n?.catchesLeft !== undefined ? { oracleLeft: n.oracleLeft, catchesLeft: n.catchesLeft, oracleQ: (n.oracles ?? 0) > (t.oracles ?? 0) ? n.oracleQ : t.oracleQ, oracles: n.oracles } : {};
         return !n ? t : { ...t, online: n.online, ...ac, ...(tapped ? { currentSelection: n.currentSelection } : {}) };
       }),
       ...(now.antiCheat ? { antiCheat: now.antiCheat } : {}),
