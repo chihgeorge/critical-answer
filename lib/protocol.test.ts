@@ -248,6 +248,10 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_NEXT", eventId: -1 })).toBeNull();
   });
 
+  it("HOST_EXTEND_ROOM: needs only the type, and carries nothing else into the room", () => {
+    expect(parseClientMessage({ type: "HOST_EXTEND_ROOM", ms: 99 * 3600_000 })).toEqual({ type: "HOST_EXTEND_ROOM" });
+  });
+
   it("HOST_GET_TRANSCRIPT: needs only the type", () => {
     expect(parseClientMessage({ type: "HOST_GET_TRANSCRIPT" })).toEqual({ type: "HOST_GET_TRANSCRIPT" });
   });

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { DungeonRoom } from "./dungeon-room";
+import { CLOSE_WARN_MS, DungeonRoom, EXTEND_MS, MAX_LIFE_MS, roomMaxLifeMs } from "./dungeon-room";
 import { CLOSE_EXPIRED, CLOSE_IDLE } from "./close-codes";
 import { BANK_KEY, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
@@ -10,7 +10,7 @@ const TEAM_KEY = "team-key-0123456789abcdef";
 const TOKEN = "host-token-0123456789abcdef";
 const MIN = 60_000;
 const IDLE = 120 * MIN;
-const EXPIRE = 24 * 60 * MIN;
+const EXPIRE = 6 * 60 * MIN;
 
 /** Storage with an alarm, like a Durable Object's: the test decides when it "rings" by calling onAlarm. */
 function fakeStorage() {
@@ -119,7 +119,8 @@ describe("what counts as activity", () => {
     clock.t += MIN;
     await room.onAlarm();
     expect(closeAll).toHaveBeenCalledWith(CLOSE_IDLE, "idle");
-    expect(storage.alarms.at(-1)).toBe(clock.t - IDLE + EXPIRE); // next check at the expiry, dated from the real last activity
+    // Next check: the host's closing warning, dated from the room's first connection (the claim), not the download.
+    expect(storage.alarms.at(-1)).toBe(clock.t - IDLE + EXPIRE - CLOSE_WARN_MS);
   });
 
   it("an automatic reconnect's re-identification (resume) is not activity, so it can't keep the room awake", async () => {
@@ -241,7 +242,7 @@ describe("idle for two hours", () => {
   });
 });
 
-describe("idle for a day", () => {
+describe("six hours after its first connection", () => {
   it("forgets the room: storage cleared, a new epoch, nobody holds the host seat any more", async () => {
     const { room, storage, closeAll, clock } = setup();
     startedGame(room);
@@ -455,15 +456,17 @@ describe("after a restart", () => {
     expect(b.storage.alarms).toEqual([savedAt + IDLE]);
   });
 
-  it("a room that was already idle when it restarted is set to expire, not to idle again", async () => {
+  it("a room that was already idle when it restarted is set for the closing warning, not to idle again", async () => {
     const a = setup();
+    const createdAt = a.clock.t;
     send(a.room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
-    const savedAt = (a.storage.data.get(SNAPSHOT_KEY) as any).lastActivityAt;
     const b = setup(a.clock.t + IDLE + 10 * MIN);
     b.storage.data.set(SNAPSHOT_KEY, a.storage.data.get(SNAPSHOT_KEY));
     b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
     await b.room.restore();
-    expect(b.storage.alarms).toEqual([savedAt + EXPIRE]);
+    expect(b.storage.alarms).toEqual([createdAt + EXPIRE - CLOSE_WARN_MS]);
+    await b.room.onAlarm.call(b.room); // a stray early ring closes nobody who reconnected
+    expect(b.closeAll).not.toHaveBeenCalled();
   });
 
   it("a room that was already past its expiry when it restarted is due at once, and forgotten by that alarm", async () => {
@@ -483,6 +486,7 @@ describe("after a restart", () => {
     send(a.room, conn("h"), { type: "HOST_CLAIM", token: TOKEN });
     const legacy = structuredClone(a.storage.data.get(SNAPSHOT_KEY)) as any;
     delete legacy.lastActivityAt;
+    delete legacy.createdAt;
     const b = setup(a.clock.t + 3 * 24 * 60 * MIN);
     b.storage.data.set(SNAPSHOT_KEY, legacy);
     b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
@@ -499,5 +503,143 @@ describe("after a restart", () => {
     clock.t += 5_000;
     send(room, host, { type: "HOST_SET_PASSWORD", password: "" }); // activity, but the saved state is identical to the minute
     expect(storage.puts).toBe(before);
+  });
+});
+
+// Value: protects=a room closes 6 hours after it was created however busy it is, only the host is warned 15 minutes
+// before, and 延長 1 小時 moves the end an hour at a time up to 24 hours, kept across a restart (TODOS: 房間最多只能存在
+// 6 小時); fails_when=activity pushes the end back again, the warning reaches a player or the big screen, a player can
+// extend the room, an extension passes 24 hours, or a restart restarts the clock or drops an extension.
+describe("the 6 hour cap", () => {
+  const closing = (c: { send: ReturnType<typeof vi.fn> }) => lastOf(c, "HOST_ROOM_CLOSING");
+  /** A host and a player in a fresh room, created at the returned time. */
+  function hosted() {
+    const s = setup();
+    const createdAt = s.clock.t;
+    const host = conn("host");
+    const player = conn("p");
+    send(s.room, host, { type: "HOST_CLAIM", token: TOKEN });
+    send(s.room, player, { type: "JOIN", teamId: T1, teamKey: TEAM_KEY, teamName: "甲隊" });
+    s.room.onConnect(conn("screen"));
+    return { ...s, createdAt, host, player };
+  }
+  /** Keeps the room busy up to `until`, ringing every alarm that comes due on the way, like the platform would. */
+  async function busyUntil(s: ReturnType<typeof hosted>, until: number) {
+    while (s.clock.t < until) {
+      s.clock.t = Math.min(until, s.clock.t + 30 * MIN);
+      send(s.room, s.host, { type: "HOST_SET_PASSWORD", password: String(s.clock.t) });
+      if (s.storage.alarms.at(-1)! <= s.clock.t) await s.room.onAlarm();
+    }
+  }
+
+  it("closes the room 6 hours after it was created, even though it was in use the whole time", async () => {
+    const s = hosted();
+    await busyUntil(s, s.createdAt + EXPIRE - MIN);
+    expect(s.closeAll).not.toHaveBeenCalledWith(CLOSE_EXPIRED, "expired");
+    s.clock.t = s.createdAt + EXPIRE;
+    await s.room.onAlarm();
+    expect(s.closeAll).toHaveBeenLastCalledWith(CLOSE_EXPIRED, "expired");
+    expect(s.storage.data.size).toBe(0);
+  });
+
+  it("warns only the host 15 minutes before, and a host who connects after that is told at once", async () => {
+    const s = hosted();
+    await busyUntil(s, s.createdAt + EXPIRE - CLOSE_WARN_MS - MIN);
+    expect(closing(s.host)).toBeUndefined();
+    s.clock.t = s.createdAt + EXPIRE - CLOSE_WARN_MS;
+    expect(s.storage.alarms.at(-1)).toBe(s.clock.t); // the warning has its own alarm
+    await s.room.onAlarm();
+    expect(closing(s.host)).toEqual({ type: "HOST_ROOM_CLOSING", minutesLeft: 15, canExtend: true });
+    expect(closing(s.player)).toBeUndefined();
+    expect(s.io.broadcast.mock.calls.some((c) => (c[0] as string).includes("HOST_ROOM_CLOSING"))).toBe(false);
+    expect(s.storage.alarms.at(-1)).toBe(s.createdAt + EXPIRE); // next: the end itself
+
+    s.clock.t += 10 * MIN;
+    const host2 = conn("host2");
+    send(s.room, host2, { type: "HOST_CLAIM", token: TOKEN });
+    expect(closing(host2)).toEqual({ type: "HOST_ROOM_CLOSING", minutesLeft: 5, canExtend: true });
+  });
+
+  it("延長 1 小時 moves the end an hour past the current one, clears the warning, and warns again before the new end", async () => {
+    const s = hosted();
+    s.clock.t = s.createdAt + EXPIRE - CLOSE_WARN_MS;
+    await s.room.onAlarm();
+    send(s.room, s.host, { type: "HOST_EXTEND_ROOM" });
+    expect(closing(s.host)).toEqual({ type: "HOST_ROOM_CLOSING", minutesLeft: null, canExtend: true });
+    expect(closing(s.player)).toBeUndefined();
+    expect(s.storage.alarms.at(-1)).toBeLessThanOrEqual(s.createdAt + EXPIRE + EXTEND_MS - CLOSE_WARN_MS);
+    expect((s.storage.data.get(SNAPSHOT_KEY) as any).extendedMs).toBe(EXTEND_MS);
+
+    s.clock.t = s.createdAt + EXPIRE; // the old end: nothing closes
+    await s.room.onAlarm();
+    expect(s.closeAll).not.toHaveBeenCalledWith(CLOSE_EXPIRED, "expired");
+    s.clock.t = s.createdAt + EXPIRE + EXTEND_MS - CLOSE_WARN_MS;
+    await s.room.onAlarm();
+    expect(closing(s.host)).toEqual({ type: "HOST_ROOM_CLOSING", minutesLeft: 15, canExtend: true });
+    s.clock.t = s.createdAt + EXPIRE + EXTEND_MS;
+    await s.room.onAlarm();
+    expect(s.closeAll).toHaveBeenLastCalledWith(CLOSE_EXPIRED, "expired");
+  });
+
+  it("can be pressed again and again, but never past 24 hours from creation: then the button says 已達上限", async () => {
+    const s = hosted();
+    for (let i = 0; i < 30; i++) send(s.room, s.host, { type: "HOST_EXTEND_ROOM" });
+    expect((s.storage.data.get(SNAPSHOT_KEY) as any).extendedMs).toBe(MAX_LIFE_MS - EXPIRE);
+    expect(closing(s.host)).toEqual({ type: "HOST_ROOM_CLOSING", minutesLeft: null, canExtend: false });
+    await busyUntil(s, s.createdAt + MAX_LIFE_MS - CLOSE_WARN_MS);
+    expect(closing(s.host)).toEqual({ type: "HOST_ROOM_CLOSING", minutesLeft: 15, canExtend: false });
+    s.clock.t = s.createdAt + MAX_LIFE_MS;
+    await s.room.onAlarm();
+    expect(s.closeAll).toHaveBeenLastCalledWith(CLOSE_EXPIRED, "expired");
+  });
+
+  it("only a host connection can extend: a player is refused and the end does not move", async () => {
+    const s = hosted();
+    send(s.room, s.player, { type: "HOST_EXTEND_ROOM" });
+    expect(lastOf(s.player, "ERROR")).toEqual({ type: "ERROR", error: "not_host" });
+    expect((s.storage.data.get(SNAPSHOT_KEY) as any).extendedMs).toBeUndefined();
+    s.clock.t = s.createdAt + EXPIRE;
+    await s.room.onAlarm();
+    expect(s.closeAll).toHaveBeenLastCalledWith(CLOSE_EXPIRED, "expired");
+  });
+
+  it("a restart keeps the creation time and the extension: the clock does not start again", async () => {
+    const a = hosted();
+    send(a.room, a.host, { type: "HOST_EXTEND_ROOM" });
+    const b = setup(a.createdAt + EXPIRE - MIN);
+    b.storage.data.set(SNAPSHOT_KEY, a.storage.data.get(SNAPSHOT_KEY));
+    b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
+    expect(await b.room.restore()).toBe("restored");
+    expect((b.room as any).createdAt).toBe(a.createdAt);
+    b.clock.t = a.createdAt + EXPIRE;
+    await b.room.onAlarm();
+    expect(b.closeAll).not.toHaveBeenCalledWith(CLOSE_EXPIRED, "expired"); // the extension survived
+    b.clock.t = a.createdAt + EXPIRE + EXTEND_MS;
+    await b.room.onAlarm();
+    expect(b.closeAll).toHaveBeenLastCalledWith(CLOSE_EXPIRED, "expired");
+  });
+
+  it("a save from before the cap dates the room from its last activity", async () => {
+    const a = hosted();
+    a.clock.t += 2 * 60 * MIN;
+    send(a.room, a.host, { type: "HOST_SET_PASSWORD", password: "x" });
+    const legacy = structuredClone(a.storage.data.get(SNAPSHOT_KEY)) as any;
+    delete legacy.createdAt;
+    const b = setup(a.clock.t + MIN);
+    b.storage.data.set(SNAPSHOT_KEY, legacy);
+    b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
+    await b.room.restore();
+    b.clock.t = legacy.lastActivityAt + EXPIRE - MIN;
+    await b.room.onAlarm();
+    expect(b.closeAll).not.toHaveBeenCalledWith(CLOSE_EXPIRED, "expired");
+    b.clock.t = legacy.lastActivityAt + EXPIRE;
+    await b.room.onAlarm();
+    expect(b.closeAll).toHaveBeenLastCalledWith(CLOSE_EXPIRED, "expired");
+  });
+
+  it("an orphaned image still waits the longest a room can live (24 hours), not just the 6 hour cap", () => {
+    expect(roomMaxLifeMs()).toBe(MAX_LIFE_MS);
+    expect(roomMaxLifeMs(EXPIRE, IDLE)).toBe(24 * 60 * MIN);
+    expect(roomMaxLifeMs(30 * 60 * MIN, IDLE)).toBe(30 * 60 * MIN); // a longer ROOM_EXPIRE_MS still wins
   });
 });

@@ -116,6 +116,8 @@ export default function HostPage() {
   const [savedPassword, setSavedPassword] = useState("");
   /** The room's screen key (HOST_OK), for the big screen link: "" until the room sends it. */
   const [screenKey, setScreenKey] = useState("");
+  /** The room's closing warning (HOST_ROOM_CLOSING): shown while minutesLeft is set. */
+  const [closing, setClosing] = useState<{ minutesLeft: number | null; canExtend: boolean } | null>(null);
   /** The big screen link, with the key once the room has sent it: the anchor and the QR show the same one. */
   const screenLink = `/room/${code}/screen${screenKey ? `#s=${screenKey}` : ""}`;
   /** The big screen QR is closed until asked for: it holds the screen key, and players can see the host's phone. */
@@ -159,6 +161,11 @@ export default function HostPage() {
           setJoinPassword(msg.joinPassword);
           setSavedPassword(msg.joinPassword);
           setScreenKey(msg.screenKey ?? "");
+          // The room sends its warning again right after HOST_OK if it still applies.
+          setClosing(null);
+          break;
+        case "HOST_ROOM_CLOSING":
+          setClosing(msg);
           break;
         case "HOST_AI_STATUS": {
           setAiStatus(msg);
@@ -573,6 +580,14 @@ export default function HostPage() {
             ⚙ 更多
           </PixelButton>
         </header>
+        {closing?.minutesLeft != null && (
+          <Panel tone="turn" role="status" data-testid="room-closing" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
+            房間再 {closing.minutesLeft} 分鐘關閉
+            <PixelButton data-testid="room-extend" disabled={!closing.canExtend || !connected} onClick={() => send({ type: "HOST_EXTEND_ROOM" })} className="!m-0 !px-4 !py-2 text-[16px]">
+              {closing.canExtend ? "延長 1 小時" : "已達上限"}
+            </PixelButton>
+          </Panel>
+        )}
         <Panel tone="lav" className="px-3 py-2">
           <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
           {/* A new tab, so opening it never navigates the host page away from its socket. */}

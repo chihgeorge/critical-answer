@@ -62,6 +62,10 @@ export interface RoomSnapshot {
   keyChecks?: number;
   /** When someone last did something that changes the room, rounded down to the minute so it does not make every message a write. Null in a save from before this field existed. */
   lastActivityAt: number | null;
+  /** The room's first connection: it expires EXPIRE_MS after this. Missing in a save from before the 6 hour cap. */
+  createdAt?: number | null;
+  /** How far the host extended the room (延長 1 小時), in ms. Missing means never. */
+  extendedMs?: number;
   /** The full bank the game is dealt from, not just question ids: editing or deleting a bank must not change a game in progress.
    * Only in a save from before BANK_KEY (or one an older Worker wrote): newer saves keep it under BANK_KEY. */
   bank?: Bank;
@@ -136,6 +140,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (nextLine !== null && !(isObject(nextLine) && isString(nextLine.text) && Number.isInteger(nextLine.gen))) return null;
     const at = raw.lastActivityAt ?? null;
     if (at !== null && !(typeof at === "number" && Number.isFinite(at) && at >= 0)) return null;
+    // A damaged creation time counts as missing: the room dates itself from its last activity instead.
+    const createdAt = typeof raw.createdAt === "number" && Number.isFinite(raw.createdAt) && raw.createdAt >= 0 ? raw.createdAt : null;
     const bank = raw.bank === undefined ? undefined : parseBank(raw.bank); // throws on a bank that would not load today
     if (raw.phaseCard !== undefined && typeof raw.phaseCard !== "boolean") return null;
     if (raw.intro !== undefined && !(Number.isInteger(raw.intro) && (raw.intro as number) >= 1 && (raw.intro as number) <= INTRO_PAGES)) return null;
@@ -176,6 +182,9 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       joinPassword,
       nextLine: nextLine as RoomSnapshot["nextLine"],
       lastActivityAt: at,
+      ...(raw.createdAt !== undefined ? { createdAt } : {}),
+      // A damaged extension counts as none: the room keeps its normal end.
+      ...(raw.extendedMs !== undefined ? { extendedMs: Number.isInteger(raw.extendedMs) && (raw.extendedMs as number) > 0 ? (raw.extendedMs as number) : 0 } : {}),
       bank,
       aiWanted,
       aiSource,

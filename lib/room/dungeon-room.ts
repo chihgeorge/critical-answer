@@ -132,7 +132,19 @@ interface Step {
 }
 /** Long enough for a pizza break, short enough that a TV left on overnight is not billed all night. */
 const IDLE_MS = 2 * 60 * 60 * 1000;
-export const EXPIRE_MS = 24 * 60 * 60 * 1000;
+/** A room's whole life, from its first connection: a game never runs this long, so it closes even while in use. */
+export const EXPIRE_MS = 6 * 60 * 60 * 1000;
+/** The host page is told the room is closing this long before EXPIRE_MS (players and the big screen are not). */
+export const CLOSE_WARN_MS = 15 * 60 * 1000;
+/** One 延長 1 小時 from the host page moves the end this much later, up to MAX_LIFE_MS from the first connection. */
+export const EXTEND_MS = 60 * 60 * 1000;
+export const MAX_LIFE_MS = 24 * 60 * 60 * 1000;
+/** The longest a room with these options can live, extensions included: an orphaned image waits this long (plus a
+ * margin) before it is deleted (worker/index.ts). Still 24 hours after the 6 hour cap, because a room extended to its
+ * cap may still show an image of the bank it copied at the start. */
+export function roomMaxLifeMs(expireMs = EXPIRE_MS, idleMs = IDLE_MS): number {
+  return Math.max(expireMs, idleMs, MAX_LIFE_MS);
+}
 /** Sockets per room: players, screens and the host, with room to spare. Stops one client opening thousands. */
 const MAX_CONNECTIONS = 60;
 /** A full room makes space by closing its oldest spare socket; this many keyed screens are never spare. */
@@ -182,7 +194,7 @@ export interface RoomOptions {
   bank?: Bank;
   /** No state-changing message for this long: close every connection (the game stays saved). Default 2 hours. */
   idleMs?: number;
-  /** No state-changing message for this long: forget the room and free its code. Default 24 hours. */
+  /** This long after its first connection, even while in use: forget the room and free its code. Default 6 hours. */
   expireMs?: number;
   /** The clock (tests). */
   now?: () => number;
@@ -462,6 +474,13 @@ export class DungeonRoom {
   private initialBank: Bank;
   /** Last message that changed something (not a transcript download). Null until the first one. */
   private lastActivityAt: number | null = null;
+  /** The room's first connection (its first markActivity): it expires expireMs after this. Null until then. */
+  private createdAt: number | null = null;
+  /** The lastActivityAt the idle close was done for, so a later alarm (the closing warning) does not close a viewer
+   * who reconnected since. In memory only: restore() sets it for a room that was already idle. */
+  private restedFrom: number | null = null;
+  /** How much the host has extended the room past expireMs (延長 1 小時), saved. */
+  private extendedMs = 0;
   /** The connection onMessage is currently dispatching for, and whether that dispatch sent it an ERROR: only an
    * accepted message counts as activity, so a stranger guessing keys forever cannot keep a room from resting. */
   private dispatching: Conn | null = null;
@@ -767,6 +786,8 @@ export class DungeonRoom {
       // duration (seconds) is never rounded away entirely; production's 2-hour default still rounds to the
       // minute. Capped so it never exceeds 60s even for a very long idleMs.
       lastActivityAt: this.lastActivityAt === null ? null : roundActivity(this.lastActivityAt, this.idleMs),
+      createdAt: this.createdAt,
+      ...(this.extendedMs ? { extendedMs: this.extendedMs } : {}),
       phaseCard: this.phaseCard,
       ...(this.pacing === "manual" ? { pacing: "manual" as const } : {}),
       ...(this.revealHold !== null ? { revealHeld: true as const } : {}),
@@ -880,10 +901,15 @@ export class DungeonRoom {
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
     this.lastActivityAt = s.lastActivityAt ?? this.now();
+    // A save from before createdAt: its last activity is the oldest time we know it was in use. A game in progress
+    // keeps nearly its whole 6 hours; a room nobody touched for longer than that closes now instead of living on.
+    this.createdAt = s.createdAt ?? this.lastActivityAt;
+    this.extendedMs = Math.min(s.extendedMs ?? 0, this.maxExtendMs());
+    // Already idle: the idle close happened before the restart (or nobody was left to close), so do not close again.
+    this.restedFrom = this.now() - this.lastActivityAt >= this.idleMs ? this.lastActivityAt : null;
     // A key this room just made is not in storage yet: the next message must write it, before any host is told it.
     this.lastSaved = s.screenKey ? JSON.stringify(this.persistedState()) : "";
-    const idleFor = this.now() - this.lastActivityAt;
-    this.setAlarmAt(Math.max(this.now(), this.lastActivityAt + (idleFor >= this.idleMs ? this.expireMs : this.idleMs)));
+    this.setAlarmAt(this.nextAlarmAt()!);
     console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
     // A restart loses the beat that resolves a wrong boss lock.
     this.armBossMiss();
@@ -1311,6 +1337,7 @@ export class DungeonRoom {
   private markActivity() {
     const now = this.now();
     this.lastActivityAt = now;
+    this.createdAt ??= now;
     const due = now + this.idleMs;
     // Only move the alarm earlier: while people are active the alarm already waiting is sooner than `due`.
     // Fire-and-forget is safe here: onMessage always sends or broadcasts something right after this call, in the
@@ -1333,24 +1360,65 @@ export class DungeonRoom {
     }
   }
 
+  private closesAt(): number | null {
+    return this.createdAt === null ? null : this.createdAt + this.expireMs + this.extendedMs;
+  }
+
+  /** The most the host may extend: the room never lives past roomMaxLifeMs. */
+  private maxExtendMs(): number {
+    return roomMaxLifeMs(this.expireMs, this.idleMs) - this.expireMs;
+  }
+
+  /** The next check: the idle close, the host's closing warning, or the expiry, whichever is next (now if overdue). */
+  private nextAlarmAt(): number | null {
+    const closesAt = this.closesAt();
+    if (closesAt === null || this.lastActivityAt === null) return null;
+    const now = this.now();
+    const idleAt = this.restedFrom === this.lastActivityAt ? Infinity : this.lastActivityAt + this.idleMs;
+    return Math.max(now, Math.min(closesAt, ...[idleAt, closesAt - CLOSE_WARN_MS].filter((t) => t > now)));
+  }
+
+  /** Host-only: whether the room closes in under CLOSE_WARN_MS (minutesLeft null when not), and if it may be extended. */
+  private closingMessage(): Extract<ServerMessage, { type: "HOST_ROOM_CLOSING" }> {
+    const closesAt = this.closesAt();
+    const left = closesAt === null ? Infinity : closesAt - this.now();
+    const minutesLeft = left > CLOSE_WARN_MS ? null : Math.max(1, Math.ceil(left / 60_000));
+    return { type: "HOST_ROOM_CLOSING", minutesLeft, canExtend: this.extendedMs < this.maxExtendMs() };
+  }
+
+  /** 延長 1 小時: the end moves an hour past the current one, never past MAX_LIFE_MS; the warning comes again later. */
+  private handleExtendRoom(conn: Conn) {
+    if (!this.requireHost(conn)) return;
+    if (this.createdAt === null) return;
+    this.extendedMs = Math.min(this.extendedMs + EXTEND_MS, this.maxExtendMs());
+    // The waiting alarm may be the old end: move it to the new next check (markActivity after this only moves it sooner).
+    void this.setAlarmAt(this.nextAlarmAt()!);
+    const closing = this.closingMessage();
+    for (const c of this.hostConns.values()) this.sendTo(c, closing);
+  }
+
   /**
-   * The room's alarm. Idle for `idleMs`: close every connection, keep the game. Idle for `expireMs`: forget the
-   * room, so its code can be used again. Anything in between just sets the alarm for the next check.
+   * The room's alarm. Idle for `idleMs`: close every connection, keep the game. CLOSE_WARN_MS before its end: warn
+   * the host. `expireMs` after its first connection, in use or not: forget the room, so its code can be used again.
    */
   async onAlarm() {
     this.alarmAt = null;
     const last = this.lastActivityAt;
-    if (last === null) return;
-    const idleFor = this.now() - last;
-    if (idleFor >= this.expireMs) {
+    const closesAt = this.closesAt();
+    if (last === null || closesAt === null) return;
+    if (this.now() >= closesAt) {
       await this.expire();
-    } else if (idleFor >= this.idleMs) {
+      return;
+    }
+    const idleFor = this.now() - last;
+    if (idleFor >= this.idleMs && this.restedFrom !== last) {
+      this.restedFrom = last;
       this.room.closeAll?.(CLOSE_IDLE, "idle");
       console.log(JSON.stringify({ event: "room_idle_closed", idleMs: idleFor }));
-      await this.setAlarmAt(last + this.expireMs);
-    } else {
-      await this.setAlarmAt(last + this.idleMs);
     }
+    const closing = this.closingMessage();
+    if (closing.minutesLeft !== null) for (const conn of this.hostConns.values()) this.sendTo(conn, closing);
+    await this.setAlarmAt(this.nextAlarmAt()!);
   }
 
   private async expire() {
@@ -1432,6 +1500,9 @@ export class DungeonRoom {
     this.lastSaved = "";
     this.savedBank = null; // expire() just cleared storage
     this.lastActivityAt = null;
+    this.createdAt = null;
+    this.restedFrom = null;
+    this.extendedMs = 0;
     this.alarmAt = null;
   }
 
@@ -1622,6 +1693,9 @@ export class DungeonRoom {
         case "HOST_GET_TRANSCRIPT":
           this.handleTranscript(sender);
           break;
+        case "HOST_EXTEND_ROOM":
+          this.handleExtendRoom(sender);
+          break;
         case "HOST_NEXT":
           this.handleHostNext(sender, msg.eventId);
           break;
@@ -1761,6 +1835,8 @@ export class DungeonRoom {
     this.sendAiStatus(conn);
     this.sendAnswer(conn);
     this.sendPicks(conn);
+    const closing = this.closingMessage();
+    if (closing.minutesLeft !== null) this.sendTo(conn, closing);
   }
 
   private handleJoin(conn: Conn, teamId: string, teamKey: string, rawName: string, password: string, resume = false) {
