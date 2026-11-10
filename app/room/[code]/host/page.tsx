@@ -1151,16 +1151,16 @@ export default function HostPage() {
                     </PixelButton>
                   ) : (
                   <div className={turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
-                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} aria-label="答錯・重答" onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                       {turn.inBoss ? "答錯・重答" : <TwoLine top="答錯・" bottom="重答" />}
                       <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                     </PixelButton>
-                    <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                    <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} aria-label={turn.inBoss ? "答錯・逃跑" : "答錯・逃跑・同房"} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
                       {turn.inBoss ? "答錯・逃跑" : <TwoLine top="答錯・" bottom="逃跑・同房" />}
                       <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
                     </PixelButton>
                     {!turn.inBoss && (
-                      <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
+                      <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} aria-label="答錯・逃跑・換房" onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
                         <TwoLine top="答錯・" bottom="逃跑・換房" />
                         <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.switch}</span>
                       </PixelButton>
@@ -1247,6 +1247,7 @@ export default function HostPage() {
 }
 
 /** A judge button's label on two lines, the prefix small, so a three-button row never breaks inside 「逃跑・換房」. */
+// Its two block lines read as "答錯・ 重答" to screen readers, so each button using it carries an aria-label.
 function TwoLine({ top, bottom }: { top: string; bottom: string }) {
   return (
     <span className="flex min-w-0 flex-1 flex-col">
