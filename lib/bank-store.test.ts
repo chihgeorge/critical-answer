@@ -30,7 +30,7 @@ describe("BankStore.getVersionedBank", () => {
   });
 
   it("returns the stored bank and version unchanged when one already exists", async () => {
-    const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 7 });
+    const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 7 }); // pregate-literal: BANK_FORMAT=7 the 7 is the bank version, not the format
     const versioned = await new BankStore(storage).getVersionedBank();
     expect(versioned).toEqual({ bank: validBank, version: 7 });
   });
@@ -79,7 +79,7 @@ describe("BankStore.putBank", () => {
 
   it("refuses to save over a stored bank it cannot read, and keeps it (a rollback below a newer format)", async () => {
     // The fallback bank is version 1, so a save at version 1 would otherwise replace every custom question.
-    const stored = { bank: { rooms: "a format this version can't read" }, version: 7, format: BANK_FORMAT };
+    const stored = { bank: { rooms: "a format this version can't read" }, version: 9, format: BANK_FORMAT };
     const storage = memoryStorage(stored);
     await expect(new BankStore(storage).putBank(validBank, 1)).rejects.toThrow(/unreadable/);
     expect(await storage.get("bank")).toEqual(stored);
@@ -87,7 +87,7 @@ describe("BankStore.putBank", () => {
 
   it("refuses to save over a stored bank in a newer format, even one its parseBank accepts", async () => {
     // A newer format that only adds fields would parse fine here, and a save would drop those fields.
-    const stored = { bank: validBank, version: 7, format: BANK_FORMAT + 1 };
+    const stored = { bank: validBank, version: 7, format: BANK_FORMAT + 1 }; // pregate-literal: BANK_FORMAT=7 the 7 is the bank version, not the format
     const storage = memoryStorage(stored);
     const store = new BankStore(storage);
     expect(await store.getVersionedBank()).toEqual({ bank: BANK, version: 1, unreadable: true });
@@ -141,11 +141,11 @@ describe("BankStore.putBank", () => {
   it("still loads a stored multipleChoice question with 5 options, but refuses to save one (the TV has 4 tiles)", async () => {
     const five = { kind: "multipleChoice" as const, id: "mc5", content: { kind: "text" as const, value: "?" }, options: ["A", "B", "C", "D", "E"], correctIndex: 0 };
     const legacy: Bank = { ...validBank, pools: { ...validBank.pools, 1: [...validBank.pools[1], five] } };
-    const storage = memoryStorage({ format: BANK_FORMAT, bank: legacy, version: 7 });
+    const storage = memoryStorage({ format: BANK_FORMAT, bank: legacy, version: 7 }); // pregate-literal: BANK_FORMAT=7 the 7 is the bank version, not the format
     const store = new BankStore(storage);
     expect(await store.getVersionedBank()).toEqual({ bank: legacy, version: 7 });
     await expect(store.putBank(legacy, 7)).rejects.toThrow(/more than 4 options/);
-    expect(await storage.get("bank")).toEqual({ bank: legacy, version: 7, format: BANK_FORMAT });
+    expect(await storage.get("bank")).toEqual({ bank: legacy, version: 7, format: BANK_FORMAT }); // pregate-literal: BANK_FORMAT=7 the 7 is the bank version, not the format
   });
 
   // Regression: boss HP had no upper bound; the big screen draws hearts up to MAX_HEARTS, then a bar, and 60 is the cap (multi-field.md E5)
@@ -261,7 +261,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
   });
 
   it("deletes nothing while the stored bank is unreadable (the fallback bank is not what's stored)", async () => {
-    const { store, storage, alarms, onImagesOrphaned, at } = setup({ format: BANK_FORMAT, bank: { rooms: "a format this version can't read" }, version: 7 });
+    const { store, storage, alarms, onImagesOrphaned, at } = setup({ format: BANK_FORMAT, bank: { rooms: "a format this version can't read" }, version: 9 });
     await storage.put("pendingImageDeletes", [{ key: KEY, deleteAt: 0 }]);
     at(DELAY);
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
