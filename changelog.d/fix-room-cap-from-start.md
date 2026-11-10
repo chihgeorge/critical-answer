@@ -1,0 +1,2 @@
+### Changed
+- The room's 6-hour limit now counts from the host's first 「開始遊戲」, not from the room's first connection. Going back to the lobby and starting another game does not restart it, and the 24-hour cap on extensions also counts from the first start. A lobby that has never started a game has no 6-hour limit: it rests after 2 idle hours as before and is wiped after 6 hours with no action. Rooms already open under the first-connection rule keep the time they have, so nothing closes early at deploy.

@@ -62,7 +62,8 @@ export interface RoomSnapshot {
   keyChecks?: number;
   /** When someone last did something that changes the room, rounded down to the minute so it does not make every message a write. Null in a save from before this field existed. */
   lastActivityAt: number | null;
-  /** The room's first connection: it expires EXPIRE_MS after this. Missing in a save from before the 6 hour cap. */
+  /** The host's first game start (a room saved under #206's rules: its first connection): it expires EXPIRE_MS after
+   * this. Null before the first start; missing in a save from before the 6 hour cap. */
   createdAt?: number | null;
   /** How far the host extended the room (延長 1 小時), in ms. Missing means never. */
   extendedMs?: number;

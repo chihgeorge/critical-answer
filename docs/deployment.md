@@ -33,7 +33,7 @@
 | `R2_PUBLIC_BASE_URL` | `wrangler.jsonc` 的 `vars` | 圖片題要 | R2 bucket 的公開網址 |
 | `OWNER_KEY` | Worker secret | 題庫編輯要 | 題庫編輯器和站長金鑰的密碼 |
 | `ANTHROPIC_API_KEY` | Worker secret | 選用 | 站長的 AI 旁白金鑰 |
-| `ROOM_IDLE_MS`、`ROOM_EXPIRE_MS` | Worker 變數 | 選用 | 房間多久沒動作就休息，以及從建立起多久被清除（毫秒，預設 2 小時、6 小時，主持人可延長到 24 小時，見[主持指南](hosting.md#已知限制)） |
+| `ROOM_IDLE_MS`、`ROOM_EXPIRE_MS` | Worker 變數 | 選用 | 房間多久沒動作就休息，以及從第一次開始遊戲起多久被清除（毫秒，預設 2 小時、6 小時，主持人可延長到 24 小時，見[主持指南](hosting.md#已知限制)） |
 
 ## AI 旁白的金鑰
 

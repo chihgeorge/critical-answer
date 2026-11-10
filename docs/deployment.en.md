@@ -33,7 +33,7 @@ Merging into `main` deploys automatically. Both sides use the platform's own Git
 | `R2_PUBLIC_BASE_URL` | `vars` in `wrangler.jsonc` | For image questions | The R2 bucket's public URL |
 | `OWNER_KEY` | Worker secret | For bank editing | Password for the bank editor and the owner key |
 | `ANTHROPIC_API_KEY` | Worker secret | Optional | The owner's AI narration key |
-| `ROOM_IDLE_MS`, `ROOM_EXPIRE_MS` | Worker variable | Optional | How long a room may go without action before it rests, and how long after its creation it is wiped (milliseconds; default 2 hours and 6 hours, which the host can extend to 24 hours; see the [hosting guide](hosting.en.md#known-limits)) |
+| `ROOM_IDLE_MS`, `ROOM_EXPIRE_MS` | Worker variable | Optional | How long a room may go without action before it rests, and how long after its first game start it is wiped (milliseconds; default 2 hours and 6 hours, which the host can extend to 24 hours; see the [hosting guide](hosting.en.md#known-limits)) |
 
 ## Keys for AI narration
 
