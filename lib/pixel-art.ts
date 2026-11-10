@@ -683,6 +683,34 @@ const PLATE_AT = {
   "dish-rotten": [24, 32],
 } as const satisfies Partial<Record<SpriteKind, readonly [number, number]>>;
 
+/** The empty plate's top row and width in cells: the dish's own plate, else as wide as the canvas on its bottom rows. */
+function emptyPlateAt(kind: SpriteKind): readonly [number, number] {
+  const [w, h] = SPRITE_SIZE[kind];
+  return (PLATE_AT as Partial<Record<SpriteKind, readonly [number, number]>>)[kind] ?? [h - 5, w - 2];
+}
+
+/** The narrowest empty plate on stage, in CSS px: near the narrowest plated dish's (dish-tower, 32 cells ×4 = 128). */
+export const MIN_EMPTY_PLATE_PX = 120;
+
+/** The biggest scale a dish is shown at on stage. */
+const MAX_DISH_SCALE = 5;
+
+/** The scale a dish is served at on stage (DishOnStage): as tall as fits in 130 CSS px, at most MAX_DISH_SCALE. */
+export function dishScale(kind: SpriteKind): number {
+  return Math.min(MAX_DISH_SCALE, Math.floor(130 / SPRITE_SIZE[kind][1]));
+}
+
+/**
+ * The scale the empty plate of `kind` is shown at on stage: a dish with no plate of its own (a narrow glass, the squid's
+ * skewer) gets a bigger scale so its plate is at least MIN_EMPTY_PLATE_PX wide, at most MAX_DISH_SCALE. A plated dish
+ * keeps its dish scale, so its empty plate is the plate it was served on.
+ */
+export function emptyPlateScale(kind: SpriteKind): number {
+  const scale = dishScale(kind);
+  if (kind in PLATE_AT) return scale;
+  return Math.max(scale, Math.min(MAX_DISH_SCALE, Math.ceil(MIN_EMPTY_PLATE_PX / emptyPlateAt(kind)[1])));
+}
+
 /**
  * What is left of `kind` once it is eaten (docs/designs/eat-dish.md): its own plate on its own canvas size, with a few
  * crumbs, so only the food goes at the last cut. A dish served without a plate (a bowl, a glass, a skewer) leaves a plate
@@ -691,7 +719,7 @@ const PLATE_AT = {
 export function drawEmptyPlate(cv: HTMLCanvasElement, kind: SpriteKind) {
   const [w, h] = SPRITE_SIZE[kind];
   const P = new Px(cv, w, h);
-  const [y, pw] = (PLATE_AT as Partial<Record<SpriteKind, readonly [number, number]>>)[kind] ?? [h - 5, w - 2];
+  const [y, pw] = emptyPlateAt(kind);
   plate(P, y, pw);
   P.outline(K);
   const cx = Math.floor(w / 2);

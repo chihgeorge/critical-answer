@@ -10,7 +10,7 @@ import { revealMarks } from "@/lib/podium";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { Panel, prefersReducedMotion, Sprite } from "@/components/pixel";
 import { monsterById } from "@/lib/monster-catalog";
-import { SPRITE_SIZE } from "@/lib/pixel-art";
+import { dishScale, emptyPlateScale } from "@/lib/pixel-art";
 
 type Dish = NonNullable<AnswerReveal["dish"]>;
 
@@ -164,7 +164,8 @@ export function CookFrame({ step, bottom }: { step: 1 | 2; bottom: number }) {
  * none when the team has left) stands left of it and eats it in three bites, then the empty plate (eat-dish.md). */
 export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom, step = 3, eater = -1 }: { dish: Dish; title?: string; cardTop: number; bottom: number; step?: ServeStep; eater?: number }) {
   const kind = Object.hasOwn(DISH_SPRITE, dish.monster.sprite) ? DISH_SPRITE[dish.monster.sprite] : DISH_SPRITE.slime; // a newer server's sprite: the slime's dish
-  const scale = Math.min(5, Math.floor(130 / SPRITE_SIZE[kind][1]));
+  const bites = Math.max(0, step - 3);
+  const scale = bites >= 4 ? emptyPlateScale(kind) : dishScale(kind);
   // The catalog's own hue: a repeat appearance's recolor stays on the monster (monster-catalog.md §3).
   const hue = monsterById(dish.monster.id ?? "")?.hue ?? dish.monster.hue;
   const at = (left: number, bottom: number) => ({ left, bottom, transform: "translateX(-50%)", zIndex: 4 }) as const;
@@ -175,8 +176,9 @@ export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom, ste
         <DishCard dish={dish} title={title} />
       </div>
       <div className="absolute" style={at(480, bottom)}>
-        {/* Step 7 is 4 bites: the dish's own plate on its own canvas, empty, so nothing but the food changes. */}
-        <Sprite kind={kind} scale={scale} hue={hue} bites={Math.max(0, step - 3)} />
+        {/* Step 7 is 4 bites: the dish's own plate on its own canvas, empty. A dish with no plate of its own is shown
+            bigger there, so its plate is about as wide as the others' (emptyPlateScale). */}
+        <Sprite kind={kind} scale={scale} hue={hue} bites={bites} />
       </div>
       {step >= 4 && eater >= 0 && (
         <div className="absolute" style={at(EATER_X, bottom)}>

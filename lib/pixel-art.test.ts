@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { biteCells, drawEmptyPlate, drawHomeScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE } from "./pixel-art";
+import { biteCells, dishScale, drawEmptyPlate, drawHomeScene, emptyPlateScale, MIN_EMPTY_PLATE_PX, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE } from "./pixel-art";
 import { ACCESSORIES, MONSTERS } from "./monster-catalog";
 import type { SpriteKind } from "./sprite-kind";
 
@@ -172,5 +172,17 @@ describe("drawEmptyPlate", () => {
     // The plate sits on the canvas's bottom rows, as the dish does.
     const lastRow = Math.max(...[...Array(dish.h).keys()].filter((y) => empty.data.slice(y * dish.w * 4, (y + 1) * dish.w * 4).some((v, j) => j % 4 === 3 && v > 0)));
     expect(lastRow).toBeGreaterThanOrEqual(dish.h - 8);
+  });
+
+  // Value: protects=a dish with no plate of its own (the squid at ×3) still leaves a plate about as wide as the others on
+  // stage, and a plated dish's plate keeps its size; fails_when=emptyPlateScale shrinks a plate or grows a plated one
+  it.each(dishes)("%s: the empty plate is at least MIN_EMPTY_PLATE_PX wide on stage", (kind) => {
+    const { data, w, h } = pixels(kind, drawEmptyPlate);
+    const cols = [...Array(w).keys()].filter((x) => [...Array(h).keys()].some((y) => data[(y * w + x) * 4 + 3] > 0));
+    const scale = dishScale(kind);
+    const shown = emptyPlateScale(kind);
+    expect((cols.at(-1)! - cols[0] + 1) * shown).toBeGreaterThanOrEqual(MIN_EMPTY_PLATE_PX);
+    if (kind === "dish-squid") expect(shown).toBeGreaterThan(scale);
+    if (["dish-tower", "dish-crab", "dish-stew"].includes(kind)) expect(shown).toBe(scale);
   });
 });
