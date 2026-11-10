@@ -1006,12 +1006,12 @@ export default function HostPage() {
                       <div className="px-1 pt-1 text-[14px] text-white">隊伍卡住時：</div>
                       <div className={bossMiss ? "grid" : "grid grid-cols-2"}>
                         <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
-                          替{turn.team.name}選・重答
+                          <span className="text-balance">替{turn.team.name}選・重答</span>
                           <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                         </PixelButton>
                         {!bossMiss && (
                           <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                            替{turn.team.name}選・逃跑
+                            <span className="text-balance">替{turn.team.name}選・逃跑</span>
                             <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
                           </PixelButton>
                         )}
