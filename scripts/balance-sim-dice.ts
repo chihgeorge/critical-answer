@@ -11,6 +11,13 @@
 // the wrong options by itself (owner, 2026-11-09). It guesses evenly among the options neither greyed out nor ruled out.
 // EX=1,0,0 with SMART=0 is balance-sim.ts's model (a blind guess). SMART=0: a team flees after two greyed options even
 // when only the right one is left (balance-sim.ts did; by default it stays and answers).
+// Reward sources (reward-balance, 2026-11-09): every satiety change is booked to room / boss (turn-based hits) / buzz
+// (buzzer hits) / kill (the 4d20) / event (event satiety) / boon (the ±50% of a blessing or curse) / first / pull, and a
+// SOURCES block prints shares, flips and luck lines. Knobs: ROOMR="10,20,20,30,40,40,50,50" room rewards,
+// EVS='{"feast":20,"rotten":-10,"great":25,"spring":10}', EVCH (fork chance, lib's 0.25), FORK (chance the picked door is
+// ❓, 0.5: the doors are unmarked), KILL="4d20" or "2d20+10" (kill bonus), BUZZHIT (a buzzer hit's reward, default HIT),
+// SKILL (spread of team knowledge: ×(1-s), ×(1-s/3), ×(1+s/3), ×(1+s)), FIRSTBONUS (satiety for the first team into the
+// boss room), PULLPAY (share of the skipped rooms' rewards a later team gets when it walks into the boss room).
 // Not modelled: sort questions (they play like multipleChoice here), a potion wasted on a wrong answer, the host's
 // 改判, a mage that casts again on a question after a 1.
 import { registerHooks } from "node:module";
@@ -31,6 +38,12 @@ const THRESH = env("THRESH", 15), HP1 = env("HP1", 5), HP2 = env("HP2", 3), HIT 
 const MAGE_MIN = env("MAGE_MIN", 2), WAR_MIN = env("WAR_MIN", 2), THIEF_MIN = env("THIEF_MIN", 3);
 const WEAK = env("WEAK", 0.1), POTION = env("POTION", 0), SMART = process.env.SMART !== "0";
 const EX = (process.env.EX ?? "1/3,1/3,1/3").split(",").map((x) => { const [a, b] = x.split("/").map(Number); return a / (b ?? 1); });
+const ROOMR = (process.env.ROOMR ?? "10,20,20,30,40,40,50,50").split(",").map(Number);
+Object.assign(G.EVENT_SATIETY, JSON.parse(process.env.EVS ?? "{}"));
+const EVCH = env("EVCH", G.EVENT_CHANCE), FORK = env("FORK", 0.5), BUZZHIT = env("BUZZHIT", HIT), SKILL = env("SKILL", 0);
+const FIRSTBONUS = env("FIRSTBONUS", 0), PULLPAY = env("PULLPAY", 0);
+const [, KN, KS, KF] = (process.env.KILL ?? "4d20").match(/^(\d+)d(\d+)(?:\+(\d+))?$/)!.map(Number);
+const killRoll = () => { let s = KF || 0; for (let i = 0; i < KN; i++) s += 1 + Math.floor(R() * KS); return s; };
 if (EX.length !== 3 || Math.abs(EX[0] + EX[1] + EX[2] - 1) > 1e-9) throw new Error("EX needs three chances that add up to 1");
 
 /** Every array is indexed by tier: [1, small failure, success, 20]. */
@@ -97,7 +110,11 @@ const D = (c: C) => c !== undefined && cfg.dice.includes(c);
 const tier = (v: number) => (v === 1 ? 0 : v <= cfg.small ? 1 : v <= 19 ? 2 : 3);
 if ([1, 2, cfg.small, cfg.small + 1, 19, 20].map(tier).join("") !== "011223") throw new Error("tier boundaries");
 
-const rooms: GT.RoomTemplate[] = [1, 2, 2, 3, 4, 4, 5, 5].map((d) => ({ baseDifficulty: d as GT.Difficulty, reward: d * 10 }));
+const rooms: GT.RoomTemplate[] = [1, 2, 2, 3, 4, 4, 5, 5].map((d, i) => ({ baseDifficulty: d as GT.Difficulty, reward: ROOMR[i] }));
+const SRC = ["room", "boss", "buzz", "kill", "event", "boon", "first", "pull"] as const;
+type Src = (typeof SRC)[number];
+/** Per team, per game: satiety by source, correct answers, and the boss-room entry. */
+interface Book { src: Record<Src, number>; correct: number; skill: number; first?: { lead: number }; skipped?: number; killer?: boolean }
 const pools = [1, 2, 3, 4, 5].map((p) => Array.from({ length: 80 }, (_, j) => `p${p}-${j}`));
 const boss = Array.from({ length: 160 }, (_, j) => `b${j}`);
 const songs = Array.from({ length: 80 }, (_, j) => `s${j}`);
@@ -144,22 +161,44 @@ function play(classes: C[], maxTurns = 600) {
   // team:question pairs a dice mage's spell landed on (magePay).
   const spelled = new Set<string>();
   const isText = (q: string) => { if (!kinds.has(q)) kinds.set(q, R() < TEXT); return kinds.get(q)!; };
+  const book: Book[] = classes.map((_, i) => ({ src: Object.fromEntries(SRC.map((s) => [s, 0])) as Record<Src, number>, correct: 0, skill: SKILL ? [1 - SKILL, 1 - SKILL / 3, 1 + SKILL / 3, 1 + SKILL][i] : 1 }));
+  const idx = (id: string) => Number(id.slice(1));
+  const know = (id: string, p: number) => R() < Math.min(0.98, p * book[idx(id)].skill);
+  // Teams that took the ⚔️ door: the room they walk out of draws no fork (branch-fork.md).
+  const noFork = new Set<string>();
+  // The 4d20 lib rolled, swapped for KILL's; returns what the kill paid.
+  const killFix = (id: string, o: GT.AnswerOutcome) => {
+    if (o.type !== "correct-boss-hit" || o.killBonus === undefined) return 0;
+    const k = killRoll();
+    book[idx(id)].killer = true;
+    pay(id, k - o.killBonus);
+    return k;
+  };
+  const boonOf = (b: GT.Boon | undefined, base: number) => (b === "blessing" ? Math.round(base * 0.5) : b === "curse" ? Math.round(base * 0.5) - base : 0);
   for (let turn = 0; turn < maxTurns && g.phase === "playing"; turn++) {
+    const before = g.teams.map((t) => t.reward), wasIn = g.teams.map((t) => t.inBoss);
+    let cat: Src = "room", actor = -1, killAmt = 0, boonAmt = 0;
+    try {
     if (g.boss.phasePending) { g = G.enterNextBossPhase(g); continue; }
     if (G.isBuzzPhase(g)) {
       const bq = g.boss.currentQuestionId;
-      const knowers = g.teams.filter(() => R() < KB);
+      const knowers = g.teams.filter((t) => know(t.id, KB));
       if (knowers.length === 0) { g = G.skipBuzz(g); continue; }
       const w = knowers[Math.floor(R() * knowers.length)].id;
+      actor = idx(w); cat = "buzz"; book[actor].correct++;
+      boonAmt = boonOf(g.teams[actor].boon, g.boss.hitReward);
       const r = G.answerQuestion(G.buzzIn(g, w, bq, true), w, bq, true, "retry", R);
       g = r.game;
       if (D("chef") && classOf(w) === "chef") chefFix(w, r.outcome, chefNoDie);
+      if (BUZZHIT !== HIT) pay(w, BUZZHIT - HIT);
+      killAmt = killFix(w, r.outcome);
       continue;
     }
     const id = G.currentTurnTeamId(g)!;
     const team = () => g.teams.find((x) => x.id === id)!;
     if (POTION > 0 && !potions.has(id) && R() < POTION) potions.add(id);
     if (team().event) {
+      actor = idx(id); cat = "event";
       const r = G.openEvent(g, id, R);
       g = r.game;
       if (D("chef") && team().classId === "chef" && r.result.satiety > 0) {
@@ -171,6 +210,8 @@ function play(classes: C[], maxTurns = 600) {
       continue;
     }
     const inBoss = G.isInBossPhase(g, id);
+    actor = idx(id); cat = inBoss ? "boss" : "room";
+    const boon0 = team().boon, base0 = inBoss ? g.boss.hitReward : g.rooms[team().roomIndex].reward;
     const q = inBoss ? g.boss.currentQuestionId : team().currentQuestionId;
     const d = inBoss ? 5 : team().currentDifficulty;
     const text = isText(q);
@@ -178,12 +219,19 @@ function play(classes: C[], maxTurns = 600) {
     if (!latent.has(key)) {
       const r = R();
       // The wrong options (1–3) this team rules out by itself on this question.
-      latent.set(key, { known: R() < KNOW[d - 1] * (text ? TEXTK : 1), h: R(), ex: shuffle([1, 2, 3]).slice(0, r < EX[0] ? 0 : r < EX[0] + EX[1] ? 1 : 2) });
+      latent.set(key, { known: know(id, KNOW[d - 1] * (text ? TEXTK : 1)), h: R(), ex: shuffle([1, 2, 3]).slice(0, r < EX[0] ? 0 : r < EX[0] + EX[1] ? 1 : 2) });
     }
     const L = latent.get(key)!;
     const settle = (r: { game: GT.GameState; outcome: GT.AnswerOutcome }, ok: boolean) => {
       g = r.game;
-      if (ok && EVENTS && G.eventEligible(g, r.outcome) && R() < G.EVENT_CHANCE) g = G.enterEventRoom(g, id, G.drawEvent(R));
+      if (!ok) return;
+      book[actor].correct++;
+      boonAmt = boonOf(boon0, base0);
+      killAmt = killFix(id, r.outcome);
+      // A fork (EVCH), then the team picks a door blind: ❓ with FORK. ⚔️ marks the next room as fork-free.
+      if (!EVENTS || !G.eventEligible(g, r.outcome)) return;
+      if (noFork.delete(id)) return;
+      if (R() < EVCH) { if (R() < FORK) g = G.enterEventRoom(g, id, G.drawEvent(R)); else noFork.add(id); }
     };
     let chefArmed = false;
     // A correct answer. `die` is the crit die (multipleChoice); a fill-in has none, and a dice thief or chef rolls one.
@@ -288,8 +336,30 @@ function play(classes: C[], maxTurns = 600) {
     }
     const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2 && !(SMART && maybe().length === 0));
     g = G.answerQuestion(g, id, q, false, flee ? "flee" : "retry", R).game;
+    } finally {
+      g.teams.forEach((t, j) => {
+        const dlt = t.reward - before[j];
+        if (!dlt) return;
+        const b = book[j].src;
+        if (j === actor) { b.kill += killAmt; b.boon += boonAmt; b[cat] += dlt - killAmt - boonAmt; } else b[cat] += dlt;
+      });
+      const first = !wasIn.some(Boolean);
+      g.teams.forEach((t, j) => {
+        if (wasIn[j] || !t.inBoss) return;
+        if (first) {
+          const others = Math.max(...g.teams.filter((_, k) => k !== j).map((x) => x.reward));
+          book[j].first = { lead: t.reward - others };
+          if (FIRSTBONUS) { pay(t.id, FIRSTBONUS); book[j].src.first += FIRSTBONUS; }
+          return;
+        }
+        const skipped = rooms.slice(t.roomIndex + 1).reduce((a, r) => a + r.reward, 0);
+        book[j].skipped = skipped;
+        const pp = Math.round(skipped * PULLPAY);
+        if (pp) { pay(t.id, pp); book[j].src.pull += pp; }
+      });
+    }
   }
-  return g;
+  return { g, book };
 }
 
 const N = Number(process.argv[2] ?? 4000);
@@ -297,12 +367,47 @@ const CLASSES: (GT.ClassId | "none")[] = ["mage", "cleric", "warrior", "thief", 
 const shuffle = <T,>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const stats = new Map<string, { sum: number; wins: number; n: number; left: number; turns: number }>();
 let unfinished = 0;
+// SOURCES accumulators: the winner's share by source, flips (the winner changes once a source is taken out), luck lines.
+const sh = Object.fromEntries(SRC.map((k) => [k, { s: 0, s2: 0, abs: 0, all: 0, flip: 0 }])) as Record<Src, { s: number; s2: number; abs: number; all: number; flip: number }>;
+const L = { games: 0, mc: [0, 0], sk: [0, 0], kill: [0, 0], first: [0, 0], lead: 0, firstFinal: 0, margin: 0, margin2: 0, close: 0, buckets: [-Infinity, 0, 20, 50].map((lo) => ({ lo, n: 0, w: 0 })), leaderAtEntryWins: [0, 0],
+  fin: { room: 0, bossSide: 0, n: 0 }, pul: { room: 0, bossSide: 0, skipped: 0, n: 0 } };
+const argmax = (a: number[]) => { const m = Math.max(...a); const k = a.filter((x) => x === m).length; return k === 1 ? a.indexOf(m) : -1; };
 for (let i = 0; i < N; i++) {
   // 4 teams: shuffle 4 of the 6 options, so every class meets every other.
   const lineup = shuffle([...CLASSES]).slice(0, 4);
-  const g = play(lineup.map((c) => (c === "none" ? undefined : c)));
+  const { g, book } = play(lineup.map((c) => (c === "none" ? undefined : c)));
   if (g.phase !== "finished") unfinished++;
   const max = Math.max(...g.teams.map((t) => t.reward));
+  const tot = g.teams.map((t) => t.reward), w = argmax(tot);
+  book.forEach((b) => SRC.forEach((k) => (sh[k].all += b.src[k])));
+  if (w >= 0) {
+    L.games++;
+    const sorted = [...tot].sort((x, y) => y - x), mg = sorted[0] - sorted[1];
+    L.margin += mg; L.margin2 += mg * mg; if (mg < 42) L.close++;
+    for (const k of SRC) {
+      const v = book[w].src[k], f = v / tot[w];
+      sh[k].s += f; sh[k].s2 += f * f; sh[k].abs += v;
+      if (argmax(tot.map((x, j) => x - book[j].src[k])) !== w) sh[k].flip++;
+    }
+    const line = (arr: number[], j: number) => { if (j >= 0) { arr[0]++; if (j === w) arr[1]++; } };
+    line(L.mc, argmax(book.map((b) => b.correct)));
+    if (SKILL) line(L.sk, argmax(book.map((b) => b.skill)));
+    line(L.kill, book.findIndex((b) => b.killer));
+    const fi = book.findIndex((b) => b.first);
+    line(L.first, fi);
+    if (fi >= 0) {
+      const lead = book[fi].first!.lead;
+      L.lead += lead;
+      L.firstFinal += tot[fi] - Math.max(...tot.filter((_, j) => j !== fi));
+      L.leaderAtEntryWins[0]++; if (lead > 0 && fi === w) L.leaderAtEntryWins[1]++;
+      const bk = [...L.buckets].reverse().find((x) => lead >= x.lo)!; bk.n++; if (fi === w) bk.w++;
+      book.forEach((b, j) => {
+        const side = b.src.boss + b.src.buzz + b.src.kill;
+        if (j === fi) { L.fin.room += b.src.room; L.fin.bossSide += side; L.fin.n++; }
+        else if (b.skipped !== undefined) { L.pul.room += b.src.room; L.pul.bossSide += side; L.pul.skipped += b.skipped; L.pul.n++; }
+      });
+    }
+  }
   g.teams.forEach((t, k) => {
     const s = stats.get(lineup[k]) ?? { sum: 0, wins: 0, n: 0, left: 0, turns: 0 };
     s.sum += t.reward; s.n++; s.left += t.abilityUses; s.turns += t.turns ?? 0;
@@ -318,6 +423,16 @@ for (const k of CLASSES) {
     // Skill dice per team per game, and how many of them came up 1, a small failure and 20.
     sk ? `skillDice ${(sk.reduce((a, b) => a + b) / s.n).toFixed(2)} ones ${(sk[0] / s.n).toFixed(3)} small ${(sk[1] / s.n).toFixed(2)} twenties ${(sk[3] / s.n).toFixed(3)}` : "");
 }
+const pct = (x: number[]) => (x[0] ? ((100 * x[1]) / x[0]).toFixed(1) : "-");
+console.log("SOURCES (winner's share mean±sd | winner's avg | all teams' avg | flip% = winner changes without it)");
+for (const k of SRC) {
+  const m = sh[k].s / L.games, sd = Math.sqrt(Math.max(0, sh[k].s2 / L.games - m * m));
+  console.log(" ", k.padEnd(6), `${(100 * m).toFixed(1).padStart(5)}%±${(100 * sd).toFixed(1).padStart(4)}`, (sh[k].abs / L.games).toFixed(1).padStart(6), (sh[k].all / N / 4).toFixed(1).padStart(6), `flip ${((100 * sh[k].flip) / L.games).toFixed(1)}%`);
+}
+const mgm = L.margin / L.games;
+console.log(`LUCK margin ${mgm.toFixed(1)}±${Math.sqrt(L.margin2 / L.games - mgm * mgm).toFixed(1)} (<42: ${((100 * L.close) / L.games).toFixed(1)}%)  mostCorrect wins ${pct(L.mc)}% (unique in ${((100 * L.mc[0]) / L.games).toFixed(0)}%)  killer wins ${pct(L.kill)}%${SKILL ? `  mostSkilled wins ${pct(L.sk)}%` : ""}`);
+console.log(`FIRST first-in wins ${pct(L.first)}%  lead at entry ${(L.lead / L.first[0]).toFixed(1)} -> final ${(L.firstFinal / L.first[0]).toFixed(1)}  buckets ${L.buckets.map((b) => `[${b.lo}+ n${((100 * b.n) / L.first[0]).toFixed(0)}% w${pct([b.n, b.w])}%]`).join(" ")}`);
+console.log(`FIRST first: room ${(L.fin.room / L.fin.n).toFixed(1)} boss+buzz+kill ${(L.fin.bossSide / L.fin.n).toFixed(1)} | later: room ${(L.pul.room / L.pul.n).toFixed(1)} boss+buzz+kill ${(L.pul.bossSide / L.pul.n).toFixed(1)} skipped rooms' rewards ${(L.pul.skipped / L.pul.n).toFixed(1)}`);
 console.log(`dice per game ${(dice.n / N).toFixed(1)}: ones ${(dice.one / N).toFixed(2)}, twenties ${(dice.twenty / N).toFixed(2)} (the kill's 4d20 not counted)`);
 // One line to compare runs: win share per class, then the widest gap from 27 among the five classes.
 const five = CLASSES.filter((k) => k !== "none");
