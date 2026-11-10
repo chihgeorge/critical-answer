@@ -488,8 +488,9 @@ export default function HostPage() {
   const revealPanel = game && revealUp && (
     <>
       <Panel tone="lav" className="px-3 py-2 text-center text-[16px]">
+        {/* What is on show is one block (as in the hold panel): it drops to its own line whole when it does not fit. */}
         <div data-testid="host-reveal">
-          大螢幕正在揭曉：{game.eventReveal ? `❓ 神秘房－${EVENT_OUTCOME_TITLE[game.eventReveal.outcome]}` : game.reveal ? game.reveal.answer : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}
+          大螢幕正在揭曉：<span className="inline-block text-balance">{game.eventReveal ? `❓ 神秘房－${EVENT_OUTCOME_TITLE[game.eventReveal.outcome]}` : game.reveal ? game.reveal.answer : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}</span>
         </div>
       </Panel>
       {/* The answered question's video is up again on the big screen (D17). */}
@@ -986,7 +987,7 @@ export default function HostPage() {
                 <>
                   <div data-testid="host-mc-status">
                   <Panel tone="lav" className="px-3 py-2 text-center">
-                    <div className="text-[22px]">
+                    <div className="text-balance text-[22px]">
                       {roll
                         ? `${turn.team.name}擲出了骰子…`
                         : lock
