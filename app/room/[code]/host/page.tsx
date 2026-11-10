@@ -276,6 +276,8 @@ export default function HostPage() {
           setError(
             msg.error === "bad_token"
               ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人"
+              : msg.detail === "stale_game"
+                ? "剛才那句「下一句這樣說」是上一局打的，沒有排進這一局"
               : msg.detail === "reveal_pending"
                 ? `大螢幕正在揭曉，先按「${toServe ? "🍲 上菜" : "下一題"}」`
                 : msg.detail === "late_closed"
@@ -1016,6 +1018,7 @@ export default function HostPage() {
               refusal={editRefusal}
               disabled={!ready}
               send={send}
+              eventId={game.eventId}
             />
             {holdUp ? (
               holdPanel
