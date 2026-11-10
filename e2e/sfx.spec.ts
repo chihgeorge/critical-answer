@@ -53,6 +53,6 @@ test("the big screen plays the wrong-answer effect when the host marks an answer
   await expect.poll(async () => (await oscTypes(screen)).length).toBeGreaterThan(0); // the music is playing
   expect(await oscTypes(screen)).not.toContain("sawtooth");
 
-  await host.getByRole("button", { name: "答錯・重答" }).click();
+  await host.getByRole("button", { name: "答錯・下輪再答" }).click();
   await expect.poll(() => oscTypes(screen)).toContain("sawtooth");
 });

@@ -43,7 +43,7 @@ test("the host judges wrong before anything is sent; the retry turn starts empty
   await rollCheck(team);
   const box = team.getByRole("textbox", { name: "你們的答案" });
   await box.fill("還沒按送出");
-  await host.getByRole("button", { name: "答錯・重答" }).click();
+  await host.getByRole("button", { name: "答錯・下輪再答" }).click();
   // The only team: the turn comes straight back to it, on the same question.
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   await expect(box).toHaveValue("");

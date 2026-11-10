@@ -18,7 +18,7 @@ import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
-import { PHONE_LAG_MS, revealNow } from "@/lib/podium";
+import { PHONE_LAG_MS, placeLabel, revealNow, teamPlace } from "@/lib/podium";
 import { McOption } from "@/components/mc-option";
 import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
@@ -74,8 +74,8 @@ function PotionButton({ game, teamId, questionId, send }: { game: StateMessage; 
   const me = game.view.teams.find((t) => t.id === teamId);
   if (!me?.item || me.itemArmed || game.view.buzz) return null;
   return (
-    <PixelButton data-testid="drink-potion" className="!m-0 mt-1 !min-h-[56px] !text-[20px]" onClick={() => send({ type: "TEAM_DRINK_POTION", questionId, eventId: game.eventId })}>
-      🧪 喝下幸運藥水
+    <PixelButton data-testid="drink-potion" className="!m-0 mt-1 flex !min-h-[56px] flex-col !text-[20px]" onClick={() => send({ type: "TEAM_DRINK_POTION", questionId, eventId: game.eventId })}>
+      🧪 喝下幸運藥水<small className="text-[13px]">下一顆骰子擲兩次取高</small>
     </PixelButton>
   );
 }
@@ -173,7 +173,7 @@ function QuestionStrip({ id, text, className = "-mx-[10px] -mt-[10px] mb-[2px]" 
 
 /**
  * The team's own multipleChoice turn (docs/designs/phone-answering.md D2, D5–D7): pick, lock, then
- * either the beat (locked) or, after a wrong lock, 重答 / 逃跑. Eliminated options are grey and inert.
+ * either the beat (locked) or, after a wrong lock, 下輪再答 / 逃跑. Eliminated options are grey and inert.
  */
 function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void }) {
   const q = game.question!;
@@ -227,6 +227,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
         </div>
       )}
       {sorting && <MageHint hint={game.view.mageHints?.[q.id]} sort testId="mage-hint" />}
+      {sorting && !frozen && <div className="text-[16px]">按住 ☰ 拖曳排順序</div>}
       {sorting ? (
         <SortList
           items={q.items!}
@@ -280,11 +281,11 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
         <>
           {canPray && (
             <PixelButton className="!m-0 mt-1 flex !min-h-[62px] flex-col !text-[21px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
-              ✝️ 祈禱：這回合再答一次<small className="text-[13px]">剩 {me!.abilityUses} 次</small>
+              ✝️ 祈禱<small className="text-[13px]">現在再答一次・剩 {me!.abilityUses} 次</small>
             </PixelButton>
           )}
           <PixelButton variant="ok" className="!m-0 mt-1 flex !min-h-[64px] flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
-            重答<small className="text-[13px]">{prayed ? "立刻再答這題" : "下一輪再挑一次"}</small>
+            {prayed ? "現在再答" : "下輪再答"}<small className="text-[13px]">{prayed ? "立刻再答這題" : "先換下一隊"}</small>
           </PixelButton>
           <FleeButtons questionId={q.id} send={send} prayed={prayed} />
         </>
@@ -487,11 +488,11 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
           <div className="mt-1 flex gap-2">
             {canPray && (
               <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
-                祈禱<small className="text-[13px]">再答一次・剩 {me!.abilityUses} 次</small>
+                祈禱<small className="text-[13px]">現在再答一次・剩 {me!.abilityUses} 次</small>
               </PixelButton>
             )}
             <PixelButton variant="ok" className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
-              重答<small className="text-[13px]">換下一隊</small>
+              下輪再答<small className="text-[13px]">先換下一隊</small>
             </PixelButton>
           </div>
           <FleeButtons questionId={q.id} send={send} boss={!!me?.inBossPhase} />
@@ -612,7 +613,7 @@ function HandoffForm({ send }: { send: (m: ClientMessage) => void }) {
 
 /** The phone's end card. It waits out the big screen's cooking (cooking I5) and the place calls, on the room's clock and
  * PHONE_LAG_MS behind it, so no phone names the winner before the podium does (podium-reveal.md D16, eng D23). */
-function FinishedPanel({ won, finale, podium, onPodium }: { won: boolean; finale: boolean; podium?: StateMessage["podium"]; onPodium: (up: boolean) => void }) {
+function FinishedPanel({ place, reward, cuisine, finale, podium, onPodium }: { place: number | null; reward: number; cuisine?: boolean; finale: boolean; podium?: StateMessage["podium"]; onPodium: (up: boolean) => void }) {
   const step = useFinaleStep(finale);
   // Reduced motion does not end a phone's wait: it has nothing to animate, and showing the end would spoil first place.
   const t = useRevealTime(podium, PHONE_LAG_MS, false);
@@ -624,8 +625,17 @@ function FinishedPanel({ won, finale, podium, onPodium }: { won: boolean; finale
   }, [up]);
   return (
     <Panel tone="lav" className="px-4 py-5 text-center">
-      <div className="text-[26px]">遊戲結束！</div>
-      <div className="mt-2 text-[18px]">{!up ? "冒險結束！看大螢幕 📺" : won ? "🏆 你們獲勝了！" : "感謝參與！"}</div>
+      <div className={!up || place === null ? "text-[26px]" : "text-[18px]"}>遊戲結束！</div>
+      {!up || place === null ? (
+        <div className="mt-2 text-[18px]">冒險結束！看大螢幕 📺</div>
+      ) : (
+        <>
+          <div data-testid="phone-place" className="mt-1 text-[30px]">{placeLabel(place)}</div>
+          <div className="mt-2 text-[20px]">
+            <span className="px-num">{reward}</span> {scoreName(cuisine)}
+          </div>
+        </>
+      )}
     </Panel>
   );
 }
@@ -1115,7 +1125,7 @@ export default function PlayPage() {
 
         {game && !finished && !intro && !initiative && turn && (
           <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
-            {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? "輪到我們了！" : `輪到：${turn.team?.name ?? "…"}`}
+            {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? (eventRevealed ? "下一個是我們！" : "輪到我們了！") : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
         )}
 
@@ -1214,7 +1224,8 @@ export default function PlayPage() {
 
         {isMyTurn && cards}
 
-        {game && revealed && (
+        {/* The game over card takes its place: the last question's answer is old news by then. */}
+        {game && revealed && !finished && (
           <Panel tone="turn" className="flex flex-col items-center gap-2 px-3 py-3 text-center">
             <div className="text-[18px]">正解：{revealed.answer}</div>
             {revealed.explanation && revealed.explanation.kind === "text" && (
@@ -1229,7 +1240,7 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {finished && game && <FinishedPanel won={game.winners.includes(teamId)} finale={finale} podium={game.podium} onPodium={setPodium} />}
+        {finished && game && <FinishedPanel place={teamPlace(game.view.teams, game.podium?.ranking, teamId)} reward={myTeam?.reward ?? 0} cuisine={game.cuisine} finale={finale} podium={game.podium} onPodium={setPodium} />}
 
         <div className="mt-auto">
           {/* Waiting teams only: never on our own turn, nor in a buzzer phase where every team is answering; and only

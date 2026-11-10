@@ -66,7 +66,7 @@ test("a phone that drops on its own turn shows it's offline, then that its turn 
 
   // The room skips the offline team: the host judges 乙隊 meanwhile.
   await expect(host.getByText("輪到：乙隊")).toBeVisible();
-  await host.getByRole("button", { name: "答錯・重答" }).click();
+  await host.getByRole("button", { name: "答錯・下輪再答" }).click();
 
   // Back online: the notice goes, and the team learns its turn was skipped.
   net.block = false;

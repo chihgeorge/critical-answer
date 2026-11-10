@@ -52,6 +52,24 @@ export function rankTeams(teams: { id: string; reward: number }[], roll: () => n
   return { ranking, tieRolls };
 }
 
+/**
+ * A team's place on its phone's game-over card: the podium's own order for its steps (the d20 broke those ties); below
+ * them, teams with the same score share a place. Without a ranking (an older server) it goes by score alone.
+ */
+export function teamPlace(teams: { id: string; reward: number }[], ranking: string[] | undefined, teamId: string): number | null {
+  const me = teams.find((t) => t.id === teamId);
+  if (!me) return null;
+  const at = ranking?.indexOf(teamId) ?? -1;
+  if (at >= 0 && at < PODIUM_PLACES) return at + 1;
+  const byScore = 1 + teams.filter((t) => t.reward > me.reward).length;
+  // A tie that reached the podium was rolled: the teams that lost the roll start below it.
+  return at >= 0 ? Math.max(PODIUM_PLACES + 1, byScore) : byScore;
+}
+
+const MEDALS = ["🥇", "🥈", "🥉"];
+/** The game-over card's big line: a medal for the podium, a thank-you below it. */
+export const placeLabel = (place: number) => (place <= MEDALS.length ? `${MEDALS[place - 1]} 第 ${place} 名！` : `第 ${place} 名・謝謝參與`);
+
 /** What awardTitles reads from a team: missing counts (a save from before them) are 0. */
 export interface TitleTeam {
   id: string;
