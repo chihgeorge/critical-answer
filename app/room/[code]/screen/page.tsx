@@ -446,10 +446,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             ) : (
               <div>正解：{reveal.answer}</div>
             )}
-            {/* Who scored, the one line the room reads off the reveal (no scoreboard: the meters say the rest). */}
-            {reveal.scored && (
-              <div data-testid="reveal-result" className="text-[24px]">
-                ✅ {view.teams.find((t) => t.id === reveal.scored!.teamId)?.name} 答對 +{reveal.scored.points} {scoreName(cuisine)}
+            {/* Who scored, the one line the room reads off the reveal (no scoreboard: the meters say the rest). A partial
+                music answer has its own 「對 k/n」 line above, so it gets no 「答對」. */}
+            {reveal.scored && !reveal.fields?.marks.some((f) => !f.right) && (
+              <div data-testid="reveal-result" className="text-[24px] [overflow-wrap:anywhere]">
+                ✅ {view.teams.find((t) => t.id === reveal.scored!.teamId)?.name ?? ""} 答對 +{reveal.scored.points} {scoreName(cuisine)}
               </div>
             )}
             {/* With the video up, its text explanation stands beside it instead. */}

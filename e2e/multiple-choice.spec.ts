@@ -68,7 +68,7 @@ test("multipleChoice in play: the team taps an option, the host sees the pick hi
   await expect(host.getByTestId("host-typed-answer")).toHaveCount(0);
 });
 
-test("phone answering: a wrong lock is marked without the answer, 重答 greys it out, a right lock lights up everywhere", async ({ browser, request }) => {
+test("phone answering: a wrong lock is marked without the answer, 下輪再答 greys it out, a right lock lights up everywhere", async ({ browser, request }) => {
   await seedSingleMcQuestion(request);
 
   const host = await (await browser.newContext()).newPage();
@@ -113,7 +113,7 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
   await expect(wall(green)).toHaveAttribute("data-look", "plain");
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   await expect(question).toBeVisible();
-  // D2: the options and the 重答 / 逃跑・同房 / 逃跑・換房 buttons fit 375x667 without scrolling (the cards below may run under the fold).
+  // D2: the options and the 下輪再答 / 逃跑・同房 / 逃跑・換房 buttons fit 375x667 without scrolling (the cards below may run under the fold).
   // Measured from the top of the page, since the earlier 鎖定答案 click may have scrolled it.
   const fleeBottom = await team.getByRole("button", { name: /逃跑・換房/ }).evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
   expect(fleeBottom).toBeLessThanOrEqual(667);
@@ -133,7 +133,7 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
   await expect(host.getByTestId("host-reveal")).toContainText("綠色");
 });
 
-// Value: protects=the question strip never pushes 鎖定答案 or 重答/逃跑 under the fold on an iPhone 12; fails_when=the strip or option tiles grow; why_new=the 375x667 assert uses a short 3-option question; seam=none; no_claim=custom banks with longer questions
+// Value: protects=the question strip never pushes 鎖定答案 or 下輪再答/逃跑 under the fold on an iPhone 12; fails_when=the strip or option tiles grow; why_new=the 375x667 assert uses a short 3-option question; seam=none; no_claim=custom banks with longer questions
 test("phone answering: the longest default question with four options still fits 390x844, picking and after a wrong lock", async ({ browser, request }) => {
   const text = "G-Dragon 在 2026 年金唱片獎以哪首歌拿下「音源大賞」？";
   await seedSingleMcQuestion(request, { text, options: ["〈Power〉", "〈Fantastic Baby〉", "〈Home Sweet Home〉", "〈小蘋果 G-Dragon Remix〉"], correctIndex: 0 });
@@ -151,7 +151,7 @@ test("phone answering: the longest default question with four options still fits
   expect(await bottom(/逃跑・換房/)).toBeLessThanOrEqual(844);
 });
 
-// Value: protects=after 15 s with no lock the host gets 替…選・逃跑 and it moves the stuck team on; fails_when=the stuck timer, its key or the rescue button breaks, leaving the host no way past an MC turn; why_new=no spec waits out STUCK_MS; seam=none; no_claim=重答 rescue and keys 2/3 (host clock faked; server timers real)
+// Value: protects=after 15 s with no lock the host gets 替…選・逃跑 and it moves the stuck team on; fails_when=the stuck timer, its key or the rescue button breaks, leaving the host no way past an MC turn; why_new=no spec waits out STUCK_MS; seam=none; no_claim=下輪再答 rescue and keys 2/3 (host clock faked; server timers real)
 test("phone answering: a team that never locks gets the host's stuck row after 15 s, and 逃跑 moves it on", async ({ browser, request }) => {
   await seedSingleMcQuestion(request);
 
@@ -201,7 +201,7 @@ async function startOneTeam(
   return { host, team };
 }
 
-// Value: protects=the phone's 逃跑 after a wrong lock sends flee and the team gets the other question; fails_when=the button sends retry or nothing; why_new=the other journey only presses 重答; seam=none; no_claim=which question is dealt first
+// Value: protects=the phone's 逃跑 after a wrong lock sends flee and the team gets the other question; fails_when=the button sends retry or nothing; why_new=the other journey only presses 下輪再答; seam=none; no_claim=which question is dealt first
 test("phone answering: 逃跑 after a wrong lock moves the team to the other question", async ({ browser, request }) => {
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
@@ -287,7 +287,7 @@ test("phone answering: when the game ends, our own 答對了 panel gives way to 
   await expect(team.getByText(/^答對了！/)).toHaveCount(0);
 });
 
-// Value: protects=a wrong boss lock shows no 重答/逃跑 and rotates the shared question on its own (boss rules D1/D2);
+// Value: protects=a wrong boss lock shows no 下輪再答/逃跑 and rotates the shared question on its own (boss rules D1/D2);
 // fails_when=the boss-miss timer, the phone/host/TV boss wording or the rotation breaks; why_new=no spec covers a boss lock;
 // seam=room timer (real); no_claim=restart mid-beat (lib/room/lifecycle.test.ts)
 test("boss room: a wrong lock shows no choice, then the boss brings a new question", async ({ browser, request }) => {

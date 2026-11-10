@@ -408,7 +408,7 @@ export default function HostPage() {
   // With the countdown on, the row waits for its 0; off (or no count running), 15 s (lib/answer-clock.ts stuckDelayMs).
   const stuckDelay = stuckDelayMs(game?.answerClock);
   useEffect(() => {
-    if (!stuckKey || stuckDelay === null) return;
+    if (!stuckKey) return;
     const t = setTimeout(() => setStuckShownFor(stuckKey), stuckDelay);
     return () => clearTimeout(t);
   }, [stuckKey, stuckDelay]);

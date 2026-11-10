@@ -625,14 +625,12 @@ function FinishedPanel({ place, reward, cuisine, finale, podium, onPodium }: { p
   }, [up]);
   return (
     <Panel tone="lav" className="px-4 py-5 text-center">
+      <div className={!up || place === null ? "text-[26px]" : "text-[18px]"}>遊戲結束！</div>
       {!up || place === null ? (
-        <>
-          <div className="text-[26px]">遊戲結束！</div>
-          <div className="mt-2 text-[18px]">冒險結束！看大螢幕 📺</div>
-        </>
+        <div className="mt-2 text-[18px]">冒險結束！看大螢幕 📺</div>
       ) : (
         <>
-          <div data-testid="phone-place" className="text-[30px]">{placeLabel(place)}</div>
+          <div data-testid="phone-place" className="mt-1 text-[30px]">{placeLabel(place)}</div>
           <div className="mt-2 text-[20px]">
             <span className="px-num">{reward}</span> {scoreName(cuisine)}
           </div>
