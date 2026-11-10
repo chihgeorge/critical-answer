@@ -79,7 +79,7 @@ lib/question-bank.ts     Question bank types, validation, public questions (with
 lib/bank-store.ts        BankStore: Durable Object storage layer for the question bank, version check (pure-function logic)
 lib/bank-api.ts          HTTP handling for /api/bank and /api/game-logs (OWNER_KEY check, CORS, 409 conflict), platform independent
 lib/game-log.ts          Game log: when a game ends, builds one record from the game state and stores it in BankStoreDO; the download reads the newest 1000 games
-lib/narration/           Narration: events, scripted lines, LLM, circuit breaker, runner, browser TTS playback decisions (tts.ts)
+lib/narration/           Narration: events, scripted lines, LLM, circuit breaker, runner, audience-reaction tally (crowd.ts), browser TTS playback decisions (tts.ts)
 lib/pixel-art.ts         Pixel characters and scenes drawn in code
 lib/turn-info.ts         Works out from the public state whose turn it is and which monster they face
 lib/map-layout.ts        Live map layout: positions of rooms, tokens, fog, boss room (pure functions)
