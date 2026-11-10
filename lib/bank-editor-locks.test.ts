@@ -1,16 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { editorLocks } from "./bank-editor-locks";
+import { editorBusy } from "./bank-editor-locks";
 
-describe("bank editor locks", () => {
-  it("an image upload in flight blocks load and save, but not editing other fields", () => {
-    expect(editorLocks({ loading: false, saving: false, uploads: 1 })).toEqual({ fields: false, load: true, save: true });
-  });
-  it("a load or save in flight locks everything", () => {
-    for (const s of [{ loading: true, saving: false }, { loading: false, saving: true }]) {
-      expect(editorLocks({ ...s, uploads: 0 })).toEqual({ fields: true, load: true, save: true });
-    }
+describe("bank editor lock", () => {
+  it("an image upload in flight locks the editor like a load or a save", () => {
+    expect(editorBusy({ loading: false, saving: false, uploads: 1 })).toBe(true);
+    expect(editorBusy({ loading: true, saving: false, uploads: 0 })).toBe(true);
+    expect(editorBusy({ loading: false, saving: true, uploads: 0 })).toBe(true);
   });
   it("nothing in flight locks nothing", () => {
-    expect(editorLocks({ loading: false, saving: false, uploads: 0 })).toEqual({ fields: false, load: false, save: false });
+    expect(editorBusy({ loading: false, saving: false, uploads: 0 })).toBe(false);
   });
 });

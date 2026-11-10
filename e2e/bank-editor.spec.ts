@@ -611,7 +611,7 @@ test("image authoring: a server-rejected upload (bad file type) shows an inline 
 });
 
 // Value: protects=an upload landing after a load or during a save can't write into the wrong bank or lose its image;
-// lock=載入題庫 and 儲存全部變更 stay disabled until the upload lands, other fields stay editable.
+// lock=載入題庫, 儲存全部變更 and every field stay disabled until the upload lands.
 test("an image upload in flight locks load and save until it lands", async ({ page, request }) => {
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const loaded = await request.get("http://localhost:1996/api/bank", { headers });
@@ -639,12 +639,13 @@ test("an image upload in flight locks load and save until it lands", async ({ pa
   await expect(locked).toHaveCount(2);
   await expect(locked.first()).toBeDisabled();
   await expect(locked.last()).toBeDisabled();
-  await expect(rows(room0).nth(1).getByLabel("題型")).toBeEnabled();
+  await expect(rows(room0).nth(1).getByLabel("題型")).toBeDisabled();
 
   release();
   await expect(firstRow.getByText(/已上傳/)).toBeVisible();
   await expect(page.getByRole("button", { name: "儲存全部變更" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "載入題庫" })).toBeEnabled();
+  await expect(rows(room0).nth(1).getByLabel("題型")).toBeEnabled();
 });
 
 test("YouTube authoring: pasting a full watch URL extracts and stores just the video id", async ({ page }) => {
