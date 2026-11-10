@@ -16,9 +16,10 @@
 // lib/question-bank-data.ts.
 
 import { DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./game-state";
-import { MAX_FIELDS, MAX_ID, type HiddenVideo, type PublicMediaContent, type PublicQuestion } from "./protocol";
+import { MAX_FIELDS, MAX_ID, type HiddenInstagram, type HiddenVideo, type InstagramVideo, type PublicMediaContent, type PublicQuestion } from "./protocol";
 import { catalogMonster, monsterById, variantOf } from "./monster-catalog";
 import { YOUTUBE_ID_RE } from "./youtube";
+import { INSTAGRAM_SHORTCODE_RE } from "./instagram";
 import { SORT_ITEMS } from "./sort-order";
 
 /** A question's (or explanation's) content: text, an uploaded image, or a YouTube video —
@@ -26,12 +27,13 @@ import { SORT_ITEMS } from "./sort-order";
  * REPLACES the old fixed `text` prompt, it doesn't decorate it — a `kind: "image"` question shows
  * only the image, no separate prompt line). */
 export interface MediaContent {
-  kind: "text" | "image" | "youtube";
+  /** instagram: explanation slot only, `value` is the shortcode (docs/designs/instagram-explanations.md). */
+  kind: "text" | "image" | "youtube" | "instagram";
   value: string;
   /** youtube only, content slot only: a music question. The screen covers the video and plays the
    * sound (docs/designs/youtube-questions.md D3). */
   audioOnly?: boolean;
-  /** youtube only: the clip, in whole seconds of the video. */
+  /** youtube only: the clip, in whole seconds of the video. instagram: `end` alone, the video's length. */
   start?: number;
   end?: number;
 }
@@ -159,10 +161,14 @@ function parseMediaContent(raw: unknown, where: string, slot: "content" | "expla
   if (typeof value !== "string" || !value.trim()) fail(`${where} content has no value`);
   if (kind === "image" && !UUID_RE.test(value as string)) fail(`${where} has an invalid image key`);
   else if (kind === "youtube" && !YOUTUBE_ID_RE.test(value as string)) fail(`${where} has an invalid YouTube video id`);
-  else if (kind !== "text" && kind !== "image" && kind !== "youtube") fail(`${where} content has unknown kind ${String(kind)}`);
+  else if (kind === "instagram" && !INSTAGRAM_SHORTCODE_RE.test(value as string)) fail(`${where} has an invalid Instagram shortcode`);
+  else if (kind !== "text" && kind !== "image" && kind !== "youtube" && kind !== "instagram") fail(`${where} content has unknown kind ${String(kind)}`);
+  // The embed cannot be played by the host, so a question's own content cannot wait on it (instagram-explanations.md).
+  if (kind === "instagram" && slot === "content") fail(`${where} content cannot be an Instagram video, only its explanation can`);
   const clip = audioOnly !== undefined || start !== undefined || end !== undefined;
   if (!clip) return { kind, value } as MediaContent;
-  if (kind !== "youtube") fail(`${where} has audioOnly/start/end, which only a YouTube video can have`);
+  if (kind === "instagram" && (audioOnly !== undefined || start !== undefined)) fail(`${where} has audioOnly/start, which an Instagram video cannot have (only end, its length)`);
+  else if (kind !== "youtube" && kind !== "instagram") fail(`${where} has audioOnly/start/end, which only a YouTube video can have`);
   // The explanation plays on its own, outside the host's controls, so it can't hide its picture.
   if (audioOnly !== undefined && slot === "explanation") fail(`${where} explanation cannot be audioOnly`);
   if (audioOnly !== undefined && typeof audioOnly !== "boolean") fail(`${where} audioOnly is not true or false`);
@@ -173,7 +179,7 @@ function parseMediaContent(raw: unknown, where: string, slot: "content" | "expla
   second(end, "end");
   if (typeof end === "number" && end <= ((start as number | undefined) ?? 0)) fail(`${where} end must come after start`);
   return {
-    kind: "youtube",
+    kind: kind as "youtube" | "instagram",
     value: value as string,
     ...(audioOnly === true ? { audioOnly: true } : {}),
     ...(start !== undefined ? { start: start as number } : {}),
@@ -489,6 +495,8 @@ export function publicMediaContent(c: MediaContent, imageBaseUrl: string, questi
       ...(c.end !== undefined ? { end: c.end } : {}),
     };
   }
+  // parseMediaContent keeps Instagram out of `content`; an explanation's goes through publicExplanation.
+  if (c.kind === "instagram") throw new Error(`question ${questionId}: an Instagram video has no public form`);
   if (!imageBaseUrl || imageBaseUrl.includes("REPLACE-ME")) {
     console.error(JSON.stringify({ event: "image_base_url_missing", questionId }));
   }
@@ -497,6 +505,9 @@ export function publicMediaContent(c: MediaContent, imageBaseUrl: string, questi
 
 /** A question's video as every connection may see it: that it is one, and whether only its sound plays. */
 export const hiddenVideo = (c: { audioOnly?: boolean }): HiddenVideo => ({ kind: "youtube", ...(c.audioOnly ? { audioOnly: true as const } : {}) });
+
+/** An Instagram explanation for SCREEN_VIDEO: only the host pages and keyed big screens get it. */
+export const instagramVideo = (c: MediaContent): InstagramVideo => ({ kind: "instagram", shortcode: c.value, ...(c.end !== undefined ? { end: c.end } : {}) });
 
 /** The part of a question every screen may see while it's in play. `difficulty` is the pool the
  * question came from (what a correct answer scores); the monster is the one in the team's room (`roomIndex`), since a pool
@@ -548,8 +559,10 @@ export function sortShownOrder(order: number[] | undefined): number[] {
  * separately from publicQuestion() (never attached to the in-play question, which would leak it
  * before the answer is judged). Returns undefined when the question has none. See AnswerReveal in
  * lib/protocol.ts and its D2/D5 decisions. */
-export function publicExplanation(bank: Bank, id: string, imageBaseUrl: string): PublicMediaContent | undefined {
+export function publicExplanation(bank: Bank, id: string, imageBaseUrl: string): PublicMediaContent | HiddenInstagram | undefined {
   const q = findQuestion(bank, id);
+  // Its shortcode goes out in SCREEN_VIDEO only, like a question video's id (screen-video-key.md).
+  if (q?.explanation?.kind === "instagram") return { kind: "instagram" };
   return q?.explanation ? publicMediaContent(q.explanation, imageBaseUrl, q.id) : undefined;
 }
 

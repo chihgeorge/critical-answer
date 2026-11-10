@@ -570,9 +570,10 @@ export default function HostPage() {
         </div>
       </Panel>
       {/* The answered question's video is up again on the big screen (D17). */}
-      {game.reveal?.video && (
+      {/* …or an Instagram explanation, which only someone at the screen can start (instagram-explanations.md). */}
+      {(game.reveal?.video || game.reveal?.explanation?.kind === "instagram") && (
         <Panel tone="lav" className="px-3 pb-2 pt-1">
-          <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} />
+          <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} instagram={!game.reveal.video} />
         </Panel>
       )}
       <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: toServe ? "HOST_SERVE" : "HOST_NEXT", eventId: game.eventId })}>
@@ -1354,29 +1355,30 @@ function TwoLine({ top, bottom }: { top: string; bottom: string }) {
 /** ▶ ⏸ ⟲ for the video on the big screen (docs/designs/youtube-questions.md D19). Three buttons, not a toggle: a
  * second press of ▶ on slow Wi-Fi is still ▶. The lit button is the host's last command (D7): the page cannot see
  * the clip stop at its end. */
-function MediaControls({ questionId, media, disabled, send, liveOpen = false }: { questionId: string; media?: MediaCommand; disabled: boolean; send: (m: ClientMessage) => void; liveOpen?: boolean }) {
+function MediaControls({ questionId, media, disabled, send, liveOpen = false, instagram = false }: { questionId: string; media?: MediaCommand; disabled: boolean; send: (m: ClientMessage) => void; liveOpen?: boolean; instagram?: boolean }) {
   // A command for another question, or none (an older server), is paused.
   const playing = media?.questionId === questionId && media.state === "playing";
   const press = (action: MediaAction) => send({ type: "HOST_MEDIA", questionId, action });
   const look = (lit: boolean) => ({ minHeight: 56, background: lit ? "var(--ok)" : "var(--cream)" });
+  // An Instagram embed has no player API: ▶ asks someone at the screen to click it, ⏸ and ⟲ reload it (instagram-explanations.md).
   return (
     <div data-testid="host-media" className="mt-2">
       <div className="text-[14px]" role="status">
-        大螢幕：{hostMediaStatus(playing, liveOpen)}
+        {instagram ? `大螢幕（IG 詳解）：${playing ? "請旁邊的人點影片" : "已停止"}` : `大螢幕：${hostMediaStatus(playing, liveOpen)}`}
       </div>
       <div className="flex">
         <PixelButton aria-label="播放" aria-pressed={playing} disabled={disabled} className="flex-1 text-[18px]" style={look(playing)} onClick={() => press("play")}>
-          ▶ 播放
+          {instagram ? "▶ 請點影片" : "▶ 播放"}
         </PixelButton>
         <PixelButton aria-label="暫停" aria-pressed={!playing} disabled={disabled} className="flex-1 text-[18px]" style={look(!playing)} onClick={() => press("pause")}>
-          ⏸ 暫停
+          {instagram ? "⏹ 停止" : "⏸ 暫停"}
         </PixelButton>
         <PixelButton aria-label="從頭播放" disabled={disabled} className="flex-1 text-[18px]" style={look(false)} onClick={() => press("restart")}>
-          ⟲ 從頭
+          {instagram ? "⟲ 重新載入" : "⟲ 從頭"}
         </PixelButton>
       </div>
       <div className="mt-1 text-[13px]" style={{ color: "#6b4a2a" }}>
-        沒聲音？看大螢幕提示
+        {instagram ? "IG 影片要有人在大螢幕上點一下才會播" : "沒聲音？看大螢幕提示"}
       </div>
     </div>
   );

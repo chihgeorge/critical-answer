@@ -302,6 +302,28 @@ describe("parseBank", () => {
     expect(() => parseBank(make())).toThrow(/question bank|content/i);
   });
 
+  describe("Instagram explanations (docs/designs/instagram-explanations.md)", () => {
+    const one = (question: Record<string, unknown>) => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [question] }] });
+    const insta = (extra: Record<string, unknown> = {}) => ({ kind: "instagram", value: "DPPHHjlkTgr", ...extra }) as unknown as MediaContent;
+
+    it("keeps an Instagram explanation with its optional length, and STATE's form hides the shortcode", () => {
+      const bank = parseBank(one({ ...q("a1"), explanation: insta({ end: 35 }) }));
+      expect(bank.pools[1][0].explanation).toEqual({ kind: "instagram", value: "DPPHHjlkTgr", end: 35 });
+      expect(publicExplanation(bank, "a1", "")).toEqual({ kind: "instagram" });
+      expect(parseBank(one({ ...q("a1"), explanation: insta() })).pools[1][0].explanation).toEqual({ kind: "instagram", value: "DPPHHjlkTgr" });
+    });
+
+    it.each([
+      ["Instagram as a question's content", () => one(q("a1", insta()))],
+      ["an invalid shortcode", () => one({ ...q("a1"), explanation: insta({ value: "bad code!" }) })],
+      ["a start on an Instagram video", () => one({ ...q("a1"), explanation: insta({ start: 5 }) })],
+      ["audioOnly on an Instagram video", () => one({ ...q("a1"), explanation: insta({ audioOnly: true }) })],
+      ["a zero length", () => one({ ...q("a1"), explanation: insta({ end: 0 }) })],
+    ])("fails loudly on %s", (_name, make) => {
+      expect(() => parseBank(make())).toThrow(/question bank/i);
+    });
+  });
+
   describe("YouTube clips and prompts (docs/designs/youtube-questions.md)", () => {
     const one = (question: Record<string, unknown>) => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [question] }] });
     const clip = (extra: Record<string, unknown>) => ({ kind: "youtube", value: YT_ID, ...extra }) as unknown as MediaContent;

@@ -1292,7 +1292,9 @@ export default function PlayPage() {
             {revealed.explanation && revealed.explanation.kind === "text" && (
               <div className="text-[16px]">{revealed.explanation.value}</div>
             )}
-            {revealed.explanation && revealed.explanation.kind !== "text" && (
+            {/* Its shortcode never reaches a phone (instagram-explanations.md). */}
+            {revealed.explanation?.kind === "instagram" && <div data-testid="play-instagram-hint" className="text-[16px]">▶ 詳解影片請看大螢幕</div>}
+            {revealed.explanation && revealed.explanation.kind !== "text" && revealed.explanation.kind !== "instagram" && (
               // key tied to questionId — same broken-image-stays-hidden-forever guard every
               // other media render site in this diff carries (adversarial review finding, /ship).
               <QuestionMedia key={revealed.questionId} content={revealed.explanation} label="詳解" maxWidth={260} maxHeight={180} zhCaptions />

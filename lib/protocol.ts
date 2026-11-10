@@ -53,6 +53,12 @@ export type PublicMediaContent =
  * key (docs/designs/screen-video-key.md). */
 export type HiddenVideo = { kind: "youtube"; audioOnly?: true };
 
+/** An Instagram explanation as STATE carries it: that there is one, never its shortcode, which goes out like a
+ * question video's id, in SCREEN_VIDEO only (docs/designs/instagram-explanations.md). */
+export type HiddenInstagram = { kind: "instagram" };
+/** An Instagram explanation in SCREEN_VIDEO. `end`: the video's length in seconds, if the bank gave one. */
+export type InstagramVideo = { kind: "instagram"; shortcode: string; end?: number };
+
 /** The question the team in turn faces, without its answer: safe for /screen and /play.
  * `options` is present only for multipleChoice questions (never `correctIndex` — see
  * question-bank.ts's publicQuestion() field-picking discipline). Deliberately carries no
@@ -90,7 +96,7 @@ export interface PublicQuestion {
 export type AnswerReveal = {
   questionId: string;
   answer: string;
-  explanation?: PublicMediaContent;
+  explanation?: PublicMediaContent | HiddenInstagram;
   /** The answered question's own YouTube video, shown again where it stopped, unless an image or a video
    * explanation takes its place (docs/designs/youtube-questions.md D17). Its id is in SCREEN_VIDEO, like the question's. */
   video?: HiddenVideo;
@@ -501,7 +507,7 @@ export type ServerMessage =
   | { type: "SCREEN_KEY"; ok: boolean }
   /** The YouTube video on the big screen now (the question's, or the reveal's). Never broadcast: it goes only to host
    * pages and to big screens whose SCREEN_HELLO carried the screen key. */
-  | { type: "SCREEN_VIDEO"; questionId: string; video: Extract<PublicMediaContent, { kind: "youtube" }> }
+  | { type: "SCREEN_VIDEO"; questionId: string; video: Extract<PublicMediaContent, { kind: "youtube" }> | InstagramVideo }
   /** Host-only: how many lines of narration `eventId` the big screen has read. Sent on host connect and on every change. */
   | { type: "HOST_NARRATION_PROGRESS"; eventId: number; done: number }
   /** Host-only: the line queued by HOST_NEXT_LINE, "" when none. Sent on host connect and on every change. */
