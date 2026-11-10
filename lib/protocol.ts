@@ -498,7 +498,7 @@ export type AiProviderId = (typeof AI_PROVIDER_IDS)[number];
 export type AiSource = "none" | "own" | "owner";
 /** invalid_key: refused by the provider or not a key at all. ai_stopped: the breaker switched AI off after repeated failures. */
 export type AiKeyError = "invalid_key" | "wrong_owner_key" | "owner_unavailable" | "check_failed" | "ai_stopped";
-const MAX_AI_KEY = 256;
+export const MAX_AI_KEY = 256;
 const MAX_KEY_ID = 64;
 /** A room's cap on paid AI narration calls: the default, and the most a host may set. */
 export const DEFAULT_AI_LIMIT = 300;

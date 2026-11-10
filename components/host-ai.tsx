@@ -3,7 +3,7 @@
 // The host page's AI narration settings: who pays, the key, and the call budget (designs/ai-key-20261030).
 
 import { useState } from "react";
-import { DEFAULT_AI_LIMIT, MAX_AI_LIMIT, type AiKeyError, type ClientMessage, type ServerMessage } from "@/lib/protocol";
+import { DEFAULT_AI_LIMIT, MAX_AI_KEY, MAX_AI_LIMIT, type AiKeyError, type ClientMessage, type ServerMessage } from "@/lib/protocol";
 import { readStored } from "@/lib/stored";
 import { Panel, PixelButton } from "@/components/pixel";
 
@@ -155,6 +155,7 @@ export function AiPanel({
           <input
             type="password"
             value={key}
+            maxLength={MAX_AI_KEY /* a longer paste would pass the room's 4096-byte message cap and get no reply */}
             onChange={(e) => setKey(e.target.value.trim())}
             autoComplete="off"
             placeholder={active && status.keyHint ? `已設定 ${status.keyHint}，要換再貼一把` : "sk-ant-…"}
@@ -188,6 +189,7 @@ export function AiPanel({
           <input
             type="password"
             value={ownerKey}
+            maxLength={MAX_AI_KEY}
             onChange={(e) => setOwnerKey(e.target.value.trim())}
             autoComplete="off"
             placeholder={active ? "已使用站長金鑰" : "OWNER_KEY"}
