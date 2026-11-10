@@ -1,17 +1,18 @@
 "use client";
 
 // The big screen's YouTube player (docs/designs/youtube-questions.md D2, D4): the official IFrame API,
-// driven by the host's ▶ ⏸ ⟲. The decisions live in lib/youtube.ts (playerSteps, clipStatusFromYoutube);
-// this file only wires them to window.YT.
+// driven by the host's ▶ ⏸ ⟲. The decisions live in lib/youtube.ts (playerSteps, clipStatusFromYoutube,
+// syncZhCaptions); this file only wires them to window.YT. It also exports loadYoutubeApi for QuestionMedia's
+// video explanation, which attaches the API to its own iframe only to pick Chinese captions.
 //
 // gstack-shortcut(dec-b741774e): the host page sees only its own commands, not the real playback state
 // (stopped at the clip's end, video blocked); upgrade when someone hosts away from the big screen, or a
 // broken video costs a turn at an event.
 
 import { useEffect, useRef, useState } from "react";
-import { CLIP_STATUS_TEXT, clipStatusFromYoutube, playerSteps, type ClipStatus, type MediaWant } from "@/lib/youtube";
+import { CLIP_STATUS_TEXT, clipStatusFromYoutube, loadCaptions, playerSteps, syncZhCaptions, ZH_CAPTION_VARS, type CaptionPlayer, type ClipStatus, type MediaWant } from "@/lib/youtube";
 
-interface YTPlayer {
+interface YTPlayer extends CaptionPlayer {
   playVideo(): void;
   pauseVideo(): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
@@ -22,15 +23,17 @@ interface YTNamespace {
   Player: new (
     el: HTMLElement,
     opts: {
-      videoId: string;
-      width: number;
-      height: number;
+      // Without a video: the element is an <iframe> of our own with enablejsapi=1 (QuestionMedia's 詳解).
+      videoId?: string;
+      width?: number;
+      height?: number;
       host?: string;
-      playerVars: Record<string, number | string>;
+      playerVars?: Record<string, number | string>;
       events: {
-        onReady: (e: { target: YTPlayer }) => void;
-        onStateChange: (e: { data: number; target: YTPlayer }) => void;
-        onError: () => void;
+        onReady?: (e: { target: YTPlayer }) => void;
+        onStateChange?: (e: { data: number; target: YTPlayer }) => void;
+        onApiChange?: (e: { target: YTPlayer }) => void;
+        onError?: () => void;
       };
     },
   ) => YTPlayer;
@@ -48,7 +51,7 @@ const API_TIMEOUT_MS = 15_000;
 let api: Promise<YTNamespace> | null = null;
 
 /** Loads iframe_api once per page; a failure lets the next player try again. */
-function loadYoutubeApi(): Promise<YTNamespace> {
+export function loadYoutubeApi(): Promise<YTNamespace> {
   if (window.YT?.Player) return Promise.resolve(window.YT);
   api ??= new Promise<YTNamespace>((resolve, reject) => {
     const fail = () => {
@@ -96,6 +99,7 @@ export function YoutubePlayer({
   onError,
   errorNote,
   title = "題目影片",
+  zhCaptions = false,
 }: {
   videoId: string;
   start?: number;
@@ -119,6 +123,8 @@ export function YoutubePlayer({
   /** A line under 影片無法播放, e.g. that the host plays the song live instead. */
   errorNote?: string;
   title?: string;
+  /** After the reveal: Chinese captions, or YouTube's translation to Traditional Chinese. Never while answering. */
+  zhCaptions?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const player = useRef<YTPlayer | null>(null);
@@ -131,6 +137,9 @@ export function YoutubePlayer({
   const report = useRef(onPlayingChange);
   const reportEnd = useRef(onEnded);
   const reportError = useRef(onError);
+  const zh = useRef(zhCaptions);
+  /** A Chinese track is set on this player. */
+  const captioned = useRef(false);
   useEffect(() => {
     report.current = onPlayingChange;
     reportEnd.current = onEnded;
@@ -148,6 +157,9 @@ export function YoutubePlayer({
       if (s === "ended") reportEnd.current?.();
       if (s === "error") reportError.current?.();
     };
+    const captions = (p: YTPlayer) => {
+      if (!captioned.current) captioned.current = syncZhCaptions(p, zh.current);
+    };
     loadYoutubeApi().then(
       (YT) => {
         if (gone || !host.current) return;
@@ -162,6 +174,8 @@ export function YoutubePlayer({
           playerVars: {
             start,
             ...(end !== undefined ? { end } : {}),
+            // Read once: the player is not rebuilt when the reveal turns captions on; the effect below does that.
+            ...(zh.current ? ZH_CAPTION_VARS : {}),
             controls: controls ? 1 : 0,
             disablekb: controls ? 0 : 1,
             rel: 0,
@@ -177,10 +191,13 @@ export function YoutubePlayer({
             onStateChange: (e) => {
               // YouTube can reach the end itself (its own `end`, or a clip with none) before the poll sees it.
               if (e.data === 0) ended.current = true;
+              if (e.data === 1) captions(e.target);
               show(clipStatusFromYoutube(e.data, ended.current));
             },
             // onError codes 2, 5, 100, 101 and 150 all leave nothing to play: one message covers them (D7).
             onError: () => show("error"),
+            // The captions module loaded: its track list is there now.
+            onApiChange: (e) => captions(e.target),
           },
         });
       },
@@ -192,10 +209,23 @@ export function YoutubePlayer({
       player.current = null;
       applied.current = null;
       ended.current = false;
+      captioned.current = false;
       setReady(false);
       report.current?.(false);
     };
   }, [videoId, start, end, width, height, controls, attempt]);
+
+  // The question turns into its reveal on the same player (screen D17): captions come on without a rebuild.
+  useEffect(() => {
+    zh.current = zhCaptions;
+    captioned.current = false;
+    const p = player.current;
+    if (!ready || !p) return;
+    // Turning on waits for onApiChange (or play): right after loadModule the cached track list can still be the
+    // one from before the answering-time unload, and a track set then may be dropped.
+    if (zhCaptions) loadCaptions(p);
+    else syncZhCaptions(p, false);
+  }, [ready, zhCaptions]);
 
   const want = command ?? PAUSED;
   // A new press while the player shows its error builds it again (state adjusted during render, not in an effect).
