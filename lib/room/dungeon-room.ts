@@ -2793,8 +2793,9 @@ export class DungeonRoom {
     const rolled = roll?.kind === "warrior" && buzzed.type !== "flee" ? { ...buzzed, warriorRoll: roll.value } : buzzed;
     // The waiting teams' loudest reaction this turn, for the middle line; never on the game's last line.
     const next = rolled.type === "epilogue" ? undefined : rolled.next;
-    // Skipped when narrate() will give the middle line to the host's queued line (same test as there).
-    const crowd = this.crowd.take(teamId, next?.team, !next || (!!this.nextLine && !this.lineInFlight()));
+    // Skipped when narrate() will give the middle line to the host's queued line (same test as there), and in a buzzer
+    // phase, where nobody could react and any count left is from the turn before.
+    const crowd = this.crowd.take(`${teamId}:${before?.turns ?? 0}`, next?.team, !next || isBuzzPhase(prev) || (!!this.nextLine && !this.lineInFlight()));
     const event = crowd ? { ...rolled, crowd } : rolled;
     // A natural 20 or 1 swaps the correct / boss-hit sound; the boss kill keeps its own (E2).
     const mark = "roll" in outcome ? outcome.roll : undefined;
@@ -2957,8 +2958,10 @@ export class DungeonRoom {
     if (this.roomReacts.length >= REACT_ROOM_MAX) return;
     this.reactedAt.set(teamId, now);
     this.roomReacts.push(now);
-    const turnTeam = currentTurnTeamId(this.game);
-    if (turnTeam) this.crowd.tap(turnTeam, this.game.teams.find((t) => t.id === teamId)!.name, reaction);
+    // Keyed by the team on turn and its turn count, so taps from a turn that ended without a judgment (an event room)
+    // never count toward that team's next one.
+    const turn = this.game.teams.find((t) => t.id === currentTurnTeamId(this.game!));
+    if (turn) this.crowd.tap(`${turn.id}:${turn.turns ?? 0}`, this.game.teams.find((t) => t.id === teamId)!.name, reaction);
     // Straight to the sockets, not this.broadcast: a reaction changes nothing to save, so it skips persist().
     this.room.broadcast(JSON.stringify({ type: "REACTION", teamId, reaction } satisfies ServerMessage));
   }

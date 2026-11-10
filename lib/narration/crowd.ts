@@ -24,15 +24,16 @@ function top<K>(keys: K[]): [K, number] | undefined {
   return best === undefined ? undefined : [best, m.get(best)!];
 }
 
-/** The loudest reaction of a turn, and the waiting team that tapped it most. `avoid` (the team up next) is named only
- * when nobody else tapped that reaction: the handoff right after names it, and the AI's middle line may not. */
+/** The loudest reaction of a turn, and the waiting team that tapped it most. `avoid` (the team up next) is never named:
+ * the handoff right after names it, and an AI middle line naming it would be taken for the handoff (alignToSlots). When
+ * only that team tapped the loudest reaction, nothing is said. */
 export function crowdOf(taps: Tap[], avoid?: string): Crowd | undefined {
   if (taps.length < CROWD_MIN_TAPS || new Set(taps.map((t) => t.team)).size < CROWD_MIN_TEAMS) return undefined;
   const [mood, n] = top(taps.map((t) => t.reaction))!;
   if (n < CROWD_MIN_MOOD) return undefined;
   const by = taps.filter((t) => t.reaction === mood).map((t) => t.team);
-  const [team] = top(by.filter((t) => t !== avoid)) ?? top(by)!;
-  return { mood, team };
+  const named = top(by.filter((t) => t !== avoid));
+  return named && { mood, team: named[0] };
 }
 
 /** One room's tally. `take` is called once per judged answer: it hands back the turn's crowd (or nothing) and starts
@@ -43,12 +44,13 @@ export function createCrowdTally() {
   let taps: Tap[] = [];
   let saidLast = false;
   return {
-    tap(turnTeamId: string, team: string, reaction: Reaction) {
-      if (turn !== turnTeamId) [turn, taps] = [turnTeamId, []];
+    /** `turnKey`: the turn the taps belong to; a different key starts over. */
+    tap(turnKey: string, team: string, reaction: Reaction) {
+      if (turn !== turnKey) [turn, taps] = [turnKey, []];
       taps.push({ team, reaction });
     },
-    take(turnTeamId: string, avoid?: string, skip = false): Crowd | undefined {
-      const crowd = turn === turnTeamId && !saidLast && !skip ? crowdOf(taps, avoid) : undefined;
+    take(turnKey: string, avoid?: string, skip = false): Crowd | undefined {
+      const crowd = turn === turnKey && !saidLast && !skip ? crowdOf(taps, avoid) : undefined;
       [turn, taps, saidLast] = [undefined, [], !!crowd];
       return crowd;
     },

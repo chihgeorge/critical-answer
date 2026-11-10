@@ -159,6 +159,16 @@ describe("audience reactions", () => {
     g.tick(REACT_GAP_MS);
     for (const i of g.ids.keys()) g.react(i, "clap");
     expect((await judge()).event.crowd).toBeUndefined();
+    // Taps from a turn of the same team that ended without a judgment (an event room counts a turn) are stale.
+    g.tick(REACT_GAP_MS);
+    const waitingNow = g.ids.map((_, i) => i).filter((i) => i !== g.onTurn());
+    g.react(waitingNow[0], "lol");
+    g.react(waitingNow[1], "lol");
+    g.tick(REACT_GAP_MS);
+    g.react(waitingNow[0], "lol");
+    const on = g.room.game!.teams[g.onTurn()].id;
+    g.room.game = { ...g.room.game!, teams: g.room.game!.teams.map((t) => (t.id === on ? { ...t, turns: (t.turns ?? 0) + 1 } : t)) };
+    expect((await judge()).event.crowd).toBeUndefined();
   });
 
   it("only the fixed reactions parse: no free text", () => {
