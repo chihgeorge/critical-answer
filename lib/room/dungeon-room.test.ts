@@ -2088,6 +2088,9 @@ describe("narration (T5-T7)", () => {
     const lines = all(room).filter((m) => m.type === "NARRATION").at(-1).lines as string[];
     expect(lines.at(-1)).toContain(boss.monster.name);
     expect(lines.at(-1)).not.toContain(roomMonster);
+    // The first boss entry, so the sprint fires: still no owl line on 送王房 (last-sprint.md).
+    expect(room.game!.sprint).toBeDefined();
+    expect(lines.some((l) => l.startsWith("🦉"))).toBe(false);
     // Another team sent: the team on turn still faces its room, so nothing is added.
     const count = all(room).filter((m) => m.type === "NARRATION").length;
     send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids.find((id) => id !== onTurn)! });
