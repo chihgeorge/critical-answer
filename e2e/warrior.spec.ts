@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, startGame } from "./answer";
+import { restoreRoom0AfterEach, startGame, screenUrl } from "./answer";
 
 restoreRoom0AfterEach();
 
@@ -10,7 +10,7 @@ test("warrior: a team picks 戰士 in the lobby, rolls instead of answering, the
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
 
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("戰士隊")}`);
@@ -49,7 +49,7 @@ test("crit die: a right lock shows the die on the big screen after 公布答案,
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("暴擊隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();

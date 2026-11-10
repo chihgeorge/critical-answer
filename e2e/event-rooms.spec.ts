@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { answerCorrectly, nextQuestion, startGame, textOnlyBank } from "./answer";
+import { answerCorrectly, nextQuestion, startGame, textOnlyBank, screenUrl } from "./answer";
 
 // 叉路 (docs/designs/branch-fork.md). The e2e worker runs with E2E_EVENT_TEAM=EventTeam (playwright.config.ts): the team
 // named EventTeam comes to a fork on every eligible room entry, and no other team ever does; E2E_MONSTER_SIDE=left hides
@@ -15,7 +15,7 @@ async function toTheFork(browser: Browser) {
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   await expect(screen.getByText(code)).toBeVisible();
 
   // One after the other: 擲先攻 ties every team under E2E_DIE and keeps the lobby order, so EventTeam must join first.

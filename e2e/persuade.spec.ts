@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, startGame } from "./answer";
+import { textOnlyBank, startGame, screenUrl } from "./answer";
 
 // The persuasion check (dnd design R6, R-E1): a fill-in question starts with 擲骰說服 on the phone. The e2e worker
 // fixes the die at 10 (playwright.config.ts E2E_DIE), which passes a first room's DC 8 and earns the first character.
@@ -15,7 +15,7 @@ test("a team rolls 擲骰說服, passes the DC, sees the first character, then t
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("說服隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();

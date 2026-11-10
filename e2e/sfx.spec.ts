@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { textOnlyBank, startGame } from "./answer";
+import { textOnlyBank, startGame, screenUrl } from "./answer";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -46,7 +46,7 @@ test("the big screen plays the wrong-answer effect when the host marks an answer
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await recordOscillatorTypes(screen);
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
   // Joining mid-game plays nothing for the event already on screen.
   await screen.getByRole("button", { name: /音樂/ }).click();

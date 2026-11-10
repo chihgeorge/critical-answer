@@ -178,7 +178,7 @@ describe("what counts as activity", () => {
     clock.t += 5 * MIN;
     const screen = conn("screen");
     room.onConnect(screen);
-    send(room, screen, { type: "SCREEN_HELLO" });
+    send(room, screen, { type: "SCREEN_HELLO", key: (room as unknown as { screenKey: string }).screenKey });
     send(room, screen, { type: "SCREEN_NARRATION_PROGRESS", eventId: 0, rev: 0, done: 1 });
     expect(lastActivityAt(storage)).toBe(before);
   });

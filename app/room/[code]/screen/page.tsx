@@ -1177,6 +1177,10 @@ export default function ScreenPage() {
   const clipErrored = useRef<ClipErrorSeen | null>(null);
   /** Set by onOpen: the next STATE decides whether to report clipErrored again. */
   const clipResendDue = useRef(false);
+  /** The last question whose clip ended here, re-sent after a reconnect: a report sent while the socket was down
+   * reaches the room before this socket's SCREEN_HELLO, so the room drops it. Forgotten once another question is up
+   * or the game is over: the same question may come round again, and then its clip has not ended. */
+  const clipEnded = useRef<string | null>(null);
   /** From the player's real state (the clip stops itself at its end): the music goes silent (D10) and a line still
    * being read stops, since the host pressed ▶ to hear the song (D20). */
   function onVideoPlaying(playing: boolean) {
@@ -1190,6 +1194,7 @@ export default function ScreenPage() {
   }
 
   function onClipEnded(questionId: string) {
+    clipEnded.current = questionId;
     send({ type: "SCREEN_CLIP_ENDED", questionId });
   }
   function onClipError(questionId: string) {
@@ -1229,7 +1234,7 @@ export default function ScreenPage() {
 
   const { reset, rested, unreachable, reconnect, send } = useRoomSocket(code, {
     onOpen() {
-      // First, so the room takes this socket's SCREEN_* reports: it ignores them from an unannounced socket.
+      // Before any new report: the room ignores SCREEN_* reports from a socket that has not sent the screen key.
       // The screen key came in the link's fragment, like the host's token: never in a request or a Referer.
       const key = getScreenKey(code);
       send({ type: "SCREEN_HELLO", ...(key ? { key } : {}) });
@@ -1249,6 +1254,7 @@ export default function ScreenPage() {
     onMessage(msg) {
       switch (msg.type) {
         case "LOBBY":
+          clipEnded.current = null;
           setLobby(msg.teams);
           setFloats([]);
           setGame(null);
@@ -1278,10 +1284,12 @@ export default function ScreenPage() {
           break;
         case "STATE":
           setGame(msg);
+          if (msg.question?.id !== clipEnded.current) clipEnded.current = null;
           if (clipResendDue.current) {
             clipResendDue.current = false;
             const seen = clipErrored.current;
             if (seen && resendClipError(seen, msg.media)) send({ type: "SCREEN_CLIP_ERROR", questionId: seen.questionId });
+            if (clipEnded.current) send({ type: "SCREEN_CLIP_ENDED", questionId: clipEnded.current });
           }
           {
             const t = nextTransition(transitionSeen.current, msg);

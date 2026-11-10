@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { answerCorrectly, startGame, nextQuestion } from "./answer";
+import { answerCorrectly, startGame, nextQuestion, screenUrl } from "./answer";
 import { readFile } from "node:fs/promises";
 
 /** The host's ⚙ 更多 drawer: the narration transcript downloads as a JSON file with a real narration line. */
@@ -77,6 +77,12 @@ test("the big-screen URL at the top of the host page opens the screen in a new t
   // It carries the room's screen key (docs/designs/screen-video-key.md).
   const link = host.getByTestId("screen-link");
   await expect(link).toHaveText(new RegExp(`^${baseURL}/room/${code}/screen#s=[0-9a-f-]+$`));
+  // The same link as a QR, for a TV that cannot type the key. Closed until asked for: it holds the key.
+  await expect(host.getByTestId("screen-qr")).toHaveCount(0);
+  await host.getByRole("button", { name: "顯示大螢幕 QR" }).click();
+  await expect(host.getByRole("img", { name: "大螢幕 QR" })).toBeVisible();
+  await host.getByRole("button", { name: "收起大螢幕 QR" }).click();
+  await expect(host.getByTestId("screen-qr")).toHaveCount(0);
 
   const [screen] = await Promise.all([context.waitForEvent("page"), link.click()]);
   // The big screen keeps the key and takes it out of its address bar, which the whole room can see.
@@ -98,7 +104,7 @@ test("the host queues the next line, the big screen says it, and the queue empti
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   await startGame(host);
 
   const queued = "不怕死的冒險者問珍珠能吃嗎";

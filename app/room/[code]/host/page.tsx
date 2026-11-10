@@ -116,7 +116,10 @@ export default function HostPage() {
   const [savedPassword, setSavedPassword] = useState("");
   /** The room's screen key (HOST_OK), for the big screen link: "" until the room sends it. */
   const [screenKey, setScreenKey] = useState("");
-  const screenHash = screenKey ? `#s=${screenKey}` : "";
+  /** The big screen link, with the key once the room has sent it: the anchor and the QR show the same one. */
+  const screenLink = `/room/${code}/screen${screenKey ? `#s=${screenKey}` : ""}`;
+  /** The big screen QR is closed until asked for: it holds the screen key, and players can see the host's phone. */
+  const [screenQr, setScreenQr] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
   /** How far the big screen has read, per narration (host-narration-edit.md D3). */
   const [readTo, setReadTo] = useState<{ eventId: number; done: number } | null>(null);
@@ -139,6 +142,8 @@ export default function HostPage() {
     onClose() {
       setConnected(false);
       setClaimed(false);
+      // The QR holds the screen key: a reconnect must not bring back one the host left open.
+      setScreenQr(false);
       aiQueue.closed();
       setPendingTeamId(null);
     },
@@ -571,9 +576,22 @@ export default function HostPage() {
         <Panel tone="lav" className="px-3 py-2">
           <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
           {/* A new tab, so opening it never navigates the host page away from its socket. */}
-          {/* With the room's screen key: only a big screen opened by this link is sent the question videos. */}
+          {/* With the room's screen key: only a big screen opened by this link is sent the question videos and has its
+              reports taken by the room (screen-video-key.md). */}
           {claimed ? (
-            <a data-testid="screen-link" href={`/room/${code}/screen${screenHash}`} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{`${origin}/room/${code}/screen${screenHash}`}</a>
+            <>
+              <a data-testid="screen-link" href={screenLink} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{origin + screenLink}</a>
+              {/* The same link as a QR: a TV remote cannot type the key (screen-video-key.md). */}
+              <PixelButton data-testid="screen-qr-toggle" aria-expanded={screenQr} onClick={() => setScreenQr(!screenQr)} className="!mx-0 !mb-0 mt-2 min-h-[44px] !px-3 !py-2 text-[15px]">
+                {screenQr ? "收起大螢幕 QR" : "顯示大螢幕 QR"}
+              </PixelButton>
+              {screenQr && origin && (
+                <div data-testid="screen-qr" className="mt-2 flex items-center gap-3">
+                  <Qr text={origin + screenLink} size={160} alt="大螢幕 QR" />
+                  <div className="text-[14px]">只給大螢幕掃：用接電視或投影機的那台裝置掃。不要讓玩家掃到，掃完就收起。</div>
+                </div>
+              )}
+            </>
           ) : (
             // Not before the room has sent the key: a link copied now would open a big screen that plays no video.
             <div className="text-[14px]">連線中…</div>
