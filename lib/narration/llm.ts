@@ -32,6 +32,14 @@ const BASE_RULES = `你是地城問答派對遊戲裡的旁白「地城主」，
 - 語氣平實，驚嘆號一句最多一個。
 - 只輸出旁白本身，不要引號、標題、說明或任何標記。`;
 
+/** 美食節目／生物學家口吻 (TODOS 地城料理風格 3), for every line but the epilogue's. The model writes one event at a
+ * time, so the share and the no-two-in-a-row rule lean on the recent lines the user turn carries. The example names no
+ * part and no dish of the catalog: the model repeats examples, and a dish stays a secret until it is served. */
+export const FOODIE_RULES = `- 你也是一本正經的美食節目主持人兼生物學家，把怪物當食材看。大約三成的句子用這種口吻，認真點評怪物的肉質、口感、產季或料理方式，例如「這肉質一看就很有彈性」；其他句子維持冒險語氣。
+- 可以講吃的行：轉向下一隊、介紹怪物或首領登場的那一行；打倒怪物、怪物要被煮成料理、吃到料理時交代結果的那一行。交代答錯、逃跑、擲骰、詛咒、祝福和規則說明的那一行不要講吃。
+- 這次輸出最多一行講吃；最近說過的旁白裡，最後一句如果已經在講吃，這次就都不要講吃。
+- 口感、味道和產季可以自己想像，但不要自己取菜名；事件有寫能吃的部位才提部位。點評要短，字數上限照舊。`;
+
 /** How many of a room's latest AI lines go back into its prompts, so the model stops reusing them. */
 export const RECENT_LINES = 8;
 
@@ -53,7 +61,7 @@ export function buildPrompt(event: NarrationEvent, styleExamples: string[], rece
     : hasNext && second
       ? `輸出三行，用換行隔開，不要編號。${first}${second}第三行：${handoff}`
       : `輸出兩行，用換行隔開，不要編號。${first}${second ?? `第二行：${handoff}`}`;
-  let system = `${BASE_RULES}\n${ask}`;
+  let system = `${BASE_RULES}\n${epilogue ? "" : `${FOODIE_RULES}\n`}${ask}`;
   if (styleExamples.length > 0) system += `\n\n主持人親手改過的句子，請仿照這種語氣：\n${styleExamples.map((l) => `- ${l}`).join("\n")}`;
   // In the user turn, not the system prompt: the lines carry player-typed team names, so they are data.
   const avoid =
@@ -135,6 +143,10 @@ function describe(e: NarrationEvent): string {
   return describeEvent(e) + describeRoll(e) + cls + next;
 }
 
+/** The catalog's edible part of a monster about to be cooked: the dish itself stays a secret (cooking I1). A fact
+ * only: whether this line may talk about food is for FOODIE_RULES (not on a natural 20 or 1, not twice running). */
+const describePart = (part?: string) => (part ? `牠能吃的部位是${q(part)}。` : "");
+
 function describeEvent(e: NarrationEvent): string {
   switch (e.type) {
     case "start":
@@ -143,7 +155,7 @@ function describeEvent(e: NarrationEvent): string {
         : `事件：遊戲開始。參賽隊伍：${e.teams.map(q).join("、")}。`;
     case "correct": {
       const base = e.cooked
-        ? `事件：隊伍${q(e.team)}答對了，打倒${q(e.monster)}，得到 ${e.points} 飽足感。牠等一下會被煮成料理，不要說會煮成什麼。`
+        ? `事件：隊伍${q(e.team)}答對了，打倒${q(e.monster)}，得到 ${e.points} 飽足感。牠等一下會被煮成料理，不要說會煮成什麼。${describePart(e.part)}`
         : `事件：隊伍${q(e.team)}答對了，打退${q(e.monster)}，得 ${e.points} 分。`;
       if (!e.entersBoss) return base;
       const join = e.entersBoss.order
@@ -182,7 +194,7 @@ function describeEvent(e: NarrationEvent): string {
       return `事件：首領${q(e.monster)}沒有倒下，血量全滿重新站起，戰鬥進入第${e.phase}階段${q(e.name)}。新的規則：${q(e.rule)}。不要提還有沒有下一個階段。`;
     case "boss-kill":
       return e.cooked
-        ? `事件：隊伍${q(e.team)}擊倒了首領${q(e.monster)}，額外加 ${e.bonus} 飽足感。牠等一下會被煮成料理，不要說會煮成什麼。`
+        ? `事件：隊伍${q(e.team)}擊倒了首領${q(e.monster)}，額外加 ${e.bonus} 飽足感。牠等一下會被煮成料理，不要說會煮成什麼。${describePart(e.part)}`
         : `事件：隊伍${q(e.team)}擊倒了首領${q(e.monster)}，額外加 ${e.bonus} 分。`;
     case "epilogue": {
       // Dishes make the score 飽足感 and the ending a feast (docs/designs/monster-cuisine.md).

@@ -1259,6 +1259,13 @@ export class DungeonRoom {
     return !this.bankAnswers.some((a) => a.length >= 3 && dish.includes(a));
   }
 
+  /** A monster's edible part the narrator may say before the dish is served. Parts are short (外膜), so this is
+   * stricter than sayable(): none that holds a bank answer of 2 or more characters, or is itself inside an answer
+   * (根 is one character, and so may an answer be). */
+  private sayablePart(part: string): boolean {
+    return !this.bankAnswers.some((a) => (a.length >= 2 && part.includes(a)) || a.includes(part));
+  }
+
   /** The epilogue threw before its lines came in: the reveal runs on scripted calls rather than wait for nothing. A
    * failure from a game already left (回到大廳) is dropped, like its lines would be. */
   private epilogueFailed(err: unknown, eventId: number) {
@@ -2683,8 +2690,9 @@ export class DungeonRoom {
     const ateFrom = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bossId() : (prev.rooms[before.roomIndex]?.monsterId ?? this.bank.rooms[before.roomIndex]?.monster);
     const dish = ateFrom ? catalogMonster(ateFrom).dish : undefined;
     const told = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
-    // The dish is named only once it is served on the big screen (cooking I1, I4); the line just counts 飽足感.
-    const base = dish && (told.type === "correct" || told.type === "boss-kill") ? { ...told, cooked: true as const } : told;
+    // The dish is named only once it is served on the big screen (cooking I1, I4); the line just counts 飽足感. The
+    // narrator may size up the edible part meanwhile (foodie narration).
+    const base = dish && (told.type === "correct" || told.type === "boss-kill") ? { ...told, cooked: true as const, ...(this.sayablePart(dish.part) ? { part: dish.part } : {}) } : told;
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
     const exhaustedEvent = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
     // A wrong buzz that leaves the question to the others (boss-buzzer.md): no "try again" line.

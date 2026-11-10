@@ -11,6 +11,24 @@ export interface NarrationProvider {
   narrate(event: NarrationEvent, opts?: { signal?: AbortSignal }): Promise<string>;
 }
 
+/** 美食節目／生物學家口吻 (TODOS 地城料理風格 3): the narrator sizes a monster up as an ingredient, with a straight
+ * face. Kept apart from the plain lines and spread into their pools, so each pool stays about 30% food talk and pick()
+ * can tell a food line from a plain one. Only where food fits: a monster or the boss coming on, a monster beaten,
+ * a dish eaten. A wrong answer, a flee and a die roll stay adventure lines (the atmosphere line after a correct answer
+ * plays mostly on a natural 20 or 1, so it has none). */
+export const FOODIE = {
+  /** A beaten monster that will be cooked. Like every dish line, it never says what dish (cooking I1). */
+  dish: ["{team}收拾了{monster}，鍋子已經在等了。", "{monster}倒下了……{team}的肚子咕嚕叫，+{points}。"],
+  /** The same, naming the monster's edible part from the catalog (event.part). */
+  dishPart: ["{team}打倒{monster}，貓頭鷹盯著{part}看。", "{monster}倒下，{team}小心收好牠的{part}。", "{team}贏了！{monster}的{part}是難得的食材。"],
+  bossDish: ["終結！{monster}倒下了，今晚要開大鍋。", "{team}擊倒{monster}，這麼大的食材得換個大鍋。"],
+  bossEnter: ["{team}推開首領房的門，今晚的主菜就在裡面！"],
+  nextRoom: ["輪到{team}。{monster}看起來很有嚼勁。", "{team}請注意，{monster}受驚時肉質會變緊。", "換{team}了，這隻{monster}肉質相當結實。"],
+  nextBoss: ["輪到{team}！{monster}一看就是主菜等級。", "{team}上場，這麼大隻的{monster}很少見。"],
+  atmBossKill: ["這麼大的食材，得找個更大的鍋子。", "貓頭鷹已經在翻食譜了。", "首領級的肉，火候可不能馬虎。"],
+  feast: ["寶箱裡是{dish}，火候剛好，{team}飽足感 +{points}。"],
+};
+
 export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, string[]> = {
   start: [
     "火把一根根亮起，冒險者們踏進了地城。",
@@ -154,15 +172,22 @@ export const ROLL_VARIANTS: Record<"crit" | "fumble" | "persuaded" | "blunder", 
  * itself is named only once the host serves it (cooking I1), so these lines never say what it becomes. */
 export const DISH_VARIANTS = [
   "{team}答對了！{monster}倒下了，+{points} 飽足感。",
-  "{team}收拾了{monster}，鍋子已經在等了。",
-  "{monster}倒下了……{team}的肚子咕嚕叫，+{points}。",
+  "{team}一擊命中，{monster}倒下了！",
+  "漂亮！{team}拿下 {points} 飽足感。",
+  "{monster}招架不住，{team}贏了這一回合。",
+  "{team}答得乾脆，{monster}撐不住了。",
+  "正中要害！{monster}敗給了{team}。",
+  "{monster}晃了兩下就倒了，{team}過關。",
+  "{team}答對，{monster}再也站不起來。",
+  ...FOODIE.dish,
 ];
 
 /** The boss kill when the boss will be cooked. */
 export const BOSS_DISH_VARIANTS = [
   "{team}擊倒了{monster}！再加 {bonus} 飽足感！",
   "{monster}轟然倒下，{team}拿下最後一擊，+{bonus}！",
-  "終結！{monster}倒下了，今晚要開大鍋。",
+  "{monster}倒下了！{team}拿下 {bonus} 飽足感。",
+  ...FOODIE.bossDish,
 ];
 
 /** The first team into the boss room opens the door (event.entersBoss without order or phase). */
@@ -171,6 +196,7 @@ export const BOSS_ENTER_VARIANTS = [
   "{monster}倒下，{team}踏進了首領的巢穴，+{points}！",
   "答對！{team}走進最深處，首領緩緩睜開眼睛。",
   "{team}拿下 {points} 分，地城最深處的大門為他們打開了。",
+  ...FOODIE.bossEnter,
 ];
 
 /** A later team joining the boss fight (event.entersBoss.order): the door is already open (live-map.md D9). */
@@ -265,15 +291,13 @@ export const ATMOSPHERE_VARIANTS: Record<Exclude<NarrationEvent["type"], "epilog
   ],
   "boss-kill": [
     "地城陷入一片寂靜。",
-    "塵埃落定，勝利的氣息瀰漫。",
-    "石廊裡迴盪著最後一聲回音。",
-    "這一刻，值得被記住。",
     "火把一根接一根亮了起來。",
     "貓頭鷹闔上了這一章。",
     "遠處傳來歡呼，一路傳到地面。",
     "首領的寶座空了。",
     "塵土慢慢落下，像一場細雪。",
     "這段故事，會被說上很多年。",
+    ...FOODIE.atmBossKill,
   ],
 };
 
@@ -322,6 +346,7 @@ export const EVENT_VARIANTS: Record<EventOutcome, string[]> = {
     "寶箱一打開，香味撲鼻：是{dish}！{team}吃得好飽，飽足感 +{points}。",
     "{team}掀開寶箱，裡面是熱騰騰的{dish}！飽足感 +{points}。",
     "寶箱裡藏著一道{dish}，{team}一口接一口，飽足感 +{points}！",
+    ...FOODIE.feast,
   ],
   rotten: [
     "寶箱一打開，一股怪味衝出來……是黑暗料理！{team}硬吞下去，飽足感 −{points}。",
@@ -375,20 +400,28 @@ export const NEXT_VARIANTS = {
     "{team}，換你們了！{monster}正等著你們。",
     "下一位：{team}。{monster}磨刀霍霍，準備好了嗎？",
     "{team}上前一步，{monster}攔住了去路。",
-    "接下來輪到{team}，面對{monster}！",
     "{team}轉過彎，迎面撞上{monster}。",
-    "換{team}上場，{monster}已經擋在門口。",
     "{monster}盯上了{team}，請看題目。",
     "火光照出{monster}的身影，輪到{team}了。",
-    "{team}，{monster}在前方等著，準備好了嗎？",
+    ...FOODIE.nextRoom,
   ],
   boss: [
     "{team}，首領{monster}在等你們，看題目！",
     "換{team}上場，{monster}怒目而視。",
     "輪到{team}！{monster}正等著你們。",
     "{team}挺身而出，直面{monster}！",
+    ...FOODIE.nextBoss,
   ],
 };
+
+/** Every line that talks about food, the chest's dishes included: after one, pick() takes a plain line from the next
+ * pool. A pool that is all food (the chest) still says its line, so a food handoff may come right before a chest dish. */
+const FOOD_LINES = new Set([...Object.values(FOODIE).flat(), ...EVENT_VARIANTS.feast, ...EVENT_VARIANTS.rotten, ...EVENT_ROTTEN_EMPTY_VARIANTS]);
+
+/** Whether the part lines read well with this part. 「牠的整隻」 and 「牠的寶箱裡的東西」 do not, and a 4-character
+ * part is the longest that keeps them at 22 characters.
+ * shortcut: a rule on the catalog's wording, replace it with a per-monster flag if the catalog gets more odd parts. */
+const namesPart = (part?: string) => !!part && part !== "整隻" && [...part].length >= 2 && [...part].length <= 4;
 
 function fill(template: string, vars: object): string {
   const v = vars as Record<string, string | number | string[]>;
@@ -401,6 +434,8 @@ export function createScriptedProvider(rng: () => number = Math.random) {
    * playing twice in a row across a reshuffle and across those pools. */
   const used: Record<string, Set<string>> = {};
   const last: Record<string, string> = {};
+  /** The pool key of the line before this one, when that line talked about food. */
+  let lastFoodKey: string | undefined;
   function pick(pool: string[], key: string): string {
     const round = (used[key] ??= new Set());
     let left = pool.filter((l) => !round.has(l));
@@ -408,11 +443,20 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       for (const l of pool) round.delete(l); // a new round for this pool only: a class team's unused lines stay unused
       left = pool;
     }
+    // Another pool's food line came just before (the result before the handoff, the handoff before the next result).
+    // One pool's own lines are never said back to back in a game, so its bag keeps every line once a round.
+    if (lastFoodKey !== undefined && lastFoodKey !== key) {
+      // Never two food lines in a row: a plain line from this round, or an early repeat of one when only food is left.
+      const plain = left.filter((l) => !FOOD_LINES.has(l));
+      const calm = plain.length > 0 ? plain : pool.filter((l) => !FOOD_LINES.has(l) && l !== last[key]);
+      if (calm.length > 0) left = calm; // a pool that is all food (the chest's feast) has no plain line to say
+    }
     let i = Math.floor(rng() * left.length);
     if (left[i] === last[key] && left.length > 1) i = (i + 1) % left.length;
     const line = left[i];
     round.add(line);
     last[key] = line;
+    lastFoodKey = FOOD_LINES.has(line) ? key : undefined;
     return line;
   }
   /** Set by plainLine when it picked a crit die's line, which says the number itself. */
@@ -457,7 +501,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
           return fill(pick(ROLL_VARIANTS[kind][event.type], `${kind}-${event.type}`), event);
         }
       }
-      if (event.type === "correct" && event.cooked && !event.entersBoss) return fill(pick(DISH_VARIANTS, "dish"), event);
+      if (event.type === "correct" && event.cooked && !event.entersBoss) return fill(pick(namesPart(event.part) ? [...FOODIE.dishPart, ...DISH_VARIANTS] : DISH_VARIANTS, "dish"), event);
       const bossEnter = event.type === "correct" && event.entersBoss;
       if (!bossEnter && (event.type === "correct" || event.type === "boss-hit") && event.classId) {
         return fill(pick([...CLASS_VARIANTS[event.classId][event.type], ...VARIANTS[event.type]], event.type), event);
