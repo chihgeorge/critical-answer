@@ -774,7 +774,7 @@ export default function HostPage() {
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.team?.fork ? "🔀 叉路" : turn.monster.name}</div>
                   <div data-testid="host-question" className="text-[20px] leading-snug">
-                    {turn.team?.fork ? "⚔️ 怪物房，還是 ❓ 神秘房？" : game.phaseCard ? "新階段的第一題（按「下一題」後出題）" : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
+                    {turn.team?.fork ? <>⚔️ 怪物房，<span className="inline-block">還是 ❓ 神秘房？</span></> : game.phaseCard ? "新階段的第一題（按「下一題」後出題）" : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
                   </div>
                   {/* The host previously never saw question media at all (text-only preview) —
                       a small preview so judging an image/video question doesn't mean squinting
