@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { DungeonRoom } from "./dungeon-room";
+import { DungeonRoom, LOST_CRIT_GAP_MS } from "./dungeon-room";
 import { BANK_KEY, SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { BANK } from "../question-bank-data";
@@ -100,7 +100,10 @@ beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe("saving", () => {
   it("saves before the first message goes out, never after", () => {
@@ -575,7 +578,7 @@ describe("restoring after a restart", () => {
     // The turn now reaches the crit team, but the win waits for the answer reveal to close (nobody plays under it).
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
     serveNext(second.room, host, (second.room as any).eventSeq);
-    vi.advanceTimersByTime(4000); // the reveal's 答對 cue was a moment ago in this test
+    vi.advanceTimersByTime(LOST_CRIT_GAP_MS); // the reveal's 答對 cue was a moment ago in this test
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
     vi.useRealTimers();
   });
@@ -608,7 +611,7 @@ describe("restoring after a restart", () => {
     // The 答錯's cue plays and its story starts first; the natural 20 waits a beat.
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
     expect((second.room as any).cue).toBe("flee");
-    vi.advanceTimersByTime(4000);
+    vi.advanceTimersByTime(LOST_CRIT_GAP_MS);
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
     // The wrong answer's STATE goes out first, then the natural 20's, each with its own event.
     const ids = second.io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "STATE" && m.eventId > seq).map((m) => m.eventId);

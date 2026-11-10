@@ -1,7 +1,7 @@
 // 改判答對 (TODOS.md 「主持人按錯「答錯」可以改回答對」): the host's last 答錯 on a fill-in becomes 答對, judged from the
 // game before it, while nothing has moved since.
-import { describe, it, expect, vi } from "vitest";
-import { DungeonRoom } from "./dungeon-room";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { DungeonRoom, LOST_CRIT_GAP_MS } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { parseBank } from "../question-bank";
 import { checkKey, currentTurnTeamId } from "../game-state";
@@ -66,6 +66,8 @@ function game(cleric = false, next?: string) {
 
 /** What the answer changed for the teams: everything but `online`. */
 const teams = (room: DungeonRoom) => room.game!.teams.map((t) => ({ ...t, online: undefined }));
+
+afterEach(() => vi.useRealTimers());
 
 describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
   // Value: protects=an undone 答錯・重答 or 答錯・逃跑 ends exactly as a straight 答對 (score, reward, dish, room, reveal, turn);
@@ -193,7 +195,7 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
     r.lostCrit = { teamId: T2, questionId: q2 };
     vi.useFakeTimers();
     g.judge(false, "retry");
-    vi.advanceTimersByTime(4000); // it waits a beat after the 答錯's cue
+    vi.advanceTimersByTime(LOST_CRIT_GAP_MS); // it waits a beat after the 答錯's cue
     vi.useRealTimers();
     expect(g.room.game!.teams[1].reward).toBeGreaterThan(0);
     expect(state(g.room).undoWrong).toBeUndefined();
@@ -220,7 +222,7 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.useFakeTimers();
     g.judge(false, "retry");
-    vi.advanceTimersByTime(4000);
+    vi.advanceTimersByTime(LOST_CRIT_GAP_MS);
     vi.useRealTimers();
     expect(log).toHaveBeenCalled();
     log.mockRestore();
@@ -229,6 +231,23 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
     expect(state(g.room).undoWrong).toEqual({ teamId: T1, questionId: g.q });
     g.undo();
     expect(g.room.game!.teams[0].reward).toBe(10);
+  });
+
+  // Value: protects=a natural 20 whose win fails at the end of its beat (roll_failed) is not applied by a later restart
+  // (TODOS 說服檢定 2); fails_when=resolveRoll's catch stops marking it dropped; seam=room; no_claim=a real restart
+  it("a check's natural 20 that fails to judge is marked dropped", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    const g = game();
+    const r = g.room as unknown as { pendingRoll: unknown; judge: () => void; resolveRoll: () => void };
+    g.room.game = { ...g.room.game!, checks: { ...g.room.game!.checks, [checkKey(g.q, T1)]: { value: 20, bonus: 0, dc: 8, passed: true } } }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    r.pendingRoll = { teamId: T1, questionId: g.q, value: 20, kind: "check" }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    r.judge = () => {
+      throw new Error("judge failed");
+    };
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    r.resolveRoll();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("roll_failed"));
+    log.mockRestore();
+    expect(g.room.game!.checks![checkKey(g.q, T1)]).toMatchObject({ value: 20, dropped: true }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
   });
 
   // Value: protects=a cleric's 答錯 wait, and the 重答 after it, undo back to before the wait without spending a prayer;

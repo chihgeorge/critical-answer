@@ -41,7 +41,7 @@ const STUCK_MS = 15_000;
 const CLERIC_WAIT_DELAY_MS = 500;
 const noSubscribe = () => () => {};
 /** HOST_EDIT_NARRATION refusals: the narration panel shows them in its editor, not the page's error line. */
-const NARRATION_REFUSALS = new Set(["no_narration", "stale_narration", "bad_index", "line_read", "empty_edit", "stale_game"]);
+const NARRATION_REFUSALS = new Set(["no_narration", "stale_narration", "bad_index", "line_read", "empty_edit"]);
 
 type Picks = Extract<ServerMessage, { type: "HOST_PICKS" }>;
 
@@ -276,6 +276,8 @@ export default function HostPage() {
           setError(
             msg.error === "bad_token"
               ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人"
+              : msg.detail === "stale_game"
+                ? "剛才那句「下一句這樣說」是上一局打的，沒有排進這一局"
               : msg.detail === "reveal_pending"
                 ? `大螢幕正在揭曉，先按「${toServe ? "🍲 上菜" : "下一題"}」`
                 : msg.detail === "late_closed"

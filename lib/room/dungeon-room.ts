@@ -159,7 +159,7 @@ const READ_GAP_MS = 1000;
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
 /** A lost natural 20 waits this long after the last cue, so its own cue and story do not cut that one off. */
-const LOST_CRIT_GAP_MS = 4000;
+export const LOST_CRIT_GAP_MS = 4000;
 /** A fork's door opening on show (docs/designs/branch-fork.md): the question, or the ❓ outcome, waits for it. */
 export const FORK_BEAT_MS = 1500;
 /** The boss kill's 4d20 on screen (docs/designs/kill-roll.md): the dice land one by one, then the total stays up. */
@@ -2242,6 +2242,8 @@ export class DungeonRoom {
     this.pendingLock = null;
     this.pendingRoll = this.pendingKill = null;
     if (lockTeam) this.syncLockTeam(lockTeam);
+    if (this.lostCritTimer) clearTimeout(this.lostCritTimer);
+    this.lostCritTimer = null;
   }
 
   /** After a lock is gone: its team, kept on turn while the lock waited (onClose), shows offline if no phone is left. */
@@ -3224,7 +3226,8 @@ export class DungeonRoom {
 
   /** A restart during a natural 20's beat lost the win the beat applies (R7). restore() marks it, and the next STATE
    * with its team on turn applies it (a judgment needs a team online, so not restore itself). The host judging that
-   * team first, or the question leaving play, cancels it. Returns whether it judged (judge sent the STATE). */
+   * team first, or the question leaving play, cancels it. It waits LOST_CRIT_GAP_MS after the last cue, on a timer that
+   * calls back with `waitedFor` (that cue's time). Returns whether it judged (judge sent the STATE). */
   private applyLostCrit(waitedFor?: number): boolean {
     const lost = this.lostCrit;
     const game = this.game;
@@ -3271,7 +3274,10 @@ export class DungeonRoom {
     const key = checkKey(questionId, teamId);
     const check = this.game?.checks?.[key];
     // Not a move: an undoable 答錯 before it stays undoable.
-    if (check) this.keepUndoOpen({ ...this.game!, checks: { ...this.game!.checks, [key]: { ...check, dropped: true } } });
+    if (!check) return;
+    this.keepUndoOpen({ ...this.game!, checks: { ...this.game!.checks, [key]: { ...check, dropped: true } } });
+    // Saved now: a failure on the timer path sends no STATE after it, and a restart before the next one would apply it.
+    this.persist();
   }
 
   /** Whether the team that just walked into a new room finds an event there (D5). e2e names its one event team. */
