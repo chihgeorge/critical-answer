@@ -62,7 +62,8 @@ export function buildPrompt(event: NarrationEvent, styleExamples: string[], rece
   const second = hostLine
     ? `第二行：一定要包含主持人指定的這句話：「${hostLine.replace(/[「」『』]/g, "")}」，字要一樣（標點可以改），前後可以加幾個字自然銜接，整行最多 ${MAX_LINE} 個字。`
     : crowd
-      ? `第二行：說一句台下的觀眾反應，要寫出隊伍${q(crowd.team)}的名字，最多 ${MAX_MODEL_LINE} 個字。`
+      ? // The team's name stays in the user turn (describe), with the other player-typed names.
+        `第二行：說一句台下的觀眾反應，要寫出事件裡「觀眾反應」那一隊的名字，最多 ${MAX_MODEL_LINE} 個字。`
     : !epilogue && hasMiddleLine(event)
       ? `第二行：補充一點${hasNext ? "戰鬥氣氛、環境或情緒細節" : "氣氛或情緒的收尾"}，最多 ${MAX_MODEL_LINE} 個字，不要重複第一行的內容。`
       : null;

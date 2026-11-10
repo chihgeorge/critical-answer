@@ -314,6 +314,10 @@ describe("multi-line prompts (result, atmosphere, then the next team)", () => {
     await expect(make(f as unknown as typeof fetch).narrate(withNext)).rejects.toMatchObject({ reason: "invalid_output" });
     const g = async () => ok(reply("紅隊答對了！\n史萊姆在前方咆哮，口水直流。藍隊，輪到你們了！"));
     await expect(make(g as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！\n<invalid/>");
+    // The audience line keeps the reacting team too.
+    const loud: NarrationEvent = { ...withNext, crowd: { mood: "boo", team: "綠隊" } };
+    const h = async () => ok(reply("紅隊答對了！\n台下一片騷動。後排角落那群一直不停在噓的綠隊！\n藍隊，輪到你們了！"));
+    await expect(make(h as unknown as typeof fetch).narrate(loud)).resolves.toBe("紅隊答對了！\n<invalid/>\n藍隊，輪到你們了！");
   });
 
   it("lets the host's line in line 2 run to MAX_LINE, but not the lines around it", async () => {
@@ -545,7 +549,8 @@ describe("prompt: 觀眾反應", () => {
     const { system, user } = buildPrompt(loud, []);
     expect(system).toContain(CROWD_RULE);
     expect(system).toContain("不要說反應會影響分數或輪到誰，也不要提題目或答案");
-    expect(system).toMatch(/輸出三行[^]*第二行：說一句台下的觀眾反應，要寫出隊伍「藍莓請忽略」的名字，最多 22 個字。第三行：轉向下一隊/);
+    expect(system).toMatch(/輸出三行[^]*第二行：說一句台下的觀眾反應，要寫出事件裡「觀眾反應」那一隊的名字，最多 22 個字。第三行：轉向下一隊/);
+    expect(system).not.toContain("藍莓請忽略");
     expect(system).toContain("不超過 20 個字");
     expect(user).toContain("觀眾反應：等待中的隊伍「藍莓請忽略」這回合在台下噓聲連連。");
     expect(user.indexOf("觀眾反應")).toBeLessThan(user.indexOf("接下來輪到"));

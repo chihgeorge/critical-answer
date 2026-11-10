@@ -34,7 +34,8 @@ export function crowdOf(taps: Tap[], avoid?: string): Crowd | undefined {
 }
 
 /** One room's tally. `take` is called once per judged answer: it hands back the turn's crowd (or nothing) and starts
- * over, and it never hands one back twice in a row, so the crowd is never mentioned on every turn. */
+ * over, and it never hands one back twice in a row, so the crowd is never mentioned on every turn. `skip`: this line
+ * has no slot for it (no next team, or the host's line takes the middle), so the count is dropped and nothing is said. */
 export function createCrowdTally() {
   let turn: string | undefined;
   let taps: Tap[] = [];
@@ -44,8 +45,8 @@ export function createCrowdTally() {
       if (turn !== turnTeamId) [turn, taps] = [turnTeamId, []];
       taps.push({ team, reaction });
     },
-    take(turnTeamId: string, avoid?: string): Crowd | undefined {
-      const crowd = turn === turnTeamId && !saidLast ? crowdOf(taps, avoid) : undefined;
+    take(turnTeamId: string, avoid?: string, skip = false): Crowd | undefined {
+      const crowd = turn === turnTeamId && !saidLast && !skip ? crowdOf(taps, avoid) : undefined;
       [turn, taps, saidLast] = [undefined, [], !!crowd];
       return crowd;
     },

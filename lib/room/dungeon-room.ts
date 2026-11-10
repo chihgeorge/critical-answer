@@ -2793,8 +2793,9 @@ export class DungeonRoom {
     const rolled = roll?.kind === "warrior" && buzzed.type !== "flee" ? { ...buzzed, warriorRoll: roll.value } : buzzed;
     // The waiting teams' loudest reaction this turn, for the middle line; never on the game's last line.
     const next = rolled.type === "epilogue" ? undefined : rolled.next;
-    const crowd = this.crowd.take(teamId, next?.team);
-    const event = crowd && next ? { ...rolled, crowd } : rolled;
+    // Skipped when narrate() will give the middle line to the host's queued line (same test as there).
+    const crowd = this.crowd.take(teamId, next?.team, !next || (!!this.nextLine && !this.lineInFlight()));
+    const event = crowd ? { ...rolled, crowd } : rolled;
     // A natural 20 or 1 swaps the correct / boss-hit sound; the boss kill keeps its own (E2).
     const mark = "roll" in outcome ? outcome.roll : undefined;
     this.setCue(event.type === "epilogue" || event.type === "event-room" ? null : event.type !== "boss-kill" && mark?.kind === "crit" ? (mark.value === 20 ? "crit" : "fumble") : event.type);

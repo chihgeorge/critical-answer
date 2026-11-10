@@ -46,4 +46,12 @@ describe("createCrowdTally", () => {
     loud(t, "A");
     expect(t.take("A")).toBeDefined();
   });
+
+  it("a skipped take drops the count without blocking the next judged answer", () => {
+    const t = createCrowdTally();
+    loud(t, "A");
+    expect(t.take("A", undefined, true)).toBeUndefined();
+    loud(t, "B");
+    expect(t.take("B")).toBeDefined();
+  });
 });
