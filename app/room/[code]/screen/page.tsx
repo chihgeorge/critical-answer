@@ -338,7 +338,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // `content` is null while the room has not sent this video's id: for a moment after connecting, or for good when
   // the page was opened without the screen key (`locked`).
   const video: { id: string; content: YoutubeContent | null } | null =
-    videoQuestion === null ? null : { id: videoQuestion, content: shownVideo?.questionId === videoQuestion ? shownVideo.video : null };
+    videoQuestion === null ? null : { id: videoQuestion, content: !locked && shownVideo?.questionId === videoQuestion ? shownVideo.video : null };
   const sneakChip = turn?.sneakArmed && !reveal && !card;
   // A buzzer phase has no persuasion check (boss-buzzer.md D6).
   const dcChip = fillIn && !buzz && !turn?.sneakArmed ? turn?.checkTarget : undefined;

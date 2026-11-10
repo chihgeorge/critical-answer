@@ -108,6 +108,7 @@ export function getScreenKey(code: string): string | null {
   writeStored(key, fromUrl);
   // Blocked storage: the key must still be there for this page's reconnects, now that the address bar has lost it.
   if (readStored(key) !== fromUrl) madeThisLoad.set(key, fromUrl);
+  else madeThisLoad.delete(key);
   history.replaceState(null, "", location.pathname + location.search);
   return fromUrl;
 }
