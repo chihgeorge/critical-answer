@@ -266,6 +266,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // already dealt, so describeTurn would show the next team's monster.
   const dish = reveal?.dish;
   const eaterIdx = dish ? view.teams.findIndex((t) => t.id === dish.teamId) : -1;
+  // Who scored; a team removed mid-reveal gets no line rather than a nameless one.
+  const scorer = reveal?.scored && view.teams.find((t) => t.id === reveal.scored!.teamId);
   const eater = view.teams[eaterIdx];
   const bossScene = dish ? dish.room === null : turnInfo.bossScene;
   const monster = dish ? monsterLook(dish.monster) : turnInfo.monster;
@@ -448,9 +450,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             )}
             {/* Who scored, the one line the room reads off the reveal (no scoreboard: the meters say the rest). A partial
                 music answer has its own 「對 k/n」 line above, so it gets no 「答對」. */}
-            {reveal.scored && !reveal.fields?.marks.some((f) => !f.right) && (
+            {reveal.scored && scorer && !reveal.fields?.marks.some((f) => !f.right) && (
               <div data-testid="reveal-result" className="text-[24px] [overflow-wrap:anywhere]">
-                ✅ {view.teams.find((t) => t.id === reveal.scored!.teamId)?.name ?? ""} 答對 +{reveal.scored.points} {scoreName(cuisine)}
+                ✅ {scorer.name} 答對 +{reveal.scored.points} {scoreName(cuisine)}
               </div>
             )}
             {/* With the video up, its text explanation stands beside it instead. */}

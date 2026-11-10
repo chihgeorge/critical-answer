@@ -403,9 +403,10 @@ export default function HostPage() {
     return () => clearTimeout(t);
   }, [holdKey]);
   const held = !!holdKey && releasedFor !== holdKey;
-  const stuckKey = isMc && turn?.team && !lock && !roll ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}` : null;
+  const stuckKey = isMc && turn?.team && !lock && !roll ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}|${game?.answerClock?.left === null ? "clip" : "count"}` : null;
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   // With the countdown on, the row waits for its 0; off (or no count running), 15 s (lib/answer-clock.ts stuckDelayMs).
+  // The key carries "clip" while a clip has not ended, so a row shown during the clip goes away and re-arms for the count.
   const stuckDelay = stuckDelayMs(game?.answerClock);
   useEffect(() => {
     if (!stuckKey) return;
