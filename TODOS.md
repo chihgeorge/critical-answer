@@ -791,7 +791,7 @@ PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partyki
 ## 活動前穩定性：訊息速率限制、密碼猜錯限制、關掉的連線不再算數
 
 - **每條連線的訊息速率限制，錯誤回覆不再序列化整個房間** · 版號合併時定 · `worker/index.ts` 的 Room 每條 socket 一個 token bucket（`lib/room/rate-limit.ts`）：一次最多 30 則，每秒補 10 則，超過的訊息直接丟掉（不回覆、不斷線，免得卡在送訊息迴圈的客戶端一直重連）。`sendTo` 送 ERROR 時不再先 `persist()`，垃圾訊息不會讓房間把整個狀態（含題庫）`JSON.stringify` 一次。
-- **單則訊息大小上限 4096 bytes** · 版號合併時定 · `/cso` 建議。`worker/index.ts` 在 `JSON.parse` 之前先量訊息（`lib/room/rate-limit.ts` 的 `oversized`，算 UTF-8 bytes），超過就丟掉，做法跟速率限制一樣：不回覆、不斷線，照樣扣那條連線的額度。最大的合法訊息是三欄填滿的 `TEAM_SUBMIT_TEXT`，約 2.5 KB；哪個長度上限被調大到讓合法訊息超過 4096，`rate-limit.test.ts` 就會失敗。
+- **單則訊息大小上限 4096 bytes** · 版號合併時定 · `/cso` 建議。`worker/index.ts` 在 `JSON.parse` 之前先量訊息（`lib/room/rate-limit.ts` 的 `oversized`，算 UTF-8 bytes），超過就丟掉，做法跟速率限制一樣：不回覆、不斷線，照樣扣那條連線的額度。最大的合法訊息是三欄填滿的 `TEAM_SUBMIT_TEXT`，約 2.5 KB；`rate-limit.test.ts` 用 `MAX_RAW_TEXT`、`MAX_FIELDS`、`MAX_ID`、`MAX_PASSWORD` 組出最大的訊息，這幾個上限被調大到超過 4096 時測試會失敗。
 - **加入密碼猜錯次數限制** · 版號合併時定 · 整個房間每 60 秒最多 10 次錯的密碼（空密碼不算），超過之後這個時段內所有要密碼的 JOIN 都回 `bad_password` + `too_many_attempts`，手機顯示「密碼猜錯太多次，請等一分鐘再試」。用整個房間計數，因為腳本換連線 id 不用成本；代價是被攻擊時真玩家最多要等一分鐘，已加入的隊伍重連不受影響，主持人改新密碼會立刻解除。
 - **被關掉或被取代的連線不再算數** · 版號合併時定 · 房間關掉的 socket（滿房讓位、同 id 重連取代的舊 socket、房間過期）之後送來的訊息一律忽略；同 id 重連時主持人身分要重新 HOST_CLAIM；Room 加上 `onError`，只出錯沒關閉的 socket 也會被清掉。
 

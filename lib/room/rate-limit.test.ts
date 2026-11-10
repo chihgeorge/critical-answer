@@ -42,7 +42,8 @@ describe("oversized", () => {
   });
 
   // Value: protects=no real message is ever dropped by the cap; fails_when=a protocol length limit grows until its
-  // largest valid message passes 4096 bytes
+  // largest valid message passes 4096 bytes; no_claim=hand-made messages of JSON-escaped control characters (6 bytes
+  // each), and limits this test writes as numbers (team name 100, team key 128, AI key 256, key id 64)
   it("keeps the largest message each long-text type may carry, in 3-byte characters", () => {
     const text = "題".repeat(MAX_RAW_TEXT);
     const id = "q".repeat(MAX_ID);

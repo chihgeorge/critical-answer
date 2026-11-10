@@ -30,9 +30,11 @@ export class RateLimiter {
 }
 
 /**
- * The largest message a socket may send, in UTF-8 bytes. The biggest real one is TEAM_SUBMIT_TEXT with three full
- * fields, about 2.5 KB (lib/protocol.ts caps every string). A bigger message is dropped before JSON.parse, like one
- * over the rate budget: not answered, no close.
+ * The largest message a socket may send, in UTF-8 bytes. The biggest one a page sends is TEAM_SUBMIT_TEXT with three
+ * full fields, about 2.5 KB in 3-byte characters (lib/protocol.ts limits every string's length). A bigger message is
+ * dropped before JSON.parse, like one over the rate budget: not answered, no close. Only a hand-made message gets
+ * there: hundreds of control characters (6 bytes each once JSON escapes them), or a JOIN password of several KB,
+ * which the protocol would otherwise cut to MAX_PASSWORD.
  */
 export const MAX_MESSAGE_BYTES = 4096;
 

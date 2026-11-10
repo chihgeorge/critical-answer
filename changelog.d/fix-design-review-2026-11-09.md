@@ -6,4 +6,4 @@
 - Big screen: the result bar under the dice (擲先攻's order, the boss kill's sum, the warrior's and crit rolls) has space at its sides, so the text no longer touches the outline.
 
 ### Security
-- The room now drops any WebSocket message over 4096 bytes before reading it. The largest real message is about 2.5 KB, so players and hosts are not affected. A dropped message gets no reply and the connection stays open, the same as a message over the rate limit.
+- The room now drops any WebSocket message over 4096 bytes before parsing it. The largest real message is about 2.5 KB, so players and hosts are not affected. A dropped message gets no reply and the connection stays open, the same as a message over the rate limit.

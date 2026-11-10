@@ -165,7 +165,7 @@ body {
 }
 .px-ribbon i { font-style: normal; animation: px-blink 1s steps(1) infinite; }
 /* A phone-width host or player page: 22px (the font's 2x) and tighter sides, so 「首領戰　輪到：」 leaves room for
-   the team's name. The big screen's stage is always 960px wide. */
+   the team's name. The rule reads the window's width, and a big screen is never opened that narrow. */
 @media (max-width: 400px) {
   .px-ribbon { gap: 6px; padding: 0 22px 0 14px; font-size: 22px; }
 }
