@@ -2754,8 +2754,12 @@ export class DungeonRoom {
       return;
     }
     try {
+      const onTurn = !isBuzzPhase(this.game) && currentTurnTeamId(this.game) === teamId;
       this.game = sendToBoss(this.game, teamId, this.rng);
       this.broadcastState();
+      // The owl's last 「輪到…」 line named the room monster this team just left: it now faces the boss.
+      const next = onTurn ? this.nextTurn() : null;
+      if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next));
     } catch (err) {
       this.sendInvalid(conn, err);
     }

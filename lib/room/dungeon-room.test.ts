@@ -2074,6 +2074,29 @@ describe("narration (T5-T7)", () => {
     landKill(room);
   }
 
+  // Value: protects=after 送王房 sends the team on turn, the owl names the boss it now faces, not its old room's monster
+  // (screen review 2026-11-09, s36); fails_when=handleSendToBoss adds no line; no_claim=AI wording (scripted line)
+  it("送王房 on the team on turn adds a line naming the boss", async () => {
+    const { room, hostConn, ids } = start(2);
+    await sleep(40);
+    const states = () => all(room).filter((m) => m.type === "STATE");
+    const roomMonster = states().at(-1)!.question.monster.name;
+    const onTurn = currentTurnTeamId(room.game!);
+    send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: onTurn });
+    const boss = states().at(-1)!.question;
+    expect(boss.boss).toBe(true);
+    const lines = all(room).filter((m) => m.type === "NARRATION").at(-1).lines as string[];
+    expect(lines.at(-1)).toContain(boss.monster.name);
+    expect(lines.at(-1)).not.toContain(roomMonster);
+    // The first boss entry, so the sprint fires: still no owl line on 送王房 (last-sprint.md).
+    expect(room.game!.sprint).toBeDefined();
+    expect(lines.some((l) => l.startsWith("🦉"))).toBe(false);
+    // Another team sent: the team on turn still faces its room, so nothing is added.
+    const count = all(room).filter((m) => m.type === "NARRATION").length;
+    send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids.find((id) => id !== onTurn)! });
+    expect(all(room).filter((m) => m.type === "NARRATION")).toHaveLength(count);
+  });
+
   describe("結束冒險 and the narration on screen", () => {
     /** A game whose start narration is in, ended by the host; `read` the screen read it out first. */
     async function ended(read: boolean, opts: ConstructorParameters<typeof DungeonRoom>[2] = {}) {
@@ -2231,7 +2254,8 @@ describe("narration (T5-T7)", () => {
       const { room, hostConn, ids } = start(3);
       await flush();
       const before = all(room).filter((m) => m.type === "NARRATION").length;
-      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
+      // A team not on turn: the one on turn gets its 「輪到…」 line again, naming the boss.
+      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids.find((id) => id !== currentTurnTeamId(room.game!))! });
       await flush();
       expect(room.game!.sprint).toBeDefined();
       expect(all(room).filter((m) => m.type === "NARRATION")).toHaveLength(before);
