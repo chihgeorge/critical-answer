@@ -6,8 +6,8 @@ import type { Transition } from "@/lib/transitions";
 
 /** How long each transition covers the stage; reduced motion holds one still frame for less.
  * Keep MS just past the .px-door-* and .px-alarm-* animations in app/globals.css (doors 0.6 s + 1 s, alarm 2.4 s). */
-const MS = { open: 1700, boss: 2500, sprint: 2500 } as const;
-const STILL_MS = { open: 1000, boss: 1500, sprint: 1500 } as const;
+const MS = { open: 1700, boss: 2500, sprint: 2500, cheat: 2500, catch: 2500 } as const;
+const STILL_MS = { open: 1000, boss: 1500, sprint: 1500, cheat: 1500, catch: 1500 } as const;
 
 /**
  * The opening's stone doors, the boss's alarm banner and ⚔️ 最後衝刺's banner (last-sprint.md), over the stage (lib/transitions.ts decides when).
@@ -29,6 +29,26 @@ export function TransitionOverlay({ play, onDone }: { play: Transition; onDone: 
           <div className={`px-door-title absolute inset-x-0 text-center${cls}`} style={{ top: 190 }}>
             <div className="px-title-gold" style={{ fontSize: 64 }}>冒險開始！</div>
             {play.team && <div className="mx-auto mt-4 max-w-[860px] truncate text-[30px] text-[var(--cream)] [text-shadow:3px_3px_0_var(--k)]">第一隊：{play.team}</div>}
+          </div>
+        </>
+      ) : play.kind === "cheat" || play.kind === "catch" ? (
+        // 抓包與神諭 (anti-ai-cheating.md): the boss's red alarm, its band in red and black.
+        <>
+          <div className={`px-alarm-tint absolute inset-0${cls}`} />
+          <div className={`px-alarm-band px-catch-band absolute inset-x-0${cls}`} style={{ top: 170, height: 170 }}>
+            <div className={`px-alarm-text px-catch-text absolute inset-0 flex flex-col items-center justify-center${cls}`}>
+              {play.kind === "cheat" ? (
+                <>
+                  <div className="px-title-danger" style={{ fontSize: 52, lineHeight: 1.1 }}>🚨 有人在問 AI！</div>
+                  <div className="mt-2 text-[28px] text-[var(--cream)] [text-shadow:3px_3px_0_var(--k)]">抓包與神諭開放了</div>
+                </>
+              ) : (
+                <>
+                  <div className="px-title-danger" style={{ fontSize: 60, lineHeight: 1.1 }}>🚨 抓包！</div>
+                  <div className="mt-2 max-w-[860px] truncate text-[28px] text-[var(--cream)] [text-shadow:3px_3px_0_var(--k)]">{play.by}說 {play.team} 在問 AI</div>
+                </>
+              )}
+            </div>
           </div>
         </>
       ) : play.kind === "sprint" ? (

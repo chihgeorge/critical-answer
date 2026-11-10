@@ -178,6 +178,15 @@ describe("prompt", () => {
     expect(buildPrompt({ type: "retry", team: "甲", monster: "小黑龍", prayed: true, boss: true }, []).user).toContain("首領「小黑龍」換了一題");
   });
 
+  // Value: protects=a 🚨 成立 flee's prompt names the catch and the reporter, never a plain flee (anti-ai-cheating.md);
+  // fails_when=describeEvent ignores e.caught; why_new=only the scripted line is tested; seam=none;
+  // no_claim=the model's actual line (prompt bytes only; no eval framework)
+  it("tells the model a caught team was ruled asking an AI, not that it fled", () => {
+    const { user } = buildPrompt({ type: "flee", team: "甲", monster: "史萊姆", caught: "乙" }, []);
+    expect(user).toContain("隊伍「甲」被隊伍「乙」抓包偷問 AI");
+    expect(user).not.toContain("答錯後逃跑");
+  });
+
   // Guards the host's hand-edited lines reaching the prompt, and the removed director notes staying gone
   // (host-narration-edit.md): fails if the style examples are dropped or a 導演筆記 section comes back.
   it("adds the last edited lines as style examples, and no director notes", () => {

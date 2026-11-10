@@ -15,7 +15,7 @@ import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
-import { CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
+import { CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 import { MageHint } from "@/components/mage-hint";
@@ -333,6 +333,8 @@ export default function HostPage() {
   // A ❓ 神秘房's result is one more (event-rooms.md D3). A door opening (branch-fork.md) is not: 下一題 waits it out.
   // So is 占卜師's effect card (fortune-teller.md); the steps before it wait like a door opening.
   const revealUp = !!game?.reveal || !!game?.phaseCard || !!game?.eventReveal || game?.fortune?.step === "card";
+  // 🚨 A catch waiting for the host's ruling (anti-ai-cheating.md): its card shows whatever revealUp says.
+  const openCatch = game?.phase === "playing" ? game.view.antiCheat?.openCatch : undefined;
   // In the boss room this choice also brings a new question (the boss rotates), so it is named for that.
   const retryLabel = turn?.inBoss ? "下輪換題" : "下輪再答";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): teams buzz in, the host judges the one that buzzed first. */
@@ -470,8 +472,15 @@ export default function HostPage() {
         isMc ? { stuck } : undefined,
         cleric,
         lockWaiting,
+        !!openCatch,
       );
       if (!action || !game) return;
+      // The ruling card (anti-ai-cheating.md): 7 / 8 only, whatever else is up.
+      if (action === "uphold" || action === "dismiss") {
+        if (ready && openCatch) send({ type: "HOST_RULE_CATCH", upheld: action === "uphold" });
+        e.preventDefault();
+        return;
+      }
       // A manual hold has ▶ 下一步 on key 1 (the effect below); only 改判答對, whose button stays up, keeps its key.
       if (holdUp && action !== "undo") return;
       // A music question with fields is judged field by field on screen only (multi-field.md D4): no judge key.
@@ -500,7 +509,7 @@ export default function HostPage() {
     return () => window.removeEventListener("keydown", onKey);
     // judge/send are plain functions over state this effect already depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, ready, swapArmed, canJudge, canUndo, turn, isMc, stuck, picking, drawer, revealUp, cleric, held, lock, lockWaiting, holdUp]);
+  }, [game, ready, swapArmed, canJudge, canUndo, turn, isMc, stuck, picking, drawer, revealUp, cleric, held, lock, lockWaiting, holdUp, openCatch]);
 
   // ▶ 下一步 (manual-pacing.md): key 1 or Enter, like 下一題, in every phase a hold can be up (擲先攻 and the podium too).
   const stepNow = () => game && hold && send({ type: "HOST_STEP", eventId: game.eventId, step: hold.id });
@@ -528,6 +537,26 @@ export default function HostPage() {
         {connected ? "▶ 下一步" : "重新連線中"}
         <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
       </PixelButton>
+    </div>
+  );
+
+  // 🚨 The ruling card above the judge keys (anti-ai-cheating.md): 成立 / 冤枉, keys 7 / 8.
+  const rulingCard = game && openCatch && (
+    <div data-testid="host-ruling" className="mb-3 flex flex-col gap-2">
+      <div className="border-4 border-[var(--k)] px-3 py-2 text-center text-[20px] text-white" style={{ background: "var(--danger)" }} role="alert">
+        🚨 {teamName(openCatch.by)}說 {teamName(openCatch.teamId)} 在問 AI
+      </div>
+      <div className="grid grid-cols-2">
+        <PixelButton data-testid="host-ruling-uphold" variant="flee" className="!min-h-[56px] text-[16px]" disabled={!ready} onClick={() => send({ type: "HOST_RULE_CATCH", upheld: true })}>
+          <TwoLine top="🚨 成立" bottom={`換題・扣 ${CATCH_PAY.caught}`} />
+          <span className="px-key" aria-hidden="true">{HOST_KEYS.ruling.uphold}</span>
+        </PixelButton>
+        <PixelButton data-testid="host-ruling-dismiss" variant="retry" className="!min-h-[56px] text-[16px]" disabled={!ready} onClick={() => send({ type: "HOST_RULE_CATCH", upheld: false })}>
+          <TwoLine top="🛡️ 冤枉" bottom={`檢舉隊扣 ${CATCH_PAY.falseReport}`} />
+          <span className="px-key" aria-hidden="true">{HOST_KEYS.ruling.dismiss}</span>
+        </PixelButton>
+      </div>
+      <div className="px-1 text-center text-[13px] text-white">成立：這題不算分、{teamName(openCatch.teamId)}扣 {CATCH_PAY.caught} 分換題，{teamName(openCatch.by)} +{CATCH_PAY.bounty}。冤枉：{teamName(openCatch.teamId)}拿藥水（有了就 +{CATCH_PAY.wronged}）繼續答。</div>
     </div>
   );
 
@@ -995,7 +1024,10 @@ export default function HostPage() {
             )}
             {/* The judge area sits right under the question card, above the team rows, so a phone never scrolls for it. */}
             <div data-testid="host-judge" className="flex flex-col">
-            {holdUp ? (
+            {/* An open catch: only the ruling card, every judge key waits for it (the room refuses them anyway). */}
+            {openCatch ? (
+              rulingCard
+            ) : holdUp ? (
               holdPanel
             ) : turn?.team ? (
             <>
@@ -1198,6 +1230,8 @@ export default function HostPage() {
                   {t.classId && <span className="text-[13px]" title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "" : t.abilityUses}</span>}
                   {t.fork && <span data-testid="host-team-fork" className="text-[13px]">🚪 在叉路口</span>}
                   {t.sneakArmed && <span className="text-[13px]" title={`偷襲準備好了：這題答對獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
+                  {game.view.antiCheat?.on && t.catchesLeft !== undefined && <span className="text-[13px]" title={`神諭剩 ${t.oracleLeft ?? 0} 次、抓包剩 ${t.catchesLeft} 次`}>🔮{t.oracleLeft ?? 0} 🚨{t.catchesLeft}</span>}
+                  {t.oracle && <span className="text-[13px]" title="這題請示了神諭：答對獎勵減半">🔮減半</span>}
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
                   </div>
@@ -1298,6 +1332,7 @@ export default function HostPage() {
           ai={game ? aiPanel : null}
           bossable={game?.phase === "playing" ? game.view.teams.filter((t) => !t.inBossPhase) : []}
           playing={game?.phase === "playing"}
+          antiCheat={game?.phase === "playing" ? (game.view.antiCheat?.on ?? false) : undefined}
           screen={game ? screenBlock : null}
         />
       )}

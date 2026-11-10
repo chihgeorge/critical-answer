@@ -98,3 +98,26 @@ describe("introKeyAction", () => {
     expect(introKeyAction({ key: "ArrowRight", target: { tagName: "BUTTON" } })).toBe("next");
   });
 });
+
+describe("hostKeyAction with the ruling card (anti-ai-cheating.md)", () => {
+  it.each([
+    ["7", "uphold"],
+    ["8", "dismiss"],
+    ["0", null],
+    ["1", null],
+    ["2", null],
+    ["3", null],
+    ["4", null],
+    ["5", null],
+    ["Enter", null],
+  ])("key %s does %s, whatever else is up", (key, action) => {
+    expect(hostKeyAction({ key }, false, undefined, undefined, false, true)).toBe(action);
+    expect(hostKeyAction({ key }, true, { stuck: true }, "wait", true, true)).toBe(action);
+  });
+
+  it("7 and 8 do nothing without a catch open, and a field still keeps its keys", () => {
+    expect(hostKeyAction({ key: "7" }, false)).toBeNull();
+    expect(hostKeyAction({ key: "8" }, false)).toBeNull();
+    expect(hostKeyAction({ key: "7", target: { tagName: "INPUT" } }, false, undefined, undefined, false, true)).toBeNull();
+  });
+});

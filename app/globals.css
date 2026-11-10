@@ -284,6 +284,9 @@ body {
 /* ⚔️ 最後衝刺 (last-sprint.md): the alarm band's sweep and blinks, in --lav2 instead of --warn. */
 .px-sprint-band { background: repeating-linear-gradient(-45deg, var(--lav2) 0 28px, var(--k) 28px 56px); }
 .px-sprint-text { border-block-color: var(--lav2); }
+/* 抓包與神諭 (anti-ai-cheating.md): the same sweep and blinks in red and black. */
+.px-catch-band { background: repeating-linear-gradient(-45deg, var(--danger) 0 28px, var(--k) 28px 56px); }
+.px-catch-text { border-block-color: var(--danger); }
 .px-door.px-still, .px-door-title.px-still, .px-alarm-tint.px-still, .px-alarm-band.px-still, .px-alarm-text.px-still { animation: none; }
 /* The music card's equalizer (docs/designs/youtube-questions.md D15): bars jump between two heights. */
 @keyframes px-eq { 50% { transform: scaleY(0.35); } }

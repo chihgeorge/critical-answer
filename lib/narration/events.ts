@@ -50,8 +50,9 @@ export type NarrationEvent =
    * `buzzAgain`: that wrong buzz was the last online team's, so everyone buzzes on the same song again (boss-music-buzzer.md M1).
    * `prayed`: a cleric prayed on this miss, so the team answers again now, keeping the turn (never "next round"). */
   | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; buzzAgain?: true; prayed?: true; warriorRoll?: number }>>
-  /** `to`: 逃跑・換房 put this new monster in the team's room. */
-  | WithNext<{ type: "flee"; team: string; monster: string; to?: string }>
+  /** `to`: 逃跑・換房 put this new monster in the team's room.
+   * `caught`: 🚨 成立, the reporting team's name: the host ruled this team asked an AI, so it was made to flee (anti-ai-cheating.md). */
+  | WithNext<{ type: "flee"; team: string; monster: string; to?: string; caught?: string }>
   /** `bossHp` 0 without a kill: an earlier phase's bar emptied, and the next phase is still a secret.
    * `exhausted`: the hit used up the phase's questions with HP left, and the phase card comes next. */
   | WithNext<WithRoll<ByClass<{ type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number; exhausted?: true }>>>

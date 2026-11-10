@@ -53,7 +53,12 @@ export interface GameLog {
     /** 🧪 幸運藥水 the host gave this team, and the ones it drank (docs/designs/lucky-potion.md E8). */
     potionsGiven: number;
     potionsDrunk: number;
+    /** 抓包與神諭 (docs/designs/anti-ai-cheating.md): oracles this team used; catches it filed, and how each ended (a
+     * cancelled one counts under the reporter). Absent in older logs and in games the switch never met this team. */
+    antiCheat?: { oracles: number; catchesFiled: number; upheld: number; dismissed: number; cancelled: number };
   }[];
+  /** Times the host switched 抓包與神諭 on. Absent in older logs and in games it stayed off. */
+  antiCheatOn?: number;
 }
 
 export function gameLog(game: GameState, endedAt: number): GameLog {
@@ -93,7 +98,11 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
       titles: awards.filter((a) => a.teamIds.includes(t.id)).map((a) => a.id),
       potionsGiven: t.potionsGiven ?? 0,
       potionsDrunk: t.potionsDrunk ?? 0,
+      ...(t.catchesLeft !== undefined
+        ? { antiCheat: { oracles: t.oracles ?? 0, catchesFiled: t.catchesFiled ?? 0, upheld: t.catchesUpheld ?? 0, dismissed: t.catchesDismissed ?? 0, cancelled: t.catchesCancelled ?? 0 } }
+        : {}),
     })),
+    ...(game.antiCheat ? { antiCheatOn: game.antiCheat.onCount } : {}),
   };
 }
 

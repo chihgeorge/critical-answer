@@ -10,7 +10,7 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
-import { ABILITY_USES, CHEF_BONUS_PERCENT, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
+import { ABILITY_USES, CATCH_PAY, CHEF_BONUS_PERCENT, ORACLE_USES, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { sprintSeen } from "@/lib/transitions";
@@ -644,6 +644,52 @@ function FinishedPanel({ place, reward, cuisine, finale, podium, onPodium }: { p
   );
 }
 
+/** 抓包與神諭 (docs/designs/anti-ai-cheating.md) on a phone: 🔮 公開問神諭 under the answer on our own turn, 🚨 抓包 for a
+ * waiting team, the open catch's status for everyone. Shown only while the room's window is open (the question up, not
+ * yet answered, a room turn); the room checks every press again. */
+function AntiCheatPanel({ game, teamId, isMyTurn, send }: { game: StateMessage; teamId: string; isMyTurn: boolean; send: (m: ClientMessage) => void }) {
+  const ac = game.view.antiCheat;
+  const q = game.question;
+  const me = game.view.teams.find((t) => t.id === teamId);
+  const accused = game.view.teams.find((t) => t.id === game.view.currentTurnTeamId);
+  if (!ac || !me || !accused || !q) return null;
+  if (ac.openCatch) {
+    const name = (id: string) => game.view.teams.find((t) => t.id === id)?.name ?? "";
+    return (
+      <div data-testid="catch-open" role="status" className="px-bar mt-1 !text-[17px]" style={{ background: "var(--danger)", color: "#fff" }}>
+        🚨 {name(ac.openCatch.by)}說{name(ac.openCatch.teamId)}在問 AI・等主持人裁決
+      </div>
+    );
+  }
+  if (isMyTurn && me.oracle) {
+    return <div data-testid="oracle-on" role="status" className="px-bar mt-1 !text-[17px]" style={{ background: "#c9b3ff" }}>🔮 請示了神諭：這題答對獎勵減半</div>;
+  }
+  // The window: a room turn whose question is up and not answered (a typed answer waiting still lets a catch in).
+  const open = ac.on && !q.checkFirst && !accused.inBossPhase && !game.view.buzz && !game.view.pendingWrong && !game.pendingLock && !game.pendingRoll;
+  if (!open) return null;
+  if (isMyTurn) {
+    if (!me.oracleLeft || me.typedAnswer !== null) return null;
+    return (
+      <PixelButton data-testid="use-oracle" className="!m-0 mt-2 flex !min-h-[56px] flex-col !text-[20px]" style={{ background: "#c9b3ff" }} onClick={() => send({ type: "TEAM_ORACLE", questionId: q.id })}>
+        🔮 公開問神諭<small className="text-[13px]">整場 {ORACLE_USES} 次・這題答對獎勵減半・這題不會被抓包</small>
+      </PixelButton>
+    );
+  }
+  if (me.catchesLeft === undefined) return null;
+  const why = accused.oracle ? "這題他們公開問了神諭" : ac.caught ? "這題已經抓過了" : me.catchesLeft <= 0 ? "抓包次數用完了" : null;
+  return (
+    <PixelButton
+      data-testid="file-catch"
+      aria-disabled={!!why}
+      className="!m-0 mb-3 flex !min-h-[60px] flex-col !text-[20px]"
+      style={why ? { background: "var(--cream2)", color: "var(--dim-ink)", cursor: "default" } : { background: "var(--danger)", color: "#fff" }}
+      onClick={() => !why && send({ type: "TEAM_CATCH", questionId: q.id })}
+    >
+      🚨 抓包！{accused.name}在問 AI<small className="text-[13px]">{why ?? `剩 ${me.catchesLeft} 次・成立 +${CATCH_PAY.bounty}，冤枉 −${CATCH_PAY.falseReport}`}</small>
+    </PixelButton>
+  );
+}
+
 type ReactSent = { reaction: Reaction; at: number };
 /** 觀眾反應 (docs/designs/audience-reactions.md): a waiting team's four fixed reactions, in one row above the
  * dialogue box. After a tap all four go grey for REACT_GAP_MS, the room's own limit (it allows REACT_JITTER_MS of network delay). */
@@ -1180,6 +1226,9 @@ export default function PlayPage() {
           <TextAnswerPanel key={`${game.question.id}:${game.eventId}:${game.question.checkFirst ? "check" : "q"}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint={noHintQid === game.question.id} />
         )}
 
+        {/* 🔮 under 送出 on our own turn; the open catch for everyone (anti-ai-cheating.md). */}
+        {game && !finished && !buzz && !held && isMyTurn && <AntiCheatPanel game={game} teamId={teamId} isMyTurn send={send} />}
+
         {/* D14: our own lock was right — the same tiles, the right one green, and the points. */}
         {game && !finished && revealed?.choice && revealed.choice.teamId === teamId && (
           <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
@@ -1257,6 +1306,8 @@ export default function PlayPage() {
         <div className="mt-auto">
           {/* Waiting teams only: never on our own turn, nor in a buzzer phase where every team is answering; and only
               while connected, since a tap sent offline reaches the room before the phone has rejoined its team. */}
+          {/* 🚨 抓包 for a waiting team, above its reactions (anti-ai-cheating.md). */}
+          {game && !finished && !isMyTurn && !held && !intro && !initiative && !disconnected && !unreachable && !rested && <AntiCheatPanel game={game} teamId={teamId} isMyTurn={false} send={send} />}
           {game && !finished && !isMyTurn && !game.view.buzz && !intro && !initiative && !disconnected && !unreachable && !rested && <ReactBar send={send} sent={reactSent} setSent={setReactSent} />}
           <DialogueBox
             compact

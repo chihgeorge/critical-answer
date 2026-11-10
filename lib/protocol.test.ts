@@ -361,6 +361,17 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "TEAM_DRINK_POTION", eventId: 0 })).toBeNull();
   });
 
+  it("TEAM_ORACLE and TEAM_CATCH need a question id; HOST_ANTI_CHEAT and HOST_RULE_CATCH a boolean (anti-ai-cheating.md)", () => {
+    expect(parseClientMessage({ type: "TEAM_ORACLE", questionId: "q1", teamId: "x" })).toEqual({ type: "TEAM_ORACLE", questionId: "q1" });
+    expect(parseClientMessage({ type: "TEAM_CATCH", questionId: "q1", by: "x" })).toEqual({ type: "TEAM_CATCH", questionId: "q1" });
+    expect(parseClientMessage({ type: "TEAM_CATCH" })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_ORACLE", questionId: 3 })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_ANTI_CHEAT", on: false })).toEqual({ type: "HOST_ANTI_CHEAT", on: false });
+    expect(parseClientMessage({ type: "HOST_ANTI_CHEAT", on: "yes" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_RULE_CATCH", upheld: true })).toEqual({ type: "HOST_RULE_CATCH", upheld: true });
+    expect(parseClientMessage({ type: "HOST_RULE_CATCH" })).toBeNull();
+  });
+
   it("TEAM_ROLL_CHECK carries the question id and a non-negative integer eventId only", () => {
     expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId: 3, value: 20 })).toEqual({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId: 3 });
     for (const eventId of [undefined, -1, 1.5, "3"]) expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId })).toBeNull();

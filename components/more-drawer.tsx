@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { getHostToken } from "@/lib/room-code";
 import type { ClientMessage } from "@/lib/protocol";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
+import { CATCH_USES, ORACLE_USES } from "@/lib/game-state";
 import { Panel, PixelButton } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 
@@ -16,6 +17,7 @@ export function MoreDrawer({
   ai,
   bossable,
   playing,
+  antiCheat,
   screen,
 }: {
   /** The page's origin ("" before hydration). */
@@ -29,6 +31,8 @@ export function MoreDrawer({
   bossable: { id: string; name: string }[];
   /** A game is under way, so 結束冒險 can end it. */
   playing: boolean;
+  /** 🚨 抓包與神諭's switch while a game runs (docs/designs/anti-ai-cheating.md); undefined outside a game. */
+  antiCheat?: boolean;
   /** The big-screen link and QR, once a game has started (before that they sit on the page itself). */
   screen: ReactNode;
 }) {
@@ -70,6 +74,21 @@ export function MoreDrawer({
                   </PixelButton>
                 </div>
               ))}
+            </section>
+          )}
+          {antiCheat !== undefined && (
+            <section className="flex flex-col gap-2">
+              <div className="text-[15px]">發現有人用手機問 AI？打開後每隊可以公開問 {ORACLE_USES} 次神諭（答對減半），也可以抓包別隊 {CATCH_USES} 次，由你裁決。關掉時還沒裁決的抓包取消、退回次數。</div>
+              <PixelButton
+                data-testid="anti-cheat-switch"
+                role="switch"
+                aria-checked={antiCheat}
+                variant={antiCheat ? "flee" : undefined}
+                onClick={() => send({ type: "HOST_ANTI_CHEAT", on: !antiCheat })}
+                className="!m-0 min-h-[44px] !px-4 !py-2 text-[16px]"
+              >
+                {antiCheat ? "🚨 抓包與神諭：開（按一下關掉）" : "🚨 開啟抓包與神諭"}
+              </PixelButton>
             </section>
           )}
           {playing && (

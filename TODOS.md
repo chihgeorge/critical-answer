@@ -9,7 +9,6 @@
 ### P2
 
 - [美術改版：冒險者野餐桌](#美術改版冒險者野餐桌) — L（人工約 1–2 週 / CC 約 1–2 天）
-- [反 AI 作弊：玩家用手機問 AI 查答案](#反-ai-作弊玩家用手機問-ai-查答案) — 未定（先決定做法）
 
 ### P3
 
@@ -19,6 +18,10 @@
 - [觀眾投票決定走哪扇門（叉路 Approach C）](#觀眾投票決定走哪扇門叉路-approach-c) — M（人工約 1–2 天 / CC 約 1 小時），活動後
 - [題庫指定叉路位置、難度門和類別門（叉路 Approach B）](#題庫指定叉路位置難度門和類別門叉路-approach-b) — L（人工約 1 週 / CC 約半天），活動後
 - [頒獎稱號「命運之子」](#頒獎稱號命運之子) — S，活動後
+- [抓包與神諭：用平衡模擬看分數對勝率的影響](#抓包與神諭用平衡模擬看分數對勝率的影響) — M，活動後
+- [抓包與神諭：首領房也能用](#抓包與神諭首領房也能用) — M，活動後
+- [抓包與神諭：主持人撤回一次裁決](#抓包與神諭主持人撤回一次裁決) — S，活動後
+- [影片題支援 Instagram](#影片題支援-instagram) — 未定（先確認嵌入方式），活動後
 - [主持人開房時可以用自己的題庫](#主持人開房時可以用自己的題庫) — L
 - [活動後用對局紀錄對一次職業勝率](#活動後用對局紀錄對一次職業勝率) — S，活動後
 - [存檔可能放回已經刪掉的圖片](#存檔可能放回已經刪掉的圖片) — S，活動後
@@ -140,27 +143,6 @@
 
 ---
 
-## 反 AI 作弊：玩家用手機問 AI 查答案
-
-**What:** 想辦法讓隊伍沒辦法（或不值得）在作答時用手機問 ChatGPT 之類的 AI 查答案。
-
-**Why:** 站長 2026-11-06 提出。玩家手上本來就拿著手機作答，問 AI 只要幾秒，知識題會變成比誰打字快。
-
-**Context:**
-- 題目在手機上看得到（`app/room/[code]/play/page.tsx`），可以直接複製或拍照問 AI。
-- 比較難問 AI 的題型：聽歌題（`docs/designs/youtube-questions.md`，手機上沒有影片，只能聽）。但有漏洞：房間把同一份 STATE 送給每個連線，裡面有 YouTube 影片 id，玩家用開發工具拿到 id 就能查影片標題，標題常常就是答案。不登入的 /screen 也一定要拿到 id 才能播，所以要封住得先給大螢幕加驗證（/review 2026-11-06 D25，接受的風險）。**更新（2026-11-09）：** 已封住，STATE 不再帶影片 id，只有主持人頁和帶螢幕金鑰的大螢幕收得到，見 `docs/designs/screen-video-key.md`。
-- 可能的方向（還沒評估）：作答時間限制、手機不顯示題目文字只看大螢幕、多出 AI 答不好的題（聽歌、圖片、現場知識）、主持人規則。
-
-**Effort/Priority:** 未定 / P2
-
-**Depends on:** 先決定做法（規則面還是程式面）。
-
-**Notes:**
-- Pros：保住知識題的公平性。
-- Cons：完全擋不住（玩家可以用第二支手機）；做太嚴會影響正常作答體驗。
-
----
-
 ## 觀眾投票決定走哪扇門（叉路 Approach C）
 
 **What:** 叉路口（`docs/designs/branch-fork.md`）改成讓其他隊伍（觀眾）用手機投票，或讓投票當作輪到的隊伍的參考。
@@ -206,6 +188,76 @@
 - `lib/game-state.ts`（`Team.fortunes`）
 
 **Effort/Priority:** S / P3
+
+## 抓包與神諭：用平衡模擬看分數對勝率的影響
+
+**What:** 在 `scripts/balance-sim.ts` 加上神諭（答對減半）和抓包（成立 −10／+15、冤枉 −10 與藥水或 +10），看這些數字對各職業和各隊勝率的影響。
+
+**Why:** `docs/designs/anti-ai-cheating.md` 的 +15／−10、抓包 2 次、神諭 1 次是站長訂的，沒有模擬過（/autoplan 2026-11-10 E2，延到活動後）。
+
+**Context:**
+- `lib/game-state.ts`（`CATCH_PAY`、`ORACLE_USES`、`CATCH_USES`、`upholdCatch`、`dismissCatch`）
+- 一般房答對的基本獎勵是難度 × 10（10–50），+15／−10 約一題簡單題。
+- 活動後的遊戲紀錄有每隊的神諭和抓包次數（`lib/game-log.ts` 的 `antiCheat`），可以拿來設模擬的機率。
+
+**Effort/Priority:** M / P3
+
+**Depends on:** 活動（2026-11-21）的遊戲紀錄。
+
+---
+
+## 抓包與神諭：首領房也能用
+
+**What:** 首領房也能公開問神諭和被抓包。
+
+**Why:** 現在只有一般房間能用（`docs/designs/anti-ai-cheating.md`）。首領房的答題牽涉愛心傷害、尾刀和 4d20，規則要另外想（/autoplan 2026-11-10 E3，延到活動後）。
+
+**Context:**
+- `lib/game-state.ts`（`oracleActive`、`assertAntiCheatTurn` 擋 `inBoss`）
+- 要決定：神諭是減半獎勵還是減少傷害；成立時首領題怎麼換（首領題是大家共用的）；搶答階段要不要開。
+
+**Effort/Priority:** M / P3
+
+**Depends on:** 無。
+
+---
+
+## 抓包與神諭：主持人撤回一次裁決
+
+**What:** 主持人按錯「成立」或「冤枉」時，可以撤回那次裁決。
+
+**Why:** 裁決很少發生，活動前先不做；現在裁決會清掉「改判答對」，按錯只能手動用給藥水等方式補（/autoplan 2026-11-10 E5）。
+
+**Context:**
+- `lib/room/dungeon-room.ts`（`handleHostRuleCatch`、`withUndo`、`this.undo`）
+- 成立會揭曉答案、換題、換隊，撤回要連揭曉和旁白一起處理，可以參考「改判答對」。
+
+**Effort/Priority:** S / P3
+
+**Depends on:** 無。
+
+---
+
+## 影片題支援 Instagram
+
+**What:** 影片題除了 YouTube，也能用 Instagram 影片（Reels／貼文影片）當題目。
+
+**Why:** 站長想用 Instagram 上的影片出題；現在只支援 YouTube（站長 2026-11-10 提出）。
+
+**Context:**
+- 現有播放器在 `components/youtube-player.tsx`，設計見 `docs/designs/youtube-questions.md`，題庫格式見 `BANK_FORMAT`。
+- 影片 id 只給主持人頁和帶螢幕金鑰的大螢幕（`docs/designs/screen-video-key.md`），Instagram 也要守住這條。
+- 要先確認 Instagram 官方嵌入能不能由主持人按鍵控制播放／暫停、偵測播完（`SCREEN_CLIP_ENDED`）、自動播放聲音，以及需不需要登入或 oEmbed token。做不到就只能當「大螢幕放影片、不計時到播完」的弱版本。
+
+**Effort/Priority:** 未定（先確認嵌入方式）/ P3
+
+**Depends on:** 無；活動（2026-11-21）後再做。
+
+**Notes:**
+- Pros：題目來源變多，站長可以直接用 Instagram 上的影片。
+- Cons：Instagram 嵌入沒有像 YouTube IFrame API 的播放控制，可能要登入、可能被移除或改版，題庫格式要升版。
+
+---
 
 ## 主持人開房時可以用自己的題庫
 
@@ -619,6 +671,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 反 AI 作弊：抓包與神諭（anti-ai-cheating）
+
+- **主持人「⚙ 更多」的開關打開 🔮 公開問神諭和 🚨 抓包** · 版號合併時定 · 預設關閉；打開後每隊神諭 1 次（這題答對減半、不會被抓包）、抓包 2 次，主持人用裁決卡（鍵盤 7／8）判成立或冤枉。設計見 `docs/designs/anti-ai-cheating.md`，規則見 `docs/rules.md`。後續見「抓包與神諭」三項 P3。
 
 ## 題庫編輯器：載入與上傳的四個小缺口（/review 2026-10-25）
 
