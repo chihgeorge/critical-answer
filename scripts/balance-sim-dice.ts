@@ -35,6 +35,11 @@
 // phase pulls every room team in (lib). B1=0.6 (hypothetical rule, needs a code change): phase 1 is a buzzer phase fought
 // only by the teams already in the boss room, the others keep playing rooms and join by D9; no pull until phase 2.
 // PHASES prints answers and distinct questions per phase, PULLED the teams still in rooms when a buzzer phase pulls.
+// 占卜師 (fortune teller, design 2026-11-10): FT=best|rand replaces 大吉/中吉/凶 (same 1/6 share of the event deck) with
+// a condition (9 counters, max > 0, ties all match, the drawer may match) and one of 6 effects the drawer picks: "best"
+// is expected-value greedy on its guess of who matches (others' counters seen with N(0, ESTSD) noise, default 1; its own
+// exact; 20 samples), "rand" uniform. TRIB=A: non-matchers pay 10 each, split among matchers; TRIB=B: 10 to each matcher.
+// Transfers go to the "fortune" source; a fortune boon pays later under "boon". A FORTUNE line prints the effect mix.
 // Not modelled: sort questions (they play like multipleChoice here), a potion wasted on a wrong answer, the host's
 // 改判, a mage that casts again on a question after a 1.
 import { registerHooks } from "node:module";
@@ -75,7 +80,7 @@ const BOSSQ = env("BOSSQ", 160), SONGS = env("SONGS", 80), SONGMEM = process.env
 /** Per game: room answers, phase-1 boss answers, buzzer songs played (skips too), events; games stalled in the buzzer phase. */
 const LEN = { room: 0, boss1: 0, songs: 0, events: 0, boss1Q: 0, stalled: 0, kills: 0, killSum: 0 };
 const [, KN, KS, KF] = (process.env.KILL ?? "4d20").match(/^(\d+)d(\d+)(?:\+(\d+))?$/)!.map(Number);
-const killRoll = () => { let s = KF || 0; for (let i = 0; i < KN; i++) s += 1 + Math.floor(R() * KS); return s; };
+const killRoll = () => { let s = KF || 0; for (let i = 0; i < KN; i++) { const v = 1 + Math.floor(R() * KS); if (cur && v === 1) cur.n1++; if (cur && v === KS) cur.n20++; s += v; } return s; };
 if (EX.length !== 3 || Math.abs(EX[0] + EX[1] + EX[2] - 1) > 1e-9) throw new Error("EX needs three chances that add up to 1");
 
 /** Every array is indexed by tier: [1, small failure, success, 20]. */
@@ -143,10 +148,10 @@ const tier = (v: number) => (v === 1 ? 0 : v <= cfg.small ? 1 : v <= 19 ? 2 : 3)
 if ([1, 2, cfg.small, cfg.small + 1, 19, 20].map(tier).join("") !== "011223") throw new Error("tier boundaries");
 
 const rooms: GT.RoomTemplate[] = ROOMD.map((d, i) => ({ baseDifficulty: d as GT.Difficulty, reward: ROOMR[i] }));
-const SRC = ["room", "boss", "buzz", "kill", "event", "boon", "first", "pull"] as const;
+const SRC = ["room", "boss", "buzz", "kill", "event", "fortune", "boon", "first", "pull"] as const;
 type Src = (typeof SRC)[number];
 /** Per team, per game: satiety by source, correct answers, and the boss-room entry. */
-interface Book { src: Record<Src, number>; correct: number; skill: number; first?: { lead: number }; skipped?: number; killer?: boolean; pulled?: boolean }
+interface Book { src: Record<Src, number>; correct: number; skill: number; n1: number; n20: number; flee: number; potion: number; wrong: number; events: number; dishes: number; rotten: number; first?: { lead: number }; skipped?: number; killer?: boolean; pulled?: boolean }
 const pools = [1, 2, 3, 4, 5].map((p) => Array.from({ length: 80 }, (_, j) => `p${p}-${j}`));
 const boss = Array.from({ length: BOSSQ }, (_, j) => `b${j}`);
 const songs = Array.from({ length: SONGS }, (_, j) => `s${j}`);
@@ -154,10 +159,19 @@ const mids = Array.from({ length: SONGS2 }, (_, j) => `m${j}`);
 
 // Dice the sim rolls (not the kill's 4d20, which lib rolls), and each class's skill dice by tier.
 const dice = { n: 0, one: 0, twenty: 0 };
+/** The team whose dice are being rolled (占卜師's natural1s / natural20s). */
+let cur: Book | undefined;
+const FT = process.env.FT, ESTSD = env("ESTSD", 1), TRIB = process.env.TRIB ?? "A";
+const EFFECTS = ["blessing", "curse", "potion", "stun", "tribute", "relief"] as const;
+const COND = ["n20", "n1", "flee", "potion", "wrong", "correct", "events", "dishes", "rotten"] as const;
+/** Fortunes drawn, effects picked, the drawer matched, matchers, all matched, satiety moved, stunned turns / songs, conditions. */
+const FTS = { n: 0, eff: EFFECTS.map(() => 0), self: 0, matchers: 0, all: 0, moved: 0, skipTurn: 0, skipSong: 0, cond: COND.map(() => 0) };
+const gauss = () => Math.sqrt(-2 * Math.log(1 - R())) * Math.cos(2 * Math.PI * R());
 const skill = new Map<string, number[]>();
 const d20 = () => {
   const v = 1 + Math.floor(R() * 20);
   dice.n++; if (v === 1) dice.one++; if (v === 20) dice.twenty++;
+  if (cur && v === 1) cur.n1++; if (cur && v === 20) cur.n20++;
   return v;
 };
 const note = (c: string, k: number) => { const a = skill.get(c) ?? [0, 0, 0, 0]; a[k]++; skill.set(c, a); };
@@ -185,7 +199,7 @@ function play(classes: C[], maxTurns = 600) {
     const wants = D(c) && (c === "mage" || c === "cleric") ? kind === c : kind === "crit" || kind === "check";
     const v = d20();
     if (!potions.has(id) || !wants) return v;
-    potions.delete(id);
+    potions.delete(id); book[idx(id)].potion++;
     return Math.max(v, d20());
   };
   const latent = new Map<string, { known: boolean; h: number; ex: number[] }>();
@@ -195,7 +209,7 @@ function play(classes: C[], maxTurns = 600) {
   // team:question pairs a dice mage's spell landed on (magePay).
   const spelled = new Set<string>();
   const isText = (q: string) => { if (!kinds.has(q)) kinds.set(q, R() < TEXT); return kinds.get(q)!; };
-  const book: Book[] = classes.map((_, i) => ({ src: Object.fromEntries(SRC.map((s) => [s, 0])) as Record<Src, number>, correct: 0, skill: SKILL ? [1 - SKILL, 1 - SKILL / 3, 1 + SKILL / 3, 1 + SKILL][i] : 1 }));
+  const book: Book[] = classes.map((_, i) => ({ src: Object.fromEntries(SRC.map((s) => [s, 0])) as Record<Src, number>, correct: 0, n1: 0, n20: 0, flee: 0, potion: 0, wrong: 0, events: 0, dishes: 0, rotten: 0, skill: SKILL ? [1 - SKILL, 1 - SKILL / 3, 1 + SKILL / 3, 1 + SKILL][i] : 1 }));
   const idx = (id: string) => Number(id.slice(1));
   const know = (id: string, p: number) => R() < Math.min(0.98, p * book[idx(id)].skill);
   // Teams that took the ⚔️ door: the room they walk out of draws no fork (branch-fork.md).
@@ -203,8 +217,9 @@ function play(classes: C[], maxTurns = 600) {
   // The 4d20 lib rolled, swapped for KILL's; returns what the kill paid.
   const killFix = (id: string, o: GT.AnswerOutcome) => {
     if (o.type !== "correct-boss-hit" || o.killBonus === undefined) return 0;
+    cur = book[idx(id)];
     const k = killRoll();
-    book[idx(id)].killer = true;
+    book[idx(id)].killer = true; book[idx(id)].dishes++;
     LEN.kills++; LEN.killSum += k;
     pay(id, k - o.killBonus);
     return k;
@@ -212,7 +227,61 @@ function play(classes: C[], maxTurns = 600) {
   const boonOf = (b: GT.Boon | undefined, base: number) => (b === "blessing" ? Math.round(base * 0.5) : b === "curse" ? Math.round(base * 0.5) - base : 0);
   const seen = [new Set<string>(), new Set<string>(), new Set<string>()];
   const songKnow = (t: GT.Team, q: string, p: number) => { const k = `${t.id}:${q}`; if (!latent.has(k)) latent.set(k, { known: know(t.id, p), h: 0, ex: [] }); return latent.get(k)!.known; };
+  const stunned = new Set<string>();
+  // 占卜師: the drawer `id` picks an effect for the teams that match a drawn condition.
+  const fortune = (id: string) => {
+    const me = idx(id), vals = COND.map((c) => book.map((b) => b[c]));
+    const pool = COND.map((_, k) => k).filter((k) => Math.max(...vals[k]) > 0);
+    const c = pool[Math.floor(R() * pool.length)], top = (v: number[]) => v.map((x) => x === Math.max(...v));
+    const match = top(vals[c]);
+    const base = (t: GT.Team) => (t.inBoss ? g.boss.hitReward : g.rooms[t.roomIndex].reward);
+    const buzz = G.isBuzzPhase(g);
+    // Satiety each team moves by (tribute, relief); shortcut: rewards at the press, each payer capped by what it has.
+    const moves = (e: string, m: boolean[]) => {
+      const r = g.teams.map((t) => t.reward), d = r.map(() => 0), M = m.flatMap((x, j) => (x ? [j] : [])), NM = m.flatMap((x, j) => (x ? [] : [j]));
+      if (e === "tribute" && NM.length) {
+        if (TRIB === "A") {
+          let pot = 0, last = -1;
+          for (const j of NM) { const p = Math.min(10, r[j]); d[j] -= p; pot += p; if (p) last = j; }
+          const each = Math.floor(pot / M.length);
+          M.forEach((j) => (d[j] += each)); if (last >= 0) d[last] += pot - each * M.length;
+        } else for (const j of NM) { const p = Math.min(10 * M.length, r[j]), each = Math.floor(p / M.length); d[j] -= each * M.length; M.forEach((i) => (d[i] += each)); }
+      }
+      if (e === "relief") {
+        const lo = Math.min(...r), recv = r.flatMap((x, i) => (x === lo ? [i] : []));
+        for (const j of M) { const to = recv.filter((i) => i !== j), each = to.length ? Math.floor(Math.min(20, r[j]) / to.length) : 0; d[j] -= each * to.length; to.forEach((i) => (d[i] += each)); }
+      }
+      return d;
+    };
+    // The drawer's value of an effect on a guessed match set: its own change minus the others' mean, in satiety.
+    const value = (e: string, m: boolean[]) => {
+      const d = e === "tribute" || e === "relief" ? moves(e, m) : g.teams.map((t, j) => !m[j] ? 0
+        : e === "blessing" ? 0.5 * base(t) : e === "curse" ? -0.5 * base(t) : e === "potion" ? (potions.has(t.id) ? 0 : 2)
+        : -(buzz ? 0.15 : 0.5) * base(t));
+      return d[me] - d.reduce((a, x, j) => (j === me ? a : a + x), 0) / (d.length - 1);
+    };
+    let e: string;
+    if (FT === "rand") e = EFFECTS[Math.floor(R() * EFFECTS.length)];
+    else {
+      const guesses = ESTSD === 0 ? [match] : Array.from({ length: 20 }, () => top(vals[c].map((v, j) => (j === me ? v : v + gauss() * ESTSD))));
+      const ev = EFFECTS.map((x) => guesses.reduce((a, m) => a + value(x, m), 0));
+      const best = EFFECTS.filter((_, k) => ev[k] > Math.max(...ev) - 1e-9);
+      e = best[Math.floor(R() * best.length)];
+    }
+    FTS.n++; FTS.eff[EFFECTS.indexOf(e as (typeof EFFECTS)[number])]++; FTS.cond[c]++;
+    if (match[me]) FTS.self++;
+    const nm = match.filter(Boolean).length; FTS.matchers += nm; if (nm === match.length) FTS.all++;
+    const d = moves(e, match);
+    d.forEach((x, j) => { if (x) { pay(g.teams[j].id, x); if (x > 0) FTS.moved += x; } });
+    g.teams.forEach((t, j) => {
+      if (!match[j]) return;
+      if (e === "blessing" || e === "curse") patch(t.id, () => ({ boon: e as GT.Boon }));
+      if (e === "potion") potions.add(t.id);
+      if (e === "stun") stunned.add(t.id);
+    });
+  };
   for (let turn = 0; turn < maxTurns && g.phase === "playing"; turn++) {
+    cur = undefined;
     const before = g.teams.map((t) => t.reward), wasIn = g.teams.map((t) => t.inBoss);
     let cat: Src = "room", actor = -1, killAmt = 0, boonAmt = 0;
     try {
@@ -233,7 +302,8 @@ function play(classes: C[], maxTurns = 600) {
       const kb = g.boss.phaseIndex === g.boss.phases.length - 1 ? KB : KB2;
       if (SONGMEM && g.boss.questionIds.filter((q) => !g.revealedQuestionIds.includes(q)).every((q) => !g.teams.some((t) => songKnow(t, q, kb)))) { LEN.stalled++; break; }
       LEN.songs++; seen[g.boss.phaseIndex].add(bq); PH.n[g.boss.phaseIndex]++;
-      const knowers = g.teams.filter((t) => (SONGMEM ? songKnow(t, bq, kb) : know(t.id, kb)));
+      const out = new Set(stunned); stunned.clear(); FTS.skipSong += out.size;
+      const knowers = g.teams.filter((t) => !out.has(t.id) && (SONGMEM ? songKnow(t, bq, kb) : know(t.id, kb)));
       if (knowers.length === 0) { g = G.skipBuzz(g); continue; }
       const w = knowers[Math.floor(R() * knowers.length)].id;
       actor = idx(w); cat = "buzz"; book[actor].correct++;
@@ -247,11 +317,24 @@ function play(classes: C[], maxTurns = 600) {
     }
     const id = G.currentTurnTeamId(g)!;
     const team = () => g.teams.find((x) => x.id === id)!;
+    cur = book[idx(id)];
+    if (stunned.delete(id)) { FTS.skipTurn++; g = G.advanceTurn(g); continue; }
     if (POTION > 0 && !potions.has(id) && R() < POTION) potions.add(id);
     if (team().event) {
-      actor = idx(id); cat = "event"; LEN.events++;
+      actor = idx(id); cat = "event"; LEN.events++; book[actor].events++;
+      if (FT && team().event!.scene === "fortune") {
+        // lib's 大吉 opens the room (records, boss entry, next turn); its satiety is taken back.
+        cat = "fortune";
+        const keep = team().reward;
+        patch(id, () => ({ event: { scene: "fortune", outcome: "great" } }));
+        g = G.openEvent(g, id, R).game;
+        patch(id, () => ({ reward: keep }));
+        fortune(id);
+        continue;
+      }
       const r = G.openEvent(g, id, R);
       g = r.game;
+      if (r.result.outcome === "rotten") book[actor].rotten++;
       if (D("chef") && team().classId === "chef" && r.result.satiety > 0) {
         const spring = r.result.outcome === "spring" || r.result.outcome === "good";
         if (spring && cfg.chefSpring === "use") { pay(id, -r.result.satiety); refund(id, 1); }
@@ -297,8 +380,8 @@ function play(classes: C[], maxTurns = 600) {
     const L = latent.get(key)!;
     const settle = (r: { game: GT.GameState; outcome: GT.AnswerOutcome }, ok: boolean) => {
       g = r.game;
-      if (!ok) return;
-      if (inBoss) USED.hit1++;
+      if (!ok) { book[actor].wrong++; return; }
+      if (inBoss) USED.hit1++; else book[actor].dishes++;
       book[actor].correct++;
       boonAmt = boonOf(boon0, base0);
       killAmt = killFix(id, r.outcome);
@@ -409,6 +492,7 @@ function play(classes: C[], maxTurns = 600) {
       }
     }
     const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2 && !(SMART && maybe().length === 0));
+    if (flee) book[actor].flee++; else book[actor].wrong++;
     g = G.answerQuestion(g, id, q, false, flee ? "flee" : "retry", R).game;
     } finally {
       g.teams.forEach((t, j) => {
@@ -529,6 +613,7 @@ console.log(`dice per game ${(dice.n / N).toFixed(1)}: ones ${(dice.one / N).toF
   console.log(`PHASES ${PH.n.slice(0, nP).map((n, k) => `p${k + 1}${buzz(k) ? "(buzz)" : ""} ${(n / N).toFixed(1)} distinct ${(PH.q[k].reduce((a, b) => a + b, 0) / N).toFixed(1)}/p99 ${q(PH.q[k], 0.99)}/max ${Math.max(...PH.q[k])}`).join("  ")}  room ${(LEN.room / N).toFixed(1)} total ${((LEN.room + PH.n.reduce((a, b) => a + b, 0)) / N).toFixed(1)} min ${min.toFixed(0)}`);
   console.log(`PULLED teams/game ${(PULLED.teams / N).toFixed(2)} games with a pull ${((100 * PULLED.games) / N).toFixed(0)}%  skipped rewards per pulled team ${(PULLED.skipped / Math.max(1, PULLED.teams)).toFixed(1)}  pulled team wins ${((100 * PULLED.wins) / Math.max(1, PULLED.teams)).toFixed(1)}%`);
 }
+if (FT) console.log(`FORTUNE ${FT} trib ${TRIB} per game ${(FTS.n / N).toFixed(2)}  effects ${EFFECTS.map((e, k) => `${e} ${((100 * FTS.eff[k]) / Math.max(1, FTS.n)).toFixed(0)}%`).join(" ")}  drawer matches ${((100 * FTS.self) / Math.max(1, FTS.n)).toFixed(0)}%  matchers ${(FTS.matchers / Math.max(1, FTS.n)).toFixed(2)} (all ${((100 * FTS.all) / Math.max(1, FTS.n)).toFixed(0)}%)  moved/fortune ${(FTS.moved / Math.max(1, FTS.n)).toFixed(1)}  stun turns ${FTS.skipTurn} songs ${FTS.skipSong}  conds ${COND.map((c, k) => `${c} ${((100 * FTS.cond[k]) / Math.max(1, FTS.n)).toFixed(0)}%`).join(" ")}`);
 console.log(`REACH ${REACH.map((n, k) => `r${k + 1}(${ROOMR[k]}) ${((100 * n) / N / 4).toFixed(0)}%`).join("  ")}`);
 // One line to compare runs: win share per class, then the widest gap from 27 among the five classes.
 const five = CLASSES.filter((k) => k !== "none");
