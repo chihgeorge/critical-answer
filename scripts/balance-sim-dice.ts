@@ -1,6 +1,6 @@
 // Class balance for the d20 skill tiers (design: 職業技能改成擲骰, 2026-11-09). Same game model as balance-sim.ts
 // (two-phase boss, same knobs and player policies), plus a rules layer for the four tiers:
-// 1 大失敗 / 2–5 小失敗 / 6–19 成功 / 20 大成功. lib/game-state.ts still has the 11/08 rules, so this script applies
+// 1 大失敗 / 小失敗 / 成功 / 20 大成功 (draft 2–5 / 6–19; decided 2–6 / 7–19, Cfg.small). lib/game-state.ts still has the 11/08 rules, so this script applies
 // the tier effects around it (it patches reward, ability uses and removed options after the lib call).
 // shortcut: the rules layer lives here, not in lib/. Once lib/ has the tiers, move the knobs there and delete the patches.
 // Run: RULES=today|draft|rec node scripts/balance-sim-dice.ts [games]      (today reproduces balance-sim.ts)
@@ -33,8 +33,10 @@ const WEAK = env("WEAK", 0.1), POTION = env("POTION", 0), SMART = process.env.SM
 const EX = (process.env.EX ?? "1/3,1/3,1/3").split(",").map((x) => { const [a, b] = x.split("/").map(Number); return a / (b ?? 1); });
 if (EX.length !== 3 || Math.abs(EX[0] + EX[1] + EX[2] - 1) > 1e-9) throw new Error("EX needs three chances that add up to 1");
 
-/** Every array is indexed by tier: [1, 2–5, 6–19, 20]. */
+/** Every array is indexed by tier: [1, small failure, success, 20]. */
 interface Cfg {
+  /** The highest roll that is a small failure: 5 in the draft (2–5 / 6–19), 6 as decided 2026-11-09 (2–6 / 7–19). */
+  small: number;
   /** Classes that play by the dice tiers; the others play today's rules from lib/. */
   dice: GT.ClassId[];
   /** Ability uses per game: one number for every class, or per class. Absent: lib's (warrior/mage 4, thief/cleric 2). */
@@ -72,7 +74,7 @@ interface Cfg {
   chefSpring: number | "use";
 }
 const DRAFT: Cfg = {
-  dice: ["mage", "cleric", "warrior", "thief", "chef"],
+  dice: ["mage", "cleric", "warrior", "thief", "chef"], small: 5,
   mageMC: [0, 1, 2, 3], mageText: [0, WEAK, HINT, 1], mageRefund: [0, 0, 0, 0], magePay: 1,
   clericRetry: [0, 0, 1, 1], clericCost: [1, 0, 1, 0],
   thiefPay: [1, 1, 1.5, 2], thiefRefund: [0, 1, 0, 0],
@@ -84,16 +86,16 @@ const PRESETS: Record<string, Cfg> = {
   today: { ...DRAFT, dice: [] },
   draft: DRAFT,
   // The recommended variant (report of 2026-11-09): 3 uses for every class, chef passive only on answered questions.
-  // Decided 2026-11-09: 3 uses each, cleric and thief as drafted. The owner set the warrior to 9+, which the
-  // partial-knowledge model puts at 22%; 7+ is the smallest change that brings every class within 3 points of the mean.
+  // Decided 2026-11-09: tiers 1 / 2–6 / 7–19 / 20 for every class (so the warrior hits on 7+), 3 uses each, cleric and
+  // thief as drafted, mage refunds a small failure and pays ×1.2 on a landed spell, chef only on answered questions.
   // Run it with THIEF_MIN=2: with 3 uses a thief sneaks from difficulty 2.
-  rec: { ...DRAFT, n: 3, warTarget: 7, mageRefund: [0, 1, 0, 0], magePay: 1.2, chefMul: [0.1, 0.8, 1.3, 2], chefNoDie: 1 },
+  rec: { ...DRAFT, small: 6, n: 3, warTarget: 7, mageRefund: [0, 1, 0, 0], magePay: 1.2, chefMul: [0.1, 0.8, 1.3, 2], chefNoDie: 1 },
 };
 const cfg: Cfg = { ...PRESETS[process.env.RULES ?? "today"], ...JSON.parse(process.env.CFG ?? "{}") };
 Object.assign(G.CHECK_BONUS, cfg.check);
 const D = (c: C) => c !== undefined && cfg.dice.includes(c);
-const tier = (v: number) => (v === 1 ? 0 : v <= 5 ? 1 : v <= 19 ? 2 : 3);
-if ([1, 2, 5, 6, 19, 20].map(tier).join("") !== "011223") throw new Error("tier boundaries");
+const tier = (v: number) => (v === 1 ? 0 : v <= cfg.small ? 1 : v <= 19 ? 2 : 3);
+if ([1, 2, cfg.small, cfg.small + 1, 19, 20].map(tier).join("") !== "011223") throw new Error("tier boundaries");
 
 const rooms: GT.RoomTemplate[] = [1, 2, 2, 3, 4, 4, 5, 5].map((d) => ({ baseDifficulty: d as GT.Difficulty, reward: d * 10 }));
 const pools = [1, 2, 3, 4, 5].map((p) => Array.from({ length: 80 }, (_, j) => `p${p}-${j}`));
@@ -313,8 +315,8 @@ console.log(`games=${N} unfinished=${unfinished} rules=${process.env.RULES ?? "t
 for (const k of CLASSES) {
   const s = stats.get(k)!, sk = skill.get(k);
   console.log(k.padEnd(8), "win%", win(k).toFixed(1).padStart(5), "avg", (s.sum / s.n).toFixed(1).padStart(6), "left", (s.left / s.n).toFixed(2), "turns", (s.turns / s.n).toFixed(1),
-    // Skill dice per team per game, and how many of them came up 1 and 20.
-    sk ? `skillDice ${(sk.reduce((a, b) => a + b) / s.n).toFixed(2)} ones ${(sk[0] / s.n).toFixed(3)} twenties ${(sk[3] / s.n).toFixed(3)}` : "");
+    // Skill dice per team per game, and how many of them came up 1, a small failure and 20.
+    sk ? `skillDice ${(sk.reduce((a, b) => a + b) / s.n).toFixed(2)} ones ${(sk[0] / s.n).toFixed(3)} small ${(sk[1] / s.n).toFixed(2)} twenties ${(sk[3] / s.n).toFixed(3)}` : "");
 }
 console.log(`dice per game ${(dice.n / N).toFixed(1)}: ones ${(dice.one / N).toFixed(2)}, twenties ${(dice.twenty / N).toFixed(2)} (the kill's 4d20 not counted)`);
 // One line to compare runs: win share per class, then the widest gap from 27 among the five classes.
