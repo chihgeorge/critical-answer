@@ -95,7 +95,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
       )}
       <div
         data-testid="roll-result"
-        className={`px-bar text-[26px] ${landed && hit ? "ok" : ""}`}
+        className={`px-bar px-5 text-[26px] ${landed && hit ? "ok" : ""}`}
         style={{
           visibility: landed ? "visible" : "hidden",
           ...(landed && !hit ? { background: "var(--danger)", color: "#fff" } : {}),
@@ -144,7 +144,7 @@ export function KillRollOverlay({ teamName, values, value }: { teamName: string;
       </div>
       <div
         data-testid="roll-result"
-        className="px-bar text-[26px]"
+        className="px-bar px-5 text-[26px]"
         style={{ visibility: landed > 0 ? "visible" : "hidden", color: "var(--k)", ...(done ? { background: "var(--warn)", boxShadow: "inset 0 -6px 0 var(--orange)" } : { background: "var(--cream)" }) }}
       >
         {result}
@@ -190,7 +190,7 @@ export function TieRollOverlay({ line, names, values, result }: { line: string; 
           </div>
         ))}
       </div>
-      <div data-testid="roll-result" className="px-bar text-[26px]" style={{ visibility: landed ? "visible" : "hidden", background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" }}>
+      <div data-testid="roll-result" className="px-bar px-5 text-[26px]" style={{ visibility: landed ? "visible" : "hidden", background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" }}>
         {result}
       </div>
     </div>
@@ -280,7 +280,7 @@ export function InitiativeOverlay({ ini, teams }: { ini: InitiativeView; teams: 
       </div>
       <div
         data-testid="initiative-result"
-        className="px-bar text-[26px]"
+        className="px-bar px-5 text-[26px]"
         style={ini.order ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : { background: "var(--cream)", color: "var(--k)" }}
       >
         {result}

@@ -118,11 +118,11 @@ export function NarrationPanel({
         aria-controls="narration-lines"
         disabled={!canOpen}
         onClick={() => setOpen((o) => !o)}
-        className="flex min-h-[44px] w-full items-center gap-2 text-left"
+        className="flex min-h-[44px] w-full items-center gap-1 text-left"
       >
         <Sprite kind="owl" scale={1} />
-        <LabelChip>地城主旁白</LabelChip>
-        <span aria-live="polite" className="min-w-0 flex-1 truncate text-[14px]">
+        <span className="flex-none text-[14px]"><LabelChip>地城主旁白</LabelChip></span>
+        <span aria-live="polite" className="min-w-0 flex-1 text-balance text-[13px] leading-tight">
           {summary}
         </span>
         {canOpen && <span className="flex-none text-[14px]">{open ? "收起 ▴" : "展開 ▾"}</span>}
