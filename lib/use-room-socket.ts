@@ -22,6 +22,18 @@ export function readRoomMessage(data: string, lastEpoch: string | null): { msg: 
   return { msg, epoch: lastEpoch, reset: false };
 }
 
+/** How long the 「伺服器重新啟動」 notice stays up. */
+export const RESET_NOTICE_MS = 10_000;
+
+/** Away this long, an OPEN socket may be a dead one iOS still calls open; reconnecting it costs one round trip. */
+export const WAKE_RECONNECT_AFTER_MS = 10_000;
+
+/** On waking (page visible again, or back online): reconnect a socket that is not open, or one that is open but was
+ * hidden long enough to be dead. One reconnect per wake event, so no storm. */
+export function shouldWakeReconnect(readyState: number, awayMs: number): boolean {
+  return readyState !== WebSocket.OPEN || awayMs >= WAKE_RECONNECT_AFTER_MS;
+}
+
 /** How long a page waits for its first connection before saying it can't reach the server. */
 export const FIRST_CONNECT_TIMEOUT_MS = 10_000;
 
@@ -40,6 +52,8 @@ export function useRoomSocket(
   const [reset, setReset] = useState(false);
   /** The room closed our connection on purpose after a long idle time. The game is saved; a tap reconnects. */
   const [rested, setRested] = useState<RestKind | null>(null);
+  /** `rested` for the wake listener, which outlives renders. */
+  const restedNow = useRef(false);
   const epoch = useRef<string | null>(null);
   /** Whether this page has connected before, and whether the next reconnect was asked for by a tap:
    * together they tell an automatic reconnect (`resume`) from a person coming back. */
@@ -60,6 +74,7 @@ export function useRoomSocket(
     room: code,
     onOpen() {
       setRested(null);
+      restedNow.current = false;
       setUnreachable(false);
       const resume = openedOnce.current && !reconnectByHand.current;
       openedOnce.current = true;
@@ -72,6 +87,7 @@ export function useRoomSocket(
       if (restKind) {
         socket.close();
         setRested(restKind);
+        restedNow.current = true;
       }
       handlers.onClose?.({ rested: restKind !== null, openedBefore: openedOnce.current });
     },
@@ -83,6 +99,36 @@ export function useRoomSocket(
       handlers.onMessage(read.msg);
     },
   });
+
+  // The server-restart notice is news, not a state: the new game is already showing (the frame that set it came in).
+  useEffect(() => {
+    if (!reset) return;
+    const id = setTimeout(() => setReset(false), RESET_NOTICE_MS);
+    return () => clearTimeout(id);
+  }, [reset]);
+
+  // A phone back from the lock screen or onto another access point may hold a socket that is dead without a close
+  // event (iOS Safari). Reconnect at once instead of waiting out partysocket's backoff, as a `resume`.
+  useEffect(() => {
+    let hiddenAt = document.hidden ? Date.now() : 0;
+    const wake = (e: Event) => {
+      if (document.hidden) {
+        hiddenAt ||= Date.now(); // an `online` while hidden must not shorten the time away
+        return;
+      }
+      // Back online: a socket that says open was opened on the network we lost.
+      const away = e.type === "online" ? Infinity : hiddenAt ? Date.now() - hiddenAt : 0;
+      hiddenAt = 0;
+      if (restedNow.current) return; // the room closed us on purpose: only a tap reconnects
+      if (shouldWakeReconnect(socket.readyState, away)) socket.reconnect();
+    };
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("online", wake);
+    return () => {
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("online", wake);
+    };
+  }, [socket]);
 
   return {
     reset,
