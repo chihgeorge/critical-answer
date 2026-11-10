@@ -225,9 +225,10 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
     await expect(page.getByText("因為這是補充說明")).toBeVisible();
   }
 
-  // The reveal takes the question's place (D7): the next question stays hidden and the host can't
-  // judge until they press 下一題.
-  await expect(screen.getByText("揭曉測試題")).toHaveCount(0);
+  // The reveal takes the question's place (D7) and the host can't judge until they press 下一題.
+  // Judged before the persuasion check, the question was never shown, so it comes only inside the reveal.
+  await expect(screen.getByText("揭曉測試題")).toHaveCount(1);
+  await expect(screen.getByTestId("reveal-question")).toHaveText("揭曉測試題");
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
 
   // A reconnecting phone still sees it — the reveal rides on STATE, not a one-off message.
