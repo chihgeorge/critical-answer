@@ -451,7 +451,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             {mediaExplanation && (
               // A video explanation is at least 356×200 (YouTube's minimum, D11). The dish waits for 上菜 (cooking R4).
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
-              <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="mx-auto block" />
+              <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="mx-auto block" zhCaptions />
             )}
           </div>
         ) : question ? (
@@ -480,6 +480,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               // The host plays the song from their own device (boss-music-buzzer.md M4).
               errorNote={!reveal && clipError && view.buzz?.open ? "🎤 主持人現場放歌" : undefined}
               title={reveal ? "正解影片" : "題目影片"}
+              // Not while answering: a music question's captions would show the lyrics or the title.
+              zhCaptions={!!reveal}
             />
             )}
             {!lone && (
