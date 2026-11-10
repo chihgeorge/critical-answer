@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 import { MAX_MODEL_LINE } from "./runner";
 
@@ -564,5 +564,90 @@ describe("epilogueLines", () => {
     expect(p.epilogueLines({ type: "epilogue", ranking: [ranking[0]], winners: ["紅隊"], calls: [{ place: 1, team: "紅隊" }] })[0]).toBe("第一名是……紅隊！");
     expect(p.epilogueLines({ type: "epilogue", ranking, winners: ["紅隊"] })).toHaveLength(1);
     expect(p.epilogueLines({ type: "retry", team: "紅隊", monster: "史萊姆" })).toEqual([]);
+  });
+});
+
+// Value: protects=the food talk stays a seasoning (TODOS 地城料理風格 3): short lines, about a third of a pool, never two
+// in a row, and no pool smaller than before; fails_when=a food line outgrows 22 characters, a pool turns mostly food,
+// pick() stops skipping food after food, or a part line plays without a part.
+describe("美食節目／生物學家口吻 (FOODIE)", () => {
+  const food = new Set(Object.values(FOODIE).flat());
+  const sized = (t: string) => [...t.replace(/\{team\}/g, "冒險小隊").replace(/\{monster\}/g, "史萊姆").replace(/\{part\}/g, "霧狀身體").replace(/\{points\}|\{bonus\}/g, "3")].length;
+
+  it("every food line is distinct, has at most one 「！」, and the per-turn ones fit 22 characters", () => {
+    expect(food.size).toBe(Object.values(FOODIE).flat().length);
+    for (const l of food) expect(l.split("！").length - 1, l).toBeLessThanOrEqual(1);
+    for (const l of [...DISH_VARIANTS, ...FOODIE.dishPart, ...FOODIE.nextRoom, ...FOODIE.nextBoss, ...FOODIE.atmBossKill]) expect(sized(l), l).toBeLessThanOrEqual(MAX_MODEL_LINE);
+    for (const l of [...BOSS_DISH_VARIANTS, ...BOSS_ENTER_VARIANTS]) expect(sized(l), l).toBeLessThanOrEqual(40);
+  });
+
+  it("no pool is smaller than before, and food is at most 40% of each", () => {
+    const pools: [string[], number][] = [
+      [DISH_VARIANTS, 3],
+      [[...FOODIE.dishPart, ...DISH_VARIANTS], 3],
+      [BOSS_DISH_VARIANTS, 3],
+      [BOSS_ENTER_VARIANTS, 4],
+      [NEXT_VARIANTS.room, 10],
+      [NEXT_VARIANTS.boss, 4],
+      [ATMOSPHERE_VARIANTS["boss-kill"], 10],
+    ];
+    for (const [pool, floor] of pools) {
+      expect(new Set(pool).size, pool[0]).toBe(pool.length);
+      expect(pool.length, pool[0]).toBeGreaterThanOrEqual(floor);
+      const share = pool.filter((l) => food.has(l)).length / pool.length;
+      expect(share, pool[0]).toBeGreaterThan(0);
+      expect(share, pool[0]).toBeLessThanOrEqual(0.4);
+    }
+    expect(EVENT_VARIANTS.feast).toEqual(expect.arrayContaining(FOODIE.feast));
+    expect(EVENT_VARIANTS.feast.length).toBeGreaterThanOrEqual(4);
+    // A wrong answer, a flee and a boss hit never talk about food.
+    for (const l of [...VARIANTS.retry, ...VARIANTS.flee, ...VARIANTS["boss-hit"], ...BOSS_MISS_VARIANTS, ...ATMOSPHERE_VARIANTS.retry, ...ATMOSPHERE_VARIANTS.flee, ...ATMOSPHERE_VARIANTS.correct, ...ATMOSPHERE_VARIANTS["boss-hit"], ...Object.values(ROLL_VARIANTS).flatMap((r) => [...r.correct, ...r["boss-hit"]])]) expect(food.has(l), l).toBe(false);
+  });
+
+  const said1 = (t: string) => t.replace("{team}", "紅隊").replace("{monster}", "史萊姆").replace("{part}", "外膜").replace("{points}", "3").replace("{bonus}", "3").replace("{dish}", "燉菜");
+  const isFood = (line: string) => [...food, ...EVENT_VARIANTS.feast].some((t) => said1(t) === line);
+
+  it("the boss kill's result, atmosphere and the boss handoff never say two food lines in a row; a chest dish is followed by a plain handoff", () => {
+    const p = createScriptedProvider(lcg(6));
+    const kill: NarrationEvent = { type: "boss-kill", team: "紅隊", monster: "史萊姆", bonus: 3, cooked: true };
+    const said: string[] = [];
+    for (let i = 0; i < 60; i++) said.push(p.nextLine({ team: "紅隊", monster: "史萊姆", boss: true }), p.line(kill), p.atmosphereLine(kill));
+    for (let i = 1; i < said.length; i++) expect(isFood(said[i]) && isFood(said[i - 1]), `${said[i - 1]} / ${said[i]}`).toBe(false);
+    expect(said.filter(isFood).length).toBeGreaterThan(0);
+    for (let i = 0; i < 20; i++) {
+      expect(isFood(p.line({ type: "event-room", team: "紅隊", scene: "chest", outcome: "feast", satiety: 3, dish: "燉菜" }))).toBe(true);
+      expect(isFood(p.nextLine({ team: "紅隊", monster: "史萊姆", boss: false }))).toBe(false);
+      expect(p.line({ type: "event-room", team: "紅隊", scene: "chest", outcome: "rotten", satiety: i % 2 ? -3 : 0 })).toMatch(/黑暗料理|紫煙/);
+      expect(isFood(p.nextLine({ team: "紅隊", monster: "史萊姆", boss: false }))).toBe(false);
+    }
+  });
+
+  it("a chest dish right after a food handoff is still said: its pool has no plain line", () => {
+    const p = createScriptedProvider(lcg(9));
+    let after = 0;
+    for (let i = 0; i < 200; i++) {
+      if (!isFood(p.nextLine({ team: "紅隊", monster: "史萊姆", boss: false }))) continue;
+      after++;
+      expect(p.line({ type: "event-room", team: "紅隊", scene: "chest", outcome: "feast", satiety: 3, dish: "燉菜" })).toContain("燉菜");
+    }
+    expect(after).toBeGreaterThan(0);
+  });
+
+  it("never says two food lines in a row across the result and the handoff, and still plays every line", () => {
+    const p = createScriptedProvider(lcg(4));
+    const said: string[] = [];
+    for (let i = 0; i < 130; i++) said.push(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, cooked: true, part: "外膜" }), p.nextLine({ team: "紅隊", monster: "史萊姆", boss: false }));
+    for (let i = 1; i < said.length; i++) expect(isFood(said[i]) && isFood(said[i - 1]), `${said[i - 1]} / ${said[i]}`).toBe(false);
+    expect(new Set(said).size).toBe(DISH_VARIANTS.length + FOODIE.dishPart.length + NEXT_VARIANTS.room.length);
+  });
+
+  it("names the edible part only when the event has one", () => {
+    const p = createScriptedProvider(lcg(2));
+    for (let i = 0; i < 40; i++) expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, cooked: true })).not.toMatch(/[{}]|undefined/);
+    const withPart = Array.from({ length: 40 }, () => p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, cooked: true, part: "外膜" }));
+    expect(withPart.some((l) => l.includes("外膜"))).toBe(true);
+    for (const l of withPart) expect(l).not.toMatch(/[{}]/);
+    // 「牠的整隻」 and a 6-character part do not read well in these lines: the plain pool only.
+    for (const part of ["整隻", "寶箱裡的東西", "根"]) for (let i = 0; i < 40; i++) expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, cooked: true, part })).not.toContain(part);
   });
 });

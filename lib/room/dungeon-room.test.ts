@@ -3885,6 +3885,7 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     // The narrator hears that it will be cooked, never what into (cooking I1): the dish line waits for 上菜.
     const told = events.find((e) => e.type === "correct");
     expect(told.cooked).toBe(true);
+    expect(told.part).toBe(m.dish.part); // the catalog's edible part, for the narrator's food talk
     expect(JSON.stringify(told)).not.toContain(m.dish.name);
   });
 
@@ -4027,6 +4028,27 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     expect(JSON.stringify(events.find((e) => e.type === "correct"))).not.toContain(answer);
   });
 
+  // Value: protects=an edible part that holds a bank answer never reaches the narrator, where llm.ts would throw the
+  // whole AI reply away (foodie narration); fails_when=the sayablePart() gate on dish.part is dropped or stops looking inside longer answers.
+  it.each([
+    ["ghost-shy", "the part itself", true],
+    ["ghost-shy", "a longer word that holds the part", true],
+    ["ghost-shy", "two characters inside the part", true],
+    ["ghost-shy", "one character inside the part", false], // 「身」 alone would drop nearly every part
+    ["ghost-cry", "the part itself", true], // a 2-character part: sayable()'s 3-character floor would let it through
+  ] as const)("an edible part of %s that meets a bank answer (%s) is left out of the narration event", async (id, kind, dropped) => {
+    const shy = catalogMonster(id);
+    const answer = kind === "the part itself" ? shy.dish.part : kind === "a longer word that holds the part" ? `一${shy.dish.part}` : shy.dish.part.slice(-(kind.startsWith("two") ? 2 : 1));
+    const [d, i] = DIFFICULTIES.flatMap((d) => BANK.pools[d].map((q, i) => [d, i, q] as const)).find(([, , q]) => q.kind === "text" && q.id !== "r0-q1")!;
+    const bank: Bank = { ...BANK, rooms: BANK.rooms.map((r, j) => (j === 0 ? { ...r, monster: shy.id } : r)), pools: { ...BANK.pools, [d]: BANK.pools[d].map((q, j) => (j === i ? { ...q, answer } : q)) } };
+    const { room, hostConn, ids, events } = cookRoom(bank);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    await flush();
+    const told = events.find((e) => e.type === "correct");
+    expect(told.cooked).toBe(true);
+    expect(told.part).toBe(dropped ? undefined : shy.dish.part);
+  });
+
   // Review finding (coverage audit, 2026-10-31): the boss branch of the dish lookup and the epilogue filter had no room-level test.
   it("the killing blow serves the boss's dish, and the epilogue lists the team's dishes without one naming an answer", async () => {
     const answer = ROOM0_DISH;
@@ -4043,6 +4065,7 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     expect(states(room).at(-1).reveal.dish).toMatchObject({ name: boss.name, part: boss.part });
     expect(states(room).at(-1).reveal.dish).toMatchObject({ room: null, monster: { name: catalogMonster(BANK.boss.monster).name } });
     expect(events.find((e) => e.type === "boss-kill")?.cooked).toBe(true);
+    expect(events.find((e) => e.type === "boss-kill")?.part).toBe(boss.part);
     const epilogue = events.find((e) => e.type === "epilogue");
     expect(epilogue.ranking[0].dishes).toContain(boss.name);
     expect(epilogue.ranking[0].dishes).not.toContain(answer);
