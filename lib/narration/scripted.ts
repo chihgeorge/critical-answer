@@ -538,7 +538,8 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
       if ((event.type === "retry" || event.type === "boss-hit") && event.exhausted) return fill(pick(BOSS_EXHAUSTED_VARIANTS, "boss-exhausted"), event);
       if (event.type === "flee" && event.to) return fill(pick(FLEE_SWITCH_VARIANTS, "flee-switch"), event);
-      if (event.type === "retry" && event.prayed) return fill(pick(PRAYER_VARIANTS, "prayer"), event);
+      // In the boss room the prayer brings a new question: the boss-miss lines say so and never say "next round".
+      if (event.type === "retry" && event.prayed && !event.boss) return fill(pick(PRAYER_VARIANTS, "prayer"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
       if (event.type === "retry" && event.buzzAgain) return fill(pick(BUZZ_AGAIN_VARIANTS, "buzz-again"), event);
       if (event.type === "retry" && event.buzzOut) return fill(pick(BUZZ_OUT_VARIANTS, "buzz-out"), event);

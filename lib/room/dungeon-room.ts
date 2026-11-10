@@ -2808,7 +2808,9 @@ export class DungeonRoom {
     // narration code already had to work around once (Outside Voice finding, /plan-eng-review).
     const justAnswered = this.currentQuestion();
     // Resolved before its question was ever shown: the host judged before the check, or the check's natural 20 won it.
-    const unseen = this.awaitingCheck() || prev.checks?.[checkKey(questionId, teamId)]?.value === 20;
+    // A dropped 20 left the question up. shortcut: a 20 won after a restart (lost crit) was shown first and still counts as unseen; harmless repeat.
+    const check = prev.checks?.[checkKey(questionId, teamId)];
+    const unseen = this.awaitingCheck() || (check?.value === 20 && !check.dropped);
     // A correct answer on a music question with fields: the host's verdicts, or every field right (multi-field.md D2).
     const fieldQ = this.question(questionId);
     const marks = correct && fieldQ?.kind === "text" && fieldQ.fields ? (fields ?? fieldQ.fields.map(() => true)) : undefined;

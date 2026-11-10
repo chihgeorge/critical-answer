@@ -60,6 +60,9 @@ describe("scripted lines", () => {
     const prayer = new Set(PRAYER_VARIANTS.map((t) => t.replace("{team}", team)));
     for (let i = 0; i < 10; i++) expect(prayer.has(p.line({ type: "retry", team, monster, prayed: true }))).toBe(true);
     for (const l of PRAYER_VARIANTS) expect(l).not.toContain("下一輪");
+    // In the boss room the prayer brings a new question: the boss-miss line says so.
+    const boss = new Set(BOSS_MISS_VARIANTS.map((t) => t.replace("{team}", team).replace("{monster}", monster)));
+    expect(boss.has(p.line({ type: "retry", team, monster, prayed: true, boss: true }))).toBe(true);
   });
 
   it("a wrong buzz says the team is out, never that it may answer again (boss-buzzer.md)", () => {
