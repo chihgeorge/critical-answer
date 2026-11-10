@@ -598,22 +598,6 @@
 
 ---
 
-## 吃料理動畫：小烏賊的空盤太小
-
-**What:** `dish-squid` 在台上是 ×3，空盤沿用料理的倍率和畫布（`drawEmptyPlate`），所以看起來特別小。可能的修法：沒有盤子的料理，空盤給一個最小寬度。（第三口後的熱氣已在 eat-dish polish PR 修好：第三口起熱氣消失。）
-
-**Why:** 吃料理動畫（PR #177，`docs/designs/eat-dish.md`）的 25 道菜截圖檢查時發現的。不影響玩法，只是畫面上看起來有點怪。截圖在本機 `~/.gstack/projects/critical-answer/designs/eat-dish-20261108/bites/`（不進 git）。
-
-**Context:**
-- `lib/pixel-art.ts` 的 `drawEmptyPlate`（沒有盤子的料理：畫布一樣寬的盤子）
-- `components/cooking.tsx` 的 `DishOnStage`（空盤用料理的 `scale`）
-
-**Effort/Priority:** S / P3
-
-**Depends on:** 無。
-
----
-
 ## 在全新的 Cloudflare／Vercel 帳號上照部署指南做一遍
 
 **What:** 用沒部署過這個專案的 Cloudflare 和 Vercel 帳號，照 `docs/deployment.md` 的「第一次部署」從頭做一遍，把卡住或寫錯的地方改掉，然後拿掉指南開頭「還沒在全新的帳號上照著做過一遍」那段提醒（中英兩版都要改）。
@@ -748,6 +732,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 吃料理動畫：小烏賊的空盤太小
+
+- **沒有盤子的料理，吃完的空盤至少 120px 寬** · 版號合併時定 · 自己沒有盤子的料理（碗、杯子、串燒），吃完的空盤在台上放大倍率（`emptyPlateScale`，最多 ×5），讓盤子至少 120px 寬（`MIN_EMPTY_PLATE_PX`，接近最窄的有盤料理 `dish-tower` 的 128px）。小烏賊從 ×3（84px）變 ×5（140px），冰品、棉花糖、果昔從 ×4（96px）變 ×5（120px）。有自己盤子的料理和其他料理的空盤大小不變，畫布和像素圖也沒改；倍率只在空盤那一步換。
 
 ## 把「冒險出現岔路」的選擇加回玩家手機
 
