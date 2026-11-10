@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, startGame } from "./answer";
+import { restoreRoom0AfterEach, revealLock, startGame, screenUrl } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 restoreRoom0AfterEach();
@@ -77,7 +77,7 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   const team = await (await browser.newContext({ viewport: { width: 375, height: 667 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("選擇隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
@@ -277,7 +277,7 @@ test("boss room: a wrong lock shows no choice, then the boss brings a new questi
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   const team = await (await browser.newContext({ viewport: { width: 375, height: 667 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("紅隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();

@@ -20,6 +20,8 @@ const bank = (first: object = text("r1")) =>
     boss: { monster: "dragon", maxHp: 1, questions: [text("b1")] },
   });
 
+/** The room's screen key, as the big screen link on the host page carries it (docs/designs/screen-video-key.md). */
+const screenKeyOf = (room: DungeonRoom) => (room as unknown as { screenKey: string }).screenKey;
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
@@ -218,7 +220,7 @@ describe("每題作答倒數 on a video question (D4)", () => {
     const g = started({ answerSeconds: 30 }, bank(video("v1")));
     const screen = makeConn("screen");
     g.room.onConnect(screen);
-    send(g.room, screen, { type: "SCREEN_HELLO" });
+    send(g.room, screen, { type: "SCREEN_HELLO", key: screenKeyOf(g.room) });
     // The team answers before the clip ends; the host judges it wrong while the clip is still playing.
     send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "v1", eventId: g.state().eventId });
     vi.advanceTimersByTime(5000);
@@ -246,7 +248,13 @@ describe("每題作答倒數 on a video question (D4)", () => {
     // A socket that never announced itself as a screen (a player's devtools) cannot start it either.
     send(g.room, screen, { type: "SCREEN_CLIP_ENDED", questionId: "v1" });
     expect(g.state().answerClock).toEqual({ left: null });
-    send(g.room, screen, { type: "SCREEN_HELLO" });
+    // Nor one that announced itself with no screen key, or a wrong one: the room code alone is on the TV.
+    for (const hello of [{}, { key: "" }, { key: "not-the-key" }]) {
+      send(g.room, screen, { type: "SCREEN_HELLO", ...hello });
+      send(g.room, screen, { type: "SCREEN_CLIP_ENDED", questionId: "v1" });
+      expect(g.state().answerClock).toEqual({ left: null });
+    }
+    send(g.room, screen, { type: "SCREEN_HELLO", key: screenKeyOf(g.room) });
     send(g.room, screen, { type: "SCREEN_CLIP_ENDED", questionId: "other" });
     expect(g.state().answerClock).toEqual({ left: null });
     vi.advanceTimersByTime(4000);
@@ -267,10 +275,10 @@ describe("connections that come back under the same id", () => {
     const g = started({ answerSeconds: 30 }, bank(video("v1")));
     const oldTv = makeConn("tv");
     g.room.onConnect(oldTv);
-    send(g.room, oldTv, { type: "SCREEN_HELLO" });
+    send(g.room, oldTv, { type: "SCREEN_HELLO", key: screenKeyOf(g.room) });
     const tv = makeConn("tv");
     g.room.onConnect(tv);
-    send(g.room, tv, { type: "SCREEN_HELLO" });
+    send(g.room, tv, { type: "SCREEN_HELLO", key: screenKeyOf(g.room) });
     const host = makeConn("host");
     g.room.onConnect(host);
     send(g.room, host, { type: "HOST_CLAIM", token: TOKEN });

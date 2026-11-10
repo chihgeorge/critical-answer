@@ -48,7 +48,7 @@ function makeConn(id: string, log: string[] = []) {
 function screenOf(room: DungeonRoom) {
   const conn = makeConn("screen");
   room.onConnect(conn);
-  send(room, conn, { type: "SCREEN_HELLO" });
+  send(room, conn, { type: "SCREEN_HELLO", key: (room as unknown as { screenKey: string }).screenKey });
   return conn;
 }
 

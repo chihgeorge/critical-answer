@@ -1,5 +1,5 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { answerCorrectly, NEXT_WAIT_MS, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState } from "./answer";
+import { answerCorrectly, NEXT_WAIT_MS, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, screenUrl } from "./answer";
 import { stubSpeechSynthesis, ttsCalls } from "./tts";
 import { MONSTERS } from "../lib/monster-catalog";
 
@@ -22,7 +22,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   const screenFrames = recordFrames(screen);
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   await expect(screen.getByText(code)).toBeVisible();
 
   const players: { page: Page; frames: string[] }[] = [];

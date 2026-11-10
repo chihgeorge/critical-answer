@@ -87,11 +87,15 @@ function lastBroadcast(room: DungeonRoom) {
 /** The room's current eventSeq — what a real host echoes back in HOST_NEXT (the eventId of the STATE it saw). */
 const seqOf = (room: DungeonRoom) => (room as unknown as { eventSeq: number }).eventSeq;
 
-/** A /screen page's socket: connected, then announced with SCREEN_HELLO, as the page does on every open. */
+/** The room's screen key, as the big screen link on the host page carries it (docs/designs/screen-video-key.md). */
+const screenKeyOf = (room: DungeonRoom) => (room as unknown as { screenKey: string }).screenKey;
+
+/** A /screen page's socket, opened by the host page's big screen link: connected, then announced with SCREEN_HELLO
+ * and the screen key, as the page does on every open. */
 function screenConn(room: DungeonRoom, id = "screen") {
   const conn = makeConn(id);
   room.onConnect(conn);
-  send(room, conn, { type: "SCREEN_HELLO" });
+  send(room, conn, { type: "SCREEN_HELLO", key: screenKeyOf(room) });
   return conn;
 }
 
@@ -2589,8 +2593,9 @@ describe("LLM narration and director (T8-T10)", () => {
     });
 
     // Value: protects=a player cannot lock the host's edits from their own phone, nor the host page by mistake (D3);
-    // fails_when=the room takes SCREEN_NARRATION_PROGRESS from a joined team's connection or a host connection.
-    it("takes reading progress only from an announced screen that is neither a team nor the host", async () => {
+    // fails_when=the room takes SCREEN_NARRATION_PROGRESS from a joined team's connection, a host connection, or a
+    // socket that said SCREEN_HELLO with no screen key or a wrong one (screen-video-key.md).
+    it("takes reading progress only from a screen with the screen key that is neither a team nor the host", async () => {
       const r = await threeLines();
       const told = () => sentMsgs(r.hostConn).filter((m) => m.type === "HOST_NARRATION_PROGRESS");
       const report = (c: ReturnType<typeof makeConn>) => send(r.room, c, { type: "SCREEN_NARRATION_PROGRESS", eventId: r.n.eventId, rev: 0, done: 3 });
@@ -2599,7 +2604,11 @@ describe("LLM narration and director (T8-T10)", () => {
       const stray = makeConn("devtools"); // a second socket that never joined a team, nor said SCREEN_HELLO
       r.room.onConnect(stray);
       report(stray);
-      send(r.room, makeConn("player-conn-0"), { type: "SCREEN_HELLO" }); // a phone cannot announce itself either
+      for (const hello of [{}, { key: "" }, { key: "not-the-key" }]) {
+        send(r.room, stray, { type: "SCREEN_HELLO", ...hello }); // /screen opened by the room code, or an old link
+        report(stray);
+      }
+      send(r.room, makeConn("player-conn-0"), { type: "SCREEN_HELLO", key: screenKeyOf(r.room) }); // a phone is never a screen, even with the key
       report(makeConn("player-conn-0"));
       expect(told()).toEqual([]);
       send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: r.n.eventId, rev: 0, index: 2, line: "還能改" });
@@ -3048,10 +3057,18 @@ describe("team identity and reconnect (audit findings)", () => {
 
   // Value: protects=60 junk sockets cannot keep the host, the TV or a team's phone out (TODOS: 60 條連線能鎖死房間);
   // fails_when=a full room refuses the newcomer instead of closing its oldest spare socket, or closes a host, one of
-  // the first two screens, or a team's only connection.
-  it("a full room closes its oldest spare socket, never the host, the first screens or a team's only phone", () => {
+  // the first two keyed screens, or a team's only connection; or a socket that said SCREEN_HELLO without the screen
+  // key takes one of the two kept places before the real TV (TODOS: 任何人都能宣告自己是大螢幕).
+  it("a full room closes its oldest spare socket, never the host, the first keyed screens or a team's only phone", () => {
     const { room, hostConn } = makeRoomWithHost();
     const closed = (c: ReturnType<typeof makeConn>) => (c.close as ReturnType<typeof vi.fn>).mock.calls.length > 0;
+    // Two sockets announce themselves first, with no key and a wrong one: they are spares, not kept screens.
+    const fakes = [{}, { key: "not-the-key" }].map((hello, i) => {
+      const c = makeConn(`fake${i}`);
+      room.onConnect(c);
+      send(room, c, { type: "SCREEN_HELLO", ...hello });
+      return c;
+    });
     const tv = screenConn(room, "tv");
     const tv2 = screenConn(room, "tv2");
     const phone = makeConn("phone");
@@ -3061,13 +3078,18 @@ describe("team identity and reconnect (audit findings)", () => {
     room.onConnect(twin);
     send(room, twin, { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "紅隊" });
     const tv3 = screenConn(room, "tv3"); // a third screen: a spare
-    const junk = Array.from({ length: 54 }, (_, i) => makeConn(`junk${i}`));
+    const junk = Array.from({ length: 52 }, (_, i) => makeConn(`junk${i}`));
     junk.forEach((c) => room.onConnect(c));
-    expect(junk.some(closed)).toBe(false); // 60 sockets, none closed yet
+    expect([...fakes, ...junk].some(closed)).toBe(false); // 60 sockets, none closed yet
 
     const late = makeConn("late");
     room.onConnect(late);
     expect(closed(late)).toBe(false);
+    expect(closed(fakes[0])).toBe(true); // the oldest spare
+    room.onConnect(makeConn("late2"));
+    expect(closed(fakes[1])).toBe(true);
+    expect(closed(phone)).toBe(false);
+    room.onConnect(makeConn("late3"));
     expect(closed(phone)).toBe(true); // the oldest spare: the team keeps its newer socket
     room.onConnect(makeConn("later"));
     expect(closed(tv3)).toBe(true);

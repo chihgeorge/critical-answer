@@ -1,4 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
+import { screenUrl } from "./answer";
 
 // 擲先攻 (lib/initiative.ts): each phone rolls its d20 and the big screen shows every die. The e2e worker fixes every
 // d20 at 10 (playwright.config.ts E2E_DIE), so the teams tie and keep the lobby order; the order holds only
@@ -27,7 +28,7 @@ test("every phone rolls 擲先攻, the big screen shows the dice, then the first
   const a = await phone(browser, code, "甲隊");
   const b = await phone(browser, code, "乙隊");
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
 
   await host.getByRole("checkbox", { name: "開始前播放玩法說明" }).uncheck();
   await host.getByRole("button", { name: /開始遊戲/ }).click();

@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { textOnlyBank, startGame } from "./answer";
+import { textOnlyBank, startGame, screenUrl } from "./answer";
 
 async function mageRoom(browser: Browser) {
   const host = await (await browser.newContext()).newPage();
@@ -8,7 +8,7 @@ async function mageRoom(browser: Browser) {
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("法師隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
