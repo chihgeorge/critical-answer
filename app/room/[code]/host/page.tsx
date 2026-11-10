@@ -1,7 +1,7 @@
 "use client";
 
 import { AnswerClock } from "@/components/answer-clock";
-import { ANSWER_SECONDS, DEFAULT_ANSWER_SECONDS } from "@/lib/answer-clock";
+import { ANSWER_SECONDS, DEFAULT_ANSWER_SECONDS, stuckDelayMs } from "@/lib/answer-clock";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
@@ -34,10 +34,8 @@ import { createAiKeyQueue } from "@/lib/host-ai-queue";
 import { EVENT_OUTCOME_TITLE, FORK_DOOR_LABEL, FORK_SIDE_LABEL } from "@/lib/event-text";
 import { hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
 
-/** D11: the stuck-team row waits this long with no lock (or no choice after a wrong lock). */
-const STUCK_MS = 15_000;
 /** A cleric's wait, and the prayed attempt after it, ignore keys and clicks this long after they appear, so a
- * double-tap of 答錯 never lands on 祈禱 / 重答, nor one of 祈禱 on the new attempt's 答對 / 答錯 (#106). */
+ * double-tap of 答錯 never lands on 祈禱 / 下輪再答, nor one of 祈禱 on the new attempt's 答對 / 答錯 (#106). */
 const CLERIC_WAIT_DELAY_MS = 500;
 const noSubscribe = () => () => {};
 /** HOST_EDIT_NARRATION refusals: the narration panel shows them in its editor, not the page's error line. */
@@ -334,6 +332,8 @@ export default function HostPage() {
   // The boss's phase card is a pause like a reveal: 下一題 closes it (docs/designs/boss-phases.md D3).
   // A ❓ 神秘房's result is one more (event-rooms.md D3). A door opening (branch-fork.md) is not: 下一題 waits it out.
   const revealUp = !!game?.reveal || !!game?.phaseCard || !!game?.eventReveal;
+  // In the boss room this choice also brings a new question (the boss rotates), so it is named for that.
+  const retryLabel = turn?.inBoss ? "下輪換題" : "下輪再答";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): teams buzz in, the host judges the one that buzzed first. */
   const buzz = game?.phase === "playing" && !revealUp ? game.view.buzz : undefined;
   // Keyed on the pause itself, not just "a pause is up": the answer reveal turning into the phase card
@@ -365,7 +365,7 @@ export default function HostPage() {
       clearInterval(tick);
     };
   }, [pauseKey]);
-  // 改判答對 shows up under the judge buttons, which the bottom-anchored column then pushes up: it waits out a double tap
+  // 改判答對 shows up right under the judge buttons, where a double tap on 答錯 can land: it waits out a double tap
   // on 答錯 like every other swap (red-team review).
   const undoKey = game?.undoWrong ? `${game.undoWrong.teamId}|${game.undoWrong.questionId}|${game.eventId}` : "";
   const [undoArmedFor, setUndoArmedFor] = useState(undoKey);
@@ -380,7 +380,7 @@ export default function HostPage() {
   const canJudge = ready && swapArmed && !!turn?.team && pendingTeamId !== turn.team.id && !roll && !game?.pendingLock;
 
   // Phone answering (docs/designs/phone-answering.md D3, D11, D13): a multipleChoice turn is judged by
-  // the team's lock, which waits for the host's 公布答案 (host-reveal.md); the host gets 替選・重答 / 逃跑 after 15 s of no progress.
+  // the team's lock, which waits for the host's 公布答案 (host-reveal.md); the host gets 替選・下輪再答 / 逃跑 when the countdown runs out (15 s with it off).
   const isMc = !game?.reveal && !!(game?.question?.options || game?.question?.items);
   const lock = game?.pendingLock ?? null;
   // The lock waits for the host's 公布答案 (docs/designs/host-reveal.md); its team may no longer be on turn.
@@ -393,7 +393,7 @@ export default function HostPage() {
   // A wrong boss lock resolves on its own after a beat (D2=B). The stuck row still comes after 15 s,
   // as the way out if that beat never resolves.
   const bossMiss = !!wrong && wrong.optionIndex !== null && !!game?.view.teams.find((t) => t.id === wrong.teamId)?.inBossPhase;
-  // A cleric's fill-in (#106): one 答錯 that waits for the team, then 祈禱 / 重答 / 逃跑 for whoever presses first.
+  // A cleric's fill-in (#106): one 答錯 that waits for the team, then 祈禱 / 下輪再答 / 逃跑 for whoever presses first.
   const cleric = game && !isMc && turn?.team ? clericStage(game.view, turn.team.id) : undefined;
   const turnKey = turn?.team ? `${turn.team.id}|${turn.questionId}` : null;
   // The last wait's team and question, kept after it ends: the same team's next judge buttons on it hold too.
@@ -407,13 +407,16 @@ export default function HostPage() {
     return () => clearTimeout(t);
   }, [holdKey]);
   const held = !!holdKey && releasedFor !== holdKey;
-  const stuckKey = isMc && turn?.team && !lock && !roll ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}` : null;
+  const stuckKey = isMc && turn?.team && !lock && !roll ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}|${game?.answerClock?.left === null ? "clip" : "count"}` : null;
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
+  // With the countdown on, the row waits for its 0; off (or no count running), 15 s (lib/answer-clock.ts stuckDelayMs).
+  // The key carries "clip" while a clip has not ended, so a row shown during the clip goes away and re-arms for the count.
+  const stuckDelay = stuckDelayMs(game?.answerClock);
   useEffect(() => {
     if (!stuckKey) return;
-    const t = setTimeout(() => setStuckShownFor(stuckKey), STUCK_MS);
+    const t = setTimeout(() => setStuckShownFor(stuckKey), stuckDelay);
     return () => clearTimeout(t);
-  }, [stuckKey]);
+  }, [stuckKey, stuckDelay]);
   const stuck = !!stuckKey && stuckShownFor === stuckKey;
   // 叉路 (branch-fork.md D3): the host only watches; in auto the room's own 15 s clock sends a team that never picks into ⚔️, in manual the host's ▶ 下一步 does.
   // An answer or a card on show keeps its 下一題: the hold's ▶ 下一步 takes over once it is gone. A finished game has
@@ -545,6 +548,34 @@ export default function HostPage() {
     </PixelButton>
   );
 
+  // The big-screen link: on the page before the game starts, in ⚙ 更多 once it has (the judge buttons need the room).
+  const screenBlock = (
+    <>
+      <div className="text-[15px]">大螢幕（在電視或投影機開這個連結：點它、複製連結網址或掃 QR，照著打不會播影片）</div>
+      {/* A new tab, so opening it never navigates the host page away from its socket. */}
+      {/* With the room's screen key: only a big screen opened by this link is sent the question videos and has its
+          reports taken by the room (screen-video-key.md). */}
+      {claimed ? (
+        <>
+          <a data-testid="screen-link" href={screenLink} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{/* Without the key: players can see the host's phone. */}{`${origin}/room/${code}/screen`}</a>
+          {/* The same link as a QR: a TV remote cannot type the key (screen-video-key.md). */}
+          <PixelButton data-testid="screen-qr-toggle" aria-expanded={screenQr} onClick={() => setScreenQr(!screenQr)} className="!mx-0 !mb-0 mt-2 min-h-[44px] !px-3 !py-2 text-[15px]">
+            {screenQr ? "收起大螢幕 QR" : "顯示大螢幕 QR"}
+          </PixelButton>
+          {screenQr && origin && (
+            <div data-testid="screen-qr" className="mt-2 flex items-center gap-3">
+              <Qr text={origin + screenLink} size={160} alt="大螢幕 QR" />
+              <div className="text-[14px]">只給大螢幕掃：用接電視或投影機的那台裝置掃。不要讓玩家掃到，掃完就收起。</div>
+            </div>
+          )}
+        </>
+      ) : (
+        // Not before the room has sent the key: a link copied now would open a big screen that plays no video.
+        <div className="text-[14px]">連線中…</div>
+      )}
+    </>
+  );
+
   const aiPanel = (
     <AiPanel
       status={aiStatus}
@@ -604,30 +635,7 @@ export default function HostPage() {
             </PixelButton>
           </Panel>
         )}
-        <Panel tone="lav" className="px-3 py-2">
-          <div className="text-[15px]">大螢幕（在電視或投影機開這個連結：點它、複製連結網址或掃 QR，照著打不會播影片）</div>
-          {/* A new tab, so opening it never navigates the host page away from its socket. */}
-          {/* With the room's screen key: only a big screen opened by this link is sent the question videos and has its
-              reports taken by the room (screen-video-key.md). */}
-          {claimed ? (
-            <>
-              <a data-testid="screen-link" href={screenLink} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{/* Without the key: players can see the host's phone. */}{`${origin}/room/${code}/screen`}</a>
-              {/* The same link as a QR: a TV remote cannot type the key (screen-video-key.md). */}
-              <PixelButton data-testid="screen-qr-toggle" aria-expanded={screenQr} onClick={() => setScreenQr(!screenQr)} className="!mx-0 !mb-0 mt-2 min-h-[44px] !px-3 !py-2 text-[15px]">
-                {screenQr ? "收起大螢幕 QR" : "顯示大螢幕 QR"}
-              </PixelButton>
-              {screenQr && origin && (
-                <div data-testid="screen-qr" className="mt-2 flex items-center gap-3">
-                  <Qr text={origin + screenLink} size={160} alt="大螢幕 QR" />
-                  <div className="text-[14px]">只給大螢幕掃：用接電視或投影機的那台裝置掃。不要讓玩家掃到，掃完就收起。</div>
-                </div>
-              )}
-            </>
-          ) : (
-            // Not before the room has sent the key: a link copied now would open a big screen that plays no video.
-            <div className="text-[14px]">連線中…</div>
-          )}
-        </Panel>
+        {!game && <Panel tone="lav" className="px-3 py-2">{screenBlock}</Panel>}
 
         {reset && <Panel className="px-3 py-2 text-center text-[14px]" style={{ background: "var(--danger)", color: "#fff" }}>伺服器重新啟動，遊戲已重置，轉錄紀錄已消失</Panel>}
         {noToken && <Panel tone="lav" className="px-3 py-2 text-[14px]">這個瀏覽器沒有主持人金鑰。請回首頁按「主持遊戲」，或用建立房間時的連結／QR 開啟。</Panel>}
@@ -972,6 +980,174 @@ export default function HostPage() {
             )}
             </>
             )}
+            {/* The judge area sits right under the question card, above the team rows, so a phone never scrolls for it. */}
+            <div data-testid="host-judge" className="flex flex-col">
+            {holdUp ? (
+              holdPanel
+            ) : turn?.team ? (
+            <>
+              {!ready && connected && <div className="px-1 text-center text-[14px] text-white">等待主持人驗證…</div>}
+              {revealUp ? (
+                // D7: the big screen and every phone show the answer in place of the next
+                // question until the host moves on — judging waits until then. The boss's phase card
+                // waits the same way (boss-phases.md D3).
+                revealPanel
+              ) : atFork ? (
+                <div data-testid="host-fork">
+                  <Panel tone="lav" className="flex items-center justify-center gap-2 px-3 py-2 text-center text-[20px]">
+                    {game.forkBeat ? (
+                      // Only the opened door is named: the room never tells the host which side hid what.
+                      <span data-testid="host-fork-beat">{game.forkBeat.timeout ? "⏳ 時間到，" : ""}大螢幕正在打開{FORK_SIDE_LABEL[game.forkBeat.side]}：{FORK_DOOR_LABEL[game.forkBeat.door]}</span>
+                    ) : (
+                      <>
+                        <span>{turn.team.name}在叉路口，選左門或右門</span>
+                        {typeof game.forkLeft === "number" && <AnswerClock key={game.forkLeft} ms={game.forkLeft} variant="chip" />}
+                      </>
+                    )}
+                  </Panel>
+                </div>
+              ) : isMc ? (
+                <>
+                  <div data-testid="host-mc-status">
+                  <Panel tone="lav" className="px-3 py-2 text-center">
+                    <div className="text-balance text-[22px]">
+                      {roll
+                        ? `${turn.team.name}擲出了骰子…`
+                        : lock
+                        ? `${lockTeam}鎖定了 ${sortedLock ?? optionLetter(lock.optionIndex)}…`
+                        : bossMiss
+                          ? "答錯！首領換一題…"
+                          : wrong
+                          ? `答錯！等${turn.team.name}選${retryLabel}或逃跑`
+                          : `等${turn.team.name}鎖定答案…`}
+                    </div>
+                    <div className="text-[14px]">{roll?.kind === "kill" ? "大螢幕擲 4d20 擊殺獎勵後結算" : roll || lock?.revealing ? "大螢幕停頓 2 秒後揭曉" : lock ? "按公布答案揭曉" : `${game.question?.items ? "排序題" : "選擇題"}由隊伍手機作答，主持人公布`}</div>
+                  </Panel>
+                  </div>
+                  {revealButton}
+                  {stuck && (
+                    <>
+                      <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>
+                      <div className="px-1 pt-1 text-[14px] text-white">隊伍卡住時，替{turn.team.name}選：</div>
+                      <div className={bossMiss ? "grid" : turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
+                        <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・${retryLabel}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                          <span className="whitespace-nowrap">{retryLabel}</span>
+                          <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
+                        </PixelButton>
+                        {!bossMiss && (
+                          <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・${turn.inBoss ? "逃跑" : "逃跑・同房"}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                            <span className="whitespace-nowrap">{turn.inBoss ? "逃跑" : "逃跑・同房"}</span>
+                            <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
+                          </PixelButton>
+                        )}
+                        {!turn.inBoss && (
+                          <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・逃跑・換房`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
+                            <span className="whitespace-nowrap">逃跑・換房</span>
+                            <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.switch}</span>
+                          </PixelButton>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* A lock whose turn moved on to a fill-in still needs its 公布答案 before anyone is judged. */}
+                  {revealButton}
+                  {roll && (
+                    <Panel tone="lav" className="px-3 py-2 text-center text-[22px]" role="status">
+                      {turn.team.name}擲出了骰子…
+                    </Panel>
+                  )}
+                  {cleric === "wait" ? (
+                    <>
+                      <div className="px-1 pt-1 text-center text-[20px] text-white" role="status">答錯了！等{turn.team.name}選，或替他們選：</div>
+                      <div className={turn.inBoss ? "grid grid-cols-3" : "grid grid-cols-2"}>
+                        {game.view.awaitingPrayer === turn.team.id && (
+                          <PixelButton className="text-[16px]" style={{ background: "#ffe066" }} disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "pray")}>
+                            祈禱
+                            <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.pray}</span>
+                          </PixelButton>
+                        )}
+                        <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                          {retryLabel}
+                          <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.retry}</span>
+                        </PixelButton>
+                        <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                          {turn.inBoss ? "逃跑" : "逃跑・同房"}
+                          <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.flee}</span>
+                        </PixelButton>
+                        {!turn.inBoss && (
+                          <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
+                            <span className="whitespace-nowrap">逃跑・換房</span>
+                            <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.switch}</span>
+                          </PixelButton>
+                        )}
+                      </div>
+                    </>
+                  ) : buzz && game.question?.fields ? (
+                    // A music question with fields: the host judges each one (docs/designs/multi-field.md F5).
+                    <FieldJudge
+                      key={fieldJudgeId}
+                      labels={game.question.fields}
+                      typed={answer?.typed?.teamId === turn.team.id ? answer.typed.fields : undefined}
+                      disabled={!canJudge || held}
+                      onJudge={(fields) => judge(turn.team!.id, turn.questionId!, fields.some(Boolean), fields.some(Boolean) ? undefined : "retry", fields)}
+                    />
+                  ) : (
+                  <>
+                  <PixelButton variant="ok" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, true)}>
+                    {connected ? "答對！" : "重新連線中"}
+                    <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.correct}</span>
+                  </PixelButton>
+                  {buzz ? (
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                      答錯（這題不能再搶）
+                      <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
+                    </PixelButton>
+                  ) : cleric === "before" ? (
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "team")}>
+                      答錯
+                      <span className="px-key" aria-hidden="true">{HOST_KEYS.before.wrong}</span>
+                    </PixelButton>
+                  ) : (
+                  <div className={turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} aria-label={`答錯・${retryLabel}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                      {turn.inBoss ? "答錯・下輪換題" : <TwoLine top="答錯・" bottom="下輪再答" />}
+                      <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
+                    </PixelButton>
+                    <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} aria-label={turn.inBoss ? "答錯・逃跑" : "答錯・逃跑・同房"} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
+                      {turn.inBoss ? "答錯・逃跑" : <TwoLine top="答錯・" bottom="逃跑・同房" />}
+                      <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
+                    </PixelButton>
+                    {!turn.inBoss && (
+                      <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} aria-label="答錯・逃跑・換房" onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
+                        <TwoLine top="答錯・" bottom="逃跑・換房" />
+                        <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.switch}</span>
+                      </PixelButton>
+                    )}
+                  </div>
+                  )}
+                  </>
+                  )}
+                </>
+              )}
+            </>
+            ) : (
+              // A buzzer phase has nobody on turn between buzzes (boss-buzzer.md): the reveal and the phase card still get 下一題.
+              revealPanel
+            )}
+            {/* 改判答對 (TODOS.md): under the judge buttons, held for half a second after it shows up (canUndo). */}
+            {game.undoWrong && !revealUp && (
+              <PixelButton className="!mt-4 text-[16px]" style={{ background: "#fff" }} disabled={!canUndo} onClick={() => send({ type: "HOST_UNDO_WRONG", ...game.undoWrong!, eventId: game.eventId })}>
+                {/* A music question with fields reopens its per-field judging instead (multi-field.md E2). */}
+                ↩ 剛才的{teamName(game.undoWrong.teamId)}{game.question?.id === game.undoWrong.questionId && game.question.fields ? "重新逐欄判定" : "改判答對"}
+                <span className="px-key" aria-hidden="true">{HOST_KEYS.undo}</span>
+              </PixelButton>
+            )}
+            {/* No team on turn (every phone offline): a waiting lock still gets its 公布答案. */}
+            {!turn?.team && !revealUp && revealButton}
+            </div>
 
             <ul className="flex flex-col gap-2">
               {game.view.teams.map((t, i) => (
@@ -1029,171 +1205,6 @@ export default function HostPage() {
               send={send}
               eventId={game.eventId}
             />
-            {holdUp ? (
-              holdPanel
-            ) : turn?.team ? (
-            <>
-              {!ready && connected && <div className="px-1 text-center text-[14px] text-white">等待主持人驗證…</div>}
-              {revealUp ? (
-                // D7: the big screen and every phone show the answer in place of the next
-                // question until the host moves on — judging waits until then. The boss's phase card
-                // waits the same way (boss-phases.md D3).
-                revealPanel
-              ) : atFork ? (
-                <div data-testid="host-fork">
-                  <Panel tone="lav" className="flex items-center justify-center gap-2 px-3 py-2 text-center text-[20px]">
-                    {game.forkBeat ? (
-                      // Only the opened door is named: the room never tells the host which side hid what.
-                      <span data-testid="host-fork-beat">{game.forkBeat.timeout ? "⏳ 時間到，" : ""}大螢幕正在打開{FORK_SIDE_LABEL[game.forkBeat.side]}：{FORK_DOOR_LABEL[game.forkBeat.door]}</span>
-                    ) : (
-                      <>
-                        <span>{turn.team.name}在叉路口，選左門或右門</span>
-                        {typeof game.forkLeft === "number" && <AnswerClock key={game.forkLeft} ms={game.forkLeft} variant="chip" />}
-                      </>
-                    )}
-                  </Panel>
-                </div>
-              ) : isMc ? (
-                <>
-                  <div data-testid="host-mc-status">
-                  <Panel tone="lav" className="px-3 py-2 text-center">
-                    <div className="text-balance text-[22px]">
-                      {roll
-                        ? `${turn.team.name}擲出了骰子…`
-                        : lock
-                        ? `${lockTeam}鎖定了 ${sortedLock ?? optionLetter(lock.optionIndex)}…`
-                        : bossMiss
-                          ? "答錯！首領換一題…"
-                          : wrong
-                          ? `答錯！等${turn.team.name}選重答或逃跑`
-                          : `等${turn.team.name}鎖定答案…`}
-                    </div>
-                    <div className="text-[14px]">{roll?.kind === "kill" ? "大螢幕擲 4d20 擊殺獎勵後結算" : roll || lock?.revealing ? "大螢幕停頓 2 秒後揭曉" : lock ? "按公布答案揭曉" : `${game.question?.items ? "排序題" : "選擇題"}由隊伍手機作答，主持人公布`}</div>
-                  </Panel>
-                  </div>
-                  {revealButton}
-                  {stuck && (
-                    <>
-                      <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>
-                      <div className="px-1 pt-1 text-[14px] text-white">隊伍卡住時，替{turn.team.name}選：</div>
-                      <div className={bossMiss ? "grid" : turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
-                        <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・重答`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
-                          重答
-                          <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
-                        </PixelButton>
-                        {!bossMiss && (
-                          <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・${turn.inBoss ? "逃跑" : "逃跑・同房"}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                            <span className="whitespace-nowrap">{turn.inBoss ? "逃跑" : "逃跑・同房"}</span>
-                            <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
-                          </PixelButton>
-                        )}
-                        {!turn.inBoss && (
-                          <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・逃跑・換房`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
-                            <span className="whitespace-nowrap">逃跑・換房</span>
-                            <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.switch}</span>
-                          </PixelButton>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </>
-              ) : (
-                <>
-                  {/* A lock whose turn moved on to a fill-in still needs its 公布答案 before anyone is judged. */}
-                  {revealButton}
-                  {roll && (
-                    <Panel tone="lav" className="px-3 py-2 text-center text-[22px]" role="status">
-                      {turn.team.name}擲出了骰子…
-                    </Panel>
-                  )}
-                  {cleric === "wait" ? (
-                    <>
-                      <div className="px-1 pt-1 text-center text-[20px] text-white" role="status">答錯了！等{turn.team.name}選，或替他們選：</div>
-                      <div className={turn.inBoss ? "grid grid-cols-3" : "grid grid-cols-2"}>
-                        {game.view.awaitingPrayer === turn.team.id && (
-                          <PixelButton className="text-[16px]" style={{ background: "#ffe066" }} disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "pray")}>
-                            祈禱
-                            <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.pray}</span>
-                          </PixelButton>
-                        )}
-                        <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
-                          重答
-                          <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.retry}</span>
-                        </PixelButton>
-                        <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                          {turn.inBoss ? "逃跑" : "逃跑・同房"}
-                          <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.flee}</span>
-                        </PixelButton>
-                        {!turn.inBoss && (
-                          <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
-                            <span className="whitespace-nowrap">逃跑・換房</span>
-                            <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.switch}</span>
-                          </PixelButton>
-                        )}
-                      </div>
-                    </>
-                  ) : buzz && game.question?.fields ? (
-                    // A music question with fields: the host judges each one (docs/designs/multi-field.md F5).
-                    <FieldJudge
-                      key={fieldJudgeId}
-                      labels={game.question.fields}
-                      typed={answer?.typed?.teamId === turn.team.id ? answer.typed.fields : undefined}
-                      disabled={!canJudge || held}
-                      onJudge={(fields) => judge(turn.team!.id, turn.questionId!, fields.some(Boolean), fields.some(Boolean) ? undefined : "retry", fields)}
-                    />
-                  ) : (
-                  <>
-                  <PixelButton variant="ok" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, true)}>
-                    {connected ? "答對！" : "重新連線中"}
-                    <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.correct}</span>
-                  </PixelButton>
-                  {buzz ? (
-                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
-                      答錯（這題不能再搶）
-                      <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
-                    </PixelButton>
-                  ) : cleric === "before" ? (
-                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "team")}>
-                      答錯
-                      <span className="px-key" aria-hidden="true">{HOST_KEYS.before.wrong}</span>
-                    </PixelButton>
-                  ) : (
-                  <div className={turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
-                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} aria-label="答錯・重答" onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
-                      {turn.inBoss ? "答錯・重答" : <TwoLine top="答錯・" bottom="重答" />}
-                      <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
-                    </PixelButton>
-                    <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} aria-label={turn.inBoss ? "答錯・逃跑" : "答錯・逃跑・同房"} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                      {turn.inBoss ? "答錯・逃跑" : <TwoLine top="答錯・" bottom="逃跑・同房" />}
-                      <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
-                    </PixelButton>
-                    {!turn.inBoss && (
-                      <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} aria-label="答錯・逃跑・換房" onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
-                        <TwoLine top="答錯・" bottom="逃跑・換房" />
-                        <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.switch}</span>
-                      </PixelButton>
-                    )}
-                  </div>
-                  )}
-                  </>
-                  )}
-                </>
-              )}
-            </>
-            ) : (
-              // A buzzer phase has nobody on turn between buzzes (boss-buzzer.md): the reveal and the phase card still get 下一題.
-              revealPanel
-            )}
-            {/* 改判答對 (TODOS.md): under the judge buttons, held for half a second after it shows up (canUndo). */}
-            {game.undoWrong && !revealUp && (
-              <PixelButton className="!mt-4 text-[16px]" style={{ background: "#fff" }} disabled={!canUndo} onClick={() => send({ type: "HOST_UNDO_WRONG", ...game.undoWrong!, eventId: game.eventId })}>
-                {/* A music question with fields reopens its per-field judging instead (multi-field.md E2). */}
-                ↩ 剛才的{teamName(game.undoWrong.teamId)}{game.question?.id === game.undoWrong.questionId && game.question.fields ? "重新逐欄判定" : "改判答對"}
-                <span className="px-key" aria-hidden="true">{HOST_KEYS.undo}</span>
-              </PixelButton>
-            )}
-            {/* No team on turn (every phone offline): a waiting lock still gets its 公布答案. */}
-            {!turn?.team && !revealUp && revealButton}
             </div>
           </>
         )}
@@ -1248,6 +1259,7 @@ export default function HostPage() {
           ai={game ? aiPanel : null}
           bossable={game?.phase === "playing" ? game.view.teams.filter((t) => !t.inBossPhase) : []}
           playing={game?.phase === "playing"}
+          screen={game ? screenBlock : null}
         />
       )}
     </main>
@@ -1255,7 +1267,7 @@ export default function HostPage() {
 }
 
 /** A judge button's label on two lines, the prefix small, so a three-button row never breaks inside 「逃跑・換房」. */
-// Its two block lines read as "答錯・ 重答" to screen readers, so each button using it carries an aria-label.
+// Its two block lines read as "答錯・ 下輪再答" to screen readers, so each button using it carries an aria-label.
 function TwoLine({ top, bottom }: { top: string; bottom: string }) {
   return (
     <span className="flex min-w-0 flex-1 flex-col">

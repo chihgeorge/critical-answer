@@ -33,7 +33,7 @@ async function sortWithKeys(team: Page, want: string[]) {
 }
 
 // Value: protects=the sort question end to end: the phone's ☰ drags rows by pointer, a wrong lock marks each place
-// on the phone and the TV without the answer, 重答 keeps the order, and the right order scores and reveals it;
+// on the phone and the TV without the answer, 下輪再答 keeps the order, and the right order scores and reveals it;
 // fails_when=the handle does not drag, the answer leaks on a wrong lock, or the right order is judged wrong;
 // seam=none; no_claim=a real touch screen (Playwright's mouse sends the same pointer events)
 test("sort question: drag to order, a wrong lock marks the places, the right order scores", async ({ browser, request }) => {
@@ -78,8 +78,8 @@ test("sort question: drag to order, a wrong lock marks the places, the right ord
   await expect(screen.getByTestId("wall-sort-3")).toHaveAttribute("data-look", "bad");
   await expect(screen.getByText("甲 → 乙 → 丙 → 丁")).toHaveCount(0);
 
-  // 重答 (the only team, so it is up again) keeps the order: fix the last two.
-  await team.getByRole("button", { name: /重答/ }).click();
+  // 下輪再答 (the only team, so it is up again) keeps the order: fix the last two.
+  await team.getByRole("button", { name: /下輪再答/ }).click();
   await expect(team.getByRole("button", { name: "這個順序答錯過了，換一下" })).toBeDisabled();
   await sortWithKeys(team, RIGHT);
   await team.getByRole("button", { name: "鎖定答案" }).click();

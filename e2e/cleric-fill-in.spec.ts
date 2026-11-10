@@ -1,7 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { textOnlyBank, startGame, rollCheck } from "./answer";
 
-// A cleric on a fill-in question (#106): the host's one 答錯 waits for 祈禱 / 重答 / 逃跑・同房 / 逃跑・換房.
+// A cleric on a fill-in question (#106): the host's one 答錯 waits for 祈禱 / 下輪再答 / 逃跑・同房 / 逃跑・換房.
 textOnlyBank();
 
 async function clericRoom(browser: Browser, beforeWrong?: (host: Page) => Promise<void>) {
@@ -27,13 +27,13 @@ async function clericRoom(browser: Browser, beforeWrong?: (host: Page) => Promis
   return { host, team, box };
 }
 
-/** Records whether 祈禱 / 重答 were disabled the moment they first render in the host's wait. */
+/** Records whether 祈禱 / 下輪再答 were disabled the moment they first render in the host's wait. */
 function recordWaitButtons(page: Page) {
   return page.evaluate(() => {
     const w = window as unknown as { waitFirstDisabled?: boolean[] };
     delete w.waitFirstDisabled;
     new MutationObserver((_, obs) => {
-      const buttons = [...document.querySelectorAll("button")].filter((b) => /^(祈禱|重答)/.test(b.textContent ?? ""));
+      const buttons = [...document.querySelectorAll("button")].filter((b) => /^(祈禱|下輪再答)/.test(b.textContent ?? ""));
       if (buttons.length < 2) return;
       w.waitFirstDisabled = buttons.map((b) => b.disabled);
       obs.disconnect();
@@ -50,21 +50,21 @@ test("cleric: the phone prays after the host's 答錯 and the team answers again
   const { host, team, box } = await clericRoom(browser);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   await expect(host.getByRole("button", { name: "祈禱", exact: true })).toBeVisible();
-  await expect(host.getByRole("button", { name: "重答", exact: true })).toBeVisible();
+  await expect(host.getByRole("button", { name: "下輪再答", exact: true })).toBeVisible();
   await expect(host.getByRole("button", { name: "逃跑・同房", exact: true })).toBeVisible();
   await team.getByRole("button", { name: /^祈禱/ }).click();
   await expect(box).toHaveValue("");
   await expect(team.getByRole("button", { name: "送出" })).toBeVisible();
   await expect(team.getByText("牧師・剩 1 次")).toBeVisible();
-  // The prayed turn has no second prayer: 答錯 goes back to 答錯・重答 / 答錯・逃跑.
-  await expect(host.getByRole("button", { name: "答錯・重答" })).toBeVisible();
+  // The prayed turn has no second prayer: 答錯 goes back to 答錯・下輪再答 / 答錯・逃跑.
+  await expect(host.getByRole("button", { name: "答錯・下輪再答" })).toBeVisible();
 });
 
-// Value: protects=the host can choose for the team, and 重答 spends no use; fails_when=the host's
+// Value: protects=the host can choose for the team, and 下輪再答 spends no use; fails_when=the host's
 // wait buttons are missing or do nothing; no_claim=逃跑 (unit tests).
-test("cleric: the host presses 重答 in the wait and no use is spent", async ({ browser }) => {
+test("cleric: the host presses 下輪再答 in the wait and no use is spent", async ({ browser }) => {
   const { host, team, box } = await clericRoom(browser);
-  await host.getByRole("button", { name: "重答", exact: true }).click();
+  await host.getByRole("button", { name: "下輪再答", exact: true }).click();
   // The only team: the turn comes straight back to it, on the same question, with an empty box.
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   await expect(box).toHaveValue("");
@@ -91,7 +91,7 @@ test("cleric: a double-tap of 2 marks the answer wrong once and spends nothing",
   await host.waitForTimeout(300);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
-  // Past the delay, the wait's keys work: 3 is 重答. Press until it lands, so the test does not depend on the delay's length.
+  // Past the delay, the wait's keys work: 3 is 下輪再答. Press until it lands, so the test does not depend on the delay's length.
   await expect(async () => {
     await host.keyboard.press("3");
     await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0, { timeout: 300 });
@@ -99,22 +99,22 @@ test("cleric: a double-tap of 2 marks the answer wrong once and spends nothing",
   await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
 });
 
-// Value (ship adversarial review): protects=a double-click on the host's 答錯 never lands on the wait's 祈禱 / 重答,
+// Value (ship adversarial review): protects=a double-click on the host's 答錯 never lands on the wait's 祈禱 / 下輪再答,
 // which take its place; fails_when=the wait's buttons are enabled the moment they appear; no_claim=the delay's exact length.
 test("cleric: the host's wait buttons start disabled, so a double-click on 答錯 spends nothing", async ({ browser }) => {
   // Record the buttons the moment they render: polling could look only after the delay on a slow runner.
   const { host, team } = await clericRoom(browser, recordWaitButtons);
   await expect.poll(() => waitFirstDisabled(host)).toEqual([true, true]);
-  await expect(host.getByRole("button", { name: "重答", exact: true })).toBeEnabled();
+  await expect(host.getByRole("button", { name: "下輪再答", exact: true })).toBeEnabled();
   await expect(host.getByRole("button", { name: "祈禱", exact: true })).toBeEnabled();
   await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
 });
 
-// Value (ship fix-check): protects=the second wait on the same team and question (after a 重答) holds too, though the
+// Value (ship fix-check): protects=the second wait on the same team and question (after a 下輪再答) holds too, though the
 // 答錯 keeps the eventId the held "before" screen had; fails_when=the hold is keyed without the stage; no_claim=the delay's length.
-test("cleric: a second wait on the same question, after 重答, also starts disabled", async ({ browser }) => {
+test("cleric: a second wait on the same question, after 下輪再答, also starts disabled", async ({ browser }) => {
   const { host, team, box } = await clericRoom(browser);
-  await host.getByRole("button", { name: "重答", exact: true }).click();
+  await host.getByRole("button", { name: "下輪再答", exact: true }).click();
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
   await box.fill("又猜錯了");
   await team.getByRole("button", { name: "送出" }).click();
@@ -126,24 +126,24 @@ test("cleric: a second wait on the same question, after 重答, also starts disa
   await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
 });
 
-// Value (ship adversarial review): protects=a double-tap of 2 on 祈禱 never judges the prayed attempt (答錯・重答 is 2
+// Value (ship adversarial review): protects=a double-tap of 2 on 祈禱 never judges the prayed attempt (答錯・下輪再答 is 2
 // there); fails_when=the prayed attempt's judge keys work the moment it appears; no_claim=the delay's exact length.
 test("cleric: a double-tap of 2 on the host's 祈禱 never judges the new attempt", async ({ browser }) => {
   const { host, team, box } = await clericRoom(browser);
   await expect(host.getByRole("button", { name: "祈禱", exact: true })).toBeEnabled();
   await host.keyboard.press("2");
-  // The prayed attempt is on screen: a second 2 now would be 答錯・重答 without the hold.
-  await expect(host.getByRole("button", { name: "答錯・重答" })).toBeVisible();
+  // The prayed attempt is on screen: a second 2 now would be 答錯・下輪再答 without the hold.
+  await expect(host.getByRole("button", { name: "答錯・下輪再答" })).toBeVisible();
   await host.keyboard.press("2");
   await host.waitForTimeout(300);
   await expect(team.getByText("牧師・剩 1 次")).toBeVisible();
   await expect(box).toHaveValue("");
-  // Still the prayed attempt (a 重答 would bring the only team back to one 答錯 that waits).
-  await expect(host.getByRole("button", { name: "答錯・重答" })).toBeEnabled();
+  // Still the prayed attempt (a 下輪再答 would bring the only team back to one 答錯 that waits).
+  await expect(host.getByRole("button", { name: "答錯・下輪再答" })).toBeEnabled();
 });
 
 // Value (ship audit): protects=the phone's 逃跑 in the wait deals a new question and spends no use; fails_when=the phone's
-// 逃跑 sends 重答 (same question) or 祈禱, or leaves the wait up; why_new=the tests above press 祈禱 / host 重答 only;
+// 逃跑 sends 下輪再答 (same question) or 祈禱, or leaves the wait up; why_new=the tests above press 祈禱 / host 下輪再答 only;
 // seam=none; no_claim=the boss room's rotation (unit tests).
 test("cleric: the phone's 逃跑 in the wait deals a new question and spends nothing", async ({ browser }) => {
   const { team, box } = await clericRoom(browser);

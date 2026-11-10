@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EPILOGUE_PAGE_CHARS, MAX_AWARD_LINE, PHONE_LAG_MS, awardLine, awardTitles, beatMs, epiloguePages, parseTitle, rankTeams, revealAt, revealBeats, revealMarks, unemoji, type Beat, type TitleTeam } from "@/lib/podium";
+import { EPILOGUE_PAGE_CHARS, MAX_AWARD_LINE, PHONE_LAG_MS, awardLine, awardTitles, beatMs, epiloguePages, parseTitle, placeLabel, rankTeams, revealAt, revealBeats, revealMarks, teamPlace, unemoji, type Beat, type TitleTeam } from "@/lib/podium";
 import { MAX_EPILOGUE_LINE } from "@/lib/narration/runner";
 import type { EventOutcome } from "@/lib/game-state";
 
@@ -289,5 +289,23 @@ describe("epiloguePages", () => {
   it("never cuts an emoji in half", () => {
     const text = "字".repeat(EPILOGUE_PAGE_CHARS - 1) + "🍲🍲";
     expect(epiloguePages(text)).toEqual(["字".repeat(EPILOGUE_PAGE_CHARS - 1) + "🍲", "🍲"]);
+  });
+});
+
+// Value: protects=every phone's game-over card names its own place, in the podium's order for the top three and shared
+// below it; fails_when=a team that lost a podium tie roll reads 第 2 名, or the medals go to the wrong places;
+// seam=pure; no_claim=when the card shows it (it waits for the podium, PHONE_LAG_MS)
+describe("teamPlace / placeLabel", () => {
+  it("follows the podium's rolled order, then shares places by score below it", () => {
+    const all = [{ id: "a", reward: 10 }, { id: "b", reward: 8 }, { id: "c", reward: 8 }, { id: "d", reward: 8 }, { id: "e", reward: 5 }, { id: "f", reward: 5 }];
+    const ranking = ["a", "d", "b", "c", "e", "f"];
+    expect(ranking.map((id) => teamPlace(all, ranking, id))).toEqual([1, 2, 3, 4, 5, 5]);
+    // No ranking from the room: by score, ties shared.
+    expect(teamPlace(all, undefined, "c")).toBe(2);
+    expect(teamPlace(all, ranking, "zz")).toBeNull();
+  });
+
+  it("gives the podium a medal and the rest a thank-you", () => {
+    expect([1, 2, 3, 4].map(placeLabel)).toEqual(["🥇 第 1 名！", "🥈 第 2 名！", "🥉 第 3 名！", "第 4 名・謝謝參與"]);
   });
 });

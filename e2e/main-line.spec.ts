@@ -221,7 +221,7 @@ test("game over: the boss cooks, then the podium, then the epilogue arrives on t
   await expect(phone.getByText("冒險結束！看大螢幕 📺")).toBeVisible();
   const shownAt = (page: typeof screen, text: string) =>
     page.waitForFunction((t) => document.body.innerText.includes(t) && Date.now(), text, { polling: "raf", timeout: 45_000 }).then(async (h) => Number(await h.jsonValue()));
-  const [screenAt, phoneAt] = await Promise.all([shownAt(screen, "奪得榜首"), shownAt(phone, "你們獲勝了")]);
+  const [screenAt, phoneAt] = await Promise.all([shownAt(screen, "奪得榜首"), shownAt(phone, "🥇 第 1 名！")]);
   expect(phoneAt).toBeGreaterThanOrEqual(screenAt);
   // The boss-kill answer ended the game, so its reveal shows on the podium screen instead (D7).
   await expect(screen.getByTestId("answer-reveal")).toContainText("最後一題正解：");

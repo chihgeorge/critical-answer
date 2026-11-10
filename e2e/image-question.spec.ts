@@ -247,7 +247,7 @@ test("answer reveal: a YouTube explanation renders as an embed on /play and /scr
   const { host, screen, team } = await startWithExplanation(browser, request, { kind: "youtube", value: "dQw4w9WgXcQ" });
 
   // A wrong answer (retry) never reveals it (D5).
-  await host.getByRole("button", { name: "答錯・重答" }).click();
+  await host.getByRole("button", { name: "答錯・下輪再答" }).click();
   await expect(screen.getByTitle("詳解影片")).toHaveCount(0);
   await expect(team.getByTitle("詳解影片")).toHaveCount(0);
 
@@ -306,7 +306,7 @@ test("media question: on our own turn the picture comes before our team card, an
   expect(await top(slot(a))).toBeLessThan(await top(card(a, "甲隊")));
   expect(await top(slot(b))).toBeGreaterThan(await top(card(b, "乙隊")));
 
-  await host.getByRole("button", { name: "答錯・重答" }).click();
+  await host.getByRole("button", { name: "答錯・下輪再答" }).click();
   await expect(b.getByText("輪到我們了！")).toBeVisible();
   await expect(a.getByText("輪到：乙隊")).toBeVisible();
   await rollCheck(b);
@@ -327,7 +327,7 @@ test("host-judged text question: only the answering phone shows it, and it moves
   await expect(question(a)).toBeVisible();
   await expect(question(b)).toHaveCount(0);
 
-  await host.getByRole("button", { name: "答錯・重答" }).click();
+  await host.getByRole("button", { name: "答錯・下輪再答" }).click();
   await rollCheck(b);
   await expect(question(b)).toBeVisible();
   await expect(question(a)).toHaveCount(0);

@@ -27,3 +27,13 @@ export function nextAnswerClock(prev: AnswerClock | null, want: string | null, n
 
 /** Whole seconds shown for `ms` left. */
 export const secondsLeft = (ms: number) => Math.max(0, Math.ceil(ms / 1000));
+
+/** D11: the host's stuck-team row waits this long with no lock (or no choice after a wrong lock). */
+export const STUCK_MS = 15_000;
+
+/** How long the host's stuck row waits, from STATE's `answerClock`: with the countdown on, until it reaches 0; with it
+ * off, or no count running (a wrong lock waiting for its choice, or a clip that has not ended: it may never end, with no
+ * keyed big screen or a clip error), STUCK_MS, so the host always gets a way past the turn. */
+export function stuckDelayMs(clock: { left: number | null } | undefined): number {
+  return clock?.left ?? STUCK_MS;
+}
