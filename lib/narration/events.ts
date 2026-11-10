@@ -3,6 +3,7 @@
 
 import { type AnswerOutcome, type ClassId, type EventOutcome, type EventScene, type GameState, type RollMark, type Team } from "../game-state";
 import { EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT } from "../event-text";
+import type { Reaction } from "../protocol";
 
 /** Who is up next and what they face: the story moves on to them after the result line. */
 export interface NextTurn {
@@ -13,9 +14,16 @@ export interface NextTurn {
   fork?: true;
 }
 
+/** The waiting teams' loudest reaction during this turn (crowd.ts): `team` is the waiting team that tapped it most. */
+export interface Crowd {
+  mood: Reaction;
+  team: string;
+}
+
 /** `hostLine`: the line the host queued for this narration (HOST_NEXT_LINE); segment 2 always says it
- * (docs/designs/host-next-line.md). `hostLineVerbatim`: it holds a bank answer, so the LLM never sees it. */
-type WithNext<T> = T & { next?: NextTurn; hostLine?: string; hostLineVerbatim?: true };
+ * (docs/designs/host-next-line.md). `hostLineVerbatim`: it holds a bank answer, so the LLM never sees it.
+ * `crowd`: the audience reacted enough this turn; the middle line mentions it, unless the host's line takes that slot. */
+type WithNext<T> = T & { next?: NextTurn; hostLine?: string; hostLineVerbatim?: true; crowd?: Crowd };
 
 /** `classId`: the acting team's class, so the weapons and spells in the line fit it. Left out for a team with no class. */
 type ByClass<T> = T & { classId?: ClassId };

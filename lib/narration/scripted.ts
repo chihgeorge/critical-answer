@@ -5,6 +5,7 @@ import { epilogueParts, type NarrationEvent, type NextTurn } from "./events";
 import { ordinal } from "../ordinal";
 import { placeLine } from "../podium";
 import type { ClassId, EventOutcome } from "../game-state";
+import type { Reaction } from "../protocol";
 
 export interface NarrationProvider {
   name: string;
@@ -301,6 +302,52 @@ export const ATMOSPHERE_VARIANTS: Record<Exclude<NarrationEvent["type"], "epilog
   ],
 };
 
+/** The middle line of a turn the waiting teams reacted to (crowd.ts): {by} is the team that tapped the loudest reaction
+ * most. None names the team on turn or a monster (a boss hit has none), or hints at how the answer went: the same
+ * reaction comes on a right or a wrong one. */
+export const CROWD_VARIANTS: Record<Reaction, string[]> = {
+  clap: [
+    "{by}在後面用力鼓掌。",
+    "後排的{by}掌聲沒停過。",
+    "{by}拍手拍到手都紅了。",
+    "掌聲從{by}那邊一路響過來。",
+    "{by}帶頭鼓掌，石廊嗡嗡作響。",
+    "{by}的掌聲一陣接著一陣。",
+    "{by}的掌聲在地城裡迴盪。",
+    "{by}在後面拍手叫好。",
+  ],
+  wow: [
+    "{by}在後面倒抽一口氣。",
+    "{by}嚇得抱成一團。",
+    "後排傳來{by}的驚呼聲。",
+    "{by}看得心臟都快跳出來了。",
+    "{by}摀著眼睛，不敢再看。",
+    "{by}緊張得握緊了拳頭。",
+    "{by}在後面叫出聲來。",
+    "{by}的尖叫聲嚇跑了蝙蝠。",
+  ],
+  lol: [
+    "{by}在後面笑到東倒西歪。",
+    "後排的{by}笑得停不下來。",
+    "{by}笑到差點跌倒。",
+    "{by}的笑聲在石廊裡打轉。",
+    "{by}笑到眼淚都流出來了。",
+    "{by}笑得火把都晃了。",
+    "{by}拍桌大笑，貓頭鷹瞪了一眼。",
+    "{by}在後面笑成一團。",
+  ],
+  boo: [
+    "{by}在後面噓聲四起……",
+    "後排的{by}發出一陣噓聲。",
+    "{by}的噓聲比怪物的吼聲還大。",
+    "{by}噓得連火把都抖了一下。",
+    "噓～{by}看起來不太服氣。",
+    "{by}噓個不停，貓頭鷹假裝沒聽見。",
+    "{by}在後面猛搖頭：噓～",
+    "{by}一臉不服，噓聲連連。",
+  ],
+};
+
 /** A hit that empties an earlier phase's bar (bossHp 0, no kill): the fight's outcome stays open until
  * the phase card, so none of these says the boss fell (boss-phases.md D3). */
 export const BOSS_EMPTIED_VARIANTS = [
@@ -512,6 +559,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     /** Synchronous like line(): a short atmosphere/detail beat, the new middle segment. */
     atmosphereLine(event: NarrationEvent): string {
       if (event.type === "epilogue") return ""; // epilogue never uses this — see the module header
+      if ("crowd" in event && event.crowd) return fill(pick(CROWD_VARIANTS[event.crowd.mood], `crowd-${event.crowd.mood}`), { ...event, by: event.crowd.team });
       return fill(pick(ATMOSPHERE_VARIANTS[event.type], `atm-${event.type}`), event);
     },
     /** Every epilogue segment (epilogueParts): the titles, the place calls, then the story. A title is left empty:

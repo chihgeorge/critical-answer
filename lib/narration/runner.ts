@@ -74,7 +74,8 @@ export function alignToSlots(raw: string[], target: number, nextTeam: string, ho
  * (TODOS 旁白語氣是否耐聽); the big moments and a natural 20 or 1 keep it. With no next team it is the closing beat.
  */
 export function hasMiddleLine(event: Exclude<NarrationEvent, { type: "epilogue" }>): boolean {
-  if (!event.next || event.hostLine) return true;
+  // An audience that reacted enough this turn (crowd.ts) gets its line here.
+  if (!event.next || event.hostLine || event.crowd) return true;
   if (event.type !== "correct" && event.type !== "retry" && event.type !== "flee") return true;
   const warrior = "warriorRoll" in event ? event.warriorRoll : undefined;
   return ("roll" in event && event.roll !== undefined) || warrior === 20 || warrior === 1;
