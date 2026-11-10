@@ -29,7 +29,7 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   /** Milliseconds without activity before a room closes its connections (default 2 hours). */
   ROOM_IDLE_MS?: string;
-  /** Milliseconds after its first connection before a room is forgotten and its code freed, in use or not (default 6
+  /** Milliseconds after its first game start before a room is forgotten and its code freed, in use or not (default 6
    * hours; the host may extend it an hour at a time up to 24 hours). */
   ROOM_EXPIRE_MS?: string;
   /** Secret for AI narration (wrangler secret put ANTHROPIC_API_KEY). Without it the room uses scripted lines. */
@@ -63,6 +63,9 @@ export class BankStoreDO extends DurableObject<Env> {
       (keys) => env.images.delete(keys),
       // An orphaned image waits until every room that could have copied the old bank has expired:
       // the longest a room can live, extensions included (roomMaxLifeMs, same env as Room.onStart).
+      // shortcut: the clock starts at the first game start, so time spent in the lobby before it is not counted (a
+      // room copies its bank when it opens); a lobby kept busy for hours before starting could lose an image. Count
+      // the lobby too if that ever happens.
       { cleanupDelayMs: roomMaxLifeMs(positiveMs(env.ROOM_EXPIRE_MS), positiveMs(env.ROOM_IDLE_MS)) + IMAGE_CLEANUP_MARGIN_MS },
     );
     // Seed-on-first-read otherwise races: two requests arriving before storage has ever been

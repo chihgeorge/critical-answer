@@ -208,7 +208,7 @@ export type ClientMessage =
   /** Director: the next narration's second line says this (<= 40 chars); "" cancels. */
   | { type: "HOST_NEXT_LINE"; line: string }
   | { type: "HOST_GET_TRANSCRIPT" }
-  /** 延長 1 小時: the room closes an hour later than it would now, at most 24 hours after it was created. */
+  /** 延長 1 小時: the room closes an hour later than it would now, at most 24 hours after the first game start. */
   | { type: "HOST_EXTEND_ROOM" }
   /** Director: close the answer reveal and show the next question (D7). `eventId` is the STATE
    * eventId the reveal arrived with, so a late HOST_NEXT (second host device, a send buffered
