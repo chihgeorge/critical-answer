@@ -71,7 +71,7 @@ test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut o
   await host.getByRole("button", { name: "關閉" }).click();
   // On 乙隊's room turn, a miss passes the turn to 甲隊's boss question (a press under an older STATE is dropped).
   await expect(async () => {
-    if ((await host.getByTestId("host-answer").textContent()) !== "答案 buzz-p1") await host.getByRole("button", { name: "答錯・重答" }).click();
+    if ((await host.getByTestId("host-answer").textContent()) !== "答案 buzz-p1") await host.getByRole("button", { name: "答錯・下輪再答" }).click();
     await expect(host.getByTestId("host-answer")).toHaveText("答案 buzz-p1", { timeout: 2_000 });
   }).toPass();
   await host.getByRole("button", { name: "答對！" }).click();

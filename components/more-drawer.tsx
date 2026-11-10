@@ -16,6 +16,7 @@ export function MoreDrawer({
   ai,
   bossable,
   playing,
+  screen,
 }: {
   /** The page's origin ("" before hydration). */
   origin: string;
@@ -28,6 +29,8 @@ export function MoreDrawer({
   bossable: { id: string; name: string }[];
   /** A game is under way, so 結束冒險 can end it. */
   playing: boolean;
+  /** The big-screen link and QR, once a game has started (before that they sit on the page itself). */
+  screen: ReactNode;
 }) {
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
@@ -39,7 +42,7 @@ export function MoreDrawer({
   const token = getHostToken(code);
   const hostUrl = token ? `${origin}/room/${code}/host#k=${token}` : "";
   return (
-    <div className="fixed inset-0 z-30 flex items-end bg-black/60" onClick={onClose}>
+    <div data-testid="more-drawer" className="fixed inset-0 z-30 flex items-end bg-black/60" onClick={onClose}>
       <Panel tone="lav" className="max-h-[85vh] w-full overflow-y-auto p-4">
         <div onClick={(e) => e.stopPropagation()} className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
@@ -48,6 +51,7 @@ export function MoreDrawer({
               關閉
             </PixelButton>
           </div>
+          {screen && <section>{screen}</section>}
           {bossable.length > 0 && (
             <section className="flex flex-col gap-2">
               <div className="text-[15px]">{`送隊伍進王房（不用等到 ${BOSS_THRESHOLD} 分，送了不能退回）`}</div>

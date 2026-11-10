@@ -117,7 +117,7 @@ test("phone answering: a wrong lock is marked without the answer, 重答 greys i
   // Measured from the top of the page, since the earlier 鎖定答案 click may have scrolled it.
   const fleeBottom = await team.getByRole("button", { name: /逃跑・換房/ }).evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
   expect(fleeBottom).toBeLessThanOrEqual(667);
-  await team.getByRole("button", { name: /重答/ }).click();
+  await team.getByRole("button", { name: /下輪再答/ }).click();
 
   // Retry turn (the only team, so it is up again): 藍色 is greyed and cannot be picked.
   await expect(team.getByRole("button", { name: /藍色/ })).toBeDisabled();
@@ -147,7 +147,7 @@ test("phone answering: the longest default question with four options still fits
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
-  expect(await bottom(/重答/)).toBeLessThanOrEqual(844);
+  expect(await bottom(/下輪再答/)).toBeLessThanOrEqual(844);
   expect(await bottom(/逃跑・換房/)).toBeLessThanOrEqual(844);
 });
 
@@ -164,6 +164,8 @@ test("phone answering: a team that never locks gets the host's stuck row after 1
   const team = await (await browser.newContext({ viewport: { width: 375, height: 667 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("選擇隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
+  // 作答倒數 關: the row keeps its 15 s (with a countdown it waits for 0, lib/answer-clock.test.ts).
+  await host.getByTestId("answer-seconds").selectOption("0");
   await startGame(host);
   await expect(host.getByTestId("host-mc-status")).toContainText("等選擇隊鎖定答案");
 

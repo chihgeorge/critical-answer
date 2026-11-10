@@ -19,8 +19,13 @@ export async function rollCheck(team: Page) {
  * question videos and has its reports taken by the room (docs/designs/screen-video-key.md). The key comes with the room's HOST_OK, so wait for it. */
 export async function screenUrl(host: Page): Promise<string> {
   const link = host.getByTestId("screen-link");
+  // Once the game has started the link lives in ⚙ 更多 (the lobby's 開始遊戲 is gone by then).
+  const inDrawer = !(await host.getByRole("button", { name: /開始遊戲/ }).isVisible());
+  if (inDrawer) await host.getByRole("button", { name: "⚙ 更多" }).click();
   await expect(link).toHaveAttribute("href", /\/screen#s=./);
-  return (await link.getAttribute("href"))!;
+  const href = (await link.getAttribute("href"))!;
+  if (inDrawer) await host.getByTestId("more-drawer").getByRole("button", { name: "關閉" }).first().click();
+  return href;
 }
 
 /** 開始遊戲 without the how-to-play intro, the way every test but the intro's own starts a game

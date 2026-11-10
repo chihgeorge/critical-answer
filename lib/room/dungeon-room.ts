@@ -2869,6 +2869,7 @@ export class DungeonRoom {
         ...(choice ? { choice } : {}),
         ...(sorted ? { sorted } : {}),
         ...(fieldMarks ? { fields: fieldMarks } : {}),
+        scored: { teamId, points: outcome.reward },
         ...(dish ? { dish: { ...dish, points: outcome.reward, ...chefOf(outcome), monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };
     }
