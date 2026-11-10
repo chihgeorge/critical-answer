@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, skipInitiative, rollCheck } from "./answer";
+import { textOnlyBank, skipInitiative, rollCheck, screenUrl } from "./answer";
 
 // 每題作答倒數 (docs/designs/answer-countdown.md): the host picks the seconds in the lobby, the big screen, the turn's
 // phone and the host page count down, and sending the answer stops it. Expiry and the rules are in lib/room/answer-clock.test.ts.
@@ -14,7 +14,7 @@ test("the host's 30 秒 shows on the TV, the phone and the host page, and sendin
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("倒數隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();

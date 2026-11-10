@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3 } from "./answer";
+import { answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl } from "./answer";
 import { TITLE } from "../lib/monster-catalog";
 
 async function hostRoom(browser: Browser) {
@@ -46,7 +46,7 @@ test("the host ends the game early from the drawer", async ({ browser }) => {
   const { host, code } = await hostRoom(browser);
   await phone(browser, code, "甲隊");
   const screen = await (await browser.newContext()).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
 
   await startGame(host);
   await answerCorrectly(host);
@@ -65,7 +65,7 @@ test("the host takes everyone back to the lobby and starts another game", async 
   const { host, code } = await hostRoom(browser);
   const team = await phone(browser, code, "甲隊");
   const screen = await (await browser.newContext()).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
 
   await startGame(host);
   await answerCorrectly(host);
@@ -91,7 +91,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
   const { host, code } = await hostRoom(browser);
   const team = await phone(browser, code, "甲隊");
   const screen = await (await browser.newContext()).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
 
   const intro = host.getByRole("checkbox", { name: "開始前播放玩法說明" });
   await expect(intro).toBeChecked();

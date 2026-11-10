@@ -1,7 +1,7 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
 import { revealMarks } from "../lib/podium";
 import type { PodiumReveal } from "../lib/protocol";
-import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion } from "./answer";
+import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl } from "./answer";
 import { stubSpeechSynthesis, ttsCalls } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
@@ -73,11 +73,10 @@ test("screen TTS toggle: renders, persists the preference, and unlocks audio on 
   await page.goto("/");
   await page.getByRole("button", { name: /主持遊戲/ }).click();
   await page.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
-  const code = page.url().match(/\/room\/([A-Z]{4})\//)![1];
 
   const screen = await page.context().newPage();
   await stubSpeechSynthesis(screen);
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(page));
 
   const toggle = screen.getByRole("button", { name: /語音/ });
   await expect(toggle).toBeVisible();
@@ -113,7 +112,7 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesis(screen);
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
 
   // onConnect resends the room's current STATE — no NARRATION exists yet this early, so no
@@ -132,11 +131,11 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
 });
 
 test("screen TTS: turning the toggle off cancels any speech in progress", async ({ browser }) => {
-  const { host, code } = await twoTeamGame(browser);
+  const { host } = await twoTeamGame(browser);
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesis(screen);
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
 
   const toggle = screen.getByRole("button", { name: /語音/ });
@@ -151,7 +150,7 @@ test("screen TTS: turning the toggle off cancels any speech in progress", async 
 });
 
 test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ browser }) => {
-  const { host, code } = await twoTeamGame(browser);
+  const { host } = await twoTeamGame(browser);
 
   const screenCtx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   const screen = await screenCtx.newPage();
@@ -161,7 +160,7 @@ test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ brows
     sockets.push(ws);
     ws.connectToServer();
   });
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
 
   await screen.getByRole("button", { name: /語音/ }).click();
@@ -178,7 +177,7 @@ test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ brows
 
 test("screen TTS: a host correction is spoken, both of the line replayed at connect and of a live line", async ({ browser }) => {
   test.setTimeout(60_000); // two scenarios in one test
-  const { host, code } = await twoTeamGame(browser);
+  const { host } = await twoTeamGame(browser);
 
   // Judge the question with NO /screen watching yet — the narration becomes the room's
   // lastNarration, sitting there for onConnect to replay to whoever connects next.
@@ -189,7 +188,7 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
   // correctly not spoken (it's a replay, not a live event).
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesis(screen);
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the reveal's ribbon names who eats (cooking I6)
   await screen.getByRole("button", { name: /語音/ }).click();
   expect(await ttsCalls(screen)).toEqual([""]); // only the unlock utterance — the replay was NOT spoken
@@ -263,11 +262,11 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
 });
 
 test("screen TTS: narration that arrives before the voice list has loaded is spoken once it loads, not lost", async ({ browser }) => {
-  const { host, code } = await twoTeamGame(browser);
+  const { host } = await twoTeamGame(browser);
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesisLateVoices(screen);
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
   await screen.getByRole("button", { name: /語音/ }).click();
 
@@ -291,7 +290,7 @@ test("screen TTS: a browser with no Web Speech API renders no toggle at all", as
 
   const screen = await page.context().newPage();
   await stubNoSpeechSynthesisApi(screen);
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(page));
   await expect(screen.getByText(code)).toBeVisible(); // page rendered fine otherwise
   await expect(screen.getByRole("button", { name: /語音/ })).toHaveCount(0);
 });
@@ -309,7 +308,6 @@ test("screen TTS: blocked localStorage (private browsing) doesn't break the togg
   await page.goto("/");
   await page.getByRole("button", { name: /主持遊戲/ }).click();
   await page.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
-  const code = page.url().match(/\/room\/([A-Z]{4})\//)![1];
 
   const screen = await page.context().newPage();
   await stubSpeechSynthesis(screen);
@@ -321,7 +319,7 @@ test("screen TTS: blocked localStorage (private browsing) doesn't break the togg
       },
     });
   });
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(page));
 
   const toggle = screen.getByRole("button", { name: /語音/ });
   await expect(toggle).toBeVisible();
@@ -394,7 +392,7 @@ test("screen TTS: the how-to-play intro speaks each page's owl line once", async
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesis(screen);
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   await screen.getByRole("button", { name: /語音/ }).click();
   expect(await ttsCalls(screen)).toEqual([""]);
 

@@ -133,7 +133,7 @@ const IDLE_MS = 2 * 60 * 60 * 1000;
 export const EXPIRE_MS = 24 * 60 * 60 * 1000;
 /** Sockets per room: players, screens and the host, with room to spare. Stops one client opening thousands. */
 const MAX_CONNECTIONS = 60;
-/** A full room makes space by closing its oldest spare socket; this many announced screens are never spare. */
+/** A full room makes space by closing its oldest spare socket; this many keyed screens are never spare. */
 const KEPT_SCREENS = 2;
 /** With no boss to cook, the podium reveal starts this long after the game ends, so the last line is read first. */
 const EPILOGUE_DELAY_MS = 4000;
@@ -288,12 +288,11 @@ export class DungeonRoom {
   private handoffWrong = 0;
   /** Live connections we accepted, for the per-room cap. */
   private conns = new Map<string, Conn>();
-  /** Connections that sent SCREEN_HELLO, oldest first: only they may send SCREEN_* messages. */
-  private screenConns = new Set<string>();
   /** What a big screen sends to be given the question videos (screen-video-key.md): in the big screen link on the host
    * page, so a phone that opens /screen by the room code gets no video id to look up. Saved; never logged. */
   private screenKey = crypto.randomUUID();
-  /** The connections whose SCREEN_HELLO carried the screen key. */
+  /** The connections whose SCREEN_HELLO carried the screen key, oldest first: only they are sent SCREEN_VIDEO, may
+   * send the SCREEN_* reports, and are kept when the room is full (screen-video-key.md). */
   private keyedScreens = new Set<string>();
   /** Sockets the room closed or replaced: whatever they still send is ignored. */
   private gone = new WeakSet<Conn>();
@@ -1371,7 +1370,6 @@ export class DungeonRoom {
     this.hostToken = "";
     this.hostConns.clear();
     this.connTeam.clear();
-    this.screenConns.clear();
     // The next host of this code gets a new link: the old one's big screen link stops giving videos.
     this.screenKey = crypto.randomUUID();
     this.keyedScreens.clear();
@@ -1463,12 +1461,12 @@ export class DungeonRoom {
   }
 
   /**
-   * Room full: close the oldest socket that is not a host, not one of the first KEPT_SCREENS screens, and not a team's
-   * only connection — an unannounced socket, a later screen, or a team's extra one. So 60 junk sockets cannot keep the
+   * Room full: close the oldest socket that is not a host, not one of the first KEPT_SCREENS keyed screens, and not a team's
+   * only connection — a socket with no screen key, a later screen, or a team's extra one. So 60 junk sockets cannot keep the
    * host, the TV or a reconnecting phone out. Returns false when every socket is one of those.
    */
   private closeSpareConn(): boolean {
-    const kept = new Set([...this.screenConns].slice(0, KEPT_SCREENS));
+    const kept = new Set([...this.keyedScreens].slice(0, KEPT_SCREENS));
     const perTeam = new Map<string, number>();
     for (const t of this.connTeam.values()) perTeam.set(t, (perTeam.get(t) ?? 0) + 1);
     for (const c of this.conns.values()) {
@@ -1489,7 +1487,6 @@ export class DungeonRoom {
     if (live && live !== conn) return;
     this.conns.delete(conn.id);
     this.hostConns.delete(conn.id);
-    this.screenConns.delete(conn.id);
     this.keyedScreens.delete(conn.id);
     const teamId = this.connTeam.get(conn.id);
     this.connTeam.delete(conn.id);
@@ -1510,9 +1507,10 @@ export class DungeonRoom {
     }
   }
 
-  /** Sent SCREEN_HELLO, and is not also a team's phone or a host page. */
+  /** Sent SCREEN_HELLO with the room's screen key, and is not also a team's phone or a host page. A socket with no
+   * key is a viewer: the room code is on the TV, so anyone can open /screen. */
   private isScreen(conn: Conn): boolean {
-    return this.screenConns.has(conn.id) && !this.connTeam.has(conn.id) && !this.hostConns.has(conn.id);
+    return this.keyedScreens.has(conn.id) && !this.connTeam.has(conn.id) && !this.hostConns.has(conn.id);
   }
 
   private isHost(conn: Conn): boolean {
@@ -1582,8 +1580,8 @@ export class DungeonRoom {
           break;
         case "SCREEN_HELLO": {
           if (!this.conns.has(sender.id)) break;
-          this.screenConns.add(sender.id);
-          // No key, or a wrong one (a link from before the room was reset): the screen works, without videos.
+          // No key, or a wrong one (a link from before the room was reset): the screen shows the game, plays no video,
+          // and its SCREEN_* reports are ignored.
           const keyed = msg.key !== undefined && tokensEqual(this.screenKey, msg.key);
           if (keyed) this.keyedScreens.add(sender.id);
           else this.keyedScreens.delete(sender.id);
@@ -1593,8 +1591,8 @@ export class DungeonRoom {
           break;
         }
         case "SCREEN_NARRATION_PROGRESS":
-          // Only from a /screen page: a player cannot lock the host's edits from their own phone (D3), nor from a
-          // second socket that never joined a team.
+          // Only from a big screen with the screen key: a player cannot lock the host's edits from their own phone
+          // (D3), nor from a second socket that opened /screen by the room code.
           if (!this.isScreen(sender)) break;
           this.handleNarrationProgress(msg.eventId, msg.rev, msg.done);
           break;

@@ -16,7 +16,7 @@ export async function rollCheck(team: Page) {
 }
 
 /** The big screen link on the host page. It carries the room's screen key: only a screen opened by it is sent the
- * question videos (docs/designs/screen-video-key.md). The key comes with the room's HOST_OK, so wait for it. */
+ * question videos and has its reports taken by the room (docs/designs/screen-video-key.md). The key comes with the room's HOST_OK, so wait for it. */
 export async function screenUrl(host: Page): Promise<string> {
   const link = host.getByTestId("screen-link");
   await expect(link).toHaveAttribute("href", /\/screen#s=./);

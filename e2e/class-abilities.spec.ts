@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Browser, type Page } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, startGame } from "./answer";
+import { restoreRoom0AfterEach, revealLock, startGame, screenUrl } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 restoreRoom0AfterEach();
@@ -22,7 +22,7 @@ async function start(browser: Browser, classLabel: string): Promise<{ host: Page
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent(`${classLabel}隊`)}`);
   await team.getByRole("button", { name: new RegExp(classLabel) }).click();

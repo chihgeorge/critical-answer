@@ -276,7 +276,7 @@ describe("buzzer boss phase in the room", () => {
     const g = buzzerGame();
     const screen = makeConn("screen");
     g.room.onConnect(screen);
-    send(g.room, screen, { type: "SCREEN_HELLO" });
+    send(g.room, screen, { type: "SCREEN_HELLO", key: (g.room as unknown as { screenKey: string }).screenKey });
     send(g.room, g.phones[0], { type: "SCREEN_CLIP_ERROR", questionId: "b-a" });
     expect(g.state().clipError).toBeUndefined();
     send(g.room, screen, { type: "SCREEN_CLIP_ERROR", questionId: "b-a" });
@@ -459,17 +459,31 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { questionId: "b-a", open: true, out: [] } } });
   });
 
-  it("SCREEN_CLIP_ERROR is taken from any socket that sent SCREEN_HELLO and joined no team (accepted risk, retro P2-3)", () => {
+  // Value: protects=a player cannot raise the host's 「影片無法播放」 warning from a socket that only knows the room code
+  // (screen-video-key.md); fails_when=the room takes SCREEN_CLIP_ERROR after a SCREEN_HELLO with no key or a wrong one,
+  // or from a team's phone that somehow has the key.
+  it("SCREEN_CLIP_ERROR is taken only from a socket whose SCREEN_HELLO carried the screen key, and never from a team's phone", () => {
     const g = buzzerGame();
+    const key = (g.room as unknown as { screenKey: string }).screenKey;
     const rogue = makeConn("rogue");
     g.room.onConnect(rogue);
-    send(g.room, rogue, { type: "SCREEN_HELLO" });
+    for (const hello of [{}, { key: "" }, { key: "not-the-key" }, { key: key.slice(0, -1) }]) {
+      send(g.room, rogue, { type: "SCREEN_HELLO", ...hello });
+      send(g.room, rogue, { type: "SCREEN_CLIP_ERROR", questionId: "b-a" });
+      expect(g.state().clipError).toBeUndefined();
+    }
+    // A team's phone is never a screen, even with the key.
+    send(g.room, g.phones[0], { type: "SCREEN_HELLO", key });
+    send(g.room, g.phones[0], { type: "SCREEN_CLIP_ERROR", questionId: "b-a" });
+    expect(g.state().clipError).toBeUndefined();
+    send(g.room, rogue, { type: "SCREEN_HELLO", key });
     send(g.room, rogue, { type: "SCREEN_CLIP_ERROR", questionId: "b-a" });
     expect(g.state().clipError).toBe(true);
-    // A team's phone is never a screen, even after SCREEN_HELLO.
+    // A later hello without the key takes the right away again.
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
-    send(g.room, g.phones[0], { type: "SCREEN_HELLO" });
-    send(g.room, g.phones[0], { type: "SCREEN_CLIP_ERROR", questionId: "b-a" });
+    expect(g.state().clipError).toBeUndefined();
+    send(g.room, rogue, { type: "SCREEN_HELLO" });
+    send(g.room, rogue, { type: "SCREEN_CLIP_ERROR", questionId: "b-a" });
     expect(g.state().clipError).toBeUndefined();
   });
 
