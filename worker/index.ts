@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { Server, routePartykitRequest, type Connection, type WSMessage } from "partyserver";
 import { entryGate } from "../lib/gate";
 import { positiveMs } from "../lib/room/positive-ms";
-import { RateLimiter } from "../lib/room/rate-limit";
+import { oversized, RateLimiter } from "../lib/room/rate-limit";
 import { DungeonRoom, EXPIRE_MS, fixedDie } from "../lib/room/dungeon-room";
 import { BankStore, IMAGE_CLEANUP_MARGIN_MS, type BankConflict, type VersionedBank } from "../lib/bank-store";
 import { bankOrFallback, handleBankApi, handleGameLogsApi } from "../lib/bank-api";
@@ -186,8 +186,9 @@ export class Room extends Server<Env> {
   }
 
   onMessage(conn: Connection, message: WSMessage) {
-    // The protocol is JSON text; a binary frame is not a message we understand.
-    if (typeof message === "string" && this.limiter.allow(conn)) this.game.onMessage(message, conn);
+    // The protocol is JSON text; a binary frame is not a message we understand. An oversized one still spends its
+    // sender's rate budget, and is dropped before the room parses it.
+    if (typeof message === "string" && this.limiter.allow(conn) && !oversized(message)) this.game.onMessage(message, conn);
   }
 
   onClose(conn: Connection) {

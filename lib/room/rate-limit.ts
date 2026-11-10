@@ -28,3 +28,15 @@ export class RateLimiter {
     return true;
   }
 }
+
+/**
+ * The largest message a socket may send, in UTF-8 bytes. The biggest real one is TEAM_SUBMIT_TEXT with three full
+ * fields, about 2.5 KB (lib/protocol.ts caps every string). A bigger message is dropped before JSON.parse, like one
+ * over the rate budget: not answered, no close.
+ */
+export const MAX_MESSAGE_BYTES = 4096;
+
+/** True: drop the message. A string longer than the cap in UTF-16 units is over it in bytes too, so it is never encoded. */
+export function oversized(message: string): boolean {
+  return message.length > MAX_MESSAGE_BYTES || new TextEncoder().encode(message).byteLength > MAX_MESSAGE_BYTES;
+}
