@@ -20,8 +20,8 @@ concurrency:
 
 jobs:
   static:
-    # Pinned: ubuntu-latest moves to Ubuntu 26 on 2026-10-19; try 26 deliberately (TODOS.md), not by surprise.
-    runs-on: ubuntu-24.04
+    # Pinned, not ubuntu-latest, so an image change is a deliberate PR (moved 24.04 -> 26.04 on 2026-11-10).
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -52,7 +52,7 @@ jobs:
 
   e2e:
     # Three shards, each with its own wrangler and Next servers, so the shared question bank stays per shard.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -79,7 +79,7 @@ jobs:
   check:
     if: always()
     needs: [static, e2e]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - run: test "${{ needs.static.result }}" = success && test "${{ needs.e2e.result }}" = success

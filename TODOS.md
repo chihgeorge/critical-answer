@@ -22,7 +22,6 @@
 - [活動後用對局紀錄對一次職業勝率](#活動後用對局紀錄對一次職業勝率) — S，活動後
 - [題庫讀不懂期間的小問題](#題庫讀不懂期間的小問題) — S
 - [OpenRouter 一鍵登入拿 key，手機主持人不用複製貼上](#openrouter-一鍵登入拿-key手機主持人不用複製貼上) — M
-- [CI 在 Ubuntu 26 上試跑一次，通過再換掉固定的 ubuntu-24.04](#ci-在-ubuntu-26-上試跑一次通過再換掉固定的-ubuntu-2404) — S
 - [手機答題模式（選擇題 + 自動判定）](#手機答題模式選擇題--自動判定) — L（人工約 1 週 / CC 約半天）
 - [手機答題的剩餘小風險（/review 2026-10-25）](#手機答題的剩餘小風險review-2026-10-25) — 未註明
 - [手機顯示題目的剩餘小風險（/ship 2026-10-29）](#手機顯示題目的剩餘小風險ship-2026-10-29) — 未註明
@@ -258,26 +257,6 @@
 
 **Notes:**
 - Context 補充：spec #102 的 D11 決定先只做 Anthropic 複製貼上。`AiProvider` 介面已經按 provider 分開（`checkKey`、`createNarrator`），加一個 provider 不用動房間邏輯；要新增 OpenRouter 的 narrator（OpenAI 相容的 chat API）和 PKCE 的回呼頁。
-
----
-
-## CI 在 Ubuntu 26 上試跑一次，通過再換掉固定的 ubuntu-24.04
-
-**What:** `.github/workflows/ci.yml` 目前把 `runs-on` 固定在 `ubuntu-24.04`。找一個 PR 把它改成 `ubuntu-26.04`（或 `ubuntu-latest`）跑一次完整 CI，全過就換，不過就記下壞在哪。
-
-**Why:** GitHub 從 2026-10-19 起把 `ubuntu-latest` 換成 Ubuntu 26。先固定版本是為了不在某天突然紅燈；但不能永遠停在 24.04，等它停止支援時會被迫一次升。
-
-**Context:**
-- `docs/designs/maintenance-2026-10.md`
-
-**Effort/Priority:** S / P3
-
-**Depends on:** GitHub 的 Ubuntu 26 runner 正式可用。
-
-**Notes:**
-- Pros：主動、可控地升級；壞的話只影響那一個試跑 PR。
-- Cons：最可能出問題的是 `npx playwright install --with-deps chromium` 裝的系統套件，可能要跟著調整。
-- Context 補充：v0.9.14.3 固定版本時加的（`docs/designs/maintenance-2026-10.md` B1）。只要改 `runs-on` 那一行；CI 其他步驟不用動。
 
 ---
 
@@ -650,6 +629,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## CI 換到 Ubuntu 26（ci-ubuntu-26）
+
+- **CI 的 runner 從 `ubuntu-24.04` 換成 `ubuntu-26.04`** · 版號合併時定 · 2026-11-10 在 PR 上跑完整 CI（`static`、三個 e2e 分片、`check`）全過才換；`release.yml` 和 `dependabot-auto-merge.yml` 也一起換。仍然固定版本，不用 `ubuntu-latest`。
 
 ## 逃跑・換房（flee-switch-room）
 
