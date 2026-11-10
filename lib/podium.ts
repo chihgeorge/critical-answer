@@ -81,6 +81,8 @@ export interface TitleTeam {
   natural20s?: number;
   turns?: number;
   bossAt?: { turns: number; earned?: true };
+  /** The fortunes this team drew; a blessing or curse there counts for every team it hit (fortune-teller.md E9). */
+  fortunes?: { effect: string; matchIds: string[] }[];
 }
 
 /** A data title (docs/designs/podium-titles.md): every team tied on the best value gets it, in team order (eng 10). */
@@ -93,14 +95,17 @@ export interface Award {
 }
 
 const outcomes = (t: TitleTeam, ...kinds: EventOutcome[]) => (t.events ?? []).filter((e) => kinds.includes(e)).length;
+/** How many fortunes, drawn by any team, gave this team `effect`. */
+const fortuneHits = (t: TitleTeam, teams: TitleTeam[], effect: string) =>
+  teams.reduce((n, d) => n + (d.fortunes ?? []).filter((f) => f.effect === effect && f.matchIds.includes(t.id)).length, 0);
 
 /** In award order, 🎲 last. `value` null: the team is not in the running (a count of 0). `fewest`: least wins. */
-const TITLES: { id: string; icon: string; title: string; value: (t: TitleTeam) => number | null; reason: (n: number) => string; fewest?: true }[] = [
+const TITLES: { id: string; icon: string; title: string; value: (t: TitleTeam, teams: TitleTeam[]) => number | null; reason: (n: number) => string; fewest?: true }[] = [
   { id: "explorer", icon: "🗺️", title: "探險家", value: (t) => t.events?.length || null, reason: (n) => `開了 ${n} 間神秘房` },
-  // Only an event room's blessing: 大吉 (great) gives satiety, not a blessing, and the last sprint's is no event room.
-  { id: "blessing", icon: "✨", title: "女神的寵兒", value: (t) => outcomes(t, "blessing") || null, reason: (n) => `被祝福 ${n} 次` },
-  // The fortune teller's 凶 (bad) curses too (openEvent).
-  { id: "curse", icon: "💀", title: "詛咒磁鐵", value: (t) => outcomes(t, "curse", "bad") || null, reason: (n) => `被詛咒 ${n} 次` },
+  // An event room's blessing, the statue's or a fortune's: 大吉 (great) gives satiety, and the last sprint's is no event room.
+  { id: "blessing", icon: "✨", title: "女神的寵兒", value: (t, teams) => outcomes(t, "blessing") + fortuneHits(t, teams, "blessing") || null, reason: (n) => `被祝福 ${n} 次` },
+  // The old fortune teller's 凶 (bad) cursed too (saves from before the 3-scene deck), and so does a fortune's 詛咒.
+  { id: "curse", icon: "💀", title: "詛咒磁鐵", value: (t, teams) => outcomes(t, "curse", "bad") + fortuneHits(t, teams, "curse") || null, reason: (n) => `被詛咒 ${n} 次` },
   { id: "rotten", icon: "🤢", title: "腐肉品嚐家", value: (t) => outcomes(t, "rotten") || null, reason: (n) => `吃到 ${n} 次腐肉` },
   { id: "flees", icon: "🏃", title: "逃跑大師", value: (t) => t.flees || null, reason: (n) => `逃跑 ${n} 次` },
   // 🧪 lucky potions drunk (docs/designs/lucky-potion.md E8).
@@ -115,7 +120,7 @@ const TITLES: { id: string; icon: string; title: string; value: (t: TitleTeam) =
 export function awardTitles(teams: TitleTeam[]): Award[] {
   return TITLES.flatMap(({ id, icon, title, value, reason, fewest }) => {
     const held = teams.flatMap((t) => {
-      const v = value(t);
+      const v = value(t, teams);
       return v === null ? [] : [{ id: t.id, v }];
     });
     if (!held.length) return [];

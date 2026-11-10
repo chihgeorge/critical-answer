@@ -10,7 +10,7 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
-import { ABILITY_USES, CHEF_BONUS_PERCENT, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, checkKey, type ClassId } from "@/lib/game-state";
+import { ABILITY_USES, CHEF_BONUS_PERCENT, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { sprintSeen } from "@/lib/transitions";
@@ -24,7 +24,7 @@ import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { SORT_ITEMS, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
-import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, FORK_DOOR_LABEL, FORK_SIDE_LABEL } from "@/lib/event-text";
+import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
 const CLASS_HINTS: Record<ClassId, string> = {
@@ -905,7 +905,8 @@ export default function PlayPage() {
   const revealed = game?.reveal ?? null;
   // An event room's result holds the room too (event-rooms.md D3): the next team's question waits for 下一題.
   const eventRevealed = game?.eventReveal ?? null;
-  const held = !!revealed || !!eventRevealed;
+  // A fortune holds it as well, from the crystal ball to the card (fortune-teller.md).
+  const held = !!revealed || !!eventRevealed || !!game?.fortune;
   // The dish line waits for the big screen's cooking (cooking I10); a phone opened after it shows it at once.
   const cookStep = useCookStep(revealed?.dish && revealed.served ? `${game!.eventId}` : null);
   const roster = game?.view.teams ?? lobby ?? [];
@@ -1155,7 +1156,9 @@ export default function PlayPage() {
         )}
 
         {/* 叉路 (branch-fork.md): a door opening first, then a ❓ outcome, then the doors, so a beat never shows live buttons. */}
-        {game && !finished && !intro && (game.forkBeat || (!eventRevealed && !revealed && !game.phaseCard && !game.phaseCardDue && turn?.team?.fork === "choosing")) ? (
+        {game && !finished && !intro && game.fortune ? (
+          <FortunePanel game={game} teamId={teamId} send={send} />
+        ) : game && !finished && !intro && (game.forkBeat || (!eventRevealed && !revealed && !game.phaseCard && !game.phaseCardDue && turn?.team?.fork === "choosing")) ? (
           <ForkPanel game={game} teamId={teamId} send={send} />
         ) : game && !finished && !intro && eventRevealed ? (
           <EventPanel reveal={eventRevealed} game={game} teamId={teamId} />
@@ -1302,6 +1305,70 @@ function EventPanel({ reveal, game, teamId }: { reveal: EventReveal; game: State
       </Panel>
       <Panel className="px-3 py-[10px] text-[16px]">看大螢幕 📺　主持人按「下一題」後，我們{reveal.entersBoss ? "走進首領房" : "走到下一間房"}</Panel>
     </div>
+  );
+}
+
+/** 占卜師 on a phone (fortune-teller.md): the drawing team gets the condition, the clock and a button an effect, locked
+ * under the crystal ball and once pressed; every other phone is told to watch the big screen. After the reveal a team the
+ * condition hit reads what it got. */
+function FortunePanel({ game, teamId, send }: { game: StateMessage; teamId: string; send: (msg: ClientMessage) => void }) {
+  const fortune = game.fortune!;
+  const team = game.view.teams.find((t) => t.id === fortune.teamId);
+  const [pressed, setPressed] = useState<number | null>(null);
+  useEffect(() => {
+    if (pressed === null) return;
+    const t = setTimeout(() => setPressed(null), 5000);
+    return () => clearTimeout(t);
+  }, [pressed]);
+  if (!team) return null;
+  if (fortune.step === "card" && fortune.effect) {
+    const fx = FORTUNE_EFFECT_TEXT[fortune.effect];
+    const hit = !!fortune.matchIds?.includes(teamId);
+    return (
+      <Panel className="flex flex-col items-center gap-1 px-3 py-[12px] text-center text-[18px]">
+        <LabelChip>🔮 占卜師</LabelChip>
+        <span data-testid="phone-fortune-result">{hit ? `你們中了：${fx.icon} ${fx.name}` : `${fx.icon} ${fx.name}，你們沒中`}</span>
+        {hit && <span className="text-[15px]">{fx.line}</span>}
+        <span className="text-[15px]">看大螢幕 📺　主持人按「下一題」後繼續</span>
+      </Panel>
+    );
+  }
+  if (team.id !== teamId || fortune.step === "beat") {
+    return (
+      <Panel className="px-3 py-[10px] text-[17px]">
+        <span data-testid="phone-fortune-watch">{fortune.step === "beat" ? "命運揭曉中……看大螢幕 📺" : `${team.name} 正在決定命運… 是不是你？看大螢幕 📺`}</span>
+      </Panel>
+    );
+  }
+  const locked = fortune.step !== "choose" || pressed === game.eventId;
+  return (
+    <>
+      <Panel className="flex flex-col gap-1 px-3 py-[10px] text-[18px]">
+        <div className="flex items-center justify-between">
+          <span>🔮 占卜師：{FORTUNE_CONDITION_TEXT[fortune.condition].text}</span>
+          {typeof game.fortuneLeft === "number" && fortune.step === "choose" ? <AnswerClock key={game.fortuneLeft} ms={game.fortuneLeft} variant="chip" /> : null}
+        </div>
+        <span className="text-[15px]">可能包括你自己！挑一個命運；時間到會隨機選一個</span>
+      </Panel>
+      <div data-testid="phone-fortune" className="sticky bottom-2 z-30 grid grid-cols-2 gap-2">
+        {FORTUNE_EFFECTS.map((e) => (
+          <PixelButton
+            key={e}
+            data-testid={`phone-fortune-${e}`}
+            disabled={locked}
+            variant={FORTUNE_EFFECT_TEXT[e].tone === "bad" ? "flee" : FORTUNE_EFFECT_TEXT[e].tone === "good" ? "ok" : "retry"}
+            onClick={() => {
+              setPressed(game.eventId);
+              send({ type: "TEAM_CHOOSE_FORTUNE", effect: e, eventId: game.eventId });
+            }}
+            className="!m-0 flex min-h-[64px] flex-col items-center justify-center text-[18px]"
+          >
+            <span>{FORTUNE_EFFECT_TEXT[e].icon} {FORTUNE_EFFECT_TEXT[e].name}</span>
+            <span className="text-[12px]">{FORTUNE_EFFECT_TEXT[e].line}</span>
+          </PixelButton>
+        ))}
+      </div>
+    </>
   );
 }
 

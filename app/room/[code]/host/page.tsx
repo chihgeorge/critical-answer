@@ -10,7 +10,7 @@ import { UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notic
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import { HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, serveSecondsLeft, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
+import { FORTUNE_HOST_GRACE_MS, HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, serveSecondsLeft, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -31,7 +31,7 @@ import { FieldJudge } from "@/components/field-judge";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
-import { EVENT_OUTCOME_TITLE, FORK_DOOR_LABEL, FORK_SIDE_LABEL } from "@/lib/event-text";
+import { EVENT_OUTCOME_TITLE, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 import { hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
 
 /** A cleric's wait, and the prayed attempt after it, ignore keys and clicks this long after they appear, so a
@@ -331,7 +331,8 @@ export default function HostPage() {
   // Both stay disabled for a beat after every swap.
   // The boss's phase card is a pause like a reveal: 下一題 closes it (docs/designs/boss-phases.md D3).
   // A ❓ 神秘房's result is one more (event-rooms.md D3). A door opening (branch-fork.md) is not: 下一題 waits it out.
-  const revealUp = !!game?.reveal || !!game?.phaseCard || !!game?.eventReveal;
+  // So is 占卜師's effect card (fortune-teller.md); the steps before it wait like a door opening.
+  const revealUp = !!game?.reveal || !!game?.phaseCard || !!game?.eventReveal || game?.fortune?.step === "card";
   // In the boss room this choice also brings a new question (the boss rotates), so it is named for that.
   const retryLabel = turn?.inBoss ? "下輪換題" : "下輪再答";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): teams buzz in, the host judges the one that buzzed first. */
@@ -345,7 +346,7 @@ export default function HostPage() {
   const servedUp = !!game?.reveal?.served;
   // A manual room's hold (manual-pacing.md) is one more: ▶ 下一步 takes the slot, and each new hold arms it again.
   const hold = game?.hold;
-  const pauseKey = hold ? `hold-${hold.id}` : game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.forkBeat ? `fork-${game.eventId}` : game?.eventReveal ? `event-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : buzz?.teamId ? `buzz-${buzz.teamId}-${game!.eventId}` : "";
+  const pauseKey = hold ? `hold-${hold.id}` : game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.fortune ? `fortune-${game.eventId}-${game.fortune.step}` : game?.forkBeat ? `fork-${game.eventId}` : game?.eventReveal ? `event-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : buzz?.teamId ? `buzz-${buzz.teamId}-${game!.eventId}` : "";
   const [armedFor, setArmedFor] = useState(pauseKey);
   const swapArmed = armedFor === pauseKey;
   const [serveLeft, setServeLeft] = useState({ key: "", left: 0 });
@@ -424,7 +425,17 @@ export default function HostPage() {
   // An answer or a card on show keeps its 下一題: the hold's ▶ 下一步 takes over once it is gone. A finished game has
   // no 下一題 (the kill's answer stays up), so the podium's hold always shows.
   const holdUp = !!hold && (!revealUp || game?.phase === "finished");
-  const atFork = !revealUp && !game?.phaseCardDue && (!!game?.forkBeat || turn?.team?.fork === "choosing");
+  const fortune = game?.fortune;
+  const atFortune = !!fortune && !revealUp;
+  // 立即隨機 (fortune-teller.md): the host's way out once the pick is 2 s overdue; the room refuses it any earlier.
+  const [fortuneLate, setFortuneLate] = useState<string | null>(null);
+  const fortuneKey = fortune?.step === "choose" && typeof game?.fortuneLeft === "number" ? `${game.eventId}-${game.fortuneLeft}` : null;
+  useEffect(() => {
+    if (!fortuneKey) return;
+    const t = setTimeout(() => setFortuneLate(fortuneKey), (game?.fortuneLeft ?? 0) + FORTUNE_HOST_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [fortuneKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const atFork = !revealUp && !atFortune && !game?.phaseCardDue && (!!game?.forkBeat || turn?.team?.fork === "choosing");
 
   // Keyboard shortcuts for a host on a laptop (lib/host-keys.ts): each key does exactly what its
   // button does, and only while that button is enabled. A layout effect, so the listener already
@@ -526,7 +537,7 @@ export default function HostPage() {
       <Panel tone="lav" className="px-3 py-2 text-center text-[16px]">
         {/* What is on show is one block (as in the hold panel): it drops to its own line whole when it does not fit. */}
         <div data-testid="host-reveal">
-          大螢幕正在揭曉：<span className="inline-block text-balance">{game.eventReveal ? `❓ 神秘房－${EVENT_OUTCOME_TITLE[game.eventReveal.outcome]}` : game.reveal ? game.reveal.answer : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}</span>
+          大螢幕正在揭曉：<span className="inline-block text-balance">{game.fortune?.effect ? `🔮 占卜師－${FORTUNE_EFFECT_TEXT[game.fortune.effect].icon} ${FORTUNE_EFFECT_TEXT[game.fortune.effect].name}：${game.view.teams.filter((t) => game.fortune!.matchIds?.includes(t.id)).map((t) => t.name).join("、")}` : game.eventReveal ? `❓ 神秘房－${EVENT_OUTCOME_TITLE[game.eventReveal.outcome]}` : game.reveal ? game.reveal.answer : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}</span>
         </div>
       </Panel>
       {/* The answered question's video is up again on the big screen (D17). */}
@@ -994,6 +1005,24 @@ export default function HostPage() {
                 // question until the host moves on — judging waits until then. The boss's phase card
                 // waits the same way (boss-phases.md D3).
                 revealPanel
+              ) : atFortune && fortune ? (
+                <div data-testid="host-fortune">
+                  <Panel tone="lav" className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-center text-[20px]">
+                    {/* The matching teams stay hidden until the card, from the host too (fortune-teller.md R12). */}
+                    <span>🔮 占卜師：{FORTUNE_CONDITION_TEXT[fortune.condition].text}</span>
+                    {fortune.step === "beat" && fortune.effect ? (
+                      <span>{fortune.timeout ? "⏳ 時間到，隨機選了" : "選了"}{FORTUNE_EFFECT_TEXT[fortune.effect].icon} {FORTUNE_EFFECT_TEXT[fortune.effect].name}，大螢幕揭曉中</span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        {fortune.step === "intro" ? "水晶球亮起中…" : `等${game.view.teams.find((t) => t.id === fortune.teamId)?.name ?? ""}挑命運`}
+                        {fortune.step === "choose" && typeof game.fortuneLeft === "number" && <AnswerClock key={game.fortuneLeft} ms={game.fortuneLeft} variant="chip" />}
+                      </span>
+                    )}
+                  </Panel>
+                  {fortune.step === "choose" && fortuneKey && fortuneLate === fortuneKey && (
+                    <PixelButton data-testid="host-fortune-random" disabled={!ready} onClick={() => send({ type: "HOST_FORTUNE_RANDOM", eventId: game.eventId })}>立即隨機</PixelButton>
+                  )}
+                </div>
               ) : atFork ? (
                 <div data-testid="host-fork">
                   <Panel tone="lav" className="flex items-center justify-center gap-2 px-3 py-2 text-center text-[20px]">

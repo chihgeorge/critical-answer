@@ -3,7 +3,7 @@
 // answer text. The room hands it to RoomIO.logGame; worker/index.ts stores it in the bank's Durable
 // Object, and the bank editor downloads them all from GET /api/game-logs (owner key only).
 
-import type { ClassId, EventOutcome, ForkRecord, GameState } from "./game-state";
+import type { ClassId, EventOutcome, ForkRecord, FortuneRecord, GameState } from "./game-state";
 import { awardTitles } from "./podium";
 
 export interface GameLog {
@@ -42,6 +42,9 @@ export interface GameLog {
     events: EventOutcome[];
     /** Every door this team took at a fork, timeouts too (docs/designs/branch-fork.md); ❓ outcomes are in `events`. Empty in older logs. */
     forks: ForkRecord[];
+    /** Every fortune this team drew (docs/designs/fortune-teller.md): condition, value, effect, matching teams (ids), whether
+     * the clock picked and whether it matched itself. Empty in older logs. */
+    fortunes: FortuneRecord[];
     /** ⚔️ 最後衝刺 blessed this team (docs/designs/last-sprint.md E4): kept apart from event blessings. Absent (false) in older logs. */
     sprintBlessed: boolean;
     /** The data titles this team won at the podium (podium-titles.md), by id: never the AI's or the fallback, which
@@ -85,6 +88,7 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
       killedBoss: game.boss.killedByTeamId === t.id,
       events: t.events ?? [],
       forks: t.forks ?? [],
+      fortunes: t.fortunes ?? [],
       sprintBlessed: game.sprint?.teamIds.includes(t.id) ?? false,
       titles: awards.filter((a) => a.teamIds.includes(t.id)).map((a) => a.id),
       potionsGiven: t.potionsGiven ?? 0,

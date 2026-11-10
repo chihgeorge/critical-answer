@@ -67,6 +67,18 @@ describe("awardTitles", () => {
     ]);
   });
 
+  // Value: protects=E9/R9: a fortune's blessing or curse counts for every team it hit, the drawer only if hit;
+  // fails_when=only the drawing team is counted, or another effect counts; no_claim=the screen
+  it("a fortune's blessing or curse counts for every team it hit, drawn by anyone", () => {
+    const awards = awardTitles([
+      team("甲", { events: ["fortune", "curse"], fortunes: [{ effect: "curse", matchIds: ["乙", "丙"] }, { effect: "potion", matchIds: ["甲"] }] }),
+      team("乙", { events: ["fortune"], fortunes: [{ effect: "blessing", matchIds: ["丙"] }] }),
+      team("丙", { events: ["blessing"] }),
+    ]);
+    expect(awards.find((a) => a.id === "blessing")).toMatchObject({ teamIds: ["丙"], reason: "被祝福 2 次" });
+    expect(awards.find((a) => a.id === "curse")).toMatchObject({ teamIds: ["甲", "乙", "丙"], reason: "被詛咒 1 次" });
+  });
+
   it("⚡ goes to the fewest turns, only for a team that answered its way in", () => {
     const awards = awardTitles([
       team("甲", { bossAt: { turns: 5, earned: true } }),

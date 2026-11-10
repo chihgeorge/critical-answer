@@ -155,6 +155,12 @@ export interface Team {
   /** Natural 20s this team rolled: crit dice, warrior rolls, persuasion checks and the kill's 4d20 (podium-reveal.md D5).
    * Absent until the first one, and in a game saved before them. */
   natural20s?: number;
+  /** Natural 1s, counted by every die that counts a natural 20, and the warrior's d20 whatever the question (fortune-teller.md). */
+  natural1s?: number;
+  /** Correct judgments, and wrong ones the team retried (a prayed one too; a flee or a switch is in `flees`), for the
+   * fortune teller's conditions (docs/designs/fortune-teller.md). Absent until the first. */
+  correctAnswers?: number;
+  wrongAnswers?: number;
   /** The thief's Sneak Attack waits for this team's next judgment: a correct one gives ×1.5 its reward
    * and ×2 its boss damage; any judgment uses it up (class-abilities.md D16). */
   sneakArmed?: true;
@@ -186,6 +192,10 @@ export interface Team {
   fork?: Fork;
   /** Every door this team took at a fork, in order, for lib/game-log.ts. Absent until the first. */
   forks?: ForkRecord[];
+  /** Every fortune this team drew (docs/designs/fortune-teller.md), for the podium and lib/game-log.ts. Absent until the first. */
+  fortunes?: FortuneRecord[];
+  /** 💫 暈眩 (fortune-teller.md): this team loses its next turn, or sits out the next buzz question, whichever comes first. */
+  stunned?: true;
   /** A curse or blessing waiting for this team's next correct answer (event-rooms.md D12). */
   boon?: Boon;
   /** Every event outcome this team opened, in order, for lib/game-log.ts. Absent until the first. */
@@ -331,6 +341,10 @@ export interface GameState {
   /** ⚔️ 最後衝刺 (docs/designs/last-sprint.md): set once, when the first team entered the boss room, naming the trailing
    * teams it blessed. Never empty; its presence is the once-per-game guard. Absent in saves from before it. */
   sprint?: { teamIds: string[] };
+  /** 占卜師 (docs/designs/fortune-teller.md): from the ❓ door until the host's 下一題 after the effect card. */
+  fortune?: FortuneState;
+  /** Teams a 💫 stun just skipped, for the room to say once and clear (fortune-teller.md Narration). */
+  stunSkipped?: string[];
 }
 
 export interface LockedOption {
@@ -756,7 +770,8 @@ export function enterNextBossPhase(game: GameState): GameState {
   const pulled = { ...pulledAll, usedQuestionIds: game.usedQuestionIds };
   // The old phase's question leaves play, so its wrong tiles go with it.
   const cleared = dropEliminated(pulled, boss.currentQuestionId);
-  return {
+  // A 💫 stun the phase card held back (landTurn waits while it is pending) takes its turn now; a buzzer phase keeps it.
+  return landTurn({
     ...pulled,
     ...cleared,
     buzz: undefined,
@@ -772,7 +787,7 @@ export function enterNextBossPhase(game: GameState): GameState {
       queuedQuestionId: undefined,
       phasePending: undefined,
     },
-  };
+  });
 }
 
 /** Whether a buzzer phase is being fought now: every team buzzes in, nobody takes turns (boss-buzzer.md). */
@@ -805,7 +820,13 @@ export function buzzIn(game: GameState, teamId: string, questionId: string, open
   if (buzz.teamId) throw new InvalidActionError("buzz_taken");
   if (buzz.out.includes(teamId)) throw new InvalidActionError("buzz_out");
   if (!team.online || !team.inBoss) throw new InvalidActionError("cannot_buzz");
-  return { ...game, buzz: { ...buzz, teamId }, currentTurnIndex: game.turnOrder.indexOf(teamId) };
+  // 💫 sits out this buzz question (R5), unless every online team in the boss room is stunned: then all flags clear.
+  let teams = game.teams;
+  if (team.stunned) {
+    if (!game.teams.every((t) => !t.online || !t.inBoss || t.stunned)) throw new InvalidActionError("stunned");
+    teams = unstun(teams, (t) => !!t.inBoss);
+  }
+  return { ...game, teams, buzz: { ...buzz, teamId }, currentTurnIndex: game.turnOrder.indexOf(teamId) };
 }
 
 /** The buzz once the boss question moved on: none for a new question; the same one (the phase's last unrevealed
@@ -847,7 +868,9 @@ export function skipBuzz(game: GameState): GameState {
   if (!isBuzzPhase(game)) throw new InvalidActionError("not_buzzer_phase");
   if (game.buzz?.questionId === game.boss.currentQuestionId && game.buzz.teamId) throw new InvalidActionError("buzz_taken");
   const rotated = rotateBoss(game.boss, game.revealedQuestionIds);
-  return { ...game, buzz: rotatedBuzz(game, rotated.currentQuestionId), teams: resetBossSelections(game.teams), boss: { ...game.boss, ...rotated } };
+  // A new question ends the stunned teams' sit-out (R5); the same one coming round again does not.
+  const teams = rotated.currentQuestionId !== game.boss.currentQuestionId ? unstun(game.teams, (t) => !!t.inBoss) : game.teams;
+  return { ...game, buzz: rotatedBuzz(game, rotated.currentQuestionId), teams: resetBossSelections(teams), boss: { ...game.boss, ...rotated } };
 }
 
 /** No class ability, check or prayer in a buzzer phase (D6): answers are spoken after a buzz. */
@@ -865,6 +888,8 @@ export function currentTurnTeamId(game: GameState): string | null {
   // So does a team choosing its door: its 15 seconds run on, and it may come back to pick (branch-fork.md).
   const choosing = game.teams.find((t) => t.fork?.phase === "choosing");
   if (choosing) return choosing.id;
+  // And the team picking a fortune's effect, until it lands (fortune-teller.md).
+  if (game.fortune && !game.fortune.effect) return game.fortune.teamId;
   const idx = nextOnlineIndex(game, 0);
   // null: every team is offline, so no one can take a turn.
   return idx === null ? null : game.turnOrder[idx];
@@ -887,7 +912,36 @@ function nextOnlineIndex(game: GameState, from: number): number | null {
  */
 export function advanceTurn(game: GameState): GameState {
   const idx = nextOnlineIndex(game, 1);
-  return idx === null ? game : { ...game, currentTurnIndex: idx };
+  return idx === null ? game : landTurn({ ...game, currentTurnIndex: idx });
+}
+
+/** Every 💫 flag cleared, or only those of teams `which` picks. */
+function unstun(teams: Team[], which: (t: Team) => boolean = () => true): Team[] {
+  return teams.map((t) => (t.stunned && which(t) ? { ...t, stunned: undefined } : t));
+}
+
+/** The turn lands on the first online team at or after currentTurnIndex that is not 💫 stunned (fortune-teller.md G1):
+ * each stunned team passed loses that turn, which counts for `round` and `lastTurnIndex` but adds no `turns`, and its
+ * flag clears. Every online team stunned: all flags clear, nobody is skipped. Never in a buzzer phase or with a boss
+ * phase card pending (R5). */
+function landTurn(game: GameState): GameState {
+  if (isBuzzPhase(game) || game.boss.phasePending) return game;
+  const online = game.teams.filter((t) => t.online);
+  if (!online.some((t) => t.stunned)) return game;
+  if (online.every((t) => t.stunned)) return { ...game, teams: unstun(game.teams) };
+  let g = game;
+  const skipped: string[] = [];
+  for (let idx = nextOnlineIndex(g, 0); idx !== null; idx = nextOnlineIndex(g, 1)) {
+    const id = g.turnOrder[idx];
+    if (!getTeam(g, id).stunned) {
+      g = { ...g, currentTurnIndex: idx };
+      break;
+    }
+    const round = (g.round ?? 1) + (g.lastTurnIndex !== undefined && idx <= g.lastTurnIndex ? 1 : 0);
+    g = { ...g, currentTurnIndex: idx, round, lastTurnIndex: idx, teams: patchTeam(g.teams, id, () => ({ stunned: undefined })) };
+    skipped.push(id);
+  }
+  return skipped.length ? { ...g, stunSkipped: [...(game.stunSkipped ?? []), ...skipped] } : g;
 }
 
 /** 結束冒險: the host ends a game still being played, ranked by the reward each team has now. */
@@ -899,12 +953,15 @@ export function endGame(game: GameState, rng: () => number = Math.random): GameS
 /** Ranks the teams, rolling d20s for ties on the podium, so exactly one team wins (podium-reveal.md D4). */
 function finishGame(game: GameState, rng: () => number): GameState {
   const { ranking, tieRolls } = rankTeams(game.teams, () => rollD20(rng));
-  return { ...game, phase: "finished", winners: ranking.slice(0, 1), ranking, tieRolls };
+  // A fortune still running ends with the game (fortune-teller.md R11).
+  return { ...game, phase: "finished", winners: ranking.slice(0, 1), ranking, tieRolls, fortune: undefined };
 }
 
-/** Adds `n` natural 20s to a team's count (D5). */
-function withNatural20s(t: Team, n: number): Partial<Team> {
-  return n > 0 ? { natural20s: (t.natural20s ?? 0) + n } : {};
+/** Adds the natural 20s (D5) and natural 1s (fortune-teller.md) among `dice` to a team's counts. */
+function withNaturals(t: Team, dice: number[]): Partial<Team> {
+  const twenties = dice.filter((v) => v === 20).length;
+  const ones = dice.filter((v) => v === 1).length;
+  return { ...(twenties ? { natural20s: (t.natural20s ?? 0) + twenties } : {}), ...(ones ? { natural1s: (t.natural1s ?? 0) + ones } : {}) };
 }
 
 /**
@@ -984,7 +1041,7 @@ export function answerQuestion(
     lastTurnIndex: order,
   };
   // The choice resolves the pending wrong lock.
-  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
+  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNaturals(t, correct && critValue !== undefined ? [critValue] : []), ...(correct ? { correctAnswers: (t.correctAnswers ?? 0) + 1 } : fleeChoice === "retry" ? { wrongAnswers: (t.wrongAnswers ?? 0) + 1 } : {}) })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice !== "retry" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -1020,7 +1077,7 @@ export function answerQuestion(
       const hit = sneakPay(baseOf(boss.hitReward)) + critBonus(boss.hitReward);
       const gain = withChef((fields ? Math.round((hit * fields.right) / fields.total) : hit) + (killBonus ?? 0));
       const { reward } = gain;
-      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}), ...withNatural20s(t, kill?.filter((v) => v === 20).length ?? 0) }));
+      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}), ...withNaturals(t, kill ?? []) }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
       const phasePending = bossKilled ? undefined : newHp === 0 ? "cleared" : usedUp(revealedNow) ? "exhausted" : undefined;
@@ -1033,9 +1090,11 @@ export function answerQuestion(
       // picks, or a team's stale index from the old question could line up with a
       // different option on the new one and mislead the host into judging against
       // a pick that team never made for this question (adversarial review finding).
+      // A correct buzz ends the question: the stunned teams' sit-out is over (R5).
+      const settled = buzzing ? unstun(teams, (t) => !!t.inBoss) : teams;
       nextGame = {
         ...game,
-        teams: stay ? teams : resetBossSelections(teams),
+        teams: stay ? settled : resetBossSelections(settled),
         // A correct answer is always revealed (D5) — the current boss question just got right,
         // so it joins the never-redeal set before nextBossQuestionId's own next call sees it.
         revealedQuestionIds: revealedNow,
@@ -1065,16 +1124,20 @@ export function answerQuestion(
       // A wrong buzz shuts this team out of the question (D4); once every online team is out, they all buzz on the same
       // question again (boss-music-buzzer.md M1): only the host's 換下一題 moves it on.
       const out = buzzing ? [...game.buzz!.out, teamId] : [];
-      const allOut = buzzing && game.teams.every((t) => !t.online || !t.inBoss || out.includes(t.id));
+      // A stunned team sits the question out, so it counts as out (R5).
+      const allOut = buzzing && game.teams.every((t) => !t.online || !t.inBoss || out.includes(t.id) || t.stunned);
       const rotated = !phasePending && (fleeChoice !== "retry" || shownWrong) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
       const rotatedBossQuestionId = rotated.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a rotation changes
       // the question for every team in boss phase, so every one of their picks resets —
       // unless it stayed on the same question (a one-question boss bank, or no option shown), where picks still apply.
+      const moved = rotatedBossQuestionId !== boss.currentQuestionId;
+      // A new question or the phase's end is the end of this buzz question for the stunned teams (R5).
+      const settled = buzzing && (moved || phasePending) ? unstun(game.teams, (t) => !!t.inBoss) : game.teams;
       nextGame = {
         ...game,
         revealedQuestionIds: revealed,
-        teams: rotatedBossQuestionId !== boss.currentQuestionId ? resetBossSelections(game.teams) : game.teams,
+        teams: moved ? resetBossSelections(settled) : settled,
         boss: { ...boss, ...rotated, ...(phasePending ? { phasePending } : {}) },
         ...(buzzing ? { buzz: { ...game.buzz!, teamId: undefined, out: allOut ? [] : out } } : {}),
       };
@@ -1274,7 +1337,7 @@ export function recordCheck(game: GameState, teamId: string, questionId: string,
   // A mage's hint already showed the first character: the check gives no second copy (R8).
   const hint = passed && value !== 20 && game.mageHints?.[questionId] === undefined ? firstMeaningfulChar(answer) : null;
   const record: CheckRecord = { value, bonus, dc, passed, ...(hint !== null ? { hint } : {}) };
-  const teams = patchTeam(game.teams, teamId, (t) => withNatural20s(t, value === 20 ? 1 : 0));
+  const teams = patchTeam(game.teams, teamId, (t) => withNaturals(t, [value]));
   return { ...game, teams, checks: { ...game.checks, [checkKey(questionId, teamId)]: record } };
 }
 
@@ -1342,8 +1405,9 @@ export function warriorRoll(
   killDice?: number[],
 ): { game: GameState; outcome: AnswerOutcome } {
   assertAbilityTurn(game, teamId, "warrior");
-  // A critable die is counted as the crit die in answerQuestion; any other natural 20 is counted here (D5).
-  const counted = critable ? game : { ...game, teams: patchTeam(game.teams, teamId, (t) => withNatural20s(t, value === 20 ? 1 : 0)) };
+  // A critable die is counted as the crit die in answerQuestion (its 20 rides on a correct answer); any other natural 20,
+  // and every natural 1, is counted here (D5, fortune-teller.md E7).
+  const counted = { ...game, teams: patchTeam(game.teams, teamId, (t) => withNaturals(t, critable ? (value === 1 ? [1] : []) : [value])) };
   return answerQuestion(counted, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined, killDice);
 }
 
@@ -1386,12 +1450,16 @@ export function applySprint(prev: GameState, next: GameState): GameState {
 
 /** The chance that a correct answer brings a team to a 叉路, whose ❓ door holds an event (D5, branch-fork.md). */
 export const EVENT_CHANCE = 0.25;
-/** What stands on stage. A chest hides a feast or a rotten dish; the fortune teller draws 大吉, 中吉 or 凶. */
+/** What stands on stage: a chest (a feast or a rotten dish), the statue (`idol`: a blessing or a curse) or the fortune
+ * teller (fortune-teller.md). `spring` and `fairy`, and the old lots `great`, `good` and `bad`, are never drawn any more:
+ * they stay for a room saved mid-event before the 3-scene deck. */
 export type EventScene = "chest" | "spring" | "idol" | "fairy" | "fortune";
-export type EventOutcome = "feast" | "rotten" | "spring" | "curse" | "blessing" | "great" | "good" | "bad";
+export type EventOutcome = "feast" | "rotten" | "spring" | "curse" | "blessing" | "great" | "good" | "bad" | "fortune";
 export interface RoomEvent {
   scene: EventScene;
   outcome: EventOutcome;
+  /** The fortune teller's condition, drawn with the event (drawEvent). */
+  fortune?: FortuneDraw;
 }
 export type Boon = "curse" | "blessing";
 /** 🧪 幸運藥水: the only item so far (docs/designs/lucky-potion.md). */
@@ -1425,21 +1493,147 @@ export function drinkPotion(game: GameState, teamId: string): GameState {
 export function spendPotion(game: GameState, teamId: string): GameState {
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ item: undefined, itemArmedFor: undefined, itemArmedTurn: undefined, potionsDrunk: (t.potionsDrunk ?? 0) + 1 })) };
 }
-/** Satiety each outcome gives or takes (D4, D9); the spring's goes only to a chef or a team with no class. */
+/** Satiety each outcome gives or takes (D4, D9); the spring's goes only to a chef or a team with no class. `great` and
+ * `spring` are only for saves from before the 3-scene deck. */
 export const EVENT_SATIETY = { feast: 20, rotten: -10, great: 25, spring: 10 } as const;
 
-/** The six events, one each (D4): the chest twice, since it hides two. The fortune teller draws its lot here too. */
-export function drawEvent(rng: () => number = Math.random): RoomEvent {
-  const deck: RoomEvent[] = [
-    { scene: "chest", outcome: "feast" },
-    { scene: "chest", outcome: "rotten" },
-    { scene: "spring", outcome: "spring" },
-    { scene: "idol", outcome: "curse" },
-    { scene: "fairy", outcome: "blessing" },
-  ];
-  const i = Math.floor(rng() * (deck.length + 1));
-  if (i < deck.length) return deck[i];
-  return { scene: "fortune", outcome: (["great", "good", "bad"] as const)[Math.min(2, Math.floor(rng() * 3))] };
+/** One of `n` equally, never `n` itself (an rng that ever returned 1). */
+const pickIndex = (rng: () => number, n: number) => Math.min(n - 1, Math.floor(rng() * n));
+
+/** The chest (a feast or a rotten dish) or the statue (a blessing or a curse), 1/2 each. */
+function chestOrStatue(chest: boolean, rng: () => number): RoomEvent {
+  const first = rng() < 0.5;
+  return chest ? { scene: "chest", outcome: first ? "feast" : "rotten" } : { scene: "idol", outcome: first ? "blessing" : "curse" };
+}
+
+/** The ❓ door's event (fortune-teller.md G3): chest, statue or fortune teller, 1/3 each, then the outcome. The fortune
+ * teller draws her condition from the pool now; an empty pool means no fortune this time (G2): chest or statue instead. */
+export function drawEvent(game: GameState, teamId: string, rng: () => number = Math.random): RoomEvent {
+  const scene = pickIndex(rng, 3);
+  if (scene < 2) return chestOrStatue(scene === 0, rng);
+  const pool = fortunePool(game, teamId);
+  if (!pool.length) return chestOrStatue(rng() < 0.5, rng);
+  const condition = pool[pickIndex(rng, pool.length)];
+  const values = fortuneValues(game, teamId, condition);
+  const value = Math.max(...game.teams.map((t) => values[t.id]));
+  return { scene: "fortune", outcome: "fortune", fortune: { condition, value, matchIds: game.teams.filter((t) => values[t.id] === value).map((t) => t.id) } };
+}
+
+/* ---------- 占卜師 (docs/designs/fortune-teller.md) ---------- */
+
+export const FORTUNE_CONDITIONS = ["natural20s", "natural1s", "flees", "potions", "wrong", "correct", "mystery", "dishes", "rotten"] as const;
+export type FortuneCondition = (typeof FORTUNE_CONDITIONS)[number];
+export const FORTUNE_EFFECTS = ["blessing", "curse", "potion", "tribute", "relief", "stun"] as const;
+export type FortuneEffect = (typeof FORTUNE_EFFECTS)[number];
+export const isFortuneCondition = (v: unknown): v is FortuneCondition => typeof v === "string" && (FORTUNE_CONDITIONS as readonly string[]).includes(v);
+export const isFortuneEffect = (v: unknown): v is FortuneEffect => typeof v === "string" && (FORTUNE_EFFECTS as readonly string[]).includes(v);
+/** The condition drawn with the event, and the teams tied on its highest value: fixed at the draw. */
+export interface FortuneDraw {
+  condition: FortuneCondition;
+  value: number;
+  matchIds: string[];
+}
+/** `deadline` (ms epoch, the room's clock) is set when the crystal ball comes up; `effect` once the pick landed, which
+ * keeps the state on show (the effect card) until the host's 下一題. */
+export interface FortuneState extends FortuneDraw {
+  teamId: string;
+  deadline?: number;
+  effect?: FortuneEffect;
+  timeout?: true;
+}
+/** One fortune in the drawing team's record (the podium and lib/game-log.ts read the hit teams off `matchIds`). */
+export interface FortuneRecord extends FortuneDraw {
+  effect: FortuneEffect;
+  timeout?: true;
+  /** The drawing team matched its own condition. */
+  self?: true;
+}
+/** The crystal ball shows the condition this long before the drawing team may pick (then the fork's FORK_MS). */
+export const FORTUNE_INTRO_MS = 3000;
+/** What 進貢 takes from each team that does not match, and 救濟 from each matching team (fortune-teller.md Effects).
+ * Remainders: tribute's sum is split between the matching teams rounded down and the rest is not paid out; relief's
+ * payer keeps what does not split evenly between the receivers (E11). */
+export const FORTUNE_PAY = { tribute: 10, relief: 20 } as const;
+
+/** Every team's value for `condition`; the drawing team's mystery rooms count this one. */
+function fortuneValues(game: GameState, teamId: string, condition: FortuneCondition): Record<string, number> {
+  const of = (t: Team): number => {
+    switch (condition) {
+      case "natural20s": return t.natural20s ?? 0;
+      case "natural1s": return t.natural1s ?? 0;
+      case "flees": return t.flees ?? 0;
+      case "potions": return t.potionsDrunk ?? 0;
+      case "wrong": return t.wrongAnswers ?? 0;
+      case "correct": return t.correctAnswers ?? 0;
+      case "mystery": return (t.events?.length ?? 0) + (t.id === teamId ? 1 : 0);
+      case "dishes": return new Set(t.dishes ?? []).size;
+      case "rotten": return (t.events ?? []).filter((e) => e === "rotten").length;
+    }
+  };
+  return Object.fromEntries(game.teams.map((t) => [t.id, of(t)]));
+}
+
+/** The conditions the fortune teller may draw now (G2): a highest value above 0, held by two teams or at least 2; the
+ * mystery-room count never on the game's first mystery room. */
+export function fortunePool(game: GameState, teamId: string): FortuneCondition[] {
+  const firstMystery = game.teams.every((t) => !t.events?.length);
+  return FORTUNE_CONDITIONS.filter((c) => {
+    if (c === "mystery" && firstMystery) return false;
+    const values = Object.values(fortuneValues(game, teamId, c));
+    const max = Math.max(...values);
+    return max > 0 && (values.filter((v) => v > 0).length >= 2 || max >= 2);
+  });
+}
+
+/** The effect lands on the matching teams (no chef bonus on any of it, fortune-teller.md Effects). */
+function applyFortuneEffect(game: GameState, matchIds: string[], effect: FortuneEffect): GameState {
+  const matched = (t: Team) => matchIds.includes(t.id);
+  if (effect === "blessing" || effect === "curse") return { ...game, teams: game.teams.map((t) => (matched(t) ? { ...t, boon: effect } : t)) };
+  if (effect === "potion") return { ...game, teams: game.teams.map((t) => (matched(t) && !t.item ? { ...t, item: "luckyPotion" as const } : t)) };
+  // Lands before openEvent's turn change, so that change already skips a stunned next team (G10).
+  if (effect === "stun") return { ...game, teams: game.teams.map((t) => (matched(t) ? { ...t, stunned: true as const } : t)) };
+  const pay = new Map<string, number>();
+  const get = new Map<string, number>();
+  if (effect === "tribute") {
+    for (const t of game.teams) if (!matched(t)) pay.set(t.id, Math.min(FORTUNE_PAY.tribute, t.reward));
+    const share = Math.floor([...pay.values()].reduce((a, b) => a + b, 0) / matchIds.length);
+    for (const id of matchIds) get.set(id, share);
+  } else {
+    const low = Math.min(...game.teams.map((t) => t.reward));
+    const receivers = game.teams.filter((t) => t.reward === low).map((t) => t.id);
+    for (const t of game.teams) {
+      if (!matched(t) || receivers.includes(t.id)) continue;
+      const share = Math.floor(Math.min(FORTUNE_PAY.relief, t.reward) / receivers.length);
+      pay.set(t.id, share * receivers.length);
+      for (const id of receivers) get.set(id, (get.get(id) ?? 0) + share);
+    }
+  }
+  return { ...game, teams: game.teams.map((t) => (pay.has(t.id) || get.has(t.id) ? { ...t, reward: t.reward - (pay.get(t.id) ?? 0) + (get.get(t.id) ?? 0) } : t)) };
+}
+
+/**
+ * The fortune's effect lands (fortune-teller.md R2, E3, G10), in one change: the turn is checked while no effect is set, the
+ * effect lands on the matching teams, the fortune event opens (openEvent: recorded, the turn counts, the team walks on,
+ * the turn passes), and the effect and the drawing team's record are written. `game.fortune` stays for the effect card.
+ */
+export function resolveFortune(game: GameState, effect: FortuneEffect, timeout: boolean, rng: () => number = Math.random): GameState {
+  assertPlaying(game);
+  const fortune = game.fortune;
+  if (!fortune || fortune.effect) throw new InvalidActionError("no_fortune");
+  assertTurn(game, fortune.teamId);
+  const { game: opened } = openEvent(applyFortuneEffect(game, fortune.matchIds, effect), fortune.teamId, rng);
+  const { condition, value, matchIds, teamId } = fortune;
+  const record: FortuneRecord = { condition, value, matchIds, effect, ...(timeout ? { timeout: true as const } : {}), ...(matchIds.includes(teamId) ? { self: true as const } : {}) };
+  return {
+    ...opened,
+    fortune: { ...fortune, effect, ...(timeout ? { timeout: true as const } : {}) },
+    teams: patchTeam(opened.teams, teamId, (t) => ({ fortunes: [...(t.fortunes ?? []), record] })),
+  };
+}
+
+/** The effect card is closed (the host's 下一題): the fortune is over. */
+export function endFortune(game: GameState): GameState {
+  return game.fortune ? { ...game, fortune: undefined } : game;
 }
 
 /** Whether this correct answer may bring its team to a fork (D5, D12; branch-fork.md): only into a room before the
@@ -1500,7 +1694,11 @@ export function chooseFork(game: GameState, teamId: string, choice: ForkChoice, 
   const record: ForkRecord = { side, door, ...(choice === "timeout" ? { timeout: true as const } : {}) };
   const chose = patchTeam(game.teams, teamId, (t) => ({ fork: door === "mystery" ? undefined : { phase: "monster" as const }, forks: [...(t.forks ?? []), record] }));
   if (door === "monster") return { game: { ...game, teams: chose }, record };
-  return { record, ...openEvent(enterEventRoom({ ...game, teams: chose }, teamId, drawEvent(rng)), teamId, rng) };
+  const event = drawEvent(game, teamId, rng);
+  const entered = enterEventRoom({ ...game, teams: chose }, teamId, event);
+  // The fortune teller's event waits on the team for its effect (resolveFortune opens it).
+  if (event.fortune) return { record, game: { ...entered, fortune: { teamId, ...event.fortune } } };
+  return { record, ...openEvent(entered, teamId, rng) };
 }
 
 /** The event behind the ❓ door, just drawn: chooseFork opens it in the same call. */
@@ -1543,7 +1741,9 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
     if (share) result.chefBonus = share;
   };
   const o = event.outcome;
-  if (o === "feast" || o === "great") give(EVENT_SATIETY[o]);
+  // The fortune itself gives nothing: its effect landed in resolveFortune (fortune-teller.md).
+  if (o === "fortune") result.satiety = 0;
+  else if (o === "feast" || o === "great") give(EVENT_SATIETY[o]);
   // No more than the team has, and a plain 0 (not -0) when it has nothing left.
   else if (o === "rotten") result.satiety = team.reward > 0 ? -Math.min(-EVENT_SATIETY.rotten, team.reward) : 0;
   else if (o === "spring" || o === "good") {
@@ -1693,8 +1893,18 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
   const next = { ...game, ...(drops ? { buzz: { ...game.buzz!, teamId: undefined } } : {}), teams: patchTeam(game.teams, teamId, () => ({ online, ...(drops ? { typedAnswer: undefined, typedFields: undefined } : {}) })) };
   // The last team still in dropped: everyone online is out, so the same question opens to all again (M1).
   const buzz = next.buzz;
-  const stuck = !online && isBuzzPhase(next) && buzz?.questionId === next.boss.currentQuestionId && buzz.out.length > 0 && !buzz.teamId && next.teams.every((t) => !t.online || !t.inBoss || buzz.out.includes(t.id));
-  return stuck ? { ...next, buzz: { ...buzz!, out: [] } } : next;
+  const stuck = !online && isBuzzPhase(next) && buzz?.questionId === next.boss.currentQuestionId && buzz.out.length > 0 && !buzz.teamId && next.teams.every((t) => !t.online || !t.inBoss || buzz.out.includes(t.id) || t.stunned);
+  const after = stuck ? { ...next, buzz: { ...buzz!, out: [] } } : next;
+  // 💫 (R4): the turn passing to a stunned team this way (the turn team dropped, or a stunned team reconnected into the
+  // turn) skips it, unless a team holds the turn; the index is then pinned on the team that plays.
+  if (after.phase !== "playing" || turnHeld(after)) return after;
+  const idx = nextOnlineIndex(after, 0);
+  return idx !== null && getTeam(after, after.turnOrder[idx]).stunned ? landTurn(after) : after;
+}
+
+/** A team keeps the turn whatever its phone does: a wrong answer, a typed answer, a door or a fortune being picked. */
+function turnHeld(game: GameState): boolean {
+  return !!game.pendingWrong || game.teams.some((t) => t.typedAnswer !== undefined || t.fork?.phase === "choosing") || (!!game.fortune && !game.fortune.effect);
 }
 
 /**
@@ -1733,6 +1943,8 @@ export interface SpectatorView {
     /** 叉路 (branch-fork.md): at a fork waiting for its turn, or choosing its door now. Never what is behind a door. */
     fork?: "waiting" | "choosing";
     boon?: Boon;
+    /** 💫 暈眩: loses its next turn or sits out the next buzz question (fortune-teller.md). */
+    stunned?: true;
     /** The item the team holds; whether it is drunk for the question this turn (potionArmed); the question it was last
      * drunk on, which tells a potion that came back (lucky-potion.md E1, E2). */
     item?: Item;
@@ -1786,6 +1998,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       // A game ended at a fork shows no door on the podium.
       ...(game.phase === "playing" && atFork(t) ? { fork: t.fork!.phase as "waiting" | "choosing" } : {}),
       ...(t.boon ? { boon: t.boon } : {}),
+      ...(t.stunned ? { stunned: true as const } : {}),
       ...(t.item ? { item: t.item } : {}),
       ...(potionArmed(game, t.id) ? { itemArmed: true as const } : {}),
       ...(t.itemArmedFor ? { itemArmedFor: t.itemArmedFor } : {}),

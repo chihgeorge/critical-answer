@@ -205,7 +205,8 @@ function describeEvent(e: NarrationEvent): string {
           : e.outcome === "blessing"
             ? "得到祝福，下次答對獎勵多拿一半"
             : `飽足感${e.satiety >= 0 ? "加" : "扣"} ${Math.abs(e.satiety)}`;
-      const scene = { feast: `打開寶箱，裡面是一道美味的${q(e.dish ?? "料理")}`, rotten: "打開寶箱，裡面是一道冒紫煙的黑暗料理，難吃極了", spring: "喝了一口發光的泉水", curse: "摸了古老的骷髏雕像", blessing: "跟小精靈說了話", great: "請占卜師算了一卦，抽到大吉", good: "請占卜師算了一卦，抽到中吉", bad: "請占卜師算了一卦，抽到凶" }[e.outcome];
+      // The fortune teller narrates herself (scripted only, fortune-teller.md): "fortune" never comes here, but the table is whole.
+      const scene = { feast: `打開寶箱，裡面是一道美味的${q(e.dish ?? "料理")}`, rotten: "打開寶箱，裡面是一道冒紫煙的黑暗料理，難吃極了", spring: "喝了一口發光的泉水", curse: "摸了古老的神秘雕像，雕像的眼睛亮起紫光", blessing: "摸了古老的神秘雕像，雕像的眼睛亮起金光", great: "請占卜師算了一卦，抽到大吉", good: "請占卜師算了一卦，抽到中吉", bad: "請占卜師算了一卦，抽到凶", fortune: "請占卜師替別的隊伍挑了命運" }[e.outcome];
       return `事件：隊伍${q(e.team)}走進沒有怪物的神秘房，${scene}，結果${what}。數字必須照寫。`;
     }
     case "boss-phase":

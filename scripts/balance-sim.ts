@@ -52,7 +52,10 @@ function play(classes: C[], maxTurns = 600) {
     }
     const id = G.currentTurnTeamId(g)!;
     const team = () => g.teams.find((x) => x.id === id)!;
-    if (team().event) { g = G.openEvent(g, id, R).game; continue; }
+    // The fortune teller's effect is picked at random here (the event's own strategies live in analysis/s3a-fortune-sim).
+    const ev = team().event;
+    if (ev?.fortune) { g = G.endFortune(G.resolveFortune({ ...g, fortune: { teamId: id, ...ev.fortune } }, G.FORTUNE_EFFECTS[Math.floor(R() * G.FORTUNE_EFFECTS.length)], false, R)); continue; }
+    if (ev) { g = G.openEvent(g, id, R).game; continue; }
     const inBoss = G.isInBossPhase(g, id);
     const q = inBoss ? g.boss.currentQuestionId : team().currentQuestionId;
     const d = inBoss ? 5 : team().currentDifficulty;
@@ -62,7 +65,7 @@ function play(classes: C[], maxTurns = 600) {
     const L = latent.get(key)!;
     const settle = (r: { game: GT.GameState; outcome: GT.AnswerOutcome }, ok: boolean) => {
       g = r.game;
-      if (ok && EVENTS && G.eventEligible(g, r.outcome) && R() < G.EVENT_CHANCE) g = G.enterEventRoom(g, id, G.drawEvent(R));
+      if (ok && EVENTS && G.eventEligible(g, r.outcome) && R() < G.EVENT_CHANCE) g = G.enterEventRoom(g, id, G.drawEvent(g, id, R));
     };
     if (text && !g.checks?.[G.checkKey(q, id)]) {
       const v = d20();
