@@ -27,8 +27,13 @@ export function extractYoutubeId(pasted: string): string | null {
 
 /** The privacy-friendly embed domain — confirmed as 2026 best practice for a plain-iframe
  * embed (no library, no API key) via live web search during /plan-eng-review. */
-export function youtubeEmbedUrl(videoId: string, start?: number, end?: number): string {
-  const clip = new URLSearchParams({ ...(start !== undefined ? { start: String(start) } : {}), ...(end !== undefined ? { end: String(end) } : {}) }).toString();
+export function youtubeEmbedUrl(videoId: string, start?: number, end?: number, zhCaptions = false): string {
+  const clip = new URLSearchParams({
+    ...(start !== undefined ? { start: String(start) } : {}),
+    ...(end !== undefined ? { end: String(end) } : {}),
+    // enablejsapi lets the page pick the caption track itself (pickZhCaption); the rest is YouTube's own first guess.
+    ...(zhCaptions ? { enablejsapi: "1", ...ZH_CAPTION_VARS } : {}),
+  }).toString();
   return `https://www.youtube-nocookie.com/embed/${videoId}${clip ? `?${clip}` : ""}`;
 }
 
@@ -110,4 +115,33 @@ export function hostMediaStatus(playing: boolean, liveOpen: boolean): string {
 export function hostBuzzWait(youtube: boolean, open: boolean, clipError: boolean): string | null {
   if (!youtube || open) return "等隊伍搶答…";
   return clipError ? null : "按 ▶ 播放後開放搶答";
+}
+
+/* ---------- Chinese captions after the reveal (docs/designs/youtube-questions.md「公布答案後的中文字幕」) ---------- */
+
+/** playerVars that ask YouTube to show captions, in Traditional Chinese where it can. Never while a question is
+ * being answered: a music question's captions would show the lyrics or the title. */
+export const ZH_CAPTION_VARS = { cc_load_policy: "1", cc_lang_pref: "zh-TW", hl: "zh-TW" };
+/** YouTube's auto-translate target. */
+export const ZH_HANT = "zh-Hant";
+
+/** One entry of the captions module's unofficial `tracklist`: `kind` is "asr" for auto-generated captions. */
+export interface CaptionTrack {
+  languageCode: string;
+  kind?: string;
+  is_translateable?: boolean;
+}
+
+/** Which caption track to show after the reveal: Traditional Chinese, then any other Chinese, then any track
+ * auto-translated to Traditional Chinese; null when the video has no track at all. Hand-made beats auto-generated
+ * within each step. */
+export function pickZhCaption<T extends CaptionTrack>(tracks: readonly T[]): { track: T; translate: boolean } | null {
+  const code = (t: T) => (typeof t?.languageCode === "string" ? t.languageCode.toLowerCase() : "");
+  const best = (ok: (t: T) => boolean) => tracks.find((t) => ok(t) && t.kind !== "asr") ?? tracks.find(ok);
+  const hant = best((t) => ["zh-tw", "zh-hant"].includes(code(t)) || code(t).startsWith("zh-hant-"));
+  if (hant) return { track: hant, translate: false };
+  const zh = best((t) => code(t) === "zh" || code(t).startsWith("zh-"));
+  if (zh) return { track: zh, translate: false };
+  const source = best((t) => code(t) !== "" && t.is_translateable !== false);
+  return source ? { track: source, translate: true } : null;
 }

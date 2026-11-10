@@ -419,6 +419,16 @@ Accepted scope: 大螢幕詳解欄的 YouTube 至少 356×200，公布答案版�
 
 Approval readiness: PASS — D1=A、D2=A、D3=A（重問）、D4=A、D5=A、D6=A、D7=A（決策 b741774e）、D8=A、D9=A、D10=B、D11=C，全部有對話中的實際回答。
 
+## 公布答案後的中文字幕（2026-11-09）
+
+站長決定：公布答案之後播的 YouTube 影片預設開中文字幕。
+
+- **範圍**：大螢幕揭曉時露出的題目影片（聽歌題揭曉後露出畫面、`reveal.video` 重播），以及影片詳解（大螢幕和手機都算）。作答期間不開：聽歌題的字幕會露出歌詞或歌名。大螢幕的播放器在題目和揭曉之間不重建（D17），所以 `zhCaptions` 由 `!!reveal` 決定，揭曉時在同一個播放器上打開字幕。
+- **挑軌**（`lib/youtube.ts` 的 `pickZhCaption`，vitest 測各種組合）：繁體中文（`zh-TW`、`zh-Hant`）→ 其他中文（`zh`、`zh-HK`、`zh-CN`、`zh-Hans`）→ 任何可翻譯的字幕軌（含自動產生的）用 YouTube 自動翻譯成 `zh-Hant` → 都沒有就不顯示。同一層裡人工字幕優先於自動產生（`kind: "asr"`）。
+- **做法**：playerVars 加 `cc_load_policy=1`、`cc_lang_pref=zh-TW`、`hl=zh-TW` 當 YouTube 的第一猜測；真正挑軌靠沒有公開的字幕模組：`loadModule("captions")`，等 `onApiChange`（或開始播放）時讀 `getOption("captions","tracklist")` 和 `"translationLanguages"`，再 `setOption("captions","track",{…, translationLanguage})`。詳解原本是一般 iframe，現在網址加 `enablejsapi=1`，讓 `YT.Player` 掛在同一個 iframe 上只做挑軌（不 `destroy()`，那會把 React 管的 iframe 拿掉）。
+- **作答時關字幕**：YouTube 可能記得上一題揭曉時開過字幕；作答中的播放器一旦載入字幕模組就 `unloadModule("captions")`。
+- **失敗**：這些都是非官方 API，全部包 try/catch；任何失敗都只是沒字幕，影片照常播。YouTube 改版可能讓它失效，文件（[docs/question-bank.md](../question-bank.md)）有寫。
+
 ## NOT in scope
 
 - 大螢幕回報真實播放狀態給主持人頁：D7 選 A，決策 `b741774e` 記了升級條件。

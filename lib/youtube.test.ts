@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError } from "./youtube";
+import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption } from "./youtube";
 
 describe("resendClipError (boss-music-buzzer.md M4)", () => {
   const seen = { questionId: "b-a", press: 2 };
@@ -131,5 +131,42 @@ describe("parseClipTime / formatClipTime (D22)", () => {
     expect(formatClipTime(65)).toBe("1:05");
     expect(formatClipTime(0)).toBe("0:00");
     expect(parseClipTime(formatClipTime(754))).toBe(754);
+  });
+});
+
+describe("pickZhCaption (youtube-questions.md 公布答案後的中文字幕)", () => {
+  const en = { languageCode: "en", kind: "" };
+  const enAsr = { languageCode: "en", kind: "asr" };
+  it("takes Traditional Chinese first", () => {
+    expect(pickZhCaption([en, { languageCode: "zh-CN" }, { languageCode: "zh-TW" }])).toEqual({ track: { languageCode: "zh-TW" }, translate: false });
+    expect(pickZhCaption([{ languageCode: "zh-Hant" }, en])).toEqual({ track: { languageCode: "zh-Hant" }, translate: false });
+  });
+  it("prefers a hand-made Chinese track over an auto-generated one", () => {
+    expect(pickZhCaption([{ languageCode: "zh-TW", kind: "asr" }, { languageCode: "zh-TW", kind: "" }])?.track.kind).toBe("");
+  });
+  it("falls back to any other Chinese without translating", () => {
+    expect(pickZhCaption([en, { languageCode: "zh-CN" }])).toEqual({ track: { languageCode: "zh-CN" }, translate: false });
+    expect(pickZhCaption([{ languageCode: "zh" }])).toEqual({ track: { languageCode: "zh" }, translate: false });
+    expect(pickZhCaption([{ languageCode: "zh-HK" }, { languageCode: "zh-Hans" }])?.track.languageCode).toBe("zh-HK");
+  });
+  it("auto-translates an English track, hand-made first", () => {
+    expect(pickZhCaption([enAsr, en])).toEqual({ track: en, translate: true });
+    expect(pickZhCaption([enAsr])).toEqual({ track: enAsr, translate: true });
+  });
+  it("skips a track YouTube says it cannot translate", () => {
+    expect(pickZhCaption([{ languageCode: "ja", is_translateable: false }, enAsr])).toEqual({ track: enAsr, translate: true });
+  });
+  it("shows nothing when there is no track", () => {
+    expect(pickZhCaption([])).toBeNull();
+    expect(pickZhCaption([{ languageCode: "ja", is_translateable: false }])).toBeNull();
+  });
+  it("does not mistake a language that only starts with zh, or a broken entry", () => {
+    expect(pickZhCaption([{ languageCode: "zha" }, { languageCode: undefined as unknown as string }])).toEqual({ track: { languageCode: "zha" }, translate: true });
+  });
+});
+
+describe("youtubeEmbedUrl with Chinese captions", () => {
+  it("adds the caption hints and the JS API only when asked", () => {
+    expect(youtubeEmbedUrl("dQw4w9WgXcQ", 5, undefined, true)).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=5&enablejsapi=1&cc_load_policy=1&cc_lang_pref=zh-TW&hl=zh-TW");
   });
 });

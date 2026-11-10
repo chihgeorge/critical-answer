@@ -8,6 +8,7 @@ import type { Accessory } from "@/lib/monster-catalog";
 import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/sprite-kind";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { youtubeEmbedUrl } from "@/lib/youtube";
+import { loadCaptions, loadYoutubeApi, syncZhCaptions } from "@/components/youtube-player";
 import { firstChange, resumeFrom } from "@/lib/narration/client";
 import type { PublicMediaContent } from "@/lib/protocol";
 
@@ -27,7 +28,22 @@ function hideOnImageError(e: SyntheticEvent<HTMLImageElement>) {
  * forces a fresh DOM node per question, same broken-image fallback discipline as before this
  * component existed (docs/designs/question-media-content.md, carrying forward
  * image-question-type.md's decision). */
-export function QuestionMedia({ content, maxWidth, maxHeight, className, label = "題目" }: { content: PublicMediaContent; maxWidth: number; maxHeight: number; className?: string; label?: string }) {
+export function QuestionMedia({
+  content,
+  maxWidth,
+  maxHeight,
+  className,
+  label = "題目",
+  zhCaptions = false,
+}: {
+  content: PublicMediaContent;
+  maxWidth: number;
+  maxHeight: number;
+  className?: string;
+  label?: string;
+  /** A video explanation after the reveal: Chinese captions (docs/designs/youtube-questions.md「公布答案後的中文字幕」). */
+  zhCaptions?: boolean;
+}) {
   if (content.kind === "text") return null;
   if (content.kind === "image") {
     return (
@@ -35,12 +51,52 @@ export function QuestionMedia({ content, maxWidth, maxHeight, className, label =
       <img src={content.url} alt={`${label}圖片`} className={className} style={{ maxWidth, maxHeight, objectFit: "contain" }} onError={hideOnImageError} />
     );
   }
-  // youtube: a plain iframe, no library or API key needed (confirmed 2026 best practice,
-  // /plan-eng-review). No render-time detection of a since-deleted/private video — that needs
-  // the YouTube IFrame Player API, deliberately deferred (design doc R2-4).
+  return <YoutubeFrame content={content} maxWidth={maxWidth} maxHeight={maxHeight} className={className} label={label} zhCaptions={zhCaptions} />;
+}
+
+// youtube: a plain iframe, no library or API key needed (confirmed 2026 best practice,
+// /plan-eng-review). No render-time detection of a since-deleted/private video — that needs
+// the YouTube IFrame Player API, deliberately deferred (design doc R2-4). With zhCaptions the API
+// attaches to this same iframe only to pick the caption track.
+function YoutubeFrame({ content, maxWidth, maxHeight, className, label, zhCaptions }: { content: Extract<PublicMediaContent, { kind: "youtube" }>; maxWidth: number; maxHeight: number; className?: string; label: string; zhCaptions: boolean }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    if (!zhCaptions) return;
+    let gone = false;
+    let done = false;
+    const captions = (p: Parameters<typeof syncZhCaptions>[0]) => {
+      if (!gone && !done) done = syncZhCaptions(p, true);
+    };
+    loadYoutubeApi().then(
+      (YT) => {
+        if (gone || !frame.current) return;
+        try {
+          // No destroy() on cleanup: it would remove the iframe React still owns.
+          new YT.Player(frame.current, {
+            events: {
+              onReady: (e) => {
+                if (!gone) loadCaptions(e.target);
+              },
+              onApiChange: (e) => captions(e.target),
+              onStateChange: (e) => {
+                if (e.data === 1) captions(e.target);
+              },
+            },
+          });
+        } catch {
+          // no captions, the video still plays
+        }
+      },
+      () => {},
+    );
+    return () => {
+      gone = true;
+    };
+  }, [zhCaptions, content.videoId]);
   return (
     <iframe
-      src={youtubeEmbedUrl(content.videoId, content.start, content.end)}
+      ref={frame}
+      src={youtubeEmbedUrl(content.videoId, content.start, content.end, zhCaptions)}
       title={`${label}影片`}
       className={className}
       // width: 100% (capped by maxWidth) instead of a hardcoded pixel width — /screen and the

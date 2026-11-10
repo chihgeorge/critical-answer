@@ -1158,7 +1158,7 @@ export default function PlayPage() {
             {revealed.explanation && revealed.explanation.kind !== "text" && (
               // key tied to questionId — same broken-image-stays-hidden-forever guard every
               // other media render site in this diff carries (adversarial review finding, /ship).
-              <QuestionMedia key={revealed.questionId} content={revealed.explanation} label="詳解" maxWidth={260} maxHeight={180} />
+              <QuestionMedia key={revealed.questionId} content={revealed.explanation} label="詳解" maxWidth={260} maxHeight={180} zhCaptions />
             )}
             {dishUp(cookStep) && revealed.dish && <div data-testid="phone-dish" className="text-[18px]">🍲 今晚的菜：{revealed.dish.name}</div>}
           </Panel>

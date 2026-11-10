@@ -9,7 +9,7 @@
 // broken video costs a turn at an event.
 
 import { useEffect, useRef, useState } from "react";
-import { CLIP_STATUS_TEXT, clipStatusFromYoutube, playerSteps, type ClipStatus, type MediaWant } from "@/lib/youtube";
+import { CLIP_STATUS_TEXT, clipStatusFromYoutube, pickZhCaption, playerSteps, ZH_CAPTION_VARS, ZH_HANT, type CaptionTrack, type ClipStatus, type MediaWant } from "@/lib/youtube";
 
 interface YTPlayer {
   playVideo(): void;
@@ -17,20 +17,27 @@ interface YTPlayer {
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
   destroy(): void;
+  // The captions module: not in YouTube's documented API, so every call may be missing or throw (syncZhCaptions).
+  loadModule?(name: string): void;
+  unloadModule?(name: string): void;
+  getOption?(module: string, option: string): unknown;
+  setOption?(module: string, option: string, value: unknown): void;
 }
 interface YTNamespace {
   Player: new (
     el: HTMLElement,
     opts: {
-      videoId: string;
-      width: number;
-      height: number;
+      // Without a video: the element is an <iframe> of our own with enablejsapi=1 (QuestionMedia's 詳解).
+      videoId?: string;
+      width?: number;
+      height?: number;
       host?: string;
-      playerVars: Record<string, number | string>;
+      playerVars?: Record<string, number | string>;
       events: {
-        onReady: (e: { target: YTPlayer }) => void;
-        onStateChange: (e: { data: number; target: YTPlayer }) => void;
-        onError: () => void;
+        onReady?: (e: { target: YTPlayer }) => void;
+        onStateChange?: (e: { data: number; target: YTPlayer }) => void;
+        onApiChange?: (e: { target: YTPlayer }) => void;
+        onError?: () => void;
       };
     },
   ) => YTPlayer;
@@ -48,7 +55,7 @@ const API_TIMEOUT_MS = 15_000;
 let api: Promise<YTNamespace> | null = null;
 
 /** Loads iframe_api once per page; a failure lets the next player try again. */
-function loadYoutubeApi(): Promise<YTNamespace> {
+export function loadYoutubeApi(): Promise<YTNamespace> {
   if (window.YT?.Player) return Promise.resolve(window.YT);
   api ??= new Promise<YTNamespace>((resolve, reject) => {
     const fail = () => {
@@ -78,6 +85,39 @@ function loadYoutubeApi(): Promise<YTNamespace> {
   return api;
 }
 
+/** Turns on Chinese captions (`on`), or keeps captions off, through YouTube's unofficial captions module
+ * (docs/designs/youtube-questions.md「公布答案後的中文字幕」). True once a track is set; the caller tries again on
+ * the next onApiChange or play until then, and always while captions must stay off. It never loads the module, so it
+ * cannot set off another onApiChange. Any failure only means no captions: the video plays on. */
+export function syncZhCaptions(p: YTPlayer, on: boolean): boolean {
+  try {
+    if (!on) {
+      // A caption choice YouTube remembers from an earlier reveal must not show a music question's lyrics.
+      // Unloading does not fire onApiChange (tried in a browser, 2026-11-09), so calling it again is safe.
+      p.unloadModule?.("captions");
+      return false;
+    }
+    const list = p.getOption?.("captions", "tracklist");
+    const pick = pickZhCaption(Array.isArray(list) ? (list as CaptionTrack[]) : []);
+    if (!pick) return false;
+    const langs = p.getOption?.("captions", "translationLanguages");
+    const target = Array.isArray(langs) ? langs.find((l) => l?.languageCode === ZH_HANT) : undefined;
+    p.setOption?.("captions", "track", pick.translate ? { ...pick.track, translationLanguage: target ?? { languageCode: ZH_HANT } } : pick.track);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Asks the player to load its captions module; onApiChange fires once it has the track list. */
+export function loadCaptions(p: YTPlayer) {
+  try {
+    p.loadModule?.("captions");
+  } catch {
+    // no captions, the video still plays
+  }
+}
+
 const PAUSED: MediaWant = { state: "paused", seq: 0 };
 const END_POLL_MS = 250;
 
@@ -96,6 +136,7 @@ export function YoutubePlayer({
   onError,
   errorNote,
   title = "題目影片",
+  zhCaptions = false,
 }: {
   videoId: string;
   start?: number;
@@ -119,6 +160,8 @@ export function YoutubePlayer({
   /** A line under 影片無法播放, e.g. that the host plays the song live instead. */
   errorNote?: string;
   title?: string;
+  /** After the reveal: Chinese captions, or YouTube's translation to Traditional Chinese. Never while answering. */
+  zhCaptions?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const player = useRef<YTPlayer | null>(null);
@@ -131,6 +174,9 @@ export function YoutubePlayer({
   const report = useRef(onPlayingChange);
   const reportEnd = useRef(onEnded);
   const reportError = useRef(onError);
+  const zh = useRef(zhCaptions);
+  /** A Chinese track is set on this player. */
+  const captioned = useRef(false);
   useEffect(() => {
     report.current = onPlayingChange;
     reportEnd.current = onEnded;
@@ -148,6 +194,9 @@ export function YoutubePlayer({
       if (s === "ended") reportEnd.current?.();
       if (s === "error") reportError.current?.();
     };
+    const captions = (p: YTPlayer) => {
+      if (!captioned.current) captioned.current = syncZhCaptions(p, zh.current);
+    };
     loadYoutubeApi().then(
       (YT) => {
         if (gone || !host.current) return;
@@ -162,6 +211,8 @@ export function YoutubePlayer({
           playerVars: {
             start,
             ...(end !== undefined ? { end } : {}),
+            // Read once: the player is not rebuilt when the reveal turns captions on; the effect below does that.
+            ...(zh.current ? ZH_CAPTION_VARS : {}),
             controls: controls ? 1 : 0,
             disablekb: controls ? 0 : 1,
             rel: 0,
@@ -177,10 +228,13 @@ export function YoutubePlayer({
             onStateChange: (e) => {
               // YouTube can reach the end itself (its own `end`, or a clip with none) before the poll sees it.
               if (e.data === 0) ended.current = true;
+              if (e.data === 1) captions(e.target);
               show(clipStatusFromYoutube(e.data, ended.current));
             },
             // onError codes 2, 5, 100, 101 and 150 all leave nothing to play: one message covers them (D7).
             onError: () => show("error"),
+            // The captions module loaded: its track list is there now.
+            onApiChange: (e) => captions(e.target),
           },
         });
       },
@@ -192,10 +246,21 @@ export function YoutubePlayer({
       player.current = null;
       applied.current = null;
       ended.current = false;
+      captioned.current = false;
       setReady(false);
       report.current?.(false);
     };
   }, [videoId, start, end, width, height, controls, attempt]);
+
+  // The question turns into its reveal on the same player (screen D17): captions come on without a rebuild.
+  useEffect(() => {
+    zh.current = zhCaptions;
+    captioned.current = false;
+    const p = player.current;
+    if (!ready || !p) return;
+    if (zhCaptions) loadCaptions(p);
+    captioned.current = syncZhCaptions(p, zhCaptions);
+  }, [ready, zhCaptions]);
 
   const want = command ?? PAUSED;
   // A new press while the player shows its error builds it again (state adjusted during render, not in an effect).
