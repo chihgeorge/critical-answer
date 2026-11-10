@@ -567,6 +567,9 @@ export class DungeonRoom {
           return;
         }
         if (event.type === "epilogue") {
+          // A story still on its way when the room expired (its 6 hours ran out mid-ending): the room is empty now,
+          // and saving the story would bring the expired room back.
+          if (this.game?.phase !== "finished") return;
           // The calls come first, the story last (epilogueParts). The first call waits for the boss to cook, or for
           // the kill-shot line to be read.
           this.epilogue = lines[lines.length - 1];
@@ -908,8 +911,11 @@ export class DungeonRoom {
     // Already idle: the idle close happened before the restart (or nobody was left to close), so do not close again.
     this.restedFrom = this.now() - this.lastActivityAt >= this.idleMs ? this.lastActivityAt : null;
     // A key this room just made is not in storage yet: the next message must write it, before any host is told it.
-    this.lastSaved = s.screenKey ? JSON.stringify(this.persistedState()) : "";
-    this.setAlarmAt(this.nextAlarmAt()!);
+    // A save from before createdAt is written again with the date chosen above, or every restart would pick a new one.
+    this.lastSaved = s.screenKey && s.createdAt != null ? JSON.stringify(this.persistedState()) : "";
+    if (s.createdAt == null) this.persist();
+    // Awaited: onStart may send nothing after this, so no outgoing message holds the platform until the alarm is set.
+    await this.setAlarmAt(this.nextAlarmAt()!);
     console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
     // A restart loses the beat that resolves a wrong boss lock.
     this.armBossMiss();
@@ -1338,7 +1344,8 @@ export class DungeonRoom {
     const now = this.now();
     this.lastActivityAt = now;
     this.createdAt ??= now;
-    const due = now + this.idleMs;
+    // The idle check, or the closing warning or the end if one of those comes first (a long ROOM_IDLE_MS).
+    const due = this.nextAlarmAt()!;
     // Only move the alarm earlier: while people are active the alarm already waiting is sooner than `due`.
     // Fire-and-forget is safe here: onMessage always sends or broadcasts something right after this call, in the
     // same synchronous turn, and Cloudflare holds that outgoing message until this write is durable.
@@ -1389,7 +1396,8 @@ export class DungeonRoom {
   /** 延長 1 小時: the end moves an hour past the current one, never past MAX_LIFE_MS; the warning comes again later. */
   private handleExtendRoom(conn: Conn) {
     if (!this.requireHost(conn)) return;
-    if (this.createdAt === null) return;
+    // Past its end the room is closing already (its alarm is late): an extension must not bring it back.
+    if (this.createdAt === null || this.now() >= this.closesAt()!) return;
     this.extendedMs = Math.min(this.extendedMs + EXTEND_MS, this.maxExtendMs());
     // The waiting alarm may be the old end: move it to the new next check (markActivity after this only moves it sooner).
     void this.setAlarmAt(this.nextAlarmAt()!);
@@ -1415,9 +1423,11 @@ export class DungeonRoom {
       this.restedFrom = last;
       this.room.closeAll?.(CLOSE_IDLE, "idle");
       console.log(JSON.stringify({ event: "room_idle_closed", idleMs: idleFor }));
+    } else {
+      // Not right after closeAll: those host sockets are closing, and a host who reconnects is told on HOST_CLAIM.
+      const closing = this.closingMessage();
+      if (closing.minutesLeft !== null) for (const conn of this.hostConns.values()) this.sendTo(conn, closing);
     }
-    const closing = this.closingMessage();
-    if (closing.minutesLeft !== null) for (const conn of this.hostConns.values()) this.sendTo(conn, closing);
     await this.setAlarmAt(this.nextAlarmAt()!);
   }
 
