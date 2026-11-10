@@ -68,10 +68,14 @@ describe("check first, question after", () => {
     expect(JSON.stringify(g.io.broadcast.mock.calls)).not.toContain("這首歌是？");
     expect(JSON.stringify(g.phone.send.mock.calls)).not.toContain("這首歌是？");
     // A first character an earlier team's mage got on the same (shared boss) question waits with the question.
-    g.room.game = { ...g.room.game!, mageHints: { v1: "答" } };
-    const late = makeConn("late");
-    g.room.onConnect(late);
-    expect(msgs(late.send.mock.calls).findLast((m) => m.type === "STATE").view.mageHints).toEqual({});
+    // So does the character an earlier team's own check earned (a team that has since left the room's teams list never matters).
+    const T2 = "00000000-0000-0000-0000-000000000002";
+    const other = makeConn("other");
+    g.room.game = { ...g.room.game!, mageHints: { v1: "答" }, teams: [...g.room.game!.teams, { ...g.room.game!.teams[0], id: T2, name: "乙隊", online: false }], checks: { [checkKey("v1", T2)]: { value: 12, bonus: 0, dc: 8, passed: true, hint: "答" } } };
+    g.room.onConnect(other);
+    const held = msgs(other.send.mock.calls).findLast((m) => m.type === "STATE");
+    expect(held.view.mageHints).toEqual({});
+    expect(JSON.stringify(held.view.checks)).not.toContain("答");
     g.check();
     expect(g.state().view.mageHints).toEqual({ v1: "答" });
     expect(g.state().question.prompt).toBe("這首歌是？");

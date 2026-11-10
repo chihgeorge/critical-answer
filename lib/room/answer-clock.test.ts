@@ -181,6 +181,21 @@ describe("每題作答倒數 in the room", () => {
     expect(g.state().answerClock).toEqual({ left: 60000 });
   });
 
+  // Value: protects=a 答錯 the host judges before the roll neither shows the question nor starts a count, and the team
+  // still rolls when its turn comes back; fails_when=awaitingCheck() lets go once a judgment or a turn has passed;
+  // why_new=every other wrong-answer test rolls first; seam=none; no_claim=the pages' wait lines (e2e).
+  it("a 答錯 before the roll keeps the question held; the team still rolls on its next go", () => {
+    const g = started();
+    g.judge(false, "retry");
+    g.judge(false, "retry");
+    expect(g.state().view.currentTurnTeamId).toBe(A);
+    expect(g.state().question).toMatchObject({ id: "r1", checkFirst: true, content: { kind: "text", value: "" } });
+    expect(g.state().answerClock).toBeUndefined();
+    g.check();
+    expect(g.state().question.content.value).toBe("題目 r1");
+    expect(g.state().answerClock).toEqual({ left: 60000 });
+  });
+
   it("does not run during the how-to-play intro or 擲先攻; the first question then gets the full time", () => {
     const g = started({ answerSeconds: 45, intro: true, initiative: true });
     expect(g.state().intro).toBeDefined();

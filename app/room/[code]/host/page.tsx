@@ -855,7 +855,7 @@ export default function HostPage() {
                   {/* Check first, question after: why the big screen has no question or count yet. Not while a 答錯 waits (no roll then). */}
                   {game.question?.checkFirst && !game.phaseCard && !game.forkBeat && !revealUp && !game.view.pendingWrong && (
                     <div data-testid="host-check-first" className="mt-1 text-[14px]" role="status">
-                      {game.pendingRoll?.kind === "check" ? "🎲 說服骰擲出了，結算後大螢幕才出題、開始倒數" : "🎲 等這隊擲完說服，大螢幕才出題、才開始倒數"}
+                      {game.pendingRoll?.kind === "check" ? "🎲 說服骰擲出了，結算後大螢幕才出題" : "🎲 等這隊擲完說服，大螢幕才出題"}
                     </div>
                   )}
                   {/* 每題作答倒數 (answer-countdown.md): only a nudge, the host still judges (D1). */}

@@ -1027,7 +1027,8 @@ export class DungeonRoom {
     if (!teamId || !team || atFork(team)) return false;
     const id = currentQuestionIdOf(game, teamId);
     if (this.question(id)?.kind !== "text") return false;
-    return this.pendingRoll?.kind === "check" || !game.checks?.[checkKey(id, teamId)];
+    const roll = this.pendingRoll;
+    return (roll?.kind === "check" && roll.teamId === teamId && roll.questionId === id) || !game.checks?.[checkKey(id, teamId)];
   }
 
   /** The turn answering now (answer-countdown.md D3), or null: nobody is answering while an answer waits for the host,
@@ -1169,6 +1170,9 @@ export class DungeonRoom {
     // Check first, question after: a first character an earlier team's mage got on this (shared boss) question waits too.
     const held = this.awaitingCheck() ? this.currentQuestion()?.pub.id : undefined;
     if (held !== undefined && view.mageHints?.[held] !== undefined) view.mageHints = Object.fromEntries(Object.entries(view.mageHints).filter(([k]) => k !== held));
+    // So does the first character an earlier team's own check earned on it.
+    const earlier = held === undefined ? [] : this.game.teams.map((t) => checkKey(held, t.id)).filter((k) => view.checks?.[k]?.hint !== undefined);
+    if (earlier.length) view.checks = Object.fromEntries(Object.entries(view.checks!).map(([k, c]) => (earlier.includes(k) ? [k, { ...c, hint: undefined }] : [k, c])));
     // A buzzer phase's typed answer goes to the host only (HOST_ANSWER): the other teams could still buzz on it
     // (multi-field.md E4). "" still tells the team's own phone it was sent. A game ended mid-buzz keeps it hidden too.
     if (isBuzzPhase(this.game) || this.game.phase === "finished") view.teams = view.teams.map((t) => (t.typedAnswer === null ? t : { ...t, typedAnswer: "" }));
@@ -3191,7 +3195,9 @@ export class DungeonRoom {
     // A fill-in question is a persuasion check first; the warrior's roll comes after it (dnd design R2), and so does the
     // mage's first character: the question is not up before the check. Before mageHint, whose refusals (no_hint) would
     // tell something about the hidden answer.
-    if ((classId === "warrior" || classId === "mage") && q?.kind === "text" && currentQuestionIdOf(game, teamId) === questionId && !game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
+    // Only on the team's own turn outside a buzzer phase: elsewhere the usual refusals answer (not_your_turn, buzzer_phase).
+    const ownFillIn = q?.kind === "text" && currentTurnTeamId(game) === teamId && !isBuzzPhase(game) && currentQuestionIdOf(game, teamId) === questionId;
+    if ((classId === "warrior" || classId === "mage") && ownFillIn && !game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
     let next: GameState;
     try {
       if (classId === "cleric") next = pray(game, teamId);
