@@ -495,6 +495,27 @@ describe("restoring after a restart", () => {
     expect(third.room.game!.teams.find((t) => t.id === t0)!.score).toBe(after.score);
   });
 
+  // Value: protects=a natural 20 whose win already failed is not applied after a restart, nor after 回到大廳 (TODOS
+  // 說服檢定 1, 2); fails_when=lostCritOf ignores `dropped`, or applyLostCrit keeps it outside play.
+  it("a dropped natural 20 does not win after a restart, and a lost one is forgotten outside play", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[saved.game.currentTurnIndex];
+    const q = saved.game.teams.find((t: any) => t.id === t0).currentQuestionId;
+    saved.game.checks = { [checkKey(q, t0)]: { value: 20, bonus: 0, dc: 8, passed: true, dropped: true } };
+    storage.data.set(SNAPSHOT_KEY, saved);
+    const second = makeRoom(storage);
+    await second.room.restore();
+    expect((second.room as any).lostCrit).toBeNull();
+
+    const r = second.room as any;
+    r.lostCrit = { teamId: t0, questionId: q };
+    r.game = { ...r.game, phase: "finished" };
+    r.broadcastState();
+    expect(r.lostCrit).toBeNull();
+  });
+
   // Value: protects=a lost natural 20 that is the killing blow plays the 4d20 beat once the room is back (kill-roll.md);
   // fails_when=applyLostCrit judges the kill outside judgeNow's deferral, or the kill is lost; no_claim=the dice values
   it("a lost natural 20 that kills the boss rolls the 4d20 beat once the room is back", async () => {
@@ -524,6 +545,7 @@ describe("restoring after a restart", () => {
   // Value: protects=the lost natural 20 survives another team playing first (review finding); fails_when=only the
   // crit team's own rejoin applies it; no_claim=more than two teams.
   it("a lost natural 20 still wins when another team's phone comes back and plays first", async () => {
+    vi.useFakeTimers();
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);
     const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
@@ -553,12 +575,17 @@ describe("restoring after a restart", () => {
     // The turn now reaches the crit team, but the win waits for the answer reveal to close (nobody plays under it).
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
     serveNext(second.room, host, (second.room as any).eventSeq);
+    vi.advanceTimersByTime(4000); // the reveal's 答對 cue was a moment ago in this test
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
+    vi.useRealTimers();
   });
 
   // Value: protects=a lost natural 20 never judges inside another judgment (fix-check finding); fails_when=it runs
   // from that judgment's own STATE, ahead of its narration and phase card.
+  // Value: protects=the 答錯's cue and story are not cut off by the lost natural 20's (TODOS 說服檢定 3); fails_when=it
+  // judges at once, in the same handler.
   it("a wrong answer that passes the turn to the crit team finishes before the lost natural 20 wins", async () => {
+    vi.useFakeTimers();
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);
     const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
@@ -578,11 +605,16 @@ describe("restoring after a restart", () => {
     send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
     const seq = (second.room as any).eventSeq;
     send(second.room, host, { type: "HOST_JUDGE", teamId: other, questionId: lastOf(host, "HOST_ANSWER").questionId, correct: false, fleeChoice: "flee" });
+    // The 答錯's cue plays and its story starts first; the natural 20 waits a beat.
+    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
+    expect((second.room as any).cue).toBe("flee");
+    vi.advanceTimersByTime(4000);
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
     // The wrong answer's STATE goes out first, then the natural 20's, each with its own event.
     const ids = second.io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "STATE" && m.eventId > seq).map((m) => m.eventId);
     expect(ids[0]).toBe(seq + 1);
     expect(ids.at(-1)).toBe(seq + 2);
+    vi.useRealTimers();
   });
 
   it("a corrupt snapshot with a null team entry doesn't crash restore (adversarial review, 2026-09-21)", async () => {

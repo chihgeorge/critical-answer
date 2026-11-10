@@ -158,6 +158,8 @@ const READ_GAP_MS = 1000;
 /** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
+/** A lost natural 20 waits this long after the last cue, so its own cue and story do not cut that one off. */
+const LOST_CRIT_GAP_MS = 4000;
 /** A fork's door opening on show (docs/designs/branch-fork.md): the question, or the ❓ outcome, waits for it. */
 export const FORK_BEAT_MS = 1500;
 /** The boss kill's 4d20 on screen (docs/designs/kill-roll.md): the dice land one by one, then the total stays up. */
@@ -251,7 +253,8 @@ function lostCritOf(g: GameState): { teamId: string; questionId: string } | null
   for (const team of g.teams) {
     if (!team || team.typedAnswer !== undefined) continue;
     const questionId = currentQuestionIdOf(g, team.id);
-    if (g.checks?.[checkKey(questionId, team.id)]?.value === 20) return { teamId: team.id, questionId };
+    const check = g.checks?.[checkKey(questionId, team.id)];
+    if (check?.value === 20 && !check.dropped) return { teamId: team.id, questionId };
   }
   return null;
 }
@@ -325,6 +328,9 @@ export class DungeonRoom {
   private cue: SoundCue | null = null;
   /** Goes up with every new cue (setCue), so the big screen plays a roll's cue, which bumps no eventId. */
   private cueSeq = 0;
+  /** When the last cue was set (applyLostCrit waits LOST_CRIT_GAP_MS after it), and the timer that waits. */
+  private cueAt = 0;
+  private lostCritTimer: ReturnType<typeof setTimeout> | null = null;
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
@@ -1708,7 +1714,7 @@ export class DungeonRoom {
           this.broadcastState();
           break;
         case "HOST_NEXT_LINE":
-          this.handleNextLine(sender, msg.line);
+          this.handleNextLine(sender, msg.line, msg.eventId);
           break;
         case "HOST_GET_TRANSCRIPT":
           this.handleTranscript(sender);
@@ -2254,10 +2260,16 @@ export class DungeonRoom {
   }
 
   /** The host queues a line for the next narration; "" cancels. */
-  private handleNextLine(conn: Conn, raw: string) {
+  private handleNextLine(conn: Conn, raw: string, eventId?: number) {
     if (!this.requireHost(conn)) return;
     if (this.game?.phase === "finished") {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "game_over" });
+      return;
+    }
+    // Typed in the game before 回到大廳 and sent late (a queued send): never into the next game.
+    // shortcut: staleBeforeSeq is in memory, so a restart in between lets one through; persist it if that matters.
+    if (eventId !== undefined && this.staleBeforeSeq !== null && eventId < this.staleBeforeSeq) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_game" });
       return;
     }
     // One line on screen and in the prompt: a raw socket could send newlines the <input> cannot.
@@ -3163,7 +3175,10 @@ export class DungeonRoom {
   /** The one place a cue is set: a new one bumps cueSeq, so the big screen plays it once. */
   private setCue(cue: SoundCue | null) {
     this.cue = cue;
-    if (cue) this.cueSeq++;
+    if (cue) {
+      this.cueSeq++;
+      this.cueAt = this.now();
+    }
   }
 
   private resolveRoll() {
@@ -3190,6 +3205,7 @@ export class DungeonRoom {
       }
     } catch (err) {
       console.error(JSON.stringify({ event: "roll_failed", error: String(err) }));
+      if (roll.kind === "check" && roll.value === 20) this.dropCrit(roll.teamId, roll.questionId);
       this.broadcastState();
     }
     // A crit or check that killed has started the kill's beat: its team stays on turn until that beat lands.
@@ -3209,10 +3225,14 @@ export class DungeonRoom {
   /** A restart during a natural 20's beat lost the win the beat applies (R7). restore() marks it, and the next STATE
    * with its team on turn applies it (a judgment needs a team online, so not restore itself). The host judging that
    * team first, or the question leaving play, cancels it. Returns whether it judged (judge sent the STATE). */
-  private applyLostCrit(): boolean {
+  private applyLostCrit(waitedFor?: number): boolean {
     const lost = this.lostCrit;
     const game = this.game;
-    if (!lost || game?.phase !== "playing") return false;
+    if (!lost) return false;
+    if (game?.phase !== "playing") {
+      this.lostCrit = null; // back in the lobby or the game over: a later game must not win it
+      return false;
+    }
     if (this.judging || game.pendingWrong || this.pendingRoll || this.pendingLock || this.paused()) return false;
     const team = game.teams.find((t) => t?.id === lost.teamId);
     if (!team || currentQuestionIdOf(game, lost.teamId) !== lost.questionId || game.checks?.[checkKey(lost.questionId, lost.teamId)]?.value !== 20) {
@@ -3220,6 +3240,17 @@ export class DungeonRoom {
       return false;
     }
     if (currentTurnTeamId(game) !== lost.teamId || team.typedAnswer !== undefined) return false;
+    // Waited out unless a newer cue came meanwhile (the timer, not the clock, says the gap is over).
+    const wait = waitedFor === this.cueAt ? 0 : this.cueAt + LOST_CRIT_GAP_MS - this.now();
+    if (wait > 0) {
+      if (this.lostCritTimer) clearTimeout(this.lostCritTimer);
+      const at = this.cueAt;
+      this.lostCritTimer = setTimeout(() => {
+        this.lostCritTimer = null;
+        if (this.lostCrit) this.applyLostCrit(at);
+      }, wait);
+      return false;
+    }
     this.lostCrit = null;
     // Applied right after a 答錯 (inside withUndo): undoing that 答錯 would wipe this win for good, so it is not undoable.
     const pending = this.undoPending;
@@ -3229,9 +3260,18 @@ export class DungeonRoom {
     } catch (err) {
       this.undoPending = pending;
       console.error(JSON.stringify({ event: "lost_crit_failed", error: String(err) }));
+      this.dropCrit(lost.teamId, lost.questionId);
       return false;
     }
     return true;
+  }
+
+  /** A natural 20 whose win failed: marked in the saved check, so a later restart does not apply it long after. */
+  private dropCrit(teamId: string, questionId: string) {
+    const key = checkKey(questionId, teamId);
+    const check = this.game?.checks?.[key];
+    // Not a move: an undoable 答錯 before it stays undoable.
+    if (check) this.keepUndoOpen({ ...this.game!, checks: { ...this.game!.checks, [key]: { ...check, dropped: true } } });
   }
 
   /** Whether the team that just walked into a new room finds an event there (D5). e2e names its one event team. */

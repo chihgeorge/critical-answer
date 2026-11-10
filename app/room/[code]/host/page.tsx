@@ -41,7 +41,7 @@ const STUCK_MS = 15_000;
 const CLERIC_WAIT_DELAY_MS = 500;
 const noSubscribe = () => () => {};
 /** HOST_EDIT_NARRATION refusals: the narration panel shows them in its editor, not the page's error line. */
-const NARRATION_REFUSALS = new Set(["no_narration", "stale_narration", "bad_index", "line_read", "empty_edit"]);
+const NARRATION_REFUSALS = new Set(["no_narration", "stale_narration", "bad_index", "line_read", "empty_edit", "stale_game"]);
 
 type Picks = Extract<ServerMessage, { type: "HOST_PICKS" }>;
 
@@ -1016,6 +1016,7 @@ export default function HostPage() {
               refusal={editRefusal}
               disabled={!ready}
               send={send}
+              eventId={game.eventId}
             />
             {holdUp ? (
               holdPanel

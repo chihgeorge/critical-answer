@@ -191,7 +191,10 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
     const q2 = g.room.game!.teams[1].currentQuestionId;
     g.room.game = { ...g.room.game!, checks: { ...g.room.game!.checks, [checkKey(q2, T2)]: { value: 20, bonus: 0, dc: 8, passed: true } } }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     r.lostCrit = { teamId: T2, questionId: q2 };
+    vi.useFakeTimers();
     g.judge(false, "retry");
+    vi.advanceTimersByTime(4000); // it waits a beat after the 答錯's cue
+    vi.useRealTimers();
     expect(g.room.game!.teams[1].reward).toBeGreaterThan(0);
     expect(state(g.room).undoWrong).toBeUndefined();
     r.reveal = null; // 上菜 / 下一題 close it without a new game
@@ -215,9 +218,14 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
       judge(...a);
     };
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.useFakeTimers();
     g.judge(false, "retry");
+    vi.advanceTimersByTime(4000);
+    vi.useRealTimers();
     expect(log).toHaveBeenCalled();
     log.mockRestore();
+    // The failed 20 is dropped: a later restart does not apply it (TODOS 說服檢定 2).
+    expect(g.room.game!.checks![checkKey(q2, T2)]).toMatchObject({ value: 20, dropped: true });
     expect(state(g.room).undoWrong).toEqual({ teamId: T1, questionId: g.q });
     g.undo();
     expect(g.room.game!.teams[0].reward).toBe(10);

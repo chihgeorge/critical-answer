@@ -64,8 +64,8 @@ describe("parseClientMessage", () => {
     // An over-long password is cut, not a reason to drop the JOIN (a known team needs none to rejoin).
     expect(parseClientMessage({ type: "JOIN", teamId: ID, teamKey: KEY, teamName: "A", password: "p".repeat(500) })).toMatchObject({ password: "p".repeat(32) });
     expect(parseClientMessage({ type: "JOIN", teamId: 1, teamName: "A" })).toBeNull();
-    // checkKey joins question and team ids with a colon: a team id holding one could share a key (dnd follow-up).
-    expect(parseClientMessage({ type: "JOIN", teamId: "x:T", teamKey: KEY, teamName: "A" })).toBeNull();
+    // A colon team id parses: the room refuses it as not a UUID (invalid_team_id), so the phone says why.
+    expect(parseClientMessage({ type: "JOIN", teamId: "x:T", teamKey: KEY, teamName: "A" })).toMatchObject({ teamId: "x:T" });
     expect(parseClientMessage({ type: "JOIN", teamId: ID, teamKey: KEY, teamName: "x".repeat(101) })).toBeNull();
   });
 
@@ -218,6 +218,8 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_NEXT_LINE", line: "" })).toEqual({ type: "HOST_NEXT_LINE", line: "" });
     expect(parseClientMessage({ type: "HOST_NEXT_LINE" })).toBeNull();
     expect(parseClientMessage({ type: "HOST_NEXT_LINE", line: "字".repeat(41) })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_NEXT_LINE", line: "", eventId: 7 })).toEqual({ type: "HOST_NEXT_LINE", line: "", eventId: 7 });
+    expect(parseClientMessage({ type: "HOST_NEXT_LINE", line: "", eventId: -1 })).toBeNull();
   });
 
   it("HOST_QUEUE_QUESTION: a target and a question id, or null to clear", () => {
