@@ -74,9 +74,12 @@ test("the big-screen URL at the top of the host page opens the screen in a new t
   await expect(team.getByTestId("roster")).toContainText("甲隊");
   await startGame(host);
   // The full URL with the origin, so the host can type it into a TV (the origin is "" only in the server HTML).
-  await expect(host.getByRole("link", { name: /\/screen$/ })).toHaveText(`${baseURL}/room/${code}/screen`);
+  // It carries the room's screen key (docs/designs/screen-video-key.md).
+  const link = host.getByTestId("screen-link");
+  await expect(link).toHaveText(new RegExp(`^${baseURL}/room/${code}/screen#s=[0-9a-f-]+$`));
 
-  const [screen] = await Promise.all([context.waitForEvent("page"), host.getByRole("link", { name: new RegExp(`/room/${code}/screen$`) }).click()]);
+  const [screen] = await Promise.all([context.waitForEvent("page"), link.click()]);
+  // The big screen keeps the key and takes it out of its address bar, which the whole room can see.
   await expect(screen).toHaveURL(new RegExp(`/room/${code}/screen$`));
   await expect(host).toHaveURL(/\/host/);
 });

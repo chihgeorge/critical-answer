@@ -50,7 +50,7 @@ function game(questions: object[]) {
     room.game = { ...g, checks: { ...g.checks, [checkKey(qid, T1)]: { value: 10, bonus: 0, dc: 8, passed: true } } };
     send(room, host, { type: "HOST_JUDGE", teamId: T1, questionId: qid, correct: true, fleeChoice: "retry", eventId: state().eventId });
   };
-  return { room, host, phone, state, media, correct };
+  return { room, io, host, phone, state, media, correct };
 }
 
 describe("HOST_MEDIA", () => {
@@ -89,7 +89,7 @@ describe("HOST_MEDIA", () => {
     g.media("play");
     g.correct();
     expect(g.state().reveal.questionId).toBe(id);
-    expect(g.state().reveal.video).toEqual({ kind: "youtube", videoId: VIDEO, audioOnly: true, start: 5, end: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    expect(g.state().reveal.video).toEqual({ kind: "youtube", audioOnly: true });
     expect(g.state().media).toEqual({ questionId: id, state: "paused", seq: 0, press: 1 });
     g.media("play", id);
     expect(g.state().media.state).toBe("playing");
@@ -136,5 +136,129 @@ describe("HOST_MEDIA", () => {
     const before = g.state();
     g.media("stop");
     expect(g.state()).toEqual(before);
+  });
+});
+
+// docs/designs/screen-video-key.md: a video's YouTube title is the answer to a music question, so its id goes only to
+// the host pages and to a big screen that sent the room's screen key, never in STATE.
+describe("the screen key", () => {
+  const sentTo = (conn: { send: ReturnType<typeof vi.fn> }) => msgs(conn.send.mock.calls);
+  const videoOf = (conn: { send: ReturnType<typeof vi.fn> }) => sentTo(conn).findLast((m) => m.type === "SCREEN_VIDEO");
+  const keyOf = (host: { send: ReturnType<typeof vi.fn> }): string => sentTo(host).find((m) => m.type === "HOST_OK").screenKey;
+  /** A /screen page: SCREEN_HELLO on open, with the key its link carried. */
+  function screen(room: DungeonRoom, id: string, key?: string) {
+    const conn = makeConn(id);
+    room.onConnect(conn);
+    send(room, conn, { type: "SCREEN_HELLO", ...(key === undefined ? {} : { key }) });
+    return conn;
+  }
+  const FULL = { kind: "youtube", videoId: VIDEO, audioOnly: true, start: 5, end: 20 }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+
+  it("a phone, a big screen with no key and one with a wrong key never get the video id: not with the question, the ▶ or the reveal", () => {
+    const g = game([video("v1"), video("v2")]);
+    const key = keyOf(g.host);
+    expect(key.length).toBeGreaterThanOrEqual(32);
+    const bare = screen(g.room, "bare");
+    const wrong = screen(g.room, "wrong", `${key.slice(0, -1)}${key.endsWith("0") ? "1" : "0"}`);
+    const empty = screen(g.room, "empty", "");
+    expect(g.state().question.content).toEqual({ kind: "youtube", audioOnly: true });
+    g.media("play");
+    g.media("restart");
+    g.media("pause");
+    g.correct();
+    expect(g.state().reveal.video).toEqual({ kind: "youtube", audioOnly: true });
+    g.media("play", g.state().reveal.questionId);
+    // A socket that connects during the reveal, and a phone that sends the host's kind of hello with no key.
+    const late = makeConn("late");
+    g.room.onConnect(late);
+    send(g.room, g.phone, { type: "SCREEN_HELLO" });
+    serveNext(g.room, g.host, g.state().eventId);
+    expect(g.state().question.content.kind).toBe("youtube");
+    for (const conn of [bare, wrong, empty, late]) expect(sentTo(conn).some((m) => m.type === "STATE")).toBe(true);
+    for (const conn of [g.phone, bare, wrong, empty, late]) expect(JSON.stringify(sentTo(conn))).not.toContain(VIDEO);
+    // Nothing that goes to every socket carries it either.
+    expect(JSON.stringify(g.io.broadcast.mock.calls)).not.toContain(VIDEO);
+  });
+
+  it("the host and a big screen with the key get it: on hello, with each question, and for the reveal", () => {
+    const g = game([video("v1"), video("v2")]);
+    const id = g.state().question.id;
+    expect(videoOf(g.host)).toEqual({ type: "SCREEN_VIDEO", questionId: id, video: FULL });
+    const keyed = screen(g.room, "keyed", keyOf(g.host));
+    expect(videoOf(keyed)).toEqual({ type: "SCREEN_VIDEO", questionId: id, video: FULL });
+    // It comes before the STATE it belongs to, so the screen never has the question without its video.
+    keyed.send.mockClear();
+    g.io.broadcast.mockImplementationOnce(() => expect(videoOf(keyed)).toBeDefined());
+    g.correct();
+    expect(g.state().reveal.video).toBeDefined();
+    expect(videoOf(keyed)).toEqual({ type: "SCREEN_VIDEO", questionId: id, video: FULL });
+    serveNext(g.room, g.host, g.state().eventId);
+    const next = g.state().question.id;
+    expect(next).not.toBe(id);
+    for (const conn of [g.host, keyed]) expect(videoOf(conn)).toEqual({ type: "SCREEN_VIDEO", questionId: next, video: FULL });
+    // A host page that reloads gets the key again, and the video on show.
+    const reloaded = makeConn("host-2");
+    g.room.onConnect(reloaded);
+    send(g.room, reloaded, { type: "HOST_CLAIM", token: TOKEN });
+    expect(keyOf(reloaded)).toBe(keyOf(g.host));
+    expect(videoOf(reloaded)).toEqual({ type: "SCREEN_VIDEO", questionId: next, video: FULL });
+  });
+
+  it("the key is proved per socket: a reconnect under the same id, or a later hello without it, gets no more videos", () => {
+    const g = game([video("v1"), video("v2")]);
+    const key = keyOf(g.host);
+    const keyed = screen(g.room, "tv", key);
+    expect(videoOf(keyed)).toBeDefined();
+    // Someone else's socket takes the id (ids come from the client).
+    const taken = makeConn("tv");
+    g.room.onConnect(taken);
+    send(g.room, taken, { type: "SCREEN_HELLO" });
+    const again = screen(g.room, "tv-2", key);
+    send(g.room, again, { type: "SCREEN_HELLO", key: "not-the-key" });
+    again.send.mockClear();
+    g.correct();
+    expect(videoOf(taken)).toBeUndefined();
+    expect(videoOf(again)).toBeUndefined();
+    // A closed screen is forgotten.
+    const closed = screen(g.room, "tv-3", key);
+    g.room.onClose(closed);
+    closed.send.mockClear();
+    serveNext(g.room, g.host, g.state().eventId);
+    expect(closed.send).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing for a question that is not a video", () => {
+    const t = game([text("t1"), text("t2")]);
+    const keyed = screen(t.room, "keyed", keyOf(t.host));
+    t.correct();
+    for (const conn of [t.host, keyed]) expect(videoOf(conn)).toBeUndefined();
+  });
+
+  it("sends no SCREEN_VIDEO for a reveal whose video explanation takes the video's place", () => {
+    const g = game([video("v1", { explanation: { kind: "youtube", value: VIDEO } }), video("v2", { explanation: { kind: "youtube", value: VIDEO } })]);
+    const keyed = screen(g.room, "keyed", keyOf(g.host));
+    keyed.send.mockClear();
+    g.host.send.mockClear();
+    g.correct();
+    expect(g.state().reveal.video).toBeUndefined();
+    for (const conn of [g.host, keyed]) expect(videoOf(conn)).toBeUndefined();
+  });
+
+  it("tells a big screen whether its key was taken, so it can say it will play no video", () => {
+    const g = game([video("v1"), video("v2")]);
+    const ack = (conn: { send: ReturnType<typeof vi.fn> }) => sentTo(conn).findLast((m) => m.type === "SCREEN_KEY");
+    expect(ack(screen(g.room, "keyed", keyOf(g.host)))).toEqual({ type: "SCREEN_KEY", ok: true });
+    expect(ack(screen(g.room, "bare"))).toEqual({ type: "SCREEN_KEY", ok: false });
+    expect(ack(screen(g.room, "wrong", "not-the-key"))).toEqual({ type: "SCREEN_KEY", ok: false });
+    // The key itself never goes to a screen, and never to everyone.
+    expect(JSON.stringify([sentTo(g.phone), g.io.broadcast.mock.calls])).not.toContain(keyOf(g.host));
+  });
+
+  it("drops a key that is not a short string instead of comparing it", () => {
+    const g = game([video("v1"), video("v2")]);
+    for (const [i, key] of ["x".repeat(65), 7, null, { length: 1 }].entries()) {
+      const conn = screen(g.room, `odd-${i}`, key as string);
+      expect(videoOf(conn)).toBeUndefined();
+    }
   });
 });

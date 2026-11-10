@@ -156,7 +156,7 @@
 
 **Context:**
 - 題目在手機上看得到（`app/room/[code]/play/page.tsx`），可以直接複製或拍照問 AI。
-- 比較難問 AI 的題型：聽歌題（`docs/designs/youtube-questions.md`，手機上沒有影片，只能聽）。但有漏洞：房間把同一份 STATE 送給每個連線，裡面有 YouTube 影片 id，玩家用開發工具拿到 id 就能查影片標題，標題常常就是答案。不登入的 /screen 也一定要拿到 id 才能播，所以要封住得先給大螢幕加驗證（/review 2026-11-06 D25，接受的風險）。
+- 比較難問 AI 的題型：聽歌題（`docs/designs/youtube-questions.md`，手機上沒有影片，只能聽）。但有漏洞：房間把同一份 STATE 送給每個連線，裡面有 YouTube 影片 id，玩家用開發工具拿到 id 就能查影片標題，標題常常就是答案。不登入的 /screen 也一定要拿到 id 才能播，所以要封住得先給大螢幕加驗證（/review 2026-11-06 D25，接受的風險）。**更新（2026-11-09）：** 已封住，STATE 不再帶影片 id，只有主持人頁和帶螢幕金鑰的大螢幕收得到，見 `docs/designs/screen-video-key.md`。
 - 可能的方向（還沒評估）：作答時間限制、手機不顯示題目文字只看大螢幕、多出 AI 答不好的題（聽歌、圖片、現場知識）、主持人規則。
 
 **Effort/Priority:** 未定 / P2
@@ -535,6 +535,8 @@
 ## 任何人都能宣告自己是大螢幕
 
 **What:** /screen 連上時送的 `SCREEN_HELLO` 不帶任何憑證，有房間代碼的人開 devtools 就能宣告自己是大螢幕，然後送 `SCREEN_CLIP_ENDED`（影片題提早開始作答倒數）或 `SCREEN_NARRATION_PROGRESS`（鎖住主持人改旁白）。另外，房間滿 60 條連線時只保護「最早宣告的兩台螢幕」：搗蛋的人先宣告兩次，真電視斷線重連後就排到後面，再一直開新連線就能把真電視擠掉。做法：主持人頁給的大螢幕網址帶一把螢幕金鑰（像主持人的 `#k=`），房間只認帶對金鑰的連線是大螢幕，保護名額也只給它們。電視開網址的方式會變（網址變長或改掃 QR），`docs/hosting.md` 要一起改。
+
+**更新（2026-11-09）：** 螢幕金鑰已經有了（`docs/designs/screen-video-key.md`）：主持人頁的大螢幕網址帶 `#s=`，房間只把 YouTube 題的影片 id 送給帶對金鑰的大螢幕和主持人頁。還沒做的是這一條剩下的部分：`SCREEN_CLIP_ENDED`、`SCREEN_NARRATION_PROGRESS` 和保護名額仍然認任何送過 `SCREEN_HELLO` 的連線，要改成只認 `keyedScreens`（那時沒帶金鑰的大螢幕就不能回報旁白進度，e2e 開大螢幕的地方都要改用帶金鑰的網址）。
 
 2026-11-08 #169 之後還剩的就是上面這一項（螢幕金鑰）。當時一起記下的三個相關小問題（被關掉或被取代的 socket 還能送訊息、同 id 重連後 `hostConns` 指著舊 socket、Room 沒有 `onError`）已在活動前穩定性 PR 修好，見 Completed。
 

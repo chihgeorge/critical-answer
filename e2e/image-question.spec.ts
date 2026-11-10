@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { startGame, rollCheck, nextQuestion } from "./answer";
+import { startGame, rollCheck, nextQuestion, screenUrl } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 const WORKER = "http://localhost:1996";
@@ -155,7 +155,14 @@ test("youtube-content question: the big screen plays it, the phone and the host 
   const screenContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   await screenContext.route(/youtube(-nocookie)?\.com/, (r) => r.abort());
   const screen = await screenContext.newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
+  // Opened by the room code alone, without the screen key (screen-video-key.md): the way a player would.
+  // Its own context: the keyed screen's browser remembers the key.
+  const keylessContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  await keylessContext.route(/youtube(-nocookie)?\.com/, (r) => r.abort());
+  const keyless = await keylessContext.newPage();
+  await keyless.goto(`/room/${code}/screen`);
+  await expect(keyless.getByTestId("screen-locked")).toContainText("請用主持人頁上的大螢幕網址開啟");
 
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("影片隊")}`);
@@ -169,6 +176,11 @@ test("youtube-content question: the big screen plays it, the phone and the host 
   await expect(team.locator("iframe")).toHaveCount(0);
   await expect(team.getByTestId("play-media-hint")).toHaveText("▶ 看大螢幕");
   await expect(screen.getByTestId("youtube-player")).toBeVisible();
+  await expect(screen.getByTestId("video-locked")).toHaveCount(0);
+  // Without the key the room never sends the video's id: no player, and the screen says how to get one.
+  await expect(keyless.getByTestId("video-locked")).toContainText("請用主持人頁上的大螢幕網址開啟");
+  await expect(keyless.getByTestId("youtube-player")).toHaveCount(0);
+  await expect(keyless.locator("iframe")).toHaveCount(0);
 
   await host.getByRole("button", { name: "答對！" }).click();
   await expect(host.getByText("輪到")).toBeVisible();

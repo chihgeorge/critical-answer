@@ -48,6 +48,11 @@ export type PublicMediaContent =
   | { kind: "image"; url: string }
   | { kind: "youtube"; videoId: string; audioOnly?: true; start?: number; end?: number };
 
+/** A question's own YouTube video as STATE carries it: never the `videoId`, whose YouTube title is the answer to a
+ * music question. The id goes out in SCREEN_VIDEO, only to a host page and to a big screen that sent the room's screen
+ * key (docs/designs/screen-video-key.md). */
+export type HiddenVideo = { kind: "youtube"; audioOnly?: true };
+
 /** The question the team in turn faces, without its answer: safe for /screen and /play.
  * `options` is present only for multipleChoice questions (never `correctIndex` — see
  * question-bank.ts's publicQuestion() field-picking discipline). Deliberately carries no
@@ -56,7 +61,7 @@ export type PublicMediaContent =
  * answered, never from the question currently in play. */
 export interface PublicQuestion {
   id: string;
-  content: PublicMediaContent;
+  content: Exclude<PublicMediaContent, { kind: "youtube" }> | HiddenVideo;
   /** The line above an image or a video (docs/designs/youtube-questions.md D5). */
   prompt?: string;
   difficulty: number;
@@ -84,8 +89,8 @@ export type AnswerReveal = {
   answer: string;
   explanation?: PublicMediaContent;
   /** The answered question's own YouTube video, shown again where it stopped, unless an image or a video
-   * explanation takes its place (docs/designs/youtube-questions.md D17). */
-  video?: Extract<PublicMediaContent, { kind: "youtube" }>;
+   * explanation takes its place (docs/designs/youtube-questions.md D17). Its id is in SCREEN_VIDEO, like the question's. */
+  video?: HiddenVideo;
   /** Set when a team's lock was judged (phone answering): the answered question's options, which one
    * was right, who locked it and the points it scored, so every screen can light the tile (D8, D14).
    * Safe to send: it goes out only once the answer is revealed. `chefBonus`: a chef's share of `points`, shown as （廚師 +N）. */
@@ -187,9 +192,10 @@ export type ClientMessage =
    * refuses a stale eventId or rev (another host device edited first) and a line the big screen has already read
    * (docs/designs/host-narration-edit.md D3, D9). */
   | { type: "HOST_EDIT_NARRATION"; eventId: number; rev: number; index: number; line: string }
-  /** /screen: sent first on every connect, so the room takes SCREEN_* messages only from a big screen. No key: it
-   * keeps a stray socket from a phone's devtools out, not a determined forger. */
-  | { type: "SCREEN_HELLO" }
+  /** /screen: sent first on every connect, so the room takes SCREEN_* messages only from a big screen: that keeps a
+   * stray socket from a phone's devtools out, not a determined forger. `key` is the room's screen key, from the big
+   * screen link on the host page: only with it does the room send this socket SCREEN_VIDEO. */
+  | { type: "SCREEN_HELLO"; key?: string }
   /** /screen: it has finished reading `done` lines of narration `eventId` at revision `rev` (typed, and spoken
    * when its voice is on). No key: the worst a forged one does is lock lines early. The room takes it only after SCREEN_HELLO, and never from a team's phone or a host page
    * (host-narration-edit.md D3, D14). */
@@ -431,7 +437,13 @@ export type ServerMessage =
   | { type: "EPILOGUE"; text: string; replay?: true }
   /** Host-only reply to HOST_GET_TRANSCRIPT. */
   | { type: "TRANSCRIPT"; entries: TranscriptItem[] }
-  | { type: "HOST_OK"; joinPassword: string }
+  /** `screenKey`: the room's screen key, for the big screen link on the host page (absent from older servers). */
+  | { type: "HOST_OK"; joinPassword: string; screenKey?: string }
+  /** The reply to SCREEN_HELLO: whether its key was the room's screen key, so this socket is sent SCREEN_VIDEO. */
+  | { type: "SCREEN_KEY"; ok: boolean }
+  /** The YouTube video on the big screen now (the question's, or the reveal's). Never broadcast: it goes only to host
+   * pages and to big screens whose SCREEN_HELLO carried the screen key. */
+  | { type: "SCREEN_VIDEO"; questionId: string; video: Extract<PublicMediaContent, { kind: "youtube" }> }
   /** Host-only: how many lines of narration `eventId` the big screen has read. Sent on host connect and on every change. */
   | { type: "HOST_NARRATION_PROGRESS"; eventId: number; done: number }
   /** Host-only: the line queued by HOST_NEXT_LINE, "" when none. Sent on host connect and on every change. */
@@ -641,7 +653,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: "HOST_EDIT_NARRATION", eventId: m.eventId, rev: m.rev, index: m.index, line };
     }
     case "SCREEN_HELLO":
-      return { type: "SCREEN_HELLO" };
+      return { type: "SCREEN_HELLO", ...(str(m.key, MAX_KEY_ID) !== null ? { key: m.key as string } : {}) };
     case "SCREEN_NARRATION_PROGRESS":
       return isCount(m.eventId) && isCount(m.rev) && isCount(m.done)
         ? { type: "SCREEN_NARRATION_PROGRESS", eventId: m.eventId, rev: m.rev, done: m.done }

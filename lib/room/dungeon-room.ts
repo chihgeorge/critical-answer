@@ -93,7 +93,7 @@ import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder,
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
-import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
+import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, hiddenVideo, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
@@ -290,6 +290,11 @@ export class DungeonRoom {
   private conns = new Map<string, Conn>();
   /** Connections that sent SCREEN_HELLO, oldest first: only they may send SCREEN_* messages. */
   private screenConns = new Set<string>();
+  /** What a big screen sends to be given the question videos (screen-video-key.md): in the big screen link on the host
+   * page, so a phone that opens /screen by the room code gets no video id to look up. Saved; never logged. */
+  private screenKey = crypto.randomUUID();
+  /** The connections whose SCREEN_HELLO carried the screen key. */
+  private keyedScreens = new Set<string>();
   /** Sockets the room closed or replaced: whatever they still send is ignored. */
   private gone = new WeakSet<Conn>();
   /** Wrong join passwords since passwordWindowAt (JOIN_PASSWORD_MAX_WRONG). Memory only. */
@@ -690,7 +695,29 @@ export class DungeonRoom {
 
   private broadcast(msg: ServerMessage) {
     this.persist();
+    // Before the STATE that shows the question, so a big screen never has the question without its video.
+    if (msg.type === "STATE") this.sendVideo();
     this.room.broadcast(JSON.stringify(msg));
+  }
+
+  /** SCREEN_VIDEO: the id of the video on the big screen now, to `only` or to every connection that may have it (the
+   * host pages, and the big screens that sent the screen key). STATE never carries it: a player who has a music
+   * question's video id has its title, which is the answer. Straight to the sockets: there is nothing to save. */
+  private sendVideo(only?: Conn) {
+    const questionId = this.shownVideoId();
+    const content = questionId === null ? undefined : this.question(questionId)?.content;
+    if (questionId === null || content?.kind !== "youtube") return;
+    const video = publicMediaContent(content, "", questionId);
+    if (video.kind !== "youtube") return;
+    const text = JSON.stringify({ type: "SCREEN_VIDEO", questionId, video } satisfies ServerMessage);
+    const to = only ? [only] : [...this.hostConns.values(), ...[...this.keyedScreens].flatMap((id) => this.conns.get(id) ?? [])];
+    for (const conn of to) {
+      try {
+        conn.send(text);
+      } catch {
+        // A dead socket must not stop the STATE that follows from going out to everyone else.
+      }
+    }
   }
 
   private sendTo(conn: Conn, msg: ServerMessage) {
@@ -711,6 +738,7 @@ export class DungeonRoom {
       pendingTeams: this.pendingTeams,
       hostToken: this.hostToken,
       teamKeys: [...this.teamKeys],
+      screenKey: this.screenKey,
       eventSeq: this.eventSeq,
       lastNarration: this.lastNarration,
       epilogue: this.epilogue,
@@ -800,6 +828,8 @@ export class DungeonRoom {
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
     this.teamKeys = new Map(s.teamKeys);
+    // A save from before the screen key keeps the one this room just made: the next save writes it.
+    this.screenKey = s.screenKey ?? this.screenKey;
     this.eventSeq = s.eventSeq;
     this.lastNarration = s.lastNarration && { ...s.lastNarration, rev: s.lastNarration.rev ?? 0, done: s.lastNarration.done ?? 0 };
     this.epilogue = s.epilogue;
@@ -842,7 +872,8 @@ export class DungeonRoom {
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
     this.lastActivityAt = s.lastActivityAt ?? this.now();
-    this.lastSaved = JSON.stringify(this.persistedState());
+    // A key this room just made is not in storage yet: the next message must write it, before any host is told it.
+    this.lastSaved = s.screenKey ? JSON.stringify(this.persistedState()) : "";
     const idleFor = this.now() - this.lastActivityAt;
     this.setAlarmAt(Math.max(this.now(), this.lastActivityAt + (idleFor >= this.idleMs ? this.expireMs : this.idleMs)));
     console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
@@ -1341,6 +1372,9 @@ export class DungeonRoom {
     this.hostConns.clear();
     this.connTeam.clear();
     this.screenConns.clear();
+    // The next host of this code gets a new link: the old one's big screen link stops giving videos.
+    this.screenKey = crypto.randomUUID();
+    this.keyedScreens.clear();
     this.teamKeys.clear();
     this.handoffs.clear();
     this.handoffWrong = 0;
@@ -1407,6 +1441,8 @@ export class DungeonRoom {
       prev.close();
       // Host-only messages would go to the closed socket until the new one re-sends HOST_CLAIM (it does on open).
       this.hostConns.delete(conn.id);
+      // The new socket proves the screen key itself (SCREEN_HELLO, on open too).
+      this.keyedScreens.delete(conn.id);
     } else if (this.conns.size >= MAX_CONNECTIONS && !this.closeSpareConn()) {
       this.gone.add(conn);
       conn.close();
@@ -1454,6 +1490,7 @@ export class DungeonRoom {
     this.conns.delete(conn.id);
     this.hostConns.delete(conn.id);
     this.screenConns.delete(conn.id);
+    this.keyedScreens.delete(conn.id);
     const teamId = this.connTeam.get(conn.id);
     this.connTeam.delete(conn.id);
     if (!teamId || !this.game) return;
@@ -1538,14 +1575,23 @@ export class DungeonRoom {
           // A new password makes earlier guesses worthless: the host can lift a guessing lock this way.
           this.passwordWrong = 0;
           // Every host page shows the room's real password only once the room has it.
-          for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
+          for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword, screenKey: this.screenKey });
           break;
         case "HOST_EDIT_NARRATION":
           this.handleEditNarration(sender, msg.eventId, msg.rev, msg.index, msg.line);
           break;
-        case "SCREEN_HELLO":
-          if (this.conns.has(sender.id)) this.screenConns.add(sender.id);
+        case "SCREEN_HELLO": {
+          if (!this.conns.has(sender.id)) break;
+          this.screenConns.add(sender.id);
+          // No key, or a wrong one (a link from before the room was reset): the screen works, without videos.
+          const keyed = msg.key !== undefined && tokensEqual(this.screenKey, msg.key);
+          if (keyed) this.keyedScreens.add(sender.id);
+          else this.keyedScreens.delete(sender.id);
+          // The screen says so itself when it will get no videos, before a video question finds out.
+          this.sendTo(sender, { type: "SCREEN_KEY", ok: keyed });
+          if (keyed) this.sendVideo(sender);
           break;
+        }
         case "SCREEN_NARRATION_PROGRESS":
           // Only from a /screen page: a player cannot lock the host's edits from their own phone (D3), nor from a
           // second socket that never joined a team.
@@ -1696,7 +1742,8 @@ export class DungeonRoom {
       return;
     }
     this.hostConns.set(conn.id, conn);
-    this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword });
+    this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword, screenKey: this.screenKey });
+    this.sendVideo(conn);
     this.sendTo(conn, { type: "HOST_NEXT_LINE_STATE", line: this.nextLine?.text ?? "" });
     if (this.lastNarration) this.sendTo(conn, { type: "HOST_NARRATION_PROGRESS", eventId: this.lastNarration.eventId, done: this.lastNarration.done });
     this.sendAiStatus(conn);
@@ -2605,12 +2652,12 @@ export class DungeonRoom {
       const fieldMarks = q?.kind === "text" && q.fields && marks ? { teamId, marks: q.fields.map((f, i) => ({ label: f.label, answer: f.answer, right: marks[i] })) } : undefined;
       // The answer stops the clip; the reveal shows the video where it stopped (D17).
       if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
-      const video = q?.content.kind === "youtube" && (!explanation || explanation.kind === "text") ? publicMediaContent(q.content, imageBaseUrl, questionId) : undefined;
+      const video = q?.content.kind === "youtube" && (!explanation || explanation.kind === "text") ? hiddenVideo(q.content) : undefined;
       this.reveal = {
         questionId,
         answer: justAnswered.answer,
         ...(explanation ? { explanation } : {}),
-        ...(video?.kind === "youtube" ? { video } : {}),
+        ...(video ? { video } : {}),
         ...(choice ? { choice } : {}),
         ...(sorted ? { sorted } : {}),
         ...(fieldMarks ? { fields: fieldMarks } : {}),

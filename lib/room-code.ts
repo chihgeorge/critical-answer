@@ -94,6 +94,23 @@ export function getHostToken(code: string): string | null {
   return readStored(key);
 }
 
+const SCREEN_KEY_PREFIX = "critical_answer_screen_key_";
+
+/**
+ * Client-only: this room's screen key (docs/designs/screen-video-key.md), or null. An `#s=` URL fragment (the big
+ * screen link on the host page) wins and is kept for this browser, then taken out of the address bar: the big
+ * screen's address bar is projected to the whole room. With storage blocked it stays in the address bar, so a
+ * reload still has it. Not `#k=`: that is the host token on the host page.
+ */
+export function getScreenKey(code: string): string | null {
+  const key = SCREEN_KEY_PREFIX + code;
+  const fromUrl = hashParams(location.hash).get("s");
+  if (!fromUrl) return readStored(key);
+  writeStored(key, fromUrl);
+  if (readStored(key) === fromUrl) history.replaceState(null, "", location.pathname + location.search);
+  return fromUrl;
+}
+
 /**
  * The link the home page opens for a room the user just created carries `new=<attempt count>` in its fragment
  * (1, then 2, 3, ... on each retry — see freshAttempt). Only such a link may swap its room code when the code

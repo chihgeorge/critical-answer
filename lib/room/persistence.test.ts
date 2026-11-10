@@ -178,6 +178,35 @@ describe("restoring after a restart", () => {
     expect(room.game).toBeNull();
   });
 
+  it("the screen key comes back, so the big screen link the host already opened still gets videos; a save from before the key gets one", async () => {
+    const storage = memoryStorage();
+    const keyAfterClaim = (room: DungeonRoom): string => {
+      const host = makeConn("host");
+      send(room, host, { type: "HOST_CLAIM", token: TOKEN });
+      return lastOf(host, "HOST_OK").screenKey;
+    };
+    const key = keyAfterClaim(makeRoom(storage).room);
+    expect((storage.data.get(SNAPSHOT_KEY) as any).screenKey).toBe(key);
+    const second = makeRoom(storage).room;
+    expect(await second.restore()).toBe("restored");
+    expect(keyAfterClaim(second)).toBe(key);
+
+    // A save an older Worker wrote, and one whose key is damaged: the room makes a key, saves it, and keeps it.
+    for (const damaged of [undefined, "", 7]) {
+      const old = { ...(storage.data.get(SNAPSHOT_KEY) as any), screenKey: damaged };
+      if (damaged === undefined) delete old.screenKey;
+      storage.data.set(SNAPSHOT_KEY, old);
+      const third = makeRoom(storage).room;
+      expect(await third.restore()).toBe("restored");
+      const made = keyAfterClaim(third);
+      expect(made).toMatch(/^[0-9a-f]{8}-[0-9a-f-]+$/);
+      expect(made).not.toBe(key);
+      const fourth = makeRoom(storage).room;
+      expect(await fourth.restore()).toBe("restored");
+      expect(keyAfterClaim(fourth)).toBe(made);
+    }
+  });
+
   it("the join password comes back: a stranger still cannot join the lobby after a restart", async () => {
     const storage = memoryStorage();
     const first = makeRoom(storage).room;

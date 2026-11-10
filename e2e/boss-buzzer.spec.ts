@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { startGame } from "./answer";
+import { startGame, screenUrl } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 const WORKER = "http://localhost:1996";
@@ -53,7 +53,7 @@ test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut o
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
   const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
   const phones = [];
   for (const name of ["甲隊", "乙隊"]) {
     const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();

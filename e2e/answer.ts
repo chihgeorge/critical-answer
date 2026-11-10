@@ -15,6 +15,14 @@ export async function rollCheck(team: Page) {
   await expect(team.getByRole("textbox", { name: "你們的答案" })).toBeVisible({ timeout: 5000 });
 }
 
+/** The big screen link on the host page. It carries the room's screen key: only a screen opened by it is sent the
+ * question videos (docs/designs/screen-video-key.md). The key comes with the room's HOST_OK, so wait for it. */
+export async function screenUrl(host: Page): Promise<string> {
+  const link = host.getByTestId("screen-link");
+  await expect(link).toHaveAttribute("href", /\/screen#s=./);
+  return (await link.getAttribute("href"))!;
+}
+
 /** 開始遊戲 without the how-to-play intro, the way every test but the intro's own starts a game
  * (docs/designs/how-to-play.md eng D6). The intro itself is tested in host-controls.spec.ts. */
 export async function startGame(host: Page) {

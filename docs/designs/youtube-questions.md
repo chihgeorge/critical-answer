@@ -426,7 +426,7 @@ Approval readiness: PASS — D1=A、D2=A、D3=A（重問）、D4=A、D5=A、D6=A
 - 轉檔 script：D8 選 A，手動轉一次，不提交程式。
 - 影片聲音在旁白念時自動降低：主持人控制按播放的時機。
 - 上傳音檔或影片：站長 2026-11-06 決定只用 YouTube。
-- 聽歌題的影片 id 不對玩家隱藏（/review D25，接受的風險）：每個連線收到同一份 STATE，懂開發工具的玩家拿到 id 就能查標題。/screen 不用登入又必須拿到 id 才能播，要封住得先給大螢幕加驗證，併入 TODOS.md「反 AI 作弊」。
+- 聽歌題的影片 id 不對玩家隱藏（/review D25，接受的風險）：每個連線收到同一份 STATE，懂開發工具的玩家拿到 id 就能查標題。/screen 不用登入又必須拿到 id 才能播，要封住得先給大螢幕加驗證，併入 TODOS.md「反 AI 作弊」。（2026-11-09 已封住：見 [screen-video-key.md](screen-video-key.md)。）
 
 ## What already exists
 
