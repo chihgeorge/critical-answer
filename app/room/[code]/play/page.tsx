@@ -793,7 +793,8 @@ export default function PlayPage() {
       switch (msg.type) {
         case "ERROR": {
           if (msg.error === "bad_code" && claimed.current) break;
-          if (msg.error === "bad_code" && waited.current) {
+          // Not once turned away: the refusal screen has its own wrong-code sentence.
+          if (msg.error === "bad_code" && waited.current && !removed.current) {
             setBadCode(true);
             break;
           }
@@ -949,7 +950,7 @@ export default function PlayPage() {
           <Panel role="alert" className="flex flex-col items-center gap-3 px-4 py-4 text-center text-[18px]" style={{ background: "#ffd9d9" }}>
             {rejected.text}
             {/* Mid-game every refusal keeps the code input (team-handoff.md): a replacement phone that types its team's own
-                name, or finds the room full, is refused before it could wait (late-join.md L8). */}
+                name, or finds the room full, is refused before it could wait (late-join.md L12). */}
             {(rejected.handoff || game) && <HandoffForm send={send} />}
             <a href={`/?code=${code}`} className="text-[16px] underline underline-offset-2">{rejected.link === "password" ? "回首頁輸入密碼" : "回首頁"}</a>
           </Panel>
