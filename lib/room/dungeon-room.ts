@@ -1166,6 +1166,9 @@ export class DungeonRoom {
     // A check is written when its die is rolled, so a restart inside the beat cannot reroll it; it shows once the beat ends.
     const rolling = this.pendingRoll?.kind === "check" ? checkKey(this.pendingRoll.questionId, this.pendingRoll.teamId) : null;
     if (rolling && view.checks) view.checks = Object.fromEntries(Object.entries(view.checks).filter(([k]) => k !== rolling));
+    // Check first, question after: a first character an earlier team's mage got on this (shared boss) question waits too.
+    const held = this.awaitingCheck() ? this.currentQuestion()?.pub.id : undefined;
+    if (held !== undefined && view.mageHints?.[held] !== undefined) view.mageHints = Object.fromEntries(Object.entries(view.mageHints).filter(([k]) => k !== held));
     // A buzzer phase's typed answer goes to the host only (HOST_ANSWER): the other teams could still buzz on it
     // (multi-field.md E4). "" still tells the team's own phone it was sent. A game ended mid-buzz keeps it hidden too.
     if (isBuzzPhase(this.game) || this.game.phase === "finished") view.teams = view.teams.map((t) => (t.typedAnswer === null ? t : { ...t, typedAnswer: "" }));
@@ -3185,6 +3188,10 @@ export class DungeonRoom {
     if (this.pendingLock || this.pendingRoll) return reject("answer_pending");
     const classId = game.teams.find((t) => t.id === teamId)?.classId;
     const q = this.question(questionId);
+    // A fill-in question is a persuasion check first; the warrior's roll comes after it (dnd design R2), and so does the
+    // mage's first character: the question is not up before the check. Before mageHint, whose refusals (no_hint) would
+    // tell something about the hidden answer.
+    if ((classId === "warrior" || classId === "mage") && q?.kind === "text" && currentQuestionIdOf(game, teamId) === questionId && !game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
     let next: GameState;
     try {
       if (classId === "cleric") next = pray(game, teamId);
@@ -3200,9 +3207,6 @@ export class DungeonRoom {
       return this.sendInvalid(conn, err);
     }
     if (currentQuestionIdOf(game, teamId) !== questionId || (classId === "cleric" && game.pendingWrong?.questionId !== questionId)) return reject("stale_question");
-    // A fill-in question is a persuasion check first; the warrior's roll comes after it (dnd design R2).
-    // So does the mage's first character: the question is not up before the check.
-    if ((classId === "warrior" || classId === "mage") && q?.kind === "text" && !game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
     this.game = next;
     if (classId === "warrior") {
       this.startRoll("warrior", teamId, questionId);

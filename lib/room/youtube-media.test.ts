@@ -59,6 +59,26 @@ function game(questions: object[], roll = true) {
   return { room, io, host, phone, state, media, correct, check };
 }
 
+// Value: protects=check first, question after: a fill-in's prompt, field labels and video never reach a phone or the TV
+// before its check; fails_when=shownQuestion() spreads the question instead of picking id, difficulty, boss and monster.
+describe("check first, question after", () => {
+  it("STATE holds back a fill-in's prompt and video until its check is done", () => {
+    const g = game([video("v1", { prompt: "這首歌是？" })], false);
+    expect(Object.keys(g.state().question).sort()).toEqual(["boss", "checkFirst", "content", "difficulty", "id", "monster"]);
+    expect(JSON.stringify(g.io.broadcast.mock.calls)).not.toContain("這首歌是？");
+    expect(JSON.stringify(g.phone.send.mock.calls)).not.toContain("這首歌是？");
+    // A first character an earlier team's mage got on the same (shared boss) question waits with the question.
+    g.room.game = { ...g.room.game!, mageHints: { v1: "答" } };
+    const late = makeConn("late");
+    g.room.onConnect(late);
+    expect(msgs(late.send.mock.calls).findLast((m) => m.type === "STATE").view.mageHints).toEqual({});
+    g.check();
+    expect(g.state().view.mageHints).toEqual({ v1: "答" });
+    expect(g.state().question.prompt).toBe("這首歌是？");
+    expect(g.state().question.content.kind).toBe("youtube");
+  });
+});
+
 describe("HOST_MEDIA", () => {
   it("play, pause and restart become STATE media; restart bumps seq, every press bumps press", () => {
     const g = game([video("v1"), video("v2")]);

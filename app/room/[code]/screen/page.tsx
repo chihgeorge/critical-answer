@@ -454,7 +454,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           </div>
         ) : question ? (
           // Check first, question after: the room sends no text until the die's beat ends.
-          question.checkFirst ? <span data-testid="screen-check-first">{pendingRoll || !turn ? "🎲 說服檢定中……擲完才出題" : `${turn.name}：按手機上的「🎲 擲骰說服」，擲完才出題`}</span> :
+          question.checkFirst ? <span data-testid="screen-check-first">{wrong || (pendingRoll && pendingRoll.kind !== "check") ? "……" : pendingRoll || !turn ? "🎲 說服檢定中……擲完才出題" : `${turn.name}：按手機上的「🎲 擲骰說服」，擲完才出題`}</span> :
           question.content.kind === "text" ? question.content.value : <div style={{ fontSize: 26 }}>{question.prompt ?? ""}</div>
         ) : "……"}
         {video && (

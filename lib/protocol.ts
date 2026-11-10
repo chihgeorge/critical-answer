@@ -485,7 +485,8 @@ export type ServerMessage =
     }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   /** `typed`: in a buzzer phase, what the team that buzzed typed (`fields`: a music question's boxes, "" for a blank).
-   * Host-only: STATE hides it, since the other teams could still buzz (docs/designs/multi-field.md E4). */
+   * Host-only: STATE hides it, since the other teams could still buzz (docs/designs/multi-field.md E4).
+   * `question`: the whole question while STATE holds it back for the persuasion check (`checkFirst`); absent after. */
   | { type: "HOST_ANSWER"; questionId: string; answer: string; typed?: { teamId: string; text: string; fields?: string[] }; question?: PublicQuestion }
   /** Host-only, sent with every STATE: what the host may queue (HOST_QUEUE_QUESTION) and what is queued.
    * Carries answers, so it goes out with sendTo, never broadcast. */

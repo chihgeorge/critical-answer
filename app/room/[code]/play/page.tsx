@@ -497,8 +497,9 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
           </div>
           <FleeButtons questionId={q.id} send={send} boss={!!me?.inBossPhase} />
         </>
-      ) : needCheck && !rolling && sent === null ? (
-        <>
+      ) : needCheck && sent === null ? (
+        // The die's beat: nothing to press, the roll banner above says to watch the big screen.
+        rolling ? null : <>
         <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />
         <PixelButton
           variant="ok"

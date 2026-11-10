@@ -3495,6 +3495,10 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     use();
     expect(err(conns[0])).toBe("no_option_to_remove");
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t1" } : t)) };
+    // Before the check the refusal says nothing about the hidden answer.
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
+    expect(err(conns[0])).toBe("check_needed");
+    passChecks(room);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
     expect(err(conns[0])).toBe("no_hint");
     expect(room.game!.teams[0].abilityUses).toBe(3);

@@ -60,7 +60,7 @@ export default function HostPage() {
   /** The room bank's question counts (LOBBY `bankSize`), for the too-few-questions warning by 開始遊戲. */
   const [bankSize, setBankSize] = useState<BankSize | null>(null);
   const sizeWarning = bankSize && bankSizeWarning(bankSize, lobby.length);
-  const [state, setGame] = useState<StateMessage | null>(null);
+  const [state, setState] = useState<StateMessage | null>(null);
   /** 手動停頓 (docs/designs/manual-pacing.md): the room's switch, as its last LOBBY or STATE said. */
   const [manual, setManual] = useState(false);
   /** 每題作答倒數 for the next game (answer-countdown.md D2): this page's pick, so a replay keeps it. */
@@ -237,7 +237,7 @@ export default function HostPage() {
           setLobby(msg.teams);
           setReplay(!!msg.replay);
           setBankSize(msg.bankSize ?? null);
-          setGame(null);
+          setState(null);
           setPicks(null);
           setPicking(null);
           setHandoffs({});
@@ -248,11 +248,11 @@ export default function HostPage() {
           break;
         case "STATE":
           setManual(msg.pacing === "manual");
-          setGame(msg);
+          setState(msg);
           setPendingTeamId(null);
           break;
         case "GAME_OVER":
-          setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
+          setState((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
           setPendingTeamId(null);
           setPicks(null);
           setPicking(null);
@@ -852,10 +852,13 @@ export default function HostPage() {
                       {game.question.content.audioOnly ? "🎵 聽歌題（聽大螢幕）" : "▶ 影片題（看大螢幕）"}
                     </div>
                   )}
-                  {/* 每題作答倒數 (answer-countdown.md): only a nudge, the host still judges (D1). */}
-                  {game.question?.checkFirst && !game.phaseCard && !game.forkBeat && (
-                    <div data-testid="host-check-first" className="mt-1 text-[14px]">🎲 等這隊擲完說服，大螢幕才出題、才開始倒數</div>
+                  {/* Check first, question after: why the big screen has no question or count yet. Not while a 答錯 waits (no roll then). */}
+                  {game.question?.checkFirst && !game.phaseCard && !game.forkBeat && !revealUp && !game.view.pendingWrong && (
+                    <div data-testid="host-check-first" className="mt-1 text-[14px]" role="status">
+                      {game.pendingRoll?.kind === "check" ? "🎲 說服骰擲出了，結算後大螢幕才出題、開始倒數" : "🎲 等這隊擲完說服，大螢幕才出題、才開始倒數"}
+                    </div>
                   )}
+                  {/* 每題作答倒數 (answer-countdown.md): only a nudge, the host still judges (D1). */}
                   {game.answerClock && (
                     <div className="mt-1">
                       {game.answerClock.left === null ? (
