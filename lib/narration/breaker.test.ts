@@ -80,6 +80,17 @@ describe("createBreaker", () => {
     t = 10 * 60_000;
     expect(b.open).toBe(true);
   });
+
+  it("a probe the provider refuses (401) stops the probes", () => {
+    let t = 0;
+    const b = createBreaker({ now: () => t });
+    for (let i = 0; i < 3; i++) b.failure(new NarrationError("timeout", "x"));
+    t = 60_000;
+    expect(b.open).toBe(false);
+    b.failure(new NarrationError("auth", "x", 401));
+    t = 10 * 60_000;
+    expect(b.open).toBe(true);
+  });
 });
 
 describe("withBreaker", () => {

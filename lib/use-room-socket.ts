@@ -113,7 +113,7 @@ export function useRoomSocket(
     let hiddenAt = document.hidden ? Date.now() : 0;
     const wake = (e: Event) => {
       if (document.hidden) {
-        hiddenAt = Date.now();
+        hiddenAt ||= Date.now(); // an `online` while hidden must not shorten the time away
         return;
       }
       // Back online: a socket that says open was opened on the network we lost.

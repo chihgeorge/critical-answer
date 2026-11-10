@@ -14,9 +14,10 @@ export function createBreaker(opts: { threshold?: number; cooldownMs?: number; n
   let open = false;
   let openedAt = 0;
   const trip = (why: string, retry = true) => {
+    if (!retry) openedAt = Infinity; // also when a probe is the one refused
     if (open) return;
     open = true;
-    openedAt = retry ? now() : Infinity;
+    if (retry) openedAt = now();
     opts.onTrip?.(why);
   };
   return {
@@ -54,7 +55,7 @@ export function withBreaker(inner: NarrationProvider, breaker: Breaker): Narrati
       return inner.name;
     },
     async narrate(event, o) {
-      if (breaker.open) throw new NarrationError("breaker_open", "LLM narration is switched off for this room");
+      if (breaker.open) throw new NarrationError("breaker_open", "LLM narration is paused (breaker open)");
       try {
         const line = await inner.narrate(event, o);
         breaker.success();

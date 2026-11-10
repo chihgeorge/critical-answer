@@ -600,7 +600,7 @@ export default function HostPage() {
           </Panel>
         )}
         <Panel tone="lav" className="px-3 py-2">
-          <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
+          <div className="text-[15px]">大螢幕（在電視或投影機開這個連結：點它、複製連結網址或掃 QR，照著打不會播影片）</div>
           {/* A new tab, so opening it never navigates the host page away from its socket. */}
           {/* With the room's screen key: only a big screen opened by this link is sent the question videos and has its
               reports taken by the room (screen-video-key.md). */}

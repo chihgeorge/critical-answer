@@ -446,7 +446,8 @@ export class DungeonRoom {
   private credentialGeneration = 0;
   private aiUsed = 0;
   private aiLimit = DEFAULT_AI_LIMIT;
-  /** The key in use failed: refused mid-game, or the breaker tripped. Shown to the host until the next key is applied. */
+  /** The key in use failed: refused mid-game, or the breaker tripped. Shown to the host until the next key is applied,
+   * or for ai_stopped until a breaker probe comes back. */
   private aiError: AiKeyError | undefined;
   /** Why the host's last HOST_AI_KEY was refused. Every status carries it until the next HOST_AI_KEY, so a narration's status cannot wipe it. */
   private keyError: AiKeyError | undefined;
@@ -460,7 +461,7 @@ export class DungeonRoom {
   private keyCheckWindowAt = 0;
   private fetchImpl: typeof fetch | undefined;
   private llm: NarrationProvider;
-  private breaker = createBreaker({ onTrip: (why) => this.onBreakerTrip(why), onRecover: () => this.onBreakerRecover() });
+  private breaker = createBreaker({ now: () => this.now(), onTrip: (why) => this.onBreakerTrip(why), onRecover: () => this.onBreakerRecover() });
   private scripted: ReturnType<typeof createScriptedProvider>;
   private runner: ReturnType<typeof createRunner>;
   private epilogueDelayMs: number;
