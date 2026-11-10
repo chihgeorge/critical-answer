@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, CROWD_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
-import { MAX_MODEL_LINE } from "./runner";
+import { MAX_MODEL_LINE, targetSegmentCount } from "./runner";
 
 const team = "六個字的隊伍";
 const monster = "守門史萊姆王";
@@ -649,5 +649,34 @@ describe("美食節目／生物學家口吻 (FOODIE)", () => {
     for (const l of withPart) expect(l).not.toMatch(/[{}]/);
     // 「牠的整隻」 and a 6-character part do not read well in these lines: the plain pool only.
     for (const part of ["整隻", "寶箱裡的東西", "根"]) for (let i = 0; i < 40; i++) expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, cooked: true, part })).not.toContain(part);
+  });
+});
+
+// Value: protects=the scripted crowd line (TODOS 觀眾反應的後續) fits the dialogue box, plays only on a turn the audience
+// reacted to, and is the middle line of that turn; fails_when=a crowd line outgrows 22 characters, names a monster, has
+// two 「！」, or plays without a crowd.
+describe("觀眾反應 (CROWD_VARIANTS)", () => {
+  const sized = (t: string) => [...t.replace(/\{by\}/g, "藍莓小隊").replace(/\{team\}/g, "冒險小隊")].length;
+  const turn: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 3, next: { team: "綠隊", monster: "幽靈", boss: false } };
+
+  it("8 distinct lines per reaction, each at most 22 characters with two 4-character teams, no monster, at most one 「！」", () => {
+    for (const pool of Object.values(CROWD_VARIANTS)) {
+      expect(new Set(pool).size).toBe(8);
+      for (const l of pool) {
+        expect(sized(l), l).toBeLessThanOrEqual(MAX_MODEL_LINE);
+        expect(l).toContain("{by}");
+        expect(l).not.toContain("{monster}");
+        expect(l.split("！").length - 1, l).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it("an ordinary turn gets a middle line only with a crowd, and that line names the reacting team", () => {
+    const p = createScriptedProvider(lcg(5));
+    expect(targetSegmentCount(turn)).toBe(2);
+    const loud = { ...turn, crowd: { mood: "boo" as const, team: "藍莓" } };
+    expect(targetSegmentCount(loud)).toBe(3);
+    expect(CROWD_VARIANTS.boo.map((l) => l.replace("{by}", "藍莓").replace("{team}", "紅隊"))).toContain(p.atmosphereLine(loud));
+    expect(ATMOSPHERE_VARIANTS.correct).toContain(p.atmosphereLine({ ...turn, roll: { kind: "crit", value: 20 } }));
   });
 });

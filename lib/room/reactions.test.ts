@@ -6,6 +6,7 @@ import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
 import { currentTurnTeamId } from "../game-state";
 import { MAX_TEAMS, parseClientMessage, REACT_GAP_MS, REACT_JITTER_MS, REACT_ROOM_MAX } from "../protocol";
+import { CROWD_VARIANTS } from "../narration/scripted";
 
 const TOKEN = "host-token-0123456789abcdef";
 const text = (id: string) => ({ kind: "text", id, content: { kind: "text", value: `題目 ${id}` }, answer: `答案 ${id}` });
@@ -126,6 +127,37 @@ describe("audience reactions", () => {
     const g = game(2);
     send(g.room, g.host, { type: "REACT", reaction: "clap" });
     expect(g.reactions()).toEqual([]);
+  });
+
+  // 旁白提到觀眾反應 (TODOS 觀眾反應的後續): the next judged line of the turn mentions its loudest reaction, then starts over.
+  it("the judged line after enough reactions says the loudest one in its middle line, and the next one does not", async () => {
+    const g = game(3);
+    const state = () => g.io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).findLast((m) => m.type === "STATE");
+    const transcript = () => (g.room as unknown as { transcript: { eventId: number; event: { crowd?: unknown }; lines: string[] }[] }).transcript;
+    const judge = async () => {
+      const t = g.room.game!.teams[g.onTurn()];
+      send(g.room, g.host, { type: "HOST_JUDGE", teamId: t.id, questionId: t.currentQuestionId, correct: false, fleeChoice: "retry", eventId: state().eventId });
+      const id = state().eventId;
+      await vi.waitFor(() => expect(transcript().some((e) => e.eventId === id)).toBe(true));
+      return transcript().find((e) => e.eventId === id)!;
+    };
+    const waiting = g.ids.map((_, i) => i).filter((i) => i !== g.onTurn());
+    const scores = g.room.game!.teams.map((t) => t.score);
+    g.react(waiting[0], "boo");
+    g.react(waiting[1], "boo");
+    g.tick(REACT_GAP_MS);
+    g.react(waiting[1], "lol");
+    const said = await judge();
+    expect(said.event.crowd).toMatchObject({ mood: "boo" });
+    expect(said.lines).toHaveLength(3);
+    expect(CROWD_VARIANTS.boo.some((l) => said.lines[1].startsWith(l.split("{")[0]))).toBe(true);
+    expect(g.room.game!.teams.map((t) => t.score)).toEqual(scores);
+    // Never two turns running, however loud the room is.
+    g.tick(REACT_GAP_MS);
+    for (const i of g.ids.keys()) g.react(i, "clap");
+    g.tick(REACT_GAP_MS);
+    for (const i of g.ids.keys()) g.react(i, "clap");
+    expect((await judge()).event.crowd).toBeUndefined();
   });
 
   it("only the fixed reactions parse: no free text", () => {
