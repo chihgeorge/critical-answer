@@ -122,7 +122,7 @@ export function NarrationPanel({
       >
         <Sprite kind="owl" scale={1} />
         <LabelChip>地城主旁白</LabelChip>
-        <span aria-live="polite" className="min-w-0 flex-1 truncate text-[14px]">
+        <span aria-live="polite" className="min-w-0 flex-1 text-[14px] leading-tight">
           {summary}
         </span>
         {canOpen && <span className="flex-none text-[14px]">{open ? "收起 ▴" : "展開 ▾"}</span>}
