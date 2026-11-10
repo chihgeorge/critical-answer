@@ -99,6 +99,8 @@ export type AnswerReveal = {
   sorted?: { items: string[]; teamId: string; points: number; chefBonus?: number };
   /** A music question with fields: each field's answer and whether the team got it (docs/designs/multi-field.md F7). */
   fields?: { teamId: string; marks: { label: string; answer: string; right: boolean }[] };
+  /** Who answered and what it scored in all (dish included), for the big screen's 「✅ {隊名} 答對 +N」 line. Absent from older servers. */
+  scored?: { teamId: string; points: number };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
    * Only when the answer defeated a room monster or killed the boss, and that monster has a dish. */
   dish?: {

@@ -19,8 +19,13 @@ export async function rollCheck(team: Page) {
  * question videos and has its reports taken by the room (docs/designs/screen-video-key.md). The key comes with the room's HOST_OK, so wait for it. */
 export async function screenUrl(host: Page): Promise<string> {
   const link = host.getByTestId("screen-link");
+  // Once the game has started the link lives in ⚙ 更多 (the lobby's 開始遊戲 is gone by then).
+  const inDrawer = (await link.count()) === 0 && !(await host.getByRole("button", { name: /開始遊戲/ }).isVisible());
+  if (inDrawer) await host.getByRole("button", { name: "⚙ 更多" }).click();
   await expect(link).toHaveAttribute("href", /\/screen#s=./);
-  return (await link.getAttribute("href"))!;
+  const href = (await link.getAttribute("href"))!;
+  if (inDrawer) await host.getByTestId("more-drawer").getByRole("button", { name: "關閉" }).first().click();
+  return href;
 }
 
 /** 開始遊戲 without the how-to-play intro, the way every test but the intro's own starts a game
@@ -152,7 +157,7 @@ export async function withRoom0MonsterAgainAt3(request: APIRequestContext, run: 
   }
 }
 
-/** For specs about the host judging by hand (keys, 答錯・重答, a whole game driven by HOST_JUDGE):
+/** For specs about the host judging by hand (keys, 答錯・下輪再答, a whole game driven by HOST_JUDGE):
  * every question becomes a text question (the correct option as the answer), since a
  * multipleChoice turn is judged by the phone's lock, not the host, and the bundled bank is all
  * multipleChoice. The whole bank is put back after each test, like restoreRoom0AfterEach.
