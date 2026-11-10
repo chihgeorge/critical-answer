@@ -262,6 +262,27 @@ describe("手動停頓: switching with a pause up", () => {
     expect(state(s.room).pendingRoll).toMatchObject({ kind: "crit" });
   });
 
+  it("manual to auto on a boss miss, and on an open door: each runs its beat again", () => {
+    const s = setup({ bank: mcBank, teams: 1 });
+    send(s.room, s.host, { type: "HOST_SEND_TO_BOSS", teamId: T1 });
+    lockAndReveal(s, false);
+    step(s);
+    pacing(s, "auto");
+    vi.advanceTimersByTime(BEAT_MS - 1);
+    expect(s.room.game!.pendingWrong).not.toBeNull();
+    vi.advanceTimersByTime(1);
+    expect(s.room.game!.pendingWrong).toBeNull();
+
+    const f = setup();
+    toChoosing(f);
+    step(f);
+    pacing(f, "auto");
+    vi.advanceTimersByTime(FORK_BEAT_MS - 1);
+    expect(state(f.room).forkBeat).toBeDefined();
+    vi.advanceTimersByTime(1);
+    expect(state(f.room).forkBeat).toBeUndefined();
+  });
+
   it("manual to auto at a fork: a fresh 15 seconds, then the timeout", () => {
     const s = setup();
     toChoosing(s);

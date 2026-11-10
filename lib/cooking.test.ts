@@ -84,6 +84,8 @@ describe("the podium reveal's first frame", () => {
   it("waits while the lines are coming; with no reveal at all it is the end", () => {
     expect(at(0, 0, null)).toBe("-1 false false");
     expect(first(() => show(revealNow(undefined, useRevealTime(undefined))))).toBe("-1 true true");
+    // Reduced motion (t null) waits too: a podium held by manual pacing must not show its end (manual-pacing.md).
+    expect(revealNow({ beats: null }, null)).toEqual({ beat: -1, result: false, done: false });
   });
 
   // Value: protects=reduced motion shows the big screen the end at once, but a phone still waits for the room's clock, so it

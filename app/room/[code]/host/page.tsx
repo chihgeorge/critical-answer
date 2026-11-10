@@ -415,8 +415,7 @@ export default function HostPage() {
     if (game?.phase !== "playing" || game.intro || game.initiative) return;
     function onKey(e: KeyboardEvent) {
       // An open picker or drawer covers the turn: a key there must not judge it or close a reveal.
-      // A manual hold has ▶ 下一步 on key 1 (the effect below), and nothing else to press.
-      if (picking || drawer || holdUp) return;
+      if (picking || drawer) return;
       // Fields spelled out: KeyboardEvent's are prototype getters, which `{ ...e }` would not copy.
       const target = e.target as HTMLElement | null;
       const action = hostKeyAction(
@@ -427,6 +426,8 @@ export default function HostPage() {
         lockWaiting,
       );
       if (!action || !game) return;
+      // A manual hold has ▶ 下一步 on key 1 (the effect below); only 改判答對, whose button stays up, keeps its key.
+      if (holdUp && action !== "undo") return;
       // A music question with fields is judged field by field on screen only (multi-field.md D4): no judge key.
       if (game.question?.fields && !revealUp && action !== "next" && action !== "reveal" && action !== "undo") return;
       if (action === "undo") {
