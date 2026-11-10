@@ -221,8 +221,10 @@ export function YoutubePlayer({
     captioned.current = false;
     const p = player.current;
     if (!ready || !p) return;
+    // Turning on waits for onApiChange (or play): right after loadModule the cached track list can still be the
+    // one from before the answering-time unload, and a track set then may be dropped.
     if (zhCaptions) loadCaptions(p);
-    captioned.current = syncZhCaptions(p, zhCaptions);
+    else syncZhCaptions(p, false);
   }, [ready, zhCaptions]);
 
   const want = command ?? PAUSED;
