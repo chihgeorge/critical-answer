@@ -1407,7 +1407,7 @@ export class DungeonRoom {
   private closingMessage(): Extract<ServerMessage, { type: "HOST_ROOM_CLOSING" }> {
     const left = this.createdAt === null ? Infinity : this.closesAt()! - this.now();
     const minutesLeft = left > CLOSE_WARN_MS ? null : Math.max(1, Math.ceil(left / 60_000));
-    return { type: "HOST_ROOM_CLOSING", minutesLeft, canExtend: this.extendedMs < this.maxExtendMs() };
+    return { type: "HOST_ROOM_CLOSING", minutesLeft, canExtend: this.createdAt !== null && this.extendedMs < this.maxExtendMs() };
   }
 
   /** 延長 1 小時: the end moves an hour past the current one, never past MAX_LIFE_MS; the warning comes again later. */
