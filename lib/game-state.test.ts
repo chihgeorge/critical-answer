@@ -2018,6 +2018,45 @@ describe("natural 20s (podium-reveal.md D5)", () => {
   });
 });
 
+// Value: protects=the fortune teller's three new counters (fortune-teller.md Conditions, E7, E10/G7); fails_when=a natural 1
+// source is missed or counted twice, a warrior's 1 on a fill-in is skipped, a flee or switch counts as a wrong answer, or a
+// prayed retry does not; seam=none; no_claim=the conditions built on them (event-rooms.test.ts)
+describe("fortune counters: natural1s, correctAnswers, wrongAnswers", () => {
+  const solo = (classId?: ClassId, bossThreshold = 15, bossMaxHp = 3) =>
+    createGame([{ id: "T0", name: "A", ...(classId ? { classId } : {}) }], makeRooms(3, 1), poolsWith(1, ["q1", "q2", "q3", "q4"]), ["boss-q1"], { bossThreshold }, bossMaxHp, first);
+  const t0 = (g: GameState) => g.teams[0];
+  const q0 = (g: GameState) => g.teams[0].currentQuestionId;
+
+  it("counts a natural 1 on the crit die, a check and each of the kill's 4d20", () => {
+    const g = solo();
+    expect(t0(answerQuestion(g, "T0", q0(g), true, "retry", first, 1).game).natural1s).toBe(1);
+    expect(t0(answerQuestion(g, "T0", q0(g), false, "retry", first, 1).game).natural1s).toBeUndefined();
+    expect(t0(recordCheck(g, "T0", q0(g), 1, "萬家福")).natural1s).toBe(1);
+    const boss = solo(undefined, 0, 1);
+    expect(t0(answerQuestion(boss, "T0", boss.boss.currentQuestionId, true, "retry", first, 5, [1, 1, 20, 4]).game)).toMatchObject({ natural1s: 2, natural20s: 1 });
+  });
+
+  it("a warrior's 1 counts once, on a multipleChoice question too (E7)", () => {
+    const g = spendAbility(solo("warrior"), "T0", "warrior");
+    expect(t0(warriorRoll(g, "T0", q0(g), 1, first, true).game).natural1s).toBe(1);
+    expect(t0(warriorRoll(g, "T0", q0(g), 1, first).game).natural1s).toBe(1);
+  });
+
+  it("counts correct answers, and wrong ones only when retried (E10)", () => {
+    const g = solo();
+    expect(t0(answerQuestion(g, "T0", q0(g), true, "retry", first).game).correctAnswers).toBe(1);
+    expect(t0(answerQuestion(g, "T0", q0(g), false, "retry", first).game).wrongAnswers).toBe(1);
+    expect(t0(answerQuestion(g, "T0", q0(g), false, "flee", first).game).wrongAnswers).toBeUndefined();
+    expect(t0(answerQuestion(g, "T0", q0(g), false, "switch", first).game).wrongAnswers).toBeUndefined();
+  });
+
+  it("a cleric's prayed wrong answer counts when retried", () => {
+    const g = createGame([{ id: "T0", name: "A", classId: "cleric" }, { id: "T1", name: "B" }], makeRooms(3, 1), poolsWith(1, ["q1", "q2", "q3", "q4"]), ["boss-q1"], { bossThreshold: 15 }, 3, first);
+    const waiting = pray(recordTextWrong(g, "T0", q0(g)), "T0");
+    expect(t0(answerQuestion(waiting, "T0", q0(g), false, "retry", first).game).wrongAnswers).toBe(1);
+  });
+});
+
 // Value: protects=the persuasion check's rules (dnd design R6, R8, R3-7, E1-1, E1-2): bonus by class against the pool's
 // DC or the boss's 16, a natural 20 passes with no hint, a 1 fails and halves any success on the question, one roll per
 // team and question, and the record leaves with the question; fails_when=the DC or bonus is wrong, a 1 passes, the hint

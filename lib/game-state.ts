@@ -155,6 +155,12 @@ export interface Team {
   /** Natural 20s this team rolled: crit dice, warrior rolls, persuasion checks and the kill's 4d20 (podium-reveal.md D5).
    * Absent until the first one, and in a game saved before them. */
   natural20s?: number;
+  /** Natural 1s, counted by every die that counts a natural 20, and the warrior's d20 whatever the question (fortune-teller.md). */
+  natural1s?: number;
+  /** Correct judgments, and wrong ones the team retried (a prayed one too; a flee or a switch is in `flees`), for the
+   * fortune teller's conditions (docs/designs/fortune-teller.md). Absent until the first. */
+  correctAnswers?: number;
+  wrongAnswers?: number;
   /** The thief's Sneak Attack waits for this team's next judgment: a correct one gives ×1.5 its reward
    * and ×2 its boss damage; any judgment uses it up (class-abilities.md D16). */
   sneakArmed?: true;
@@ -902,9 +908,11 @@ function finishGame(game: GameState, rng: () => number): GameState {
   return { ...game, phase: "finished", winners: ranking.slice(0, 1), ranking, tieRolls };
 }
 
-/** Adds `n` natural 20s to a team's count (D5). */
-function withNatural20s(t: Team, n: number): Partial<Team> {
-  return n > 0 ? { natural20s: (t.natural20s ?? 0) + n } : {};
+/** Adds the natural 20s (D5) and natural 1s (fortune-teller.md) among `dice` to a team's counts. */
+function withNaturals(t: Team, dice: number[]): Partial<Team> {
+  const twenties = dice.filter((v) => v === 20).length;
+  const ones = dice.filter((v) => v === 1).length;
+  return { ...(twenties ? { natural20s: (t.natural20s ?? 0) + twenties } : {}), ...(ones ? { natural1s: (t.natural1s ?? 0) + ones } : {}) };
 }
 
 /**
@@ -984,7 +992,7 @@ export function answerQuestion(
     lastTurnIndex: order,
   };
   // The choice resolves the pending wrong lock.
-  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
+  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNaturals(t, correct && critValue !== undefined ? [critValue] : []), ...(correct ? { correctAnswers: (t.correctAnswers ?? 0) + 1 } : fleeChoice === "retry" ? { wrongAnswers: (t.wrongAnswers ?? 0) + 1 } : {}) })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice !== "retry" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -1020,7 +1028,7 @@ export function answerQuestion(
       const hit = sneakPay(baseOf(boss.hitReward)) + critBonus(boss.hitReward);
       const gain = withChef((fields ? Math.round((hit * fields.right) / fields.total) : hit) + (killBonus ?? 0));
       const { reward } = gain;
-      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}), ...withNatural20s(t, kill?.filter((v) => v === 20).length ?? 0) }));
+      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}), ...withNaturals(t, kill ?? []) }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
       const phasePending = bossKilled ? undefined : newHp === 0 ? "cleared" : usedUp(revealedNow) ? "exhausted" : undefined;
@@ -1274,7 +1282,7 @@ export function recordCheck(game: GameState, teamId: string, questionId: string,
   // A mage's hint already showed the first character: the check gives no second copy (R8).
   const hint = passed && value !== 20 && game.mageHints?.[questionId] === undefined ? firstMeaningfulChar(answer) : null;
   const record: CheckRecord = { value, bonus, dc, passed, ...(hint !== null ? { hint } : {}) };
-  const teams = patchTeam(game.teams, teamId, (t) => withNatural20s(t, value === 20 ? 1 : 0));
+  const teams = patchTeam(game.teams, teamId, (t) => withNaturals(t, [value]));
   return { ...game, teams, checks: { ...game.checks, [checkKey(questionId, teamId)]: record } };
 }
 
@@ -1342,8 +1350,9 @@ export function warriorRoll(
   killDice?: number[],
 ): { game: GameState; outcome: AnswerOutcome } {
   assertAbilityTurn(game, teamId, "warrior");
-  // A critable die is counted as the crit die in answerQuestion; any other natural 20 is counted here (D5).
-  const counted = critable ? game : { ...game, teams: patchTeam(game.teams, teamId, (t) => withNatural20s(t, value === 20 ? 1 : 0)) };
+  // A critable die is counted as the crit die in answerQuestion (its 20 rides on a correct answer); any other natural 20,
+  // and every natural 1, is counted here (D5, fortune-teller.md E7).
+  const counted = { ...game, teams: patchTeam(game.teams, teamId, (t) => withNaturals(t, critable ? (value === 1 ? [1] : []) : [value])) };
   return answerQuestion(counted, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined, killDice);
 }
 
