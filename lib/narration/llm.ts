@@ -40,6 +40,15 @@ export const FOODIE_RULES = `- 你也是一本正經的美食節目主持人兼�
 - 這次輸出最多一行講吃；最近說過的旁白裡，最後一句如果已經在講吃，這次就都不要講吃。
 - 口感、味道和產季可以自己想像，但不要自己取菜名；事件有寫能吃的部位才提部位。點評要短，字數上限照舊。`;
 
+/** 旁白提到觀眾反應 (TODOS 觀眾反應的後續): added only when the event carries a crowd and the host's line does not take
+ * line 2. The reaction is a mood and a team name, nothing about the question, so it cannot carry an answer. */
+export const CROWD_RULE = `- 「觀眾反應」是等待中的隊伍在手機上按的表情，只是現場氣氛：照事件寫的隊伍和反應說，像轉播員看台下一樣，例如「藍莓在後面噓聲四起……」。不要說反應會影響分數或輪到誰，不要暗示反應是在針對答對或答錯，也不要提題目或答案。`;
+
+const CROWD_MOOD = { clap: "拍手鼓掌", wow: "直呼好險", lol: "笑翻了", boo: "噓聲連連" } as const;
+
+/** The crowd the model is told about: none for the epilogue, or when the host's queued line takes line 2. */
+const heardCrowd = (e: NarrationEvent) => (e.type !== "epilogue" && !e.hostLine ? e.crowd : undefined);
+
 /** How many of a room's latest AI lines go back into its prompts, so the model stops reusing them. */
 export const RECENT_LINES = 8;
 
@@ -49,8 +58,12 @@ export function buildPrompt(event: NarrationEvent, styleExamples: string[], rece
   const hostLine = event.type !== "epilogue" && !event.hostLineVerbatim ? event.hostLine : undefined;
   // The host's line goes in line 2 (the slot runner.ts falls back to), so lines 1 and 3 keep the result and the handoff.
   // Ordinary turns have no middle line (runner.ts hasMiddleLine): result, then straight to the next team.
+  const crowd = heardCrowd(event);
   const second = hostLine
     ? `第二行：一定要包含主持人指定的這句話：「${hostLine.replace(/[「」『』]/g, "")}」，字要一樣（標點可以改），前後可以加幾個字自然銜接，整行最多 ${MAX_LINE} 個字。`
+    : crowd
+      ? // The team's name stays in the user turn (describe), with the other player-typed names.
+        `第二行：說一句台下的觀眾反應，要寫出事件裡「觀眾反應」那一隊的名字，最多 ${MAX_MODEL_LINE} 個字。`
     : !epilogue && hasMiddleLine(event)
       ? `第二行：補充一點${hasNext ? "戰鬥氣氛、環境或情緒細節" : "氣氛或情緒的收尾"}，最多 ${MAX_MODEL_LINE} 個字，不要重複第一行的內容。`
       : null;
@@ -61,7 +74,7 @@ export function buildPrompt(event: NarrationEvent, styleExamples: string[], rece
     : hasNext && second
       ? `輸出三行，用換行隔開，不要編號。${first}${second}第三行：${handoff}`
       : `輸出兩行，用換行隔開，不要編號。${first}${second ?? `第二行：${handoff}`}`;
-  let system = `${BASE_RULES}\n${epilogue ? "" : `${FOODIE_RULES}\n`}${ask}`;
+  let system = `${BASE_RULES}\n${epilogue ? "" : `${FOODIE_RULES}\n`}${crowd ? `${CROWD_RULE}\n` : ""}${ask}`;
   if (styleExamples.length > 0) system += `\n\n主持人親手改過的句子，請仿照這種語氣：\n${styleExamples.map((l) => `- ${l}`).join("\n")}`;
   // In the user turn, not the system prompt: the lines carry player-typed team names, so they are data.
   const avoid =
@@ -140,7 +153,9 @@ function describe(e: NarrationEvent): string {
       : e.next.fork
         ? `\n接下來輪到隊伍${q(e.next.team)}，他們站在叉路口的兩扇門前：一扇畫著劍，一扇畫著問號。不要猜門後是什麼。`
         : `\n接下來輪到隊伍${q(e.next.team)}，他們要面對${e.next.boss ? "首領" : "怪物"}${q(e.next.monster)}。`;
-  return describeEvent(e) + describeRoll(e) + cls + next;
+  const crowd = heardCrowd(e);
+  const cheer = crowd ? `\n觀眾反應：等待中的隊伍${q(crowd.team)}這回合在台下${CROWD_MOOD[crowd.mood]}。` : "";
+  return describeEvent(e) + describeRoll(e) + cls + cheer + next;
 }
 
 /** The catalog's edible part of a monster about to be cooked: the dish itself stays a secret (cooking I1). A fact
@@ -293,7 +308,7 @@ export function createLlmProvider(opts: LlmOptions): NarrationProvider {
       // See the marker's note below: a line that cannot be used keeps its slot and is scripted there.
       const INVALID_SEGMENT = "<invalid/>";
       // A cut that drops a team the line named loses its point (the result, or whose turn it is): that slot is scripted.
-      const names = epilogue ? [] : ["team" in event ? event.team : "", event.next?.team ?? ""].filter(Boolean);
+      const names = epilogue ? [] : ["team" in event ? event.team : "", event.next?.team ?? "", heardCrowd(event)?.team ?? ""].filter(Boolean);
       const cut = (line: string, max: number) => {
         const fit = fitToLimit(line, max);
         return names.some((n) => saysLine(line, n) && !saysLine(fit, n)) ? INVALID_SEGMENT : fit;

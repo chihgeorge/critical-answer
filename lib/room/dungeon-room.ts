@@ -103,6 +103,7 @@ import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
 import { tokensEqual } from "../tokens";
 import { epilogueParts, titleFacts, toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
+import { createCrowdTally } from "../narration/crowd";
 import { BUZZ_REOPEN_LINE, createScriptedProvider, type NarrationProvider } from "../narration/scripted";
 import { createRunner, type TranscriptItem } from "../narration/runner";
 import { editedLine } from "../narration/client";
@@ -416,6 +417,8 @@ export class DungeonRoom {
   /** 觀眾反應 (docs/designs/audience-reactions.md): each team's last reaction, and the room's recent ones. In memory only. */
   private reactedAt = new Map<string, number>();
   private roomReacts: number[] = [];
+  /** The reactions during the current turn, for the narrator (crowd.ts). In memory only. */
+  private crowd = createCrowdTally();
   private clipEnded: string | null = null;
   /** The judgment a kill's 4d20 holds back (kill-roll.md): resolveRoll makes it with the shown dice. */
   private pendingKill: { correct: boolean; fleeChoice: FleeChoice; roll?: { kind: "warrior" | "crit"; value: number }; fields?: boolean[] } | null = null;
@@ -2831,7 +2834,13 @@ export class DungeonRoom {
     // A wrong buzz that leaves the question to the others (boss-buzzer.md): no "try again" line.
     const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, ...(again ? { buzzAgain: true as const } : { buzzOut: true as const }) } : exhaustedEvent;
     // The narrator says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); a flee never follows a roll.
-    const event = roll?.kind === "warrior" && buzzed.type !== "flee" ? { ...buzzed, warriorRoll: roll.value } : buzzed;
+    const rolled = roll?.kind === "warrior" && buzzed.type !== "flee" ? { ...buzzed, warriorRoll: roll.value } : buzzed;
+    // The waiting teams' loudest reaction this turn, for the middle line; never on the game's last line.
+    const next = rolled.type === "epilogue" ? undefined : rolled.next;
+    // Skipped when narrate() will give the middle line to the host's queued line (same test as there), and in a buzzer
+    // phase, where nobody could react and any count left is from the turn before.
+    const crowd = this.crowd.take(`${teamId}:${before?.turns ?? 0}`, next?.team, !next || isBuzzPhase(prev) || (!!this.nextLine && !this.lineInFlight()));
+    const event = crowd ? { ...rolled, crowd } : rolled;
     // A natural 20 or 1 swaps the correct / boss-hit sound; the boss kill keeps its own (E2).
     const mark = "roll" in outcome ? outcome.roll : undefined;
     this.setCue(event.type === "epilogue" || event.type === "event-room" ? null : event.type !== "boss-kill" && mark?.kind === "crit" ? (mark.value === 20 ? "crit" : "fumble") : event.type);
@@ -2993,6 +3002,10 @@ export class DungeonRoom {
     if (this.roomReacts.length >= REACT_ROOM_MAX) return;
     this.reactedAt.set(teamId, now);
     this.roomReacts.push(now);
+    // Keyed by the team on turn and its turn count, so taps from a turn that ended without a judgment (an event room)
+    // never count toward that team's next one.
+    const turn = this.game.teams.find((t) => t.id === currentTurnTeamId(this.game!));
+    if (turn) this.crowd.tap(`${turn.id}:${turn.turns ?? 0}`, this.game.teams.find((t) => t.id === teamId)!.name, reaction);
     // Straight to the sockets, not this.broadcast: a reaction changes nothing to save, so it skips persist().
     this.room.broadcast(JSON.stringify({ type: "REACTION", teamId, reaction } satisfies ServerMessage));
   }

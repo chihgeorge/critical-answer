@@ -79,7 +79,7 @@ lib/question-bank.ts     題庫型別、驗證、公開題目（不含答案）
 lib/bank-store.ts        BankStore：題庫的 Durable Object 儲存層，版本檢查（純函式邏輯）
 lib/bank-api.ts          /api/bank 與 /api/game-logs 的 HTTP 處理（OWNER_KEY 驗證、CORS、409 衝突），平台無關
 lib/game-log.ts          對局紀錄：遊戲結束時從遊戲狀態整理出一筆紀錄，存進 BankStoreDO，下載只拿最新的 1000 場
-lib/narration/           旁白：事件、腳本句、LLM、斷路器、執行器、瀏覽器 TTS 播放決策（tts.ts）
+lib/narration/           旁白：事件、腳本句、LLM、斷路器、執行器、觀眾反應計數（crowd.ts）、瀏覽器 TTS 播放決策（tts.ts）
 lib/pixel-art.ts         程式繪製的像素角色與場景
 lib/turn-info.ts         從公開狀態算出輪到誰、面對哪隻怪
 lib/map-layout.ts        活地圖的版面計算：房間、棋子、迷霧、首領房的位置（純函式）
