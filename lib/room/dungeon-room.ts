@@ -133,11 +133,12 @@ interface Step {
 }
 /** Long enough for a pizza break, short enough that a TV left on overnight is not billed all night. */
 const IDLE_MS = 2 * 60 * 60 * 1000;
-/** A room's whole life, from its first connection: a game never runs this long, so it closes even while in use. */
+/** A room's whole life, from the host's first 開始遊戲: a game never runs this long, so it closes even while in use.
+ * Before the first start, a lobby nobody touches for this long is forgotten instead. */
 export const EXPIRE_MS = 6 * 60 * 60 * 1000;
 /** The host page is told the room is closing this long before EXPIRE_MS (players and the big screen are not). */
 export const CLOSE_WARN_MS = 15 * 60 * 1000;
-/** One 延長 1 小時 from the host page moves the end this much later, up to MAX_LIFE_MS from the first connection. */
+/** One 延長 1 小時 from the host page moves the end this much later, up to MAX_LIFE_MS from the first start. */
 export const EXTEND_MS = 60 * 60 * 1000;
 export const MAX_LIFE_MS = 24 * 60 * 60 * 1000;
 /** The longest a room with these options can live, extensions included: an orphaned image waits this long (plus a
@@ -159,6 +160,8 @@ const READ_GAP_MS = 1000;
 /** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
+/** A lost natural 20 waits this long after the last cue, so its own cue and story do not cut that one off. */
+export const LOST_CRIT_GAP_MS = 4000;
 /** A fork's door opening on show (docs/designs/branch-fork.md): the question, or the ❓ outcome, waits for it. */
 export const FORK_BEAT_MS = 1500;
 /** The boss kill's 4d20 on screen (docs/designs/kill-roll.md): the dice land one by one, then the total stays up. */
@@ -195,7 +198,8 @@ export interface RoomOptions {
   bank?: Bank;
   /** No state-changing message for this long: close every connection (the game stays saved). Default 2 hours. */
   idleMs?: number;
-  /** This long after its first connection, even while in use: forget the room and free its code. Default 6 hours. */
+  /** This long after the first game start, even while in use: forget the room and free its code (before the first start:
+   * this long without activity). Default 6 hours. */
   expireMs?: number;
   /** The clock (tests). */
   now?: () => number;
@@ -252,9 +256,17 @@ function lostCritOf(g: GameState): { teamId: string; questionId: string } | null
   for (const team of g.teams) {
     if (!team || team.typedAnswer !== undefined) continue;
     const questionId = currentQuestionIdOf(g, team.id);
-    if (g.checks?.[checkKey(questionId, team.id)]?.value === 20) return { teamId: team.id, questionId };
+    const check = g.checks?.[checkKey(questionId, team.id)];
+    if (check?.value === 20 && !check.dropped) return { teamId: team.id, questionId };
   }
   return null;
+}
+
+/** The team's natural 20 on `questionId` marked `dropped` (its win failed or was ruled out), so lostCritOf skips it. */
+function withCritDropped(g: GameState, teamId: string, questionId: string): GameState {
+  const key = checkKey(questionId, teamId);
+  const check = g.checks?.[key];
+  return check?.value === 20 ? { ...g, checks: { ...g.checks, [key]: { ...check, dropped: true } } } : g;
 }
 
 /** Shallow snapshot validation: a saved pendingWrong must name a team and the question it faces now, or it pins the turn forever. */
@@ -326,6 +338,9 @@ export class DungeonRoom {
   private cue: SoundCue | null = null;
   /** Goes up with every new cue (setCue), so the big screen plays a roll's cue, which bumps no eventId. */
   private cueSeq = 0;
+  /** When the last cue was set (applyLostCrit waits LOST_CRIT_GAP_MS after it), and the timer that waits. */
+  private cueAt = 0;
+  private lostCritTimer: ReturnType<typeof setTimeout> | null = null;
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
@@ -449,7 +464,8 @@ export class DungeonRoom {
   private credentialGeneration = 0;
   private aiUsed = 0;
   private aiLimit = DEFAULT_AI_LIMIT;
-  /** The key in use failed: refused mid-game, or the breaker tripped. Shown to the host until the next key is applied. */
+  /** The key in use failed: refused mid-game, or the breaker tripped. Shown to the host until the next key is applied,
+   * or for ai_stopped until a breaker probe comes back. */
   private aiError: AiKeyError | undefined;
   /** Why the host's last HOST_AI_KEY was refused. Every status carries it until the next HOST_AI_KEY, so a narration's status cannot wipe it. */
   private keyError: AiKeyError | undefined;
@@ -463,7 +479,7 @@ export class DungeonRoom {
   private keyCheckWindowAt = 0;
   private fetchImpl: typeof fetch | undefined;
   private llm: NarrationProvider;
-  private breaker = createBreaker({ onTrip: (why) => this.onBreakerTrip(why) });
+  private breaker = createBreaker({ now: () => this.now(), onTrip: (why) => this.onBreakerTrip(why), onRecover: () => this.onBreakerRecover() });
   private scripted: ReturnType<typeof createScriptedProvider>;
   private runner: ReturnType<typeof createRunner>;
   private epilogueDelayMs: number;
@@ -477,7 +493,8 @@ export class DungeonRoom {
   private initialBank: Bank;
   /** Last message that changed something (not a transcript download). Null until the first one. */
   private lastActivityAt: number | null = null;
-  /** The room's first connection (its first markActivity): it expires expireMs after this. Null until then. */
+  /** When the host first started a game (going back to the lobby does not reset it): the room expires expireMs after
+   * this. Null before the first start. A room saved under #206's rules keeps its first connection here. */
   private createdAt: number | null = null;
   /** The lastActivityAt the idle close was done for, so a later alarm (the closing warning) does not close a viewer
    * who reconnected since. In memory only: restore() sets it for a room that was already idle. */
@@ -631,6 +648,14 @@ export class DungeonRoom {
       this.aiError = "ai_stopped";
       this.keyError = undefined; // the newest error wins
     }
+    this.sendAiStatus();
+  }
+
+  /** A probe after the breaker's cooldown came back: the AI is narrating again, so drop "AI stopped". */
+  private onBreakerRecover() {
+    console.warn(JSON.stringify({ narration: "breaker_closed" }));
+    if (this.aiError !== "ai_stopped") return;
+    this.aiError = undefined;
     this.sendAiStatus();
   }
 
@@ -907,17 +932,19 @@ export class DungeonRoom {
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
     this.lastActivityAt = s.lastActivityAt ?? this.now();
-    // A save from before createdAt: its last activity is the oldest time we know it was in use. A game in progress
-    // keeps nearly its whole 6 hours; a room nobody touched for longer than that closes now instead of living on.
+    // A game without a start time (a save from before the cap, or a damaged one): its last activity is the oldest time
+    // we know it was in use, so it keeps nearly its whole 6 hours. A lobby that never started has no start time.
     // Never in the future (a damaged save): that room would never close.
-    this.createdAt = Math.min(s.createdAt ?? this.lastActivityAt, this.now());
+    const from = s.createdAt ?? (this.game ? this.lastActivityAt : null);
+    this.createdAt = from === null ? null : Math.min(from, this.now());
     this.extendedMs = Math.min(s.extendedMs ?? 0, this.maxExtendMs());
     // Already idle: the idle close happened before the restart (or nobody was left to close), so do not close again.
     this.restedFrom = this.now() - this.lastActivityAt >= this.idleMs ? this.lastActivityAt : null;
     // A key this room just made is not in storage yet: the next message must write it, before any host is told it.
-    // A save from before createdAt is written again with the date chosen above, or every restart would pick a new one.
-    this.lastSaved = s.screenKey && s.createdAt != null ? JSON.stringify(this.persistedState()) : "";
-    if (s.createdAt == null) this.persist();
+    // A start time chosen above is written back at once, or every restart would pick a new one.
+    const dated = this.createdAt !== (s.createdAt ?? null);
+    this.lastSaved = s.screenKey && !dated ? JSON.stringify(this.persistedState()) : "";
+    if (dated) this.persist();
     // Awaited: onStart may send nothing after this, so no outgoing message holds the platform until the alarm is set.
     await this.setAlarmAt(this.nextAlarmAt()!);
     console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
@@ -1354,7 +1381,6 @@ export class DungeonRoom {
   private markActivity() {
     const now = this.now();
     this.lastActivityAt = now;
-    this.createdAt ??= now;
     // The idle check, or the closing warning or the end if one of those comes first (a long ROOM_IDLE_MS).
     const due = this.nextAlarmAt()!;
     // Only move the alarm earlier: while people are active the alarm already waiting is sooner than `due`.
@@ -1380,8 +1406,10 @@ export class DungeonRoom {
     }
   }
 
+  /** expireMs after the first start (plus extensions); before the first start, expireMs after the last activity. */
   private closesAt(): number | null {
-    return this.createdAt === null ? null : this.createdAt + this.expireMs + this.extendedMs;
+    if (this.createdAt !== null) return this.createdAt + this.expireMs + this.extendedMs;
+    return this.lastActivityAt === null ? null : this.lastActivityAt + this.expireMs;
   }
 
   /** The most the host may extend: the room never lives past roomMaxLifeMs. */
@@ -1395,15 +1423,16 @@ export class DungeonRoom {
     if (closesAt === null || this.lastActivityAt === null) return null;
     const now = this.now();
     const idleAt = this.restedFrom === this.lastActivityAt ? Infinity : this.lastActivityAt + this.idleMs;
-    return Math.max(now, Math.min(closesAt, ...[idleAt, closesAt - CLOSE_WARN_MS].filter((t) => t > now)));
+    // No warning before the first start: nothing to extend, and any activity moves the end anyway.
+    const warnAt = this.createdAt === null ? Infinity : closesAt - CLOSE_WARN_MS;
+    return Math.max(now, Math.min(closesAt, ...[idleAt, warnAt].filter((t) => t > now)));
   }
 
   /** Host-only: whether the room closes in under CLOSE_WARN_MS (minutesLeft null when not), and if it may be extended. */
   private closingMessage(): Extract<ServerMessage, { type: "HOST_ROOM_CLOSING" }> {
-    const closesAt = this.closesAt();
-    const left = closesAt === null ? Infinity : closesAt - this.now();
+    const left = this.createdAt === null ? Infinity : this.closesAt()! - this.now();
     const minutesLeft = left > CLOSE_WARN_MS ? null : Math.max(1, Math.ceil(left / 60_000));
-    return { type: "HOST_ROOM_CLOSING", minutesLeft, canExtend: this.extendedMs < this.maxExtendMs() };
+    return { type: "HOST_ROOM_CLOSING", minutesLeft, canExtend: this.createdAt !== null && this.extendedMs < this.maxExtendMs() };
   }
 
   /** 延長 1 小時: the end moves an hour past the current one, never past MAX_LIFE_MS; the warning comes again later. */
@@ -1420,7 +1449,8 @@ export class DungeonRoom {
 
   /**
    * The room's alarm. Idle for `idleMs`: close every connection, keep the game. CLOSE_WARN_MS before its end: warn
-   * the host. `expireMs` after its first connection, in use or not: forget the room, so its code can be used again.
+   * the host. `expireMs` after the first game start, in use or not (before it: `expireMs` idle): forget the room, so
+   * its code can be used again.
    */
   async onAlarm() {
     this.alarmAt = null;
@@ -1711,7 +1741,7 @@ export class DungeonRoom {
           this.broadcastState();
           break;
         case "HOST_NEXT_LINE":
-          this.handleNextLine(sender, msg.line);
+          this.handleNextLine(sender, msg.line, msg.eventId);
           break;
         case "HOST_GET_TRANSCRIPT":
           this.handleTranscript(sender);
@@ -2239,6 +2269,8 @@ export class DungeonRoom {
     this.pendingLock = null;
     this.pendingRoll = this.pendingKill = null;
     if (lockTeam) this.syncLockTeam(lockTeam);
+    if (this.lostCritTimer) clearTimeout(this.lostCritTimer);
+    this.lostCritTimer = null;
   }
 
   /** After a lock is gone: its team, kept on turn while the lock waited (onClose), shows offline if no phone is left. */
@@ -2257,10 +2289,16 @@ export class DungeonRoom {
   }
 
   /** The host queues a line for the next narration; "" cancels. */
-  private handleNextLine(conn: Conn, raw: string) {
+  private handleNextLine(conn: Conn, raw: string, eventId?: number) {
     if (!this.requireHost(conn)) return;
     if (this.game?.phase === "finished") {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "game_over" });
+      return;
+    }
+    // Typed in the game before 回到大廳 and sent late (a queued send): never into the next game.
+    // shortcut: staleBeforeSeq is in memory, so a restart in between lets one through; persist it if that matters.
+    if (eventId !== undefined && this.staleBeforeSeq !== null && eventId < this.staleBeforeSeq) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_game" });
       return;
     }
     // One line on screen and in the prompt: a raw socket could send newlines the <input> cannot.
@@ -2381,6 +2419,8 @@ export class DungeonRoom {
       this.playedQuestionIds,
     );
     this.game = { ...game, startedAt: this.now(), ...(this.bank.randomMonsters ? { bossMonsterId: monsters.boss } : {}) };
+    // The 6 hours start at the first start only: a second game after 回大廳 keeps the same clock (and the 24 hour cap).
+    this.createdAt ??= this.now();
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.
     this.aiNarration = aiNarration !== false;
     this.intro = intro ? 1 : null;
@@ -2770,10 +2810,12 @@ export class DungeonRoom {
     if (again) this.buzzPaused = false;
     else if (isBuzzPhase(prev) && outcome.type === "incorrect-retry" && !outcome.newBossQuestion) this.resumeBuzzMusic(questionId);
     // A ruling on the team (the host's, or the lost natural 20 itself) settles its lost natural 20; one refused above does not.
-    if (this.lostCrit?.teamId === teamId) this.lostCrit = null;
+    // Marked dropped in the saved check too, or a later restart would bring it back (applyLostCrit clears lostCrit first).
+    const ruledOut = this.lostCrit?.teamId === teamId ? this.lostCrit : null;
+    if (ruledOut) this.lostCrit = null;
     // Everything up to broadcastState is synchronous: state changes and the eventId are
     // fixed before any narration awaits, so concurrent judgments cannot interleave.
-    this.game = game;
+    this.game = ruledOut ? withCritDropped(game, ruledOut.teamId, ruledOut.questionId) : game;
     const eventId = ++this.eventSeq;
     const phaseName = prev.boss.phaseIndex > 0 ? this.bank.boss.phases[prev.boss.phaseIndex]?.name : undefined;
     // The dish the answer just ate: game-state appended it to the team's dishes (a game saved before dishes appends none).
@@ -3176,7 +3218,10 @@ export class DungeonRoom {
   /** The one place a cue is set: a new one bumps cueSeq, so the big screen plays it once. */
   private setCue(cue: SoundCue | null) {
     this.cue = cue;
-    if (cue) this.cueSeq++;
+    if (cue) {
+      this.cueSeq++;
+      this.cueAt = this.now();
+    }
   }
 
   private resolveRoll() {
@@ -3190,6 +3235,7 @@ export class DungeonRoom {
     try {
       // The turn moved on during the beat (the phone dropped): drop the roll, like a lock (E9). The use stays spent.
       if (currentTurnTeamId(game) !== roll.teamId || currentQuestionIdOf(game, roll.teamId) !== roll.questionId) {
+        if (roll.kind === "check" && roll.value === 20) this.dropCrit(roll.teamId, roll.questionId);
         this.broadcastState();
       } else if (roll.kind === "check") {
         this.resolveCheck(roll.teamId, roll.questionId, roll.value);
@@ -3203,6 +3249,7 @@ export class DungeonRoom {
       }
     } catch (err) {
       console.error(JSON.stringify({ event: "roll_failed", error: String(err) }));
+      if (roll.kind === "check" && roll.value === 20) this.dropCrit(roll.teamId, roll.questionId);
       this.broadcastState();
     }
     // A crit or check that killed has started the kill's beat: its team stays on turn until that beat lands.
@@ -3221,11 +3268,16 @@ export class DungeonRoom {
 
   /** A restart during a natural 20's beat lost the win the beat applies (R7). restore() marks it, and the next STATE
    * with its team on turn applies it (a judgment needs a team online, so not restore itself). The host judging that
-   * team first, or the question leaving play, cancels it. Returns whether it judged (judge sent the STATE). */
-  private applyLostCrit(): boolean {
+   * team first, or the question leaving play, cancels it. It waits LOST_CRIT_GAP_MS after the last cue, on a timer that
+   * calls back with `waitedFor` (that cue's time). Returns whether it judged (judge sent the STATE). */
+  private applyLostCrit(waitedFor?: number): boolean {
     const lost = this.lostCrit;
     const game = this.game;
-    if (!lost || game?.phase !== "playing") return false;
+    if (!lost) return false;
+    if (game?.phase !== "playing") {
+      this.lostCrit = null; // back in the lobby or the game over: a later game must not win it
+      return false;
+    }
     if (this.judging || game.pendingWrong || this.pendingRoll || this.pendingLock || this.paused()) return false;
     const team = game.teams.find((t) => t?.id === lost.teamId);
     if (!team || currentQuestionIdOf(game, lost.teamId) !== lost.questionId || game.checks?.[checkKey(lost.questionId, lost.teamId)]?.value !== 20) {
@@ -3233,6 +3285,17 @@ export class DungeonRoom {
       return false;
     }
     if (currentTurnTeamId(game) !== lost.teamId || team.typedAnswer !== undefined) return false;
+    // Waited out unless a newer cue came meanwhile (the timer, not the clock, says the gap is over).
+    const wait = waitedFor === this.cueAt ? 0 : this.cueAt + LOST_CRIT_GAP_MS - this.now();
+    if (wait > 0) {
+      if (this.lostCritTimer) clearTimeout(this.lostCritTimer);
+      const at = this.cueAt;
+      this.lostCritTimer = setTimeout(() => {
+        this.lostCritTimer = null;
+        if (this.lostCrit) this.applyLostCrit(at);
+      }, wait);
+      return false;
+    }
     this.lostCrit = null;
     // Applied right after a 答錯 (inside withUndo): undoing that 答錯 would wipe this win for good, so it is not undoable.
     const pending = this.undoPending;
@@ -3242,9 +3305,19 @@ export class DungeonRoom {
     } catch (err) {
       this.undoPending = pending;
       console.error(JSON.stringify({ event: "lost_crit_failed", error: String(err) }));
+      this.dropCrit(lost.teamId, lost.questionId);
       return false;
     }
     return true;
+  }
+
+  /** A natural 20 whose win failed: marked in the saved check, so a later restart does not apply it long after. */
+  private dropCrit(teamId: string, questionId: string) {
+    if (!this.game) return;
+    // Not a move: an undoable 答錯 before it stays undoable.
+    this.keepUndoOpen(withCritDropped(this.game, teamId, questionId));
+    // Saved now: a failure on the timer path sends no STATE after it, and a restart before the next one would apply it.
+    this.persist();
   }
 
   /** Whether the team that just walked into a new room finds an event there (D5). e2e names its one event team. */

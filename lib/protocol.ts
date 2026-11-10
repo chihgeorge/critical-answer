@@ -205,10 +205,11 @@ export type ClientMessage =
   /** /screen: the question video cannot play there (blocked, removed, no network), so the host page warns and offers
    * 現場放歌 (docs/designs/boss-music-buzzer.md M4). Same trust as above. */
   | { type: "SCREEN_CLIP_ERROR"; questionId: string }
-  /** Director: the next narration's second line says this (<= 40 chars); "" cancels. */
-  | { type: "HOST_NEXT_LINE"; line: string }
+  /** Director: the next narration's second line says this (<= 40 chars); "" cancels. `eventId`: the STATE it was typed
+   * under; one from before 回到大廳 belongs to the game that ended, and the room refuses it (stale_game). Absent from older pages. */
+  | { type: "HOST_NEXT_LINE"; line: string; eventId?: number }
   | { type: "HOST_GET_TRANSCRIPT" }
-  /** 延長 1 小時: the room closes an hour later than it would now, at most 24 hours after it was created. */
+  /** 延長 1 小時: the room closes an hour later than it would now, at most 24 hours after the first game start. */
   | { type: "HOST_EXTEND_ROOM" }
   /** Director: close the answer reveal and show the next question (D7). `eventId` is the STATE
    * eventId the reveal arrived with, so a late HOST_NEXT (second host device, a send buffered
@@ -600,9 +601,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
 
   switch (m.type) {
     case "JOIN": {
-      // No colon: checkKey joins a question id and a team id with one, and question ids may hold it.
-      const id = str(m.teamId, MAX_ID);
-      const teamId = id?.includes(":") ? null : id;
+      // Any string: the room refuses a team id that is not a UUID (so never one with a colon, which checkKey joins
+      // ids with) with invalid_team_id, which the phone shows.
+      const teamId = str(m.teamId, MAX_ID);
       const teamName = str(m.teamName, MAX_RAW_NAME);
       const teamKey = teamKeyOf(m.teamKey);
       // Cut, not rejected: an over-long password must not stop a known team (which needs none) from rejoining.
@@ -678,7 +679,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "HOST_NEXT_LINE": {
       const line = str(m.line, MAX_EDIT_LINE);
-      return line !== null ? { type: "HOST_NEXT_LINE", line } : null;
+      if (line === null || (m.eventId !== undefined && !isCount(m.eventId))) return null;
+      return { type: "HOST_NEXT_LINE", line, ...(m.eventId !== undefined ? { eventId: m.eventId } : {}) };
     }
     case "HOST_GET_TRANSCRIPT":
       return { type: "HOST_GET_TRANSCRIPT" };

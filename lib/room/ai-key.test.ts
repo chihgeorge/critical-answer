@@ -391,6 +391,25 @@ describe("restarts and key changes", () => {
     expect(r.narrationCalls().length).toBe(before + 1);
   });
 
+  it("after AI stopped, a line that comes back a minute later brings AI back by itself and clears ai_stopped", async () => {
+    let t = 1_000_000;
+    let broke = true;
+    const r = setup({ now: () => t, messages: () => (broke ? json({ error: { message: "overloaded" } }, 529) : line("又能說話了")) });
+    await r.useKey();
+    await r.start();
+    await r.judge();
+    await r.judge();
+    expect(r.status().error).toBe("ai_stopped");
+    broke = false;
+    const before = r.narrationCalls().length;
+    await r.judge();
+    expect(r.narrationCalls().length).toBe(before); // still in the cooldown: no call
+    t += 60_000;
+    await r.judge();
+    expect(r.narrationCalls().length).toBe(before + 1);
+    expect(r.status().error).toBeUndefined();
+  });
+
   it("D6: the host page resending the same key makes no new check; a bad new key leaves the old one in use", async () => {
     const r = setup({ models: (key) => (key === OTHER_KEY ? json({}, 401) : json({ data: [] })) });
     await r.useKey();
