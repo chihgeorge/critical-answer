@@ -143,7 +143,6 @@ describe("audience reactions", () => {
     };
     const waiting = g.ids.map((_, i) => i).filter((i) => i !== g.onTurn());
     const scores = g.room.game!.teams.map((t) => t.score);
-    const onTurnBefore = g.onTurn();
     g.react(waiting[0], "boo");
     g.react(waiting[1], "boo");
     g.tick(REACT_GAP_MS);
@@ -151,7 +150,7 @@ describe("audience reactions", () => {
     const said = await judge();
     expect(said.event.crowd).toMatchObject({ mood: "boo" });
     expect(said.lines).toHaveLength(3);
-    const fill = (l: string) => l.replace("{by}", (said.event.crowd as { team: string }).team).replace("{team}", g.room.game!.teams[onTurnBefore].name);
+    const fill = (l: string) => l.replace("{by}", (said.event.crowd as { team: string }).team);
     expect(CROWD_VARIANTS.boo.map(fill)).toContain(said.lines[1]);
     expect(g.room.game!.teams.map((t) => t.score)).toEqual(scores);
     // Never two turns running, however loud the room is.

@@ -42,7 +42,7 @@ export const FOODIE_RULES = `- 你也是一本正經的美食節目主持人兼�
 
 /** 旁白提到觀眾反應 (TODOS 觀眾反應的後續): added only when the event carries a crowd and the host's line does not take
  * line 2. The reaction is a mood and a team name, nothing about the question, so it cannot carry an answer. */
-export const CROWD_RULE = `- 「觀眾反應」是等待中的隊伍在手機上按的表情，只是現場氣氛：照事件寫的隊伍和反應說，像轉播員看台下一樣，例如「藍莓在後面噓聲四起……」。不要說反應會影響分數或輪到誰，也不要提題目或答案。`;
+export const CROWD_RULE = `- 「觀眾反應」是等待中的隊伍在手機上按的表情，只是現場氣氛：照事件寫的隊伍和反應說，像轉播員看台下一樣，例如「藍莓在後面噓聲四起……」。不要說反應會影響分數或輪到誰，不要暗示反應是在針對答對或答錯，也不要提題目或答案。`;
 
 const CROWD_MOOD = { clap: "拍手鼓掌", wow: "直呼好險", lol: "笑翻了", boo: "噓聲連連" } as const;
 

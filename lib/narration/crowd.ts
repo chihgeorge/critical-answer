@@ -8,6 +8,8 @@ import type { Crowd } from "./events";
 export const CROWD_MIN_TAPS = 3;
 /** And its loudest reaction needs this many, so 「噓聲四起」 is never one lone 👎. */
 export const CROWD_MIN_MOOD = 2;
+/** And this many different waiting teams must have tapped, so one eager team is not 「台下」 on its own. */
+export const CROWD_MIN_TEAMS = 2;
 
 type Tap = { team: string; reaction: Reaction };
 
@@ -25,7 +27,7 @@ function top<K>(keys: K[]): [K, number] | undefined {
 /** The loudest reaction of a turn, and the waiting team that tapped it most. `avoid` (the team up next) is named only
  * when nobody else tapped that reaction: the handoff right after names it, and the AI's middle line may not. */
 export function crowdOf(taps: Tap[], avoid?: string): Crowd | undefined {
-  if (taps.length < CROWD_MIN_TAPS) return undefined;
+  if (taps.length < CROWD_MIN_TAPS || new Set(taps.map((t) => t.team)).size < CROWD_MIN_TEAMS) return undefined;
   const [mood, n] = top(taps.map((t) => t.reaction))!;
   if (n < CROWD_MIN_MOOD) return undefined;
   const by = taps.filter((t) => t.reaction === mood).map((t) => t.team);

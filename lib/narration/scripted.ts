@@ -303,8 +303,8 @@ export const ATMOSPHERE_VARIANTS: Record<Exclude<NarrationEvent["type"], "epilog
 };
 
 /** The middle line of a turn the waiting teams reacted to (crowd.ts): {by} is the team that tapped the loudest reaction
- * most, {team} the team on turn. None names a monster (a boss hit has none) or says how the answer went, since the
- * same reaction comes on a right or a wrong one. */
+ * most. None names the team on turn or a monster (a boss hit has none), or hints at how the answer went: the same
+ * reaction comes on a right or a wrong one. */
 export const CROWD_VARIANTS: Record<Reaction, string[]> = {
   clap: [
     "{by}在後面用力鼓掌。",
@@ -312,7 +312,7 @@ export const CROWD_VARIANTS: Record<Reaction, string[]> = {
     "{by}拍手拍到手都紅了。",
     "掌聲從{by}那邊一路響過來。",
     "{by}帶頭鼓掌，石廊嗡嗡作響。",
-    "連{by}都忍不住替{team}拍手。",
+    "{by}的掌聲一陣接著一陣。",
     "{by}的掌聲在地城裡迴盪。",
     "{by}在後面拍手叫好。",
   ],
@@ -322,7 +322,7 @@ export const CROWD_VARIANTS: Record<Reaction, string[]> = {
     "後排傳來{by}的驚呼聲。",
     "{by}看得心臟都快跳出來了。",
     "{by}摀著眼睛，不敢再看。",
-    "{by}替{team}捏了一把冷汗。",
+    "{by}緊張得握緊了拳頭。",
     "{by}在後面叫出聲來。",
     "{by}的尖叫聲嚇跑了蝙蝠。",
   ],
@@ -340,7 +340,7 @@ export const CROWD_VARIANTS: Record<Reaction, string[]> = {
     "{by}在後面噓聲四起……",
     "後排的{by}發出一陣噓聲。",
     "{by}的噓聲比怪物的吼聲還大。",
-    "{by}朝{team}噓了好長一聲。",
+    "{by}噓得連火把都抖了一下。",
     "噓～{by}看起來不太服氣。",
     "{by}噓個不停，貓頭鷹假裝沒聽見。",
     "{by}在後面猛搖頭：噓～",

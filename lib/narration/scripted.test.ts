@@ -653,19 +653,19 @@ describe("美食節目／生物學家口吻 (FOODIE)", () => {
 });
 
 // Value: protects=the scripted crowd line (TODOS 觀眾反應的後續) fits the dialogue box, plays only on a turn the audience
-// reacted to, and is the middle line of that turn; fails_when=a crowd line outgrows 22 characters, names a monster, has
-// two 「！」, or plays without a crowd.
+// reacted to, and is the middle line of that turn; fails_when=a crowd line outgrows 22 characters, names the team on
+// turn or a monster (it could clash with the result), has two 「！」, or plays without a crowd.
 describe("觀眾反應 (CROWD_VARIANTS)", () => {
-  const sized = (t: string) => [...t.replace(/\{by\}/g, "藍莓小隊").replace(/\{team\}/g, "冒險小隊")].length;
+  const sized = (t: string) => [...t.replace(/\{by\}/g, "藍莓小隊")].length;
   const turn: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 3, next: { team: "綠隊", monster: "幽靈", boss: false } };
 
-  it("8 distinct lines per reaction, each at most 22 characters with two 4-character teams, no monster, at most one 「！」", () => {
+  it("8 distinct lines per reaction, each at most 22 characters with a 4-character team, naming only the reacting team, at most one 「！」", () => {
     for (const pool of Object.values(CROWD_VARIANTS)) {
       expect(new Set(pool).size).toBe(8);
       for (const l of pool) {
         expect(sized(l), l).toBeLessThanOrEqual(MAX_MODEL_LINE);
         expect(l).toContain("{by}");
-        expect(l).not.toContain("{monster}");
+        expect(l.replace("{by}", "")).not.toMatch(/\{/);
         expect(l.split("！").length - 1, l).toBeLessThanOrEqual(1);
       }
     }
@@ -676,7 +676,7 @@ describe("觀眾反應 (CROWD_VARIANTS)", () => {
     expect(targetSegmentCount(turn)).toBe(2);
     const loud = { ...turn, crowd: { mood: "boo" as const, team: "藍莓" } };
     expect(targetSegmentCount(loud)).toBe(3);
-    expect(CROWD_VARIANTS.boo.map((l) => l.replace("{by}", "藍莓").replace("{team}", "紅隊"))).toContain(p.atmosphereLine(loud));
+    expect(CROWD_VARIANTS.boo.map((l) => l.replace("{by}", "藍莓"))).toContain(p.atmosphereLine(loud));
     expect(ATMOSPHERE_VARIANTS.correct).toContain(p.atmosphereLine({ ...turn, roll: { kind: "crit", value: 20 } }));
   });
 });

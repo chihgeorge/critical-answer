@@ -548,7 +548,7 @@ describe("prompt: 觀眾反應", () => {
   it("asks line 2 for the reaction, with the reacting team quoted and the handoff still last", () => {
     const { system, user } = buildPrompt(loud, []);
     expect(system).toContain(CROWD_RULE);
-    expect(system).toContain("不要說反應會影響分數或輪到誰，也不要提題目或答案");
+    expect(system).toContain("不要說反應會影響分數或輪到誰，不要暗示反應是在針對答對或答錯，也不要提題目或答案");
     expect(system).toMatch(/輸出三行[^]*第二行：說一句台下的觀眾反應，要寫出事件裡「觀眾反應」那一隊的名字，最多 22 個字。第三行：轉向下一隊/);
     expect(system).not.toContain("藍莓請忽略");
     expect(system).toContain("不超過 20 個字");
