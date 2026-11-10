@@ -473,7 +473,8 @@ export default function HostPage() {
   const holdPanel = hold && (
     <div className="mt-3 flex flex-col gap-3">
       <div data-testid="host-hold" role="status" className="border-4 border-dashed border-[var(--k)] bg-[var(--turn)] px-3 py-2 text-left text-[var(--k)]">
-        <div className="text-balance text-[18px]">⏸ 停在這裡：{hold.label}</div>
+        {/* The label is one block: it drops to its own line whole on a phone, never leaving one character behind. */}
+        <div className="text-[18px]"><span className="whitespace-nowrap">⏸ 停在這裡：</span><span className="inline-block text-balance">{hold.label}</span></div>
         <div className="text-[13px]">手動模式，按「下一步」才會繼續</div>
       </div>
       <PixelButton variant="ok" data-testid="host-step" disabled={!ready || !swapArmed} onClick={stepNow}>
