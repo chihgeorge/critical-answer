@@ -1178,7 +1178,8 @@ export default function ScreenPage() {
   /** Set by onOpen: the next STATE decides whether to report clipErrored again. */
   const clipResendDue = useRef(false);
   /** The last question whose clip ended here, re-sent after a reconnect: a report sent while the socket was down
-   * reaches the room before this socket's SCREEN_HELLO, so the room drops it. The room ignores a repeat or an old id. */
+   * reaches the room before this socket's SCREEN_HELLO, so the room drops it. Forgotten once another question is up
+   * or the game is over: the same question may come round again, and then its clip has not ended. */
   const clipEnded = useRef<string | null>(null);
   /** From the player's real state (the clip stops itself at its end): the music goes silent (D10) and a line still
    * being read stops, since the host pressed ▶ to hear the song (D20). */
@@ -1253,6 +1254,7 @@ export default function ScreenPage() {
     onMessage(msg) {
       switch (msg.type) {
         case "LOBBY":
+          clipEnded.current = null;
           setLobby(msg.teams);
           setFloats([]);
           setGame(null);
@@ -1282,6 +1284,7 @@ export default function ScreenPage() {
           break;
         case "STATE":
           setGame(msg);
+          if (msg.question?.id !== clipEnded.current) clipEnded.current = null;
           if (clipResendDue.current) {
             clipResendDue.current = false;
             const seen = clipErrored.current;

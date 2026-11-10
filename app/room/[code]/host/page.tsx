@@ -141,6 +141,8 @@ export default function HostPage() {
     onClose() {
       setConnected(false);
       setClaimed(false);
+      // The QR holds the screen key: a reconnect must not bring back one the host left open.
+      setScreenQr(false);
       aiQueue.closed();
       setPendingTeamId(null);
     },
