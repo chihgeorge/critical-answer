@@ -606,7 +606,7 @@ export default function HostPage() {
               reports taken by the room (screen-video-key.md). */}
           {claimed ? (
             <>
-              <a data-testid="screen-link" href={screenLink} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{origin + screenLink}</a>
+              <a data-testid="screen-link" href={screenLink} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{/* Without the key: players can see the host's phone. */}{`${origin}/room/${code}/screen`}</a>
               {/* The same link as a QR: a TV remote cannot type the key (screen-video-key.md). */}
               <PixelButton data-testid="screen-qr-toggle" aria-expanded={screenQr} onClick={() => setScreenQr(!screenQr)} className="!mx-0 !mb-0 mt-2 min-h-[44px] !px-3 !py-2 text-[15px]">
                 {screenQr ? "收起大螢幕 QR" : "顯示大螢幕 QR"}

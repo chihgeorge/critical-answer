@@ -460,7 +460,7 @@ export class DungeonRoom {
   private keyCheckWindowAt = 0;
   private fetchImpl: typeof fetch | undefined;
   private llm: NarrationProvider;
-  private breaker = createBreaker({ onTrip: (why) => this.onBreakerTrip(why) });
+  private breaker = createBreaker({ onTrip: (why) => this.onBreakerTrip(why), onRecover: () => this.onBreakerRecover() });
   private scripted: ReturnType<typeof createScriptedProvider>;
   private runner: ReturnType<typeof createRunner>;
   private epilogueDelayMs: number;
@@ -628,6 +628,14 @@ export class DungeonRoom {
       this.aiError = "ai_stopped";
       this.keyError = undefined; // the newest error wins
     }
+    this.sendAiStatus();
+  }
+
+  /** A probe after the breaker's cooldown came back: the AI is narrating again, so drop "AI stopped". */
+  private onBreakerRecover() {
+    console.warn(JSON.stringify({ narration: "breaker_closed" }));
+    if (this.aiError !== "ai_stopped") return;
+    this.aiError = undefined;
     this.sendAiStatus();
   }
 

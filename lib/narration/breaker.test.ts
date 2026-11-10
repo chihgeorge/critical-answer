@@ -50,6 +50,36 @@ describe("createBreaker", () => {
     b.success();
     expect(b.open).toBe(true);
   });
+
+  it("after the cooldown lets one request through: a failure waits again, a success closes it", () => {
+    let t = 0;
+    const onRecover = vi.fn();
+    const b = createBreaker({ cooldownMs: 60_000, now: () => t, onRecover });
+    for (let i = 0; i < 3; i++) b.failure(new NarrationError("timeout", "x"));
+    t = 59_999;
+    expect(b.open).toBe(true);
+    t = 60_000;
+    expect(b.open).toBe(false); // the probe
+    expect(b.open).toBe(true); // only one per cooldown
+    b.failure(new NarrationError("timeout", "x"));
+    t = 119_999;
+    expect(b.open).toBe(true);
+    t = 120_000;
+    expect(b.open).toBe(false);
+    b.success();
+    expect(onRecover).toHaveBeenCalledTimes(1);
+    expect(b.open).toBe(false);
+    b.failure(new NarrationError("timeout", "x"));
+    expect(b.open).toBe(false); // the failure count started over
+  });
+
+  it("a refused key never gets a probe", () => {
+    let t = 0;
+    const b = createBreaker({ now: () => t });
+    b.failure(new NarrationError("auth", "x", 401));
+    t = 10 * 60_000;
+    expect(b.open).toBe(true);
+  });
 });
 
 describe("withBreaker", () => {
