@@ -12,6 +12,14 @@ import {
   currentTurnTeamId,
   drawEvent,
   enterEventRoom,
+  endFortune,
+  endGame,
+  fortunePool,
+  resolveFortune,
+  FORTUNE_INTRO_MS,
+  FORTUNE_PAY,
+  type FortuneEffect,
+  type Team,
   eventEligible,
   getSpectatorView,
   openEvent,
@@ -39,7 +47,7 @@ function game(classIds: (ClassId | undefined)[] = [undefined, undefined], roomCo
 function inEvent(outcome: EventOutcome, g = game()): GameState {
   const { game: after, outcome: o } = answerQuestion(g, "t0", g.teams[0].currentQuestionId, true, "retry", first);
   expect(eventEligible(after, o)).toBe(true);
-  const scene = { feast: "chest", rotten: "chest", spring: "spring", curse: "idol", blessing: "fairy", great: "fortune", good: "fortune", bad: "fortune" }[outcome];
+  const scene = { feast: "chest", rotten: "chest", spring: "spring", curse: "idol", blessing: "fairy", great: "fortune", good: "fortune", bad: "fortune", fortune: "fortune" }[outcome];
   const entered = enterEventRoom(after, "t0", { scene, outcome } as RoomEvent);
   // Back to t0's turn: t1 answers so the turn comes round.
   return answerQuestion(entered, "t1", entered.teams[1].currentQuestionId, false, "retry", first).game;
@@ -47,24 +55,47 @@ function inEvent(outcome: EventOutcome, g = game()): GameState {
 
 const team = (g: GameState, id = "t0") => g.teams.find((t) => t.id === id)!;
 
-describe("drawEvent", () => {
-  it("draws the six events evenly, the fortune teller's three lots within its sixth", () => {
+/** An rng that returns `xs` in order, then the last one forever. */
+const seq = (...xs: number[]) => {
+  let i = 0;
+  return () => xs[Math.min(i++, xs.length - 1)];
+};
+
+// Value: protects=the 3-scene deck (fortune-teller.md G3, G2): chest, statue and fortune teller 1/3 each, each scene's two
+// outcomes 1/2, the spring and fairy never drawn, and an empty condition pool redrawing chest or statue; fails_when=the old
+// six-event deck or the old lots come back, or an empty pool still shows the fortune teller; seam=none; no_claim=the pool's
+// own rules (below)
+describe("drawEvent (3-scene deck)", () => {
+  it("draws chest, statue and fortune teller evenly, each scene's outcomes half and half", () => {
     let seed = 1;
     const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    // Two teams that have each fled once: the fortune teller always has a condition.
+    const g = { ...game(), teams: game().teams.map((t) => ({ ...t, flees: 1 })) };
     const counts: Record<string, number> = {};
     const N = 60000;
     for (let i = 0; i < N; i++) {
-      const e = drawEvent(rng);
+      const e = drawEvent(g, "t0", rng);
       counts[e.outcome] = (counts[e.outcome] ?? 0) + 1;
     }
-    for (const o of ["feast", "rotten", "spring", "curse", "blessing"]) expect(counts[o] / N).toBeCloseTo(1 / 6, 1);
-    for (const o of ["great", "good", "bad"]) expect(counts[o] / N).toBeCloseTo(1 / 18, 1);
+    for (const o of ["feast", "rotten", "curse", "blessing"]) expect(counts[o] / N).toBeCloseTo(1 / 6, 1);
+    expect(counts.fortune / N).toBeCloseTo(1 / 3, 1);
+    for (const o of ["spring", "great", "good", "bad"]) expect(counts[o]).toBeUndefined();
   });
 
-  it("maps the chest to both dishes and the end of the range to a fortune lot", () => {
-    expect(drawEvent(() => 0)).toEqual({ scene: "chest", outcome: "feast" });
-    expect(drawEvent(() => 0.2)).toEqual({ scene: "chest", outcome: "rotten" });
-    expect(drawEvent(() => 0.9999)).toEqual({ scene: "fortune", outcome: "bad" });
+  it("maps the start of the range to the chest, the middle to the statue, the end to the fortune teller", () => {
+    const g = { ...game(), teams: game().teams.map((t) => ({ ...t, flees: 1 })) };
+    expect(drawEvent(g, "t0", () => 0)).toEqual({ scene: "chest", outcome: "feast" });
+    expect(drawEvent(g, "t0", seq(0, 0.7))).toEqual({ scene: "chest", outcome: "rotten" });
+    expect(drawEvent(g, "t0", seq(0.5, 0.2))).toEqual({ scene: "idol", outcome: "blessing" });
+    expect(drawEvent(g, "t0", seq(0.5, 0.9))).toEqual({ scene: "idol", outcome: "curse" });
+    expect(drawEvent(g, "t0", () => 0.9999)).toEqual({ scene: "fortune", outcome: "fortune", fortune: { condition: "flees", value: 1, matchIds: ["t0", "t1"] } });
+  });
+
+  it("G2: on the first round the pool is empty, so the fortune teller gives way to the chest or the statue", () => {
+    const g = game();
+    expect(fortunePool(g, "t0")).toEqual([]);
+    expect(drawEvent(g, "t0", seq(0.9, 0.2, 0.2))).toEqual({ scene: "chest", outcome: "feast" });
+    expect(drawEvent(g, "t0", seq(0.9, 0.7, 0.7))).toEqual({ scene: "idol", outcome: "curse" });
   });
 
   it("the room's chance is one in four", () => {
@@ -324,5 +355,189 @@ describe("叉路 (branch-fork.md)", () => {
     const g = chooseFork(atForkGame(), "t0", "timeout", first).game;
     expect(gameLog(g, 0).teams[0].forks).toEqual([{ side: "left", door: "monster", timeout: true }]);
     expect(gameLog(g, 0).teams[1].forks).toEqual([]);
+  });
+});
+
+// Value: protects=the fortune teller's condition pool (fortune-teller.md G2, Conditions): ≥2 teams above 0 or a highest value
+// of 2, no mystery-room count on the game's first mystery room, the drawing team's +1, ties all matching, every team counted;
+// fails_when=a lone 1 enters the pool, the first mystery room draws the mystery count, or a tie drops a team; seam=none;
+// no_claim=the deck's odds (drawEvent above)
+describe("占卜師 condition pool (fortune-teller.md)", () => {
+  const withTeams = (patches: Partial<Team>[]) => {
+    const g = game(patches.map(() => undefined));
+    return { ...g, teams: g.teams.map((t, i) => ({ ...t, ...patches[i] })) };
+  };
+
+  it("a condition needs two teams above 0, or a highest value of at least 2", () => {
+    expect(fortunePool(withTeams([{ flees: 1 }, {}]), "t0")).toEqual([]);
+    expect(fortunePool(withTeams([{ flees: 1 }, { flees: 1 }]), "t0")).toEqual(["flees"]);
+    expect(fortunePool(withTeams([{ flees: 2 }, {}]), "t0")).toEqual(["flees"]);
+  });
+
+  it("reads every counter: 20s, 1s, flees, potions, wrong, correct, distinct dishes, rotten dishes", () => {
+    const g = withTeams([
+      { natural20s: 2, natural1s: 2, flees: 2, potionsDrunk: 2, wrongAnswers: 2, correctAnswers: 2, dishes: ["a", "a", "b"], events: ["rotten", "rotten"] },
+      {},
+    ]);
+    expect(fortunePool(g, "t1")).toEqual(["natural20s", "natural1s", "flees", "potions", "wrong", "correct", "mystery", "dishes", "rotten"]);
+  });
+
+  it("the mystery-room count never on the game's first mystery room; after it the drawing team counts this one", () => {
+    const first = withTeams([{}, {}]);
+    expect(fortunePool(first, "t0")).not.toContain("mystery");
+    // t1 opened one before: t0's +1 ties it, two teams above 0.
+    const later = withTeams([{}, { events: ["feast"] }]);
+    expect(fortunePool(later, "t0")).toContain("mystery");
+    expect(drawEvent(later, "t0", seq(0.9, 0))).toEqual({ scene: "fortune", outcome: "fortune", fortune: { condition: "mystery", value: 1, matchIds: ["t0", "t1"] } });
+  });
+
+  it("every team tied on the highest value matches, offline and boss-room teams too", () => {
+    const g = setTeamOnline(withTeams([{ flees: 3 }, { flees: 3 }, { flees: 1 }]), "t1", false);
+    const boss = { ...g, teams: g.teams.map((t) => (t.id === "t1" ? { ...t, inBoss: true } : t)) };
+    expect(drawEvent(boss, "t2", () => 0.99).fortune).toEqual({ condition: "flees", value: 3, matchIds: ["t0", "t1"] });
+  });
+});
+
+// Value: protects=the fortune's turn and record (fortune-teller.md E3/G8, R2, R11): ❓ only marks the team, the turn stays on
+// it offline, the pick opens the event at once (events, turns, next room, the turn passes), "fortune" itself gives nothing,
+// the boss door still walks the team in, and the game's end clears it; fails_when=the event opens before the pick, the turn
+// moves early, openEvent falls into the curse branch, a second pick lands, or the fortune outlives the game; seam=none;
+// no_claim=the room's steps, clock and STATE (lib/room/fortune-teller.test.ts)
+describe("占卜師 turn and resolveFortune (fortune-teller.md)", () => {
+  /** t0 at a choosing fork; both teams have fled once, so ❓ on rng 0.99 is the fortune teller on 逃跑最多次. */
+  function forkGame(g = game()): GameState {
+    const fled = { ...g, teams: g.teams.map((t) => ({ ...t, flees: 1 })) };
+    const { game: after } = answerQuestion(fled, "t0", fled.teams[0].currentQuestionId, true, "retry", first);
+    const back = answerQuestion(enterFork(after, "t0"), "t1", after.teams[1].currentQuestionId, false, "retry", first).game;
+    return startForkChoice(back, "t0", 1000, "left");
+  }
+  const drawn = (g = game()) => chooseFork(forkGame(g), "t0", "right", () => 0.99).game;
+
+  it("❓ on the fortune teller marks the team and opens nothing: no result, no events, the turn stays", () => {
+    const before = forkGame();
+    const { game: g, result } = chooseFork(before, "t0", "right", () => 0.99);
+    expect(result).toBeUndefined();
+    expect(g.fortune).toEqual({ teamId: "t0", condition: "flees", value: 1, matchIds: ["t0", "t1"] });
+    expect(team(g).event).toMatchObject({ scene: "fortune", outcome: "fortune" });
+    expect(team(g).events).toBeUndefined();
+    expect(team(g)).toMatchObject({ roomIndex: team(before).roomIndex, turns: team(before).turns });
+    expect(currentTurnTeamId(g)).toBe("t0");
+    expect(currentTurnTeamId(setTeamOnline(g, "t0", false))).toBe("t0");
+  });
+
+  it("the pick opens the event at once: events, turns, next room, the turn passes, the record is written", () => {
+    const g = drawn();
+    const done = resolveFortune(g, "blessing", false, first);
+    expect(team(done)).toMatchObject({ events: ["fortune"], turns: team(g).turns! + 1, roomIndex: team(g).roomIndex + 1, reward: team(g).reward });
+    expect(team(done).event).toBeUndefined();
+    expect(done.fortune).toMatchObject({ effect: "blessing" });
+    expect(team(done).fortunes).toEqual([{ condition: "flees", value: 1, matchIds: ["t0", "t1"], effect: "blessing", self: true }]);
+    expect(currentTurnTeamId(done)).toBe("t1");
+    expect(() => resolveFortune(done, "curse", false, first)).toThrow("no_fortune");
+    expect(endFortune(done).fortune).toBeUndefined();
+  });
+
+  it("the drawing team offline still resolves on timeout", () => {
+    const g = setTeamOnline(drawn(), "t0", false);
+    const done = resolveFortune(g, "potion", true, first);
+    expect(done.fortune).toMatchObject({ effect: "potion", timeout: true });
+    expect(team(done).fortunes?.[0]).toMatchObject({ timeout: true });
+    expect(currentTurnTeamId(done)).toBe("t1");
+  });
+
+  it("openEvent gives nothing for \"fortune\" itself: no boon, no satiety, no ability use", () => {
+    const g = inEvent("fortune");
+    const { game: opened, result } = openEvent(g, "t0", first);
+    expect(result).toMatchObject({ outcome: "fortune", satiety: 0 });
+    expect(result.boon).toBeUndefined();
+    expect(team(opened).boon).toBeUndefined();
+    expect(team(opened).abilityUses).toBe(team(g).abilityUses);
+  });
+
+  it("with the boss door open the drawing team walks into the boss room and gets nothing itself", () => {
+    const g = sendToBoss(drawn(game(["chef", undefined])), "t1");
+    const done = resolveFortune(g, "potion", false, first);
+    expect(team(done)).toMatchObject({ inBoss: true, reward: team(g).reward, item: "luckyPotion" });
+  });
+
+  it("the game's end clears a running fortune", () => {
+    expect(endGame(drawn(), first).fortune).toBeUndefined();
+  });
+
+  it("the game log lists each fortune with its record", () => {
+    const done = resolveFortune(drawn(), "curse", true, first);
+    expect(gameLog(done, 0).teams[0].fortunes).toEqual([{ condition: "flees", value: 1, matchIds: ["t0", "t1"], effect: "curse", timeout: true, self: true }]);
+    expect(gameLog(done, 0).teams[1].fortunes).toEqual([]);
+  });
+});
+
+// Value: protects=the five effects' rules (fortune-teller.md Effects, E11, R17): boons replace, a held potion stays, tribute
+// splits 10 a payer between the matching teams with the remainder dropped, relief pays 20 a matched non-receiver to the
+// lowest teams with the remainder kept, a matched receiver never pays, no chef bonus; fails_when=a payer pays twice, a
+// remainder comes back, the lowest team pays itself, or a chef makes satiety out of nothing; seam=none; no_claim=💫 暈眩
+// (its own commit)
+describe("占卜師 effects (fortune-teller.md)", () => {
+  /** A fortune on t0's turn matching `matchIds`, with each team's reward set; t0 holds the fortune event. */
+  function at(rewards: number[], matchIds: string[], patch: (t: Team) => Partial<Team> = () => ({}), classIds?: (ClassId | undefined)[]): GameState {
+    const g = game(classIds ?? rewards.map(() => undefined));
+    const teams = g.teams.map((t, i) => ({ ...t, reward: rewards[i], ...patch(t), ...(t.id === "t0" ? { event: { scene: "fortune" as const, outcome: "fortune" as const } } : {}) }));
+    return { ...g, teams, fortune: { teamId: "t0", condition: "flees", value: 1, matchIds } };
+  }
+  const rewards = (g: GameState) => g.teams.map((t) => t.reward);
+  const apply = (g: GameState, e: FortuneEffect) => resolveFortune(g, e, false, first);
+
+  it("pins the amounts", () => {
+    expect(FORTUNE_PAY).toEqual({ tribute: 10, relief: 20 });
+    expect(FORTUNE_INTRO_MS).toBe(3000);
+  });
+
+  it("blessing and curse replace any boon on every matching team", () => {
+    const g = at([0, 0, 0], ["t1", "t2"], (t) => (t.id === "t1" ? { boon: "curse" } : {}));
+    expect(apply(g, "blessing").teams.map((t) => t.boon)).toEqual([undefined, "blessing", "blessing"]);
+    expect(apply(g, "curse").teams.map((t) => t.boon)).toEqual([undefined, "curse", "curse"]);
+  });
+
+  it("a potion goes to each matching team without one; a held one is unchanged", () => {
+    const g = at([0, 0, 0], ["t1", "t2"], (t) => (t.id === "t1" ? { item: "luckyPotion", itemArmedFor: "x" } : {}));
+    const done = apply(g, "potion");
+    expect(done.teams.map((t) => t.item)).toEqual([undefined, "luckyPotion", "luckyPotion"]);
+    expect(team(done, "t1").itemArmedFor).toBe("x");
+  });
+
+  it("tribute: one team out of four pays only 10, split 2 each, the remainder not paid out", () => {
+    const done = apply(at([50, 50, 50, 50, 50], ["t0", "t1", "t2", "t3"]), "tribute");
+    expect(rewards(done)).toEqual([52, 52, 52, 52, 40]);
+  });
+
+  it("tribute: a team short of 10 pays all it has, 0 pays nothing, and paying 1 never gets 2 back", () => {
+    expect(rewards(apply(at([0, 3, 0], ["t0"]), "tribute"))).toEqual([3, 0, 0]);
+    // 10 + 1 between two matching teams: 5 each, the 1 is gone.
+    expect(rewards(apply(at([0, 0, 10, 1], ["t0", "t1"]), "tribute"))).toEqual([5, 5, 0, 0]);
+  });
+
+  it("tribute: every team matching moves nothing", () => {
+    expect(rewards(apply(at([10, 20], ["t0", "t1"]), "tribute"))).toEqual([10, 20]);
+  });
+
+  it("relief: each matching team pays 20 to the lowest teams, split evenly, the remainder kept", () => {
+    // t2 is lowest: t0 and t1 match and pay 20 each.
+    expect(rewards(apply(at([50, 30, 5], ["t0", "t1"]), "relief"))).toEqual([30, 10, 45]);
+    // Three lowest receivers: 20 splits 6 each, the payer keeps 2.
+    expect(rewards(apply(at([50, 0, 0, 0], ["t0"]), "relief"))).toEqual([32, 6, 6, 6]);
+  });
+
+  it("relief: a payer short of 20 pays what splits evenly, maybe nothing", () => {
+    expect(rewards(apply(at([7, 0, 0], ["t0"]), "relief"))).toEqual([1, 3, 3]);
+    expect(rewards(apply(at([1, 0, 0], ["t0"]), "relief"))).toEqual([1, 0, 0]);
+  });
+
+  it("relief: a matching team on the lowest list pays nothing, two tied lowest both; a receiver list of only itself moves nothing", () => {
+    expect(rewards(apply(at([3, 3, 40], ["t0", "t1"]), "relief"))).toEqual([3, 3, 40]);
+    expect(rewards(apply(at([2, 30], ["t0"]), "relief"))).toEqual([2, 30]);
+  });
+
+  it("no chef bonus on any effect, and the fortune teller gives the drawing team nothing", () => {
+    const done = apply(at([0, 40], ["t1"], () => ({}), ["chef", "chef"]), "relief");
+    expect(rewards(done)).toEqual([20, 20]);
   });
 });

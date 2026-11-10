@@ -86,7 +86,8 @@ export interface TitleFacts {
   boss: boolean;
 }
 
-const OUTCOME_SCENE: Record<EventOutcome, EventScene> = { feast: "chest", rotten: "chest", spring: "spring", curse: "idol", blessing: "fairy", great: "fortune", good: "fortune", bad: "fortune" };
+// The statue blesses as well as curses (fortune-teller.md R7): a blessing saved before the 3-scene deck reads as the statue's too.
+const OUTCOME_SCENE: Record<EventOutcome, EventScene> = { feast: "chest", rotten: "chest", spring: "spring", curse: "idol", blessing: "idol", great: "fortune", good: "fortune", bad: "fortune", fortune: "fortune" };
 
 export function titleFacts(t: Team): TitleFacts {
   return {

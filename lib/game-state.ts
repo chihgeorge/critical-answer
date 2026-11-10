@@ -192,6 +192,8 @@ export interface Team {
   fork?: Fork;
   /** Every door this team took at a fork, in order, for lib/game-log.ts. Absent until the first. */
   forks?: ForkRecord[];
+  /** Every fortune this team drew (docs/designs/fortune-teller.md), for the podium and lib/game-log.ts. Absent until the first. */
+  fortunes?: FortuneRecord[];
   /** A curse or blessing waiting for this team's next correct answer (event-rooms.md D12). */
   boon?: Boon;
   /** Every event outcome this team opened, in order, for lib/game-log.ts. Absent until the first. */
@@ -337,6 +339,8 @@ export interface GameState {
   /** ⚔️ 最後衝刺 (docs/designs/last-sprint.md): set once, when the first team entered the boss room, naming the trailing
    * teams it blessed. Never empty; its presence is the once-per-game guard. Absent in saves from before it. */
   sprint?: { teamIds: string[] };
+  /** 占卜師 (docs/designs/fortune-teller.md): from the ❓ door until the host's 下一題 after the effect card. */
+  fortune?: FortuneState;
 }
 
 export interface LockedOption {
@@ -871,6 +875,8 @@ export function currentTurnTeamId(game: GameState): string | null {
   // So does a team choosing its door: its 15 seconds run on, and it may come back to pick (branch-fork.md).
   const choosing = game.teams.find((t) => t.fork?.phase === "choosing");
   if (choosing) return choosing.id;
+  // And the team picking a fortune's effect, until it lands (fortune-teller.md).
+  if (game.fortune && !game.fortune.effect) return game.fortune.teamId;
   const idx = nextOnlineIndex(game, 0);
   // null: every team is offline, so no one can take a turn.
   return idx === null ? null : game.turnOrder[idx];
@@ -905,7 +911,8 @@ export function endGame(game: GameState, rng: () => number = Math.random): GameS
 /** Ranks the teams, rolling d20s for ties on the podium, so exactly one team wins (podium-reveal.md D4). */
 function finishGame(game: GameState, rng: () => number): GameState {
   const { ranking, tieRolls } = rankTeams(game.teams, () => rollD20(rng));
-  return { ...game, phase: "finished", winners: ranking.slice(0, 1), ranking, tieRolls };
+  // A fortune still running ends with the game (fortune-teller.md R11).
+  return { ...game, phase: "finished", winners: ranking.slice(0, 1), ranking, tieRolls, fortune: undefined };
 }
 
 /** Adds the natural 20s (D5) and natural 1s (fortune-teller.md) among `dice` to a team's counts. */
@@ -1395,12 +1402,16 @@ export function applySprint(prev: GameState, next: GameState): GameState {
 
 /** The chance that a correct answer brings a team to a 叉路, whose ❓ door holds an event (D5, branch-fork.md). */
 export const EVENT_CHANCE = 0.25;
-/** What stands on stage. A chest hides a feast or a rotten dish; the fortune teller draws 大吉, 中吉 or 凶. */
+/** What stands on stage: a chest (a feast or a rotten dish), the statue (`idol`: a blessing or a curse) or the fortune
+ * teller (fortune-teller.md). `spring` and `fairy`, and the old lots `great`, `good` and `bad`, are never drawn any more:
+ * they stay for a room saved mid-event before the 3-scene deck. */
 export type EventScene = "chest" | "spring" | "idol" | "fairy" | "fortune";
-export type EventOutcome = "feast" | "rotten" | "spring" | "curse" | "blessing" | "great" | "good" | "bad";
+export type EventOutcome = "feast" | "rotten" | "spring" | "curse" | "blessing" | "great" | "good" | "bad" | "fortune";
 export interface RoomEvent {
   scene: EventScene;
   outcome: EventOutcome;
+  /** The fortune teller's condition, drawn with the event (drawEvent). */
+  fortune?: FortuneDraw;
 }
 export type Boon = "curse" | "blessing";
 /** 🧪 幸運藥水: the only item so far (docs/designs/lucky-potion.md). */
@@ -1434,21 +1445,145 @@ export function drinkPotion(game: GameState, teamId: string): GameState {
 export function spendPotion(game: GameState, teamId: string): GameState {
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ item: undefined, itemArmedFor: undefined, itemArmedTurn: undefined, potionsDrunk: (t.potionsDrunk ?? 0) + 1 })) };
 }
-/** Satiety each outcome gives or takes (D4, D9); the spring's goes only to a chef or a team with no class. */
+/** Satiety each outcome gives or takes (D4, D9); the spring's goes only to a chef or a team with no class. `great` and
+ * `spring` are only for saves from before the 3-scene deck. */
 export const EVENT_SATIETY = { feast: 20, rotten: -10, great: 25, spring: 10 } as const;
 
-/** The six events, one each (D4): the chest twice, since it hides two. The fortune teller draws its lot here too. */
-export function drawEvent(rng: () => number = Math.random): RoomEvent {
-  const deck: RoomEvent[] = [
-    { scene: "chest", outcome: "feast" },
-    { scene: "chest", outcome: "rotten" },
-    { scene: "spring", outcome: "spring" },
-    { scene: "idol", outcome: "curse" },
-    { scene: "fairy", outcome: "blessing" },
-  ];
-  const i = Math.floor(rng() * (deck.length + 1));
-  if (i < deck.length) return deck[i];
-  return { scene: "fortune", outcome: (["great", "good", "bad"] as const)[Math.min(2, Math.floor(rng() * 3))] };
+/** One of `n` equally, never `n` itself (an rng that ever returned 1). */
+const pickIndex = (rng: () => number, n: number) => Math.min(n - 1, Math.floor(rng() * n));
+
+/** The chest (a feast or a rotten dish) or the statue (a blessing or a curse), 1/2 each. */
+function chestOrStatue(chest: boolean, rng: () => number): RoomEvent {
+  const first = rng() < 0.5;
+  return chest ? { scene: "chest", outcome: first ? "feast" : "rotten" } : { scene: "idol", outcome: first ? "blessing" : "curse" };
+}
+
+/** The ❓ door's event (fortune-teller.md G3): chest, statue or fortune teller, 1/3 each, then the outcome. The fortune
+ * teller draws her condition from the pool now; an empty pool means no fortune this time (G2): chest or statue instead. */
+export function drawEvent(game: GameState, teamId: string, rng: () => number = Math.random): RoomEvent {
+  const scene = pickIndex(rng, 3);
+  if (scene < 2) return chestOrStatue(scene === 0, rng);
+  const pool = fortunePool(game, teamId);
+  if (!pool.length) return chestOrStatue(rng() < 0.5, rng);
+  const condition = pool[pickIndex(rng, pool.length)];
+  const values = fortuneValues(game, teamId, condition);
+  const value = Math.max(...game.teams.map((t) => values[t.id]));
+  return { scene: "fortune", outcome: "fortune", fortune: { condition, value, matchIds: game.teams.filter((t) => values[t.id] === value).map((t) => t.id) } };
+}
+
+/* ---------- 占卜師 (docs/designs/fortune-teller.md) ---------- */
+
+export const FORTUNE_CONDITIONS = ["natural20s", "natural1s", "flees", "potions", "wrong", "correct", "mystery", "dishes", "rotten"] as const;
+export type FortuneCondition = (typeof FORTUNE_CONDITIONS)[number];
+export const FORTUNE_EFFECTS = ["blessing", "curse", "potion", "tribute", "relief"] as const;
+export type FortuneEffect = (typeof FORTUNE_EFFECTS)[number];
+export const isFortuneCondition = (v: unknown): v is FortuneCondition => typeof v === "string" && (FORTUNE_CONDITIONS as readonly string[]).includes(v);
+export const isFortuneEffect = (v: unknown): v is FortuneEffect => typeof v === "string" && (FORTUNE_EFFECTS as readonly string[]).includes(v);
+/** The condition drawn with the event, and the teams tied on its highest value: fixed at the draw. */
+export interface FortuneDraw {
+  condition: FortuneCondition;
+  value: number;
+  matchIds: string[];
+}
+/** `deadline` (ms epoch, the room's clock) is set when the crystal ball comes up; `effect` once the pick landed, which
+ * keeps the state on show (the effect card) until the host's 下一題. */
+export interface FortuneState extends FortuneDraw {
+  teamId: string;
+  deadline?: number;
+  effect?: FortuneEffect;
+  timeout?: true;
+}
+/** One fortune in the drawing team's record (the podium and lib/game-log.ts read the hit teams off `matchIds`). */
+export interface FortuneRecord extends FortuneDraw {
+  effect: FortuneEffect;
+  timeout?: true;
+  /** The drawing team matched its own condition. */
+  self?: true;
+}
+/** The crystal ball shows the condition this long before the drawing team may pick (then the fork's FORK_MS). */
+export const FORTUNE_INTRO_MS = 3000;
+/** What 進貢 takes from each team that does not match, and 救濟 from each matching team (fortune-teller.md Effects).
+ * Remainders: tribute's sum is split between the matching teams rounded down and the rest is not paid out; relief's
+ * payer keeps what does not split evenly between the receivers (E11). */
+export const FORTUNE_PAY = { tribute: 10, relief: 20 } as const;
+
+/** Every team's value for `condition`; the drawing team's mystery rooms count this one. */
+function fortuneValues(game: GameState, teamId: string, condition: FortuneCondition): Record<string, number> {
+  const of = (t: Team): number => {
+    switch (condition) {
+      case "natural20s": return t.natural20s ?? 0;
+      case "natural1s": return t.natural1s ?? 0;
+      case "flees": return t.flees ?? 0;
+      case "potions": return t.potionsDrunk ?? 0;
+      case "wrong": return t.wrongAnswers ?? 0;
+      case "correct": return t.correctAnswers ?? 0;
+      case "mystery": return (t.events?.length ?? 0) + (t.id === teamId ? 1 : 0);
+      case "dishes": return new Set(t.dishes ?? []).size;
+      case "rotten": return (t.events ?? []).filter((e) => e === "rotten").length;
+    }
+  };
+  return Object.fromEntries(game.teams.map((t) => [t.id, of(t)]));
+}
+
+/** The conditions the fortune teller may draw now (G2): a highest value above 0, held by two teams or at least 2; the
+ * mystery-room count never on the game's first mystery room. */
+export function fortunePool(game: GameState, teamId: string): FortuneCondition[] {
+  const firstMystery = game.teams.every((t) => !t.events?.length);
+  return FORTUNE_CONDITIONS.filter((c) => {
+    if (c === "mystery" && firstMystery) return false;
+    const values = Object.values(fortuneValues(game, teamId, c));
+    const max = Math.max(...values);
+    return max > 0 && (values.filter((v) => v > 0).length >= 2 || max >= 2);
+  });
+}
+
+/** The effect lands on the matching teams (no chef bonus on any of it, fortune-teller.md Effects). */
+function applyFortuneEffect(game: GameState, matchIds: string[], effect: FortuneEffect): GameState {
+  const matched = (t: Team) => matchIds.includes(t.id);
+  if (effect === "blessing" || effect === "curse") return { ...game, teams: game.teams.map((t) => (matched(t) ? { ...t, boon: effect } : t)) };
+  if (effect === "potion") return { ...game, teams: game.teams.map((t) => (matched(t) && !t.item ? { ...t, item: "luckyPotion" as const } : t)) };
+  const pay = new Map<string, number>();
+  const get = new Map<string, number>();
+  if (effect === "tribute") {
+    for (const t of game.teams) if (!matched(t)) pay.set(t.id, Math.min(FORTUNE_PAY.tribute, t.reward));
+    const share = Math.floor([...pay.values()].reduce((a, b) => a + b, 0) / matchIds.length);
+    for (const id of matchIds) get.set(id, share);
+  } else {
+    const low = Math.min(...game.teams.map((t) => t.reward));
+    const receivers = game.teams.filter((t) => t.reward === low).map((t) => t.id);
+    for (const t of game.teams) {
+      if (!matched(t) || receivers.includes(t.id)) continue;
+      const share = Math.floor(Math.min(FORTUNE_PAY.relief, t.reward) / receivers.length);
+      pay.set(t.id, share * receivers.length);
+      for (const id of receivers) get.set(id, (get.get(id) ?? 0) + share);
+    }
+  }
+  return { ...game, teams: game.teams.map((t) => (pay.has(t.id) || get.has(t.id) ? { ...t, reward: t.reward - (pay.get(t.id) ?? 0) + (get.get(t.id) ?? 0) } : t)) };
+}
+
+/**
+ * The fortune's effect lands (fortune-teller.md R2, E3, G10), in one change: the turn is checked while no effect is set, the
+ * effect lands on the matching teams, the fortune event opens (openEvent: recorded, the turn counts, the team walks on,
+ * the turn passes), and the effect and the drawing team's record are written. `game.fortune` stays for the effect card.
+ */
+export function resolveFortune(game: GameState, effect: FortuneEffect, timeout: boolean, rng: () => number = Math.random): GameState {
+  assertPlaying(game);
+  const fortune = game.fortune;
+  if (!fortune || fortune.effect) throw new InvalidActionError("no_fortune");
+  assertTurn(game, fortune.teamId);
+  const { game: opened } = openEvent(applyFortuneEffect(game, fortune.matchIds, effect), fortune.teamId, rng);
+  const { condition, value, matchIds, teamId } = fortune;
+  const record: FortuneRecord = { condition, value, matchIds, effect, ...(timeout ? { timeout: true as const } : {}), ...(matchIds.includes(teamId) ? { self: true as const } : {}) };
+  return {
+    ...opened,
+    fortune: { ...fortune, effect, ...(timeout ? { timeout: true as const } : {}) },
+    teams: patchTeam(opened.teams, teamId, (t) => ({ fortunes: [...(t.fortunes ?? []), record] })),
+  };
+}
+
+/** The effect card is closed (the host's 下一題): the fortune is over. */
+export function endFortune(game: GameState): GameState {
+  return game.fortune ? { ...game, fortune: undefined } : game;
 }
 
 /** Whether this correct answer may bring its team to a fork (D5, D12; branch-fork.md): only into a room before the
@@ -1509,7 +1644,11 @@ export function chooseFork(game: GameState, teamId: string, choice: ForkChoice, 
   const record: ForkRecord = { side, door, ...(choice === "timeout" ? { timeout: true as const } : {}) };
   const chose = patchTeam(game.teams, teamId, (t) => ({ fork: door === "mystery" ? undefined : { phase: "monster" as const }, forks: [...(t.forks ?? []), record] }));
   if (door === "monster") return { game: { ...game, teams: chose }, record };
-  return { record, ...openEvent(enterEventRoom({ ...game, teams: chose }, teamId, drawEvent(rng)), teamId, rng) };
+  const event = drawEvent(game, teamId, rng);
+  const entered = enterEventRoom({ ...game, teams: chose }, teamId, event);
+  // The fortune teller's event waits on the team for its effect (resolveFortune opens it).
+  if (event.fortune) return { record, game: { ...entered, fortune: { teamId, ...event.fortune } } };
+  return { record, ...openEvent(entered, teamId, rng) };
 }
 
 /** The event behind the ❓ door, just drawn: chooseFork opens it in the same call. */
@@ -1552,7 +1691,9 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
     if (share) result.chefBonus = share;
   };
   const o = event.outcome;
-  if (o === "feast" || o === "great") give(EVENT_SATIETY[o]);
+  // The fortune itself gives nothing: its effect landed in resolveFortune (fortune-teller.md).
+  if (o === "fortune") result.satiety = 0;
+  else if (o === "feast" || o === "great") give(EVENT_SATIETY[o]);
   // No more than the team has, and a plain 0 (not -0) when it has nothing left.
   else if (o === "rotten") result.satiety = team.reward > 0 ? -Math.min(-EVENT_SATIETY.rotten, team.reward) : 0;
   else if (o === "spring" || o === "good") {

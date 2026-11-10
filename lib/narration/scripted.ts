@@ -421,11 +421,11 @@ export const EVENT_VARIANTS: Record<EventOutcome, string[]> = {
   ],
   curse: [
     "{team}一摸雕像，紫煙冒了出來……被詛咒了！下次答對只拿一半。",
-    "骷髏雕像咯咯笑了起來：{team}中了詛咒，下次答對獎勵減半！",
+    "神秘雕像的眼睛亮起紫光：{team}中了詛咒，下次答對獎勵減半！",
   ],
   blessing: [
-    "小精靈在{team}頭上灑下金粉：下次答對多拿一半！",
-    "精靈眨眨眼，祝福了{team}：下次答對，獎勵多一半！",
+    "{team}一摸雕像，金光灑了下來：下次答對多拿一半！",
+    "神秘雕像的眼睛亮起金光，祝福了{team}：下次答對，獎勵多一半！",
   ],
   great: [
     "占卜師的水晶球亮起金光——大吉！{team}收到一桌好菜，飽足感 +{points}！",
@@ -439,6 +439,8 @@ export const EVENT_VARIANTS: Record<EventOutcome, string[]> = {
     "水晶球暗了下來……凶！{team}下次答對只拿一半。",
     "占卜師搖搖頭：凶。{team}下次答對獎勵減半……",
   ],
+  // Never read: the room narrates the fortune teller with FORTUNE_* below (fortune-teller.md).
+  fortune: ["占卜師收起了水晶球。"],
 };
 /** The spring's and 中吉's line for a chef or a team with no class: satiety instead of an ability use. */
 /** A rotten dish on an empty belly: nothing to take, so no −0. */
