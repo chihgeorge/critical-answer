@@ -319,13 +319,6 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
   );
 }
 
-/**
- * A sort question's items, top to bottom (the owner's mockup A): drag a row's ☰ up or down to move it. Only the
- * handle takes the touch (touch-action: none), so the rest of the page still scrolls under a finger; the arrow
- * keys move a focused handle too. `order` is shown indices; `marks`, after a wrong lock, says which places are right.
- * Rows are keyed by place, not item, so a drag never moves the DOM node under the finger (iOS can drop a pointer
- * whose node React reinserts); the drag listens on window and ends on up, cancel, a freeze or unmount.
- */
 /** After a wrong answer: 逃跑・同房 and 逃跑・換房 (a new monster, same room). The boss room has one 逃跑, a new question. */
 function FleeButtons({ questionId, send, prayed = false, boss = false }: { questionId: string; send: (m: ClientMessage) => void; prayed?: boolean; boss?: boolean }) {
   const flee = (choice: "flee" | "switch") => () => send({ type: "TEAM_WRONG_CHOICE", questionId, choice });
@@ -344,6 +337,13 @@ function FleeButtons({ questionId, send, prayed = false, boss = false }: { quest
   );
 }
 
+/**
+ * A sort question's items, top to bottom (the owner's mockup A): drag a row's ☰ up or down to move it. Only the
+ * handle takes the touch (touch-action: none), so the rest of the page still scrolls under a finger; the arrow
+ * keys move a focused handle too. `order` is shown indices; `marks`, after a wrong lock, says which places are right.
+ * Rows are keyed by place, not item, so a drag never moves the DOM node under the finger (iOS can drop a pointer
+ * whose node React reinserts); the drag listens on window and ends on up, cancel, a freeze or unmount.
+ */
 function SortList({ items, order, marks, locked, frozen, labelledBy, onChange }: { items: string[]; order: number[]; marks?: boolean[]; locked: boolean; frozen: boolean; labelledBy?: string; onChange: (order: number[]) => void }) {
   const rows = useRef<(HTMLLIElement | null)[]>([]);
   const [dragging, setDragging] = useState<number | null>(null);

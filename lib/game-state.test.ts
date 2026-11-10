@@ -209,6 +209,15 @@ describe("answerQuestion — normal room, incorrect answer", () => {
     expect(monsterById(to)?.boss).toBe(false);
   });
 
+  it("逃跑・換房's monster goes when the team leaves the room another way: an event room or the host's 送進首領房", () => {
+    const game = createGame([{ id: "T0", name: "A" }], [{ baseDifficulty: 1, reward: 10, monsterId: "slime-soft" }, { baseDifficulty: 1, reward: 10, monsterId: "ghost-shy" }], poolsWith(1, ["a", "b", "c", "d"]), ["boss-q1"], { bossThreshold: 99 }, 1, first);
+    const { game: swapped } = answerQuestion(game, "T0", "a", false, "switch", first);
+    expect(swapped.teams[0].swappedMonsterId).toBe("ghost-shy");
+    const evented = openEvent(enterEventRoom(swapped, "T0", { scene: "chest", outcome: "feast" }), "T0", first).game;
+    expect(evented.teams[0].swappedMonsterId).toBeUndefined();
+    expect(sendToBoss(swapped, "T0", first).teams[0].swappedMonsterId).toBeUndefined();
+  });
+
   it("逃跑・換房 in the boss room is a plain flee: the boss question rotates, no monster changes", () => {
     let game = makeGame({ teamCount: 1, bossThreshold: 1 });
     ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first));

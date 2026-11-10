@@ -173,7 +173,7 @@ function describeEvent(e: NarrationEvent): string {
         : `事件：隊伍${q(e.team)}答錯了，${q(e.monster)}還擋在原地，可以重答。`;
     case "flee":
       return e.to
-        ? `事件：隊伍${q(e.team)}答錯後逃出${q(e.monster)}的房間，進到下一間房，遇上新的怪物${q(e.to)}，換一題較簡單的。`
+        ? `事件：隊伍${q(e.team)}答錯後甩開${q(e.monster)}，在同一間房遇上新的怪物${q(e.to)}，換一題較簡單的。不要說他們前進到下一間房。`
         : `事件：隊伍${q(e.team)}答錯後逃跑，換一題較簡單的。`;
     case "boss-hit":
       if (e.exhausted) return `事件：隊伍${q(e.team)}擊中首領，這一輪首領的題目都出完了。不要報剩下的血量，也不要說首領倒下，結果留待揭曉。`;
