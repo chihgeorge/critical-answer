@@ -1281,6 +1281,61 @@ describe("TEAM_SELECT_OPTION", () => {
       roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       expect(lastSentTo(conns[0])).toMatchObject({ detail: "answer_submitted" });
     });
+
+    // Value: protects=the host's 替○○擲骰 rolls the stuck team's check under the team's own rules (owner, 2026-11-09);
+    // fails_when=a team phone can send it, a stale press rolls, or the host's roll skips the record; no_claim=the 15 s row (host page)
+    it("the host rolls the check for the team on turn; a team phone and a stale press are refused", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns } = checkGame();
+      const hostRoll = (conn: ReturnType<typeof makeConn>, eventId = seqOf(room)) => send(room, conn, { type: "HOST_ROLL_CHECK", teamId: ids[0], questionId: "r0-t1", eventId });
+      hostRoll(conns[0]);
+      expect(lastSentTo(conns[0])).toMatchObject({ error: "not_host" });
+      hostRoll(hostConn, seqOf(room) - 1);
+      expect(lastSentTo(hostConn)).toMatchObject({ detail: "stale_event" });
+      expect(lastBroadcast(room).pendingRoll).toBeNull();
+      hostRoll(hostConn);
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], questionId: "r0-t1", kind: "check" });
+      expect(room.game!.checks?.[checkKey("r0-t1", ids[0])]).toBeDefined();
+      vi.advanceTimersByTime(2000);
+      hostRoll(hostConn);
+      expect(lastSentTo(hostConn)).toMatchObject({ detail: "check_done" });
+    });
+
+    // Value: protects=a fill-in won before its question was shown reveals the question with 正解 (owner, 2026-11-09);
+    // fails_when=the reveal lacks `asked` on a natural 20 or a judge before the roll, or carries it after a shown question
+    it("a reveal carries the question only when it was never shown", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.useFakeTimers();
+      const nat = checkGame();
+      nat.roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(nat.room).reveal).toMatchObject({ answer: "萬家福", asked: { content: { kind: "text", value: "？" } } });
+      const early = checkGame();
+      send(early.room, early.hostConn, { type: "HOST_JUDGE", teamId: early.ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(early.room) });
+      expect(lastBroadcast(early.room).reveal).toMatchObject({ asked: { content: { kind: "text", value: "？" } } });
+      const shown = checkGame();
+      shown.roll(15);
+      vi.advanceTimersByTime(2000);
+      send(shown.room, shown.hostConn, { type: "HOST_JUDGE", teamId: shown.ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(shown.room) });
+      expect(lastBroadcast(shown.room).reveal.answer).toBe("萬家福");
+      expect(lastBroadcast(shown.room).reveal).not.toHaveProperty("asked");
+    });
+
+    // Value: protects=the thief's 偷襲 waits for the question on a fill-in (owner, 2026-11-09); fails_when=the room arms it before the check
+    it("refuses the thief's sneak attack before the check, and arms it after", () => {
+      const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: checkBank });
+      const host = makeConn("host-conn");
+      room.onConnect(host);
+      claim(room, host);
+      const { conns } = joinTeams(room, host, 1);
+      send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "thief" });
+      send(room, host, { type: "HOST_START" });
+      send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
+      expect(lastSentTo(conns[0])).toMatchObject({ detail: "check_needed" });
+      expect(room.game!.teams[0].sneakArmed).toBeUndefined();
+      passChecks(room);
+      send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
+      expect(room.game!.teams[0].sneakArmed).toBe(true);
+    });
   });
 
   it("rejects a connection that never joined any team", () => {

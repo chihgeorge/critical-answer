@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, CROWD_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, PRAYER_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, CROWD_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 import { MAX_MODEL_LINE, targetSegmentCount } from "./runner";
 
@@ -52,6 +52,14 @@ describe("scripted lines", () => {
     const boss = new Set(BOSS_MISS_VARIANTS.map((t) => t.replace("{team}", team).replace("{monster}", monster)));
     for (let i = 0; i < 20; i++) expect(boss.has(p.line({ type: "retry", team, monster, boss: true }))).toBe(true);
     expect(BOSS_MISS_VARIANTS.length).toBeGreaterThanOrEqual(4);
+  });
+
+  // Value: protects=a prayed miss gets its own line, never the retry pool's 「下一輪」 (owner, 2026-11-09)
+  it("a cleric's prayer gets a prayer line, never a next-round one", () => {
+    const p = createScriptedProvider(lcg(4));
+    const prayer = new Set(PRAYER_VARIANTS.map((t) => t.replace("{team}", team)));
+    for (let i = 0; i < 10; i++) expect(prayer.has(p.line({ type: "retry", team, monster, prayed: true }))).toBe(true);
+    for (const l of PRAYER_VARIANTS) expect(l).not.toContain("下一輪");
   });
 
   it("a wrong buzz says the team is out, never that it may answer again (boss-buzzer.md)", () => {

@@ -63,6 +63,13 @@ describe("toNarrationEvent", () => {
     expect(toNarrationEvent(game, { type: "incorrect-retry", teamId: "a" }, "小黑龍")).toEqual({ type: "retry", team: "紅隊", monster: "小黑龍" });
   });
 
+  // Value: protects=a cleric's prayed miss is told as "answer again now", never "next round" (owner, 2026-11-09)
+  it("marks a retry after the team's prayer", () => {
+    const prayed = { ...game, pendingWrong: { teamId: "a", questionId: "q", optionIndex: null, prayed: true as const } };
+    expect(toNarrationEvent(prayed, { type: "incorrect-retry", teamId: "a" }, "史萊姆")).toEqual({ type: "retry", team: "紅隊", monster: "史萊姆", prayed: true });
+    expect(toNarrationEvent(prayed, { type: "incorrect-retry", teamId: "b" }, "史萊姆")).not.toHaveProperty("prayed");
+  });
+
   it("maps a boss hit that does not kill to 'boss-hit' with the HP left", () => {
     const o: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 3, bossKilled: false, reward: 10 };
     expect(toNarrationEvent(game, o, "小黑龍")).toEqual({ type: "boss-hit", team: "紅隊", bossHp: 3, bossMaxHp: 5 });

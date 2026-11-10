@@ -367,6 +367,12 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", eventId: 0 })).toBeNull();
   });
 
+  it("HOST_ROLL_CHECK carries the team, the question and a non-negative integer eventId only", () => {
+    expect(parseClientMessage({ type: "HOST_ROLL_CHECK", teamId: "t", questionId: "r0-q1", eventId: 3, value: 20 })).toEqual({ type: "HOST_ROLL_CHECK", teamId: "t", questionId: "r0-q1", eventId: 3 });
+    expect(parseClientMessage({ type: "HOST_ROLL_CHECK", questionId: "r0-q1", eventId: 3 })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_ROLL_CHECK", teamId: "t", questionId: "r0-q1", eventId: -1 })).toBeNull();
+  });
+
   it("TEAM_USE_ABILITY carries only the question id", () => {
     expect(parseClientMessage({ type: "TEAM_USE_ABILITY", questionId: "r0-q1", value: 20 })).toEqual({ type: "TEAM_USE_ABILITY", questionId: "r0-q1" });
     expect(parseClientMessage({ type: "TEAM_USE_ABILITY" })).toBeNull();

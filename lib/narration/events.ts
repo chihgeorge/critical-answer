@@ -47,8 +47,9 @@ export type NarrationEvent =
   /** `boss`: a wrong boss answer, which always brings a new question (boss redesign D2=B).
    * `exhausted`: it used up the boss phase's questions, and the phase card comes next (boss-phases.md).
    * `buzzOut`: a wrong buzz in a buzzer phase (boss-buzzer.md): this team is out of the question, the others may still buzz.
-   * `buzzAgain`: that wrong buzz was the last online team's, so everyone buzzes on the same song again (boss-music-buzzer.md M1). */
-  | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; buzzAgain?: true; warriorRoll?: number }>>
+   * `buzzAgain`: that wrong buzz was the last online team's, so everyone buzzes on the same song again (boss-music-buzzer.md M1).
+   * `prayed`: a cleric prayed on this miss, so the team answers again now, keeping the turn (never "next round"). */
+  | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; buzzAgain?: true; prayed?: true; warriorRoll?: number }>>
   /** `to`: 逃跑・換房 put this new monster in the team's room. */
   | WithNext<{ type: "flee"; team: string; monster: string; to?: string }>
   /** `bossHp` 0 without a kill: an earlier phase's bar emptied, and the next phase is still a secret.
@@ -148,7 +149,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bos
       };
     }
     case "incorrect-retry":
-      return { type: "retry", team, monster, ...cls, ...(outcome.newBossQuestion ? { boss: true as const } : {}) };
+      return { type: "retry", team, monster, ...cls, ...(outcome.newBossQuestion ? { boss: true as const } : {}), ...(prev.pendingWrong?.prayed && prev.pendingWrong.teamId === outcome.teamId ? { prayed: true as const } : {}) };
     case "incorrect-flee":
       return { type: "flee", team, monster, ...(outcome.switchedTo ? { to: monsterById(outcome.switchedTo)?.name ?? "怪物" } : {}) };
     case "correct-boss-hit":

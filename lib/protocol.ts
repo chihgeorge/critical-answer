@@ -102,6 +102,9 @@ export type AnswerReveal = {
   sorted?: { items: string[]; teamId: string; points: number; chefBonus?: number };
   /** A music question with fields: each field's answer and whether the team got it (docs/designs/multi-field.md F7). */
   fields?: { teamId: string; marks: { label: string; answer: string; right: boolean }[] };
+  /** The question itself, only when it was never shown: its fill-in resolved before the persuasion check was done (a
+   * natural 20, or the host judging before the roll). Shown above 正解; a video stays in `video`. */
+  asked?: Pick<PublicQuestion, "content" | "prompt">;
   /** Who answered and what it scored in all (dish included), for the big screen's 「✅ {隊名} 答對 +N」 line. Absent from older servers. */
   scored?: { teamId: string; points: number };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
@@ -284,6 +287,8 @@ export type ClientMessage =
   | { type: "TEAM_CHOOSE_FORK"; side: ForkSide; eventId: number }
   /** 擲骰說服 on the team's own fill-in turn (dnd design R6, R-E1): the room rolls the check. `eventId`: the STATE it was pressed under (R-E4). */
   | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
+  /** 替○○擲骰: the host's stuck row when the team on turn has not rolled its check; the room rolls it as for TEAM_ROLL_CHECK. */
+  | { type: "HOST_ROLL_CHECK"; teamId: string; questionId: string; eventId: number }
   /** 🧪 喝下幸運藥水 on the team's own turn: its next crit or check die on `questionId` rolls twice, keeping the higher
    * (lucky-potion.md). `eventId`: the STATE it was pressed under. */
   | { type: "TEAM_DRINK_POTION"; questionId: string; eventId: number }
@@ -821,6 +826,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const questionId = str(m.questionId, MAX_ID);
       if (questionId === null || !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       return { type: "TEAM_ROLL_CHECK", questionId, eventId: m.eventId as number };
+    }
+    case "HOST_ROLL_CHECK": {
+      const questionId = str(m.questionId, MAX_ID);
+      const teamId = str(m.teamId, MAX_ID);
+      if (questionId === null || teamId === null || !isCount(m.eventId)) return null;
+      return { type: "HOST_ROLL_CHECK", teamId, questionId, eventId: m.eventId };
     }
     case "TEAM_SUBMIT_TEXT": {
       const questionId = str(m.questionId, MAX_ID);
