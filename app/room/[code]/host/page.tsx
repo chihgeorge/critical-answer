@@ -113,6 +113,9 @@ export default function HostPage() {
   };
   const [joinPassword, setJoinPassword] = useState("");
   const [savedPassword, setSavedPassword] = useState("");
+  /** The room's screen key (HOST_OK), for the big screen link: "" until the room sends it. */
+  const [screenKey, setScreenKey] = useState("");
+  const screenHash = screenKey ? `#k=${screenKey}` : "";
   const [narration, setNarration] = useState<NarrationState>(null);
   /** How far the big screen has read, per narration (host-narration-edit.md D3). */
   const [readTo, setReadTo] = useState<{ eventId: number; done: number } | null>(null);
@@ -149,6 +152,7 @@ export default function HostPage() {
           aiQueue.hostOk(aiResendMessage(aiPending.current, aiSaved.current), room.send);
           setJoinPassword(msg.joinPassword);
           setSavedPassword(msg.joinPassword);
+          setScreenKey(msg.screenKey ?? "");
           break;
         case "HOST_AI_STATUS": {
           setAiStatus(msg);
@@ -562,7 +566,8 @@ export default function HostPage() {
         <Panel tone="lav" className="px-3 py-2">
           <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
           {/* A new tab, so opening it never navigates the host page away from its socket. */}
-          <a href={`/room/${code}/screen`} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{`${origin}/room/${code}/screen`}</a>
+          {/* With the room's screen key: only a big screen opened by this link is sent the question videos. */}
+          <a data-testid="screen-link" href={`/room/${code}/screen${screenHash}`} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{`${origin}/room/${code}/screen${screenHash}`}</a>
         </Panel>
 
         {reset && <Panel className="px-3 py-2 text-center text-[14px]" style={{ background: "var(--danger)", color: "#fff" }}>伺服器重新啟動，遊戲已重置，轉錄紀錄已消失</Panel>}

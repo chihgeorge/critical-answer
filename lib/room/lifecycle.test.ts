@@ -373,11 +373,14 @@ describe("when the platform misbehaves", () => {
     const used = setup();
     startedGame(used.room);
     used.room.onMessage(JSON.stringify({ type: "HOST_SET_PASSWORD", password: "武俠風" }), conn("h2"));
+    const before = (used.room as any).persistedState();
     used.clock.t += EXPIRE;
     await used.room.onAlarm();
     const after = (used.room as any).persistedState();
-    expect({ ...after, roomEpoch: "-" }).toEqual({ ...fresh, roomEpoch: "-" });
+    expect({ ...after, roomEpoch: "-", screenKey: "-" }).toEqual({ ...fresh, roomEpoch: "-", screenKey: "-" });
     expect(after.roomEpoch).not.toBe(fresh.roomEpoch);
+    // The next host's big screen link is a new one: the old link gets no videos.
+    expect(after.screenKey).not.toBe(before.screenKey);
   });
 });
 

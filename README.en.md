@@ -67,7 +67,7 @@ To let people outside your network play, put the front end on Vercel and the roo
 
 | Stage | Host (laptop) | Big screen | Players (phones) |
 | --- | --- | --- | --- |
-| Before the event | Check the question bank answers, test the connection | Open `/room/<code>/screen`, test the volume | Get the phones online |
+| Before the event | Check the question bank answers, test the connection | Open the big-screen URL on the host page, test the volume | Get the phones online |
 | Gathering | On the home page, press 「主持遊戲」 (Host a game) to open a room | Shows the QR code and the 4-character room code | Each team scans the QR code to join and picks a class |
 | Start | Press 「開始遊戲」 (Start game) to play the how-to-play intro | Plays the 4-page how-to-play intro, then shows the initiative roll's order | Watch the big screen, then roll initiative on the phone |
 | Each question | Multiple choice and sort: press 「公布答案」 (Reveal answer) (key `1`); fill-in: judge right or wrong | Question, dice, result | Multiple choice: lock in an answer; sort: drag the items into order, then lock; fill-in: roll persuasion first, then type |

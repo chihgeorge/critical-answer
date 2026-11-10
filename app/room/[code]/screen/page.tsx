@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
-import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, type AnswerReveal, type EventReveal, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type SoundCue, type StateMessage } from "@/lib/protocol";
+import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, type AnswerReveal, type EventReveal, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ServerMessage, type SoundCue, type StateMessage } from "@/lib/protocol";
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { FORK_ARCH, sceneFloor, TEAM_LOOKS } from "@/lib/pixel-art";
@@ -253,10 +253,12 @@ function SortWall({ tiles }: { tiles: SortTile[] }) {
 }
 
 type YoutubeContent = Extract<PublicMediaContent, { kind: "youtube" }>;
+/** The room's last SCREEN_VIDEO: it comes only when this page was opened with the screen key (screen-video-key.md). */
+type ShownVideo = Extract<ServerMessage, { type: "SCREEN_VIDEO" }>;
 /** A chip that stands in the side column beside a video (D14), at the same 20px as the hints. */
 const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4px solid var(--k)", whiteSpace: "normal", borderRadius: 12 } as const;
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -331,11 +333,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // A YouTube question, or the reveal showing the answered question's video where it stopped (D17). One slot, one
   // key, so the player is not rebuilt between the question and its reveal.
   const asking = !reveal && !card && question?.content.kind === "youtube";
-  const video: { id: string; content: YoutubeContent } | null = reveal?.video
-    ? { id: reveal.questionId, content: reveal.video }
-    : asking
-      ? { id: question!.id, content: question!.content as YoutubeContent }
-      : null;
+  const videoQuestion = reveal?.video ? reveal.questionId : asking ? question!.id : null;
+  // `content` is null when the room has not sent this video's id: the page was opened without the screen key.
+  const video: { id: string; content: YoutubeContent | null } | null =
+    videoQuestion === null ? null : { id: videoQuestion, content: shownVideo?.questionId === videoQuestion ? shownVideo.video : null };
   const sneakChip = turn?.sneakArmed && !reveal && !card;
   // A buzzer phase has no persuasion check (boss-buzzer.md D6).
   const dcChip = fillIn && !buzz && !turn?.sneakArmed ? turn?.checkTarget : undefined;
@@ -457,6 +458,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         {video && (
           // A reveal with nothing beside its video centres it (D18); the player stays the first child, so it is kept.
           <div key={video.id} className={`mt-3 flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
+            {!video.content ? (
+              <div data-testid="video-locked" className="flex shrink-0 items-center justify-center bg-[var(--lav)] p-4 text-center text-[22px] text-[var(--k)]" style={{ width: 384, height: 216, boxShadow: "0 0 0 4px var(--k)" }}>
+                🔒 請用主持人頁上的大螢幕網址開啟，才會播放影片
+              </div>
+            ) : (
             <YoutubePlayer
               videoId={video.content.videoId}
               start={video.content.start}
@@ -473,6 +479,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               errorNote={!reveal && clipError && view.buzz?.open ? "🎤 主持人現場放歌" : undefined}
               title={reveal ? "正解影片" : "題目影片"}
             />
+            )}
             {!lone && (
             <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
               {reveal ? (
@@ -861,6 +868,7 @@ export default function ScreenPage() {
   useWakeLock();
   const [lobby, setLobby] = useState<LobbyTeams>([]);
   const [game, setGame] = useState<StateMessage | null>(null);
+  const [shownVideo, setShownVideo] = useState<ShownVideo | null>(null);
   /** A network drop (not a rest): shown so a frozen screen doesn't look like a quiet game. */
   const [disconnected, setDisconnected] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
@@ -1206,7 +1214,9 @@ export default function ScreenPage() {
   const { reset, rested, unreachable, reconnect, send } = useRoomSocket(code, {
     onOpen() {
       // First, so the room takes this socket's SCREEN_* reports: it ignores them from an unannounced socket.
-      send({ type: "SCREEN_HELLO" });
+      // The screen key rides in the link's fragment, like the host's token: never in a request or a Referer.
+      const key = new URLSearchParams(location.hash.slice(1)).get("k");
+      send({ type: "SCREEN_HELLO", ...(key ? { key } : {}) });
       clipResendDue.current = true;
       setDisconnected(false);
       narrationBaseline.current = null;
@@ -1243,6 +1253,9 @@ export default function ScreenPage() {
           speech.current = null;
           progress.current = null;
           window.speechSynthesis?.cancel();
+          break;
+        case "SCREEN_VIDEO":
+          setShownVideo(msg);
           break;
         case "STATE":
           setGame(msg);
@@ -1340,7 +1353,7 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} />}
         {game?.phase === "playing" && <ReactionFloats floats={floats} teams={game.view.teams} />}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}

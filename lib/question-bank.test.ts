@@ -343,10 +343,11 @@ describe("parseBank", () => {
       expect(bank.pools[1][0].content).toEqual({ kind: "youtube", value: YT_ID, end: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     });
 
-    it("publicQuestion carries the prompt and the clip, never the answer", () => {
+    it("publicQuestion carries the prompt and that it is a video, never the answer or the video id (screen-video-key.md)", () => {
       const bank = parseBank(one({ ...q("a1", clip({ audioOnly: true, start: 65, end: 80 })), prompt: "題幹" }));
       const pub = publicQuestion(bank, "a1", 0, "")!;
-      expect(pub.content).toEqual({ kind: "youtube", videoId: YT_ID, audioOnly: true, start: 65, end: 80 });
+      expect(pub.content).toEqual({ kind: "youtube", audioOnly: true });
+      expect(JSON.stringify(pub)).not.toContain(YT_ID);
       expect(pub.prompt).toBe("題幹");
       expect(JSON.stringify(pub)).not.toContain("答案");
     });
@@ -461,9 +462,9 @@ describe("lookups", () => {
     expect(publicQuestion(bank, "a1", 0, "https://pub-example.r2.dev")!.content.kind).toBe("text");
   });
 
-  it("publicQuestion's content is the videoId for a youtube-content question, never the raw stored value re-wrapped as a URL", () => {
+  it("publicQuestion's content says only that a youtube-content question is a video: its id would give the answer away", () => {
     const bank = parseBank({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [q("a1", youtubeContent())] }] });
-    expect(publicQuestion(bank, "a1", 0, "")!.content).toEqual({ kind: "youtube", videoId: YT_ID });
+    expect(publicQuestion(bank, "a1", 0, "")!.content).toEqual({ kind: "youtube" });
   });
 
   it("answerText reads an image-content question's answer, same as text", () => {

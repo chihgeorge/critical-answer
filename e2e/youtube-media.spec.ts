@@ -2,7 +2,7 @@
 // question hides its picture until the answer, and phones never embed the video. youtube.com is blocked and a fake
 // window.YT records every player call, so nothing here needs the network or a real video.
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { startGame, nextQuestion } from "./answer";
+import { startGame, nextQuestion, screenUrl } from "./answer";
 import { stubSpeechSynthesis } from "./tts";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
@@ -68,7 +68,7 @@ async function start(browser: Browser, request: import("@playwright/test").APIRe
   const screenContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   await fakeYoutube(screenContext);
   const screen = await screenContext.newPage();
-  await screen.goto(`/room/${code}/screen`);
+  await screen.goto(await screenUrl(host));
 
   const teamContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await fakeYoutube(teamContext);

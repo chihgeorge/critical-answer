@@ -29,6 +29,9 @@ export interface RoomSnapshot {
   hostToken: string;
   /** team id -> team secret */
   teamKeys: [string, string][];
+  /** What a big screen must send to be given question videos (screen-video-key.md). Missing in a save from before it:
+   * the room makes one. */
+  screenKey?: string;
   eventSeq: number;
   /** `rev`, `done`: host edits and how many lines the big screen has read (host-narration-edit.md D14). Missing in a save from before them: 0. */
   lastNarration: { eventId: number; lines: string[]; rev?: number; done?: number } | null;
@@ -163,6 +166,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       revealHeld: raw.revealHeld === true ? true : undefined,
       ...(raw.answerSeconds !== undefined ? { answerSeconds: isAnswerSeconds(raw.answerSeconds) ? raw.answerSeconds : 0, answerClock, clipEnded: isString(raw.clipEnded) ? raw.clipEnded : null } : {}),
       game: withUses as GameState | null,
+      // Anything but a key we wrote is none: the room then makes a new one, never matches a damaged value.
+      screenKey: isString(raw.screenKey) && raw.screenKey.length >= 32 ? raw.screenKey : undefined,
       joinPassword,
       nextLine: nextLine as RoomSnapshot["nextLine"],
       lastActivityAt: at,

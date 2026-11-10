@@ -16,7 +16,7 @@
 // lib/question-bank-data.ts.
 
 import { DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./game-state";
-import { MAX_FIELDS, MAX_ID, type PublicMediaContent, type PublicQuestion } from "./protocol";
+import { MAX_FIELDS, MAX_ID, type HiddenVideo, type PublicMediaContent, type PublicQuestion } from "./protocol";
 import { catalogMonster, monsterById, variantOf } from "./monster-catalog";
 import { YOUTUBE_ID_RE } from "./youtube";
 import { SORT_ITEMS } from "./sort-order";
@@ -495,6 +495,9 @@ export function publicMediaContent(c: MediaContent, imageBaseUrl: string, questi
   return { kind: "image", url: `${imageBaseUrl}/${c.value}` };
 }
 
+/** A question's video as every connection may see it: that it is one, and whether only its sound plays. */
+export const hiddenVideo = (c: { audioOnly?: boolean }): HiddenVideo => ({ kind: "youtube", ...(c.audioOnly ? { audioOnly: true as const } : {}) });
+
 /** The part of a question every screen may see while it's in play. `difficulty` is the pool the
  * question came from (what a correct answer scores); the monster is the one in the team's room (`roomIndex`), since a pool
  * question can come up in any room of its difficulty. `order` is the game's shown option order.
@@ -519,7 +522,8 @@ export function publicQuestion(
   const v = look ? variantOf(look.seed, m, look.defeats[m.id] ?? 0) : null;
   return {
     id: q.id,
-    content: publicMediaContent(q.content, imageBaseUrl, q.id),
+    // A video's id never rides on the question: its YouTube title gives a music question away (HiddenVideo).
+    content: q.content.kind === "youtube" ? hiddenVideo(q.content) : (publicMediaContent(q.content, imageBaseUrl, q.id) as Exclude<PublicMediaContent, { kind: "youtube" }>),
     ...(q.prompt ? { prompt: q.prompt } : {}),
     difficulty: q.difficulty,
     boss: q.boss,

@@ -137,7 +137,7 @@ describe("HOST_CLAIM", () => {
     expect((room as any).isHost(conn)).toBe(true);
     const msgs = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
     expect(msgs.map((m) => m.type)).toEqual(["HOST_OK", "HOST_NEXT_LINE_STATE", "HOST_AI_STATUS"]);
-    expect(msgs[0]).toEqual({ type: "HOST_OK", joinPassword: "" });
+    expect(msgs[0]).toEqual({ type: "HOST_OK", joinPassword: "", screenKey: expect.any(String) });
   });
 
   it("rejects a claim with a different token once a token is set", () => {
@@ -306,7 +306,7 @@ describe("JOIN", () => {
     claim(room, otherTab);
     send(room, hostConn, { type: "HOST_SET_PASSWORD", password: " dragon " });
     // Every host page hears the password the room now enforces.
-    for (const c of [hostConn, otherTab]) expect(lastSentTo(c)).toEqual({ type: "HOST_OK", joinPassword: "dragon" });
+    for (const c of [hostConn, otherTab]) expect(lastSentTo(c)).toEqual({ type: "HOST_OK", joinPassword: "dragon", screenKey: expect.any(String) });
     const noPw = makeConn("no-pw");
     send(room, noPw, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess" });
     expect(lastSentTo(noPw)).toMatchObject({ type: "ERROR", error: "bad_password" });
