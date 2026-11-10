@@ -346,6 +346,17 @@ describe("the window while expire() is clearing storage", () => {
 });
 
 describe("when the platform misbehaves", () => {
+  it("a failing setAlarm is tried again by the next message, so the 6 hour close is not lost", () => {
+    const { room, storage, clock } = setup();
+    const host = conn("h");
+    storage.failAlarm = true;
+    send(room, host, { type: "HOST_CLAIM", token: TOKEN });
+    storage.failAlarm = false;
+    clock.t += MIN;
+    send(room, host, { type: "HOST_SET_PASSWORD", password: "x" });
+    expect(storage.alarms.length).toBe(1);
+  });
+
   it("a failing setAlarm is logged by name and does not stop the room from working", () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const { room, storage } = setup();
@@ -647,6 +658,12 @@ describe("the 6 hour cap", () => {
     c.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
     await c.room.restore();
     expect((c.room as any).createdAt).toBe((a.storage.data.get(SNAPSHOT_KEY) as any).lastActivityAt);
+
+    const d = setup(a.clock.t + MIN);
+    d.storage.data.set(SNAPSHOT_KEY, { ...(structuredClone(a.storage.data.get(SNAPSHOT_KEY)) as any), createdAt: a.clock.t + 99 * 60 * MIN });
+    d.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
+    await d.room.restore();
+    expect((d.room as any).createdAt).toBe(d.clock.t); // a creation time in the future would never close
   });
 
   it("an extension that arrives after the end (a late alarm) does not bring the room back", async () => {

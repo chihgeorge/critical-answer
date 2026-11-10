@@ -906,7 +906,8 @@ export class DungeonRoom {
     this.lastActivityAt = s.lastActivityAt ?? this.now();
     // A save from before createdAt: its last activity is the oldest time we know it was in use. A game in progress
     // keeps nearly its whole 6 hours; a room nobody touched for longer than that closes now instead of living on.
-    this.createdAt = s.createdAt ?? this.lastActivityAt;
+    // Never in the future (a damaged save): that room would never close.
+    this.createdAt = Math.min(s.createdAt ?? this.lastActivityAt, this.now());
     this.extendedMs = Math.min(s.extendedMs ?? 0, this.maxExtendMs());
     // Already idle: the idle close happened before the restart (or nobody was left to close), so do not close again.
     this.restedFrom = this.now() - this.lastActivityAt >= this.idleMs ? this.lastActivityAt : null;
@@ -1363,6 +1364,8 @@ export class DungeonRoom {
     try {
       await this.room.storage?.setAlarm?.(at);
     } catch (err) {
+      // Not set after all: the next markActivity tries again, or the room would never warn, rest or close.
+      if (this.alarmAt === at) this.alarmAt = null;
       console.error(JSON.stringify({ event: "alarm_failed", error: String(err) }));
     }
   }
