@@ -3,6 +3,7 @@
 
 import { type AnswerOutcome, type ClassId, type EventOutcome, type EventScene, type GameState, type RollMark, type Team } from "../game-state";
 import { EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT } from "../event-text";
+import { monsterById } from "../monster-catalog";
 
 /** Who is up next and what they face: the story moves on to them after the result line. */
 export interface NextTurn {
@@ -40,7 +41,8 @@ export type NarrationEvent =
    * `buzzOut`: a wrong buzz in a buzzer phase (boss-buzzer.md): this team is out of the question, the others may still buzz.
    * `buzzAgain`: that wrong buzz was the last online team's, so everyone buzzes on the same song again (boss-music-buzzer.md M1). */
   | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; buzzAgain?: true; warriorRoll?: number }>>
-  | WithNext<{ type: "flee"; team: string; monster: string }>
+  /** `to`: 逃跑・換房 put this new monster in the team's room. */
+  | WithNext<{ type: "flee"; team: string; monster: string; to?: string }>
   /** `bossHp` 0 without a kill: an earlier phase's bar emptied, and the next phase is still a secret.
    * `exhausted`: the hit used up the phase's questions with HP left, and the phase card comes next. */
   | WithNext<WithRoll<ByClass<{ type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number; exhausted?: true }>>>
@@ -140,7 +142,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bos
     case "incorrect-retry":
       return { type: "retry", team, monster, ...cls, ...(outcome.newBossQuestion ? { boss: true as const } : {}) };
     case "incorrect-flee":
-      return { type: "flee", team, monster };
+      return { type: "flee", team, monster, ...(outcome.switchedTo ? { to: monsterById(outcome.switchedTo)?.name ?? "怪物" } : {}) };
     case "correct-boss-hit":
       return outcome.bossKilled
         ? { type: "boss-kill", team, ...cls, ...roll, monster, bonus: outcome.killBonus ?? 0 }

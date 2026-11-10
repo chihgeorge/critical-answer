@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 import { MAX_MODEL_LINE } from "./runner";
 
@@ -33,6 +33,18 @@ describe("scripted lines", () => {
       expect(new Set(VARIANTS[type]).size).toBe(10);
       for (const t of VARIANTS[type]) expect([...t.replace(/\{team\}/g, "冒險小隊").replace(/\{monster\}/g, "史萊姆").replace(/\{points\}/g, "3")].length).toBeLessThanOrEqual(MAX_MODEL_LINE);
     }
+  });
+
+  it("逃跑・換房 gets its own lines, each at most 22 characters and naming the new monster", () => {
+    expect(new Set(FLEE_SWITCH_VARIANTS).size).toBe(FLEE_SWITCH_VARIANTS.length);
+    for (const t of FLEE_SWITCH_VARIANTS) {
+      expect(t).toContain("{to}");
+      expect([...t.replace(/\{team\}/g, "冒險小隊").replace(/\{monster\}|\{to\}/g, "史萊姆")].length).toBeLessThanOrEqual(MAX_MODEL_LINE);
+    }
+    const p = createScriptedProvider(lcg(3));
+    const said = new Set(FLEE_SWITCH_VARIANTS.map((t) => t.replace("{team}", "紅隊").replace("{monster}", "史萊姆").replace("{to}", "幽靈")));
+    expect(said.has(p.line({ type: "flee", team: "紅隊", monster: "史萊姆", to: "幽靈" }))).toBe(true);
+    expect(said.has(p.line({ type: "flee", team: "紅隊", monster: "史萊姆" }))).toBe(false);
   });
 
   it("a wrong boss answer gets a new-question line, never an answer-again one (D2=B)", () => {

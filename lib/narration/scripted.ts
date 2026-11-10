@@ -332,6 +332,18 @@ export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一首再搶一次！", "
 /** The last team still in dropped instead, so nobody answered wrong: the same song reopens to all (M1). */
 export const BUZZ_REOPEN_LINE = "最後一隊斷線了！同一首再搶一次！";
 
+/** 逃跑・換房: the team ran from {monster} into {to}, its new monster in the same room. */
+export const FLEE_SWITCH_VARIANTS = [
+  "{team}逃進隔壁房，迎面是{to}！",
+  "{team}甩開{monster}，撞上了{to}。",
+  "{team}換條路跑，前面站著{to}。",
+  "{monster}還在原地，{team}已經遇上{to}。",
+  "腳底抹油！{team}溜到{to}的地盤。",
+  "{team}逃出房門，{to}正在等著。",
+  "門一開，{team}和{to}大眼瞪小眼。",
+  "{team}換了個戰場，這回對上{to}。",
+];
+
 /** A wrong boss answer: the boss brings a new question, there is nothing to answer again (D2=B). */
 export const BOSS_MISS_VARIANTS = [
   "{team}答錯了！{monster}大笑一聲，換出新的難題。",
@@ -475,6 +487,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     plainLine(event: NarrationEvent): string {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
       if ((event.type === "retry" || event.type === "boss-hit") && event.exhausted) return fill(pick(BOSS_EXHAUSTED_VARIANTS, "boss-exhausted"), event);
+      if (event.type === "flee" && event.to) return fill(pick(FLEE_SWITCH_VARIANTS, "flee-switch"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
       if (event.type === "retry" && event.buzzAgain) return fill(pick(BUZZ_AGAIN_VARIANTS, "buzz-again"), event);
       if (event.type === "retry" && event.buzzOut) return fill(pick(BUZZ_OUT_VARIANTS, "buzz-out"), event);

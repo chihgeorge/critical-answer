@@ -58,6 +58,8 @@ import {
   type ClassId,
   type GameState,
   type LockedOption,
+  type FleeChoice,
+  teamMonsterId,
 } from "../game-state";
 import {
   DEFAULT_AI_LIMIT,
@@ -401,7 +403,7 @@ export class DungeonRoom {
   private roomReacts: number[] = [];
   private clipEnded: string | null = null;
   /** The judgment a kill's 4d20 holds back (kill-roll.md): resolveRoll makes it with the shown dice. */
-  private pendingKill: { correct: boolean; fleeChoice: "flee" | "retry"; roll?: { kind: "warrior" | "crit"; value: number }; fields?: boolean[] } | null = null;
+  private pendingKill: { correct: boolean; fleeChoice: FleeChoice; roll?: { kind: "warrior" | "crit"; value: number }; fields?: boolean[] } | null = null;
   /** A natural 20 whose beat a restart cut off (R7), applied by applyLostCrit. In memory only: restore() sets it. */
   private lostCrit: { teamId: string; questionId: string } | null = null;
   /** The host's last 答錯 on a fill-in, which 改判答對 undoes while the game is still `after`: any later move in the game
@@ -976,7 +978,7 @@ export class DungeonRoom {
     if (!team || atFork(team)) return null;
     const id = currentQuestionIdOf(game, team.id);
     // The team's own count from when it walked in, so its monster never changes mid-room (monster-catalog.md §3).
-    const roomMonster = game.rooms[team.roomIndex]?.monsterId;
+    const roomMonster = teamMonsterId(game, team);
     const defeats = team.metDefeats === undefined || !roomMonster ? game.defeats ?? {} : { ...game.defeats, [roomMonster]: team.metDefeats };
     const pub = publicQuestion(this.bank, id, team.roomIndex, this.room.env?.R2_PUBLIC_BASE_URL ?? "", game.optionOrder[id], { seed: game.variantSeed ?? 0, defeats }, { room: roomMonster, boss: this.bossId() });
     const q = this.question(id);
@@ -2486,7 +2488,7 @@ export class DungeonRoom {
     teamId: string,
     questionId: string,
     correct: boolean,
-    fleeChoice?: "flee" | "retry" | "team" | "pray",
+    fleeChoice?: FleeChoice | "team" | "pray",
     eventId?: number,
     fields?: boolean[],
   ) {
@@ -2715,7 +2717,7 @@ export class DungeonRoom {
   }
 
   /** `fields`: a correct answer's per-field verdicts on a music question (multi-field.md F6); absent, every field is right. */
-  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: "flee" | "retry", roll?: { kind: "warrior" | "crit"; value: number }, killDice?: number[], fields?: boolean[]) {
+  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: FleeChoice, roll?: { kind: "warrior" | "crit"; value: number }, killDice?: number[], fields?: boolean[]) {
     const prev = this.game;
     if (!prev) return;
     // Captured before `this.game` reassigns to the post-judgment state below: the monster name
@@ -2776,7 +2778,7 @@ export class DungeonRoom {
     // The dish the answer just ate: game-state appended it to the team's dishes (a game saved before dishes appends none).
     const before = prev.teams.find((t) => t.id === teamId);
     const ateDish = (game.teams.find((t) => t.id === teamId)?.dishes?.length ?? 0) > (before?.dishes?.length ?? 0);
-    const ateFrom = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bossId() : (prev.rooms[before.roomIndex]?.monsterId ?? this.bank.rooms[before.roomIndex]?.monster);
+    const ateFrom = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bossId() : (before.swappedMonsterId ?? prev.rooms[before.roomIndex]?.monsterId ?? this.bank.rooms[before.roomIndex]?.monster);
     const dish = ateFrom ? catalogMonster(ateFrom).dish : undefined;
     const told = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
     // The dish is named only once it is served on the big screen (cooking I1, I4); the line just counts 飽足感. The
@@ -3435,7 +3437,7 @@ export class DungeonRoom {
   }
 
   /** 重答 / 逃跑 from the team that just locked wrong. */
-  private handleTeamWrongChoice(conn: Conn, questionId: string, choice: "retry" | "flee") {
+  private handleTeamWrongChoice(conn: Conn, questionId: string, choice: FleeChoice) {
     const teamId = this.playingTeam(conn);
     const pending = this.game?.pendingWrong;
     if (!teamId) return;

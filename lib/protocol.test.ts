@@ -295,10 +295,12 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "TEAM_LOCK_OPTION" })).toBeNull();
   });
 
-  it("TEAM_WRONG_CHOICE accepts only retry or flee", () => {
+  it("TEAM_WRONG_CHOICE and HOST_JUDGE accept retry, flee (逃跑・同房) or switch (逃跑・換房)", () => {
     const ok = { type: "TEAM_WRONG_CHOICE", questionId: "r0-q1", choice: "flee" };
     expect(parseClientMessage(ok)).toEqual(ok);
     expect(parseClientMessage({ ...ok, choice: "retry" })).toEqual({ ...ok, choice: "retry" });
+    expect(parseClientMessage({ ...ok, choice: "switch" })).toEqual({ ...ok, choice: "switch" });
+    expect(parseClientMessage({ type: "HOST_JUDGE", teamId: "t", questionId: "q", correct: false, fleeChoice: "switch" })).toMatchObject({ fleeChoice: "switch" });
     expect(parseClientMessage({ ...ok, choice: "correct" })).toBeNull();
     expect(parseClientMessage({ ...ok, questionId: 1 })).toBeNull();
   });

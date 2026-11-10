@@ -26,6 +26,7 @@
 // Turn order never changes with room progress — this avoids the "arrival
 // order" snowball fairness risk flagged in /plan-eng-review's Outside Voice.
 import { rankTeams, type TieRoll } from "./podium";
+import { MONSTERS, monsterById } from "./monster-catalog";
 
 export type Difficulty = 1 | 2 | 3 | 4 | 5;
 
@@ -169,6 +170,8 @@ export interface Team {
   /** The game round and this team's turn count when it walked into the boss room (lib/game-log.ts). `earned`: its own
    * correct answer reached bossThreshold (answerQuestion), not the host, an open door or an event room (⚡ 閃電突擊). */
   bossAt?: { round: number; turns: number; earned?: true };
+  /** 逃跑・換房 put a new monster in this team's room (catalog id); dropped when the team leaves the room. */
+  swappedMonsterId?: string;
   /** Wrong answers this team fled from, boss room too (🏃 逃跑大師, podium-titles.md). Absent until the first. */
   flees?: number;
   /** The room question this team answered wrong on and stayed (重答): splitShared moves the other team off it first.
@@ -354,11 +357,30 @@ export type AnswerOutcome =
   /** `reward` is the whole gain; `chefBonus` the chef's share of it, only for a chef. */
   | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; chefBonus?: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
   | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; chefBonus?: number; killBonus?: number; roll?: RollMark }
-  | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty }
+  /** `switchedTo`: 逃跑・換房's new monster (catalog id). */
+  | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty; switchedTo?: string }
   /** `newBossQuestion`: a wrong boss answer rotated the shared question (boss redesign D2=B). */
   | { type: "incorrect-retry"; teamId: string; newBossQuestion?: true };
 
 export class InvalidActionError extends Error {}
+
+/** After a wrong answer: 重答, 逃跑・同房 ("flee"), or 逃跑・換房 ("switch": a new monster, same room). */
+export type FleeChoice = "retry" | "flee" | "switch";
+
+/** The monster this team faces in its room: 逃跑・換房's, else the room's. */
+export function teamMonsterId(game: GameState, team: Team): string | undefined {
+  return team.swappedMonsterId ?? game.rooms[team.roomIndex]?.monsterId;
+}
+
+/** 逃跑・換房's new monster: another room monster of this game at the same base difficulty, else any other room
+ * monster in the catalog (the catalog has no tiers of its own). */
+function switchMonster(game: GameState, team: Team, rng: () => number): string {
+  const now = teamMonsterId(game, team);
+  const tier = game.rooms[team.roomIndex].baseDifficulty;
+  const same = [...new Set(game.rooms.filter((r) => r.baseDifficulty === tier && r.monsterId && r.monsterId !== now).map((r) => r.monsterId!))];
+  const pool = same.length ? same : MONSTERS.filter((m) => !m.boss && m.id !== now).map((m) => m.id);
+  return pool[Math.floor(rng() * pool.length)];
+}
 
 export function rollD20(rng: () => number = Math.random): number {
   return Math.floor(rng() * 20) + 1;
@@ -890,7 +912,8 @@ function withNatural20s(t: Team, n: number): Partial<Team> {
  * exception is a cleric's prayed wrong lock: its 重答 / 逃跑 keeps the turn, once a turn (prayerTurn).
  *
  * `fleeChoice` only matters when the answer is incorrect: "flee" downgrades
- * the room's difficulty and keeps the room index; "retry" leaves the
+ * the room's difficulty and keeps the room index; "switch" does the same with a new monster
+ * (the boss room treats it as "flee"); "retry" leaves the
  * team facing the exact same question again on their next turn.
  */
 export function answerQuestion(
@@ -898,7 +921,7 @@ export function answerQuestion(
   teamId: string,
   questionId: string,
   correct: boolean,
-  fleeChoice: "flee" | "retry" = "retry",
+  fleeChoice: FleeChoice = "retry",
   rng: () => number = Math.random,
   critValue?: number,
   /** The kill bonus's four d20, already shown by the room; rolled on `rng` when absent. */
@@ -962,7 +985,7 @@ export function answerQuestion(
   game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNatural20s(t, correct && critValue === 20 ? 1 : 0) })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
-  const seenWrong = !correct && fleeChoice === "flee" && (game.eliminated[questionId]?.length ?? 0) > 0;
+  const seenWrong = !correct && fleeChoice !== "retry" && (game.eliminated[questionId]?.length ?? 0) > 0;
   const revealedOnFlee = seenWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
 
   const team = getTeam(game, teamId);
@@ -1041,7 +1064,7 @@ export function answerQuestion(
       // question again (boss-music-buzzer.md M1): only the host's 換下一題 moves it on.
       const out = buzzing ? [...game.buzz!.out, teamId] : [];
       const allOut = buzzing && game.teams.every((t) => !t.online || !t.inBoss || out.includes(t.id));
-      const rotated = !phasePending && (fleeChoice === "flee" || shownWrong) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
+      const rotated = !phasePending && (fleeChoice !== "retry" || shownWrong) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
       const rotatedBossQuestionId = rotated.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a rotation changes
       // the question for every team in boss phase, so every one of their picks resets —
@@ -1054,7 +1077,7 @@ export function answerQuestion(
         ...(buzzing ? { buzz: { ...game.buzz!, teamId: undefined, out: allOut ? [] : out } } : {}),
       };
       outcome =
-        fleeChoice === "flee"
+        fleeChoice !== "retry"
           ? { type: "incorrect-flee", teamId, newDifficulty: team.currentDifficulty }
           : { type: "incorrect-retry", teamId, ...(rotatedBossQuestionId !== boss.currentQuestionId ? { newBossQuestion: true as const } : {}) };
     }
@@ -1077,7 +1100,7 @@ export function answerQuestion(
       const dealt = entersBoss
         ? { questionId: team.currentQuestionId, used: game.usedQuestionIds, queuedQuestionId: undefined }
         : dealFor(game, team, game.rooms[nextRoomIndex].baseDifficulty, revealedQuestionIds, rng, questionId);
-      const monsterId = game.rooms[team.roomIndex].monsterId;
+      const monsterId = teamMonsterId(game, team);
       const defeats = monsterId ? { ...game.defeats, [monsterId]: (game.defeats?.[monsterId] ?? 0) + 1 } : game.defeats;
       const nextMonsterId = game.rooms[nextRoomIndex].monsterId;
       nextGame = {
@@ -1088,8 +1111,9 @@ export function answerQuestion(
         teams: patchTeam(game.teams, teamId, (t) => ({
           score: t.score + pointsAwarded,
           reward: t.reward + reward,
-          ...ate(t, game.rooms[team.roomIndex].dish),
+          ...ate(t, team.swappedMonsterId ? monsterById(team.swappedMonsterId)?.dish.name : game.rooms[team.roomIndex].dish),
           roomIndex: nextRoomIndex,
+          swappedMonsterId: undefined,
           ...(nextMonsterId ? { metDefeats: defeats?.[nextMonsterId] ?? 0 } : {}),
           currentDifficulty: entersBoss ? t.currentDifficulty : game.rooms[nextRoomIndex].baseDifficulty,
           currentQuestionId: dealt.questionId,
@@ -1101,8 +1125,9 @@ export function answerQuestion(
       };
       nextGame = applySprint(game, nextGame);
       outcome = { type: "correct-room-advance", teamId, pointsAwarded, ...gain, nextRoomIndex, entersBoss, ...rollMark };
-    } else if (fleeChoice === "flee") {
+    } else if (fleeChoice !== "retry") {
       const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
+      const switchedTo = fleeChoice === "switch" ? switchMonster(game, team, rng) : undefined;
       // Fleeing reveals the answer only after a wrong lock (revealedOnFlee); otherwise only skip
       // already-revealed questions from prior correct answers.
       const dealt = dealFor(game, team, newDifficulty, revealedOnFlee, rng, team.currentQuestionId);
@@ -1110,9 +1135,16 @@ export function answerQuestion(
         ...game,
         usedQuestionIds: dealt.used,
         revealedQuestionIds: revealedOnFlee,
-        teams: patchTeam(game.teams, teamId, () => ({ currentDifficulty: newDifficulty, currentQuestionId: dealt.questionId, currentSelection: null, queuedQuestionId: dealt.queuedQuestionId })),
+        teams: patchTeam(game.teams, teamId, () => ({
+          currentDifficulty: newDifficulty,
+          currentQuestionId: dealt.questionId,
+          currentSelection: null,
+          queuedQuestionId: dealt.queuedQuestionId,
+          // The new monster's look as it stands now, as on walking into a room (monster-catalog.md §3).
+          ...(switchedTo ? { swappedMonsterId: switchedTo, metDefeats: game.defeats?.[switchedTo] ?? 0 } : {}),
+        })),
       };
-      outcome = { type: "incorrect-flee", teamId, newDifficulty };
+      outcome = { type: "incorrect-flee", teamId, newDifficulty, ...(switchedTo ? { switchedTo } : {}) };
     } else {
       // Retry: same room, same question, waits for this team's next turn.
       nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ wrongOn: questionId })) };
@@ -1536,6 +1568,7 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
     ...(result.boon ? { boon: result.boon } : {}),
     turns: (t.turns ?? 0) + 1,
     roomIndex: next,
+    swappedMonsterId: undefined,
     ...(monsterId ? { metDefeats: game.defeats?.[monsterId] ?? 0 } : {}),
     currentDifficulty: game.rooms[next].baseDifficulty,
     currentQuestionId: dealt.questionId,
