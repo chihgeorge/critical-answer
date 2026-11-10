@@ -22,6 +22,9 @@
 // SONGS (buzzer songs, default 80; the last phase repeats unrevealed ones, lib). SONGMEM=1: whether a team knows a song is
 // fixed per team and song, so a skipped song stays unknown when it comes round again; when no team knows any unrevealed song
 // the host ends the game there (no kill; counted as stalled). A LENGTH line prints questions per game and a minutes estimate.
+// Room length (50 questions, 2026-11-09): ROOMD="1,2,2,3,4,4,5,5" room base difficulties (one per room; ROOMR needs as many
+// rewards), PULL=all: once the first team is in, the host sends every other team in at once (lib's sendToBoss) instead of
+// D9's "next correct answer". A REACH line prints the share of teams that played each room.
 // Not modelled: sort questions (they play like multipleChoice here), a potion wasted on a wrong answer, the host's
 // 改判, a mage that casts again on a question after a 1.
 import { registerHooks } from "node:module";
@@ -43,6 +46,10 @@ const MAGE_MIN = env("MAGE_MIN", 2), WAR_MIN = env("WAR_MIN", 2), THIEF_MIN = en
 const WEAK = env("WEAK", 0.1), POTION = env("POTION", 0), SMART = process.env.SMART !== "0";
 const EX = (process.env.EX ?? "1/3,1/3,1/3").split(",").map((x) => { const [a, b] = x.split("/").map(Number); return a / (b ?? 1); });
 const ROOMR = (process.env.ROOMR ?? "10,20,20,30,40,40,50,50").split(",").map(Number);
+const ROOMD = (process.env.ROOMD ?? "1,2,2,3,4,4,5,5").split(",").map(Number), PULLALL = process.env.PULL === "all";
+if (ROOMD.length !== ROOMR.length) throw new Error("ROOMD and ROOMR need one entry per room");
+/** Teams (over all games) whose last room was at least room k (index k). */
+const REACH = ROOMD.map(() => 0);
 Object.assign(G.EVENT_SATIETY, JSON.parse(process.env.EVS ?? "{}"));
 const EVCH = env("EVCH", G.EVENT_CHANCE), FORK = env("FORK", 0.5), BUZZHIT = env("BUZZHIT", HIT), SKILL = env("SKILL", 0);
 const FIRSTBONUS = env("FIRSTBONUS", 0), PULLPAY = env("PULLPAY", 0);
@@ -117,7 +124,7 @@ const D = (c: C) => c !== undefined && cfg.dice.includes(c);
 const tier = (v: number) => (v === 1 ? 0 : v <= cfg.small ? 1 : v <= 19 ? 2 : 3);
 if ([1, 2, cfg.small, cfg.small + 1, 19, 20].map(tier).join("") !== "011223") throw new Error("tier boundaries");
 
-const rooms: GT.RoomTemplate[] = [1, 2, 2, 3, 4, 4, 5, 5].map((d, i) => ({ baseDifficulty: d as GT.Difficulty, reward: ROOMR[i] }));
+const rooms: GT.RoomTemplate[] = ROOMD.map((d, i) => ({ baseDifficulty: d as GT.Difficulty, reward: ROOMR[i] }));
 const SRC = ["room", "boss", "buzz", "kill", "event", "boon", "first", "pull"] as const;
 type Src = (typeof SRC)[number];
 /** Per team, per game: satiety by source, correct answers, and the boss-room entry. */
@@ -189,6 +196,10 @@ function play(classes: C[], maxTurns = 600) {
     let cat: Src = "room", actor = -1, killAmt = 0, boonAmt = 0;
     try {
     if (g.boss.phasePending) { g = G.enterNextBossPhase(g); continue; }
+    if (PULLALL && wasIn.some(Boolean) && !wasIn.every(Boolean)) {
+      for (const t of g.teams) if (!t.inBoss && g.pendingWrong?.teamId !== t.id) g = G.sendToBoss(g, t.id, R);
+      if (g.teams.some((t, j) => t.inBoss !== wasIn[j])) continue;
+    }
     if (G.isBuzzPhase(g)) {
       const bq = g.boss.currentQuestionId;
       const songKnow = (t: GT.Team, q: string) => { const k = `${t.id}:${q}`; if (!latent.has(k)) latent.set(k, { known: know(t.id, KB), h: 0, ex: [] }); return latent.get(k)!.known; };
@@ -373,6 +384,7 @@ function play(classes: C[], maxTurns = 600) {
     }
   }
   LEN.boss1Q += seen1.size;
+  g.teams.forEach((t) => { for (let k = 0; k <= t.roomIndex; k++) REACH[k]++; });
   return { g, book };
 }
 
@@ -453,6 +465,7 @@ console.log(`dice per game ${(dice.n / N).toFixed(1)}: ones ${(dice.one / N).toF
   const hits = (sh.boss.all + sh.buzz.all) / N / 4;
   console.log(`LENGTH room ${per(LEN.room).toFixed(1)} boss1 ${per(LEN.boss1).toFixed(1)} (distinct ${per(LEN.boss1Q).toFixed(1)}) songs ${per(LEN.songs).toFixed(1)} events ${per(LEN.events).toFixed(1)} total ${per(LEN.room + LEN.boss1 + LEN.songs).toFixed(1)} min ${min.toFixed(0)} (75s room/boss, 60s song, 30s event) stalled ${(100 * per(LEN.stalled)).toFixed(1)}%  perTeamBossHits ${hits.toFixed(1)} kill ${(LEN.killSum / Math.max(1, LEN.kills)).toFixed(1)} in ${(100 * per(LEN.kills)).toFixed(1)}% of games  killFlip ${((100 * sh.kill.flip) / L.games).toFixed(1)}%`);
 }
+console.log(`REACH ${REACH.map((n, k) => `r${k + 1}(${ROOMR[k]}) ${((100 * n) / N / 4).toFixed(0)}%`).join("  ")}`);
 // One line to compare runs: win share per class, then the widest gap from 27 among the five classes.
 const five = CLASSES.filter((k) => k !== "none");
 console.log("SUMMARY", (process.env.LABEL ?? process.env.RULES ?? "today").padEnd(28), CLASSES.map((k) => `${k} ${win(k).toFixed(1)}`).join("  "), " maxdev", Math.max(...five.map((k) => Math.abs(win(k) - 27))).toFixed(1));
