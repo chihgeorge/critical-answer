@@ -1941,17 +1941,17 @@ export class DungeonRoom {
   }
 
   /** Takes a lobby or waiting team out and forgets its key. Its phones are told team_removed (with `detail`), and
-   * their page won't JOIN again by itself; `null` tells them nothing (the phone is taking another team over). */
-  private dropTeam(teamId: string, detail?: "not_admitted" | null) {
+   * their page won't JOIN again by itself. */
+  private dropTeam(teamId: string, detail?: "not_admitted") {
     this.pendingTeams = this.pendingTeams.filter((t) => t.id !== teamId);
     this.lateTeams = this.lateTeams.filter((t) => t.id !== teamId);
     this.teamKeys.delete(teamId);
-    if (detail !== null) this.removedTeamIds.add(teamId);
+    this.removedTeamIds.add(teamId);
     for (const [connId, tid] of [...this.connTeam]) {
       if (tid !== teamId) continue;
       this.connTeam.delete(connId);
       const phone = this.conns.get(connId);
-      if (phone && detail !== null) this.sendTo(phone, { type: "ERROR", error: "team_removed", ...(detail ? { detail } : {}) });
+      if (phone) this.sendTo(phone, { type: "ERROR", error: "team_removed", ...(detail ? { detail } : {}) });
     }
   }
 
@@ -1970,8 +1970,12 @@ export class DungeonRoom {
     if (!this.game || !lateJoinOpen(this.game) || this.opening() || this.forkBeat) {
       return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "late_closed" });
     }
-    // Not keepUndoOpen: 改判答對 would judge from a game without this team.
-    this.game = addLateTeam(this.game, team, this.rng);
+    try {
+      // Not keepUndoOpen: 改判答對 would judge from a game without this team.
+      this.game = addLateTeam(this.game, team, this.rng);
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
     this.lateTeams = this.lateTeams.filter((t) => t !== team);
     this.pendingTeams.push(team);
     if (![...this.connTeam.values()].includes(teamId)) this.game = setTeamOnline(this.game, teamId, false);
@@ -2015,11 +2019,13 @@ export class DungeonRoom {
       return void this.sendTo(conn, { type: "ERROR", error: "bad_code" });
     }
     this.handoffs.delete(teamId);
+    this.sendTo(conn, { type: "TEAM_CLAIMED", teamId, teamKey });
     if (waiting) {
-      this.dropTeam(bound, null);
+      // This phone leaves its waiting team without a word; the team's other phones are told it is gone.
+      this.connTeam.delete(conn.id);
+      this.dropTeam(bound);
       this.broadcastState();
     }
-    this.sendTo(conn, { type: "TEAM_CLAIMED", teamId, teamKey });
   }
 
   /** Drops expired codes; with none live, earlier wrong guesses no longer count against the next code. */

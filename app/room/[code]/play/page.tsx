@@ -723,6 +723,9 @@ export default function PlayPage() {
   const claimed = useRef(false);
   /** A waiting late team typed a wrong handoff code: said on the waiting screen, which it must not lose (late-join.md). */
   const [badCode, setBadCode] = useState(false);
+  /** This connection has shown the waiting screen: a wrong code typed there is never a refused JOIN, even when the
+   * host lets the team in (or goes back to the lobby) before the room's bad_code arrives. */
+  const waited = useRef(false);
 
   const [teamId, setTeamId] = useState("");
   const [lobby, setLobby] = useState<LobbyTeams | null>(null);
@@ -771,6 +774,7 @@ export default function PlayPage() {
       // us before the JOIN is checked; joinRejection still lets a bad key's bad_token through.
       joined.current = false;
       claimed.current = false;
+      waited.current = false;
       livePhase.current = null;
       sprintSeenRef.current = null;
       const id = getOrCreateTeamId();
@@ -789,7 +793,7 @@ export default function PlayPage() {
       switch (msg.type) {
         case "ERROR": {
           if (msg.error === "bad_code" && claimed.current) break;
-          if (msg.error === "bad_code" && lastGame.current?.late?.teams.some((t) => t.id === getOrCreateTeamId())) {
+          if (msg.error === "bad_code" && waited.current) {
             setBadCode(true);
             break;
           }
@@ -802,6 +806,8 @@ export default function PlayPage() {
         case "TEAM_CLAIMED":
           // The host handed us this team: be it from now on, and JOIN as it (its key skips the password and name checks).
           claimed.current = true;
+          // A phone the host turned away (不收, 移除) is this team now: its reconnects must JOIN again.
+          removed.current = false;
           storeTeam(msg.teamId, msg.teamKey);
           setTeamId(msg.teamId);
           setRejected(null);
@@ -842,6 +848,7 @@ export default function PlayPage() {
             }
           }
           if ([...msg.view.teams, ...(msg.late?.teams ?? [])].some((t) => t.id === getOrCreateTeamId())) joined.current = true;
+          if (msg.late?.teams.some((t) => t.id === getOrCreateTeamId())) waited.current = true;
           lastGame.current = msg;
           livePhase.current = msg.phase;
           if (drop.current) {

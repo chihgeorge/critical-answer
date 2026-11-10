@@ -30,7 +30,7 @@ test("a team that joins after the start waits; the host lets one in and turns an
   await rows.getByRole("button", { name: "收這隊" }).click();
   await expect(rows).toHaveCount(0);
   await expect(late.getByTestId("late-wait")).toHaveCount(0);
-  await expect(late.getByText("遲到隊")).toBeVisible();
+  await expect(late.getByText("遲到隊", { exact: true })).toBeVisible();
   // Still 甲隊's turn: the new team is last.
   await expect(first.getByText("輪到我們了！")).toBeVisible();
 

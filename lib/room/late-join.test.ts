@@ -209,6 +209,11 @@ describe("late join", () => {
     // A team that joins now waits the same way, and both play the next game.
     join(room, 4);
     expect(state(room).late).toMatchObject({ closed: true, teams: [{ id: id(3) }, { id: id(4) }] });
+    // 不收 still works.
+    const fifth = join(room, 5);
+    admit(room, host, 5, false);
+    expect(last(fifth)).toMatchObject({ error: "team_removed", detail: "not_admitted" });
+    expect(state(room).late.teams).toHaveLength(2);
     send(room, host, { type: "HOST_END_GAME" });
     expect(state(room).late).toMatchObject({ closed: true });
     send(room, host, { type: "HOST_BACK_TO_LOBBY" });
@@ -237,13 +242,18 @@ describe("late join", () => {
   it("a waiting phone may take a playing team over with the host's code: its own team stops waiting", () => {
     const { room, host, phones } = setup();
     const late = join(room, 3);
+    // A second phone of the same waiting team.
+    const sibling = makeConn("p3b");
+    room.onConnect(sibling);
+    send(room, sibling, { type: "JOIN", teamId: id(3), teamKey: KEY + 3, teamName: "x" });
     room.onClose(phones[0]);
     send(room, host, { type: "HOST_HANDOFF", teamId: id(1) });
     const { code } = last(host);
     send(room, late, { type: "TEAM_CLAIM", code });
     expect(last(late)).toMatchObject({ type: "TEAM_CLAIMED", teamId: id(1) });
-    // The host's row goes at once, even if the phone's JOIN never comes.
+    // The host's row goes at once, even if the phone's JOIN never comes; the team's other phone is told.
     expect(state(room).late).toBeUndefined();
+    expect(last(sibling)).toMatchObject({ type: "ERROR", error: "team_removed" });
     send(room, late, { type: "JOIN", teamId: id(1), teamKey: last(late).teamKey, teamName: "x" });
     expect(state(room).late).toBeUndefined();
     expect(room.game!.teams[0].online).toBe(true);
