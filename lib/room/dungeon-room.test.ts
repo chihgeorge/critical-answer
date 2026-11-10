@@ -246,6 +246,9 @@ describe("JOIN", () => {
     const conn = makeConn();
     send(room, conn, { type: "JOIN", teamId: BAD_ID, teamKey: KEY, teamName: "Team X" });
     expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "invalid_team_id" });
+    // A colon id (only a home-made client makes one) gets the same visible refusal, not bad_message.
+    send(room, conn, { type: "JOIN", teamId: `x:${T1}`, teamKey: KEY, teamName: "Team X" });
+    expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "invalid_team_id" });
   });
 
   it("rejects an empty/whitespace team name after sanitization", () => {
@@ -4309,6 +4312,20 @@ describe("HOST_BACK_TO_LOBBY (回到大廳)", () => {
     expect(room.game!.teams.every((t) => t.reward === 0 && t.roomIndex === 0)).toBe(true);
     // The question whose answer the first game showed is not dealt again while others are left.
     expect(room.game!.teams.map((t) => t.currentQuestionId)).not.toContain(answered);
+  });
+
+  // Value: protects=a 下一句 typed in the game that ended, sent late (a queued send), is not said in the next game
+  // (TODOS 旁白訊息依場次區分); fails_when=HOST_NEXT_LINE ignores its eventId.
+  it("refuses a HOST_NEXT_LINE typed under the game before 回到大廳", () => {
+    const { room, hostConn } = finished();
+    const old = (room as any).eventSeq;
+    send(room, hostConn, { type: "HOST_BACK_TO_LOBBY" });
+    send(room, hostConn, { type: "HOST_START" });
+    send(room, hostConn, { type: "HOST_NEXT_LINE", line: "舊的一句", eventId: old });
+    expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "stale_game" });
+    expect((room as any).nextLine).toBeNull();
+    send(room, hostConn, { type: "HOST_NEXT_LINE", line: "新的一句", eventId: (room as any).eventSeq });
+    expect((room as any).nextLine).toMatchObject({ text: "新的一句" });
   });
 
   it("is host-only and only after the game is over", () => {

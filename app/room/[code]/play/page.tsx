@@ -517,6 +517,8 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
         </div>
       ) : (
         <>
+        {/* A passed check with no hint and a mage hint on the question: the mage's came first. A too-short answer never
+            gets a mage hint later (mageHint refuses it, no_hint), so this label does not flip afterwards. */}
         {check && (
           <div className="px-bar mt-1 !text-[17px]" role="status" data-testid="check-result">
             🗣️ {check.value === 20 ? "說服成功！" : check.value === 1 ? "說服失敗……答對只拿一半" : check.passed ? (check.hint !== undefined ? "過了！看提示" : game.view.mageHints[q.id] !== undefined ? "過了！提示法師已經給了" : "過了！答案太短，沒有提示") : "沒過，直接答吧"}

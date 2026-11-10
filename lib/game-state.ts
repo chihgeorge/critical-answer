@@ -96,6 +96,8 @@ export interface CheckRecord {
   dc: number;
   passed: boolean;
   hint?: string;
+  /** A natural 20 whose win failed to apply (roll_failed): no restart applies it later (lostCritOf). */
+  dropped?: true;
 }
 
 /** Checks are kept per question and team: two teams facing one question (the boss's, or a short pool) each roll. */

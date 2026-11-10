@@ -2,7 +2,7 @@
 // comparison is dropped, inverted or fires on first contact; why_new=no e2e ever changes roomEpoch; seam=none
 // (readRoomMessage is what useRoomSocket itself calls on every frame).
 import { describe, it, expect } from "vitest";
-import { readRoomMessage } from "./use-room-socket";
+import { readRoomMessage, shouldWakeReconnect, WAKE_RECONNECT_AFTER_MS } from "./use-room-socket";
 
 const lobby = (roomEpoch?: string) => JSON.stringify({ type: "LOBBY", teams: [], ...(roomEpoch ? { roomEpoch } : {}) });
 
@@ -31,5 +31,16 @@ describe("readRoomMessage", () => {
 
   it("returns null for a frame that is not JSON, so the page ignores it instead of crashing", () => {
     expect(readRoomMessage("not json", "e1")).toBeNull();
+  });
+});
+
+describe("shouldWakeReconnect", () => {
+  it("reconnects a socket that is not open, and an open one only after a long time away", () => {
+    expect(shouldWakeReconnect(WebSocket.CONNECTING, 0)).toBe(true);
+    expect(shouldWakeReconnect(WebSocket.CLOSED, 0)).toBe(true);
+    expect(shouldWakeReconnect(WebSocket.OPEN, 0)).toBe(false);
+    expect(shouldWakeReconnect(WebSocket.OPEN, WAKE_RECONNECT_AFTER_MS - 1)).toBe(false);
+    expect(shouldWakeReconnect(WebSocket.OPEN, WAKE_RECONNECT_AFTER_MS)).toBe(true);
+    expect(shouldWakeReconnect(WebSocket.OPEN, Infinity)).toBe(true);
   });
 });

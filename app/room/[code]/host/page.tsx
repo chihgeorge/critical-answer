@@ -276,6 +276,8 @@ export default function HostPage() {
           setError(
             msg.error === "bad_token"
               ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人"
+              : msg.detail === "stale_game"
+                ? "剛才那句「下一句這樣說」是上一局打的，沒有排進這一局"
               : msg.detail === "reveal_pending"
                 ? `大螢幕正在揭曉，先按「${toServe ? "🍲 上菜" : "下一題"}」`
                 : msg.detail === "late_closed"
@@ -601,13 +603,13 @@ export default function HostPage() {
           </Panel>
         )}
         <Panel tone="lav" className="px-3 py-2">
-          <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
+          <div className="text-[15px]">大螢幕（在電視或投影機開這個連結：點它、複製連結網址或掃 QR，照著打不會播影片）</div>
           {/* A new tab, so opening it never navigates the host page away from its socket. */}
           {/* With the room's screen key: only a big screen opened by this link is sent the question videos and has its
               reports taken by the room (screen-video-key.md). */}
           {claimed ? (
             <>
-              <a data-testid="screen-link" href={screenLink} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{origin + screenLink}</a>
+              <a data-testid="screen-link" href={screenLink} target="_blank" rel="noopener" className="block break-all text-[14px] underline underline-offset-2">{/* Without the key: players can see the host's phone. */}{`${origin}/room/${code}/screen`}</a>
               {/* The same link as a QR: a TV remote cannot type the key (screen-video-key.md). */}
               <PixelButton data-testid="screen-qr-toggle" aria-expanded={screenQr} onClick={() => setScreenQr(!screenQr)} className="!mx-0 !mb-0 mt-2 min-h-[44px] !px-3 !py-2 text-[15px]">
                 {screenQr ? "收起大螢幕 QR" : "顯示大螢幕 QR"}
@@ -1017,6 +1019,7 @@ export default function HostPage() {
               refusal={editRefusal}
               disabled={!ready}
               send={send}
+              eventId={game.eventId}
             />
             {holdUp ? (
               holdPanel

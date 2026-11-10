@@ -33,7 +33,7 @@ Merging into `main` deploys automatically. Both sides use the platform's own Git
 | `R2_PUBLIC_BASE_URL` | `vars` in `wrangler.jsonc` | For image questions | The R2 bucket's public URL |
 | `OWNER_KEY` | Worker secret | For bank editing | Password for the bank editor and the owner key |
 | `ANTHROPIC_API_KEY` | Worker secret | Optional | The owner's AI narration key |
-| `ROOM_IDLE_MS`, `ROOM_EXPIRE_MS` | Worker variable | Optional | How long a room may go without action before it rests, and how long after its creation it is wiped (milliseconds; default 2 hours and 6 hours, which the host can extend to 24 hours; see the [hosting guide](hosting.en.md#known-limits)) |
+| `ROOM_IDLE_MS`, `ROOM_EXPIRE_MS` | Worker variable | Optional | How long a room may go without action before it rests, and how long after its first game start it is wiped (milliseconds; default 2 hours and 6 hours, which the host can extend to 24 hours; see the [hosting guide](hosting.en.md#known-limits)) |
 
 ## Keys for AI narration
 
@@ -41,7 +41,7 @@ For how the host picks AI narration in the lobby, see the [hosting guide](hostin
 
 To test the owner key locally, put `ANTHROPIC_API_KEY=sk-ant-...` in `.env` at the **project root** (`wrangler dev` reads this file, not `.env.local`), then restart `npm run dev:worker`.
 
-The host's key is kept only in the room's memory: it is never written to a snapshot, never logged, and never sent back to any screen; the host page shows only its last 4 characters (see [SECURITY.en.md](../SECURITY.en.md)). After a server restart it must be pasted again. The owner key is read only on the server (the Worker); do not give it a `NEXT_PUBLIC_` prefix, or it ends up in the browser. Narration uses `claude-haiku-4-5`, and the end-of-game epilogue uses `claude-sonnet-5-5`. Each narration line waits at most 3 seconds (15 seconds for the epilogue); on a timeout, an error or unusable content, a scripted line is used instead. After 3 failures in a row, or when the key is refused (401/403), the whole room switches to scripted lines. Team names typed by players go into the prompt only as data; questions and answers never go into the prompt.
+The host's key is kept only in the room's memory: it is never written to a snapshot, never logged, and never sent back to any screen; the host page shows only its last 4 characters (see [SECURITY.en.md](../SECURITY.en.md)). After a server restart it must be pasted again. The owner key is read only on the server (the Worker); do not give it a `NEXT_PUBLIC_` prefix, or it ends up in the browser. Narration uses `claude-haiku-4-5`, and the end-of-game epilogue uses `claude-sonnet-5-5`. Each narration line waits at most 3 seconds (15 seconds for the epilogue); on a timeout, an error or unusable content, a scripted line is used instead. After 3 failures in a row the whole room switches to scripted lines, then tries the AI once a minute and switches back when it answers; when the key is refused (401/403), the room stays on scripted lines until a new key is applied. Team names typed by players go into the prompt only as data; questions and answers never go into the prompt.
 
 > **Cost**: opening a room needs no login, but AI narration turns on only with the host's own key or the owner key, and each room has a line limit. Set a spending limit for the owner's `ANTHROPIC_API_KEY` in the Anthropic Console; the program has no site-wide total limit.
 

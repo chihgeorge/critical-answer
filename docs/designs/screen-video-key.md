@@ -50,7 +50,7 @@ QR). Scan it with the device that drives the TV or projector.
 
 - The QR is closed until the host asks for it, and the text next to it says 「只給大螢幕掃」. The host's phone is in
   the room with the players; a QR that is always open would hand the key to anyone who points a camera at it. The
-  link text above it has always shown the key, but a QR is read from across a table and a UUID is not.
+  link text above it leaves the key out (only the anchor's href has it): a photo of the host's phone can read a UUID.
 - The button shows only once the room has sent the key (`HOST_OK`), like the link: 「連線中…」 until then.
 - The QR is made in the browser. The key goes to no server.
 

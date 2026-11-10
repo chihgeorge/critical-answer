@@ -31,6 +31,7 @@ export function NarrationPanel({
   refusal,
   disabled,
   send,
+  eventId,
 }: {
   narration: NarrationState;
   /** STATE moved on and its narration has not arrived yet. */
@@ -42,6 +43,8 @@ export function NarrationPanel({
   refusal: EditRefusal | null;
   disabled: boolean;
   send: (msg: ClientMessage) => void;
+  /** The STATE's eventId: HOST_NEXT_LINE carries it, so a send that lands after 回到大廳 is refused. */
+  eventId: number;
 }) {
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Edit | null>(null);
@@ -103,7 +106,7 @@ export function NarrationPanel({
   }
   function queueNext(line: string) {
     if (line.trim().length > MAX_EDIT_LINE) return;
-    send({ type: "HOST_NEXT_LINE", line });
+    send({ type: "HOST_NEXT_LINE", line, eventId });
     cancel();
   }
 
@@ -180,7 +183,7 @@ export function NarrationPanel({
               {nextLine && (
                 <div className="flex items-center gap-2 border-4 border-dashed border-[var(--k)] bg-[var(--turn)] p-2 text-[15px]">
                   <span className="flex-1 break-all">已排入：{nextLine}</span>
-                  <PixelButton disabled={disabled} onClick={() => send({ type: "HOST_NEXT_LINE", line: "" })} className={smallBtn}>
+                  <PixelButton disabled={disabled} onClick={() => send({ type: "HOST_NEXT_LINE", line: "", eventId })} className={smallBtn}>
                     取消
                   </PixelButton>
                 </div>
@@ -193,7 +196,7 @@ export function NarrationPanel({
                 placeholder={nextLine ? "再排一句會蓋掉上面這句" : "例如：不怕死的冒險者不知道珍珠是什麼意思？"}
                 className={input}
               />
-              <PixelButton onClick={() => send({ type: "HOST_NEXT_LINE", line: nextDraft })} disabled={disabled || !nextDraft.trim()} className="!m-0 !px-4 !py-2 text-[16px]">
+              <PixelButton onClick={() => send({ type: "HOST_NEXT_LINE", line: nextDraft, eventId })} disabled={disabled || !nextDraft.trim()} className="!m-0 !px-4 !py-2 text-[16px]">
                 排進去
               </PixelButton>
             </section>
