@@ -5,8 +5,8 @@ import { rmSync } from "node:fs";
 
 /**
  * A room that nobody uses stops costing money: after the idle time the real Durable Object closes every
- * connection (the game stays saved), and after the expiry time it forgets the room so the code can be used
- * again. Real alarms in workerd, with the two times cut from 2 hours / 24 hours to 6 / 10 seconds.
+ * connection (the game stays saved), and the expiry time after its first connection it forgets the room so the code
+ * can be used again. Real alarms in workerd, with the two times cut from 2 hours / 6 hours to 6 / 40 seconds.
  */
 const PORT = 1994;
 const STORE = ".wrangler/lifecycle-e2e";
@@ -16,7 +16,8 @@ const BASE = `ws://localhost:${PORT}/parties/main/LFCY`;
 // an idle time equal to a beat, the alarm set at HOST_REVEAL fires with the reveal beat and closes the room
 // before the judgment.
 const IDLE_MS = 6000;
-const EXPIRE_MS = 10000;
+// Counted from the room's first connection: long enough for the game, both idle closes and the reconnect between them.
+const EXPIRE_MS = 40000;
 const CLOSE_IDLE = 4001;
 
 const T1 = "00000000-0000-0000-0000-0000000000b1";
@@ -76,7 +77,8 @@ test("an unused room closes its connections after the idle time, keeps the game,
       .poll(() => fetch(`http://localhost:${PORT}/healthz`).then((r) => r.ok, () => false), { timeout: 60_000, intervals: [500] })
       .toBe(true);
 
-    // A game with one correct answer.
+    // A game with one correct answer. The room's life starts at its first connection.
+    const createdAt = Date.now();
     const host = await open(), a = await open(), b = await open();
     send(host, { type: "HOST_CLAIM", token: HOST_TOKEN });
     send(a, { type: "JOIN", teamId: T1, teamKey: KEY1, teamName: "甲隊" });
@@ -122,8 +124,9 @@ test("an unused room closes its connections after the idle time, keeps the game,
     // Reconnecting was activity, so the idle clock started again: it closes once more.
     await wait(() => [host2, a2, b2].every((p) => p.closedWith === CLOSE_IDLE), "closed again after the reconnect");
 
-    // Nobody comes back for the expiry time: the room is forgotten and its code is free.
-    await new Promise((r) => setTimeout(r, EXPIRE_MS + 1500));
+    // Nobody comes back before the expiry time: the room is forgotten and its code is free.
+    expect(Date.now() - createdAt).toBeLessThan(EXPIRE_MS); // both idle closes came before the end
+    await new Promise((r) => setTimeout(r, createdAt + EXPIRE_MS + 1500 - Date.now()));
     const newHost = await open();
     send(newHost, { type: "HOST_CLAIM", token: "some-brand-new-host-token-0123456789" });
     await wait(() => last(newHost, "HOST_OK"), "a new host can take the code");

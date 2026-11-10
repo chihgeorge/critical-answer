@@ -61,8 +61,8 @@ export const formatOf = (bank: Bank): number =>
   allQuestions(bank).some((q) => q.kind === "text" && q.fields) ? BANK_FORMAT : allQuestions(bank).some((q) => q.category) ? CATEGORY_FORMAT : bank.boss.phases.some((p) => p.buzzer) ? BUZZER_FORMAT : allQuestions(bank).some((q) => q.kind === "sort") ? SORT_FORMAT : OLDEST_PARSED_FORMAT;
 /** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
 const PENDING_KEY = "pendingImageDeletes";
-/** Default wait before an orphaned image is deleted: a room's default 24-hour expiry plus an hour
- * of margin. worker/index.ts passes the real room expiry (ROOM_EXPIRE_MS) + the same margin. */
+/** Default wait before an orphaned image is deleted: a room's longest life (24 hours with every extension) plus an
+ * hour of margin. worker/index.ts passes the real one (roomMaxLifeMs) + the same margin. */
 export const IMAGE_CLEANUP_MARGIN_MS = 60 * 60 * 1000;
 const DEFAULT_CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000 + IMAGE_CLEANUP_MARGIN_MS;
 /** How long the images of an overwritten outdated bank wait instead: the owner may still convert the

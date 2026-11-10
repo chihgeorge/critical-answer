@@ -116,6 +116,13 @@ export default function HostPage() {
   const [savedPassword, setSavedPassword] = useState("");
   /** The room's screen key (HOST_OK), for the big screen link: "" until the room sends it. */
   const [screenKey, setScreenKey] = useState("");
+  /** The room's closing warning (HOST_ROOM_CLOSING), counted down here a minute at a time (never below 1). */
+  const [closing, setClosing] = useState<{ minutesLeft: number; canExtend: boolean; sent?: true } | null>(null);
+  useEffect(() => {
+    if (!closing || closing.minutesLeft <= 1) return;
+    const id = setTimeout(() => setClosing((c) => c && { ...c, minutesLeft: c.minutesLeft - 1 }), 60_000);
+    return () => clearTimeout(id);
+  }, [closing]);
   /** The big screen link, with the key once the room has sent it: the anchor and the QR show the same one. */
   const screenLink = `/room/${code}/screen${screenKey ? `#s=${screenKey}` : ""}`;
   /** The big screen QR is closed until asked for: it holds the screen key, and players can see the host's phone. */
@@ -144,6 +151,8 @@ export default function HostPage() {
       setClaimed(false);
       // The QR holds the screen key: a reconnect must not bring back one the host left open.
       setScreenQr(false);
+      // The room tells a reconnected host again (after HOST_OK); an expired room has nothing left to warn about.
+      setClosing(null);
       aiQueue.closed();
       setPendingTeamId(null);
     },
@@ -159,6 +168,11 @@ export default function HostPage() {
           setJoinPassword(msg.joinPassword);
           setSavedPassword(msg.joinPassword);
           setScreenKey(msg.screenKey ?? "");
+          // The room sends its warning again right after HOST_OK if it still applies.
+          setClosing(null);
+          break;
+        case "HOST_ROOM_CLOSING":
+          setClosing(msg.minutesLeft === null ? null : { minutesLeft: msg.minutesLeft, canExtend: msg.canExtend });
           break;
         case "HOST_AI_STATUS": {
           setAiStatus(msg);
@@ -573,6 +587,18 @@ export default function HostPage() {
             ⚙ 更多
           </PixelButton>
         </header>
+        {closing && (
+          <Panel tone="turn" role="status" data-testid="room-closing" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
+            房間再 {closing.minutesLeft} 分鐘關閉
+            <PixelButton data-testid="room-extend" disabled={!closing.canExtend || !connected || closing.sent} onClick={() => {
+                send({ type: "HOST_EXTEND_ROOM" });
+                // One press, one hour: a second tap before the room answers would add another.
+                setClosing({ ...closing, sent: true });
+              }} className="!m-0 !px-4 !py-2 text-[16px]">
+              {closing.canExtend ? "延長 1 小時" : "已達上限"}
+            </PixelButton>
+          </Panel>
+        )}
         <Panel tone="lav" className="px-3 py-2">
           <div className="text-[15px]">大螢幕（在電視或投影機開這個網址）</div>
           {/* A new tab, so opening it never navigates the host page away from its socket. */}

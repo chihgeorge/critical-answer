@@ -3,7 +3,7 @@ import { Server, routePartykitRequest, type Connection, type WSMessage } from "p
 import { entryGate } from "../lib/gate";
 import { positiveMs } from "../lib/room/positive-ms";
 import { oversized, RateLimiter } from "../lib/room/rate-limit";
-import { DungeonRoom, EXPIRE_MS, fixedDie } from "../lib/room/dungeon-room";
+import { DungeonRoom, fixedDie, roomMaxLifeMs } from "../lib/room/dungeon-room";
 import { BankStore, IMAGE_CLEANUP_MARGIN_MS, type BankConflict, type VersionedBank } from "../lib/bank-store";
 import { bankOrFallback, handleBankApi, handleGameLogsApi } from "../lib/bank-api";
 import { appendGameLog, readGameLogs, type GameLog } from "../lib/game-log";
@@ -29,7 +29,8 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   /** Milliseconds without activity before a room closes its connections (default 2 hours). */
   ROOM_IDLE_MS?: string;
-  /** Milliseconds without activity before a room is forgotten and its code freed (default 24 hours). */
+  /** Milliseconds after its first connection before a room is forgotten and its code freed, in use or not (default 6
+   * hours; the host may extend it an hour at a time up to 24 hours). */
   ROOM_EXPIRE_MS?: string;
   /** Secret for AI narration (wrangler secret put ANTHROPIC_API_KEY). Without it the room uses scripted lines. */
   ANTHROPIC_API_KEY?: string;
@@ -60,14 +61,9 @@ export class BankStoreDO extends DurableObject<Env> {
       // platform-abstraction discipline as the rest of this file's DO/RPC split. BankStore calls
       // this from runImageCleanup() (this DO's alarm, below), which catches and logs a failed delete.
       (keys) => env.images.delete(keys),
-      // An orphaned image waits until every room that could have copied the old bank has expired.
-      // Same expiry the rooms use (Room.onStart below, and DungeonRoom's own max(expire, idle)), so
-      // changing ROOM_EXPIRE_MS moves both. A room kept busy for longer than this (activity keeps
-      // pushing its expiry back) can still lose an image it copied — rare enough to accept.
-      {
-        cleanupDelayMs:
-          Math.max(positiveMs(env.ROOM_EXPIRE_MS) ?? EXPIRE_MS, positiveMs(env.ROOM_IDLE_MS) ?? 0) + IMAGE_CLEANUP_MARGIN_MS,
-      },
+      // An orphaned image waits until every room that could have copied the old bank has expired:
+      // the longest a room can live, extensions included (roomMaxLifeMs, same env as Room.onStart).
+      { cleanupDelayMs: roomMaxLifeMs(positiveMs(env.ROOM_EXPIRE_MS), positiveMs(env.ROOM_IDLE_MS)) + IMAGE_CLEANUP_MARGIN_MS },
     );
     // Seed-on-first-read otherwise races: two requests arriving before storage has ever been
     // written could both see it empty and both write the seed. Both writes are identical today

@@ -208,6 +208,8 @@ export type ClientMessage =
   /** Director: the next narration's second line says this (<= 40 chars); "" cancels. */
   | { type: "HOST_NEXT_LINE"; line: string }
   | { type: "HOST_GET_TRANSCRIPT" }
+  /** 延長 1 小時: the room closes an hour later than it would now, at most 24 hours after it was created. */
+  | { type: "HOST_EXTEND_ROOM" }
   /** Director: close the answer reveal and show the next question (D7). `eventId` is the STATE
    * eventId the reveal arrived with, so a late HOST_NEXT (second host device, a send buffered
    * across a reconnect) can't close a newer reveal the room hasn't seen yet. */
@@ -445,6 +447,11 @@ export type ServerMessage =
   | { type: "TRANSCRIPT"; entries: TranscriptItem[] }
   /** `screenKey`: the room's screen key, for the big screen link on the host page (absent from older servers). */
   | { type: "HOST_OK"; joinPassword: string; screenKey?: string }
+  /** Host-only: the room closes in `minutesLeft` minutes (its 6 hour life is nearly over), null once it no longer
+   * does (a HOST_EXTEND_ROOM). Sent by the room's alarm inside the last CLOSE_WARN_MS, on every host claim after that,
+   * and after every extension. `canExtend`: false once the room has reached its 24 hour cap. Players and the big
+   * screen never get it. */
+  | { type: "HOST_ROOM_CLOSING"; minutesLeft: number | null; canExtend: boolean }
   /** The reply to SCREEN_HELLO: whether its key was the room's screen key, so this socket is sent SCREEN_VIDEO. */
   | { type: "SCREEN_KEY"; ok: boolean }
   /** The YouTube video on the big screen now (the question's, or the reveal's). Never broadcast: it goes only to host
@@ -675,6 +682,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "HOST_GET_TRANSCRIPT":
       return { type: "HOST_GET_TRANSCRIPT" };
+    case "HOST_EXTEND_ROOM":
+      return { type: "HOST_EXTEND_ROOM" };
     case "HOST_NEXT":
     case "HOST_SERVE":
       return Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: m.type, eventId: m.eventId as number } : null;
