@@ -250,6 +250,18 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
     expect(g.room.game!.checks![checkKey(g.q, T1)]).toMatchObject({ value: 20, dropped: true }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
   });
 
+  // Value: protects=a lost natural 20 the host rules 答錯 on is not won by a later restart (review finding); fails_when=judgeNow
+  // clears lostCrit without marking the check dropped; seam=room; no_claim=a real restart
+  it("a host's ruling on the team marks its lost natural 20 dropped", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    const g = game();
+    const r = g.room as unknown as { lostCrit: unknown };
+    g.room.game = { ...g.room.game!, checks: { ...g.room.game!.checks, [checkKey(g.q, T1)]: { value: 20, bonus: 0, dc: 8, passed: true } } }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    r.lostCrit = { teamId: T1, questionId: g.q };
+    g.judge(false, "retry");
+    expect(r.lostCrit).toBeNull();
+    expect(g.room.game!.checks![checkKey(g.q, T1)]).toMatchObject({ value: 20, dropped: true }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+  });
+
   // Value: protects=a cleric's 答錯 wait, and the 重答 after it, undo back to before the wait without spending a prayer;
   // fails_when=the undo is refused while waiting (answerQuestion refuses 答對 with a wrong waiting) or 祈禱 stays undoable;
   // seam=room; no_claim=the phone's buttons

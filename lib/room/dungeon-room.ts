@@ -259,6 +259,13 @@ function lostCritOf(g: GameState): { teamId: string; questionId: string } | null
   return null;
 }
 
+/** The team's natural 20 on `questionId` marked `dropped` (its win failed or was ruled out), so lostCritOf skips it. */
+function withCritDropped(g: GameState, teamId: string, questionId: string): GameState {
+  const key = checkKey(questionId, teamId);
+  const check = g.checks?.[key];
+  return check?.value === 20 ? { ...g, checks: { ...g.checks, [key]: { ...check, dropped: true } } } : g;
+}
+
 /** Shallow snapshot validation: a saved pendingWrong must name a team and the question it faces now, or it pins the turn forever. */
 function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
   const p = g.pendingWrong;
@@ -2781,10 +2788,12 @@ export class DungeonRoom {
     if (again) this.buzzPaused = false;
     else if (isBuzzPhase(prev) && outcome.type === "incorrect-retry" && !outcome.newBossQuestion) this.resumeBuzzMusic(questionId);
     // A ruling on the team (the host's, or the lost natural 20 itself) settles its lost natural 20; one refused above does not.
-    if (this.lostCrit?.teamId === teamId) this.lostCrit = null;
+    // Marked dropped in the saved check too, or a later restart would bring it back (applyLostCrit clears lostCrit first).
+    const ruledOut = this.lostCrit?.teamId === teamId ? this.lostCrit : null;
+    if (ruledOut) this.lostCrit = null;
     // Everything up to broadcastState is synchronous: state changes and the eventId are
     // fixed before any narration awaits, so concurrent judgments cannot interleave.
-    this.game = game;
+    this.game = ruledOut ? withCritDropped(game, ruledOut.teamId, ruledOut.questionId) : game;
     const eventId = ++this.eventSeq;
     const phaseName = prev.boss.phaseIndex > 0 ? this.bank.boss.phases[prev.boss.phaseIndex]?.name : undefined;
     // The dish the answer just ate: game-state appended it to the team's dishes (a game saved before dishes appends none).
@@ -3194,6 +3203,7 @@ export class DungeonRoom {
     try {
       // The turn moved on during the beat (the phone dropped): drop the roll, like a lock (E9). The use stays spent.
       if (currentTurnTeamId(game) !== roll.teamId || currentQuestionIdOf(game, roll.teamId) !== roll.questionId) {
+        if (roll.kind === "check" && roll.value === 20) this.dropCrit(roll.teamId, roll.questionId);
         this.broadcastState();
       } else if (roll.kind === "check") {
         this.resolveCheck(roll.teamId, roll.questionId, roll.value);
@@ -3271,11 +3281,9 @@ export class DungeonRoom {
 
   /** A natural 20 whose win failed: marked in the saved check, so a later restart does not apply it long after. */
   private dropCrit(teamId: string, questionId: string) {
-    const key = checkKey(questionId, teamId);
-    const check = this.game?.checks?.[key];
+    if (!this.game) return;
     // Not a move: an undoable 答錯 before it stays undoable.
-    if (!check) return;
-    this.keepUndoOpen({ ...this.game!, checks: { ...this.game!.checks, [key]: { ...check, dropped: true } } });
+    this.keepUndoOpen(withCritDropped(this.game, teamId, questionId));
     // Saved now: a failure on the timer path sends no STATE after it, and a restart before the next one would apply it.
     this.persist();
   }
