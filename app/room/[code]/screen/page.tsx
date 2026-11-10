@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
-import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ServerMessage, type SoundCue, type StateMessage } from "@/lib/protocol";
+import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ServerMessage, type SoundCue, type StateMessage } from "@/lib/protocol";
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { FORK_ARCH, sceneFloor, TEAM_LOOKS } from "@/lib/pixel-art";
@@ -38,7 +38,8 @@ import { readStored, writeStored } from "@/lib/stored";
 import { getScreenKey } from "@/lib/room-code";
 import { sortOrderOf } from "@/lib/sort-order";
 import { EventStage } from "@/components/event-room";
-import { BOON_TEXT, EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT, eventEffectLine, FORK_DOOR_LABEL, FORK_SIDE_LABEL } from "@/lib/event-text";
+import { FortuneCard, FortunePizza } from "@/components/fortune";
+import { BOON_TEXT, EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT, eventEffectLine, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT } from "@/lib/event-text";
 
 const TTS_ENABLED_STORAGE = "screen-tts-enabled";
 const BGM_ENABLED_STORAGE = "screen-bgm-enabled";
@@ -643,6 +644,55 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         loading={isPending(eventId, narration)}
         lines={narration ? narration.lines : [`${name}打開了神秘房……`]}
+        {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+      />
+    </>
+  );
+}
+
+/** 占卜師 on the big screen (fortune-teller.md): the crystal ball with the condition, then the pizza and its clock, the
+ * picked slice lit, then the effect card with every team the condition hit, until 下一題. The view is the game from before
+ * the pick until the card. */
+function FortuneScreen({ view, fortune, left, eventId, narration, onRead }: { view: SpectatorView; fortune: FortuneView; left?: number; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
+  const idx = view.teams.findIndex((t) => t.id === fortune.teamId);
+  const team = view.teams[idx];
+  const name = team?.name ?? "";
+  return (
+    <>
+      <SceneBackground theme={roomTheme(Math.max(0, (team?.roomIndex ?? 0) - (fortune.step === "card" ? 1 : 0)))} />
+      <Torches />
+      <Sparks />
+      <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
+        {team && <TurnRibbon color={look(idx).hat} maxWidth={420}>{`🔮 ${name}`}</TurnRibbon>}
+        <MapStrip view={view} />
+      </div>
+      <div className="absolute" style={{ right: 60, top: 108, zIndex: 6 }}>
+        {fortune.timeout ? (
+          <span className="px-chip" style={{ fontSize: 26, background: "var(--danger)", color: "var(--k)" }}>⏳ 時間到</span>
+        ) : typeof left === "number" && fortune.step === "choose" ? (
+          <AnswerClock key={left} ms={left} variant="big" />
+        ) : null}
+      </div>
+      <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "16px 24px 12px", fontSize: 26, lineHeight: 1.3, zIndex: 5 }}>
+        <div data-testid="fortune-screen" data-step={fortune.step}>{fortune.step === "card" ? (
+          <FortuneCard fortune={fortune} teams={view.teams} heroScale={4} />
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <div className="px-title-gold px-title-sm" style={{ fontSize: 34, lineHeight: 1.2 }}>{EVENT_OUTCOME_TITLE.fortune}</div>
+            <div data-testid="fortune-condition">{FORTUNE_CONDITION_TEXT[fortune.condition].text}……</div>
+            {fortune.step === "intro" ? (
+              <div className="px-float" style={{ fontSize: 120, lineHeight: 1 }}>🔮</div>
+            ) : (
+              <FortunePizza lit={fortune.effect} size={210} />
+            )}
+          </div>
+        )}</div>
+      </Panel>
+      <DialogueBox
+        className="absolute"
+        style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
+        loading={isPending(eventId, narration)}
+        lines={narration ? narration.lines : [`占卜師看著${name}……`]}
         {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
       />
     </>
@@ -1390,7 +1440,9 @@ export default function ScreenPage() {
           </>
         )}
         {/* A door opening first (its view is the game before the press), then a ❓ outcome, then a team choosing its door. */}
-        {game?.phase === "playing" && !game.intro && !game.initiative && (game.forkBeat || (!game.eventReveal && !game.reveal && !game.phaseCard && !game.phaseCardDue && describeTurn(game.view, null).team?.fork === "choosing")) ? (
+        {game?.phase === "playing" && !game.intro && !game.initiative && game.fortune ? (
+          <FortuneScreen view={game.view} fortune={game.fortune} left={game.fortuneLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && (game.forkBeat || (!game.eventReveal && !game.reveal && !game.phaseCard && !game.phaseCardDue && describeTurn(game.view, null).team?.fork === "choosing")) ? (
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />

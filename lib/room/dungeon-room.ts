@@ -92,6 +92,7 @@ import {
   type PodiumReveal,
   FINISH_PODIUM_MS,
   SERVE_HOLD_MS,
+  FORTUNE_HOST_GRACE_MS,
   REACT_GAP_MS,
   REACT_JITTER_MS,
   REACT_ROOM_MAX,
@@ -175,8 +176,6 @@ export const LOST_CRIT_GAP_MS = 4000;
 export const FORK_BEAT_MS = 1500;
 /** The fortune's picked slice lit on the pizza before the effect card (docs/designs/fortune-teller.md step 3). */
 export const FORTUNE_BEAT_MS = 1000;
-/** How long past a fortune's deadline the host's 立即隨機 waits, for a clock that never fired. */
-export const FORTUNE_HOST_GRACE_MS = 2000;
 /** The boss kill's 4d20 on screen (docs/designs/kill-roll.md): the dice land one by one, then the total stays up. */
 const KILL_BEAT_MS = 4000;
 

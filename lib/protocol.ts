@@ -138,7 +138,9 @@ export const EAT_AT_MS = COOK_MS + 1000;
 export const EAT_BITE_MS = 400;
 export const EAT_MS = EAT_AT_MS + 3 * EAT_BITE_MS;
 /** The room refuses 下一題 until the dish has been eaten and the empty plate up about a second (cooking I2, eat-dish.md). */
-export const SERVE_HOLD_MS = EAT_MS + 1000;
+/** How long past a fortune's deadline the host's 立即隨機 waits, for a clock that never fired (fortune-teller.md). */
+export const FORTUNE_HOST_GRACE_MS = 2000;
+export const SERVE_HOLD_MS =EAT_MS + 1000;
 /** The whole seconds left of SERVE_HOLD_MS, `elapsed` ms after 上菜, never under 1 (下一題 takes over at 0): the host's 「🍲 上菜中… n」. */
 export const serveSecondsLeft = (elapsed: number) => Math.max(1, Math.ceil((SERVE_HOLD_MS - elapsed) / 1000));
 /** The end screen after a boss kill (cooking R8): the boss cooks, its dish holds, and only then the winner, podium and epilogue. */

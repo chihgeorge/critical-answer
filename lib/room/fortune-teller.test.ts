@@ -1,7 +1,8 @@
 // 占卜師 in the room (docs/designs/fortune-teller.md): the ❓ door into the crystal ball, the pizza clock, the pick and its
 // lit slice, the effect card until 下一題, what STATE shows at each step, pacing, the host's way out, and restarts.
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { DungeonRoom, FORK_BEAT_MS, FORTUNE_BEAT_MS, FORTUNE_HOST_GRACE_MS } from "./dungeon-room";
+import { DungeonRoom, FORK_BEAT_MS, FORTUNE_BEAT_MS } from "./dungeon-room";
+import { FORTUNE_HOST_GRACE_MS } from "../protocol";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
 import { currentTurnTeamId, FORK_MS, FORTUNE_INTRO_MS, type GameState } from "../game-state";
