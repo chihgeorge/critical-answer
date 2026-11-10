@@ -7,6 +7,10 @@
 //      CFG='{"n":3,"chefMul":[0.1,0.5,1.3,1.5]}' overrides any Cfg field of the preset. LABEL=x names the summary line.
 // Env knobs of balance-sim.ts still apply. New: WEAK (chance a letter-count hint cracks an unknown fill-in, default 0.1),
 // POTION (chance per turn the host hands a team with no potion one, default 0).
+// EX (default "1/3,1/3,1/3"): on a multipleChoice question a team does not know, the chance it can rule out 0 / 1 / 2 of
+// the wrong options by itself (owner, 2026-11-09). It guesses evenly among the options neither greyed out nor ruled out.
+// EX=1,0,0 with SMART=0 is balance-sim.ts's model (a blind guess). SMART=0: a team flees after two greyed options even
+// when only the right one is left (balance-sim.ts did; by default it stays and answers).
 // Not modelled: sort questions (they play like multipleChoice here), a potion wasted on a wrong answer, the host's
 // 改判, a mage that casts again on a question after a 1.
 import { registerHooks } from "node:module";
@@ -25,7 +29,9 @@ const KNOW = [0.75, 0.6, 0.45, 0.35, 0.25];
 const TEXT = env("TEXT", 0.5), TEXTK = env("TEXTK", 0.7), HINT = env("HINT", 0.3), EVENTS = process.env.EVENTS !== "0";
 const THRESH = env("THRESH", 15), HP1 = env("HP1", 5), HP2 = env("HP2", 3), HIT = env("HIT", 10), KB = env("KB", 0.5);
 const MAGE_MIN = env("MAGE_MIN", 2), WAR_MIN = env("WAR_MIN", 2), THIEF_MIN = env("THIEF_MIN", 3);
-const WEAK = env("WEAK", 0.1), POTION = env("POTION", 0);
+const WEAK = env("WEAK", 0.1), POTION = env("POTION", 0), SMART = process.env.SMART !== "0";
+const EX = (process.env.EX ?? "1/3,1/3,1/3").split(",").map((x) => { const [a, b] = x.split("/").map(Number); return a / (b ?? 1); });
+if (EX.length !== 3 || Math.abs(EX[0] + EX[1] + EX[2] - 1) > 1e-9) throw new Error("EX needs three chances that add up to 1");
 
 /** Every array is indexed by tier: [1, 2–5, 6–19, 20]. */
 interface Cfg {
@@ -78,8 +84,10 @@ const PRESETS: Record<string, Cfg> = {
   today: { ...DRAFT, dice: [] },
   draft: DRAFT,
   // The recommended variant (report of 2026-11-09): 3 uses for every class, chef passive only on answered questions.
+  // Decided 2026-11-09: 3 uses each, cleric and thief as drafted. The owner set the warrior to 9+, which the
+  // partial-knowledge model puts at 22%; 7+ is the smallest change that brings every class within 3 points of the mean.
   // Run it with THIEF_MIN=2: with 3 uses a thief sneaks from difficulty 2.
-  rec: { ...DRAFT, n: 3, mageRefund: [0, 1, 0, 0], magePay: 1.2, warPay: 0.8, chefMul: [0.1, 0.8, 1.3, 2], chefNoDie: 1 },
+  rec: { ...DRAFT, n: 3, warTarget: 7, mageRefund: [0, 1, 0, 0], magePay: 1.2, chefMul: [0.1, 0.8, 1.3, 2], chefNoDie: 1 },
 };
 const cfg: Cfg = { ...PRESETS[process.env.RULES ?? "today"], ...JSON.parse(process.env.CFG ?? "{}") };
 Object.assign(G.CHECK_BONUS, cfg.check);
@@ -127,7 +135,7 @@ function play(classes: C[], maxTurns = 600) {
     potions.delete(id);
     return Math.max(v, d20());
   };
-  const latent = new Map<string, { known: boolean; h: number }>();
+  const latent = new Map<string, { known: boolean; h: number; ex: number[] }>();
   const kinds = new Map<string, boolean>();
   // A dice mage's fill-in hint on a question: the chance it cracks an unknown one.
   const given = new Map<string, number>();
@@ -165,7 +173,11 @@ function play(classes: C[], maxTurns = 600) {
     const d = inBoss ? 5 : team().currentDifficulty;
     const text = isText(q);
     const key = `${id}:${q}`;
-    if (!latent.has(key)) latent.set(key, { known: R() < KNOW[d - 1] * (text ? TEXTK : 1), h: R() });
+    if (!latent.has(key)) {
+      const r = R();
+      // The wrong options (1–3) this team rules out by itself on this question.
+      latent.set(key, { known: R() < KNOW[d - 1] * (text ? TEXTK : 1), h: R(), ex: shuffle([1, 2, 3]).slice(0, r < EX[0] ? 0 : r < EX[0] + EX[1] ? 1 : 2) });
+    }
     const L = latent.get(key)!;
     const settle = (r: { game: GT.GameState; outcome: GT.AnswerOutcome }, ok: boolean) => {
       g = r.game;
@@ -212,6 +224,8 @@ function play(classes: C[], maxTurns = 600) {
     const hinted = () => g.checks?.[G.checkKey(q, id)]?.hint !== undefined || g.mageHints?.[q] !== undefined;
     const knows = () => L.known || (text && L.h < Math.max(hinted() ? HINT : 0, given.get(q) ?? 0));
     const gone = () => g.eliminated[q] ?? [];
+    // The wrong options the team still takes for possible: neither greyed out nor ruled out by itself.
+    const maybe = () => [1, 2, 3].filter((i) => !gone().includes(i) && !L.ex.includes(i));
     const abilityOk = (min: number) => inBoss || g.teams.some((x) => x.inBoss) || d >= min;
     const t = team();
     if (t.abilityUses > 0) {
@@ -228,7 +242,7 @@ function play(classes: C[], maxTurns = 600) {
           if (text) given.set(q, cfg.mageText[k]);
           else {
             // Option 0 is the right one. Below 3, one wrong option always stays (mageEliminate's cap).
-            const wrong = [1, 2, 3].filter((i) => !gone().includes(i));
+            const wrong = shuffle([1, 2, 3].filter((i) => !gone().includes(i)));
             const cut = wrong.slice(0, cfg.mageMC[k] >= 3 ? 3 : Math.min(cfg.mageMC[k], wrong.length - 1));
             if (cut.length) g = { ...g, eliminated: { ...g.eliminated, [q]: [...gone(), ...cut] } };
           }
@@ -238,7 +252,7 @@ function play(classes: C[], maxTurns = 600) {
       if (cfg.chefActive && D("chef") && t.classId === "chef" && abilityOk(THIEF_MIN) && knows()) { g = G.spendAbility(g, id, "chef"); chefArmed = true; }
       const target = D("warrior") ? cfg.warTarget : G.WARRIOR_TARGET;
       // The warrior rolls when stuck, and on multipleChoice only when the roll beats a guess.
-      if (t.classId === "warrior" && abilityOk(WAR_MIN) && !knows() && (text || (21 - target) / 20 > 1 / (4 - gone().length))) {
+      if (t.classId === "warrior" && abilityOk(WAR_MIN) && !knows() && (text || (21 - target) / 20 > 1 / (1 + maybe().length))) {
         const v = d20();
         if (!D("warrior")) { settle(G.warriorRoll(G.spendAbility(g, id, "warrior"), id, q, v, R, !text), v >= target); continue; }
         const k = tier(v), ok = v >= target;
@@ -254,10 +268,10 @@ function play(classes: C[], maxTurns = 600) {
         continue;
       }
     }
-    // Option 0 is the right one; a wrong pick is the first wrong option still shown.
-    if (knows() || (!text && R() < 1 / (4 - gone().length))) { right(text ? undefined : roll(id, "crit")); continue; }
+    // Option 0 is the right one; a wrong pick is one of the wrong options the team still takes for possible.
+    if (knows() || (!text && R() < 1 / (1 + maybe().length))) { right(text ? undefined : roll(id, "crit")); continue; }
     const cleric = t.classId === "cleric" && team().abilityUses > 0;
-    if (!text) g = G.recordWrongLock(g, id, q, [1, 2, 3].find((i) => !gone().includes(i))!);
+    if (!text) g = G.recordWrongLock(g, id, q, maybe()[0]);
     else if (cleric && G.canPrayBeforeJudge(g, id)) g = G.recordTextWrong(g, id, q);
     // A prayer keeps the turn: multipleChoice retries with a wrong tile gone; a fill-in it cannot crack flees to a new one.
     if (cleric && G.canPray(g, id)) {
@@ -270,7 +284,7 @@ function play(classes: C[], maxTurns = 600) {
         refund(id, (cfg.clericRetry[k] ? 1 : 0) - cfg.clericCost[k]);
       }
     }
-    const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2);
+    const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2 && !(SMART && maybe().length === 0));
     g = G.answerQuestion(g, id, q, false, flee ? "flee" : "retry", R).game;
   }
   return g;
