@@ -275,7 +275,7 @@ export default function HostPage() {
     return (
       <PixelButton
         onClick={() => (queued ? send({ type: "HOST_QUEUE_QUESTION", target, questionId: null }) : setPicking(target))}
-        className="!m-0 min-h-[44px] !px-3 !py-0 text-[14px]"
+        className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] sm:!px-3"
       >
         {queued ? "取消" : target === "boss" ? "指定" : "指定下一題"}
       </PixelButton>
@@ -473,7 +473,7 @@ export default function HostPage() {
   const holdPanel = hold && (
     <div className="mt-3 flex flex-col gap-3">
       <div data-testid="host-hold" role="status" className="border-4 border-dashed border-[var(--k)] bg-[var(--turn)] px-3 py-2 text-left text-[var(--k)]">
-        <div className="text-[18px]">⏸ 停在這裡：{hold.label}</div>
+        <div className="text-balance text-[18px]">⏸ 停在這裡：{hold.label}</div>
         <div className="text-[13px]">手動模式，按「下一步」才會繼續</div>
       </div>
       <PixelButton variant="ok" data-testid="host-step" disabled={!ready || !swapArmed} onClick={stepNow}>
@@ -906,6 +906,8 @@ export default function HostPage() {
             <ul className="flex flex-col gap-2">
               {game.view.teams.map((t, i) => (
                 <Panel key={t.id} className={`flex flex-wrap items-center gap-2 px-3 py-1 ${t.online ? "" : "opacity-50"}`}>
+                  {/* The name and its numbers take the whole first row on a phone, so the buttons never squeeze the name to two characters. */}
+                  <div className="flex min-w-0 flex-1 basis-full items-center gap-2 sm:basis-0">
                   <Sprite kind="hero" variant={i} scale={1} className="flex-none" />
                   <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
                   {t.classId && <span className="text-[13px]" title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "" : t.abilityUses}</span>}
@@ -913,13 +915,14 @@ export default function HostPage() {
                   {t.sneakArmed && <span className="text-[13px]" title={`偷襲準備好了：這題答對獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
+                  </div>
                   {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}
                   {/* 🧪 幸運藥水 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. */}
-                  <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-3 !py-0 text-[14px]" disabled={!!t.item} onClick={() => send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
+                  <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] sm:!px-3" disabled={!!t.item} onClick={() => send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
                     {t.item ? "🧪 已有" : "🧪 給藥水"}
                   </PixelButton>
                   <PixelButton
-                    className="!m-0 min-h-[44px] !px-3 !py-0 text-[14px]"
+                    className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] sm:!px-3"
                     onClick={() => (!t.online || confirm(`${t.name}還在線上，確定要交給新手機？`)) && send({ type: "HOST_HANDOFF", teamId: t.id })}
                   >
                     交給新手機
