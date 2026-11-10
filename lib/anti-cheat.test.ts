@@ -113,6 +113,9 @@ describe("🔮 the oracle", () => {
     refused(() => askOracle(boss, "a", boss.boss.currentQuestionId), "boss_room");
     const buzz = { ...g, boss: { ...g.boss, phases: [{ ...g.boss.phases[0], buzzer: true as const }] } };
     refused(() => askOracle(buzz, "a", q(g)), "buzzer_phase");
+    const picking = { ...g, fortune: { teamId: "a" } as never };
+    refused(() => askOracle(picking, "a", q(g)), "fortune");
+    refused(() => fileCatch(picking, "b", q(g)), "fortune");
   });
 
   it("follows the team's question across 下輪再答 and another team's turn and a JSON save, still halved and not catchable", () => {

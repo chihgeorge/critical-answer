@@ -543,7 +543,7 @@ export default function HostPage() {
   // 🚨 The ruling card above the judge keys (anti-ai-cheating.md): 成立 / 冤枉, keys 7 / 8.
   const rulingCard = game && openCatch && (
     <div data-testid="host-ruling" className="mb-3 flex flex-col gap-2">
-      <div className="px-stripe border-4 border-[var(--k)] px-3 py-2 text-center text-[20px] text-white" role="alert">
+      <div className="border-4 border-[var(--k)] px-3 py-2 text-center text-[20px] text-white" style={{ background: "var(--danger)" }} role="alert">
         🚨 {teamName(openCatch.by)}說 {teamName(openCatch.teamId)} 在問 AI
       </div>
       <div className="grid grid-cols-2">
@@ -1024,8 +1024,10 @@ export default function HostPage() {
             )}
             {/* The judge area sits right under the question card, above the team rows, so a phone never scrolls for it. */}
             <div data-testid="host-judge" className="flex flex-col">
-            {rulingCard}
-            {holdUp ? (
+            {/* An open catch: only the ruling card, every judge key waits for it (the room refuses them anyway). */}
+            {openCatch ? (
+              rulingCard
+            ) : holdUp ? (
               holdPanel
             ) : turn?.team ? (
             <>

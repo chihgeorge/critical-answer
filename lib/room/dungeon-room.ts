@@ -71,6 +71,7 @@ import {
   fileCatch,
   upholdCatch,
   dismissCatch,
+  cancelCatch,
 } from "../game-state";
 import {
   DEFAULT_AI_LIMIT,
@@ -295,6 +296,16 @@ function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
   return p.questionId === (team.inBoss ? g.boss.currentQuestionId : team.currentQuestionId) ? p : null;
 }
 
+/** The same for a saved open catch (anti-ai-cheating.md): it names both teams and the accused's room question, or it is
+ * called off and refunded. */
+function restoredCatch(g: GameState): GameState {
+  const c = g.antiCheat?.openCatch;
+  if (!c) return g;
+  const accused = g.teams.find((t) => t?.id === c.teamId);
+  const fits = !!accused && !accused.inBoss && accused.currentQuestionId === c.questionId && g.teams.some((t) => t?.id === c.by);
+  return fits ? g : g.teams.some((t) => t?.id === c.by) ? cancelCatch(g) : { ...g, antiCheat: { ...g.antiCheat!, openCatch: undefined } };
+}
+
 /**
  * One game room. It knows nothing about the platform: messages come in through onMessage/onConnect/onClose
  * and go out through RoomIO.
@@ -304,12 +315,12 @@ function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
  * the write fails, so a player never sees a state that was not saved. `restore()` reads it back after a
  * restart. Without storage (tests, the temporary PartyKit adapter) the room is in memory only.
  */
-/** A chef's share of a reveal's points, left out for every other team. */
 /** What an open catch refuses with catch_pending, by message (anti-ai-cheating.md): every move on the accused turn. */
 const CATCH_FROZEN = new Set<ClientMessage["type"]>(["HOST_JUDGE", "TEAM_SUBMIT_TEXT", "TEAM_LOCK_OPTION", "TEAM_USE_ABILITY", "TEAM_DRINK_POTION", "TEAM_ORACLE", "TEAM_CATCH", "HOST_NEXT", "HOST_STEP"]);
 /** The owl's line when the host switches 抓包與神諭 on. */
 export const ANTI_CHEAT_ON_LINE = "🚨 有人在問 AI！每隊可以公開問一次神諭，答對獎勵減半；偷用被抓，這題沒分還要換題，分數給檢舉的隊伍！";
 
+/** A chef's share of a reveal's points, left out for every other team. */
 const chefOf = (o: { chefBonus?: number }) => (o.chefBonus ? { chefBonus: o.chefBonus } : {});
 /** Names a reader can't tell apart (full-width vs half-width, case) count as one team name. */
 const sameTeamName = (a: string, b: string) => a.normalize("NFKC").toLowerCase() === b.normalize("NFKC").toLowerCase();
@@ -909,7 +920,7 @@ export class DungeonRoom {
       return "discarded";
     }
     this.roomEpoch = s.roomEpoch;
-    this.game = s.game && { ...s.game, pendingWrong: restoredPendingWrong(s.game) };
+    this.game = s.game && restoredCatch({ ...s.game, pendingWrong: restoredPendingWrong(s.game) });
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
     this.lateTeams = s.lateTeams ?? [];
@@ -1089,7 +1100,8 @@ export class DungeonRoom {
    * catch may land then; the oracle may not). */
   private antiCheatWindow(typed: boolean): boolean {
     const game = this.game;
-    if (game?.phase !== "playing" || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || this.awaitingCheck() || isBuzzPhase(game)) return false;
+    // A natural 20 restored after a restart (lostCrit) is about to judge the turn: not while it waits.
+    if (game?.phase !== "playing" || this.paused() || this.lostCrit || this.pendingLock || this.pendingRoll || game.pendingWrong || this.awaitingCheck() || isBuzzPhase(game)) return false;
     const teamId = currentTurnTeamId(game);
     if (!teamId || !this.currentQuestion()) return false;
     return typed || game.teams.find((t) => t.id === teamId)?.typedAnswer === undefined;
@@ -2812,8 +2824,11 @@ export class DungeonRoom {
         const n = live.get(t.id);
         // A tap is kept only on the question it was made on.
         const tapped = t.id !== teamId && currentQuestionIdOf(undo.prev, t.id) === currentQuestionIdOf(now, t.id);
-        return !n ? t : { ...t, online: n.online, ...(tapped ? { currentSelection: n.currentSelection } : {}) };
+        // 抓包與神諭 uses and an oracle asked since are not moves either (anti-ai-cheating.md): kept.
+        const ac = n?.catchesLeft !== undefined ? { oracleLeft: n.oracleLeft, catchesLeft: n.catchesLeft, oracleQ: n.oracleQ, oracles: n.oracles } : {};
+        return !n ? t : { ...t, online: n.online, ...ac, ...(tapped ? { currentSelection: n.currentSelection } : {}) };
       }),
+      ...(now.antiCheat ? { antiCheat: now.antiCheat } : {}),
     };
     this.undo = null;
     // A music question with fields is not made all right at one press (multi-field.md E2): the game goes back to before
@@ -2927,8 +2942,8 @@ export class DungeonRoom {
     if (this.lostCrit) this.applyLostCrit();
   }
 
-  /** `fields`: a correct answer's per-field verdicts on a music question (multi-field.md F6); absent, every field is right. */
-  /** `caught`: 🚨 成立 (anti-ai-cheating.md): upholdCatch instead of the answer, with the answer revealed and its own line. */
+  /** `fields`: a correct answer's per-field verdicts on a music question (multi-field.md F6); absent, every field is right.
+   * `caught`: 🚨 成立 (anti-ai-cheating.md): upholdCatch instead of the answer, with the answer revealed and its own line. */
   private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: FleeChoice, roll?: { kind: "warrior" | "crit"; value: number }, killDice?: number[], fields?: boolean[], caught?: { by: string }) {
     const prev = this.game;
     if (!prev) return;
@@ -3837,16 +3852,19 @@ export class DungeonRoom {
     this.broadcastState();
   }
 
-  /** 🧪 給藥水 (lucky-potion.md D3, E4): any team, any time of the game, one potion at a time. The owl says so (D7). */
   /** 🚨 開啟抓包與神諭 (anti-ai-cheating.md): on, the TV's banner (onCount) and the owl's rules line; off, an open catch is
-   * called off and refunded. Not a move, but not keepUndoOpen either: a refund is a change 改判答對 would undo. */
+   * called off and refunded. Switching it keeps 改判答對 open (the undo carries the switch), except a refund, which is a
+   * change 改判答對 would undo. */
   private handleHostAntiCheat(conn: Conn, on: boolean) {
     if (!this.requireHost(conn)) return;
     if (this.game?.phase !== "playing") return void this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
     const prev = this.game;
-    this.game = setAntiCheat(prev, on);
-    if (this.game === prev) return;
-    if (prev.antiCheat?.openCatch) this.undo = null;
+    const next = setAntiCheat(prev, on);
+    if (next === prev) return;
+    if (prev.antiCheat?.openCatch) {
+      this.game = next;
+      this.undo = null;
+    } else this.keepUndoOpen(next);
     if (on) this.appendLine(this.eventSeq, ANTI_CHEAT_ON_LINE);
     console.log(JSON.stringify({ event: "anti_cheat", on }));
     this.broadcastState();
@@ -3900,13 +3918,20 @@ export class DungeonRoom {
       }
       return;
     }
-    const { game, potion } = dismissCatch(this.game!);
+    let ruled: ReturnType<typeof dismissCatch>;
+    try {
+      ruled = dismissCatch(this.game!);
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    const { game, potion } = ruled;
     this.game = game;
     const name = (id: string) => game.teams.find((t) => t.id === id)?.name ?? "";
     this.appendLine(this.eventSeq, `🛡️ ${name(c.teamId)}是冤枉的！${name(c.by)}扣 ${CATCH_PAY.falseReport} 分，${name(c.teamId)}${potion ? "拿到一瓶幸運藥水" : `加 ${CATCH_PAY.wronged} 分`}，繼續作答！`);
     this.broadcastState();
   }
 
+  /** 🧪 給藥水 (lucky-potion.md D3, E4): any team, any time of the game, one potion at a time. The owl says so (D7). */
   private handleHostGiveItem(conn: Conn, teamId: string) {
     if (!this.requireHost(conn)) return;
     if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });

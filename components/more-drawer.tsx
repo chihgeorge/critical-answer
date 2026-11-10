@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { getHostToken } from "@/lib/room-code";
 import type { ClientMessage } from "@/lib/protocol";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
+import { CATCH_USES, ORACLE_USES } from "@/lib/game-state";
 import { Panel, PixelButton } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 
@@ -77,7 +78,7 @@ export function MoreDrawer({
           )}
           {antiCheat !== undefined && (
             <section className="flex flex-col gap-2">
-              <div className="text-[15px]">發現有人用手機問 AI？打開後每隊可以公開問一次神諭（答對減半），也可以抓包別隊兩次，由你裁決。關掉時還沒裁決的抓包取消、退回次數。</div>
+              <div className="text-[15px]">發現有人用手機問 AI？打開後每隊可以公開問 {ORACLE_USES} 次神諭（答對減半），也可以抓包別隊 {CATCH_USES} 次，由你裁決。關掉時還沒裁決的抓包取消、退回次數。</div>
               <PixelButton
                 data-testid="anti-cheat-switch"
                 role="switch"

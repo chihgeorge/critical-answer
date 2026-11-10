@@ -380,13 +380,13 @@ export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一首再搶一次！", "
 /** The last team still in dropped instead, so nobody answered wrong: the same song reopens to all (M1). */
 export const BUZZ_REOPEN_LINE = "最後一隊斷線了！同一首再搶一次！";
 
-/** 逃跑・換房: the team ran from {monster} into {to}, its new monster in the same room. */
 /** 🚨 成立 (anti-ai-cheating.md): {team} was caught asking an AI by {caught}. */
 export const CAUGHT_VARIANTS = [
   "🚨 抓包成立！{team}偷問 AI 被{caught}逮個正著，這題不算，換一題重來！",
   "🚨 主持人判定成立！{team}這題沒分還被趕去換題，{caught}拿走賞金！",
   "🚨 {caught}眼睛真利！{team}被抓到偷問 AI，這題作廢，換一題！",
 ];
+/** 逃跑・換房: the team ran from {monster} into {to}, its new monster in the same room. */
 export const FLEE_SWITCH_VARIANTS = [
   "{team}逃進隔壁房，迎面是{to}！",
   "{team}甩開{monster}，撞上了{to}。",

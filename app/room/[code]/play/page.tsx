@@ -10,7 +10,7 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
-import { ABILITY_USES, CHEF_BONUS_PERCENT, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
+import { ABILITY_USES, CATCH_PAY, CHEF_BONUS_PERCENT, ORACLE_USES, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { sprintSeen } from "@/lib/transitions";
@@ -671,7 +671,7 @@ function AntiCheatPanel({ game, teamId, isMyTurn, send }: { game: StateMessage; 
     if (!me.oracleLeft || me.typedAnswer !== null) return null;
     return (
       <PixelButton data-testid="use-oracle" className="!m-0 mt-2 flex !min-h-[56px] flex-col !text-[20px]" style={{ background: "#c9b3ff" }} onClick={() => send({ type: "TEAM_ORACLE", questionId: q.id })}>
-        🔮 公開問神諭<small className="text-[13px]">整場 1 次・這題答對獎勵減半・這題不會被抓包</small>
+        🔮 公開問神諭<small className="text-[13px]">整場 {ORACLE_USES} 次・這題答對獎勵減半・這題不會被抓包</small>
       </PixelButton>
     );
   }
@@ -685,7 +685,7 @@ function AntiCheatPanel({ game, teamId, isMyTurn, send }: { game: StateMessage; 
       style={why ? { background: "var(--cream2)", color: "var(--dim-ink)", cursor: "default" } : { background: "var(--danger)", color: "#fff" }}
       onClick={() => !why && send({ type: "TEAM_CATCH", questionId: q.id })}
     >
-      🚨 抓包！{accused.name}在問 AI<small className="text-[13px]">{why ?? `剩 ${me.catchesLeft} 次・成立 +15，冤枉 −10`}</small>
+      🚨 抓包！{accused.name}在問 AI<small className="text-[13px]">{why ?? `剩 ${me.catchesLeft} 次・成立 +${CATCH_PAY.bounty}，冤枉 −${CATCH_PAY.falseReport}`}</small>
     </PixelButton>
   );
 }

@@ -257,3 +257,62 @@ describe("the rulings", () => {
     expect(g.state().view.antiCheat.openCatch).toMatchObject({ by: C, teamId: A, questionId: q });
   });
 });
+
+describe("review follow-ups", () => {
+  const lines = (g: ReturnType<typeof started>) => g.all().filter((m) => m.type === "NARRATION").flatMap((m) => m.lines as string[]).join("\n");
+
+  it("the owl reads the rules at switch-on, the catch line on 成立 (never a plain flee), and the 冤枉 line", async () => {
+    const g = started();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(lines(g)).toContain("有人在問 AI");
+    g.catchBy(1);
+    g.rule(true);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(lines(g)).toMatch(/🚨[^\n]*甲隊|甲隊[^\n]*🚨/);
+    send(g.room, g.host, { type: "HOST_NEXT", eventId: g.state().eventId });
+    await vi.advanceTimersByTimeAsync(5_000);
+    g.catchBy(2);
+    expect(g.state().view.antiCheat.openCatch).toMatchObject({ by: C, teamId: B });
+    g.rule(false);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(lines(g)).toContain("🛡️ 乙隊是冤枉的");
+  });
+
+  it("refuses a catch while a restored natural 20 waits to judge the turn", () => {
+    const g = started();
+    (g.room as unknown as { lostCrit: object }).lostCrit = { teamId: A, questionId: g.qid() };
+    g.catchBy(1);
+    expect(g.lastTo(g.phones[1])).toMatchObject({ detail: "not_now" });
+  });
+
+  it("改判答對 keeps an oracle asked since, and switching on keeps 改判答對 open", () => {
+    const g = started({ qs: TEXTS, off: true });
+    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
+    vi.advanceTimersByTime(2000);
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: "t1", correct: false, fleeChoice: "retry", eventId: g.state().eventId });
+    vi.advanceTimersByTime(10_000);
+    send(g.room, g.host, { type: "HOST_ANTI_CHEAT", on: true });
+    expect(g.state().undoWrong).toMatchObject({ teamId: A, questionId: "t1" });
+    send(g.room, g.phones[1], { type: "TEAM_ROLL_CHECK", questionId: "t2", eventId: g.state().eventId });
+    vi.advanceTimersByTime(2000);
+    send(g.room, g.phones[1], { type: "TEAM_ORACLE", questionId: "t2" });
+    expect(g.state().view.teams[1]).toMatchObject({ oracle: true, oracleLeft: 0 });
+    send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: A, questionId: "t1", eventId: g.state().eventId });
+    expect(g.state().view.antiCheat).toMatchObject({ on: true });
+    expect(g.room.game!.teams[1]).toMatchObject({ oracleLeft: 0, oracleQ: "t2" });
+  });
+
+  it("a restart drops a saved catch whose question is no longer the accused's, refunding the reporter", async () => {
+    const storage = memoryStorage();
+    const g = started({ storage });
+    g.catchBy(1);
+    const saved = (await storage.get("room")) as { game: { antiCheat: { openCatch: { questionId: string } } } };
+    saved.game.antiCheat.openCatch.questionId = "gone";
+    storage.put("room", saved);
+    const io = { broadcast: vi.fn(), storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
+    const second = new DungeonRoom(io, () => 0, { bank: bank(MCS), epilogueDelayMs: 0 });
+    expect(await second.restore()).toBe("restored");
+    expect(second.game!.antiCheat!.openCatch).toBeUndefined();
+    expect(second.game!.teams[1].catchesLeft).toBe(2);
+  });
+});

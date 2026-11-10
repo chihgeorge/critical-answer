@@ -1385,8 +1385,9 @@ export default function ScreenPage() {
             }
             const c = antiCheatBanner(cheatSeen.current, msg.view);
             cheatSeen.current = c.seen;
-            // A door, boss or sprint banner in the same STATE wins; the catch stays on screen in its own line anyway.
-            if (c.play && !t.play && !queuedBoss.current) {
+            // A door, boss or sprint banner wins (a sprint still showing too), and the intro pages are never covered; the
+            // catch stays on screen in its own line anyway.
+            if (c.play && !t.play && !queuedBoss.current && !sprintShowing.current && !msg.intro) {
               setTransition(c.play);
               bgm.current?.playCue(BOSS_ALARM);
             }
