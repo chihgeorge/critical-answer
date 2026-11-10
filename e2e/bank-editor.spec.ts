@@ -607,6 +607,44 @@ test("image authoring: a server-rejected upload (bad file type) shows an inline 
   await expect(firstRow.getByText(/Unsupported image type/i)).toBeVisible();
   await expect(firstRow.getByText(/已上傳/)).toHaveCount(0); // the value is still empty
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0); // this is a row-local error, not the page-level save error
+  await expect(page.getByRole("button", { name: "儲存全部變更" })).toBeEnabled(); // a failed upload never leaves save locked
+});
+
+// Value: protects=an upload landing after a load or during a save can't write into the wrong bank or lose its image;
+// lock=載入題庫 and 儲存全部變更 stay disabled until the upload lands, other fields stay editable.
+test("an image upload in flight locks load and save until it lands", async ({ page, request }) => {
+  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const loaded = await request.get("http://localhost:1996/api/bank", { headers });
+  const { bank, version } = await loaded.json();
+  bank.pools["1"][0] = { kind: "text", id: bank.pools["1"][0].id, content: { kind: "text", value: "重設用題目" }, answer: "重設用答案" };
+  expect((await request.put("http://localhost:1996/api/bank", { headers, data: { bank, version } })).ok()).toBe(true);
+
+  autoAcceptConfirms(page);
+  await page.goto("/bank-editor");
+  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  const room0 = page.getByTestId("bank-pool-1");
+  await expect(room0).toBeVisible();
+  const firstRow = rows(room0).first();
+  await firstRow.getByRole("button", { name: "題目：圖片" }).click();
+
+  let release = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  await page.route("**/api/bank/image", async (route) => {
+    await held;
+    await route.continue();
+  });
+  await firstRow.getByLabel("上傳題目圖片").setInputFiles({ name: "held.png", mimeType: "image/png", buffer: TINY_PNG });
+  const locked = page.getByRole("button", { name: "圖片上傳中…" });
+  await expect(locked).toHaveCount(2);
+  await expect(locked.first()).toBeDisabled();
+  await expect(locked.last()).toBeDisabled();
+  await expect(rows(room0).nth(1).getByLabel("題型")).toBeEnabled();
+
+  release();
+  await expect(firstRow.getByText(/已上傳/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "儲存全部變更" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "載入題庫" })).toBeEnabled();
 });
 
 test("YouTube authoring: pasting a full watch URL extracts and stores just the video id", async ({ page }) => {

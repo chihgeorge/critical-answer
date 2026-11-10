@@ -323,6 +323,9 @@ export default function BankEditorPage() {
       if (!res.ok) throw new Error(await res.text());
       const { key } = (await res.json()) as { key: string };
       return key;
+    } catch (err) {
+      // A timed-out fetch rejects with the browser's own English text.
+      throw err instanceof DOMException && err.name === "TimeoutError" ? new Error("上傳逾時，請再試一次") : err;
     } finally {
       setUploads((n) => n - 1);
     }

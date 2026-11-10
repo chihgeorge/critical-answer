@@ -3,8 +3,9 @@
 
 /** A load that hangs gives up after this long, so 載入中… and the locked fields don't stay forever. */
 export const BANK_LOAD_TIMEOUT_MS = 15_000;
-/** An image upload (up to 5 MB) gives up after this long, so a hung one doesn't block 儲存 forever. */
-export const IMAGE_UPLOAD_TIMEOUT_MS = 60_000;
+/** An image upload gives up after this long, so a hung one doesn't block 儲存 forever. Long enough for a 5 MB image
+ * on slow Wi-Fi (about 0.35 Mbps). */
+export const IMAGE_UPLOAD_TIMEOUT_MS = 120_000;
 
 /**
  * Every in-flight request ends in setBank: a load or a save with the server's bank, an upload with its new image
