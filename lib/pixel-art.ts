@@ -1939,7 +1939,7 @@ const THEME = {
   crimson: { b: ["#7a3560", "#86406c", "#6b2c54"], m: "#3c1530", hi: "#a85a8a", f: ["#a0507e", "#8e426e"], fm: "#3a1230", arch: "#1a0716", rim: "#c07aa4" },
 } as const;
 
-/** 岔路's two doorways (branch-fork.md), in scene pixels on the 160x90 scene: each centre this far from the middle, sized
+/** 叉路's two doorways (branch-fork.md), in scene pixels on the 160x90 scene: each centre this far from the middle, sized
  * so the 20x26 door sprite sits inside one with a pixel to spare. The screen lays the doors on the same numbers. */
 export const FORK_ARCH = { dx: 24, w: 20, h: 26 } as const;
 /** The floor line of a scene `H` pixels tall: walls above, tiles below. */

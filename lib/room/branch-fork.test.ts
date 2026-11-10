@@ -1,4 +1,4 @@
-// 岔路 in the room (docs/designs/branch-fork.md): the roll after a correct answer, the door clock that starts on the
+// 叉路 in the room (docs/designs/branch-fork.md): the roll after a correct answer, the door clock that starts on the
 // team's turn, ⚔️ / ❓ / timeout, the door opening (forkBeat) and what STATE shows meanwhile, and a restart.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { DungeonRoom, FORK_BEAT_MS } from "./dungeon-room";
@@ -87,7 +87,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("岔路 in the room", () => {
+describe("叉路 in the room", () => {
   // Value: protects=a fork waits for its team's turn and hides everything behind the doors; fails_when=the fork draws
   // an event early, the clock starts under a reveal, or the question leaks; no_claim=which event is drawn.
   it("a correct answer brings the fork team to a fork: waiting, no clock, nothing drawn; its clock starts on its turn after 下一題", async () => {
@@ -120,7 +120,7 @@ describe("岔路 in the room", () => {
     expect(st.answerClock).toBeUndefined();
     // The line before the turn is the neutral door line: no monster, no scene.
     await vi.advanceTimersByTimeAsync(10);
-    expect(narrations(room).at(-1).lines.join("")).toMatch(/兩扇門|岔路|兩條/);
+    expect(narrations(room).at(-1).lines.join("")).toMatch(/兩扇門|叉路|兩條/);
   });
 
   it("a team at a fork cannot answer, lock, roll, drink or use an ability; the host cannot judge it", () => {

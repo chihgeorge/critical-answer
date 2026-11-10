@@ -624,7 +624,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
   );
 }
 
-/** 岔路 on the big screen (branch-fork.md): the middle arch is bricked up and a door stands in each of two doorways, 左門
+/** 叉路 on the big screen (branch-fork.md): the middle arch is bricked up and a door stands in each of two doorways, 左門
  * and 右門, nothing behind either told. Once a side is picked (forkBeat) its door swings open and names what was behind it;
  * the other dims and stays unnamed. A timeout is marked ⏳ first. */
 function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: SpectatorView; beat?: StateMessage["forkBeat"]; left?: number; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
@@ -675,7 +675,7 @@ function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: Sp
         className="absolute"
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         loading={isPending(eventId, narration)}
-        lines={narration ? narration.lines : [`${name}走到了岔路口……`]}
+        lines={narration ? narration.lines : [`${name}走到了叉路口……`]}
         {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
       />
     </>

@@ -60,6 +60,8 @@ export default function HostPage() {
   const [bankSize, setBankSize] = useState<BankSize | null>(null);
   const sizeWarning = bankSize && bankSizeWarning(bankSize, lobby.length);
   const [game, setGame] = useState<StateMessage | null>(null);
+  /** 手動停頓 (docs/designs/manual-pacing.md): the room's switch, as its last LOBBY or STATE said. */
+  const [manual, setManual] = useState(false);
   /** 每題作答倒數 for the next game (answer-countdown.md D2): this page's pick, so a replay keeps it. */
   const [answerSeconds, setAnswerSeconds] = useState<number>(DEFAULT_ANSWER_SECONDS);
   const [error, setError] = useState<string | null>(null);
@@ -205,6 +207,7 @@ export default function HostPage() {
           setTimeout(() => dropHandoff(msg.teamId, msg.code), HANDOFF_MS);
           break;
         case "LOBBY":
+          setManual(msg.pacing === "manual");
           setLobby(msg.teams);
           setReplay(!!msg.replay);
           setBankSize(msg.bankSize ?? null);
@@ -218,6 +221,7 @@ export default function HostPage() {
           setAnswer(null);
           break;
         case "STATE":
+          setManual(msg.pacing === "manual");
           setGame(msg);
           setPendingTeamId(null);
           break;
@@ -309,7 +313,9 @@ export default function HostPage() {
   // A dish reveal takes 🍲 上菜 first (monster-cuisine.md cooking R5); serving swaps it for 上菜中… then 下一題.
   const toServe = game?.phase === "playing" && !!game.reveal?.dish && !game.reveal.served;
   const servedUp = !!game?.reveal?.served;
-  const pauseKey = game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.forkBeat ? `fork-${game.eventId}` : game?.eventReveal ? `event-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : buzz?.teamId ? `buzz-${buzz.teamId}-${game!.eventId}` : "";
+  // A manual room's hold (manual-pacing.md) is one more: ▶ 下一步 takes the slot, and each new hold arms it again.
+  const hold = game?.hold;
+  const pauseKey = hold ? `hold-${hold.id}` : game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.forkBeat ? `fork-${game.eventId}` : game?.eventReveal ? `event-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : buzz?.teamId ? `buzz-${buzz.teamId}-${game!.eventId}` : "";
   const [armedFor, setArmedFor] = useState(pauseKey);
   const swapArmed = armedFor === pauseKey;
   const [serveLeft, setServeLeft] = useState({ key: "", left: 0 });
@@ -379,7 +385,10 @@ export default function HostPage() {
     return () => clearTimeout(t);
   }, [stuckKey]);
   const stuck = !!stuckKey && stuckShownFor === stuckKey;
-  // 岔路 (branch-fork.md D3): the host only watches; the room's own 15 s clock sends a team that never picks into ⚔️.
+  // 叉路 (branch-fork.md D3): the host only watches; in auto the room's own 15 s clock sends a team that never picks into ⚔️, in manual the host's ▶ 下一步 does.
+  // An answer or a card on show keeps its 下一題: the hold's ▶ 下一步 takes over once it is gone. A finished game has
+  // no 下一題 (the kill's answer stays up), so the podium's hold always shows.
+  const holdUp = !!hold && (!revealUp || game?.phase === "finished");
   const atFork = !revealUp && !game?.phaseCardDue && (!!game?.forkBeat || turn?.team?.fork === "choosing");
 
   // Keyboard shortcuts for a host on a laptop (lib/host-keys.ts): each key does exactly what its
@@ -417,6 +426,8 @@ export default function HostPage() {
         lockWaiting,
       );
       if (!action || !game) return;
+      // A manual hold has ▶ 下一步 on key 1 (the effect below); only 改判答對, whose button stays up, keeps its key.
+      if (holdUp && action !== "undo") return;
       // A music question with fields is judged field by field on screen only (multi-field.md D4): no judge key.
       if (game.question?.fields && !revealUp && action !== "next" && action !== "reveal" && action !== "undo") return;
       if (action === "undo") {
@@ -442,7 +453,35 @@ export default function HostPage() {
     return () => window.removeEventListener("keydown", onKey);
     // judge/send are plain functions over state this effect already depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, ready, swapArmed, canJudge, canUndo, turn, isMc, stuck, picking, drawer, revealUp, cleric, held, lock, lockWaiting]);
+  }, [game, ready, swapArmed, canJudge, canUndo, turn, isMc, stuck, picking, drawer, revealUp, cleric, held, lock, lockWaiting, holdUp]);
+
+  // ▶ 下一步 (manual-pacing.md): key 1 or Enter, like 下一題, in every phase a hold can be up (擲先攻 and the podium too).
+  const stepNow = () => game && hold && send({ type: "HOST_STEP", eventId: game.eventId, step: hold.id });
+  useEffect(() => {
+    if (!holdUp || !ready) return;
+    function onKey(e: KeyboardEvent) {
+      if (picking || drawer || !swapArmed) return;
+      if (hostKeyAction({ key: e.key, repeat: e.repeat, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, target: e.target as HTMLElement | null }, true) !== "next") return;
+      stepNow();
+      e.preventDefault();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // stepNow is a plain function over state this effect already depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holdUp, hold?.id, game?.eventId, ready, picking, drawer, swapArmed]);
+  const holdPanel = hold && (
+    <div className="mt-3 flex flex-col gap-3">
+      <div data-testid="host-hold" role="status" className="border-4 border-dashed border-[var(--k)] bg-[var(--turn)] px-3 py-2 text-left text-[var(--k)]">
+        <div className="text-[18px]">⏸ 停在這裡：{hold.label}</div>
+        <div className="text-[13px]">手動模式，按「下一步」才會繼續</div>
+      </div>
+      <PixelButton variant="ok" data-testid="host-step" disabled={!ready || !swapArmed} onClick={stepNow}>
+        {connected ? "▶ 下一步" : "重新連線中"}
+        <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
+      </PixelButton>
+    </div>
+  );
 
   // 下一題 (or 上菜) under an answer reveal or a phase card, with the revealed video's controls.
   const revealPanel = game && revealUp && (
@@ -495,13 +534,28 @@ export default function HostPage() {
       <SceneBackground theme={turn?.theme ?? "stone"} cols={48} rows={100} arch={false} className="fixed inset-0" />
 
       <div className="relative z-10 flex min-h-screen flex-col gap-3 px-[14px] pb-4 pt-5">
-        <header className="flex items-center justify-between gap-3">
+        <header className="flex items-center justify-between gap-2">
           <Panel className="px-3 py-1">
             <span className="px-num text-[18px] tracking-[0.2em]" style={{ color: "var(--danger)" }}>
               {code}
             </span>
           </Panel>
-          <PixelButton onClick={() => setDrawer(true)} className="!m-0 !px-4 !py-2 text-[16px]">
+          {/* 手動停頓 (manual-pacing.md): one tap either way, any time. */}
+          <div data-testid="host-pacing" role="group" aria-label="停頓模式" className="flex flex-none whitespace-nowrap">
+            {(["auto", "manual"] as const).map((mode) => (
+              <PixelButton
+                key={mode}
+                aria-pressed={manual === (mode === "manual")}
+                disabled={!ready}
+                onClick={() => send({ type: "HOST_PACING", mode })}
+                className="!m-0 min-h-[44px] !px-2 !py-2 text-[16px] focus-visible:z-10"
+                style={manual === (mode === "manual") ? { background: "var(--k)", color: "#fff" } : { background: "#fff" }}
+              >
+                {mode === "manual" ? "⏸ 手動" : "自動"}
+              </PixelButton>
+            ))}
+          </div>
+          <PixelButton onClick={() => setDrawer(true)} className="!m-0 min-h-[44px] whitespace-nowrap !px-3 !py-2 text-[16px]">
             ⚙ 更多
           </PixelButton>
         </header>
@@ -685,16 +739,20 @@ export default function HostPage() {
           <section data-testid="host-initiative" className="flex flex-1 flex-col gap-3">
             <Panel className="px-3 py-3 text-center">
               <span className="px-chip">擲先攻</span>
-              <div className="mt-2 text-[20px]">{game.initiative.order ? "先攻順序出爐，即將開始" : "各隊用手機擲骰，大螢幕在看"}</div>
+              <div className="mt-2 text-[20px]">{game.initiative.order ? (manual ? "先攻順序出爐" : "先攻順序出爐，即將開始") : "各隊用手機擲骰，大螢幕在看"}</div>
               <div className="mt-1 text-[15px]" style={{ color: "#6a5a7a" }}>
                 {game.initiative.order
                   ? game.initiative.order.map((id) => game.view.teams.find((t) => t.id === id)?.name ?? "").join(" → ")
-                  : `已擲 ${Object.keys(game.initiative.rolls).length}／${game.view.teams.length} 隊，${INITIATIVE_MS / 1000} 秒後沒擲的隊由系統代擲`}
+                  : `已擲 ${Object.keys(game.initiative.rolls).length}／${game.view.teams.length} 隊，${manual ? "按「下一步」替沒擲的隊代擲" : `${INITIATIVE_MS / 1000} 秒後沒擲的隊由系統代擲`}`}
               </div>
             </Panel>
-            <PixelButton variant="primary" disabled={!ready || !!game.initiative.order} className="!m-0 mt-auto min-h-[78px] text-[26px]" onClick={() => send({ type: "HOST_ROLL_INITIATIVE" })}>
-              🎲 全部代擲
-            </PixelButton>
+            {holdUp ? (
+              <div className="mt-auto">{holdPanel}</div>
+            ) : (
+              <PixelButton variant="primary" disabled={!ready || !!game.initiative.order} className="!m-0 mt-auto min-h-[78px] text-[26px]" onClick={() => send({ type: "HOST_ROLL_INITIATIVE" })}>
+                🎲 全部代擲
+              </PixelButton>
+            )}
           </section>
         )}
 
@@ -713,7 +771,7 @@ export default function HostPage() {
                   <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.team?.fork ? "🔀 岔路" : turn.monster.name}</div>
+                  <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.team?.fork ? "🔀 叉路" : turn.monster.name}</div>
                   <div data-testid="host-question" className="text-[20px] leading-snug">
                     {turn.team?.fork ? "⚔️ 怪物房，還是 ❓ 神秘房？" : game.phaseCard ? "新階段的第一題（按「下一題」後出題）" : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
                   </div>
@@ -851,7 +909,7 @@ export default function HostPage() {
                   <Sprite kind="hero" variant={i} scale={1} className="flex-none" />
                   <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
                   {t.classId && <span className="text-[13px]" title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "" : t.abilityUses}</span>}
-                  {t.fork && <span data-testid="host-team-fork" className="text-[13px]">🚪 在岔路口</span>}
+                  {t.fork && <span data-testid="host-team-fork" className="text-[13px]">🚪 在叉路口</span>}
                   {t.sneakArmed && <span className="text-[13px]" title={`偷襲準備好了：這題答對獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
@@ -896,7 +954,9 @@ export default function HostPage() {
               disabled={!ready}
               send={send}
             />
-            {turn?.team ? (
+            {holdUp ? (
+              holdPanel
+            ) : turn?.team ? (
             <>
               {!ready && connected && <div className="px-1 text-center text-[14px] text-white">等待主持人驗證…</div>}
               {revealUp ? (
@@ -912,7 +972,7 @@ export default function HostPage() {
                       <span data-testid="host-fork-beat">{game.forkBeat.timeout ? "⏳ 時間到，" : ""}大螢幕正在打開{FORK_SIDE_LABEL[game.forkBeat.side]}：{FORK_DOOR_LABEL[game.forkBeat.door]}</span>
                     ) : (
                       <>
-                        <span>{turn.team.name}在岔路口，選左門或右門</span>
+                        <span>{turn.team.name}在叉路口，選左門或右門</span>
                         {typeof game.forkLeft === "number" && <AnswerClock key={game.forkLeft} ms={game.forkLeft} variant="chip" />}
                       </>
                     )}
@@ -1063,6 +1123,7 @@ export default function HostPage() {
                 </PixelButton>
               </div>
             )}
+            {holdUp && <div className="mt-3">{holdPanel}</div>}
             <PixelButton variant="primary" className="!mx-auto !mt-6 !block min-h-[64px] text-[22px]" disabled={!ready} onClick={() => send({ type: "HOST_BACK_TO_LOBBY" })}>
               回到大廳，再玩一場
             </PixelButton>

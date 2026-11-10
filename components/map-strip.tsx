@@ -39,7 +39,7 @@ export function MapStrip({ view }: { view: SpectatorView }) {
     const key = placeKey(t);
     const arrived = !mounted.has(key);
     return (
-      <div key={key} role="img" aria-label={`${t.name}${turn ? "（輪到）" : ""}${t.online ? "" : "（離線）"}${t.boon === "blessing" ? "（祝福）" : t.boon === "curse" ? "（詛咒）" : ""}${t.item ? "（有幸運藥水）" : ""}${t.fork ? "（在岔路口）" : ""}`} className="absolute" style={{ left: p.x, top, width: PAWN }}>
+      <div key={key} role="img" aria-label={`${t.name}${turn ? "（輪到）" : ""}${t.online ? "" : "（離線）"}${t.boon === "blessing" ? "（祝福）" : t.boon === "curse" ? "（詛咒）" : ""}${t.item ? "（有幸運藥水）" : ""}${t.fork ? "（在叉路口）" : ""}`} className="absolute" style={{ left: p.x, top, width: PAWN }}>
         {arrived && <div className="px-room-flash pointer-events-none absolute" style={{ left: box.x - p.x, top: box.top - top, width: box.w, height: box.h }} />}
         <div className={arrived ? (t.inBossPhase ? "px-charge" : "px-hop-in") : ""}>
         {turn && (

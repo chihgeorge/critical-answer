@@ -23,6 +23,19 @@ Above 「開始遊戲」 is 「開始前播放玩法說明」 (show how to play 
 
 When the initiative roll starts, the big screen first plays about 2 seconds of stone doors opening. The first time the boss room comes up, it plays about 2.5 seconds of a 「首領出現！」 (the boss appears!) alarm banner, with a siren when 🎵 music is on. The moment the first team enters the boss room (on a correct answer or sent in by the host), it also plays about 2.5 seconds of a purple 「⚔️ 魔王門開了！」 (the boss door is open!) last-sprint banner naming the blessed teams, with a fanfare when 🎵 music is on (see the [full rules](rules.en.md#progress-points-and-the-boss-room)). The question and narration underneath carry on as usual. With the computer's reduce-motion setting on, each shows one still frame instead. A big screen opened or reconnected mid-game does not replay them.
 
+## Manual pacing
+
+At the top of the host page, between the room code and 「⚙ 更多」, is the 「自動｜⏸ 手動」 (auto | manual) switch. It works at any time, in the lobby too. The default is auto: when a pause runs out, the game moves on by itself.
+
+In manual, none of the pauses below ends by itself. The host page shows a dashed panel, 「⏸ 停在這裡：接下來是……」 (held here: next is ...), and the game goes on only when the host presses 「▶ 下一步」 (next step; keyboard `1` or Enter):
+
+- Initiative roll: no countdown while the teams roll, and 「下一步」 rolls for the teams that have not; once the order is up, one more press brings the first question.
+- The reveal after 「公布答案」, the crit die, the persuasion check, the warrior's die and the kill dice, a boss miss, and the boss's phase card.
+- A fork: no countdown, the team picks in its own time. 「下一步」 is the same as time running out and opens the monster room's door. Once the door is open, one more press enters the room.
+- The podium after the game: 「下一步」 starts the reveal. Once started it plays to the end, and the host turns the epilogue's pages as before.
+
+The answer countdown is not affected: it still counts in manual. On a switch back to auto, the held step runs its usual time again from the start (a fork counts a fresh 15 seconds). The mode is saved with the room and survives a server restart. Design in [docs/designs/manual-pacing.md](designs/manual-pacing.md).
+
 ## The big screen
 
 **Live map**: during the game, the top of the big screen is a dungeon map strip (it replaces the old team cards). Each team is a small token marked with the first character of its name, and moves into the next room on a correct answer; after the leading team there is fog, so you cannot see how many rooms are left. The boss room starts as a closed door; it opens when the first team goes in, showing the boss and its health bar. The token of the team whose turn it is has a ▼ above it; offline teams show 「zz」, and a team holding a blessing or a curse has a ✨ or 💀 on its tag's top-right corner. The map shows no scores. Design in [docs/designs/live-map.md](designs/live-map.md).

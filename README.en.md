@@ -91,7 +91,7 @@ For the full rules, every number and every exception, see the [full rules](docs/
 | Doc | Contents |
 | --- | --- |
 | [Full rules](docs/rules.en.md) | Judging, multiple choice, sort questions, persuasion checks, the boss, scoring, classes, monsters into dishes |
-| [Hosting guide](docs/hosting.en.md) | Opening a room, how-to-play intro, big screen, AI narration, when things go wrong, known limits |
+| [Hosting guide](docs/hosting.en.md) | Opening a room, how-to-play intro, manual pacing, big screen, AI narration, when things go wrong, known limits |
 | [Deployment guide](docs/deployment.en.md) | First deployment, settings overview, keys, R2, deployment order |
 | [Question bank guide](docs/question-bank.en.md) | Default question bank, question bank editor, how to recover when the bank is stuck |
 | [Development guide](docs/development.en.md) | Tech stack, commands, tests, versions and releases, project structure |

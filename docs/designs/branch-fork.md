@@ -1,4 +1,4 @@
-# Design: 岔路 (a fork: ⚔️ monster room or ❓ mystery room)
+# Design: 叉路 (a fork: ⚔️ monster room or ❓ mystery room)
 
 Planned with /autoplan on 2026-11-09 (CEO, design, eng and DX reviews; plan and reviews local-only under
 `~/.gstack/projects/chihgeorge-critical-answer/captain/branch-fork-*`).
@@ -16,7 +16,7 @@ between two doors and lives with the result.
 - **Trigger unchanged.** Where an event room used to be drawn (a correct answer into a new room, `EVENT_CHANCE` 25%,
   never into the boss room or the last room, never out of a mystery room), the team now comes to a fork. A room the team
   took ⚔️ into draws nothing when it walks out (`Team.fork = { phase: "monster" }`), so two forks are always a room apart.
-- **When the team chooses.** The draw only marks the team (`{ phase: "waiting" }`, 🚪 on the map, 「🚪 在岔路口」 on the
+- **When the team chooses.** The draw only marks the team (`{ phase: "waiting" }`, 🚪 on the map, 「🚪 在叉路口」 on the
   host page). Its next turn opens with the choice (`{ phase: "choosing", deadline }`), and only once the room is not paused
   (a reveal, an event result, a phase card, the intro), the same rule as the answer countdown. Other teams never wait.
 - **Two unmarked doors, sides drawn by the room** (owner, 2026-11-09, replacing the first labelled doors). The big
@@ -40,7 +40,7 @@ between two doors and lives with the result.
   ⚔️'s line is appended to this narration.
 - **The title reads 「🔀 叉路！」.** Cubic 11's 11-pixel 「岔」 squeezes 山 into one stroke and reads as a different
   character, so the big-screen title and the phone's fork header use the synonym 「叉路」, which the pixel font draws
-  clearly. The feature, the rules and the host page still call it 岔路.
+  clearly. Every other text (rules, host page, narration) followed in manual-pacing.md: 「叉」 everywhere.
 - **15 seconds, server clock** (`FORK_MS`). The deadline is an absolute time saved with the room; a restart re-arms it,
   and a deadline already past takes ⚔️ at once. A press at or after the deadline counts as a timeout. A team that drops
   while choosing keeps the turn (the `currentTurnTeamId` exception, like a pending wrong answer); a team already offline
@@ -78,7 +78,7 @@ between two doors and lives with the result.
 - `lib/game-state.ts`: `Fork`, `ForkDoor`, `ForkSide`, `ForkChoice` (a side or `timeout`), `ForkRecord`, `FORK_MS`, `atFork`, `enterFork`, `startForkChoice`, `chooseFork`.
   `atFork` guards `answerQuestion`, `assertCurrentQuestion`, `assertAbilityTurn` and `drinkPotion` (`InvalidActionError("fork")`).
 - `lib/room/dungeon-room.ts`: `syncFork()` runs at the start of every broadcast and after a restore: it moves the team on
-  turn from waiting to choosing when the room is live, and arms `forkTimer`. `TEAM_CHOOSE_FORK { side, eventId }` and the
+  turn from waiting to choosing when the room is live, and arms the fork step (`armFork`). `TEAM_CHOOSE_FORK { side, eventId }` and the
   timer both go through `applyForkChoice`; one `endForkBeat` ends every opening. Both timers check that their state is still
   current (`deadline`, `this.forkBeat === beat`), and `clearAnswerTimers` (reset, end game, back to lobby, expiry) clears
   them with `forkBeat`. An opening holds 撤銷答錯 too (`undoHeld`).

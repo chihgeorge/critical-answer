@@ -32,8 +32,7 @@ const HOST_KEY = "sk-ant-test-HOSTKEY-0123456789abcdefWXYZ";
 function landKill(room: DungeonRoom) {
   const r = room as any;
   if (r.pendingRoll?.kind !== "kill") return;
-  clearTimeout(r.lockTimer);
-  r.resolveRoll();
+  r.resolveRoll(); // drops the beat's own timer
 }
 
 function makeConn(id = "conn-1") {
@@ -1576,7 +1575,7 @@ describe("TEAM_SELECT_OPTION", () => {
     });
 
     // Value: protects=a boss miss the host settles inside its red-tile beat leaves no stale timer that makes the next lock
-    // read as revealing and refuse 公布答案 forever (/review, 2026-11-05); fails_when=revealing is derived from lockTimer again
+    // read as revealing and refuse 公布答案 forever (/review, 2026-11-05); fails_when=revealing is derived from the lock step again
     it("after the host settles a boss miss early, the next lock still waits for 公布答案 and is judged", () => {
       vi.useFakeTimers();
       const { room, hostConn, ids, conns } = startedMcGame(1);
@@ -1825,7 +1824,7 @@ describe("TEAM_SELECT_OPTION", () => {
       pick(room, conns[0], 1);
       lock(room, conns[0]);
       await (room as any).expire();
-      expect((room as any).lockTimer).toBeNull();
+      expect((room as any).steps.size).toBe(0);
       expect(room.game).toBeNull();
       vi.advanceTimersByTime(2000);
       expect(room.game).toBeNull();

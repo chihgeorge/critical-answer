@@ -177,7 +177,7 @@ export interface Team {
   /** The event behind the ❓ door, only inside chooseFork: drawn on the press and opened at once (docs/designs/branch-fork.md).
    * A save from before the fork has one standing; parseSnapshot turns it into a fork. */
   event?: RoomEvent;
-  /** 岔路 (docs/designs/branch-fork.md): at a fork, choosing its door, or in the room it chose ⚔️ for. Absent otherwise. */
+  /** 叉路 (docs/designs/branch-fork.md): at a fork, choosing its door, or in the room it chose ⚔️ for. Absent otherwise. */
   fork?: Fork;
   /** Every door this team took at a fork, in order, for lib/game-log.ts. Absent until the first. */
   forks?: ForkRecord[];
@@ -1315,7 +1315,7 @@ export function applySprint(prev: GameState, next: GameState): GameState {
 
 /* ---------- Event rooms (docs/designs/event-rooms.md) ---------- */
 
-/** The chance that a correct answer brings a team to a 岔路, whose ❓ door holds an event (D5, branch-fork.md). */
+/** The chance that a correct answer brings a team to a 叉路, whose ❓ door holds an event (D5, branch-fork.md). */
 export const EVENT_CHANCE = 0.25;
 /** What stands on stage. A chest hides a feast or a rotten dish; the fortune teller draws 大吉, 中吉 or 凶. */
 export type EventScene = "chest" | "spring" | "idol" | "fairy" | "fortune";
@@ -1380,7 +1380,7 @@ export function eventEligible(game: GameState, outcome: AnswerOutcome): boolean 
   return outcome.type === "correct-room-advance" && !outcome.entersBoss && outcome.nextRoomIndex < game.rooms.length - 1;
 }
 
-/* ---------- 岔路 (docs/designs/branch-fork.md) ---------- */
+/* ---------- 叉路 (docs/designs/branch-fork.md) ---------- */
 
 /** waiting: at the fork, its turn not come yet (no clock). choosing: its turn, until `deadline` (ms epoch, the room's
  * clock), with the ⚔️ door on `monsterSide` (drawn by the room, never sent to any screen). monster: it took ⚔️ (or timed
@@ -1660,7 +1660,7 @@ export interface SpectatorView {
     mayPray?: true;
     /** The class bonus and DC this team's persuasion check rolls with on its current question (checkTarget). */
     checkTarget?: { bonus: number; dc: number };
-    /** 岔路 (branch-fork.md): at a fork waiting for its turn, or choosing its door now. Never what is behind a door. */
+    /** 叉路 (branch-fork.md): at a fork waiting for its turn, or choosing its door now. Never what is behind a door. */
     fork?: "waiting" | "choosing";
     boon?: Boon;
     /** The item the team holds; whether it is drunk for the question this turn (potionArmed); the question it was last

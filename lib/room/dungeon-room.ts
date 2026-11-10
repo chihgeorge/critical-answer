@@ -85,6 +85,8 @@ import {
   REACT_JITTER_MS,
   REACT_ROOM_MAX,
   type Reaction,
+  type Hold,
+  type Pacing,
 } from "../protocol";
 import { epiloguePages, revealBeats, revealCalls } from "../podium";
 import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
@@ -113,6 +115,19 @@ const HANDOFF_MAX_WRONG = 5;
  * script needs hours for a 4-digit password. Room-wide, since a script picks a fresh connection id for free. */
 const JOIN_PASSWORD_MAX_WRONG = 10;
 const JOIN_PASSWORD_WINDOW_MS = 60_000;
+
+/** The pauses the room times itself (manual-pacing.md), in the order HOST_STEP looks for a live one. */
+const STEP_SLOTS = ["initiative", "forkBeat", "lock", "phaseCard", "fork"] as const;
+type StepSlot = (typeof STEP_SLOTS)[number];
+interface Step {
+  id: number;
+  kind: Hold["kind"];
+  ms: number;
+  /** What comes next, for the host; null once the step is stale. */
+  label: () => string | null;
+  run: () => void;
+  timer: ReturnType<typeof setTimeout> | null;
+}
 /** Long enough for a pizza break, short enough that a TV left on overnight is not billed all night. */
 const IDLE_MS = 2 * 60 * 60 * 1000;
 export const EXPIRE_MS = 24 * 60 * 60 * 1000;
@@ -322,14 +337,11 @@ export class DungeonRoom {
   private clipError: string | null = null;
   /** An opened event on show until 下一題 (docs/designs/event-rooms.md). Memory only, like the reveal: its effect is saved. */
   private eventReveal: EventReveal | null = null;
-  /** The fork team's door clock (branch-fork.md): runs out at its saved deadline. Memory only: restore() arms it again. */
-  private forkTimer: ReturnType<typeof setTimeout> | null = null;
   /** The door that just opened, on show for FORK_BEAT_MS. `before` is the game before the press: STATE shows it
    * meanwhile, so no score, room or turn moves before the door opens (the choice is applied and saved already).
    * `reveal`: the ❓ outcome, shown when the beat ends; `line`: ⚔️'s scripted line, said then. Memory only: a
    * restart drops the beat, and with it a ❓ outcome's screen and line (its effect stays). */
   private forkBeat: { teamId: string; side: ForkSide; door: ForkDoor; timeout: boolean; before: GameState; reveal?: EventReveal; line?: { eventId: number; text: string } } | null = null;
-  private forkBeatTimer: ReturnType<typeof setTimeout> | null = null;
   /** When the host pressed 上菜 on the reveal up now (only read while `reveal.served`). */
   private servedAt = 0;
   /** The host's last ▶ ⏸ ⟲ (docs/designs/youtube-questions.md). In memory only (D6): a restart forgets it. */
@@ -347,18 +359,16 @@ export class DungeonRoom {
   /** 擲先攻 (lib/initiative.ts), after the intro and before the first question, or null. Saved: a restart keeps the
    * rolls and starts the wait again. */
   private initiative: Initiative | null = null;
-  private initiativeTimer: ReturnType<typeof setTimeout> | null = null;
   /** This game's HOST_START asked for 擲先攻: it follows the intro. Saved, so a restart mid-intro still rolls. */
   private initiativeOn = false;
-  /** When initiativeTimer fires, for the countdown on the big screen. Memory only. */
+  /** When the initiative step fires, for the countdown on the big screen. Memory only. */
   private initiativeEndsAt = 0;
-  private phaseCardTimer: ReturnType<typeof setTimeout> | null = null;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
   /** Dice in their beat: a warrior's roll, a correct lock's crit die, a persuasion check, or the kill's 4d20 (value is
    * then the scored bonus). Memory only, like pendingLock: a restart drops it (a warrior's use stays spent; a crit team
    * locks again; a cut-off kill, with pendingKill, is lost: the team answers the final blow again, and a lost natural 20 comes back
-   * through lostCrit with fresh dice). Shares lockTimer. */
+   * through lostCrit with fresh dice). Shares the "lock" step. */
   private pendingRoll: PendingRoll | null = null;
   /** 每題作答倒數 (docs/designs/answer-countdown.md): this game's seconds (0 is off), the running count, and the last
    * question whose video clip the big screen reported ended (D4). Saved with a wall-clock deadline: a restart keeps
@@ -380,9 +390,16 @@ export class DungeonRoom {
   private undoPending: { prev: GameState; teamId: string; questionId: string } | null = null;
   /** True inside judge(): a lost natural 20 waits for it to finish rather than judging inside it. */
   private judging = false;
-  /** The beat of a revealed lock or a roll, or a boss miss's red tile. A stale one may be left behind: whether the
-   * host revealed a lock is pendingLock.revealing, never this. */
-  private lockTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 手動停頓 (docs/designs/manual-pacing.md): in "manual" the pauses below wait for the host's ▶ 下一步. Saved. */
+  private pacing: Pacing = "auto";
+  /** The pauses the room times itself, one per slot (pace): a running timer in auto, a step waiting for HOST_STEP in
+   * manual (`timer` null). "lock" is the beat of a revealed lock or a roll, or a boss miss's red tile; a stale one may
+   * be left behind (its `label` is then null): whether the host revealed a lock is pendingLock.revealing, never this.
+   * Memory only: restore() arms again whatever the saved room still waits on. */
+  private steps = new Map<StepSlot, Step>();
+  private stepSeq = 0;
+  /** A finished game's podium waits for HOST_STEP: the hold's id, or null. Saved (as revealHeld). */
+  private revealHold: number | null = null;
   private transcript: TranscriptItem[] = [];
   /** Asked of new teams at JOIN when not "" (HOST_SET_PASSWORD). Known teams rejoin with their key alone. */
   private joinPassword = "";
@@ -718,6 +735,8 @@ export class DungeonRoom {
       // minute. Capped so it never exceeds 60s even for a very long idleMs.
       lastActivityAt: this.lastActivityAt === null ? null : roundActivity(this.lastActivityAt, this.idleMs),
       phaseCard: this.phaseCard,
+      ...(this.pacing === "manual" ? { pacing: "manual" as const } : {}),
+      ...(this.revealHold !== null ? { revealHeld: true as const } : {}),
       ...(this.intro !== null ? { intro: this.intro } : {}),
       ...(this.initiative ? { initiative: this.initiative } : {}),
       ...(this.initiativeOn && this.opening() ? { initiativeOn: true as const } : {}),
@@ -789,6 +808,11 @@ export class DungeonRoom {
     const pages = this.epilogue ? epiloguePages(this.epilogue).length : 1;
     this.epiloguePage = Number.isInteger(s.epiloguePage) && s.epiloguePage! >= 0 && s.epiloguePage! < pages ? s.epiloguePage! : 0; // a damaged save shows the first page
     this.revealFrom = s.revealFrom ?? null;
+    // Before anything is armed below: a manual room's pauses come back as steps, not timers.
+    this.pacing = s.pacing ?? "auto";
+    // Ids start past any the room handed out before the restart: a HOST_STEP in flight then names no step.
+    this.stepSeq = this.now();
+    this.revealHold = s.revealHeld && this.game?.phase === "finished" ? ++this.stepSeq : null;
     this.playedQuestionIds = s.playedQuestionIds ?? [];
     this.joinPassword = s.joinPassword;
     this.editedLines = s.editedLines;
@@ -824,7 +848,8 @@ export class DungeonRoom {
     console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
     // A restart loses the beat that resolves a wrong boss lock.
     this.armBossMiss();
-    // A door clock keeps its saved deadline (time spent down counts); one already past picks ⚔️ at once.
+    // A door clock keeps its saved deadline (time spent down counts); one already past picks ⚔️ at once. In manual
+    // there is no clock: the fork waits again.
     try {
       this.armFork();
       this.syncFork();
@@ -1002,7 +1027,7 @@ export class DungeonRoom {
     if (!this.game) {
       // A game that showed a question counts as played: the host page then leaves the intro unchecked (eng D5).
       const replay = this.playedQuestionIds.length > 0;
-      return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}), bankSize: bankSize(this.bank) };
+      return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}), bankSize: bankSize(this.bank), ...this.pacingView() };
     }
     // A door opening shows the game from before the press (branch-fork.md); online is live, phones come and go meanwhile.
     const shown = this.forkBeat?.before ?? this.game;
@@ -1025,7 +1050,9 @@ export class DungeonRoom {
       question: this.phaseCard || this.opening() || this.forkBeat ? null : (this.currentQuestion()?.pub ?? null),
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
-      ...(this.game.phase === "playing" && choosing?.phase === "choosing" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
+      ...this.pacingView(),
+      // No door clock in manual: the doors wait for the team, or for the host's ▶ 下一步.
+      ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.pacing === "auto" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
       ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, side: this.forkBeat.side, door: this.forkBeat.door, ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
       ...this.liveMedia(),
       ...(this.clipError !== null && this.clipError === this.shownVideoId() ? { clipError: true as const } : {}),
@@ -1034,7 +1061,7 @@ export class DungeonRoom {
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
       ...(this.phaseCardDue ? { phaseCardDue: true as const } : {}),
       ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
-      ...(this.initiative ? { initiative: { ...this.initiative, left: Math.max(0, this.initiativeEndsAt - this.now()) } } : {}),
+      ...(this.initiative ? { initiative: { ...this.initiative, left: Math.max(0, this.initiativeEndsAt - this.now()), ...(this.pacing === "manual" && !this.initiative.order ? { untimed: true as const } : {}) } } : {}),
       ...this.syncAnswerClock(),
       ...this.bossPhaseInfo(),
       cuisine: true as const,
@@ -1056,10 +1083,108 @@ export class DungeonRoom {
     return undo ? { undoWrong: { teamId: undo.teamId, questionId: undo.questionId } } : {};
   }
 
+  /** The pacing switch and the step a manual room waits on, for the host page. Never which side hides ⚔️. */
+  private pacingView(): { pacing?: "manual"; hold?: Hold } {
+    if (this.pacing !== "manual") return {};
+    const hold = this.currentHold();
+    return { pacing: "manual", ...(hold ? { hold: { id: hold.id, kind: hold.kind, label: hold.label } } : {}) };
+  }
+
+  /** The step HOST_STEP would run now: the first live one, or the podium's. */
+  private currentHold(): (Hold & { slot: StepSlot | null }) | null {
+    for (const slot of STEP_SLOTS) {
+      const step = this.steps.get(slot);
+      const label = step?.label();
+      if (step && label) return { id: step.id, kind: step.kind, label, slot };
+    }
+    return this.revealHold !== null && this.game?.phase === "finished" ? { id: this.revealHold, kind: "podium", label: "接下來是頒獎台和尾聲", slot: null } : null;
+  }
+
+  /** Every pause the room times itself goes through here (manual-pacing.md): after `ms` in auto, at HOST_STEP in
+   * manual. `label` says what comes next, or null once the step is stale (what it waited on is gone). */
+  private pace(slot: StepSlot, kind: Hold["kind"], ms: number, label: () => string | null, run: () => void) {
+    this.unpace(slot);
+    const step: Step = { id: ++this.stepSeq, kind, ms, label, run, timer: null };
+    this.steps.set(slot, step);
+    if (this.pacing === "auto") this.startStep(slot, step);
+  }
+
+  private startStep(slot: StepSlot, step: Step) {
+    step.timer = setTimeout(() => {
+      if (this.steps.get(slot) !== step) return;
+      this.steps.delete(slot);
+      step.run();
+    }, step.ms);
+  }
+
+  private unpace(slot: StepSlot) {
+    const step = this.steps.get(slot);
+    if (step?.timer) clearTimeout(step.timer);
+    this.steps.delete(slot);
+  }
+
+  /** HOST_PACING. To manual: running timers stop where they are and wait. To auto: each waiting step runs its whole
+   * length again from now, a fork gets a fresh door clock, and a held podium starts after the usual pause. */
+  private handleHostPacing(conn: Conn, mode: Pacing) {
+    if (!this.requireHost(conn)) return;
+    if (mode === this.pacing) return;
+    this.pacing = mode;
+    const now = this.now();
+    if (mode === "manual") {
+      for (const step of this.steps.values()) {
+        if (step.timer) clearTimeout(step.timer);
+        step.timer = null;
+      }
+      const game = this.game;
+      // A reveal already playing plays on: only one that has not started is held.
+      if (game?.phase === "finished" && game.ranking && (this.podium ? this.podium.at > now : !this.epilogue)) this.revealHold = ++this.stepSeq;
+    } else {
+      const team = this.steps.has("fork") && this.game ? this.game.teams.find((t) => t.fork?.phase === "choosing") : undefined;
+      if (team?.fork?.phase === "choosing") {
+        const fork = { ...team.fork, deadline: now + FORK_MS };
+        this.keepUndoOpen({ ...this.game!, teams: this.game!.teams.map((t) => (t === team ? { ...t, fork } : t)) });
+        this.armFork();
+      }
+      for (const [slot, step] of this.steps) {
+        if (step.timer) continue;
+        if (slot === "initiative") this.initiativeEndsAt = now + step.ms;
+        this.startStep(slot, step);
+      }
+      // Never before the boss has cooked (FINISH_PODIUM_MS), when that is still to come.
+      if (this.revealHold !== null) this.releaseReveal(Math.max(now + this.epilogueDelayMs, this.revealFrom ?? 0));
+    }
+    this.broadcastState();
+  }
+
+  /** ▶ 下一步: runs the step the host's STATE showed. A second press, or a tab on an older STATE, names a step that
+   * has already run and does nothing. */
+  private handleHostStep(conn: Conn, eventId: number, id: number) {
+    if (!this.requireHost(conn)) return;
+    const hold = this.currentHold();
+    if (this.pacing !== "manual" || !hold || eventId !== this.eventSeq || id !== hold.id) return;
+    if (hold.slot === null) {
+      // A step pressed while the boss still cooks starts the reveal when the dish is done, not under it.
+      this.releaseReveal(Math.max(this.now(), this.reveal?.dish ? (this.revealFrom ?? 0) : 0));
+      return this.broadcast(this.snapshot());
+    }
+    const step = this.steps.get(hold.slot)!;
+    this.steps.delete(hold.slot);
+    step.run();
+  }
+
+  /** A held podium starts its reveal at `at`. */
+  private releaseReveal(at: number) {
+    this.revealHold = null;
+    this.revealFrom = at;
+    if (this.podium) this.podium = { ...this.podium, at };
+  }
+
   /** The reveal on the room's clock (eng D20). Only for a game ranked by finishGame: an older one shows the podium. */
   private podiumView(): { podium?: PodiumReveal } {
     const game = this.game;
     if (game?.phase !== "finished" || !game.ranking) return {};
+    // Manual pacing holds the reveal (名次揭曉中…) until the host's ▶ 下一步.
+    if (this.revealHold !== null) return { podium: { ranking: game.ranking, beats: null, elapsedMs: 0 } };
     // No calls but the story is in: a damaged save lost them, so show the podium rather than wait for nothing.
     if (!this.podium) return this.epilogue ? {} : { podium: { ranking: game.ranking, beats: null, elapsedMs: 0 } };
     const beats = revealBeats(game.teams, game.ranking, game.tieRolls ?? [], this.podium.lines, this.podium.titles);
@@ -1230,6 +1355,8 @@ export class DungeonRoom {
     this.podium = null;
     this.epiloguePage = 0;
     this.revealFrom = null;
+    this.revealHold = null;
+    this.pacing = "auto";
     this.revealOnRead = false;
     this.staleBeforeSeq = null;
     this.playedQuestionIds = [];
@@ -1518,6 +1645,12 @@ export class DungeonRoom {
         case "HOST_ROLL_INITIATIVE":
           this.handleHostRollInitiative(sender);
           break;
+        case "HOST_PACING":
+          this.handleHostPacing(sender, msg.mode);
+          break;
+        case "HOST_STEP":
+          this.handleHostStep(sender, msg.eventId, msg.step);
+          break;
         case "TEAM_SUBMIT_TEXT":
           this.handleTeamSubmitText(sender, msg.questionId, msg.text, msg.eventId, msg.fields);
           break;
@@ -1684,6 +1817,7 @@ export class DungeonRoom {
     const n = this.lastNarration;
     this.revealOnRead = !!n && n.done < n.lines.length;
     this.revealFrom = this.now() + (this.revealOnRead ? END_READ_CAP_MS : this.epilogueDelayMs);
+    if (this.pacing === "manual") this.revealHold = ++this.stepSeq;
     const eventId = ++this.eventSeq;
     this.staleBeforeSeq = eventId;
     this.cue = null;
@@ -1717,6 +1851,7 @@ export class DungeonRoom {
     this.podium = null;
     this.epiloguePage = 0;
     this.revealFrom = null;
+    this.revealHold = null;
     this.revealOnRead = false;
     this.lastNarration = null;
     this.heldLines = null;
@@ -1871,8 +2006,7 @@ export class DungeonRoom {
     this.game = game;
     this.phaseCard = true;
     this.phaseCardDue = false;
-    if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
-    this.phaseCardTimer = null;
+    this.unpace("phaseCard");
     if (!announce) return;
     const eventId = ++this.eventSeq;
     this.setCue("boss-phase");
@@ -1891,17 +2025,10 @@ export class DungeonRoom {
   }
 
   private clearAnswerTimers() {
-    if (this.lockTimer) clearTimeout(this.lockTimer);
-    if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
-    this.lockTimer = this.phaseCardTimer = null;
+    for (const slot of STEP_SLOTS) this.unpace(slot);
     // The game this 擲先攻 was for has ended or gone.
-    if (this.initiativeTimer) clearTimeout(this.initiativeTimer);
-    this.initiativeTimer = null;
     this.initiative = null;
     // A door clock or a door opening belongs to the game that ended or went: a finished game shows its real scores.
-    if (this.forkTimer) clearTimeout(this.forkTimer);
-    if (this.forkBeatTimer) clearTimeout(this.forkBeatTimer);
-    this.forkTimer = this.forkBeatTimer = null;
     this.forkBeat = null;
     // A crit die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now.
     const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : undefined);
@@ -2074,14 +2201,13 @@ export class DungeonRoom {
 
   /** While rolling: rolls for the teams left after `ms`. Once the order is set: starts the game after `ms`. */
   private armInitiative(ms: number) {
-    if (this.initiativeTimer) clearTimeout(this.initiativeTimer);
     this.initiativeEndsAt = this.now() + ms;
-    this.initiativeTimer = setTimeout(() => {
-      this.initiativeTimer = null;
+    const label = () => (!this.initiative ? null : this.initiative.order ? "接下來是開場和第一題" : "接下來替還沒擲的隊伍代擲，排出先攻順序");
+    this.pace("initiative", "initiative", ms, label, () => {
       if (!this.initiative?.order) return this.finishInitiative();
       this.initiative = null;
       this.announceStart();
-    }, ms);
+    });
   }
 
   /** A phone's 擲先攻 roll: once per team, while the room still waits for rolls. */
@@ -2293,8 +2419,7 @@ export class DungeonRoom {
         return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_undo" });
       }
       this.phaseCardDue = false;
-      if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
-      this.phaseCardTimer = null;
+      this.unpace("phaseCard");
       // The team holds the buzz again, so the music the 答錯 played on stops, as a buzz stops it.
       this.buzzPaused = this.media?.questionId === questionId && this.media.state === "playing";
       if (this.buzzPaused) this.media = { ...this.media!, state: "paused", press: this.media!.press + 1 };
@@ -2311,8 +2436,7 @@ export class DungeonRoom {
     }
     // A boss phase the 答錯 used up was not used up after all. A correct answer never sets phaseCardDue: its reveal comes first.
     this.phaseCardDue = false;
-    if (this.phaseCardTimer) clearTimeout(this.phaseCardTimer);
-    this.phaseCardTimer = null;
+    this.unpace("phaseCard");
   }
 
   /** The host's 答錯 on a cleric's fill-in (#106): "team" waits for the team's 祈禱 / 重答 / 逃跑, "pray" picks
@@ -2494,7 +2618,10 @@ export class DungeonRoom {
       };
     }
     // Fixed before the STATE is saved: the boss cooks first (cooking R8), otherwise the kill-shot line is read first.
-    if (game.phase === "finished" && !this.epilogueRequested) this.revealFrom = this.now() + (this.reveal?.dish ? FINISH_PODIUM_MS : this.epilogueDelayMs);
+    if (game.phase === "finished" && !this.epilogueRequested) {
+      this.revealFrom = this.now() + (this.reveal?.dish ? FINISH_PODIUM_MS : this.epilogueDelayMs);
+      if (this.pacing === "manual") this.revealHold = ++this.stepSeq;
+    }
     // A miss that used up a boss phase has no answer to show: its card follows once the retry line has
     // been read (D7), held like a reveal; 下一題 opens it sooner. Set before the STATE, which tells the clients.
     const cardDue = game.phase === "playing" && !!game.boss.phasePending && !this.reveal;
@@ -2515,10 +2642,12 @@ export class DungeonRoom {
       void narration.then(() => {
         if (!this.phaseCardDue) return;
         const lines = this.lastNarration?.eventId === eventId ? this.lastNarration.lines : [];
-        this.phaseCardTimer = setTimeout(() => {
-          this.phaseCardTimer = null;
+        const ms = Math.min(ADVANCE_CAP_MS, Math.max(BEAT_MS, speechMs(lines)));
+        this.pace("phaseCard", "phase-card", ms, () => (this.phaseCardDue ? "接下來是魔王的轉場卡" : null), () => {
           if (this.phaseCardDue) this.openPhaseCard();
-        }, Math.min(ADVANCE_CAP_MS, Math.max(BEAT_MS, speechMs(lines))));
+        });
+        // The STATE went out before the line came in: a manual room shows its hold now.
+        if (this.pacing === "manual") this.broadcast(this.snapshot());
       });
     }
   }
@@ -2680,9 +2809,8 @@ export class DungeonRoom {
     if (lock.revealing) return reject("reveal_pending");
     // Nothing else may hold the timer now (a lock is refused during a roll or a miss): what is left is stale,
     // e.g. a boss miss the host settled inside its beat (/review, 2026-11-05).
-    if (this.lockTimer) clearTimeout(this.lockTimer);
     this.pendingLock = { ...lock, revealing: true };
-    this.lockTimer = setTimeout(() => this.resolveLock(), BEAT_MS);
+    this.pace("lock", "lock", BEAT_MS, () => (this.pendingLock?.revealing ? "接下來揭曉答對或答錯" : null), () => this.resolveLock());
     this.broadcastState();
   }
 
@@ -2690,7 +2818,7 @@ export class DungeonRoom {
     const lock = this.pendingLock;
     const game = this.game;
     this.pendingLock = null;
-    this.lockTimer = null;
+    this.unpace("lock");
     if (!lock || !game) return;
     // The reveal is the room doing something: the idle clock starts after it, not at the lock.
     this.markActivity();
@@ -2707,8 +2835,9 @@ export class DungeonRoom {
       } else {
         // No eventSeq bump: nothing is narrated until the team chooses (E7).
         this.game = recordWrongLock(game, lock.teamId, lock.questionId, lock.optionIndex);
-        this.broadcastState();
+        // Armed first, so a manual room's STATE already carries the miss's hold.
         this.armBossMiss();
+        this.broadcastState();
       }
     } catch (err) {
       console.error(JSON.stringify({ event: "lock_failed", error: String(err) }));
@@ -2730,17 +2859,15 @@ export class DungeonRoom {
     const pending = this.game?.pendingWrong;
     // A cleric that may pray decides itself (祈禱 / 不用); the host's stuck row covers a team that never does (R1b).
     if (!pending || pending.optionIndex === null || !isInBossPhase(this.game!, pending.teamId) || canPray(this.game!, pending.teamId)) return;
-    if (this.lockTimer) clearTimeout(this.lockTimer);
-    this.lockTimer = setTimeout(() => {
-      // Resolved early (the host judged it): lockTimer may already be the next lock's beat.
+    // Resolved early (the host judged it): the step is stale, and may be left behind.
+    this.pace("lock", "boss-miss", BEAT_MS, () => (this.game?.pendingWrong === pending ? "接下來首領換一題，同一隊重答" : null), () => {
       if (this.game?.pendingWrong !== pending) return;
-      this.lockTimer = null;
       try {
         this.judge(pending.teamId, pending.questionId, false, "retry");
       } catch (err) {
         console.error(JSON.stringify({ event: "boss_miss_failed", error: String(err) }));
       }
-    }, BEAT_MS);
+    });
   }
 
   /** Lobby only (class-abilities.md): any phone of the team may pick; the last pick before HOST_START counts. */
@@ -2824,8 +2951,8 @@ export class DungeonRoom {
     const values = potion ?? (extra && "values" in extra ? extra.values : undefined);
     console.log(JSON.stringify({ event: "roll", kind, value, ...(values ? { values } : {}) }));
     this.setCue("roll");
-    if (this.lockTimer) clearTimeout(this.lockTimer);
-    this.lockTimer = setTimeout(() => this.resolveRoll(), kind === "kill" ? KILL_BEAT_MS : BEAT_MS);
+    const roll = this.pendingRoll;
+    this.pace("lock", "roll", kind === "kill" ? KILL_BEAT_MS : BEAT_MS, () => (this.pendingRoll !== roll ? null : kind === "kill" ? "接下來結算擊殺擲骰" : "接下來結算擲骰結果"), () => this.resolveRoll());
   }
 
   /** The one place a cue is set: a new one bumps cueSeq, so the big screen plays it once. */
@@ -2839,7 +2966,7 @@ export class DungeonRoom {
     const kill = this.pendingKill;
     const game = this.game;
     this.pendingRoll = this.pendingKill = null;
-    this.lockTimer = null;
+    this.unpace("lock");
     if (!roll || !game) return;
     this.markActivity();
     try {
@@ -2933,18 +3060,19 @@ export class DungeonRoom {
   /** Times the choosing team's door clock to its deadline. A stale firing (the team chose, went to the boss, the game
    * ended) finds no choosing team with that deadline and does nothing. */
   private armFork() {
-    if (this.forkTimer) clearTimeout(this.forkTimer);
-    this.forkTimer = null;
+    this.unpace("fork");
     const team = this.game?.phase === "playing" ? this.game.teams.find((t) => t.fork?.phase === "choosing") : undefined;
     if (team?.fork?.phase !== "choosing") return;
-    const { id } = team;
+    const { id, name } = team;
     const { deadline } = team.fork;
-    this.forkTimer = setTimeout(() => {
-      this.forkTimer = null;
+    const live = () => {
       const fork = this.game?.teams.find((t) => t.id === id)?.fork;
-      if (this.game?.phase !== "playing" || fork?.phase !== "choosing" || fork.deadline !== deadline) return;
-      this.applyForkChoice(id, "timeout");
-    }, Math.max(0, deadline - this.now()));
+      return this.game?.phase === "playing" && fork?.phase === "choosing" && fork.deadline === deadline;
+    };
+    // In manual the doors wait for the team; ▶ 下一步 is the clock running out (the same ⚔️ by timeout).
+    this.pace("fork", "fork", Math.max(0, deadline - this.now()), () => (live() ? `等${name}選門；按「下一步」算時間到` : null), () => {
+      if (live()) this.applyForkChoice(id, "timeout");
+    });
   }
 
   /** TEAM_CHOOSE_FORK: the turn's team picks a side. A press at or after the deadline is the clock's: ⚔️ by timeout. */
@@ -2957,7 +3085,8 @@ export class DungeonRoom {
     if (eventId !== this.eventSeq) return reject("stale_event");
     if (this.paused() || this.pendingLock || this.pendingRoll) return reject("reveal_pending");
     const fork = game.teams.find((t) => t.id === teamId)?.fork;
-    const late = fork?.phase === "choosing" && this.now() >= fork.deadline;
+    // A manual room has no door clock: the saved deadline is only the step's identity there.
+    const late = this.pacing === "auto" && fork?.phase === "choosing" && this.now() >= fork.deadline;
     this.applyForkChoice(teamId, late ? "timeout" : side, conn);
   }
 
@@ -2973,8 +3102,7 @@ export class DungeonRoom {
       if (conn) return this.sendInvalid(conn, err);
       return console.error(JSON.stringify({ event: "fork_failed", error: String(err) }));
     }
-    if (this.forkTimer) clearTimeout(this.forkTimer);
-    this.forkTimer = null;
+    this.unpace("fork");
     this.game = chosen.game;
     const name = before.teams.find((t) => t.id === teamId)?.name ?? "";
     const { result } = chosen;
@@ -2994,11 +3122,9 @@ export class DungeonRoom {
     // The opened door is revealed, and only it: the other side's door is never named.
     const beat = { teamId, side: chosen.record.side, door: chosen.record.door, timeout: choice === "timeout", before, ...(reveal ? { reveal } : {}), ...(line ? { line } : {}) };
     this.forkBeat = beat;
-    if (this.forkBeatTimer) clearTimeout(this.forkBeatTimer);
-    this.forkBeatTimer = setTimeout(() => {
-      this.forkBeatTimer = null;
+    this.pace("forkBeat", "fork-beat", FORK_BEAT_MS, () => (this.forkBeat === beat ? "接下來走進門後的房間" : null), () => {
       if (this.forkBeat === beat) this.endForkBeat();
-    }, FORK_BEAT_MS);
+    });
     this.broadcastState();
   }
 

@@ -44,9 +44,9 @@ describe("parseSnapshot", () => {
     expect(() => spendAbility(s!.game!, "a", "warrior")).toThrow(/not a warrior/);
   });
 
-  // Value: protects=a live game saved by the Worker before 岔路 does not stick on a removed event button; fails_when=the
+  // Value: protects=a live game saved by the Worker before 叉路 does not stick on a removed event button; fails_when=the
   // conversion is dropped; why_new=branch-fork.md removes the event button; no_claim=an actual old-Worker save.
-  it("turns an event room saved before 岔路 into a waiting fork, and keeps every fork phase as saved", () => {
+  it("turns an event room saved before 叉路 into a waiting fork, and keeps every fork phase as saved", () => {
     const old = gameWithTeams((t, i) => (i === 0 ? { ...t, event: { scene: "chest", outcome: "feast" } } : t));
     const s = parseSnapshot(JSON.parse(JSON.stringify({ ...valid(), game: old })));
     expect(s?.game?.teams[0].event).toBeUndefined();

@@ -91,7 +91,7 @@ https://github.com/chihgeorge/critical-answer
 | 文件 | 內容 |
 | --- | --- |
 | [完整規則](docs/rules.md) | 判定、選擇題、排序題、說服檢定、首領、計分、職業、怪物變料理 |
-| [主持指南](docs/hosting.md) | 開房、玩法說明、大螢幕、AI 旁白、出狀況時、已知限制 |
+| [主持指南](docs/hosting.md) | 開房、玩法說明、手動控制停頓、大螢幕、AI 旁白、出狀況時、已知限制 |
 | [部署指南](docs/deployment.md) | 第一次部署、設定一覽、金鑰、R2、部署順序 |
 | [題庫指南](docs/question-bank.md) | 預設題庫、題庫編輯器、題庫卡住時怎麼救 |
 | [開發指南](docs/development.md) | 技術棧、指令、測試、版本與 Release、專案結構 |
