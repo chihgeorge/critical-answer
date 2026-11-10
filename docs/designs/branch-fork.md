@@ -7,7 +7,7 @@ Mode: Builder
 
 ## Problem Statement
 
-Event rooms ([event-rooms.md](event-rooms.md)) gave a team one button and no choice. The owner wanted the old 「冒險出現叉路」
+Event rooms ([event-rooms.md](event-rooms.md)) gave a team one button and no choice. The owner wanted the old 「冒險出現岔路」
 choice back on the phones (TODOS.md), and wanted it to matter. A fork replaces the event-room draw: the team picks
 between two doors and lives with the result.
 
@@ -78,7 +78,7 @@ between two doors and lives with the result.
 - `lib/game-state.ts`: `Fork`, `ForkDoor`, `ForkSide`, `ForkChoice` (a side or `timeout`), `ForkRecord`, `FORK_MS`, `atFork`, `enterFork`, `startForkChoice`, `chooseFork`.
   `atFork` guards `answerQuestion`, `assertCurrentQuestion`, `assertAbilityTurn` and `drinkPotion` (`InvalidActionError("fork")`).
 - `lib/room/dungeon-room.ts`: `syncFork()` runs at the start of every broadcast and after a restore: it moves the team on
-  turn from waiting to choosing when the room is live, and arms `forkTimer`. `TEAM_CHOOSE_FORK { side, eventId }` and the
+  turn from waiting to choosing when the room is live, and arms the fork step (`armFork`). `TEAM_CHOOSE_FORK { side, eventId }` and the
   timer both go through `applyForkChoice`; one `endForkBeat` ends every opening. Both timers check that their state is still
   current (`deadline`, `this.forkBeat === beat`), and `clearAnswerTimers` (reset, end game, back to lobby, expiry) clears
   them with `forkBeat`. An opening holds 撤銷答錯 too (`undoHeld`).

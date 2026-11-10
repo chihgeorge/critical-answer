@@ -303,6 +303,71 @@ describe("手動停頓: switching with a pause up", () => {
   });
 });
 
+describe("手動停頓: review cases (2026-11-09)", () => {
+  it("HOST_STEP does nothing in auto: the beat keeps its own time", () => {
+    const s = setup({ bank: mcBank, manual: false, teams: 1, fixedDie: 10 });
+    lockAndReveal(s, true);
+    const id = (s.room as any).steps.get("lock").id;
+    send(s.room, s.host, { type: "HOST_STEP", eventId: state(s.room).eventId, step: id });
+    expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
+    vi.advanceTimersByTime(BEAT_MS);
+    expect(state(s.room).pendingRoll).toMatchObject({ kind: "crit" });
+  });
+
+  it("auto to manual on a finished game: an unstarted podium is held, one already playing plays on", async () => {
+    const s = setup({ manual: false });
+    send(s.room, s.host, { type: "HOST_END_GAME" });
+    pacing(s, "manual");
+    expect(state(s.room)).toMatchObject({ hold: { kind: "podium" }, podium: { beats: null } });
+
+    const p = setup({ manual: false });
+    send(p.room, p.host, { type: "HOST_END_GAME" });
+    await vi.advanceTimersByTimeAsync(LONG);
+    pacing(p, "manual");
+    expect(state(p.room).hold).toBeUndefined();
+    expect(state(p.room).podium.beats).not.toBeNull();
+  });
+
+  it("manual to auto in 擲先攻: a fresh countdown, then the room rolls", () => {
+    const s = setup({ initiative: true });
+    vi.advanceTimersByTime(INITIATIVE_MS * 4);
+    pacing(s, "auto");
+    expect(state(s.room).initiative).toMatchObject({ left: INITIATIVE_MS });
+    expect(state(s.room).initiative.untimed).toBeUndefined();
+    vi.advanceTimersByTime(INITIATIVE_MS);
+    expect(state(s.room).initiative.order).toHaveLength(2);
+  });
+
+  it("manual to auto after a kill: the podium still waits for the boss to cook", async () => {
+    const s = setup({ teams: 1 });
+    toLastHit(s);
+    step(s);
+    pacing(s, "auto");
+    await vi.advanceTimersByTimeAsync(0);
+    expect((s.room as any).revealFrom).toBe(Date.now() + FINISH_PODIUM_MS);
+  });
+
+  it("a podium step pressed while the boss cooks starts the reveal after the cooking", () => {
+    const s = setup({ teams: 1 });
+    toLastHit(s);
+    step(s);
+    step(s);
+    expect(state(s.room).hold).toBeUndefined();
+    expect((s.room as any).revealFrom).toBe(Date.now() + FINISH_PODIUM_MS);
+  });
+
+  it("回到大廳 drops a held podium: the next game's STATE has no hold", async () => {
+    const s = setup();
+    send(s.room, s.host, { type: "HOST_END_GAME" });
+    await vi.advanceTimersByTimeAsync(LONG);
+    send(s.room, s.host, { type: "HOST_BACK_TO_LOBBY" });
+    expect((s.room as any).revealHold).toBeNull();
+    send(s.room, s.host, { type: "HOST_START" });
+    expect(state(s.room).pacing).toBe("manual");
+    expect(state(s.room).hold).toBeUndefined();
+  });
+});
+
 describe("手動停頓: a restart, and what never leaves the room", () => {
   async function restored(storage: RoomStorage, bank = textBank) {
     const room = new DungeonRoom(makeIo(storage), () => 0, { bank, epilogueDelayMs: 1000 });
@@ -325,6 +390,23 @@ describe("手動停頓: a restart, and what never leaves the room", () => {
     expect(r.room.game!.teams[0].fork?.phase).toBe("choosing");
     send(r.room, r.host, { type: "HOST_STEP", eventId: r.last().eventId, step: r.last().hold.id });
     expect(r.room.game!.teams[0].forks).toEqual([{ side: "left", door: "monster", timeout: true }]);
+  });
+
+  it("a boss miss waits again after a restart, and a press from before the restart names no step", async () => {
+    const storage = memoryStorage();
+    const s = setup({ bank: mcBank, teams: 1, storage });
+    send(s.room, s.host, { type: "HOST_SEND_TO_BOSS", teamId: T1 });
+    lockAndReveal(s, false);
+    step(s);
+    const before = state(s.room);
+    await vi.advanceTimersByTimeAsync(0);
+    const r = await restored(storage, mcBank);
+    expect(r.last()).toMatchObject({ pacing: "manual", hold: { kind: "boss-miss" } });
+    send(r.room, r.host, { type: "HOST_STEP", eventId: before.eventId, step: before.hold.id });
+    await vi.advanceTimersByTimeAsync(LONG);
+    expect(r.room.game!.pendingWrong).not.toBeNull();
+    send(r.room, r.host, { type: "HOST_STEP", eventId: r.last().eventId, step: r.last().hold.id });
+    expect(r.room.game!.pendingWrong).toBeNull();
   });
 
   it("擲先攻 and a held podium wait again after a restart", async () => {

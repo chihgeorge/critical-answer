@@ -248,8 +248,10 @@ export function revealMarks(beats: Beat[]): number[] {
 /** revealAt for a page: with no reveal to play (`podium` absent: an older server or game; `t` null: reduced motion) it
  * is the end; while the lines are still coming (`beats` null) it waits. */
 export function revealNow(podium: { beats: Beat[] | null } | undefined, t: number | null): { beat: number; result: boolean; done: boolean } {
+  // Lines still coming, or held by manual pacing: reduced motion waits too, or it would show the end early.
+  if (podium && !podium.beats) return { beat: -1, result: false, done: false };
   if (!podium || t === null) return { beat: -1, result: true, done: true };
-  return podium.beats ? revealAt(podium.beats, t) : { beat: -1, result: false, done: false };
+  return revealAt(podium.beats!, t);
 }
 
 /** An epilogue page on the big screen holds at most this many characters: three rows of the narrator box at the

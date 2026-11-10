@@ -108,7 +108,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(players[1].page.getByText("輪到我們了！")).toBeVisible();
 
   // The branch choice is off the phones for now (TODOS.md), even right after 甲隊 entered a new room.
-  await expect(players[0].page.getByText("冒險出現叉路")).toHaveCount(0);
+  await expect(players[0].page.getByText("冒險出現岔路")).toHaveCount(0);
 
   // A phone that reloads (or wakes from sleep) comes back as the same team: it is not left "offline" and skipped.
   await players[1].page.reload();

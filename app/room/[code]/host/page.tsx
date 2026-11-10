@@ -385,9 +385,10 @@ export default function HostPage() {
     return () => clearTimeout(t);
   }, [stuckKey]);
   const stuck = !!stuckKey && stuckShownFor === stuckKey;
-  // 叉路 (branch-fork.md D3): the host only watches; the room's own 15 s clock sends a team that never picks into ⚔️.
-  // An answer or a card on show keeps its 下一題: the hold's ▶ 下一步 takes over once it is gone.
-  const holdUp = !!hold && !revealUp;
+  // 叉路 (branch-fork.md D3): the host only watches; in auto the room's own 15 s clock sends a team that never picks into ⚔️, in manual the host's ▶ 下一步 does.
+  // An answer or a card on show keeps its 下一題: the hold's ▶ 下一步 takes over once it is gone. A finished game has
+  // no 下一題 (the kill's answer stays up), so the podium's hold always shows.
+  const holdUp = !!hold && (!revealUp || game?.phase === "finished");
   const atFork = !revealUp && !game?.phaseCardDue && (!!game?.forkBeat || turn?.team?.fork === "choosing");
 
   // Keyboard shortcuts for a host on a laptop (lib/host-keys.ts): each key does exactly what its
@@ -469,7 +470,7 @@ export default function HostPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holdUp, hold?.id, game?.eventId, ready, picking, drawer, swapArmed]);
   const holdPanel = hold && (
-    <>
+    <div className="mt-3 flex flex-col gap-3">
       <div data-testid="host-hold" role="status" className="border-4 border-dashed border-[var(--k)] bg-[var(--turn)] px-3 py-2 text-left text-[var(--k)]">
         <div className="text-[18px]">⏸ 停在這裡：{hold.label}</div>
         <div className="text-[13px]">手動模式，按「下一步」才會繼續</div>
@@ -478,7 +479,7 @@ export default function HostPage() {
         {connected ? "▶ 下一步" : "重新連線中"}
         <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
       </PixelButton>
-    </>
+    </div>
   );
 
   // 下一題 (or 上菜) under an answer reveal or a phase card, with the revealed video's controls.
@@ -532,28 +533,28 @@ export default function HostPage() {
       <SceneBackground theme={turn?.theme ?? "stone"} cols={48} rows={100} arch={false} className="fixed inset-0" />
 
       <div className="relative z-10 flex min-h-screen flex-col gap-3 px-[14px] pb-4 pt-5">
-        <header className="flex items-center justify-between gap-3">
+        <header className="flex items-center justify-between gap-2">
           <Panel className="px-3 py-1">
             <span className="px-num text-[18px] tracking-[0.2em]" style={{ color: "var(--danger)" }}>
               {code}
             </span>
           </Panel>
           {/* 手動停頓 (manual-pacing.md): one tap either way, any time. */}
-          <div data-testid="host-pacing" role="group" aria-label="停頓模式" className="flex">
+          <div data-testid="host-pacing" role="group" aria-label="停頓模式" className="flex flex-none whitespace-nowrap">
             {([false, true] as const).map((on) => (
               <PixelButton
                 key={String(on)}
                 aria-pressed={manual === on}
                 disabled={!ready}
                 onClick={() => send({ type: "HOST_PACING", mode: on ? "manual" : "auto" })}
-                className="!m-0 !px-3 !py-2 text-[16px]"
+                className="!m-0 min-h-[44px] !px-2 !py-2 text-[16px] focus-visible:z-10"
                 style={manual === on ? { background: "var(--k)", color: "#fff" } : { background: "#fff" }}
               >
                 {on ? "⏸ 手動" : "自動"}
               </PixelButton>
             ))}
           </div>
-          <PixelButton onClick={() => setDrawer(true)} className="!m-0 !px-4 !py-2 text-[16px]">
+          <PixelButton onClick={() => setDrawer(true)} className="!m-0 min-h-[44px] whitespace-nowrap !px-3 !py-2 text-[16px]">
             ⚙ 更多
           </PixelButton>
         </header>
@@ -745,7 +746,7 @@ export default function HostPage() {
               </div>
             </Panel>
             {holdUp ? (
-              <div className="mt-auto flex flex-col gap-3">{holdPanel}</div>
+              <div className="mt-auto">{holdPanel}</div>
             ) : (
               <PixelButton variant="primary" disabled={!ready || !!game.initiative.order} className="!m-0 mt-auto min-h-[78px] text-[26px]" onClick={() => send({ type: "HOST_ROLL_INITIATIVE" })}>
                 🎲 全部代擲
@@ -1121,7 +1122,7 @@ export default function HostPage() {
                 </PixelButton>
               </div>
             )}
-            {holdUp && <div className="mt-6 flex flex-col gap-3">{holdPanel}</div>}
+            {holdUp && <div className="mt-3">{holdPanel}</div>}
             <PixelButton variant="primary" className="!mx-auto !mt-6 !block min-h-[64px] text-[22px]" disabled={!ready} onClick={() => send({ type: "HOST_BACK_TO_LOBBY" })}>
               回到大廳，再玩一場
             </PixelButton>

@@ -337,7 +337,6 @@ export class DungeonRoom {
   private clipError: string | null = null;
   /** An opened event on show until 下一題 (docs/designs/event-rooms.md). Memory only, like the reveal: its effect is saved. */
   private eventReveal: EventReveal | null = null;
-  /** The fork team's door clock (branch-fork.md): runs out at its saved deadline. Memory only: restore() arms it again. */
   /** The door that just opened, on show for FORK_BEAT_MS. `before` is the game before the press: STATE shows it
    * meanwhile, so no score, room or turn moves before the door opens (the choice is applied and saved already).
    * `reveal`: the ❓ outcome, shown when the beat ends; `line`: ⚔️'s scripted line, said then. Memory only: a
@@ -811,6 +810,8 @@ export class DungeonRoom {
     this.revealFrom = s.revealFrom ?? null;
     // Before anything is armed below: a manual room's pauses come back as steps, not timers.
     this.pacing = s.pacing ?? "auto";
+    // Ids start past any the room handed out before the restart: a HOST_STEP in flight then names no step.
+    this.stepSeq = this.now();
     this.revealHold = s.revealHeld && this.game?.phase === "finished" ? ++this.stepSeq : null;
     this.playedQuestionIds = s.playedQuestionIds ?? [];
     this.joinPassword = s.joinPassword;
@@ -847,7 +848,8 @@ export class DungeonRoom {
     console.log(JSON.stringify({ event: "state_restored", phase: this.game?.phase ?? "lobby", eventSeq: this.eventSeq }));
     // A restart loses the beat that resolves a wrong boss lock.
     this.armBossMiss();
-    // A door clock keeps its saved deadline (time spent down counts); one already past picks ⚔️ at once.
+    // A door clock keeps its saved deadline (time spent down counts); one already past picks ⚔️ at once. In manual
+    // there is no clock: the fork waits again.
     try {
       this.armFork();
       this.syncFork();
@@ -1148,7 +1150,8 @@ export class DungeonRoom {
         if (slot === "initiative") this.initiativeEndsAt = now + step.ms;
         this.startStep(slot, step);
       }
-      if (this.revealHold !== null) this.releaseReveal(now + this.epilogueDelayMs);
+      // Never before the boss has cooked (FINISH_PODIUM_MS), when that is still to come.
+      if (this.revealHold !== null) this.releaseReveal(Math.max(now + this.epilogueDelayMs, this.revealFrom ?? 0));
     }
     this.broadcastState();
   }
@@ -1160,7 +1163,8 @@ export class DungeonRoom {
     const hold = this.currentHold();
     if (this.pacing !== "manual" || !hold || eventId !== this.eventSeq || id !== hold.id) return;
     if (hold.slot === null) {
-      this.releaseReveal(this.now());
+      // A step pressed while the boss still cooks starts the reveal when the dish is done, not under it.
+      this.releaseReveal(Math.max(this.now(), this.reveal?.dish ? (this.revealFrom ?? 0) : 0));
       return this.broadcast(this.snapshot());
     }
     const step = this.steps.get(hold.slot)!;

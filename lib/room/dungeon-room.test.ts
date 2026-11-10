@@ -1575,7 +1575,7 @@ describe("TEAM_SELECT_OPTION", () => {
     });
 
     // Value: protects=a boss miss the host settles inside its red-tile beat leaves no stale timer that makes the next lock
-    // read as revealing and refuse 公布答案 forever (/review, 2026-11-05); fails_when=revealing is derived from lockTimer again
+    // read as revealing and refuse 公布答案 forever (/review, 2026-11-05); fails_when=revealing is derived from the lock step again
     it("after the host settles a boss miss early, the next lock still waits for 公布答案 and is judged", () => {
       vi.useFakeTimers();
       const { room, hostConn, ids, conns } = startedMcGame(1);
