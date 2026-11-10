@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { startGame, screenUrl } from "./answer";
+import { startGame, screenUrl, rollCheck } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 const WORKER = "http://localhost:1996";
@@ -55,7 +55,8 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await host.getByRole("button", { name: "確定送？" }).click();
   await host.getByRole("button", { name: "關閉" }).click();
 
-  // Phase 1 looks like any boss; only the host sees there is more.
+  // Phase 1 looks like any boss; only the host sees there is more. (The question is up once the check is rolled.)
+  await rollCheck(team);
   await expect(screen.getByText("題目 phase1-a")).toBeVisible();
   await expect(screen.getByText("最後的挑戰！")).toBeVisible();
   await expect(host.getByTestId("host-boss-hp")).toContainText("第 1/2 階段・下一階段：主題曲之謎");
@@ -78,6 +79,7 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await expect(screen.getByText("題目 phase2-a")).toHaveCount(0); // held back until 下一題
 
   await host.getByRole("button", { name: "下一題", exact: true }).click();
+  await rollCheck(team);
   await expect(screen.getByText("題目 phase2-a")).toBeVisible();
   await expect(screen.getByTestId("phase-card")).toHaveCount(0);
   await expect(screen.locator(".px-chip", { hasText: "主題曲之謎" })).toBeVisible(); // the chip names the phase from now on

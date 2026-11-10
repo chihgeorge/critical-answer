@@ -787,6 +787,7 @@ describe("restoring after a restart", () => {
     const second = makeRoom(storage).room; // built with the bundled bank
     await second.restore();
     rejoin(second, T1, TEAM_KEY, "a-again");
+    second.game = { ...second.game!, checks: { [checkKey(second.game!.teams[0].currentQuestionId, T1)]: { value: 10, bonus: 0, dc: 8, passed: true } } };
     const screen = makeConn("screen");
     second.onConnect(screen);
     expect(lastOf(screen, "STATE").question.content).toEqual({ kind: "text", value: "自訂題庫的第一題" });
@@ -837,6 +838,7 @@ describe("restoring after a restart", () => {
     const second = makeRoom(storage).room; // built with the bundled bank
     expect(await second.restore()).toBe("restored");
     rejoin(second, T1, TEAM_KEY, "a-again");
+    second.game = { ...second.game!, checks: { [checkKey(second.game!.teams[0].currentQuestionId, T1)]: { value: 10, bonus: 0, dc: 8, passed: true } } };
     const screen = makeConn("screen");
     second.onConnect(screen);
     expect(lastOf(screen, "STATE").question.content).toEqual({ kind: "text", value: "自訂題庫的第一題" });

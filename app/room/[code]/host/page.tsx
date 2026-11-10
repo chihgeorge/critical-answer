@@ -2,7 +2,7 @@
 
 import { AnswerClock } from "@/components/answer-clock";
 import { ANSWER_SECONDS, DEFAULT_ANSWER_SECONDS } from "@/lib/answer-clock";
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
@@ -60,7 +60,7 @@ export default function HostPage() {
   /** The room bank's question counts (LOBBY `bankSize`), for the too-few-questions warning by 開始遊戲. */
   const [bankSize, setBankSize] = useState<BankSize | null>(null);
   const sizeWarning = bankSize && bankSizeWarning(bankSize, lobby.length);
-  const [game, setGame] = useState<StateMessage | null>(null);
+  const [state, setGame] = useState<StateMessage | null>(null);
   /** 手動停頓 (docs/designs/manual-pacing.md): the room's switch, as its last LOBBY or STATE said. */
   const [manual, setManual] = useState(false);
   /** 每題作答倒數 for the next game (answer-countdown.md D2): this page's pick, so a replay keeps it. */
@@ -70,7 +70,9 @@ export default function HostPage() {
   const [connected, setConnected] = useState(false);
   const [claimed, setClaimed] = useState(false);
   /** Host-only: the answer to the question in play. Never shown on /screen or /play. */
-  const [answer, setAnswer] = useState<Pick<Extract<ServerMessage, { type: "HOST_ANSWER" }>, "questionId" | "answer" | "typed"> | null>(null);
+  const [answer, setAnswer] = useState<Pick<Extract<ServerMessage, { type: "HOST_ANSWER" }>, "questionId" | "answer" | "typed" | "question"> | null>(null);
+  // Check first, question after: STATE holds a fill-in's text back until its check is done; the host's copy comes with the answer.
+  const game = useMemo(() => (state?.question?.checkFirst && answer?.question && answer.questionId === state.question.id ? { ...state, question: answer.question } : state), [state, answer]);
   const [drawer, setDrawer] = useState(false);
   /** Host-only: what the host may queue as a team's (or the boss's) next question, with answers. */
   const [picks, setPicks] = useState<Picks | null>(null);
@@ -220,7 +222,7 @@ export default function HostPage() {
           break;
         }
         case "HOST_ANSWER":
-          setAnswer({ questionId: msg.questionId, answer: msg.answer, typed: msg.typed });
+          setAnswer({ questionId: msg.questionId, answer: msg.answer, typed: msg.typed, question: msg.question });
           break;
         case "HOST_PICKS":
           setPicks(msg);
@@ -851,6 +853,9 @@ export default function HostPage() {
                     </div>
                   )}
                   {/* 每題作答倒數 (answer-countdown.md): only a nudge, the host still judges (D1). */}
+                  {game.question?.checkFirst && !game.phaseCard && !game.forkBeat && (
+                    <div data-testid="host-check-first" className="mt-1 text-[14px]">🎲 等這隊擲完說服，大螢幕才出題、才開始倒數</div>
+                  )}
                   {game.answerClock && (
                     <div className="mt-1">
                       {game.answerClock.left === null ? (
@@ -875,7 +880,7 @@ export default function HostPage() {
                 </div>
               )}
               {game.question?.content.kind === "youtube" && !revealUp && (
-                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
+                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready || !!game.question.checkFirst} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
               )}
               {buzz && (
                 <div data-testid="host-buzz" className="mt-2 flex flex-col gap-1 text-[16px]">

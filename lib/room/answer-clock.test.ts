@@ -55,7 +55,13 @@ function started(fields: object = { answerSeconds: 60 }, b = bank()) {
     const s = g.state();
     send(g.room, host, { type: "HOST_JUDGE", teamId: s.view.currentTurnTeamId, questionId: s.question.id, correct, fleeChoice, eventId: s.eventId });
   };
-  return { ...g, host, phones, judge, peek: () => peek(g.room) };
+  /** The team on turn rolls its persuasion check and the die's 2 s pass: a fill-in's question and count start only then. */
+  const check = () => {
+    const s = g.state();
+    send(g.room, phones[IDS.indexOf(s.view.currentTurnTeamId)], { type: "TEAM_ROLL_CHECK", questionId: s.question.id, eventId: s.eventId });
+    vi.advanceTimersByTime(2000);
+  };
+  return { ...g, host, phones, judge, check, peek: () => peek(g.room) };
 }
 
 /** The STATE a big screen connecting now gets: the room's figure at this moment, with no other message needed. */
@@ -105,8 +111,27 @@ describe("每題作答倒數 in the room", () => {
     expect(g.state().answerClock).toBeUndefined();
   });
 
+  // Value: protects=check first, question after (owner 2026-11-09): no count and no question text before the die's beat
+  // ends; fails_when=the count starts with the turn, or STATE carries the text during the check.
+  it("a fill-in's count starts only once its persuasion check's beat ends; until then STATE has no question text", () => {
+    const g = started();
+    expect(g.state().question).toMatchObject({ id: "r1", checkFirst: true, content: { kind: "text", value: "" } });
+    expect(g.state().answerClock).toBeUndefined();
+    vi.advanceTimersByTime(30000);
+    expect(g.peek().answerClock).toBeUndefined();
+    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "r1", eventId: g.state().eventId });
+    expect(g.state().pendingRoll).toMatchObject({ kind: "check" });
+    expect(g.state().question.checkFirst).toBe(true);
+    expect(g.state().answerClock).toBeUndefined();
+    vi.advanceTimersByTime(2000);
+    expect(g.state().question).toMatchObject({ id: "r1", content: { kind: "text", value: "題目 r1" } });
+    expect(g.state().question.checkFirst).toBeUndefined();
+    expect(g.state().answerClock).toEqual({ left: 60000 });
+  });
+
   it("sets the deadline when the question is up, counts down, and does nothing at 0 but say so", () => {
     const g = started();
+    g.check();
     expect(g.state().answerClock).toEqual({ left: 60000 });
     vi.advanceTimersByTime(20000);
     expect(g.peek().answerClock).toEqual({ left: 40000 });
@@ -120,12 +145,9 @@ describe("每題作答倒數 in the room", () => {
 
   it("stops once the team sends its answer, and the next team gets a full count", () => {
     const g = started();
-    vi.advanceTimersByTime(10000);
-    // A fill-in rolls its persuasion check first; the check's beat does not stop the count.
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: g.state().question.id, eventId: g.state().eventId });
-    expect(g.state().pendingRoll).toMatchObject({ kind: "check" });
-    expect(g.state().answerClock).toEqual({ left: 50000 });
-    vi.advanceTimersByTime(5000);
+    g.check();
+    vi.advanceTimersByTime(15000);
+    expect(g.peek().answerClock).toEqual({ left: 45000 });
     send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: g.state().question.id, text: "玉山" });
     expect(g.state().view.teams[0].typedAnswer).toBe("玉山");
     expect(g.state().answerClock).toBeUndefined();
@@ -138,19 +160,24 @@ describe("每題作答倒數 in the room", () => {
     vi.advanceTimersByTime(SERVE_HOLD_MS);
     send(g.room, g.host, { type: "HOST_NEXT", eventId: g.state().eventId });
     expect(g.state().view.currentTurnTeamId).toBe(B);
+    g.check();
     expect(g.state().answerClock).toEqual({ left: 60000 });
   });
 
   it("a wrong answer stops it; the team's next go at the question starts a full count again", () => {
     const g = started();
+    g.check();
     vi.advanceTimersByTime(25000);
     g.judge(false, "retry");
     // Turn passes on: the other team answers its own question with a fresh count.
     expect(g.state().view.currentTurnTeamId).toBe(B);
+    g.check();
     expect(g.state().answerClock).toEqual({ left: 60000 });
     vi.advanceTimersByTime(5000);
     g.judge(false, "retry");
+    // 重答 does not roll again: the question is up and counts at once.
     expect(g.state().view.currentTurnTeamId).toBe(A);
+    expect(g.state().question.checkFirst).toBeUndefined();
     expect(g.state().answerClock).toEqual({ left: 60000 });
   });
 
@@ -166,6 +193,7 @@ describe("每題作答倒數 in the room", () => {
     vi.advanceTimersByTime(30000); // the order holds, then the first question
     expect(g.state().initiative).toBeUndefined();
     expect(g.state().question).not.toBeNull();
+    g.check();
     expect(g.state().answerClock).toEqual({ left: 45000 });
   });
 
@@ -182,6 +210,7 @@ describe("每題作答倒數 in the room", () => {
 
   it("a restart keeps the remaining time", async () => {
     const g = started();
+    g.check();
     vi.advanceTimersByTime(15000);
     send(g.room, g.phones[1], { type: "TEAM_SELECT_OPTION", questionId: "x", optionIndex: 0 }); // any message saves
     const second = makeRoom(g.storage);
@@ -198,9 +227,11 @@ describe("每題作答倒數 in the room", () => {
 
   it("an offline team is skipped with a fresh count for the next; with every phone offline the count is held", () => {
     const g = started();
+    g.check();
     vi.advanceTimersByTime(10000);
     g.room.onClose(g.phones[0]);
     expect(g.state().view.currentTurnTeamId).toBe(B);
+    g.check();
     expect(g.state().answerClock).toEqual({ left: 60000 });
     vi.advanceTimersByTime(10000);
     g.room.onClose(g.phones[1]);
@@ -239,6 +270,9 @@ describe("每題作答倒數 on a video question (D4)", () => {
   it("waits for the big screen's clip end; a phone or the host cannot start it, and a second report does nothing", () => {
     const g = started({ answerSeconds: 30 }, bank(video("v1")));
     expect(g.state().question.id).toBe("v1");
+    // Before the check the video is not up, so there is no clip to wait for yet.
+    expect(g.state().answerClock).toBeUndefined();
+    g.check();
     expect(g.state().answerClock).toEqual({ left: null });
     send(g.room, g.phones[0], { type: "SCREEN_CLIP_ENDED", questionId: "v1" });
     send(g.room, g.host, { type: "SCREEN_CLIP_ENDED", questionId: "v1" });
@@ -288,6 +322,7 @@ describe("connections that come back under the same id", () => {
     g.room.onClose(g.host);
     send(g.room, host, { type: "HOST_AI_LIMIT", limit: 5 });
     expect(msgs(host.send.mock.calls).some((m) => m.error === "not_host")).toBe(false);
+    g.check();
     vi.advanceTimersByTime(4000);
     send(g.room, tv, { type: "SCREEN_CLIP_ENDED", questionId: "v1" });
     expect(g.state().answerClock).toEqual({ left: 30000 });

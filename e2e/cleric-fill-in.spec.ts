@@ -152,9 +152,9 @@ test("cleric: the phone's 逃跑 in the wait deals a new question and spends not
   await team.getByRole("button", { name: /^逃跑・同房/ }).click();
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await expect(question).not.toHaveText(before!);
-  // The new question is a new persuasion check before the box shows (dnd design R6).
+  // The new question is a new persuasion check, and it shows only once that is rolled (dnd design R6).
   await rollCheck(team);
+  await expect(question).not.toHaveText(before!);
   await expect(box).toHaveValue("");
   await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
 });

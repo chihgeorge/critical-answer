@@ -80,6 +80,7 @@ import {
   type MediaAction,
   type MediaCommand,
   type PendingRoll,
+  type PublicQuestion,
   type ServerMessage,
   type SoundCue,
   type PodiumReveal,
@@ -1015,13 +1016,27 @@ export class DungeonRoom {
     return pub ? { pub, answer: q ? answerText(q) : "" } : null;
   }
 
+  /** Check first, question after (owner, 2026-11-09): the turn's team has not finished its persuasion check on its
+   * fill-in question (not rolled, or the die is still in its beat). Until then the screen and the phones get no
+   * question text, media or video, and no count runs; the host pages still get the question (HOST_ANSWER). */
+  private awaitingCheck(): boolean {
+    const game = this.game;
+    if (game?.phase !== "playing" || isBuzzPhase(game)) return false;
+    const teamId = currentTurnTeamId(game);
+    const team = game.teams.find((t) => t.id === teamId);
+    if (!teamId || !team || atFork(team)) return false;
+    const id = currentQuestionIdOf(game, teamId);
+    if (this.question(id)?.kind !== "text") return false;
+    return this.pendingRoll?.kind === "check" || !game.checks?.[checkKey(id, teamId)];
+  }
+
   /** The turn answering now (answer-countdown.md D3), or null: nobody is answering while an answer waits for the host,
-   * a die other than a persuasion check is in its beat, or the screen shows something other than the question.
+   * a die is in its beat, a fill-in's persuasion check is not done (its question is not up yet), or the screen shows something other than the question.
    * "hold": every phone is offline (a restart, a Wi-Fi drop), so the count is kept for whoever comes back. */
   private answering(): { key: string; questionId: string; video: boolean } | null | "hold" {
     const game = this.game;
     if (!this.answerSeconds || game?.phase !== "playing" || this.paused()) return null;
-    if (this.pendingLock || game.pendingWrong || (this.pendingRoll && this.pendingRoll.kind !== "check")) return null;
+    if (this.pendingLock || game.pendingWrong || this.pendingRoll || this.awaitingCheck()) return null;
     // A buzzer phase is its own race: the team that buzzed answers out loud at once, so no count runs (boss-buzzer.md).
     if (isBuzzPhase(game)) return null;
     const teamId = currentTurnTeamId(game);
@@ -1089,7 +1104,9 @@ export class DungeonRoom {
     if (!q) return;
     const buzzer = this.game && isBuzzPhase(this.game) ? this.game.teams.find((t) => t.id === this.game!.buzz?.teamId && t.typedAnswer !== undefined) : undefined;
     const typed = buzzer ? { teamId: buzzer.id, text: buzzer.typedAnswer!, ...(buzzer.typedFields ? { fields: buzzer.typedFields } : {}) } : undefined;
-    this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer, ...(typed ? { typed } : {}) });
+    // STATE holds the question back until the check is done; the host still reads it out and may judge at once.
+    const question = this.awaitingCheck() ? { question: { ...q.pub, checkFirst: true as const } } : {};
+    this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer, ...(typed ? { typed } : {}), ...question });
   }
 
   /** Host-only: the picker's questions with their answers, what each target may queue and what is queued. */
@@ -1127,6 +1144,14 @@ export class DungeonRoom {
   }
 
 
+  /** STATE's question: the turn's, without its text, media, prompt and field labels while its check is not done. */
+  private shownQuestion(): PublicQuestion | null {
+    const pub = this.currentQuestion()?.pub ?? null;
+    if (!pub || !this.awaitingCheck()) return pub;
+    const { id, difficulty, boss, monster } = pub;
+    return { id, content: { kind: "text", value: "" }, difficulty, boss, monster, checkFirst: true };
+  }
+
   private snapshot(): ServerMessage {
     if (!this.game) {
       // A game that showed a question counts as played: the host page then leaves the intro unchecked (eng D5).
@@ -1151,7 +1176,7 @@ export class DungeonRoom {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       // The card holds the new phase's first question back until the host's 下一題.
-      question: this.phaseCard || this.opening() || this.forkBeat ? null : (this.currentQuestion()?.pub ?? null),
+      question: this.phaseCard || this.opening() || this.forkBeat ? null : this.shownQuestion(),
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.pacingView(),
@@ -2937,7 +2962,8 @@ export class DungeonRoom {
     if (this.reveal) return this.reveal.video ? this.reveal.questionId : null;
     // A door opening: the real turn may have passed on, and the next team's video must not start under it.
     if (this.phaseCard || this.opening() || this.forkBeat) return null;
-    const pub = this.currentQuestion()?.pub;
+    // Not before the check: the video is part of the question.
+    const pub = this.awaitingCheck() ? null : this.currentQuestion()?.pub;
     return pub?.content.kind === "youtube" ? pub.id : null;
   }
 
@@ -3175,7 +3201,8 @@ export class DungeonRoom {
     }
     if (currentQuestionIdOf(game, teamId) !== questionId || (classId === "cleric" && game.pendingWrong?.questionId !== questionId)) return reject("stale_question");
     // A fill-in question is a persuasion check first; the warrior's roll comes after it (dnd design R2).
-    if (classId === "warrior" && q?.kind === "text" && !game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
+    // So does the mage's first character: the question is not up before the check.
+    if ((classId === "warrior" || classId === "mage") && q?.kind === "text" && !game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
     this.game = next;
     if (classId === "warrior") {
       this.startRoll("warrior", teamId, questionId);

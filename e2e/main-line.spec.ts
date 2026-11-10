@@ -1,5 +1,5 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { answerCorrectly, NEXT_WAIT_MS, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, screenUrl } from "./answer";
+import { answerCorrectly, rollCheck, NEXT_WAIT_MS, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, screenUrl } from "./answer";
 import { stubSpeechSynthesis, ttsCalls } from "./tts";
 import { MONSTERS } from "../lib/monster-catalog";
 
@@ -70,6 +70,9 @@ test("create room, join two teams, start, judge; screen and play never see host-
   const question = (await host.getByTestId("host-question").textContent())!;
   const answer = (await host.getByTestId("host-answer").textContent())!;
   expect(answer.length).toBeGreaterThan(0);
+  // Check first, question after: the big screen has it once the team has rolled its persuasion check.
+  await expect(screen.getByText(question)).toHaveCount(0);
+  await rollCheck(players[0].page);
   await expect(screen.getByText(question)).toBeVisible();
 
   // A correct judgment scores and passes the turn.
