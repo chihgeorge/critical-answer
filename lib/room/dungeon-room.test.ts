@@ -3199,7 +3199,16 @@ describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
     claim(room, hostConn);
     joinTeams(room, hostConn, 1);
     send(room, hostConn, { type: "HOST_START" });
-    const state = lastBroadcast(room);
+    // Check first, question after: a fill-in's image is held back until its check is done; the host's copy has it at once.
+    expect(lastBroadcast(room).question).toMatchObject({ checkFirst: true, content: { kind: "text", value: "" } });
+    expect(JSON.stringify((roomIO.broadcast as ReturnType<typeof vi.fn>).mock.calls)).not.toContain("55555555");
+    const hostCopy = (hostConn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).findLast((m) => m.type === "HOST_ANSWER");
+    expect(hostCopy.question.content).toEqual({ kind: "image", url: "https://pub.example.r2.dev/55555555-5555-5555-5555-555555555555" });
+    passChecks(room);
+    // What a screen connecting now gets: the check is done, so the question is up.
+    const late = makeConn("late");
+    room.onConnect(late);
+    const state = (late.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).findLast((m) => m.type === "STATE");
     expect(state.question.content).toEqual({ kind: "image", url: "https://pub.example.r2.dev/55555555-5555-5555-5555-555555555555" });
     expect(state.question).not.toHaveProperty("answer");
   });
@@ -3211,7 +3220,11 @@ describe("image questions: R2_PUBLIC_BASE_URL wiring", () => {
     claim(room, hostConn);
     joinTeams(room, hostConn, 1);
     send(room, hostConn, { type: "HOST_START" });
-    const state = lastBroadcast(room);
+    passChecks(room);
+    // What a screen connecting now gets: the check is done, so the question is up.
+    const late = makeConn("late");
+    room.onConnect(late);
+    const state = (late.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).findLast((m) => m.type === "STATE");
     expect(state.question.content).toEqual({ kind: "image", url: "/55555555-5555-5555-5555-555555555555" });
   });
 });
@@ -3506,6 +3519,10 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     use();
     expect(err(conns[0])).toBe("no_option_to_remove");
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t1" } : t)) };
+    // Before the check the refusal says nothing about the hidden answer.
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
+    expect(err(conns[0])).toBe("check_needed");
+    passChecks(room);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
     expect(err(conns[0])).toBe("no_hint");
     expect(room.game!.teams[0].abilityUses).toBe(3);
@@ -3517,6 +3534,11 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
   it("the mage shows a fill-in answer's first character to everyone, once per question", () => {
     const { room, conns } = game("mage");
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t2" } : t)) };
+    // Not before the persuasion check: the question is not up yet (check first, question after).
+    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
+    expect(err(conns[0])).toBe("check_needed");
+    expect(room.game!.teams[0].abilityUses).toBe(4);
+    passChecks(room);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
     expect(lastBroadcast(room).view.mageHints).toEqual({ "r0-t2": "萬" });
     expect(room.game!.teams[0].abilityUses).toBe(3);

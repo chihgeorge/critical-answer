@@ -26,6 +26,11 @@ test("the host's 30 秒 shows on the TV, the phone and the host page, and sendin
   await skipInitiative(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
+  // A fill-in counts only once its persuasion check is rolled and the question is up.
+  await expect(host.getByTestId("host-check-first")).toBeVisible();
+  for (const page of [screen, team, host]) await expect(page.getByTestId("answer-clock")).toHaveCount(0);
+  await rollCheck(team);
+
   for (const page of [screen, team, host]) {
     const clock = page.getByTestId("answer-clock");
     await expect(clock).toBeVisible();
@@ -34,7 +39,6 @@ test("the host's 30 秒 shows on the TV, the phone and the host page, and sendin
     expect(left).toBeLessThanOrEqual(30);
   }
 
-  await rollCheck(team);
   await team.getByRole("textbox", { name: "你們的答案" }).fill("玉山");
   await team.getByRole("button", { name: "送出" }).click();
   await expect(screen.getByTestId("screen-typed-answer")).toBeVisible();

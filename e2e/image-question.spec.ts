@@ -68,6 +68,7 @@ test("image-content question: renders on /play, /screen, and the host's own prev
 
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
+  await rollCheck(team); // check first, question after: the question and its media show once the check is rolled
 
   // The <img> renders on all three surfaces with the URL the server built (base + key) —
   // /play, /screen, and now the host's own small preview (added so judging an image question
@@ -86,7 +87,6 @@ test("image-content question: renders on /play, /screen, and the host's own prev
 
   // Value: protects=an image text question is a fill-in too: the phone has the box and the host sees what
   // was sent (#104 /review D3); fails_when=the box only shows for text content; no_claim=YouTube content.
-  await rollCheck(team);
   await team.getByRole("textbox", { name: "你們的答案" }).fill("松鼠");
   await team.getByRole("button", { name: "送出" }).click();
   await expect(host.getByTestId("host-typed-answer")).toHaveText("隊伍答：松鼠");
@@ -124,6 +124,7 @@ test("image-content question: a broken image URL hides itself on every surface, 
 
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
+  await rollCheck(team); // check first, question after: the question and its media show once the check is rolled
 
   // The broken-image fallback hides only the image, on every surface that renders it (host's
   // own preview included) — never a blank or crashed question.
@@ -170,6 +171,7 @@ test("youtube-content question: the big screen plays it, the phone and the host 
 
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
+  await rollCheck(team); // check first, question after: the question and its media show once the check is rolled
 
   await expect(host.getByText("▶ 影片題（看大螢幕）")).toBeVisible();
   await expect(host.locator("iframe")).toHaveCount(0);
@@ -297,6 +299,7 @@ test("media question: on our own turn the picture comes before our team card, an
   // where this key does not exist, so the 404 hides the <img> (display:none, top 0) at a racy moment.
   const slot = (page: import("@playwright/test").Page) => img(page).locator("..");
   const card = (page: import("@playwright/test").Page, name: string) => page.getByText(name, { exact: true });
+  await rollCheck(a); // check first, question after: the picture is up once the team on turn has rolled
   await expect(img(a)).toBeAttached();
   await expect(img(b)).toBeAttached();
   await expect(a.getByRole("heading")).toHaveCount(0); // a picture question has no text strip
@@ -306,6 +309,7 @@ test("media question: on our own turn the picture comes before our team card, an
   await host.getByRole("button", { name: "答錯・下輪再答" }).click();
   await expect(b.getByText("輪到我們了！")).toBeVisible();
   await expect(a.getByText("輪到：乙隊")).toBeVisible();
+  await rollCheck(b);
   expect(await top(slot(a))).toBeGreaterThan(await top(card(a, "甲隊")));
   expect(await top(slot(b))).toBeLessThan(await top(card(b, "乙隊")));
 });
@@ -316,10 +320,15 @@ test("host-judged text question: only the answering phone shows it, and it moves
   const { host, a, b } = await startTwoTeams(browser, request, [spoken(1), spoken(2)]);
 
   const question = (page: import("@playwright/test").Page) => page.getByRole("heading", { name: /口答測試題/ });
+  // Check first, question after: not even the answering phone has it before its roll.
+  await expect(a.getByTestId("roll-check")).toBeVisible();
+  await expect(question(a)).toHaveCount(0);
+  await rollCheck(a);
   await expect(question(a)).toBeVisible();
   await expect(question(b)).toHaveCount(0);
 
   await host.getByRole("button", { name: "答錯・下輪再答" }).click();
+  await rollCheck(b);
   await expect(question(b)).toBeVisible();
   await expect(question(a)).toHaveCount(0);
 

@@ -2,7 +2,7 @@
 
 import { AnswerClock } from "@/components/answer-clock";
 import { ANSWER_SECONDS, DEFAULT_ANSWER_SECONDS, stuckDelayMs } from "@/lib/answer-clock";
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
@@ -58,7 +58,7 @@ export default function HostPage() {
   /** The room bank's question counts (LOBBY `bankSize`), for the too-few-questions warning by 開始遊戲. */
   const [bankSize, setBankSize] = useState<BankSize | null>(null);
   const sizeWarning = bankSize && bankSizeWarning(bankSize, lobby.length);
-  const [game, setGame] = useState<StateMessage | null>(null);
+  const [state, setState] = useState<StateMessage | null>(null);
   /** 手動停頓 (docs/designs/manual-pacing.md): the room's switch, as its last LOBBY or STATE said. */
   const [manual, setManual] = useState(false);
   /** 每題作答倒數 for the next game (answer-countdown.md D2): this page's pick, so a replay keeps it. */
@@ -68,7 +68,9 @@ export default function HostPage() {
   const [connected, setConnected] = useState(false);
   const [claimed, setClaimed] = useState(false);
   /** Host-only: the answer to the question in play. Never shown on /screen or /play. */
-  const [answer, setAnswer] = useState<Pick<Extract<ServerMessage, { type: "HOST_ANSWER" }>, "questionId" | "answer" | "typed"> | null>(null);
+  const [answer, setAnswer] = useState<Pick<Extract<ServerMessage, { type: "HOST_ANSWER" }>, "questionId" | "answer" | "typed" | "question"> | null>(null);
+  // Check first, question after: STATE holds a fill-in's text back until its check is done; the host's copy comes with the answer.
+  const game = useMemo(() => (state?.question?.checkFirst && answer?.question && answer.questionId === state.question.id ? { ...state, question: answer.question } : state), [state, answer]);
   const [drawer, setDrawer] = useState(false);
   /** Host-only: what the host may queue as a team's (or the boss's) next question, with answers. */
   const [picks, setPicks] = useState<Picks | null>(null);
@@ -218,7 +220,7 @@ export default function HostPage() {
           break;
         }
         case "HOST_ANSWER":
-          setAnswer({ questionId: msg.questionId, answer: msg.answer, typed: msg.typed });
+          setAnswer({ questionId: msg.questionId, answer: msg.answer, typed: msg.typed, question: msg.question });
           break;
         case "HOST_PICKS":
           setPicks(msg);
@@ -233,7 +235,7 @@ export default function HostPage() {
           setLobby(msg.teams);
           setReplay(!!msg.replay);
           setBankSize(msg.bankSize ?? null);
-          setGame(null);
+          setState(null);
           setPicks(null);
           setPicking(null);
           setHandoffs({});
@@ -244,11 +246,11 @@ export default function HostPage() {
           break;
         case "STATE":
           setManual(msg.pacing === "manual");
-          setGame(msg);
+          setState(msg);
           setPendingTeamId(null);
           break;
         case "GAME_OVER":
-          setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
+          setState((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
           setPendingTeamId(null);
           setPicks(null);
           setPicking(null);
@@ -330,6 +332,8 @@ export default function HostPage() {
   // The boss's phase card is a pause like a reveal: 下一題 closes it (docs/designs/boss-phases.md D3).
   // A ❓ 神秘房's result is one more (event-rooms.md D3). A door opening (branch-fork.md) is not: 下一題 waits it out.
   const revealUp = !!game?.reveal || !!game?.phaseCard || !!game?.eventReveal;
+  // In the boss room this choice also brings a new question (the boss rotates), so it is named for that.
+  const retryLabel = turn?.inBoss ? "下輪換題" : "下輪再答";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): teams buzz in, the host judges the one that buzzed first. */
   const buzz = game?.phase === "playing" && !revealUp ? game.view.buzz : undefined;
   // Keyed on the pause itself, not just "a pause is up": the answer reveal turning into the phase card
@@ -856,6 +860,12 @@ export default function HostPage() {
                       {game.question.content.audioOnly ? "🎵 聽歌題（聽大螢幕）" : "▶ 影片題（看大螢幕）"}
                     </div>
                   )}
+                  {/* Check first, question after: why the big screen has no question or count yet. Not while a 答錯 waits (no roll then). */}
+                  {game.question?.checkFirst && !game.phaseCard && !game.forkBeat && !revealUp && !game.view.pendingWrong && (
+                    <div data-testid="host-check-first" className="mt-1 text-[14px]" role="status">
+                      {game.pendingRoll?.kind === "check" ? "🎲 說服骰擲出了，結算後大螢幕才出題" : "🎲 等這隊擲完說服，大螢幕才出題"}
+                    </div>
+                  )}
                   {/* 每題作答倒數 (answer-countdown.md): only a nudge, the host still judges (D1). */}
                   {game.answerClock && (
                     <div className="mt-1">
@@ -881,7 +891,7 @@ export default function HostPage() {
                 </div>
               )}
               {game.question?.content.kind === "youtube" && !revealUp && (
-                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
+                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready || !!game.question.checkFirst} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
               )}
               {buzz && (
                 <div data-testid="host-buzz" className="mt-2 flex flex-col gap-1 text-[16px]">
@@ -1008,7 +1018,7 @@ export default function HostPage() {
                         : bossMiss
                           ? "答錯！首領換一題…"
                           : wrong
-                          ? `答錯！等${turn.team.name}選下輪再答或逃跑`
+                          ? `答錯！等${turn.team.name}選${retryLabel}或逃跑`
                           : `等${turn.team.name}鎖定答案…`}
                     </div>
                     <div className="text-[14px]">{roll?.kind === "kill" ? "大螢幕擲 4d20 擊殺獎勵後結算" : roll || lock?.revealing ? "大螢幕停頓 2 秒後揭曉" : lock ? "按公布答案揭曉" : `${game.question?.items ? "排序題" : "選擇題"}由隊伍手機作答，主持人公布`}</div>
@@ -1020,8 +1030,8 @@ export default function HostPage() {
                       <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>
                       <div className="px-1 pt-1 text-[14px] text-white">隊伍卡住時，替{turn.team.name}選：</div>
                       <div className={bossMiss ? "grid" : turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
-                        <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・下輪再答`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
-                          <span className="whitespace-nowrap">下輪再答</span>
+                        <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・${retryLabel}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                          <span className="whitespace-nowrap">{retryLabel}</span>
                           <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                         </PixelButton>
                         {!bossMiss && (
@@ -1060,7 +1070,7 @@ export default function HostPage() {
                           </PixelButton>
                         )}
                         <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
-                          下輪再答
+                          {retryLabel}
                           <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.retry}</span>
                         </PixelButton>
                         <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
@@ -1102,8 +1112,8 @@ export default function HostPage() {
                     </PixelButton>
                   ) : (
                   <div className={turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
-                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} aria-label="答錯・下輪再答" onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
-                      {turn.inBoss ? "答錯・下輪再答" : <TwoLine top="答錯・" bottom="下輪再答" />}
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} aria-label={`答錯・${retryLabel}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                      {turn.inBoss ? "答錯・下輪換題" : <TwoLine top="答錯・" bottom="下輪再答" />}
                       <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                     </PixelButton>
                     <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} aria-label={turn.inBoss ? "答錯・逃跑" : "答錯・逃跑・同房"} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>

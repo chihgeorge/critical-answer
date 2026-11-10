@@ -159,14 +159,14 @@ describe("prompt", () => {
     }
   });
 
-  // Value: protects=a wrong boss answer's prompt says the boss brought a new question, never 可以重答;
+  // Value: protects=a wrong boss answer's prompt says the boss brought a new question, never 下一輪再答同一題;
   // fails_when=describeEvent ignores e.boss; why_new=no llm test sends a boss retry; seam=none;
   // no_claim=the model's actual line (prompt bytes only; no eval framework)
   it("tells the model a wrong boss answer brought a new question, not that the team can answer again", () => {
     const { user } = buildPrompt({ type: "retry", team: "甲", monster: "小黑龍", boss: true }, []);
     expect(user).toContain("首領「小黑龍」換出了新的考驗");
-    expect(user).not.toContain("可以重答");
-    expect(buildPrompt({ type: "retry", team: "甲", monster: "史萊姆" }, []).user).toContain("可以重答");
+    expect(user).not.toContain("下一輪再答同一題");
+    expect(buildPrompt({ type: "retry", team: "甲", monster: "史萊姆" }, []).user).toContain("下一輪再答同一題");
   });
 
   // Guards the host's hand-edited lines reaching the prompt, and the removed director notes staying gone
@@ -450,7 +450,7 @@ describe("boss phase prompts (docs/designs/boss-phases.md)", () => {
 describe("a boss phase out of questions (review finding, 2026-10-28)", () => {
   it("asks the model not to offer a retry or count hearts", () => {
     const miss = buildPrompt({ type: "retry", team: "紅隊", monster: "龍", boss: true, exhausted: true }, []).user;
-    expect(miss).toContain("不要說可以重答");
+    expect(miss).toContain("不要說可以再答");
     const hit = buildPrompt({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, exhausted: true }, []).user;
     expect(hit).toContain("不要報剩下的血量");
     expect(hit).not.toContain("2/3");

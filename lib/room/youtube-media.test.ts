@@ -26,7 +26,7 @@ function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
 
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
-function game(questions: object[]) {
+function game(questions: object[], roll = true) {
   const bank = parseBank({
     rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions }],
     boss: { monster: "dragon", maxHp: 3, questions: [text("b1")] },
@@ -41,6 +41,12 @@ function game(questions: object[]) {
   send(room, phone, { type: "JOIN", teamId: T1, teamKey: "team-key-0123456789abcde0", teamName: "烤肉小隊" });
   send(room, host, { type: "HOST_START", aiNarration: false });
   const state = () => msgs(io.broadcast.mock.calls).findLast((m) => m.type === "STATE");
+  /** Check first, question after: a fill-in's video is up only once its team's persuasion check's beat has ended. */
+  const check = () => {
+    send(room, phone, { type: "TEAM_ROLL_CHECK", questionId: state().question.id, eventId: state().eventId });
+    (room as unknown as { resolveRoll(): void }).resolveRoll();
+  };
+  if (roll) check();
   const media = (action: string, questionId = state().question?.id ?? state().reveal?.questionId, conn: Conn = host) =>
     send(room, conn, { type: "HOST_MEDIA", questionId, action });
   /** Answers the question in play correctly; a fill-in question passes its persuasion check first. */
@@ -50,8 +56,32 @@ function game(questions: object[]) {
     room.game = { ...g, checks: { ...g.checks, [checkKey(qid, T1)]: { value: 10, bonus: 0, dc: 8, passed: true } } };
     send(room, host, { type: "HOST_JUDGE", teamId: T1, questionId: qid, correct: true, fleeChoice: "retry", eventId: state().eventId });
   };
-  return { room, io, host, phone, state, media, correct };
+  return { room, io, host, phone, state, media, correct, check };
 }
+
+// Value: protects=check first, question after: a fill-in's prompt, field labels and video never reach a phone or the TV
+// before its check; fails_when=shownQuestion() spreads the question instead of picking id, difficulty, boss and monster.
+describe("check first, question after", () => {
+  it("STATE holds back a fill-in's prompt and video until its check is done", () => {
+    const g = game([video("v1", { prompt: "這首歌是？" })], false);
+    expect(Object.keys(g.state().question).sort()).toEqual(["boss", "checkFirst", "content", "difficulty", "id", "monster"]);
+    expect(JSON.stringify(g.io.broadcast.mock.calls)).not.toContain("這首歌是？");
+    expect(JSON.stringify(g.phone.send.mock.calls)).not.toContain("這首歌是？");
+    // A first character an earlier team's mage got on the same (shared boss) question waits with the question.
+    // So does the character an earlier team's own check earned (a team that has since left the room's teams list never matters).
+    const T2 = "00000000-0000-0000-0000-000000000002";
+    const other = makeConn("other");
+    g.room.game = { ...g.room.game!, mageHints: { v1: "答" }, teams: [...g.room.game!.teams, { ...g.room.game!.teams[0], id: T2, name: "乙隊", online: false }], checks: { [checkKey("v1", T2)]: { value: 12, bonus: 0, dc: 8, passed: true, hint: "答" } } };
+    g.room.onConnect(other);
+    const held = msgs(other.send.mock.calls).findLast((m) => m.type === "STATE");
+    expect(held.view.mageHints).toEqual({});
+    expect(JSON.stringify(held.view.checks)).not.toContain("答");
+    g.check();
+    expect(g.state().view.mageHints).toEqual({ v1: "答" });
+    expect(g.state().question.prompt).toBe("這首歌是？");
+    expect(g.state().question.content.kind).toBe("youtube");
+  });
+});
 
 describe("HOST_MEDIA", () => {
   it("play, pause and restart become STATE media; restart bumps seq, every press bumps press", () => {
@@ -173,6 +203,7 @@ describe("the screen key", () => {
     g.room.onConnect(late);
     send(g.room, g.phone, { type: "SCREEN_HELLO" });
     serveNext(g.room, g.host, g.state().eventId);
+    g.check();
     expect(g.state().question.content.kind).toBe("youtube");
     for (const conn of [bare, wrong, empty, late]) expect(sentTo(conn).some((m) => m.type === "STATE")).toBe(true);
     for (const conn of [g.phone, bare, wrong, empty, late]) expect(JSON.stringify(sentTo(conn))).not.toContain(VIDEO);
@@ -195,6 +226,12 @@ describe("the screen key", () => {
     serveNext(g.room, g.host, g.state().eventId);
     const next = g.state().question.id;
     expect(next).not.toBe(id);
+    // Check first, question after: the next video's id goes out only once its team's check is done, and ▶ waits too.
+    expect(g.state().question).toMatchObject({ checkFirst: true, content: { kind: "text", value: "" } });
+    for (const conn of [g.host, keyed]) expect(videoOf(conn).questionId).toBe(id);
+    g.media("play", next);
+    expect(g.state().media).toBeUndefined();
+    g.check();
     for (const conn of [g.host, keyed]) expect(videoOf(conn)).toEqual({ type: "SCREEN_VIDEO", questionId: next, video: FULL });
     // A host page that reloads gets the key again, and the video on show.
     const reloaded = makeConn("host-2");

@@ -330,8 +330,6 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // Persuasion check (dnd design R6): a fill-in turn rolls before it answers; its record shows once the beat ends.
   const fillIn = !!question && !question.options && !question.items && !reveal && !card;
   const check = fillIn && turn ? view.checks?.[checkKey(question!.id, turn.id)] : undefined;
-  // The narration keeps the last outcome; the DC sign carries the waiting line instead.
-  const awaitingCheck = fillIn && !check && !pendingRoll && !wrong;
   const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
   // A YouTube question, or the reveal showing the answered question's video where it stopped (D17). One slot, one
   // key, so the player is not rebuilt between the question and its reveal.
@@ -355,7 +353,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
       {dcChip && (
         <div data-testid="screen-check-dc" className="px-chip" style={{ ...CHIP, background: "var(--warn)" }}>
-          🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）{awaitingCheck && `　${turn!.name}：按手機上的「擲骰說服」`}
+          🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）
         </div>
       )}
       {question && <MageHint hint={view.mageHints?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
@@ -464,6 +462,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             )}
           </div>
         ) : question ? (
+          // Check first, question after: the room sends no text until the die's beat ends.
+          question.checkFirst ? <span data-testid="screen-check-first">{wrong || (pendingRoll && pendingRoll.kind !== "check") ? "……" : pendingRoll || !turn ? "🎲 說服檢定中……擲完才出題" : `${turn.name}：按手機上的「🎲 擲骰說服」，擲完才出題`}</span> :
           question.content.kind === "text" ? question.content.value : <div style={{ fontSize: 26 }}>{question.prompt ?? ""}</div>
         ) : "……"}
         {video && (
@@ -537,7 +537,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
       {dcChip && !asking && (
         <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: 262, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
-          🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）{awaitingCheck && `　${turn!.name}：按手機上的「擲骰說服」`}
+          🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）
         </div>
       )}
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />

@@ -76,6 +76,9 @@ export interface PublicQuestion {
   /** A music question's field labels (歌名, 歌手…), never their answers: one box per field on the phone, one ✓／✗ row each
    * on the host page (docs/designs/multi-field.md). */
   fields?: string[];
+  /** A fill-in question whose team has not finished its persuasion check: STATE sends it with empty text and no media,
+   * prompt or fields until the die's beat ends (check first, question after). On HOST_ANSWER's copy it only marks the wait. */
+  checkFirst?: true;
 }
 
 /** Shown to everyone (D2/D3 — a shared-screen, in-person party game, so hiding the answer from
@@ -484,8 +487,9 @@ export type ServerMessage =
     }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   /** `typed`: in a buzzer phase, what the team that buzzed typed (`fields`: a music question's boxes, "" for a blank).
-   * Host-only: STATE hides it, since the other teams could still buzz (docs/designs/multi-field.md E4). */
-  | { type: "HOST_ANSWER"; questionId: string; answer: string; typed?: { teamId: string; text: string; fields?: string[] } }
+   * Host-only: STATE hides it, since the other teams could still buzz (docs/designs/multi-field.md E4).
+   * `question`: the whole question while STATE holds it back for the persuasion check (`checkFirst`); absent after. */
+  | { type: "HOST_ANSWER"; questionId: string; answer: string; typed?: { teamId: string; text: string; fields?: string[] }; question?: PublicQuestion }
   /** Host-only, sent with every STATE: what the host may queue (HOST_QUEUE_QUESTION) and what is queued.
    * Carries answers, so it goes out with sendTo, never broadcast. */
   | {

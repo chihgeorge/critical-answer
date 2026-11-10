@@ -143,7 +143,8 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     });
   } else if (me.classId === "mage" && q.items && game.view.mageHints[q.id] === undefined) {
     body = button("🔮", "看第 1 個是誰", `大家都看得到・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
-  } else if (me.classId === "mage" && !q.options && !q.items && game.view.mageHints[q.id] === undefined && game.view.checks?.[checkKey(q.id, teamId)]?.hint === undefined) {
+  } else if (me.classId === "mage" && !q.options && !q.items && game.view.mageHints[q.id] === undefined && !q.checkFirst && game.view.checks?.[checkKey(q.id, teamId)]?.hint === undefined) {
+    // Not before the check (the question is not up yet); after it, only when it gave no first character.
     // The room refused this question (no_hint): a 1-character answer has no first character to give.
     if (noHint) return <div className="px-bar mt-1 !text-[17px]" role="status">🔮 這題答案太短，不能看第一個字・剩 {me.abilityUses} 次</div>;
     body = button("🔮", "看答案第一個字", `大家都看得到・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
@@ -492,13 +493,15 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
               </PixelButton>
             )}
             <PixelButton variant="ok" className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
-              下輪再答<small className="text-[13px]">先換下一隊</small>
+              {/* In the boss room the boss rotates its question, so the team comes back to a new one. */}
+              {me?.inBossPhase ? "下輪換題" : "下輪再答"}<small className="text-[13px]">先換下一隊</small>
             </PixelButton>
           </div>
           <FleeButtons questionId={q.id} send={send} boss={!!me?.inBossPhase} />
         </>
-      ) : needCheck && !rolling && sent === null ? (
-        <>
+      ) : needCheck && sent === null ? (
+        // The die's beat: nothing to press, the roll banner above says to watch the big screen.
+        rolling ? null : <>
         <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />
         <PixelButton
           variant="ok"
@@ -508,7 +511,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
           onClick={() => send({ type: "TEAM_ROLL_CHECK", questionId: q.id, eventId: game.eventId })}
         >
           🎲 擲骰說服
-          <small className="text-[13px]">過了 DC，大螢幕給答案第一個字</small>
+          <small className="text-[13px]">必擲・不花次數・過了給第一個字</small>
         </PixelButton>
         </>
       ) : sent !== null ? (
@@ -1170,7 +1173,7 @@ export default function PlayPage() {
 
         {/* #104: our own host-judged text turn is a fill-in: the team types its answer for the host. */}
         {game && !finished && !buzz && !held && isMyTurn && game.question && !game.question.options && !game.question.items && (
-          <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint={noHintQid === game.question.id} />
+          <TextAnswerPanel key={`${game.question.id}:${game.eventId}:${game.question.checkFirst ? "check" : "q"}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint={noHintQid === game.question.id} />
         )}
 
         {/* D14: our own lock was right — the same tiles, the right one green, and the points. */}
