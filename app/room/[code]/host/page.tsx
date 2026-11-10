@@ -541,16 +541,16 @@ export default function HostPage() {
           </Panel>
           {/* 手動停頓 (manual-pacing.md): one tap either way, any time. */}
           <div data-testid="host-pacing" role="group" aria-label="停頓模式" className="flex flex-none whitespace-nowrap">
-            {([false, true] as const).map((on) => (
+            {(["auto", "manual"] as const).map((mode) => (
               <PixelButton
-                key={String(on)}
-                aria-pressed={manual === on}
+                key={mode}
+                aria-pressed={manual === (mode === "manual")}
                 disabled={!ready}
-                onClick={() => send({ type: "HOST_PACING", mode: on ? "manual" : "auto" })}
+                onClick={() => send({ type: "HOST_PACING", mode })}
                 className="!m-0 min-h-[44px] !px-2 !py-2 text-[16px] focus-visible:z-10"
-                style={manual === on ? { background: "var(--k)", color: "#fff" } : { background: "#fff" }}
+                style={manual === (mode === "manual") ? { background: "var(--k)", color: "#fff" } : { background: "#fff" }}
               >
-                {on ? "⏸ 手動" : "自動"}
+                {mode === "manual" ? "⏸ 手動" : "自動"}
               </PixelButton>
             ))}
           </div>
