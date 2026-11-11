@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.58.0.2] - 2026-11-12
+
+### Changed
+- Design docs and TODOS.md no longer point at files under the owner's home folder or carry the owner's local user name: the 62 local-only paths now read `[owner-local]/…`. A code comment uses the neutral `shortcut:` tag.
+
 ## [0.58.0.1] - 2026-11-12
 
 ### Changed
