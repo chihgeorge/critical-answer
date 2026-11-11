@@ -34,7 +34,7 @@
 // (queueUploadedImage), so one the editor never saves is deleted too.
 
 import { BANK } from "./question-bank-data";
-import { allQuestions, assertSavable, parseBank, imageKeysOf, type Bank } from "./question-bank";
+import { allQuestions, assertSavable, bossQuestions, parseBank, imageKeysOf, type Bank } from "./question-bank";
 import type { RoomStorage } from "./room/io";
 
 const BANK_KEY = "bank";
@@ -43,7 +43,7 @@ const LEGACY_BANK_KEY = "legacyBank";
 /** The stored bank's format. Bump it when older code reading a newly saved bank would lose data on
  * its next save (e.g. a new field its parseBank drops): older code sees a higher number, treats the
  * stored bank as unreadable and refuses to save. A stored bank without one is format 1. */
-export const BANK_FORMAT = 8;
+export const BANK_FORMAT = 9;
 /** A stored format older than this is not parsed (format 2 names whole monsters, format 3 catalog ids;
  * docs/designs/monster-catalog.md §5): the bundled bank comes back `outdated` with the stored version, and a
  * save may overwrite it. Format 4 only added sort questions, so format 3 still reads as is. */
@@ -56,12 +56,15 @@ const BUZZER_FORMAT = 5;
 const CATEGORY_FORMAT = 6;
 /** The format that added a music question's answer fields (multi-field.md). */
 const FIELDS_FORMAT = 7;
-/** The format a bank is stored at: the oldest whose code keeps everything in it. 8 for an Instagram explanation
+/** The format that added Instagram explanations (instagram-explanations.md). */
+const INSTAGRAM_FORMAT = 8;
+/** The format a bank is stored at: the oldest whose code keeps everything in it. 9 for a boss question's own
+ * difficulty, 8 for an Instagram explanation
  * (instagram-explanations.md), 7 for a music question's answer fields
  * (multi-field.md), 6 for a question category (boss-music-buzzer.md), 5 for a buzzer phase (boss-buzzer.md), 4 for a sort question, else 3, so a rollback to the
  * previous version still reads it (/review, 2026-11-07). */
 export const formatOf = (bank: Bank): number =>
-  allQuestions(bank).some((q) => q.explanation?.kind === "instagram") ? BANK_FORMAT : allQuestions(bank).some((q) => q.kind === "text" && q.fields) ? FIELDS_FORMAT : allQuestions(bank).some((q) => q.category) ? CATEGORY_FORMAT : bank.boss.phases.some((p) => p.buzzer) ? BUZZER_FORMAT : allQuestions(bank).some((q) => q.kind === "sort") ? SORT_FORMAT : OLDEST_PARSED_FORMAT;
+  bossQuestions(bank).some((q) => q.difficulty !== undefined) ? BANK_FORMAT : allQuestions(bank).some((q) => q.explanation?.kind === "instagram") ? INSTAGRAM_FORMAT : allQuestions(bank).some((q) => q.kind === "text" && q.fields) ? FIELDS_FORMAT : allQuestions(bank).some((q) => q.category) ? CATEGORY_FORMAT : bank.boss.phases.some((p) => p.buzzer) ? BUZZER_FORMAT : allQuestions(bank).some((q) => q.kind === "sort") ? SORT_FORMAT : OLDEST_PARSED_FORMAT;
 /** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
 const PENDING_KEY = "pendingImageDeletes";
 /** Default wait before an orphaned image is deleted: a room's longest life (24 hours with every extension) plus an

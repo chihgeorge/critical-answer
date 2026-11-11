@@ -65,12 +65,22 @@ test("a team at a fork opens ❓ from its phone, the door opens, everyone sees t
   // The door opens first and names what was behind it; the outcome waits for the end of the beat (branch-fork.md d1b).
   await expect(screen.getByTestId("fork-door-open")).toHaveAttribute("data-door", "mystery");
   await expect(screen.getByTestId("fork-door-open")).toHaveAttribute("data-side", "right");
-  await expect(screen.getByTestId("event-result")).toBeVisible({ timeout: 5000 });
-  await expect(screen.getByText("❓ 神秘房")).toBeVisible();
-  await expect(eventTeam.getByTestId("phone-event-result")).toBeVisible();
-  await expect(host.getByTestId("host-reveal")).toContainText("大螢幕正在揭曉");
-  await nextQuestion(host);
-  await expect(screen.getByTestId("event-result")).toHaveCount(0);
+  // ❓ draws the chest, the statue or the fortune teller (fortune-teller.md); the fortune teller shows her own screen.
+  const fortune = screen.getByTestId("fortune-screen");
+  await expect(screen.getByTestId("event-result").or(fortune)).toBeVisible({ timeout: 5000 });
+  if (await fortune.isVisible()) {
+    // The effect buttons wait out her ~3 s intro. ✨ blessing, not 💫 stun, which would skip Plain's turn below.
+    await eventTeam.getByTestId("phone-fortune-blessing").click();
+    await expect(fortune).toHaveAttribute("data-step", "card");
+    await nextQuestion(host);
+    await expect(fortune).toHaveCount(0);
+  } else {
+    await expect(screen.getByText("❓ 神秘房")).toBeVisible();
+    await expect(eventTeam.getByTestId("phone-event-result")).toBeVisible();
+    await expect(host.getByTestId("host-reveal")).toContainText("大螢幕正在揭曉");
+    await nextQuestion(host);
+    await expect(screen.getByTestId("event-result")).toHaveCount(0);
+  }
 
   // Plain plays; then EventTeam, one room on, faces a monster.
   await expect(host.getByText("輪到：Plain")).toBeVisible();

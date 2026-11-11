@@ -19,7 +19,7 @@ import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { MAX_TEAMS, scoreName } from "@/lib/protocol";
 import { bankSize, bankSizeWarning, bankSizeWarningText } from "@/lib/bank-size";
-import type { Difficulty } from "@/lib/game-state";
+import { DEFAULT_BOSS_DIFFICULTY, type Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId, formatClipTime, parseClipTime } from "@/lib/youtube";
 import { YoutubePlayer } from "@/components/youtube-player";
@@ -125,6 +125,7 @@ function validationError(bank: Bank): string | null {
     if (contentErr) return contentErr;
     if (q.prompt !== undefined && Array.from(q.prompt).length > MAX_PROMPT) return `${label}的題幹最多 ${MAX_PROMPT} 個字`;
     if (q.category !== undefined && Array.from(q.category.trim()).length > MAX_CATEGORY) return `${label}的類別最多 ${MAX_CATEGORY} 個字`;
+    if (q.difficulty !== undefined && !(DIFFICULTIES as readonly number[]).includes(q.difficulty)) return `${label}的難度要是 1～5`;
     const explanationErr = contentError(`${label}的詳解`, q.explanation);
     if (explanationErr) return explanationErr;
   }
@@ -460,6 +461,7 @@ export default function BankEditorPage() {
                       note={i === 0 ? "第 1 階段看起來就是普通的首領。" : `第 ${i} 階段打完後出現。`}
                       questions={p.questions}
                       categories={!!p.buzzer}
+                      difficulty
                       onUpdate={(id, updater) => updateQuestion(loc, id, updater)}
                       onDelete={(id) => deleteQuestion(loc, id)}
                       onAdd={() => addQuestion(loc)}
@@ -695,6 +697,7 @@ function RoomEditor({
   onAdd,
   onUploadImage,
   categories = false,
+  difficulty = false,
 }: {
   testId: string;
   title: string;
@@ -702,17 +705,31 @@ function RoomEditor({
   questions: BankQuestion[];
   /** A 類別 field per question: a buzzer phase's winner picks the next song's (boss-music-buzzer.md M5). */
   categories?: boolean;
+  /** A 難度 menu per question: a boss question's own (a pool question's is its pool). */
+  difficulty?: boolean;
   onUpdate: (id: string, updater: (q: BankQuestion) => BankQuestion) => void;
   onDelete: (id: string) => void;
   onAdd: () => void;
   onUploadImage: (file: File) => Promise<string>;
 }) {
   const hintId = useId();
+  const difficultyHintId = useId();
   return (
     <Panel className="flex flex-col gap-2 p-4">
       <div data-testid={testId} className="flex flex-col gap-2">
         <h2 className="text-[18px]">{title}</h2>
         <div className="text-[13px]">{note}</div>
+        {/* A buzzer phase has no persuasion check, so there the difficulty only orders the questions. */}
+        {difficulty && (
+          <div id={difficultyHintId} className="text-[13px]">
+            難度 1 最易、5 最難（沒改就是 5）：同一階段由易到難出題
+            {categories ? "。" : (
+              <>
+                ，也決定說服檢定的 <span className="whitespace-nowrap">DC（8～16）</span>。
+              </>
+            )}
+          </div>
+        )}
         {/* Mirrors firstMeaningfulChar (lib/game-state.ts), shown by the mage and a passed check; a buzzer phase has neither. */}
         {!categories && (
           <div id={hintId} className="text-[13px]">
@@ -727,6 +744,7 @@ function RoomEditor({
             onDelete={() => onDelete(q.id)}
             onUploadImage={onUploadImage}
             category={categories}
+            difficultyHintId={difficulty ? difficultyHintId : undefined}
             answerHintId={categories ? undefined : hintId}
           />
         ))}
@@ -1006,9 +1024,12 @@ function QuestionRow({
   onDelete,
   onUploadImage,
   category = false,
+  difficultyHintId,
   answerHintId,
 }: {
   category?: boolean;
+  /** Shows a 難度 menu (a boss question's own difficulty), described by the section's line with this id. */
+  difficultyHintId?: string;
   /** The section's mage-hint note, read out with a fill-in answer box. */
   answerHintId?: string;
   question: BankQuestion;
@@ -1076,6 +1097,35 @@ function QuestionRow({
           <option value="sort">排序</option>
         </select>
       </div>
+
+      {difficultyHintId && (
+        <label className="flex items-center gap-1 whitespace-nowrap text-[15px]">
+          難度
+          <select
+            className="px-input !py-1"
+            // .px-input's width:100% beats a Tailwind width utility (see the 題型 select).
+            style={{ width: "auto" }}
+            aria-label="難度"
+            aria-describedby={difficultyHintId}
+            value={q.difficulty ?? DEFAULT_BOSS_DIFFICULTY}
+            onChange={(e) => {
+              const d = Number(e.target.value) as Difficulty;
+              // The default is stored as no difficulty, so picking it back keeps the bank at its older format.
+              onUpdate((cur) => {
+                const next: BankQuestion = { ...cur, difficulty: d };
+                if (d === DEFAULT_BOSS_DIFFICULTY) delete next.difficulty;
+                return next;
+              });
+            }}
+          >
+            {DIFFICULTIES.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {category && (
         <label className="flex items-center gap-1 whitespace-nowrap text-[15px]">

@@ -84,9 +84,10 @@ export const WARRIOR_TARGET = 9;
 /** A fill-in question is a persuasion check (dnd design Premise 3): d20 + the team's class bonus against the
  * monster's DC. A team with no class adds 1. */
 export const CHECK_BONUS: Record<ClassId | "none", number> = { mage: 4, thief: 3, cleric: 2, chef: 1, none: 1, warrior: 0 };
-/** The DC per difficulty 1–5 (dnd design Decision 11); the boss uses difficulty 5's. */
+/** The DC per difficulty 1–5 (dnd design Decision 11); a boss question uses its own difficulty's, 5 unless the bank says. */
 export const CHECK_DC = [8, 10, 12, 14, 16] as const;
-export const BOSS_CHECK_DC = 16;
+/** A boss question the bank gives no difficulty. */
+export const DEFAULT_BOSS_DIFFICULTY: Difficulty = 5;
 
 /** One team's persuasion check on one question (dnd design R6): `hint` is the answer's first letter or number,
  * given on a pass that is not a natural 20 (that one wins outright) and only when the answer is long enough (R8). */
@@ -336,6 +337,8 @@ export interface GameState {
   mageRemoved?: Record<string, number[]>;
   /** A mage's public hint on a fill-in question, per question id: the answer's first letter or number. */
   mageHints?: Record<string, string>;
+  /** Boss question difficulties below 5, per question id, from the bank at game start (absent: 5). */
+  bossDifficulties?: Record<string, Difficulty>;
   /** Persuasion checks, per checkKey(questionId, teamId) (dnd design R6). Absent from a game saved before them. */
   checks?: Record<string, CheckRecord>;
   /** A wrong answer waiting for that team's choice. The team keeps the turn meanwhile, even offline (E9). */
@@ -668,8 +671,11 @@ export function createGame(
   /** Phases after the first, which is `bossQuestionIds` and `bossMaxHp`. */
   laterBossPhases: BossPhaseState[] = [],
   bossDish?: string,
-  /** Answers an earlier game in this room showed (回到大廳, back-to-lobby): dealt last, once nothing else is left. */
+  /** Answers an earlier game in this room showed (回到大廳, back-to-lobby): dealt last, once nothing else is left; in a boss
+   * phase, last within their difficulty (the owner chose difficulty over freshness). */
   played: string[] = [],
+  /** Boss questions below the default difficulty (bossDifficulties in lib/question-bank.ts): each phase deals easiest first. */
+  bossDifficulties: Record<string, Difficulty> = {},
 ): GameState {
   if (teamSeeds.length === 0) {
     throw new InvalidActionError("At least one team is required");
@@ -682,8 +688,11 @@ export function createGame(
   // seed, which would make a boss phase whose questions were all played last game count as used up at once.
   let used: string[][] = pools.map((ids) => ids.filter((id) => played.includes(id)));
   const freshFirst = (ids: string[]) => [...ids.filter((id) => !played.includes(id)), ...ids.filter((id) => played.includes(id))];
-  bossQuestionIds = freshFirst(bossQuestionIds);
-  laterBossPhases = laterBossPhases.map((p) => ({ ...p, questionIds: freshFirst(p.questionIds) }));
+  // Easiest first; within one difficulty, an answer the last game showed goes last (a stable sort keeps freshFirst's order).
+  const difficulty = (id: string) => (Object.hasOwn(bossDifficulties, id) ? bossDifficulties[id] : DEFAULT_BOSS_DIFFICULTY);
+  const bossOrder = (ids: string[]) => freshFirst(ids).sort((a, b) => difficulty(a) - difficulty(b));
+  bossQuestionIds = bossOrder(bossQuestionIds);
+  laterBossPhases = laterBossPhases.map((p) => ({ ...p, questionIds: bossOrder(p.questionIds) }));
   const revealed: string[] = [];
   const teams: Team[] = [];
   for (const seed of teamSeeds) {
@@ -730,6 +739,7 @@ export function createGame(
       phases: [{ maxHp: bossMaxHp, questionIds: bossQuestionIds }, ...laterBossPhases],
       phaseIndex: 0,
     },
+    ...(Object.keys(bossDifficulties).length ? { bossDifficulties } : {}),
     // Drawn last, so the deals above see the same rng values as before the catalog.
     variantSeed: Math.floor(rng() * 2 ** 32),
     config,
@@ -1355,11 +1365,15 @@ export function mageHint(game: GameState, teamId: string, questionId: string, an
 }
 
 /** The bonus and DC a team rolls with on `questionId` (dnd design Premise 3): its class bonus, against its question's
- * difficulty (the pool it was dealt from, like answerQuestion's points), or the boss's 16. */
+ * difficulty (the pool it was dealt from, like answerQuestion's points), or a boss question's own (bossDifficulties). */
 export function checkTarget(game: GameState, teamId: string, questionId: string): { bonus: number; dc: number } {
   const team = getTeam(game, teamId);
   const bonus = CHECK_BONUS[team.classId ?? "none"];
-  if (isInBossPhase(game, teamId)) return { bonus, dc: BOSS_CHECK_DC };
+  if (isInBossPhase(game, teamId)) {
+    // Own keys only (an id like "constructor" must not read Object.prototype); a damaged value falls back to the default.
+    const d = game.bossDifficulties && Object.hasOwn(game.bossDifficulties, questionId) ? game.bossDifficulties[questionId] : DEFAULT_BOSS_DIFFICULTY;
+    return { bonus, dc: CHECK_DC[d - 1] ?? CHECK_DC[DEFAULT_BOSS_DIFFICULTY - 1] };
+  }
   const difficulty = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
   return { bonus, dc: CHECK_DC[difficulty - 1] };
 }
@@ -2162,7 +2176,8 @@ export function getSpectatorView(game: GameState): SpectatorView {
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
       typedAnswer: t.typedAnswer ?? null,
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
-      checkTarget: checkTarget(game, t.id, t.currentQuestionId),
+      // A boss team's question is the boss's, not its stale room question.
+      checkTarget: checkTarget(game, t.id, currentQuestionIdOf(game, t.id)),
       // A game ended at a fork shows no door on the podium.
       ...(game.phase === "playing" && atFork(t) ? { fork: t.fork!.phase as "waiting" | "choosing" } : {}),
       ...(t.boon ? { boon: t.boon } : {}),
