@@ -12,6 +12,11 @@ describe("bumpVersion", () => {
     expect(bumpVersion("0.58.3.2", "patch")).toBe("0.58.4.0");
     expect(bumpVersion("0.58.3.2", "micro")).toBe("0.58.3.3");
   });
+
+  it("refuses a VERSION that is not four whole numbers", () => {
+    expect(() => bumpVersion("0.58.0", "patch")).toThrow(/not a four-part version/);
+    expect(() => bumpVersion("0.58.x.0", "patch")).toThrow(/not a four-part version/);
+  });
 });
 
 describe("stamp", () => {

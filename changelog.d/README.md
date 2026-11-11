@@ -22,9 +22,11 @@ The version is MAJOR.MINOR.PATCH.MICRO. Pick the part by what the change is:
 | `micro` | A change under 50 lines: a small fix, copy, docs, config | 0.58.3.3 |
 
 CI (`scripts/check-fragment.ts`) refuses a PR without a fragment, a fragment without one of these four `bump:`
-values, and a PR that edits `VERSION`, `CHANGELOG.md` or the package versions itself.
+values, a PR that edits `VERSION`, `CHANGELOG.md` or the package versions itself, and a PR that deletes or edits
+another PR's unreleased fragment.
 
 After the merge, `.github/workflows/stamp.yml` runs `scripts/stamp-release.ts` on main: it folds every file here,
 in path order, into one new `## [<version>] - <date>` CHANGELOG section, raises the highest `bump:` among them by
 exactly one (the parts after it reset to 0), sets `VERSION` and the `package.json` / `package-lock.json` version,
-deletes the files and pushes that release commit to main. This README is skipped.
+deletes the files and pushes that release commit to main as the repo's stamp GitHub App (setup in
+`docs/development.md`). This README is skipped.

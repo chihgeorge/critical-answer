@@ -12,6 +12,7 @@ export type Fragment = { path: string; text: string };
 
 /** `version` raised by `bump`: that part up by one, the parts after it reset to 0. */
 export function bumpVersion(version: string, bump: Bump): string {
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(version)) throw new Error(`VERSION "${version}" is not a four-part version like 0.58.0.0`);
   const i = 3 - BUMPS.indexOf(bump);
   return version
     .split(".")
@@ -41,7 +42,8 @@ if (process.argv[1]?.endsWith("stamp-release.ts")) {
   const dir = "changelog.d";
   const paths = readdirSync(dir).filter((f) => f.endsWith(".md") && f !== "README.md").map((f) => `${dir}/${f}`);
   if (!paths.length) process.exit(0);
-  const date = process.argv[2] ?? new Date().toISOString().slice(0, 10);
+  // sv-SE formats the local date as YYYY-MM-DD; stamp.yml sets TZ.
+  const date = process.argv[2] ?? new Date().toLocaleDateString("sv-SE");
   const fragments = paths.map((path) => ({ path, text: readFileSync(path, "utf8") }));
   const { version, changelog } = stamp(readFileSync("VERSION", "utf8").trim(), readFileSync("CHANGELOG.md", "utf8"), fragments, date);
   writeFileSync("VERSION", version + "\n");

@@ -54,7 +54,12 @@ export function fragmentProblems(pr: PrInput): string[] {
       problems.push(`${path}: the version field changed; the stamp workflow changes it after the merge`);
     }
   }
-  const added = pr.changes.filter((c) => c.status === "A" && FRAGMENT.test(c.path) && c.path !== "changelog.d/README.md");
+  const fragments = pr.changes.filter((c) => FRAGMENT.test(c.path) && c.path !== "changelog.d/README.md");
+  // Another PR's unreleased entry: only stamp.yml folds and deletes it.
+  for (const { status, path } of fragments.filter((c) => c.status !== "A")) {
+    problems.push(`${path}: ${status === "D" ? "deletes" : "edits"} an unreleased fragment from another PR; add your own instead`);
+  }
+  const added = fragments.filter((c) => c.status === "A");
   for (const { path } of added) {
     const body = fragmentBody(pr.show("head", path) ?? "");
     if (!body) problems.push(`${path}: the fragment is empty`);

@@ -1,29 +1,22 @@
 name: Release
 
-# A version bump to X.Y.0.0 (MINOR or MAJOR) on main becomes tag vX.Y.0.0 and a GitHub
+# A version bump to X.Y.0.0 (MINOR or MAJOR) merged to main becomes tag vX.Y.0.0 and a GitHub
 # Release whose notes are every CHANGELOG section since the previous release. Smaller versions
 # (hotfixes) wait for the next one, or are released by hand: Actions → Release → Run workflow
-# releases main's current VERSION. stamp.yml calls this after it bumps the version, because a
-# push made with the workflow token starts no other workflow.
+# releases main's current VERSION.
 on:
   push:
     branches: [main]
     paths: [VERSION]
   workflow_dispatch:
-  workflow_call:
-    inputs:
-      ref:
-        description: The commit to release (stamp.yml's release commit)
-        required: true
-        type: string
 
 permissions:
   contents: read
 
-# One group per commit: almost every merge now changes VERSION, and a shared group would let a newer queued run
-# cancel a pending X.Y.0.0 release. The "already released" check below keeps reruns harmless.
+# One group per commit: almost every merge now ends in a release commit, and a shared group would let a newer queued
+# run cancel a pending X.Y.0.0 release. The "already released" check below keeps reruns harmless.
 concurrency:
-  group: release-${{ inputs.ref || github.sha }}
+  group: release-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -37,7 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v7
@@ -64,4 +56,4 @@ jobs:
             exit 1
           fi
           node scripts/release-notes.ts "$version" "${previous#v}" > "$RUNNER_TEMP/notes.md"
-          gh release create "v$version" --target "$(git rev-parse HEAD)" --title "v$version" --notes-file "$RUNNER_TEMP/notes.md"
+          gh release create "v$version" --target "$GITHUB_SHA" --title "v$version" --notes-file "$RUNNER_TEMP/notes.md"

@@ -31,7 +31,7 @@ describe("fragmentProblems", () => {
     expect(fragmentProblems(pr({ "changelog.d/README.md": "x" }))).toHaveLength(1);
     // Only a file directly in changelog.d/, and only one this PR adds.
     expect(fragmentProblems(pr({ "changelog.d/sub/x.md": FRAGMENT }))).toHaveLength(1);
-    expect(fragmentProblems(pr({}, { modified: ["changelog.d/old.md"] }))).toHaveLength(1);
+    expect(fragmentProblems(pr({}, { modified: ["changelog.d/old.md"] }))).toHaveLength(2);
   });
 
   // Value: protects=the release fold getting a blank or double-headed section; fails_when=an empty or headed fragment passes
@@ -67,6 +67,15 @@ describe("fragmentProblems", () => {
     expect(fragmentProblems(pr({ "changelog.d/a.md": "### Fixed\n- A thing.\n" }))).toEqual([expect.stringContaining('open with front matter "---')]);
     expect(fragmentProblems(pr({ "changelog.d/a.md": "---\nbump: huge\n---\n### Fixed\n- x\n" }))).toHaveLength(1);
     for (const b of ["micro", "patch", "minor", "major"]) expect(fragmentProblems(pr({ "changelog.d/a.md": `---\nbump: ${b}\n---\n### Fixed\n- x\n` }))).toEqual([]);
+  });
+
+  // Value: protects=another PR's entry being dropped or its bump raised; fails_when=a PR deletes or edits an unreleased fragment
+  it("refuses deleting or editing an unreleased fragment, but not README.md", () => {
+    const changes = [{ status: "A", path: "changelog.d/mine.md" }, { status: "D", path: "changelog.d/theirs.md" }, { status: "M", path: "changelog.d/other.md" }, { status: "M", path: "changelog.d/README.md" }];
+    expect(fragmentProblems(pr({ "changelog.d/mine.md": FRAGMENT }, { changes }))).toEqual([
+      "changelog.d/theirs.md: deletes an unreleased fragment from another PR; add your own instead",
+      "changelog.d/other.md: edits an unreleased fragment from another PR; add your own instead",
+    ]);
   });
 
   it("no longer skips a release/* branch", () => {
