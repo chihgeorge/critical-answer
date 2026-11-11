@@ -378,7 +378,7 @@ No critical gaps.
 - A protocol message for the sprint: it rides on STATE.
 - Server-side audio: the fanfare is client-side on the screen.
 
-Test plan: `~/.gstack/projects/critical-answer/georgechih-main-eng-review-test-plan-last-sprint-20261108.md` (local only).
+Test plan: `[owner-local]/main-eng-review-test-plan-last-sprint-20261108.md` (local only).
 
 ## GSTACK REVIEW REPORT
 

@@ -21,7 +21,7 @@ The big screen (`/screen`) shows a dungeon map. Each team's piece moves from roo
 
 A map strip replaces the team-card row at the top of `/screen` (about 90px tall). It is always visible during play. The turn ribbon stays at the left of the strip. Rooms are drawn as plain squares in a row, joined by corridors (the room numbers were dropped after launch at the host's request; only the stub keeps its "…"). The boss room is at the right end, with the boss sprite and the HP bar. Each team is a pawn (its `TEAM_LOOKS` hat) in its room. (The first mockup put the score under each pawn. D6 later removed scores from the map.) The team whose turn it is has a yellow outline and a red arrow. The question panel, monster and dialogue box do not change.
 
-Mockup: `~/.gstack/projects/critical-answer/designs/live-map-20261023/A.png` (an HTML wireframe, not final art).
+Mockup: `[owner-local]/designs/live-map-20261023/A.png` (an HTML wireframe, not final art).
 
 ## Design decisions (review 2026-10-23)
 
@@ -92,8 +92,8 @@ All the questions listed before the review now have decisions: strength bar (D7)
 
 | Screen/Section | Mockup Path | Direction | Notes |
 |----------------|-------------|-----------|-------|
-| `/screen` play view, layout | ~/.gstack/projects/critical-answer/designs/live-map-20261023/A.png | A: map strip replaces the team-card row | Picked over B (full-screen interlude) and C (left tower). Wireframe only. |
-| `/screen` strip, after review | ~/.gstack/projects/critical-answer/designs/live-map-20261023/v2.png | A2: fog clouds, closed then open boss door, one-character tags, no scores | Wireframe only. Pawns must be the real `hero` + `TEAM_LOOKS` sprites (D17). The boss room must fit the boss sprite, the HP bar on top and a row of pawns below inside the 90px strip. |
+| `/screen` play view, layout | [owner-local]/designs/live-map-20261023/A.png | A: map strip replaces the team-card row | Picked over B (full-screen interlude) and C (left tower). Wireframe only. |
+| `/screen` strip, after review | [owner-local]/designs/live-map-20261023/v2.png | A2: fog clouds, closed then open boss door, one-character tags, no scores | Wireframe only. Pawns must be the real `hero` + `TEAM_LOOKS` sprites (D17). The boss room must fit the boss sprite, the HP bar on top and a row of pawns below inside the 90px strip. |
 
 ## Implementation Tasks
 
@@ -236,7 +236,7 @@ bundle
 
 Gaps found: 1 (the `bossThreshold: 0` tests and the `dungeon-room.test.ts` question helpers depend on the derived rule; covered by the mechanics note).
 
-Test plan artifact: `~/.gstack/projects/critical-answer/main-eng-review-test-plan-20261023.md`.
+Test plan artifact: `[owner-local]/main-eng-review-test-plan-20261023.md`.
 
 ### Performance
 

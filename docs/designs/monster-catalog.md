@@ -97,7 +97,7 @@ export function monsterById(id: string): CatalogMonster | undefined;
 | 23 | `phoenix` | 不死火鳥 | `phoenix` | 火紅大鳥、尾羽是火焰 | `dish-roast-chicken`（不死鳥烤全雞） | 2 |
 
 - 現有 4 隻（slime-soft、ghost-shy、ghost-cry、dragon）的料理文字和 hue（都是 0）照搬 `data/question-bank.json`。迷路史萊姆、守門史萊姆王（R4）和 3 隻換色怪物移除，料理一起移除。新 19 隻的料理文字在 PR2 寫，菜名照 R4 的 PNG。
-- **PNG 確認關卡**：/plan-design-review 產生 PNG 到本機 `~/.gstack/projects/critical-answer/designs/monster-catalog/`（不進 git）：`roster.png`、`v2/roster.png`（名單）、`v2/accessories.png`（6 配件戴在 3 隻現有小怪上、換色後的樣子）。2026-11-07 已確認，見 decision ledger R4、R5。
+- **PNG 確認關卡**：/plan-design-review 產生 PNG 到本機 `[owner-local]/designs/monster-catalog/`（不進 git）：`roster.png`、`v2/roster.png`（名單）、`v2/accessories.png`（6 配件戴在 3 隻現有小怪上、換色後的樣子）。2026-11-07 已確認，見 decision ledger R4、R5。
 - 暴躁幽靈、熔岩史萊姆王、冰霜愛哭鬼移除（料理一起移除），改由小變化提供換色。`docs/hosting.md:61` 和 `docs/designs/scoring-and-score-pools.md:130` 的怪物名單跟著改。
 - `MONSTER_SPRITES` 在 PR1 不變（6 種）。`slime-lost`、`slime-king` 的造型留著，只是不進圖鑑：`components/map-strip.tsx:89` 拿 slime-king 當地圖裝飾，`lib/turn-info.ts:14` 也有它們的大小設定。PR2 加 19 種，`MONSTER_SPRITES` 變 25 種，圖鑑用其中 23 種。`DISH_SPRITE` 維持 `Record<MonsterSprite, SpriteKind>`，缺料理圖時 tsc 失敗。
 
@@ -250,7 +250,7 @@ monster: { id: string; name: string; sprite: MonsterSprite; hue: number; accesso
 3. `HEAD_ANCHOR` 涵蓋 23 個造型；6 配件 × 20 小怪造型都落在畫布內（PR1 的測試自動涵蓋）。
 4. 編輯器小怪選單列 20 隻、首領選單列 3 隻。
 5. 預設題庫的 8 房改成 8 隻不同的小怪（可含新怪物）。
-6. 新造型和料理圖都經站長看過 PNG 確認（/plan-design-review 紀錄）。站長 2026-11-07 看過 PNG（本機 `~/.gstack/projects/critical-answer/designs/monster-catalog/v3/pr2-sprites.png`，不進 repo）後確認全部採用。
+6. 新造型和料理圖都經站長看過 PNG 確認（/plan-design-review 紀錄）。站長 2026-11-07 看過 PNG（本機 `[owner-local]/designs/monster-catalog/v3/pr2-sprites.png`，不進 repo）後確認全部採用。
 7. `BANK_FORMAT` 不變（3）：PR2 只增加圖鑑 id，PR1 存的題庫照樣讀得懂。
 8. 每個新測試附 `protects / fails_when / no_claim`。
 
@@ -533,7 +533,7 @@ History: none
 
 ### R4: 23 隻名單（/plan-design-review，2026-11-07）
 
-PNG：`~/.gstack/projects/critical-answer/designs/monster-catalog/roster.png`、`v2/roster.png`（本機，不進 git）。
+PNG：`[owner-local]/designs/monster-catalog/roster.png`、`v2/roster.png`（本機，不進 git）。
 
 State: approved
 Actual answer: 站長原話「拿掉迷路史萊姆跟守門史萊姆王 不要有守門王」；補位從 4 隻候選（南瓜頭、刺刺仙人掌、迷你雪人、棉花雲）選「A 南瓜頭、B 刺刺仙人掌」。
@@ -542,7 +542,7 @@ History: v1 名單 23 隻（含 slime-lost、slime-king）被改。
 
 ### R5: 小變化樣式（/plan-design-review，2026-11-07）
 
-PNG：`~/.gstack/projects/critical-answer/designs/monster-catalog/v2/accessories.png`（本機，不進 git）。
+PNG：`[owner-local]/designs/monster-catalog/v2/accessories.png`（本機，不進 git）。
 
 State: approved
 Actual answer: 「照這樣做，配件放大 (recommended)」
@@ -685,8 +685,8 @@ Unresolved Decisions: none
 
 | Screen/Section | Mockup Path | Direction | Notes |
 |----------------|-------------|-----------|-------|
-| 23 隻名單 | `~/.gstack/projects/critical-answer/designs/monster-catalog/v2/roster.png`（本機） | 小怪 18＋候選 4、首領 3 | 補位選南瓜頭、刺刺仙人掌（R4）；新怪物是草圖，PR2 重畫 |
-| 小變化 | `~/.gstack/projects/critical-answer/designs/monster-catalog/v2/accessories.png`（本機） | 6 配件 × 3 小怪＋換色＋稱號 | 配件放大到 8–11 格寬（R5）；名牌不用紅字（R6） |
+| 23 隻名單 | `[owner-local]/designs/monster-catalog/v2/roster.png`（本機） | 小怪 18＋候選 4、首領 3 | 補位選南瓜頭、刺刺仙人掌（R4）；新怪物是草圖，PR2 重畫 |
+| 小變化 | `[owner-local]/designs/monster-catalog/v2/accessories.png`（本機） | 6 配件 × 3 小怪＋換色＋稱號 | 配件放大到 8–11 格寬（R5）；名牌不用紅字（R6） |
 
 ## GSTACK REVIEW REPORT
 

@@ -78,7 +78,7 @@
 **Why:** 站長 2026-11-07 在 /design-consultation 比過 8 種地城美術風格和 3 個暖色童書提案（Codex、獨立子代理、Claude）後定案這一版（原本的方向 A、暖色地城風格 2 都併進來）。
 
 **Context:**
-- 定案圖：`~/.gstack/projects/critical-answer/designs/art-style-survey-20261107/warm-1.png`（只在本機）；比較圖在同一資料夾
+- 定案圖：`[owner-local]/designs/art-style-survey-20261107/warm-1.png`（只在本機）；比較圖在同一資料夾
 - `DESIGN.md`、`app/globals.css`、`lib/pixel-art.ts`、`components/pixel.tsx`
 
 **Effort/Priority:** L / P2
@@ -619,7 +619,7 @@
 **Notes:**
 - Pros：分數更完整，能抓到沒人用的 export 和腳本錯誤。
 - Cons：knip 第一次跑可能報出一堆要逐一判斷的結果。
-- Context 補充：歷史紀錄在 `~/.gstack/projects/critical-answer/health-history.jsonl`。加工具後覆蓋類別改變，分數會跟第一次不可比。
+- Context 補充：歷史紀錄在 `[owner-local]/health-history.jsonl`。加工具後覆蓋類別改變，分數會跟第一次不可比。
 
 ---
 

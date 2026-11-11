@@ -5,7 +5,7 @@ Branch: main
 Repo: chihgeorge/critical-answer
 Status: APPROVED
 Mode: Builder
-Supersedes: v1.0 定義（georgechih-main-design-20260921-v1.md）的「題庫編輯介面」項目，本文件是其深化 + 一個全新方向（AI DM 分支互動）
+Supersedes: v1.0 定義（main-design-20260921-v1.md）的「題庫編輯介面」項目，本文件是其深化 + 一個全新方向（AI DM 分支互動）
 
 ## Problem Statement
 

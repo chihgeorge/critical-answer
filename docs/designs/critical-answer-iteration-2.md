@@ -396,7 +396,7 @@ Rejected on the way: torch-lit stone, tabletop parchment, rune neon, retro-anime
 
 ### Approved mockups
 
-Folder: `~/.gstack/projects/critical-answer/designs/screen-variants-20260918/` (source `cute-pixel-proposal.html`, PNGs in `png/`).
+Folder: `[owner-local]/designs/screen-variants-20260918/` (source `cute-pixel-proposal.html`, PNGs in `png/`).
 
 | Screen | PNG | Status |
 |--------|-----|--------|

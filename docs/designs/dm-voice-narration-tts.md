@@ -186,7 +186,7 @@ No issues found beyond the architecture finding above.
 
 ## Test Review
 
-Coverage diagram、Test Plan Artifact 已寫入 `~/.gstack/projects/critical-answer/georgechih-main-eng-review-test-plan-20260922-225552.md`（`/qa`、`/qa-only` 會讀取）。全新功能，0/16 paths tested（尚未實作），16 個規劃中的 code path + user flow 都已在測試計畫裡列出對應驗證項目。
+Coverage diagram、Test Plan Artifact 已寫入 `[owner-local]/main-eng-review-test-plan-20260922-225552.md`（`/qa`、`/qa-only` 會讀取）。全新功能，0/16 paths tested（尚未實作），16 個規劃中的 code path + user flow 都已在測試計畫裡列出對應驗證項目。
 
 ## Performance Review
 

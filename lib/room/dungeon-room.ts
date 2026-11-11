@@ -336,7 +336,7 @@ export class DungeonRoom {
    * match. The only protection is the 4-letter room code (23^4) plus this token.
    */
   private hostToken = "";
-  // ponytail: in-memory Map. If hibernation is ever enabled it must move to conn.setState.
+  // shortcut: in-memory Map. If hibernation is ever enabled it must move to conn.setState.
   private hostConns = new Map<string, Conn>();
   /** The last HOST_PICKS sent to the host pages, so an unchanged picker is not sent again. */
   private lastPicks: string | null = null;

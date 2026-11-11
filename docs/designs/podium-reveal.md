@@ -10,7 +10,7 @@
 
 ## 分鏡（定案）
 
-PNG 在本機 `~/.gstack/projects/critical-answer/designs/podium-reveal-20261107/`（不進 git）：`storyboard.png` 是定案的四拍。
+PNG 在本機 `[owner-local]/designs/podium-reveal-20261107/`（不進 git）：`storyboard.png` 是定案的四拍。
 
 | 拍 | 多久 | 大螢幕 | 手機 |
 |---|---|---|---|
@@ -166,10 +166,10 @@ Synthesized from this review's findings（設計 D2–D17、eng D19–D24）。�
 
 | Screen/Section | Mockup Path | Direction | Notes |
 |----------------|-------------|-----------|-------|
-| 揭曉四拍 | ~/.gstack/projects/critical-answer/designs/podium-reveal-20261107/storyboard.png | 等待、大成功王、第三二名、第一名 | D14、D17 後的定案 |
-| 問號佔位 | ~/.gstack/projects/critical-answer/designs/podium-reveal-20261107/A.png | D2=A | |
-| 同分擲骰 | ~/.gstack/projects/critical-answer/designs/podium-reveal-20261107/TB1.png | D4b=A | chip 文字依 D10 調整 |
-| 大成功王卡 | ~/.gstack/projects/critical-answer/designs/podium-reveal-20261107/K2.png | D5、D14 | |
+| 揭曉四拍 | [owner-local]/designs/podium-reveal-20261107/storyboard.png | 等待、大成功王、第三二名、第一名 | D14、D17 後的定案 |
+| 問號佔位 | [owner-local]/designs/podium-reveal-20261107/A.png | D2=A | |
+| 同分擲骰 | [owner-local]/designs/podium-reveal-20261107/TB1.png | D4b=A | chip 文字依 D10 調整 |
+| 大成功王卡 | [owner-local]/designs/podium-reveal-20261107/K2.png | D5、D14 | |
 
 ## Eng review 決定紀錄
 
@@ -230,7 +230,7 @@ Sequential implementation, no parallelization opportunity（T2–T6 都依賴 T1
 - Reality rows: 7/7 applicable rows emitted, 0 unverified premises
 - Architecture Review: 4 issues found（D20、排名來源、舊 Worker 相容、背景計時）
 - Code Quality Review: 2 issues found（D21、逐段上限）
-- Test Review: diagram produced（test plan 在 ~/.gstack/projects/critical-answer/，本機），1 gap identified（手機同步沒有 e2e → D22）
+- Test Review: diagram produced（test plan 在 [owner-local]/，本機），1 gap identified（手機同步沒有 e2e → D22）
 - Performance Review: 0 issues found
 - NOT in scope: written
 - What already exists: written

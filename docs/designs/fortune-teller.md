@@ -1,7 +1,7 @@
 # Design: 占卜師 (the fortune teller: a condition and an effect) and the 3-scene event deck
 
 Planned with /office-hours and /autoplan on 2026-11-10 (plan, reviews and sketches local-only under
-`~/.gstack/projects/chihgeorge-critical-answer/`). This file is the one consolidated spec: each rule has one version.
+`[owner-local]/`). This file is the one consolidated spec: each rule has one version.
 Where the plan had several, the owner's final gate decisions (G1–G10) won over the eng review's R1–R17, which won over
 E1–E16, which won over the CEO review bullets, which won over the plan body.
 Status: APPROVED
