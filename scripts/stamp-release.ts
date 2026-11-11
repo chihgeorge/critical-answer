@@ -20,12 +20,46 @@ export function bumpVersion(version: string, bump: Bump): string {
     .join(".");
 }
 
-/** The new version and CHANGELOG with the fragments folded, in path order, into one section above the newest one. */
+// Keep a Changelog order; any other `### ` heading follows these, in the order it first appears.
+const HEADING_ORDER = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"];
+
+/** The fragment bodies as one body with each `### X` heading once: text under no heading first, then the headings in
+ *  HEADING_ORDER, each holding its parts in fragment order. A `### ` line inside a ``` code block is not a heading. */
+export function mergeBodies(bodies: string[]): string {
+  const groups = new Map<string, string[]>([["", []]]);
+  for (const body of bodies) {
+    let heading = "";
+    let lines: string[] = [];
+    let fenced = false;
+    const flush = () => {
+      const text = lines.join("\n").trim();
+      if (text || heading) groups.set(heading, [...(groups.get(heading) ?? []), ...(text ? [text] : [])]);
+    };
+    for (const line of body.split(/\r?\n/)) {
+      if (/^\s*```/.test(line)) fenced = !fenced;
+      const m = !fenced && /^### (.+?)\s*$/.exec(line);
+      if (m) {
+        flush();
+        heading = m[1];
+        lines = [];
+      } else lines.push(line);
+    }
+    flush();
+  }
+  const rank = (h: string) => (h === "" ? -1 : HEADING_ORDER.includes(h) ? HEADING_ORDER.indexOf(h) : HEADING_ORDER.length);
+  return [...groups.keys()]
+    .sort((a, b) => rank(a) - rank(b)) // stable: unknown headings keep first-appearance order
+    .map((h) => [h && `### ${h}`, groups.get(h)!.join("\n")].filter(Boolean).join("\n"))
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** The new version and CHANGELOG with the fragments folded, in path order, into one section above the newest one, each `### X` heading once. */
 export function stamp(version: string, changelog: string, fragments: Fragment[], date: string): { version: string; changelog: string } {
   const sorted = [...fragments].sort((a, b) => (a.path < b.path ? -1 : 1));
   const bump = sorted.map((f) => fragmentBump(f.text) ?? "patch").reduce((a, b) => (BUMPS.indexOf(b) > BUMPS.indexOf(a) ? b : a), "micro" as Bump);
   const next = bumpVersion(version, bump);
-  const section = `## [${next}] - ${date}\n\n${sorted.map((f) => fragmentBody(f.text)).join("\n\n")}\n\n`;
+  const section = `## [${next}] - ${date}\n\n${mergeBodies(sorted.map((f) => fragmentBody(f.text)))}\n\n`;
   const at = changelog.search(/^## \[/m);
   return { version: next, changelog: at < 0 ? `${changelog.trimEnd()}\n\n${section}` : changelog.slice(0, at) + section + changelog.slice(at) };
 }

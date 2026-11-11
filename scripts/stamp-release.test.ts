@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bumpVersion, setPackageVersion, stamp } from "./stamp-release";
+import { bumpVersion, mergeBodies, setPackageVersion, stamp } from "./stamp-release";
 
 const CHANGELOG = "# Changelog\n\nAll notable changes.\n\n## [0.57.0.0] - 2026-11-09\n\n### Added\n- Old.\n";
 const frag = (path: string, bump: string | null, body: string) => ({ path, text: (bump ? `---\nbump: ${bump}\n---\n` : "") + body });
@@ -29,6 +29,11 @@ describe("stamp", () => {
     );
   });
 
+  it("merges the same heading from several fragments into one", () => {
+    const out = stamp("0.57.0.0", CHANGELOG, [frag("changelog.d/a.md", "micro", "### Added\n- A.\n"), frag("changelog.d/b.md", "micro", "### Fixed\n- B.\n\n### Added\n- B2.\n")], "2026-11-11");
+    expect(out.changelog).toContain("## [0.57.0.1] - 2026-11-11\n\n### Added\n- A.\n- B2.\n\n### Fixed\n- B.\n\n## [0.57.0.0]");
+  });
+
   it("counts a legacy fragment with no bump as patch", () => {
     expect(stamp("0.57.0.0", CHANGELOG, [frag("changelog.d/a.md", null, "- A.")], "2026-11-11").version).toBe("0.57.1.0");
     expect(stamp("0.57.0.0", CHANGELOG, [frag("changelog.d/a.md", "micro", "- A.")], "2026-11-11").version).toBe("0.57.0.1");
@@ -36,6 +41,25 @@ describe("stamp", () => {
 
   it("appends the section when the CHANGELOG has none yet", () => {
     expect(stamp("0.1.0.0", "# Changelog\n", [frag("changelog.d/a.md", "patch", "- A.")], "2026-11-11").changelog).toBe("# Changelog\n\n## [0.1.1.0] - 2026-11-11\n\n- A.\n\n");
+  });
+});
+
+describe("mergeBodies", () => {
+  it("gives each heading once, in Keep a Changelog order, parts in fragment order", () => {
+    expect(mergeBodies(["### Fixed\n- F1.\n\n### Added\n- A1.", "### Added\n- A2.\n### Security\n- S.", "### Fixed\n- F2."])).toBe(
+      "### Added\n- A1.\n- A2.\n\n### Fixed\n- F1.\n- F2.\n\n### Security\n- S.",
+    );
+  });
+
+  it("keeps text under no heading first, and unknown headings after the known ones", () => {
+    expect(mergeBodies(["- Loose.", "### Notes\n- N.\n### Added\n- A.", "Intro.\n\n### Changed\n- C."])).toBe(
+      "- Loose.\nIntro.\n\n### Added\n- A.\n\n### Changed\n- C.\n\n### Notes\n- N.",
+    );
+  });
+
+  it("does not split on #### or on a ### line inside a code block", () => {
+    const body = "### Added\n- A.\n\n#### Detail\n- D.\n\n```md\n### Fixed\n```";
+    expect(mergeBodies([body])).toBe(body);
   });
 });
 
