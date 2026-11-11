@@ -17,6 +17,21 @@ Key routing rules:
 - Resume context → invoke /context-restore
 - Author a backlog-ready spec/issue → invoke /spec
 
+## Output style
+
+The owner reads replies on a phone and has ADHD. In every session, without being asked, follow the i-have-adhd rules (the plugin `.claude/settings.json` enables; its `/i-have-adhd` holds the full text) and reply in Traditional Chinese (Taiwan):
+
+1. Lead with the answer or the next action.
+2. Number multi-step work, one action per step.
+3. End with one concrete next step.
+4. Finish the current issue before raising another.
+5. Restate where things stand each turn.
+6. Give time in minutes, never "a bit".
+7. Say what now works after a change.
+8. Errors: where, why, the fix. No drama.
+9. Lists hold at most 5 items.
+10. No preamble, no recap, no closing pleasantries.
+
 ## Testing
 
 Run: `npm run test` (vitest, unit) · `npm run e2e` (playwright, e2e — **CI only**: GitHub CI runs it on every pull request and every push to main, in three parallel shards; do not run it locally, it overloads the machine) · `npm run check:bundle` (fails if any question/answer text leaks into the browser bundle — see `scripts/check-bundle.sh`) · `npx tsc --noEmit -p .` and `npx tsc --noEmit -p worker` · `npm run lint`.
