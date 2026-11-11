@@ -125,6 +125,7 @@ function validationError(bank: Bank): string | null {
     if (contentErr) return contentErr;
     if (q.prompt !== undefined && Array.from(q.prompt).length > MAX_PROMPT) return `${label}的題幹最多 ${MAX_PROMPT} 個字`;
     if (q.category !== undefined && Array.from(q.category.trim()).length > MAX_CATEGORY) return `${label}的類別最多 ${MAX_CATEGORY} 個字`;
+    if (q.difficulty !== undefined && !(DIFFICULTIES as readonly number[]).includes(q.difficulty)) return `${label}的難度要是 1～5`;
     const explanationErr = contentError(`${label}的詳解`, q.explanation);
     if (explanationErr) return explanationErr;
   }
