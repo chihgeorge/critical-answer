@@ -460,6 +460,7 @@ export default function BankEditorPage() {
                       note={i === 0 ? "第 1 階段看起來就是普通的首領。" : `第 ${i} 階段打完後出現。`}
                       questions={p.questions}
                       categories={!!p.buzzer}
+                      difficulty
                       onUpdate={(id, updater) => updateQuestion(loc, id, updater)}
                       onDelete={(id) => deleteQuestion(loc, id)}
                       onAdd={() => addQuestion(loc)}
@@ -695,6 +696,7 @@ function RoomEditor({
   onAdd,
   onUploadImage,
   categories = false,
+  difficulty = false,
 }: {
   testId: string;
   title: string;
@@ -702,6 +704,8 @@ function RoomEditor({
   questions: BankQuestion[];
   /** A 類別 field per question: a buzzer phase's winner picks the next song's (boss-music-buzzer.md M5). */
   categories?: boolean;
+  /** A 難度 menu per question: a boss question's own (a pool question's is its pool). */
+  difficulty?: boolean;
   onUpdate: (id: string, updater: (q: BankQuestion) => BankQuestion) => void;
   onDelete: (id: string) => void;
   onAdd: () => void;
@@ -727,6 +731,7 @@ function RoomEditor({
             onDelete={() => onDelete(q.id)}
             onUploadImage={onUploadImage}
             category={categories}
+            difficulty={difficulty}
             answerHintId={categories ? undefined : hintId}
           />
         ))}
@@ -1006,9 +1011,11 @@ function QuestionRow({
   onDelete,
   onUploadImage,
   category = false,
+  difficulty = false,
   answerHintId,
 }: {
   category?: boolean;
+  difficulty?: boolean;
   /** The section's mage-hint note, read out with a fill-in answer box. */
   answerHintId?: string;
   question: BankQuestion;
@@ -1076,6 +1083,28 @@ function QuestionRow({
           <option value="sort">排序</option>
         </select>
       </div>
+
+      {difficulty && (
+        <label className="flex items-center gap-1 whitespace-nowrap text-[15px]">
+          難度
+          <select
+            className="px-input !py-1"
+            aria-label="難度"
+            value={q.difficulty ?? 5}
+            onChange={(e) => {
+              const d = Number(e.target.value) as Difficulty;
+              onUpdate((cur) => ({ ...cur, difficulty: d }));
+            }}
+          >
+            {DIFFICULTIES.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+          <span className="whitespace-normal text-[13px]">同一階段由易到難出題；難度也決定說服檢定的 DC 和大螢幕的星星</span>
+        </label>
+      )}
 
       {category && (
         <label className="flex items-center gap-1 whitespace-nowrap text-[15px]">

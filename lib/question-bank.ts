@@ -57,6 +57,8 @@ export type BankQuestion = (
   /** Free text the owner groups questions by (動漫, 遊戲音樂…): a buzzer phase's winner picks the next one's
    * (docs/designs/boss-music-buzzer.md). */
   category?: string;
+  /** Boss questions only: how hard (1–5), for the check's DC, the stars and the phase's order. Absent reads as 5. */
+  difficulty?: Difficulty;
 };
 
 /** Longest question `category`, in characters: it is a button on a phone. */
@@ -282,7 +284,7 @@ function parseCategory(v: unknown, id: string): string | undefined {
   return t || undefined;
 }
 
-function parseQuestions(raw: unknown, where: string, seen: Set<string>): BankQuestion[] {
+function parseQuestions(raw: unknown, where: string, seen: Set<string>, boss = false): BankQuestion[] {
   if (!Array.isArray(raw) || raw.length === 0) fail(`${where} has no questions`);
   return (raw as Record<string, unknown>[]).map((r) => {
     const { id, kind } = r;
@@ -290,7 +292,9 @@ function parseQuestions(raw: unknown, where: string, seen: Set<string>): BankQue
     if (seen.has(id as string)) fail(`duplicate question id ${String(id)}`);
     seen.add(id as string);
     const category = parseCategory(r.category, id as string);
-    const extra = category ? { category } : {};
+    if (r.difficulty !== undefined && !boss) fail(`question ${String(id)} in ${where} has a difficulty: only a boss question can (a pool is its difficulty)`);
+    const difficulty = r.difficulty === undefined ? undefined : parseDifficulty(r.difficulty, `question ${String(id)}`);
+    const extra = { ...(category ? { category } : {}), ...(difficulty ? { difficulty } : {}) };
     // "image" is a legacy top-level kind (pre-D1): it converts to a text-kind question whose
     // content happens to be an image, same as parseContent's imageKey fallback handles it.
     if (kind === "text" || kind === "image") return { ...parseTextQuestion(r, id as string), ...extra };
@@ -363,7 +367,7 @@ export function parseBank(raw: unknown): Bank {
       if (i > 0 && !t) fail(`${where} has no ${what}`);
       return t;
     };
-    const questions = parseQuestions(r.questions, where, seen);
+    const questions = parseQuestions(r.questions, where, seen, true);
     if (r.buzzer !== undefined && typeof r.buzzer !== "boolean") fail(`${where} buzzer is not true or false`);
     if (r.buzzer === true && i === 0) fail("the first boss phase cannot be a buzzer phase");
     if (r.buzzer === true && questions.some((q) => q.kind !== "text")) fail(`${where} is a buzzer phase, so every question in it must be a fill-in`);
@@ -442,9 +446,21 @@ export function bossQuestions(bank: Bank): BankQuestion[] {
   return bank.boss.phases.flatMap((p) => p.questions);
 }
 
-/** Each phase's HP and question ids, the shape GameState's boss keeps. */
+export const bossDifficulty = (q: BankQuestion): Difficulty => q.difficulty ?? 5;
+
+/** Each phase's HP and question ids, easiest first (a stable sort keeps the bank's order within a difficulty), the
+ * shape GameState's boss keeps. */
 export function bossPhaseStates(bank: Bank): { maxHp: number; questionIds: string[]; buzzer?: true }[] {
-  return bank.boss.phases.map((p) => ({ maxHp: p.maxHp, questionIds: p.questions.map((q) => q.id), ...(p.buzzer ? { buzzer: true as const } : {}) }));
+  return bank.boss.phases.map((p) => ({
+    maxHp: p.maxHp,
+    questionIds: [...p.questions].sort((a, b) => bossDifficulty(a) - bossDifficulty(b)).map((q) => q.id),
+    ...(p.buzzer ? { buzzer: true as const } : {}),
+  }));
+}
+
+/** The boss questions that are not difficulty 5, the shape GameState.bossDifficulties keeps. */
+export function bossDifficulties(bank: Bank): Record<string, Difficulty> {
+  return Object.fromEntries(bossQuestions(bank).flatMap((q) => (bossDifficulty(q) === 5 ? [] : [[q.id, bossDifficulty(q)]])));
 }
 
 /** Where the persuasion check never comes up (dnd design R-E2): a pool, or the boss, that has questions but no fill-in
@@ -466,7 +482,7 @@ export function findQuestion(bank: Bank, id: string) {
     if (q) return { ...q, boss: false as const, difficulty: d };
   }
   const q = bossQuestions(bank).find((x) => x.id === id);
-  return q ? { ...q, boss: true as const, difficulty: 5 as Difficulty } : undefined;
+  return q ? { ...q, boss: true as const, difficulty: bossDifficulty(q) } : undefined;
 }
 
 /** The correct answer's display text, regardless of kind — callers that only need to show or compare

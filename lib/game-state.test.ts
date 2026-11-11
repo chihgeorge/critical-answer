@@ -47,7 +47,6 @@ import {
   checkKey,
   CHECK_BONUS,
   CHECK_DC,
-  BOSS_CHECK_DC,
   InvalidActionError,
   giveItem,
   drinkPotion,
@@ -2083,7 +2082,9 @@ describe("the persuasion check (dnd design R6, R8)", () => {
     expect(checkTarget(g, "T1", g.teams[1].currentQuestionId)).toEqual({ bonus: CHECK_BONUS.warrior, dc: CHECK_DC[0] });
     expect(checkTarget(g, "T2", g.teams[2].currentQuestionId)).toEqual({ bonus: CHECK_BONUS.none, dc: CHECK_DC[0] });
     const boss = checkGame(["mage"], 0);
-    expect(checkTarget(boss, "T0", q0(boss))).toEqual({ bonus: CHECK_BONUS.mage, dc: BOSS_CHECK_DC });
+    expect(checkTarget(boss, "T0", q0(boss))).toEqual({ bonus: CHECK_BONUS.mage, dc: CHECK_DC[4] });
+    // A boss question the bank marked easier rolls against its own difficulty's DC.
+    expect(checkTarget({ ...boss, bossDifficulties: { [q0(boss)]: 2 } }, "T0", q0(boss)).dc).toBe(CHECK_DC[1]);
     expect(getSpectatorView(g).teams[0].checkTarget).toEqual({ bonus: CHECK_BONUS.thief, dc: CHECK_DC[0] });
   });
 

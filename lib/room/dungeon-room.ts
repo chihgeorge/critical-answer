@@ -112,7 +112,7 @@ import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder,
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
-import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, hiddenVideo, instagramVideo, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
+import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, hiddenVideo, instagramVideo, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
@@ -2597,7 +2597,8 @@ export class DungeonRoom {
       catalogMonster(monsters.boss).dish.name,
       this.playedQuestionIds,
     );
-    this.game = { ...game, startedAt: this.now(), ...(this.bank.randomMonsters ? { bossMonsterId: monsters.boss } : {}) };
+    const hard = bossDifficulties(this.bank);
+    this.game = { ...game, startedAt: this.now(), ...(this.bank.randomMonsters ? { bossMonsterId: monsters.boss } : {}), ...(Object.keys(hard).length ? { bossDifficulties: hard } : {}) };
     // The 6 hours start at the first start only: a second game after 回大廳 keeps the same clock (and the 24 hour cap).
     this.createdAt ??= this.now();
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.

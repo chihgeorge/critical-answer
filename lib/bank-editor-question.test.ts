@@ -10,6 +10,7 @@ const saveAndReload = (q: BankQuestion) =>
 describe("bank editor: question category (boss-music-buzzer.md M5)", () => {
   it("category survives a kind change and save/reload, and a blank category is removed", () => {
     for (const kind of ["multipleChoice", "sort", "text"] as const) expect(blankQuestion(base, kind).category).toBe("動漫");
+    for (const kind of ["multipleChoice", "sort", "text"] as const) expect(blankQuestion({ ...base, difficulty: 2 }, kind).difficulty).toBe(2);
     const back = { ...blankQuestion(blankQuestion(base, "sort"), "text"), answer: "答案" } as BankQuestion;
     expect(saveAndReload(back).category).toBe("動漫");
     const blank = withCategory(base, "   ");

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseBank, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, type MediaContent } from "./question-bank";
+import { parseBank, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, bossPhaseStates, bossDifficulties, type MediaContent } from "./question-bank";
 import { BANK } from "./question-bank-data";
 import { MONSTERS, catalogMonster, variantOf } from "./monster-catalog";
 import { MAX_TEAMS } from "./protocol";
@@ -88,6 +88,17 @@ describe("boss phases", () => {
     ]);
     expect(allQuestions(b).map((x) => x.id)).toEqual(["a1", "a2", "b1", "c1", "c2"]);
     expect(findQuestion(b, "c2")).toMatchObject({ boss: true, difficulty: 5 });
+  });
+
+  it("a boss question may carry its own difficulty: kept, dealt easiest first, never on a pool question", () => {
+    const b = parseBank({ ...valid(), boss: { monster: "dragon", phases: [{ maxHp: 3, questions: [q("b1"), { ...q("b2"), difficulty: 2 }, { ...q("b3"), difficulty: 5 }, { ...q("b4"), difficulty: 2 }] }] } });
+    expect(findQuestion(b, "b2")).toMatchObject({ boss: true, difficulty: 2 });
+    expect(findQuestion(b, "b1")).toMatchObject({ difficulty: 5 });
+    expect(bossPhaseStates(b)[0].questionIds).toEqual(["b2", "b4", "b1", "b3"]);
+    expect(bossDifficulties(b)).toEqual({ b2: 2, b4: 2 });
+    expect(() => parseBank({ ...valid(), boss: { monster: "dragon", phases: [{ maxHp: 3, questions: [{ ...q("b1"), difficulty: 6 }] }] } })).toThrow(/difficulty 6/);
+    const pooled = { pools: { 1: [{ ...q("x1"), difficulty: 1 }] }, rooms: [{ monster: "slime-soft", difficulty: 1 }], boss: valid().boss };
+    expect(() => parseBank(pooled)).toThrow(/only a boss question/);
   });
 });
 

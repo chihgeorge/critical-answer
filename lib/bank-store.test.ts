@@ -100,8 +100,8 @@ describe("BankStore.putBank", () => {
     const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
     await new BankStore(storage).putBank(categorized, 1);
     const stored = (await storage.get("bank")) as { format: number };
-    // The category format sits two below BANK_FORMAT, since answer fields (multi-field.md) and Instagram explanations came after it.
-    expect(stored.format).toBe(BANK_FORMAT - 2);
+    // The category format sits three below BANK_FORMAT: answer fields (multi-field.md), Instagram explanations and boss difficulties came after it.
+    expect(stored.format).toBe(BANK_FORMAT - 3);
     // Code at the format before reads it as this code reads a format ahead of its own: unreadable, and a save may not replace it.
     const ahead = memoryStorage({ ...stored, format: BANK_FORMAT + 1 });
     const older = new BankStore(ahead);
@@ -439,7 +439,9 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     const fields = [{ label: "歌名", answer: "A" }, { label: "歌手", answer: "B" }];
     expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "f1", content: { kind: "text" as const, value: "聽" }, answer: "A／B", fields }] } })).toBe(7); // pregate-literal: BANK_FORMAT=7 a fields bank stays at format 7
     // An Instagram explanation (instagram-explanations.md) is what format-7 code cannot parse: it stores at 8.
-    expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "i1", content: { kind: "text" as const, value: "看" }, answer: "A", explanation: { kind: "instagram" as const, value: "DPPHHjlkTgr" } }] } })).toBe(BANK_FORMAT);
+    expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "i1", content: { kind: "text" as const, value: "看" }, answer: "A", explanation: { kind: "instagram" as const, value: "DPPHHjlkTgr" } }] } })).toBe(8); // pregate-literal: BANK_FORMAT=8 an Instagram bank stays at format 8
+    // A boss question's own difficulty is what format-8 code would drop: it stores at 9.
+    expect(formatOf({ ...buzzer, boss: { ...buzzer.boss, phases: [{ ...buzzer.boss.phases[0], questions: [{ ...buzzer.boss.phases[0].questions[0], difficulty: 2 as const }] }, ...buzzer.boss.phases.slice(1)] } })).toBe(BANK_FORMAT);
     const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
     await new BankStore(storage).putBank(sorted, 1);
     expect(await storage.get("bank")).toMatchObject({ version: 2, format: 4 });
