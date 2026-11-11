@@ -59,6 +59,7 @@ async function toTheFork(browser: Browser) {
 // never clears, or the team is stuck; why_new=the fork replaced the event-room button; seam=worker E2E_EVENT_TEAM;
 // no_claim=which event is drawn (random)
 test("a team at a fork opens ❓ from its phone, the door opens, everyone sees the outcome, and its next turn is a monster", async ({ browser }) => {
+  test.setTimeout(60_000); // the fortune teller's ~3 s intro, pick and card push this walk past 30 s (CI timed out at it)
   const { host, screen, eventTeam } = await toTheFork(browser);
   await eventTeam.getByTestId("phone-fork-right").click();
 

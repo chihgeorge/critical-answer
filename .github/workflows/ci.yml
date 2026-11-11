@@ -33,7 +33,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      # A PR adds a changelog.d/ fragment and leaves VERSION, the package versions and CHANGELOG.md alone.
+      # A PR adds a changelog.d/ fragment with bump: front matter and leaves VERSION, the package versions and
+      # CHANGELOG.md alone; .github/workflows/stamp.yml bumps the version after the merge.
       - if: github.event_name == 'pull_request'
         run: node scripts/check-fragment.ts
         env:

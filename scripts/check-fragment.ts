@@ -1,7 +1,8 @@
-// Checks a pull request against the release flow (.gstack/ship-policy.json, changelog.d/README.md): it leaves
-// VERSION, the package.json and package-lock.json version and CHANGELOG.md alone, and adds at least one
-// changelog.d/*.md fragment with a body and no `## [x]` version heading. A release PR (head branch release/*)
-// skips every rule; a dependabot[bot] PR needs no fragment. Run by CI on pull requests:
+// Checks a pull request against the release flow (changelog.d/README.md): it leaves VERSION, the package.json and
+// package-lock.json version and CHANGELOG.md alone, and adds at least one changelog.d/*.md fragment that opens with
+// `bump: micro|patch|minor|major` front matter, has a body and no `## [x]` version heading. After the merge,
+// .github/workflows/stamp.yml folds the fragments and bumps the version (scripts/stamp-release.ts). A dependabot[bot]
+// PR needs no fragment. Run by CI on pull requests:
 //   BASE_REF=main HEAD_REF=<branch> PR_AUTHOR=<login> node scripts/check-fragment.ts
 // Compares HEAD with its merge base on origin/$BASE_REF. Prints one line per problem and exits 1 when there is any.
 import { execFileSync } from "node:child_process";
@@ -33,23 +34,37 @@ export function fragmentBody(text: string): string {
   return text.replace(/^---\r?\n[\s\S]*?\r?\n---(\r?\n|$)/, "").trim();
 }
 
+export const BUMPS = ["micro", "patch", "minor", "major"] as const;
+export type Bump = (typeof BUMPS)[number];
+/** The `bump:` a fragment's front matter names, or null when it names none (or an unknown one). */
+export function fragmentBump(text: string): Bump | null {
+  const front = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(text)?.[1] ?? "";
+  const bump = /^bump:\s*(\S+)\s*$/m.exec(front)?.[1];
+  return (BUMPS as readonly string[]).includes(bump ?? "") ? (bump as Bump) : null;
+}
+
 export function fragmentProblems(pr: PrInput): string[] {
-  if (pr.branch.startsWith("release/")) return [];
   const problems: string[] = [];
   const changed = new Set(pr.changes.map((c) => c.path));
   for (const path of ["VERSION", "CHANGELOG.md"]) {
-    if (changed.has(path)) problems.push(`${path}: only a release PR changes it; add a changelog.d/ fragment instead`);
+    if (changed.has(path)) problems.push(`${path}: the stamp workflow changes it after the merge; add a changelog.d/ fragment instead`);
   }
   for (const path of ["package.json", "package-lock.json"]) {
     if (changed.has(path) && version(pr.show("base", path)) !== version(pr.show("head", path))) {
-      problems.push(`${path}: the version field changed; only a release PR changes it`);
+      problems.push(`${path}: the version field changed; the stamp workflow changes it after the merge`);
     }
   }
-  const added = pr.changes.filter((c) => c.status === "A" && FRAGMENT.test(c.path) && c.path !== "changelog.d/README.md");
+  const fragments = pr.changes.filter((c) => FRAGMENT.test(c.path) && c.path !== "changelog.d/README.md");
+  // Another PR's unreleased entry: only stamp.yml folds and deletes it.
+  for (const { status, path } of fragments.filter((c) => c.status !== "A")) {
+    problems.push(`${path}: ${status === "D" ? "deletes" : "edits"} an unreleased fragment from another PR; add your own instead`);
+  }
+  const added = fragments.filter((c) => c.status === "A");
   for (const { path } of added) {
     const body = fragmentBody(pr.show("head", path) ?? "");
     if (!body) problems.push(`${path}: the fragment is empty`);
-    if (/^## \[/m.test(body)) problems.push(`${path}: no "## [x]" version heading; the release PR writes it`);
+    if (/^## \[/m.test(body)) problems.push(`${path}: no "## [x]" version heading; the stamp workflow writes it`);
+    if (!fragmentBump(pr.show("head", path) ?? "")) problems.push(`${path}: open with front matter "---\\nbump: micro|patch|minor|major\\n---" (changelog.d/README.md)`);
   }
   if (!added.length && pr.author !== "dependabot[bot]") {
     problems.push("changelog.d/: add a <branch-slug>.md fragment for this change (format in changelog.d/README.md)");

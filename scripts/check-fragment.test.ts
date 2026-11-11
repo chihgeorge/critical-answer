@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { fragmentBody, fragmentProblems, parseNameStatus, type PrInput } from "./check-fragment";
+import { fragmentBody, fragmentBump, fragmentProblems, parseNameStatus, type PrInput } from "./check-fragment";
 
-const FRAGMENT = "### Fixed\n- A thing.\n";
+const FRAGMENT = "---\nbump: patch\n---\n### Fixed\n- A thing.\n";
 const pkg = (version: string, extra = "") => JSON.stringify({ name: "x", version, extra });
 
 /** A PR on branch `feat/x` whose head files are `head`; base files are `base`. Every head file counts as added. */
@@ -31,14 +31,14 @@ describe("fragmentProblems", () => {
     expect(fragmentProblems(pr({ "changelog.d/README.md": "x" }))).toHaveLength(1);
     // Only a file directly in changelog.d/, and only one this PR adds.
     expect(fragmentProblems(pr({ "changelog.d/sub/x.md": FRAGMENT }))).toHaveLength(1);
-    expect(fragmentProblems(pr({}, { modified: ["changelog.d/old.md"] }))).toHaveLength(1);
+    expect(fragmentProblems(pr({}, { modified: ["changelog.d/old.md"] }))).toHaveLength(2);
   });
 
   // Value: protects=the release fold getting a blank or double-headed section; fails_when=an empty or headed fragment passes
   it("rejects an empty fragment, front matter alone, and a ## [x] version heading", () => {
-    expect(fragmentProblems(pr({ "changelog.d/a.md": "  \n" }))).toEqual(["changelog.d/a.md: the fragment is empty"]);
+    expect(fragmentProblems(pr({ "changelog.d/a.md": "---\nbump: micro\n---\n  \n" }))).toEqual(["changelog.d/a.md: the fragment is empty"]);
     expect(fragmentProblems(pr({ "changelog.d/a.md": "---\nbump: minor\n---\n" }))).toEqual(["changelog.d/a.md: the fragment is empty"]);
-    expect(fragmentProblems(pr({ "changelog.d/a.md": "## [0.1.0.0] - 2026-11-08\n" + FRAGMENT }))).toEqual([
+    expect(fragmentProblems(pr({ "changelog.d/a.md": FRAGMENT + "## [0.1.0.0] - 2026-11-08\n" }))).toEqual([
       expect.stringContaining('no "## [x]" version heading'),
     ]);
     expect(fragmentProblems(pr({ "changelog.d/a.md": "---\nbump: minor\n---\n### Added\n- New.\n" }))).toEqual([]);
@@ -62,9 +62,24 @@ describe("fragmentProblems", () => {
     expect(fragmentProblems(pr(head, { base }))).toEqual([]);
   });
 
-  it("skips everything on a release/* branch, and only there", () => {
-    expect(fragmentProblems(pr({ VERSION: "0.2.0.0" }, { branch: "release/0.2.0.0", base: { VERSION: "0.1.0.0" } }))).toEqual([]);
-    expect(fragmentProblems(pr({ VERSION: "0.2.0.0" }, { branch: "releases/x", base: { VERSION: "0.1.0.0" } }))).toHaveLength(2);
+  // Value: protects=the stamp workflow guessing a version part; fails_when=a fragment with no or an unknown bump passes
+  it("requires bump: micro, patch, minor or major front matter", () => {
+    expect(fragmentProblems(pr({ "changelog.d/a.md": "### Fixed\n- A thing.\n" }))).toEqual([expect.stringContaining('open with front matter "---')]);
+    expect(fragmentProblems(pr({ "changelog.d/a.md": "---\nbump: huge\n---\n### Fixed\n- x\n" }))).toHaveLength(1);
+    for (const b of ["micro", "patch", "minor", "major"]) expect(fragmentProblems(pr({ "changelog.d/a.md": `---\nbump: ${b}\n---\n### Fixed\n- x\n` }))).toEqual([]);
+  });
+
+  // Value: protects=another PR's entry being dropped or its bump raised; fails_when=a PR deletes or edits an unreleased fragment
+  it("refuses deleting or editing an unreleased fragment, but not README.md", () => {
+    const changes = [{ status: "A", path: "changelog.d/mine.md" }, { status: "D", path: "changelog.d/theirs.md" }, { status: "M", path: "changelog.d/other.md" }, { status: "M", path: "changelog.d/README.md" }];
+    expect(fragmentProblems(pr({ "changelog.d/mine.md": FRAGMENT }, { changes }))).toEqual([
+      "changelog.d/theirs.md: deletes an unreleased fragment from another PR; add your own instead",
+      "changelog.d/other.md: edits an unreleased fragment from another PR; add your own instead",
+    ]);
+  });
+
+  it("no longer skips a release/* branch", () => {
+    expect(fragmentProblems(pr({ VERSION: "0.2.0.0" }, { branch: "release/0.2.0.0", base: { VERSION: "0.1.0.0" } }))).toHaveLength(2);
   });
 
   it("lets dependabot skip the fragment but not the version rules", () => {
@@ -81,6 +96,14 @@ describe("parseNameStatus", () => {
       { status: "M", path: "VERSION" },
     ]);
     expect(parseNameStatus("")).toEqual([]);
+  });
+});
+
+describe("fragmentBump", () => {
+  it("reads the bump from front matter only", () => {
+    expect(fragmentBump("---\r\nbump: minor\r\n---\r\n- x")).toBe("minor");
+    expect(fragmentBump("- x\n---\nbump: minor\n---\n")).toBeNull();
+    expect(fragmentBump("---\nimportant: security\n---\n- x")).toBeNull();
   });
 });
 

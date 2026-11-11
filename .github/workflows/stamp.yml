@@ -1,0 +1,79 @@
+name: Stamp
+
+# After a merge, folds the changelog.d/ fragments on main into one CHANGELOG section, bumps VERSION by the highest
+# `bump:` among them (one part of MAJOR.MINOR.PATCH.MICRO up by one, the parts after it reset to 0) and pushes that
+# release commit to main (scripts/stamp-release.ts, changelog.d/README.md). It pushes as the repo's stamp GitHub App,
+# the only bypass actor on main's ruleset, so no other workflow can push to main (docs/development.md). An app push
+# starts workflows as usual: CI runs on the release commit, and release.yml releases an X.Y.0.0 version.
+# The release commit deletes the fragments, so it starts this workflow once more, which finds nothing and exits.
+on:
+  push:
+    branches: [main]
+    paths: ["changelog.d/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time, always on main's newest commit, so it folds whatever fragments are there; a newer run waiting
+# behind it can safely replace an older waiting one.
+concurrency:
+  group: stamp
+  cancel-in-progress: false
+
+jobs:
+  stamp:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    # The app's id and key live in this environment, which only main may deploy to, so a workflow a pull request adds
+    # cannot read them (docs/development.md).
+    environment: stamp
+    steps:
+      # A short-lived token for the stamp app.
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ vars.STAMP_APP_ID }}
+          private-key: ${{ secrets.STAMP_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Fold the fragments and push the release commit
+        id: stamp
+        env:
+          # The CHANGELOG date is the owner's day, not UTC's.
+          TZ: Asia/Taipei
+        run: |
+          git config user.name "critical-answer-stamp[bot]"
+          git config user.email "critical-answer-stamp[bot]@users.noreply.github.com"
+          # A merge can land between the fold and the push: start again from main's new head, at most three times.
+          for attempt in 1 2 3; do
+            git fetch -q origin main
+            git reset -q --hard origin/main
+            out=$(node scripts/stamp-release.ts)
+            if [ -z "$out" ]; then
+              echo "No changelog.d/ fragments on main: nothing to stamp."
+              exit 0
+            fi
+            version=${out#version=}
+            git add -A VERSION CHANGELOG.md package.json package-lock.json changelog.d
+            git commit -q -m "chore: release v$version"
+            if err=$(git push origin HEAD:main 2>&1); then
+              echo "Released v$version."
+              exit 0
+            fi
+            echo "$err"
+            # Only a race with another merge is worth another try; a refusal (ruleset, auth) is reported as it is.
+            if ! grep -qE "non-fast-forward|fetch first" <<< "$err"; then
+              echo "::error::main refused the release commit. Check that the stamp app is a bypass actor on main's ruleset (docs/development.md)."
+              exit 1
+            fi
+          done
+          echo "main kept moving: could not push the release commit after 3 attempts."
+          exit 1

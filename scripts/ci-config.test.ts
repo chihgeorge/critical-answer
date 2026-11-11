@@ -30,10 +30,22 @@ describe("ci.yml", () => {
   });
 });
 
+// Only the stamp app may bypass main's ruleset: stamp.yml must push with its token, never with write access of its own.
+describe("stamp.yml", () => {
+  it("pushes with the stamp app's token and holds no write permission itself", () => {
+    const stamp = readFileSync(new URL("../.github/workflows/stamp.yml", import.meta.url), "utf8");
+    expect(stamp).toContain("uses: actions/create-github-app-token@");
+    expect(stamp).toContain("token: ${{ steps.app.outputs.token }}");
+    expect(stamp).not.toMatch(/contents: write/);
+    // The key sits in a main-only environment, out of reach of a pull request's workflows.
+    expect(stamp).toMatch(/^    environment: stamp$/m);
+  });
+});
+
 // Pinned, never ubuntu-latest: an image change is a deliberate PR, and the workflows CI never runs move with ci.yml.
 describe("runner image", () => {
   it("pins every workflow to the runner ci.yml uses", () => {
-    for (const file of [".github/workflows/ci.yml", ".github/workflows/release.yml", ".github/workflows/dependabot-auto-merge.yml"]) {
+    for (const file of [".github/workflows/ci.yml", ".github/workflows/release.yml", ".github/workflows/stamp.yml", ".github/workflows/dependabot-auto-merge.yml"]) {
       const text = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
       const labels = [...text.matchAll(/^    runs-on: (.*)$/gm)].map((m) => m[1]);
       expect(labels.length, file).toBeGreaterThan(0);
