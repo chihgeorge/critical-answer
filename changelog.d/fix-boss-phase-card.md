@@ -1,3 +1,0 @@
-### Fixed
-- While a boss phase card is up, the host page no longer shows the next question's id (for example `題目 p2a`) with its answer. The question line reads 新階段的第一題（按「下一題」後出題）, and the answer appears once 下一題 deals the question.
-- A boss phase name holds at most 12 characters and its rule at most 40, so the phase card on the big screen keeps to one title line and two rule lines and no longer covers the boss in its new look. The bank editor caps both fields and says why a longer one cannot be saved. The cap is checked on save only: a stored bank over it still loads and plays, and saves once the name and rule are shortened.

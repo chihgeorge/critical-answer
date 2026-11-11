@@ -2,6 +2,201 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.58.0.0] - 2026-11-11
+
+### Added
+- 🚨 抓包與神諭 (catch and oracle), against players quietly asking an AI on their phones. Off by default; the host turns it on from 「⚙ 更多」, the big screen shows a red-and-black banner once and the owl reads the rules. Each team then gets 🔮 1 public oracle and 🚨 2 catches for the game; a late team let in while it is on gets them too.
+- 🔮 公開問神諭: on its own turn, before sending or locking, a team may ask the oracle in public. A correct answer on that question pays half the base reward (like a persuasion natural 1 or a curse, never a quarter), and the question cannot be caught. The big screen and host page show 🔮 on the question; the oracle follows the question through 下輪再答.
+- 🚨 抓包: a waiting team (one already in the boss room included) may report the answering team once per question per turn. Everything on that question is held and the countdown stops until the host rules on a ruling card (keys 7 / 8). 成立 (upheld): the question scores 0, the big screen shows its answer, the team is made to flee to a new question one difficulty lower, loses 10 (never below 0, not counted as a flee), and the reporter gains 15. 冤枉 (false alarm): the reporter loses 10 (never below 0) and the answering team gets a lucky potion, or 10 when it already holds one. Switching off, the game ending or sending the accused to the boss room cancels a catch and refunds it.
+- The game log records each team's oracles and catches (filed, upheld, false alarms, cancelled) and how many times the switch went on. Rules in `docs/rules.md`, design in `docs/designs/anti-ai-cheating.md`.
+
+### Changed
+- CI now runs on GitHub's `ubuntu-26.04` runners instead of `ubuntu-24.04` (all workflows; still a pinned label, not `ubuntu-latest`).
+
+### Fixed
+- Bank editor: while an image upload is in flight, the whole editor locks like it does during a load or save (fields, 載入題庫 and 儲存全部變更; the buttons read 圖片上傳中…). An upload that lands after a load no longer writes into the newly loaded bank, one that lands during a save no longer has its new image replaced by the old one (leaving the new file orphaned on R2), and a tab switch or a deleted phase or question during an upload can no longer misplace its image.
+- Bank editor: a load that hangs gives up after 15 seconds and unlocks the editor with an error, instead of staying at 載入中… forever; an image upload gives up after 120 seconds (上傳逾時，請再試一次) so it can't lock the editor forever.
+
+### Added
+- Boss questions can each have their own difficulty (1–5). The bank editor shows a 難度 menu on every boss question; left alone it is 5, as before. A phase deals its questions easiest first (same difficulty keeps bank order; in a replay from the lobby, last game's questions go last within their difficulty), and the persuasion check's DC follows the question's difficulty. Questions in the ordinary banks have no menu, because their difficulty is the bank they sit in.
+
+### Changed
+- The bank format is now 9. A bank with a boss question marked with a difficulty is stored at 9, so a rollback to an older version makes the editor read-only and new rooms use the bundled default bank until the newer version is back, instead of dropping the difficulties; other banks keep their old format.
+
+### Added
+- The host page warns above 開始遊戲 when the bank may be too small for the teams in the lobby: a room difficulty has fewer questions than teams. The same game may then repeat questions or deal another difficulty's questions. 開始遊戲 then asks for one more confirmation. The bank editor shows the same warning above its save button, sized for 8 teams, and still saves. The room sends the host only question counts, never questions.
+
+### Added
+- 叉路 (a fork): where a team used to draw an event room, it now comes to a fork. On its next turn the big screen walls up the middle arch and shows a door in a doorway on each side, marked only 左門 and 右門, with a 15-second clock and a neutral fork opening line in the narration, and the team picks one with two big buttons on its phone that stay on screen. Which side hides ⚔️ 怪物房 and which ❓ 神秘房 is drawn by the server at every fork and sent to no screen, the host page included. ⚔️ is the room's monster and question as usual; ❓ draws an event and applies it at once, giving up the room's reward and progress. No pick in 15 seconds opens the ⚔️ door. The host cannot pick for the team. Every choice plays a 1.5-second door opening that names only the opened door's room; the other door dims unnamed, and a ❓ result shows only after the opening. Other phones read that the team is hesitating at the fork, the host page shows the seconds left, and the map marks a team waiting at a fork with 🚪. The game log records each fork's side, the room behind it, and whether time ran out. Rules in `docs/rules.md`, design in `docs/designs/branch-fork.md`.
+
+### Removed
+- The event room's single phone button and the host's 「替{隊名}按」 button: ❓ opens the event in the same press.
+
+### Changed
+- The host's bank-size warning no longer counts room questions against teams × 9; it warns, and 開始遊戲 asks for one more confirmation, only when a room difficulty has fewer questions than teams.
+- The narration and the podium title call event rooms 神秘房.
+- CLAUDE.md routes architecture questions to /autoplan.
+- The title on the big screen and the phone reads 🔀 叉路！: the pixel font's 11-pixel 「岔」 read as a different character.
+
+### Fixed
+- A room whose last narration had more than three lines (a fork line, a potion, a buzzer reopening appended to it) no longer loses its save on restart; appended lines stop at 20, the most a save restores.
+
+### Changed
+- **Fill-in questions roll the persuasion check first, and the question comes after.** Until the team has pressed 「🎲 擲骰說服」 and the die has stopped, the big screen and the phones do not show the question, its picture or its video. The big screen says 「{隊名}：按手機上的「🎲 擲骰說服」，擲完才出題」 and the phone has only the roll button, with the line 「必擲・不花次數・過了給第一個字」. The host page still shows the question and the answer, and the host can still judge at once.
+- The answer countdown for a fill-in question starts when the question appears, not when the turn starts. There is no clock during the check, so it no longer covers the 「擲骰說服」 sign on the big screen.
+- The mage's 「看答案第一個字」 is offered only after the check, and only when the check gave no first character. The warrior's roll already waited for the check.
+- In the boss room the wrong-answer choice 「下輪再答」 reads 「下輪換題」 (with 「先換下一隊」 on the phone), on the phone and on the host buttons: the boss brings a new question there. Other rooms keep 「下輪再答」.
+- The narrator's lines after a wrong answer say the team answers again next round, to match 「下輪再答」. The rules use the same words.
+
+### Added
+- 逃跑・換房 (flee, switch room): after a wrong answer a team can now pick 「重答」, 「逃跑・同房」 (the old 逃跑, renamed) or 「逃跑・換房」. 換房 lowers the difficulty and deals a new question like 逃跑, and the team stays at the same room number with no points, but it faces another monster: a different room monster of this game at the same difficulty, or another room monster from the catalog when there is none. Beating it cooks its dish and counts it in the catalog; leaving the room brings the map's monster back. It is on the phone, the host's stuck row (key `4`), the host's 答錯 row and a cleric's fill-in wait (key `5`). The boss room keeps its one 逃跑. The narrator has its own lines for it, and a phone that still sends the old `flee` works as before. Guide in `docs/rules.md`.
+
+### Added
+- 美食節目／生物學家口吻 (foodie narration): about three narrator lines in ten now judge a monster as an ingredient, with a straight face, for example 「輪到紅隊。史萊姆看起來很有嚼勁。」 and 「貓頭鷹已經在翻食譜了。」. Food talk comes only when a monster or the boss comes on, when a monster is beaten and when a dish is eaten; a wrong answer, a flee and a die roll keep the adventure tone. Scripted narration does not say two food lines in a row, except when a chest dish follows a food line. The AI prompt asks for the same share and limits, and is told the catalog's edible part of a beaten monster (for example 「外膜」) so it can comment on it; the dish is still named only once it is served. Guide in `docs/hosting.md`, design in `docs/designs/monster-cuisine.md`.
+
+### Changed
+- A beaten monster that will be cooked now draws its scripted line from 10 lines (13 with the edible part) instead of 3, so a scripted game repeats itself less.
+
+### Added
+- 🔮 占卜師 (the fortune teller): a ❓ room can now bring the fortune teller. The big screen shows a crystal ball for about 3 seconds and names a condition (most natural 20s, most natural 1s, most flees, most potions, most wrong answers, most correct answers, most mystery rooms, most kinds of dish, most terrible dishes), then a fortune pizza with a 15-second clock. The drawing team picks an effect on its phone — ✨ blessing, 💀 curse, 🧪 potion, 🙇 tribute, 🎁 relief or 💫 stun — for every team the condition fits, itself included; time-out picks at random. The picked slice lights for a second, then an effect card names the matching teams until the host presses 下一題. Who matches is sent to no screen before the card, the host page included. The host can press 「立即隨機」 2 seconds past the deadline if the clock never fired. Manual pacing, restarts and a disconnected drawer are handled. Rules in `docs/rules.md`, design in `docs/designs/fortune-teller.md`.
+- 💫 暈眩 (stun): a stunned team loses its next turn, or sits out the next buzz question (cannot buzz, counts as out), whichever comes first; the map shows 💫 and the narration says the skip.
+- Per-team counts of natural 1s, correct answers and wrong answers (a wrong answer counts only when the team answers again next round), kept in the game log with each team's fortunes.
+
+### Changed
+- ❓ draws one of three scenes, one third each: the chest (feast or terrible dish, half each), the 神秘雕像 statue (blessing or curse, half each), or the fortune teller. The spring, the fairy and the old 大吉/中吉/凶 lot are no longer drawn.
+- 女神的寵兒 and 詛咒磁鐵 count a fortune's blessing or curse for every team it hit.
+
+### Added
+- An answer's explanation can be an Instagram video (a public post or Reels link). At the reveal the big screen shows Instagram's official embed in a tall box of its own; someone at the screen clicks it to play, since the embed lets no page start or stop it. The host's ▶ asks for that click (「👆 點影片開始播放」 on the big screen), ⏹ and ⟲ reload it. Once it is clicked the background music goes silent, back after the optional length or at the next question. Phones say 「▶ 詳解影片請看大螢幕」, and the link goes only to the host page and the keyed big screen. The bank editor offers Instagram in the explanation slot only, with a length field, a preview and a note that the posting account's name shows. A bank with an Instagram explanation is saved as format 8. Design in `docs/designs/instagram-explanations.md`.
+
+### Added
+- 中途加入 (late join): a team that joins after the game started is no longer turned away. Its phone shows 「等主持人讓你們加入…」 and may pick a class meanwhile; the host page shows 「🚪 <隊名> 想中途加入」 with 「收這隊」 and 「不收」 under the team rows. A team let in starts in the first room, goes last in the turn order (no 擲先攻), and starts level with the team in last place: the lowest 飽足感 (reward) and the lowest progress any team has. 「不收」 tells the phone 「主持人這場沒有收你們的隊伍」. Once any team is in the boss room nobody is let in: waiting phones show 「這場快結束了，等下一場」, and 「回到大廳」 puts them in the next lobby. Waiting teams count toward the 8-team limit and survive a server restart. Guides in `docs/rules.md` and `docs/hosting.md`, design in `docs/designs/late-join.md`.
+
+### Changed
+- A new phone that opens the room after the start now finds the 「換了手機？輸入主持人給的配對碼」 input on the waiting screen, not on a refusal screen.
+
+### Added
+- 手動控制停頓 (manual pacing): the host page header has a 「自動｜⏸ 手動」 switch between the room code and 「⚙ 更多」, usable at any time. In 手動 the pauses the room used to time itself wait for the host: the 擲先攻 rolls and the order, the reveal after 公布答案, every die (crit, persuasion check, warrior, kill), a boss miss, the boss's phase card, a fork's 15 seconds and its door opening, and the start of the podium. The host page shows 「⏸ 停在這裡：…」 with what comes next, and 「▶ 下一步」 (keyboard `1` or Enter) moves on. At a fork the step is the same as time running out. The answer countdown still runs. Switching back to 自動 runs the held pause again from its start. The mode is saved with the room. Guide in `docs/hosting.md`, design in `docs/designs/manual-pacing.md`.
+
+### Changed
+- Every text on the phones, the host page, the narration and the rules now writes 叉路 and 叉路口 with 「叉」, as the big-screen title already did.
+
+### Added
+- The narrator now mentions the audience. When at least two different waiting teams react during one team's turn, with at least 3 taps in all and at least 2 of the same reaction, the next judged narration adds a middle line about the team that tapped it most, for example 「藍莓在後面噓聲四起……」. It never names the team up next, never comes on two judgments in a row, on the game's last line or in a buzzer phase, and a line the host queued takes its place. Scripted narration draws from 8 lines per reaction (each 22 characters or fewer), none naming the team on turn or hinting at the result; the AI prompt gets a short rule (no hint that the reaction is about a right or wrong answer) and the reacting team and mood as quoted data, nothing about the question. Reactions still score nothing, are not saved and never change whose turn it is. Design in `docs/designs/audience-reactions.md`.
+
+### Added
+- Players can add the phone page to their home screen. Opened from the icon, it runs full screen with no address bar, so it is harder to close by mistake. The site now has a web app manifest with the slime icon at 192px and 512px. An icon added from a room's phone page opens straight back into that room. On an iPhone the icon does not share data with Safari, so a team that joined in Safari counts as a new phone there; the hosting guide says how to recover. There is no service worker and no offline cache, so a phone always loads the current version.
+
+### Added
+- Videos played after the answer is revealed turn on Chinese captions: the question's video shown at the reveal on the big screen, and a video explanation on the big screen and on phones. A video's Traditional Chinese captions come first, then other Chinese captions, then YouTube's auto-translation to Traditional Chinese; a video with no captions shows none. Captions stay off while a question is being answered, so a music question cannot show its lyrics or title. This uses YouTube features that are not public: if they stop working, the video still plays without captions.
+
+### Changed
+- A room now closes 6 hours after the host first starts a game, even while a game is on (it used to be forgotten only after 24 hours with no action, and every action pushed that back). It closes the same way as before, with close code 4002; the notice on every screen now gives the reason as 「已到房間的使用時間」 instead of 「太久沒有動作」. The 2-hour idle rest is unchanged. The start time is saved with the room, so a server restart does not restart the clock; a save from before this dates the room from its last action.
+
+### Added
+- With 15 minutes left, the host page (only the host page) shows 「房間再 15 分鐘關閉」 and a 「延長 1 小時」 button. Each press moves the end 1 hour past the current one and the warning comes again before the new end; it can be pressed again and again up to 24 hours from the first start, then shows 「已達上限」. The extension is saved with the room. Guide in `docs/hosting.md`.
+
+### Added
+- The host page shows the big screen link as a QR code. Press 「顯示大螢幕 QR」 under the link and scan it with the device that drives the TV or projector, so nobody has to type the 36-character key with a TV remote. The QR holds the room's screen key and is for the big screen only, so it stays closed until you ask for it.
+
+### Changed
+- The room now listens only to a big screen that was opened with the host page's link or QR. A page opened with only the room code at `/room/<code>/screen` still shows the whole game, but the room ignores what it reports. It cannot start a video question's answer countdown, mark narration lines as read, raise the host's 「影片無法播放」 warning, or take one of the two places a full room keeps for big screens. Before, anyone with the room code could do all four from their phone.
+
+### Fixed
+- A big screen whose connection dropped just as a question video ended now tells the room again after it reconnects, so that question's answer countdown still starts.
+
+### Fixed
+- AI narration comes back by itself after an outage. Three timeouts in a row used to switch it off for the rest of the night; now it tries once a minute, and the host page's 「AI 旁白已暫停」 notice goes away when a line comes back. A refused key still stays off until the host applies a new one.
+- The red 「伺服器重新啟動」 notice goes away after 10 seconds instead of staying on the TV for the rest of the night.
+- The host page no longer shows the big-screen key in the link text, where a photo of the host's phone could read it. The link and the QR still carry it.
+- A phone back from the lock screen (after 10 seconds or more), or back online, reconnects at once instead of possibly sitting on a dead connection.
+
+### Fixed
+- Image cleanup no longer deletes an image that a save put back into the question bank while the R2 delete was running: such a save is refused (400, upload the image again) instead of saving a bank whose image is about to disappear.
+- A stored bank whose `version` is present but not an integer is now unreadable (read-only) instead of being read as version 1, which a save at version 1 would have overwritten. A missing `version` still reads as 1.
+- Image cleanup that waits because the stored bank is unreadable or outdated now writes an `image_cleanup_deferred` log line.
+
+### Fixed
+- While a boss phase card is up, the host page no longer shows the next question's id (for example `題目 p2a`) with its answer. The question line reads 新階段的第一題（按「下一題」後出題）, and the answer appears once 下一題 deals the question.
+- A boss phase name holds at most 12 characters and its rule at most 40, so the phase card on the big screen keeps to one title line and two rule lines and no longer covers the boss in its new look. The bank editor caps both fields and says why a longer one cannot be saved. The cap is checked on save only: a stored bank over it still loads and plays, and saves once the name and rule are shortened.
+
+### Fixed
+- **After 送王房, the narrator names the boss.** When the host sends the team on turn to the boss room, the big screen's narration adds a new 「輪到…」 line naming the boss. Before, the last line still named the monster of the room the team had left. Sending a team that is not on turn adds no line.
+
+### Fixed
+- If the team on turn has not rolled its fill-in persuasion check after 15 seconds, the host page shows the stuck row with 「🎲 替{隊名}擲骰」, and the room rolls the check for that team.
+- A fill-in that ends before its question is shown (a natural 20, or the host judging early) now shows the question next to 「正解：…」 on the screen and on the phones, so players learn what they answered.
+- The thief's 偷襲 on a fill-in waits until the question is up: the phone hides the button before the check, and the room refuses a crafted press with check_needed.
+- A cleric's prayer retry now gets its own narration line (聖光降臨, answer again now) instead of the 「下一輪再答」 line. The LLM narrator is told the same.
+
+### Fixed
+- Host page on a narrow phone (360px): a team's row no longer cuts the team name to two characters. The name and scores take the first row, and 指定下一題, 給藥水 and 交給新手機 fit the second.
+- Host page: the manual-pacing panel 「⏸ 停在這裡：…」 no longer leaves one character alone on the last line. What comes next drops to its own line whole. 「大螢幕正在揭曉：…」 and the fork card break the same way, and the 「替…選・重答」 / 「逃跑」 buttons wrap into even lines instead of leaving one character on the last.
+- Host page: the AI key fields stop at 256 characters, the longest key the room accepts.
+- Host page: the 地城主旁白 row shows its whole summary (「3 句・念到第 2 句」) instead of cutting it off, and the question picker's 關閉 button no longer breaks into two lines under a long title.
+- Host and player pages: the turn ribbon is a little smaller on a phone, so the boss fight's 「首領戰　輪到：」 no longer leaves room for only one character of the team name.
+- Big screen: the result bar under the dice (擲先攻's order, the boss kill's sum, the warrior's and crit rolls) has space at its sides, so the text no longer touches the outline.
+
+### Security
+- The room now drops any WebSocket message over 4096 bytes before parsing it. The largest real message is about 2.5 KB, so players and hosts are not affected. A dropped message gets no reply and the connection stays open, the same as a message over the rate limit.
+
+### Fixed
+- After a dish is eaten, a dish served without a plate of its own (a bowl, a glass, a skewer) now leaves an empty plate at least 120px wide on stage, about as wide as the other dishes' plates. The squid's plate grows from 84px to 140px, and the ice, cotton candy and smoothie plates from 96px to 120px. Every other empty plate keeps its size.
+
+### Fixed
+- A room can no longer be used to test stolen Anthropic keys one after another. The room now checks at most 3 pasted keys a minute and 10 over its life (a server restart does not reset the count). Past that it refuses the key as "could not check this key" without asking Anthropic, so the reply says nothing about whether the key works. A host pasting a key once or twice is not affected: a mistyped key, a resend of the key in use, and the host page resending the key still being checked after a reconnect do not count.
+
+### Fixed
+- A reconnect no longer swaps the room back to the host's old AI key. When the host pasted a new key and the connection dropped before the room's answer arrived, the host page resent the old saved key, and every later reconnect flipped between the two. The page now resends the key it is still waiting on, under the same id, so the room keeps the new key, and a key whose check a reconnect interrupted is checked again instead of leaving the panel waiting with no message. The room now tells the host page which pasted key it refused (only the host page gets this, never the key itself), and the page stops resending that key. If a restarted room was left with no key, the page sends it the saved key back.
+- A reconnect no longer restarts AI narration that stopped after repeated failures (for example, no credit left). Only pasting the key again restarts it.
+- Pasting a bad key after a room restart no longer deletes the good key the host page remembered. The page forgets its saved key only when the room drops the key it was using.
+
+### Fixed
+- The question bank editor now says once, at the top of each bank tab and each boss phase, that the mage and a passed persuasion check show everyone a fill-in answer's first character or number (spaces, punctuation and symbols are skipped, a minus sign too; with fewer than two there is no hint), and to put a note such as 「約」 or 「（皆可）」 after the answer, not at its start, where it would become the hint. Screen readers read the line with each fill-in answer box. Buzzer phases, where neither can be used, do not show it. Judging and the bank format are unchanged.
+
+### Fixed
+- While a fork's ⚔️ door opens, the host page no longer shows the coming question's answer under the fork card. The answer appears with the question, once the door has opened.
+- The bank editor says 「✓ 已儲存」 under the save button after a save that worked. Before, a successful save showed nothing. The line goes away on the next edit or load.
+- A title shared by three or more teams reads 「等 N 隊」 with N as every team that holds it, as the narration does. The big screen's card used to count only the teams it did not name (「甲隊 乙隊 等 1 隊」 for three teams).
+
+### Changed
+- The room's 6-hour limit now counts from the host's first 「開始遊戲」, not from the room's first connection. Going back to the lobby and starting another game does not restart it, and the 24-hour cap on extensions also counts from the first start. A lobby that has never started a game has no 6-hour limit: it rests after 2 idle hours as before and is wiped after 6 hours with no action. Rooms already open under the first-connection rule keep the time they have, so nothing closes early at deploy.
+
+### Changed
+- The wrong-answer choice 「重答」 is now 「下輪再答」, with the line 「先換下一隊」 on the phone, so a team knows the next team goes first. This covers the phone, the host buttons, multiple-choice, fill-in, sort and the 逃跑・換房 choice. The cleric's 祈禱 says 「現在再答一次・剩 N 次」. Nothing about how the turn works changes.
+
+### Fixed
+- Host page on a phone: the judge buttons sit right under the question card, so the host no longer scrolls past the teams to judge. Once the game starts, the big-screen link and QR code move into 「⚙ 更多」.
+- Host page: with the answer countdown on, 「好像卡住了／替○○選」 waits until the countdown reaches 0. With the countdown off, or while a clip has not ended, it still comes after 15 seconds.
+- Phone: while another team's 神秘房 result is showing, the next team's ribbon says 「下一個是我們！」. It goes back to 「輪到我們了！」 once the host presses 下一題.
+- Big screen: under 正解, one line says who scored: 「✅ 隊名 答對 +N 飽足感」.
+- Phone: the potion button says 「下一顆骰子擲兩次取高」, and a sort question says 「按住 ☰ 拖曳排順序」.
+- Phone game over: the old 正解 card is gone. Every team sees its place (🥇/🥈/🥉 第 N 名！, then 第 N 名・謝謝參與) and its score. The big-screen podium still shows the top 3.
+
+### Fixed
+- A player can no longer find the answer to a music question by looking up its video on YouTube. The room used to send every YouTube question's video id to every phone and to any page opened at `/room/<code>/screen`. It now sends the id only to the host page and to a big screen opened with the big screen link on the host page, which carries a new per-room screen key (`#s=…`).
+
+### Changed
+- Open the big screen with the full link shown on the host page. A big screen opened with only the room code still shows the game, but it says 「請用主持人頁上的大螢幕網址開啟」 at the top of the lobby and in place of a question video. The big screen remembers the key and removes it from its address bar, which the room can see. The link stays the same when the host page reloads and after a server restart; 回到大廳 keeps it too, and a room that expired and was opened again gets a new one.
+
+### Fixed
+- In a custom bank with fewer questions than teams, two teams that start on the same question no longer stay on it until one of them answers. Whenever a question may have come free (an answer, a flee, an event room, or a team walking or being sent into the boss room), one of the two moves at once to a free question whose answer nobody has seen. The team that answered that question wrong and chose 重答 keeps it; otherwise the later team in turn order moves. The team on turn, a team waiting on its 重答 / 逃跑 choice or on the host's judgment, and a team in an event room are never moved, and the host's queued pick for a team is kept for its next room. A freed question whose answer was already shown is not handed over, so the two stay together then. Banks with enough questions for every team are unchanged. The big screen and phones show only the question of the team on turn, so a moved team sees its new question on its next turn.
+
+### Fixed
+- A natural 20 on a persuasion check that a restart cut off is no longer won by a team in the next game after 回到大廳. One whose win failed (`roll_failed`), whose turn moved on during the beat, or that the host ruled on first is marked `dropped`, so a later restart no longer wins it.
+- A lost natural 20 now waits 4 seconds after the last sound cue, so it no longer replaces that cue in the same moment.
+- A phone that JOINs with a team id holding a colon now sees 「加入失敗」 (`invalid_team_id`) instead of nothing.
+- A 下一句這樣說 typed in the game that ended and sent late, after 回到大廳, is refused (`stale_game`, shown on the host page) instead of being said in the next game.
+
+### Fixed
+- On the big screen, a multiple-choice or sort question with an image no longer covers its option tiles: the image stands over the monster, between the two tile columns.
+- A multiple-choice or sort question with a YouTube video no longer covers its tiles: the tiles narrow and the 356×200 player stands between them. (At the reveal the player moves into the question panel and starts again from the clip's start, paused.)
+- A correct reveal whose answer brings a video, an image or an Instagram clip hides the option and sort tiles, so the panel no longer grows over them. 「正解：…」 still names the answer.
+- An Instagram explanation stands beside the answer instead of under it, so its play button no longer runs off the stage under the dialogue box.
+- The answer clock no longer stays on 「⏰ 時間到」 when the next turn starts with the same time (host page, phone and big screen).
+- A bank save refuses an image that is neither in the current bank nor waiting in the cleanup queue (it may already be deleted from storage), with 「圖片已過期，請重新上傳」.
+- The bank editor's save conflict message is in Chinese: 「題庫在你載入後被別人存過了：先按「載入題庫」拿最新版，再改一次存檔。」
+
 ## [0.57.0.0] - 2026-11-09
 
 ### Added
