@@ -2596,9 +2596,9 @@ export class DungeonRoom {
       laterPhases,
       catalogMonster(monsters.boss).dish.name,
       this.playedQuestionIds,
+      bossDifficulties(this.bank),
     );
-    const hard = bossDifficulties(this.bank);
-    this.game = { ...game, startedAt: this.now(), ...(this.bank.randomMonsters ? { bossMonsterId: monsters.boss } : {}), ...(Object.keys(hard).length ? { bossDifficulties: hard } : {}) };
+    this.game = { ...game, startedAt: this.now(), ...(this.bank.randomMonsters ? { bossMonsterId: monsters.boss } : {}) };
     // The 6 hours start at the first start only: a second game after 回大廳 keeps the same clock (and the 24 hour cap).
     this.createdAt ??= this.now();
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.

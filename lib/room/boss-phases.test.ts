@@ -5,6 +5,7 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
+import { CHECK_DC } from "../game-state";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";
@@ -230,6 +231,18 @@ describe("boss phases in the room", () => {
     const phase1 = await entering(false);
     expect(phase1).toMatchObject({ type: "correct", entersBoss: {} });
     expect(phase1.entersBoss).not.toHaveProperty("phase");
+  });
+});
+
+// Value: protects=the room passing the bank's boss difficulties into the game, the one line that makes the feature
+// work; fails_when=a started game drops them, so every boss check silently rolls against DC 16; seam=none;
+// no_claim=the editor (bank-editor-question.test.ts) and the parse (question-bank.test.ts)
+describe("boss question difficulty in the room", () => {
+  it("a started game deals the easier boss question first and rolls it against its own DC", () => {
+    const { room, state } = bossGame(phasedBank((id) => (id === "p1-b" ? { ...text(id), difficulty: 2 } : text(id))));
+    expect(room.game!.bossDifficulties).toEqual({ "p1-b": 2 });
+    expect(room.game!.boss.currentQuestionId).toBe("p1-b");
+    expect(state().view.teams[0].checkTarget.dc).toBe(CHECK_DC[1]);
   });
 });
 

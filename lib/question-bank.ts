@@ -15,7 +15,7 @@
 // BANK constant (or the bankJson import) to this file — that import belongs only in
 // lib/question-bank-data.ts.
 
-import { DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./game-state";
+import { DEFAULT_BOSS_DIFFICULTY, DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./game-state";
 import { MAX_FIELDS, MAX_ID, type HiddenInstagram, type HiddenVideo, type InstagramVideo, type PublicMediaContent, type PublicQuestion } from "./protocol";
 import { catalogMonster, monsterById, variantOf } from "./monster-catalog";
 import { YOUTUBE_ID_RE } from "./youtube";
@@ -294,7 +294,8 @@ function parseQuestions(raw: unknown, where: string, seen: Set<string>, boss = f
     const category = parseCategory(r.category, id as string);
     if (r.difficulty !== undefined && !boss) fail(`question ${String(id)} in ${where} has a difficulty: only a boss question can (a pool is its difficulty)`);
     const difficulty = r.difficulty === undefined ? undefined : parseDifficulty(r.difficulty, `question ${String(id)}`);
-    const extra = { ...(category ? { category } : {}), ...(difficulty ? { difficulty } : {}) };
+    // The default is stored as no difficulty, so a bank that marks nothing below it keeps its older format (bank-store formatOf).
+    const extra = { ...(category ? { category } : {}), ...(difficulty && difficulty !== DEFAULT_BOSS_DIFFICULTY ? { difficulty } : {}) };
     // "image" is a legacy top-level kind (pre-D1): it converts to a text-kind question whose
     // content happens to be an image, same as parseContent's imageKey fallback handles it.
     if (kind === "text" || kind === "image") return { ...parseTextQuestion(r, id as string), ...extra };
@@ -446,21 +447,16 @@ export function bossQuestions(bank: Bank): BankQuestion[] {
   return bank.boss.phases.flatMap((p) => p.questions);
 }
 
-export const bossDifficulty = (q: BankQuestion): Difficulty => q.difficulty ?? 5;
+export const bossDifficulty = (q: BankQuestion): Difficulty => q.difficulty ?? DEFAULT_BOSS_DIFFICULTY;
 
-/** Each phase's HP and question ids, easiest first (a stable sort keeps the bank's order within a difficulty), the
- * shape GameState's boss keeps. */
+/** Each phase's HP and question ids in bank order, the shape GameState's boss keeps (createGame deals easiest first). */
 export function bossPhaseStates(bank: Bank): { maxHp: number; questionIds: string[]; buzzer?: true }[] {
-  return bank.boss.phases.map((p) => ({
-    maxHp: p.maxHp,
-    questionIds: [...p.questions].sort((a, b) => bossDifficulty(a) - bossDifficulty(b)).map((q) => q.id),
-    ...(p.buzzer ? { buzzer: true as const } : {}),
-  }));
+  return bank.boss.phases.map((p) => ({ maxHp: p.maxHp, questionIds: p.questions.map((q) => q.id), ...(p.buzzer ? { buzzer: true as const } : {}) }));
 }
 
 /** The boss questions that are not difficulty 5, the shape GameState.bossDifficulties keeps. */
 export function bossDifficulties(bank: Bank): Record<string, Difficulty> {
-  return Object.fromEntries(bossQuestions(bank).flatMap((q) => (bossDifficulty(q) === 5 ? [] : [[q.id, bossDifficulty(q)]])));
+  return Object.fromEntries(bossQuestions(bank).flatMap((q) => (bossDifficulty(q) === DEFAULT_BOSS_DIFFICULTY ? [] : [[q.id, bossDifficulty(q)]])));
 }
 
 /** Where the persuasion check never comes up (dnd design R-E2): a pool, or the boss, that has questions but no fill-in

@@ -19,7 +19,7 @@ import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { MAX_TEAMS, scoreName } from "@/lib/protocol";
 import { bankSize, bankSizeWarning, bankSizeWarningText } from "@/lib/bank-size";
-import type { Difficulty } from "@/lib/game-state";
+import { DEFAULT_BOSS_DIFFICULTY, type Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId, formatClipTime, parseClipTime } from "@/lib/youtube";
 import { YoutubePlayer } from "@/components/youtube-player";
@@ -1101,10 +1101,15 @@ function QuestionRow({
             style={{ width: "auto" }}
             aria-label="難度"
             aria-describedby={difficultyHintId}
-            value={q.difficulty ?? 5}
+            value={q.difficulty ?? DEFAULT_BOSS_DIFFICULTY}
             onChange={(e) => {
               const d = Number(e.target.value) as Difficulty;
-              onUpdate((cur) => ({ ...cur, difficulty: d }));
+              // The default is stored as no difficulty, so picking it back keeps the bank at its older format.
+              onUpdate((cur) => {
+                const next: BankQuestion = { ...cur, difficulty: d };
+                if (d === DEFAULT_BOSS_DIFFICULTY) delete next.difficulty;
+                return next;
+              });
             }}
           >
             {DIFFICULTIES.map((d) => (

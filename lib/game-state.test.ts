@@ -54,6 +54,7 @@ import {
   spendPotion,
   resolveFortune,
   type ClassId,
+  type Difficulty,
   type GameState,
   type RoomTemplate,
   teamMonsterId,
@@ -101,6 +102,19 @@ describe("createGame", () => {
     expect(g.boss.phases[1].questionIds).toEqual(["p2-q2", "p2-q1"]);
     // Not "revealed": a phase whose questions were all played last game is not used up.
     expect(g.revealedQuestionIds).toEqual([]);
+  });
+
+  it("deals each boss phase easiest first; within one difficulty, an earlier game's shown answers go last", () => {
+    const teams = [{ id: "T0", name: "A" }];
+    const later = [{ maxHp: 2, questionIds: ["p2-hard", "p2-easy"] }];
+    const marked = { "boss-easy": 2, "boss-easy2": 2, "p2-easy": 1 } as const;
+    const g = createGame(teams, ...deck(3, 1, 2), ["boss-hard", "boss-easy", "boss-easy2"], { bossThreshold: 3 }, 2, first, undefined, {}, later, undefined, ["boss-easy"], marked);
+    // Difficulty wins over freshness: the played easy question still comes before the unplayed hard one.
+    expect(g.boss.questionIds).toEqual(["boss-easy2", "boss-easy", "boss-hard"]);
+    expect(g.boss.currentQuestionId).toBe("boss-easy2");
+    expect(g.boss.phases[1].questionIds).toEqual(["p2-easy", "p2-hard"]);
+    expect(g.bossDifficulties).toEqual(marked);
+    expect(createGame(teams, ...deck(3, 1, 2), ["boss-q1"], { bossThreshold: 3 }, 2, first)).not.toHaveProperty("bossDifficulties");
   });
 
   it("repeats an earlier game's questions once nothing else is left", () => {
@@ -2058,8 +2072,8 @@ describe("fortune counters: natural1s, correctAnswers, wrongAnswers", () => {
 });
 
 // Value: protects=the persuasion check's rules (dnd design R6, R8, R3-7, E1-1, E1-2): bonus by class against the pool's
-// DC or the boss's 16, a natural 20 passes with no hint, a 1 fails and halves any success on the question, one roll per
-// team and question, and the record leaves with the question; fails_when=the DC or bonus is wrong, a 1 passes, the hint
+// DC or a boss question's own difficulty's DC (16 when unmarked), a natural 20 passes with no hint, a 1 fails and halves any success on the question, one roll per
+// team and question, and the record leaves with the question; fails_when=the DC or bonus is wrong, a boss question's difficulty is ignored, a 1 passes, the hint
 // leaks on a 20, the warrior's hit skips the half, a mage casts a second hint, or a record outlives its question;
 // seam=none; no_claim=the room's beat and broadcast (dungeon-room.test.ts)
 describe("the persuasion check (dnd design R6, R8)", () => {
@@ -2087,6 +2101,9 @@ describe("the persuasion check (dnd design R6, R8)", () => {
     expect(checkTarget({ ...boss, bossDifficulties: { [q0(boss)]: 2 } }, "T0", q0(boss)).dc).toBe(CHECK_DC[1]);
     // The big screen's DC chip reads the boss's question, not the team's stale room question.
     expect(getSpectatorView({ ...boss, bossDifficulties: { [q0(boss)]: 2 } }).teams[0].checkTarget?.dc).toBe(CHECK_DC[1]);
+    // Only own keys count, and a damaged value falls back to 16.
+    expect(checkTarget({ ...boss, bossDifficulties: {} }, "T0", "constructor").dc).toBe(CHECK_DC[4]);
+    expect(checkTarget({ ...boss, bossDifficulties: { [q0(boss)]: 9 as Difficulty } }, "T0", q0(boss)).dc).toBe(CHECK_DC[4]);
     expect(getSpectatorView(g).teams[0].checkTarget).toEqual({ bonus: CHECK_BONUS.thief, dc: CHECK_DC[0] });
   });
 
