@@ -27,6 +27,6 @@ another PR's unreleased fragment.
 
 After the merge, `.github/workflows/stamp.yml` runs `scripts/stamp-release.ts` on main: it folds every file here,
 in path order, into one new `## [<version>] - <date>` CHANGELOG section, raises the highest `bump:` among them by
-exactly one (the parts after it reset to 0), sets `VERSION` and the `package.json` / `package-lock.json` version,
+exactly one (the parts after it reset to 0; an older fragment with no `bump:` counts as `patch`), sets `VERSION` and the `package.json` / `package-lock.json` version,
 deletes the files and pushes that release commit to main as the repo's stamp GitHub App (setup in
 `docs/development.md`). This README is skipped.
