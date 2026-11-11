@@ -2163,7 +2163,8 @@ export function getSpectatorView(game: GameState): SpectatorView {
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
       typedAnswer: t.typedAnswer ?? null,
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
-      checkTarget: checkTarget(game, t.id, t.currentQuestionId),
+      // A boss team's question is the boss's, not its stale room question.
+      checkTarget: checkTarget(game, t.id, currentQuestionIdOf(game, t.id)),
       // A game ended at a fork shows no door on the podium.
       ...(game.phase === "playing" && atFork(t) ? { fork: t.fork!.phase as "waiting" | "choosing" } : {}),
       ...(t.boon ? { boon: t.boon } : {}),

@@ -712,11 +712,18 @@ function RoomEditor({
   onUploadImage: (file: File) => Promise<string>;
 }) {
   const hintId = useId();
+  const difficultyHintId = useId();
   return (
     <Panel className="flex flex-col gap-2 p-4">
       <div data-testid={testId} className="flex flex-col gap-2">
         <h2 className="text-[18px]">{title}</h2>
         <div className="text-[13px]">{note}</div>
+        {/* A buzzer phase has no persuasion check, so there the difficulty only orders the questions. */}
+        {difficulty && (
+          <div id={difficultyHintId} className="text-[13px]">
+            {categories ? "難度 1 最易、5 最難（沒改就是 5）：同一階段由易到難出題。" : "難度 1 最易、5 最難（沒改就是 5）：同一階段由易到難出題，難度也決定說服檢定的 DC（8～16）。"}
+          </div>
+        )}
         {/* Mirrors firstMeaningfulChar (lib/game-state.ts), shown by the mage and a passed check; a buzzer phase has neither. */}
         {!categories && (
           <div id={hintId} className="text-[13px]">
@@ -731,7 +738,7 @@ function RoomEditor({
             onDelete={() => onDelete(q.id)}
             onUploadImage={onUploadImage}
             category={categories}
-            difficulty={difficulty}
+            difficultyHintId={difficulty ? difficultyHintId : undefined}
             answerHintId={categories ? undefined : hintId}
           />
         ))}
@@ -1011,11 +1018,12 @@ function QuestionRow({
   onDelete,
   onUploadImage,
   category = false,
-  difficulty = false,
+  difficultyHintId,
   answerHintId,
 }: {
   category?: boolean;
-  difficulty?: boolean;
+  /** Shows a 難度 menu (a boss question's own difficulty), described by the section's line with this id. */
+  difficultyHintId?: string;
   /** The section's mage-hint note, read out with a fill-in answer box. */
   answerHintId?: string;
   question: BankQuestion;
@@ -1084,12 +1092,15 @@ function QuestionRow({
         </select>
       </div>
 
-      {difficulty && (
+      {difficultyHintId && (
         <label className="flex items-center gap-1 whitespace-nowrap text-[15px]">
           難度
           <select
             className="px-input !py-1"
+            // .px-input's width:100% beats a Tailwind width utility (see the 題型 select).
+            style={{ width: "auto" }}
             aria-label="難度"
+            aria-describedby={difficultyHintId}
             value={q.difficulty ?? 5}
             onChange={(e) => {
               const d = Number(e.target.value) as Difficulty;
@@ -1102,7 +1113,6 @@ function QuestionRow({
               </option>
             ))}
           </select>
-          <span className="whitespace-normal text-[13px]">同一階段由易到難出題；難度也決定說服檢定的 DC 和大螢幕的星星</span>
         </label>
       )}
 

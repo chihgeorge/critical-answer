@@ -57,7 +57,7 @@ export type BankQuestion = (
   /** Free text the owner groups questions by (動漫, 遊戲音樂…): a buzzer phase's winner picks the next one's
    * (docs/designs/boss-music-buzzer.md). */
   category?: string;
-  /** Boss questions only: how hard (1–5), for the check's DC, the stars and the phase's order. Absent reads as 5. */
+  /** Boss questions only: how hard (1–5), for the check's DC and the phase's order. Absent reads as 5. */
   difficulty?: Difficulty;
 };
 

@@ -2085,6 +2085,8 @@ describe("the persuasion check (dnd design R6, R8)", () => {
     expect(checkTarget(boss, "T0", q0(boss))).toEqual({ bonus: CHECK_BONUS.mage, dc: CHECK_DC[4] });
     // A boss question the bank marked easier rolls against its own difficulty's DC.
     expect(checkTarget({ ...boss, bossDifficulties: { [q0(boss)]: 2 } }, "T0", q0(boss)).dc).toBe(CHECK_DC[1]);
+    // The big screen's DC chip reads the boss's question, not the team's stale room question.
+    expect(getSpectatorView({ ...boss, bossDifficulties: { [q0(boss)]: 2 } }).teams[0].checkTarget?.dc).toBe(CHECK_DC[1]);
     expect(getSpectatorView(g).teams[0].checkTarget).toEqual({ bonus: CHECK_BONUS.thief, dc: CHECK_DC[0] });
   });
 
