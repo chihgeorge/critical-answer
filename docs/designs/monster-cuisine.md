@@ -326,7 +326,7 @@ REALITY: pr-count pass 一個 PR，沒有 ship-policy pr_count docs/designs/mons
 
 ## 煮菜動畫（v0.39，2026-11-07）
 
-TODOS.md「答對後切回怪物畫面，用動畫把怪物做成料理」。/plan-eng-review 和 /plan-design-review 都在 2026-11-07 做完，決定（R1–R8、I1–I11）的完整紀錄在本機的 review 檔（`~/.gstack/projects/critical-answer/`，只在本機）。這裡記結論：
+TODOS.md「答對後切回怪物畫面，用動畫把怪物做成料理」。/plan-eng-review 和 /plan-design-review 都在 2026-11-07 做完，決定（R1–R8、I1–I11）的完整紀錄在本機的 review 檔（`[owner-local]/`，只在本機）。這裡記結論：
 
 - **R1、I6 煮哪隻：** 煮剛打倒的那隻。揭曉時下一題已經發好，所以 `AnswerReveal.dish` 帶著 `monster`（名字、圖、色調）、`room`（首領是 `null`）和 `teamId`。揭曉期間大螢幕台上站的是這隻怪物和牠的房間背景，左上角寫「🍲 {吃到的隊伍}」，按下一題才換回下一隊。
 - **R4、R5 順序：** 先照常揭曉正解（可能有影片），主持人按「🍲 上菜」（`HOST_SERVE`，同一個按鈕位置，鍵盤 `1`）後才收起面板開始煮。上菜會先暫停影片。

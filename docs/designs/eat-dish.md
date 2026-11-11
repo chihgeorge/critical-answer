@@ -10,12 +10,12 @@ Mode: Builder
 
 🍲 上菜後，大螢幕煮完菜（怪物 → 鍋子 → 煙 → 料理，`COOK_MS` = 1.6 秒）就停在料理圖和菜卡上，直到主持人按下一題。菜是哪一隊吃的，只寫在左上角「🍲 {隊名}」和旁白裡，畫面上沒有「吃」這件事。
 
-研究報告比較了三種吃法（本機，不進 git：`~/.gstack/projects/critical-answer/designs/eat-dish-20261108/report.md`）。使用者選方案 A：吃到的隊伍角色硬切出現在料理旁邊，分三口把菜吃掉，最後剩空盤、愛心和「嗝～」。
+研究報告比較了三種吃法（本機，不進 git：`[owner-local]/designs/eat-dish-20261108/report.md`）。使用者選方案 A：吃到的隊伍角色硬切出現在料理旁邊，分三口把菜吃掉，最後剩空盤、愛心和「嗝～」。
 
 Mockup（本機，不進 git）：
 
-- `~/.gstack/projects/critical-answer/designs/eat-dish-20261108/option-A.png`：四格（1.6 s 上桌、2.6 s 第一口、3.0／3.4 s 第二三口、3.8 s 吃光光）。
-- `~/.gstack/projects/critical-answer/designs/eat-dish-20261108/mock.html`：用真的 `lib/pixel-art.ts` 畫的，`bitten()` 和 `emptyPlate()` 可以直接拿來試咬痕。
+- `[owner-local]/designs/eat-dish-20261108/option-A.png`：四格（1.6 s 上桌、2.6 s 第一口、3.0／3.4 s 第二三口、3.8 s 吃光光）。
+- `[owner-local]/designs/eat-dish-20261108/mock.html`：用真的 `lib/pixel-art.ts` 畫的，`bitten()` 和 `emptyPlate()` 可以直接拿來試咬痕。
 
 ## Constraints
 

@@ -103,7 +103,7 @@ Notes:
 
 ## Screen decisions (PNG mockups, 2026-10-25)
 
-Mockups: `~/.gstack/projects/critical-answer/designs/scoring-20261025/score-all.png`.
+Mockups: `[owner-local]/designs/scoring-20261025/score-all.png`.
 
 | # | Screen | Answer |
 |---|---|---|

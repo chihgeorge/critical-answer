@@ -101,8 +101,8 @@ Mode: Builder
 8. **手機**：維持「冒險結束！看大螢幕 📺」，不加稱號卡。`/play` 只用 `revealNow`，不碰 `Beat`，所以不用改。
 
 Wireframe（本機，不進 git）：
-- `~/.gstack/projects/critical-answer/designs/titles-20261108/titles-award.png`：頒稱號那一拍＋最後的頒獎台。
-- `~/.gstack/projects/critical-answer/designs/titles-20261108/titles-sketch.png`、`~/.gstack/projects/critical-answer/designs/titles-20261108/titles-phone.png`：比較過但沒採用的放法。
+- `[owner-local]/designs/titles-20261108/titles-award.png`：頒稱號那一拍＋最後的頒獎台。
+- `[owner-local]/designs/titles-20261108/titles-sketch.png`、`[owner-local]/designs/titles-20261108/titles-phone.png`：比較過但沒採用的放法。
 
 ## Open Questions
 

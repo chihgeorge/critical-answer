@@ -19,7 +19,7 @@ Status: APPROVED（M1–M5 由站長決定，細節由實作 lane 依現有做�
 | M4 | YouTube 放不出來 | 大螢幕的播放器出錯時送 `SCREEN_CLIP_ERROR`。主持人頁跳紅色警告，搶答還沒開放時多一顆「🎤 現場放歌，開放搶答」（`HOST_BUZZ_OPEN`），不送影片指令就開放搶答，主持人用自己的手機或喇叭放歌。大螢幕的錯誤框下方寫「🎤 主持人現場放歌」。 | 新增 |
 | M5 | 音樂類別 | 題目多一個選填的自由文字欄位 `category`。搶答階段裡，主持人判某隊答對後，這隊手機出現這個階段「還有沒公布的題目」的類別按鈕；在主持人按 ▶ 放下一首之前都能選、能改，下一題從那個類別出。沒選、或題庫沒填類別，照舊按順序出。選好後大螢幕顯示「下一題：{類別}」。一般房間不會出現。 | 新增 |
 
-草圖：`~/.gstack/projects/critical-answer/designs/boss-music-pick-type-20261108/` 的 `a-screen.png`、`a-host.png`（本機檔，不進 git）。
+草圖：`[owner-local]/designs/boss-music-pick-type-20261108/` 的 `a-screen.png`、`a-host.png`（本機檔，不進 git）。
 
 ## 實作
 

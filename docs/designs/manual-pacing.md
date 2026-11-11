@@ -1,6 +1,6 @@
 # Manual pacing: the host steps through the pauses
 
-Status: approved by the owner, 2026-11-09. Layout A of the mockup (`~/.gstack/projects/chihgeorge-critical-answer/captain/manual-mode-layout.png`, local only).
+Status: approved by the owner, 2026-11-09. Layout A of the mockup (`[owner-local]/captain/manual-mode-layout.png`, local only).
 
 ## Problem
 

@@ -1,7 +1,7 @@
 # 設計：反 AI 作弊：🚨 抓包 ＋ 🔮 公開問神諭
 
 2026-11-10 用 /office-hours 規劃，經 /autoplan（CEO、Eng 兩階段）審過，站長在最後關卡核准（草圖與審查紀錄只存在本機
-`~/.gstack/projects/chihgeorge-critical-answer/`）。這份是唯一的規格：每條規則只有一個版本，審查的決定都已寫進內文。
+`[owner-local]/`）。這份是唯一的規格：每條規則只有一個版本，審查的決定都已寫進內文。
 Status: APPROVED
 Mode: Builder
 

@@ -24,7 +24,7 @@
 
 ## 決策
 
-對照圖（本機檔，不進 git）：`~/.gstack/projects/critical-answer/designs/host-narration-edit-20261107/`。
+對照圖（本機檔，不進 git）：`[owner-local]/designs/host-narration-edit-20261107/`。
 
 - **D2 位置＝答對鈕上方，平常收成一行。** 判題鈕位置不動（DESIGN.md：判題鈕在拇指區）。收合列：owl、`地城主旁白` chip、摘要、右邊「展開 ▾」。點了展開成清單，「收起 ▴」收回。只在 `phase === "playing"`、不在玩法說明時出現。（`d2-placement.png`）
 - **D3 念完＝大螢幕回報。** `/screen` 每念完一句（見 D11）送 `SCREEN_NARRATION_PROGRESS { eventId, rev, done }`，done＝已念完的句數。房間只收 eventId、rev 都等於目前旁白、done 比現在大、而且不超過句數的回報（D14）。房間只收帶對螢幕金鑰的大螢幕送的回報（`screen-video-key.md`），只知道房間代碼的連線鎖不了句子；已加入隊伍的手機和主持人頁送的回報房間不收，玩家用自己的手機鎖不了。
@@ -131,11 +131,11 @@
 
 | Screen/Section | Mockup Path | Direction | Notes |
 |---|---|---|---|
-| 位置 | `~/.gstack/projects/critical-answer/designs/host-narration-edit-20261107/d2-placement.png` | B：答對鈕上方收合 | D12 每題自動收 |
-| 改一句 | `~/.gstack/projects/critical-answer/designs/host-narration-edit-20261107/d5-edit.png` | A：就地輸入框 | 上限 50 字（D18） |
-| 生成中 | `~/.gstack/projects/critical-answer/designs/host-narration-edit-20261107/d5-states.png` | 一行「旁白生成中…」 | |
-| 下一句 | `~/.gstack/projects/critical-answer/designs/host-narration-edit-20261107/d7-next-line.png` | B：搬進面板 | |
-| 定稿 | `~/.gstack/projects/critical-answer/designs/host-narration-edit-20261107/final-approved.png` | D10、D15 | |
+| 位置 | `[owner-local]/designs/host-narration-edit-20261107/d2-placement.png` | B：答對鈕上方收合 | D12 每題自動收 |
+| 改一句 | `[owner-local]/designs/host-narration-edit-20261107/d5-edit.png` | A：就地輸入框 | 上限 50 字（D18） |
+| 生成中 | `[owner-local]/designs/host-narration-edit-20261107/d5-states.png` | 一行「旁白生成中…」 | |
+| 下一句 | `[owner-local]/designs/host-narration-edit-20261107/d7-next-line.png` | B：搬進面板 | |
+| 定稿 | `[owner-local]/designs/host-narration-edit-20261107/final-approved.png` | D10、D15 | |
 
 ## GSTACK REVIEW REPORT
 

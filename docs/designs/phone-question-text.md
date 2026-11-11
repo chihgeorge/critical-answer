@@ -257,7 +257,7 @@ Worktree parallelization: sequential implementation, no parallelization opportun
 
 ## Approved Mockups
 
-Local-only files under `~/.gstack/projects/critical-answer/designs/play-question-panel-20261028/`. They are not in the repo.
+Local-only files under `[owner-local]/designs/play-question-panel-20261028/`. They are not in the repo.
 
 | Screen/Section | Mockup | Direction | Notes |
 |----------------|--------|-----------|-------|

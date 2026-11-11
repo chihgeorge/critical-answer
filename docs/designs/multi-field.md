@@ -61,7 +61,7 @@ Status: APPROVED（F1–F8 由站長決定，細節由實作 lane 依現有做�
 
 ## 各畫面
 
-草圖：`~/.gstack/projects/critical-answer/designs/multi-field-20261108/` 的 `phone.png`、`host.png`、`screen.png`、`editor.png`（本機檔，不進 git）。
+草圖：`[owner-local]/designs/multi-field-20261108/` 的 `phone.png`、`host.png`、`screen.png`、`editor.png`（本機檔，不進 git）。
 
 - **手機**（`TextAnswerPanel`，`buzzed`）：每欄一個有標籤的輸入框，placeholder「選填，可空白」。有一格有字「送出」才亮。送出後顯示「已送出：晴天／—・等主持人判」。沒搶到的隊伍看不到這些框（照 #182）。
 - **主持人頁**：搶到後，答對／答錯兩顆鈕換成逐欄判定（`components/field-judge.tsx`）：每欄一列「名稱：隊伍打的字 [✓] [✗]」，下面「送出判定」，文字跟著變（還沒標完／全對／對 1/2／全錯）。答案區照舊顯示「晴天／周杰倫」。

@@ -244,7 +244,7 @@ STATE ──getSpectatorView──▶ team.item / team.itemArmedFor ──▶ ho
 | `RollOverlay` two dice, tie, reduced motion | CI e2e (screen) |
 | host give → phone drink → two-dice roll → chip text | CI e2e, one spec |
 
-Test plan copy (local-only): `~/.gstack/projects/critical-answer/georgechih-main-eng-review-test-plan-20261108.md`.
+Test plan copy (local-only): `[owner-local]/main-eng-review-test-plan-20261108.md`.
 
 ### Failure modes
 

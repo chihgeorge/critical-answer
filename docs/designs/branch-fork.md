@@ -1,7 +1,7 @@
 # Design: 叉路 (a fork: ⚔️ monster room or ❓ mystery room)
 
 Planned with /autoplan on 2026-11-09 (CEO, design, eng and DX reviews; plan and reviews local-only under
-`~/.gstack/projects/chihgeorge-critical-answer/captain/branch-fork-*`).
+`[owner-local]/captain/branch-fork-*`).
 Status: APPROVED
 Mode: Builder
 

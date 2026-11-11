@@ -67,7 +67,7 @@ Before the first question, every player knows:
   | 4 | `slime` → a dish (only when the bank has cuisine), the `door` (首領房), the `crown` | 打倒首領會結束冒險，但分數最高的隊伍才是冠軍 | 準備好了嗎？主持人再按一次 ▶，冒險開始！ |
 
   Page 4's score word follows the game: 「飽足感」 when the bank has cuisine, else 「獎勵分」, the same rule the rest of the
-  UI uses. Mockup: `~/.gstack/projects/critical-answer/designs/how-to-play-screen-20261104/` (local only).
+  UI uses. Mockup: `[owner-local]/designs/how-to-play-screen-20261104/` (local only).
 - **D7 = host page and phone during the slideshow (decided 2026-11-04, pass 1).**
   - **Host page:** the same cream `Panel` shows 「怎麼玩？ n/4」, 「大螢幕正在說明規則」 and 「這頁：{page topic}」. Below it, a
     lav panel holds 講稿提示, a one-sentence script for the host per page. At the bottom, in the thumb zone where
@@ -175,10 +175,10 @@ Synthesized from this review's findings. The room-state design belongs to /plan-
 
 | Screen/Section | Mockup Path | Direction | Notes |
 |---|---|---|---|
-| Placement (D1) | ~/.gstack/projects/critical-answer/designs/how-to-play-screen-20261104/d1-placement.png | A: big-screen slideshow | local only |
-| The 4 pages (D4) | ~/.gstack/projects/critical-answer/designs/how-to-play-screen-20261104/pages-4.png | approved as drawn | page 4's score word follows the bank |
-| Host page and phone (D7) | ~/.gstack/projects/critical-answer/designs/how-to-play-screen-20261104/pages-host-phone.png | approved as drawn | — |
-| Skip (D8) | ~/.gstack/projects/critical-answer/designs/how-to-play-screen-20261104/skip-options.png | A: checkbox before the start | — |
+| Placement (D1) | [owner-local]/designs/how-to-play-screen-20261104/d1-placement.png | A: big-screen slideshow | local only |
+| The 4 pages (D4) | [owner-local]/designs/how-to-play-screen-20261104/pages-4.png | approved as drawn | page 4's score word follows the bank |
+| Host page and phone (D7) | [owner-local]/designs/how-to-play-screen-20261104/pages-host-phone.png | approved as drawn | — |
+| Skip (D8) | [owner-local]/designs/how-to-play-screen-20261104/skip-options.png | A: checkbox before the start | — |
 
 ## Design Review Completion Summary
 
@@ -449,7 +449,7 @@ D) Defer this proposed change only
 
 State: approved
 Actual answer: A) Apply this change (user, D7)
-Accepted scope: the phone's `role="status"` panel gains a changing line 「第 n／4 頁：<page title>」; the dots are `aria-hidden`. e2e in host-controls.spec.ts checks the line follows the host. Mockup: ~/.gstack/projects/critical-answer/designs/how-to-play-screen-20261104/d7-phone-status.png (local only).
+Accepted scope: the phone's `role="status"` panel gains a changing line 「第 n／4 頁：<page title>」; the dots are `aria-hidden`. e2e in host-controls.spec.ts checks the line follows the host. Mockup: [owner-local]/designs/how-to-play-screen-20261104/d7-phone-status.png (local only).
 History: none
 
 Approval readiness: PASS — S1 (D1), F1 (D2), F2 (D3), F3 (D4), F4 (D5), F5 (carried from D9), F6 (D6), X1 (D7); all answered by the user on 2026-11-04. Sections 2 (code quality) and 4 (performance): no issues found; a page turn is one STATE broadcast. The owl voice line (D11) is spoken by the screen's own browser TTS, so it needs no room eventSeq.

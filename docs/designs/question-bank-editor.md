@@ -2,7 +2,7 @@
 
 Supersedes: the "owner key / KV or D1" line in `docs/designs/dm-branching-and-question-types.md`
 (that doc explicitly deferred this direction). Builds on prior locked decisions
-(`~/.gstack/projects/critical-answer/decisions.active.json`, 2026-09-21):
+(`[owner-local]/decisions.active.json`, 2026-09-21):
 BankStore is a Durable Object, not KV/D1; the editor is owner-only via a key
 separate from the per-room host key.
 
