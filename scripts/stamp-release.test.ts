@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bumpVersion, setPackageVersion, stamp } from "./stamp-release";
 
@@ -43,5 +44,20 @@ describe("setPackageVersion", () => {
     expect(JSON.parse(setPackageVersion(JSON.stringify({ name: "x", version: "0.57.0" }), "0.58.0"))).toEqual({ name: "x", version: "0.58.0" });
     const lock = JSON.parse(setPackageVersion(JSON.stringify({ version: "0.57.0", packages: { "": { version: "0.57.0" }, "node_modules/a": { version: "1.0.0" } } }), "0.58.0"));
     expect(lock).toEqual({ version: "0.58.0", packages: { "": { version: "0.58.0" }, "node_modules/a": { version: "1.0.0" } } });
+  });
+});
+
+// What stamp.yml depends on outside its own files.
+describe("the stamp's settings", () => {
+  it(".gstack/ship-policy.json keeps changelog.d fragments, so /ship writes one and never a version", () => {
+    const policy = JSON.parse(readFileSync(new URL("../.gstack/ship-policy.json", import.meta.url), "utf8"));
+    expect(policy.changelog_fragments?.dir).toBe("changelog.d");
+    expect(policy.merge).toBeUndefined(); // "direct" means release PRs, which no longer exist
+  });
+
+  it("tsconfig.json lets stamp-release.ts import check-fragment.ts with the .ts extension node needs", () => {
+    const tsconfig = readFileSync(new URL("../tsconfig.json", import.meta.url), "utf8");
+    expect(tsconfig).toMatch(/"allowImportingTsExtensions": true/);
+    expect(tsconfig).toMatch(/"noEmit": true/);
   });
 });
