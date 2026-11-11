@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.58.0.1] - 2026-11-12
+
+### Changed
+- TODOS.md lists two follow-ups for the automatic version stamp: merge repeated `###` headings inside one release section, and link the release commit's author to the stamp app.
+
 ## [0.58.0.0] - 2026-11-12
 
 ### Added
