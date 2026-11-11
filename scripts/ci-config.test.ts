@@ -33,7 +33,7 @@ describe("ci.yml", () => {
 // Pinned, never ubuntu-latest: an image change is a deliberate PR, and the workflows CI never runs move with ci.yml.
 describe("runner image", () => {
   it("pins every workflow to the runner ci.yml uses", () => {
-    for (const file of [".github/workflows/ci.yml", ".github/workflows/release.yml", ".github/workflows/dependabot-auto-merge.yml"]) {
+    for (const file of [".github/workflows/ci.yml", ".github/workflows/release.yml", ".github/workflows/stamp.yml", ".github/workflows/dependabot-auto-merge.yml"]) {
       const text = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
       const labels = [...text.matchAll(/^    runs-on: (.*)$/gm)].map((m) => m[1]);
       expect(labels.length, file).toBeGreaterThan(0);

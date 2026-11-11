@@ -26,18 +26,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # Full history: check-version compares with the merge base on origin/<base>.
+          # Full history: check-fragment diffs against the merge base with origin/<base>.
           fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      # A PR bumps VERSION, opens CHANGELOG.md with that version and keeps the package versions in step.
+      # A PR adds a changelog.d/ fragment with bump: front matter and leaves VERSION, the package versions and
+      # CHANGELOG.md alone; .github/workflows/stamp.yml bumps the version after the merge.
       - if: github.event_name == 'pull_request'
-        run: node scripts/check-version.ts
+        run: node scripts/check-fragment.ts
         env:
           BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
       - run: npx tsc --noEmit -p .
       # The Worker runs on workerd and has its own tsconfig, so the root check does not see it.

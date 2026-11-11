@@ -1,0 +1,3 @@
+### Fixed
+- Bank editor: while an image upload is in flight, the whole editor locks like it does during a load or save (fields, 載入題庫 and 儲存全部變更; the buttons read 圖片上傳中…). An upload that lands after a load no longer writes into the newly loaded bank, one that lands during a save no longer has its new image replaced by the old one (leaving the new file orphaned on R2), and a tab switch or a deleted phase or question during an upload can no longer misplace its image.
+- Bank editor: a load that hangs gives up after 15 seconds and unlocks the editor with an error, instead of staying at 載入中… forever; an image upload gives up after 120 seconds (上傳逾時，請再試一次) so it can't lock the editor forever.

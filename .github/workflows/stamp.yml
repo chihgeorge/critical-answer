@@ -1,0 +1,72 @@
+name: Stamp
+
+# After a merge, folds the changelog.d/ fragments on main into one CHANGELOG section, bumps VERSION by the highest
+# `bump:` among them (one part of MAJOR.MINOR.PATCH.MICRO up by one, the parts after it reset to 0) and pushes that
+# release commit to main (scripts/stamp-release.ts, changelog.d/README.md). An X.Y.0.0 version then gets its GitHub
+# Release from release.yml. The push needs the workflow token to bypass main's ruleset (docs/development.md).
+on:
+  push:
+    branches: [main]
+    paths: ["changelog.d/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time, always on main's newest commit, so it folds whatever fragments are there; a newer run waiting
+# behind it can safely replace an older waiting one.
+concurrency:
+  group: stamp
+  cancel-in-progress: false
+
+jobs:
+  stamp:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.stamp.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Fold the fragments and push the release commit
+        id: stamp
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # A merge can land between the fold and the push: start again from main's new head, at most three times.
+          for attempt in 1 2 3; do
+            git fetch -q origin main
+            git reset -q --hard origin/main
+            out=$(node scripts/stamp-release.ts)
+            if [ -z "$out" ]; then
+              echo "No changelog.d/ fragments on main: nothing to stamp."
+              exit 0
+            fi
+            version=${out#version=}
+            git add -A VERSION CHANGELOG.md package.json package-lock.json changelog.d
+            git commit -q -m "chore: release v$version"
+            if git push origin HEAD:main; then
+              echo "Released v$version."
+              echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "main kept moving: could not push the release commit after 3 attempts."
+          exit 1
+
+  release:
+    needs: stamp
+    if: needs.stamp.outputs.sha != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      ref: ${{ needs.stamp.outputs.sha }}
