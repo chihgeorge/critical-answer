@@ -830,7 +830,7 @@ test("two tabs editing at once: the second save is rejected as a conflict, not a
   await rows(tabB.getByTestId("bank-pool-1")).first().getByLabel("題目文字").fill("B 後存的版本（應該被拒絕）");
   await saveAll(tabB);
   await expect(tabB.getByTestId("bank-editor-error")).toBeVisible();
-  await expect(tabB.getByTestId("bank-editor-error")).toContainText(/changed by someone else/i);
+  await expect(tabB.getByTestId("bank-editor-error")).toContainText("被別人存過了");
 
   // A's save is what actually persisted.
   const verify = await openAndLoad();
