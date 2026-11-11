@@ -63,3 +63,13 @@
 - 這台電腦沒有 Docker，所以 gitleaks、zizmor、OSV-Scanner 都沒跑；上面的密鑰結果是用實際值比對、金鑰前綴和高熵字串掃描得到的。裝 Docker 後可以再跑一次 `/cso` 補上。
 - GitHub Actions 是用版本標籤（`@v7`）而不是 commit SHA 釘住。Dependabot 已經會更新 actions，風險低。
 - `ALLOWED_ORIGINS` 的 `https://critical-answer-*.vercel.app` 不只比對到自己的 preview：任何人都能在 Vercel 開一個叫 `critical-answer-xxx` 的專案拿到符合的網址（`lib/origin.ts` 的註解原本寫「this project only」，這個 PR 已改正）。影響小：房間本來就是知道代碼就能加入，`/api/bank` 還要 `OWNER_KEY`（Bearer token，不是 cookie，別的網站拿不到）。公開後這個規則誰都看得到，但本來就猜得到；要收緊可以改成列出確切的網址，另外處理。
+
+## 2026-11-11 更新：自動蓋版
+
+上面 2026-10-28 的紀錄有三點已經變了，原文保留不改：
+
+- **Actions 的 secret 和變數**：多了 `STAMP_APP_ID`（變數）和 `STAMP_APP_PRIVATE_KEY`（secret），放在只允許 `main` 的 `stamp` environment 裡，不是 repo 層級的 secret，所以 PR 加的 workflow 讀不到。
+- **`main` 的規則**：多了一個 bypass，只有自動蓋版用的 GitHub App。它的權限只有 Repository contents 讀寫，只有 [.github/workflows/stamp.yml](../.github/workflows/stamp.yml) 會用它的短期 token 推版號 commit。GitHub Actions 本身沒有 bypass，別的 workflow 還是推不上 `main`。
+- **用到的 Actions**：多了 `actions/create-github-app-token`，跟其他 actions 一樣用版本標籤釘住，由 Dependabot 更新。
+
+設定步驟在 [docs/development.md](development.md) 的「版本與 Release」。
