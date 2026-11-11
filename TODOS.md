@@ -45,6 +45,8 @@
 - [開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）](#開發工具鏈剩-5-個-npm-audit-漏洞上游沒有修補版) — S
 - [/health 補上死碼與 shell 腳本檢查](#health-補上死碼與-shell-腳本檢查) — S
 - [ESLint 10 / TypeScript 7 升級被上游卡住](#eslint-10--typescript-7-升級被上游卡住) — 不確定（等上游）
+- [自動蓋版時把同類小標題合併](#自動蓋版時把同類小標題合併) — S（CC 約 20 分鐘）
+- [蓋版 commit 的作者連到 App 頭像](#蓋版-commit-的作者連到-app-頭像) — S（CC 約 15 分鐘）
 
 ---
 
@@ -643,6 +645,48 @@
 - Pros：之後升級好處：更快的 lint/typecheck（TS 7 是 Go 原生編譯器，官方號稱 8–12 倍）、ESLint 10 的新規則。
 - Cons：現在做不了，勉強做會直接打斷開發環境。
 - Context 補充：已完成同批的其他升級：React 19.2.4→19.3.0、Vitest 4.1.11→5.0.1、`concurrently` 9→10（v0.7.3.0）。
+
+---
+
+## 自動蓋版時把同類小標題合併
+
+**What:** `scripts/stamp-release.ts` 把多個 `changelog.d/` 片段併成一段時，把同名的 `### Added`、`### Changed`、`### Fixed` 等小標題合在一起，各類只出現一次（順序照 Keep a Changelog：Added、Changed、Deprecated、Removed、Fixed、Security）。
+
+**Why:** v0.58.0.0 一次併了 37 個片段，片段原樣接在一起，同一段裡 `### Added`、`### Changed` 重複出現十幾次，CHANGELOG 和 GitHub Release 讀起來很亂。之後每次合併通常只有一兩個片段，所以不急。
+
+**Context:**
+- `scripts/stamp-release.ts` 的 `stamp()`：目前是 `sorted.map(fragmentBody).join("\n\n")`。
+- 測試在 `scripts/stamp-release.test.ts`（`stamp` 那組）。
+- 沒有小標題的片段（直接 `- ...`）要保留，不能丟。
+
+**Effort/Priority:** S / P4
+
+**Depends on:** 無。
+
+**Notes:**
+- Pros：Release 頁和 CHANGELOG 好讀。
+- Cons：要解析 Markdown 小標題，片段裡若有自己的 `####` 或程式碼區塊要小心不要切錯。
+- 已經發出的 0.58.0.0 段落不用回頭改。
+
+---
+
+## 蓋版 commit 的作者連到 App 頭像
+
+**What:** `.github/workflows/stamp.yml` 的 `git config user.name/user.email` 改用 `actions/create-github-app-token` 給的 `app-slug`，email 用 `<bot 使用者 id>+<slug>[bot]@users.noreply.github.com`（id 從 `GET /users/<slug>[bot]` 拿）。
+
+**Why:** 現在寫死成 `critical-answer-stamp[bot]`，App 若取了別的名字，commit 作者就對不上，GitHub 上也不會顯示 App 的頭像和連結。只是外觀，推送和升版都正常（v0.58.0.0 已驗證）。
+
+**Context:**
+- `.github/workflows/stamp.yml` 第 53–54 行。
+- `scripts/ci-config.test.ts` 有檢查 stamp.yml 的測試，改了要一起看。
+
+**Effort/Priority:** S / P4
+
+**Depends on:** 無。
+
+**Notes:**
+- Pros：commit 歷史裡看得出是哪個 App 推的。
+- Cons：多一個 API 呼叫，失敗時要退回現在的寫死名字，不能讓蓋版因此失敗。
 
 ---
 
