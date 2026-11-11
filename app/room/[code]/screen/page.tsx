@@ -159,13 +159,16 @@ const TILE_SPOTS = [
   { left: 22, top: 320 },
   { left: 622, top: 320 },
 ];
+/** A tile's box. `narrow`: a video question's tiles give the 356 px player (YouTube's minimum, D11) the middle of the wall. */
+const tileSpot = (i: number, narrow?: boolean) =>
+  narrow ? { left: i % 2 ? 658 : 22, top: TILE_SPOTS[i].top, width: 280 } : { ...TILE_SPOTS[i], width: 316 };
 
 /**
  * The option tiles on the wall (docs/designs/phone-answering.md D1, D8, D9): plain while the team
  * thinks, 🔒 during the beat, the wrong pick red while the team decides, the answer green on a
  * correct reveal. Eliminated options are the grey ✕ 答錯 tile; a mage's removal (`magic`) is grey with no label (D13=A).
  */
-function WallOptions({ options, gone, magic, lock, wrong, correct, teamName }: { options: string[]; gone: number[]; magic: number[]; lock: LockedOption | null; wrong: WrongAnswer | null; correct: number | null; teamName: string }) {
+function WallOptions({ options, gone, magic, lock, wrong, correct, teamName, narrow }: { options: string[]; gone: number[]; magic: number[]; lock: LockedOption | null; wrong: WrongAnswer | null; correct: number | null; teamName: string; narrow?: boolean }) {
   return (
     <>
       {options.slice(0, TILE_SPOTS.length).map((opt, i) => {
@@ -186,7 +189,7 @@ function WallOptions({ options, gone, magic, lock, wrong, correct, teamName }: {
             data-testid={`wall-option-${i}`}
             data-look={look}
             className="wall absolute !text-[24px] leading-[1.05]"
-            style={{ ...TILE_SPOTS[i], width: 316, height: 62, zIndex: 5 }}
+            style={{ ...tileSpot(i, narrow), height: 62, zIndex: 5 }}
           />
         );
       })}
@@ -233,7 +236,7 @@ function sortTiles(question: PublicQuestion | null, reveal: AnswerReveal | null,
 }
 
 /** Numbered 1–4 like the phone's rows, before the lock too (the phone starts from the same order). */
-function SortWall({ tiles }: { tiles: SortTile[] }) {
+function SortWall({ tiles, narrow }: { tiles: SortTile[]; narrow?: boolean }) {
   return (
     <>
       {tiles.slice(0, TILE_SPOTS.length).map((t, i) => (
@@ -248,7 +251,7 @@ function SortWall({ tiles }: { tiles: SortTile[] }) {
           data-testid={`wall-sort-${i}`}
           data-look={t.look}
           className="wall absolute !text-[24px] leading-[1.05]"
-          style={{ ...TILE_SPOTS[i], width: 316, height: 62, zIndex: 5 }}
+          style={{ ...tileSpot(i, narrow), height: 62, zIndex: 5 }}
         />
       ))}
     </>
@@ -305,14 +308,17 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
     </div>
   );
   // During a correct reveal the tiles are the answered question's (the next one is already dealt).
-  const wall = served
+  // A reveal with a video, image or Instagram clip needs the panel's full height: it would grow over the tiles, so they
+  // go (正解 above names the answer).
+  const mediaReveal = !!reveal && (!!reveal.video || (!!reveal.explanation && reveal.explanation.kind !== "text"));
+  const wall = served || mediaReveal
     ? null
     : reveal?.choice
     ? { options: reveal.choice.options, correct: reveal.choice.correctIndex, team: nameOf(reveal.choice.teamId), gone: [] as number[], magic: [] as number[] }
     : !reveal && question?.options && question.options.length <= TILE_SPOTS.length
       ? { options: question.options, correct: null, team: nameOf(pendingLock?.teamId ?? wrong?.teamId), gone: view.eliminated?.[question.id] ?? [], magic: view.mageRemoved?.[question.id] ?? [] }
       : null;
-  const sortWall = served ? null : sortTiles(question, reveal, pendingLock, wrong, wrongSlots);
+  const sortWall = served || mediaReveal ? null : sortTiles(question, reveal, pendingLock, wrong, wrongSlots);
   // Fixed lines, not an LLM call (D8, D9): nothing is narrated until the outcome is known.
   const caught = !reveal ? view.antiCheat?.openCatch : undefined;
   const held = caught
@@ -371,6 +377,34 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
     </>
   );
+  // A video question with option or sort tiles: the panel has no room for the player (it would grow over the tiles),
+  // so it stands over the monster between the two tile columns, smaller.
+  const tileVideo = asking && !!(wall || sortWall);
+  const player = (v: NonNullable<typeof video>, width: number, height: number) =>
+    !v.content ? (
+      <div data-testid={locked ? "video-locked" : undefined} className="flex shrink-0 items-center justify-center bg-[var(--lav)] p-4 text-center text-[22px] text-[var(--k)]" style={{ width, height, boxShadow: "0 0 0 4px var(--k)" }}>
+        {locked && "🔒 請用主持人頁上的大螢幕網址開啟，才會播放影片"}
+      </div>
+    ) : (
+      <YoutubePlayer
+        videoId={v.content.videoId}
+        start={v.content.start}
+        end={v.content.end}
+        command={media?.questionId === v.id ? media : null}
+        width={width}
+        height={height}
+        cover={!reveal && !!v.content.audioOnly}
+        needsTap={needsTap}
+        onPlayingChange={onVideoPlaying}
+        onEnded={reveal ? undefined : () => onClipEnded(v.id)}
+        onError={reveal ? undefined : () => onClipError(v.id)}
+        // The host plays the song from their own device (boss-music-buzzer.md M4).
+        errorNote={!reveal && clipError && view.buzz?.open ? "🎤 主持人現場放歌" : undefined}
+        title={reveal ? "正解影片" : "題目影片"}
+        // Not while answering: a music question's captions would show the lyrics or the title.
+        zhCaptions={!!reveal}
+      />
+    );
   const lone = !!reveal && reveal.explanation?.kind !== "text";
   const mediaExplanation = reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" ? reveal.explanation : null;
   // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
@@ -382,8 +416,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {/* D1: the tiles stand where the torches hang. */}
       {!wall && !sortWall && <Torches />}
       <Sparks />
-      {wall && <WallOptions options={wall.options} gone={wall.gone} magic={wall.magic} lock={pendingLock} wrong={wrong} correct={wall.correct} teamName={wall.team} />}
-      {sortWall && <SortWall tiles={sortWall} />}
+      {wall && <WallOptions options={wall.options} gone={wall.gone} magic={wall.magic} lock={pendingLock} wrong={wrong} correct={wall.correct} teamName={wall.team} narrow={tileVideo} />}
+      {sortWall && <SortWall tiles={sortWall} narrow={tileVideo} />}
 
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
         {dish && eater ? (
@@ -439,7 +473,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             <div className="text-[22px]">{card.rule}</div>
           </div>
         ) : reveal ? (
-          <div data-testid="answer-reveal" className="flex flex-col items-center gap-2">
+          // A portrait Instagram clip stands beside the answer: below it, it would run off the stage.
+          <div data-testid="answer-reveal" className={instagram ? "flex items-start justify-center gap-6" : "flex flex-col items-center gap-2"}>
+            <div className="flex flex-col items-center gap-2">
             {/* Won before its question was shown (a persuasion 20, or judged before the roll): the question comes with its answer. */}
             {reveal.asked && (reveal.asked.content.kind === "text" ? reveal.asked.content.value : reveal.asked.prompt) && (
               <div data-testid="reveal-question" className="text-[24px] [overflow-wrap:anywhere]">{reveal.asked.content.kind === "text" ? reveal.asked.content.value : reveal.asked.prompt}</div>
@@ -483,10 +519,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
               <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="mx-auto block" zhCaptions />
             )}
+            </div>
             {instagram &&
               (instagram.content ? (
-                // Portrait, so it gets a tall box of its own rather than the 356×200 a YouTube explanation has.
-                <InstagramPlayer key={reveal.questionId} shortcode={instagram.content.shortcode} end={instagram.content.end} command={media?.questionId === reveal.questionId ? media : null} maxWidth={260} maxHeight={400} onPlayingChange={onVideoPlaying} />
+                // Portrait, so it gets a tall box of its own rather than the 356×200 a YouTube explanation has: as tall as
+                // the panel can grow before the dialogue box.
+                <InstagramPlayer key={reveal.questionId} shortcode={instagram.content.shortcode} end={instagram.content.end} command={media?.questionId === reveal.questionId ? media : null} maxWidth={260} maxHeight={280} onPlayingChange={onVideoPlaying} />
               ) : (
                 <div data-testid={locked ? "video-locked" : undefined} className="flex items-center justify-center bg-[var(--lav)] p-4 text-center text-[20px] text-[var(--k)]" style={{ width: 260, height: 160, boxShadow: "0 0 0 4px var(--k)" }}>
                   {locked && "🔒 請用主持人頁上的大螢幕網址開啟，才會播放影片"}
@@ -498,33 +536,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           question.checkFirst ? <span data-testid="screen-check-first">{wrong || (pendingRoll && pendingRoll.kind !== "check") ? "……" : pendingRoll || !turn ? "🎲 說服檢定中……擲完才出題" : `${turn.name}：按手機上的「🎲 擲骰說服」，擲完才出題`}</span> :
           question.content.kind === "text" ? question.content.value : <div style={{ fontSize: 26 }}>{question.prompt ?? ""}</div>
         ) : "……"}
-        {video && (
+        {tileVideo && <div className="mt-3 flex flex-col items-center gap-2">{beside}</div>}
+        {video && !tileVideo && (
           // A reveal with nothing beside its video centres it (D18); the player stays the first child, so it is kept.
           <div key={video.id} className={`mt-3 flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
-            {!video.content ? (
-              <div data-testid={locked ? "video-locked" : undefined} className="flex shrink-0 items-center justify-center bg-[var(--lav)] p-4 text-center text-[22px] text-[var(--k)]" style={{ width: 384, height: 216, boxShadow: "0 0 0 4px var(--k)" }}>
-                {locked && "🔒 請用主持人頁上的大螢幕網址開啟，才會播放影片"}
-              </div>
-            ) : (
-            <YoutubePlayer
-              videoId={video.content.videoId}
-              start={video.content.start}
-              end={video.content.end}
-              command={media?.questionId === video.id ? media : null}
-              width={384}
-              height={216}
-              cover={!reveal && !!video.content.audioOnly}
-              needsTap={needsTap}
-              onPlayingChange={onVideoPlaying}
-              onEnded={reveal ? undefined : () => onClipEnded(video.id)}
-              onError={reveal ? undefined : () => onClipError(video.id)}
-              // The host plays the song from their own device (boss-music-buzzer.md M4).
-              errorNote={!reveal && clipError && view.buzz?.open ? "🎤 主持人現場放歌" : undefined}
-              title={reveal ? "正解影片" : "題目影片"}
-              // Not while answering: a music question's captions would show the lyrics or the title.
-              zhCaptions={!!reveal}
-            />
-            )}
+            {/* One size for the question and its reveal: width/height rebuild the player (D17). */}
+            {player(video, 384, 216)}
             {!lone && (
             <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
               {reveal ? (
@@ -536,7 +553,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             )}
           </div>
         )}
-        {!reveal && question && question.content.kind === "image" && (
+        {!reveal && question && question.content.kind === "image" && !wall && !sortWall && (
           // Inline content inside the Panel, not a second independently-positioned absolute
           // element — the Panel's height already grows with wrapped question text, so a
           // media block positioned at a fixed pixel offset would overlap 2+ line questions
@@ -559,6 +576,18 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           </div>
         )}
       </Panel>
+      )}
+      {/* With option or sort tiles on the wall the panel has no room for an image: it would grow over the tiles.
+          It stands over the monster instead, between the two tile columns (before the chips, which stay on top). */}
+      {!served && !reveal && !card && question?.content.kind === "image" && (wall || sortWall) && (
+        <Panel className="absolute" style={{ left: "50%", top: 236, transform: "translateX(-50%)", padding: 4, zIndex: 6 }}>
+          <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={126} className="block" />
+        </Panel>
+      )}
+      {tileVideo && video && (
+        <div key={video.id} className="absolute" style={{ left: "50%", top: 196, transform: "translateX(-50%)", zIndex: 6 }}>
+          {player(video, 356, 200)}
+        </div>
       )}
 
       {/* D17=A: a thief's armed Sneak Attack hangs over the monster until its answer is judged. */}
@@ -584,7 +613,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           above the dialogue box (z 7) so a three-row narration line never hides it. */}
       {typeof answerLeft === "number" && !reveal && !card && (
         <div className="absolute" style={wall || sortWall ? { right: 22, bottom: 116, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 6 }}>
-          <AnswerClock key={answerLeft} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} />
+          <AnswerClock key={`${eventId}:${answerLeft}`} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} />
         </div>
       )}
       {(cook === null || cook === 0) && (
