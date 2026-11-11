@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { versionProblems } from "./check-version";
+import { nextVersions, versionProblems } from "./check-version";
 
 const pkg = (version: string) => JSON.stringify({ name: "x", version });
 const changelog = (...versions: string[]) => "# Changelog\n\n" + versions.map((v) => `## [${v}] - 2026-11-11\n\n### Fixed\n- A thing.\n`).join("\n");
@@ -20,9 +20,11 @@ describe("versionProblems", () => {
     expect(check(files("1.0.0.0"))).toEqual([]);
   });
 
-  it("refuses a PR that keeps or lowers VERSION", () => {
-    expect(check(BASE)).toEqual(["VERSION: 0.58.0.0 must be higher than 0.58.0.0 on the base branch; bump it (/ship Step 12)"]);
-    expect(check(files("0.57.9.0"))[0]).toMatch(/must be higher than 0.58.0.0/);
+  it("accepts only one part up by one, with the parts after it reset to 0", () => {
+    expect(nextVersions("0.58.3.2")).toEqual(["1.0.0.0", "0.59.0.0", "0.58.4.0", "0.58.3.3"]);
+    const refused = "VERSION: %s is not one bump above 0.58.0.0; use one of 1.0.0.0, 0.59.0.0, 0.58.1.0, 0.58.0.1 (/ship Step 12)";
+    // Kept, lowered, skipped a number, or bumped two parts at once.
+    for (const v of ["0.58.0.0", "0.57.9.0", "0.60.0.0", "0.58.2.0", "0.59.0.1", "0.58.1.1"]) expect(check(files(v))).toEqual([refused.replace("%s", v)]);
   });
 
   it("refuses a CHANGELOG whose first section is not the new version", () => {

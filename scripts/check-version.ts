@@ -1,5 +1,6 @@
-// Checks that a pull request bumps its own version (docs/development.md「版本與 Release」): VERSION goes up from
-// the merge base, CHANGELOG.md opens with that version's section, and the package.json and package-lock.json
+// Checks that a pull request bumps its own version (docs/development.md「版本與 Release」): VERSION goes up by one in
+// exactly one part from the merge base, with every part after it reset to 0 (MAJOR.MINOR.PATCH.MICRO), CHANGELOG.md
+// opens with that version's section, and the package.json and package-lock.json
 // version is VERSION's first three parts. A dependabot[bot] PR needs none of it. Run by CI on pull requests:
 //   BASE_REF=main PR_AUTHOR=<login> node scripts/check-version.ts
 // Compares HEAD with its merge base on origin/$BASE_REF. Prints one line per problem and exits 1 when there is any.
@@ -13,12 +14,12 @@ export type PrInput = {
 
 const VERSION_RE = /^\d+\.\d+\.\d+\.\d+$/;
 // Not imported from release-notes.ts: node runs these scripts as plain .ts, where a relative import needs the
-// extension that tsc refuses. Same rules as its compareVersions and its "## [x.y.z.w]" heading.
+// extension that tsc refuses. Same heading rule as its "## [x.y.z.w]".
 const HEADING = /^## \[(\d+\.\d+\.\d+\.\d+)\]/m;
-const compareVersions = (a: string, b: string) => {
-  const x = a.split(".").map(Number);
-  const y = b.split(".").map(Number);
-  return x.map((n, i) => n - y[i]).find((d) => d !== 0) ?? 0;
+/** The four versions one bump above `v`: MAJOR, MINOR, PATCH or MICRO up by one, the parts after it reset to 0. */
+export const nextVersions = (v: string): string[] => {
+  const n = v.split(".").map(Number);
+  return n.map((_, i) => n.map((x, j) => (j < i ? x : j === i ? x + 1 : 0)).join("."));
 };
 
 const packageVersion = (json: string | null): unknown => (json === null ? undefined : JSON.parse(json).version);
@@ -30,8 +31,8 @@ export function versionProblems(pr: PrInput): string[] {
   if (!VERSION_RE.test(head)) return [`VERSION: "${head}" is not a four-part version like 0.58.0.0`];
   const problems: string[] = [];
   // A base without a readable VERSION (first PR) only needs a well-formed head.
-  if (VERSION_RE.test(base) && compareVersions(head, base) <= 0) {
-    problems.push(`VERSION: ${head} must be higher than ${base} on the base branch; bump it (/ship Step 12)`);
+  if (VERSION_RE.test(base) && !nextVersions(base).includes(head)) {
+    problems.push(`VERSION: ${head} is not one bump above ${base}; use one of ${nextVersions(base).join(", ")} (/ship Step 12)`);
   }
   const top = HEADING.exec(pr.show("head", "CHANGELOG.md") ?? "")?.[1];
   if (top !== head) problems.push(`CHANGELOG.md: the first section must be ## [${head}], found ${top ? `## [${top}]` : "none"}`);
