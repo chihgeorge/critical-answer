@@ -721,7 +721,12 @@ function RoomEditor({
         {/* A buzzer phase has no persuasion check, so there the difficulty only orders the questions. */}
         {difficulty && (
           <div id={difficultyHintId} className="text-[13px]">
-            {categories ? "難度 1 最易、5 最難（沒改就是 5）：同一階段由易到難出題。" : "難度 1 最易、5 最難（沒改就是 5）：同一階段由易到難出題，難度也決定說服檢定的 DC（8～16）。"}
+            難度 1 最易、5 最難（沒改就是 5）：同一階段由易到難出題
+            {categories ? "。" : (
+              <>
+                ，也決定說服檢定的 <span className="whitespace-nowrap">DC（8～16）</span>。
+              </>
+            )}
           </div>
         )}
         {/* Mirrors firstMeaningfulChar (lib/game-state.ts), shown by the mage and a passed check; a buzzer phase has neither. */}
