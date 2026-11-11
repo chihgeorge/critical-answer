@@ -98,14 +98,14 @@ test("image-content question: renders on /play, /screen, and the host's own prev
 
 test("image-content question: a broken image URL hides itself on every surface, but judging still works", async ({ browser, request }) => {
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  // A save refuses a key that was never uploaded (it may already be deleted from R2), so upload one: e2e images point at
+  // the real r2.dev, where a key uploaded to this local Worker genuinely doesn't exist — a real 404.
+  const uploaded = await request.post(`${WORKER}/api/bank/image`, { headers: { ...headers, "Content-Type": "image/png" }, data: TINY_PNG });
+  expect(uploaded.ok()).toBe(true);
+  const { key } = await uploaded.json();
   const loaded = await request.get(`${WORKER}/api/bank`, { headers });
   const { bank, version } = await loaded.json();
-  // A key that was never uploaded — the R2 object genuinely doesn't exist, a real 404. Still
-  // UUID-shaped so parseBank's content-validation format check (adversarial review finding,
-  // carried forward from the retired `image` kind) accepts it.
-  bank.pools["1"] = [
-    { kind: "text", id: "r0-img-broken", content: { kind: "image", value: "66666666-6666-6666-6666-666666666666" }, answer: "無所謂" },
-  ];
+  bank.pools["1"] = [{ kind: "text", id: "r0-img-broken", content: { kind: "image", value: key }, answer: "無所謂" }];
   const saved = await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } });
   expect(saved.ok()).toBe(true);
 

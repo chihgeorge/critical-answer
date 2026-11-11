@@ -371,8 +371,18 @@ describe("BankStore: orphaned images wait out running games before they're delet
     await expect(store.putBank(validBank, 2)).resolves.toMatchObject({ version: 3 }); // other saves still work
     finishDelete();
     await cleanup;
-    // Released once the delete is done (a re-upload under the same key is not possible in production; this checks the set is cleared).
+    // Once the delete is done, the key is in neither the bank nor the queue: still refused.
+    await expect(store.putBank(bankWithImage, 3)).rejects.toThrow("圖片已過期，請重新上傳");
+    // Released: queued again (a re-upload under the same key is not possible in production; this checks the set is cleared).
+    await store.queueUploadedImage(KEY);
     await expect(store.putBank(bankWithImage, 3)).resolves.toMatchObject({ version: 4 });
+  });
+
+  it("refuses an image key that is neither in the bank nor queued (it may already be deleted from R2)", async () => {
+    const { store } = setup({ format: BANK_FORMAT, bank: validBank, version: 1 });
+    await expect(store.putBank(bankWithImage, 1)).rejects.toThrow(`圖片已過期，請重新上傳：${KEY}`);
+    await store.queueUploadedImage(KEY); // a fresh upload is queued
+    await expect(store.putBank(bankWithImage, 1)).resolves.toMatchObject({ version: 2 });
   });
 
   it("releases the in-flight keys when the delete fails, even with a synchronous throw", async () => {
@@ -384,6 +394,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
     await store.putBank(validBank, 1);
     at(DELAY);
     await expect(store.runImageCleanup()).resolves.toBeUndefined();
+    await store.queueUploadedImage(KEY); // out of the queue once the delete was tried; queue it again to see the in-flight set is cleared
     await expect(store.putBank(bankWithImage, 2)).resolves.toMatchObject({ version: 3 });
     spy.mockRestore();
   });

@@ -1000,7 +1000,7 @@ export default function PlayPage() {
             </div>
           </div>
           {/* 每題作答倒數 (answer-countdown.md D5): only the turn's own phone, and silent. */}
-          {isMyTurn && typeof game.answerClock?.left === "number" && <AnswerClock key={game.answerClock.left} ms={game.answerClock.left} variant="chip" />}
+          {isMyTurn && typeof game.answerClock?.left === "number" && <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" />}
         </Panel>
       )}
 

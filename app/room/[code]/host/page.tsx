@@ -915,7 +915,7 @@ export default function HostPage() {
                       {game.answerClock.left === null ? (
                         <span data-testid="answer-clock-wait" className="text-[14px]">⏱ 影片播完後開始倒數</span>
                       ) : (
-                        <AnswerClock key={game.answerClock.left} ms={game.answerClock.left} variant="chip" />
+                        <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" />
                       )}
                     </div>
                   )}

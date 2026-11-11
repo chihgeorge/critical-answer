@@ -221,14 +221,18 @@ export class BankStore {
     if (current.version !== expectedVersion) return { conflict: true, currentVersion: current.version };
     const validated = parseBank(candidate);
     assertSavable(validated);
-    const gone = [...imageKeysOf(validated)].filter((k) => this.deleting.has(k));
-    if (gone.length > 0) throw new Error(`圖片已過期、正在刪除，請重新上傳：${gone.join(", ")}`);
-    const next: VersionedBank = { bank: validated, version: current.version + 1 };
-    if (outdated) await this.storage.put(LEGACY_BANK_KEY, { bank: outdated.raw, format: outdated.format, version: current.version });
-    await this.storage.put(BANK_KEY, { ...next, format: formatOf(validated) });
     // An outdated bank was never parsed: its images come from walking the raw stored value.
     const oldKeys = outdated ? legacyImageKeys(outdated.raw) : imageKeysOf(current.bank);
     const newKeys = imageKeysOf(validated);
+    const gone = [...newKeys].filter((k) => this.deleting.has(k));
+    if (gone.length > 0) throw new Error(`圖片已過期、正在刪除，請重新上傳：${gone.join(", ")}`);
+    // A key that is neither in the bank nor queued may already be deleted from R2 (the queue drops it once it's done).
+    const queued = new Set((await this.getPending()).map((p) => p.key));
+    const unknown = [...newKeys].filter((k) => !oldKeys.has(k) && !queued.has(k));
+    if (unknown.length > 0) throw new Error(`圖片已過期，請重新上傳：${unknown.join(", ")}`);
+    const next: VersionedBank = { bank: validated, version: current.version + 1 };
+    if (outdated) await this.storage.put(LEGACY_BANK_KEY, { bank: outdated.raw, format: outdated.format, version: current.version });
+    await this.storage.put(BANK_KEY, { ...next, format: formatOf(validated) });
     const orphaned = [...oldKeys].filter((k) => !newKeys.has(k));
     if (orphaned.length > 0) {
       // Queued, not deleted: a room mid-game may still show this image (see the constructor's comment).

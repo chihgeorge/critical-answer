@@ -238,8 +238,7 @@ export default function BankEditorPage() {
         body: JSON.stringify({ bank: next, version }),
       });
       if (res.status === 409) {
-        const conflict: { error: string; currentVersion: number } = await res.json();
-        setError(`${conflict.error} (someone else's save is now current — press 載入題庫 to get it before retrying)`);
+        setError("題庫在你載入後被別人存過了：先按「載入題庫」拿最新版，再改一次存檔。");
         return;
       }
       if (!res.ok) {
