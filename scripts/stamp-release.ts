@@ -20,12 +20,53 @@ export function bumpVersion(version: string, bump: Bump): string {
     .join(".");
 }
 
-/** The new version and CHANGELOG with the fragments folded, in path order, into one section above the newest one. */
+// Keep a Changelog order; any other `### ` heading follows these, in the order it first appears.
+const HEADING_ORDER = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"];
+
+/** The fragment bodies as one body with each `### X` heading once: text under no heading first, then the headings in
+ *  HEADING_ORDER (matched ignoring case and `#` closers), each holding its parts in fragment order. A `### ` line inside
+ *  a ``` or ~~~ code block is not a heading. Parts that are both bullet lists join into one list; any other pair gets a
+ *  blank line, so prose never turns into part of the bullet above it. */
+export function mergeBodies(bodies: string[]): string {
+  const groups = new Map<string, string[]>([["", []]]);
+  for (const body of bodies) {
+    let heading = "";
+    let lines: string[] = [];
+    let fence = ""; // the open fence's marker, e.g. "```" or "~~~~"
+    const flush = () => {
+      const text = lines.join("\n").trim();
+      if (text || heading) groups.set(heading, [...(groups.get(heading) ?? []), ...(text ? [text] : [])]);
+    };
+    for (const line of body.split(/\r?\n/)) {
+      const f = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+      if (f && !fence) fence = f;
+      else if (f && f[0] === fence[0] && f.length >= fence.length && !line.trim().slice(f.length)) fence = "";
+      const m = !fence && /^ {0,3}### +(.+?)(?: +#+)?\s*$/.exec(line);
+      if (m) {
+        flush();
+        heading = HEADING_ORDER.find((h) => h.toLowerCase() === m[1].toLowerCase()) ?? m[1];
+        lines = [];
+      } else lines.push(line);
+    }
+    flush();
+  }
+  const rank = (h: string) => (h === "" ? -1 : HEADING_ORDER.includes(h) ? HEADING_ORDER.indexOf(h) : HEADING_ORDER.length);
+  const bullet = /^[-*+] /;
+  const joinParts = (parts: string[]) =>
+    parts.reduce((out, p) => (!out ? p : out + (bullet.test(out.split("\n").at(-1)!) && bullet.test(p) ? "\n" : "\n\n") + p), "");
+  return [...groups.keys()]
+    .sort((a, b) => rank(a) - rank(b)) // stable: unknown headings keep first-appearance order
+    .map((h) => [h && `### ${h}`, joinParts(groups.get(h)!)].filter(Boolean).join("\n"))
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** The new version and CHANGELOG with the fragments folded, in path order, into one section above the newest one, each `### X` heading once. */
 export function stamp(version: string, changelog: string, fragments: Fragment[], date: string): { version: string; changelog: string } {
   const sorted = [...fragments].sort((a, b) => (a.path < b.path ? -1 : 1));
   const bump = sorted.map((f) => fragmentBump(f.text) ?? "patch").reduce((a, b) => (BUMPS.indexOf(b) > BUMPS.indexOf(a) ? b : a), "micro" as Bump);
   const next = bumpVersion(version, bump);
-  const section = `## [${next}] - ${date}\n\n${sorted.map((f) => fragmentBody(f.text)).join("\n\n")}\n\n`;
+  const section = `## [${next}] - ${date}\n\n${mergeBodies(sorted.map((f) => fragmentBody(f.text)))}\n\n`;
   const at = changelog.search(/^## \[/m);
   return { version: next, changelog: at < 0 ? `${changelog.trimEnd()}\n\n${section}` : changelog.slice(0, at) + section + changelog.slice(at) };
 }

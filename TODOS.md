@@ -45,8 +45,8 @@
 - [開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）](#開發工具鏈剩-5-個-npm-audit-漏洞上游沒有修補版) — S
 - [/health 補上死碼與 shell 腳本檢查](#health-補上死碼與-shell-腳本檢查) — S
 - [ESLint 10 / TypeScript 7 升級被上游卡住](#eslint-10--typescript-7-升級被上游卡住) — 不確定（等上游）
-- [自動蓋版時把同類小標題合併](#自動蓋版時把同類小標題合併) — S（CC 約 20 分鐘）
 - [蓋版 commit 的作者連到 App 頭像](#蓋版-commit-的作者連到-app-頭像) — S（CC 約 15 分鐘）
+- [片段裡的 `## ` 標題會截掉 GitHub Release 說明](#片段裡的--標題會截掉-github-release-說明) — S（CC 約 15 分鐘）
 
 ---
 
@@ -648,25 +648,23 @@
 
 ---
 
-## 自動蓋版時把同類小標題合併
+## 片段裡的 `## ` 標題會截掉 GitHub Release 說明
 
-**What:** `scripts/stamp-release.ts` 把多個 `changelog.d/` 片段併成一段時，把同名的 `### Added`、`### Changed`、`### Fixed` 等小標題合在一起，各類只出現一次（順序照 Keep a Changelog：Added、Changed、Deprecated、Removed、Fixed、Security）。
+**What:** `scripts/check-fragment.ts` 現在只擋 `## [`，改成擋任何 `^## ` 開頭的行（程式碼區塊裡的除外），錯誤訊息請作者改用 `### `。
 
-**Why:** v0.58.0.0 一次併了 37 個片段，片段原樣接在一起，同一段裡 `### Added`、`### Changed` 重複出現十幾次，CHANGELOG 和 GitHub Release 讀起來很亂。之後每次合併通常只有一兩個片段，所以不急。
+**Why:** 片段若寫了 `## Notes`，蓋版後它在 CHANGELOG 裡變成一段新的非版本段落；`scripts/release-notes.ts` 的 `changelogSections` 會把它和它後面的內容（例如同一版的 `### Fixed`）都排除在 GitHub Release 說明外。/review 2026-11-11（PR #228 對抗審查）用 node 實際重現過。這不是 #228 造成的，是原本就有的漏洞。
 
 **Context:**
-- `scripts/stamp-release.ts` 的 `stamp()`：目前是 `sorted.map(fragmentBody).join("\n\n")`。
-- 測試在 `scripts/stamp-release.test.ts`（`stamp` 那組）。
-- 沒有小標題的片段（直接 `- ...`）要保留，不能丟。
+- `scripts/check-fragment.ts` 第 66 行的 `/^## \[/m`。
+- `scripts/release-notes.ts` 的 `changelogSections`。
+- 同次審查留下、沒修的邊角：`mergeBodies` 不認得 `<details>` 區塊裡的 `### `，片段裡沒關上的程式碼區塊在重排後會吃掉下一個小標題。實際片段幾乎不會這樣寫。
 
 **Effort/Priority:** S / P4
 
 **Depends on:** 無。
 
 **Notes:**
-- Pros：Release 頁和 CHANGELOG 好讀。
-- Cons：要解析 Markdown 小標題，片段裡若有自己的 `####` 或程式碼區塊要小心不要切錯。
-- 已經發出的 0.58.0.0 段落不用回頭改。
+- 改的是 CI 必過檢查（gate），要先讓站長同意。
 
 ---
 
@@ -695,6 +693,10 @@
 細節見 CHANGELOG.md 與 git 歷史。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
+
+## 自動蓋版時把同類小標題合併（stamp-merge-headings）
+
+- **蓋版時同名小標題只出現一次** · 版號合併時定 · `scripts/stamp-release.ts` 的 `mergeBodies`：多個片段的 `### Added`、`### Fixed` 等合成一個，照 Keep a Changelog 順序；標準小標題不分大小寫、可帶 `#` 結尾；沒有小標題的內容放最前面，不認得的小標題排在後面；兩段都是清單才接成一個清單，其他之間空一行；`####` 和 ``` / `~~~` 程式碼區塊裡的 `### ` 不會被切開。已發出的 0.58.0.0 段落沒有回頭改。
 
 ## 反 AI 作弊：抓包與神諭（anti-ai-cheating）
 
