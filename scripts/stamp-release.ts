@@ -24,32 +24,39 @@ export function bumpVersion(version: string, bump: Bump): string {
 const HEADING_ORDER = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"];
 
 /** The fragment bodies as one body with each `### X` heading once: text under no heading first, then the headings in
- *  HEADING_ORDER, each holding its parts in fragment order. A `### ` line inside a ``` code block is not a heading. */
+ *  HEADING_ORDER (matched ignoring case and `#` closers), each holding its parts in fragment order. A `### ` line inside
+ *  a ``` or ~~~ code block is not a heading. Parts that are both bullet lists join into one list; any other pair gets a
+ *  blank line, so prose never turns into part of the bullet above it. */
 export function mergeBodies(bodies: string[]): string {
   const groups = new Map<string, string[]>([["", []]]);
   for (const body of bodies) {
     let heading = "";
     let lines: string[] = [];
-    let fenced = false;
+    let fence = ""; // the open fence's marker, e.g. "```" or "~~~~"
     const flush = () => {
       const text = lines.join("\n").trim();
       if (text || heading) groups.set(heading, [...(groups.get(heading) ?? []), ...(text ? [text] : [])]);
     };
     for (const line of body.split(/\r?\n/)) {
-      if (/^\s*```/.test(line)) fenced = !fenced;
-      const m = !fenced && /^### (.+?)\s*$/.exec(line);
+      const f = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+      if (f && !fence) fence = f;
+      else if (f && f[0] === fence[0] && f.length >= fence.length && !line.trim().slice(f.length)) fence = "";
+      const m = !fence && /^ {0,3}### +(.+?)(?: +#+)?\s*$/.exec(line);
       if (m) {
         flush();
-        heading = m[1];
+        heading = HEADING_ORDER.find((h) => h.toLowerCase() === m[1].toLowerCase()) ?? m[1];
         lines = [];
       } else lines.push(line);
     }
     flush();
   }
   const rank = (h: string) => (h === "" ? -1 : HEADING_ORDER.includes(h) ? HEADING_ORDER.indexOf(h) : HEADING_ORDER.length);
+  const bullet = /^[-*+] /;
+  const joinParts = (parts: string[]) =>
+    parts.reduce((out, p) => (!out ? p : out + (bullet.test(out.split("\n").at(-1)!) && bullet.test(p) ? "\n" : "\n\n") + p), "");
   return [...groups.keys()]
     .sort((a, b) => rank(a) - rank(b)) // stable: unknown headings keep first-appearance order
-    .map((h) => [h && `### ${h}`, groups.get(h)!.join("\n")].filter(Boolean).join("\n"))
+    .map((h) => [h && `### ${h}`, joinParts(groups.get(h)!)].filter(Boolean).join("\n"))
     .filter(Boolean)
     .join("\n\n");
 }

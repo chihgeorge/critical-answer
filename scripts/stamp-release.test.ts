@@ -53,8 +53,23 @@ describe("mergeBodies", () => {
 
   it("keeps text under no heading first, and unknown headings after the known ones", () => {
     expect(mergeBodies(["- Loose.", "### Notes\n- N.\n### Added\n- A.", "Intro.\n\n### Changed\n- C."])).toBe(
-      "- Loose.\nIntro.\n\n### Added\n- A.\n\n### Changed\n- C.\n\n### Notes\n- N.",
+      "- Loose.\n\nIntro.\n\n### Added\n- A.\n\n### Changed\n- C.\n\n### Notes\n- N.",
     );
+  });
+
+  it("puts a blank line between parts unless both are bullet lists", () => {
+    expect(mergeBodies(["### Fixed\n- a.", "### Fixed\n- b.", "### Fixed\nA paragraph.", "### Fixed\n- c."])).toBe("### Fixed\n- a.\n- b.\n\nA paragraph.\n\n- c.");
+  });
+
+  it("matches the standard headings ignoring case and # closers", () => {
+    expect(mergeBodies(["### Added\n- A.", "### added\n- B.", "### Added ##\n- C."])).toBe("### Added\n- A.\n- B.\n- C.");
+  });
+
+  it("does not split inside a ~~~ block or a ```` block that contains ```", () => {
+    const tilde = "### Added\n- A.\n\n~~~md\n### Fixed\n~~~";
+    expect(mergeBodies([tilde])).toBe(tilde);
+    const nested = "### Added\n- A.\n\n````md\n```\n### Fixed\n```\n````";
+    expect(mergeBodies([nested])).toBe(nested);
   });
 
   it("does not split on #### or on a ### line inside a code block", () => {

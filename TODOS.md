@@ -46,6 +46,7 @@
 - [/health 補上死碼與 shell 腳本檢查](#health-補上死碼與-shell-腳本檢查) — S
 - [ESLint 10 / TypeScript 7 升級被上游卡住](#eslint-10--typescript-7-升級被上游卡住) — 不確定（等上游）
 - [蓋版 commit 的作者連到 App 頭像](#蓋版-commit-的作者連到-app-頭像) — S（CC 約 15 分鐘）
+- [片段裡的 `## ` 標題會截掉 GitHub Release 說明](#片段裡的--標題會截掉-github-release-說明) — S（CC 約 15 分鐘）
 
 ---
 
@@ -647,6 +648,26 @@
 
 ---
 
+## 片段裡的 `## ` 標題會截掉 GitHub Release 說明
+
+**What:** `scripts/check-fragment.ts` 現在只擋 `## [`，改成擋任何 `^## ` 開頭的行（程式碼區塊裡的除外），錯誤訊息請作者改用 `### `。
+
+**Why:** 片段若寫了 `## Notes`，蓋版後它在 CHANGELOG 裡變成一段新的非版本段落；`scripts/release-notes.ts` 的 `changelogSections` 會把它和它後面的內容（例如同一版的 `### Fixed`）都排除在 GitHub Release 說明外。/review 2026-11-11（PR #228 對抗審查）用 node 實際重現過。這不是 #228 造成的，是原本就有的漏洞。
+
+**Context:**
+- `scripts/check-fragment.ts` 第 66 行的 `/^## \[/m`。
+- `scripts/release-notes.ts` 的 `changelogSections`。
+- 同次審查留下、沒修的邊角：`mergeBodies` 不認得 `<details>` 區塊裡的 `### `，片段裡沒關上的程式碼區塊在重排後會吃掉下一個小標題。實際片段幾乎不會這樣寫。
+
+**Effort/Priority:** S / P4
+
+**Depends on:** 無。
+
+**Notes:**
+- 改的是 CI 必過檢查（gate），要先讓站長同意。
+
+---
+
 ## 蓋版 commit 的作者連到 App 頭像
 
 **What:** `.github/workflows/stamp.yml` 的 `git config user.name/user.email` 改用 `actions/create-github-app-token` 給的 `app-slug`，email 用 `<bot 使用者 id>+<slug>[bot]@users.noreply.github.com`（id 從 `GET /users/<slug>[bot]` 拿）。
@@ -675,7 +696,7 @@ PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partyki
 
 ## 自動蓋版時把同類小標題合併（stamp-merge-headings）
 
-- **蓋版時同名小標題只出現一次** · 版號合併時定 · `scripts/stamp-release.ts` 的 `mergeBodies`：多個片段的 `### Added`、`### Fixed` 等合成一個，照 Keep a Changelog 順序；沒有小標題的內容放最前面，不認得的小標題排在後面；`####` 和程式碼區塊裡的 `### ` 不會被切開。已發出的 0.58.0.0 段落沒有回頭改。
+- **蓋版時同名小標題只出現一次** · 版號合併時定 · `scripts/stamp-release.ts` 的 `mergeBodies`：多個片段的 `### Added`、`### Fixed` 等合成一個，照 Keep a Changelog 順序；標準小標題不分大小寫、可帶 `#` 結尾；沒有小標題的內容放最前面，不認得的小標題排在後面；兩段都是清單才接成一個清單，其他之間空一行；`####` 和 ``` / `~~~` 程式碼區塊裡的 `### ` 不會被切開。已發出的 0.58.0.0 段落沒有回頭改。
 
 ## 反 AI 作弊：抓包與神諭（anti-ai-cheating）
 
