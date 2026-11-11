@@ -1,17 +1,12 @@
 {
   "$schema": "https://github.com/garrytan/gstack/docs/ship-policy.md#schema-v1",
-  "bump": "patch",
-  "queue_mode": "stamp-at-merge",
+  "bump": "ask",
+  "queue_mode": "claim-at-open",
   "release_tool": null,
   "release_outputs": [],
   "stamp_paths": [],
   "changelog": "CHANGELOG.md",
-  "changelog_fragments": {
-    "dir": "changelog.d",
-    "required_checks": [
-      "check"
-    ]
-  },
+  "changelog_fragments": null,
   "mirror": null,
   "history": "squash-ok",
   "preregistration_shas": [],
@@ -40,7 +35,6 @@
   "train": null,
   "docs": null,
   "base_red": null,
-  "merge": "direct",
   "land": null,
   "bookkeeping": [],
   "mechanical_retake": [],

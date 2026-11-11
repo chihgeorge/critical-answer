@@ -11,6 +11,7 @@ All notable changes to Critical Answer are documented here.
 - The game log records each team's oracles and catches (filed, upheld, false alarms, cancelled) and how many times the switch went on. Rules in `docs/rules.md`, design in `docs/designs/anti-ai-cheating.md`.
 
 ### Changed
+- Every pull request now bumps its own version and writes its own CHANGELOG section, instead of adding a `changelog.d/` file for a later release pull request to fold. CI's `static` job checks it (`scripts/check-version.ts`): `VERSION` must go up, the CHANGELOG must open with that version, and the package versions must match. This is the last version with `changelog.d/`; the rules are in `docs/development.md`.
 - CI now runs on GitHub's `ubuntu-26.04` runners instead of `ubuntu-24.04` (all workflows; still a pinned label, not `ubuntu-latest`).
 
 ### Fixed
