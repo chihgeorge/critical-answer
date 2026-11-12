@@ -44,6 +44,7 @@ describe("A1 e2e", () => {
     expect(bash("x=$((1<<2))\nnpm run e2e")).toBe("A1");
     expect(bash("cat <<< word\nnpm run e2e")).toBe("A1");
     expect(bash('echo "$(git stash pop)"')).toBe("A2");
+    expect(bash('echo "$(git stash)"')).toBe("A2");
     expect(bash("echo \"`npm run e2e`\"")).toBe("A1");
   });
   it("passes text that only mentions it", () => {
@@ -52,6 +53,8 @@ describe("A1 e2e", () => {
     expect(bash("gh pr create --body-file - <<'EOF'\nnpm run e2e runs on CI\nEOF")).toBeNull();
     expect(bash("git commit -F - <<-EOF\n\tnpm run e2e\n\tEOF")).toBeNull();
     expect(bash('git commit -m "$(cat <<\'EOF\'\nnpm run e2e\nEOF\n)"')).toBeNull();
+    expect(bash(`git commit -m "$(cat<<'EOF'\nskip npm run e2e locally\nEOF\n)"`)).toBeNull();
+    expect(bash("echo $((a<<b))\nnpm run e2e")).toBe("A1");
     expect(bash("npm run test")).toBeNull();
   });
 });

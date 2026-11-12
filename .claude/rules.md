@@ -37,9 +37,9 @@ npx\s+playwright
 stash 是所有 worktree 和 session 共用的，裸 `git stash`（沒有 `-m` 標籤）、`git stash pop`、不指定 sha 的 `git stash apply` 可能拿到別的 session 的改動。要暫存改用 WIP commit，或 `git stash push -u -m "<唯一標籤>"`。
 
 ```block command
-git(\s+-C\s+\S+)?\s+stash(\s+push)?(\s+--?[a-ln-zA-Z][\w-]*)*\s*($|[;&|])
+git(\s+-C\s+\S+)?\s+stash(\s+push)?(\s+--?[a-ln-zA-Z][\w-]*)*\s*($|[;&|)`])
 git(\s+-C\s+\S+)?\s+stash\s+pop
-git(\s+-C\s+\S+)?\s+stash\s+apply\s*($|[;&|])
+git(\s+-C\s+\S+)?\s+stash\s+apply\s*($|[;&|)`])
 ```
 
 ### A3. 不用 claude-in-chrome 工具

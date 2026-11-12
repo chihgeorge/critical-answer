@@ -41,8 +41,8 @@ export function stripQuoted(cmd: string): string {
   for (const line of cmd.split("\n")) {
     if (end !== null) { if (line.trim() === end) end = null; continue; }
     kept.push(line);
-    // Not a here-string (<<<) or a shift like $((1<<2)).
-    end = /(?<![<\w)])<<-?(?!<)\s*(['"]?)([A-Za-z_]\w*)\1/.exec(line)?.[2] ?? null;
+    // Not a here-string (<<<) or a shift inside $((…)).
+    end = /(?<![<)])<<-?(?!<)\s*(['"]?)([A-Za-z_]\w*)\1/.exec(line.replace(/\$\(\([^)]*\)\)/g, ""))?.[2] ?? null;
   }
   // One left-to-right pass, so an apostrophe inside "…" does not pair with a later '.
   // Command substitutions inside "…" still run, so they are kept.
