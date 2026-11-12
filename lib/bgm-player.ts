@@ -2,6 +2,10 @@
 // nothing here touches the question bank). A short lookahead scheduler queues each note on the
 // AudioContext clock a little ahead of time, the standard way to get steady timing out of timers
 // that themselves jitter.
+//
+// One AudioContext for the page's whole life, mixed in layers (docs/designs/immersion.md, 聲音分層表):
+// master → speakers; the music, boss, host and ambient layers → master, each with its own volume from
+// layerGains(); and the existing game cues on their own bus → master.
 
 import { DUNGEON_THEME, loopDuration, songEvents } from "./bgm";
 import type { SfxNote } from "./sfx";
@@ -14,24 +18,105 @@ const VOLUME = 0.05;
 const DUCKED_VOLUME = 0.015;
 /** Effects sit above the music and aren't ducked: they're short and mark what just happened. */
 const SFX_VOLUME = 0.09;
+/** The boss layer (heartbeat, charge, parry, entrance rumble). One constant so the venue check can retune it in one line. */
+const BOSS_VOLUME = 0.09;
+/** The host's effects (thunder, growl). */
+const HOST_VOLUME = 0.09;
+/** Room ambience, under the music. */
+const AMBIENT_VOLUME = 0.03;
+const AMBIENT_DUCKED_VOLUME = 0.01;
+
+/** The sound layers of the 聲音分層表. The existing game cues (SFX, BOSS_ALARM, …) are not a layer: they follow the
+ * 🎵 switch only and are never silenced by a video, a buzz hold or the narration. */
+export type Layer = "music" | "boss" | "host" | "ambient";
+
+export interface MixState {
+  /** The 🎵 switch. */
+  bgmOn: boolean;
+  /** A video or sound question is playing on this screen. */
+  videoPlaying: boolean;
+  /** Held after a buzz until the host judges it, or while the host plays the song from their own device. */
+  held: boolean;
+  /** The narration voice is talking. */
+  speaking: boolean;
+}
+
+/** Each layer's volume, straight from the 聲音分層表. 🎵 off silences every layer but the host's. */
+export function layerGains({ bgmOn, videoPlaying, held, speaking }: MixState): Record<Layer, number> {
+  const quiet = !bgmOn || videoPlaying || held;
+  return {
+    music: quiet ? 0 : speaking ? DUCKED_VOLUME : VOLUME,
+    boss: quiet ? 0 : BOSS_VOLUME,
+    host: videoPlaying ? 0 : HOST_VOLUME,
+    ambient: quiet ? 0 : speaking ? AMBIENT_DUCKED_VOLUME : AMBIENT_VOLUME,
+  };
+}
+
+const LAYERS: Layer[] = ["music", "boss", "host", "ambient"];
 
 export type BgmPlayer = ReturnType<typeof createBgmPlayer>;
 
-export function createBgmPlayer() {
+/** `onState`: called whenever the AudioContext's state changes (it starts running, or the browser suspends it). */
+export function createBgmPlayer(onState?: () => void) {
   const events = songEvents(DUNGEON_THEME);
   const loopLen = loopDuration(DUNGEON_THEME);
   let ctx: AudioContext | null = null;
-  let master: GainNode | null = null;
+  let layers: Record<Layer, GainNode> | null = null;
+  /** The existing game cues' bus, at a fixed volume. */
+  let cues: GainNode | null = null;
+  /** This start()'s music, under the music layer: disconnecting it drops the notes already queued ahead. */
+  let song: GainNode | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   let loopStart = 0;
   /** Index into `events` of the next note to queue, and how many loops have been queued. */
   let next = 0;
   let loops = 0;
-  let ducked = false;
-  /** A YouTube question is playing on the big screen: the music goes silent but keeps its place (D10). */
-  let muted = false;
-  /** Set as soon as start() is called, before its await: a second click must not start a second loop. */
-  let wanted = false;
+  const mix: MixState = { bgmOn: false, videoPlaying: false, held: false, speaking: false };
+
+  function gain(c: AudioContext, value: number, dest: AudioNode) {
+    const node = c.createGain();
+    node.gain.value = value;
+    node.connect(dest);
+    return node;
+  }
+
+  // shortcut: the boss, host and ambient layers have no caller yet; the boss effects (PR1b), the host's buttons (PR2)
+  // and the room ambience (PR3) play on them.
+  function ensure(): AudioContext {
+    if (ctx) return ctx;
+    const c = new AudioContext();
+    // The context can wake by any path (a later tap, the browser itself): the music follows.
+    c.onstatechange = () => {
+      play();
+      onState?.();
+    };
+    const master = gain(c, 1, c.destination);
+    layers = Object.fromEntries(LAYERS.map((l) => [l, gain(c, 0, master)])) as Record<Layer, GainNode>;
+    cues = gain(c, SFX_VOLUME, master);
+    ctx = c;
+    apply();
+    return c;
+  }
+
+  /** Wake the context. A refusal (no user gesture yet) is not an error: the next tap tries again. */
+  async function wake(c: AudioContext) {
+    try {
+      await c.resume();
+    } catch {
+      // stays suspended
+    }
+  }
+
+  /** Start the music loop if 🎵 is on, the context is awake and the loop is not already running. */
+  function play() {
+    if (!mix.bgmOn || timer || !ctx || ctx.state !== "running") return;
+    song = gain(ctx, 1, layers!.music);
+    loopStart = ctx.currentTime + 0.1;
+    next = 0;
+    loops = 0;
+    schedule();
+    timer = setInterval(schedule, TICK_MS);
+  }
 
   /** One oscillator note with a short attack and release, so notes don't click. */
   function tone(dest: AudioNode, wave: OscillatorType, freq: number, at: number, end: number, peak: number, attack: number, slideTo?: number) {
@@ -51,7 +136,7 @@ export function createBgmPlayer() {
   }
 
   function schedule() {
-    if (!ctx || !master) return;
+    if (!ctx || !song) return;
     const horizon = ctx.currentTime + LOOKAHEAD_S;
     for (;;) {
       const e = events[next];
@@ -65,8 +150,8 @@ export function createBgmPlayer() {
       }
       // A gap before the next note keeps steps crisp.
       const end = at + Math.max(0.05, e.duration - 0.02);
-      if (e.voice === "melody") tone(master, "square", e.freq, at, end, 0.5, 0.01);
-      else tone(master, "triangle", e.freq, at, end, 0.9, 0.01);
+      if (e.voice === "melody") tone(song, "square", e.freq, at, end, 0.5, 0.01);
+      else tone(song, "triangle", e.freq, at, end, 0.9, 0.01);
       advance();
     }
   }
@@ -79,65 +164,80 @@ export function createBgmPlayer() {
     }
   }
 
-  function setVolume() {
-    if (!ctx || !master) return;
-    master.gain.setTargetAtTime(muted ? 0 : ducked ? DUCKED_VOLUME : VOLUME, ctx.currentTime, 0.15);
+  function apply() {
+    if (!ctx || !layers) return;
+    const g = layerGains(mix);
+    for (const l of LAYERS) layers[l].gain.setTargetAtTime(g[l], ctx.currentTime, 0.15);
+  }
+
+  function set(key: "videoPlaying" | "held" | "speaking", on: boolean) {
+    if (mix[key] === on) return;
+    mix[key] = on;
+    apply();
+  }
+
+  function stop() {
+    mix.bgmOn = false;
+    if (timer) clearInterval(timer);
+    timer = null;
+    song?.disconnect();
+    song = null;
+    apply();
   }
 
   return {
-    /** Must first be called from inside a user gesture (a click): browsers only let audio start then. */
-    async start() {
-      if (wanted) return;
-      wanted = true;
-      if (!ctx) {
-        ctx = new AudioContext();
-        master = ctx.createGain();
-        master.gain.value = 0;
-        master.connect(ctx.destination);
-      }
-      const started = ctx;
-      await started.resume();
-      // stop() ran while resume() was pending (its context is closed), maybe followed by a new start().
-      if (ctx !== started || !wanted) return;
-      loopStart = ctx.currentTime + 0.1;
-      next = 0;
-      loops = 0;
-      setVolume();
-      schedule();
-      timer = setInterval(schedule, TICK_MS);
+    /** Create and wake the AudioContext. Must run inside a user gesture (a click or a key press): browsers only let
+     * audio start then. Starts the music only if 🎵 is already on. */
+    async unlock() {
+      await wake(ensure());
+      play();
     },
-    stop() {
-      wanted = false;
-      if (timer) clearInterval(timer);
-      timer = null;
-      // Closing drops every note already queued; the next start() builds a fresh context.
+    /** The AudioContext is awake: sound can play. */
+    running(): boolean {
+      return ctx?.state === "running";
+    },
+    /** Turn 🎵 on. Must first be called from inside a user gesture, like unlock(). A stop() while the context is
+     * still waking wins: play() checks the switch again. */
+    async start() {
+      if (mix.bgmOn) return;
+      mix.bgmOn = true;
+      const c = ensure();
+      apply();
+      await wake(c);
+      play();
+    },
+    /** Turn 🎵 off. The AudioContext stays open, so the host layer still sounds. */
+    stop,
+    /** Close the AudioContext for good: the page is going away. */
+    close() {
+      stop();
       void ctx?.close();
       ctx = null;
-      master = null;
+      layers = null;
+      cues = null;
     },
-    /** Lower the music while something else (the narration) is talking. */
+    /** The narration voice is talking: the music and the ambience go quieter. */
     duck(on: boolean) {
-      if (on === ducked) return;
-      ducked = on;
-      setVolume();
+      set("speaking", on);
     },
-    /** Silence the music while a video plays, without closing the context: it carries on unheard. */
+    /** A video plays on the big screen: the music goes silent but keeps its place (D10). */
     mute(on: boolean) {
-      if (on === muted) return;
-      muted = on;
-      setVolume();
+      set("videoPlaying", on);
     },
-    /** Play a sound effect now (lib/sfx.ts). Does nothing unless the music is playing: effects
-     * follow the same 🎵 switch, and the browser only allows audio once start() ran in a click. */
-    playCue(notes: SfxNote[]) {
-      if (!ctx || !timer) return;
+    /** A buzz waits for the host's judgment, or the host plays the song from their own device (boss-music-buzzer.md M3, M4). */
+    hold(on: boolean) {
+      set("held", on);
+    },
+    /** Play a sound effect now (lib/sfx.ts). With no `layer` it is a game cue: it follows the 🎵 switch only. With a
+     * layer, that layer's row of the 聲音分層表 sets its volume. Silent until the context is awake. */
+    playCue(notes: SfxNote[], layer?: Layer) {
+      if (!ctx || !layers || !cues || ctx.state !== "running") return;
+      if (!layer && !mix.bgmOn) return;
+      const dest = layer ? layers[layer] : cues;
       const t0 = ctx.currentTime + 0.02;
-      const bus = ctx.createGain();
-      bus.gain.value = SFX_VOLUME;
-      bus.connect(ctx.destination);
       for (const note of notes) {
         const at = t0 + note.at;
-        tone(bus, note.wave, note.freq, at, at + note.duration, 1, 0.005, note.slideTo);
+        tone(dest, note.wave, note.freq, at, at + note.duration, 1, 0.005, note.slideTo);
       }
     },
   };

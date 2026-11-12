@@ -18,7 +18,7 @@ import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, EAT_DONE, SFX, SPRINT_FANFARE } from "@/lib/sfx";
+import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, EAT_DONE, SFX, SOUND_ON, SPRINT_FANFARE } from "@/lib/sfx";
 import { AnswerClock } from "@/components/answer-clock";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { antiCheatBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
@@ -1249,30 +1249,31 @@ export default function ScreenPage() {
   const [bgmOn, setBgmOn] = useState(false);
   const showBgmToggle = useSyncExternalStore(noSubscribe, bgmSupported, () => false);
   const bgm = useRef<BgmPlayer | null>(null);
-  const player = () => (bgm.current ??= createBgmPlayer());
+  /** The AudioContext is awake (a tap on the page woke it): sound can play. */
+  const [audioRunning, setAudioRunning] = useState(false);
+  const player = () => (bgm.current ??= createBgmPlayer(() => setAudioRunning(bgm.current?.running() ?? false)));
+  /** 聲音就緒 (immersion.md PR0): the context is awake and 🎵 is on. The 語音 switch does not count. */
+  const soundReady = audioRunning && bgmOn;
   // The music stays silent from a buzz until the host judges it, and while the host plays the song from their own
   // device (boss-music-buzzer.md M3, M4): the room must hear the answer, and the song.
-  const videoPlaying = useRef(false);
-  const bgmHeld = useRef(false);
   const buzzView = game?.phase === "playing" ? game.view.buzz : undefined;
   const held = !!buzzView?.teamId || (!!game?.clipError && !!buzzView?.open);
   useEffect(() => {
-    bgmHeld.current = held;
-    player().mute(held || videoPlaying.current);
+    player().hold(held);
   }, [held]);
 
   useEffect(() => {
     // Read in an effect so SSR and the first render agree.
     // A named function, not the effect body itself: react-hooks/set-state-in-effect.
     function restore(): boolean {
-      if (!bgmSupported()) return false;
       const on = readStored(BGM_ENABLED_STORAGE) === "true";
       if (on) setBgmOn(true);
       return on;
     }
-    if (!restore()) return;
-    // Browsers only let audio start inside a user gesture, so a remembered "on" waits for the
-    // first click or key press on the page.
+    if (!bgmSupported()) return;
+    const on = restore();
+    // Browsers only let audio start inside a user gesture, so the first click or key press on the page wakes the
+    // AudioContext, whatever 🎵 is set to (immersion.md eng: unlock is not music); a remembered "on" starts the music.
     // One gesture unlocks: both listeners go, or a later key press restarts music the 🎵 button just turned off.
     const off = () => {
       window.removeEventListener("pointerdown", unlock);
@@ -1280,7 +1281,7 @@ export default function ScreenPage() {
     };
     const unlock = () => {
       off();
-      void player().start();
+      void (on ? player().start() : player().unlock());
     };
     window.addEventListener("pointerdown", unlock);
     window.addEventListener("keydown", unlock);
@@ -1294,7 +1295,7 @@ export default function ScreenPage() {
     return () => clearInterval(id);
   }, [bgmOn]);
 
-  useEffect(() => () => bgm.current?.stop(), []);
+  useEffect(() => () => bgm.current?.close(), []);
 
   // --- YouTube questions (docs/designs/youtube-questions.md) ---
   // The browser blocks a video's sound until someone taps the page: say so in the lobby, and on the video (D16).
@@ -1325,8 +1326,7 @@ export default function ScreenPage() {
    * being read stops, since the host pressed ▶ to hear the song (D20). */
   function onVideoPlaying(playing: boolean) {
     clipErrored.current = null;
-    videoPlaying.current = playing;
-    player().mute(playing || bgmHeld.current);
+    player().mute(playing);
     if (playing && ttsSupported()) {
       window.speechSynthesis.cancel();
       pendingLines.current = null;
@@ -1372,12 +1372,29 @@ export default function ScreenPage() {
     writeStored(BGM_ENABLED_STORAGE, String(next));
   }
 
+  /** The unlock buttons' label after a press: 開啟中… at once, 再點一次 if the sound is still asleep 1 s later. */
+  const [unlockPress, setUnlockPress] = useState<"opening" | "again" | null>(null);
+  /** The lobby's 「點一下開啟音效與氣氛」 and the corner 「👆 開聲音」 (immersion.md PR0): wake the sound and turn 🎵 and
+   * 語音 on, both remembered. Runs inside the click, like the two toggles. */
+  function enableSound() {
+    setUnlockPress("opening");
+    // Still asleep a second later: ask for another tap. Awake: back to the plain label, for the next time it falls asleep.
+    setTimeout(() => setUnlockPress((p) => (p !== "opening" ? p : bgm.current?.running() ? null : "again")), 1000);
+    if (!ttsOn && ttsSupported()) toggleTts();
+    if (!bgmOn) toggleBgm();
+    else void player().unlock();
+  }
+  /** The 聲音就緒 last sent to the room. */
+  const soundSent = useRef<boolean | null>(null);
+
   const { reset, rested, unreachable, reconnect, send } = useRoomSocket(code, {
     onOpen() {
       // Before any new report: the room ignores SCREEN_* reports from a socket that has not sent the screen key.
       // The screen key came in the link's fragment, like the host's token: never in a request or a Referer.
       const key = getScreenKey(code);
       send({ type: "SCREEN_HELLO", ...(key ? { key } : {}) });
+      // The room forgets a screen's sound report when its socket closes: tell it again.
+      send({ type: "SCREEN_SOUND", ready: soundSent.current ?? false });
       clipResendDue.current = true;
       setDisconnected(false);
       narrationBaseline.current = null;
@@ -1507,10 +1524,37 @@ export default function ScreenPage() {
     },
   });
 
+  // Report 聲音就緒 to the room whenever it changes (the host page warns while no screen is ready), and chime when the
+  // sound comes on so the room hears the TV.
+  useEffect(() => {
+    if (soundSent.current === soundReady) return;
+    if (soundReady && soundSent.current === false) bgm.current?.playCue(SOUND_ON);
+    soundSent.current = soundReady;
+    send({ type: "SCREEN_SOUND", ready: soundReady });
+  }, [soundReady, send]);
+
+  const unlockLabel = unlockPress === "opening" ? "開啟中…" : unlockPress === "again" && !audioRunning ? "再點一次" : null;
+
   return (
     <>
       <Stage>
         {!game && <Lobby code={code} teams={lobby} />}
+        {!game && showBgmToggle && !soundReady && (
+          // Between the room-code panel (ends near y 236) and the heroes; at most 40px tall.
+          <PixelButton
+            onClick={enableSound}
+            aria-label="開啟音效與氣氛"
+            className="absolute !m-0 !flex flex-col items-center !px-4 !py-0.5 text-center"
+            style={{ top: 250, left: "50%", transform: "translateX(-50%)", zIndex: 6, background: "var(--warn)", maxHeight: 40 }}
+          >
+            {unlockLabel ?? (
+              <>
+                <span className="block text-[16px] leading-[18px]">點一下開啟音效與氣氛</span>
+                <span className="block text-[12px] leading-[14px]">音樂・音效・旁白語音</span>
+              </>
+            )}
+          </PixelButton>
+        )}
         {game?.phase === "playing" && game.intro && (
           <>
             <SceneBackground theme="stone" />
@@ -1598,6 +1642,16 @@ export default function ScreenPage() {
           style={{ position: "fixed", bottom: 12, right: showTtsToggle ? 150 : 12, zIndex: 30 }}
         >
           {bgmOn ? "🎵 音樂開" : "🎵 音樂關"}
+        </PixelButton>
+      )}
+      {showBgmToggle && game && !audioRunning && (
+        // Mid-game, while the sound is still asleep (the page's first tap wakes it; after that only this button does): left of 🎵, same corner and size.
+        <PixelButton
+          onClick={enableSound}
+          className="!m-0 !px-4 !py-2 text-[16px]"
+          style={{ position: "fixed", bottom: 12, right: showTtsToggle ? 288 : 150, zIndex: 30, background: "var(--warn)" }}
+        >
+          {unlockLabel ?? "👆 開聲音"}
         </PixelButton>
       )}
     </>

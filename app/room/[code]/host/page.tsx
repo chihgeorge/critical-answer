@@ -17,6 +17,7 @@ import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
 import { CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { ScreenSoundBanner } from "@/components/screen-sound-banner";
 import { Qr } from "@/components/qr";
 import { MageHint } from "@/components/mage-hint";
 import { clericStage, HOST_KEYS, hostKeyAction, introKeyAction } from "@/lib/host-keys";
@@ -723,6 +724,8 @@ export default function HostPage() {
         )}
         {!connected && !noToken && !rested && !unreachable && <Panel tone="turn" className="px-3 py-2 text-center text-[16px]">重新連線中…</Panel>}
         {error && <Panel className="px-3 py-2 text-[14px]" style={{ background: "#ffd9d9" }}>{error}</Panel>}
+        {/* 開場點亮音效 (immersion.md PR0). Remounted on reconnect, so 知道了 lasts until then. */}
+        {game?.phase === "playing" && <div data-testid="screen-sound"><ScreenSoundBanner key={String(connected)} sound={game.screenSound} /></div>}
         {game && aiStatus && aiStatus.source !== "none" && aiStatus.exhausted && aiDismissedAt !== aiStatus.limit && (
           <AiExhausted key={aiStatus.limit} status={aiStatus} send={send} onDismiss={() => setAiDismissedAt(aiStatus.limit)} />
         )}

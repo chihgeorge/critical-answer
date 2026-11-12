@@ -243,6 +243,9 @@ export type ClientMessage =
   /** /screen: the question video cannot play there (blocked, removed, no network), so the host page warns and offers
    * 現場放歌 (docs/designs/boss-music-buzzer.md M4). Same trust as above. */
   | { type: "SCREEN_CLIP_ERROR"; questionId: string }
+  /** /screen: 聲音就緒 changed, or the socket just opened (immersion.md PR0): its AudioContext is running and 🎵 is on.
+   * Same trust as above. The room tells the host pages through STATE's `screenSound`. */
+  | { type: "SCREEN_SOUND"; ready: boolean }
   /** Director: the next narration's second line says this (<= 40 chars); "" cancels. `eventId`: the STATE it was typed
    * under; one from before 回到大廳 belongs to the game that ended, and the room refuses it (stale_game). Absent from older pages. */
   | { type: "HOST_NEXT_LINE"; line: string; eventId?: number }
@@ -460,6 +463,9 @@ export type ServerMessage =
       media?: MediaCommand;
       /** The big screen reported that the video in play cannot play (SCREEN_CLIP_ERROR): the host page warns (boss-music-buzzer.md M4). */
       clipError?: true;
+      /** Whether a big screen can be heard (immersion.md PR0): "ready" when any keyed screen reported 聲音就緒, "muted"
+       * when keyed screens are connected but none did, "none" when no keyed screen is connected. Absent from older servers. */
+      screenSound?: ScreenSound;
       /** The categories the buzz winner (`view.buzz.picker`) may pick for the next song, while it may (boss-music-buzzer.md M5). */
       buzzCategories?: string[];
       /** A finished game's podium reveal. Absent from older servers and from a game finished before it: show the podium. */
@@ -579,6 +585,7 @@ export interface HostPick {
   block?: PickBlock;
 }
 
+export type ScreenSound = "ready" | "muted" | "none";
 export type StateMessage = Extract<ServerMessage, { type: "STATE" }>;
 export type LobbyTeams = Extract<ServerMessage, { type: "LOBBY" }>["teams"];
 
@@ -741,6 +748,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return isCount(m.eventId) && isCount(m.rev) && isCount(m.done)
         ? { type: "SCREEN_NARRATION_PROGRESS", eventId: m.eventId, rev: m.rev, done: m.done }
         : null;
+    case "SCREEN_SOUND":
+      return typeof m.ready === "boolean" ? { type: "SCREEN_SOUND", ready: m.ready } : null;
     case "SCREEN_CLIP_ENDED":
     case "SCREEN_CLIP_ERROR": {
       const questionId = str(m.questionId, MAX_RAW_TEXT);
