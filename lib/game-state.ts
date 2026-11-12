@@ -1167,8 +1167,8 @@ export function answerQuestion(
       // Wrong boss answer: there's no "downgrade" concept for a shared boss queue. A flee rotates
       // the question, and so does a wrong lock even on retry: its red tile on the TV would hand the
       // next team a narrowed question, up to a free hit (boss redesign D1=A). Either way the shown
-      // wrong option makes it revealed; the rotation skips every revealed one. Taking turns, a wrong fill-in rotates
-      // too (下輪換題) though nothing was shown, so it is not revealed; a warrior's missed roll and a cleric's prayed
+      // wrong option makes it revealed; the rotation skips every revealed one. Taking turns, a wrong answer with nothing
+      // shown (a fill-in, or the host's stuck-row 下輪換題 for a team that never locked) rotates too, unrevealed; a warrior's missed roll and a cleric's prayed
       // retry, which answers again at once, keep it (class-abilities.md #106).
       const shownWrong = (game.eliminated[questionId]?.length ?? 0) > 0;
       const revealed = shownWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
@@ -1182,7 +1182,7 @@ export function answerQuestion(
       const rotatedBossQuestionId = rotated.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a rotation changes
       // the question for every team in boss phase, so every one of their picks resets —
-      // unless it stayed on the same question (a one-question boss bank, or no option shown), where picks still apply.
+      // unless it stayed on the same question (a one-question boss bank, a wrong buzz, a warrior's miss or a prayed retry), where picks still apply.
       const moved = rotatedBossQuestionId !== boss.currentQuestionId;
       // A new question or the phase's end is the end of this buzz question for the stunned teams (R5).
       const settled = buzzing && (moved || phasePending) ? unstun(game.teams, (t) => !!t.inBoss) : game.teams;
