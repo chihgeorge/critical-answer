@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EAT_DONE, SFX, type SfxNote } from "./sfx";
+import { BOSS_PARRY, BOSS_RUMBLE, EAT_DONE, HEARTBEAT, SFX, type SfxNote } from "./sfx";
 
 /** Seconds from the effect's start to its last note ending. */
 const sfxDuration = (notes: SfxNote[]) => Math.max(...notes.map((x) => x.at + x.duration));
@@ -20,6 +20,15 @@ describe("SFX", () => {
   it("keeps the wrong-answer buzz as the only sawtooth, so it can't be mistaken for music", () => {
     const saw = Object.entries(SFX).filter(([, notes]) => notes.some((x) => x.wave === "sawtooth")).map(([k]) => k);
     expect(saw).toEqual(["retry"]);
+  });
+});
+
+describe("the boss layer's sounds (immersion.md PR1)", () => {
+  it("never use the sawtooth, and the parry's sound fits its 1.4 s", () => {
+    for (const notes of [BOSS_RUMBLE, BOSS_PARRY, HEARTBEAT]) expect(notes.every((x) => x.wave !== "sawtooth")).toBe(true);
+    expect(sfxDuration(BOSS_PARRY)).toBeLessThanOrEqual(1.4);
+    // A heartbeat ends before the next one, even at 2.5 a second.
+    expect(sfxDuration(HEARTBEAT)).toBeLessThan(0.4);
   });
 });
 

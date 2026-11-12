@@ -18,7 +18,10 @@ import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, EAT_DONE, SFX, SOUND_ON, SPRINT_FANFARE } from "@/lib/sfx";
+import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, EAT_DONE, HEARTBEAT, SFX, SOUND_ON, SPRINT_FANFARE } from "@/lib/sfx";
+import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
+import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
+import { createFlashBudget, HEART_TINT, PARRY_TINT } from "@/lib/flash-budget";
 import { AnswerClock } from "@/components/answer-clock";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { antiCheatBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
@@ -265,7 +268,10 @@ type ShownVideo = Extract<ServerMessage, { type: "SCREEN_VIDEO" }>;
 /** A chip that stands in the side column beside a video (D14), at the same 20px as the hints. */
 const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4px solid var(--k)", whiteSpace: "normal", borderRadius: 12 } as const;
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, cuisine }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; cuisine?: true }) {
+/** ② The parry's beats (lib/boss-fx.ts PARRY_MS). */
+type ParryBeat = "charge" | "parry" | "counter";
+
+function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, cuisine, parry, rage }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; cuisine?: true; parry: ParryBeat | null; rage: boolean }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -284,6 +290,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const served = cook !== null;
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
   const card = phaseCard && bossPhaseInfo;
+  /** ④ The boss's rage shows only while the boss itself is on screen; the music follows it game-wide. */
+  const raging = rage && bossScene && !card && !dish;
   const wrong = view.pendingWrong ?? null;
   const nameOf = (id?: string) => view.teams.find((t) => t.id === id)?.name ?? "";
   // A buzzer boss phase (docs/designs/boss-buzzer.md D7): who buzzed, who is out, or the call to buzz.
@@ -623,10 +631,21 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
       {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : !dishUp(cook) && (
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
-        <div key={card ? `card-${eventId}` : undefined} className={card ? "px-phase-blink" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}>
-          <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} accessory={monster.accessory} />
+        {/* ④ Rage jitters the whole boss; ② the parry's charge and counter take over the sprite's own motion. */}
+        <div className={raging ? "px-rage" : undefined}>
+          <div key={card ? `card-${eventId}` : undefined} className={`${card ? "px-phase-blink" : parry === "charge" ? "px-parry-charge" : parry === "counter" ? "px-parry-counter" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}${raging ? " px-rage-outline" : ""}`}>
+            <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} accessory={monster.accessory} />
+          </div>
         </div>
       </div>
+      )}
+      {/* ② The parry (0.6–0.9 s): a shield in front of the boss, the attack's sword bounced off with a spark. */}
+      {parry === "parry" && (
+        <div data-testid="boss-parry" aria-hidden className="pointer-events-none absolute" style={{ left: "50%", bottom: 190, transform: "translateX(-50%)", zIndex: 5, fontSize: 64, lineHeight: 1 }}>
+          <span>🛡️</span>
+          <span className="absolute" style={{ left: 70, top: -40, fontSize: 48 }}>⚔️</span>
+          <span className="absolute text-[var(--warn)]" style={{ left: 52, top: -8, fontSize: 32 }}>✦</span>
+        </div>
       )}
       {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster; with tiles on the wall, a pill under B/D,
           above the dialogue box (z 7) so a three-row narration line never hides it. */}
@@ -659,6 +678,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
                 <Sprite key={i} kind="heart" variant={i < view.bossHp ? 1 : 0} scale={2} />
               ),
             )}
+          </span>
+        )}
+        {raging && (
+          <span data-testid="boss-rage" className="ml-[10px] text-[16px] text-white" style={{ background: "var(--danger)", padding: "0 6px", boxShadow: "0 0 0 3px var(--k)" }}>
+            🔥 暴走！
           </span>
         )}
       </Nameplate>
@@ -1040,7 +1064,10 @@ export default function ScreenPage() {
     queuedBoss.current = null;
     sprintShowing.current = false;
     setTransition(next);
-    if (next) bgm.current?.playCue(BOSS_ALARM);
+    if (next) {
+      bgm.current?.playCue(BOSS_ALARM);
+      bgm.current?.playCue(BOSS_RUMBLE, "boss");
+    }
   }, []);
   /** The eventId of the last served reveal: its late narration line must not cut off 上菜's lines (cooking I1),
    * nor be read over the next question once 下一題 closes it (closing a reveal does not move eventId). */
@@ -1341,6 +1368,91 @@ export default function ScreenPage() {
     clipErrored.current = { questionId, press: game?.media?.questionId === questionId ? game.media.press : 0 };
     send({ type: "SCREEN_CLIP_ERROR", questionId });
   }
+  // --- Boss effects (docs/designs/immersion.md PR1 ②–④) ---
+  /** The shared flash budget: every new effect asks before it flashes; reduced motion never flashes. */
+  const flashBudget = useRef(createFlashBudget());
+  const flash = useCallback(() => !prefersReducedMotion() && flashBudget.current.take(), []);
+  /** The last STATE on this connection, null until the first after connecting (live-only effects). */
+  const prevState = useRef<StateMessage | null>(null);
+  /** ② The running parry's beat, its edge flash, and the key of the last wrong answer parried. */
+  const [parry, setParry] = useState<ParryBeat | null>(null);
+  const [parryEdge, setParryEdge] = useState<"flash" | "tint" | null>(null);
+  const parryKey = useRef<string | null>(null);
+  const parryTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const parryRunning = useRef(false);
+  /** A `retry` cue that came while the parry ran: it plays when the counter ends. */
+  const parryRetry = useRef(false);
+  function endParry() {
+    parryTimers.current.forEach(clearTimeout);
+    parryTimers.current = [];
+    parryRunning.current = false;
+    setParry(null);
+    setParryEdge(null);
+    if (parryRetry.current) bgm.current?.playCue(SFX.retry);
+    parryRetry.current = false;
+  }
+  function startParry() {
+    parryTimers.current.forEach(clearTimeout);
+    parryRunning.current = true;
+    const at = (ms: number, f: () => void) => parryTimers.current.push(setTimeout(f, ms));
+    bgm.current?.playCue(BOSS_PARRY, "boss");
+    setParry("charge");
+    setParryEdge(null);
+    at(PARRY_MS.parry, () => setParry("parry"));
+    at(PARRY_MS.counter, () => {
+      setParry("counter");
+      // One red edge pulse, or the static tint held 500 ms when the budget (or reduced motion) says no.
+      const lit = flash();
+      setParryEdge(lit ? "flash" : "tint");
+      at(lit ? 250 : 500, () => setParryEdge(null));
+    });
+    at(PARRY_MS.end, endParry);
+  }
+  /** ④ The song the last STATE asked for: rage or not, null until the first STATE after connecting. */
+  const rageMusic = useRef<boolean | null>(null);
+  /** ③ The boss clock's turn (`teamId:questionId`) while one runs, and the heartbeat playing for it. */
+  const heartKey = useRef<string | null>(null);
+  const heart = useRef<{ key: string; cancel: () => void } | null>(null);
+  const [heartGlow, setHeartGlow] = useState<"pulse" | "tint" | null>(null);
+  const bgmOnNow = useRef(false);
+  const transitionOn = useRef(false);
+  const stopHeart = useCallback(() => {
+    heart.current?.cancel();
+    heart.current = null;
+    setHeartGlow(null);
+  }, []);
+  const startHeart = useCallback(
+    (s: number) => {
+      const key = heartKey.current;
+      if (!key || heart.current || !bgmOnNow.current) return;
+      const times = heartbeatTimes(s);
+      const silence = bgm.current?.pattern(HEARTBEAT, times, "boss") ?? (() => {});
+      // Each beat's edge glow is one flash: lit then dark. Over a transition, or refused, the static tint instead.
+      const timers = times.map((t) =>
+        setTimeout(() => {
+          if (transitionOn.current || !flash()) return setHeartGlow("tint");
+          setHeartGlow("pulse");
+          setTimeout(() => setHeartGlow((g) => (g === "pulse" ? null : g)), 150);
+        }, t * 1000),
+      );
+      heart.current = {
+        key,
+        cancel: () => {
+          silence();
+          timers.forEach(clearTimeout);
+        },
+      };
+    },
+    [flash],
+  );
+  useEffect(() => {
+    bgmOnNow.current = bgmOn;
+  }, [bgmOn]);
+  useEffect(() => {
+    transitionOn.current = !!transition;
+  }, [transition]);
+  useEffect(() => () => parryTimers.current.forEach(clearTimeout), []);
+
   /** The lowest second the answer clock has shown. A STATE remounts the clock, which can show the same second or one
    * above it again (network delay): neither ticks twice. A jump of more than a second up is a new count. */
   const lastTick = useRef<number | null>(null);
@@ -1348,10 +1460,14 @@ export default function ScreenPage() {
     const last = lastTick.current;
     if (last !== null && s >= last && s <= last + 1) return;
     lastTick.current = s;
+    // ③ The boss room's last seconds beat instead of ticking; a new count already inside them (a 5 s clock, a
+    // reconnect) beats too, though it starts silent otherwise.
+    if (s > 0 && s <= ANSWER_WARN_SECONDS) startHeart(s);
+    if (s === 0) stopHeart();
     if (last !== null && s > last) return; // a new count starts silent
     if (s === 0) bgm.current?.playCue(ANSWER_TIME_UP);
-    else if (s <= ANSWER_WARN_SECONDS) bgm.current?.playCue(ANSWER_TICK);
-  }, []);
+    else if (s <= ANSWER_WARN_SECONDS && !heartKey.current) bgm.current?.playCue(ANSWER_TICK);
+  }, [startHeart, stopHeart]);
 
   // The keyed link pasted into this open tab changes only the fragment: no reload, no new socket. Load the page again,
   // so it says hello with the key (getScreenKey then takes it out of the address bar, which fires no hashchange).
@@ -1367,7 +1483,10 @@ export default function ScreenPage() {
     const next = !bgmOn;
     // start() runs inside this click, which is what lets the browser play it.
     if (next) void player().start();
-    else bgm.current?.stop();
+    else {
+      bgm.current?.stop();
+      stopHeart(); // ③ 🎵 off ends the heartbeat, its glow too
+    }
     setBgmOn(next);
     writeStored(BGM_ENABLED_STORAGE, String(next));
   }
@@ -1403,6 +1522,9 @@ export default function ScreenPage() {
       transitionSeen.current = UNSEEN;
       cheatSeen.current = null;
       stopTransitions();
+      prevState.current = null;
+      rageMusic.current = null;
+      endParry();
       // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
       progress.current = null;
     },
@@ -1423,6 +1545,11 @@ export default function ScreenPage() {
           transitionSeen.current = IN_LOBBY;
           cheatSeen.current = null;
           stopTransitions();
+          prevState.current = null;
+          rageMusic.current = false;
+          player().setSong(DUNGEON_THEME);
+          endParry();
+          stopHeart();
           podiumReady.current = true;
           heldEpilogue.current = null;
           servedEvent.current = null;
@@ -1457,17 +1584,38 @@ export default function ScreenPage() {
             else if (t.play) {
               setTransition(t.play);
               sprintShowing.current = t.play.kind === "sprint";
-              if (t.play.kind === "boss") bgm.current?.playCue(BOSS_ALARM);
+              if (t.play.kind === "boss") {
+                bgm.current?.playCue(BOSS_ALARM);
+                bgm.current?.playCue(BOSS_RUMBLE, "boss");
+              }
               if (t.play.kind === "sprint") bgm.current?.playCue(SPRINT_FANFARE);
             }
             const c = antiCheatBanner(cheatSeen.current, msg.view);
             cheatSeen.current = c.seen;
             // A door, boss or sprint banner wins (a sprint still showing too), and the intro pages are never covered; the
             // catch stays on screen in its own line anyway.
-            if (c.play && !t.play && !queuedBoss.current && !sprintShowing.current && !msg.intro) {
+            const catchPlays = !!c.play && !t.play && !queuedBoss.current && !sprintShowing.current && !msg.intro;
+            if (catchPlays) {
               setTransition(c.play);
               bgm.current?.playCue(BOSS_ALARM);
             }
+            // ② A boss wrong answer: the parry. A transition or a phase card starting now cancels it (its retry plays at once).
+            const prev = prevState.current;
+            const k = parryFor(prev, msg, parryKey.current);
+            if (k) parryKey.current = k;
+            if ((t.play && !queuedBoss.current) || catchPlays || (msg.phaseCard && !prev?.phaseCard)) endParry();
+            else if (k) startParry();
+            // ④ Rage music, game-wide: the 0.5 s silence only when rage starts live; a (re)connect just picks the song.
+            const rage = rageNow(msg);
+            if (rage !== rageMusic.current) {
+              player().setSong(rage ? BOSS_RAGE_THEME : DUNGEON_THEME, rage && rageMusic.current === false ? 0.5 : 0);
+              rageMusic.current = rage;
+            }
+            // ③ A heartbeat belongs to one boss clock: another turn, no clock or no boss scene ends it.
+            const turn = describeTurn(msg.view, msg.question, msg.phaseCard?.monster);
+            heartKey.current = bossClock(msg) ? `${turn.team?.id ?? ""}:${turn.questionId ?? ""}` : null;
+            if (heart.current && heart.current.key !== heartKey.current) stopHeart();
+            prevState.current = msg;
           }
           if (msg.phase === "finished" && lastPhase.current === "playing" && msg.reveal?.dish) setFinale(true);
           // The story waits for the boss to cook (cooking I4) and the places to be called (podium-reveal.md), on every
@@ -1488,7 +1636,9 @@ export default function ScreenPage() {
             if (sfxSeen.current === null) sfxSeen.current = seq;
             else if (seq > sfxSeen.current) {
               sfxSeen.current = seq;
-              if (msg.cue) bgm.current?.playCue(SFX[msg.cue]);
+              // ② The wrong answer's buzz waits for the parry's counter to end.
+              if (msg.cue === "retry" && parryRunning.current) parryRetry.current = true;
+              else if (msg.cue) bgm.current?.playCue(SFX[msg.cue]);
             }
           }
           break;
@@ -1576,10 +1726,13 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} cuisine={game.cuisine} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} />}
         {game?.phase === "playing" && <ReactionFloats floats={floats} teams={game.view.teams} />}
-        {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} />}
+        {/* ③ The heartbeat's and ② the counter's edge glows: inset shadows, the middle of the stage stays clear. */}
+        {heartGlow && <div aria-hidden data-testid="heart-glow" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 120px 40px ${heartGlow === "pulse" ? "#b02a3a4d" : HEART_TINT}` }} />}
+        {parryEdge && <div aria-hidden className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 120px 40px ${parryEdge === "flash" ? "#ff6b6b66" : PARRY_TINT}` }} />}
+        {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} flash={flash} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
           {!game && locked ? (

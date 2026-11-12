@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { antiCheatBanner, IN_LOBBY, nextTransition, sprintSeen, UNSEEN, type TransitionSeen } from "./transitions";
 import type { StateMessage } from "./protocol";
+import { monsterLook } from "./turn-info";
 
 const team = (id: string, name: string, inBossPhase = false) => ({ id, name, inBossPhase, roomIndex: 0, currentQuestionId: "q1" });
 const room = { id: "q1", content: { kind: "text", value: "題目" }, difficulty: 1, boss: false, monster: { name: "史萊姆", sprite: "slime", hue: 0 } };
 const boss = { ...room, id: "b1", boss: true, monster: { name: "魔王", sprite: "dragon", hue: 0 } };
+/** The boss entrance carries the boss's look, for its silhouette (immersion.md ①). */
+const BOSS = { kind: "boss", monster: monsterLook(boss.monster as never) };
 
 function state(over: { phase?: "playing" | "finished"; intro?: boolean; initiative?: boolean; inBoss?: boolean; reveal?: boolean; otherInBoss?: boolean; sprint?: string[] } = {}): StateMessage {
   return {
@@ -46,13 +49,13 @@ describe("nextTransition", () => {
       { kind: "open", team: "紅隊" },
       null,
       null,
-      { kind: "boss", name: "魔王" },
+      BOSS,
       null,
     ]);
   });
 
   it("replays nothing to a screen that connects mid-game", () => {
-    expect(run(UNSEEN, [state(), state({ inBoss: true })])).toEqual([null, { kind: "boss", name: "魔王" }]);
+    expect(run(UNSEEN, [state(), state({ inBoss: true })])).toEqual([null, BOSS]);
     expect(run(UNSEEN, [state({ inBoss: true }), state({ inBoss: true })])).toEqual([null, null]);
     expect(run(UNSEEN, [state({ phase: "finished" })])).toEqual([null]);
     // An ended game disarms both, so a late playing STATE plays neither.
@@ -70,7 +73,7 @@ describe("nextTransition", () => {
 
   it("counts a phase card (no question, the boss drawn from the card) as the boss on screen", () => {
     const card = { ...state(), question: null, phaseCard: { monster: boss.monster } } as unknown as StateMessage;
-    expect(run({ open: false, boss: false, sprint: false }, [card])).toEqual([{ kind: "boss", name: "魔王" }]);
+    expect(run({ open: false, boss: false, sprint: false }, [card])).toEqual([BOSS]);
   });
 
   it("plays the sprint banner once, live, on the reveal that opened the boss door, then the boss alarm", () => {
@@ -78,7 +81,7 @@ describe("nextTransition", () => {
       { kind: "open", team: "紅隊" },
       { kind: "sprint", names: ["紅隊"] },
       null,
-      { kind: "boss", name: "魔王" },
+      BOSS,
       null,
     ]);
   });
@@ -87,7 +90,7 @@ describe("nextTransition", () => {
     expect(run(IN_LOBBY, [state(), state({ inBoss: true, sprint: ["b", "a"] }), state({ inBoss: true, sprint: ["b", "a"] })])).toEqual([
       { kind: "open", team: "紅隊" },
       { kind: "sprint", names: ["藍隊", "紅隊"] },
-      { kind: "boss", name: "魔王" },
+      BOSS,
     ]);
   });
 

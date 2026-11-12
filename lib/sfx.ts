@@ -92,3 +92,22 @@ export const EAT_DONE: SfxNote[] = [n(0, 0.1, "C5", "triangle"), n(0.1, 0.2, "G5
 
 /** The big screen's sound just came on (immersion.md PR0, E6): a short rising chime, so the room hears the TV. */
 export const SOUND_ON: SfxNote[] = [n(0, 0.08, "G5", "triangle"), n(0.08, 0.08, "C6", "triangle"), n(0.16, 0.2, "E6", "triangle")];
+
+// The boss layer's sounds (immersion.md PR1, played on the "boss" layer of lib/bgm-player.ts). None uses the sawtooth:
+// e2e/sfx.spec.ts finds the wrong-answer cue by it.
+const slide = (at: number, duration: number, from: string, to: string, wave: OscillatorType = "square"): SfxNote => ({ at, duration, freq: noteToFreq(from), slideTo: noteToFreq(to), wave });
+
+/** ① The boss entrance: a long low rumble under the alarm. */
+export const BOSS_RUMBLE: SfxNote[] = [slide(0, 1.2, "E2", "A1"), slide(0.6, 0.6, "B1", "E1", "triangle")];
+
+/** ② A boss wrong answer, the whole 1.4 s (PARRY_MS in lib/boss-fx.ts): the charge's rising warning, the parry's clang
+ * at 0.6 s, the counter's thud at 0.9 s. The `retry` cue follows at 1.4 s. */
+export const BOSS_PARRY: SfxNote[] = [
+  slide(0, 0.55, "A2", "A4"),
+  n(0.6, 0.08, "E6"),
+  n(0.62, 0.12, "B6", "triangle"),
+  slide(0.9, 0.25, "C3", "C2"),
+];
+
+/** ③ One heartbeat, lub-dub (the last 5 s of a boss answer clock, instead of ANSWER_TICK). */
+export const HEARTBEAT: SfxNote[] = [slide(0, 0.09, "A2", "E2"), slide(0.14, 0.08, "G2", "D2")];

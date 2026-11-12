@@ -4,9 +4,9 @@
 
 import type { StateMessage } from "./protocol";
 import type { SpectatorView } from "./game-state";
-import { describeTurn } from "./turn-info";
+import { describeTurn, type Monster } from "./turn-info";
 
-export type Transition = { kind: "open"; team: string } | { kind: "boss"; name: string } | { kind: "sprint"; names: string[] } | { kind: "cheat" } | { kind: "catch"; by: string; team: string };
+export type Transition = { kind: "open"; team: string } | { kind: "boss"; monster: Monster } | { kind: "sprint"; names: string[] } | { kind: "cheat" } | { kind: "catch"; by: string; team: string };
 
 /** `open`: this connection saw the lobby or the intro, so the first question is a start seen live.
  * `boss`: whether the boss room has been on screen; null until the first STATE after connecting. */
@@ -63,6 +63,6 @@ export function nextTransition(seen: TransitionSeen, msg: StateMessage): { seen:
     const names = msg.view.sprint!.teamIds.flatMap((id) => msg.view.teams.find((t) => t.id === id)?.name ?? []);
     return { seen: { open: false, boss: seen.boss ?? bossReached, sprint: true }, play: { kind: "sprint", names } };
   }
-  const play: Transition | null = seen.boss === false && bossOnScreen ? { kind: "boss", name: turn.monster.name } : null;
+  const play: Transition | null = seen.boss === false && bossOnScreen ? { kind: "boss", monster: turn.monster } : null;
   return { seen: { open: false, boss: (seen.boss ?? bossReached) || bossOnScreen, sprint: sprint.seen }, play };
 }
