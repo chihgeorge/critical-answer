@@ -89,3 +89,6 @@ export const ANSWER_TIME_UP: SfxNote[] = [n(0, 0.15, "E5"), n(0.18, 0.3, "C5")];
 
 /** The eaten dish's empty plate (docs/designs/eat-dish.md, eng F1): the one sound of the meal, a two-note rising 嗝, like check-pass. */
 export const EAT_DONE: SfxNote[] = [n(0, 0.1, "C5", "triangle"), n(0.1, 0.2, "G5", "triangle")];
+
+/** The big screen's sound just came on (immersion.md PR0, E6): a short rising chime, so the room hears the TV. */
+export const SOUND_ON: SfxNote[] = [n(0, 0.08, "G5", "triangle"), n(0.08, 0.08, "C6", "triangle"), n(0.16, 0.2, "E6", "triangle")];

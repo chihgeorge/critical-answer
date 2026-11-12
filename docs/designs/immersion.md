@@ -160,6 +160,10 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 用現有流程：merge 到 main 後，Cloudflare Workers Builds 和 Vercel 會自動部署，之後跑 /canary。PR0 和 PR2 有協定改動，房間（Worker）要先部署好。
 
 ## Next Steps
+> **拆分（站長，2026-11-12，/autoplan UC1）**：PR1 拆成兩個 PR。**PR1a**：開場點亮音效（PR0：大廳大鈕、右下角「👆 開聲音」、`SCREEN_SOUND`、主持人頁黃字），加上新的四層混音（`layerGains`）、大螢幕斷線時更新主持人頁、大鈕的 `aria-label`。**PR1b**（PR1a 合併後）：四個王戰效果 ①–④ 和共用閃光預算。下面 Review record 裡寫「PR0 + PR1 一個 PR」的地方，以這段為準。
+>
+> PR1a 的實作差異：`screenSound` 改變時，房間只把新的 STATE 送給主持人頁，不廣播給所有連線，所以不會觸發 `broadcastState` 的其他副作用。帶金鑰的大螢幕連上時（還沒回報前算 muted）也會通知主持人頁。
+
 1. **PR1（含 PR0）**：/autoplan → 實作 lane（Opus、worktree）→ /review → /ship → 合併 → /canary。目標 11/14。
 2. **PR2**：主持人三顆鈕，同一套流程。目標 11/16。
 3. **PR3**：房間氛圍和揭霧，同一套流程。目標 11/18，來不及就延到活動後。

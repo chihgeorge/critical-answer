@@ -198,6 +198,12 @@ describe("parseClientMessage", () => {
     for (const key of ["k".repeat(65), 7, null, { length: 1 }, ["a"]]) expect(parseClientMessage({ type: "SCREEN_HELLO", key })).toEqual({ type: "SCREEN_HELLO" });
   });
 
+  it("SCREEN_SOUND: takes a boolean `ready` only, extra fields are dropped", () => {
+    expect(parseClientMessage({ type: "SCREEN_SOUND", ready: true, x: 1 })).toEqual({ type: "SCREEN_SOUND", ready: true });
+    expect(parseClientMessage({ type: "SCREEN_SOUND", ready: false })).toEqual({ type: "SCREEN_SOUND", ready: false });
+    for (const ready of [undefined, 1, "true", null]) expect(parseClientMessage({ type: "SCREEN_SOUND", ready })).toBeNull();
+  });
+
   it("SCREEN_NARRATION_PROGRESS: whole, non-negative eventId, rev and done", () => {
     const ok = { type: "SCREEN_NARRATION_PROGRESS", eventId: 3, rev: 0, done: 2 };
     expect(parseClientMessage(ok)).toEqual(ok);
