@@ -21,7 +21,7 @@ import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CHEF_SIZZLE, CLERIC_PRAYER, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
 import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
 import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
-import { CLASS_PULSE, CLASS_TINT, createFlashBudget, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
+import { CLASS_COLOR, CLASS_PULSE, CLASS_TINT, createFlashBudget, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
 import { playHostEffect, type HostFxLook } from "@/lib/host-fx";
 import { CLASS_FX_MS, CLASS_FX_TEXT, classFxFor, playClassFx, type ClassFx, type ClassFxLook } from "@/lib/class-fx";
 import { AnswerClock } from "@/components/answer-clock";
@@ -1470,7 +1470,7 @@ export default function ScreenPage() {
   );
 
   // --- The class moments (lib/class-fx.ts): the mage's, cleric's and thief's edge pulse or tint, badge and sound.
-  const [classFx, setClassFx] = useState<{ fx: ClassFxLook; edge: boolean } | null>(null);
+  const [classFx, setClassFx] = useState<{ fx: ClassFxLook; edge: boolean; parried: boolean } | null>(null);
   const classTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const clearClassFx = useCallback(() => {
     classTimers.current.splice(0).forEach(clearTimeout);
@@ -1488,7 +1488,8 @@ export default function ScreenPage() {
         show: (look) => {
           // A newer moment replaces a running one. The pulse is lit 0.25 s, a tint held 0.5 s; the badge stays CLASS_FX_MS.
           clearClassFx();
-          setClassFx({ fx: look, edge: true });
+          // A spend during a parry keeps its badge hidden even after the parry ends: it would pop up late and cut short.
+          setClassFx({ fx: look, edge: true, parried: parryRunning.current });
           classTimers.current.push(setTimeout(() => setClassFx((c) => (c && { ...c, edge: false })), look.look === "flash" ? 250 : 500));
           classTimers.current.push(setTimeout(() => setClassFx(null), CLASS_FX_MS));
         },
@@ -1594,6 +1595,7 @@ export default function ScreenPage() {
       parryKey.current = null;
       parryRetry.current = false; // a buzz from before the drop would come in late
       endParry();
+      clearClassFx();
       // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
       progress.current = null;
     },
@@ -1620,6 +1622,7 @@ export default function ScreenPage() {
           parryKey.current = null;
           parryRetry.current = false; // no wrong-answer buzz over the lobby
           endParry();
+          clearClassFx();
           stopHeart();
           podiumReady.current = true;
           heldEpilogue.current = null;
@@ -1819,9 +1822,9 @@ export default function ScreenPage() {
         )}
         {classFx?.edge && <div aria-hidden data-testid="class-fx-edge" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${(classFx.fx.look === "flash" ? CLASS_PULSE : CLASS_TINT)[classFx.fx.kind]}` }} />}
         {/* The class badge above the monster (z 4: under the tiles, panel, video and clock). A parry owns that spot. */}
-        {classFx && game?.phase === "playing" && !parry && (
-          <div aria-hidden data-testid="class-fx" className={`pointer-events-none absolute px-chip${classFx.fx.look === "flash" ? " px-class-pop" : ""}`} style={{ ...CHIP, left: "50%", bottom: 200, transform: "translateX(-50%)", zIndex: 4, fontSize: 24, maxWidth: 280, background: "var(--cream)", borderColor: CLASS_PULSE[classFx.fx.kind].slice(0, 7), boxShadow: "0 0 0 4px var(--k)" }}>
-            <span className="inline-block max-w-[150px] truncate align-bottom">{classFx.fx.name}</span>・{CLASS_FX_TEXT[classFx.fx.kind]}
+        {classFx && !classFx.parried && game?.phase === "playing" && !parry && (
+          <div aria-hidden data-testid="class-fx" className={`pointer-events-none absolute px-chip${classFx.fx.look === "flash" ? " px-class-pop" : ""}`} style={{ ...CHIP, left: "50%", bottom: 200, transform: "translateX(-50%)", zIndex: 4, fontSize: 24, whiteSpace: "nowrap", background: "var(--cream)", border: `4px solid ${CLASS_COLOR[classFx.fx.kind]}`, boxShadow: "0 0 0 4px var(--k)" }}>
+            <span className="inline-block max-w-[110px] truncate align-bottom">{classFx.fx.name}</span>・{CLASS_FX_TEXT[classFx.fx.kind]}
           </div>
         )}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} flash={flash} />}

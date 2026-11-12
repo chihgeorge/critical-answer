@@ -14,9 +14,10 @@ export const PARRY_TINT = "#ff6b6b33"; // --danger at 20%
 export const THUNDER_PULSE = "#ffffff80"; // white at 50%
 export const THUNDER_TINT = "#ffffff33"; // white at 20%
 export const GROWL_TINT = "#2a153359"; // --k at 35%
-/** The class moments (lib/class-fx.ts): each class's edge pulse (40%) and tint (20%). No red: red is the boss's. */
-export const CLASS_PULSE = { mage: "#c9b3ff66", cleric: "#ffe08a66", thief: "#8fe3c866" } as const;
-export const CLASS_TINT = { mage: "#c9b3ff33", cleric: "#ffe08a33", thief: "#8fe3c833" } as const;
+/** The class moments (lib/class-fx.ts): each class's colour (the badge border), edge pulse (40%) and tint (20%). No red: red is the boss's. */
+export const CLASS_COLOR = { mage: "#c9b3ff", cleric: "#ffe08a", thief: "#8fe3c8" } as const;
+export const CLASS_PULSE = { mage: `${CLASS_COLOR.mage}66`, cleric: `${CLASS_COLOR.cleric}66`, thief: `${CLASS_COLOR.thief}66` } as const;
+export const CLASS_TINT = { mage: `${CLASS_COLOR.mage}33`, cleric: `${CLASS_COLOR.cleric}33`, thief: `${CLASS_COLOR.thief}33` } as const;
 
 export function createFlashBudget(now: () => number = () => Date.now()) {
   const taken: number[] = [];
