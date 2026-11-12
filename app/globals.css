@@ -313,6 +313,9 @@ body {
 .px-rage-outline { filter: drop-shadow(3px 0 0 var(--danger)) drop-shadow(-3px 0 0 var(--danger)) drop-shadow(0 3px 0 var(--danger)) drop-shadow(0 -3px 0 var(--danger)); }
 /* The edge glows (heartbeat, parry): inset shadows only, the centre 70% stays clear. */
 .px-edge { position: absolute; inset: 0; pointer-events: none; }
+/* A class moment's badge (lib/class-fx.ts): slams in from 1.4x in two frames; it keeps its centring translate. */
+@keyframes px-class-pop { 0%, 49% { transform: translateX(-50%) scale(1.4); } 50%, 100% { transform: translateX(-50%) scale(1); } }
+.px-class-pop { animation: px-class-pop 0.3s steps(1) 1 both; }
 /* The music card's equalizer (docs/designs/youtube-questions.md D15): bars jump between two heights. */
 @keyframes px-eq { 50% { transform: scaleY(0.35); } }
 .px-eq { animation: px-eq 0.5s steps(1) infinite; }
@@ -322,7 +325,7 @@ body {
 @keyframes px-react-rise { 0% { transform: translateY(130px); opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(-30px); opacity: 0; } }
 .px-react-rise { animation: px-react-rise 2.4s steps(12) 1 both; }
 @media (prefers-reduced-motion: reduce) {
-  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise, .px-parry-counter, .px-rage, .px-growl { animation: none !important; }
+  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise, .px-parry-counter, .px-rage, .px-growl, .px-class-pop { animation: none !important; }
   .px-tf2 { opacity: 0; }
   /* .px-room-flash keeps running (D13: a pawn must not change rooms unseen). */
 }

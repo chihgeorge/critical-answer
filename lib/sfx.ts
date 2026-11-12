@@ -132,3 +132,18 @@ export const GROWL: SfxNote[] = [
   slide(0.55, 0.45, "D#2", "G1"),
   slide(0.1, 0.8, "E2", "A1", "triangle"),
 ];
+
+// The class moments (lib/class-fx.ts), game cues like `roll`: they follow 🎵 and the screen drops them while its clip
+// plays. No sawtooth (e2e/sfx.spec.ts).
+
+/** The mage's spell: a quick rising sparkle. */
+export const MAGE_SPELL: SfxNote[] = [n(0, 0.06, "C6", "triangle"), n(0.06, 0.06, "E6", "triangle"), n(0.12, 0.06, "G6", "triangle"), n(0.18, 0.3, "C7", "triangle"), n(0.24, 0.24, "B6", "triangle")];
+
+/** The cleric's prayer: a soft held major chord with a bell on top. */
+export const CLERIC_PRAYER: SfxNote[] = [n(0, 0.6, "C5", "triangle"), n(0, 0.6, "E5", "triangle"), n(0, 0.6, "G5", "triangle"), n(0.15, 0.45, "C6", "triangle")];
+
+/** The thief's sneak: a fast low swish, then two dry clicks (not flee's long swoop). */
+export const THIEF_SNEAK: SfxNote[] = [slide(0, 0.08, "B5", "B3"), n(0.14, 0.03, "E6"), n(0.2, 0.03, "B6")];
+
+/** The chef's （廚師 +N） on the dish card: two little pops. */
+export const CHEF_SIZZLE: SfxNote[] = [n(0, 0.05, "C6", "triangle"), n(0.07, 0.05, "G6", "triangle")];

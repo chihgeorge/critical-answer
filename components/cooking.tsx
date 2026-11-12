@@ -76,7 +76,8 @@ export function useCookStep(served: string | null, onPlay?: () => void, onDish?:
 /**
  * The end screen after a boss kill seen live (cooking R8): the boss cooks like any monster (steps 0–3), its dish holds,
  * and at 4 the cooking is over and the podium reveal (lib/podium.ts) takes the stage. `play` is read once, when the
- * screen mounts; false (a page opened on the end screen, no dish, reduced motion) goes straight to 4.
+ * screen mounts; false (a page opened on the end screen, no dish, reduced motion) goes straight to 4. A live kill
+ * under reduced motion still calls `onDish` once (the dish line is read, the chef's pop plays), as useCookStep does.
  */
 export function useFinaleStep(play: boolean, onPlay?: () => void, onDish?: () => void): CookStep | 4 {
   const [start] = useState(() => play && !prefersReducedMotion());
@@ -85,8 +86,10 @@ export function useFinaleStep(play: boolean, onPlay?: () => void, onDish?: () =>
   useEffect(() => {
     calls.current = { onPlay, onDish };
   });
+  const [live] = useState(play);
   useEffect(() => {
-    if (!start) return;
+    // A live kill under reduced motion skips the frames but still brings the dish up, as useCookStep does.
+    if (!start) return void (live && calls.current.onDish?.());
     calls.current.onPlay?.();
     const timers = [...STEP_AT, [4, FINISH_PODIUM_MS] as const].map(([s, at]) =>
       setTimeout(() => {
@@ -95,7 +98,7 @@ export function useFinaleStep(play: boolean, onPlay?: () => void, onDish?: () =>
       }, at),
     );
     return () => timers.forEach(clearTimeout);
-  }, [start]);
+  }, [start, live]);
   return step;
 }
 
