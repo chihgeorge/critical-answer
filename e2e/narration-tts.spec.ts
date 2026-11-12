@@ -2,7 +2,7 @@ import { test, expect, type Browser, type Page, type WebSocketRoute } from "@pla
 import { revealMarks } from "../lib/podium";
 import type { PodiumReveal } from "../lib/protocol";
 import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl } from "./answer";
-import { stubSpeechSynthesis, ttsCalls } from "./tts";
+import { setScreenAudio, stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -68,7 +68,7 @@ async function stubNoSpeechSynthesisApi(page: Page) {
   });
 }
 
-test("screen TTS toggle: renders, persists the preference, and unlocks audio on click", async ({ page }) => {
+test("screen TTS: no 語音 toggle on the screen; its first tap primes the voice, once", async ({ page }) => {
   await stubSpeechSynthesis(page);
   await page.goto("/");
   await page.getByRole("button", { name: /主持遊戲/ }).click();
@@ -77,19 +77,16 @@ test("screen TTS toggle: renders, persists the preference, and unlocks audio on 
   const screen = await page.context().newPage();
   await stubSpeechSynthesis(screen);
   await screen.goto(await screenUrl(page));
+  await expect(screen.getByRole("button", { name: "開啟音效與氣氛" })).toBeVisible();
+  // The 🔊 switch is the host's, in ⚙ 更多 (immersion.md PR3).
+  await expect(screen.getByRole("button", { name: /語音/ })).toHaveCount(0);
 
-  const toggle = screen.getByRole("button", { name: /語音/ });
-  await expect(toggle).toBeVisible();
-  await expect(toggle).toHaveText("🔇 語音關");
-
-  await toggle.click();
-  await expect(toggle).toHaveText("🔊 語音開");
-  // The unlock utterance runs synchronously inside the click handler (Safari/iOS gesture
-  // requirement) — an empty priming speak() call, not real narration.
+  // The priming utterance runs synchronously inside the tap (Safari/iOS gesture requirement): an empty speak() call,
+  // not real narration. A second tap primes nothing more.
+  await tapScreen(screen);
   expect(await ttsCalls(screen)).toEqual([""]);
-
-  await screen.reload();
-  await expect(screen.getByRole("button", { name: /語音/ })).toHaveText("🔊 語音開"); // preference persisted
+  await tapScreen(screen);
+  expect(await ttsCalls(screen)).toEqual([""]);
 });
 
 test("screen TTS: speaks live narration (both line and the next-team prompt), but never the onConnect replay", async ({ browser }) => {
@@ -117,7 +114,7 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
 
   // onConnect resends the room's current STATE — no NARRATION exists yet this early, so no
   // replay to worry about. Enable TTS before judging, so the upcoming live narration is heard.
-  await screen.getByRole("button", { name: /語音/ }).click();
+  await tapScreen(screen);
   expect(await ttsCalls(screen)).toEqual([""]); // just the unlock utterance so far
 
   await answerCorrectly(host);
@@ -130,7 +127,7 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
   expect(calls.length).toBeGreaterThanOrEqual(2); // unlock + at least the result line (+ then, if the scripted line has one)
 });
 
-test("screen TTS: turning the toggle off cancels any speech in progress", async ({ browser }) => {
+test("screen TTS: the host turning 🔊 off in ⚙ 更多 cancels the screen's speech in progress", async ({ browser }) => {
   const { host } = await twoTeamGame(browser);
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
@@ -138,15 +135,13 @@ test("screen TTS: turning the toggle off cancels any speech in progress", async 
   await screen.goto(await screenUrl(host));
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
 
-  const toggle = screen.getByRole("button", { name: /語音/ });
-  await toggle.click(); // on: 1 cancel-free unlock utterance so far
+  await tapScreen(screen); // 1 cancel-free priming utterance so far
   await answerCorrectly(host);
   await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
 
-  const cancelsBeforeToggleOff = await ttsCancelCount(screen);
-  await toggle.click(); // off, mid-utterance
-  await expect(toggle).toHaveText("🔇 語音關");
-  expect(await ttsCancelCount(screen)).toBeGreaterThan(cancelsBeforeToggleOff);
+  const cancelsBeforeOff = await ttsCancelCount(screen);
+  await setScreenAudio(host, "🔊 旁白語音", false); // off, mid-utterance
+  await expect.poll(() => ttsCancelCount(screen)).toBeGreaterThan(cancelsBeforeOff);
 });
 
 test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ browser }) => {
@@ -163,7 +158,7 @@ test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ brows
   await screen.goto(await screenUrl(host));
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
 
-  await screen.getByRole("button", { name: /語音/ }).click();
+  await tapScreen(screen);
   await answerCorrectly(host);
   await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
 
@@ -190,7 +185,7 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
   await stubSpeechSynthesis(screen);
   await screen.goto(await screenUrl(host));
   await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the reveal's ribbon names who eats (cooking I6)
-  await screen.getByRole("button", { name: /語音/ }).click();
+  await tapScreen(screen);
   expect(await ttsCalls(screen)).toEqual([""]); // only the unlock utterance — the replay was NOT spoken
 
   // The host now corrects that exact (replayed, unspoken) narration. The edited line must still be spoken.
@@ -240,13 +235,11 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
   // A screen opened mid-reveal reads the place calls (podium-reveal D20); this one opens after them.
   await expect.poll(() => Date.now() >= box.revealEnd, { timeout: 45_000 }).toBe(true); // the titles add 2.5 s each
 
-  // Now open the screen with TTS already on (remembered from an earlier visit). onConnect
-  // replays the EPILOGUE with `replay: true`: it must show, but must not be read aloud again.
+  // Now open the screen, the host's 🔊 on (the default). onConnect replays the EPILOGUE with `replay: true`: it must
+  // show, but must not be read aloud again.
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesis(screen);
-  await screen.addInitScript(() => localStorage.setItem("screen-tts-enabled", "true"));
   await screen.goto(`/room/${code}/screen`);
-  await expect(screen.getByRole("button", { name: /語音開/ })).toBeVisible();
   // setEpilogue and speak run in the same handler, so once the text shows, the speak decision is made.
   await expect(screen.locator(".px-say")).toContainText(EPILOGUE_RE, { timeout: 15_000 });
   expect(await ttsCalls(screen)).toEqual([]);
@@ -268,7 +261,7 @@ test("screen TTS: narration that arrives before the voice list has loaded is spo
   await stubSpeechSynthesisLateVoices(screen);
   await screen.goto(await screenUrl(host));
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
-  await screen.getByRole("button", { name: /語音/ }).click();
+  await tapScreen(screen);
 
   // A live narration arrives while there is still no voice to speak it with...
   await answerCorrectly(host);
@@ -281,7 +274,7 @@ test("screen TTS: narration that arrives before the voice list has loaded is spo
   await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
 });
 
-test("screen TTS: a browser with no Web Speech API renders no toggle at all", async ({ page }) => {
+test("screen TTS: a browser with no Web Speech API renders fine, and a tap breaks nothing", async ({ page }) => {
   await stubNoSpeechSynthesisApi(page);
   await page.goto("/");
   await page.getByRole("button", { name: /主持遊戲/ }).click();
@@ -291,11 +284,15 @@ test("screen TTS: a browser with no Web Speech API renders no toggle at all", as
   const screen = await page.context().newPage();
   await stubNoSpeechSynthesisApi(screen);
   await screen.goto(await screenUrl(page));
-  await expect(screen.getByText(code)).toBeVisible(); // page rendered fine otherwise
-  await expect(screen.getByRole("button", { name: /語音/ })).toHaveCount(0);
+  await expect(screen.getByText(code)).toBeVisible();
+  const errors: Error[] = [];
+  screen.on("pageerror", (e) => errors.push(e));
+  await tapScreen(screen); // primes no voice: there is none
+  await expect(screen.getByText(code)).toBeVisible();
+  expect(errors).toEqual([]);
 });
 
-test("screen TTS: blocked localStorage (private browsing) doesn't break the toggle, it just doesn't persist", async ({ page }) => {
+test("screen TTS: blocked localStorage (private browsing) doesn't break the voice: a tap still primes it", async ({ page }) => {
   await stubSpeechSynthesis(page);
   await page.addInitScript(() => {
     Object.defineProperty(window, "localStorage", {
@@ -321,11 +318,8 @@ test("screen TTS: blocked localStorage (private browsing) doesn't break the togg
   });
   await screen.goto(await screenUrl(page));
 
-  const toggle = screen.getByRole("button", { name: /語音/ });
-  await expect(toggle).toBeVisible();
-  await expect(toggle).toHaveText("🔇 語音關"); // reading the stored pref failed silently, default stands
-  await toggle.click();
-  await expect(toggle).toHaveText("🔊 語音開"); // still works this page load even though nothing can be saved
+  await expect(screen.getByRole("button", { name: "開啟音效與氣氛" })).toBeVisible();
+  await tapScreen(screen);
   expect(await ttsCalls(screen)).toEqual([""]);
 });
 
@@ -393,7 +387,7 @@ test("screen TTS: the how-to-play intro speaks each page's owl line once", async
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesis(screen);
   await screen.goto(await screenUrl(host));
-  await screen.getByRole("button", { name: /語音/ }).click();
+  await tapScreen(screen);
   expect(await ttsCalls(screen)).toEqual([""]);
 
   await expect(host.getByRole("checkbox", { name: "開始前播放玩法說明" })).toBeChecked();

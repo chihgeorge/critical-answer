@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { textOnlyBank, startGame, screenUrl } from "./answer";
+import { tapScreen } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -49,7 +50,7 @@ test("the big screen plays the wrong-answer effect when the host marks an answer
   await screen.goto(await screenUrl(host));
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();
   // Joining mid-game plays nothing for the event already on screen.
-  await screen.getByRole("button", { name: /音樂/ }).click();
+  await tapScreen(screen); // wakes the sound; the host's 🎵 is on by default
   await expect.poll(async () => (await oscTypes(screen)).length).toBeGreaterThan(0); // the music is playing
   expect(await oscTypes(screen)).not.toContain("sawtooth");
 

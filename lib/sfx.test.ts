@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { BOSS_PARRY, BOSS_RUMBLE, EAT_DONE, HEARTBEAT, SFX, type SfxNote } from "./sfx";
+import { BOSS_PARRY, BOSS_RUMBLE, DOOR_CREAK, EAT_DONE, HEARTBEAT, SFX, type SfxNote } from "./sfx";
+
+describe("DOOR_CREAK (immersion.md PR3)", () => {
+  it("is no sawtooth, and ends within 0.6 s so it clears before the next cue", () => {
+    expect(DOOR_CREAK.every((x) => x.wave !== "sawtooth")).toBe(true);
+    expect(Math.max(...DOOR_CREAK.map((x) => x.at + x.duration))).toBeLessThanOrEqual(0.6);
+  });
+});
 
 /** Seconds from the effect's start to its last note ending. */
 const sfxDuration = (notes: SfxNote[]) => Math.max(...notes.map((x) => x.at + x.duration));

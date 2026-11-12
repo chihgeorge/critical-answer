@@ -107,6 +107,8 @@ import {
   type Hold,
   type Pacing,
   type ScreenSound,
+  type ScreenAudio,
+  DEFAULT_SCREEN_AUDIO,
   type HostEffect,
   HOST_FX_WINDOW_MS,
   DEFAULT_BANK_ENTRY,
@@ -485,6 +487,8 @@ export class DungeonRoom {
   private judging = false;
   /** 手動停頓 (docs/designs/manual-pacing.md): in "manual" the pauses below wait for the host's ▶ 下一步. Saved. */
   private pacing: Pacing = "auto";
+  /** ⚙ 更多's sound switches for the big screens (immersion.md PR3). Saved; a new host of the code starts all on. */
+  private screenAudio: ScreenAudio = DEFAULT_SCREEN_AUDIO;
   /** The pauses the room times itself, one per slot (pace): a running timer in auto, a step waiting for HOST_STEP in
    * manual (`timer` null). "lock" is the beat of a revealed lock or a roll, or a boss miss's red tile; a stale one may
    * be left behind (its `label` is then null): whether the host revealed a lock is pendingLock.revealing, never this.
@@ -911,6 +915,7 @@ export class DungeonRoom {
       ...(this.extendedMs ? { extendedMs: this.extendedMs } : {}),
       phaseCard: this.phaseCard,
       ...(this.pacing === "manual" ? { pacing: "manual" as const } : {}),
+      ...this.screenAudioView(),
       ...(this.revealHold !== null ? { revealHeld: true as const } : {}),
       ...(this.intro !== null ? { intro: this.intro } : {}),
       ...(this.initiative ? { initiative: this.initiative } : {}),
@@ -991,6 +996,7 @@ export class DungeonRoom {
     this.revealFrom = s.revealFrom ?? null;
     // Before anything is armed below: a manual room's pauses come back as steps, not timers.
     this.pacing = s.pacing ?? "auto";
+    this.screenAudio = s.screenAudio ?? DEFAULT_SCREEN_AUDIO;
     // Ids start past any the room handed out before the restart: a HOST_STEP in flight then names no step.
     this.stepSeq = this.now();
     this.revealHold = s.revealHeld && this.game?.phase === "finished" ? ++this.stepSeq : null;
@@ -1274,7 +1280,7 @@ export class DungeonRoom {
     if (!this.game) {
       // A game that showed a question counts as played: the host page then leaves the intro unchecked (eng D5).
       const replay = this.playedQuestionIds.length > 0;
-      return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}), bankSize: bankSize(this.bank), ...this.pacingView() };
+      return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}), bankSize: bankSize(this.bank), ...this.pacingView(), ...this.screenAudioView() };
     }
     // A door opening shows the game from before the press (branch-fork.md); online is live, phones come and go meanwhile.
     // So does a fortune's lit slice: the effect shows on the card (fortune-teller.md).
@@ -1313,6 +1319,7 @@ export class DungeonRoom {
       ...this.liveMedia(),
       ...(this.clipError !== null && this.clipError === this.shownVideoId() ? { clipError: true as const } : {}),
       screenSound: this.screenSound(),
+      ...this.screenAudioView(),
       ...(this.clipPlaying() ? { clipPlaying: true as const } : {}),
       ...this.buzzCategories(),
       // No dish: the boss's dish is served on the kill, not before (monster-cuisine.md).
@@ -1339,6 +1346,21 @@ export class DungeonRoom {
   private undoWrong(): { undoWrong?: { teamId: string; questionId: string } } {
     const undo = this.undoPending ? (this.undoHeld() ? null : this.undoPending) : this.undoOpen(this.undo) ? this.undo : null;
     return undo ? { undoWrong: { teamId: undo.teamId, questionId: undo.questionId } } : {};
+  }
+
+  /** LOBBY's, STATE's and the save's `screenAudio`: only when a switch is off, so all on looks like an older server. */
+  private screenAudioView(): { screenAudio?: ScreenAudio } {
+    const a = this.screenAudio;
+    return a.music && a.voice && a.ambience ? {} : { screenAudio: a };
+  }
+
+  /** HOST_SCREEN_AUDIO (immersion.md PR3): every page gets the new setting, the big screens apply it. */
+  private handleHostScreenAudio(conn: Conn, audio: ScreenAudio) {
+    if (!this.requireHost(conn)) return;
+    const a = this.screenAudio;
+    if (a.music === audio.music && a.voice === audio.voice && a.ambience === audio.ambience) return;
+    this.screenAudio = audio;
+    this.broadcastState();
   }
 
   /** The pacing switch and the step a manual room waits on, for the host page. Never which side hides ⚔️. */
@@ -1692,6 +1714,7 @@ export class DungeonRoom {
     this.revealFrom = null;
     this.revealHold = null;
     this.pacing = "auto";
+    this.screenAudio = DEFAULT_SCREEN_AUDIO;
     this.revealOnRead = false;
     this.staleBeforeSeq = null;
     this.playedQuestionIds = [];
@@ -1990,6 +2013,9 @@ export class DungeonRoom {
           break;
         case "HOST_EFFECT":
           this.handleHostEffect(sender, msg.effect);
+          break;
+        case "HOST_SCREEN_AUDIO":
+          this.handleHostScreenAudio(sender, msg.audio);
           break;
         case "HOST_RULE_CATCH":
           this.handleHostRuleCatch(sender, msg.upheld);

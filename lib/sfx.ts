@@ -147,3 +147,6 @@ export const THIEF_SNEAK: SfxNote[] = [slide(0, 0.08, "B5", "B3"), n(0.14, 0.03,
 
 /** The chef's （廚師 +N） on the dish card: two little pops. */
 export const CHEF_SIZZLE: SfxNote[] = [n(0, 0.05, "C6", "triangle"), n(0.07, 0.05, "G6", "triangle")];
+
+/** The fog reveal (immersion.md PR3): a door creaks open, falling and wobbling, a game cue like the class moments. */
+export const DOOR_CREAK: SfxNote[] = [slide(0, 0.18, "F#3", "D3", "triangle"), slide(0.16, 0.14, "E3", "C#3", "triangle"), slide(0.28, 0.3, "D3", "A#2", "triangle")];

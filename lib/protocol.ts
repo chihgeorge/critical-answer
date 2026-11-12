@@ -270,6 +270,9 @@ export type ClientMessage =
   /** ⚡ 雷聲 / 👹 低吼 (docs/designs/immersion.md PR2): the room relays it to keyed big screens as SCREEN_EFFECT, at most
    * one press per HOST_FX_WINDOW_MS per room (extras are dropped silently), and drops it while `clipPlaying`. */
   | { type: "HOST_EFFECT"; effect: HostEffect }
+  /** ⚙ 更多's three sound switches for the big screens (docs/designs/immersion.md PR3): the whole setting each time.
+   * The room keeps it, saves it and sends it in LOBBY and STATE as `screenAudio`. */
+  | { type: "HOST_SCREEN_AUDIO"; audio: ScreenAudio }
   /** The host rules the open catch: 🚨 成立 (`upheld`) or 🛡️ 冤枉. */
   | { type: "HOST_RULE_CATCH"; upheld: boolean }
   /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
@@ -424,7 +427,7 @@ export interface MediaCommand {
 export type ServerMessage =
   /** `replay`: this room has played a game, so the host page leaves 開始前播放玩法說明 unchecked (eng D5).
    * `bankSize`: question counts only (no content), so the host page can warn a bank is too small for its teams. */
-  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true; bankSize?: BankSize; pacing?: "manual" }
+  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true; bankSize?: BankSize; pacing?: "manual"; screenAudio?: ScreenAudio }
   | {
       type: "STATE";
       view: SpectatorView;
@@ -469,6 +472,8 @@ export type ServerMessage =
       /** Whether a big screen can be heard (immersion.md PR0): "ready" when any keyed screen reported 聲音就緒, "muted"
        * when keyed screens are connected but none did, "none" when no keyed screen is connected. Absent from older servers. */
       screenSound?: ScreenSound;
+      /** The host's sound switches for the big screens (immersion.md PR3), also in LOBBY. Absent means all on. */
+      screenAudio?: ScreenAudio;
       /** The host's ▶ is playing the video on screen and the screen has not reported its end or an error (immersion.md
        * PR2): the host page greys ⚡ 👹. Absent means false, also from an older server. A hint only: each screen drops
        * a SCREEN_EFFECT itself while its own player plays. */
@@ -596,6 +601,17 @@ export interface HostPick {
 }
 
 export type ScreenSound = "ready" | "muted" | "none";
+
+/** The host's sound switches for every big screen (docs/designs/immersion.md PR3): 🎵 音樂 (the music and the game
+ * cues), 🔊 旁白語音 (the narration voice), 🌧 環境音 (the room ambience). Off silences only that one. */
+export type ScreenAudio = { music: boolean; voice: boolean; ambience: boolean };
+export const DEFAULT_SCREEN_AUDIO: ScreenAudio = { music: true, voice: true, ambience: true };
+/** A message's or a save's `screenAudio`: three booleans, or null for anything else. */
+export function parseScreenAudio(raw: unknown): ScreenAudio | null {
+  if (!raw || typeof raw !== "object") return null;
+  const a = raw as Record<string, unknown>;
+  return typeof a.music === "boolean" && typeof a.voice === "boolean" && typeof a.ambience === "boolean" ? { music: a.music, voice: a.voice, ambience: a.ambience } : null;
+}
 
 /** The host's effect pads (immersion.md PR2). */
 export const HOST_EFFECTS = ["thunder", "growl"] as const;
@@ -809,6 +825,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_EFFECT": {
       const effect = HOST_EFFECTS.find((e) => e === m.effect);
       return effect ? { type: "HOST_EFFECT", effect } : null;
+    }
+    case "HOST_SCREEN_AUDIO": {
+      const audio = parseScreenAudio(m.audio);
+      return audio ? { type: "HOST_SCREEN_AUDIO", audio } : null;
     }
     case "HOST_RULE_CATCH":
       return typeof m.upheld === "boolean" ? { type: "HOST_RULE_CATCH", upheld: m.upheld } : null;

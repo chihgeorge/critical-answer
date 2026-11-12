@@ -2,7 +2,14 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { getHostToken } from "@/lib/room-code";
-import type { ClientMessage } from "@/lib/protocol";
+import type { ClientMessage, ScreenAudio } from "@/lib/protocol";
+
+/** ⚙ 更多's sound switches: what each one sets on every big screen. 🌧 off silences only the ambience. */
+const AUDIO_SWITCHES: { key: keyof ScreenAudio; label: string }[] = [
+  { key: "music", label: "🎵 音樂" },
+  { key: "voice", label: "🔊 旁白語音" },
+  { key: "ambience", label: "🌧 環境音" },
+];
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { CATCH_USES, ORACLE_USES } from "@/lib/game-state";
 import { Panel, PixelButton } from "@/components/pixel";
@@ -19,6 +26,7 @@ export function MoreDrawer({
   playing,
   antiCheat,
   screen,
+  screenAudio,
 }: {
   /** The page's origin ("" before hydration). */
   origin: string;
@@ -35,6 +43,8 @@ export function MoreDrawer({
   antiCheat?: boolean;
   /** The big-screen link and QR, once a game has started (before that they sit on the page itself). */
   screen: ReactNode;
+  /** The big screens' sound switches (immersion.md PR3, UC1), in the lobby and in a game. */
+  screenAudio: ScreenAudio;
 }) {
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
@@ -56,6 +66,23 @@ export function MoreDrawer({
             </PixelButton>
           </div>
           {screen && <section>{screen}</section>}
+          <section className="flex flex-col gap-2">
+            <div className="text-[15px]">大螢幕聲音（每台大螢幕都跟著這裡；音效和主持人加料一直都在）</div>
+            <div className="flex flex-wrap gap-2">
+              {AUDIO_SWITCHES.map(({ key, label }) => (
+                <PixelButton
+                  key={key}
+                  role="switch"
+                  aria-checked={screenAudio[key]}
+                  variant={screenAudio[key] ? undefined : "flee"}
+                  onClick={() => send({ type: "HOST_SCREEN_AUDIO", audio: { ...screenAudio, [key]: !screenAudio[key] } })}
+                  className="!m-0 min-h-[44px] !px-4 !py-2 text-[16px]"
+                >
+                  {`${label}：${screenAudio[key] ? "開" : "關"}`}
+                </PixelButton>
+              ))}
+            </div>
+          </section>
           {bossable.length > 0 && (
             <section className="flex flex-col gap-2">
               <div className="text-[15px]">{`送隊伍進王房（不用等到 ${BOSS_THRESHOLD} 分，送了不能退回）`}</div>

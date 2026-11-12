@@ -7,6 +7,7 @@
 // master → speakers; the music, boss, host and ambient layers → master, each with its own volume from
 // layerGains(); and the existing game cues on their own bus → master.
 
+import type { Ambience } from "./ambience";
 import { DUNGEON_THEME, loopDuration, songEvents, type Song } from "./bgm";
 import type { SfxNote } from "./sfx";
 
@@ -25,6 +26,13 @@ const HOST_VOLUME = 0.09;
 /** Room ambience, under the music. */
 const AMBIENT_VOLUME = 0.03;
 const AMBIENT_DUCKED_VOLUME = 0.01;
+/** Inside the ambient layer: noise sounds louder than a tone of the same level, so the beds sit lower than the blips. */
+const AMBIENT_BED = 0.5;
+const AMBIENT_EVENT = 0.8;
+/** A change of ambience crossfades over this long; the new one fades in a little faster. */
+const AMBIENT_FADE_S = 1.5;
+/** The looped noise, long enough that the loop is not heard. */
+const NOISE_S = 4;
 
 /** The sound layers of the 聲音分層表. The existing game cues (SFX, BOSS_ALARM, …) are not a layer: they follow the
  * 🎵 switch only and are never silenced by a video, a buzz hold or the narration. */
@@ -54,6 +62,9 @@ export function layerGains({ bgmOn, videoPlaying, held, speaking }: MixState): R
 
 const LAYERS: Layer[] = ["music", "boss", "host", "ambient"];
 
+/** One sounding ambience: its own gain under the ambient layer, and how to silence it for good. */
+type AmbienceGen = { out: GainNode; stop(): void };
+
 export type BgmPlayer = ReturnType<typeof createBgmPlayer>;
 
 /** `onState`: called whenever the AudioContext's state changes (it starts running, or the browser suspends it). */
@@ -73,6 +84,12 @@ export function createBgmPlayer(onState?: () => void) {
   let next = 0;
   let loops = 0;
   const mix: MixState = { bgmOn: false, videoPlaying: false, held: false, speaking: false };
+  /** The room ambience asked for (immersion.md PR3), kept while it cannot sound (no context yet, asleep, 🎵 off). */
+  let ambience: Ambience | null = null;
+  /** The ambience sounding now, and at most one fading out after a change. */
+  let live: AmbienceGen | null = null;
+  let fading: AmbienceGen | null = null;
+  let noise: AudioBuffer | null = null;
 
   function gain(c: AudioContext, value: number, dest: AudioNode) {
     const node = c.createGain();
@@ -81,13 +98,13 @@ export function createBgmPlayer(onState?: () => void) {
     return node;
   }
 
-  // shortcut: the host and ambient layers have no caller yet; the host's buttons (PR2) and the room ambience (PR3) play on them.
   function ensure(): AudioContext {
     if (ctx) return ctx;
     const c = new AudioContext();
-    // The context can wake by any path (a later tap, the browser itself): the music follows.
+    // The context can wake by any path (a later tap, the browser itself): the music and the ambience follow.
     c.onstatechange = () => {
       play();
+      resumeAmbience();
       onState?.();
     };
     const master = gain(c, 1, c.destination);
@@ -188,7 +205,122 @@ export function createBgmPlayer(onState?: () => void) {
   function stop() {
     mix.bgmOn = false;
     halt();
+    dropAmbience(0);
     apply();
+  }
+
+  /** Start the remembered ambience when it can be heard: 🎵 on, the context awake, none sounding yet. A WebAudio
+   * failure (an old TV) only loses the ambience. */
+  function resumeAmbience() {
+    if (live || !ambience || !mix.bgmOn || !ctx || !layers || ctx.state !== "running") return;
+    try {
+      live = buildAmbience(ctx, layers.ambient, ambience);
+    } catch (err) {
+      console.error("[fx] ambience", err);
+    }
+  }
+
+  /** Fade the sounding ambience out over `fadeS` (0: at once). One still fading from before stops at once, so a quick
+   * run of changes never stacks more than two. */
+  function dropAmbience(fadeS: number) {
+    fading?.stop();
+    fading = null;
+    const gen = live;
+    live = null;
+    if (!gen) return;
+    if (!fadeS || !ctx) return gen.stop();
+    gen.out.gain.setTargetAtTime(0, ctx.currentTime, fadeS / 4);
+    fading = gen;
+    setTimeout(() => {
+      gen.stop();
+      if (fading === gen) fading = null;
+    }, fadeS * 1000);
+  }
+
+  /** One room ambience under `dest`, synthesized from a looped noise buffer and a few random events (no audio files). */
+  function buildAmbience(c: AudioContext, dest: AudioNode, kind: Ambience): AmbienceGen {
+    if (!noise) {
+      const buf = c.createBuffer(1, Math.round(c.sampleRate * NOISE_S), c.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      noise = buf;
+    }
+    const buffer = noise;
+    const out = gain(c, 0, dest);
+    out.gain.setTargetAtTime(1, c.currentTime, AMBIENT_FADE_S / 6);
+    const sources: { stop(): void }[] = [];
+    let tick: ReturnType<typeof setInterval> | null = null;
+    function filtered(type: BiquadFilterType, freq: number, level: number) {
+      const f = c.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      const g = gain(c, level, out);
+      f.connect(g);
+      return { f, g };
+    }
+    function bed(type: BiquadFilterType, freq: number, level: number) {
+      const chain = filtered(type, freq, level);
+      const src = c.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      src.connect(chain.f);
+      src.start();
+      sources.push(src);
+      return chain;
+    }
+    /** `fire(at)` every `min`–`max` seconds on the context clock, queued a little ahead like the music; an event the
+     * clock already passed (a background tab's slow timer) is dropped, never played late in a burst. */
+    function every(min: number, max: number, fire: (at: number) => void) {
+      let at = c.currentTime + min * Math.random();
+      const run = () => {
+        const horizon = c.currentTime + LOOKAHEAD_S;
+        for (; at <= horizon; at += min + (max - min) * Math.random()) if (at >= c.currentTime) fire(at);
+      };
+      run();
+      tick = setInterval(run, TICK_MS);
+    }
+    if (kind === "wind") {
+      const { f, g } = bed("bandpass", 400, AMBIENT_BED);
+      // A slow gust: the band and the level swell together.
+      const lfo = c.createOscillator();
+      lfo.frequency.value = 0.15;
+      const sweep = c.createGain();
+      sweep.gain.value = 200;
+      sweep.connect(f.frequency);
+      const swell = c.createGain();
+      swell.gain.value = AMBIENT_BED / 2;
+      swell.connect(g.gain);
+      lfo.connect(sweep);
+      lfo.connect(swell);
+      lfo.start();
+      sources.push(lfo);
+    } else if (kind === "campfire") {
+      bed("lowpass", 500, AMBIENT_BED);
+      const crackle = filtered("highpass", 2500, AMBIENT_EVENT);
+      every(0.08, 0.7, (at) => {
+        const src = c.createBufferSource();
+        src.buffer = buffer;
+        src.connect(crackle.f);
+        src.start(at, Math.random() * (NOISE_S - 0.1), 0.02 + Math.random() * 0.04);
+      });
+    } else {
+      bed("lowpass", 300, AMBIENT_BED * 0.3);
+      every(1.5, 4.5, (at) => tone(out, "sine", 1400, at, at + 0.14, AMBIENT_EVENT, 0.005, 700));
+    }
+    return {
+      out,
+      stop() {
+        if (tick) clearInterval(tick);
+        for (const s of sources) {
+          try {
+            s.stop();
+          } catch {
+            // already stopped
+          }
+        }
+        out.disconnect();
+      },
+    };
   }
 
   /** Queue `notes` at each offset (seconds from now) on its own gain under `layer`; the returned function silences
@@ -207,6 +339,7 @@ export function createBgmPlayer(onState?: () => void) {
     async unlock() {
       await wake(ensure());
       play();
+      resumeAmbience();
     },
     /** The AudioContext is awake: sound can play. */
     running(): boolean {
@@ -221,12 +354,25 @@ export function createBgmPlayer(onState?: () => void) {
       apply();
       await wake(c);
       play();
+      resumeAmbience();
     },
     /** Turn 🎵 off. The AudioContext stays open, so the host layer still sounds. */
     stop,
+    /** The host's 🎵 switch (immersion.md PR3). Never creates or wakes the AudioContext, so it is safe outside a
+     * gesture: switched on while asleep, the music starts when unlock() wakes it. */
+    setMusic(on: boolean) {
+      if (on === mix.bgmOn) return;
+      if (!on) return stop();
+      mix.bgmOn = true;
+      apply();
+      play();
+      resumeAmbience();
+    },
     /** Close the AudioContext for good: the page is going away. */
     close() {
       stop();
+      fading?.stop();
+      fading = null;
       void ctx?.close();
       ctx = null;
       layers = null;
@@ -254,6 +400,14 @@ export function createBgmPlayer(onState?: () => void) {
       const was = !!timer;
       halt();
       if (was) play(gapS);
+    },
+    /** The room ambience (immersion.md PR3), or none. The same kind again changes nothing; another one crossfades.
+     * Never creates the AudioContext: before it exists, asleep, or with 🎵 off, the kind waits for the next wake. */
+    setAmbience(kind: Ambience | null) {
+      if (kind === ambience) return;
+      ambience = kind;
+      dropAmbience(AMBIENT_FADE_S);
+      resumeAmbience();
     },
     /** ③ The heartbeat: `notes` at each offset on the boss layer. Call the result to cancel the beats still ahead. */
     pattern,

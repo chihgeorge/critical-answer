@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
-import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FileVideo, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ServerMessage, type SoundCue, type StateMessage, type HostEffect } from "@/lib/protocol";
+import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FileVideo, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ScreenAudio, type ServerMessage, type SoundCue, type StateMessage, type HostEffect } from "@/lib/protocol";
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { CATCH_PAY, checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { FORK_ARCH, sceneFloor, TEAM_LOOKS } from "@/lib/pixel-art";
@@ -18,7 +18,7 @@ import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CHEF_SIZZLE, CLERIC_PRAYER, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
+import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
 import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
 import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
 import { CLASS_COLOR, CLASS_PULSE, CLASS_TINT, createFlashBudget, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
@@ -29,7 +29,7 @@ import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { antiCheatBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
 import { TransitionOverlay } from "@/components/transition-overlay";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, prefersReducedMotion, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
-import { MapStrip } from "@/components/map-strip";
+import { FogRevealContext, MapStrip } from "@/components/map-strip";
 import { McOption, optionLetter, type OptionLook } from "@/components/mc-option";
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
@@ -41,20 +41,16 @@ import { FilePlayer } from "@/components/file-player";
 import { resendClipError, type ClipErrorSeen } from "@/lib/youtube";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
-import { readStored, writeStored } from "@/lib/stored";
+import { ambienceFor, FOG_REVEAL_DELAY_MS, FOG_REVEAL_MS, revealFor, screenAudioOf, type FogReveal } from "@/lib/ambience";
 import { getScreenKey } from "@/lib/room-code";
 import { sortOrderOf } from "@/lib/sort-order";
 import { EventStage } from "@/components/event-room";
 import { FortuneCard, FortunePizza } from "@/components/fortune";
 import { BOON_TEXT, EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT, eventEffectLine, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT } from "@/lib/event-text";
 
-const TTS_ENABLED_STORAGE = "screen-tts-enabled";
-const BGM_ENABLED_STORAGE = "screen-bgm-enabled";
 const bgmSupported = () => "AudioContext" in window;
 
-/** True only in a browser that actually implements the Web Speech API — the toggle button
- * doesn't render at all otherwise (a rendered-but-disabled button implies the feature could
- * work here if only the user did something, which isn't true). */
+/** True only in a browser that actually implements the Web Speech API. */
 const ttsSupported = () => "speechSynthesis" in window;
 /** Browser support never changes while the page is open, so there is nothing to subscribe to. */
 const noSubscribe = () => () => {};
@@ -1087,8 +1083,11 @@ export default function ScreenPage() {
     heldEpilogue.current = null;
   }
 
+  // --- The host's sound switches (immersion.md PR3, UC1): ⚙ 更多 sets 🎵, 🔊 and 🌧 for every big screen ---
+  const [screenAudio, setScreenAudio] = useState(() => screenAudioOf(null));
+
   // --- TTS (docs/designs/dm-voice-narration-tts.md) ---
-  const [ttsOn, setTtsOn] = useState(false);
+  const ttsOn = screenAudio.voice;
   /** The how-to-play page whose owl line was last spoken (D11). */
   const introSpoken = useRef<number | null>(null);
   const [ttsVoice, setTtsVoice] = useState<SpeechSynthesisVoice | undefined>(undefined);
@@ -1109,17 +1108,6 @@ export default function ScreenPage() {
    * spoken) would never update it, and a correction to it would have nothing to compare against
    * (adversarial review finding — see shouldSpeakNarration's doc comment for the fixed bug). */
   const lastSpokenNarration = useRef<SpokenNarration | null>(null);
-
-  // ttsSupported() reads `window`, which doesn't exist during SSR: the server snapshot (false)
-  // keeps the first client render matching the server HTML, no hydration mismatch.
-  const showTtsToggle = useSyncExternalStore(noSubscribe, ttsSupported, () => false);
-  useEffect(() => {
-    // A named function, not the effect body itself: react-hooks/set-state-in-effect.
-    function restore() {
-      if (readStored(TTS_ENABLED_STORAGE) === "true") setTtsOn(true);
-    }
-    restore();
-  }, []);
 
   useEffect(() => {
     if (!ttsSupported()) return;
@@ -1258,27 +1246,18 @@ export default function ScreenPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ttsVoice]);
 
-  function toggleTts() {
-    if (!ttsOn && ttsSupported()) {
-      // The unlock speak() call must run synchronously inside this click handler — Safari/iOS
-      // gate audio output behind a user gesture that itself produces sound (see design doc's
-      // Approach A note). A later, async speak() from a NarrationEvent arriving minutes on
-      // wouldn't count as "inside the gesture" and can silently fail there.
-      window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
-    } else if (ttsOn) {
-      speech.current = null;
-      window.speechSynthesis.cancel();
-      pendingLines.current = null; // turned off: nothing waiting should play later
-      if (progress.current) progress.current.spoken = null;
-    }
-    setTtsOn((on) => {
-      writeStored(TTS_ENABLED_STORAGE, String(!on));
-      return !on;
-    });
+  /** The voice has been primed inside a gesture: Safari/iOS gate speech behind a user gesture that itself speaks (see
+   * the design doc's Approach A note), and a narration arriving minutes later is no gesture. Primed whatever 🔊 is set
+   * to, so the host can turn it on later without anyone touching the TV. */
+  const ttsPrimed = useRef(false);
+  function primeTts() {
+    if (ttsPrimed.current || !ttsSupported()) return;
+    ttsPrimed.current = true;
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
   }
 
-  // --- Background music (lib/bgm.ts): off by default, like the narration voice ---
-  const [bgmOn, setBgmOn] = useState(false);
+  // --- Background music (lib/bgm.ts): the host's 🎵 switch, on by default ---
+  const bgmOn = screenAudio.music;
   const showBgmToggle = useSyncExternalStore(noSubscribe, bgmSupported, () => false);
   const bgm = useRef<BgmPlayer | null>(null);
   /** The AudioContext is awake (a tap on the page woke it): sound can play. */
@@ -1294,30 +1273,28 @@ export default function ScreenPage() {
     player().hold(held);
   }, [held]);
 
+  /** Wake the sound inside a gesture (a click or a key press: browsers only let audio start then), start the music if
+   * the host's 🎵 is on, and prime the voice. */
+  function wakeSound() {
+    primeTts();
+    if (bgmSupported()) void player().unlock();
+  }
   useEffect(() => {
-    // Read in an effect so SSR and the first render agree.
-    // A named function, not the effect body itself: react-hooks/set-state-in-effect.
-    function restore(): boolean {
-      const on = readStored(BGM_ENABLED_STORAGE) === "true";
-      if (on) setBgmOn(true);
-      return on;
-    }
-    if (!bgmSupported()) return;
-    const on = restore();
-    // Browsers only let audio start inside a user gesture, so the first click or key press on the page wakes the
-    // AudioContext, whatever 🎵 is set to (immersion.md eng: unlock is not music); a remembered "on" starts the music.
-    // One gesture unlocks: both listeners go, or a later key press restarts music the 🎵 button just turned off.
+    // The first click or key press on the page wakes the sound (immersion.md eng: unlock is not music). One gesture
+    // unlocks; after that, only the 「👆 開聲音」 button does.
     const off = () => {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
     };
     const unlock = () => {
       off();
-      void (on ? player().start() : player().unlock());
+      wakeSound();
     };
     window.addEventListener("pointerdown", unlock);
     window.addEventListener("keydown", unlock);
     return off;
+    // Once, on mount: wakeSound reads refs, not render values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Keep the music under the narration voice: lower it while speechSynthesis is talking.
@@ -1456,12 +1433,59 @@ export default function ScreenPage() {
   useEffect(() => {
     bgmOnNow.current = bgmOn;
   }, [bgmOn]);
+  /** The switches a LOBBY or STATE carries, applied at once (on connect and reconnect too). 🎵 off stops the music and
+   * ③'s heartbeat with it (the host layer still sounds); 🔊 off cuts the voice and drops anything waiting to be read. */
+  function applyScreenAudio(next: ScreenAudio) {
+    setScreenAudio(next);
+    player().setMusic(next.music);
+    if (!next.music && heart.current) {
+      heart.current.cancel();
+      heart.current = null;
+      setHeartGlow(null);
+    }
+    if (next.voice || !ttsSupported()) return;
+    speech.current = null; // before cancel(): see speakAt's guard
+    window.speechSynthesis.cancel();
+    pendingLines.current = null;
+    if (progress.current) progress.current.spoken = null;
+  }
   useEffect(() => {
     transitionOn.current = !!transition;
   }, [transition]);
+  const heldNow = useRef(false);
+  useEffect(() => {
+    heldNow.current = held;
+  }, [held]);
+  // The room ambience (immersion.md PR3): one per room, crossfaded when the room on stage changes. Never wakes the sound.
+  const ambience = ambienceFor(game);
+  useEffect(() => {
+    player().setAmbience(ambience);
+  }, [ambience]);
+  // The fog reveal (immersion.md PR3): clouds sit on the room a team just opened, then blow off with the door's creak
+  // once the correct-answer cue has played. A video, a buzz waiting on the host or a banner then skips it.
+  const [fogReveal, setFogReveal] = useState<FogReveal | null>(null);
+  const fogTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  function clearFog() {
+    fogTimers.current.forEach(clearTimeout);
+    fogTimers.current = [];
+    setFogReveal(null);
+  }
+  function startFog(room: number) {
+    clearFog(); // a newer room replaces the old reveal
+    setFogReveal({ room, step: "covered", lit: false });
+    fogTimers.current.push(
+      setTimeout(() => {
+        if (videoPlaying.current || heldNow.current || transitionOn.current) return clearFog();
+        bgm.current?.playCue(DOOR_CREAK);
+        setFogReveal({ room, step: "blow", lit: flash() });
+        fogTimers.current.push(setTimeout(clearFog, FOG_REVEAL_MS));
+      }, FOG_REVEAL_DELAY_MS),
+    );
+  }
   useEffect(
     () => () => {
       parryTimers.current.forEach(clearTimeout);
+      fogTimers.current.forEach(clearTimeout);
       heart.current?.cancel();
       if (hostFxTimer.current) clearTimeout(hostFxTimer.current);
       classTimers.current.forEach(clearTimeout);
@@ -1547,29 +1571,15 @@ export default function ScreenPage() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  function toggleBgm() {
-    const next = !bgmOn;
-    // start() runs inside this click, which is what lets the browser play it.
-    if (next) void player().start();
-    else {
-      bgm.current?.stop();
-      stopHeart(); // ③ 🎵 off ends the heartbeat, its glow too
-    }
-    setBgmOn(next);
-    writeStored(BGM_ENABLED_STORAGE, String(next));
-  }
-
   /** The unlock buttons' label after a press: 開啟中… at once, 再點一次 if the sound is still asleep 1 s later. */
   const [unlockPress, setUnlockPress] = useState<"opening" | "again" | null>(null);
-  /** The lobby's 「點一下開啟音效與氣氛」 and the corner 「👆 開聲音」 (immersion.md PR0): wake the sound and turn 🎵 and
-   * 語音 on, both remembered. Runs inside the click, like the two toggles. */
+  /** The lobby's 「點一下開啟音效與氣氛」 and the corner 「👆 開聲音」 (immersion.md PR0): wake the sound inside the click.
+   * What plays is the host's call (⚙ 更多's switches, PR3). */
   function enableSound() {
     setUnlockPress("opening");
     // Still asleep a second later: ask for another tap. Awake: back to the plain label, for the next time it falls asleep.
     setTimeout(() => setUnlockPress((p) => (p !== "opening" ? p : bgm.current?.running() ? null : "again")), 1000);
-    if (!ttsOn && ttsSupported()) toggleTts();
-    if (!bgmOn) toggleBgm();
-    else void player().unlock();
+    wakeSound();
   }
   /** The 聲音就緒 last sent to the room. */
   const soundSent = useRef<boolean | null>(null);
@@ -1595,6 +1605,7 @@ export default function ScreenPage() {
       parryKey.current = null;
       parryRetry.current = false; // a buzz from before the drop would come in late
       endParry();
+      clearFog();
       clearClassFx();
       // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
       progress.current = null;
@@ -1606,6 +1617,8 @@ export default function ScreenPage() {
       switch (msg.type) {
         case "LOBBY":
           clipEnded.current = null;
+          applyScreenAudio(screenAudioOf(msg));
+          clearFog();
           setLobby(msg.teams);
           setFloats([]);
           setGame(null);
@@ -1644,6 +1657,7 @@ export default function ScreenPage() {
           break;
         case "STATE":
           setGame(msg);
+          applyScreenAudio(screenAudioOf(msg));
           if (msg.question?.id !== clipEnded.current) clipEnded.current = null;
           if (clipResendDue.current) {
             clipResendDue.current = false;
@@ -1693,6 +1707,10 @@ export default function ScreenPage() {
             const turn = describeTurn(msg.view, msg.question, msg.phaseCard?.monster);
             heartKey.current = bossClock(msg) ? `${turn.team?.id ?? ""}:${turn.questionId ?? ""}` : null;
             if (heart.current && heart.current.key !== heartKey.current) stopHeart();
+            // A room just opened: its fog reveal. Off the playing phase, none.
+            const opened = revealFor(prev, msg);
+            if (msg.phase !== "playing") clearFog();
+            else if (opened !== null) startFog(opened);
             prevState.current = msg;
           }
           if (msg.phase === "finished" && lastPhase.current === "playing" && msg.reveal?.dish) setFinale(true);
@@ -1767,13 +1785,13 @@ export default function ScreenPage() {
   const unlockLabel = unlockPress === "opening" ? "開啟中…" : unlockPress === "again" && !audioRunning ? "再點一次" : null;
 
   return (
-    <>
+    <FogRevealContext.Provider value={fogReveal}>
       <Stage>
         {/* 👹's shake moves the stage content only, never Stage's scaled element, the edge glows or the banners. A parry
             counter starting meanwhile takes the shake over: two shakes never stack past 8px. */}
         <div className={`absolute inset-0${hostFx?.look === "shake" && parry !== "counter" ? " px-growl" : ""}`}>
         {!game && <Lobby code={code} teams={lobby} />}
-        {!game && showBgmToggle && !soundReady && (
+        {!game && showBgmToggle && !audioRunning && (
           // Between the room-code panel (ends near y 236) and the heroes; at most 40px tall.
           <PixelButton
             onClick={enableSound}
@@ -1865,43 +1883,19 @@ export default function ScreenPage() {
           )}
         </div>
       </Stage>
-      {/* Outside <Stage>, fixed to the real viewport (not scaled/letterboxed with the 960x540
-          canvas) — the 960x540 stage has no free margin left in any phase (Lobby/Playing/
-          Finished all use the full width), so a toggle drawn inside it would collide with the
-          team-status row or the top banner depending on game phase. A real-size corner control,
-          like a video player's mute button living outside the video frame, sidesteps all of
-          that and stays a consistent, comfortably tappable size regardless of TV scale
-          (/review design finding: the original in-Stage placement was both too small a touch
-          target and overlapped the team-status row during Playing). */}
-      {showTtsToggle && (
-        <PixelButton
-          onClick={toggleTts}
-          className="!m-0 !px-4 !py-2 text-[16px]"
-          style={{ position: "fixed", bottom: 12, right: 12, zIndex: 30 }}
-        >
-          {ttsOn ? "🔊 語音開" : "🔇 語音關"}
-        </PixelButton>
-      )}
-      {showBgmToggle && (
-        <PixelButton
-          onClick={toggleBgm}
-          className="!m-0 !px-4 !py-2 text-[16px]"
-          // Left of the voice toggle, same corner and size (see the comment above it).
-          style={{ position: "fixed", bottom: 12, right: showTtsToggle ? 150 : 12, zIndex: 30 }}
-        >
-          {bgmOn ? "🎵 音樂開" : "🎵 音樂關"}
-        </PixelButton>
-      )}
+      {/* Outside <Stage>, fixed to the real viewport (not scaled/letterboxed with the 960x540 canvas): the stage has no
+          free margin in any phase, and a real-size corner control stays comfortably tappable at any TV scale. The
+          sound's switches live on the host's ⚙ 更多 (immersion.md PR3, UC1); only the unlock stays here. */}
       {showBgmToggle && game && !audioRunning && (
-        // Mid-game, while the sound is still asleep (the page's first tap wakes it; after that only this button does): left of 🎵, same corner and size.
+        // Mid-game, while the sound is still asleep (the page's first tap wakes it; after that only this button does).
         <PixelButton
           onClick={enableSound}
           className="!m-0 !px-4 !py-2 text-[16px]"
-          style={{ position: "fixed", bottom: 12, right: showTtsToggle ? 288 : 150, zIndex: 30, background: "var(--warn)" }}
+          style={{ position: "fixed", bottom: 12, right: 12, zIndex: 30, background: "var(--warn)" }}
         >
           {unlockLabel ?? "👆 開聲音"}
         </PixelButton>
       )}
-    </>
+    </FogRevealContext.Provider>
   );
 }

@@ -10,8 +10,9 @@ import { Panel, PixelButton } from "@/components/pixel";
 const READY_TOAST_MS = 3000;
 
 /** Remount it (a new `key`) on every reconnect: 知道了 lasts until then. */
-export function ScreenSoundBanner({ sound }: { sound: ScreenSound | undefined }) {
-  /** 知道了: the host keeps 🎵 off on purpose (plays their own song). Until the next reconnect, or ready → not ready. */
+/** `music` is the host's own 🎵 switch (⚙ 更多, immersion.md PR3): off, the screen is "muted" on purpose. */
+export function ScreenSoundBanner({ sound, music = true }: { sound: ScreenSound | undefined; music?: boolean }) {
+  /** 知道了: the host keeps the screen quiet on purpose (plays their own song). Until the next reconnect, or ready → not ready. */
   const [dismissed, setDismissed] = useState(false);
   const [toast, setToast] = useState(false);
   const [prev, setPrev] = useState(sound);
@@ -47,7 +48,7 @@ export function ScreenSoundBanner({ sound }: { sound: ScreenSound | undefined })
   if (sound !== "muted" || dismissed) return null;
   return (
     <Panel tone="turn" role="status" className="flex flex-wrap items-center justify-center gap-2 px-3 py-2 text-center text-[16px]" style={{ background: "var(--warn)", textWrap: "balance" }}>
-      <span>大螢幕還沒開聲音：去點大螢幕右下角的「👆 開聲音」或「🎵 音樂關」</span>
+      <span>{music ? "大螢幕還沒開聲音：去點大螢幕右下角的「👆 開聲音」" : "大螢幕的 🎵 音樂關著：到 ⚙ 更多 打開"}</span>
       <PixelButton onClick={() => setDismissed(true)} className="!m-0 min-h-[44px] !px-3 !py-1 text-[16px]">
         知道了
       </PixelButton>

@@ -3,7 +3,8 @@
 // The big screen's live map strip (docs/designs/live-map.md): rooms, team pawns, fog of war and the
 // boss room, in the row the team cards used to take. Geometry comes from lib/map-layout.ts.
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import type { FogReveal } from "@/lib/ambience";
 import type { SpectatorView } from "@/lib/game-state";
 import { layoutMap, nameTags, PAWN, BOSS_SPRITE, CORRIDOR, DOOR_W, type Pawn } from "@/lib/map-layout";
 import { LabelChip, Sprite } from "@/components/pixel";
@@ -13,7 +14,11 @@ const BOSS_STYLE = { background: "#8a2d45", boxShadow: "inset 0 -6px 0 #6a1f34, 
 const ROOM_BOX = { top: 18, h: 58 };
 const BOSS_BOX = { top: 10, h: 72 };
 
+/** The fog reveal running on the big screen (immersion.md PR3): every map strip on the page draws it. */
+export const FogRevealContext = createContext<FogReveal | null>(null);
+
 export function MapStrip({ view }: { view: SpectatorView }) {
+  const fogReveal = useContext(FogRevealContext);
   const ref = useRef<HTMLDivElement>(null);
   const [budget, setBudget] = useState(0);
   useEffect(() => {
@@ -72,8 +77,25 @@ export function MapStrip({ view }: { view: SpectatorView }) {
   };
 
   // Rooms carry no number (the host asked for none); only the stub is labelled "…" so folded rooms still read as more.
-  const room = (x: number, w: number, key: string, label?: string) => (
-    <div key={`room-${key}`} className="absolute border-4" style={{ ...ROOM_STYLE, left: x, width: w, top: ROOM_BOX.top, height: ROOM_BOX.h, borderColor: "var(--k)" }}>
+  // The fog reveal (immersion.md PR3): its clouds sit inside the room box, so the pawns drawn after it stay on top, and a
+  // clipping wrapper keeps the sliding clouds out of the corridor. Lit: one brightness pulse once the clouds clear;
+  // otherwise (budget or reduced motion) the room is brighter, without motion, until the reveal ends.
+  const room = (x: number, w: number, key: string, label?: string, reveal?: FogReveal) => (
+    <div
+      key={`room-${key}`}
+      data-testid={reveal ? "fog-reveal" : undefined}
+      data-step={reveal?.step}
+      className={`absolute border-4${reveal?.step === "blow" && reveal.lit ? " px-room-lit" : ""}`}
+      style={{ ...ROOM_STYLE, left: x, width: w, top: ROOM_BOX.top, height: ROOM_BOX.h, borderColor: "var(--k)", ...(reveal?.step === "blow" && !reveal.lit ? { filter: "brightness(1.3)" } : {}) }}
+    >
+      {reveal && (
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+          {/* The fog's own two cloud rows (top 4 and 30 of the strip's fog), inside the box's 4px border. */}
+          {[0, 26].map((top, k) => (
+            <Sprite key={k} kind="cloud" scale={2} className={`px-fog-cloud absolute${reveal.step === "blow" ? " px-fog-blow" : ""}`} style={{ left: k ? Math.max(0, w - 44) : 0, top }} />
+          ))}
+        </div>
+      )}
       {label && (
         <span className="px-num absolute text-[8px]" style={{ right: 2, top: 1, color: "var(--cream)" }} /* right corner: the turn ▼ sits top-left */>
           {label}
@@ -90,7 +112,7 @@ export function MapStrip({ view }: { view: SpectatorView }) {
       {budget > 0 && (
         <>
           {map.stub && [room(map.stub.x, map.stub.w, "stub", "…"), corridor(map.stub.x + map.stub.w)]}
-          {map.rooms.map((r) => [room(r.x, r.w, String(r.index)), corridor(r.x + r.w)])}
+          {map.rooms.map((r) => [room(r.x, r.w, String(r.index), undefined, fogReveal?.room === r.index ? fogReveal : undefined), corridor(r.x + r.w)])}
           <div className="absolute" style={{ left: map.fog.x, width: map.fog.w, top: 14, height: 66 }}>
             {Array.from({ length: clouds }, (_, k) => (
               <Sprite key={k} kind="cloud" scale={2} className={`absolute ${k % 2 ? "px-drift2" : "px-drift"}`} style={{ left: Math.round((k * (map.fog.w - 36)) / Math.max(1, clouds - 1)), top: k % 2 ? 30 : 4 }} />

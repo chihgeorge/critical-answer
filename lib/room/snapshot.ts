@@ -2,7 +2,7 @@ import { abilityUsesFor, isClassId, isFortuneCondition, isFortuneEffect, type Cl
 import { UUID_RE, parseBank, type Bank } from "../question-bank";
 import type { Initiative } from "../initiative";
 import { isAnswerSeconds, type AnswerClock } from "../answer-clock";
-import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, type AiSource } from "../protocol";
+import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, parseScreenAudio, type AiSource, type ScreenAudio } from "../protocol";
 
 /**
  * Everything a room must get back after its Durable Object restarts, as plain data.
@@ -94,6 +94,8 @@ export interface RoomSnapshot {
   pacing?: "manual";
   /** A finished game's podium waits for the host's ▶ 下一步. Missing means it does not. */
   revealHeld?: true;
+  /** The host's sound switches for the big screens (immersion.md PR3). Missing (or damaged) means all on. */
+  screenAudio?: ScreenAudio;
   /** The custom bank the host picked (multi-bank.md), its name as it was then. Missing means the default bank. */
   bankChoice?: { id: string; name: string };
 }
@@ -193,6 +195,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       // Anything but the two values we write is auto, and no held podium.
       pacing: raw.pacing === "manual" ? "manual" : undefined,
       revealHeld: raw.revealHeld === true ? true : undefined,
+      screenAudio: parseScreenAudio(raw.screenAudio) ?? undefined,
       // Only a label: the bank itself is the saved copy. A damaged one reads as the default.
       bankChoice: isObject(raw.bankChoice) && isString(raw.bankChoice.id) && isString(raw.bankChoice.name) ? { id: raw.bankChoice.id, name: raw.bankChoice.name } : undefined,
       ...(raw.answerSeconds !== undefined ? { answerSeconds: isAnswerSeconds(raw.answerSeconds) ? raw.answerSeconds : 0, answerClock, clipEnded: isString(raw.clipEnded) ? raw.clipEnded : null } : {}),

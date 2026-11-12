@@ -148,6 +148,8 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 - **揭霧**：隊伍走進新房間時，霧被吹開的動畫加開門聲，新房間亮一下。沿用現有的 pawn 抵達動畫（map-strip 的 `arrived`）。
 - **聲音處理**：照聲音分層表，影片題靜音、旁白時變小聲，和音樂的音量比例要先調平衡。
 
+> **站長決定（2026-11-12，/autoplan run 3 UC1）**：「把這些音效控制功能都搬到主持人的 更多 頁面」。大螢幕的聲音開關全部搬到主持人頁「⚙ 更多」：🎵 音樂、🔊 旁白語音、🌧 環境音三個開關，預設都開，每台大螢幕都跟著。🌧 關掉只關環境音，音樂和音效照聲音分層表照常。設定存在房間 STATE 的 `screenAudio {music, voice, ambience}`（全開時不送，像舊伺服器；也存進房間的存檔，新主持人接手房號時重設），由只收主持人金鑰的新訊息 `HOST_SCREEN_AUDIO` 設定，沿用 `requireHost` 和現有限頻；大螢幕連上和重新連線時照 LOBBY／STATE 套用。大螢幕右下角的 🎵 音樂、語音開關拿掉，不再記在裝置上（localStorage）。開聲音的操作留在大螢幕：大廳大鈕「點一下開啟音效與氣氛」、遊戲中的「👆 開聲音」（移到最右下角）和第一次點擊解鎖；第一次點擊同時預熱語音（Safari／iOS 要在手勢裡說一次話），不管 🔊 開不開都預熱，主持人之後打開 🔊 不用再去點電視。`SCREEN_SOUND` 照舊是「被點過、而且 🎵 開著」；主持人關掉 🎵 時主持人頁黃字改成「大螢幕的 🎵 音樂關著：到 ⚙ 更多 打開」。taste T1（一個 PR）、T2（環境音跟著舞台上的房間，換房 1.5 秒淡入淡出）、T4（`room % 3` 輪流，只是氣氛、不是遊戲訊號）維持。下面 Run 3 Review record 裡「沒有協定、房間改動」的句子，以這段為準。
+
 ## Open Questions
 - 心跳和暴走音樂要直接寫成新的 `Song`／`SfxNote`，還是在 `DUNGEON_THEME` 上加一層？交給 /autoplan 決定，不影響行為。
 
@@ -1493,3 +1495,449 @@ Dispositions: all test rows accepted; Codex's screen-render tests rejected (no D
 - Outside voice: codex, unavailable (two runs, validator missing_markers; findings advisory)
 - Parallelization: 1 lane, 0 parallel / 1 sequential
 - Lake Score: 4/4
+
+## Autoplan run 3 — PR3 (房間氛圍＋揭霧一刻)
+
+The owner answered UC1 at the gate (2026-11-12): all big-screen sound switches move to the host's ⚙ 更多 (see the 站長決定 block in the PR3 section, which wins over anything below that says PR3 has no protocol or room change).
+
+### Run 3 — PR3 plan: room ambience + fog reveal (docs/designs/immersion.md, section "PR3：房間氛圍＋揭霧一刻")
+
+Big-screen only. No protocol, room (Worker) or server-timing change. No new data, no audio files. Client code never imports BANK.
+
+### Run 3 — Ambience
+- New pure module `lib/ambience.ts`: `AMBIENCES = ["drips", "wind", "campfire"] as const`; `ambienceFor(state: StateMessage)` returns the ambience for the room on stage, computed exactly like the screen's backdrop (app/room/[code]/screen/page.tsx:277-288): `turn = describeTurn(view, question, phaseCard?.monster)`; with a dish reveal (`reveal.dish`) the room is `dish.room` and the boss scene is `dish.room === null`, otherwise `turn.room` / `turn.bossScene`. Phase `playing`, no intro or initiative overlay, not a boss scene → `AMBIENCES[room % 3]`; otherwise `null` (lobby, finished, boss scene incl. the boss phase card: the boss layer and rage music own that space). Fortune, fork and event screens are walking rooms: ambience stays on.
+- Synthesis in `lib/bgm-player.ts`: `setAmbience(kind | null)`. One generated 2 s white-noise AudioBuffer (code, no files) looped through a BiquadFilter into its own GainNode under the existing `ambient` layer:
+  - wind: bandpass noise ~400 Hz, slow LFO (0.15 Hz) on filter frequency and gain.
+  - campfire: lowpass noise (soft roar) + random short highpass noise "crackle" bursts.
+  - drips: no bed noise; random sine blips sliding 1400→700 Hz every 0.6–2.2 s.
+  - Random events scheduled by the existing lookahead style (setInterval 100 ms, queue ahead on ctx clock); like the music scheduler, an event whose time already passed (a background tab's slow timer) is dropped, never played late in a burst. `Math.random` is used directly; tests assert node wiring, not timing. Switching kind fades the old generation out (0.4 s) and disconnects it. Remembered while the context is not running or 🎵 is off; starts on the next wake (onstatechange, only when 🎵 is on, the same rule as `play()`) or `start()`. `stop()` (🎵 off) halts the ambience generator (bed source stopped, event timer cleared, nodes disconnected) so nothing is built while unheard; `start()` resumes the remembered kind.
+- Levels: the layer table already in `layerGains()` (ambient: video 0, held 0, speaking ducked, 🎵 off 0). Per-kind internal levels balanced so ambience sits clearly under the music: each kind has an internal gain multiplier under the layer (AMBIENT_VOLUME 0.03 vs music 0.05; noise beds at multiplier 0.5, event blips at 0.8, because noise is perceived louder than tones). AMBIENT_VOLUME stays the one named constant for venue retune. Manual venue check before 11/18 (not CI): ambience audible but under the music at party volume.
+- Screen page: one effect `player().setAmbience(ambienceFor(game))` on change.
+
+### Run 3 — Fog reveal
+- Pure `revealFor(prev, next)` in `lib/ambience.ts`: frontier = max `roomIndex` over teams (same as layoutMap, lib/map-layout.ts:43; boss entry keeps roomIndex, lib/game-state.ts:1215, so it never moves the frontier). Returns the new frontier room index when `next.frontier > prev.frontier` (a jump of two rooms in one STATE reveals only the new frontier room, on purpose: the fog edge is what moves), both in phase `playing`; null on first STATE after connect (live only, like transitions), on a new game (frontier dropped), or when phase changes.
+- Screen page STATE handler: on reveal → play `DOOR_CREAK` (new SfxNote[] in lib/sfx.ts, game-cue bus, follows 🎵; not sawtooth), skipped while this screen's video plays or a buzz hold is on (nothing covers a playing clip, immersion.md Success Criteria), and set page state `fogReveal = { room, lit: flash(), key }` for 1.2 s; a new reveal replaces the old one and restarts the timer, and the timer is cleared on unmount (named `fogReveal`, since `reveal` is already the answer reveal). `flash()` is the page's existing shared-budget + reduced-motion check (page.tsx:1382); no extra helper.
+- `MapStrip` gets an optional `fogReveal` prop, passed at all four MapStrip call sites on the screen page (app/room/[code]/screen/page.tsx:461, 727, 770, 822). On the room box with `index === fogReveal.room`: an overlay of 2 cloud sprites with a new `px-fog-blow` animation (clouds slide right and fade out, 0.8 s, steps()), and the room lights up: `lit` → `px-room-lit` (brightness up then back, one pulse = one flash); not lit → static highlight (turn2 outline, no animation) for the 1.2 s. Reduced motion: `px-fog-blow` and `px-room-lit` are in the reduced-motion `animation: none` list and the blowing clouds are hidden (display none), so only the static highlight shows. The existing pawn `arrived` hop + `px-room-flash` is unchanged and still plays; under reduced motion it stacks with the static highlight on purpose (D13 outline, app/globals.css:330).
+- Never delays questions.
+
+### Run 3 — Tests (vitest)
+- `ambienceFor`: rotation by room index, null for lobby/finished/boss scene/boss phase card/intro/initiative; a dish reveal uses the dish's room.
+- `revealFor`: frontier up → room; jump of two → only the new frontier; same → null; first STATE → null; new game → null; boss entry (roomIndex kept) → null; phase not playing → null.
+- `layerGains` ambient rows already covered by the existing table test; add a player test that setAmbience with a fake AudioContext connects under the ambient layer, switching disconnects the old one, `setAmbience(null)` stops it, a kind set before the context runs starts when it wakes (and not while 🎵 is off), `stop()` halts and `start()` resumes the remembered kind, `close()` stops it. The FakeAudioContext in lib/bgm-player.test.ts grows `createBuffer`, `createBufferSource` and `createBiquadFilter` fakes and its existing oscillator fake is extended (AudioParam with `value`/`setValueAtTime`/`setTargetAtTime`/`linearRampToValueAtTime`; a node can `connect()` to an AudioParam for the LFO). No MapStrip render test: vitest runs lib/**/*.test.ts in node only (vitest.config.ts) and the repo has no component test harness; the overlay is checked by the manual venue run.
+
+### Run 3 — Docs
+docs/hosting.md + docs/hosting.en.md: one paragraph on ambience and fog reveal (🎵 controls it, video/buzz silences it, reduced motion = static highlight). Fragment changelog.d/feat-immersion-ambience.md bump: minor.
+
+<!-- autoplan-accepted:ceo -->
+- PR3 ships as one PR (ship-policy `pr_count` 1): room ambience + fog reveal, big screen only; no protocol, Worker or server-timing change; no audio files; client code never imports BANK. Verify: `npm run check:bundle`, diff touches no lib/protocol.ts or lib/room/.
+- Ambience plays for the room of the team on turn (C1): phase `playing`, no intro or initiative overlay, not a boss scene → one of three synth ambiences by `room % 3`; otherwise none. Verify: vitest on `ambienceFor` (rotation, lobby, finished, boss scene, intro, initiative).
+- Ambience rides the existing `ambient` layer of `layerGains()`: silent during a video question, a buzz hold and with 🎵 off, ducked under narration. Verify: the existing table vitest stays green and a player vitest shows the ambience nodes connect under the ambient layer gain.
+- Switching ambience fades the old one out and disconnects it; `setAmbience(null)` stops it; `close()` stops it. A kind set before the context runs starts when it wakes. Verify: player vitest with a fake AudioContext.
+- Fog reveal fires only when the frontier (max roomIndex) grows between two live STATEs in phase `playing`; never on the first STATE after connect, a new game, or a boss entry. Verify: vitest on `revealFor`.
+- On a reveal: one door sound on the game-cue bus (C2, follows 🎵), clouds blow off the new room, and the room lights up once if the shared flash budget allows (counts as one flash); otherwise, or with reduced motion, a static highlight. The existing pawn arrival is unchanged. Never delays a question. Verify: vitest on the reveal look helper (lit vs static under budget/reduced motion).
+- Docs: docs/hosting.md and docs/hosting.en.md, same headings; fragment changelog.d/feat-immersion-ambience.md with `bump: minor`. Verify: `npm run check:docs`.
+- 🎵 off (`stop()`) halts the ambience generator and `start()` resumes the remembered kind. Verify: player vitest with the FakeAudioContext extended with buffer, buffer source, biquad and oscillator fakes.
+- Ambience balance: manual venue check before 11/18 (not CI) that ambience is audible but under the music at party volume; AMBIENT_VOLUME is the one-line retune.
+- The reveal reaches all four MapStrip call sites; under reduced motion the static highlight stacks with the existing D13 outline on purpose. The look choice is the pure `revealLook({ reducedMotion, takeFlash })`. Verify: vitest on `revealLook`.
+- Replaces the two `revealLook` mentions above: the page uses its existing `flash()` (reduced motion + shared budget, page.tsx:1382) and no separate helper; the reveal state and MapStrip prop are named `fogReveal`. The door sound is skipped while this screen's video plays or a buzz hold is on. Verify: vitest on `revealFor`; existing flash-budget vitest.
+- `ambienceFor` takes the full STATE and mirrors the backdrop (dish reveal room, boss phase card); ambience events behind the clock are dropped like music notes. Verify: vitest on `ambienceFor` cases listed in Tests.
+- Player vitest also covers `setAmbience(null)` stopping and a kind set before the context runs starting on wake (only with 🎵 on); the oscillator fake is extended, not added. The `fogReveal` timer restarts on a new reveal and is cleared on unmount. No MapStrip render vitest (node-only vitest, no component harness); the overlay is checked in the manual venue run.
+- Ambience keeps the turn room (T2) but does not restart when the next room maps to the same kind, and a kind change crossfades over 1.5 s (replaces the 0.4 s fade above). Verify: player vitest that setting the same kind twice builds nothing new.
+- Drips (M1) replace the 0.6-2.2 s cadence above: one blip every 1.5-4.5 s over a very faint bed (multiplier 0.15).
+- `revealFor` returns null when the same STATE also changes phase (M3). Verify: vitest case.
+- Starting the generator is wrapped in try/catch with `console.error("[fx] ambience", err)`: a WebAudio failure on an old TV never breaks the STATE handler. Verify: player vitest where createBuffer throws.
+- Audio files stay out: the design asks for no new data and synthesis like lib/sfx.ts (immersion.md:147).
+<!-- /autoplan-accepted:ceo -->
+
+<!-- autoplan-accepted:design -->
+- Single source of truth (both design voices): ambience kind change crossfades over 1.5 s (the 0.4 s fade is void); drips are one blip every 1.5-4.5 s over a faint bed at multiplier 0.15 (the 0.6-2.2 s / no-bed text is void); there is no `revealLook` helper, the page's existing `flash()` decides lit vs static.
+- The fog reveal (door sound, clouds, light) starts `FOG_REVEAL_DELAY_MS = 600` after the STATE that moved the frontier, so it follows the correct-answer cue instead of overlapping it; one timer, replaced by a newer reveal, cleared on unmount; a new question never waits for it. Verify: constant exported from lib/ambience.ts; code read in /review.
+- While a TransitionOverlay is up (`transitionOn`), the reveal is skipped entirely (sound and visual), not queued, the same rule as the heartbeat.
+- Overlay placement: inside the room div, before the pawns (pawn, tag and ▼ paint on top), `pointer-events-none`, `aria-hidden`, clipped to the room box. Two `Sprite kind="cloud" scale={2}` at top 4 and top 30; `px-fog-blow` slides +40px with opacity 1→0 in `steps(4)` over 0.8 s.
+- Lit look: `px-room-lit` = `filter: brightness(1.6)` at 50% then back to 1, 0.4 s, `steps(2)`, animation-delay 0.6 s (after the clouds); one pulse = one flash-budget take. Static look (budget refused or reduced motion): static `filter: brightness(1.3)` on the room box for 1.2 s, no animation, removed as a cut; it replaces the turn2-outline static highlight so it differs from the D13 landing outline.
+- `DOOR_CREAK`: triangle wave falling 180→120 Hz with a small wobble, at most 0.6 s, game-cue bus.
+- A trailing team entering a room already revealed gets no fog reveal (only the frontier fogs). No ducking under the event d20 roll. The reveal state's `key` is the room index.
+- Docs say the ambience rotation is atmosphere, not a gameplay signal. Manual venue check adds: from couch distance the opened room is identifiable and the pawn stays visible.
+<!-- /autoplan-accepted:design -->
+
+<!-- autoplan-accepted:eng -->
+- E1 (both voices): the reveal's skip checks (video playing, buzz hold, `transitionOn.current`) and `flash()` run inside the 600 ms timer callback, not in the STATE handler; the pending timer is also cleared on a phase change, a return to the lobby and a reconnect (prevState reset). Verify: code read in /review; manual venue check.
+- E2: the reveal has two steps. At the STATE: `fogReveal = { room, step: "covered" }` puts the two cloud sprites static over the new room (no sound, no flash, no animation). At +600 ms: door creak, `step: "blow"` starts `px-fog-blow` and the lit or static look; cleared 1.2 s later. Under reduced motion no clouds show in either step.
+- E4: one `resumeAmbience()` inside the player, called from `onstatechange`, `start()` and `unlock()`; it starts the remembered kind only when 🎵 is on, the context is running and no generator is live. `setAmbience` never calls `ensure()`: with no context (or after `close()`) it only remembers the kind. Verify: player vitest that `setAmbience` after `close()` creates no AudioContext.
+- E5: at most two live generators (the current one and one fading out); a new switch hard-stops any generator still fading. Verify: player vitest that A→B→C leaves at most 2 live sources.
+- The noise buffer is 4 s (not 2 s) so the loop is not heard.
+- The reveal overlay is an absolute `inset-0` wrapper with `overflow: hidden` inside the room box, so the sliding clouds never spill into corridors or fog; the room box itself does not clip (pawns unaffected).
+<!-- /autoplan-accepted:eng -->
+### Run 3 — Review record
+
+#### Phase 0 intake
+Base branch: main (GitHub, origin/main b638fdd). UI scope: yes (screen~page, map strip). DX scope: no (0 term matches; not a developer tool). Codex: ready. Design doc: docs/designs/immersion.md (approved, source of truth; PR3 section lines 146-149, layer table line 72).
+
+#### CEO Step 0 (SELECTIVE EXPANSION, autoplan override)
+
+**System audit.** Recent history is PR1a/PR1b/PR2/class-fx of the same design (#233-#236). No stash used. TODOS.md:140 references immersion.md PR2 only; nothing on PR3. Learning applied: "bgm-cue-bus-bypasses-mute" (confidence 9/10, 2026-11-12) is already fixed by the four-layer mixer; the ambience must ride the `ambient` layer, not a private bus.
+
+**0A premise table**
+
+| premise | claim | receipt | verdict |
+|---|---|---|---|
+| P1 | The mixer already has an `ambient` layer with the table row (video 0, held 0, speaking ducked, 🎵 off 0) | lib/bgm-player.ts:51 | pass |
+| P2 | Nothing plays on the ambient layer yet | lib/bgm-player.ts:84 | pass |
+| P3 | The pawn arrival animation exists and replays only for live moves | components/map-strip.tsx:34-43 | pass |
+| P4 | The fog sits past the furthest room any team reached (frontier = max roomIndex) | lib/map-layout.ts:43 | pass |
+| P5 | Entering the boss keeps roomIndex, so a boss entry never moves the frontier | lib/game-state.ts:1215 | pass |
+| P6 | One shared flash budget with reduced-motion check already lives in the screen page | app/room/[code]/screen/page.tsx:1381-1382 | pass |
+| P7 | The legacy px-room-flash keeps running under reduced motion on purpose (D13) | app/globals.css:330 | pass |
+| P8 | "A team enters a new room" means the fog recedes (frontier grows); moves into already-revealed rooms keep only the existing pawn arrival | interpretation of docs/designs/immersion.md:148 | pass (reasonable reading, P6 principle) |
+
+unverified=0. Real problem: the walking rooms are silent between cues while the boss now has a full soundscape; the fog never gets a moment. Do-nothing cost: rooms feel flat next to the boss fight for the 11/21 event.
+
+**0B existing code leverage**: mixer + layer table (lib/bgm-player.ts), `pattern()`/`tone()` scheduling, SfxNote data (lib/sfx.ts), drum noise precedent (immersion.md eng: synthesized noise buffer allowed), flash budget, map fog/pawn arrival, `describeTurn().room/bossScene` (lib/turn-info.ts:62-86). Nothing rebuilt.
+
+**0C dream state**
+```
+  CURRENT                          THIS PLAN                           12-MONTH IDEAL
+  rooms silent between cues;  ---> each room has a quiet synth   --->  rooms with themed sound+light per
+  fog never animates               bed; fog blows away with a door     room type, venue-tuned mix presets
+```
+
+**0D**: no approach choice needed (design fixes the approach). **0E**: SELECTIVE EXPANSION (autoplan override); ~9 files changed (lib/ambience.ts new, lib/ambience.test.ts new, lib/bgm-player.ts, lib/bgm-player.test.ts, lib/sfx.ts, components/map-strip.tsx, app/globals.css, screen page, docs x2, fragment) [estimated].
+
+**0G cherry-picks (auto-decided, P3/P4)**
+
+| # | Proposal | Effort | Decision | Reason |
+|---|---|---|---|---|
+| 1 | Boss-room ambience (low rumble) | S | SKIPPED | boss layer + rage music already own that space; more noise under the heartbeat hurts |
+| 2 | Lobby campfire ambience while waiting | S | SKIPPED | design scopes "each room"; the lobby has its own unlock chime and music |
+| 3 | Ambience matched to the visual roomTheme (stone/moss) instead of index rotation | S | SKIPPED | design says rotation by room index; ROOM_THEMES has 2 looks vs 3 sounds |
+| 4 | ❓ event rooms get a special ambience | S | SKIPPED | needs event awareness; not asked |
+| 5 | Host-page indicator of current ambience | S | SKIPPED | host does not need it; no protocol change wanted |
+
+**Decision ledger**
+
+| ID and owner | Contract and evidence | Current | Proposed | Status | Exact approval and scope |
+|---|---|---|---|---|---|
+| C1 ceo | which room's ambience plays | room of the team on turn (matches the backdrop, lib/turn-info.ts:83) | frontier room (stable) | approved (TASTE) | autoplan P5 auto-decision; turn room |
+| C2 ceo | door sound bus | game-cue bus (follows 🎵 only, like move cues) | ambient layer (muted on video) | approved | autoplan P3; cue bus, it is a one-shot event cue like `correct` |
+| C3 ceo | 0G proposals 1-5 | skipped | — | declined | autoplan P3/P4 |
+
+0H/0I and Review Sections follow below.
+
+<!-- autoplan-baseline-edits:ceo {"sourceSha256":"79396c7db61458aa0b79e67997fc71aeac8d769bd161684d7c8c1cb6be05d47d","replacements":[{"oldText":"`ambienceFor(state)` returns the ambience for the room on screen: phase `playing`, no intro/initiative overlay, turn not a boss scene → `AMBIENCES[room % 3]` where `room = describeTurn(...).room`; otherwise `null` (lobby, finished, boss scene: the boss layer and rage music own that space).","newText":"`ambienceFor(state: StateMessage)` returns the ambience for the room on stage, computed exactly like the screen's backdrop (app/room/[code]/screen/page.tsx:277-288): `turn = describeTurn(view, question, phaseCard?.monster)`; with a dish reveal (`reveal.dish`) the room is `dish.room` and the boss scene is `dish.room === null`, otherwise `turn.room` / `turn.bossScene`. Phase `playing`, no intro or initiative overlay, not a boss scene → `AMBIENCES[room % 3]`; otherwise `null` (lobby, finished, boss scene incl. the boss phase card: the boss layer and rage music own that space). Fortune, fork and event screens are walking rooms: ambience stays on."},{"oldText":"  - drips: no bed noise (or very low); random sine blips sliding 1400→700 Hz every 0.6–2.2 s.","newText":"  - drips: no bed noise; random sine blips sliding 1400→700 Hz every 0.6–2.2 s."},{"oldText":"  - Random events scheduled by the existing lookahead style (setInterval 100 ms, queue ahead on ctx clock).","newText":"  - Random events scheduled by the existing lookahead style (setInterval 100 ms, queue ahead on ctx clock); like the music scheduler, an event whose time already passed (a background tab's slow timer) is dropped, never played late in a burst. `Math.random` is used directly; tests assert node wiring, not timing."},{"oldText":"Remembered while the context is not running; starts on the next wake (onstatechange).","newText":"Remembered while the context is not running or 🎵 is off; starts on the next wake (onstatechange, only when 🎵 is on, the same rule as `play()`) or `start()`. `stop()` (🎵 off) halts the ambience generator (bed source stopped, event timer cleared, nodes disconnected) so nothing is built while unheard; `start()` resumes the remembered kind."},{"oldText":"Per-kind internal levels balanced so ambience sits clearly under the music (AMBIENT_VOLUME 0.03 vs music 0.05; noise is perceived louder, so bed peaks ~0.5). One named constant for venue retune.","newText":"Per-kind internal levels balanced so ambience sits clearly under the music: each kind has an internal gain multiplier under the layer (AMBIENT_VOLUME 0.03 vs music 0.05; noise beds at multiplier 0.5, event blips at 0.8, because noise is perceived louder than tones). AMBIENT_VOLUME stays the one named constant for venue retune. Manual venue check before 11/18 (not CI): ambience audible but under the music at party volume."},{"oldText":"- Pure `revealFor(prev, next)` in `lib/ambience.ts` (or map-layout): frontier = max `roomIndex` over teams (same as layoutMap). Returns the new frontier room index when `next.frontier > prev.frontier`,","newText":"- Pure `revealFor(prev, next)` in `lib/ambience.ts`: frontier = max `roomIndex` over teams (same as layoutMap, lib/map-layout.ts:43; boss entry keeps roomIndex, lib/game-state.ts:1215, so it never moves the frontier). Returns the new frontier room index when `next.frontier > prev.frontier` (a jump of two rooms in one STATE reveals only the new frontier room, on purpose: the fog edge is what moves),"},{"oldText":"- Screen page STATE handler: on reveal → play `DOOR_CREAK` (new SfxNote[] in lib/sfx.ts, game-cue bus, follows 🎵 like other move cues; not sawtooth) and set `reveal = { room, lit: flash(), key }` for 1.2 s. `flash()` is the shared budget + reduced motion check (already in page).","newText":"- Screen page STATE handler: on reveal → play `DOOR_CREAK` (new SfxNote[] in lib/sfx.ts, game-cue bus, follows 🎵; not sawtooth), skipped while this screen's video plays or a buzz hold is on (nothing covers a playing clip, immersion.md Success Criteria), and set page state `fogReveal = { room, lit: flash(), key }` for 1.2 s; a new reveal replaces the old one and restarts the timer, and the timer is cleared on unmount (named `fogReveal`, since `reveal` is already the answer reveal). `flash()` is the page's existing shared-budget + reduced-motion check (page.tsx:1382); no extra helper."},{"oldText":"- `MapStrip` gets an optional `reveal` prop.","newText":"- `MapStrip` gets an optional `fogReveal` prop, passed at all four MapStrip call sites on the screen page (app/room/[code]/screen/page.tsx:461, 727, 770, 822)."},{"oldText":"On the room box with `index === reveal.room`:","newText":"On the room box with `index === fogReveal.room`:"},{"oldText":"The existing pawn `arrived` hop + `px-room-flash` is unchanged and still plays.","newText":"The existing pawn `arrived` hop + `px-room-flash` is unchanged and still plays; under reduced motion it stacks with the static highlight on purpose (D13 outline, app/globals.css:330)."},{"oldText":"- `ambienceFor`: rotation by room index, null for lobby/finished/boss scene/intro.","newText":"- `ambienceFor`: rotation by room index, null for lobby/finished/boss scene/boss phase card/intro/initiative; a dish reveal uses the dish's room."},{"oldText":"- `revealFor`: frontier up → room; same → null; first STATE → null; new game → null; boss entry (frontier unchanged) → null.","newText":"- `revealFor`: frontier up → room; jump of two → only the new frontier; same → null; first STATE → null; new game → null; boss entry (roomIndex kept) → null; phase not playing → null."},{"oldText":"add a player test that setAmbience with a fake AudioContext connects under the ambient layer and switching disconnects the old one.","newText":"add a player test that setAmbience with a fake AudioContext connects under the ambient layer, switching disconnects the old one, `setAmbience(null)` stops it, a kind set before the context runs starts when it wakes (and not while 🎵 is off), `stop()` halts and `start()` resumes the remembered kind, `close()` stops it. The FakeAudioContext in lib/bgm-player.test.ts grows `createBuffer`, `createBufferSource` and `createBiquadFilter` fakes and its existing oscillator fake is extended (AudioParam with `value`/`setValueAtTime`/`setTargetAtTime`/`linearRampToValueAtTime`; a node can `connect()` to an AudioParam for the LFO). No MapStrip render test: vitest runs lib/**/*.test.ts in node only (vitest.config.ts) and the repo has no component test harness; the overlay is checked by the manual venue run."}]} -->
+
+<!-- autoplan-accepted:ceo -->
+- PR3 ships as one PR (ship-policy `pr_count` 1): room ambience + fog reveal, big screen only; no protocol, Worker or server-timing change; no audio files; client code never imports BANK. Verify: `npm run check:bundle`, diff touches no lib/protocol.ts or lib/room/.
+- Ambience plays for the room of the team on turn (C1): phase `playing`, no intro or initiative overlay, not a boss scene → one of three synth ambiences by `room % 3`; otherwise none. Verify: vitest on `ambienceFor` (rotation, lobby, finished, boss scene, intro, initiative).
+- Ambience rides the existing `ambient` layer of `layerGains()`: silent during a video question, a buzz hold and with 🎵 off, ducked under narration. Verify: the existing table vitest stays green and a player vitest shows the ambience nodes connect under the ambient layer gain.
+- Switching ambience fades the old one out and disconnects it; `setAmbience(null)` stops it; `close()` stops it. A kind set before the context runs starts when it wakes. Verify: player vitest with a fake AudioContext.
+- Fog reveal fires only when the frontier (max roomIndex) grows between two live STATEs in phase `playing`; never on the first STATE after connect, a new game, or a boss entry. Verify: vitest on `revealFor`.
+- On a reveal: one door sound on the game-cue bus (C2, follows 🎵), clouds blow off the new room, and the room lights up once if the shared flash budget allows (counts as one flash); otherwise, or with reduced motion, a static highlight. The existing pawn arrival is unchanged. Never delays a question. Verify: vitest on the reveal look helper (lit vs static under budget/reduced motion).
+- Docs: docs/hosting.md and docs/hosting.en.md, same headings; fragment changelog.d/feat-immersion-ambience.md with `bump: minor`. Verify: `npm run check:docs`.
+- 🎵 off (`stop()`) halts the ambience generator and `start()` resumes the remembered kind. Verify: player vitest with the FakeAudioContext extended with buffer, buffer source, biquad and oscillator fakes.
+- Ambience balance: manual venue check before 11/18 (not CI) that ambience is audible but under the music at party volume; AMBIENT_VOLUME is the one-line retune.
+- The reveal reaches all four MapStrip call sites; under reduced motion the static highlight stacks with the existing D13 outline on purpose. The look choice is the pure `revealLook({ reducedMotion, takeFlash })`. Verify: vitest on `revealLook`.
+- Replaces the two `revealLook` mentions above: the page uses its existing `flash()` (reduced motion + shared budget, page.tsx:1382) and no separate helper; the reveal state and MapStrip prop are named `fogReveal`. The door sound is skipped while this screen's video plays or a buzz hold is on. Verify: vitest on `revealFor`; existing flash-budget vitest.
+- `ambienceFor` takes the full STATE and mirrors the backdrop (dish reveal room, boss phase card); ambience events behind the clock are dropped like music notes. Verify: vitest on `ambienceFor` cases listed in Tests.
+- Player vitest also covers `setAmbience(null)` stopping and a kind set before the context runs starting on wake (only with 🎵 on); the oscillator fake is extended, not added. The `fogReveal` timer restarts on a new reveal and is cleared on unmount. No MapStrip render vitest (node-only vitest, no component harness); the overlay is checked in the manual venue run.
+- Ambience keeps the turn room (T2) but does not restart when the next room maps to the same kind, and a kind change crossfades over 1.5 s (replaces the 0.4 s fade above). Verify: player vitest that setting the same kind twice builds nothing new.
+- Drips (M1) replace the 0.6-2.2 s cadence above: one blip every 1.5-4.5 s over a very faint bed (multiplier 0.15).
+- `revealFor` returns null when the same STATE also changes phase (M3). Verify: vitest case.
+- Starting the generator is wrapped in try/catch with `console.error("[fx] ambience", err)`: a WebAudio failure on an old TV never breaks the STATE handler. Verify: player vitest where createBuffer throws.
+- Audio files stay out: the design asks for no new data and synthesis like lib/sfx.ts (immersion.md:147).
+<!-- /autoplan-accepted:ceo -->
+
+#### CEO 0H spec review loop
+3 reviewer launches (cap). Scores 7 → 7 → 8. 20 issues found, 19 fixed in the working plan (baseline-edits record + accepted block), 1 declined (MapStrip render vitest: vitest.config.ts runs lib/**/*.test.ts in node only, no component harness). issues verified: 4 of 5 from round 3 (applied edits, not a verdict). Metrics appended to analytics/spec-review.jsonl. Document approval: A (auto-decided, P6). CEO summary: ~/.gstack/projects/chihgeorge-critical-answer/ceo-plans/2026-11-12-immersion-ambience.md (local-only).
+
+#### CEO 0I temporal interrogation
+- HOUR 1: the mixer graph (master → layers), `pattern()`/`tone()`, STATE shape (`reveal.dish`, `phaseCard`, `intro`, `initiative`).
+- HOUR 2-3: noise buffer + biquad + LFO wiring in a fake AudioContext; the event scheduler reuses the "drop past events" rule.
+- HOUR 4-5: the screen page's STATE handler order (transition, parry, class fx); `fogReveal` must not collide with `reveal`.
+- HOUR 6+: tuning levels by ear; reduced-motion CSS list. Effort: human ~1.5 days / CC ~1.5 h.
+
+#### CEO dual voices
+Native (Claude subagent, INPUT ceo 7efc7852… matches snapshot): 7 findings. (1 High) no independent ambience off without killing music and cues; (2 High) ambience flips every turn when teams are in different rooms; (3 Med) `room % 3` has no meaning; (4 Med) audio files ruled out without stated reason; (5 Med) drips cadence 0.6-2.2 s likely annoying; (6 Med) superseded revealLook bullets still in the list; (7 Med) reveal in the same STATE as a phase change is dropped.
+Codex (completed, VERDICT findings, P1): (High) no evidence immersion is the biggest unmet need; (High) thin validation window before 11/21; (High) two bets in one release, split or drop one; (Med) arbitrary `room % 3` mapping; (Med) shared 🎵 switch makes ambience all-or-nothing, make it independently controllable if guests need it; (Med) market risk unexamined.
+
+```
+CEO DUAL VOICES — CONSENSUS TABLE:
+  Dimension                             Claude  Codex  Consensus
+  1. Premises valid?                     yes     no     DISAGREE → taste (owner approved the design)
+  2. Right problem to solve?             yes     unsure DISAGREE → taste
+  3. Scope calibration correct?          yes     no     DISAGREE (Codex split) → taste T1
+  4. Alternatives sufficiently explored? no      no     CONFIRMED (room % 3 arbitrary; ambience control)
+  5. Competitive/market risks covered?   n/a     no     DISAGREE (in-house event) → no action
+  6. 6-month trajectory sound?           risk    risk   CONFIRMED (no independent ambience off) → USER CHALLENGE UC1
+```
+
+Dispositions:
+- UC1 (USER CHALLENGE, both voices): add an independent ambience off control (Claude: `?ambience=0` or a host control; Codex: make it independently controllable). The design ties ambience to 🎵 (immersion.md:86) and adds no control; a new TV button is a UI choice the owner approves visually. Not auto-decided; the original direction (🎵 governs ambience, no extra control) stands until the owner answers.
+- T1 (TASTE): Codex says split ambience and fog into separate releases; Claude says right size. Keep one PR (ship-policy pr_count 1; the design lists PR3 as one item).
+- T2 (TASTE, reopens C1): ambience follows the turn room vs the frontier room. Auto-decide: keep the turn room (it matches the backdrop that also changes every turn, lib/turn-info.ts:83), keep playing when the next room maps to the same kind, and crossfade over 1.5 s so a turn change is a soft blend. Alternative impact: the frontier room would decouple sound from the visible room.
+- T3 (TASTE): `room % 3` kept: the design says rotation by room index (immersion.md:147); ROOM_THEMES has only 2 looks.
+- M1 (mechanical): drips interval slowed to 1.5-4.5 s with a very faint bed (multiplier 0.15).
+- M2 (mechanical): audio files are excluded by the design itself (immersion.md:147 「不需要新資料」, Summary: no audio files); recorded as the reason.
+- M3 (mechanical): reveal + phase change in the same STATE gives no reveal (game end or lobby); the boss fight is inside `playing`, so there is no boss → playing phase change. Add a vitest case.
+- M4 (mechanical): superseded revealLook bullets are marked replaced in the accepted block; the implementer follows the latest bullet.
+- Codex "need not proven" and "market risk": no action; the owner approved immersion.md and the event date is fixed.
+
+#### CEO Review Sections
+**Current scope**: SELECTIVE EXPANSION (autoplan override). Accepted: design PR3 scope + spec-review implementation choices + M1-M3 + T2. Rejected: 0G #1-5. Pending: UC1 (owner).
+
+**Section 1 Architecture.**
+```
+ STATE (WebSocket) ──► screen page ──► ambienceFor(state) ──► bgm.setAmbience(kind)
+                         │                                      └► generator (noise buf → biquad → gain) ─► ambient layer ─► master
+                         ├──► revealFor(prev, next) ──► DOOR_CREAK (cue bus) + fogReveal ─► MapStrip(fogReveal) ─► px-fog-blow / px-room-lit
+                         └──► flash() (shared budget, reduced motion)
+```
+Happy: kind changes → crossfade. Nil: no turn team → describeTurn room 0 / bossScene from buzz → null when boss. Empty: no teams (lobby) → null. Error: AudioContext missing or not running → kind remembered, nothing built. New coupling: lib/ambience.ts imports lib/turn-info.ts (pure, client-safe; no BANK). Rollback: revert the PR; nothing to migrate. One issue: T2.
+
+**Section 2 Error & Rescue Map.**
+```
+ CODEPATH                  | WHAT CAN GO WRONG            | RESCUE                              | USER SEES
+ setAmbience before unlock | ctx null / suspended         | remember kind, start on wake        | silence until tap (as today)
+ generator start           | createBuffer/biquad throws   | try/catch, console.error [fx]       | no ambience, game goes on
+ event timer in bg tab     | timer falls behind           | drop past events                    | no burst on return
+ page unmount              | timers/nodes leak            | close() stops generator             | —
+ fogReveal timer           | stale timer after new reveal | replace + clear on unmount          | —
+ DOOR_CREAK during video   | covers the clip              | skipped while video/held            | silence
+```
+GAP found and accepted: generator start can throw on an old TV browser and must not break the STATE handler → wrap in try/catch with `console.error("[fx] ambience", err)`, like lib/host-fx.ts.
+
+**Section 3 Security.** No new input, endpoint, storage or dependency; STATE is server output; client never imports BANK (check:bundle). No issues found.
+
+**Section 4 Data flow & edge cases.** Rapid turn changes retarget one crossfade, latest wins. Double reveal within 1.2 s: replaced, timer restarted. Reconnect: first STATE never reveals. Team removed: frontier may drop → no reveal. Two screens: each decides alone. Async: `setAmbience` while the context wakes — the wake path reads the remembered kind at wake time, so the last call wins in both orders.
+
+**Section 5 Code quality.** Fits existing patterns (pure lib + player method + page effect). Keep synthesis in one block in the player. No issues beyond those recorded.
+
+**Section 6 Tests.**
+```
+ NEW                   | TYPE   | TEST
+ ambienceFor           | unit   | rotation, lobby, finished, boss scene, boss card, intro, initiative, dish room
+ revealFor             | unit   | grow, jump 2, same, first, new game, boss entry, phase change same STATE
+ setAmbience wiring    | unit   | under ambient layer, switch disconnects, null stops, wake only with 🎵, stop/start, close
+ generator throws      | unit   | createBuffer throws → setAmbience does not throw
+ layer table           | unit   | existing table test
+ MapStrip overlay/CSS  | manual | venue run (no component harness)
+```
+no_claim: how it sounds and looks (fake AudioContext; node only).
+
+**Section 7 Performance.** One looping buffer source, one biquad, ≤1 LFO per kind; events ≤1 per 1.5 s; one 2 s noise buffer per page [estimated ≈384 KB]. No issues.
+
+**Section 8 Observability.** Errors log `[fx] ambience` like other fx. No issues beyond the try/catch log.
+
+**Section 9 Deployment.** Client only; no Worker-first ordering. Rollback = revert. Post-deploy /canary. No issues.
+
+**Section 10 Long-term.** Reversibility 5/5. Debt: levels tuned by ear (venue check). `ambienceFor` is the single mapping for later themed rooms.
+
+**Section 11 Design & UX.**
+```
+ turn in room r ─► ambience(r%3) fades in under music ─► video ▶ → silent ─► judged → returns
+ team clears frontier room ─► door creak + fog blows off + room lights (or static outline) ─► next question already shown
+```
+States: not unlocked = silent; lobby = none; error = silent + log; success = bed audible. Reduced motion → static outline. Design phase follows.
+
+#### CEO required outputs
+REALITY: premise-table pass 8 premises, unverified=0 lib/bgm-player.ts:51
+REALITY: already-done pass no PR3 work on main (greps for ambience, setAmbience, 揭霧 empty) components/map-strip.tsx:34
+REALITY: surface-check pass npm scripts test, lint, check:bundle, check:docs exist package.json:1
+REALITY: binding-decisions pass no branch decisions; the approved design binds lib/bgm-player.ts:84
+REALITY: numbers pass AMBIENT_VOLUME 0.03 vs music 0.05 [measured: lib/bgm-player.ts:16] lib/bgm-player.ts:26
+REALITY: deferred-asks pass no linked issue docs/designs/immersion.md:146
+REALITY: pr-count pass pr_count 1 .gstack/ship-policy.json:1
+
+**NOT in scope**: 0G #1-5 (skipped, reasons above); split into two PRs (T1, kept one); independent ambience switch (UC1, pending owner). No TODOs added.
+
+**What already exists**: layered mixer + ambient row, tone/pattern scheduling, drop-late-notes rule, flash budget + `flash()`, fog + pawn arrival in MapStrip, describeTurn/backdrop logic, cloud sprite. All reused.
+
+**Dream state delta**: rooms get a bed and a fog moment; the ideal (themed per room type, venue presets) needs room-type data later.
+
+**Failure Modes Registry**
+```
+ CODEPATH        | FAILURE MODE         | RESCUED? | TEST?  | USER SEES       | LOGGED?
+ generator start | WebAudio node throws | Y        | Y      | no ambience     | Y
+ event timer     | bg tab burst         | Y        | N      | nothing         | N
+ fog reveal      | wrong trigger        | Y        | Y      | no reveal       | N
+ door creak      | over a clip          | Y        | N      | silence         | N
+ mix level       | too loud at venue    | manual   | manual | hiss over music | N
+```
+CRITICAL GAPS: 0.
+
+```
+  +====================================================================+
+  |            MEGA PLAN REVIEW — COMPLETION SUMMARY                   |
+  +====================================================================+
+  | Mode selected        | SELECTIVE EXPANSION                         |
+  | System Audit         | ambient layer exists unused; no PR3 work    |
+  | Step 0               | 0 expansions accepted; C1/C2 decided        |
+  | Section 1  (Arch)    | 1 issue found                               |
+  | Section 2  (Errors)  | 6 error paths mapped, 1 GAP (accepted fix)  |
+  | Section 3  (Security)| 0 issues found, 0 High severity             |
+  | Section 4  (Data/UX) | 5 edge cases mapped, 0 unhandled            |
+  | Section 5  (Quality) | 0 issues found                              |
+  | Section 6  (Tests)   | Diagram produced, 0 gaps                    |
+  | Section 7  (Perf)    | 0 issues found                              |
+  | Section 8  (Observ)  | 0 gaps found                                |
+  | Section 9  (Deploy)  | 0 risks flagged                             |
+  | Section 10 (Future)  | Reversibility: 5/5, debt items: 1           |
+  | Section 11 (Design)  | 0 issues                                    |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (7 items)                           |
+  | What already exists  | written                                     |
+  | Dream state delta    | written                                     |
+  | Error/rescue registry| 6 rows, 0 CRITICAL GAPS                     |
+  | Failure modes        | 5 total, 0 CRITICAL GAPS                    |
+  | TODOS.md updates     | 0 items proposed                            |
+  | Scope proposals      | 5 proposed, 0 accepted                      |
+  | CEO plan             | written (local-only)                        |
+  | Outside voice        | codex completed                             |
+  | Lake Score           | N/A                                         |
+  | Diagrams produced    | 4 (architecture, error map, tests, flow)    |
+  | Stale diagrams found | 0                                           |
+  | Unresolved decisions | 1 (UC1, owner)                              |
+  | Reality rows         | 7/7 rows, 0 unverified                      |
+  +====================================================================+
+```
+
+#### Phase 2: Design review (autoplan, auto-decided)
+
+Input: design snapshot 5eded4ca5d771fddf9b0b6805ed0e85f39aa02e74184694962f2afa3806218da. Native subagent INPUT line matched. Codex: OUTSIDE_STATUS completed, VERDICT FINDINGS (P1).
+
+**Step 0 (design scope):** completeness 6/10 before this pass. DESIGN.md exists (two-frame `steps()` motion, `--turn2` #f4c94a, shared flash budget, D13 landing outline keeps running under reduced motion). Patterns reused: `Sprite kind="cloud" scale={2}` fog clouds in components/map-strip.tsx, `px-room-flash`, `transitionOn` skip rule (page.tsx:1441), the shared `flash()`.
+
+**Codex SAYS (design, UX challenge):** High: no independent ambience control (same as CEO UC1). Medium: the reveal is an effect, not a legible map state; layer order, highlight treatment and couch-distance check unspecified. Medium: stale superseded values (0.4 s vs 1.5 s fade, drips cadence, `revealLook`). Low: `room % 3` has no stated rationale; say it is atmospheric variety, not a gameplay signal.
+
+**Claude SUBAGENT (design, independent):** High H1 the reveal lands in the same STATE as the correct-answer cue (verified lib/game-state.ts:1232), so the creak overlaps the cue and the clouds play while everyone watches the answer panel. High H2 the static highlight (turn2 outline) is identical to the D13 landing outline already on that room, so the fallback is invisible. High J1 turn-room ambience can change every turn; frontier would pair with the reveal. High A1 stale values. Medium: H3 four effects at once on one room; S1 a full-screen TransitionOverlay (sprint) can share the STATE; S2 overlay paint order; S3 end state; J2 ambience cycle (3) differs from backdrop cycle (stone/moss, 2); P1-P3 no numbers for px-fog-blow, px-room-lit, DOOR_CREAK; A2 event d20 roll ducking. Low: J3 trailing team gets no reveal (correct, unstated); A3 `key`.
+
+**Litmus scorecard:**
+
+| Dimension | Native | Codex | Status |
+|---|---|---|---|
+| Information hierarchy (what the room sees first) | H1, H3 | reveal legibility | CONFIRMED (both: reveal must read clearly) |
+| Missing states | S1, S3 | layer order | CONFIRMED |
+| User journey / emotional arc | J1, J2 | room % 3 rationale | DISAGREE on fix (frontier/theme vs. keep + state rationale) → taste |
+| Specificity | P1-P3 | effect not specified | CONFIRMED |
+| Ambiguity | A1 | stale values | CONFIRMED |
+| Accessibility / reduced motion | H2 | contrast + couch distance | CONFIRMED (fallback must be visible) |
+| Player control of ambience | not raised | High | Codex only; already UC1 from CEO |
+
+**Pass 1 Information architecture 6→8:** H1 auto-fix (P5): the whole fog reveal (sound + clouds + lit) starts `FOG_REVEAL_DELAY_MS = 600` after the STATE, after the answer cue; it is a client visual, a new question never waits for it. H3 auto-fix: clouds at t=0, `px-room-lit` with a 0.6 s animation-delay (fog leaves, then the room lights).
+**Pass 2 Interaction states 5→8:** S1 auto-fix: while a TransitionOverlay is up, skip the reveal (sound and visual), not queued, same rule as the heartbeat. S3 auto-fix: animations end at the base look (no fill-forward leftovers); removing the static highlight is a cut. A2 auto-decided: no duck under the event d20 roll (layer table unchanged). J3: stated (a trailing team entering an already-revealed room gets no reveal, on purpose).
+**Pass 3 User journey 6→7:** J1 stays taste T2 (turn room; frontier is the alternative, now also argued by the native design voice). J2 / Codex low → taste T4: keep `room % 3` (design text "by room index in rotation"); docs say it is atmosphere, not a gameplay signal.
+**Pass 4 AI slop / specificity 5→8:** P1 auto-fix: two `Sprite kind="cloud" scale={2}` at the fog's own offsets (top 4 and top 30), `px-fog-blow` slides +40px and opacity 1→0 in `steps(4)` over 0.8 s. P2: `px-room-lit` = `filter: brightness(1.6)` at 50%, back to 1, 0.4 s, `steps(2)`. P3: `DOOR_CREAK` triangle wave falling 180→120 Hz with a small wobble, at most 0.6 s.
+**Pass 5 Design system 6→8:** H2 auto-fix: the static highlight is a static `filter: brightness(1.3)` on the room box (distinct from the D13 turn2 outline), no animation, held 1.2 s. Two-frame `steps()` only, no new colour tokens.
+**Pass 6 Responsive / accessibility 6→8:** S2 auto-fix: the overlay sits inside the room div, before the pawns in paint order (pawns, tag, ▼ stay on top), `pointer-events-none` and `aria-hidden`. Clouds are clipped to the room box (narrow rooms). Manual venue check adds: from couch distance the opened room is identifiable and the pawn stays visible. TV only, no touch or keyboard targets.
+**Pass 7 Unresolved decisions:** A1 auto-fix (both voices): the design accepted block below is the single source of truth for fade time, drips cadence and helpers; superseded text is void. A3: `key` = room index. UC1 (independent ambience off) stays a User Challenge for the final gate.
+
+<!-- autoplan-accepted:design -->
+- Single source of truth (both design voices): ambience kind change crossfades over 1.5 s (the 0.4 s fade is void); drips are one blip every 1.5-4.5 s over a faint bed at multiplier 0.15 (the 0.6-2.2 s / no-bed text is void); there is no `revealLook` helper, the page's existing `flash()` decides lit vs static.
+- The fog reveal (door sound, clouds, light) starts `FOG_REVEAL_DELAY_MS = 600` after the STATE that moved the frontier, so it follows the correct-answer cue instead of overlapping it; one timer, replaced by a newer reveal, cleared on unmount; a new question never waits for it. Verify: constant exported from lib/ambience.ts; code read in /review.
+- While a TransitionOverlay is up (`transitionOn`), the reveal is skipped entirely (sound and visual), not queued, the same rule as the heartbeat.
+- Overlay placement: inside the room div, before the pawns (pawn, tag and ▼ paint on top), `pointer-events-none`, `aria-hidden`, clipped to the room box. Two `Sprite kind="cloud" scale={2}` at top 4 and top 30; `px-fog-blow` slides +40px with opacity 1→0 in `steps(4)` over 0.8 s.
+- Lit look: `px-room-lit` = `filter: brightness(1.6)` at 50% then back to 1, 0.4 s, `steps(2)`, animation-delay 0.6 s (after the clouds); one pulse = one flash-budget take. Static look (budget refused or reduced motion): static `filter: brightness(1.3)` on the room box for 1.2 s, no animation, removed as a cut; it replaces the turn2-outline static highlight so it differs from the D13 landing outline.
+- `DOOR_CREAK`: triangle wave falling 180→120 Hz with a small wobble, at most 0.6 s, game-cue bus.
+- A trailing team entering a room already revealed gets no fog reveal (only the frontier fogs). No ducking under the event d20 roll. The reveal state's `key` is the room index.
+- Docs say the ambience rotation is atmosphere, not a gameplay signal. Manual venue check adds: from couch distance the opened room is identifiable and the pawn stays visible.
+<!-- /autoplan-accepted:design -->
+
+Taste added in design: T4 keep `room % 3` (native wanted backdrop-theme mapping; Codex wanted only a stated rationale). T2 note: native design voice also prefers the frontier room.
+
+#### Phase 3: Eng review (autoplan, auto-decided)
+
+Input: eng snapshot cbf2fbae61538849726871035899c0cd94481c5b34ef6cd86da2f2925df9efd2 (native INPUT line matched). Methodology read 4 ranges, 2109/2109 lines. Codex: OUTSIDE_STATUS completed, 3 findings (2 medium, 1 low).
+
+**Step 0 Scope Challenge:** scope accepted as-is. Files changed: lib/ambience.ts (new), lib/ambience.test.ts (new), lib/bgm-player.ts, lib/bgm-player.test.ts, lib/sfx.ts, components/map-strip.tsx, app/globals.css, app/room/[code]/screen/page.tsx, docs/hosting.md, docs/hosting.en.md, changelog.d fragment = 11 files [estimated], 1 new module, 0 new services. 8+ files trips the complexity gate; structure question auto-decided (plan-eng-review-structure): Original arrangement kept, because no smaller arrangement preserves the behavior (docs + fragment + tests are required outputs, not code moving parts; code files are 7). Pending remedies not decided there: none. TODOS.md: nothing blocking; no new TODO (CEO 0G expansions were skipped, not deferred).
+
+REALITY: premise-table pass 9 premises, unverified=0 (frontier max lib/map-layout.ts:40; boss entry keeps roomIndex lib/game-state.ts:1215; roomIndex moves with the judgment lib/game-state.ts:1232; flash() page.tsx:1382; transitionOn page.tsx:1426; ambient layer lib/bgm-player.ts:84; onstatechange only play() lib/bgm-player.ts:89; close() nulls ctx lib/bgm-player.ts:228; teams removed mid-reveal page.tsx:283) lib/map-layout.ts:40
+REALITY: already-done pass origin/main has no commit past b638fdd; no ambience/fog code exists lib/bgm-player.ts:84
+REALITY: surface-check pass npm scripts test/lint/check:bundle/check:docs exist in package.json; vitest config node-only vitest.config.ts:1
+REALITY: binding-decisions pass gstack-decision-search returned no branch decisions; immersion.md PR3 text (room index rotation, no files, flash budget) honored docs/designs/immersion.md:147
+REALITY: numbers pass every number is a design constant tagged [estimated] (600 ms, 1.5 s, 0.03/0.05 volumes from lib/bgm-player.ts, 3 per 1 s from lib/flash-budget.ts); balance [re-measure before gate] at the venue lib/flash-budget.ts:1
+REALITY: deferred-asks pass no linked issue; design asks all covered (ambience, fog, door sound, flash budget, reduced motion) docs/designs/immersion.md:147
+REALITY: pr-count pass pr_count default 1, split_requires_owner true; one PR .gstack/ship-policy.json:30
+
+**Codex SAYS (eng, architecture challenge):** Medium: a delayed reveal can outlive the STATE that scheduled it (cancel on phase/lobby/reconnect; check transition, video and buzz at fire time; `transitionOn` ref updates in an effect, page.tsx:1460, so a same-STATE transition is missed if checked in the handler). Medium: ambience-off control unresolved (UC1). Low: room boxes do not clip children (map-strip.tsx:68); the 40px cloud slide can spill.
+
+**Claude SUBAGENT (eng, independent):** High H1: the new room mounts clear in the same render as the STATE (layoutMap draws to the frontier), so with a 600 ms delay clouds pop on later; fix: covered clouds at STATE time, blow at +600 ms. High H2: skip checks must run in the timer callback. Medium M1 stale text; M2 a removed leader drops the frontier so a room re-reveals; M3 generator churn, cap live generators; M4 wake path needs one `resumeAmbience()` from onstatechange/start/unlock; setAmbience after close() must not recreate the context. Low: 2 s loop audible (use 4 s), check:bundle covers ambience.ts, clip overlay, null-prev test.
+
+```
+ENG DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude  Codex  Consensus
+  1. Architecture sound?               yes     yes    CONFIRMED
+  2. Test coverage sufficient?         gaps    ok     DISAGREE (gaps accepted below, P1)
+  3. Perf risks + budget/bench named?  churn   none   DISAGREE (cap accepted below, P1)
+  4. Security threats covered?         none    none   CONFIRMED
+  5. Error paths handled?              timer   timer  CONFIRMED (fire-time checks + cancel)
+  6. Deployment risk manageable?       yes     yes    CONFIRMED
+```
+
+**Section 1 Architecture:**
+```
+ STATE (ws) ──► screen page STATE handler ──► revealFor(prev,next) ─► fogReveal{room,phase:"covered"}
+     │                                   └─► 600ms timer ─(fire-time checks)─► DOOR_CREAK (cue bus)
+     │                                                                     └─► fogReveal{phase:"blow",lit:flash()}
+     │                                                                                   │
+     └─► game state ──► ambienceFor(state) ──► player().setAmbience(kind)       MapStrip(fogReveal) ×4
+                         (lib/ambience.ts, pure)      │                          overlay in room div
+                                                      ▼                          px-fog-blow / px-room-lit
+                         lib/bgm-player.ts: master ─► layers.ambient ─► kind gain ─► filter ─► noise src (+LFO / events)
+```
+Design-twice: shape A (chosen) pure `lib/ambience.ts` deciders + synthesis inside the existing player closure; shape B a separate `AmbiencePlayer` owning its own AudioContext. A hides more behind one `setAmbience()` and reuses the layer table, ducking and wake; B duplicates the context and the mix (red flag 5, split ownership). Pick A. Red flags: none in A once the wake path is one `resumeAmbience()` (flag 6 avoided).
+Findings: [INFORMATIONAL] (confidence 8/10) page.tsx:1460 `transitionOn.current = !!transition;` runs in an effect, so the reveal's transition check must run at fire time (accepted E1).
+
+**Section 2 Code quality:** [INFORMATIONAL] (8/10) lib/bgm-player.ts:89 `c.onstatechange = () => { play(); onState?.(); };` has no ambience hook; accepted E4 `resumeAmbience()`. [INFORMATIONAL] (7/10) stale superseded plan text: the design "single source of truth" bullet already settles it; implement from the latest accepted bullets (E3, no change). Rejected M2 (high-water frontier): layoutMap draws only up to the current max roomIndex (lib/map-layout.ts:40 `const frontier = Math.max(0, ...teams.map((t) => t.roomIndex));`), so when the leader leaves the room goes back under fog on screen and a later reveal matches what the room sees.
+
+**Section 3 Test review:**
+```
+CODE PATHS                                         USER FLOWS
+[+] lib/ambience.ts                                [+] Team enters new frontier room
+  ├── ambienceFor()                                  ├── [GAP→manual] covered clouds → creak → blow → lit
+  │   ├── [★★★ PLANNED] room%3, lobby, finished,     ├── [GAP→manual] reduced motion static highlight
+  │   │   boss, phase card, intro, initiative, dish  └── [GAP→manual] transition/clip in the 600 ms window
+  ├── revealFor()                                  [+] 🎵 toggle
+  │   └── [★★★ PLANNED] growth, jump 2, same, first,   └── [★★ PLANNED] stop/start resume (player vitest)
+  │       new game, boss entry, phase change       [+] Video question
+[+] lib/bgm-player.ts setAmbience()                  └── [★★ COVERED] ambient row 0 (existing table test)
+  ├── [★★★ PLANNED] wiring, switch, null, wake w/ 🎵, stop/start, close, same kind, createBuffer throws
+  ├── [★★★ PLANNED] A→B→C ≤ 2 live sources (E5)
+  └── [★★★ PLANNED] setAmbience after close() builds no context (E4)
+[+] page timer / MapStrip overlay: [GAP→manual] node-only vitest, no component harness
+COVERAGE: code paths 3/3 planned ★★★; user flows 2/6 automated, 4 manual venue
+```
+Test plan artifact: a local-only eng-review test plan under ~/.gstack/projects/ (local only). No LLM/eval scope.
+
+**Section 4 Performance:** one looped buffer source + one filter + one LFO per live generator, events every 1.5-4.5 s on the existing 100 ms tick; scale: ≤ 2 generators (E5), 4 s mono buffer at 48 kHz ≈ 768 KB float32 [estimated], built once per player. No hot path beyond the existing scheduler tick. [INFORMATIONAL] (6/10) generator churn on every turn: capped by E5.
+
+**NOT in scope:** independent ambience-off control (UC1, owner decision); MapStrip render test (no component harness); per-theme ambience mapping (taste T4); frontier-room ambience (taste T2); audio files.
+**What already exists:** `layerGains()` ambient row and ducking (lib/bgm-player.ts), lookahead scheduler, `flash()` + flash budget (lib/flash-budget.ts), `transitionOn` skip rule, cloud `Sprite`, `px-room-flash`, `describeTurn`/backdrop logic (lib/turn-info.ts). All reused; nothing rebuilt.
+**Failure modes:** WebAudio createBuffer throws on an old TV → try/catch + console.error, tested, silent but harmless (no critical gap). Reveal timer fires after a transition/clip started → fire-time checks (E1), manual check. Reveal after reconnect/phase change → cancel (E1). Generators stack → cap (E5), tested. Context recreated after close → guard (E4), tested. Critical gaps: 0.
+**Parallelization:** sequential implementation, no parallelization opportunity (one lane; page depends on lib/ambience.ts and the player API).
+
+<!-- autoplan-accepted:eng -->
+- E1 (both voices): the reveal's skip checks (video playing, buzz hold, `transitionOn.current`) and `flash()` run inside the 600 ms timer callback, not in the STATE handler; the pending timer is also cleared on a phase change, a return to the lobby and a reconnect (prevState reset). Verify: code read in /review; manual venue check.
+- E2: the reveal has two steps. At the STATE: `fogReveal = { room, step: "covered" }` puts the two cloud sprites static over the new room (no sound, no flash, no animation). At +600 ms: door creak, `step: "blow"` starts `px-fog-blow` and the lit or static look; cleared 1.2 s later. Under reduced motion no clouds show in either step.
+- E4: one `resumeAmbience()` inside the player, called from `onstatechange`, `start()` and `unlock()`; it starts the remembered kind only when 🎵 is on, the context is running and no generator is live. `setAmbience` never calls `ensure()`: with no context (or after `close()`) it only remembers the kind. Verify: player vitest that `setAmbience` after `close()` creates no AudioContext.
+- E5: at most two live generators (the current one and one fading out); a new switch hard-stops any generator still fading. Verify: player vitest that A→B→C leaves at most 2 live sources.
+- The noise buffer is 4 s (not 2 s) so the loop is not heard.
+- The reveal overlay is an absolute `inset-0` wrapper with `overflow: hidden` inside the room box, so the sliding clouds never spill into corridors or fog; the room box itself does not clip (pawns unaffected).
+<!-- /autoplan-accepted:eng -->
+
+Rejected: M2 high-water frontier (map shrinks with the frontier, so a re-reveal is correct). Taste unchanged: T1 one PR, T2 turn room, T4 room % 3. User Challenge UC1 still open.
+
+### Run 3 — GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/autoplan` | Scope & strategy | 1 | ISSUES OPEN | mode: HOLD, 0 critical gaps, 1 user challenge |
+| Outside Review | codex via `/autoplan` | Independent 2nd opinion | 3 | completed | CEO 6, design 4, eng 3 concerns |
+| Eng Review | `/autoplan` | Architecture & tests (required) | 1 | ISSUES OPEN | 5 issues, 0 critical gaps |
+| Design Review | `/autoplan` | UI/UX gaps | 1 | ISSUES OPEN | score: 6/10 → 8/10, 13 decisions |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | skipped | no developer-facing scope |
+
+- **OUTSIDE COVERAGE:** Codex completed in CEO, design and eng phases.
+- **CROSS-MODEL:** confirmed: independent ambience-off wish (UC1), stale plan text, reveal legibility, delayed-reveal timer checks. Disagreements resolved as taste T1, T2, T4.
+- **VERDICT:** not cleared: blocked on the owner's answer to UC1; eng review required after it.
+
+**UNRESOLVED DECISIONS:**
+- UC1: add an independent ambience-off control, or keep ambience tied to 🎵 as the design says (owner decision).

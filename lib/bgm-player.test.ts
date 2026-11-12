@@ -69,8 +69,38 @@ class FakeAudioContext {
     this.gains.push(node);
     return node;
   }
+  sampleRate = 100;
+  /** Every buffer source made (the ambience's noise), and whether it loops, started and stopped. */
+  sources: { loop: boolean; started: boolean; stopped: boolean }[] = [];
+  /** Throw from createBuffer, like an old TV's broken WebAudio. */
+  brokenBuffers = false;
+  createBuffer(_channels: number, length: number) {
+    if (this.brokenBuffers) throw new Error("no buffers");
+    const data = new Float32Array(length);
+    return { getChannelData: () => data };
+  }
+  createBufferSource() {
+    const src = {
+      loop: false,
+      started: false,
+      stopped: false,
+      buffer: null as unknown,
+      connect: (d: unknown) => d,
+      start() {
+        src.started = true;
+      },
+      stop() {
+        src.stopped = true;
+      },
+    };
+    this.sources.push(src);
+    return src;
+  }
+  createBiquadFilter() {
+    return { type: "", frequency: { value: 0 }, connect: (d: unknown) => d };
+  }
   createOscillator() {
-    const freq = { setValueAtTime() {}, exponentialRampToValueAtTime() {} };
+    const freq = { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} };
     let dest: unknown = null;
     return {
       type: "",
@@ -269,6 +299,22 @@ describe("createBgmPlayer", () => {
     expect(vi.getTimerCount()).toBe(1);
   });
 
+  it("setMusic(): the host's 🎵 never creates the context; set on while asleep, the music starts on unlock; off stops it", async () => {
+    const bgm = setup();
+    bgm.setMusic(true);
+    expect(FakeAudioContext.all).toHaveLength(0);
+    const a = bgm.unlock();
+    FakeAudioContext.all[0].release();
+    await a;
+    expect(vi.getTimerCount()).toBe(1);
+    bgm.setMusic(true); // the same setting again: still one loop
+    expect(vi.getTimerCount()).toBe(1);
+    bgm.setMusic(false);
+    expect(vi.getTimerCount()).toBe(0);
+    bgm.setMusic(true); // awake: on starts it at once
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
   it("the host layer is at its volume as soon as the context exists, with 🎵 off", async () => {
     const bgm = setup();
     const a = bgm.unlock();
@@ -352,5 +398,99 @@ describe("createBgmPlayer", () => {
     vi.advanceTimersByTime(100);
     expect(ctx.notes.length).toBeGreaterThan(0);
     expect(ctx.notes.every((n) => n.at >= 30)).toBe(true);
+  });
+});
+
+describe("setAmbience: the room ambience (immersion.md PR3)", () => {
+  /** The looped noise beds still sounding: one per ambience. */
+  const beds = (ctx: FakeAudioContext) => ctx.sources.filter((s) => s.loop && s.started && !s.stopped).length;
+  /** The ambiences' own gains, connected right under the ambient layer. */
+  const underAmbient = (ctx: FakeAudioContext) => ctx.gains.filter((g) => g.connected && g.dest === layerNode(ctx, "ambient"));
+
+  it("plays under the ambient layer, so the 聲音分層表 sets its volume", async () => {
+    const { bgm, ctx } = await started();
+    bgm.setAmbience("wind");
+    expect(underAmbient(ctx)).toHaveLength(1);
+    expect(beds(ctx)).toBe(1);
+  });
+
+  it("a change crossfades: the old one stops after the fade; the same kind again builds nothing", async () => {
+    const { bgm, ctx } = await started();
+    bgm.setAmbience("drips");
+    const old = underAmbient(ctx)[0];
+    bgm.setAmbience("drips");
+    expect(ctx.sources).toHaveLength(1);
+    bgm.setAmbience("wind");
+    expect(beds(ctx)).toBe(2); // both while crossfading
+    expect(old.gain.target).toBe(0);
+    vi.advanceTimersByTime(1500);
+    expect(old.connected).toBe(false);
+    expect(beds(ctx)).toBe(1);
+  });
+
+  it("a quick run of changes never leaves more than two sounding", async () => {
+    const { bgm, ctx } = await started();
+    for (const kind of ["drips", "wind", "campfire", "drips"] as const) bgm.setAmbience(kind);
+    expect(beds(ctx)).toBe(2);
+    vi.advanceTimersByTime(1500);
+    expect(beds(ctx)).toBe(1);
+  });
+
+  it("null fades it out", async () => {
+    const { bgm, ctx } = await started();
+    bgm.setAmbience("campfire");
+    bgm.setAmbience(null);
+    vi.advanceTimersByTime(1500);
+    expect(beds(ctx)).toBe(0);
+    expect(underAmbient(ctx)).toHaveLength(0);
+  });
+
+  it("never creates the AudioContext; a kind set before it runs starts when it wakes", async () => {
+    const bgm = setup();
+    bgm.setAmbience("wind");
+    expect(FakeAudioContext.all).toHaveLength(0);
+    const a = bgm.start();
+    const [ctx] = FakeAudioContext.all;
+    expect(beds(ctx)).toBe(0); // still asleep
+    ctx.release();
+    await a;
+    expect(beds(ctx)).toBe(1);
+  });
+
+  it("waits while 🎵 is off: 🎵 off stops it, 🎵 on brings the same kind back", async () => {
+    const bgm = setup();
+    const u = bgm.unlock();
+    const [ctx] = FakeAudioContext.all;
+    ctx.release();
+    await u;
+    bgm.setAmbience("drips");
+    expect(beds(ctx)).toBe(0);
+    await bgm.start();
+    expect(beds(ctx)).toBe(1);
+    bgm.stop();
+    expect(beds(ctx)).toBe(0);
+    await bgm.start();
+    expect(beds(ctx)).toBe(1);
+  });
+
+  it("close() stops it, and a later setAmbience creates nothing", async () => {
+    const { bgm, ctx } = await started();
+    bgm.setAmbience("wind");
+    bgm.close();
+    expect(beds(ctx)).toBe(0);
+    bgm.setAmbience("drips");
+    expect(FakeAudioContext.all).toHaveLength(1);
+    expect(ctx.sources).toHaveLength(1);
+  });
+
+  it("a broken WebAudio loses only the ambience: no throw, an error line, the music plays on", async () => {
+    const { bgm, ctx } = await started();
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    ctx.brokenBuffers = true;
+    expect(() => bgm.setAmbience("wind")).not.toThrow();
+    expect(err).toHaveBeenCalledWith("[fx] ambience", expect.any(Error));
+    vi.advanceTimersByTime(100);
+    expect(ctx.notes.length).toBeGreaterThan(0);
+    err.mockRestore();
   });
 });

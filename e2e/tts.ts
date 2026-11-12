@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
 /** Stubs window.speechSynthesis before the page loads, recording every speak() call's text
  * and every cancel(). getVoices() returns one usable zh-TW voice so pickVoice() finds it
@@ -40,3 +40,17 @@ export async function stubSpeechSynthesis(page: Page) {
 }
 
 export const ttsCalls = (page: Page) => page.evaluate(() => (window as unknown as { __ttsCalls: string[] }).__ttsCalls);
+
+/** A tap on the big screen: its first gesture wakes the sound and primes the voice. The 🔊 / 🎵 switches themselves are
+ * the host's, in ⚙ 更多 (immersion.md PR3). A corner of the page: nothing there to press. */
+export const tapScreen = (page: Page) => page.mouse.click(4, 4);
+
+/** Sets one of the host's big-screen sound switches in ⚙ 更多 (🎵 音樂, 🔊 旁白語音, 🌧 環境音), then closes the drawer. */
+export async function setScreenAudio(host: Page, name: "🎵 音樂" | "🔊 旁白語音" | "🌧 環境音", on: boolean) {
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  const drawer = host.getByTestId("more-drawer");
+  const sw = drawer.getByRole("switch", { name: new RegExp(`^${name}：`) });
+  if ((await sw.getAttribute("aria-checked")) !== String(on)) await sw.click();
+  await expect(sw).toHaveAttribute("aria-checked", String(on)); // the room's STATE came back with it
+  await drawer.getByRole("button", { name: "關閉" }).click();
+}

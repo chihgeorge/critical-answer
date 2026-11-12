@@ -3,7 +3,7 @@
 // window.YT records every player call, so nothing here needs the network or a real video.
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { startGame, nextQuestion, screenUrl, rollCheck } from "./answer";
-import { stubSpeechSynthesis } from "./tts";
+import { stubSpeechSynthesis, tapScreen } from "./tts";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 const WORKER = "http://localhost:1996";
@@ -212,8 +212,7 @@ test("a playing video silences the music and stops the narration on the big scre
   const lastGain = () => screen.evaluate(() => (window as unknown as { __gain: number[] }).__gain.at(-1));
   const cancels = () => screen.evaluate(() => (window as unknown as { __ttsCancelCount: () => number }).__ttsCancelCount());
 
-  await screen.getByRole("button", { name: "🎵 音樂關" }).click();
-  await expect(screen.getByRole("button", { name: "🎵 音樂開" })).toBeVisible();
+  await tapScreen(screen); // wakes the sound; the host's 🎵 is on by default
   await expect.poll(lastGain).toBeGreaterThan(0);
 
   await startGame(host);
