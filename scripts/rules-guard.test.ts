@@ -34,11 +34,20 @@ describe("A1 e2e", () => {
   it("blocks running e2e", () => {
     expect(bash("npm run e2e")).toBe("A1");
     expect(bash("cd x && npx playwright test e2e/a.spec.ts")).toBe("A1");
+    expect(bash("npm  run e2e")).toBe("A1");
+    expect(bash("npx playwright install")).toBe("A1");
+    expect(bash("pnpm exec playwright test")).toBe("A1");
+  });
+  it("still sees a command next to quoted text or a heredoc", () => {
+    expect(bash(`echo "don't" && npm run e2e && echo 'x'`)).toBe("A1");
+    expect(bash("cat <<EOF > f && npm run e2e\nbody\nEOF")).toBe("A1");
   });
   it("passes text that only mentions it", () => {
     expect(bash('git commit -m "docs: npm run e2e is CI only"')).toBeNull();
     expect(bash("grep -n 'npm run e2e' CLAUDE.md")).toBeNull();
     expect(bash("gh pr create --body-file - <<'EOF'\nnpm run e2e runs on CI\nEOF")).toBeNull();
+    expect(bash("git commit -F - <<-EOF\n\tnpm run e2e\n\tEOF")).toBeNull();
+    expect(bash('git commit -m "$(cat <<\'EOF\'\nnpm run e2e\nEOF\n)"')).toBeNull();
     expect(bash("npm run test")).toBeNull();
   });
 });
@@ -48,10 +57,14 @@ describe("A2 bare git stash", () => {
     expect(bash("git stash")).toBe("A2");
     expect(bash("git stash && git pull")).toBe("A2");
     expect(bash("git stash pop")).toBe("A2");
+    expect(bash("git stash -u")).toBe("A2");
+    expect(bash("git -C ../x stash push")).toBe("A2");
+    expect(bash("git stash apply")).toBe("A2");
   });
   it("passes a tagged push and apply by sha", () => {
     expect(bash('git stash push -u -m "lane-x"')).toBeNull();
     expect(bash("git stash apply abc123")).toBeNull();
+    expect(bash("git stash list")).toBeNull();
   });
 });
 
@@ -75,18 +88,23 @@ describe("A5 personal info in committed files", () => {
   it("blocks a home path, a hostname and a private IP", () => {
     expect(write("docs/a.md", `see ${HOME}repo`)).toBe("A5");
     expect(write("docs/a.md", "ssh me@my-mac" + ".local")).toBe("A5");
-    expect(write("docs/a.md", "http://box.local" + ":3000/")).toBe("A5");
+    expect(write("docs/a.md", "http://box" + ".local:3000/")).toBe("A5");
     expect(write("docs/a.md", "host 192.168" + ".1.20")).toBe("A5");
     expect(write("docs/a.md", "host 10.0" + ".0.7")).toBe("A5");
+    expect(write("docs/a.md", "172.16" + ".0.1 and")).toBe("A5");
+    expect(write("docs/a.md", "172.31" + ".0.1 and")).toBe("A5");
     expect(hit({ tool_name: "MultiEdit", tool_input: { file_path: join(ROOT, "a.md"), edits: [{ old_string: "a", new_string: "172.20" + ".1.1" }] } })).toBe("A5");
   });
   it("passes ~ paths, .local file names, versions and localhost", () => {
     expect(write("docs/a.md", "~/.gstack/x and .env.local and settings.local.json, `.env.local`.")).toBeNull();
-    expect(write("docs/a.md", "node 10.15.3, v0.58.1.1, 127.0.0.1, localhost:4399")).toBeNull();
+    expect(write("docs/a.md", "node 10.15.3, v0.58.1.1, 127.0.0.1, 172.32.0.1, localhost:4399")).toBeNull();
   });
   it("passes files outside the repo and git-ignored files", () => {
     expect(hit({ tool_name: "Write", tool_input: { file_path: "/tmp/notes.md", content: HOME } })).toBeNull();
     expect(write("local-banks/a.md", HOME, { ignored: () => true })).toBeNull();
+  });
+  it("checks a NotebookEdit with a relative path", () => {
+    expect(hit({ tool_name: "NotebookEdit", tool_input: { notebook_path: "docs/a.ipynb", new_source: HOME } })).toBe("A5");
   });
   it("asks git whether a file is ignored", () => {
     expect(write("node_modules/x.md", HOME, { ignored: gitIgnored })).toBeNull();

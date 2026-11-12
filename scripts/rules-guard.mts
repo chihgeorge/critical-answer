@@ -33,12 +33,18 @@ export function parseRules(md: string, warn: (msg: string) => void = () => {}): 
   return rules;
 }
 
-/** A shell command with quoted strings and heredoc bodies removed, so text that only mentions a rule passes. */
+/** A shell command with heredoc bodies and quoted strings removed, so text that only mentions a rule passes. */
 export function stripQuoted(cmd: string): string {
-  return cmd
-    .replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?^\s*\2\s*$/gm, "<<heredoc")
-    .replace(/'[^']*'/g, "''")
-    .replace(/"(?:[^"\\]|\\.)*"/g, '""');
+  // A line scan, not one regex: stays linear on huge or unterminated heredocs.
+  const kept: string[] = [];
+  let end: string | null = null;
+  for (const line of cmd.split("\n")) {
+    if (end !== null) { if (line.trim() === end) end = null; continue; }
+    kept.push(line);
+    end = /<<-?\s*(['"]?)(\w+)\1/.exec(line)?.[2] ?? null;
+  }
+  // One left-to-right pass, so an apostrophe inside "…" does not pair with a later '.
+  return kept.join("\n").replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, (q) => (q[0] === "'" ? "''" : '""'));
 }
 
 /** The new text a file tool is about to write (old_string is not new, so it is not checked). */
@@ -67,11 +73,13 @@ export function findViolation(rules: Rule[], input: HookInput, env: Env = { igno
   const ti = input.tool_input ?? {};
   const cwd = input.cwd ?? process.cwd();
   const rawPath = [ti.file_path, ti.notebook_path].find((v) => typeof v === "string") as string | undefined;
-  // Only files under the repo the session works in count as committed: memory, skills and scratch files elsewhere pass.
-  const root = gitRoot(cwd);
   const abs = rawPath === undefined ? undefined : isAbsolute(rawPath) ? rawPath : resolve(cwd, rawPath);
-  const rel = abs && root ? relative(root, abs) : undefined;
-  const inRepo = rel !== undefined && rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  // Only files in the session's repo, or a worktree inside it, count: memory, skills and scratch files elsewhere pass.
+  const sessionRoot = gitRoot(cwd);
+  const root = abs && sessionRoot ? gitRoot(dirname(abs)) : null;
+  const inScope = (from: string, to: string) => { const r = relative(from, to); return r !== "" && !r.startsWith("..") && !isAbsolute(r); };
+  const inRepo = !!(abs && root && (root === sessionRoot || inScope(sessionRoot!, root)) && inScope(root, abs));
+  const rel = inRepo ? relative(root!, abs!) : undefined;
   const content = rawPath === undefined ? "" : newContent(ti);
   let committed: boolean | undefined;
   const text = (field: Field): string | null => {

@@ -28,18 +28,18 @@ hook 出錯（rules.md 讀不到、某行規則運算式寫錯）時一律放行
 e2e 只在 GitHub CI 跑。本機一起跑 wrangler、next dev、build、vitest 會把電腦拖垮，造成假失敗（2026-11-04）。真的要在本機跑單一個 spec 除錯，要先問站長。
 
 ```block command
-npm run e2e
-playwright test
-npx playwright
+npm\s+run\s+e2e
+playwright\s+test
+npx\s+playwright
 ```
 
 ### A2. 不用裸 `git stash`
-stash 是所有 worktree 和 session 共用的，裸 `git stash` / `git stash pop` 可能拿到別的 session 的改動。要暫存改用 WIP commit，或 `git stash push -u -m "<唯一標籤>"`。
+stash 是所有 worktree 和 session 共用的，裸 `git stash`（沒有 `-m` 標籤）、`git stash pop`、不指定 sha 的 `git stash apply` 可能拿到別的 session 的改動。要暫存改用 WIP commit，或 `git stash push -u -m "<唯一標籤>"`。
 
 ```block command
-git stash\s*$
-git stash\s*[;&|]
-git stash pop
+git(\s+-C\s+\S+)?\s+stash(\s+push)?(\s+-[a-ln-zA-Z]+)*\s*($|[;&|])
+git(\s+-C\s+\S+)?\s+stash\s+pop
+git(\s+-C\s+\S+)?\s+stash\s+apply\s*($|[;&|])
 ```
 
 ### A3. 不用 claude-in-chrome 工具
@@ -66,7 +66,7 @@ repo 可能公開。不寫絕對家目錄路徑、主機名（`<主機名>.local
 ```
 
 ### A6. PR 不改版號檔
-VERSION、CHANGELOG.md、package.json 的版號只由 release PR 改；一般 PR 改加 `changelog.d/<branch-slug>.md`。（CI 的 `scripts/check-fragment.ts` 已經擋，這裡是提早在本機擋。）
+VERSION、CHANGELOG.md、package.json 的版號只由 release PR 改；一般 PR 改加 `changelog.d/<branch-slug>.md`。（CI 的 `scripts/check-fragment.ts` 已經擋，這裡是提早在本機擋 Write／Edit 這兩個檔；用 Bash 改檔和 `package.json` 的版號仍只靠 CI 擋。release 衝突要手動解時，請站長處理。）
 
 ```block path
 ^VERSION$
