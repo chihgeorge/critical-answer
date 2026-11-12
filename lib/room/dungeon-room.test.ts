@@ -140,7 +140,7 @@ describe("HOST_CLAIM", () => {
     claim(room, conn);
     expect((room as any).isHost(conn)).toBe(true);
     const msgs = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
-    expect(msgs.map((m) => m.type)).toEqual(["HOST_OK", "HOST_NEXT_LINE_STATE", "HOST_AI_STATUS"]);
+    expect(msgs.map((m) => m.type)).toEqual(["HOST_OK", "HOST_NEXT_LINE_STATE", "HOST_AI_STATUS", "HOST_BANKS"]);
     expect(msgs[0]).toEqual({ type: "HOST_OK", joinPassword: "", screenKey: expect.any(String) });
   });
 
@@ -2060,7 +2060,7 @@ describe("questions and answers (T3)", () => {
     const { room } = started();
     const second = makeConn("host-phone");
     claim(room, second);
-    expect(sent(second).map((m) => m.type)).toEqual(["HOST_OK", "HOST_NEXT_LINE_STATE", "HOST_AI_STATUS", "HOST_ANSWER", "HOST_PICKS"]);
+    expect(sent(second).map((m) => m.type)).toEqual(["HOST_OK", "HOST_NEXT_LINE_STATE", "HOST_AI_STATUS", "HOST_BANKS", "HOST_ANSWER", "HOST_PICKS"]);
   });
 
   it("STATE's live question never carries an answer, and STATE.reveal carries the correct one only for questions actually answered correctly (D2/D3/D5)", () => {

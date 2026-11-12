@@ -4,7 +4,12 @@
 
 import { tokensEqual } from "./tokens";
 import { originAllowed } from "./origin";
-import { BANK_NOT_FOUND, type BankConflict, type BankEntry, type VersionedBank } from "./bank-store";
+// Types only: bank-store.ts imports the bundled bank, and bank-image-api.ts (imported by the editor page) imports this file.
+import type { BankConflict, BankEntry, VersionedBank } from "./bank-store";
+
+/** Error message prefix for an id that names no bank: bank-store.ts throws it, and it becomes a 404 here (only the
+ * message survives RPC). Lives here so this file needs nothing at runtime from bank-store.ts. */
+export const BANK_NOT_FOUND = "bank not found";
 import type { Bank } from "./question-bank";
 import type { GameLog } from "./game-log";
 

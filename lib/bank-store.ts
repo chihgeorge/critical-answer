@@ -36,20 +36,28 @@
 import { BANK } from "./question-bank-data";
 import { allQuestions, assertSavable, bossQuestions, parseBank, imageKeysOf, type Bank } from "./question-bank";
 import type { RoomStorage } from "./room/io";
+import { DEFAULT_BANK_ENTRY } from "./protocol";
+import { BANK_NOT_FOUND } from "./bank-api";
 
 /** The default bank's id. It keeps the storage keys every deploy before multi-bank used ("bank", "legacyBank"),
  * so an upgrade reads the same stored bank and old callers without an id get it (docs/designs/multi-bank.md). */
-export const DEFAULT_BANK_ID = "default";
-export const DEFAULT_BANK_NAME = "預設題庫";
+export const DEFAULT_BANK_ID = DEFAULT_BANK_ENTRY.id;
+export const DEFAULT_BANK_NAME = DEFAULT_BANK_ENTRY.name;
 /** The owner's own banks (not the default), in the order they were made. */
 const INDEX_KEY = "banks";
 export const MAX_CUSTOM_BANKS = 20;
 export const MAX_BANK_NAME = 30;
-/** Error message prefix for an id that names no bank: bank-api.ts answers it with 404 (only the message survives RPC). */
-export const BANK_NOT_FOUND = "bank not found";
+export { BANK_NOT_FOUND };
 const bankKey = (id: string) => (id === DEFAULT_BANK_ID ? "bank" : `bank:${id}`);
 /** The stored bank as it was before a save overwrote an outdated one: the owner's backup if they missed docs/question-bank.md's. */
 const legacyKey = (id: string) => (id === DEFAULT_BANK_ID ? "legacyBank" : `legacyBank:${id}`);
+
+/** A new 「空白」 bank: the least a bank needs to save (one room with one question, a boss with one), as examples to edit. */
+export const BLANK_BANK: Bank = {
+  pools: { 1: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "範例題：1 + 1 = ?" }, answer: "2" }], 2: [], 3: [], 4: [], 5: [] },
+  rooms: [{ monster: "slime-soft", difficulty: 1, reward: 10 }],
+  boss: { monster: "dragon", hitReward: 10, phases: [{ name: "", rule: "", maxHp: 10, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "範例魔王題：2 + 2 = ?" }, answer: "4" }] }] },
+};
 
 export interface BankEntry {
   id: string;
@@ -242,7 +250,7 @@ export class BankStore {
 
   /** A new custom bank at version 1: a copy of bank `copyFrom`, else `blank`. Its files are in use by the copied bank
    * already, so nothing joins the cleanup queue. */
-  async createBank(name: unknown, copyFrom: string | undefined, blank: Bank): Promise<BankEntry> {
+  async createBank(name: unknown, copyFrom: string | undefined, blank: Bank = BLANK_BANK): Promise<BankEntry> {
     const n = await this.checkName(name);
     const list = await this.customBanks();
     if (list.length >= MAX_CUSTOM_BANKS) throw new Error(`最多 ${MAX_CUSTOM_BANKS} 份自訂題庫`);

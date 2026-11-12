@@ -10,7 +10,7 @@ import { UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notic
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
-import { FORTUNE_HOST_GRACE_MS, HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, serveSecondsLeft, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
+import { DEFAULT_BANK_ENTRY, FORTUNE_HOST_GRACE_MS, HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, serveSecondsLeft, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -58,6 +58,13 @@ export default function HostPage() {
   /** The room bank's question counts (LOBBY `bankSize`), for the too-few-questions warning by 開始遊戲. */
   const [bankSize, setBankSize] = useState<BankSize | null>(null);
   const sizeWarning = bankSize && bankSizeWarning(bankSize, lobby.length);
+  /** The banks this host may pick and the room's pick (HOST_BANKS, multi-bank.md); `loading` until the room has the
+   * picked bank, which holds 開始遊戲. Names only: a bank's questions never reach this page before a game. */
+  const [banks, setBanks] = useState<{ list: { id: string; name: string }[]; selected: { id: string; name: string }; loading: boolean }>({
+    list: [DEFAULT_BANK_ENTRY],
+    selected: DEFAULT_BANK_ENTRY,
+    loading: false,
+  });
   const [state, setState] = useState<StateMessage | null>(null);
   /** 手動停頓 (docs/designs/manual-pacing.md): the room's switch, as its last LOBBY or STATE said. */
   const [manual, setManual] = useState(false);
@@ -230,6 +237,9 @@ export default function HostPage() {
           // The room forgets a code after HANDOFF_MS, so the page stops showing it then (unless a newer one replaced it).
           setTimeout(() => dropHandoff(msg.teamId, msg.code), HANDOFF_MS);
           break;
+        case "HOST_BANKS":
+          setBanks({ list: msg.banks, selected: msg.selected, loading: !!msg.loading });
+          break;
         case "LOBBY":
           setManual(msg.pacing === "manual");
           setLobby(msg.teams);
@@ -272,6 +282,8 @@ export default function HostPage() {
           }
           // Any error releases an edit in flight (no stuck 送出中…); the edit refusals show in the panel, not the error line.
           setEditRefusal((r) => ({ detail: msg.detail ?? msg.error, seq: (r?.seq ?? 0) + 1 }));
+          // A refused pick gets no HOST_BANKS: release the menu here.
+          if (msg.detail === "owner_only" || msg.error === "game_already_started") setBanks((b) => ({ ...b, loading: false }));
           if (msg.detail && NARRATION_REFUSALS.has(msg.detail)) break;
           setError(
             msg.error === "bad_token"
@@ -286,6 +298,12 @@ export default function HostPage() {
                 ? "已經有隊伍叫這個名字了"
                 : msg.error === "invalid_name"
                 ? "隊名不能用，請換一個"
+                : msg.detail === "owner_only"
+                ? "要先在 AI 旁白那裡輸入站長金鑰，才能選站長的其他題庫"
+                : msg.detail === "bank_unavailable"
+                ? "這份題庫現在拿不到，還是用原本的題庫"
+                : msg.detail === "bank_loading"
+                ? "題庫還在載入，等一下再開始"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
           );
           setPendingTeamId(null);
@@ -806,6 +824,27 @@ export default function HostPage() {
                 </select>
               </label>
             </Panel>
+            <label className="flex items-center gap-2 text-[16px]">
+              題庫：
+              <select
+                data-testid="host-bank"
+                value={banks.selected.id}
+                disabled={banks.loading}
+                onChange={(e) => {
+                  setBanks((b) => ({ ...b, loading: true })); // until the room answers HOST_BANKS or ERROR
+                  send({ type: "HOST_SET_BANK", bankId: e.target.value });
+                }}
+                className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px]"
+              >
+                {/* The room's pick may be a bank this host is not offered (no owner key yet) or one since deleted. */}
+                {(banks.list.some((b) => b.id === banks.selected.id) ? banks.list : [...banks.list, banks.selected]).map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+              {banks.loading && <span className="text-[14px]">載入中…</span>}
+            </label>
             {sizeWarning && (
               <div data-testid="host-bank-size" role="status" className="text-[15px]" style={{ color: "var(--warn)" }}>
                 ⚠ {bankSizeWarningText(sizeWarning, lobby.length)}
@@ -814,7 +853,7 @@ export default function HostPage() {
             <PixelButton
               variant="primary"
               className="min-h-[78px] text-[26px]"
-              disabled={!ready || lobby.length === 0}
+              disabled={!ready || lobby.length === 0 || banks.loading}
               // AI narration follows the room's key (HOST_AI_KEY), so a key added mid-game still takes effect.
               onClick={() => {
                 // The warning shows only for a room pool smaller than the team count, which deals repeats or another difficulty's questions: ask first.

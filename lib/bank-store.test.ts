@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { BANK_FORMAT, BANK_NOT_FOUND, BankStore, DEFAULT_BANK_ID, DEFAULT_BANK_NAME, formatOf, LEGACY_IMAGE_DELAY_MS, legacyImageKeys, MAX_BANK_NAME, MAX_CUSTOM_BANKS, type BankStorage } from "./bank-store";
-import { assertSavable, type Bank } from "./question-bank";
+import { BANK_FORMAT, BANK_NOT_FOUND, BankStore, BLANK_BANK, DEFAULT_BANK_ID, DEFAULT_BANK_NAME, formatOf, LEGACY_IMAGE_DELAY_MS, legacyImageKeys, MAX_BANK_NAME, MAX_CUSTOM_BANKS, type BankStorage } from "./bank-store";
+import { assertSavable, parseBank, type Bank } from "./question-bank";
 import { BANK } from "./question-bank-data";
 
 /** In-memory stand-in for a Durable Object's storage, same convention as lib/room's tests. */
@@ -539,6 +539,13 @@ describe("BankStore: named banks (docs/designs/multi-bank.md)", () => {
     expect(await store.putBank(validBank, 1, copy.id)).toEqual({ bank: validBank, version: 2 });
     expect(await store.putBank(validBank, 1, copy.id)).toEqual({ conflict: true, currentVersion: 2 });
     expect((await store.getVersionedBank()).version).toBe(3);
+  });
+
+  it("starts a blank bank from the least that saves", async () => {
+    const { store } = setup();
+    expect(() => assertSavable(parseBank(BLANK_BANK))).not.toThrow();
+    const b = await store.createBank("空白", undefined);
+    expect(await store.putBank(BLANK_BANK, 1, b.id)).toEqual({ bank: parseBank(BLANK_BANK), version: 2 });
   });
 
   it("refuses an empty, too long or taken name, and more than the limit", async () => {

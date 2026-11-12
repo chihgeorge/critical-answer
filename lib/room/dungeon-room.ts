@@ -106,6 +106,7 @@ import {
   type Reaction,
   type Hold,
   type Pacing,
+  DEFAULT_BANK_ENTRY,
 } from "../protocol";
 import { epiloguePages, revealBeats, revealCalls } from "../podium";
 import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
@@ -512,6 +513,15 @@ export class DungeonRoom {
   private refusedKeyId: string | undefined;
   /** The pasted key being checked now, if any: a newer HOST_AI_KEY aborts it, except a resend of this key under the same keyId. */
   private keyCheck: { ctl: AbortController; key: string; keyId?: string } | null = null;
+  /** A host here gave the right OWNER_KEY (HOST_AI_KEY source "owner"): only then may the room play a custom bank
+   * (multi-bank.md D4), since every host page gets the answers. In memory only: the page resends its key after HOST_OK. */
+  private ownerProven = false;
+  /** The custom bank this room plays (null: the default), saved with the room. */
+  private bankChoice: { id: string; name: string } | null = null;
+  /** Goes up on every HOST_SET_BANK and reset, so a bank that arrives late (a newer pick, an expired room) is dropped. */
+  private bankGen = 0;
+  /** A HOST_SET_BANK still fetching its bank: 開始遊戲 waits for it. */
+  private bankLoading = false;
   /** Key checks this room made: in all (saved, so a restart does not reset it), and since keyCheckWindowAt (memory only). */
   private keyChecks = 0;
   private keyChecksInWindow = 0;
@@ -747,8 +757,13 @@ export class DungeonRoom {
     if (msg.source === "owner") {
       const ownerKey = this.room.env?.OWNER_KEY;
       const serverKey = this.room.env?.ANTHROPIC_API_KEY;
-      if (!ownerKey || !serverKey) return this.refuseKey("owner_unavailable", msg.keyId);
+      if (!ownerKey) return this.refuseKey("owner_unavailable", msg.keyId);
       if (!tokensEqual(ownerKey, msg.ownerKey)) return this.refuseKey("wrong_owner_key", msg.keyId);
+      if (!this.ownerProven) {
+        this.ownerProven = true;
+        this.sendBanks(); // the owner's own banks are now on offer
+      }
+      if (!serverKey) return this.refuseKey("owner_unavailable", msg.keyId);
       // Already in use (the page's resend on reconnect): nothing to apply, and a keyless resend keeps the page's keyId.
       if (this.aiSource === "owner" && this.credential && (!this.aiError || !chosenAgain)) {
         if (msg.keyId) this.credential.keyId = msg.keyId;
@@ -877,6 +892,7 @@ export class DungeonRoom {
       ...(this.initiative ? { initiative: this.initiative } : {}),
       ...(this.initiativeOn && this.opening() ? { initiativeOn: true as const } : {}),
       ...(this.answerSeconds ? { answerSeconds: this.answerSeconds, answerClock: this.answerClock, clipEnded: this.clipEnded } : {}),
+      ...(this.bankChoice ? { bankChoice: this.bankChoice } : {}),
     };
   }
 
@@ -970,6 +986,7 @@ export class DungeonRoom {
     this.bank = bank;
     this.bankAnswers = allAnswers(bank);
     this.savedBank = stored;
+    this.bankChoice = s.bankChoice ?? null;
     this.phaseCard = s.phaseCard ?? false;
     this.intro = s.intro ?? null;
     // An initiative without a game in play (a damaged save) is dropped: its timer would start a game that is not there.
@@ -1671,6 +1688,10 @@ export class DungeonRoom {
     this.keyError = undefined;
     this.bank = this.initialBank;
     this.bankAnswers = allAnswers(this.bank);
+    this.bankChoice = null;
+    this.ownerProven = false;
+    this.bankGen++;
+    this.bankLoading = false;
     this.roomEpoch = crypto.randomUUID();
     this.lastSaved = "";
     this.savedBank = null; // expire() just cleared storage
@@ -1836,6 +1857,9 @@ export class DungeonRoom {
           this.passwordWrong = 0;
           // Every host page shows the room's real password only once the room has it.
           for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword, screenKey: this.screenKey });
+          break;
+        case "HOST_SET_BANK":
+          this.handleSetBank(sender, msg.bankId);
           break;
         case "HOST_EDIT_NARRATION":
           this.handleEditNarration(sender, msg.eventId, msg.rev, msg.index, msg.line);
@@ -2034,6 +2058,7 @@ export class DungeonRoom {
     this.sendTo(conn, { type: "HOST_NEXT_LINE_STATE", line: this.nextLine?.text ?? "" });
     if (this.lastNarration) this.sendTo(conn, { type: "HOST_NARRATION_PROGRESS", eventId: this.lastNarration.eventId, done: this.lastNarration.done });
     this.sendAiStatus(conn);
+    this.sendBanks(conn);
     this.sendAnswer(conn);
     this.sendPicks(conn);
     const closing = this.closingMessage();
@@ -2579,6 +2604,60 @@ export class DungeonRoom {
     this.broadcast(this.snapshot());
   }
 
+  /** HOST_BANKS to `only` or every host page: names only, and the owner's banks only once a host proved OWNER_KEY. */
+  private sendBanks(only?: Conn) {
+    // The selection is read when the list arrives, so a list fetched before a newer pick still shows that pick.
+    const send = (banks: { id: string; name: string }[]) => {
+      const msg: ServerMessage = { type: "HOST_BANKS", banks, selected: this.bankChoice ?? DEFAULT_BANK_ENTRY, ...(this.bankLoading ? { loading: true as const } : {}) };
+      for (const conn of only ? [only] : this.hostConns.values()) this.sendTo(conn, msg);
+    };
+    if (!this.ownerProven || !this.room.listBanks) return send([DEFAULT_BANK_ENTRY]);
+    void this.room.listBanks().then(send, (err) => {
+      console.error(JSON.stringify({ event: "bank_list_failed", error: String(err) }));
+      send([DEFAULT_BANK_ENTRY]);
+    });
+  }
+
+  /** Lobby only: fetch bank `bankId` and play the next game with it (multi-bank.md). The room's copy is saved like the
+   * opening bank, so a restart or a later edit of the bank does not change this room. */
+  private handleSetBank(conn: Conn, bankId: string) {
+    if (!this.requireHost(conn)) return;
+    if (this.game) return void this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
+    const isDefault = bankId === DEFAULT_BANK_ENTRY.id;
+    // Checked here, not by hiding the menu: every host page gets the answers of the bank in play.
+    if (!isDefault && !this.ownerProven) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "owner_only" });
+    const gen = ++this.bankGen;
+    this.bankLoading = true;
+    this.sendBanks();
+    const load = async (): Promise<{ bank: Bank; choice: { id: string; name: string } | null }> => {
+      if (isDefault) return { bank: this.room.loadBank ? await this.room.loadBank(bankId) : this.initialBank, choice: null };
+      const entry = (await this.room.listBanks?.())?.find((b) => b.id === bankId);
+      if (!entry || !this.room.loadBank) throw new Error(`no bank ${bankId}`);
+      return { bank: await this.room.loadBank(bankId), choice: entry };
+    };
+    void load().then(
+      ({ bank, choice }) => {
+        // A newer pick, an expired room, or a game started some other way: this bank comes too late.
+        if (gen !== this.bankGen || this.game) return;
+        this.bankLoading = false;
+        this.bank = bank;
+        this.bankAnswers = allAnswers(bank);
+        this.bankChoice = choice;
+        // Ids from the other bank: they would keep this bank's same-named questions from being dealt.
+        this.playedQuestionIds = [];
+        this.broadcast(this.snapshot());
+        this.sendBanks();
+      },
+      (err) => {
+        console.error(JSON.stringify({ event: "bank_load_failed", bankId, error: String(err) }));
+        if (gen !== this.bankGen) return;
+        this.bankLoading = false;
+        if (this.hostConns.has(conn.id)) this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "bank_unavailable" });
+        this.sendBanks();
+      },
+    );
+  }
+
   private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean, answerSeconds?: number) {
     if (!this.requireHost(conn)) return;
     if (this.game) {
@@ -2589,6 +2668,7 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "not_enough_teams" });
       return;
     }
+    if (this.bankLoading) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "bank_loading" });
 
     const [firstPhase, ...laterPhases] = bossPhaseStates(this.bank);
     const monsters = gameMonsters(this.bank, this.rng);

@@ -1,4 +1,5 @@
 import type { GameLog } from "../game-log";
+import type { Bank } from "../question-bank";
 /**
  * What the game room needs from whatever carries its messages (Cloudflare, PartyKit, a test).
  * Kept this small on purpose: the room logic imports no platform types.
@@ -38,4 +39,8 @@ export interface RoomIO {
   logGame?(log: GameLog): void | Promise<void>;
   /** Close every open connection with an application close code (see close-codes.ts). */
   closeAll?(code: number, reason: string): void;
+  /** The owner's banks by name, the default first (multi-bank.md). Without it a host can pick only the default. */
+  listBanks?(): Promise<{ id: string; name: string }[]>;
+  /** One bank by id, for HOST_SET_BANK. Throws when it is gone or unreadable. */
+  loadBank?(id: string): Promise<Bank>;
 }
