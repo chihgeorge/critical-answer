@@ -93,11 +93,12 @@ worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable
 lib/room/                房間邏輯（dungeon-room.ts）與它需要的兩個小介面（io.ts），不依賴平台
 lib/gate.ts、origin.ts   Worker 入口規則
 e2e/                     Playwright 端對端測試
-scripts/                 playtest.sh（區網試玩）、check-bundle.sh、pregate-runner.sh（gstack pregate 的本機測試執行器，只跑單元測試；見 .gstack/pregate.json）、check-docs.ts（檢查 README 和 docs/ 指南的連結與錨點，以及中英文版配對）、balance-sim.ts（職業平衡模擬：`node scripts/balance-sim.ts [場數]`，印出每個職業的平均分數和勝率）
+scripts/                 playtest.sh（區網試玩）、check-bundle.sh、pregate-runner.sh（gstack pregate 的本機測試執行器，只跑單元測試；見 .gstack/pregate.json）、check-docs.ts（檢查 README 和 docs/ 指南的連結與錨點，以及中英文版配對）、balance-sim.ts（職業平衡模擬：`node scripts/balance-sim.ts [場數]`，印出每個職業的平均分數和勝率）、rules-guard.mts（Claude Code 的 PreToolUse hook，擋下違反 .claude/rules.md A 節的指令和寫檔）
 public/fonts/            內建字型
 public/icon-192.png、icon-512.png  主畫面圖示（史萊姆）
 DESIGN.md                像素設計系統
 docs/designs/            設計文件與決策紀錄（含 question-bank-editor.md）
 docs/going-public.md     公開 repo 前的檢查清單
 TODOS.md                 已知問題與延後事項
+.claude/rules.md         站長給 Claude Code 的規則（自動擋、AI 檢查、只當說明三類）；hook 設定在 .claude/settings.json
 ```
