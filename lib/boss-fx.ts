@@ -17,15 +17,15 @@ const cueSeq = (m: StateMessage) => m.cueSeq ?? m.eventId;
  * A screen's first STATE after connecting (`prev` null) plays nothing: live only. */
 export function parryFor(prev: StateMessage | null, msg: StateMessage, lastKey: string | null): string | null {
   if (!prev || prev.phase !== "playing" || msg.phase !== "playing") return null;
-  let key: string | null = null;
+  let parried: string | null = null;
   const w = msg.view.pendingWrong;
   const was = prev.view.pendingWrong;
-  if (w && (w.teamId !== was?.teamId || w.questionId !== was?.questionId) && bossScene(msg)) key = `${w.teamId}:${w.questionId}`;
+  if (w && (w.teamId !== was?.teamId || w.questionId !== was?.questionId) && bossScene(msg)) parried = `${w.teamId}:${w.questionId}`;
   else if (cueSeq(msg) > cueSeq(prev) && (msg.cue === "retry" || (msg.cue === "flee" && !prev.view.antiCheat?.openCatch)) && bossScene(prev)) {
     const t = describeTurn(prev.view, prev.question, prev.phaseCard?.monster);
-    key = `${t.team?.id ?? ""}:${t.questionId ?? ""}`;
+    parried = `${t.team?.id ?? ""}:${t.questionId ?? ""}`;
   }
-  return key !== null && key !== lastKey ? key : null;
+  return parried !== null && parried !== lastKey ? parried : null;
 }
 
 /** ④ Rage: the current phase's bar is down to a third. With bossMaxHp 1 or 2 it never fires (1 > 2/3): on purpose,
