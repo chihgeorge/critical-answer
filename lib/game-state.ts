@@ -1647,8 +1647,8 @@ export function recordJudgment(game: GameState, prev: GameState, teamId: string,
 }
 
 /** 改判: ledger entry `index` shows `correct` from now on, and only its reward points move (owner decision "A 只改分數").
- * 改成答錯 takes min(taken ?? N, reward) and keeps it as `taken`; 改成答對 gives back `taken ?? N`, so any flip cycle nets
- * 0. `teamId` and `questionId` must match the entry, or it is a press from an older list (`stale`). */
+ * 改成答錯 takes min(taken ?? N, reward) and keeps it as `taken`; 改成答對 gives back `taken ?? N` and drops it, so any flip
+ * cycle nets 0 and the next 改成答錯 starts from N again. `teamId` and `questionId` must match the entry, or it is a press from an older list (`stale`). */
 export function hostRejudge(game: GameState, index: number, teamId: string, questionId: string, correct: boolean): GameState {
   if (game.phase !== "playing") throw new InvalidActionError("not_playing");
   const j = game.judgments?.[index];
@@ -1659,8 +1659,7 @@ export function hostRejudge(game: GameState, index: number, teamId: string, ques
   const to = correct ? from + moved : from - moved;
   const entry: Judgment = { teamId, questionId, correct, points: j.points };
   if (!j.flipped) entry.flipped = true;
-  const taken = correct ? j.taken : moved;
-  if (taken !== undefined) entry.taken = taken;
+  if (!correct) entry.taken = moved;
   const judgments = game.judgments!.map((e, i) => (i === index ? entry : e));
   return { ...game, judgments, teams: patchTeam(game.teams, teamId, (x) => ({ reward: to, fixes: [...(x.fixes ?? []), { fix: "rejudge" as const, from, to, judgment: index + 1 }] })) };
 }

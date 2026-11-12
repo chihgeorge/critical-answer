@@ -601,10 +601,10 @@ export interface EventReveal extends EventResult {
   dish?: { name: string; sprite: MonsterSprite; hue: number };
 }
 
-/** One bank question in the host's picker: a short label for its content, its answer, and why it can't be picked now. */
 /** One ledger entry as the host sees it (HOST_PICKS `judged`). */
 export type JudgedEntry = Judgment & { index: number };
 
+/** One bank question in the host's picker: a short label for its content, its answer, and why it can't be picked now. */
 export interface HostPick {
   id: string;
   label: string;

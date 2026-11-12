@@ -214,7 +214,7 @@ describe("改判", () => {
     expect(g.lastTo(g.host)).toMatchObject({ error: "invalid_action", detail: "at_limit" });
     g.rejudge(0, true);
     expect(g.team(A).reward).toBe(10);
-    expect(g.ledger()[0]).toEqual({ teamId: A, questionId: expect.any(String), correct: true, points: 10, taken: 10 });
+    expect(g.ledger()[0]).toEqual({ teamId: A, questionId: expect.any(String), correct: true, points: 10 });
     expect(g.team(A).fixes).toEqual([
       { fix: "rejudge", from: 10, to: 0, judgment: 1 },
       { fix: "rejudge", from: 0, to: 10, judgment: 1 },
@@ -231,8 +231,13 @@ describe("改判", () => {
     g.setReward(A, 0);
     g.rejudge(0, false); // takes min(10, 0) = 0
     expect(g.team(A).reward).toBe(0);
-    g.rejudge(0, true); // gives back 0
+    g.rejudge(0, true); // gives back 0, and the next 改成答錯 starts from N again
     expect(g.team(A).reward).toBe(0);
+    g.setReward(A, 7);
+    g.rejudge(0, false); // takes min(10, 7) = 7
+    expect(g.team(A).reward).toBe(0);
+    g.rejudge(0, true);
+    expect(g.team(A).reward).toBe(7);
     g.setReward(A, 3);
     g.judge(true); // 乙's turn: 乙 right
     const b = g.ledger().length - 1;
@@ -302,6 +307,17 @@ describe("改判", () => {
     }
   });
 
+  it("改判答對 while still open swaps the 答錯 entry for one 答對 entry: never both", () => {
+    const g = started();
+    g.judge(true);
+    const { teamId, questionId } = g.judge(false); // 乙 wrong: undoable
+    const before = g.team(B).reward;
+    send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId, questionId, eventId: g.state().eventId });
+    const mine = g.ledger().filter((j) => j.teamId === teamId && j.questionId === questionId);
+    expect(mine).toEqual([{ teamId, questionId, correct: true, points: g.team(B).reward - before }]);
+    expect(g.ledger()).toHaveLength(2);
+  });
+
   it("the ledger and its flips survive a restart; a malformed saved list reads as empty", async () => {
     const g = started();
     g.judge(true);
@@ -317,5 +333,10 @@ describe("改判", () => {
     bad.room.game = { ...bad.room.game!, judgments: [{ teamId: A } as unknown as NonNullable<GameState["judgments"]>[number]] };
     bad.setScore(A, 1); // saves
     expect((await restart(bad.storage)).judgments).toEqual([]);
+    const badTaken = started();
+    badTaken.judge(true);
+    badTaken.room.game = { ...badTaken.room.game!, judgments: [{ ...badTaken.ledger()[0], taken: "3" } as unknown as NonNullable<GameState["judgments"]>[number]] };
+    badTaken.setScore(A, 1);
+    expect((await restart(badTaken.storage)).judgments).toEqual([]);
   });
 });

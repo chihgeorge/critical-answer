@@ -170,7 +170,7 @@ export function MoreDrawer({
                         }}
                         className="min-h-[44px] w-[4.5em] border-2 border-black bg-white px-2 text-[16px]"
                       />
-                      <PixelButton type="submit" disabled={!settable(t.id, t.reward)} className={small}>設定</PixelButton>
+                      <PixelButton type="submit" aria-label={`設定${t.name}的分數`} disabled={!settable(t.id, t.reward)} className={small}>設定</PixelButton>
                     </form>
                     <PixelButton aria-label={`${t.name}加 ${FIX_SCORE_STEP} 分`} onClick={() => fix("score+")} className={small}>+{FIX_SCORE_STEP}</PixelButton>
                     {max !== undefined && t.classId && (
@@ -188,7 +188,7 @@ export function MoreDrawer({
               })}
               <div data-testid="host-rejudge" className="mt-2 flex flex-col gap-2">
                 <div className="text-[15px]">改判（已判過的題目）</div>
-                <div className="text-[13px]">只改獎勵分，不改答對數和進度。</div>
+                <div className="text-[13px]">{`只改${scoreLabel ?? "獎勵分"}，不改答對數和進度。`}</div>
                 {judged.length === 0 ? (
                   <div className="text-[14px]">還沒有判過的題目</div>
                 ) : (
@@ -208,6 +208,7 @@ export function MoreDrawer({
                           {was && <span className="text-[13px]">{`已改判（原本${was}）`}</span>}
                           {laterCorrect(judged, j) && <span className="text-[13px]">這題後來答對了</span>}
                           <PixelButton
+                            aria-label={`第 ${ordinals.get(j.questionId)} 題 ${teamName(j.teamId)} 改成${j.correct ? "答錯" : "答對"}（${j.correct ? "−" : "+"}${Math.abs(change)}）`}
                             onClick={() => fixAllowed(`rejudge:${j.index}`) && send({ type: "HOST_REJUDGE", index: j.index, teamId: j.teamId, questionId: j.questionId, correct: !j.correct })}
                             className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px]"
                           >

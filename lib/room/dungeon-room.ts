@@ -313,7 +313,7 @@ function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
 function restoredJudgments(g: GameState): GameState["judgments"] {
   const list = g.judgments;
   if (list === undefined) return undefined;
-  const ok = Array.isArray(list) && list.every((j) => typeof j?.teamId === "string" && typeof j.questionId === "string" && typeof j.correct === "boolean" && Number.isFinite(j.points));
+  const ok = Array.isArray(list) && list.every((j) => typeof j?.teamId === "string" && typeof j.questionId === "string" && typeof j.correct === "boolean" && Number.isInteger(j.points) && j.points >= 0 && (j.taken === undefined || (Number.isInteger(j.taken) && j.taken >= 0)) && (j.flipped === undefined || j.flipped === true));
   return ok ? list : [];
 }
 

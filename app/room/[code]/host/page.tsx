@@ -317,6 +317,8 @@ export default function HostPage() {
                 ? "占卜師的牌還開著，等它收起來再按"
                 : msg.detail === "stale"
                 ? "這筆改判已過時，清單剛更新"
+                : msg.detail === "at_limit"
+                ? "已經是這個結果了，畫面剛更新"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
           );
           setPendingTeamId(null);
