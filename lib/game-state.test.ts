@@ -475,11 +475,11 @@ describe("boss combat", () => {
     expect(g2.boss.hp).toBe(5); // no damage on a wrong answer
   });
 
-  it("a wrong boss answer with retry keeps the same boss question", () => {
+  it("a wrong boss answer with retry (下輪換題) rotates to the next boss question", () => {
     const game = makeGame({ bossThreshold: 0, bossMaxHp: 5, teamCount: 1 });
     const firstQ = game.boss.currentQuestionId;
     const { game: g2 } = answerQuestion(game, "T0", firstQ, false, "retry");
-    expect(g2.boss.currentQuestionId).toBe(firstQ);
+    expect(g2.boss.currentQuestionId).not.toBe(firstQ);
   });
 });
 
@@ -1002,14 +1002,15 @@ describe("recordWrongLock (phone answering, phone-answering.md E6/E9)", () => {
     expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" }); // the narration must not say the boss changed the question
   });
 
-  it("boss: a wrong answer with no option shown (a text question the host judged) keeps the question on retry", () => {
-    let g = makeGame({ bossThreshold: 0 });
+  // Value: protects=a turn-based wrong fill-in rotates the boss question like a wrong lock does;
+  // fails_when=rotation still needs a shown wrong option; why_new=the old test pinned the stuck question; seam=none; no_claim=buzz phase
+  it("boss: a wrong answer with no option shown (a text question the host judged) rotates the question on retry", () => {
+    const g = makeGame({ bossThreshold: 0 });
     const q = g.boss.currentQuestionId;
     const { game: after, outcome } = answerQuestion(g, "T0", q, false, "retry");
-    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" }); // narration must not claim a new question
-    g = after;
-    expect(g.boss.currentQuestionId).toBe(q);
-    expect(g.revealedQuestionIds).not.toContain(q);
+    expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0", newBossQuestion: true }); // narration says so
+    expect(after.boss.currentQuestionId).not.toBe(q);
+    expect(after.revealedQuestionIds).not.toContain(q); // nothing of its answer was shown
   });
 
   it("the turn moves on from the team that answered, not from an offline team the stale index points at", () => {
@@ -1352,10 +1353,10 @@ describe("queueQuestion (the host picks the next question)", () => {
     expect(hit.boss.queuedQuestionId).toBeUndefined();
     const { game: fled } = answerQuestion(queueQuestion(g, "boss", "boss-q3"), "T0", "boss-q1", false, "flee", first);
     expect(fled.boss.currentQuestionId).toBe("boss-q3");
-    // A plain retry keeps the question and the pick.
+    // A wrong fill-in on retry (下輪換題) rotates to the pick too, ahead of the ring's next one (boss-q2).
     const { game: retried } = answerQuestion(g, "T0", "boss-q1", false, "retry", first);
-    expect(retried.boss.currentQuestionId).toBe("boss-q1");
-    expect(retried.boss.queuedQuestionId).toBe("boss-q3");
+    expect(retried.boss.currentQuestionId).toBe("boss-q3");
+    expect(retried.boss.queuedQuestionId).toBeUndefined();
   });
 
   it("keeps a team's pick through a wrong lock and retry", () => {
@@ -2291,6 +2292,13 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     expect(game.buzz).toEqual({ questionId: "b-a", out: ["T1"] });
     expect(() => buzzIn(game, "T1", "b-a", true)).toThrow("buzz_out");
     expect(buzzIn(game, "T0", "b-a", true).buzz?.teamId).toBe("T0");
+  });
+
+  it("a wrong buzz keeps the question even with a host pick queued: only 換下一題 moves it on (D4, M1)", () => {
+    const g = queueQuestion(buzzIn(buzzer(), "T1", "b-a", true), "boss", "b-c");
+    const { game } = judge(g, "T1", false);
+    expect(game.boss.currentQuestionId).toBe("b-a");
+    expect(game.boss.queuedQuestionId).toBe("b-c");
   });
 
   it("once every online team is out, everyone buzzes on the same question again (boss-music-buzzer.md M1); an offline team does not hold it up", () => {
