@@ -176,6 +176,17 @@ describe("the 改判 ledger", () => {
     expect(g.ledger()).toEqual([{ teamId: A, questionId: q, correct: false, points: 10 }]);
   });
 
+  it("the host's 祈禱 for a cleric adds one 答錯 entry, like its 重答", () => {
+    const g = started(["cleric", "chef"]);
+    const q = g.team(A).currentQuestionId;
+    send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: q, text: "猜", eventId: g.state().eventId });
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: q, correct: false, fleeChoice: "team", eventId: g.state().eventId });
+    const uses = g.team(A).abilityUses;
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: q, correct: false, fleeChoice: "pray", eventId: g.state().eventId });
+    expect(g.team(A).abilityUses).toBe(uses - 1); // the prayer was spent
+    expect(g.ledger()).toEqual([{ teamId: A, questionId: q, correct: false, points: 10 }]);
+  });
+
   it("an upheld 🚨 catch adds no entry", () => {
     const g = started([null, null]);
     send(g.room, g.host, { type: "HOST_ANTI_CHEAT", on: true });
