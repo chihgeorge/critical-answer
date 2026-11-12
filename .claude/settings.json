@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|Write|Edit|MultiEdit|NotebookEdit|mcp__claude-in-chrome__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/scripts/rules-guard.mts\" ] && node \"$CLAUDE_PROJECT_DIR/scripts/rules-guard.mts\" || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Hook input JSON: $ARGUMENTS\n\nFirst: if \"stop_hook_active\" is true, or \"last_assistant_message\" is missing or empty, respond {\"ok\": true} and stop. Otherwise judge only \"last_assistant_message\" (the reply Claude just gave the owner, called 站長) against this rule:\nB1. Text written for the owner must be Traditional Chinese (Taiwan usage). Code, commands, file paths, identifiers, quoted output and proper names may stay in English. Fail only when the prose itself is mainly English or Simplified Chinese.\nRespond with JSON only: {\"ok\": true} if the reply follows the rule, or {\"ok\": false, \"reason\": \"<one sentence in Traditional Chinese saying what to fix>\"}. When unsure, respond {\"ok\": true}.",
+            "timeout": 30
+          },
+          {
+            "type": "prompt",
+            "prompt": "Hook input JSON: $ARGUMENTS\n\nFirst: if \"stop_hook_active\" is true, or \"last_assistant_message\" is missing or empty, respond {\"ok\": true} and stop. Otherwise judge only \"last_assistant_message\" (the reply Claude just gave the owner, called 站長) against this rule:\nB2. When the reply needs the owner to answer a question or make a decision, Claude must ask it with the AskUserQuestion tool, not only in the reply text. Fail only when the reply text itself asks the owner a question or asks them to choose or approve something (for example it ends with a question, or lists options and asks which one). A pure report, a summary, or a statement of what was done passes. Choosing a /ship version bump is Claude's own call and is not a question. A closing line that only points to a question already asked with AskUserQuestion or shown in a next-step box passes.\nRespond with JSON only: {\"ok\": true} if the reply follows the rule, or {\"ok\": false, \"reason\": \"<one sentence in Traditional Chinese saying what to fix>\"}. When unsure, respond {\"ok\": true}.",
+            "timeout": 30
+          },
+          {
+            "type": "prompt",
+            "prompt": "Hook input JSON: $ARGUMENTS\n\nFirst: if \"stop_hook_active\" is true, or \"last_assistant_message\" is missing or empty, respond {\"ok\": true} and stop. Otherwise judge only \"last_assistant_message\" (the reply Claude just gave the owner, called 站長) against this rule:\nB3. Ask one thing at a time. Fail only when the reply text asks the owner two or more separate questions or decisions at once.\nRespond with JSON only: {\"ok\": true} if the reply follows the rule, or {\"ok\": false, \"reason\": \"<one sentence in Traditional Chinese saying what to fix>\"}. When unsure, respond {\"ok\": true}.",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

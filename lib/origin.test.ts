@@ -22,7 +22,7 @@ describe("originAllowed", () => {
   });
 
   it("'*' allows any origin (local development)", () => {
-    expect(originAllowed("http://10.0.0.61:3100", "*")).toBe(true);
+    expect(originAllowed("http://192.0.2.61:3100", "*")).toBe(true);
   });
 
   it("accepts any of several comma-separated rules", () => {
