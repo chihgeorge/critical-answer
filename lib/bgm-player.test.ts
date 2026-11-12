@@ -28,7 +28,13 @@ class FakeAudioContext {
     this.onstatechange?.();
     for (const r of this.waiting.splice(0)) r();
   }
+  /** The next resume() is refused, like a browser that did not count the event as a user gesture. */
+  refuseNext = false;
   resume() {
+    if (this.refuseNext) {
+      this.refuseNext = false;
+      return Promise.reject(new Error("not allowed"));
+    }
     if (this.state === "running") return Promise.resolve();
     return new Promise<void>((r) => this.waiting.push(r));
   }
@@ -242,6 +248,34 @@ describe("createBgmPlayer", () => {
     void bgm.unlock();
     bgm.playCue(SFX.correct, "host");
     expect(FakeAudioContext.all[0].notes).toHaveLength(0);
+  });
+
+  it("a refused wake leaves 🎵 on, and the next successful unlock starts the music (never ready without music)", async () => {
+    const bgm = setup();
+    vi.stubGlobal(
+      "AudioContext",
+      class extends FakeAudioContext {
+        refuseNext = true;
+      },
+    );
+    await bgm.start();
+    const [ctx] = FakeAudioContext.all;
+    expect(vi.getTimerCount()).toBe(0);
+    const a = bgm.unlock();
+    ctx.release();
+    await a;
+    expect(bgm.running()).toBe(true);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("the host layer is at its volume as soon as the context exists, with 🎵 off", async () => {
+    const bgm = setup();
+    const a = bgm.unlock();
+    const [ctx] = FakeAudioContext.all;
+    ctx.release();
+    await a;
+    expect(layerNode(ctx, "host").gain.target).toBe(layerGains({ bgmOn: false, videoPlaying: false, held: false, speaking: false }).host);
+    expect(layerNode(ctx, "host").gain.target).toBeGreaterThan(0);
   });
 
   const EXISTING: [string, SfxNote[]][] = [

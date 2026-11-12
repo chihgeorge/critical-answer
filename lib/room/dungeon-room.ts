@@ -364,6 +364,8 @@ export class DungeonRoom {
   private keyedScreens = new Set<string>();
   /** Each keyed screen's last SCREEN_SOUND (immersion.md PR0). Memory only: an entry goes with its socket's screen key. */
   private screenSoundReady = new Map<string, boolean>();
+  /** The `screenSound` the host pages last got (a broadcast STATE, or screenSoundChanged's). */
+  private screenSoundSent: ScreenSound | null = null;
   /** Sockets the room closed or replaced: whatever they still send is ignored. */
   private gone = new WeakSet<Conn>();
   /** Wrong join passwords since passwordWindowAt (JOIN_PASSWORD_MAX_WRONG). Memory only. */
@@ -816,7 +818,10 @@ export class DungeonRoom {
   private broadcast(msg: ServerMessage) {
     this.persist();
     // Before the STATE that shows the question, so a big screen never has the question without its video.
-    if (msg.type === "STATE") this.sendVideo();
+    if (msg.type === "STATE") {
+      this.sendVideo();
+      this.screenSoundSent = msg.screenSound ?? null;
+    }
     this.room.broadcast(JSON.stringify(msg));
   }
 
@@ -1658,6 +1663,7 @@ export class DungeonRoom {
     this.screenKey = crypto.randomUUID();
     this.keyedScreens.clear();
     this.screenSoundReady.clear();
+    this.screenSoundSent = null;
     this.teamKeys.clear();
     this.handoffs.clear();
     this.handoffWrong = 0;
@@ -1733,7 +1739,9 @@ export class DungeonRoom {
       // Host-only messages would go to the closed socket until the new one re-sends HOST_CLAIM (it does on open).
       this.hostConns.delete(conn.id);
       // The new socket proves the screen key itself (SCREEN_HELLO, on open too).
-      this.dropScreen(conn.id);
+      // Its sound report stays (it counts only once the key is back) and the host pages are not told: the TV says hello
+      // and reports again on open, so a reconnect does not flash 沒有大螢幕連著 then 已就緒 on the host page.
+      this.keyedScreens.delete(conn.id);
     } else if (this.conns.size >= MAX_CONNECTIONS && !this.closeSpareConn()) {
       this.gone.add(conn);
       conn.close();
@@ -1817,17 +1825,17 @@ export class DungeonRoom {
   /** The socket is no longer a big screen (closed, replaced, or a hello without the key): forget its sound report, and
    * tell the host pages if `screenSound` changed. */
   private dropScreen(id: string) {
-    const before = this.screenSound();
     this.keyedScreens.delete(id);
     this.screenSoundReady.delete(id);
-    this.screenSoundChanged(before);
+    this.screenSoundChanged();
   }
 
-  /** Only the host pages show `screenSound`, so only they get a fresh STATE when it changes: no broadcast, nothing
-   * else in the game moves. */
-  private screenSoundChanged(before: ScreenSound) {
-    if (!this.game || this.screenSound() === before) return;
+  /** Only the host pages show `screenSound`, so only they get a fresh STATE when it differs from what they last got:
+   * no broadcast, nothing else in the game moves. */
+  private screenSoundChanged() {
+    if (!this.game || this.screenSound() === this.screenSoundSent) return;
     const state = this.snapshot();
+    this.screenSoundSent = this.screenSound();
     for (const conn of this.hostConns.values()) this.sendTo(conn, state);
   }
 
@@ -1911,9 +1919,8 @@ export class DungeonRoom {
           const keyed = msg.key !== undefined && tokensEqual(this.screenKey, msg.key);
           if (keyed) {
             // A new screen counts as muted until it reports (an older page never does).
-            const before = this.screenSound();
             this.keyedScreens.add(sender.id);
-            this.screenSoundChanged(before);
+            this.screenSoundChanged();
           } else this.dropScreen(sender.id);
           // The screen says so itself when it will get no videos, before a video question finds out.
           this.sendTo(sender, { type: "SCREEN_KEY", ok: keyed });
@@ -1932,10 +1939,9 @@ export class DungeonRoom {
           break;
         case "SCREEN_SOUND": {
           if (!this.isScreen(sender)) break;
-          const before = this.screenSound();
           this.screenSoundReady.set(sender.id, msg.ready);
           // Only a change reaches the host pages: a screen re-sending the same state costs nothing.
-          this.screenSoundChanged(before);
+          this.screenSoundChanged();
           break;
         }
         case "SCREEN_CLIP_ERROR":

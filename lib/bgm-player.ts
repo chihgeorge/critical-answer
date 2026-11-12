@@ -72,8 +72,6 @@ export function createBgmPlayer(onState?: () => void) {
   let next = 0;
   let loops = 0;
   const mix: MixState = { bgmOn: false, videoPlaying: false, held: false, speaking: false };
-  /** Bumped by every start() and stop(): a start() whose resume() settles after a newer call does nothing. */
-  let generation = 0;
 
   function gain(c: AudioContext, value: number, dest: AudioNode) {
     const node = c.createGain();
@@ -82,15 +80,42 @@ export function createBgmPlayer(onState?: () => void) {
     return node;
   }
 
+  // shortcut: the boss, host and ambient layers have no caller yet; the boss effects (PR1b), the host's buttons (PR2)
+  // and the room ambience (PR3) play on them.
   function ensure(): AudioContext {
     if (ctx) return ctx;
     const c = new AudioContext();
-    c.onstatechange = () => onState?.();
+    // The context can wake by any path (a later tap, the browser itself): the music follows.
+    c.onstatechange = () => {
+      play();
+      onState?.();
+    };
     const master = gain(c, 1, c.destination);
     layers = Object.fromEntries(LAYERS.map((l) => [l, gain(c, 0, master)])) as Record<Layer, GainNode>;
     cues = gain(c, SFX_VOLUME, master);
     ctx = c;
+    apply();
     return c;
+  }
+
+  /** Wake the context. A refusal (no user gesture yet) is not an error: the next tap tries again. */
+  async function wake(c: AudioContext) {
+    try {
+      await c.resume();
+    } catch {
+      // stays suspended
+    }
+  }
+
+  /** Start the music loop if 🎵 is on, the context is awake and the loop is not already running. */
+  function play() {
+    if (!mix.bgmOn || timer || !ctx || ctx.state !== "running") return;
+    song = gain(ctx, 1, layers!.music);
+    loopStart = ctx.currentTime + 0.1;
+    next = 0;
+    loops = 0;
+    schedule();
+    timer = setInterval(schedule, TICK_MS);
   }
 
   /** One oscillator note with a short attack and release, so notes don't click. */
@@ -153,7 +178,6 @@ export function createBgmPlayer(onState?: () => void) {
 
   function stop() {
     mix.bgmOn = false;
-    generation++;
     if (timer) clearInterval(timer);
     timer = null;
     song?.disconnect();
@@ -162,31 +186,25 @@ export function createBgmPlayer(onState?: () => void) {
   }
 
   return {
-    /** Create and wake the AudioContext without starting the music. Must run inside a user gesture (a click or a
-     * key press): browsers only let audio start then. */
+    /** Create and wake the AudioContext. Must run inside a user gesture (a click or a key press): browsers only let
+     * audio start then. Starts the music only if 🎵 is already on. */
     async unlock() {
-      await ensure().resume();
+      await wake(ensure());
+      play();
     },
     /** The AudioContext is awake: sound can play. */
     running(): boolean {
       return ctx?.state === "running";
     },
-    /** Turn 🎵 on. Must first be called from inside a user gesture, like unlock(). */
+    /** Turn 🎵 on. Must first be called from inside a user gesture, like unlock(). A stop() while the context is
+     * still waking wins: play() checks the switch again. */
     async start() {
       if (mix.bgmOn) return;
       mix.bgmOn = true;
-      const mine = ++generation;
       const c = ensure();
       apply();
-      await c.resume();
-      // stop() ran while resume() was pending, maybe followed by a new start().
-      if (mine !== generation || ctx !== c) return;
-      song = gain(c, 1, layers!.music);
-      loopStart = c.currentTime + 0.1;
-      next = 0;
-      loops = 0;
-      schedule();
-      timer = setInterval(schedule, TICK_MS);
+      await wake(c);
+      play();
     },
     /** Turn 🎵 off. The AudioContext stays open, so the host layer still sounds. */
     stop,

@@ -162,7 +162,7 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 ## Next Steps
 > **拆分（站長，2026-11-12，/autoplan UC1）**：PR1 拆成兩個 PR。**PR1a**：開場點亮音效（PR0：大廳大鈕、右下角「👆 開聲音」、`SCREEN_SOUND`、主持人頁黃字），加上新的四層混音（`layerGains`）、大螢幕斷線時更新主持人頁、大鈕的 `aria-label`。**PR1b**（PR1a 合併後）：四個王戰效果 ①–④ 和共用閃光預算。下面 Review record 裡寫「PR0 + PR1 一個 PR」的地方，以這段為準。
 >
-> PR1a 的實作差異：`screenSound` 改變時，房間只把新的 STATE 送給主持人頁，不廣播給所有連線，所以不會觸發 `broadcastState` 的其他副作用。帶金鑰的大螢幕連上時（還沒回報前算 muted）也會通知主持人頁。
+> PR1a 的實作差異：`screenSound` 改變時，房間只把新的 STATE 送給主持人頁，不廣播給所有連線，所以不會觸發 `broadcastState` 的其他副作用。帶金鑰的大螢幕連上時（還沒回報前算 muted）也會通知主持人頁。房間記得主持人頁最後收到的 `screenSound`，只在跟它不同時才送。同一台大螢幕重新連線（同一個 id、新的 socket）時，房間保留它的回報、不通知主持人頁，等它重新打招呼並回報，這樣主持人頁不會閃「沒有大螢幕連著」再跳「已就緒」（取代 eng 區塊「reconnect-replace 要重算並廣播」那一句）。`resume()` 被瀏覽器拒絕時 🎵 仍算開著，下一次成功喚醒（任何路徑）就開始放音樂，不會出現「已就緒」卻沒有音樂。
 
 1. **PR1（含 PR0）**：/autoplan → 實作 lane（Opus、worktree）→ /review → /ship → 合併 → /canary。目標 11/14。
 2. **PR2**：主持人三顆鈕，同一套流程。目標 11/16。

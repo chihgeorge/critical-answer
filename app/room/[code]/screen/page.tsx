@@ -1378,7 +1378,8 @@ export default function ScreenPage() {
    * 語音 on, both remembered. Runs inside the click, like the two toggles. */
   function enableSound() {
     setUnlockPress("opening");
-    setTimeout(() => setUnlockPress((p) => (p === "opening" ? "again" : p)), 1000);
+    // Still asleep a second later: ask for another tap. Awake: back to the plain label, for the next time it falls asleep.
+    setTimeout(() => setUnlockPress((p) => (p !== "opening" ? p : bgm.current?.running() ? null : "again")), 1000);
     if (!ttsOn && ttsSupported()) toggleTts();
     if (!bgmOn) toggleBgm();
     else void player().unlock();
@@ -1532,7 +1533,7 @@ export default function ScreenPage() {
     send({ type: "SCREEN_SOUND", ready: soundReady });
   }, [soundReady, send]);
 
-  const unlockLabel = unlockPress === "opening" ? "開啟中…" : unlockPress === "again" ? "再點一次" : null;
+  const unlockLabel = unlockPress === "opening" ? "開啟中…" : unlockPress === "again" && !audioRunning ? "再點一次" : null;
 
   return (
     <>
@@ -1644,7 +1645,7 @@ export default function ScreenPage() {
         </PixelButton>
       )}
       {showBgmToggle && game && !audioRunning && (
-        // Mid-game, while the sound is still asleep (any tap wakes it): left of 🎵, same corner and size.
+        // Mid-game, while the sound is still asleep (the page's first tap wakes it; after that only this button does): left of 🎵, same corner and size.
         <PixelButton
           onClick={enableSound}
           className="!m-0 !px-4 !py-2 text-[16px]"

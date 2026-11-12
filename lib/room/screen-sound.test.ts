@@ -96,14 +96,23 @@ describe("SCREEN_SOUND and STATE.screenSound", () => {
     expect(g.sound()).toBe("none");
   });
 
-  it("a reconnect that replaces the socket forgets the old report until the new socket reports", () => {
+  it("a TV reconnect (same id, new socket) never flashes another state on the host page, and its new report counts", () => {
     const g = game();
     send(g.room, g.screen("tv"), { type: "SCREEN_SOUND", ready: true });
     expect(g.sound()).toBe("ready");
+    const count = g.states().length;
     const again = g.screen("tv");
+    expect(g.states().slice(count).map((s) => s.screenSound)).not.toContain("none");
+    expect(g.states().slice(count).map((s) => s.screenSound)).not.toContain("muted");
+    send(g.room, again, { type: "SCREEN_SOUND", ready: false });
     expect(g.sound()).toBe("muted");
-    send(g.room, again, { type: "SCREEN_SOUND", ready: true });
-    expect(g.sound()).toBe("ready");
+  });
+
+  it("a reconnect that comes back without the key drops the old report", () => {
+    const g = game();
+    send(g.room, g.screen("tv"), { type: "SCREEN_SOUND", ready: true });
+    g.screen("tv", false);
+    expect(g.sound()).toBe("none");
   });
 
   it("a hello without the key drops the screen's report", () => {
