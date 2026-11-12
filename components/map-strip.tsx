@@ -80,9 +80,9 @@ export function MapStrip({ view }: { view: SpectatorView }) {
   // The fog reveal (immersion.md PR3): its clouds sit inside the room box, so the pawns drawn after it stay on top, and a
   // clipping wrapper keeps the sliding clouds out of the corridor. Lit: one brightness pulse once the clouds clear;
   // otherwise (budget or reduced motion) the room is brighter, without motion, until the reveal ends.
-  const room = (x: number, w: number, key: string, label?: string, reveal?: FogReveal) => (
+  const room = (x: number, w: number, id: string, label?: string, reveal?: FogReveal) => (
     <div
-      key={`room-${key}`}
+      key={"room-" + id}
       data-testid={reveal ? "fog-reveal" : undefined}
       data-step={reveal?.step}
       className={`absolute border-4${reveal?.step === "blow" && reveal.lit ? " px-room-lit" : ""}`}
