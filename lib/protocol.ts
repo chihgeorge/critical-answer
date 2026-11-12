@@ -30,7 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import type { Accessory } from "./monster-catalog";
-import { HOST_FIXES, isClassId, isFortuneEffect, type ClassId, type HostFix, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { FIX_SCORE_MAX, HOST_FIXES, isClassId, isFortuneEffect, type ClassId, type HostFix, type Judgment, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
 import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
@@ -267,6 +267,10 @@ export type ClientMessage =
   | { type: "HOST_GIVE_ITEM"; teamId: string }
   /** ⚙ 更多's 修正 (game-state hostFix): one correction to a team, recorded in its game log. No line, no cue on the big screen. */
   | { type: "HOST_FIX"; teamId: string; fix: HostFix }
+  /** 設定: the team's reward becomes `score` exactly (0..FIX_SCORE_MAX). */
+  | { type: "HOST_SET_SCORE"; teamId: string; score: number }
+  /** 改判: ledger entry `index` (HOST_PICKS `judged`) shows `correct` from now on; `teamId` and `questionId` must still match it. */
+  | { type: "HOST_REJUDGE"; index: number; teamId: string; questionId: string; correct: boolean }
   /** 🚨 開啟抓包與神諭 (docs/designs/anti-ai-cheating.md): the host's switch, any time of a game. */
   | { type: "HOST_ANTI_CHEAT"; on: boolean }
   /** ⚡ 雷聲 / 👹 低吼 (docs/designs/immersion.md PR2): the room relays it to keyed big screens as SCREEN_EFFECT, at most
@@ -583,6 +587,8 @@ export type ServerMessage =
       /** Every boss phase and which one is under way: only the host knows what is still to come. */
       bossPhases: { name: string; rule: string; maxHp: number }[];
       bossPhaseIndex: number;
+      /** Every applied judgment, oldest first, for 改判: `index` is its place in the room's ledger. */
+      judged: JudgedEntry[];
     }
   /** Host-only, to the page that sent HOST_HANDOFF: the code the team's new phone types. */
   | { type: "HANDOFF_CODE"; teamId: string; code: string }
@@ -594,6 +600,9 @@ export type ServerMessage =
 export interface EventReveal extends EventResult {
   dish?: { name: string; sprite: MonsterSprite; hue: number };
 }
+
+/** One ledger entry as the host sees it (HOST_PICKS `judged`). */
+export type JudgedEntry = Judgment & { index: number };
 
 /** One bank question in the host's picker: a short label for its content, its answer, and why it can't be picked now. */
 export interface HostPick {
@@ -818,6 +827,17 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const teamId = str(m.teamId, MAX_ID);
       const fix = HOST_FIXES.find((f) => f === m.fix);
       return teamId === null || !fix ? null : { type: "HOST_FIX", teamId, fix };
+    }
+    case "HOST_SET_SCORE": {
+      const teamId = str(m.teamId, MAX_ID);
+      const ok = Number.isInteger(m.score) && (m.score as number) >= 0 && (m.score as number) <= FIX_SCORE_MAX;
+      return teamId === null || !ok ? null : { type: "HOST_SET_SCORE", teamId, score: m.score as number };
+    }
+    case "HOST_REJUDGE": {
+      const teamId = str(m.teamId, MAX_ID);
+      const questionId = str(m.questionId, MAX_ID);
+      const ok = Number.isInteger(m.index) && (m.index as number) >= 0 && typeof m.correct === "boolean";
+      return teamId === null || questionId === null || !ok ? null : { type: "HOST_REJUDGE", index: m.index as number, teamId, questionId, correct: m.correct as boolean };
     }
     case "TEAM_DRINK_POTION": {
       const questionId = str(m.questionId, MAX_ID);

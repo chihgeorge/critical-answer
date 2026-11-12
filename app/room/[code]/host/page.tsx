@@ -315,6 +315,10 @@ export default function HostPage() {
                 ? "這隊還在擲骰、揭曉或等答錯結算，或有隊伍正在開門，等一下再按"
                 : msg.detail === "paused"
                 ? "占卜師的牌還開著，等它收起來再按"
+                : msg.detail === "stale"
+                ? "這筆改判已過時，清單剛更新"
+                : msg.detail === "at_limit"
+                ? "已經是這個結果了，畫面剛更新"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
           );
           setPendingTeamId(null);
@@ -1398,6 +1402,9 @@ export default function HostPage() {
           screenAudio={screenAudio}
           fixable={game?.phase === "playing" ? game.view.teams : []}
           scoreLabel={game ? scoreName(game.cuisine) : undefined}
+          judged={picks?.judged ?? []}
+          questionLabel={pickLabel}
+          error={error}
         />
       )}
     </main>

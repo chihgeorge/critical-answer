@@ -33,6 +33,9 @@ import {
   armSneak,
   giveItem,
   hostFix,
+  hostRejudge,
+  hostSetScore,
+  recordJudgment,
   type HostFix,
   drinkPotion,
   potionArmed,
@@ -304,6 +307,14 @@ function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
   const team = p ? g.teams.find((t) => t?.id === p.teamId) : undefined;
   if (!p || !team) return null;
   return p.questionId === (team.inBoss ? g.boss.currentQuestionId : team.currentQuestionId) ? p : null;
+}
+
+/** The 改判 ledger: kept whole (dropping an entry would renumber the host's list), or empty if any entry is malformed. */
+function restoredJudgments(g: GameState): GameState["judgments"] {
+  const list = g.judgments;
+  if (list === undefined) return undefined;
+  const ok = Array.isArray(list) && list.every((j) => typeof j?.teamId === "string" && typeof j.questionId === "string" && typeof j.correct === "boolean" && Number.isInteger(j.points) && j.points >= 0 && (j.taken === undefined || (Number.isInteger(j.taken) && j.taken >= 0)) && (j.flipped === undefined || j.flipped === true));
+  return ok ? list : [];
 }
 
 /** The same for a saved open catch (anti-ai-cheating.md): it names both teams and the accused's room question, or it is
@@ -979,7 +990,7 @@ export class DungeonRoom {
       return "discarded";
     }
     this.roomEpoch = s.roomEpoch;
-    this.game = s.game && restoredCatch({ ...s.game, pendingWrong: restoredPendingWrong(s.game) });
+    this.game = s.game && restoredCatch({ ...s.game, pendingWrong: restoredPendingWrong(s.game), judgments: restoredJudgments(s.game) });
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
     this.lateTeams = s.lateTeams ?? [];
@@ -1254,7 +1265,8 @@ export class DungeonRoom {
     if (game.boss.queuedQuestionId) queued.boss = game.boss.queuedQuestionId;
     // Host-only, like the answers: the players never learn how many phases are left (boss-phases.md D4).
     const bossPhases = this.bank.boss.phases.map(({ name, rule, maxHp }) => ({ name, rule, maxHp }));
-    return { type: "HOST_PICKS", questions, options, queued, bossPhases, bossPhaseIndex: game.boss.phaseIndex };
+    const judged = (game.judgments ?? []).map((j, index) => ({ ...j, index }));
+    return { type: "HOST_PICKS", questions, options, queued, bossPhases, bossPhaseIndex: game.boss.phaseIndex, judged };
   }
 
   /** The picker carries the whole bank, so the host pages get it again only when it changed (a phone's
@@ -2008,6 +2020,12 @@ export class DungeonRoom {
           break;
         case "HOST_FIX":
           this.handleHostFix(sender, msg.teamId, msg.fix);
+          break;
+        case "HOST_SET_SCORE":
+          this.handleHostSetScore(sender, msg.teamId, msg.score);
+          break;
+        case "HOST_REJUDGE":
+          this.handleHostRejudge(sender, msg.index, msg.teamId, msg.questionId, msg.correct);
           break;
         case "TEAM_DRINK_POTION":
           this.handleTeamDrinkPotion(sender, msg.questionId, msg.eventId);
@@ -3192,7 +3210,9 @@ export class DungeonRoom {
     const queued = prev.teams.find((t) => t.id === teamId)?.queuedQuestionId;
     const picked = queued !== undefined && judged.game.teams.find((t) => t.id === teamId)?.currentQuestionId === queued;
     const afterMonster = prev.teams.find((t) => t.id === teamId)?.fork?.phase === "monster";
-    const game = !picked && !afterMonster && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterFork(judged.game, teamId) : judged.game;
+    // The 改判 ledger gets every applied judgment, never a 🚨 catch (it scores nothing).
+    const ledgered = caught ? judged.game : recordJudgment(judged.game, prev, teamId, questionId, outcome);
+    const game = !picked && !afterMonster && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterFork(ledgered, teamId) : ledgered;
     // Every online team got it wrong: they all buzz on the same question again (boss-music-buzzer.md M1).
     const again = isBuzzPhase(prev) && outcome.type === "incorrect-retry" && judged.game.buzz?.out.length === 0;
     // A wrong buzz: the music picks up where the buzz stopped it, for the teams still in (boss-buzzer.md D5). After
@@ -4180,6 +4200,22 @@ export class DungeonRoom {
   /** ⚙ 更多's 修正 (docs/hosting.md): no line, no cue, no new eventId, so the big screen only shows the new numbers. It is
    * a move: 改判答對 closes, so an undo can never wipe a correction. Kept in the team's game log and the transcript. */
   private handleHostFix(conn: Conn, teamId: string, fix: HostFix) {
+    this.applyFix(conn, teamId, (g) => hostFix(g, teamId, fix), fix);
+  }
+
+  /** 設定 (docs/hosting.md): the team's reward set exactly, like a 修正 press. */
+  private handleHostSetScore(conn: Conn, teamId: string, score: number) {
+    this.applyFix(conn, teamId, (g) => hostSetScore(g, teamId, score), "set");
+  }
+
+  /** 改判 (docs/hosting.md): only the reward points of ledger entry `index` move, like a 修正 press. */
+  private handleHostRejudge(conn: Conn, index: number, teamId: string, questionId: string, correct: boolean) {
+    this.applyFix(conn, teamId, (g) => hostRejudge(g, index, teamId, questionId, correct), `rejudge #${index + 1} ${correct ? "答錯→答對" : "答對→答錯"}`);
+  }
+
+  /** The 修正 section's shared path (HOST_FIX, HOST_SET_SCORE, HOST_REJUDGE): host only, the same holds, then `change`,
+   * a transcript line `<team> <label> <from>→<to>` and STATE. */
+  private applyFix(conn: Conn, teamId: string, change: (game: GameState) => GameState, label: string) {
     if (!this.requireHost(conn)) return;
     if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
     // Same holds as 送王房: a die or lock in its beat waits until it lands; a fortune's matching teams are fixed (as for 給藥水).
@@ -4190,13 +4226,13 @@ export class DungeonRoom {
     }
     if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
     try {
-      this.game = hostFix(this.game, teamId, fix);
+      this.game = change(this.game);
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
     const team = this.game.teams.find((t) => t.id === teamId)!;
     const last = team.fixes!.at(-1)!;
-    this.addTranscript({ kind: "fix", at: new Date().toISOString(), text: `${team.name} ${fix} ${last.from}→${last.to}` });
+    this.addTranscript({ kind: "fix", at: new Date().toISOString(), text: `${team.name} ${label} ${last.from}→${last.to}` });
     this.broadcastState();
   }
 

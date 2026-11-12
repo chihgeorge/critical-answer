@@ -89,13 +89,16 @@ afterEach(() => {
 
 describe("叉路 in the room", () => {
   // Value: protects=a fork waits for its team's turn and hides everything behind the doors; fails_when=the fork draws
-  // an event early, the clock starts under a reveal, or the question leaks; no_claim=which event is drawn.
+  // an event early, the clock starts under a reveal, or the question leaks, or the fork drops the answer's 改判 ledger
+  // entry; no_claim=which event is drawn.
   it("a correct answer brings the fork team to a fork: waiting, no clock, nothing drawn; its clock starts on its turn after 下一題", async () => {
     vi.useFakeTimers();
     const s = setup();
     const { room } = s;
     answerRight(s, 0, false);
     expect(room.game!.teams[0].fork).toEqual({ phase: "waiting" });
+    // The answer that opened the fork is still in the 改判 ledger (enterFork must start from the ledgered game).
+    expect(room.game!.judgments).toEqual([{ teamId: T1, questionId: expect.any(String), correct: true, points: 10 }]);
     expect(room.game!.teams[0].event).toBeUndefined();
     // Its own reveal is up: no clock yet.
     expect(state(room).forkLeft).toBeUndefined();

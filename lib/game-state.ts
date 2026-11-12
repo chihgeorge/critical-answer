@@ -381,6 +381,8 @@ export interface GameState {
   stunSkipped?: string[];
   /** 抓包與神諭 (docs/designs/anti-ai-cheating.md). Absent: switched off, as in every save from before it. */
   antiCheat?: AntiCheatState;
+  /** Every applied judgment in order, for 改判 (docs/hosting.md). Host-only: STATE never carries it. */
+  judgments?: Judgment[];
 }
 
 export interface LockedOption {
@@ -1561,11 +1563,27 @@ export const HOST_FIXES = ["score+", "score-", "ability+", "ability-", "potion-"
 export type HostFix = (typeof HOST_FIXES)[number];
 /** Reward points one 修正 press adds or takes. */
 export const FIX_SCORE_STEP = 5;
-/** One correction, for lib/game-log.ts: `from` and `to` are the reward, the uses left, or 1/0 for a held potion. */
+/** The most reward 設定 (HOST_SET_SCORE) may set. */
+export const FIX_SCORE_MAX = 9999;
+/** One correction, for lib/game-log.ts: `from` and `to` are the reward, the uses left, or 1/0 for a held potion.
+ * `set` is 設定 (an exact reward), `rejudge` is 改判 on the ledger's entry number `judgment` (1-based). */
 export interface FixRecord {
-  fix: HostFix;
+  fix: HostFix | "set" | "rejudge";
   from: number;
   to: number;
+  judgment?: number;
+}
+
+/** One applied judgment, for 改判 (docs/hosting.md). `correct` is the verdict as shown now (`flipped`: 改判 turned it).
+ * `points` (N) is fixed when judged: a correct one's whole gain, a wrong one's plain room or boss reward plus the chef's
+ * share. `taken`: what the last 改成答錯 took away, so the next 改成答對 gives back exactly that (the reward's 0 floor). */
+export interface Judgment {
+  teamId: string;
+  questionId: string;
+  correct: boolean;
+  points: number;
+  flipped?: true;
+  taken?: number;
 }
 
 /** The most ability uses 修正 may give `team` back: its class's set plus the uses event rooms gave it (resolveEvent's
@@ -1603,6 +1621,47 @@ export function hostFix(game: GameState, teamId: string, fix: HostFix): GameStat
   }
   if (from === to) throw new InvalidActionError("at_limit");
   return { ...game, teams: patchTeam(game.teams, teamId, (x) => ({ ...patch, fixes: [...(x.fixes ?? []), { fix, from, to }] })) };
+}
+
+/** 設定: the reward becomes `score` (0..FIX_SCORE_MAX, checked by the parser); progress untouched. The same value throws. */
+export function hostSetScore(game: GameState, teamId: string, score: number): GameState {
+  if (game.phase !== "playing") throw new InvalidActionError("not_playing");
+  const from = getTeam(game, teamId).reward;
+  if (from === score) throw new InvalidActionError("at_limit");
+  return { ...game, teams: patchTeam(game.teams, teamId, (x) => ({ reward: score, fixes: [...(x.fixes ?? []), { fix: "set" as const, from, to: score }] })) };
+}
+
+/** N for the ledger, from `prev` (the game before the judgment): a correct outcome's whole gain; for a wrong one, what a
+ * plain correct answer there gives (room reward or the boss's hitReward) plus the chef's share. */
+export function judgmentPoints(prev: GameState, teamId: string, outcome: AnswerOutcome): number {
+  if (outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") return outcome.reward;
+  const t = getTeam(prev, teamId);
+  const base = t.inBoss ? prev.boss.hitReward : (prev.rooms[t.roomIndex]?.reward ?? 0);
+  return base + (t.classId === "chef" ? chefShare(base) : 0);
+}
+
+/** Appends one applied judgment to the ledger (the room calls this once per judgment, never for a 🚨 catch). */
+export function recordJudgment(game: GameState, prev: GameState, teamId: string, questionId: string, outcome: AnswerOutcome): GameState {
+  const correct = outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit";
+  return { ...game, judgments: [...(game.judgments ?? []), { teamId, questionId, correct, points: judgmentPoints(prev, teamId, outcome) }] };
+}
+
+/** 改判: ledger entry `index` shows `correct` from now on, and only its reward points move (owner decision "A 只改分數").
+ * 改成答錯 takes min(taken ?? N, reward) and keeps it as `taken`; 改成答對 gives back `taken ?? N` and drops it, so any flip
+ * cycle nets 0 and the next 改成答錯 starts from N again. `teamId` and `questionId` must match the entry, or it is a press from an older list (`stale`). */
+export function hostRejudge(game: GameState, index: number, teamId: string, questionId: string, correct: boolean): GameState {
+  if (game.phase !== "playing") throw new InvalidActionError("not_playing");
+  const j = game.judgments?.[index];
+  if (!j || j.teamId !== teamId || j.questionId !== questionId) throw new InvalidActionError("stale");
+  if (j.correct === correct) throw new InvalidActionError("at_limit");
+  const from = getTeam(game, teamId).reward;
+  const moved = correct ? (j.taken ?? j.points) : Math.min(j.taken ?? j.points, from);
+  const to = correct ? from + moved : from - moved;
+  const entry: Judgment = { teamId, questionId, correct, points: j.points };
+  if (!j.flipped) entry.flipped = true;
+  if (!correct) entry.taken = moved;
+  const judgments = game.judgments!.map((e, i) => (i === index ? entry : e));
+  return { ...game, judgments, teams: patchTeam(game.teams, teamId, (x) => ({ reward: to, fixes: [...(x.fixes ?? []), { fix: "rejudge" as const, from, to, judgment: index + 1 }] })) };
 }
 /** Satiety each outcome gives or takes (D4, D9); the spring's goes only to a chef or a team with no class. `great` and
  * `spring` are only for saves from before the 3-scene deck. */
