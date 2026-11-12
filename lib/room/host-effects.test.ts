@@ -50,7 +50,7 @@ function room(questions: object[] = [text("q1")], answerSeconds?: number) {
     const g = r.game!;
     r.game = { ...g, checks: { ...g.checks, [checkKey(state().question.id, T1)]: { value: 10, bonus: 0, dc: 8, passed: true } } };
   }
-  const media = (action: string) => send(r, host, { type: "HOST_MEDIA", questionId: state().question.id, action });
+  const media = (action: string, questionId: string = state().question.id) => send(r, host, { type: "HOST_MEDIA", questionId, action });
   return { room: r, io, host, phone, screen, state, start, media, clock };
 }
 
@@ -161,6 +161,30 @@ describe("STATE.clipPlaying", () => {
     g.start();
     g.media("play");
     send(g.room, tv, { type: "SCREEN_CLIP_ERROR", questionId: "v1" });
+    expect(g.state().clipPlaying).toBeUndefined();
+  });
+
+  it("is set again when the host replays a clip that already ended, until that play ends too", () => {
+    const g = room([video("v1")]);
+    const tv = g.screen("tv");
+    g.start();
+    g.media("play");
+    send(g.room, tv, { type: "SCREEN_CLIP_ENDED", questionId: "v1" });
+    expect(g.state().clipPlaying).toBeUndefined();
+    g.media("restart");
+    expect(g.state().clipPlaying).toBe(true);
+    send(g.room, tv, { type: "SCREEN_CLIP_ENDED", questionId: "v1" });
+    expect(g.state().clipPlaying).toBeUndefined();
+  });
+
+  it("is never set during a reveal, whose clip reports no end", () => {
+    const g = room([video("v1"), text("q2")]);
+    g.start();
+    g.media("play");
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: T1, questionId: "v1", correct: true, fleeChoice: "retry", eventId: g.state().eventId });
+    expect(g.state().reveal?.questionId).toBe("v1");
+    g.media("play", "v1");
+    expect(g.state().media).toMatchObject({ questionId: "v1", state: "playing" });
     expect(g.state().clipPlaying).toBeUndefined();
   });
 

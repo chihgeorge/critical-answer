@@ -465,6 +465,9 @@ export class DungeonRoom {
   private reactedAt = new Map<string, number>();
   /** The room clock at the last HOST_EFFECT relayed (immersion.md PR2). In memory only. */
   private hostFxAt = -Infinity;
+  /** The ▶ / ⟲ press whose play the screen last reported ended (immersion.md PR2): a replay after the end is a new
+   * press, so `clipPlaying` is set again. In memory only; the countdown keeps its own `clipEnded`. */
+  private clipStopped: { questionId: string; press: number } | null = null;
   private roomReacts: number[] = [];
   /** The reactions during the current turn, for the narrator (crowd.ts). In memory only. */
   private crowd = createCrowdTally();
@@ -1171,9 +1174,12 @@ export class DungeonRoom {
   /** SCREEN_CLIP_ENDED (D4): for the question video on screen right now, even while an answer waits (a 重答 then
    * counts at once). The first report counts. */
   private handleClipEnded(questionId: string) {
-    // With the countdown off too: `clipPlaying` needs it (immersion.md PR2, D1).
-    if (this.reveal || this.shownVideoId() !== questionId || this.clipEnded === questionId) return;
+    // With the countdown off too, and again after a replay: `clipPlaying` needs both (immersion.md PR2, D1).
+    if (this.reveal || this.shownVideoId() !== questionId) return;
+    const press = this.media?.questionId === questionId ? this.media.press : -1;
+    if (this.clipEnded === questionId && this.clipStopped?.questionId === questionId && this.clipStopped.press === press) return;
     this.clipEnded = questionId;
+    this.clipStopped = { questionId, press };
     this.broadcastState();
   }
 
@@ -3308,11 +3314,14 @@ export class DungeonRoom {
     return pub?.content.kind === "youtube" ? pub.id : null;
   }
 
-  /** The host's ▶ is playing the video on screen, and no screen has reported its end or an error (immersion.md PR2,
-   * D1). A hint for the host's pads: each screen also drops a SCREEN_EFFECT while its own player plays. */
+  /** The host's ▶ is playing the question's video on screen, and no screen has reported that play's end or an error
+   * (immersion.md PR2, D1). A hint for the host's pads: each screen also drops a SCREEN_EFFECT while its own player
+   * plays. Never during a reveal: a reveal clip reports no end, so the pads would stay off until ⏸. */
   private clipPlaying(): boolean {
     const id = this.shownVideoId();
-    return id !== null && this.media?.questionId === id && this.media.state === "playing" && this.clipEnded !== id && this.clipError !== id;
+    const m = this.media;
+    if (id === null || this.reveal || m?.questionId !== id || m.state !== "playing" || this.clipError === id) return false;
+    return !(this.clipStopped?.questionId === id && this.clipStopped.press === m.press);
   }
 
   /** ⚡ 雷聲 / 👹 低吼 (immersion.md PR2): relayed only to keyed big screens, at most one per HOST_FX_WINDOW_MS for the
