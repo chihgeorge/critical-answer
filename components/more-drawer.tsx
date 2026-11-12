@@ -3,9 +3,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { pressCooldown } from "@/lib/press-cooldown";
 import { getHostToken } from "@/lib/room-code";
-import type { ClientMessage, ScreenAudio } from "@/lib/protocol";
+import type { ClientMessage, JudgedEntry, ScreenAudio } from "@/lib/protocol";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
-import { CATCH_USES, CLASS_ICONS, FIX_SCORE_STEP, ORACLE_USES, type HostFix, type SpectatorView } from "@/lib/game-state";
+import { CATCH_USES, CLASS_ICONS, FIX_SCORE_MAX, FIX_SCORE_STEP, ORACLE_USES, type HostFix, type SpectatorView } from "@/lib/game-state";
+import { laterCorrect, questionOrdinals, rejudgeChange } from "@/lib/host-rejudge";
 import { Panel, PixelButton } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 
@@ -30,6 +31,9 @@ export function MoreDrawer({
   screenAudio,
   fixable = [],
   scoreLabel,
+  judged = [],
+  questionLabel = () => "",
+  error,
 }: {
   /** The page's origin ("" before hydration). */
   origin: string;
@@ -52,11 +56,29 @@ export function MoreDrawer({
   fixable?: SpectatorView["teams"];
   /** The game's score name (獎勵分 or 飽足感). */
   scoreLabel?: string;
+  /** Every applied judgment, oldest first (HOST_PICKS `judged`), for 改判. */
+  judged?: JudgedEntry[];
+  /** A question's label from HOST_PICKS ("" when unknown). */
+  questionLabel?: (questionId: string) => string;
+  /** The page's last refusal, shown again in 修正: the drawer covers the page's own error line. */
+  error?: string | null;
 }) {
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
   // 修正 acts on every press: a double tap before the next STATE would apply twice (FIX_COOLDOWN_MS per button).
   const [fixAllowed] = useState(() => pressCooldown());
+  // 設定's typed scores per team, never overwritten by a STATE. One shows empty once the team's score shows what was
+  // sent, so a refused 設定 keeps what the host typed.
+  const [typed, setTyped] = useState<Record<string, string>>({});
+  const [sent, setSent] = useState<Record<string, number>>({});
+  const typedFor = (id: string, reward: number) => (sent[id] === reward ? "" : (typed[id] ?? ""));
+  const settable = (id: string, reward: number) => {
+    const v = typedFor(id, reward);
+    return /^\d{1,4}$/.test(v) && Number(v) <= FIX_SCORE_MAX && Number(v) !== reward;
+  };
+  const teamName = (id: string) => fixable.find((t) => t.id === id)?.name ?? "";
+  const rewardOf = (id: string) => fixable.find((t) => t.id === id)?.reward ?? 0;
+  const ordinals = questionOrdinals(judged);
   useEffect(() => {
     if (!armed) return;
     const t = setTimeout(() => setArmed(null), 3000);
@@ -115,6 +137,7 @@ export function MoreDrawer({
           {fixable.length > 0 && (
             <section data-testid="host-fix" className="flex flex-col gap-2">
               <div className="text-[15px]">修正（判錯時用）：大螢幕不會有動畫或旁白，只會換成新的數字；每一下都記在對局紀錄裡。</div>
+              {error && <div role="alert" className="px-2 py-1 text-[14px]" style={{ background: "#ffd9d9" }}>{error}</div>}
               {fixable.map((t) => {
                 const fix = (f: HostFix) => fixAllowed(`${t.id}:${f}`) && send({ type: "HOST_FIX", teamId: t.id, fix: f });
                 const small = "!m-0 min-h-[44px] min-w-[44px] !px-2 !py-0 text-[15px]";
@@ -124,6 +147,31 @@ export function MoreDrawer({
                     <span className="min-w-0 flex-1 basis-full truncate text-[16px] sm:basis-0">{t.name}</span>
                     <span className="text-[14px]">{scoreLabel} <span className="px-num text-[14px]">{t.reward}</span></span>
                     <PixelButton aria-label={`${t.name}扣 ${FIX_SCORE_STEP} 分`} disabled={t.reward <= 0} onClick={() => fix("score-")} className={small}>−{FIX_SCORE_STEP}</PixelButton>
+                    <form
+                      className="flex items-center gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!settable(t.id, t.reward) || !fixAllowed(`${t.id}:set`)) return;
+                        const score = Number(typedFor(t.id, t.reward));
+                        setSent((s) => ({ ...s, [t.id]: score }));
+                        send({ type: "HOST_SET_SCORE", teamId: t.id, score });
+                      }}
+                    >
+                      <input
+                        aria-label={`${t.name}的分數`}
+                        inputMode="numeric"
+                        maxLength={4}
+                        placeholder={String(t.reward)}
+                        value={typedFor(t.id, t.reward)}
+                        onChange={(e) => {
+                          const v = e.target.value.trim();
+                          setTyped((s) => ({ ...s, [t.id]: v }));
+                          setSent((s) => Object.fromEntries(Object.entries(s).filter(([k]) => k !== t.id)));
+                        }}
+                        className="min-h-[44px] w-[4.5em] border-2 border-black bg-white px-2 text-[16px]"
+                      />
+                      <PixelButton type="submit" disabled={!settable(t.id, t.reward)} className={small}>設定</PixelButton>
+                    </form>
                     <PixelButton aria-label={`${t.name}加 ${FIX_SCORE_STEP} 分`} onClick={() => fix("score+")} className={small}>+{FIX_SCORE_STEP}</PixelButton>
                     {max !== undefined && t.classId && (
                       <>
@@ -138,6 +186,39 @@ export function MoreDrawer({
                   </div>
                 );
               })}
+              <div data-testid="host-rejudge" className="mt-2 flex flex-col gap-2">
+                <div className="text-[15px]">改判（已判過的題目）</div>
+                <div className="text-[13px]">只改獎勵分，不改答對數和進度。</div>
+                {judged.length === 0 ? (
+                  <div className="text-[14px]">還沒有判過的題目</div>
+                ) : (
+                  <div className="flex max-h-[40vh] flex-col gap-2 overflow-y-auto">
+                    {[...judged].reverse().map((j) => {
+                      const change = rejudgeChange(j, rewardOf(j.teamId));
+                      const label = questionLabel(j.questionId);
+                      const was = j.flipped ? (j.correct ? "答錯" : "答對") : null;
+                      return (
+                        <div key={j.index} className="flex flex-wrap items-center gap-2 text-[14px]">
+                          <span className="min-w-0 flex-1 basis-full truncate sm:basis-0">
+                            {`第 ${ordinals.get(j.questionId)} 題`}
+                            {label && ` · ${label}`}
+                            {` · ${teamName(j.teamId)} · `}
+                            {j.correct ? `答對 +${j.points}` : "答錯"}
+                          </span>
+                          {was && <span className="text-[13px]">{`已改判（原本${was}）`}</span>}
+                          {laterCorrect(judged, j) && <span className="text-[13px]">這題後來答對了</span>}
+                          <PixelButton
+                            onClick={() => fixAllowed(`rejudge:${j.index}`) && send({ type: "HOST_REJUDGE", index: j.index, teamId: j.teamId, questionId: j.questionId, correct: !j.correct })}
+                            className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px]"
+                          >
+                            {j.correct ? `改成答錯（−${-change}）` : `改成答對（+${change}）`}
+                          </PixelButton>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </section>
           )}
           {antiCheat !== undefined && (
