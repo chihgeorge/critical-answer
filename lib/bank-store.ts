@@ -194,7 +194,8 @@ export class BankStore {
     // The fallback bank is not what's stored: deleting by it would drop images the stored bank still uses.
     // Try again later; this alarm is spent, and the queue would otherwise wait for the next save or upload.
     if (stuck) {
-      console.warn(JSON.stringify({ event: "image_cleanup_deferred", reason: stuck.unreadable ? "unreadable" : "outdated", pending: pending.length }));
+      const bankIds = (await this.listBanks()).filter((_, i) => banks[i].unreadable || banks[i].outdated).map((b) => b.id);
+      console.warn(JSON.stringify({ event: "image_cleanup_deferred", reason: stuck.unreadable ? "unreadable" : "outdated", bankIds, pending: pending.length }));
       return void (await this.storage.setAlarm?.(now + this.cleanupDelayMs));
     }
     const inUse = new Set(banks.flatMap((b) => [...imageKeysOf(b.current.bank)]));
@@ -286,9 +287,12 @@ export class BankStore {
     await this.storage.delete(bankKey(id));
     await this.storage.delete(legacyKey(id));
     if (keys.length > 0) {
-      const again = new Set(keys);
+      const pending = await this.getPending();
       const deleteAt = this.now() + this.cleanupDelayMs;
-      await this.setPending([...(await this.getPending()).filter((p) => !again.has(p.key)), ...keys.map((key) => ({ key, deleteAt }))]);
+      // A key already waiting longer (an overwritten outdated bank's 14 days) keeps its later time.
+      const later = new Map(pending.map((p) => [p.key, p.deleteAt]));
+      const again = new Set(keys);
+      await this.setPending([...pending.filter((p) => !again.has(p.key)), ...keys.map((key) => ({ key, deleteAt: Math.max(deleteAt, later.get(key) ?? 0) }))]);
     }
   }
 
@@ -365,13 +369,13 @@ export class BankStore {
   }
 }
 
-/** Every `value` of a `kind: "image"` object anywhere in `raw`: the images of a stored bank too old to
+/** Every `value` of a `kind` image, video or audio object anywhere in `raw`: the files of a stored bank too old (or too new) to
  * parse. Other shapes are skipped, never thrown on. */
 export function legacyImageKeys(raw: unknown, keys = new Set<string>()): Set<string> {
   if (Array.isArray(raw)) for (const v of raw) legacyImageKeys(v, keys);
   else if (raw && typeof raw === "object") {
     const o = raw as Record<string, unknown>;
-    if (o.kind === "image" && typeof o.value === "string" && o.value) keys.add(o.value);
+    if ((o.kind === "image" || o.kind === "video" || o.kind === "audio") && typeof o.value === "string" && o.value) keys.add(o.value);
     for (const v of Object.values(o)) legacyImageKeys(v, keys);
   }
   return keys;

@@ -282,8 +282,8 @@ export default function HostPage() {
           }
           // Any error releases an edit in flight (no stuck 送出中…); the edit refusals show in the panel, not the error line.
           setEditRefusal((r) => ({ detail: msg.detail ?? msg.error, seq: (r?.seq ?? 0) + 1 }));
-          // A refused pick gets no HOST_BANKS: release the menu here.
-          if (msg.detail === "owner_only" || msg.error === "game_already_started") setBanks((b) => ({ ...b, loading: false }));
+          // A refused pick gets no HOST_BANKS: release the menu on any error (the room still refuses a start while it loads).
+          setBanks((b) => ({ ...b, loading: false }));
           if (msg.detail && NARRATION_REFUSALS.has(msg.detail)) break;
           setError(
             msg.error === "bad_token"

@@ -201,6 +201,8 @@ const KEY_CHECK_MS = 5000;
  * check_failed with no network call: else anyone hosting a room could have it test stolen keys one after another. */
 const KEY_CHECK_MAX_PER_WINDOW = 3;
 const KEY_CHECK_WINDOW_MS = 60_000;
+/** Wrong OWNER_KEY tries a room takes before it refuses every further one (multi-bank.md). */
+const OWNER_GUESS_MAX = 10;
 const KEY_CHECK_MAX_TOTAL = 10;
 const speechMs = (lines: string[]) => (lines.join("").length / SPEECH_CHARS_PER_S) * 1000 + 1000;
 
@@ -516,6 +518,8 @@ export class DungeonRoom {
   /** A host here gave the right OWNER_KEY (HOST_AI_KEY source "owner"): only then may the room play a custom bank
    * (multi-bank.md D4), since every host page gets the answers. In memory only: the page resends its key after HOST_OK. */
   private ownerProven = false;
+  /** Wrong OWNER_KEY tries in this room (in memory). */
+  private ownerGuesses = 0;
   /** The custom bank this room plays (null: the default), saved with the room. */
   private bankChoice: { id: string; name: string } | null = null;
   /** Goes up on every HOST_SET_BANK and reset, so a bank that arrives late (a newer pick, an expired room) is dropped. */
@@ -758,7 +762,12 @@ export class DungeonRoom {
       const ownerKey = this.room.env?.OWNER_KEY;
       const serverKey = this.room.env?.ANTHROPIC_API_KEY;
       if (!ownerKey) return this.refuseKey("owner_unavailable", msg.keyId);
-      if (!tokensEqual(ownerKey, msg.ownerKey)) return this.refuseKey("wrong_owner_key", msg.keyId);
+      // A right guess unlocks the owner's banks and their answers: a room gets only so many tries.
+      if (!this.ownerProven && this.ownerGuesses >= OWNER_GUESS_MAX) return this.refuseKey("wrong_owner_key", msg.keyId);
+      if (!tokensEqual(ownerKey, msg.ownerKey)) {
+        this.ownerGuesses++;
+        return this.refuseKey("wrong_owner_key", msg.keyId);
+      }
       if (!this.ownerProven) {
         this.ownerProven = true;
         this.sendBanks(); // the owner's own banks are now on offer
@@ -1690,6 +1699,7 @@ export class DungeonRoom {
     this.bankAnswers = allAnswers(this.bank);
     this.bankChoice = null;
     this.ownerProven = false;
+    this.ownerGuesses = 0;
     this.bankGen++;
     this.bankLoading = false;
     this.roomEpoch = crypto.randomUUID();
@@ -2638,13 +2648,14 @@ export class DungeonRoom {
     void load().then(
       ({ bank, choice }) => {
         // A newer pick, an expired room, or a game started some other way: this bank comes too late.
-        if (gen !== this.bankGen || this.game) return;
+        if (gen !== this.bankGen) return;
         this.bankLoading = false;
+        if (this.game) return;
+        // Ids from another bank would keep this bank's same-named questions from being dealt; the same bank keeps them.
+        if ((choice?.id ?? DEFAULT_BANK_ENTRY.id) !== (this.bankChoice?.id ?? DEFAULT_BANK_ENTRY.id)) this.playedQuestionIds = [];
         this.bank = bank;
         this.bankAnswers = allAnswers(bank);
         this.bankChoice = choice;
-        // Ids from the other bank: they would keep this bank's same-named questions from being dealt.
-        this.playedQuestionIds = [];
         this.broadcast(this.snapshot());
         this.sendBanks();
       },

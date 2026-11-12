@@ -121,6 +121,29 @@ describe("HOST_SET_BANK", () => {
     expect(sent(host).at(-1)).toEqual({ type: "ERROR", error: "game_already_started" });
   });
 
+  it("stops taking OWNER_KEY guesses after 10 wrong ones, even a right one", async () => {
+    const { host, send, loadBank } = setup();
+    for (let i = 0; i < 10; i++) send(host, { type: "HOST_AI_KEY", source: "owner", ownerKey: `guess-${i}` });
+    send(host, { type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY });
+    send(host, { type: "HOST_SET_BANK", bankId: "party" });
+    await flush();
+    expect(loadBank).not.toHaveBeenCalled();
+    expect(lastBanks(host).banks).toEqual([BANKS[0]]);
+  });
+
+  it("keeps the played-question list when the same bank is picked again, clears it for another", async () => {
+    const { room, host, send, prove } = setup();
+    const played = () => (room as unknown as { playedQuestionIds: string[] }).playedQuestionIds;
+    (room as unknown as { playedQuestionIds: string[] }).playedQuestionIds = ["r0-q1"];
+    prove();
+    send(host, { type: "HOST_SET_BANK", bankId: "default" });
+    await flush();
+    expect(played()).toEqual(["r0-q1"]);
+    send(host, { type: "HOST_SET_BANK", bankId: "party" });
+    await flush();
+    expect(played()).toEqual([]);
+  });
+
   it("tells the host when the bank cannot be loaded, and keeps the one it had", async () => {
     const { room, host, send, prove } = setup(vi.fn(async () => Promise.reject(new Error("gone"))));
     prove();

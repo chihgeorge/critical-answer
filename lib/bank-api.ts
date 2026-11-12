@@ -140,6 +140,7 @@ export async function handleBanksApi(request: Request, deps: BanksApiDeps): Prom
   if (authError) return authError;
   const id = new URL(request.url).searchParams.get("id");
   const body = async (): Promise<{ name?: unknown; copyFrom?: unknown }> => {
+    if (Number(request.headers.get("Content-Length") ?? "0") > 1000) throw new Error("Payload too large");
     const text = await request.text();
     if (new TextEncoder().encode(text).length > 1000) throw new Error("Payload too large");
     return (JSON.parse(text) ?? {}) as { name?: unknown; copyFrom?: unknown };

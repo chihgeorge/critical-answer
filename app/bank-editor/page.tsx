@@ -169,8 +169,9 @@ export default function BankEditorPage() {
   // arrived late used to overwrite edits made after a newer load (CI on main, 2026-10-25).
   const loadSeq = useRef(0);
 
-  const load = async (key: string, id = bankId) => {
-    if (!key) return;
+  /** True when this load's bank is the one shown now. */
+  const load = async (key: string, id = bankId): Promise<boolean> => {
+    if (!key) return false;
     const seq = ++loadSeq.current;
     setLoading(true);
     setError("");
@@ -181,29 +182,29 @@ export default function BankEditorPage() {
         // A Worker from before multi-bank has no list: the default bank alone, as before.
         fetch(banksApiBase(), { headers, signal: AbortSignal.timeout(BANK_LOAD_TIMEOUT_MS) }).catch(() => null),
       ]);
-      if (seq !== loadSeq.current) return;
+      if (seq !== loadSeq.current) return false;
       if (listRes?.ok) {
         const list: unknown = await listRes.json();
-        if (seq !== loadSeq.current) return;
+        if (seq !== loadSeq.current) return false;
         if (Array.isArray(list)) setBanks(list as BankEntry[]);
       }
       if (res.status === 404 && id !== DEFAULT_BANK_ENTRY.id) {
         setLoading(false);
-        await load(key, DEFAULT_BANK_ENTRY.id);
-        return setError("那份題庫已經被刪掉了，改載入預設題庫。");
+        if (await load(key, DEFAULT_BANK_ENTRY.id)) setError("那份題庫已經被刪掉了，改載入預設題庫。");
+        return false;
       }
       if (res.status === 403) {
         setError("Owner key rejected.");
         setBank(null);
         savedBank.current = null;
-        return;
+        return false;
       }
       if (!res.ok) {
         setError(`Load failed: ${res.status}`);
-        return;
+        return false;
       }
       const versioned: { bank: Bank; version: number; unreadable?: true; outdated?: number } = await res.json();
-      if (seq !== loadSeq.current) return;
+      if (seq !== loadSeq.current) return false;
       const stale = [...versioned.bank.rooms.map((r) => r.monster), versioned.bank.boss.monster].some((m) => typeof m !== "string");
       setBank(versioned.bank);
       savedBank.current = versioned.bank;
@@ -213,8 +214,10 @@ export default function BankEditorPage() {
       setReadOnly(!!versioned.unreadable || stale);
       setStaleServer(stale);
       setOutdated(versioned.outdated ?? null);
+      return true;
     } catch {
       if (seq === loadSeq.current) setError("Could not reach the server.");
+      return false;
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
@@ -492,7 +495,8 @@ export default function BankEditorPage() {
                 if (discardOk()) void load(ownerKey, e.target.value);
               }}
             >
-              {banks.map((b) => (
+              {/* The bank being edited stays listed even when the list is missing it (an older Worker, deleted in another tab). */}
+              {(banks.some((b) => b.id === bankId) ? banks : [...banks, { id: bankId, name: "（目前編輯的題庫）" }]).map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>

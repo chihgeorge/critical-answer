@@ -26,7 +26,10 @@ existing BankStore; a host picks one in the lobby. Host upload/paste of a bank i
 - The queue moved from `pendingImageDeletes` to `pendingMediaDeletes`. Code from before multi-bank reads only the
   default bank; after a rollback it would delete files only a custom bank uses. It never sees the new key, so the
   worst case is a leak. The old key is still read and merged, so a rollback's uploads are cleaned after a roll
-  forward. Accepted by the owner 2026-11-11; follow-up in TODOS.md.
+  forward. Accepted by the owner 2026-11-11; follow-up in TODOS.md. The new key does not cover one case: while
+  rolled back, a save of the default bank that drops a file a custom bank still uses queues it under the old key, and
+  the old code deletes it. So do not edit banks while rolled back.
+- A damaged custom bank defers all cleanup until it is fixed or deleted; `image_cleanup_deferred` logs its id.
 - Known limit carried over: the cleanup delay counts from a room's first game start, not from when its lobby copied
   the bank (the `shortcut:` in worker/index.ts). Deleting a custom bank uses the same delay as a save's orphans.
 
