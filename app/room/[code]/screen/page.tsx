@@ -18,11 +18,12 @@ import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, EAT_DONE, GROWL, HEARTBEAT, SFX, SOUND_ON, SPRINT_FANFARE, THUNDER } from "@/lib/sfx";
+import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CHEF_SIZZLE, CLERIC_PRAYER, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
 import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
 import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
-import { createFlashBudget, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
+import { CLASS_COLOR, CLASS_PULSE, CLASS_TINT, createFlashBudget, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
 import { playHostEffect, type HostFxLook } from "@/lib/host-fx";
+import { CLASS_FX_MS, CLASS_FX_TEXT, classFxFor, playClassFx, type ClassFx, type ClassFxLook } from "@/lib/class-fx";
 import { AnswerClock } from "@/components/answer-clock";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { antiCheatBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
@@ -272,7 +273,7 @@ const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4p
 /** ② The parry's beats (lib/boss-fx.ts PARRY_MS). */
 type ParryBeat = "charge" | "parry" | "counter";
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, cuisine, parry, rage }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; cuisine?: true; parry: ParryBeat | null; rage: boolean }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -287,7 +288,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const theme = dish ? roomTheme(dish.room) : turnInfo.theme;
   // A team removed mid-reveal still leaves its dish line, without the name.
   const line = dish ? dishLine(dish, eater?.name ?? "", false) : "";
-  const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => say([line]), eater ? onEaten : undefined); // no 嗝 when the eater's team has left (no one is shown eating)
+  const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => (say([line]), onChef(dish?.chefBonus)), eater ? onEaten : undefined); // no 嗝 when the eater's team has left (no one is shown eating)
   const served = cook !== null;
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
   const card = phaseCard && bossPhaseInfo;
@@ -890,11 +891,11 @@ function AwardCard({ beat, teams }: { beat: Extract<Beat, { kind: "award" }>; te
   );
 }
 
-function Finished({ view, winners, reveal, podium, narration, unread, typedTo, epilogue, page, cuisine, finale, say, onRead, onCook, onCue, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; podium?: PodiumReveal; narration: NarrationState; unread: boolean; typedTo: number; epilogue: string | null; page: number; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onCook: () => void; onCue: (cue: SoundCue) => void; onPodium: () => void }) {
+function Finished({ view, winners, reveal, podium, narration, unread, typedTo, epilogue, page, cuisine, finale, say, onRead, onCook, onChef, onCue, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; podium?: PodiumReveal; narration: NarrationState; unread: boolean; typedTo: number; epilogue: string | null; page: number; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onCook: () => void; onChef: (bonus?: number) => void; onCue: (cue: SoundCue) => void; onPodium: () => void }) {
   const dish = reveal?.dish;
   const line = dish ? dishLine(dish, "", true) : "";
   // The boss cooks first and the winner waits (cooking R8, I4): only a kill this screen saw live plays it.
-  const step = useFinaleStep(finale && !!dish, onCook, () => say([line]));
+  const step = useFinaleStep(finale && !!dish, onCook, () => (say([line]), onChef(dish?.chefBonus)));
   const cooked = step === 4;
   // Then the narrator calls the places on the room's clock (podium-reveal.md); the scores wait for first place.
   const t = useRevealTime(podium);
@@ -1463,9 +1464,43 @@ export default function ScreenPage() {
       parryTimers.current.forEach(clearTimeout);
       heart.current?.cancel();
       if (hostFxTimer.current) clearTimeout(hostFxTimer.current);
+      classTimers.current.forEach(clearTimeout);
     },
     [],
   );
+
+  // --- The class moments (lib/class-fx.ts): the mage's, cleric's and thief's edge pulse or tint, badge and sound.
+  const [classFx, setClassFx] = useState<{ fx: ClassFxLook; edge: boolean; parried: boolean } | null>(null);
+  const classTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const clearClassFx = useCallback(() => {
+    classTimers.current.splice(0).forEach(clearTimeout);
+    setClassFx(null);
+  }, []);
+  const onClassFx = useCallback(
+    (fx: ClassFx) => {
+      playClassFx(fx, {
+        clipPlaying: videoPlaying.current,
+        reducedMotion: prefersReducedMotion(),
+        transitionUp: transitionOn.current,
+        parrying: parryRunning.current,
+        takeFlash: () => flashBudget.current.take(),
+        play: (k) => bgm.current?.playCue(k === "mage" ? MAGE_SPELL : k === "cleric" ? CLERIC_PRAYER : THIEF_SNEAK),
+        show: (look) => {
+          // A newer moment replaces a running one. The pulse is lit 0.25 s, a tint held 0.5 s; the badge stays CLASS_FX_MS.
+          clearClassFx();
+          // A spend during a parry keeps its badge hidden even after the parry ends: it would pop up late and cut short.
+          setClassFx({ fx: look, edge: true, parried: parryRunning.current });
+          classTimers.current.push(setTimeout(() => setClassFx((c) => (c && { ...c, edge: false })), look.look === "flash" ? 250 : 500));
+          classTimers.current.push(setTimeout(() => setClassFx(null), CLASS_FX_MS));
+        },
+      });
+    },
+    [clearClassFx],
+  );
+  /** The chef's （廚師 +N） on the dish card: a small pop, never over this screen's own clip. */
+  const onChef = useCallback((bonus?: number) => {
+    if (bonus && !videoPlaying.current) bgm.current?.playCue(CHEF_SIZZLE);
+  }, []);
 
   // --- The host's pads (immersion.md PR2): ⚡ an edge pulse or tint, 👹 a shake or tint, over everything but the banners.
   const [hostFx, setHostFx] = useState<HostFxLook | null>(null);
@@ -1560,6 +1595,7 @@ export default function ScreenPage() {
       parryKey.current = null;
       parryRetry.current = false; // a buzz from before the drop would come in late
       endParry();
+      clearClassFx();
       // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
       progress.current = null;
     },
@@ -1586,6 +1622,7 @@ export default function ScreenPage() {
           parryKey.current = null;
           parryRetry.current = false; // no wrong-answer buzz over the lobby
           endParry();
+          clearClassFx();
           stopHeart();
           podiumReady.current = true;
           heldEpilogue.current = null;
@@ -1642,6 +1679,10 @@ export default function ScreenPage() {
             if (k) parryKey.current = k;
             if ((t.play && !queuedBoss.current) || catchPlays || (msg.phaseCard && !prev?.phaseCard)) endParry();
             else if (k) startParry();
+            // A class ability spent: its moment, after the parry so a parry starting now owns the spot. Off the playing phase, none.
+            const cfx = classFxFor(prev, msg);
+            if (msg.phase !== "playing") clearClassFx();
+            else if (cfx) onClassFx(cfx);
             // ④ Rage music, game-wide: the 0.5 s silence only when rage starts live; a (re)connect just picks the song.
             const rage = rageNow(msg);
             if (rage !== rageMusic.current) {
@@ -1769,8 +1810,8 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} />}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onChef={onChef} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} />}
         {game?.phase === "playing" && <ReactionFloats floats={floats} teams={game.view.teams} />}
         </div>
         {/* ③ The heartbeat's and ② the counter's edge glows: inset shadows, the middle of the stage stays clear. */}
@@ -1778,6 +1819,13 @@ export default function ScreenPage() {
         {parryEdge && <div aria-hidden className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${parryEdge === "flash" ? "#ff6b6b66" : PARRY_TINT}` }} />}
         {hostFx && hostFx.look !== "shake" && (
           <div aria-hidden data-testid="host-fx" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${hostFx.look === "flash" ? THUNDER_PULSE : hostFx.effect === "thunder" ? THUNDER_TINT : GROWL_TINT}` }} />
+        )}
+        {classFx?.edge && <div aria-hidden data-testid="class-fx-edge" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${(classFx.fx.look === "flash" ? CLASS_PULSE : CLASS_TINT)[classFx.fx.kind]}` }} />}
+        {/* The class badge above the monster (z 4: under the tiles, panel, video and clock). A parry owns that spot. */}
+        {classFx && !classFx.parried && game?.phase === "playing" && !parry && (
+          <div aria-hidden data-testid="class-fx" className={`pointer-events-none absolute px-chip${classFx.fx.look === "flash" ? " px-class-pop" : ""}`} style={{ ...CHIP, left: "50%", bottom: 200, transform: "translateX(-50%)", zIndex: 4, fontSize: 24, whiteSpace: "nowrap", background: "var(--cream)", border: `4px solid ${CLASS_COLOR[classFx.fx.kind]}`, boxShadow: "0 0 0 4px var(--k)" }}>
+            <span className="inline-block max-w-[110px] truncate align-bottom">{classFx.fx.name}</span>・{CLASS_FX_TEXT[classFx.fx.kind]}
+          </div>
         )}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} flash={flash} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
