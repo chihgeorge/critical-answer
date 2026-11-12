@@ -39,9 +39,11 @@ describe("parryFor (② boss wrong answer)", () => {
     expect(parryFor(state({ wrong: true }), state({ wrong: true, cue: "retry", cueSeq: 2 }), k)).toBeNull();
   });
 
-  it("plays on a boss retry or flee cue with no wrong lock first (a typed answer judged wrong)", () => {
+  it("plays on a boss retry or flee cue with no wrong lock first (a typed answer judged wrong), not on a catch ruling", () => {
     expect(parryFor(state(), state({ cue: "retry", cueSeq: 2 }), null)).toBe("a:b1");
     expect(parryFor(state(), state({ cue: "flee", cueSeq: 2 }), null)).toBe("a:b1");
+    const catchOpen = { ...state(), view: { ...state().view, antiCheat: { on: true, onCount: 1, openCatch: { by: "b", teamId: "a" } } } } as unknown as StateMessage;
+    expect(parryFor(catchOpen, state({ cue: "flee", cueSeq: 2 }), null)).toBeNull();
   });
 
   it("never plays outside the boss room, for a fumble (a hit), on an old cue, or on a screen's first STATE", () => {
@@ -69,6 +71,7 @@ describe("rageNow (④)", () => {
 
   it("gives way to the phase card, and ends with the game", () => {
     expect(rageNow(state({ hp: 1, phaseCard: true }))).toBe(false);
+    expect(rageNow({ ...state({ hp: 1 }), phaseCardDue: true } as StateMessage)).toBe(false);
     expect(rageNow(state({ hp: 1, phase: "finished" }))).toBe(false);
   });
 });
@@ -80,6 +83,7 @@ describe("bossClock and heartbeatTimes (③)", () => {
     expect(bossClock(state())).toBe(false);
     expect(bossClock(state({ inBoss: false, left: 5000 }))).toBe(false);
     expect(bossClock(state({ left: 5000, reveal: true }))).toBe(false);
+    expect(bossClock(state({ left: 5000, phaseCard: true }))).toBe(false);
   });
 
   it("beats from once a second up to 2.5 a second, all before the clock reaches 0", () => {
@@ -88,6 +92,7 @@ describe("bossClock and heartbeatTimes (③)", () => {
     const gaps = t.slice(1).map((x, i) => x - t[i]);
     expect(gaps[0]).toBeCloseTo(1, 5);
     expect(Math.min(...gaps)).toBeGreaterThanOrEqual(0.4);
+    expect(gaps.at(-1)!).toBeLessThan(0.5); // near 2.5 a second by the end
     for (let i = 1; i < gaps.length; i++) expect(gaps[i]).toBeLessThan(gaps[i - 1]);
     expect(t.at(-1)!).toBeLessThan(5);
   });

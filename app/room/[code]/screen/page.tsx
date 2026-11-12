@@ -631,10 +631,13 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
       {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : !dishUp(cook) && (
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
-        {/* ④ Rage jitters the whole boss; ② the parry's charge and counter take over the sprite's own motion. */}
+        {/* ④ Rage jitters the whole boss; ② the parry's charge and counter wrap the sprite, whose own class never changes
+            (a class coming back would replay its animation, px-hit's shake after a miss). */}
         <div className={raging ? "px-rage" : undefined}>
-          <div key={card ? `card-${eventId}` : undefined} className={`${card ? "px-phase-blink" : parry === "charge" ? "px-parry-charge" : parry === "counter" ? "px-parry-counter" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}${raging ? " px-rage-outline" : ""}`}>
-            <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} accessory={monster.accessory} />
+          <div className={parry === "charge" ? "px-parry-charge" : parry === "counter" ? "px-parry-counter" : undefined}>
+            <div key={card ? `card-${eventId}` : undefined} className={`${card ? "px-phase-blink" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}${raging ? " px-rage-outline" : ""}`}>
+              <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} accessory={monster.accessory} />
+            </div>
           </div>
         </div>
       </div>
@@ -1451,7 +1454,13 @@ export default function ScreenPage() {
   useEffect(() => {
     transitionOn.current = !!transition;
   }, [transition]);
-  useEffect(() => () => parryTimers.current.forEach(clearTimeout), []);
+  useEffect(
+    () => () => {
+      parryTimers.current.forEach(clearTimeout);
+      heart.current?.cancel();
+    },
+    [],
+  );
 
   /** The lowest second the answer clock has shown. A STATE remounts the clock, which can show the same second or one
    * above it again (network delay): neither ticks twice. A jump of more than a second up is a new count. */
@@ -1524,6 +1533,8 @@ export default function ScreenPage() {
       stopTransitions();
       prevState.current = null;
       rageMusic.current = null;
+      parryKey.current = null;
+      parryRetry.current = false; // a buzz from before the drop would come in late
       endParry();
       // A 回到大廳 missed while offline restarts eventIds at 0: an old high eventId would drop every new narration.
       progress.current = null;
@@ -1548,6 +1559,8 @@ export default function ScreenPage() {
           prevState.current = null;
           rageMusic.current = false;
           player().setSong(DUNGEON_THEME);
+          parryKey.current = null;
+          parryRetry.current = false; // no wrong-answer buzz over the lobby
           endParry();
           stopHeart();
           podiumReady.current = true;
@@ -1730,8 +1743,8 @@ export default function ScreenPage() {
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} />}
         {game?.phase === "playing" && <ReactionFloats floats={floats} teams={game.view.teams} />}
         {/* ③ The heartbeat's and ② the counter's edge glows: inset shadows, the middle of the stage stays clear. */}
-        {heartGlow && <div aria-hidden data-testid="heart-glow" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 120px 40px ${heartGlow === "pulse" ? "#b02a3a4d" : HEART_TINT}` }} />}
-        {parryEdge && <div aria-hidden className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 120px 40px ${parryEdge === "flash" ? "#ff6b6b66" : PARRY_TINT}` }} />}
+        {heartGlow && <div aria-hidden data-testid="heart-glow" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${heartGlow === "pulse" ? "#b02a3a4d" : HEART_TINT}` }} />}
+        {parryEdge && <div aria-hidden className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${parryEdge === "flash" ? "#ff6b6b66" : PARRY_TINT}` }} />}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} flash={flash} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>

@@ -12,15 +12,16 @@ const bossScene = (m: StateMessage) => describeTurn(m.view, m.question, m.phaseC
 const cueSeq = (m: StateMessage) => m.cueSeq ?? m.eventId;
 
 /** ② The parry this STATE starts, keyed by team and question, or null. A boss wrong answer shows up first as a wrong lock
- * (`pendingWrong`) or as a `retry` / `flee` cue: whichever comes first plays it, and the other, carrying the same key,
- * does not play it again. A screen's first STATE after connecting (`prev` null) plays nothing: live only. */
+ * (`pendingWrong`) or as a `retry` / `flee` cue (the host judging a typed answer wrong): whichever comes first plays it, and
+ * the other, carrying the same key, does not play it again. A `flee` that rules on an open cheating catch is no miss.
+ * A screen's first STATE after connecting (`prev` null) plays nothing: live only. */
 export function parryFor(prev: StateMessage | null, msg: StateMessage, lastKey: string | null): string | null {
   if (!prev || prev.phase !== "playing" || msg.phase !== "playing") return null;
   let key: string | null = null;
   const w = msg.view.pendingWrong;
   const was = prev.view.pendingWrong;
   if (w && (w.teamId !== was?.teamId || w.questionId !== was?.questionId) && bossScene(msg)) key = `${w.teamId}:${w.questionId}`;
-  else if (cueSeq(msg) > cueSeq(prev) && (msg.cue === "retry" || msg.cue === "flee") && bossScene(prev)) {
+  else if (cueSeq(msg) > cueSeq(prev) && (msg.cue === "retry" || (msg.cue === "flee" && !prev.view.antiCheat?.openCatch)) && bossScene(prev)) {
     const t = describeTurn(prev.view, prev.question, prev.phaseCard?.monster);
     key = `${t.team?.id ?? ""}:${t.questionId ?? ""}`;
   }
