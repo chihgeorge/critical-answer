@@ -3856,10 +3856,10 @@ describe("cleric on a fill-in question: 祈禱 / 重答 / 逃跑 after the host'
     expect(room.game!.teams[0].abilityUses).toBe(2);
   });
 
-  // Value: protects=in the boss room the wait has no beat, 祈禱 and 重答 keep the shared question and 逃跑 rotates it (AC11,
-  // eng review D2=A); fails_when=armBossMiss settles the wait, or the MC-only flee→retry override swallows 逃跑; seam=room;
-  // no_claim=the boss's hp (a wrong answer never hits)
-  it("boss room: the wait outlasts the beat; 祈禱 and 重答 keep the question, 逃跑 rotates it", () => {
+  // Value: protects=in the boss room the wait has no beat, 祈禱 keeps the shared question, 重答 (下輪換題) and 逃跑 rotate it
+  // (AC11, eng review D2=A, boss-fill-rotate); fails_when=armBossMiss settles the wait, or the MC-only flee→retry override
+  // swallows 逃跑; seam=room; no_claim=the boss's hp (a wrong answer never hits)
+  it("boss room: the wait outlasts the beat; 祈禱 keeps the question, 重答 and 逃跑 rotate it", () => {
     vi.useFakeTimers();
     const pray = game(true);
     pray.host("team");
@@ -3872,7 +3872,7 @@ describe("cleric on a fill-in question: 祈禱 / 重答 / 逃跑 after the host'
     const retry = game(true);
     retry.host("team");
     send(retry.room, retry.conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "boss-t1", choice: "retry" });
-    expect(retry.room.game!.boss.currentQuestionId).toBe("boss-t1");
+    expect(retry.room.game!.boss.currentQuestionId).toBe("boss-t2");
     expect(currentTurnTeamId(retry.room.game!)).toBe(retry.ids[1]);
 
     const flee = game(true);

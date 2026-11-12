@@ -1036,6 +1036,8 @@ export function answerQuestion(
    * deals one HP per right field (the base HP of a plain hit), and its reward (not the kill's 4d20) is scaled by
    * right / total, rounded half up. */
   fields?: { right: number; total: number },
+  /** A warrior's missed roll: nothing was judged or shown, so a turn-based boss question stays (class-abilities.md). */
+  warriorMiss = false,
 ): { game: GameState; outcome: AnswerOutcome } {
   assertPlaying(game);
   // The die behind a correct answer: a 20 adds half the base reward (and a boss hit); a 1 is only a show.
@@ -1165,7 +1167,9 @@ export function answerQuestion(
       // Wrong boss answer: there's no "downgrade" concept for a shared boss queue. A flee rotates
       // the question, and so does a wrong lock even on retry: its red tile on the TV would hand the
       // next team a narrowed question, up to a free hit (boss redesign D1=A). Either way the shown
-      // wrong option makes it revealed; the rotation skips every revealed one.
+      // wrong option makes it revealed; the rotation skips every revealed one. Taking turns, a wrong fill-in rotates
+      // too (下輪換題) though nothing was shown, so it is not revealed; a warrior's missed roll and a cleric's prayed
+      // retry, which answers again at once, keep it (class-abilities.md #106).
       const shownWrong = (game.eliminated[questionId]?.length ?? 0) > 0;
       const revealed = shownWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
       const phasePending = usedUp(revealed) ? ("exhausted" as const) : undefined;
@@ -1174,7 +1178,7 @@ export function answerQuestion(
       const out = buzzing ? [...game.buzz!.out, teamId] : [];
       // A stunned team sits the question out, so it counts as out (R5).
       const allOut = buzzing && game.teams.every((t) => !t.online || !t.inBoss || out.includes(t.id) || t.stunned);
-      const rotated = !phasePending && (fleeChoice !== "retry" || shownWrong) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
+      const rotated = !phasePending && (fleeChoice !== "retry" || shownWrong || (!buzzing && !warriorMiss && !prayed)) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
       const rotatedBossQuestionId = rotated.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a rotation changes
       // the question for every team in boss phase, so every one of their picks resets —
@@ -1462,7 +1466,7 @@ export function warriorRoll(
   // A critable die is counted as the crit die in answerQuestion (its 20 rides on a correct answer); any other natural 20,
   // and every natural 1, is counted here (D5, fortune-teller.md E7).
   const counted = { ...game, teams: patchTeam(game.teams, teamId, (t) => withNaturals(t, critable ? (value === 1 ? [1] : []) : [value])) };
-  return answerQuestion(counted, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined, killDice);
+  return answerQuestion(counted, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined, killDice, undefined, value < WARRIOR_TARGET);
 }
 
 /**
