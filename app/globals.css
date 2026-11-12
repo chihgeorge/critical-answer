@@ -307,6 +307,9 @@ body {
 .px-parry-counter { transform-origin: 50% 100%; animation: px-parry-counter 0.2s steps(1) infinite; }
 @keyframes px-rage { 0%, 100% { transform: translateX(-2px); } 50% { transform: translateX(2px); } }
 .px-rage { animation: px-rage 0.3s steps(1) infinite; }
+/* 👹 低吼 (immersion.md PR2): ±6px, two 0.2 s cycles; with the boss's ±2px rage jitter it stays within 8px. */
+@keyframes px-growl { 0%, 49% { transform: translateX(-6px); } 50%, 100% { transform: translateX(6px); } }
+.px-growl { animation: px-growl 0.2s steps(1) 2; }
 .px-rage-outline { filter: drop-shadow(3px 0 0 var(--danger)) drop-shadow(-3px 0 0 var(--danger)) drop-shadow(0 3px 0 var(--danger)) drop-shadow(0 -3px 0 var(--danger)); }
 /* The edge glows (heartbeat, parry): inset shadows only, the centre 70% stays clear. */
 .px-edge { position: absolute; inset: 0; pointer-events: none; }
@@ -319,7 +322,7 @@ body {
 @keyframes px-react-rise { 0% { transform: translateY(130px); opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(-30px); opacity: 0; } }
 .px-react-rise { animation: px-react-rise 2.4s steps(12) 1 both; }
 @media (prefers-reduced-motion: reduce) {
-  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise, .px-parry-counter, .px-rage { animation: none !important; }
+  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise, .px-parry-counter, .px-rage, .px-growl { animation: none !important; }
   .px-tf2 { opacity: 0; }
   /* .px-room-flash keeps running (D13: a pawn must not change rooms unseen). */
 }

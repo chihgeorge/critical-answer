@@ -267,6 +267,9 @@ export type ClientMessage =
   | { type: "HOST_GIVE_ITEM"; teamId: string }
   /** 🚨 開啟抓包與神諭 (docs/designs/anti-ai-cheating.md): the host's switch, any time of a game. */
   | { type: "HOST_ANTI_CHEAT"; on: boolean }
+  /** ⚡ 雷聲 / 👹 低吼 (docs/designs/immersion.md PR2): the room relays it to keyed big screens as SCREEN_EFFECT, at most
+   * one press per HOST_FX_WINDOW_MS per room (extras are dropped silently), and drops it while `clipPlaying`. */
+  | { type: "HOST_EFFECT"; effect: HostEffect }
   /** The host rules the open catch: 🚨 成立 (`upheld`) or 🛡️ 冤枉. */
   | { type: "HOST_RULE_CATCH"; upheld: boolean }
   /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
@@ -466,6 +469,10 @@ export type ServerMessage =
       /** Whether a big screen can be heard (immersion.md PR0): "ready" when any keyed screen reported 聲音就緒, "muted"
        * when keyed screens are connected but none did, "none" when no keyed screen is connected. Absent from older servers. */
       screenSound?: ScreenSound;
+      /** The host's ▶ is playing the video on screen and the screen has not reported its end or an error (immersion.md
+       * PR2): the host page greys ⚡ 👹. Absent means false, also from an older server. A hint only: each screen drops
+       * a SCREEN_EFFECT itself while its own player plays. */
+      clipPlaying?: true;
       /** The categories the buzz winner (`view.buzz.picker`) may pick for the next song, while it may (boss-music-buzzer.md M5). */
       buzzCategories?: string[];
       /** A finished game's podium reveal. Absent from older servers and from a game finished before it: show the podium. */
@@ -528,6 +535,9 @@ export type ServerMessage =
   | { type: "SCREEN_VIDEO"; questionId: string; video: Extract<PublicMediaContent, { kind: "youtube" }> | InstagramVideo | FileVideo }
   /** Host-only: how many lines of narration `eventId` the big screen has read. Sent on host connect and on every change. */
   | { type: "HOST_NARRATION_PROGRESS"; eventId: number; done: number }
+  /** The room's relay of the host's HOST_EFFECT press (immersion.md PR2). Sent only to big screens whose SCREEN_HELLO
+   * carried the screen key; never in STATE, never saved. */
+  | { type: "SCREEN_EFFECT"; effect: HostEffect }
   /** Host-only: the line queued by HOST_NEXT_LINE, "" when none. Sent on host connect and on every change. */
   | { type: "HOST_NEXT_LINE_STATE"; line: string }
   /** Host-only: who pays for AI narration and how much is left. Never carries the key itself, only its last 4 characters. */
@@ -586,6 +596,14 @@ export interface HostPick {
 }
 
 export type ScreenSound = "ready" | "muted" | "none";
+
+/** The host's effect pads (immersion.md PR2). */
+export const HOST_EFFECTS = ["thunder", "growl"] as const;
+export type HostEffect = (typeof HOST_EFFECTS)[number];
+/** The room takes one HOST_EFFECT per this many ms; the host page waits HOST_FX_COOLDOWN_MS after a press, a little
+ * longer, so network jitter never makes the room drop that device's next press. */
+export const HOST_FX_WINDOW_MS = 1000;
+export const HOST_FX_COOLDOWN_MS = 1200;
 export type StateMessage = Extract<ServerMessage, { type: "STATE" }>;
 export type LobbyTeams = Extract<ServerMessage, { type: "LOBBY" }>["teams"];
 
@@ -788,6 +806,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "HOST_ANTI_CHEAT":
       return typeof m.on === "boolean" ? { type: "HOST_ANTI_CHEAT", on: m.on } : null;
+    case "HOST_EFFECT": {
+      const effect = HOST_EFFECTS.find((e) => e === m.effect);
+      return effect ? { type: "HOST_EFFECT", effect } : null;
+    }
     case "HOST_RULE_CATCH":
       return typeof m.upheld === "boolean" ? { type: "HOST_RULE_CATCH", upheld: m.upheld } : null;
     case "TEAM_CHOOSE_FORK":

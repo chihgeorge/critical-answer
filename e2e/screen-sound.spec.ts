@@ -28,3 +28,16 @@ test("the host page warns until the big screen's sound is on, then says it is re
   await expect(host.getByTestId("screen-sound")).toContainText("🔊 大螢幕聲音已就緒");
   await expect(screen.getByRole("button", { name: /音樂開/ })).toBeVisible();
 });
+
+// docs/designs/immersion.md PR2: the host's pads, in the lobby too (the sound check).
+test("the host page's effect pads work in the lobby and say a press was sent", async ({ browser }) => {
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const pads = host.getByRole("group", { name: "大螢幕加料" });
+  await expect(pads.getByRole("button")).toHaveCount(2);
+  await pads.getByRole("button", { name: "⚡ 雷聲" }).click();
+  await expect(pads).toContainText("已送出");
+  await expect(pads.getByRole("button", { name: "⚡ 雷聲" })).toBeEnabled();
+});

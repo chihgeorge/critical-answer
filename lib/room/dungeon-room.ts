@@ -107,6 +107,8 @@ import {
   type Hold,
   type Pacing,
   type ScreenSound,
+  type HostEffect,
+  HOST_FX_WINDOW_MS,
   DEFAULT_BANK_ENTRY,
 } from "../protocol";
 import { epiloguePages, revealBeats, revealCalls } from "../podium";
@@ -461,6 +463,11 @@ export class DungeonRoom {
   private answerClock: AnswerClock | null = null;
   /** 觀眾反應 (docs/designs/audience-reactions.md): each team's last reaction, and the room's recent ones. In memory only. */
   private reactedAt = new Map<string, number>();
+  /** The room clock at the last HOST_EFFECT relayed (immersion.md PR2). In memory only. */
+  private hostFxAt = -Infinity;
+  /** The ▶ / ⟲ press whose play the screen last reported ended (immersion.md PR2): a replay after the end is a new
+   * press, so `clipPlaying` is set again. In memory only; the countdown keeps its own `clipEnded`. */
+  private clipStopped: { questionId: string; press: number } | null = null;
   private roomReacts: number[] = [];
   /** The reactions during the current turn, for the narrator (crowd.ts). In memory only. */
   private crowd = createCrowdTally();
@@ -1167,8 +1174,12 @@ export class DungeonRoom {
   /** SCREEN_CLIP_ENDED (D4): for the question video on screen right now, even while an answer waits (a 重答 then
    * counts at once). The first report counts. */
   private handleClipEnded(questionId: string) {
-    if (!this.answerSeconds || this.reveal || this.shownVideoId() !== questionId || this.clipEnded === questionId) return;
+    // With the countdown off too, and again after a replay: `clipPlaying` needs both (immersion.md PR2, D1).
+    if (this.reveal || this.shownVideoId() !== questionId) return;
+    const press = this.media?.questionId === questionId ? this.media.press : -1;
+    if (this.clipEnded === questionId && this.clipStopped?.questionId === questionId && this.clipStopped.press === press) return;
     this.clipEnded = questionId;
+    this.clipStopped = { questionId, press };
     this.broadcastState();
   }
 
@@ -1302,6 +1313,7 @@ export class DungeonRoom {
       ...this.liveMedia(),
       ...(this.clipError !== null && this.clipError === this.shownVideoId() ? { clipError: true as const } : {}),
       screenSound: this.screenSound(),
+      ...(this.clipPlaying() ? { clipPlaying: true as const } : {}),
       ...this.buzzCategories(),
       // No dish: the boss's dish is served on the kill, not before (monster-cuisine.md).
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
@@ -1975,6 +1987,9 @@ export class DungeonRoom {
           break;
         case "HOST_ANTI_CHEAT":
           this.handleHostAntiCheat(sender, msg.on);
+          break;
+        case "HOST_EFFECT":
+          this.handleHostEffect(sender, msg.effect);
           break;
         case "HOST_RULE_CATCH":
           this.handleHostRuleCatch(sender, msg.upheld);
@@ -3297,6 +3312,34 @@ export class DungeonRoom {
     // Not before the check: the video is part of the question.
     const pub = this.awaitingCheck() ? null : this.currentQuestion()?.pub;
     return pub?.content.kind === "youtube" ? pub.id : null;
+  }
+
+  /** The host's ▶ is playing the question's video on screen, and no screen has reported that play's end or an error
+   * (immersion.md PR2, D1). A hint for the host's pads: each screen also drops a SCREEN_EFFECT while its own player
+   * plays. Never during a reveal: a reveal clip reports no end, so the pads would stay off until ⏸. */
+  private clipPlaying(): boolean {
+    const id = this.shownVideoId();
+    const m = this.media;
+    if (id === null || this.reveal || m?.questionId !== id || m.state !== "playing" || this.clipError === id) return false;
+    return !(this.clipStopped?.questionId === id && this.clipStopped.press === m.press);
+  }
+
+  /** ⚡ 雷聲 / 👹 低吼 (immersion.md PR2): relayed only to keyed big screens, at most one per HOST_FX_WINDOW_MS for the
+   * whole room, never over a playing clip. A dropped press gets no reply and is not activity. Works in the lobby too
+   * (the host's sound check). */
+  private handleHostEffect(conn: Conn, effect: HostEffect) {
+    if (!this.requireHost(conn)) return;
+    const now = this.now();
+    if (now - this.hostFxAt < HOST_FX_WINDOW_MS || this.clipPlaying()) {
+      this.rejected = true;
+      return;
+    }
+    this.hostFxAt = now;
+    const relay = JSON.stringify({ type: "SCREEN_EFFECT", effect } satisfies ServerMessage);
+    for (const id of this.keyedScreens) {
+      const screen = this.conns.get(id);
+      if (screen && this.isScreen(screen)) screen.send(relay);
+    }
   }
 
   /** The media command for the video on screen. One for another question is dropped here, so a question that

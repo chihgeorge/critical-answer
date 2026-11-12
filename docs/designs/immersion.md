@@ -124,6 +124,8 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 - 王被打倒、新遊戲、大螢幕在王戰中途重新連線時：一律依目前的 STATE 重算（血量低於 1/3 就直接是暴走版），不補播「先靜再爆」。
 
 ### PR2：主持人加料鈕（三顆）
+> **站長決定（2026-11-12，/autoplan run 2 UC1）**：「先拿掉螢幕變暗」。PR2 只做 ⚡ 雷聲、👹 低吼兩顆鈕。🌑 螢幕變暗、`HOST_DIM`、`screenDim` 都不做，移到 TODOS.md（P3）。下面和 Review record 裡寫到 🌑、`HOST_DIM`、`screenDim`、`DIM_ALPHA`、`dimVisible` 的地方，PR2 一律不做；其餘照 gate 的建議（D1、D2、D3、D4）。房間轉發給大螢幕的訊息叫 `SCREEN_EFFECT`（D4）。
+
 - **位置**：主持人頁最上面一排三顆大鈕，單手按得到：
   - ⚡ 雷聲：邊緣白閃一次，加雷聲。
   - 👹 低吼：畫面一震，加低吼。
@@ -202,6 +204,21 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 - Drum Part may use a synthesized noise AudioBuffer (generated in code, no files); no audio files are added.
 - Regression: table-driven vitest that every existing cue (SFX entries, BOSS_ALARM, SPRINT_FANFARE, ANSWER_TICK, ANSWER_TIME_UP, EAT_DONE) schedules notes with 🎵 on and none with 🎵 off under the new mixer, and that video/held/speaking do not silence them.
 - Rage with the bundled bank (`maxHp` 5): fires only at 1 HP. Kept as the plan's formula.
+- PR2 (主持人加料鈕, autoplan run 2, 2026-11-12) ships as one PR (ship-policy `pr_count` 1): lib/protocol.ts, lib/room/dungeon-room.ts, the screen page, the host page, lib/sfx.ts, vitest, DESIGN.md, docs/hosting.md and docs/hosting.en.md (the three buttons, same PR, same headings), and one `changelog.d/<branch-slug>.md` fragment with `bump: minor`. PR3 is not built here.
+- PR2 messages in lib/protocol.ts: client `HOST_EFFECT { effect: "thunder" | "growl" }` (the validator returns null for any other effect value or a missing one) and client `HOST_DIM { on: boolean }` (null for a non-boolean); server relay `{ type: "HOST_EFFECT", effect }` sent only to keyed screens (`isScreen`), never in STATE, never saved. STATE gains `screenDim?: true` and `clipPlaying?: true` (absent means false). Verify: protocol vitest for the validators.
+- PR2 auth: both messages go through `requireHost` (the existing host-only pattern): a phone, a keyed screen and an unkeyed screen change nothing (they get the usual `not_host` ERROR, like every host message; this replaces the source plan's 「一律丟掉」 wording, the effect is the same: nothing happens). Verify: room vitest that HOST_EFFECT from a phone, a keyed screen and an unkeyed screen relays nothing, and HOST_DIM from them leaves `screenDim` unset.
+- PR2 rate limits: two per-room limits on the room clock (`this.now()`), memory only: effects (thunder and growl share one) at most one per 1000 ms, dim at most one per 1000 ms; an extra is dropped with no relay, no STATE and no ERROR. They sit on top of the per-socket RateLimiter (worker/index.ts:213). A second host device pressing within the same second is dropped without feedback; accepted (one host runs the event). Verify: room vitest with a fake clock: two effects 999 ms apart relay once, 1000 ms apart relay twice; two host devices share the limit; dim and effects do not share.
+- PR2 effects work in the lobby and in every game phase (sound check before the game; this is what the run-1 skip of E1 "test sound" relied on), except while `clipPlaying`; the screen draws them from one effect layer inside `<Stage>` (960×540 stage coordinates) that is rendered in the lobby as well as in the game. HOST_EFFECT and HOST_DIM count as host activity (not added to the no-activity list at dungeon-room.ts:2093), so a lobby sound check keeps the room from its idle close; a rate-dropped press counts too, harmless. Verify: room vitest that a lobby HOST_EFFECT reaches a keyed screen.
+- PR2 `clipPlaying` (TASTE D1, auto-decided after the CEO dual voices; replaces the source plan's "video question shown and no SCREEN_CLIP_ENDED/ERROR yet", because the screen's player stays paused until the host's ▶, components/youtube-player.tsx:107): true only while phase is playing, `shownVideoId()` is set (this covers uploaded video/audio, which ride the YouTube marker, lib/question-bank.ts:525), `media?.questionId === shownVideoId()`, `media.state === "playing"`, `clipEnded !== shownVideoId()` and `clipError !== shownVideoId()`. `handleClipEnded` records `clipEnded` with the answer countdown off too (its `!this.answerSeconds` early return goes; the reveal and dedupe returns stay; with the countdown off `clipEnded` is still not saved, dungeon-room.ts:911). No new room state, no per-press tracking, no change to the screen's end/error reports. It is a hint for the host buttons only; the guarantee that nothing covers a playing clip is the screen-side drop below, which each screen decides from its own player. Known gaps, all accepted because the screen-side drop still holds: a reveal clip played with ▶ stays `clipPlaying` until ⏸ or the reveal moves on (reveal clips send no end report, screen page.tsx:409); a ⟲ replay after the clip ended shows the pads enabled while the screen drops the press; with several screens the first end report counts (the existing countdown rule). Verify: room vitest: video question shown with no ▶ → false; ▶ → true; SCREEN_CLIP_ENDED with the countdown off → false and broadcasts STATE; with the countdown on → false; SCREEN_CLIP_ERROR → false; ⏸ (or a buzz pausing the clip) → false; a phone or unkeyed screen reporting the end changes nothing; the countdown-on behavior of `clipEnded` is unchanged (existing answer-clock tests stay green).
+- PR2 HOST_EFFECT while `clipPlaying` is dropped by the room (no relay), and the screen also drops a HOST_EFFECT that arrives while its own player reports playing (`onVideoPlaying(true)`): no sound, no flash, no shake. Verify: room vitest; screen-side drop through a pure helper vitest.
+- PR2 `screenDim`: memory only (a Worker restart clears it, like `media`). HOST_DIM sets it from `on`; `on: true` is ignored while `clipPlaying` or while phase is not playing. It is cleared (set false and sent in the next STATE) whenever `clipPlaying` turns true, the game finishes, the room goes back to the lobby or a new game starts; clearing happens in a getter next to `liveMedia()` (dungeon-room.ts:3304) that the STATE builder calls, so the same STATE that shows `clipPlaying` or the new phase already carries the cleared dim to the host pages and screens. A refreshed or reconnected screen restores the dim from STATE. Verify: room vitest: dim persists across a new STATE and a screen reconnect; clears on ▶, on finish and on back to lobby; `on: true` during a playing clip is ignored.
+- PR2 screen effects: thunder = an edge-only white pulse (inset, centre clear, never full-screen) that takes one flash-budget take (lib/flash-budget.ts, the same instance as the boss effects) plus THUNDER on the `host` layer; growl = a shake of ±6px in two-frame `steps()` on a wrapper inside `<Stage>` (never on Stage's own scaled element, components/stage.tsx:32, whose transform holds the scale) plus GROWL on the `host` layer (6px so the boss's ±2px rage jitter on top stays within the 8px limit). A refused take or reduced motion shows a static tint instead and never shakes. Values are named constants in lib/flash-budget.ts next to `HEART_TINT`: the thunder pulse is a white edge vignette (inset box-shadow, centre 70% clear) at 50% opacity, lit for two 0.1 s frames then off; `THUNDER_TINT` white at 20% edge and `GROWL_TINT` `#5a1020` at 25% edge are held 500 ms (the design phase may retune the numbers, not the rule). The growl shake lasts 0.4 s (2 cycles of `steps(2)`); its wrapper holds the stage content only, not the dim layer, the effect layer, the TransitionOverlay or the top banners. Growl skips its shake (tint only) while a monster hit (0.9 s after `hits` changes, since the `px-hit` class stays on the element), a parry counter or the boss-entrance band shake runs, and a parry counter, entrance shake or hit that starts while growl shakes cancels growl's shake (its tint stays). Verify: vitest on the pure shake-arbitration helper that growl plus a parry counter or a hit never overlap. Thunder shows its static tint instead of pulsing while a legacy `px-alarm-text` banner or a TransitionOverlay is up, so uncounted legacy blinks and the new pulse never stack (the PR1 heartbeat rule). The source plan's 「受限頻保護，每秒最多一次」 flash line is replaced by the shared budget. Without an unlocked AudioContext the press is visual only (playCue is silent until the context runs). Verify: vitest that heartbeat at 2.5 Hz plus a thunder press never exceeds 3 flashes in any 1000 ms window.
+- PR2 sounds: `THUNDER` and `GROWL` are `SfxNote[]` in lib/sfx.ts, synthesized, no audio files, and never use the sawtooth wave (e2e/sfx.spec.ts finds the wrong-answer cue by it). They play through `playCue(notes, "host")`, so they sound with 🎵 off and are silent during video (layerGains, lib/bgm-player.ts:50). Verify: vitest that both schedule notes on the host layer with 🎵 off.
+- PR2 host page: one row of three buttons ⚡ 雷聲 / 👹 低吼 / 🌑 螢幕變暗 at the top of the host page; ⚡ and 👹 disabled while STATE `clipPlaying` and for 1.2 s after either is pressed on this device (longer than the 1000 ms server window, so network jitter does not make the server drop this device's next press); 🌑 shows STATE `screenDim` (`aria-pressed`) and is disabled while `clipPlaying` or outside the playing phase, including the lobby. The row shows in the lobby too (⚡ 👹 for the sound check, 🌑 disabled). The row is sticky at the very top of the host page, above the PR1a sound banner, each button at least 56px tall (the ▶⏸⟲ row's size), so it stays reachable while the host scrolls to judge.
+- PR2 dim on the screen: a black layer at 40% opacity inside `<Stage>`, above the stage content and the parry layer, below the host effect layer (thunder lights up the dark), the TransitionOverlay and the top banners; on and off are hard cuts, the same under reduced motion; question, options and AnswerClock stay readable under it. DESIGN.md gains the three host buttons, the effect layer and the dim layer in the same PR.
+- PR2 deploy skew is harmless: an old screen ignores the unknown HOST_EFFECT message (its onMessage switch has no default, screen page.tsx:1546); an old Worker answers the new client messages with `ERROR invalid_action bad_message` (dungeon-room.ts:1865), which the host page shows in its error line only during the few minutes until the Worker deploy from the same merge finishes; accepted, no ordering needed.
+- PR2 effective spec: the PR2 items in these accepted blocks are the build spec; where they differ from the 「PR2：主持人加料鈕（三顆）」 section, they win (both voices flagged the layered wording as a risk for a background implementation lane).
+- PR2 rehearsal (manual, after PR2 merges, before 11/18, not CI, independent of PR3): one realistic judging run on the host's own phone with the three-button row, checking that the row never hides or shifts the judge controls and that ⚡ 👹 are heard and seen on the event TV; run on the venue TV/speakers together with the PR1 venue check when possible.
 <!-- /autoplan-accepted:ceo -->
 
 <!-- autoplan-accepted:design -->
@@ -218,6 +235,19 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 - Unlock press states (both buttons): the label changes to 「開啟中…」 at once; if the context is still not `running` 1 s later it reads 「再點一次」; the button hides only once ready (lobby) or running (corner). Repeated taps are harmless; the confirm chime plays once per change to ready.
 - Host banner layout and copy: one wrapping line in the host page's top status stack above the judge controls, `--warn` background, `text-wrap: balance`, `role="status"`, 「知道了」 at least 44px tall. This copy supersedes the E3 wording in the CEO items and the source plan. `muted` → 「大螢幕還沒開聲音：去點大螢幕右下角的「👆 開聲音」或「🎵 音樂關」」. `none` → 「沒有大螢幕連著：用主持人頁的大螢幕連結開啟」 (no 知道了). Ready toast 「🔊 大螢幕聲音已就緒」 for 3 s.
 - DESIGN.md is updated in the same PR: the TransitionOverlay entry (boss entrance), the screen's parry, heartbeat glow and rage chip, the unlock buttons, and the motion line naming the shared flash budget.
+- PR2 host row placement (taste D2, the owner's 「最上面一排」 kept): one row directly under the host header (room code, 停頓, ⚙ 更多), `position: sticky; top: 0`, above the page content and below the ⚙ 更多 drawer and any modal. Only this row is sticky: the PR1a sound banner, its ready toast, the error line and the rest of the status stack scroll with the page, so the sticky area is the row alone (56px buttons plus 8px padding). The row sits on a cream `Panel` strip so scrolled content never shows through it. This refines the CEO item "sticky at the top, above the PR1a sound banner".
+- PR2 host row size: a 3-column equal-width grid (`grid-cols-3`, 8px gap) that fits 360px (each cell about 105px); each `PixelButton` at least 56px tall with 16px text; at large text sizes a label wraps to a second line inside its button, never a horizontal scroll. The wrapper is `role="group"` with `aria-label="大螢幕加料"`.
+- PR2 press feedback (⚡ 👹): during the 1.2 s cooldown the pressed button's label reads 「已送出」 (a text change, not colour only), and a visually hidden `aria-live="polite"` region says 「雷聲已送出」 or 「低吼已送出」. It says 送出, never 播放: the host page cannot know the TV played it.
+- PR2 sound marker during play, from the existing STATE `screenSound`: `muted` → ⚡ and 👹 labels gain a trailing 🔇 and their accessible names add 「大螢幕沒聲音，只有畫面」; `none` → ⚡ 👹 🌑 disabled with the label 「沒大螢幕」; `ready` or absent (older server) → plain labels. The PR1a banner keeps the explanation; the pads only mark it.
+- PR2 lobby caption: LOBBY carries no `screenSound`, so in the lobby a 14px line under the row reads 「先點大螢幕右下角開聲音，再按 ⚡ 試聽」. No protocol change.
+- PR2 disabled reasons are in the label, inside the same button size: ⚡ 👹 🌑 while `clipPlaying` → 「⚡ 影片中」 / 「👹 影片中」 / 「🌑 影片中」; 🌑 in the lobby or outside playing → 「🌑 開局後」. Native `disabled`; the cooldown keeps 「已送出」.
+- PR2 🌑 toggle look reuses the host-pacing toggle (`aria-pressed`, on = `var(--k)` background with white text): on → 「🌑 已變暗」 on `--k`; off → 「🌑 螢幕變暗」 on white. `aria-pressed` and the look follow STATE `screenDim` only (no optimistic flip). 🌑 also gets the 1.2 s local cooldown after a press, so an on-then-off inside the server's 1 s dim window is never swallowed.
+- PR2 dim auto-clear has no toast: the label change (「🌑 影片中」, then 「🌑 螢幕變暗」) shows it. docs/hosting.md and docs/hosting.en.md say that ▶ cancels the dim and that the host presses 🌑 again after the clip.
+- PR2 dim under transitions: while any TransitionOverlay (doors, boss entrance, last sprint) is up, the dim layer is not drawn (hard cut out and back in), so the boss entrance's 75%/45% tint never stacks on the 40% dim.
+- PR2 dim strength is one named constant `DIM_ALPHA = 0.4` beside the tints in lib/flash-budget.ts. The PR2 rehearsal reads a question card from the back row of the event TV with dim on; if it fails, the constant is lowered (a one-token change).
+- PR2 `GROWL_TINT` is `--k` `#2a1533` at 35% edge (`#2a153359`), not red: DESIGN.md reserves red for the boss and a growl can fire anywhere. This supersedes the CEO item's `#5a1020`.
+- PR2 letterbox: dim and edge effects stay inside `<Stage>`; outside it the letterbox is already black (components/stage.tsx), so nothing is added there.
+- PR2 DESIGN.md entries: the host row (sticky row, labels, 已送出, 🔇, 🌑 toggle look, lobby caption) and the screen's thunder, growl and dim (z order, tints, `DIM_ALPHA`, dim hidden under transitions).
 <!-- /autoplan-accepted:design -->
 
 <!-- autoplan-accepted:eng -->
@@ -234,7 +264,26 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 - Venue check uses a bank whose boss has maxHp >= 6 in at least one phase, so rage is heard in rehearsal (the bundled maxHp 5 rages only at 1 HP).
 - lib/boss-fx.ts and lib/flash-budget.ts are pure and import nothing from `BANK`/data/question-bank.json; `npm run check:bundle` must pass.
 - Test plan artifact: ~/.gstack/projects/critical-answer/georgechih-feat-immersion-boss-eng-review-test-plan-20261111-214726.md (local only).
+- PR2 screenDim reset (run-2 eng H1, both rules kept): besides the read-time clear next to `liveMedia()` (dungeon-room.ts:3304, which mirrors how `liveMedia()` already drops a stale media command and runs in every STATE because each path that makes `clipPlaying` true or finishes the game broadcasts STATE), set `this.screenDim = false` explicitly at game start next to `this.clipEnded = null` (dungeon-room.ts:2758) and in `handleBackToLobby` (dungeon-room.ts:2250), because the back-to-lobby path sends LOBBY, not STATE (dungeon-room.ts:1266). The read-time clear sets the field false when phase is not playing or `clipPlaying` is true. Verify: room vitest: dim on → end game → back to lobby → start → the first STATE has no `screenDim`; dim on → a buzz-resumed clip (dungeon-room.ts:2922) → STATE has no `screenDim` and it stays absent after ⏸.
+- PR2 HOST_DIM broadcast path (run-2 eng M2): a HOST_DIM that changes `screenDim` sends `this.broadcast(this.snapshot())` (the SCREEN_SOUND / epilogue pattern, dungeon-room.ts:660), not `broadcastState()` (dungeon-room.ts:1523, which also runs applyLostCrit, syncFork, sayStunSkips, sendAnswer and sendPicks). A HOST_DIM that changes nothing (on while already dimmed, off while not, on while ignored) sends nothing. Verify: room vitest: a no-op HOST_DIM sends no STATE; a second host device's stale `on` after the first host's `on` sends no STATE.
+- PR2 dropped presses are not activity (run-2 eng L1): a rate-dropped HOST_EFFECT / HOST_DIM and a no-op HOST_DIM set `this.rejected = true`, so they neither call `markActivity()` nor `persist()` (dungeon-room.ts:2093), which keeps the markActivity comment true ("onMessage always sends or broadcasts something right after", dungeon-room.ts:1540). Accepted presses stay host activity. This replaces the clause "a rate-dropped press counts too, harmless" in the PR2 effects item. Verify: room vitest: a rate-dropped press leaves `lastActivityAt` unchanged.
+- PR2 relay name (TASTE D4, auto-chosen; both Codex runs, native silent): the server's relay to keyed screens is `{ type: "SCREEN_EFFECT", effect }`, not a second `HOST_EFFECT`. The repo names a server message by its recipient when it relays a client message: SCREEN_NARRATION_PROGRESS from the screen comes back as HOST_NARRATION_PROGRESS to the host (lib/protocol.ts:530), and SCREEN_VIDEO goes to screens (lib/protocol.ts:528). The client message stays `HOST_EFFECT`. This replaces the server relay name in the PR2 messages item and the DX protocol doc-comment item (the comment moves to `SCREEN_EFFECT`). Verify: protocol vitest; room vitest for the relay targets.
+- PR2 relay targets, one more test row (run-2 eng test gap): the relay reaches keyed screens only: not phones, not hosts, and not an unkeyed `/screen` (room code only). Verify: room vitest.
+- PR2 clipPlaying after a restart (run-2 eng, Codex finding rejected with evidence): `media` is not saved (the save at dungeon-room.ts:911 has no `media`; the restore at :1014 reads only `clipEnded`), so after a Worker restart `clipPlaying` is absent; `clipEnded` staying unsaved with the countdown off is harmless because `answering()` returns null without a countdown (dungeon-room.ts:1132). Verify: persistence vitest: ▶ then restart → STATE has no `clipPlaying`.
+- PR2 screen overlap rules are pure predicates (run-2 eng L4, replaces "screen-level render tests", which this repo cannot run: vitest is `environment: "node"` with no DOM, vitest.config.ts): next to the growl shake arbitration helper, add `thunderStyle(legacyAlarmUp, transitionUp)` → flash or static tint, and `dimVisible(screenDim, transitionUp)` → boolean, in the same pure module as the arbitration helper (no `BANK` import). Verify: vitest table rows for each branch.
+- PR2 cooldown constant: `HOST_FX_COOLDOWN_MS = 1200` lives next to the room's `HOST_FX_WINDOW_MS = 1000` in one shared module the host page may import (lib/protocol.ts or lib/flash-budget.ts, not lib/question-bank.ts); one vitest asserts cooldown > window. Verify: vitest; `npm run check:bundle`.
+- PR2 CI e2e (CI only, never local): the host page shows the `role="group"` 「大螢幕加料」 row with three buttons; pressing ⚡ in the lobby shows 「已送出」; 🌑 shows 「🌑 開局後」 in the lobby. No screen-effect visuals in e2e (rehearsal covers them).
+- Test plan artifact (run 2): ~/.gstack/projects/critical-answer/georgechih-feat-immersion-host-fx-eng-review-test-plan-20261112-000924.md (local only).
 <!-- /autoplan-accepted:eng -->
+
+<!-- autoplan-accepted:dx -->
+- PR2 host docs: docs/hosting.md gains a 「主持人加料鈕」 section under 「大螢幕」 and docs/hosting.en.md the same section ("Host effect buttons") at the same level, in the same PR (`npm run check:docs` must pass). It says: what ⚡ 雷聲, 👹 低吼 and 🌑 螢幕變暗 do on the TV; the lobby sound check (tap the TV first, then press ⚡); what 已送出, 🔇, 沒大螢幕, 影片中 and 開局後 mean on a button; that ▶ cancels the dim and 🌑 must be pressed again after the clip; that presses within 1 second count as one across every host device (thunder and growl share it); and that right after a deploy the error line may show `bad_message` for a few minutes, fixed by waiting for the Worker deploy and pressing again.
+- PR2 error tests assert the replies, not only the absence of a relay: HOST_EFFECT and HOST_DIM from a phone, a keyed screen and an unkeyed screen each get `ERROR` with `error: "not_host"`; a bad effect value or a non-boolean `on` gets `ERROR invalid_action` with detail `bad_message`; a rate-limited press gets no relay, no STATE and no ERROR. Verify: room vitest and protocol vitest.
+- PR2 screen containment: the screen's HOST_EFFECT handler wraps drawing the effect and `playCue` in try/catch; a throw is logged as `console.error("[fx] host-effect", err)` and never escapes into the onMessage switch, so a bad audio call cannot stop STATE rendering. Verify: a vitest on the pure handler helper with a throwing `playCue` that still returns.
+- PR2 protocol doc comments: `screenDim?: true` and `clipPlaying?: true` say absent means false, also from an older server; `HOST_EFFECT` in the ServerMessage union says it is the room's relay to keyed screens of the host's press.
+- PR2 constants home: lib/flash-budget.ts gets a header comment naming it the home of the screen fx constants (`HEART_TINT`, `PARRY_TINT`, `THUNDER_TINT`, `GROWL_TINT`, `DIM_ALPHA`), and the DESIGN.md PR2 entry names that file.
+- PR2 rehearsal note: the rehearsal records the host's time from opening the host page to the first thunder heard on the event TV (target under 2 minutes).
+<!-- /autoplan-accepted:dx -->
 ## Review record
 
 Review scope: PR1 only (聲音分層表, PR0, PR1 ①–④, flash budget and reduced motion from Constraints). PR2 and PR3 are out of scope for this run. Non-interactive lane: every choice auto-decided by the 6 principles.
@@ -314,6 +363,21 @@ banner for the boss             boss entrance/parry/heartbeat/rage,        all u
 - Drum Part may use a synthesized noise AudioBuffer (generated in code, no files); no audio files are added.
 - Regression: table-driven vitest that every existing cue (SFX entries, BOSS_ALARM, SPRINT_FANFARE, ANSWER_TICK, ANSWER_TIME_UP, EAT_DONE) schedules notes with 🎵 on and none with 🎵 off under the new mixer, and that video/held/speaking do not silence them.
 - Rage with the bundled bank (`maxHp` 5): fires only at 1 HP. Kept as the plan's formula.
+- PR2 (主持人加料鈕, autoplan run 2, 2026-11-12) ships as one PR (ship-policy `pr_count` 1): lib/protocol.ts, lib/room/dungeon-room.ts, the screen page, the host page, lib/sfx.ts, vitest, DESIGN.md, docs/hosting.md and docs/hosting.en.md (the three buttons, same PR, same headings), and one `changelog.d/<branch-slug>.md` fragment with `bump: minor`. PR3 is not built here.
+- PR2 messages in lib/protocol.ts: client `HOST_EFFECT { effect: "thunder" | "growl" }` (the validator returns null for any other effect value or a missing one) and client `HOST_DIM { on: boolean }` (null for a non-boolean); server relay `{ type: "HOST_EFFECT", effect }` sent only to keyed screens (`isScreen`), never in STATE, never saved. STATE gains `screenDim?: true` and `clipPlaying?: true` (absent means false). Verify: protocol vitest for the validators.
+- PR2 auth: both messages go through `requireHost` (the existing host-only pattern): a phone, a keyed screen and an unkeyed screen change nothing (they get the usual `not_host` ERROR, like every host message; this replaces the source plan's 「一律丟掉」 wording, the effect is the same: nothing happens). Verify: room vitest that HOST_EFFECT from a phone, a keyed screen and an unkeyed screen relays nothing, and HOST_DIM from them leaves `screenDim` unset.
+- PR2 rate limits: two per-room limits on the room clock (`this.now()`), memory only: effects (thunder and growl share one) at most one per 1000 ms, dim at most one per 1000 ms; an extra is dropped with no relay, no STATE and no ERROR. They sit on top of the per-socket RateLimiter (worker/index.ts:213). A second host device pressing within the same second is dropped without feedback; accepted (one host runs the event). Verify: room vitest with a fake clock: two effects 999 ms apart relay once, 1000 ms apart relay twice; two host devices share the limit; dim and effects do not share.
+- PR2 effects work in the lobby and in every game phase (sound check before the game; this is what the run-1 skip of E1 "test sound" relied on), except while `clipPlaying`; the screen draws them from one effect layer inside `<Stage>` (960×540 stage coordinates) that is rendered in the lobby as well as in the game. HOST_EFFECT and HOST_DIM count as host activity (not added to the no-activity list at dungeon-room.ts:2093), so a lobby sound check keeps the room from its idle close; a rate-dropped press counts too, harmless. Verify: room vitest that a lobby HOST_EFFECT reaches a keyed screen.
+- PR2 `clipPlaying` (TASTE D1, auto-decided after the CEO dual voices; replaces the source plan's "video question shown and no SCREEN_CLIP_ENDED/ERROR yet", because the screen's player stays paused until the host's ▶, components/youtube-player.tsx:107): true only while phase is playing, `shownVideoId()` is set (this covers uploaded video/audio, which ride the YouTube marker, lib/question-bank.ts:525), `media?.questionId === shownVideoId()`, `media.state === "playing"`, `clipEnded !== shownVideoId()` and `clipError !== shownVideoId()`. `handleClipEnded` records `clipEnded` with the answer countdown off too (its `!this.answerSeconds` early return goes; the reveal and dedupe returns stay; with the countdown off `clipEnded` is still not saved, dungeon-room.ts:911). No new room state, no per-press tracking, no change to the screen's end/error reports. It is a hint for the host buttons only; the guarantee that nothing covers a playing clip is the screen-side drop below, which each screen decides from its own player. Known gaps, all accepted because the screen-side drop still holds: a reveal clip played with ▶ stays `clipPlaying` until ⏸ or the reveal moves on (reveal clips send no end report, screen page.tsx:409); a ⟲ replay after the clip ended shows the pads enabled while the screen drops the press; with several screens the first end report counts (the existing countdown rule). Verify: room vitest: video question shown with no ▶ → false; ▶ → true; SCREEN_CLIP_ENDED with the countdown off → false and broadcasts STATE; with the countdown on → false; SCREEN_CLIP_ERROR → false; ⏸ (or a buzz pausing the clip) → false; a phone or unkeyed screen reporting the end changes nothing; the countdown-on behavior of `clipEnded` is unchanged (existing answer-clock tests stay green).
+- PR2 HOST_EFFECT while `clipPlaying` is dropped by the room (no relay), and the screen also drops a HOST_EFFECT that arrives while its own player reports playing (`onVideoPlaying(true)`): no sound, no flash, no shake. Verify: room vitest; screen-side drop through a pure helper vitest.
+- PR2 `screenDim`: memory only (a Worker restart clears it, like `media`). HOST_DIM sets it from `on`; `on: true` is ignored while `clipPlaying` or while phase is not playing. It is cleared (set false and sent in the next STATE) whenever `clipPlaying` turns true, the game finishes, the room goes back to the lobby or a new game starts; clearing happens in a getter next to `liveMedia()` (dungeon-room.ts:3304) that the STATE builder calls, so the same STATE that shows `clipPlaying` or the new phase already carries the cleared dim to the host pages and screens. A refreshed or reconnected screen restores the dim from STATE. Verify: room vitest: dim persists across a new STATE and a screen reconnect; clears on ▶, on finish and on back to lobby; `on: true` during a playing clip is ignored.
+- PR2 screen effects: thunder = an edge-only white pulse (inset, centre clear, never full-screen) that takes one flash-budget take (lib/flash-budget.ts, the same instance as the boss effects) plus THUNDER on the `host` layer; growl = a shake of ±6px in two-frame `steps()` on a wrapper inside `<Stage>` (never on Stage's own scaled element, components/stage.tsx:32, whose transform holds the scale) plus GROWL on the `host` layer (6px so the boss's ±2px rage jitter on top stays within the 8px limit). A refused take or reduced motion shows a static tint instead and never shakes. Values are named constants in lib/flash-budget.ts next to `HEART_TINT`: the thunder pulse is a white edge vignette (inset box-shadow, centre 70% clear) at 50% opacity, lit for two 0.1 s frames then off; `THUNDER_TINT` white at 20% edge and `GROWL_TINT` `#5a1020` at 25% edge are held 500 ms (the design phase may retune the numbers, not the rule). The growl shake lasts 0.4 s (2 cycles of `steps(2)`); its wrapper holds the stage content only, not the dim layer, the effect layer, the TransitionOverlay or the top banners. Growl skips its shake (tint only) while a monster hit (0.9 s after `hits` changes, since the `px-hit` class stays on the element), a parry counter or the boss-entrance band shake runs, and a parry counter, entrance shake or hit that starts while growl shakes cancels growl's shake (its tint stays). Verify: vitest on the pure shake-arbitration helper that growl plus a parry counter or a hit never overlap. Thunder shows its static tint instead of pulsing while a legacy `px-alarm-text` banner or a TransitionOverlay is up, so uncounted legacy blinks and the new pulse never stack (the PR1 heartbeat rule). The source plan's 「受限頻保護，每秒最多一次」 flash line is replaced by the shared budget. Without an unlocked AudioContext the press is visual only (playCue is silent until the context runs). Verify: vitest that heartbeat at 2.5 Hz plus a thunder press never exceeds 3 flashes in any 1000 ms window.
+- PR2 sounds: `THUNDER` and `GROWL` are `SfxNote[]` in lib/sfx.ts, synthesized, no audio files, and never use the sawtooth wave (e2e/sfx.spec.ts finds the wrong-answer cue by it). They play through `playCue(notes, "host")`, so they sound with 🎵 off and are silent during video (layerGains, lib/bgm-player.ts:50). Verify: vitest that both schedule notes on the host layer with 🎵 off.
+- PR2 host page: one row of three buttons ⚡ 雷聲 / 👹 低吼 / 🌑 螢幕變暗 at the top of the host page; ⚡ and 👹 disabled while STATE `clipPlaying` and for 1.2 s after either is pressed on this device (longer than the 1000 ms server window, so network jitter does not make the server drop this device's next press); 🌑 shows STATE `screenDim` (`aria-pressed`) and is disabled while `clipPlaying` or outside the playing phase, including the lobby. The row shows in the lobby too (⚡ 👹 for the sound check, 🌑 disabled). The row is sticky at the very top of the host page, above the PR1a sound banner, each button at least 56px tall (the ▶⏸⟲ row's size), so it stays reachable while the host scrolls to judge.
+- PR2 dim on the screen: a black layer at 40% opacity inside `<Stage>`, above the stage content and the parry layer, below the host effect layer (thunder lights up the dark), the TransitionOverlay and the top banners; on and off are hard cuts, the same under reduced motion; question, options and AnswerClock stay readable under it. DESIGN.md gains the three host buttons, the effect layer and the dim layer in the same PR.
+- PR2 deploy skew is harmless: an old screen ignores the unknown HOST_EFFECT message (its onMessage switch has no default, screen page.tsx:1546); an old Worker answers the new client messages with `ERROR invalid_action bad_message` (dungeon-room.ts:1865), which the host page shows in its error line only during the few minutes until the Worker deploy from the same merge finishes; accepted, no ordering needed.
+- PR2 effective spec: the PR2 items in these accepted blocks are the build spec; where they differ from the 「PR2：主持人加料鈕（三顆）」 section, they win (both voices flagged the layered wording as a risk for a background implementation lane).
+- PR2 rehearsal (manual, after PR2 merges, before 11/18, not CI, independent of PR3): one realistic judging run on the host's own phone with the three-button row, checking that the row never hides or shifts the judge controls and that ⚡ 👹 are heard and seen on the event TV; run on the venue TV/speakers together with the PR1 venue check when possible.
 <!-- /autoplan-accepted:ceo -->
 
 **Spec Review Loop (0H).** Launch 1 (Plan subagent, inherited model): score 6/10, FAIL on Completeness/Consistency/Clarity; 13 issues. All 13 applied as accepted obligations above (E5 reversed to ACCEPTED, `none` definition, reset cleanup, boss-room no-choice correction, parry trigger set and dedupe, heartbeat source, Song API, flash budget location, rage small-HP rule, ANSWER_TIME_UP, post-kill music, 知道了 rule, Constraint wording). Loop stopped after 1 launch (all issues applied; P6, cap 3). Spec not re-verified by a second launch.
@@ -484,7 +548,7 @@ REALITY: pr-count finding default_pr_count 1 and split_requires_owner true; both
 
 ### Phase 2 — Design review (auto-decided)
 
-<!-- autoplan-baseline-edits:design {"sourceSha256":"de6b99a594906580ce1dad278e3b7923c2773269e5c49ab0b390668f7966e292","replacements":[{"oldText":"王房的「重答／逃跑」選擇在動畫結束後才出現在大螢幕上。","newText":"王房沒有「重答／逃跑」選擇：答錯的紅格照現有規則停 2 秒，1.4 秒的反擊在這 2 秒內播完。"},{"oldText":"演出內容：畫面全黑加低音轟鳴，王的剪影亮起，名字大字砸下，畫面震一下。","newText":"演出內容：畫面暗下（題目和倒數仍看得到）加低音轟鳴，王的剪影亮起，名字大字砸下，畫面震一下。"}]} -->
+<!-- run-1 record, already applied to the Implementation plan in run 1 (inactive in run 2): autoplan-baseline-edits:design {"sourceSha256":"de6b99a594906580ce1dad278e3b7923c2773269e5c49ab0b390668f7966e292","replacements":[{"oldText":"王房的「重答／逃跑」選擇在動畫結束後才出現在大螢幕上。","newText":"王房沒有「重答／逃跑」選擇：答錯的紅格照現有規則停 2 秒，1.4 秒的反擊在這 2 秒內播完。"},{"oldText":"演出內容：畫面全黑加低音轟鳴，王的剪影亮起，名字大字砸下，畫面震一下。","newText":"演出內容：畫面暗下（題目和倒數仍看得到）加低音轟鳴，王的剪影亮起，名字大字砸下，畫面震一下。"}]} -->
 
 Mockups skipped: a non-interactive lane cannot pick a board. DESIGN.md exists and was used as the calibration source.
 
@@ -541,6 +605,19 @@ Audit trail additions: D-1 entrance tint (mechanical, P5) · D-2 boss art = Spri
 - Unlock press states (both buttons): the label changes to 「開啟中…」 at once; if the context is still not `running` 1 s later it reads 「再點一次」; the button hides only once ready (lobby) or running (corner). Repeated taps are harmless; the confirm chime plays once per change to ready.
 - Host banner layout and copy: one wrapping line in the host page's top status stack above the judge controls, `--warn` background, `text-wrap: balance`, `role="status"`, 「知道了」 at least 44px tall. This copy supersedes the E3 wording in the CEO items and the source plan. `muted` → 「大螢幕還沒開聲音：去點大螢幕右下角的「👆 開聲音」或「🎵 音樂關」」. `none` → 「沒有大螢幕連著：用主持人頁的大螢幕連結開啟」 (no 知道了). Ready toast 「🔊 大螢幕聲音已就緒」 for 3 s.
 - DESIGN.md is updated in the same PR: the TransitionOverlay entry (boss entrance), the screen's parry, heartbeat glow and rage chip, the unlock buttons, and the motion line naming the shared flash budget.
+- PR2 host row placement (taste D2, the owner's 「最上面一排」 kept): one row directly under the host header (room code, 停頓, ⚙ 更多), `position: sticky; top: 0`, above the page content and below the ⚙ 更多 drawer and any modal. Only this row is sticky: the PR1a sound banner, its ready toast, the error line and the rest of the status stack scroll with the page, so the sticky area is the row alone (56px buttons plus 8px padding). The row sits on a cream `Panel` strip so scrolled content never shows through it. This refines the CEO item "sticky at the top, above the PR1a sound banner".
+- PR2 host row size: a 3-column equal-width grid (`grid-cols-3`, 8px gap) that fits 360px (each cell about 105px); each `PixelButton` at least 56px tall with 16px text; at large text sizes a label wraps to a second line inside its button, never a horizontal scroll. The wrapper is `role="group"` with `aria-label="大螢幕加料"`.
+- PR2 press feedback (⚡ 👹): during the 1.2 s cooldown the pressed button's label reads 「已送出」 (a text change, not colour only), and a visually hidden `aria-live="polite"` region says 「雷聲已送出」 or 「低吼已送出」. It says 送出, never 播放: the host page cannot know the TV played it.
+- PR2 sound marker during play, from the existing STATE `screenSound`: `muted` → ⚡ and 👹 labels gain a trailing 🔇 and their accessible names add 「大螢幕沒聲音，只有畫面」; `none` → ⚡ 👹 🌑 disabled with the label 「沒大螢幕」; `ready` or absent (older server) → plain labels. The PR1a banner keeps the explanation; the pads only mark it.
+- PR2 lobby caption: LOBBY carries no `screenSound`, so in the lobby a 14px line under the row reads 「先點大螢幕右下角開聲音，再按 ⚡ 試聽」. No protocol change.
+- PR2 disabled reasons are in the label, inside the same button size: ⚡ 👹 🌑 while `clipPlaying` → 「⚡ 影片中」 / 「👹 影片中」 / 「🌑 影片中」; 🌑 in the lobby or outside playing → 「🌑 開局後」. Native `disabled`; the cooldown keeps 「已送出」.
+- PR2 🌑 toggle look reuses the host-pacing toggle (`aria-pressed`, on = `var(--k)` background with white text): on → 「🌑 已變暗」 on `--k`; off → 「🌑 螢幕變暗」 on white. `aria-pressed` and the look follow STATE `screenDim` only (no optimistic flip). 🌑 also gets the 1.2 s local cooldown after a press, so an on-then-off inside the server's 1 s dim window is never swallowed.
+- PR2 dim auto-clear has no toast: the label change (「🌑 影片中」, then 「🌑 螢幕變暗」) shows it. docs/hosting.md and docs/hosting.en.md say that ▶ cancels the dim and that the host presses 🌑 again after the clip.
+- PR2 dim under transitions: while any TransitionOverlay (doors, boss entrance, last sprint) is up, the dim layer is not drawn (hard cut out and back in), so the boss entrance's 75%/45% tint never stacks on the 40% dim.
+- PR2 dim strength is one named constant `DIM_ALPHA = 0.4` beside the tints in lib/flash-budget.ts. The PR2 rehearsal reads a question card from the back row of the event TV with dim on; if it fails, the constant is lowered (a one-token change).
+- PR2 `GROWL_TINT` is `--k` `#2a1533` at 35% edge (`#2a153359`), not red: DESIGN.md reserves red for the boss and a growl can fire anywhere. This supersedes the CEO item's `#5a1020`.
+- PR2 letterbox: dim and edge effects stay inside `<Stage>`; outside it the letterbox is already black (components/stage.tsx), so nothing is added there.
+- PR2 DESIGN.md entries: the host row (sticky row, labels, 已送出, 🔇, 🌑 toggle look, lobby caption) and the screen's thunder, growl and dim (z order, tints, `DIM_ALPHA`, dim hidden under transitions).
 <!-- /autoplan-accepted:design -->
 
 REALITY: design-art pass boss Sprite and hearts already drawn on the screen app/room/[code]/screen/page.tsx:627
@@ -651,6 +728,16 @@ No issues found. Per-STATE work is O(teams) diffing; the scheduler keeps its 0.2
 - Venue check uses a bank whose boss has maxHp >= 6 in at least one phase, so rage is heard in rehearsal (the bundled maxHp 5 rages only at 1 HP).
 - lib/boss-fx.ts and lib/flash-budget.ts are pure and import nothing from `BANK`/data/question-bank.json; `npm run check:bundle` must pass.
 - Test plan artifact: ~/.gstack/projects/critical-answer/georgechih-feat-immersion-boss-eng-review-test-plan-20261111-214726.md (local only).
+- PR2 screenDim reset (run-2 eng H1, both rules kept): besides the read-time clear next to `liveMedia()` (dungeon-room.ts:3304, which mirrors how `liveMedia()` already drops a stale media command and runs in every STATE because each path that makes `clipPlaying` true or finishes the game broadcasts STATE), set `this.screenDim = false` explicitly at game start next to `this.clipEnded = null` (dungeon-room.ts:2758) and in `handleBackToLobby` (dungeon-room.ts:2250), because the back-to-lobby path sends LOBBY, not STATE (dungeon-room.ts:1266). The read-time clear sets the field false when phase is not playing or `clipPlaying` is true. Verify: room vitest: dim on → end game → back to lobby → start → the first STATE has no `screenDim`; dim on → a buzz-resumed clip (dungeon-room.ts:2922) → STATE has no `screenDim` and it stays absent after ⏸.
+- PR2 HOST_DIM broadcast path (run-2 eng M2): a HOST_DIM that changes `screenDim` sends `this.broadcast(this.snapshot())` (the SCREEN_SOUND / epilogue pattern, dungeon-room.ts:660), not `broadcastState()` (dungeon-room.ts:1523, which also runs applyLostCrit, syncFork, sayStunSkips, sendAnswer and sendPicks). A HOST_DIM that changes nothing (on while already dimmed, off while not, on while ignored) sends nothing. Verify: room vitest: a no-op HOST_DIM sends no STATE; a second host device's stale `on` after the first host's `on` sends no STATE.
+- PR2 dropped presses are not activity (run-2 eng L1): a rate-dropped HOST_EFFECT / HOST_DIM and a no-op HOST_DIM set `this.rejected = true`, so they neither call `markActivity()` nor `persist()` (dungeon-room.ts:2093), which keeps the markActivity comment true ("onMessage always sends or broadcasts something right after", dungeon-room.ts:1540). Accepted presses stay host activity. This replaces the clause "a rate-dropped press counts too, harmless" in the PR2 effects item. Verify: room vitest: a rate-dropped press leaves `lastActivityAt` unchanged.
+- PR2 relay name (TASTE D4, auto-chosen; both Codex runs, native silent): the server's relay to keyed screens is `{ type: "SCREEN_EFFECT", effect }`, not a second `HOST_EFFECT`. The repo names a server message by its recipient when it relays a client message: SCREEN_NARRATION_PROGRESS from the screen comes back as HOST_NARRATION_PROGRESS to the host (lib/protocol.ts:530), and SCREEN_VIDEO goes to screens (lib/protocol.ts:528). The client message stays `HOST_EFFECT`. This replaces the server relay name in the PR2 messages item and the DX protocol doc-comment item (the comment moves to `SCREEN_EFFECT`). Verify: protocol vitest; room vitest for the relay targets.
+- PR2 relay targets, one more test row (run-2 eng test gap): the relay reaches keyed screens only: not phones, not hosts, and not an unkeyed `/screen` (room code only). Verify: room vitest.
+- PR2 clipPlaying after a restart (run-2 eng, Codex finding rejected with evidence): `media` is not saved (the save at dungeon-room.ts:911 has no `media`; the restore at :1014 reads only `clipEnded`), so after a Worker restart `clipPlaying` is absent; `clipEnded` staying unsaved with the countdown off is harmless because `answering()` returns null without a countdown (dungeon-room.ts:1132). Verify: persistence vitest: ▶ then restart → STATE has no `clipPlaying`.
+- PR2 screen overlap rules are pure predicates (run-2 eng L4, replaces "screen-level render tests", which this repo cannot run: vitest is `environment: "node"` with no DOM, vitest.config.ts): next to the growl shake arbitration helper, add `thunderStyle(legacyAlarmUp, transitionUp)` → flash or static tint, and `dimVisible(screenDim, transitionUp)` → boolean, in the same pure module as the arbitration helper (no `BANK` import). Verify: vitest table rows for each branch.
+- PR2 cooldown constant: `HOST_FX_COOLDOWN_MS = 1200` lives next to the room's `HOST_FX_WINDOW_MS = 1000` in one shared module the host page may import (lib/protocol.ts or lib/flash-budget.ts, not lib/question-bank.ts); one vitest asserts cooldown > window. Verify: vitest; `npm run check:bundle`.
+- PR2 CI e2e (CI only, never local): the host page shows the `role="group"` 「大螢幕加料」 row with three buttons; pressing ⚡ in the lobby shows 「已送出」; 🌑 shows 「🌑 開局後」 in the lobby. No screen-effect visuals in e2e (rehearsal covers them).
+- Test plan artifact (run 2): ~/.gstack/projects/critical-answer/georgechih-feat-immersion-host-fx-eng-review-test-plan-20261112-000924.md (local only).
 <!-- /autoplan-accepted:eng -->
 
 #### Completion summary
@@ -676,3 +763,732 @@ REALITY: binding-decisions pass gstack-decision-search returned no branch decisi
 REALITY: numbers pass ANSWER_WARN_SECONDS 5 [measured: lib/answer-clock.ts:8]; limiter 10/s burst 30 [measured: lib/room/rate-limit.ts]; MS.boss 2500 [measured: components/transition-overlay.tsx:9] lib/answer-clock.ts:8
 REALITY: deferred-asks pass no linked issue; PR2/PR3 deferred by the plan itself docs/designs/immersion.md:1
 REALITY: pr-count finding pr_count 1, split_requires_owner true; split stays UC1 for the owner .gstack/ship-policy.json:1
+
+## Autoplan run 2 — PR2 (主持人加料鈕)
+
+**Gate outcome (2026-11-12).** UC1 resolved by the owner: drop 🌑 from PR2 (「先拿掉螢幕變暗」). Every 🌑 / `HOST_DIM` / `screenDim` / `DIM_ALPHA` / `dimVisible` item in the PR2 accepted blocks is withdrawn from PR2 and deferred to TODOS.md (P3). The host row has two buttons (`grid-cols-2`), and the 「🌑 開局後」 e2e row is dropped. D1, D2, D3, D4 and p1b taken as recommended.
+
+Review scope: PR2 only (the section 「PR2：主持人加料鈕（三顆）」, plus the 聲音分層表 host row and the 閃光安全 constraint as they apply to PR2). PR1a (#233) and PR1b (#234) are merged; PR3 is out of scope. Non-interactive lane: every choice auto-decided by the 6 principles; User Challenges wait at the gate. PR2's accepted requirements are appended to the existing accepted blocks above (run-1 items carried forward unchanged).
+
+### Run 2 Phase 1 — CEO review (SELECTIVE EXPANSION, auto-decided)
+
+**System audit.** Base `origin/main` 8af999e (v0.62.0.0). No HOST_EFFECT / HOST_DIM / screenDim / clipPlaying anywhere in origin/main (`git log --grep` empty). The PR1a mixer already has the `host` layer with no caller (lib/bgm-player.ts:84 `shortcut:` comment names PR2). The PR1b flash budget exists (lib/flash-budget.ts). `pr_count` 1. Another lane implements PR2 in this worktree at the same time; this review edits only this doc.
+
+**Premise table (code-verified).**
+
+| Premise / claim | Receipt | Verdict |
+|---|---|---|
+| Host layer exists, ignores 🎵, silent during video | lib/bgm-player.ts:44-50 | pass |
+| Cues play without the music loop once the context runs | lib/bgm-player.ts:262-264 | pass |
+| One shared flash budget per screen | lib/flash-budget.ts:15, screen page.tsx:1376 | pass |
+| Room can tell hosts and keyed screens apart | dungeon-room.ts:344, 1813, 1847 | pass |
+| "clipPlaying = video question shown and no SCREEN_CLIP_ENDED/ERROR yet" means the clip is playing | youtube-player.tsx:107 (`null` command is paused), dungeon-room.ts:1170 (clipEnded only recorded with the countdown on) | **finding** → TASTE D1 |
+| Uploaded video/audio count as clips for shownVideoId | lib/question-bank.ts:525-529 (`hiddenVideo` rides the YouTube marker) | pass |
+| Per-socket limiter exists; per-room 1 s limit is new | worker/index.ts:213, lib/room/rate-limit.ts | pass |
+| Old screens ignore an unknown server message | screen page.tsx:1546 (switch, no default) | pass |
+| Old Worker on a new client message is silent | dungeon-room.ts:1865 replies `bad_message`, host page shows its error line (host page.tsx:269) | **finding** (corrected in accepted block, accepted as transient) |
+| Shake never exceeds 8px | parry counter shakes the monster ±8px (DESIGN.md:50); a stage-wide growl shake on top would move it 16px | **finding** → accepted fix |
+| Run 1 skipped E1 "test sound" because PR2 covers it | this doc, run-1 scope table (E1 row) | **finding**: the plan never says effects work in the lobby → X1 |
+
+unverified=0.
+
+**0B What already exists.** Host layer + `playCue(notes, layer)` (bgm-player.ts:262); `createFlashBudget` (flash-budget.ts); `HEART_TINT`/`PARRY_TINT` pattern for static tints; `requireHost` (dungeon-room.ts:1847); `isScreen` (1813); `shownVideoId()` (3292); `media` with `press` counter (3308-3316); SCREEN_CLIP_ENDED/ERROR handling (1936-1950); `liveMedia()` getter-side cleanup pattern (3304); `HOST_ANTI_CHEAT {on}` as the boolean host-toggle precedent (protocol.ts:269); the host page's 56px ▶⏸⟲ button row (DESIGN.md youtube-player entry); `ScreenSoundBanner` already tells the host when the TV cannot be heard. Nothing is rebuilt.
+
+**0C Dream state.**
+```
+  CURRENT (v0.62)                 PR2                                12-MONTH IDEAL
+  game state drives boss  --->    host gets 3 one-tap pads that  ---> a DM console: pads, room moods,
+  effects automatically;          reach every keyed TV, never         per-venue volume, all safe over
+  host has no way to add          over a playing clip, inside the     clips and flash-limited
+  drama                           flash budget
+```
+
+**0D.** No approach choice needed: the plan's approach (relay message + STATE dim) is the only one that keeps the room authoritative; a STATE-sequence effect (`effectSeq`) would replay on reconnect, which a one-shot thunder must not.
+
+**0E Mode.** Auto-decided → SELECTIVE EXPANSION (autoplan override; ~10 changed files, added capability).
+
+**0G Scope (cherry-pick ceremony, auto-decided).**
+
+| # | Proposal | Effort | Decision | Reasoning |
+|---|---|---|---|---|
+| X1 | ⚡ 👹 work in the lobby (sound check) | S | ACCEPTED | P2, in blast radius; run 1 skipped E1 on this assumption |
+| X2 | 1 s client cooldown on ⚡ 👹 after a press | S | ACCEPTED | P1: a press inside the server limit would otherwise vanish silently |
+| X3 | Host keyboard shortcuts (T/G/D) | S | SKIPPED | host runs the game one-handed on a phone; YAGNI |
+| X4 | Host phone vibration on press | S | SKIPPED | iPhone web cannot vibrate (Approaches Considered, C) |
+| X5 | More pads (cheer, gong, door) | M | SKIPPED | owner ruled out a sound board ("我自己邊主持邊按") |
+| X6 | Screen → host "played" echo | M | SKIPPED | new message; `screenSound` already shows whether the TV is audible |
+
+HOLD checks: ~10 files, no new service; nothing deferrable without breaking the feature. Delight scan: lightning over a dimmed screen (thunder layer above the dim overlay, design phase), a growl that waits out a running parry, the 1 s cooldown ring on the pad.
+
+**0H.** CEO plan archive and spec review loop: see below.
+
+**0I Temporal interrogation.** Hour 1: protocol types + validators, room handlers with the two limits. Hour 2-3: `clipPlaying` derivation (after the dual voices: media ▶ state plus the existing clipEnded/clipError, with handleClipEnded no longer returning early when the countdown is off) and the dim getter. Hour 4-5: screen effect layer at the page root, shake/flash budget interplay with parry and entrance. Hour 6+: host row, tests, docs twins. Effort: human ~2 days / CC ~1.5 h.
+
+**0H Spec Review Loop (run 2).** CEO plan archive: `~/.gstack/projects/critical-answer/ceo-plans/2026-11-12-immersion-pr2-host-fx.md` (local only). Three launches (Plan subagent, Opus), the cap:
+- Launch 1: 6/10, FAIL, 11 issues (reveal clips never report an end; no screen / untapped screen; rage jitter and legacy `px-hit` break 8px; legacy alarm blinks vs thunder; lobby dim wording; `not_host` vs 「一律丟掉」; cross-device and jitter drops vs X2; flash line 140 out of date; late end reports; where dim clears; thunder with sound locked). All applied.
+- Launch 2: 7/10, FAIL, 7 issues (dim has no visual spec; YouTube reveal error; host row vs PR1a banner order and stickiness; stop record never broadcasts; shake cannot sit on Stage's scaled element; no tint values; activity counting). All applied.
+- Launch 3: 7/10, FAIL, 2 issues (screen reconnect re-sends an old SCREEN_CLIP_ENDED and stops a newer press; growl shake duration, reverse overlap and `px-hit` detection). Both applied; at the cap, so not re-verified: issues verified 2 of 2 against the amended text (applied edits, not a verdict). `spec not re-verified` for launch 3.
+Metrics appended to `~/.gstack/analytics/spec-review.jsonl` (iterations 3, found 20, fixed 18, remaining 2, score 7).
+
+**0H document approval.** Auto-decided A (approve these documents and continue to 0I): both reflect the decisions above.
+
+<!-- AUTONOMOUS DECISION LOG -->
+#### Run 2 Decision Audit Trail
+
+| # | Phase | Decision | Classification | Principle | Rationale | Rejected |
+|---|-------|----------|----------------|-----------|-----------|----------|
+| R2-1 | CEO | Mode SELECTIVE EXPANSION | Mechanical | override | autoplan rule | other modes |
+| R2-2 | CEO | X1 lobby sound check | Mechanical | P2 | in blast radius, S, run 1 relied on it | lobby buttons hidden |
+| R2-3 | CEO | X2 client cooldown (1.2 s) | Mechanical | P1 | a press inside the server window would vanish | no cooldown |
+| R2-4 | CEO | X3-X6 skipped | Mechanical | P3/P4 | phone host, iPhone no vibration, owner ruled out a sound board, screenSound covers audibility | adding them |
+| R2-5 | CEO | D1 `clipPlaying` from the host's ▶ state + existing clipEnded/clipError (clipEnded recorded with the countdown off too) | TASTE | P1 then P5 | the source rule greys ⚡ 👹 from the moment a clip question shows, though the clip only plays after ▶; the spec-loop's per-press stop record was dropped after both voices (Claude: too heavy; Codex: racy) since the screen-side drop is the real guarantee | source rule; per-press stop record |
+| R2-6 | CEO | `requireHost` (ERROR not_host) for the new messages | Mechanical | P4 | existing pattern; effect is the same as "dropped" | silent drop |
+| R2-7 | CEO | Growl ±6px, never stacked with other shakes | Mechanical | P1 | 8px constraint with rage jitter and legacy hit | ±8px stage shake |
+| R2-8 | CEO | Spec review fixes (20) applied | Mechanical | P1 | completeness | — |
+
+**Step 0.5 dual voices (CEO).** Input `ceo 3fa2cdf9…` (snapshot autoplan-ceo-UXKyIF). Native: Opus subagent, completed, INPUT hash matched. Outside: Codex `gpt-6-luna`, completed (`OUTSIDE_STATUS: completed`, VERDICT FINDINGS).
+
+Claude CEO voice (summary): critical, PR3 at 11/18 leaves no venue rehearsal; high, `clipPlaying` stop-record machinery out of proportion, rely on the screen-side drop; high, layered "replaces X" wording will mislead a background lane, publish one effective PR2 spec; medium, ask the owner whether 🌑 is worth it (40% black hurts far-row readability, and Codex already noted it is not the venue lights); medium, the event bank's boss maxHp; medium, a busy host may not press at all; consider automatic thunder on game events.
+
+Codex CEO voice (summary): high, a late end report can stop a restarted clip (no press in the report); high, multiple keyed screens have no playback policy; medium, three prominent controls for an unvalidated interaction, rehearse and defer dim if it competes with judging; medium, success should be a rehearsal, not buttons existing.
+
+```
+CEO DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude  Codex  Consensus
+  1. Premises valid?                   partly  partly CONFIRMED concern: "the host has hands free to press" is unproven
+  2. Right problem to solve?           yes     unsure DISAGREE (Codex: value speculative) → rehearsal obligation
+  3. Scope calibration correct?        over    over   CONFIRMED: clipPlaying machinery over-built → D1 simplified
+  4. Alternatives sufficiently explored? no    no     CONFIRMED gap: smaller set (⚡ 👹 only) → UC1
+  5. Competitive/market risks covered? yes     partly CONFIRMED: the risk is event-day failure, not competition
+  6. 6-month trajectory sound?         risk    risk   CONFIRMED: per-press inference was racy and heavy → removed
+```
+
+Integration: both voices on clipPlaying → D1 rewritten (no stop record; the screen-side drop is the guarantee; Codex's race and multi-screen findings no longer apply because the room no longer infers playback per press, and each screen drops by its own player). Both voices on 🌑 → **USER CHALLENGE UC1** (never auto-decided; the owner's three buttons stand until approved). Both on rehearsal → accepted (PR2 rehearsal item). Claude layering → accepted (PR2 effective spec item). Claude PR3 cut-off → outside PR2 scope; noted for the owner, the rehearsal item no longer waits on PR3. Claude event-bank maxHp → PR1 venue-check territory, not reopened. Claude auto-thunder on game events → single voice, new feature → NOT in scope.
+
+#### Run 2 CEO Review Sections
+
+**Section 1 — Architecture.** Current scope: SELECTIVE EXPANSION; accepted X1, X2, D1 (taste), spec fixes; skipped X3-X6; pending UC1.
+```
+ host page ──HOST_EFFECT/HOST_DIM──▶ worker RateLimiter ─▶ DungeonRoom.onMessage
+                                                          │ requireHost
+                                                          │ per-room 1 s limits (fx, dim)
+                                                          │ clipPlaying()  (media ▶ + clipEnded/clipError)
+                    ┌──── relay {HOST_EFFECT} ◀───────────┤ (isScreen only, never saved)
+                    │                                      └── screenDim (memory) ─▶ STATE {screenDim?, clipPlaying?}
+                    ▼                                                                   │
+ screen page: onMessage ─ drop if own player playing ─▶ effect layer (flash budget, shake arbitration)
+            └ playCue(THUNDER|GROWL,"host") ─▶ bgm-player host layer (0 during video)      ▼
+                                                                       dim layer ◀── STATE.screenDim ─▶ host 🌑 aria-pressed
+```
+Data paths: happy (host press → relay → effect); nil (no keyed screen → nothing, host already sees the `none` banner); empty (bad effect value → validator null → `bad_message`); error (a screen socket dies → per-conn send, others still get it). State: `screenDim` false→true on HOST_DIM on (only while playing, not clipPlaying) → false on HOST_DIM off, clipPlaying, finish or lobby; the invalid "on while a clip plays" is prevented by the getter. Coupling: the room gains no dependency; the screen effect layer reads the existing flash budget. Scaling: per-room fan-out to at most KEPT_SCREENS screens at 1/s. Security: only hostConns trigger; the relay carries no answer data. Rollback: revert the PR; old clients ignore the message. Value test: no status artifacts added. Findings: D1 (applied).
+
+**Section 2 — Error & Rescue Map.**
+```
+  CODEPATH                          | WHAT CAN GO WRONG                   | RESCUE / USER SEES
+  ----------------------------------|-------------------------------------|---------------------------------------------
+  parse HOST_EFFECT/HOST_DIM        | bad effect / non-boolean on         | validator null → ERROR bad_message (existing)
+  handleHostEffect                  | sender not host                     | requireHost → ERROR not_host
+                                    | inside 1 s window / clipPlaying     | dropped; host button already disabled
+                                    | no keyed screen                     | no relay; host sees the existing `none` banner
+                                    | a screen socket throws on send      | per-conn try/catch, others still get it
+  handleHostDim                     | on during clip / outside playing    | ignored; button disabled; STATE shows truth
+  screen onMessage HOST_EFFECT      | own clip playing                    | dropped silently (intended)
+                                    | AudioContext locked                 | visual only; host banner says the TV is muted
+                                    | flash budget empty / reduced motion | static tint, no pulse, no shake
+  Worker restart                    | screenDim / media lost              | dim off, clips paused (consistent)
+```
+No GAP rows: every failure either has a visible host signal (button state, banner) or is an intended drop.
+
+**Section 3 — Security.** New surface: two host-only messages. Auth: `requireHost`. Input: union-checked effect, boolean `on`; anything else dropped by the validator. Abuse: a stolen host link can flash the TV at most once per second, inside the flash budget (the photosensitivity guard holds even for a malicious host). Screen-link holders cannot send effects (not hosts). No secrets, no PII, no new dependency. No findings.
+
+**Section 4 — Data flow & interaction edge cases.**
+```
+ press ─▶ validate ─▶ requireHost ─▶ limit ─▶ clipPlaying? ─▶ relay ─▶ screen drop? ─▶ budget ─▶ draw + sound
+   shadow: bad value→ERROR | not host→ERROR | <1 s→drop | clip→drop | no screen→nothing | own clip→drop | empty budget→tint
+```
+| Interaction | Edge case | Handled | How |
+|---|---|---|---|
+| ⚡/👹 double tap | second tap < 1.2 s | yes | client cooldown; the server drops anyway |
+| ⚡ on two host devices | same second | accepted | dropped silently (one host runs the event) |
+| 🌑 toggled fast | on/off < 1 s | yes | server drops; the button shows STATE truth |
+| host navigates away | dim left on | yes | dim persists; cleared at finish/lobby |
+| screen refresh | dim on | yes | restored from STATE |
+| screen reconnect mid-thunder | relay missed | accepted | one-shot effects are not replayed |
+| clip ▶ while dim on | readability | yes | the getter clears dim in the same STATE |
+| buzz pauses clip | pads | yes | media paused → clipPlaying false |
+
+Async ordering: HOST_DIM and a ▶ are handled one message at a time by the Durable Object; the getter runs on every STATE, so either order ends with dim off while the clip plays. No findings beyond D1.
+
+**Section 5 — Code quality.** Reuse `requireHost`, `isScreen`, `playCue(…, "host")`, `createFlashBudget`, the `liveMedia()` getter pattern, and `HOST_ANTI_CHEAT`'s boolean message shape. Shake arbitration and the screen-side drop as small pure helpers (testable without React), next to `lib/boss-fx.ts`. Naming: the server relay reuses the name `HOST_EFFECT` in the ServerMessage union (separate from ClientMessage; the eng phase checks the name). No findings.
+
+**Section 6 — Tests.**
+```
+ protocol validators ─────────── unit (protocol test)             [new]
+ requireHost on both msgs ────── room vitest                      [new]
+ per-room limits (fake clock) ── room vitest                      [new]
+ lobby relay ─────────────────── room vitest                      [new]
+ clipPlaying matrix ──────────── room vitest                      [new]
+ screenDim persist/clear ─────── room vitest                      [new]
+ screen drop while playing ───── pure helper vitest               [new]
+ shake arbitration ───────────── pure helper vitest               [new]
+ flash budget hb 2.5 Hz + ⚡ ──── flash-budget vitest              [new]
+ THUNDER/GROWL on host layer ─── bgm-player vitest                [new]
+ host row disabled states ────── CI e2e (optional, eng decides)   [pending eng]
+```
+Hostile QA: spam HOST_EFFECT from a phone (ERROR, nothing relayed); ▶ then dim on (ignored). Chaos: Worker restart mid-dim (dim off, clips paused). Flakiness: all timing through the room's injectable clock. Gaps: none beyond the pending e2e choice.
+
+**Section 7 — Performance.** One extra STATE per dim toggle (at most 1/s); the relay is a short string to at most KEPT_SCREENS sockets. Each press calls `persist()` through the activity path (at most 1/s). No findings.
+
+**Section 8 — Observability.** Effects are transient; no logs needed beyond the room's activity tracking. STATE shows `clipPlaying`/`screenDim` in the host page's devtools. No dashboards for a personal party tool. No findings.
+
+**Section 9 — Deployment.** No migration, no flag. Skew harmless (accepted block). Rollback: revert the squash commit; Workers Builds and Vercel redeploy. Post-deploy: /canary plus the rehearsal item. No findings.
+
+**Section 10 — Trajectory.** Reversibility 5/5. Debt: the screen page grows again (mitigated by pure helpers). Platform: the host layer and the relay message are the path later pads would use. Retrospective: X1 was needed (run 1's E1 skip); the rejected per-press stop record would have been debt.
+
+**Section 11 — Design & UX.** UI scope yes; Phase 2 runs the deep review.
+```
+ host phone: [⚡][👹][🌑] sticky row ─▶ press ─▶ 1.2 s cooldown ─▶ ready
+                     │ clipPlaying → ⚡👹🌑 grey      │ lobby → 🌑 grey
+ TV: idle ─▶ thunder (edge pulse or tint) ─▶ idle ; growl (6px shake or tint) ; dim on ⇄ off (hard cut)
+```
+Interaction states: loading n/a; empty (no screen) → existing banner; error (old Worker) → host error line; success → effect on the TV; partial (locked audio) → visual only.
+
+**NOT in scope (run 2).** Skipped: X3 keyboard shortcuts, X4 vibration, X5 more pads, X6 played-echo, the per-press stop record (replaced by D1), automatic thunder on game events (single-voice idea; the owner can ask for it), the PR3 cut-off date (the owner's schedule call, outside PR2). Deferred to TODOS.md: none.
+
+**What already exists.** See 0B; all reused.
+
+**Dream state delta.** After PR2: host pads exist and are safe over clips and inside the flash limit; still missing vs the ideal: room moods (PR3), venue-tuned volumes, and rehearsal evidence that the host uses them.
+
+**Failure Modes Registry.**
+```
+  CODEPATH            | FAILURE MODE                  | RESCUED? | TEST? | USER SEES?            | LOGGED?
+  --------------------|-------------------------------|----------|-------|-----------------------|--------
+  HOST_EFFECT relay   | sent by non-host              | Y        | Y     | nothing on TV         | ERROR
+  HOST_EFFECT relay   | spam                          | Y        | Y     | ≤1 effect/s           | n/a
+  clipPlaying hint    | reveal clip ended, still true | Y (⏸)    | Y     | pads grey until ⏸     | n/a
+  screen drop         | own clip playing              | Y        | Y     | nothing (intended)    | n/a
+  thunder flash       | budget empty                  | Y        | Y     | static tint           | n/a
+  growl shake         | other shake running           | Y        | Y     | tint only             | n/a
+  dim                 | Worker restart                | Y        | n/a   | dim off               | n/a
+```
+0 CRITICAL GAPS.
+
+**Implementation Tasks (CEO).**
+- [ ] **T1 (P1, human: ~3h / CC: ~15min)** — protocol + room — HOST_EFFECT/HOST_DIM, limits, relay, clipPlaying, dim getter. Verify: the room vitest matrix above.
+- [ ] **T2 (P1, human: ~4h / CC: ~20min)** — screen — effect layer, drop rule, shake arbitration, dim layer, THUNDER/GROWL. Verify: helper vitest + flash-budget vitest.
+- [ ] **T3 (P1, human: ~2h / CC: ~10min)** — host page — sticky three-button row with cooldown and disabled states. Verify: tsc, lint, manual.
+- [ ] **T4 (P2, human: ~1h / CC: ~5min)** — docs — DESIGN.md, docs/hosting.md + .en.md, changelog fragment. Verify: `npm run check:docs`.
+- [ ] **T5 (P2, manual)** — rehearsal — judging run with the row on the host phone and the event TV.
+
+```
+  +====================================================================+
+  |            MEGA PLAN REVIEW — COMPLETION SUMMARY (run 2, PR2)       |
+  +====================================================================+
+  | Mode selected        | SELECTIVE EXPANSION (autoplan override)      |
+  | System Audit         | host layer + flash budget ready; no PR2 code |
+  | Step 0               | X1, X2 accepted; D1 taste; UC1 pending       |
+  | Section 1  (Arch)    | 1 issue found (D1)                           |
+  | Section 2  (Errors)  | 11 error paths mapped, 0 GAPS                |
+  | Section 3  (Security)| 0 issues found, 0 High severity              |
+  | Section 4  (Data/UX) | 8 edge cases mapped, 0 unhandled             |
+  | Section 5  (Quality) | 0 issues found                               |
+  | Section 6  (Tests)   | Diagram produced, 0 gaps (e2e pending eng)   |
+  | Section 7  (Perf)    | 0 issues found                               |
+  | Section 8  (Observ)  | 0 gaps found                                 |
+  | Section 9  (Deploy)  | 0 risks flagged (skew accepted)              |
+  | Section 10 (Future)  | Reversibility: 5/5, debt items: 1            |
+  | Section 11 (Design)  | 0 issues (deep review in Phase 2)            |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (7 items)                            |
+  | What already exists  | written                                      |
+  | Dream state delta    | written                                      |
+  | Error/rescue registry| 11 rows, 0 CRITICAL GAPS                     |
+  | Failure modes        | 7 total, 0 CRITICAL GAPS                     |
+  | TODOS.md updates     | 0 items proposed                             |
+  | Scope proposals      | 6 proposed, 2 accepted                       |
+  | CEO plan             | written (~/.gstack, local only)              |
+  | Outside voice        | codex completed                              |
+  | Lake Score           | N/A                                          |
+  | Diagrams produced    | 4 (architecture, error, data flow, UX flow)  |
+  | Stale diagrams found | 0                                            |
+  | Unresolved decisions | 1 (UC1, at the gate)                         |
+  | Reality rows         | 7/7 rows, 0 unverified                       |
+  +====================================================================+
+```
+
+REALITY: premise-table pass 11 claims checked, 3 findings fixed (clipPlaying, deploy skew wording, 8px), unverified=0 lib/bgm-player.ts:50
+REALITY: already-done pass origin/main has no HOST_EFFECT/HOST_DIM/screenDim (log grep empty); no PR2 code in base lib/room/dungeon-room.ts:1813
+REALITY: surface-check pass npm scripts check:docs and check:bundle exist; message names checked against the protocol union lib/protocol.ts:269
+REALITY: binding-decisions pass gstack-decision-search empty; run-1 accepted blocks and the UC1 split note honored docs/designs/immersion.md:162
+REALITY: numbers pass limiter 10/s burst 30 [measured: lib/room/rate-limit.ts:7]; flash max 3 per 1000 ms [measured: lib/flash-budget.ts:7]; px-hit 12px [measured: app/globals.css:218] lib/flash-budget.ts:7
+REALITY: deferred-asks pass no linked issue; PR3 deferred by the plan itself docs/designs/immersion.md:144
+REALITY: pr-count pass pr_count 1; PR2 ships as one PR .gstack/ship-policy.json:1
+
+Approval readiness: PASS (R2-1..R2-8 auto-decided under /autoplan's preamble authority; UC1 pending at the gate, kept out of accepted work).
+
+### Run 2 Phase 2 — Design review (auto-decided)
+
+Methodology read: plan-design-review methodology, lines 1-600, 601-1200, 1201-1576 of 1576 (all ranges successful). Snapshot `design ba78e79e…` (autoplan-design-IfLnux). Designer binary: not used (non-interactive lane; mockups need the owner's board); text-only review.
+
+**Step 0.** Initial rating 7/10: the TV side is pinned down (z order, tints, flash budget, reduced motion, shake arbitration), but the host phone, where the person with both hands busy works, had only "three buttons, sticky, 56px, disabled while a clip plays". A 10 says what each button shows in every state, why a button is grey, what a press confirms, how the row fits 360px, and how dim reads with the boss transitions. DESIGN.md exists; every decision is calibrated against it. Reused: the host-pacing `aria-pressed` toggle look, `PixelButton`, `Panel`, the PR1a `screenSound` STATE field, the PR1b tint constants and flash budget, `<Stage>`'s black letterbox.
+
+**Dual voices (design).** Native: Opus subagent, completed, INPUT hash matched (`design ba78e79e…`), 17 findings (8 on merged PR1a/PR1b items, out of scope). Outside: Codex `gpt-6-luna`, completed (`OUTSIDE_STATUS: completed`, VERDICT FINDINGS), 5 findings.
+
+Claude subagent (summary, PR2 items): critical, top placement fights one-handed reach (owner's own 「單手按得到」), consider a bottom bar or record why top; high, sticky stack too tall with banner and toast; high, no press feedback across five silent-drop cases; high, lobby sound check has no sound status; high, dim stacks with the boss entrance tint (~67-85% dark); medium, disabled buttons do not say why; 🌑 has no cooldown or pending state; dim clears with no notice; growl tint is a fourth red; toggle and momentary buttons look alike; row size at 375px undefined; letterbox not dimmed.
+
+Codex (summary): high, the effects row competes with judging, keep it compact and secondary; high, 40% dim has no readability validation, lower it or check it on the event TV; medium, press feedback incomplete (已送出 / TV muted); medium, row at 360px and enlarged text unspecified; low, no group label or status announcement.
+
+```
+DESIGN OUTSIDE VOICES — LITMUS SCORECARD (classifier: host row = OPERATE, TV effects = EXPERIENCE):
+  Check                                    Claude  Codex  Consensus
+  1. Brand unmistakable in first screen?   n/a     n/a    NOT SPEC'D (existing pixel host page)
+  2. One strong visual anchor?             no      no     CONFIRMED: judging must stay the anchor
+  3. Scannable by headlines only?          yes     yes    CONFIRMED
+  4. Each section has one job?             yes     yes    CONFIRMED (row = effects only)
+  5. Cards actually necessary?             n/a     n/a    no new cards
+  6. Motion improves hierarchy/atmosphere? yes     yes    CONFIRMED (two-frame, budgeted)
+  7. Premium without decorative shadows?   yes     n/a    no shadows added
+  Hard rejections triggered:               0       0      none
+```
+
+**Pass 1 — Information architecture: 6/10 → 9/10.** Hierarchy on the host phone: first the judge controls (the host's job), second the effects row, third the status stack. Findings: (a) placement — the owner wrote 「最上面一排…單手按得到」; Claude would move it to a bottom bar for thumb reach, Codex would make it secondary → TASTE D2, auto-chose the owner's top row (direction stands; a bottom bar is the alternative at the gate); (b) sticky stack height → only the row is sticky (accepted). Remaining gap: thumb reach is checked only at the rehearsal.
+```
+ host phone (360px)
+ ┌───────────────────────────────┐
+ │ [CODE] [自動|⏸手動] [⚙ 更多]    │  header (scrolls)
+ │ [⚡ 雷聲][👹 低吼][🌑 螢幕變暗]   │  ← sticky row, 56px, cream strip
+ │ (lobby: 先點大螢幕右下角開聲音…)   │
+ │ status stack (banner, toast…)  │  scrolls
+ │ turn ribbon / question / judge │  primary
+ └───────────────────────────────┘
+```
+
+**Pass 2 — Interaction states: 5/10 → 9/10.**
+```
+  FEATURE   | IDLE            | COOLDOWN    | CLIP PLAYING | LOBBY            | NO SCREEN  | TV MUTED       | ON
+  ----------|-----------------|-------------|--------------|------------------|------------|----------------|-----------
+  ⚡ / 👹    | ⚡ 雷聲 / 👹 低吼 | 已送出 1.2 s | ⚡ 影片中     | active + caption | 沒大螢幕    | label + 🔇     | n/a
+  🌑        | 🌑 螢幕變暗 (white)| 1.2 s lock  | 🌑 影片中     | 🌑 開局後         | 沒大螢幕    | unchanged      | 🌑 已變暗 (--k)
+  TV effect | none            | n/a         | dropped      | plays            | n/a        | visual only    | dim 40%
+```
+Accepted: 已送出 + live region; 🔇 marker from `screenSound`; disabled reasons in labels; 🌑 cooldown; lobby caption (no protocol change). Old Worker error: the existing host error line (CEO item). Remaining gap: a server-side drop inside the 1.2 s/1 s overlap from a second device still shows 已送出.
+
+**Pass 3 — Journey: 7/10 → 9/10.**
+```
+  STEP | HOST DOES                 | FEELS            | PLAN SPECIFIES?
+  -----|---------------------------|------------------|-----------------------------------------
+  1    | opens host page in lobby  | prepared         | row + caption 「先點大螢幕…再按 ⚡ 試聽」
+  2    | taps ⚡ as a sound check   | reassured        | 已送出; TV flashes + thunder if unlocked
+  3    | game starts, boss looms   | in control       | 🌑 now active (開局後 → 螢幕變暗)
+  4    | presses 🌑                | setting the mood | 🌑 已變暗 on --k; TV 40% dim, hard cut
+  5    | presses ▶ on a video      | focused          | dim cleared, pads read 影片中
+  6    | clip ends, ⏸              | back to drama    | pads return; 🌑 pressed again by hand (docs)
+  7    | boss entrance plays       | awe              | dim hidden under the overlay, back after
+  8    | presses 👹 mid-parry       | playful          | tint only, no stacked shake (CEO arbitration)
+```
+5-second: the TV reacts within one tap. 5-minute: the host knows why a pad is grey. Long-term: the effects feel like the DM's own voice, not a sound board. Accepted: dim hidden under TransitionOverlay; dim must be re-pressed after a clip (documented, no toast).
+
+**Pass 4 — AI slop: 8/10 → 9/10.** Classifier: host row OPERATE (app UI rules: utility labels, minimal chrome), TV effects EXPERIENCE. No hard rejections. Emoji in labels follow the host page's existing convention (⚙ 更多, ⏸ 手動) and the owner's spec, not decoration. Labels are utility language (雷聲, 已送出, 影片中). Finding: none beyond GROWL_TINT colour (Pass 5).
+
+**Pass 5 — Design system: 7/10 → 9/10.** `GROWL_TINT #5a1020` was a dark red; DESIGN.md: red has one job per effect and is reserved for the boss → `--k` at 35% (accepted, mechanical). 🌑 on-look reuses the host-pacing toggle (P4 DRY). `DIM_ALPHA` constant beside the tints. DESIGN.md entries for the row and the TV effects. Remaining: DESIGN.md itself has no host-row pattern yet (this PR adds it).
+
+**Pass 6 — Responsive and accessibility: 5/10 → 9/10.** 360px 3-column grid, wrap inside buttons, no horizontal scroll; 56px targets; `role="group"` label; live region for 已送出; disabled reasons in text; 🌑 `aria-pressed` plus a label change (not colour only); reduced motion already specified (tints, no shake); letterbox already black. Keyboard: native buttons in DOM order after the header, existing focus-visible style. Remaining: VoiceOver not tested (manual at rehearsal if wanted).
+
+**Pass 7 — Unresolved decisions.**
+```
+  DECISION NEEDED                        | IF DEFERRED, WHAT HAPPENS
+  ---------------------------------------|----------------------------------------------
+  UC1 keep 🌑 in PR2? (CEO, owner's call) | three buttons ship as the owner wrote
+  D2 row at top (owner) vs bottom bar     | top ships; thumb reach checked at rehearsal
+```
+2 at the gate, 0 deferred silently.
+
+<!-- AUTONOMOUS DECISION LOG -->
+| # | Phase | Decision | Classification | Principle | Rationale | Rejected |
+|---|-------|----------|----------------|-----------|-----------|----------|
+| R2-9 | Design | D2 keep the owner's top row, sticky row only | TASTE | owner direction, P5 | 「最上面一排」 is the owner's words; Claude's bottom bar and Codex's secondary area are valid alternatives | bottom bar; non-sticky row |
+| R2-10 | Design | 已送出 label + live region | Mechanical | P1 | five silent drops otherwise look like success | colour-only cooldown |
+| R2-11 | Design | 🔇 / 沒大螢幕 from existing `screenSound` | Mechanical | P1, P4 | reuses PR1a STATE | new echo message |
+| R2-12 | Design | lobby caption, no LOBBY `screenSound` | Mechanical | P3, P5 | the sound check is self-verifying by ear | protocol change |
+| R2-13 | Design | disabled reasons in the label | Mechanical | P5 | no reflow, readable by screen readers | caption line |
+| R2-14 | Design | 🌑 cooldown, STATE-driven look, host-pacing style | Mechanical | P1, P4 | matches the server dim window; reuses a pattern | optimistic toggle |
+| R2-15 | Design | dim hidden under TransitionOverlay | Mechanical | P1 | 40% + 75% stack hides the question | darker-of-two blend |
+| R2-16 | Design | `GROWL_TINT` = `--k` 35% | Mechanical | P5 | DESIGN.md: red reserved for the boss | `#5a1020` |
+| R2-17 | Design | `DIM_ALPHA` constant + back-row rehearsal check | Mechanical | P1 | Codex: 40% unvalidated | lower now blind |
+| R2-18 | Design | PR1a/PR1b findings (banner reflow, banner copy, rage chip, entrance band y) not reopened | Mechanical | scope | merged and out of PR2 scope; reported to the owner | reopening |
+
+**NOT in scope (design, run 2).** Bottom bar (D2 alternative, at the gate); an echo that the TV played the effect (X6, skipped in CEO); a dim-cleared toast; LOBBY `screenSound`; PR1a banner reflow and copy (H3, S5), a rage chip off the boss screen (J3), the PR1b entrance band position check (S1) — merged work, reported to the owner, not reopened here.
+
+**What already exists.** Host-pacing toggle look; `PixelButton` 56px rows (▶ ⏸ ⟲); `screenSound` STATE; `HEART_TINT`/`PARRY_TINT` constants; `<Stage>` black letterbox; focus-visible styles.
+
+**TODOS.md updates.** 0 proposed (this lane may not edit TODOS.md; the PR1b entrance band check goes to the owner in the report).
+
+**Implementation Tasks (design).**
+- [ ] **T6 (P1, human: ~2h / CC: ~10min)** — host page — sticky row states: 已送出 + live region, 🔇 / 沒大螢幕, 影片中 / 開局後 labels, 🌑 toggle look and cooldown, lobby caption, group label, 360px grid. Verify: tsc, lint, a 360px screenshot at the rehearsal.
+- [ ] **T7 (P1, human: ~30min / CC: ~5min)** — screen page — dim hidden while a TransitionOverlay is up; `DIM_ALPHA`; `GROWL_TINT` `--k` 35%. Verify: helper vitest (dim visible = screenDim && !overlay).
+- [ ] **T8 (P2, human: ~30min / CC: ~5min)** — docs — DESIGN.md host row + TV effects; hosting docs line on ▶ cancelling dim. Verify: `npm run check:docs`.
+
+```
+  +====================================================================+
+  |         DESIGN PLAN REVIEW — COMPLETION SUMMARY (run 2, PR2)        |
+  +====================================================================+
+  | System Audit         | DESIGN.md present; UI scope: host row + TV   |
+  | Step 0               | 7/10, focus: host phone states and layout    |
+  | Pass 1  (Info Arch)  | 6/10 → 9/10 after fixes                      |
+  | Pass 2  (States)     | 5/10 → 9/10 after fixes                      |
+  | Pass 3  (Journey)    | 7/10 → 9/10 after fixes                      |
+  | Pass 4  (AI Slop)    | 8/10 → 9/10 after fixes                      |
+  | Pass 5  (Design Sys) | 7/10 → 9/10 after fixes                      |
+  | Pass 6  (Responsive) | 5/10 → 9/10 after fixes                      |
+  | Pass 7  (Decisions)  | 0 resolved here, 2 at the gate (UC1, D2)     |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (7 items)                            |
+  | What already exists  | written                                      |
+  | TODOS.md updates     | 0 items proposed                             |
+  | Approved Mockups     | 0 generated, 0 approved                      |
+  | Decisions made       | 9 added to plan (R2-10..R2-18)               |
+  | Decisions deferred   | 2 (UC1, D2 at the gate)                      |
+  | Overall design score | 5/10 → 9/10                                  |
+  +====================================================================+
+```
+Unresolved decisions (design): D2 (taste, auto-chosen top) and UC1 (CEO) wait at the gate.
+
+### Run 2 Phase 2.5 — DX review (DX POLISH, auto-decided)
+
+Methodology read: plan-devex-review methodology, lines 1-600, 601-1200, 1201-1800, 1801-1870 of 1870 (all ranges successful). Snapshot `dx 55cc790a…` (autoplan-dx-7xL9cv). Web research: not run (a private party tool with no peer products; reference benchmarks only).
+
+**Product type:** API (the host ↔ room WebSocket messages) plus Documentation (docs/hosting.md, DESIGN.md). Mode: DX POLISH (enhancement to an existing product; autoplan override).
+
+```
+TARGET DEVELOPER PERSONA
+========================
+Who:       an AI coding agent in a background implementation lane (primary), and the event host reading docs/hosting.md the night before (secondary)
+Context:   the agent builds PR2 from this doc with no one to ask; the host learns the three buttons once, then uses them one-handed mid-game
+Tolerance: the agent follows the text literally and retries blindly; the host gives a doc about 2 minutes
+Expects:   the agent: one effective spec, named tests, existing patterns to copy; the host: a short section per button and a reason whenever a button is grey
+```
+
+**Empathy narrative (agent, then host).** I open the plan and find "PR2" three times: a Chinese source section, CEO items and design items. The CEO items say the PR2 accepted items win, so I take them, but GROWL_TINT is `#5a1020` in one item and `#2a1533` in another; the later one says it supersedes, so I use it. I copy `requireHost` and the `HOST_ANTI_CHEAT {on}` shape. My tests check that a phone's HOST_EFFECT relays nothing, so a room that silently ignores phones would also pass; nothing makes me assert the `not_host` reply. On the host side I read docs/hosting.md: the big-screen section explains sound and video, but nothing about ⚡ 👹 🌑, so I learn by pressing, and in the lobby a press makes no sound because I have not tapped the TV yet (predicted, from the PR1a unlock rule).
+
+**Competitive benchmark (reference, not measured).**
+
+| Tool | Start → result | Time + evidence type | DX choice | Source |
+|---|---|---|---|---|
+| Kahoot host controls | open host screen → press a control | about 1 min, reported | controls labelled in place, no docs needed | general product knowledge |
+| A DJ soundboard app | open app → tap a pad, hear it | under 1 min, reported | instant audible feedback | general product knowledge |
+| This product (PR2, before review) | open host page + TV link → hear ⚡ on the TV | about 5 min, estimated: the unlock tap is undiscoverable from the host page | no doc section, no lobby hint | this plan |
+
+TTHW target (auto-decided, P5): Champion, under 2 minutes for the host (lobby caption + doc section + 已送出). Agent: first passing room test for the relay within one read of the PR2 items.
+
+**Magical moment.** The host presses ⚡ in the lobby and the TV across the room cracks with thunder. Vehicle: the existing lobby (X1) plus the design-phase caption 「先點大螢幕右下角開聲音，再按 ⚡ 試聽」. No new capability.
+
+**Developer journey map.**
+```
+STAGE           | DEVELOPER DOES                         | FRICTION POINTS                         | STATUS
+----------------|----------------------------------------|-----------------------------------------|--------
+1. Discover     | host opens docs/hosting.md             | no PR2 section                           | fixed (DX-1)
+2. Install      | host opens TV link, taps the TV        | unlock tap not obvious from host page    | fixed (design lobby caption)
+3. Hello World  | host presses ⚡ in the lobby            | none once unlocked                       | ok
+4. Real Usage   | host presses during play               | grey buttons explained by labels         | ok (design)
+5. Debug        | "my press did nothing"                 | silent rate drop, raw bad_message skew   | fixed by docs (DX-2, DX-3)
+6. Upgrade      | Worker and pages deploy from one merge | few-minute bad_message window            | documented (DX-3)
+```
+Agent journey: read PR2 items → copy requireHost pattern → write room tests → screen helpers. Friction: tests not pinned to the reply codes (fixed, DX-4); unexpected screen exceptions unspecified (fixed, DX-5).
+
+**First-time developer report (host).**
+```
+T+0:00  opens docs/hosting.md, scans 「大螢幕」 — nothing about the three buttons (fixed: DX-1)
+T+0:30  opens host page, sees ⚡ 👹 🌑 under the header, 🌑 reads 「🌑 開局後」
+T+1:00  presses ⚡: 已送出, TV silent — the caption says tap the TV first
+T+1:30  taps TV, presses ⚡ again: thunder; success
+T+3:00  mid-game a second phone presses within 1 s: nothing; the doc's 1-second rule explains it (DX-2)
+```
+
+**Dual voices (DX).** Native: Opus subagent, completed, INPUT hash matched (`dx 55cc790a…`); 14 findings, about half on merged PR1a/PR1b items. Outside: Codex `gpt-6-luna`, completed (`OUTSIDE_STATUS: completed`, VERDICT FINDINGS), 4 findings.
+
+Claude (summary): high, contain unexpected screen fx/audio exceptions (CAP6 trace); high, the rate-drop has no recovery (CAP6); high, deploy-skew shows a raw `bad_message` (CAP6); high, layered spec, consolidate; high, no screen-side reduced-motion override; high, no dev `?fx=` trigger; medium, constants home, absent-field wording, stale anchors, rehearsal bank unnamed, host checklist, unlock retry has no end, `none` banner location.
+
+Codex (summary): high, docs/hosting.md and DESIGN.md have no PR2 section; medium, 「已送出」 implies delivery the protocol cannot confirm (suggests 「已按下」); medium, auth tests do not assert the `not_host` / `bad_message` replies; low, document the deploy-skew window and its recovery.
+
+```
+DX DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude  Codex  Consensus
+  1. Getting started < 5 min?          host yes, no fx preview  no (docs)  CONFIRMED gap: docs section (DX-1)
+  2. API/CLI naming guessable?         yes     yes    CONFIRMED
+  3. Error messages actionable?        no      no     CONFIRMED gap: silent drop + skew (DX-2, DX-3, DX-4)
+  4. Docs findable & complete?         no      no     CONFIRMED gap (DX-1)
+  5. Upgrade path safe?                gap     low    CONFIRMED: document the window (DX-3)
+  6. Dev environment friction-free?    no      —      single voice (fx preview, motion override) → NOT in scope
+```
+
+**Pass 1 — Getting started: 6/10 → 8/10.** Host TTHW 5 → 2 min with the doc section and the lobby caption. Remaining: the unlock tap is still a physical walk to the TV (PR1a design).
+
+**Pass 2 — API design: 8/10 → 9/10.** `HOST_EFFECT {effect}` / `HOST_DIM {on}` match `HOST_ANTI_CHEAT {on}` and `HOST_PACING {mode}`. The server relay reusing the name `HOST_EFFECT` sits in a separate union (eng checks it). Fix: the protocol doc comment says absent `screenDim` / `clipPlaying` mean false, from older servers too (DX-6).
+
+**Pass 3 — Errors (agent-ready-v1): 5/10 → 7/10.**
+```
+ERROR PATH MATRIX (agent-ready-v1)
+Path                        | Class      | what | fix  | recovery | code | context | trace | redaction | channel | Cap
+HOST_* from non-host        | validation | pass | N/A  | N/A      | pass | N/A     | N/A   | pass      | pass    | —
+bad payload                 | validation | pass | N/A  | N/A      | pass | N/A     | N/A   | pass      | pass    | —
+rate-limited press          | usage      | doc  | doc  | doc      | N/A  | N/A     | N/A   | pass      | none    | CAP6:recovery → documented (DX-2)
+old Worker skew             | usage      | pass | doc  | doc      | pass | doc     | N/A   | pass      | pass    | documented (DX-3)
+screen fx throws            | unexpected | pass | N/A  | pass     | N/A  | pass    | pass  | pass      | console | fixed (DX-5)
+```
+Error tests pinned to exact replies (DX-4). Residual: the rate drop has no live signal (accepted; a `rate_limited` ERROR is NOT in scope), so the pass stays below 8.
+
+**Pass 4 — Docs: 4/10 → 8/10.** docs/hosting.md + .en.md section (DX-1); DESIGN.md entries (design items). Remaining: translation freshness is checked by hand.
+
+**Pass 5 — Upgrade: 6/10 → 8/10.** No migration, no flag; skew documented with its recovery (DX-3); rollback = revert the squash commit.
+
+**Pass 6 — Dev environment: 6/10 → 7/10.** Fake clock for the room tests, pure helpers for the screen (CEO items). Single-voice ideas (`?fx=` preview, `?motion=reduced`) are new capabilities outside DX POLISH → NOT in scope, noted for the owner.
+
+**Pass 7 — Community: 5/10 → 5/10.** A personal party tool; no community surface. No issues.
+
+**Pass 8 — Measurement: 4/10 → 6/10.** The PR2 rehearsal is the TTHW measurement: time from opening the host page to the first thunder heard on the event TV, written in the rehearsal notes. No telemetry (none asked).
+
+<!-- autoplan-accepted:dx -->
+- PR2 host docs: docs/hosting.md gains a 「主持人加料鈕」 section under 「大螢幕」 and docs/hosting.en.md the same section ("Host effect buttons") at the same level, in the same PR (`npm run check:docs` must pass). It says: what ⚡ 雷聲, 👹 低吼 and 🌑 螢幕變暗 do on the TV; the lobby sound check (tap the TV first, then press ⚡); what 已送出, 🔇, 沒大螢幕, 影片中 and 開局後 mean on a button; that ▶ cancels the dim and 🌑 must be pressed again after the clip; that presses within 1 second count as one across every host device (thunder and growl share it); and that right after a deploy the error line may show `bad_message` for a few minutes, fixed by waiting for the Worker deploy and pressing again.
+- PR2 error tests assert the replies, not only the absence of a relay: HOST_EFFECT and HOST_DIM from a phone, a keyed screen and an unkeyed screen each get `ERROR` with `error: "not_host"`; a bad effect value or a non-boolean `on` gets `ERROR invalid_action` with detail `bad_message`; a rate-limited press gets no relay, no STATE and no ERROR. Verify: room vitest and protocol vitest.
+- PR2 screen containment: the screen's HOST_EFFECT handler wraps drawing the effect and `playCue` in try/catch; a throw is logged as `console.error("[fx] host-effect", err)` and never escapes into the onMessage switch, so a bad audio call cannot stop STATE rendering. Verify: a vitest on the pure handler helper with a throwing `playCue` that still returns.
+- PR2 protocol doc comments: `screenDim?: true` and `clipPlaying?: true` say absent means false, also from an older server; `HOST_EFFECT` in the ServerMessage union says it is the room's relay to keyed screens of the host's press.
+- PR2 constants home: lib/flash-budget.ts gets a header comment naming it the home of the screen fx constants (`HEART_TINT`, `PARRY_TINT`, `THUNDER_TINT`, `GROWL_TINT`, `DIM_ALPHA`), and the DESIGN.md PR2 entry names that file.
+- PR2 rehearsal note: the rehearsal records the host's time from opening the host page to the first thunder heard on the event TV (target under 2 minutes).
+<!-- /autoplan-accepted:dx -->
+
+<!-- AUTONOMOUS DECISION LOG -->
+| # | Phase | Decision | Classification | Principle | Rationale | Rejected |
+|---|-------|----------|----------------|-----------|-----------|----------|
+| R2-19 | DX | Mode DX POLISH, persona agent + host | Mechanical | override | autoplan rule; the lane builds from this doc | other modes |
+| R2-20 | DX | hosting docs section (DX-1) | Mechanical | P1 | both voices; the plan named the files but not the content | none |
+| R2-21 | DX | keep 「已送出」 + document the 1 s rule | TASTE D3 | P5 | 送出 is true (the page did send); Codex prefers 「已按下」 | 已按下; a `rate_limited` ERROR |
+| R2-22 | DX | document deploy skew, no host-page error mapping | Mechanical | P3 | a few-minute window days before the event | special error branch |
+| R2-23 | DX | tests assert exact error replies (DX-4) | Mechanical | P1 | otherwise a silent room passes | absence-only tests |
+| R2-24 | DX | contain screen HOST_EFFECT exceptions (DX-5) | Mechanical | P1 | the event TV must not freeze | none |
+| R2-25 | DX | doc comments + constants home (DX-6) | Mechanical | P5 | findable, absent = false is explicit | moving the constants |
+| R2-26 | DX | `?fx=` preview, `?motion=reduced`, unlock retry cap, rehearsal bank name | Mechanical | scope | new capability or PR1a/PR1b items; noted for the owner | adding them to PR2 |
+
+**NOT in scope (DX, run 2).** A dev `?fx=` effect preview and a `?motion=reduced` screen override (new capabilities; the flash budget already caps flashes at 3 per second); a `rate_limited` ERROR; a host-page mapping of `bad_message`; the PR1a unlock retry cap and `none` banner wording; the PR1b rehearsal bank name and stale PR1 anchors (merged work).
+
+**What already exists.** `requireHost` / `not_host`, `bad_message`, the host error line, `HOST_ANTI_CHEAT {on}` shape, docs/hosting.md 「大螢幕」 section and its English twin, `npm run check:docs`.
+
+**TODOS.md updates.** 0 proposed (this lane does not edit TODOS.md).
+
+**Implementation Tasks (DX).**
+- [ ] **T9 (P1, human: ~1h / CC: ~5min)** — docs — hosting.md + hosting.en.md 「主持人加料鈕」 section. Verify: `npm run check:docs`.
+- [ ] **T10 (P1, human: ~30min / CC: ~3min)** — room tests — assert `not_host` / `bad_message`, and no ERROR on a rate drop. Verify: `npx vitest run lib/room/`.
+- [ ] **T11 (P1, human: ~30min / CC: ~3min)** — screen — try/catch around the HOST_EFFECT handler + helper test. Verify: vitest.
+- [ ] **T12 (P2, human: ~15min / CC: ~2min)** — protocol comments, flash-budget header comment. Verify: tsc.
+
+```
++====================================================================+
+|              DX PLAN REVIEW — SCORECARD (run 2, PR2)                |
++====================================================================+
+| Dimension            | Score  | Prior  | Trend  |
+|----------------------|--------|--------|--------|
+| Getting Started      |  8/10  |  6/10  |  +2 ↑  |
+| API/CLI/SDK          |  9/10  |  8/10  |  +1 ↑  |
+| Error Messages       |  7/10  |  5/10  |  +2 ↑  |
+| Documentation        |  8/10  |  4/10  |  +4 ↑  |
+| Upgrade Path         |  8/10  |  6/10  |  +2 ↑  |
+| Dev Environment      |  7/10  |  6/10  |  +1 ↑  |
+| Community            |  5/10  |  5/10  |   0    |
+| DX Measurement       |  6/10  |  4/10  |  +2 ↑  |
++--------------------------------------------------------------------+
+| TTHW                 |  2 min |  5 min |  -3 ↑  |
+| Competitive Rank     | Champion (host, estimated)                   |
+| Magical Moment       | designed via the lobby ⚡ sound check        |
+| Product Type         | API (WebSocket messages) + Documentation     |
+| Mode                 | POLISH                                       |
+| Overall DX           |  7/10  |  5/10  |  +2 ↑  |
++====================================================================+
+| DX PRINCIPLE COVERAGE                                               |
+| Zero Friction      | covered (lobby caption, docs)                  |
+| Learn by Doing     | covered (lobby sound check)                    |
+| Fight Uncertainty  | covered (labels, docs); rate drop silent       |
+| Opinionated + Escape Hatches | gap (no motion override, not in scope)|
+| Code in Context    | covered (existing patterns named)              |
+| Magical Moments    | covered                                        |
+| Agents Are Users   | covered (exact replies, effective spec)        |
++====================================================================+
+```
+Community is below 6 by nature (a personal tool), not DX debt.
+
+```
+DX IMPLEMENTATION CHECKLIST
+============================
+[x] Time to hello world < 2 min (host, estimated; measured at rehearsal)
+[n/a] Installation is one command (hosted web app)
+[x] First run produces meaningful output (thunder on the TV)
+[x] Magical moment delivered via the lobby ⚡ sound check
+[~] Every error message meets the agent-ready contract (rate drop documented, not signalled)
+[x] Names guessable without docs
+[x] Sensible defaults (absent = false)
+[x] Docs explain every button and state
+[n/a] Upgrade migration guide (no breaking change)
+[x] TypeScript types in lib/protocol.ts
+[x] Works in CI (vitest; e2e CI-only)
+[x] Changelog fragment
+```
+Unresolved decisions (DX): D3 (taste, auto-chosen 「已送出」) waits at the gate.
+
+### Run 2 Phase 3 — Eng review (FULL_REVIEW, auto-decided)
+
+Methodology read in full: lines 1-600, 601-1200, 1201-1800, 1801-2109 (2109 lines). Snapshot `.gstack/tmp/autoplan/autoplan-eng-yGkc8G/eng-implementation.md` (sha 138096a7…). Scope: PR2 only.
+
+**Step 0 — Scope challenge.** What exists: `requireHost` (dungeon-room.ts:1847), the `bad_message` reply (:1865), `isScreen` relay targets, `liveMedia()` (:3304), `handleHostMedia` (:3311), the per-socket `RateLimiter` (worker/index.ts), the PR1a `host` mixer layer (lib/bgm-player.ts:84), the PR1b flash budget (lib/flash-budget.ts), the host-pacing toggle style. Minimum change: two client messages, one relay, two STATE fields, one row of buttons, one screen effect layer. Complexity: about 9 changed files (lib/protocol.ts, lib/room/dungeon-room.ts, lib/sfx.ts, lib/flash-budget.ts or a pure fx helper, app/room/[code]/host/page.tsx, app/room/[code]/screen/page.tsx, docs/hosting.md, docs/hosting.en.md, DESIGN.md) plus tests and a changelog fragment [estimated]; 0 new classes or services. The 8-file trigger trips on files, so the structure question was auto-decided (`plan-eng-review-structure`): original arrangement kept, because a smaller arrangement would need to drop the docs twin (CLAUDE.md requires it) or merge the pure helper into the screen page (untestable in a node vitest). Pending remedies not decided there: none. Search check: no new infrastructure or concurrency pattern; skipped. TODOS cross-reference: nothing in TODOS.md blocks PR2. Distribution: no new artifact. Result: **scope accepted as-is**.
+
+Reality rows:
+
+| premise | claim | receipt | verdict |
+|---|---|---|---|
+| host-only check exists | `requireHost` | dungeon-room.ts:1847 | true |
+| bad payload reply | `invalid_action` / `bad_message` | dungeon-room.ts:1865 | true |
+| media is not saved | save lists only answer-clock fields | dungeon-room.ts:911, :1014 | true |
+| countdown-off clipEnded is harmless | `answering()` returns null without a countdown | dungeon-room.ts:1132 | true |
+| clip end ignored with countdown off today | early return | dungeon-room.ts:1170 | true |
+| back to lobby sends LOBBY, not STATE | snapshot LOBBY branch | dungeon-room.ts:1266 | true |
+| broadcastState has side effects | applyLostCrit, syncFork, sayStunSkips, sendAnswer, sendPicks | dungeon-room.ts:1523 | true |
+| relays are named by recipient | HOST_NARRATION_PROGRESS, SCREEN_VIDEO | lib/protocol.ts:528, :530 | true |
+| no DOM in vitest | `environment: "node"` | vitest.config.ts | true |
+| a buzz can resume a clip | buzzPaused resume | dungeon-room.ts:2922 | true |
+
+unverified=0
+
+REALITY: premise-table pass 10 premises, unverified=0 lib/room/dungeon-room.ts:911
+REALITY: already-done pass origin/main 8af999e has no PR2 code; the only pickaxe hit for HOST_DIM is this plan doc in #233 docs/designs/immersion.md:138
+REALITY: surface-check pass named commands exist: npm run test, npm run check:bundle, npm run check:docs, npx tsc -p worker (CLAUDE.md Testing) CLAUDE.md:1
+REALITY: binding-decisions pass gstack-decision-search returned none; the owner decisions (three buttons, top row) are kept, UC1 and D2 go to the gate docs/designs/immersion.md:127
+REALITY: numbers pass 1000 ms window [estimated] docs/designs/immersion.md:209; 1.2 s cooldown [estimated] docs/designs/immersion.md:216; file count 9 [estimated] docs/designs/immersion.md:127
+REALITY: deferred-asks pass no linked issue; source PR2 asks (three buttons, top row, one hand) all kept docs/designs/immersion.md:127
+REALITY: pr-count pass pr_count default 1, split_requires_owner; PR2 stays one PR .gstack/ship-policy.json:1
+
+**Dual voices.** Native Opus (subagent, INPUT eng 138096a7… confirmed): 1 high, 4 medium, 4 low. Codex gpt-6-luna, two runs: both returned findings but failed the output validator (`missing_markers`: a Recommendation line without "because"), so **outside_status: unavailable**. The findings were read and weighed as advisory only, with no outside-coverage credit.
+
+```
+ENG DUAL VOICES — CONSENSUS TABLE:
+═══════════════════════════════════════════════════════════════
+  Dimension                           Claude  Codex  Consensus
+  ──────────────────────────────────── ─────── ─────── ─────────
+  1. Architecture sound?               yes*    yes*   CONFIRMED (dim reset gap, relay name)
+  2. Test coverage sufficient?         no      no     CONFIRMED → test rows added
+  3. Performance risks addressed?      yes     yes    CONFIRMED (1/s, change-only)
+  4. Security threats covered?         yes     yes    CONFIRMED (requireHost, validators)
+  5. Error paths handled?              mostly  mostly CONFIRMED (dropped press activity)
+  6. Deployment risk manageable?       yes     n/a    single voice (L2, documented)
+═══════════════════════════════════════════════════════════════
+Codex column advisory (validator: missing_markers).
+```
+
+**Section 1 — Architecture.**
+
+```
+host page ──HOST_EFFECT{effect}──▶ worker RateLimiter (10/s, socket) ─▶ DungeonRoom.onMessage
+          ──HOST_DIM{on}────────▶                                        │ validate → null → ERROR bad_message
+                                                                         │ requireHost → ERROR not_host
+                                                                         │ room window 1000 ms → silent drop, rejected=true
+                                                                         │ clipPlaying()? → drop (effect) / ignore on:true (dim)
+                                                                         ├─ effect: send SCREEN_EFFECT{effect} to isScreen conns only
+                                                                         └─ dim: change? → broadcast(snapshot()) ; no change → nothing
+snapshot() ─ STATE { screenDim?: true (playing && !clipPlaying), clipPlaying?: true }
+start game / back to lobby ─ screenDim = false (explicit)
+screen: SCREEN_EFFECT → own player playing? drop : try { budget → draw + playCue(host) } catch → console.error("[fx] host-effect")
+```
+
+Design-twice: no new module or public boundary beyond two messages. Second shape considered: dim as a screen-local toggle relayed like an effect (no STATE). Rejected: a refreshed screen and a second host page could not know the dim, and the owner asked for the host button to show state. Red flags: (2) information leakage — the relay reusing `HOST_EFFECT` blurs direction → D4 rename; (5) split ownership — none, `screenDim` has one owner (the room); (8) hand-synced list — the 1.2 s cooldown vs the 1 s window → one shared module and an assert.
+
+- [INFORMATIONAL] (confidence: 6/10) dungeon-room.ts:1266 — `return { type: "LOBBY", ...` skips the STATE builder, so a dim cleared only at read time could survive back-to-lobby; in practice the finished STATE already cleared it. Accepted: explicit resets at start and back to lobby (native H1, downgraded from High because every finish path broadcasts STATE first).
+- [INFORMATIONAL] (confidence: 8/10) dungeon-room.ts:1523 — `if (this.lostCrit && this.applyLostCrit()) return; const forkOpened = this.syncFork(); this.sayStunSkips();` runs game side effects on a dim press. Accepted: `broadcast(snapshot())` and a no-op dedupe (native M2).
+- [INFORMATIONAL] (confidence: 7/10) lib/protocol.ts:530 — `{ type: "HOST_NARRATION_PROGRESS"; eventId: number; done: number }` shows relays are named by recipient. TASTE D4: relay → `SCREEN_EFFECT` (Codex, both runs).
+- [INFORMATIONAL] (confidence: 5/10, medium confidence, verify this is actually an issue) dungeon-room.ts:3304 — the read-time clear mutates inside `snapshot()`; a single-conn reconnect send could clear before hosts learn. Kept: every path that turns `clipPlaying` true broadcasts STATE in the same turn, and `liveMedia()` already uses this pattern (native M1, rejected with evidence).
+
+Dispositions: H1 accepted; M2 accepted; D4 taste (auto: rename); M1 rejected with evidence.
+
+**Section 2 — Code quality.**
+
+- [INFORMATIONAL] (confidence: 7/10) dungeon-room.ts:1540 — "Fire-and-forget is safe here: onMessage always sends or broadcasts something right after this call" stops being true for a silent rate drop. Accepted: dropped and no-op presses set `rejected` (native L1).
+- [INFORMATIONAL] (confidence: 6/10) dungeon-room.ts:1170 — removing `!this.answerSeconds` makes a countdown-off clip end broadcast STATE. Already planned in D1; no extra test because `answering()` returns null without a countdown (:1132), so no clock can appear (native M3, resolved by evidence).
+- Codex (both runs) claimed a restart can restore `media: playing` without `clipEnded` and keep the pads disabled. Rejected with evidence: `media` is not saved (:911, :1014). A restart test row is added to lock this in.
+- Shared code: no extraction. The cooldown/window constants are the only shared values (one module).
+
+Dispositions: L1 accepted; M3 resolved by evidence; the Codex restart claim rejected and covered by a test.
+
+**Section 3 — Tests.** Framework: vitest (CLAUDE.md Testing), node environment; playwright CI only.
+
+```
+CODE PATHS                                              USER FLOWS
+[+] lib/protocol.ts validators                          [+] Host sound check (lobby)
+  ├── [GAP] HOST_EFFECT bad/missing effect → null          ├── [GAP] [→E2E] ⚡ shows 已送出 (CI e2e)
+  └── [GAP] HOST_DIM non-boolean on → null                 └── [GAP] TV thunder audible (rehearsal)
+[+] dungeon-room HOST_EFFECT                            [+] Dim during play
+  ├── [GAP] not_host ×3 (phone, keyed, unkeyed screen)     ├── [GAP] 🌑 on/off via STATE
+  ├── [GAP] window drop: no relay/STATE/ERROR/activity     ├── [GAP] ▶ clears dim
+  ├── [GAP] clipPlaying drop                               └── [GAP] new game starts undimmed
+  └── [GAP] relay to keyed screens only (incl. unkeyed)  [+] Two host devices
+[+] dungeon-room HOST_DIM                                  └── [GAP] second press in 1 s dropped silently
+  ├── [GAP] set / no-op dedupe / ignored while clip
+  ├── [GAP] clear: ▶, buzz resume, finish, lobby, start
+  └── [GAP] reconnect restores from STATE
+[+] clipPlaying (D1)
+  ├── [GAP] no ▶ / ▶ / ⏸ / buzz / end (countdown off+on) / error
+  └── [GAP] restart → absent (media unsaved)
+[+] screen helper + predicates
+  ├── [GAP] drop while own player plays; try/catch logs
+  └── [GAP] growl arbitration; thunderStyle; dimVisible
+[+] lib/sfx.ts THUNDER/GROWL
+  └── [GAP] host layer with 🎵 off; no sawtooth
+COVERAGE: 0/24 paths tested (all new code, all planned)
+QUALITY: planned ★★★ for room paths  |  GAPS: 24 (1 E2E, 0 eval)
+Legend: ★★★ behavior + edge + error | [GAP] no test yet | [→E2E] CI e2e
+```
+
+Every gap maps to a planned test (accepted blocks + the rows added in this phase). Regression rule: the existing behavior at risk is the countdown-on `clipEnded` path; the approved D1 contract already keeps the existing answer-clock tests green. Test plan artifact: ~/.gstack/projects/critical-answer/georgechih-feat-immersion-host-fx-eng-review-test-plan-20261112-000924.md (local only). Tests to retire: none. LLM/eval scope: none.
+
+Dispositions: all test rows accepted; Codex's screen-render tests rejected (no DOM harness) and replaced by pure predicates (native L4).
+
+**Section 4 — Performance.** A press sends one relay to N keyed screens (N is a few) or one STATE to all connections (at most 8 teams + hosts + screens), at most 1/s per kind by the room window. No storage writes for dropped presses after L1. No issues found.
+
+**Failure modes.**
+
+| Path | Realistic failure | Covered by | User sees |
+|---|---|---|---|
+| press → room | old Worker during deploy | docs line (DX) | host error line `bad_message`; retry |
+| room window | second host device presses | room vitest | nothing (documented 1 s rule) |
+| relay | no keyed screen | screenSound `none` | 「沒大螢幕」 disabled label |
+| screen playCue throws | AudioContext closed | try/catch + helper test | nothing on TV; console error |
+| dim | carries into next game | explicit reset + vitest | prevented |
+| restart | dim and media lost | persistence vitest | dim off, clip paused (consistent) |
+
+0 critical gaps.
+
+**NOT in scope.** Distinguishing rate-dropped presses in host feedback (D3, owner's taste); screen render tests (no DOM harness; rehearsal covers visuals); persisting `screenDim` or `media` across restarts; a per-device rate limit.
+
+**What already exists.** requireHost, the bad_message reply, isScreen, the liveMedia pattern, RateLimiter, the host mixer layer, the flash budget, the pacing toggle style, the `rejected` flag — all reused, nothing rebuilt.
+
+**TODOS.md.** Proposed, not written (this lane may edit only the plan): none.
+
+**Worktree parallelization.** Sequential implementation, no parallelization opportunity (one lane already implementing in this worktree).
+
+**Implementation tasks (eng).**
+
+- [ ] **T13 (P1, human: ~1h / CC: ~10min)** — room — explicit `screenDim = false` at start and back to lobby, with the new-game test. Files: lib/room/dungeon-room.ts, lib/room/dungeon-room.test.ts.
+- [ ] **T14 (P1, human: ~1h / CC: ~10min)** — room — HOST_DIM via `broadcast(snapshot())`, no-op dedupe, `rejected` on dropped and no-op presses. Files: lib/room/dungeon-room.ts, tests.
+- [ ] **T15 (P2, human: ~30min / CC: ~5min)** — protocol — relay renamed `SCREEN_EFFECT` (D4). Files: lib/protocol.ts, the screen page, tests.
+- [ ] **T16 (P2, human: ~1h / CC: ~10min)** — screen — `thunderStyle` and `dimVisible` pure predicates with table tests. Files: the pure fx helper module and its test.
+- [ ] **T17 (P2, human: ~1h / CC: ~10min)** — tests — relay-to-unkeyed-screen row, restart row, cooldown > window assert, CI e2e for the host row. Files: lib/room/*.test.ts, e2e/.
+
+**Completion summary.**
+- Step 0: Scope Challenge — scope accepted as-is
+- Reality rows: 7/7 applicable rows emitted, 0 unverified premises
+- Architecture Review: 4 issues found (2 accepted, 1 taste D4, 1 rejected)
+- Code Quality Review: 2 issues found (1 accepted, 1 resolved by evidence)
+- Test Review: diagram produced, 24 gaps identified (all planned)
+- Performance Review: 0 issues found
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 0 items proposed
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review (D4 is an auto-decided taste item for the gate)
+- Outside voice: codex, unavailable (two runs, validator missing_markers; findings advisory)
+- Parallelization: 1 lane, 0 parallel / 1 sequential
+- Lake Score: 4/4

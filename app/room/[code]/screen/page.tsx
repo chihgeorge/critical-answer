@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
-import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FileVideo, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ServerMessage, type SoundCue, type StateMessage } from "@/lib/protocol";
+import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FileVideo, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ServerMessage, type SoundCue, type StateMessage, type HostEffect } from "@/lib/protocol";
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { CATCH_PAY, checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { FORK_ARCH, sceneFloor, TEAM_LOOKS } from "@/lib/pixel-art";
@@ -18,10 +18,11 @@ import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, EAT_DONE, HEARTBEAT, SFX, SOUND_ON, SPRINT_FANFARE } from "@/lib/sfx";
+import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, EAT_DONE, GROWL, HEARTBEAT, SFX, SOUND_ON, SPRINT_FANFARE, THUNDER } from "@/lib/sfx";
 import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
 import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
-import { createFlashBudget, HEART_TINT, PARRY_TINT } from "@/lib/flash-budget";
+import { createFlashBudget, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
+import { playHostEffect, type HostFxLook } from "@/lib/host-fx";
 import { AnswerClock } from "@/components/answer-clock";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { antiCheatBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
@@ -1352,10 +1353,13 @@ export default function ScreenPage() {
    * reaches the room before this socket's SCREEN_HELLO, so the room drops it. Forgotten once another question is up
    * or the game is over: the same question may come round again, and then its clip has not ended. */
   const clipEnded = useRef<string | null>(null);
+  /** This screen's player is playing a clip: a SCREEN_EFFECT is dropped (immersion.md PR2). */
+  const videoPlaying = useRef(false);
   /** From the player's real state (the clip stops itself at its end): the music goes silent (D10) and a line still
    * being read stops, since the host pressed ▶ to hear the song (D20). */
   function onVideoPlaying(playing: boolean) {
     clipErrored.current = null;
+    videoPlaying.current = playing;
     player().mute(playing);
     if (playing && ttsSupported()) {
       window.speechSynthesis.cancel();
@@ -1458,10 +1462,30 @@ export default function ScreenPage() {
     () => () => {
       parryTimers.current.forEach(clearTimeout);
       heart.current?.cancel();
+      if (hostFxTimer.current) clearTimeout(hostFxTimer.current);
     },
     [],
   );
 
+  // --- The host's pads (immersion.md PR2): ⚡ an edge pulse or tint, 👹 a shake or tint, over everything but the banners.
+  const [hostFx, setHostFx] = useState<HostFxLook | null>(null);
+  const hostFxTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onHostEffect = useCallback((effect: HostEffect) => {
+    playHostEffect(effect, {
+      clipPlaying: videoPlaying.current,
+      reducedMotion: prefersReducedMotion(),
+      transitionUp: transitionOn.current,
+      shaking: parryRunning.current,
+      takeFlash: () => flashBudget.current.take(),
+      playCue: (e) => bgm.current?.playCue(e === "thunder" ? THUNDER : GROWL, "host"),
+      show: (fx) => {
+        if (hostFxTimer.current) clearTimeout(hostFxTimer.current);
+        setHostFx(fx);
+        // The pulse is lit for two 0.1 s frames; a tint is held 500 ms; the shake runs its 0.4 s.
+        hostFxTimer.current = setTimeout(() => setHostFx(null), fx.look === "flash" ? 200 : fx.look === "shake" ? 400 : 500);
+      },
+    });
+  }, []);
   /** The lowest second the answer clock has shown. A STATE remounts the clock, which can show the same second or one
    * above it again (network delay): neither ticks twice. A jump of more than a second up is a new count. */
   const lastTick = useRef<number | null>(null);
@@ -1676,6 +1700,9 @@ export default function ScreenPage() {
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
           break;
+        case "SCREEN_EFFECT":
+          onHostEffect(msg.effect);
+          break;
         case "REACTION": {
           const id = ++floatSeq;
           const f: Float = { id, teamId: msg.teamId, reaction: msg.reaction, x: FLOAT_LANES[id % FLOAT_LANES.length] };
@@ -1701,6 +1728,9 @@ export default function ScreenPage() {
   return (
     <>
       <Stage>
+        {/* 👹's shake moves the stage content only, never Stage's scaled element, the edge glows or the banners. A parry
+            counter starting meanwhile takes the shake over: two shakes never stack past 8px. */}
+        <div className={`absolute inset-0${hostFx?.look === "shake" && parry !== "counter" ? " px-growl" : ""}`}>
         {!game && <Lobby code={code} teams={lobby} />}
         {!game && showBgmToggle && !soundReady && (
           // Between the room-code panel (ends near y 236) and the heroes; at most 40px tall.
@@ -1742,9 +1772,13 @@ export default function ScreenPage() {
         ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} />}
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} />}
         {game?.phase === "playing" && <ReactionFloats floats={floats} teams={game.view.teams} />}
+        </div>
         {/* ③ The heartbeat's and ② the counter's edge glows: inset shadows, the middle of the stage stays clear. */}
         {heartGlow && <div aria-hidden data-testid="heart-glow" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${heartGlow === "pulse" ? "#b02a3a4d" : HEART_TINT}` }} />}
         {parryEdge && <div aria-hidden className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${parryEdge === "flash" ? "#ff6b6b66" : PARRY_TINT}` }} />}
+        {hostFx && hostFx.look !== "shake" && (
+          <div aria-hidden data-testid="host-fx" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${hostFx.look === "flash" ? THUNDER_PULSE : hostFx.effect === "thunder" ? THUNDER_TINT : GROWL_TINT}` }} />
+        )}
         {transition && <TransitionOverlay key={`${transition.kind}`} play={transition} onDone={endTransition} flash={flash} />}
         {/* A normal flow stack, not two independently-positioned banners: whichever show, they never overlap. */}
         <div className="absolute inset-x-0 top-0 flex flex-col" style={{ zIndex: 20 }}>
