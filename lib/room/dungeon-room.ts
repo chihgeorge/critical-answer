@@ -112,7 +112,7 @@ import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder,
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
-import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, hiddenVideo, instagramVideo, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
+import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
@@ -802,9 +802,18 @@ export class DungeonRoom {
     if (questionId === null || !q) return;
     // A reveal with an Instagram explanation shows that, not the question's own video (instagram-explanations.md).
     const insta = this.reveal?.explanation?.kind === "instagram" && q.explanation?.kind === "instagram";
-    if (!insta && q.content.kind !== "youtube") return;
-    const video = insta ? instagramVideo(q.explanation!) : publicMediaContent(q.content, "", questionId);
-    if (video.kind !== "youtube" && video.kind !== "instagram") return;
+    // An uploaded video/audio explanation replaces the question's clip in the same player (uploaded-media.md D4).
+    const file = this.reveal?.explanation?.kind === "file" && (q.explanation?.kind === "video" || q.explanation?.kind === "audio");
+    if (!insta && !file && !isClip(q.content)) return;
+    const base = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
+    const video = insta
+      ? instagramVideo(q.explanation!)
+      : file
+        ? fileVideo(q.explanation!, base)
+        : q.content.kind === "youtube"
+          ? publicMediaContent(q.content, "", questionId)
+          : fileVideo(q.content, base);
+    if (video.kind !== "youtube" && video.kind !== "instagram" && video.kind !== "file") return;
     const text = JSON.stringify({ type: "SCREEN_VIDEO", questionId, video } satisfies ServerMessage);
     const to = only ? [only] : [...this.hostConns.values(), ...[...this.keyedScreens].flatMap((id) => this.conns.get(id) ?? [])];
     for (const conn of to) {
@@ -1181,7 +1190,7 @@ export class DungeonRoom {
     const questions: HostPick[] = [...game.pools.flat(), ...game.boss.questionIds].flatMap((id) => {
       const q = bankQuestions.get(id);
       if (!q) return [];
-      const label = q.content.kind === "text" ? q.content.value : q.content.kind === "image" ? "（圖片題）" : "（YouTube 題）";
+      const label = q.content.kind === "text" ? q.content.value : q.content.kind === "image" ? "（圖片題）" : q.content.kind === "video" ? "（影片題）" : q.content.kind === "audio" ? "（聲音題）" : "（YouTube 題）";
       const block = pickBlock(game, id);
       return [{ id, label, answer: answerText(q), ...(block ? { block } : {}) }];
     });
@@ -3047,12 +3056,16 @@ export class DungeonRoom {
     this.reveal = null;
     // 🚨 成立 shows the answer it was caught on (owner gate d4): it is revealed now and never scored.
     if (caught && justAnswered) {
+      // Only a reveal: it may play a different clip (an uploaded explanation) under the same question id, which reports
+      // its own error. A wrong buzz keeps the host's live-play fallback up (review).
+      this.clipError = null;
       const explanation = publicExplanation(this.bank, questionId, this.room.env?.R2_PUBLIC_BASE_URL ?? "");
       const q = this.question(questionId);
       if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
-      const video = q?.content.kind === "youtube" && (!explanation || explanation.kind === "text") ? hiddenVideo(q.content) : undefined;
+      const video = q && isClip(q.content) && (!explanation || explanation.kind === "text") ? hiddenVideo(q.content) : undefined;
       this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(video ? { video } : {}), caught: { teamId, by: caught.by } };
     } else if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
+      this.clipError = null;
       const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
       const explanation = publicExplanation(this.bank, questionId, imageBaseUrl);
       const q = this.question(questionId);
@@ -3063,7 +3076,7 @@ export class DungeonRoom {
       const fieldMarks = q?.kind === "text" && q.fields && marks ? { teamId, marks: q.fields.map((f, i) => ({ label: f.label, answer: f.answer, right: marks[i] })) } : undefined;
       // The answer stops the clip; the reveal shows the video where it stopped (D17).
       if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
-      const video = q?.content.kind === "youtube" && (!explanation || explanation.kind === "text") ? hiddenVideo(q.content) : undefined;
+      const video = q && isClip(q.content) && (!explanation || explanation.kind === "text") ? hiddenVideo(q.content) : undefined;
       this.reveal = {
         questionId,
         answer: justAnswered.answer,
@@ -3139,7 +3152,7 @@ export class DungeonRoom {
    * reveal the answered question, unless an image or a video explanation takes its place (D17). */
   private shownVideoId(): string | null {
     if (this.game?.phase !== "playing") return null;
-    if (this.reveal) return this.reveal.video || this.reveal.explanation?.kind === "instagram" ? this.reveal.questionId : null;
+    if (this.reveal) return this.reveal.video || this.reveal.explanation?.kind === "instagram" || this.reveal.explanation?.kind === "file" ? this.reveal.questionId : null;
     // A door opening: the real turn may have passed on, and the next team's video must not start under it.
     if (this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides()) return null;
     // Not before the check: the video is part of the question.
@@ -3178,7 +3191,7 @@ export class DungeonRoom {
     const teamId = this.playingTeam(conn);
     if (!teamId || !this.game) return;
     if (this.paused() || this.pendingRoll || this.pendingLock) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
-    const open = this.question(questionId)?.content.kind !== "youtube";
+    const open = !isClip(this.question(questionId)?.content);
     try {
       this.game = buzzIn(this.game, teamId, questionId, open);
     } catch (err) {
@@ -3232,7 +3245,7 @@ export class DungeonRoom {
 
   /** Whether the boss question is open to buzzing without a ▶: shown, and not a video (as handleTeamBuzz decides). */
   private openWithoutPlay(): boolean {
-    return !this.paused() && !!this.game && this.question(this.game.boss.currentQuestionId)?.content.kind !== "youtube";
+    return !this.paused() && !!this.game && !isClip(this.question(this.game.boss.currentQuestionId)?.content);
   }
 
   private buzzCategories(): { buzzCategories?: string[] } {

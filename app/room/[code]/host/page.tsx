@@ -571,9 +571,15 @@ export default function HostPage() {
       </Panel>
       {/* The answered question's video is up again on the big screen (D17). */}
       {/* …or an Instagram explanation, which only someone at the screen can start (instagram-explanations.md). */}
-      {(game.reveal?.video || game.reveal?.explanation?.kind === "instagram") && (
+      {/* …or an uploaded video/audio explanation, in the question video's place (uploaded-media.md D4). */}
+      {(game.reveal?.video || game.reveal?.explanation?.kind === "instagram" || game.reveal?.explanation?.kind === "file") && (
         <Panel tone="lav" className="px-3 pb-2 pt-1">
-          <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} instagram={!game.reveal.video} />
+          <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} instagram={game.reveal.explanation?.kind === "instagram"} />
+          {game.clipError && (
+            <div data-testid="host-reveal-clip-error" role="alert" className="mt-2 p-2 text-[15px]" style={{ background: "#ffd6dc", boxShadow: "0 0 0 3px var(--k)" }}>
+              大螢幕：這支影片放不出來，按 ▶ 再試一次
+            </div>
+          )}
         </Panel>
       )}
       <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: toServe ? "HOST_SERVE" : "HOST_NEXT", eventId: game.eventId })}>

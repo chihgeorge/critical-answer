@@ -13,7 +13,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
 import { UNSET_CORRECT_INDEX, blankQuestion, withCategory, withField } from "@/lib/bank-editor-question";
-import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
+import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, MEDIA_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
+import { MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from "@/lib/bank-image-api";
 import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
@@ -78,7 +79,7 @@ const toReward = (v: string) => Math.max(0, Math.floor(Number(v) || 0));
  * reasoning multipleChoice's correctIndex sentinel already needed. */
 function contentError(label: string, c: MediaContent | undefined): string | null {
   if (!c) return null;
-  if (!c.value.trim()) return `${label}還沒填完（${c.kind === "image" ? "還沒上傳圖片" : c.kind === "youtube" || c.kind === "instagram" ? "還沒貼網址" : "是空的"}）`;
+  if (!c.value.trim()) return `${label}還沒填完（${c.kind === "image" ? "還沒上傳圖片" : c.kind === "video" || c.kind === "audio" ? "還沒上傳" : c.kind === "youtube" || c.kind === "instagram" ? "還沒貼網址" : "是空的"}）`;
   // ClipFields stores NaN for a time it can't read, so 儲存 refuses it instead of keeping the last good one.
   if (Number.isNaN(c.start) || Number.isNaN(c.end)) return `${label}的時間看不懂（請打 1:05 或 65）`;
   if (c.end !== undefined && c.end <= (c.start ?? 0)) return `${label}的結束時間要在開始時間之後`;
@@ -309,28 +310,33 @@ export default function BankEditorPage() {
     });
   };
 
-  /** Uploads an image file to /api/bank/image and returns its R2 key, or throws with a message
-   * suitable for display. Called from MediaPicker; kept here so it can use the same ownerKey the
-   * rest of the page already has. */
-  const uploadImage = async (file: File): Promise<string> => {
+  /** Uploads an image, video or audio file to /api/bank/image and returns its R2 key and the type the server found,
+   * or throws with a message suitable for display. XHR, not fetch: fetch reports no upload progress. Called from
+   * MediaPicker; kept here so it can use the same ownerKey the rest of the page already has. */
+  const uploadImage: UploadFn = (file, onProgress, signal) => {
     // The count drops just before MediaPicker's onChange writes the key: both land in the same render, before any click.
     setUploads((n) => n + 1);
-    try {
-      const res = await fetch(bankImageApiBase(), {
-        method: "POST",
-        headers: { Authorization: `Bearer ${ownerKey}`, "Content-Type": file.type },
-        body: file,
-        signal: AbortSignal.timeout(IMAGE_UPLOAD_TIMEOUT_MS),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const { key } = (await res.json()) as { key: string };
-      return key;
-    } catch (err) {
-      // A timed-out fetch rejects with the browser's own English text.
-      throw err instanceof DOMException && err.name === "TimeoutError" ? new Error("上傳逾時，請再試一次") : err;
-    } finally {
-      setUploads((n) => n - 1);
-    }
+    return new Promise<Uploaded>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", bankImageApiBase());
+      xhr.setRequestHeader("Authorization", `Bearer ${ownerKey}`);
+      if (file.type) xhr.setRequestHeader("Content-Type", file.type);
+      xhr.timeout = file.type.startsWith("image/") ? IMAGE_UPLOAD_TIMEOUT_MS : MEDIA_UPLOAD_TIMEOUT_MS;
+      xhr.upload.onprogress = (e) => onProgress(e.loaded);
+      xhr.onload = () => {
+        if (xhr.status < 200 || xhr.status >= 300) return reject(new Error(xhr.responseText || `上傳失敗（${xhr.status}）`));
+        try {
+          resolve(JSON.parse(xhr.responseText) as Uploaded);
+        } catch {
+          reject(new Error("上傳失敗，請再試一次"));
+        }
+      };
+      xhr.onerror = () => reject(new Error("上傳失敗，請檢查網路再試一次"));
+      xhr.ontimeout = () => reject(new Error("上傳逾時，請再試一次"));
+      xhr.onabort = () => reject(new Error("已取消上傳"));
+      signal.addEventListener("abort", () => xhr.abort());
+      xhr.send(file);
+    }).finally(() => setUploads((n) => n - 1));
   };
 
   return (
@@ -373,7 +379,7 @@ export default function BankEditorPage() {
           }}
           disabled={!ownerKey || busy}
         >
-          {loading ? "載入中…" : uploads > 0 ? "圖片上傳中…" : "載入題庫"}
+          {loading ? "載入中…" : uploads > 0 ? "上傳中…" : "載入題庫"}
         </PixelButton>
         <button
           type="button"
@@ -513,7 +519,7 @@ export default function BankEditorPage() {
             );
           })()}
           <PixelButton variant="primary" onClick={() => void save(bank)} disabled={busy || readOnly}>
-            {saving ? "儲存中…" : uploads > 0 ? "圖片上傳中…" : "儲存全部變更"}
+            {saving ? "儲存中…" : uploads > 0 ? "上傳中…" : "儲存全部變更"}
           </PixelButton>
           {lastSaved !== null && lastSaved === bank && <div data-testid="bank-saved" role="status" className="text-[15px]" style={{ color: "var(--ok)" }}>✓ 已儲存</div>}
         </>
@@ -710,7 +716,7 @@ function RoomEditor({
   onUpdate: (id: string, updater: (q: BankQuestion) => BankQuestion) => void;
   onDelete: (id: string) => void;
   onAdd: () => void;
-  onUploadImage: (file: File) => Promise<string>;
+  onUploadImage: UploadFn;
 }) {
   const hintId = useId();
   const difficultyHintId = useId();
@@ -754,7 +760,24 @@ function RoomEditor({
   );
 }
 
-/** Picks text / uploaded image / YouTube video for one content slot (a question's `content`, or
+interface Uploaded {
+  key: string;
+  contentType: string;
+}
+type UploadFn = (file: File, onProgress: (loaded: number) => void, signal: AbortSignal) => Promise<Uploaded>;
+type UploadKind = "image" | "video" | "audio";
+const UPLOAD: Record<UploadKind, { name: string; accept: string }> = {
+  image: { name: "圖片", accept: "image/png,image/jpeg,image/webp" },
+  video: { name: "影片", accept: "video/mp4" },
+  audio: { name: "聲音", accept: "audio/mp4,audio/x-m4a,audio/mpeg,.m4a,.mp3" },
+};
+// An older Worker answers { key } alone: that was always an image (review).
+const kindOfType = (contentType = "image/"): UploadKind => (contentType.startsWith("video/") ? "video" : contentType.startsWith("audio/") ? "audio" : "image");
+const mb = (bytes: number) => (bytes / 1024 / 1024).toFixed(1);
+/** Longer than this, a clip drags on stage: a hint, not a limit. */
+const LONG_CLIP_SECONDS = 90;
+
+/** Picks text / uploaded image / YouTube video / uploaded video or audio for one content slot (a question's `content`, or
  * its optional `explanation`). Switching media type discards the prior value immediately — no
  * draft-preservation across kinds — with a native `confirm()` first if the slot being switched
  * away from is non-empty (docs/designs/question-media-content.md's R1-6 decision; this is new UI
@@ -773,10 +796,19 @@ function MediaPicker({
   label: string;
   value: MediaContent | undefined;
   onChange: (next: MediaContent | undefined) => void;
-  onUploadImage: (file: File) => Promise<string>;
+  onUploadImage: UploadFn;
   allowNone?: boolean;
 }) {
   const [uploading, setUploading] = useState(false);
+  /** Bytes sent and the file's size while uploading. */
+  const [progress, setProgress] = useState<{ sent: number; total: number } | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  /** The file just uploaded, played from this browser to check it (not from R2). */
+  const [local, setLocal] = useState<{ url: string; name: string; size: number; kind: UploadKind } | null>(null);
+  const [note, setNote] = useState("");
+  useEffect(() => () => {
+    if (local) URL.revokeObjectURL(local.url);
+  }, [local]);
   /** The upload's or the pasted YouTube link's problem, if any. */
   const [error, setError] = useState("");
   const [youtubeInput, setYoutubeInput] = useState(value?.kind === "youtube" ? value.value : "");
@@ -792,20 +824,34 @@ function MediaPicker({
     if (kind !== "none" && value !== undefined && value.kind === kind) return;
     if (hasContent && !window.confirm("換媒材類型會清空目前已填的內容，確定嗎？")) return;
     setError("");
+    setNote("");
+    setLocal(null);
     setYoutubeInput("");
     onChange(kind === "none" ? undefined : { kind, value: "" });
   };
 
-  const handleFile = async (file: File) => {
-    setUploading(true);
+  const handleFile = async (file: File, tab: UploadKind) => {
     setError("");
+    setNote("");
+    // The server checks again; this saves a 25 MB upload only to hear it is too big.
+    const max = file.type.startsWith("image/") ? MAX_IMAGE_BYTES : MAX_MEDIA_BYTES;
+    if (file.size > max) return setError(max === MAX_IMAGE_BYTES ? "圖片超過 5 MB，請先縮小" : "影片或聲音超過 25 MB，請先剪短或壓縮");
+    setUploading(true);
+    setProgress({ sent: 0, total: file.size });
+    abort.current = new AbortController();
     try {
-      const key = await onUploadImage(file);
-      onChange({ kind: "image", value: key });
+      const { key, contentType } = await onUploadImage(file, (sent) => setProgress({ sent, total: file.size }), abort.current.signal);
+      const kind = kindOfType(contentType);
+      // The server's sniffing decides the kind: a video picked under 聲音 lands under 影片.
+      if (kind !== tab) setNote(`這是${UPLOAD[kind].name}檔，已放到「${UPLOAD[kind].name}」`);
+      setLocal(kind === "image" ? null : { url: URL.createObjectURL(file), name: file.name, size: file.size, kind });
+      onChange({ kind, value: key });
     } catch (err) {
       setError(err instanceof Error ? err.message : "上傳失敗");
     } finally {
       setUploading(false);
+      setProgress(null);
+      abort.current = null;
     }
   };
 
@@ -831,10 +877,10 @@ function MediaPicker({
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
         <span className="text-[13px] text-black/60">{label}</span>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {/* Instagram only as an explanation: the host cannot play it (docs/designs/instagram-explanations.md). */}
-          {(["text", "image", "youtube", ...(allowNone ? (["instagram", "none"] as const) : [])] as const).map((kind) => {
-            const kindLabel = { text: "文字", image: "圖片", youtube: "YouTube", instagram: "Instagram", none: "無" }[kind];
+          {(["text", "image", "youtube", "video", "audio", ...(allowNone ? (["instagram", "none"] as const) : [])] as const).map((kind) => {
+            const kindLabel = { text: "文字", image: "圖片", youtube: "YouTube", video: "影片", audio: "聲音", instagram: "Instagram", none: "無" }[kind];
             const pressed = kind === "none" ? value === undefined : current.kind === kind;
             return (
               <button
@@ -860,8 +906,9 @@ function MediaPicker({
           value={current.value}
           onChange={(e) => onChange({ kind: "text", value: e.target.value })}
         />
-      ) : current.kind === "image" ? (
-        <div className="flex items-center gap-2">
+      ) : current.kind === "image" || current.kind === "video" || current.kind === "audio" ? (
+        <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Native file inputs can't be restyled directly — sr-only + a px-btn label is the
               standard pattern, so this matches the page's other pixel-styled controls instead
               of showing the browser's default control (design review finding). */}
@@ -872,21 +919,41 @@ function MediaPicker({
             // finding, /ship).
             id={`image-upload-${fieldId}`}
             type="file"
-            accept="image/png,image/jpeg,image/webp"
-            aria-label={`上傳${label}圖片`}
+            accept={UPLOAD[current.kind].accept}
+            aria-label={`上傳${label}${UPLOAD[current.kind].name}`}
             disabled={uploading}
             className="sr-only"
             onChange={(e) => {
               const file = e.target.files?.[0];
               e.target.value = ""; // lets re-selecting the same file re-trigger onChange
-              if (file) void handleFile(file);
+              if (file) void handleFile(file, current.kind as UploadKind);
             }}
           />
           <label htmlFor={`image-upload-${fieldId}`} className={`px-btn${uploading ? " pointer-events-none opacity-55" : ""}`}>
-            選擇圖片
+            選擇{UPLOAD[current.kind].name}
           </label>
-          {uploading && <span className="text-[13px]">上傳中…</span>}
+          {uploading && progress && (
+            <>
+              <span className="text-[13px]" aria-live="polite">
+                上傳中 {progress.total ? Math.floor((progress.sent / progress.total) * 100) : 0}%（{mb(progress.sent)}／{mb(progress.total)} MB）
+              </span>
+              <button type="button" className="px-btn !px-2 !py-1 text-[12px]" onClick={() => abort.current?.abort()}>
+                取消
+              </button>
+            </>
+          )}
           {current.value && !uploading && <span className="text-[13px]">已上傳（{current.value.slice(0, 8)}…）</span>}
+        </div>
+        {uploading && progress && (
+          // Pixel bar: a 4px outline and a stepped fill, no smooth animation (DESIGN.md).
+          <div aria-hidden className="h-[12px] w-full max-w-[320px] bg-white" style={{ boxShadow: "0 0 0 4px var(--k)" }}>
+            <div className="h-full bg-[var(--ok)]" style={{ width: `${progress.total ? Math.floor((progress.sent / progress.total) * 20) * 5 : 0}%` }} />
+          </div>
+        )}
+        {current.kind !== "image" && !uploading && !current.value && (
+          <span className="text-[12px] text-black/60">影片用 MP4（H.264／AAC），聲音用 M4A 或 MP3，每個檔案 25 MB 以內。</span>
+        )}
+        {local && local.kind === current.kind && current.value && !uploading && <LocalPreview {...local} />}
         </div>
       ) : current.kind === "instagram" ? (
         <InstagramFields label={label} value={current} onChange={onChange} />
@@ -902,10 +969,41 @@ function MediaPicker({
           <ClipFields label={label} value={current} onChange={onChange} audioOnly={!allowNone} />
         </>
       )}
+      {note && <span className="text-[13px]">{note}</span>}
       {error && (
         <Panel role="alert" className="text-[13px]" style={{ background: "#ffd9d9" }}>
           {error}
         </Panel>
+      )}
+    </div>
+  );
+}
+
+/** The file just uploaded, played from this browser: its name, length and size, and whether a browser can play it. */
+function LocalPreview({ url, name, size, kind }: { url: string; name: string; size: number; kind: UploadKind }) {
+  const [seconds, setSeconds] = useState<number | null>(null);
+  const [broken, setBroken] = useState(false);
+  const onMeta = (e: React.SyntheticEvent<HTMLMediaElement>) => {
+    const el = e.currentTarget;
+    setSeconds(el.duration);
+    // An HEVC or other codec this browser can't decode: no picture, though the container passed the server.
+    if (el instanceof HTMLVideoElement && el.videoWidth === 0) setBroken(true);
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[12px] [overflow-wrap:anywhere]">
+        {name}・{seconds === null ? "…" : formatClipTime(Math.round(seconds))}・{mb(size)} MB
+      </span>
+      {seconds !== null && seconds > LONG_CLIP_SECONDS && <span className="text-[12px]">超過 {LONG_CLIP_SECONDS} 秒，台上可能太長</span>}
+      {broken && (
+        <span role="alert" className="text-[13px]" style={{ color: "var(--danger)" }}>
+          {kind === "video" ? "這支影片瀏覽器放不出來，請轉成 H.264／AAC 再上傳" : "這個聲音檔瀏覽器放不出來，請轉成 M4A（AAC）或 MP3 再上傳"}
+        </span>
+      )}
+      {kind === "video" ? (
+        <video src={url} controls playsInline className="max-w-[320px]" onLoadedMetadata={onMeta} onError={() => setBroken(true)} />
+      ) : (
+        <audio src={url} controls onLoadedMetadata={onMeta} onError={() => setBroken(true)} />
       )}
     </div>
   );
@@ -1035,7 +1133,7 @@ function QuestionRow({
   question: BankQuestion;
   onUpdate: (updater: (q: BankQuestion) => BankQuestion) => void;
   onDelete: () => void;
-  onUploadImage: (file: File) => Promise<string>;
+  onUploadImage: UploadFn;
 }) {
   return (
     <div data-testid={`question-${q.id}`} className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">

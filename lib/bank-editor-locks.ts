@@ -6,6 +6,8 @@ export const BANK_LOAD_TIMEOUT_MS = 15_000;
 /** An image upload gives up after this long, so a hung one doesn't lock the editor forever. Long enough for a 5 MB
  * image on slow Wi-Fi (about 0.35 Mbps). */
 export const IMAGE_UPLOAD_TIMEOUT_MS = 120_000;
+/** The same for a video or audio file: 25 MB at about 0.25 Mbps (docs/designs/uploaded-media.md D5). */
+export const MEDIA_UPLOAD_TIMEOUT_MS = 900_000;
 
 /**
  * Every in-flight request ends in setBank: a load or a save with the server's bank, an upload with its new image key.

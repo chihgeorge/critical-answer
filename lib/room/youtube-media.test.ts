@@ -299,6 +299,41 @@ describe("the screen key", () => {
     expect(JSON.stringify(g.io.broadcast.mock.calls)).not.toContain(SHORT);
   });
 
+  // Value: protects=an uploaded clip's R2 URL reaches only the host and a keyed screen, as question and as explanation (uploaded-media.md D3); fails_when=the key rides on STATE, or the reveal drops the clip / audioOnly; seam=none; no_claim=the <video> element itself
+  it("an uploaded audio question and video explanation: STATE hides the key; the host and a keyed screen get the URL; ▶ works on the explanation", () => {
+    const KEY_A = "11111111-1111-1111-1111-111111111111";
+    const KEY_V = "22222222-2222-2222-2222-222222222222";
+    const BASE = "https://media.example.com";
+    const upload = (id: string, explanation?: object) => ({ kind: "text", id, content: { kind: "audio", value: KEY_A }, answer: `答案 ${id}`, ...(explanation ? { explanation } : {}) });
+    const g = game([upload("u1"), upload("u2")]);
+    (g.io as unknown as { env: object }).env = { R2_PUBLIC_BASE_URL: BASE };
+    const keyed = screen(g.room, "keyed", keyOf(g.host));
+    const bare = screen(g.room, "bare");
+    expect(g.state().question.content).toEqual({ kind: "youtube", audioOnly: true });
+    expect(videoOf(keyed)).toEqual({ type: "SCREEN_VIDEO", questionId: g.state().question.id, video: { kind: "file", url: `${BASE}/${KEY_A}`, audioOnly: true } });
+    g.media("play");
+    expect(g.state().media).toMatchObject({ state: "playing" });
+    // No explanation: the reveal keeps the clip where it stopped, still sound only.
+    g.correct();
+    expect(g.state().reveal.video).toEqual({ kind: "youtube", audioOnly: true });
+    g.media("play", g.state().reveal.questionId);
+    expect(g.state().media).toMatchObject({ questionId: g.state().reveal.questionId, state: "playing" });
+    for (const conn of [g.phone, bare]) expect(JSON.stringify(sentTo(conn))).not.toContain(KEY_A);
+    expect(JSON.stringify(g.io.broadcast.mock.calls)).not.toContain(KEY_A);
+
+    const e = game([upload("u1", { kind: "video", value: KEY_V }), upload("u2", { kind: "video", value: KEY_V })]);
+    (e.io as unknown as { env: object }).env = { R2_PUBLIC_BASE_URL: BASE };
+    const eKeyed = screen(e.room, "keyed", keyOf(e.host));
+    e.correct();
+    const reveal = e.state().reveal;
+    expect(reveal.explanation).toEqual({ kind: "file" });
+    expect(reveal.video).toBeUndefined();
+    for (const conn of [e.host, eKeyed]) expect(videoOf(conn)).toEqual({ type: "SCREEN_VIDEO", questionId: reveal.questionId, video: { kind: "file", url: `${BASE}/${KEY_V}` } });
+    e.media("play", reveal.questionId);
+    expect(e.state().media).toMatchObject({ questionId: reveal.questionId, state: "playing" });
+    expect(JSON.stringify([sentTo(e.phone), e.io.broadcast.mock.calls])).not.toContain(KEY_V);
+  });
+
   it("tells a big screen whether its key was taken, so it can say it will play no video", () => {
     const g = game([video("v1"), video("v2")]);
     const ack = (conn: { send: ReturnType<typeof vi.fn> }) => sentTo(conn).findLast((m) => m.type === "SCREEN_KEY");

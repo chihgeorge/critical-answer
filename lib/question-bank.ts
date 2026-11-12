@@ -16,7 +16,7 @@
 // lib/question-bank-data.ts.
 
 import { DEFAULT_BOSS_DIFFICULTY, DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./game-state";
-import { MAX_FIELDS, MAX_ID, type HiddenInstagram, type HiddenVideo, type InstagramVideo, type PublicMediaContent, type PublicQuestion } from "./protocol";
+import { MAX_FIELDS, MAX_ID, type FileVideo, type HiddenFile, type HiddenInstagram, type HiddenVideo, type InstagramVideo, type PublicMediaContent, type PublicQuestion } from "./protocol";
 import { catalogMonster, monsterById, variantOf } from "./monster-catalog";
 import { YOUTUBE_ID_RE } from "./youtube";
 import { INSTAGRAM_SHORTCODE_RE } from "./instagram";
@@ -27,8 +27,9 @@ import { SORT_ITEMS } from "./sort-order";
  * REPLACES the old fixed `text` prompt, it doesn't decorate it — a `kind: "image"` question shows
  * only the image, no separate prompt line). */
 export interface MediaContent {
-  /** instagram: explanation slot only, `value` is the shortcode (docs/designs/instagram-explanations.md). */
-  kind: "text" | "image" | "youtube" | "instagram";
+  /** instagram: explanation slot only, `value` is the shortcode (docs/designs/instagram-explanations.md).
+   * video/audio: an uploaded MP4 or M4A/MP3, `value` is its R2 key like an image's (docs/designs/uploaded-media.md). */
+  kind: "text" | "image" | "youtube" | "instagram" | "video" | "audio";
   value: string;
   /** youtube only, content slot only: a music question. The screen covers the video and plays the
    * sound (docs/designs/youtube-questions.md D3). */
@@ -78,7 +79,10 @@ export const FIELD_SEP = "／";
 export const fieldsAnswer = (fields: AnswerField[]): string => fields.map((f) => f.answer.trim()).join(FIELD_SEP);
 /** A music question: a fill-in whose content is a YouTube video played as sound only. Only these may have fields, and
  * only in a buzzer phase (docs/designs/multi-field.md). */
-export const isMusicQuestion = (q: BankQuestion): boolean => q.kind === "text" && q.content.kind === "youtube" && q.content.audioOnly === true;
+export const isMusicQuestion = (q: BankQuestion): boolean =>
+  q.kind === "text" && ((q.content.kind === "youtube" && q.content.audioOnly === true) || q.content.kind === "audio");
+/** Content the host plays on the big screen: a YouTube video or an uploaded video/audio file. */
+export const isClip = (c: { kind: MediaContent["kind"] } | undefined): boolean => c?.kind === "youtube" || c?.kind === "video" || c?.kind === "audio";
 
 /** Judged by the room from the team's lock, never by the host's 答對 (multiple choice and sort). */
 export const isAutoJudged = (q: { kind: BankQuestion["kind"] } | undefined): boolean => q?.kind === "multipleChoice" || q?.kind === "sort";
@@ -161,10 +165,10 @@ function parseMediaContent(raw: unknown, where: string, slot: "content" | "expla
   if (!m || typeof m !== "object") fail(`${where} has no content`);
   const { kind, value, audioOnly, start, end } = m!;
   if (typeof value !== "string" || !value.trim()) fail(`${where} content has no value`);
-  if (kind === "image" && !UUID_RE.test(value as string)) fail(`${where} has an invalid image key`);
+  if ((kind === "image" || kind === "video" || kind === "audio") && !UUID_RE.test(value as string)) fail(`${where} has an invalid ${String(kind)} key`);
   else if (kind === "youtube" && !YOUTUBE_ID_RE.test(value as string)) fail(`${where} has an invalid YouTube video id`);
   else if (kind === "instagram" && !INSTAGRAM_SHORTCODE_RE.test(value as string)) fail(`${where} has an invalid Instagram shortcode`);
-  else if (kind !== "text" && kind !== "image" && kind !== "youtube" && kind !== "instagram") fail(`${where} content has unknown kind ${String(kind)}`);
+  else if (kind !== "text" && kind !== "image" && kind !== "youtube" && kind !== "instagram" && kind !== "video" && kind !== "audio") fail(`${where} content has unknown kind ${String(kind)}`);
   // The embed cannot be played by the host, so a question's own content cannot wait on it (instagram-explanations.md).
   if (kind === "instagram" && slot === "content") fail(`${where} content cannot be an Instagram video, only its explanation can`);
   const clip = audioOnly !== undefined || start !== undefined || end !== undefined;
@@ -509,6 +513,8 @@ export function publicMediaContent(c: MediaContent, imageBaseUrl: string, questi
   }
   // parseMediaContent keeps Instagram out of `content`; an explanation's goes through publicExplanation.
   if (c.kind === "instagram") throw new Error(`question ${questionId}: an Instagram video has no public form`);
+  // The URL goes out in SCREEN_VIDEO only (fileVideo); STATE carries hiddenVideo / HiddenFile.
+  if (c.kind === "video" || c.kind === "audio") throw new Error(`question ${questionId}: an uploaded ${c.kind} has no public form`);
   if (!imageBaseUrl || imageBaseUrl.includes("REPLACE-ME")) {
     console.error(JSON.stringify({ event: "image_base_url_missing", questionId }));
   }
@@ -516,7 +522,18 @@ export function publicMediaContent(c: MediaContent, imageBaseUrl: string, questi
 }
 
 /** A question's video as every connection may see it: that it is one, and whether only its sound plays. */
-export const hiddenVideo = (c: { audioOnly?: boolean }): HiddenVideo => ({ kind: "youtube", ...(c.audioOnly ? { audioOnly: true as const } : {}) });
+// shortcut: an uploaded clip rides the YouTube marker so every big-screen/host branch reuses it; give it its own kind if their behavior splits.
+export const hiddenVideo = (c: { kind?: MediaContent["kind"]; audioOnly?: boolean }): HiddenVideo => ({
+  kind: "youtube",
+  ...(c.audioOnly || c.kind === "audio" ? { audioOnly: true as const } : {}),
+});
+
+/** An uploaded video/audio for SCREEN_VIDEO: only the host pages and keyed big screens get its URL. */
+export const fileVideo = (c: MediaContent, imageBaseUrl: string): FileVideo => {
+  // Same warning as an image's: an unset base would only show as 影片無法播放 on the big screen.
+  if (!imageBaseUrl || imageBaseUrl.includes("REPLACE-ME")) console.error(JSON.stringify({ event: "image_base_url_missing", key: c.value }));
+  return { kind: "file", url: `${imageBaseUrl}/${c.value}`, ...(c.kind === "audio" ? { audioOnly: true as const } : {}) };
+};
 
 /** An Instagram explanation for SCREEN_VIDEO: only the host pages and keyed big screens get it. */
 export const instagramVideo = (c: MediaContent): InstagramVideo => ({ kind: "instagram", shortcode: c.value, ...(c.end !== undefined ? { end: c.end } : {}) });
@@ -543,7 +560,7 @@ export function publicQuestion(
   const q = inShownOrder(found, order);
   const m = catalogMonster(q.boss ? (monsters?.boss ?? bank.boss.monster) : (monsters?.room ?? (bank.rooms[roomIndex] ?? bank.rooms[0]).monster));
   const v = look ? variantOf(look.seed, m, look.defeats[m.id] ?? 0) : null;
-  const content = publicMediaContent(q.content, imageBaseUrl, q.id);
+  const content = q.content.kind === "video" || q.content.kind === "audio" ? hiddenVideo(q.content) : publicMediaContent(q.content, imageBaseUrl, q.id);
   return {
     id: q.id,
     // A video's id never rides on the question: its YouTube title gives a music question away (HiddenVideo).
@@ -571,10 +588,12 @@ export function sortShownOrder(order: number[] | undefined): number[] {
  * separately from publicQuestion() (never attached to the in-play question, which would leak it
  * before the answer is judged). Returns undefined when the question has none. See AnswerReveal in
  * lib/protocol.ts and its D2/D5 decisions. */
-export function publicExplanation(bank: Bank, id: string, imageBaseUrl: string): PublicMediaContent | HiddenInstagram | undefined {
+export function publicExplanation(bank: Bank, id: string, imageBaseUrl: string): PublicMediaContent | HiddenInstagram | HiddenFile | undefined {
   const q = findQuestion(bank, id);
   // Its shortcode goes out in SCREEN_VIDEO only, like a question video's id (screen-video-key.md).
   if (q?.explanation?.kind === "instagram") return { kind: "instagram" };
+  // An uploaded file's URL too: an MP3's ID3 title can name the answer (uploaded-media.md D3).
+  if (q?.explanation?.kind === "video" || q?.explanation?.kind === "audio") return { kind: "file", ...(q.explanation.kind === "audio" ? { audioOnly: true as const } : {}) };
   return q?.explanation ? publicMediaContent(q.explanation, imageBaseUrl, q.id) : undefined;
 }
 
@@ -589,8 +608,7 @@ export function publicExplanation(bank: Bank, id: string, imageBaseUrl: string):
 export function imageKeysOf(bank: Bank): Set<string> {
   const keys = new Set<string>();
   for (const q of allQuestions(bank)) {
-    if (q.content.kind === "image") keys.add(q.content.value);
-    if (q.explanation?.kind === "image") keys.add(q.explanation.value);
+    for (const c of [q.content, q.explanation]) if (c && (c.kind === "image" || c.kind === "video" || c.kind === "audio")) keys.add(c.value);
   }
   return keys;
 }

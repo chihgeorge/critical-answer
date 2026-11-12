@@ -79,6 +79,7 @@ describe("BankStore.putBank", () => {
 
   it("refuses to save over a stored bank it cannot read, and keeps it (a rollback below a newer format)", async () => {
     // The fallback bank is version 1, so a save at version 1 would otherwise replace every custom question.
+    // pregate-literal: BANK_FORMAT=9 the 9 here is the stored bank version, not its format
     const stored = { bank: { rooms: "a format this version can't read" }, version: 9, format: BANK_FORMAT };
     const storage = memoryStorage(stored);
     await expect(new BankStore(storage).putBank(validBank, 1)).rejects.toThrow(/unreadable/);
@@ -100,8 +101,8 @@ describe("BankStore.putBank", () => {
     const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
     await new BankStore(storage).putBank(categorized, 1);
     const stored = (await storage.get("bank")) as { format: number };
-    // The category format sits three below BANK_FORMAT: answer fields (multi-field.md), Instagram explanations and boss difficulties came after it.
-    expect(stored.format).toBe(BANK_FORMAT - 3);
+    // The category format sits four below BANK_FORMAT: answer fields (multi-field.md), Instagram explanations, boss difficulties and uploaded media came after it.
+    expect(stored.format).toBe(BANK_FORMAT - 4);
     // Code at the format before reads it as this code reads a format ahead of its own: unreadable, and a save may not replace it.
     const ahead = memoryStorage({ ...stored, format: BANK_FORMAT + 1 });
     const older = new BankStore(ahead);
@@ -261,6 +262,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
   });
 
   it("deletes nothing while the stored bank is unreadable (the fallback bank is not what's stored)", async () => {
+    // pregate-literal: BANK_FORMAT=9 the 9 here is the stored bank version, not its format
     const { store, storage, alarms, onImagesOrphaned, at } = setup({ format: BANK_FORMAT, bank: { rooms: "a format this version can't read" }, version: 9 });
     await storage.put("pendingImageDeletes", [{ key: KEY, deleteAt: 0 }]);
     at(DELAY);
@@ -441,7 +443,12 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     // An Instagram explanation (instagram-explanations.md) is what format-7 code cannot parse: it stores at 8.
     expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "i1", content: { kind: "text" as const, value: "看" }, answer: "A", explanation: { kind: "instagram" as const, value: "DPPHHjlkTgr" } }] } })).toBe(8); // pregate-literal: BANK_FORMAT=8 an Instagram bank stays at format 8
     // A boss question's own difficulty is what format-8 code would drop: it stores at 9.
-    expect(formatOf({ ...buzzer, boss: { ...buzzer.boss, phases: [{ ...buzzer.boss.phases[0], questions: [{ ...buzzer.boss.phases[0].questions[0], difficulty: 2 as const }] }, ...buzzer.boss.phases.slice(1)] } })).toBe(BANK_FORMAT);
+    expect(formatOf({ ...buzzer, boss: { ...buzzer.boss, phases: [{ ...buzzer.boss.phases[0], questions: [{ ...buzzer.boss.phases[0].questions[0], difficulty: 2 as const }] }, ...buzzer.boss.phases.slice(1)] } })).toBe(9); // pregate-literal: BANK_FORMAT=9 a difficulty-only bank stays at format 9
+    // An uploaded video or audio (uploaded-media.md) is what format-9 code cannot parse: it stores at 10, in either slot.
+    const clip = (content: { kind: "text" | "video" | "audio"; value: string }, explanation?: { kind: "video" | "audio"; value: string }) =>
+      formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "v1", content, answer: "A", ...(explanation ? { explanation } : {}) }] } });
+    expect(clip({ kind: "video", value: "11111111-1111-1111-1111-111111111111" })).toBe(BANK_FORMAT);
+    expect(clip({ kind: "text", value: "看" }, { kind: "audio", value: "11111111-1111-1111-1111-111111111111" })).toBe(BANK_FORMAT);
     const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
     await new BankStore(storage).putBank(sorted, 1);
     expect(await storage.get("bank")).toMatchObject({ version: 2, format: 4 });
