@@ -223,6 +223,9 @@ export type ClientMessage =
   | { type: "HOST_AI_LIMIT"; limit: number }
   /** Join password for new teams; "" lets anyone with the room code join. */
   | { type: "HOST_SET_PASSWORD"; password: string }
+  /** Lobby only: play the next game with bank `bankId` (multi-bank.md). A custom bank needs a host that proved OWNER_KEY
+   * (HOST_AI_KEY source "owner"); the default bank ("default") is open to every host. */
+  | { type: "HOST_SET_BANK"; bankId: string }
   /** Director: replace line `index` (0-based) of narration `eventId` as of edit `rev` (cut to MAX_LINE chars). The room
    * refuses a stale eventId or rev (another host device edited first) and a line the big screen has already read
    * (docs/designs/host-narration-edit.md D3, D9). */
@@ -503,6 +506,10 @@ export type ServerMessage =
   | { type: "TRANSCRIPT"; entries: TranscriptItem[] }
   /** `screenKey`: the room's screen key, for the big screen link on the host page (absent from older servers). */
   | { type: "HOST_OK"; joinPassword: string; screenKey?: string }
+  /** Host-only (multi-bank.md): the banks this host may pick, by name only (the default alone until the host proves
+   * OWNER_KEY), and the one the room plays (`selected`, maybe a bank since deleted: the room keeps its copy).
+   * `loading`: a HOST_SET_BANK is still fetching its bank, so the page holds 開始遊戲. */
+  | { type: "HOST_BANKS"; banks: { id: string; name: string }[]; selected: { id: string; name: string }; loading?: true }
   /** Host-only: the room closes in `minutesLeft` minutes (its 6 hour life is nearly over), null once it no longer
    * does (a HOST_EXTEND_ROOM). Sent by the room's alarm inside the last CLOSE_WARN_MS, on every host claim after that,
    * and after every extension. `canExtend`: false once the room has reached its 24 hour cap. Players and the big
@@ -614,6 +621,8 @@ export const MAX_HEARTS = 20;
 /** Most answer fields a music question has (docs/designs/multi-field.md). */
 export const MAX_FIELDS = 3;
 export const MAX_PASSWORD = 32;
+/** The default bank in HOST_BANKS and HOST_SET_BANK (multi-bank.md): the one every room had before multi-bank. */
+export const DEFAULT_BANK_ENTRY = { id: "default", name: "預設題庫" } as const;
 /** HOST_NEXT_LINE's limit: the AI may add a few characters around it and still fit MAX_LINE. */
 export const MAX_EDIT_LINE = 40;
 /** How-to-play pages before the first question (docs/designs/how-to-play.md D4). */
@@ -714,6 +723,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_SET_PASSWORD": {
       const password = str(m.password, MAX_PASSWORD);
       return password !== null ? { type: "HOST_SET_PASSWORD", password } : null;
+    }
+    case "HOST_SET_BANK": {
+      const bankId = str(m.bankId, 64);
+      return bankId ? { type: "HOST_SET_BANK", bankId } : null;
     }
     case "HOST_EDIT_NARRATION": {
       // The raw ceiling, not MAX_LINE: a scripted line can run past MAX_LINE (long team and monster names), and its

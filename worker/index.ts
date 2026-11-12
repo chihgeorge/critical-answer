@@ -4,8 +4,8 @@ import { entryGate } from "../lib/gate";
 import { positiveMs } from "../lib/room/positive-ms";
 import { oversized, RateLimiter } from "../lib/room/rate-limit";
 import { DungeonRoom, fixedDie, roomMaxLifeMs } from "../lib/room/dungeon-room";
-import { BankStore, IMAGE_CLEANUP_MARGIN_MS, type BankConflict, type VersionedBank } from "../lib/bank-store";
-import { bankOrFallback, handleBankApi, handleGameLogsApi } from "../lib/bank-api";
+import { BankStore, IMAGE_CLEANUP_MARGIN_MS, type BankConflict, type BankEntry, type VersionedBank } from "../lib/bank-store";
+import { bankOrFallback, handleBankApi, handleBanksApi, handleGameLogsApi } from "../lib/bank-api";
 import { appendGameLog, readGameLogs, type GameLog } from "../lib/game-log";
 import { handleBankImageApi } from "../lib/bank-image-api";
 import { handleClientError } from "../lib/client-error-api";
@@ -88,12 +88,28 @@ export class BankStoreDO extends DurableObject<Env> {
     return this.store.queueUploadedImage(key);
   }
 
-  getVersionedBank(): Promise<VersionedBank> {
-    return this.store.getVersionedBank();
+  getVersionedBank(id?: string): Promise<VersionedBank> {
+    return this.store.getVersionedBank(id);
   }
 
-  putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict> {
-    return this.store.putBank(candidate, expectedVersion);
+  putBank(candidate: unknown, expectedVersion: number, id?: string): Promise<VersionedBank | BankConflict> {
+    return this.store.putBank(candidate, expectedVersion, id);
+  }
+
+  listBanks(): Promise<BankEntry[]> {
+    return this.store.listBanks();
+  }
+
+  createBank(name: unknown, copyFrom: string | undefined): Promise<BankEntry> {
+    return this.store.createBank(name, copyFrom);
+  }
+
+  renameBank(id: string, name: unknown): Promise<BankEntry> {
+    return this.store.renameBank(id, name);
+  }
+
+  deleteBank(id: string): Promise<void> {
+    return this.store.deleteBank(id);
   }
 
   /** Finished games' records (lib/game-log.ts) live next to the bank: one owner, one place to read them. */
@@ -106,7 +122,7 @@ export class BankStoreDO extends DurableObject<Env> {
   }
 }
 
-const BANK_DO_NAME = "singleton"; // one bank this round — see docs/designs/question-bank-editor.md NOT in scope
+const BANK_DO_NAME = "singleton"; // one Durable Object holds every bank (docs/designs/multi-bank.md)
 
 /**
  * Cloudflare adapter for the game room: one Durable Object per room code. All game logic lives in
@@ -153,6 +169,13 @@ export class Room extends Server<Env> {
         logGame: (log) => this.env.bank.getByName(BANK_DO_NAME).appendGameLog(log),
         closeAll: (code, reason) => {
           for (const conn of [...this.openSockets()]) conn.close(code, reason);
+        },
+        listBanks: () => this.env.bank.getByName(BANK_DO_NAME).listBanks(),
+        loadBank: async (id) => {
+          const v = await this.env.bank.getByName(BANK_DO_NAME).getVersionedBank(id);
+          // The fallback is not the bank the host picked.
+          if (v.unreadable || v.outdated) throw new Error(`bank ${id} is unreadable`);
+          return v.bank;
         },
       },
       undefined,
@@ -249,13 +272,24 @@ export default {
         readLogs: () => env.bank.getByName(BANK_DO_NAME).gameLogs(),
       });
     }
+    if (pathname === "/api/banks") {
+      const stub = env.bank.getByName(BANK_DO_NAME);
+      return handleBanksApi(request, {
+        ownerKey: env.OWNER_KEY,
+        allowedOrigins: env.ALLOWED_ORIGINS ?? "",
+        listBanks: () => stub.listBanks(),
+        createBank: (name, copyFrom) => stub.createBank(name, copyFrom),
+        renameBank: (id, name) => stub.renameBank(id, name),
+        deleteBank: (id) => stub.deleteBank(id),
+      });
+    }
     if (pathname === "/api/bank" || pathname.startsWith("/api/bank/")) {
       const stub = env.bank.getByName(BANK_DO_NAME);
       return handleBankApi(request, {
         ownerKey: env.OWNER_KEY,
         allowedOrigins: env.ALLOWED_ORIGINS ?? "",
-        getVersionedBank: () => stub.getVersionedBank(),
-        putBank: (candidate, expectedVersion) => stub.putBank(candidate, expectedVersion),
+        getVersionedBank: (id) => stub.getVersionedBank(id),
+        putBank: (candidate, expectedVersion, id) => stub.putBank(candidate, expectedVersion, id),
       });
     }
 

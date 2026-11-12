@@ -94,6 +94,8 @@ export interface RoomSnapshot {
   pacing?: "manual";
   /** A finished game's podium waits for the host's ▶ 下一步. Missing means it does not. */
   revealHeld?: true;
+  /** The custom bank the host picked (multi-bank.md), its name as it was then. Missing means the default bank. */
+  bankChoice?: { id: string; name: string };
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -191,6 +193,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       // Anything but the two values we write is auto, and no held podium.
       pacing: raw.pacing === "manual" ? "manual" : undefined,
       revealHeld: raw.revealHeld === true ? true : undefined,
+      // Only a label: the bank itself is the saved copy. A damaged one reads as the default.
+      bankChoice: isObject(raw.bankChoice) && isString(raw.bankChoice.id) && isString(raw.bankChoice.name) ? { id: raw.bankChoice.id, name: raw.bankChoice.name } : undefined,
       ...(raw.answerSeconds !== undefined ? { answerSeconds: isAnswerSeconds(raw.answerSeconds) ? raw.answerSeconds : 0, answerClock, clipEnded: isString(raw.clipEnded) ? raw.clipEnded : null } : {}),
       game: withUses as GameState | null,
       lateTeams,

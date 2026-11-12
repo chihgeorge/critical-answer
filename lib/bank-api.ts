@@ -4,15 +4,27 @@
 
 import { tokensEqual } from "./tokens";
 import { originAllowed } from "./origin";
-import type { BankConflict, VersionedBank } from "./bank-store";
+// Types only: bank-store.ts imports the bundled bank, and bank-image-api.ts (imported by the editor page) imports this file.
+import type { BankConflict, BankEntry, VersionedBank } from "./bank-store";
+
+/** Error message prefix for an id that names no bank: bank-store.ts throws it, and it becomes a 404 here (only the
+ * message survives RPC). Lives here so this file needs nothing at runtime from bank-store.ts. */
+export const BANK_NOT_FOUND = "bank not found";
 import type { Bank } from "./question-bank";
 import type { GameLog } from "./game-log";
 
 export interface BankApiDeps {
   ownerKey: string | undefined;
   allowedOrigins: string;
-  getVersionedBank(): Promise<VersionedBank>;
-  putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict>;
+  /** `id` is the request's `?id=`, undefined for the default bank (every caller from before multi-bank). */
+  getVersionedBank(id: string | undefined): Promise<VersionedBank>;
+  putBank(candidate: unknown, expectedVersion: number, id: string | undefined): Promise<VersionedBank | BankConflict>;
+}
+
+/** The store's not-found error (only its message survives RPC) as a 404, any other error as `fallback`. */
+function errorResponse(err: unknown, cors: HeadersInit, fallback: string): Response {
+  const message = err instanceof Error ? err.message : fallback;
+  return new Response(message, { status: message.startsWith(BANK_NOT_FOUND) ? 404 : 400, headers: cors });
 }
 
 // ~4x the bundled bank's size; generous headroom, not unbounded. Exported so tests can probe the
@@ -62,8 +74,13 @@ export async function handleBankApi(request: Request, deps: BankApiDeps): Promis
   const authError = ownerAuthResponse(request, deps.ownerKey, cors);
   if (authError) return authError;
 
+  const id = new URL(request.url).searchParams.get("id") ?? undefined;
   if (request.method === "GET") {
-    return Response.json(await deps.getVersionedBank(), { headers: cors });
+    try {
+      return Response.json(await deps.getVersionedBank(id), { headers: cors });
+    } catch (err) {
+      return errorResponse(err, cors, "Invalid bank");
+    }
   }
   if (request.method === "PUT") {
     const contentLength = Number(request.headers.get("Content-Length") ?? "0");
@@ -90,7 +107,7 @@ export async function handleBankApi(request: Request, deps: BankApiDeps): Promis
       return new Response("Missing version — GET the bank first and send back its version", { status: 400, headers: cors });
     }
     try {
-      const result = await deps.putBank(bank, version);
+      const result = await deps.putBank(bank, version, id);
       if ("conflict" in result) {
         return Response.json(
           { error: "Bank was changed by someone else since you loaded it. Reload and try again.", currentVersion: result.currentVersion },
@@ -99,8 +116,49 @@ export async function handleBankApi(request: Request, deps: BankApiDeps): Promis
       }
       return Response.json(result, { headers: cors });
     } catch (err) {
-      return new Response(err instanceof Error ? err.message : "Invalid bank", { status: 400, headers: cors });
+      return errorResponse(err, cors, "Invalid bank");
     }
+  }
+  return new Response("Method not allowed", { status: 405, headers: cors });
+}
+
+export interface BanksApiDeps {
+  ownerKey: string | undefined;
+  allowedOrigins: string;
+  listBanks(): Promise<BankEntry[]>;
+  createBank(name: unknown, copyFrom: string | undefined): Promise<BankEntry>;
+  renameBank(id: string, name: unknown): Promise<BankEntry>;
+  deleteBank(id: string): Promise<void>;
+}
+
+/** Owner-only list of banks (/api/banks): GET lists, POST {name, copyFrom?} creates, PATCH ?id= {name} renames,
+ * DELETE ?id= deletes. The store refuses renaming or deleting the default bank. */
+export async function handleBanksApi(request: Request, deps: BanksApiDeps): Promise<Response> {
+  const cors = corsHeaders(request.headers.get("Origin"), deps.allowedOrigins, "GET, POST, PATCH, DELETE, OPTIONS");
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  const authError = ownerAuthResponse(request, deps.ownerKey, cors);
+  if (authError) return authError;
+  const id = new URL(request.url).searchParams.get("id");
+  const body = async (): Promise<{ name?: unknown; copyFrom?: unknown }> => {
+    if (Number(request.headers.get("Content-Length") ?? "0") > 1000) throw new Error("Payload too large");
+    const text = await request.text();
+    if (new TextEncoder().encode(text).length > 1000) throw new Error("Payload too large");
+    return (JSON.parse(text) ?? {}) as { name?: unknown; copyFrom?: unknown };
+  };
+  try {
+    if (request.method === "GET") return Response.json(await deps.listBanks(), { headers: cors });
+    if (request.method === "POST") {
+      const { name, copyFrom } = await body();
+      return Response.json(await deps.createBank(name, typeof copyFrom === "string" ? copyFrom : undefined), { headers: cors });
+    }
+    if ((request.method === "PATCH" || request.method === "DELETE") && !id) return new Response("Missing id", { status: 400, headers: cors });
+    if (request.method === "PATCH") return Response.json(await deps.renameBank(id!, (await body()).name), { headers: cors });
+    if (request.method === "DELETE") {
+      await deps.deleteBank(id!);
+      return new Response(null, { status: 204, headers: cors });
+    }
+  } catch (err) {
+    return errorResponse(err instanceof SyntaxError ? new Error("Invalid JSON") : err, cors, "Invalid request");
   }
   return new Response("Method not allowed", { status: 405, headers: cors });
 }

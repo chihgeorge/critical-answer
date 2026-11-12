@@ -18,7 +18,7 @@ import { MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from "@/lib/bank-image-api";
 import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
-import { MAX_TEAMS, scoreName } from "@/lib/protocol";
+import { DEFAULT_BANK_ENTRY, MAX_TEAMS, scoreName } from "@/lib/protocol";
 import { bankSize, bankSizeWarning, bankSizeWarningText } from "@/lib/bank-size";
 import { DEFAULT_BOSS_DIFFICULTY, type Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
@@ -31,6 +31,10 @@ import { readStored, writeStored } from "@/lib/stored";
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
 const bankApiBase = () => `${partyHttpBase()}/api/bank`;
 const bankImageApiBase = () => `${bankApiBase()}/image`;
+/** One bank's load/save URL: the default bank keeps the plain URL every Worker understands (multi-bank.md). */
+const bankUrl = (id: string) => (id === DEFAULT_BANK_ENTRY.id ? bankApiBase() : `${bankApiBase()}?id=${encodeURIComponent(id)}`);
+const banksApiBase = () => `${partyHttpBase()}/api/banks`;
+type BankEntry = { id: string; name: string };
 const TEXT_CONTENT: MediaContent = { kind: "text", value: "" };
 
 /** Reads the owner key from localStorage — a per-browser convenience, not the source of truth (the
@@ -146,7 +150,13 @@ export default function BankEditorPage() {
   const [saving, setSaving] = useState(false);
   /** Image uploads in flight: they lock the editor like a load or save (editorBusy). */
   const [uploads, setUploads] = useState(0);
-  const busy = editorBusy({ loading, saving, uploads });
+  /** A create, rename or delete of a bank in flight: it locks the editor like a save. */
+  const [managing, setManaging] = useState(false);
+  const busy = editorBusy({ loading, saving: saving || managing, uploads });
+  /** The bank shown and saved (multi-bank.md): set only by a load that landed, so a save always goes to the bank it
+   * loaded, with that bank's own version. */
+  const [bankId, setBankId] = useState<string>(DEFAULT_BANK_ENTRY.id);
+  const [banks, setBanks] = useState<BankEntry[]>([DEFAULT_BANK_ENTRY]);
   /** The bank the last save returned: while it is still the one shown, the page says 已儲存. An edit or a load makes a new object. */
   const [lastSaved, setLastSaved] = useState<Bank | null>(null);
   /** The stored bank can't be read by this version: what's shown is the bundled fallback, and nothing may be saved. */
@@ -159,35 +169,55 @@ export default function BankEditorPage() {
   // arrived late used to overwrite edits made after a newer load (CI on main, 2026-10-25).
   const loadSeq = useRef(0);
 
-  const load = async (key: string) => {
-    if (!key) return;
+  /** True when this load's bank is the one shown now. */
+  const load = async (key: string, id = bankId): Promise<boolean> => {
+    if (!key) return false;
     const seq = ++loadSeq.current;
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(bankApiBase(), { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(BANK_LOAD_TIMEOUT_MS) });
-      if (seq !== loadSeq.current) return;
+      const headers = { Authorization: `Bearer ${key}` };
+      const [res, listRes] = await Promise.all([
+        fetch(bankUrl(id), { headers, signal: AbortSignal.timeout(BANK_LOAD_TIMEOUT_MS) }),
+        // A Worker from before multi-bank has no list: the default bank alone, as before.
+        fetch(banksApiBase(), { headers, signal: AbortSignal.timeout(BANK_LOAD_TIMEOUT_MS) }).catch(() => null),
+      ]);
+      if (seq !== loadSeq.current) return false;
+      if (listRes?.ok) {
+        const list: unknown = await listRes.json();
+        if (seq !== loadSeq.current) return false;
+        if (Array.isArray(list)) setBanks(list as BankEntry[]);
+      }
+      if (res.status === 404 && id !== DEFAULT_BANK_ENTRY.id) {
+        setLoading(false);
+        if (await load(key, DEFAULT_BANK_ENTRY.id)) setError("那份題庫已經被刪掉了，改載入預設題庫。");
+        return false;
+      }
       if (res.status === 403) {
         setError("Owner key rejected.");
         setBank(null);
         savedBank.current = null;
-        return;
+        return false;
       }
       if (!res.ok) {
         setError(`Load failed: ${res.status}`);
-        return;
+        return false;
       }
       const versioned: { bank: Bank; version: number; unreadable?: true; outdated?: number } = await res.json();
-      if (seq !== loadSeq.current) return;
+      if (seq !== loadSeq.current) return false;
       const stale = [...versioned.bank.rooms.map((r) => r.monster), versioned.bank.boss.monster].some((m) => typeof m !== "string");
       setBank(versioned.bank);
       savedBank.current = versioned.bank;
       setVersion(versioned.version);
+      setBankId(id);
+      setLastSaved(null);
       setReadOnly(!!versioned.unreadable || stale);
       setStaleServer(stale);
       setOutdated(versioned.outdated ?? null);
+      return true;
     } catch {
       if (seq === loadSeq.current) setError("Could not reach the server.");
+      return false;
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
@@ -202,6 +232,58 @@ export default function BankEditorPage() {
   }, [bank]);
 
   const [ownerKey, setOwnerKey] = useOwnerKey((restoredKey) => void load(restoredKey));
+
+  /** Loading another bank replaces the one shown, so unsaved edits would go without a word. */
+  const discardOk = () => bank === savedBank.current || window.confirm("還沒儲存的修改會不見，確定要換？");
+
+  /** A create, rename or delete (/api/banks), then `then` with its answer. The editor stays locked meanwhile. */
+  const manage = async (method: string, query: string, body: object | undefined, then: (res: Response) => Promise<void>) => {
+    setManaging(true);
+    setError("");
+    try {
+      const res = await fetch(`${banksApiBase()}${query}`, {
+        method,
+        headers: { Authorization: `Bearer ${ownerKey}`, "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      if (!res.ok) return setError(res.status === 403 ? "Owner key rejected." : await res.text());
+      setManaging(false);
+      await then(res);
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
+      setManaging(false);
+    }
+  };
+
+  const createBank = (copy: boolean) => {
+    if (!discardOk()) return;
+    const name = window.prompt(copy ? "新題庫的名稱（內容複製預設題庫）" : "新題庫的名稱（從一題範例開始）");
+    if (!name?.trim()) return;
+    void manage("POST", "", { name, ...(copy ? { copyFrom: DEFAULT_BANK_ENTRY.id } : {}) }, async (res) => {
+      const made: BankEntry = await res.json();
+      await load(ownerKey, made.id);
+    });
+  };
+
+  const renameBank = () => {
+    const current = banks.find((b) => b.id === bankId);
+    const name = window.prompt("題庫的新名稱", current?.name ?? "");
+    if (!name?.trim() || name.trim() === current?.name) return;
+    void manage("PATCH", `?id=${encodeURIComponent(bankId)}`, { name }, async (res) => {
+      const renamed: BankEntry = await res.json();
+      setBanks((list) => list.map((b) => (b.id === renamed.id ? renamed : b)));
+    });
+  };
+
+  const deleteBank = () => {
+    const name = banks.find((b) => b.id === bankId)?.name ?? "";
+    if (!window.confirm(`確定刪除「${name}」？刪了不能復原。`)) return;
+    void manage("DELETE", `?id=${encodeURIComponent(bankId)}`, undefined, async () => {
+      savedBank.current = bank; // gone with the bank: nothing left to warn about
+      await load(ownerKey, DEFAULT_BANK_ENTRY.id);
+    });
+  };
 
   /** Every finished game's record as a JSON file (lib/game-log.ts): for tuning boss HP and the entry score. */
   const downloadGameLogs = async () => {
@@ -234,7 +316,7 @@ export default function BankEditorPage() {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(bankApiBase(), {
+      const res = await fetch(bankUrl(bankId), {
         method: "PUT",
         headers: { Authorization: `Bearer ${ownerKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ bank: next, version }),
@@ -399,6 +481,49 @@ export default function BankEditorPage() {
           </Panel>
         )}
       </Panel>
+
+      {bank && version !== null && (
+        <Panel className="flex flex-col gap-2 p-4">
+          <label className="flex items-center gap-2 text-[14px]">
+            題庫
+            <select
+              data-testid="bank-editor-bank"
+              className="px-input min-w-0 flex-1"
+              value={bankId}
+              disabled={busy}
+              onChange={(e) => {
+                if (discardOk()) void load(ownerKey, e.target.value);
+              }}
+            >
+              {/* The bank being edited stays listed even when the list is missing it (an older Worker, deleted in another tab). */}
+              {(banks.some((b) => b.id === bankId) ? banks : [...banks, { id: bankId, name: "（目前編輯的題庫）" }]).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-2 text-[14px]">
+            <PixelButton className="!m-0 !px-3 !py-1 text-[14px]" disabled={busy} onClick={() => createBank(false)}>
+              ＋ 空白題庫
+            </PixelButton>
+            <PixelButton className="!m-0 !px-3 !py-1 text-[14px]" disabled={busy} onClick={() => createBank(true)}>
+              ＋ 複製預設題庫
+            </PixelButton>
+            {bankId !== DEFAULT_BANK_ENTRY.id && (
+              <>
+                <PixelButton className="!m-0 !px-3 !py-1 text-[14px]" disabled={busy} onClick={renameBank}>
+                  改名
+                </PixelButton>
+                <PixelButton className="!m-0 !px-3 !py-1 text-[14px]" disabled={busy} onClick={deleteBank}>
+                  刪除
+                </PixelButton>
+              </>
+            )}
+          </div>
+          <p className="text-[13px]">主持人在開房大廳選題庫；自訂題庫要先輸入站長金鑰才選得到。</p>
+        </Panel>
+      )}
 
       {bank && staleServer && (
         <Panel role="alert" className="p-4 text-[15px]" style={{ background: "#ffd9d9" }}>
