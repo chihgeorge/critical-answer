@@ -41,6 +41,10 @@ describe("A1 e2e", () => {
   it("still sees a command next to quoted text or a heredoc", () => {
     expect(bash(`echo "don't" && npm run e2e && echo 'x'`)).toBe("A1");
     expect(bash("cat <<EOF > f && npm run e2e\nbody\nEOF")).toBe("A1");
+    expect(bash("x=$((1<<2))\nnpm run e2e")).toBe("A1");
+    expect(bash("cat <<< word\nnpm run e2e")).toBe("A1");
+    expect(bash('echo "$(git stash pop)"')).toBe("A2");
+    expect(bash("echo \"`npm run e2e`\"")).toBe("A1");
   });
   it("passes text that only mentions it", () => {
     expect(bash('git commit -m "docs: npm run e2e is CI only"')).toBeNull();
@@ -60,11 +64,13 @@ describe("A2 bare git stash", () => {
     expect(bash("git stash -u")).toBe("A2");
     expect(bash("git -C ../x stash push")).toBe("A2");
     expect(bash("git stash apply")).toBe("A2");
+    expect(bash("git stash push --include-untracked")).toBe("A2");
   });
   it("passes a tagged push and apply by sha", () => {
     expect(bash('git stash push -u -m "lane-x"')).toBeNull();
     expect(bash("git stash apply abc123")).toBeNull();
     expect(bash("git stash list")).toBeNull();
+    expect(bash("git stash push --include-untracked --message tag")).toBeNull();
   });
 });
 

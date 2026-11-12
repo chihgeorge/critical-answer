@@ -41,10 +41,13 @@ export function stripQuoted(cmd: string): string {
   for (const line of cmd.split("\n")) {
     if (end !== null) { if (line.trim() === end) end = null; continue; }
     kept.push(line);
-    end = /<<-?\s*(['"]?)(\w+)\1/.exec(line)?.[2] ?? null;
+    // Not a here-string (<<<) or a shift like $((1<<2)).
+    end = /(?<![<\w)])<<-?(?!<)\s*(['"]?)([A-Za-z_]\w*)\1/.exec(line)?.[2] ?? null;
   }
   // One left-to-right pass, so an apostrophe inside "…" does not pair with a later '.
-  return kept.join("\n").replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, (q) => (q[0] === "'" ? "''" : '""'));
+  // Command substitutions inside "…" still run, so they are kept.
+  return kept.join("\n").replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, (q) =>
+    q[0] === "'" ? "''" : `"${(q.match(/\$\([^)]*\)|`[^`]*`/g) ?? []).join(" ")}"`);
 }
 
 /** The new text a file tool is about to write (old_string is not new, so it is not checked). */
