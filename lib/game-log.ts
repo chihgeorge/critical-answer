@@ -3,7 +3,7 @@
 // answer text. The room hands it to RoomIO.logGame; worker/index.ts stores it in the bank's Durable
 // Object, and the bank editor downloads them all from GET /api/game-logs (owner key only).
 
-import type { ClassId, EventOutcome, ForkRecord, FortuneRecord, GameState } from "./game-state";
+import type { ClassId, EventOutcome, FixRecord, ForkRecord, FortuneRecord, GameState } from "./game-state";
 import { awardTitles } from "./podium";
 
 export interface GameLog {
@@ -53,6 +53,8 @@ export interface GameLog {
     /** 🧪 幸運藥水 the host gave this team, and the ones it drank (docs/designs/lucky-potion.md E8). */
     potionsGiven: number;
     potionsDrunk: number;
+    /** The host's 修正 presses on this team, in order: what changed, from and to (game-state hostFix). Empty in older logs. */
+    fixes: FixRecord[];
     /** 抓包與神諭 (docs/designs/anti-ai-cheating.md): oracles this team used; catches it filed, and how each ended (a
      * cancelled one counts under the reporter). Absent in older logs and in games the switch never met this team. */
     antiCheat?: { oracles: number; catchesFiled: number; upheld: number; dismissed: number; cancelled: number };
@@ -98,6 +100,7 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
       titles: awards.filter((a) => a.teamIds.includes(t.id)).map((a) => a.id),
       potionsGiven: t.potionsGiven ?? 0,
       potionsDrunk: t.potionsDrunk ?? 0,
+      fixes: t.fixes ?? [],
       ...(t.catchesLeft !== undefined
         ? { antiCheat: { oracles: t.oracles ?? 0, catchesFiled: t.catchesFiled ?? 0, upheld: t.catchesUpheld ?? 0, dismissed: t.catchesDismissed ?? 0, cancelled: t.catchesCancelled ?? 0 } }
         : {}),

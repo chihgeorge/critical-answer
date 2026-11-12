@@ -311,6 +311,10 @@ export default function HostPage() {
                 ? "這份題庫現在拿不到，還是用原本的題庫"
                 : msg.detail === "bank_loading"
                 ? "題庫還在載入，等一下再開始"
+                : msg.detail === "lock_pending"
+                ? "這隊還在擲骰、揭曉或等答錯結算，或有隊伍正在開門，等一下再按"
+                : msg.detail === "paused"
+                ? "占卜師的牌還開著，等它收起來再按"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
           );
           setPendingTeamId(null);
@@ -1392,6 +1396,8 @@ export default function HostPage() {
           antiCheat={game?.phase === "playing" ? (game.view.antiCheat?.on ?? false) : undefined}
           screen={game ? screenBlock : null}
           screenAudio={screenAudio}
+          fixable={game?.phase === "playing" ? game.view.teams : []}
+          scoreLabel={game ? scoreName(game.cuisine) : undefined}
         />
       )}
     </main>

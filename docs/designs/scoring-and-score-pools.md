@@ -130,6 +130,10 @@ Mockups: `[owner-local]/designs/scoring-20261025/score-all.png`.
 - Default bank: 8 rooms (3 new monsters: 暴躁幽靈, 熔岩史萊姆王, 冰霜愛哭鬼; v0.40.0.0 replaced them with catalog monsters, see [monster-catalog.md](monster-catalog.md)), 20 new questions (p3-q1..4, p4-q1..4, p5-q1..12), the guessable year ladders and answer-built distractors reworked, and two pool-2 option clashes (端午 / 中秋) fixed.
 - Bank editor (D2=B): tabs 房間 / 難度 1–5 / 首領. The 房間 tab edits each room's difficulty and reward and the boss's hit reward; monster names stay read-only.
 
+## Host corrections (2026-11-12)
+
+⚙ 更多's 修正 (`HOST_FIX`, game-state `hostFix`) moves **reward** points by ±5 (floor 0) and never progress, so a correction never opens or closes the boss door (S13's 送王房 does that). The ranking is read from reward when the game ends, so a correction made before 結束冒險 or the kill counts; after the end, corrections are refused. Each press is kept in the team's `fixes` (game log) and the transcript. Hosting guide: docs/hosting.md.
+
 ## Next Steps
 
 1. ~~`/plan-eng-review`.~~ Done.
