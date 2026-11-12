@@ -4182,8 +4182,10 @@ export class DungeonRoom {
   private handleHostFix(conn: Conn, teamId: string, fix: HostFix) {
     if (!this.requireHost(conn)) return;
     if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
-    // Same holds as 送王房: a die, lock or door in its beat waits until it lands; a fortune's matching teams are fixed (as for 給藥水).
-    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.forkBeat?.teamId === teamId) {
+    // Same holds as 送王房: a die or lock in its beat waits until it lands; a fortune's matching teams are fixed (as for 給藥水).
+    // Any door beat waits too, whoever's door: STATE shows forkBeat.before, so a fix would not show and get pressed twice.
+    // So does the team's wrong answer still waiting (a cleric's 祈禱 choice): ability− could strand it with no way to pray.
+    if (this.forkBeat || this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.game.pendingWrong?.teamId === teamId) {
       return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
     }
     if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });

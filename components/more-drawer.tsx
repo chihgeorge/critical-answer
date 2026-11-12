@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { pressCooldown } from "@/lib/press-cooldown";
 import { getHostToken } from "@/lib/room-code";
 import type { ClientMessage, ScreenAudio } from "@/lib/protocol";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
@@ -54,6 +55,8 @@ export function MoreDrawer({
 }) {
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
+  // 修正 acts on every press: a double tap before the next STATE would apply twice (FIX_COOLDOWN_MS per button).
+  const [fixAllowed] = useState(() => pressCooldown());
   useEffect(() => {
     if (!armed) return;
     const t = setTimeout(() => setArmed(null), 3000);
@@ -113,7 +116,7 @@ export function MoreDrawer({
             <section data-testid="host-fix" className="flex flex-col gap-2">
               <div className="text-[15px]">修正（判錯時用）：大螢幕不會有動畫或旁白，只會換成新的數字；每一下都記在對局紀錄裡。</div>
               {fixable.map((t) => {
-                const fix = (f: HostFix) => send({ type: "HOST_FIX", teamId: t.id, fix: f });
+                const fix = (f: HostFix) => fixAllowed(`${t.id}:${f}`) && send({ type: "HOST_FIX", teamId: t.id, fix: f });
                 const small = "!m-0 min-h-[44px] min-w-[44px] !px-2 !py-0 text-[15px]";
                 const max = t.abilityCap;
                 return (

@@ -312,7 +312,7 @@ export default function HostPage() {
                 : msg.detail === "bank_loading"
                 ? "題庫還在載入，等一下再開始"
                 : msg.detail === "lock_pending"
-                ? "這隊正在擲骰、揭曉或開門，等一下再按"
+                ? "這隊還在擲骰、揭曉或等答錯結算，或有隊伍正在開門，等一下再按"
                 : msg.detail === "paused"
                 ? "占卜師的牌還開著，等它收起來再按"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,

@@ -138,13 +138,25 @@ describe("⚙ 更多 修正", () => {
     expect(g.state().view.teams.find((t: { id: string }) => t.id === B).abilityCap).toBeUndefined();
   });
 
-  it("waits while the team's die is in its beat, or a fortune card is open", () => {
+  it("waits while the team's die or lock is in its beat, any door beat runs, or a fortune card is open", () => {
     const g = started();
-    const room = g.room as unknown as { pendingRoll: unknown; fortuneActive: () => boolean };
-    room.pendingRoll = { teamId: A };
+    const room = g.room as unknown as { pendingRoll: unknown; pendingLock: unknown; forkBeat: unknown; fortuneActive: () => boolean };
+    for (const [slot, value] of [
+      ["pendingRoll", { teamId: A }],
+      ["pendingLock", { teamId: A }],
+      // Another team's door: STATE still shows the game from before it, so A's fix would not show either.
+      ["forkBeat", { teamId: B }],
+    ] as const) {
+      room[slot] = value;
+      g.fix(A, "score+");
+      expect(g.lastTo(g.host)).toMatchObject({ error: "invalid_action", detail: "lock_pending" });
+      room[slot] = null;
+    }
+    // A wrong answer still waiting (a cleric's 祈禱 choice) is mid-resolution too.
+    g.room.game = { ...g.room.game!, pendingWrong: { teamId: A, questionId: "q", optionIndex: null } };
     g.fix(A, "score+");
     expect(g.lastTo(g.host)).toMatchObject({ error: "invalid_action", detail: "lock_pending" });
-    room.pendingRoll = null;
+    g.room.game = { ...g.room.game!, pendingWrong: null };
     room.fortuneActive = () => true;
     g.fix(A, "score+");
     expect(g.lastTo(g.host)).toMatchObject({ error: "invalid_action", detail: "paused" });
