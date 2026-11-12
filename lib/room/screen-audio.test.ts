@@ -42,13 +42,24 @@ function room(storage?: RoomStorage) {
   const broadcastOf = (type: string) => io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === type).at(-1);
   return { room: r, io, host, phone, screen, broadcastOf };
 }
+/** The host turns 🔊 and 🌧 off: the room's setting becomes OFF. */
+const setOff = (g: ReturnType<typeof room>) => {
+  for (const key of ["voice", "ambience"]) send(g.room, g.host, { type: "HOST_SCREEN_AUDIO", key, on: false });
+};
 
 describe("HOST_SCREEN_AUDIO", () => {
-  it("parses three booleans only", () => {
-    expect(parseClientMessage({ type: "HOST_SCREEN_AUDIO", audio: { ...OFF, x: 1 }, y: 2 })).toEqual({ type: "HOST_SCREEN_AUDIO", audio: OFF });
-    for (const audio of [undefined, null, {}, { music: true, voice: true }, { music: 1, voice: true, ambience: true }]) {
-      expect(parseClientMessage({ type: "HOST_SCREEN_AUDIO", audio })).toBeNull();
+  it("parses one known switch and a boolean only", () => {
+    expect(parseClientMessage({ type: "HOST_SCREEN_AUDIO", key: "voice", on: false, y: 2 })).toEqual({ type: "HOST_SCREEN_AUDIO", key: "voice", on: false });
+    for (const [key, on] of [["volume", true], ["music", 1], [undefined, true], ["toString", false], ["ambience", undefined]]) {
+      expect(parseClientMessage({ type: "HOST_SCREEN_AUDIO", key, on })).toBeNull();
     }
+  });
+
+  it("two quick taps on different switches both stick (one switch per message)", () => {
+    const g = room();
+    send(g.room, g.host, { type: "HOST_SCREEN_AUDIO", key: "music", on: false });
+    send(g.room, g.host, { type: "HOST_SCREEN_AUDIO", key: "voice", on: false });
+    expect(g.broadcastOf("LOBBY")).toMatchObject({ screenAudio: { music: false, voice: false, ambience: true } });
   });
 
   it("all on by default: LOBBY and STATE carry no screenAudio, as from an older server", () => {
@@ -64,7 +75,7 @@ describe("HOST_SCREEN_AUDIO", () => {
     const bare = g.screen("bare", false);
     const before = g.io.broadcast.mock.calls.length;
     for (const conn of [g.phone, tv, bare]) {
-      send(g.room, conn, { type: "HOST_SCREEN_AUDIO", audio: OFF });
+      send(g.room, conn, { type: "HOST_SCREEN_AUDIO", key: "voice", on: false });
       expect(last(conn, "ERROR")).toMatchObject({ error: "not_host" });
     }
     expect(g.io.broadcast.mock.calls.length).toBe(before);
@@ -73,7 +84,7 @@ describe("HOST_SCREEN_AUDIO", () => {
 
   it("the host's setting reaches every page, in the lobby and in a game, and a screen gets it on connect", () => {
     const g = room();
-    send(g.room, g.host, { type: "HOST_SCREEN_AUDIO", audio: OFF });
+    setOff(g);
     expect(g.broadcastOf("LOBBY")).toMatchObject({ screenAudio: OFF });
     send(g.room, g.host, { type: "HOST_START", aiNarration: false });
     expect(g.broadcastOf("STATE")).toMatchObject({ screenAudio: OFF });
@@ -81,15 +92,15 @@ describe("HOST_SCREEN_AUDIO", () => {
     const tv = g.screen("tv");
     expect(last(tv, "STATE")).toMatchObject({ screenAudio: OFF });
     // Back to all on: the field goes away.
-    send(g.room, g.host, { type: "HOST_SCREEN_AUDIO", audio: { music: true, voice: true, ambience: true } });
+    for (const key of ["voice", "ambience"]) send(g.room, g.host, { type: "HOST_SCREEN_AUDIO", key, on: true });
     expect(g.broadcastOf("STATE")).not.toHaveProperty("screenAudio");
   });
 
   it("the same setting again sends nothing", () => {
     const g = room();
-    send(g.room, g.host, { type: "HOST_SCREEN_AUDIO", audio: OFF });
+    setOff(g);
     const before = g.io.broadcast.mock.calls.length;
-    send(g.room, g.host, { type: "HOST_SCREEN_AUDIO", audio: OFF });
+    setOff(g);
     expect(g.io.broadcast.mock.calls.length).toBe(before);
   });
 
@@ -97,7 +108,7 @@ describe("HOST_SCREEN_AUDIO", () => {
     const storage = memoryStorage();
     const g = room(storage);
     send(g.room, g.host, { type: "HOST_START", aiNarration: false });
-    send(g.room, g.host, { type: "HOST_SCREEN_AUDIO", audio: { music: false, voice: true, ambience: true } });
+    send(g.room, g.host, { type: "HOST_SCREEN_AUDIO", key: "music", on: false });
     await Promise.resolve();
     const io = { id: "room-1", broadcast: vi.fn(), getConnections: vi.fn(() => []), storage } as unknown as RoomIO;
     const r = new DungeonRoom(io, () => 0, { bank, epilogueDelayMs: 0 });

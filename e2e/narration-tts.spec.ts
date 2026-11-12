@@ -85,7 +85,7 @@ test("screen TTS: no 語音 toggle on the screen; its first tap primes the voice
   // not real narration. A second tap primes nothing more.
   await tapScreen(screen);
   expect(await ttsCalls(screen)).toEqual([""]);
-  await tapScreen(screen);
+  await screen.mouse.click(4, 4); // the sound is awake now, so no unlock button to wait for
   expect(await ttsCalls(screen)).toEqual([""]);
 });
 

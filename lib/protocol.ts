@@ -270,9 +270,10 @@ export type ClientMessage =
   /** ⚡ 雷聲 / 👹 低吼 (docs/designs/immersion.md PR2): the room relays it to keyed big screens as SCREEN_EFFECT, at most
    * one press per HOST_FX_WINDOW_MS per room (extras are dropped silently), and drops it while `clipPlaying`. */
   | { type: "HOST_EFFECT"; effect: HostEffect }
-  /** ⚙ 更多's three sound switches for the big screens (docs/designs/immersion.md PR3): the whole setting each time.
-   * The room keeps it, saves it and sends it in LOBBY and STATE as `screenAudio`. */
-  | { type: "HOST_SCREEN_AUDIO"; audio: ScreenAudio }
+  /** One of ⚙ 更多's three sound switches for the big screens (docs/designs/immersion.md PR3), set to `on`. One switch per
+   * message, so two quick taps never undo each other. The room keeps the setting, saves it and sends it in LOBBY and
+   * STATE as `screenAudio`. */
+  | { type: "HOST_SCREEN_AUDIO"; key: keyof ScreenAudio; on: boolean }
   /** The host rules the open catch: 🚨 成立 (`upheld`) or 🛡️ 冤枉. */
   | { type: "HOST_RULE_CATCH"; upheld: boolean }
   /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
@@ -606,6 +607,7 @@ export type ScreenSound = "ready" | "muted" | "none";
  * cues), 🔊 旁白語音 (the narration voice), 🌧 環境音 (the room ambience). Off silences only that one. */
 export type ScreenAudio = { music: boolean; voice: boolean; ambience: boolean };
 export const DEFAULT_SCREEN_AUDIO: ScreenAudio = { music: true, voice: true, ambience: true };
+export const SCREEN_AUDIO_KEYS = ["music", "voice", "ambience"] as const satisfies readonly (keyof ScreenAudio)[];
 /** A message's or a save's `screenAudio`: three booleans, or null for anything else. */
 export function parseScreenAudio(raw: unknown): ScreenAudio | null {
   if (!raw || typeof raw !== "object") return null;
@@ -827,8 +829,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return effect ? { type: "HOST_EFFECT", effect } : null;
     }
     case "HOST_SCREEN_AUDIO": {
-      const audio = parseScreenAudio(m.audio);
-      return audio ? { type: "HOST_SCREEN_AUDIO", audio } : null;
+      const key = SCREEN_AUDIO_KEYS.find((k) => k === m.key);
+      return key && typeof m.on === "boolean" ? { type: "HOST_SCREEN_AUDIO", key, on: m.on } : null;
     }
     case "HOST_RULE_CATCH":
       return typeof m.upheld === "boolean" ? { type: "HOST_RULE_CATCH", upheld: m.upheld } : null;

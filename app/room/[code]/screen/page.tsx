@@ -1436,14 +1436,17 @@ export default function ScreenPage() {
   /** The switches a LOBBY or STATE carries, applied at once (on connect and reconnect too). 🎵 off stops the music and
    * ③'s heartbeat with it (the host layer still sounds); 🔊 off cuts the voice and drops anything waiting to be read. */
   function applyScreenAudio(next: ScreenAudio) {
+    const voiceWasOn = screenAudio.voice;
     setScreenAudio(next);
     player().setMusic(next.music);
+    bgmOnNow.current = next.music; // now, not after the render: a countdown tick in between must not restart the heartbeat
+    // stopHeart's body, inline: calling it from here makes the React compiler give up on the page's memoization.
     if (!next.music && heart.current) {
       heart.current.cancel();
       heart.current = null;
       setHeartGlow(null);
     }
-    if (next.voice || !ttsSupported()) return;
+    if (!voiceWasOn || next.voice || !ttsSupported()) return; // only when 🔊 turns off, not on every STATE
     speech.current = null; // before cancel(): see speakAt's guard
     window.speechSynthesis.cancel();
     pendingLines.current = null;

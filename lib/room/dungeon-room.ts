@@ -1354,12 +1354,11 @@ export class DungeonRoom {
     return a.music && a.voice && a.ambience ? {} : { screenAudio: a };
   }
 
-  /** HOST_SCREEN_AUDIO (immersion.md PR3): every page gets the new setting, the big screens apply it. */
-  private handleHostScreenAudio(conn: Conn, audio: ScreenAudio) {
+  /** HOST_SCREEN_AUDIO (immersion.md PR3): one switch merged into the setting; every page gets it, the big screens apply it. */
+  private handleHostScreenAudio(conn: Conn, key: keyof ScreenAudio, on: boolean) {
     if (!this.requireHost(conn)) return;
-    const a = this.screenAudio;
-    if (a.music === audio.music && a.voice === audio.voice && a.ambience === audio.ambience) return;
-    this.screenAudio = audio;
+    if (this.screenAudio[key] === on) return;
+    this.screenAudio = { ...this.screenAudio, [key]: on };
     this.broadcastState();
   }
 
@@ -2015,7 +2014,7 @@ export class DungeonRoom {
           this.handleHostEffect(sender, msg.effect);
           break;
         case "HOST_SCREEN_AUDIO":
-          this.handleHostScreenAudio(sender, msg.audio);
+          this.handleHostScreenAudio(sender, msg.key, msg.on);
           break;
         case "HOST_RULE_CATCH":
           this.handleHostRuleCatch(sender, msg.upheld);

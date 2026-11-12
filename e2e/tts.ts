@@ -41,9 +41,13 @@ export async function stubSpeechSynthesis(page: Page) {
 
 export const ttsCalls = (page: Page) => page.evaluate(() => (window as unknown as { __ttsCalls: string[] }).__ttsCalls);
 
-/** A tap on the big screen: its first gesture wakes the sound and primes the voice. The 🔊 / 🎵 switches themselves are
- * the host's, in ⚙ 更多 (immersion.md PR3). A corner of the page: nothing there to press. */
-export const tapScreen = (page: Page) => page.mouse.click(4, 4);
+/** The big screen's first tap: it wakes the sound and primes the voice. The 🔊 / 🎵 switches themselves are the host's,
+ * in ⚙ 更多 (immersion.md PR3). It first waits for an unlock button (the lobby's or 「👆 開聲音」): they render only once the
+ * page has hydrated, so the wake listener is there to catch the tap. A corner of the page: nothing there to press. */
+export async function tapScreen(page: Page) {
+  await expect(page.getByRole("button", { name: /開啟音效與氣氛|開聲音/ }).first()).toBeVisible();
+  await page.mouse.click(4, 4);
+}
 
 /** Sets one of the host's big-screen sound switches in ⚙ 更多 (🎵 音樂, 🔊 旁白語音, 🌧 環境音), then closes the drawer. */
 export async function setScreenAudio(host: Page, name: "🎵 音樂" | "🔊 旁白語音" | "🌧 環境音", on: boolean) {
