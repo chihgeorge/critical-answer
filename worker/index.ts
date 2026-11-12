@@ -88,12 +88,12 @@ export class BankStoreDO extends DurableObject<Env> {
     return this.store.queueUploadedImage(key);
   }
 
-  getVersionedBank(): Promise<VersionedBank> {
-    return this.store.getVersionedBank();
+  getVersionedBank(id?: string): Promise<VersionedBank> {
+    return this.store.getVersionedBank(id);
   }
 
-  putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict> {
-    return this.store.putBank(candidate, expectedVersion);
+  putBank(candidate: unknown, expectedVersion: number, id?: string): Promise<VersionedBank | BankConflict> {
+    return this.store.putBank(candidate, expectedVersion, id);
   }
 
   /** Finished games' records (lib/game-log.ts) live next to the bank: one owner, one place to read them. */
@@ -254,8 +254,8 @@ export default {
       return handleBankApi(request, {
         ownerKey: env.OWNER_KEY,
         allowedOrigins: env.ALLOWED_ORIGINS ?? "",
-        getVersionedBank: () => stub.getVersionedBank(),
-        putBank: (candidate, expectedVersion) => stub.putBank(candidate, expectedVersion),
+        getVersionedBank: (id) => stub.getVersionedBank(id),
+        putBank: (candidate, expectedVersion, id) => stub.putBank(candidate, expectedVersion, id),
       });
     }
 

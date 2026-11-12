@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleBankApi, bankOrFallback, MAX_BANK_BODY_BYTES, type BankApiDeps } from "./bank-api";
-import type { VersionedBank } from "./bank-store";
+import { handleBankApi, handleBanksApi, bankOrFallback, MAX_BANK_BODY_BYTES, type BankApiDeps, type BanksApiDeps } from "./bank-api";
+import { BANK_NOT_FOUND, type VersionedBank } from "./bank-store";
 import { BANK } from "./question-bank-data";
 
 const VERSIONED: VersionedBank = { bank: BANK, version: 1 };
@@ -222,7 +222,7 @@ describe("handleBankApi: PUT", () => {
     const putBank = vi.fn(async () => ({ bank: BANK, version: 2 }));
     const res = await handleBankApi(req("PUT", { auth: `Bearer ${KEY}`, body: { version: 1, bank: BANK } }), deps({ putBank }));
     expect(res.status).toBe(200);
-    expect(putBank).toHaveBeenCalledWith(BANK, 1);
+    expect(putBank).toHaveBeenCalledWith(BANK, 1, undefined);
     expect(await res.json()).toEqual({ bank: BANK, version: 2 });
   });
 });
@@ -245,5 +245,49 @@ describe("bankOrFallback", () => {
         throw new Error("BankStore unreachable");
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("named banks over HTTP (docs/designs/multi-bank.md)", () => {
+  const at = (path: string, method: string, body?: unknown, auth = `Bearer ${KEY}`) =>
+    new Request(`https://worker.example.com${path}`, { method, headers: { Authorization: auth }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const banksDeps = (over: Partial<BanksApiDeps> = {}): BanksApiDeps => ({
+    ownerKey: KEY,
+    allowedOrigins: "",
+    listBanks: vi.fn(async () => [{ id: "default", name: "預設題庫" }]),
+    createBank: vi.fn(async (name) => ({ id: "new", name: String(name) })),
+    renameBank: vi.fn(async (id, name) => ({ id, name: String(name) })),
+    deleteBank: vi.fn(async () => {}),
+    ...over,
+  });
+
+  it("passes ?id= to load and save, and answers an unknown id with 404", async () => {
+    const d = deps({ getVersionedBank: vi.fn(async () => Promise.reject(new Error(`${BANK_NOT_FOUND}: x`))) });
+    expect((await handleBankApi(at("/api/bank?id=x", "GET"), d)).status).toBe(404);
+    expect(d.getVersionedBank).toHaveBeenCalledWith("x");
+    const put = deps();
+    await handleBankApi(at("/api/bank?id=b1", "PUT", { bank: BANK, version: 4 }), put);
+    expect(put.putBank).toHaveBeenCalledWith(BANK, 4, "b1");
+  });
+
+  it("lists, creates, renames and deletes, owner only", async () => {
+    const d = banksDeps();
+    expect((await handleBanksApi(at("/api/banks", "GET", undefined, "Bearer wrong"), d)).status).toBe(403);
+    expect(await (await handleBanksApi(at("/api/banks", "GET"), d)).json()).toEqual([{ id: "default", name: "預設題庫" }]);
+    expect(await (await handleBanksApi(at("/api/banks", "POST", { name: "派對", copyFrom: "default" }), d)).json()).toEqual({ id: "new", name: "派對" });
+    expect(d.createBank).toHaveBeenCalledWith("派對", "default");
+    expect((await handleBanksApi(at("/api/banks?id=b1", "PATCH", { name: "新" }), d)).status).toBe(200);
+    expect(d.renameBank).toHaveBeenCalledWith("b1", "新");
+    expect((await handleBanksApi(at("/api/banks?id=b1", "DELETE"), d)).status).toBe(204);
+    expect(d.deleteBank).toHaveBeenCalledWith("b1");
+    expect((await handleBanksApi(at("/api/banks", "DELETE"), d)).status).toBe(400);
+  });
+
+  it("turns a store refusal into 400 and bad JSON into 400", async () => {
+    const d = banksDeps({ deleteBank: vi.fn(async () => Promise.reject(new Error("預設題庫不能改名或刪除"))) });
+    const res = await handleBanksApi(at("/api/banks?id=default", "DELETE"), d);
+    expect([res.status, await res.text()]).toEqual([400, "預設題庫不能改名或刪除"]);
+    const bad = new Request("https://worker.example.com/api/banks", { method: "POST", headers: { Authorization: `Bearer ${KEY}` }, body: "{" });
+    expect((await handleBanksApi(bad, d)).status).toBe(400);
   });
 });

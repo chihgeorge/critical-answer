@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { BANK_FORMAT, BankStore, formatOf, LEGACY_IMAGE_DELAY_MS, legacyImageKeys, type BankStorage } from "./bank-store";
+import { BANK_FORMAT, BANK_NOT_FOUND, BankStore, DEFAULT_BANK_ID, DEFAULT_BANK_NAME, formatOf, LEGACY_IMAGE_DELAY_MS, legacyImageKeys, MAX_BANK_NAME, MAX_CUSTOM_BANKS, type BankStorage } from "./bank-store";
 import { assertSavable, type Bank } from "./question-bank";
 import { BANK } from "./question-bank-data";
 
@@ -10,6 +10,7 @@ function memoryStorage(seed?: unknown): BankStorage {
   return {
     get: async (k) => structuredClone(data.get(k)),
     put: async (k, v) => void data.set(k, structuredClone(v)),
+    delete: async (k) => data.delete(k),
   };
 }
 
@@ -258,13 +259,13 @@ describe("BankStore: orphaned images wait out running games before they're delet
     at(DELAY);
     await store.runImageCleanup();
     expect(onImagesOrphaned).toHaveBeenCalledWith([KEY]);
-    expect(await storage.get("pendingImageDeletes")).toEqual([]);
+    expect(await storage.get("pendingMediaDeletes")).toEqual([]);
   });
 
   it("deletes nothing while the stored bank is unreadable (the fallback bank is not what's stored)", async () => {
     // pregate-literal: BANK_FORMAT=9 the 9 here is the stored bank version, not its format
     const { store, storage, alarms, onImagesOrphaned, at } = setup({ format: BANK_FORMAT, bank: { rooms: "a format this version can't read" }, version: 9 });
-    await storage.put("pendingImageDeletes", [{ key: KEY, deleteAt: 0 }]);
+    await storage.put("pendingMediaDeletes", [{ key: KEY, deleteAt: 0 }]);
     at(DELAY);
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -273,7 +274,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
     err.mockRestore();
     warn.mockRestore();
     expect(onImagesOrphaned).not.toHaveBeenCalled();
-    expect(await storage.get("pendingImageDeletes")).toEqual([{ key: KEY, deleteAt: 0 }]);
+    expect(await storage.get("pendingMediaDeletes")).toEqual([{ key: KEY, deleteAt: 0 }]);
     expect(alarms).toEqual([2 * DELAY]); // re-armed, so the queue is not stranded once the bank is readable again
 
     // Readable again (a roll-forward): the re-armed alarm finishes the job.
@@ -282,7 +283,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
     at(2 * DELAY);
     await store.runImageCleanup();
     expect(onImagesOrphaned).toHaveBeenCalledWith([KEY]);
-    expect(await storage.get("pendingImageDeletes")).toEqual([]);
+    expect(await storage.get("pendingMediaDeletes")).toEqual([]);
   });
 
   it("never deletes an image that a later save put back in the bank", async () => {
@@ -344,13 +345,13 @@ describe("BankStore: orphaned images wait out running games before they're delet
     at(DELAY);
     await store.runImageCleanup();
     expect(onImagesOrphaned).not.toHaveBeenCalled();
-    expect(await storage.get("pendingImageDeletes")).toEqual([]);
+    expect(await storage.get("pendingMediaDeletes")).toEqual([]);
   });
 
   it("queues nothing when the same image key is still referenced after the save", async () => {
     const { store, storage, alarms } = setup();
     await store.putBank(bankWithImage, 1);
-    expect(await storage.get("pendingImageDeletes")).toBeUndefined();
+    expect(await storage.get("pendingMediaDeletes")).toBeUndefined();
     expect(alarms).toEqual([]);
   });
 
@@ -479,7 +480,7 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     expect(await store.putBank(next, 8)).toEqual({ conflict: true, currentVersion: 9 });
     expect(await store.putBank(next, 9)).toEqual({ bank: next, version: 10 });
     expect(await storage.get("bank")).toEqual({ bank: next, version: 10, format: formatOf(next) });
-    expect(await storage.get("pendingImageDeletes")).toEqual([{ key: OLD_KEY, deleteAt: LEGACY_IMAGE_DELAY_MS }]); // 14 days, not the usual delay
+    expect(await storage.get("pendingMediaDeletes")).toEqual([{ key: OLD_KEY, deleteAt: LEGACY_IMAGE_DELAY_MS }]); // 14 days, not the usual delay
     // Value: protects=the old bank survives the overwrite on the server; fails_when=putBank drops it; why_new=adversarial review (no server-side copy); seam=none; no_claim=a way to read it back
     expect(await storage.get("legacyBank")).toEqual({ bank: oldBank, format: 2, version: 9 });
   });
@@ -489,19 +490,127 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     const onImagesOrphaned = vi.fn<(keys: string[]) => Promise<void>>(async () => {});
     const alarms: number[] = [];
     const storage = { ...memoryStorage({ bank: oldBank, version: 9, format: 2 }), setAlarm: async (at: number) => void alarms.push(at) };
-    await storage.put("pendingImageDeletes", [{ key: OLD_KEY, deleteAt: 0 }]);
+    await storage.put("pendingMediaDeletes", [{ key: OLD_KEY, deleteAt: 0 }]);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await new BankStore(storage, onImagesOrphaned, { now: () => 5, cleanupDelayMs: 100 }).runImageCleanup();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('"reason":"outdated"'));
     warn.mockRestore();
     expect(onImagesOrphaned).not.toHaveBeenCalled();
     expect(alarms).toEqual([105]);
-    expect(await storage.get("pendingImageDeletes")).toEqual([{ key: OLD_KEY, deleteAt: 0 }]);
+    expect(await storage.get("pendingMediaDeletes")).toEqual([{ key: OLD_KEY, deleteAt: 0 }]);
   });
 
   // Value: protects=an outdated bank's images are found however the old format nests them, and odd shapes never throw; fails_when=the walk skips arrays or nested objects, or keeps empty/non-string values; why_new=new legacyImageKeys; seam=none; no_claim=every past format's layout
   it("finds image keys anywhere in a raw value, skipping other shapes", () => {
     expect([...legacyImageKeys(oldBank)].sort()).toEqual([OLD_KEY, KEPT_KEY].sort());
     expect([...legacyImageKeys({ a: [{ kind: "image", value: 3 }, { kind: "image", value: "" }, null, "x"] })]).toEqual([]);
+  });
+});
+
+describe("BankStore: named banks (docs/designs/multi-bank.md)", () => {
+  const KEY = "66666666-6666-6666-6666-666666666666";
+  const withImage: Bank = { ...validBank, pools: { ...validBank.pools, 1: [{ kind: "text", id: "r0-q1", content: { kind: "image", value: KEY }, answer: "松鼠" }] } };
+  const DELAY = 1000;
+  function setup(seed: unknown = { format: BANK_FORMAT, bank: withImage, version: 3 }) {
+    let t = 0;
+    const storage = memoryStorage(seed);
+    const onImagesOrphaned = vi.fn<(keys: string[]) => Promise<void>>(async () => {});
+    const store = new BankStore(storage, onImagesOrphaned, { cleanupDelayMs: DELAY, now: () => t });
+    return { store, storage, onImagesOrphaned, at: (ms: number) => void (t = ms) };
+  }
+
+  it("keeps the stored bank as the default: same key, same version, listed first", async () => {
+    const { store, storage } = setup();
+    expect(await store.listBanks()).toEqual([{ id: DEFAULT_BANK_ID, name: DEFAULT_BANK_NAME }]);
+    expect(await store.getVersionedBank()).toEqual({ bank: withImage, version: 3 });
+    expect(await store.getVersionedBank(DEFAULT_BANK_ID)).toEqual({ bank: withImage, version: 3 });
+    const made = await store.createBank("派對", DEFAULT_BANK_ID, validBank);
+    await store.putBank(validBank, 1, made.id);
+    expect(await storage.get("bank")).toEqual({ format: BANK_FORMAT, bank: withImage, version: 3 });
+  });
+
+  it("copies a bank or starts from the blank one, each with its own version and 409", async () => {
+    const { store } = setup();
+    const copy = await store.createBank(" 派對 ", DEFAULT_BANK_ID, validBank);
+    const blank = await store.createBank("空的", undefined, validBank);
+    expect(copy.name).toBe("派對");
+    expect(await store.getVersionedBank(copy.id)).toEqual({ bank: withImage, version: 1 });
+    expect(await store.getVersionedBank(blank.id)).toEqual({ bank: validBank, version: 1 });
+    expect(await store.putBank(validBank, 1, copy.id)).toEqual({ bank: validBank, version: 2 });
+    expect(await store.putBank(validBank, 1, copy.id)).toEqual({ conflict: true, currentVersion: 2 });
+    expect((await store.getVersionedBank()).version).toBe(3);
+  });
+
+  it("refuses an empty, too long or taken name, and more than the limit", async () => {
+    const { store } = setup();
+    await expect(store.createBank("  ", undefined, validBank)).rejects.toThrow("不能空白");
+    await expect(store.createBank("字".repeat(MAX_BANK_NAME + 1), undefined, validBank)).rejects.toThrow("最多");
+    await expect(store.createBank(DEFAULT_BANK_NAME, undefined, validBank)).rejects.toThrow("已經有");
+    for (let i = 0; i < MAX_CUSTOM_BANKS; i++) await store.createBank(`b${i}`, undefined, validBank);
+    await expect(store.createBank("one more", undefined, validBank)).rejects.toThrow(`最多 ${MAX_CUSTOM_BANKS}`);
+  });
+
+  it("renames and deletes custom banks only; an unknown id is not found", async () => {
+    const { store } = setup();
+    const b = await store.createBank("A", undefined, validBank);
+    expect(await store.renameBank(b.id, "B")).toEqual({ id: b.id, name: "B" });
+    expect((await store.listBanks()).map((x) => x.name)).toEqual([DEFAULT_BANK_NAME, "B"]);
+    await expect(store.renameBank(DEFAULT_BANK_ID, "X")).rejects.toThrow("預設題庫不能");
+    await expect(store.deleteBank(DEFAULT_BANK_ID)).rejects.toThrow("預設題庫不能");
+    await store.deleteBank(b.id);
+    expect(await store.listBanks()).toHaveLength(1);
+    await expect(store.getVersionedBank(b.id)).rejects.toThrow(BANK_NOT_FOUND);
+    await expect(store.putBank(validBank, 1, "nope")).rejects.toThrow(BANK_NOT_FOUND);
+  });
+
+  it("never deletes a file another bank still uses", async () => {
+    const { store, onImagesOrphaned, at } = setup();
+    const copy = await store.createBank("copy", DEFAULT_BANK_ID, validBank);
+    await store.putBank(validBank, 3); // the default drops the file; the copy still has it
+    at(DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).not.toHaveBeenCalled();
+    await store.deleteBank(copy.id); // now nothing uses it: queued again, deleted after the wait
+    at(2 * DELAY - 1);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).not.toHaveBeenCalled();
+    at(2 * DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).toHaveBeenCalledWith([KEY]);
+  });
+
+  it("lets a bank save a file another bank uses", async () => {
+    const { store } = setup();
+    const b = await store.createBank("b", undefined, validBank);
+    await expect(store.putBank(withImage, 1, b.id)).resolves.toEqual({ bank: withImage, version: 2 });
+  });
+
+  it("defers cleanup while any bank is unreadable, and will not copy one", async () => {
+    const { store, storage, onImagesOrphaned, at } = setup();
+    const b = await store.createBank("b", undefined, validBank);
+    await store.putBank(validBank, 3);
+    await storage.put(`bank:${b.id}`, { format: BANK_FORMAT + 1, bank: {}, version: 1 });
+    at(DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).not.toHaveBeenCalled();
+    await expect(store.createBank("c", b.id, validBank)).rejects.toThrow("讀不出來");
+  });
+
+  it("deleting an unreadable bank queues the files in what is stored, not the fallback", async () => {
+    const { store, storage } = setup({ format: BANK_FORMAT, bank: validBank, version: 1 });
+    const b = await store.createBank("b", undefined, validBank);
+    await storage.put(`bank:${b.id}`, { format: BANK_FORMAT + 1, bank: { anything: { kind: "image", value: KEY } }, version: 1 });
+    await store.deleteBank(b.id);
+    expect(await storage.get("pendingMediaDeletes")).toEqual([{ key: KEY, deleteAt: DELAY }]);
+    expect(await storage.get(`bank:${b.id}`)).toBeUndefined();
+  });
+
+  it("merges a queue written under the old key (a rollback's uploads) and moves it", async () => {
+    const { store, storage, onImagesOrphaned, at } = setup({ format: BANK_FORMAT, bank: validBank, version: 1 });
+    await storage.put("pendingImageDeletes", [{ key: KEY, deleteAt: 0 }]);
+    at(1);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).toHaveBeenCalledWith([KEY]);
+    expect(await storage.get("pendingImageDeletes")).toBeUndefined();
   });
 });

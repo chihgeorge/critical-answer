@@ -37,9 +37,24 @@ import { BANK } from "./question-bank-data";
 import { allQuestions, assertSavable, bossQuestions, parseBank, imageKeysOf, type Bank } from "./question-bank";
 import type { RoomStorage } from "./room/io";
 
-const BANK_KEY = "bank";
+/** The default bank's id. It keeps the storage keys every deploy before multi-bank used ("bank", "legacyBank"),
+ * so an upgrade reads the same stored bank and old callers without an id get it (docs/designs/multi-bank.md). */
+export const DEFAULT_BANK_ID = "default";
+export const DEFAULT_BANK_NAME = "預設題庫";
+/** The owner's own banks (not the default), in the order they were made. */
+const INDEX_KEY = "banks";
+export const MAX_CUSTOM_BANKS = 20;
+export const MAX_BANK_NAME = 30;
+/** Error message prefix for an id that names no bank: bank-api.ts answers it with 404 (only the message survives RPC). */
+export const BANK_NOT_FOUND = "bank not found";
+const bankKey = (id: string) => (id === DEFAULT_BANK_ID ? "bank" : `bank:${id}`);
 /** The stored bank as it was before a save overwrote an outdated one: the owner's backup if they missed docs/question-bank.md's. */
-const LEGACY_BANK_KEY = "legacyBank";
+const legacyKey = (id: string) => (id === DEFAULT_BANK_ID ? "legacyBank" : `legacyBank:${id}`);
+
+export interface BankEntry {
+  id: string;
+  name: string;
+}
 /** The stored bank's format. Bump it when older code reading a newly saved bank would lose data on
  * its next save (e.g. a new field its parseBank drops): older code sees a higher number, treats the
  * stored bank as unreadable and refuses to save. A stored bank without one is format 1. */
@@ -70,8 +85,11 @@ const isUpload = (c: { kind: string } | undefined) => c?.kind === "video" || c?.
  * previous version still reads it (/review, 2026-11-07). */
 export const formatOf = (bank: Bank): number =>
   allQuestions(bank).some((q) => isUpload(q.content) || isUpload(q.explanation)) ? MEDIA_FORMAT : bossQuestions(bank).some((q) => q.difficulty !== undefined) ? DIFFICULTY_FORMAT : allQuestions(bank).some((q) => q.explanation?.kind === "instagram") ? INSTAGRAM_FORMAT : allQuestions(bank).some((q) => q.kind === "text" && q.fields) ? FIELDS_FORMAT : allQuestions(bank).some((q) => q.category) ? CATEGORY_FORMAT : bank.boss.phases.some((p) => p.buzzer) ? BUZZER_FORMAT : allQuestions(bank).some((q) => q.kind === "sort") ? SORT_FORMAT : OLDEST_PARSED_FORMAT;
-/** R2 keys the bank stopped referencing, waiting out `cleanupDelayMs` before they're deleted. */
-const PENDING_KEY = "pendingImageDeletes";
+/** R2 keys the banks stopped referencing, waiting out `cleanupDelayMs` before they're deleted. A new key since
+ * multi-bank: code from before it reads only the default bank, so after a rollback it would delete files only a
+ * custom bank uses. It never sees this queue (a leak instead of a loss); the old key is still read and merged. */
+const PENDING_KEY = "pendingMediaDeletes";
+const OLD_PENDING_KEY = "pendingImageDeletes";
 /** Default wait before an orphaned image is deleted: a room's longest life (24 hours with every extension) plus an
  * hour of margin. worker/index.ts passes the real one (roomMaxLifeMs) + the same margin. */
 export const IMAGE_CLEANUP_MARGIN_MS = 60 * 60 * 1000;
@@ -83,7 +101,7 @@ export const LEGACY_IMAGE_DELAY_MS = 14 * 24 * 60 * 60 * 1000;
 /** The subset of Durable Object storage BankStore needs. `setAlarm` schedules the alarm whose handler
  * calls `runImageCleanup()`; without it the queue is still kept, and cleanup only happens when
  * something calls `runImageCleanup()`. */
-export type BankStorage = Pick<RoomStorage, "get" | "put" | "setAlarm">;
+export type BankStorage = Pick<RoomStorage, "get" | "put" | "setAlarm"> & { delete(key: string): unknown };
 
 interface PendingDelete {
   key: string;
@@ -133,13 +151,16 @@ export class BankStore {
   }
 
   private async getPending(): Promise<PendingDelete[]> {
-    const raw = await this.storage.get(PENDING_KEY);
-    return Array.isArray(raw) ? (raw as PendingDelete[]) : [];
+    const list = (raw: unknown) => (Array.isArray(raw) ? (raw as PendingDelete[]) : []);
+    const now = list(await this.storage.get(PENDING_KEY));
+    const queued = new Set(now.map((p) => p.key));
+    return [...now, ...list(await this.storage.get(OLD_PENDING_KEY)).filter((p) => !queued.has(p.key))];
   }
 
   /** Saves the queue and points the alarm at its earliest entry. */
   private async setPending(pending: PendingDelete[]): Promise<void> {
     await this.storage.put(PENDING_KEY, pending);
+    await this.storage.delete(OLD_PENDING_KEY);
     if (pending.length > 0) await this.storage.setAlarm?.(Math.min(...pending.map((p) => p.deleteAt)));
   }
 
@@ -159,14 +180,16 @@ export class BankStore {
     const pending = await this.getPending();
     if (pending.length === 0) return;
     const now = this.now();
-    const { current, unreadable, outdated } = await this.read();
+    // Every bank counts: a file one bank dropped may still be in another (a copy shares its files).
+    const banks = await Promise.all((await this.listBanks()).map((b) => this.read(b.id)));
+    const stuck = banks.find((b) => b.unreadable || b.outdated);
     // The fallback bank is not what's stored: deleting by it would drop images the stored bank still uses.
     // Try again later; this alarm is spent, and the queue would otherwise wait for the next save or upload.
-    if (unreadable || outdated) {
-      console.warn(JSON.stringify({ event: "image_cleanup_deferred", reason: unreadable ? "unreadable" : "outdated", pending: pending.length }));
+    if (stuck) {
+      console.warn(JSON.stringify({ event: "image_cleanup_deferred", reason: stuck.unreadable ? "unreadable" : "outdated", pending: pending.length }));
       return void (await this.storage.setAlarm?.(now + this.cleanupDelayMs));
     }
-    const inUse = imageKeysOf(current.bank);
+    const inUse = new Set(banks.flatMap((b) => [...imageKeysOf(b.current.bank)]));
     const due = pending.filter((p) => p.deleteAt <= now && !inUse.has(p.key)).map((p) => p.key);
     // Marked before the next await, so the guard does not depend on which awaits let a save in.
     for (const k of due) this.deleting.add(k);
@@ -185,18 +208,90 @@ export class BankStore {
     }
   }
 
-  /** The current bank plus its version. The editor round-trips the version on save so a
-   * conflicting concurrent save is caught instead of silently overwritten. */
-  async getVersionedBank(): Promise<VersionedBank> {
-    const { current, unreadable, outdated } = await this.read();
+  /** A bank plus its version (the default bank without an id). The editor round-trips the version on save so a
+   * conflicting concurrent save is caught instead of silently overwritten. Throws BANK_NOT_FOUND for an unknown id. */
+  async getVersionedBank(id: string = DEFAULT_BANK_ID): Promise<VersionedBank> {
+    const { current, unreadable, outdated } = await this.read(id);
     return unreadable ? { ...current, unreadable: true } : outdated ? { ...current, outdated: outdated.format } : current;
   }
 
-  private async read(): Promise<{ current: VersionedBank; unreadable: boolean; outdated?: { format: number; raw: unknown } }> {
-    const raw = await this.storage.get(BANK_KEY);
+  private async customBanks(): Promise<BankEntry[]> {
+    const raw = await this.storage.get(INDEX_KEY);
+    return Array.isArray(raw) ? (raw as BankEntry[]) : [];
+  }
+
+  /** Every bank's id and name, the default first. Names only: safe to show a host. */
+  async listBanks(): Promise<BankEntry[]> {
+    return [{ id: DEFAULT_BANK_ID, name: DEFAULT_BANK_NAME }, ...(await this.customBanks())];
+  }
+
+  private async checkName(name: unknown, exceptId?: string): Promise<string> {
+    const n = typeof name === "string" ? name.trim() : "";
+    if (!n) throw new Error("題庫名稱不能空白");
+    if (Array.from(n).length > MAX_BANK_NAME) throw new Error(`題庫名稱最多 ${MAX_BANK_NAME} 個字`);
+    if ((await this.listBanks()).some((b) => b.name === n && b.id !== exceptId)) throw new Error(`已經有叫「${n}」的題庫`);
+    return n;
+  }
+
+  private async customIndex(id: string): Promise<{ list: BankEntry[]; i: number }> {
+    const list = await this.customBanks();
+    const i = list.findIndex((b) => b.id === id);
+    if (i < 0) throw new Error(id === DEFAULT_BANK_ID ? "預設題庫不能改名或刪除" : `${BANK_NOT_FOUND}: ${id}`);
+    return { list, i };
+  }
+
+  /** A new custom bank at version 1: a copy of bank `copyFrom`, else `blank`. Its files are in use by the copied bank
+   * already, so nothing joins the cleanup queue. */
+  async createBank(name: unknown, copyFrom: string | undefined, blank: Bank): Promise<BankEntry> {
+    const n = await this.checkName(name);
+    const list = await this.customBanks();
+    if (list.length >= MAX_CUSTOM_BANKS) throw new Error(`最多 ${MAX_CUSTOM_BANKS} 份自訂題庫`);
+    let bank = blank;
+    if (copyFrom !== undefined) {
+      const src = await this.read(copyFrom);
+      if (src.unreadable || src.outdated) throw new Error("這份題庫現在讀不出來，不能複製");
+      bank = src.current.bank;
+    }
+    const entry = { id: crypto.randomUUID(), name: n };
+    await this.storage.put(bankKey(entry.id), { bank, version: 1, format: formatOf(bank) });
+    await this.storage.put(INDEX_KEY, [...list, entry]);
+    return entry;
+  }
+
+  async renameBank(id: string, name: unknown): Promise<BankEntry> {
+    const n = await this.checkName(name, id);
+    const { list, i } = await this.customIndex(id);
+    const entry = { id, name: n };
+    await this.storage.put(INDEX_KEY, list.map((b, j) => (j === i ? entry : b)));
+    return entry;
+  }
+
+  /** Removes a custom bank. Its files are queued like a save's orphans (rooms that copied it may still show them);
+   * runImageCleanup keeps any another bank still uses. */
+  async deleteBank(id: string): Promise<void> {
+    const { list, i } = await this.customIndex(id);
+    const { current, unreadable, outdated } = await this.read(id);
+    // The fallback bank is not what's stored: walk the raw stored value for its files instead.
+    const raw = unreadable || outdated ? ((await this.storage.get(bankKey(id))) as { bank?: unknown } | undefined)?.bank : undefined;
+    const keys = [...(unreadable || outdated ? legacyImageKeys(raw) : imageKeysOf(current.bank))];
+    await this.storage.put(INDEX_KEY, list.filter((_, j) => j !== i));
+    await this.storage.delete(bankKey(id));
+    await this.storage.delete(legacyKey(id));
+    if (keys.length > 0) {
+      const again = new Set(keys);
+      const deleteAt = this.now() + this.cleanupDelayMs;
+      await this.setPending([...(await this.getPending()).filter((p) => !again.has(p.key)), ...keys.map((key) => ({ key, deleteAt }))]);
+    }
+  }
+
+  private async read(id: string = DEFAULT_BANK_ID): Promise<{ current: VersionedBank; unreadable: boolean; outdated?: { format: number; raw: unknown } }> {
+    if (id !== DEFAULT_BANK_ID && !(await this.customBanks()).some((b) => b.id === id)) throw new Error(`${BANK_NOT_FOUND}: ${id}`);
+    const raw = await this.storage.get(bankKey(id));
     if (raw === undefined) {
+      // Only the default bank seeds itself; a listed custom bank with nothing stored is damaged.
+      if (id !== DEFAULT_BANK_ID) return { current: { bank: BANK, version: 1 }, unreadable: true };
       const seeded: VersionedBank = { bank: BANK, version: 1 };
-      await this.storage.put(BANK_KEY, { ...seeded, format: formatOf(BANK) });
+      await this.storage.put(bankKey(id), { ...seeded, format: formatOf(BANK) });
       return { current: seeded, unreadable: false };
     }
     try {
@@ -212,7 +307,7 @@ export class BankStore {
     } catch (err) {
       // Corrupt storage must not crash whatever called this (a room trying to start a game, the
       // editor trying to load) — same class of defensive fallback as dungeon-room.ts's restore().
-      console.error(JSON.stringify({ event: "bank_store_corrupt", error: String(err) }));
+      console.error(JSON.stringify({ event: "bank_store_corrupt", bankId: id, error: String(err) }));
       return { current: { bank: BANK, version: 1 }, unreadable: true };
     }
   }
@@ -221,8 +316,8 @@ export class BankStore {
    * matches what's stored. Returns a `BankConflict` on a stale version, throws when the stored bank
    * is unreadable (nothing may overwrite it) or parseBank's error on invalid input — either way
    * nothing is saved, the previous bank stands. */
-  async putBank(candidate: unknown, expectedVersion: number): Promise<VersionedBank | BankConflict> {
-    const { current, unreadable, outdated } = await this.read();
+  async putBank(candidate: unknown, expectedVersion: number, id: string = DEFAULT_BANK_ID): Promise<VersionedBank | BankConflict> {
+    const { current, unreadable, outdated } = await this.read(id);
     // The fallback bank is not what's stored (e.g. a rollback to code that can't read a newer
     // format): saving it at version 1 would overwrite every custom question.
     if (unreadable) throw new Error("stored bank is unreadable by this version; refusing to overwrite it");
@@ -235,12 +330,13 @@ export class BankStore {
     const gone = [...newKeys].filter((k) => this.deleting.has(k));
     if (gone.length > 0) throw new Error(`圖片已過期、正在刪除，請重新上傳：${gone.join(", ")}`);
     // A key that is neither in the bank nor queued may already be deleted from R2 (the queue drops it once it's done).
-    const queued = new Set((await this.getPending()).map((p) => p.key));
-    const unknown = [...newKeys].filter((k) => !oldKeys.has(k) && !queued.has(k));
+    // A file another bank uses is still in R2 too.
+    const known = new Set([...(await this.getPending()).map((p) => p.key), ...(await this.otherBanksKeys(id))]);
+    const unknown = [...newKeys].filter((k) => !oldKeys.has(k) && !known.has(k));
     if (unknown.length > 0) throw new Error(`圖片已過期，請重新上傳：${unknown.join(", ")}`);
     const next: VersionedBank = { bank: validated, version: current.version + 1 };
-    if (outdated) await this.storage.put(LEGACY_BANK_KEY, { bank: outdated.raw, format: outdated.format, version: current.version });
-    await this.storage.put(BANK_KEY, { ...next, format: formatOf(validated) });
+    if (outdated) await this.storage.put(legacyKey(id), { bank: outdated.raw, format: outdated.format, version: current.version });
+    await this.storage.put(bankKey(id), { ...next, format: formatOf(validated) });
     const orphaned = [...oldKeys].filter((k) => !newKeys.has(k));
     if (orphaned.length > 0) {
       // Queued, not deleted: a room mid-game may still show this image (see the constructor's comment).
@@ -252,6 +348,12 @@ export class BankStore {
       await this.setPending([...pending, ...orphaned.map((key) => ({ key, deleteAt }))]);
     }
     return next;
+  }
+
+  /** Files the readable banks other than `id` use. */
+  private async otherBanksKeys(id: string): Promise<string[]> {
+    const others = (await this.listBanks()).filter((b) => b.id !== id);
+    return (await Promise.all(others.map((b) => this.read(b.id)))).flatMap((b) => (b.unreadable || b.outdated ? [] : [...imageKeysOf(b.current.bank)]));
   }
 }
 
