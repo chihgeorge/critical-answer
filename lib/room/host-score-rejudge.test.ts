@@ -282,6 +282,9 @@ describe("改判", () => {
     send(g.room, g.host, { type: "HOST_END_GAME" });
     g.setScore(A, 50);
     expect(g.lastTo(g.host)).toMatchObject({ error: "invalid_action" });
+    // Value: protects=改判 after the game ends moves no reward; fails_when=hostRejudge's not_playing guard is dropped.
+    g.rejudge(0, false);
+    expect(g.lastTo(g.host)).toMatchObject({ error: "invalid_action" });
     expect(g.team(A).reward).toBe(10);
 
     const io = { broadcast: vi.fn(), storage: memoryStorage() } as unknown as RoomIO;
