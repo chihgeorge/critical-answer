@@ -4208,9 +4208,23 @@ export class DungeonRoom {
     this.applyFix(conn, teamId, (g) => hostSetScore(g, teamId, score), "set");
   }
 
-  /** 改判 (docs/hosting.md): only the reward points of ledger entry `index` move, like a 修正 press. */
+  /** 改判 (docs/hosting.md): only the reward points of ledger entry `index` move, like a 修正 press. On the 答錯 that
+   * 改判答對 may still undo, 改成答對 is that undo instead (owner, 2026-11-12): routed here, so the room decides. */
   private handleHostRejudge(conn: Conn, index: number, teamId: string, questionId: string, correct: boolean) {
+    // No eventId here: rejudgeIsUndo pins the exact row, and any move since closes the undo.
+    if (correct && this.rejudgeIsUndo(index, teamId, questionId)) return this.handleHostUndoWrong(conn, teamId, questionId, this.eventSeq);
     this.applyFix(conn, teamId, (g) => hostRejudge(g, index, teamId, questionId, correct), `rejudge #${index + 1} ${correct ? "答錯→答對" : "答對→答錯"}`);
+  }
+
+  /** Ledger entry `index` is the 答錯 the open 改判答對 would wipe: same team and question, judged after the undo's game,
+   * and the newest for them (the drawer labels the same row, host-rejudge undoRow). */
+  private rejudgeIsUndo(index: number, teamId: string, questionId: string): boolean {
+    const undo = this.undo;
+    const judgments = this.game?.judgments ?? [];
+    const j = judgments[index];
+    if (!undo || !j || j.correct || !this.undoOpen(undo)) return false;
+    if (undo.teamId !== teamId || undo.questionId !== questionId || j.teamId !== teamId || j.questionId !== questionId) return false;
+    return index >= (undo.prev.judgments?.length ?? 0) && !judgments.some((k, i) => i > index && k.teamId === teamId && k.questionId === questionId);
   }
 
   /** The 修正 section's shared path (HOST_FIX, HOST_SET_SCORE, HOST_REJUDGE): host only, the same holds, then `change`,
