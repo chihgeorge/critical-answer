@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { findViolation, gitIgnored, parseRules, stripQuoted, type Env, type HookInput } from "./rules-guard.mts";
 
 const ROOT = join(__dirname, "..");
-const RULES = parseRules(readFileSync(join(ROOT, ".claude/rules.md"), "utf8"));
+const RULES = parseRules(readFileSync(join(ROOT, ".claude/rules/owner.md"), "utf8"));
 const notIgnored: Env = { ignored: () => false };
 const hit = (input: HookInput, env = notIgnored) => findViolation(RULES, { cwd: ROOT, ...input }, env)?.title.slice(0, 2) ?? null;
 const bash = (command: string) => hit({ tool_name: "Bash", tool_input: { command } });
@@ -16,7 +16,7 @@ const HOME = "/Us" + "ers/someone/";
 const PERMS = '"permis' + 'sions": {}';
 
 describe("parseRules", () => {
-  it("reads every A rule from .claude/rules.md, and nothing from B or C", () => {
+  it("reads every A rule from .claude/rules/owner.md, and nothing from B or C", () => {
     expect(RULES.map((r) => r.title.slice(0, 2))).toEqual(["A1", "A2", "A3", "A4", "A5", "A6"]);
     expect(RULES.every((r) => r.why.length > 10 && r.patterns.length > 0)).toBe(true);
   });
@@ -35,7 +35,7 @@ describe("A1 e2e", () => {
     expect(bash("npm run e2e")).toBe("A1");
     expect(bash("cd x && npx playwright test e2e/a.spec.ts")).toBe("A1");
     expect(bash("npm  run e2e")).toBe("A1");
-    expect(bash("npx playwright install")).toBe("A1");
+    expect(bash("npx playwright test")).toBe("A1");
     expect(bash("pnpm exec playwright test")).toBe("A1");
   });
   it("still sees a command next to quoted text or a heredoc", () => {
@@ -55,6 +55,7 @@ describe("A1 e2e", () => {
     expect(bash('git commit -m "$(cat <<\'EOF\'\nnpm run e2e\nEOF\n)"')).toBeNull();
     expect(bash(`git commit -m "$(cat<<'EOF'\nskip npm run e2e locally\nEOF\n)"`)).toBeNull();
     expect(bash("echo $((a<<b))\nnpm run e2e")).toBe("A1");
+    expect(bash("npx playwright install chromium")).toBeNull();
     expect(bash("npm run test")).toBeNull();
   });
 });

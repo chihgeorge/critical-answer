@@ -4,7 +4,7 @@
 
 - **A. 自動擋**：`scripts/rules-guard.mts`（PreToolUse hook，設定在 `.claude/settings.json`）讀這一節的 `block` 程式碼區塊。Claude 要做的事符合其中一行，就直接擋下，並把規則標題和「為什麼」回給 Claude。
 - **B. AI 檢查**：每次回答結束前，`.claude/settings.json` 的 Stop prompt hook 由小模型判斷有沒有違規。違規就擋回去重寫一次；第二次（`stop_hook_active` 為 true）一定放行，不會卡死。
-- **C. 只當說明**：不自動檢查，靠 Claude 自己遵守，觀察一陣子再決定要不要升級。
+- **C. 只當說明**：不自動檢查，靠 Claude 自己遵守，觀察一陣子再決定要不要升級。這個檔放在 `.claude/rules/`，Claude Code 每個 session 都會自動載入。
 
 ## A 節的寫法
 
@@ -12,13 +12,13 @@
 
 | 欄位 | 比對什麼 |
 |---|---|
-| `command` | Bash 指令。比對前先拿掉引號裡的字和 heredoc 內容，所以 `git commit -m "…"`、`grep "…"` 提到規則字樣不會被擋 |
+| `command` | Bash 指令。比對前先拿掉引號裡的字和 heredoc 內容，所以 `git commit -m "…"`、`grep "…"` 提到規則字樣不會被擋；雙引號裡的 `$(…)` 和反引號會留下來照樣比對 |
 | `tool` | 工具名稱（例如 `mcp__…`）。新增這類規則時，`.claude/settings.json` 的 PreToolUse matcher 也要加上那個工具 |
 | `content` | Write／Edit／MultiEdit／NotebookEdit 要寫進去的新內容，不管檔案在哪 |
 | `committed-content` | 同上，但只看目前 repo 裡、沒被 git ignore 的檔案（也就是會被 commit 的檔案） |
 | `path` | 要寫入的檔案在 repo 裡的相對路徑（repo 外的檔案不比對） |
 
-hook 出錯（rules.md 讀不到、某行規則運算式寫錯）時一律放行，錯誤寫到 stderr。
+hook 出錯（這個檔讀不到、某行規則運算式寫錯）時一律放行，錯誤寫到 stderr。
 
 ---
 
@@ -30,7 +30,6 @@ e2e 只在 GitHub CI 跑。本機一起跑 wrangler、next dev、build、vitest 
 ```block command
 npm\s+run\s+e2e
 playwright\s+test
-npx\s+playwright
 ```
 
 ### A2. 不用裸 `git stash`

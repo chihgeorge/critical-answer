@@ -1,4 +1,4 @@
-// PreToolUse hook: blocks a tool call that matches a rule in section A of .claude/rules.md.
+// PreToolUse hook: blocks a tool call that matches a rule in section A of .claude/rules/owner.md.
 // Run by .claude/settings.json as `node scripts/rules-guard.mts` with the hook input JSON on stdin.
 // Any error fails open (exit 0, message on stderr) so a broken hook never stalls a session.
 import { execFileSync } from "node:child_process";
@@ -109,14 +109,14 @@ export function denyOutput(rule: Rule): string {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: `違反站長規則 ${rule.title}（.claude/rules.md）。為什麼：${rule.why}`,
+      permissionDecisionReason: `違反站長規則 ${rule.title}（.claude/rules/owner.md）。為什麼：${rule.why}`,
     },
   });
 }
 
 if (process.argv[1]?.endsWith("rules-guard.mts")) {
   try {
-    const rulesPath = join(dirname(fileURLToPath(import.meta.url)), "..", ".claude", "rules.md");
+    const rulesPath = join(dirname(fileURLToPath(import.meta.url)), "..", ".claude", "rules", "owner.md");
     const rules = parseRules(readFileSync(rulesPath, "utf8"), (m) => process.stderr.write(m + "\n"));
     const hit = findViolation(rules, JSON.parse(readFileSync(0, "utf8")) as HookInput);
     if (hit) process.stdout.write(denyOutput(hit) + "\n");
