@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DUNGEON_THEME, loopDuration, noteToFreq, songEvents } from "./bgm";
+import { BOSS_RAGE_THEME, DUNGEON_THEME, loopDuration, noteToFreq, songEvents } from "./bgm";
 
 describe("noteToFreq", () => {
   it("tunes A4 to 440 Hz and moves by octaves and semitones", () => {
@@ -42,6 +42,15 @@ describe("DUNGEON_THEME", () => {
   it("lists every note of both voices in start order, so the player can schedule them as they come", () => {
     const starts = songEvents(DUNGEON_THEME).map((e) => e.start);
     expect(starts).toEqual([...starts].sort((x, y) => x - y));
+  });
+
+  it("the rage theme is the same tune, faster, with a kick drum that loops with it (immersion.md ④)", () => {
+    expect(BOSS_RAGE_THEME.melody).toBe(DUNGEON_THEME.melody);
+    expect(BOSS_RAGE_THEME.drum).toHaveLength(DUNGEON_THEME.melody.length);
+    expect(loopDuration(BOSS_RAGE_THEME)).toBeLessThan(loopDuration(DUNGEON_THEME));
+    const drums = songEvents(BOSS_RAGE_THEME).filter((e) => e.voice === "drum");
+    expect(drums.length).toBe(40);
+    expect(songEvents(DUNGEON_THEME).some((e) => e.voice === "drum")).toBe(false);
   });
 
   it("treats a rest as silence, not as a hold", () => {

@@ -7,7 +7,7 @@
 // master → speakers; the music, boss, host and ambient layers → master, each with its own volume from
 // layerGains(); and the existing game cues on their own bus → master.
 
-import { DUNGEON_THEME, loopDuration, songEvents } from "./bgm";
+import { DUNGEON_THEME, loopDuration, songEvents, type Song } from "./bgm";
 import type { SfxNote } from "./sfx";
 
 const LOOKAHEAD_S = 0.25;
@@ -58,8 +58,9 @@ export type BgmPlayer = ReturnType<typeof createBgmPlayer>;
 
 /** `onState`: called whenever the AudioContext's state changes (it starts running, or the browser suspends it). */
 export function createBgmPlayer(onState?: () => void) {
-  const events = songEvents(DUNGEON_THEME);
-  const loopLen = loopDuration(DUNGEON_THEME);
+  let current: Song = DUNGEON_THEME;
+  let events = songEvents(current);
+  let loopLen = loopDuration(current);
   let ctx: AudioContext | null = null;
   let layers: Record<Layer, GainNode> | null = null;
   /** The existing game cues' bus, at a fixed volume. */
@@ -80,8 +81,7 @@ export function createBgmPlayer(onState?: () => void) {
     return node;
   }
 
-  // shortcut: the boss, host and ambient layers have no caller yet; the boss effects (PR1b), the host's buttons (PR2)
-  // and the room ambience (PR3) play on them.
+  // shortcut: the host and ambient layers have no caller yet; the host's buttons (PR2) and the room ambience (PR3) play on them.
   function ensure(): AudioContext {
     if (ctx) return ctx;
     const c = new AudioContext();
@@ -107,11 +107,11 @@ export function createBgmPlayer(onState?: () => void) {
     }
   }
 
-  /** Start the music loop if 🎵 is on, the context is awake and the loop is not already running. */
-  function play() {
+  /** Start the music loop if 🎵 is on, the context is awake and the loop is not already running, after `gapS` of silence. */
+  function play(gapS = 0) {
     if (!mix.bgmOn || timer || !ctx || ctx.state !== "running") return;
     song = gain(ctx, 1, layers!.music);
-    loopStart = ctx.currentTime + 0.1;
+    loopStart = ctx.currentTime + 0.1 + gapS;
     next = 0;
     loops = 0;
     schedule();
@@ -151,6 +151,7 @@ export function createBgmPlayer(onState?: () => void) {
       // A gap before the next note keeps steps crisp.
       const end = at + Math.max(0.05, e.duration - 0.02);
       if (e.voice === "melody") tone(song, "square", e.freq, at, end, 0.5, 0.01);
+      else if (e.voice === "drum") tone(song, "square", e.freq, at, at + 0.08, 0.7, 0.005, e.freq / 3);
       else tone(song, "triangle", e.freq, at, end, 0.9, 0.01);
       advance();
     }
@@ -176,13 +177,28 @@ export function createBgmPlayer(onState?: () => void) {
     apply();
   }
 
-  function stop() {
-    mix.bgmOn = false;
+  /** Stop the loop and drop the notes it already queued ahead (they hang off `song`). */
+  function halt() {
     if (timer) clearInterval(timer);
     timer = null;
     song?.disconnect();
     song = null;
+  }
+
+  function stop() {
+    mix.bgmOn = false;
+    halt();
     apply();
+  }
+
+  /** Queue `notes` at each offset (seconds from now) on its own gain under `layer`; the returned function silences
+   * every note not yet played. */
+  function pattern(notes: SfxNote[], offsets: number[], layer: Layer): () => void {
+    if (!ctx || !layers || ctx.state !== "running") return () => {};
+    const out = gain(ctx, 1, layers[layer]);
+    const t0 = ctx.currentTime + 0.02;
+    for (const at of offsets) for (const note of notes) tone(out, note.wave, note.freq, t0 + at + note.at, t0 + at + note.at + note.duration, 1, 0.005, note.slideTo);
+    return () => out.disconnect();
   }
 
   return {
@@ -228,6 +244,19 @@ export function createBgmPlayer(onState?: () => void) {
     hold(on: boolean) {
       set("held", on);
     },
+    /** Switch the music to `next` (the boss's rage theme and back, immersion.md ④), after `gapS` of silence. The notes
+     * the old song already queued are dropped, so none sounds inside the gap. Remembered while 🎵 is off. */
+    setSong(next: Song, gapS = 0) {
+      if (next === current) return;
+      current = next;
+      events = songEvents(next);
+      loopLen = loopDuration(next);
+      const was = !!timer;
+      halt();
+      if (was) play(gapS);
+    },
+    /** ③ The heartbeat: `notes` at each offset on the boss layer. Call the result to cancel the beats still ahead. */
+    pattern,
     /** Play a sound effect now (lib/sfx.ts). With no `layer` it is a game cue: it follows the 🎵 switch only. With a
      * layer, that layer's row of the 聲音分層表 sets its volume. Silent until the context is awake. */
     playCue(notes: SfxNote[], layer?: Layer) {

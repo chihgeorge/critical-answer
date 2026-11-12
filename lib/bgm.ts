@@ -11,10 +11,12 @@ export interface Song {
   stepsPerMinute: number;
   melody: Part;
   bass: Part;
+  /** A kick drum: each note is a short low thump that slides down (BOSS_RAGE_THEME). */
+  drum?: Part;
 }
 
 export interface NoteEvent {
-  voice: "melody" | "bass";
+  voice: "melody" | "bass" | "drum";
   /** Seconds from the start of the loop. */
   start: number;
   duration: number;
@@ -58,18 +60,26 @@ export const DUNGEON_THEME: Song = {
   ),
 };
 
+/** ④ 王低血暴走 (docs/designs/immersion.md): the same tune, faster, over a kick drum on every beat and a pickup
+ * into the next bar. */
+export const BOSS_RAGE_THEME: Song = {
+  ...DUNGEON_THEME,
+  stepsPerMinute: 300,
+  drum: bars(...Array.from({ length: 8 }, () => "C2 . C2 . C2 . C2 C2")),
+};
+
 /** Seconds one pass of the song lasts. */
 export function loopDuration(song: Song): number {
-  return (Math.max(song.melody.length, song.bass.length) * 60) / song.stepsPerMinute;
+  return (Math.max(song.melody.length, song.bass.length, song.drum?.length ?? 0) * 60) / song.stepsPerMinute;
 }
 
 /** Every note of one pass, both voices merged in start order (the player schedules them in list order). */
 export function songEvents(song: Song): NoteEvent[] {
   const step = 60 / song.stepsPerMinute;
   const events: NoteEvent[] = [];
-  for (const voice of ["melody", "bass"] as const) {
+  for (const voice of ["melody", "bass", "drum"] as const) {
     let current: NoteEvent | null = null;
-    song[voice].forEach((tok, i) => {
+    (song[voice] ?? []).forEach((tok, i) => {
       if (tok === "-") {
         if (current) current.duration += step;
         return;

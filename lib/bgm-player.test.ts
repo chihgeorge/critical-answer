@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBgmPlayer, layerGains, type Layer, type MixState } from "./bgm-player";
-import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, EAT_DONE, SFX, SPRINT_FANFARE, type SfxNote } from "./sfx";
+import { BOSS_RAGE_THEME, DUNGEON_THEME } from "./bgm";
+import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, EAT_DONE, HEARTBEAT, SFX, SPRINT_FANFARE, type SfxNote } from "./sfx";
 
 interface FakeNode {
   gain: { value: number; target: number };
@@ -300,6 +301,48 @@ describe("createBgmPlayer", () => {
     ctx.notes = [];
     bgm.playCue(notes);
     expect(ctx.notes).toHaveLength(0);
+  });
+
+  it("setSong() drops the old song's queued notes and starts the new one after the gap (rage, immersion.md ④)", async () => {
+    const { bgm, ctx } = await started();
+    const old = ctx.gains[6];
+    ctx.currentTime = 10;
+    ctx.notes = [];
+    bgm.setSong(BOSS_RAGE_THEME, 0.5);
+    expect(old.connected).toBe(false);
+    expect(vi.getTimerCount()).toBe(1);
+    expect(ctx.notes.every((n) => n.at >= 10.6)).toBe(true);
+    // The same song again changes nothing: no new song generation, the playing one stays connected.
+    const songs = () => ctx.gains.filter((g) => g.dest === layerNode(ctx, "music"));
+    expect(songs()).toHaveLength(2);
+    bgm.setSong(BOSS_RAGE_THEME, 0.5);
+    expect(songs()).toHaveLength(2);
+    expect(songs()[1].connected).toBe(true);
+  });
+
+  it("a song set while 🎵 is off is the one 🎵 starts, and switching while it plays keeps one loop", async () => {
+    const bgm = setup();
+    bgm.setSong(BOSS_RAGE_THEME);
+    expect(vi.getTimerCount()).toBe(0);
+    const a = bgm.start();
+    FakeAudioContext.all[0].release();
+    await a;
+    vi.advanceTimersByTime(100);
+    expect(vi.getTimerCount()).toBe(1);
+    bgm.setSong(DUNGEON_THEME);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("pattern() queues the heartbeat on the boss layer, and its cancel silences the beats still ahead", async () => {
+    const { bgm, ctx } = await started();
+    ctx.notes = [];
+    const cancel = bgm.pattern(HEARTBEAT, [0, 1, 2], "boss");
+    expect(ctx.notes).toHaveLength(HEARTBEAT.length * 3);
+    const beatGain = ctx.gains.at(-1 - HEARTBEAT.length * 3)!;
+    expect(beatGain.dest).toBe(layerNode(ctx, "boss"));
+    expect(ctx.notes.every((n) => n.dest === beatGain)).toBe(true);
+    cancel();
+    expect(beatGain.connected).toBe(false);
   });
 
   it("after the timer falls far behind (a background tab), only notes still ahead are scheduled", async () => {
