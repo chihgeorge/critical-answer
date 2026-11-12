@@ -88,7 +88,7 @@ lib/join-rejection.ts    The reason line a phone shows when joining is refused (
 lib/stored.ts            localStorage reads and writes that never throw (also work in private mode)
 lib/use-wake-lock.ts     Keeps the screen awake on the host page and the big screen
 lib/report-client-error.ts、client-error-api.ts  Front-end crash reports (sendBeacon) and handling for /api/client-error (origin check, 4 KB limit, writes one log line)
-lib/bank-image-api.ts    /api/bank/image image upload (file type and size checks; returns 409 when the bank cannot be read, 503 when it cannot be reached)
+lib/bank-image-api.ts    /api/bank/image image, video and audio upload (file type and size checks; returns 409 when the bank cannot be read, 503 when it cannot be reached)
 worker/index.ts          Cloudflare Worker: the Room and BankStoreDO Durable Objects, the /api/bank, /api/game-logs and /api/client-error routes, entry rules
 lib/room/                Room logic (dungeon-room.ts) and the two small interfaces it needs (io.ts), platform independent
 lib/gate.ts、origin.ts   Worker entry rules

@@ -88,7 +88,7 @@ lib/join-rejection.ts    加入被拒絕時手機顯示的原因句（純函式�
 lib/stored.ts            不會丟錯的 localStorage 讀寫（無痕模式也不會壞）
 lib/use-wake-lock.ts     主持人頁和大螢幕的螢幕不休眠 hook
 lib/report-client-error.ts、client-error-api.ts  前端當掉的回報（sendBeacon）與 /api/client-error 的處理（來源檢查、4 KB 上限、寫一行 log）
-lib/bank-image-api.ts    /api/bank/image 圖片上傳（檔案類型、大小檢查；題庫讀不懂時回 409、連不上時回 503）
+lib/bank-image-api.ts    /api/bank/image 圖片、影片和聲音上傳（檔案類型、大小檢查；題庫讀不懂時回 409、連不上時回 503）
 worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable Object、/api/bank、/api/game-logs 與 /api/client-error 路由、入口規則
 lib/room/                房間邏輯（dungeon-room.ts）與它需要的兩個小介面（io.ts），不依賴平台
 lib/gate.ts、origin.ts   Worker 入口規則
