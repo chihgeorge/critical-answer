@@ -79,7 +79,8 @@ describe("BankStore.putBank", () => {
 
   it("refuses to save over a stored bank it cannot read, and keeps it (a rollback below a newer format)", async () => {
     // The fallback bank is version 1, so a save at version 1 would otherwise replace every custom question.
-    const stored = { bank: { rooms: "a format this version can't read" }, version: 9, format: BANK_FORMAT }; // pregate-literal: BANK_FORMAT=9 this is the stored bank's version, not its format
+    // pregate-literal: BANK_FORMAT=9 the 9 here is the stored bank version, not its format
+    const stored = { bank: { rooms: "a format this version can't read" }, version: 9, format: BANK_FORMAT };
     const storage = memoryStorage(stored);
     await expect(new BankStore(storage).putBank(validBank, 1)).rejects.toThrow(/unreadable/);
     expect(await storage.get("bank")).toEqual(stored);
@@ -261,6 +262,7 @@ describe("BankStore: orphaned images wait out running games before they're delet
   });
 
   it("deletes nothing while the stored bank is unreadable (the fallback bank is not what's stored)", async () => {
+    // pregate-literal: BANK_FORMAT=9 the 9 here is the stored bank version, not its format
     const { store, storage, alarms, onImagesOrphaned, at } = setup({ format: BANK_FORMAT, bank: { rooms: "a format this version can't read" }, version: 9 });
     await storage.put("pendingImageDeletes", [{ key: KEY, deleteAt: 0 }]);
     at(DELAY);
