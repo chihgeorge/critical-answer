@@ -257,6 +257,12 @@ body {
 @keyframes px-drift { 50% { transform: translateX(4px); } }
 .px-drift { animation: px-drift 2.4s steps(1) infinite; }
 .px-drift2 { animation: px-drift 2.4s steps(1) infinite reverse; }
+/* The fog reveal (docs/designs/immersion.md PR3): the clouds on a newly opened room slide off and fade in 4 hard steps,
+   then the room pulses bright once (one take from the shared flash budget). Both end at the plain look. */
+@keyframes px-fog-blow { 100% { transform: translateX(40px); opacity: 0; } }
+.px-fog-blow { animation: px-fog-blow 0.8s steps(4) 1 forwards; }
+@keyframes px-room-lit { 50% { filter: brightness(1.6); } }
+.px-room-lit { animation: px-room-lit 0.4s steps(2) 0.6s 1; }
 /* Transitions (components/transition-overlay.tsx): the opening's stone doors part, the boss's alarm banner sweeps
    through. Two-frame steps() like the rest; .px-still is reduced motion's one still frame (the doors shut,
    the banner up with its text). Change a duration here and MS in that component together. */
@@ -325,8 +331,10 @@ body {
 @keyframes px-react-rise { 0% { transform: translateY(130px); opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(-30px); opacity: 0; } }
 .px-react-rise { animation: px-react-rise 2.4s steps(12) 1 both; }
 @media (prefers-reduced-motion: reduce) {
-  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise, .px-parry-counter, .px-rage, .px-growl, .px-class-pop { animation: none !important; }
+  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise, .px-parry-counter, .px-rage, .px-growl, .px-class-pop, .px-fog-blow, .px-room-lit { animation: none !important; }
   .px-tf2 { opacity: 0; }
+  /* The fog reveal's clouds never show: only the brightened room (the page takes no flash under reduced motion). */
+  .px-fog-cloud { display: none; }
   /* .px-room-flash keeps running (D13: a pawn must not change rooms unseen). */
 }
 }

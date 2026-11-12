@@ -28,6 +28,7 @@ import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
 import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, aiKeyRefused, AiPanel, aiKeyMessage, aiResendAfterRefusal, aiResendMessage, aiSavedKeyDead, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
+import { screenAudioOf } from "@/lib/ambience";
 import { LateTeams } from "@/components/late-teams";
 import { FieldJudge } from "@/components/field-judge";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
@@ -70,6 +71,8 @@ export default function HostPage() {
   const [state, setState] = useState<StateMessage | null>(null);
   /** 手動停頓 (docs/designs/manual-pacing.md): the room's switch, as its last LOBBY or STATE said. */
   const [manual, setManual] = useState(false);
+  /** The big screens' sound switches (immersion.md PR3, UC1), as the room's last LOBBY or STATE said: ⚙ 更多 sets them. */
+  const [screenAudio, setScreenAudio] = useState(() => screenAudioOf(null));
   /** 每題作答倒數 for the next game (answer-countdown.md D2): this page's pick, so a replay keeps it. */
   const [answerSeconds, setAnswerSeconds] = useState<number>(DEFAULT_ANSWER_SECONDS);
   const [error, setError] = useState<string | null>(null);
@@ -244,6 +247,7 @@ export default function HostPage() {
           break;
         case "LOBBY":
           setManual(msg.pacing === "manual");
+          setScreenAudio(screenAudioOf(msg));
           setLobby(msg.teams);
           setReplay(!!msg.replay);
           setBankSize(msg.bankSize ?? null);
@@ -258,6 +262,7 @@ export default function HostPage() {
           break;
         case "STATE":
           setManual(msg.pacing === "manual");
+          setScreenAudio(screenAudioOf(msg));
           setState(msg);
           setPendingTeamId(null);
           break;
@@ -728,7 +733,7 @@ export default function HostPage() {
         {!connected && !noToken && !rested && !unreachable && <Panel tone="turn" className="px-3 py-2 text-center text-[16px]">重新連線中…</Panel>}
         {error && <Panel className="px-3 py-2 text-[14px]" style={{ background: "#ffd9d9" }}>{error}</Panel>}
         {/* 開場點亮音效 (immersion.md PR0). Remounted on reconnect, so 知道了 lasts until then. */}
-        {game?.phase === "playing" && <div data-testid="screen-sound"><ScreenSoundBanner key={String(connected)} sound={game.screenSound} /></div>}
+        {game?.phase === "playing" && <div data-testid="screen-sound"><ScreenSoundBanner key={String(connected)} sound={game.screenSound} music={screenAudio.music} /></div>}
         {game && aiStatus && aiStatus.source !== "none" && aiStatus.exhausted && aiDismissedAt !== aiStatus.limit && (
           <AiExhausted key={aiStatus.limit} status={aiStatus} send={send} onDismiss={() => setAiDismissedAt(aiStatus.limit)} />
         )}
@@ -1386,6 +1391,7 @@ export default function HostPage() {
           playing={game?.phase === "playing"}
           antiCheat={game?.phase === "playing" ? (game.view.antiCheat?.on ?? false) : undefined}
           screen={game ? screenBlock : null}
+          screenAudio={screenAudio}
         />
       )}
     </main>

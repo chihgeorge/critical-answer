@@ -1,6 +1,6 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
 import { answerCorrectly, rollCheck, NEXT_WAIT_MS, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, screenUrl } from "./answer";
-import { stubSpeechSynthesis, ttsCalls } from "./tts";
+import { stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
 import { MONSTERS } from "../lib/monster-catalog";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
@@ -182,8 +182,8 @@ test("game over: the boss cooks, then the podium, then the epilogue arrives on t
   });
   await phone.goto(`/room/${code}/play?name=${encodeURIComponent("終局隊")}`);
   await expect(phone.getByTestId("roster")).toContainText("終局隊");
-  // Read aloud too: the unlock utterance is the only speech before the game starts.
-  await screen.getByRole("button", { name: /語音/ }).click();
+  // Read aloud too (the host's 🔊 is on by default): the tap's priming utterance is the only speech before the game starts.
+  await tapScreen(screen);
   expect(await ttsCalls(screen)).toEqual([""]);
   host.send(JSON.stringify({ type: "HOST_START", aiNarration: false })); // never the real API in tests
   await expect.poll(() => box.state?.phase).toBe("playing");

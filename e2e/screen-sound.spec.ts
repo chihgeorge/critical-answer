@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { textOnlyBank, startGame, screenUrl } from "./answer";
+import { setScreenAudio } from "./tts";
 
 textOnlyBank();
 
@@ -13,7 +14,7 @@ test("the host page warns until the big screen's sound is on, then says it is re
 
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await screen.goto(await screenUrl(host));
-  // The lobby's big button, named so it never matches the 🎵 / 語音 toggles' lookups.
+  // The lobby's big button, named so it never matches a /音樂|語音/ lookup.
   await expect(screen.getByRole("button", { name: "開啟音效與氣氛" })).toBeVisible();
 
   for (const name of ["甲隊", "乙隊"]) {
@@ -26,7 +27,13 @@ test("the host page warns until the big screen's sound is on, then says it is re
 
   await screen.getByRole("button", { name: "👆 開聲音" }).click();
   await expect(host.getByTestId("screen-sound")).toContainText("🔊 大螢幕聲音已就緒");
-  await expect(screen.getByRole("button", { name: /音樂開/ })).toBeVisible();
+
+  // immersion.md PR3 (UC1): the sound switches are the host's, in ⚙ 更多; the screen has none. 🎵 off: the banner says so.
+  await expect(screen.getByRole("button", { name: /音樂|語音/ })).toHaveCount(0);
+  await setScreenAudio(host, "🎵 音樂", false);
+  await expect(host.getByTestId("screen-sound")).toContainText("大螢幕的 🎵 音樂關著");
+  await setScreenAudio(host, "🎵 音樂", true);
+  await expect(host.getByTestId("screen-sound")).toContainText("🔊 大螢幕聲音已就緒");
 });
 
 // docs/designs/immersion.md PR2: the host's pads, in the lobby too (the sound check).
