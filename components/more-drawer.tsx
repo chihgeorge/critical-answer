@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { getHostToken } from "@/lib/room-code";
 import type { ClientMessage, ScreenAudio } from "@/lib/protocol";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
-import { CATCH_USES, ORACLE_USES } from "@/lib/game-state";
+import { CATCH_USES, CLASS_ICONS, FIX_SCORE_STEP, ORACLE_USES, type HostFix, type SpectatorView } from "@/lib/game-state";
 import { Panel, PixelButton } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 
@@ -27,6 +27,8 @@ export function MoreDrawer({
   antiCheat,
   screen,
   screenAudio,
+  fixable = [],
+  scoreLabel,
 }: {
   /** The page's origin ("" before hydration). */
   origin: string;
@@ -45,6 +47,10 @@ export function MoreDrawer({
   screen: ReactNode;
   /** The big screens' sound switches (immersion.md PR3, UC1), in the lobby and in a game. */
   screenAudio: ScreenAudio;
+  /** Every team while a game is playing, for 修正 (game-state hostFix); empty otherwise. */
+  fixable?: SpectatorView["teams"];
+  /** The game's score name (獎勵分 or 飽足感). */
+  scoreLabel?: string;
 }) {
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
@@ -101,6 +107,34 @@ export function MoreDrawer({
                   </PixelButton>
                 </div>
               ))}
+            </section>
+          )}
+          {fixable.length > 0 && (
+            <section data-testid="host-fix" className="flex flex-col gap-2">
+              <div className="text-[15px]">修正（判錯時用）：大螢幕不會有動畫或旁白，只會換成新的數字；每一下都記在對局紀錄裡。</div>
+              {fixable.map((t) => {
+                const fix = (f: HostFix) => send({ type: "HOST_FIX", teamId: t.id, fix: f });
+                const small = "!m-0 min-h-[44px] min-w-[44px] !px-2 !py-0 text-[15px]";
+                const max = t.abilityCap;
+                return (
+                  <div key={t.id} className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 flex-1 basis-full truncate text-[16px] sm:basis-0">{t.name}</span>
+                    <span className="text-[14px]">{scoreLabel} <span className="px-num text-[14px]">{t.reward}</span></span>
+                    <PixelButton aria-label={`${t.name}扣 ${FIX_SCORE_STEP} 分`} disabled={t.reward <= 0} onClick={() => fix("score-")} className={small}>−{FIX_SCORE_STEP}</PixelButton>
+                    <PixelButton aria-label={`${t.name}加 ${FIX_SCORE_STEP} 分`} onClick={() => fix("score+")} className={small}>+{FIX_SCORE_STEP}</PixelButton>
+                    {max !== undefined && t.classId && (
+                      <>
+                        <span className="text-[14px]">{CLASS_ICONS[t.classId]}{t.abilityUses}/{max}</span>
+                        <PixelButton aria-label={`${t.name}能力少 1 次`} disabled={t.abilityUses <= 0} onClick={() => fix("ability-")} className={small}>−1</PixelButton>
+                        <PixelButton aria-label={`${t.name}能力多 1 次`} disabled={t.abilityUses >= max} onClick={() => fix("ability+")} className={small}>+1</PixelButton>
+                      </>
+                    )}
+                    {t.item && (
+                      <PixelButton aria-label={`收回${t.name}的藥水`} onClick={() => fix("potion-")} className={small}>收回🧪</PixelButton>
+                    )}
+                  </div>
+                );
+              })}
             </section>
           )}
           {antiCheat !== undefined && (
