@@ -237,6 +237,7 @@ describe("改判", () => {
   it("a wrong judgment flipped to correct gives N; the 0 floor never mints points over any cycle", () => {
     const g = started();
     g.judge(false); // 甲 wrong: N = 10
+    g.setReward(A, 0); // a move: closes 改判答對, so the row is points-only
     g.rejudge(0, true);
     expect(g.team(A).reward).toBe(10);
     g.setReward(A, 0);
@@ -330,6 +331,66 @@ describe("改判", () => {
     const mine = g.ledger().filter((j) => j.teamId === teamId && j.questionId === questionId);
     expect(mine).toEqual([{ teamId, questionId, correct: true, points: g.team(B).reward - before }]);
     expect(g.ledger()).toHaveLength(2);
+  });
+
+  it("改成答對 on the 答錯 改判答對 still undoes runs that full undo: progress moves, one 答對 entry, paid once", () => {
+    // Value: protects=the owner's 2026-11-12 decision (option A); fails_when=HOST_REJUDGE on the undo's 答錯 goes points-only again.
+    const viaUndo = started();
+    viaUndo.judge(true);
+    const { teamId, questionId } = viaUndo.judge(false); // 乙 wrong: undoable
+    send(viaUndo.room, viaUndo.host, { type: "HOST_UNDO_WRONG", teamId, questionId, eventId: viaUndo.state().eventId });
+    const g = started();
+    g.judge(true);
+    g.judge(false);
+    expect(g.state().undoWrong).toMatchObject({ teamId, questionId });
+    // Value: protects=a player cannot reach the undo through 改判; fails_when=the routed path skips the host check.
+    g.rejudge(1, true, g.phones[1]);
+    expect(g.state().undoWrong).toMatchObject({ teamId, questionId });
+    expect(g.ledger()[1].correct).toBe(false);
+    g.rejudge(1, true);
+    expect(g.team(B).score).toBeGreaterThan(0); // progress moved, as if judged right
+    expect(g.team(B)).toEqual(viaUndo.team(B));
+    expect(g.team(B).fixes).toBeUndefined();
+    expect(g.ledger()).toEqual(viaUndo.ledger());
+    expect(g.ledger().filter((j) => j.teamId === teamId && j.questionId === questionId)).toEqual([{ teamId, questionId, correct: true, points: expect.any(Number) }]);
+    expect(g.state().undoWrong).toBeUndefined();
+    expect(g.transcript()).toEqual([]);
+    // Flipping it back afterwards nets 0.
+    const reward = g.team(B).reward;
+    g.rejudge(1, false);
+    g.rejudge(1, true);
+    expect(g.team(B).reward).toBe(reward);
+  });
+
+  it("another 答錯 row, or the same row once 改判答對 has closed, stays points-only", () => {
+    const g = started();
+    g.judge(false); // 甲 wrong
+    const { teamId } = g.judge(false); // 乙 wrong: undoable
+    expect(teamId).toBe(B);
+    expect(g.state().undoWrong).toMatchObject({ teamId: B });
+    const progress = g.team(A).score;
+    g.rejudge(0, true); // 甲's row: not the undo's
+    expect(g.team(A)).toMatchObject({ reward: 10, score: progress });
+    expect(g.state().undoWrong).toBeUndefined(); // a rejudge is a move
+    const bProgress = g.team(B).score;
+    g.rejudge(1, true); // the undo's row, now closed
+    expect(g.team(B)).toMatchObject({ score: bProgress });
+    expect(g.team(B).fixes).toHaveLength(1);
+    expect(g.ledger()).toHaveLength(2);
+  });
+
+  it("an older 答錯 of the same team and question stays points-only while the newer one is undoable", () => {
+    const g = started();
+    const first = g.judge(false); // 甲 wrong
+    g.judge(false); // 乙 wrong
+    const again = g.judge(false); // 甲 wrong again on the same question: undoable
+    expect(again).toEqual(first);
+    expect(g.state().undoWrong).toMatchObject(first);
+    const score = g.team(A).score;
+    g.rejudge(0, true);
+    expect(g.team(A)).toMatchObject({ reward: 10, score });
+    expect(g.team(A).fixes).toHaveLength(1);
+    expect(g.ledger()[2].correct).toBe(false);
   });
 
   it("the ledger and its flips survive a restart; a malformed saved list reads as empty", async () => {

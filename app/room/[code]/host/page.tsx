@@ -319,6 +319,8 @@ export default function HostPage() {
                 ? "這筆改判已過時，清單剛更新"
                 : msg.detail === "at_limit"
                 ? "已經是這個結果了，畫面剛更新"
+                : msg.detail === "no_undo"
+                ? "現在不能改判答對：判完後已經有別的動作，或這隊手機斷線了"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
           );
           setPendingTeamId(null);
@@ -1403,6 +1405,7 @@ export default function HostPage() {
           fixable={game?.phase === "playing" ? game.view.teams : []}
           scoreLabel={game ? scoreName(game.cuisine) : undefined}
           judged={picks?.judged ?? []}
+          undoWrong={game?.undoWrong && { ...game.undoWrong, fields: game.question?.id === game.undoWrong.questionId && !!game.question.fields }}
           questionLabel={pickLabel}
           error={error}
         />

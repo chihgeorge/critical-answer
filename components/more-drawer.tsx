@@ -6,7 +6,7 @@ import { getHostToken } from "@/lib/room-code";
 import type { ClientMessage, JudgedEntry, ScreenAudio } from "@/lib/protocol";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { CATCH_USES, CLASS_ICONS, FIX_SCORE_MAX, FIX_SCORE_STEP, ORACLE_USES, type HostFix, type SpectatorView } from "@/lib/game-state";
-import { laterCorrect, questionOrdinals, rejudgeChange } from "@/lib/host-rejudge";
+import { laterCorrect, questionOrdinals, rejudgeButton } from "@/lib/host-rejudge";
 import { Panel, PixelButton } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 
@@ -32,6 +32,7 @@ export function MoreDrawer({
   fixable = [],
   scoreLabel,
   judged = [],
+  undoWrong,
   questionLabel = () => "",
   error,
 }: {
@@ -58,6 +59,8 @@ export function MoreDrawer({
   scoreLabel?: string;
   /** Every applied judgment, oldest first (HOST_PICKS `judged`), for 改判. */
   judged?: JudgedEntry[];
+  /** STATE's undoWrong (fields: a music question with fields): its newest 答錯 row's 改成答對 runs that full undo. */
+  undoWrong?: { teamId: string; questionId: string; fields: boolean };
   /** A question's label from HOST_PICKS ("" when unknown). */
   questionLabel?: (questionId: string) => string;
   /** The page's last refusal, shown again in 修正: the drawer covers the page's own error line. */
@@ -194,9 +197,9 @@ export function MoreDrawer({
                 ) : (
                   <div className="flex max-h-[40vh] flex-col gap-2 overflow-y-auto">
                     {[...judged].reverse().map((j) => {
-                      const change = rejudgeChange(j, rewardOf(j.teamId));
                       const label = questionLabel(j.questionId);
                       const was = j.flipped ? (j.correct ? "答錯" : "答對") : null;
+                      const button = rejudgeButton(judged, j, rewardOf(j.teamId), undoWrong);
                       return (
                         <div key={j.index} className="flex flex-wrap items-center gap-2 text-[14px]">
                           <span className="min-w-0 flex-1 basis-full truncate sm:basis-0">
@@ -208,11 +211,11 @@ export function MoreDrawer({
                           {was && <span className="text-[13px]">{`已改判（原本${was}）`}</span>}
                           {laterCorrect(judged, j) && <span className="text-[13px]">這題後來答對了</span>}
                           <PixelButton
-                            aria-label={`第 ${ordinals.get(j.questionId)} 題 ${teamName(j.teamId)} 改成${j.correct ? "答錯" : "答對"}（${j.correct ? "−" : "+"}${Math.abs(change)}）`}
+                            aria-label={`第 ${ordinals.get(j.questionId)} 題 ${teamName(j.teamId)} ${button}`}
                             onClick={() => fixAllowed(`rejudge:${j.index}`) && send({ type: "HOST_REJUDGE", index: j.index, teamId: j.teamId, questionId: j.questionId, correct: !j.correct })}
                             className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px]"
                           >
-                            {j.correct ? `改成答錯（−${-change}）` : `改成答對（+${change}）`}
+                            {button}
                           </PixelButton>
                         </div>
                       );
