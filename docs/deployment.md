@@ -49,6 +49,8 @@
 
 圖片上傳需要先在 Cloudflare 建立一個名為 `critical-answer-images` 的 R2 bucket，並手動在 dashboard 開啟它的 r2.dev 公開讀取，再把 [wrangler.jsonc](../wrangler.jsonc) 裡的 `R2_PUBLIC_BASE_URL` 換成 Cloudflare 給的網址——這一步不是 `wrangler deploy` 的一部分，見 [docs/designs/image-question-type.md](designs/image-question-type.md)。
 
+同一個 bucket 也存題庫上傳的影片和聲音（每檔最多 25 MB，見 [docs/designs/uploaded-media.md](designs/uploaded-media.md)），不用新的綁定或設定。r2.dev 網址有流量限制，正式活動建議幫 bucket 接一個自訂網域，再把 `R2_PUBLIC_BASE_URL` 換成它。
+
 ## 部署順序
 
 Workers Builds 不等 CI，也不保證比 Vercel 先完成：前端要用新的房間協定時，合併前先在本機 `npx wrangler deploy`。Worker 不要回滾到 v0.31.3.0 以前（見[開發指南](development.md#存檔與回滾)），題庫的回滾底線見[題庫指南](question-bank.md#題庫卡住時怎麼救)。

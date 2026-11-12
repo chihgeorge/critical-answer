@@ -298,13 +298,13 @@ export function YoutubePlayer({
 
 /** The music question's card over the hidden video (D15): a pixel note, 聽歌猜題, an equalizer that moves only
  * while the song plays, the state in words, and the clip's length. */
-function MusicCard({ status, start, end }: { status: ClipStatus; start: number; end?: number }) {
+export function MusicCard({ status, start, end, title = "聽歌猜題" }: { status: ClipStatus; start: number; end?: number; title?: string }) {
   const playing = status === "playing";
   return (
     <div data-testid="music-card" className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--lav)] text-[var(--k)]">
       {end !== undefined && <div className="absolute right-3 top-2 text-[16px]">{end - start} 秒</div>}
       <PixelNote />
-      <div className="text-[32px] leading-none">聽歌猜題</div>
+      <div className="text-[32px] leading-none">{title}</div>
       <div className="flex h-[28px] items-end gap-[6px]" aria-hidden>
         {[0, 1, 2, 3, 4].map((i) => (
           <i key={i} className={playing ? (i % 2 ? "px-eq px-eq2" : "px-eq") : undefined} style={{ display: "block", width: 8, height: playing ? 28 : 6, background: "var(--k)", transformOrigin: "bottom" }} />

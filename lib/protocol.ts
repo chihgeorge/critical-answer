@@ -58,6 +58,11 @@ export type HiddenVideo = { kind: "youtube"; audioOnly?: true };
 export type HiddenInstagram = { kind: "instagram" };
 /** An Instagram explanation in SCREEN_VIDEO. `end`: the video's length in seconds, if the bank gave one. */
 export type InstagramVideo = { kind: "instagram"; shortcode: string; end?: number };
+/** An uploaded video/audio explanation as STATE carries it: that there is one, never its URL, which goes out in
+ * SCREEN_VIDEO only. A question's own uploaded clip goes out as a HiddenVideo (docs/designs/uploaded-media.md D3). */
+export type HiddenFile = { kind: "file"; audioOnly?: true };
+/** An uploaded video/audio in SCREEN_VIDEO: its public R2 URL. `audioOnly`: an M4A/MP3, played under a music card. */
+export type FileVideo = { kind: "file"; url: string; audioOnly?: true };
 
 /** The question the team in turn faces, without its answer: safe for /screen and /play.
  * `options` is present only for multipleChoice questions (never `correctIndex` — see
@@ -96,7 +101,7 @@ export interface PublicQuestion {
 export type AnswerReveal = {
   questionId: string;
   answer: string;
-  explanation?: PublicMediaContent | HiddenInstagram;
+  explanation?: PublicMediaContent | HiddenInstagram | HiddenFile;
   /** The answered question's own YouTube video, shown again where it stopped, unless an image or a video
    * explanation takes its place (docs/designs/youtube-questions.md D17). Its id is in SCREEN_VIDEO, like the question's. */
   video?: HiddenVideo;
@@ -507,7 +512,7 @@ export type ServerMessage =
   | { type: "SCREEN_KEY"; ok: boolean }
   /** The YouTube video on the big screen now (the question's, or the reveal's). Never broadcast: it goes only to host
    * pages and to big screens whose SCREEN_HELLO carried the screen key. */
-  | { type: "SCREEN_VIDEO"; questionId: string; video: Extract<PublicMediaContent, { kind: "youtube" }> | InstagramVideo }
+  | { type: "SCREEN_VIDEO"; questionId: string; video: Extract<PublicMediaContent, { kind: "youtube" }> | InstagramVideo | FileVideo }
   /** Host-only: how many lines of narration `eventId` the big screen has read. Sent on host connect and on every change. */
   | { type: "HOST_NARRATION_PROGRESS"; eventId: number; done: number }
   /** Host-only: the line queued by HOST_NEXT_LINE, "" when none. Sent on host connect and on every change. */

@@ -32,6 +32,8 @@
 - [用真的 API 聽幾局美食口吻的 AI 旁白](#用真的-api-聽幾局美食口吻的-ai-旁白) — S（人工約 30 分鐘，要 API key）
 - [上架手機版本](#上架手機版本) — 上架 L（人工約 1–2 週 / CC 約半天，不含審核）；PWA 已做
 - [每次行動可以選不同的動作，不只答題](#每次行動可以選不同的動作不只答題) — 未註明
+- [上傳影片時在伺服器認出 HEVC 編碼](#上傳影片時在伺服器認出-hevc-編碼) — S，活動後
+- [活動後清掉有版權疑慮的上傳影片和聲音](#活動後清掉有版權疑慮的上傳影片和聲音) — S，活動後
 - [每個職業有自己的動畫和音效](#每個職業有自己的動畫和音效) — 未註明
 - [加入密碼鎖改成按連線來源（IP）計數，避免亂猜擋住新隊伍](#加入密碼鎖改成按連線來源ip計數避免亂猜擋住新隊伍) — S（人工約半天 / CC 約 30 分鐘），活動後
 - [每個職業技能都靠擲骰](#每個職業技能都靠擲骰) — M，活動後
@@ -60,6 +62,7 @@
 - 播放器在 `components/youtube-player.tsx`，聲音要開之前大螢幕要先有一次使用者操作（看 BGM 的解鎖方式）。
 - 如果被擋：先在大螢幕點一下畫面再開始遊戲，或改用 Chrome。
 - 順便測 Instagram 詳解（`docs/designs/instagram-explanations.md`）：公布答案後在大螢幕點影片，確認有聲音、背景音樂會靜音。無頭瀏覽器測不到聲音。
+- 也測上傳的影片和聲音（`docs/designs/uploaded-media.md`）：一題影片題、一題聲音題、一個影片詳解，**用場地的網路**，確認不會卡在開頭、⟲ 從頭能用。檔案從 r2.dev 下載，場地網路慢時大檔會卡。
 
 **Effort/Priority:** S（人工約 20 分鐘，要真機）/ P1，期限 2026-11-21 活動前
 
@@ -688,9 +691,37 @@
 
 ---
 
+## 上傳影片時在伺服器認出 HEVC 編碼
+
+**What:** 上傳 MP4 時，伺服器除了看容器，也看影像編碼，HEVC（iPhone 預設錄影格式）直接退回並說明要轉 H.264。
+
+**Why:** 現在伺服器只看檔頭的 ftyp，HEVC 的 MP4 也會收。編輯器上傳後用瀏覽器試播，放不出來會顯示紅字，但檔案已經在 R2 裡。
+
+**Context:** `lib/bank-image-api.ts` 的 `sniffMedia` 有 `shortcut:` 註解。要走 MP4 的 box（moov → trak → stsd）找 `hvc1`／`hev1`。設計見 `docs/designs/uploaded-media.md`。
+
+**Effort/Priority:** S / P3，活動後
+
+**Depends on:** 無。
+
+## 活動後清掉有版權疑慮的上傳影片和聲音
+
+**What:** 活動結束後，把題庫裡上傳的影片和聲音刪掉（或確認只放在帶金鑰的大螢幕），讓 R2 的公開網址不再能下載。
+
+**Why:** R2 bucket 是公開讀取，知道網址就能下載。歌曲和影片片段只在活動現場用。
+
+**Context:** 刪掉題目並存檔後，清理機制會在寬限期後刪掉 R2 檔案（`lib/bank-store.ts`）。設計見 `docs/designs/uploaded-media.md`。
+
+**Effort/Priority:** S / P3，活動後
+
+**Depends on:** 2026-11-21 活動結束。
+
 ## Completed
 
 細節見 CHANGELOG.md 與 git 歷史。
+
+## 題庫可上傳影片／聲音（media-upload）
+
+- [x] **題庫可上傳影片／聲音** · 題目欄和詳解欄可以上傳 MP4（H.264／AAC）、M4A、MP3，每檔 25 MB；大螢幕用原生播放器從頭播到尾，主持人 ▶ ⏸ ⟲ 控制；檔案網址不進 STATE，手機拿不到。設計見 `docs/designs/uploaded-media.md`。
 
 PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partykit/partykit/issues/985)；房間網址 https://critical-answer.aiko-studio.workers.dev。
 

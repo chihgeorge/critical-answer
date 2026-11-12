@@ -49,6 +49,8 @@ The host's key is kept only in the room's memory: it is never written to a snaps
 
 Image upload first needs an R2 bucket named `critical-answer-images` in Cloudflare. Turn on its r2.dev public read by hand in the dashboard, then replace `R2_PUBLIC_BASE_URL` in [wrangler.jsonc](../wrangler.jsonc) with the URL Cloudflare gives you. This step is not part of `wrangler deploy`; see [docs/designs/image-question-type.md](designs/image-question-type.md).
 
+The same bucket also holds the video and audio uploaded to the bank (up to 25 MB per file, see [docs/designs/uploaded-media.md](designs/uploaded-media.md)); no new binding or setting is needed. The r2.dev address is rate-limited, so for a real event connect a custom domain to the bucket and set `R2_PUBLIC_BASE_URL` to it.
+
 ## Deploy order
 
 Workers Builds does not wait for CI, and it is not guaranteed to finish before Vercel: when the frontend needs a new room protocol, run `npx wrangler deploy` locally before merging. Do not roll the Worker back to a version before v0.31.3.0 (see the [development guide](development.en.md#saving-and-rollback)); for the bank's rollback floor, see the [question bank guide](question-bank.en.md#how-to-recover-when-the-bank-is-stuck).

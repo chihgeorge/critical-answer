@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
-import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ServerMessage, type SoundCue, type StateMessage } from "@/lib/protocol";
+import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FileVideo, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ServerMessage, type SoundCue, type StateMessage } from "@/lib/protocol";
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { CATCH_PAY, checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { FORK_ARCH, sceneFloor, TEAM_LOOKS } from "@/lib/pixel-art";
@@ -32,6 +32,7 @@ import { InitiativeOverlay, KillRollOverlay, RollOverlay, TieRollOverlay } from 
 import { MageHint } from "@/components/mage-hint";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
+import { FilePlayer } from "@/components/file-player";
 import { resendClipError, type ClipErrorSeen } from "@/lib/youtube";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
@@ -345,11 +346,13 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // A YouTube question, or the reveal showing the answered question's video where it stopped (D17). One slot, one
   // key, so the player is not rebuilt between the question and its reveal.
   const asking = !reveal && !card && question?.content.kind === "youtube";
-  const videoQuestion = reveal?.video ? reveal.questionId : asking ? question!.id : null;
+  // An uploaded video/audio explanation plays in the same slot (uploaded-media.md D4).
+  const fileExplanation = reveal?.explanation?.kind === "file" ? reveal.explanation : null;
+  const videoQuestion = reveal?.video || fileExplanation ? reveal!.questionId : asking ? question!.id : null;
   // `content` is null while the room has not sent this video's id: for a moment after connecting, or for good when
   // the page was opened without the screen key (`locked`).
-  const video: { id: string; content: YoutubeContent | null } | null =
-    videoQuestion === null ? null : { id: videoQuestion, content: !locked && shownVideo?.questionId === videoQuestion && shownVideo.video.kind === "youtube" ? shownVideo.video : null };
+  const video: { id: string; content: YoutubeContent | FileVideo | null } | null =
+    videoQuestion === null ? null : { id: videoQuestion, content: !locked && shownVideo?.questionId === videoQuestion && (shownVideo.video.kind === "youtube" || shownVideo.video.kind === "file") ? shownVideo.video : null };
   const sneakChip = turn?.sneakArmed && !reveal && !card;
   // A buzzer phase has no persuasion check (boss-buzzer.md D6).
   const dcChip = fillIn && !buzz && !turn?.sneakArmed ? turn?.checkTarget : undefined;
@@ -385,6 +388,22 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       <div data-testid={locked ? "video-locked" : undefined} className="flex shrink-0 items-center justify-center bg-[var(--lav)] p-4 text-center text-[22px] text-[var(--k)]" style={{ width, height, boxShadow: "0 0 0 4px var(--k)" }}>
         {locked && "🔒 請用主持人頁上的大螢幕網址開啟，才會播放影片"}
       </div>
+    ) : v.content.kind === "file" ? (
+      <FilePlayer
+        url={v.content.url}
+        command={media?.questionId === v.id ? media : null}
+        width={width}
+        height={height}
+        cover={!!v.content.audioOnly}
+        cardTitle={fileExplanation ? "詳解音樂" : reveal ? "正解音樂" : "聽歌猜題"}
+        needsTap={needsTap}
+        onPlayingChange={onVideoPlaying}
+        onEnded={reveal ? undefined : () => onClipEnded(v.id)}
+        // An explanation's error reaches the host too (the room clears the question's own at the reveal).
+        onError={reveal && !fileExplanation ? undefined : () => onClipError(v.id)}
+        errorNote={!reveal && clipError && view.buzz?.open ? "🎤 主持人現場放歌" : undefined}
+        title={fileExplanation ? "詳解影片" : reveal ? "正解影片" : "題目影片"}
+      />
     ) : (
       <YoutubePlayer
         videoId={v.content.videoId}
@@ -406,7 +425,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       />
     );
   const lone = !!reveal && reveal.explanation?.kind !== "text";
-  const mediaExplanation = reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" ? reveal.explanation : null;
+  const mediaExplanation = reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" && reveal.explanation.kind !== "file" ? reveal.explanation : null;
   // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
   const instagram = reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
 

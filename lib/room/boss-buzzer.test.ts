@@ -87,6 +87,15 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state()).toMatchObject({ cue: "buzz", media: { state: "paused" }, view: { buzz: { teamId: IDS[2] }, currentTurnTeamId: IDS[2] } });
   });
 
+  // Value: protects=an uploaded audio question waits for the host's ▶ like a YouTube one (uploaded-media.md D3); fails_when=isClip drops a kind and buzzing opens before any sound; seam=none
+  it("an uploaded audio question also opens only on the host's first ▶", () => {
+    const g = buzzerGame((id) => ({ kind: "text", id, content: { kind: "audio", value: "11111111-1111-1111-1111-111111111111" }, answer: `答案 ${id}` }));
+    g.buzz(1);
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "buzz_closed" });
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    expect(g.state().view.buzz).toMatchObject({ open: true });
+  });
+
   it("a wrong buzz shuts the team out and resumes the music; a right one hits the boss and shows the answer", () => {
     const g = buzzerGame();
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });

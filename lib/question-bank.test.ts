@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseBank, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, bossPhaseStates, bossDifficulties, type MediaContent } from "./question-bank";
+import { parseBank, isClip, isMusicQuestion, hiddenVideo, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, bossPhaseStates, bossDifficulties, type MediaContent } from "./question-bank";
 import { BANK } from "./question-bank-data";
 import { MONSTERS, catalogMonster, variantOf } from "./monster-catalog";
 import { MAX_TEAMS } from "./protocol";
@@ -334,6 +334,46 @@ describe("parseBank", () => {
       ["a zero length", () => one({ ...q("a1"), explanation: insta({ end: 0 }) })],
     ])("fails loudly on %s", (_name, make) => {
       expect(() => parseBank(make())).toThrow(/question bank/i);
+    });
+  });
+
+  describe("uploaded video and audio (docs/designs/uploaded-media.md)", () => {
+    const one = (question: Record<string, unknown>) => ({ ...valid(), rooms: [{ ...valid().rooms[0], questions: [question] }] });
+    const video: MediaContent = { kind: "video", value: UUID_A };
+    const audio: MediaContent = { kind: "audio", value: UUID_B };
+
+    it("keeps an uploaded video or audio in the question and in its explanation", () => {
+      const bank = parseBank(one({ ...q("a1", video), explanation: audio }));
+      expect(bank.pools[1][0].content).toEqual(video);
+      expect(bank.pools[1][0].explanation).toEqual(audio);
+      expect(parseBank(one({ ...q("a1", audio), explanation: video })).pools[1][0].content).toEqual(audio);
+    });
+
+    it("rejects a key that is not a UUID, and clip fields only YouTube has", () => {
+      expect(() => parseBank(one(q("a1", { kind: "video", value: "not-a-key" })))).toThrow(/invalid video key/);
+      expect(() => parseBank(one(q("a1", { kind: "audio", value: "x" })))).toThrow(/invalid audio key/);
+      expect(() => parseBank(one(q("a1", { ...video, start: 3 })))).toThrow(/only a YouTube video/);
+      expect(() => parseBank(one(q("a1", { ...audio, audioOnly: true })))).toThrow(/only a YouTube video/);
+    });
+
+    it("never puts the key or a URL in the public question or explanation", () => {
+      const bank = parseBank(one({ ...q("a1", audio), explanation: video }));
+      const pub = publicQuestion(bank, "a1", 0, "https://img.example.com");
+      expect(pub?.content).toEqual({ kind: "youtube", audioOnly: true });
+      expect(publicExplanation(bank, "a1", "https://img.example.com")).toEqual({ kind: "file" });
+      expect(JSON.stringify(pub)).not.toContain(UUID_B);
+      const withVideo = parseBank(one({ ...q("a1", video), explanation: audio }));
+      expect(publicQuestion(withVideo, "a1", 0, "")?.content).toEqual({ kind: "youtube" });
+      expect(publicExplanation(withVideo, "a1", "")).toEqual({ kind: "file", audioOnly: true });
+      expect(() => publicMediaContent(video, "", "a1")).toThrow(/no public form/);
+    });
+
+    it("counts audio as music, both kinds as clips, and their keys as stored files", () => {
+      expect(isMusicQuestion({ kind: "text", id: "a1", content: audio, answer: "x" })).toBe(true);
+      expect(isMusicQuestion({ kind: "text", id: "a1", content: video, answer: "x" })).toBe(false);
+      expect([video, audio, youtubeContent(), imageContent()].map((c) => isClip(c))).toEqual([true, true, true, false]);
+      expect(hiddenVideo(audio)).toEqual({ kind: "youtube", audioOnly: true });
+      expect([...imageKeysOf(parseBank(one({ ...q("a1", video), explanation: audio })))].sort()).toEqual([UUID_A, UUID_B]);
     });
   });
 

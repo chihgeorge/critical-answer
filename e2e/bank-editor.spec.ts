@@ -604,7 +604,7 @@ test("image authoring: a server-rejected upload (bad file type) shows an inline 
   const notAnImage = Buffer.from("this is not a real image file");
   await firstRow.getByLabel("上傳題目圖片").setInputFiles({ name: "fake.png", mimeType: "image/png", buffer: notAnImage });
 
-  await expect(firstRow.getByText(/Unsupported image type/i)).toBeVisible();
+  await expect(firstRow.getByText(/不支援這種檔案/)).toBeVisible();
   await expect(firstRow.getByText(/已上傳/)).toHaveCount(0); // the value is still empty
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0); // this is a row-local error, not the page-level save error
   await expect(page.getByRole("button", { name: "儲存全部變更" })).toBeEnabled(); // a failed upload never leaves save locked
@@ -635,7 +635,7 @@ test("an image upload in flight locks load and save until it lands", async ({ pa
     await route.continue();
   });
   await firstRow.getByLabel("上傳題目圖片").setInputFiles({ name: "held.png", mimeType: "image/png", buffer: TINY_PNG });
-  const locked = page.getByRole("button", { name: "圖片上傳中…" });
+  const locked = page.getByRole("button", { name: "上傳中…" });
   await expect(locked).toHaveCount(2);
   await expect(locked.first()).toBeDisabled();
   await expect(locked.last()).toBeDisabled();

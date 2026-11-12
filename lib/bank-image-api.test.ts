@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleBankImageApi, MAX_IMAGE_BYTES, PNG_MAGIC, JPEG_MAGIC, WEBP_RIFF_MAGIC, WEBP_MAGIC, type BankImageApiDeps } from "./bank-image-api";
+import { handleBankImageApi, MAX_IMAGE_BYTES, MAX_MEDIA_BYTES, PNG_MAGIC, JPEG_MAGIC, WEBP_RIFF_MAGIC, WEBP_MAGIC, type BankImageApiDeps } from "./bank-image-api";
 
 const KEY = "owner-key-0123456789abcdef";
 
@@ -144,7 +144,7 @@ describe("handleBankImageApi: size limit", () => {
   it("rejects based on a declared Content-Length over the cap, before the body is read", async () => {
     const putImage = vi.fn();
     const res = await handleBankImageApi(
-      req("POST", { auth: `Bearer ${KEY}`, contentLength: MAX_IMAGE_BYTES + 1, body: pngBytes() }),
+      req("POST", { auth: `Bearer ${KEY}`, contentLength: MAX_MEDIA_BYTES + 1, body: pngBytes() }),
       deps({ putImage }),
     );
     expect(res.status).toBe(413);
@@ -166,7 +166,7 @@ describe("handleBankImageApi: upload failure", () => {
 
   it("returns the generated key on success", async () => {
     const res = await handleBankImageApi(req("POST", { auth: `Bearer ${KEY}`, body: pngBytes() }), deps({ putImage: vi.fn(async () => ({ key: "abc-123" })) }));
-    expect(await res.json()).toEqual({ key: "abc-123" });
+    expect(await res.json()).toEqual({ key: "abc-123", contentType: "image/png" });
   });
 });
 
@@ -199,5 +199,120 @@ describe("handleBankImageApi while the stored bank is unreadable", () => {
     const res = await handleBankImageApi(req("POST", { auth: "Bearer wrong", body: pngBytes() }), deps({ bankUnreadable }));
     expect(res.status).toBe(403);
     expect(bankUnreadable).not.toHaveBeenCalled();
+  });
+});
+
+/** An MP4/M4A start: a box size, "ftyp", then the major brand (docs/designs/uploaded-media.md D2). */
+function ftypBytes(brand: string, totalLength = 32): Uint8Array {
+  const arr = new Uint8Array(totalLength);
+  arr.set([0, 0, 0, 0x20], 0);
+  arr.set(new TextEncoder().encode("ftyp" + brand), 4);
+  return arr;
+}
+const post = (body: Uint8Array, over: Partial<BankImageApiDeps> = {}) => handleBankImageApi(req("POST", { auth: `Bearer ${KEY}`, body }), deps(over));
+/** A body with no Content-Length: a stream of `chunks` chunks of `size` bytes, the first carrying `head`. */
+function streamReq(head: Uint8Array, size: number, chunks: number, onCancel: () => void) {
+  let sent = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(c) {
+      if (sent === chunks) return c.close();
+      const chunk = new Uint8Array(size);
+      if (sent === 0) chunk.set(head, 0);
+      sent++;
+      c.enqueue(chunk);
+    },
+    cancel: onCancel,
+  });
+  return new Request("https://worker.example.com/api/bank/image", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${KEY}` },
+    body,
+    duplex: "half",
+  } as RequestInit);
+}
+
+describe("handleBankImageApi: video and audio", () => {
+  it.each([
+    ["an MP4 video", ftypBytes("isom"), "video/mp4"],
+    ["an mp42 video", ftypBytes("mp42"), "video/mp4"],
+    ["an M4A", ftypBytes("M4A "), "audio/mp4"],
+    ["an MP3 with an ID3 tag", new TextEncoder().encode("ID3\u0004\u0000\u0000\u0000\u0000\u0000\u0000"), "audio/mpeg"],
+    ["a bare MP3 frame", new Uint8Array([0xff, 0xfb, 0x90, 0x44, 0, 0]), "audio/mpeg"],
+  ])("stores %s under the sniffed Content-Type and returns it", async (_, body, contentType) => {
+    const putImage = vi.fn(async () => ({ key: "k" }));
+    const res = await post(body, { putImage });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ key: "k", contentType });
+    expect(putImage).toHaveBeenCalledWith(expect.any(Uint8Array), contentType);
+    expect((putImage.mock.calls[0] as unknown[])[0]).toHaveLength(body.byteLength);
+  });
+
+  it.each([["AVIF", "avif"], ["HEIC", "heic"], ["QuickTime", "qt  "], ["3GP", "3gp4"], ["DASH", "dash"], ["M4V", "M4V "]])(
+    "rejects %s, a container it does not accept (400, in Chinese)",
+    async (_, brand) => {
+      const putImage = vi.fn();
+      const res = await post(ftypBytes(brand), { putImage });
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain("不支援這種檔案");
+      expect(putImage).not.toHaveBeenCalled();
+    },
+  );
+
+  it("files a generic-brand MP4 as audio when the editor sent it as an M4A (many M4A files say isom/mp42)", async () => {
+    const putImage = vi.fn(async () => ({ key: "k" }));
+    const body = ftypBytes("isom");
+    const res = await handleBankImageApi(
+      new Request("https://worker.example.com/api/bank/image", { method: "POST", headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "audio/x-m4a" }, body: body as unknown as BodyInit }),
+      deps({ putImage }),
+    );
+    expect(await res.json()).toEqual({ key: "k", contentType: "audio/mp4" });
+    // The declared type never turns a non-MP4 into audio.
+    const garbage = await handleBankImageApi(
+      new Request("https://worker.example.com/api/bank/image", { method: "POST", headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "audio/mpeg" }, body: new TextEncoder().encode("not audio at all") as unknown as BodyInit }),
+      deps({ putImage }),
+    );
+    expect(garbage.status).toBe(400);
+  });
+
+  it("rejects garbage bytes (400)", async () => {
+    expect((await post(new TextEncoder().encode("this is not media at all"))).status).toBe(400);
+  });
+
+  it("accepts a video at exactly 25 MB and rejects one byte more (413)", async () => {
+    const putImage = vi.fn(async () => ({ key: "k" }));
+    expect((await post(ftypBytes("isom", MAX_MEDIA_BYTES), { putImage })).status).toBe(200);
+    const res = await post(ftypBytes("isom", MAX_MEDIA_BYTES + 1), { putImage });
+    expect(res.status).toBe(413);
+    expect(await res.text()).toContain("25 MB");
+    expect(putImage).toHaveBeenCalledOnce();
+  });
+
+  it("still caps an image at 5 MB though media may be 25 (413)", async () => {
+    const res = await post(pngBytes(6 * 1024 * 1024));
+    expect(res.status).toBe(413);
+    expect(await res.text()).toContain("5 MB");
+  });
+
+  it("stops reading a body with no Content-Length once it passes 25 MB, and cancels it", async () => {
+    const onCancel = vi.fn();
+    const putImage = vi.fn();
+    const res = await handleBankImageApi(streamReq(ftypBytes("isom"), 1024 * 1024, 40, onCancel), deps({ putImage }));
+    expect(res.status).toBe(413);
+    expect(onCancel).toHaveBeenCalled();
+    expect(putImage).not.toHaveBeenCalled();
+  });
+
+  it("stores exactly the bytes a chunked body sent", async () => {
+    const putImage = vi.fn(async () => ({ key: "k" }));
+    const res = await handleBankImageApi(streamReq(ftypBytes("isom"), 1000, 3, () => {}), deps({ putImage }));
+    expect(res.status).toBe(200);
+    expect((putImage.mock.calls[0] as unknown[])[0]).toHaveLength(3000);
+  });
+
+  it("asks for the owner key on a video too (403)", async () => {
+    const putImage = vi.fn();
+    const res = await handleBankImageApi(req("POST", { body: ftypBytes("isom") }), deps({ putImage }));
+    expect(res.status).toBe(403);
+    expect(putImage).not.toHaveBeenCalled();
   });
 });
