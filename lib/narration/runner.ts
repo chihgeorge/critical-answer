@@ -104,9 +104,9 @@ export interface TranscriptEntry {
   fallbackReason?: string;
 }
 
-/** Things the host did by hand, kept in the same transcript so a playtest can be reconstructed. */
+/** Things the host did by hand, kept in the same transcript so a playtest can be reconstructed. "fix": a 修正 press. */
 export interface DirectorEntry {
-  kind: "edit" | "breaker" | "next";
+  kind: "edit" | "breaker" | "next" | "fix";
   at: string;
   text: string;
   eventId?: number;

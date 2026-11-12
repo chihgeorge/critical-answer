@@ -32,6 +32,8 @@ import {
   mageHint,
   armSneak,
   giveItem,
+  hostFix,
+  type HostFix,
   drinkPotion,
   potionArmed,
   spendPotion,
@@ -2003,6 +2005,9 @@ export class DungeonRoom {
           break;
         case "HOST_GIVE_ITEM":
           this.handleHostGiveItem(sender, msg.teamId);
+          break;
+        case "HOST_FIX":
+          this.handleHostFix(sender, msg.teamId, msg.fix);
           break;
         case "TEAM_DRINK_POTION":
           this.handleTeamDrinkPotion(sender, msg.questionId, msg.eventId);
@@ -4169,6 +4174,27 @@ export class DungeonRoom {
     }
     const name = this.game.teams.find((t) => t.id === teamId)!.name;
     this.appendLine(this.eventSeq, `🧪 ${name}拿到一瓶幸運藥水！`);
+    this.broadcastState();
+  }
+
+  /** ⚙ 更多's 修正 (docs/hosting.md): no line, no cue, no new eventId, so the big screen only shows the new numbers. It is
+   * a move: 改判答對 closes, so an undo can never wipe a correction. Kept in the team's game log and the transcript. */
+  private handleHostFix(conn: Conn, teamId: string, fix: HostFix) {
+    if (!this.requireHost(conn)) return;
+    if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+    // Same holds as 送王房: a die, lock or door in its beat waits until it lands; a fortune's matching teams are fixed (as for 給藥水).
+    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.forkBeat?.teamId === teamId) {
+      return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
+    }
+    if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
+    try {
+      this.game = hostFix(this.game, teamId, fix);
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    const team = this.game.teams.find((t) => t.id === teamId)!;
+    const last = team.fixes!.at(-1)!;
+    this.addTranscript({ kind: "fix", at: new Date().toISOString(), text: `${team.name} ${fix} ${last.from}→${last.to}` });
     this.broadcastState();
   }
 

@@ -210,6 +210,8 @@ export interface Team {
   /** Potions the host gave and the team drank, for lib/game-log.ts (lucky-potion.md E8). Absent until the first. */
   potionsGiven?: number;
   potionsDrunk?: number;
+  /** The host's 修正 presses on this team, in order (hostFix), for lib/game-log.ts. Absent until the first. */
+  fixes?: FixRecord[];
   /** Let in mid-game with the last-place team's score (docs/designs/late-join.md): its boss entry is never `earned`,
    * so the few turns it took win no ⚡ 閃電突擊. */
   late?: true;
@@ -1553,6 +1555,55 @@ export function drinkPotion(game: GameState, teamId: string): GameState {
 export function spendPotion(game: GameState, teamId: string): GameState {
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ item: undefined, itemArmedFor: undefined, itemArmedTurn: undefined, potionsDrunk: (t.potionsDrunk ?? 0) + 1 })) };
 }
+
+/** ⚙ 更多's 修正 (docs/hosting.md): the host's hand corrections after a misjudgment. */
+export const HOST_FIXES = ["score+", "score-", "ability+", "ability-", "potion-"] as const;
+export type HostFix = (typeof HOST_FIXES)[number];
+/** Reward points one 修正 press adds or takes. */
+export const FIX_SCORE_STEP = 5;
+/** One correction, for lib/game-log.ts: `from` and `to` are the reward, the uses left, or 1/0 for a held potion. */
+export interface FixRecord {
+  fix: HostFix;
+  from: number;
+  to: number;
+}
+
+/** The most ability uses 修正 may give `team` back: its class's set plus the uses event rooms gave it (resolveEvent's
+ * spring / good), less an armed 偷襲 (spent already, refunded if it never lands). Null for a chef or no class. */
+export function abilityCap(team: Pick<Team, "classId" | "events" | "sneakArmed">): number | null {
+  if (!team.classId || team.classId === "chef") return null;
+  const won = (team.events ?? []).filter((e) => e === "spring" || e === "good").length;
+  return abilityUsesFor(team.classId) + won - (team.sneakArmed ? 1 : 0);
+}
+
+/** 修正: reward ± FIX_SCORE_STEP (never below 0; progress and the boss door untouched), ability uses ± 1 (0..abilityCap),
+ * or the held potion taken back (armed or not; not counted as drunk). A press that would change nothing throws, so
+ * nothing is recorded. */
+export function hostFix(game: GameState, teamId: string, fix: HostFix): GameState {
+  if (game.phase !== "playing") throw new InvalidActionError("not_playing");
+  const t = getTeam(game, teamId);
+  let patch: Partial<Team>;
+  let from: number;
+  let to: number;
+  if (fix === "score+" || fix === "score-") {
+    from = t.reward;
+    to = Math.max(0, from + (fix === "score+" ? FIX_SCORE_STEP : -FIX_SCORE_STEP));
+    patch = { reward: to };
+  } else if (fix === "ability+" || fix === "ability-") {
+    const cap = abilityCap(t);
+    if (cap === null) throw new InvalidActionError("no_ability");
+    from = t.abilityUses;
+    // One step in the pressed direction only, never past 0 or the cap.
+    to = fix === "ability+" ? (from < cap ? from + 1 : from) : Math.max(0, from - 1);
+    patch = { abilityUses: to };
+  } else {
+    if (!t.item) throw new InvalidActionError("no_item");
+    [from, to] = [1, 0];
+    patch = { item: undefined, itemArmedFor: undefined, itemArmedTurn: undefined };
+  }
+  if (from === to) throw new InvalidActionError("at_limit");
+  return { ...game, teams: patchTeam(game.teams, teamId, (x) => ({ ...patch, fixes: [...(x.fixes ?? []), { fix, from, to }] })) };
+}
 /** Satiety each outcome gives or takes (D4, D9); the spring's goes only to a chef or a team with no class. `great` and
  * `spring` are only for saves from before the 3-scene deck. */
 export const EVENT_SATIETY = { feast: 20, rotten: -10, great: 25, spring: 10 } as const;
@@ -2111,6 +2162,8 @@ export interface SpectatorView {
     currentSelection: number | null;
     classId?: ClassId;
     abilityUses: number;
+    /** The most uses ⚙ 更多's 修正 may give back (abilityCap); absent for a chef or no class. */
+    abilityCap?: number;
     sneakArmed?: true;
     /** The typed answer waiting for the host (text questions), or null. */
     typedAnswer: string | null;
@@ -2177,6 +2230,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       currentSelection: t.currentSelection,
       ...(t.classId ? { classId: t.classId } : {}),
       abilityUses: t.abilityUses,
+      ...(abilityCap(t) !== null ? { abilityCap: abilityCap(t)! } : {}),
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
       typedAnswer: t.typedAnswer ?? null,
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),

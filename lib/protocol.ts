@@ -30,7 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import type { Accessory } from "./monster-catalog";
-import { isClassId, isFortuneEffect, type ClassId, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { HOST_FIXES, isClassId, isFortuneEffect, type ClassId, type HostFix, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
 import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
@@ -265,6 +265,8 @@ export type ClientMessage =
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
   /** 🧪 給藥水 (docs/designs/lucky-potion.md): the host gives a team a potion, at any time of the game; refused while it holds one. */
   | { type: "HOST_GIVE_ITEM"; teamId: string }
+  /** ⚙ 更多's 修正 (game-state hostFix): one correction to a team, recorded in its game log. No line, no cue on the big screen. */
+  | { type: "HOST_FIX"; teamId: string; fix: HostFix }
   /** 🚨 開啟抓包與神諭 (docs/designs/anti-ai-cheating.md): the host's switch, any time of a game. */
   | { type: "HOST_ANTI_CHEAT"; on: boolean }
   /** ⚡ 雷聲 / 👹 低吼 (docs/designs/immersion.md PR2): the room relays it to keyed big screens as SCREEN_EFFECT, at most
@@ -811,6 +813,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_GIVE_ITEM": {
       const teamId = str(m.teamId, MAX_ID);
       return teamId === null ? null : { type: "HOST_GIVE_ITEM", teamId };
+    }
+    case "HOST_FIX": {
+      const teamId = str(m.teamId, MAX_ID);
+      const fix = HOST_FIXES.find((f) => f === m.fix);
+      return teamId === null || !fix ? null : { type: "HOST_FIX", teamId, fix };
     }
     case "TEAM_DRINK_POTION": {
       const questionId = str(m.questionId, MAX_ID);
