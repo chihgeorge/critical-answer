@@ -18,6 +18,7 @@ import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-
 import { CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { ScreenSoundBanner } from "@/components/screen-sound-banner";
+import { HostFxRow } from "@/components/host-fx-row";
 import { Qr } from "@/components/qr";
 import { MageHint } from "@/components/mage-hint";
 import { clericStage, HOST_KEYS, hostKeyAction, introKeyAction } from "@/lib/host-keys";
@@ -662,7 +663,7 @@ export default function HostPage() {
   );
 
   return (
-    <main className="relative min-h-screen overflow-hidden">
+    <main className="relative min-h-screen overflow-clip">
       <SceneBackground theme={turn?.theme ?? "stone"} cols={48} rows={100} arch={false} className="fixed inset-0" />
 
       <div className="relative z-10 flex min-h-screen flex-col gap-3 px-[14px] pb-4 pt-5">
@@ -691,6 +692,8 @@ export default function HostPage() {
             ⚙ 更多
           </PixelButton>
         </header>
+        {/* ⚡ 👹 (immersion.md PR2): sticky, so the pads stay one thumb away while the host scrolls to judge. */}
+        <HostFxRow clipPlaying={!!game?.clipPlaying} sound={game?.screenSound} lobby={!game} online={ready} send={send} />
         {closing && (
           <Panel tone="turn" role="status" data-testid="room-closing" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
             房間再 {closing.minutesLeft} 分鐘關閉

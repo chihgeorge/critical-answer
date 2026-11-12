@@ -12,6 +12,7 @@
 
 ### P3
 
+- [主持人加料鈕 🌑 螢幕變暗](#主持人加料鈕--螢幕變暗) — S（CC 約 1 小時），活動後
 - [觀眾反應的後續：燈籠預測](#觀眾反應的後續燈籠預測) — M
 - [頒獎排名的 9 個小問題（/ship 2026-11-07）](#頒獎排名的-9-個小問題ship-2026-11-07) — S，活動後
 - [縮短超過 22 字的舊腳本句](#縮短超過-22-字的舊腳本句) — S，活動後
@@ -126,6 +127,27 @@
 **Effort/Priority:** S / P3（活動後）
 
 **Depends on:** 無。
+
+---
+
+## 主持人加料鈕 🌑 螢幕變暗
+
+**What:** 主持人頁加第三顆鈕 🌑 螢幕變暗：大螢幕蓋一層半透明黑（切換開關）。房間記住 `screenDim` 放進 STATE，大螢幕重新整理後照 STATE 恢復；遊戲結束、回大廳、新遊戲、影片開始播放（`clipPlaying`）時自動解除。
+
+**Why:** 站長在 2026-11-12 決定先拿掉（/autoplan run 2 UC1：「先拿掉螢幕變暗」），PR2 只做 ⚡ 雷聲、👹 低吼。兩個審查都擔心：40% 黑讓後排看不清題目，而且它調不了場地的燈。
+
+**Context:**
+- `docs/designs/immersion.md`（PR2 段落、Review record 的 🌑／`HOST_DIM`／`screenDim` 項目，已經審過，可以直接照做）
+- `lib/room/dungeon-room.ts`（`clipPlaying()`、`SCREEN_EFFECT` 的轉發與限頻）
+- `app/room/[code]/host/page.tsx`（`HostFxRow`）
+
+**Effort/Priority:** S（CC 約 1 小時） / P3，活動後
+
+**Depends on:** 活動後在真的大螢幕上試，後排看得清楚才做。
+
+**Notes:**
+- 便宜的做法：`HOST_DIM {on}`（只收主持人、每秒一次），亮度用一個常數 `DIM_ALPHA = 0.4` 放在 `lib/flash-budget.ts`；後排看不清就把常數調小，只改一個數字。
+- 轉場（`TransitionOverlay`）出現時不畫變暗層，免得跟首領登場的暗幕疊在一起。
 
 ---
 

@@ -111,3 +111,24 @@ export const BOSS_PARRY: SfxNote[] = [
 
 /** ③ One heartbeat, lub-dub (the last 5 s of a boss answer clock, instead of ANSWER_TICK). */
 export const HEARTBEAT: SfxNote[] = [slide(0, 0.09, "A2", "E2"), slide(0.14, 0.08, "G2", "D2")];
+
+// The host's pads (immersion.md PR2), played on the "host" layer: they sound with 🎵 off and go silent during a video.
+// No sawtooth either (e2e/sfx.spec.ts).
+
+/** ⚡ 雷聲: a bright crack, then a long low roll that falls away. */
+export const THUNDER: SfxNote[] = [
+  slide(0, 0.06, "E7", "E5"),
+  slide(0.04, 0.1, "B6", "B3", "triangle"),
+  slide(0.12, 1.1, "C2", "F1"),
+  slide(0.3, 0.9, "G2", "C2", "triangle"),
+  slide(0.6, 0.8, "D2", "A1"),
+];
+
+/** 👹 低吼: a low snarl that rises, wobbles and sinks. */
+export const GROWL: SfxNote[] = [
+  slide(0, 0.25, "A1", "D2"),
+  slide(0.25, 0.15, "D2", "C2"),
+  slide(0.4, 0.15, "C2", "D#2"),
+  slide(0.55, 0.45, "D#2", "G1"),
+  slide(0.1, 0.8, "E2", "A1", "triangle"),
+];
