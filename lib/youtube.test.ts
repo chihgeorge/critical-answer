@@ -1,5 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
-import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, type CaptionPlayer } from "./youtube";
+import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
+
+describe("shouldSeek (timing-tap-timeline.md)", () => {
+  it("seeks once per replay key: a re-render with the same key does nothing", () => {
+    expect(shouldSeek(null, "q1")).toBe(true);
+    expect(shouldSeek("q1", "q1")).toBe(false);
+    expect(shouldSeek("q1", "q2")).toBe(true);
+  });
+});
 
 describe("resendClipError (boss-music-buzzer.md M4)", () => {
   const seen = { questionId: "b-a", press: 2 };

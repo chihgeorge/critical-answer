@@ -107,3 +107,44 @@ export function medianError(errors: number[]): number | null {
 
 /** The latency the host's 「把延遲改成 X ms」 sets: the current one plus the median error, 0–MAX_TAP_LATENCY_MS. */
 export const suggestedLatency = (current: number, median: number): number => Math.min(MAX_TAP_LATENCY_MS, Math.max(0, Math.round(current + median)));
+
+/* ---------- The reveal's timeline and replay (docs/designs/timing-tap-timeline.md) ---------- */
+
+/** The timeline reaches at least this far on each side of the target, and at most TAP_GRACE_MS (the round's close). */
+export const TIMELINE_MIN_SIDE_MS = 1000;
+/** Each side reaches this much past its farthest tap, so a marker never sits on the edge. */
+export const TIMELINE_ZOOM = 1.3;
+/** The replay starts this long before the target, so the room hears the beat coming. */
+export const REPLAY_LEAD_MS = 2500;
+/** The replay waits this long after the reveal, so the room reads the winner first. */
+export const REPLAY_DELAY_MS = 1000;
+
+/** The timeline's span in song ms: each side of the target reaches its farthest tap × TIMELINE_ZOOM, between
+ * TIMELINE_MIN_SIDE_MS and TAP_GRACE_MS (a tap earlier than that is pinned to the left edge), never before the clip. */
+export function timelineWindow(targetMs: number, errors: number[], clipStartMs: number): [number, number] {
+  const side = (es: number[]) => Math.min(TAP_GRACE_MS, Math.max(TIMELINE_MIN_SIDE_MS, TIMELINE_ZOOM * Math.max(0, ...es.filter((e) => e <= TAP_GRACE_MS))));
+  return [Math.max(clipStartMs, targetMs - side(errors.map((e) => -e))), targetMs + side(errors)];
+}
+
+/** Where a song time falls on the timeline, 0–1 (clamped: a tap outside sits on the edge). */
+export const timelineAt = (ms: number, [from, to]: [number, number]): number => (to > from ? Math.min(1, Math.max(0, (ms - from) / (to - from))) : 0.5);
+
+/** The replay's start in video seconds: REPLAY_LEAD_MS before the target, never before the clip. */
+export const replayFromS = (targetMs: number, clipStartS: number): number => Math.max(clipStartS, (targetMs - REPLAY_LEAD_MS) / 1000);
+
+/** "早 0.12" / "晚 0.12" / "準 0.00": formatTapError without 秒, for a marker's label. */
+export const shortTapError = (errorMs: number): string => formatTapError(errorMs).slice(0, -2);
+
+/** A label's row for each item, in the order given (the closest tap first), or -1 when none of `rows` has room:
+ * each item is [left, right] in px; `taken[r]` are spans already used in row r (the target's own label). */
+export function labelRows(items: [number, number][], taken: [number, number][][], gap = 4): number[] {
+  const rows = taken.map((spans) => [...spans]);
+  return items.map(([l, r]) => {
+    const row = rows.findIndex((spans) => spans.every(([a, b]) => r + gap <= a || l >= b + gap));
+    if (row >= 0) rows[row].push([l, r]);
+    return row;
+  });
+}
+
+/** The reveal's replay is due: a clip to play (`key`), the host's media on this question playing, and not yet done. */
+export const replayDue = (key: string | null, playing: boolean, doneKey: string | null): key is string => key !== null && playing && doneKey !== key;
