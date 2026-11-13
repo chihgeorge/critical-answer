@@ -871,11 +871,12 @@ export function openBuzz(game: GameState, questionId: string, timing = false): G
   return { ...game, ...(allStunned ? { teams: unstun(game.teams, (t) => !!t.inBoss) } : {}), buzz: { ...buzz, open: true } };
 }
 
-/** Who may tap on a timing question now (timing-tap.md): online, in the boss room, not 💫 stunned. The one rule for
+/** Who may tap on a timing question now (timing-tap.md): online, in the boss room, not 💫 stunned, unless every online
+ * boss-room team is (buzzIn's rule: the question came round as itself, so openBuzz did not clear them). The one rule for
  * tapping, the early close, the host's denominator and the phone's stun state. */
 export const tapEligible = (game: GameState, teamId: string): boolean => {
   const t = game.teams.find((x) => x.id === teamId);
-  return !!t && t.online && t.inBoss && !t.stunned;
+  return !!t && t.online && t.inBoss && (!t.stunned || game.teams.every((x) => !x.online || !x.inBoss || x.stunned));
 };
 
 /** Why `teamId` may not tap on `questionId` in `round` now, as the room's refusal code; throws InvalidActionError. */
@@ -887,7 +888,7 @@ export function assertCanTap(game: GameState, teamId: string, questionId: string
   if (buzz.taps?.some((t) => t.teamId === teamId)) throw new InvalidActionError("tap_taken");
   const team = getTeam(game, teamId);
   if (!team.online || !team.inBoss) throw new InvalidActionError("cannot_tap");
-  if (team.stunned) throw new InvalidActionError("stunned");
+  if (!tapEligible(game, teamId)) throw new InvalidActionError("stunned");
 }
 
 /** `teamId` taps at song time `ms` (timing-tap.md). Checks assertCanTap again; the room converts the time first. */

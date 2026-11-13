@@ -12,6 +12,8 @@ export const TAP_MAX_LAG_MS = 1000;
 export const TAP_MAX_LEAD_MS = 300;
 /** No clock report from the chosen big screen for this long: its anchor is gone (a frozen tab). */
 export const TAP_CLOCK_STALE_MS = 2500;
+/** After ⟲, an anchor whose song time runs further than the clip start plus the time since ⟲ plus this is from before the seek. */
+export const TAP_SEEK_SLACK_MS = 1500;
 /** Bank health: a target closer than this to the clip start leaves the screen's clock too little time to settle. */
 export const TAP_HEALTH_LEAD_S = 3;
 /** Speaker latency the host may set (E3-lite), ms. */

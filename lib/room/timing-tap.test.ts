@@ -207,7 +207,10 @@ describe("timing question in the room", () => {
     expect(g.state().question.id).toBe("t-a");
     g.tapAt(0, Date.now(), 0);
     expect(g.lastOf(g.phones[0], "ERROR")).toMatchObject({ detail: "stale_question" });
-    g.clock();
+    // The new seq's clock from before the seek (song still at 15 s, ⟲ just now) is ignored; one from the clip start counts.
+    g.clock(ANCHOR);
+    expect(g.state().tapLive).toBeUndefined();
+    g.clock(Date.now() - 10_000);
     expect(g.state().tapLive).toBe(true);
     g.tapAt(0);
     expect(g.lastOf(g.phones[0], "TAP_OK")).toMatchObject({ round: 1 });
@@ -237,6 +240,11 @@ describe("timing question in the room", () => {
     expect(g.state().tapLive).toBe(true);
     g.room.onClose(other);
     expect(g.state().tapLive).toBeUndefined();
+    // A screen that is not playing (muted, background) cannot take the clock with null reports and lock the TV out.
+    const idle = g.screen("screen-3");
+    g.clock(null, idle);
+    g.clock(ANCHOR);
+    expect(g.state().tapLive).toBe(true);
   });
 
   it("a SCREEN_TAP_CLOCK from a phone or a keyless screen is ignored; a NaN tap is a bad message", () => {
@@ -284,13 +292,13 @@ describe("timing question in the room", () => {
     g.media("play");
     expect(g.seq()).toBe(seq + 1);
     // The host skips it after a tap: the same question's new round lets that team tap again.
-    g.clock();
+    g.clock(Date.now() - 10_000);
     g.tapAt(0);
     send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "t-a" });
     expect(g.room.game!.buzz).toMatchObject({ questionId: "t-a", tapRound: 2 });
     expect(g.room.game!.buzz!.taps).toBeUndefined();
     g.media("play");
-    g.clock();
+    g.clock(Date.now() - 10_000);
     g.tapAt(0);
     // The replay is a ⟲ too, so the round moved on again; the team's tap counts in it.
     expect(g.lastOf(g.phones[0], "TAP_OK")).toMatchObject({ round: 3 });
@@ -322,6 +330,8 @@ describe("timing question in the room", () => {
     g.advance(120);
     g.tapAt(0); // on the beat
     g.room.onClose(g.phones[0]);
+    // The host's count matches the close: the dropped team's tap and the team leave both numbers.
+    expect((g.room as unknown as { tapCount: (id: string) => object }).tapCount("t-a")).toEqual({ tap: { count: 1, eligible: 2 } });
     g.advance(3000);
     expect(g.state().reveal).toMatchObject({ timing: { rows: [{ teamId: IDS[1] }] } });
     expect(g.state().reveal.timing.rows).toHaveLength(1);

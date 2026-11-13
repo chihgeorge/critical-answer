@@ -2787,6 +2787,10 @@ describe("timing question taps (docs/designs/timing-tap.md)", () => {
     expect(allTapped(patch(g, "T2", { online: false }))).toBe(true);
     expect(allTapped(patch(g, "T2", { stunned: true }))).toBe(true);
     expect(tapEligible(patch(g, "T2", { stunned: true }), "T2")).toBe(false);
+    // Every online boss-room team stunned (the question came round as itself, so ▶ cleared nobody): none sits out.
+    const allStunned = { ...g, teams: g.teams.map((t) => ({ ...t, stunned: true as const })) };
+    expect(tapEligible(allStunned, "T2")).toBe(true);
+    expect(() => assertCanTap(allStunned, "T2", "t-a", 0)).not.toThrow();
     // Everyone gone: no early close, the round runs to its end.
     expect(allTapped({ ...g, teams: g.teams.map((t) => ({ ...t, online: false })) })).toBe(false);
   });

@@ -131,7 +131,7 @@ import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
 import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank, type BankQuestion } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
-import { acceptTapAt, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, tapResults } from "../tap-clock";
+import { acceptTapAt, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, TAP_SEEK_SLACK_MS, tapResults } from "../tap-clock";
 import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
 import { healthReport, mediaBatches, type MediaResults } from "../bank-health";
@@ -475,6 +475,8 @@ export class DungeonRoom {
    * which its clip's video time 0 played (null while paused or buffering), for which question and ⟲ seq, and when it
    * last reported. In memory only, like `media`: after a restart the host's next ▶ brings it back (hosting.md). */
   private tapClock: { questionId: string; seq: number; screen: string; anchor: number | null; at: number } | null = null;
+  /** When the host's last ⟲ (a play from the clip's start) for this question and seq began. In memory only. */
+  private tapSeqStart: { questionId: string; seq: number; at: number } | null = null;
   /** Closes the timing round at its song time, or wakes when the clock goes stale. */
   private tapTimer: ReturnType<typeof setTimeout> | null = null;
   /** The `tapLive` the last broadcast STATE carried: an anchor update broadcasts only when it flips. */
@@ -3671,11 +3673,13 @@ export class DungeonRoom {
     if (!this.requireHost(conn)) return;
     if (questionId !== this.shownVideoId()) return;
     // A skipped timing question that came round again starts over on ▶ (its song stopped past the target).
-    if (action === "play" && this.tapReplay === questionId) action = "restart";
+    if (action === "play" && this.tapReplay === questionId && this.media?.questionId === questionId) action = "restart";
     if (action === "restart") this.tapReplay = null;
     const same = this.media?.questionId === questionId ? this.media : null;
     const seq = same?.seq ?? 0;
     this.media = { questionId, state: action === "pause" ? "paused" : "playing", seq: action === "restart" ? seq + 1 : seq, press: (same?.press ?? 0) + 1 };
+    // ⟲ plays from the clip's start: when it began, for handleTapClock's stale-anchor check.
+    if (action === "restart") this.tapSeqStart = { questionId, seq: this.media.seq, at: this.now() };
     // The host took the controls after a buzz: a wrong answer or a drop leaves the music as the host set it (outside-voice review).
     this.buzzPaused = false;
     // The screen tries the video again on a ▶ (youtube-player.tsx), and reports again if it still fails.
@@ -4646,18 +4650,28 @@ export class DungeonRoom {
     const id = this.game?.boss.currentQuestionId;
     if (!id || questionId !== id || this.question(id)?.kind !== "timing" || this.media?.questionId !== id || this.media.seq !== seq) return;
     const c = this.tapClock;
-    if (c && c.screen !== sender.id && c.questionId === id && c.seq === seq && this.now() - c.at <= TAP_CLOCK_STALE_MS) return;
+    const mine = c?.screen === sender.id && c.questionId === id && c.seq === seq;
+    if (c && !mine && c.questionId === id && c.seq === seq && this.now() - c.at <= TAP_CLOCK_STALE_MS) return;
+    // Only a playing screen takes the clock: a muted or background tab's null reports would lock the TV out (adversarial review).
+    if (anchor === null && !mine) return;
+    // A YouTube screen may report its pre-seek time under the new seq: the song cannot be further on than its start plus
+    // the time since that play began (adversarial review).
+    const s = this.tapSeqStart;
+    const q = this.question(id);
+    if (anchor !== null && s?.questionId === id && s.seq === seq && q?.kind === "timing" && this.now() - anchor > (q.content.start ?? 0) * 1000 + (this.now() - s.at) + TAP_SEEK_SLACK_MS) return;
     this.tapClock = { questionId, seq, screen: sender.id, anchor, at: this.now() };
     this.tapChanged();
   }
 
-  /** HOST_ANSWER's `tap`: teams tapped of those that may (timing-tap.md); a tapped team that dropped still counts. */
+  /** HOST_ANSWER's `tap`: teams tapped of those that may (timing-tap.md). A tapped team that dropped loses its tap at the
+   * close (settleTaps), so it leaves both numbers. */
   private tapCount(questionId: string): { tap?: { count: number; eligible: number } } {
     const game = this.game;
     if (!game || !isBuzzPhase(game) || this.question(questionId)?.kind !== "timing") return {};
     const taps = game.buzz?.questionId === questionId ? (game.buzz.taps ?? []) : [];
-    const eligible = game.teams.filter((t) => tapEligible(game, t.id) || taps.some((x) => x.teamId === t.id)).length;
-    return { tap: { count: taps.length, eligible } };
+    const live = taps.filter((x) => game.teams.some((t) => t.id === x.teamId && t.online));
+    const eligible = game.teams.filter((t) => tapEligible(game, t.id) || live.some((x) => x.teamId === t.id)).length;
+    return { tap: { count: live.length, eligible } };
   }
 
   /** A phone's tap (timing-tap.md): the press in server ms, turned into song time through the chosen screen's anchor. */

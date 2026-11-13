@@ -93,7 +93,8 @@ export function TapButton({ game, teamId, tap }: { game: StateMessage; teamId: s
   const s = tapButtonState({
     inBoss: !!me?.inBossPhase,
     online: !!me?.online,
-    stunned: !!me?.stunned,
+    // game-state's tapEligible: when every online boss-room team is stunned, none sits out.
+    stunned: !!me?.stunned && !game.view.teams.every((t) => !t.online || !t.inBossPhase || t.stunned),
     open: !!buzz?.open,
     paused: !playing,
     tapLive: game.tapLive === true,
