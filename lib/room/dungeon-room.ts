@@ -347,6 +347,20 @@ const chefOf = (o: { chefBonus?: number }) => (o.chefBonus ? { chefBonus: o.chef
 /** Names a reader can't tell apart (full-width vs half-width, case) count as one team name. */
 const sameTeamName = (a: string, b: string) => a.normalize("NFKC").toLowerCase() === b.normalize("NFKC").toLowerCase();
 
+/** HOST_BANK_CHECK: no new lookup batch after this long, and none waited on longer than BANK_CHECK_RPC_MS, so a check
+ * ends within ~80 s, inside the host page's 90 s wait (bank-health-check.md D5). */
+const BANK_CHECK_BUDGET_MS = 40_000;
+const BANK_CHECK_RPC_MS = 40_000;
+/** `p`, or undefined once `ms` pass first (or when there is no `p`). */
+function withTimeout<T>(p: Promise<T> | undefined, ms: number): Promise<T | undefined> {
+  if (!p) return Promise.resolve(undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), ms);
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+
 export class DungeonRoom {
   game: GameState | null = null;
   private pendingTeams: { id: string; name: string; classId?: ClassId }[] = [];
@@ -2805,16 +2819,22 @@ export class DungeonRoom {
     const reload = canReload ? this.handleSetBank(conn, bankId) : Promise.resolve(true);
     const gen = this.bankGen;
     const base = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
-    const stale = () => gen !== this.bankGen || !!this.game;
-    const run = async () => {
-      // false: the reload failed (handleSetBank already sent bank_unavailable) or a newer pick replaced it.
-      if (!(await reload)) return stale() ? "stale" : "failed";
+    const started = this.now();
+    // A started game drops the check silently: its rows are no use, and the page cleared them on STATE.
+    const outcomeIfOver = () => (this.game ? "started" : gen !== this.bankGen ? "stale" : null);
+    const run = async (): Promise<"sent" | "started" | "stale"> => {
+      // false: a newer pick replaced it, or the reload failed (handleSetBank sent bank_unavailable): then check the
+      // room's own copy, the bank it would actually play.
+      const landed = await reload;
+      if (outcomeIfOver()) return outcomeIfOver()!;
       const bank = this.bank;
       const merged: MediaResults = { youtube: {}, files: {} };
-      // One RPC at a time: each is its own invocation with its own subrequest budget (D4).
+      // One RPC at a time: each is its own invocation with its own subrequest budget (D4). No new batch after
+      // BANK_CHECK_BUDGET_MS and none waited on past BANK_CHECK_RPC_MS, so the host page's 90 s wait always covers it.
       for (const batch of mediaBatches(bank, base)) {
-        if (stale()) return "stale";
-        const got = await this.room.checkMedia?.(batch).catch((err: unknown) => {
+        if (outcomeIfOver()) return outcomeIfOver()!;
+        if (this.now() - started > BANK_CHECK_BUDGET_MS) break; // the rest stay unknown: yellow
+        const got = await withTimeout(this.room.checkMedia?.(batch), BANK_CHECK_RPC_MS).catch((err: unknown) => {
           console.error(JSON.stringify({ event: "bank_check_failed", error: String(err) }));
           return undefined;
         });
@@ -2823,20 +2843,20 @@ export class DungeonRoom {
         Object.assign(merged.files, got.files);
         if (got.publicOk !== undefined) merged.publicOk = got.publicOk;
       }
-      if (stale()) return "stale";
+      if (outcomeIfOver()) return outcomeIfOver()!;
       const report = healthReport(bank, merged, base);
       // Straight to the socket: sendTo would save the room for a reply that changes nothing in it.
-      if (this.hostConns.has(conn.id)) conn.send(JSON.stringify({ type: "HOST_BANK_HEALTH", ...report, reloaded: canReload } satisfies ServerMessage));
+      if (this.hostConns.has(conn.id)) conn.send(JSON.stringify({ type: "HOST_BANK_HEALTH", ...report, reloaded: canReload && landed } satisfies ServerMessage));
       return "sent";
     };
     void run()
       .catch((err: unknown) => {
         console.error(JSON.stringify({ event: "bank_check_failed", error: String(err) }));
-        return "stale" as const;
+        return "failed" as const;
       })
       .then((outcome) => {
         this.bankChecking = false;
-        if (outcome === "stale" && this.hostConns.has(conn.id)) this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "check_stale" });
+        if ((outcome === "stale" || outcome === "failed") && this.hostConns.has(conn.id)) this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: outcome === "stale" ? "check_stale" : "check_failed" });
       });
   }
 

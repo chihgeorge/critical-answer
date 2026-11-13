@@ -76,6 +76,8 @@ export default function HostPage() {
   const [checking, setChecking] = useState(false);
   /** Releases 檢查中… when no answer comes (the socket dropped mid-check). */
   const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** The bank the room last said it plays (HOST_BANKS), so a change from another host device clears the rows. */
+  const checkedBankId = useRef<string>(DEFAULT_BANK_ENTRY.id);
   const stopChecking = () => {
     if (checkTimer.current) clearTimeout(checkTimer.current);
     checkTimer.current = null;
@@ -256,6 +258,9 @@ export default function HostPage() {
           setTimeout(() => dropHandoff(msg.teamId, msg.code), HANDOFF_MS);
           break;
         case "HOST_BANKS":
+          // Another host device picked another bank: this page's rows were for the old one.
+          if (msg.selected.id !== checkedBankId.current) setHealth(null);
+          checkedBankId.current = msg.selected.id;
           setBanks({ list: msg.banks, selected: msg.selected, loading: !!msg.loading });
           break;
         case "HOST_BANK_HEALTH":
@@ -334,6 +339,8 @@ export default function HostPage() {
                 ? "題庫還在載入，等一下再開始"
                 : msg.detail === "check_running"
                 ? "題庫檢查已經在跑了，等它跑完"
+                : msg.detail === "check_failed"
+                ? "題庫檢查出錯了，請再按一次「檢查題庫」"
                 : msg.detail === "check_stale"
                 ? "檢查途中題庫換了，請再按一次「檢查題庫」"
                 : msg.detail === "lock_pending"

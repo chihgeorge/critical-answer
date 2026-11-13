@@ -42,7 +42,9 @@
 - `rows` 不帶答案、網址、YouTube id、R2 key。`where` 是「難度 2」「首領第 1 階段」或「題庫」（整份題庫的問題），`label` 是題目開頭最多 16 個字（文字題的題目、媒材題的 `prompt`；都沒有就省略）。主持人頁本來就看得到這些（`HOST_ANSWER` 連答案都有），手機和大螢幕收不到。
 - `questions`：檢查了幾題；`unchecked`：有幾題的媒材沒辦法自動檢查（Instagram 詳解）。主持人頁算「沒發現問題」＝`questions` 減去有列的不同題目。
 - 一個房間同時只跑一個檢查（第二次按回 `invalid_action`／`check_running`）；題庫載入中回 `bank_loading`。
-- 開始時記下 `bankGen`。檢查完如果 `bankGen` 變了（換題庫、房間重設）或遊戲開始了，不送結果，改回 `invalid_action`／`check_stale`，主持人頁顯示「題庫換了，請再檢查一次」。同一個 id 重選、A→B→A、重設回同一份都會讓 `bankGen` 變，所以不會把舊結果當新的。
+- 開始時記下 `bankGen`。檢查完如果 `bankGen` 變了（換題庫、房間重設），不送結果，改回 `invalid_action`／`check_stale`，主持人頁顯示「題庫換了，請再檢查一次」。同一個 id 重選、A→B→A、重設回同一份都會讓 `bankGen` 變，所以不會把舊結果當新的。遊戲開始了就什麼都不送（主持人頁收到 `STATE` 已經清掉結果，遊戲中不該跳「請再檢查」）。程式出錯回 `check_failed`。
+- 重新載入失敗（題庫讀不到、自訂題庫被刪）：照現有規則回 `bank_unavailable`，再檢查房間現有那份（房間真正會用的那份），`reloaded: false`。
+- 每批 RPC 最多等 40 秒，開始 40 秒後不再送新的一批（剩下的算黃），所以整個檢查約 80 秒內結束，在主持人頁 90 秒的等待之內；`bankChecking` 不會卡住。另一台主持人裝置換題庫（`HOST_BANKS` 的 `selected` 變了）時，這台的結果也清掉。
 - 結果不寫進快照，用 `conn.send` 直接送，不經過會觸發存檔的 `sendTo`。
 
 ### D3 媒材在伺服器查（不是主持人的瀏覽器）
@@ -53,7 +55,7 @@
 |---|---|---|---|
 | YouTube（題目或詳解） | `GET https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=<id>&format=json` | 401（YouTube 不給嵌入：私人影片或關掉嵌入，大螢幕放不出來）、404／400（找不到：刪除或 id 錯） | 其他狀態碼（例如 429 被擋）、逾時：「沒辦法確認」 |
 | 上傳圖片、影片、聲音 | R2 binding `images.get(key, { range: { offset: 0, length: 65536 } })` | 物件不存在 | 影片前 64 KB 有 `hvc1`／`hev1`（HEVC，很多瀏覽器放不出來）；讀取失敗：「沒辦法確認」 |
-| R2 公開網址 | 有上傳檔時，`HEAD <R2_PUBLIC_BASE_URL>/<第一個 key>` 一次 | 非 2xx、或 `R2_PUBLIC_BASE_URL` 沒設／還是 `REPLACE-ME`：「大螢幕讀不到上傳的檔案」 | 逾時 |
+| R2 公開網址 | 有上傳檔時，用 binding 確認存在的第一個檔案 `HEAD <R2_PUBLIC_BASE_URL>/<key>` 一次（不會因為某個檔案被刪就誤報整個 bucket；全部都不見就不查，算黃） | 非 2xx、或 `R2_PUBLIC_BASE_URL` 沒設／還是 `REPLACE-ME`：「大螢幕讀不到上傳的檔案」 | 逾時 |
 | Instagram 詳解 | 不查（沒有不用登入的公開檢查），算進 `unchecked` | — | — |
 
 - 同一支影片或檔案在好幾題用到只查一次，結果套到每一題。
@@ -90,7 +92,7 @@ shortcut：「每次 RPC 一份額度」沒在正式環境量過；萬一不是�
   - 41 支 YouTube → 兩批（40＋1）。
   - Instagram 詳解算進 `unchecked`。
   - 列裡沒有 YouTube id、R2 key、`answer`／`correctIndex`／`fields` 欄位。
-- `lib/room/bank-health.test.ts`（房間）：不是主持人回 `not_host`；遊戲中回 `game_already_started`；載入中回 `bank_loading`；第二次按回 `check_running`；只送給發問的連線（手機、大螢幕收不到）；先重新載入題庫再檢查（`loadBank` 被叫、檢查的是新那份）；檢查途中換題庫 → `check_stale`、不送結果。
+- `lib/room/bank-health.test.ts`（房間）：不是主持人回 `not_host`；遊戲中回 `game_already_started`；載入中回 `bank_loading`；第二次按回 `check_running`；只送給發問的連線（手機、大螢幕收不到）；先重新載入題庫再檢查（`loadBank` 被叫、檢查的是新那份）；檢查途中換題庫 → `check_stale`、不送結果；遊戲開始 → 什麼都不送；重新載入失敗 → 檢查房間那份、`reloaded: false`；RPC 丟錯或 40 秒沒回 → 黃。
 - `lib/protocol.test.ts`：`HOST_BANK_CHECK` 解析。
 - e2e：CI 跑，不新增。
 
@@ -270,3 +272,7 @@ snapshot 工具因為「API」出現 4 次判定要跑 DX，但這幾處都是�
 | 10 | Eng | 隊伍數警告沿用大廳已有那行 | Mechanical | P4 | 已有且即時，房間算會過時 | 房間算、清單重複列 |
 | 11 | Eng | 主持人頁 UI 不加 e2e | Taste | P6 | e2e 只在 CI，房間測試已涵蓋協定 | 新 e2e |
 | 12 | Eng | 401 維持紅 | Mechanical | P5 | 私人或不給嵌入，iframe 都放不出來（codex #5 只改字樣） | 黃 |
+
+### /review 後的修改（2026-11-12）
+
+/review（5 個專家子代理、對抗審查、`codex review`）沒有 CRITICAL；照 INFORMATIONAL 改了：遊戲開始時不送 `check_stale`、程式出錯改送 `check_failed`（state-machines、maintainability、對抗審查）；R2 公開網址改查一個確認存在的檔案（對抗審查）；重新載入失敗時照樣檢查房間那份（對抗審查）；每批 RPC 40 秒逾時、40 秒後不再送新批次（performance、對抗審查）；另一台主持人裝置換題庫時清掉結果（codex、對抗審查）；補了重新載入失敗、RPC 丟錯／逾時、遊戲開始的房間測試（testing）。沒做：每個房間的冷卻時間、oEmbed 結果快取（security，影響只限 owner 題庫裡的影片數；一個房間同時一個檢查已經限住）、BankStoreDO 的 R2 fallback 單元測試（平台接線）。Implementation plan 已同步；上面 accepted 區塊裡「遊戲開始送 check_stale」由這段取代。

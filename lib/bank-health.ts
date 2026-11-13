@@ -17,8 +17,8 @@ export const HEAD_BYTES = 65536;
 export interface MediaBatch {
   youtube: string[];
   files: { key: string; video: boolean }[];
-  /** A public URL of one uploaded file: can the big screen read the bucket at all? */
-  publicUrl?: string;
+  /** The bucket's public base: one file that exists is fetched through it, so can the big screen read the bucket at all? */
+  publicBase?: string;
 }
 export type MediaStatus = "ok" | "private" | "gone" | "missing" | "hevc" | "unknown";
 export interface MediaResults {
@@ -52,7 +52,7 @@ export function mediaBatches(bank: Bank, baseUrl: string): MediaBatch[] {
   for (let i = 0; i === 0 || i < ids.length; i += MAX_YOUTUBE_PER_BATCH) batches.push({ youtube: ids.slice(i, i + MAX_YOUTUBE_PER_BATCH), files: [] });
   const first = batches[0];
   first.files = [...files].map(([key, video]) => ({ key, video }));
-  if (first.files.length > 0 && !baseUrlMissing(baseUrl)) first.publicUrl = `${baseUrl}/${encodeURIComponent(first.files[0].key)}`;
+  if (first.files.length > 0 && !baseUrlMissing(baseUrl)) first.publicBase = baseUrl;
   return batches.filter((b) => b.youtube.length > 0 || b.files.length > 0);
 }
 
@@ -108,16 +108,14 @@ export async function checkMediaBatch(batch: MediaBatch, deps: MediaDeps): Promi
         out.files[key] = "unknown";
       }
     }),
-    ...(batch.publicUrl
-      ? [
-          async () => {
-            const s = await status(deps, batch.publicUrl!, "HEAD");
-            out.publicOk = s === null ? null : s >= 200 && s < 300;
-          },
-        ]
-      : []),
   ];
   await pool(jobs, PARALLEL, (job) => job());
+  // A file the binding just found, so a deleted one cannot make the whole bucket look private.
+  const present = batch.files.find((f) => out.files[f.key] === "ok" || out.files[f.key] === "hevc");
+  if (batch.publicBase && present) {
+    const s = await status(deps, `${batch.publicBase}/${encodeURIComponent(present.key)}`, "HEAD");
+    out.publicOk = s === null ? null : s >= 200 && s < 300;
+  }
   return out;
 }
 

@@ -49,13 +49,13 @@ describe("mediaBatches", () => {
       { key: KEY, video: true },
       { key: KEY2, video: false },
     ]);
-    expect(batches[0].publicUrl).toBe(`${BASE}/${KEY}`);
+    expect(batches[0].publicBase).toBe(BASE);
     expect(batches[1]).toEqual({ youtube: [yt(40)], files: [] });
   });
 
   it("has nothing to look up in a text-only bank, and no public URL without a base", () => {
     expect(mediaBatches(bank([text("q1")]), BASE)).toEqual([]);
-    expect(mediaBatches(bank([text("q1", { content: { kind: "image", value: KEY } })]), "")[0].publicUrl).toBeUndefined();
+    expect(mediaBatches(bank([text("q1", { content: { kind: "image", value: KEY } })]), "")[0].publicBase).toBeUndefined();
   });
 });
 
@@ -103,9 +103,14 @@ describe("checkMediaBatch", () => {
   it("finds a missing file, an HEVC video, and whether the bucket is public", async () => {
     const hevc = new TextEncoder().encode("....ftypisom....moov....stsd....hvc1....");
     const d = deps((url) => (url.startsWith(BASE) ? 403 : 200), { [KEY]: null, [KEY2]: hevc });
-    const out = await checkMediaBatch({ youtube: [], files: [{ key: KEY, video: true }, { key: KEY2, video: true }], publicUrl: `${BASE}/${KEY}` }, d);
+    const out = await checkMediaBatch({ youtube: [], files: [{ key: KEY, video: true }, { key: KEY2, video: true }], publicBase: BASE }, d);
     expect(out.files).toEqual({ [KEY]: "missing", [KEY2]: "hevc" });
     expect(out.publicOk).toBe(false);
+    // The public check fetches a file that exists, never the missing one.
+    expect(d.fetch.mock.calls.map(([url]) => String(url))).toEqual([`${BASE}/${KEY2}`]);
+    // With every file missing there is nothing to fetch: the bucket stays unconfirmed.
+    const none = await checkMediaBatch({ youtube: [], files: [{ key: KEY, video: false }], publicBase: BASE }, d);
+    expect(none.publicOk).toBeUndefined();
     // The same bytes in an image are not a codec.
     expect((await checkMediaBatch({ youtube: [], files: [{ key: KEY2, video: false }] }, d)).files[KEY2]).toBe("ok");
   });
