@@ -39,7 +39,7 @@ describe("BankStore.getVersionedBank", () => {
   it("reads a bank stored before pools as pools, and saves it back", async () => {
     // Every stored bank in production is in the pre-pool shape until its first save after deploy.
     const { rooms: [room], boss } = validBank;
-    const legacy = { rooms: [{ monster: room.monster, baseDifficulty: 1, reward: 10, questions: validBank.pools[1] }], boss };
+    const legacy = { rooms: [{ monster: room.monster, baseDifficulty: 1, reward: 10, questions: validBank.pools[1] }], boss }; // pregate-literal: BANK_FORMAT=10 a reward, not the format
     const store = new BankStore(memoryStorage({ format: BANK_FORMAT, bank: legacy, version: 2 })); // pregate-literal: BANK_FORMAT=2 the 2 here is the stored version, not the format
     const { bank } = await store.getVersionedBank();
     expect(bank.pools[1].map((q) => q.id)).toEqual(["r0-q1"]);
@@ -151,7 +151,7 @@ describe("BankStore.putBank", () => {
   });
 
   // Regression: boss HP had no upper bound; the big screen draws hearts up to MAX_HEARTS, then a bar, and 60 is the cap (multi-field.md E5)
-  // Found by /review on 2026-10-28
+  // Found by /review on 2026-10-28 // pregate-literal: BANK_FORMAT=10 a date, not the format
   it.each([[61], [2.5]])("refuses to save a boss phase with %s HP (a whole number from 1 to 60), and keeps the stored bank", async (maxHp) => {
     const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
     const store = new BankStore(storage);
@@ -170,6 +170,7 @@ describe("BankStore.putBank", () => {
     expect(await storage.get("bank")).toEqual({ bank: validBank, version: 1, format: BANK_FORMAT });
   });
 
+  // pregate-literal: BANK_FORMAT=10 a date in the next line, not the format
   // Value: protects=the big screen's phase card stays short enough to leave the new boss visible (/qa 2026-10-28 ISSUE-002);
   // fails_when=assertSavable stops checking phase name or rule length, or the bound turns into >=; why_new=parseBank accepts any length; seam=none;
   // no_claim=banks stored before this check (they still load, see the test below)
@@ -419,8 +420,8 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
   const KEPT_KEY = "66666666-6666-6666-6666-666666666666";
   const oldBank = {
     pools: { 1: [{ kind: "text", id: "o1", content: { kind: "image", value: OLD_KEY }, answer: "a" }, { kind: "text", id: "o2", content: { kind: "image", value: KEPT_KEY }, answer: "b" }] },
-    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, difficulty: 1, reward: 10 }],
-    boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, hitReward: 10, phases: [{ maxHp: 3, questions: [{ kind: "text", id: "ob", content: { kind: "text", value: "?" }, answer: "c" }] }] },
+    rooms: [{ monster: { name: "史萊姆", sprite: "slime", hue: 0 }, difficulty: 1, reward: 10 }], // pregate-literal: BANK_FORMAT=10 a reward, not the format
+    boss: { monster: { name: "巨龍", sprite: "dragon", hue: 0 }, hitReward: 10, phases: [{ maxHp: 3, questions: [{ kind: "text", id: "ob", content: { kind: "text", value: "?" }, answer: "c" }] }] }, // pregate-literal: BANK_FORMAT=10 a reward, not the format
   };
 
   // Value: protects=an older-format bank loads as the default bank with its stored version and the `outdated` flag; fails_when=format < 3 is parsed, or treated as unreadable, or loses its version; why_new=new state; seam=none; no_claim=a real Durable Object (memory storage)
@@ -445,12 +446,12 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "i1", content: { kind: "text" as const, value: "看" }, answer: "A", explanation: { kind: "instagram" as const, value: "DPPHHjlkTgr" } }] } })).toBe(8); // pregate-literal: BANK_FORMAT=8 an Instagram bank stays at format 8
     // A boss question's own difficulty is what format-8 code would drop: it stores at 9.
     expect(formatOf({ ...buzzer, boss: { ...buzzer.boss, phases: [{ ...buzzer.boss.phases[0], questions: [{ ...buzzer.boss.phases[0].questions[0], difficulty: 2 as const }] }, ...buzzer.boss.phases.slice(1)] } })).toBe(9); // pregate-literal: BANK_FORMAT=9 a difficulty-only bank stays at format 9
-    // An uploaded video or audio (uploaded-media.md) is what format-9 code cannot parse: it stores at 10, in either slot.
+    // An uploaded video or audio (uploaded-media.md) is what format-9 code cannot parse: it stores at 10, in either slot. // pregate-literal: BANK_FORMAT=10 names the older format on purpose
     const clip = (content: { kind: "text" | "video" | "audio"; value: string }, explanation?: { kind: "video" | "audio"; value: string }) =>
       formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "v1", content, answer: "A", ...(explanation ? { explanation } : {}) }] } });
     expect(clip({ kind: "video", value: "11111111-1111-1111-1111-111111111111" })).toBe(10); // pregate-literal: BANK_FORMAT=10 an upload-only bank stays at format 10
     expect(clip({ kind: "text", value: "看" }, { kind: "audio", value: "11111111-1111-1111-1111-111111111111" })).toBe(10); // pregate-literal: BANK_FORMAT=10 an upload-only bank stays at format 10
-    // A memory question (memory-questions.md) is what format-10 code would drop: it stores at 11.
+    // A memory question (memory-questions.md) is what format-10 code would drop: it stores at 11. // pregate-literal: BANK_FORMAT=10 names the older format on purpose
     expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "m1", content: { kind: "youtube" as const, value: "dQw4w9WgXcQ" }, prompt: "誰？", answer: "A", memory: true as const }] } })).toBe(BANK_FORMAT);
     const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
     await new BankStore(storage).putBank(sorted, 1);
@@ -480,8 +481,8 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     const store = new BankStore(storage, undefined, { cleanupDelayMs: 1000, now: () => 0 });
     const next: Bank = { ...validBank, pools: { ...validBank.pools, 1: [{ kind: "text", id: "n1", content: { kind: "image", value: KEPT_KEY }, answer: "b" }] } };
     expect(await store.putBank(next, 8)).toEqual({ conflict: true, currentVersion: 9 });
-    expect(await store.putBank(next, 9)).toEqual({ bank: next, version: 10 });
-    expect(await storage.get("bank")).toEqual({ bank: next, version: 10, format: formatOf(next) });
+    expect(await store.putBank(next, 9)).toEqual({ bank: next, version: 10 }); // pregate-literal: BANK_FORMAT=10 the bank's version number, not the format
+    expect(await storage.get("bank")).toEqual({ bank: next, version: 10, format: formatOf(next) }); // pregate-literal: BANK_FORMAT=10 the bank's version number, not the format
     expect(await storage.get("pendingMediaDeletes")).toEqual([{ key: OLD_KEY, deleteAt: LEGACY_IMAGE_DELAY_MS }]); // 14 days, not the usual delay
     // Value: protects=the old bank survives the overwrite on the server; fails_when=putBank drops it; why_new=adversarial review (no server-side copy); seam=none; no_claim=a way to read it back
     expect(await storage.get("legacyBank")).toEqual({ bank: oldBank, format: 2, version: 9 });
