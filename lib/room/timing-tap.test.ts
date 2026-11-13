@@ -81,6 +81,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("timing question in the room", () => {
@@ -324,6 +325,27 @@ describe("timing question in the room", () => {
     g.advance(3000);
     expect(g.state().reveal).toMatchObject({ timing: { rows: [{ teamId: IDS[1] }] } });
     expect(g.state().reveal.timing.rows).toHaveLength(1);
+  });
+
+  // Value: protects=a judgment that throws never leaves the winner holding the buzz with bonuses paid and nothing revealed; fails_when=the catch stops restoring the game or stops skipping; seam=none
+  it("a judgment that fails at the close undoes the round and moves on unrevealed", () => {
+    const g = tapGame();
+    const before = g.room.game!.teams.map((t) => t.reward);
+    vi.spyOn(g.room as unknown as { judge: () => void }, "judge").mockImplementation(() => {
+      throw new Error("judge failed");
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    g.media("play");
+    g.clock();
+    g.advance(4880);
+    g.tapAt(1);
+    g.advance(120);
+    g.tapAt(0);
+    g.advance(3000);
+    expect(g.state().reveal).toBeFalsy();
+    expect(g.room.game!.buzz?.teamId).toBeUndefined();
+    expect(g.room.game!.teams.map((t) => t.reward)).toEqual(before);
+    expect(g.qid()).not.toBe("t-a");
   });
 
   it("only the screen timing the round may end it with a clip end; the latency cannot change once a team tapped", () => {

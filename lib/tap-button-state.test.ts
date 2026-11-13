@@ -27,6 +27,8 @@ describe("tapButtonState", () => {
     ["reveal: another tap", { teamId: "B", reveal: { rows } }, { tone: "grey", label: "早 0.40 秒・+2（第 2 名）" }],
     ["reveal: a tap with no bonus", { teamId: "C", reveal: { rows } }, { label: "晚 1.50 秒（第 3 名）" }],
     ["reveal: no tap", { teamId: "D", reveal: { rows } }, { tone: "grey", label: "沒按" }],
+    ["reveal: stunned, as the big screen says", { teamId: "D", reveal: { rows, stunned: ["D"] } }, { tone: "grey", label: "暈眩" }],
+    ["reveal: a team outside the boss room is not in the table", { teamId: "D", inBoss: false, reveal: { rows } }, { hidden: true }],
   ])("%s", (_, input, want) => {
     expect(tapButtonState({ ...live, ...input })).toMatchObject(want);
   });

@@ -473,7 +473,7 @@ export class DungeonRoom {
   private media: MediaCommand | null = null;
   /** A timing question's clock (docs/designs/timing-tap.md): the big screen that reported first, the server ms at
    * which its clip's video time 0 played (null while paused or buffering), for which question and ⟲ seq, and when it
-   * last reported. In memory only: the screen's heartbeat brings it back within a second of a restart. */
+   * last reported. In memory only, like `media`: after a restart the host's next ▶ brings it back (hosting.md). */
   private tapClock: { questionId: string; seq: number; screen: string; anchor: number | null; at: number } | null = null;
   /** Closes the timing round at its song time, or wakes when the clock goes stale. */
   private tapTimer: ReturnType<typeof setTimeout> | null = null;

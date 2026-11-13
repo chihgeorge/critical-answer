@@ -31,7 +31,7 @@ export interface TapButtonInput {
   /** The last refusal worth a line: not_playing or tap_late. */
   refused?: "not_playing" | "tap_late";
   /** The reveal's timing table, once the round closed with a hit. */
-  reveal?: { rows: { teamId: string; errorMs: number; bonus: number }[] };
+  reveal?: { rows: { teamId: string; errorMs: number; bonus: number }[]; stunned?: string[] };
   teamId: string;
 }
 
@@ -40,7 +40,9 @@ const HINT = { not_playing: "沒算到：音樂剛停，等音樂再按", tap_la
 export function tapButtonState(i: TapButtonInput): TapButtonState {
   if (i.reveal) {
     const k = i.reveal.rows.findIndex((r) => r.teamId === i.teamId);
-    if (k < 0) return { tone: "grey", label: "沒按", enabled: false };
+    // Matches the big screen's table: a team outside the boss room is not in it, a stunned one reads 暈眩.
+    if (k < 0 && !i.inBoss) return { hidden: true, tone: "grey", label: "", enabled: false };
+    if (k < 0) return { tone: "grey", label: i.reveal.stunned?.includes(i.teamId) ? "暈眩" : "沒按", enabled: false };
     const row = i.reveal.rows[k];
     if (k === 0) return { tone: "ok", label: `命中！${formatTapError(row.errorMs)}`, enabled: false };
     return { tone: "grey", label: `${formatTapError(row.errorMs)}${row.bonus ? `・+${row.bonus}` : ""}（第 ${k + 1} 名）`, enabled: false };
