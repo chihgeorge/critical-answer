@@ -3,6 +3,7 @@
 // and the button's text from lib/tap-button-state.ts. Client-safe: no bank data.
 import { useRef, useState } from "react";
 import type { ClientMessage, ServerMessage, StateMessage } from "@/lib/protocol";
+import { stunLifted } from "@/lib/game-state";
 import { tapButtonState, type TapTone } from "@/lib/tap-button-state";
 import { useClockPings, useRoomClock } from "./room-clock";
 
@@ -105,8 +106,8 @@ export function TapButton({ game, teamId, tap }: { game: StateMessage; teamId: s
   const s = tapButtonState({
     inBoss: !!me?.inBossPhase,
     online: !!me?.online,
-    // game-state's tapEligible: when every online boss-room team is stunned, none sits out.
-    stunned: !!me?.stunned && !game.view.teams.every((t) => !t.online || !t.inBossPhase || t.stunned),
+    // game-state's tapEligible: when every online boss-room team is or was stunned this round, none sits out.
+    stunned: !!me?.stunned && !stunLifted(buzz, game.view.teams, (t) => t.inBossPhase),
     open: !!buzz?.open,
     paused: !playing,
     tapLive: game.tapLive === true,

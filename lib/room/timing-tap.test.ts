@@ -359,8 +359,8 @@ describe("timing question in the room", () => {
     expect(g.state().reveal.timing.rows).toHaveLength(1);
   });
 
-  // Value: protects=a stunned team let in only because every other team dropped cannot win once an unstunned team is back; fails_when=settleTaps filters by online only; seam=none
-  it("a stunned team's tap from the all-stunned window does not count once an unstunned team is back", () => {
+  // Value: protects=the all-stunned rule latched for the round, so a stunned team's tap from the window when the only unstunned team dropped still counts once it is back, and the latch survives a restore; fails_when=settleTaps recomputes the rule at the close or the snapshot loses the latch; seam=none
+  it("a stunned team's tap from the all-stunned window still counts once an unstunned team is back, and the latch survives a restore", async () => {
     const g = tapGame();
     g.media("play");
     g.clock();
@@ -369,12 +369,22 @@ describe("timing question in the room", () => {
     g.advance(4900);
     g.tapAt(0); // on the beat, allowed: every online team is stunned
     expect(g.room.game!.buzz!.taps).toHaveLength(1);
+    expect(g.state().view.buzz.allStunned).toBe(true);
+    // A restart now keeps the latch: the saved game has every team offline, so nothing could re-derive it.
+    const again = new DungeonRoom({ broadcast: vi.fn(), storage: g.storage } as unknown as RoomIO, () => 0, { now: () => Date.now() });
+    await again.restore();
+    expect(again.game!.buzz).toMatchObject({ allStunned: true });
     const back = makeConn("phone-2b");
     g.room.onConnect(back);
     send(g.room, back, { type: "JOIN", teamId: IDS[2], teamKey: KEYS[2], teamName: "隊2" });
+    expect(g.state().view.buzz.allStunned).toBe(true);
     g.tapAt(2, Date.now(), undefined, back); // 0.1 s late
+    // The host's count agrees with the latch: every boss-room team may tap, stunned or not.
+    expect(g.lastOf(g.host as Spy, "HOST_ANSWER").tap).toEqual({ count: 2, eligible: 3 });
+    g.tapAt(1); // the other stunned team is still in too
+    expect(g.lastOf(g.phones[1], "TAP_OK")).toBeTruthy();
     g.advance(3000);
-    expect(g.state().reveal.timing.rows.map((r: { teamId: string }) => r.teamId)).toEqual([IDS[2]]);
+    expect(g.state().reveal.timing.rows.map((r: { teamId: string }) => r.teamId)).toEqual([IDS[0], IDS[2], IDS[1]]);
   });
 
   // Value: protects=a judgment that throws never leaves the winner holding the buzz with bonuses paid and nothing revealed; fails_when=the catch stops restoring the game or stops skipping; seam=none

@@ -61,6 +61,7 @@ import {
   allTapped,
   assertCanTap,
   restartTaps,
+  stunLifted,
   tapEligible,
   tapIn,
   tapWinner,
@@ -2793,6 +2794,79 @@ describe("timing question taps (docs/designs/timing-tap.md)", () => {
     expect(() => assertCanTap(allStunned, "T2", "t-a", 0)).not.toThrow();
     // Everyone gone: no early close, the round runs to its end.
     expect(allTapped({ ...g, teams: g.teams.map((t) => ({ ...t, online: false })) })).toBe(false);
+  });
+
+  // Value: protects=the all-stunned rule latched once per round, so the one unstunned team dropping and coming back never drops the stunned teams' taps; fails_when=tapEligible recomputes the rule from who is online now, or the phone's copy drifts; seam=none
+  it("all stunned once in a round holds for the round: the unstunned team dropping and coming back keeps the stunned teams in", () => {
+    let g = patch(patch(tapping(), "T0", { stunned: true }), "T1", { stunned: true });
+    // The phone's rule (stunLifted on its view) and the server's agree at every step.
+    const phoneLets = (x: GameState) => stunLifted(getSpectatorView(x).buzz, getSpectatorView(x).teams, (t) => t.inBossPhase);
+    expect(tapEligible(g, "T0")).toBe(false);
+    expect(phoneLets(g)).toBe(false);
+    g = setTeamOnline(g, "T2", false);
+    expect(g.buzz!.allStunned).toBe(true); // latched the moment it holds
+    expect(tapEligible(g, "T0")).toBe(true);
+    expect(phoneLets(g)).toBe(true);
+    g = tapIn(g, "T0", "t-a", 0, 5);
+    g = setTeamOnline(g, "T2", true);
+    expect(g.buzz!.allStunned).toBe(true);
+    expect(["T0", "T1", "T2"].map((id) => tapEligible(g, id))).toEqual([true, true, true]);
+    expect(phoneLets(g)).toBe(true);
+    // The round now waits for every boss-room team, stunned or not.
+    expect(allTapped(g)).toBe(false);
+    expect(allTapped(tapIn(tapIn(g, "T1", "t-a", 0, 6), "T2", "t-a", 0, 7))).toBe(true);
+    // A drop while some online team is unstunned latches nothing; nor does a round not yet open.
+    expect(setTeamOnline(patch(tapping(), "T0", { stunned: true }), "T2", false).buzz!.allStunned).toBeUndefined();
+    const closed = { ...patch(patch(tapping(), "T0", { stunned: true }), "T1", { stunned: true }), buzz: { questionId: "t-a", out: [] } };
+    expect(setTeamOnline(setTeamOnline(closed, "T2", false), "T2", true).buzz!.allStunned).toBeUndefined();
+  });
+
+  it("the latch clears on ⟲ and when the question moves on, even to itself", () => {
+    const latched = setTeamOnline(setTeamOnline(patch(patch(tapping(), "T0", { stunned: true }), "T1", { stunned: true }), "T2", false), "T2", true);
+    expect(latched.buzz!.allStunned).toBe(true);
+    const again = restartTaps(latched);
+    expect(again.buzz!.allStunned).toBeUndefined();
+    expect(tapEligible(again, "T0")).toBe(false);
+    // The phase's last unrevealed question comes round as itself: a new round, stun flags kept, latch gone.
+    const same = skipBuzz({ ...latched, revealedQuestionIds: [...latched.revealedQuestionIds, "t-b"] });
+    expect(same.boss.currentQuestionId).toBe("t-a");
+    expect(same.buzz!.allStunned).toBeUndefined();
+    expect(tapEligible(same, "T0")).toBe(false);
+    // A new question: no buzz carried over, the flags cleared (R5).
+    const moved = skipBuzz(latched);
+    expect(moved.boss.currentQuestionId).toBe("t-b");
+    expect(moved.buzz).toBeUndefined();
+    // A correct answer settles the round: the next buzz starts without it.
+    const hit = answerQuestion(tapWinner(tapIn(latched, "T0", "t-a", 0, 5), "T0", {}), "T0", "t-a", true, "retry", first);
+    expect(hit.game.buzz).toMatchObject({ picker: "T0" });
+    expect(hit.game.buzz).not.toHaveProperty("allStunned");
+  });
+
+  it("the question coming round open with everyone stunned latches at once; teams coming back after a restore latch nothing", () => {
+    const allIn = { ...tapping(), teams: tapping().teams.map((t) => ({ ...t, stunned: true as const })) };
+    const same = skipBuzz({ ...allIn, revealedQuestionIds: [...allIn.revealedQuestionIds, "t-b"] });
+    expect(same.buzz).toMatchObject({ questionId: "t-a", open: true, allStunned: true });
+    // A restore marks every team offline; the stunned ones happen to come back first, then the unstunned one.
+    const saved = { ...patch(patch(tapping(), "T0", { stunned: true }), "T1", { stunned: true }) };
+    let g: GameState = { ...saved, teams: saved.teams.map((t) => ({ ...t, online: false })) };
+    g = setTeamOnline(setTeamOnline(g, "T0", true), "T1", true);
+    // A stunned team blipping then does not latch either: the drop did not make it true.
+    g = setTeamOnline(setTeamOnline(g, "T1", false), "T1", true);
+    const beforeT2 = g;
+    g = setTeamOnline(g, "T2", true);
+    expect(g.buzz!.allStunned).toBeUndefined();
+    expect(tapEligible(g, "T0")).toBe(false);
+    // But a stunned team that tapped in that window keeps its tap: the tap itself latches the round.
+    const tapped = setTeamOnline(tapIn(beforeT2, "T0", "t-a", 0, 5), "T2", true);
+    expect(tapped.buzz!.allStunned).toBe(true);
+    expect(tapEligible(tapped, "T0")).toBe(true);
+  });
+
+  it("⟲ while the only unstunned team is still away starts the new round latched", () => {
+    const away = setTeamOnline(patch(patch(tapping(), "T0", { stunned: true }), "T1", { stunned: true }), "T2", false);
+    const g = setTeamOnline(restartTaps(away), "T2", true);
+    expect(g.buzz).toMatchObject({ tapRound: 1, allStunned: true });
+    expect(tapEligible(g, "T0")).toBe(true);
   });
 
   it("▶ with every online boss-room team stunned clears them all; a music buzzer leaves that to the press", () => {
