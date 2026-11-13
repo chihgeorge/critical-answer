@@ -145,8 +145,23 @@ describe("記憶題 with a clip", () => {
     const errors = msgs((g.host as unknown as { send: ReturnType<typeof vi.fn> }).send.mock.calls).filter((m) => m.type === "ERROR").length;
     send(g.room, g.host, { type: "HOST_MEMORY_DONE", questionId: "m1" });
     expect(msgs((g.host as unknown as { send: ReturnType<typeof vi.fn> }).send.mock.calls).filter((m) => m.type === "ERROR").length).toBe(errors);
-    // A phone cannot press it.
-    expect(() => send(g.room, g.phones[0], { type: "HOST_MEMORY_DONE", questionId: "m1" })).not.toThrow();
+  });
+
+  it("a phone cannot press ⏭", () => {
+    const g = started(bank(memVideo("m1")));
+    send(g.room, g.phones[0], { type: "HOST_MEMORY_DONE", questionId: "m1" });
+    expect(g.state().question.memorize).toBe(true);
+  });
+
+  it("the oracle is closed while the clip plays and open after", () => {
+    const g = started(bank(memVideo("m1")));
+    send(g.room, g.host, { type: "HOST_ANTI_CHEAT", on: true });
+    send(g.room, g.phones[0], { type: "TEAM_ORACLE", questionId: "m1" });
+    expect(g.lastError(g.phones[0])).toMatchObject({ detail: "not_now" });
+    const errors = msgs(g.phones[0].send.mock.calls).filter((m) => m.type === "ERROR").length;
+    send(g.room, g.screen, { type: "SCREEN_CLIP_ENDED", questionId: "m1" });
+    send(g.room, g.phones[0], { type: "TEAM_ORACLE", questionId: "m1" });
+    expect(msgs(g.phones[0].send.mock.calls).filter((m) => m.type === "ERROR").length).toBe(errors);
   });
 
   // Value: protects=the reveal payoff; fails_when=the reveal of a memory question shows no question or media.
@@ -185,6 +200,36 @@ describe("記憶題 with an image", () => {
     expect(g.state().question).toMatchObject({ content: { kind: "text", value: "圖裡的貓叫什麼？" } });
     send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "咪咪" });
     expect(g.room.game!.teams.find((t) => t.id === A)?.typedAnswer).toBe("咪咪");
+  });
+
+  it("the host's ⏭ cuts an image short, and its old deadline sends nothing back", () => {
+    const g = started(bank(memImage("i1", 10)));
+    vi.advanceTimersByTime(3000);
+    send(g.room, g.host, { type: "HOST_MEMORY_DONE", questionId: "i1" });
+    expect(g.state().question).toMatchObject({ content: { kind: "text" } });
+    const sent = g.io.broadcast.mock.calls.length;
+    vi.advanceTimersByTime(10000);
+    expect(g.io.broadcast.mock.calls.length).toBe(sent);
+  });
+
+  // Value: protects=a stuck big screen; fails_when=a reconnect's lone snapshot past the deadline cancels the timer
+  // whose STATE would tell every other screen the image ended.
+  it("a reconnect just past the deadline still lets the timer tell everyone", () => {
+    const g = started(bank(memImage("i1", 5)));
+    vi.setSystemTime(Date.now() + 5000); // the clock moves, the timer has not fired yet
+    g.room.onConnect(makeConn("late"));
+    vi.advanceTimersByTime(5000);
+    expect(g.state().question).toMatchObject({ content: { kind: "text" } });
+  });
+
+  // Value: protects=an idle room; fails_when=a deadline with no question in play re-arms its timer at 0 forever.
+  it("an image whose game ended does not keep the room busy", () => {
+    const g = started(bank(memImage("i1", 5)));
+    send(g.room, g.host, { type: "HOST_END_GAME" });
+    vi.advanceTimersByTime(6000);
+    const sent = g.io.broadcast.mock.calls.length;
+    vi.advanceTimersByTime(1000);
+    expect(g.io.broadcast.mock.calls.length).toBe(sent);
   });
 
   it("a phone action just after the deadline is taken, before the timer's STATE", () => {

@@ -348,7 +348,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         : `${nameOf(wrong.teamId)}答錯了！他們正在決定：下輪再答，還是逃跑……`
       : null;
   // Persuasion check (dnd design R6): a fill-in turn rolls before it answers; its record shows once the beat ends.
-  const fillIn = !!question && !question.options && !question.items && !reveal && !card;
+  // A memory question's options and items stay hidden while it plays: it is not known as a fill-in until it ends.
+  const fillIn = !!question && !question.memorize && !question.options && !question.items && !reveal && !card;
   const check = fillIn && turn ? view.checks?.[checkKey(question!.id, turn.id)] : undefined;
   const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
   // A YouTube question, or the reveal showing the answered question's video where it stopped (D17). One slot, one

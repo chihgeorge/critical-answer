@@ -1324,7 +1324,7 @@ function QuestionRow({
               )}
               {q.memory && (
                 <div className="text-[13px]" style={{ color: "#6b4a2a" }}>
-                  看的時候隱藏題幹和選項；{q.content.kind === "image" ? "時間到" : "播完"}，{q.content.kind === "image" ? "圖片" : "影片"}收起來才出題。
+                  看的時候隱藏題幹和選項；{q.content.kind === "image" ? "時間到" : "播完"}，{q.content.kind === "image" ? "圖片" : q.content.kind === "audio" ? "聲音" : "影片"}收起來才出題。
                   {(q.content.kind === "video" || q.content.kind === "audio") && "上傳的影片／聲音會整段播完才出題。"}
                   {q.content.kind === "youtube" && q.content.end === undefined && <span role="alert"> 這支 YouTube 沒設結束秒數：整支播完才出題，建議設結束。</span>}
                 </div>

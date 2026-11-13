@@ -1219,7 +1219,7 @@ export default function PlayPage() {
             <Panel tone="lav" role="status" className="flex flex-col items-center gap-1 px-3 py-[14px] text-center">
               <LabelChip>🧠 記憶題</LabelChip>
               <div className="text-[22px]">{memoryPhoneHint(game.question)}，記住內容</div>
-              <div className="text-[16px]">題目等一下才出來，還不能作答</div>
+              {(isMyTurn || buzz) && <div className="text-[16px]">題目等一下才出來，還不能作答</div>}
             </Panel>
           </div>
         )}

@@ -1200,16 +1200,15 @@ export class DungeonRoom {
     const pub = this.currentQuestion()?.pub;
     const bq = pub ? this.question(pub.id) : undefined;
     const id = pub && bq?.memory && bq.content.kind === "image" ? pub.id : null;
-    // With no question in play (every phone offline after a restart) the image keeps its deadline.
-    if (this.memoryShow && pub && this.memoryShow.questionId !== id) this.memoryShow = null;
-    const q = id === null ? undefined : this.question(id);
-    if (id === null || !q || this.memoryDone.includes(id)) return this.armMemoryTimer();
-    if (!this.memoryShow) {
-      if (!this.questionOnScreen()) return this.armMemoryTimer();
-      this.memoryShow = { questionId: id, endsAt: this.now() + (q.memorySeconds ?? DEFAULT_MEMORY_SECONDS) * 1000 };
+    // With no question in play (every phone offline after a restart) the image keeps its deadline; a game no longer
+    // playing drops it.
+    if (this.memoryShow && (this.game?.phase !== "playing" || (pub && this.memoryShow.questionId !== id))) this.memoryShow = null;
+    // Past its deadline the image ends even with no question in play, so its timer does not fire again and again.
+    if (this.memoryShow && this.now() >= this.memoryShow.endsAt) return this.endMemory(this.memoryShow.questionId);
+    if (id !== null && bq && !this.memoryShow && !this.memoryDone.includes(id) && this.questionOnScreen()) {
+      this.memoryShow = { questionId: id, endsAt: this.now() + (bq.memorySeconds ?? DEFAULT_MEMORY_SECONDS) * 1000 };
     }
-    if (this.now() >= this.memoryShow.endsAt) this.endMemory(id);
-    else this.armMemoryTimer();
+    this.armMemoryTimer();
   }
 
   /** The memory question's media is over: it stays a plain question from now on, for every team. */
@@ -1223,6 +1222,8 @@ export class DungeonRoom {
   private armMemoryTimer() {
     const at = this.memoryShow?.endsAt ?? null;
     if ((this.memoryTimer?.at ?? null) === at) return;
+    // A timer already due still fires: its STATE carries an end that a lone snapshot (a reconnect) wrote down.
+    if (at === null && this.memoryTimer && this.memoryTimer.at <= this.now()) return;
     if (this.memoryTimer) clearTimeout(this.memoryTimer.timer);
     this.memoryTimer = null;
     if (at === null) return;
@@ -1235,10 +1236,11 @@ export class DungeonRoom {
   }
 
   /** HOST_MEMORY_DONE (⏭ 直接出題): the memory question's media ends now, for a clip the big screen cannot play or an
-   * image cut short. A question already done is a no-op (a double tap, or the clip ended meanwhile). */
+   * image cut short. A question already done is no error (a double tap, the clip or the image's seconds ended
+   * meanwhile): it sends the room again, so a screen still on the media catches up. */
   private handleHostMemoryDone(conn: Conn, questionId: string) {
     if (!this.requireHost(conn)) return;
-    if (this.memoryDone.includes(questionId)) return;
+    if (this.memoryEnded(questionId)) return this.broadcastState();
     if (!this.memorizing() || this.currentQuestion()?.pub.id !== questionId) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
     this.endMemory(questionId);
     // A buzzer phase's clip the host never got to play: its question is up now, so buzzing opens (boss-buzzer.md D5).
