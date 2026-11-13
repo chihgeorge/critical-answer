@@ -77,6 +77,12 @@ import {
   upholdCatch,
   dismissCatch,
   cancelCatch,
+  allTapped,
+  assertCanTap,
+  restartTaps,
+  tapEligible,
+  tapIn,
+  tapWinner,
 } from "../game-state";
 import {
   DEFAULT_AI_LIMIT,
@@ -123,8 +129,9 @@ import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder,
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
-import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
+import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank, type BankQuestion } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
+import { acceptTapAt, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, TAP_SEEK_SLACK_MS, tapResults } from "../tap-clock";
 import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
 import { healthReport, mediaBatches, type MediaResults } from "../bank-health";
@@ -464,6 +471,23 @@ export class DungeonRoom {
   private servedAt = 0;
   /** The host's last ▶ ⏸ ⟲ (docs/designs/youtube-questions.md). In memory only (D6): a restart forgets it. */
   private media: MediaCommand | null = null;
+  /** A timing question's clock (docs/designs/timing-tap.md): the big screen that reported first, the server ms at
+   * which its clip's video time 0 played (null while paused or buffering), for which question and ⟲ seq, and when it
+   * last reported. In memory only, like `media`: after a restart the host's next ▶ brings it back (hosting.md). */
+  private tapClock: { questionId: string; seq: number; screen: string; anchor: number | null; at: number } | null = null;
+  /** When the host's last ⟲ (a play from the clip's start) for this question and seq began. In memory only. */
+  private tapSeqStart: { questionId: string; seq: number; at: number } | null = null;
+  /** Closes the timing round at its song time, or wakes when the clock goes stale. */
+  private tapTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The `tapLive` the last broadcast STATE carried: an anchor update broadcasts only when it flips. */
+  private tapLiveSent = false;
+  /** The host's speaker latency, ms (HOST_TAP_LATENCY, E3-lite). Saved. */
+  private tapLatency = 0;
+  /** The closed round's table, waiting for judgeNow's reveal (a kill waits for its 4d20 first). */
+  private tapReveal: NonNullable<AnswerReveal["timing"]> | null = null;
+  /** A timing question that came round again as itself (the phase's last one) after a skip: its song stopped past
+   * the target, so the host's next ▶ plays it from the start, as ⟲ would. */
+  private tapReplay: string | null = null;
   /** The boss's phase card is up (docs/designs/boss-phases.md): the next phase has started but its first
    * question waits for the host's 下一題. Saved, unlike the reveal: a restart shows the card again. */
   private phaseCard = false;
@@ -871,6 +895,7 @@ export class DungeonRoom {
     if (msg.type === "STATE") {
       this.sendVideo();
       this.screenSoundSent = msg.screenSound ?? null;
+      this.tapLiveSent = msg.tapLive === true;
     }
     this.room.broadcast(JSON.stringify(msg));
   }
@@ -963,6 +988,7 @@ export class DungeonRoom {
       ...(this.memoryDone.length ? { memoryDone: this.memoryDone } : {}),
       ...(this.memoryShow ? { memoryShow: this.memoryShow } : {}),
       ...(this.bankChoice ? { bankChoice: this.bankChoice } : {}),
+      ...(this.tapLatency ? { tapLatency: this.tapLatency } : {}),
     };
   }
 
@@ -1038,6 +1064,7 @@ export class DungeonRoom {
     // Before anything is armed below: a manual room's pauses come back as steps, not timers.
     this.pacing = s.pacing ?? "auto";
     this.screenAudio = s.screenAudio ?? DEFAULT_SCREEN_AUDIO;
+    this.tapLatency = s.tapLatency ?? 0;
     // Ids start past any the room handed out before the restart: a HOST_STEP in flight then names no step.
     this.stepSeq = this.now();
     this.revealHold = s.revealHeld && this.game?.phase === "finished" ? ++this.stepSeq : null;
@@ -1366,7 +1393,7 @@ export class DungeonRoom {
       : q.pub.memorize
         ? { question: { ...q.full, memorize: true as const, ...(q.pub.memoryLeft !== undefined ? { memoryLeft: q.pub.memoryLeft } : {}) } }
         : {};
-    this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer, ...(typed ? { typed } : {}), ...question });
+    this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer, ...(typed ? { typed } : {}), ...question, ...this.tapCount(q.pub.id) });
   }
 
   /** Host-only: the picker's questions with their answers, what each target may queue and what is queued. */
@@ -1457,6 +1484,8 @@ export class DungeonRoom {
       ...this.fortuneView(),
       ...this.liveMedia(),
       ...(this.clipError !== null && this.clipError === this.shownVideoId() ? { clipError: true as const } : {}),
+      ...(this.tapLive() ? { tapLive: true as const } : {}),
+      ...(this.tapLatency ? { tapLatency: this.tapLatency } : {}),
       screenSound: this.screenSound(),
       ...this.screenAudioView(),
       ...(this.clipPlaying() ? { clipPlaying: true as const } : {}),
@@ -1696,6 +1725,8 @@ export class DungeonRoom {
     if (this.lostCrit && this.applyLostCrit()) return;
     const forkOpened = this.syncFork();
     this.sayStunSkips();
+    // Every state change passes here, so the timing round's close timer always follows the latest state.
+    this.armTap();
     this.broadcast(this.snapshot());
     // After the STATE that carries its eventId: the fork's opening line replaces the last team's story on every screen.
     if (forkOpened && this.lastNarration) this.broadcast({ type: "NARRATION", eventId: this.lastNarration.eventId, lines: this.lastNarration.lines, rev: 0 });
@@ -2001,6 +2032,11 @@ export class DungeonRoom {
     this.keyedScreens.delete(id);
     this.screenSoundReady.delete(id);
     this.screenSoundChanged();
+    // The timing clock's screen went: another screen may take over (timing-tap.md).
+    if (this.tapClock?.screen === id) {
+      this.tapClock = null;
+      this.tapChanged();
+    }
   }
 
   /** Only the host pages show `screenSound`, so only they get a fresh STATE when it differs from what they last got:
@@ -2111,7 +2147,32 @@ export class DungeonRoom {
           break;
         case "SCREEN_CLIP_ENDED":
           if (!this.isScreen(sender)) break;
+          // A timing question takes only the end of the play it is timing: one from before a ⟲ would close the new round.
+          if (this.question(msg.questionId)?.kind === "timing" && msg.seq !== (this.media?.questionId === msg.questionId ? this.media.seq : -1)) break;
           this.handleClipEnded(msg.questionId);
+          // Only the screen timing the round may end it: another screen playing ahead would cut taps still on their way.
+          if (this.tapRound()?.q.id === msg.questionId && (!this.tapClock || this.tapClock.screen === sender.id)) this.settleTaps("clip_end");
+          break;
+        case "SCREEN_TAP_CLOCK":
+          if (!this.isScreen(sender)) break;
+          this.handleTapClock(sender, msg.questionId, msg.seq, msg.anchor);
+          break;
+        case "CLOCK_PING":
+          // Straight to the socket: it carries no room state, so nothing is saved (sendTo would persist).
+          sender.send(JSON.stringify({ type: "CLOCK_PONG", t: msg.t, server: this.now() } satisfies ServerMessage));
+          break;
+        case "TEAM_TAP":
+          this.handleTeamTap(sender, msg.questionId, msg.round, msg.at);
+          break;
+        case "HOST_TAP_LATENCY":
+          if (!this.requireHost(sender)) break;
+          // Taps already in were converted with the old latency: one round never mixes two clocks.
+          if (this.tapRound() && this.game?.buzz?.taps?.length) {
+            this.sendTo(sender, { type: "ERROR", error: "invalid_action", detail: "tap_live" });
+            break;
+          }
+          this.tapLatency = Math.min(MAX_TAP_LATENCY_MS, Math.max(0, Math.round(msg.ms)));
+          this.broadcastState();
           break;
         case "SCREEN_SOUND": {
           if (!this.isScreen(sender)) break;
@@ -2284,7 +2345,7 @@ export class DungeonRoom {
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
       // A reaction changes no saved state, so it neither counts as activity nor saves.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_SOUND" && !this.rejected && !resumed) {
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "CLOCK_PING" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -2407,6 +2468,9 @@ export class DungeonRoom {
     this.connTeam.set(conn.id, teamId);
     // A waiting late team is not in the game yet.
     if (this.game?.teams.some((t) => t.id === teamId)) this.setOnline(teamId, true);
+    // A phone back mid timing round learns its team already tapped (timing-tap.md).
+    const buzz = this.game?.buzz;
+    if (buzz?.taps?.some((t) => t.teamId === teamId) && buzz.questionId === this.game!.boss.currentQuestionId) this.sendTo(conn, { type: "TAP_OK", questionId: buzz.questionId, round: buzz.tapRound ?? 0 });
     return true;
   }
 
@@ -2736,6 +2800,9 @@ export class DungeonRoom {
     if (lockTeam) this.syncLockTeam(lockTeam);
     if (this.lostCritTimer) clearTimeout(this.lostCritTimer);
     this.lostCritTimer = null;
+    if (this.tapTimer) clearTimeout(this.tapTimer);
+    this.tapTimer = null;
+    this.tapReveal = null;
   }
 
   /** After a lock is gone: its team, kept on turn while the lock waited (onClose), shows offline if no phone is left. */
@@ -3136,7 +3203,8 @@ export class DungeonRoom {
     if (fleeChoice === "team" || fleeChoice === "pray") return this.hostClericWrong(conn, teamId, questionId, fleeChoice);
     // A multipleChoice or sort question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
     // team (E5), never 答對.
-    if (correct && isAutoJudged(this.question(questionId))) {
+    // A timing question is judged by its taps, both ways (timing-tap.md).
+    if ((correct && isAutoJudged(this.question(questionId))) || this.question(questionId)?.kind === "timing") {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "auto_judged" });
       return;
     }
@@ -3474,8 +3542,10 @@ export class DungeonRoom {
       const sorted = q?.kind === "sort" ? { items: q.items, teamId, points: outcome.reward, ...chefOf(outcome) } : undefined;
       // Which fields of a music question the team got (multi-field.md F7); without verdicts, all of them.
       const fieldMarks = q?.kind === "text" && q.fields && marks ? { teamId, marks: q.fields.map((f, i) => ({ label: f.label, answer: f.answer, right: marks[i] })) } : undefined;
-      // The answer stops the clip; the reveal shows the video where it stopped (D17).
-      if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
+      // The answer stops the clip; the reveal shows the video where it stopped (D17). A timing question's song plays on.
+      if (this.media?.questionId === questionId && q?.kind !== "timing") this.media = { ...this.media, state: "paused" };
+      const timing = q?.kind === "timing" && this.tapReveal ? this.tapReveal : undefined;
+      this.tapReveal = null;
       const video = q && isClip(q.content) && (!explanation || explanation.kind === "text") ? hiddenVideo(q.content) : undefined;
       this.reveal = {
         questionId,
@@ -3485,6 +3555,7 @@ export class DungeonRoom {
         ...(choice ? { choice } : {}),
         ...(sorted ? { sorted } : {}),
         ...(fieldMarks ? { fields: fieldMarks } : {}),
+        ...(timing ? { timing } : {}),
         ...(unseen || recalled ? { asked: { content: justAnswered.full.content, ...(justAnswered.full.prompt ? { prompt: justAnswered.full.prompt } : {}) } } : {}),
         scored: { teamId, points: outcome.reward },
         ...(dish ? { dish: { ...dish, points: outcome.reward, ...chefOf(outcome), monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
@@ -3601,16 +3672,30 @@ export class DungeonRoom {
   private handleHostMedia(conn: Conn, questionId: string, action: MediaAction) {
     if (!this.requireHost(conn)) return;
     if (questionId !== this.shownVideoId()) return;
+    // A skipped timing question that came round again starts over on ▶ (its song stopped past the target).
+    // Never played (skipped before ▶): the plain ▶ starts at the clip start anyway, and either way the replay is used up.
+    if (action !== "pause" && this.tapReplay === questionId) {
+      if (this.media?.questionId === questionId) action = "restart";
+      this.tapReplay = null;
+    }
     const same = this.media?.questionId === questionId ? this.media : null;
     const seq = same?.seq ?? 0;
     this.media = { questionId, state: action === "pause" ? "paused" : "playing", seq: action === "restart" ? seq + 1 : seq, press: (same?.press ?? 0) + 1 };
+    // ⟲ plays from the clip's start: when it began, for handleTapClock's stale-anchor check.
+    if (action === "restart") this.tapSeqStart = { questionId, seq: this.media.seq, at: this.now() };
     // The host took the controls after a buzz: a wrong answer or a drop leaves the music as the host set it (outside-voice review).
     this.buzzPaused = false;
     // The screen tries the video again on a ▶ (youtube-player.tsx), and reports again if it still fails.
     if (action !== "pause") this.clipError = null;
     // The first ▶ on a buzzer phase's video opens buzzing (boss-buzzer.md D5).
     // A reveal's video is the answered question's, even when the same question comes round again (red-team review).
-    if (action !== "pause" && this.game && !this.reveal) this.keepUndoOpen(openBuzz(this.game, questionId));
+    const timing = this.question(questionId)?.kind === "timing";
+    if (action !== "pause" && this.game && !this.reveal) this.keepUndoOpen(openBuzz(this.game, questionId, timing));
+    // ⟲ on a timing question: the song's clock changed, so the taps go and the anchor waits for the new play (timing-tap.md).
+    if (action === "restart" && timing && this.game && !this.reveal) {
+      this.keepUndoOpen(restartTaps(this.game));
+      this.tapClock = null;
+    }
     this.broadcastState();
   }
 
@@ -3620,6 +3705,7 @@ export class DungeonRoom {
     const teamId = this.playingTeam(conn);
     if (!teamId || !this.game) return;
     if (this.paused() || this.pendingRoll || this.pendingLock) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
+    if (this.question(questionId)?.kind === "timing") return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "tap_closed" });
     if (this.memorizing()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "memorizing" });
     const open = !isClip(this.question(questionId)?.content);
     try {
@@ -3664,6 +3750,8 @@ export class DungeonRoom {
   private handleHostBuzzOpen(conn: Conn, questionId: string) {
     if (!this.requireHost(conn) || !this.game) return;
     if (this.paused() || questionId !== this.game.boss.currentQuestionId || !isBuzzPhase(this.game)) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
+    // A timing question needs the big screen's clock: there is nothing to time a song played elsewhere against.
+    if (this.question(questionId)?.kind === "timing") return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "timing_needs_screen" });
     this.keepUndoOpen(openBuzz(this.game, questionId));
     this.broadcastState();
   }
@@ -3700,11 +3788,22 @@ export class DungeonRoom {
     if (!this.requireHost(conn) || !this.game) return;
     if (this.paused() || this.pendingRoll || questionId !== this.game.boss.currentQuestionId) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
     try {
-      this.game = skipBuzz(this.game);
+      this.skipBuzzNow();
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
     this.broadcastState();
+  }
+
+  /** skipBuzz. When a timing question comes round again as itself, its song stops and its clock goes: past the
+   * target the round would close again at once, over and over (timing-tap.md). The host's ▶ then replays it. */
+  private skipBuzzNow() {
+    const before = this.game!.boss.currentQuestionId;
+    this.game = skipBuzz(this.game!);
+    if (this.game.boss.currentQuestionId !== before || this.question(before)?.kind !== "timing") return;
+    if (this.media?.questionId === before) this.media = { ...this.media, state: "paused" };
+    this.tapClock = null;
+    this.tapReplay = before;
   }
 
   /** The host's 公布答案 (host-reveal.md): starts the beat of the pending lock. No fallback timer (D5): a lock
@@ -4495,6 +4594,151 @@ export class DungeonRoom {
       this.withUndo(teamId, questionId, () => this.judge(teamId, questionId, false, choice));
     } catch (err) {
       this.sendInvalid(conn, err);
+    }
+  }
+
+  /** The timing round being played now (docs/designs/timing-tap.md): its bank question while the buzz is open and not
+   * yet settled, the question on screen, and no reveal, roll or lock in the way. `anchor`: the chosen screen's clock
+   * for the host's last play, fresh and not paused, else null. */
+  private tapRound(): { q: Extract<BankQuestion, { kind: "timing" }>; anchor: number | null } | null {
+    const game = this.game;
+    if (!game || !isBuzzPhase(game) || this.paused() || this.pendingRoll || this.pendingLock) return null;
+    const id = game.boss.currentQuestionId;
+    const q = this.question(id);
+    const buzz = game.buzz;
+    if (q?.kind !== "timing" || this.shownVideoId() !== id || buzz?.questionId !== id || !buzz.open || buzz.teamId) return null;
+    const m = this.media;
+    const c = this.tapClock;
+    const live = m?.questionId === id && m.state === "playing" && c?.questionId === id && c.seq === m.seq && c.anchor !== null && this.now() - c.at <= TAP_CLOCK_STALE_MS;
+    return { q, anchor: live ? c!.anchor : null };
+  }
+
+  /** STATE's `tapLive`: phones may tap now. */
+  private tapLive(): boolean {
+    return (this.tapRound()?.anchor ?? null) !== null;
+  }
+
+  /** The song time (ms) the round closes at now: the grace after the target, or the settle once everyone tapped. */
+  private tapCloseSong(targetS: number): number {
+    return closeSongMs(Math.round(targetS * 1000), allTapped(this.game!));
+  }
+
+  /** (Re)arms the timer that closes the round, or that notices the clock went stale. Runs on every state change. */
+  private armTap() {
+    if (this.tapTimer) clearTimeout(this.tapTimer);
+    this.tapTimer = null;
+    const r = this.tapRound();
+    if (!r || r.anchor === null) return;
+    const closeAt = serverMsOf(this.tapCloseSong(r.q.target), r.anchor, this.tapLatency);
+    const staleAt = this.tapClock!.at + TAP_CLOCK_STALE_MS + 1;
+    this.tapTimer = setTimeout(() => this.tapTick(), Math.max(0, Math.min(closeAt, staleAt) - this.now()));
+  }
+
+  private tapTick() {
+    this.tapTimer = null;
+    const r = this.tapRound();
+    if (r && r.anchor !== null && songMs(this.now(), r.anchor, this.tapLatency) >= this.tapCloseSong(r.q.target)) return this.settleTaps("time");
+    this.tapChanged();
+  }
+
+  /** The clock changed without a move in the game: a STATE only when `tapLive` flips, else just the timer. */
+  private tapChanged() {
+    if (this.tapLive() !== this.tapLiveSent) this.broadcastState();
+    else this.armTap();
+  }
+
+  /** SCREEN_TAP_CLOCK from a keyed big screen: only for the timing question on screen and the play the host last
+   * pressed (`seq`), and only from the screen that reported first, until it goes (closed or stale). */
+  private handleTapClock(sender: Conn, questionId: string, seq: number, anchor: number | null) {
+    const id = this.game?.boss.currentQuestionId;
+    if (!id || questionId !== id || this.question(id)?.kind !== "timing" || this.media?.questionId !== id || this.media.seq !== seq) return;
+    const c = this.tapClock;
+    const mine = c?.screen === sender.id && c.questionId === id && c.seq === seq;
+    if (c && !mine && c.questionId === id && c.seq === seq && this.now() - c.at <= TAP_CLOCK_STALE_MS) return;
+    // Only a playing screen takes the clock: a muted or background tab's null reports would lock the TV out (adversarial review).
+    if (anchor === null && !mine) return;
+    // A YouTube screen may report its pre-seek time under the new seq: the song cannot be further on than its start plus
+    // the time since that play began (adversarial review).
+    const s = this.tapSeqStart;
+    const q = this.question(id);
+    if (anchor !== null && s?.questionId === id && s.seq === seq && q?.kind === "timing" && this.now() - anchor > (q.content.start ?? 0) * 1000 + (this.now() - s.at) + TAP_SEEK_SLACK_MS) return;
+    this.tapClock = { questionId, seq, screen: sender.id, anchor, at: this.now() };
+    this.tapChanged();
+  }
+
+  /** HOST_ANSWER's `tap`: teams tapped of those that may (timing-tap.md). A tapped team that dropped loses its tap at the
+   * close (settleTaps), so it leaves both numbers. */
+  private tapCount(questionId: string): { tap?: { count: number; eligible: number } } {
+    const game = this.game;
+    if (!game || !isBuzzPhase(game) || this.question(questionId)?.kind !== "timing") return {};
+    const taps = game.buzz?.questionId === questionId ? (game.buzz.taps ?? []) : [];
+    const live = taps.filter((x) => tapEligible(game, x.teamId));
+    const eligible = game.teams.filter((t) => tapEligible(game, t.id) || live.some((x) => x.teamId === t.id)).length;
+    return { tap: { count: live.length, eligible } };
+  }
+
+  /** A phone's tap (timing-tap.md): the press in server ms, turned into song time through the chosen screen's anchor. */
+  private handleTeamTap(conn: Conn, questionId: string, round: number, at: number) {
+    const teamId = this.playingTeam(conn);
+    if (!teamId || !this.game) return;
+    const refuse = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    try {
+      assertCanTap(this.game, teamId, questionId, round);
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    const r = this.tapRound();
+    if (!r || r.q.id !== questionId) return refuse("tap_closed");
+    if (r.anchor === null) return refuse("not_playing");
+    const taken = acceptTapAt(at, this.now());
+    if (taken === "late") return refuse("tap_late");
+    const ms = Math.round(songMs(taken, r.anchor, this.tapLatency));
+    // A tap from before a seek or a ⟲ lands on the new clock before the clip's start.
+    if (ms < (r.q.content.start ?? 0) * 1000) return refuse("not_playing");
+    this.game = tapIn(this.game, teamId, questionId, round, ms);
+    const ok = { type: "TAP_OK", questionId, round } satisfies ServerMessage;
+    for (const [connId, t] of this.connTeam) {
+      const c = t === teamId ? this.conns.get(connId) : undefined;
+      if (c) this.sendTo(c, ok);
+    }
+    // Nobody else learns who tapped (timing-tap.md): the host's count only, and maybe an earlier close.
+    for (const host of this.hostConns.values()) this.sendAnswer(host);
+    this.armTap();
+  }
+
+  /** Closes the timing round: the closest tap hits, the others get their small bonus; with no tap it moves on unrevealed. */
+  private settleTaps(reason: "time" | "clip_end") {
+    const r = this.tapRound();
+    const game = this.game;
+    if (!r || !game) return;
+    if (this.tapTimer) clearTimeout(this.tapTimer);
+    this.tapTimer = null;
+    // Only a team that may still tap can take the hit: online (the judgment needs its turn, and a buzz winner who drops
+    // loses the buzz too), and a stunned team only while every boss-room team is (adversarial review).
+    const taps = (game.buzz?.taps ?? []).filter((t) => tapEligible(game, t.teamId));
+    const targetMs = Math.round(r.q.target * 1000);
+    const { rows, tie } = tapResults(taps, targetMs);
+    const eligible = game.teams.filter((t) => tapEligible(game, t.id)).length;
+    console.log(JSON.stringify({ event: "timing_round", questionId: r.q.id, reason, taps: taps.length, eligible, winnerErrorMs: rows[0]?.errorMs ?? null, tie, latencyMs: this.tapLatency }));
+    if (!rows.length) {
+      this.skipBuzzNow();
+      return this.broadcastState();
+    }
+    // Sat out: stunned and not let in by the all-stunned rule (tapEligible), so the table says 暈眩, not 沒按.
+    const stunned = game.teams.filter((t) => t.inBoss && t.online && t.stunned && !tapEligible(game, t.id)).map((t) => t.id);
+    this.tapReveal = { targetMs, ...(r.q.label ? { label: r.q.label } : {}), ...(this.tapLatency ? { latencyMs: this.tapLatency } : {}), rows, ...(tie ? { tie: true as const } : {}), ...(stunned.length ? { stunned } : {}) };
+    const winner = rows[0].teamId;
+    // One step, no broadcast between: the winner holds the buzz only for the judgment that scores it.
+    this.game = tapWinner(game, winner, Object.fromEntries(rows.slice(1).filter((x) => x.bonus).map((x) => [x.teamId, x.bonus])));
+    try {
+      this.judge(winner, r.q.id, true, "retry");
+    } catch (err) {
+      // A judgment that cannot run must not leave the winner holding the buzz with nothing revealed: undo and skip.
+      console.error(JSON.stringify({ event: "timing_judge_failed", questionId: r.q.id, error: String(err) }));
+      this.game = game;
+      this.tapReveal = null;
+      this.skipBuzzNow();
+      this.broadcastState();
     }
   }
 

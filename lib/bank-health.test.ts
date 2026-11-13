@@ -157,6 +157,17 @@ describe("healthReport", () => {
     const b = bank([{ kind: "multipleChoice", id: "mc", content: { kind: "text", value: "?" }, options: ["a", "b", "c", "d", "e"], correctIndex: 0 }]);
     expect(healthReport(b, { youtube: {}, files: {} }, BASE).rows).toEqual([{ level: "red", where: "題庫", problem: "存檔檢查沒過：question mc has more than 4 options" }]);
   });
+
+  // Value: protects=the two timing reminders say how to fix them (timing-tap.md 題庫健康檢查); fails_when=a timing question with a short lead or a YouTube clip shows green; seam=none
+  it("reminds a timing question too close to its clip start, and one on YouTube (without an end, says so)", () => {
+    const timing = (id: string, content: BankQuestion["content"], target: number) => ({ kind: "timing", id, content, target }) as BankQuestion;
+    const b = bank([text("q1")], [timing("t1", { kind: "youtube", value: yt(1), start: 10 }, 12), timing("t2", { kind: "audio", value: KEY }, 30)]);
+    const rows = healthReport(b, { youtube: { [yt(1)]: "ok" }, files: { [KEY]: "ok" }, publicOk: true }, BASE).rows;
+    expect(rows).toEqual([
+      { level: "yellow", questionId: "t1", where: "首領第 1 階段", problem: "卡點題的目標離片段開頭不到 3 秒：大螢幕的播放時鐘還沒校準好。把片段開頭往前移 3 秒以上" },
+      { level: "yellow", questionId: "t1", where: "首領第 1 階段", problem: "卡點題用 YouTube：可能有廣告、播放時間比較不準。建議改成上傳的音檔；也沒設片段結尾" },
+    ]);
+  });
 });
 
 describe("healthSummary (host page)", () => {

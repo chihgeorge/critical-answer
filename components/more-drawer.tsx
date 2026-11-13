@@ -1,5 +1,6 @@
 "use client";
 
+import { MAX_TAP_LATENCY_MS } from "@/lib/tap-clock";
 import { useEffect, useState, type ReactNode } from "react";
 import { pressCooldown } from "@/lib/press-cooldown";
 import { getHostToken } from "@/lib/room-code";
@@ -35,6 +36,7 @@ export function MoreDrawer({
   undoWrong,
   questionLabel = () => "",
   error,
+  tapLatency,
 }: {
   /** The page's origin ("" before hydration). */
   origin: string;
@@ -65,6 +67,8 @@ export function MoreDrawer({
   questionLabel?: (questionId: string) => string;
   /** The page's last refusal, shown again in 修正: the drawer covers the page's own error line. */
   error?: string | null;
+  /** The speaker latency for timing questions (timing-tap.md 8) while a game plays; undefined hides the field. */
+  tapLatency?: number;
 }) {
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
@@ -82,6 +86,8 @@ export function MoreDrawer({
   const teamName = (id: string) => fixable.find((t) => t.id === id)?.name ?? "";
   const rewardOf = (id: string) => fixable.find((t) => t.id === id)?.reward ?? 0;
   const ordinals = questionOrdinals(judged);
+  const [latencyText, setLatencyText] = useState("");
+  const latencyOk = /^\d{1,4}$/.test(latencyText) && Number(latencyText) <= MAX_TAP_LATENCY_MS && Number(latencyText) !== tapLatency;
   useEffect(() => {
     if (!armed) return;
     const t = setTimeout(() => setArmed(null), 3000);
@@ -117,6 +123,34 @@ export function MoreDrawer({
               ))}
             </div>
           </section>
+          {tapLatency !== undefined && (
+            <section className="flex flex-col gap-2" data-testid="tap-latency">
+              <label className="flex flex-wrap items-center gap-2 text-[16px]">
+                喇叭延遲（毫秒，卡點題用）
+                <input
+                  className="px-input"
+                  style={{ width: 100 }}
+                  inputMode="numeric"
+                  aria-label="喇叭延遲（毫秒）"
+                  placeholder={String(tapLatency)}
+                  value={latencyText}
+                  onChange={(e) => setLatencyText(e.target.value.trim())}
+                />
+                <PixelButton
+                  disabled={!latencyOk}
+                  onClick={() => {
+                    send({ type: "HOST_TAP_LATENCY", ms: Number(latencyText) });
+                    setLatencyText("");
+                  }}
+                  className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]"
+                >
+                  設定
+                </PixelButton>
+                <span className="text-[14px]">現在 {tapLatency} ms</span>
+              </label>
+              <div className="text-[14px]">彩排放一題測試卡點題，揭曉後按「把延遲改成…」；再放一題，中位數接近 0 就對了（0–{MAX_TAP_LATENCY_MS}）</div>
+            </section>
+          )}
           {bossable.length > 0 && (
             <section className="flex flex-col gap-2">
               <div className="text-[15px]">{`送隊伍進王房（不用等到 ${BOSS_THRESHOLD} 分，送了不能退回）`}</div>

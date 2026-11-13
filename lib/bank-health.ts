@@ -4,6 +4,7 @@
 
 import { DIFFICULTIES, savableProblems, type Bank, type BankQuestion, type MediaContent } from "./question-bank";
 import type { HealthRow } from "./protocol";
+import { TAP_HEALTH_LEAD_S } from "./tap-clock";
 
 /** One BankStoreDO RPC: at most this many YouTube lookups plus one public HEAD stays under the free plan's 50
  * external subrequests per invocation (D4). */
@@ -153,6 +154,16 @@ function mediaProblem(c: MediaContent, s: MediaStatus | undefined): { level: Hea
   return { level: "yellow", problem: `上傳的${FILE_NAME[c.kind]}沒辦法確認，到場請實播一次` };
 }
 
+/** A timing question's reminders (timing-tap.md): the big screen's clock needs a few seconds to settle, and a YouTube
+ * clip can carry ads and reports its time less exactly than an uploaded file. Never red: they do not stop a game. */
+function timingProblems(q: BankQuestion): string[] {
+  if (q.kind !== "timing") return [];
+  const out: string[] = [];
+  if (q.target - (q.content.start ?? 0) < TAP_HEALTH_LEAD_S) out.push(`卡點題的目標離片段開頭不到 ${TAP_HEALTH_LEAD_S} 秒：大螢幕的播放時鐘還沒校準好。把片段開頭往前移 ${TAP_HEALTH_LEAD_S} 秒以上`);
+  if (q.content.kind === "youtube") out.push(`卡點題用 YouTube：可能有廣告、播放時間比較不準。建議改成上傳的音檔${q.content.end === undefined ? "；也沒設片段結尾" : ""}`);
+  return out;
+}
+
 /** The rows the host sees. A lookup missing from `results` (its batch failed) reads as unknown: yellow, never green. */
 export function healthReport(bank: Bank, results: MediaResults, baseUrl: string): { rows: HealthRow[]; questions: number; unchecked: number } {
   const rows: HealthRow[] = savableProblems(bank).map((p) => ({ level: "red", where: "題庫", problem: `存檔檢查沒過：${p}` }));
@@ -169,6 +180,7 @@ export function healthReport(bank: Bank, results: MediaResults, baseUrl: string)
       const found = mediaProblem(c, c.kind === "youtube" ? results.youtube[c.value] : results.files[c.value]);
       if (found) rows.push({ level: found.level, questionId: q.id, where, ...(labelOf(q) ? { label: labelOf(q) } : {}), problem: slot + found.problem });
     }
+    for (const problem of timingProblems(q)) rows.push({ level: "yellow", questionId: q.id, where, ...(labelOf(q) ? { label: labelOf(q) } : {}), problem });
     // 記憶題 (memory-questions.md): parseBank refuses a broken setup, so only the one that works but drags is left.
     if (q.memory && q.content.kind === "youtube" && q.content.end === undefined) {
       rows.push({ level: "yellow", questionId: q.id, where, ...(labelOf(q) ? { label: labelOf(q) } : {}), problem: "記憶題的 YouTube 沒設結束秒數：整支播完才出題，建議設結束" });

@@ -208,6 +208,14 @@ describe("parseSnapshot", () => {
   });
 });
 
+describe("parseSnapshot: 卡點題的喇叭延遲 (timing-tap.md)", () => {
+  // Value: protects=a damaged saved latency reads as 0, not an out-of-range shift of every tap; fails_when=the integer or 0–1000 check is loosened; seam=none
+  it("keeps a valid latency and drops a damaged one", () => {
+    expect(parseSnapshot({ ...valid(), tapLatency: 1000 })?.tapLatency).toBe(1000);
+    for (const tapLatency of [-1, 1001, 2.5, "300", null]) expect(parseSnapshot({ ...valid(), tapLatency })?.tapLatency).toBeUndefined();
+  });
+});
+
 describe("parseSnapshot: 記憶題 (memory-questions.md)", () => {
   it("keeps a valid memory state and drops a damaged one to none", () => {
     const base = valid();

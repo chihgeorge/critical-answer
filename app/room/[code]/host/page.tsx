@@ -28,6 +28,7 @@ import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
 import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, aiKeyRefused, AiPanel, aiKeyMessage, aiResendAfterRefusal, aiResendMessage, aiSavedKeyDead, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
+import { formatTapError, medianError, suggestedLatency } from "@/lib/tap-clock";
 import { screenAudioOf } from "@/lib/ambience";
 import { LateTeams } from "@/components/late-teams";
 import { BankHealthPanel, type BankHealth } from "@/components/bank-health";
@@ -95,7 +96,7 @@ export default function HostPage() {
   const [connected, setConnected] = useState(false);
   const [claimed, setClaimed] = useState(false);
   /** Host-only: the answer to the question in play. Never shown on /screen or /play. */
-  const [answer, setAnswer] = useState<Pick<Extract<ServerMessage, { type: "HOST_ANSWER" }>, "questionId" | "answer" | "typed" | "question"> | null>(null);
+  const [answer, setAnswer] = useState<Pick<Extract<ServerMessage, { type: "HOST_ANSWER" }>, "questionId" | "answer" | "typed" | "question" | "tap"> | null>(null);
   // Check first, question after: STATE holds a fill-in's text back until its check is done; the host's copy comes with the answer.
   // So does a memory question while its media plays (memory-questions.md): the host sees the whole question, marked.
   const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id ? { ...state, question: answer.question } : state), [state, answer]);
@@ -248,7 +249,7 @@ export default function HostPage() {
           break;
         }
         case "HOST_ANSWER":
-          setAnswer({ questionId: msg.questionId, answer: msg.answer, typed: msg.typed, question: msg.question });
+          setAnswer({ questionId: msg.questionId, answer: msg.answer, typed: msg.typed, question: msg.question, tap: msg.tap });
           break;
         case "HOST_PICKS":
           setPicks(msg);
@@ -352,6 +353,10 @@ export default function HostPage() {
                 ? "這筆改判已過時，清單剛更新"
                 : msg.detail === "at_limit"
                 ? "已經是這個結果了，畫面剛更新"
+                : msg.detail === "timing_needs_screen"
+                ? "卡點題要大螢幕放歌才量得到時間：大螢幕放不出來就按「沒人答對，換下一題」"
+                : msg.detail === "tap_live"
+                ? "這題已經有隊伍按了，揭曉後再改喇叭延遲"
                 : msg.detail === "no_undo"
                 ? "現在不能改判答對：判完後已經有別的動作，或這隊手機斷線了"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
@@ -407,6 +412,16 @@ export default function HostPage() {
   const retryLabel = turn?.inBoss ? "下輪換題" : "下輪再答";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): teams buzz in, the host judges the one that buzzed first. */
   const buzz = game?.phase === "playing" && !revealUp ? game.view.buzz : undefined;
+  // A timing question (timing-tap.md 畫面): the big screen's clock missing for 3 s after ▶ turns the line into a warning.
+  const timing = buzz ? game?.question?.timing : undefined;
+  const clockKey = timing && buzz?.open && !game?.tapLive ? `${buzz.questionId}:${buzz.tapRound ?? 0}` : null;
+  const [clockStuckKey, setClockStuckKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!clockKey) return;
+    const t = setTimeout(() => setClockStuckKey(clockKey), 3000);
+    return () => clearTimeout(t);
+  }, [clockKey]);
+  const clockStuck = clockKey !== null && clockStuckKey === clockKey;
   // Keyed on the pause itself, not just "a pause is up": the answer reveal turning into the phase card
   // swaps 下一題 for another 下一題, and a double-tap must not close the card nobody has seen.
   // The intro's pages count too: 下一頁 turns into 開始冒險 in its slot, and then into the judge buttons.
@@ -640,6 +655,7 @@ export default function HostPage() {
       {/* The answered question's video is up again on the big screen (D17). */}
       {/* …or an Instagram explanation, which only someone at the screen can start (instagram-explanations.md). */}
       {/* …or an uploaded video/audio explanation, in the question video's place (uploaded-media.md D4). */}
+      {game.reveal?.timing && <TimingCalibration rows={game.reveal.timing.rows} measured={game.reveal.timing.latencyMs ?? 0} latency={game.tapLatency ?? 0} disabled={!ready} send={send} />}
       {(game.reveal?.video || game.reveal?.explanation?.kind === "instagram" || game.reveal?.explanation?.kind === "file") && (
         <Panel tone="lav" className="px-3 pb-2 pt-1">
           <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} instagram={game.reveal.explanation?.kind === "instagram"} />
@@ -1055,8 +1071,8 @@ export default function HostPage() {
               {game.question?.content.kind === "youtube" && !revealUp && game.clipError && !game.question.memorize && (
                 <div data-testid="host-clip-error" role="alert" className="mt-2 flex flex-col gap-1 p-2 text-[15px]" style={{ background: "#ffd6dc", boxShadow: "0 0 0 3px var(--k)" }}>
                   <div className="text-[16px]">大螢幕：這支影片放不出來</div>
-                  <div className="text-[13px]">（影片無法播放／被擋）{buzz && !buzz.open ? "用你的手機或喇叭放歌，再按下面的鈕開放搶答。" : "用你的手機或喇叭放歌。"}</div>
-                  {buzz && !buzz.open && (
+                  <div className="text-[13px]">（影片無法播放／被擋）{timing ? "卡點題要大螢幕放歌才量得到時間：按 ▶ 再試一次，不行就按「沒人答對，換下一題」。" : buzz && !buzz.open ? "用你的手機或喇叭放歌，再按下面的鈕開放搶答。" : "用你的手機或喇叭放歌。"}</div>
+                  {buzz && !buzz.open && !timing && (
                     <PixelButton className="!m-0 min-h-[48px] text-[16px]" style={{ background: "var(--turn)" }} disabled={!ready} onClick={() => send({ type: "HOST_BUZZ_OPEN", questionId: buzz.questionId })}>
                       🎤 現場放歌，開放搶答
                     </PixelButton>
@@ -1068,7 +1084,23 @@ export default function HostPage() {
               )}
               {buzz && (
                 <div data-testid="host-buzz" className="mt-2 flex flex-col gap-1 text-[16px]">
-                  {((line) => line && <div>{line}</div>)(
+                  {timing && !buzz.teamId && (
+                    <div data-testid="host-timing" className="flex flex-col gap-1">
+                      <div>
+                        卡點題・已按 {answer?.questionId === buzz.questionId ? (answer.tap?.count ?? 0) : 0}/{answer?.questionId === buzz.questionId ? (answer.tap?.eligible ?? 0) : 0} 隊{timing.label ? `（按在「${timing.label}」）` : ""}
+                      </div>
+                      {!buzz.open ? (
+                        <div className="text-[14px]">按 ▶ 放歌就開始，各隊手機按一次</div>
+                      ) : clockStuck ? (
+                        <div role="alert" className="p-2 text-[15px]" style={{ background: "var(--warn)", boxShadow: "0 0 0 3px var(--k)" }}>
+                          大螢幕卡住了：確認大螢幕在前景、按 ▶；不行就按下面的「沒人答對，換下一題」
+                        </div>
+                      ) : (
+                        <div className="text-[14px]">大螢幕播放時鐘：{game.tapLive ? "有" : "沒有"}</div>
+                      )}
+                    </div>
+                  )}
+                  {!timing && ((line) => line && <div>{line}</div>)(
                     buzz.teamId
                       ? `${teamName(buzz.teamId)} 搶到了：聽他們說答案，按下方答對／答錯`
                       : hostBuzzWait(game.question?.content.kind === "youtube", !!buzz.open, !!game.clipError),
@@ -1468,6 +1500,7 @@ export default function HostPage() {
           screenAudio={screenAudio}
           fixable={game?.phase === "playing" ? game.view.teams : []}
           scoreLabel={game ? scoreName(game.cuisine) : undefined}
+          tapLatency={game?.phase === "playing" ? (game.tapLatency ?? 0) : undefined}
           judged={picks?.judged ?? []}
           undoWrong={game?.undoWrong && { ...game.undoWrong, fields: game.question?.id === game.undoWrong.questionId && !!game.question.fields }}
           questionLabel={pickLabel}
@@ -1475,6 +1508,26 @@ export default function HostPage() {
         />
       )}
     </main>
+  );
+}
+
+/** After a timing question's reveal (timing-tap.md 8): the median error and a button that folds it into the latency. */
+function TimingCalibration({ rows, measured, latency, disabled, send }: { rows: { errorMs: number }[]; measured: number; latency: number; disabled: boolean; send: (m: ClientMessage) => void }) {
+  const median = medianError(rows.map((r) => r.errorMs));
+  if (median === null) return null;
+  // From the latency the errors were measured with, so a second press does not add the correction again.
+  const next = suggestedLatency(measured, median);
+  return (
+    <Panel tone="lav" className="flex flex-col gap-1 px-3 py-2 text-[15px]" data-testid="host-timing-median">
+      <div>
+        這題誤差中位數：{formatTapError(median)}（喇叭延遲現在 {latency} ms）
+      </div>
+      {next !== latency && (
+        <PixelButton className="!m-0 min-h-[44px] text-[15px]" disabled={disabled} onClick={() => send({ type: "HOST_TAP_LATENCY", ms: next })}>
+          把延遲改成 {next} ms
+        </PixelButton>
+      )}
+    </Panel>
   );
 }
 

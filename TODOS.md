@@ -21,6 +21,8 @@
 - [頒獎稱號「命運之子」](#頒獎稱號命運之子) — S，活動後
 - [抓包與神諭：用平衡模擬看分數對勝率的影響](#抓包與神諭用平衡模擬看分數對勝率的影響) — M，活動後
 - [抓包與神諭：首領房也能用](#抓包與神諭首領房也能用) — M，活動後
+- [卡點題：自動校正喇叭延遲](#卡點題自動校正喇叭延遲) — M，活動後
+- [卡點題：階段最後一題放不出來時卡住](#卡點題階段最後一題放不出來時卡住) — S，活動後
 - [抓包與神諭：主持人撤回一次裁決](#抓包與神諭主持人撤回一次裁決) — S，活動後
 - [活動後用對局紀錄對一次職業勝率](#活動後用對局紀錄對一次職業勝率) — S，活動後
 - [存檔可能放回已經刪掉的圖片](#存檔可能放回已經刪掉的圖片) — S，活動後
@@ -232,6 +234,34 @@
 **Effort/Priority:** M / P3
 
 **Depends on:** 活動（2026-11-21）的遊戲紀錄。
+
+---
+
+## 卡點題：階段最後一題放不出來時卡住
+
+**What:** 搶答階段最後一題沒揭曉的題是卡點題、大螢幕又放不出來時，給主持人一條路往下走（例如讓主持人判給一隊，或把換掉的卡點題算成用掉）。
+
+**Why:** 「沒人答對，換下一題」會回到同一題（它是最後一題），主持人的答對／答錯在卡點題被擋（`auto_judged`），🎤 現場放歌也被擋（`timing_needs_screen`），只剩結束遊戲。/ship 的對抗審查找到（2026-11-12）。活動前的做法：彩排時確認每題卡點題的片段在現場放得出來。
+
+**Context:**
+- `lib/room/dungeon-room.ts`（`skipBuzzNow`、`handleHostJudge` 的 `auto_judged`、`timing_needs_screen`）、`lib/game-state.ts`（`nextBossQuestionId`）
+- `docs/designs/timing-tap.md`「現場彩排與失敗備案」
+
+**Effort/Priority:** S / P2
+
+## 卡點題：自動校正喇叭延遲
+
+**What:** 大螢幕放一串嗶聲，大家跟著按，房間自動算誤差中位數，填進喇叭延遲。
+
+**Why:** 現在是主持人手動填「⚙ 更多」的喇叭延遲（E3-lite）：彩排放一題測試卡點題，照揭曉後的「把延遲改成…」按。瀏覽器的 `outputLatency` 只到音訊裝置，不含電視和藍牙喇叭，所以量不到（`docs/designs/timing-tap.md` E3，/autoplan 2026-11-12，延到活動後看實測）。
+
+**Context:**
+- `lib/tap-clock.ts`（`medianError`、`suggestedLatency`）、`lib/room/dungeon-room.ts`（`HOST_TAP_LATENCY`、`settleTaps` 的 `timing_round` 紀錄有 `latencyMs` 和贏家誤差）
+- 先看活動那天的 `timing_round` 紀錄：中位數是不是穩定、各隊差多少，再決定值不值得做。
+
+**Effort/Priority:** M / P3
+
+**Depends on:** 活動實測。
 
 ---
 

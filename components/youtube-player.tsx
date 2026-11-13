@@ -100,6 +100,7 @@ export function YoutubePlayer({
   errorNote,
   title = "題目影片",
   zhCaptions = false,
+  timeRef,
 }: {
   videoId: string;
   start?: number;
@@ -125,6 +126,8 @@ export function YoutubePlayer({
   title?: string;
   /** After the reveal: Chinese captions, or YouTube's translation to Traditional Chinese. Never while answering. */
   zhCaptions?: boolean;
+  /** Set to a reader of the video's time (s) while it plays, null otherwise: a timing question's clock (timing-tap.md). */
+  timeRef?: { current: (() => number | null) | null };
 }) {
   const host = useRef<HTMLDivElement>(null);
   const player = useRef<YTPlayer | null>(null);
@@ -254,6 +257,15 @@ export function YoutubePlayer({
       }
     }
   }, [ready, want.state, want.seq, want.press, start]);
+
+  // A timing question's screen reads the video's own time while it plays; paused, buffering or broken reads null.
+  useEffect(() => {
+    if (!timeRef) return;
+    timeRef.current = status === "playing" ? () => player.current?.getCurrentTime() ?? null : null;
+    return () => {
+      timeRef.current = null;
+    };
+  }, [timeRef, status]);
 
   // The clip ends by the video's own clock, not a timer, so buffering never cuts it short (eng review).
   useEffect(() => {

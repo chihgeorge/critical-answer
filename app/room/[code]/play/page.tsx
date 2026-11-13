@@ -21,6 +21,7 @@ import { memoryPhoneHint } from "@/lib/memory-copy";
 import { dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { PHONE_LAG_MS, placeLabel, revealNow, teamPlace } from "@/lib/podium";
 import { McOption } from "@/components/mc-option";
+import { TapButton, useTapPhone } from "@/components/tap-button";
 import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { SORT_ITEMS, sortCode, sortOrderOf } from "@/lib/sort-order";
@@ -838,6 +839,9 @@ export default function PlayPage() {
     return () => clearTimeout(id);
   }, [offlineMsg]);
 
+  /** The socket's send, for the timing button's clock pings and taps (set once the socket exists). */
+  const sendRef = useRef<(m: ClientMessage) => void>(() => {});
+  const tap = useTapPhone(sendRef);
   const { reset, rested, unreachable, send, reconnect } = useRoomSocket(code, {
     // Every (re)connect says who we are again: a phone that slept or changed network comes back
     // as the same team instead of staying "offline" and being skipped. An automatic reconnect's
@@ -856,6 +860,8 @@ export default function PlayPage() {
       setTeamId(id);
       const password = (sentPassword.current = joinPasswordFor(code));
       send({ type: "JOIN", teamId: id, teamKey: getOrCreateTeamKey(), teamName, ...(password ? { password } : {}), ...(resume ? { resume: true } : {}) });
+      // A timing tap that got no answer before the drop goes again, after the JOIN that binds this socket to the team.
+      tap.onOpen();
     },
     onClose({ rested, openedBefore }) {
       if (rested || !openedBefore) return;
@@ -865,6 +871,7 @@ export default function PlayPage() {
       if (g && !drop.current) drop.current = { eventId: g.eventId, wasMyTurn: g.view.currentTurnTeamId === getOrCreateTeamId() };
     },
     onMessage(msg) {
+      if (tap.onMessage(msg, lastGame.current)) return;
       switch (msg.type) {
         case "ERROR": {
           if (msg.error === "bad_code" && claimed.current) break;
@@ -946,6 +953,10 @@ export default function PlayPage() {
       }
     },
   });
+
+  useEffect(() => {
+    sendRef.current = send;
+  }, [send]);
 
   /** The last correct answer, shown in place of the next question until the host presses 下一題
    * (HOST_NEXT, D7 — docs/designs/question-media-content.md). */
@@ -1224,9 +1235,11 @@ export default function PlayPage() {
           </div>
         )}
 
-        {game && buzz && !held && game.question && !game.question.memorize && <BuzzButton game={game} buzz={buzz} teamId={teamId} send={send} />}
+        {game && buzz && !held && game.question && !game.question.memorize && !game.question.timing && <BuzzButton game={game} buzz={buzz} teamId={teamId} send={send} />}
+        {/* A timing question (timing-tap.md): one tap per team; the reveal shows our own error on the same button. */}
+        {game && teamId && ((buzz && !held && game.question?.timing) || revealed?.timing) && <TapButton game={game} teamId={teamId} tap={tap} />}
 
-        {game && buzz && !held && buzz.teamId === teamId && game.question && (
+        {game && buzz && !held && buzz.teamId === teamId && game.question && !game.question.timing && (
           <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint buzzed />
         )}
 

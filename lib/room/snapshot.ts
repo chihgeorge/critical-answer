@@ -1,6 +1,7 @@
 import { abilityUsesFor, isClassId, isFortuneCondition, isFortuneEffect, type ClassId, type GameState } from "../game-state";
 import { UUID_RE, parseBank, type Bank } from "../question-bank";
 import type { Initiative } from "../initiative";
+import { MAX_TAP_LATENCY_MS } from "../tap-clock";
 import { isAnswerSeconds, type AnswerClock } from "../answer-clock";
 import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, parseScreenAudio, type AiSource, type ScreenAudio } from "../protocol";
 
@@ -102,6 +103,8 @@ export interface RoomSnapshot {
   screenAudio?: ScreenAudio;
   /** The custom bank the host picked (multi-bank.md), its name as it was then. Missing means the default bank. */
   bankChoice?: { id: string; name: string };
+  /** The host's speaker latency for timing questions, ms 0–1000 (timing-tap.md). Missing (or damaged) means 0. */
+  tapLatency?: number;
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -204,6 +207,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       pacing: raw.pacing === "manual" ? "manual" : undefined,
       revealHeld: raw.revealHeld === true ? true : undefined,
       screenAudio: parseScreenAudio(raw.screenAudio) ?? undefined,
+      tapLatency: Number.isInteger(raw.tapLatency) && (raw.tapLatency as number) >= 0 && (raw.tapLatency as number) <= MAX_TAP_LATENCY_MS ? (raw.tapLatency as number) : undefined,
       // Only a label: the bank itself is the saved copy. A damaged one reads as the default.
       bankChoice: isObject(raw.bankChoice) && isString(raw.bankChoice.id) && isString(raw.bankChoice.name) ? { id: raw.bankChoice.id, name: raw.bankChoice.name } : undefined,
       ...(raw.answerSeconds !== undefined ? { answerSeconds: isAnswerSeconds(raw.answerSeconds) ? raw.answerSeconds : 0, answerClock, clipEnded: isString(raw.clipEnded) ? raw.clipEnded : null } : {}),

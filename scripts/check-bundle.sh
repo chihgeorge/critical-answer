@@ -7,7 +7,9 @@ set -e
 [ -d .next/static ] || { echo "run next build first"; exit 2; }
 python3 - <<'PY'
 import json, pathlib, sys
-bank = json.load(open("data/question-bank.json"))
+import os
+# BANK= runs it against another bank file (a fixture with every question kind); the build bundles data/question-bank.json.
+bank = json.load(open(os.environ.get("BANK", "data/question-bank.json")))
 # A bank from before boss phases keeps one question list on the boss itself.
 phases = bank["boss"].get("phases") or [{"questions": bank["boss"]["questions"]}]
 qs = [q for p in bank["pools"].values() for q in p] + [q for ph in phases for q in ph["questions"]]
@@ -15,7 +17,8 @@ qs = [q for p in bank["pools"].values() for q in p] + [q for ph in phases for q 
 secrets = [s for ph in phases[1:] for s in (ph.get("name"), ph.get("rule")) if s]
 blob = "".join(p.read_text(errors="ignore") for p in pathlib.Path(".next/static").rglob("*.js"))
 # A sort answer is its items in order, as the bank's JSON array would carry them.
-answer = lambda q: q["options"][q["correctIndex"]] if q["kind"] == "multipleChoice" else json.dumps(q["items"], ensure_ascii=False, separators=(",", ":")) if q["kind"] == "sort" else q["answer"]
+# A timing question's answer is its target, as a minified object literal would carry it (timing-tap.md).
+answer = lambda q: q["options"][q["correctIndex"]] if q["kind"] == "multipleChoice" else json.dumps(q["items"], ensure_ascii=False, separators=(",", ":")) if q["kind"] == "sort" else "target:" + json.dumps(q["target"]) if q["kind"] == "timing" else q["answer"]
 # The question's words: a legacy bare `text`, or `content.value` when the content is text,
 # plus the optional `prompt` an image or YouTube question carries. Image keys and video ids are skipped.
 words = lambda q: [w for w in (q.get("text"), (q.get("content") or {}).get("value") if (q.get("content") or {}).get("kind") == "text" else None, q.get("prompt")) if w]
