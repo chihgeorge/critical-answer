@@ -30,6 +30,7 @@ import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, aiKeyRefused, AiPanel, 
 import { MoreDrawer } from "@/components/more-drawer";
 import { screenAudioOf } from "@/lib/ambience";
 import { LateTeams } from "@/components/late-teams";
+import { BankHealthPanel, type BankHealth } from "@/components/bank-health";
 import { FieldJudge } from "@/components/field-judge";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
@@ -40,6 +41,8 @@ import { hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
 /** A cleric's wait, and the prayed attempt after it, ignore keys and clicks this long after they appear, so a
  * double-tap of 答錯 never lands on 祈禱 / 下輪再答, nor one of 祈禱 on the new attempt's 答對 / 答錯 (#106). */
 const CLERIC_WAIT_DELAY_MS = 500;
+/** How long 檢查中… waits for HOST_BANK_HEALTH: a check of a big bank takes well under a minute. */
+const BANK_CHECK_WAIT_MS = 90_000;
 const noSubscribe = () => () => {};
 /** HOST_EDIT_NARRATION refusals: the narration panel shows them in its editor, not the page's error line. */
 const NARRATION_REFUSALS = new Set(["no_narration", "stale_narration", "bad_index", "line_read", "empty_edit"]);
@@ -68,6 +71,16 @@ export default function HostPage() {
     selected: DEFAULT_BANK_ENTRY,
     loading: false,
   });
+  /** The last HOST_BANK_HEALTH (bank-health-check.md), and whether a check is running: the room answers it or ERROR. */
+  const [health, setHealth] = useState<BankHealth | null>(null);
+  const [checking, setChecking] = useState(false);
+  /** Releases 檢查中… when no answer comes (the socket dropped mid-check). */
+  const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopChecking = () => {
+    if (checkTimer.current) clearTimeout(checkTimer.current);
+    checkTimer.current = null;
+    setChecking(false);
+  };
   const [state, setState] = useState<StateMessage | null>(null);
   /** 手動停頓 (docs/designs/manual-pacing.md): the room's switch, as its last LOBBY or STATE said. */
   const [manual, setManual] = useState(false);
@@ -245,6 +258,10 @@ export default function HostPage() {
         case "HOST_BANKS":
           setBanks({ list: msg.banks, selected: msg.selected, loading: !!msg.loading });
           break;
+        case "HOST_BANK_HEALTH":
+          setHealth({ rows: msg.rows, questions: msg.questions, unchecked: msg.unchecked, reloaded: msg.reloaded });
+          stopChecking();
+          break;
         case "LOBBY":
           setManual(msg.pacing === "manual");
           setScreenAudio(screenAudioOf(msg));
@@ -265,6 +282,9 @@ export default function HostPage() {
           setScreenAudio(screenAudioOf(msg));
           setState(msg);
           setPendingTeamId(null);
+          // A started game: a lobby check's rows are no use now.
+          setHealth(null);
+          stopChecking();
           break;
         case "GAME_OVER":
           setState((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
@@ -291,6 +311,7 @@ export default function HostPage() {
           setEditRefusal((r) => ({ detail: msg.detail ?? msg.error, seq: (r?.seq ?? 0) + 1 }));
           // A refused pick gets no HOST_BANKS: release the menu on any error (the room still refuses a start while it loads).
           setBanks((b) => ({ ...b, loading: false }));
+          stopChecking();
           if (msg.detail && NARRATION_REFUSALS.has(msg.detail)) break;
           setError(
             msg.error === "bad_token"
@@ -311,6 +332,10 @@ export default function HostPage() {
                 ? "這份題庫現在拿不到，還是用原本的題庫"
                 : msg.detail === "bank_loading"
                 ? "題庫還在載入，等一下再開始"
+                : msg.detail === "check_running"
+                ? "題庫檢查已經在跑了，等它跑完"
+                : msg.detail === "check_stale"
+                ? "檢查途中題庫換了，請再按一次「檢查題庫」"
                 : msg.detail === "lock_pending"
                 ? "這隊還在擲骰、揭曉或等答錯結算，或有隊伍正在開門，等一下再按"
                 : msg.detail === "paused"
@@ -853,6 +878,7 @@ export default function HostPage() {
                 disabled={banks.loading}
                 onChange={(e) => {
                   setBanks((b) => ({ ...b, loading: true })); // until the room answers HOST_BANKS or ERROR
+                  setHealth(null); // another bank's rows
                   send({ type: "HOST_SET_BANK", bankId: e.target.value });
                 }}
                 className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px]"
@@ -871,6 +897,17 @@ export default function HostPage() {
                 ⚠ {bankSizeWarningText(sizeWarning, lobby.length)}
               </div>
             )}
+            <BankHealthPanel
+              health={health}
+              checking={checking}
+              disabled={!ready || banks.loading}
+              onCheck={() => {
+                setChecking(true);
+                if (checkTimer.current) clearTimeout(checkTimer.current);
+                checkTimer.current = setTimeout(stopChecking, BANK_CHECK_WAIT_MS);
+                send({ type: "HOST_BANK_CHECK" });
+              }}
+            />
             <PixelButton
               variant="primary"
               className="min-h-[78px] text-[26px]"

@@ -9,6 +9,7 @@ import { bankOrFallback, handleBankApi, handleBanksApi, handleGameLogsApi } from
 import { appendGameLog, readGameLogs, type GameLog } from "../lib/game-log";
 import { handleBankImageApi } from "../lib/bank-image-api";
 import { handleClientError } from "../lib/client-error-api";
+import { checkMediaBatch, HEAD_BYTES, type MediaBatch, type MediaResults } from "../lib/bank-health";
 
 export interface Env {
   /** The binding is named "main" on purpose: partysocket's default path is /parties/main/<room>. */
@@ -120,6 +121,20 @@ export class BankStoreDO extends DurableObject<Env> {
   gameLogs(): Promise<GameLog[]> {
     return readGameLogs(this.ctx.storage);
   }
+
+  /** One batch of a room's pre-game check (docs/designs/bank-health-check.md D4). Here, not in the room: every RPC is a
+   * new request to this object with its own external subrequest budget, which a room's long-lived socket may not get. */
+  checkMedia(batch: MediaBatch): Promise<MediaResults> {
+    return checkMediaBatch(batch, {
+      fetch: (input, init) => fetch(input, init),
+      readStart: async (key) => {
+        // A range past a small file's end may be refused: then only whether it exists matters.
+        const obj = await this.env.images.get(key, { range: { offset: 0, length: HEAD_BYTES } }).catch(() => undefined);
+        if (obj === undefined) return (await this.env.images.head(key)) ? new Uint8Array() : null;
+        return obj ? new Uint8Array(await obj.arrayBuffer()) : null;
+      },
+    });
+  }
 }
 
 const BANK_DO_NAME = "singleton"; // one Durable Object holds every bank (docs/designs/multi-bank.md)
@@ -171,6 +186,7 @@ export class Room extends Server<Env> {
           for (const conn of [...this.openSockets()]) conn.close(code, reason);
         },
         listBanks: () => this.env.bank.getByName(BANK_DO_NAME).listBanks(),
+        checkMedia: (batch) => this.env.bank.getByName(BANK_DO_NAME).checkMedia(batch),
         loadBank: async (id) => {
           const v = await this.env.bank.getByName(BANK_DO_NAME).getVersionedBank(id);
           // The fallback is not the bank the host picked.

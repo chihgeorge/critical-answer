@@ -226,6 +226,9 @@ export type ClientMessage =
   /** Lobby only: play the next game with bank `bankId` (multi-bank.md). A custom bank needs a host that proved OWNER_KEY
    * (HOST_AI_KEY source "owner"); the default bank ("default") is open to every host. */
   | { type: "HOST_SET_BANK"; bankId: string }
+  /** Lobby only: reload the room's bank and check every question it will use (docs/designs/bank-health-check.md).
+   * The reply is HOST_BANK_HEALTH, to this socket only. */
+  | { type: "HOST_BANK_CHECK" }
   /** Director: replace line `index` (0-based) of narration `eventId` as of edit `rev` (cut to MAX_LINE chars). The room
    * refuses a stale eventId or rev (another host device edited first) and a line the big screen has already read
    * (docs/designs/host-narration-edit.md D3, D9). */
@@ -535,6 +538,10 @@ export type ServerMessage =
    * OWNER_KEY), and the one the room plays (`selected`, maybe a bank since deleted: the room keeps its copy).
    * `loading`: a HOST_SET_BANK is still fetching its bank, so the page holds 開始遊戲. */
   | { type: "HOST_BANKS"; banks: { id: string; name: string }[]; selected: { id: string; name: string }; loading?: true }
+  /** The reply to HOST_BANK_CHECK, to the asking host page only. `questions`: how many were checked; `unchecked`: how many
+   * have media no automatic check can reach (Instagram explanations); `reloaded`: the bank was reloaded from the store
+   * first. Rows carry no answer, URL, video id or file key (docs/designs/bank-health-check.md D2). */
+  | { type: "HOST_BANK_HEALTH"; rows: HealthRow[]; questions: number; unchecked: number; reloaded: boolean }
   /** Host-only: the room closes in `minutesLeft` minutes (its 6 hour life is nearly over), null once it no longer
    * does (a HOST_EXTEND_ROOM). Sent by the room's alarm inside the last CLOSE_WARN_MS, on every host claim after that,
    * and after every extension. `canExtend`: false once the room has reached its 24 hour cap. Players and the big
@@ -675,6 +682,16 @@ export const MAX_HEARTS = 20;
 /** Most answer fields a music question has (docs/designs/multi-field.md). */
 export const MAX_FIELDS = 3;
 export const MAX_PASSWORD = 32;
+/** One problem the pre-game check found. `where`: 「難度 2」, 「首領第 1 階段」 or 「題庫」 for the whole bank; `label`: the
+ * question's first few characters. Here, not in lib/bank-health.ts, so the host page never imports that file. */
+export interface HealthRow {
+  level: "red" | "yellow";
+  questionId?: string;
+  where: string;
+  label?: string;
+  problem: string;
+}
+
 /** The default bank in HOST_BANKS and HOST_SET_BANK (multi-bank.md): the one every room had before multi-bank. */
 export const DEFAULT_BANK_ENTRY = { id: "default", name: "預設題庫" } as const;
 /** HOST_NEXT_LINE's limit: the AI may add a few characters around it and still fit MAX_LINE. */
@@ -809,6 +826,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "HOST_GET_TRANSCRIPT":
       return { type: "HOST_GET_TRANSCRIPT" };
+    case "HOST_BANK_CHECK":
+      return { type: "HOST_BANK_CHECK" };
     case "HOST_EXTEND_ROOM":
       return { type: "HOST_EXTEND_ROOM" };
     case "HOST_NEXT":

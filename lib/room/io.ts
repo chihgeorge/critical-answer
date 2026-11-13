@@ -1,5 +1,6 @@
 import type { GameLog } from "../game-log";
 import type { Bank } from "../question-bank";
+import type { MediaBatch, MediaResults } from "../bank-health";
 /**
  * What the game room needs from whatever carries its messages (Cloudflare, PartyKit, a test).
  * Kept this small on purpose: the room logic imports no platform types.
@@ -43,4 +44,7 @@ export interface RoomIO {
   listBanks?(): Promise<{ id: string; name: string }[]>;
   /** One bank by id, for HOST_SET_BANK. Throws when it is gone or unreadable. */
   loadBank?(id: string): Promise<Bank>;
+  /** One batch of the pre-game check's media lookups, run in another Durable Object so each batch gets its own
+   * subrequest budget (docs/designs/bank-health-check.md D4). Without it media read as unknown (yellow). */
+  checkMedia?(batch: MediaBatch): Promise<MediaResults>;
 }

@@ -33,6 +33,7 @@
 - [上架手機版本](#上架手機版本) — 上架 L（人工約 1–2 週 / CC 約半天，不含審核）；PWA 已做
 - [每次行動可以選不同的動作，不只答題](#每次行動可以選不同的動作不只答題) — 未註明
 - [上傳影片時在伺服器認出 HEVC 編碼](#上傳影片時在伺服器認出-hevc-編碼) — S，活動後
+- [題庫健檢讓大螢幕實際載入每支影音](#題庫健檢讓大螢幕實際載入每支影音) — M，活動後
 - [活動後清掉有版權疑慮的上傳影片和聲音](#活動後清掉有版權疑慮的上傳影片和聲音) — S，活動後
 - [戰士骰有自己的音效](#戰士骰有自己的音效) — S，活動後
 - [加入密碼鎖改成按連線來源（IP）計數，避免亂猜擋住新隊伍](#加入密碼鎖改成按連線來源ip計數避免亂猜擋住新隊伍) — S（人工約半天 / CC 約 30 分鐘），活動後
@@ -703,6 +704,18 @@
 **Context:** `lib/bank-image-api.ts` 的 `sniffMedia` 有 `shortcut:` 註解。要走 MP4 的 box（moov → trak → stsd）找 `hvc1`／`hev1`。設計見 `docs/designs/uploaded-media.md`。
 
 **Effort/Priority:** S / P3，活動後
+
+**Depends on:** 無。
+
+## 題庫健檢讓大螢幕實際載入每支影音
+
+**What:** 「🩺 檢查題庫」之外，讓帶金鑰的大螢幕把每支 YouTube 和上傳影音實際載入一次（不出聲），回報放不放得出來，主持人頁的健檢清單合併這份結果。
+
+**Why:** 現在的健檢在伺服器查（oEmbed、R2），看不出地區限制、年齡限制、場地 Wi-Fi 和大螢幕瀏覽器的解碼能力；只有在現場那台大螢幕試才準。
+
+**Context:** `docs/designs/bank-health-check.md` 的「不做」。要新增大螢幕回報訊息，網址只能走 `SCREEN_VIDEO` 的規則（`docs/designs/screen-video-key.md`）。也可以順便讀影片檔尾，補上 `moov` 在檔尾的 HEVC（`lib/bank-health.ts` 的 `shortcut:`）。
+
+**Effort/Priority:** M / P3，活動後
 
 **Depends on:** 無。
 
