@@ -17,6 +17,7 @@ import { sprintSeen } from "@/lib/transitions";
 import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
+import { memoryPhoneHint } from "@/lib/memory-copy";
 import { dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { PHONE_LAG_MS, placeLabel, revealNow, teamPlace } from "@/lib/podium";
 import { McOption } from "@/components/mc-option";
@@ -666,7 +667,7 @@ function AntiCheatPanel({ game, teamId, isMyTurn, send }: { game: StateMessage; 
     return <div data-testid="oracle-on" role="status" className="px-bar mt-1 !text-[17px]" style={{ background: "#c9b3ff" }}>🔮 請示了神諭：這題答對獎勵減半</div>;
   }
   // The window: a room turn whose question is up and not answered (a typed answer waiting still lets a catch in).
-  const open = ac.on && !q.checkFirst && !accused.inBossPhase && !game.view.buzz && !game.view.pendingWrong && !game.pendingLock && !game.pendingRoll;
+  const open = ac.on && !q.checkFirst && !q.memorize && !accused.inBossPhase && !game.view.buzz && !game.view.pendingWrong && !game.pendingLock && !game.pendingRoll;
   if (!open) return null;
   if (isMyTurn) {
     if (!me.oracleLeft || me.typedAnswer !== null) return null;
@@ -1222,7 +1223,19 @@ export default function PlayPage() {
         ) : null}
 
         {/* D2: on our own multipleChoice turn the options come first, right under the ribbon. */}
-        {game && buzz && !held && game.question && !game.question.timing && <BuzzButton game={game} buzz={buzz} teamId={teamId} send={send} />}
+        {/* 記憶題 (memory-questions.md): while its media plays the question is hidden and nobody answers yet. The image
+            stays off the phone too: a screenshot would beat the memory test. */}
+        {game && !finished && !held && game.question?.memorize && (
+          <div data-testid="play-memorize">
+            <Panel tone="lav" role="status" className="flex flex-col items-center gap-1 px-3 py-[14px] text-center">
+              <LabelChip>🧠 記憶題</LabelChip>
+              <div className="text-[22px]">{memoryPhoneHint(game.question)}，記住內容</div>
+              {(isMyTurn || buzz) && <div className="text-[16px]">題目等一下才出來，還不能作答</div>}
+            </Panel>
+          </div>
+        )}
+
+        {game && buzz && !held && game.question && !game.question.memorize && !game.question.timing && <BuzzButton game={game} buzz={buzz} teamId={teamId} send={send} />}
         {/* A timing question (timing-tap.md): one tap per team; the reveal shows our own error on the same button. */}
         {game && teamId && ((buzz && !held && game.question?.timing) || revealed?.timing) && <TapButton game={game} teamId={teamId} tap={tap} />}
 
@@ -1232,10 +1245,10 @@ export default function PlayPage() {
 
         {game && buzz?.picker === teamId && game.buzzCategories && <CategoryPanel categories={game.buzzCategories} chosen={buzz.category} send={send} />}
 
-        {game && !finished && !buzz && !held && isMyTurn && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} />}
+        {game && !finished && !buzz && !held && isMyTurn && !game.question?.memorize && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} />}
 
         {/* #104: our own host-judged text turn is a fill-in: the team types its answer for the host. */}
-        {game && !finished && !buzz && !held && isMyTurn && game.question && !game.question.options && !game.question.items && (
+        {game && !finished && !buzz && !held && isMyTurn && game.question && !game.question.memorize && !game.question.options && !game.question.items && (
           <TextAnswerPanel key={`${game.question.id}:${game.eventId}:${game.question.checkFirst ? "check" : "q"}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint={noHintQid === game.question.id} />
         )}
 
@@ -1275,13 +1288,13 @@ export default function PlayPage() {
         {!isMyTurn && cards}
 
         {/* The video plays on the big screen only (D7): the phone says where to look, and keeps its space for answering (D21). */}
-        {game && !finished && !held && game.question?.content.kind === "youtube" && (
+        {game && !finished && !held && game.question?.content.kind === "youtube" && !game.question.memorize && (
           <div data-testid="play-media-hint" className="self-start border-[3px] border-[var(--k)] bg-[var(--lav)] px-3 py-1 text-[18px]">
             {game.question.content.audioOnly ? "🎵 聽大螢幕" : "▶ 看大螢幕"}
           </div>
         )}
 
-        {game && !finished && !held && game.question && game.question.content.kind === "image" && (
+        {game && !finished && !held && game.question && game.question.content.kind === "image" && !game.question.memorize && (
           <Panel className="flex justify-center px-3 py-3">
             {/* key tied to the question forces a fresh DOM node per question — without it, React
                 would reuse the same node across consecutive media questions and a broken image

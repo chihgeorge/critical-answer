@@ -207,3 +207,11 @@ describe("parseSnapshot", () => {
     expect(() => parseSnapshot({ ...valid(), teamKeys: "x" })).not.toThrow();
   });
 });
+
+describe("parseSnapshot: 記憶題 (memory-questions.md)", () => {
+  it("keeps a valid memory state and drops a damaged one to none", () => {
+    const base = valid();
+    expect(parseSnapshot({ ...base, memoryDone: ["m1", 3], memoryShow: { questionId: "i1", endsAt: 5 } })).toMatchObject({ memoryDone: ["m1"], memoryShow: { questionId: "i1", endsAt: 5 } });
+    expect(parseSnapshot({ ...base, memoryDone: "m1", memoryShow: { questionId: "i1", endsAt: "soon" } })).toMatchObject({ memoryDone: [], memoryShow: null });
+  });
+});

@@ -92,6 +92,11 @@ export interface PublicQuestion {
   /** A fill-in question whose team has not finished its persuasion check: STATE sends it with empty text and no media,
    * prompt or fields until the die's beat ends (check first, question after). On HOST_ANSWER's copy it only marks the wait. */
   checkFirst?: true;
+  /** 記憶題's watching phase (the bank's `memory`, docs/designs/memory-questions.md): only `content` goes out, no prompt,
+   * options, items or fields, and nobody may answer. On HOST_ANSWER's copy it marks the phase on the whole question. */
+  memorize?: true;
+  /** An image memory question's watching phase: ms left of its seconds when the STATE was sent. */
+  memoryLeft?: number;
 }
 
 /** Shown to everyone (D2/D3 — a shared-screen, in-person party game, so hiding the answer from
@@ -302,6 +307,8 @@ export type ClientMessage =
   | { type: "HOST_REVEAL"; teamId: string; questionId: string }
   /** Host: ▶ ⏸ ⟲ for the YouTube video on the big screen (docs/designs/youtube-questions.md). */
   | { type: "HOST_MEDIA"; questionId: string; action: MediaAction }
+  /** ⏭ 直接出題: a memory question's media ends now (docs/designs/memory-questions.md). */
+  | { type: "HOST_MEMORY_DONE"; questionId: string }
   /** 結束冒險: end the game now, ranked by each team's reward. */
   | { type: "HOST_END_GAME" }
   /** After the game: back to the lobby with the same teams, ready for another game. */
@@ -939,6 +946,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const questionId = str(m.questionId, MAX_ID);
       const action = MEDIA_ACTIONS.find((a) => a === m.action);
       return questionId === null || !action ? null : { type: "HOST_MEDIA", questionId, action };
+    }
+    case "HOST_MEMORY_DONE": {
+      const questionId = str(m.questionId, MAX_ID);
+      return questionId === null ? null : { type: "HOST_MEMORY_DONE", questionId };
     }
     case "HOST_END_GAME":
       return { type: "HOST_END_GAME" };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blankQuestion, timingFieldError, withCategory, withField } from "./bank-editor-question";
+import { blankQuestion, canBeMemory, timingFieldError, withCategory, withContent, withField, withMemory } from "./bank-editor-question";
 import { allQuestions, parseBank, type BankQuestion } from "./question-bank";
 
 const base: BankQuestion = { kind: "text", id: "b-a", content: { kind: "text", value: "前奏" }, answer: "答案", category: "動漫" };
@@ -39,5 +39,30 @@ describe("bank editor: timing question fields (timing-tap.md)", () => {
     expect(timingFieldError(q(190, { label: "一二三四五六七八九十一" }))).toBe("label 最多 10 個字");
     expect(timingFieldError(q(1, { content: { kind: "text", value: "x" } }))).toBe("卡點題的內容只能是 YouTube 或上傳的影音");
     expect(timingFieldError(base)).toBeNull();
+    // Never a memory question: switching to timing drops the setup, and the box is not offered.
+    const mem = { ...base, content: clip, prompt: "聽", memory: true } as BankQuestion;
+    expect(blankQuestion(mem, "timing")).not.toHaveProperty("memory");
+    expect(canBeMemory(q(190))).toBe(false);
+  });
+});
+
+describe("bank editor: 記憶題 (memory-questions.md)", () => {
+  const img: BankQuestion = { kind: "multipleChoice", id: "m1", content: { kind: "image", value: "11111111-2222-3333-4444-555555555555" }, prompt: "幾隻？", options: ["1", "2"], correctIndex: 0 };
+  it("ticking writes the default seconds on an image, none on a clip; unticking removes both", () => {
+    expect(withMemory(img, true)).toMatchObject({ memory: true, memorySeconds: 10 });
+    expect(withMemory({ ...img, content: { kind: "youtube", value: "dQw4w9WgXcQ" } }, true)).not.toHaveProperty("memorySeconds");
+    const off = withMemory(withMemory(img, true), false);
+    expect(off).not.toHaveProperty("memory");
+    expect(off).not.toHaveProperty("memorySeconds");
+  });
+  it("a content switch keeps the setup valid; a kind switch carries it", () => {
+    const on = withMemory(img, true);
+    expect(withContent(on, { kind: "text", value: "題目" })).not.toHaveProperty("memory");
+    expect(withContent(on, { kind: "audio", value: "11111111-2222-3333-4444-555555555555" })).toMatchObject({ memory: true });
+    expect(withContent(on, { kind: "audio", value: "11111111-2222-3333-4444-555555555555" })).not.toHaveProperty("memorySeconds");
+    expect(withContent(withMemory({ ...img, content: { kind: "youtube", value: "dQw4w9WgXcQ" } }, true), img.content)).toMatchObject({ memorySeconds: 10 });
+    expect(blankQuestion(on, "sort")).toMatchObject({ memory: true, memorySeconds: 10 });
+    expect(canBeMemory(img)).toBe(true);
+    expect(canBeMemory({ ...img, content: { kind: "text", value: "x" } })).toBe(false);
   });
 });

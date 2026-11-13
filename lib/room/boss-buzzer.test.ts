@@ -583,3 +583,31 @@ describe("buzzer boss phase in the room", () => {
     expect(second.game!.buzz).toEqual({ questionId: "b-a", out: [IDS[1]] });
   });
 });
+
+describe("記憶題 in a buzzer phase (memory-questions.md)", () => {
+  const memory = (id: string) => ({ ...video(id), prompt: "這首歌的歌手是誰？", memory: true });
+  // Value: protects=nobody buzzes before the question is up; fails_when=the first ▶ (which opens buzzing) lets a team in
+  // while the clip still hides the question.
+  it("refuses a buzz while the clip plays, and takes the first one once it ended", () => {
+    const g = buzzerGame(memory);
+    expect(g.state().question).toMatchObject({ id: "b-a", memorize: true });
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "memorizing" });
+    expect(g.room.game!.buzz?.teamId).toBeUndefined();
+    const screen = makeConn("tv");
+    g.room.onConnect(screen);
+    send(g.room, screen, { type: "SCREEN_HELLO", key: (g.room as unknown as { screenKey: string }).screenKey });
+    send(g.room, screen, { type: "SCREEN_CLIP_ENDED", questionId: "b-a" });
+    expect(g.state().question).toMatchObject({ content: { kind: "text", value: "這首歌的歌手是誰？" } });
+    g.buzz(2);
+    expect(g.room.game!.buzz?.teamId).toBe(IDS[2]);
+  });
+
+  it("the host's ⏭ on a clip never played opens buzzing too", () => {
+    const g = buzzerGame(memory);
+    send(g.room, g.host, { type: "HOST_MEMORY_DONE", questionId: "b-a" });
+    g.buzz(0);
+    expect(g.room.game!.buzz?.teamId).toBe(IDS[0]);
+  });
+});

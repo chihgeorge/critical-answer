@@ -98,7 +98,8 @@ export default function HostPage() {
   /** Host-only: the answer to the question in play. Never shown on /screen or /play. */
   const [answer, setAnswer] = useState<Pick<Extract<ServerMessage, { type: "HOST_ANSWER" }>, "questionId" | "answer" | "typed" | "question" | "tap"> | null>(null);
   // Check first, question after: STATE holds a fill-in's text back until its check is done; the host's copy comes with the answer.
-  const game = useMemo(() => (state?.question?.checkFirst && answer?.question && answer.questionId === state.question.id ? { ...state, question: answer.question } : state), [state, answer]);
+  // So does a memory question while its media plays (memory-questions.md): the host sees the whole question, marked.
+  const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id ? { ...state, question: answer.question } : state), [state, answer]);
   const [drawer, setDrawer] = useState(false);
   /** Host-only: what the host may queue as a team's (or the boss's) next question, with answers. */
   const [picks, setPicks] = useState<Picks | null>(null);
@@ -1033,11 +1034,30 @@ export default function HostPage() {
                       {game.pendingRoll?.kind === "check" ? "🎲 說服骰擲出了，結算後大螢幕才出題" : "🎲 等這隊擲完說服，大螢幕才出題"}
                     </div>
                   )}
+                  {/* 記憶題 (memory-questions.md): the teams cannot see the question yet; ⏭ ends the media now. */}
+                  {game.question?.memorize && !game.phaseCard && !game.forkBeat && !revealUp && (
+                    <div data-testid="host-memorize" className="mt-1 flex flex-col gap-1 text-[14px]">
+                      <div role="status">
+                        🧠 記憶題：{game.question.content.kind === "image" ? "圖片時間到才出題" : "大螢幕播完才出題"}（隊伍現在看不到題目）
+                        {game.question.memoryLeft !== undefined && <> <AnswerClock key={`memory:${game.question.id}:${game.question.memoryLeft}`} ms={game.question.memoryLeft} variant="chip" /></>}
+                      </div>
+                      {game.clipError ? (
+                        <div data-testid="host-memory-clip-error" role="alert" className="p-2 text-[14px]" style={{ background: "#ffd6dc", boxShadow: "0 0 0 3px var(--k)" }}>
+                          大螢幕放不出來：現場放一次或講一下內容，再按「⏭ 直接出題」
+                        </div>
+                      ) : (
+                        <div className="text-[13px]" style={{ color: "#6b4a2a" }}>大螢幕沒播完或放不出來，就按 ⏭</div>
+                      )}
+                      <PixelButton className="!m-0 min-h-[48px] text-[17px]" style={{ background: "var(--warn)" }} disabled={!ready} onClick={() => send({ type: "HOST_MEMORY_DONE", questionId: game.question!.id })}>
+                        ⏭ 直接出題
+                      </PixelButton>
+                    </div>
+                  )}
                   {/* 每題作答倒數 (answer-countdown.md): only a nudge, the host still judges (D1). */}
                   {game.answerClock && (
                     <div className="mt-1">
                       {game.answerClock.left === null ? (
-                        <span data-testid="answer-clock-wait" className="text-[14px]">⏱ 影片播完後開始倒數</span>
+                        <span data-testid="answer-clock-wait" className="text-[14px]">{game.question?.memorize ? "⏱ 記憶完後開始倒數" : "⏱ 影片播完後開始倒數"}</span>
                       ) : (
                         <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" />
                       )}
@@ -1046,7 +1066,7 @@ export default function HostPage() {
                 </div>
               </div>
               {/* The big screen cannot play this video (boss-music-buzzer.md M4): the host plays the song live. */}
-              {game.question?.content.kind === "youtube" && !revealUp && game.clipError && (
+              {game.question?.content.kind === "youtube" && !revealUp && game.clipError && !game.question.memorize && (
                 <div data-testid="host-clip-error" role="alert" className="mt-2 flex flex-col gap-1 p-2 text-[15px]" style={{ background: "#ffd6dc", boxShadow: "0 0 0 3px var(--k)" }}>
                   <div className="text-[16px]">大螢幕：這支影片放不出來</div>
                   <div className="text-[13px]">（影片無法播放／被擋）{timing ? "卡點題要大螢幕放歌才量得到時間：按 ▶ 再試一次，不行就按「沒人答對，換下一題」。" : buzz && !buzz.open ? "用你的手機或喇叭放歌，再按下面的鈕開放搶答。" : "用你的手機或喇叭放歌。"}</div>

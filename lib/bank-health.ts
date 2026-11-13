@@ -181,6 +181,10 @@ export function healthReport(bank: Bank, results: MediaResults, baseUrl: string)
       if (found) rows.push({ level: found.level, questionId: q.id, where, ...(labelOf(q) ? { label: labelOf(q) } : {}), problem: slot + found.problem });
     }
     for (const problem of timingProblems(q)) rows.push({ level: "yellow", questionId: q.id, where, ...(labelOf(q) ? { label: labelOf(q) } : {}), problem });
+    // 記憶題 (memory-questions.md): parseBank refuses a broken setup, so only the one that works but drags is left.
+    if (q.memory && q.content.kind === "youtube" && q.content.end === undefined) {
+      rows.push({ level: "yellow", questionId: q.id, where, ...(labelOf(q) ? { label: labelOf(q) } : {}), problem: "記憶題的 YouTube 沒設結束秒數：整支播完才出題，建議設結束" });
+    }
   }
   return { rows, questions: placed.length, unchecked };
 }

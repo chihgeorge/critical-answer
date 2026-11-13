@@ -67,7 +67,33 @@ export type BankQuestion = (
   category?: string;
   /** Boss questions only: how hard (1–5), for the check's DC and the phase's order. Absent reads as 5. */
   difficulty?: Difficulty;
+  /** 記憶題 (docs/designs/memory-questions.md): the question stays hidden while its clip plays (or its image shows for
+   * `memorySeconds`); then the media hides and the question appears. Needs clip or image content and a prompt. */
+  memory?: true;
+  /** An image memory question only: how long the image shows, MIN_MEMORY_SECONDS..MAX_MEMORY_SECONDS. */
+  memorySeconds?: number;
 };
+
+export const MIN_MEMORY_SECONDS = 3;
+export const MAX_MEMORY_SECONDS = 60;
+/** What the bank editor ticks into an image memory question. */
+export const DEFAULT_MEMORY_SECONDS = 10;
+
+/** Why a question's memory setup is invalid (each message names the fix), or null. Shared by parseBank and the bank
+ * editor's pre-save check, so the two never drift. Reads raw values: parseBank calls it before trusting them. */
+export function memoryProblem(q: { memory?: unknown; memorySeconds?: unknown; content: { kind: string }; prompt?: unknown }): string | null {
+  const { memory, memorySeconds } = q;
+  if (memory === undefined) return memorySeconds === undefined ? null : "只有記憶題能有 memorySeconds（顯示幾秒）：請刪掉這欄";
+  if (memory !== true) return "memory 只能是 true；不要記憶題就刪掉這欄";
+  const image = q.content.kind === "image";
+  if (!image && !isClip(q.content as { kind: MediaContent["kind"] })) return "記憶題的內容要是圖片、YouTube、影片或聲音：改內容，或取消記憶題";
+  if (typeof q.prompt !== "string" || !q.prompt.trim()) return "記憶題要寫題幹（播完後才出現的題目）";
+  if (!image) return memorySeconds === undefined ? null : "只有圖片記憶題能有 memorySeconds（顯示幾秒）：影片和聲音播完就出題，請刪掉這欄";
+  if (typeof memorySeconds !== "number" || !Number.isInteger(memorySeconds) || memorySeconds < MIN_MEMORY_SECONDS || memorySeconds > MAX_MEMORY_SECONDS) {
+    return `圖片記憶題的顯示秒數是 ${String(memorySeconds)}，要是 ${MIN_MEMORY_SECONDS}–${MAX_MEMORY_SECONDS} 的整數`;
+  }
+  return null;
+}
 
 /** Longest question `category`, in characters: it is a button on a phone. */
 export const MAX_CATEGORY = 20;
@@ -332,14 +358,28 @@ function parseQuestions(raw: unknown, where: string, seen: Set<string>, boss = f
     if (r.difficulty !== undefined && !boss) fail(`question ${String(id)} in ${where} has a difficulty: only a boss question can (a pool is its difficulty)`);
     const difficulty = r.difficulty === undefined ? undefined : parseDifficulty(r.difficulty, `question ${String(id)}`);
     // The default is stored as no difficulty, so a bank that marks nothing below it keeps its older format (bank-store formatOf).
-    const extra = { ...(category ? { category } : {}), ...(difficulty && difficulty !== DEFAULT_BOSS_DIFFICULTY ? { difficulty } : {}) };
+    const extra = {
+      ...(category ? { category } : {}),
+      ...(difficulty && difficulty !== DEFAULT_BOSS_DIFFICULTY ? { difficulty } : {}),
+      ...(r.memory === true ? { memory: true as const } : {}),
+      ...(typeof r.memorySeconds === "number" ? { memorySeconds: r.memorySeconds } : {}),
+    };
     // "image" is a legacy top-level kind (pre-D1): it converts to a text-kind question whose
     // content happens to be an image, same as parseContent's imageKey fallback handles it.
-    if (kind === "text" || kind === "image") return { ...parseTextQuestion(r, id as string), ...extra };
+    const withMemory = (q: BankQuestion): BankQuestion => {
+      const why = memoryProblem({ memory: r.memory, memorySeconds: r.memorySeconds, content: q.content, prompt: q.prompt });
+      if (why) fail(`question ${String(id)}: ${why}`);
+      return { ...q, ...extra };
+    };
+    if (kind === "text" || kind === "image") return withMemory(parseTextQuestion(r, id as string));
     if (r.fields !== undefined) fail(`question ${String(id)} has fields, which only a fill-in music question can have`);
-    if (kind === "multipleChoice") return { ...parseMultipleChoiceQuestion(r, id as string), ...extra };
-    if (kind === "sort") return { ...parseSortQuestion(r, id as string), ...extra };
-    if (kind === "timing") return { ...parseTimingQuestion(r, id as string), ...extra };
+    if (kind === "multipleChoice") return withMemory(parseMultipleChoiceQuestion(r, id as string));
+    if (kind === "sort") return withMemory(parseSortQuestion(r, id as string));
+    // A timing question is heard live, never memorised first (timing-tap.md).
+    if (kind === "timing") {
+      if (r.memory !== undefined || r.memorySeconds !== undefined) fail(`question ${String(id)}: a timing question cannot be a memory question`);
+      return { ...parseTimingQuestion(r, id as string), ...extra };
+    }
     return fail(`question ${String(id)} has unknown kind ${String(kind)}`);
   });
 }
@@ -617,6 +657,18 @@ export function publicQuestion(
     // The label only, never the target (timing-tap.md).
     ...(q.kind === "timing" ? { timing: q.label ? { label: q.label } : {} } : {}),
   };
+}
+
+/** 記憶題 (docs/designs/memory-questions.md): the question as every screen sees it. While its media plays (`ended`
+ * false) only the media goes out: no prompt, options, items or field labels. Once it ended the media is gone and the
+ * prompt is the question's text, so every client shows a plain question and no player (no replay). */
+export function memoryView(pub: PublicQuestion, ended: boolean, leftMs?: number): PublicQuestion {
+  if (!ended) {
+    const { id, content, difficulty, boss, monster } = pub;
+    return { id, content, difficulty, boss, monster, memorize: true, ...(leftMs !== undefined ? { memoryLeft: leftMs } : {}) };
+  }
+  const { prompt, ...rest } = pub;
+  return { ...rest, content: { kind: "text", value: prompt ?? "" } };
 }
 
 /** A sort question's shown order (`[shown] = bank index`): the game's, or, without a valid one (a question added to
