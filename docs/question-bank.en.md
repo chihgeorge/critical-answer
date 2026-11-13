@@ -24,6 +24,20 @@ When you add questions: each difficulty 1–5 bank needs at least 12 questions (
 
 **Uploaded video and audio**: the question slot and the explanation slot can both be 「影片」 (video) or 「聲音」 (audio); press 「選擇影片／選擇聲音」 (choose video / audio) to upload a file. Video is MP4 (H.264 picture, AAC sound), audio is M4A or MP3, 25 MB or less per file (images stay at 5 MB). During the upload a progress bar and 「上傳中 43%（10.7／25 MB）」 show, with a 「取消」 (cancel) button; the whole editor stays locked. The server decides the type from the file's contents: a video picked under 「聲音」 goes under 「影片」, with a note saying so. After the upload the editor plays the file once in your browser and shows its name, length and size; over 90 seconds it warns that the clip may drag on stage; if the browser cannot play it (an iPhone HEVC video, for example) it shows in red 「這支影片瀏覽器放不出來，請轉成 H.264／AAC 再上傳」 (this browser cannot play the video, convert it to H.264/AAC and upload again). Export MP4 with `-movflags +faststart` (index at the start of the file) so a slow venue network does not stall the start. In the game it works like a YouTube question: the big screen plays it from start to end, under the host's ▶ ⏸ ⟲; an audio question is covered by the music card and counts as a music question (buzzer phases and answer fields work with it); an audio or video explanation plays in the question video's place after the reveal. The file's address goes only to the host page and to a big screen opened with the key link; phones show only 「▶ 詳解請看大螢幕」. Files are stored in Cloudflare R2 like images, and ones replaced, deleted, or uploaded and never saved are cleaned up after the grace period. Design in [docs/designs/uploaded-media.md](designs/uploaded-media.md).
 
+**Memory questions**: when a question's content is an image, YouTube, video or audio, you can tick 「🧠 記憶題（先看再出題）」 (memory question: watch first): the question stays hidden while the media plays and shows when it ends (rules: [Memory questions](rules.en.md#memory-questions)). A memory question must have a prompt. An image needs 「顯示幾秒」 (seconds shown, 3–60, default 10); a video or audio shows the question when it ends. An uploaded file plays in full, so give a YouTube clip an end time. In the bank file it looks like this:
+
+```json
+{ "kind": "multipleChoice", "id": "cats-1", "content": { "kind": "image", "value": "<image UUID>" }, "prompt": "How many cats were in the picture?", "options": ["2", "3", "4", "5"], "correctIndex": 1, "memory": true, "memorySeconds": 8 }
+{ "kind": "text", "id": "song-1", "content": { "kind": "youtube", "value": "dQw4w9WgXcQ", "start": 30, "end": 45 }, "prompt": "What is the next line of that lyric?", "answer": "…", "memory": true }
+```
+
+| Field | Rule |
+|-------|------|
+| `memory` | Only `true`; to turn it off, delete the field |
+| Content | Image, YouTube, video or audio; a text question cannot be a memory question |
+| `prompt` | Required (after the end only the prompt is left) |
+| `memorySeconds` | Required on an image memory question, an integer 3–60; no other question may have it |
+
 Image upload needs R2 set up first; see the [deployment guide](deployment.en.md#image-upload-r2).
 
 The page asks for `OWNER_KEY` before it can read or write the bank. When this secret is not set on the server, every request gets 403 (for local development, add a line `OWNER_KEY=...` to `.dev.vars` to test; `.dev.vars.example` does not include it). For production, use `wrangler secret put OWNER_KEY` to set a random value of ≥32 bytes; a shorter one leaves a warning in the Worker log.

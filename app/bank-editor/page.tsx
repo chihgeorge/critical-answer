@@ -12,10 +12,10 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
-import { UNSET_CORRECT_INDEX, blankQuestion, withCategory, withField } from "@/lib/bank-editor-question";
+import { UNSET_CORRECT_INDEX, blankQuestion, canBeMemory, withCategory, withContent, withField, withMemory } from "@/lib/bank-editor-question";
 import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, MEDIA_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
 import { MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from "@/lib/bank-image-api";
-import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { DIFFICULTIES, MAX_MEMORY_SECONDS, MIN_MEMORY_SECONDS, memoryProblem, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { DEFAULT_BANK_ENTRY, MAX_TEAMS, scoreName } from "@/lib/protocol";
@@ -129,6 +129,9 @@ function validationError(bank: Bank): string | null {
     const contentErr = contentError(`${label}的內容`, q.content);
     if (contentErr) return contentErr;
     if (q.prompt !== undefined && Array.from(q.prompt).length > MAX_PROMPT) return `${label}的題幹最多 ${MAX_PROMPT} 個字`;
+    // The same rule parseBank applies (memory-questions.md), so a save never fails on it.
+    const memoryErr = memoryProblem(q);
+    if (memoryErr) return `${label}：${memoryErr}`;
     if (q.category !== undefined && Array.from(q.category.trim()).length > MAX_CATEGORY) return `${label}的類別最多 ${MAX_CATEGORY} 個字`;
     if (q.difficulty !== undefined && !(DIFFICULTIES as readonly number[]).includes(q.difficulty)) return `${label}的難度要是 1～5`;
     const explanationErr = contentError(`${label}的詳解`, q.explanation);
@@ -1268,15 +1271,8 @@ function QuestionRow({
             fieldId={`${q.id}-content`}
             label="題目"
             value={q.content}
-            onChange={(c) =>
-              onUpdate((cur) => {
-                // A text question is its own line: the bank refuses a prompt on it.
-                if (c!.kind !== "text") return { ...cur, content: c! };
-                const next = { ...cur, content: c! };
-                delete next.prompt;
-                return next;
-              })
-            }
+            // A text question is its own line: the bank refuses a prompt (and a memory setup) on it.
+            onChange={(c) => onUpdate((cur) => withContent(cur, c!))}
             onUploadImage={onUploadImage}
           />
           {q.content.kind !== "text" && (
@@ -1297,6 +1293,43 @@ function QuestionRow({
                 });
               }}
             />
+          )}
+          {/* 記憶題 (docs/designs/memory-questions.md): watch first, then the question. */}
+          {canBeMemory(q) && (
+            <div data-testid={`memory-${q.id}`} className="mt-1 flex flex-col gap-1 text-[15px]">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={!!q.memory} onChange={(e) => { const on = e.target.checked; onUpdate((cur) => withMemory(cur, on)); }} />
+                🧠 記憶題（先看再出題）
+              </label>
+              {q.memory && q.content.kind === "image" && (
+                <label className="flex items-center gap-2">
+                  顯示幾秒
+                  <input
+                    type="number"
+                    className="px-input !py-1"
+                    style={{ width: 80 }}
+                    min={MIN_MEMORY_SECONDS}
+                    max={MAX_MEMORY_SECONDS}
+                    step={1}
+                    aria-label="記憶題圖片顯示幾秒"
+                    value={Number.isFinite(q.memorySeconds) ? q.memorySeconds : ""}
+                    onChange={(e) => {
+                      // NaN for an empty box: the pre-save check refuses it rather than keeping the last good value.
+                      const seconds = e.target.value === "" ? NaN : Number(e.target.value);
+                      onUpdate((cur) => ({ ...cur, memorySeconds: seconds }));
+                    }}
+                  />
+                  秒（{MIN_MEMORY_SECONDS}–{MAX_MEMORY_SECONDS}）
+                </label>
+              )}
+              {q.memory && (
+                <div className="text-[13px]" style={{ color: "#6b4a2a" }}>
+                  看的時候隱藏題幹和選項；{q.content.kind === "image" ? "時間到" : "播完"}，{q.content.kind === "image" ? "圖片" : q.content.kind === "audio" ? "聲音" : "影片"}收起來才出題。
+                  {(q.content.kind === "video" || q.content.kind === "audio") && "上傳的影片／聲音會整段播完才出題。"}
+                  {q.content.kind === "youtube" && q.content.end === undefined && <span role="alert"> 這支 YouTube 沒設結束秒數：整支播完才出題，建議設結束。</span>}
+                </div>
+              )}
+            </div>
           )}
         </div>
         <select

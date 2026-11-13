@@ -90,6 +90,10 @@ export interface RoomSnapshot {
   answerSeconds?: number;
   answerClock?: AnswerClock | null;
   clipEnded?: string | null;
+  /** 記憶題 (memory-questions.md): the memory questions whose media ended, and the image on show with its deadline.
+   * Missing (or damaged) means none. */
+  memoryDone?: string[];
+  memoryShow?: { questionId: string; endsAt: number } | null;
   /** 手動停頓 (manual-pacing.md). Missing means auto, as in a save from before it. */
   pacing?: "manual";
   /** A finished game's podium waits for the host's ▶ 下一步. Missing means it does not. */
@@ -186,6 +190,10 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     // A damaged countdown only loses the countdown: it is a nudge (D1).
     const ac = raw.answerClock;
     const answerClock = isObject(ac) && isString(ac.key) && typeof ac.endsAt === "number" && Number.isFinite(ac.endsAt) ? { key: ac.key, endsAt: ac.endsAt } : null;
+    // A damaged memory state only replays a memory question's media.
+    const ms = raw.memoryShow;
+    const memoryShow = isObject(ms) && isString(ms.questionId) && typeof ms.endsAt === "number" && Number.isFinite(ms.endsAt) ? { questionId: ms.questionId, endsAt: ms.endsAt } : null;
+    const memoryDone = Array.isArray(raw.memoryDone) ? raw.memoryDone.filter(isString) : [];
     const revealFrom = typeof raw.revealFrom === "number" && Number.isFinite(raw.revealFrom) ? raw.revealFrom : null;
     return {
       ...(raw as unknown as RoomSnapshot),
@@ -199,6 +207,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       // Only a label: the bank itself is the saved copy. A damaged one reads as the default.
       bankChoice: isObject(raw.bankChoice) && isString(raw.bankChoice.id) && isString(raw.bankChoice.name) ? { id: raw.bankChoice.id, name: raw.bankChoice.name } : undefined,
       ...(raw.answerSeconds !== undefined ? { answerSeconds: isAnswerSeconds(raw.answerSeconds) ? raw.answerSeconds : 0, answerClock, clipEnded: isString(raw.clipEnded) ? raw.clipEnded : null } : {}),
+      ...(raw.memoryDone !== undefined ? { memoryDone } : {}),
+      ...(raw.memoryShow !== undefined ? { memoryShow } : {}),
       game: withUses as GameState | null,
       lateTeams,
       // Anything but a key we wrote is none: the room then makes a new one, never matches a damaged value.

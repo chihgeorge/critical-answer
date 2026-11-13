@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseBank, isClip, isMusicQuestion, hiddenVideo, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, bossPhaseStates, bossDifficulties, type MediaContent } from "./question-bank";
+import { memoryProblem, memoryView, parseBank, isClip, isMusicQuestion, hiddenVideo, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, bossPhaseStates, bossDifficulties, type MediaContent } from "./question-bank";
 import { BANK } from "./question-bank-data";
 import { MONSTERS, catalogMonster, variantOf } from "./monster-catalog";
 import { MAX_TEAMS } from "./protocol";
@@ -694,5 +694,38 @@ describe("sort questions", () => {
     // No order (added after the game started): still not the bank order.
     expect(publicQuestion(bank, "s1", 0, "")?.items).toEqual(["D", "C", "B", "A"]);
     for (let i = 0; i < 50; i++) expect(shuffledOptionOrders(bank, Math.random)["s1"]).not.toEqual([0, 1, 2, 3]);
+  });
+});
+
+describe("記憶題 (memory-questions.md)", () => {
+  const withQ = (extra: object) => ({ ...valid(), rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [{ ...mc("m1", ["A", "B"], 0, imageContent()), prompt: "幾隻貓？", ...extra }, q("a2")] }] });
+  const parsed = (extra: object) => parseBank(withQ(extra)).pools[1][0];
+
+  it("keeps a valid image memory question and a clip one; a non-memory question keeps neither field", () => {
+    expect(parsed({ memory: true, memorySeconds: 8 })).toMatchObject({ memory: true, memorySeconds: 8 });
+    const clip = parseBank({ ...valid(), rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [{ ...q("v1", youtubeContent()), prompt: "誰唱的？", memory: true }, q("a2")] }] }).pools[1][0];
+    expect(clip).toMatchObject({ memory: true });
+    expect(clip.memorySeconds).toBeUndefined();
+    expect(parsed({})).not.toHaveProperty("memory");
+  });
+
+  // Value: protects=a broken memory setup never reaches a live room, and each refusal says how to fix it.
+  it("refuses each broken setup with a message that names the fix", () => {
+    expect(() => parsed({ memory: false })).toThrow(/memory 只能是 true/);
+    expect(() => parsed({ memory: true })).toThrow(/顯示秒數是 undefined，要是 3–60/);
+    expect(() => parsed({ memory: true, memorySeconds: 2 })).toThrow(/要是 3–60 的整數/);
+    expect(() => parsed({ memory: true, memorySeconds: 61 })).toThrow(/要是 3–60 的整數/);
+    expect(() => parsed({ memory: true, memorySeconds: 4.5 })).toThrow(/要是 3–60 的整數/);
+    expect(() => parsed({ memorySeconds: 5 })).toThrow(/只有記憶題能有 memorySeconds/);
+    expect(() => parseBank({ ...valid(), rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [{ ...q("t1"), memory: true }, q("a2")] }] })).toThrow(/內容要是圖片、YouTube、影片或聲音/);
+    expect(() => parseBank({ ...valid(), rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [{ ...q("v1", youtubeContent()), memory: true }, q("a2")] }] })).toThrow(/要寫題幹/);
+    expect(() => parseBank({ ...valid(), rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [{ ...q("v1", youtubeContent()), prompt: "誰？", memory: true, memorySeconds: 5 }, q("a2")] }] })).toThrow(/只有圖片記憶題能有 memorySeconds/);
+    expect(memoryProblem({ memory: true, memorySeconds: 10, content: { kind: "image" }, prompt: "幾隻？" })).toBeNull();
+  });
+
+  it("memoryView: while watching only the media goes out; after, the prompt is the text and the media is gone", () => {
+    const pub = { id: "m1", content: { kind: "image" as const, url: "u" }, prompt: "幾隻貓？", difficulty: 1, boss: false, monster: { name: "史萊姆", sprite: "slime" as never, hue: 0 }, options: ["1", "2"] };
+    expect(memoryView(pub, false, 4000)).toEqual({ id: "m1", content: pub.content, difficulty: 1, boss: false, monster: pub.monster, memorize: true, memoryLeft: 4000 });
+    expect(memoryView(pub, true)).toEqual({ id: "m1", content: { kind: "text", value: "幾隻貓？" }, difficulty: 1, boss: false, monster: pub.monster, options: ["1", "2"] });
   });
 });

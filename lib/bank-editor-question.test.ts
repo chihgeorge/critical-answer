@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blankQuestion, withCategory, withField } from "./bank-editor-question";
+import { blankQuestion, canBeMemory, withCategory, withContent, withField, withMemory } from "./bank-editor-question";
 import { allQuestions, parseBank, type BankQuestion } from "./question-bank";
 
 const base: BankQuestion = { kind: "text", id: "b-a", content: { kind: "text", value: "前奏" }, answer: "答案", category: "動漫" };
@@ -25,5 +25,26 @@ describe("bank editor: question category (boss-music-buzzer.md M5)", () => {
     const next = withField(q, 1, { answer: "Jay" });
     expect(next).toMatchObject({ answer: "晴天／Jay", fields: [{ label: "歌名", answer: "晴天" }, { label: "歌手", answer: "Jay" }] });
     expect(withField(base, 0, { answer: "x" })).toBe(base);
+  });
+});
+
+describe("bank editor: 記憶題 (memory-questions.md)", () => {
+  const img: BankQuestion = { kind: "multipleChoice", id: "m1", content: { kind: "image", value: "11111111-2222-3333-4444-555555555555" }, prompt: "幾隻？", options: ["1", "2"], correctIndex: 0 };
+  it("ticking writes the default seconds on an image, none on a clip; unticking removes both", () => {
+    expect(withMemory(img, true)).toMatchObject({ memory: true, memorySeconds: 10 });
+    expect(withMemory({ ...img, content: { kind: "youtube", value: "dQw4w9WgXcQ" } }, true)).not.toHaveProperty("memorySeconds");
+    const off = withMemory(withMemory(img, true), false);
+    expect(off).not.toHaveProperty("memory");
+    expect(off).not.toHaveProperty("memorySeconds");
+  });
+  it("a content switch keeps the setup valid; a kind switch carries it", () => {
+    const on = withMemory(img, true);
+    expect(withContent(on, { kind: "text", value: "題目" })).not.toHaveProperty("memory");
+    expect(withContent(on, { kind: "audio", value: "11111111-2222-3333-4444-555555555555" })).toMatchObject({ memory: true });
+    expect(withContent(on, { kind: "audio", value: "11111111-2222-3333-4444-555555555555" })).not.toHaveProperty("memorySeconds");
+    expect(withContent(withMemory({ ...img, content: { kind: "youtube", value: "dQw4w9WgXcQ" } }, true), img.content)).toMatchObject({ memorySeconds: 10 });
+    expect(blankQuestion(on, "sort")).toMatchObject({ memory: true, memorySeconds: 10 });
+    expect(canBeMemory(img)).toBe(true);
+    expect(canBeMemory({ ...img, content: { kind: "text", value: "x" } })).toBe(false);
   });
 });
