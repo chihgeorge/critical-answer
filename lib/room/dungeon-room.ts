@@ -3146,6 +3146,8 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "fields_mismatch" });
       return;
     }
+    // 記憶題: the host judging during the media ends it, so a 重答 answers a question the team can read.
+    if (this.memorizing() && this.currentQuestion()?.pub.id === questionId) this.endMemory(questionId);
     try {
       const judge = () => this.judge(teamId, questionId, correct, fleeChoice ?? "retry", undefined, undefined, correct ? fields : undefined);
       if (correct) judge();
