@@ -1193,18 +1193,18 @@ export class DungeonRoom {
   }
 
   /** Starts an image memory question's seconds the first time it is on screen, and ends them once they ran out.
-   * Called whenever the room is sent, like syncAnswerClock. An image no longer in play is dropped: if its question
-   * comes round again (an undo, a flee), it shows its full seconds again. */
+   * Called whenever the room is sent, like syncAnswerClock. An image that leaves play once shown (the turn moved: a
+   * judgment, a flee, the team's phone went offline) counts as seen: it does not show its seconds again, so closing
+   * the phone does not replay it. */
   private syncMemory() {
     // From the bank, not `pub`: past the deadline `pub` already reads as ended, before this writes it down.
     const pub = this.currentQuestion()?.pub;
     const bq = pub ? this.question(pub.id) : undefined;
     const id = pub && bq?.memory && bq.content.kind === "image" ? pub.id : null;
-    // With no question in play (every phone offline after a restart) the image keeps its deadline; a game no longer
-    // playing drops it.
-    if (this.memoryShow && (this.game?.phase !== "playing" || (pub && this.memoryShow.questionId !== id))) this.memoryShow = null;
-    // Past its deadline the image ends even with no question in play, so its timer does not fire again and again.
-    if (this.memoryShow && this.now() >= this.memoryShow.endsAt) return this.endMemory(this.memoryShow.questionId);
+    if (this.memoryShow && this.game?.phase !== "playing") this.memoryShow = null;
+    // Past its deadline, or out of play, the image has been seen. With no question in play at all (every phone
+    // offline after a restart) it keeps its deadline; past it, it ends anyway, so its timer does not fire again and again.
+    if (this.memoryShow && (this.now() >= this.memoryShow.endsAt || (pub && this.memoryShow.questionId !== id))) return this.endMemory(this.memoryShow.questionId);
     if (id !== null && bq && !this.memoryShow && !this.memoryDone.includes(id) && this.questionOnScreen()) {
       this.memoryShow = { questionId: id, endsAt: this.now() + (bq.memorySeconds ?? DEFAULT_MEMORY_SECONDS) * 1000 };
     }
@@ -1240,7 +1240,7 @@ export class DungeonRoom {
    * meanwhile): it sends the room again, so a screen still on the media catches up. */
   private handleHostMemoryDone(conn: Conn, questionId: string) {
     if (!this.requireHost(conn)) return;
-    if (this.memoryEnded(questionId)) return this.broadcastState();
+    if (this.memoryEnded(questionId)) return questionId === this.currentQuestion()?.pub.id ? this.broadcastState() : undefined;
     if (!this.memorizing() || this.currentQuestion()?.pub.id !== questionId) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
     this.endMemory(questionId);
     // A buzzer phase's clip the host never got to play: its question is up now, so buzzing opens (boss-buzzer.md D5).

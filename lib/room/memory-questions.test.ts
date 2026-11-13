@@ -232,6 +232,19 @@ describe("記憶題 with an image", () => {
     expect(g.io.broadcast.mock.calls.length).toBe(sent);
   });
 
+  // Value: protects=the memory test; fails_when=a team on turn closes its phone and gets the image's full seconds again.
+  it("the turn's phone going offline does not replay the image", () => {
+    const g = started(bank(memImage("i1", 10)));
+    vi.advanceTimersByTime(3000);
+    g.room.onClose(g.phones[0]);
+    expect(g.state().view.currentTurnTeamId).not.toBe(A);
+    const back = makeConn("back");
+    g.room.onConnect(back);
+    send(g.room, back, { type: "JOIN", teamId: A, teamKey: "team-key-0123456789abcde0", teamName: "甲隊", resume: true });
+    expect(g.state().view.currentTurnTeamId).toBe(A);
+    expect(g.state().question).toMatchObject({ id: "i1", content: { kind: "text" } });
+  });
+
   it("a phone action just after the deadline is taken, before the timer's STATE", () => {
     const g = started(bank(memImage("i1", 5)));
     vi.setSystemTime(Date.now() + 5000); // the clock moves, the timer has not fired yet
