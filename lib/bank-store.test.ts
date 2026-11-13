@@ -453,7 +453,7 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     expect(clip({ kind: "text", value: "看" }, { kind: "audio", value: "11111111-1111-1111-1111-111111111111" })).toBe(10); // pregate-literal: BANK_FORMAT=10 an upload-only bank stays at format 10
     // A memory question (memory-questions.md) is what format-10 code would drop: it stores at 11. // pregate-literal: BANK_FORMAT=10 names the older format on purpose
     expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "m1", content: { kind: "youtube" as const, value: "dQw4w9WgXcQ" }, prompt: "誰？", answer: "A", memory: true as const }] } })).toBe(11); // pregate-literal: BANK_FORMAT=11 a memory-only bank stays at format 11
-    // A timing question (timing-tap.md) is what format-11 code cannot parse: it stores at 12.
+    // A timing question (timing-tap.md) is what format-11 code cannot parse: it stores at 12. // pregate-literal: BANK_FORMAT=11 names the older format on purpose
     const tap = { kind: "timing" as const, id: "t1", content: { kind: "audio" as const, value: "11111111-1111-1111-1111-111111111111" }, target: 12.5 };
     expect(formatOf({ ...buzzer, boss: { ...buzzer.boss, phases: [buzzer.boss.phases[0], { ...buzzer.boss.phases[1], questions: [tap] }] } })).toBe(BANK_FORMAT);
     const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
