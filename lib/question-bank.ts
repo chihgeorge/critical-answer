@@ -395,18 +395,23 @@ export function parseBank(raw: unknown): Bank {
 /** Save-time only, not in parseBank: a stored bank from before the cap must still load (a load
  * failure falls back to the bundled bank, and the editor's next save would overwrite the real one). */
 export function assertSavable(bank: Bank): void {
-  const tooMany = allQuestions(bank).find((q) => q.kind === "multipleChoice" && q.options.length > MAX_OPTIONS);
-  if (tooMany) fail(`question ${tooMany.id} has more than ${MAX_OPTIONS} options`);
-  const hp = bank.boss.phases.findIndex((p) => !Number.isInteger(p.maxHp) || p.maxHp > MAX_BOSS_HP);
-  if (hp >= 0) fail(`boss phase ${hp + 1} hp must be a whole number from 1 to ${MAX_BOSS_HP}`);
+  const [first] = savableProblems(bank);
+  if (first) fail(first);
+}
+
+/** Every save-time problem, not just the first: the pre-game health check lists them all (docs/designs/bank-health-check.md). */
+export function savableProblems(bank: Bank): string[] {
+  const problems: string[] = [];
+  for (const q of allQuestions(bank)) if (q.kind === "multipleChoice" && q.options.length > MAX_OPTIONS) problems.push(`question ${q.id} has more than ${MAX_OPTIONS} options`);
+  // In assertSavable's old order, so the first problem (the one a save reports) is unchanged.
+  const phases = bank.boss.phases;
+  phases.forEach((p, i) => (!Number.isInteger(p.maxHp) || p.maxHp > MAX_BOSS_HP) && problems.push(`boss phase ${i + 1} hp must be a whole number from 1 to ${MAX_BOSS_HP}`));
   // Trimmed, like the editor's check (parseBank trims too; this keeps the two counts the same on their own).
-  const longName = bank.boss.phases.findIndex((p) => Array.from(p.name.trim()).length > MAX_PHASE_NAME);
-  if (longName >= 0) fail(`boss phase ${longName + 1} name is over ${MAX_PHASE_NAME} characters`);
-  const longRule = bank.boss.phases.findIndex((p) => Array.from(p.rule.trim()).length > MAX_PHASE_RULE);
-  if (longRule >= 0) fail(`boss phase ${longRule + 1} rule is over ${MAX_PHASE_RULE} characters`);
+  phases.forEach((p, i) => Array.from(p.name.trim()).length > MAX_PHASE_NAME && problems.push(`boss phase ${i + 1} name is over ${MAX_PHASE_NAME} characters`));
+  phases.forEach((p, i) => Array.from(p.rule.trim()).length > MAX_PHASE_RULE && problems.push(`boss phase ${i + 1} rule is over ${MAX_PHASE_RULE} characters`));
   // Save time only: a stored bank with a long id must still load, but phones could never answer that question.
-  const longId = allQuestions(bank).find((q) => q.id.length > MAX_ID);
-  if (longId) fail(`question id ${longId.id} is longer than ${MAX_ID} characters`);
+  for (const q of allQuestions(bank)) if (q.id.length > MAX_ID) problems.push(`question id ${q.id} is longer than ${MAX_ID} characters`);
+  return problems;
 }
 
 /** `monsters`: this game's room monsters by room (gameMonsters); the bank's own when absent. */

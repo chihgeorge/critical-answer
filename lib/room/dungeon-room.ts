@@ -127,6 +127,7 @@ import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossDifficulties, bossPha
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
+import { healthReport, mediaBatches, type MediaResults } from "../bank-health";
 import { tokensEqual } from "../tokens";
 import { epilogueParts, titleFacts, toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { createCrowdTally } from "../narration/crowd";
@@ -346,6 +347,22 @@ const chefOf = (o: { chefBonus?: number }) => (o.chefBonus ? { chefBonus: o.chef
 /** Names a reader can't tell apart (full-width vs half-width, case) count as one team name. */
 const sameTeamName = (a: string, b: string) => a.normalize("NFKC").toLowerCase() === b.normalize("NFKC").toLowerCase();
 
+/** HOST_BANK_CHECK: no new lookup batch after this long, and none waited on longer than BANK_CHECK_RPC_MS, so a check
+ * ends within ~80 s, inside the host page's 90 s wait (bank-health-check.md D5). */
+const BANK_CHECK_BUDGET_MS = 40_000;
+const BANK_CHECK_RPC_MS = 40_000;
+/** `p`, or undefined once `ms` pass first (or when there is no `p`). */
+function withTimeout<T>(p: Promise<T> | undefined, ms: number): Promise<T | undefined> {
+  if (!p) return Promise.resolve(undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), ms);
+  });
+  return Promise.race([p, late]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
 export class DungeonRoom {
   game: GameState | null = null;
   private pendingTeams: { id: string; name: string; classId?: ClassId }[] = [];
@@ -555,6 +572,8 @@ export class DungeonRoom {
   private bankGen = 0;
   /** A HOST_SET_BANK still fetching its bank: 開始遊戲 waits for it. */
   private bankLoading = false;
+  /** A HOST_BANK_CHECK is running (memory only): a second one waits for it. */
+  private bankChecking = false;
   /** Key checks this room made: in all (saved, so a restart does not reset it), and since keyCheckWindowAt (memory only). */
   private keyChecks = 0;
   private keyChecksInWindow = 0;
@@ -1955,7 +1974,10 @@ export class DungeonRoom {
           for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword, screenKey: this.screenKey });
           break;
         case "HOST_SET_BANK":
-          this.handleSetBank(sender, msg.bankId);
+          void this.handleSetBank(sender, msg.bankId);
+          break;
+        case "HOST_BANK_CHECK":
+          this.handleBankCheck(sender);
           break;
         case "HOST_EDIT_NARRATION":
           this.handleEditNarration(sender, msg.eventId, msg.rev, msg.index, msg.line);
@@ -2741,12 +2763,14 @@ export class DungeonRoom {
 
   /** Lobby only: fetch bank `bankId` and play the next game with it (multi-bank.md). The room's copy is saved like the
    * opening bank, so a restart or a later edit of the bank does not change this room. */
-  private handleSetBank(conn: Conn, bankId: string) {
-    if (!this.requireHost(conn)) return;
-    if (this.game) return void this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
+  private handleSetBank(conn: Conn, bankId: string): Promise<boolean> {
+    // Resolves true once this bank is the room's (HOST_BANK_CHECK waits on it), false when it never lands.
+    const refuse = (msg?: ServerMessage) => (msg && this.sendTo(conn, msg), Promise.resolve(false));
+    if (!this.requireHost(conn)) return refuse();
+    if (this.game) return refuse({ type: "ERROR", error: "game_already_started" });
     const isDefault = bankId === DEFAULT_BANK_ENTRY.id;
     // Checked here, not by hiding the menu: every host page gets the answers of the bank in play.
-    if (!isDefault && !this.ownerProven) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "owner_only" });
+    if (!isDefault && !this.ownerProven) return refuse({ type: "ERROR", error: "invalid_action", detail: "owner_only" });
     const gen = ++this.bankGen;
     this.bankLoading = true;
     this.sendBanks();
@@ -2756,12 +2780,12 @@ export class DungeonRoom {
       if (!entry || !this.room.loadBank) throw new Error(`no bank ${bankId}`);
       return { bank: await this.room.loadBank(bankId), choice: entry };
     };
-    void load().then(
+    return load().then(
       ({ bank, choice }) => {
         // A newer pick, an expired room, or a game started some other way: this bank comes too late.
-        if (gen !== this.bankGen) return;
+        if (gen !== this.bankGen) return false;
         this.bankLoading = false;
-        if (this.game) return;
+        if (this.game) return false;
         // Ids from another bank would keep this bank's same-named questions from being dealt; the same bank keeps them.
         if ((choice?.id ?? DEFAULT_BANK_ENTRY.id) !== (this.bankChoice?.id ?? DEFAULT_BANK_ENTRY.id)) this.playedQuestionIds = [];
         this.bank = bank;
@@ -2769,15 +2793,73 @@ export class DungeonRoom {
         this.bankChoice = choice;
         this.broadcast(this.snapshot());
         this.sendBanks();
+        return true;
       },
       (err) => {
         console.error(JSON.stringify({ event: "bank_load_failed", bankId, error: String(err) }));
-        if (gen !== this.bankGen) return;
+        if (gen !== this.bankGen) return false;
         this.bankLoading = false;
         if (this.hostConns.has(conn.id)) this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "bank_unavailable" });
         this.sendBanks();
+        return false;
       },
     );
+  }
+
+  /** HOST_BANK_CHECK (docs/designs/bank-health-check.md): reload the bank the room plays, so an edit saved since shows,
+   * then check every question in it. The rows go to the asking socket only and are never saved. */
+  private handleBankCheck(conn: Conn) {
+    if (!this.requireHost(conn)) return;
+    if (this.game) return void this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
+    if (this.bankLoading) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "bank_loading" });
+    // One at a time per room: each check sends up to dozens of requests to YouTube and the bucket.
+    if (this.bankChecking) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "check_running" });
+    this.bankChecking = true;
+    const bankId = this.bankChoice?.id ?? DEFAULT_BANK_ENTRY.id;
+    // A custom bank reloads only for a host that proved OWNER_KEY (multi-bank.md D4); otherwise check the room's copy.
+    const canReload = !!this.room.loadBank && (bankId === DEFAULT_BANK_ENTRY.id || this.ownerProven);
+    const reload = canReload ? this.handleSetBank(conn, bankId) : Promise.resolve(true);
+    const gen = this.bankGen;
+    const base = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
+    const started = this.now();
+    // A started game drops the check silently: its rows are no use, and the page cleared them on STATE.
+    const outcomeIfOver = () => (this.game ? "started" : gen !== this.bankGen ? "stale" : null);
+    const run = async (): Promise<"sent" | "started" | "stale"> => {
+      // false: a newer pick replaced it, or the reload failed (handleSetBank sent bank_unavailable): then check the
+      // room's own copy, the bank it would actually play.
+      const landed = await reload;
+      if (outcomeIfOver()) return outcomeIfOver()!;
+      const bank = this.bank;
+      const merged: MediaResults = { youtube: {}, files: {} };
+      // One RPC at a time: each is its own invocation with its own subrequest budget (D4). No new batch after
+      // BANK_CHECK_BUDGET_MS and none waited on past BANK_CHECK_RPC_MS, so the host page's 90 s wait always covers it.
+      for (const batch of mediaBatches(bank, base)) {
+        if (outcomeIfOver()) return outcomeIfOver()!;
+        if (this.now() - started > BANK_CHECK_BUDGET_MS) break; // the rest stay unknown: yellow
+        const got = await withTimeout(this.room.checkMedia?.(batch), BANK_CHECK_RPC_MS).catch((err: unknown) => {
+          console.error(JSON.stringify({ event: "bank_check_failed", error: String(err) }));
+          return undefined;
+        });
+        if (!got) continue; // its lookups stay unknown: yellow
+        Object.assign(merged.youtube, got.youtube);
+        Object.assign(merged.files, got.files);
+        if (got.publicOk !== undefined) merged.publicOk = got.publicOk;
+      }
+      if (outcomeIfOver()) return outcomeIfOver()!;
+      const report = healthReport(bank, merged, base);
+      // Straight to the socket: sendTo would save the room for a reply that changes nothing in it.
+      if (this.hostConns.has(conn.id)) conn.send(JSON.stringify({ type: "HOST_BANK_HEALTH", ...report, reloaded: canReload && landed } satisfies ServerMessage));
+      return "sent";
+    };
+    void run()
+      .catch((err: unknown) => {
+        console.error(JSON.stringify({ event: "bank_check_failed", error: String(err) }));
+        return "failed" as const;
+      })
+      .then((outcome) => {
+        this.bankChecking = false;
+        if ((outcome === "stale" || outcome === "failed") && this.hostConns.has(conn.id)) this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: outcome === "stale" ? "check_stale" : "check_failed" });
+      });
   }
 
   private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean, answerSeconds?: number) {
