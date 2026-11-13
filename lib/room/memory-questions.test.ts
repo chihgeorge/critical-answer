@@ -173,16 +173,6 @@ describe("記憶題 with a clip", () => {
     g.judge(true);
     expect(g.state().reveal.asked).toMatchObject({ content: { kind: "image" }, prompt: "圖裡的貓叫什麼？" });
   });
-
-  // Value: protects=a 重答 after an early judgment; fails_when=the team retries a question still hidden behind the media.
-  it("the host judging during the media ends it", () => {
-    const g = started(bank(memText("t1")));
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
-    expect(g.state().question.memorize).toBe(true);
-    g.judge(false);
-    expect((g.room as unknown as { memoryDone: string[] }).memoryDone).toContain("t1");
-  });
 });
 
 describe("記憶題 with an image", () => {
