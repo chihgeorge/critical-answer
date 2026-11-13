@@ -1193,19 +1193,20 @@ export class DungeonRoom {
   }
 
   /** Starts an image memory question's seconds the first time it is on screen, and ends them once they ran out.
-   * Called whenever the room is sent, like syncAnswerClock. An image that leaves play once shown (the turn moved: a
-   * judgment, a flee, the team's phone went offline) counts as seen: it does not show its seconds again, so closing
-   * the phone does not replay it. */
+   * Called whenever the room is sent, like syncAnswerClock. A shown image keeps its deadline while another question
+   * is up (its team's phone went offline, a flee, a restart with other phones back first): back in play it shows
+   * only the seconds left, so closing the phone does not replay it, and a phone that slept a moment loses nothing. */
   private syncMemory() {
     // From the bank, not `pub`: past the deadline `pub` already reads as ended, before this writes it down.
     const pub = this.currentQuestion()?.pub;
     const bq = pub ? this.question(pub.id) : undefined;
     const id = pub && bq?.memory && bq.content.kind === "image" ? pub.id : null;
     if (this.memoryShow && this.game?.phase !== "playing") this.memoryShow = null;
-    // Past its deadline, or out of play, the image has been seen. With no question in play at all (every phone
-    // offline after a restart) it keeps its deadline; past it, it ends anyway, so its timer does not fire again and again.
-    if (this.memoryShow && (this.now() >= this.memoryShow.endsAt || (pub && this.memoryShow.questionId !== id))) return this.endMemory(this.memoryShow.questionId);
-    if (id !== null && bq && !this.memoryShow && !this.memoryDone.includes(id) && this.questionOnScreen()) {
+    // Past its deadline the image has been seen, in play or not, so its timer does not fire again and again.
+    if (this.memoryShow && this.now() >= this.memoryShow.endsAt) this.endMemory(this.memoryShow.questionId);
+    if (id !== null && bq && this.memoryShow?.questionId !== id && !this.memoryDone.includes(id) && this.questionOnScreen()) {
+      // One image counts at a time: an earlier one still counting off screen (its team offline) has been seen.
+      if (this.memoryShow) this.endMemory(this.memoryShow.questionId);
       this.memoryShow = { questionId: id, endsAt: this.now() + (bq.memorySeconds ?? DEFAULT_MEMORY_SECONDS) * 1000 };
     }
     this.armMemoryTimer();

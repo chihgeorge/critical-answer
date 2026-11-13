@@ -233,16 +233,33 @@ describe("記憶題 with an image", () => {
   });
 
   // Value: protects=the memory test; fails_when=a team on turn closes its phone and gets the image's full seconds again.
-  it("the turn's phone going offline does not replay the image", () => {
+  it("the turn's phone going offline keeps the image's deadline: back soon, only the seconds left; back late, the question", () => {
     const g = started(bank(memImage("i1", 10)));
+    const rejoin = () => {
+      const back = makeConn("back");
+      g.room.onConnect(back);
+      send(g.room, back, { type: "JOIN", teamId: A, teamKey: "team-key-0123456789abcde0", teamName: "甲隊", resume: true });
+      return back;
+    };
     vi.advanceTimersByTime(3000);
     g.room.onClose(g.phones[0]);
     expect(g.state().view.currentTurnTeamId).not.toBe(A);
-    const back = makeConn("back");
-    g.room.onConnect(back);
-    send(g.room, back, { type: "JOIN", teamId: A, teamKey: "team-key-0123456789abcde0", teamName: "甲隊", resume: true });
-    expect(g.state().view.currentTurnTeamId).toBe(A);
+    const back = rejoin();
+    expect(g.state().question).toMatchObject({ id: "i1", memorize: true, memoryLeft: 7000 });
+    g.room.onClose(back);
+    vi.advanceTimersByTime(8000);
+    rejoin();
     expect(g.state().question).toMatchObject({ id: "i1", content: { kind: "text" } });
+  });
+
+  // Value: protects=the next team's image; fails_when=the turn moving off one image leaves the next image with no clock.
+  it("the turn moving from one image to another starts the next one's seconds", () => {
+    const g = started(bank(memImage("i1", 10), memImage("i2", 5)));
+    vi.advanceTimersByTime(3000);
+    g.room.onClose(g.phones[0]);
+    expect(g.state().question).toMatchObject({ id: "i2", memorize: true, memoryLeft: 5000 });
+    vi.advanceTimersByTime(5000);
+    expect(g.state().question).toMatchObject({ id: "i2", content: { kind: "text" } });
   });
 
   it("a phone action just after the deadline is taken, before the timer's STATE", () => {
