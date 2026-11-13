@@ -21,6 +21,10 @@ import { catalogMonster, monsterById, variantOf } from "./monster-catalog";
 import { YOUTUBE_ID_RE } from "./youtube";
 import { INSTAGRAM_SHORTCODE_RE } from "./instagram";
 import { SORT_ITEMS } from "./sort-order";
+import { formatSongTime, TAP_GRACE_S } from "./tap-clock";
+
+/** Longest timing question `label`, in characters: it sits on a phone's button line. */
+export const MAX_TAP_LABEL = 10;
 
 /** A question's (or explanation's) content: text, an uploaded image, or a YouTube video —
  * interchangeable, picked at write time (docs/designs/question-media-content.md's D1: `content`
@@ -54,6 +58,9 @@ export type BankQuestion = (
   | { kind: "multipleChoice"; id: string; content: MediaContent; prompt?: string; options: string[]; correctIndex: number; explanation?: MediaContent }
   /** A sort question: `items` in the correct order; the question line (content or prompt) states the rule. */
   | { kind: "sort"; id: string; content: MediaContent; prompt?: string; items: string[]; explanation?: MediaContent }
+  /** A timing question (docs/designs/timing-tap.md): every team taps once on the clip's `target` (seconds of the
+   * video, at most 3 decimals); the closest hits. Buzzer phases only; `content` is a YouTube or uploaded clip. */
+  | { kind: "timing"; id: string; content: MediaContent; prompt?: string; target: number; label?: string; explanation?: MediaContent }
 ) & {
   /** Free text the owner groups questions by (動漫, 遊戲音樂…): a buzzer phase's winner picks the next one's
    * (docs/designs/boss-music-buzzer.md). */
@@ -113,7 +120,8 @@ export interface BossPhase {
   maxHp: number;
   questions: BankQuestion[];
   /** Every team buzzes in on this phase's questions and answers aloud (docs/designs/boss-buzzer.md D1). Never the
-   * first phase, and only fill-in questions (D3): the host judges a spoken answer. */
+   * first phase, and only fill-in questions (D3): the host judges a spoken answer. Timing questions too
+   * (docs/designs/timing-tap.md): every team taps once and the room judges. */
   buzzer?: true;
 }
 
@@ -279,6 +287,31 @@ function parseSortQuestion(r: Record<string, unknown>, id: string): BankQuestion
   return { kind: "sort", id, content, ...(prompt ? { prompt } : {}), items: items as string[], ...(explanation ? { explanation } : {}) };
 }
 
+function parseTimingQuestion(r: Record<string, unknown>, id: string): BankQuestion {
+  const content = parseContent(r, `question ${id}`);
+  if (!isClip(content)) fail(`question ${id}: a timing question needs a YouTube or uploaded video/audio clip`);
+  const { target, label } = r;
+  if (typeof target !== "number" || !Number.isFinite(target) || target < 0) fail(`question ${id}: target is not a number of seconds`);
+  const t = target as number;
+  if (Math.abs(t * 1000 - Math.round(t * 1000)) > 1e-6) fail(`question ${id}: target has more than 3 decimals`);
+  const start = content.start ?? 0;
+  if (t < start) fail(`question ${id}: target ${t} is before the clip start ${start}`);
+  if (content.end !== undefined && t + TAP_GRACE_S > content.end) fail(`question ${id}: target ${t} + ${TAP_GRACE_S} s grace is past the clip end ${content.end}`);
+  if (label !== undefined && typeof label !== "string") fail(`question ${id}: label is not text`);
+  const l = ((label as string | undefined) ?? "").trim();
+  if (Array.from(l).length > MAX_TAP_LABEL) fail(`question ${id}: label is longer than ${MAX_TAP_LABEL} characters`);
+  const prompt = parsePrompt(r, content, `question ${id}`);
+  const explanation = parseExplanation(r, `question ${id}`);
+  return { kind: "timing", id, content, ...(prompt ? { prompt } : {}), target: t, ...(l ? { label: l } : {}), ...(explanation ? { explanation } : {}) };
+}
+
+/** Timing questions belong to buzzer phases only (timing-tap.md). Returns `qs`. */
+function noTiming(qs: BankQuestion[]): BankQuestion[] {
+  const q = qs.find((x) => x.kind === "timing");
+  if (q) fail(`question ${q.id} is a timing question, so it must be in a buzzer phase`);
+  return qs;
+}
+
 /** An optional category, trimmed; blank reads as none. */
 function parseCategory(v: unknown, id: string): string | undefined {
   if (v === undefined) return undefined;
@@ -306,6 +339,7 @@ function parseQuestions(raw: unknown, where: string, seen: Set<string>, boss = f
     if (r.fields !== undefined) fail(`question ${String(id)} has fields, which only a fill-in music question can have`);
     if (kind === "multipleChoice") return { ...parseMultipleChoiceQuestion(r, id as string), ...extra };
     if (kind === "sort") return { ...parseSortQuestion(r, id as string), ...extra };
+    if (kind === "timing") return { ...parseTimingQuestion(r, id as string), ...extra };
     return fail(`question ${String(id)} has unknown kind ${String(kind)}`);
   });
 }
@@ -341,13 +375,13 @@ export function parseBank(raw: unknown): Bank {
       if (key !== String(d)) fail(`pool key ${key} is not one of 1–5`); // "01" would overwrite pool 1
       // An empty pool is fine; a room that needs it is caught below.
       if (Array.isArray(list) && list.length === 0) continue;
-      pools[d] = noFields(parseQuestions(list, `pool ${d}`, seen), `pool ${d}`);
+      pools[d] = noTiming(noFields(parseQuestions(list, `pool ${d}`, seen), `pool ${d}`));
     }
   }
   const rooms = (b!.rooms as Record<string, unknown>[]).map((r, i): BankRoom => {
     const d = parseDifficulty(pooled ? r.difficulty : r.baseDifficulty, `room ${i}`);
     if (pooled && r.questions !== undefined) fail(`room ${i} has questions, but this bank keeps them in pools`);
-    if (!pooled) pools[d] = [...pools[d], ...noFields(parseQuestions(r.questions, `room ${i}`, seen), `room ${i}`)];
+    if (!pooled) pools[d] = [...pools[d], ...noTiming(noFields(parseQuestions(r.questions, `room ${i}`, seen), `room ${i}`))];
     return {
       monster: parseMonster(r.monster, `rooms[${i}]`, false),
       difficulty: d,
@@ -375,7 +409,8 @@ export function parseBank(raw: unknown): Bank {
     const questions = parseQuestions(r.questions, where, seen, true);
     if (r.buzzer !== undefined && typeof r.buzzer !== "boolean") fail(`${where} buzzer is not true or false`);
     if (r.buzzer === true && i === 0) fail("the first boss phase cannot be a buzzer phase");
-    if (r.buzzer === true && questions.some((q) => q.kind !== "text")) fail(`${where} is a buzzer phase, so every question in it must be a fill-in`);
+    if (r.buzzer === true && questions.some((q) => q.kind !== "text" && q.kind !== "timing")) fail(`${where} is a buzzer phase, so every question in it must be a fill-in or a timing question`);
+    if (r.buzzer !== true) noTiming(questions);
     // Fields only on a buzzer phase's music questions (multi-field.md F1).
     noFields(r.buzzer === true ? questions.filter((q) => !isMusicQuestion(q)) : questions, r.buzzer === true ? where : `${where} (not a buzzer phase)`);
     return { name: text(r.name, "name"), rule: text(r.rule, "rule"), maxHp: r.maxHp as number, questions, ...(r.buzzer === true ? { buzzer: true as const } : {}) };
@@ -430,7 +465,7 @@ export function poolQuestionIds(bank: Bank): string[][] {
 export function shuffledOptionOrders(bank: Bank, rng: () => number): Record<string, number[]> {
   const orders: Record<string, number[]> = {};
   for (const q of allQuestions(bank)) {
-    if (q.kind === "text") continue;
+    if (q.kind === "text" || q.kind === "timing") continue;
     const order = (q.kind === "sort" ? q.items : q.options).map((_, i) => i);
     for (let i = order.length - 1; i > 0; i--) {
       // Counted down from i, so a constant rng() of 0 (the tests' deterministic rng) keeps the bank order.
@@ -495,6 +530,7 @@ export function findQuestion(bank: Bank, id: string) {
 export function answerText(q: BankQuestion): string {
   if (q.kind === "multipleChoice") return q.options[q.correctIndex];
   if (q.kind === "sort") return q.items.join(" → ");
+  if (q.kind === "timing") return `${formatSongTime(q.target * 1000)}${q.label ? `「${q.label}」` : ""}`;
   return q.answer;
 }
 
@@ -578,6 +614,8 @@ export function publicQuestion(
     ...(q.kind === "sort" ? { items: sortShownOrder(order).map((i) => q.items[i]) } : {}),
     // The labels only, never the answers (multi-field.md).
     ...(q.kind === "text" && q.fields ? { fields: q.fields.map((f) => f.label) } : {}),
+    // The label only, never the target (timing-tap.md).
+    ...(q.kind === "timing" ? { timing: q.label ? { label: q.label } : {} } : {}),
   };
 }
 

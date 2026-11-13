@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blankQuestion, withCategory, withField } from "./bank-editor-question";
+import { blankQuestion, timingFieldError, withCategory, withField } from "./bank-editor-question";
 import { allQuestions, parseBank, type BankQuestion } from "./question-bank";
 
 const base: BankQuestion = { kind: "text", id: "b-a", content: { kind: "text", value: "前奏" }, answer: "答案", category: "動漫" };
@@ -25,5 +25,19 @@ describe("bank editor: question category (boss-music-buzzer.md M5)", () => {
     const next = withField(q, 1, { answer: "Jay" });
     expect(next).toMatchObject({ answer: "晴天／Jay", fields: [{ label: "歌名", answer: "晴天" }, { label: "歌手", answer: "Jay" }] });
     expect(withField(base, 0, { answer: "x" })).toBe(base);
+  });
+});
+
+describe("bank editor: timing question fields (timing-tap.md)", () => {
+  const clip = { kind: "youtube" as const, value: "3JWTaaS7LdU", start: 170, end: 200, audioOnly: true as const };
+  const q = (target: number, extra: Record<string, unknown> = {}) => ({ kind: "timing", id: "b-t", content: clip, target, ...extra }) as BankQuestion;
+  it("says what is wrong in the editor's words, and nothing for a good one", () => {
+    expect(blankQuestion(base, "timing")).toMatchObject({ kind: "timing", target: 0, category: "動漫" });
+    expect(timingFieldError(q(190.35, { label: "蹬" }))).toBeNull();
+    expect(timingFieldError(q(169))).toBe("目標要在片段開頭之後");
+    expect(timingFieldError(q(198.5))).toBe("目標要比片段結尾早 2 秒以上");
+    expect(timingFieldError(q(190, { label: "一二三四五六七八九十一" }))).toBe("label 最多 10 個字");
+    expect(timingFieldError(q(1, { content: { kind: "text", value: "x" } }))).toBe("卡點題的內容只能是 YouTube 或上傳的影音");
+    expect(timingFieldError(base)).toBeNull();
   });
 });

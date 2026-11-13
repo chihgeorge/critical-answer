@@ -58,6 +58,12 @@ import {
   type GameState,
   type RoomTemplate,
   teamMonsterId,
+  allTapped,
+  assertCanTap,
+  restartTaps,
+  tapEligible,
+  tapIn,
+  tapWinner,
 } from "./game-state";
 import { monsterById } from "./monster-catalog";
 
@@ -2746,5 +2752,62 @@ describe("💫 暈眩 (fortune-teller.md)", () => {
       expect(g.buzz?.teamId).toBe("T1");
       expect(g.teams.some((x) => x.stunned)).toBe(false);
     });
+  });
+});
+
+describe("timing question taps (docs/designs/timing-tap.md)", () => {
+  /** Three teams pulled into a buzzer phase of timing questions t-a/t-b, its first question open. */
+  function tapping(): GameState {
+    const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
+    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["t-a", "t-b"], buzzer: true }]);
+    g = sendToBoss(g, "T0");
+    g = { ...g, currentTurnIndex: 0, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
+    g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
+    return openBuzz(enterNextBossPhase(g), "t-a", true);
+  }
+  const patch = (g: GameState, id: string, p: object): GameState => ({ ...g, teams: g.teams.map((t) => (t.id === id ? { ...t, ...p } : t)) });
+
+  it("refuses a tap that is offline, outside the boss room, stunned, taken, closed or stale", () => {
+    const g = tapping();
+    expect(() => assertCanTap(patch(g, "T1", { online: false }), "T1", "t-a", 0)).toThrow("cannot_tap");
+    expect(() => assertCanTap(patch(g, "T1", { inBoss: false }), "T1", "t-a", 0)).toThrow("cannot_tap");
+    expect(() => assertCanTap(patch(g, "T1", { stunned: true }), "T1", "t-a", 0)).toThrow("stunned");
+    expect(() => assertCanTap(g, "T1", "t-b", 0)).toThrow("stale_question");
+    expect(() => assertCanTap(g, "T1", "t-a", 1)).toThrow("stale_question");
+    expect(() => assertCanTap({ ...g, buzz: { ...g.buzz!, open: undefined } }, "T1", "t-a", 0)).toThrow("tap_closed");
+    const tapped = tapIn(g, "T1", "t-a", 0, 1234);
+    expect(tapped.buzz!.taps).toEqual([{ teamId: "T1", ms: 1234 }]);
+    expect(() => tapIn(tapped, "T1", "t-a", 0, 1300)).toThrow("tap_taken");
+    expect(getSpectatorView(tapped).buzz).not.toHaveProperty("taps");
+  });
+
+  it("every eligible team tapped closes early; a dropped or stunned team is not waited for", () => {
+    const g = tapIn(tapIn(tapping(), "T0", "t-a", 0, 1), "T1", "t-a", 0, 2);
+    expect(allTapped(g)).toBe(false);
+    expect(allTapped(patch(g, "T2", { online: false }))).toBe(true);
+    expect(allTapped(patch(g, "T2", { stunned: true }))).toBe(true);
+    expect(tapEligible(patch(g, "T2", { stunned: true }), "T2")).toBe(false);
+    // Everyone gone: no early close, the round runs to its end.
+    expect(allTapped({ ...g, teams: g.teams.map((t) => ({ ...t, online: false })) })).toBe(false);
+  });
+
+  it("▶ with every online boss-room team stunned clears them all; a music buzzer leaves that to the press", () => {
+    const g = { ...tapping(), buzz: undefined, teams: tapping().teams.map((t) => ({ ...t, stunned: true as const })) };
+    expect(openBuzz(g, "t-a", true).teams.every((t) => !t.stunned)).toBe(true);
+    expect(openBuzz(g, "t-a").teams.every((t) => t.stunned)).toBe(true);
+  });
+
+  it("⟲ drops the taps and bumps the round; the winner then scores a normal hit and the others keep their bonus", () => {
+    let g = restartTaps(tapIn(tapping(), "T1", "t-a", 0, 5));
+    expect(g.buzz).toMatchObject({ taps: undefined, tapRound: 1 });
+    g = tapIn(tapIn(g, "T1", "t-a", 1, 5), "T2", "t-a", 1, 9);
+    const reward = g.teams.find((t) => t.id === "T2")!.reward;
+    g = tapWinner(g, "T1", { T2: 3 });
+    expect(currentTurnTeamId(g)).toBe("T1");
+    const hit = answerQuestion(g, "T1", "t-a", true, "retry", first);
+    expect(hit.outcome.type).toBe("correct-boss-hit");
+    expect(hit.game.teams.find((t) => t.id === "T2")!.reward).toBe(reward + 3);
+    expect(hit.game.buzz).toMatchObject({ picker: "T1", out: [] });
+    expect(hit.game.buzz).not.toHaveProperty("taps");
   });
 });

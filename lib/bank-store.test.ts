@@ -102,8 +102,8 @@ describe("BankStore.putBank", () => {
     const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
     await new BankStore(storage).putBank(categorized, 1);
     const stored = (await storage.get("bank")) as { format: number };
-    // The category format sits four below BANK_FORMAT: answer fields (multi-field.md), Instagram explanations, boss difficulties and uploaded media came after it.
-    expect(stored.format).toBe(BANK_FORMAT - 4);
+    // The category format sits five below BANK_FORMAT: answer fields (multi-field.md), Instagram explanations, boss difficulties, uploaded media and timing questions came after it.
+    expect(stored.format).toBe(BANK_FORMAT - 5);
     // Code at the format before reads it as this code reads a format ahead of its own: unreadable, and a save may not replace it.
     const ahead = memoryStorage({ ...stored, format: BANK_FORMAT + 1 });
     const older = new BankStore(ahead);
@@ -448,8 +448,11 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     // An uploaded video or audio (uploaded-media.md) is what format-9 code cannot parse: it stores at 10, in either slot.
     const clip = (content: { kind: "text" | "video" | "audio"; value: string }, explanation?: { kind: "video" | "audio"; value: string }) =>
       formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "v1", content, answer: "A", ...(explanation ? { explanation } : {}) }] } });
-    expect(clip({ kind: "video", value: "11111111-1111-1111-1111-111111111111" })).toBe(BANK_FORMAT);
-    expect(clip({ kind: "text", value: "看" }, { kind: "audio", value: "11111111-1111-1111-1111-111111111111" })).toBe(BANK_FORMAT);
+    expect(clip({ kind: "video", value: "11111111-1111-1111-1111-111111111111" })).toBe(10); // pregate-literal: BANK_FORMAT=10 an uploaded-media bank stays at format 10
+    expect(clip({ kind: "text", value: "看" }, { kind: "audio", value: "11111111-1111-1111-1111-111111111111" })).toBe(10); // pregate-literal: BANK_FORMAT=10 an uploaded-media bank stays at format 10
+    // A timing question (timing-tap.md) is what format-10 code cannot parse: it stores at 11.
+    const tap = { kind: "timing" as const, id: "t1", content: { kind: "audio" as const, value: "11111111-1111-1111-1111-111111111111" }, target: 12.5 };
+    expect(formatOf({ ...buzzer, boss: { ...buzzer.boss, phases: [buzzer.boss.phases[0], { ...buzzer.boss.phases[1], questions: [tap] }] } })).toBe(BANK_FORMAT);
     const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
     await new BankStore(storage).putBank(sorted, 1);
     expect(await storage.get("bank")).toMatchObject({ version: 2, format: 4 });

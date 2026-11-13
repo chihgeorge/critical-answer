@@ -1,7 +1,8 @@
 // The bank editor's pure question edits (app/bank-editor/page.tsx), here so they have unit tests. Client-safe: types
 // and constants only, never the parsed bank (CLAUDE.md, check:bundle).
 import { SORT_ITEMS } from "./sort-order";
-import { fieldsAnswer, type AnswerField, type BankQuestion } from "./question-bank";
+import { fieldsAnswer, MAX_TAP_LABEL, type AnswerField, type BankQuestion } from "./question-bank";
+import { TAP_GRACE_S } from "./tap-clock";
 
 // Sentinel for "no correct option marked yet" — happens right after switching a question to
 // multipleChoice, or after deleting the option that was marked correct. Never a valid saved
@@ -19,6 +20,7 @@ export function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): Bank
   // The prompt (題幹) belongs to the content, so it carries over too, and so do the category and a boss question's difficulty.
   const prompt = { ...(q.prompt !== undefined ? { prompt: q.prompt } : {}), ...(q.category !== undefined ? { category: q.category } : {}), ...(q.difficulty !== undefined ? { difficulty: q.difficulty } : {}) };
   if (kind === "text") return { kind: "text", id: q.id, content: q.content, ...prompt, answer: "", explanation: q.explanation };
+  if (kind === "timing") return { kind: "timing", id: q.id, content: q.content, ...prompt, target: 0, explanation: q.explanation };
   if (kind === "sort") return { kind: "sort", id: q.id, content: q.content, ...prompt, items: Array<string>(SORT_ITEMS).fill(""), explanation: q.explanation };
   return {
     kind: "multipleChoice",
@@ -44,4 +46,16 @@ export function withField(q: BankQuestion, i: number, patch: Partial<AnswerField
   if (q.kind !== "text" || !q.fields) return q;
   const fields = q.fields.map((f, j) => (j === i ? { ...f, ...patch } : f));
   return { ...q, fields, answer: fieldsAnswer(fields) };
+}
+
+/** What is wrong with a timing question's fields, in the editor's words (timing-tap.md 畫面), or null; the same rules as
+ * parseBank's, so the save check and the line under the field agree. */
+export function timingFieldError(q: BankQuestion): string | null {
+  if (q.kind !== "timing") return null;
+  const c = q.content;
+  if (c.kind !== "youtube" && c.kind !== "video" && c.kind !== "audio") return "卡點題的內容只能是 YouTube 或上傳的影音";
+  if (!Number.isFinite(q.target) || q.target < (c.start ?? 0)) return "目標要在片段開頭之後";
+  if (c.end !== undefined && q.target + TAP_GRACE_S > c.end) return `目標要比片段結尾早 ${TAP_GRACE_S} 秒以上`;
+  if (Array.from((q.label ?? "").trim()).length > MAX_TAP_LABEL) return `label 最多 ${MAX_TAP_LABEL} 個字`;
+  return null;
 }

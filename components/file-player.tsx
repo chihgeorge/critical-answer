@@ -21,6 +21,7 @@ export function FilePlayer({
   onError,
   errorNote,
   title = "題目影片",
+  timeRef,
 }: {
   url: string;
   /** The host's last command for this clip; null or absent is paused. */
@@ -38,6 +39,8 @@ export function FilePlayer({
   onError?: () => void;
   errorNote?: string;
   title?: string;
+  /** Set to a reader of the file's time (s) while it plays, null otherwise: a timing question's clock (timing-tap.md). */
+  timeRef?: { current: (() => number | null) | null };
 }) {
   const el = useRef<HTMLVideoElement>(null);
   const applied = useRef<MediaWant | null>(null);
@@ -96,6 +99,14 @@ export function FilePlayer({
       }
     }
   }, [want.state, want.seq, want.press, url, attempt]);
+  // A timing question's screen reads the file's own time while it plays; paused, buffering or broken reads null.
+  useEffect(() => {
+    if (!timeRef) return;
+    timeRef.current = status === "playing" ? () => el.current?.currentTime ?? null : null;
+    return () => {
+      timeRef.current = null;
+    };
+  }, [timeRef, status]);
   // A new file or a retry mounts a fresh element.
   const mount = url + "#" + attempt;
 

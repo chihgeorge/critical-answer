@@ -87,6 +87,8 @@ export interface PublicQuestion {
   /** A music question's field labels (歌名, 歌手…), never their answers: one box per field on the phone, one ✓／✗ row each
    * on the host page (docs/designs/multi-field.md). */
   fields?: string[];
+  /** A timing question (docs/designs/timing-tap.md): its label only, never its target. */
+  timing?: { label?: string };
   /** A fill-in question whose team has not finished its persuasion check: STATE sends it with empty text and no media,
    * prompt or fields until the die's beat ends (check first, question after). On HOST_ANSWER's copy it only marks the wait. */
   checkFirst?: true;
@@ -113,6 +115,10 @@ export type AnswerReveal = {
   sorted?: { items: string[]; teamId: string; points: number; chefBonus?: number };
   /** A music question with fields: each field's answer and whether the team got it (docs/designs/multi-field.md F7). */
   fields?: { teamId: string; marks: { label: string; answer: string; right: boolean }[] };
+  /** A timing question's round (docs/designs/timing-tap.md): the target (song ms), every tap closest first (`errorMs`
+   * negative is early; `bonus` the small reward, 0 for the winner, `rows[0]`), whether the winner tied the runner-up
+   * (the earlier tap won), and the boss-room teams that sat it out stunned. */
+  timing?: { targetMs: number; label?: string; rows: { teamId: string; errorMs: number; bonus: number }[]; tie?: true; stunned?: string[] };
   /** The question itself, only when it was never shown: its fill-in resolved before the persuasion check was done (a
    * natural 20, or the host judging before the roll). Shown above 正解; a video stays in `video`. */
   asked?: Pick<PublicQuestion, "content" | "prompt">;
@@ -242,7 +248,14 @@ export type ClientMessage =
    * (host-narration-edit.md D3, D14). */
   | { type: "SCREEN_NARRATION_PROGRESS"; eventId: number; rev: number; done: number }
   /** /screen: the question video's clip has ended, so its answer countdown may start (answer-countdown.md D4). Same trust as above. */
-  | { type: "SCREEN_CLIP_ENDED"; questionId: string }
+  /** `seq`: the MediaCommand.seq the screen played (timing-tap.md): a timing question ignores an end from before a ⟲. */
+  | { type: "SCREEN_CLIP_ENDED"; questionId: string; seq?: number }
+  /** /screen, while a timing question's clip plays (docs/designs/timing-tap.md): the server epoch ms at which the clip's
+   * video time 0 played (`anchor`), or null while paused, buffering or broken; `seq` is the MediaCommand.seq it plays.
+   * Same trust as above; a wrong question or seq is dropped. Not activity. */
+  | { type: "SCREEN_TAP_CLOCK"; questionId: string; seq: number; anchor: number | null }
+  /** Phone or screen clock sync (timing-tap.md): `t` is the sender's performance.now(); the room answers CLOCK_PONG. Not activity. */
+  | { type: "CLOCK_PING"; t: number }
   /** /screen: the question video cannot play there (blocked, removed, no network), so the host page warns and offers
    * 現場放歌 (docs/designs/boss-music-buzzer.md M4). Same trust as above. */
   | { type: "SCREEN_CLIP_ERROR"; questionId: string }
@@ -370,6 +383,11 @@ export type ClientMessage =
   | { type: "TEAM_SUBMIT_TEXT"; questionId: string; text: string; eventId?: number; fields?: string[] }
   /** 搶答 on the boss question of a buzzer phase (docs/designs/boss-buzzer.md): the first the room handles wins. */
   | { type: "TEAM_BUZZ"; questionId: string }
+  /** A timing question's one tap (docs/designs/timing-tap.md): `at` is the press in server epoch ms (the phone's
+   * clock offset applied), `round` the view.buzz.tapRound it saw. */
+  | { type: "TEAM_TAP"; questionId: string; round: number; at: number }
+  /** The big screen's speaker latency in ms (timing-tap.md E3-lite): rounded and kept to 0–1000, saved with the room. */
+  | { type: "HOST_TAP_LATENCY"; ms: number }
   /** 沒人答對，換下一題: the buzzer phase's question moves on unrevealed (boss-buzzer.md D4). */
   | { type: "HOST_BUZZ_SKIP"; questionId: string }
   /** 現場放歌，開放搶答: the host plays the song from their own device, so buzzing opens without the clip (boss-music-buzzer.md M4). */
@@ -435,6 +453,10 @@ export interface MediaCommand {
 }
 
 export type ServerMessage =
+  /** CLOCK_PING's answer, to the sender only and never saved: its `t` back and the room's Date.now() (timing-tap.md). */
+  | { type: "CLOCK_PONG"; t: number; server: number }
+  /** A timing tap was taken, to every connection of the team that tapped (and again when one reconnects that round). */
+  | { type: "TAP_OK"; questionId: string; round: number }
   /** `replay`: this room has played a game, so the host page leaves 開始前播放玩法說明 unchecked (eng D5).
    * `bankSize`: question counts only (no content), so the host page can warn a bank is too small for its teams. */
   | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true; bankSize?: BankSize; pacing?: "manual"; screenAudio?: ScreenAudio }
@@ -479,6 +501,10 @@ export type ServerMessage =
       media?: MediaCommand;
       /** The big screen reported that the video in play cannot play (SCREEN_CLIP_ERROR): the host page warns (boss-music-buzzer.md M4). */
       clipError?: true;
+      /** A timing question's clip is playing on the chosen big screen and its clock is fresh: phones may tap (timing-tap.md). */
+      tapLive?: true;
+      /** The host's speaker latency in ms (HOST_TAP_LATENCY); absent is 0. */
+      tapLatency?: number;
       /** Whether a big screen can be heard (immersion.md PR0): "ready" when any keyed screen reported 聲音就緒, "muted"
        * when keyed screens are connected but none did, "none" when no keyed screen is connected. Absent from older servers. */
       screenSound?: ScreenSound;
@@ -581,7 +607,8 @@ export type ServerMessage =
   /** `typed`: in a buzzer phase, what the team that buzzed typed (`fields`: a music question's boxes, "" for a blank).
    * Host-only: STATE hides it, since the other teams could still buzz (docs/designs/multi-field.md E4).
    * `question`: the whole question while STATE holds it back for the persuasion check (`checkFirst`); absent after. */
-  | { type: "HOST_ANSWER"; questionId: string; answer: string; typed?: { teamId: string; text: string; fields?: string[] }; question?: PublicQuestion }
+  /** `tap`: a timing question's round as only the host sees it: teams tapped of those that may (timing-tap.md). */
+  | { type: "HOST_ANSWER"; questionId: string; answer: string; typed?: { teamId: string; text: string; fields?: string[] }; question?: PublicQuestion; tap?: { count: number; eligible: number } }
   /** Host-only, sent with every STATE: what the host may queue (HOST_QUEUE_QUESTION) and what is queued.
    * Carries answers, so it goes out with sendTo, never broadcast. */
   | {
@@ -719,6 +746,9 @@ function teamKeyOf(v: unknown): string | null {
   return typeof v === "string" && TEAM_KEY_RE.test(v) ? v : null;
 }
 
+/** Any finite number: NaN or Infinity would slip through Math.min/max and break a sort (timing-tap.md). */
+const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
 /** A whole number, 0 or more. */
 const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 
@@ -817,8 +847,24 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "SCREEN_CLIP_ENDED":
     case "SCREEN_CLIP_ERROR": {
       const questionId = str(m.questionId, MAX_RAW_TEXT);
-      return questionId ? { type: m.type, questionId } : null;
+      if (!questionId) return null;
+      if (m.type === "SCREEN_CLIP_ERROR") return { type: m.type, questionId };
+      if (m.seq !== undefined && !isCount(m.seq)) return null;
+      return { type: m.type, questionId, ...(m.seq !== undefined ? { seq: m.seq } : {}) };
     }
+    case "SCREEN_TAP_CLOCK": {
+      const questionId = str(m.questionId, MAX_ID);
+      if (!questionId || !isCount(m.seq) || (m.anchor !== null && !isFiniteNumber(m.anchor))) return null;
+      return { type: "SCREEN_TAP_CLOCK", questionId, seq: m.seq, anchor: m.anchor as number | null };
+    }
+    case "CLOCK_PING":
+      return isFiniteNumber(m.t) ? { type: "CLOCK_PING", t: m.t } : null;
+    case "TEAM_TAP": {
+      const questionId = str(m.questionId, MAX_ID);
+      return questionId && isCount(m.round) && isFiniteNumber(m.at) ? { type: "TEAM_TAP", questionId, round: m.round, at: m.at } : null;
+    }
+    case "HOST_TAP_LATENCY":
+      return isFiniteNumber(m.ms) ? { type: "HOST_TAP_LATENCY", ms: m.ms } : null;
     case "HOST_NEXT_LINE": {
       const line = str(m.line, MAX_EDIT_LINE);
       if (line === null || (m.eventId !== undefined && !isCount(m.eventId))) return null;

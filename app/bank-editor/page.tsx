@@ -12,10 +12,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
-import { UNSET_CORRECT_INDEX, blankQuestion, withCategory, withField } from "@/lib/bank-editor-question";
+import { UNSET_CORRECT_INDEX, blankQuestion, timingFieldError, withCategory, withField } from "@/lib/bank-editor-question";
+import { formatSongTime } from "@/lib/tap-clock";
 import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, MEDIA_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
 import { MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from "@/lib/bank-image-api";
-import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { DIFFICULTIES, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_TAP_LABEL, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { DEFAULT_BANK_ENTRY, MAX_TEAMS, scoreName } from "@/lib/protocol";
@@ -96,9 +97,9 @@ function validationError(bank: Bank): string | null {
   }
   // From phase 2 on, players meet a phase through its card, so it needs a name and a rule (boss-phases.md D5, D6).
   for (const [i, p] of bank.boss.phases.entries()) {
-    // 搶答 (boss-buzzer.md D1, D3): from phase 2 on, fill-ins only; parseBank refuses the rest too.
+    // 搶答 (boss-buzzer.md D1, D3): from phase 2 on, fill-ins or timing questions only; parseBank refuses the rest too.
     if (p.buzzer && i === 0) return "首領第 1 階段不能是搶答階段";
-    if (p.buzzer && p.questions.some((q) => q.kind !== "text")) return `首領第 ${i + 1} 階段是搶答階段：只能放填空題`;
+    if (p.buzzer && p.questions.some((q) => q.kind !== "text" && q.kind !== "timing")) return `首領第 ${i + 1} 階段是搶答階段：只能放填空題或卡點題`;
     if (Array.from(p.name.trim()).length > MAX_PHASE_NAME) return `首領第 ${i + 1} 階段：名稱最多 ${MAX_PHASE_NAME} 個字`;
     if (Array.from(p.rule.trim()).length > MAX_PHASE_RULE) return `首領第 ${i + 1} 階段：規則最多 ${MAX_PHASE_RULE} 個字`;
     if (i === 0) continue;
@@ -108,8 +109,15 @@ function validationError(bank: Bank): string | null {
   const all = allQuestions(bank);
   // Answer fields only on a buzzer phase's music questions (multi-field.md F1, E3): parseBank refuses the rest too.
   const fieldsOk = new Set(bank.boss.phases.flatMap((p) => (p.buzzer ? p.questions.filter(isMusicQuestion).map((q) => q.id) : [])));
+  // A timing question needs every team at once (timing-tap.md): a buzzer phase only.
+  const timingOk = new Set(bank.boss.phases.flatMap((p) => (p.buzzer ? p.questions.map((q) => q.id) : [])));
   for (const q of all) {
     const label = `題目「${q.content.value || q.id}」`;
+    if (q.kind === "timing") {
+      if (!timingOk.has(q.id)) return `${label}：卡點題只能放在搶答階段`;
+      const err = timingFieldError(q);
+      if (err) return `${label}：${err}`;
+    }
     if (q.kind === "text" && q.fields) {
       if (!fieldsOk.has(q.id)) return `${label}有答案欄位，但只有搶答階段裡「只放聲音」的 YouTube 題能有：改回聽歌題，或按「移除欄位」`;
       if (q.fields.length < MIN_FIELDS || q.fields.length > MAX_FIELDS) return `${label}的答案欄位要 ${MIN_FIELDS}–${MAX_FIELDS} 欄`;
@@ -1104,6 +1112,104 @@ function MediaPicker({
   );
 }
 
+/** A timing question's target and label (timing-tap.md 畫面), with a YouTube clip's preview to set the target by ear. */
+function TimingFields({ q, onUpdate, onDelete }: { q: Extract<BankQuestion, { kind: "timing" }>; onUpdate: (updater: (q: BankQuestion) => BankQuestion) => void; onDelete: () => void }) {
+  const [text, setText] = useState(String(q.target));
+  const [preview, setPreview] = useState<{ seq: number; start: number } | null>(null);
+  const time = useRef<(() => number | null) | null>(null);
+  const setTarget = (target: number) => {
+    const t = Math.max(0, Math.round(target * 100) / 100);
+    setText(String(t));
+    onUpdate((cur) => (cur.kind === "timing" ? { ...cur, target: t } : cur));
+  };
+  const err = timingFieldError(q);
+  const c = q.content;
+  const youtube = c.kind === "youtube" && !!c.value;
+  return (
+    <div className="flex flex-col gap-1" data-testid={`timing-${q.id}`}>
+      <small className="text-[14px]">卡點題：大螢幕放歌，每隊按一次，按得最接近目標秒數的隊伍命中。內容要選 YouTube 或上傳的影音。</small>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1">
+          目標秒數
+          <input
+            className="px-input"
+            style={{ width: 110 }}
+            type="number"
+            step={0.01}
+            min={0}
+            aria-label="目標秒數"
+            value={text}
+            onChange={(e) => {
+              // Read now, as the other fields do: the updater may run after the input is put back.
+              const value = e.target.value;
+              setText(value);
+              const t = Number(value);
+              if (value.trim() && Number.isFinite(t)) onUpdate((cur) => (cur.kind === "timing" ? { ...cur, target: t } : cur));
+            }}
+          />
+        </label>
+        <span data-testid="timing-target-text">{Number.isFinite(q.target) ? formatSongTime(q.target * 1000) : ""}</span>
+        <button type="button" className="px-btn !px-2 !py-1 text-[13px]" onClick={() => setTarget(q.target - 0.05)}>
+          −0.05
+        </button>
+        <button type="button" className="px-btn !px-2 !py-1 text-[13px]" onClick={() => setTarget(q.target + 0.05)}>
+          +0.05
+        </button>
+      </div>
+      <label className="flex items-center gap-1">
+        label
+        <input
+          className="px-input flex-1"
+          aria-label="卡點題 label"
+          placeholder={`選填，最多 ${MAX_TAP_LABEL} 字，例如：蹬（手機顯示「按在『蹬』那一下」）`}
+          maxLength={MAX_TAP_LABEL}
+          value={q.label ?? ""}
+          onChange={(e) => {
+            const label = e.target.value;
+            onUpdate((cur) => {
+              if (cur.kind !== "timing") return cur;
+              const next: BankQuestion = { ...cur, label };
+              if (!label.trim()) delete (next as { label?: string }).label;
+              return next;
+            });
+          }}
+        />
+      </label>
+      {youtube && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="px-btn !px-2 !py-1 text-[13px]" onClick={() => setPreview((p) => ({ seq: (p?.seq ?? 0) + 1, start: c.start ?? 0 }))}>
+            ▶ 試聽片段
+          </button>
+          <button type="button" className="px-btn !px-2 !py-1 text-[13px]" onClick={() => setPreview((p) => ({ seq: (p?.seq ?? 0) + 1, start: Math.max(c.start ?? 0, Math.floor(q.target - 3)) }))}>
+            從目標前 3 秒試聽
+          </button>
+          <button
+            type="button"
+            className="px-btn !px-2 !py-1 text-[13px]"
+            disabled={!preview}
+            onPointerDown={() => {
+              const t = time.current?.();
+              if (t !== null && t !== undefined) setTarget(t);
+            }}
+          >
+            跟著按
+          </button>
+        </div>
+      )}
+      {youtube && <small className="text-[13px] text-black/60">跟著按會帶到自己的反應時間，通常晚 0.1–0.2 秒：按完用 −0.05 微調，再從目標前 3 秒試聽核對。</small>}
+      {preview && youtube && <YoutubePlayer videoId={c.value} start={preview.start} end={c.end} command={{ state: "playing", seq: preview.seq }} width={320} height={180} controls title="卡點題試聽" timeRef={time} />}
+      {err && (
+        <span role="alert" className="text-[13px]" style={{ color: "var(--danger)" }}>
+          {err}
+        </span>
+      )}
+      <PixelButton variant="flee" onClick={onDelete}>
+        刪除題目
+      </PixelButton>
+    </div>
+  );
+}
+
 /** The file just uploaded, played from this browser: its name, length and size, and whether a browser can play it. */
 function LocalPreview({ url, name, size, kind }: { url: string; name: string; size: number; kind: UploadKind }) {
   const [seconds, setSeconds] = useState<number | null>(null);
@@ -1318,6 +1424,8 @@ function QuestionRow({
           <option value="text">填空</option>
           <option value="multipleChoice">選擇</option>
           <option value="sort">排序</option>
+          {/* A buzzer phase's question only (timing-tap.md); a misplaced one still shows its kind so it can be changed. */}
+          {(category || q.kind === "timing") && <option value="timing">卡點題</option>}
         </select>
       </div>
 
@@ -1458,6 +1566,8 @@ function QuestionRow({
             刪除
           </PixelButton>
         </div>
+      ) : q.kind === "timing" ? (
+        <TimingFields q={q} onUpdate={onUpdate} onDelete={onDelete} />
       ) : q.kind === "sort" ? (
         <div className="flex flex-col gap-1">
           <small className="text-[14px]">題目寫排序規則（例如：依年齡由大到小排），下面照正確順序填，遊戲裡會打亂。</small>

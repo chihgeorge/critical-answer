@@ -38,6 +38,48 @@ describe("boss phases", () => {
     expect(() => parseBank({ ...valid(), boss: { monster: "dragon", phases: [{ ...phase1(), buzzer: true }] } })).toThrow(/first boss phase/);
   });
 
+  describe("timing questions (timing-tap.md)", () => {
+    const clip = { kind: "youtube", value: YT_ID, audioOnly: true, start: 170, end: 200 };
+    const tq = (extra: object = {}) => ({ kind: "timing", id: "b-tap-1", content: clip, target: 190.35, label: "蹬", ...extra });
+    const at = (question: object, buzzer = true) => parseBank({ ...valid(), boss: { monster: "dragon", phases: [phase1(), { name: "卡點", rule: "聽到就按", maxHp: 2, ...(buzzer ? { buzzer: true } : {}), questions: [question] }] } });
+    const err = (question: object, buzzer = true) => () => at(question, buzzer);
+
+    it("keeps a buzzer phase's timing question, with a public label and a m:ss.cc answer, and no target on the wire", () => {
+      const bank = at(tq());
+      expect(bank.boss.phases[1].questions[0]).toEqual({ kind: "timing", id: "b-tap-1", content: clip, target: 190.35, label: "蹬" });
+      expect(answerText(bank.boss.phases[1].questions[0])).toBe("3:10.35「蹬」");
+      expect(answerText(at(tq({ label: undefined })).boss.phases[1].questions[0])).toBe("3:10.35");
+      const pub = publicQuestion(bank, "b-tap-1", 0, "");
+      expect(pub).toMatchObject({ timing: { label: "蹬" }, content: { kind: "youtube", audioOnly: true } });
+      expect(JSON.stringify(pub)).not.toMatch(/190|target/);
+      // An uploaded clip has no start: a target from 0 on.
+      expect(at(tq({ content: { kind: "audio", value: UUID_A }, target: 0.5 })).boss.phases[1].questions).toHaveLength(1);
+      expect(shuffledOptionOrders(bank, () => 0)).not.toHaveProperty("b-tap-1");
+    });
+
+    it("refuses a bad target, a long label, a clip that is not one, and anywhere but a buzzer phase, with the numbers in the message", () => {
+      expect(err(tq({ target: 169.5 }))).toThrow("question b-tap-1: target 169.5 is before the clip start 170");
+      expect(err(tq({ target: 199 }))).toThrow("question b-tap-1: target 199 + 2 s grace is past the clip end 200");
+      expect(err(tq({ target: 190.3501 }))).toThrow("question b-tap-1: target has more than 3 decimals");
+      expect(err(tq({ target: "190" }))).toThrow(/target is not a number/);
+      expect(err(tq({ label: "一二三四五六七八九十一" }))).toThrow("question b-tap-1: label is longer than 10 characters");
+      expect(err(tq({ content: { kind: "image", value: UUID_A } }))).toThrow("question b-tap-1: a timing question needs a YouTube or uploaded video/audio clip");
+      expect(err(tq(), false)).toThrow("question b-tap-1 is a timing question, so it must be in a buzzer phase");
+      expect(() => parseBank({ ...valid(), rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [tq()] }] })).toThrow(/must be in a buzzer phase/);
+      // The buzzer-phase contract still refuses every other kind (multiple choice here).
+      expect(err(mc("c1"))).toThrow("is a buzzer phase, so every question in it must be a fill-in or a timing question");
+    });
+
+    // Value: protects=the copy-paste example in docs/question-bank.md and its English twin parses (timing-tap.md DX); fails_when=docs and parseBank drift; seam=reads the docs files
+    it.each(["docs/question-bank.md", "docs/question-bank.en.md"])("the example in %s parses as is", async (file) => {
+      const { readFileSync } = await import("node:fs");
+      const block = readFileSync(file, "utf8").match(/```json\n(\{\n\s+"name"[\s\S]*?"kind": "timing"[\s\S]*?)\n```/);
+      expect(block).not.toBeNull();
+      const phase = JSON.parse(block![1]);
+      expect(parseBank({ ...valid(), boss: { monster: "dragon", phases: [phase1(), phase] } }).boss.phases[1].questions[0].kind).toBe("timing");
+    });
+  });
+
   it("keeps a question's category trimmed, drops a blank one, refuses one that is not text or too long (boss-music-buzzer.md)", () => {
     const withCat = (category: unknown) => parseBank({ ...valid(), boss: { monster: "dragon", phases: [{ maxHp: 3, questions: [{ ...q("b1"), category }] }] } }).boss.phases[0].questions[0];
     expect(withCat(" 動漫 ").category).toBe("動漫");

@@ -21,6 +21,24 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_BUZZ_SKIP", questionId: 5 })).toBeNull();
   });
 
+  // Value: protects=NaN or Infinity never reaches the timing math (timing-tap.md); fails_when=a number check lets a non-finite value through; seam=none
+  it("timing messages need finite numbers and a bounded question id (timing-tap.md)", () => {
+    expect(parseClientMessage({ type: "TEAM_TAP", questionId: "q1", round: 0, at: 1.5 })).toEqual({ type: "TEAM_TAP", questionId: "q1", round: 0, at: 1.5 });
+    expect(parseClientMessage({ type: "TEAM_TAP", questionId: "q1", round: 0, at: Infinity })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_TAP", questionId: "q1", round: -1, at: 1 })).toBeNull();
+    expect(parseClientMessage({ type: "TEAM_TAP", questionId: "x".repeat(65), round: 0, at: 1 })).toBeNull();
+    expect(parseClientMessage({ type: "SCREEN_TAP_CLOCK", questionId: "q1", seq: 2, anchor: null })).toEqual({ type: "SCREEN_TAP_CLOCK", questionId: "q1", seq: 2, anchor: null });
+    expect(parseClientMessage({ type: "SCREEN_TAP_CLOCK", questionId: "q1", seq: 2, anchor: NaN })).toBeNull();
+    expect(parseClientMessage({ type: "SCREEN_TAP_CLOCK", questionId: "q1", anchor: 5 })).toBeNull();
+    expect(parseClientMessage({ type: "CLOCK_PING", t: 3.25 })).toEqual({ type: "CLOCK_PING", t: 3.25 });
+    expect(parseClientMessage({ type: "CLOCK_PING", t: "3" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_TAP_LATENCY", ms: 120.6 })).toEqual({ type: "HOST_TAP_LATENCY", ms: 120.6 });
+    expect(parseClientMessage({ type: "HOST_TAP_LATENCY", ms: NaN })).toBeNull();
+    expect(parseClientMessage({ type: "SCREEN_CLIP_ENDED", questionId: "q1", seq: 1 })).toEqual({ type: "SCREEN_CLIP_ENDED", questionId: "q1", seq: 1 });
+    expect(parseClientMessage({ type: "SCREEN_CLIP_ENDED", questionId: "q1" })).toEqual({ type: "SCREEN_CLIP_ENDED", questionId: "q1" });
+    expect(parseClientMessage({ type: "SCREEN_CLIP_ENDED", questionId: "q1", seq: 1.5 })).toBeNull();
+  });
+
   it("HOST_BUZZ_OPEN, SCREEN_CLIP_ERROR and TEAM_PICK_CATEGORY (boss-music-buzzer.md)", () => {
     expect(parseClientMessage({ type: "HOST_BUZZ_OPEN", questionId: "q1" })).toEqual({ type: "HOST_BUZZ_OPEN", questionId: "q1" });
     expect(parseClientMessage({ type: "SCREEN_CLIP_ERROR", questionId: "q1" })).toEqual({ type: "SCREEN_CLIP_ERROR", questionId: "q1" });

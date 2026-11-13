@@ -299,6 +299,10 @@ export interface BuzzState {
   picker?: string;
   /** The category `picker` chose; this question was drawn from it. */
   category?: string;
+  /** A timing question's taps (docs/designs/timing-tap.md), in the order the room took them: song time in ms. Never on STATE. */
+  taps?: { teamId: string; ms: number }[];
+  /** Goes up on each ⟲ 從頭 of a timing question: a tap for an older round is stale. Absent reads as 0. */
+  tapRound?: number;
 }
 
 export interface GameConfig {
@@ -849,11 +853,70 @@ function currentBuzz(game: GameState): BuzzState {
   return game.buzz?.questionId === id ? game.buzz : { questionId: id, out: [] };
 }
 
-/** The host pressed ▶ on the boss question's video: buzzing opens (D5). A no-op outside a buzzer phase. */
-export function openBuzz(game: GameState, questionId: string): GameState {
+/** The buzz as every screen sees it: a timing question's taps stay in the room until the reveal (timing-tap.md). */
+function withoutTaps(buzz: BuzzState): Omit<BuzzState, "taps"> {
+  const shown = { ...buzz };
+  delete shown.taps;
+  return shown;
+}
+
+/** The host pressed ▶ on the boss question's video: buzzing opens (D5). A no-op outside a buzzer phase. `timing`: a
+ * timing question, whose stunned phones are grey, so when every online boss-room team is stunned they all clear now
+ * (buzzIn clears them on the press instead; timing-tap.md). */
+export function openBuzz(game: GameState, questionId: string, timing = false): GameState {
   if (!isBuzzPhase(game) || questionId !== game.boss.currentQuestionId) return game;
   const buzz = currentBuzz(game);
-  return buzz.open ? game : { ...game, buzz: { ...buzz, open: true } };
+  if (buzz.open) return game;
+  const allStunned = timing && game.teams.some((t) => t.online && t.inBoss) && game.teams.every((t) => !t.online || !t.inBoss || t.stunned);
+  return { ...game, ...(allStunned ? { teams: unstun(game.teams, (t) => !!t.inBoss) } : {}), buzz: { ...buzz, open: true } };
+}
+
+/** Who may tap on a timing question now (timing-tap.md): online, in the boss room, not 💫 stunned. The one rule for
+ * tapping, the early close, the host's denominator and the phone's stun state. */
+export const tapEligible = (game: GameState, teamId: string): boolean => {
+  const t = game.teams.find((x) => x.id === teamId);
+  return !!t && t.online && t.inBoss && !t.stunned;
+};
+
+/** Why `teamId` may not tap on `questionId` in `round` now, as the room's refusal code; throws InvalidActionError. */
+export function assertCanTap(game: GameState, teamId: string, questionId: string, round: number): void {
+  if (!isBuzzPhase(game)) throw new InvalidActionError("tap_closed");
+  const buzz = currentBuzz(game);
+  if (questionId !== game.boss.currentQuestionId || round !== (buzz.tapRound ?? 0)) throw new InvalidActionError("stale_question");
+  if (!buzz.open || buzz.teamId) throw new InvalidActionError("tap_closed");
+  if (buzz.taps?.some((t) => t.teamId === teamId)) throw new InvalidActionError("tap_taken");
+  const team = getTeam(game, teamId);
+  if (!team.online || !team.inBoss) throw new InvalidActionError("cannot_tap");
+  if (team.stunned) throw new InvalidActionError("stunned");
+}
+
+/** `teamId` taps at song time `ms` (timing-tap.md). Checks assertCanTap again; the room converts the time first. */
+export function tapIn(game: GameState, teamId: string, questionId: string, round: number, ms: number): GameState {
+  assertCanTap(game, teamId, questionId, round);
+  const buzz = currentBuzz(game);
+  return { ...game, buzz: { ...buzz, taps: [...(buzz.taps ?? []), { teamId, ms }] } };
+}
+
+/** Every team that may tap has, and there is one: the round may close early (timing-tap.md). */
+export function allTapped(game: GameState): boolean {
+  const taps = currentBuzz(game).taps ?? [];
+  const eligible = game.teams.filter((t) => tapEligible(game, t.id));
+  return eligible.length > 0 && eligible.every((t) => taps.some((x) => x.teamId === t.id));
+}
+
+/** ⟲ 從頭 on a timing question: the song's clock changed, so its taps go and its round goes up (timing-tap.md). */
+export function restartTaps(game: GameState): GameState {
+  if (!isBuzzPhase(game)) return game;
+  const buzz = currentBuzz(game);
+  return { ...game, buzz: { ...buzz, taps: undefined, tapRound: (buzz.tapRound ?? 0) + 1 } };
+}
+
+/** A closed timing round with taps: the closest team becomes the one answering (HOST_JUDGE's judge then scores it as
+ * a hit), and the other teams' small bonuses go on their reward (timing-tap.md). The room judges right after. */
+export function tapWinner(game: GameState, winnerId: string, bonuses: Record<string, number>): GameState {
+  const buzz = currentBuzz(game);
+  const teams = game.teams.map((t) => (bonuses[t.id] ? { ...t, reward: t.reward + bonuses[t.id] } : t));
+  return { ...game, teams, buzz: { ...buzz, teamId: winnerId }, currentTurnIndex: game.turnOrder.indexOf(winnerId) };
 }
 
 /** `teamId` buzzes in on `questionId`. The first buzz the room handles wins (D: latency). `open`: buzzing is open
@@ -2263,7 +2326,7 @@ export interface SpectatorView {
   pendingWrong: WrongAnswer | null;
   /** The buzz on the boss question, only while a buzzer phase is fought (boss-buzzer.md). Its presence is what tells
    * every screen the phase is a buzzer one. */
-  buzz?: BuzzState;
+  buzz?: Omit<BuzzState, "taps">;
   /** The cleric whose wrong lock waits for its 祈禱 (canPray), or null. */
   awaitingPrayer: string | null;
   /** ⚔️ 最後衝刺 once it fired (GameState.sprint): the screen and phones name the blessed teams. */
@@ -2316,7 +2379,8 @@ export function getSpectatorView(game: GameState): SpectatorView {
     mageHints: game.mageHints ?? {},
     checks: game.checks ?? {},
     pendingWrong: game.pendingWrong,
-    ...(isBuzzPhase(game) ? { buzz: currentBuzz(game) } : {}),
+    // A timing question's taps stay in the room until the reveal (timing-tap.md).
+    ...(isBuzzPhase(game) ? { buzz: withoutTaps(currentBuzz(game)) } : {}),
     awaitingPrayer: game.pendingWrong && canPray(game, game.pendingWrong.teamId) ? game.pendingWrong.teamId : null,
     ...(game.sprint ? { sprint: game.sprint } : {}),
     ...(game.antiCheat ? { antiCheat: antiCheatView(game, game.antiCheat) } : {}),
