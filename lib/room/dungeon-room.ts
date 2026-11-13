@@ -3673,8 +3673,11 @@ export class DungeonRoom {
     if (!this.requireHost(conn)) return;
     if (questionId !== this.shownVideoId()) return;
     // A skipped timing question that came round again starts over on ▶ (its song stopped past the target).
-    if (action === "play" && this.tapReplay === questionId && this.media?.questionId === questionId) action = "restart";
-    if (action === "restart") this.tapReplay = null;
+    // Never played (skipped before ▶): the plain ▶ starts at the clip start anyway, and either way the replay is used up.
+    if (action !== "pause" && this.tapReplay === questionId) {
+      if (this.media?.questionId === questionId) action = "restart";
+      this.tapReplay = null;
+    }
     const same = this.media?.questionId === questionId ? this.media : null;
     const seq = same?.seq ?? 0;
     this.media = { questionId, state: action === "pause" ? "paused" : "playing", seq: action === "restart" ? seq + 1 : seq, press: (same?.press ?? 0) + 1 };
@@ -4720,7 +4723,8 @@ export class DungeonRoom {
       this.skipBuzzNow();
       return this.broadcastState();
     }
-    const stunned = game.teams.filter((t) => t.inBoss && t.online && t.stunned).map((t) => t.id);
+    // Sat out: stunned and not let in by the all-stunned rule (tapEligible), so the table says 暈眩, not 沒按.
+    const stunned = game.teams.filter((t) => t.inBoss && t.online && t.stunned && !tapEligible(game, t.id)).map((t) => t.id);
     this.tapReveal = { targetMs, ...(r.q.label ? { label: r.q.label } : {}), rows, ...(tie ? { tie: true as const } : {}), ...(stunned.length ? { stunned } : {}) };
     const winner = rows[0].teamId;
     // One step, no broadcast between: the winner holds the buzz only for the judgment that scores it.

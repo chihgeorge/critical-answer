@@ -240,6 +240,14 @@ describe("timing question in the room", () => {
     expect(g.state().tapLive).toBe(true);
     g.room.onClose(other);
     expect(g.state().tapLive).toBeUndefined();
+    // The owner pauses (null) and resumes under the same seq: it keeps the clock, another screen cannot take it meanwhile.
+    g.clock(ANCHOR);
+    g.clock(null);
+    expect(g.state().tapLive).toBeUndefined();
+    g.clock(ANCHOR + 7000, g.screen("screen-4"));
+    expect(g.state().tapLive).toBeUndefined();
+    g.clock(ANCHOR);
+    expect(g.state().tapLive).toBe(true);
     // A screen that is not playing (muted, background) cannot take the clock with null reports and lock the TV out.
     const idle = g.screen("screen-3");
     g.clock(null, idle);
@@ -302,6 +310,20 @@ describe("timing question in the room", () => {
     g.tapAt(0);
     // The replay is a ⟲ too, so the round moved on again; the team's tap counts in it.
     expect(g.lastOf(g.phones[0], "TAP_OK")).toMatchObject({ round: 3 });
+    expect(g.room.game!.buzz!.taps).toHaveLength(1);
+  });
+
+  // Value: protects=a timing question skipped before its first ▶ and come round as itself does not wipe taps on a later ⏸ ▶; fails_when=tapReplay outlives a plain ▶; seam=none
+  it("skipped before ▶ and come round as itself: ▶ plays it, and a later ⏸ ▶ keeps the taps", () => {
+    const g = tapGame();
+    g.room.game = { ...g.room.game!, revealedQuestionIds: [...g.room.game!.revealedQuestionIds, "t-b", "t-c"] };
+    send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "t-a" });
+    expect(g.qid()).toBe("t-a");
+    g.media("play");
+    g.clock();
+    g.tapAt(0);
+    g.media("pause");
+    g.media("play");
     expect(g.room.game!.buzz!.taps).toHaveLength(1);
   });
 
