@@ -175,3 +175,14 @@ describe("healthSummary (host page)", () => {
     expect(s).toMatchObject({ red: 2, yellow: 1, ok: 9 });
   });
 });
+
+describe("healthReport: 記憶題", () => {
+  it("flags a memory YouTube clip without an end as yellow (the whole video plays first)", () => {
+    const b = bank([
+      text("m1", { content: { kind: "youtube", value: yt(1) }, prompt: "誰唱的？", memory: true }),
+      text("m2", { content: { kind: "youtube", value: yt(1), end: 10 }, prompt: "誰唱的？", memory: true }),
+    ]);
+    const { rows } = healthReport(b, { youtube: { [yt(1)]: "ok" }, files: {} }, BASE);
+    expect(rows).toEqual([{ level: "yellow", questionId: "m1", where: "難度 1", label: "誰唱的？", problem: "記憶題的 YouTube 沒設結束秒數：整支播完才出題，建議設結束" }]);
+  });
+});

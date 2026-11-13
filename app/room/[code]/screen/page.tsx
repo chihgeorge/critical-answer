@@ -25,6 +25,7 @@ import { CLASS_COLOR, CLASS_PULSE, CLASS_TINT, createFlashBudget, GROWL_TINT, HE
 import { playHostEffect, type HostFxLook } from "@/lib/host-fx";
 import { CLASS_FX_MS, CLASS_FX_TEXT, classFxFor, playClassFx, type ClassFx, type ClassFxLook } from "@/lib/class-fx";
 import { AnswerClock } from "@/components/answer-clock";
+import { memoryLine } from "@/lib/memory-copy";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { antiCheatBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
 import { TransitionOverlay } from "@/components/transition-overlay";
@@ -293,7 +294,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const wrong = view.pendingWrong ?? null;
   const nameOf = (id?: string) => view.teams.find((t) => t.id === id)?.name ?? "";
   // A buzzer boss phase (docs/designs/boss-buzzer.md D7): who buzzed, who is out, or the call to buzz.
-  const buzz = !reveal && !card && question ? view.buzz : undefined;
+  // Not while a memory question's media plays: nobody may buzz yet (memory-questions.md).
+  const buzz = !reveal && !card && question && !question.memorize ? view.buzz : undefined;
   const buzzBox = buzz && (
     <div data-testid="screen-buzz" className="flex flex-col items-center gap-2">
       <div className="px-chip" style={{ ...CHIP, fontSize: buzz.teamId ? 30 : 22, background: buzz.teamId ? "var(--turn)" : "var(--lav)" }}>
@@ -559,6 +561,13 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         ) : question ? (
           // Check first, question after: the room sends no text until the die's beat ends.
           question.checkFirst ? <span data-testid="screen-check-first">{wrong || (pendingRoll && pendingRoll.kind !== "check") ? "……" : pendingRoll || !turn ? "🎲 說服檢定中……擲完才出題" : `${turn.name}：按手機上的「🎲 擲骰說服」，擲完才出題`}</span> :
+          // 記憶題 (memory-questions.md): the room sends only the media while it plays; the question comes after.
+          question.memorize ? (
+            <span data-testid="screen-memorize" role="status" className="inline-flex flex-wrap items-center justify-center gap-2">
+              {memoryLine(question, view.buzz ? undefined : turn?.name, media)}
+              {question.memoryLeft !== undefined && <AnswerClock key={`memory:${question.id}:${question.memoryLeft}`} ms={question.memoryLeft} variant="chip" />}
+            </span>
+          ) :
           question.content.kind === "text" ? question.content.value : <div style={{ fontSize: 26 }}>{question.prompt ?? ""}</div>
         ) : "……"}
         {tileVideo && <div className="mt-3 flex flex-col items-center gap-2">{beside}</div>}

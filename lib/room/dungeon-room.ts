@@ -123,7 +123,7 @@ import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder,
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
-import { FIELD_SEP, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
+import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
@@ -504,6 +504,13 @@ export class DungeonRoom {
   /** The reactions during the current turn, for the narrator (crowd.ts). In memory only. */
   private crowd = createCrowdTally();
   private clipEnded: string | null = null;
+  /** 記憶題 (docs/designs/memory-questions.md): the memory questions whose media has ended (clip end, image seconds, or
+   * the host's ⏭), per question so another clip ending never re-opens one; and the image on show with its deadline.
+   * Saved: a restart keeps a done question done and an image's remaining seconds (wall clock). */
+  private memoryDone: string[] = [];
+  private memoryShow: { questionId: string; endsAt: number } | null = null;
+  /** Fires at memoryShow.endsAt. Memory only: restore() arms it again. */
+  private memoryTimer: { at: number; timer: ReturnType<typeof setTimeout> } | null = null;
   /** The judgment a kill's 4d20 holds back (kill-roll.md): resolveRoll makes it with the shown dice. */
   private pendingKill: { correct: boolean; fleeChoice: FleeChoice; roll?: { kind: "warrior" | "crit"; value: number }; fields?: boolean[] } | null = null;
   /** A natural 20 whose beat a restart cut off (R7), applied by applyLostCrit. In memory only: restore() sets it. */
@@ -953,6 +960,8 @@ export class DungeonRoom {
       ...(this.initiative ? { initiative: this.initiative } : {}),
       ...(this.initiativeOn && this.opening() ? { initiativeOn: true as const } : {}),
       ...(this.answerSeconds ? { answerSeconds: this.answerSeconds, answerClock: this.answerClock, clipEnded: this.clipEnded } : {}),
+      ...(this.memoryDone.length ? { memoryDone: this.memoryDone } : {}),
+      ...(this.memoryShow ? { memoryShow: this.memoryShow } : {}),
       ...(this.bankChoice ? { bankChoice: this.bankChoice } : {}),
     };
   }
@@ -1057,6 +1066,9 @@ export class DungeonRoom {
     this.answerSeconds = s.answerSeconds ?? 0;
     this.answerClock = s.answerClock ?? null;
     this.clipEnded = s.clipEnded ?? null;
+    this.memoryDone = s.memoryDone ?? [];
+    this.memoryShow = this.game?.phase === "playing" ? (s.memoryShow ?? null) : null;
+    this.armMemoryTimer();
     if (this.initiative) this.armInitiative(this.initiative.order ? (this.initiative.tieRolls?.length ?? 0) * INITIATIVE_TIE_MS + this.initiativeHoldMs : INITIATIVE_MS);
     // The answer reveal does not survive a restart, so a phase that ended under it goes straight to its card.
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
@@ -1151,7 +1163,87 @@ export class DungeonRoom {
     const defeats = team.metDefeats === undefined || !roomMonster ? game.defeats ?? {} : { ...game.defeats, [roomMonster]: team.metDefeats };
     const pub = publicQuestion(this.bank, id, team.roomIndex, this.room.env?.R2_PUBLIC_BASE_URL ?? "", game.optionOrder[id], { seed: game.variantSeed ?? 0, defeats }, { room: roomMonster, boss: this.bossId() });
     const q = this.question(id);
-    return pub ? { pub, answer: q ? answerText(q) : "" } : null;
+    if (!pub) return null;
+    // 記憶題: every reader of `pub` (STATE, the video on screen, the countdown, the reveal) sees the memory view; the host
+    // pages get `full` with HOST_ANSWER.
+    const view = q?.memory ? memoryView(pub, this.memoryEnded(id), q.content.kind === "image" ? this.memoryLeftMs(id, q.memorySeconds) : undefined) : pub;
+    return { pub: view, full: pub, answer: q ? answerText(q) : "" };
+  }
+
+  /** A memory question's media has ended: the clip, the host's ⏭, or its image's seconds (read here, so a phone action
+   * just after the deadline is not refused while the timer's STATE is still on its way). */
+  private memoryEnded(id: string): boolean {
+    return this.memoryDone.includes(id) || (this.memoryShow?.questionId === id && this.now() >= this.memoryShow.endsAt);
+  }
+
+  /** An image memory question's ms left: its full seconds until it is first on screen. */
+  private memoryLeftMs(id: string, seconds = DEFAULT_MEMORY_SECONDS): number {
+    return this.memoryShow?.questionId === id ? Math.max(0, this.memoryShow.endsAt - this.now()) : seconds * 1000;
+  }
+
+  /** 記憶題's watching phase: the turn's question is a memory question that is up (its check done) and whose media has
+   * not ended. Nobody answers, uses an ability or buzzes meanwhile. */
+  private memorizing(): boolean {
+    return !!this.currentQuestion()?.pub.memorize && !this.awaitingCheck();
+  }
+
+  /** The turn's question is what the big screen shows now: no reveal, card, door, fortune or check in front of it. */
+  private questionOnScreen(): boolean {
+    return this.game?.phase === "playing" && !this.paused() && !this.awaitingCheck() && !!this.currentQuestion();
+  }
+
+  /** Starts an image memory question's seconds the first time it is on screen, and ends them once they ran out.
+   * Called whenever the room is sent, like syncAnswerClock. An image no longer in play is dropped: if its question
+   * comes round again (an undo, a flee), it shows its full seconds again. */
+  private syncMemory() {
+    // From the bank, not `pub`: past the deadline `pub` already reads as ended, before this writes it down.
+    const pub = this.currentQuestion()?.pub;
+    const bq = pub ? this.question(pub.id) : undefined;
+    const id = pub && bq?.memory && bq.content.kind === "image" ? pub.id : null;
+    // With no question in play (every phone offline after a restart) the image keeps its deadline.
+    if (this.memoryShow && pub && this.memoryShow.questionId !== id) this.memoryShow = null;
+    const q = id === null ? undefined : this.question(id);
+    if (id === null || !q || this.memoryDone.includes(id)) return this.armMemoryTimer();
+    if (!this.memoryShow) {
+      if (!this.questionOnScreen()) return this.armMemoryTimer();
+      this.memoryShow = { questionId: id, endsAt: this.now() + (q.memorySeconds ?? DEFAULT_MEMORY_SECONDS) * 1000 };
+    }
+    if (this.now() >= this.memoryShow.endsAt) this.endMemory(id);
+    else this.armMemoryTimer();
+  }
+
+  /** The memory question's media is over: it stays a plain question from now on, for every team. */
+  private endMemory(id: string) {
+    if (!this.memoryDone.includes(id)) this.memoryDone = [...this.memoryDone, id];
+    if (this.memoryShow?.questionId === id) this.memoryShow = null;
+    this.armMemoryTimer();
+  }
+
+  /** A timer at the image's deadline, whose STATE ends it (syncMemory); none without an image on show. */
+  private armMemoryTimer() {
+    const at = this.memoryShow?.endsAt ?? null;
+    if ((this.memoryTimer?.at ?? null) === at) return;
+    if (this.memoryTimer) clearTimeout(this.memoryTimer.timer);
+    this.memoryTimer = null;
+    if (at === null) return;
+    const timer = setTimeout(() => {
+      if (this.memoryTimer?.timer !== timer) return;
+      this.memoryTimer = null;
+      this.broadcastState();
+    }, Math.max(0, at - this.now()));
+    this.memoryTimer = { at, timer };
+  }
+
+  /** HOST_MEMORY_DONE (⏭ 直接出題): the memory question's media ends now, for a clip the big screen cannot play or an
+   * image cut short. A question already done is a no-op (a double tap, or the clip ended meanwhile). */
+  private handleHostMemoryDone(conn: Conn, questionId: string) {
+    if (!this.requireHost(conn)) return;
+    if (this.memoryDone.includes(questionId)) return;
+    if (!this.memorizing() || this.currentQuestion()?.pub.id !== questionId) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
+    this.endMemory(questionId);
+    // A buzzer phase's clip the host never got to play: its question is up now, so buzzing opens (boss-buzzer.md D5).
+    if (this.game) this.keepUndoOpen(openBuzz(this.game, questionId));
+    this.broadcastState();
   }
 
   /** Check first, question after (owner, 2026-11-09): the turn's team has not finished its persuasion check on its
@@ -1172,7 +1264,7 @@ export class DungeonRoom {
   /** The turn answering now (answer-countdown.md D3), or null: nobody is answering while an answer waits for the host,
    * a die is in its beat, a fill-in's persuasion check is not done (its question is not up yet), or the screen shows something other than the question.
    * "hold": every phone is offline (a restart, a Wi-Fi drop), so the count is kept for whoever comes back. */
-  private answering(): { key: string; questionId: string; video: boolean } | null | "hold" {
+  private answering(): { key: string; questionId: string; video: boolean; memorize: boolean } | null | "hold" {
     const game = this.game;
     if (!this.answerSeconds || game?.phase !== "playing" || this.paused()) return null;
     // An open catch waits for the host's ruling (anti-ai-cheating.md): a 冤枉 then starts a fresh count.
@@ -1183,7 +1275,7 @@ export class DungeonRoom {
     if (!teamId) return "hold";
     const pub = this.currentQuestion()?.pub;
     if (!pub || game.teams.find((t) => t.id === teamId)?.typedAnswer !== undefined) return null;
-    return { key: `${teamId}:${pub.id}`, questionId: pub.id, video: pub.content.kind === "youtube" };
+    return { key: `${teamId}:${pub.id}`, questionId: pub.id, video: pub.content.kind === "youtube", memorize: !!pub.memorize };
   }
 
   /** When 抓包與神諭 may be used (anti-ai-cheating.md): the turn's question is up on screen and not yet answered, as
@@ -1192,7 +1284,7 @@ export class DungeonRoom {
   private antiCheatWindow(typed: boolean): boolean {
     const game = this.game;
     // A natural 20 restored after a restart (lostCrit) is about to judge the turn: not while it waits.
-    if (game?.phase !== "playing" || this.paused() || this.lostCrit || this.pendingLock || this.pendingRoll || game.pendingWrong || this.awaitingCheck() || isBuzzPhase(game)) return false;
+    if (game?.phase !== "playing" || this.paused() || this.lostCrit || this.pendingLock || this.pendingRoll || game.pendingWrong || this.awaitingCheck() || this.memorizing() || isBuzzPhase(game)) return false;
     const teamId = currentTurnTeamId(game);
     if (!teamId || !this.currentQuestion()) return false;
     return typed || game.teams.find((t) => t.id === teamId)?.typedAnswer === undefined;
@@ -1203,7 +1295,8 @@ export class DungeonRoom {
   private syncAnswerClock(): { answerClock?: { left: number | null } } {
     const want = this.answering();
     if (want === "hold") return {};
-    const waiting = !!want?.video && this.clipEnded !== want.questionId;
+    // A memory question waits for its media to end (memory-questions.md); after that its content is text, not a video.
+    const waiting = !!want && (want.memorize || (want.video && this.clipEnded !== want.questionId));
     this.answerClock = nextAnswerClock(this.answerClock, want && !waiting ? want.key : null, this.now(), this.answerSeconds * 1000);
     if (waiting) return { answerClock: { left: null } };
     return this.answerClock ? { answerClock: { left: Math.max(0, this.answerClock.endsAt - this.now()) } } : {};
@@ -1214,8 +1307,11 @@ export class DungeonRoom {
   private handleClipEnded(questionId: string) {
     // With the countdown off too, and again after a replay: `clipPlaying` needs both (immersion.md PR2, D1).
     if (this.reveal || this.shownVideoId() !== questionId) return;
+    // A memory question's clip ended: its question appears and its media goes (memory-questions.md).
+    const memory = this.memorizing();
+    if (memory) this.endMemory(questionId);
     const press = this.media?.questionId === questionId ? this.media.press : -1;
-    if (this.clipEnded === questionId && this.clipStopped?.questionId === questionId && this.clipStopped.press === press) return;
+    if (!memory && this.clipEnded === questionId && this.clipStopped?.questionId === questionId && this.clipStopped.press === press) return;
     this.clipEnded = questionId;
     this.clipStopped = { questionId, press };
     this.broadcastState();
@@ -1261,7 +1357,12 @@ export class DungeonRoom {
     const buzzer = this.game && isBuzzPhase(this.game) ? this.game.teams.find((t) => t.id === this.game!.buzz?.teamId && t.typedAnswer !== undefined) : undefined;
     const typed = buzzer ? { teamId: buzzer.id, text: buzzer.typedAnswer!, ...(buzzer.typedFields ? { fields: buzzer.typedFields } : {}) } : undefined;
     // STATE holds the question back until the check is done; the host still reads it out and may judge at once.
-    const question = this.awaitingCheck() ? { question: { ...q.pub, checkFirst: true as const } } : {};
+    // So does a memory question's watching phase: the host's copy is the whole question, marked.
+    const question = this.awaitingCheck()
+      ? { question: { ...q.full, checkFirst: true as const } }
+      : q.pub.memorize
+        ? { question: { ...q.full, memorize: true as const, ...(q.pub.memoryLeft !== undefined ? { memoryLeft: q.pub.memoryLeft } : {}) } }
+        : {};
     this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer, ...(typed ? { typed } : {}), ...question });
   }
 
@@ -1310,6 +1411,7 @@ export class DungeonRoom {
   }
 
   private snapshot(): ServerMessage {
+    this.syncMemory();
     if (!this.game) {
       // A game that showed a question counts as played: the host page then leaves the intro unchecked (eng D5).
       const replay = this.playedQuestionIds.length > 0;
@@ -1325,7 +1427,8 @@ export class DungeonRoom {
     const rolling = this.pendingRoll?.kind === "check" ? checkKey(this.pendingRoll.questionId, this.pendingRoll.teamId) : null;
     if (rolling && view.checks) view.checks = Object.fromEntries(Object.entries(view.checks).filter(([k]) => k !== rolling));
     // Check first, question after: a first character an earlier team's mage got on this (shared boss) question waits too.
-    const held = this.awaitingCheck() ? this.currentQuestion()?.pub.id : undefined;
+    // And while a memory question's media plays: no hint shows over it (memory-questions.md).
+    const held = this.awaitingCheck() || this.memorizing() ? this.currentQuestion()?.pub.id : undefined;
     if (held !== undefined && view.mageHints?.[held] !== undefined) view.mageHints = Object.fromEntries(Object.entries(view.mageHints).filter(([k]) => k !== held));
     // So does the first character an earlier team's own check earned on it.
     const earlier = held === undefined ? [] : this.game.teams.map((t) => checkKey(held, t.id)).filter((k) => view.checks?.[k]?.hint !== undefined);
@@ -2108,6 +2211,9 @@ export class DungeonRoom {
           break;
         case "HOST_MEDIA":
           this.handleHostMedia(sender, msg.questionId, msg.action);
+          break;
+        case "HOST_MEMORY_DONE":
+          this.handleHostMemoryDone(sender, msg.questionId);
           break;
         case "TEAM_CLAIM":
           this.handleClaim(sender, msg.code);
@@ -2901,6 +3007,9 @@ export class DungeonRoom {
     this.answerSeconds = answerSeconds ?? 0;
     this.answerClock = null;
     this.clipEnded = null;
+    this.memoryDone = [];
+    this.memoryShow = null;
+    this.armMemoryTimer();
     if (intro) {
       this.broadcastState();
       return;
@@ -3254,6 +3363,8 @@ export class DungeonRoom {
     // A dropped 20 left the question up. shortcut: a 20 won after a restart (lost crit) was shown first and still counts as unseen; harmless repeat.
     const check = prev.checks?.[checkKey(questionId, teamId)];
     const unseen = this.awaitingCheck() || (check?.value === 20 && !check.dropped);
+    // A memory question's reveal shows the question with its media again: the payoff, not a replay while answering.
+    const recalled = !!this.question(questionId)?.memory;
     // A correct answer on a music question with fields: the host's verdicts, or every field right (multi-field.md D2).
     const fieldQ = this.question(questionId);
     const marks = correct && fieldQ?.kind === "text" && fieldQ.fields ? (fields ?? fieldQ.fields.map(() => true)) : undefined;
@@ -3371,7 +3482,7 @@ export class DungeonRoom {
         ...(choice ? { choice } : {}),
         ...(sorted ? { sorted } : {}),
         ...(fieldMarks ? { fields: fieldMarks } : {}),
-        ...(unseen ? { asked: { content: justAnswered.pub.content, ...(justAnswered.pub.prompt ? { prompt: justAnswered.pub.prompt } : {}) } } : {}),
+        ...(unseen || recalled ? { asked: { content: justAnswered.full.content, ...(justAnswered.full.prompt ? { prompt: justAnswered.full.prompt } : {}) } } : {}),
         scored: { teamId, points: outcome.reward },
         ...(dish ? { dish: { ...dish, points: outcome.reward, ...chefOf(outcome), monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };
@@ -3421,6 +3532,7 @@ export class DungeonRoom {
     const q = this.question(questionId);
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (this.paused()) return reject("reveal_pending");
+    if (this.memorizing()) return reject("memorizing");
     if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
     if (!isAutoJudged(q) || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
@@ -3505,6 +3617,7 @@ export class DungeonRoom {
     const teamId = this.playingTeam(conn);
     if (!teamId || !this.game) return;
     if (this.paused() || this.pendingRoll || this.pendingLock) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
+    if (this.memorizing()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "memorizing" });
     const open = !isClip(this.question(questionId)?.content);
     try {
       this.game = buzzIn(this.game, teamId, questionId, open);
@@ -3690,6 +3803,8 @@ export class DungeonRoom {
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (this.paused()) return reject("reveal_pending");
     if (this.pendingLock || this.pendingRoll) return reject("answer_pending");
+    // No ability while a memory question's media plays: a mage's hint or a removed option would tell the question.
+    if (this.memorizing()) return reject("memorizing");
     const classId = game.teams.find((t) => t.id === teamId)?.classId;
     const q = this.question(questionId);
     // A fill-in question is a persuasion check first; the warrior's roll comes after it (dnd design R2), and so does the
@@ -4405,6 +4520,7 @@ export class DungeonRoom {
     if (eventId !== undefined && eventId !== this.eventSeq) return reject("stale_event");
     if (this.paused()) return reject("reveal_pending");
     if (this.pendingRoll) return reject("roll_pending");
+    if (this.memorizing()) return reject("memorizing");
     const q = this.question(questionId);
     if (q?.kind !== "text") return reject("not_text_question");
     // The persuasion check comes before the answer (dnd design R6): the phone locks the box, the room enforces it.
@@ -4430,6 +4546,10 @@ export class DungeonRoom {
     // question before it has even been shown.
     if (this.paused()) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
+      return;
+    }
+    if (this.memorizing()) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "memorizing" });
       return;
     }
     // A locked or wrong-locked pick is final until the turn resolves (phone-answering.md premise 2).
