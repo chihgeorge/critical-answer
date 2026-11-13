@@ -4673,7 +4673,7 @@ export class DungeonRoom {
     if (!game || !isBuzzPhase(game) || this.question(questionId)?.kind !== "timing") return {};
     const taps = game.buzz?.questionId === questionId ? (game.buzz.taps ?? []) : [];
     const live = taps.filter((x) => tapEligible(game, x.teamId));
-    const eligible = game.teams.filter((t) => tapEligible(game, t.id) || live.some((x) => x.teamId === t.id)).length;
+    const eligible = game.teams.filter((t) => tapEligible(game, t.id)).length;
     return { tap: { count: live.length, eligible } };
   }
 

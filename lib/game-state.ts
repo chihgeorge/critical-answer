@@ -303,6 +303,11 @@ export interface BuzzState {
   taps?: { teamId: string; ms: number }[];
   /** Goes up on each ⟲ 從頭 of a timing question: a tap for an older round is stale. Absent reads as 0. */
   tapRound?: number;
+  /** Every online boss-room team was 💫 stunned at some point while this round was open, so none sits it out until the
+   * round ends: a team coming back does not take the stunned teams' taps away (timing-tap.md). Cleared by ⟲ and a new
+   * question. Set by latchStun on any open buzz and by a stunned team's tap (tapIn), but only stunLifted reads it, for
+   * timing questions (tapEligible and the phone's tap button); buzzIn clears the stun flags on the press instead. */
+  allStunned?: true;
 }
 
 export interface GameConfig {
@@ -867,16 +872,30 @@ export function openBuzz(game: GameState, questionId: string, timing = false): G
   if (!isBuzzPhase(game) || questionId !== game.boss.currentQuestionId) return game;
   const buzz = currentBuzz(game);
   if (buzz.open) return game;
-  const allStunned = timing && game.teams.some((t) => t.online && t.inBoss) && game.teams.every((t) => !t.online || !t.inBoss || t.stunned);
-  return { ...game, ...(allStunned ? { teams: unstun(game.teams, (t) => !!t.inBoss) } : {}), buzz: { ...buzz, open: true } };
+  const clear = timing && allStunned(game.teams, (t) => t.inBoss);
+  return { ...game, ...(clear ? { teams: unstun(game.teams, (t) => !!t.inBoss) } : {}), buzz: { ...buzz, open: true } };
 }
 
-/** Who may tap on a timing question now (timing-tap.md): online, in the boss room, not 💫 stunned, unless every online
- * boss-room team is (buzzIn's rule: the question came round as itself, so openBuzz did not clear them). The one rule for
- * tapping, the early close, the host's denominator and the phone's stun state. */
+/** There is an online boss-room team and every one is 💫 stunned: then nobody sits the buzz question out (R5). Pure and
+ * BANK-free, so the phone (`inBoss` reads its view's inBossPhase) and the server share it. */
+export function allStunned<T extends { online: boolean; stunned?: true }>(teams: readonly T[], inBoss: (t: T) => boolean): boolean {
+  const room = teams.filter((t) => t.online && inBoss(t));
+  return room.length > 0 && room.every((t) => t.stunned);
+}
+
+/** A stunned team may tap on this timing round: every online boss-room team is stunned now, or was once this round
+ * (`buzz.allStunned`). The one rule for tapEligible and the phone's tap button. */
+export function stunLifted<T extends { online: boolean; stunned?: true }>(buzz: { allStunned?: true } | undefined, teams: readonly T[], inBoss: (t: T) => boolean): boolean {
+  return !!buzz?.allStunned || allStunned(teams, inBoss);
+}
+
+/** Who may tap on a timing question now (timing-tap.md): online, in the boss room, not 💫 stunned, unless stunLifted
+ * (every online boss-room team is or was stunned this round: the question came round as itself, so openBuzz did not
+ * clear them, or the one team that was not dropped). The one rule for tapping, the early close and the host's
+ * denominator; the phone uses stunLifted too. */
 export const tapEligible = (game: GameState, teamId: string): boolean => {
   const t = game.teams.find((x) => x.id === teamId);
-  return !!t && t.online && t.inBoss && (!t.stunned || game.teams.every((x) => !x.online || !x.inBoss || x.stunned));
+  return !!t && t.online && t.inBoss && (!t.stunned || stunLifted(currentBuzz(game), game.teams, (x) => x.inBoss));
 };
 
 /** Why `teamId` may not tap on `questionId` in `round` now, as the room's refusal code; throws InvalidActionError. */
@@ -895,7 +914,10 @@ export function assertCanTap(game: GameState, teamId: string, questionId: string
 export function tapIn(game: GameState, teamId: string, questionId: string, round: number, ms: number): GameState {
   assertCanTap(game, teamId, questionId, round);
   const buzz = currentBuzz(game);
-  return { ...game, buzz: { ...buzz, taps: [...(buzz.taps ?? []), { teamId, ms }] } };
+  // A stunned team's tap is taken only under stunLifted: latch the round, so a team coming back later (even into a
+  // room every team had left, which latchStun skips) never makes the room drop a tap it already acknowledged.
+  const latch = getTeam(game, teamId).stunned ? { allStunned: true as const } : {};
+  return { ...game, buzz: { ...buzz, taps: [...(buzz.taps ?? []), { teamId, ms }], ...latch } };
 }
 
 /** Every team that may tap has, and there is one: the round may close early (timing-tap.md). */
@@ -905,11 +927,12 @@ export function allTapped(game: GameState): boolean {
   return eligible.length > 0 && eligible.every((t) => taps.some((x) => x.teamId === t.id));
 }
 
-/** ⟲ 從頭 on a timing question: the song's clock changed, so its taps go and its round goes up (timing-tap.md). */
+/** ⟲ 從頭 on a timing question: the song's clock changed, so its taps go and its round goes up (timing-tap.md). The
+ * all-stunned latch starts over too: set again at once if every online boss-room team is still stunned. */
 export function restartTaps(game: GameState): GameState {
   if (!isBuzzPhase(game)) return game;
   const buzz = currentBuzz(game);
-  return { ...game, buzz: { ...buzz, taps: undefined, tapRound: (buzz.tapRound ?? 0) + 1 } };
+  return latchStun({ ...game, buzz: { ...buzz, taps: undefined, allStunned: undefined, tapRound: (buzz.tapRound ?? 0) + 1 } });
 }
 
 /** A closed timing round with taps: the closest team becomes the one answering (HOST_JUDGE's judge then scores it as
@@ -934,7 +957,7 @@ export function buzzIn(game: GameState, teamId: string, questionId: string, open
   // 💫 sits out this buzz question (R5), unless every online team in the boss room is stunned: then all flags clear.
   let teams = game.teams;
   if (team.stunned) {
-    if (!game.teams.every((t) => !t.online || !t.inBoss || t.stunned)) throw new InvalidActionError("stunned");
+    if (!allStunned(game.teams, (t) => t.inBoss)) throw new InvalidActionError("stunned");
     teams = unstun(teams, (t) => !!t.inBoss);
   }
   return { ...game, teams, buzz: { ...buzz, teamId }, currentTurnIndex: game.turnOrder.indexOf(teamId) };
@@ -947,7 +970,20 @@ function rotatedBuzz(game: GameState, nextQuestionId: string): BuzzState | undef
   const buzz = currentBuzz(game);
   // A timing question coming round as itself is a new round: a phone's ack for the old one must not grey it (timing-tap.md).
   const round = buzz.taps || buzz.tapRound !== undefined ? { tapRound: (buzz.tapRound ?? 0) + 1 } : {};
-  return { questionId: nextQuestionId, ...(buzz.open ? { open: true as const } : {}), out: [], ...round };
+  // Back open with every online boss-room team still stunned (▶ will not clear them): latched from the start (timing-tap.md).
+  const latched = buzz.open && allStunned(game.teams, (t) => t.inBoss) ? { allStunned: true as const } : {};
+  return { questionId: nextQuestionId, ...(buzz.open ? { open: true as const } : {}), out: [], ...round, ...latched };
+}
+
+/** Sets the round's all-stunned latch (BuzzState.allStunned) when every online boss-room team is stunned on an open
+ * round. Mid-round that starts only with the last unstunned team dropping (setTeamOnline), a ⟲ (restartTaps) or the
+ * question coming round as itself (rotatedBuzz). A stunned team reconnecting into an empty room is not latched: every
+ * team offline is a restore or a venue outage, and the teams coming back must not latch an order nobody chose; a tap
+ * taken in that window latches the round in tapIn instead. */
+function latchStun(game: GameState): GameState {
+  const b = game.buzz;
+  if (!isBuzzPhase(game) || !b?.open || b.allStunned || b.questionId !== game.boss.currentQuestionId || !allStunned(game.teams, (t) => t.inBoss)) return game;
+  return { ...game, buzz: { ...b, allStunned: true } };
 }
 
 /** The categories a buzz winner may pick for the next question: those of the phase's unrevealed questions, in bank
@@ -2128,7 +2164,10 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
   // A buzzing team that drops lets go of the buzz, not judged (boss-buzzer.md): another team may buzz.
   const drops = !online && game.buzz?.teamId === teamId;
   // Its typed answer goes with the buzz (boss-music-buzzer.md M2): it may buzz and type again.
-  const next = { ...game, ...(drops ? { buzz: { ...game.buzz!, teamId: undefined } } : {}), teams: patchTeam(game.teams, teamId, () => ({ online, ...(drops ? { typedAnswer: undefined, typedFields: undefined } : {}) })) };
+  const dropped = { ...game, ...(drops ? { buzz: { ...game.buzz!, teamId: undefined } } : {}), teams: patchTeam(game.teams, teamId, () => ({ online, ...(drops ? { typedAnswer: undefined, typedFields: undefined } : {}) })) };
+  // The last unstunned team dropping leaves every online boss-room team stunned: latched for the round (timing-tap.md).
+  // Only when this drop makes it true: a stunned team blipping after stunned teams reconnected into an empty room does not.
+  const next = online || allStunned(game.teams, (t) => t.inBoss) ? dropped : latchStun(dropped);
   // The last team still in dropped: everyone online is out, so the same question opens to all again (M1).
   const buzz = next.buzz;
   const stuck = !online && isBuzzPhase(next) && buzz?.questionId === next.boss.currentQuestionId && buzz.out.length > 0 && !buzz.teamId && next.teams.every((t) => !t.online || !t.inBoss || buzz.out.includes(t.id) || t.stunned);
