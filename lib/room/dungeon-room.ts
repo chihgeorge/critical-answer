@@ -358,7 +358,9 @@ function withTimeout<T>(p: Promise<T> | undefined, ms: number): Promise<T | unde
   const late = new Promise<undefined>((resolve) => {
     timer = setTimeout(() => resolve(undefined), ms);
   });
-  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+  return Promise.race([p, late]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
 }
 
 export class DungeonRoom {
