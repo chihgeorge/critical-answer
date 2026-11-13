@@ -61,6 +61,7 @@ describe("boss phases", () => {
       expect(err(tq({ target: 169.5 }))).toThrow("question b-tap-1: target 169.5 is before the clip start 170");
       expect(err(tq({ target: 199 }))).toThrow("question b-tap-1: target 199 + 2 s grace is past the clip end 200");
       expect(err(tq({ target: 190.3501 }))).toThrow("question b-tap-1: target has more than 3 decimals");
+      expect(err(tq({ memory: true, prompt: "聽" }))).toThrow("question b-tap-1: a timing question cannot be a memory question");
       expect(err(tq({ target: "190" }))).toThrow(/target is not a number/);
       expect(err(tq({ label: "一二三四五六七八九十一" }))).toThrow("question b-tap-1: label is longer than 10 characters");
       expect(err(tq({ content: { kind: "image", value: UUID_A } }))).toThrow("question b-tap-1: a timing question needs a YouTube or uploaded video/audio clip");

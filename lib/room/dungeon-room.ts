@@ -483,6 +483,9 @@ export class DungeonRoom {
   private tapLatency = 0;
   /** The closed round's table, waiting for judgeNow's reveal (a kill waits for its 4d20 first). */
   private tapReveal: NonNullable<AnswerReveal["timing"]> | null = null;
+  /** A timing question that came round again as itself (the phase's last one) after a skip: its song stopped past
+   * the target, so the host's next ▶ plays it from the start, as ⟲ would. */
+  private tapReplay: string | null = null;
   /** The boss's phase card is up (docs/designs/boss-phases.md): the next phase has started but its first
    * question waits for the host's 下一題. Saved, unlike the reveal: a restart shows the card again. */
   private phaseCard = false;
@@ -2145,7 +2148,8 @@ export class DungeonRoom {
           // A timing question takes only the end of the play it is timing: one from before a ⟲ would close the new round.
           if (this.question(msg.questionId)?.kind === "timing" && msg.seq !== (this.media?.questionId === msg.questionId ? this.media.seq : -1)) break;
           this.handleClipEnded(msg.questionId);
-          if (this.tapRound()?.q.id === msg.questionId) this.settleTaps("clip_end");
+          // Only the screen timing the round may end it: another screen playing ahead would cut taps still on their way.
+          if (this.tapRound()?.q.id === msg.questionId && (!this.tapClock || this.tapClock.screen === sender.id)) this.settleTaps("clip_end");
           break;
         case "SCREEN_TAP_CLOCK":
           if (!this.isScreen(sender)) break;
@@ -2160,6 +2164,11 @@ export class DungeonRoom {
           break;
         case "HOST_TAP_LATENCY":
           if (!this.requireHost(sender)) break;
+          // Taps already in were converted with the old latency: one round never mixes two clocks.
+          if (this.tapRound() && this.game?.buzz?.taps?.length) {
+            this.sendTo(sender, { type: "ERROR", error: "invalid_action", detail: "tap_live" });
+            break;
+          }
           this.tapLatency = Math.min(MAX_TAP_LATENCY_MS, Math.max(0, Math.round(msg.ms)));
           this.broadcastState();
           break;
@@ -3661,6 +3670,9 @@ export class DungeonRoom {
   private handleHostMedia(conn: Conn, questionId: string, action: MediaAction) {
     if (!this.requireHost(conn)) return;
     if (questionId !== this.shownVideoId()) return;
+    // A skipped timing question that came round again starts over on ▶ (its song stopped past the target).
+    if (action === "play" && this.tapReplay === questionId) action = "restart";
+    if (action === "restart") this.tapReplay = null;
     const same = this.media?.questionId === questionId ? this.media : null;
     const seq = same?.seq ?? 0;
     this.media = { questionId, state: action === "pause" ? "paused" : "playing", seq: action === "restart" ? seq + 1 : seq, press: (same?.press ?? 0) + 1 };
@@ -3769,11 +3781,22 @@ export class DungeonRoom {
     if (!this.requireHost(conn) || !this.game) return;
     if (this.paused() || this.pendingRoll || questionId !== this.game.boss.currentQuestionId) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
     try {
-      this.game = skipBuzz(this.game);
+      this.skipBuzzNow();
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
     this.broadcastState();
+  }
+
+  /** skipBuzz. When a timing question comes round again as itself, its song stops and its clock goes: past the
+   * target the round would close again at once, over and over (timing-tap.md). The host's ▶ then replays it. */
+  private skipBuzzNow() {
+    const before = this.game!.boss.currentQuestionId;
+    this.game = skipBuzz(this.game!);
+    if (this.game.boss.currentQuestionId !== before || this.question(before)?.kind !== "timing") return;
+    if (this.media?.questionId === before) this.media = { ...this.media, state: "paused" };
+    this.tapClock = null;
+    this.tapReplay = before;
   }
 
   /** The host's 公布答案 (host-reveal.md): starts the beat of the pending lock. No fallback timer (D5): a lock
@@ -4673,13 +4696,14 @@ export class DungeonRoom {
     if (!r || !game) return;
     if (this.tapTimer) clearTimeout(this.tapTimer);
     this.tapTimer = null;
-    const taps = game.buzz?.taps ?? [];
+    // Only a team still online can take the hit: the judgment needs its turn, and a buzz winner who drops loses the buzz too (adversarial review).
+    const taps = (game.buzz?.taps ?? []).filter((t) => game.teams.some((x) => x.id === t.teamId && x.online));
     const targetMs = Math.round(r.q.target * 1000);
     const { rows, tie } = tapResults(taps, targetMs);
     const eligible = game.teams.filter((t) => tapEligible(game, t.id)).length;
     console.log(JSON.stringify({ event: "timing_round", questionId: r.q.id, reason, taps: taps.length, eligible, winnerErrorMs: rows[0]?.errorMs ?? null, tie, latencyMs: this.tapLatency }));
     if (!rows.length) {
-      this.game = skipBuzz(game);
+      this.skipBuzzNow();
       return this.broadcastState();
     }
     const stunned = game.teams.filter((t) => t.inBoss && t.online && t.stunned).map((t) => t.id);
@@ -4687,7 +4711,16 @@ export class DungeonRoom {
     const winner = rows[0].teamId;
     // One step, no broadcast between: the winner holds the buzz only for the judgment that scores it.
     this.game = tapWinner(game, winner, Object.fromEntries(rows.slice(1).filter((x) => x.bonus).map((x) => [x.teamId, x.bonus])));
-    this.judge(winner, r.q.id, true, "retry");
+    try {
+      this.judge(winner, r.q.id, true, "retry");
+    } catch (err) {
+      // A judgment that cannot run must not leave the winner holding the buzz with nothing revealed: undo and skip.
+      console.error(JSON.stringify({ event: "timing_judge_failed", questionId: r.q.id, error: String(err) }));
+      this.game = game;
+      this.tapReveal = null;
+      this.skipBuzzNow();
+      this.broadcastState();
+    }
   }
 
   private sendInvalid(conn: Conn, err: unknown) {

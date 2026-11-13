@@ -39,6 +39,7 @@ describe("bank editor: timing question fields (timing-tap.md)", () => {
     expect(timingFieldError(q(190, { label: "一二三四五六七八九十一" }))).toBe("label 最多 10 個字");
     expect(timingFieldError(q(1, { content: { kind: "text", value: "x" } }))).toBe("卡點題的內容只能是 YouTube 或上傳的影音");
     expect(timingFieldError(base)).toBeNull();
+    expect(timingFieldError(q(190.3501))).toBe("目標秒數最多 3 位小數");
     // Never a memory question: switching to timing drops the setup, and the box is not offered.
     const mem = { ...base, content: clip, prompt: "聽", memory: true } as BankQuestion;
     expect(blankQuestion(mem, "timing")).not.toHaveProperty("memory");

@@ -17,9 +17,8 @@ export interface TapButtonInput {
   inBoss: boolean;
   online: boolean;
   stunned: boolean;
-  /** view.buzz.open, and the round STATE says (view.buzz.tapRound ?? 0). */
+  /** view.buzz.open. */
   open: boolean;
-  round: number;
   /** The host's last ▶ ⏸ for this question: paused, or none yet. */
   paused: boolean;
   tapLive: boolean;

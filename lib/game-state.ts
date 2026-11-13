@@ -942,7 +942,11 @@ export function buzzIn(game: GameState, teamId: string, questionId: string, open
 /** The buzz once the boss question moved on: none for a new question; the same one (the phase's last unrevealed
  * question came round again) starts over, everyone in, still open if its music was (adversarial review). */
 function rotatedBuzz(game: GameState, nextQuestionId: string): BuzzState | undefined {
-  return nextQuestionId === game.boss.currentQuestionId ? { questionId: nextQuestionId, ...(currentBuzz(game).open ? { open: true as const } : {}), out: [] } : undefined;
+  if (nextQuestionId !== game.boss.currentQuestionId) return undefined;
+  const buzz = currentBuzz(game);
+  // A timing question coming round as itself is a new round: a phone's ack for the old one must not grey it (timing-tap.md).
+  const round = buzz.taps || buzz.tapRound !== undefined ? { tapRound: (buzz.tapRound ?? 0) + 1 } : {};
+  return { questionId: nextQuestionId, ...(buzz.open ? { open: true as const } : {}), out: [], ...round };
 }
 
 /** The categories a buzz winner may pick for the next question: those of the phase's unrevealed questions, in bank

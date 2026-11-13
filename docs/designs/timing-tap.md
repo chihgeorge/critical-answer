@@ -357,6 +357,7 @@ Iteration 1 (score 6/10, FAIL): 13 issues. Dispositions (auto-decided, P1/P5):
 - C1 target leak → applied: `PublicQuestion.timing` carries only `label`; room test asserts STATE has no target/ms.
 - C2 host corrections → applied: 改判答對 unreachable; 改判清單 stays allowed for timing (host fixes a glitched round). Taste (#9).
 - C3 presence change → applied: re-check early close on every online/offline change.
+- /review (adversarial + red team): a tapped team offline at the close is left out of the table (the judgment needs its turn; a buzz winner who drops loses the buzz too); only the timing screen's clip end closes the round; HOST_TAP_LATENCY is refused (`tap_live`) once a team tapped in the open round.
 - C4 two screens + pause → applied: the chosen screen keeps ownership through `null`.
 - Cons1 live 已按 leaks timing → applied: no per-team press info until close; phone tracks its own tap; host sees `tapCount`. Taste (#10).
 - Cons2 picker → applied: winner becomes picker on purpose.

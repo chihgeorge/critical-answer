@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tapButtonState, type TapButtonInput } from "./tap-button-state";
 
-const live: TapButtonInput = { inBoss: true, online: true, stunned: false, open: true, round: 0, paused: false, tapLive: true, synced: true, acked: false, sending: false, teamId: "A" };
+const live: TapButtonInput = { inBoss: true, online: true, stunned: false, open: true, paused: false, tapLive: true, synced: true, acked: false, sending: false, teamId: "A" };
 const rows = [
   { teamId: "A", errorMs: 120, bonus: 0 },
   { teamId: "B", errorMs: -400, bonus: 2 },

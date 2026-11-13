@@ -355,6 +355,8 @@ export default function HostPage() {
                 ? "已經是這個結果了，畫面剛更新"
                 : msg.detail === "timing_needs_screen"
                 ? "卡點題要大螢幕放歌才量得到時間：大螢幕放不出來就按「沒人答對，換下一題」"
+                : msg.detail === "tap_live"
+                ? "這題已經有隊伍按了，揭曉後再改喇叭延遲"
                 : msg.detail === "no_undo"
                 ? "現在不能改判答對：判完後已經有別的動作，或這隊手機斷線了"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,

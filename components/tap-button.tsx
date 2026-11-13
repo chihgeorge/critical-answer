@@ -51,7 +51,8 @@ export function useTapPhone(sendRef: { current: (m: ClientMessage) => void }) {
       sendRef.current({ type: "TEAM_TAP", questionId, round, at });
       timer.current = setTimeout(resend, TAP_RESEND_MS);
     },
-    /** A reconnect: a tap still waiting goes again, the same `at`. */
+    /** A reconnect: a tap still waiting goes again, the same `at`. It counts only within TAP_MAX_LAG_MS of the press
+     * (later it is tap_late and the player taps again); its main use is a lost ack, which comes back as tap_taken. */
     onOpen: resend,
     /** True when the message was the button's. `game` is the last STATE, for a tap_taken's round. */
     onMessage(msg: ServerMessage, game: StateMessage | null): boolean {
@@ -94,7 +95,6 @@ export function TapButton({ game, teamId, tap }: { game: StateMessage; teamId: s
     online: !!me?.online,
     stunned: !!me?.stunned,
     open: !!buzz?.open,
-    round,
     paused: !playing,
     tapLive: game.tapLive === true,
     synced: tap.clock.offset() !== null,

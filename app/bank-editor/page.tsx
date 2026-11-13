@@ -1194,6 +1194,12 @@ function TimingFields({ q, onUpdate, onDelete }: { q: Extract<BankQuestion, { ki
               const t = time.current?.();
               if (t !== null && t !== undefined) setTarget(t);
             }}
+            onKeyDown={(e) => {
+              if (e.repeat || (e.key !== " " && e.key !== "Enter")) return;
+              e.preventDefault();
+              const t = time.current?.();
+              if (t !== null && t !== undefined) setTarget(t);
+            }}
           >
             跟著按
           </button>

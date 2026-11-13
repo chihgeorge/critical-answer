@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import type { AnswerReveal, ClientMessage } from "@/lib/protocol";
 import type { SpectatorView } from "@/lib/game-state";
 import { ANCHOR_HEARTBEAT_MS, ANCHOR_POLL_MS, ANCHOR_SEND_GAP_MS, ANCHOR_SEND_MIN_MS, anchorOf, formatSongTime, formatTapError, nextAnchorWindow } from "@/lib/tap-clock";
-import { LabelChip, Panel, Sprite } from "./pixel";
+import { Panel, Sprite } from "./pixel";
 import { useClockPings } from "./room-clock";
 
 /** Reports the player's anchor (server ms of the video's time 0) while a timing question plays: a sample only when the
@@ -97,8 +97,8 @@ export function TimingReveal({ timing, view }: { timing: NonNullable<AnswerRevea
                 {l.k === 0 && timing.tie && <span className="ml-2 text-[14px]">同秒先到</span>}
               </span>
               {l.bonus > 0 && (
-                <span style={{ color: "var(--ok)" }}>
-                  <LabelChip>+{l.bonus}</LabelChip>
+                <span className="px-chip" style={{ color: "var(--ok)" }}>
+                  +{l.bonus}
                 </span>
               )}
             </li>

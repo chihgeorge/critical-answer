@@ -93,6 +93,7 @@ export function timingFieldError(q: BankQuestion): string | null {
   const c = q.content;
   if (c.kind !== "youtube" && c.kind !== "video" && c.kind !== "audio") return "卡點題的內容只能是 YouTube 或上傳的影音";
   if (!Number.isFinite(q.target) || q.target < (c.start ?? 0)) return "目標要在片段開頭之後";
+  if (Math.abs(q.target * 1000 - Math.round(q.target * 1000)) > 1e-6) return "目標秒數最多 3 位小數";
   if (c.end !== undefined && q.target + TAP_GRACE_S > c.end) return `目標要比片段結尾早 ${TAP_GRACE_S} 秒以上`;
   if (Array.from((q.label ?? "").trim()).length > MAX_TAP_LABEL) return `label 最多 ${MAX_TAP_LABEL} 個字`;
   return null;

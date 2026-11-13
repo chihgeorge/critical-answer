@@ -267,6 +267,89 @@ describe("timing question in the room", () => {
     expect(g.state().reveal).toMatchObject({ timing: { stunned: [IDS[2]] } });
   });
 
+  // Value: protects=a no-tap close on the phase's last unrevealed timing question (it comes round as itself) does not close again and again; fails_when=the song keeps playing past the target after skipBuzz; seam=none
+  it("no tap on the last timing question left: it comes round again paused, the next ▶ replays it from the start, and a tapped team may tap again", () => {
+    const g = tapGame();
+    g.room.game = { ...g.room.game!, revealedQuestionIds: [...g.room.game!.revealedQuestionIds, "t-b", "t-c"] };
+    g.media("play");
+    g.clock();
+    const seq = g.seq();
+    const before = g.io.broadcast.mock.calls.length;
+    g.advance(8000);
+    expect(g.io.broadcast.mock.calls.length - before).toBeLessThan(20);
+    expect(g.qid()).toBe("t-a");
+    expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { open: true } } });
+    expect(g.state().tapLive).toBeUndefined();
+    g.media("play");
+    expect(g.seq()).toBe(seq + 1);
+    // The host skips it after a tap: the same question's new round lets that team tap again.
+    g.clock();
+    g.tapAt(0);
+    send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "t-a" });
+    expect(g.room.game!.buzz).toMatchObject({ questionId: "t-a", tapRound: 2 });
+    expect(g.room.game!.buzz!.taps).toBeUndefined();
+    g.media("play");
+    g.clock();
+    g.tapAt(0);
+    // The replay is a ⟲ too, so the round moved on again; the team's tap counts in it.
+    expect(g.lastOf(g.phones[0], "TAP_OK")).toMatchObject({ round: 3 });
+    expect(g.room.game!.buzz!.taps).toHaveLength(1);
+  });
+
+  // Value: protects=a killing tap keeps its table and the runner-up's bonus through the 4d20 beat; fails_when=tapReveal is dropped before the deferred reveal; seam=none
+  it("a tap that kills the boss keeps the timing table and the bonuses through the kill roll", () => {
+    const g = tapGame();
+    g.room.game = { ...g.room.game!, boss: { ...g.room.game!.boss, hp: 1 } };
+    g.media("play");
+    g.clock();
+    g.advance(4880);
+    g.tapAt(1);
+    g.advance(120);
+    g.tapAt(0);
+    g.advance(30_000, false);
+    expect(g.state().reveal).toMatchObject({ timing: { rows: [{ teamId: IDS[0] }, { teamId: IDS[1], bonus: 3 }] } });
+    expect(g.team(1).reward).toBeGreaterThanOrEqual(3);
+  });
+
+  // Value: protects=a team that taps, then locks its phone, cannot freeze the boss fight by winning while offline; fails_when=settleTaps hands the buzz to an offline team; seam=none
+  it("a tapped team whose phone dropped before the close does not take the hit: the closest online team does", () => {
+    const g = tapGame();
+    g.media("play");
+    g.clock();
+    g.advance(4880);
+    g.tapAt(1); // 0.12 s early
+    g.advance(120);
+    g.tapAt(0); // on the beat
+    g.room.onClose(g.phones[0]);
+    g.advance(3000);
+    expect(g.state().reveal).toMatchObject({ timing: { rows: [{ teamId: IDS[1] }] } });
+    expect(g.state().reveal.timing.rows).toHaveLength(1);
+  });
+
+  it("only the screen timing the round may end it with a clip end; the latency cannot change once a team tapped", () => {
+    const g = tapGame();
+    const other = g.screen("screen-2");
+    g.media("play");
+    g.clock();
+    g.advance(4880);
+    g.tapAt(0);
+    send(g.room, other, { type: "SCREEN_CLIP_ENDED", questionId: g.qid(), seq: g.seq() });
+    expect(g.state().reveal).toBeFalsy();
+    send(g.room, g.host, { type: "HOST_TAP_LATENCY", ms: 200 });
+    expect(g.lastOf(g.host, "ERROR")).toMatchObject({ detail: "tap_live" });
+    send(g.room, g.tv, { type: "SCREEN_CLIP_ENDED", questionId: g.qid(), seq: g.seq() });
+    expect(g.state().reveal).toMatchObject({ timing: { rows: [{ teamId: IDS[0] }] } });
+  });
+
+  it("a tap whose song time falls before the clip start (a seek or ⟲ in flight) is not_playing", () => {
+    const g = tapGame();
+    g.media("play");
+    g.clock(T0 - 5_000);
+    g.tapAt(0);
+    expect(g.lastOf(g.phones[0], "ERROR")).toMatchObject({ detail: "not_playing" });
+    expect(g.room.game!.buzz!.taps).toBeUndefined();
+  });
+
   it("logs one timing_round line per closed round and keeps the latency across a restart", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const g = tapGame();
