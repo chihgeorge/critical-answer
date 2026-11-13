@@ -8,6 +8,8 @@ import { useClockPings, useRoomClock } from "./room-clock";
 
 /** Resend an unanswered tap once after this long (a dropped socket, a rate-limited message). */
 const TAP_RESEND_MS = 2000;
+/** A click this soon after a pointerdown or key press is the same press. */
+const CLICK_AFTER_PRESS_MS = 1500;
 const TONE: Record<TapTone, string> = { grey: "#5a4a60", red: "#ff5050", gold: "var(--warn)", ok: "var(--ok)" };
 
 type Pending = { questionId: string; round: number; at: number; resent: boolean };
@@ -18,6 +20,7 @@ export function useTapPhone(sendRef: { current: (m: ClientMessage) => void }) {
   const [ack, setAck] = useState<{ questionId: string; round: number } | null>(null);
   const [refused, setRefused] = useState<"not_playing" | "tap_late" | undefined>(undefined);
   const pending = useRef<Pending | null>(null);
+  const lastQuestion = useRef<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -60,6 +63,14 @@ export function useTapPhone(sendRef: { current: (m: ClientMessage) => void }) {
         clock.onPong(msg.t, msg.server);
         return true;
       }
+      // Another question, or the lobby: an old ack or refusal must not grey a question that comes round again at round 0.
+      if (msg.type === "STATE") {
+        const q = msg.reveal?.questionId ?? msg.view.buzz?.questionId;
+        setAck((a) => (a && a.questionId !== q ? null : a));
+        if (q !== lastQuestion.current) setRefused(undefined);
+        lastQuestion.current = q;
+        return false;
+      }
       if (msg.type === "TAP_OK") {
         settle();
         setAck({ questionId: msg.questionId, round: msg.round });
@@ -82,6 +93,7 @@ export type TapPhone = ReturnType<typeof useTapPhone>;
 /** The button while a timing question is up, or its result in the reveal. */
 export function TapButton({ game, teamId, tap }: { game: StateMessage; teamId: string; tap: TapPhone }) {
   const buzz = game.view.buzz;
+  const pressedAt = useRef(-Infinity);
   const reveal = game.reveal?.timing ? game.reveal : null;
   const questionId = reveal?.questionId ?? buzz?.questionId ?? "";
   const label = reveal ? reveal.timing!.label : game.question?.timing?.label;
@@ -107,6 +119,7 @@ export function TapButton({ game, teamId, tap }: { game: StateMessage; teamId: s
   });
   if (s.hidden) return null;
   const press = (timeStamp: number) => {
+    pressedAt.current = timeStamp;
     const offset = tap.clock.offset();
     if (!s.enabled || offset === null) return;
     tap.press(questionId, round, timeStamp + offset);
@@ -126,7 +139,11 @@ export function TapButton({ game, teamId, tap }: { game: StateMessage; teamId: s
           press(e.timeStamp);
         }}
         // A screen reader's activation is a click with no pointerdown before it; a press already sent ignores it.
-        onClick={(e) => press(e.timeStamp)}
+        onClick={(e) => {
+          // The click that ends a touch: its pointerdown already pressed (a refused tap leaves nothing pending to stop it).
+          if (e.timeStamp - pressedAt.current < CLICK_AFTER_PRESS_MS) return;
+          press(e.timeStamp);
+        }}
         className="flex aspect-square w-[min(72vw,280px)] touch-manipulation select-none flex-col items-center justify-center rounded-full px-6 text-center text-[30px] focus-visible:outline focus-visible:outline-4 focus-visible:outline-[var(--warn)]"
         style={{ background: TONE[s.tone], color: s.enabled ? "#fff" : s.tone === "gold" || s.tone === "ok" ? "var(--ink)" : "#ccc", boxShadow: "0 0 0 5px var(--k), inset 0 -12px 0 #0004", textShadow: s.enabled ? "3px 3px 0 var(--k)" : undefined }}
       >

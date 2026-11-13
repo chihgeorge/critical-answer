@@ -1239,7 +1239,7 @@ export default function PlayPage() {
         {/* A timing question (timing-tap.md): one tap per team; the reveal shows our own error on the same button. */}
         {game && teamId && ((buzz && !held && game.question?.timing) || revealed?.timing) && <TapButton game={game} teamId={teamId} tap={tap} />}
 
-        {game && buzz && !held && buzz.teamId === teamId && game.question && (
+        {game && buzz && !held && buzz.teamId === teamId && game.question && !game.question.timing && (
           <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint buzzed />
         )}
 

@@ -655,7 +655,7 @@ export default function HostPage() {
       {/* The answered question's video is up again on the big screen (D17). */}
       {/* …or an Instagram explanation, which only someone at the screen can start (instagram-explanations.md). */}
       {/* …or an uploaded video/audio explanation, in the question video's place (uploaded-media.md D4). */}
-      {game.reveal?.timing && <TimingCalibration rows={game.reveal.timing.rows} latency={game.tapLatency ?? 0} disabled={!ready} send={send} />}
+      {game.reveal?.timing && <TimingCalibration rows={game.reveal.timing.rows} measured={game.reveal.timing.latencyMs ?? 0} latency={game.tapLatency ?? 0} disabled={!ready} send={send} />}
       {(game.reveal?.video || game.reveal?.explanation?.kind === "instagram" || game.reveal?.explanation?.kind === "file") && (
         <Panel tone="lav" className="px-3 pb-2 pt-1">
           <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} instagram={game.reveal.explanation?.kind === "instagram"} />
@@ -1512,10 +1512,11 @@ export default function HostPage() {
 }
 
 /** After a timing question's reveal (timing-tap.md 8): the median error and a button that folds it into the latency. */
-function TimingCalibration({ rows, latency, disabled, send }: { rows: { errorMs: number }[]; latency: number; disabled: boolean; send: (m: ClientMessage) => void }) {
+function TimingCalibration({ rows, measured, latency, disabled, send }: { rows: { errorMs: number }[]; measured: number; latency: number; disabled: boolean; send: (m: ClientMessage) => void }) {
   const median = medianError(rows.map((r) => r.errorMs));
   if (median === null) return null;
-  const next = suggestedLatency(latency, median);
+  // From the latency the errors were measured with, so a second press does not add the correction again.
+  const next = suggestedLatency(measured, median);
   return (
     <Panel tone="lav" className="flex flex-col gap-1 px-3 py-2 text-[15px]" data-testid="host-timing-median">
       <div>

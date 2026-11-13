@@ -359,6 +359,24 @@ describe("timing question in the room", () => {
     expect(g.state().reveal.timing.rows).toHaveLength(1);
   });
 
+  // Value: protects=a stunned team let in only because every other team dropped cannot win once an unstunned team is back; fails_when=settleTaps filters by online only; seam=none
+  it("a stunned team's tap from the all-stunned window does not count once an unstunned team is back", () => {
+    const g = tapGame();
+    g.media("play");
+    g.clock();
+    g.room.game = { ...g.room.game!, teams: g.room.game!.teams.map((t) => (t.id === IDS[2] ? t : { ...t, stunned: true as const })) };
+    g.room.onClose(g.phones[2]);
+    g.advance(4900);
+    g.tapAt(0); // on the beat, allowed: every online team is stunned
+    expect(g.room.game!.buzz!.taps).toHaveLength(1);
+    const back = makeConn("phone-2b");
+    g.room.onConnect(back);
+    send(g.room, back, { type: "JOIN", teamId: IDS[2], teamKey: KEYS[2], teamName: "隊2" });
+    g.tapAt(2, Date.now(), undefined, back); // 0.1 s late
+    g.advance(3000);
+    expect(g.state().reveal.timing.rows.map((r: { teamId: string }) => r.teamId)).toEqual([IDS[2]]);
+  });
+
   // Value: protects=a judgment that throws never leaves the winner holding the buzz with bonuses paid and nothing revealed; fails_when=the catch stops restoring the game or stops skipping; seam=none
   it("a judgment that fails at the close undoes the round and moves on unrevealed", () => {
     const g = tapGame();
@@ -416,6 +434,8 @@ describe("timing question in the room", () => {
     const lines = log.mock.calls.map((c) => String(c[0])).filter((l) => l.includes("timing_round"));
     expect(lines).toHaveLength(1);
     expect(JSON.parse(lines[0])).toMatchObject({ event: "timing_round", questionId: "t-a", taps: 1, eligible: 3, latencyMs: 1000 });
+    // The reveal carries the latency its errors were measured with, so the host's suggestion does not stack on a second press.
+    expect(g.state().reveal.timing).toMatchObject({ latencyMs: 1000 });
     const again = new DungeonRoom({ broadcast: vi.fn(), storage: g.storage } as unknown as RoomIO, () => 0, { now: () => Date.now() });
     await again.restore();
     expect((again as unknown as { tapLatency: number }).tapLatency).toBe(1000);

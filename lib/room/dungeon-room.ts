@@ -4672,7 +4672,7 @@ export class DungeonRoom {
     const game = this.game;
     if (!game || !isBuzzPhase(game) || this.question(questionId)?.kind !== "timing") return {};
     const taps = game.buzz?.questionId === questionId ? (game.buzz.taps ?? []) : [];
-    const live = taps.filter((x) => game.teams.some((t) => t.id === x.teamId && t.online));
+    const live = taps.filter((x) => tapEligible(game, x.teamId));
     const eligible = game.teams.filter((t) => tapEligible(game, t.id) || live.some((x) => x.teamId === t.id)).length;
     return { tap: { count: live.length, eligible } };
   }
@@ -4713,8 +4713,9 @@ export class DungeonRoom {
     if (!r || !game) return;
     if (this.tapTimer) clearTimeout(this.tapTimer);
     this.tapTimer = null;
-    // Only a team still online can take the hit: the judgment needs its turn, and a buzz winner who drops loses the buzz too (adversarial review).
-    const taps = (game.buzz?.taps ?? []).filter((t) => game.teams.some((x) => x.id === t.teamId && x.online));
+    // Only a team that may still tap can take the hit: online (the judgment needs its turn, and a buzz winner who drops
+    // loses the buzz too), and a stunned team only while every boss-room team is (adversarial review).
+    const taps = (game.buzz?.taps ?? []).filter((t) => tapEligible(game, t.teamId));
     const targetMs = Math.round(r.q.target * 1000);
     const { rows, tie } = tapResults(taps, targetMs);
     const eligible = game.teams.filter((t) => tapEligible(game, t.id)).length;
@@ -4725,7 +4726,7 @@ export class DungeonRoom {
     }
     // Sat out: stunned and not let in by the all-stunned rule (tapEligible), so the table says 暈眩, not 沒按.
     const stunned = game.teams.filter((t) => t.inBoss && t.online && t.stunned && !tapEligible(game, t.id)).map((t) => t.id);
-    this.tapReveal = { targetMs, ...(r.q.label ? { label: r.q.label } : {}), rows, ...(tie ? { tie: true as const } : {}), ...(stunned.length ? { stunned } : {}) };
+    this.tapReveal = { targetMs, ...(r.q.label ? { label: r.q.label } : {}), ...(this.tapLatency ? { latencyMs: this.tapLatency } : {}), rows, ...(tie ? { tie: true as const } : {}), ...(stunned.length ? { stunned } : {}) };
     const winner = rows[0].teamId;
     // One step, no broadcast between: the winner holds the buzz only for the judgment that scores it.
     this.game = tapWinner(game, winner, Object.fromEntries(rows.slice(1).filter((x) => x.bonus).map((x) => [x.teamId, x.bonus])));

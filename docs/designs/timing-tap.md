@@ -1,4 +1,4 @@
-<!-- /autoplan restore point: "/Users/georgechih/Repository/critical-answer/.claude/worktrees/agent-ac6ee36390880bc8d/.gstack/tmp/autoplan/worktree-agent-ac6ee36390880bc8d-autoplan-restore-20261112-211006.md" -->
+<!-- /autoplan restore point: "(local-only) .gstack/tmp/autoplan/worktree-agent-ac6ee36390880bc8d-autoplan-restore-20261112-211006.md" -->
 ## Implementation plan
 # 卡點題（timing tap, boss room only）
 

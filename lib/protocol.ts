@@ -123,7 +123,8 @@ export type AnswerReveal = {
   /** A timing question's round (docs/designs/timing-tap.md): the target (song ms), every tap closest first (`errorMs`
    * negative is early; `bonus` the small reward, 0 for the winner, `rows[0]`), whether the winner tied the runner-up
    * (the earlier tap won), and the boss-room teams that sat it out stunned. */
-  timing?: { targetMs: number; label?: string; rows: { teamId: string; errorMs: number; bonus: number }[]; tie?: true; stunned?: string[] };
+  /** `latencyMs`: the speaker latency the errors were measured with (absent when 0), for the host's calibration. */
+  timing?: { targetMs: number; label?: string; latencyMs?: number; rows: { teamId: string; errorMs: number; bonus: number }[]; tie?: true; stunned?: string[] };
   /** The question itself, only when it was never shown: its fill-in resolved before the persuasion check was done (a
    * natural 20, or the host judging before the roll). Shown above 正解; a video stays in `video`. */
   asked?: Pick<PublicQuestion, "content" | "prompt">;
