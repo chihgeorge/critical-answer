@@ -16,8 +16,8 @@ function memoryStorage(seed?: unknown): BankStorage {
 
 const validBank: Bank = {
   pools: { 1: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "1+1?" }, answer: "2" }], 2: [], 3: [], 4: [], 5: [] },
-  rooms: [{ monster: "slime-soft", difficulty: 1, reward: 10 }],
-  boss: { monster: "dragon", hitReward: 10, phases: [{ name: "", rule: "", maxHp: 10, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "2+2?" }, answer: "4" }] }] },
+  rooms: [{ monster: "slime-soft", difficulty: 1, reward: 10 }], // pregate-literal: BANK_FORMAT=10 a room reward, not the format
+  boss: { monster: "dragon", hitReward: 10, phases: [{ name: "", rule: "", maxHp: 10, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "2+2?" }, answer: "4" }] }] }, // pregate-literal: BANK_FORMAT=10 hit reward and HP, not the format
 };
 
 describe("BankStore.getVersionedBank", () => {
