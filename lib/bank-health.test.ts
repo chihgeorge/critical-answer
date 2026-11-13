@@ -102,7 +102,7 @@ describe("checkMediaBatch", () => {
 
   it("finds a missing file, an HEVC video, and whether the bucket is public", async () => {
     const hevc = new TextEncoder().encode("....ftypisom....moov....stsd....hvc1....");
-    const d = deps((url) => (url.startsWith(BASE) ? 403 : 200), { [KEY]: null, [KEY2]: hevc });
+    const d = deps((url) => (url.startsWith(`${BASE}/`) ? 403 : 200), { [KEY]: null, [KEY2]: hevc });
     const out = await checkMediaBatch({ youtube: [], files: [{ key: KEY, video: true }, { key: KEY2, video: true }], publicBase: BASE }, d);
     expect(out.files).toEqual({ [KEY]: "missing", [KEY2]: "hevc" });
     expect(out.publicOk).toBe(false);
