@@ -262,10 +262,11 @@ export function YoutubePlayer({
     }
   }, [ready, want.state, want.seq, want.press, start]);
 
-  // The reveal's replay: one seek per key, on the ready player. Clearing `ended` lets a clip that already stopped at its
-  // end play again (and stop there again by the poll below).
+  // The reveal's replay: one seek per key and player build (a retry starts the clip over, so it seeks again), on the
+  // ready player. Clearing `ended` lets a clip that already stopped at its end play again (and stop there again by the
+  // poll below). It plays only while the host's command is ▶: a ⏸ pressed while the player was loading holds.
   const replayed = useRef<string | null>(null);
-  const replayKey = replay?.key;
+  const replayKey = replay ? `${replay.key}#${attempt}` : undefined;
   const replayFrom = replay?.fromS;
   useEffect(() => {
     const p = player.current;
@@ -273,8 +274,8 @@ export function YoutubePlayer({
     replayed.current = replayKey;
     ended.current = false;
     p.seekTo(replayFrom, true);
-    p.playVideo();
-  }, [ready, replayKey, replayFrom]);
+    if (want.state === "playing") p.playVideo();
+  }, [ready, replayKey, replayFrom, want.state]);
 
   // A timing question's screen reads the video's own time while it plays; paused, buffering or broken reads null.
   useEffect(() => {

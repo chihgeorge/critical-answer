@@ -102,17 +102,19 @@ export function FilePlayer({
       }
     }
   }, [want.state, want.seq, want.press, url, attempt]);
-  // The reveal's replay: one seek per key. Seeking back clears the element's own `ended`.
+  // The reveal's replay: one seek per key and mounted element (a retry plays from 0, so it seeks again). Seeking back
+  // clears the element's own `ended`; before metadata loads it sets where playback starts. It plays only while the
+  // host's command is ▶, as YoutubePlayer's.
   const replayed = useRef<string | null>(null);
-  const replayKey = replay?.key;
+  const replayKey = replay ? `${replay.key}#${url}#${attempt}` : undefined;
   const replayFrom = replay?.fromS;
   useEffect(() => {
     const v = el.current;
     if (!v || replayKey === undefined || replayFrom === undefined || !shouldSeek(replayed.current, replayKey)) return;
     replayed.current = replayKey;
     v.currentTime = replayFrom;
-    v.play().catch(() => {});
-  }, [replayKey, replayFrom, url, attempt]);
+    if (want.state === "playing") v.play().catch(() => {});
+  }, [replayKey, replayFrom, want.state]);
   // A timing question's screen reads the file's own time while it plays; paused, buffering or broken reads null.
   useEffect(() => {
     if (!timeRef) return;
