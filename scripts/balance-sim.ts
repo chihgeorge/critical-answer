@@ -9,7 +9,8 @@
 //   unknown fill-ins. Unknown multipleChoice guesses among the options left; an unknown fill-in flees.
 // - Players know whether they know: the thief sneaks only when it knows, the mage and the warrior act only when it does
 //   not, the cleric prays on any wrong answer. In the buzzer phase each team knows a song with KB; a random knower wins.
-//   A 💫 stunned team sits a buzz question out (lib's rule).
+//   A 💫 stunned team sits a buzz question out (lib's rule). GUESSB: a team that does not know still buzzes with this
+//   chance, right with GUESSOK; a wrong buzz is out for that song.
 // - Sort: known with KNOW×SORTK; unknown guesses one of the 24 orders. Each wrong lock (✓/✕ per cell) teaches the
 //   order with SORTFIX; the mage's first item cracks SORTHINT of the unknown ones.
 // - Timing tap (卡點題): TAP of the buzzer questions. Every team that may tap taps at target + N(0, TAPSD ms); lib's
@@ -17,7 +18,7 @@
 // - A potion a team holds (a fortune's) goes on its next check, or the crit die of an answer it knows.
 // Not modelled: memory questions (they only hide the question while the media plays; no score or ability rule), the
 // host handing out potions, 抓包與神諭 (off unless the host opens it), multi-field songs, late teams, offline phones.
-// Env knobs: TEXT TEXTK HINT SORT SORTK SORTHINT SORTFIX TAP TAPSD EVENTS=0 THRESH HP1 HP2 HIT KB MAGE_MIN WAR_MIN
+// Env knobs: TEXT TEXTK HINT SORT SORTK SORTHINT SORTFIX TAP TAPSD GUESSB GUESSOK EVENTS=0 THRESH HP1 HP2 HIT KB MAGE_MIN WAR_MIN
 // THIEF_MIN (see the defaults below). The event bank (2026-11-13): TEXT=0.1 SORT=0.25 HP2=20 TAP=0.03.
 import { registerHooks } from "node:module";
 import type * as GT from "../lib/game-state";
@@ -37,6 +38,7 @@ const d20 = () => 1 + Math.floor(R() * 20);
 const KNOW = [0.75, 0.6, 0.45, 0.35, 0.25];
 const TEXT = env("TEXT", 0.5), TEXTK = env("TEXTK", 0.7), HINT = env("HINT", 0.3), EVENTS = process.env.EVENTS !== "0";
 const SORT = env("SORT", 0.2), SORTK = env("SORTK", 0.6), SORTHINT = env("SORTHINT", 0.4), SORTFIX = env("SORTFIX", 0.4);
+const GUESSB = env("GUESSB", 0), GUESSOK = env("GUESSOK", 0.25);
 const TAP = env("TAP", 0.1), TAPSD = env("TAPSD", 300), TAPAT = 30_000;
 const gauss = () => Math.sqrt(-2 * Math.log(1 - R())) * Math.cos(2 * Math.PI * R());
 const THRESH = env("THRESH", 15), HP1 = env("HP1", 5), HP2 = env("HP2", 3), HIT = env("HIT", 10), KB = env("KB", 0.5);
@@ -72,10 +74,16 @@ function play(classes: C[], maxTurns = 600) {
         continue;
       }
       const stunOk = G.allStunned(g.teams, (x) => x.inBoss);
-      const knowers = g.teams.filter((t) => (!t.stunned || stunOk) && R() < KB);
-      if (knowers.length === 0) { g = G.skipBuzz(g); continue; }
-      const w = knowers[Math.floor(R() * knowers.length)].id;
-      g = G.answerQuestion(G.buzzIn(g, w, bq, true), w, bq, true, "retry", R).game;
+      // In a random buzz order: a team that knows the song buzzes; one that does not still buzzes with GUESSB and is
+      // right with GUESSOK. A wrong buzz is out (lib) and the next team buzzes; nobody right: 沒人答對，換下一題.
+      const buzzers = shuffle(g.teams.filter((t) => !t.stunned || stunOk)).map((t) => ({ id: t.id, know: R() < KB })).filter((x) => x.know || R() < GUESSB);
+      let hit = false;
+      for (const x of buzzers) {
+        hit = x.know || R() < GUESSOK;
+        g = G.answerQuestion(G.buzzIn(g, x.id, bq, true), x.id, bq, hit, "retry", R).game;
+        if (hit) break;
+      }
+      if (!hit) g = G.skipBuzz(g);
       continue;
     }
     const id = G.currentTurnTeamId(g)!;
