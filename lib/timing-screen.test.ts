@@ -54,4 +54,9 @@ describe("TimingTimeline", () => {
     // A tap past the 2 s zoom is pinned to the left edge with its name.
     expect(html).toContain("◀ 紫電 早 3.40");
   });
+
+  it("pins a tap past the right edge there too, with its name", () => {
+    const late = { ...timing, rows: [...timing.rows, { teamId: "t3", errorMs: 2300, bonus: 0 }] };
+    expect(renderToStaticMarkup(createElement(TimingTimeline, { timing: late, view, clipStartMs: 170_000 }))).toContain("黃金鼠 晚 2.30 ▶");
+  });
 });

@@ -455,9 +455,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       />
     );
   const lone = !!reveal && reveal.explanation?.kind !== "text" && !tapReveal;
-  const mediaExplanation = reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" && reveal.explanation.kind !== "file" ? reveal.explanation : null;
+  // A timing reveal fills the panel to the nameplate (timing-tap-timeline.md): only a file explanation, which takes the
+  // video's place, shows on the big screen; the phones still show a text, image or YouTube one.
+  const mediaExplanation = !tapReveal && reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" && reveal.explanation.kind !== "file" ? reveal.explanation : null;
   // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
-  const instagram = reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
+  const instagram = !tapReveal && reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
 
   return (
     <>
@@ -483,7 +485,6 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
 
       {/* 上菜 puts the panel away (cooking R4): the stage is the monster's, then the dish's. */}
       {/* The dish stands where the monster stood; its card takes the panel's place. */}
-      {/* A timing question's reveal covers the music card (timing-tap.md 9); the song plays on underneath. */}
       {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={eaterIdx} />}
       {!served && (
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
@@ -564,7 +565,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               </div>
             )}
             {/* With the video up, its text explanation stands beside it instead. */}
-            {!video && reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
+            {!video && !tapReveal && reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
             {mediaExplanation && (
               // A video explanation is at least 356×200 (YouTube's minimum, D11). The dish waits for 上菜 (cooking R4).
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
@@ -597,7 +598,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         {tileVideo && <div className="mt-3 flex flex-col items-center gap-2">{beside}</div>}
         {video && !tileVideo && (
           // A reveal with nothing beside its video centres it (D18); the player stays the first child, so it is kept.
-          <div key={video.id} className={`mt-3 flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
+          <div key={video.id} className={`${tapReveal ? "mt-1" : "mt-3"} flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
             {/* One size for the question and its reveal: width/height rebuild the player (D17). A timing reveal shows it
                 at 0.75 by a transform instead, to leave room for the timeline (timing-tap-timeline.md). */}
             <div className="shrink-0" style={tapReveal ? SHRUNK_PLAYER : undefined}>
@@ -617,13 +618,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           </div>
         )}
         {tapReveal && !(video && !tileVideo) && (
-          <div className="mt-3 flex">
+          <div className="mt-1 flex">
             <TimingResult timing={tapReveal} view={view} />
           </div>
         )}
         {tapReveal && <TimingTimeline timing={tapReveal} view={view} clipStartMs={clipStartS * 1000} timeRef={tapClip ? revealTime : undefined} />}
-        {/* The results take the place beside the video, so a text explanation goes under the timeline. */}
-        {tapReveal && video && reveal?.explanation?.kind === "text" && <div className="mt-1 text-[16px] leading-tight">{reveal.explanation.value}</div>}
         {!reveal && question && question.content.kind === "image" && !wall && !sortWall && (
           // Inline content inside the Panel, not a second independently-positioned absolute
           // element — the Panel's height already grows with wrapped question text, so a

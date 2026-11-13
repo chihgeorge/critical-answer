@@ -123,7 +123,7 @@ const TIMELINE_W = 660;
 const AXIS_INSET = 12;
 const AXIS_W = TIMELINE_W - 2 * AXIS_INSET;
 /** Label rows: two above the axis (nearest first), two below; the first row below starts with the target's label. */
-const LABEL_TOPS = [17, 0, 66, 84];
+const LABEL_TOPS = [17, 0, 64, 81];
 /** A 14px label's width: Cubic 11 draws CJK full width and ASCII half. */
 const labelWidth = (text: string) => [...text].reduce((w, c) => w + (c.charCodeAt(0) > 0xff ? 14 : 7), 10);
 
@@ -165,25 +165,28 @@ export function TimingTimeline({ timing, view, clipStartMs, timeRef }: { timing:
   const targetText = `${timing.label ? `${timing.label} ` : ""}${formatSongTime(timing.targetMs)}`;
   const tx = x(timing.targetMs);
   const tw = labelWidth(targetText);
+  // Kept inside the timeline like the marks' labels: a target under a second into the clip sits at the left edge.
+  const tl = Math.min(TIMELINE_W - tw / 2, Math.max(tw / 2, tx));
   // Closest first (timing.rows' order), so the winner's label always finds room.
   const marks = timing.rows.map((r, k) => {
     const at = timing.targetMs + r.errorMs;
-    const pinned = at < win[0];
+    const early = at < win[0];
+    const late = at > win[1];
     const name = view.teams.find((t) => t.id === r.teamId)?.name ?? "";
-    const text = pinned ? `◀ ${name} ${shortTapError(r.errorMs)}` : shortTapError(r.errorMs);
+    const text = early ? `◀ ${name} ${shortTapError(r.errorMs)}` : late ? `${name} ${shortTapError(r.errorMs)} ▶` : shortTapError(r.errorMs);
     const w = labelWidth(text);
     const cx = x(at);
-    const centre = pinned ? cx + w / 2 - 2 : Math.min(TIMELINE_W - w / 2, Math.max(w / 2, cx));
+    const centre = early ? cx + w / 2 - 2 : late ? cx - w / 2 + 2 : Math.min(TIMELINE_W - w / 2, Math.max(w / 2, cx));
     return { r, k, at, cx, text, w, centre };
   });
   const rows = labelRows(
     marks.map((m) => [m.centre - m.w / 2, m.centre + m.w / 2]),
-    [[], [], [[tx - tw / 2, tx + tw / 2]], []],
+    [[], [], [[tl - tw / 2, tl + tw / 2]], []],
   );
   const ticks: number[] = [];
   for (let t = Math.ceil(win[0] / 500) * 500; t <= win[1]; t += 500) ticks.push(t);
   return (
-    <div data-testid="timing-timeline" className="relative mx-auto mt-2 text-left" style={{ width: TIMELINE_W, height: 100 }}>
+    <div data-testid="timing-timeline" className="relative mx-auto mt-1 text-left" style={{ width: TIMELINE_W, height: 98 }}>
       <div className="absolute" style={{ left: AXIS_INSET, right: AXIS_INSET, top: 50, height: 8, background: "var(--lav2)", boxShadow: "0 0 0 3px var(--k)" }}>
         {head !== null && <div className="absolute inset-y-0 left-0" style={{ width: x(head) - AXIS_INSET, background: "#a99ad8" }} />}
       </div>
@@ -191,7 +194,7 @@ export function TimingTimeline({ timing, view, clipStartMs, timeRef }: { timing:
         <div key={t} aria-hidden className="absolute" style={{ left: x(t) - 1, top: 47, width: 2, height: 14, background: "var(--k)" }} />
       ))}
       <div className="absolute" style={{ left: tx - 2, top: 30, width: 4, height: 34, background: "var(--danger)", boxShadow: "0 0 0 2px var(--k)" }} />
-      <div className="absolute whitespace-nowrap px-[5px] text-[14px] leading-[15px]" style={{ left: tx, top: 66, transform: "translateX(-50%)", background: "var(--danger)", color: "#fff", boxShadow: "0 0 0 2px var(--k)", textShadow: "1px 1px 0 var(--k)" }}>
+      <div className="absolute whitespace-nowrap px-[5px] text-[14px] leading-[15px]" style={{ left: tl, top: 64, transform: "translateX(-50%)", background: "var(--danger)", color: "#fff", boxShadow: "0 0 0 2px var(--k)", textShadow: "1px 1px 0 var(--k)" }}>
         {targetText}
       </div>
       {marks.map((m, i) => {
