@@ -14,8 +14,9 @@
 //   order with SORTFIX; the mage's first item cracks SORTHINT of the unknown ones.
 // - Timing tap (卡點題): TAP of the buzzer questions. Every team that may tap taps at target + N(0, TAPSD ms); lib's
 //   tap-clock ranks them, the closest hits, the others get its small bonus.
-// Not modelled: memory questions (they only hide the question while the media plays; no score or ability rule), potions
-// (the host hands them out), 抓包與神諭 (off unless the host opens it), multi-field songs, late teams, offline phones.
+// - A potion a team holds (a fortune's) goes on its next check, or the crit die of an answer it knows.
+// Not modelled: memory questions (they only hide the question while the media plays; no score or ability rule), the
+// host handing out potions, 抓包與神諭 (off unless the host opens it), multi-field songs, late teams, offline phones.
 // Env knobs: TEXT TEXTK HINT SORT SORTK SORTHINT SORTFIX TAP TAPSD EVENTS=0 THRESH HP1 HP2 HIT KB MAGE_MIN WAR_MIN
 // THIEF_MIN (see the defaults below). The event bank (2026-11-13): TEXT=0.1 SORT=0.25 HP2=20 TAP=0.03.
 import { registerHooks } from "node:module";
@@ -98,8 +99,10 @@ function play(classes: C[], maxTurns = 600) {
       g = r.game;
       if (ok && EVENTS && !afterMonster && G.eventEligible(g, r.outcome) && R() < G.EVENT_CHANCE) g = G.enterFork(g, id);
     };
+    // A held potion (a fortune's, or the host's) goes on the next check, or the crit die of an answer the team knows.
+    const potionRoll = () => { if (!team().item) return d20(); g = G.spendPotion(G.drinkPotion(g, id), id); return Math.max(d20(), d20()); };
     if (text && !g.checks?.[G.checkKey(q, id)]) {
-      const v = d20();
+      const v = potionRoll();
       g = G.recordCheck(g, id, q, v, "ab");
       if (v === 20) { settle(G.answerQuestion(g, id, q, true, "retry", R), true); continue; }
     }
@@ -123,7 +126,7 @@ function play(classes: C[], maxTurns = 600) {
       }
     }
     // Option 0 is the right one; a wrong pick is the first wrong option still shown.
-    if (knows() || (!text && R() < 1 / (opts - gone().length))) { settle(G.answerQuestion(g, id, q, true, "retry", R, text ? undefined : d20()), true); continue; }
+    if (knows() || (!text && R() < 1 / (opts - gone().length))) { settle(G.answerQuestion(g, id, q, true, "retry", R, text ? undefined : knows() ? potionRoll() : d20()), true); continue; }
     const cleric = t.classId === "cleric" && team().abilityUses > 0;
     if (!text) g = G.recordWrongLock(g, id, q, Array.from({ length: opts - 1 }, (_, i) => i + 1).find((i) => !gone().includes(i))!);
     if (sort && R() < SORTFIX) L.known = true;
