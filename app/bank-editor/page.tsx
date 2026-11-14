@@ -108,12 +108,16 @@ function validationError(bank: Bank): string | null {
     if (!p.rule.trim()) return `首領第 ${i + 1} 階段：規則不能空白`;
   }
   const all = allQuestions(bank);
+  // Where each question sits (the editor shows 10 per page), so an error can be found without paging through.
+  const where = new Map<string, string>();
+  for (const d of DIFFICULTIES) bank.pools[d].forEach((q, i) => where.set(q.id, `難度 ${d} 第 ${i + 1} 題`));
+  bank.boss.phases.forEach((p, n) => p.questions.forEach((q, i) => where.set(q.id, `首領第 ${n + 1} 階段第 ${i + 1} 題`)));
   // Answer fields only on a buzzer phase's music questions (multi-field.md F1, E3): parseBank refuses the rest too.
   const fieldsOk = new Set(bank.boss.phases.flatMap((p) => (p.buzzer ? p.questions.filter(isMusicQuestion).map((q) => q.id) : [])));
   // A timing question needs every team at once (timing-tap.md): a buzzer phase only.
   const timingOk = new Set(bank.boss.phases.flatMap((p) => (p.buzzer ? p.questions.map((q) => q.id) : [])));
   for (const q of all) {
-    const label = `題目「${q.content.value || q.id}」`;
+    const label = `${where.get(q.id) ?? "題目"}「${q.content.value || q.id}」`;
     if (q.kind === "timing") {
       if (!timingOk.has(q.id)) return `${label}：卡點題只能放在搶答階段`;
       const err = timingFieldError(q);
@@ -598,7 +602,9 @@ export default function BankEditorPage() {
                 return (
                   <div key={i} className="flex flex-col gap-2">
                     <BossPhaseEditor index={i} phase={p} canDelete={bank.boss.phases.length > 1} onChange={(patch) => updatePhase(i, patch)} onDelete={() => deletePhase(i)} />
+                    {/* Phases are keyed by position: a phase count change resets every pager, so a phase never opens on a deleted neighbor's page. */}
                     <RoomEditor
+                      key={bank.boss.phases.length}
                       testId={i === 0 ? "bank-room-boss" : `bank-room-boss-${i + 1}`}
                       title={`第 ${i + 1} 階段的題目 · ${p.questions.length} 題`}
                       note={i === 0 ? "第 1 階段看起來就是普通的首領。" : `第 ${i} 階段打完後出現。`}
@@ -863,7 +869,7 @@ function RoomEditor({
   // Two copies, above and below the list; the one below brings the group's top back into view.
   const pager = (scroll: boolean) =>
     pages > 1 && (
-      <nav aria-label={`${title}・分頁`} className="flex flex-wrap items-center gap-1 text-[14px]">
+      <nav aria-label={scroll ? "下方分頁" : "分頁"} className="flex flex-wrap items-center gap-1 text-[14px]">
         <span className="mr-1">
           第 {start + 1}–{end} 題，共 {questions.length} 題
         </span>
@@ -1085,7 +1091,8 @@ function MediaPicker({
           rows={2}
           aria-label={`${label}文字`}
           value={current.value}
-          onChange={(e) => onChange({ kind: "text", value: e.target.value })}
+          // No line breaks, as in the old one-line input: the stage shows the text as one paragraph.
+          onChange={(e) => onChange({ kind: "text", value: e.target.value.replace(/\r?\n/g, " ") })}
         />
       ) : current.kind === "image" || current.kind === "video" || current.kind === "audio" ? (
         <div className="flex flex-col gap-1">
@@ -1425,7 +1432,9 @@ function QuestionRow({
 }) {
   return (
     <div data-testid={`question-${q.id}`} className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
-      <div className="text-[13px] font-bold">第 {number} 題</div>
+      <div>
+        <LabelChip>第 {number} 題</LabelChip>
+      </div>
       <div className="flex gap-2">
         <div className="flex-1">
           <MediaPicker
@@ -1446,7 +1455,7 @@ function QuestionRow({
               onChange={(e) => {
                 // Read the value now: React may run or rerun the updater later, after the input
                 // was put back to its old value, and the prompt would be dropped (a CI flake).
-                const prompt = e.target.value;
+                const prompt = e.target.value.replace(/\r?\n/g, " "); // one line, like the text box above
                 onUpdate((cur) => {
                   const next = { ...cur };
                   if (prompt.trim()) next.prompt = prompt;

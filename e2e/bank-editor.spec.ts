@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Locator, type Request } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
+import { QUESTIONS_PER_PAGE } from "../lib/bank-editor-pages";
 
 /** Every question row carries `data-testid="question-{id}"` (app/bank-editor/page.tsx) — far more
  * robust than climbing from a labeled field via xpath now that a row's content/explanation
@@ -7,7 +8,7 @@ import { E2E_OWNER_KEY } from "../playwright.config";
  * question-media-content.md). */
 const rows = (room: Locator) => room.locator('[data-testid^="question-"]');
 
-/** A group's whole question count, from its heading (「難度 1 題庫 · 12 題」): rows() sees only the page shown, 10 at most. */
+/** A group's whole question count, from its heading (「難度 1 題庫 · 12 題」): rows() sees only the page shown. */
 async function poolCount(room: Locator): Promise<number> {
   const heading = room.getByRole("heading");
   await expect(heading).toHaveText(/· \d+ 題$/);
@@ -16,7 +17,7 @@ async function poolCount(room: Locator): Promise<number> {
 
 /** Opens the group's last page (a no-op with 10 or fewer questions, which have no pager). */
 async function lastPage(room: Locator, total: number) {
-  const pages = Math.ceil(total / 10);
+  const pages = Math.ceil(total / QUESTIONS_PER_PAGE);
   if (pages > 1) await room.getByRole("button", { name: `第 ${pages} 頁` }).first().click();
 }
 
@@ -162,6 +163,9 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
   const startingCount = await poolCount(room0);
 
   // Edit the first question (page 1), then add one: it is appended last and its page opens.
+  // The text box wraps but keeps one line, as the old input did: a pasted line break becomes a space.
+  await rows(room0).first().getByLabel("題目文字").fill("編輯過\n的題目");
+  await expect(rows(room0).first().getByLabel("題目文字")).toHaveValue("編輯過 的題目");
   await rows(room0).first().getByLabel("題目文字").fill("編輯過的題目");
   await room0.getByRole("button", { name: "+ 新增題目" }).click();
   await expect(room0.getByRole("heading")).toHaveText(new RegExp(`· ${startingCount + 1} 題$`));
@@ -407,7 +411,7 @@ test("deleting every question in a room down to zero is rejected on save (a room
   await page.getByTestId("bank-tab-boss").click();
   const boss = page.getByTestId("bank-room-boss");
   await expect(boss).toBeVisible();
-  // rows() sees one page (10) at a time; the next page's questions move up as these go.
+  // rows() sees one page at a time; the next page's questions move up as these go.
   for (let remaining = await poolCount(boss); remaining > 0; remaining--) {
     await rows(boss).first().getByRole("button", { name: "刪除" }).click();
   }
@@ -448,8 +452,9 @@ test("multipleChoice authoring: switch kind, edit options, mark correct, and del
   await firstRow.getByLabel("選項 3").fill("台中歌劇院");
 
   // Nothing marked correct yet — save must be rejected, not silently accepted with a bogus pick.
+  // The message names where the question is (the editor shows 10 per page).
   await saveAll(page);
-  await expect(page.getByTestId("bank-editor-error")).toContainText(/還沒標記正解/);
+  await expect(page.getByTestId("bank-editor-error")).toContainText(/^難度 1 第 1 題「.*還沒標記正解/);
 
   // Mark option 1 correct, then delete it — the mark must not silently move to whatever now
   // sits at index 0; it has to go back to "unmarked" and block save again.
