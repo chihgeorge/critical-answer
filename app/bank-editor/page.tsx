@@ -16,7 +16,7 @@ import { UNSET_CORRECT_INDEX, blankQuestion, canBeMemory, timingFieldError, with
 import { formatSongTime } from "@/lib/tap-clock";
 import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, MEDIA_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
 import { MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from "@/lib/bank-image-api";
-import { DIFFICULTIES, MAX_MEMORY_SECONDS, MIN_MEMORY_SECONDS, memoryProblem, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_PROMPT, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_TAP_LABEL, MIN_FIELDS, MIN_OPTIONS, allQuestions, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { DIFFICULTIES, MAX_MEMORY_SECONDS, MIN_MEMORY_SECONDS, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_TAP_LABEL, MIN_FIELDS, MIN_OPTIONS, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { DEFAULT_BANK_ENTRY, MAX_TEAMS, scoreName } from "@/lib/protocol";
@@ -28,7 +28,9 @@ import { pageOf, questionPage } from "@/lib/bank-editor-pages";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
 import { extractInstagramShortcode } from "@/lib/instagram";
-import { readStored, writeStored } from "@/lib/stored";
+import { forgetStored, readStored, writeStored } from "@/lib/stored";
+import { bankProblems, serverProblem, type BankProblem, type EditorTab } from "@/lib/bank-editor-problems";
+import { draftKey, draftToOffer, encodeDraft, type BankDraft } from "@/lib/bank-editor-draft";
 
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
 const bankApiBase = () => `${partyHttpBase()}/api/bank`;
@@ -68,8 +70,12 @@ function useOwnerKey(onRestored: (key: string) => void) {
 }
 
 type Location = { kind: "pool"; difficulty: Difficulty } | { kind: "boss"; phase: number };
-/** Which page of the editor is open (docs/designs/scoring-and-score-pools.md D2=B: one pool per tab). */
-type Tab = "rooms" | Difficulty | "boss";
+/** Which page of the editor is open. */
+type Tab = EditorTab;
+/** A request to show a question (or a tab's top): each new `seq` is one jump. */
+type Jump = { id?: string; phase?: number; tab: Tab; seq: number };
+const UNREACHABLE = "連不到伺服器，請檢查網路再試一次。";
+const KEY_REJECTED = "站長金鑰不對。";
 
 /** Rooms that draw from pool `d`, as "第 2、3 房" (empty when none does). */
 function roomsUsing(bank: Bank, d: Difficulty): string {
@@ -80,83 +86,10 @@ function roomsUsing(bank: Bank, d: Difficulty): string {
 /** A reward box's text as a whole, non-negative number (an empty box is 0). */
 const toReward = (v: string) => Math.max(0, Math.floor(Number(v) || 0));
 
-/** A content or explanation slot that's still mid-upload (image kind, empty value) or otherwise
- * incomplete is an intermediate client-only state the type system can't rule out — the same
- * reasoning multipleChoice's correctIndex sentinel already needed. */
-function contentError(label: string, c: MediaContent | undefined): string | null {
-  if (!c) return null;
-  if (!c.value.trim()) return `${label}還沒填完（${c.kind === "image" ? "還沒上傳圖片" : c.kind === "video" || c.kind === "audio" ? "還沒上傳" : c.kind === "youtube" || c.kind === "instagram" ? "還沒貼網址" : "是空的"}）`;
-  // ClipFields stores NaN for a time it can't read, so 儲存 refuses it instead of keeping the last good one.
-  if (Number.isNaN(c.start) || Number.isNaN(c.end)) return `${label}的時間看不懂（請打 1:05 或 65）`;
-  if (c.end !== undefined && c.end <= (c.start ?? 0)) return `${label}的結束時間要在開始時間之後`;
-  return null;
-}
-
-function validationError(bank: Bank): string | null {
-  for (const [i, r] of bank.rooms.entries()) {
-    if (bank.pools[r.difficulty].length === 0) return `第 ${i + 1} 房是難度 ${r.difficulty}，但難度 ${r.difficulty} 題庫沒有題目`;
-  }
-  // From phase 2 on, players meet a phase through its card, so it needs a name and a rule (boss-phases.md D5, D6).
-  for (const [i, p] of bank.boss.phases.entries()) {
-    // 搶答 (boss-buzzer.md D1, D3): from phase 2 on, fill-ins or timing questions only; parseBank refuses the rest too.
-    if (p.buzzer && i === 0) return "首領第 1 階段不能是搶答階段";
-    if (p.buzzer && p.questions.some((q) => q.kind !== "text" && q.kind !== "timing")) return `首領第 ${i + 1} 階段是搶答階段：只能放填空題或卡點題`;
-    if (Array.from(p.name.trim()).length > MAX_PHASE_NAME) return `首領第 ${i + 1} 階段：名稱最多 ${MAX_PHASE_NAME} 個字`;
-    if (Array.from(p.rule.trim()).length > MAX_PHASE_RULE) return `首領第 ${i + 1} 階段：規則最多 ${MAX_PHASE_RULE} 個字`;
-    if (i === 0) continue;
-    if (!p.name.trim()) return `首領第 ${i + 1} 階段：名稱不能空白`;
-    if (!p.rule.trim()) return `首領第 ${i + 1} 階段：規則不能空白`;
-  }
-  const all = allQuestions(bank);
-  // Where each question sits (the editor shows 10 per page), so an error can be found without paging through.
-  const where = new Map<string, string>();
-  for (const d of DIFFICULTIES) bank.pools[d].forEach((q, i) => where.set(q.id, `難度 ${d} 第 ${i + 1} 題`));
-  bank.boss.phases.forEach((p, n) => p.questions.forEach((q, i) => where.set(q.id, `首領第 ${n + 1} 階段第 ${i + 1} 題`)));
-  // Answer fields only on a buzzer phase's music questions (multi-field.md F1, E3): parseBank refuses the rest too.
-  const fieldsOk = new Set(bank.boss.phases.flatMap((p) => (p.buzzer ? p.questions.filter(isMusicQuestion).map((q) => q.id) : [])));
-  // A timing question needs every team at once (timing-tap.md): a buzzer phase only.
-  const timingOk = new Set(bank.boss.phases.flatMap((p) => (p.buzzer ? p.questions.map((q) => q.id) : [])));
-  for (const q of all) {
-    const label = `${where.get(q.id) ?? "題目"}「${q.content.value || q.id}」`;
-    if (q.kind === "timing") {
-      if (!timingOk.has(q.id)) return `${label}：卡點題只能放在搶答階段`;
-      const err = timingFieldError(q);
-      if (err) return `${label}：${err}`;
-    }
-    if (q.kind === "text" && q.fields) {
-      if (!fieldsOk.has(q.id)) return `${label}有答案欄位，但只有搶答階段裡「只放聲音」的 YouTube 題能有：改回聽歌題，或按「移除欄位」`;
-      if (q.fields.length < MIN_FIELDS || q.fields.length > MAX_FIELDS) return `${label}的答案欄位要 ${MIN_FIELDS}–${MAX_FIELDS} 欄`;
-      if (q.fields.some((f) => !f.label.trim() || !f.answer.trim())) return `${label}有答案欄位的名稱或答案是空白`;
-      if (q.fields.some((f) => Array.from(f.label.trim()).length > MAX_FIELD_LABEL)) return `${label}的欄位名稱最多 ${MAX_FIELD_LABEL} 個字`;
-    }
-    if (q.kind === "multipleChoice") {
-      if (q.options.length < MIN_OPTIONS) return `${label}至少要有 ${MIN_OPTIONS} 個選項`;
-      if (q.options.length > MAX_OPTIONS) return `${label}最多 ${MAX_OPTIONS} 個選項`;
-      if (q.options.some((o) => !o.trim())) return `${label}有空白選項`;
-      if (q.correctIndex < 0 || q.correctIndex >= q.options.length) return `${label}還沒標記正解`;
-    }
-    if (q.kind === "sort") {
-      if (q.items.some((o) => !o.trim())) return `${label}有空白的排序項目`;
-      if (new Set(q.items.map((o) => o.trim())).size !== q.items.length) return `${label}有重複的排序項目`;
-    }
-    const contentErr = contentError(`${label}的內容`, q.content);
-    if (contentErr) return contentErr;
-    if (q.prompt !== undefined && Array.from(q.prompt).length > MAX_PROMPT) return `${label}的題幹最多 ${MAX_PROMPT} 個字`;
-    // The same rule parseBank applies (memory-questions.md), so a save never fails on it.
-    const memoryErr = memoryProblem(q);
-    if (memoryErr) return `${label}：${memoryErr}`;
-    if (q.category !== undefined && Array.from(q.category.trim()).length > MAX_CATEGORY) return `${label}的類別最多 ${MAX_CATEGORY} 個字`;
-    if (q.difficulty !== undefined && !(DIFFICULTIES as readonly number[]).includes(q.difficulty)) return `${label}的難度要是 1～5`;
-    const explanationErr = contentError(`${label}的詳解`, q.explanation);
-    if (explanationErr) return explanationErr;
-  }
-  return null;
-}
-
 export default function BankEditorPage() {
   const [bank, setBank] = useState<Bank | null>(null);
-  // The bank as last loaded or saved: every edit makes a new object, so `bank !== savedBank.current` means unsaved edits.
-  const savedBank = useRef<Bank | null>(null);
+  // The bank as last loaded or saved: every edit makes a new object, so `bank !== saved` means unsaved edits.
+  const [saved, setSaved] = useState<Bank | null>(null);
   // The version this editor last loaded/saved. Sent back on every PUT so a save that's stale
   // (someone else — another tab, another device — saved first) is rejected with a clear conflict
   // instead of silently overwriting their edits (adversarial review, 2026-09-22).
@@ -184,6 +117,16 @@ export default function BankEditorPage() {
   // Only the latest load may land: dev StrictMode runs the auto-load effect twice, and a response that
   // arrived late used to overwrite edits made after a newer load (CI on main, 2026-10-25).
   const loadSeq = useRef(0);
+  /** A save the editor's own check refused: from then on its problems follow the edits, so a fixed one goes away. */
+  const [checked, setChecked] = useState(false);
+  /** A save the server refused (its 4xx text, in Chinese, placed on a question when it names one), with the bank it
+   * refused: once that bank is edited the refusal may no longer apply, so it is no longer shown. */
+  const [serverIssue, setServerIssue] = useState<{ problem: BankProblem; bank: Bank } | null>(null);
+  /** Which of the problems the save bar shows. */
+  const [cursor, setCursor] = useState(0);
+  const [jump, setJump] = useState<Jump | null>(null);
+  /** A draft from this browser that differs from the bank just loaded, until 還原草稿 or 捨棄. */
+  const [draftOffer, setDraftOffer] = useState<{ draft: BankDraft; stale: boolean } | null>(null);
 
   /** True when this load's bank is the one shown now. */
   const load = async (key: string, id = bankId): Promise<boolean> => {
@@ -210,29 +153,34 @@ export default function BankEditorPage() {
         return false;
       }
       if (res.status === 403) {
-        setError("Owner key rejected.");
+        setError(KEY_REJECTED);
         setBank(null);
-        savedBank.current = null;
+        setSaved(null);
+        setDraftOffer(null);
         return false;
       }
       if (!res.ok) {
-        setError(`Load failed: ${res.status}`);
+        setError(`載入失敗（錯誤 ${res.status}），請再試一次。`);
         return false;
       }
       const versioned: { bank: Bank; version: number; unreadable?: true; outdated?: number } = await res.json();
       if (seq !== loadSeq.current) return false;
       const stale = [...versioned.bank.rooms.map((r) => r.monster), versioned.bank.boss.monster].some((m) => typeof m !== "string");
       setBank(versioned.bank);
-      savedBank.current = versioned.bank;
+      setSaved(versioned.bank);
       setVersion(versioned.version);
       setBankId(id);
       setLastSaved(null);
       setReadOnly(!!versioned.unreadable || stale);
       setStaleServer(stale);
       setOutdated(versioned.outdated ?? null);
+      setChecked(false);
+      setServerIssue(null);
+      // A shown fallback bank (unreadable, or a server mid-deploy) is not the stored one: no draft is offered over it.
+      setDraftOffer(versioned.unreadable || stale ? null : draftToOffer(readStored(draftKey(id)), versioned.bank, versioned.version));
       return true;
     } catch {
-      if (seq === loadSeq.current) setError("Could not reach the server.");
+      if (seq === loadSeq.current) setError(UNREACHABLE);
       return false;
     } finally {
       if (seq === loadSeq.current) setLoading(false);
@@ -241,16 +189,32 @@ export default function BankEditorPage() {
 
   // Reload, tab close or the back button would drop unsaved edits too, so the browser asks first.
   useEffect(() => {
-    if (bank === savedBank.current) return;
+    if (bank === saved) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [bank]);
+  }, [bank, saved]);
+
+  // Every unsaved edit is also kept in this browser (lib/bank-editor-draft.ts), but not while an older draft waits
+  // for 還原草稿 or 捨棄: the first keystroke must not overwrite it.
+  useEffect(() => {
+    if (!bank || bank === saved || version === null || readOnly || draftOffer) return;
+    writeStored(draftKey(bankId), encodeDraft({ version, savedAt: Date.now(), bank }));
+  }, [bank, saved, version, readOnly, draftOffer, bankId]);
+
+  // A jump lands after the render that opened its tab and page: then the question is in the page to scroll to.
+  useEffect(() => {
+    if (!jump) return;
+    const testId = jump.id ? `question-${CSS.escape(jump.id)}` : jump.phase !== undefined ? `bank-boss-phase-${jump.phase + 1}` : jump.tab === "rooms" ? "bank-rooms" : jump.tab === "boss" ? "bank-room-boss" : `bank-pool-${jump.tab}`;
+    const target = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+    target?.scrollIntoView({ block: "center" });
+    target?.focus({ preventScroll: true });
+  }, [jump]);
 
   const [ownerKey, setOwnerKey] = useOwnerKey((restoredKey) => void load(restoredKey));
 
   /** Loading another bank replaces the one shown, so unsaved edits would go without a word. */
-  const discardOk = () => bank === savedBank.current || window.confirm("還沒儲存的修改會不見，確定要換？");
+  const discardOk = () => bank === saved || window.confirm("還沒儲存的修改會不見，確定要換？");
 
   /** A create, rename or delete (/api/banks), then `then` with its answer. The editor stays locked meanwhile. */
   const manage = async (method: string, query: string, body: object | undefined, then: (res: Response) => Promise<void>) => {
@@ -262,11 +226,11 @@ export default function BankEditorPage() {
         headers: { Authorization: `Bearer ${ownerKey}`, "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
-      if (!res.ok) return setError(res.status === 403 ? "Owner key rejected." : await res.text());
+      if (!res.ok) return setError(res.status === 403 ? KEY_REJECTED : await res.text());
       setManaging(false);
       await then(res);
     } catch {
-      setError("Could not reach the server.");
+      setError(UNREACHABLE);
     } finally {
       setManaging(false);
     }
@@ -296,7 +260,8 @@ export default function BankEditorPage() {
     const name = banks.find((b) => b.id === bankId)?.name ?? "";
     if (!window.confirm(`確定刪除「${name}」？刪了不能復原。`)) return;
     void manage("DELETE", `?id=${encodeURIComponent(bankId)}`, undefined, async () => {
-      savedBank.current = bank; // gone with the bank: nothing left to warn about
+      setSaved(bank); // gone with the bank: nothing left to warn about
+      forgetStored(draftKey(bankId));
       await load(ownerKey, DEFAULT_BANK_ENTRY.id);
     });
   };
@@ -307,7 +272,7 @@ export default function BankEditorPage() {
     try {
       const res = await fetch(`${partyHttpBase()}/api/game-logs`, { headers: { Authorization: `Bearer ${ownerKey}` } });
       if (!res.ok) {
-        setError(res.status === 403 ? "Owner key rejected." : `Download failed: ${res.status}`);
+        setError(res.status === 403 ? KEY_REJECTED : `下載失敗（錯誤 ${res.status}），請再試一次。`);
         return;
       }
       const url = URL.createObjectURL(await res.blob());
@@ -317,20 +282,23 @@ export default function BankEditorPage() {
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000); // revoking at once makes some browsers drop the download
     } catch {
-      setError("Could not reach the server.");
+      setError(UNREACHABLE);
     }
   };
 
   const save = async (next: Bank) => {
     if (version === null) return; // no successful load yet — nothing to compare against
     setLastSaved(null); // a save that fails must not leave the last one's 已儲存 up
-    const invalid = validationError(next);
-    if (invalid) {
-      setError(invalid);
+    setServerIssue(null);
+    setError("");
+    const found = bankProblems(next);
+    if (found.length > 0) {
+      setChecked(true);
+      setCursor(0);
+      goTo(found[0]);
       return;
     }
     setSaving(true);
-    setError("");
     try {
       const res = await fetch(bankUrl(bankId), {
         method: "PUT",
@@ -342,23 +310,49 @@ export default function BankEditorPage() {
         return;
       }
       if (!res.ok) {
-        setError(await res.text());
+        const issue = serverProblem(next, res.status, await res.text());
+        setServerIssue({ problem: issue, bank: next });
+        setCursor(0);
+        goTo(issue);
         return;
       }
       const versioned: { bank: Bank; version: number } = await res.json();
       setBank(versioned.bank);
-      savedBank.current = versioned.bank;
+      setSaved(versioned.bank);
       setLastSaved(versioned.bank);
       setVersion(versioned.version);
       setOutdated(null);
+      setChecked(false);
+      setDraftOffer(null);
+      forgetStored(draftKey(bankId));
     } catch {
-      setError("Could not reach the server.");
+      setError(UNREACHABLE);
     } finally {
       setSaving(false);
     }
   };
 
   const [tab, setTab] = useState<Tab>(1);
+
+  /** Opens the problem's tab and the page holding its question, then scrolls it into view (the effect above). */
+  const goTo = (p: BankProblem | undefined) => {
+    const t = p?.tab;
+    if (t === undefined) return;
+    setTab(t);
+    setJump((j) => ({ id: p?.questionId, phase: p?.phase, tab: t, seq: (j?.seq ?? 0) + 1 }));
+  };
+
+  // After a refused save the problems follow the edits; once none is left, a new blank question is not an error yet.
+  const live = bank && checked ? bankProblems(bank) : [];
+  if (checked && bank && live.length === 0) setChecked(false);
+  const problems = live.length > 0 ? live : serverIssue && serverIssue.bank === bank ? [serverIssue.problem] : [];
+  const shownAt = Math.min(cursor, problems.length - 1);
+  const shown = problems[shownAt];
+  const problemOf = new Map(problems.flatMap((p) => (p.questionId ? [[p.questionId, p.message] as const] : [])));
+  const dirty = bank !== saved;
+  /** Tabs with edits since the last load or save (each edit replaces only what it touched). */
+  const tabDirty = (t: Tab) =>
+    !!bank && !!saved && (t === "rooms" ? bank.rooms !== saved.rooms || bank.randomMonsters !== saved.randomMonsters || bank.boss.monster !== saved.boss.monster || bank.boss.hitReward !== saved.boss.hitReward : t === "boss" ? bank.boss.phases !== saved.boss.phases : bank.pools[t] !== saved.pools[t]);
 
   const questionsAt = (b: Bank, loc: Location): BankQuestion[] => (loc.kind === "boss" ? (b.boss.phases[loc.phase]?.questions ?? []) : b.pools[loc.difficulty]);
 
@@ -370,11 +364,16 @@ export default function BankEditorPage() {
     boss: { ...b.boss, phases: b.boss.phases.map((p, i) => (i === phase ? { ...p, ...patch } : p)) },
   });
   const updatePhase = (phase: number, patch: Partial<BossPhase>) => setBank((prev) => (prev ? withPhase(prev, phase, patch) : prev));
-  const addPhase = () => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: [...prev.boss.phases, { name: "", rule: "", maxHp: 3, questions: [] }] } } : prev));
+  // A phase count change remounts every pager (keyed by it): a spent jump must not reopen its old page then.
+  const addPhase = () => {
+    setJump(null);
+    setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: [...prev.boss.phases, { name: "", rule: "", maxHp: 3, questions: [] }] } } : prev));
+  };
   const deletePhase = (phase: number) => {
     const count = bank?.boss.phases[phase]?.questions.length ?? 0;
     // A phase can hold a whole set of prepared questions: one stray tap must not drop them all (D11).
     if (count > 0 && !window.confirm(`刪除第 ${phase + 1} 階段和它的 ${count} 題？`)) return;
+    setJump(null);
     setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: prev.boss.phases.filter((_, i) => i !== phase) } } : prev));
   };
 
@@ -449,7 +448,7 @@ export default function BankEditorPage() {
         <Link
           href="/"
           onClick={(e) => {
-            if (bank !== savedBank.current && !window.confirm("還沒儲存的修改會不見，確定回首頁？")) e.preventDefault();
+            if (bank !== saved && !window.confirm("還沒儲存的修改會不見，確定回首頁？")) e.preventDefault();
           }}
           className="text-[15px] text-white underline underline-offset-2"
           style={{ textShadow: "1px 1px 0 var(--k)" }}
@@ -458,21 +457,25 @@ export default function BankEditorPage() {
         </Link>
       </div>
 
-      <Panel className="flex flex-col gap-2 p-4">
-        <label className="text-[14px]" htmlFor="owner-key">
-          Owner key
+      {/* Once a bank is shown the key panel shrinks to one wrapping row (two lines on a phone): it stays editable
+          because a reload auto-loads the remembered key and the key may still be changed right after. */}
+      <Panel className={bank ? "flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2" : "flex flex-col gap-2 p-4"}>
+        <label className="whitespace-nowrap text-[14px]" htmlFor="owner-key">
+          站長金鑰
         </label>
         <input
           id="owner-key"
           type="password"
           className="px-input"
+          style={bank ? { width: "auto", flex: "1 1 8em", minWidth: 0 } : undefined}
           value={ownerKey}
           onChange={(e) => setOwnerKey(e.target.value)}
         />
         <PixelButton
+          className={bank ? "!m-0 !px-3 !py-1 text-[14px]" : undefined}
           onClick={() => {
             // Loading replaces the bank shown here, so unsaved edits would go without a word.
-            if (bank !== savedBank.current && !window.confirm("還沒儲存的修改會不見，確定重新載入？")) return;
+            if (bank !== saved && !window.confirm("還沒儲存的修改會不見，確定重新載入？")) return;
             void load(ownerKey);
           }}
           disabled={!ownerKey || busy}
@@ -487,7 +490,7 @@ export default function BankEditorPage() {
         >
           ⬇ 下載對局紀錄（JSON）
         </button>
-        {error && (
+        {error && !bank && (
           // Panel doesn't forward arbitrary props (no data-testid passthrough), so the test id sits
           // on this inner span; role="alert" on the Panel itself is the real screen-reader semantics.
           // Red background matches every other error surface in the app (host/page.tsx's connection
@@ -541,6 +544,28 @@ export default function BankEditorPage() {
         </Panel>
       )}
 
+      {bank && draftOffer && (
+        <Panel role="status" className="flex flex-col gap-2 p-4 text-[15px]" style={{ background: "var(--warn)", color: "var(--ink)" }}>
+          <span data-testid="bank-draft">
+            這台裝置上有一份還沒儲存的草稿（最後修改 {new Date(draftOffer.draft.savedAt).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}），要接著改嗎？
+            {draftOffer.stale && <strong> 草稿之後，題庫又在別的地方存過：還原後再存，會蓋掉那次存的內容。</strong>}
+            {" "}草稿裡新上傳的圖片和影音要盡快存檔，放太久會被清掉。
+          </span>
+          <div className="flex flex-wrap gap-2">
+            <PixelButton className="!m-0 !px-3 !py-1 text-[15px]" disabled={busy} onClick={() => {
+                if (bank !== saved && !window.confirm("還原草稿會換掉剛才的修改，確定？")) return;
+                setBank(draftOffer.draft.bank);
+                setDraftOffer(null);
+              }}>
+              {draftOffer.stale ? "還原草稿（蓋掉較新的版本）" : "還原草稿"}
+            </PixelButton>
+            <PixelButton variant="flee" className="!m-0 !px-3 !py-1 text-[15px]" disabled={busy} onClick={() => { forgetStored(draftKey(bankId)); setDraftOffer(null); }}>
+              捨棄
+            </PixelButton>
+          </div>
+        </Panel>
+      )}
+
       {bank && staleServer && (
         <Panel role="alert" className="p-4 text-[15px]" style={{ background: "#ffd9d9" }}>
           <span data-testid="bank-editor-stale-server">伺服器還是舊版，等部署完成再重新載入。</span>
@@ -575,11 +600,15 @@ export default function BankEditorPage() {
                 role="tab"
                 aria-selected={tab === t}
                 data-testid={`bank-tab-${t}`}
-                onClick={() => setTab(t)}
+                onClick={() => {
+                  setTab(t);
+                  setJump(null);
+                }}
                 className={`!m-0 !px-3 !py-1 text-[15px] ${tab === t ? "" : "opacity-70"}`}
                 style={tab === t ? { background: "var(--cream, #fff3d6)" } : undefined}
               >
                 {t === "rooms" ? "房間" : t === "boss" ? `首領 ${bossQuestions(bank).length}` : `難度 ${t}・${bank.pools[t].length}`}
+                {tabDirty(t) && <span aria-label="（有還沒儲存的修改）"> ●</span>}
               </PixelButton>
             ))}
           </div>
@@ -615,6 +644,8 @@ export default function BankEditorPage() {
                       onDelete={(id) => deleteQuestion(loc, id)}
                       onAdd={() => addQuestion(loc)}
                       onUploadImage={uploadImage}
+                      jump={jump}
+                      problems={problemOf}
                     />
                   </div>
                 );
@@ -638,6 +669,8 @@ export default function BankEditorPage() {
                   onDelete={(id) => deleteQuestion(loc, id)}
                   onAdd={() => addQuestion(loc)}
                   onUploadImage={uploadImage}
+                  jump={jump}
+                  problems={problemOf}
                 />
               );
             })()
@@ -661,10 +694,43 @@ export default function BankEditorPage() {
               </div>
             );
           })()}
-          <PixelButton variant="primary" onClick={() => void save(bank)} disabled={busy || readOnly}>
-            {saving ? "儲存中…" : uploads > 0 ? "上傳中…" : "儲存全部變更"}
-          </PixelButton>
-          {lastSaved !== null && lastSaved === bank && <div data-testid="bank-saved" role="status" className="text-[15px]" style={{ color: "var(--ok)" }}>✓ 已儲存</div>}
+          {/* Stays at the bottom of the screen: a save's result and every problem show next to the button pressed. */}
+          <div data-testid="bank-save-bar" className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-2 border-t-4 px-4 pt-2" style={{ background: "var(--stage)", borderColor: "var(--k)", paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+            {(shown || error) && (
+              <Panel role="alert" className="flex flex-col gap-1 p-2 text-[14px]" style={{ background: "#ffd9d9" }}>
+                <div className="flex items-start gap-2">
+                  <span data-testid="bank-editor-error" className="line-clamp-3 min-w-0 flex-1">{shown?.message ?? error}</span>
+                  {shown?.tab !== undefined && (
+                    <PixelButton
+                      className="!m-0 !min-h-[44px] shrink-0 !px-3 !py-2 text-[15px]"
+                      onClick={() => {
+                        const next = problems.length > 1 ? (shownAt + 1) % problems.length : shownAt;
+                        setCursor(next);
+                        goTo(problems[next]);
+                      }}
+                    >
+                      {problems.length > 1 ? "下一個 ▸" : "跳過去"}
+                    </PixelButton>
+                  )}
+                </div>
+                {problems.length > 1 && <div className="text-[12px]">共 {problems.length} 處要修正，這是第 {shownAt + 1} 處</div>}
+              </Panel>
+            )}
+            <div className="flex items-center gap-3">
+              <div role="status" className="min-w-0 flex-1 text-[15px] text-white" style={{ textShadow: "1px 1px 0 var(--k)" }}>
+                {lastSaved !== null && lastSaved === bank ? (
+                  <span data-testid="bank-saved" style={{ color: "var(--ok)" }}>✓ 已儲存</span>
+                ) : dirty ? (
+                  "● 有還沒儲存的修改"
+                ) : (
+                  "沒有修改"
+                )}
+              </div>
+              <PixelButton variant="primary" className="!m-0 shrink-0" onClick={() => void save(bank)} disabled={busy || readOnly}>
+                {saving ? "儲存中…" : uploads > 0 ? "上傳中…" : "儲存全部變更"}
+              </PixelButton>
+            </div>
+          </div>
         </>
       )}
     </main>
@@ -847,6 +913,8 @@ function RoomEditor({
   onUploadImage,
   categories = false,
   difficulty = false,
+  jump,
+  problems,
 }: {
   testId: string;
   title: string;
@@ -860,11 +928,26 @@ function RoomEditor({
   onDelete: (id: string) => void;
   onAdd: () => void;
   onUploadImage: UploadFn;
+  /** The latest jump: when its question is in this group, its page opens (once per jump, so paging away still works). */
+  jump: Jump | null;
+  /** Each question's save problem, by question id. */
+  problems: Map<string, string>;
 }) {
   const hintId = useId();
   const difficultyHintId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const [pageWanted, setPage] = useState(0);
+  const jumpPage = (j: Jump | null) => {
+    const i = j?.id ? questions.findIndex((q) => q.id === j.id) : -1;
+    return i < 0 ? null : pageOf(i);
+  };
+  const [pageWanted, setPage] = useState(() => jumpPage(jump) ?? 0);
+  // Adjusting state while rendering (react.dev "storing information from previous renders"): no extra render pass.
+  const [seenJump, setSeenJump] = useState(jump?.seq);
+  if (jump?.seq !== seenJump) {
+    setSeenJump(jump?.seq);
+    const p = jumpPage(jump);
+    if (p !== null) setPage(p);
+  }
   const { page, pages, start, end } = questionPage(questions.length, pageWanted);
   // Two copies, above and below the list; the one below brings the group's top back into view.
   const pager = (scroll: boolean) =>
@@ -926,6 +1009,7 @@ function RoomEditor({
             onUpdate={(updater) => onUpdate(q.id, updater)}
             onDelete={() => onDelete(q.id)}
             onUploadImage={onUploadImage}
+            problem={problems.get(q.id)}
             category={categories}
             difficultyHintId={difficulty ? difficultyHintId : undefined}
             answerHintId={categories ? undefined : hintId}
@@ -1059,10 +1143,10 @@ function MediaPicker({
   };
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        <span className="text-[13px] text-black/60">{label}</span>
-        <div className="flex flex-wrap gap-1">
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0 whitespace-nowrap text-[13px] text-black/60">{label}</span>
+        <div className="flex min-w-0 gap-1 overflow-x-auto pb-1">
           {/* Instagram only as an explanation: the host cannot play it (docs/designs/instagram-explanations.md). */}
           {(["text", "image", "youtube", "video", "audio", ...(allowNone ? (["instagram", "none"] as const) : [])] as const).map((kind) => {
             const kindLabel = { text: "文字", image: "圖片", youtube: "YouTube", video: "影片", audio: "聲音", instagram: "Instagram", none: "無" }[kind];
@@ -1071,7 +1155,7 @@ function MediaPicker({
               <button
                 key={kind}
                 type="button"
-                className={`px-btn !px-2 !py-1 text-[12px] ${pressed ? "!bg-[var(--turn)]" : ""}`}
+                className={`px-btn shrink-0 whitespace-nowrap !px-2 !py-1 text-[13px] ${pressed ? "!bg-[var(--turn)]" : ""}`}
                 aria-pressed={pressed}
                 aria-label={`${label}：${kindLabel}`}
                 disabled={uploading}
@@ -1417,9 +1501,12 @@ function QuestionRow({
   category = false,
   difficultyHintId,
   answerHintId,
+  problem,
 }: {
   /** 1-based within its group, across pages. */
   number: number;
+  /** Why a save is blocked on this question, if it is. */
+  problem?: string;
   category?: boolean;
   /** Shows a 難度 menu (a boss question's own difficulty), described by the section's line with this id. */
   difficultyHintId?: string;
@@ -1431,12 +1518,23 @@ function QuestionRow({
   onUploadImage: UploadFn;
 }) {
   return (
-    <div data-testid={`question-${q.id}`} className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
+    <div
+      data-testid={`question-${q.id}`}
+      tabIndex={-1}
+      aria-invalid={problem ? true : undefined}
+      className="flex flex-col gap-1 border-t border-black/10 pt-2 outline-none first:border-t-0 first:pt-0"
+      style={problem ? { boxShadow: "0 0 0 4px var(--danger)", padding: 8 } : undefined}
+    >
       <div>
         <LabelChip>第 {number} 題</LabelChip>
       </div>
+      {problem && (
+        <div data-testid={`problem-${q.id}`} className="text-[14px]" style={{ color: "#b3261e" }}>
+          ⚠ {problem}
+        </div>
+      )}
       <div className="flex gap-2">
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <MediaPicker
             fieldId={`${q.id}-content`}
             label="題目"
@@ -1590,7 +1688,7 @@ function QuestionRow({
         <div className="flex flex-col gap-1" data-testid={`fields-${q.id}`}>
           <small className="text-[14px]">答案欄位（{MIN_FIELDS}–{MAX_FIELDS} 欄）：主持人一欄一欄判，答對幾欄打幾格血。</small>
           {q.fields.map((f, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div key={i} className="flex flex-wrap items-center gap-2">
               <span className="w-[4em] shrink-0">欄位 {i + 1}</span>
               <input
                 className="px-input"
@@ -1606,6 +1704,7 @@ function QuestionRow({
               />
               <input
                 className="px-input flex-1"
+                style={{ minWidth: "10em" }}
                 aria-label={`欄位 ${i + 1} 答案`}
                 value={f.answer}
                 onChange={(e) => {
@@ -1615,11 +1714,12 @@ function QuestionRow({
               />
             </div>
           ))}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {q.fields.length < MAX_FIELDS && (
-              <PixelButton onClick={() => onUpdate((cur) => (cur.kind === "text" && cur.fields ? { ...cur, fields: [...cur.fields, { label: "", answer: "" }] } : cur))}>+ 再加一欄</PixelButton>
+              <PixelButton className="!m-0 !px-3 !py-1 text-[15px]" onClick={() => onUpdate((cur) => (cur.kind === "text" && cur.fields ? { ...cur, fields: [...cur.fields, { label: "", answer: "" }] } : cur))}>+ 再加一欄</PixelButton>
             )}
             <PixelButton
+              className="!m-0 !px-3 !py-1 text-[15px]"
               onClick={() =>
                 onUpdate((cur) => {
                   if (cur.kind !== "text") return cur;
@@ -1630,15 +1730,16 @@ function QuestionRow({
             >
               移除欄位（改回單一答案）
             </PixelButton>
-            <PixelButton variant="flee" onClick={onDelete}>
+            <PixelButton variant="flee" className="!m-0 !px-3 !py-1 text-[15px]" onClick={onDelete}>
               刪除
             </PixelButton>
           </div>
         </div>
       ) : q.kind === "text" ? (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <input
             className="px-input flex-1"
+            style={{ minWidth: "10em" }}
             aria-label="答案"
             aria-describedby={answerHintId}
             value={q.answer}
@@ -1691,17 +1792,23 @@ function QuestionRow({
         </div>
       ) : (
         <div className="flex flex-col gap-1">
+          <small className="text-[14px]">
+            {q.correctIndex >= 0 && q.correctIndex < q.options.length ? `正解：第 ${q.correctIndex + 1} 個（綠框）` : "⚠ 還沒標正解：點選項左邊的圓圈"}
+          </small>
           {q.options.map((opt, i) => (
             <div key={i} className="flex items-center gap-2">
               <input
                 type="radio"
+                className="h-7 w-7 shrink-0"
+                style={{ accentColor: "var(--ok2)" }}
                 aria-label={`第 ${i + 1} 個選項為正解`}
                 name={`correct-${q.id}`}
                 checked={q.correctIndex === i}
                 onChange={() => onUpdate((cur) => (cur.kind === "multipleChoice" ? { ...cur, correctIndex: i } : cur))}
               />
               <input
-                className="px-input flex-1"
+                className="px-input min-w-0 flex-1"
+                style={q.correctIndex === i ? { boxShadow: "0 0 0 4px var(--ok2)", background: "#e8f8e6" } : undefined}
                 aria-label={`選項 ${i + 1}`}
                 value={opt}
                 onChange={(e) => {

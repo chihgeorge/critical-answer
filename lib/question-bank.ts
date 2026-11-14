@@ -551,7 +551,7 @@ export function textQuestionGaps(bank: Bank): { difficulties: Difficulty[]; boss
 }
 
 /** Every question in a bank, pools 1 to 5 then boss — the "flatten the whole bank" expression every
- * whole-bank scan (allAnswers, validationError, imageKeysOf) needs, in one place. */
+ * whole-bank scan (allAnswers, imageKeysOf) needs, in one place. */
 export function allQuestions(bank: Bank): BankQuestion[] {
   return [...DIFFICULTIES.flatMap((d) => bank.pools[d]), ...bossQuestions(bank)];
 }
