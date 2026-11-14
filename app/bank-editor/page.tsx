@@ -13,7 +13,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
 import { UNSET_CORRECT_INDEX, blankQuestion, canBeMemory, lostOnKindChange, timingFieldError, withCategory, withContent, withField, withMemory } from "@/lib/bank-editor-question";
-import { SEARCH_LIMIT, allGroups, copyQuestion, groupName, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreQuestion, sameGroup, searchBank, shiftQuestion, tabOf, withQuestions, type Location, type Removed } from "@/lib/bank-editor-list";
+import { SEARCH_LIMIT, allGroups, copyQuestion, groupName, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreToSaved, sameGroup, searchBank, shiftQuestion, tabOf, withQuestions, type Location, type Removed } from "@/lib/bank-editor-list";
 import { formatSongTime } from "@/lib/tap-clock";
 import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, MEDIA_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
 import { MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from "@/lib/bank-image-api";
@@ -30,7 +30,7 @@ import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
 import { extractInstagramShortcode } from "@/lib/instagram";
 import { forgetStored, readStored, writeStored } from "@/lib/stored";
-import { bankProblems, serverProblem, type BankProblem, type EditorTab } from "@/lib/bank-editor-problems";
+import { BANK_GONE, bankProblems, serverProblem, type BankProblem, type EditorTab } from "@/lib/bank-editor-problems";
 import { draftKey, draftToOffer, encodeDraft, type BankDraft } from "@/lib/bank-editor-draft";
 
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
@@ -249,9 +249,15 @@ export default function BankEditorPage() {
     if (!jump) return;
     const testId = jump.id ? `question-${CSS.escape(jump.id)}` : jump.phase !== undefined ? `bank-boss-phase-${jump.phase + 1}` : jump.tab === "rooms" ? "bank-rooms" : jump.tab === "boss" ? "bank-room-boss" : `bank-pool-${jump.tab}`;
     const target = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
-    target?.scrollIntoView({ block: "center" });
+    // The sticky save bar covers the bottom of the screen: scrolling centres in the part above it.
+    document.documentElement.style.scrollPaddingBottom = `${document.querySelector<HTMLElement>('[data-testid="bank-save-bar"]')?.offsetHeight ?? 0}px`;
+    // A question with a problem can be taller than the screen: its first blank box (the usual problem) is what to see.
+    const blank = target?.getAttribute("aria-invalid") ? [...target.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("textarea, input:not([type]), input[type=text], input[type=url]")].find((el) => !el.value.trim() && el.offsetParent) : undefined;
+    (blank ?? target)?.scrollIntoView({ block: "center" });
     target?.focus({ preventScroll: true });
   }, [jump]);
+
+  useEffect(() => () => void (document.documentElement.style.scrollPaddingBottom = ""), []);
 
   const [ownerKey, setOwnerKey] = useOwnerKey((restoredKey) => void load(restoredKey));
 
@@ -285,6 +291,17 @@ export default function BankEditorPage() {
     void manage("POST", "", { name, ...(copy ? { copyFrom: DEFAULT_BANK_ENTRY.id } : {}) }, async (res) => {
       const made: BankEntry = await res.json();
       await load(ownerKey, made.id);
+    });
+  };
+
+  /** The bank shown was deleted elsewhere: its edits go into a new bank (version 1), and its draft stays until they do. */
+  const saveAsNew = () => {
+    const name = window.prompt("新題庫的名稱（存進畫面上的題目）");
+    if (!name?.trim() || !bank) return;
+    void manage("POST", "", { name }, async (res) => {
+      const made: BankEntry = await res.json();
+      setBanks((list) => [...list, made]);
+      await save(bank, { id: made.id, version: 1 });
     });
   };
 
@@ -328,8 +345,9 @@ export default function BankEditorPage() {
     }
   };
 
-  const save = async (next: Bank) => {
-    if (version === null) return; // no successful load yet — nothing to compare against
+  /** Saves into `to` (the bank shown, unless 另存成新題庫 made a new one); a save that lands makes `to` the bank shown. */
+  const save = async (next: Bank, to = { id: bankId, version }) => {
+    if (to.version === null) return; // no successful load yet — nothing to compare against
     setLastSaved(null); // a save that fails must not leave the last one's 已儲存 up
     setServerIssue(null);
     setError("");
@@ -342,10 +360,10 @@ export default function BankEditorPage() {
     }
     setSaving(true);
     try {
-      const res = await fetch(bankUrl(bankId), {
+      const res = await fetch(bankUrl(to.id), {
         method: "PUT",
         headers: { Authorization: `Bearer ${ownerKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ bank: next, version }),
+        body: JSON.stringify({ bank: next, version: to.version }),
       });
       if (res.status === 409) {
         setError("題庫在你載入後被別人存過了：先按「載入題庫」拿最新版，再改一次存檔。");
@@ -363,11 +381,13 @@ export default function BankEditorPage() {
       setSaved(versioned.bank);
       setLastSaved(versioned.bank);
       setVersion(versioned.version);
+      setBankId(to.id);
+      if (to.id !== bankId) setBanks((list) => list.filter((b) => b.id !== bankId)); // the deleted bank the edits came from
       setOutdated(null);
       setChecked(false);
       setDraftOffer(null);
       setToast(null);
-      forgetStored(draftKey(bankId));
+      forgetStored(draftKey(bankId)); // the shown bank's draft, also when it was deleted and the edits went to a new one
     } catch {
       setError(UNREACHABLE);
     } finally {
@@ -461,7 +481,10 @@ export default function BankEditorPage() {
   };
 
   const undoDelete = (r: Removed) => {
-    setBank((prev) => (prev ? restoreQuestion(prev, r) : prev));
+    // Back to the saved bank: no draft is kept of it (the draft effect skips a bank that equals saved). An older draft
+    // still waiting for 還原草稿 or 捨棄 stays.
+    if (bank && !draftOffer && !readOnly && restoreToSaved(bank, r, saved) === saved) forgetStored(draftKey(bankId));
+    setBank((prev) => (prev ? restoreToSaved(prev, r, saved) : prev));
     setToast(null);
     goTo({ message: "", tab: tabOf(r.loc), questionId: r.question.id });
   };
@@ -865,7 +888,14 @@ export default function BankEditorPage() {
                       {problems.length > 1 ? "下一個 ▸" : "跳過去"}
                     </PixelButton>
                   )}
+                  {shown?.message === BANK_GONE && (
+                    <PixelButton data-testid="bank-save-as-new" className="!m-0 !min-h-[44px] shrink-0 !px-3 !py-2 text-[15px]" disabled={busy} onClick={saveAsNew}>
+                      另存成新題庫
+                    </PixelButton>
+                  )}
                 </div>
+                {/* A failed 另存成新題庫 (a taken name, the bank limit) under the refusal it answers. */}
+                {shown && error && <div data-testid="bank-editor-error-extra">{error}</div>}
                 {problems.length > 1 && <div className="text-[12px]">共 {problems.length} 處要修正，這是第 {shownAt + 1} 處</div>}
               </Panel>
             )}
