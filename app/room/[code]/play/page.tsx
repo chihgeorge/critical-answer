@@ -34,7 +34,7 @@ const CLASS_HINTS: Record<ClassId, string> = {
   mage: "選擇題刪 2 個錯的選項；填空題看答案第一個字",
   cleric: "答錯後，這回合再答一次",
   thief: `偷襲：這題答對，獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`,
-  chef: `被動：每次拿到獎勵分都多 ${CHEF_BONUS_PERCENT}%（每 10 分多 ${CHEF_BONUS_PERCENT / 10} 分），不用按`,
+  chef: `被動：每次拿到獎勵分都多 ${CHEF_BONUS_PERCENT}%（每 10 分多 ${CHEF_BONUS_PERCENT / 10} 分，魔王搶答階段不加），不用按`,
 };
 
 /** The lobby's class picker (D10=A): five cards and 不選; the passive chef takes a whole row (chef design D6). */
