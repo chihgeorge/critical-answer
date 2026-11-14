@@ -1262,6 +1262,7 @@ test("a bank deleted in another tab: 另存成新題庫 saves the edits into a n
     await page.getByTestId("bank-save-as-new").click();
     await expect(page.getByTestId("bank-saved")).toBeVisible();
     await expect(page.getByTestId("bank-editor-bank").locator("option:checked")).toHaveText(rescued);
+    await expect(page.getByTestId("bank-editor-bank").locator("option", { hasText: gone })).toHaveCount(0); // the deleted bank left the menu
     const list: { id: string; name: string }[] = await (await request.get(`${WORKER}/api/banks`, { headers })).json();
     const entry = list.find((b) => b.name === rescued);
     expect(entry).toBeTruthy();
@@ -1272,4 +1273,38 @@ test("a bank deleted in another tab: 另存成新題庫 saves the edits into a n
     const list: { id: string; name: string }[] = await (await request.get(`${WORKER}/api/banks`, { headers })).json();
     for (const b of list.filter((x) => x.name === rescued)) await request.delete(`${WORKER}/api/banks?id=${b.id}`, { headers });
   }
+});
+
+// Value: protects=no stale 還原草稿 after a 復原 that undoes the only change; fails_when=undoDelete stops forgetting the
+// draft or its restoreToSaved comparison breaks; why_new=the summary test checks only the status text; seam=none; no_claim=readOnly banks.
+test("delete then 復原 back to the saved bank leaves no draft to offer after a reload", async ({ page, request }) => {
+  await resetFirstQuestion(request);
+  const firstRow = await loadEditor(page);
+  await firstRow.getByRole("button", { name: "第 1 題的更多動作" }).click();
+  await firstRow.getByRole("button", { name: "刪除這題" }).click();
+  await expect(page.getByTestId("bank-toast")).toContainText("已刪除難度 1 第 1 題");
+  await page.getByTestId("bank-toast").getByRole("button", { name: "復原" }).click();
+  await expect(page.getByTestId("bank-save-bar").getByRole("status")).toHaveText("沒有修改");
+  await reloadAndLoad(page);
+  await expect(page.getByTestId("bank-pool-1")).toBeVisible();
+  await expect(page.getByTestId("bank-draft")).toHaveCount(0);
+});
+
+// Value: protects=a save error's blank answer box shows above the sticky save bar on a phone; fails_when=the jump stops
+// scrolling to the blank box or stops leaving room for the bar; why_new=no test checks scroll position; seam=none; no_claim=exact centring.
+test("on a phone, a save error on a long question scrolls its blank answer box above the save bar", async ({ page, request }) => {
+  await resetFirstQuestion(request);
+  await page.setViewportSize({ width: 375, height: 812 });
+  const firstRow = await loadEditor(page);
+  await firstRow.getByRole("button", { name: "詳解：文字" }).click();
+  await firstRow.getByLabel("詳解文字").fill("這是一段很長的解說文字，用來測試編輯器在窄螢幕上的捲動。".repeat(10));
+  await firstRow.getByLabel("答案").fill("");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.getByRole("button", { name: "儲存全部變更" }).click();
+  await expect(page.getByTestId("bank-editor-error")).toContainText("的答案是空白");
+  const answer = firstRow.getByLabel("答案");
+  await expect(answer).toBeInViewport();
+  const box = (await answer.boundingBox())!;
+  const bar = (await page.getByTestId("bank-save-bar").boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(bar.y);
 });
