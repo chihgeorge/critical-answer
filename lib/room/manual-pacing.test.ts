@@ -214,7 +214,7 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     expect(state(s.room).question).not.toBeNull();
   });
 
-  it("叉路: a team that picks long after the old 15 seconds still gets the side it pressed", () => {
+  it("叉路: a team that picks long after the old 15 seconds still gets the side it pressed", () => { // pregate-literal: CHEF_BONUS_PERCENT=15 the fork's old seconds, not the chef
     const s = setup();
     toChoosing(s);
     vi.advanceTimersByTime(FORK_MS * 4);
@@ -283,7 +283,7 @@ describe("手動停頓: switching with a pause up", () => {
     expect(state(f.room).forkBeat).toBeUndefined();
   });
 
-  it("manual to auto at a fork: a fresh 15 seconds, then the timeout", () => {
+  it("manual to auto at a fork: a fresh 15 seconds, then the timeout", () => { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const s = setup();
     toChoosing(s);
     vi.advanceTimersByTime(FORK_MS * 4);

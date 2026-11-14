@@ -114,7 +114,7 @@ describe("占卜師 in the room", () => {
 
   // Value: protects=step 1 refuses a pick, step 2 opens the pizza with its clock (R8); fails_when=a pick lands under the
   // ball or the phones get no STATE when the ball goes; no_claim=manual pacing (below)
-  it("a pick under the crystal ball is refused; the pizza comes with its 15 s clock", async () => {
+  it("a pick under the crystal ball is refused; the pizza comes with its 15 s clock", async () => { // pregate-literal: CHEF_BONUS_PERCENT=15 the pizza's seconds, not the chef
     vi.useFakeTimers();
     const s = setup();
     await toFortune(s);
@@ -293,7 +293,7 @@ describe("占卜師 in the room", () => {
 
   // Value: protects=manual pacing (E13, R8): no clock, ▶ 下一步 offered after the ball is the timeout, back to auto resets the
   // deadline; fails_when=the pizza times out in manual or a fresh clock replays the ball; no_claim=none
-  it("manual: no clock and ▶ 下一步 is the timeout; back to auto gives the pizza a fresh 15 s", async () => {
+  it("manual: no clock and ▶ 下一步 is the timeout; back to auto gives the pizza a fresh 15 s", async () => { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     vi.useFakeTimers();
     const s = setup();
     send(s.room, s.host, { type: "HOST_PACING", mode: "manual" });
@@ -311,6 +311,7 @@ describe("占卜師 in the room", () => {
     expect(st.fortune.step).toBe("choose");
     expect(st.fortuneLeft).toBeUndefined();
     expect(st.hold).toMatchObject({ kind: "fortune" });
+    // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     // Back to auto at step 2: a fresh 15 s, no second ball.
     send(s.room, s.host, { type: "HOST_PACING", mode: "auto" });
     expect(s.room.game!.fortune!.deadline).toBe(Date.now() + FORK_MS);
@@ -320,7 +321,7 @@ describe("占卜師 in the room", () => {
     expect(s.room.game!.fortune).toMatchObject({ effect: "blessing", timeout: true });
   });
 
-  it("manual → auto under the crystal ball plays the ball again: now + 3 s + 15 s", async () => {
+  it("manual → auto under the crystal ball plays the ball again: now + 3 s + 15 s", async () => { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     vi.useFakeTimers();
     const s = setup();
     await toFortune(s);

@@ -198,7 +198,7 @@ describe("🚨 the catch", () => {
 });
 
 describe("🚨 成立 (upholdCatch)", () => {
-  it("reveals the question, makes the accused flee it without a flee credit, counts a wrong answer, −10 / +15 flat", () => {
+  it("reveals the question, makes the accused flee it without a flee credit, counts a wrong answer, −10 / +15 flat", () => { // pregate-literal: CHEF_BONUS_PERCENT=15 the anti-cheat +15, not the chef
     let g = on([undefined, "chef"]);
     g = { ...g, teams: g.teams.map((t) => (t.id === "a" ? { ...t, reward: 25 } : t)) };
     const id = q(g);

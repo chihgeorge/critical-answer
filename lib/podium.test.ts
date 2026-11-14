@@ -33,7 +33,7 @@ describe("rankTeams", () => {
   });
 
   it("a tie across third rolls for the podium; one wholly below it does not", () => {
-    expect(rankTeams(teams(["甲", 40], ["乙", 30], ["丙", 10], ["丁", 10]), dice(3, 15)).ranking).toEqual(["甲", "乙", "丁", "丙"]);
+    expect(rankTeams(teams(["甲", 40], ["乙", 30], ["丙", 10], ["丁", 10]), dice(3, 15)).ranking).toEqual(["甲", "乙", "丁", "丙"]); // pregate-literal: CHEF_BONUS_PERCENT=15 a tiebreak die, not the chef
     expect(rankTeams(teams(["甲", 40], ["乙", 30], ["丙", 20], ["丁", 5], ["戊", 5]), dice()).tieRolls).toEqual([]);
     // Four tied for second: the two left tied below third keep the team order.
     const four = rankTeams(teams(["甲", 40], ["乙", 9], ["丙", 9], ["丁", 9], ["戊", 9]), dice(20, 18, 3, 3));

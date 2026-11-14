@@ -31,7 +31,7 @@ Status: APPROVED（F1–F8 由站長決定，細節由實作 lane 依現有做�
 
 - **計分**（`answerQuestion`，`lib/game-state.ts`）：多一個參數 `fields: { right, total }`。首領命中：
   - 傷害：每答對一欄 1 格血（`right × 偷襲倍數 + 爆擊`；搶答階段沒有偷襲也不擲爆擊骰，所以就是 `right` 格）。
-  - 獎勵：`Math.round((命中獎勵 + 爆擊／祝福加成) × right ÷ total)`，再算廚師 15%。四捨五入用 `Math.round`（0.5 進位），跟這個檔案其他地方一樣。打倒首領的 4d20 不打折（E1）。
+  - 獎勵：`Math.round((命中獎勵 + 爆擊／祝福加成) × right ÷ total)`（2026-11-13 起搶答階段沒有廚師加分）。四捨五入用 `Math.round`（0.5 進位），跟這個檔案其他地方一樣。打倒首領的 4d20 不打折（E1）。
 - **協定**（`lib/protocol.ts`）：
   - `HOST_JUDGE` 多一個選填的 `fields: boolean[]`（每欄對不對）。有給的話 `correct` 必須等於「至少一欄對」。沒給（舊主持人頁）＝全對或全錯。
   - `TEAM_SUBMIT_TEXT` 多一個選填的 `fields: string[]`（每欄打的字，可空白）。

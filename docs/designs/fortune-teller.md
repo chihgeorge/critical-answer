@@ -79,7 +79,7 @@ pizza, one word per slice; the phone shows each effect's line.
 
 - Both remainder rules sit next to the amounts in `lib/game-state.ts` (`FORTUNE_PAY`).
 - **The chef's bonus applies to no fortune effect,** and the fortune teller gives the drawing team nothing herself.
-  Tribute and relief move 飽足感 between teams; a 15% on top would make some out of nothing.
+  Tribute and relief move 飽足感 between teams; a chef's share on top would make some out of nothing.
 - Every effect lands on the matching teams (`matchIds`), offline teams too. The drawing team may be one of them.
 
 ## Flow

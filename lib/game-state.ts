@@ -61,25 +61,28 @@ export const CLASS_ICONS: Record<ClassId, string> = {
 
 /** Ability uses per team per game for the thief and the cleric (the chef's is passive, CHEF_BONUS_PERCENT). */
 export const ABILITY_USES = 2;
-/** The warrior and the mage get more: their abilities only raise the odds on one question (owner, 2026-11-08 balance). */
+/** The warrior gets more: its roll only raises the odds on one question (owner, 2026-11-08 balance). */
 export const MORE_ABILITY_USES = 4;
+/** The mage's casts per game (owner, 2026-11-13 balance: 4 → 3). */
+export const MAGE_ABILITY_USES = 3;
 
 /** A team's ability uses at the start of a game. */
 export function abilityUsesFor(classId: ClassId | undefined): number {
-  return classId === "warrior" || classId === "mage" ? MORE_ABILITY_USES : ABILITY_USES;
+  return classId === "warrior" ? MORE_ABILITY_USES : classId === "mage" ? MAGE_ABILITY_USES : ABILITY_USES;
 }
 
 /** A correct answer after Sneak Attack gives this times the reward (rounded half up); the boss still loses 2 hearts. */
 export const SNEAK_REWARD_MULTIPLIER = 1.5;
-/** The chef's passive: every reward gain of the team is this much bigger, after the sneak, a crit and the kill's 4d20. */
-export const CHEF_BONUS_PERCENT = 15;
+/** The chef's passive: every reward gain of the team is this much bigger, after the sneak, a crit and a kill's 4d20; never in
+ * a boss buzzer phase, where no class ability counts (owner, 2026-11-13 balance). */
+export const CHEF_BONUS_PERCENT = 20;
 
 /** The chef's share of one reward gain: rounded half up, at least 1 on any gain (eng review D1–D3). */
 export function chefShare(gain: number): number {
   return gain > 0 ? Math.max(1, Math.round((gain * CHEF_BONUS_PERCENT) / 100)) : 0;
 }
-/** The warrior's d20 counts as a correct answer at this value or more (60%; owner, 2026-11-08 two-phase boss balance). */
-export const WARRIOR_TARGET = 9;
+/** The warrior's d20 counts as a correct answer at this value or more (55%; owner, 2026-11-13 balance). */
+export const WARRIOR_TARGET = 10;
 
 /** A fill-in question is a persuasion check (dnd design Premise 3): d20 + the team's class bonus against the
  * monster's DC. A team with no class adds 1. */
@@ -1186,8 +1189,8 @@ export function answerQuestion(
   // Any judgment uses up an armed Sneak Attack; only a correct one pays (D16): ×2 boss damage, ×1.5 reward.
   const sneak = getTeam(game, teamId).sneakArmed ? 2 : 1;
   const sneakPay = (reward: number) => (sneak === 2 ? Math.round(reward * SNEAK_REWARD_MULTIPLIER) : reward);
-  // The chef's 15% goes on the whole gain, last (eng review D2).
-  const chef = getTeam(game, teamId).classId === "chef";
+  // The chef's share goes on the whole gain, last (eng review D2); no class ability counts in a buzzer phase.
+  const chef = getTeam(game, teamId).classId === "chef" && !isBuzzPhase(game);
   const withChef = (gain: number) => {
     const share = chef ? chefShare(gain) : 0;
     return { reward: gain + share, ...(share ? { chefBonus: share } : {}) };
@@ -1736,12 +1739,12 @@ export function hostSetScore(game: GameState, teamId: string, score: number): Ga
 }
 
 /** N for the ledger, from `prev` (the game before the judgment): a correct outcome's whole gain; for a wrong one, what a
- * plain correct answer there gives (room reward or the boss's hitReward) plus the chef's share. */
+ * plain correct answer there gives (room reward or the boss's hitReward) plus the chef's share (none in a buzzer phase). */
 export function judgmentPoints(prev: GameState, teamId: string, outcome: AnswerOutcome): number {
   if (outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") return outcome.reward;
   const t = getTeam(prev, teamId);
   const base = t.inBoss ? prev.boss.hitReward : (prev.rooms[t.roomIndex]?.reward ?? 0);
-  return base + (t.classId === "chef" ? chefShare(base) : 0);
+  return base + (t.classId === "chef" && !isBuzzPhase(prev) ? chefShare(base) : 0);
 }
 
 /** Appends one applied judgment to the ledger (the room calls this once per judgment, never for a 🚨 catch). */
@@ -2008,7 +2011,7 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
   const event = team.event;
   if (!event) throw new InvalidActionError("no_event");
   const result: EventResult = { teamId, scene: event.scene, outcome: event.outcome, satiety: 0 };
-  // The chef's 15% goes on satiety an event gives, never on what it takes (D12).
+  // The chef's share goes on satiety an event gives, never on what it takes (D12).
   const give = (n: number) => {
     const share = team.classId === "chef" ? chefShare(n) : 0;
     result.satiety = n + share;

@@ -29,12 +29,14 @@ import {
   spendAbility,
   ABILITY_USES,
   MORE_ABILITY_USES,
+  CHEF_BONUS_PERCENT,
   WARRIOR_TARGET,
   mageEliminate,
   mageHint,
   firstMeaningfulChar,
   armSneak,
   chefShare,
+  judgmentPoints,
   pray,
   canPray,
   canPrayBeforeJudge,
@@ -497,7 +499,7 @@ describe("scoring and winners (docs/designs/scoring-and-score-pools.md)", () => 
     { baseDifficulty: 2, reward: 50 },
   ];
   const pools = [["a1", "a2", "a3", "a4"], ["b1", "b2", "b3", "b4"], [], [], []];
-  const twoTeams = (bossThreshold = 15, bossMaxHp = 1) =>
+  const twoTeams = (bossThreshold = 15, bossMaxHp = 1) => // pregate-literal: CHEF_BONUS_PERCENT=15 the boss threshold, not the chef
     createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], rooms(), pools, ["boss-q1", "boss-q2"], { bossThreshold }, bossMaxHp, first);
   const answer = (g: GameState, id: string, correct = true, flee: "flee" | "retry" = "retry") =>
     answerQuestion(g, id, getTeam(g, id).inBoss ? g.boss.currentQuestionId : getTeam(g, id).currentQuestionId, correct, flee, first);
@@ -572,7 +574,7 @@ describe("scoring and winners (docs/designs/scoring-and-score-pools.md)", () => 
 
 describe("sendToBoss (host override, scoring-and-score-pools.md S13)", () => {
   it("takes a team into the boss room without touching the turn or any score", () => {
-    const g = makeGame({ bossThreshold: 15 });
+    const g = makeGame({ bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const g2 = sendToBoss(g, "T1");
     expect(isInBossPhase(g2, "T1")).toBe(true);
     expect(isInBossPhase(g2, "T0")).toBe(false);
@@ -583,7 +585,7 @@ describe("sendToBoss (host override, scoring-and-score-pools.md S13)", () => {
   });
 
   it("refuses a team already in the boss room, a wrong lock waiting for its choice, and a finished game", () => {
-    const g = makeGame({ bossThreshold: 15 });
+    const g = makeGame({ bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(() => sendToBoss(sendToBoss(g, "T1"), "T1")).toThrow(InvalidActionError);
     const q = g.teams[0].currentQuestionId;
     expect(() => sendToBoss(recordWrongLock(g, "T0", q, 0), "T0")).toThrow(InvalidActionError);
@@ -592,7 +594,7 @@ describe("sendToBoss (host override, scoring-and-score-pools.md S13)", () => {
   });
 
   it("drops the left room question's eliminated options, so a later deal of it starts clean", () => {
-    const g0 = makeGame({ bossThreshold: 15 });
+    const g0 = makeGame({ bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const q = g0.teams[0].currentQuestionId;
     const { game: g } = answerQuestion(recordWrongLock(g0, "T0", q, 1), "T0", q, false, "retry");
     expect(g.eliminated[q]).toEqual([1]);
@@ -600,14 +602,14 @@ describe("sendToBoss (host override, scoring-and-score-pools.md S13)", () => {
   });
 
   it("keeps eliminated options while another team still faces that question", () => {
-    const g0 = makeGame({ bossThreshold: 15 });
+    const g0 = makeGame({ bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const q = g0.teams[0].currentQuestionId;
     const g = { ...g0, teams: g0.teams.map((t) => ({ ...t, currentQuestionId: q })), eliminated: { [q]: [1] } };
     expect(sendToBoss(g, "T1").eliminated[q]).toEqual([1]);
   });
 
   it("clears the sent team's option pick", () => {
-    const g = makeGame({ bossThreshold: 15 });
+    const g = makeGame({ bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const g1 = recordOptionSelection(g, "T0", g.teams[0].currentQuestionId, 0);
     expect(sendToBoss(g1, "T0").teams[0].currentSelection).toBeNull();
   });
@@ -842,7 +844,7 @@ describe("question deck (T2)", () => {
   });
 
   it("a team below the boss gate in the last room keeps getting questions and can still reach it", () => {
-    let game = createGame(seeds(1), ...deck(2, 1, 3), boss, { bossThreshold: 15 }, 1, first);
+    let game = createGame(seeds(1), ...deck(2, 1, 3), boss, { bossThreshold: 15 }, 1, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     for (let i = 0; i < 40 && !isInBossPhase(game, "T0"); i++) {
       ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first));
     }
@@ -883,7 +885,7 @@ describe("recordOptionSelection (multipleChoice pick)", () => {
   });
 
   it("rejects a selection once the game has finished", () => {
-    let game = createGame([{ id: "T0", name: "A" }], ...deck(2, 1, 3), ["boss-q1"], { bossThreshold: 15 }, 1, first);
+    let game = createGame([{ id: "T0", name: "A" }], ...deck(2, 1, 3), ["boss-q1"], { bossThreshold: 15 }, 1, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     for (let i = 0; i < 40 && game.phase !== "finished"; i++) {
       const qid = isInBossPhase(game, "T0") ? game.boss.currentQuestionId : game.teams[0].currentQuestionId;
       game = answerQuestion(game, "T0", qid, true, "retry", first).game;
@@ -1308,7 +1310,7 @@ describe("teams sharing a question split once one comes free (TODOS 題目比隊
 
 describe("queueQuestion (the host picks the next question)", () => {
   it("hands a team its queued question on its next correct answer, then deals as usual", () => {
-    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7");
+    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const { game: g2 } = answerQuestion(g, "T0", "room0-q1", true, "retry", first);
     expect(g2.teams[0].currentQuestionId).toBe("room0-q7");
     expect(g2.teams[0].queuedQuestionId).toBeUndefined();
@@ -1316,7 +1318,7 @@ describe("queueQuestion (the host picks the next question)", () => {
   });
 
   it("keeps a retry on the same question and the pick waiting", () => {
-    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7");
+    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const { game: g2 } = answerQuestion(g, "T0", "room0-q1", false, "retry", first);
     expect(g2.teams[0].currentQuestionId).toBe("room0-q1");
     expect(g2.teams[0].queuedQuestionId).toBe("room0-q7");
@@ -1325,21 +1327,21 @@ describe("queueQuestion (the host picks the next question)", () => {
   it("waits through a flee to another difficulty, and is used by the flee when the difficulty fits", () => {
     // Rooms at difficulty 2, so a flee drops to the difficulty-1 pool.
     const pools = [["e1", "e2", "e3"], ["m1", "m2", "m3", "m4"], [], [], []];
-    const g0 = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], makeRooms(3, 2), pools, ["b1"], { bossThreshold: 15 }, 2, first);
+    const g0 = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], makeRooms(3, 2), pools, ["b1"], { bossThreshold: 15 }, 2, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const g = queueQuestion(g0, "T0", "m4");
     const { game: fled } = answerQuestion(g, "T0", "m1", false, "flee", first);
     expect(fled.teams[0].currentQuestionId).toBe("e1");
     expect(fled.teams[0].queuedQuestionId).toBe("m4");
     // Fleeing to a pool the pick is in uses it.
     const pools1 = poolsWith(1, ["q1", "q2", "q3", "q4"]);
-    const h0 = createGame([{ id: "T0", name: "A" }], makeRooms(3, 1), pools1, ["b1"], { bossThreshold: 15 }, 2, first);
+    const h0 = createGame([{ id: "T0", name: "A" }], makeRooms(3, 1), pools1, ["b1"], { bossThreshold: 15 }, 2, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const { game: h } = answerQuestion(queueQuestion(h0, "T0", "q4"), "T0", "q1", false, "flee", first);
     expect(h.teams[0].currentQuestionId).toBe("q4");
   });
 
   it("never deals a question queued for another team", () => {
     // T1's next deal would draw room0-q4 first; T0 has it queued.
-    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q4");
+    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q4"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const { game: g2 } = answerQuestion(advanceTurn(g), "T1", "room0-q2", true, "retry", first);
     expect(g2.teams[1].currentQuestionId).toBe("room0-q5");
   });
@@ -1349,11 +1351,11 @@ describe("queueQuestion (the host picks the next question)", () => {
     const { game: g2 } = answerQuestion(g, "T0", "room0-q1", true, "retry", first);
     expect(g2.teams[0].inBoss).toBe(true);
     expect(g2.teams[0].queuedQuestionId).toBeUndefined();
-    expect(sendToBoss(queueQuestion(makeGame({ bossThreshold: 15 }), "T1", "room0-q7"), "T1").teams[1].queuedQuestionId).toBeUndefined();
+    expect(sendToBoss(queueQuestion(makeGame({ bossThreshold: 15 }), "T1", "room0-q7"), "T1").teams[1].queuedQuestionId).toBeUndefined(); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
   });
 
   it("rotates the boss to its queued question on the next hit or flee", () => {
-    let g = sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0");
+    let g = sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     g = queueQuestion(g, "boss", "boss-q3");
     const { game: hit } = answerQuestion(g, "T0", "boss-q1", true, "retry", first);
     expect(hit.boss.currentQuestionId).toBe("boss-q3");
@@ -1367,7 +1369,7 @@ describe("queueQuestion (the host picks the next question)", () => {
   });
 
   it("keeps a team's pick through a wrong lock and retry", () => {
-    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7");
+    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const { game: g2 } = answerQuestion(recordWrongLock(g, "T0", "room0-q1", 0), "T0", "room0-q1", false, "retry", first);
     expect(g2.teams[0].currentQuestionId).toBe("room0-q1");
     expect(g2.teams[0].queuedQuestionId).toBe("room0-q7");
@@ -1375,14 +1377,14 @@ describe("queueQuestion (the host picks the next question)", () => {
   });
 
   it("clears the boss pick, and the ring takes over again", () => {
-    const g = queueQuestion(queueQuestion(sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"), "boss", "boss-q3"), "boss", null);
+    const g = queueQuestion(queueQuestion(sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"), "boss", "boss-q3"), "boss", null); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(g.boss.queuedQuestionId).toBeUndefined();
     expect(g.boss.currentQuestionId).toBe("boss-q1");
     expect(answerQuestion(g, "T0", "boss-q1", true, "retry", first).game.boss.currentQuestionId).toBe("boss-q2");
   });
 
   it("rotates the boss to its pick after a wrong lock, even on retry", () => {
-    const g = queueQuestion(sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"), "boss", "boss-q3");
+    const g = queueQuestion(sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"), "boss", "boss-q3"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const { game: r } = answerQuestion(recordWrongLock(g, "T0", "boss-q1", 0), "T0", "boss-q1", false, "retry", first);
     expect(r.boss.currentQuestionId).toBe("boss-q3");
     expect(r.boss.queuedQuestionId).toBeUndefined();
@@ -1390,13 +1392,13 @@ describe("queueQuestion (the host picks the next question)", () => {
   });
 
   it("keeps the boss pick when another team enters the boss room", () => {
-    const g = queueQuestion(sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"), "boss", "boss-q3");
+    const g = queueQuestion(sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"), "boss", "boss-q3"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(sendToBoss(g, "T1").boss.queuedQuestionId).toBe("boss-q3");
   });
 
   it("only offers the team's next room difficulty, and refuses revealed, held and queued questions", () => {
     const pools = [["e1", "e2"], ["m1", "m2", "m3"], [], [], []];
-    const g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }, { baseDifficulty: 2, reward: 20 }], pools, ["b1", "b2"], { bossThreshold: 15 }, 2, first);
+    const g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }, { baseDifficulty: 2, reward: 20 }], pools, ["b1", "b2"], { bossThreshold: 15 }, 2, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(pickableQuestionIds(g, "T0")).toEqual(["m1", "m2", "m3"]);
     expect(pickableQuestionIds(g, "boss")).toEqual(["b1", "b2"]);
     expect(() => queueQuestion(g, "T0", "e2")).toThrow(InvalidActionError);
@@ -1519,7 +1521,7 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
   });
 
   it("6 is a correct answer: the team advances and the turn passes", () => {
-    const g = makeGame({ warrior: true, bossThreshold: 15 });
+    const g = makeGame({ warrior: true, bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const { game, outcome } = warriorRoll(g, "T0", g.teams[0].currentQuestionId, WARRIOR_TARGET, first);
     expect(outcome).toMatchObject({ type: "correct-room-advance", teamId: "T0", nextRoomIndex: 1 });
     expect(game.revealedQuestionIds).toContain(g.teams[0].currentQuestionId);
@@ -1528,7 +1530,7 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
   });
 
   it("5 is a wrong answer with retry: same question, nothing eliminated", () => {
-    const g = makeGame({ warrior: true, bossThreshold: 15 });
+    const g = makeGame({ warrior: true, bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const q = g.teams[0].currentQuestionId;
     const { game, outcome } = warriorRoll(g, "T0", q, WARRIOR_TARGET - 1, first);
     expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" });
@@ -1556,12 +1558,12 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
 
   it("the final blow scores the kill dice the room already showed (kill-roll.md)", () => {
     const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 1, teamCount: 1 });
-    const { outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, WARRIOR_TARGET, first, false, [9, 14, 3, 17]);
+    const { outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, WARRIOR_TARGET, first, false, [9, 14, 3, 17]); // pregate-literal: WARRIOR_TARGET=9 a kill die, not the target
     expect(outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: true, killBonus: 43 });
   });
 
   it("spendAbility takes one use on the team's own turn, and refuses at 0", () => {
-    const g = makeGame({ warrior: true, bossThreshold: 15 });
+    const g = makeGame({ warrior: true, bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const once = spendAbility(g, "T0", "warrior");
     expect(once.teams.map((t) => t.abilityUses)).toEqual([3, 2, 2]);
     let none = once;
@@ -1571,7 +1573,7 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
   });
 
   it("refuses another team's turn, a team without the class and a pending wrong lock", () => {
-    const g = makeGame({ warrior: true, bossThreshold: 15 });
+    const g = makeGame({ warrior: true, bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const g1 = advanceTurn(g);
     for (const act of [(x: typeof g, id: string) => warriorRoll(x, id, x.teams.find((t) => t.id === id)!.currentQuestionId, 20), (x: typeof g, id: string) => spendAbility(x, id, "warrior")]) {
       expect(() => act(g1, "T0")).toThrow(InvalidActionError);
@@ -1591,15 +1593,15 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
 
 describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
   /** T0 has `classes[0]`, T1 `classes[1]`...; the boss bar is `bossMaxHp`, the boss room opens at `bossThreshold`. */
-  function classGame(classes: (ClassId | undefined)[], bossThreshold = 15, bossMaxHp = 3): GameState {
+  function classGame(classes: (ClassId | undefined)[], bossThreshold = 15, bossMaxHp = 3): GameState { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const teams = classes.map((c, i) => ({ id: `T${i}`, name: `Team ${i}`, ...(c ? { classId: c } : {}) }));
     return createGame(teams, ...deck(3, 1), ["boss-q1", "boss-q2", "boss-q3"], { bossThreshold }, bossMaxHp, first);
   }
   const wrongLock = (g: GameState, id: string) => recordWrongLock(g, id, currentQ(g, id), 0);
   const currentQ = (g: GameState, id: string) => (isInBossPhase(g, id) ? g.boss.currentQuestionId : g.teams.find((t) => t.id === id)!.currentQuestionId);
 
-  it("abilityUsesFor: a warrior and a mage start with 4 uses, a thief and a cleric with 2", () => {
-    expect(classGame(["warrior", "mage", "thief", "cleric"]).teams.map((t) => t.abilityUses)).toEqual([4, 4, 2, 2]);
+  it("abilityUsesFor: a warrior starts with 4 uses, a mage with 3, a thief and a cleric with 2", () => {
+    expect(classGame(["warrior", "mage", "thief", "cleric"]).teams.map((t) => t.abilityUses)).toEqual([4, 3, 2, 2]);
   });
 
   it("sneak attack: a correct answer gives 1.5× the room reward but not the progress points, and is used up", () => {
@@ -1608,8 +1610,8 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(getSpectatorView(g).teams[0].sneakArmed).toBe(true);
     expect(() => armSneak(g, "T0")).toThrow(/sneak_armed/);
     const { game, outcome } = answerQuestion(g, "T0", currentQ(g, "T0"), true);
-    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 15 });
-    expect(game.teams[0]).toMatchObject({ score: 1, reward: 15, abilityUses: 1 });
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    expect(game.teams[0]).toMatchObject({ score: 1, reward: 15, abilityUses: 1 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(game.teams[0].sneakArmed).toBeUndefined();
   });
 
@@ -1629,7 +1631,7 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
   it("sneak attack in the boss room takes 2 HP and gives 1.5× the hit reward and the kill bonus", () => {
     const g = armSneak(classGame(["thief"], 0, 3), "T0");
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first);
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 1, reward: 15 });
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 1, reward: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const kill = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first);
     // rollBossKillDice(first) sums to 4 (4d20 all ones), ×1.5 = 6; the bar never goes below 0.
     expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 6, reward: 21 });
@@ -1638,12 +1640,12 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(shown.outcome).toMatchObject({ bossKilled: true, killBonus: 65, reward: 80 });
   });
 
-  // Value: protects=the chef's 15% (eng review D1–D3); fails_when=it rounds down, skips the 4d20, or leaks to other classes.
+  // Value: protects=the chef's 20% (eng review D1–D3); fails_when=it rounds down, skips the 4d20, or leaks to other classes.
   it("chefShare rounds half up and pays at least 1 on any gain", () => {
-    expect([0, 3, 5, 10, 16, 20, 30, 53].map(chefShare)).toEqual([0, 1, 1, 2, 2, 3, 5, 8]);
+    expect([0, 3, 5, 10, 16, 20, 30, 53].map(chefShare)).toEqual([0, 1, 1, 2, 3, 4, 6, 11]);
   });
 
-  it("the chef gets 15% more on a room answer; other teams get no chefBonus", () => {
+  it("the chef gets 20% more on a room answer; other teams get no chefBonus", () => {
     const g = classGame(["chef", undefined]);
     const { game, outcome } = answerQuestion(g, "T0", currentQ(g, "T0"), true);
     expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 12, chefBonus: 2 }); // pregate-literal: WARRIOR_TARGET=12 not the warrior target
@@ -1653,20 +1655,21 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(other.outcome).not.toHaveProperty("chefBonus");
   });
 
-  it("the chef's 15% goes on the whole boss gain, the kill's 4d20 included", () => {
+  it("the chef's 20% goes on the whole boss gain, the kill's 4d20 included", () => {
     const g = classGame(["chef"], 0, 2);
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first);
     expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 12, chefBonus: 2 }); // pregate-literal: WARRIOR_TARGET=12 not the warrior target
     const kill = answerQuestion(hit.game, "T0", hit.game.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
-    // 10 + 43 = 53, and 15% of 53 rounds to 8.
-    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 61, chefBonus: 8 });
-    expect(kill.game.teams[0].reward).toBe(73);
+    // 10 + 43 = 53, and 20% of 53 rounds to 11.
+    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 64, chefBonus: 11 });
+    expect(kill.game.teams[0].reward).toBe(76);
   });
 
-  it("the chef's 15% goes on a crit too, and a wrong answer pays it nothing", () => {
+  it("the chef's 20% goes on a crit too, and a wrong answer pays it nothing", () => {
     const g = classGame(["chef", undefined]);
-    // 10 + a crit's 5 = 15, and 15% of 15 rounds to 2.
-    expect(answerQuestion(g, "T0", currentQ(g, "T0"), true, "retry", first, 20).outcome).toMatchObject({ reward: 17, chefBonus: 2, roll: { kind: "crit", value: 20 } });
+    // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    // 10 + a crit's 5 = 15, and 20% of 15 is 3.
+    expect(answerQuestion(g, "T0", currentQ(g, "T0"), true, "retry", first, 20).outcome).toMatchObject({ reward: 18, chefBonus: 3, roll: { kind: "crit", value: 20 } });
     const wrong = answerQuestion(g, "T0", currentQ(g, "T0"), false, "retry");
     expect(wrong.outcome).not.toHaveProperty("chefBonus");
     expect(wrong.game.teams[0].reward).toBe(0);
@@ -1679,7 +1682,7 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const after = mageEliminate(g, "T0", q, 1, 4, first);
     expect(after.eliminated[q]).toEqual([0, 2]);
     expect(getSpectatorView(after).mageRemoved[q]).toEqual([0, 2]);
-    expect(after.teams[0]).toMatchObject({ abilityUses: 3, currentSelection: null });
+    expect(after.teams[0]).toMatchObject({ abilityUses: 2, currentSelection: null });
     // One wrong option left: nothing to remove, and nothing spent.
     expect(() => mageEliminate(after, "T0", q, 1, 4, first)).toThrow(/no_option_to_remove/);
     expect(mageEliminate(g, "T0", q, 1, 4, () => 1).eliminated[q]).toHaveLength(2); // an rng of 1 cannot hang it
@@ -1703,7 +1706,7 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const g = classGame(["mage", undefined]);
     const q = currentQ(g, "T0");
     const hinted = mageHint(g, "T0", q, "萬家福");
-    expect(hinted.teams[0].abilityUses).toBe(3);
+    expect(hinted.teams[0].abilityUses).toBe(2);
     expect(getSpectatorView(hinted).mageHints).toEqual({ [q]: "萬" });
     expect(() => mageHint(hinted, "T0", q, "萬家福")).toThrow(/hint_shown/);
     expect(() => mageHint(g, "T0", q, "萬")).toThrow(/no_hint/);
@@ -1944,7 +1947,7 @@ describe("dishes (docs/designs/monster-cuisine.md)", () => {
 // Value: protects=the crit die's rules (dnd design R4, R5, R2): a 20 adds half the base reward and one boss heart, a 1
 // changes nothing; fails_when=the bonus multiplies with the sneak, rounds wrong, raises the 4d20 or touches progress points
 describe("the crit die (dnd design R4, R5)", () => {
-  function critGame(classes: (ClassId | undefined)[], bossThreshold = 15, bossMaxHp = 3, rooms = makeRooms(3, 1)): GameState {
+  function critGame(classes: (ClassId | undefined)[], bossThreshold = 15, bossMaxHp = 3, rooms = makeRooms(3, 1)): GameState { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const teams = classes.map((c, i) => ({ id: `T${i}`, name: `Team ${i}`, ...(c ? { classId: c } : {}) }));
     return createGame(teams, rooms, poolsWith(1, ["q1", "q2", "q3", "q4"]), ["boss-q1", "boss-q2", "boss-q3"], { bossThreshold }, bossMaxHp, first);
   }
@@ -1953,8 +1956,8 @@ describe("the crit die (dnd design R4, R5)", () => {
   it("a room 20 adds half the base reward, marks the outcome and keeps progress points", () => {
     const g = critGame([undefined]);
     const { game, outcome } = answerQuestion(g, "T0", q0(g), true, "retry", first, 20);
-    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 15, roll: { kind: "crit", value: 20 } });
-    expect(game.teams[0]).toMatchObject({ score: 1, reward: 15 });
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 15, roll: { kind: "crit", value: 20 } }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    expect(game.teams[0]).toMatchObject({ score: 1, reward: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
   });
 
   it("a 1 is only a show: the same reward, marked as a fumble; other values leave no mark", () => {
@@ -1971,14 +1974,14 @@ describe("the crit die (dnd design R4, R5)", () => {
   });
 
   it("half a reward rounds with Math.round (25 → 13)", () => {
-    const g = critGame([undefined], 15, 3, [{ baseDifficulty: 1, reward: 25 }, ...makeRooms(2, 1)]);
+    const g = critGame([undefined], 15, 3, [{ baseDifficulty: 1, reward: 25 }, ...makeRooms(2, 1)]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(answerQuestion(g, "T0", q0(g), true, "retry", first, 20).outcome).toMatchObject({ reward: 38 });
   });
 
   it("a boss 20 takes one more heart and adds half the hit reward; with a sneak it takes 3", () => {
     const g = critGame([undefined], 0, 5);
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 20);
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 3, reward: 15, roll: { kind: "crit", value: 20 } });
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 3, reward: 15, roll: { kind: "crit", value: 20 } }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const sneaky = armSneak(critGame(["thief"], 0, 5), "T0");
     expect(answerQuestion(sneaky, "T0", sneaky.boss.currentQuestionId, true, "retry", first, 20).outcome).toMatchObject({ bossHpRemaining: 2, reward: 20 });
   });
@@ -1999,7 +2002,7 @@ describe("the crit die (dnd design R4, R5)", () => {
 
   it("a warrior's 20 is a crit on a multipleChoice question (critable) and only a hit on a fill-in", () => {
     const g = spendAbility(critGame(["warrior"]), "T0", "warrior");
-    expect(warriorRoll(g, "T0", q0(g), 20, first, true).outcome).toMatchObject({ reward: 15, roll: { kind: "crit", value: 20 } });
+    expect(warriorRoll(g, "T0", q0(g), 20, first, true).outcome).toMatchObject({ reward: 15, roll: { kind: "crit", value: 20 } }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const fillIn = warriorRoll(g, "T0", q0(g), 20, first).outcome;
     expect(fillIn).toMatchObject({ reward: 10 });
     expect("roll" in fillIn && fillIn.roll).toBeFalsy();
@@ -2010,7 +2013,7 @@ describe("the crit die (dnd design R4, R5)", () => {
 // each of the kill's 4d20, and a critable warrior die only once (podium-reveal.md D5); fails_when=a source is missed,
 // counted twice, or a wrong answer's ignored die counts; why_new=new counter; seam=none; no_claim=tie-break dice (rankTeams)
 describe("natural 20s (podium-reveal.md D5)", () => {
-  const solo = (classId?: ClassId, bossThreshold = 15, bossMaxHp = 3) =>
+  const solo = (classId?: ClassId, bossThreshold = 15, bossMaxHp = 3) => // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     createGame([{ id: "T0", name: "A", ...(classId ? { classId } : {}) }], makeRooms(3, 1), poolsWith(1, ["q1", "q2", "q3", "q4"]), ["boss-q1"], { bossThreshold }, bossMaxHp, first);
   const n20 = (g: GameState) => g.teams[0].natural20s;
   const q0 = (g: GameState) => g.teams[0].currentQuestionId;
@@ -2044,7 +2047,7 @@ describe("natural 20s (podium-reveal.md D5)", () => {
 // source is missed or counted twice, a warrior's 1 on a fill-in is skipped, a flee or switch counts as a wrong answer, or a
 // prayed retry does not; seam=none; no_claim=the conditions built on them (event-rooms.test.ts)
 describe("fortune counters: natural1s, correctAnswers, wrongAnswers", () => {
-  const solo = (classId?: ClassId, bossThreshold = 15, bossMaxHp = 3) =>
+  const solo = (classId?: ClassId, bossThreshold = 15, bossMaxHp = 3) => // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     createGame([{ id: "T0", name: "A", ...(classId ? { classId } : {}) }], makeRooms(3, 1), poolsWith(1, ["q1", "q2", "q3", "q4"]), ["boss-q1"], { bossThreshold }, bossMaxHp, first);
   const t0 = (g: GameState) => g.teams[0];
   const q0 = (g: GameState) => g.teams[0].currentQuestionId;
@@ -2073,7 +2076,7 @@ describe("fortune counters: natural1s, correctAnswers, wrongAnswers", () => {
   });
 
   it("a cleric's prayed wrong answer counts when retried", () => {
-    const g = createGame([{ id: "T0", name: "A", classId: "cleric" }, { id: "T1", name: "B" }], makeRooms(3, 1), poolsWith(1, ["q1", "q2", "q3", "q4"]), ["boss-q1"], { bossThreshold: 15 }, 3, first);
+    const g = createGame([{ id: "T0", name: "A", classId: "cleric" }, { id: "T1", name: "B" }], makeRooms(3, 1), poolsWith(1, ["q1", "q2", "q3", "q4"]), ["boss-q1"], { bossThreshold: 15 }, 3, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const waiting = pray(recordTextWrong(g, "T0", q0(g)), "T0");
     expect(t0(answerQuestion(waiting, "T0", q0(g), false, "retry", first).game).wrongAnswers).toBe(1);
   });
@@ -2085,7 +2088,7 @@ describe("fortune counters: natural1s, correctAnswers, wrongAnswers", () => {
 // leaks on a 20, the warrior's hit skips the half, a mage casts a second hint, or a record outlives its question;
 // seam=none; no_claim=the room's beat and broadcast (dungeon-room.test.ts)
 describe("the persuasion check (dnd design R6, R8)", () => {
-  function checkGame(classes: (ClassId | undefined)[], bossThreshold = 15, bossMaxHp = 3): GameState {
+  function checkGame(classes: (ClassId | undefined)[], bossThreshold = 15, bossMaxHp = 3): GameState { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const teams = classes.map((c, i) => ({ id: `T${i}`, name: `Team ${i}`, ...(c ? { classId: c } : {}) }));
     return createGame(teams, ...deck(3, 1), ["boss-q1", "boss-q2", "boss-q3"], { bossThreshold }, bossMaxHp, first);
   }
@@ -2093,9 +2096,10 @@ describe("the persuasion check (dnd design R6, R8)", () => {
   const check = (g: GameState, value: number, answer = "萬家福") => recordCheck(g, "T0", q0(g), value, answer);
   const rec = (g: GameState) => g.checks?.[checkKey(q0(g), "T0")];
 
-  it("pins the 2026-11-08 class balance (docs/designs/class-abilities.md)", () => {
+  it("pins the 2026-11-13 class balance (docs/designs/class-abilities.md)", () => {
     expect(CHECK_BONUS).toEqual({ mage: 4, thief: 3, cleric: 2, chef: 1, none: 1, warrior: 0 });
-    expect(WARRIOR_TARGET).toBe(9);
+    expect(WARRIOR_TARGET).toBe(10);
+    expect(CHEF_BONUS_PERCENT).toBe(20);
   });
 
   it("rolls the class bonus against the pool's DC, or the boss's", () => {
@@ -2120,7 +2124,7 @@ describe("the persuasion check (dnd design R6, R8)", () => {
     expect(rec(check(g, 7))).toEqual({ value: 7, bonus: 1, dc: 8, passed: true, hint: "萬" });
     expect(rec(check(g, 6))).toEqual({ value: 6, bonus: 1, dc: 8, passed: false });
     // R8: an answer too short to hint passes with no hint.
-    expect(rec(check(g, 15, "萬"))).toEqual({ value: 15, bonus: 1, dc: 8, passed: true });
+    expect(rec(check(g, 15, "萬"))).toEqual({ value: 15, bonus: 1, dc: 8, passed: true }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
   });
 
   it("a natural 20 passes with no hint even at the boss's DC; a natural 1 fails whatever the bonus", () => {
@@ -2148,7 +2152,7 @@ describe("the persuasion check (dnd design R6, R8)", () => {
 
   it("a warrior's hit after a natural-1 check is halved too (R3-7)", () => {
     const g = spendAbility(check(checkGame(["warrior"]), 1), "T0", "warrior");
-    expect(warriorRoll(g, "T0", q0(g), 15).outcome).toMatchObject({ reward: 5 });
+    expect(warriorRoll(g, "T0", q0(g), 15).outcome).toMatchObject({ reward: 5 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
   });
 
   it("a natural 20's correct outcome is marked as a check, not a crit, and pays the plain reward", () => {
@@ -2242,7 +2246,7 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
   /** Three teams; T0 alone in the boss room. Phase 1 is p1-a with 1 HP, phase 2 a buzzer phase b-a/b-b/b-c with 2 HP. */
   function buzzer(questionIds = ["b-a", "b-b", "b-c"]): GameState {
     const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
-    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds, buzzer: true }]);
+    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds, buzzer: true }]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     g = sendToBoss(g, "T0");
     // Plain hits here: drop the ⚔️ 最後衝刺 blessing T0's entry gave the others.
     g = { ...g, currentTurnIndex: 0, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
@@ -2253,7 +2257,7 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
 
   it("a sneak armed in the phase before is given back when a buzzer phase starts (no abilities, D6)", () => {
     const teams = [0, 1].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
-    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["b-a"], buzzer: true }]);
+    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["b-a"], buzzer: true }]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     g = sendToBoss(g, "T0");
     g = { ...g, currentTurnIndex: 0 };
     g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
@@ -2263,11 +2267,30 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     expect(t0.abilityUses).toBe(1);
   });
 
+  // Value: protects=no class ability counts in a buzzer phase, the chef's share included (2026-11-13 balance);
+  // fails_when=a chef's buzz, its timing-tap hit or its kill gets a chefBonus.
+  it("a chef gets no share in a buzzer phase: not on a buzz, a timing-tap hit or the kill's 4d20", () => {
+    let g = buzzer();
+    g = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, classId: "chef" as const } : t)) };
+    const hit = judge(buzzIn(g, "T1", "b-a", true), "T1", true);
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 10 });
+    expect(hit.outcome).not.toHaveProperty("chefBonus");
+    // The second hit is a timing round's closest tap, and it kills: 10 + the 4d20, still no share.
+    let t = openBuzz(hit.game, hit.game.boss.currentQuestionId, true);
+    t = tapWinner(tapIn(t, "T1", t.boss.currentQuestionId, 0, 1000), "T1", {});
+    const kill = answerQuestion(t, "T1", t.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
+    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 53 });
+    expect(kill.outcome).not.toHaveProperty("chefBonus");
+    // A wrong buzz's ledger N (改判) is the plain hit reward, no share either.
+    const b = buzzIn(g, "T1", "b-a", true);
+    expect(judgmentPoints(b, "T1", judge(b, "T1", false).outcome)).toBe(b.boss.hitReward);
+  });
+
   it("the buzzer phase pulls every team into the boss room, and only the view of that phase carries a buzz", () => {
     const g = buzzer();
     expect(g.teams.every((t) => t.inBoss)).toBe(true);
     expect(getSpectatorView(g).buzz).toEqual({ questionId: "b-a", out: [] });
-    expect(getSpectatorView(sendToBoss(createGame([{ id: "T0", name: "A" }], ...deck(1), ["x"], { bossThreshold: 15 }, 1, first), "T0")).buzz).toBeUndefined();
+    expect(getSpectatorView(sendToBoss(createGame([{ id: "T0", name: "A" }], ...deck(1), ["x"], { bossThreshold: 15 }, 1, first), "T0")).buzz).toBeUndefined(); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
   });
 
   it("a video waits for ▶; the first buzz wins and takes the turn; later buzzes are refused", () => {
@@ -2383,7 +2406,7 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     /** T1 answered b-a right: b-b is next, T1 picks. 4 HP so nobody dies. */
     function won(): GameState {
       const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
-      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 4, questionIds: ["b-a", "b-b", "b-c", "b-d"], buzzer: true }]);
+      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 4, questionIds: ["b-a", "b-b", "b-c", "b-d"], buzzer: true }]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       g = sendToBoss(g, "T0");
       g = { ...g, currentTurnIndex: 0, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
       g = enterNextBossPhase(answerQuestion(g, "T0", "p1-a", true, "retry", first).game);
@@ -2421,7 +2444,7 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
 
     it("a pick away from a question the host queued drops that queued question; the question stays in the ring", () => {
       const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
-      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 4, questionIds: ["b-a", "b-b", "b-c", "b-d"], buzzer: true }]);
+      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 4, questionIds: ["b-a", "b-b", "b-c", "b-d"], buzzer: true }]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       g = sendToBoss(g, "T0");
       g = { ...g, currentTurnIndex: 0, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
       g = queueQuestion(enterNextBossPhase(answerQuestion(g, "T0", "p1-a", true, "retry", first).game), "boss", "b-c");
@@ -2511,29 +2534,29 @@ describe("⚔️ 最後衝刺 (docs/designs/last-sprint.md)", () => {
     const zero = makeGame({ bossThreshold: 0 });
     expect(applySprint({ ...zero, teams: zero.teams.map((t) => ({ ...t, inBoss: false })) }, zero).sprint).toBeUndefined();
     expect(enter(makeGame({ bossThreshold: 1, teamCount: 1 })).sprint).toBeUndefined();
-    const two = makeGame({ bossThreshold: 15, teamCount: 2 });
+    const two = makeGame({ bossThreshold: 15, teamCount: 2 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const allIn = { ...two, teams: two.teams.map((t) => ({ ...t, inBoss: true })) };
     expect(applySprint(two, allIn).sprint).toBeUndefined();
   });
 
   it("never fires late in a restored game that already has a team in the boss room", () => {
-    const g = sendToBoss({ ...makeGame({ bossThreshold: 15 }), sprint: undefined }, "T0");
+    const g = sendToBoss({ ...makeGame({ bossThreshold: 15 }), sprint: undefined }, "T0"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const restored: GameState = { ...g, sprint: undefined, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
     expect(sendToBoss(restored, "T1").sprint).toBeUndefined();
   });
 
   it("fires on the host's sendToBoss, and the blessing pays on that team's first boss hit", () => {
-    const g = sendToBoss(withReward(makeGame({ bossThreshold: 15 }), { T0: 20, T2: 10 }), "T2");
+    const g = sendToBoss(withReward(makeGame({ bossThreshold: 15 }), { T0: 20, T2: 10 }), "T2"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(g.sprint).toEqual({ teamIds: ["T1"] });
     const inBoss = sendToBoss(g, "T1");
     const turn = { ...inBoss, currentTurnIndex: 1 };
     const { outcome } = answerQuestion(turn, "T1", turn.boss.currentQuestionId, true, "retry", first);
-    expect(outcome).toMatchObject({ type: "correct-boss-hit", reward: 15 });
+    expect(outcome).toMatchObject({ type: "correct-boss-hit", reward: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
   });
 
   it("does not fire on a buzzer phase's pull: a team is already in the boss room", () => {
     const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
-    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["b-a"], buzzer: true }]);
+    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["b-a"], buzzer: true }]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     g = sendToBoss(g, "T0");
     const blessed = g.sprint;
     g = answerQuestion({ ...g, currentTurnIndex: 0 }, "T0", "p1-a", true, "retry", first).game;
@@ -2543,7 +2566,7 @@ describe("⚔️ 最後衝刺 (docs/designs/last-sprint.md)", () => {
   it("the blessing pays +50% on the next correct room answer", () => {
     const g = enter(withReward(makeGame({ bossThreshold: 1 }), { T1: 5, T2: 3 }));
     const { outcome } = answerQuestion({ ...g, currentTurnIndex: 2 }, "T2", g.teams[2].currentQuestionId, true, "retry", first);
-    expect(outcome).toMatchObject({ type: "correct-room-advance", reward: 15 });
+    expect(outcome).toMatchObject({ type: "correct-room-advance", reward: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
   });
 
   it("a curse event opened later still replaces the sprint blessing", () => {
@@ -2697,7 +2720,7 @@ describe("💫 暈眩 (fortune-teller.md)", () => {
   describe("in a buzzer phase (R5)", () => {
     function buzzer(): GameState {
       const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
-      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 3, questionIds: ["b-a", "b-b", "b-c"], buzzer: true }]);
+      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 3, questionIds: ["b-a", "b-b", "b-c"], buzzer: true }]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       g = sendToBoss(g, "T0");
       g = { ...g, currentTurnIndex: 0, teams: g.teams.map((x) => ({ ...x, boon: undefined })) };
       g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
@@ -2735,7 +2758,7 @@ describe("💫 暈眩 (fortune-teller.md)", () => {
 
     it("a stun held back by a phase card takes the turn when the next phase is not a buzzer phase", () => {
       const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
-      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["p2-a", "p2-b"] }]);
+      let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["p2-a", "p2-b"] }]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       g = sendToBoss(g, "T0");
       g = { ...g, turnOrder: ["T0", "T1", "T2"], currentTurnIndex: 0, teams: g.teams.map((x) => ({ ...x, boon: undefined, ...(x.id === "T1" ? { stunned: true as const } : {}) })) };
       g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
@@ -2760,7 +2783,7 @@ describe("timing question taps (docs/designs/timing-tap.md)", () => {
   /** Three teams pulled into a buzzer phase of timing questions t-a/t-b, its first question open. */
   function tapping(): GameState {
     const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
-    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["t-a", "t-b"], buzzer: true }]);
+    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["t-a", "t-b"], buzzer: true }]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     g = sendToBoss(g, "T0");
     g = { ...g, currentTurnIndex: 0, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
     g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;

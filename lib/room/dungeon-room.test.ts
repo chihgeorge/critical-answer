@@ -994,8 +994,9 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastSentTo(hostConn)?.detail).toBe("roll_pending");
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).pendingRoll).toBeNull();
+      // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { points: 15 }, scored: { teamId: ids[0], points: 15 } }); // the TV's ✅ line counts the crit too
-      expect(room.game!.teams[0]).toMatchObject({ score: 1, reward: 15 });
+      expect(room.game!.teams[0]).toMatchObject({ score: 1, reward: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       expect(seqOf(room)).toBe(seq + 1);
       log.mockRestore();
     });
@@ -1136,9 +1137,9 @@ describe("TEAM_SELECT_OPTION", () => {
 
     it("refuses a stale eventId, a team off turn and a multiple-choice question, rolling nothing", () => {
       const { room, conns, roll } = checkGame(2);
-      roll(15, 0, seqOf(room) - 1);
+      roll(15, 0, seqOf(room) - 1); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       expect(lastSentTo(conns[0])).toMatchObject({ error: "invalid_action", detail: "stale_event" });
-      roll(15, 1);
+      roll(15, 1); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       expect(lastSentTo(conns[1])).toMatchObject({ error: "invalid_action", detail: "not_your_turn" });
       send(room, conns[0], { type: "TEAM_ROLL_CHECK", questionId: "r0-mc1", eventId: seqOf(room) });
       expect(lastSentTo(conns[0])).toMatchObject({ error: "invalid_action", detail: "stale_question" });
@@ -1149,16 +1150,16 @@ describe("TEAM_SELECT_OPTION", () => {
     it("holds the hint out of every broadcast during the beat, then shows the check with its first character", () => {
       vi.useFakeTimers();
       const { room, ids, roll } = checkGame();
-      roll(15);
+      roll(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       const held = lastBroadcast(room);
-      expect(held.pendingRoll).toMatchObject({ teamId: ids[0], questionId: "r0-t1", value: 15, kind: "check" });
+      expect(held.pendingRoll).toMatchObject({ teamId: ids[0], questionId: "r0-t1", value: 15, kind: "check" }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       expect(held.view.checks ?? {}).toEqual({});
       expect(JSON.stringify(held)).not.toContain("萬");
       vi.advanceTimersByTime(2000);
       const after = lastBroadcast(room);
       expect(after.pendingRoll).toBeNull();
       expect(after.cue).toBe("check-pass");
-      expect(after.view.checks[checkKey("r0-t1", ids[0])]).toMatchObject({ value: 15, passed: true, hint: "萬" });
+      expect(after.view.checks[checkKey("r0-t1", ids[0])]).toMatchObject({ value: 15, passed: true, hint: "萬" }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     });
 
     it("rolls once per question: a second press and a press after a wrong retry are refused", () => {
@@ -1283,6 +1284,7 @@ describe("TEAM_SELECT_OPTION", () => {
     });
 
     // Value: protects=the host's 替○○擲骰 rolls the stuck team's check under the team's own rules (owner, 2026-11-09);
+    // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     // fails_when=a team phone can send it, a stale press rolls, or the host's roll skips the record; no_claim=the 15 s row (host page)
     it("the host rolls the check for the team on turn; a team phone and a stale press are refused", () => {
       vi.useFakeTimers();
@@ -1313,7 +1315,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(early.room, early.hostConn, { type: "HOST_JUDGE", teamId: early.ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(early.room) });
       expect(lastBroadcast(early.room).reveal).toMatchObject({ asked: { content: { kind: "text", value: "？" } } });
       const shown = checkGame();
-      shown.roll(15);
+      shown.roll(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       vi.advanceTimersByTime(2000);
       send(shown.room, shown.hostConn, { type: "HOST_JUDGE", teamId: shown.ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(shown.room) });
       expect(lastBroadcast(shown.room).reveal.answer).toBe("萬家福");
@@ -1407,6 +1409,7 @@ describe("TEAM_SELECT_OPTION", () => {
     vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
     vi.useRealTimers();
     // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(room.game!.teams[0].reward).toBe(15); // rng 0.99 rolls the crit die to 20: 10 plus half
     expect(lastBroadcast(room).reveal.choice).toMatchObject({ options: shown, correctIndex: right });
   });
@@ -1848,6 +1851,7 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { correctIndex: 1 } });
       // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       expect(room.game!.teams[0].reward).toBe(15); // a warrior's 20 on a multipleChoice question is a crit too
       expect(lastBroadcast(room)).toMatchObject({ cue: "crit" });
       vi.advanceTimersByTime(60_000);
@@ -2091,7 +2095,7 @@ describe("questions and answers (T3)", () => {
 
   it("in the boss room the public question is flagged as boss", () => {
     const { room, hostConn, ids } = started(1);
-    for (let i = 0; i < 100 && room.game!.teams[0].score < 15; i++) {
+    for (let i = 0; i < 100 && room.game!.teams[0].score < 15; i++) { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       const t = room.game!.teams[0];
       serveNext(room, hostConn, seqOf(room)); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: t.currentQuestionId, correct: true });
@@ -3600,7 +3604,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     const removed = lastBroadcast(room).view.eliminated[q];
     expect(removed).toHaveLength(2);
     expect(removed).not.toContain(room.game!.optionOrder[q].indexOf(1));
-    expect(room.game!.teams[0].abilityUses).toBe(3);
+    expect(room.game!.teams[0].abilityUses).toBe(2);
     use();
     expect(err(conns[0])).toBe("no_option_to_remove");
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t1" } : t)) };
@@ -3610,7 +3614,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     passChecks(room);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
     expect(err(conns[0])).toBe("no_hint");
-    expect(room.game!.teams[0].abilityUses).toBe(3);
+    expect(room.game!.teams[0].abilityUses).toBe(2);
   });
 
   // Value: protects=the mage on a fill-in question shows the answer's first character to every screen and
@@ -3622,14 +3626,14 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     // Not before the persuasion check: the question is not up yet (check first, question after).
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
     expect(err(conns[0])).toBe("check_needed");
-    expect(room.game!.teams[0].abilityUses).toBe(4);
+    expect(room.game!.teams[0].abilityUses).toBe(3);
     passChecks(room);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
     expect(lastBroadcast(room).view.mageHints).toEqual({ "r0-t2": "萬" });
-    expect(room.game!.teams[0].abilityUses).toBe(3);
+    expect(room.game!.teams[0].abilityUses).toBe(2);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
     expect(err(conns[0])).toBe("hint_shown");
-    expect(room.game!.teams[0].abilityUses).toBe(3);
+    expect(room.game!.teams[0].abilityUses).toBe(2);
   });
 
   // Value: protects=a mage cast on a question id the bank lacks is refused as stale and spends nothing (/review);
@@ -3639,7 +3643,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "nope" } : t)) };
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "nope" });
     expect(err(conns[0])).toBe("stale_question");
-    expect(room.game!.teams[0].abilityUses).toBe(4);
+    expect(room.game!.teams[0].abilityUses).toBe(3);
   });
 
   it("the thief's sneak attack shows on every screen until its answer is judged, and cannot be armed twice", () => {
@@ -4740,6 +4744,7 @@ describe("sort questions", () => {
     expect((room as any).pendingRoll).toMatchObject({ kind: "warrior", value: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     vi.advanceTimersByTime(2000);
     // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(room.game!.teams[0].reward).toBe(15); // 10, plus half for the 20 (critable like multiple choice)
     expect(lastBroadcast(room).reveal).toMatchObject({ sorted: { items: ["A", "B", "C", "D"], teamId: T1 } });
   });

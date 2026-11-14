@@ -36,7 +36,7 @@ const option = (team: Page, text: string) => team.getByRole("button", { name: ne
 test("mage: one press greys out 2 wrong options and spends a use", async ({ browser }) => {
   const { team } = await start(browser, "法師");
   await team.getByRole("button", { name: /刪掉 2 個錯的選項/ }).click();
-  await expect(team.getByText("🔮 刪掉了 2 個・剩 3 次")).toBeVisible();
+  await expect(team.getByText("🔮 刪掉了 2 個・剩 2 次")).toBeVisible();
   await expect(option(team, "綠色")).toBeEnabled();
   let out = 0;
   for (const t of ["紅色", "藍色", "黃色"]) if (await option(team, t).isDisabled()) out++;
