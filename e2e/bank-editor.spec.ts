@@ -8,6 +8,12 @@ import { QUESTIONS_PER_PAGE } from "../lib/bank-editor-pages";
  * question-media-content.md). */
 const rows = (room: Locator) => room.locator('[data-testid^="question-"]');
 
+// The editor lists questions as one-line summaries (editor-ux #2); these tests edit fields, so they start with every
+// question open (the 全部展開 setting). A test of the summary list turns it off again with a later init script.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("bank-editor-open-all", "1"));
+});
+
 /** A group's whole question count, from its heading (「難度 1 題庫 · 12 題」): rows() sees only the page shown. */
 async function poolCount(room: Locator): Promise<number> {
   const heading = room.getByRole("heading");
@@ -519,10 +525,12 @@ test("multipleChoice authoring: switch kind, edit options, mark correct, and del
   // Switch the first question in room 0 to multipleChoice — the reset above made it a text question.
   const firstRow = rows(room0).first();
   await firstRow.getByLabel("題型").selectOption("multipleChoice");
-  // blankQuestion() gives a fresh multipleChoice question: 2 empty options, no answer field.
-  // Content carries over from the previous kind (blankQuestion keeps `content`), so no confirm.
+  // The fill-in answer carries over (editor-ux #6): it is option 1, marked correct, next to one empty option. Nothing
+  // typed is lost, so no confirm.
   await expect(firstRow.getByLabel("答案")).toHaveCount(0);
   await expect(firstRow.getByLabel(/^選項 /)).toHaveCount(2);
+  await expect(firstRow.getByLabel("選項 1")).toHaveValue("重設用答案");
+  await expect(firstRow.getByLabel("第 1 個選項為正解")).toBeChecked();
 
   await firstRow.getByLabel("選項 1").fill("台北 101");
   await firstRow.getByLabel("選項 2").fill("高雄 85 大樓");
@@ -530,14 +538,8 @@ test("multipleChoice authoring: switch kind, edit options, mark correct, and del
   await expect(firstRow.getByLabel(/^選項 /)).toHaveCount(3);
   await firstRow.getByLabel("選項 3").fill("台中歌劇院");
 
-  // Nothing marked correct yet — save must be rejected, not silently accepted with a bogus pick.
-  // The message names where the question is (the editor shows 10 per page).
-  await saveAll(page);
-  await expect(page.getByTestId("bank-editor-error")).toContainText(/^難度 1 第 1 題「.*還沒標記正解/);
-
-  // Mark option 1 correct, then delete it — the mark must not silently move to whatever now
-  // sits at index 0; it has to go back to "unmarked" and block save again.
-  await firstRow.getByLabel("第 1 個選項為正解").check();
+  // Delete the option marked correct: the mark must not silently move to whatever now sits at index 0; it goes back
+  // to "unmarked" and save is refused, not accepted with a bogus pick. The message names where the question is.
   await firstRow.getByLabel("選項 1").locator("xpath=..").getByRole("button", { name: "刪" }).click();
   await expect(firstRow.getByLabel(/^選項 /)).toHaveCount(2);
 
@@ -547,7 +549,7 @@ test("multipleChoice authoring: switch kind, edit options, mark correct, and del
   await expect(firstRow.getByLabel("選項 2").locator("xpath=..").getByRole("button", { name: "刪" })).toBeDisabled();
 
   await saveAll(page);
-  await expect(page.getByTestId("bank-editor-error")).toContainText(/還沒標記正解/);
+  await expect(page.getByTestId("bank-editor-error")).toContainText(/^難度 1 第 1 題「.*還沒標記正解/);
 
   // Mark the (now first) remaining option correct and save — this time it goes through.
   await firstRow.getByLabel("第 1 個選項為正解").check();
@@ -613,7 +615,64 @@ test("multipleChoice question-text field stays wide and editable, not squeezed b
   await expect(questionInput).toHaveValue("這題應該可以正常編輯題目文字");
 });
 
-test("switching a question back to text discards its options, and content carries over unchanged (blankQuestion never touches it)", async ({ page }) => {
+// Value: protects=finding and rearranging questions in the summary list (editor-ux #2, #3); fails_when=a search hit does
+// not open its question, a move lands nowhere, or 復原 does not put a deleted question back; seam=none; no_claim=saving.
+test("summary list: search opens the hit, ⋯ moves a question to another pool, and a delete can be undone", async ({ page, request }) => {
+  await resetFirstQuestion(request);
+  await page.addInitScript(() => localStorage.setItem("bank-editor-open-all", "0"));
+  const firstRow = await loadEditor(page);
+  const id = (await firstRow.getAttribute("data-testid"))!.replace(/^question-/, "");
+
+  // Closed rows are one line: the number, kind, question and answer, no fields.
+  await expect(firstRow.getByRole("button", { name: /第 1 題.*重設用題目.*重設用答案/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(firstRow.getByLabel("題型")).toHaveCount(0);
+
+  // A search hit opens its question.
+  await page.getByLabel("搜尋題目或答案").fill("重設用答案");
+  await page.getByTestId("bank-search-results").getByRole("button", { name: /難度 1 第 1 題/ }).click();
+  await expect(firstRow.getByLabel("題型")).toBeVisible();
+  await page.getByLabel("搜尋題目或答案").fill("");
+
+  // Delete, then 復原: the same question is back at number 1.
+  await firstRow.getByRole("button", { name: "第 1 題的更多動作" }).click();
+  await firstRow.getByRole("button", { name: "刪除這題" }).click();
+  await expect(page.getByTestId("bank-toast")).toContainText("已刪除難度 1 第 1 題");
+  await expect(page.getByTestId(`question-${id}`)).toHaveCount(0);
+  await page.getByTestId("bank-toast").getByRole("button", { name: "復原" }).click();
+  const pool1 = page.getByTestId("bank-pool-1");
+  await expect(rows(pool1).first()).toHaveAttribute("data-testid", `question-${id}`);
+
+  // 下移 swaps it with question 2, 上移 brings it back; both keep the id.
+  const own = page.getByTestId(`question-${id}`);
+  await own.getByRole("button", { name: "第 1 題的更多動作" }).click();
+  await own.getByRole("button", { name: "↓ 下移" }).click();
+  await expect(rows(pool1).nth(1)).toHaveAttribute("data-testid", `question-${id}`);
+  await own.getByRole("button", { name: "第 2 題的更多動作" }).click();
+  await own.getByRole("button", { name: "↑ 上移" }).click();
+  await expect(rows(pool1).first()).toHaveAttribute("data-testid", `question-${id}`);
+
+  // 複製 puts an open copy with a new id right after it.
+  await own.getByRole("button", { name: "第 1 題的更多動作" }).click();
+  await own.getByRole("button", { name: "⧉ 複製" }).click();
+  await expect(page.getByTestId("bank-toast")).toContainText("已複製成第 2 題");
+  const copy = rows(pool1).nth(1);
+  await expect(copy).not.toHaveAttribute("data-testid", `question-${id}`);
+  await expect(copy.getByLabel("題目文字")).toHaveValue("重設用題目");
+
+  // 移到… 難度 2: it leaves pool 1 and is the last question of pool 2.
+  await firstRow.getByRole("button", { name: "第 1 題的更多動作" }).click();
+  await firstRow.getByRole("button", { name: "⇄ 移到…" }).click();
+  await firstRow.getByRole("button", { name: /^難度 2 ·/ }).click();
+  await expect(page.getByTestId("bank-toast")).toContainText("已移到難度 2");
+  await expect(page.getByTestId(`question-${id}`)).toHaveCount(0);
+  await page.getByTestId("bank-tab-2").click();
+  const pool2 = page.getByTestId("bank-pool-2");
+  await lastPage(pool2, await poolCount(pool2));
+  await expect(rows(pool2).last()).toHaveAttribute("data-testid", `question-${id}`);
+  // Nothing was saved: the next test starts from the stored bank.
+});
+
+test("switching a question back to text keeps the correct option as the answer, asks before dropping the others, and leaves content untouched", async ({ page }) => {
   await page.goto("/bank-editor");
   await page.getByLabel("站長金鑰").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
@@ -627,9 +686,21 @@ test("switching a question back to text discards its options, and content carrie
   await firstRow.getByLabel("選項 2").fill("B");
   await firstRow.getByLabel("第 1 個選項為正解").check();
 
+  // Option B would be dropped (editor-ux #6): dismissing the confirm keeps the question as it was.
+  const asked: string[] = [];
+  page.once("dialog", (d) => {
+    asked.push(d.message());
+    void d.dismiss();
+  });
+  await firstRow.getByLabel("題型").selectOption("text");
+  await expect.poll(() => asked).toEqual(["換題型會丟掉一部分答案、選項或排序項目，確定要換？"]);
+  await expect(firstRow.getByLabel("題型")).toHaveValue("multipleChoice");
+  await expect(firstRow.getByLabel("選項 2")).toHaveValue("B");
+
+  page.once("dialog", (d) => void d.accept());
   await firstRow.getByLabel("題型").selectOption("text");
   await expect(firstRow.getByLabel(/^選項 /)).toHaveCount(0);
-  await expect(firstRow.getByLabel("答案")).toHaveValue(""); // blank, not "A" auto-converted
+  await expect(firstRow.getByLabel("答案")).toHaveValue("A"); // the option marked correct
   await expect(firstRow.getByLabel("題目文字")).toHaveValue(originalContent); // content is untouched by an outer-kind switch
 });
 
@@ -907,7 +978,10 @@ test("two tabs editing at once: the second save is rejected as a conflict, not a
   expect(reset.ok()).toBe(true);
 
   const openAndLoad = async (): Promise<Page> => {
-    const p = await (await browser.newContext()).newPage();
+    // A new context skips beforeEach's init script: open every question here too, so 題目文字 is on the page.
+    const context = await browser.newContext();
+    await context.addInitScript(() => localStorage.setItem("bank-editor-open-all", "1"));
+    const p = await context.newPage();
     await p.goto("/bank-editor");
     await p.getByLabel("站長金鑰").fill(E2E_OWNER_KEY);
     await p.getByRole("button", { name: "載入題庫" }).click();

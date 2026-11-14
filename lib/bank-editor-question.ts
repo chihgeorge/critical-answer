@@ -1,7 +1,7 @@
 // The bank editor's pure question edits (app/bank-editor/page.tsx), here so they have unit tests. Client-safe: types
 // and constants only, never the parsed bank (CLAUDE.md, check:bundle).
 import { SORT_ITEMS } from "./sort-order";
-import { DEFAULT_MEMORY_SECONDS, fieldsAnswer, isClip, MAX_TAP_LABEL, type AnswerField, type BankQuestion, type MediaContent } from "./question-bank";
+import { DEFAULT_MEMORY_SECONDS, fieldsAnswer, isClip, MAX_OPTIONS, MAX_TAP_LABEL, MIN_OPTIONS, type AnswerField, type BankQuestion, type MediaContent } from "./question-bank";
 import { TAP_GRACE_S } from "./tap-clock";
 
 // Sentinel for "no correct option marked yet" — happens right after switching a question to
@@ -9,10 +9,11 @@ import { TAP_GRACE_S } from "./tap-clock";
 // state: the editor's validate() blocks 儲存全部變更 while any question is stuck at this value.
 export const UNSET_CORRECT_INDEX = -1;
 
-/** A fresh question of the given outer kind, keeping only `id`/`content` — switching kind never
- * carries over the other kind's fields (no auto-conversion; the two kinds' extra fields aren't
- * comparable). The standalone `image` kind retired (D1) — content/explanation media type is
- * chosen independently via MediaPicker, not by the outer kind selector. */
+/** `q` as the given outer kind: `id`, content, explanation and the content setup stay, and the answer carries over
+ * where the new kind can hold it (editor-ux #6): a fill-in answer becomes the first option, marked correct, or the
+ * first sort item; the correct option becomes the fill-in answer; options and sort items swap one for one. A timing
+ * target never carries. lostOnKindChange says when something is dropped. The standalone `image` kind retired (D1):
+ * the media type is MediaPicker's, not this selector's. */
 export function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): BankQuestion {
   // explanation carries over just like content does — dropping it here would silently discard
   // an uploaded image/video with no warning at all, bypassing MediaPicker's own confirm() gate
@@ -26,7 +27,8 @@ export function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): Bank
     ...(q.memory ? { memory: q.memory } : {}),
     ...(q.memorySeconds !== undefined ? { memorySeconds: q.memorySeconds } : {}),
   };
-  if (kind === "text") return { kind: "text", id: q.id, content: q.content, ...prompt, answer: "", explanation: q.explanation };
+  const answer = q.kind === "multipleChoice" ? (q.options[q.correctIndex] ?? "") : "";
+  if (kind === "text") return { kind: "text", id: q.id, content: q.content, ...prompt, answer, explanation: q.explanation };
   // A timing question is heard live, never memorised first (timing-tap.md): the memory setup stays behind.
   if (kind === "timing") {
     const next: BankQuestion = { kind: "timing", id: q.id, content: q.content, ...prompt, target: 0, explanation: q.explanation };
@@ -34,16 +36,39 @@ export function blankQuestion(q: BankQuestion, kind: BankQuestion["kind"]): Bank
     delete next.memorySeconds;
     return next;
   }
-  if (kind === "sort") return { kind: "sort", id: q.id, content: q.content, ...prompt, items: Array<string>(SORT_ITEMS).fill(""), explanation: q.explanation };
+  const from = q.kind === "multipleChoice" ? q.options : q.kind === "sort" ? q.items : q.kind === "text" && q.answer.trim() ? [q.answer] : [];
+  const padded = (list: string[], n: number) => [...list, ...Array<string>(Math.max(0, n - list.length)).fill("")];
+  if (kind === "sort") return { kind: "sort", id: q.id, content: q.content, ...prompt, items: padded(from.slice(0, SORT_ITEMS), SORT_ITEMS), explanation: q.explanation };
+  const options = from.filter((o) => o.trim()).slice(0, MAX_OPTIONS);
   return {
     kind: "multipleChoice",
     id: q.id,
     content: q.content,
     ...prompt,
-    options: ["", ""],
-    correctIndex: UNSET_CORRECT_INDEX,
+    options: padded(options, MIN_OPTIONS),
+    // A fill-in's answer is the right one; sort items have no right one among them.
+    correctIndex: q.kind === "text" && options.length > 0 ? 0 : UNSET_CORRECT_INDEX,
     explanation: q.explanation,
   };
+}
+
+/** The answer-side text a kind change could drop: the answer (or each answer field), options, sort items, a timing
+ * target and label. */
+function answerValues(q: BankQuestion): string[] {
+  const all =
+    q.kind === "text" ? (q.fields ? q.fields.flatMap((f) => [f.label, f.answer]) : [q.answer])
+    : q.kind === "multipleChoice" ? q.options
+    : q.kind === "sort" ? q.items
+    : [q.target ? `@${q.target}` : "", q.label ?? ""];
+  return all.map((v) => v.trim()).filter(Boolean);
+}
+
+/** Whether switching `q` to `kind` drops something typed, or the marked correct option (sort has none): the editor asks
+ * first then (editor-ux #6). */
+export function lostOnKindChange(q: BankQuestion, kind: BankQuestion["kind"]): boolean {
+  const kept = new Set(answerValues(blankQuestion(q, kind)));
+  const dropsCorrect = q.kind === "multipleChoice" && kind === "sort" && !!q.options[q.correctIndex]?.trim();
+  return dropsCorrect || answerValues(q).some((v) => !kept.has(v));
 }
 
 /** `q` with new content, kept valid: text content has no prompt and cannot be a memory question; an image memory
