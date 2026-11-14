@@ -978,7 +978,10 @@ test("two tabs editing at once: the second save is rejected as a conflict, not a
   expect(reset.ok()).toBe(true);
 
   const openAndLoad = async (): Promise<Page> => {
-    const p = await (await browser.newContext()).newPage();
+    // A new context skips beforeEach's init script: open every question here too, so 題目文字 is on the page.
+    const context = await browser.newContext();
+    await context.addInitScript(() => localStorage.setItem("bank-editor-open-all", "1"));
+    const p = await context.newPage();
     await p.goto("/bank-editor");
     await p.getByLabel("站長金鑰").fill(E2E_OWNER_KEY);
     await p.getByRole("button", { name: "載入題庫" }).click();
