@@ -7,6 +7,19 @@ import { E2E_OWNER_KEY } from "../playwright.config";
  * question-media-content.md). */
 const rows = (room: Locator) => room.locator('[data-testid^="question-"]');
 
+/** A group's whole question count, from its heading (「難度 1 題庫 · 12 題」): rows() sees only the page shown, 10 at most. */
+async function poolCount(room: Locator): Promise<number> {
+  const heading = room.getByRole("heading");
+  await expect(heading).toHaveText(/· \d+ 題$/);
+  return Number((await heading.textContent())!.match(/(\d+) 題$/)![1]);
+}
+
+/** Opens the group's last page (a no-op with 10 or fewer questions, which have no pager). */
+async function lastPage(room: Locator, total: number) {
+  const pages = Math.ceil(total / 10);
+  if (pages > 1) await room.getByRole("button", { name: `第 ${pages} 頁` }).first().click();
+}
+
 /** MediaPicker auto-accepts a native confirm() before discarding a non-empty slot when switching
  * media type (R1-6's decided behavior) — accept it globally so tests that switch an
  * already-populated question's media type don't hang on the dialog. */
@@ -146,14 +159,15 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
   await page.getByRole("button", { name: "載入題庫" }).click();
   const room0 = page.getByTestId("bank-pool-1");
   await expect(room0).toBeVisible();
-  const startingCount = await rows(room0).count();
+  const startingCount = await poolCount(room0);
 
-  // Add a question (appended last) and edit the first one already there.
+  // Edit the first question (page 1), then add one: it is appended last and its page opens.
+  await rows(room0).first().getByLabel("題目文字").fill("編輯過的題目");
   await room0.getByRole("button", { name: "+ 新增題目" }).click();
+  await expect(room0.getByRole("heading")).toHaveText(new RegExp(`· ${startingCount + 1} 題$`));
+  await expect(rows(room0).last().getByText(`第 ${startingCount + 1} 題`)).toBeVisible();
   await rows(room0).last().getByLabel("題目文字").fill("e2e 測試題目");
   await rows(room0).last().getByLabel("答案").fill("e2e 測試答案");
-  await rows(room0).first().getByLabel("題目文字").fill("編輯過的題目");
-  await expect(rows(room0)).toHaveCount(startingCount + 1);
 
   await saveAll(page);
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
@@ -162,8 +176,9 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
   await reloadAndLoad(page);
   const room0AfterSave = page.getByTestId("bank-pool-1");
   await expect(rows(room0AfterSave).first().getByLabel("題目文字")).toHaveValue("編輯過的題目");
+  expect(await poolCount(room0AfterSave)).toBe(startingCount + 1);
+  await lastPage(room0AfterSave, startingCount + 1);
   await expect(rows(room0AfterSave).last().getByLabel("題目文字")).toHaveValue("e2e 測試題目");
-  await expect(rows(room0AfterSave)).toHaveCount(startingCount + 1);
 
   // Delete the question just added (the last one) and save again.
   await rows(room0AfterSave).last().getByRole("button", { name: "刪除" }).click();
@@ -171,7 +186,7 @@ test("owner key gate, load, add/edit/delete a question, save, and reload persist
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
 
   await reloadAndLoad(page);
-  await expect(rows(page.getByTestId("bank-pool-1"))).toHaveCount(startingCount);
+  expect(await poolCount(page.getByTestId("bank-pool-1"))).toBe(startingCount);
 });
 
 test("a late load response never overwrites edits made after a newer load", async ({ page }) => {
@@ -392,10 +407,9 @@ test("deleting every question in a room down to zero is rejected on save (a room
   await page.getByTestId("bank-tab-boss").click();
   const boss = page.getByTestId("bank-room-boss");
   await expect(boss).toBeVisible();
-  let remaining = await rows(boss).count();
-  while (remaining > 0) {
+  // rows() sees one page (10) at a time; the next page's questions move up as these go.
+  for (let remaining = await poolCount(boss); remaining > 0; remaining--) {
     await rows(boss).first().getByRole("button", { name: "刪除" }).click();
-    remaining--;
   }
   await expect(rows(boss)).toHaveCount(0);
 
@@ -668,9 +682,9 @@ test("YouTube authoring: pasting a full watch URL extracts and stores just the v
   const reloadedRow = rows(page.getByTestId("bank-pool-1")).first();
   await expect(reloadedRow.getByRole("button", { name: "題目：YouTube" })).toHaveAttribute("aria-pressed", "true");
   // What's actually stored is the extracted id, not the raw pasted URL — the field re-displays
-  // whatever the server persisted, so a full watch URL round-tripping down to a bare id is the
-  // proof the extraction (not just client display) is what got saved.
-  await expect(reloadedRow.getByLabel("題目的 YouTube 網址")).toHaveValue("dQw4w9WgXcQ");
+  // the persisted id as a plain watch link, so the pasted &t=30s being gone is the proof the
+  // extraction (not just client display) is what got saved.
+  await expect(reloadedRow.getByLabel("題目的 YouTube 網址")).toHaveValue("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
 });
 
 test("YouTube authoring: a prompt, 只放聲音 and a 1:05–1:20 clip save as seconds and come back after a reload (youtube-questions.md D22)", async ({ page, request }) => {

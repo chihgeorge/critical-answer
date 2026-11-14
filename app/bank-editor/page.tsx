@@ -23,7 +23,8 @@ import { DEFAULT_BANK_ENTRY, MAX_TEAMS, scoreName } from "@/lib/protocol";
 import { bankSize, bankSizeWarning, bankSizeWarningText } from "@/lib/bank-size";
 import { DEFAULT_BOSS_DIFFICULTY, type Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
-import { extractYoutubeId, formatClipTime, parseClipTime } from "@/lib/youtube";
+import { extractYoutubeId, formatClipTime, parseClipTime, youtubeWatchUrl } from "@/lib/youtube";
+import { pageOf, questionPage } from "@/lib/bank-editor-pages";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
 import { extractInstagramShortcode } from "@/lib/instagram";
@@ -856,10 +857,42 @@ function RoomEditor({
 }) {
   const hintId = useId();
   const difficultyHintId = useId();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [pageWanted, setPage] = useState(0);
+  const { page, pages, start, end } = questionPage(questions.length, pageWanted);
+  // Two copies, above and below the list; the one below brings the group's top back into view.
+  const pager = (scroll: boolean) =>
+    pages > 1 && (
+      <nav aria-label={`${title}・分頁`} className="flex flex-wrap items-center gap-1 text-[14px]">
+        <span className="mr-1">
+          第 {start + 1}–{end} 題，共 {questions.length} 題
+        </span>
+        {[
+          { to: page - 1, text: "上一頁", label: "上一頁" },
+          ...Array.from({ length: pages }, (_, i) => ({ to: i, text: String(i + 1), label: `第 ${i + 1} 頁` })),
+          { to: page + 1, text: "下一頁", label: "下一頁" },
+        ].map(({ to, text, label }) => (
+          <PixelButton
+            key={label}
+            aria-label={label}
+            aria-current={to === page ? "page" : undefined}
+            disabled={to < 0 || to >= pages}
+            onClick={() => {
+              setPage(to);
+              if (scroll) headingRef.current?.scrollIntoView({ block: "start" });
+            }}
+            className={`!m-0 !px-2 !py-1 text-[14px] ${to === page ? "" : "opacity-70"}`}
+            style={to === page ? { background: "var(--cream, #fff3d6)" } : undefined}
+          >
+            {text}
+          </PixelButton>
+        ))}
+      </nav>
+    );
   return (
     <Panel className="flex flex-col gap-2 p-4">
       <div data-testid={testId} className="flex flex-col gap-2">
-        <h2 className="text-[18px]">{title}</h2>
+        <h2 ref={headingRef} className="text-[18px]">{title}</h2>
         <div className="text-[13px]">{note}</div>
         {/* A buzzer phase has no persuasion check, so there the difficulty only orders the questions. */}
         {difficulty && (
@@ -878,9 +911,11 @@ function RoomEditor({
             法師和說服檢定成功時，大家會看到填空題答案的第一個字或數字（中文字、英文字母都算；跳過空白、標點和符號，負號也跳過；少於兩個時不給）。「約」「（皆可）」這類註記請放答案後面，別放開頭。
           </div>
         )}
-        {questions.map((q) => (
+        {pager(false)}
+        {questions.slice(start, end).map((q, i) => (
           <QuestionRow
             key={q.id}
+            number={start + i + 1}
             question={q}
             onUpdate={(updater) => onUpdate(q.id, updater)}
             onDelete={() => onDelete(q.id)}
@@ -890,7 +925,15 @@ function RoomEditor({
             answerHintId={categories ? undefined : hintId}
           />
         ))}
-        <PixelButton onClick={onAdd}>+ 新增題目</PixelButton>
+        {pager(true)}
+        <PixelButton
+          onClick={() => {
+            onAdd();
+            setPage(pageOf(questions.length)); // the new question's page
+          }}
+        >
+          + 新增題目
+        </PixelButton>
       </div>
     </Panel>
   );
@@ -947,7 +990,7 @@ function MediaPicker({
   }, [local]);
   /** The upload's or the pasted YouTube link's problem, if any. */
   const [error, setError] = useState("");
-  const [youtubeInput, setYoutubeInput] = useState(value?.kind === "youtube" ? value.value : "");
+  const [youtubeInput, setYoutubeInput] = useState(value?.kind === "youtube" && value.value ? youtubeWatchUrl(value.value) : "");
 
   const current = value ?? TEXT_CONTENT;
   const hasContent = value !== undefined && value.value.trim() !== "";
@@ -1036,8 +1079,10 @@ function MediaPicker({
       </div>
 
       {value === undefined ? null : current.kind === "text" ? (
-        <input
-          className="px-input"
+        // Wraps and grows with the text (a long 詳解 used to scroll sideways in a one-line input).
+        <textarea
+          className="px-input resize-y [field-sizing:content]"
+          rows={2}
           aria-label={`${label}文字`}
           value={current.value}
           onChange={(e) => onChange({ kind: "text", value: e.target.value })}
@@ -1357,6 +1402,7 @@ function ClipFields({ label, value, onChange, audioOnly }: { label: string; valu
 }
 
 function QuestionRow({
+  number,
   question: q,
   onUpdate,
   onDelete,
@@ -1365,6 +1411,8 @@ function QuestionRow({
   difficultyHintId,
   answerHintId,
 }: {
+  /** 1-based within its group, across pages. */
+  number: number;
   category?: boolean;
   /** Shows a 難度 menu (a boss question's own difficulty), described by the section's line with this id. */
   difficultyHintId?: string;
@@ -1377,6 +1425,7 @@ function QuestionRow({
 }) {
   return (
     <div data-testid={`question-${q.id}`} className="flex flex-col gap-1 border-t border-black/10 pt-2 first:border-t-0 first:pt-0">
+      <div className="text-[13px] font-bold">第 {number} 題</div>
       <div className="flex gap-2">
         <div className="flex-1">
           <MediaPicker
@@ -1388,8 +1437,9 @@ function QuestionRow({
             onUploadImage={onUploadImage}
           />
           {q.content.kind !== "text" && (
-            <input
-              className="px-input mt-1"
+            <textarea
+              className="px-input mt-1 resize-y [field-sizing:content]"
+              rows={2}
               aria-label="題幹"
               placeholder="題幹（顯示在圖片或影片上方，例如：這首歌是什麼的主題曲？）"
               value={q.prompt ?? ""}
@@ -1445,7 +1495,8 @@ function QuestionRow({
           )}
         </div>
         <select
-          className="px-input"
+          // self-start: keep its own height, not the row's (a tall question stretched it).
+          className="px-input self-start"
           // .px-input sets width:100% as unlayered CSS (outside Tailwind's @layer), which always
           // beats a Tailwind width utility here — so the fix has to be an inline style, the one
           // thing with higher priority than any stylesheet rule. Without it this <select> claims
