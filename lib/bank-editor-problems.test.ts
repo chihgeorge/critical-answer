@@ -81,5 +81,6 @@ describe("bank editor: a server refusal in Chinese", () => {
   // Regression: a save into a bank deleted in another tab showed the raw "bank not found: <id>" (/qa 2026-11-14)
   it("a bank deleted elsewhere says so in Chinese, never its id", () => {
     expect(serverProblem(b, 404, "bank not found: 3a95c433-dade-445d-b6ef-857083cf3529")).toEqual({ message: "這份題庫已經在別的分頁或裝置被刪掉了，存不進去。" });
+    expect(serverProblem(b, 404, "Not found").message).toBe("伺服器不接受這份題庫（Not found）");
   });
 });

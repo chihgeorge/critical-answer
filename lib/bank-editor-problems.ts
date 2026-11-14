@@ -1,6 +1,7 @@
 // What blocks a bank editor save, and where it is (app/bank-editor/page.tsx). Every problem names the group and the
 // question number (「難度 2 第 12 題」), never an internal id, and carries the question id so the editor can jump to it.
 // Client-safe: types and pure helpers only, never the parsed bank (CLAUDE.md, check:bundle).
+import { BANK_NOT_FOUND } from "./bank-api";
 import { timingFieldError } from "./bank-editor-question";
 import { DIFFICULTIES, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_PROMPT, MIN_FIELDS, MIN_OPTIONS, isMusicQuestion, memoryProblem, type Bank, type BankQuestion, type MediaContent } from "./question-bank";
 import type { Difficulty } from "./game-state";
@@ -154,8 +155,8 @@ const REASONS: [RegExp, string][] = [
 export function serverProblem(bank: Bank, status: number, text: string): BankProblem {
   if (status === 401 || status === 403) return { message: "站長金鑰不對，存不了：請重新輸入金鑰再存。" };
   if (status === 413) return { message: "題庫太大，伺服器不收：請刪掉一些題目再存。" };
-  // The only 404 a save gets (lib/bank-api.ts BANK_NOT_FOUND).
-  if (status === 404) return { message: "這份題庫已經在別的分頁或裝置被刪掉了，存不進去。" };
+  // The store's not-found, not the Worker's catch-all 404 (an old Worker without /api/bank).
+  if (status === 404 && text.startsWith(BANK_NOT_FOUND)) return { message: "這份題庫已經在別的分頁或裝置被刪掉了，存不進去。" };
   const raw = text.replace(/^Invalid question bank:\s*/, "").trim();
   const id = raw.match(/question ([^\s:]+)/)?.[1];
   const at = id ? locateQuestion(bank, id) : null;
