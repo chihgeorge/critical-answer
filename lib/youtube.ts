@@ -25,6 +25,9 @@ export function extractYoutubeId(pasted: string): string | null {
   return null;
 }
 
+/** The link the editor shows for a stored id, so the host can open, copy or replace it (the bank keeps the bare id). */
+export const youtubeWatchUrl = (videoId: string): string => `https://www.youtube.com/watch?v=${videoId}`;
+
 /** The privacy-friendly embed domain — confirmed as 2026 best practice for a plain-iframe
  * embed (no library, no API key) via live web search during /plan-eng-review. */
 export function youtubeEmbedUrl(videoId: string, start?: number, end?: number, zhCaptions = false): string {

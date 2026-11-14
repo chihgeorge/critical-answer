@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { extractYoutubeId, youtubeEmbedUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
+import { extractYoutubeId, youtubeEmbedUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
 
 describe("shouldSeek (timing-tap-timeline.md)", () => {
   it("seeks once per replay key: a re-render with the same key does nothing", () => {
@@ -38,6 +38,13 @@ describe("hostBuzzWait", () => {
   it("waits for a buzz once open, or on a text question", () => {
     expect(hostBuzzWait(true, true, true)).toBe("等隊伍搶答…");
     expect(hostBuzzWait(false, false, false)).toBe("等隊伍搶答…");
+  });
+});
+
+describe("youtubeWatchUrl", () => {
+  it("shows a stored id as a full link that reads back to the same id", () => {
+    expect(youtubeWatchUrl("dQw4w9WgXcQ")).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    expect(extractYoutubeId(youtubeWatchUrl("a_b-c1D2e3F"))).toBe("a_b-c1D2e3F");
   });
 });
 
