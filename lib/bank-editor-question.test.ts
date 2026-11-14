@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blankQuestion, canBeMemory, timingFieldError, withCategory, withContent, withField, withMemory } from "./bank-editor-question";
+import { blankQuestion, canBeMemory, lostOnKindChange, timingFieldError, withCategory, withContent, withField, withMemory } from "./bank-editor-question";
 import { allQuestions, parseBank, type BankQuestion } from "./question-bank";
 
 const base: BankQuestion = { kind: "text", id: "b-a", content: { kind: "text", value: "前奏" }, answer: "答案", category: "動漫" };
@@ -65,5 +65,36 @@ describe("bank editor: 記憶題 (memory-questions.md)", () => {
     expect(blankQuestion(on, "sort")).toMatchObject({ memory: true, memorySeconds: 10 });
     expect(canBeMemory(img)).toBe(true);
     expect(canBeMemory({ ...img, content: { kind: "text", value: "x" } })).toBe(false);
+  });
+});
+
+describe("bank editor: changing kind keeps the answer (editor-ux #6)", () => {
+  const mc = (options: string[], correctIndex: number) => ({ ...base, kind: "multipleChoice", options, correctIndex }) as BankQuestion;
+  const sort = (items: string[]) => ({ ...base, kind: "sort", items }) as BankQuestion;
+  it("carries the answer where the new kind can hold it", () => {
+    expect(blankQuestion(base, "multipleChoice")).toMatchObject({ options: ["答案", ""], correctIndex: 0 });
+    expect(blankQuestion({ ...base, answer: " " }, "multipleChoice")).toMatchObject({ options: ["", ""], correctIndex: -1 });
+    expect(blankQuestion(base, "sort")).toMatchObject({ items: ["答案", "", "", ""] });
+    expect(blankQuestion(mc(["甲", "乙", "丙"], 1), "text")).toMatchObject({ answer: "乙" });
+    expect(blankQuestion(mc(["甲", "乙"], -1), "text")).toMatchObject({ answer: "" });
+    expect(blankQuestion(mc(["甲", "乙", "丙"], 1), "sort")).toMatchObject({ items: ["甲", "乙", "丙", ""] });
+    expect(blankQuestion(sort(["甲", "", "丙", "丁"]), "multipleChoice")).toMatchObject({ options: ["甲", "丙", "丁"], correctIndex: -1 });
+    expect(blankQuestion(sort(["甲", "", "", ""]), "multipleChoice")).toMatchObject({ options: ["甲", ""] });
+    expect(blankQuestion(sort(["甲", "乙", "丙", "丁"]), "text")).toMatchObject({ answer: "" });
+  });
+
+  it("says when a change drops something typed, and only then", () => {
+    expect(lostOnKindChange(base, "multipleChoice")).toBe(false);
+    expect(lostOnKindChange(base, "sort")).toBe(false);
+    expect(lostOnKindChange(base, "timing")).toBe(true);
+    expect(lostOnKindChange({ ...base, answer: "" }, "timing")).toBe(false);
+    expect(lostOnKindChange(mc(["甲", ""], 0), "text")).toBe(false);
+    expect(lostOnKindChange(mc(["甲", "乙"], 0), "text")).toBe(true);
+    expect(lostOnKindChange(mc(["甲", "乙", "丙", "丁"], 0), "sort")).toBe(false);
+    expect(lostOnKindChange(sort(["甲", "乙", "丙", "丁"]), "multipleChoice")).toBe(false);
+    expect(lostOnKindChange(sort(["甲", "", "", ""]), "text")).toBe(true);
+    expect(lostOnKindChange({ ...base, fields: [{ label: "歌名", answer: "晴天" }, { label: "歌手", answer: "周杰倫" }] }, "multipleChoice")).toBe(true);
+    expect(lostOnKindChange({ kind: "timing", id: "t", content: base.content, target: 3 } as BankQuestion, "text")).toBe(true);
+    expect(lostOnKindChange({ kind: "timing", id: "t", content: base.content, target: 0 } as BankQuestion, "text")).toBe(false);
   });
 });

@@ -53,15 +53,27 @@ function contentError(label: string, c: MediaContent | undefined): string | null
   return null;
 }
 
+/** Answer fields only on a buzzer phase's music questions (multi-field.md F1, E3). */
+const fieldsAllowed = (q: BankQuestion, buzzer: boolean) => buzzer && isMusicQuestion(q);
+
+/** Why `q` cannot sit in a group (a pool or plain phase, or a buzzer phase), or null: the placement rules
+ * bankProblems and parseBank apply, for the editor's 移到… (editor-ux #3). */
+export function placementError(q: BankQuestion, buzzer: boolean): string | null {
+  if (q.kind === "timing" && !buzzer) return "卡點題只能放在搶答階段";
+  if (q.kind === "text" && q.fields && !fieldsAllowed(q, buzzer)) return "有答案欄位的題目只能放在搶答階段的聽歌題";
+  if (buzzer && q.kind !== "text" && q.kind !== "timing") return "搶答階段只能放填空題或卡點題";
+  return null;
+}
+
 /** The first thing wrong with one question, as a sentence after its label. */
-function questionError(label: string, q: BankQuestion, fieldsOk: boolean, timingOk: boolean): string | null {
+function questionError(label: string, q: BankQuestion, buzzer: boolean): string | null {
   if (q.kind === "timing") {
-    if (!timingOk) return `${label}：卡點題只能放在搶答階段`;
+    if (!buzzer) return `${label}：卡點題只能放在搶答階段`;
     const err = timingFieldError(q);
     if (err) return `${label}：${err}`;
   }
   if (q.kind === "text" && q.fields) {
-    if (!fieldsOk) return `${label}有答案欄位，但只有搶答階段裡「只放聲音」的 YouTube 題能有：改回聽歌題，或按「移除欄位」`;
+    if (!fieldsAllowed(q, buzzer)) return `${label}有答案欄位，但只有搶答階段裡「只放聲音」的 YouTube 題能有：改回聽歌題，或按「移除欄位」`;
     if (q.fields.length < MIN_FIELDS || q.fields.length > MAX_FIELDS) return `${label}的答案欄位要 ${MIN_FIELDS}–${MAX_FIELDS} 欄`;
     if (q.fields.some((f) => !f.label.trim() || !f.answer.trim())) return `${label}有答案欄位的名稱或答案是空白`;
     if (q.fields.some((f) => Array.from(f.label.trim()).length > MAX_FIELD_LABEL)) return `${label}的欄位名稱最多 ${MAX_FIELD_LABEL} 個字`;
@@ -97,7 +109,7 @@ export function bankProblems(bank: Bank): BankProblem[] {
   const label = (q: BankQuestion, where: string) => `${where}「${questionName(q)}」`;
   for (const d of DIFFICULTIES) {
     bank.pools[d].forEach((q, i) => {
-      const message = questionError(label(q, `難度 ${d} 第 ${i + 1} 題`), q, false, false);
+      const message = questionError(label(q, `難度 ${d} 第 ${i + 1} 題`), q, false);
       if (message) out.push({ tab: d, questionId: q.id, message });
     });
   }
@@ -116,7 +128,7 @@ export function bankProblems(bank: Bank): BankProblem[] {
     p.questions.forEach((q, i) => {
       // Answer fields only on a buzzer phase's music questions (multi-field.md F1, E3); timing questions need every
       // team at once (timing-tap.md): a buzzer phase only. parseBank refuses the rest too.
-      const message = questionError(label(q, `${phase}第 ${i + 1} 題`), q, !!p.buzzer && isMusicQuestion(q), !!p.buzzer);
+      const message = questionError(label(q, `${phase}第 ${i + 1} 題`), q, !!p.buzzer);
       if (message) out.push({ tab: "boss", questionId: q.id, message });
     });
   }

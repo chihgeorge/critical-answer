@@ -12,7 +12,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
-import { UNSET_CORRECT_INDEX, blankQuestion, canBeMemory, timingFieldError, withCategory, withContent, withField, withMemory } from "@/lib/bank-editor-question";
+import { UNSET_CORRECT_INDEX, blankQuestion, canBeMemory, lostOnKindChange, timingFieldError, withCategory, withContent, withField, withMemory } from "@/lib/bank-editor-question";
+import { SEARCH_LIMIT, allGroups, copyQuestion, groupName, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreQuestion, sameGroup, searchBank, shiftQuestion, tabOf, withQuestions, type Location, type Removed } from "@/lib/bank-editor-list";
 import { formatSongTime } from "@/lib/tap-clock";
 import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, MEDIA_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
 import { MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from "@/lib/bank-image-api";
@@ -69,7 +70,18 @@ function useOwnerKey(onRestored: (key: string) => void) {
   return [key, save] as const;
 }
 
-type Location = { kind: "pool"; difficulty: Difficulty } | { kind: "boss"; phase: number };
+/** One place a question may move to, as its ⋯ menu lists it. */
+type MoveTarget = { loc: Location; name: string; count: number; current: boolean; refusal: string | null };
+/** What a group's rows may do besides editing themselves: open and close, and the ⋯ menu (editor-ux #2, #3). */
+type ListActions = {
+  isOpen: (id: string) => boolean;
+  onToggle: (id: string) => void;
+  onShift: (id: string, delta: -1 | 1) => void;
+  onCopy: (id: string) => void;
+  onMove: (id: string, to: Location) => void;
+  targets: (q: BankQuestion) => MoveTarget[];
+};
+const OPEN_ALL_STORAGE = "bank-editor-open-all";
 /** Which page of the editor is open. */
 type Tab = EditorTab;
 /** A request to show a question (or a tab's top): each new `seq` is one jump. */
@@ -127,6 +139,18 @@ export default function BankEditorPage() {
   const [jump, setJump] = useState<Jump | null>(null);
   /** A draft from this browser that differs from the bank just loaded, until 還原草稿 or 捨棄. */
   const [draftOffer, setDraftOffer] = useState<{ draft: BankDraft; stale: boolean } | null>(null);
+  /** Questions shown with their whole editor; the rest are one summary row each (editor-ux #2). */
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  /** Every question open, remembered in this browser (read when a bank loads, never in render: SSR has no localStorage). */
+  const [openAll, setOpenAll] = useState(false);
+  const [query, setQuery] = useState("");
+  /** The last delete or move, said in the save bar; a delete carries what 復原 puts back. */
+  const [toast, setToast] = useState<{ message: string; undo?: Removed } | null>(null);
+  /** A question whose summary row takes focus after the row before it went away. */
+  const [focusId, setFocusId] = useState<string | null>(null);
+  useEffect(() => {
+    if (focusId) document.querySelector<HTMLElement>(`[data-summary="${CSS.escape(focusId)}"]`)?.focus();
+  }, [focusId]);
 
   /** True when this load's bank is the one shown now. */
   const load = async (key: string, id = bankId): Promise<boolean> => {
@@ -176,6 +200,9 @@ export default function BankEditorPage() {
       setOutdated(versioned.outdated ?? null);
       setChecked(false);
       setServerIssue(null);
+      setOpen(new Set());
+      setOpenAll(readStored(OPEN_ALL_STORAGE) === "1");
+      setToast(null);
       // A shown fallback bank (unreadable, or a server mid-deploy) is not the stored one: no draft is offered over it.
       setDraftOffer(versioned.unreadable || stale ? null : draftToOffer(readStored(draftKey(id)), versioned.bank, versioned.version));
       return true;
@@ -324,6 +351,7 @@ export default function BankEditorPage() {
       setOutdated(null);
       setChecked(false);
       setDraftOffer(null);
+      setToast(null);
       forgetStored(draftKey(bankId));
     } catch {
       setError(UNREACHABLE);
@@ -339,7 +367,9 @@ export default function BankEditorPage() {
     const t = p?.tab;
     if (t === undefined) return;
     setTab(t);
-    setJump((j) => ({ id: p?.questionId, phase: p?.phase, tab: t, seq: (j?.seq ?? 0) + 1 }));
+    const id = p?.questionId;
+    if (id) setOpen((s) => new Set(s).add(id));
+    setJump((j) => ({ id, phase: p?.phase, tab: t, seq: (j?.seq ?? 0) + 1 }));
   };
 
   // After a refused save the problems follow the edits; once none is left, a new blank question is not an error yet.
@@ -354,19 +384,16 @@ export default function BankEditorPage() {
   const tabDirty = (t: Tab) =>
     !!bank && !!saved && (t === "rooms" ? bank.rooms !== saved.rooms || bank.randomMonsters !== saved.randomMonsters || bank.boss.monster !== saved.boss.monster || bank.boss.hitReward !== saved.boss.hitReward : t === "boss" ? bank.boss.phases !== saved.boss.phases : bank.pools[t] !== saved.pools[t]);
 
-  const questionsAt = (b: Bank, loc: Location): BankQuestion[] => (loc.kind === "boss" ? (b.boss.phases[loc.phase]?.questions ?? []) : b.pools[loc.difficulty]);
-
-  const withQuestions = (b: Bank, loc: Location, questions: BankQuestion[]): Bank =>
-    loc.kind === "boss" ? withPhase(b, loc.phase, { questions }) : { ...b, pools: { ...b.pools, [loc.difficulty]: questions } };
-
   const withPhase = (b: Bank, phase: number, patch: Partial<BossPhase>): Bank => ({
     ...b,
     boss: { ...b.boss, phases: b.boss.phases.map((p, i) => (i === phase ? { ...p, ...patch } : p)) },
   });
   const updatePhase = (phase: number, patch: Partial<BossPhase>) => setBank((prev) => (prev ? withPhase(prev, phase, patch) : prev));
   // A phase count change remounts every pager (keyed by it): a spent jump must not reopen its old page then.
+  // Phases have no ids: once their count changes, a 復原 could land in the wrong one, so it goes.
   const addPhase = () => {
     setJump(null);
+    setToast(null);
     setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: [...prev.boss.phases, { name: "", rule: "", maxHp: 3, questions: [] }] } } : prev));
   };
   const deletePhase = (phase: number) => {
@@ -374,6 +401,7 @@ export default function BankEditorPage() {
     // A phase can hold a whole set of prepared questions: one stray tap must not drop them all (D11).
     if (count > 0 && !window.confirm(`刪除第 ${phase + 1} 階段和它的 ${count} 題？`)) return;
     setJump(null);
+    setToast(null);
     setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: prev.boss.phases.filter((_, i) => i !== phase) } } : prev));
   };
 
@@ -395,17 +423,73 @@ export default function BankEditorPage() {
     });
   };
 
-  const deleteQuestion = (loc: Location, id: string) => {
-    setBank((prev) => (prev ? withQuestions(prev, loc, questionsAt(prev, loc).filter((q) => q.id !== id)) : prev));
+  /** After a row leaves its group, focus goes to the row now in its place (or the one before). */
+  const focusNeighbor = (loc: Location, id: string) => {
+    const list = bank ? questionsAt(bank, loc) : [];
+    const i = list.findIndex((q) => q.id === id);
+    setFocusId(list[i + 1]?.id ?? list[i - 1]?.id ?? null);
   };
 
-  const addQuestion = (loc: Location) => {
-    setBank((prev) => {
-      if (!prev) return prev;
-      const id = `${loc.kind === "boss" ? "boss" : `p${loc.difficulty}`}-${crypto.randomUUID().slice(0, 8)}`;
-      return withQuestions(prev, loc, [...questionsAt(prev, loc), { kind: "text", id, content: TEXT_CONTENT, answer: "" }]);
-    });
+  // The toast and focus read the bank shown now; the edit itself still goes through setBank(prev => ...).
+  const deleteQuestion = (loc: Location, id: string) => {
+    const r = bank && removeQuestion(bank, loc, id);
+    if (!r) return;
+    focusNeighbor(loc, id);
+    setBank((prev) => (prev ? (removeQuestion(prev, loc, id)?.bank ?? prev) : prev));
+    setToast({ message: `已刪除${groupName(loc)} 第 ${r.removed.index + 1} 題`, undo: r.removed });
   };
+
+  const undoDelete = (r: Removed) => {
+    setBank((prev) => (prev ? restoreQuestion(prev, r) : prev));
+    setToast(null);
+    goTo({ message: "", tab: tabOf(r.loc), questionId: r.question.id });
+  };
+
+  const moveTo = (from: Location, id: string, to: Location) => {
+    if (!bank) return;
+    focusNeighbor(from, id);
+    setBank((prev) => (prev ? moveQuestion(prev, from, id, to) : prev));
+    setToast({ message: `已移到${groupName(to)}（第 ${questionsAt(bank, to).length + 1} 題）` });
+  };
+
+  /** 上移／下移: the row's page follows it (a jump), so it stays in view across a page edge. */
+  const shift = (loc: Location, id: string, delta: -1 | 1) => {
+    setBank((prev) => (prev ? shiftQuestion(prev, loc, id, delta) : prev));
+    goTo({ message: "", tab: tabOf(loc), questionId: id });
+  };
+
+  const copy = (loc: Location, id: string) => {
+    if (!bank) return;
+    const newId = newQuestionId(bank, loc);
+    setBank((prev) => (prev ? copyQuestion(prev, loc, id, newId) : prev));
+    setToast({ message: `已複製成第 ${questionsAt(bank, loc).findIndex((q) => q.id === id) + 2} 題` });
+    goTo({ message: "", tab: tabOf(loc), questionId: newId });
+  };
+
+  const moveTargets = (from: Location, q: BankQuestion): MoveTarget[] =>
+    bank ? allGroups(bank).map((loc) => ({ loc, name: groupName(loc), count: questionsAt(bank, loc).length, current: sameGroup(loc, from), refusal: moveRefusal(bank, q, loc) })) : [];
+
+  const addQuestion = (loc: Location) => {
+    if (!bank) return;
+    const id = newQuestionId(bank, loc);
+    setOpen((s) => new Set(s).add(id));
+    setBank((prev) => (prev ? withQuestions(prev, loc, [...questionsAt(prev, loc), { kind: "text", id, content: TEXT_CONTENT, answer: "" }]) : prev));
+  };
+
+  const toggleOpen = (id: string) =>
+    setOpen((s) => {
+      const next = new Set(s);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  const listActions = (loc: Location): ListActions => ({
+    isOpen: (id) => openAll || open.has(id),
+    onToggle: toggleOpen,
+    onShift: (id, delta) => shift(loc, id, delta),
+    onCopy: (id) => copy(loc, id),
+    onMove: (id, to) => moveTo(loc, id, to),
+    targets: (q) => moveTargets(loc, q),
+  });
 
   /** Uploads an image, video or audio file to /api/bank/image and returns its R2 key and the type the server found,
    * or throws with a message suitable for display. XHR, not fetch: fetch reports no upload progress. Called from
@@ -556,6 +640,7 @@ export default function BankEditorPage() {
                 if (bank !== saved && !window.confirm("還原草稿會換掉剛才的修改，確定？")) return;
                 setBank(draftOffer.draft.bank);
                 setDraftOffer(null);
+                setToast(null);
               }}>
               {draftOffer.stale ? "還原草稿（蓋掉較新的版本）" : "還原草稿"}
             </PixelButton>
@@ -593,6 +678,48 @@ export default function BankEditorPage() {
         {/* Locked while a load, save or image upload is in flight (editorBusy): an auto-load landing before the clicked load
             once dropped an edit (CI on main #150). The save button stays outside, so it keeps focus while it saves. */}
         <fieldset disabled={busy} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
+          {/* editor-ux #2: one search over every pool and phase; a hit opens its tab, page and question. */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="search"
+                className="px-input min-w-0 flex-1"
+                aria-label="搜尋題目或答案"
+                placeholder="🔍 搜尋題目、答案、選項（全部難度和首領）"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <PixelButton
+                className="!m-0 shrink-0 !px-3 !py-1 text-[14px]"
+                aria-pressed={openAll}
+                onClick={() => {
+                  writeStored(OPEN_ALL_STORAGE, openAll ? "0" : "1");
+                  setOpenAll(!openAll);
+                }}
+              >
+                {openAll ? "收成清單" : "全部展開"}
+              </PixelButton>
+            </div>
+            {query.trim() && (() => {
+              const hits = searchBank(bank, query);
+              return (
+                <Panel className="p-2 text-[15px]">
+                  <div data-testid="bank-search-results" className="flex flex-col">
+                  {hits.length === 0 ? (
+                    <div className="p-1">找不到「{query.trim()}」</div>
+                  ) : (
+                    hits.map((h) => (
+                      <button key={h.questionId} type="button" className="min-h-[44px] border-b border-black/10 px-1 text-left last:border-b-0" onClick={() => goTo({ message: "", tab: h.tab, questionId: h.questionId })}>
+                        {h.where}「{h.name}」
+                      </button>
+                    ))
+                  )}
+                  {hits.length >= SEARCH_LIMIT && <div className="p-1 text-[13px]">只列前 {SEARCH_LIMIT} 筆，打多一點字縮小範圍。</div>}
+                  </div>
+                </Panel>
+              );
+            })()}
+          </div>
           <div role="tablist" className="flex flex-wrap gap-2">
             {(["rooms", ...DIFFICULTIES, "boss"] as Tab[]).map((t) => (
               <PixelButton
@@ -646,6 +773,7 @@ export default function BankEditorPage() {
                       onUploadImage={uploadImage}
                       jump={jump}
                       problems={problemOf}
+                      actions={listActions(loc)}
                     />
                   </div>
                 );
@@ -671,6 +799,7 @@ export default function BankEditorPage() {
                   onUploadImage={uploadImage}
                   jump={jump}
                   problems={problemOf}
+                  actions={listActions(loc)}
                 />
               );
             })()
@@ -718,7 +847,20 @@ export default function BankEditorPage() {
             )}
             <div className="flex items-center gap-3">
               <div role="status" className="min-w-0 flex-1 text-[15px] text-white" style={{ textShadow: "1px 1px 0 var(--k)" }}>
-                {lastSaved !== null && lastSaved === bank ? (
+                {toast ? (
+                  <span data-testid="bank-toast" className="flex flex-wrap items-center gap-x-2">
+                    {toast.message}
+                    {/* Locked while a save runs: the saved bank landing after it would drop the question again. */}
+                    {toast.undo && (
+                      <>
+                        <span aria-hidden>·</span>
+                        <button type="button" className="min-h-[44px] underline underline-offset-2 disabled:opacity-55" style={{ color: "var(--cream, #fff3d6)" }} disabled={busy} onClick={() => undoDelete(toast.undo!)}>
+                          復原
+                        </button>
+                      </>
+                    )}
+                  </span>
+                ) : lastSaved !== null && lastSaved === bank ? (
                   <span data-testid="bank-saved" style={{ color: "var(--ok)" }}>✓ 已儲存</span>
                 ) : dirty ? (
                   "● 有還沒儲存的修改"
@@ -915,6 +1057,7 @@ function RoomEditor({
   difficulty = false,
   jump,
   problems,
+  actions,
 }: {
   testId: string;
   title: string;
@@ -932,6 +1075,7 @@ function RoomEditor({
   jump: Jump | null;
   /** Each question's save problem, by question id. */
   problems: Map<string, string>;
+  actions: ListActions;
 }) {
   const hintId = useId();
   const difficultyHintId = useId();
@@ -1010,6 +1154,9 @@ function RoomEditor({
             onDelete={() => onDelete(q.id)}
             onUploadImage={onUploadImage}
             problem={problems.get(q.id)}
+            open={actions.isOpen(q.id)}
+            last={start + i === questions.length - 1}
+            actions={actions}
             category={categories}
             difficultyHintId={difficulty ? difficultyHintId : undefined}
             answerHintId={categories ? undefined : hintId}
@@ -1502,9 +1649,17 @@ function QuestionRow({
   difficultyHintId,
   answerHintId,
   problem,
+  open,
+  last,
+  actions,
 }: {
   /** 1-based within its group, across pages. */
   number: number;
+  /** Shows the whole editor; closed, the row is its one-line summary. */
+  open: boolean;
+  /** The group's last question (下移 is off). */
+  last: boolean;
+  actions: ListActions;
   /** Why a save is blocked on this question, if it is. */
   problem?: string;
   category?: boolean;
@@ -1525,9 +1680,9 @@ function QuestionRow({
       className="flex flex-col gap-1 border-t border-black/10 pt-2 outline-none first:border-t-0 first:pt-0"
       style={problem ? { boxShadow: "0 0 0 4px var(--danger)", padding: 8 } : undefined}
     >
-      <div>
-        <LabelChip>第 {number} 題</LabelChip>
-      </div>
+      <QuestionHeader number={number} question={q} problem={!!problem} open={open} last={last} actions={actions} onDelete={onDelete} />
+      {open && (
+      <>
       {problem && (
         <div data-testid={`problem-${q.id}`} className="text-[14px]" style={{ color: "#b3261e" }}>
           ⚠ {problem}
@@ -1615,6 +1770,8 @@ function QuestionRow({
           value={q.kind}
           onChange={(e) => {
             const kind = e.target.value as BankQuestion["kind"];
+            // The answer carries over where it can (editor-ux #6); ask only when something typed would go.
+            if (lostOnKindChange(q, kind) && !window.confirm("換題型會丟掉一部分答案、選項或排序項目，確定要換？")) return;
             onUpdate((cur) => blankQuestion(cur, kind));
           }}
         >
@@ -1848,6 +2005,76 @@ function QuestionRow({
               刪除題目
             </PixelButton>
           </div>
+        </div>
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+/** A question's summary row (editor-ux #2): tap to open or close its editor. Its ⋯ menu (#3) moves, copies or
+ * deletes it; 移到… lists every pool and phase, the ones a save would refuse disabled with the reason. */
+function QuestionHeader({ number, question: q, problem, open, last, actions, onDelete }: { number: number; question: BankQuestion; problem: boolean; open: boolean; last: boolean; actions: ListActions; onDelete: () => void }) {
+  const [menu, setMenu] = useState<"closed" | "actions" | "move">("closed");
+  const s = questionSummary(q);
+  const act = (f: () => void) => () => {
+    setMenu("closed");
+    f();
+  };
+  const targets = menu === "move" ? actions.targets(q) : [];
+  const fromCount = targets.find((t) => t.current)?.count;
+  const item = "!m-0 !min-h-[44px] !px-3 !py-1 text-[15px]";
+  return (
+    <div className="flex flex-col gap-2" onKeyDown={(e) => e.key === "Escape" && menu !== "closed" && setMenu("closed")}>
+      <div className="flex items-stretch gap-2">
+        <button type="button" data-summary={q.id} aria-expanded={open} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 text-left" onClick={() => actions.onToggle(q.id)}>
+          <LabelChip>第 {number} 題</LabelChip>
+          <span className="shrink-0 border border-black/30 px-1 text-[12px]">{s.kind}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[15px]">
+              {s.media && <span aria-hidden>{s.media} </span>}
+              {s.name}
+            </span>
+            {s.answer && (
+              <span className="block truncate text-[13px]" style={{ color: s.answer === "沒標正解" ? "#b3261e" : "#2e6b2a" }}>
+                {s.answer}
+              </span>
+            )}
+          </span>
+          {problem && (
+            <span className="shrink-0" style={{ color: "#b3261e" }} aria-label="有問題要修正">
+              ⚠
+            </span>
+          )}
+          <span className="shrink-0" aria-hidden>
+            {open ? "▴" : "▾"}
+          </span>
+        </button>
+        <PixelButton className="!m-0 shrink-0 !px-3 !py-1" aria-label={`第 ${number} 題的更多動作`} aria-expanded={menu !== "closed"} onClick={() => setMenu(menu === "closed" ? "actions" : "closed")}>
+          ⋯
+        </PixelButton>
+      </div>
+      {menu === "actions" && (
+        <div role="group" aria-label={`第 ${number} 題的動作`} className="flex flex-wrap gap-2">
+          <PixelButton className={item} disabled={number === 1} onClick={act(() => actions.onShift(q.id, -1))}>↑ 上移</PixelButton>
+          <PixelButton className={item} disabled={last} onClick={act(() => actions.onShift(q.id, 1))}>↓ 下移</PixelButton>
+          <PixelButton className={item} onClick={() => setMenu("move")}>⇄ 移到…</PixelButton>
+          <PixelButton className={item} onClick={act(() => actions.onCopy(q.id))}>⧉ 複製</PixelButton>
+          <PixelButton variant="flee" className={item} onClick={act(onDelete)}>刪除這題</PixelButton>
+        </div>
+      )}
+      {menu === "move" && (
+        <div role="group" aria-label="移到哪裡？" className="flex flex-col gap-1 text-[15px]">
+          <div>移到哪裡？（放到那一組的最後）</div>
+          {targets.map((t) => (
+            <PixelButton key={t.name} className="!m-0 !min-h-[44px] !px-3 !py-1 text-left text-[15px]" disabled={t.current || !!t.refusal} onClick={act(() => actions.onMove(q.id, t.loc))}>
+              {t.name}
+              {t.current ? "（現在在這裡）" : t.refusal ? `（${t.refusal}）` : ""} · {t.count} 題
+            </PixelButton>
+          ))}
+          {fromCount === 1 && <div className="text-[13px]" style={{ color: "#b3261e" }}>這是這一組最後一題：搬走後這組就沒有題目，存檔前要補。</div>}
+          <PixelButton className={item} onClick={() => setMenu("closed")}>取消</PixelButton>
         </div>
       )}
     </div>
