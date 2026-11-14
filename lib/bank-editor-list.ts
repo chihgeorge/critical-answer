@@ -158,3 +158,10 @@ export function restoreQuestion(bank: Bank, r: Removed): Bank {
   const at = Math.min(r.index, list.length);
   return withQuestions(bank, r.loc, [...list.slice(0, at), r.question, ...list.slice(at)]);
 }
+
+/** restoreQuestion, but `saved` itself when that puts the bank back as last loaded or saved: the editor marks unsaved
+ * edits by object identity (`bank !== saved`), so a 復原 of the only change shows 沒有修改 again. */
+export function restoreToSaved(bank: Bank, r: Removed, saved: Bank | null): Bank {
+  const next = restoreQuestion(bank, r);
+  return saved && JSON.stringify(next) === JSON.stringify(saved) ? saved : next;
+}

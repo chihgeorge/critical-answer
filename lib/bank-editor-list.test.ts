@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { copyQuestion, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreQuestion, searchBank, SEARCH_LIMIT, shiftQuestion, type Location } from "./bank-editor-list";
+import { copyQuestion, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreQuestion, restoreToSaved, searchBank, SEARCH_LIMIT, shiftQuestion, withQuestions, type Location } from "./bank-editor-list";
 import { bankProblems } from "./bank-editor-problems";
 import { BANK } from "./question-bank-data";
 import { parseBank, type Bank, type BankQuestion } from "./question-bank";
@@ -118,5 +118,17 @@ describe("bank editor list: move, shift, copy, delete and undo (editor-ux #3)", 
     const gone = removeQuestion(b, phase(1), "boss-tap")!;
     const fewer = { ...gone.bank, boss: { ...gone.bank.boss, phases: gone.bank.boss.phases.slice(0, 1) } };
     expect(restoreQuestion(fewer, gone.removed)).toBe(fewer);
+  });
+
+  it("gives back the saved bank itself when 復原 undoes the only change, so nothing shows as unsaved", () => {
+    const saved = bank();
+    const r = removeQuestion(saved, pool(2), "p2-a")!;
+    expect(restoreToSaved(r.bank, r.removed, saved)).toBe(saved);
+    // Another edit made meanwhile stays an unsaved bank.
+    const edited = withQuestions(r.bank, pool(2), [text("p2-mc", "改過")]);
+    const back = restoreToSaved(edited, r.removed, saved);
+    expect(back).not.toBe(saved);
+    expect(questionsAt(back, pool(2)).map((q) => q.id)).toEqual(["p2-a", "p2-mc"]);
+    expect(restoreToSaved(r.bank, r.removed, null)).not.toBe(saved);
   });
 });

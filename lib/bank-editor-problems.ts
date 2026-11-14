@@ -136,6 +136,9 @@ export function bankProblems(bank: Bank): BankProblem[] {
   return out;
 }
 
+/** A save into a bank deleted elsewhere: the editor then offers 另存成新題庫. */
+export const BANK_GONE = "這份題庫已經在別的分頁或裝置被刪掉了，存不進去。";
+
 // The server's (parseBank's) most common reasons, in Chinese. Anything else is shown as it came, after a Chinese lead.
 const REASONS: [RegExp, string][] = [
   [/has an empty answer/, "的答案是空白"],
@@ -156,7 +159,7 @@ export function serverProblem(bank: Bank, status: number, text: string): BankPro
   if (status === 401 || status === 403) return { message: "站長金鑰不對，存不了：請重新輸入金鑰再存。" };
   if (status === 413) return { message: "題庫太大，伺服器不收：請刪掉一些題目再存。" };
   // The store's not-found, not the Worker's catch-all 404 (an old Worker without /api/bank).
-  if (status === 404 && text.startsWith(BANK_NOT_FOUND)) return { message: "這份題庫已經在別的分頁或裝置被刪掉了，存不進去。" };
+  if (status === 404 && text.startsWith(BANK_NOT_FOUND)) return { message: BANK_GONE };
   const raw = text.replace(/^Invalid question bank:\s*/, "").trim();
   const id = raw.match(/question ([^\s:]+)/)?.[1];
   const at = id ? locateQuestion(bank, id) : null;

@@ -669,6 +669,8 @@ test("summary list: search opens the hit, ⋯ moves a question to another pool, 
   await page.getByTestId("bank-toast").getByRole("button", { name: "復原" }).click();
   const pool1 = page.getByTestId("bank-pool-1");
   await expect(rows(pool1).first()).toHaveAttribute("data-testid", `question-${id}`);
+  // The bank is the saved one again, so nothing shows as unsaved.
+  await expect(page.getByTestId("bank-save-bar").getByRole("status")).toHaveText("沒有修改");
 
   // 下移 swaps it with question 2, 上移 brings it back; both keep the id.
   const own = page.getByTestId(`question-${id}`);
