@@ -7,7 +7,7 @@ const game: GameState = createGame(
   [{ baseDifficulty: 2, reward: 20 }],
   [[], ["q1", "q2", "q3"], [], [], []],
   ["b1", "b2"],
-  { bossThreshold: 15 },
+  { bossThreshold: 15 }, // pregate-literal: CHEF_BONUS_PERCENT=15 the boss threshold, not the chef
   5,
   () => 0,
 );

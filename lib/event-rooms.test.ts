@@ -40,7 +40,7 @@ const rooms = (count: number) => Array.from({ length: count }, (_, i) => ({ base
 
 function game(classIds: (ClassId | undefined)[] = [undefined, undefined], roomCount = 5): GameState {
   const seeds = classIds.map((classId, i) => ({ id: `t${i}`, name: `Team ${i}`, ...(classId ? { classId } : {}) }));
-  return createGame(seeds, rooms(roomCount), pools(6), ["b1", "b2"], { bossThreshold: 15 }, 3, first);
+  return createGame(seeds, rooms(roomCount), pools(6), ["b1", "b2"], { bossThreshold: 15 }, 3, first); // pregate-literal: CHEF_BONUS_PERCENT=15 the boss threshold, not the chef
 }
 
 /** t0 answers right and walks into an event room holding `outcome`. */

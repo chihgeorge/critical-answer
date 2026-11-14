@@ -994,7 +994,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastSentTo(hostConn)?.detail).toBe("roll_pending");
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).pendingRoll).toBeNull();
-      expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { points: 15 }, scored: { teamId: ids[0], points: 15 } }); // the TV's ✅ line counts the crit too
+      expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { points: 15 }, scored: { teamId: ids[0], points: 15 } }); // the TV's ✅ line counts the crit too // pregate-literal: CHEF_BONUS_PERCENT=15 a crit's points, no chef here
       expect(room.game!.teams[0]).toMatchObject({ score: 1, reward: 15 });
       expect(seqOf(room)).toBe(seq + 1);
       log.mockRestore();

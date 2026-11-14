@@ -213,7 +213,7 @@ describe("an open catch", () => {
 });
 
 describe("the rulings", () => {
-  it("成立 reveals the answer with the catch, pays −10 / +15, narrates its own line and passes the turn", () => {
+  it("成立 reveals the answer with the catch, pays −10 / +15, narrates its own line and passes the turn", () => { // pregate-literal: CHEF_BONUS_PERCENT=15 the anti-cheat +15, not the chef
     const g = started();
     const q = g.qid();
     const before = g.state().eventId;

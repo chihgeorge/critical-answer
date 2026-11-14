@@ -114,7 +114,7 @@ describe("占卜師 in the room", () => {
 
   // Value: protects=step 1 refuses a pick, step 2 opens the pizza with its clock (R8); fails_when=a pick lands under the
   // ball or the phones get no STATE when the ball goes; no_claim=manual pacing (below)
-  it("a pick under the crystal ball is refused; the pizza comes with its 15 s clock", async () => {
+  it("a pick under the crystal ball is refused; the pizza comes with its 15 s clock", async () => { // pregate-literal: CHEF_BONUS_PERCENT=15 the pizza's seconds, not the chef
     vi.useFakeTimers();
     const s = setup();
     await toFortune(s);

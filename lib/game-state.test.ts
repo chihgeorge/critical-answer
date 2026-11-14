@@ -499,7 +499,7 @@ describe("scoring and winners (docs/designs/scoring-and-score-pools.md)", () => 
     { baseDifficulty: 2, reward: 50 },
   ];
   const pools = [["a1", "a2", "a3", "a4"], ["b1", "b2", "b3", "b4"], [], [], []];
-  const twoTeams = (bossThreshold = 15, bossMaxHp = 1) =>
+  const twoTeams = (bossThreshold = 15, bossMaxHp = 1) => // pregate-literal: CHEF_BONUS_PERCENT=15 the boss threshold, not the chef
     createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], rooms(), pools, ["boss-q1", "boss-q2"], { bossThreshold }, bossMaxHp, first);
   const answer = (g: GameState, id: string, correct = true, flee: "flee" | "retry" = "retry") =>
     answerQuestion(g, id, getTeam(g, id).inBoss ? g.boss.currentQuestionId : getTeam(g, id).currentQuestionId, correct, flee, first);
@@ -1558,7 +1558,7 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
 
   it("the final blow scores the kill dice the room already showed (kill-roll.md)", () => {
     const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 1, teamCount: 1 });
-    const { outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, WARRIOR_TARGET, first, false, [9, 14, 3, 17]);
+    const { outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, WARRIOR_TARGET, first, false, [9, 14, 3, 17]); // pregate-literal: WARRIOR_TARGET=9 a kill die, not the target
     expect(outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: true, killBonus: 43 });
   });
 
