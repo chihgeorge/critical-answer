@@ -40,7 +40,8 @@ import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
 import { FilePlayer } from "@/components/file-player";
 import { useRoomClock } from "@/components/room-clock";
-import { TapClockReporter, TimingReveal, TimingRoundPanel } from "@/components/timing-screen";
+import { TapClockReporter, TimingResult, TimingRoundPanel, TimingTimeline, useTimingReplay } from "@/components/timing-screen";
+import { replayFromS } from "@/lib/tap-clock";
 import { resendClipError, type ClipErrorSeen } from "@/lib/youtube";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
@@ -60,6 +61,8 @@ const noSubscribe = () => () => {};
 
 
 const look = (i: number) => TEAM_LOOKS[i % TEAM_LOOKS.length];
+/** The 384×216 player drawn at 0.75 without rebuilding it: the margins give back the space the transform frees. */
+const SHRUNK_PLAYER = { transform: "scale(0.75)", transformOrigin: "0 0", marginRight: -96, marginBottom: -54 } as const;
 
 function Torches() {
   return (
@@ -368,6 +371,14 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // the page was opened without the screen key (`locked`).
   const video: { id: string; content: YoutubeContent | FileVideo | null } | null =
     videoQuestion === null ? null : { id: videoQuestion, content: !locked && shownVideo?.questionId === videoQuestion && (shownVideo.video.kind === "youtube" || shownVideo.video.kind === "file") ? shownVideo.video : null };
+  // A timing question's reveal (timing-tap-timeline.md): the results beside the video, the timeline under it, and the
+  // beat replayed once on the question's own clip (never an explanation's file), unless the host has paused it.
+  const tapReveal = reveal?.timing && reveal.timing.rows.length > 0 && !dish ? reveal.timing : null;
+  const tapClip = tapReveal && reveal?.video && !fileExplanation && video?.content ? video.content : null;
+  const clipStartS = tapClip?.kind === "youtube" ? (tapClip.start ?? 0) : 0;
+  const replay = useTimingReplay(tapClip && reveal ? reveal.questionId : null, tapReveal ? replayFromS(tapReveal.targetMs, clipStartS) : 0, !!reveal && media?.questionId === reveal.questionId && media.state === "playing");
+  const revealTime = useRef<(() => number | null) | null>(null);
+  const clipTime = (id: string) => (tapClip && id === reveal?.questionId ? revealTime : timing && !reveal && id === question?.id ? tapTime : undefined);
   const sneakChip = turn?.sneakArmed && !reveal && !card;
   // A buzzer phase has no persuasion check (boss-buzzer.md D6).
   const dcChip = fillIn && !buzz && !turn?.sneakArmed ? turn?.checkTarget : undefined;
@@ -414,7 +425,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         needsTap={needsTap}
         onPlayingChange={onVideoPlaying}
         onEnded={reveal ? undefined : () => onClipEnded(v.id)}
-        timeRef={timing && !reveal && v.id === question?.id ? tapTime : undefined}
+        timeRef={clipTime(v.id)}
+        replay={replay}
         // An explanation's error reaches the host too (the room clears the question's own at the reveal).
         onError={reveal && !fileExplanation ? undefined : () => onClipError(v.id)}
         errorNote={!reveal && clipError && view.buzz?.open ? "🎤 主持人現場放歌" : undefined}
@@ -432,7 +444,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         needsTap={needsTap}
         onPlayingChange={onVideoPlaying}
         onEnded={reveal ? undefined : () => onClipEnded(v.id)}
-        timeRef={timing && !reveal && v.id === question?.id ? tapTime : undefined}
+        timeRef={clipTime(v.id)}
+        replay={replay}
         onError={reveal ? undefined : () => onClipError(v.id)}
         // The host plays the song from their own device (boss-music-buzzer.md M4).
         errorNote={!reveal && clipError && view.buzz?.open ? "🎤 主持人現場放歌" : undefined}
@@ -441,10 +454,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         zhCaptions={!!reveal}
       />
     );
-  const lone = !!reveal && reveal.explanation?.kind !== "text";
-  const mediaExplanation = reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" && reveal.explanation.kind !== "file" ? reveal.explanation : null;
+  const lone = !!reveal && reveal.explanation?.kind !== "text" && !tapReveal;
+  // A timing reveal fills the panel to the nameplate (timing-tap-timeline.md): only a file explanation, which takes the
+  // video's place, shows on the big screen; the phones still show a text, image or YouTube one.
+  const mediaExplanation = !tapReveal && reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" && reveal.explanation.kind !== "file" ? reveal.explanation : null;
   // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
-  const instagram = reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
+  const instagram = !tapReveal && reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
 
   return (
     <>
@@ -470,8 +485,6 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
 
       {/* 上菜 puts the panel away (cooking R4): the stage is the monster's, then the dish's. */}
       {/* The dish stands where the monster stood; its card takes the panel's place. */}
-      {/* A timing question's reveal covers the music card (timing-tap.md 9); the song plays on underneath. */}
-      {reveal?.timing && reveal.timing.rows.length > 0 && !dish && <TimingReveal timing={reveal.timing} view={view} />}
       {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={eaterIdx} />}
       {!served && (
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
@@ -536,7 +549,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
                   ))(reveal.fields.marks.filter((f) => f.right).length, reveal.fields.marks.length)}
               </ul>
             ) : (
-              <div>正解：{reveal.answer}</div>
+              // A timing reveal says it beside the video: 命中！{隊名} and the target.
+              !tapReveal && <div>正解：{reveal.answer}</div>
             )}
             {/* Who scored, the one line the room reads off the reveal (no scoreboard: the meters say the rest). A partial
                 music answer has its own 「對 k/n」 line above, so it gets no 「答對」. */}
@@ -545,13 +559,13 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
                 🚨 抓包成立：{nameOf(reveal.caught.teamId)} 這題不算，{nameOf(reveal.caught.by)} +{CATCH_PAY.bounty}
               </div>
             )}
-            {reveal.scored && scorer && !reveal.fields?.marks.some((f) => !f.right) && (
+            {reveal.scored && scorer && !tapReveal && !reveal.fields?.marks.some((f) => !f.right) && (
               <div data-testid="reveal-result" className="text-[24px] [overflow-wrap:anywhere]">
                 ✅ {scorer.name} 答對 +{reveal.scored.points} {scoreName(cuisine)}
               </div>
             )}
             {/* With the video up, its text explanation stands beside it instead. */}
-            {!video && reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
+            {!video && !tapReveal && reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
             {mediaExplanation && (
               // A video explanation is at least 356×200 (YouTube's minimum, D11). The dish waits for 上菜 (cooking R4).
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
@@ -584,12 +598,17 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         {tileVideo && <div className="mt-3 flex flex-col items-center gap-2">{beside}</div>}
         {video && !tileVideo && (
           // A reveal with nothing beside its video centres it (D18); the player stays the first child, so it is kept.
-          <div key={video.id} className={`mt-3 flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
-            {/* One size for the question and its reveal: width/height rebuild the player (D17). */}
-            {player(video, 384, 216)}
+          <div key={video.id} className={`${tapReveal ? "mt-1" : "mt-3"} flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
+            {/* One size for the question and its reveal: width/height rebuild the player (D17). A timing reveal shows it
+                at 0.75 by a transform instead, to leave room for the timeline (timing-tap-timeline.md). */}
+            <div className="shrink-0" style={tapReveal ? SHRUNK_PLAYER : undefined}>
+              {player(video, 384, 216)}
+            </div>
             {!lone && (
             <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
-              {reveal ? (
+              {tapReveal ? (
+                <TimingResult timing={tapReveal} view={view} />
+              ) : reveal ? (
                 reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>
               ) : (
                 beside
@@ -598,6 +617,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             )}
           </div>
         )}
+        {tapReveal && !(video && !tileVideo) && (
+          <div className="mt-1 flex">
+            <TimingResult timing={tapReveal} view={view} />
+          </div>
+        )}
+        {tapReveal && <TimingTimeline timing={tapReveal} view={view} clipStartMs={clipStartS * 1000} timeRef={tapClip ? revealTime : undefined} />}
         {!reveal && question && question.content.kind === "image" && !wall && !sortWall && (
           // Inline content inside the Panel, not a second independently-positioned absolute
           // element — the Panel's height already grows with wrapped question text, so a

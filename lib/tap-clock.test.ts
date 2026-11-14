@@ -6,14 +6,58 @@ import {
   closeSongMs,
   formatSongTime,
   formatTapError,
+  labelRows,
   medianError,
   nextAnchorWindow,
+  replayDue,
+  replayFromS,
   serverMsOf,
+  shortTapError,
   songMs,
   suggestedLatency,
   tapBonus,
   tapResults,
+  timelineAt,
+  timelineWindow,
 } from "./tap-clock";
+
+describe("the reveal's timeline (timing-tap-timeline.md)", () => {
+  it("zooms each side to its farthest tap × 1.3, between 1 s and 2 s", () => {
+    expect(timelineWindow(190_000, [80, -150, 210], 170_000)).toEqual([189_000, 191_000]);
+    expect(timelineWindow(190_000, [-1200, 1500], 170_000)).toEqual([188_440, 191_950]);
+    expect(timelineWindow(190_000, [1900], 170_000)).toEqual([189_000, 192_000]);
+  });
+
+  it("pins a tap earlier than 2 s to the left edge instead of stretching, and never starts before the clip", () => {
+    expect(timelineWindow(190_000, [-3400, 100], 170_000)).toEqual([189_000, 191_000]);
+    expect(timelineAt(190_000 - 3400, [189_000, 191_000])).toBe(0);
+    expect(timelineAt(190_000, [189_000, 191_000])).toBe(0.5);
+    expect(timelineWindow(1500, [-300], 1000)).toEqual([1000, 2500]);
+  });
+
+  it("starts the replay 2.5 s before the target, never before the clip", () => {
+    expect(replayFromS(190_350, 170)).toBeCloseTo(187.85);
+    expect(replayFromS(171_000, 170)).toBe(170);
+  });
+
+  it("labels a marker without 秒", () => {
+    expect(shortTapError(-150)).toBe("早 0.15");
+    expect(shortTapError(80)).toBe("晚 0.08");
+    expect(shortTapError(0)).toBe("準 0.00");
+  });
+
+  it("puts each label in the first row with room, around the spans already taken, or -1", () => {
+    const taken: [number, number][][] = [[], [[40, 60]]];
+    expect(labelRows([[0, 50], [30, 80], [100, 120], [10, 20], [45, 55]], taken)).toEqual([0, -1, 0, 1, -1]);
+  });
+
+  it("replays once, only while the host's media plays", () => {
+    expect(replayDue("q1", true, null)).toBe(true);
+    expect(replayDue("q1", false, null)).toBe(false);
+    expect(replayDue("q1", true, "q1")).toBe(false);
+    expect(replayDue(null, true, null)).toBe(false);
+  });
+});
 
 describe("server clock", () => {
   it("takes the midpoint offset", () => {

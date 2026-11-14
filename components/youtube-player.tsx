@@ -10,7 +10,7 @@
 // broken video costs a turn at an event.
 
 import { useEffect, useRef, useState } from "react";
-import { CLIP_STATUS_TEXT, clipStatusFromYoutube, loadCaptions, playerSteps, syncZhCaptions, ZH_CAPTION_VARS, type CaptionPlayer, type ClipStatus, type MediaWant } from "@/lib/youtube";
+import { CLIP_STATUS_TEXT, clipStatusFromYoutube, loadCaptions, playerSteps, shouldSeek, syncZhCaptions, ZH_CAPTION_VARS, type CaptionPlayer, type ClipStatus, type MediaWant } from "@/lib/youtube";
 
 interface YTPlayer extends CaptionPlayer {
   playVideo(): void;
@@ -101,6 +101,7 @@ export function YoutubePlayer({
   title = "題目影片",
   zhCaptions = false,
   timeRef,
+  replay,
 }: {
   videoId: string;
   start?: number;
@@ -128,6 +129,9 @@ export function YoutubePlayer({
   zhCaptions?: boolean;
   /** Set to a reader of the video's time (s) while it plays, null otherwise: a timing question's clock (timing-tap.md). */
   timeRef?: { current: (() => number | null) | null };
+  /** A timing question's reveal replays the beat (timing-tap-timeline.md): a new `key` seeks to `fromS` and plays on,
+   * once. The host's commands still apply as before; nothing here pauses, so the host's next ▶ is never lost. */
+  replay?: { key: string; fromS: number };
 }) {
   const host = useRef<HTMLDivElement>(null);
   const player = useRef<YTPlayer | null>(null);
@@ -257,6 +261,21 @@ export function YoutubePlayer({
       }
     }
   }, [ready, want.state, want.seq, want.press, start]);
+
+  // The reveal's replay: one seek per key and player build (a retry starts the clip over, so it seeks again), on the
+  // ready player. Clearing `ended` lets a clip that already stopped at its end play again (and stop there again by the
+  // poll below). It waits for the host's ▶: seekTo starts a cued player, so a ⏸ pressed while it loaded holds it there.
+  const replayed = useRef<string | null>(null);
+  const replayKey = replay ? `${replay.key}#${attempt}` : undefined;
+  const replayFrom = replay?.fromS;
+  useEffect(() => {
+    const p = player.current;
+    if (!ready || !p || replayKey === undefined || replayFrom === undefined || want.state !== "playing" || !shouldSeek(replayed.current, replayKey)) return;
+    replayed.current = replayKey;
+    ended.current = false;
+    p.seekTo(replayFrom, true);
+    p.playVideo();
+  }, [ready, replayKey, replayFrom, want.state]);
 
   // A timing question's screen reads the video's own time while it plays; paused, buffering or broken reads null.
   useEffect(() => {

@@ -3,7 +3,7 @@
 // An uploaded video or audio file on the big screen (docs/designs/uploaded-media.md D4): a native <video> driven by
 // the host's ▶ ⏸ ⟲ through the same playerSteps as YoutubePlayer. Audio plays in the same element under the music card.
 import { useEffect, useRef, useState } from "react";
-import { CLIP_STATUS_TEXT, playerSteps, type ClipStatus, type MediaWant } from "@/lib/youtube";
+import { CLIP_STATUS_TEXT, playerSteps, shouldSeek, type ClipStatus, type MediaWant } from "@/lib/youtube";
 import { MusicCard } from "./youtube-player";
 
 const PAUSED: MediaWant = { state: "paused", seq: 0 };
@@ -22,6 +22,7 @@ export function FilePlayer({
   errorNote,
   title = "題目影片",
   timeRef,
+  replay,
 }: {
   url: string;
   /** The host's last command for this clip; null or absent is paused. */
@@ -41,6 +42,8 @@ export function FilePlayer({
   title?: string;
   /** Set to a reader of the file's time (s) while it plays, null otherwise: a timing question's clock (timing-tap.md). */
   timeRef?: { current: (() => number | null) | null };
+  /** A timing question's reveal replays the beat, as YoutubePlayer's `replay`: a new `key` seeks to `fromS` and plays on. */
+  replay?: { key: string; fromS: number };
 }) {
   const el = useRef<HTMLVideoElement>(null);
   const applied = useRef<MediaWant | null>(null);
@@ -99,6 +102,19 @@ export function FilePlayer({
       }
     }
   }, [want.state, want.seq, want.press, url, attempt]);
+  // The reveal's replay: one seek per key and mounted element (a retry plays from 0, so it seeks again). Seeking back
+  // clears the element's own `ended`; before metadata loads it sets where playback starts. It waits for the host's ▶,
+  // as YoutubePlayer's.
+  const replayed = useRef<string | null>(null);
+  const replayKey = replay ? `${replay.key}#${url}#${attempt}` : undefined;
+  const replayFrom = replay?.fromS;
+  useEffect(() => {
+    const v = el.current;
+    if (!v || replayKey === undefined || replayFrom === undefined || want.state !== "playing" || !shouldSeek(replayed.current, replayKey)) return;
+    replayed.current = replayKey;
+    v.currentTime = replayFrom;
+    v.play().catch(() => {});
+  }, [replayKey, replayFrom, want.state]);
   // A timing question's screen reads the file's own time while it plays; paused, buffering or broken reads null.
   useEffect(() => {
     if (!timeRef) return;

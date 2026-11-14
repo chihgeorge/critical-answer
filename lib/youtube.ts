@@ -57,6 +57,9 @@ export function playerSteps(prev: MediaWant | null, next: MediaWant, ended: bool
   return prev.state === "paused" ? ["play"] : [];
 }
 
+/** A timing reveal's replay seeks once per key (timing-tap-timeline.md): a re-render with the same key does nothing. */
+export const shouldSeek = (doneKey: string | null, key: string): boolean => doneKey !== key;
+
 /** A clip error the big screen reported: the video, and the host's last press on it then (0 if none). */
 export interface ClipErrorSeen {
   questionId: string;
