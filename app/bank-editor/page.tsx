@@ -158,6 +158,9 @@ export default function BankEditorPage() {
   /** A question whose summary row takes focus after the row before it went away (a new object each time, so the same
    * id twice still moves focus). */
   const [focusTo, setFocusTo] = useState<{ id: string } | null>(null);
+  /** Bumped when a load or 還原草稿 replaces the whole bank: the rows remount, so a box that keeps its own typed text (a
+   * clip's times, a YouTube link) shows the new bank, not the one before it with the same question ids. */
+  const [generation, setGeneration] = useState(0);
   useEffect(() => {
     if (focusTo) document.querySelector<HTMLElement>(`[data-summary="${CSS.escape(focusTo.id)}"]`)?.focus();
   }, [focusTo]);
@@ -202,6 +205,8 @@ export default function BankEditorPage() {
       const stale = [...versioned.bank.rooms.map((r) => r.monster), versioned.bank.boss.monster].some((m) => typeof m !== "string");
       setBank(versioned.bank);
       setSaved(versioned.bank);
+      setGeneration((g) => g + 1);
+      setJump(null); // the remounted pagers must not reopen a spent jump's page
       setVersion(versioned.version);
       setBankId(id);
       setLastSaved(null);
@@ -655,6 +660,8 @@ export default function BankEditorPage() {
             <PixelButton className="!m-0 !px-3 !py-1 text-[15px]" disabled={busy} onClick={() => {
                 if (bank !== saved && !window.confirm("還原草稿會換掉剛才的修改，確定？")) return;
                 setBank(draftOffer.draft.bank);
+                setGeneration((g) => g + 1);
+                setJump(null);
                 setDraftOffer(null);
                 setToast(null);
               }}>
@@ -693,7 +700,7 @@ export default function BankEditorPage() {
         <>
         {/* Locked while a load, save or image upload is in flight (editorBusy): an auto-load landing before the clicked load
             once dropped an edit (CI on main #150). The save button stays outside, so it keeps focus while it saves. */}
-        <fieldset disabled={busy} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
+        <fieldset key={generation} disabled={busy} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
           {/* editor-ux #2: one search over every pool and phase; a hit opens its tab, page and question. */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
@@ -1121,7 +1128,7 @@ function RoomEditor({
     pages > 1 && (
       <nav aria-label={scroll ? "下方分頁" : "分頁"} className="flex flex-wrap items-center gap-1 text-[14px]">
         <span className="mr-1">
-          第 {start + 1}–{end} 題，共 {questions.length} 題
+          第 {start + 1 === end ? end : `${start + 1}–${end}`} 題，共 {questions.length} 題
         </span>
         {[
           { to: page - 1, text: "上一頁", label: "上一頁" },
