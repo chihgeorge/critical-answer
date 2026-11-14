@@ -78,4 +78,8 @@ describe("bank editor: a server refusal in Chinese", () => {
     expect(serverProblem(b, 403, "Forbidden").message).toMatch(/^站長金鑰不對/);
     expect(serverProblem(b, 413, "Payload too large").message).toMatch(/^題庫太大/);
   });
+  // Regression: a save into a bank deleted in another tab showed the raw "bank not found: <id>" (/qa 2026-11-14)
+  it("a bank deleted elsewhere says so in Chinese, never its id", () => {
+    expect(serverProblem(b, 404, "bank not found: 3a95c433-dade-445d-b6ef-857083cf3529")).toEqual({ message: "這份題庫已經在別的分頁或裝置被刪掉了，存不進去。" });
+  });
 });

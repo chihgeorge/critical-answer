@@ -154,6 +154,8 @@ const REASONS: [RegExp, string][] = [
 export function serverProblem(bank: Bank, status: number, text: string): BankProblem {
   if (status === 401 || status === 403) return { message: "站長金鑰不對，存不了：請重新輸入金鑰再存。" };
   if (status === 413) return { message: "題庫太大，伺服器不收：請刪掉一些題目再存。" };
+  // The only 404 a save gets (lib/bank-api.ts BANK_NOT_FOUND).
+  if (status === 404) return { message: "這份題庫已經在別的分頁或裝置被刪掉了，存不進去。" };
   const raw = text.replace(/^Invalid question bank:\s*/, "").trim();
   const id = raw.match(/question ([^\s:]+)/)?.[1];
   const at = id ? locateQuestion(bank, id) : null;
