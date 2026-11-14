@@ -1304,7 +1304,10 @@ test("on a phone, a save error on a long question scrolls its blank answer box a
   await expect(page.getByTestId("bank-editor-error")).toContainText("的答案是空白");
   const answer = firstRow.getByLabel("答案");
   await expect(answer).toBeInViewport();
-  const box = (await answer.boundingBox())!;
-  const bar = (await page.getByTestId("bank-save-bar").boundingBox())!;
-  expect(box.y + box.height).toBeLessThanOrEqual(bar.y);
+  // Polls: the jump scrolls in an effect after the error renders.
+  await expect.poll(async () => {
+    const box = (await answer.boundingBox())!;
+    const bar = (await page.getByTestId("bank-save-bar").boundingBox())!;
+    return box.y + box.height <= bar.y;
+  }).toBe(true);
 });
