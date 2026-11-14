@@ -1229,3 +1229,41 @@ test("a room's monster: picked from the catalog, saved as its id, and kept after
     expect((await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: original, version } })).ok()).toBe(true);
   }
 });
+
+// Value: protects=edits on a bank deleted elsewhere (TODOS /qa 2026-11-14 #3); fails_when=the save that hits the deleted
+// bank offers no 另存成新題庫, or the new bank does not get the edits; seam=none; no_claim=drafts.
+test("a bank deleted in another tab: 另存成新題庫 saves the edits into a new bank", async ({ page, request }) => {
+  const WORKER = "http://localhost:1996";
+  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const stamp = Date.now();
+  const [gone, rescued] = [`刪掉測試-${stamp}`, `另存測試-${stamp}`];
+  await resetFirstQuestion(request);
+  const made = await request.post(`${WORKER}/api/banks`, { headers, data: { name: gone, copyFrom: "default" } });
+  expect(made.ok()).toBe(true);
+  const goneId: string = (await made.json()).id;
+  try {
+    const firstRow = await loadEditor(page);
+    await page.getByTestId("bank-editor-bank").selectOption({ label: gone });
+    await expect(page.getByTestId("bank-editor-bank")).toHaveValue(goneId); // set only once that load lands
+    await expect(firstRow.getByLabel("題目文字")).toHaveValue("重設用題目");
+    await firstRow.getByLabel("題目文字").fill("另存後還在的題目");
+
+    expect((await request.delete(`${WORKER}/api/banks?id=${goneId}`, { headers })).ok()).toBe(true);
+    await saveAll(page);
+    await expect(page.getByTestId("bank-editor-error")).toContainText("被刪掉了");
+
+    page.once("dialog", (d) => void d.accept(rescued));
+    await page.getByTestId("bank-save-as-new").click();
+    await expect(page.getByTestId("bank-saved")).toBeVisible();
+    await expect(page.getByTestId("bank-editor-bank").locator("option:checked")).toHaveText(rescued);
+    const list: { id: string; name: string }[] = await (await request.get(`${WORKER}/api/banks`, { headers })).json();
+    const entry = list.find((b) => b.name === rescued);
+    expect(entry).toBeTruthy();
+    const stored = await (await request.get(`${WORKER}/api/bank?id=${entry!.id}`, { headers })).json();
+    expect(stored.bank.pools["1"][0].content.value).toBe("另存後還在的題目");
+  } finally {
+    await request.delete(`${WORKER}/api/banks?id=${goneId}`, { headers });
+    const list: { id: string; name: string }[] = await (await request.get(`${WORKER}/api/banks`, { headers })).json();
+    for (const b of list.filter((x) => x.name === rescued)) await request.delete(`${WORKER}/api/banks?id=${b.id}`, { headers });
+  }
+});

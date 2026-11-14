@@ -480,8 +480,9 @@ export default function BankEditorPage() {
   };
 
   const undoDelete = (r: Removed) => {
-    // Back to the saved bank: no draft is kept of it (the draft effect skips a bank that equals saved).
-    if (bank && restoreToSaved(bank, r, saved) === saved) forgetStored(draftKey(bankId));
+    // Back to the saved bank: no draft is kept of it (the draft effect skips a bank that equals saved). An older draft
+    // still waiting for 還原草稿 or 捨棄 stays.
+    if (bank && !draftOffer && restoreToSaved(bank, r, saved) === saved) forgetStored(draftKey(bankId));
     setBank((prev) => (prev ? restoreToSaved(prev, r, saved) : prev));
     setToast(null);
     goTo({ message: "", tab: tabOf(r.loc), questionId: r.question.id });
@@ -892,6 +893,8 @@ export default function BankEditorPage() {
                     </PixelButton>
                   )}
                 </div>
+                {/* A failed 另存成新題庫 (a taken name, the bank limit) under the refusal it answers. */}
+                {shown && error && <div data-testid="bank-editor-error-extra">{error}</div>}
                 {problems.length > 1 && <div className="text-[12px]">共 {problems.length} 處要修正，這是第 {shownAt + 1} 處</div>}
               </Panel>
             )}
