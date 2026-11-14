@@ -2029,7 +2029,10 @@ function QuestionHeader({ number, question: q, problem, open, last, actions, onD
     <div className="flex flex-col gap-2" onKeyDown={(e) => e.key === "Escape" && menu !== "closed" && setMenu("closed")}>
       <div className="flex items-stretch gap-2">
         <button type="button" data-summary={q.id} aria-expanded={open} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 text-left" onClick={() => actions.onToggle(q.id)}>
-          <LabelChip>第 {number} 題</LabelChip>
+          {/* Smaller than the LabelChip it replaces: on a phone the question's own words need the room. */}
+          <span className="shrink-0 whitespace-nowrap px-2 py-0.5 text-[13px]" style={{ background: "var(--k)", color: "var(--cream, #fff3d6)", borderRadius: 999 }}>
+            第 {number} 題
+          </span>
           <span className="shrink-0 border border-black/30 px-1 text-[12px]">{s.kind}</span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[15px]">
@@ -2068,7 +2071,7 @@ function QuestionHeader({ number, question: q, problem, open, last, actions, onD
         <div role="group" aria-label="移到哪裡？" className="flex flex-col gap-1 text-[15px]">
           <div>移到哪裡？（放到那一組的最後）</div>
           {targets.map((t) => (
-            <PixelButton key={t.name} className="!m-0 !min-h-[44px] !px-3 !py-1 text-left text-[15px]" disabled={t.current || !!t.refusal} onClick={act(() => actions.onMove(q.id, t.loc))}>
+            <PixelButton key={t.name} className="!m-0 !min-h-[44px] !whitespace-normal !px-3 !py-1 text-[15px]" disabled={t.current || !!t.refusal} onClick={act(() => actions.onMove(q.id, t.loc))}>
               {t.name}
               {t.current ? "（現在在這裡）" : t.refusal ? `（${t.refusal}）` : ""} · {t.count} 題
             </PixelButton>
