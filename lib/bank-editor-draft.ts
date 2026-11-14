@@ -16,7 +16,9 @@ export interface BankDraft {
 }
 
 // The editor holds NaN for a time or a seconds box it cannot read (so 儲存 refuses it); JSON would make it null.
+// Revived only on those number keys, so a text that happens to read "__NaN__" stays text.
 const NAN = "__NaN__";
+const NUMBER_KEYS = new Set(["start", "end", "target", "memorySeconds"]);
 
 export function encodeDraft(d: BankDraft): string {
   return JSON.stringify({ format: DRAFT_FORMAT, ...d }, (_, v: unknown) => (typeof v === "number" && Number.isNaN(v) ? NAN : v));
@@ -48,7 +50,7 @@ function isBank(b: unknown): b is Bank {
 export function decodeDraft(raw: string | null): BankDraft | null {
   if (!raw) return null;
   try {
-    const d: unknown = JSON.parse(raw, (_, v: unknown) => (v === NAN ? NaN : v));
+    const d: unknown = JSON.parse(raw, (k, v: unknown) => (v === NAN && NUMBER_KEYS.has(k) ? NaN : v));
     if (!isObj(d) || d.format !== DRAFT_FORMAT || typeof d.version !== "number" || typeof d.savedAt !== "number" || !isBank(d.bank)) return null;
     return { version: d.version, savedAt: d.savedAt, bank: d.bank };
   } catch {

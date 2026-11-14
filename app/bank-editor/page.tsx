@@ -119,8 +119,9 @@ export default function BankEditorPage() {
   const loadSeq = useRef(0);
   /** A save the editor's own check refused: from then on its problems follow the edits, so a fixed one goes away. */
   const [checked, setChecked] = useState(false);
-  /** A save the server refused (its 4xx text, in Chinese, placed on a question when it names one). */
-  const [serverIssue, setServerIssue] = useState<BankProblem | null>(null);
+  /** A save the server refused (its 4xx text, in Chinese, placed on a question when it names one), with the bank it
+   * refused: once that bank is edited the refusal may no longer apply, so it is no longer shown. */
+  const [serverIssue, setServerIssue] = useState<{ problem: BankProblem; bank: Bank } | null>(null);
   /** Which of the problems the save bar shows. */
   const [cursor, setCursor] = useState(0);
   const [jump, setJump] = useState<Jump | null>(null);
@@ -310,7 +311,7 @@ export default function BankEditorPage() {
       }
       if (!res.ok) {
         const issue = serverProblem(next, res.status, await res.text());
-        setServerIssue(issue);
+        setServerIssue({ problem: issue, bank: next });
         setCursor(0);
         goTo(issue);
         return;
@@ -344,7 +345,7 @@ export default function BankEditorPage() {
   // After a refused save the problems follow the edits; once none is left, a new blank question is not an error yet.
   const live = bank && checked ? bankProblems(bank) : [];
   if (checked && bank && live.length === 0) setChecked(false);
-  const problems = live.length > 0 ? live : serverIssue ? [serverIssue] : [];
+  const problems = live.length > 0 ? live : serverIssue && serverIssue.bank === bank ? [serverIssue.problem] : [];
   const shownAt = Math.min(cursor, problems.length - 1);
   const shown = problems[shownAt];
   const problemOf = new Map(problems.flatMap((p) => (p.questionId ? [[p.questionId, p.message] as const] : [])));
@@ -363,11 +364,16 @@ export default function BankEditorPage() {
     boss: { ...b.boss, phases: b.boss.phases.map((p, i) => (i === phase ? { ...p, ...patch } : p)) },
   });
   const updatePhase = (phase: number, patch: Partial<BossPhase>) => setBank((prev) => (prev ? withPhase(prev, phase, patch) : prev));
-  const addPhase = () => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: [...prev.boss.phases, { name: "", rule: "", maxHp: 3, questions: [] }] } } : prev));
+  // A phase count change remounts every pager (keyed by it): a spent jump must not reopen its old page then.
+  const addPhase = () => {
+    setJump(null);
+    setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: [...prev.boss.phases, { name: "", rule: "", maxHp: 3, questions: [] }] } } : prev));
+  };
   const deletePhase = (phase: number) => {
     const count = bank?.boss.phases[phase]?.questions.length ?? 0;
     // A phase can hold a whole set of prepared questions: one stray tap must not drop them all (D11).
     if (count > 0 && !window.confirm(`刪除第 ${phase + 1} 階段和它的 ${count} 題？`)) return;
+    setJump(null);
     setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: prev.boss.phases.filter((_, i) => i !== phase) } } : prev));
   };
 
@@ -546,10 +552,14 @@ export default function BankEditorPage() {
             {" "}草稿裡新上傳的圖片和影音要盡快存檔，放太久會被清掉。
           </span>
           <div className="flex flex-wrap gap-2">
-            <PixelButton className="!m-0 !px-3 !py-1 text-[15px]" disabled={busy} onClick={() => { setBank(draftOffer.draft.bank); setDraftOffer(null); }}>
+            <PixelButton className="!m-0 !px-3 !py-1 text-[15px]" disabled={busy} onClick={() => {
+                if (bank !== saved && !window.confirm("還原草稿會換掉剛才的修改，確定？")) return;
+                setBank(draftOffer.draft.bank);
+                setDraftOffer(null);
+              }}>
               {draftOffer.stale ? "還原草稿（蓋掉較新的版本）" : "還原草稿"}
             </PixelButton>
-            <PixelButton className="!m-0 !px-3 !py-1 text-[15px]" disabled={busy} onClick={() => { forgetStored(draftKey(bankId)); setDraftOffer(null); }}>
+            <PixelButton variant="flee" className="!m-0 !px-3 !py-1 text-[15px]" disabled={busy} onClick={() => { forgetStored(draftKey(bankId)); setDraftOffer(null); }}>
               捨棄
             </PixelButton>
           </div>
@@ -590,7 +600,10 @@ export default function BankEditorPage() {
                 role="tab"
                 aria-selected={tab === t}
                 data-testid={`bank-tab-${t}`}
-                onClick={() => setTab(t)}
+                onClick={() => {
+                  setTab(t);
+                  setJump(null);
+                }}
                 className={`!m-0 !px-3 !py-1 text-[15px] ${tab === t ? "" : "opacity-70"}`}
                 style={tab === t ? { background: "var(--cream, #fff3d6)" } : undefined}
               >
@@ -689,7 +702,7 @@ export default function BankEditorPage() {
                   <span data-testid="bank-editor-error" className="line-clamp-3 min-w-0 flex-1">{shown?.message ?? error}</span>
                   {shown?.tab !== undefined && (
                     <PixelButton
-                      className="!m-0 shrink-0 !px-2 !py-1 text-[13px]"
+                      className="!m-0 !min-h-[44px] shrink-0 !px-3 !py-2 text-[15px]"
                       onClick={() => {
                         const next = problems.length > 1 ? (shownAt + 1) % problems.length : shownAt;
                         setCursor(next);
@@ -1516,7 +1529,7 @@ function QuestionRow({
         <LabelChip>第 {number} 題</LabelChip>
       </div>
       {problem && (
-        <div data-testid={`question-problem-${q.id}`} className="text-[14px]" style={{ color: "#b3261e" }}>
+        <div data-testid={`problem-${q.id}`} className="text-[14px]" style={{ color: "#b3261e" }}>
           ⚠ {problem}
         </div>
       )}

@@ -32,6 +32,23 @@ test("an unreadable stored bank loads read-only, with the notice up front and sa
   await expect(page.getByRole("button", { name: "儲存全部變更" })).toBeEnabled();
 });
 
+// Value: protects=a draft is never offered over the bundled fallback of an unreadable bank; fails_when=load() offers
+// drafts whatever the bank's state; seam=GET body route-mocked; no_claim=a real unreadable Durable Object
+test("an unreadable stored bank never offers a draft", async ({ page }) => {
+  await page.route(/\/api\/bank$/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    const res = await route.fetch();
+    await route.fulfill({ response: res, json: { ...(await res.json()), unreadable: true } });
+  });
+  await page.goto("/bank-editor");
+  const bank = { pools: { 1: [], 2: [], 3: [], 4: [], 5: [] }, rooms: [], boss: { phases: [] } };
+  await page.evaluate((b) => localStorage.setItem("bank-editor-draft:default", JSON.stringify({ format: 1, version: 1, savedAt: Date.now(), bank: b })), bank);
+  await page.getByLabel("站長金鑰").fill(E2E_OWNER_KEY);
+  await page.getByRole("button", { name: "載入題庫" }).click();
+  await expect(page.getByTestId("bank-editor-readonly")).toBeVisible();
+  await expect(page.getByTestId("bank-draft")).toHaveCount(0);
+});
+
 // Value: protects=an older-format stored bank shows the yellow notice with its format and still lets the owner save over it (the reseed path); fails_when=outdated is treated as read-only or the notice is missing; why_new=new outdated state (monster-catalog.md §5); seam=none; no_claim=a real outdated Durable Object (GET body route-mocked)
 test("an outdated stored bank shows the yellow notice and can be saved over", async ({ page }) => {
   await page.route(/\/api\/bank$/, async (route) => {

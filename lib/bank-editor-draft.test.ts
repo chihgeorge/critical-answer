@@ -15,6 +15,9 @@ describe("bank editor: drafts", () => {
     expect(Number.isNaN((back.bank.pools[2][0].content as { start?: number }).start)).toBe(true);
     expect(Object.keys(JSON.parse(raw)).sort()).toEqual(["bank", "format", "savedAt", "version"]);
     expect(draftKey("abc")).toBe("bank-editor-draft:abc");
+    // Only number keys are revived: a text reading like the marker stays text.
+    const marker: Bank = { ...edited, pools: { ...edited.pools, 1: [{ kind: "text", id: "d-3", content: { kind: "text", value: "__NaN__" }, answer: "__NaN__" }] } };
+    expect(decodeDraft(encodeDraft({ version: 1, savedAt: 1, bank: marker }))!.bank.pools[1][0]).toEqual(marker.pools[1][0]);
   });
 
   it("ignores nothing stored, garbage, another format and shapes the editor cannot render", () => {

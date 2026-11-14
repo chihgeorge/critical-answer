@@ -86,7 +86,7 @@ test("回首頁 goes home at once with nothing unsaved, and asks first when ther
 });
 
 // Value: protects=after a save, or after a rejected key, 回首頁 goes home without asking; fails_when=save() or the 403 branch
-// stops resetting savedBank; why_new=only an implicit reload reached the save path, nothing reached the 403 path; seam=none;
+// stops resetting saved (setSaved); why_new=only an implicit reload reached the save path, nothing reached the 403 path; seam=none;
 // no_claim=beforeunload after save
 test("回首頁 does not ask after a save, nor after the owner key is rejected", async ({ page }) => {
   const dialogs: string[] = [];
