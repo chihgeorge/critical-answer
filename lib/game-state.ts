@@ -1739,7 +1739,7 @@ export function hostSetScore(game: GameState, teamId: string, score: number): Ga
 }
 
 /** N for the ledger, from `prev` (the game before the judgment): a correct outcome's whole gain; for a wrong one, what a
- * plain correct answer there gives (room reward or the boss's hitReward) plus the chef's share. */
+ * plain correct answer there gives (room reward or the boss's hitReward) plus the chef's share (none in a buzzer phase). */
 export function judgmentPoints(prev: GameState, teamId: string, outcome: AnswerOutcome): number {
   if (outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") return outcome.reward;
   const t = getTeam(prev, teamId);

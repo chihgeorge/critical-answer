@@ -35,7 +35,7 @@ test.describe("a fill-in answer with a first character", () => {
     await expect(team.getByTestId("check-hint")).toHaveText("🔮 第一個字：萬");
     await expect(screen.getByTestId("screen-check-hint")).toHaveText("🔮 第一個字：萬");
     await expect(team.getByRole("button", { name: /看答案第一個字/ })).toHaveCount(0);
-    await expect(team.getByText("法師・剩 4 次")).toBeVisible();
+    await expect(team.getByText("法師・剩 3 次")).toBeVisible();
   });
 
   // Value: protects=a mage on a fill-in question shows the answer's first character on the phone, the host page and the
@@ -54,7 +54,7 @@ test.describe("a fill-in answer with a first character", () => {
     await expect(team.getByTestId("mage-hint")).toHaveText("🔮 第一個字：萬");
     await expect(host.getByTestId("host-mage-hint")).toHaveText("🔮 第一個字：萬");
     await expect(screen.getByTestId("screen-mage-hint")).toHaveText("🔮 第一個字：萬");
-    await expect(team.getByText("法師・剩 3 次")).toBeVisible();
+    await expect(team.getByText("法師・剩 2 次")).toBeVisible();
     // One hint per question: the button is gone.
     await expect(team.getByRole("button", { name: /看答案第一個字/ })).toHaveCount(0);
   });
@@ -70,7 +70,7 @@ test.describe("a 1-character fill-in answer", () => {
     // The check passes but a 1-character answer has no hint to give, so the mage's button is offered after it.
     await rollCheck(team);
     await team.getByRole("button", { name: /看答案第一個字/ }).click();
-    await expect(team.getByText("🔮 這題答案太短，不能看第一個字・剩 4 次")).toBeVisible();
+    await expect(team.getByText("🔮 這題答案太短，不能看第一個字・剩 3 次")).toBeVisible();
     await expect(team.getByRole("button", { name: /看答案第一個字/ })).toHaveCount(0);
     await expect(host.getByTestId("host-mage-hint")).toHaveCount(0);
   });

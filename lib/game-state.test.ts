@@ -36,6 +36,7 @@ import {
   firstMeaningfulChar,
   armSneak,
   chefShare,
+  judgmentPoints,
   pray,
   canPray,
   canPrayBeforeJudge,
@@ -2279,6 +2280,9 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     const kill = answerQuestion(t, "T1", t.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
     expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 53 });
     expect(kill.outcome).not.toHaveProperty("chefBonus");
+    // A wrong buzz's ledger N (改判) is the plain hit reward, no share either.
+    const b = buzzIn(g, "T1", "b-a", true);
+    expect(judgmentPoints(b, "T1", judge(b, "T1", false).outcome)).toBe(b.boss.hitReward);
   });
 
   it("the buzzer phase pulls every team into the boss room, and only the view of that phase carries a buzz", () => {

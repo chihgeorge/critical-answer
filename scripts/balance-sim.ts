@@ -1,6 +1,6 @@
 // Class balance: plays many 4-team games through lib/game-state.ts and prints each class's win share (fair is 25%),
 // average reward, ability uses left and turns. Run: node scripts/balance-sim.ts [games].
-// Model (docs/designs/class-abilities.md, 「職業平衡（2026-11-08，兩階段王）」):
+// Model (docs/designs/class-abilities.md, 「職業平衡（2026-11-13）」):
 // - TEXT of the questions are fill-in (persuasion check first), SORT are sort questions, the rest multipleChoice.
 // - A correct answer may lead to a fork (EVENT_CHANCE); the unmarked doors are ⚔️ or ❓ half and half, and the room ⚔️
 //   led to rolls no fork. ❓ opens an event (a fortune's effect is picked at random). 逃跑・換房 scores as 逃跑・同房.
@@ -137,8 +137,8 @@ function play(classes: C[], maxTurns = 600) {
     if (knows() || (!text && R() < 1 / (opts - gone().length))) { settle(G.answerQuestion(g, id, q, true, "retry", R, text ? undefined : knows() ? potionRoll() : d20()), true); continue; }
     const cleric = t.classId === "cleric" && team().abilityUses > 0;
     if (!text) g = G.recordWrongLock(g, id, q, Array.from({ length: opts - 1 }, (_, i) => i + 1).find((i) => !gone().includes(i))!);
-    if (sort && R() < SORTFIX) L.known = true;
     else if (cleric && G.canPrayBeforeJudge(g, id)) g = G.recordTextWrong(g, id, q);
+    if (sort && R() < SORTFIX) L.known = true;
     // A prayer keeps the turn: multipleChoice retries with a wrong tile gone; a fill-in it cannot crack flees to a new one.
     if (cleric && G.canPray(g, id)) g = G.pray(g, id);
     const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2);
