@@ -105,12 +105,12 @@
 
 **What:** 活動後下載對局紀錄（主持人頁「⬇ 下載對局紀錄」），算每個職業的實際勝率，跟模擬對一次。
 
-**Why:** 2026-11-08 第二次平衡的數字（戰士 9 以上算對、說服加值法師 +4／盜賊 +3／牧師 +2／廚師 +1／沒選 +1／戰士 +0）是用兩套模擬決定的：Claude 和 Codex 各寫一套，都用 `lib/game-state.ts`，題型一半選擇題、一半填空題，有事件房，王兩階段（第 2 階段搶答）。兩套都假設玩家知道自己會不會，不會才用法師和戰士的技能、會才偷襲。改完後五個職業的模擬勝率在 24–29%，沒選職業約 13%。真實玩家如果把技能留到最後才用，法師和戰士會變弱、牧師變強。
+**Why:** 2026-11-13 第三次平衡的數字（戰士 10 以上算對、法師一場 3 次、廚師 20% 且魔王搶答階段不加；說服加值法師 +4／盜賊 +3／牧師 +2／廚師 +1／沒選 +1／戰士 +0）是用 `scripts/balance-sim.ts` 決定的，它跑 `lib/game-state.ts`，有兩種題庫設定（舊設定和 2026-11-13 的活動題庫比例），模擬了叉路門、排序題、卡點題和搶錯。它假設玩家知道自己會不會，不會才用法師和戰士的技能、會才偷襲。改完後五個職業的模擬勝率在 25.7–28.2%，沒選職業約 14%。真實玩家如果把技能留到最後才用，法師和戰士會變弱、牧師變強。
 
 **Context:**
 - 對局紀錄有每隊的職業和分數（`lib/game-log.ts`）。
-- 模擬設定和結果寫在 `docs/designs/class-abilities.md` 的「職業平衡（2026-11-08，兩階段王）」一節。
-- 數字在 `lib/game-state.ts`：`WARRIOR_TARGET`、`CHECK_BONUS`、`ABILITY_USES`、`MORE_ABILITY_USES`、`SNEAK_REWARD_MULTIPLIER`、`CHEF_BONUS_PERCENT`。
+- 模擬設定和結果寫在 `docs/designs/class-abilities.md` 的「職業平衡（2026-11-13）」一節。
+- 數字在 `lib/game-state.ts`：`WARRIOR_TARGET`、`CHECK_BONUS`、`ABILITY_USES`、`MORE_ABILITY_USES`、`MAGE_ABILITY_USES`、`SNEAK_REWARD_MULTIPLIER`、`CHEF_BONUS_PERCENT`。
 
 **Effort/Priority:** S / P3（活動後）
 

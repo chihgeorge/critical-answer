@@ -144,9 +144,9 @@ describe("openEvent", () => {
     expect(currentTurnTeamId(after)).toBe("t1");
   });
 
-  it("a chef gets 15% more from what an event gives, never from what it takes", () => {
+  it("a chef gets 20% more from what an event gives, never from what it takes", () => {
     const { result } = openEvent(inEvent("great", game(["chef", undefined])), "t0", first);
-    expect(result).toMatchObject({ satiety: 29, chefBonus: 4 });
+    expect(result).toMatchObject({ satiety: 30, chefBonus: 5 });
   });
 
   it("once a team is in the boss room, opening an event walks the team into the boss room, effect and all", () => {

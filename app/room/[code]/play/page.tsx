@@ -10,7 +10,7 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
-import { ABILITY_USES, CATCH_PAY, CHEF_BONUS_PERCENT, ORACLE_USES, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
+import { ABILITY_USES, CATCH_PAY, CHEF_BONUS_PERCENT, ORACLE_USES, MAGE_ABILITY_USES, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn } from "@/lib/turn-info";
 import { sprintSeen } from "@/lib/transitions";
@@ -34,14 +34,14 @@ const CLASS_HINTS: Record<ClassId, string> = {
   mage: "選擇題刪 2 個錯的選項；填空題看答案第一個字",
   cleric: "答錯後，這回合再答一次",
   thief: `偷襲：這題答對，獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`,
-  chef: `被動：每次拿到獎勵分都多 ${CHEF_BONUS_PERCENT}%，不用按`,
+  chef: `被動：每次拿到獎勵分都多 ${CHEF_BONUS_PERCENT}%（每 10 分多 ${CHEF_BONUS_PERCENT / 10} 分），不用按`,
 };
 
 /** The lobby's class picker (D10=A): five cards and 不選; the passive chef takes a whole row (chef design D6). */
 function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMessage) => void }) {
   return (
     <Panel tone="lav" className="flex flex-col gap-2 px-[10px] py-[10px]">
-      <div className="text-[18px]">選一個職業（戰士、法師技能一場 {MORE_ABILITY_USES} 次，其他 {ABILITY_USES} 次）</div>
+      <div className="text-[18px]">選一個職業（戰士技能一場 {MORE_ABILITY_USES} 次，法師 {MAGE_ABILITY_USES} 次，其他 {ABILITY_USES} 次；魔王搶答階段都不能用）</div>
       <div className="grid grid-cols-2 gap-2">
         {CLASS_IDS.map((id) => {
           const picked = current === id;

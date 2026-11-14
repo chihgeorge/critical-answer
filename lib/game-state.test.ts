@@ -29,6 +29,7 @@ import {
   spendAbility,
   ABILITY_USES,
   MORE_ABILITY_USES,
+  CHEF_BONUS_PERCENT,
   WARRIOR_TARGET,
   mageEliminate,
   mageHint,
@@ -1598,8 +1599,8 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
   const wrongLock = (g: GameState, id: string) => recordWrongLock(g, id, currentQ(g, id), 0);
   const currentQ = (g: GameState, id: string) => (isInBossPhase(g, id) ? g.boss.currentQuestionId : g.teams.find((t) => t.id === id)!.currentQuestionId);
 
-  it("abilityUsesFor: a warrior and a mage start with 4 uses, a thief and a cleric with 2", () => {
-    expect(classGame(["warrior", "mage", "thief", "cleric"]).teams.map((t) => t.abilityUses)).toEqual([4, 4, 2, 2]);
+  it("abilityUsesFor: a warrior starts with 4 uses, a mage with 3, a thief and a cleric with 2", () => {
+    expect(classGame(["warrior", "mage", "thief", "cleric"]).teams.map((t) => t.abilityUses)).toEqual([4, 3, 2, 2]);
   });
 
   it("sneak attack: a correct answer gives 1.5× the room reward but not the progress points, and is used up", () => {
@@ -1638,12 +1639,12 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(shown.outcome).toMatchObject({ bossKilled: true, killBonus: 65, reward: 80 });
   });
 
-  // Value: protects=the chef's 15% (eng review D1–D3); fails_when=it rounds down, skips the 4d20, or leaks to other classes.
+  // Value: protects=the chef's 20% (eng review D1–D3); fails_when=it rounds down, skips the 4d20, or leaks to other classes.
   it("chefShare rounds half up and pays at least 1 on any gain", () => {
-    expect([0, 3, 5, 10, 16, 20, 30, 53].map(chefShare)).toEqual([0, 1, 1, 2, 2, 3, 5, 8]);
+    expect([0, 3, 5, 10, 16, 20, 30, 53].map(chefShare)).toEqual([0, 1, 1, 2, 3, 4, 6, 11]);
   });
 
-  it("the chef gets 15% more on a room answer; other teams get no chefBonus", () => {
+  it("the chef gets 20% more on a room answer; other teams get no chefBonus", () => {
     const g = classGame(["chef", undefined]);
     const { game, outcome } = answerQuestion(g, "T0", currentQ(g, "T0"), true);
     expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 12, chefBonus: 2 }); // pregate-literal: WARRIOR_TARGET=12 not the warrior target
@@ -1653,20 +1654,20 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(other.outcome).not.toHaveProperty("chefBonus");
   });
 
-  it("the chef's 15% goes on the whole boss gain, the kill's 4d20 included", () => {
+  it("the chef's 20% goes on the whole boss gain, the kill's 4d20 included", () => {
     const g = classGame(["chef"], 0, 2);
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first);
     expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 12, chefBonus: 2 }); // pregate-literal: WARRIOR_TARGET=12 not the warrior target
     const kill = answerQuestion(hit.game, "T0", hit.game.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
-    // 10 + 43 = 53, and 15% of 53 rounds to 8.
-    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 61, chefBonus: 8 });
-    expect(kill.game.teams[0].reward).toBe(73);
+    // 10 + 43 = 53, and 20% of 53 rounds to 11.
+    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 64, chefBonus: 11 });
+    expect(kill.game.teams[0].reward).toBe(76);
   });
 
-  it("the chef's 15% goes on a crit too, and a wrong answer pays it nothing", () => {
+  it("the chef's 20% goes on a crit too, and a wrong answer pays it nothing", () => {
     const g = classGame(["chef", undefined]);
-    // 10 + a crit's 5 = 15, and 15% of 15 rounds to 2.
-    expect(answerQuestion(g, "T0", currentQ(g, "T0"), true, "retry", first, 20).outcome).toMatchObject({ reward: 17, chefBonus: 2, roll: { kind: "crit", value: 20 } });
+    // 10 + a crit's 5 = 15, and 20% of 15 is 3.
+    expect(answerQuestion(g, "T0", currentQ(g, "T0"), true, "retry", first, 20).outcome).toMatchObject({ reward: 18, chefBonus: 3, roll: { kind: "crit", value: 20 } });
     const wrong = answerQuestion(g, "T0", currentQ(g, "T0"), false, "retry");
     expect(wrong.outcome).not.toHaveProperty("chefBonus");
     expect(wrong.game.teams[0].reward).toBe(0);
@@ -1679,7 +1680,7 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const after = mageEliminate(g, "T0", q, 1, 4, first);
     expect(after.eliminated[q]).toEqual([0, 2]);
     expect(getSpectatorView(after).mageRemoved[q]).toEqual([0, 2]);
-    expect(after.teams[0]).toMatchObject({ abilityUses: 3, currentSelection: null });
+    expect(after.teams[0]).toMatchObject({ abilityUses: 2, currentSelection: null });
     // One wrong option left: nothing to remove, and nothing spent.
     expect(() => mageEliminate(after, "T0", q, 1, 4, first)).toThrow(/no_option_to_remove/);
     expect(mageEliminate(g, "T0", q, 1, 4, () => 1).eliminated[q]).toHaveLength(2); // an rng of 1 cannot hang it
@@ -1703,7 +1704,7 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const g = classGame(["mage", undefined]);
     const q = currentQ(g, "T0");
     const hinted = mageHint(g, "T0", q, "萬家福");
-    expect(hinted.teams[0].abilityUses).toBe(3);
+    expect(hinted.teams[0].abilityUses).toBe(2);
     expect(getSpectatorView(hinted).mageHints).toEqual({ [q]: "萬" });
     expect(() => mageHint(hinted, "T0", q, "萬家福")).toThrow(/hint_shown/);
     expect(() => mageHint(g, "T0", q, "萬")).toThrow(/no_hint/);
@@ -2093,9 +2094,10 @@ describe("the persuasion check (dnd design R6, R8)", () => {
   const check = (g: GameState, value: number, answer = "萬家福") => recordCheck(g, "T0", q0(g), value, answer);
   const rec = (g: GameState) => g.checks?.[checkKey(q0(g), "T0")];
 
-  it("pins the 2026-11-08 class balance (docs/designs/class-abilities.md)", () => {
+  it("pins the 2026-11-13 class balance (docs/designs/class-abilities.md)", () => {
     expect(CHECK_BONUS).toEqual({ mage: 4, thief: 3, cleric: 2, chef: 1, none: 1, warrior: 0 });
-    expect(WARRIOR_TARGET).toBe(9);
+    expect(WARRIOR_TARGET).toBe(10);
+    expect(CHEF_BONUS_PERCENT).toBe(20);
   });
 
   it("rolls the class bonus against the pool's DC, or the boss's", () => {
@@ -2261,6 +2263,22 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     const t0 = enterNextBossPhase(g).teams.find((t) => t.id === "T0")!;
     expect(t0.sneakArmed).toBeUndefined();
     expect(t0.abilityUses).toBe(1);
+  });
+
+  // Value: protects=no class ability counts in a buzzer phase, the chef's share included (2026-11-13 balance);
+  // fails_when=a chef's buzz, its timing-tap hit or its kill gets a chefBonus.
+  it("a chef gets no share in a buzzer phase: not on a buzz, a timing-tap hit or the kill's 4d20", () => {
+    let g = buzzer();
+    g = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, classId: "chef" as const } : t)) };
+    const hit = judge(buzzIn(g, "T1", "b-a", true), "T1", true);
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 10 });
+    expect(hit.outcome).not.toHaveProperty("chefBonus");
+    // The second hit is a timing round's closest tap, and it kills: 10 + the 4d20, still no share.
+    let t = openBuzz(hit.game, hit.game.boss.currentQuestionId, true);
+    t = tapWinner(tapIn(t, "T1", t.boss.currentQuestionId, 0, 1000), "T1", {});
+    const kill = answerQuestion(t, "T1", t.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
+    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 53 });
+    expect(kill.outcome).not.toHaveProperty("chefBonus");
   });
 
   it("the buzzer phase pulls every team into the boss room, and only the view of that phase carries a buzz", () => {

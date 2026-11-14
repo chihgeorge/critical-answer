@@ -43,7 +43,7 @@ Every room in the dungeon is a quiz monster. The owner asked on 2026-10-30 for a
   - Once any team is in the boss room, opening an event walks the team into the boss room, like a correct answer (review, owner call 2026-11-07). The effect still lands.
   - A room the host picked the question for (指定下一題) never draws an event, so the pick is not burned.
   - The next-answer effects (curse, blessing, 凶) last until the team's next correct answer, room or boss. A wrong answer does not use them up. A new effect replaces an older one. The curse does not stack with a persuasion natural 1: the base is halved at most once. The blessing stacks with a crit 20. The kill's 4d20 is never changed. The TV and the phone show 「💀 詛咒：下次答對減半」 or 「✨ 祝福：下次答對多一半」 over the team's question.
-  - The chef's 15% applies to satiety an event gives, not to what it takes. Satiety never goes below 0.
+  - The chef's share (20% since 2026-11-13) applies to satiety an event gives, not to what it takes. Satiety never goes below 0.
   - An event turn has no abilities: no sneak attack, warrior roll, mage hint, persuasion check or prayer.
   - 指定下一題 for a team in an event room deals when the team walks out. *Superseded: a team at a fork follows branch-fork.md (sent to the boss drops the fork; 指定下一題 deals in the next room; a picked room never becomes a fork).*
   - Game log (#155): each team's events and outcomes, to tune the chance and the numbers.

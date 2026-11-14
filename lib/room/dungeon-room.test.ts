@@ -3600,7 +3600,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     const removed = lastBroadcast(room).view.eliminated[q];
     expect(removed).toHaveLength(2);
     expect(removed).not.toContain(room.game!.optionOrder[q].indexOf(1));
-    expect(room.game!.teams[0].abilityUses).toBe(3);
+    expect(room.game!.teams[0].abilityUses).toBe(2);
     use();
     expect(err(conns[0])).toBe("no_option_to_remove");
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t1" } : t)) };
@@ -3610,7 +3610,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     passChecks(room);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
     expect(err(conns[0])).toBe("no_hint");
-    expect(room.game!.teams[0].abilityUses).toBe(3);
+    expect(room.game!.teams[0].abilityUses).toBe(2);
   });
 
   // Value: protects=the mage on a fill-in question shows the answer's first character to every screen and
@@ -3622,14 +3622,14 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     // Not before the persuasion check: the question is not up yet (check first, question after).
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
     expect(err(conns[0])).toBe("check_needed");
-    expect(room.game!.teams[0].abilityUses).toBe(4);
+    expect(room.game!.teams[0].abilityUses).toBe(3);
     passChecks(room);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
     expect(lastBroadcast(room).view.mageHints).toEqual({ "r0-t2": "萬" });
-    expect(room.game!.teams[0].abilityUses).toBe(3);
+    expect(room.game!.teams[0].abilityUses).toBe(2);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
     expect(err(conns[0])).toBe("hint_shown");
-    expect(room.game!.teams[0].abilityUses).toBe(3);
+    expect(room.game!.teams[0].abilityUses).toBe(2);
   });
 
   // Value: protects=a mage cast on a question id the bank lacks is refused as stale and spends nothing (/review);
@@ -3639,7 +3639,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "nope" } : t)) };
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "nope" });
     expect(err(conns[0])).toBe("stale_question");
-    expect(room.game!.teams[0].abilityUses).toBe(4);
+    expect(room.game!.teams[0].abilityUses).toBe(3);
   });
 
   it("the thief's sneak attack shows on every screen until its answer is judged, and cannot be armed twice", () => {
