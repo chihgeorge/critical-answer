@@ -16,7 +16,7 @@ test("an unreadable stored bank loads read-only, with the notice up front and sa
     await route.fulfill({ response: res, json: { ...(await res.json()), unreadable: true } });
   });
   await page.goto("/bank-editor");
-  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByLabel("站長金鑰").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
   await expect(page.getByTestId("bank-editor-readonly")).toBeVisible();
   await expect(page.getByRole("button", { name: "儲存全部變更" })).toBeDisabled();
@@ -40,7 +40,7 @@ test("an outdated stored bank shows the yellow notice and can be saved over", as
     await route.fulfill({ response: res, json: { ...(await res.json()), outdated: 2 } });
   });
   await page.goto("/bank-editor");
-  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByLabel("站長金鑰").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
   await expect(page.getByTestId("bank-editor-outdated")).toContainText("格式 2");
   await expect(page.getByTestId("bank-editor-readonly")).toBeHidden();
@@ -63,7 +63,7 @@ test("a bank with whole monster objects (an old server mid-deploy) loads read-on
     await route.fulfill({ response: res, json: body });
   });
   await page.goto("/bank-editor");
-  await page.getByLabel("Owner key").fill(E2E_OWNER_KEY);
+  await page.getByLabel("站長金鑰").fill(E2E_OWNER_KEY);
   await page.getByRole("button", { name: "載入題庫" }).click();
   await expect(page.getByTestId("bank-editor-stale-server")).toContainText("伺服器還是舊版");
   await expect(page.getByRole("button", { name: "儲存全部變更" })).toBeDisabled();
