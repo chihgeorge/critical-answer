@@ -90,7 +90,8 @@ describe("bank editor: changing kind keeps the answer (editor-ux #6)", () => {
     expect(lostOnKindChange({ ...base, answer: "" }, "timing")).toBe(false);
     expect(lostOnKindChange(mc(["甲", ""], 0), "text")).toBe(false);
     expect(lostOnKindChange(mc(["甲", "乙"], 0), "text")).toBe(true);
-    expect(lostOnKindChange(mc(["甲", "乙", "丙", "丁"], 0), "sort")).toBe(false);
+    expect(lostOnKindChange(mc(["甲", "乙", "丙", "丁"], 0), "sort")).toBe(true); // the correct mark goes
+    expect(lostOnKindChange(mc(["甲", "乙", "丙", "丁"], -1), "sort")).toBe(false);
     expect(lostOnKindChange(sort(["甲", "乙", "丙", "丁"]), "multipleChoice")).toBe(false);
     expect(lostOnKindChange(sort(["甲", "", "", ""]), "text")).toBe(true);
     expect(lostOnKindChange({ ...base, fields: [{ label: "歌名", answer: "晴天" }, { label: "歌手", answer: "周杰倫" }] }, "multipleChoice")).toBe(true);

@@ -866,7 +866,12 @@ export default function BankEditorPage() {
               <div role="status" className="min-w-0 flex-1 text-[15px] text-white" style={{ textShadow: "1px 1px 0 var(--k)" }}>
                 {toast ? (
                   <span data-testid="bank-toast" className="flex flex-wrap items-center gap-x-2">
-                    {dirty && <span aria-label="（有還沒儲存的修改）">●</span>}
+                    {dirty && (
+                      <span>
+                        <span aria-hidden>●</span>
+                        <span className="sr-only">有還沒儲存的修改</span>
+                      </span>
+                    )}
                     {toast.message}
                     {/* Locked while a save runs: the saved bank landing after it would drop the question again. */}
                     {toast.undo && (

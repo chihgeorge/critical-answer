@@ -63,10 +63,12 @@ function answerValues(q: BankQuestion): string[] {
   return all.map((v) => v.trim()).filter(Boolean);
 }
 
-/** Whether switching `q` to `kind` drops something typed: the editor asks first then (editor-ux #6). */
+/** Whether switching `q` to `kind` drops something typed, or the marked correct option (sort has none): the editor asks
+ * first then (editor-ux #6). */
 export function lostOnKindChange(q: BankQuestion, kind: BankQuestion["kind"]): boolean {
   const kept = new Set(answerValues(blankQuestion(q, kind)));
-  return answerValues(q).some((v) => !kept.has(v));
+  const dropsCorrect = q.kind === "multipleChoice" && kind === "sort" && !!q.options[q.correctIndex]?.trim();
+  return dropsCorrect || answerValues(q).some((v) => !kept.has(v));
 }
 
 /** `q` with new content, kept valid: text content has no prompt and cannot be a memory question; an image memory
