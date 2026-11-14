@@ -1252,6 +1252,12 @@ test("a bank deleted in another tab: 另存成新題庫 saves the edits into a n
     await saveAll(page);
     await expect(page.getByTestId("bank-editor-error")).toContainText("被刪掉了");
 
+    // A taken name is refused, said under the refusal; the button stays for another try.
+    page.once("dialog", (d) => void d.accept("預設題庫"));
+    await page.getByTestId("bank-save-as-new").click();
+    await expect(page.getByTestId("bank-editor-error-extra")).toContainText("已經有叫");
+    await expect(page.getByTestId("bank-editor-error")).toContainText("被刪掉了");
+
     page.once("dialog", (d) => void d.accept(rescued));
     await page.getByTestId("bank-save-as-new").click();
     await expect(page.getByTestId("bank-saved")).toBeVisible();

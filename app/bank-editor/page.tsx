@@ -382,6 +382,7 @@ export default function BankEditorPage() {
       setLastSaved(versioned.bank);
       setVersion(versioned.version);
       setBankId(to.id);
+      if (to.id !== bankId) setBanks((list) => list.filter((b) => b.id !== bankId)); // the deleted bank the edits came from
       setOutdated(null);
       setChecked(false);
       setDraftOffer(null);
@@ -482,7 +483,7 @@ export default function BankEditorPage() {
   const undoDelete = (r: Removed) => {
     // Back to the saved bank: no draft is kept of it (the draft effect skips a bank that equals saved). An older draft
     // still waiting for 還原草稿 or 捨棄 stays.
-    if (bank && !draftOffer && restoreToSaved(bank, r, saved) === saved) forgetStored(draftKey(bankId));
+    if (bank && !draftOffer && !readOnly && restoreToSaved(bank, r, saved) === saved) forgetStored(draftKey(bankId));
     setBank((prev) => (prev ? restoreToSaved(prev, r, saved) : prev));
     setToast(null);
     goTo({ message: "", tab: tabOf(r.loc), questionId: r.question.id });
