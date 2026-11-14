@@ -485,6 +485,34 @@ test("捨棄 drops the draft for good", async ({ page, request }) => {
   await expect(rows(page.getByTestId("bank-pool-1")).first().getByLabel("題目文字")).toHaveValue("重設用題目");
 });
 
+// Regression: an open row kept the clip times it showed before 還原草稿 (or a switch to a copied bank), not the ones it saves (/qa 2026-11-14)
+test("還原草稿 shows the draft's clip times in an open row, not the loaded ones", async ({ page, request }) => {
+  const WORKER = "http://localhost:1996";
+  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const original = (await (await request.get(`${WORKER}/api/bank`, { headers })).json()).bank.pools["1"];
+  try {
+    await resetFirstQuestion(request);
+    autoAcceptConfirms(page);
+    const firstRow = await loadEditor(page);
+    await firstRow.getByRole("button", { name: "題目：YouTube" }).click();
+    await firstRow.getByLabel("題目的 YouTube 網址").fill("https://youtu.be/dQw4w9WgXcQ");
+    await firstRow.getByLabel("題幹").fill("草稿片段題");
+    await firstRow.getByLabel("題目的開始時間").fill("0:10");
+    await saveAll(page);
+    await expect(page.getByTestId("bank-saved")).toHaveText("✓ 已儲存");
+    await firstRow.getByLabel("題目的開始時間").fill("0:20");
+    await reloadAndLoad(page);
+    const reloadedRow = rows(page.getByTestId("bank-pool-1")).first();
+    await expect(reloadedRow.getByLabel("題目的開始時間")).toHaveValue("0:10");
+    await page.getByRole("button", { name: "還原草稿" }).click();
+    await expect(reloadedRow.getByLabel("題目的開始時間")).toHaveValue("0:20");
+  } finally {
+    const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
+    bank.pools["1"] = original;
+    await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } });
+  }
+});
+
 test("deleting every question in a room down to zero is rejected on save (a room needs at least one)", async ({ page }) => {
   await page.goto("/bank-editor");
   await page.getByLabel("站長金鑰").fill(E2E_OWNER_KEY);
