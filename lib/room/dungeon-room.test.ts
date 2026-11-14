@@ -994,8 +994,9 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastSentTo(hostConn)?.detail).toBe("roll_pending");
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).pendingRoll).toBeNull();
-      expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { points: 15 }, scored: { teamId: ids[0], points: 15 } }); // the TV's ✅ line counts the crit too // pregate-literal: CHEF_BONUS_PERCENT=15 a crit's points, no chef here
-      expect(room.game!.teams[0]).toMatchObject({ score: 1, reward: 15 });
+      // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+      expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { points: 15 }, scored: { teamId: ids[0], points: 15 } }); // the TV's ✅ line counts the crit too
+      expect(room.game!.teams[0]).toMatchObject({ score: 1, reward: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       expect(seqOf(room)).toBe(seq + 1);
       log.mockRestore();
     });
@@ -1136,9 +1137,9 @@ describe("TEAM_SELECT_OPTION", () => {
 
     it("refuses a stale eventId, a team off turn and a multiple-choice question, rolling nothing", () => {
       const { room, conns, roll } = checkGame(2);
-      roll(15, 0, seqOf(room) - 1);
+      roll(15, 0, seqOf(room) - 1); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       expect(lastSentTo(conns[0])).toMatchObject({ error: "invalid_action", detail: "stale_event" });
-      roll(15, 1);
+      roll(15, 1); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       expect(lastSentTo(conns[1])).toMatchObject({ error: "invalid_action", detail: "not_your_turn" });
       send(room, conns[0], { type: "TEAM_ROLL_CHECK", questionId: "r0-mc1", eventId: seqOf(room) });
       expect(lastSentTo(conns[0])).toMatchObject({ error: "invalid_action", detail: "stale_question" });
@@ -1149,16 +1150,16 @@ describe("TEAM_SELECT_OPTION", () => {
     it("holds the hint out of every broadcast during the beat, then shows the check with its first character", () => {
       vi.useFakeTimers();
       const { room, ids, roll } = checkGame();
-      roll(15);
+      roll(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       const held = lastBroadcast(room);
-      expect(held.pendingRoll).toMatchObject({ teamId: ids[0], questionId: "r0-t1", value: 15, kind: "check" });
+      expect(held.pendingRoll).toMatchObject({ teamId: ids[0], questionId: "r0-t1", value: 15, kind: "check" }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       expect(held.view.checks ?? {}).toEqual({});
       expect(JSON.stringify(held)).not.toContain("萬");
       vi.advanceTimersByTime(2000);
       const after = lastBroadcast(room);
       expect(after.pendingRoll).toBeNull();
       expect(after.cue).toBe("check-pass");
-      expect(after.view.checks[checkKey("r0-t1", ids[0])]).toMatchObject({ value: 15, passed: true, hint: "萬" });
+      expect(after.view.checks[checkKey("r0-t1", ids[0])]).toMatchObject({ value: 15, passed: true, hint: "萬" }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     });
 
     it("rolls once per question: a second press and a press after a wrong retry are refused", () => {
@@ -1283,6 +1284,7 @@ describe("TEAM_SELECT_OPTION", () => {
     });
 
     // Value: protects=the host's 替○○擲骰 rolls the stuck team's check under the team's own rules (owner, 2026-11-09);
+    // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     // fails_when=a team phone can send it, a stale press rolls, or the host's roll skips the record; no_claim=the 15 s row (host page)
     it("the host rolls the check for the team on turn; a team phone and a stale press are refused", () => {
       vi.useFakeTimers();
@@ -1313,7 +1315,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(early.room, early.hostConn, { type: "HOST_JUDGE", teamId: early.ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(early.room) });
       expect(lastBroadcast(early.room).reveal).toMatchObject({ asked: { content: { kind: "text", value: "？" } } });
       const shown = checkGame();
-      shown.roll(15);
+      shown.roll(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       vi.advanceTimersByTime(2000);
       send(shown.room, shown.hostConn, { type: "HOST_JUDGE", teamId: shown.ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(shown.room) });
       expect(lastBroadcast(shown.room).reveal.answer).toBe("萬家福");
@@ -1407,6 +1409,7 @@ describe("TEAM_SELECT_OPTION", () => {
     vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
     vi.useRealTimers();
     // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(room.game!.teams[0].reward).toBe(15); // rng 0.99 rolls the crit die to 20: 10 plus half
     expect(lastBroadcast(room).reveal.choice).toMatchObject({ options: shown, correctIndex: right });
   });
@@ -1848,6 +1851,7 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { correctIndex: 1 } });
       // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       expect(room.game!.teams[0].reward).toBe(15); // a warrior's 20 on a multipleChoice question is a crit too
       expect(lastBroadcast(room)).toMatchObject({ cue: "crit" });
       vi.advanceTimersByTime(60_000);
@@ -2091,7 +2095,7 @@ describe("questions and answers (T3)", () => {
 
   it("in the boss room the public question is flagged as boss", () => {
     const { room, hostConn, ids } = started(1);
-    for (let i = 0; i < 100 && room.game!.teams[0].score < 15; i++) {
+    for (let i = 0; i < 100 && room.game!.teams[0].score < 15; i++) { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       const t = room.game!.teams[0];
       serveNext(room, hostConn, seqOf(room)); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: t.currentQuestionId, correct: true });
@@ -4740,6 +4744,7 @@ describe("sort questions", () => {
     expect((room as any).pendingRoll).toMatchObject({ kind: "warrior", value: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     vi.advanceTimersByTime(2000);
     // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(room.game!.teams[0].reward).toBe(15); // 10, plus half for the 20 (critable like multiple choice)
     expect(lastBroadcast(room).reveal).toMatchObject({ sorted: { items: ["A", "B", "C", "D"], teamId: T1 } });
   });

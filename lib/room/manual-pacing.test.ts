@@ -283,7 +283,7 @@ describe("手動停頓: switching with a pause up", () => {
     expect(state(f.room).forkBeat).toBeUndefined();
   });
 
-  it("manual to auto at a fork: a fresh 15 seconds, then the timeout", () => {
+  it("manual to auto at a fork: a fresh 15 seconds, then the timeout", () => { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const s = setup();
     toChoosing(s);
     vi.advanceTimersByTime(FORK_MS * 4);

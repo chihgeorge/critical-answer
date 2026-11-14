@@ -189,7 +189,7 @@ describe("openEvent", () => {
   });
 
   it("a curse halves the next correct answer's base once, a blessing adds half; a wrong answer keeps it", () => {
-    for (const [outcome, reward] of [["curse", 15], ["bad", 15], ["blessing", 45]] as const) {
+    for (const [outcome, reward] of [["curse", 15], ["bad", 15], ["blessing", 45]] as const) { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       const opened = openEvent(inEvent(outcome), "t0", first).game; // t0 now in room 2 (reward 30)
       expect(team(opened).boon).toBe(outcome === "blessing" ? "blessing" : "curse");
       expect(getSpectatorView(opened).teams[0].boon).toBe(team(opened).boon);
@@ -211,7 +211,7 @@ describe("openEvent", () => {
     const q = team(g).currentQuestionId;
     g = { ...g, checks: { [`${q}:t0`]: { value: 1, bonus: 1, dc: 12, passed: false } } };
     const right = answerQuestion(g, "t0", q, true, "retry", first);
-    expect(right.outcome.type === "correct-room-advance" && right.outcome.reward).toBe(15);
+    expect(right.outcome.type === "correct-room-advance" && right.outcome.reward).toBe(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
   });
 
   it("only the turn's team, only with an event", () => {
@@ -343,7 +343,7 @@ describe("叉路 (branch-fork.md)", () => {
 
   it("a team waiting at a fork may be moved off a shared question and stays at the fork", () => {
     // One question per pool: both teams share theirs; t0's correct answer frees nothing for t1 to move to, so give d2 two.
-    const g0 = createGame([{ id: "t0", name: "A" }, { id: "t1", name: "B" }, { id: "t2", name: "C" }], rooms(5), [["a"], ["b", "c"], ["d"], ["e"], ["f"]], ["b1", "b2"], { bossThreshold: 15 }, 3, first);
+    const g0 = createGame([{ id: "t0", name: "A" }, { id: "t1", name: "B" }, { id: "t2", name: "C" }], rooms(5), [["a"], ["b", "c"], ["d"], ["e"], ["f"]], ["b1", "b2"], { bossThreshold: 15 }, 3, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const forked = { ...g0, teams: g0.teams.map((t) => (t.id === "t1" ? { ...t, fork: { phase: "waiting" as const } } : t)) };
     // t0 answers: splitShared runs and may move t1 (not on turn) off the shared question; its fork stays.
     const after = answerQuestion(forked, "t0", forked.teams[0].currentQuestionId, true, "retry", first).game;

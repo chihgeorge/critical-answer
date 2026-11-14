@@ -120,7 +120,7 @@ describe("🧪 lucky potion in the room", () => {
     g.drink();
     g.dice.push(15); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value, not the chef
     send(g.room, g.phones[0], { type: "TEAM_USE_ABILITY", questionId: "m1" });
-    expect(g.state().pendingRoll).toMatchObject({ kind: "warrior", value: 15 });
+    expect(g.state().pendingRoll).toMatchObject({ kind: "warrior", value: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(g.state().pendingRoll.values).toBeUndefined();
     vi.advanceTimersByTime(2000);
     expect(g.team(A).item).toBe("luckyPotion");
