@@ -639,7 +639,25 @@ test("summary list: search opens the hit, ⋯ moves a question to another pool, 
   await expect(page.getByTestId("bank-toast")).toContainText("已刪除難度 1 第 1 題");
   await expect(page.getByTestId(`question-${id}`)).toHaveCount(0);
   await page.getByTestId("bank-toast").getByRole("button", { name: "復原" }).click();
-  await expect(rows(page.getByTestId("bank-pool-1")).first()).toHaveAttribute("data-testid", `question-${id}`);
+  const pool1 = page.getByTestId("bank-pool-1");
+  await expect(rows(pool1).first()).toHaveAttribute("data-testid", `question-${id}`);
+
+  // 下移 swaps it with question 2, 上移 brings it back; both keep the id.
+  const own = page.getByTestId(`question-${id}`);
+  await own.getByRole("button", { name: "第 1 題的更多動作" }).click();
+  await own.getByRole("button", { name: "↓ 下移" }).click();
+  await expect(rows(pool1).nth(1)).toHaveAttribute("data-testid", `question-${id}`);
+  await own.getByRole("button", { name: "第 2 題的更多動作" }).click();
+  await own.getByRole("button", { name: "↑ 上移" }).click();
+  await expect(rows(pool1).first()).toHaveAttribute("data-testid", `question-${id}`);
+
+  // 複製 puts an open copy with a new id right after it.
+  await own.getByRole("button", { name: "第 1 題的更多動作" }).click();
+  await own.getByRole("button", { name: "⧉ 複製" }).click();
+  await expect(page.getByTestId("bank-toast")).toContainText("已複製成第 2 題");
+  const copy = rows(pool1).nth(1);
+  await expect(copy).not.toHaveAttribute("data-testid", `question-${id}`);
+  await expect(copy.getByLabel("題目文字")).toHaveValue("重設用題目");
 
   // 移到… 難度 2: it leaves pool 1 and is the last question of pool 2.
   await firstRow.getByRole("button", { name: "第 1 題的更多動作" }).click();

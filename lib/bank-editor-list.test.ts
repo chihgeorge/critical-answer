@@ -50,9 +50,10 @@ describe("bank editor list: search the whole bank", () => {
     expect(searchBank(b, "3JWTaaS7LdU")).toEqual([]);
   });
 
-  it("stops at SEARCH_LIMIT hits", () => {
+  it("stops one past SEARCH_LIMIT hits, and exactly SEARCH_LIMIT matches stay SEARCH_LIMIT", () => {
     const many = Array.from({ length: 30 }, (_, i) => text(`p2-${i}`, `同一個字 ${i}`));
-    expect(searchBank(bank(many), "同一個字")).toHaveLength(SEARCH_LIMIT);
+    expect(searchBank(bank(many), "同一個字")).toHaveLength(SEARCH_LIMIT + 1);
+    expect(searchBank(bank(many.slice(0, SEARCH_LIMIT)), "同一個字")).toHaveLength(SEARCH_LIMIT);
   });
 });
 

@@ -66,14 +66,14 @@ export interface SearchHit {
 
 export const SEARCH_LIMIT = 20;
 
-/** Questions anywhere in the bank whose text holds `query` (case-insensitive), in tab order, at most SEARCH_LIMIT. */
+/** Questions anywhere in the bank whose text holds `query` (case-insensitive), in tab order: at most SEARCH_LIMIT + 1, so a caller can tell "more than SEARCH_LIMIT" apart from exactly SEARCH_LIMIT. */
 export function searchBank(bank: Bank, query: string): SearchHit[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
   const hits: SearchHit[] = [];
   for (const loc of allGroups(bank)) {
     for (const [i, q] of questionsAt(bank, loc).entries()) {
-      if (hits.length >= SEARCH_LIMIT) return hits;
+      if (hits.length > SEARCH_LIMIT) return hits;
       if (searchText(q).some((t) => t.toLowerCase().includes(needle))) hits.push({ tab: tabOf(loc), questionId: q.id, where: `${groupName(loc)} 第 ${i + 1} 題`, name: questionName(q) });
     }
   }

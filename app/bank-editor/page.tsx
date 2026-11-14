@@ -139,18 +139,28 @@ export default function BankEditorPage() {
   const [jump, setJump] = useState<Jump | null>(null);
   /** A draft from this browser that differs from the bank just loaded, until 還原草稿 or 捨棄. */
   const [draftOffer, setDraftOffer] = useState<{ draft: BankDraft; stale: boolean } | null>(null);
-  /** Questions shown with their whole editor; the rest are one summary row each (editor-ux #2). */
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   /** Every question open, remembered in this browser (read when a bank loads, never in render: SSR has no localStorage). */
   const [openAll, setOpenAll] = useState(false);
+  /** The questions toggled away from that setting: open ones in the summary list, closed ones under 全部展開 (editor-ux #2). */
+  const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
+  const isOpen = (id: string) => openAll !== toggled.has(id);
+  /** Opens a question whichever way the list is set. */
+  const ensureOpen = (id: string) =>
+    setToggled((s) => {
+      const next = new Set(s);
+      if (openAll) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const [query, setQuery] = useState("");
-  /** The last delete or move, said in the save bar; a delete carries what 復原 puts back. */
+  /** The last delete, move or copy, said in the save bar; a delete carries what 復原 puts back. */
   const [toast, setToast] = useState<{ message: string; undo?: Removed } | null>(null);
-  /** A question whose summary row takes focus after the row before it went away. */
-  const [focusId, setFocusId] = useState<string | null>(null);
+  /** A question whose summary row takes focus after the row before it went away (a new object each time, so the same
+   * id twice still moves focus). */
+  const [focusTo, setFocusTo] = useState<{ id: string } | null>(null);
   useEffect(() => {
-    if (focusId) document.querySelector<HTMLElement>(`[data-summary="${CSS.escape(focusId)}"]`)?.focus();
-  }, [focusId]);
+    if (focusTo) document.querySelector<HTMLElement>(`[data-summary="${CSS.escape(focusTo.id)}"]`)?.focus();
+  }, [focusTo]);
 
   /** True when this load's bank is the one shown now. */
   const load = async (key: string, id = bankId): Promise<boolean> => {
@@ -200,7 +210,7 @@ export default function BankEditorPage() {
       setOutdated(versioned.outdated ?? null);
       setChecked(false);
       setServerIssue(null);
-      setOpen(new Set());
+      setToggled(new Set());
       setOpenAll(readStored(OPEN_ALL_STORAGE) === "1");
       setToast(null);
       // A shown fallback bank (unreadable, or a server mid-deploy) is not the stored one: no draft is offered over it.
@@ -368,7 +378,7 @@ export default function BankEditorPage() {
     if (t === undefined) return;
     setTab(t);
     const id = p?.questionId;
-    if (id) setOpen((s) => new Set(s).add(id));
+    if (id) ensureOpen(id);
     setJump((j) => ({ id, phase: p?.phase, tab: t, seq: (j?.seq ?? 0) + 1 }));
   };
 
@@ -388,7 +398,11 @@ export default function BankEditorPage() {
     ...b,
     boss: { ...b.boss, phases: b.boss.phases.map((p, i) => (i === phase ? { ...p, ...patch } : p)) },
   });
-  const updatePhase = (phase: number, patch: Partial<BossPhase>) => setBank((prev) => (prev ? withPhase(prev, phase, patch) : prev));
+  const updatePhase = (phase: number, patch: Partial<BossPhase>) => {
+    // A deleted question may no longer fit a phase that just became (or stopped being) a buzzer phase.
+    if ("buzzer" in patch) setToast((t) => (t?.undo ? null : t));
+    setBank((prev) => (prev ? withPhase(prev, phase, patch) : prev));
+  };
   // A phase count change remounts every pager (keyed by it): a spent jump must not reopen its old page then.
   // Phases have no ids: once their count changes, a 復原 could land in the wrong one, so it goes.
   const addPhase = () => {
@@ -416,6 +430,7 @@ export default function BankEditorPage() {
   // elsewhere in the meantime (adversarial review finding: reachable by completely normal use,
   // no attacker needed).
   const updateQuestion = (loc: Location, id: string, updater: (q: BankQuestion) => BankQuestion) => {
+    setToast((t) => (t?.undo ? t : null)); // a move or copy note is stale once editing goes on; an undo stays
     setBank((prev) => {
       if (!prev) return prev;
       const questions = questionsAt(prev, loc).map((q) => (q.id === id ? updater(q) : q));
@@ -427,7 +442,8 @@ export default function BankEditorPage() {
   const focusNeighbor = (loc: Location, id: string) => {
     const list = bank ? questionsAt(bank, loc) : [];
     const i = list.findIndex((q) => q.id === id);
-    setFocusId(list[i + 1]?.id ?? list[i - 1]?.id ?? null);
+    const next = list[i + 1]?.id ?? list[i - 1]?.id;
+    setFocusTo(next ? { id: next } : null);
   };
 
   // The toast and focus read the bank shown now; the edit itself still goes through setBank(prev => ...).
@@ -455,7 +471,7 @@ export default function BankEditorPage() {
   /** 上移／下移: the row's page follows it (a jump), so it stays in view across a page edge. */
   const shift = (loc: Location, id: string, delta: -1 | 1) => {
     setBank((prev) => (prev ? shiftQuestion(prev, loc, id, delta) : prev));
-    goTo({ message: "", tab: tabOf(loc), questionId: id });
+    setJump((j) => ({ id, tab: tabOf(loc), seq: (j?.seq ?? 0) + 1 })); // not goTo: a closed row stays closed
   };
 
   const copy = (loc: Location, id: string) => {
@@ -472,18 +488,18 @@ export default function BankEditorPage() {
   const addQuestion = (loc: Location) => {
     if (!bank) return;
     const id = newQuestionId(bank, loc);
-    setOpen((s) => new Set(s).add(id));
+    ensureOpen(id);
     setBank((prev) => (prev ? withQuestions(prev, loc, [...questionsAt(prev, loc), { kind: "text", id, content: TEXT_CONTENT, answer: "" }]) : prev));
   };
 
   const toggleOpen = (id: string) =>
-    setOpen((s) => {
+    setToggled((s) => {
       const next = new Set(s);
       if (!next.delete(id)) next.add(id);
       return next;
     });
   const listActions = (loc: Location): ListActions => ({
-    isOpen: (id) => openAll || open.has(id),
+    isOpen,
     onToggle: toggleOpen,
     onShift: (id, delta) => shift(loc, id, delta),
     onCopy: (id) => copy(loc, id),
@@ -695,6 +711,7 @@ export default function BankEditorPage() {
                 onClick={() => {
                   writeStored(OPEN_ALL_STORAGE, openAll ? "0" : "1");
                   setOpenAll(!openAll);
+                  setToggled(new Set());
                 }}
               >
                 {openAll ? "收成清單" : "全部展開"}
@@ -708,13 +725,13 @@ export default function BankEditorPage() {
                   {hits.length === 0 ? (
                     <div className="p-1">找不到「{query.trim()}」</div>
                   ) : (
-                    hits.map((h) => (
+                    hits.slice(0, SEARCH_LIMIT).map((h) => (
                       <button key={h.questionId} type="button" className="min-h-[44px] border-b border-black/10 px-1 text-left last:border-b-0" onClick={() => goTo({ message: "", tab: h.tab, questionId: h.questionId })}>
                         {h.where}「{h.name}」
                       </button>
                     ))
                   )}
-                  {hits.length >= SEARCH_LIMIT && <div className="p-1 text-[13px]">只列前 {SEARCH_LIMIT} 筆，打多一點字縮小範圍。</div>}
+                  {hits.length > SEARCH_LIMIT && <div className="p-1 text-[13px]">只列前 {SEARCH_LIMIT} 筆，打多一點字縮小範圍。</div>}
                   </div>
                 </Panel>
               );
@@ -849,6 +866,7 @@ export default function BankEditorPage() {
               <div role="status" className="min-w-0 flex-1 text-[15px] text-white" style={{ textShadow: "1px 1px 0 var(--k)" }}>
                 {toast ? (
                   <span data-testid="bank-toast" className="flex flex-wrap items-center gap-x-2">
+                    {dirty && <span aria-label="（有還沒儲存的修改）">●</span>}
                     {toast.message}
                     {/* Locked while a save runs: the saved bank landing after it would drop the question again. */}
                     {toast.undo && (
@@ -2071,12 +2089,16 @@ function QuestionHeader({ number, question: q, problem, open, last, actions, onD
         <div role="group" aria-label="移到哪裡？" className="flex flex-col gap-1 text-[15px]">
           <div>移到哪裡？（放到那一組的最後）</div>
           {targets.map((t) => (
-            <PixelButton key={t.name} className="!m-0 !min-h-[44px] !whitespace-normal !px-3 !py-1 text-[15px]" disabled={t.current || !!t.refusal} onClick={act(() => actions.onMove(q.id, t.loc))}>
-              {t.name}
-              {t.current ? "（現在在這裡）" : t.refusal ? `（${t.refusal}）` : ""} · {t.count} 題
-            </PixelButton>
+            <div key={t.name} className="flex flex-col">
+              <PixelButton className="!m-0 !min-h-[44px] !whitespace-normal !px-3 !py-1 text-[15px]" disabled={t.current || !!t.refusal} onClick={act(() => actions.onMove(q.id, t.loc))}>
+                {t.name}
+                {t.current ? "（現在在這裡）" : ""} · {t.count} 題
+              </PixelButton>
+              {/* The reason sits outside the dimmed button so it stays readable. */}
+              {!t.current && t.refusal && <div className="px-1 text-[13px]" style={{ color: "#b3261e" }}>不能移：{t.refusal}</div>}
+            </div>
           ))}
-          {fromCount === 1 && <div className="text-[13px]" style={{ color: "#b3261e" }}>這是這一組最後一題：搬走後這組就沒有題目，存檔前要補。</div>}
+          {fromCount === 1 && <div className="text-[13px]">這是這一組唯一的一題，搬走後這組會是空的。</div>}
           <PixelButton className={item} onClick={() => setMenu("closed")}>取消</PixelButton>
         </div>
       )}

@@ -21,7 +21,7 @@ Everything is drawn in code or CSS. No image assets. Sound follows the same rule
 | `--dim-line` | `#7a6a80` | that tile's or picker row's outline, and the tile's letter chip |
 | `--wrong` | `#c94848` | the ✕ 答錯 label and a wrong tile's bevel |
 
-Small orange text on cream is 2.4:1 and fails. Small labels (第 N 題, 難度) use `LabelChip`, which is orange on `--k` (6.3:1).
+Small orange text on cream is 2.4:1 and fails. Small labels (第 N 題, 難度) use `LabelChip`, which is orange on `--k` (6.3:1). The bank editor's one-line question rows use a narrower pill instead, cream on `--k` at 13px with no bevel, so the question and answer still fit at 375px.
 
 ## Type
 
