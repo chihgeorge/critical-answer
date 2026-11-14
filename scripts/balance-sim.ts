@@ -3,7 +3,7 @@
 // Model (docs/designs/class-abilities.md, 「職業平衡（2026-11-13）」):
 // - TEXT of the questions are fill-in (persuasion check first), SORT are sort questions, the rest multipleChoice.
 // - A correct answer may lead to a fork (EVENT_CHANCE); the unmarked doors are ⚔️ or ❓ half and half, and the room ⚔️
-//   led to rolls no fork. ❓ opens an event (a fortune's effect is picked at random). 逃跑・換房 scores as 逃跑・同房.
+//   led to rolls no fork. ❓ opens an event (a fortune's effect is picked at random). A team that flees outside the boss room picks 逃跑・同房 or 逃跑・換房 half and half.
 // - The boss has two phases: a turn-based one (HP1 hearts), then a buzzer phase (HP2) with no abilities.
 // - A team knows a question or not, for good (KNOW by difficulty; fill-in ×TEXTK). A first-letter hint cracks HINT of the
 //   unknown fill-ins. Unknown multipleChoice guesses among the options left; an unknown fill-in flees.
@@ -55,6 +55,9 @@ function play(classes: C[], maxTurns = 600) {
   const later = HP2 > 0 ? [{ maxHp: HP2, questionIds: songs, buzzer: true as const }] : [];
   let g = G.createGame(teams, rooms, pools, boss, { bossThreshold: THRESH }, HP1, R, HIT, {}, later);
   const latent = new Map<string, { known: boolean; hintable: boolean }>();
+  // A team knows a buzz song for good too, so a skipped song that comes back is not re-rolled.
+  const songKnown = new Map<string, boolean>();
+  const knowsSong = (id: string, q: string) => { const k = `${id}|${q}`; if (!songKnown.has(k)) songKnown.set(k, R() < KB); return songKnown.get(k)!; };
   const kinds = new Map<string, "text" | "sort" | "mc" | "tap">();
   const kindOf = (q: string, buzz = false) => {
     if (!kinds.has(q)) { const r = R(); kinds.set(q, buzz ? (r < TAP ? "tap" : "text") : r < TEXT ? "text" : r < TEXT + SORT ? "sort" : "mc"); }
@@ -76,7 +79,7 @@ function play(classes: C[], maxTurns = 600) {
       const stunOk = G.allStunned(g.teams, (x) => x.inBoss);
       // In a random buzz order: a team that knows the song buzzes; one that does not still buzzes with GUESSB and is
       // right with GUESSOK. A wrong buzz is out (lib) and the next team buzzes; nobody right: 沒人答對，換下一題.
-      const buzzers = shuffle(g.teams.filter((t) => !t.stunned || stunOk)).map((t) => ({ id: t.id, know: R() < KB })).filter((x) => x.know || R() < GUESSB);
+      const buzzers = shuffle(g.teams.filter((t) => !t.stunned || stunOk)).map((t) => ({ id: t.id, know: knowsSong(t.id, bq) })).filter((x) => x.know || R() < GUESSB);
       let hit = false;
       for (const x of buzzers) {
         hit = x.know || R() < GUESSOK;
@@ -107,7 +110,7 @@ function play(classes: C[], maxTurns = 600) {
       g = r.game;
       if (ok && EVENTS && !afterMonster && G.eventEligible(g, r.outcome) && R() < G.EVENT_CHANCE) g = G.enterFork(g, id);
     };
-    // A held potion (a fortune's, or the host's) goes on the next check, or the crit die of an answer the team knows.
+    // A held potion (a fortune's) goes on the next check, or the crit die of an answer the team knows.
     const potionRoll = () => { if (!team().item) return d20(); g = G.spendPotion(G.drinkPotion(g, id), id); return Math.max(d20(), d20()); };
     if (text && !g.checks?.[G.checkKey(q, id)]) {
       const v = potionRoll();
@@ -134,7 +137,12 @@ function play(classes: C[], maxTurns = 600) {
       }
     }
     // Option 0 is the right one; a wrong pick is the first wrong option still shown.
-    if (knows() || (!text && R() < 1 / (opts - gone().length))) { settle(G.answerQuestion(g, id, q, true, "retry", R, text ? undefined : knows() ? potionRoll() : d20()), true); continue; }
+    if (knows() || (!text && R() < 1 / (opts - gone().length))) {
+      // Roll first: potionRoll spends the potion on g, and the call must see that g.
+      const crit = text ? undefined : knows() ? potionRoll() : d20();
+      settle(G.answerQuestion(g, id, q, true, "retry", R, crit), true);
+      continue;
+    }
     const cleric = t.classId === "cleric" && team().abilityUses > 0;
     if (!text) g = G.recordWrongLock(g, id, q, Array.from({ length: opts - 1 }, (_, i) => i + 1).find((i) => !gone().includes(i))!);
     else if (cleric && G.canPrayBeforeJudge(g, id)) g = G.recordTextWrong(g, id, q);
