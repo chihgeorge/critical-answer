@@ -353,6 +353,9 @@ test("big screen: a long question shrinks to end above the option tiles", async 
   const panel = screen.locator(".px-panel", { hasText: "請問空格裡是什麼？" });
   await expect(panel).toBeVisible();
   await expect(screen.getByTestId("wall-option-1")).toBeVisible();
-  const panelBox = (await panel.boundingBox())!;
-  for (const i of [0, 1]) expect(panelBox.y + panelBox.height).toBeLessThanOrEqual((await screen.getByTestId(`wall-option-${i}`).boundingBox())!.y);
+  // Retried: the panel fits again once the pixel font has loaded.
+  await expect(async () => {
+    const panelBox = (await panel.boundingBox())!;
+    for (const i of [0, 1]) expect(panelBox.y + panelBox.height).toBeLessThanOrEqual((await screen.getByTestId(`wall-option-${i}`).boundingBox())!.y);
+  }).toPass();
 });

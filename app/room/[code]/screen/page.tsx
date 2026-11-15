@@ -169,6 +169,9 @@ const TILE_SPOTS = [
   { left: 22, top: 320 },
   { left: 622, top: 320 },
 ];
+/** A video question's player between the tile columns (its bottom stays above the dialogue box), and the chips over the monster. */
+const TILE_VIDEO_TOP = 206;
+const CHIP_TOP = 262;
 /** A tile's box. `narrow`: a video question's tiles give the 356 px player (YouTube's minimum, D11) the middle of the wall. */
 const tileSpot = (i: number, narrow?: boolean) =>
   narrow ? { left: i % 2 ? 658 : 22, top: TILE_SPOTS[i].top, width: 280 } : { ...TILE_SPOTS[i], width: 316 };
@@ -415,7 +418,13 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // the monster), the question shrinks instead of covering it. Infinity: the panel holds its own media and may grow.
   // Limits leave the panel's 4 px shadow and the next box's own margin or shadow clear.
   const panelRef = useRef<HTMLDivElement>(null);
-  const fitLimit = tileVideo ? 188 : wall || sortWall ? TILE_SPOTS[0].top - 8 : fillIn && question?.content.kind === "text" ? 256 : Infinity;
+  const fitLimit = tileVideo
+    ? TILE_VIDEO_TOP - 8
+    : wall || sortWall
+      ? TILE_SPOTS[0].top - 8
+      : question?.content.kind === "text" && (fillIn || sneakChip)
+        ? CHIP_TOP - 6
+        : Infinity;
   useLayoutEffect(() => {
     const el = panelRef.current;
     if (!el) return;
@@ -509,7 +518,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {/* The dish stands where the monster stood; its card takes the panel's place. */}
       {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={eaterIdx} />}
       {!served && (
-      <Panel ref={panelRef} className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
+      <Panel ref={panelRef} className="absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <LabelChip>{card ? "還沒結束！" : reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
           {/* From phase 2 on the chip names the phase under way (D5); phase 1 looks like any boss. */}
@@ -617,7 +626,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           ) :
           question.content.kind === "text" ? question.content.value : <div style={{ fontSize: "0.87em" }}>{question.prompt ?? ""}</div>
         ) : "……"}
-        {tileVideo && <div className="mt-3 flex flex-col items-center gap-2">{beside}</div>}
+        {tileVideo && <div className="mt-3 flex flex-col items-center gap-2 empty:hidden">{beside}</div>}
         {video && !tileVideo && (
           // A reveal with nothing beside its video centres it (D18); the player stays the first child, so it is kept.
           <div key={video.id} className={`${tapReveal ? "mt-1" : "mt-3"} flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
@@ -677,19 +686,19 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         </Panel>
       )}
       {tileVideo && video && (
-        <div key={video.id} className="absolute" style={{ left: "50%", top: 196, transform: "translateX(-50%)", zIndex: 6 }}>
+        <div key={video.id} className="absolute" style={{ left: "50%", top: TILE_VIDEO_TOP, transform: "translateX(-50%)", zIndex: 6 }}>
           {player(video, 356, 200)}
         </div>
       )}
 
       {/* D17=A: a thief's armed Sneak Attack hangs over the monster until its answer is judged. */}
       {sneakChip && !asking && (
-        <div className="px-chip absolute" style={{ left: "50%", top: 262, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
+        <div className="px-chip absolute" style={{ left: "50%", top: CHIP_TOP, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
           🗝️ 偷襲！這題答對加碼
         </div>
       )}
       {dcChip && !asking && (
-        <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: 262, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
+        <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: CHIP_TOP, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
           🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）
         </div>
       )}
