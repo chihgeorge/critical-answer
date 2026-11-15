@@ -339,3 +339,23 @@ test("boss room: a wrong lock shows no choice, then the boss brings a new questi
   await expect(team.getByRole("button", { name: first.wrong })).toHaveCount(0);
   await expect(team.getByRole("heading", { name: first.nextQ })).toBeVisible();
 });
+
+// Value: protects=a long question's panel ends above the A/B tiles on the 960x540 TV; fails_when=the panel's font fit
+// (lib/question-fit.ts) is dropped or its limit passes the tile row; why_new=only short questions were ever on the wall
+// in a test; seam=none; no_claim=the exact font size picked
+test("big screen: a long question shrinks to end above the option tiles", async ({ browser, request }) => {
+  const text =
+    "2026 馬年開年第一熱梗：《賭俠 2 之上海灘賭聖》的法國賭神。阿星問：「你跟他賭，那我幹什麼呀？」法國賭神：「給我＿＿＿＿！」這段對白在網路上爆紅之後，被大量改編成迷因圖，請問空格裡是什麼？";
+  await seedSingleMcQuestion(request, { text, options: ["發功", "擦皮鞋", "煎牛排", "發牌"], correctIndex: 1 });
+  const { host } = await startOneTeam(browser);
+  const screen = await (await browser.newContext({ viewport: { width: 960, height: 540 } })).newPage();
+  await screen.goto(await screenUrl(host));
+  const panel = screen.locator(".px-panel", { hasText: "請問空格裡是什麼？" });
+  await expect(panel).toBeVisible();
+  await expect(screen.getByTestId("wall-option-1")).toBeVisible();
+  // Retried: the panel fits again once the pixel font has loaded.
+  await expect(async () => {
+    const panelBox = (await panel.boundingBox())!;
+    for (const i of [0, 1]) expect(panelBox.y + panelBox.height).toBeLessThanOrEqual((await screen.getByTestId(`wall-option-${i}`).boundingBox())!.y);
+  }).toPass();
+});

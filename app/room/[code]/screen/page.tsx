@@ -3,7 +3,7 @@
 // The shared big screen. Public: it only ever receives the spectator view and
 // never a host-only message, so it can be cast to a TV without leaking answers.
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
@@ -26,6 +26,7 @@ import { playHostEffect, type HostFxLook } from "@/lib/host-fx";
 import { CLASS_FX_MS, CLASS_FX_TEXT, classFxFor, playClassFx, type ClassFx, type ClassFxLook } from "@/lib/class-fx";
 import { AnswerClock } from "@/components/answer-clock";
 import { memoryLine } from "@/lib/memory-copy";
+import { fitQuestionSize } from "@/lib/question-fit";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { antiCheatBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
 import { TransitionOverlay } from "@/components/transition-overlay";
@@ -160,13 +161,17 @@ function TeamGroup({ teams, from, to, align }: { teams: LobbyTeams; from: number
 }
 
 /** D1: A and C on the wall left of the monster, B and D on the right (960x540 stage). */
-// Rows start below a two-line question box (it ends near y 232) and end above the dialogue box.
+// Rows start below a two-line question box (it ends near y 232; a longer question shrinks to end above them) and end
+// above the dialogue box.
 const TILE_SPOTS = [
   { left: 22, top: 246 },
   { left: 622, top: 246 },
   { left: 22, top: 320 },
   { left: 622, top: 320 },
 ];
+/** A video question's player between the tile columns (lower would hide the monster's nameplate), and the chips over the monster. */
+const TILE_VIDEO_TOP = 196;
+const CHIP_TOP = 262;
 /** A tile's box. `narrow`: a video question's tiles give the 356 px player (YouTube's minimum, D11) the middle of the wall. */
 const tileSpot = (i: number, narrow?: boolean) =>
   narrow ? { left: i % 2 ? 658 : 22, top: TILE_SPOTS[i].top, width: 280 } : { ...TILE_SPOTS[i], width: 316 };
@@ -409,6 +414,32 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // A video question with option or sort tiles: the panel has no room for the player (it would grow over the tiles),
   // so it stands over the monster between the two tile columns, smaller.
   const tileVideo = asking && !!(wall || sortWall);
+  // The panel grows with its text: where something stands below it (the tiles, the video between them, the chips over
+  // the monster), the question shrinks instead of covering it. Infinity: the panel holds its own media and may grow.
+  // Limits leave the panel's 4 px shadow and the next box's own margin or shadow clear.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const fitLimit = tileVideo
+    ? TILE_VIDEO_TOP - 8
+    : wall || sortWall
+      ? TILE_SPOTS[0].top - 8
+      : question?.content.kind === "text" && (dcChip || sneakChip)
+        ? CHIP_TOP - 6
+        : Infinity;
+  useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    // Written straight to the DOM: the style prop's constant fontSize never changes, so React leaves this alone.
+    const fit = () => {
+      el.style.fontSize = `${fitQuestionSize((px) => ((el.style.fontSize = `${px}px`), el.offsetTop + el.offsetHeight), fitLimit)}px`;
+    };
+    fit();
+    if (document.fonts?.status === "loaded") return;
+    let live = true;
+    void document.fonts?.ready.then(() => live && fit());
+    return () => {
+      live = false;
+    };
+  });
   const player = (v: NonNullable<typeof video>, width: number, height: number) =>
     !v.content ? (
       <div data-testid={locked ? "video-locked" : undefined} className="flex shrink-0 items-center justify-center bg-[var(--lav)] p-4 text-center text-[22px] text-[var(--k)]" style={{ width, height, boxShadow: "0 0 0 4px var(--k)" }}>
@@ -487,7 +518,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {/* The dish stands where the monster stood; its card takes the panel's place. */}
       {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={eaterIdx} />}
       {!served && (
-      <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
+      <Panel ref={panelRef} className="absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <LabelChip>{card ? "還沒結束！" : reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
           {/* From phase 2 on the chip names the phase under way (D5); phase 1 looks like any boss. */}
@@ -593,9 +624,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               {question.memoryLeft !== undefined && <AnswerClock key={`memory:${question.id}:${question.memoryLeft}`} ms={question.memoryLeft} variant="chip" />}
             </span>
           ) :
-          question.content.kind === "text" ? question.content.value : <div style={{ fontSize: 26 }}>{question.prompt ?? ""}</div>
+          question.content.kind === "text" ? question.content.value : <div style={{ fontSize: "0.87em" }}>{question.prompt ?? ""}</div>
         ) : "……"}
-        {tileVideo && <div className="mt-3 flex flex-col items-center gap-2">{beside}</div>}
+        {tileVideo && <div className="mt-3 flex flex-col items-center gap-2 empty:hidden">{beside}</div>}
         {video && !tileVideo && (
           // A reveal with nothing beside its video centres it (D18); the player stays the first child, so it is kept.
           <div key={video.id} className={`${tapReveal ? "mt-1" : "mt-3"} flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
@@ -655,19 +686,19 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         </Panel>
       )}
       {tileVideo && video && (
-        <div key={video.id} className="absolute" style={{ left: "50%", top: 196, transform: "translateX(-50%)", zIndex: 6 }}>
+        <div key={video.id} className="absolute" style={{ left: "50%", top: TILE_VIDEO_TOP, transform: "translateX(-50%)", zIndex: 6 }}>
           {player(video, 356, 200)}
         </div>
       )}
 
       {/* D17=A: a thief's armed Sneak Attack hangs over the monster until its answer is judged. */}
       {sneakChip && !asking && (
-        <div className="px-chip absolute" style={{ left: "50%", top: 262, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
+        <div className="px-chip absolute" style={{ left: "50%", top: CHIP_TOP, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
           🗝️ 偷襲！這題答對加碼
         </div>
       )}
       {dcChip && !asking && (
-        <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: 262, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
+        <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: CHIP_TOP, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
           🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）
         </div>
       )}

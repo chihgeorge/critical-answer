@@ -2,7 +2,7 @@
 
 // Shared pixel-dungeon components (see DESIGN.md). Styles live in app/globals.css.
 
-import { useEffect, useEffectEvent, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type Ref, type SyntheticEvent } from "react";
 import { biteSprite, drawEmptyPlate, drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneTheme } from "@/lib/pixel-art";
 import type { Accessory } from "@/lib/monster-catalog";
 import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/sprite-kind";
@@ -121,17 +121,19 @@ export function Panel({
   className,
   style,
   role,
+  ref,
   children,
 }: {
   tone?: "cream" | "lav" | "turn";
   className?: string;
   style?: CSSProperties;
+  ref?: Ref<HTMLDivElement>;
   /** e.g. "status" for a notice that appears on its own, so a screen reader announces it. */
   role?: "status" | "alert";
   children: ReactNode;
 }) {
   return (
-    <div className={cx("px-panel", tone !== "cream" && tone, className)} style={style} role={role}>
+    <div ref={ref} className={cx("px-panel", tone !== "cream" && tone, className)} style={style} role={role}>
       {children}
     </div>
   );
