@@ -650,7 +650,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               // A video explanation is at least 356×200 (YouTube's minimum, D11). The dish waits for 上菜 (cooking R4).
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
               <div className="flex items-start gap-4 text-left">
-                <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="mx-auto block" zhCaptions />
+                {/* A fixed box: the iframe is width 100%, and a row sized to its content would leave it under 356. */}
+                <div className="shrink-0" style={{ width: 356 }}>
+                  <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="mx-auto block" zhCaptions />
+                </div>
                 {scored && !(video && !tileVideo) && <div className="flex min-w-0 flex-col gap-2">{scoredLines("text-[20px]")}</div>}
               </div>
             )}
@@ -792,8 +795,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           lifts it with the box instead of the box covering it. Beside a panel player it sits at the box's right end, clear of
           the player (they end by x 676); with tiles on the wall the countdown pill holds that corner, so it stays centred under
           the player, a wide boss bar starting right of the tag (x 215). shortcut: centred, or a boss bar wide enough to reach
-          under the player, a two-row line lifts it about 10 px over the player's bottom edge; cap the box at one row while a
-          player is up if that shows in play. */}
+          under the player, a two-row line lifts it about 10 px over the player's bottom edge (three rows, past MAX_LINE, about
+          50 px); cap the box at one row while a player is up if that shows in play. */}
       <div className="absolute" style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}>
       <DialogueBox
         className="relative"
@@ -1085,7 +1088,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
             {killer && (
               <div data-testid="final-blow">
                 最後一擊：
-                <span className="block truncate" title={killer} style={killer.length > 8 ? { fontSize: 12 } : undefined}>{killer}</span>
+                <span className="block truncate" title={killer} style={[...killer].length > 8 ? { fontSize: 12 } : undefined}>{killer}</span>
               </div>
             )}
             {reveal && <>最後一題正解：{reveal.answer}</>}
