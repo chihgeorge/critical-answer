@@ -1,7 +1,7 @@
 "use client";
 
 import { AnswerClock } from "@/components/answer-clock";
-import { ANSWER_SECONDS, DEFAULT_ANSWER_SECONDS, stuckDelayMs } from "@/lib/answer-clock";
+import { ANSWER_SECONDS, DEFAULT_ANSWER_SECONDS, stuckDelayMs, stuckKey as stuckKeyFor } from "@/lib/answer-clock";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
@@ -495,7 +495,7 @@ export default function HostPage() {
   const held = !!holdKey && releasedFor !== holdKey;
   // A fill-in whose team has not rolled its persuasion check: no count runs, so the row offers 替○○擲骰 after 15 s.
   const checkStuck = !isMc && !!turn?.team && !!game?.question?.checkFirst && !roll && !wrong && !revealUp && !game.forkBeat;
-  const stuckKey = isMc && turn?.team && !lock && !roll ? `${turn.team.id}|${turn.questionId}|${wrong ? "wrong" : "pick"}|${game?.eventId}|${game?.answerClock?.left === null ? "clip" : "count"}` : checkStuck ? `${turn!.team!.id}|${turn!.questionId}|check|${game?.eventId}` : null;
+  const stuckKey = stuckKeyFor({ teamId: turn?.team?.id, questionId: turn?.questionId, mc: isMc, check: checkStuck, lock: !!lock, roll: !!roll, wrong: !!wrong, eventId: game?.eventId, clock: game?.answerClock, memorize: game?.question?.memorize });
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   // With the countdown on, the row waits for its 0; off (or no count running), 15 s (lib/answer-clock.ts stuckDelayMs).
   // The key carries "clip" while a clip has not ended, so a row shown during the clip goes away and re-arms for the count.
@@ -1395,7 +1395,7 @@ export default function HostPage() {
                   {t.sneakArmed && <span className="text-[13px]" title={`偷襲準備好了：這題答對獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
                   {game.view.antiCheat?.on && t.catchesLeft !== undefined && <span className="text-[13px]" title={`神諭剩 ${t.oracleLeft ?? 0} 次、抓包剩 ${t.catchesLeft} 次`}>🔮{t.oracleLeft ?? 0} 🚨{t.catchesLeft}</span>}
                   {t.oracle && <span className="text-[13px]" title="這題請示了神諭：答對獎勵減半">🔮減半</span>}
-                  <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{t.score}/{BOSS_THRESHOLD}</span>
+                  <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{Math.min(t.score, BOSS_THRESHOLD)}/{BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
                   </div>
                   {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}
