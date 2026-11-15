@@ -3,7 +3,7 @@
 // The shared big screen. Public: it only ever receives the spectator view and
 // never a host-only message, so it can be cast to a TV without leaking answers.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
@@ -171,9 +171,9 @@ const TILE_SPOTS = [
 ];
 /** A video question's player between the tile columns (ending above the stepped-down nameplate), and the chips over the monster. */
 const TILE_VIDEO_TOP = 190;
-/** While a player is up, the nameplate steps down onto the dialogue box's top edge (like its 地城主 tag), and a player,
- * its 4 px border included, ends at or above this line: nothing covers the video's own controls. */
-const PLATE_DOWN_BOTTOM = 96;
+/** While a player is up, the nameplate steps down onto the dialogue box, this far over its top edge (like its 地城主 tag),
+ * and a player, its 4 px border included, ends at or above PLAYER_BOTTOM: nothing covers the video's own controls. */
+const PLATE_OVER_BOX = 20; // 12 px over the box, plus the two panels' 4 px margins
 const PLAYER_BOTTOM = 396;
 const CHIP_TOP = 262;
 /** A tile's box. `narrow`: a video question's tiles give the 356 px player (YouTube's minimum, D11) the middle of the wall. */
@@ -419,10 +419,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // so it stands over the monster between the two tile columns, smaller.
   const tileVideo = asking && !!(wall || sortWall);
   // The panel grows with its text: where something stands below it (the tiles, the video between them, the chips over
-  // the monster), the question shrinks instead of covering it. Infinity: the panel holds its own media and may grow.
-  // Limits leave the panel's 4 px shadow and the next box's own margin or shadow clear.
+  // the monster, a player in the panel), the question shrinks instead of covering it. Infinity: the panel holds its own
+  // media and may grow (an Instagram clip, a timing reveal). Limits leave the panel's 4 px shadow and the next box's own margin or shadow clear.
   const panelRef = useRef<HTMLDivElement>(null);
-  // A timing reveal keeps its own layout (it fills the panel to the nameplate), and so does an Instagram clip.
+  // A timing reveal fills the panel to the nameplate (timing-tap-timeline.md): only a file explanation, which takes the
+  // video's place, shows on the big screen; the phones still show a text, image or YouTube one. An Instagram clip keeps its own layout too.
   const mediaExplanation = !tapReveal && reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" && reveal.explanation.kind !== "file" ? reveal.explanation : null;
   const inPanelPlayer = !tapReveal && ((!!video && !tileVideo) || !!mediaExplanation);
   const playerUp = inPanelPlayer || (tileVideo && !!video);
@@ -514,10 +515,42 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       />
     );
   const lone = !!reveal && reveal.explanation?.kind !== "text" && !tapReveal && !scored;
-  // A timing reveal fills the panel to the nameplate (timing-tap-timeline.md): only a file explanation, which takes the
-  // video's place, shows on the big screen; the phones still show a text, image or YouTube one.
   // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
   const instagram = !tapReveal && reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
+
+  const nameplate = (style: CSSProperties) => (
+    <Nameplate className="absolute" style={{ ...style, color: bossScene ? "#b02a3a" : undefined }}>
+      <span>{monster.name}</span>
+      {/* Over 20 HP (multi-field.md E5) hearts no longer fit 1280 px (25 px each): one continuous bar with the count. */}
+      {bossScene && view.bossMaxHp > MAX_HEARTS && (
+        <span data-testid="boss-hp-bar" className="ml-[14px] flex items-center gap-2">
+          <span className="relative inline-block h-[16px] w-[300px]" style={{ background: "#3a2b55", boxShadow: "0 0 0 3px var(--k)" }}>
+            <span className="absolute inset-y-0 left-0" style={{ width: `${(100 * (card ? view.bossMaxHp : view.bossHp)) / view.bossMaxHp}%`, background: "var(--danger)" }} />
+          </span>
+          <span className="px-num text-[14px]">{card ? view.bossMaxHp : view.bossHp}/{view.bossMaxHp}</span>
+        </span>
+      )}
+      {bossScene && view.bossMaxHp <= MAX_HEARTS && (
+        <span className="ml-[14px] flex gap-[3px]">
+          {Array.from({ length: view.bossMaxHp }, (_, i) =>
+            card ? (
+              // The new bar fills one heart at a time (D7).
+              <span key={`card-${eventId}-${i}`} className="px-heart-in" style={{ animationDelay: `${i * 0.15}s` }}>
+                <Sprite kind="heart" variant={1} scale={2} />
+              </span>
+            ) : (
+              <Sprite key={i} kind="heart" variant={i < view.bossHp ? 1 : 0} scale={2} />
+            ),
+          )}
+        </span>
+      )}
+      {raging && (
+        <span data-testid="boss-rage" className="ml-[10px] text-[16px] text-white" style={{ background: "var(--danger)", padding: "0 6px", boxShadow: "0 0 0 3px var(--k)" }}>
+          🔥 暴走！
+        </span>
+      )}
+    </Nameplate>
+  );
 
   return (
     <>
@@ -618,7 +651,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
               <div className="flex items-start gap-4 text-left">
                 <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="mx-auto block" zhCaptions />
-                {scored && <div className="flex min-w-0 flex-col gap-2">{scoredLines("text-[20px]")}</div>}
+                {scored && !(video && !tileVideo) && <div className="flex min-w-0 flex-col gap-2">{scoredLines("text-[20px]")}</div>}
               </div>
             )}
             </div>
@@ -753,52 +786,24 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           <AnswerClock key={`${eventId}:${answerLeft}`} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} />
         </div>
       )}
-      {(cook === null || cook === 0) && (
-      <Nameplate
-        className="absolute"
-        // Stepped down, a wide boss bar starts right of the 地城主 tag (it ends at x 215) rather than covering it.
-        style={{ left: "50%", color: bossScene ? "#b02a3a" : undefined, ...(playerUp ? { bottom: PLATE_DOWN_BOTTOM, transform: "translateX(max(-50%, -258px))", zIndex: 8 } : { bottom: 112, transform: "translateX(-50%)", zIndex: 5 }) }}
-      >
-        <span>{monster.name}</span>
-        {/* Over 20 HP (multi-field.md E5) hearts no longer fit 1280 px (25 px each): one continuous bar with the count. */}
-        {bossScene && view.bossMaxHp > MAX_HEARTS && (
-          <span data-testid="boss-hp-bar" className="ml-[14px] flex items-center gap-2">
-            <span className="relative inline-block h-[16px] w-[300px]" style={{ background: "#3a2b55", boxShadow: "0 0 0 3px var(--k)" }}>
-              <span className="absolute inset-y-0 left-0" style={{ width: `${(100 * (card ? view.bossMaxHp : view.bossHp)) / view.bossMaxHp}%`, background: "var(--danger)" }} />
-            </span>
-            <span className="px-num text-[14px]">{card ? view.bossMaxHp : view.bossHp}/{view.bossMaxHp}</span>
-          </span>
-        )}
-        {bossScene && view.bossMaxHp <= MAX_HEARTS && (
-          <span className="ml-[14px] flex gap-[3px]">
-            {Array.from({ length: view.bossMaxHp }, (_, i) =>
-              card ? (
-                // The new bar fills one heart at a time (D7).
-                <span key={`card-${eventId}-${i}`} className="px-heart-in" style={{ animationDelay: `${i * 0.15}s` }}>
-                  <Sprite kind="heart" variant={1} scale={2} />
-                </span>
-              ) : (
-                <Sprite key={i} kind="heart" variant={i < view.bossHp ? 1 : 0} scale={2} />
-              ),
-            )}
-          </span>
-        )}
-        {raging && (
-          <span data-testid="boss-rage" className="ml-[10px] text-[16px] text-white" style={{ background: "var(--danger)", padding: "0 6px", boxShadow: "0 0 0 3px var(--k)" }}>
-            🔥 暴走！
-          </span>
-        )}
-      </Nameplate>
-      )}
+      {(cook === null || cook === 0) && !playerUp && nameplate({ left: "50%", bottom: 112, transform: "translateX(-50%)", zIndex: 5 })}
 
+      {/* While a player is up the nameplate rides the dialogue box's top edge, like its 地城主 tag: a longer narration line
+          lifts it with the box instead of the box covering it. Beside a panel player it sits at the box's right end, clear of
+          the player (they end by x 676); with tiles on the wall the countdown pill holds that corner, so it stays centred under
+          the player, a wide boss bar starting right of the tag (x 215). shortcut: centred, or a boss bar wide enough to reach
+          under the player, a two-row line lifts it about 10 px over the player's bottom edge; cap the box at one row while a
+          player is up if that shows in play. */}
+      <div className="absolute" style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}>
       <DialogueBox
-        className="absolute"
-        style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
+        className="relative"
         accent={bossScene ? "var(--danger)" : undefined}
         loading={!served && !held && isPending(eventId, narration)}
         lines={dishUp(cook) ? [line] : served ? ["上菜！"] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
         {...(!served && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
       />
+      {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, ...(tileVideo ? { left: "50%", transform: "translateX(max(-50%, -240px))" } : { right: 8 }) })}
+      </div>
       {pendingRoll?.kind === "kill" && pendingRoll.values ? (
         <KillRollOverlay key={`kill-${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} values={pendingRoll.values} value={pendingRoll.value} />
       ) : (
