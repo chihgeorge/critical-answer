@@ -169,8 +169,8 @@ const TILE_SPOTS = [
   { left: 22, top: 320 },
   { left: 622, top: 320 },
 ];
-/** A video question's player between the tile columns (its bottom stays above the dialogue box), and the chips over the monster. */
-const TILE_VIDEO_TOP = 206;
+/** A video question's player between the tile columns (lower would hide the monster's nameplate), and the chips over the monster. */
+const TILE_VIDEO_TOP = 196;
 const CHIP_TOP = 262;
 /** A tile's box. `narrow`: a video question's tiles give the 356 px player (YouTube's minimum, D11) the middle of the wall. */
 const tileSpot = (i: number, narrow?: boolean) =>
@@ -422,7 +422,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
     ? TILE_VIDEO_TOP - 8
     : wall || sortWall
       ? TILE_SPOTS[0].top - 8
-      : question?.content.kind === "text" && (fillIn || sneakChip)
+      : question?.content.kind === "text" && (dcChip || sneakChip)
         ? CHIP_TOP - 6
         : Infinity;
   useLayoutEffect(() => {
