@@ -2,6 +2,14 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.75.2.0] - 2026-11-16
+
+### Fixed
+- On the big screen, a question video, a memory clip or an answer video is no longer covered at the bottom: the monster's nameplate (and the boss's health bar) steps down onto the narration box while a video is up, a reveal's 「答對」 line moves beside the video, and the YouTube controls stay visible.
+- On a memory question the host no longer sees 「○○隊好像卡住了」 before pressing play: the stuck timer starts once the clip has ended and the teams can see the question.
+- The host's team list shows a score past the boss threshold as 15/15 instead of 16/15.
+- On the podium, 「最後一擊」 keeps the team name on one line; a long name gets smaller and ends with ….
+
 ## [0.75.1.0] - 2026-11-16
 
 ### Fixed
