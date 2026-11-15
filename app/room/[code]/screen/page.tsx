@@ -169,8 +169,12 @@ const TILE_SPOTS = [
   { left: 22, top: 320 },
   { left: 622, top: 320 },
 ];
-/** A video question's player between the tile columns (lower would hide the monster's nameplate), and the chips over the monster. */
-const TILE_VIDEO_TOP = 196;
+/** A video question's player between the tile columns (ending above the stepped-down nameplate), and the chips over the monster. */
+const TILE_VIDEO_TOP = 190;
+/** While a player is up, the nameplate steps down onto the dialogue box's top edge (like its 地城主 tag), and a player,
+ * its 4 px border included, ends at or above this line: nothing covers the video's own controls. */
+const PLATE_DOWN_BOTTOM = 96;
+const PLAYER_BOTTOM = 396;
 const CHIP_TOP = 262;
 /** A tile's box. `narrow`: a video question's tiles give the 356 px player (YouTube's minimum, D11) the middle of the wall. */
 const tileSpot = (i: number, narrow?: boolean) =>
@@ -418,8 +422,32 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // the monster), the question shrinks instead of covering it. Infinity: the panel holds its own media and may grow.
   // Limits leave the panel's 4 px shadow and the next box's own margin or shadow clear.
   const panelRef = useRef<HTMLDivElement>(null);
+  // A timing reveal keeps its own layout (it fills the panel to the nameplate), and so does an Instagram clip.
+  const mediaExplanation = !tapReveal && reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" && reveal.explanation.kind !== "file" ? reveal.explanation : null;
+  const inPanelPlayer = !tapReveal && ((!!video && !tileVideo) || !!mediaExplanation);
+  const playerUp = inPanelPlayer || (tileVideo && !!video);
+  // Who scored, the one line the room reads off the reveal (no scoreboard: the meters say the rest). A partial music
+  // answer has its own 「對 k/n」 line above, so it gets no 「答對」. Beside a player (under it there is no room) at 20 px.
+  const scored = reveal && (reveal.caught || (reveal.scored && scorer && !tapReveal && !reveal.fields?.marks.some((f) => !f.right)));
+  const scoredLines = (size: string) => scored && (
+    <>
+      {reveal.caught && (
+        <div data-testid="reveal-caught" className={`${size} [overflow-wrap:anywhere]`} style={{ color: "var(--danger)" }}>
+          🚨 抓包成立：{nameOf(reveal.caught.teamId)} 這題不算，{nameOf(reveal.caught.by)} +{CATCH_PAY.bounty}
+        </div>
+      )}
+      {reveal.scored && scorer && !tapReveal && !reveal.fields?.marks.some((f) => !f.right) && (
+        <div data-testid="reveal-result" className={`${size} [overflow-wrap:anywhere]`}>
+          ✅ {scorer.name} 答對 +{reveal.scored.points} {scoreName(cuisine)}
+        </div>
+      )}
+    </>
+  );
+  // A player in the panel: its 12 px bottom padding, less the player's border, may reach past PLAYER_BOTTOM.
   const fitLimit = tileVideo
     ? TILE_VIDEO_TOP - 8
+    : inPanelPlayer
+      ? PLAYER_BOTTOM + 8
     : wall || sortWall
       ? TILE_SPOTS[0].top - 8
       : question?.content.kind === "text" && (dcChip || sneakChip)
@@ -485,10 +513,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         zhCaptions={!!reveal}
       />
     );
-  const lone = !!reveal && reveal.explanation?.kind !== "text" && !tapReveal;
+  const lone = !!reveal && reveal.explanation?.kind !== "text" && !tapReveal && !scored;
   // A timing reveal fills the panel to the nameplate (timing-tap-timeline.md): only a file explanation, which takes the
   // video's place, shows on the big screen; the phones still show a text, image or YouTube one.
-  const mediaExplanation = !tapReveal && reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" && reveal.explanation.kind !== "file" ? reveal.explanation : null;
   // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
   const instagram = !tapReveal && reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
 
@@ -583,24 +610,16 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               // A timing reveal says it beside the video: 命中！{隊名} and the target.
               !tapReveal && <div>正解：{reveal.answer}</div>
             )}
-            {/* Who scored, the one line the room reads off the reveal (no scoreboard: the meters say the rest). A partial
-                music answer has its own 「對 k/n」 line above, so it gets no 「答對」. */}
-            {reveal.caught && (
-              <div data-testid="reveal-caught" className="text-[24px] [overflow-wrap:anywhere]" style={{ color: "var(--danger)" }}>
-                🚨 抓包成立：{nameOf(reveal.caught.teamId)} 這題不算，{nameOf(reveal.caught.by)} +{CATCH_PAY.bounty}
-              </div>
-            )}
-            {reveal.scored && scorer && !tapReveal && !reveal.fields?.marks.some((f) => !f.right) && (
-              <div data-testid="reveal-result" className="text-[24px] [overflow-wrap:anywhere]">
-                ✅ {scorer.name} 答對 +{reveal.scored.points} {scoreName(cuisine)}
-              </div>
-            )}
+            {!(video && !tileVideo && !tapReveal) && !mediaExplanation && scoredLines("text-[24px]")}
             {/* With the video up, its text explanation stands beside it instead. */}
             {!video && !tapReveal && reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
             {mediaExplanation && (
               // A video explanation is at least 356×200 (YouTube's minimum, D11). The dish waits for 上菜 (cooking R4).
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
-              <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="mx-auto block" zhCaptions />
+              <div className="flex items-start gap-4 text-left">
+                <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="mx-auto block" zhCaptions />
+                {scored && <div className="flex min-w-0 flex-col gap-2">{scoredLines("text-[20px]")}</div>}
+              </div>
             )}
             </div>
             {instagram &&
@@ -629,7 +648,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         {tileVideo && <div className="mt-3 flex flex-col items-center gap-2 empty:hidden">{beside}</div>}
         {video && !tileVideo && (
           // A reveal with nothing beside its video centres it (D18); the player stays the first child, so it is kept.
-          <div key={video.id} className={`${tapReveal ? "mt-1" : "mt-3"} flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
+          <div key={video.id} className={`mt-1 flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
             {/* One size for the question and its reveal: width/height rebuild the player (D17). A timing reveal shows it
                 at 0.75 by a transform instead, to leave room for the timeline (timing-tap-timeline.md). */}
             <div className="shrink-0" style={tapReveal ? SHRUNK_PLAYER : undefined}>
@@ -640,7 +659,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               {tapReveal ? (
                 <TimingResult timing={tapReveal} view={view} />
               ) : reveal ? (
-                reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>
+                <>
+                  {scoredLines("text-[20px]")}
+                  {reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
+                </>
               ) : (
                 beside
               )}
@@ -732,7 +754,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         </div>
       )}
       {(cook === null || cook === 0) && (
-      <Nameplate className="absolute" style={{ left: "50%", bottom: 112, transform: "translateX(-50%)", zIndex: 5, color: bossScene ? "#b02a3a" : undefined }}>
+      <Nameplate
+        className="absolute"
+        // Stepped down, a wide boss bar starts right of the 地城主 tag (it ends at x 215) rather than covering it.
+        style={{ left: "50%", color: bossScene ? "#b02a3a" : undefined, ...(playerUp ? { bottom: PLATE_DOWN_BOTTOM, transform: "translateX(max(-50%, -258px))", zIndex: 8 } : { bottom: 112, transform: "translateX(-50%)", zIndex: 5 }) }}
+      >
         <span>{monster.name}</span>
         {/* Over 20 HP (multi-field.md E5) hearts no longer fit 1280 px (25 px each): one continuous bar with the count. */}
         {bossScene && view.bossMaxHp > MAX_HEARTS && (
@@ -1050,7 +1076,13 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
         <div data-testid="answer-reveal" className="absolute" style={{ left: 18, top: 160, width: 170, zIndex: 6 }}>
           <Panel tone="turn" className="px-3 py-2 text-[16px] leading-snug">
             {/* With the podium up, the kill line lives here: under the title it sat on the winner's crown. */}
-            {killer && <div data-testid="final-blow">最後一擊：{killer}</div>}
+            {/* The name on a line of its own, never broken (a team name runs to 20 characters): smaller past 8, then cut with …. */}
+            {killer && (
+              <div data-testid="final-blow">
+                最後一擊：
+                <span className="block truncate" title={killer} style={killer.length > 8 ? { fontSize: 12 } : undefined}>{killer}</span>
+              </div>
+            )}
             {reveal && <>最後一題正解：{reveal.answer}</>}
             {reveal?.dish && <div data-testid="dish-card">🍲 今晚的大菜：{reveal.dish.name}</div>}
           </Panel>
