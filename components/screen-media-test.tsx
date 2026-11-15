@@ -1,16 +1,15 @@
 "use client";
 
 // The big screen's test load of every clip in the bank (docs/designs/screen-media-test.md D3): one at a time, muted
-// and out of sight (a music video's title is its answer), at most TEST_MS each. Its own probes, not YoutubePlayer or
-// FilePlayer: those follow the host's ▶ with sound, and YoutubePlayer hides YouTube's error code.
+// and out of sight (a music video's title is its answer), at most SCREEN_TEST_SECONDS each. Its own probes, not
+// YoutubePlayer or FilePlayer: those follow the host's ▶ with sound, and YoutubePlayer hides YouTube's error code.
 
-import { useEffect, useRef, useState } from "react";
-import type { ScreenTestError, ScreenVideo } from "@/lib/protocol";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { SCREEN_TEST_SECONDS, type ScreenTestError, type ScreenVideo } from "@/lib/protocol";
 import { INSTAGRAM_ORIGIN, instagramEmbedUrl, measuredHeight } from "@/lib/instagram";
-import { youtubeTestError } from "@/lib/youtube";
+import { fileTestError, youtubeTestError } from "@/lib/youtube";
 import { loadYoutubeApi } from "./youtube-player";
 
-const TEST_MS = 20_000;
 /** YouTube's smallest player that still plays. */
 const SIZE = 200;
 
@@ -39,29 +38,32 @@ export function ScreenMediaTest({ items, onResult }: { items: ScreenVideo[]; onR
 function Probe({ video, onDone }: { video: ScreenVideo; onDone: Done }) {
   const host = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
+  const file = useRef<HTMLVideoElement>(null);
   const finished = useRef(false);
   const report = useRef(onDone);
   useEffect(() => {
     report.current = onDone;
   }, [onDone]);
-  const finish = (error: ScreenTestError | null) => {
+  // Only refs inside: one stable function for the effect and the <video> handlers. Reports once per probe.
+  const finish = useCallback((error: ScreenTestError | null) => {
     if (finished.current) return;
     finished.current = true;
     report.current(error);
-  };
+  }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => finish("timeout"), TEST_MS);
+    const timer = setTimeout(() => finish("timeout"), SCREEN_TEST_SECONDS * 1000);
     let gone = false;
     let player: { destroy(): void } | null = null;
     let onMessage: ((e: MessageEvent) => void) | null = null;
+    const el = file.current;
     if (video.kind === "youtube") {
       loadYoutubeApi().then(
         (YT) => {
           if (gone || !host.current) return;
-          const el = document.createElement("div");
-          host.current.replaceChildren(el);
-          player = new YT.Player(el, {
+          const div = document.createElement("div");
+          host.current.replaceChildren(div);
+          player = new YT.Player(div, {
             videoId: video.videoId,
             width: SIZE,
             height: SIZE,
@@ -77,7 +79,8 @@ function Probe({ video, onDone }: { video: ScreenVideo; onDone: Done }) {
             },
           });
         },
-        () => finish("error"),
+        // The venue network blocks YouTube's script: nothing is known about the video itself, so yellow, not red.
+        () => finish("timeout"),
       );
     } else if (video.kind === "instagram") {
       // The embed has no player API: its first MEASURE message is the only sign it loaded.
@@ -91,13 +94,20 @@ function Probe({ video, onDone }: { video: ScreenVideo; onDone: Done }) {
       clearTimeout(timer);
       if (onMessage) window.removeEventListener("message", onMessage);
       player?.destroy();
+      // A detached <video> keeps downloading until it is collected; stop it so later probes get the bandwidth. Only once
+      // it has reported: React's dev-mode remount runs this cleanup on a probe that is still loading.
+      if (el && finished.current) {
+        el.removeAttribute("src");
+        el.load();
+      }
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- one probe per mount (keyed by index)
+  }, [video, finish]);
 
   if (video.kind === "youtube") return <div ref={host} />;
   if (video.kind === "instagram") return <iframe ref={frame} src={instagramEmbedUrl(video.shortcode)} title="試播" width={SIZE} height={SIZE} style={{ border: 0 }} />;
   return (
     <video
+      ref={file}
       src={video.url}
       muted
       autoPlay
@@ -105,8 +115,7 @@ function Probe({ video, onDone }: { video: ScreenVideo; onDone: Done }) {
       preload="auto"
       width={SIZE}
       height={SIZE}
-      // The picture's size is known by now: none means the browser cannot decode the video track (e.g. HEVC).
-      onLoadedData={(e) => finish(!video.audioOnly && e.currentTarget.videoWidth === 0 ? "no_picture" : null)}
+      onLoadedData={(e) => finish(fileTestError(!!video.audioOnly, e.currentTarget.videoWidth))}
       onError={() => finish("error")}
     />
   );

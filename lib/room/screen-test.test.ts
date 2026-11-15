@@ -111,6 +111,33 @@ describe("HOST_SCREEN_TEST", () => {
     expect(of(host, "HOST_SCREEN_TEST").at(-1)).toEqual({ type: "HOST_SCREEN_TEST", done: 1, total: 1, rows: [] });
   });
 
+  it("a finished run does not read as stopped when the screen leaves; another bank picked drops the run", () => {
+    const { room, host, screen, send } = setup();
+    send(host, { type: "HOST_SCREEN_TEST" });
+    let runId = of(screen, "SCREEN_TEST")[0].runId;
+    send(screen, { type: "SCREEN_TEST_RESULT", runId, index: 0, error: null });
+    const n = of(host, "HOST_SCREEN_TEST").length;
+    room.onClose(screen);
+    expect(of(host, "HOST_SCREEN_TEST")).toHaveLength(n);
+
+    const { room: room2, host: host2, screen: screen2, send: send2 } = setup();
+    send2(host2, { type: "HOST_SCREEN_TEST" });
+    runId = of(screen2, "SCREEN_TEST")[0].runId;
+    (room2 as unknown as { bankChoice: { id: string; name: string } }).bankChoice = { id: "other", name: "別的題庫" };
+    const m = of(host2, "HOST_SCREEN_TEST").length;
+    send2(screen2, { type: "SCREEN_TEST_RESULT", runId, index: 0, error: "blocked" });
+    expect(of(host2, "HOST_SCREEN_TEST")).toHaveLength(m); // the old bank's rows never come back
+  });
+
+  it("resends the progress to a host that reconnects mid-test", () => {
+    const { room, host, send } = setup();
+    send(host, { type: "HOST_SCREEN_TEST" });
+    const again = conn("host");
+    room.onConnect(again);
+    send(again, { type: "HOST_CLAIM", token: TOKEN });
+    expect(of(again, "HOST_SCREEN_TEST").at(-1)).toMatchObject({ done: 0, total: 1 });
+  });
+
   it("tells the host when the testing screen closes or reconnects before it finishes", () => {
     const { room, host, screen, send, key } = setup();
     send(host, { type: "HOST_SCREEN_TEST" });

@@ -608,7 +608,7 @@ export class DungeonRoom {
   private bankChecking = false;
   /** The HOST_SCREEN_TEST in flight (memory only, screen-media-test.md): which screen runs it, its clips, and the result
    * of each so far (undefined: not reported yet). */
-  private screenTest: { runId: number; screenId: string; list: ScreenTestItem[]; errors: (ScreenTestError | null | undefined)[] } | null = null;
+  private screenTest: { runId: number; screenId: string; bankId: string; list: ScreenTestItem[]; errors: (ScreenTestError | null | undefined)[] } | null = null;
   private screenTestRunId = 0;
   /** Key checks this room made: in all (saved, so a restart does not reset it), and since keyCheckWindowAt (memory only). */
   private keyChecks = 0;
@@ -2389,6 +2389,8 @@ export class DungeonRoom {
     if (this.lastNarration) this.sendTo(conn, { type: "HOST_NARRATION_PROGRESS", eventId: this.lastNarration.eventId, done: this.lastNarration.done });
     this.sendAiStatus(conn);
     this.sendBanks(conn);
+    // A host socket that reconnected mid-test would otherwise wait at 「試播中…」 until the next result.
+    if (this.screenTest && !this.game) this.sendScreenTest();
     this.sendAnswer(conn);
     this.sendPicks(conn);
     const closing = this.closingMessage();
@@ -3066,7 +3068,7 @@ export class DungeonRoom {
     const list = screenTestList(this.bank, this.room.env?.R2_PUBLIC_BASE_URL ?? "");
     // Never reused, even after a restart: a page still running an old run must not answer for this one.
     this.screenTestRunId = Math.max(this.screenTestRunId + 1, this.now());
-    this.screenTest = { runId: this.screenTestRunId, screenId: screen.id, list, errors: [] };
+    this.screenTest = { runId: this.screenTestRunId, screenId: screen.id, bankId: this.bankChoice?.id ?? DEFAULT_BANK_ENTRY.id, list, errors: [] };
     try {
       screen.send(JSON.stringify({ type: "SCREEN_TEST", runId: this.screenTestRunId, items: list.map((i) => i.video) } satisfies ServerMessage));
     } catch {
@@ -3079,9 +3081,10 @@ export class DungeonRoom {
   private handleScreenTestResult(conn: Conn, runId: number, index: number, error: ScreenTestError | null) {
     const t = this.screenTest;
     if (!t || conn.id !== t.screenId || runId !== t.runId || index >= t.list.length || t.errors[index] !== undefined) return;
-    // A started game: the host page cleared the run on STATE. A bank reloaded meanwhile changes nothing: the run keeps its
-    // own list, and the page clears it itself when another bank is picked (HOST_BANKS).
-    if (this.game) return void (this.screenTest = null);
+    // A started game, or another bank picked: the host page cleared the run (STATE, HOST_BANKS), and a later progress
+    // message must not bring the old bank's rows back. The same bank reloaded (🩺 檢查題庫) changes nothing: the run keeps
+    // its own list.
+    if (this.game || t.bankId !== (this.bankChoice?.id ?? DEFAULT_BANK_ENTRY.id)) return void (this.screenTest = null);
     t.errors[index] = error;
     this.sendScreenTest();
   }
@@ -3089,7 +3092,8 @@ export class DungeonRoom {
   /** The testing screen left (closed, replaced, or lost its key) before it finished. */
   private stopScreenTest(screenId: string) {
     if (this.screenTest?.screenId !== screenId) return;
-    if (this.screenTest.errors.filter((e) => e !== undefined).length < this.screenTest.list.length) this.sendScreenTest(true);
+    // Mid-game nobody waits for it: a 「大螢幕斷線」 line would only turn up in the next lobby.
+    if (!this.game && this.screenTest.errors.filter((e) => e !== undefined).length < this.screenTest.list.length) this.sendScreenTest(true);
     this.screenTest = null;
   }
 

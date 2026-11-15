@@ -68,6 +68,8 @@ export type ScreenVideo = Extract<PublicMediaContent, { kind: "youtube" }> | Ins
 /** Why the big screen's test load of one clip failed (docs/designs/screen-media-test.md D3). */
 export const SCREEN_TEST_ERRORS = ["blocked", "gone", "error", "timeout", "no_picture"] as const;
 export type ScreenTestError = (typeof SCREEN_TEST_ERRORS)[number];
+/** The longest the big screen waits for one test clip before it reports "timeout". */
+export const SCREEN_TEST_SECONDS = 20;
 
 /** The question the team in turn faces, without its answer: safe for /screen and /play.
  * `options` is present only for multipleChoice questions (never `correctIndex` — see

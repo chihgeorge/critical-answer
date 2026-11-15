@@ -3,7 +3,7 @@
 // host page imports only the HealthRow type, from lib/protocol.ts. Never import the parsed BANK here (CLAUDE.md).
 
 import { DIFFICULTIES, fileVideo, instagramVideo, isClip, savableProblems, type Bank, type BankQuestion, type MediaContent } from "./question-bank";
-import type { HealthRow, ScreenTestError, ScreenVideo } from "./protocol";
+import { SCREEN_TEST_SECONDS, type HealthRow, type ScreenTestError, type ScreenVideo } from "./protocol";
 import { TAP_HEALTH_LEAD_S } from "./tap-clock";
 
 /** One BankStoreDO RPC: at most this many YouTube lookups plus one public HEAD stays under the free plan's 50
@@ -194,7 +194,7 @@ const SCREEN_TEST_PROBLEM: Record<ScreenTestError, { level: HealthRow["level"]; 
   gone: { level: "red", problem: "YouTube 找不到這支影片（刪掉了、私人或網址錯）" },
   error: { level: "red", problem: "大螢幕載入出錯，放不出來" },
   no_picture: { level: "red", problem: "影片只有聲音沒有畫面（大螢幕的瀏覽器解不了這個編碼）" },
-  timeout: { level: "yellow", problem: "20 秒內沒載入（網路慢或被擋），到場再試一次" },
+  timeout: { level: "yellow", problem: `${SCREEN_TEST_SECONDS} 秒內沒載入（網路慢或被擋），到場再試一次` },
 };
 
 /** The host's rows for the failures so far: one per question that uses a failed clip. No URL, id or answer. */

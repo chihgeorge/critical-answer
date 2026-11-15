@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { youtubeTestError, extractYoutubeId, youtubeEmbedUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
+import { fileTestError, youtubeTestError, extractYoutubeId, youtubeEmbedUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
 
 describe("shouldSeek (timing-tap-timeline.md)", () => {
   it("seeks once per replay key: a re-render with the same key does nothing", () => {
@@ -88,6 +88,12 @@ describe("youtubeTestError (screen-media-test.md)", () => {
     expect([101, 150].map(youtubeTestError)).toEqual(["blocked", "blocked"]);
     expect([100, 2].map(youtubeTestError)).toEqual(["gone", "gone"]);
     expect(youtubeTestError(5)).toBe("error");
+  });
+
+  it("flags a video file with no picture, never an audio file", () => {
+    expect(fileTestError(false, 0)).toBe("no_picture");
+    expect(fileTestError(false, 1280)).toBeNull();
+    expect(fileTestError(true, 0)).toBeNull();
   });
 });
 

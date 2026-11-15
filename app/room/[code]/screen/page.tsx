@@ -2027,12 +2027,13 @@ export default function ScreenPage() {
           )}
         </div>
       </Stage>
-      {/* Outside <Stage>, fixed to the real viewport (not scaled/letterboxed with the 960x540 canvas): the stage has no
-          free margin in any phase, and a real-size corner control stays comfortably tappable at any TV scale. The
-          sound's switches live on the host's ⚙ 更多 (immersion.md PR3, UC1); only the unlock stays here. */}
+      {/* The host's 📺 大螢幕試播影音: invisible, muted, outside <Stage> so nothing on the stage moves. */}
       {screenTest && !game && (
         <ScreenMediaTest key={screenTest.runId} items={screenTest.items} onResult={(index, error) => send({ type: "SCREEN_TEST_RESULT", runId: screenTest.runId, index, error })} />
       )}
+      {/* Outside <Stage>, fixed to the real viewport (not scaled/letterboxed with the 960x540 canvas): the stage has no
+          free margin in any phase, and a real-size corner control stays comfortably tappable at any TV scale. The
+          sound's switches live on the host's ⚙ 更多 (immersion.md PR3, UC1); only the unlock stays here. */}
       {showBgmToggle && game && !audioRunning && (
         // Mid-game, while the sound is still asleep (the page's first tap wakes it; after that only this button does).
         <PixelButton
