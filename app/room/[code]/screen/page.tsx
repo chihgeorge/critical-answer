@@ -649,7 +649,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             {mediaExplanation && (
               // A video explanation is at least 356×200 (YouTube's minimum, D11). The dish waits for 上菜 (cooking R4).
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
-              <div className="flex items-start gap-4 text-left">
+              <div className={`flex items-start gap-4 text-left${scored && !(video && !tileVideo) ? "" : " justify-center"}`}>
                 {/* A fixed box: the iframe is width 100%, and a row sized to its content would leave it under 356. */}
                 <div className="shrink-0" style={{ width: 356 }}>
                   <QuestionMedia key={reveal.questionId} content={mediaExplanation} label="詳解" maxWidth={356} maxHeight={200} className="mx-auto block" zhCaptions />
@@ -785,7 +785,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster; with tiles on the wall, a pill under B/D,
           above the dialogue box (z 7) so a three-row narration line never hides it. */}
       {typeof answerLeft === "number" && !reveal && !card && (
-        <div className="absolute" style={wall || sortWall ? { right: 22, bottom: 116, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 6 }}>
+        <div className="absolute" style={wall || sortWall ? { right: 22, bottom: 116, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 8 }}>
           <AnswerClock key={`${eventId}:${answerLeft}`} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} />
         </div>
       )}
