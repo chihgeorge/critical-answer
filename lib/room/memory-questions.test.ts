@@ -304,3 +304,46 @@ describe("記憶題 with an image", () => {
     expect(g.state().view.mageHints.t1).toBe("咪");
   });
 });
+
+// Value: protects=the chime the room hears when a memory question appears (TODOS: 記憶題播完出題時有提示音);
+// fails_when=an end path sets no cue, the cue repeats, or an image that ran out off screen chimes over another question.
+describe("記憶題's memory-ready cue", () => {
+  const chimes = (g: ReturnType<typeof started>) => msgs(g.io.broadcast.mock.calls).filter((m) => m.type === "STATE" && m.cue === "memory-ready").map((m) => m.cueSeq);
+
+  it("the clip's end sets it once, with a new cueSeq", () => {
+    const g = started(bank(memVideo("m1")));
+    const seq = g.state().cueSeq ?? 0;
+    expect(g.state().cue).not.toBe("memory-ready");
+    send(g.room, g.screen, { type: "SCREEN_CLIP_ENDED", questionId: "m1" });
+    expect(g.state()).toMatchObject({ cue: "memory-ready", cueSeq: seq + 1 });
+    send(g.room, g.screen, { type: "SCREEN_CLIP_ENDED", questionId: "m1" });
+    expect(g.state().cueSeq).toBe(seq + 1);
+  });
+
+  it("the host's ⏭ sets it, and a second press does not again", () => {
+    const g = started(bank(memVideo("m1")));
+    send(g.room, g.host, { type: "HOST_MEMORY_DONE", questionId: "m1" });
+    expect(g.state().cue).toBe("memory-ready");
+    const seq = g.state().cueSeq;
+    send(g.room, g.host, { type: "HOST_MEMORY_DONE", questionId: "m1" });
+    expect(g.state().cueSeq).toBe(seq);
+  });
+
+  it("an image's seconds running out sets it (syncMemory)", () => {
+    const g = started(bank(memImage("i1", 5)));
+    vi.advanceTimersByTime(5000);
+    expect(g.state()).toMatchObject({ cue: "memory-ready", question: { content: { kind: "text" } } });
+    expect(new Set(chimes(g)).size).toBe(1);
+  });
+
+  it("an image that ran out while its team was offline does not chime", () => {
+    const g = started(bank(memImage("i1", 5)));
+    g.room.onClose(g.phones[0]);
+    vi.advanceTimersByTime(10000);
+    const back = makeConn("back");
+    g.room.onConnect(back);
+    send(g.room, back, { type: "JOIN", teamId: A, teamKey: "team-key-0123456789abcde0", teamName: "甲隊", resume: true });
+    expect(g.state().question).toMatchObject({ id: "i1", content: { kind: "text" } });
+    expect(chimes(g)).toEqual([]);
+  });
+});

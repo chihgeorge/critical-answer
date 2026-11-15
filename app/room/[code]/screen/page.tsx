@@ -1791,7 +1791,8 @@ export default function ScreenPage() {
               sfxSeen.current = seq;
               // ② The wrong answer's buzz waits for the parry's counter to end.
               if (msg.cue === "retry" && parryRunning.current) parryRetry.current = true;
-              else if (msg.cue) bgm.current?.playCue(SFX[msg.cue]);
+              // A cue this page does not know (a newer server) plays nothing.
+              else if (msg.cue && Object.hasOwn(SFX, msg.cue)) bgm.current?.playCue(SFX[msg.cue]);
             }
           }
           break;

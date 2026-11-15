@@ -446,7 +446,7 @@ export type ServerErrorCode =
   | "invalid_action";
 
 /** One per kind of event: the big screen's sound effect for it (lib/sfx.ts). */
-export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill" | "roll" | "crit" | "fumble" | "check-pass" | "check-fail" | "cook" | "buzz";
+export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill" | "roll" | "crit" | "fumble" | "check-pass" | "check-fail" | "cook" | "buzz" | "warrior-roll" | "memory-ready";
 
 export const MEDIA_ACTIONS = ["play", "pause", "restart"] as const;
 export type MediaAction = (typeof MEDIA_ACTIONS)[number];
