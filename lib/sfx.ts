@@ -59,6 +59,19 @@ export const SFX: Record<SoundCue, SfxNote[]> = {
   ],
   // A die tumbling: quick soft clicks for a second (the tumble on screen runs longer, the sound need not).
   roll: [0, 0.12, 0.24, 0.36, 0.5, 0.64, 0.8, 0.96].map((at, i) => n(at, 0.05, ["C5", "G4", "E5", "A4"][i % 4], "triangle")),
+  // The warrior rolls instead of answering (class-abilities.md): two heavy war-drum hits, then a sword's metallic clang
+  // (two clashing high tones), not the soft tumble the crit and check dice share.
+  "warrior-roll": [
+    { at: 0, duration: 0.14, freq: noteToFreq("A2"), slideTo: noteToFreq("A1"), wave: "square" },
+    { at: 0, duration: 0.2, freq: noteToFreq("E2"), slideTo: noteToFreq("E1"), wave: "triangle" },
+    { at: 0.18, duration: 0.14, freq: noteToFreq("A2"), slideTo: noteToFreq("A1"), wave: "square" },
+    { at: 0.18, duration: 0.2, freq: noteToFreq("E2"), slideTo: noteToFreq("E1"), wave: "triangle" },
+    n(0.38, 0.05, "E6"),
+    n(0.38, 0.3, "A#6", "triangle"),
+    n(0.4, 0.25, "F6", "triangle"),
+  ],
+  // A memory question's media is over and its question is up (memory-questions.md): a clear two-note bell, look up.
+  "memory-ready": [n(0, 0.15, "E6", "sine"), n(0.15, 0.45, "B6", "sine"), n(0.15, 0.45, "E6", "triangle")],
   // A natural 20: a rising trumpet call.
   crit: [n(0, 0.1, "C5"), n(0.1, 0.1, "G5"), n(0.2, 0.1, "C6"), n(0.3, 0.45, "E6")],
   // A natural 1: a sad slide down (still a hit).

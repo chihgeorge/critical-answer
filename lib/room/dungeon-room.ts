@@ -1241,6 +1241,8 @@ export class DungeonRoom {
 
   /** The memory question's media is over: it stays a plain question from now on, for every team. */
   private endMemory(id: string) {
+    // The chime only when the question appears now: not for an image that ran out off screen (its team offline).
+    if (!this.memoryDone.includes(id) && id === this.currentQuestion()?.pub.id && this.questionOnScreen()) this.setCue("memory-ready");
     if (!this.memoryDone.includes(id)) this.memoryDone = [...this.memoryDone, id];
     if (this.memoryShow?.questionId === id) this.memoryShow = null;
     this.armMemoryTimer();
@@ -3967,7 +3969,8 @@ export class DungeonRoom {
     this.pendingRoll = { teamId, questionId, value, kind, ...extra, ...(potion ? { values: potion } : {}) };
     const values = potion ?? (extra && "values" in extra ? extra.values : undefined);
     console.log(JSON.stringify({ event: "roll", kind, value, ...(values ? { values } : {}) }));
-    this.setCue("roll");
+    // The warrior's roll has its own sound; the crit, check and kill dice share the tumble.
+    this.setCue(kind === "warrior" ? "warrior-roll" : "roll");
     const roll = this.pendingRoll;
     this.pace("lock", "roll", kind === "kill" ? KILL_BEAT_MS : BEAT_MS, () => (this.pendingRoll !== roll ? null : kind === "kill" ? "接下來結算擊殺擲骰" : "接下來結算擲骰結果"), () => this.resolveRoll());
   }

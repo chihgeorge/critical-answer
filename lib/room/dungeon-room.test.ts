@@ -1153,6 +1153,7 @@ describe("TEAM_SELECT_OPTION", () => {
       roll(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       const held = lastBroadcast(room);
       expect(held.pendingRoll).toMatchObject({ teamId: ids[0], questionId: "r0-t1", value: 15, kind: "check" }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+      expect(held.cue).toBe("roll"); // the shared tumble, not the warrior's own sound
       expect(held.view.checks ?? {}).toEqual({});
       expect(JSON.stringify(held)).not.toContain("萬");
       vi.advanceTimersByTime(2000);
@@ -3414,6 +3415,17 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(out.reveal).toMatchObject({ questionId: q });
     expect(room.game!.teams[0]).toMatchObject({ abilityUses: 3, roomIndex: 1 });
     expect(seqOf(room)).toBe(seq + 1);
+  });
+
+  // Value: protects=the warrior's own sound (TODOS: 戰士骰有自己的音效); fails_when=the warrior's roll sets the shared
+  // `roll` cue again.
+  it("the warrior's roll sets its own warrior-roll cue", () => {
+    vi.useFakeTimers();
+    const { room, roll } = warriorGame();
+    roll(5);
+    const held = lastBroadcast(room);
+    expect(held.pendingRoll).toMatchObject({ kind: "warrior" });
+    expect(held.cue).toBe("warrior-roll");
   });
 
   it("a 5 is a retry: same question, the turn passes, one use spent", () => {
