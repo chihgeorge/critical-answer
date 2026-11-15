@@ -63,6 +63,11 @@ export type InstagramVideo = { kind: "instagram"; shortcode: string; end?: numbe
 export type HiddenFile = { kind: "file"; audioOnly?: true };
 /** An uploaded video/audio in SCREEN_VIDEO: its public R2 URL. `audioOnly`: an M4A/MP3, played under a music card. */
 export type FileVideo = { kind: "file"; url: string; audioOnly?: true };
+/** What SCREEN_VIDEO and SCREEN_TEST carry: only ever sent to host pages and keyed big screens. */
+export type ScreenVideo = Extract<PublicMediaContent, { kind: "youtube" }> | InstagramVideo | FileVideo;
+/** Why the big screen's test load of one clip failed (docs/designs/screen-media-test.md D3). */
+export const SCREEN_TEST_ERRORS = ["blocked", "gone", "error", "timeout", "no_picture"] as const;
+export type ScreenTestError = (typeof SCREEN_TEST_ERRORS)[number];
 
 /** The question the team in turn faces, without its answer: safe for /screen and /play.
  * `options` is present only for multipleChoice questions (never `correctIndex` — see
@@ -241,6 +246,9 @@ export type ClientMessage =
   /** Lobby only: reload the room's bank and check every question it will use (docs/designs/bank-health-check.md).
    * The reply is HOST_BANK_HEALTH, to this socket only. */
   | { type: "HOST_BANK_CHECK" }
+  /** Lobby only: the oldest keyed big screen loads every clip in the room's bank, muted and out of sight, and reports
+   * which fail (docs/designs/screen-media-test.md). Progress goes to the host pages as HOST_SCREEN_TEST. */
+  | { type: "HOST_SCREEN_TEST" }
   /** Director: replace line `index` (0-based) of narration `eventId` as of edit `rev` (cut to MAX_LINE chars). The room
    * refuses a stale eventId or rev (another host device edited first) and a line the big screen has already read
    * (docs/designs/host-narration-edit.md D3, D9). */
@@ -265,6 +273,9 @@ export type ClientMessage =
   /** /screen: the question video cannot play there (blocked, removed, no network), so the host page warns and offers
    * 現場放歌 (docs/designs/boss-music-buzzer.md M4). Same trust as above. */
   | { type: "SCREEN_CLIP_ERROR"; questionId: string }
+  /** /screen: test clip `index` of SCREEN_TEST `runId` loaded (error null) or failed. Same trust as above; the room also
+   * drops a result from another screen than the one it asked, an old run, or an index it already has. */
+  | { type: "SCREEN_TEST_RESULT"; runId: number; index: number; error: ScreenTestError | null }
   /** /screen: 聲音就緒 changed, or the socket just opened (immersion.md PR0): its AudioContext is running and 🎵 is on.
    * Same trust as above. The room tells the host pages through STATE's `screenSound`. */
   | { type: "SCREEN_SOUND"; ready: boolean }
@@ -585,7 +596,13 @@ export type ServerMessage =
   | { type: "SCREEN_KEY"; ok: boolean }
   /** The YouTube video on the big screen now (the question's, or the reveal's). Never broadcast: it goes only to host
    * pages and to big screens whose SCREEN_HELLO carried the screen key. */
-  | { type: "SCREEN_VIDEO"; questionId: string; video: Extract<PublicMediaContent, { kind: "youtube" }> | InstagramVideo | FileVideo }
+  | { type: "SCREEN_VIDEO"; questionId: string; video: ScreenVideo }
+  /** To the one keyed big screen that runs the test (screen-media-test.md D2): every distinct clip in the bank, never an
+   * answer. It answers each with SCREEN_TEST_RESULT. */
+  | { type: "SCREEN_TEST"; runId: number; items: ScreenVideo[] }
+  /** To every host page, after each SCREEN_TEST_RESULT: `rows` are the failures so far, with no URL, id or answer.
+   * `stopped`: the testing screen left before it finished. */
+  | { type: "HOST_SCREEN_TEST"; done: number; total: number; rows: HealthRow[]; stopped?: true }
   /** Host-only: how many lines of narration `eventId` the big screen has read. Sent on host connect and on every change. */
   | { type: "HOST_NARRATION_PROGRESS"; eventId: number; done: number }
   /** The room's relay of the host's HOST_EFFECT press (immersion.md PR2). Sent only to big screens whose SCREEN_HELLO
@@ -882,6 +899,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: "HOST_GET_TRANSCRIPT" };
     case "HOST_BANK_CHECK":
       return { type: "HOST_BANK_CHECK" };
+    case "HOST_SCREEN_TEST":
+      return { type: "HOST_SCREEN_TEST" };
+    case "SCREEN_TEST_RESULT": {
+      const error = m.error === null ? null : SCREEN_TEST_ERRORS.find((e) => e === m.error);
+      if (!isCount(m.runId) || !isCount(m.index) || error === undefined) return null;
+      return { type: "SCREEN_TEST_RESULT", runId: m.runId, index: m.index, error };
+    }
     case "HOST_EXTEND_ROOM":
       return { type: "HOST_EXTEND_ROOM" };
     case "HOST_NEXT":

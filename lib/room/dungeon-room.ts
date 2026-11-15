@@ -106,6 +106,7 @@ import {
   type PendingRoll,
   type PublicQuestion,
   type ServerMessage,
+  type ScreenTestError,
   type SoundCue,
   type PodiumReveal,
   FINISH_PODIUM_MS,
@@ -134,7 +135,7 @@ import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { acceptTapAt, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, TAP_SEEK_SLACK_MS, tapResults } from "../tap-clock";
 import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
-import { healthReport, mediaBatches, type MediaResults } from "../bank-health";
+import { healthReport, mediaBatches, screenTestList, screenTestRows, type MediaResults, type ScreenTestItem } from "../bank-health";
 import { tokensEqual } from "../tokens";
 import { epilogueParts, titleFacts, toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { createCrowdTally } from "../narration/crowd";
@@ -605,6 +606,10 @@ export class DungeonRoom {
   private bankLoading = false;
   /** A HOST_BANK_CHECK is running (memory only): a second one waits for it. */
   private bankChecking = false;
+  /** The HOST_SCREEN_TEST in flight (memory only, screen-media-test.md): which screen runs it, its clips, and the result
+   * of each so far (undefined: not reported yet). */
+  private screenTest: { runId: number; screenId: string; list: ScreenTestItem[]; errors: (ScreenTestError | null | undefined)[] } | null = null;
+  private screenTestRunId = 0;
   /** Key checks this room made: in all (saved, so a restart does not reset it), and since keyCheckWindowAt (memory only). */
   private keyChecks = 0;
   private keyChecksInWindow = 0;
@@ -1948,6 +1953,8 @@ export class DungeonRoom {
       // Its sound report stays (it counts only once the key is back) and the host pages are not told: the TV says hello
       // and reports again on open, so a reconnect does not flash 沒有大螢幕連著 then 已就緒 on the host page.
       this.keyedScreens.delete(conn.id);
+      // The new socket is a fresh page: it will not carry on the old one's test run.
+      this.stopScreenTest(conn.id);
     } else if (this.conns.size >= MAX_CONNECTIONS && !this.closeSpareConn()) {
       this.gone.add(conn);
       conn.close();
@@ -2034,6 +2041,7 @@ export class DungeonRoom {
     this.keyedScreens.delete(id);
     this.screenSoundReady.delete(id);
     this.screenSoundChanged();
+    this.stopScreenTest(id);
     // The timing clock's screen went: another screen may take over (timing-tap.md).
     if (this.tapClock?.screen === id) {
       this.tapClock = null;
@@ -2122,6 +2130,13 @@ export class DungeonRoom {
           break;
         case "HOST_BANK_CHECK":
           this.handleBankCheck(sender);
+          break;
+        case "HOST_SCREEN_TEST":
+          this.handleScreenTest(sender);
+          break;
+        case "SCREEN_TEST_RESULT":
+          if (!this.isScreen(sender)) break;
+          this.handleScreenTestResult(sender, msg.runId, msg.index, msg.error);
           break;
         case "HOST_EDIT_NARRATION":
           this.handleEditNarration(sender, msg.eventId, msg.rev, msg.index, msg.line);
@@ -2347,7 +2362,7 @@ export class DungeonRoom {
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
       // A reaction changes no saved state, so it neither counts as activity nor saves.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "CLOCK_PING" && !this.rejected && !resumed) {
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "SCREEN_TEST_RESULT" && msg.type !== "CLOCK_PING" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -3038,6 +3053,64 @@ export class DungeonRoom {
         this.bankChecking = false;
         if ((outcome === "stale" || outcome === "failed") && this.hostConns.has(conn.id)) this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: outcome === "stale" ? "check_stale" : "check_failed" });
       });
+  }
+
+  /** HOST_SCREEN_TEST (docs/designs/screen-media-test.md): the oldest keyed big screen loads every clip in the room's bank.
+   * A second press starts over. Only media references the screen already gets in SCREEN_VIDEO go out; never saved. */
+  private handleScreenTest(conn: Conn) {
+    if (!this.requireHost(conn)) return;
+    if (this.game) return void this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
+    if (this.bankLoading) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "bank_loading" });
+    const screen = [...this.keyedScreens].map((id) => this.conns.get(id)).find((c): c is Conn => !!c && this.isScreen(c));
+    if (!screen) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_screen" });
+    const list = screenTestList(this.bank, this.room.env?.R2_PUBLIC_BASE_URL ?? "");
+    // Never reused, even after a restart: a page still running an old run must not answer for this one.
+    this.screenTestRunId = Math.max(this.screenTestRunId + 1, this.now());
+    this.screenTest = { runId: this.screenTestRunId, screenId: screen.id, list, errors: [] };
+    try {
+      screen.send(JSON.stringify({ type: "SCREEN_TEST", runId: this.screenTestRunId, items: list.map((i) => i.video) } satisfies ServerMessage));
+    } catch {
+      this.screenTest = null;
+      return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_screen" });
+    }
+    this.sendScreenTest();
+  }
+
+  private handleScreenTestResult(conn: Conn, runId: number, index: number, error: ScreenTestError | null) {
+    const t = this.screenTest;
+    if (!t || conn.id !== t.screenId || runId !== t.runId || index >= t.list.length || t.errors[index] !== undefined) return;
+    // A started game: the host page cleared the run on STATE. A bank reloaded meanwhile changes nothing: the run keeps its
+    // own list, and the page clears it itself when another bank is picked (HOST_BANKS).
+    if (this.game) return void (this.screenTest = null);
+    t.errors[index] = error;
+    this.sendScreenTest();
+  }
+
+  /** The testing screen left (closed, replaced, or lost its key) before it finished. */
+  private stopScreenTest(screenId: string) {
+    if (this.screenTest?.screenId !== screenId) return;
+    if (this.screenTest.errors.filter((e) => e !== undefined).length < this.screenTest.list.length) this.sendScreenTest(true);
+    this.screenTest = null;
+  }
+
+  /** Progress to every host page, straight to the sockets: nothing in it is saved. */
+  private sendScreenTest(stopped = false) {
+    const t = this.screenTest;
+    if (!t) return;
+    const text = JSON.stringify({
+      type: "HOST_SCREEN_TEST",
+      done: t.errors.filter((e) => e !== undefined).length,
+      total: t.list.length,
+      rows: screenTestRows(t.list, t.errors),
+      ...(stopped ? { stopped: true as const } : {}),
+    } satisfies ServerMessage);
+    for (const host of this.hostConns.values()) {
+      try {
+        host.send(text);
+      } catch {
+        // A dead host socket must not stop the others.
+      }
+    }
   }
 
   private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean, answerSeconds?: number) {

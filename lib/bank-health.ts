@@ -2,8 +2,8 @@
 // suspicious. Server-only in practice (the room and BankStoreDO call it), but it holds no bank data of its own: the
 // host page imports only the HealthRow type, from lib/protocol.ts. Never import the parsed BANK here (CLAUDE.md).
 
-import { DIFFICULTIES, savableProblems, type Bank, type BankQuestion, type MediaContent } from "./question-bank";
-import type { HealthRow } from "./protocol";
+import { DIFFICULTIES, fileVideo, instagramVideo, isClip, savableProblems, type Bank, type BankQuestion, type MediaContent } from "./question-bank";
+import type { HealthRow, ScreenTestError, ScreenVideo } from "./protocol";
 import { TAP_HEALTH_LEAD_S } from "./tap-clock";
 
 /** One BankStoreDO RPC: at most this many YouTube lookups plus one public HEAD stays under the free plan's 50
@@ -162,6 +162,49 @@ function timingProblems(q: BankQuestion): string[] {
   if (q.target - (q.content.start ?? 0) < TAP_HEALTH_LEAD_S) out.push(`卡點題的目標離片段開頭不到 ${TAP_HEALTH_LEAD_S} 秒：大螢幕的播放時鐘還沒校準好。把片段開頭往前移 ${TAP_HEALTH_LEAD_S} 秒以上`);
   if (q.content.kind === "youtube") out.push(`卡點題用 YouTube：可能有廣告、播放時間比較不準。建議改成上傳的音檔${q.content.end === undefined ? "；也沒設片段結尾" : ""}`);
   return out;
+}
+
+/** One distinct clip for the big screen's test load (docs/designs/screen-media-test.md), and every place it is used. */
+export interface ScreenTestItem {
+  video: ScreenVideo;
+  /** `slot`: "" for the question's own clip, 「詳解：」 for its explanation. */
+  uses: (Omit<HealthRow, "level" | "problem"> & { slot: string })[];
+}
+
+/** Every distinct video/audio clip the big screen could play: a question's own clip and its explanation's. Images are
+ * left to the server check. `video` is exactly what SCREEN_VIDEO would carry, so no answer goes out. */
+export function screenTestList(bank: Bank, baseUrl: string): ScreenTestItem[] {
+  const byKey = new Map<string, ScreenTestItem>();
+  for (const { q, where } of placedQuestions(bank)) {
+    for (const [c, slot] of [[q.content, ""], [q.explanation, "詳解："]] as const) {
+      if (!c || !(isClip(c) || c.kind === "instagram")) continue;
+      const video: ScreenVideo = c.kind === "youtube" ? { kind: "youtube", videoId: c.value } : c.kind === "instagram" ? instagramVideo(c) : fileVideo(c, baseUrl);
+      const key = `${c.kind === "audio" ? "video" : c.kind}:${c.value}`;
+      const item = byKey.get(key) ?? { video, uses: [] };
+      byKey.set(key, item);
+      const label = labelOf(q);
+      item.uses.push({ questionId: q.id, where, ...(label ? { label } : {}), slot });
+    }
+  }
+  return [...byKey.values()];
+}
+
+const SCREEN_TEST_PROBLEM: Record<ScreenTestError, { level: HealthRow["level"]; problem: string }> = {
+  blocked: { level: "red", problem: "YouTube 不給嵌入，大螢幕放不出來" },
+  gone: { level: "red", problem: "YouTube 找不到這支影片（刪掉了、私人或網址錯）" },
+  error: { level: "red", problem: "大螢幕載入出錯，放不出來" },
+  no_picture: { level: "red", problem: "影片只有聲音沒有畫面（大螢幕的瀏覽器解不了這個編碼）" },
+  timeout: { level: "yellow", problem: "20 秒內沒載入（網路慢或被擋），到場再試一次" },
+};
+
+/** The host's rows for the failures so far: one per question that uses a failed clip. No URL, id or answer. */
+export function screenTestRows(list: ScreenTestItem[], errors: (ScreenTestError | null | undefined)[]): HealthRow[] {
+  return list.flatMap((item, i) => {
+    const e = errors[i];
+    if (!e) return [];
+    const { level, problem } = SCREEN_TEST_PROBLEM[e];
+    return item.uses.map(({ slot, ...use }) => ({ level, ...use, problem: slot + problem }));
+  });
 }
 
 /** The rows the host sees. A lookup missing from `results` (its batch failed) reads as unknown: yellow, never green. */

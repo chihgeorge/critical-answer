@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { checkMediaBatch, healthReport, mediaBatches, MAX_YOUTUBE_PER_BATCH, type MediaDeps } from "./bank-health";
+import { checkMediaBatch, healthReport, mediaBatches, screenTestList, screenTestRows, MAX_YOUTUBE_PER_BATCH, type MediaDeps } from "./bank-health";
 import { assertSavable, savableProblems, type Bank, type BankQuestion } from "./question-bank";
-import { healthSummary } from "@/components/bank-health";
+import { healthSummary, screenTestLine } from "@/components/bank-health";
 
 const BASE = "https://pub.example.r2.dev";
 const KEY = "11111111-2222-3333-4444-555555555555";
@@ -184,6 +184,46 @@ describe("healthSummary (host page)", () => {
     });
     expect(s.rows.map((r) => r.level)).toEqual(["red", "red", "yellow"]);
     expect(s).toMatchObject({ red: 2, yellow: 1, ok: 9 });
+  });
+});
+
+describe("screenTestList / screenTestRows (screen-media-test.md)", () => {
+  const b = bank([
+    text("a", { content: { kind: "youtube", value: yt(1) }, prompt: "猜歌名" }),
+    text("b", { content: { kind: "audio", value: KEY }, explanation: { kind: "youtube", value: yt(1) } }),
+    text("c", { content: { kind: "image", value: KEY2 }, explanation: { kind: "instagram", value: "ABCdef123" } }),
+    text("d", { content: { kind: "video", value: KEY } }),
+  ]);
+
+  it("lists each clip once (question and explanation, never an image), as SCREEN_VIDEO would carry it", () => {
+    const list = screenTestList(b, BASE);
+    expect(list.map((i) => i.video)).toEqual([
+      { kind: "youtube", videoId: yt(1) },
+      { kind: "file", url: `${BASE}/${KEY}`, audioOnly: true },
+      { kind: "instagram", shortcode: "ABCdef123" },
+    ]);
+    expect(list[0].uses.map((u) => [u.questionId, u.slot])).toEqual([["a", ""], ["b", "詳解："]]);
+    expect(list[1].uses.map((u) => u.questionId)).toEqual(["b", "d"]);
+    expect(JSON.stringify(list.map((i) => i.video))).not.toContain("答案");
+  });
+
+  it("gives every question that uses a failed clip its own row; a timeout is yellow", () => {
+    const list = screenTestList(b, BASE);
+    expect(screenTestRows(list, ["blocked", null, "timeout"])).toEqual([
+      { level: "red", questionId: "a", where: "難度 1", label: "猜歌名", problem: "YouTube 不給嵌入，大螢幕放不出來" },
+      { level: "red", questionId: "b", where: "難度 1", problem: "詳解：YouTube 不給嵌入，大螢幕放不出來" },
+      { level: "yellow", questionId: "c", where: "難度 1", problem: "詳解：20 秒內沒載入（網路慢或被擋），到場再試一次" },
+    ]);
+    expect(screenTestRows(list, [])).toEqual([]);
+  });
+
+  it("sums it up on the host page", () => {
+    const red = { level: "red" as const, where: "難度 1", problem: "x" };
+    expect(screenTestLine({ done: 3, total: 10, rows: [] })).toBe("📺 大螢幕試播中… 3／10");
+    expect(screenTestLine({ done: 3, total: 10, rows: [], stopped: true })).toBe("📺 大螢幕斷線，試播停在 3／10");
+    expect(screenTestLine({ done: 10, total: 10, rows: [] })).toBe("✅ 10 支都載得出來");
+    expect(screenTestLine({ done: 10, total: 10, rows: [red, { ...red, level: "yellow" }] })).toBe("📺 10 支試播完：🔴 1 放不出來 · 🟡 1 太久沒載入");
+    expect(screenTestLine({ done: 0, total: 0, rows: [] })).toBe("📺 題庫裡沒有影片或聲音");
   });
 });
 

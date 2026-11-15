@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { extractYoutubeId, youtubeEmbedUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
+import { youtubeTestError, extractYoutubeId, youtubeEmbedUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
 
 describe("shouldSeek (timing-tap-timeline.md)", () => {
   it("seeks once per replay key: a re-render with the same key does nothing", () => {
@@ -80,6 +80,14 @@ describe("extractYoutubeId", () => {
 describe("youtubeEmbedUrl", () => {
   it("builds a youtube-nocookie.com embed URL from a video id", () => {
     expect(youtubeEmbedUrl("dQw4w9WgXcQ")).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
+  });
+});
+
+describe("youtubeTestError (screen-media-test.md)", () => {
+  it("tells embedding turned off from a missing video", () => {
+    expect([101, 150].map(youtubeTestError)).toEqual(["blocked", "blocked"]);
+    expect([100, 2].map(youtubeTestError)).toEqual(["gone", "gone"]);
+    expect(youtubeTestError(5)).toBe("error");
   });
 });
 
