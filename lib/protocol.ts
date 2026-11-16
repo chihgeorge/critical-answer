@@ -664,6 +664,8 @@ export type ServerMessage =
     }
   /** Host-only, to the page that sent HOST_HANDOFF: the code the team's new phone types. */
   | { type: "HANDOFF_CODE"; teamId: string; code: string }
+  /** Host-only: the team's code was used or burned (5 wrong claims), so the host page stops showing it. */
+  | { type: "HANDOFF_GONE"; teamId: string }
   /** To the phone whose TEAM_CLAIM matched: the team's id and key, to store and JOIN with. */
   | { type: "TEAM_CLAIMED"; teamId: string; teamKey: string }
   | { type: "ERROR"; error: ServerErrorCode; detail?: string };

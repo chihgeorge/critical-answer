@@ -13,7 +13,7 @@ import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, ty
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { CATCH_PAY, checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { FORK_ARCH, sceneFloor, TEAM_LOOKS } from "@/lib/pixel-art";
-import { describeTurn, monsterLook, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
+import { describeTurn, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
@@ -537,7 +537,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
     </ul>
   );
 
-  const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
+  // Every phone offline: the game waits for one to reconnect, so the screen says so rather than a stale line.
+  const paused = pausedOffline(view);
+  const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : paused ? [PAUSED_OFFLINE] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
   const nameplate = (style: CSSProperties) => (
     <Nameplate className="absolute" style={{ ...style, color: bossScene ? "#b02a3a" : undefined }}>
       <span>{monster.name}</span>
@@ -688,7 +690,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             </span>
           ) :
           question.content.kind === "text" ? question.content.value : <div style={{ fontSize: "0.87em" }}>{question.prompt ?? ""}</div>
-        ) : "……"}
+        ) : paused ? <span data-testid="screen-paused" role="status">{PAUSED_OFFLINE}</span> : "……"}
         {tileVideo && <div className="mt-3 flex flex-col items-center gap-2 empty:hidden">{beside}</div>}
         {video && !tileVideo && (
           // A reveal with nothing beside its video centres it (D18); the player stays the first child, so it is kept.
@@ -811,10 +813,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       <DialogueBox
         className="relative"
         accent={bossScene ? "var(--danger)" : undefined}
-        loading={!served && !held && isPending(eventId, narration)}
+        loading={!served && !paused && !held && isPending(eventId, narration)}
         lines={sayLines}
         style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
-        {...(!served && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+        {...(!served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
       />
       {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, ...(tileVideo ? { left: "50%", transform: "translateX(max(-50%, -240px))" } : { right: 8 }) })}
       </div>

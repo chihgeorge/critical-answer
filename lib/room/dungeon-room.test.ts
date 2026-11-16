@@ -4573,6 +4573,19 @@ describe("team handoff: HOST_HANDOFF, TEAM_CLAIM (docs/designs/team-handoff.md)"
     expect(lastSentTo(other)).toMatchObject({ type: "ERROR", error: "bad_code" });
   });
 
+  // Value: protects=the host page stops showing a code that no longer works (rehearsal QA 2026-11-16 P2-4);
+  // fails_when=a claim or a burn no longer sends HANDOFF_GONE to the host; why_new=the host showed a used code as valid; seam=none
+  it("tells the host when a code is used or burned", () => {
+    const { room, hostConn, fresh } = gameWithLostPhone();
+    const gone = () => (hostConn.send as ReturnType<typeof vi.fn>).mock.calls.map(([m]) => JSON.parse(m)).filter((m) => m.type === "HANDOFF_GONE");
+    let code = codeFor(room, hostConn, T1);
+    send(room, fresh, { type: "TEAM_CLAIM", code });
+    expect(gone()).toEqual([{ type: "HANDOFF_GONE", teamId: T1 }]);
+    code = codeFor(room, hostConn, T2);
+    for (let i = 0; i < 5; i++) send(room, fresh, { type: "TEAM_CLAIM", code: code === "0000" ? "0001" : "0000" });
+    expect(gone()).toEqual([{ type: "HANDOFF_GONE", teamId: T1 }, { type: "HANDOFF_GONE", teamId: T2 }]);
+  });
+
   // Value: protects=a code cannot be used late or after a newer one; fails_when=expiry, replacement or the host check
   // is dropped; why_new=new security boundary; seam=none
   it("refuses an expired or replaced code, and only a host may ask for a code", () => {

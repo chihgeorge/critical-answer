@@ -103,12 +103,17 @@ test("a phone that joins after the game started waits, sees no game, and takes o
   for (const s of firstSockets) await s.close();
   await first.context().close();
   await expect(host.getByText("甲隊（離線）")).toBeVisible();
+  // The only team is offline: the game is paused and says so (rehearsal QA 2026-11-16 P1-1).
+  await expect(host.getByTestId("host-paused")).toBeVisible();
   await host.getByRole("button", { name: "交給新手機" }).click();
   const handoffCode = (await host.getByTestId("handoff-code").locator(".px-num").textContent())!.trim();
   await late.getByLabel("換了手機？輸入主持人給的配對碼：").fill(handoffCode);
   await late.getByRole("button", { name: "接手隊伍" }).click();
   await expect(late.getByText("輪到我們了！")).toBeVisible();
   await expect(host.getByText("甲隊（離線）")).toHaveCount(0);
+  await expect(host.getByTestId("host-paused")).toHaveCount(0);
+  // A used code is no longer shown as valid (P2-4).
+  await expect(host.getByTestId("handoff-code")).toHaveCount(0);
 });
 
 // Value: protects=a name the room refuses is explained instead of a silent lobby; fails_when=invalid_name is
