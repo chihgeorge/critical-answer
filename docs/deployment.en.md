@@ -64,3 +64,5 @@ After a deploy, run `npm run canary:live`. It plays one real game on the live si
 - `CANARY_SHOTS=<folder>` environment variable: the first failed step saves a screenshot of each of the four pages there.
 
 The room is not deleted, and the host has no button to close one: once the game is over its connections rest after 2 idle hours, and it is cleared 6 hours after the first game start (see the [hosting guide](hosting.en.md#known-limits)). The script does not open the bank editor and uses no key.
+
+It only answers multiple-choice and fill-in questions (the bundled bank is all multiple choice). When a room's first question is a sort, music or buzzer question, that round reports `CANARY BROKEN` though the site is fine; run it again. A round gets about 150 seconds; past that it skips the remaining steps but still ends the game.

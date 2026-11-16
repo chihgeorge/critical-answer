@@ -6,8 +6,10 @@
 import { chromium, expect, type Browser, type Page } from "@playwright/test";
 
 export const DEFAULT_BASE = "https://critical-answer.vercel.app";
-const ROUND_BUDGET_MS = 180_000;
+/** Past this, a round skips its remaining steps (end-game still runs). Each step's own waits are bounded. */
+const ROUND_BUDGET_MS = 150_000;
 const UI_MS = 20_000;
+const NEXT_TURN_MS = 60_000;
 
 export type Options = { base: string; rounds: number };
 
@@ -32,7 +34,7 @@ export function parseArgs(argv: string[], env: Record<string, string | undefined
 export type PageResult = { round: number; name: string; status: number | null; ms: number; errs: string[] };
 export type StepResult = { round: number; name: string; ok: boolean; ms: number; error?: string };
 
-/** The report lines, in the old canary's shape, and whether the run is healthy (every step ok, no page errors). */
+/** The STEP / PAGE / CANARY report lines (docs/deployment.md), and whether the run is healthy (every step ok, no page errors). */
 export function summarize(pages: PageResult[], steps: StepResult[]): { lines: string[]; healthy: boolean } {
   const lines = [
     ...steps.map((s) => `STEP r${s.round} ${s.name} ${s.ok ? "ok" : "FAIL"} ms=${s.ms}${s.error ? ` error=${JSON.stringify(s.error)}` : ""}`),
@@ -45,8 +47,10 @@ export function summarize(pages: PageResult[], steps: StepResult[]): { lines: st
 
 const short = (s: string) => s.replace(/\s+/g, " ").slice(0, 160);
 
-async function round(browser: Browser, base: string, r: number, pages: PageResult[], steps: StepResult[]) {
-  const contexts: Awaited<ReturnType<Browser["newContext"]>>[] = [];
+type Context = Awaited<ReturnType<Browser["newContext"]>>;
+
+/** One game. The caller closes `contexts`, so they close even when something throws outside `step()`. */
+async function round(browser: Browser, base: string, r: number, pages: PageResult[], steps: StepResult[], contexts: Context[]) {
   const results = new Map<string, PageResult>();
   const opened = new Map<string, Page>();
   // Each role gets its own context: phones that shared storage would come back as the same team.
@@ -68,20 +72,23 @@ async function round(browser: Browser, base: string, r: number, pages: PageResul
     const res = results.get(name)!;
     res.status = resp?.status() ?? null;
     res.ms = Date.now() - t;
-    if (!resp || resp.status() >= 400) throw new Error(`${url} answered ${resp?.status() ?? "nothing"}`);
+    // Without the #fragment: the screen link carries the room's screen key.
+    if (!resp || resp.status() >= 400) throw new Error(`${url.split("#")[0]} answered ${resp?.status() ?? "nothing"}`);
   }
   let failed = false;
+  const deadline = Date.now() + ROUND_BUDGET_MS;
   async function step(name: string, fn: () => Promise<void>, always = false) {
     if (failed && !always) return;
     const t = Date.now();
     try {
+      if (!always && t > deadline) throw new Error("round over budget");
       await fn();
       steps.push({ round: r, name, ok: true, ms: Date.now() - t });
     } catch (e) {
-      failed = true;
       // CANARY_SHOTS=<dir> keeps a screenshot of every page at the first failure, to see what each one showed.
       const dir = process.env.CANARY_SHOTS;
-      if (dir) for (const [n, p] of opened) await p.screenshot({ path: `${dir}/r${r}-${name}-${n}.png` }).catch(() => {});
+      if (dir && !failed) for (const [n, p] of opened) await p.screenshot({ path: `${dir}/r${r}-${name}-${n}.png` }).catch(() => {});
+      failed = true;
       steps.push({ round: r, name, ok: false, ms: Date.now() - t, error: short((e as Error).message) });
     }
   }
@@ -143,11 +150,14 @@ async function round(browser: Browser, base: string, r: number, pages: PageResul
     const judge = host.getByRole("button", { name: "答對！" });
     // Locators on different pages cannot be or()-ed: poll for whichever shows first.
     const anyOf = (...ls: (typeof lock)[]) => expect.poll(async () => (await Promise.all(ls.map((l) => l.isVisible()))).some(Boolean), { timeout: UI_MS }).toBe(true);
+    // The team's phone shows the reveal once the turn is judged right (答對了！ on a choice, 正解 on every kind).
+    const judged = team().getByText(/答對了！/).or(team().getByText(`正解：${answer}`)).first();
     await anyOf(roll, lock, judge);
     if (await roll.isVisible()) {
       await roll.click();
-      await anyOf(lock, judge);
+      await anyOf(lock, judge, judged); // a natural 20 on the check is right with no judging
     }
+    if (await judged.isVisible()) return;
     if (await lock.isVisible()) {
       const escaped = answer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       await team().getByRole("button", { name: new RegExp(`^[A-D]?\\s*${escaped}$`) }).click();
@@ -159,7 +169,7 @@ async function round(browser: Browser, base: string, r: number, pages: PageResul
       await expect(judge).toBeEnabled({ timeout: UI_MS });
       await judge.click();
     }
-    await expect(team().getByText(/答對了！/)).toBeVisible({ timeout: UI_MS });
+    await expect(judged).toBeVisible({ timeout: UI_MS });
   });
   await step("others-see-result", async () => {
     await expect(screen.getByText(`正解：${answer}`).first()).toBeVisible({ timeout: UI_MS });
@@ -180,7 +190,7 @@ async function round(browser: Browser, base: string, r: number, pages: PageResul
           else if ((await next.isVisible()) && (await next.isEnabled())) await next.click().catch(() => {});
           return false;
         },
-        { timeout: 60_000, intervals: [1000] },
+        { timeout: NEXT_TURN_MS, intervals: [1000] },
       )
       .toBe(true);
     onTurn = 1 - onTurn;
@@ -200,7 +210,6 @@ async function round(browser: Browser, base: string, r: number, pages: PageResul
     },
     true,
   );
-  for (const ctx of contexts) await ctx.close();
 }
 
 async function main() {
@@ -212,12 +221,10 @@ async function main() {
   try {
     for (let r = 1; r <= opts.rounds; r++) {
       const t = Date.now();
-      let timer: NodeJS.Timeout | undefined;
-      const budget = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error("round over budget")), ROUND_BUDGET_MS)));
-      await Promise.race([round(browser, opts.base, r, pages, steps), budget]).catch((e) =>
-        steps.push({ round: r, name: "round", ok: false, ms: Date.now() - t, error: short((e as Error).message) }),
-      );
-      clearTimeout(timer);
+      const contexts: Context[] = [];
+      await round(browser, opts.base, r, pages, steps, contexts)
+        .catch((e) => steps.push({ round: r, name: "round", ok: false, ms: Date.now() - t, error: short((e as Error).message) }))
+        .finally(() => Promise.allSettled(contexts.map((c) => c.close())));
       console.log(`ROUND r${r} ms=${Date.now() - t}`);
     }
   } finally {
