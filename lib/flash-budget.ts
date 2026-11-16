@@ -32,5 +32,3 @@ export function createFlashBudget(now: () => number = () => Date.now()) {
     },
   };
 }
-
-export type FlashBudget = ReturnType<typeof createFlashBudget>;

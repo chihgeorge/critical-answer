@@ -47,10 +47,7 @@
 - [Host 自訂題庫文字進 LLM prompt 前的內容審核](#host-自訂題庫文字進-llm-prompt-前的內容審核) — 未註明
 - [量 e2e 對前端（app/、components/）的實際覆蓋率](#量-e2e-對前端appcomponents的實際覆蓋率) — M
 - [開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）](#開發工具鏈剩-5-個-npm-audit-漏洞上游沒有修補版) — S
-- [/health 補上死碼與 shell 腳本檢查](#health-補上死碼與-shell-腳本檢查) — S
 - [ESLint 10 / TypeScript 7 升級被上游卡住](#eslint-10--typescript-7-升級被上游卡住) — 不確定（等上游）
-- [蓋版 commit 的作者連到 App 頭像](#蓋版-commit-的作者連到-app-頭像) — S（CC 約 15 分鐘）
-- [片段裡的 `## ` 標題會截掉 GitHub Release 說明](#片段裡的--標題會截掉-github-release-說明) — S（CC 約 15 分鐘）
 
 ---
 
@@ -609,26 +606,6 @@
 
 ---
 
-## /health 補上死碼與 shell 腳本檢查
-
-**What:** 加 `knip`（死碼偵測）當開發依賴、裝 `shellcheck` 檢查 `scripts/*.sh`，再把兩者寫進 CLAUDE.md 的 `## Health Stack`。
-
-**Why:** 第一次 `/health`（2026-10-03）是 10.0/10，但只有 3/6 類別有檢查（型別、lint、測試）；死碼與 shell 腳本沒有工具，分數不完整。
-
-**Context:**
-- `[家目錄路徑]`
-
-**Effort/Priority:** S / P4
-
-**Depends on:** 無。
-
-**Notes:**
-- Pros：分數更完整，能抓到沒人用的 export 和腳本錯誤。
-- Cons：knip 第一次跑可能報出一堆要逐一判斷的結果。
-- Context 補充：歷史紀錄在 `[owner-local]/health-history.jsonl`。加工具後覆蓋類別改變，分數會跟第一次不可比。
-
----
-
 ## ESLint 10 / TypeScript 7 升級被上游卡住
 
 **What:** 處理「ESLint 10 / TypeScript 7 升級被上游卡住」所述事項。
@@ -651,46 +628,6 @@
 - Pros：之後升級好處：更快的 lint/typecheck（TS 7 是 Go 原生編譯器，官方號稱 8–12 倍）、ESLint 10 的新規則。
 - Cons：現在做不了，勉強做會直接打斷開發環境。
 - Context 補充：已完成同批的其他升級：React 19.2.4→19.3.0、Vitest 4.1.11→5.0.1、`concurrently` 9→10（v0.7.3.0）。
-
----
-
-## 片段裡的 `## ` 標題會截掉 GitHub Release 說明
-
-**What:** `scripts/check-fragment.ts` 現在只擋 `## [`，改成擋任何 `^## ` 開頭的行（程式碼區塊裡的除外），錯誤訊息請作者改用 `### `。
-
-**Why:** 片段若寫了 `## Notes`，蓋版後它在 CHANGELOG 裡變成一段新的非版本段落；`scripts/release-notes.ts` 的 `changelogSections` 會把它和它後面的內容（例如同一版的 `### Fixed`）都排除在 GitHub Release 說明外。/review 2026-11-11（PR #228 對抗審查）用 node 實際重現過。這不是 #228 造成的，是原本就有的漏洞。
-
-**Context:**
-- `scripts/check-fragment.ts` 第 66 行的 `/^## \[/m`。
-- `scripts/release-notes.ts` 的 `changelogSections`。
-- 同次審查留下、沒修的邊角：`mergeBodies` 不認得 `<details>` 區塊裡的 `### `，片段裡沒關上的程式碼區塊在重排後會吃掉下一個小標題。實際片段幾乎不會這樣寫。
-
-**Effort/Priority:** S / P4
-
-**Depends on:** 無。
-
-**Notes:**
-- 改的是 CI 必過檢查（gate），要先讓站長同意。
-
----
-
-## 蓋版 commit 的作者連到 App 頭像
-
-**What:** `.github/workflows/stamp.yml` 的 `git config user.name/user.email` 改用 `actions/create-github-app-token` 給的 `app-slug`，email 用 `<bot 使用者 id>+<slug>[bot]@users.noreply.github.com`（id 從 `GET /users/<slug>[bot]` 拿）。
-
-**Why:** 現在寫死成 `critical-answer-stamp[bot]`，App 若取了別的名字，commit 作者就對不上，GitHub 上也不會顯示 App 的頭像和連結。只是外觀，推送和升版都正常（v0.58.0.0 已驗證）。
-
-**Context:**
-- `.github/workflows/stamp.yml` 第 53–54 行。
-- `scripts/ci-config.test.ts` 有檢查 stamp.yml 的測試，改了要一起看。
-
-**Effort/Priority:** S / P4
-
-**Depends on:** 無。
-
-**Notes:**
-- Pros：commit 歷史裡看得出是哪個 App 推的。
-- Cons：多一個 API 呼叫，失敗時要退回現在的寫死名字，不能讓蓋版因此失敗。
 
 ---
 

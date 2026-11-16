@@ -35,12 +35,15 @@ describe("fragmentProblems", () => {
   });
 
   // Value: protects=the release fold getting a blank or double-headed section; fails_when=an empty or headed fragment passes
-  it("rejects an empty fragment, front matter alone, and a ## [x] version heading", () => {
+  it("rejects an empty fragment, front matter alone, and any ## heading", () => {
     expect(fragmentProblems(pr({ "changelog.d/a.md": "---\nbump: micro\n---\n  \n" }))).toEqual(["changelog.d/a.md: the fragment is empty"]);
     expect(fragmentProblems(pr({ "changelog.d/a.md": "---\nbump: minor\n---\n" }))).toEqual(["changelog.d/a.md: the fragment is empty"]);
     expect(fragmentProblems(pr({ "changelog.d/a.md": FRAGMENT + "## [0.1.0.0] - 2026-11-08\n" }))).toEqual([
-      expect.stringContaining('no "## [x]" version heading'),
+      expect.stringContaining('no "## " heading'),
     ]);
+    // A non-version "## " section would cut it and the rest of its release out of the GitHub Release notes.
+    expect(fragmentProblems(pr({ "changelog.d/a.md": FRAGMENT + "## Notes\n- x\n" }))).toEqual([expect.stringContaining('use "### " instead')]);
+    expect(fragmentProblems(pr({ "changelog.d/a.md": FRAGMENT + "```\n## in a code block\n```\n" }))).toHaveLength(1);
     expect(fragmentProblems(pr({ "changelog.d/a.md": "---\nbump: minor\n---\n### Added\n- New.\n" }))).toEqual([]);
   });
 
