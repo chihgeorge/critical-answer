@@ -527,6 +527,9 @@ export class DungeonRoom {
   private reactedAt = new Map<string, number>();
   /** The room clock at the last HOST_EFFECT relayed (immersion.md PR2). In memory only. */
   private hostFxAt = -Infinity;
+  /** 🌑 螢幕變暗 (immersion.md PR2) and the room clock at its last change. In memory only (a restart clears it, like `media`). */
+  private screenDim = false;
+  private hostDimAt = -Infinity;
   /** The ▶ / ⟲ press whose play the screen last reported ended (immersion.md PR2): a replay after the end is a new
    * press, so `clipPlaying` is set again. In memory only; the countdown keeps its own `clipEnded`. */
   private clipStopped: { questionId: string; press: number } | null = null;
@@ -1497,6 +1500,7 @@ export class DungeonRoom {
       ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, side: this.forkBeat.side, door: this.forkBeat.door, ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
       ...this.fortuneView(),
       ...this.liveMedia(),
+      ...this.liveDim(),
       ...(this.clipError !== null && this.clipError === this.shownVideoId() ? { clipError: true as const } : {}),
       ...(this.tapLive() ? { tapLive: true as const } : {}),
       ...(this.tapLatency ? { tapLatency: this.tapLatency } : {}),
@@ -2251,6 +2255,9 @@ export class DungeonRoom {
         case "HOST_EFFECT":
           this.handleHostEffect(sender, msg.effect);
           break;
+        case "HOST_DIM":
+          this.handleHostDim(sender, msg.on);
+          break;
         case "HOST_SCREEN_AUDIO":
           this.handleHostScreenAudio(sender, msg.key, msg.on);
           break;
@@ -2547,6 +2554,7 @@ export class DungeonRoom {
     // Once every question has been shown, start avoiding over with just this game's.
     this.playedQuestionIds = played.length >= all.size ? [...this.game.revealedQuestionIds] : played;
     this.game = null;
+    this.screenDim = false;
     // Teams still waiting play the next game (late-join.md).
     this.pendingTeams.push(...this.lateTeams);
     this.lateTeams = [];
@@ -3191,6 +3199,7 @@ export class DungeonRoom {
     this.answerSeconds = answerSeconds ?? 0;
     this.answerClock = null;
     this.clipEnded = null;
+    this.screenDim = false;
     this.memoryDone = [];
     this.memoryShow = null;
     this.armMemoryTimer();
@@ -3772,6 +3781,28 @@ export class DungeonRoom {
       const screen = this.conns.get(id);
       if (screen && this.isScreen(screen)) screen.send(relay);
     }
+  }
+
+  /** 🌑 螢幕變暗 (immersion.md PR2): one change per HOST_FX_WINDOW_MS for the room. `on` is ignored outside a playing
+   * game and while `clipPlaying`; a press that changes nothing, or a rate-dropped one, gets no reply and is not activity. */
+  private handleHostDim(conn: Conn, on: boolean) {
+    if (!this.requireHost(conn)) return;
+    const now = this.now();
+    const ignored = on && (this.game?.phase !== "playing" || this.clipPlaying());
+    if (now - this.hostDimAt < HOST_FX_WINDOW_MS || ignored || on === !!this.liveDim().screenDim) {
+      this.rejected = true;
+      return;
+    }
+    this.hostDimAt = now;
+    this.screenDim = on;
+    this.broadcast(this.snapshot());
+  }
+
+  /** STATE's `screenDim`. Cleared here, where STATE is built, so the same STATE that shows a playing clip or the
+   * finished game already carries the cleared dim. */
+  private liveDim(): { screenDim?: true } {
+    if (this.game?.phase !== "playing" || this.clipPlaying()) this.screenDim = false;
+    return this.screenDim ? { screenDim: true } : {};
   }
 
   /** The media command for the video on screen. One for another question is dropped here, so a question that

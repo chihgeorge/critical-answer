@@ -194,3 +194,101 @@ describe("STATE.clipPlaying", () => {
     expect(g.state().clipPlaying).toBeUndefined();
   });
 });
+
+describe("HOST_DIM (🌑 螢幕變暗)", () => {
+  const states = (g: ReturnType<typeof room>) => msgs(g.io.broadcast.mock.calls).filter((m) => m.type === "STATE").length;
+  const dim = (g: ReturnType<typeof room>, on: boolean, conn: Conn = g.host) => send(g.room, conn, { type: "HOST_DIM", on });
+  const activity = (g: ReturnType<typeof room>) => (g.room as unknown as { lastActivityAt: number }).lastActivityAt;
+
+  it("turns screenDim on and off in STATE, one change per second for the room", () => {
+    const g = room();
+    g.start();
+    expect(g.state().screenDim).toBeUndefined();
+    dim(g, true);
+    expect(g.state().screenDim).toBe(true);
+    const before = states(g);
+    const active = activity(g);
+    g.clock.now += HOST_FX_WINDOW_MS - 1;
+    dim(g, false); // inside the window: dropped, no reply, no STATE, not activity
+    expect(states(g)).toBe(before);
+    expect(errors(g.host)).toEqual([]);
+    expect(activity(g)).toBe(active);
+    g.clock.now += 1;
+    dim(g, false);
+    expect(g.state().screenDim).toBeUndefined();
+  });
+
+  it("a press that changes nothing sends no STATE and is not activity", () => {
+    const g = room();
+    g.start();
+    dim(g, true);
+    const before = states(g);
+    const active = activity(g);
+    g.clock.now += HOST_FX_WINDOW_MS;
+    dim(g, true); // a second host device's stale on
+    expect(states(g)).toBe(before);
+    expect(activity(g)).toBe(active);
+  });
+
+  it("from a phone, a keyed screen or an unkeyed screen leaves screenDim unset and gets not_host", () => {
+    const g = room();
+    const tv = g.screen("tv");
+    const bare = g.screen("bare", false);
+    g.start();
+    for (const conn of [g.phone, tv, bare]) {
+      dim(g, true, conn);
+      expect(errors(conn).at(-1)).toMatchObject({ error: "not_host" });
+    }
+    expect(g.state().screenDim).toBeUndefined();
+  });
+
+  it("a non-boolean on is a malformed message", () => {
+    const g = room();
+    send(g.room, g.host, { type: "HOST_DIM", on: "yes" });
+    expect(errors(g.host)).toEqual([{ type: "ERROR", error: "invalid_action", detail: "bad_message" }]);
+  });
+
+  it("is ignored in the lobby", () => {
+    const g = room();
+    dim(g, true);
+    g.start();
+    expect(g.state().screenDim).toBeUndefined();
+  });
+
+  it("is ignored while a clip plays, and a playing clip clears it (it stays off after ⏸)", () => {
+    const g = room([video("v1")]);
+    g.start();
+    g.media("play");
+    dim(g, true);
+    expect(g.state().screenDim).toBeUndefined();
+    g.media("pause");
+    g.clock.now += HOST_FX_WINDOW_MS;
+    dim(g, true);
+    expect(g.state().screenDim).toBe(true);
+    g.media("play");
+    expect(g.state()).toMatchObject({ clipPlaying: true });
+    expect(g.state().screenDim).toBeUndefined();
+    g.media("pause");
+    expect(g.state().screenDim).toBeUndefined();
+  });
+
+  it("a reconnecting screen gets it in its first STATE", () => {
+    const g = room();
+    g.start();
+    dim(g, true);
+    const tv = g.screen("tv");
+    expect(msgs(tv.send.mock.calls).findLast((m) => m.type === "STATE")?.screenDim).toBe(true);
+  });
+
+  it("clears at game end and stays off after back to lobby and a new game", () => {
+    const g = room();
+    g.start();
+    dim(g, true);
+    send(g.room, g.host, { type: "HOST_END_GAME" });
+    expect(g.state().phase).toBe("finished");
+    expect(g.state().screenDim).toBeUndefined();
+    send(g.room, g.host, { type: "HOST_BACK_TO_LOBBY" });
+    g.start();
+    expect(g.state().screenDim).toBeUndefined();
+  });
+});

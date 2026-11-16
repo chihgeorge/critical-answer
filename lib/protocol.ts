@@ -312,6 +312,10 @@ export type ClientMessage =
   /** ⚡ 雷聲 / 👹 低吼 (docs/designs/immersion.md PR2): the room relays it to keyed big screens as SCREEN_EFFECT, at most
    * one press per HOST_FX_WINDOW_MS per room (extras are dropped silently), and drops it while `clipPlaying`. */
   | { type: "HOST_EFFECT"; effect: HostEffect }
+  /** 🌑 螢幕變暗 (docs/designs/immersion.md PR2): the host's dim switch for the big screens, kept in STATE `screenDim`.
+   * One per HOST_FX_WINDOW_MS per room (its own window, apart from HOST_EFFECT's); `on: true` is ignored outside a
+   * playing game and while `clipPlaying`. */
+  | { type: "HOST_DIM"; on: boolean }
   /** One of ⚙ 更多's three sound switches for the big screens (docs/designs/immersion.md PR3), set to `on`. One switch per
    * message, so two quick taps never undo each other. The room keeps the setting, saves it and sends it in LOBBY and
    * STATE as `screenAudio`. */
@@ -539,6 +543,9 @@ export type ServerMessage =
        * PR2): the host page greys ⚡ 👹. Absent means false, also from an older server. A hint only: each screen drops
        * a SCREEN_EFFECT itself while its own player plays. */
       clipPlaying?: true;
+      /** 🌑 螢幕變暗 is on (immersion.md PR2): the big screens draw a DIM_ALPHA black layer. Absent means false, also from
+       * an older server. The room clears it when a clip starts playing, the game finishes or a new game starts. */
+      screenDim?: true;
       /** The categories the buzz winner (`view.buzz.picker`) may pick for the next song, while it may (boss-music-buzzer.md M5). */
       buzzCategories?: string[];
       /** A finished game's podium reveal. Absent from older servers and from a game finished before it: show the podium. */
@@ -960,6 +967,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const effect = HOST_EFFECTS.find((e) => e === m.effect);
       return effect ? { type: "HOST_EFFECT", effect } : null;
     }
+    case "HOST_DIM":
+      return typeof m.on === "boolean" ? { type: "HOST_DIM", on: m.on } : null;
     case "HOST_SCREEN_AUDIO": {
       const key = SCREEN_AUDIO_KEYS.find((k) => k === m.key);
       return key && typeof m.on === "boolean" ? { type: "HOST_SCREEN_AUDIO", key, on: m.on } : null;

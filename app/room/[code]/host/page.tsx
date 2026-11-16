@@ -769,8 +769,8 @@ export default function HostPage() {
             ⚙ 更多
           </PixelButton>
         </header>
-        {/* ⚡ 👹 (immersion.md PR2): sticky, so the pads stay one thumb away while the host scrolls to judge. */}
-        <HostFxRow clipPlaying={!!game?.clipPlaying} sound={game?.screenSound} lobby={!game} online={ready} send={send} />
+        {/* ⚡ 👹 🌑 (immersion.md PR2): sticky, so the pads stay one thumb away while the host scrolls to judge. */}
+        <HostFxRow clipPlaying={!!game?.clipPlaying} sound={game?.screenSound} lobby={!game} playing={game?.phase === "playing"} dim={!!game?.screenDim} online={ready} send={send} />
         {closing && (
           <Panel tone="turn" role="status" data-testid="room-closing" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
             房間再 {closing.minutesLeft} 分鐘關閉

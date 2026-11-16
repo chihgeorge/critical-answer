@@ -43,7 +43,10 @@ test("the host page's effect pads work in the lobby and say a press was sent", a
   await host.getByRole("button", { name: /主持遊戲/ }).click();
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const pads = host.getByRole("group", { name: "大螢幕加料" });
-  await expect(pads.getByRole("button")).toHaveCount(2);
+  await expect(pads.getByRole("button")).toHaveCount(3);
+  // 🌑 waits for the game: off in the lobby, with the reason in its label.
+  await expect(pads.getByRole("button", { name: "螢幕變暗：開局後才能用" })).toBeDisabled();
+  await expect(pads).toContainText("🌑 開局後");
   await pads.getByRole("button", { name: "⚡ 雷聲" }).click();
   await expect(pads).toContainText("已送出");
   await expect(pads.getByRole("button", { name: "⚡ 雷聲" })).toBeEnabled();
