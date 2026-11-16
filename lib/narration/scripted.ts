@@ -28,7 +28,7 @@ export const FOODIE = {
   nextRoom: ["輪到{team}。{monster}看起來很有嚼勁。", "{team}請注意，{monster}受驚時肉質會變緊。", "換{team}了，這隻{monster}肉質相當結實。"],
   nextBoss: ["輪到{team}！{monster}一看就是主菜等級。", "{team}上場，這麼大隻的{monster}很少見。"],
   atmBossKill: ["這麼大的食材，得找個更大的鍋子。", "貓頭鷹已經在翻食譜了。", "首領級的肉，火候可不能馬虎。"],
-  feast: ["寶箱裡是{dish}，火候剛好，{team}飽足感 +{points}。"],
+  feast: ["{team}開出{dish}，飽足感 +{points}！"],
 };
 
 export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, string[]> = {
@@ -83,9 +83,9 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
     "轟！{team}再添一擊，{bossHp} 顆心待破。",
   ],
   "boss-phase": [
-    "{monster}的鱗片轉了顏色，戰鬥進入第{ordinal}階段：{name}！",
-    "還沒結束！{monster}重新站起，第{ordinal}階段「{name}」開始了。",
-    "{monster}發出一聲長嘯，血量全滿——第{ordinal}階段：{name}。",
+    "{monster}的鱗片變色，進入第{ordinal}階段：{name}！",
+    "還沒完！{monster}起身，第{ordinal}階段「{name}」！",
+    "{monster}長嘯，血量全滿——第{ordinal}階段：{name}。",
     "地城劇烈搖晃，{monster}換了模樣，迎來第{ordinal}階段！",
   ],
   "event-room": [], // never read: line() picks from EVENT_VARIANTS
@@ -94,7 +94,7 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
     "{monster}轟然倒下，{team}拿下致命一擊，+{bonus}！",
     "終結！{team}的最後一擊讓{monster}灰飛煙滅。",
     "{monster}的哀號迴盪在地城，{team}是英雄！",
-    "地城安靜了。{team}擊敗{monster}，加碼 {bonus} 分。",
+    "地城安靜。{team}擊敗{monster}，加碼 {bonus} 分。",
   ],
 };
 
@@ -102,23 +102,23 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
  * with a class. The plain pools name no weapon, so a team with no class never swings the wrong one. */
 export const CLASS_VARIANTS: Record<ClassId, { correct: string[]; "boss-hit": string[] }> = {
   mage: {
-    correct: ["{team}揮動法杖，火球轟向{monster}，+{points}！", "{team}念完咒語，冰箭把{monster}釘在原地，+{points}。"],
+    correct: ["{team}揮動法杖，火球轟向{monster}，+{points}！", "{team}念完咒語，冰箭把{monster}釘住，+{points}。"],
     "boss-hit": ["{team}召來閃電劈中首領，只剩 {bossHp} 顆心！", "{team}的火球炸開，首領還剩 {bossHp} 顆心。"],
   },
   cleric: {
     correct: ["{team}召來聖光，擊退了{monster}，+{points}！", "{team}舉起權杖，{monster}在聖光中退散，+{points}。"],
-    "boss-hit": ["聖光從天而降，{team}擊中首領，只剩 {bossHp} 顆心！", "{team}的聖光化成光矛，首領還剩 {bossHp} 顆心。"],
+    "boss-hit": ["聖光降下，{team}擊中首領，只剩 {bossHp} 顆心！", "{team}的聖光化成光矛，首領還剩 {bossHp} 顆心。"],
   },
   warrior: {
     correct: ["{team}揮劍一斬，{monster}應聲倒地，+{points}！", "{team}舉盾衝撞，把{monster}撞飛了，+{points}。"],
     "boss-hit": ["{team}一劍砍在首領身上，只剩 {bossHp} 顆心！", "{team}掄起戰斧重擊，首領還剩 {bossHp} 顆心。"],
   },
   thief: {
-    correct: ["{team}從暗處射出飛刀，{monster}來不及躲，+{points}！", "{team}繞到背後一刺，{monster}倒下了，+{points}。"],
+    correct: ["{team}射出飛刀，{monster}來不及躲，+{points}！", "{team}繞到背後一刺，{monster}倒下了，+{points}。"],
     "boss-hit": ["{team}的匕首找到破綻，首領只剩 {bossHp} 顆心！", "{team}從暗處一刺，首領還剩 {bossHp} 顆心。"],
   },
   chef: {
-    correct: ["{team}掄起平底鍋，{monster}被敲暈了，+{points}！", "{team}的菜刀一閃，{monster}已經切好備料，+{points}。"],
+    correct: ["{team}掄起平底鍋，{monster}被敲暈了，+{points}！", "{team}菜刀一閃，{monster}已切好備料，+{points}。"],
     "boss-hit": ["{team}一鍋砸在首領頭上，只剩 {bossHp} 顆心！", "{team}的爐火燒向首領，還剩 {bossHp} 顆心。"],
   },
 };
@@ -128,44 +128,44 @@ export const CLASS_VARIANTS: Record<ClassId, { correct: string[]; "boss-hit": st
 export const ROLL_VARIANTS: Record<"crit" | "fumble" | "persuaded" | "blunder", { correct: string[]; "boss-hit": string[] }> = {
   crit: {
     correct: [
-      "大成功！{team}擲出 20，一擊打飛{monster}，+{points}！",
-      "骰子停在 20！{team}的會心一擊，{monster}當場倒地，+{points}！",
-      "天選的 20！{team}暴擊{monster}，多拿一半，+{points}！",
+      "{team}擲出 20！一擊打飛{monster}，+{points}！",
+      "20 點！{team}會心一擊撂倒{monster}，+{points}！",
+      "天選的 20！{team}暴擊，多拿一半，+{points}！",
     ],
     "boss-hit": [
-      "大成功！{team}擲出 20，重擊首領，只剩 {bossHp} 顆心！",
-      "20 點暴擊！{team}多打掉一顆心，首領還剩 {bossHp} 顆心！",
+      "{team}擲出 20！重擊首領，剩 {bossHp} 顆心！",
+      "暴擊 20！{team}多打一顆，剩 {bossHp} 顆心！",
     ],
   },
   fumble: {
     correct: [
-      "手一滑……{team}擲出 1，還是打中了{monster}，+{points}。",
-      "骰子停在 1！{team}跌了一跤，{monster}居然還是倒了，+{points}。",
+      "{team}擲出 1，手滑也打中{monster}，+{points}。",
+      "擲出 1，{team}跌倒，{monster}也倒了，+{points}。",
     ],
     "boss-hit": [
-      "擲出 1，{team}差點摔倒……還是擊中首領，剩 {bossHp} 顆心。",
-      "手一滑！{team}的攻擊歪了一下，還是打中，首領還剩 {bossHp} 顆心。",
+      "擲出 1！{team}跌倒也打中，剩 {bossHp} 顆心。",
+      "手一滑！{team}歪歪打中，首領剩 {bossHp} 顆心。",
     ],
   },
   // A persuasion check (kind "check"): a natural 20 wins without an answer, a 1 halves the reward.
   persuaded: {
     correct: [
-      "說服成功！{team}擲出 20，{monster}直接讓路，不用答題，+{points}！",
-      "20 點！{team}幾句話就說動了{monster}，+{points}！",
+      "擲出 20！{team}說動{monster}讓路，+{points}！",
+      "20 點！{team}三言兩語說動{monster}，+{points}！",
     ],
     "boss-hit": [
-      "擲出 20！{team}說得首領啞口無言，只剩 {bossHp} 顆心！",
-      "20 點說服！首領聽完{team}的話也動搖了，還剩 {bossHp} 顆心！",
+      "擲出 20！{team}說服首領，剩 {bossHp} 顆心！",
+      "20 點！首領被{team}說動，剩 {bossHp} 顆心！",
     ],
   },
   blunder: {
     correct: [
-      "說服擲出 1，{team}講錯話了……還好答對，+{points}，只拿一半。",
-      "{team}一開口就失言，{monster}很不爽，答對也只拿一半，+{points}。",
+      "說服擲出 1，{team}失言，只拿一半，+{points}。",
+      "{team}一開口就失言，答對只拿一半，+{points}。",
     ],
     "boss-hit": [
-      "說服擲出 1，首領被{team}惹毛了……還是答對，首領剩 {bossHp} 顆心。",
-      "{team}說服失敗，但答案是對的，首領還剩 {bossHp} 顆心。",
+      "{team}說服擲出 1，首領剩 {bossHp} 顆心。",
+      "{team}說服失敗但答對，首領剩 {bossHp} 顆心。",
     ],
   },
 };
@@ -194,18 +194,18 @@ export const BOSS_DISH_VARIANTS = [
 
 /** The first team into the boss room opens the door (event.entersBoss without order or phase). */
 export const BOSS_ENTER_VARIANTS = [
-  "{team}答對了，推開最後一道門——首領就在眼前！",
+  "{team}答對，推開最後一道門，首領就在眼前！",
   "{monster}倒下，{team}踏進了首領的巢穴，+{points}！",
   "答對！{team}走進最深處，首領緩緩睜開眼睛。",
-  "{team}拿下 {points} 分，地城最深處的大門為他們打開了。",
+  "{team}拿下 {points} 分，最深處的大門打開了。",
   ...FOODIE.bossEnter,
 ];
 
 /** A later team joining the boss fight (event.entersBoss.order): the door is already open (live-map.md D9). */
 export const BOSS_JOIN_VARIANTS = [
   "{team}也趕到了首領房，加入戰局，+{points}！",
-  "答對！{team}衝進敞開的大門，和大家並肩作戰。",
-  "{monster}倒下，{team}跟上腳步，首領又多了一個對手！",
+  "答對！{team}衝進大門，和大家並肩作戰。",
+  "{monster}倒下，{team}跟上，首領又多一個對手！",
   "{team}拿下 {points} 分，殺進首領房支援戰場！",
 ];
 
@@ -366,25 +366,25 @@ export const BOSS_EXHAUSTED_VARIANTS = [
 ];
 
 /** A team walking into the boss room after phase 2 has started: the phase everyone has already seen (D13). */
-const BOSS_ENTER_PHASE_VARIANTS = [
+export const BOSS_ENTER_PHASE_VARIANTS = [
   "{team}趕進首領房，首領正處於「{phase}」！",
-  "{team}踏進首領房，戰鬥已經進入「{phase}」。",
-  "答對！{team}走進最深處，迎面就是「{phase}」的首領。",
+  "{team}踏進首領房，戰鬥已進入「{phase}」。",
+  "答對！{team}迎面撞上「{phase}」的首領。",
 ];
 
 /** A wrong buzz (boss-buzzer.md): short, the music is playing again. */
 export const BUZZ_OUT_VARIANTS = ["{team}答錯了！這題出局，其他隊快搶！", "不對！{team}這題不能再搶，音樂繼續！", "{monster}大笑，{team}出局！還有誰知道？"];
 
 /** Every online team missed the song (boss-music-buzzer.md M1): the same one again, everyone in. */
-export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一首再搶一次！", "{team}也答錯，全員出局……重來！同一首，大家再搶一次！", "{monster}得意大笑：沒人答得出來！同一首，再搶一次！"];
+export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一首再搶一次！", "{team}也答錯，全員出局！同一首再搶一次！", "{monster}得意大笑：沒人答對！同一首再搶一次！"];
 /** The last team still in dropped instead, so nobody answered wrong: the same song reopens to all (M1). */
 export const BUZZ_REOPEN_LINE = "最後一隊斷線了！同一首再搶一次！";
 
 /** 🚨 成立 (anti-ai-cheating.md): {team} was caught asking an AI by {caught}. */
 export const CAUGHT_VARIANTS = [
-  "🚨 抓包成立！{team}偷問 AI 被{caught}逮個正著，這題不算，換一題重來！",
-  "🚨 主持人判定成立！{team}這題沒分還被趕去換題，{caught}拿走賞金！",
-  "🚨 {caught}眼睛真利！{team}被抓到偷問 AI，這題作廢，換一題！",
+  "🚨 {caught}抓到{team}偷問 AI，換一題！",
+  "🚨 抓包成立！{team}換題，{caught}領賞！",
+  "🚨 {caught}眼尖！{team}這題作廢，換題！",
 ];
 /** 逃跑・換房: the team ran from {monster} into {to}, its new monster in the same room. */
 export const FLEE_SWITCH_VARIANTS = [
@@ -403,7 +403,7 @@ export const PRAYER_VARIANTS = ["聖光降臨，{team}再答一次！", "{team}�
 
 /** A wrong boss answer: the boss brings a new question, there is nothing to answer again (D2=B). */
 export const BOSS_MISS_VARIANTS = [
-  "{team}答錯了！{monster}大笑一聲，換出新的難題。",
+  "{team}答錯！{monster}大笑一聲，換出新的難題。",
   "{team}落空！{monster}甩甩尾巴，丟出下一道題。",
   "{monster}閃過{team}這一擊，題目也跟著換了。",
   "{team}沒打中，{monster}出了新的考驗。",
@@ -412,47 +412,47 @@ export const BOSS_MISS_VARIANTS = [
 /** An opened event room (docs/designs/event-rooms.md D11), per outcome. {points}: the satiety it gave or took. */
 export const EVENT_VARIANTS: Record<EventOutcome, string[]> = {
   feast: [
-    "寶箱一打開，香味撲鼻：是{dish}！{team}吃得好飽，飽足感 +{points}。",
-    "{team}掀開寶箱，裡面是熱騰騰的{dish}！飽足感 +{points}。",
-    "寶箱裡藏著一道{dish}，{team}一口接一口，飽足感 +{points}！",
+    "香噴噴的{dish}！{team}飽足感 +{points}。",
+    "{team}掀開寶箱，是{dish}！飽足感 +{points}。",
+    "寶箱裡有{dish}，{team}飽足感 +{points}！",
     ...FOODIE.feast,
   ],
   rotten: [
-    "寶箱一打開，一股怪味衝出來……是黑暗料理！{team}硬吞下去，飽足感 −{points}。",
-    "{team}掀開寶箱，裡面的菜冒著紫煙……吃下去肚子好痛，飽足感 −{points}。",
-    "黑暗料理！{team}吃了一口就後悔了，飽足感 −{points}。",
+    "是黑暗料理！{team}硬吞下去，飽足感 −{points}。",
+    "{team}吃下冒著紫煙的菜，飽足感 −{points}。",
+    "黑暗料理！{team}一口就後悔，飽足感 −{points}。",
   ],
   spring: [
-    "{team}喝了一口泉水，力量湧了上來：職業能力多一次！",
-    "泉水甜甜的，{team}精神大振，職業能力 +1！",
+    "{team}喝下泉水，力量湧現：職業能力多一次！",
+    "泉水好甜！{team}精神大振，職業能力 +1！",
   ],
   curse: [
-    "{team}一摸雕像，紫煙冒了出來……被詛咒了！下次答對只拿一半。",
-    "神秘雕像的眼睛亮起紫光：{team}中了詛咒，下次答對獎勵減半！",
+    "{team}被雕像詛咒了！下次答對只拿一半。",
+    "紫光一閃，{team}中了詛咒：下次獎勵減半！",
   ],
   blessing: [
-    "{team}一摸雕像，金光灑了下來：下次答對多拿一半！",
-    "神秘雕像的眼睛亮起金光，祝福了{team}：下次答對，獎勵多一半！",
+    "金光灑在{team}身上：下次答對多拿一半！",
+    "雕像眼睛亮起金光，{team}下次答對多一半！",
   ],
   great: [
-    "占卜師的水晶球亮起金光——大吉！{team}收到一桌好菜，飽足感 +{points}！",
+    "大吉！{team}收到一桌好菜，飽足感 +{points}！",
     "籤紙飄落：大吉！{team}飽足感 +{points}！",
   ],
   good: [
-    "水晶球閃了閃——中吉！{team}的職業能力多一次。",
+    "水晶球閃了閃：中吉！{team}職業能力多一次。",
     "占卜師點點頭：中吉！{team}職業能力 +1。",
   ],
   bad: [
-    "水晶球暗了下來……凶！{team}下次答對只拿一半。",
-    "占卜師搖搖頭：凶。{team}下次答對獎勵減半……",
+    "水晶球暗了……凶！{team}下次答對只拿一半。",
+    "占卜師搖頭：凶。{team}下次答對獎勵減半……",
   ],
   // Never read: the room narrates the fortune teller with FORTUNE_* below (fortune-teller.md).
   fortune: ["占卜師收起了水晶球。"],
 };
 /** The spring's and 中吉's line for a chef or a team with no class: satiety instead of an ability use. */
 /** A rotten dish on an empty belly: nothing to take, so no −0. */
-const EVENT_ROTTEN_EMPTY_VARIANTS = ["寶箱裡是黑暗料理！幸好{team}肚子早就空了，沒得扣。", "{team}聞了一口黑暗料理就放下了，飽足感本來就見底。"];
-const EVENT_SATIETY_VARIANTS = ["{team}喝了一口甜甜的泉水，飽足感 +{points}！", "清涼的泉水讓{team}精神一振，飽足感 +{points}。"];
+export const EVENT_ROTTEN_EMPTY_VARIANTS = ["黑暗料理！幸好{team}肚子早空，沒得扣。", "{team}聞了黑暗料理就放下，飽足感早已見底。"];
+export const EVENT_SATIETY_VARIANTS = ["{team}喝了一口甜甜的泉水，飽足感 +{points}！", "清涼的泉水讓{team}精神一振，飽足感 +{points}。"];
 
 /** The next line before a fork turn (docs/designs/branch-fork.md): two doors, and never what is behind them. */
 export const NEXT_FORK_VARIANTS = ["輪到{team}。眼前出現兩扇門……", "{team}走到叉路口，兩扇門靜靜等著。", "換{team}上場。前方的路分成了兩條……"];
@@ -481,7 +481,7 @@ export const NEXT_VARIANTS = {
   room: [
     "輪到{team}，{monster}擋在前面，請看題目！",
     "{team}，換你們了！{monster}正等著你們。",
-    "下一位：{team}。{monster}磨刀霍霍，準備好了嗎？",
+    "下一位：{team}。{monster}磨刀霍霍，準備好了？",
     "{team}上前一步，{monster}攔住了去路。",
     "{team}轉過彎，迎面撞上{monster}。",
     "{monster}盯上了{team}，請看題目。",

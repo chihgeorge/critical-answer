@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, PRAYER_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, CAUGHT_VARIANTS, CROWD_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
-import { MAX_MODEL_LINE, targetSegmentCount } from "./runner";
+import { MAX_LINE, MAX_MODEL_LINE, targetSegmentCount } from "./runner";
+import * as scripted from "./scripted";
 
 const team = "六個字的隊伍";
 const monster = "守門史萊姆王";
@@ -711,5 +712,41 @@ describe("🚨 成立 line (anti-ai-cheating.md)", () => {
     const line = p.line({ type: "flee", team: "紅隊", monster: "史萊姆", caught: "藍隊" });
     expect(said.has(line)).toBe(true);
     expect(line).toContain("紅隊");
+  });
+});
+
+// Value: protects=a scripted line fits the dialogue box like an AI line does (TODOS 縮短超過 22 字的舊腳本句; scripted lines
+// skip validLine and show as written); fails_when=a pool gains a line over 22 characters with a 4-character team, or over
+// MAX_LINE with the longest 20-character team, or a placeholder this test cannot size; seam=every exported pool template,
+// so a new pool is checked too; no_claim=wording quality, the warrior's 「戰士擲出 N 點」 prefix line() adds
+describe("every scripted pool line fits the dialogue box", () => {
+  const lines: string[] = [];
+  const walk = (v: unknown): void => {
+    if (typeof v === "string") lines.push(v);
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object") Object.values(v).forEach(walk);
+  };
+  walk(Object.values(scripted).filter((v) => typeof v !== "function"));
+  // {rule} and {condition} are the line's payload (a bank rule, a fortune condition), so they count as nothing here.
+  const vars: Record<string, string> = { rule: "", condition: "", monster: "史萊姆", to: "史萊姆", part: "霧狀身體", points: "3", bonus: "3", bossHp: "3", bossMaxHp: "5", ordinal: "二", name: "狂暴模式", phase: "狂暴模式", dish: "史萊姆凍", effect: "💫暈眩", names: "冒險小隊", caught: "冒險小隊", by: "冒險小隊" };
+  const fill = (k: string, team: string) => {
+    if (k === "team") return team;
+    if (!(k in vars)) throw new Error(`no size for {${k}}`); // a new placeholder must get a size here, not count as nothing
+    return vars[k];
+  };
+  const size = (t: string, team: string) => [...t.replace(/\{(\w+)\}/g, (_, k: string) => fill(k, team))].length;
+
+  it("is at most 22 characters with a 4-character team and a 3-character monster", () => {
+    expect(lines.length).toBeGreaterThan(300);
+    for (const l of lines) expect(size(l, "冒險小隊"), l).toBeLessThanOrEqual(MAX_MODEL_LINE);
+  });
+
+  it("stays within MAX_LINE with a 20-character team", () => {
+    for (const l of lines) expect(size(l, "字".repeat(20)), l).toBeLessThanOrEqual(MAX_LINE);
+  });
+
+  // The chest's dish changes satiety, not score: a bare 「+3」 would read as points.
+  it("says 飽足感 on every chest feast and rotten line", () => {
+    for (const l of [...scripted.EVENT_VARIANTS.feast, ...scripted.EVENT_VARIANTS.rotten]) expect(l).toContain("飽足感");
   });
 });

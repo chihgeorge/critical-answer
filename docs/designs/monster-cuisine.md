@@ -4,6 +4,8 @@
 
 > Note (2026-11-07, v0.40.0.0): dishes now live in the monster catalog, not the bank; the bank's dish fields are gone. See [monster-catalog.md](monster-catalog.md).
 
+> Note (2026-11-16): every scripted pool line, the chest feast lines with `{dish}` included, now fits 22 characters with a 4-character team, a 3-character monster and a 4-character dish (`lib/narration/scripted.test.ts`). The 「寶箱料理那一句…比較長」 exception in 「長度不變」 below no longer holds.
+
 狀態：eng review 完成（2026-10-31），已在 `feat/monster-cuisine` 實作（T1–T5）。煮菜動畫見「煮菜動畫（v0.39）」一節。來源：TODOS.md「地城料理風格 1：怪物變食材，打倒後端上一道菜」。
 
 ## 問題
