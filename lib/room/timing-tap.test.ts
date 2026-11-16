@@ -20,13 +20,13 @@ const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unkn
 const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
-function tapGame() {
+function tapGame(laterPhase = false) {
   const data = new Map<string, unknown>();
   const storage = { get: async (k: string) => structuredClone(data.get(k)), put: vi.fn((k: string, v: unknown) => void data.set(k, structuredClone(v))) } as unknown as RoomStorage & { put: ReturnType<typeof vi.fn> };
   const io = { broadcast: vi.fn(), storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
   const bank = parseBank({
     rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [text("r1"), text("r2"), text("r3")] }],
-    boss: { monster: "dragon", phases: [{ maxHp: 1, questions: [text("p1-a")] }, { name: "最終決戰", rule: "卡點", maxHp: 3, buzzer: true, questions: [tap("t-a"), tap("t-b"), tap("t-c")] }] },
+    boss: { monster: "dragon", phases: [{ maxHp: 1, questions: [text("p1-a")] }, { name: "最終決戰", rule: "卡點", maxHp: 3, buzzer: true, questions: [tap("t-a"), tap("t-b"), tap("t-c")] }, ...(laterPhase ? [{ name: "加時", rule: "搶答", maxHp: 1, buzzer: true, questions: [text("z-a")] }] : [])] },
   });
   const room = new DungeonRoom(io, () => 0, { bank, epilogueDelayMs: 0, now: () => Date.now() });
   const host = makeConn("host");
@@ -285,7 +285,7 @@ describe("timing question in the room", () => {
   });
 
   // Value: protects=a no-tap close on the phase's last unrevealed timing question (it comes round as itself) does not close again and again; fails_when=the song keeps playing past the target after skipBuzz; seam=none
-  it("no tap on the last timing question left: it comes round again paused, the next ▶ replays it from the start, and a tapped team may tap again", () => {
+  it("no tap on the last timing question left: it comes round again paused, the next ▶ replays it from the start, and a tap counts in the replay's round", () => {
     const g = tapGame();
     g.room.game = { ...g.room.game!, revealedQuestionIds: [...g.room.game!.revealedQuestionIds, "t-b", "t-c"] };
     g.media("play");
@@ -299,32 +299,40 @@ describe("timing question in the room", () => {
     expect(g.state().tapLive).toBeUndefined();
     g.media("play");
     expect(g.seq()).toBe(seq + 1);
-    // The host skips it after a tap: the same question's new round lets that team tap again.
+    // The replay is a ⟲ too: a new round, and a tap counts in it; a later ⏸ ▶ keeps it (tapReplay is spent).
     g.clock(Date.now() - 10_000);
     g.tapAt(0);
-    send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "t-a" });
-    expect(g.room.game!.buzz).toMatchObject({ questionId: "t-a", tapRound: 2 });
-    expect(g.room.game!.buzz!.taps).toBeUndefined();
-    g.media("play");
-    g.clock(Date.now() - 10_000);
-    g.tapAt(0);
-    // The replay is a ⟲ too, so the round moved on again; the team's tap counts in it.
-    expect(g.lastOf(g.phones[0], "TAP_OK")).toMatchObject({ round: 3 });
-    expect(g.room.game!.buzz!.taps).toHaveLength(1);
-  });
-
-  // Value: protects=a timing question skipped before its first ▶ and come round as itself does not wipe taps on a later ⏸ ▶; fails_when=tapReplay outlives a plain ▶; seam=none
-  it("skipped before ▶ and come round as itself: ▶ plays it, and a later ⏸ ▶ keeps the taps", () => {
-    const g = tapGame();
-    g.room.game = { ...g.room.game!, revealedQuestionIds: [...g.room.game!.revealedQuestionIds, "t-b", "t-c"] };
-    send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "t-a" });
-    expect(g.qid()).toBe("t-a");
-    g.media("play");
-    g.clock();
-    g.tapAt(0);
+    expect(g.lastOf(g.phones[0], "TAP_OK")).toMatchObject({ round: g.room.game!.buzz!.tapRound });
     g.media("pause");
     g.media("play");
     expect(g.room.game!.buzz!.taps).toHaveLength(1);
+  });
+
+  // Value: protects=the host's skip of the phase's last unrevealed timing question (the big screen cannot play it) moves the last phase on; fails_when=the skip comes round to the same question, leaving only 結束遊戲; seam=none
+  it("the host skips the last timing question left before ▶: it counts as used and the last phase moves on to a revealed one", () => {
+    const g = tapGame();
+    g.room.game = { ...g.room.game!, revealedQuestionIds: [...g.room.game!.revealedQuestionIds, "t-b", "t-c"] };
+    send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "t-a" });
+    expect(g.qid()).toBe("t-b");
+    expect(g.room.game!.revealedQuestionIds).toContain("t-a");
+    expect(g.state()).toMatchObject({ question: { id: "t-b" } });
+    expect((g.room as unknown as { tapReplay: string | null }).tapReplay).toBeNull();
+  });
+
+  // Value: protects=an earlier phase whose last unrevealed timing question is skipped ends and shows its card at once; fails_when=the phase stays on the used question or the card never opens; seam=none
+  it("the host skips the last timing question left of an earlier phase: the phase ends and its card opens", () => {
+    const g = tapGame(true);
+    g.room.game = { ...g.room.game!, revealedQuestionIds: [...g.room.game!.revealedQuestionIds, "t-b", "t-c"] };
+    g.media("play");
+    g.clock();
+    send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "t-a" });
+    expect((g.room as unknown as { phaseCard: boolean }).phaseCard).toBe(true);
+    expect(g.room.game!.boss.phaseIndex).toBe(2);
+    expect(g.qid()).toBe("z-a");
+    expect(g.state().tapLive).toBeUndefined();
+    // A second press from a stale page is refused.
+    send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "t-a" });
+    expect(g.lastOf(g.host, "ERROR")).toMatchObject({ detail: "stale_question" });
   });
 
   // Value: protects=a killing tap keeps its table and the runner-up's bonus through the 4d20 beat; fails_when=tapReveal is dropped before the deferred reveal; seam=none
