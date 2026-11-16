@@ -54,3 +54,13 @@ The same bucket also holds the video and audio uploaded to the bank (up to 25 MB
 ## Deploy order
 
 Workers Builds does not wait for CI, and it is not guaranteed to finish before Vercel: when the frontend needs a new room protocol, run `npx wrangler deploy` locally before merging. Do not roll the Worker back to a version before v0.31.3.0 (see the [development guide](development.en.md#saving-and-rollback)); for the bank's rollback floor, see the [question bank guide](question-bank.en.md#how-to-recover-when-the-bank-is-stuck).
+
+## Post-deploy check
+
+After a deploy, run `npm run canary:live`. It plays one real game on the live site with four headless Chromium contexts that share no storage: the host, the big screen and two phones. The host opens a room from the home page's 主持遊戲 (no owner key), the big screen opens the host page's screen link, teams `CANARY-1` and `CANARY-2` join and pick the chef, and the host starts the game and rolls initiative for everyone. The team on turn answers correctly from the answer on the host page; the script checks that the big screen and the other phone show the answer, then the host serves the dish and presses 下一題, the script checks that the big screen moves to the next team, and the host ends the game with 結束冒險 in ⚙ 更多. Each step prints `STEP r<round> <step> ok|FAIL ms=<ms>`, each page prints `PAGE r<round> <page> status=<code> ms=<load ms> errs=[...]` (errs are that page's console errors and page errors), and the last line is `CANARY HEALTHY` or `CANARY BROKEN`; when it is not healthy the exit code is not 0. A round takes about 25 seconds.
+
+- `--rounds N`: play N rounds, each in a new room (default 1).
+- `--base URL` or the `CANARY_BASE_URL` environment variable: test a preview URL or local dev (for example `http://localhost:3000`) instead of the live site.
+- `CANARY_SHOTS=<folder>` environment variable: the first failed step saves a screenshot of each of the four pages there.
+
+The room is not deleted, and the host has no button to close one: once the game is over its connections rest after 2 idle hours, and it is cleared 6 hours after the first game start (see the [hosting guide](hosting.en.md#known-limits)). The script does not open the bank editor and uses no key.
