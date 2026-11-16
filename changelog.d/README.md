@@ -2,7 +2,7 @@
 
 Each PR adds one file here, `<branch-slug>.md`, instead of editing `VERSION` or `CHANGELOG.md`.
 It opens with front matter that names the version part this change raises, then the body is exactly what the
-CHANGELOG section will hold (`### Added`, `### Fixed`, ...), with no `## [x]` heading:
+CHANGELOG section will hold (`### Added`, `### Fixed`, ...), with no `## ` heading (the stamp workflow writes `## [x]`; any other `## ` line would cut the release notes):
 
 ```markdown
 ---

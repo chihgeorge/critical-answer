@@ -25,7 +25,6 @@ export function useRoomClock(sendRef: { current: (m: ClientMessage) => void }) {
   }, []);
   return { ping, offset, onPong };
 }
-export type RoomClock = ReturnType<typeof useRoomClock>;
 
 /** While `active`: a burst of pings (again for each new `key`, and back from sleep), then one every few seconds. */
 export function useClockPings(ping: () => void, active: boolean, key: string) {
