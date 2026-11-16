@@ -270,7 +270,7 @@ function SortWall({ tiles, narrow }: { tiles: SortTile[]; narrow?: boolean }) {
           tabIndex={-1}
           data-testid={`wall-sort-${i}`}
           data-look={t.look}
-          className="wall absolute !text-[24px] leading-[1.05]"
+          className={`wall${narrow ? " narrow" : ""} absolute !text-[24px] leading-[1.05]`}
           style={{ ...tileSpot(i, narrow), height: 62, zIndex: 5 }}
         />
       ))}
