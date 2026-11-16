@@ -42,7 +42,7 @@ describe("layoutMap", () => {
 
   it("fits 8 teams spread over many rooms into a narrow budget, keeping every pawn", () => {
     const teams = Array.from({ length: 8 }, (_, i) => team(`t${i}`, i + 2));
-    for (const budget of [480, 560, 650]) {
+    for (const budget of [552, 650]) { // 552: the 960 stage minus margins, gap and a 360px turn ribbon
       const m = layoutMap(teams, budget);
       expect(right(m)).toBeLessThanOrEqual(budget);
       expect(m.fog.w).toBeGreaterThanOrEqual(FOG_MIN);
@@ -52,8 +52,8 @@ describe("layoutMap", () => {
 
   it("fits 8 pawns in the boss room", () => {
     const teams = Array.from({ length: 8 }, (_, i) => team(`t${i}`, 4, true));
-    const m = layoutMap(teams, 650);
-    expect(right(m)).toBeLessThanOrEqual(650);
+    const m = layoutMap(teams, 552);
+    expect(right(m)).toBeLessThanOrEqual(552);
     const xs = m.boss.pawns.map((p) => p.x);
     expect(xs[7] + PAWN).toBeLessThanOrEqual(right(m));
     expect(new Set(xs).size).toBe(8);

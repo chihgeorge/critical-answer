@@ -48,7 +48,7 @@ export function MapStrip({ view }: { view: SpectatorView }) {
         {arrived && <div className="px-room-flash pointer-events-none absolute" style={{ left: box.x - p.x, top: box.top - top, width: box.w, height: box.h }} />}
         <div className={arrived ? (t.inBossPhase ? "px-charge" : "px-hop-in") : ""}>
         {turn && (
-          <span className="px-hop absolute text-[14px]" style={{ left: 7, top: -26, color: "var(--danger)", textShadow: "2px 2px 0 var(--k)" }}>
+          <span className="px-hop absolute text-[14px]" style={{ left: (PAWN - 14) / 2, top: -26, color: "var(--danger)", textShadow: "2px 2px 0 var(--k)" }}>
             ▼
           </span>
         )}
