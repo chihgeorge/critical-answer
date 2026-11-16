@@ -588,7 +588,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           buzz ? (
             <TurnRibbon color={turn ? look(turnIdx).hat : undefined} maxWidth={360}>{turn ? `${turn.name} 搶到了！` : timing ? "首領戰　卡點題" : "首領戰　搶答！"}</TurnRibbon>
           ) : (
-            turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={360 /* a long name must leave the map its width: 8 pawns in the boss room need 544px (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>
+            turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={360 /* a long name must leave the map its width: the widest 8-team map is 550px (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>
           )
         )}
         <MapStrip view={view} />

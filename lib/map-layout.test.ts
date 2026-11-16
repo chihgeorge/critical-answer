@@ -50,6 +50,13 @@ describe("layoutMap", () => {
     }
   });
 
+  it("fits the widest 8-team map, one boss team and seven in the stub, in 552px", () => {
+    const teams = [team("b", 9, true), ...Array.from({ length: 7 }, (_, i) => team(`t${i}`, 0))];
+    const m = layoutMap(teams, 552);
+    expect(right(m)).toBeLessThanOrEqual(552);
+    expect(allPawns(m)).toEqual(teams.map((t) => t.id).sort());
+  });
+
   it("fits 8 pawns in the boss room", () => {
     const teams = Array.from({ length: 8 }, (_, i) => team(`t${i}`, 4, true));
     const m = layoutMap(teams, 552);

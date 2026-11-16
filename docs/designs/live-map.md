@@ -2,7 +2,7 @@
 
 > Note (2026-11-05, v0.29.0.1): the `npm run e2e` / `npx playwright test` steps in this plan now run only in GitHub CI. Do not run them locally (see CLAUDE.md, Testing).
 
-Status: design review and eng review done (2026-10-23). Built on branch claude/live-map (T1 to T6). Pawn slot widened 26 → 28px after the 8-team render so two-character tags do not touch. Widened again 28 → 38px (2026-11-15) when the team tag grew from 12px to 16px for the back of the room; to keep 8 pawns in the boss room inside the 960px stage (544px of map), the turn ribbon beside the map is capped at 360px instead of 420px.
+Status: design review and eng review done (2026-10-23). Built on branch claude/live-map (T1 to T6). Pawn slot widened 26 → 28px after the 8-team render so two-character tags do not touch. Widened again 28 → 38px (2026-11-15) when the team tag grew from 12px to 16px for the back of the room; to keep the widest 8-team map inside the 960px stage (550px: one team in the boss room, seven folded into the entrance stub), the turn ribbon beside the map is capped at 360px instead of 420px.
 
 ## Goal
 
