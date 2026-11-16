@@ -138,11 +138,12 @@ export const MAX_GAME_LOGS = 1000;
 /** The newest MAX_GAME_LOGS games in `range`, oldest first. */
 export async function readGameLogs(storage: GameLogStorage, range: GameLogRange = {}): Promise<GameLog[]> {
   // Keys are `gameLog:<endedAt>:<uuid>`; "~" sorts after every character of an ISO time, so `to` keeps its whole prefix.
-  const ends = [range.to && `${PREFIX}${range.to}~`, range.before && `${PREFIX}${range.before}`].filter((e) => !!e).sort();
+  // A trailing Z would sort after the ":" and "." of every key in that minute or second: from would skip them, before keep them.
+  const noZ = (t: string) => t.replace(/Z$/, "");
+  const ends = [range.to && `${PREFIX}${range.to}~`, range.before && `${PREFIX}${noZ(range.before)}`].filter((e) => !!e).sort();
   const list = await storage.list({
     prefix: PREFIX,
-    // A trailing Z would sort after the ":" and "." of every key in that minute or second, skipping them.
-    ...(range.from ? { start: `${PREFIX}${range.from.replace(/Z$/, "")}` } : {}),
+    ...(range.from ? { start: `${PREFIX}${noZ(range.from)}` } : {}),
     ...(ends[0] ? { end: ends[0] } : {}),
     reverse: true,
     limit: MAX_GAME_LOGS,

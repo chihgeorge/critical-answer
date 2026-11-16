@@ -60,7 +60,8 @@ export function claimScreenAutoReload(pathname: string, now: number): boolean {
   if (!/\/screen\/?$/.test(pathname)) return false;
   try {
     const last = Number(sessionStorage.getItem(screenReloadKey));
-    if (last && now - last < SCREEN_ERROR_RELOAD_GAP_MS) return false;
+    // abs: a clock that jumped back (a TV syncing its time after boot) must not block reloads until it catches up.
+    if (last && Math.abs(now - last) < SCREEN_ERROR_RELOAD_GAP_MS) return false;
     sessionStorage.setItem(screenReloadKey, String(now));
     return true;
   } catch {

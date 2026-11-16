@@ -78,6 +78,7 @@ describe("claimScreenAutoReload", () => {
     expect(claimScreenAutoReload("/room/ABCD/screen", 1000)).toBe(true);
     expect(claimScreenAutoReload("/room/ABCD/screen/", 1000 + SCREEN_ERROR_RELOAD_GAP_MS - 1)).toBe(false);
     expect(claimScreenAutoReload("/room/ABCD/screen", 1000 + SCREEN_ERROR_RELOAD_GAP_MS)).toBe(true);
+    expect(claimScreenAutoReload("/room/ABCD/screen", 1000 - SCREEN_ERROR_RELOAD_GAP_MS)).toBe(true); // the clock jumped back
     const blocked = () => {
       throw new DOMException("blocked", "SecurityError");
     };
