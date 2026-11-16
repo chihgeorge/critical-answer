@@ -31,7 +31,7 @@ jobs:
     environment: stamp
     steps:
       # A short-lived token for the stamp app.
-      - uses: actions/create-github-app-token@v2
+      - uses: actions/create-github-app-token@v3
         id: app
         with:
           app-id: ${{ vars.STAMP_APP_ID }}
