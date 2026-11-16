@@ -81,12 +81,12 @@ lib/bank-api.ts          /api/bank 與 /api/game-logs 的 HTTP 處理（OWNER_KE
 lib/game-log.ts          對局紀錄：遊戲結束時從遊戲狀態整理出一筆紀錄，存進 BankStoreDO，下載只拿最新的 1000 場
 lib/narration/           旁白：事件、腳本句、LLM、斷路器、執行器、觀眾反應計數（crowd.ts）、瀏覽器 TTS 播放決策（tts.ts）
 lib/pixel-art.ts         程式繪製的像素角色與場景
-lib/turn-info.ts         從公開狀態算出輪到誰、面對哪隻怪
+lib/turn-info.ts         從公開狀態算出輪到誰、面對哪隻怪，以及手機何時顯示「下一個是我們！」、何時震動
 lib/map-layout.ts        活地圖的版面計算：房間、棋子、迷霧、首領房的位置（純函式）
 lib/use-room-socket.ts   三個房間頁面共用的連線 hook（訊息解析、伺服器重啟偵測、休息時停止重連、首次連線逾時）
 lib/join-rejection.ts    加入被拒絕時手機顯示的原因句（純函式）
 lib/stored.ts            不會丟錯的 localStorage 讀寫（無痕模式也不會壞）
-lib/use-wake-lock.ts     主持人頁和大螢幕的螢幕不休眠 hook
+lib/use-wake-lock.ts     主持人頁、大螢幕和玩家手機的螢幕不休眠 hook
 lib/report-client-error.ts、client-error-api.ts  前端當掉的回報（sendBeacon）與 /api/client-error 的處理（來源檢查、4 KB 上限、寫一行 log）
 lib/bank-image-api.ts    /api/bank/image 圖片、影片和聲音上傳（檔案類型、大小檢查；題庫讀不懂時回 409、連不上時回 503）
 worker/index.ts          Cloudflare Worker：Room 與 BankStoreDO 兩個 Durable Object、/api/bank、/api/game-logs 與 /api/client-error 路由、入口規則
