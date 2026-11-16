@@ -1,6 +1,6 @@
 {
   "name": "critical-answer",
-  "version": "0.76.1",
+  "version": "0.76.2",
   "private": true,
   "license": "MIT",
   "scripts": {
@@ -44,7 +44,9 @@
     "wrangler": "^4.160.0"
   },
   "knip": {
-    "entry": ["scripts/*.ts"],
+    "entry": [
+      "scripts/*.ts"
+    ],
     "ignoreExportsUsedInFile": true
   },
   "overrides": {
