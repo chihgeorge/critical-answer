@@ -943,7 +943,7 @@ export default function HostPage() {
                   setHealth(null); // another bank's rows
                   send({ type: "HOST_SET_BANK", bankId: e.target.value });
                 }}
-                className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px]"
+                className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px] text-[var(--k)]"
               >
                 {/* The room's pick may be a bank this host is not offered (no owner key yet) or one since deleted. */}
                 {(banks.list.some((b) => b.id === banks.selected.id) ? banks.list : [...banks.list, banks.selected]).map((b) => (
@@ -1044,8 +1044,8 @@ export default function HostPage() {
         {game && game.phase === "playing" && !game.intro && !game.initiative && (
           <>
             {/* No team on turn (every phone offline): the team rows and their 交給新手機 still show. */}
-            {/* Not over an answer or card on show: its 下一題 still works with every phone offline. */}
-            {pausedOffline(game.view) && !revealUp && (
+            {/* Not over an answer, card, lock or roll on show (they finish without a phone), same as the big screen. */}
+            {pausedOffline(game.view) && !revealUp && !lock && !roll && (
               <div data-testid="host-paused">
                 <Panel tone="turn" className="px-3 py-2 text-center" role="status">
                   <div className="text-[20px]">{PAUSED_OFFLINE}</div>
@@ -1401,7 +1401,7 @@ export default function HostPage() {
                     </PixelButton>
                   ) : (
                   <div className={turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
-                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} aria-label={`答錯・${retryLabel}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} aria-label={`答錯・${turn.inBoss ? "下輪換題" : "下輪再答"}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                       {turn.inBoss ? "答錯・下輪換題" : <TwoLine top="答錯・" bottom="下輪再答" />}
                       <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                     </PixelButton>
