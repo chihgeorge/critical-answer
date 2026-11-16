@@ -180,6 +180,7 @@ describe("game log", () => {
     const at = async (range: Parameters<typeof readGameLogs>[1]) => (await readGameLogs(storage, range)).map((l) => l.endedAt);
     expect(await at({ from: "2026-11-21", to: "2026-11-21" })).toEqual(ended.slice(1, 4));
     expect(await at({ from: "2026-11-21T11" })).toEqual(ended.slice(2));
+    expect(await at({ from: "2026-11-21T10:00Z", to: "2026-11-21T10" })).toEqual([ended[1]]); // a trailing Z skips nothing
     expect(await at({ to: "2026-11-21T10" })).toEqual(ended.slice(0, 2));
     expect(await at({ from: "2026-11-21", before: "2026-11-21T12:30:00.000Z" })).toEqual([ended[1]]);
     expect(await at({ to: "2026-11-22", before: "2026-11-21T12:30:00.000Z" })).toEqual(ended.slice(0, 2)); // the earlier end wins

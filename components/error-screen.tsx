@@ -14,12 +14,13 @@ export const ERROR_RELOAD_LABEL = "重新載入";
  * a deploy), and only a fresh page fixes that. The room keeps the game, so nothing is lost. */
 export function ErrorScreen({ error }: { error: unknown }) {
   useEffect(() => reportClientError(error), [error]);
-  // The big screen reloads itself (nobody stands by the TV); host and phone pages keep the button only.
+  // The big screen reloads itself (nobody stands by the TV), retrying until the once-a-minute gap allows it; host and
+  // phone pages keep the button only.
   useEffect(() => {
-    const id = setTimeout(() => {
+    const id = setInterval(() => {
       if (claimScreenAutoReload(location.pathname, Date.now())) location.reload();
     }, SCREEN_ERROR_RELOAD_MS);
-    return () => clearTimeout(id);
+    return () => clearInterval(id);
   }, []);
   return (
     <main className="flex min-h-screen items-center justify-center p-4" style={{ background: "var(--stage)" }}>
