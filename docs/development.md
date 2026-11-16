@@ -85,7 +85,7 @@ lib/turn-info.ts         從公開狀態算出輪到誰、面對哪隻怪，以�
 lib/map-layout.ts        活地圖的版面計算：房間、棋子、迷霧、首領房的位置（純函式）
 lib/use-room-socket.ts   三個房間頁面共用的連線 hook（訊息解析、伺服器重啟偵測、休息時停止重連、首次連線逾時）
 lib/join-rejection.ts    加入被拒絕時手機顯示的原因句（純函式）
-lib/stored.ts            不會丟錯的 localStorage 讀寫（無痕模式也不會壞）
+lib/stored.ts            不會丟錯的 localStorage 讀寫，以及用 sessionStorage 帶到 /play 的加入密碼（無痕模式也不會壞）
 lib/use-wake-lock.ts     主持人頁、大螢幕和玩家手機的螢幕不休眠 hook
 lib/report-client-error.ts、client-error-api.ts  前端當掉的回報（sendBeacon）與 /api/client-error 的處理（來源檢查、4 KB 上限、寫一行 log）
 lib/bank-image-api.ts    /api/bank/image 圖片、影片和聲音上傳（檔案類型、大小檢查；題庫讀不懂時回 409、連不上時回 503）
