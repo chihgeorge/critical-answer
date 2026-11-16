@@ -2104,7 +2104,7 @@ export class DungeonRoom {
           this.handleRejoin(sender, msg.teamId, msg.teamKey);
           break;
         case "HOST_START":
-          this.handleHostStart(sender, msg.aiNarration, msg.intro, msg.initiative, msg.answerSeconds);
+          this.handleHostStart(sender, msg.aiNarration, msg.intro, msg.initiative, msg.answerSeconds, msg.bossThreshold);
           break;
         case "HOST_INTRO":
           this.handleHostIntro(sender, msg.page);
@@ -3117,7 +3117,7 @@ export class DungeonRoom {
     }
   }
 
-  private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean, answerSeconds?: number) {
+  private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean, answerSeconds?: number, bossThreshold?: number) {
     if (!this.requireHost(conn)) return;
     if (this.game) {
       this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
@@ -3136,7 +3136,8 @@ export class DungeonRoom {
       roomTemplates(this.bank, monsters.rooms),
       poolQuestionIds(this.bank),
       firstPhase.questionIds,
-      DEFAULT_GAME_CONFIG,
+      // Stored in game.config, so it rides the snapshot and nothing changes it once the game started.
+      { ...DEFAULT_GAME_CONFIG, ...(bossThreshold !== undefined ? { bossThreshold } : {}) },
       firstPhase.maxHp,
       this.rng,
       this.bank.boss.hitReward,

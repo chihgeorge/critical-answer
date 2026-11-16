@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Dialog, type Page } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
 import { asTextBank } from "../lib/text-bank";
 import { SERVE_HOLD_MS } from "../lib/protocol";
@@ -33,8 +33,19 @@ export async function screenUrl(host: Page): Promise<string> {
 export async function startGame(host: Page) {
   const intro = host.getByRole("checkbox", { name: "開始前播放玩法說明" });
   await intro.uncheck();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await clickStart(host);
   await skipInitiative(host);
+}
+
+/** 開始遊戲, accepting its 確定要開始？ (a team without a class, or a small bank, asks first). Any other dialog is dismissed. */
+export async function clickStart(host: Page) {
+  const onDialog = (d: Dialog) => void (d.message().includes("確定要開始") ? d.accept() : d.dismiss());
+  host.on("dialog", onDialog);
+  try {
+    await host.getByRole("button", { name: /開始遊戲/ }).click();
+  } finally {
+    host.off("dialog", onDialog);
+  }
 }
 
 /** 全部代擲: the host rolls 擲先攻 for every team. E2E_DIE ties them all, so the lobby order stands, and the worker's

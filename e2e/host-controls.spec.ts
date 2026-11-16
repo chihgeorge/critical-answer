@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl } from "./answer";
+import { answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl, clickStart } from "./answer";
 import { TITLE } from "../lib/monster-catalog";
 
 async function hostRoom(browser: Browser) {
@@ -95,7 +95,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
 
   const intro = host.getByRole("checkbox", { name: "開始前播放玩法說明" });
   await expect(intro).toBeChecked();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await clickStart(host);
 
   await expect(screen.getByTestId("how-to-play")).toContainText("1/4");
   await expect(team.getByTestId("phone-intro")).toContainText("第 1／4 頁：輪流上陣");

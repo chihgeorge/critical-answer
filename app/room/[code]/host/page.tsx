@@ -15,7 +15,7 @@ import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
-import { CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
+import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { ScreenSoundBanner } from "@/components/screen-sound-banner";
 import { HostFxRow } from "@/components/host-fx-row";
@@ -93,6 +93,8 @@ export default function HostPage() {
   const [screenAudio, setScreenAudio] = useState(() => screenAudioOf(null));
   /** 每題作答倒數 for the next game (answer-countdown.md D2): this page's pick, so a replay keeps it. */
   const [answerSeconds, setAnswerSeconds] = useState<number>(DEFAULT_ANSWER_SECONDS);
+  /** 進王門檻 for the next game: this page's pick like answerSeconds; the room keeps it in game.config once started. */
+  const [bossThreshold, setBossThreshold] = useState<number>(BOSS_THRESHOLD);
   const [error, setError] = useState<string | null>(null);
   const [noToken, setNoToken] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -821,7 +823,11 @@ export default function HostPage() {
                 <Panel key={t.id} className="flex items-center gap-3 px-3 py-2">
                   <Sprite kind="hero" variant={i} scale={2} />
                   <span className="min-w-0 flex-1 truncate text-[18px]">{t.name}</span>
-                  {t.classId && <span className="text-[15px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</span>}
+                  {t.classId ? (
+                    <span className="text-[15px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</span>
+                  ) : (
+                    <span data-testid="host-no-class" className="text-[15px]" style={{ color: "#a8470f" }}>未選職業</span>
+                  )}
                   <PixelButton
                     disabled={!ready}
                     onClick={() => {
@@ -904,6 +910,22 @@ export default function HostPage() {
                   ))}
                 </select>
               </label>
+              <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
+                進王門檻
+                <select
+                  data-testid="boss-threshold"
+                  value={bossThreshold}
+                  onChange={(e) => setBossThreshold(Number(e.target.value))}
+                  className="border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px]"
+                >
+                  {BOSS_THRESHOLDS.map((n) => (
+                    <option key={n} value={n}>
+                      {`${n} 進度分${n === BOSS_THRESHOLD ? "（標準）" : ""}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="text-[13px]">隊伍多時選低一點，整場比較短；開始後不能改</div>
             </Panel>
             <label className="flex items-center gap-2 text-[16px]">
               題庫：
@@ -952,8 +974,11 @@ export default function HostPage() {
               // AI narration follows the room's key (HOST_AI_KEY), so a key added mid-game still takes effect.
               onClick={() => {
                 // The warning shows only for a room pool smaller than the team count, which deals repeats or another difficulty's questions: ask first.
-                if (sizeWarning && !window.confirm(`${bankSizeWarningText(sizeWarning, lobby.length)}\n確定要開始？`)) return;
-                send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds });
+                // Teams without a class are only reminded, never forced (a pick stays optional).
+                const noClass = lobby.filter((t) => !t.classId).length;
+                const warnings = [...(sizeWarning ? [bankSizeWarningText(sizeWarning, lobby.length)] : []), ...(noClass ? [`還有 ${noClass} 隊沒選職業（沒有技能，比較吃虧）`] : [])];
+                if (warnings.length && !window.confirm(`${warnings.join("\n")}\n確定要開始？`)) return;
+                send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds, bossThreshold });
               }}
             >
               開始遊戲 ▶
@@ -1136,7 +1161,7 @@ export default function HostPage() {
               )}
               {turn.team && !buzz && (
               <div className="mt-2">
-                <ScoreMeter score={turn.team.score} active />
+                <ScoreMeter score={turn.team.score} max={game.view.bossThreshold ?? BOSS_THRESHOLD} active />
               </div>
               )}
               {game.question && !game.question.options && (
@@ -1408,7 +1433,7 @@ export default function HostPage() {
                   {t.sneakArmed && <span className="text-[13px]" title={`偷襲準備好了：這題答對獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
                   {game.view.antiCheat?.on && t.catchesLeft !== undefined && <span className="text-[13px]" title={`神諭剩 ${t.oracleLeft ?? 0} 次、抓包剩 ${t.catchesLeft} 次`}>🔮{t.oracleLeft ?? 0} 🚨{t.catchesLeft}</span>}
                   {t.oracle && <span className="text-[13px]" title="這題請示了神諭：答對獎勵減半">🔮減半</span>}
-                  <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{Math.min(t.score, BOSS_THRESHOLD)}/{BOSS_THRESHOLD}</span>
+                  <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{Math.min(t.score, game.view.bossThreshold ?? BOSS_THRESHOLD)}/{game.view.bossThreshold ?? BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
                   </div>
                   {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}
@@ -1507,6 +1532,7 @@ export default function HostPage() {
           send={send}
           ai={game ? aiPanel : null}
           bossable={game?.phase === "playing" ? game.view.teams.filter((t) => !t.inBossPhase) : []}
+          bossThreshold={game?.view.bossThreshold}
           playing={game?.phase === "playing"}
           antiCheat={game?.phase === "playing" ? (game.view.antiCheat?.on ?? false) : undefined}
           screen={game ? screenBlock : null}

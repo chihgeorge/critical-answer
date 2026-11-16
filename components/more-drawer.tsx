@@ -26,6 +26,7 @@ export function MoreDrawer({
   send,
   ai,
   bossable,
+  bossThreshold = BOSS_THRESHOLD,
   playing,
   antiCheat,
   screen,
@@ -47,6 +48,8 @@ export function MoreDrawer({
   ai: ReactNode;
   /** Teams in play and not yet in the boss room: the host may send one there (scoring-and-score-pools.md S13). */
   bossable: { id: string; name: string }[];
+  /** The game's 進王門檻 (view.bossThreshold), for the 送王房 line. */
+  bossThreshold?: number;
   /** A game is under way, so 結束冒險 can end it. */
   playing: boolean;
   /** 🚨 抓包與神諭's switch while a game runs (docs/designs/anti-ai-cheating.md); undefined outside a game. */
@@ -153,7 +156,7 @@ export function MoreDrawer({
           )}
           {bossable.length > 0 && (
             <section className="flex flex-col gap-2">
-              <div className="text-[15px]">{`送隊伍進王房（不用等到 ${BOSS_THRESHOLD} 分，送了不能退回）`}</div>
+              <div className="text-[15px]">{`送隊伍進王房（不用等到 ${bossThreshold} 分，送了不能退回）`}</div>
               {bossable.map((t) => (
                 <div key={t.id} className="flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-[16px]">{t.name}</span>

@@ -66,6 +66,7 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
       <PixelButton aria-pressed={!current} className="!m-0 !min-h-[48px] !text-[18px]" style={{ background: current ? "var(--cream)" : "var(--turn)" }} onClick={() => send({ type: "TEAM_PICK_CLASS", classId: null })}>
         不選（普通冒險者）
       </PixelButton>
+      {!current && <div data-testid="no-class-nudge" className="text-[14px]">還沒選職業：不選就沒有技能，比較吃虧</div>}
     </Panel>
   );
 }
