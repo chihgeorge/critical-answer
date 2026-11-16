@@ -11,7 +11,7 @@ export function HostAwayBanner({ screen = false }: { screen?: boolean }) {
       {HOST_AWAY_NOTICE}
     </div>
   ) : (
-    <Panel tone="turn" role="status"className="px-3 py-2 text-center text-[16px]">
+    <Panel tone="turn" role="status" className="px-3 py-2 text-center text-[16px]">
       {HOST_AWAY_NOTICE}
     </Panel>
   );

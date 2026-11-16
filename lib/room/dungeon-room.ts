@@ -1521,8 +1521,8 @@ export class DungeonRoom {
       ...this.undoWrong(),
       ...(this.cue ? { cue: this.cue } : {}),
       cueSeq: this.cueSeq,
-      // Only while something waits on the host: not over a finished game's scores after the party.
-      ...(this.hostAway && (this.game.phase === "playing" || this.revealHold !== null) ? { hostAway: true as const } : {}),
+      // Only while something waits on the host (play, a held podium, more epilogue pages): not over a finished game's last page.
+      ...(this.hostAway && (this.game.phase === "playing" || this.revealHold !== null || (!!this.epilogue && this.epiloguePage < epiloguePages(this.epilogue).length - 1)) ? { hostAway: true as const } : {}),
     };
   }
 
@@ -2845,6 +2845,8 @@ export class DungeonRoom {
       this.hostAwayTimer = null;
       if (this.expiring || !this.game || this.hostConns.size > 0) return;
       this.hostAway = true;
+      // Nobody to tell (an alarm wake): the next socket's first STATE carries it.
+      if (this.conns.size === 0) return;
       // Not broadcastState: a banner must not run the game's own steps (stun lines, fork, lost crit).
       this.broadcast(this.snapshot());
     }, HOST_AWAY_GRACE_MS);

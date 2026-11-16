@@ -129,6 +129,16 @@ describe("STATE.hostAway", () => {
     expect(g.away()).toBe(false);
   });
 
+  it("shows over a finished game whose podium still waits on the host (manual pacing)", () => {
+    const g = setup();
+    send(g.room, g.host, { type: "HOST_PACING", mode: "manual" });
+    send(g.room, g.host, { type: "HOST_END_GAME" });
+    expect(g.states().at(-1).hold?.kind).toBe("podium");
+    g.room.onClose(g.host);
+    vi.advanceTimersByTime(HOST_AWAY_GRACE_MS);
+    expect(g.away()).toBe(true);
+  });
+
   it("after a restart with nobody back, the banner shows after the grace; a host who comes back clears it", async () => {
     const storage = memoryStorage();
     setup({ storage });
@@ -136,8 +146,12 @@ describe("STATE.hostAway", () => {
     const room = new DungeonRoom(io, () => 0, { bank: bank(), epilogueDelayMs: 0 });
     expect(await room.restore()).toBe("restored");
     vi.advanceTimersByTime(HOST_AWAY_GRACE_MS);
+    // Nobody connected yet: nothing is broadcast, and the first page to connect gets it in its own STATE.
+    expect(io.broadcast).not.toHaveBeenCalled();
+    const tv = makeConn("tv");
+    room.onConnect(tv);
+    expect(JSON.parse(tv.send.mock.calls[0][0] as string).hostAway).toBe(true);
     const last = () => io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "STATE").at(-1);
-    expect(last()?.hostAway).toBe(true);
     const host = makeConn("host");
     room.onConnect(host);
     send(room, host, { type: "HOST_CLAIM", token: TOKEN });
