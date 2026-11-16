@@ -1,6 +1,6 @@
 // Checks a pull request against the release flow (changelog.d/README.md): it leaves VERSION, the package.json and
 // package-lock.json version and CHANGELOG.md alone, and adds at least one changelog.d/*.md fragment that opens with
-// `bump: micro|patch|minor|major` front matter, has a body and no `## [x]` version heading. After the merge,
+// `bump: micro|patch|minor|major` front matter, has a body and no `## ` heading. After the merge,
 // .github/workflows/stamp.yml folds the fragments and bumps the version (scripts/stamp-release.ts). A dependabot[bot]
 // PR needs no fragment. Run by CI on pull requests:
 //   BASE_REF=main HEAD_REF=<branch> PR_AUTHOR=<login> node scripts/check-fragment.ts
@@ -63,7 +63,9 @@ export function fragmentProblems(pr: PrInput): string[] {
   for (const { path } of added) {
     const body = fragmentBody(pr.show("head", path) ?? "");
     if (!body) problems.push(`${path}: the fragment is empty`);
-    if (/^## \[/m.test(body)) problems.push(`${path}: no "## [x]" version heading; the stamp workflow writes it`);
+    // Every "## " line starts a CHANGELOG section (release-notes.ts changelogSections, code blocks included), and a
+    // non-version one drops itself and what follows from the GitHub Release notes.
+    if (/^## /m.test(body)) problems.push(`${path}: no "## " heading (the stamp workflow writes "## [x]"); use "### " instead`);
     if (!fragmentBump(pr.show("head", path) ?? "")) problems.push(`${path}: open with front matter "---\\nbump: micro|patch|minor|major\\n---" (changelog.d/README.md)`);
   }
   if (!added.length && pr.author !== "dependabot[bot]") {

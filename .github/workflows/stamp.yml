@@ -49,9 +49,15 @@ jobs:
         env:
           # The CHANGELOG date is the owner's day, not UTC's.
           TZ: Asia/Taipei
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
         run: |
-          git config user.name "critical-answer-stamp[bot]"
-          git config user.email "critical-answer-stamp[bot]@users.noreply.github.com"
+          # Commit as the app's bot user so GitHub links its avatar; a failed lookup only falls back to the old name.
+          bot="${APP_SLUG:-critical-answer-stamp}[bot]"
+          if id=$(gh api "users/$bot" --jq .id 2>/dev/null) && [ -n "$id" ]; then email="$id+$bot@users.noreply.github.com"
+          else bot="critical-answer-stamp[bot]"; email="$bot@users.noreply.github.com"; fi
+          git config user.name "$bot"
+          git config user.email "$email"
           # A merge can land between the fold and the push: start again from main's new head, at most three times.
           for attempt in 1 2 3; do
             git fetch -q origin main
