@@ -14,6 +14,7 @@
     "e2e": "playwright test",
     "check:bundle": "next build && sh scripts/check-bundle.sh",
     "check:docs": "node scripts/check-docs.ts",
+    "canary:live": "node --no-warnings scripts/canary-live.ts",
     "test:live": "LIVE=1 vitest run lib/narration/llm.live.test.ts",
     "playtest": "sh scripts/playtest.sh start",
     "playtest:stop": "sh scripts/playtest.sh stop",

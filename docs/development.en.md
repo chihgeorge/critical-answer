@@ -47,6 +47,7 @@ It finds the LAN IP on its own and uses two ports, 3100 (web) and 1998 (room ser
 | `npm run e2e` | Playwright end-to-end tests (starts its own servers on ports 3101 and 1996; normally left to GitHub CI, because it is too heavy for a local machine. CI splits the tests into three groups that run in parallel) |
 | `npm run check:bundle` | After a build, checks that no questions or answers got into the browser bundle |
 | `npm run check:docs` | Checks the relative links and anchors in README, SECURITY.md and the `docs/` guides, and that each Chinese doc has its English twin |
+| `npm run canary:live` | After a deploy, plays one real game on the live site and prints each step's result and `CANARY HEALTHY` or `CANARY BROKEN` (see the [deployment guide](deployment.en.md#post-deploy-check)) |
 | `npm run test:watch` | Tests in watch mode |
 | `npm run lint` | ESLint |
 | `npm run build` | Builds the front end |

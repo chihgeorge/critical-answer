@@ -47,6 +47,7 @@ sh scripts/playtest.sh stop
 | `npm run e2e` | Playwright 端對端測試（自己開伺服器，用 3101 和 1996 埠；平常交給 GitHub CI 跑，本機太吃資源。CI 把測試分成三組平行跑） |
 | `npm run check:bundle` | 建置後檢查題目與答案沒有進到瀏覽器 bundle |
 | `npm run check:docs` | 檢查 README、SECURITY.md 和 `docs/` 指南的相對連結與錨點，以及中英文版有沒有配對 |
+| `npm run canary:live` | 部署後在線上版真的玩一局，印出每一步的結果和 `CANARY HEALTHY` 或 `CANARY BROKEN`（見[部署指南](deployment.md#部署後檢查)） |
 | `npm run test:watch` | 監看模式測試 |
 | `npm run lint` | ESLint |
 | `npm run build` | 建置前端 |
