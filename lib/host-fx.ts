@@ -56,7 +56,8 @@ export function hostPad(effect: HostEffect, o: { clipPlaying: boolean; sound?: S
 export function hostDimPad(o: { on: boolean; playing: boolean; clipPlaying: boolean; sound?: ScreenSound; sent: boolean; online: boolean }): { label: string; aria: string; disabled: boolean } {
   if (o.clipPlaying) return { label: "🌑 影片中", aria: "螢幕變暗：影片播放中", disabled: true };
   if (!o.playing) return { label: "🌑 開局後", aria: "螢幕變暗：開局後才能用", disabled: true };
-  if (o.sound === "none") return { label: "沒大螢幕", aria: "螢幕變暗：沒有大螢幕連著", disabled: true };
+  // A dim that is on can always be turned off: an unkeyed screen still draws it with no keyed screen connected.
+  if (o.sound === "none" && !o.on) return { label: "沒大螢幕", aria: "螢幕變暗：沒有大螢幕連著", disabled: true };
   return { label: o.on ? "🌑 已變暗" : "🌑 螢幕變暗", aria: "螢幕變暗", disabled: o.sent || !o.online };
 }
 

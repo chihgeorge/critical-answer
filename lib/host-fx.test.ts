@@ -113,6 +113,7 @@ describe("🌑 螢幕變暗 (immersion.md PR2)", () => {
     ["lobby or finished", { ...base, playing: false, sound: undefined }, "🌑 開局後", true],
     ["clip playing", { ...base, clipPlaying: true }, "🌑 影片中", true],
     ["no big screen", { ...base, sound: "none" as const }, "沒大螢幕", true],
+    ["no big screen, still dimmed: can turn it off", { ...base, on: true, sound: "none" as const }, "🌑 已變暗", false],
     ["just sent", { ...base, on: true, sent: true }, "🌑 已變暗", true],
     ["offline", { ...base, online: false }, "🌑 螢幕變暗", true],
   ])("%s", (_, o, label, disabled) => {
