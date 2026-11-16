@@ -208,7 +208,7 @@ function WallOptions({ options, gone, magic, lock, wrong, correct, teamName, nar
             tabIndex={-1}
             data-testid={`wall-option-${i}`}
             data-look={look}
-            className="wall absolute !text-[24px] leading-[1.05]"
+            className={`wall${narrow ? " narrow" : ""} absolute !text-[24px] leading-[1.05]`}
             style={{ ...tileSpot(i, narrow), height: 62, zIndex: 5 }}
           />
         );
@@ -270,7 +270,7 @@ function SortWall({ tiles, narrow }: { tiles: SortTile[]; narrow?: boolean }) {
           tabIndex={-1}
           data-testid={`wall-sort-${i}`}
           data-look={t.look}
-          className="wall absolute !text-[24px] leading-[1.05]"
+          className={`wall${narrow ? " narrow" : ""} absolute !text-[24px] leading-[1.05]`}
           style={{ ...tileSpot(i, narrow), height: 62, zIndex: 5 }}
         />
       ))}
@@ -583,12 +583,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
 
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
         {dish && eater ? (
-          <TurnRibbon color={look(eaterIdx).hat} maxWidth={420}>🍲 {eater.name}</TurnRibbon>
+          <TurnRibbon color={look(eaterIdx).hat} maxWidth={360}>🍲 {eater.name}</TurnRibbon>
         ) : (
           buzz ? (
-            <TurnRibbon color={turn ? look(turnIdx).hat : undefined} maxWidth={420}>{turn ? `${turn.name} 搶到了！` : timing ? "首領戰　卡點題" : "首領戰　搶答！"}</TurnRibbon>
+            <TurnRibbon color={turn ? look(turnIdx).hat : undefined} maxWidth={360}>{turn ? `${turn.name} 搶到了！` : timing ? "首領戰　卡點題" : "首領戰　搶答！"}</TurnRibbon>
           ) : (
-            turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={420 /* a 20-character name must leave the map its width (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>
+            turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={360 /* a long name must leave the map its width: the widest 8-team map is 550px (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>
           )
         )}
         <MapStrip view={view} />
@@ -840,7 +840,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
       <Torches />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
-        {team && <TurnRibbon color={look(idx).hat} maxWidth={420}>{`❓ ${name}`}</TurnRibbon>}
+        {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`❓ ${name}`}</TurnRibbon>}
         <MapStrip view={view} />
       </div>
       <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
@@ -883,7 +883,7 @@ function FortuneScreen({ view, fortune, left, eventId, narration, onRead }: { vi
       <Torches />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
-        {team && <TurnRibbon color={look(idx).hat} maxWidth={420}>{`🔮 ${name}`}</TurnRibbon>}
+        {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`🔮 ${name}`}</TurnRibbon>}
         <MapStrip view={view} />
       </div>
       <div className="absolute" style={{ right: 60, top: 108, zIndex: 6 }}>
@@ -935,7 +935,7 @@ function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: Sp
       <Torches />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
-        {team && <TurnRibbon color={look(idx).hat} maxWidth={420}>{`輪到：${name}`}</TurnRibbon>}
+        {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`輪到：${name}`}</TurnRibbon>}
         <MapStrip view={view} />
       </div>
       <Panel className="absolute text-center" style={{ left: 250, right: 250, top: 104, padding: "10px 24px", zIndex: 5 }}>

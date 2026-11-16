@@ -6,7 +6,7 @@
 //   └ rooms past the 7-room window, or that the width budget can't fit, fold into the stub (D8, eng D6)
 
 export const ROOM_MIN = 40;
-export const PAWN = 28; // fits a two-character tag with a gap (D10 said 26; widened after the 8-team render)
+export const PAWN = 38; // fits a two-character 16px tag with a gap (D10 said 26; 28 after the 8-team render, 38 for the 16px tag)
 export const ROOM_PAD = 12;
 export const CORRIDOR = 10;
 export const FOG_MIN = 100; // two empty-room slots (D8)
