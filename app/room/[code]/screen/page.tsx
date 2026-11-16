@@ -41,6 +41,7 @@ import { MageHint } from "@/components/mage-hint";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
 import { FilePlayer } from "@/components/file-player";
+import { ScreenMediaTest } from "@/components/screen-media-test";
 import { useRoomClock } from "@/components/room-clock";
 import { TapClockReporter, TimingResult, TimingRoundPanel, TimingTimeline, useTimingReplay } from "@/components/timing-screen";
 import { replayFromS } from "@/lib/tap-clock";
@@ -1161,6 +1162,8 @@ export default function ScreenPage() {
   const [lobby, setLobby] = useState<LobbyTeams>([]);
   const [game, setGame] = useState<StateMessage | null>(null);
   const [shownVideo, setShownVideo] = useState<ShownVideo | null>(null);
+  /** The host's 📺 大螢幕試播影音 (screen-media-test.md): the clips to test-load, until a game starts or the socket drops. */
+  const [screenTest, setScreenTest] = useState<Extract<ServerMessage, { type: "SCREEN_TEST" }> | null>(null);
   /** The room refused this page's screen key, or it has none (SCREEN_KEY): it will be sent no question video. */
   const [locked, setLocked] = useState(false);
   /** A network drop (not a rest): shown so a frozen screen doesn't look like a quiet game. */
@@ -1728,6 +1731,8 @@ export default function ScreenPage() {
       send({ type: "SCREEN_SOUND", ready: soundSent.current ?? false });
       clipResendDue.current = true;
       setDisconnected(false);
+      // The room drops a test run when its screen reconnects: the host presses again.
+      setScreenTest(null);
       narrationBaseline.current = null;
       sfxSeen.current = null;
       lastPhase.current = null;
@@ -1792,7 +1797,11 @@ export default function ScreenPage() {
         case "SCREEN_VIDEO":
           setShownVideo(msg);
           break;
+        case "SCREEN_TEST":
+          setScreenTest(msg);
+          break;
         case "STATE":
+          setScreenTest(null);
           setGame(msg);
           applyScreenAudio(screenAudioOf(msg));
           if (msg.question?.id !== clipEnded.current) clipEnded.current = null;
@@ -2027,6 +2036,10 @@ export default function ScreenPage() {
           )}
         </div>
       </Stage>
+      {/* The host's 📺 大螢幕試播影音: invisible, muted, outside <Stage> so nothing on the stage moves. */}
+      {screenTest && !game && (
+        <ScreenMediaTest key={screenTest.runId} items={screenTest.items} onResult={(index, error) => send({ type: "SCREEN_TEST_RESULT", runId: screenTest.runId, index, error })} />
+      )}
       {/* Outside <Stage>, fixed to the real viewport (not scaled/letterboxed with the 960x540 canvas): the stage has no
           free margin in any phase, and a real-size corner control stays comfortably tappable at any TV scale. The
           sound's switches live on the host's ⚙ 更多 (immersion.md PR3, UC1); only the unlock stays here. */}

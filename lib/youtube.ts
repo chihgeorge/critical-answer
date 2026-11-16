@@ -96,6 +96,16 @@ export function clipStatusFromYoutube(ytState: number, ended: boolean): ClipStat
   return "loading";
 }
 
+/** The big screen's test load (screen-media-test.md D3): YouTube's onError code as a reason. 101 and 150: the owner
+ * turned embedding off; 100: removed or private; 2: a bad id. */
+export function youtubeTestError(code: number): "blocked" | "gone" | "error" {
+  return code === 101 || code === 150 ? "blocked" : code === 100 || code === 2 ? "gone" : "error";
+}
+
+/** The big screen's test load of an uploaded file, once its first frame is in: a video with no picture size means the
+ * browser cannot decode its video track (e.g. HEVC). An audio file has none to decode. */
+export const fileTestError = (audioOnly: boolean, videoWidth: number): "no_picture" | null => (!audioOnly && videoWidth === 0 ? "no_picture" : null);
+
 /** A clip time typed in the bank editor: `1:05`, `65` or `0:5`. Whole seconds only; null when it is not one (D22). */
 export function parseClipTime(input: string): number | null {
   const t = input.trim();

@@ -15,6 +15,7 @@ import { CLIP_STATUS_TEXT, clipStatusFromYoutube, loadCaptions, playerSteps, sho
 interface YTPlayer extends CaptionPlayer {
   playVideo(): void;
   pauseVideo(): void;
+  mute(): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
   destroy(): void;
@@ -33,7 +34,8 @@ interface YTNamespace {
         onReady?: (e: { target: YTPlayer }) => void;
         onStateChange?: (e: { data: number; target: YTPlayer }) => void;
         onApiChange?: (e: { target: YTPlayer }) => void;
-        onError?: () => void;
+        /** `data`: YouTube's error code (2, 5, 100, 101, 150). */
+        onError?: (e: { data: number }) => void;
       };
     },
   ) => YTPlayer;

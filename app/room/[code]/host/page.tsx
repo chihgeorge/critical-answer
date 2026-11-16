@@ -31,7 +31,7 @@ import { MoreDrawer } from "@/components/more-drawer";
 import { formatTapError, medianError, suggestedLatency } from "@/lib/tap-clock";
 import { screenAudioOf } from "@/lib/ambience";
 import { LateTeams } from "@/components/late-teams";
-import { BankHealthPanel, type BankHealth } from "@/components/bank-health";
+import { BankHealthPanel, type BankHealth, type ScreenTest } from "@/components/bank-health";
 import { FieldJudge } from "@/components/field-judge";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
@@ -75,6 +75,8 @@ export default function HostPage() {
   /** The last HOST_BANK_HEALTH (bank-health-check.md), and whether a check is running: the room answers it or ERROR. */
   const [health, setHealth] = useState<BankHealth | null>(null);
   const [checking, setChecking] = useState(false);
+  /** The last HOST_SCREEN_TEST (screen-media-test.md): the big screen's test load, cleared like `health`. */
+  const [screenTest, setScreenTest] = useState<ScreenTest | null>(null);
   /** Releases 檢查中… when no answer comes (the socket dropped mid-check). */
   const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** The bank the room last said it plays (HOST_BANKS), so a change from another host device clears the rows. */
@@ -261,13 +263,19 @@ export default function HostPage() {
           break;
         case "HOST_BANKS":
           // Another host device picked another bank: this page's rows were for the old one.
-          if (msg.selected.id !== checkedBankId.current) setHealth(null);
+          if (msg.selected.id !== checkedBankId.current) {
+            setHealth(null);
+            setScreenTest(null);
+          }
           checkedBankId.current = msg.selected.id;
           setBanks({ list: msg.banks, selected: msg.selected, loading: !!msg.loading });
           break;
         case "HOST_BANK_HEALTH":
           setHealth({ rows: msg.rows, questions: msg.questions, unchecked: msg.unchecked, reloaded: msg.reloaded });
           stopChecking();
+          break;
+        case "HOST_SCREEN_TEST":
+          setScreenTest({ done: msg.done, total: msg.total, rows: msg.rows, ...(msg.stopped ? { stopped: true as const } : {}) });
           break;
         case "LOBBY":
           setManual(msg.pacing === "manual");
@@ -291,6 +299,7 @@ export default function HostPage() {
           setPendingTeamId(null);
           // A started game: a lobby check's rows are no use now.
           setHealth(null);
+          setScreenTest(null);
           stopChecking();
           break;
         case "GAME_OVER":
@@ -345,6 +354,8 @@ export default function HostPage() {
                 ? "題庫檢查出錯了，請再按一次「檢查題庫」"
                 : msg.detail === "check_stale"
                 ? "檢查途中題庫換了，請再按一次「檢查題庫」"
+                : msg.detail === "no_screen"
+                ? "沒有大螢幕連著：先用主持人頁的大螢幕連結開啟大螢幕，再按「大螢幕試播影音」"
                 : msg.detail === "lock_pending"
                 ? "這隊還在擲骰、揭曉或等答錯結算，或有隊伍正在開門，等一下再按"
                 : msg.detail === "paused"
@@ -931,6 +942,8 @@ export default function HostPage() {
                 checkTimer.current = setTimeout(stopChecking, BANK_CHECK_WAIT_MS);
                 send({ type: "HOST_BANK_CHECK" });
               }}
+              screenTest={screenTest}
+              onScreenTest={() => send({ type: "HOST_SCREEN_TEST" })}
             />
             <PixelButton
               variant="primary"
