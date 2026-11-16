@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { hostPad, playHostEffect, type HostFxDeps } from "./host-fx";
+import { dimVisible, hostDimPad, hostPad, playHostEffect, type HostFxDeps } from "./host-fx";
 import { createFlashBudget, FLASH_MAX, FLASH_WINDOW_MS } from "./flash-budget";
 import { heartbeatTimes } from "./boss-fx";
 import { GROWL, THUNDER } from "./sfx";
@@ -102,5 +102,33 @@ describe("the pads' sounds and message", () => {
     expect(parseClientMessage({ type: "HOST_EFFECT", effect: "thunder" })).toEqual({ type: "HOST_EFFECT", effect: "thunder" });
     expect(parseClientMessage({ type: "HOST_EFFECT", effect: "growl" })).toEqual({ type: "HOST_EFFECT", effect: "growl" });
     for (const effect of ["dim", "", 1, undefined, "__proto__"]) expect(parseClientMessage({ type: "HOST_EFFECT", effect })).toBeNull();
+  });
+});
+
+describe("🌑 螢幕變暗 (immersion.md PR2)", () => {
+  const base = { on: false, playing: true, clipPlaying: false, sound: "ready" as const, sent: false, online: true };
+  it.each([
+    ["off", base, "🌑 螢幕變暗", false],
+    ["on", { ...base, on: true }, "🌑 已變暗", false],
+    ["lobby or finished", { ...base, playing: false, sound: undefined }, "🌑 開局後", true],
+    ["clip playing", { ...base, clipPlaying: true }, "🌑 影片中", true],
+    ["no big screen", { ...base, sound: "none" as const }, "沒大螢幕", true],
+    ["just sent", { ...base, on: true, sent: true }, "🌑 已變暗", true],
+    ["offline", { ...base, online: false }, "🌑 螢幕變暗", true],
+  ])("%s", (_, o, label, disabled) => {
+    expect(hostDimPad(o)).toMatchObject({ label, disabled });
+  });
+  it.each([
+    [true, false, true],
+    [true, true, false],
+    [false, false, false],
+    [false, true, false],
+  ])("dimVisible(%s, transition %s) → %s", (dim, transition, shown) => {
+    expect(dimVisible(dim, transition)).toBe(shown);
+  });
+  it("HOST_DIM parses only a boolean on", () => {
+    expect(parseClientMessage({ type: "HOST_DIM", on: true })).toEqual({ type: "HOST_DIM", on: true });
+    expect(parseClientMessage({ type: "HOST_DIM", on: false })).toEqual({ type: "HOST_DIM", on: false });
+    for (const on of ["true", 1, null, undefined]) expect(parseClientMessage({ type: "HOST_DIM", on })).toBeNull();
   });
 });

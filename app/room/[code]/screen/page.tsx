@@ -22,8 +22,8 @@ import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
 import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
 import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
-import { CLASS_COLOR, CLASS_PULSE, CLASS_TINT, createFlashBudget, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
-import { playHostEffect, type HostFxLook } from "@/lib/host-fx";
+import { CLASS_COLOR, CLASS_PULSE, CLASS_TINT, createFlashBudget, DIM_ALPHA, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
+import { dimVisible, playHostEffect, type HostFxLook } from "@/lib/host-fx";
 import { CLASS_FX_MS, CLASS_FX_TEXT, classFxFor, playClassFx, type ClassFx, type ClassFxLook } from "@/lib/class-fx";
 import { AnswerClock } from "@/components/answer-clock";
 import { memoryLine } from "@/lib/memory-copy";
@@ -1986,6 +1986,8 @@ export default function ScreenPage() {
         {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onChef={onChef} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} />}
         {game?.phase === "playing" && <ReactionFloats floats={floats} teams={game.view.teams} />}
         </div>
+        {/* 🌑 螢幕變暗 (immersion.md PR2): over the stage content, under the edge glows and banners; never under a transition. */}
+        {dimVisible(!!game?.screenDim, !!transition) && <div aria-hidden data-testid="screen-dim" className="pointer-events-none absolute inset-0" style={{ zIndex: 8, background: `rgba(0, 0, 0, ${DIM_ALPHA})` }} />}
         {/* ③ The heartbeat's and ② the counter's edge glows: inset shadows, the middle of the stage stays clear. */}
         {heartGlow && <div aria-hidden data-testid="heart-glow" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${heartGlow === "pulse" ? "#b02a3a4d" : HEART_TINT}` }} />}
         {parryEdge && <div aria-hidden className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${parryEdge === "flash" ? "#ff6b6b66" : PARRY_TINT}` }} />}

@@ -50,3 +50,15 @@ export function hostPad(effect: HostEffect, o: { clipPlaying: boolean; sound?: S
   const muted = o.sound === "muted";
   return { label: muted ? `${name} 🔇` : name, aria: muted ? `${name}（大螢幕沒聲音，只有畫面）` : name, disabled: !o.online };
 }
+
+/** 🌑 螢幕變暗's label (immersion.md PR2). `on` is STATE's `screenDim` only (no optimistic flip); `playing` is a game in
+ * its playing phase; `sent` is a press on this device within HOST_FX_COOLDOWN_MS (the label stays, the pad waits). */
+export function hostDimPad(o: { on: boolean; playing: boolean; clipPlaying: boolean; sound?: ScreenSound; sent: boolean; online: boolean }): { label: string; aria: string; disabled: boolean } {
+  if (o.clipPlaying) return { label: "🌑 影片中", aria: "螢幕變暗：影片播放中", disabled: true };
+  if (!o.playing) return { label: "🌑 開局後", aria: "螢幕變暗：開局後才能用", disabled: true };
+  if (o.sound === "none") return { label: "沒大螢幕", aria: "螢幕變暗：沒有大螢幕連著", disabled: true };
+  return { label: o.on ? "🌑 已變暗" : "🌑 螢幕變暗", aria: "螢幕變暗", disabled: o.sent || !o.online };
+}
+
+/** The big screen draws the dim layer only while no TransitionOverlay is up: the boss entrance has its own dark curtain. */
+export const dimVisible = (screenDim: boolean, transitionUp: boolean) => screenDim && !transitionUp;

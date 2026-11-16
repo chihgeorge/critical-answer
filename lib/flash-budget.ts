@@ -1,4 +1,4 @@
-// Home of the big screen's fx constants (the tints below). The big screen's shared flash budget (docs/designs/immersion.md, 閃光安全): every new effect asks before it flashes,
+// Home of the big screen's fx constants (the tints below, and DIM_ALPHA). The big screen's shared flash budget (docs/designs/immersion.md, 閃光安全): every new effect asks before it flashes,
 // so the whole screen never flashes more than FLASH_MAX times in any FLASH_WINDOW_MS. One flash is one pulse, lit then
 // dark (a heartbeat glow, the parry's red edge, the boss entrance lighting up). A refused take shows a static tint only.
 // Legacy CSS is not counted: the px-alarm-text blinks (at most 3 per 2.4 s) and the torch px-tf* flicks (sprite frames);
@@ -14,6 +14,8 @@ export const PARRY_TINT = "#ff6b6b33"; // --danger at 20%
 export const THUNDER_PULSE = "#ffffff80"; // white at 50%
 export const THUNDER_TINT = "#ffffff33"; // white at 20%
 export const GROWL_TINT = "#2a153359"; // --k at 35%
+/** 🌑 螢幕變暗's black layer (immersion.md PR2). Lower it if the back row cannot read a question card with dim on. */
+export const DIM_ALPHA = 0.4;
 /** The class moments (lib/class-fx.ts): each class's colour (the badge border), edge pulse (40%) and tint (20%). No red: red is the boss's. */
 export const CLASS_COLOR = { mage: "#c9b3ff", cleric: "#ffe08a", thief: "#8fe3c8" } as const;
 export const CLASS_PULSE = { mage: `${CLASS_COLOR.mage}66`, cleric: `${CLASS_COLOR.cleric}66`, thief: `${CLASS_COLOR.thief}66` } as const;
