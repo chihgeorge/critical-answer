@@ -53,6 +53,7 @@ import { getScreenKey } from "@/lib/room-code";
 import { sortOrderOf } from "@/lib/sort-order";
 import { EventStage } from "@/components/event-room";
 import { FortuneCard, FortunePizza } from "@/components/fortune";
+import { HostAwayBanner } from "@/components/host-away-banner";
 import { BOON_TEXT, EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT, eventEffectLine, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT } from "@/lib/event-text";
 
 const bgmSupported = () => "AudioContext" in window;
@@ -2017,6 +2018,7 @@ export default function ScreenPage() {
               {DISCONNECTED_NOTICE}
             </div>
           )}
+          {game?.hostAway && !disconnected && !rested && <HostAwayBanner screen />}
           {unreachable && (
             <div role="alert" className="flex items-center justify-center gap-4 text-center text-[20px]" style={{ background: "var(--turn)", color: "var(--ink)", padding: 6 }}>
               {UNREACHABLE_NOTICE}

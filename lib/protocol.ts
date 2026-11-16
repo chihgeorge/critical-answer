@@ -505,6 +505,9 @@ export type ServerMessage =
       cue?: SoundCue;
       /** Goes up each time the room sets a new cue: the big screen plays `cue` then (a roll's cue is not an event). Absent from older servers. */
       cueSeq?: number;
+      /** No host page has been connected for a few seconds while the game waits on the host: the big screen and the
+       * phones show 主持人重新連線中. Absent means the host is there, also from an older server. The host page ignores it. */
+      hostAway?: true;
       /** The boss's phase card is up: `question` is null until the host's 下一題 (docs/designs/boss-phases.md),
        * so the card carries the boss to draw. */
       phaseCard?: { monster: PublicQuestion["monster"] };
