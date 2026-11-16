@@ -164,6 +164,46 @@ describe("game log", () => {
     expect([logs[0].endedAt, logs.at(-1)!.endedAt]).toEqual(["2", String(MAX_GAME_LOGS + 1)]);
   });
 
+  // Value: protects=the owner can still download the 11/21 games after stray rooms pile up newer ones (audit 2026-11-16 #5);
+  // fails_when=from/to stop being inclusive date prefixes, before stops being exclusive, or the page cap drops;
+  // why_new=the download used to be newest-1000 only; seam=the same list() options Durable Object storage takes.
+  it("reads a date range, inclusive, and pages back with before", async () => {
+    const data = new Map<string, unknown>();
+    const ended = ["2026-11-20T23:59:59.999Z", "2026-11-21T10:00:00.000Z", "2026-11-21T12:30:00.000Z", "2026-11-21T23:59:59.999Z", "2026-11-22T00:00:00.000Z"];
+    for (const e of ended) data.set(`gameLog:${e}:u`, { endedAt: e });
+    // Durable Object storage's list: prefix, start inclusive, end exclusive, then reverse and limit.
+    const list = vi.fn(async ({ prefix, start, end, reverse, limit }: { prefix: string; start?: string; end?: string; reverse?: boolean; limit?: number }) => {
+      const keys = [...data.keys()].filter((k) => k.startsWith(prefix) && (!start || k >= start) && (!end || k < end)).sort();
+      return new Map((reverse ? keys.reverse() : keys).slice(0, limit).map((k) => [k, data.get(k)]));
+    });
+    const storage = { put: () => {}, list };
+    const at = async (range: Parameters<typeof readGameLogs>[1]) => (await readGameLogs(storage, range)).map((l) => l.endedAt);
+    expect(await at({ from: "2026-11-21", to: "2026-11-21" })).toEqual(ended.slice(1, 4));
+    expect(await at({ from: "2026-11-21T11" })).toEqual(ended.slice(2));
+    expect(await at({ from: "2026-11-21T10:00Z", to: "2026-11-21T10" })).toEqual([ended[1]]); // a trailing Z skips nothing
+    expect(await at({ to: "2026-11-21T10" })).toEqual(ended.slice(0, 2));
+    expect(await at({ before: "2026-11-21T10:00Z" })).toEqual([ended[0]]); // before stays exclusive with a trailing Z
+    expect(await at({ from: "2026-11-21", before: "2026-11-21T12:30:00.000Z" })).toEqual([ended[1]]);
+    expect(await at({ to: "2026-11-22", before: "2026-11-21T12:30:00.000Z" })).toEqual(ended.slice(0, 2)); // the earlier end wins
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ limit: MAX_GAME_LOGS }));
+    list.mockClear();
+    expect(await at({ from: "2026-11-22", to: "2026-11-21" })).toEqual([]); // from after to: empty, storage untouched
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/game-logs passes from/to/before through and refuses a value that is not a date", async () => {
+    const key = "k".repeat(32);
+    const readLogs = vi.fn(async () => []);
+    const deps = { ownerKey: key, allowedOrigins: "", readLogs };
+    const get = (q: string) => handleGameLogsApi(new Request(`https://x/api/game-logs${q}`, { headers: { Authorization: `Bearer ${key}` } }), deps);
+    expect((await get("?from=2026-11-21&to=2026-11-21&before=2026-11-21T12:30:00.000Z")).status).toBe(200);
+    expect(readLogs).toHaveBeenLastCalledWith({ from: "2026-11-21", to: "2026-11-21", before: "2026-11-21T12:30:00.000Z" });
+    expect((await get("")).status).toBe(200);
+    expect(readLogs).toHaveBeenLastCalledWith({});
+    for (const bad of ["?from=yesterday", "?to=2026-11-21~", "?before=2026-11", `?from=2026-11-21T${"1".repeat(13)}`]) expect((await get(bad)).status).toBe(400);
+    expect(readLogs).toHaveBeenCalledTimes(2);
+  });
+
   it("a boss-only game counts every team in the boss room from round 1, and a game ended before any turn has 0 rounds", () => {
     const rooms = [{ baseDifficulty: 1 as const, reward: 10 }];
     const g = createGame([{ id: "A", name: "A" }], rooms, [["q0"], [], [], [], []], ["b1"], { bossThreshold: 0 }, 2, first);

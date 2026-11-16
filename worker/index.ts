@@ -6,7 +6,7 @@ import { oversized, RateLimiter } from "../lib/room/rate-limit";
 import { DungeonRoom, fixedDie, roomMaxLifeMs } from "../lib/room/dungeon-room";
 import { BankStore, IMAGE_CLEANUP_MARGIN_MS, type BankConflict, type BankEntry, type VersionedBank } from "../lib/bank-store";
 import { bankOrFallback, handleBankApi, handleBanksApi, handleGameLogsApi } from "../lib/bank-api";
-import { appendGameLog, readGameLogs, type GameLog } from "../lib/game-log";
+import { appendGameLog, readGameLogs, type GameLog, type GameLogRange } from "../lib/game-log";
 import { handleBankImageApi } from "../lib/bank-image-api";
 import { handleClientError } from "../lib/client-error-api";
 import { checkMediaBatch, HEAD_BYTES, type MediaBatch, type MediaResults } from "../lib/bank-health";
@@ -118,8 +118,8 @@ export class BankStoreDO extends DurableObject<Env> {
     return appendGameLog(this.ctx.storage, log);
   }
 
-  gameLogs(): Promise<GameLog[]> {
-    return readGameLogs(this.ctx.storage);
+  gameLogs(range: GameLogRange): Promise<GameLog[]> {
+    return readGameLogs(this.ctx.storage, range);
   }
 
   /** One batch of a room's pre-game check (docs/designs/bank-health-check.md D4). Here, not in the room: every RPC is a
@@ -285,7 +285,7 @@ export default {
       return handleGameLogsApi(request, {
         ownerKey: env.OWNER_KEY,
         allowedOrigins: env.ALLOWED_ORIGINS ?? "",
-        readLogs: () => env.bank.getByName(BANK_DO_NAME).gameLogs(),
+        readLogs: (range) => env.bank.getByName(BANK_DO_NAME).gameLogs(range),
       });
     }
     if (pathname === "/api/banks") {
