@@ -48,9 +48,9 @@ A PR never edits `VERSION`, the `package.json` version or `CHANGELOG.md`. It add
 - lint: npx eslint
 - test: npm test
 - deadcode: npx knip
-- shell: shellcheck scripts/*.sh
+- shell: shellcheck -S warning scripts/*.sh
 
-`/health` uses exactly these. `knip.json` treats every `scripts/*.ts` as an entry (they run as CLIs) and ignores exports used only in their own file. `shellcheck` is not an npm package: install it once with `brew install shellcheck`.
+`/health` uses exactly these. The `knip` key in `package.json` treats every `scripts/*.ts` as an entry (they run as CLIs) and ignores exports used only in their own file. `-S warning` leaves out info-level notes (today only SC2086 on the numeric port variables in `scripts/playtest.sh`). `shellcheck` is not an npm package: install it once with `brew install shellcheck`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

@@ -55,7 +55,8 @@ jobs:
           # Commit as the app's bot user so GitHub links its avatar; a failed lookup only falls back to the old name.
           bot="${APP_SLUG:-critical-answer-stamp}[bot]"
           if id=$(gh api "users/$bot" --jq .id 2>/dev/null) && [ -n "$id" ]; then email="$id+$bot@users.noreply.github.com"
-          else bot="critical-answer-stamp[bot]"; email="$bot@users.noreply.github.com"; fi
+          else echo "::warning::Could not look up $bot; committing as critical-answer-stamp[bot]."
+            bot="critical-answer-stamp[bot]"; email="$bot@users.noreply.github.com"; fi
           git config user.name "$bot"
           git config user.email "$email"
           # A merge can land between the fold and the push: start again from main's new head, at most three times.

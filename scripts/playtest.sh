@@ -19,7 +19,7 @@ case "$1" in
   start)
     [ -n "$ip" ] || { echo "找不到區網 IP，請先連上 Wi-Fi"; exit 1; }
     for p in $WEB $WORKER; do
-      [ -z "$(pids "$p")" ] || { echo "埠 $p 已被占用，請先 sh scripts/playtest.sh stop"; exit 1; }
+      [ -z "$(pids $p)" ] || { echo "埠 $p 已被占用，請先 sh scripts/playtest.sh stop"; exit 1; }
     done
     mkdir -p $DIR
     rm -rf $DIR/state
@@ -50,15 +50,15 @@ case "$1" in
     i=0
     while [ -n "$(pids $WEB)$(pids $WORKER)" ]; do
       i=$((i+1))
-      [ $i -lt 6 ] || { for p in $WEB $WORKER; do pids "$p" | xargs kill -9 2>/dev/null; done; sleep 1; break; }
-      for p in $WEB $WORKER; do pids "$p" | xargs kill 2>/dev/null; done
+      [ $i -lt 6 ] || { for p in $WEB $WORKER; do pids $p | xargs kill -9 2>/dev/null; done; sleep 1; break; }
+      for p in $WEB $WORKER; do pids $p | xargs kill 2>/dev/null; done
       sleep 1
     done
     echo "已停止"
     ;;
   status)
     for p in $WEB $WORKER; do
-      [ -n "$(pids "$p")" ] && echo "埠 ${p}：執行中" || echo "埠 ${p}：未啟動"
+      [ -n "$(pids $p)" ] && echo "埠 ${p}：執行中" || echo "埠 ${p}：未啟動"
     done
     ;;
   *)
