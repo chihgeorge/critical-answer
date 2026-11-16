@@ -168,6 +168,16 @@ export async function withRoom0MonsterAgainAt3(request: APIRequestContext, run: 
   }
 }
 
+/** Playwright closes only its own `context` fixture: every context a test opens with browser.newContext() lives on
+ * until the worker's browser closes. A shard then piles up every earlier test's host, phones and big screens, still
+ * connected, animating and getting broadcasts from rooms whose games run on, until a 5 s wait in a later test times
+ * out (narration-tts.spec.ts's second phone missing from its own roster). Each test starts with those closed. */
+export function closeLeftoverContexts() {
+  test.beforeEach(async ({ browser, context }) => {
+    await Promise.all(browser.contexts().filter((c) => c !== context).map((c) => c.close()));
+  });
+}
+
 /** For specs about the host judging by hand (keys, 答錯・下輪再答, a whole game driven by HOST_JUDGE):
  * every question becomes a text question (the correct option as the answer), since a
  * multipleChoice turn is judged by the phone's lock, not the host, and the bundled bank is all

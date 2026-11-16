@@ -1,11 +1,12 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
 import { revealMarks } from "../lib/podium";
 import type { PodiumReveal } from "../lib/protocol";
-import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl, clickStart } from "./answer";
+import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl, clickStart, closeLeftoverContexts } from "./answer";
 import { setScreenAudio, stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
+closeLeftoverContexts();
 
 /** A host page plus two phone teams (甲隊, 乙隊) in a started game, on 甲隊's turn. */
 async function twoTeamGame(browser: Browser) {

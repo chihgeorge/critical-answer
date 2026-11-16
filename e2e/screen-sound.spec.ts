@@ -34,6 +34,16 @@ test("the host page warns until the big screen's sound is on, then says it is re
   await expect(host.getByTestId("screen-sound")).toContainText("大螢幕的 🎵 音樂關著");
   await setScreenAudio(host, "🎵 音樂", true);
   await expect(host.getByTestId("screen-sound")).toContainText("🔊 大螢幕聲音已就緒");
+
+  // 🌑 螢幕變暗 (#266): the host's switch lays the dim layer over the big screen, and a second press takes it off.
+  // The pad waits out its own cooldown before the second press, which click() waits for.
+  const dim = host.getByRole("group", { name: "大螢幕加料" }).getByRole("button", { name: "螢幕變暗", exact: true });
+  await dim.click();
+  await expect(screen.getByTestId("screen-dim")).toBeVisible();
+  await expect(dim).toHaveAttribute("aria-pressed", "true");
+  await dim.click();
+  await expect(screen.getByTestId("screen-dim")).toHaveCount(0);
+  await expect(dim).toHaveAttribute("aria-pressed", "false");
 });
 
 // docs/designs/immersion.md PR2: the host's pads, in the lobby too (the sound check).

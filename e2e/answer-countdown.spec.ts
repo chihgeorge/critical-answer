@@ -21,10 +21,14 @@ test("the host's 30 秒 shows on the TV, the phone and the host page, and sendin
 
   await expect(host.getByTestId("answer-seconds")).toHaveValue("60");
   await host.getByTestId("answer-seconds").selectOption("30");
+  // The lobby's 進王門檻 menu (#261) reaches the room too: the host's team row counts to 10, not the standard 15.
+  await expect(host.getByTestId("boss-threshold").locator("option")).toHaveText(["10 進度分", "12 進度分", "15 進度分（標準）"]);
+  await host.getByTestId("boss-threshold").selectOption("10");
   await host.getByRole("checkbox", { name: "開始前播放玩法說明" }).uncheck();
   await clickStart(host);
   await skipInitiative(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
+  await expect(host.getByText("0/10", { exact: true }).first()).toBeVisible();
 
   // A fill-in counts only once its persuasion check is rolled and the question is up.
   await expect(host.getByTestId("host-check-first")).toBeVisible();

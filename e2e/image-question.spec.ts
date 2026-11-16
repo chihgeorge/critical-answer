@@ -230,6 +230,8 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
   await expect(screen.getByText("揭曉測試題")).toHaveCount(1);
   await expect(screen.getByTestId("reveal-question")).toHaveText("揭曉測試題");
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
+  // The only team is next, but the reveal holds the room: its phone says it is next, not that it can answer (#263).
+  await expect(team.getByText("下一個是我們！")).toBeVisible();
 
   // A reconnecting phone still sees it — the reveal rides on STATE, not a one-off message.
   await team.reload();
@@ -240,6 +242,7 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
     await expect(page.getByText("正解：揭曉答案")).toHaveCount(0);
     await expect(page.getByText("因為這是補充說明")).toHaveCount(0);
   }
+  await expect(team.getByText("輪到我們了！")).toBeVisible();
   // The next question is dealt: room 1 of the bundled bank is multipleChoice, so the host sees the lock status.
   await expect(host.getByTestId("host-mc-status")).toBeVisible();
 });
