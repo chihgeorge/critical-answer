@@ -16,6 +16,7 @@ import { FORK_ARCH, sceneFloor, TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn, monsterLook, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
+import { MAX_LINE } from "@/lib/narration/runner";
 import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
@@ -426,7 +427,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // video's place, shows on the big screen; the phones still show a text, image or YouTube one. An Instagram clip keeps its own layout too.
   const mediaExplanation = !tapReveal && reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" && reveal.explanation.kind !== "file" ? reveal.explanation : null;
   const inPanelPlayer = !tapReveal && ((!!video && !tileVideo) || !!mediaExplanation);
-  const playerUp = inPanelPlayer || (tileVideo && !!video);
+  // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
+  const instagram = !tapReveal && reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
+  const playerUp = inPanelPlayer || (tileVideo && !!video) || !!instagram;
   // Who scored, the one line the room reads off the reveal (no scoreboard: the meters say the rest). A partial music
   // answer has its own 「對 k/n」 line above, so it gets no 「答對」. Beside a player (under it there is no room) at 20 px.
   const scored = reveal && (reveal.caught || (reveal.scored && scorer && !tapReveal && !reveal.fields?.marks.some((f) => !f.right)));
@@ -514,10 +517,25 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         zhCaptions={!!reveal}
       />
     );
-  const lone = !!reveal && reveal.explanation?.kind !== "text" && !tapReveal && !scored;
-  // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
-  const instagram = !tapReveal && reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
+  const lone = !!reveal && reveal.explanation?.kind !== "text" && !tapReveal && !scored && !reveal.fields;
+  const fieldsList = (partialSize: string) => reveal?.fields && (
+    <ul data-testid="reveal-fields" className="flex flex-col gap-1">
+      {reveal.fields.marks.map((f, i) => (
+        <li key={i} style={f.right ? undefined : { opacity: 0.6 }}>
+          <span aria-label={f.right ? "答對" : "沒答對"}>{f.right ? "✓" : "✗"}</span> {f.label}：{f.answer}
+        </li>
+      ))}
+      {/* Only a partial answer says what it earned (multi-field.md D5). */}
+      {((k, n) =>
+        k > 0 && k < n && (
+          <li data-testid="reveal-fields-partial" className={partialSize}>
+            {view.teams.find((t) => t.id === reveal.fields!.teamId)?.name} 對 {k}/{n}：打掉 {k} 格血、獎勵拿 {Math.round((k / n) * 100)}%
+          </li>
+        ))(reveal.fields.marks.filter((f) => f.right).length, reveal.fields.marks.length)}
+    </ul>
+  );
 
+  const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
   const nameplate = (style: CSSProperties) => (
     <Nameplate className="absolute" style={{ ...style, color: bossScene ? "#b02a3a" : undefined }}>
       <span>{monster.name}</span>
@@ -623,22 +641,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               <div data-testid="reveal-question" className="text-[24px] [overflow-wrap:anywhere]">{reveal.asked.content.kind === "text" ? reveal.asked.content.value : reveal.asked.prompt}</div>
             )}
             {reveal.asked?.content.kind === "image" && <QuestionMedia key={`asked-${reveal.questionId}`} content={reveal.asked.content} maxWidth={260} maxHeight={160} className="mx-auto block" />}
-            {/* A music question with fields: which ones the team got (docs/designs/multi-field.md F7). */}
+            {/* A music question with fields: which ones the team got (docs/designs/multi-field.md F7). Beside a panel
+                player instead: above it, three fields push the player under the nameplate. */}
             {reveal.fields ? (
-              <ul data-testid="reveal-fields" className="flex flex-col gap-1">
-                {reveal.fields.marks.map((f, i) => (
-                  <li key={i} style={f.right ? undefined : { opacity: 0.6 }}>
-                    <span aria-label={f.right ? "答對" : "沒答對"}>{f.right ? "✓" : "✗"}</span> {f.label}：{f.answer}
-                  </li>
-                ))}
-                {/* Only a partial answer says what it earned (multi-field.md D5). */}
-                {((k, n) =>
-                  k > 0 && k < n && (
-                    <li data-testid="reveal-fields-partial" className="text-[18px]">
-                      {view.teams.find((t) => t.id === reveal.fields!.teamId)?.name} 對 {k}/{n}：打掉 {k} 格血、獎勵拿 {Math.round((k / n) * 100)}%
-                    </li>
-                  ))(reveal.fields.marks.filter((f) => f.right).length, reveal.fields.marks.length)}
-              </ul>
+              !(video && !tileVideo && !tapReveal) && fieldsList("text-[18px]")
             ) : (
               // A timing reveal says it beside the video: 命中！{隊名} and the target.
               !tapReveal && <div>正解：{reveal.answer}</div>
@@ -660,9 +666,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             </div>
             {instagram &&
               (instagram.content ? (
-                // Portrait, so it gets a tall box of its own rather than the 356×200 a YouTube explanation has: as tall as
-                // the panel can grow before the dialogue box.
-                <InstagramPlayer key={reveal.questionId} shortcode={instagram.content.shortcode} end={instagram.content.end} command={media?.questionId === reveal.questionId ? media : null} maxWidth={260} maxHeight={280} onPlayingChange={onVideoPlaying} />
+                // Portrait, so it gets a tall box of its own rather than the 356×200 a YouTube explanation has: from the
+                // panel's content top (y 132) to PLAYER_BOTTOM, its 4 px border included (132 + 4 = 136).
+                <InstagramPlayer key={reveal.questionId} shortcode={instagram.content.shortcode} end={instagram.content.end} command={media?.questionId === reveal.questionId ? media : null} maxWidth={260} maxHeight={PLAYER_BOTTOM - 136} onPlayingChange={onVideoPlaying} />
               ) : (
                 <div data-testid={locked ? "video-locked" : undefined} className="flex items-center justify-center bg-[var(--lav)] p-4 text-center text-[20px] text-[var(--k)]" style={{ width: 260, height: 160, boxShadow: "0 0 0 4px var(--k)" }}>
                   {locked && "🔒 請用主持人頁上的大螢幕網址開啟，才會播放影片"}
@@ -695,10 +701,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
               {tapReveal ? (
                 <TimingResult timing={tapReveal} view={view} />
               ) : reveal ? (
-                <>
-                  {scoredLines("text-[20px]")}
-                  {reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
-                </>
+                // In em of the panel's fitted size (20 px at its full 30): a tall column shrinks with it, not over the nameplate.
+                <div className="flex flex-col items-start gap-2" style={{ fontSize: "0.667em" }}>
+                  {fieldsList("text-[0.9em]")}
+                  {scoredLines("")}
+                  {reveal.explanation?.kind === "text" && <div>{reveal.explanation.value}</div>}
+                </div>
               ) : (
                 beside
               )}
@@ -794,15 +802,16 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {/* While a player is up the nameplate rides the dialogue box's top edge, like its 地城主 tag: a longer narration line
           lifts it with the box instead of the box covering it. Beside a panel player it sits at the box's right end, clear of
           the player (they end by x 676); with tiles on the wall the countdown pill holds that corner, so it stays centred under
-          the player, a wide boss bar starting right of the tag (x 215). shortcut: centred, or a boss bar wide enough to reach
-          under the player, a two-row line lifts it about 10 px over the player's bottom edge (three rows, past MAX_LINE, about
-          50 px); cap the box at one row while a player is up if that shows in play. */}
+          the player, a wide boss bar starting right of the tag (x 215). Up to MAX_LINE characters the box keeps two rows (2 px
+          over its one-row height): a longer line (two 20-character team names) would take three and lift the nameplate about
+          40 px over the player, so beside a player it is set smaller, two rows again. */}
       <div className="absolute" style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}>
       <DialogueBox
         className="relative"
         accent={bossScene ? "var(--danger)" : undefined}
         loading={!served && !held && isPending(eventId, narration)}
-        lines={dishUp(cook) ? [line] : served ? ["上菜！"] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"]}
+        lines={sayLines}
+        style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
         {...(!served && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
       />
       {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, ...(tileVideo ? { left: "50%", transform: "translateX(max(-50%, -240px))" } : { right: 8 }) })}
