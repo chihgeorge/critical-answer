@@ -186,6 +186,9 @@ describe("game log", () => {
     expect(await at({ from: "2026-11-21", before: "2026-11-21T12:30:00.000Z" })).toEqual([ended[1]]);
     expect(await at({ to: "2026-11-22", before: "2026-11-21T12:30:00.000Z" })).toEqual(ended.slice(0, 2)); // the earlier end wins
     expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ limit: MAX_GAME_LOGS }));
+    list.mockClear();
+    expect(await at({ from: "2026-11-22", to: "2026-11-21" })).toEqual([]); // from after to: empty, storage untouched
+    expect(list).not.toHaveBeenCalled();
   });
 
   it("GET /api/game-logs passes from/to/before through and refuses a value that is not a date", async () => {
@@ -197,7 +200,7 @@ describe("game log", () => {
     expect(readLogs).toHaveBeenLastCalledWith({ from: "2026-11-21", to: "2026-11-21", before: "2026-11-21T12:30:00.000Z" });
     expect((await get("")).status).toBe(200);
     expect(readLogs).toHaveBeenLastCalledWith({});
-    for (const bad of ["?from=yesterday", "?to=2026-11-21~", "?before=2026-11"]) expect((await get(bad)).status).toBe(400);
+    for (const bad of ["?from=yesterday", "?to=2026-11-21~", "?before=2026-11", `?from=2026-11-21T${"1".repeat(13)}`]) expect((await get(bad)).status).toBe(400);
     expect(readLogs).toHaveBeenCalledTimes(2);
   });
 

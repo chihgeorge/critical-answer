@@ -175,7 +175,7 @@ export async function bankOrFallback(getBank: () => Promise<Bank>): Promise<Bank
   }
 }
 
-const ISO_PREFIX = /^\d{4}-\d{2}-\d{2}(T[\d:.]*Z?)?$/;
+const ISO_PREFIX = /^\d{4}-\d{2}-\d{2}(T[\d:.]{0,12}Z?)?$/; // 12: "10:00:00.000", so a key stays short
 
 /** The GameLogRange in a download's query string (`from`, `to`, `before`), or null when a value is not a date or ISO time. */
 export function gameLogRange(params: URLSearchParams): GameLogRange | null {

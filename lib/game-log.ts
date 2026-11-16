@@ -141,9 +141,11 @@ export async function readGameLogs(storage: GameLogStorage, range: GameLogRange 
   // A trailing Z would sort after the ":" and "." of every key in that minute or second: from would skip them, before keep them.
   const noZ = (t: string) => t.replace(/Z$/, "");
   const ends = [range.to && `${PREFIX}${range.to}~`, range.before && `${PREFIX}${noZ(range.before)}`].filter((e) => !!e).sort();
+  const start = range.from && `${PREFIX}${noZ(range.from)}`;
+  if (start && ends[0] && start >= ends[0]) return []; // an empty range: storage need not handle start after end
   const list = await storage.list({
     prefix: PREFIX,
-    ...(range.from ? { start: `${PREFIX}${noZ(range.from)}` } : {}),
+    ...(start ? { start } : {}),
     ...(ends[0] ? { end: ends[0] } : {}),
     reverse: true,
     limit: MAX_GAME_LOGS,
