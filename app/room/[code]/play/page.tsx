@@ -26,6 +26,7 @@ import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { SORT_ITEMS, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
+import { HostAwayBanner } from "@/components/host-away-banner";
 import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
@@ -1107,6 +1108,7 @@ export default function PlayPage() {
             {DISCONNECTED_NOTICE}
           </Panel>
         )}
+        {game?.hostAway && !disconnected && !rested && <HostAwayBanner />}
         {offlineMsg && !disconnected && (
           <Panel tone="lav" role="status" className="px-3 py-2 text-center text-[16px]">
             {offlineMsg}

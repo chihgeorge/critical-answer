@@ -194,6 +194,8 @@ const EPILOGUE_DELAY_MS = 4000;
  * long (a screen gone or stuck never reports), then starts within READ_GAP_MS of the last line. */
 const END_READ_CAP_MS = 20_000;
 const READ_GAP_MS = 1000;
+/** How long a game waits after its last host page went before STATE says hostAway: a reload or a quick reconnect shows nothing. */
+export const HOST_AWAY_GRACE_MS = 8000;
 /** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
@@ -425,6 +427,9 @@ export class DungeonRoom {
   /** When the last cue was set (applyLostCrit waits LOST_CRIT_GAP_MS after it), and the timer that waits. */
   private cueAt = 0;
   private lostCritTimer: ReturnType<typeof setTimeout> | null = null;
+  /** No host page has been connected for HOST_AWAY_GRACE_MS during a game: the screens show 主持人重新連線中. Memory only. */
+  private hostAway = false;
+  private hostAwayTimer: ReturnType<typeof setTimeout> | null = null;
   private epilogue: string | null = null;
   /** Set synchronously before anything awaits, so a re-broadcast of GAME_OVER cannot start a second epilogue. */
   private epilogueRequested = false;
@@ -1147,6 +1152,8 @@ export class DungeonRoom {
     } catch {
       this.lostCrit = null; // a damaged save (a null team) restores without it
     }
+    // Every socket went with the restart: a host that does not come back still gets its banner.
+    this.armHostAway();
     // The story that ends a finished game is written by a promise that a restart loses: ask for it again.
     if (this.game?.phase === "finished" && !this.epilogue) {
       this.epilogueRequested = true;
@@ -1514,6 +1521,8 @@ export class DungeonRoom {
       ...this.undoWrong(),
       ...(this.cue ? { cue: this.cue } : {}),
       cueSeq: this.cueSeq,
+      // Only while something waits on the host (play, a held podium, more epilogue pages): not over a finished game's last page.
+      ...(this.hostAway && (this.game.phase === "playing" || this.revealHold !== null || (!!this.epilogue && this.epiloguePage < epiloguePages(this.epilogue).length - 1)) ? { hostAway: true as const } : {}),
     };
   }
 
@@ -1948,7 +1957,7 @@ export class DungeonRoom {
       this.gone.add(prev);
       prev.close();
       // Host-only messages would go to the closed socket until the new one re-sends HOST_CLAIM (it does on open).
-      this.hostConns.delete(conn.id);
+      if (this.hostConns.delete(conn.id)) this.armHostAway();
       // The new socket proves the screen key itself (SCREEN_HELLO, on open too).
       // Its sound report stays (it counts only once the key is back) and the host pages are not told: the TV says hello
       // and reports again on open, so a reconnect does not flash 沒有大螢幕連著 then 已就緒 on the host page.
@@ -2000,7 +2009,7 @@ export class DungeonRoom {
     const live = this.conns.get(conn.id);
     if (live && live !== conn) return;
     this.conns.delete(conn.id);
-    this.hostConns.delete(conn.id);
+    if (this.hostConns.delete(conn.id)) this.armHostAway();
     this.dropScreen(conn.id);
     const teamId = this.connTeam.get(conn.id);
     this.connTeam.delete(conn.id);
@@ -2384,6 +2393,9 @@ export class DungeonRoom {
     }
     this.hostConns.set(conn.id, conn);
     this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword, screenKey: this.screenKey });
+    const wasAway = this.hostAway;
+    this.clearHostAway();
+    if (wasAway) this.broadcast(this.snapshot());
     this.sendVideo(conn);
     this.sendTo(conn, { type: "HOST_NEXT_LINE_STATE", line: this.nextLine?.text ?? "" });
     if (this.lastNarration) this.sendTo(conn, { type: "HOST_NARRATION_PROGRESS", eventId: this.lastNarration.eventId, done: this.lastNarration.done });
@@ -2822,6 +2834,28 @@ export class DungeonRoom {
     if (this.tapTimer) clearTimeout(this.tapTimer);
     this.tapTimer = null;
     this.tapReveal = null;
+    this.clearHostAway();
+  }
+
+  /** The last host page went (or none came back after a restart): after HOST_AWAY_GRACE_MS with none back, STATE says hostAway.
+   * shortcut: a sleeping phone's socket can stay open on the server until the platform notices; add a ping if that is too slow. */
+  private armHostAway() {
+    if (!this.game || this.hostConns.size > 0 || this.hostAwayTimer || this.hostAway) return;
+    this.hostAwayTimer = setTimeout(() => {
+      this.hostAwayTimer = null;
+      if (this.expiring || !this.game || this.hostConns.size > 0) return;
+      this.hostAway = true;
+      // Nobody to tell (an alarm wake): the next socket's first STATE carries it.
+      if (this.conns.size === 0) return;
+      // Not broadcastState: a banner must not run the game's own steps (stun lines, fork, lost crit).
+      this.broadcast(this.snapshot());
+    }, HOST_AWAY_GRACE_MS);
+  }
+
+  private clearHostAway() {
+    if (this.hostAwayTimer) clearTimeout(this.hostAwayTimer);
+    this.hostAwayTimer = null;
+    this.hostAway = false;
   }
 
   /** After a lock is gone: its team, kept on turn while the lock waited (onClose), shows offline if no phone is left. */
