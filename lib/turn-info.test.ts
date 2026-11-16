@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeTurn, FALLBACK_MONSTER, monsterLook, nextUp, PHASE_HUE_STEP, turnLive, turnOpened } from "./turn-info";
+import { describeTurn, FALLBACK_MONSTER, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, turnLive, turnOpened } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -169,5 +169,15 @@ describe("nextUp / turnLive", () => {
     expect(turnOpened(null, true)).toBe(false);
     expect(turnOpened(true, true)).toBe(false);
     expect(turnOpened(false, false)).toBe(false);
+  });
+});
+
+describe("pausedOffline", () => {
+  it("pauses only when every team's phone is offline", () => {
+    expect(pausedOffline(view({ currentTurnTeamId: null }, [{ online: false }, { online: false }]))).toBe(true);
+    expect(pausedOffline(view({}, [{ online: false }, { online: true }]))).toBe(false);
+    // An offline team that keeps the turn (a wrong answer to settle, a typed answer) still has the host's buttons.
+    expect(pausedOffline(view({ currentTurnTeamId: "a" }, [{ online: false }, { online: false }]))).toBe(false);
+    expect(pausedOffline(view({ currentTurnTeamId: null }, []))).toBe(false); // no teams: nothing to wait for
   });
 });

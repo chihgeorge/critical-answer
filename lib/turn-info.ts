@@ -88,6 +88,15 @@ export function describeTurn(view: SpectatorView, question: PublicQuestion | nul
 
 type HoldFields = Pick<StateMessage, "reveal" | "eventReveal" | "fortune" | "phaseCard" | "phaseCardDue">;
 
+/** The host page and the big screen say this while every team's phone is offline (rehearsal QA 2026-11-16 P1-1). */
+export const PAUSED_OFFLINE = "⏸ 遊戲暫停中，等隊伍連回";
+
+/** Every team's phone is offline and none holds the turn, so the game waits until one reconnects. A team that keeps the
+ * turn offline (a wrong answer to settle, a typed answer, a door) still has the host's buttons (currentTurnTeamId). */
+export function pausedOffline(view: Pick<SpectatorView, "teams" | "currentTurnTeamId">): boolean {
+  return view.currentTurnTeamId === null && view.teams.length > 0 && view.teams.every((t) => !t.online);
+}
+
 /** The turn has passed to the next team, but the room holds until the host's 下一題: the last answer, an event room's
  * result, a fortune's effect card or a boss phase card. That team's phone reads 「下一個是我們！」. A fortune's earlier
  * steps keep the turn on the drawing team, which acts in them (fortune-teller.md). */

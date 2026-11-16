@@ -126,7 +126,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     body = (
       <div className="px-bar mt-1 flex-col !gap-0 !text-[19px]" role="status" style={{ background: "#ff8787", boxShadow: "inset 0 -5px 0 #e03131" }}>
         <span>🗝️ 偷襲準備好了！</span>
-        <small className="text-[13px]">這題答對獎勵分 ×{SNEAK_REWARD_MULTIPLIER}・答錯就沒了・剩 {me.abilityUses} 次</small>
+        <small className="text-[13px]">這題答對{scoreName(game.cuisine)} ×{SNEAK_REWARD_MULTIPLIER}・答錯就沒了・剩 {me.abilityUses} 次</small>
       </div>
     );
   } else if (me?.classId === "mage" && q && cast?.qid === q.id && cast.eventId === game.eventId && gone.length > cast.before) {
@@ -1281,7 +1281,7 @@ export default function PlayPage() {
               <McOption key={i} index={i} text={opt} disabled look={i === revealed.choice!.correctIndex ? "ok" : "dim"} label={i === revealed.choice!.correctIndex ? "✓ 答對" : undefined} className="min-h-[56px] text-[21px]" />
             ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
-              答對了！{revealed.choice.points > 0 ? `＋${revealed.choice.points} 分` : ""}
+              答對了！{revealed.choice.points > 0 ? `＋${revealed.choice.points} ${scoreName(game.cuisine)}` : ""}
               {revealed.choice.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 +{revealed.choice.chefBonus}）</span> : null}
             </div>
           </Panel>
@@ -1295,7 +1295,7 @@ export default function PlayPage() {
               <McOption key={i} index={i} badge={i + 1} text={item} disabled look="ok" label="✓" className="min-h-[56px] text-[21px]" />
             ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
-              答對了！{revealed.sorted.points > 0 ? `＋${revealed.sorted.points} 分` : ""}
+              答對了！{revealed.sorted.points > 0 ? `＋${revealed.sorted.points} ${scoreName(game.cuisine)}` : ""}
               {revealed.sorted.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 +{revealed.sorted.chefBonus}）</span> : null}
             </div>
           </Panel>

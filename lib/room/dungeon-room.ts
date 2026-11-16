@@ -2668,12 +2668,14 @@ export class DungeonRoom {
     if (!teamId || !teamKey) {
       // A guess while no code is live cannot hit, so it does not use up the next code's guesses.
       if (this.handoffs.size > 0 && ++this.handoffWrong >= HANDOFF_MAX_WRONG) {
+        this.handoffsGone([...this.handoffs.keys()]);
         this.handoffs.clear();
         this.handoffWrong = 0;
       }
       return void this.sendTo(conn, { type: "ERROR", error: "bad_code" });
     }
     this.handoffs.delete(teamId);
+    this.handoffsGone([teamId]);
     this.sendTo(conn, { type: "TEAM_CLAIMED", teamId, teamKey });
     if (waiting) {
       // This phone leaves its waiting team without a word; the team's other phones are told it is gone.
@@ -2681,6 +2683,11 @@ export class DungeonRoom {
       this.dropTeam(bound);
       this.broadcastState();
     }
+  }
+
+  /** Tells the host pages these teams' codes no longer work (used or burned), so they stop showing them. Expiry they time themselves. */
+  private handoffsGone(teamIds: string[]) {
+    for (const teamId of teamIds) for (const c of this.hostConns.values()) this.sendTo(c, { type: "HANDOFF_GONE", teamId });
   }
 
   /** Drops expired codes; with none live, earlier wrong guesses no longer count against the next code. */

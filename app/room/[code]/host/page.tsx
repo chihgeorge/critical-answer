@@ -12,7 +12,7 @@ import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
 import { DEFAULT_BANK_ENTRY, FORTUNE_HOST_GRACE_MS, HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, serveSecondsLeft, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, writeStored } from "@/lib/stored";
-import { BOSS_THRESHOLD, describeTurn } from "@/lib/turn-info";
+import { BOSS_THRESHOLD, describeTurn, PAUSED_OFFLINE, pausedOffline } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
 import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
@@ -263,6 +263,9 @@ export default function HostPage() {
           // The room forgets a code after HANDOFF_MS, so the page stops showing it then (unless a newer one replaced it).
           setTimeout(() => dropHandoff(msg.teamId, msg.code), HANDOFF_MS);
           break;
+        case "HANDOFF_GONE":
+          dropHandoff(msg.teamId);
+          break;
         case "HOST_BANKS":
           // Another host device picked another bank: this page's rows were for the old one.
           if (msg.selected.id !== checkedBankId.current) {
@@ -422,7 +425,9 @@ export default function HostPage() {
   // 🚨 A catch waiting for the host's ruling (anti-ai-cheating.md): its card shows whatever revealUp says.
   const openCatch = game?.phase === "playing" ? game.view.antiCheat?.openCatch : undefined;
   // In the boss room this choice also brings a new question (the boss rotates), so it is named for that.
-  const retryLabel = turn?.inBoss ? "下輪換題" : "下輪再答";
+  // After a cleric's prayer the same choice answers again now, keeping the turn (lib/game-state.ts answerQuestion).
+  const prayedWrong = game?.phase === "playing" && !!game.view.pendingWrong?.prayed;
+  const retryLabel = prayedWrong ? "現在再答" : turn?.inBoss ? "下輪換題" : "下輪再答";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): teams buzz in, the host judges the one that buzzed first. */
   const buzz = game?.phase === "playing" && !revealUp ? game.view.buzz : undefined;
   // A timing question (timing-tap.md 畫面): the big screen's clock missing for 3 s after ▶ turns the line into a warning.
@@ -927,7 +932,7 @@ export default function HostPage() {
               </label>
               <div className="text-[13px]">隊伍多時選低一點，整場比較短；開始後不能改</div>
             </Panel>
-            <label className="flex items-center gap-2 text-[16px]">
+            <label className="flex items-center gap-2 text-[16px] text-white">
               題庫：
               <select
                 data-testid="host-bank"
@@ -938,7 +943,7 @@ export default function HostPage() {
                   setHealth(null); // another bank's rows
                   send({ type: "HOST_SET_BANK", bankId: e.target.value });
                 }}
-                className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px]"
+                className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px] text-[var(--k)]"
               >
                 {/* The room's pick may be a bank this host is not offered (no owner key yet) or one since deleted. */}
                 {(banks.list.some((b) => b.id === banks.selected.id) ? banks.list : [...banks.list, banks.selected]).map((b) => (
@@ -1039,6 +1044,15 @@ export default function HostPage() {
         {game && game.phase === "playing" && !game.intro && !game.initiative && (
           <>
             {/* No team on turn (every phone offline): the team rows and their 交給新手機 still show. */}
+            {/* Not over an answer, card, lock or roll on show (they finish without a phone), same as the big screen. */}
+            {pausedOffline(game.view) && !revealUp && !lock && !roll && (
+              <div data-testid="host-paused">
+                <Panel tone="turn" className="px-3 py-2 text-center" role="status">
+                  <div className="text-[20px]">{PAUSED_OFFLINE}</div>
+                  <div className="text-[14px]">每一隊的手機都離線了。手機壞了或換人，按下面那隊的「交給新手機」</div>
+                </Panel>
+              </div>
+            )}
             {turn && (turn.team || buzz) && (
             <>
             <TurnRibbon>{buzz ? (turn.team ? `搶答：${turn.team.name}搶到了` : "首領戰　搶答中") : `${turn.inBoss ? "首領戰　" : ""}輪到：${turn.team?.name}`}</TurnRibbon>
@@ -1281,8 +1295,10 @@ export default function HostPage() {
                         ? `${lockTeam}鎖定了 ${sortedLock ?? optionLetter(lock.optionIndex)}…`
                         : bossMiss
                           ? "答錯！首領換一題…"
+                          : prayedWrong
+                          ? `${turn.team.name}祈禱了！等他們${retryLabel}或逃跑`
                           : wrong
-                          ? `答錯！等${turn.team.name}選${retryLabel}或逃跑`
+                          ? `答錯！等${turn.team.name}${game.view.awaitingPrayer === turn.team.id ? "祈禱、" : ""}選${retryLabel}或逃跑`
                           : `等${turn.team.name}鎖定答案…`}
                     </div>
                     <div className="text-[14px]">{roll?.kind === "kill" ? "大螢幕擲 4d20 擊殺獎勵後結算" : roll || lock?.revealing ? "大螢幕停頓 2 秒後揭曉" : lock ? "按公布答案揭曉" : `${game.question?.items ? "排序題" : "選擇題"}由隊伍手機作答，主持人公布`}</div>
@@ -1291,8 +1307,9 @@ export default function HostPage() {
                   {revealButton}
                   {stuck && (
                     <>
-                      <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>
-                      <div className="px-1 pt-1 text-[14px] text-white">隊伍卡住時，替{turn.team.name}選：</div>
+                      {/* A prayed team is deciding, not stuck: the row stays as the way out, without the alarm. */}
+                      {!prayedWrong && <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>}
+                      <div className="px-1 pt-1 text-[14px] text-white">{prayedWrong ? "" : "隊伍卡住時，"}替{turn.team.name}選：</div>
                       <div className={bossMiss ? "grid" : turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
                         <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・${retryLabel}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                           <span className="whitespace-nowrap">{retryLabel}</span>
@@ -1333,7 +1350,7 @@ export default function HostPage() {
                   )}
                   {cleric === "wait" ? (
                     <>
-                      <div className="px-1 pt-1 text-center text-[20px] text-white" role="status">答錯了！等{turn.team.name}選，或替他們選：</div>
+                      <div className="px-1 pt-1 text-center text-[20px] text-white" role="status">{prayedWrong ? `${turn.team.name}祈禱了！` : "答錯了！"}等{turn.team.name}選，或替他們選：</div>
                       <div className={turn.inBoss ? "grid grid-cols-3" : "grid grid-cols-2"}>
                         {game.view.awaitingPrayer === turn.team.id && (
                           <PixelButton className="text-[16px]" style={{ background: "#ffe066" }} disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "pray")}>
@@ -1384,7 +1401,7 @@ export default function HostPage() {
                     </PixelButton>
                   ) : (
                   <div className={turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
-                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} aria-label={`答錯・${retryLabel}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
+                    <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} aria-label={`答錯・${turn.inBoss ? "下輪換題" : "下輪再答"}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                       {turn.inBoss ? "答錯・下輪換題" : <TwoLine top="答錯・" bottom="下輪再答" />}
                       <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                     </PixelButton>
@@ -1430,15 +1447,15 @@ export default function HostPage() {
                   <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
                   {t.classId && <span className="text-[13px]" title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "" : t.abilityUses}</span>}
                   {t.fork && <span data-testid="host-team-fork" className="text-[13px]">🚪 在叉路口</span>}
-                  {t.sneakArmed && <span className="text-[13px]" title={`偷襲準備好了：這題答對獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
+                  {t.sneakArmed && <span className="text-[13px]" title={`偷襲準備好了：這題答對${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
                   {game.view.antiCheat?.on && t.catchesLeft !== undefined && <span className="text-[13px]" title={`神諭剩 ${t.oracleLeft ?? 0} 次、抓包剩 ${t.catchesLeft} 次`}>🔮{t.oracleLeft ?? 0} 🚨{t.catchesLeft}</span>}
                   {t.oracle && <span className="text-[13px]" title="這題請示了神諭：答對獎勵減半">🔮減半</span>}
                   <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{Math.min(t.score, game.view.bossThreshold ?? BOSS_THRESHOLD)}/{game.view.bossThreshold ?? BOSS_THRESHOLD}</span>
                   <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
                   </div>
                   {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}
-                  {/* 🧪 幸運藥水 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. */}
-                  <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
+                  {/* 🧪 幸運藥水 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. It asks first: a mistap is only undone from 修正. */}
+                  <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => confirm(`給${t.name}一瓶幸運藥水？（給錯了可以在「⚙ 更多」的「修正」收回）`) && send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
                     {t.item ? "🧪 已有" : "🧪 給藥水"}
                   </PixelButton>
                   <PixelButton

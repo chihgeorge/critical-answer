@@ -127,7 +127,7 @@ test("phone answering: a wrong lock is marked without the answer, 下輪再答 g
   await revealLock(host);
   // Judged after the reveal beat and the crit die (2 s each); a natural 20 adds half the reward.
   await expect(wall(green)).toHaveAttribute("data-look", "ok", { timeout: 10_000 });
-  await expect(team.getByText(/答對了！＋1[05] 分/)).toBeVisible();
+  await expect(team.getByText(/答對了！＋1[05] 飽足感/)).toBeVisible();
   // D4/D6: the reveal keeps the answered question, though the room has already dealt the next one.
   await expect(question).toBeVisible();
   await expect(host.getByTestId("host-reveal")).toContainText("綠色");

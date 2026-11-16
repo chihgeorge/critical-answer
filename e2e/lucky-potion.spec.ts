@@ -21,6 +21,7 @@ test("lucky potion: host gives it, the team drinks it, the crit rolls two dice a
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
+  host.once("dialog", (d) => void d.accept()); // 給…一瓶幸運藥水？
   await host.getByTestId("give-potion").click();
   await expect(host.getByTestId("give-potion")).toBeDisabled();
   await expect(host.getByTestId("give-potion")).toHaveText("🧪 已有");
