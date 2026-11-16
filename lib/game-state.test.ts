@@ -2844,6 +2844,54 @@ describe("timing question taps (docs/designs/timing-tap.md)", () => {
     expect(setTeamOnline(setTeamOnline(closed, "T2", false), "T2", true).buzz!.allStunned).toBeUndefined();
   });
 
+  // Value: protects=the host's skip of a timing question that would come round as itself counts it as used, so the last phase moves on; fails_when=retire is ignored and the skip loops on the same question; seam=none
+  it("a retiring skip of the phase's last unrevealed timing question counts it as used: the last phase moves on to a revealed one", () => {
+    const g = { ...tapping(), revealedQuestionIds: [...tapping().revealedQuestionIds, "t-b"] };
+    // Without retire it comes round as itself, as before.
+    expect(skipBuzz(g).boss.currentQuestionId).toBe("t-a");
+    const retired = skipBuzz(g, true);
+    expect(retired.boss.currentQuestionId).toBe("t-b");
+    expect(retired.revealedQuestionIds).toContain("t-a");
+    expect(retired.boss.phasePending).toBeUndefined();
+    expect(retired.buzz).toBeUndefined();
+    // Not the last unrevealed one: an ordinary skip, left unrevealed so it may come round again.
+    const early = skipBuzz(tapping(), true);
+    expect(early.boss.currentQuestionId).toBe("t-b");
+    expect(early.revealedQuestionIds).not.toContain("t-a");
+  });
+
+  // Value: protects=an earlier phase whose last unrevealed timing question is retired ends (exhausted) and the next phase can start; fails_when=the phase stays on a used question or enterNextBossPhase throws; seam=none
+  it("a retiring skip that uses up an earlier phase ends it: stunned teams freed, no buzz, the next phase deals its question", () => {
+    const teams = [0, 1, 2].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
+    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["t-a", "t-b"], buzzer: true }, { maxHp: 1, questionIds: ["z-a"], buzzer: true }]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    g = sendToBoss(g, "T0");
+    g = { ...g, currentTurnIndex: 0, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
+    g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
+    g = openBuzz(enterNextBossPhase(g), "t-a", true);
+    g = patch({ ...g, revealedQuestionIds: [...g.revealedQuestionIds, "t-b"] }, "T1", { stunned: true });
+    const ended = skipBuzz(g, true);
+    expect(ended.boss.phasePending).toBe("exhausted");
+    expect(ended.boss.currentQuestionId).toBe("t-a");
+    expect(ended.revealedQuestionIds).toContain("t-a");
+    expect(ended.buzz).toBeUndefined();
+    expect(ended.teams.find((t) => t.id === "T1")!.stunned).toBeFalsy();
+    expect(() => skipBuzz(ended, true)).toThrow("not_buzzer_phase");
+    expect(enterNextBossPhase(ended).boss.currentQuestionId).toBe("z-a");
+  });
+
+  // Value: protects=the documented residual risk: a one-question last phase stays on its question without crashing; fails_when=retire throws or flips the phase; seam=none
+  it("a retiring skip in a one-question last phase stays on it (nothing else to play), marked used", () => {
+    const teams = [0, 1].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));
+    let g = createGame(teams, ...deck(2), ["p1-a"], { bossThreshold: 15 }, 1, first, 10, {}, [{ maxHp: 2, questionIds: ["t-a"], buzzer: true }]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    g = sendToBoss(g, "T0");
+    g = { ...g, currentTurnIndex: 0, teams: g.teams.map((t) => ({ ...t, boon: undefined })) };
+    g = answerQuestion(g, "T0", "p1-a", true, "retry", first).game;
+    const same = skipBuzz(enterNextBossPhase(g), true);
+    expect(same.boss.currentQuestionId).toBe("t-a");
+    expect(same.boss.phasePending).toBeUndefined();
+    expect(same.revealedQuestionIds).toContain("t-a");
+  });
+
   it("the latch clears on ⟲ and when the question moves on, even to itself", () => {
     const latched = setTeamOnline(setTeamOnline(patch(patch(tapping(), "T0", { stunned: true }), "T1", { stunned: true }), "T2", false), "T2", true);
     expect(latched.buzz!.allStunned).toBe(true);

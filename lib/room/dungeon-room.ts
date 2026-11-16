@@ -3867,18 +3867,27 @@ export class DungeonRoom {
     if (!this.requireHost(conn) || !this.game) return;
     if (this.paused() || this.pendingRoll || questionId !== this.game.boss.currentQuestionId) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
     try {
-      this.skipBuzzNow();
+      // A timing question cannot be judged or played live: the host's skip is its only way out (timing-tap.md).
+      this.skipBuzzNow(this.question(questionId)?.kind === "timing");
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
+    // Retiring the phase's last question ended it: straight to its card, as a reveal closing would.
+    if (this.game.boss.phasePending) return this.openPhaseCard();
     this.broadcastState();
   }
 
   /** skipBuzz. When a timing question comes round again as itself, its song stops and its clock goes: past the
    * target the round would close again at once, over and over (timing-tap.md). The host's ▶ then replays it. */
-  private skipBuzzNow() {
+  private skipBuzzNow(retire = false) {
     const before = this.game!.boss.currentQuestionId;
-    this.game = skipBuzz(this.game!);
+    this.game = skipBuzz(this.game!, retire);
+    // A phase that just ended keeps its question until the card deals the next one: nothing to replay.
+    if (this.game.boss.phasePending) {
+      this.tapClock = null;
+      this.tapReplay = null;
+      return;
+    }
     if (this.game.boss.currentQuestionId !== before || this.question(before)?.kind !== "timing") return;
     if (this.media?.questionId === before) this.media = { ...this.media, state: "paused" };
     this.tapClock = null;

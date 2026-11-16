@@ -1017,14 +1017,33 @@ export function pickCategory(game: GameState, teamId: string, category: string, 
   return { ...game, boss: { ...game.boss, currentQuestionId: id, queuedQuestionId }, buzz: { ...buzz, questionId: id, category } };
 }
 
-/** 沒人答對，換下一題 (D4): the boss question moves on, unrevealed, so it may come round again. */
-export function skipBuzz(game: GameState): GameState {
+/** 沒人答對，換下一題 (D4): the boss question moves on, unrevealed, so it may come round again.
+ * `retire`: the host's skip of a timing question, which has no verdict to give and may be one the big screen
+ * cannot play (timing-tap.md). When it would come round as itself (the phase's last unrevealed question), it counts as used
+ * instead, like a flee from a shown wrong option: an earlier phase then ends (exhausted), the last moves on to
+ * revealed questions. */
+export function skipBuzz(game: GameState, retire = false): GameState {
   if (!isBuzzPhase(game)) throw new InvalidActionError("not_buzzer_phase");
   if (game.buzz?.questionId === game.boss.currentQuestionId && game.buzz.teamId) throw new InvalidActionError("buzz_taken");
-  const rotated = rotateBoss(game.boss, game.revealedQuestionIds);
+  const current = game.boss.currentQuestionId;
+  let revealed = game.revealedQuestionIds;
+  let rotated = rotateBoss(game.boss, revealed);
+  if (retire && rotated.currentQuestionId === current) {
+    revealed = withRevealed(revealed, current);
+    if (phaseUsedUp(game.boss, revealed)) {
+      // The phase card deals the next phase's question (enterNextBossPhase); the stunned teams' sit-out ends (R5).
+      return { ...game, revealedQuestionIds: revealed, buzz: undefined, teams: resetBossSelections(unstun(game.teams, (t) => !!t.inBoss)), boss: { ...game.boss, phasePending: "exhausted" } };
+    }
+    rotated = rotateBoss(game.boss, revealed);
+  }
   // A new question ends the stunned teams' sit-out (R5); the same one coming round again does not.
-  const teams = rotated.currentQuestionId !== game.boss.currentQuestionId ? unstun(game.teams, (t) => !!t.inBoss) : game.teams;
-  return { ...game, buzz: rotatedBuzz(game, rotated.currentQuestionId), teams: resetBossSelections(teams), boss: { ...game.boss, ...rotated } };
+  const teams = rotated.currentQuestionId !== current ? unstun(game.teams, (t) => !!t.inBoss) : game.teams;
+  return { ...game, revealedQuestionIds: revealed, buzz: rotatedBuzz(game, rotated.currentQuestionId), teams: resetBossSelections(teams), boss: { ...game.boss, ...rotated } };
+}
+
+/** An earlier boss phase out of unrevealed questions moves on; the last one repeats them (premise 3). */
+function phaseUsedUp(boss: BossState, revealed: string[]): boolean {
+  return boss.phaseIndex < boss.phases.length - 1 && boss.questionIds.every((id) => revealed.includes(id));
 }
 
 /** No class ability, check or prayer in a buzzer phase (D6): answers are spoken after a buzz. */
@@ -1226,8 +1245,7 @@ export function answerQuestion(
 
   if (inBoss) {
     const lastPhase = boss.phaseIndex >= boss.phases.length - 1;
-    // An earlier phase out of unrevealed questions moves on; the last one repeats them (premise 3).
-    const usedUp = (revealed: string[]) => !lastPhase && boss.questionIds.every((id) => revealed.includes(id));
+    const usedUp = (revealed: string[]) => phaseUsedUp(boss, revealed);
     if (correct) {
       const hits = fields?.right ?? 1;
       const newHp = Math.max(0, boss.hp - hits * sneak - (crit ? 1 : 0));
