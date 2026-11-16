@@ -2,7 +2,7 @@
 // SpectatorView, so /screen and the /play mini broadcast never disagree.
 
 import { DEFAULT_GAME_CONFIG, type SpectatorView } from "./game-state";
-import type { PublicQuestion } from "./protocol";
+import type { PublicQuestion, StateMessage } from "./protocol";
 import type { SceneTheme } from "./pixel-art";
 import type { Accessory } from "./monster-catalog";
 import type { MonsterSprite, SpriteKind } from "./sprite-kind";
@@ -84,4 +84,24 @@ export function describeTurn(view: SpectatorView, question: PublicQuestion | nul
     questionId: inBoss ? view.bossCurrentQuestionId : team?.currentQuestionId,
     bossHits: view.bossMaxHp - view.bossHp,
   };
+}
+
+type HoldFields = Pick<StateMessage, "reveal" | "eventReveal" | "fortune" | "phaseCard" | "phaseCardDue">;
+
+/** The turn has passed to the next team, but the room holds until the host's 下一題: the last answer, an event room's
+ * result, a fortune's effect card or a boss phase card. That team's phone reads 「下一個是我們！」. A fortune's earlier
+ * steps keep the turn on the drawing team, which acts in them (fortune-teller.md). */
+export function nextUp(s: HoldFields): boolean {
+  return !!s.reveal || !!s.eventReveal || s.fortune?.step === "card" || !!s.phaseCard || !!s.phaseCardDue;
+}
+
+/** It is this team's turn and its phone can act now, the moment the phone buzzes. Not in a buzzer phase, where every team plays. */
+export function turnLive(s: HoldFields & Pick<StateMessage, "phase" | "view" | "intro" | "initiative">, teamId: string): boolean {
+  return s.phase === "playing" && !s.intro && !s.initiative && !s.view.buzz && s.view.currentTurnTeamId === teamId && !nextUp(s);
+}
+
+/** The phone buzzes when its turn opens: live now, not live on the last STATE. `null`: no STATE yet on this connection,
+ * so a (re)connect into its own turn stays silent. */
+export function turnOpened(wasLive: boolean | null, live: boolean): boolean {
+  return live && wasLive === false;
 }

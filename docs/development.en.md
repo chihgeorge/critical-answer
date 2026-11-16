@@ -81,12 +81,12 @@ lib/bank-api.ts          HTTP handling for /api/bank and /api/game-logs (OWNER_K
 lib/game-log.ts          Game log: when a game ends, builds one record from the game state and stores it in BankStoreDO; the download reads the newest 1000 games
 lib/narration/           Narration: events, scripted lines, LLM, circuit breaker, runner, audience-reaction tally (crowd.ts), browser TTS playback decisions (tts.ts)
 lib/pixel-art.ts         Pixel characters and scenes drawn in code
-lib/turn-info.ts         Works out from the public state whose turn it is and which monster they face
+lib/turn-info.ts         Works out from the public state whose turn it is and which monster they face, and when a phone reads 「下一個是我們！」 (we are next!) or vibrates
 lib/map-layout.ts        Live map layout: positions of rooms, tokens, fog, boss room (pure functions)
 lib/use-room-socket.ts   Connection hook shared by the three room pages (message parsing, server restart detection, no reconnects while asleep, first-connection timeout)
 lib/join-rejection.ts    The reason line a phone shows when joining is refused (pure function)
 lib/stored.ts            localStorage reads and writes that never throw (also work in private mode)
-lib/use-wake-lock.ts     Keeps the screen awake on the host page and the big screen
+lib/use-wake-lock.ts     Keeps the screen awake on the host page, the big screen and the player phones
 lib/report-client-error.ts、client-error-api.ts  Front-end crash reports (sendBeacon) and handling for /api/client-error (origin check, 4 KB limit, writes one log line)
 lib/bank-image-api.ts    /api/bank/image image, video and audio upload (file type and size checks; returns 409 when the bank cannot be read, 503 when it cannot be reached)
 worker/index.ts          Cloudflare Worker: the Room and BankStoreDO Durable Objects, the /api/bank, /api/game-logs and /api/client-error routes, entry rules

@@ -12,7 +12,8 @@ import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
 import { ABILITY_USES, CATCH_PAY, CHEF_BONUS_PERCENT, ORACLE_USES, MAGE_ABILITY_USES, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
-import { describeTurn } from "@/lib/turn-info";
+import { describeTurn, nextUp, turnLive, turnOpened } from "@/lib/turn-info";
+import { useWakeLock } from "@/lib/use-wake-lock";
 import { sprintSeen } from "@/lib/transitions";
 import { ordinal } from "@/lib/ordinal";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
@@ -74,12 +75,14 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
 
 /** 🧪 喝下幸運藥水 (docs/designs/lucky-potion.md D2, D6), right above the control it affects. The caller shows it only while
  * a crit or check die can still roll; this hides it in a buzzer phase, without a potion, or once drunk on this question. */
-function PotionButton({ game, teamId, questionId, send }: { game: StateMessage; teamId: string; questionId: string; send: (m: ClientMessage) => void }) {
+function PotionButton({ game, teamId, questionId, die, send }: { game: StateMessage; teamId: string; questionId: string; die: "crit" | "check"; send: (m: ClientMessage) => void }) {
   const me = game.view.teams.find((t) => t.id === teamId);
   if (!me?.item || me.itemArmed || game.view.buzz) return null;
   return (
     <PixelButton data-testid="drink-potion" className="!m-0 mt-1 flex !min-h-[56px] flex-col !text-[20px]" onClick={() => send({ type: "TEAM_DRINK_POTION", questionId, eventId: game.eventId })}>
-      🧪 喝下幸運藥水<small className="text-[13px]">下一顆骰子擲兩次取高</small>
+      🧪 喝下幸運藥水<small className="text-[13px]">{die === "crit" ? "答對時的暴擊骰擲兩次取高" : "說服檢定擲兩次取高"}</small>
+      {/* The server never doubles the warrior's answer die (dungeon-room.ts startRoll); its button sits right below. */}
+      {die === "crit" && me.classId === "warrior" && me.abilityUses > 0 ? <small className="text-[13px]">戰士的答題骰不算</small> : null}
     </PixelButton>
   );
 }
@@ -88,7 +91,7 @@ function PotionButton({ game, teamId, questionId, send }: { game: StateMessage; 
  * (E2: until the team's next turn). */
 function potionLine(team: StateMessage["view"]["teams"][number] | undefined, myTurn: boolean): { text: string; drunk?: true } | null {
   if (!team?.item) return null;
-  if (team.itemArmed) return { text: "🧪 已喝下：這題的下一顆骰擲兩次取高", drunk: true };
+  if (team.itemArmed) return { text: "🧪 已喝下：這題的暴擊骰或說服檢定擲兩次取高", drunk: true };
   return { text: team.itemArmedFor && !myTurn ? "🧪 藥水還在：這題沒擲到骰" : "🧪 有一瓶幸運藥水" };
 }
 
@@ -303,7 +306,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
         <div className="px-bar ok mt-1" role="status">鎖定中…</div>
       ) : (
         <>
-        <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />
+        <PotionButton game={game} teamId={teamId} questionId={q.id} die="crit" send={send} />
         <PixelButton
           variant="ok"
           disabled={!pickable}
@@ -507,7 +510,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
       ) : needCheck && sent === null ? (
         // The die's beat: nothing to press, the roll banner above says to watch the big screen.
         rolling ? null : <>
-        <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />
+        <PotionButton game={game} teamId={teamId} questionId={q.id} die="check" send={send} />
         <PixelButton
           variant="ok"
           data-testid="roll-check"
@@ -835,6 +838,10 @@ export default function PlayPage() {
   const seen = useRef(new Map<string, string>());
   const [revealedText, setRevealedText] = useState<string | undefined>();
   const drop = useRef<DropSnapshot | null>(null);
+  // A waiting phone sits untouched for minutes; asleep, it drops offline and its turn is skipped.
+  useWakeLock();
+  /** Whether the last STATE was this team's live turn (lib/turn-info.ts turnLive); null until a connection's first STATE. */
+  const wasLive = useRef<boolean | null>(null);
   useEffect(() => {
     if (!offlineMsg) return;
     const id = setTimeout(() => setOfflineMsg(null), 10_000);
@@ -858,6 +865,7 @@ export default function PlayPage() {
       waited.current = false;
       livePhase.current = null;
       sprintSeenRef.current = null;
+      wasLive.current = null;
       const id = getOrCreateTeamId();
       setTeamId(id);
       const password = (sentPassword.current = joinPasswordFor(code));
@@ -913,6 +921,7 @@ export default function PlayPage() {
           lastGame.current = null;
           livePhase.current = null;
           sprintSeenRef.current = false;
+          wasLive.current = false;
           drop.current = null;
           break;
         case "STATE": {
@@ -931,6 +940,12 @@ export default function PlayPage() {
               setSprintCard(true);
               navigator.vibrate?.(80);
             }
+          }
+          {
+            // Buzz once when our turn opens (iOS Safari has no vibrate: silent).
+            const live = turnLive(msg, getOrCreateTeamId());
+            if (turnOpened(wasLive.current, live)) navigator.vibrate?.(200);
+            wasLive.current = live;
           }
           if ([...msg.view.teams, ...(msg.late?.teams ?? [])].some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           if (msg.late?.teams.some((t) => t.id === getOrCreateTeamId())) waited.current = true;
@@ -1191,7 +1206,7 @@ export default function PlayPage() {
 
         {game && !finished && !intro && !initiative && turn && (
           <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
-            {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? (eventRevealed ? "下一個是我們！" : "輪到我們了！") : `輪到：${turn.team?.name ?? "…"}`}
+            {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? (nextUp(game) ? "下一個是我們！" : "輪到我們了！") : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
         )}
 

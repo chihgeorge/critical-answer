@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeTurn, FALLBACK_MONSTER, monsterLook, PHASE_HUE_STEP } from "./turn-info";
+import { describeTurn, FALLBACK_MONSTER, monsterLook, nextUp, PHASE_HUE_STEP, turnLive, turnOpened } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -135,5 +135,39 @@ describe("monsterLook", () => {
     const look = monsterLook({ ...pq().monster, sprite: "not-yet-drawn" as never });
     expect([look.kind, look.scale]).toEqual(["slime", 6]);
     expect(monsterLook({ ...pq().monster, sprite: "toString" as never }).kind).toBe("slime"); // not an inherited key
+  });
+});
+
+describe("nextUp / turnLive", () => {
+  type S = Parameters<typeof turnLive>[0];
+  const st = (over: Partial<S> = {}, viewOver: Partial<SpectatorView> = {}): S => ({ phase: "playing", view: view(viewOver), ...over }) as S;
+  const fortune = (step: "intro" | "choose" | "beat" | "card") => ({ teamId: "z", condition: "lowest" as never, step });
+
+  it("is live on our open turn only", () => {
+    expect(nextUp(st())).toBe(false);
+    expect(turnLive(st(), "a")).toBe(true);
+    expect(turnLive(st(), "b")).toBe(false);
+    expect(turnLive(st({ phase: "finished" }), "a")).toBe(false);
+    expect(turnLive(st({ intro: { page: 0 } }), "a")).toBe(false);
+    expect(turnLive(st({ initiative: {} as never }), "a")).toBe(false);
+    expect(turnLive(st({}, { buzz: {} as never }), "a")).toBe(false); // every team plays a buzzer phase
+  });
+
+  it("holds the next team while the room waits for 下一題", () => {
+    for (const held of [{ reveal: {} as never }, { eventReveal: {} as never }, { fortune: fortune("card") }, { phaseCard: { monster: pq().monster } }, { phaseCardDue: true as const }]) {
+      expect(nextUp(st(held))).toBe(true);
+      expect(turnLive(st(held), "a")).toBe(false);
+    }
+  });
+
+  it("keeps a fortune's earlier steps on the drawing team, which acts in them", () => {
+    for (const step of ["intro", "choose", "beat"] as const) expect(nextUp(st({ fortune: fortune(step) }))).toBe(false);
+  });
+
+  it("buzzes only when the turn opens, never on a connection's first STATE", () => {
+    expect(turnOpened(false, true)).toBe(true);
+    expect(turnOpened(null, true)).toBe(false);
+    expect(turnOpened(true, true)).toBe(false);
+    expect(turnOpened(false, false)).toBe(false);
   });
 });
