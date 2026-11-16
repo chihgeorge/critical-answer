@@ -91,9 +91,10 @@ type HoldFields = Pick<StateMessage, "reveal" | "eventReveal" | "fortune" | "pha
 /** The host page and the big screen say this while every team's phone is offline (rehearsal QA 2026-11-16 P1-1). */
 export const PAUSED_OFFLINE = "⏸ 遊戲暫停中，等隊伍連回";
 
-/** Every team's phone is offline: no team can act, so the game waits until one reconnects (currentTurnTeamId). */
-export function pausedOffline(view: Pick<SpectatorView, "teams">): boolean {
-  return view.teams.length > 0 && view.teams.every((t) => !t.online);
+/** Every team's phone is offline and none holds the turn, so the game waits until one reconnects. A team that keeps the
+ * turn offline (a wrong answer to settle, a typed answer, a door) still has the host's buttons (currentTurnTeamId). */
+export function pausedOffline(view: Pick<SpectatorView, "teams" | "currentTurnTeamId">): boolean {
+  return view.currentTurnTeamId === null && view.teams.length > 0 && view.teams.every((t) => !t.online);
 }
 
 /** The turn has passed to the next team, but the room holds until the host's 下一題: the last answer, an event room's

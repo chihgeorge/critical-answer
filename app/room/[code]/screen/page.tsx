@@ -537,8 +537,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
     </ul>
   );
 
-  // Every phone offline: the game waits for one to reconnect, so the screen says so rather than a stale line.
-  const paused = pausedOffline(view);
+  // Every phone offline: the game waits for one to reconnect, so the screen says so rather than a stale line. Not over an
+  // answer, a card or a held line on show: the host's 下一題 or ruling still moves those on.
+  const paused = pausedOffline(view) && !reveal && !card && !held;
   const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : paused ? [PAUSED_OFFLINE] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
   const nameplate = (style: CSSProperties) => (
     <Nameplate className="absolute" style={{ ...style, color: bossScene ? "#b02a3a" : undefined }}>

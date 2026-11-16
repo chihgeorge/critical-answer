@@ -176,6 +176,8 @@ describe("pausedOffline", () => {
   it("pauses only when every team's phone is offline", () => {
     expect(pausedOffline(view({ currentTurnTeamId: null }, [{ online: false }, { online: false }]))).toBe(true);
     expect(pausedOffline(view({}, [{ online: false }, { online: true }]))).toBe(false);
-    expect(pausedOffline(view({}, []))).toBe(false); // no teams: nothing to wait for
+    // An offline team that keeps the turn (a wrong answer to settle, a typed answer) still has the host's buttons.
+    expect(pausedOffline(view({ currentTurnTeamId: "a" }, [{ online: false }, { online: false }]))).toBe(false);
+    expect(pausedOffline(view({ currentTurnTeamId: null }, []))).toBe(false); // no teams: nothing to wait for
   });
 });

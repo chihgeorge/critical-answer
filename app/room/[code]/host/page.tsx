@@ -427,7 +427,7 @@ export default function HostPage() {
   // In the boss room this choice also brings a new question (the boss rotates), so it is named for that.
   // After a cleric's prayer the same choice answers again now, keeping the turn (lib/game-state.ts answerQuestion).
   const prayedWrong = game?.phase === "playing" && !!game.view.pendingWrong?.prayed;
-  const retryLabel = turn?.inBoss ? "下輪換題" : prayedWrong ? "現在再答" : "下輪再答";
+  const retryLabel = prayedWrong ? "現在再答" : turn?.inBoss ? "下輪換題" : "下輪再答";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): teams buzz in, the host judges the one that buzzed first. */
   const buzz = game?.phase === "playing" && !revealUp ? game.view.buzz : undefined;
   // A timing question (timing-tap.md 畫面): the big screen's clock missing for 3 s after ▶ turns the line into a warning.
@@ -1044,7 +1044,8 @@ export default function HostPage() {
         {game && game.phase === "playing" && !game.intro && !game.initiative && (
           <>
             {/* No team on turn (every phone offline): the team rows and their 交給新手機 still show. */}
-            {pausedOffline(game.view) && (
+            {/* Not over an answer or card on show: its 下一題 still works with every phone offline. */}
+            {pausedOffline(game.view) && !revealUp && (
               <div data-testid="host-paused">
                 <Panel tone="turn" className="px-3 py-2 text-center" role="status">
                   <div className="text-[20px]">{PAUSED_OFFLINE}</div>
