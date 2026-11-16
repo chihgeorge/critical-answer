@@ -1,5 +1,6 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
-import { startGame } from "./answer";
+import { screenUrl, startGame } from "./answer";
+import { PAUSED_OFFLINE } from "../lib/turn-info";
 
 const UNREACHABLE = "連不上伺服器：請檢查網路，或稍後再試。";
 
@@ -88,6 +89,8 @@ test("a phone that joins after the game started waits, sees no game, and takes o
   await expect(first.getByText("等待主持人開始遊戲")).toBeVisible();
   await startGame(host);
   await expect(first.getByText("輪到我們了！")).toBeVisible();
+  const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
+  await screen.goto(await screenUrl(host));
   const late = await phone(browser);
   await late.goto(`/room/${code}/play?name=${encodeURIComponent("遲到隊")}`);
   await expect(late.getByTestId("late-wait")).toBeVisible();
@@ -105,6 +108,7 @@ test("a phone that joins after the game started waits, sees no game, and takes o
   await expect(host.getByText("甲隊（離線）")).toBeVisible();
   // The only team is offline: the game is paused and says so (rehearsal QA 2026-11-16 P1-1).
   await expect(host.getByTestId("host-paused")).toBeVisible();
+  await expect(screen.getByTestId("screen-paused")).toHaveText(PAUSED_OFFLINE);
   await host.getByRole("button", { name: "交給新手機" }).click();
   const handoffCode = (await host.getByTestId("handoff-code").locator(".px-num").textContent())!.trim();
   await late.getByLabel("換了手機？輸入主持人給的配對碼：").fill(handoffCode);
@@ -112,6 +116,7 @@ test("a phone that joins after the game started waits, sees no game, and takes o
   await expect(late.getByText("輪到我們了！")).toBeVisible();
   await expect(host.getByText("甲隊（離線）")).toHaveCount(0);
   await expect(host.getByTestId("host-paused")).toHaveCount(0);
+  await expect(screen.getByTestId("screen-paused")).toHaveCount(0);
   // A used code is no longer shown as valid (P2-4).
   await expect(host.getByTestId("handoff-code")).toHaveCount(0);
 });

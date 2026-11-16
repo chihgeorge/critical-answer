@@ -27,11 +27,15 @@ describe("getOrCreateTeamId", () => {
   });
 
   // Value: protects=a phone with blocked storage can still join and keeps one team id; fails_when=storedOrCreate calls localStorage without a guard or mints a new id per call; why_new=no test blocked storage; seam=localStorage stub; no_claim=across page loads
-  it("still works, with one id per page load, when storage is blocked", () => {
+  it("still works, with one id per page load, when storage is blocked", async () => {
     const blocked = () => {
       throw new Error("SecurityError");
     };
     vi.stubGlobal("localStorage", { getItem: blocked, setItem: blocked, clear: () => {} });
+    // Its own copy of the module: the id it keeps for this "page load" would otherwise answer every later test's call,
+    // and the insecure-context tests below would never reach the fallback.
+    vi.resetModules();
+    const { getOrCreateTeamId } = await import("./room-code");
     try {
       const first = getOrCreateTeamId();
       expect(first).toMatch(UUID_V4_RE);

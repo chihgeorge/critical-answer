@@ -1,5 +1,5 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { textOnlyBank, startGame } from "./answer";
+import { textOnlyBank, startGame, screenUrl } from "./answer";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -87,4 +87,33 @@ test("the big screen shows it's offline while its connection is down", async ({ 
   await expect(screen.getByText("連線中斷，重新連線中…")).toBeVisible();
   net.block = false;
   await expect(screen.getByText("連線中斷，重新連線中…")).toHaveCount(0, { timeout: 30_000 });
+});
+
+// Value: protects=the host-away banner wiring (#262) on the big screen and a phone, and its clearing when the host page
+// comes back; fails_when=STATE.hostAway stops rendering on either page or stays after HOST_CLAIM; no_claim=the 8 s grace
+// timer's edges (lib/room/host-away.test.ts).
+test("the big screen and a phone say the host is reconnecting while the host page is gone, until it is back", async ({ browser }) => {
+  test.setTimeout(45_000); // the room waits HOST_AWAY_GRACE_MS (8 s) before it says so
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
+  await screen.goto(await screenUrl(host));
+  const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await phone.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
+  await expect(phone.getByTestId("roster")).toContainText("甲隊");
+  await startGame(host);
+  await expect(phone.getByText("輪到我們了！")).toBeVisible();
+
+  const hostUrl = host.url().replace(/&new=\d+/, ""); // the host token (#k=), never a fresh-room link
+  await host.close();
+  await expect(screen.getByTestId("host-away")).toContainText("主持人重新連線中", { timeout: 15_000 });
+  await expect(phone.getByText(/主持人重新連線中/)).toBeVisible();
+
+  const back = await host.context().newPage();
+  await back.goto(hostUrl);
+  await expect(screen.getByTestId("host-away")).toHaveCount(0);
+  await expect(phone.getByText(/主持人重新連線中/)).toHaveCount(0);
 });

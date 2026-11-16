@@ -86,7 +86,7 @@ lib/turn-info.ts         Works out from the public state whose turn it is and wh
 lib/map-layout.ts        Live map layout: positions of rooms, tokens, fog, boss room (pure functions)
 lib/use-room-socket.ts   Connection hook shared by the three room pages (message parsing, server restart detection, no reconnects while asleep, first-connection timeout)
 lib/join-rejection.ts    The reason line a phone shows when joining is refused (pure function)
-lib/stored.ts            localStorage reads and writes that never throw (also work in private mode)
+lib/stored.ts            localStorage reads and writes that never throw, and the join password carried to /play in sessionStorage (also work in private mode)
 lib/use-wake-lock.ts     Keeps the screen awake on the host page, the big screen and the player phones
 lib/report-client-error.ts、client-error-api.ts  Front-end crash reports (sendBeacon) and handling for /api/client-error (origin check, 4 KB limit, writes one log line)
 lib/bank-image-api.ts    /api/bank/image image, video and audio upload (file type and size checks; returns 409 when the bank cannot be read, 503 when it cannot be reached)

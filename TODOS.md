@@ -37,6 +37,7 @@
 - [每個職業技能都靠擲骰](#每個職業技能都靠擲骰) — M，活動後
 - [玩家自己選攻擊或說服](#玩家自己選攻擊或說服) — M
 - [在全新的 Cloudflare／Vercel 帳號上照部署指南做一遍](#在全新的-cloudflarevercel-帳號上照部署指南做一遍) — S（人工約 2 小時 / CC 約 30 分鐘）
+- [其他 e2e spec 也在每個測試開始前關掉留下的 context](#其他-e2e-spec-也在每個測試開始前關掉留下的-context) — S
 
 ### P4
 
@@ -542,6 +543,22 @@
 - Pros：補測試有依據，能找出完全沒被 e2e 走過的頁面流程。
 - Cons：要加回 `next.config.ts`，而且只能在 e2e 建置開 source map；正式部署帶上 source map 等於公開原始碼。
 - Context 補充：維護輪（`docs/designs/maintenance-2026-10.md` D3）審查時決定延後。從 `playwright.config.ts` 的 webServer 建置指令開始。
+- 2026-11-16 量了單元測試的覆蓋率（v0.80.1.0，`npm i --no-save @vitest/coverage-v8@5.1.0` 後跑 `npx vitest run --coverage --coverage.include='lib/**' --coverage.include='app/**' --coverage.include='components/**' --coverage.include='worker/**/*.ts'`，套件沒有加進 package.json）。行數覆蓋率：`lib/` 96.1%（補了幾個小測試後 96.5%），`lib/room/` 98.9%，`components/` 11.9%，`app/` 0.5%，`worker/index.ts` 0%，全部合計 68.0%（之後 68.2%）。沒覆蓋到的大塊都是 React 頁面和元件：`app/room/[code]/screen/page.tsx`、`app/bank-editor/page.tsx`、`host/page.tsx`、`play/page.tsx`，各約 400 到 700 行可執行行數，只靠 e2e。`lib/` 剩下的多半是 React hook（`use-room-socket.ts`、`use-wake-lock.ts`、`components/room-clock.ts`）和 `lib/pixel-art.ts` 的畫圖分支。
+- e2e 對前端的數字還沒量，所以這項還開著。e2e 跑的是 `next dev`，本來就有 source map，所以可能不用改 `next.config.ts`：在 Chromium 用 `page.coverage.startJSCoverage()` 收集，再用 `v8-to-istanbul` 對回原始碼。要在 CI 的三個 shard 各收一份、最後合併，這要改 workflow。
+
+---
+
+## 其他 e2e spec 也在每個測試開始前關掉留下的 context
+
+**What:** 把 `e2e/answer.ts` 的 `closeLeftoverContexts()` 加到其他用 `browser.newContext()` 的 spec，或改成所有 spec 共用的 fixture。
+
+**Why:** Playwright 只關它自己的 `context` fixture。測試用 `browser.newContext()` 開的 context 會一直活到這個 shard 的瀏覽器關掉，所以前面測試的主持人頁、手機和大螢幕都還連著、還在動畫、還在收房間的廣播。2026-11-16 的 `narration-tts.spec.ts:147` 偶發失敗（第二支手機 5 秒內沒在自己的名單上看到自己）就是在這種負載下發生的。這次只在 `narration-tts.spec.ts` 加了，它的第一個測試會把前面 spec 留下的全部關掉。
+
+**Context:** `e2e/answer.ts`；`lifecycle.spec.ts:71`、`boss-buzzer.spec.ts:49` 在 CI 也偶發失敗過，可能是同一個原因，還沒查證。
+
+**Effort/Priority:** S / P3
+
+**Depends on:** 無。
 
 ---
 

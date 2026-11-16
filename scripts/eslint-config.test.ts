@@ -8,7 +8,8 @@ const ruleHits = async (code: string, filePath = "components/probe.tsx") => {
   return result.messages.filter((m) => m.ruleId === "no-restricted-syntax").length;
 };
 
-describe("eslint.config.mjs: no event reads inside a deferred updater (#147)", () => {
+// The first lintText loads the whole config (typescript-eslint, next plugin): on a busy machine that alone passes 5 s.
+describe("eslint.config.mjs: no event reads inside a deferred updater (#147)", { timeout: 30_000 }, () => {
   it("flags e.target / event.target read inside set*, update* and onUpdate updaters", async () => {
     const code = `
 export function f(setV: (u: () => string) => void, p: { onUpdate: (u: () => void) => void }, updateQ: (i: number, u: (q: string) => string) => void) {
