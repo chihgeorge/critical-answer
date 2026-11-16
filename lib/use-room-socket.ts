@@ -34,6 +34,38 @@ export function shouldWakeReconnect(readyState: number, awayMs: number): boolean
   return readyState !== WebSocket.OPEN || awayMs >= WAKE_RECONNECT_AFTER_MS;
 }
 
+/** A socket can stay OPEN after the network dropped it (a venue AP drops an idle link, a laptop roams or sleeps), and
+ * nothing would notice. So every LIVENESS_CHECK_MS: quiet for LIVENESS_PING_AFTER_MS, send a CLOCK_PING (the room
+ * always answers and does not count it as activity, so an idle room still rests); quiet for LIVENESS_DEAD_AFTER_MS,
+ * reconnect, so the page shows its offline notice. Generous, for slow venue Wi-Fi: about three pings go unanswered first. */
+export const LIVENESS_CHECK_MS = 10_000;
+export const LIVENESS_PING_AFTER_MS = 15_000;
+export const LIVENESS_DEAD_AFTER_MS = 45_000;
+/** A CLOCK_PING `t` no clock-sync ping uses, so useRoomClock drops its pong. */
+export const LIVENESS_PING_T = -1;
+
+export function livenessAction(quietMs: number): "ok" | "ping" | "reconnect" {
+  return quietMs >= LIVENESS_DEAD_AFTER_MS ? "reconnect" : quietMs >= LIVENESS_PING_AFTER_MS ? "ping" : "ok";
+}
+
+/** Runs the liveness check on `socket` until the returned stop is called. `lastHeard` is the time of the last frame or open. */
+export function startLivenessCheck(
+  socket: { readyState: number; send(data: string): void; reconnect(): void },
+  lastHeard: { current: number },
+  paused: () => boolean,
+): () => void {
+  const id = setInterval(() => {
+    if (paused() || socket.readyState !== WebSocket.OPEN) return;
+    const action = livenessAction(Date.now() - lastHeard.current);
+    if (action === "ping") socket.send(JSON.stringify({ type: "CLOCK_PING", t: LIVENESS_PING_T } satisfies ClientMessage));
+    else if (action === "reconnect") {
+      lastHeard.current = Date.now(); // the next reconnect waits a full LIVENESS_DEAD_AFTER_MS again
+      socket.reconnect();
+    }
+  }, LIVENESS_CHECK_MS);
+  return () => clearInterval(id);
+}
+
 /** How long a page waits for its first connection before saying it can't reach the server. */
 export const FIRST_CONNECT_TIMEOUT_MS = 10_000;
 
@@ -59,6 +91,8 @@ export function useRoomSocket(
    * together they tell an automatic reconnect (`resume`) from a person coming back. */
   const openedOnce = useRef(false);
   const reconnectByHand = useRef(false);
+  /** When the last frame came in (or the socket opened), for the liveness check. */
+  const lastHeard = useRef(0);
   /** The first connect hasn't opened within FIRST_CONNECT_TIMEOUT_MS. partysocket keeps retrying meanwhile. */
   const [unreachable, setUnreachable] = useState(false);
   /** Bumped by `reconnect()` to restart the first-connect timer. */
@@ -76,6 +110,7 @@ export function useRoomSocket(
       setRested(null);
       restedNow.current = false;
       setUnreachable(false);
+      lastHeard.current = Date.now();
       const resume = openedOnce.current && !reconnectByHand.current;
       openedOnce.current = true;
       reconnectByHand.current = false;
@@ -92,6 +127,7 @@ export function useRoomSocket(
       handlers.onClose?.({ rested: restKind !== null, openedBefore: openedOnce.current });
     },
     onMessage(event: MessageEvent) {
+      lastHeard.current = Date.now();
       const read = readRoomMessage(event.data as string, epoch.current);
       if (!read) return;
       if (read.reset) setReset(true);
@@ -129,6 +165,10 @@ export function useRoomSocket(
       window.removeEventListener("online", wake);
     };
   }, [socket]);
+
+  // The liveness check (LIVENESS_*). Skipped while hidden (the wake listener above covers coming back), while rested,
+  // and while not OPEN (partysocket's own backoff is reconnecting then), so it cannot start a reconnect storm.
+  useEffect(() => startLivenessCheck(socket, lastHeard, () => restedNow.current || document.hidden), [socket]);
 
   return {
     reset,

@@ -11,7 +11,7 @@ import type { BankConflict, BankEntry, VersionedBank } from "./bank-store";
  * message survives RPC). Lives here so this file needs nothing at runtime from bank-store.ts. */
 export const BANK_NOT_FOUND = "bank not found";
 import type { Bank } from "./question-bank";
-import type { GameLog } from "./game-log";
+import type { GameLog, GameLogRange } from "./game-log";
 
 export interface BankApiDeps {
   ownerKey: string | undefined;
@@ -175,15 +175,31 @@ export async function bankOrFallback(getBank: () => Promise<Bank>): Promise<Bank
   }
 }
 
-/** Owner-only download of every finished game's record (lib/game-log.ts), for tuning boss HP and the entry score. */
+const ISO_PREFIX = /^\d{4}-\d{2}-\d{2}(T[\d:.]*Z?)?$/;
+
+/** The GameLogRange in a download's query string (`from`, `to`, `before`), or null when a value is not a date or ISO time. */
+export function gameLogRange(params: URLSearchParams): GameLogRange | null {
+  const range: GameLogRange = {};
+  for (const k of ["from", "to", "before"] as const) {
+    const v = params.get(k);
+    if (v === null) continue;
+    if (!ISO_PREFIX.test(v)) return null;
+    range[k] = v;
+  }
+  return range;
+}
+
+/** Owner-only download of finished games' records (lib/game-log.ts), for tuning boss HP and the entry score. */
 export async function handleGameLogsApi(
   request: Request,
-  deps: { ownerKey: string | undefined; allowedOrigins: string; readLogs(): Promise<GameLog[]> },
+  deps: { ownerKey: string | undefined; allowedOrigins: string; readLogs(range: GameLogRange): Promise<GameLog[]> },
 ): Promise<Response> {
   const cors = corsHeaders(request.headers.get("Origin"), deps.allowedOrigins, "GET, OPTIONS");
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   const authError = ownerAuthResponse(request, deps.ownerKey, cors);
   if (authError) return authError;
   if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: cors });
-  return Response.json(await deps.readLogs(), { headers: cors });
+  const range = gameLogRange(new URL(request.url).searchParams);
+  if (!range) return new Response("from, to and before take a date (2026-11-21) or an ISO time (2026-11-21T10:00)", { status: 400, headers: cors });
+  return Response.json(await deps.readLogs(range), { headers: cors });
 }

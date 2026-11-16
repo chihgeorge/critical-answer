@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { forgetStored, joinPasswordFor, readStored, rememberJoinPassword, writeStored } from "./stored";
+import {
+  claimScreenAutoReload,
+  forgetStored,
+  joinPasswordFor,
+  readStored,
+  rememberJoinPassword,
+  SCREEN_ERROR_RELOAD_GAP_MS,
+  writeStored,
+} from "./stored";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -52,5 +60,28 @@ describe("rememberJoinPassword / joinPasswordFor / forgetStored", () => {
     expect(() => rememberJoinPassword("ABCD", "x")).not.toThrow();
     expect(joinPasswordFor("ABCD")).toBe("");
     expect(() => forgetStored("k")).not.toThrow();
+  });
+});
+
+// Value: protects=a crashed big screen recovers by itself, but never reloads in a loop (audit 2026-11-16 #4);
+// fails_when=host or phone pages auto-reload, the one-per-minute gap breaks, or blocked storage allows a loop;
+// why_new=e2e cannot crash the screen on purpose; seam=claimScreenAutoReload is all ErrorScreen decides with.
+describe("claimScreenAutoReload", () => {
+  it("only the big screen, at most once per gap, and never with blocked storage", () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    });
+    expect(claimScreenAutoReload("/room/ABCD/host", 1000)).toBe(false);
+    expect(claimScreenAutoReload("/room/ABCD/play", 1000)).toBe(false);
+    expect(claimScreenAutoReload("/room/ABCD/screen", 1000)).toBe(true);
+    expect(claimScreenAutoReload("/room/ABCD/screen/", 1000 + SCREEN_ERROR_RELOAD_GAP_MS - 1)).toBe(false);
+    expect(claimScreenAutoReload("/room/ABCD/screen", 1000 + SCREEN_ERROR_RELOAD_GAP_MS)).toBe(true);
+    const blocked = () => {
+      throw new DOMException("blocked", "SecurityError");
+    };
+    vi.stubGlobal("sessionStorage", { getItem: blocked, setItem: blocked });
+    expect(claimScreenAutoReload("/room/ABCD/screen", 10 * SCREEN_ERROR_RELOAD_GAP_MS)).toBe(false);
   });
 });

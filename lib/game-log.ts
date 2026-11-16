@@ -112,7 +112,15 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
 /** The Durable Object storage calls the log needs. */
 export interface GameLogStorage {
   put(key: string, value: unknown): void | Promise<void>;
-  list(options: { prefix: string; reverse?: boolean; limit?: number }): Promise<Map<string, unknown>>;
+  list(options: { prefix: string; start?: string; end?: string; reverse?: boolean; limit?: number }): Promise<Map<string, unknown>>;
+}
+
+/** Which games a download wants, by `endedAt` (UTC ISO): `from` and `to` are inclusive prefixes (a date like
+ * 2026-11-21 or the start of a time like 2026-11-21T10), `before` is exclusive (the oldest `endedAt` of the last page). */
+export interface GameLogRange {
+  from?: string;
+  to?: string;
+  before?: string;
 }
 
 const PREFIX = "gameLog:";
@@ -123,11 +131,20 @@ export async function appendGameLog(storage: GameLogStorage, log: GameLog): Prom
   await storage.put(`${PREFIX}${log.endedAt}:${crypto.randomUUID()}`, log);
 }
 
-/** The newest stored games, at most this many: one download stays small however many games are stored.
- * shortcut: older games stay stored but out of the download; add paging if they are ever needed. */
+/** The newest games in the range, at most this many: one download stays small however many games are stored.
+ * A full page may have more: ask again with `before` set to its oldest `endedAt`. */
 export const MAX_GAME_LOGS = 1000;
 
-/** The newest MAX_GAME_LOGS games, oldest first. */
-export async function readGameLogs(storage: GameLogStorage): Promise<GameLog[]> {
-  return ([...(await storage.list({ prefix: PREFIX, reverse: true, limit: MAX_GAME_LOGS })).values()] as GameLog[]).reverse();
+/** The newest MAX_GAME_LOGS games in `range`, oldest first. */
+export async function readGameLogs(storage: GameLogStorage, range: GameLogRange = {}): Promise<GameLog[]> {
+  // Keys are `gameLog:<endedAt>:<uuid>`; "~" sorts after every character of an ISO time, so `to` keeps its whole prefix.
+  const ends = [range.to && `${PREFIX}${range.to}~`, range.before && `${PREFIX}${range.before}`].filter((e) => !!e).sort();
+  const list = await storage.list({
+    prefix: PREFIX,
+    ...(range.from ? { start: `${PREFIX}${range.from}` } : {}),
+    ...(ends[0] ? { end: ends[0] } : {}),
+    reverse: true,
+    limit: MAX_GAME_LOGS,
+  });
+  return ([...list.values()] as GameLog[]).reverse();
 }

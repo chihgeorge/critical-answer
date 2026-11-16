@@ -79,12 +79,12 @@ lib/protocol.ts          Message formats and validation between host / player / 
 lib/question-bank.ts     Question bank types, validation, public questions (without answers)
 lib/bank-store.ts        BankStore: Durable Object storage layer for the question bank, version check (pure-function logic)
 lib/bank-api.ts          HTTP handling for /api/bank and /api/game-logs (OWNER_KEY check, CORS, 409 conflict), platform independent
-lib/game-log.ts          Game log: when a game ends, builds one record from the game state and stores it in BankStoreDO; the download reads the newest 1000 games
+lib/game-log.ts          Game log: when a game ends, builds one record from the game state and stores it in BankStoreDO; a download returns at most 1000 games, filtered and paged with from/to/before
 lib/narration/           Narration: events, scripted lines, LLM, circuit breaker, runner, audience-reaction tally (crowd.ts), browser TTS playback decisions (tts.ts)
 lib/pixel-art.ts         Pixel characters and scenes drawn in code
 lib/turn-info.ts         Works out from the public state whose turn it is and which monster they face, and when a phone reads 「下一個是我們！」 (we are next!) or vibrates
 lib/map-layout.ts        Live map layout: positions of rooms, tokens, fog, boss room (pure functions)
-lib/use-room-socket.ts   Connection hook shared by the three room pages (message parsing, server restart detection, no reconnects while asleep, first-connection timeout)
+lib/use-room-socket.ts   Connection hook shared by the three room pages (message parsing, server restart detection, no reconnects while asleep, first-connection timeout, catching a dead connection that still looks open)
 lib/join-rejection.ts    The reason line a phone shows when joining is refused (pure function)
 lib/stored.ts            localStorage reads and writes that never throw, and the join password carried to /play in sessionStorage (also work in private mode)
 lib/use-wake-lock.ts     Keeps the screen awake on the host page, the big screen and the player phones

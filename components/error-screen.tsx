@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { Panel, PixelButton } from "./pixel";
 import { reportClientError } from "@/lib/report-client-error";
+import { claimScreenAutoReload, SCREEN_ERROR_RELOAD_MS } from "@/lib/stored";
 
 export const ERROR_TITLE = "畫面出錯了";
 const ERROR_HINT = "按「重新載入」就能回到遊戲，分數和進度都還在。";
@@ -13,6 +14,13 @@ export const ERROR_RELOAD_LABEL = "重新載入";
  * a deploy), and only a fresh page fixes that. The room keeps the game, so nothing is lost. */
 export function ErrorScreen({ error }: { error: unknown }) {
   useEffect(() => reportClientError(error), [error]);
+  // The big screen reloads itself (nobody stands by the TV); host and phone pages keep the button only.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (claimScreenAutoReload(location.pathname, Date.now())) location.reload();
+    }, SCREEN_ERROR_RELOAD_MS);
+    return () => clearTimeout(id);
+  }, []);
   return (
     <main className="flex min-h-screen items-center justify-center p-4" style={{ background: "var(--stage)" }}>
       <Panel className="flex w-full max-w-[480px] flex-col items-center gap-4 p-6 text-center" role="alert">

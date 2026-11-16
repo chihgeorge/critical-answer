@@ -46,3 +46,24 @@ export function forgetStored(key: string): void {
     // Nothing was remembered.
   }
 }
+
+/** The big screen's error page reloads itself after this long: nobody stands by the TV to press 重新載入. */
+export const SCREEN_ERROR_RELOAD_MS = 5000;
+/** At most one automatic reload this often, so a page that fails on every load doesn't reload forever. */
+export const SCREEN_ERROR_RELOAD_GAP_MS = 60_000;
+const screenReloadKey = "screenErrorReloadAt";
+
+/** True (and the time recorded) when an error page at `pathname` should reload by itself now: only the big screen
+ * (`/room/X/screen`), and not within SCREEN_ERROR_RELOAD_GAP_MS of the last one. Blocked storage: false, since without
+ * a record the gap can't hold. */
+export function claimScreenAutoReload(pathname: string, now: number): boolean {
+  if (!/\/screen\/?$/.test(pathname)) return false;
+  try {
+    const last = Number(sessionStorage.getItem(screenReloadKey));
+    if (last && now - last < SCREEN_ERROR_RELOAD_GAP_MS) return false;
+    sessionStorage.setItem(screenReloadKey, String(now));
+    return true;
+  } catch {
+    return false;
+  }
+}
