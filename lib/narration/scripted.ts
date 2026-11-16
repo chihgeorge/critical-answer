@@ -28,7 +28,7 @@ export const FOODIE = {
   nextRoom: ["輪到{team}。{monster}看起來很有嚼勁。", "{team}請注意，{monster}受驚時肉質會變緊。", "換{team}了，這隻{monster}肉質相當結實。"],
   nextBoss: ["輪到{team}！{monster}一看就是主菜等級。", "{team}上場，這麼大隻的{monster}很少見。"],
   atmBossKill: ["這麼大的食材，得找個更大的鍋子。", "貓頭鷹已經在翻食譜了。", "首領級的肉，火候可不能馬虎。"],
-  feast: ["{team}開出{dish}，火候剛好，+{points}！"],
+  feast: ["{team}開出{dish}，飽足感 +{points}！"],
 };
 
 export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, string[]> = {
@@ -164,7 +164,7 @@ export const ROLL_VARIANTS: Record<"crit" | "fumble" | "persuaded" | "blunder", 
       "{team}一開口就失言，答對只拿一半，+{points}。",
     ],
     "boss-hit": [
-      "擲出 1，首領被{team}惹毛，剩 {bossHp} 顆心。",
+      "{team}說服擲出 1，首領剩 {bossHp} 顆心。",
       "{team}說服失敗但答對，首領剩 {bossHp} 顆心。",
     ],
   },
@@ -414,7 +414,7 @@ export const EVENT_VARIANTS: Record<EventOutcome, string[]> = {
   feast: [
     "香噴噴的{dish}！{team}飽足感 +{points}。",
     "{team}掀開寶箱，是{dish}！飽足感 +{points}。",
-    "寶箱裡有{dish}，{team}一口接一口，+{points}！",
+    "寶箱裡有{dish}，{team}飽足感 +{points}！",
     ...FOODIE.feast,
   ],
   rotten: [
