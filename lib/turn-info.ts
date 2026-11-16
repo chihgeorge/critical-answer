@@ -99,3 +99,9 @@ export function nextUp(s: HoldFields): boolean {
 export function turnLive(s: HoldFields & Pick<StateMessage, "phase" | "view" | "intro" | "initiative">, teamId: string): boolean {
   return s.phase === "playing" && !s.intro && !s.initiative && !s.view.buzz && s.view.currentTurnTeamId === teamId && !nextUp(s);
 }
+
+/** The phone buzzes when its turn opens: live now, not live on the last STATE. `null`: no STATE yet on this connection,
+ * so a (re)connect into its own turn stays silent. */
+export function turnOpened(wasLive: boolean | null, live: boolean): boolean {
+  return live && wasLive === false;
+}

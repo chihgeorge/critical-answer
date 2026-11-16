@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeTurn, FALLBACK_MONSTER, monsterLook, nextUp, PHASE_HUE_STEP, turnLive } from "./turn-info";
+import { describeTurn, FALLBACK_MONSTER, monsterLook, nextUp, PHASE_HUE_STEP, turnLive, turnOpened } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -162,5 +162,12 @@ describe("nextUp / turnLive", () => {
 
   it("keeps a fortune's earlier steps on the drawing team, which acts in them", () => {
     for (const step of ["intro", "choose", "beat"] as const) expect(nextUp(st({ fortune: fortune(step) }))).toBe(false);
+  });
+
+  it("buzzes only when the turn opens, never on a connection's first STATE", () => {
+    expect(turnOpened(false, true)).toBe(true);
+    expect(turnOpened(null, true)).toBe(false);
+    expect(turnOpened(true, true)).toBe(false);
+    expect(turnOpened(false, false)).toBe(false);
   });
 });

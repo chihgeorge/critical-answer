@@ -12,7 +12,7 @@ import { joinPasswordFor } from "@/lib/stored";
 import { MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
 import { ABILITY_USES, CATCH_PAY, CHEF_BONUS_PERCENT, ORACLE_USES, MAGE_ABILITY_USES, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
-import { describeTurn, nextUp, turnLive } from "@/lib/turn-info";
+import { describeTurn, nextUp, turnLive, turnOpened } from "@/lib/turn-info";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { sprintSeen } from "@/lib/transitions";
 import { ordinal } from "@/lib/ordinal";
@@ -940,9 +940,9 @@ export default function PlayPage() {
             }
           }
           {
-            // Buzz once when our turn opens, not on a connection's first STATE (iOS Safari has no vibrate: silent).
+            // Buzz once when our turn opens (iOS Safari has no vibrate: silent).
             const live = turnLive(msg, getOrCreateTeamId());
-            if (live && wasLive.current === false) navigator.vibrate?.(200);
+            if (turnOpened(wasLive.current, live)) navigator.vibrate?.(200);
             wasLive.current = live;
           }
           if ([...msg.view.teams, ...(msg.late?.teams ?? [])].some((t) => t.id === getOrCreateTeamId())) joined.current = true;
