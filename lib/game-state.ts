@@ -314,7 +314,7 @@ export interface BuzzState {
 }
 
 export interface GameConfig {
-  /** Fixed score threshold to enter the boss room (Open Questions: 已決定固定 15 分). */
+  /** Score that lets the first team into the boss room: one of BOSS_THRESHOLDS, picked in the lobby (default 15). */
   bossThreshold: number;
 }
 
@@ -673,6 +673,12 @@ export function queueQuestion(game: GameState, target: string, questionId: strin
 }
 
 export const DEFAULT_GAME_CONFIG: GameConfig = { bossThreshold: 15 };
+/** The lobby's 進王門檻 choices: a lower one makes a game with many teams shorter. */
+export const BOSS_THRESHOLDS = [10, 12, 15] as const;
+
+export function isBossThreshold(v: unknown): v is number {
+  return (BOSS_THRESHOLDS as readonly unknown[]).includes(v);
+}
 
 export function createGame(
   teamSeeds: { id: string; name: string; classId?: ClassId }[],
@@ -2374,6 +2380,8 @@ export interface SpectatorView {
     catchesLeft?: number;
     oracle?: true;
   }[];
+  /** The score that opens the boss room (GameConfig). Absent from older servers: DEFAULT_GAME_CONFIG's. */
+  bossThreshold?: number;
   bossHp: number;
   bossMaxHp: number;
   /** The boss phase being fought, from 1. Only phases already reached: never the total (boss-phases.md). */
@@ -2434,6 +2442,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       ...(t.catchesLeft !== undefined ? { catchesLeft: t.catchesLeft } : {}),
       ...(oracleActive(game, t.id) ? { oracle: true as const } : {}),
     })),
+    bossThreshold: game.config.bossThreshold,
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
     bossPhase: game.boss.phaseIndex + 1,

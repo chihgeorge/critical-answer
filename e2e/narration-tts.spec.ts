@@ -1,7 +1,7 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
 import { revealMarks } from "../lib/podium";
 import type { PodiumReveal } from "../lib/protocol";
-import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl } from "./answer";
+import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl, clickStart } from "./answer";
 import { setScreenAudio, stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
@@ -391,7 +391,7 @@ test("screen TTS: the how-to-play intro speaks each page's owl line once", async
   expect(await ttsCalls(screen)).toEqual([""]);
 
   await expect(host.getByRole("checkbox", { name: "開始前播放玩法說明" })).toBeChecked();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await clickStart(host);
   const page1 = "冒險者們，先聽我說規則……主持人會唸題目。";
   const page2 = "說服怪物前先擲骰，過了 DC 就送你答案第一個字。";
   await expect.poll(() => ttsCalls(screen)).toEqual(["", page1]);

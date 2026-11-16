@@ -1,4 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
+import { clickStart } from "./answer";
 
 // 手動停頓 (docs/designs/manual-pacing.md): the host's switch, the hold panel and ▶ 下一步, through 擲先攻. The e2e worker
 // holds the order only INITIATIVE_HOLD_MS (300 ms), so an order still up a second later is the manual hold. Every other
@@ -27,7 +28,7 @@ test("manual pacing: 擲先攻 waits for 下一步, twice, and the switch goes b
   await expect(pacing.getByRole("button", { name: "⏸ 手動" })).toHaveAttribute("aria-pressed", "true");
 
   await host.getByRole("checkbox", { name: "開始前播放玩法說明" }).uncheck();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await clickStart(host);
 
   // Waiting for rolls: no 全部代擲, the step rolls for the team.
   await expect(host.getByTestId("host-hold")).toContainText("代擲");

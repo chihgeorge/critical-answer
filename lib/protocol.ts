@@ -30,7 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import type { Accessory } from "./monster-catalog";
-import { FIX_SCORE_MAX, HOST_FIXES, isClassId, isFortuneEffect, type ClassId, type HostFix, type Judgment, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { FIX_SCORE_MAX, HOST_FIXES, isBossThreshold, isClassId, isFortuneEffect, type ClassId, type HostFix, type Judgment, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
 import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
@@ -226,8 +226,9 @@ export type ClientMessage =
   /** `intro`: play the 4-page how-to-play first (docs/designs/how-to-play.md). Missing means no intro,
    * so a host page from before the intro can't get stuck on a page it has no button for (eng D2). */
   /** `initiative`: every team rolls 擲先攻 for the turn order (lib/initiative.ts). Missing keeps the lobby order, like `intro`. */
-  /** `answerSeconds`: 每題作答倒數, one of ANSWER_SECONDS (lib/answer-clock.ts); missing or 0 is off. */
-  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean; answerSeconds?: number }
+  /** `answerSeconds`: 每題作答倒數, one of ANSWER_SECONDS (lib/answer-clock.ts); missing or 0 is off.
+   * `bossThreshold`: 進王門檻, one of BOSS_THRESHOLDS (lib/game-state.ts); missing is DEFAULT_GAME_CONFIG's. */
+  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean; answerSeconds?: number; bossThreshold?: number }
   /** How-to-play: go to `page` (1..4); 5 ends the intro and deals the first question. The room takes
    * only the current page ±1, so a double tap or a second host tab turns one page, not two (eng D4). */
   | { type: "HOST_INTRO"; page: number }
@@ -819,12 +820,14 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.intro !== undefined && typeof m.intro !== "boolean") return null;
       if (m.initiative !== undefined && typeof m.initiative !== "boolean") return null;
       if (m.answerSeconds !== undefined && !isAnswerSeconds(m.answerSeconds)) return null;
+      if (m.bossThreshold !== undefined && !isBossThreshold(m.bossThreshold)) return null;
       return {
         type: "HOST_START",
         aiNarration: m.aiNarration,
         ...(m.intro ? { intro: true } : {}),
         ...(m.initiative ? { initiative: true } : {}),
         ...(m.answerSeconds ? { answerSeconds: m.answerSeconds } : {}),
+        ...(m.bossThreshold !== undefined ? { bossThreshold: m.bossThreshold } : {}),
       };
     case "HOST_INTRO":
       return Number.isInteger(m.page) && (m.page as number) >= 1 && (m.page as number) <= INTRO_PAGES + 1

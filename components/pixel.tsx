@@ -310,8 +310,7 @@ export function HomeBackground() {
 
 /* ---------- Score meter: one cell per point up to the boss threshold ---------- */
 
-export function ScoreMeter({ score: raw, active = false }: { score: number; active?: boolean }) {
-  const max = BOSS_THRESHOLD;
+export function ScoreMeter({ score: raw, active = false, max = BOSS_THRESHOLD }: { score: number; active?: boolean; max?: number }) {
   const score = Math.min(raw, max);
   return (
     <div className={cx("px-meter", active && "act")} role="meter" aria-valuenow={score} aria-valuemin={0} aria-valuemax={max}>

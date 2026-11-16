@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, skipInitiative, rollCheck, screenUrl } from "./answer";
+import { textOnlyBank, skipInitiative, rollCheck, screenUrl, clickStart } from "./answer";
 
 // 每題作答倒數 (docs/designs/answer-countdown.md): the host picks the seconds in the lobby, the big screen, the turn's
 // phone and the host page count down, and sending the answer stops it. Expiry and the rules are in lib/room/answer-clock.test.ts.
@@ -22,7 +22,7 @@ test("the host's 30 秒 shows on the TV, the phone and the host page, and sendin
   await expect(host.getByTestId("answer-seconds")).toHaveValue("60");
   await host.getByTestId("answer-seconds").selectOption("30");
   await host.getByRole("checkbox", { name: "開始前播放玩法說明" }).uncheck();
-  await host.getByRole("button", { name: /開始遊戲/ }).click();
+  await clickStart(host);
   await skipInitiative(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 

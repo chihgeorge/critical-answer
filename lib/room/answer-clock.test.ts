@@ -359,3 +359,31 @@ describe("connections that come back under the same id", () => {
     expect(g.state().view.currentTurnTeamId).toBe(onTurn);
   });
 });
+
+// 進王門檻 rides the same HOST_START as the countdown. Value: protects=a host's lower threshold for many teams reaches
+// game.config, every STATE and a restored room; fails_when=the pick is dropped, changes after the start or resets on restore.
+describe("HOST_START bossThreshold", () => {
+  it("takes only the lobby's choices", () => {
+    expect(parseClientMessage({ type: "HOST_START", bossThreshold: 10 })).toMatchObject({ bossThreshold: 10 });
+    expect(parseClientMessage({ type: "HOST_START" })).not.toHaveProperty("bossThreshold");
+    expect(parseClientMessage({ type: "HOST_START", bossThreshold: 7 })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_START", bossThreshold: "10" })).toBeNull();
+  });
+
+  it("defaults to 15 and shows in every STATE", () => {
+    expect(started().state().view.bossThreshold).toBe(15);
+    const g = started({ bossThreshold: 10 });
+    expect(g.room.game!.config.bossThreshold).toBe(10);
+    expect(g.peek().view.bossThreshold).toBe(10);
+  });
+
+  it("survives a restart, and a second HOST_START cannot change it", async () => {
+    const g = started({ bossThreshold: 12 });
+    send(g.room, g.host, { type: "HOST_START", bossThreshold: 10 });
+    expect(g.peek().view.bossThreshold).toBe(12);
+    send(g.room, g.phones[1], { type: "TEAM_SELECT_OPTION", questionId: "x", optionIndex: 0 }); // any message saves
+    const second = makeRoom(g.storage);
+    expect(await second.room.restore()).toBe("restored");
+    expect(peek(second.room).view.bossThreshold).toBe(12);
+  });
+});
