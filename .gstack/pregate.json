@@ -13,7 +13,6 @@
     "package-lock.json": [],
     "worker/**": [],
     "wrangler.jsonc": [],
-    "scripts/pregate-runner.sh": [],
-    "scripts/balance-sim-dice.ts": []
+    "scripts/pregate-runner.sh": []
   }
 }
