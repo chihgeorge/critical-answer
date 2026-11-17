@@ -5,6 +5,7 @@ import {
   answerQuestion,
   advanceTurn,
   currentTurnTeamId,
+  nextTurnTeamId,
   isInBossPhase,
   setTeamOnline,
   getSpectatorView,
@@ -320,6 +321,31 @@ describe("answerQuestion — stale question rejection (T6 critical gap)", () => 
     }
     expect(game.teams[0].score).toBe(0);
     expect(currentTurnTeamId(game)).toBe("T0");
+  });
+});
+
+describe("nextTurnTeamId (the host's 指定下一題 target)", () => {
+  it("names the team after the one on turn, skipping offline teams and wrapping", () => {
+    let game = makeGame();
+    expect(nextTurnTeamId(game)).toBe("T1");
+    game = setTeamOnline(game, "T1", false);
+    expect(nextTurnTeamId(game)).toBe("T2");
+    expect(getSpectatorView(advanceTurn(game)).nextTurnTeamId).toBe("T0");
+  });
+
+  it("is the team itself when it is the only one online, and absent with nobody on turn", () => {
+    let game = makeGame();
+    game = setTeamOnline(setTeamOnline(game, "T1", false), "T2", false);
+    expect(nextTurnTeamId(game)).toBe("T0");
+    game = setTeamOnline(game, "T0", false);
+    expect(nextTurnTeamId(game)).toBeNull();
+    expect(getSpectatorView(game)).not.toHaveProperty("nextTurnTeamId");
+  });
+
+  it("passes over a 💫 stunned team, as landTurn does", () => {
+    const stun = (g: GameState, ids: string[]) => ({ ...g, teams: g.teams.map((t) => (ids.includes(t.id) ? { ...t, stunned: true as const } : t)) });
+    expect(nextTurnTeamId(stun(makeGame(), ["T1"]))).toBe("T2");
+    expect(nextTurnTeamId(stun(makeGame(), ["T1", "T2"]))).toBe("T0");
   });
 });
 
@@ -2430,6 +2456,11 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     return enterNextBossPhase(g);
   }
   const judge = (g: GameState, team: string, correct: boolean) => answerQuestion(g, team, g.boss.currentQuestionId, correct, "retry", first);
+
+  it("has no next team on turn for the host's 指定下一題", () => {
+    expect(nextTurnTeamId(buzzer())).toBeNull();
+    expect(getSpectatorView(buzzer())).not.toHaveProperty("nextTurnTeamId");
+  });
 
   it("a sneak armed in the phase before is given back when a buzzer phase starts (no abilities, D6)", () => {
     const teams = [0, 1].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));

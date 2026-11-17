@@ -22,7 +22,6 @@
 - [頒獎稱號「命運之子」](#頒獎稱號命運之子)（[#287](https://github.com/chihgeorge/critical-answer/issues/287)） — S，活動後
 - [抓包與神諭：用平衡模擬看分數對勝率的影響](#抓包與神諭用平衡模擬看分數對勝率的影響)（[#288](https://github.com/chihgeorge/critical-answer/issues/288)） — M，活動後
 - [抓包與神諭：首領房也能用](#抓包與神諭首領房也能用)（[#289](https://github.com/chihgeorge/critical-answer/issues/289)） — M，活動後
-- [卡點題：自動校正喇叭延遲](#卡點題自動校正喇叭延遲)（[#290](https://github.com/chihgeorge/critical-answer/issues/290)） — M，活動後
 - [活動後用對局紀錄對一次職業勝率](#活動後用對局紀錄對一次職業勝率)（[#292](https://github.com/chihgeorge/critical-answer/issues/292)） — S，活動後
 - [OpenRouter 一鍵登入拿 key，手機主持人不用複製貼上](#openrouter-一鍵登入拿-key手機主持人不用複製貼上)（[#294](https://github.com/chihgeorge/critical-answer/issues/294)） — M
 - [逃跑・換房（完整版）](#逃跑換房完整版)（[#298](https://github.com/chihgeorge/critical-answer/issues/298)） — M（人工約 1-2 天 / CC 約 1 小時），活動後
@@ -208,22 +207,6 @@
 **Effort/Priority:** M / P3
 
 **Depends on:** 活動（2026-11-21）的遊戲紀錄。
-
----
-
-## 卡點題：自動校正喇叭延遲
-
-**What:** 大螢幕放一串嗶聲，大家跟著按，房間自動算誤差中位數，填進喇叭延遲。
-
-**Why:** 現在是主持人手動填「⚙ 更多」的喇叭延遲（E3-lite）：正式使用前放一題測試卡點題，照揭曉後的「把延遲改成…」按。瀏覽器的 `outputLatency` 只到音訊裝置，不含電視和藍牙喇叭，所以量不到（`docs/designs/timing-tap.md` E3，/autoplan 2026-11-12，延到活動後看實測）。
-
-**Context:**
-- `lib/tap-clock.ts`（`medianError`、`suggestedLatency`）、`lib/room/dungeon-room.ts`（`HOST_TAP_LATENCY`、`settleTaps` 的 `timing_round` 紀錄有 `latencyMs` 和贏家誤差）
-- 先看活動那天的 `timing_round` 紀錄：中位數是不是穩定、各隊差多少，再決定值不值得做。
-
-**Effort/Priority:** M / P3
-
-**Depends on:** 活動實測。
 
 ---
 
@@ -460,6 +443,10 @@
 ## Completed
 
 細節見 CHANGELOG.md 與 git 歷史。
+
+## 卡點題：自動校正喇叭延遲
+
+- **大廳的「🎯 校正喇叭」** · 版號合併時定 · 主持人在大廳的「⚙ 更多」按下，一台有聲音的大螢幕放 8 聲嗶（只有聲音，畫面不閃），加入的手機跟著按；房間用現有的對時把每一下換成伺服器時間，丟掉前 2 聲、同一支手機同一聲只算一下、離中位數 250 ms 以外的不算，至少 6 下才給數字，主持人頁顯示「建議延遲 N ms」，只有「套用」會寫進喇叭延遲。大螢幕沒聲音、🎵 關著、試播影音還在跑時不開始。能量到 0.7 秒以內的延遲。真的電視和藍牙喇叭還沒量過；嗶聲走網頁音效、卡點題走影片，所以套用後仍建議放一題測試卡點題確認（`docs/designs/tap-calibrate.md`）。
 
 ## Host 自訂題庫文字進 LLM prompt 前的內容審核
 

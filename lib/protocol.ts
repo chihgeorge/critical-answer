@@ -429,6 +429,10 @@ export type ClientMessage =
   | { type: "TEAM_TAP"; questionId: string; round: number; at: number }
   /** The big screen's speaker latency in ms (timing-tap.md E3-lite): rounded and kept to 0–1000, saved with the room. */
   | { type: "HOST_TAP_LATENCY"; ms: number }
+  /** 🎯 校正喇叭 (docs/designs/tap-calibrate.md): in the lobby, the big screen beeps and the phones tap along. */
+  | { type: "HOST_TAP_CALIBRATE" }
+  /** A phone's tap in that test: `run` is LOBBY calibrate.run, `at` the press in server epoch ms (like TEAM_TAP's). */
+  | { type: "CALIBRATE_TAP"; run: number; at: number }
   /** 沒人答對，換下一題: the buzzer phase's question moves on unrevealed (boss-buzzer.md D4). */
   | { type: "HOST_BUZZ_SKIP"; questionId: string }
   /** 現場放歌，開放搶答: the host plays the song from their own device, so buzzing opens without the clip (boss-music-buzzer.md M4). */
@@ -503,7 +507,9 @@ export type ServerMessage =
   | { type: "TAP_OK"; questionId: string; round: number }
   /** `replay`: this room has played a game, so the host page leaves 開始前播放玩法說明 unchecked (eng D5).
    * `bankSize`: question counts only (no content), so the host page can warn a bank is too small for its teams. */
-  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true; bankSize?: BankSize; pacing?: "manual"; screenAudio?: ScreenAudio }
+  /** `calibrate`: a 🎯 校正喇叭 test is running (tap-calibrate.md), its first beep at server ms `startAt`. `tapLatency`: the
+   * speaker latency in ms (HOST_TAP_LATENCY), absent when 0. */
+  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true; bankSize?: BankSize; pacing?: "manual"; screenAudio?: ScreenAudio; calibrate?: CalibrateRun; tapLatency?: number }
   | {
       type: "STATE";
       view: SpectatorView;
@@ -633,6 +639,10 @@ export type ServerMessage =
   /** To the one keyed big screen that runs the test (screen-media-test.md D2): every distinct clip in the bank, never an
    * answer. It answers each with SCREEN_TEST_RESULT. */
   | { type: "SCREEN_TEST"; runId: number; items: ScreenVideo[] }
+  /** To the one keyed, sound-ready big screen that beeps for 🎯 校正喇叭 (tap-calibrate.md): two screens would beep twice. */
+  | { type: "SCREEN_CALIBRATE"; run: CalibrateRun }
+  /** To every host page when the test closes: the suggested latency in ms, or null with too few taps. */
+  | { type: "TAP_CALIBRATE_RESULT"; run: number; ms: number | null; taps: number; phones: number }
   /** To every host page, after each SCREEN_TEST_RESULT: `rows` are the failures so far, with no URL, id or answer.
    * `stopped`: the testing screen left before it finished. */
   | { type: "HOST_SCREEN_TEST"; done: number; total: number; rows: HealthRow[]; stopped?: true }
@@ -707,6 +717,8 @@ export interface HostPick {
 }
 
 export type ScreenSound = "ready" | "muted" | "none";
+/** A 🎯 校正喇叭 test: `beats` beeps `gapMs` apart from server ms `startAt`. */
+export type CalibrateRun = { run: number; startAt: number; beats: number; gapMs: number };
 
 /** The host's sound switches for every big screen (docs/designs/immersion.md PR3): 🎵 音樂 (the music and the game
  * cues), 🔊 旁白語音 (the narration voice), 🌧 環境音 (the room ambience). Off silences only that one. */
@@ -927,6 +939,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "HOST_TAP_LATENCY":
       return isFiniteNumber(m.ms) ? { type: "HOST_TAP_LATENCY", ms: m.ms } : null;
+    case "HOST_TAP_CALIBRATE":
+      return { type: "HOST_TAP_CALIBRATE" };
+    case "CALIBRATE_TAP":
+      return isCount(m.run) && isFiniteNumber(m.at) ? { type: "CALIBRATE_TAP", run: m.run, at: m.at } : null;
     case "HOST_NEXT_LINE": {
       const line = str(m.line, MAX_EDIT_LINE);
       if (line === null || (m.eventId !== undefined && !isCount(m.eventId))) return null;

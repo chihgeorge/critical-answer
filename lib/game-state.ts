@@ -1111,6 +1111,17 @@ export function currentTurnTeamId(game: GameState): string | null {
   return idx === null ? null : game.turnOrder[idx];
 }
 
+/** The online team after the one on turn in turnOrder (itself when it is the only one online), or null in a buzzer
+ * phase or with nobody on turn. A 💫 stunned team is passed over as landTurn passes it, unless every other one is. */
+export function nextTurnTeamId(game: GameState): string | null {
+  const now = isBuzzPhase(game) ? null : currentTurnTeamId(game);
+  if (now === null) return null;
+  const n = game.turnOrder.length;
+  const at = game.turnOrder.indexOf(now);
+  const online = Array.from({ length: n }, (_, i) => getTeam(game, game.turnOrder[(at + i + 1) % n])).filter((t) => t.online);
+  return (online.find((t) => !t.stunned) ?? online[0])?.id ?? null;
+}
+
 /** The first turn index at or after currentTurnIndex + `from` whose team is online (wrapping), or null. */
 function nextOnlineIndex(game: GameState, from: number): number | null {
   const n = game.turnOrder.length;
@@ -2451,6 +2462,9 @@ export function dismissCatch(game: GameState): { game: GameState; potion: boolea
  */
 export interface SpectatorView {
   currentTurnTeamId: string | null;
+  /** The team whose turn comes after this one (turnOrder, online teams only), for the host's 指定下一題. The team itself
+   * when it is the only one online; absent in a buzzer phase or with nobody on turn. */
+  nextTurnTeamId?: string;
   teams: {
     id: string;
     name: string;
@@ -2530,6 +2544,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
   return {
     // A buzzer phase has no turns: the team that buzzed answers, nobody else is on turn (boss-buzzer.md).
     currentTurnTeamId: isBuzzPhase(game) ? (currentBuzz(game).teamId ?? null) : currentTurnTeamId(game),
+    ...(nextTurnTeamId(game) ? { nextTurnTeamId: nextTurnTeamId(game)! } : {}),
     teams: game.teams.map((t) => ({
       id: t.id,
       name: t.name,

@@ -38,14 +38,27 @@ export function MoreDrawer({
   questionLabel = () => "",
   error,
   tapLatency,
+  calibrate,
+  teams,
+  pacing,
+  narration,
+  lobby,
 }: {
   /** The page's origin ("" before hydration). */
   origin: string;
   code: string;
   onClose: () => void;
   send: (msg: ClientMessage) => void;
-  /** The AI key and limit settings, mid-game (in the lobby they sit on the page itself). */
+  /** The AI key and limit settings. */
   ai: ReactNode;
+  /** 隊伍: each team's 指定下一題 / 🧪 給藥水 / 交給新手機, and the boss's pick, while a game plays. */
+  teams?: ReactNode;
+  /** 手動停頓's switch (manual-pacing.md). */
+  pacing?: ReactNode;
+  /** The narration panel (下一句這樣說, edits), while a game plays. */
+  narration?: ReactNode;
+  /** The lobby's setup: the join password and the bank checks. */
+  lobby?: ReactNode;
   /** Teams in play and not yet in the boss room: the host may send one there (scoring-and-score-pools.md S13). */
   bossable: { id: string; name: string }[];
   /** The game's 進王門檻 (view.bossThreshold), for the 送王房 line. */
@@ -72,6 +85,8 @@ export function MoreDrawer({
   error?: string | null;
   /** The speaker latency for timing questions (timing-tap.md 8) while a game plays; undefined hides the field. */
   tapLatency?: number;
+  /** 🎯 校正喇叭 (tap-calibrate.md), in the lobby only: shown under 開局準備. */
+  calibrate?: ReactNode;
 }) {
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
@@ -108,72 +123,13 @@ export function MoreDrawer({
               關閉
             </PixelButton>
           </div>
-          {screen && <section>{screen}</section>}
-          <section className="flex flex-col gap-2">
-            <div className="text-[15px]">大螢幕聲音（每台大螢幕都跟著這裡）：🎵 關掉時判分音效和環境音也一起關；主持人加料一直都在。</div>
-            <div className="flex flex-wrap gap-2">
-              {AUDIO_SWITCHES.map(({ key, label }) => (
-                <PixelButton
-                  key={key}
-                  role="switch"
-                  aria-checked={screenAudio[key]}
-                  variant={screenAudio[key] ? undefined : "flee"}
-                  onClick={() => send({ type: "HOST_SCREEN_AUDIO", key, on: !screenAudio[key] })}
-                  className="!m-0 min-h-[44px] !px-4 !py-2 text-[16px]"
-                >
-                  {`${label}：${screenAudio[key] ? "開" : "關"}`}
-                </PixelButton>
-              ))}
-            </div>
-          </section>
-          {tapLatency !== undefined && (
-            <section className="flex flex-col gap-2" data-testid="tap-latency">
-              <label className="flex flex-wrap items-center gap-2 text-[16px]">
-                喇叭延遲（毫秒，卡點題用）
-                <input
-                  className="px-input"
-                  style={{ width: 100 }}
-                  inputMode="numeric"
-                  aria-label="喇叭延遲（毫秒）"
-                  placeholder={String(tapLatency)}
-                  value={latencyText}
-                  onChange={(e) => setLatencyText(e.target.value.trim())}
-                />
-                <PixelButton
-                  disabled={!latencyOk}
-                  onClick={() => {
-                    send({ type: "HOST_TAP_LATENCY", ms: Number(latencyText) });
-                    setLatencyText("");
-                  }}
-                  className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]"
-                >
-                  設定
-                </PixelButton>
-                <span className="text-[14px]">現在 {tapLatency} ms</span>
-              </label>
-              <div className="text-[14px]">開場前先放一題測試卡點題，揭曉後按「把延遲改成…」；再放一題，中位數接近 0 就對了（0–{MAX_TAP_LATENCY_MS}）</div>
-            </section>
+          {teams && (
+            <>
+              <Heading>隊伍</Heading>
+              <section>{teams}</section>
+            </>
           )}
-          {bossable.length > 0 && (
-            <section className="flex flex-col gap-2">
-              <div className="text-[15px]">{`送隊伍進王房（不用等到 ${bossThreshold} 分，送了不能退回）`}</div>
-              {bossable.map((t) => (
-                <div key={t.id} className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-[16px]">{t.name}</span>
-                  <PixelButton
-                    onClick={() => {
-                      if (armed !== t.id) return setArmed(t.id);
-                      setArmed(null);
-                      send({ type: "HOST_SEND_TO_BOSS", teamId: t.id });
-                    }}
-                    className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]"
-                  >
-                    {armed === t.id ? "確定送？" : "送王房"}
-                  </PixelButton>
-                </div>
-              ))}
-            </section>
-          )}
+          {fixable.length > 0 && <Heading>修正・改判</Heading>}
           {fixable.length > 0 && (
             <section data-testid="host-fix" className="flex flex-col gap-2">
               <div className="text-[15px]">修正（判錯時用）：大螢幕不會有動畫或旁白，只會換成新的數字；每一下都記在對局紀錄裡。</div>
@@ -265,6 +221,48 @@ export function MoreDrawer({
               </div>
             </section>
           )}
+          {(lobby || calibrate) && (
+            <>
+              <Heading>開局準備</Heading>
+              {lobby && <section className="flex flex-col gap-4">{lobby}</section>}
+              {calibrate && <section>{calibrate}</section>}
+            </>
+          )}
+          {pacing && (
+            <>
+              <Heading>節奏</Heading>
+              <section className="flex flex-col gap-2">
+                {pacing}
+                <div className="text-[13px]">手動：每一步都停下來，等你按「▶ 下一步」</div>
+              </section>
+            </>
+          )}
+          {narration && (
+            <>
+              <Heading>地城主旁白</Heading>
+              <section>{narration}</section>
+            </>
+          )}
+          <Heading>大螢幕</Heading>
+          {screen && <section>{screen}</section>}
+          <section className="flex flex-col gap-2">
+            <div className="text-[15px]">大螢幕聲音（每台大螢幕都跟著這裡）：🎵 關掉時判分音效和環境音也一起關；主持人加料一直都在。</div>
+            <div className="flex flex-wrap gap-2">
+              {AUDIO_SWITCHES.map(({ key, label }) => (
+                <PixelButton
+                  key={key}
+                  role="switch"
+                  aria-checked={screenAudio[key]}
+                  variant={screenAudio[key] ? undefined : "flee"}
+                  onClick={() => send({ type: "HOST_SCREEN_AUDIO", key, on: !screenAudio[key] })}
+                  className="!m-0 min-h-[44px] !px-4 !py-2 text-[16px]"
+                >
+                  {`${label}：${screenAudio[key] ? "開" : "關"}`}
+                </PixelButton>
+              ))}
+            </div>
+          </section>
+          <Heading>其他</Heading>
           {antiCheat !== undefined && (
             <section className="flex flex-col gap-2">
               <div className="text-[15px]">發現有人用手機問 AI？打開後每隊可以公開問 {ORACLE_USES} 次神諭（答對減半），也可以抓包別隊 {CATCH_USES} 次，由你裁決。關掉時還沒裁決的抓包取消、退回次數。</div>
@@ -278,6 +276,54 @@ export function MoreDrawer({
               >
                 {antiCheat ? "🚨 抓包與神諭：開（按一下關掉）" : "🚨 開啟抓包與神諭"}
               </PixelButton>
+            </section>
+          )}
+          {bossable.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <div className="text-[15px]">{`送隊伍進王房（不用等到 ${bossThreshold} 分，送了不能退回）`}</div>
+              {bossable.map((t) => (
+                <div key={t.id} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-[16px]">{t.name}</span>
+                  <PixelButton
+                    onClick={() => {
+                      if (armed !== t.id) return setArmed(t.id);
+                      setArmed(null);
+                      send({ type: "HOST_SEND_TO_BOSS", teamId: t.id });
+                    }}
+                    className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]"
+                  >
+                    {armed === t.id ? "確定送？" : "送王房"}
+                  </PixelButton>
+                </div>
+              ))}
+            </section>
+          )}
+          {tapLatency !== undefined && (
+            <section className="flex flex-col gap-2" data-testid="tap-latency">
+              <label className="flex flex-wrap items-center gap-2 text-[16px]">
+                喇叭延遲（毫秒，卡點題用）
+                <input
+                  className="px-input"
+                  style={{ width: 100 }}
+                  inputMode="numeric"
+                  aria-label="喇叭延遲（毫秒）"
+                  placeholder={String(tapLatency)}
+                  value={latencyText}
+                  onChange={(e) => setLatencyText(e.target.value.trim())}
+                />
+                <PixelButton
+                  disabled={!latencyOk}
+                  onClick={() => {
+                    send({ type: "HOST_TAP_LATENCY", ms: Number(latencyText) });
+                    setLatencyText("");
+                  }}
+                  className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]"
+                >
+                  設定
+                </PixelButton>
+                <span className="text-[14px]">現在 {tapLatency} ms</span>
+              </label>
+              <div className="text-[14px]">開場前先放一題測試卡點題，揭曉後按「把延遲改成…」；再放一題，中位數接近 0 就對了（0–{MAX_TAP_LATENCY_MS}）</div>
             </section>
           )}
           {playing && (
@@ -317,4 +363,9 @@ export function MoreDrawer({
       </Panel>
     </div>
   );
+}
+
+/** A drawer group's title: the drawer is long, so the host scans these. */
+function Heading({ children }: { children: ReactNode }) {
+  return <h3 className="border-b-2 border-[var(--k)] pb-[2px] text-[17px]">{children}</h3>;
 }

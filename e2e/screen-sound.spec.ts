@@ -39,6 +39,7 @@ test("the host page warns until the big screen's sound is on, then says it is re
 
   // 🌑 螢幕變暗 (#266): the host's switch lays the dim layer over the big screen, and a second press takes it off.
   // The pad waits out its own cooldown before the second press, which click() waits for.
+  await host.getByTestId("host-fx-toggle").click(); // ⚡ 加料 opens the pads
   const dim = host.getByRole("group", { name: "大螢幕加料" }).getByRole("button", { name: "螢幕變暗", exact: true });
   await dim.click();
   await expect(screen.getByTestId("screen-dim")).toBeVisible();
@@ -54,6 +55,7 @@ test("the host page's effect pads work in the lobby and say a press was sent", a
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  await host.getByTestId("host-fx-toggle").click(); // ⚡ 加料 opens the pads
   const pads = host.getByRole("group", { name: "大螢幕加料" });
   await expect(pads.getByRole("button")).toHaveCount(3);
   // 🌑 waits for the game: off in the lobby, with the reason in its label.

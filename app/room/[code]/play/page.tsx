@@ -9,7 +9,7 @@ import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL, offli
 import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
-import { LOCK_REFUSALS, MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
+import { LOCK_REFUSALS, MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type CalibrateRun, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
 import { ABILITY_USES, CATCH_PAY, ORACLE_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn, nextUp, turnLive, turnOpened } from "@/lib/turn-info";
@@ -23,6 +23,7 @@ import { dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/
 import { PHONE_LAG_MS, placeLabel, revealNow, teamPlace } from "@/lib/podium";
 import { McOption } from "@/components/mc-option";
 import { TapButton, useTapPhone } from "@/components/tap-button";
+import { CalibrateTap } from "@/components/calibrate-tap";
 import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
 import { SORT_ITEMS, sortCode, sortOrderOf } from "@/lib/sort-order";
@@ -847,6 +848,8 @@ export default function PlayPage() {
 
   const [teamId, setTeamId] = useState("");
   const [lobby, setLobby] = useState<LobbyTeams | null>(null);
+  /** LOBBY's 🎯 校正喇叭 test, while it runs (docs/designs/tap-calibrate.md). */
+  const [calibrate, setCalibrate] = useState<CalibrateRun | null>(null);
   const [game, setGame] = useState<StateMessage | null>(null);
   const [narration, setNarration] = useState<NarrationState>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
@@ -950,6 +953,7 @@ export default function PlayPage() {
         case "LOBBY":
           // Not a sign we joined: a connection that failed the password still gets every LOBBY broadcast.
           setLobby(msg.teams);
+          setCalibrate(msg.calibrate ?? null);
           if (msg.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           setGame(null);
           // Back from a finished game (回到大廳): its story is over.
@@ -1187,9 +1191,12 @@ export default function PlayPage() {
           </Panel>
         ) : (
           !game && (
+            <>
+            {calibrate && lobby?.some((t) => t.id === teamId) && <CalibrateTap key={calibrate.run} run={calibrate} clock={tap.clock} send={send} />}
             <Panel tone="lav" className="px-4 py-5 text-center text-[20px]">
               {lobby ? "等待主持人開始遊戲…" : "連線中…"}
             </Panel>
+            </>
           )
         )}
 

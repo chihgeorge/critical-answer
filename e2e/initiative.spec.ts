@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { screenUrl, clickStart, closeLeftoverContexts } from "./answer";
+import { screenUrl, clickStart, openSettings, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -32,6 +32,7 @@ test("every phone rolls 擲先攻, the big screen shows the dice, then the first
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await screen.goto(await screenUrl(host));
 
+  await openSettings(host);
   await host.getByRole("checkbox", { name: "開始前播放玩法說明" }).uncheck();
   await clickStart(host);
 

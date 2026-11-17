@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl, clickStart, closeLeftoverContexts } from "./answer";
+import { answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl, clickStart, openSettings, closeLeftoverContexts } from "./answer";
 import { TITLE } from "../lib/monster-catalog";
 
 closeLeftoverContexts();
@@ -95,6 +95,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
   const screen = await (await browser.newContext()).newPage();
   await screen.goto(await screenUrl(host));
 
+  await openSettings(host);
   const intro = host.getByRole("checkbox", { name: "開始前播放玩法說明" });
   await expect(intro).toBeChecked();
   await clickStart(host);
@@ -139,6 +140,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
   await host.getByRole("button", { name: "結束冒險" }).click();
   await host.getByRole("button", { name: "確定結束？" }).click();
   await host.getByRole("button", { name: "回到大廳，再玩一場" }).click();
+  await openSettings(host);
   await expect(intro).not.toBeChecked();
 });
 

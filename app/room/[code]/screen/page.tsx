@@ -9,7 +9,7 @@ import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from "@/lib/offline-notice";
-import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FileVideo, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ScreenAudio, type ServerMessage, type ClientMessage, type SoundCue, type StateMessage, type HostEffect } from "@/lib/protocol";
+import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FileVideo, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ScreenAudio, type CalibrateRun, type ServerMessage, type ClientMessage, type SoundCue, type StateMessage, type HostEffect } from "@/lib/protocol";
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { CATCH_PAY, checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { answerReader } from "@/lib/class-dice";
@@ -29,7 +29,7 @@ import { chineseVoices, pickVoice, shouldSpeakNarration, speechTimeoutMs, type S
 import { readStored, writeStored } from "@/lib/stored";
 import { VoicePicker } from "@/components/voice-picker";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
-import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
+import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CALIBRATE_BEEP, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
 import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
 import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
 import { CLASS_COLOR, CLASS_PULSE, CLASS_TINT, createFlashBudget, DIM_ALPHA, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
@@ -52,7 +52,7 @@ import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
 import { FilePlayer } from "@/components/file-player";
 import { ScreenMediaTest } from "@/components/screen-media-test";
-import { useRoomClock } from "@/components/room-clock";
+import { useClockPings, useRoomClock } from "@/components/room-clock";
 import { TapClockReporter, TimingResult, TimingRoundPanel, TimingTimeline, useTimingReplay } from "@/components/timing-screen";
 import { replayFromS } from "@/lib/tap-clock";
 import { resendClipError, type ClipErrorSeen } from "@/lib/youtube";
@@ -1468,9 +1468,13 @@ export default function ScreenPage() {
   // device (boss-music-buzzer.md M3, M4): the room must hear the answer, and the song.
   const buzzView = game?.phase === "playing" ? game.view.buzz : undefined;
   const held = !!buzzView?.teamId || (!!game?.clipError && !!buzzView?.open);
+  /** 🎯 校正喇叭 (docs/designs/tap-calibrate.md): LOBBY's `calibrate` shows the card on every screen; SCREEN_CALIBRATE
+   * comes to the one screen that beeps. The music and the ambience stay quiet meanwhile. */
+  const [calibCard, setCalibCard] = useState(false);
+  const [beepRun, setBeepRun] = useState<CalibrateRun | null>(null);
   useEffect(() => {
-    player().hold(held);
-  }, [held]);
+    player().hold(held || calibCard);
+  }, [held, calibCard]);
 
   /** Wake the sound inside a gesture (a click or a key press: browsers only let audio start then), start the music if
    * the host's 🎵 is on, and prime the voice. */
@@ -1792,6 +1796,29 @@ export default function ScreenPage() {
   const clock = useRoomClock(sendRef);
   const tapTime = useRef<(() => number | null) | null>(null);
   const clipEndedSeq = useRef<number | undefined>(undefined);
+  useClockPings(clock.ping, beepRun !== null, String(beepRun?.run ?? ""));
+  // The beeps go on the AudioContext clock once, 1 s before the first, when the clock burst has settled: a later pong
+  // does not move beeps already queued. Beeps already past are not played. 🎵 off cancels the rest; a suspended
+  // AudioContext waits, and the beeps still ahead play once it runs again.
+  useEffect(() => {
+    if (!beepRun || !bgmOn || !audioRunning) return;
+    let cancel: (() => void) | null = null;
+    const id = setInterval(() => {
+      const off = clock.offset();
+      if (off === null || performance.now() + off < beepRun.startAt - 1000) return;
+      clearInterval(id);
+      const nowMs = performance.now() + off;
+      // pattern() starts 20 ms after now: take it back out, or it would count as speaker latency.
+      const offsets = Array.from({ length: beepRun.beats }, (_, k) => (beepRun.startAt + k * beepRun.gapMs - nowMs) / 1000 - 0.02).filter((s) => s >= 0);
+      cancel = player().pattern(CALIBRATE_BEEP, offsets, "host");
+    }, 100);
+    return () => {
+      clearInterval(id);
+      cancel?.();
+    };
+    // clock.offset is stable (useCallback); player() reads a ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [beepRun, bgmOn, audioRunning]);
   const { reset, rested, unreachable, reconnect, send } = useRoomSocket(code, {
     onOpen() {
       // Before any new report: the room ignores SCREEN_* reports from a socket that has not sent the screen key.
@@ -1831,6 +1858,8 @@ export default function ScreenPage() {
         case "LOBBY":
           clipEnded.current = null;
           applyScreenAudio(screenAudioOf(msg));
+          setCalibCard(!!msg.calibrate);
+          if (!msg.calibrate) setBeepRun(null);
           clearFog();
           setLobby(msg.teams);
           setFloats([]);
@@ -1871,8 +1900,13 @@ export default function ScreenPage() {
         case "SCREEN_TEST":
           setScreenTest(msg);
           break;
+        case "SCREEN_CALIBRATE":
+          setBeepRun(msg.run);
+          break;
         case "STATE":
           setScreenTest(null);
+          setCalibCard(false);
+          setBeepRun(null);
           setGame(msg);
           applyScreenAudio(screenAudioOf(msg));
           if (msg.question?.id !== clipEnded.current) clipEnded.current = null;
@@ -2013,6 +2047,13 @@ export default function ScreenPage() {
             counter starting meanwhile takes the shake over: two shakes never stack past 8px. */}
         <div className={`absolute inset-0${hostFx?.look === "shake" && parry !== "counter" ? " px-growl" : ""}`}>
         {!game && <Lobby code={code} teams={lobby} />}
+        {!game && calibCard && (
+          // Still on purpose: people tap to the sound, not the picture (tap-calibrate.md C2). Where the unlock button sits.
+          <Panel tone="turn" role="status" className="absolute px-6 py-3 text-center" style={{ top: 250, left: "50%", transform: "translateX(-50%)", zIndex: 6 }}>
+            <div className="text-[30px]">🎯 校正喇叭</div>
+            <div className="text-[22px]">聽嗶聲，用手機跟著按</div>
+          </Panel>
+        )}
         {!game && showBgmToggle && !audioRunning && (
           // Between the room-code panel (ends near y 236) and the heroes; at most 40px tall.
           <PixelButton
