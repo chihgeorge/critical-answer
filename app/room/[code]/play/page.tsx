@@ -1,6 +1,7 @@
 "use client";
 
 import { AnswerClock } from "@/components/answer-clock";
+import { TypePickPanel } from "@/components/buzz-type-pick";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
@@ -1308,6 +1309,8 @@ export default function PlayPage() {
           <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint buzzed />
         )}
 
+        {/* #321: the winner picks the next question's type, until the host's ▶ or the host's own pick. */}
+        {game && buzz?.picker === teamId && !buzz.hostPicked && game.buzzTypes && <TypePickPanel types={game.buzzTypes} chosen={buzz.qtype} send={send} />}
         {game && buzz?.picker === teamId && game.buzzCategories && <CategoryPanel categories={game.buzzCategories} chosen={buzz.category} send={send} />}
 
         {game && !finished && !buzz && !held && isMyTurn && !game.question?.memorize && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} drops={lockDrops} />}

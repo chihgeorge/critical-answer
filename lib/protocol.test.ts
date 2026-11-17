@@ -46,6 +46,13 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "動漫" })).toEqual({ type: "TEAM_PICK_CATEGORY", category: "動漫" });
     expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "" })).toBeNull();
     expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "x".repeat(65) })).toBeNull();
+    // #321: the type pick, and the host's pick by type or by question (exactly one).
+    expect(parseClientMessage({ type: "TEAM_PICK_TYPE", qtype: "聽歌" })).toEqual({ type: "TEAM_PICK_TYPE", qtype: "聽歌" });
+    expect(parseClientMessage({ type: "TEAM_PICK_TYPE", qtype: "" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_BUZZ_PICK", qtype: "卡點" })).toEqual({ type: "HOST_BUZZ_PICK", qtype: "卡點" });
+    expect(parseClientMessage({ type: "HOST_BUZZ_PICK", questionId: "q1" })).toEqual({ type: "HOST_BUZZ_PICK", questionId: "q1" });
+    expect(parseClientMessage({ type: "HOST_BUZZ_PICK", qtype: "卡點", questionId: "q1" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_BUZZ_PICK" })).toBeNull();
   });
 
   it("HOST_JUDGE and TEAM_SUBMIT_TEXT carry a music question's fields (multi-field.md)", () => {

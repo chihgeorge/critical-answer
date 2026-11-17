@@ -496,6 +496,60 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().clipError).toBeUndefined();
   });
 
+  // #321: b-a and b-c are music (聽歌), b-b a fill-in (填空).
+  const typed = (id: string) => (id === "b-b" ? text(id) : video(id));
+
+  it("the winner picks the next question's type; a used-up type is greyed and refused; only type names reach STATE (#321)", () => {
+    const g = buzzerGame(typed);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    expect(g.state().buzzTypes).toBeUndefined();
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    expect(g.state()).toMatchObject({ buzzTypes: [{ type: "聽歌", left: true }, { type: "填空", left: true }], view: { buzz: { picker: IDS[1] } } });
+    send(g.room, g.phones[0], { type: "TEAM_PICK_TYPE", qtype: "填空" });
+    expect(g.lastError(g.phones[0])).toMatchObject({ detail: "not_picker" });
+    send(g.room, g.phones[1], { type: "TEAM_PICK_TYPE", qtype: "填空" });
+    expect(g.state()).toMatchObject({ view: { buzz: { questionId: "b-b", qtype: "填空" } } });
+    expect(JSON.stringify(g.state())).not.toContain("答案 b-b");
+    // The winner may change its mind; the latest pick wins.
+    send(g.room, g.phones[1], { type: "TEAM_PICK_TYPE", qtype: "聽歌" });
+    expect(g.room.game!.boss.currentQuestionId).toBe("b-c");
+  });
+
+  it("a type with no question left is greyed and refused (#321)", () => {
+    const g = buzzerGame((id) => (id === "b-a" ? video(id) : text(id)));
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    expect(g.state().buzzTypes).toEqual([{ type: "聽歌", left: false }, { type: "填空", left: true }]);
+    send(g.room, g.phones[1], { type: "TEAM_PICK_TYPE", qtype: "聽歌" });
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "no_such_category" });
+  });
+
+  it("the host overrides the winner by type or by question; the winner's pick is then over (#321)", () => {
+    const g = buzzerGame(typed);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    send(g.room, g.phones[1], { type: "HOST_BUZZ_PICK", qtype: "填空" });
+    expect(g.room.game!.buzz?.hostPicked).toBeUndefined();
+    send(g.room, g.host, { type: "HOST_BUZZ_PICK", qtype: "填空" });
+    expect(g.state()).toMatchObject({ view: { buzz: { questionId: "b-b", qtype: "填空", hostPicked: true, picker: IDS[1] } } });
+    send(g.room, g.phones[1], { type: "TEAM_PICK_TYPE", qtype: "聽歌" });
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "not_picker" });
+    send(g.room, g.host, { type: "HOST_BUZZ_PICK", questionId: "b-a" });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "no_such_question" });
+    send(g.room, g.host, { type: "HOST_BUZZ_PICK", questionId: "b-c" });
+    expect(g.state()).toMatchObject({ view: { buzz: { questionId: "b-c", hostPicked: true } } });
+    expect(g.state().view.buzz.qtype).toBeUndefined();
+    // Once the host's ▶ opens buzzing, nobody picks.
+    g.next();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-c", action: "play" });
+    expect(g.state().buzzTypes).toBeUndefined();
+    send(g.room, g.host, { type: "HOST_BUZZ_PICK", questionId: "b-b" });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "too_late" });
+  });
+
   it("a pick that lands on a non-video question opens buzzing once the reveal closes; a second pick is too_late", () => {
     const mixed = (id: string) => (id === "b-c" ? { ...text(id), category: "遊戲" } : { ...video(id), category: "動漫" });
     const g = buzzerGame(mixed);

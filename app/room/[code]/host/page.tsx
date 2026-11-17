@@ -36,6 +36,7 @@ import { BankHealthPanel, type BankHealth, type ScreenTest } from "@/components/
 import { FieldJudge } from "@/components/field-judge";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
+import { BuzzTypePick } from "@/components/buzz-type-pick";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
 import { EVENT_OUTCOME_TITLE, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 import { hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
@@ -1256,6 +1257,8 @@ export default function HostPage() {
               {game.question?.content.kind === "youtube" && !revealUp && (
                 <MediaControls questionId={game.question.id} media={game.media} disabled={!ready || !!game.question.checkFirst} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
               )}
+              {/* The next buzzer question's type (#321): the winner picks on its phone, the host may set it or the question itself. */}
+              {game.buzzTypes && <BuzzTypePick game={game} ready={ready} teamName={teamName} send={send} onQuestion={() => setPicking("buzz")} />}
               {buzz && (
                 <div data-testid="host-buzz" className="mt-2 flex flex-col gap-1 text-[16px]">
                   {timing && !buzz.teamId && (
@@ -1633,7 +1636,22 @@ export default function HostPage() {
         )}
       </div>
 
-      {picking && picks && game && (
+      {/* The buzzer phase's next question itself (#321): it plays right after, not on the next rotation. */}
+      {picking === "buzz" && picks && game?.phase === "playing" && game.view.buzz && (
+        <QuestionPicker
+          title="指定搶答下一題"
+          note="換成這題，主持人按 ▶（或揭曉結束）後開放搶答。隊伍選的題型不算了。只有你看得到這個清單。"
+          questions={(picks.options.boss ?? []).flatMap((id) => picks.questions.find((x) => x.id === id) ?? [])}
+          current={game.view.buzz.questionId}
+          teamName={teamName}
+          onPick={(id) => {
+            send({ type: "HOST_BUZZ_PICK", questionId: id });
+            setPicking(null);
+          }}
+          onClose={() => setPicking(null)}
+        />
+      )}
+      {picking && picking !== "buzz" && picks && game && (
         <QuestionPicker
           title={picking === "boss" ? "指定首領房下一題" : `替${teamName(picking)}指定下一題`}
           note={`${picking === "boss" ? "首領房下一次換題" : `${teamName(picking)}下一次換到這個難度的題目（通常是答對進下一間房）`}時就出這題。只有你看得到這個清單。`}

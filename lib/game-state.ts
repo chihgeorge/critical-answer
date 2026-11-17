@@ -323,6 +323,10 @@ export interface BuzzState {
   picker?: string;
   /** The category `picker` chose; this question was drawn from it. */
   category?: string;
+  /** The question type (questionType: 聽歌, 卡點…) `picker` or the host chose; this question was drawn from it (#321). */
+  qtype?: string;
+  /** The host chose this question, by type or itself (#321): the winner's pick is over. */
+  hostPicked?: true;
   /** A timing question's taps (docs/designs/timing-tap.md), in the order the room took them: song time in ms. Never on STATE. */
   taps?: { teamId: string; ms: number }[];
   /** Goes up on each ⟲ 從頭 of a timing question: a tap for an older round is stale. Absent reads as 0. */
@@ -1030,32 +1034,77 @@ function latchStun(game: GameState): GameState {
   return { ...game, buzz: { ...b, allStunned: true } };
 }
 
+/** Whether the next question may still be picked: a buzzer phase, buzzing not open yet (`open`: the room's call, as
+ * in buzzIn) and nobody holding the buzz. */
+function pickDue(game: GameState, open: boolean): boolean {
+  if (!isBuzzPhase(game)) return false;
+  const buzz = currentBuzz(game);
+  return !open && !buzz.open && !buzz.teamId;
+}
+
 /** The categories a buzz winner may pick for the next question: those of the phase's unrevealed questions, in bank
  * order. `categoryOf` maps a question id to its bank category (the room's, from the bank). Empty when no pick is due. */
 export function pickableCategories(game: GameState, categoryOf: Record<string, string | undefined>, open: boolean): string[] {
-  if (!isBuzzPhase(game)) return [];
   const buzz = currentBuzz(game);
-  if (!buzz.picker || open || buzz.open || buzz.teamId) return [];
+  if (!pickDue(game, open) || !buzz.picker || buzz.hostPicked) return [];
   const found = game.boss.questionIds.filter((id) => !game.revealedQuestionIds.includes(id)).map((id) => categoryOf[id]);
   return [...new Set(found.filter((c): c is string => !!c))];
 }
 
-/** The buzz winner picks the next question's category (boss-music-buzzer.md M5): the boss question becomes the
- * current one if it has that category, else the next unrevealed one in the ring that does. It may change its mind
- * until buzzing opens (`open`: the room's call, as in buzzIn). Nobody has heard the question it replaces. */
-export function pickCategory(game: GameState, teamId: string, category: string, categoryOf: Record<string, string | undefined>, open: boolean): GameState {
+/** The question types of the phase, in bank order, `left` false once all of that type are revealed (#321: shown greyed).
+ * `typeOf` maps a question id to its questionType. Empty when no pick is due or no type has a question left. Offered
+ * to the host even without a winner. */
+export function pickableTypes(game: GameState, typeOf: Record<string, string | undefined>, open: boolean): { type: string; left: boolean }[] {
+  if (!pickDue(game, open)) return [];
+  const ids = game.boss.questionIds;
+  const types = [...new Set(ids.map((id) => typeOf[id]).filter((t): t is string => !!t))];
+  const list = types.map((type) => ({ type, left: ids.some((id) => typeOf[id] === type && !game.revealedQuestionIds.includes(id)) }));
+  return list.some((t) => t.left) ? list : [];
+}
+
+/** Makes `id` the boss question for a pick, with `buzz` (the pick's fields). The question the host queued
+ * (指定下一題) plays now, so its queue entry is used up. */
+function pickQuestion(game: GameState, id: string, buzz: BuzzState): GameState {
+  const queuedQuestionId = game.boss.queuedQuestionId === id ? undefined : game.boss.queuedQuestionId;
+  return { ...game, boss: { ...game.boss, currentQuestionId: id, queuedQuestionId }, buzz: { ...buzz, questionId: id } };
+}
+
+/** The current buzz without its earlier pick: the latest pick wins. */
+function unpicked(buzz: BuzzState): BuzzState {
+  const rest = { ...buzz };
+  delete rest.category;
+  delete rest.qtype;
+  return rest;
+}
+
+/** The buzz winner (`teamId`), or the host (null), picks the next question by category or by type (#321): the
+ * boss question becomes the current one if it matches, else the next unrevealed one in the ring that does. The
+ * winner may change its mind until buzzing opens, unless the host has picked; the host may pick any time before
+ * (`open`: the room's call, as in buzzIn). Nobody has heard the question it replaces. */
+export function pickNextQuestion(game: GameState, teamId: string | null, by: "category" | "qtype", value: string, of: Record<string, string | undefined>, open: boolean): GameState {
   if (!isBuzzPhase(game)) throw new InvalidActionError("not_buzzer_phase");
   const buzz = currentBuzz(game);
-  if (buzz.picker !== teamId) throw new InvalidActionError("not_picker");
-  if (open || buzz.open || buzz.teamId) throw new InvalidActionError("too_late");
+  if (teamId !== null && (buzz.picker !== teamId || buzz.hostPicked)) throw new InvalidActionError("not_picker");
+  if (!pickDue(game, open)) throw new InvalidActionError("too_late");
   const { questionIds, currentQuestionId } = game.boss;
   const start = questionIds.indexOf(currentQuestionId);
   const ring = questionIds.map((_, i) => questionIds[(start + i) % questionIds.length]);
-  const id = ring.find((q) => categoryOf[q] === category && !game.revealedQuestionIds.includes(q));
+  const id = ring.find((q) => of[q] === value && !game.revealedQuestionIds.includes(q));
   if (!id) throw new InvalidActionError("no_such_category");
-  // A pick onto the question the host queued (指定下一題) plays it now: the queue entry is used up.
-  const queuedQuestionId = game.boss.queuedQuestionId === id ? undefined : game.boss.queuedQuestionId;
-  return { ...game, boss: { ...game.boss, currentQuestionId: id, queuedQuestionId }, buzz: { ...buzz, questionId: id, category } };
+  return pickQuestion(game, id, { ...unpicked(buzz), [by]: value, ...(teamId === null ? { hostPicked: true as const } : {}) });
+}
+
+/** The buzz winner picks the next question's category (boss-music-buzzer.md M5). */
+export function pickCategory(game: GameState, teamId: string, category: string, categoryOf: Record<string, string | undefined>, open: boolean): GameState {
+  return pickNextQuestion(game, teamId, "category", category, categoryOf, open);
+}
+
+/** The host sets the next boss question itself (#321), until buzzing opens: an unrevealed question of the phase. */
+export function hostPickBuzzQuestion(game: GameState, questionId: string, open: boolean): GameState {
+  if (!isBuzzPhase(game)) throw new InvalidActionError("not_buzzer_phase");
+  if (!pickDue(game, open)) throw new InvalidActionError("too_late");
+  if (!game.boss.questionIds.includes(questionId) || game.revealedQuestionIds.includes(questionId)) throw new InvalidActionError("no_such_question");
+  return pickQuestion(game, questionId, { ...unpicked(currentBuzz(game)), hostPicked: true });
 }
 
 /** 沒人答對，換下一題 (D4): the boss question moves on, unrevealed, so it may come round again.
