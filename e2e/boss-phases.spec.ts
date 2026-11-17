@@ -120,6 +120,9 @@ test("a phase that runs out of questions moves on to the next one", async ({ bro
   for (const id of ["phase1-a", "phase1-b"]) {
     await expect(host.getByTestId("host-answer")).toHaveText(`答案 ${id}`);
     await host.getByRole("button", { name: "答對！" }).click();
+    // #339: under the reveal the turn has moved on, but the host sees no answer beside the revealed one.
+    await expect(host.getByTestId("host-reveal")).toBeVisible();
+    await expect(host.getByTestId("host-answer")).toHaveCount(0);
     await host.getByRole("button", { name: "下一題", exact: true }).click();
   }
   await expect(team.getByTestId("phone-phase-card")).toContainText("主題曲之謎");

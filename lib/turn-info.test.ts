@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeTurn, FALLBACK_MONSTER, floorLabel, roomTheme, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
+import { describeTurn, FALLBACK_MONSTER, floorLabel, hostAnswerShown, roomTheme, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -172,6 +172,20 @@ describe("nextUp / turnLive", () => {
 
   it("keeps a fortune's earlier steps on the drawing team, which acts in them", () => {
     for (const step of ["intro", "choose", "beat"] as const) expect(nextUp(st({ fortune: fortune(step) }))).toBe(false);
+  });
+
+  // Value: protects=#339, the host never reads out the next team's answer while the big screen reveals the last one;
+  // fails_when=the host's answer box shows while the room holds for 下一題 or a door opens; seam=none;
+  // no_claim=the page's layout (app/room/[code]/host/page.tsx)
+  it("shows the host the answer only for the open question on turn", () => {
+    expect(hostAnswerShown(st(), "q2", "q2")).toBe(true);
+    expect(hostAnswerShown(st(), "q1", "q2")).toBe(false);
+    expect(hostAnswerShown(st(), undefined, "q2")).toBe(false);
+    for (const held of [{ reveal: {} as never }, { eventReveal: {} as never }, { fortune: fortune("card") }, { phaseCard: { monster: pq().monster } }, { forkBeat: {} as never }]) {
+      expect(hostAnswerShown(st(held), "q2", "q2")).toBe(false);
+    }
+    // A miss that used up a boss phase keeps the turn on that question until the card opens: the host may still 改判答對.
+    expect(hostAnswerShown(st({ phaseCardDue: true }), "q2", "q2")).toBe(true);
   });
 
   it("buzzes only when the turn opens, never on a connection's first STATE", () => {
