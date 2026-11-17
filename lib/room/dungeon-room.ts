@@ -118,6 +118,7 @@ import {
   type Reaction,
   type Hold,
   type Pacing,
+  type CalibrateRun,
   type ScreenSound,
   type ScreenAudio,
   DEFAULT_SCREEN_AUDIO,
@@ -133,7 +134,7 @@ import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, fnv1a, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
 import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank, type BankQuestion } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
-import { acceptTapAt, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, TAP_SEEK_SLACK_MS, tapResults } from "../tap-clock";
+import { acceptTapAt, CALIBRATE_BEATS, CALIBRATE_GAP_MS, CALIBRATE_LEAD_MS, CALIBRATE_TAIL_MS, calibrateLatency, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, TAP_SEEK_SLACK_MS, tapResults } from "../tap-clock";
 import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
 import { healthReport, mediaBatches, screenTestList, screenTestRows, type MediaResults, type ScreenTestItem } from "../bank-health";
@@ -521,6 +522,10 @@ export class DungeonRoom {
   private tapLiveSent = false;
   /** The host's speaker latency, ms (HOST_TAP_LATENCY, E3-lite). Saved. */
   private tapLatency = 0;
+  /** A running 🎯 校正喇叭 test (docs/designs/tap-calibrate.md) and its taps by connection. In memory only: a restart
+   * drops it (the next LOBBY has no `calibrate`) and the host presses again. */
+  private calib: { run: CalibrateRun; taps: { who: string; at: number }[]; timer: ReturnType<typeof setTimeout> } | null = null;
+  private calibRun = 0;
   /** The closed round's table, waiting for judgeNow's reveal (a kill waits for its 4d20 first). */
   private tapReveal: NonNullable<AnswerReveal["timing"]> | null = null;
   /** A timing question that came round again as itself (the phase's last one) after a skip: its song stopped past
@@ -1495,7 +1500,7 @@ export class DungeonRoom {
     if (!this.game) {
       // A game that showed a question counts as played: the host page then leaves the intro unchecked (eng D5).
       const replay = this.playedQuestionIds.length > 0;
-      return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}), bankSize: bankSize(this.bank), ...this.pacingView(), ...this.screenAudioView() };
+      return { type: "LOBBY", teams: this.pendingTeams, roomEpoch: this.roomEpoch, ...(replay ? { replay: true as const } : {}), bankSize: bankSize(this.bank), ...this.pacingView(), ...this.screenAudioView(), ...(this.calib ? { calibrate: this.calib.run } : {}), ...(this.tapLatency ? { tapLatency: this.tapLatency } : {}) };
     }
     // A door opening shows the game from before the press (branch-fork.md); online is live, phones come and go meanwhile.
     // So does a fortune's lit slice: the effect shows on the card (fortune-teller.md).
@@ -2240,6 +2245,17 @@ export class DungeonRoom {
           this.tapLatency = Math.min(MAX_TAP_LATENCY_MS, Math.max(0, Math.round(msg.ms)));
           this.broadcastState();
           break;
+        case "HOST_TAP_CALIBRATE":
+          this.handleCalibrate(sender);
+          break;
+        case "CALIBRATE_TAP": {
+          const c = this.calib;
+          // Joined phones only, this run, and a bounded count per phone (the rate limiter allows 10 a second).
+          if (!c || msg.run !== c.run.run || !this.connTeam.has(sender.id) || c.taps.filter((t) => t.who === sender.id).length >= CALIBRATE_BEATS * 2) break;
+          const at = acceptTapAt(msg.at, this.now());
+          if (at !== "late") c.taps.push({ who: sender.id, at });
+          break;
+        }
         case "SCREEN_SOUND": {
           if (!this.isScreen(sender)) break;
           this.screenSoundReady.set(sender.id, msg.ready);
@@ -2417,7 +2433,7 @@ export class DungeonRoom {
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
       // A reaction changes no saved state, so it neither counts as activity nor saves.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "SCREEN_TEST_RESULT" && msg.type !== "CLOCK_PING" && !this.rejected && !resumed) {
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "SCREEN_TEST_RESULT" && msg.type !== "CLOCK_PING" && msg.type !== "CALIBRATE_TAP" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -3158,6 +3174,8 @@ export class DungeonRoom {
     if (this.bankLoading) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "bank_loading" });
     const screen = [...this.keyedScreens].map((id) => this.conns.get(id)).find((c): c is Conn => !!c && this.isScreen(c));
     if (!screen) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_screen" });
+    // Its clips would play over 🎯 校正喇叭's beeps.
+    if (this.calib) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "calibrating" });
     const list = screenTestList(this.bank, this.room.env?.R2_PUBLIC_BASE_URL ?? "");
     // Never reused, even after a restart: a page still running an old run must not answer for this one.
     this.screenTestRunId = Math.max(this.screenTestRunId + 1, this.now());
@@ -3169,6 +3187,42 @@ export class DungeonRoom {
       return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_screen" });
     }
     this.sendScreenTest();
+  }
+
+  /** 🎯 校正喇叭 (docs/designs/tap-calibrate.md): one sound-ready big screen beeps CALIBRATE_BEATS times, the joined phones
+   * tap along, and the host pages get the suggested latency. Nothing is written until the host's 套用 (HOST_TAP_LATENCY). */
+  private handleCalibrate(conn: Conn) {
+    if (!this.requireHost(conn)) return;
+    if (this.game) return void this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
+    const refuse = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    if (this.calib) return refuse("calibrating");
+    // The lobby's only video is 大螢幕試播影音 while it still has clips to play; a finished run's rows stay behind.
+    const t = this.screenTest;
+    if (t && t.errors.filter((e) => e !== undefined).length < t.list.length) return refuse("screen_testing");
+    const sound = this.screenSound();
+    if (sound !== "ready") return refuse(sound === "none" ? "no_screen" : "screen_muted");
+    // One screen beeps: two would be heard twice, each at its own delay.
+    const screen = [...this.keyedScreens].map((id) => this.conns.get(id)).find((c): c is Conn => !!c && this.isScreen(c) && !!this.screenSoundReady.get(c.id))!;
+    // Never reused, even after a restart: a late tap for an old run must not count in a new one.
+    this.calibRun = Math.max(this.calibRun + 1, this.now());
+    const run: CalibrateRun = { run: this.calibRun, startAt: this.now() + CALIBRATE_LEAD_MS, beats: CALIBRATE_BEATS, gapMs: CALIBRATE_GAP_MS };
+    const timer = setTimeout(() => this.closeCalibrate(), CALIBRATE_LEAD_MS + (CALIBRATE_BEATS - 1) * CALIBRATE_GAP_MS + CALIBRATE_TAIL_MS);
+    this.calib = { run, taps: [], timer };
+    this.sendTo(screen, { type: "SCREEN_CALIBRATE", run });
+    this.broadcastState();
+  }
+
+  /** The test's close: the result to every host page, and a LOBBY without `calibrate`. A game started meanwhile gets nothing. */
+  private closeCalibrate() {
+    const c = this.calib;
+    if (!c) return;
+    clearTimeout(c.timer);
+    this.calib = null;
+    if (this.game) return;
+    const result = calibrateLatency(c.taps, c.run.startAt);
+    console.log(JSON.stringify({ event: "tap_calibrate", run: c.run.run, taps: result.taps, phones: result.phones, ms: result.ms, latencyMs: this.tapLatency }));
+    for (const host of this.hostConns.values()) this.sendTo(host, { type: "TAP_CALIBRATE_RESULT", run: c.run.run, ...result });
+    this.broadcastState();
   }
 
   private handleScreenTestResult(conn: Conn, runId: number, index: number, error: ScreenTestError | null) {

@@ -38,6 +38,7 @@ export function MoreDrawer({
   questionLabel = () => "",
   error,
   tapLatency,
+  calibrate,
 }: {
   /** The page's origin ("" before hydration). */
   origin: string;
@@ -72,6 +73,8 @@ export function MoreDrawer({
   error?: string | null;
   /** The speaker latency for timing questions (timing-tap.md 8) while a game plays; undefined hides the field. */
   tapLatency?: number;
+  /** 🎯 校正喇叭 (tap-calibrate.md), in the lobby only. */
+  calibrate?: ReactNode;
 }) {
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
@@ -126,6 +129,7 @@ export function MoreDrawer({
               ))}
             </div>
           </section>
+          {calibrate && <section>{calibrate}</section>}
           {tapLatency !== undefined && (
             <section className="flex flex-col gap-2" data-testid="tap-latency">
               <label className="flex flex-wrap items-center gap-2 text-[16px]">
@@ -151,7 +155,7 @@ export function MoreDrawer({
                 </PixelButton>
                 <span className="text-[14px]">現在 {tapLatency} ms</span>
               </label>
-              <div className="text-[14px]">彩排放一題測試卡點題，揭曉後按「把延遲改成…」；再放一題，中位數接近 0 就對了（0–{MAX_TAP_LATENCY_MS}）</div>
+              <div className="text-[14px]">事先放一題測試卡點題，揭曉後按「把延遲改成…」；再放一題，中位數接近 0 就對了（0–{MAX_TAP_LATENCY_MS}）</div>
             </section>
           )}
           {bossable.length > 0 && (

@@ -28,6 +28,7 @@ import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
 import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, aiKeyRefused, AiPanel, aiKeyMessage, aiResendAfterRefusal, aiResendMessage, aiSavedKeyDead, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
+import { TapCalibratePanel, type CalibrateNote, type CalibrateResult } from "@/components/tap-calibrate-panel";
 import { formatTapError, medianError, suggestedLatency } from "@/lib/tap-clock";
 import { screenAudioOf } from "@/lib/ambience";
 import { LateTeams } from "@/components/late-teams";
@@ -91,6 +92,14 @@ export default function HostPage() {
   const [manual, setManual] = useState(false);
   /** The big screens' sound switches (immersion.md PR3, UC1), as the room's last LOBBY or STATE said: ⚙ 更多 sets them. */
   const [screenAudio, setScreenAudio] = useState(() => screenAudioOf(null));
+  /** 🎯 校正喇叭 (docs/designs/tap-calibrate.md): LOBBY's `calibrate` and `tapLatency`, the press on its way (its ref
+   * for the ERROR handler), the last result and the last refusal of the press. */
+  const [calibRunning, setCalibRunning] = useState(false);
+  const [lobbyLatency, setLobbyLatency] = useState(0);
+  const calibPressed = useRef(false);
+  const [calibWaiting, setCalibWaiting] = useState(false);
+  const [calibResult, setCalibResult] = useState<CalibrateResult | null>(null);
+  const [calibNote, setCalibNote] = useState<CalibrateNote | null>(null);
   /** 每題作答倒數 for the next game (answer-countdown.md D2): this page's pick, so a replay keeps it. */
   const [answerSeconds, setAnswerSeconds] = useState<number>(DEFAULT_ANSWER_SECONDS);
   /** 進王門檻 for the next game: this page's pick like answerSeconds; the room keeps it in game.config once started. */
@@ -283,6 +292,10 @@ export default function HostPage() {
           setScreenTest({ done: msg.done, total: msg.total, rows: msg.rows, ...(msg.stopped ? { stopped: true as const } : {}) });
           break;
         case "LOBBY":
+          setCalibRunning(!!msg.calibrate);
+          setLobbyLatency(msg.tapLatency ?? 0);
+          calibPressed.current = false;
+          setCalibWaiting(false);
           setManual(msg.pacing === "manual");
           setScreenAudio(screenAudioOf(msg));
           setLobby(msg.teams);
@@ -297,7 +310,11 @@ export default function HostPage() {
           setReadTo(null);
           setAnswer(null);
           break;
+        case "TAP_CALIBRATE_RESULT":
+          setCalibResult({ ms: msg.ms, taps: msg.taps, phones: msg.phones });
+          break;
         case "STATE":
+          setCalibResult(null);
           setManual(msg.pacing === "manual");
           setScreenAudio(screenAudioOf(msg));
           setState(msg);
@@ -334,6 +351,13 @@ export default function HostPage() {
           setBanks((b) => ({ ...b, loading: false }));
           stopChecking();
           if (msg.detail && NARRATION_REFUSALS.has(msg.detail)) break;
+          // 🎯 校正喇叭's refusals show in its own section of ⚙ 更多, which covers the error line.
+          if (calibPressed.current && (msg.detail === "screen_muted" || msg.detail === "no_screen" || msg.detail === "screen_testing" || msg.detail === "calibrating")) {
+            calibPressed.current = false;
+            setCalibWaiting(false);
+            setCalibNote(msg.detail);
+            break;
+          }
           setError(
             msg.error === "bad_token"
               ? "主持人金鑰不符，這個瀏覽器不是這個房間的主持人"
@@ -1565,6 +1589,26 @@ export default function HostPage() {
           fixable={game?.phase === "playing" ? game.view.teams : []}
           scoreLabel={game ? scoreName(game.cuisine) : undefined}
           tapLatency={game?.phase === "playing" ? (game.tapLatency ?? 0) : undefined}
+          calibrate={
+            game ? null : (
+              <TapCalibratePanel
+                running={calibRunning || calibWaiting}
+                result={calibResult}
+                note={calibNote}
+                latency={lobbyLatency}
+                music={screenAudio.music}
+                online={ready}
+                send={send}
+                onStart={() => {
+                  calibPressed.current = true;
+                  setCalibWaiting(true);
+                  setCalibNote(null);
+                  setCalibResult(null);
+                }}
+                onDone={() => setCalibResult(null)}
+              />
+            )
+          }
           judged={picks?.judged ?? []}
           undoWrong={game?.undoWrong && { ...game.undoWrong, fields: game.question?.id === game.undoWrong.questionId && !!game.question.fields }}
           questionLabel={pickLabel}
