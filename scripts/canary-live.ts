@@ -450,6 +450,9 @@ async function round(browser: Browser, { base, turns, boss }: Options, r: number
     });
   }
   await step("start-game", async () => {
+    // The intro checkbox sits in the lobby's game settings, collapsed behind 修改 ▾ (e2e/answer.ts openSettings).
+    const settings = host.getByTestId("host-settings-toggle");
+    if ((await settings.getAttribute("aria-expanded", { timeout: UI_MS })) !== "true") await settings.click();
     await host.getByRole("checkbox", { name: "開始前播放玩法說明" }).uncheck();
     host.on("dialog", (d) => void (d.message().includes("確定要開始") ? d.accept() : d.dismiss()));
     await host.getByRole("button", { name: /開始遊戲/ }).click();
@@ -467,7 +470,7 @@ async function round(browser: Browser, { base, turns, boss }: Options, r: number
       await host.getByRole("button", { name: /更多/ }).first().click();
       await host.getByRole("button", { name: "送王房" }).first().click();
       await host.getByRole("button", { name: "確定送？" }).click();
-      await host.getByRole("button", { name: "關閉" }).first().click();
+      await host.getByTestId("more-drawer").getByRole("button", { name: "關閉" }).first().click();
     });
   }
   const team = () => phones[onTurn];
@@ -548,7 +551,8 @@ async function round(browser: Browser, { base, turns, boss }: Options, r: number
       if (!started) return;
       if (over || (await visible(phones[0].getByText("遊戲結束！").first()))) return "skipped: the game is already over";
       // A failed step may have left ⚙ 更多 open: start from a closed drawer.
-      await host.keyboard.press("Escape").catch(() => {});
+      const drawer = host.getByTestId("more-drawer");
+      if (await drawer.count()) await drawer.getByRole("button", { name: "關閉" }).first().click();
       await host.getByRole("button", { name: /更多/ }).first().click();
       const end = host.getByRole("button", { name: "結束冒險" });
       await end.click();
