@@ -140,6 +140,9 @@ export type AnswerReveal = {
   /** The question itself, only when it was never shown: its fill-in resolved before the persuasion check was done (a
    * natural 20, or the host judging before the roll). Shown above 正解; a video stays in `video`. */
   asked?: Pick<PublicQuestion, "content" | "prompt">;
+  /** A persuasion 20 won it (persuasion-gift): the question was never shown, so `answer` is "" and nothing about the
+   * question comes (no `asked`, explanation, video or fields); screens say the monster stepped aside instead of 正解. */
+  persuaded?: true;
   /** 🚨 成立 (docs/designs/anti-ai-cheating.md): `teamId` was caught asking an AI on this question, reported by `by`.
    * The answer shows, nothing is scored: no `scored`, `choice`, `sorted` or `dish`. */
   caught?: { teamId: string; by: string };
@@ -164,6 +167,8 @@ export type AnswerReveal = {
     room: number | null;
     /** The team that ate it, for the 🍲 ribbon and the dish line. */
     teamId: string;
+    /** The monster was persuaded, not defeated: it shared `part` (a harmless ingredient) and this dish is made from it. */
+    gift?: true;
   };
   /** The host pressed 🍲 上菜 (HOST_SERVE): the panel goes away and the screen cooks the monster. Only with `dish`. */
   served?: true;

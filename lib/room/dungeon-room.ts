@@ -1338,7 +1338,10 @@ export class DungeonRoom {
     const id = currentQuestionIdOf(game, teamId);
     if (this.question(id)?.kind !== "text") return false;
     const roll = this.pendingRoll;
-    return (roll?.kind === "check" && roll.teamId === teamId && roll.questionId === id) || !game.checks?.[checkKey(id, teamId)];
+    const check = game.checks?.[checkKey(id, teamId)];
+    // A natural 20 that kills the boss rolls its 4d20 next: still unseen, so its question stays hidden through that beat too.
+    const won = roll?.kind === "kill" && check?.value === 20 && !check.dropped;
+    return ((roll?.kind === "check" || won) && roll.teamId === teamId && roll.questionId === id) || !check;
   }
 
   /** The turn answering now (answer-countdown.md D3), or null: nobody is answering while an answer waits for the host,
@@ -3240,7 +3243,7 @@ export class DungeonRoom {
       this.playedQuestionIds,
       bossDifficulties(this.bank),
     );
-    this.game = { ...game, startedAt: this.now(), ...(this.bank.randomMonsters ? { bossMonsterId: monsters.boss } : {}) };
+    this.game = { ...game, startedAt: this.now(), bossMonsterId: monsters.boss };
     // The 6 hours start at the first start only: a second game after 回大廳 keeps the same clock (and the 24 hour cap).
     this.createdAt ??= this.now();
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.
@@ -3623,6 +3626,9 @@ export class DungeonRoom {
     // A dropped 20 left the question up. shortcut: a 20 won after a restart (lost crit) was shown first and still counts as unseen; harmless repeat.
     const check = prev.checks?.[checkKey(questionId, teamId)];
     const unseen = this.awaitingCheck() || (check?.value === 20 && !check.dropped);
+    // A persuasion 20 (persuasion-gift): the question was never shown, so its answer never is either; the monster lives
+    // and shares an ingredient instead of being cooked. A host's ruling before the roll still reveals as before.
+    const persuaded = correct && !caught && roll?.kind !== "warrior" && check?.value === 20 && !check.dropped;
     // A memory question's reveal shows the question with its media again: the payoff, not a replay while answering.
     const recalled = !!this.question(questionId)?.memory;
     // A correct answer on a music question with fields: the host's verdicts, or every field right (multi-field.md D2).
@@ -3685,12 +3691,13 @@ export class DungeonRoom {
     const before = prev.teams.find((t) => t.id === teamId);
     const ateDish = (game.teams.find((t) => t.id === teamId)?.dishes?.length ?? 0) > (before?.dishes?.length ?? 0);
     const ateFrom = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bossId() : (before.swappedMonsterId ?? prev.rooms[before.roomIndex]?.monsterId ?? this.bank.rooms[before.roomIndex]?.monster);
-    const dish = ateFrom ? catalogMonster(ateFrom).dish : undefined;
+    const dish = !ateFrom ? undefined : persuaded ? { ...catalogMonster(ateFrom).gift, gift: true as const } : catalogMonster(ateFrom).dish;
     const narrated = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
     const told = caught && narrated.type === "flee" ? { ...narrated, caught: prev.teams.find((t) => t.id === caught.by)?.name ?? "" } : narrated;
     // The dish is named only once it is served on the big screen (cooking I1, I4); the line just counts 飽足感. The
     // narrator may size up the edible part meanwhile (foodie narration).
-    const base = dish && (told.type === "correct" || told.type === "boss-kill") ? { ...told, cooked: true as const, ...(this.sayablePart(dish.part) ? { part: dish.part } : {}) } : told;
+    // A gift is not a defeat: no 「倒下」 dish line and no edible part; the persuaded line says it stepped aside.
+    const base = dish && !persuaded && (told.type === "correct" || told.type === "boss-kill") ? { ...told, cooked: true as const, ...(this.sayablePart(dish.part) ? { part: dish.part } : {}) } : told;
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
     const exhaustedEvent = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
     // A wrong buzz that leaves the question to the others (boss-buzzer.md): no "try again" line.
@@ -3726,28 +3733,30 @@ export class DungeonRoom {
     } else if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
       this.clipError = null;
       const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
-      const explanation = publicExplanation(this.bank, questionId, imageBaseUrl);
+      // Nothing about the unseen question goes out: no answer, explanation, video or field answers (persuasion-gift).
+      const explanation = persuaded ? undefined : publicExplanation(this.bank, questionId, imageBaseUrl);
       const q = this.question(questionId);
       // The option wall, green tile and points of a correct lock or a warrior's success on a multipleChoice question.
       const choice = q?.kind === "multipleChoice" ? { options: q.options, correctIndex: q.correctIndex, teamId, points: outcome.reward, ...chefOf(outcome) } : undefined;
       const sorted = q?.kind === "sort" ? { items: q.items, teamId, points: outcome.reward, ...chefOf(outcome) } : undefined;
       // Which fields of a music question the team got (multi-field.md F7); without verdicts, all of them.
-      const fieldMarks = q?.kind === "text" && q.fields && marks ? { teamId, marks: q.fields.map((f, i) => ({ label: f.label, answer: f.answer, right: marks[i] })) } : undefined;
+      const fieldMarks = !persuaded && q?.kind === "text" && q.fields && marks ? { teamId, marks: q.fields.map((f, i) => ({ label: f.label, answer: f.answer, right: marks[i] })) } : undefined;
       // The answer stops the clip; the reveal shows the video where it stopped (D17). A timing question's song plays on.
       if (this.media?.questionId === questionId && q?.kind !== "timing") this.media = { ...this.media, state: "paused" };
       const timing = q?.kind === "timing" && this.tapReveal ? this.tapReveal : undefined;
       this.tapReveal = null;
-      const video = q && isClip(q.content) && (!explanation || explanation.kind === "text") ? hiddenVideo(q.content) : undefined;
+      const video = !persuaded && q && isClip(q.content) && (!explanation || explanation.kind === "text") ? hiddenVideo(q.content) : undefined;
       this.reveal = {
         questionId,
-        answer: justAnswered.answer,
+        answer: persuaded ? "" : justAnswered.answer,
+        ...(persuaded ? { persuaded: true as const } : {}),
         ...(explanation ? { explanation } : {}),
         ...(video ? { video } : {}),
         ...(choice ? { choice } : {}),
         ...(sorted ? { sorted } : {}),
         ...(fieldMarks ? { fields: fieldMarks } : {}),
         ...(timing ? { timing } : {}),
-        ...(unseen || recalled ? { asked: { content: justAnswered.full.content, ...(justAnswered.full.prompt ? { prompt: justAnswered.full.prompt } : {}) } } : {}),
+        ...(!persuaded && (unseen || recalled) ? { asked: { content: justAnswered.full.content, ...(justAnswered.full.prompt ? { prompt: justAnswered.full.prompt } : {}) } } : {}),
         ...(at ? { at } : {}),
         scored: { teamId, points: outcome.reward },
         ...(dish ? { dish: { ...dish, points: outcome.reward, ...chefOf(outcome), monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),

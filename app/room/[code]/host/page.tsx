@@ -674,7 +674,7 @@ export default function HostPage() {
       <Panel tone="lav" className="px-3 py-2 text-center text-[16px]">
         {/* What is on show is one block (as in the hold panel): it drops to its own line whole when it does not fit. */}
         <div data-testid="host-reveal">
-          大螢幕正在揭曉：<span className="inline-block text-balance">{game.fortune?.effect ? `🔮 占卜師－${FORTUNE_EFFECT_TEXT[game.fortune.effect].icon} ${FORTUNE_EFFECT_TEXT[game.fortune.effect].name}：${game.view.teams.filter((t) => game.fortune!.matchIds?.includes(t.id)).map((t) => t.name).join("、")}` : game.eventReveal ? `❓ 神秘房－${EVENT_OUTCOME_TITLE[game.eventReveal.outcome]}` : game.reveal ? game.reveal.answer : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}</span>
+          大螢幕正在揭曉：<span className="inline-block text-balance">{game.fortune?.effect ? `🔮 占卜師－${FORTUNE_EFFECT_TEXT[game.fortune.effect].icon} ${FORTUNE_EFFECT_TEXT[game.fortune.effect].name}：${game.view.teams.filter((t) => game.fortune!.matchIds?.includes(t.id)).map((t) => t.name).join("、")}` : game.eventReveal ? `❓ 神秘房－${EVENT_OUTCOME_TITLE[game.eventReveal.outcome]}` : game.reveal ? (game.reveal.persuaded ? "🗣️ 說服成功（沒出題、不公布答案）" : game.reveal.answer) : `第${ordinal(game.view.bossPhase)}階段－${game.bossPhaseInfo?.name ?? ""}`}</span>
         </div>
       </Panel>
       {/* The answered question's video is up again on the big screen (D17). */}

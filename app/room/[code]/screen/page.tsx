@@ -473,7 +473,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
       {reveal.scored && scorer && !tapReveal && !reveal.fields?.marks.some((f) => !f.right) && (
         <div data-testid="reveal-result" className={`${size} [overflow-wrap:anywhere]`}>
-          ✅ {scorer.name} 答對 +{reveal.scored.points} {scoreName(cuisine)}
+          ✅ {scorer.name} {reveal.persuaded ? "說服成功" : "答對"} +{reveal.scored.points} {scoreName(cuisine)}
         </div>
       )}
     </>
@@ -635,7 +635,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       <Panel ref={panelRef} className="px-stone absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <span className="flex gap-2">
-            <LabelChip>{card ? "還沒結束！" : reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
+            <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
             {/* Going down (dungeon-scene C): how deep the room on stage is; the boss room says 首領題 already. */}
             {!classic && stageRoom !== null && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
           </span>
@@ -685,6 +685,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
                 player instead: above it, three fields push the player under the nameplate. */}
             {reveal.fields ? (
               !(video && !tileVideo && !tapReveal) && fieldsList("text-[18px]")
+            ) : reveal.persuaded ? (
+              // The question never showed, so neither does its answer (persuasion-gift).
+              <div data-testid="reveal-persuaded">🗣️ {reveal.at?.monster.name ?? reveal.dish?.monster.name ?? "怪物"}被說服，讓路了</div>
             ) : (
               // A timing reveal says it beside the video: 命中！{隊名} and the target.
               !tapReveal && <div>正解：{reveal.answer}</div>
@@ -1141,7 +1144,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
                 <span className="block truncate" title={killer} style={[...killer].length > 8 ? { fontSize: 12 } : undefined}>{killer}</span>
               </div>
             )}
-            {reveal && <>最後一題正解：{reveal.answer}</>}
+            {reveal && !reveal.persuaded && <>最後一題正解：{reveal.answer}</>}
             {reveal?.dish && <div data-testid="dish-card">🍲 今晚的大菜：{reveal.dish.name}</div>}
           </Panel>
         </div>
