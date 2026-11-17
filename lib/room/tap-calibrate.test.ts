@@ -206,8 +206,46 @@ describe("HOST_TAP_CALIBRATE", () => {
     g.send(a, { type: "CALIBRATE_TAP", run: run.run, at: now });
     expect((g.room as unknown as { lastActivityAt: number }).lastActivityAt).toBe(before);
     g.send(g.host, { type: "HOST_START", aiNarration: false });
+    expect((g.room as unknown as { calib: unknown }).calib).toBeNull();
     vi.advanceTimersByTime(WHOLE);
     expect(of(g.host, "TAP_CALIBRATE_RESULT")).toEqual([]);
+  });
+
+  it("counts by team: a phone that reconnects mid-test is one phone; lead-in taps do not spend its cap", () => {
+    const g = setup();
+    g.screen("tv", true);
+    const a = g.phone("pa", 1);
+    g.send(g.host, { type: "HOST_TAP_CALIBRATE" });
+    const run = g.lastBroadcastLobby().calibrate;
+    const start = now;
+    // 20 eager taps during the lead-in: before the counted beats, so not stored.
+    for (let i = 0; i < 20; i++) g.send(a, { type: "CALIBRATE_TAP", run: run.run, at: now + i });
+    for (let k = 2; k < 5; k++) {
+      const at = run.startAt + k * CALIBRATE_GAP_MS + 120;
+      now = at + 30;
+      g.send(a, { type: "CALIBRATE_TAP", run: run.run, at });
+    }
+    const again = g.phone("pa2", 1); // same team on a new socket
+    for (let k = 4; k < CALIBRATE_BEATS; k++) {
+      const at = run.startAt + k * CALIBRATE_GAP_MS + 120;
+      now = at + 30;
+      g.send(again, { type: "CALIBRATE_TAP", run: run.run, at });
+    }
+    now = start + WHOLE;
+    vi.advanceTimersByTime(WHOLE);
+    expect(of(g.host, "TAP_CALIBRATE_RESULT")[0]).toMatchObject({ ms: 120, taps: 6, phones: 1 });
+  });
+
+  it("the beeping screen leaving ends the test at once with no taps", () => {
+    const g = setup();
+    const tv = g.screen("tv", true);
+    const a = g.phone("pa", 1);
+    g.send(g.host, { type: "HOST_TAP_CALIBRATE" });
+    const run = g.lastBroadcastLobby().calibrate;
+    tapAlong(g, a, run, 100);
+    g.room.onClose(tv);
+    expect(of(g.host, "TAP_CALIBRATE_RESULT")[0]).toMatchObject({ run: run.run, ms: null, taps: 0, phones: 0 });
+    expect(g.lastBroadcastLobby().calibrate).toBeUndefined();
   });
 
   it("a finished 大螢幕試播影音 does not block it, a running one does", () => {

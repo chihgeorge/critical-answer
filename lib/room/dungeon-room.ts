@@ -134,7 +134,7 @@ import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, fnv1a, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
 import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank, type BankQuestion } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
-import { acceptTapAt, CALIBRATE_BEATS, CALIBRATE_GAP_MS, CALIBRATE_LEAD_MS, CALIBRATE_TAIL_MS, calibrateLatency, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, TAP_SEEK_SLACK_MS, tapResults } from "../tap-clock";
+import { acceptTapAt, CALIBRATE_BEATS, CALIBRATE_EARLY_MS, CALIBRATE_GAP_MS, CALIBRATE_LEAD_MS, CALIBRATE_SKIP, CALIBRATE_TAIL_MS, calibrateLatency, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, TAP_SEEK_SLACK_MS, tapResults } from "../tap-clock";
 import { BANK } from "../question-bank-data";
 import { bankSize } from "../bank-size";
 import { healthReport, mediaBatches, screenTestList, screenTestRows, type MediaResults, type ScreenTestItem } from "../bank-health";
@@ -522,9 +522,9 @@ export class DungeonRoom {
   private tapLiveSent = false;
   /** The host's speaker latency, ms (HOST_TAP_LATENCY, E3-lite). Saved. */
   private tapLatency = 0;
-  /** A running 🎯 校正喇叭 test (docs/designs/tap-calibrate.md) and its taps by connection. In memory only: a restart
-   * drops it (the next LOBBY has no `calibrate`) and the host presses again. */
-  private calib: { run: CalibrateRun; taps: { who: string; at: number }[]; timer: ReturnType<typeof setTimeout> } | null = null;
+  /** A running 🎯 校正喇叭 test (docs/designs/tap-calibrate.md), its beeping screen, and its taps by team. In memory only:
+   * a restart drops it (the next LOBBY has no `calibrate`) and the host presses again. */
+  private calib: { run: CalibrateRun; screenId: string; taps: { who: string; at: number }[]; timer: ReturnType<typeof setTimeout> } | null = null;
   private calibRun = 0;
   /** The closed round's table, waiting for judgeNow's reveal (a kill waits for its 4d20 first). */
   private tapReveal: NonNullable<AnswerReveal["timing"]> | null = null;
@@ -1913,6 +1913,7 @@ export class DungeonRoom {
 
   /** Back to a room nobody has ever used, under a new epoch (a client that still has the old one shows "game reset"). */
   private reset() {
+    this.cancelCalibrate();
     this.lastPicks = null;
     this.game = null;
     this.undo = null;
@@ -2096,6 +2097,11 @@ export class DungeonRoom {
     this.screenSoundReady.delete(id);
     this.screenSoundChanged();
     this.stopScreenTest(id);
+    // The beeping screen went: the test ends now with no taps (the host reads 「沒聽到嗶聲」), not on silence.
+    if (this.calib?.screenId === id) {
+      this.calib.taps = [];
+      this.closeCalibrate();
+    }
     // The timing clock's screen went: another screen may take over (timing-tap.md).
     if (this.tapClock?.screen === id) {
       this.tapClock = null;
@@ -2250,10 +2256,13 @@ export class DungeonRoom {
           break;
         case "CALIBRATE_TAP": {
           const c = this.calib;
-          // Joined phones only, this run, and a bounded count per phone (the rate limiter allows 10 a second).
-          if (!c || msg.run !== c.run.run || !this.connTeam.has(sender.id) || c.taps.filter((t) => t.who === sender.id).length >= CALIBRATE_BEATS * 2) break;
+          const who = this.connTeam.get(sender.id);
+          // Joined phones only (by team: a reconnect or a second tab is the same phone), this run, and a bounded count
+          // per team (the rate limiter allows 10 a second).
+          if (!c || msg.run !== c.run.run || !who || c.taps.filter((t) => t.who === who).length >= CALIBRATE_BEATS * 2) break;
           const at = acceptTapAt(msg.at, this.now());
-          if (at !== "late") c.taps.push({ who: sender.id, at });
+          // A tap before the counted beats never counts, so it must not spend the cap either.
+          if (at !== "late" && at >= c.run.startAt + CALIBRATE_SKIP * CALIBRATE_GAP_MS - CALIBRATE_EARLY_MS) c.taps.push({ who, at });
           break;
         }
         case "SCREEN_SOUND": {
@@ -3202,23 +3211,28 @@ export class DungeonRoom {
     const sound = this.screenSound();
     if (sound !== "ready") return refuse(sound === "none" ? "no_screen" : "screen_muted");
     // One screen beeps: two would be heard twice, each at its own delay.
-    const screen = [...this.keyedScreens].map((id) => this.conns.get(id)).find((c): c is Conn => !!c && this.isScreen(c) && !!this.screenSoundReady.get(c.id))!;
+    const screen = [...this.keyedScreens].map((id) => this.conns.get(id)).find((c): c is Conn => !!c && this.isScreen(c) && !!this.screenSoundReady.get(c.id));
+    if (!screen) return refuse("screen_muted");
     // Never reused, even after a restart: a late tap for an old run must not count in a new one.
     this.calibRun = Math.max(this.calibRun + 1, this.now());
     const run: CalibrateRun = { run: this.calibRun, startAt: this.now() + CALIBRATE_LEAD_MS, beats: CALIBRATE_BEATS, gapMs: CALIBRATE_GAP_MS };
     const timer = setTimeout(() => this.closeCalibrate(), CALIBRATE_LEAD_MS + (CALIBRATE_BEATS - 1) * CALIBRATE_GAP_MS + CALIBRATE_TAIL_MS);
-    this.calib = { run, taps: [], timer };
+    this.calib = { run, screenId: screen.id, taps: [], timer };
     this.sendTo(screen, { type: "SCREEN_CALIBRATE", run });
     this.broadcastState();
   }
 
-  /** The test's close: the result to every host page, and a LOBBY without `calibrate`. A game started meanwhile gets nothing. */
+  /** A test that stops with no result: a game start or a room reset (an expired room must not be saved again by its timer). */
+  private cancelCalibrate() {
+    if (this.calib) clearTimeout(this.calib.timer);
+    this.calib = null;
+  }
+
+  /** The test's close: the result to every host page, and a LOBBY without `calibrate`. */
   private closeCalibrate() {
     const c = this.calib;
     if (!c) return;
-    clearTimeout(c.timer);
-    this.calib = null;
-    if (this.game) return;
+    this.cancelCalibrate();
     const result = calibrateLatency(c.taps, c.run.startAt);
     console.log(JSON.stringify({ event: "tap_calibrate", run: c.run.run, taps: result.taps, phones: result.phones, ms: result.ms, latencyMs: this.tapLatency }));
     for (const host of this.hostConns.values()) this.sendTo(host, { type: "TAP_CALIBRATE_RESULT", run: c.run.run, ...result });
@@ -3295,6 +3309,9 @@ export class DungeonRoom {
       bossDifficulties(this.bank),
     );
     this.game = { ...game, startedAt: this.now(), ...(this.bank.randomMonsters ? { bossMonsterId: monsters.boss } : {}) };
+    // The lobby's tests end with the game: their screens drop them on STATE, and a run left behind would block the next lobby.
+    this.cancelCalibrate();
+    this.screenTest = null;
     // The 6 hours start at the first start only: a second game after 回大廳 keeps the same clock (and the 24 hour cap).
     this.createdAt ??= this.now();
     // Default on; it only takes effect while the room has a key (HOST_AI_KEY) and budget left.

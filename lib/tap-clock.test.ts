@@ -199,6 +199,15 @@ describe("calibrateLatency (tap-calibrate.md)", () => {
     expect(calibrateLatency(stray, START)).toEqual({ ms: 155, taps: 12, phones: 2 });
   });
 
+  it("a late tap spilling into the next beat's window loses to that beat's real tap; 699 ms counts, 700 is the next beat", () => {
+    const real = phone("a", 620);
+    // A second, slower tap on beat 3 at +720 arrives first in beat 4's window (as −280), before beat 4's own tap.
+    const spill = [...real.slice(0, 4), { who: "a", at: START + 3000 + 720 }, ...real.slice(4)];
+    expect(calibrateLatency(spill, START)).toEqual({ ms: 620, taps: 6, phones: 1 });
+    expect(calibrateLatency(phone("a", 699), START).ms).toBe(699);
+    expect(calibrateLatency(phone("a", 700), START).ms).toBeNull();
+  });
+
   it("too few taps is null; taps after the last beat do not count", () => {
     expect(calibrateLatency(phone("a", 200, [2, 3, 4, 5, 6]), START)).toEqual({ ms: null, taps: 5, phones: 1 });
     expect(calibrateLatency([...phone("a", 200, [2, 3, 4, 5, 6]), { who: "a", at: START + 8000 + 200 }], START).ms).toBeNull();

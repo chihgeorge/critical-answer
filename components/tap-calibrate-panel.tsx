@@ -2,7 +2,7 @@
 // 🎯 校正喇叭 in the lobby's ⚙ 更多 (docs/designs/tap-calibrate.md): the start button, then the suggested latency with
 // 套用 and 取消. Only 套用 writes the latency (HOST_TAP_LATENCY). Client-safe: no bank data.
 import type { ClientMessage } from "@/lib/protocol";
-import { CALIBRATE_MIN_TAPS } from "@/lib/tap-clock";
+import { CALIBRATE_BEATS, CALIBRATE_MAX_MS, CALIBRATE_MIN_TAPS } from "@/lib/tap-clock";
 import { Panel, PixelButton } from "./pixel";
 
 export type CalibrateResult = {
@@ -12,6 +12,7 @@ export type CalibrateResult = {
 };
 /** Why the room would not start, as the host page last heard while it waited on its press. */
 export type CalibrateNote = "screen_muted" | "no_screen" | "screen_testing" | "calibrating";
+export const CALIBRATE_NOTES = new Set<CalibrateNote>(["screen_muted", "no_screen", "screen_testing", "calibrating"]);
 
 export function TapCalibratePanel({
   running,
@@ -57,7 +58,7 @@ export function TapCalibratePanel({
   return (
     <div data-testid="tap-calibrate" className="flex flex-col gap-2">
       <div className="text-[18px]">🎯 校正喇叭</div>
-      <div className="text-[15px]">大螢幕放 8 聲嗶，大家用手機跟著按，算出卡點題的喇叭延遲。只有按「套用」才會改。</div>
+      <div className="text-[15px]">大螢幕放 {CALIBRATE_BEATS} 聲嗶，大家用手機跟著按，算出卡點題的喇叭延遲。只有按「套用」才會改。</div>
       {!result && (
         <div className="flex flex-wrap items-center gap-2">
           <PixelButton disabled={running || !online} onClick={start} className="!m-0 min-h-[44px] !px-4 !py-2 text-[16px]">
@@ -100,7 +101,11 @@ export function TapCalibratePanel({
           ) : (
             <>
               <div className="text-[18px]">
-                {result.taps < CALIBRATE_MIN_TAPS ? "按的人太少，再試一次" : "量不出來：大家按得不齊，或延遲超過 0.7 秒。再試一次"}
+                {result.taps === 0
+                  ? "沒收到有效的按：大螢幕有放出嗶聲嗎？確認它有聲音、畫面在前景，再試一次"
+                  : result.taps < CALIBRATE_MIN_TAPS
+                    ? "按的人太少，再試一次"
+                    : `量不出來：大家按得不齊，或延遲超過 ${CALIBRATE_MAX_MS / 1000} 秒。再試一次`}
               </div>
               <div className="mt-1 flex gap-2">
                 <PixelButton disabled={!online} onClick={start} className="!m-0 min-h-[44px] !px-4 !py-1 text-[16px]">

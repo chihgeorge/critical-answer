@@ -131,18 +131,22 @@ export const CALIBRATE_EARLIEST_MS = -150;
 export const CALIBRATE_MAX_MS = CALIBRATE_GAP_MS - CALIBRATE_EARLY_MS;
 
 /** The suggested latency from the test's taps (server ms, `who` a phone), or null with too few or an unclear median:
- * each tap to its beat, the first beats and repeats on a beat dropped, the median, strays dropped, the median again. */
+ * each tap to its beat (the first beats dropped), the median, per phone and beat the tap nearest it (a late tap that
+ * spilled into the next beat's window loses to that beat's real tap), strays dropped, the median again. */
 export function calibrateLatency(taps: { who: string; at: number }[], startAt: number): { ms: number | null; taps: number; phones: number } {
-  const seen = new Set<string>();
-  const errors: { who: string; e: number }[] = [];
+  const all: { who: string; k: number; e: number }[] = [];
   for (const t of taps) {
     const k = Math.floor((t.at - startAt + CALIBRATE_EARLY_MS) / CALIBRATE_GAP_MS);
-    if (k < CALIBRATE_SKIP || k >= CALIBRATE_BEATS || seen.has(`${k} ${t.who}`)) continue;
-    seen.add(`${k} ${t.who}`);
-    errors.push({ who: t.who, e: t.at - (startAt + k * CALIBRATE_GAP_MS) });
+    if (k >= CALIBRATE_SKIP && k < CALIBRATE_BEATS) all.push({ who: t.who, k, e: t.at - (startAt + k * CALIBRATE_GAP_MS) });
   }
-  const m0 = medianError(errors.map((x) => x.e));
-  const kept = m0 === null ? [] : errors.filter((x) => Math.abs(x.e - m0) <= CALIBRATE_OUTLIER_MS);
+  const m0 = medianError(all.map((x) => x.e));
+  if (m0 === null) return { ms: null, taps: 0, phones: 0 };
+  const best = new Map<string, { who: string; e: number }>();
+  for (const x of all) {
+    const prev = best.get(`${x.k} ${x.who}`);
+    if (!prev || Math.abs(x.e - m0) < Math.abs(prev.e - m0)) best.set(`${x.k} ${x.who}`, x);
+  }
+  const kept = [...best.values()].filter((x) => Math.abs(x.e - m0) <= CALIBRATE_OUTLIER_MS);
   const phones = new Set(kept.map((x) => x.who)).size;
   const median = kept.length < CALIBRATE_MIN_TAPS ? null : medianError(kept.map((x) => x.e))!;
   return { ms: median === null || median < CALIBRATE_EARLIEST_MS ? null : Math.max(0, median), taps: kept.length, phones };

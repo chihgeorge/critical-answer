@@ -42,7 +42,7 @@ test("🎯 校正喇叭: needs the screen's sound, phones tap along, and 套用 
 
   // The first beep is 3 s after the press; tap 150 ms after each beat, on an absolute schedule so click time does not drift.
   for (let k = 0; k < 8; k++) {
-    await phone.waitForTimeout(Math.max(0, pressed + 3150 + k * 1000 - Date.now()));
+    await phone.waitForTimeout(Math.max(0, pressed + 3300 + k * 1000 - Date.now()));
     await beep.click();
   }
   await expect(phone.getByTestId("calibrate-tap")).toContainText("按了 8 下");

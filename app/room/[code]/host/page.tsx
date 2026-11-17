@@ -28,7 +28,7 @@ import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
 import { AI_ERRORS, AI_STORE, AiExhausted, aiKeyApplied, aiKeyRefused, AiPanel, aiKeyMessage, aiResendAfterRefusal, aiResendMessage, aiSavedKeyDead, newKeyId, readSavedAiKey, type AiCredential, type AiStatus } from "@/components/host-ai";
 import { MoreDrawer } from "@/components/more-drawer";
-import { TapCalibratePanel, type CalibrateNote, type CalibrateResult } from "@/components/tap-calibrate-panel";
+import { CALIBRATE_NOTES, TapCalibratePanel, type CalibrateNote, type CalibrateResult } from "@/components/tap-calibrate-panel";
 import { formatTapError, medianError, suggestedLatency } from "@/lib/tap-clock";
 import { screenAudioOf } from "@/lib/ambience";
 import { LateTeams } from "@/components/late-teams";
@@ -294,8 +294,11 @@ export default function HostPage() {
         case "LOBBY":
           setCalibRunning(!!msg.calibrate);
           setLobbyLatency(msg.tapLatency ?? 0);
-          calibPressed.current = false;
-          setCalibWaiting(false);
+          // Only the run's own LOBBY ends the wait: a team joining meanwhile must not eat the press's refusal.
+          if (msg.calibrate) {
+            calibPressed.current = false;
+            setCalibWaiting(false);
+          }
           setManual(msg.pacing === "manual");
           setScreenAudio(screenAudioOf(msg));
           setLobby(msg.teams);
@@ -352,11 +355,14 @@ export default function HostPage() {
           stopChecking();
           if (msg.detail && NARRATION_REFUSALS.has(msg.detail)) break;
           // 🎯 校正喇叭's refusals show in its own section of ⚙ 更多, which covers the error line.
-          if (calibPressed.current && (msg.detail === "screen_muted" || msg.detail === "no_screen" || msg.detail === "screen_testing" || msg.detail === "calibrating")) {
+          if (calibPressed.current) {
+            // Any refusal ends the wait, so 校正中… never sticks; the known ones show in the section itself.
             calibPressed.current = false;
             setCalibWaiting(false);
-            setCalibNote(msg.detail);
-            break;
+            if (msg.detail && CALIBRATE_NOTES.has(msg.detail as CalibrateNote)) {
+              setCalibNote(msg.detail as CalibrateNote);
+              break;
+            }
           }
           setError(
             msg.error === "bad_token"
@@ -383,6 +389,8 @@ export default function HostPage() {
                 ? "題庫檢查出錯了，請再按一次「檢查題庫」"
                 : msg.detail === "check_stale"
                 ? "檢查途中題庫換了，請再按一次「檢查題庫」"
+                : msg.detail === "calibrating"
+                ? "🎯 校正喇叭還在跑，等它跑完再按"
                 : msg.detail === "no_screen"
                 ? "沒有大螢幕連著：先用主持人頁的大螢幕連結開啟大螢幕，再按「大螢幕試播影音」"
                 : msg.detail === "lock_pending"
