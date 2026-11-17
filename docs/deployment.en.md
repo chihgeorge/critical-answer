@@ -60,9 +60,34 @@ Workers Builds does not wait for CI, and it is not guaranteed to finish before V
 After a deploy, run `npm run canary:live`. It plays one real game on the live site with four headless Chromium contexts that share no storage: the host, the big screen and two phones. The host opens a room from the home page's 主持遊戲 (no owner key), the big screen opens the host page's screen link, teams `CANARY-1` and `CANARY-2` join and pick the chef, and the host starts the game and rolls initiative for everyone. The team on turn answers correctly from the answer on the host page; the script checks that the big screen and the other phone show the answer, then the host serves the dish and presses 下一題, the script checks that the big screen moves to the next team, and the host ends the game with 結束冒險 in ⚙ 更多. Each step prints `STEP r<round> <step> ok|FAIL ms=<ms>`, each page prints `PAGE r<round> <page> status=<code> ms=<load ms> errs=[...]` (errs are that page's console errors and page errors), and the last line is `CANARY HEALTHY` or `CANARY BROKEN`; when it is not healthy the exit code is not 0. A round takes about 25 seconds.
 
 - `--rounds N`: play N rounds, each in a new room (default 1).
+- `--turns N`: play N turns per round (default 1). From turn 2 on, step names get `-t<turn>`, for example `answer-correctly-t3`; each extra turn adds 60 seconds to the round's time limit.
+- `--boss`: after the game starts, the host sends `CANARY-1` to the boss room with 送王房 in ⚙ 更多, so its turns play boss questions from then on.
 - `--base URL` or the `CANARY_BASE_URL` environment variable: test a preview URL or local dev (for example `http://localhost:3000`) instead of the live site.
 - `CANARY_SHOTS=<folder>` environment variable: the first failed step saves a screenshot of each of the four pages there.
 
 The room is not deleted, and the host has no button to close one: once the game is over its connections rest after 2 idle hours, and it is cleared 6 hours after the first game start (see the [hosting guide](hosting.en.md#known-limits)). The script does not open the bank editor and uses no key.
 
-It only answers multiple-choice and fill-in questions (the bundled bank is all multiple choice). When a room's first question is a sort, music or buzzer question, that round reports `CANARY BROKEN` though the site is fine; run it again. A round gets about 150 seconds; past that it skips the remaining steps but still ends the game.
+Each turn picks its next move from what the pages show, so every question type gets through:
+
+- Answered right: multiple choice (the phone taps the option and locks it, the host presses 公布答案), sort (the phone orders the rows to the host page's order with the ☰ handles' arrow keys, then locks), fill-in (the persuasion check first, then the host's 答對！), image and video questions, memory questions (the host presses ⏭ 直接出題 instead of waiting for the clip), buzzer questions (the phone presses 搶答！, the host judges it right), and music questions with fields (the host marks every field right and submits). On a buzzer song the host presses 播放 first; when the big screen reports it cannot play it, the host presses 🎤 現場放歌，開放搶答 instead, so a broken big-screen player does not fail the step, but the step prints `note="answered: ..."` to say the big screen could not play it. At a fork it takes the left door; at the fortune teller it picks the first fate.
+- Skipped by the host: a timing question cannot be tapped on purpose, so the host presses 沒人答對，換下一題; a buzzer song that has not opened 10 seconds after 播放 (with no 播放 button, 10 seconds after the phones show 等音樂開始…) is skipped the same way. The step prints `ok` with `note="skipped: ..."` and does not count as broken.
+- Mystery room and fortune teller cards have no question and print `note="passed: ..."`. When the boss falls and the game ends, the remaining turns and 結束冒險 are skipped.
+- A wrong answer on the host page, or a question not done within 60 seconds, makes the step `FAIL`.
+
+It carries no key, so it only plays the site's default bank: a host needs the owner key to pick another bank, so there is no bank option. The live check meets sort, memory, music and buzzer questions only when the event bank is the default bank. A boss buzzer phase is never the first phase, and `--boss` only reaches the first phase, so try buzzer, timing and field questions locally. A round gets about 150 seconds (plus the extra turns); past that it skips the remaining steps but still ends the game.
+
+To try a given bank locally, use the test `E2E_OWNER_KEY` from `playwright.config.ts` (not the live owner key; never use that one here):
+
+```bash
+KEY=$(sed -n 's/.*E2E_OWNER_KEY = "\(.*\)";/\1/p' playwright.config.ts)
+npx wrangler dev --port 1996 --persist-to .wrangler/canary --var 'ALLOWED_ORIGINS:*' --var ANTHROPIC_API_KEY: --var OWNER_KEY:$KEY
+# another terminal
+NEXT_PUBLIC_PARTYKIT_HOST=localhost:1996 npx next dev -p 3000
+# a third terminal: put a bank JSON into the local default bank (version comes from the current one)
+V=$(curl -s -H "Authorization: Bearer $KEY" localhost:1996/api/bank | jq .version)
+jq -n --slurpfile b local-banks/my-bank.json --argjson v "$V" '{bank: $b[0], version: $v}' \
+  | curl -s -X PUT -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' --data @- localhost:1996/api/bank
+npm run -s canary:live -- --base http://localhost:3000 --turns 10 --boss
+```
+
+Uploaded images and media files in the bank are not on the local stack, so the big screen fails to load them and logs errors in `errs`; YouTube and text questions give the cleanest run.
