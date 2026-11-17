@@ -24,7 +24,9 @@
   --turn2: #f4c94a;
   --ok: #6fd36a; /* correct */
   --ok2: #3f9a3b; /* correct bevel */
-  --danger: #ff6b6b;
+  --danger: #ff6b6b; /* also a team colour (TEAM_LOOKS 紅); never the boss's */
+  --boss: #8e1f3a; /* the boss (#320): its band, map room, HP, hearts, titles, 地城主 tag */
+  --boss-dk: #5c1226;
   --warn: #ffcf4a;
   --orange: #e8862a; /* only on dark chips or large shapes, never as small text on cream */
   --dim-ink: #8a7a8f; /* text on an eliminated or faded option */
@@ -268,7 +270,10 @@ body {
 .px-phase-blink { animation: px-phase-blink 0.25s steps(1) 4; }
 @keyframes px-heart-in { from { opacity: 0; } }
 .px-heart-in { animation: px-heart-in 0.15s steps(1) both; }
-/* The phase card's title: the game-over title's --k outline, in boss red (D10). */
+/* The boss's titles (phase card D10, 首領出現！): cream letters in a --boss outline over a --k drop, so the dark wine
+   reads on the cream card and on the dark entrance band alike (#320). */
+.px-title-boss { color: var(--cream); text-shadow: 3px 3px 0 var(--boss), -3px -3px 0 var(--boss), 3px -3px 0 var(--boss), -3px 3px 0 var(--boss), 0 3px 0 var(--boss), 0 -3px 0 var(--boss), 3px 0 0 var(--boss), -3px 0 0 var(--boss), 0 6px 0 var(--k); }
+/* Red alarms that are not the boss's (🚨 抓包). */
 .px-title-danger { color: var(--danger); text-shadow: 3px 3px 0 var(--k), -3px -3px 0 var(--k), 3px -3px 0 var(--k), -3px 3px 0 var(--k), 0 4px 0 var(--k); }
 .px-idle { transform-origin: 50% 100%; animation: px-idle 1s steps(1) infinite; }
 .px-float { animation: px-float 1.2s steps(1) infinite; }
@@ -323,6 +328,7 @@ body {
 .px-title-gold { color: var(--warn); text-shadow: 4px 4px 0 var(--k), -4px -4px 0 var(--k), 4px -4px 0 var(--k), -4px 4px 0 var(--k), 0 6px 0 var(--k); }
 /* Titles under ~40px: the 3–4px outline filled in their strokes, so they get a 2px one. */
 .px-title-sm { text-shadow: 2px 2px 0 var(--k), -2px -2px 0 var(--k), 2px -2px 0 var(--k), -2px 2px 0 var(--k), 0 3px 0 var(--k); }
+.px-title-boss.px-title-sm { text-shadow: 2px 2px 0 var(--boss), -2px -2px 0 var(--boss), 2px -2px 0 var(--boss), -2px 2px 0 var(--boss), 0 2px 0 var(--boss), 0 -2px 0 var(--boss), 2px 0 0 var(--boss), -2px 0 0 var(--boss), 0 4px 0 var(--k); }
 .px-alarm-tint { background: #ff2a2a40; animation: px-out 0s 2.4s both; }
 .px-alarm-band { background: repeating-linear-gradient(-45deg, var(--warn) 0 28px, var(--k) 28px 56px); border-block: 6px solid var(--k);
   animation: px-alarm-band 2.4s steps(1) both; }
@@ -344,7 +350,7 @@ body {
 @keyframes px-boss-enter-tint { 0%, 19% { background: #000000bf; } 20%, 99% { background: #00000073; } 100% { visibility: hidden; } }
 .px-boss-enter-tint { animation: px-boss-enter-tint 2.4s steps(1) both; }
 /* The band is see-through (30% black over the 45% tint): the question card and option tiles under it stay readable. */
-.px-boss-enter-band { background: #0000004d; border-block: 6px solid var(--danger); animation: px-shake 0.2s steps(1) 1s 2; }
+.px-boss-enter-band { background: #0000004d; border-block: 6px solid var(--boss); animation: px-shake 0.2s steps(1) 1s 2; }
 @keyframes px-boss-enter-name { 0%, 49% { transform: scale(1.4); } 50%, 100% { transform: none; } }
 .px-boss-enter-name { transform-origin: left center; animation: px-boss-enter-name 0.2s steps(1) 0.5s both; }
 .px-boss-enter-tint.px-still { animation: none; background: #00000073; }
@@ -352,7 +358,7 @@ body {
 @keyframes px-shake { 0%, 49% { transform: translateX(-8px); } 50%, 100% { transform: translateX(8px); } }
 /* ② The boss's parry on a wrong answer (immersion.md): the charge holds a --warn outline (steady, not blinking: a blink
    would be flashes outside the shared budget), the counter cuts to 1.3x and shakes 8px. ④ Rage: a ±2px jitter and a
-   --danger outline. Reduced motion keeps the outlines, with no scale, shake or jitter. */
+   --boss outline. Reduced motion keeps the outlines, with no scale, shake or jitter. */
 .px-parry-charge { filter: drop-shadow(4px 0 0 var(--warn)) drop-shadow(-4px 0 0 var(--warn)) drop-shadow(0 4px 0 var(--warn)) drop-shadow(0 -4px 0 var(--warn)); }
 @keyframes px-parry-counter { 0%, 100% { transform: scale(1.3) translateX(-8px); } 50% { transform: scale(1.3) translateX(8px); } }
 .px-parry-counter { transform-origin: 50% 100%; animation: px-parry-counter 0.2s steps(1) infinite; }
@@ -361,7 +367,7 @@ body {
 /* 👹 低吼 (immersion.md PR2): ±6px, two 0.2 s cycles; with the boss's ±2px rage jitter it stays within 8px. */
 @keyframes px-growl { 0%, 49% { transform: translateX(-6px); } 50%, 100% { transform: translateX(6px); } }
 .px-growl { animation: px-growl 0.2s steps(1) 2; }
-.px-rage-outline { filter: drop-shadow(3px 0 0 var(--danger)) drop-shadow(-3px 0 0 var(--danger)) drop-shadow(0 3px 0 var(--danger)) drop-shadow(0 -3px 0 var(--danger)); }
+.px-rage-outline { filter: drop-shadow(3px 0 0 var(--boss)) drop-shadow(-3px 0 0 var(--boss)) drop-shadow(0 3px 0 var(--boss)) drop-shadow(0 -3px 0 var(--boss)); }
 /* The edge glows (heartbeat, parry): inset shadows only, the centre 70% stays clear. */
 .px-edge { position: absolute; inset: 0; pointer-events: none; }
 /* A class moment's badge (lib/class-fx.ts): slams in from 1.4x in two frames; it keeps its centring translate. */

@@ -361,6 +361,19 @@ describe("restoring after a restart", () => {
     expect(second.game!.variantSeed).toBeUndefined();
   });
 
+  it("a save from before team colours (#320) gives each lobby team the lowest free one; a bad colour discards the save", async () => {
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const snap = storage.data.get(SNAPSHOT_KEY) as any;
+    snap.pendingTeams[0].look = 1;
+    delete snap.pendingTeams[1].look;
+    const second = makeRoom(storage).room;
+    expect(await second.restore()).toBe("restored");
+    expect((second as any).pendingTeams.map((t: { look?: number }) => t.look)).toEqual([1, 0]);
+    (storage.data.get(SNAPSHOT_KEY) as any).pendingTeams[1].look = 8;
+    expect(await makeRoom(storage).room.restore()).not.toBe("restored");
+  });
+
   // The branch choice was removed in v0.31.3.0, but a save from before keeps it on every team.
   it("a save whose teams still carry branchChoices restores and plays on", async () => {
     const storage = memoryStorage();

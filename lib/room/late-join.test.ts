@@ -55,7 +55,7 @@ describe("late join", () => {
   it("a JOIN after the start waits: named in STATE.late, not in the game, and may pick a class", () => {
     const { room } = setup();
     const late = join(room, 3);
-    expect(state(room).late).toEqual({ teams: [{ id: id(3), name: "隊伍3" }] });
+    expect(state(room).late).toEqual({ teams: [{ id: id(3), name: "隊伍3", look: 2 }] });
     expect(state(room).view.teams.map((t: { id: string }) => t.id)).toEqual([id(1), id(2)]);
     send(room, late, { type: "TEAM_PICK_CLASS", classId: "mage" });
     expect(state(room).late.teams[0].classId).toBe("mage");
@@ -108,6 +108,25 @@ describe("late join", () => {
     send(room, host, { type: "HOST_END_GAME" });
     send(room, host, { type: "HOST_BACK_TO_LOBBY" });
     expect(state(room)).toMatchObject({ type: "LOBBY", teams: [{ id: id(1) }, { id: id(2) }, { id: id(3), classId: "warrior" }, { id: id(4) }] });
+  });
+
+  it("a waiting team picks a free colour, keeps it when let in, and cannot change it after (#320)", () => {
+    const { room, host, phones } = setup();
+    const late = join(room, 3);
+    send(room, late, { type: "TEAM_PICK_LOOK", look: 0 }); // team 1's colour: held
+    expect(state(room).late.teams[0].look).toBe(2);
+    send(room, late, { type: "TEAM_PICK_LOOK", look: 6 });
+    expect(state(room).late.teams[0].look).toBe(6);
+    send(room, phones[0], { type: "TEAM_PICK_LOOK", look: 5 });
+    expect(last(phones[0])).toMatchObject({ error: "game_already_started" });
+    admit(room, host, 3);
+    expect(room.game!.teams.map((t) => t.look)).toEqual([0, 1, 6]);
+    send(room, late, { type: "TEAM_PICK_LOOK", look: 5 });
+    expect(last(late)).toMatchObject({ error: "game_already_started" });
+    const stray = makeConn("stray");
+    room.onConnect(stray);
+    send(room, stray, { type: "TEAM_PICK_LOOK", look: 5 });
+    expect(last(stray)).toMatchObject({ error: "unknown_team" });
   });
 
   it("a team let in with no phone connected starts offline, so its turn is skipped", () => {
@@ -263,14 +282,14 @@ describe("late join", () => {
     const storage = memoryStorage();
     const { room } = setup({ storage });
     join(room, 3);
-    expect(parseSnapshot(storage.data.get(SNAPSHOT_KEY))?.lateTeams).toEqual([{ id: id(3), name: "隊伍3" }]);
+    expect(parseSnapshot(storage.data.get(SNAPSHOT_KEY))?.lateTeams).toEqual([{ id: id(3), name: "隊伍3", look: 2 }]);
     const again = makeRoom(storage);
     expect(await again.restore()).toBe("restored");
     const host = makeConn("host2");
     again.onConnect(host);
     send(again, host, { type: "HOST_CLAIM", token: TOKEN });
     join(again, 3, { resume: true });
-    expect(state(again).late.teams).toEqual([{ id: id(3), name: "隊伍3" }]);
+    expect(state(again).late.teams).toEqual([{ id: id(3), name: "隊伍3", look: 2 }]);
     admit(again, host, 3);
     expect(again.game!.teams.at(-1)).toMatchObject({ id: id(3), online: true });
   });
@@ -286,7 +305,7 @@ describe("late join", () => {
     expect(await again.restore()).toBe("restored");
     expect(again.game!.teams).toHaveLength(2);
     join(again, 3, { resume: true });
-    expect(state(again).late.teams).toEqual([{ id: id(3), name: "隊伍3" }]);
+    expect(state(again).late.teams).toEqual([{ id: id(3), name: "隊伍3", look: 2 }]);
     // The playing teams' keys are kept.
     const back = makeConn("back");
     send(again, back, { type: "JOIN", teamId: id(1), teamKey: KEY + 1, teamName: "x" });

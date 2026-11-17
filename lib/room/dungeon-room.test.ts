@@ -4746,7 +4746,7 @@ describe("HOST_BACK_TO_LOBBY (回到大廳)", () => {
     expect(room.game).toBeNull();
     const lobby = lastBroadcast(room);
     expect(lobby).toMatchObject({ type: "LOBBY" });
-    expect(lobby.teams).toEqual([{ id: T1, name: "甲隊", classId: "mage" }, { id: T2, name: "Team 1" }]);
+    expect(lobby.teams).toEqual([{ id: T1, name: "甲隊", classId: "mage", look: 0 }, { id: T2, name: "Team 1", look: 1 }]);
     send(room, hostConn, { type: "HOST_START" });
     expect(room.game!.phase).toBe("playing");
     expect(room.game!.teams.every((t) => t.reward === 0 && t.roomIndex === 0)).toBe(true);
@@ -4851,7 +4851,7 @@ describe("team handoff: HOST_HANDOFF, TEAM_CLAIM (docs/designs/team-handoff.md)"
     const { room, hostConn, fresh } = gameWithLostPhone();
     // The new phone joined after the start, so it waits as a late team (late-join.md) until it types the code.
     send(room, fresh, { type: "JOIN", teamId: T3, teamKey: KEY2, teamName: "x" });
-    expect(lastBroadcast(room).late.teams).toEqual([{ id: T3, name: "x" }]);
+    expect(lastBroadcast(room).late.teams).toEqual([{ id: T3, name: "x", look: 2 }]);
     const code = codeFor(room, hostConn, T1);
     expect(code).toMatch(/^\d{4}$/);
     expect(JSON.stringify((room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls)).not.toContain(`"code":"${code}"`);
@@ -5076,5 +5076,34 @@ describe("sort questions", () => {
       expect(room.game!.mageHints?.["r0-s1"]).toBe(hint);
       expect(room.game!.teams[0].abilityUses).toBe(uses);
     }
+  });
+});
+
+describe("team colours (#320)", () => {
+  const looks = (room: DungeonRoom) => lastBroadcast(room).teams.map((t: { look?: number }) => t.look);
+
+  it("a joining team gets the lowest free colour; a removed team frees its colour and no other team's changes", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    const { ids, conns } = joinTeams(room, hostConn, 3);
+    expect(looks(room)).toEqual([0, 1, 2]);
+    send(room, hostConn, { type: "HOST_REMOVE_TEAM", teamId: ids[1] });
+    expect(looks(room)).toEqual([0, 2]);
+    send(room, conns[0], { type: "TEAM_PICK_LOOK", look: 5 });
+    const late = makeConn("late");
+    send(room, late, { type: "JOIN", teamId: "00000000-0000-0000-0000-000000000009", teamKey: KEY, teamName: "Late" });
+    expect(looks(room)).toEqual([5, 2, 0]);
+  });
+
+  it("first pick wins, a held colour is ignored, and the colour is fixed at the start and carried into the game", () => {
+    const { room, hostConn } = makeRoomWithHost();
+    const { conns } = joinTeams(room, hostConn, 2);
+    send(room, conns[0], { type: "TEAM_PICK_LOOK", look: 4 });
+    send(room, conns[1], { type: "TEAM_PICK_LOOK", look: 4 });
+    expect(looks(room)).toEqual([4, 1]);
+    send(room, hostConn, { type: "HOST_START" });
+    expect(room.game!.teams.map((t) => t.look)).toEqual([4, 1]);
+    send(room, conns[1], { type: "TEAM_PICK_LOOK", look: 6 });
+    expect(lastSentTo(conns[1]).error).toBe("game_already_started");
+    expect(room.game!.teams[1].look).toBe(1);
   });
 });

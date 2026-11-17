@@ -17,6 +17,7 @@ import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
 import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
+import { lookOf } from "@/lib/team-look";
 import { ScreenSoundBanner } from "@/components/screen-sound-banner";
 import { HostFxRow } from "@/components/host-fx-row";
 import { Qr } from "@/components/qr";
@@ -802,7 +803,7 @@ export default function HostPage() {
       {game.view.teams.map((t, i) => (
         <div key={t.id} className="flex flex-col gap-1">
           <div className="flex min-w-0 items-center gap-2">
-            <Sprite kind="hero" variant={i} cls={t.classId} scale={2} className="flex-none" />
+            <Sprite kind="hero" variant={lookOf(t, i)} cls={t.classId} scale={2} className="flex-none" />
             <span className="min-w-0 flex-1 truncate text-[16px]">{t.name}{t.online ? "" : "（離線）"}</span>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -968,7 +969,7 @@ export default function HostPage() {
             <ul className="flex flex-col gap-2">
               {lobby.map((t, i) => (
                 <Panel key={t.id} className="flex items-center gap-3 px-3 py-2">
-                  <Sprite kind="hero" variant={i} cls={t.classId} scale={2} />
+                  <Sprite kind="hero" variant={lookOf(t, i)} cls={t.classId} scale={2} />
                   {/* The class under the name: on a 360 px phone a name beside it and two buttons was cut to 「E…」. */}
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[18px]">{t.name}</div>
@@ -1173,7 +1174,7 @@ export default function HostPage() {
             )}
             {turn && (turn.team || buzz) && (
             <>
-            <TurnRibbon>{buzz ? (turn.team ? `搶答：${turn.team.name}搶到了` : "首領戰　搶答中") : `${turn.inBoss ? "首領戰　" : ""}輪到：${turn.team?.name}`}</TurnRibbon>
+            <TurnRibbon color={buzz || turn.inBoss ? "var(--boss)" : undefined}>{buzz ? (turn.team ? `搶答：${turn.team.name}搶到了` : "首領戰　搶答中") : `${turn.inBoss ? "首領戰　" : ""}輪到：${turn.team?.name}`}</TurnRibbon>
             <Panel tone="turn" className="px-3 py-[10px]">
               <div className="flex items-center gap-3">
                 {/* A fork holds no monster and no question (branch-fork.md). */}
@@ -1570,7 +1571,7 @@ export default function HostPage() {
               {game.view.teams.map((t, i) => (
                 <Panel key={t.id} className={`flex min-w-0 flex-col gap-1 px-2 py-1 ${t.online ? "" : "opacity-50"}`}>
                   <div className="flex min-w-0 items-center gap-2">
-                    <Sprite kind="hero" variant={i} cls={t.classId} scale={1} className="flex-none" />
+                    <Sprite kind="hero" variant={lookOf(t, i)} cls={t.classId} scale={1} className="flex-none" />
                     <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-2 text-[13px]">

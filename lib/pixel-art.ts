@@ -660,14 +660,16 @@ function accessory(cv: HTMLCanvasElement, a: Accessory) {
   P.flush();
 }
 
-const HEART_PAL = { r: "#ff5d73", R: "#c22a49", w: "#fff", S: "#9a8fb8" };
-function heart(cv: HTMLCanvasElement, on: boolean) {
+/** The boss's HP hearts are in the boss's wine (--boss, #320); the hearts after a team eats a dish stay bright red. */
+const HEART_PAL = { r: "#8e1f3a", R: "#5c1226", w: "#fff", S: "#9a8fb8" };
+const LOVE_PAL = { ...HEART_PAL, r: "#ff5d73", R: "#c22a49" };
+function heart(cv: HTMLCanvasElement, on: boolean, pal = HEART_PAL) {
   const P = new Px(cv, 11, 10);
   P.grid(
     on
       ? [".rrr.rrr.", "rwrrrrrrr", "rrrrrrrrr", "rrrrrrrrR", ".rrrrrrR.", "..rrrrR..", "...rrR...", "....R...."]
       : [".SS.SS...", "S..S..S..", "S.......S", ".S.....S.", "..S...S..", "...S.S...", "....S....", "........."],
-    HEART_PAL,
+    pal,
     1,
     1,
   );
@@ -2075,7 +2077,7 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   owl: (cv, _v, b) => owl(cv, b),
   hero: (cv, v, b, cls) => hero(cv, v, b, cls),
   crown: (cv) => crown(cv),
-  heart: (cv, v) => heart(cv, v === 1),
+  heart: (cv, v) => heart(cv, v >= 1, v === 2 ? LOVE_PAL : HEART_PAL),
   torch: (cv, v) => torch(cv, v),
   campfire: (cv, v) => campfire(cv, v),
   door: (cv) => door(cv),
@@ -2121,7 +2123,7 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
 
 /**
  * Draw one sprite. `variant` means: hero = look index, torch/campfire = frame (0/1),
- * heart = 1 for full and 0 for empty. `blink` closes the eyes. `cls` is a hero's class id (#324).
+ * heart = 1 for a full boss heart, 0 for an empty one, 2 for the bright red heart after eating. `blink` closes the eyes. `cls` is a hero's class id (#324).
  */
 export function drawSprite(cv: HTMLCanvasElement, kind: SpriteKind, variant = 0, blink = false, cls?: string) {
   DRAW[kind](cv, variant, blink, cls);

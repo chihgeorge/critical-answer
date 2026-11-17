@@ -88,11 +88,11 @@ export function TransitionOverlay({ play, onDone, flash }: { play: Transition; o
         <>
           <div className={`px-boss-enter-tint absolute inset-0${cls}`} />
           <div className={`px-boss-enter-band absolute inset-x-0 flex items-center justify-center gap-8${cls}`} style={{ top: 165, height: 190 }}>
-            <div style={{ filter: lit ? "none" : "brightness(0) drop-shadow(4px 0 0 var(--danger)) drop-shadow(-4px 0 0 var(--danger)) drop-shadow(0 4px 0 var(--danger)) drop-shadow(0 -4px 0 var(--danger))" }}>
+            <div style={{ filter: lit ? "none" : "brightness(0) drop-shadow(4px 0 0 var(--boss)) drop-shadow(-4px 0 0 var(--boss)) drop-shadow(0 4px 0 var(--boss)) drop-shadow(0 -4px 0 var(--boss))" }}>
               <Sprite kind={play.monster.kind} scale={Math.max(1, Math.min(play.monster.scale, Math.floor(BOSS_SPRITE_PX / SPRITE_SIZE[play.monster.kind][1])))} hue={play.monster.hue} accessory={play.monster.accessory} />
             </div>
             <div className="flex flex-col items-start">
-              <div className="px-title-danger" style={{ fontSize: 56, lineHeight: 1.1 }}>首領出現！</div>
+              <div className="px-title-boss" style={{ fontSize: 56, lineHeight: 1.1 }}>首領出現！</div>
               <div className={`px-boss-enter-name px-title-gold mt-2 max-w-[640px] truncate${cls}`} style={{ fontSize: 40, lineHeight: 1.2 }}>{play.monster.name}</div>
             </div>
           </div>

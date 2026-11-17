@@ -200,8 +200,8 @@ export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom, ste
       {step === 7 && eater >= 0 && (
         <>
           {/* Under the card (z 4): a card whose name and comment wrap to two lines reaches down to the hero's head. */}
-          <div className="absolute" style={at(EATER_X - 8, bottom + 84)}><Sprite kind="heart" variant={1} scale={3} /></div>
-          <div className="absolute" style={at(EATER_X + 14, bottom + 98)}><Sprite kind="heart" variant={1} scale={3} /></div>
+          <div className="absolute" style={at(EATER_X - 8, bottom + 84)}><Sprite kind="heart" variant={2} scale={3} /></div>
+          <div className="absolute" style={at(EATER_X + 14, bottom + 98)}><Sprite kind="heart" variant={2} scale={3} /></div>
           {/* At the hero's side, low enough to clear the tallest card (a two-line name and comment, and a chef's share). */}
           <div className="absolute whitespace-nowrap" style={{ ...POP, fontSize: 34, left: EATER_X - 40, bottom: bottom + 10, transform: "translateX(-100%)", zIndex: 6, background: "var(--turn)", color: "var(--k)", border: "4px solid var(--k)" }}>嗝～</div>
         </>

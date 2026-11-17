@@ -12,6 +12,7 @@ import { joinPasswordFor } from "@/lib/stored";
 import { LOCK_REFUSALS, MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type CalibrateRun, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
 import { ABILITY_USES, CATCH_PAY, ORACLE_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
+import { lookOf } from "@/lib/team-look";
 import { describeTurn, nextUp, turnLive, turnOpened } from "@/lib/turn-info";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { sprintSeen } from "@/lib/transitions";
@@ -71,6 +72,42 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
       </PixelButton>
       {!current && <div data-testid="no-class-nudge" className="text-[14px]">還沒選職業：不選就沒有技能，比較吃虧</div>}
     </Panel>
+  );
+}
+
+/** The lobby's colour picker (#320): eight swatches, each our own hero in that colour. First pick wins on the room, so a
+ * colour another team holds is locked and names that team. `teams` is every team holding a colour, ours included. */
+function LookPicker({ me, teams, send }: { me: string; teams: { id: string; name: string; classId?: ClassId; look?: number }[]; send: (m: ClientMessage) => void }) {
+  const mine = teams.find((t) => t.id === me);
+  return (
+    // Panel takes no data-testid, so the wrapper carries it.
+    <div data-testid="look-picker">
+    <Panel tone="lav" className="flex flex-col gap-2 px-[10px] py-[10px]">
+      <div className="text-[18px]">選隊伍顏色（大螢幕上的角色跟著換）</div>
+      <div className="grid grid-cols-4 gap-2">
+        {TEAM_LOOKS.map((l, look) => {
+          const owner = teams.find((t, i) => t.id !== me && lookOf(t, i) === look);
+          const picked = mine?.look === look;
+          return (
+            <button
+              key={look}
+              type="button"
+              aria-pressed={picked}
+              disabled={!!owner}
+              aria-label={owner ? `隊伍顏色 ${l.name}，${owner.name}已選` : `隊伍顏色 ${l.name}`}
+              onClick={() => send({ type: "TEAM_PICK_LOOK", look })}
+              className={`px-opt !flex-col !items-center !justify-end !gap-[2px] !px-[2px] !py-[6px]${picked ? " picked" : owner ? " dim" : ""}`}
+              style={{ minHeight: 84 }}
+            >
+              <Sprite kind="hero" variant={look} cls={mine?.classId} scale={2} style={owner ? { opacity: 0.45 } : undefined} />
+              <span className="!flex-none w-full truncate text-center text-[13px]">{owner ? owner.name : picked ? "◀ 已選" : l.name}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="text-[13px]">加入時已自動給一個顏色，不換也可以；開始後就不能改。</div>
+    </Panel>
+    </div>
   );
 }
 
@@ -1030,6 +1067,7 @@ export default function PlayPage() {
   const cookStep = useCookStep(revealed?.dish && revealed.served ? `${game!.eventId}` : null);
   const roster = game?.view.teams ?? lobby ?? [];
   const myIndex = Math.max(0, roster.findIndex((t) => t.id === teamId));
+  const myLook = lookOf(roster[myIndex], myIndex);
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
   const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
@@ -1048,7 +1086,7 @@ export default function PlayPage() {
       {/* While waiting, the roster above already highlights our own team. */}
       {game && (
         <Panel tone={isMyTurn && !initiative ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
-          <Sprite kind="hero" variant={myIndex} cls={myTeam?.classId} scale={3} className="flex-none" />
+          <Sprite kind="hero" variant={myLook} cls={myTeam?.classId} scale={3} className="flex-none" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
             {myTeam?.classId && (
@@ -1068,7 +1106,7 @@ export default function PlayPage() {
                   <span className="px-num">{myTeam.reward}</span> {scoreName(game.cuisine)}
                 </>
               ) : (
-                `隊伍 ${TEAM_LOOKS[myIndex % TEAM_LOOKS.length].name}`
+                `隊伍 ${TEAM_LOOKS[myLook % TEAM_LOOKS.length].name}`
               )}
             </div>
           </div>
@@ -1126,6 +1164,7 @@ export default function PlayPage() {
               <div className="mt-2 text-[15px]">{closed ? `下一場開始前，${waiting.name}會自動進大廳。` : `${waiting.name}會從第一間房開始，排在最後一個。可以先選職業。`}</div>
             </Panel>
           </div>
+          <LookPicker me={teamId} teams={[...game.view.teams, ...game.late!.teams]} send={send} />
           <ClassPicker current={waiting.classId} send={send} />
           {/* A phone that only wants to take a team over still can (docs/designs/team-handoff.md). */}
           <Panel className="px-4 py-3">
@@ -1204,7 +1243,7 @@ export default function PlayPage() {
           <ul data-testid="roster" className="flex flex-col gap-2">
             {lobby.map((t, i) => (
               <Panel key={t.id} tone={t.id === teamId ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-2">
-                <Sprite kind="hero" variant={i} cls={t.classId} scale={2} className="flex-none" />
+                <Sprite kind="hero" variant={lookOf(t, i)} cls={t.classId} scale={2} className="flex-none" />
                 <span className="min-w-0 flex-1 truncate text-[18px]">{t.name}</span>
                 {t.classId && <span className="text-[14px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</span>}
                 {t.id === teamId && <span className="text-[14px]">你們</span>}
@@ -1212,6 +1251,7 @@ export default function PlayPage() {
             ))}
           </ul>
         )}
+        {!game && lobby?.some((t) => t.id === teamId) && <LookPicker me={teamId} teams={lobby} send={send} />}
         {!game && lobby?.some((t) => t.id === teamId) && <ClassPicker current={lobby.find((t) => t.id === teamId)?.classId} send={send} />}
 
         {intro !== null && (
@@ -1263,7 +1303,7 @@ export default function PlayPage() {
           <div data-testid="phone-phase-card">
             <Panel tone="lav" role="status" className="flex flex-col items-center gap-2 px-3 py-[14px] text-center">
               <LabelChip>還沒結束！</LabelChip>
-              <div className="px-title-danger px-title-sm text-[24px]">第{ordinal(game.view.bossPhase)}階段：{game.bossPhaseInfo.name}</div>
+              <div className="px-title-boss px-title-sm text-[24px]">第{ordinal(game.view.bossPhase)}階段：{game.bossPhaseInfo.name}</div>
               <div className="text-[18px]">{game.bossPhaseInfo.rule}</div>
             </Panel>
           </div>

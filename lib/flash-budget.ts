@@ -8,8 +8,8 @@ export const FLASH_WINDOW_MS = 1000;
 export const FLASH_MAX = 3;
 
 /** The static tints a refused take (or reduced motion) shows instead of a flash. */
-export const HEART_TINT = "#b02a3a26"; // #b02a3a at 15%
-export const PARRY_TINT = "#ff6b6b33"; // --danger at 20%
+export const HEART_TINT = "#8e1f3a26"; // --boss at 15%
+export const PARRY_TINT = "#8e1f3a33"; // --boss at 20%
 /** The host's pads (immersion.md PR2): ⚡'s edge pulse and its tint, 👹's tint (--k, not red: red is the boss's). */
 export const THUNDER_PULSE = "#ffffff80"; // white at 50%
 export const THUNDER_TINT = "#ffffff33"; // white at 20%

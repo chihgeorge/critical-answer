@@ -8,11 +8,13 @@ import type { FogReveal } from "@/lib/ambience";
 import type { SpectatorView } from "@/lib/game-state";
 import { layoutMap, nameTags, PAWN, BOSS_SPRITE, CORRIDOR, DOOR_W, type Pawn } from "@/lib/map-layout";
 import { LabelChip, Sprite, useClassicArt } from "@/components/pixel";
+import { lookOf } from "@/lib/team-look";
 import type { SceneTheme } from "@/lib/pixel-art";
 import { roomTheme } from "@/lib/turn-info";
 
 const ROOM_STYLE = { background: "#7a6496", boxShadow: "inset 0 -5px 0 #5d4a79, inset 0 4px 0 #9a84b8" };
-const BOSS_STYLE = { background: "#8a2d45", boxShadow: "inset 0 -6px 0 #6a1f34, inset 0 4px 0 #b04560" };
+// The boss room in the boss's wine (--boss, #320), one step lighter so the HP bar reads on it.
+const BOSS_STYLE = { background: "#7a2238", boxShadow: "inset 0 -6px 0 #561629, inset 0 4px 0 #a0384f" };
 /** The torch-lit look (dungeon-scene C): the strip is a cross-section of black rock, each reached room lit in its own
  * biome's stone, the unreached rest of the way solid dark (no clouds, nothing that counts rooms: D8). */
 const ROCK = { strip: "#1c1438", fog: "#0b0718", fogOpen: "#150f2e", corridor: "#2a2050" };
@@ -82,7 +84,7 @@ export function MapStrip({ view }: { view: SpectatorView }) {
           </span>
         </div>
         <div className={`relative mx-auto w-[24px] ${turn ? "px-turn" : ""}`} style={{ opacity: t.online ? 1 : 0.5 }}>
-          <Sprite kind="hero" variant={i} cls={t.classId} scale={1} />
+          <Sprite kind="hero" variant={lookOf(t, i)} cls={t.classId} scale={1} />
         </div>
         {!t.online && <Sprite kind="zz" scale={1} className="absolute" style={{ right: -4, top: 16 }} />}
         </div>
@@ -145,8 +147,8 @@ export function MapStrip({ view }: { view: SpectatorView }) {
           {map.boss.open ? (
             <div key="boss-open" data-testid="boss-room" className="absolute border-4" style={{ ...BOSS_STYLE, left: map.boss.x, width: map.boss.w, top: BOSS_BOX.top, height: BOSS_BOX.h, borderColor: "var(--k)" }}>
               <Sprite kind="slime-king" scale={1} className="absolute" style={{ left: 6, top: 22 }} />
-              <div className="absolute border-[3px]" style={{ left: BOSS_SPRITE - 4, right: 4, top: 2, height: 10, background: "#4a1a28", borderColor: "var(--k)" }}>
-                <div style={{ width: `${(100 * view.bossHp) / view.bossMaxHp}%`, height: "100%", background: "var(--danger)" }} />
+              <div className="absolute border-[3px]" style={{ left: BOSS_SPRITE - 4, right: 4, top: 2, height: 10, background: "#2a0a14", borderColor: "var(--k)" }}>
+                <div style={{ width: `${(100 * view.bossHp) / view.bossMaxHp}%`, height: "100%", background: "var(--boss)" }} />
               </div>
             </div>
           ) : (
