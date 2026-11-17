@@ -105,6 +105,10 @@ export default function HostPage() {
   // So does a memory question while its media plays (memory-questions.md): the host sees the whole question, marked.
   const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id ? { ...state, question: answer.question } : state), [state, answer]);
   const [drawer, setDrawer] = useState(false);
+  /** ⚡ 加料: the big-screen sound pads, closed until the host opens them (host declutter). */
+  const [fxOpen, setFxOpen] = useState(false);
+  /** The lobby's game settings, a one-line summary until 修改 opens them. */
+  const [settingsOpen, setSettingsOpen] = useState(false);
   /** Host-only: what the host may queue as a team's (or the boss's) next question, with answers. */
   const [picks, setPicks] = useState<Picks | null>(null);
   /** Team id -> the handoff code the room gave this page, shown in that team's row (docs/designs/team-handoff.md). */
@@ -386,12 +390,14 @@ export default function HostPage() {
   const { reset, rested, unreachable } = room;
   const teamName = (id: string) => game?.view.teams.find((t) => t.id === id)?.name ?? "";
   const pickLabel = (id: string) => picks?.questions.find((q) => q.id === id)?.label ?? "";
+  // 指定下一題 on the page is for the team up next (not one in the boss room: the boss's pick is in ⚙ 更多).
   /** 指定 opens the picker; with a pick queued, 取消 clears it. */
   function pickButton(target: string) {
     const queued = picks?.queued[target];
     return (
       <PixelButton
-        onClick={() => (queued ? send({ type: "HOST_QUEUE_QUESTION", target, questionId: null }) : setPicking(target))}
+        // The picker opens over the page, so ⚙ 更多 closes first.
+        onClick={() => (queued ? send({ type: "HOST_QUEUE_QUESTION", target, questionId: null }) : (setDrawer(false), setPicking(target)))}
         className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3"
       >
         {queued ? "取消" : target === "boss" ? "指定" : "指定下一題"}
@@ -422,6 +428,10 @@ export default function HostPage() {
   // A ❓ 神秘房's result is one more (event-rooms.md D3). A door opening (branch-fork.md) is not: 下一題 waits it out.
   // So is 占卜師's effect card (fortune-teller.md); the steps before it wait like a door opening.
   const revealUp = !!game?.reveal || !!game?.phaseCard || !!game?.eventReveal || game?.fortune?.step === "card";
+  // Hidden during a reveal: the turn has already moved on there, so "the team after" would skip the one the narrator names.
+  // A dimmed screen keeps the pads open, so the host always sees the 🌑 that turns it off.
+  const fxShown = fxOpen || !!game?.screenDim;
+  const nextUp = picks && game?.phase === "playing" && !revealUp ? game.view.teams.find((t) => t.id === game.view.nextTurnTeamId && !t.inBossPhase) : undefined;
   // 🚨 A catch waiting for the host's ruling (anti-ai-cheating.md): its card shows whatever revealUp says.
   const openCatch = game?.phase === "playing" ? game.view.antiCheat?.openCatch : undefined;
   // In the boss room this choice also brings a new question (the boss rotates), so it is named for that.
@@ -751,38 +761,128 @@ export default function HostPage() {
     />
   );
 
+  // ⚙ 更多's 隊伍: each team's rarer buttons, by its hero so the host finds the team at a glance.
+  const teamTools = game?.phase === "playing" && (
+    <div className="flex flex-col gap-3">
+      {game.view.teams.map((t, i) => (
+        <div key={t.id} className="flex flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <Sprite kind="hero" variant={i} cls={t.classId} scale={2} className="flex-none" />
+            <span className="min-w-0 flex-1 truncate text-[16px]">{t.name}{t.online ? "" : "（離線）"}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {picks && !t.inBossPhase && pickButton(t.id)}
+            {/* 🧪 幸運藥水 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. It asks first: a mistap is only undone from 修正. */}
+            <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => confirm(`給${t.name}一瓶幸運藥水？（給錯了可以在下面的「修正」收回）`) && send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
+              {t.item ? "🧪 已有" : "🧪 給藥水"}
+            </PixelButton>
+            <PixelButton
+              className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3"
+              // The code shows on the page, where the host reads it out: the drawer closes for it.
+              onClick={() => (!t.online || confirm(`${t.name}還在線上，確定要交給新手機？`)) && (send({ type: "HOST_HANDOFF", teamId: t.id }), setDrawer(false))}
+            >
+              交給新手機
+            </PixelButton>
+          </div>
+          {picks?.queued[t.id] && <div className="min-w-0 truncate text-[13px]">下一題：{pickLabel(picks.queued[t.id])}</div>}
+        </div>
+      ))}
+      {picks && game.view.teams.some((t) => t.inBossPhase) && (
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-[14px]">首領房下一題：{picks.queued.boss ? pickLabel(picks.queued.boss) : "照順序"}</span>
+          {pickButton("boss")}
+        </div>
+      )}
+    </div>
+  );
+
+  // 手動停頓 (manual-pacing.md): one tap either way, any time, in ⚙ 更多.
+  const pacingSwitch = (
+    <div data-testid="host-pacing" role="group" aria-label="停頓模式" className="flex flex-none whitespace-nowrap">
+      {(["auto", "manual"] as const).map((mode) => (
+        <PixelButton
+          key={mode}
+          aria-pressed={manual === (mode === "manual")}
+          disabled={!ready}
+          onClick={() => send({ type: "HOST_PACING", mode })}
+          className="!m-0 min-h-[44px] !px-3 !py-2 text-[16px] focus-visible:z-10"
+          style={manual === (mode === "manual") ? { background: "var(--k)", color: "#fff" } : { background: "#fff" }}
+        >
+          {mode === "manual" ? "⏸ 手動" : "自動"}
+        </PixelButton>
+      ))}
+    </div>
+  );
+
+  // The lobby's once-per-event setup, in ⚙ 更多: the join password and the bank checks.
+  const lobbyTools = !game && (
+    <>
+      <div className="flex flex-col gap-2">
+        <div className="text-[16px]">加入密碼（選填）</div>
+        <div className="text-[13px]">設了之後，新隊伍要輸入密碼才能加入；已經加入的隊伍不受影響。公開網址建議設定。</div>
+        <div className="flex items-stretch gap-2">
+          <input
+            type="text"
+            value={joinPassword}
+            onChange={(e) => setJoinPassword(e.target.value)}
+            // HOST_OK fills this with the room's password, so typing before it arrives would be overwritten.
+            disabled={!ready}
+            maxLength={MAX_PASSWORD}
+            autoComplete="off"
+            placeholder="不設就留空"
+            className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[16px]"
+          />
+          <PixelButton
+            disabled={!ready || joinPassword.trim() === savedPassword}
+            // 目前密碼 changes on the room's HOST_OK reply, not here: it must show what the room enforces.
+            onClick={() => send({ type: "HOST_SET_PASSWORD", password: joinPassword })}
+            className="!m-0 !px-4 !py-2 text-[16px]"
+          >
+            設定
+          </PixelButton>
+        </div>
+        <div className="text-[13px]">{savedPassword ? `目前密碼：${savedPassword}` : "目前沒有密碼，知道代碼就能加入"}</div>
+      </div>
+      <BankHealthPanel
+        health={health}
+        checking={checking}
+        disabled={!ready || banks.loading}
+        onCheck={() => {
+          setChecking(true);
+          if (checkTimer.current) clearTimeout(checkTimer.current);
+          checkTimer.current = setTimeout(stopChecking, BANK_CHECK_WAIT_MS);
+          send({ type: "HOST_BANK_CHECK" });
+        }}
+        screenTest={screenTest}
+        onScreenTest={() => send({ type: "HOST_SCREEN_TEST" })}
+      />
+    </>
+  );
+
   return (
     <main className="relative min-h-screen overflow-clip">
       <SceneBackground theme={turn?.theme ?? "stone"} cols={48} rows={100} arch={false} className="fixed inset-0" />
 
       <div className="relative z-10 flex min-h-screen flex-col gap-3 px-[14px] pb-4 pt-5">
         <header className="flex items-center justify-between gap-2">
-          <Panel className="px-3 py-1">
+          <Panel className="flex items-center gap-2 px-2 py-1 sm:px-3">
             <span className="px-num text-[18px] tracking-[0.2em]" style={{ color: "var(--danger)" }}>
               {code}
             </span>
+            {/* 手動停頓's switch is in ⚙ 更多; this mark says it is on, so the host knows ▶ 下一步 is theirs to press. */}
+            {manual && <span data-testid="host-manual-mark" className="whitespace-nowrap text-[14px]">⏸ 手動</span>}
           </Panel>
-          {/* 手動停頓 (manual-pacing.md): one tap either way, any time. */}
-          <div data-testid="host-pacing" role="group" aria-label="停頓模式" className="flex flex-none whitespace-nowrap">
-            {(["auto", "manual"] as const).map((mode) => (
-              <PixelButton
-                key={mode}
-                aria-pressed={manual === (mode === "manual")}
-                disabled={!ready}
-                onClick={() => send({ type: "HOST_PACING", mode })}
-                className="!m-0 min-h-[44px] !px-2 !py-2 text-[16px] focus-visible:z-10"
-                style={manual === (mode === "manual") ? { background: "var(--k)", color: "#fff" } : { background: "#fff" }}
-              >
-                {mode === "manual" ? "⏸ 手動" : "自動"}
-              </PixelButton>
-            ))}
+          <div className="flex flex-none gap-2">
+            <PixelButton data-testid="host-fx-toggle" aria-expanded={fxShown} onClick={() => setFxOpen(!fxShown)} className="!m-0 min-h-[44px] whitespace-nowrap !px-2 !py-2 text-[16px] sm:!px-3" style={{ background: "#fff" }}>
+              ⚡ 加料 {fxShown ? "▴" : "▾"}
+            </PixelButton>
+            <PixelButton onClick={() => setDrawer(true)} className="!m-0 min-h-[44px] whitespace-nowrap !px-2 !py-2 text-[16px] sm:!px-3">
+              ⚙ 更多
+            </PixelButton>
           </div>
-          <PixelButton onClick={() => setDrawer(true)} className="!m-0 min-h-[44px] whitespace-nowrap !px-3 !py-2 text-[16px]">
-            ⚙ 更多
-          </PixelButton>
         </header>
-        {/* ⚡ 👹 🌑 (immersion.md PR2): sticky, so the pads stay one thumb away while the host scrolls to judge. */}
-        <HostFxRow clipPlaying={!!game?.clipPlaying} sound={game?.screenSound} lobby={!game} playing={game?.phase === "playing"} dim={!!game?.screenDim} online={ready} send={send} />
+        {/* ⚡ 👹 🌑 (immersion.md PR2): sticky once opened, so the pads stay one thumb away while the host scrolls. */}
+        {fxShown && <HostFxRow clipPlaying={!!game?.clipPlaying} sound={game?.screenSound} lobby={!game} playing={game?.phase === "playing"} dim={!!game?.screenDim} online={ready} send={send} />}
         {closing && (
           <Panel tone="turn" role="status" data-testid="room-closing" className="flex flex-col items-center gap-2 px-3 py-2 text-center text-[16px]">
             房間再 {closing.minutesLeft} 分鐘關閉
@@ -873,115 +973,88 @@ export default function HostPage() {
                 <div className="mt-1 text-[14px]">或輸入房間代碼 {code}</div>
               </div>
             </Panel>
-            <Panel tone="lav" className="px-3 py-2">{aiPanel}</Panel>
-            <Panel tone="lav" className="flex flex-col gap-2 px-3 py-2">
-              <div className="text-[16px]">加入密碼（選填）</div>
-              <div className="text-[13px]">設了之後，新隊伍要輸入密碼才能加入；已經加入的隊伍不受影響。公開網址建議設定。</div>
-              <div className="flex items-stretch gap-2">
-                <input
-                  type="text"
-                  value={joinPassword}
-                  onChange={(e) => setJoinPassword(e.target.value)}
-                  // HOST_OK fills this with the room's password, so typing before it arrives would be overwritten.
-                  disabled={!ready}
-                  maxLength={MAX_PASSWORD}
-                  autoComplete="off"
-                  placeholder="不設就留空"
-                  className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[16px]"
-                />
-                <PixelButton
-                  disabled={!ready || joinPassword.trim() === savedPassword}
-                  // 目前密碼 changes on the room's HOST_OK reply, not here: it must show what the room enforces.
-                  onClick={() => send({ type: "HOST_SET_PASSWORD", password: joinPassword })}
-                  className="!m-0 !px-4 !py-2 text-[16px]"
-                >
-                  設定
+            <Panel className="mt-auto px-3 py-2">
+              <div className="flex items-center gap-2">
+                <div data-testid="host-settings-summary" className="min-w-0 flex-1 text-[15px]">
+                  遊戲設定：玩法說明{introOn ? "開" : "關"}・作答 {answerSeconds ? `${answerSeconds} 秒` : "不倒數"}・進王 {bossThreshold} 分・{banks.selected.name}
+                  {banks.loading && "（載入中…）"}
+                </div>
+                <PixelButton data-testid="host-settings-toggle" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(!settingsOpen)} className="!m-0 min-h-[44px] flex-none whitespace-nowrap !px-3 !py-1 text-[15px]">
+                  {settingsOpen ? "收起 ▴" : "修改 ▾"}
                 </PixelButton>
               </div>
-              <div className="text-[13px]">{savedPassword ? `目前密碼：${savedPassword}` : "目前沒有密碼，知道代碼就能加入"}</div>
+              {settingsOpen && (
+                <div className="mt-2 flex flex-col">
+                  <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
+                    <input
+                      type="checkbox"
+                      checked={introOn}
+                      onChange={(e) => setIntroPick({ replay, on: e.target.checked })}
+                      className="h-6 w-6 accent-[var(--k)]"
+                    />
+                    開始前播放玩法說明
+                  </label>
+                  <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
+                    每題作答時間
+                    <select
+                      data-testid="answer-seconds"
+                      value={answerSeconds}
+                      onChange={(e) => setAnswerSeconds(Number(e.target.value))}
+                      className="border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px]"
+                    >
+                      {ANSWER_SECONDS.map((s) => (
+                        <option key={s} value={s}>
+                          {s === 0 ? "關" : `${s} 秒`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
+                    進王門檻
+                    <select
+                      data-testid="boss-threshold"
+                      value={bossThreshold}
+                      onChange={(e) => setBossThreshold(Number(e.target.value))}
+                      className="border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px]"
+                    >
+                      {BOSS_THRESHOLDS.map((n) => (
+                        <option key={n} value={n}>
+                          {`${n} 進度分${n === BOSS_THRESHOLD ? "（標準）" : ""}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="text-[13px]">隊伍多時選低一點，整場比較短；開始後不能改</div>
+                  <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
+                    題庫：
+                    <select
+                      data-testid="host-bank"
+                      value={banks.selected.id}
+                      disabled={banks.loading}
+                      onChange={(e) => {
+                        setBanks((b) => ({ ...b, loading: true })); // until the room answers HOST_BANKS or ERROR
+                        setHealth(null); // another bank's rows
+                        send({ type: "HOST_SET_BANK", bankId: e.target.value });
+                      }}
+                      className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px] text-[var(--k)]"
+                    >
+                      {/* The room's pick may be a bank this host is not offered (no owner key yet) or one since deleted. */}
+                      {(banks.list.some((b) => b.id === banks.selected.id) ? banks.list : [...banks.list, banks.selected]).map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                    {banks.loading && <span className="text-[14px]">載入中…</span>}
+                  </label>
+                </div>
+              )}
             </Panel>
-            <Panel className="mt-auto px-3 py-2">
-              <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
-                <input
-                  type="checkbox"
-                  checked={introOn}
-                  onChange={(e) => setIntroPick({ replay, on: e.target.checked })}
-                  className="h-6 w-6 accent-[var(--k)]"
-                />
-                開始前播放玩法說明
-              </label>
-              <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
-                每題作答時間
-                <select
-                  data-testid="answer-seconds"
-                  value={answerSeconds}
-                  onChange={(e) => setAnswerSeconds(Number(e.target.value))}
-                  className="border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px]"
-                >
-                  {ANSWER_SECONDS.map((s) => (
-                    <option key={s} value={s}>
-                      {s === 0 ? "關" : `${s} 秒`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
-                進王門檻
-                <select
-                  data-testid="boss-threshold"
-                  value={bossThreshold}
-                  onChange={(e) => setBossThreshold(Number(e.target.value))}
-                  className="border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px]"
-                >
-                  {BOSS_THRESHOLDS.map((n) => (
-                    <option key={n} value={n}>
-                      {`${n} 進度分${n === BOSS_THRESHOLD ? "（標準）" : ""}`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="text-[13px]">隊伍多時選低一點，整場比較短；開始後不能改</div>
-            </Panel>
-            <label className="flex items-center gap-2 text-[16px] text-white">
-              題庫：
-              <select
-                data-testid="host-bank"
-                value={banks.selected.id}
-                disabled={banks.loading}
-                onChange={(e) => {
-                  setBanks((b) => ({ ...b, loading: true })); // until the room answers HOST_BANKS or ERROR
-                  setHealth(null); // another bank's rows
-                  send({ type: "HOST_SET_BANK", bankId: e.target.value });
-                }}
-                className="min-w-0 flex-1 border-4 border-[var(--k)] bg-white px-2 py-1 text-[18px] text-[var(--k)]"
-              >
-                {/* The room's pick may be a bank this host is not offered (no owner key yet) or one since deleted. */}
-                {(banks.list.some((b) => b.id === banks.selected.id) ? banks.list : [...banks.list, banks.selected]).map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-              {banks.loading && <span className="text-[14px]">載入中…</span>}
-            </label>
             {sizeWarning && (
               <div data-testid="host-bank-size" role="status" className="text-[15px]" style={{ color: "var(--warn)" }}>
                 ⚠ {bankSizeWarningText(sizeWarning, lobby.length)}
               </div>
             )}
-            <BankHealthPanel
-              health={health}
-              checking={checking}
-              disabled={!ready || banks.loading}
-              onCheck={() => {
-                setChecking(true);
-                if (checkTimer.current) clearTimeout(checkTimer.current);
-                checkTimer.current = setTimeout(stopChecking, BANK_CHECK_WAIT_MS);
-                send({ type: "HOST_BANK_CHECK" });
-              }}
-              screenTest={screenTest}
-              onScreenTest={() => send({ type: "HOST_SCREEN_TEST" })}
-            />
             <PixelButton
               variant="primary"
               className="min-h-[78px] text-[26px]"
@@ -1239,12 +1312,6 @@ export default function HostPage() {
               )}
             </Panel>
 
-            {picks && game.view.teams.some((t) => t.inBossPhase) && (
-              <Panel tone="turn" className="flex items-center gap-2 px-3 py-1">
-                <span className="min-w-0 flex-1 truncate text-[14px]">首領房下一題：{picks.queued.boss ? pickLabel(picks.queued.boss) : "照順序"}</span>
-                {pickButton("boss")}
-              </Panel>
-            )}
             </>
             )}
             {/* The judge area sits right under the question card, above the team rows, so a phone never scrolls for it. */}
@@ -1449,65 +1516,55 @@ export default function HostPage() {
             {!turn?.team && !revealUp && revealButton}
             </div>
 
-            <ul className="flex flex-col gap-2">
+            {/* 指定下一題 for the team up next only; every team's is in ⚙ 更多. */}
+            {nextUp && (
+              <Panel tone="turn" className="flex items-center gap-2 px-3 py-1">
+                <span className="min-w-0 flex-1 truncate text-[14px]">
+                  {`下一隊 ${nextUp.name}：`}
+                  {picks?.queued[nextUp.id] ? <span data-testid="queued-pick">下一題：{pickLabel(picks.queued[nextUp.id])}</span> : "照順序出題"}
+                </span>
+                {pickButton(nextUp.id)}
+              </Panel>
+            )}
+
+            {/* A scoreboard: the teams' buttons are in ⚙ 更多's 隊伍. */}
+            <ul data-testid="host-scoreboard" className="grid grid-cols-2 gap-2">
               {game.view.teams.map((t, i) => (
-                <Panel key={t.id} className={`flex flex-wrap items-center gap-2 px-3 py-1 ${t.online ? "" : "opacity-50"}`}>
-                  {/* The name and its numbers take the whole first row under 768px, so the buttons never squeeze the name to two characters. */}
-                  <div className="flex min-w-0 flex-1 basis-full items-center gap-2 md:basis-0">
-                  <Sprite kind="hero" variant={i} cls={t.classId} scale={1} className="flex-none" />
-                  <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
-                  {t.classId && <span className="text-[13px]" title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "" : t.abilityUses}</span>}
-                  {t.fork && <span data-testid="host-team-fork" className="text-[13px]">🚪 在叉路口</span>}
-                  {t.sneakArmed && <span className="text-[13px]" title={`偷襲準備好了：這題答對${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
-                  {game.view.antiCheat?.on && t.catchesLeft !== undefined && <span className="text-[13px]" title={`神諭剩 ${t.oracleLeft ?? 0} 次、抓包剩 ${t.catchesLeft} 次`}>🔮{t.oracleLeft ?? 0} 🚨{t.catchesLeft}</span>}
-                  {t.oracle && <span className="text-[13px]" title="這題請示了神諭：答對獎勵減半">🔮減半</span>}
-                  <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{Math.min(t.score, game.view.bossThreshold ?? BOSS_THRESHOLD)}/{game.view.bossThreshold ?? BOSS_THRESHOLD}</span>
-                  <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
+                <Panel key={t.id} className={`flex min-w-0 flex-col gap-1 px-2 py-1 ${t.online ? "" : "opacity-50"}`}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Sprite kind="hero" variant={i} cls={t.classId} scale={1} className="flex-none" />
+                    <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
                   </div>
-                  {picks && !t.inBossPhase && !picks.queued[t.id] && pickButton(t.id)}
-                  {/* 🧪 幸運藥水 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. It asks first: a mistap is only undone from 修正. */}
-                  <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => confirm(`給${t.name}一瓶幸運藥水？（給錯了可以在「⚙ 更多」的「修正」收回）`) && send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
-                    {t.item ? "🧪 已有" : "🧪 給藥水"}
-                  </PixelButton>
-                  <PixelButton
-                    className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3"
-                    onClick={() => (!t.online || confirm(`${t.name}還在線上，確定要交給新手機？`)) && send({ type: "HOST_HANDOFF", teamId: t.id })}
-                  >
-                    交給新手機
-                  </PixelButton>
-                  {handoffs[t.id] && (
-                    <div data-testid="handoff-code" className="flex basis-full flex-col gap-1 pl-6 text-[14px]">
-                      <span>請{t.name}的新手機打開房間網址，輸入這組配對碼：</span>
-                      <span className="px-num pl-[0.5em] text-center text-[28px] tracking-[0.5em]">{handoffs[t.id]}</span>
-                      <span className="text-[13px]">{HANDOFF_MS / 60_000} 分鐘內有效，只能用一次。</span>
-                      <PixelButton className="!m-0 min-h-[44px] !py-0 text-[14px]" onClick={() => dropHandoff(t.id)}>
-                        關閉
-                      </PixelButton>
-                    </div>
-                  )}
-                  {picks?.queued[t.id] && (
-                    <div className="flex min-w-0 basis-full items-center gap-2 pl-6 text-[13px]">
-                      <span data-testid="queued-pick" className="min-w-0 flex-1 truncate">下一題：{pickLabel(picks.queued[t.id])}</span>
-                      {pickButton(t.id)}
-                    </div>
-                  )}
+                  <div className="flex flex-wrap items-center gap-x-2 text-[13px]">
+                    {t.classId && <span title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "" : t.abilityUses}</span>}
+                    {t.fork && <span data-testid="host-team-fork">🚪 叉路</span>}
+                    {t.sneakArmed && <span title={`偷襲準備好了：這題答對${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
+                    {game.view.antiCheat?.on && t.catchesLeft !== undefined && <span title={`神諭剩 ${t.oracleLeft ?? 0} 次、抓包剩 ${t.catchesLeft} 次`}>🔮{t.oracleLeft ?? 0} 🚨{t.catchesLeft}</span>}
+                    {t.oracle && <span title="這題請示了神諭：答對獎勵減半">🔮減半</span>}
+                    {t.item && <span title="有一瓶幸運藥水">🧪</span>}
+                    {picks?.queued[t.id] && <span title={`下一題：${pickLabel(picks.queued[t.id])}`}>📌</span>}
+                    <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{Math.min(t.score, game.view.bossThreshold ?? BOSS_THRESHOLD)}/{game.view.bossThreshold ?? BOSS_THRESHOLD}</span>
+                    <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
+                  </div>
                 </Panel>
               ))}
             </ul>
+            {/* A handoff code stays on the page, where the host reads it out (docs/designs/team-handoff.md). */}
+            {game.view.teams.map((t) => handoffs[t.id] && (
+              // Panel takes no data-testid: the wrapper carries it.
+              <div key={t.id} data-testid="handoff-code">
+              <Panel tone="turn" className="flex flex-col gap-1 px-3 py-2 text-[14px]">
+                <span>請{t.name}的新手機打開房間網址，輸入這組配對碼：</span>
+                <span className="px-num pl-[0.5em] text-center text-[28px] tracking-[0.5em]">{handoffs[t.id]}</span>
+                <span className="text-[13px]">{HANDOFF_MS / 60_000} 分鐘內有效，只能用一次。</span>
+                <PixelButton className="!m-0 min-h-[44px] !py-0 text-[14px]" onClick={() => dropHandoff(t.id)}>
+                  關閉
+                </PixelButton>
+              </Panel>
+              </div>
+            ))}
             {game.late && <LateTeams late={game.late} disabled={!ready || !!game.forkBeat} send={send} />}
 
-            <div className="mt-auto flex flex-col">
-            <NarrationPanel
-              narration={narration}
-              pending={isPending(game.eventId, narration)}
-              done={readTo && readTo.eventId === narration?.eventId ? readTo.done : 0}
-              nextLine={nextLine}
-              refusal={editRefusal}
-              disabled={!ready}
-              send={send}
-              eventId={game.eventId}
-            />
-            </div>
           </>
         )}
 
@@ -1558,7 +1615,24 @@ export default function HostPage() {
           code={code}
           onClose={() => setDrawer(false)}
           send={send}
-          ai={game ? aiPanel : null}
+          ai={aiPanel}
+          teams={teamTools || null}
+          pacing={pacingSwitch}
+          lobby={lobbyTools || null}
+          narration={
+            game?.phase === "playing" ? (
+              <NarrationPanel
+                narration={narration}
+                pending={isPending(game.eventId, narration)}
+                done={readTo && readTo.eventId === narration?.eventId ? readTo.done : 0}
+                nextLine={nextLine}
+                refusal={editRefusal}
+                disabled={!ready}
+                send={send}
+                eventId={game.eventId}
+              />
+            ) : null
+          }
           bossable={game?.phase === "playing" ? game.view.teams.filter((t) => !t.inBossPhase) : []}
           bossThreshold={game?.view.bossThreshold}
           playing={game?.phase === "playing"}
@@ -1616,7 +1690,7 @@ function MediaControls({ questionId, media, disabled, send, liveOpen = false, in
   // A command for another question, or none (an older server), is paused.
   const playing = media?.questionId === questionId && media.state === "playing";
   const press = (action: MediaAction) => send({ type: "HOST_MEDIA", questionId, action });
-  const look = (lit: boolean) => ({ minHeight: 56, background: lit ? "var(--ok)" : "var(--cream)" });
+  const look = (lit: boolean) => ({ minHeight: 48, background: lit ? "var(--ok)" : "var(--cream)" });
   // An Instagram embed has no player API: ▶ asks someone at the screen to click it, ⏸ and ⟲ reload it (instagram-explanations.md).
   return (
     <div data-testid="host-media" className="mt-2">
@@ -1634,9 +1708,11 @@ function MediaControls({ questionId, media, disabled, send, liveOpen = false, in
           {instagram ? "⟲ 重新載入" : "⟲ 從頭"}
         </PixelButton>
       </div>
-      <div className="mt-1 text-[13px]" style={{ color: "#6b4a2a" }}>
-        {instagram ? "IG 影片要有人在大螢幕上點一下才會播" : "沒聲音？看大螢幕提示"}
-      </div>
+      {instagram && (
+        <div className="mt-1 text-[13px]" style={{ color: "#6b4a2a" }}>
+          IG 影片要有人在大螢幕上點一下才會播
+        </div>
+      )}
     </div>
   );
 }

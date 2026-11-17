@@ -28,9 +28,28 @@ export async function screenUrl(host: Page): Promise<string> {
   return href;
 }
 
+/** Opens the host's ⚙ 更多 drawer, where the rarer controls live (a no-op when it is open). */
+export async function openMore(host: Page) {
+  if ((await host.getByTestId("more-drawer").count()) === 0) await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await expect(host.getByTestId("more-drawer")).toBeVisible();
+}
+
+/** Closes the host's ⚙ 更多 drawer. */
+export async function closeMore(host: Page) {
+  await host.getByTestId("more-drawer").getByRole("button", { name: "關閉" }).first().click();
+  await expect(host.getByTestId("more-drawer")).toHaveCount(0);
+}
+
+/** Opens the lobby's game settings (修改 ▾): the intro, the answer countdown, 進王門檻 and the bank. */
+export async function openSettings(host: Page) {
+  const toggle = host.getByTestId("host-settings-toggle");
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+}
+
 /** 開始遊戲 without the how-to-play intro, the way every test but the intro's own starts a game
  * (docs/designs/how-to-play.md eng D6). The intro itself is tested in host-controls.spec.ts. */
 export async function startGame(host: Page) {
+  await openSettings(host);
   const intro = host.getByRole("checkbox", { name: "開始前播放玩法說明" });
   await intro.uncheck();
   await clickStart(host);
