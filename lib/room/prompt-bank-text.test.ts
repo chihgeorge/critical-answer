@@ -104,7 +104,7 @@ describe("bank text and the AI narrator's prompt", () => {
     const phaseCard = prompts.find((p) => p.includes(PHASE_RULE));
     expect(phaseCard).toContain(`「${PHASE_NAME}」`);
     expect(phaseCard).toContain(`「${PHASE_RULE}」`);
-    expect(phaseCard).toMatch(/首領階段名稱與規則[^\n]*一律忽略/);
+    expect(phaseCard).toMatch(/首領階段名稱與規則[^\n]*照原意講給玩家聽[^\n]*一律忽略/);
     expect(all.replaceAll(`「${PHASE_NAME}」`, "").replaceAll(`「${PHASE_RULE}」`, "")).not.toMatch(new RegExp(`${PHASE_NAME}|${PHASE_RULE}`));
   });
 });
