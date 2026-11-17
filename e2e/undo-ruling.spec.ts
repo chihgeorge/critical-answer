@@ -33,9 +33,13 @@ test("undo ruling: 冤枉 then 撤回裁決 brings the ruling card back and the 
   await host.getByTestId("more-drawer").getByRole("button", { name: "關閉" }).first().click();
 
   // The team not on turn files the catch (the bundled bank is multipleChoice, so the question is up at once).
-  const catchBtn = phones[0].getByTestId("file-catch").or(phones[1].getByTestId("file-catch"));
-  await expect(catchBtn).toBeVisible();
-  await catchBtn.click();
+  // Two pages: a locator cannot `.or()` across them, so wait until one phone shows the button.
+  let waiting = -1;
+  await expect.poll(async () => {
+    for (const [i, p] of phones.entries()) if (await p.getByTestId("file-catch").isVisible()) waiting = i;
+    return waiting;
+  }).toBeGreaterThanOrEqual(0);
+  await phones[waiting].getByTestId("file-catch").click();
   await expect(host.getByTestId("host-ruling")).toBeVisible();
 
   await host.getByTestId("host-ruling-dismiss").click();

@@ -222,7 +222,7 @@ function WallOptions({ options, gone, magic, lock, wrong, correct, teamName, nar
             text={opt}
             look={look}
             label={label}
-            tabIndex={-1}
+            still
             data-testid={`wall-option-${i}`}
             data-look={look}
             className={`wall${narrow ? " narrow" : ""} absolute !text-[24px] leading-[1.05]`}
@@ -284,7 +284,7 @@ function SortWall({ tiles, narrow }: { tiles: SortTile[]; narrow?: boolean }) {
           text={t.text}
           look={t.look}
           label={t.label}
-          tabIndex={-1}
+          still
           data-testid={`wall-sort-${i}`}
           data-look={t.look}
           className={`wall${narrow ? " narrow" : ""} absolute !text-[24px] leading-[1.05]`}

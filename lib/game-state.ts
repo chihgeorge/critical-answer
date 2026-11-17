@@ -1409,7 +1409,8 @@ export function answerQuestion(
   // Eliminated options and a mage's hint belong to a question still in play: once it leaves (answered, fled, rotated)
   // a later deal of it starts clean.
   // Any team: a room short of questions can deal one question to two teams at once.
-  const stillFaced = nextGame.teams.some((t) => currentQuestionIdOf(nextGame, t.id) === questionId);
+  // A team that fled and was dealt the same question again (a room with one question left) faces it afresh, not still.
+  const stillFaced = nextGame.teams.some((t) => currentQuestionIdOf(nextGame, t.id) === questionId && !(t.id === teamId && outcome.type === "incorrect-flee"));
   const checked = Object.keys(nextGame.checks ?? {}).some((k) => isCheckOn(nextGame, k, questionId));
   if (!stillFaced && (questionId in nextGame.eliminated || questionId in (nextGame.mageHints ?? {}) || checked)) nextGame = { ...nextGame, ...dropEliminated(nextGame, questionId) };
   // This team's check goes once the question is answered or the team has moved off it; a retry keeps it (R6).

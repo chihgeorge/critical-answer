@@ -415,6 +415,8 @@ body {
 .px-opt > span { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
 /* A long team name ends in …; it never pushes the option text out of the tile. */
 .px-opt > i { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; font-style: normal; font-size: 15px; white-space: nowrap; }
+/* The TV's letter chip is the 30px of phone-answering.md D1. */
+.px-opt.wall > b { width: 30px; height: 30px; }
 /* 20px reads from the back of the room; 38% keeps a long name from squeezing the option text. */
 .px-opt.wall > i { max-width: 38%; font-size: 20px; }
 /* A video question's 280px tile: 30% keeps a nine-character option on its two lines. */
