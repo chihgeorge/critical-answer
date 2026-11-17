@@ -25,5 +25,5 @@ Status: shipped in one PR (v0.81). Source: the 2026-11-16 art research (local-on
 ## Not done / follow-ups
 
 - Not seen on the venue TV or projector. If the darks crush, open the screen with `?art=classic`, or set `DUNGEON_ART = false`.
-- Phones and the host page always use the new palette (stone, ambient only); `?art=classic` covers the big screen only.
+- Phones and the host page use the torch-lit palette of the team's biome (ambient only, no torch light); `?art=classic` covers the big screen only, and `DUNGEON_ART = false` reverts them too.
 - After the event, keep one look and delete the other path (TODOS.md).
