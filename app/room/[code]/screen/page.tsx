@@ -1250,7 +1250,8 @@ export default function ScreenPage() {
     }
   }, []);
   /** The eventId of the last served reveal: its late narration line must not cut off 上菜's lines (cooking I1),
-   * nor be read over the next question once 下一題 closes it (closing a reveal does not move eventId). */
+   * nor be read over the next question once 下一題 closes it (closing a reveal does not move eventId). The handoff the
+   * room adds to it after 下一題 is read (`added` in the NARRATION case). */
   const servedEvent = useRef<number | null>(null);
   /** The last STATE showed a reveal. Once 下一題 closed it, a line added to the served reveal's narration is its handoff
    * (the room says it only then), and is read. */

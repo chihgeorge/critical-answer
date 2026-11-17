@@ -2287,7 +2287,7 @@ describe("narration (T5-T7)", () => {
     judgeCorrect(room, hostConn); // Team 0 answers; Team 1 is next, in its first room
     await sleep(40);
     const held = all(room).filter((m) => m.type === "NARRATION").at(-1);
-    const roomMonster = (room as unknown as { heldHandoff: { next: { monster: string } } }).heldHandoff.next.monster;
+    const roomMonster = all(room).filter((m) => m.type === "STATE").at(-1)!.question.monster.name; // the next team faces it: the held line names it
     send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: currentTurnTeamId(room.game!) });
     expect(all(room).filter((m) => m.type === "NARRATION").at(-1)).toEqual(held); // nothing over the reveal
     serveNext(room, hostConn, seqOf(room));
@@ -3232,6 +3232,28 @@ describe("story moves on to the next team (two-line narration)", () => {
     const t = sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT").entries;
     expect(t.at(-1).sources.at(-1)).toBe("scripted");
     expect(t.at(-1).lines.at(-1)).toContain("Team 1");
+  });
+
+  // Value: protects=a slow AI narration landing after 送王房 and 下一題 does not name the room monster the team left;
+  // fails_when=emit keeps the handoff it was given for a turn that moved (review finding).
+  it("a narration landing after 送王房 and 下一題 names the boss, not the room monster", async () => {
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow = { name: "llm", narrate: async () => (++calls === 1 ? "開場\n輪到 Team 0，上吧" : (await gate, "結果\n輪到 Team 1，軟趴趴史萊姆擋路")) };
+    const { room, hostConn } = begin(2, { holdMs: 5000, epilogueDelayMs: 0, provider: slow });
+    await sleep(40);
+    judge(room, hostConn); // Team 0 answers; the AI line is still on its way
+    send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: currentTurnTeamId(room.game!) });
+    serveNext(room, hostConn, seqOf(room)); // 下一題 before the line lands
+    release();
+    await sleep(40);
+    const boss = all(room).filter((m) => m.type === "STATE").at(-1)!.question;
+    expect(boss.boss).toBe(true);
+    const n = narrs(room).at(-1);
+    expect(n.lines[0]).toBe("結果");
+    expect(n.lines.at(-1)).toContain(boss.monster.name);
+    expect(n.lines.join("")).not.toContain("軟趴趴史萊姆擋路");
   });
 
   it("uses the model's own second line for atmosphere, but still falls back to scripted for the transition it didn't write", async () => {

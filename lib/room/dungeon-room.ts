@@ -798,12 +798,16 @@ export class DungeonRoom {
         // Cleared before the broadcast, so the one save it triggers cannot bring the line back after a restart.
         const said = gen !== undefined && this.nextLine?.gen === gen;
         if (said) this.nextLine = null;
-        // The stage keeps the answered room's monster until 下一題: the handoff naming the next team's monster would
-        // be read over it, so it is dropped here and closeReveal says it once the stage shows that team. Before the held
-        // lines go on, so a sprint or potion line held for this narration stays.
-        if (this.reveal && eventId === this.eventSeq && event.next) {
-          this.heldHandoff = { eventId, line: lines[lines.length - 1], next: event.next };
-          lines = lines.slice(0, -1);
+        // The runner's last line names the next team (its handoff). The stage keeps the answered room's monster until
+        // 下一題, so the handoff would be read over it: it is dropped here and closeReveal says it once the stage shows
+        // that team. Before the held lines go on, so a sprint or potion line held for this narration stays. With no
+        // reveal (it closed before this landed), a turn that moved meanwhile (送王房) gets a handoff for the team on turn.
+        if (event.next && eventId === this.eventSeq && lines.length > 1) {
+          const handoff = lines[lines.length - 1];
+          if (this.reveal) {
+            this.heldHandoff = { eventId, line: handoff, next: event.next };
+            lines = lines.slice(0, -1);
+          } else lines = [...lines.slice(0, -1), this.freshHandoff(handoff, event.next) ?? handoff];
         }
         // A held line goes out with its narration, unless the game ended meanwhile.
         if (this.game?.phase === "playing") lines = [...lines, ...held];
@@ -1116,7 +1120,7 @@ export class DungeonRoom {
     // held back joins it now.
     const h = s.heldHandoff;
     const n = this.lastNarration;
-    if (h && n?.eventId === h.eventId && n.lines.length < NARRATION_MAX_LINES) this.lastNarration = { ...n, lines: [...n.lines, h.line], rev: n.rev + 1 };
+    if (h && s.game?.phase === "playing" && n?.eventId === h.eventId && n.lines.length < NARRATION_MAX_LINES) this.lastNarration = { ...n, lines: [...n.lines, h.line], rev: n.rev + 1 };
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
     this.podium = s.podium ?? null;
@@ -2586,6 +2590,7 @@ export class DungeonRoom {
     }
     this.clearAnswerTimers();
     this.reveal = this.eventReveal = null;
+    this.heldHandoff = null;
     this.phaseCard = false;
     this.phaseCardDue = false;
     this.intro = null;
@@ -2865,19 +2870,25 @@ export class DungeonRoom {
 
   private closeReveal() {
     this.reveal = null;
+    // The narration on show dropped its handoff while the reveal held the stage (emit): say it now, after the STATE that
+    // shows the team on turn. A phase card narrates its own.
+    const held = this.heldHandoff?.eventId === this.eventSeq && this.lastNarration?.eventId === this.eventSeq ? this.heldHandoff : null;
+    this.heldHandoff = null;
     // A hit that ended a boss phase showed its answer first; the phase card comes next (boss-phases.md).
     if (this.game?.phase === "playing" && this.game.boss.phasePending) return this.openPhaseCard();
-    // The narration on show dropped its handoff while the reveal held the stage (emit): say it now, after the STATE that
-    // shows the team on turn. Worked out now, so it names whoever is on turn and whatever they face (送王房 included),
-    // and a restart in between loses nothing. A fork opening in broadcastState moves eventSeq on: its line wins.
-    const due = this.lastNarration?.eventId === this.eventSeq ? this.eventSeq : null;
-    const held = this.heldHandoff?.eventId === due ? this.heldHandoff : null;
-    this.heldHandoff = null;
     this.broadcastState();
-    const next = due === this.eventSeq ? this.nextTurn() : null;
-    if (due === null || !next) return;
-    const same = held && held.next.team === next.team && held.next.monster === next.monster && held.next.boss === next.boss && !!held.next.fork === !!next.fork;
-    this.appendLine(due, same ? held.line : this.scripted.nextLine(next), MAX_LINE);
+    // A fork opening in broadcastState moves eventSeq on: its line wins.
+    const line = held && held.eventId === this.eventSeq ? this.freshHandoff(held.line, held.next) : null;
+    if (held && line) this.appendLine(held.eventId, line, MAX_LINE);
+  }
+
+  /** `line`, the handoff that named `named`, if that team is still on turn facing that monster; else a scripted one for
+   * whoever is on turn (送王房 moved them, say); null when nobody is. */
+  private freshHandoff(line: string, named: NextTurn): string | null {
+    const now = this.nextTurn();
+    if (!now) return null;
+    const same = now.team === named.team && now.monster === named.monster && now.boss === named.boss && !!now.fork === !!named.fork;
+    return same ? line : this.scripted.nextLine(now);
   }
 
   /** Starts the boss's next phase and shows its card until 下一題. `announce` is false on a restart, which
@@ -3603,9 +3614,11 @@ export class DungeonRoom {
       this.game = sendToBoss(this.game, teamId, this.rng);
       this.broadcastState();
       // The owl's last 「輪到…」 line named the room monster this team just left: it now faces the boss.
-      // During a reveal the handoff waits for 下一題 (closeReveal), which names the boss then.
-      const next = onTurn && !this.reveal ? this.nextTurn() : null;
-      if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next));
+      const next = onTurn ? this.nextTurn() : null;
+      // During a reveal the handoff waits for 下一題 (closeReveal): the held one now names the boss, so a restart says it too.
+      if (next && this.reveal) {
+        if (this.heldHandoff?.eventId === this.eventSeq) this.heldHandoff = { ...this.heldHandoff, line: this.scripted.nextLine(next), next };
+      } else if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next));
     } catch (err) {
       this.sendInvalid(conn, err);
     }
@@ -4769,6 +4782,7 @@ export class DungeonRoom {
     this.game = { ...game, antiCheat: { ...game.antiCheat!, undone: (now.antiCheat?.undone ?? 0) + 1 } };
     this.undo = null;
     this.reveal = null;
+    this.heldHandoff = null; // it named the turn the undo takes back
     // A clip the host played over the caught answer stops: the open catch holds the question again.
     if (this.media?.questionId === undo.questionId && this.media.state === "playing") this.media = { ...this.media, state: "paused", press: this.media.press + 1 };
     console.log(JSON.stringify({ event: "catch_ruling_undone", upheld: undo.verdict.upheld, teamId: undo.teamId }));
