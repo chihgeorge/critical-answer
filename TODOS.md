@@ -27,7 +27,6 @@
 - [活動後用對局紀錄對一次職業勝率](#活動後用對局紀錄對一次職業勝率) — S，活動後
 - [存檔可能放回已經刪掉的圖片](#存檔可能放回已經刪掉的圖片) — S，活動後
 - [OpenRouter 一鍵登入拿 key，手機主持人不用複製貼上](#openrouter-一鍵登入拿-key手機主持人不用複製貼上) — M
-- [手機答題模式（選擇題 + 自動判定）](#手機答題模式選擇題--自動判定) — L（人工約 1 週 / CC 約半天）
 - [手機答題的剩餘小風險（/review 2026-10-25）](#手機答題的剩餘小風險review-2026-10-25) — 未註明
 - [手機顯示題目的剩餘小風險（/ship 2026-10-29）](#手機顯示題目的剩餘小風險ship-2026-10-29) — 未註明
 - [逃跑・換房（完整版）](#逃跑換房完整版) — M（人工約 1-2 天 / CC 約 1 小時），活動後
@@ -46,7 +45,6 @@
 
 - [回滾後可能留下沒刪的媒體檔（multi-bank）](#回滾後可能留下沒刪的媒體檔multi-bank) — S，活動後
 - [題庫編輯器的三個小問題（/qa 2026-11-14）](#題庫編輯器的三個小問題qa-2026-11-14) — S，活動後
-- [Host 自訂題庫文字進 LLM prompt 前的內容審核](#host-自訂題庫文字進-llm-prompt-前的內容審核) — 未註明
 - [量 e2e 對前端（app/、components/）的實際覆蓋率](#量-e2e-對前端appcomponents的實際覆蓋率) — M
 - [開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）](#開發工具鏈剩-5-個-npm-audit-漏洞上游沒有修補版) — S
 - [ESLint 10 / TypeScript 7 升級被上游卡住](#eslint-10--typescript-7-升級被上游卡住) — 不確定（等上游）
@@ -331,26 +329,6 @@
 
 ---
 
-## 手機答題模式（選擇題 + 自動判定）
-
-**What:** 題目改成選擇題，玩家在手機選答案，系統自動判定，host 不再手動按對錯。
-
-**Why:** 手機在遊戲中幾乎閒置，host 也被綁在判定工作上（審查 E6）。
-
-**Context:**
-- `docs/designs/phone-answering.md`
-
-**Effort/Priority:** L（人工約 1 週 / CC 約半天） / P3
-
-**Depends on:** 第二次真人測試結果，題庫格式定案。
-
-**Notes:**
-- Pros：手機變主角；host 可以下場玩。
-- Cons：改變第一輪已驗證的核心玩法；題庫要全部重寫並加迷惑選項；重答與逃跑規則要重新設計手機 UI。
-- Context 補充：見同上 CEO plan。風險最高，應在氛圍假設驗證後再評估。v0.11.0.0 已上第一階段（`docs/designs/phone-answering.md` PR 1）：手機選擇、鎖定、自動判定、重答／逃跑，第一房只有 6 題示範選擇題。第二階段（PR 2）也已完成：預設題庫 52 題全部改成四選一（第一房 12 題，其他房和王各 8 題）。剩下：正式環境的題庫存在 BankStore 裡，要另外重新種子（使用者決定），否則正式環境還是舊的文字題。
-
----
-
 ## 手機答題的剩餘小風險（/review 2026-10-25）
 
 **What:** 處理「手機答題的剩餘小風險（/review 2026-10-25）」所述事項。
@@ -540,31 +518,6 @@
 
 ---
 
-## Host 自訂題庫文字進 LLM prompt 前的內容審核
-
-**What:** 對 host 自訂的題庫文字（問題、答案）進行基本的輸入淨化與 prompt injection 防護，才餵進敘事狀態層生成 DM 旁白的 LLM prompt。
-
-**Why:** 第二輪才會接 LLM API 與敘事狀態層，但 host 題庫編輯 UI 若在那之前就先做，容易忘記在資料流的哪一段加防護。
-
-**Context:**
-- `docs/designs/critical-answer-party-game.md`
-
-**Effort/Priority:** 未註明 / P4
-
-  - **Depends on:** 第二輪的敘事狀態管理層 + LLM API 接入（Next Steps 第 5-6 步）。
-  - **更新（2026-09-20，第二輪實作完成）：** 隊伍名稱進 prompt 的部分已完成並驗證：名稱以「」引起來當資料（並拿掉引號字元）、系統提示明講裡面的指示一律忽略、題目文字與答案完全不進 prompt、輸出驗證（長度、標記、不含題庫答案）。真的 API 測試也確認藏在隊伍名稱裡的指令不會被照做。**仍待處理：** host 自訂題庫文字，等題庫編輯介面出現時再做。
-  - **更新（2026-09-18 /plan-ceo-review）：** 第二輪 LLM 旁白已進入範圍，此項不再被擋住。第二輪只處理「隊伍名稱進 prompt」（資料引號化、答案與答錯時的題目文字不進 prompt、輸出驗證，見 CEO plan D8/D19）；host 自訂題庫文字仍待題庫編輯 UI 出現時再處理。
-  - **更新（2026-09-22，`/plan-eng-review` question-bank-editor）：** 這條 TODO 等的「題庫編輯介面」這輪要做了，但範圍不變——題目文字/答案本來就不進 prompt（見上，已有防護），所以題庫變成可編輯並不會新增暴露面。真正要處理的情境是：如果未來旁白 prompt 改成會讀題目文字（例如題目本身要融入敘事），才需要回頭做這條 TODO 描述的淨化。用戶決定繼續延後，本次只更新現狀說明。
-  - 見 [docs/designs/question-bank-editor.md](docs/designs/question-bank-editor.md)。
-  - **更新（2026-10-03，`/cso` 稽核）：** 重新確認：`lib/narration/llm.ts` 的 `buildPrompt` 只放隊伍名、怪物名、分數與主持人導演筆記，題目文字與答案都不進 prompt；名稱以「」包起來並移除引號字元。這條只有在旁白開始讀題目文字時才需要，降為 P4。
-
-**Notes:**
-- Pros：避免惡意或不當的 host 輸入內容污染 LLM 輸出（例如注入指令改變旁白行為，或產生不當內容）。
-- Cons：需要額外設計淨化規則，可能誤傷正常題目內容（過度過濾）。
-- Context 補充：見 [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) 的 Open Questions（「Host 自訂題庫的文字內容進入 LLM 旁白 prompt 前」）。
-
----
-
 ## 量 e2e 對前端（app/、components/）的實際覆蓋率
 
 **What:** 讓 Next.js 在 e2e 建置時產生 source map，用 Playwright 收集 V8 coverage，算出 `app/` 與 `components/`（約 2,400 行）被 e2e 跑到多少。
@@ -662,6 +615,14 @@
 ## Completed
 
 細節見 CHANGELOG.md 與 git 歷史。
+
+## Host 自訂題庫文字進 LLM prompt 前的內容審核
+
+- **題目、答案、選項、排序項目和詳解都不進 AI 旁白的 prompt** · 版號合併時定 · 重新看過每一條組 prompt 的路徑（`lib/narration/llm.ts` 是唯一的 LLM 呼叫）：題庫裡只有首領階段的名稱和規則會進去（階段卡那句，和晚到的隊伍踏進首領房那句），本來就用「」包起來並拿掉引號字元，這次系統提示也講明裡面的指示一律忽略。`lib/room/prompt-bank-text.test.ts` 用每個字串都是記號的題庫跑完整一局 AI 旁白，確認題目字串一個都沒出現在 prompt 裡。沒有涵蓋：欄位標籤和卡點題只出現在搶答階段，這局沒玩到。
+
+## 手機答題模式（選擇題 + 自動判定）
+
+- **正式環境的預設題庫已經是選擇題** · 版號合併時定 · 2026-11-16 用 `npm run canary:live` 在正式站開房（不用站長金鑰），第一題在手機上是四個選項加「鎖定答案」，不再是舊的文字題。設計見 `docs/designs/phone-answering.md`。
 
 ## 其他 e2e spec 也在每個測試開始前關掉留下的 context
 
