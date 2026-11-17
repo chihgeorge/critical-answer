@@ -60,6 +60,39 @@ describe("drawSprite", () => {
   });
 });
 
+// Value: protects=each class (#324) draws its own look in the team's colour, with a blink frame, and an unknown class
+// falls back to the plain hero; fails_when=a grid is dropped, mistyped (a letter with no colour) or the cls is not
+// passed through; seam=a 2D context that keeps the flushed pixels; no_claim=how good they look (PNG review)
+describe("class heroes (#324)", () => {
+  const pixels = (look: number, cls?: string, blink = false) => {
+    let data: Uint8ClampedArray | null = null;
+    const ctx = {
+      createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+      putImageData: (img: { data: Uint8ClampedArray }) => (data = img.data),
+    };
+    drawSprite({ width: 0, height: 0, getContext: () => ctx } as unknown as HTMLCanvasElement, "hero", look, blink, cls);
+    return Array.from(data!).join(",");
+  };
+  const CLASSES = ["mage", "cleric", "warrior", "thief", "chef"];
+
+  it("gives each class its own look, apart from the plain hero and each other", () => {
+    const looks = [pixels(1), ...CLASSES.map((c) => pixels(1, c))];
+    expect(new Set(looks).size).toBe(looks.length);
+    expect(looks.every((p) => !p.includes("NaN"))).toBe(true);
+  });
+
+  it("blinks, and keeps the team's colour", () => {
+    for (const c of CLASSES) {
+      expect(pixels(1, c, true), c).not.toBe(pixels(1, c));
+      expect(pixels(1, c), c).not.toBe(pixels(3, c));
+    }
+  });
+
+  it("draws a class this page does not know as the plain hero", () => {
+    expect(pixels(2, "bard")).toBe(pixels(2));
+  });
+});
+
 describe("hats on a repeat appearance (docs/designs/monster-catalog.md §3)", () => {
   // Value: protects=every hat, anchored on every room monster's head, stays inside the monster's canvas, and is 8–11 cells wide (R5); fails_when=an anchor or a hat grid grows past the canvas; why_new=new sprites; seam=none; no_claim=how good they look (PNG review)
   it("fits every hat on every room monster", () => {

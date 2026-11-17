@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, EAT_AT_MS, EAT_BITE_MS, EAT_MS, FINISH_PODIUM_MS, type AnswerReveal, type PodiumReveal } from "@/lib/protocol";
 import { revealMarks } from "@/lib/podium";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
+import type { ClassId } from "@/lib/game-state";
 import { Panel, prefersReducedMotion, Sprite } from "@/components/pixel";
 import { monsterById } from "@/lib/monster-catalog";
 import { dishScale, emptyPlateScale } from "@/lib/pixel-art";
@@ -162,7 +163,7 @@ export function CookFrame({ step, bottom }: { step: 1 | 2; bottom: number }) {
 /** The cooked dish where the monster stood (step 3), tinted like it, with its card above in the answer panel's place.
  * The picture is at most about 130px tall so it clears the card. From step 4 the eater (`eater`, the team's look index;
  * none when the team has left) stands left of it and eats it in three bites, then the empty plate (eat-dish.md). */
-export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom, step = 3, eater = -1 }: { dish: Dish; title?: string; cardTop: number; bottom: number; step?: ServeStep; eater?: number }) {
+export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom, step = 3, eater = -1, eaterClass }: { dish: Dish; title?: string; cardTop: number; bottom: number; step?: ServeStep; eater?: number; eaterClass?: ClassId }) {
   const kind = Object.hasOwn(DISH_SPRITE, dish.monster.sprite) ? DISH_SPRITE[dish.monster.sprite] : DISH_SPRITE.slime; // a newer server's sprite: the slime's dish
   const bites = Math.max(0, step - 3);
   const scale = bites >= 4 ? emptyPlateScale(kind) : dishScale(kind);
@@ -185,11 +186,11 @@ export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom, ste
           {chew ? (
             // The chew: eyes open, then shut and squashed like px-idle, flicked like the pot.
             <div className="relative" style={{ width: 96, height: 96 }}>
-              <Sprite kind="hero" variant={eater} scale={4} blink={false} className="px-tf1 absolute inset-0" />
-              <Sprite kind="hero" variant={eater} scale={4} blink className="px-tf2 absolute inset-0" style={{ transform: "scale(1.05, 0.95)", transformOrigin: "50% 100%" }} />
+              <Sprite kind="hero" variant={eater} cls={eaterClass} scale={4} blink={false} className="px-tf1 absolute inset-0" />
+              <Sprite kind="hero" variant={eater} cls={eaterClass} scale={4} blink className="px-tf2 absolute inset-0" style={{ transform: "scale(1.05, 0.95)", transformOrigin: "50% 100%" }} />
             </div>
           ) : (
-            <Sprite kind="hero" variant={eater} scale={4} blink={false} />
+            <Sprite kind="hero" variant={eater} cls={eaterClass} scale={4} blink={false} />
           )}
         </div>
       )}

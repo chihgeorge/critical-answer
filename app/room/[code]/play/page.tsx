@@ -1016,7 +1016,7 @@ export default function PlayPage() {
       {/* While waiting, the roster above already highlights our own team. */}
       {game && (
         <Panel tone={isMyTurn && !initiative ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
-          <Sprite kind="hero" variant={myIndex} scale={3} className="flex-none" />
+          <Sprite kind="hero" variant={myIndex} cls={myTeam?.classId} scale={3} className="flex-none" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
             {myTeam?.classId && (
@@ -1169,7 +1169,7 @@ export default function PlayPage() {
           <ul data-testid="roster" className="flex flex-col gap-2">
             {lobby.map((t, i) => (
               <Panel key={t.id} tone={t.id === teamId ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-2">
-                <Sprite kind="hero" variant={i} scale={2} className="flex-none" />
+                <Sprite kind="hero" variant={i} cls={t.classId} scale={2} className="flex-none" />
                 <span className="min-w-0 flex-1 truncate text-[18px]">{t.name}</span>
                 {t.classId && <span className="text-[14px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</span>}
                 {t.id === teamId && <span className="text-[14px]">你們</span>}

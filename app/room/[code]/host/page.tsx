@@ -833,7 +833,7 @@ export default function HostPage() {
             <ul className="flex flex-col gap-2">
               {lobby.map((t, i) => (
                 <Panel key={t.id} className="flex items-center gap-3 px-3 py-2">
-                  <Sprite kind="hero" variant={i} scale={2} />
+                  <Sprite kind="hero" variant={i} cls={t.classId} scale={2} />
                   {/* The class under the name: on a 360 px phone a name beside it and two buttons was cut to 「E…」. */}
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[18px]">{t.name}</div>
@@ -1454,7 +1454,7 @@ export default function HostPage() {
                 <Panel key={t.id} className={`flex flex-wrap items-center gap-2 px-3 py-1 ${t.online ? "" : "opacity-50"}`}>
                   {/* The name and its numbers take the whole first row under 768px, so the buttons never squeeze the name to two characters. */}
                   <div className="flex min-w-0 flex-1 basis-full items-center gap-2 md:basis-0">
-                  <Sprite kind="hero" variant={i} scale={1} className="flex-none" />
+                  <Sprite kind="hero" variant={i} cls={t.classId} scale={1} className="flex-none" />
                   <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
                   {t.classId && <span className="text-[13px]" title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "" : t.abilityUses}</span>}
                   {t.fork && <span data-testid="host-team-fork" className="text-[13px]">🚪 在叉路口</span>}

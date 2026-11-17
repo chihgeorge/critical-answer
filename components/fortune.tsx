@@ -3,7 +3,7 @@
 // 占卜師 (docs/designs/fortune-teller.md): the pizza of effects, one slice lit once picked, and the effect card naming the
 // teams the condition hit. Shared by the big screen and the phones. Pure view, no question or answer.
 
-import { FORTUNE_EFFECTS, type FortuneEffect } from "@/lib/game-state";
+import { FORTUNE_EFFECTS, type ClassId, type FortuneEffect } from "@/lib/game-state";
 import { FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 import type { FortuneView } from "@/lib/protocol";
 import { prefersReducedMotion, Sprite } from "./pixel";
@@ -42,7 +42,7 @@ export function FortunePizza({ lit, size }: { lit?: FortuneEffect; size: number 
 }
 
 /** The effect card (step 4): the effect, the count that hit, and each matching team's hero. */
-export function FortuneCard({ fortune, teams, heroScale }: { fortune: FortuneView; teams: { id: string; name: string }[]; heroScale: number }) {
+export function FortuneCard({ fortune, teams, heroScale }: { fortune: FortuneView; teams: { id: string; name: string; classId?: ClassId }[]; heroScale: number }) {
   if (!fortune.effect || !fortune.matchIds) return null;
   const fx = FORTUNE_EFFECT_TEXT[fortune.effect];
   const unit = FORTUNE_CONDITION_TEXT[fortune.condition].unit;
@@ -56,7 +56,7 @@ export function FortuneCard({ fortune, teams, heroScale }: { fortune: FortuneVie
           const idx = teams.findIndex((t) => t.id === id);
           return (
             <div key={id} className="flex flex-col items-center gap-1" style={{ maxWidth: 160 }}>
-              <Sprite kind="hero" variant={Math.max(0, idx)} scale={heroScale} />
+              <Sprite kind="hero" variant={Math.max(0, idx)} cls={teams[idx]?.classId} scale={heroScale} />
               <div className="w-full truncate">{teams[idx]?.name ?? ""}</div>
             </div>
           );
