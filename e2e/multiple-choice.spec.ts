@@ -269,6 +269,86 @@ test("phone answering: a lock the room never answers shows 沒送出，再按一
   await expect(team.getByRole("button", { name: "鎖定答案" })).toBeEnabled();
 });
 
+// Value: protects=a lock the room refuses says 沒送出 at once, not after the 3 s confirm wait; fails_when=the phone ignores
+// the lock's ERROR; why_new=the 3 s test above covers only a lost message; seam=routeWebSocket answers the lock with the
+// room's own refusal; no_claim=a real refusal race between two phones (lib/room tests)
+test("phone answering: a lock the room refuses shows 沒送出，再按一次 at once", async ({ browser, request }) => {
+  await seedSingleMcQuestion(request);
+  const { team } = await startOneTeam(browser, (page) =>
+    page.routeWebSocket(/localhost:1996/, (ws) => {
+      const server = ws.connectToServer();
+      ws.onMessage((m) => {
+        if (typeof m === "string" && m.includes('"TEAM_LOCK_OPTION"')) return ws.send(JSON.stringify({ type: "ERROR", error: "invalid_action", detail: "selection_changed" }));
+        server.send(m);
+      });
+    }),
+  );
+  await team.getByRole("button", { name: "藍色" }).click();
+  await team.getByRole("button", { name: "鎖定答案" }).click();
+  await expect(team.getByText("沒送出，再按一次")).toBeVisible({ timeout: 1_500 });
+  await expect(team.getByRole("button", { name: "鎖定答案" })).toBeEnabled();
+});
+
+// Value: protects=a long local-bank question scrolls inside its strip instead of pushing 鎖定答案 / 逃跑 off an iPhone 12;
+// fails_when=the strip loses its height cap; why_new=the 390x844 test above uses the longest default question (34 chars);
+// seam=none; no_claim=reading the whole question (it scrolls)
+test("phone answering: a 100-character question stops at 5 lines and keeps 鎖定答案 and 逃跑 on a 390x844 screen", async ({ browser, request }) => {
+  const text = "在這座地城的第七層，傳說有一位會說十二種語言的老魔法師，他每天早上都會在石橋邊餵一群會唱歌的烏鴉，而且只用左手；請問那群烏鴉最常唱的是哪一首歌，又是誰教牠們的呢？";
+  await seedSingleMcQuestion(request, { text, options: ["〈Power〉", "〈Fantastic Baby〉", "〈Home Sweet Home〉", "〈小蘋果 G-Dragon Remix〉"], correctIndex: 0 });
+  const { host, team } = await startOneTeam(browser, undefined, { width: 390, height: 844 });
+  const strip = team.getByRole("heading", { name: text });
+  await expect(strip).toBeVisible();
+  expect((await strip.boundingBox())!.height).toBeLessThanOrEqual(5 * 27 + 20 + 1);
+  const bottom = (name: RegExp) => team.getByRole("button", { name }).evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
+  await team.getByRole("button", { name: "〈Fantastic Baby〉" }).click();
+  expect(await bottom(/鎖定答案/)).toBeLessThanOrEqual(844);
+  await team.getByRole("button", { name: "鎖定答案" }).click();
+  await revealLock(host);
+  await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
+  expect(await bottom(/逃跑・換房/)).toBeLessThanOrEqual(844);
+});
+
+// Value: protects=a phone that reloads during the reveal does not show the answered question it never saw (phone-question-text.md
+// D6, accepted); fails_when=the reveal panel shows the next question's text as if it were the answered one; why_new=TODOS 手機顯示題目
+// item 4; seam=none; no_claim=which question comes next
+test("phone answering: a phone that reloads during the reveal shows no question text", async ({ browser, request }) => {
+  await seedSingleMcQuestion(request);
+  const { host, team } = await startOneTeam(browser);
+  await team.getByRole("button", { name: "綠色" }).click();
+  await team.getByRole("button", { name: "鎖定答案" }).click();
+  await revealLock(host);
+  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the crit die
+  await expect(team.getByRole("heading", { name: "地城之門是什麼顏色？" })).toBeVisible();
+  await team.reload();
+  await expect(team.getByText(/^答對了！/)).toBeVisible();
+  await expect(team.getByRole("heading", { name: "地城之門是什麼顏色？" })).toHaveCount(0);
+});
+
+// Value: protects=only the answering team's phone shows the question strip (phone-question-text.md D2); fails_when=a waiting
+// phone shows the multiple-choice strip or options; why_new=TODOS 手機顯示題目 item 4; seam=none; no_claim=turn order
+test("phone answering: a waiting phone shows no question strip", async ({ browser, request }) => {
+  await seedSingleMcQuestion(request);
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  const phones: import("@playwright/test").Page[] = [];
+  for (const name of ["甲隊", "乙隊"]) {
+    const page = await (await browser.newContext({ viewport: { width: 375, height: 667 } })).newPage();
+    await page.goto(`/room/${code}/play?name=${encodeURIComponent(name)}`);
+    await expect(page.getByText("等待主持人開始遊戲")).toBeVisible();
+    phones.push(page);
+  }
+  await startGame(host);
+  const myTurn = (p: import("@playwright/test").Page) => p.getByText("輪到我們了！").count();
+  await expect.poll(async () => (await myTurn(phones[0])) + (await myTurn(phones[1]))).toBe(1);
+  const [up, waiting] = (await myTurn(phones[0])) ? phones : [phones[1], phones[0]];
+  await expect(up.getByRole("heading", { name: "地城之門是什麼顏色？" })).toBeVisible();
+  await expect(waiting.getByRole("heading", { name: "地城之門是什麼顏色？" })).toHaveCount(0);
+  await expect(waiting.getByRole("button", { name: "鎖定答案" })).toHaveCount(0);
+});
+
 // Value: protects=at game end our own 答對了 panel steps aside so 遊戲結束 sits near the top (/review D1 B); fails_when=the !finished guard on the correct-lock panel is dropped; why_new=no spec reaches 遊戲結束 after a lock; seam=routeWebSocket injects a real GAME_OVER message; no_claim=a real boss kill
 test("phone answering: when the game ends, our own 答對了 panel gives way to 遊戲結束", async ({ browser, request }) => {
   await seedSingleMcQuestion(request);

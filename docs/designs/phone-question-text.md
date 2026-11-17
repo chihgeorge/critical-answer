@@ -59,6 +59,7 @@ None left. Design review settled media and style (D2, D4 to D6); eng review sett
 Mockups were rendered from the project's real compiled CSS and Cubic 11 font at 390×844 (the gstack designer had no OpenAI key). They are local-only, in the session scratchpad.
 
 - **D2: question strip style C.** A full-width strip at the top of the turn panel: `--k` background, `--cream` text, 20px Cubic 11, line-height 1.35, padding 10px 12px, flush with the panel's top and side edges (negative margin over the panel's 10px padding). Contrast about 14:1. It shares no look with the option tiles, so nobody reads it as a fifth option, and it stays apart from the 答錯了 header. It is an `h2`; the options sit in a `role="group"` container whose `aria-labelledby` points at it.
+  **Update (2026-11-16):** the strip stops at 5 lines (`max-height` 5 lines plus its padding) and scrolls inside itself, so a long question from a local bank (no length cap) never pushes 鎖定答案 or 下輪再答／逃跑 off a 390×844 screen.
 - **D4: the strip stays on the team's own correct-lock reveal panel.**
 - **D5: media under the turn panel on the team's own turn**, with no remount. (Eng review R1 replaced the CSS `order` mechanism with a fixed media slot.)
 - **D6: the reveal strip uses the phone's last shown question**, matched by `reveal.questionId`.

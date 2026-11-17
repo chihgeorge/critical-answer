@@ -22,7 +22,9 @@ answer = lambda q: q["options"][q["correctIndex"]] if q["kind"] == "multipleChoi
 # The question's words: a legacy bare `text`, or `content.value` when the content is text,
 # plus the optional `prompt` an image or YouTube question carries. Image keys and video ids are skipped.
 words = lambda q: [w for w in (q.get("text"), (q.get("content") or {}).get("value") if (q.get("content") or {}).get("kind") == "text" else None, q.get("prompt")) if w]
-leaks = [q["id"] for q in qs if answer(q) in blob or any(w in blob for w in words(q))]
+# A short choice ("6 個") turns up in unrelated UI text: it counts only as a whole string literal, as leaked bank data carries it.
+shown = lambda q: json.dumps(answer(q), ensure_ascii=False) if q["kind"] == "multipleChoice" and len(answer(q)) <= 4 else answer(q)
+leaks = [q["id"] for q in qs if shown(q) in blob or any(w in blob for w in words(q))]
 leaks += [s for s in secrets if s in blob]
 if leaks:
     print("LEAK in client bundle:", leaks[:5]); sys.exit(1)

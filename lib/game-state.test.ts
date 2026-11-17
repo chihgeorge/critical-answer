@@ -738,6 +738,17 @@ describe("question deck (T2)", () => {
     expect(new Set(game.revealedQuestionIds)).toEqual(new Set(["room0-q1", "room0-q2", "room0-q3"]));
   });
 
+  // Value: protects=a flee that deals the same question back (one question left) starts it clean; fails_when=the flee
+  // counts the fleeing team as still facing it; why_new=TODO 手機答題的剩餘小風險 item 8
+  it("a flee that deals the same question back clears its eliminated options", () => {
+    let g = createGame(seeds(1), ...deck(1, 1, 1), boss, cfg, 1, first);
+    const q = g.teams[0].currentQuestionId;
+    g = recordWrongLock(g, "T0", q, 1);
+    const { game } = answerQuestion(g, "T0", q, false, "flee", first);
+    expect(game.teams[0].currentQuestionId).toBe(q);
+    expect(game.eliminated[q]).toBeUndefined();
+  });
+
   it("fleeing never marks a question revealed, so it can come straight back", () => {
     let game = createGame(seeds(1), ...deck(1, 1, 2), boss, cfg, 1, first);
     const q1 = game.teams[0].currentQuestionId;
