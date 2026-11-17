@@ -1959,12 +1959,36 @@ export function drawSprite(cv: HTMLCanvasElement, kind: SpriteKind, variant = 0,
 
 /* ---------- scene backgrounds ---------- */
 
-export type SceneTheme = "stone" | "moss" | "crimson";
+/**
+ * The revert switch for the torch-lit dungeon (docs/designs/dungeon-scene.md): `false` brings back the flat purple
+ * scene, the stone/moss alternation and the cloud map from before v0.81 in one line. The big screen can also ask for
+ * the old look without a deploy: open it with `?art=classic` (`classicArtRequested`).
+ */
+export const DUNGEON_ART = true;
+
+/** The big screen asked for the old look (`/room/CODE/screen?art=classic#s=…`). Client-only: false on the server. */
+export function classicArtRequested(search: string): boolean {
+  return !DUNGEON_ART || new URLSearchParams(search).get("art") === "classic";
+}
+
+export type SceneTheme = "stone" | "moss" | "deep" | "crimson";
 
 const THEME = {
   stone: { b: ["#5a4690", "#63509c", "#4f3d84"], m: "#33285e", hi: "#7a66b6", f: ["#7a5fa6", "#6a4f96"], fm: "#2f2352", arch: "#1b1236", rim: "#8a74c4" },
   moss: { b: ["#3f6b58", "#487a64", "#385f4e"], m: "#233d34", hi: "#62957c", f: ["#6aa084", "#5b8e74"], fm: "#1e3a2f", arch: "#0f2219", rim: "#7fb59a" },
   crimson: { b: ["#7a3560", "#86406c", "#6b2c54"], m: "#3c1530", hi: "#a85a8a", f: ["#a0507e", "#8e426e"], fm: "#3a1230", arch: "#1a0716", rim: "#c07aa4" },
+} as const;
+
+/**
+ * The torch-lit palettes, one per depth (入口石牆, 苔蘚水道, 幽暗深淵, 首領房). `amb` is the light far from any torch:
+ * 0.6 keeps the wall no darker than the old scene under the host's 🌑 (DIM_ALPHA 0.4, lib/scene-classic.test.ts); the boss
+ * room is the darkest by its palette. `cool` tints the light in the arch's mouth; `grow` is what grows at the wall's foot.
+ */
+const ART = {
+  stone: { b: ["#4c4186", "#564a92", "#413778", "#5d5199"], m: "#1f1840", hi: "#6f61ab", f: ["#5f4a8c", "#54407e"], fm: "#231a42", arch: "#120c28", rim: ["#9a90c0", "#6f6796"], cool: [138, 156, 255], amb: 0.6, grow: ["#4f8a5a", "#3a6b48"] },
+  moss: { b: ["#35604f", "#3e6e5a", "#2e5345", "#447a63"], m: "#173028", hi: "#5a8f76", f: ["#4f7d66", "#456f5a"], fm: "#16302a", arch: "#0a1a14", rim: ["#8fb8a2", "#5f8a74"], cool: [143, 240, 216], amb: 0.6, grow: ["#3f8a52", "#6fbf6a"] },
+  deep: { b: ["#3a4768", "#425074", "#333f5d", "#4a5980"], m: "#171d33", hi: "#5e6d98", f: ["#46527a", "#3c476b"], fm: "#141a2c", arch: "#080b18", rim: ["#8a96bc", "#5e6a90"], cool: [120, 200, 255], amb: 0.6, grow: ["#5fd0f0", "#3a8ab8"] },
+  crimson: { b: ["#6e2e56", "#7a3862", "#61264c", "#83406a"], m: "#2c0f24", hi: "#94507c", f: ["#86406a", "#76365c"], fm: "#2a0d22", arch: "#120410", rim: ["#b77a9e", "#8a5276"], cool: [255, 150, 170], amb: 0.6, grow: ["#e6e0d0", "#b8b0a0"] },
 } as const;
 
 /** 叉路's two doorways (branch-fork.md), in scene pixels on the 160x90 scene: each centre this far from the middle, sized
@@ -1973,9 +1997,34 @@ export const FORK_ARCH = { dx: 24, w: 20, h: 26 } as const;
 /** The floor line of a scene `H` pixels tall: walls above, tiles below. */
 export const sceneFloor = (H: number) => Math.floor(H * 0.74);
 
-/** Brick wall, tiled floor, a dithered vignette and the arch: one in the middle, none, or "fork"'s two doorways with the
- * middle bricked up. Seeded, so it never flickers between renders. */
-export function drawScene(cv: HTMLCanvasElement, name: SceneTheme, W = 160, H = 90, arch: boolean | "fork" = true) {
+/**
+ * Where the big screen hangs its two wall torches, in stage pixels (960×540): the left edge of each torch sprite's
+ * box comes from `x - 4.5 * scale`, its top is `top`. "low" stands beside the lobby's campfire (and every scene without a
+ * question panel); "high" hangs beside the question panel, clear of the options. `drawScene` bakes each torch's light
+ * from the same numbers, so the glow and the flame never drift apart.
+ */
+export const SCENE_TORCHES = {
+  low: { xs: [93, 867], top: 280, scale: 6 },
+  high: { xs: [42, 918], top: 186, scale: 4 },
+} as const;
+export type SceneLights = keyof typeof SCENE_TORCHES | false;
+
+export type SceneOptions = {
+  /** Which torches to light (none: `false`). Pass the same value the screen's torch sprites use. */
+  lights?: SceneLights;
+  /** The look from before the torch-lit dungeon (DUNGEON_ART, `?art=classic`). */
+  classic?: boolean;
+};
+
+/** Brick wall, tiled floor and the arch: one in the middle, none, or "fork"'s two doorways with the middle bricked up.
+ * Seeded, so it never flickers between renders. */
+export function drawScene(cv: HTMLCanvasElement, name: SceneTheme, W = 160, H = 90, arch: boolean | "fork" = true, opts: SceneOptions = {}) {
+  if (opts.classic ?? !DUNGEON_ART) drawClassicScene(cv, name === "deep" ? "stone" : name, W, H, arch);
+  else drawLitScene(cv, name, W, H, arch, opts);
+}
+
+/** The flat scene from before v0.81: three-shade bricks, a dithered vignette, no light. */
+function drawClassicScene(cv: HTMLCanvasElement, name: Exclude<SceneTheme, "deep">, W: number, H: number, arch: boolean | "fork") {
   const T = THEME[name];
   const P = new Px(cv, W, H);
   const fy = sceneFloor(H);
@@ -2035,6 +2084,201 @@ export function drawScene(cv: HTMLCanvasElement, name: SceneTheme, W = 160, H = 
         const c = P.a[i];
         if (c) P.a[i] = "#" + rgb(c).map((v) => Math.floor(v * 0.55).toString(16).padStart(2, "0")).join("");
       }
+    }
+  P.flush();
+}
+
+const IRON = { hi: "#9a96b4", mid: "#5a5670", dk: "#3b3550" } as const;
+/** The corridor behind an arch, two steps back, each lighter; the portcullis draws over these and the arch's dark. */
+const CORRIDOR_SHADES = ["#1c1438", "#2a2050"] as const;
+const SCENE_SKULL = [".www.", "wwwww", "wkwkw", "wwwww", ".w.w."];
+
+/**
+ * The torch-lit room: rough stone in four shades with cracks, gaps and growth at the foot, a deep stone arch with an
+ * iron portcullis (or the fork's two doorways), chains, cobwebs and skull niches, then the light: a dim ambient, warm
+ * pools around the torches and a cool one in the arch's mouth, cut into sixths with a one-pixel checker between steps
+ * so it stays pixel art. Phones and the host page (narrow scenes) get the stone and the ambient only.
+ */
+function drawLitScene(cv: HTMLCanvasElement, name: SceneTheme, W: number, H: number, arch: boolean | "fork", { lights = false }: SceneOptions) {
+  const T = ART[name];
+  const P = new Px(cv, W, H);
+  const big = W > 100;
+  const fy = sceneFloor(H);
+  const cx = W / 2;
+  let s = 11;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+
+  // Rough stone: rows 7 high, blocks 8–17 wide, a highlight along each top, a few gaps and cracks.
+  const bh = 7;
+  for (let row = 0; row * bh < fy; row++) {
+    let x = -Math.floor(rnd() * 10);
+    while (x < W) {
+      const w = 8 + Math.floor(rnd() * 10);
+      const gap = rnd() < 0.04;
+      const c = T.b[Math.floor(rnd() * 4)];
+      for (let y = row * bh; y < Math.min(fy, row * bh + bh); y++)
+        for (let i = x; i < x + w; i++) {
+          const top = y === row * bh;
+          P.set(i, y, top || i === x ? T.m : gap ? T.m : y === row * bh + 1 ? T.hi : c);
+        }
+      if (!gap && rnd() < 0.18) {
+        let cxk = x + 2 + Math.floor(rnd() * Math.max(1, w - 4));
+        for (let y = row * bh + 2; y < row * bh + bh - 1; y++) {
+          P.set(cxk, y, T.m);
+          cxk += rnd() < 0.5 ? -1 : 1;
+        }
+      }
+      x += w;
+    }
+  }
+  // Tiles.
+  for (let y = fy; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const tx = Math.floor(x / 10);
+      const ty = Math.floor((y - fy) / 5);
+      P.set(x, y, (y - fy) % 5 === 4 ? T.fm : T.f[(tx + ty) % 2]);
+    }
+  // Growth along the wall's foot: moss, vines, crystals or old bones, by depth.
+  for (let n = 0; n < W * 0.6; n++) {
+    const x = Math.floor(rnd() * W);
+    const y = fy - 1 - Math.floor(rnd() * rnd() * 10);
+    P.set(x, y, T.grow[Math.floor(rnd() * 2)]);
+  }
+
+  const lightsAt: { x: number; y: number; r: number }[] = [];
+  let pool: { x: number; y: number; r: number } | null = null;
+  if (big) {
+    const ah = 21;
+    const aw = 22;
+    // The water channel of 苔蘚水道, along the wall's foot.
+    if (name === "moss") for (let x = 0; x < W; x++) P.rect(x, fy, 1, 2, ["#3f8fb0", "#5fb0cc", "#2c6f8e"][(x >> 2) % 3]);
+    // Vines from the ceiling (moss) or chains (every other room).
+    for (const fx of [0.2, 0.8]) {
+      const x = Math.round(W * fx);
+      const len = 10 + Math.floor(rnd() * 6);
+      for (let y = 0; y < len; y++) {
+        if (name === "moss") P.set(x + (y % 4 < 2 ? 0 : 1), y, T.grow[y % 3 === 0 ? 1 : 0]);
+        else if (y % 3 === 2) P.set(x, y, IRON.mid);
+        else {
+          P.set(x - (y % 3), y, IRON.hi);
+          P.set(x + 1 - (y % 3), y, IRON.mid);
+        }
+      }
+      if (name !== "moss") {
+        P.rect(x - 1, len, 3, 1, IRON.hi);
+        P.set(x - 1, len + 1, IRON.hi);
+        P.set(x + 1, len + 1, IRON.hi);
+      }
+    }
+    // Cobwebs in the top corners.
+    const webR = 11;
+    for (const [ox, dir] of [[0, 1], [W - 1, -1]] as const)
+      for (let y = 0; y <= webR; y++)
+        for (let x = 0; x <= webR; x++) {
+          const d = Math.hypot(x, y);
+          if (d > webR) continue;
+          const a = Math.atan2(y, x);
+          const spoke = [0.25, 0.75, 1.2].some((k) => Math.abs(a - k) * d < 0.6);
+          const arc = [0.4, 0.75].some((k) => Math.abs(d - webR * k) < 0.5) && (x + y) % 2 === 0;
+          if (spoke || arc) P.set(ox + dir * x, y, "#cdbdf0");
+        }
+    const doorway = (x: number, top: number, hw: number, ry: number, gate: boolean) => {
+      // Stone voussoirs around the opening, then the corridor stepping back into the dark.
+      P.ell(x, top, hw + 3, ry + 3, T.rim[1]);
+      P.rect(x - hw - 3, top, hw * 2 + 6, fy - top, T.rim[1]);
+      P.ell(x, top, hw + 2, ry + 2, T.rim[0]);
+      P.rect(x - hw - 2, top, hw * 2 + 4, fy - top, T.rim[0]);
+      for (let k = 0; k < 9; k++) {
+        const a = Math.PI * (k / 8);
+        P.set(Math.round(x - Math.cos(a) * (hw + 2)), Math.round(top - Math.sin(a) * (ry + 2)), T.rim[1]);
+        P.set(Math.round(x - Math.cos(a) * (hw + 1)), Math.round(top - Math.sin(a) * (ry + 1)), T.rim[1]);
+      }
+      for (let y = top + 4; y < fy; y += 5) {
+        P.set(x - hw - 2, y, T.rim[1]);
+        P.set(x + hw + 1, y, T.rim[1]);
+      }
+      P.ell(x, top, hw, ry, T.arch);
+      P.rect(x - hw, top, hw * 2, fy - top, T.arch);
+      // The far end of the corridor: two smaller arches, each a shade lighter, so the eye reads depth.
+      for (const [k, c] of [[0.62, CORRIDOR_SHADES[0]], [0.36, CORRIDOR_SHADES[1]]] as const) {
+        const iw = Math.round(hw * k);
+        const it = fy - Math.round((fy - top + ry) * k * 0.9);
+        P.ell(x, it + iw * 0.4, iw, Math.max(2, iw * 0.4), c);
+        P.rect(x - iw, Math.round(it + iw * 0.4), iw * 2, fy - Math.round(it + iw * 0.4), c);
+      }
+      if (gate) {
+        // The portcullis, raised: bars from the arch's crown down to spikes a little under the spring line.
+        const bottom = top + 6;
+        for (let bx = x - hw + 2; bx < x + hw - 1; bx += 4)
+          for (let y = top - ry; y <= bottom; y++) {
+            if (P.a[y * W + bx] === undefined) continue;
+            const c = P.a[y * W + bx];
+            const inside = c === T.arch || c === CORRIDOR_SHADES[0] || c === CORRIDOR_SHADES[1];
+            if (!inside) continue;
+            P.set(bx, y, y === bottom ? IRON.hi : IRON.mid);
+            P.set(bx + 1, y, IRON.dk);
+          }
+        for (const y of [top - 2, top + 3]) for (let bx = x - hw + 1; bx < x + hw; bx++) if (P.a[y * W + bx] !== T.rim[0] && P.a[y * W + bx] !== T.rim[1]) P.set(bx, y, IRON.dk);
+      }
+    };
+    if (arch === "fork") {
+      for (const dx of [-FORK_ARCH.dx, FORK_ARCH.dx]) doorway(cx + dx, fy - FORK_ARCH.h + 4, FORK_ARCH.w / 2 + 1, 6, false);
+    } else if (arch) {
+      doorway(cx, fy - ah, aw, 10, true);
+      pool = { x: cx, y: fy - 6, r: 30 };
+      // Skull niches either side of the arch.
+      for (const nx of [cx - 40, cx + 40]) {
+        const ny = fy - 34;
+        P.ell(nx, ny, 5, 4, T.rim[1]);
+        P.rect(nx - 5, ny, 10, 7, T.rim[1]);
+        P.ell(nx, ny, 4, 3, T.arch);
+        P.rect(nx - 4, ny, 8, 6, T.arch);
+        P.grid(SCENE_SKULL, { w: "#e6e0d0", k: T.arch }, nx - 2, ny + 1);
+        P.rect(nx - 5, ny + 6, 10, 1, T.rim[0]);
+      }
+    }
+    if (lights) {
+      const t = SCENE_TORCHES[lights];
+      const k = W / 960;
+      for (const sx of t.xs) {
+        // The iron bracket under the flame sprite, and the light around the flame.
+        const bx = Math.round(sx * k);
+        const by = Math.round((t.top + 12.5 * t.scale) * k);
+        P.rect(bx - 2, by, 5, 1, IRON.hi);
+        P.rect(bx - 1, by + 1, 3, 1, IRON.mid);
+        P.set(bx, by + 2, IRON.mid);
+        lightsAt.push({ x: sx * k, y: (t.top + 4 * t.scale) * k, r: lights === "high" ? 30 : 34 });
+      }
+    }
+  }
+
+  // Light: the ambient, darker at the ceiling and the wall's foot, warm pools at the torches and a cool one in the arch.
+  const cache = new Map<string, string>();
+  const hex = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      const c = P.a[i];
+      if (!c) continue;
+      let f = T.amb - (y < 5 ? 1 / 6 : 0) - (y >= fy - 2 && y < fy ? 1 / 6 : 0);
+      let warm = 0;
+      for (const g of lightsAt) {
+        const d = Math.hypot(x - g.x, (y - g.y) * 1.2) / g.r;
+        if (d < 1) warm = Math.max(warm, 1 - d);
+      }
+      const cool = pool ? Math.max(0, 1 - Math.hypot(x - pool.x, (y - pool.y) * 1.4) / pool.r) : 0;
+      f += warm * 0.55 + cool * 0.2;
+      const q = Math.min(1.1, Math.round(f * 6 + ((x + y) % 2 ? 0.25 : -0.25)) / 6);
+      const w = Math.round(warm * 3) / 3;
+      const cl = Math.round(cool * 2) / 2;
+      const key = `${c}${q}${w}${cl}`;
+      let out = cache.get(key);
+      if (!out) {
+        const [r, g, b] = rgb(c);
+        out = "#" + hex(r * q + 95 * w + T.cool[0] * 0.12 * cl) + hex(g * q + 50 * w + T.cool[1] * 0.12 * cl) + hex(b * q * (1 - 0.35 * w) + T.cool[2] * 0.12 * cl);
+        cache.set(key, out);
+      }
+      P.a[i] = out;
     }
   P.flush();
 }
