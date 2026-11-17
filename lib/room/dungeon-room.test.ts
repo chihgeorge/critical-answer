@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { DungeonRoom, fixedDie, sprintLine } from "./dungeon-room";
+import { DungeonRoom, fixedDie, passwordSource, sprintLine } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { DIFFICULTIES, answerText, bossPhaseStates, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
 import { MONSTERS, catalogMonster, variantOf } from "../monster-catalog";
@@ -358,6 +358,68 @@ describe("JOIN", () => {
     send(room, hostConn, { type: "HOST_SET_PASSWORD", password: "5678" });
     send(room, makeConn("late"), { type: "JOIN", teamId: T3, teamKey: KEY2, teamName: "Late", password: "5678" });
     expect(lastBroadcast(room).teams.map((t: { name: string }) => t.name)).toEqual(["Friend", "Late"]);
+  });
+
+  it("counts an IPv6 address by its /64 and an IPv4 address whole", () => {
+    expect(passwordSource("198.51.100.7")).toBe("198.51.100.7");
+    expect(passwordSource("2001:db8:1:2::1")).toBe("2001:db8:1:2::/64");
+    expect(passwordSource("2001:0db8:0001:0002:ffff:0:0:9")).toBe("2001:db8:1:2::/64");
+    expect(passwordSource("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(passwordSource("::1")).toBe("0:0:0:0::/64");
+  });
+
+  // Value: protects=one guesser at its own IP cannot keep other teams out, a new socket from the same IP stays locked,
+  // and many IPs together still hit a room-wide cap; fails_when=the lock goes back to room-wide, keys on the socket, counts
+  // refused guesses, lets IPv6 addresses in one /64 count apart, or loses its backstop; why_new=the test above covers only
+  // sockets with no source (local dev)
+  it("counts wrong join passwords per connection source, with a room-wide cap of 20", () => {
+    const clock = { t: 1_000_000 };
+    const room = new DungeonRoom(makeRoom() as any, () => 0, { now: () => clock.t });
+    const hostConn = makeConn("host-conn");
+    room.onConnect(hostConn);
+    claim(room, hostConn);
+    send(room, hostConn, { type: "HOST_SET_PASSWORD", password: "1234" });
+    const from = (id: string, ip: string) => {
+      const c = makeConn(id);
+      room.onConnect(c, ip);
+      return c;
+    };
+    const guess = (c: ReturnType<typeof makeConn>, password: string) => send(room, c, { type: "JOIN", teamId: T2, teamKey: KEY2, teamName: "Guess", password });
+    const troll = from("troll", "198.51.100.7");
+    for (let i = 0; i < 10; i++) guess(troll, String(i));
+    guess(troll, "1234");
+    expect(lastSentTo(troll)).toEqual({ type: "ERROR", error: "bad_password", detail: "too_many_attempts" });
+    // A fresh socket from the same address is the same source.
+    const again = from("troll-2", "198.51.100.7");
+    guess(again, "1234");
+    expect(lastSentTo(again)).toEqual({ type: "ERROR", error: "bad_password", detail: "too_many_attempts" });
+    // Its refused guesses spend no room budget, nor do empty passwords: another address still gets in.
+    for (let i = 0; i < 25; i++) guess(i % 2 ? troll : again, String(i));
+    for (let i = 0; i < 20; i++) guess(from(`blank-${i}`, "192.0.2.50"), "");
+    send(room, from("friend", "203.0.113.5"), { type: "JOIN", teamId: T1, teamKey: KEY, teamName: "Friend", password: "1234" });
+    expect(lastBroadcast(room).teams.map((t: { name: string }) => t.name)).toEqual(["Friend"]);
+    // Rotating IPv6 addresses inside one /64 is one source: 9 wrong from it leave the room at 19, not locked.
+    for (let i = 0; i < 9; i++) guess(from(`v6-${i}`, `2001:db8:1:2::${i + 1}`), String(i));
+    const late = from("late", "192.0.2.1");
+    guess(late, "0000");
+    expect(lastSentTo(late)).toEqual({ type: "ERROR", error: "bad_password" });
+    // That was the room's 20th wrong: now every password JOIN waits for the window, the right one too.
+    send(room, late, { type: "JOIN", teamId: T3, teamKey: KEY2, teamName: "Late", password: "1234" });
+    expect(lastSentTo(late)).toEqual({ type: "ERROR", error: "bad_password", detail: "too_many_attempts" });
+    const other = from("other", "203.0.113.99");
+    guess(other, "1234");
+    expect(lastSentTo(other)).toEqual({ type: "ERROR", error: "bad_password", detail: "too_many_attempts" });
+    // A new password lifts it at once.
+    send(room, hostConn, { type: "HOST_SET_PASSWORD", password: "1234" });
+    expect((room as any).passwordWrong.size).toBe(0);
+    for (let i = 0; i < 10; i++) guess(troll, String(i));
+    clock.t += 60_000;
+    send(room, late, { type: "JOIN", teamId: T3, teamKey: KEY2, teamName: "Late", password: "1234" });
+    expect(lastBroadcast(room).teams.map((t: { name: string }) => t.name)).toEqual(["Friend", "Late"]);
+    // The window's entries are gone, and the raw address was never a key.
+    expect([...(room as any).passwordWrong.keys()]).toEqual([]);
+    for (let i = 0; i < 3; i++) guess(troll, String(i));
+    expect(JSON.stringify([...(room as any).passwordWrong.keys()])).not.toContain("198.51.100.7");
   });
 
   it("rejects a 9th distinct team once the room is full (max 8)", () => {
