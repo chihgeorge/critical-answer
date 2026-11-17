@@ -1767,6 +1767,19 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
 
   // Value: protects=an armed thief's 改成答對 pays its sneak by the die rolled then, and moves only the score (owner,
   // 2026-11-17; hosting.md); fails_when=the die is skipped, a tier pays the wrong multiple, or a 2–6 gives a use back.
+  // Value: protects=a chef's 改成答對 on a multipleChoice or sort question pays like a live correct answer, crit included
+  // (#342: a 20 = 3N); fails_when=the crit half is skipped, or a fill-in (no crit die) gets it.
+  it("a chef's 改成答對 on a crit question adds the crit's half on a 20, as live", () => {
+    const g0 = classGame(["chef", undefined]);
+    const q = currentQ(g0, "T0");
+    const g: GameState = { ...g0, judgments: [{ teamId: "T0", questionId: q, correct: false, points: 10, reads: "chef" }] };
+    const paid = (die: number, crit: boolean) => hostRejudge(g, 0, "T0", q, true, die, crit).teams[0].reward - g.teams[0].reward;
+    expect([1, 4, 12, 20].map((d) => paid(d, true))).toEqual([1, 8, 13, 30]);
+    expect(paid(20, false)).toBe(20);
+    const live = answerQuestion(g0, "T0", q, true, "retry", first, 20).game.teams[0].reward - g0.teams[0].reward;
+    expect(paid(20, true)).toBe(live);
+  });
+
   it("a thief's 改成答對 needs its die, pays the sneak by tier and gives no use back", () => {
     const g0 = classGame(["thief", undefined]);
     const q = currentQ(g0, "T0");
@@ -2155,6 +2168,17 @@ describe("dishes (docs/designs/monster-cuisine.md)", () => {
     b = answerQuestion(twenty(b, "T0", bq), "T0", bq, true).game;
     expect(b.phase).toBe("finished");
     expect(t(b, "T0").dishes).toEqual([monsterById("dragon")!.gift.name]);
+  });
+
+  // Value: protects=a persuaded monster stepped aside, so it is not a defeat: its next look stays plain (#340); fails_when=a
+  // persuasion 20 adds to defeats or to the next room's metDefeats; no_claim=the room's narration
+  it("a persuasion 20 does not count as a defeat", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    const base = cookedGame();
+    const g0: GameState = { ...base, rooms: base.rooms.map((r) => ({ ...r, monsterId: "slime-soft" })) };
+    const q = t(g0, "T0").currentQuestionId;
+    const g = answerQuestion({ ...g0, checks: { [checkKey(q, "T0")]: { value: 20, bonus: 0, dc: 8, passed: true } } }, "T0", q, true).game; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    expect(g.defeats?.["slime-soft"] ?? 0).toBe(0);
+    expect(t(g, "T0").metDefeats).toBe(0);
   });
 });
 

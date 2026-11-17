@@ -1421,7 +1421,8 @@ export function answerQuestion(
         ? { questionId: team.currentQuestionId, used: game.usedQuestionIds, queuedQuestionId: undefined }
         : dealFor(game, team, game.rooms[nextRoomIndex].baseDifficulty, revealedQuestionIds, rng, questionId);
       const monsterId = teamMonsterId(game, team);
-      const defeats = monsterId ? { ...game.defeats, [monsterId]: (game.defeats?.[monsterId] ?? 0) + 1 } : game.defeats;
+      // A persuaded monster stepped aside, it was not defeated (#340): no variant look, no defeat count.
+      const defeats = monsterId && !persuaded ? { ...game.defeats, [monsterId]: (game.defeats?.[monsterId] ?? 0) + 1 } : game.defeats;
       const nextMonsterId = game.rooms[nextRoomIndex].monsterId;
       nextGame = {
         ...game,
@@ -1899,8 +1900,9 @@ export function rejudgeNeedsDie(j: Judgment): boolean {
 
 /** 改判: ledger entry `index` shows `correct` from now on, and only its reward points move (owner decision "A 只改分數").
  * 改成答錯 takes min(taken ?? N, reward) and keeps it as `taken`; 改成答對 gives back `taken ?? N` and drops it, so any flip
- * cycle nets 0 and the next 改成答錯 starts from N again. `teamId` and `questionId` must match the entry, or it is a press from an older list (`stale`). */
-export function hostRejudge(game: GameState, index: number, teamId: string, questionId: string, correct: boolean, die?: number): GameState {
+ * cycle nets 0 and the next 改成答錯 starts from N again. `teamId` and `questionId` must match the entry, or it is a press from an older list (`stale`).
+ * `crit`: a multipleChoice or sort question, where the die is the crit die, so a chef's 20 adds the crit's half first, as live (#342). */
+export function hostRejudge(game: GameState, index: number, teamId: string, questionId: string, correct: boolean, die?: number, crit = false): GameState {
   if (game.phase !== "playing") throw new InvalidActionError("not_playing");
   const j = game.judgments?.[index];
   if (!j || j.teamId !== teamId || j.questionId !== questionId) throw new InvalidActionError("stale");
@@ -1911,7 +1913,9 @@ export function hostRejudge(game: GameState, index: number, teamId: string, ques
   if (needsDie && die === undefined) throw new InvalidActionError("die_needed");
   const tier = die === undefined ? 2 : skillTier(die);
   // The chef's tier multiplier, or the thief's sneak by tier. Only the score moves: a thief's 2–6 gives no use back here.
-  const paid = !needsDie ? (j.taken ?? j.points) : Math.round(j.points * (j.reads === "chef" ? CHEF_MULTIPLIERS[tier] : [1, 1, SNEAK_REWARD_MULTIPLIER, 2][tier]));
+  // A thief's 20 already pays ×2 = sneak ×1.5 plus the crit's half, as live.
+  const chefBase = crit && die === 20 ? j.points + Math.round(j.points * 0.5) : j.points;
+  const paid = !needsDie ? (j.taken ?? j.points) : j.reads === "chef" ? Math.round(chefBase * CHEF_MULTIPLIERS[tier]) : Math.round(j.points * [1, 1, SNEAK_REWARD_MULTIPLIER, 2][tier]);
   const from = getTeam(game, teamId).reward;
   const moved = correct ? paid : Math.min(j.taken ?? j.points, from);
   const to = correct ? from + moved : from - moved;

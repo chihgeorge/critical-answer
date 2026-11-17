@@ -36,7 +36,7 @@ const TUMBLE_MS = 1200;
  * room's `value`. `kind`: a warrior's roll for the answer, the crit die after a correct answer (20 is a critical hit, 1 a
  * fumble, still a hit), a persuasion check, or a class die (class dice): a mage's skill die on `castOn`, a cleric's prayer
  * die, or a fill-in's answer die. `reader`: the chef or armed thief a crit or answer die is read for; `rejudge`: the host's
- * 改成答對. Every class die lands red on 1–6, plain on 7–19 and gold on 20. Keyed by the caller per roll, so every roll
+ * 改成答對. Every class die, and a crit die with a reader, lands red on 1–6, plain on 7–19 and gold on 20. Keyed by the caller per roll, so every roll
  * tumbles again. `values`: a 🧪 potion's two dice (lucky-potion.md D10), tumbling and landing together; `value` is the
  * higher, and a tie shows both as kept. */
 export function RollOverlay({ teamName, value, values, kind = "warrior", critable = false, bonus = 0, dc = 0, castOn = "multipleChoice", reader, rejudge = false }: { teamName: string; value: number; values?: number[]; kind?: "warrior" | "crit" | "check" | "mage" | "cleric" | "answer"; critable?: boolean; bonus?: number; dc?: number; castOn?: CastOn; reader?: "chef" | "thief"; rejudge?: boolean }) {
@@ -58,8 +58,9 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
   const crit = kind === "crit";
   const check = kind === "check";
   // A persuasion check (dnd design R6): die + class bonus against the monster's DC; a 20 wins outright, a 1 halves.
-  const classDie = kind === "mage" || kind === "cleric" || kind === "answer";
-  const hit = check ? value === 20 || (value !== 1 && value + bonus >= dc) : crit ? value !== 1 : classDie ? skillTier(value) >= 2 : value >= WARRIOR_TARGET;
+  // A crit die a chef or armed thief reads is coloured and tiered like a fill-in's answer die (#346).
+  const classDie = kind === "mage" || kind === "cleric" || kind === "answer" || (kind === "crit" && !!reader);
+  const hit = check ? value === 20 || (value !== 1 && value + bonus >= dc) : classDie ? skillTier(value) >= 2 : crit ? value !== 1 : value >= WARRIOR_TARGET;
   const tier = `${value} ${TIER_LABELS[skillTier(value)]}`;
   const read = answerEffect(reader, value);
   const result = classDie
@@ -67,7 +68,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
       ? `${tier}：${mageEffect(castOn, value)}`
       : kind === "cleric"
         ? `${tier}：${clericEffect(value)}`
-        : `${tier}：${read ?? "答對！"}`
+        : `${tier}：${(crit || (rejudge && critable)) && reader === "chef" && value === 20 ? "多拿一半，" : ""}${read ?? "答對！"}`
     : check
     ? value === 20
       ? "20！說服成功，免答"
@@ -75,9 +76,9 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
         ? "1……說服失敗，答對只拿一半"
         : `${value} + ${bonus} = ${value + bonus} ${hit ? "≥" : "<"} DC ${dc}${hit ? " 過了！" : " 沒過"}`
     : crit
-    ? (value === 20 ? "20 大成功！多拿一半" : value === 1 ? "1 大失敗……還是打中了" : `${value}，答對！`) + (read ? `　${read}` : "")
+    ? (value === 20 ? "20 大成功！多拿一半" : value === 1 ? "1 大失敗……還是打中了" : `${value}，答對！`)
     : warriorEffect(value);
-  const chip = classDie
+  const chip = classDie && !crit
     ? kind === "mage"
       ? `🔮 ${teamName} 施法！擲技能骰`
       : kind === "cleric"
