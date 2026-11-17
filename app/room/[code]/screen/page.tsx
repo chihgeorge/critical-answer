@@ -21,6 +21,7 @@ function rollReader(roll: PendingRoll, team: { classId?: SpectatorView["teams"][
   return roll.kind === "crit" || roll.kind === "answer" ? answerReader(team) : undefined;
 }
 import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type SceneLights } from "@/lib/pixel-art";
+import { lookOf } from "@/lib/team-look";
 import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
@@ -76,7 +77,8 @@ const VOICE_KEY = "screenVoice";
 const noSubscribe = () => () => {};
 
 
-const look = (i: number) => TEAM_LOOKS[i % TEAM_LOOKS.length];
+/** A team's colour (#320): its pick, or its place in the list for a team saved before picks. */
+const look = (t: { look?: number } | undefined, i: number) => TEAM_LOOKS[lookOf(t, i) % TEAM_LOOKS.length];
 /** The 384×216 player drawn at 0.75 without rebuilding it: the margins give back the space the transform frees. */
 const SHRUNK_PLAYER = { transform: "scale(0.75)", transformOrigin: "0 0", marginRight: -96, marginBottom: -54 } as const;
 
@@ -177,7 +179,7 @@ function TeamGroup({ teams, from, to, align }: { teams: LobbyTeams; from: number
         // Crowded: the hero stands beside its nameplate, so two rows clear the room-code panel above.
         <div key={t.id} className={`flex items-center gap-1 ${crowded ? "flex-row" : "flex-col"}`} style={{ width: crowded ? cell : undefined, maxWidth: cell }}>
           <div className="px-run">
-            <Sprite kind="hero" variant={from + j} cls={t.classId} scale={crowded ? 2 : 4} />
+            <Sprite kind="hero" variant={lookOf(t, from + j)} cls={t.classId} scale={crowded ? 2 : 4} />
           </div>
           <Nameplate className="min-w-0 text-[14px]" style={{ maxWidth: cell, padding: "3px 8px" }}>
             {/* text-overflow needs a block box: the Nameplate itself is a flex container. */}
@@ -580,7 +582,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const paused = pausedOffline(view) && !reveal && !card && !held;
   const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : paused ? [PAUSED_OFFLINE] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
   const nameplate = (style: CSSProperties) => (
-    <Nameplate className="absolute" style={{ ...style, color: bossScene ? "#b02a3a" : undefined }}>
+    <Nameplate className="absolute" style={{ ...style, color: bossScene ? "var(--boss)" : undefined }}>
       {/* A very long custom name ends in … at 360 px (16 characters at 22 px), so the plate stays on the stage and clear of
           the wall clock, and the hearts after it stay in view (art QA 2026-11-17). */}
       <span className="min-w-0 max-w-[360px] truncate">{monster.name}</span>
@@ -588,7 +590,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {bossScene && view.bossMaxHp > MAX_HEARTS && (
         <span data-testid="boss-hp-bar" className="ml-[14px] flex items-center gap-2">
           <span className="relative inline-block h-[16px] w-[300px]" style={{ background: "#3a2b55", boxShadow: "0 0 0 3px var(--k)" }}>
-            <span className="absolute inset-y-0 left-0" style={{ width: `${(100 * (card ? view.bossMaxHp : view.bossHp)) / view.bossMaxHp}%`, background: "var(--danger)" }} />
+            <span className="absolute inset-y-0 left-0" style={{ width: `${(100 * (card ? view.bossMaxHp : view.bossHp)) / view.bossMaxHp}%`, background: "var(--boss)" }} />
           </span>
           <span className="px-num text-[14px]">{card ? view.bossMaxHp : view.bossHp}/{view.bossMaxHp}</span>
         </span>
@@ -608,7 +610,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         </span>
       )}
       {raging && (
-        <span data-testid="boss-rage" className="ml-[10px] text-[16px] text-white" style={{ background: "var(--danger)", padding: "0 6px", boxShadow: "0 0 0 3px var(--k)" }}>
+        <span data-testid="boss-rage" className="ml-[10px] text-[16px] text-white" style={{ background: "var(--boss)", padding: "0 6px", boxShadow: "0 0 0 3px var(--k)" }}>
           🔥 暴走！
         </span>
       )}
@@ -625,12 +627,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
 
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
         {dish && eater ? (
-          <TurnRibbon color={look(eaterIdx).hat} maxWidth={360}>🍲 {eater.name}</TurnRibbon>
+          <TurnRibbon color={look(eater, eaterIdx).hat} maxWidth={360}>🍲 {eater.name}</TurnRibbon>
         ) : (
           buzz ? (
-            <TurnRibbon color={turn ? look(turnIdx).hat : undefined} maxWidth={360}>{turn ? `${turn.name} 搶到了！` : timing ? "首領戰　卡點題" : "首領戰　搶答！"}</TurnRibbon>
+            <TurnRibbon color={turn ? look(turn, turnIdx).hat : "var(--boss)"} maxWidth={360}>{turn ? `${turn.name} 搶到了！` : timing ? "首領戰　卡點題" : "首領戰　搶答！"}</TurnRibbon>
           ) : (
-            turn && <TurnRibbon color={look(turnIdx).hat} maxWidth={360 /* a long name must leave the map its width: the widest 8-team map is 550px (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>
+            turn && <TurnRibbon color={look(turn, turnIdx).hat} maxWidth={360 /* a long name must leave the map its width: the widest 8-team map is 550px (live map D8) */}>{inBoss ? "首領戰　" : ""}輪到：{turn.name}</TurnRibbon>
           )
         )}
         <MapStrip view={view} />
@@ -638,7 +640,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
 
       {/* 上菜 puts the panel away (cooking R4): the stage is the monster's, then the dish's. */}
       {/* The dish stands where the monster stood; its card takes the panel's place. */}
-      {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={eaterIdx} eaterClass={eater?.classId} />}
+      {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={lookOf(eater, eaterIdx)} eaterClass={eater?.classId} />}
       {!served && (
       <Panel ref={panelRef} className="px-stone absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
@@ -675,7 +677,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             next question never shows underneath (or behind) the previous answer. */}
         {card ? (
           <div data-testid="phase-card" className="flex flex-col items-center gap-2">
-            <div className="px-title-danger px-title-sm" style={{ fontSize: 34, lineHeight: 1.25 }}>
+            <div className="px-title-boss px-title-sm" style={{ fontSize: 34, lineHeight: 1.25 }}>
               第{ordinal(view.bossPhase)}階段：{card.name}
             </div>
             <div className="text-[22px]">{card.rule}</div>
@@ -862,7 +864,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       <div className="absolute" style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}>
       <DialogueBox
         className="relative"
-        accent={bossScene ? "var(--danger)" : undefined}
+        accent={bossScene ? "var(--boss)" : undefined}
         loading={!served && !paused && !held && isPending(eventId, narration)}
         lines={sayLines}
         style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
@@ -891,7 +893,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
       <Room room={Math.max(0, (team?.roomIndex ?? 0) - 1)} />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
-        {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`神秘房　${name}`}</TurnRibbon>}
+        {team && <TurnRibbon color={look(team, idx).hat} maxWidth={360}>{`神秘房　${name}`}</TurnRibbon>}
         <MapStrip view={view} />
       </div>
       <Panel className="px-stone absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
@@ -933,7 +935,7 @@ function FortuneScreen({ view, fortune, left, eventId, narration, onRead }: { vi
       <Room room={Math.max(0, (team?.roomIndex ?? 0) - (fortune.step === "card" ? 1 : 0))} />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
-        {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`🔮 ${name}`}</TurnRibbon>}
+        {team && <TurnRibbon color={look(team, idx).hat} maxWidth={360}>{`🔮 ${name}`}</TurnRibbon>}
         <MapStrip view={view} />
       </div>
       <div className="absolute" style={{ right: 60, top: 108, zIndex: 6 }}>
@@ -984,7 +986,7 @@ function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: Sp
       <Room room={team?.roomIndex ?? 0} arch="fork" />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
-        {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`輪到：${name}`}</TurnRibbon>}
+        {team && <TurnRibbon color={look(team, idx).hat} maxWidth={360}>{`輪到：${name}`}</TurnRibbon>}
         <MapStrip view={view} />
       </div>
       <Panel className="absolute text-center" style={{ left: 250, right: 250, top: 104, padding: "10px 24px", zIndex: 5 }}>
@@ -1044,7 +1046,7 @@ function AwardCard({ beat, teams }: { beat: Extract<Beat, { kind: "award" }>; te
         <div className="flex justify-center gap-6">
           {beat.teamIds.slice(0, 2).map((id, j) => (
             <div key={id} className="flex flex-col items-center gap-1" style={{ maxWidth: tie ? 170 : 360 }}>
-              <Sprite kind="hero" variant={Math.max(0, teams.findIndex((t) => t.id === id))} cls={teams.find((t) => t.id === id)?.classId} scale={4} />
+              <Sprite kind="hero" variant={lookOf(teams.find((t) => t.id === id), Math.max(0, teams.findIndex((t) => t.id === id)))} cls={teams.find((t) => t.id === id)?.classId} scale={4} />
               <div className={tie ? "w-full truncate text-[22px]" : "line-clamp-2 break-all text-[22px]"}>{beat.names[j]}</div>
             </div>
           ))}
@@ -1137,7 +1139,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
       {!cooked && dish && step === 0 && (
         <div className="absolute flex flex-col items-center" style={{ left: "50%", bottom: 140, transform: "translateX(-50%)", zIndex: 4 }}>
           <Sprite kind={dish.monster.sprite} scale={monsterLook(dish.monster).scale} hue={(dish.monster.hue + PHASE_HUE_STEP * (view.bossPhase - 1)) % 360} />
-          <Nameplate className="mt-2" style={{ color: "#b02a3a" }}>{dish.monster.name}</Nameplate>
+          <Nameplate className="mt-2" style={{ color: "var(--boss)" }}>{dish.monster.name}</Nameplate>
         </div>
       )}
       {!cooked && dish && step === 3 && <DishOnStage dish={dish} title="今晚的大菜" cardTop={120} bottom={140} />}
@@ -1178,7 +1180,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
               {/* The chef's toque reaches the sprite's top edge, so its crown sits higher instead of on the hat (#335). */}
               {result && p.place === 1 && <Sprite kind="crown" scale={3} style={{ marginBottom: t.classId === "chef" ? 0 : -10, zIndex: 2 }} />}
               {shown ? (
-                <Sprite kind="hero" variant={t.i} cls={t.classId} scale={p.hero} />
+                <Sprite kind="hero" variant={lookOf(t, t.i)} cls={t.classId} scale={p.hero} />
               ) : (
                 <div className="text-[64px] leading-none text-white" style={{ textShadow: "4px 4px 0 var(--k), -4px -4px 0 var(--k), 4px -4px 0 var(--k), -4px 4px 0 var(--k)" }}>？</div>
               )}
@@ -2107,8 +2109,8 @@ export default function ScreenPage() {
         {/* 🌑 螢幕變暗 (immersion.md PR2): over the stage content, under the edge glows and banners; never under a transition. */}
         {dimVisible(!!game?.screenDim, !!transition) && <div aria-hidden data-testid="screen-dim" className="pointer-events-none absolute inset-0" style={{ zIndex: 8, background: `rgba(0, 0, 0, ${DIM_ALPHA})` }} />}
         {/* ③ The heartbeat's and ② the counter's edge glows: inset shadows, the middle of the stage stays clear. */}
-        {heartGlow && <div aria-hidden data-testid="heart-glow" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${heartGlow === "pulse" ? "#b02a3a4d" : HEART_TINT}` }} />}
-        {parryEdge && <div aria-hidden className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${parryEdge === "flash" ? "#ff6b6b66" : PARRY_TINT}` }} />}
+        {heartGlow && <div aria-hidden data-testid="heart-glow" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${heartGlow === "pulse" ? "#8e1f3a4d" : HEART_TINT}` }} />}
+        {parryEdge && <div aria-hidden className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${parryEdge === "flash" ? "#8e1f3a66" : PARRY_TINT}` }} />}
         {hostFx && hostFx.look !== "shake" && (
           <div aria-hidden data-testid="host-fx" className="px-edge" style={{ zIndex: 9, boxShadow: `inset 0 0 90px 8px ${hostFx.look === "flash" ? THUNDER_PULSE : hostFx.effect === "thunder" ? THUNDER_TINT : GROWL_TINT}` }} />
         )}

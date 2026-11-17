@@ -7,6 +7,7 @@ import { FORTUNE_EFFECTS, type ClassId, type FortuneEffect } from "@/lib/game-st
 import { FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 import type { FortuneView } from "@/lib/protocol";
 import { prefersReducedMotion, Sprite } from "./pixel";
+import { lookOf } from "@/lib/team-look";
 
 const TONE: Record<"good" | "bad" | "swap", string> = { good: "#6fd36a", bad: "#ff6b6b", swap: "#ffcf4a" };
 
@@ -42,7 +43,7 @@ export function FortunePizza({ lit, size }: { lit?: FortuneEffect; size: number 
 }
 
 /** The effect card (step 4): the effect, the count that hit, and each matching team's hero. */
-export function FortuneCard({ fortune, teams, heroScale }: { fortune: FortuneView; teams: { id: string; name: string; classId?: ClassId }[]; heroScale: number }) {
+export function FortuneCard({ fortune, teams, heroScale }: { fortune: FortuneView; teams: { id: string; name: string; classId?: ClassId; look?: number }[]; heroScale: number }) {
   if (!fortune.effect || !fortune.matchIds) return null;
   const fx = FORTUNE_EFFECT_TEXT[fortune.effect];
   const unit = FORTUNE_CONDITION_TEXT[fortune.condition].unit;
@@ -56,7 +57,7 @@ export function FortuneCard({ fortune, teams, heroScale }: { fortune: FortuneVie
           const idx = teams.findIndex((t) => t.id === id);
           return (
             <div key={id} className="flex flex-col items-center gap-1" style={{ maxWidth: 160 }}>
-              <Sprite kind="hero" variant={Math.max(0, idx)} cls={teams[idx]?.classId} scale={heroScale} />
+              <Sprite kind="hero" variant={lookOf(teams[idx], Math.max(0, idx))} cls={teams[idx]?.classId} scale={heroScale} />
               <div className="w-full truncate">{teams[idx]?.name ?? ""}</div>
             </div>
           );

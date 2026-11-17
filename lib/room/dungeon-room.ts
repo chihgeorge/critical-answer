@@ -153,6 +153,7 @@ import { RECENT_LINES } from "../narration/llm";
 import { keyHint, withBudget } from "./ai-budget";
 import { createBreaker, withBreaker } from "../narration/breaker";
 import { skillLine } from "../class-dice";
+import { firstFreeLook } from "../team-look";
 
 const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TRANSCRIPT = 500;
@@ -424,10 +425,10 @@ function withTimeout<T>(p: Promise<T> | undefined, ms: number): Promise<T | unde
 
 export class DungeonRoom {
   game: GameState | null = null;
-  private pendingTeams: { id: string; name: string; classId?: ClassId }[] = [];
+  private pendingTeams: { id: string; name: string; classId?: ClassId; look?: number }[] = [];
   /** Teams that joined after the start and wait for the host's 收這隊 (docs/designs/late-join.md). Saved: their keys
    * are saved in teamKeys anyway, and a restart mid-game must not make latecomers type their name again. Empty in the lobby. */
-  private lateTeams: { id: string; name: string; classId?: ClassId }[] = [];
+  private lateTeams: { id: string; name: string; classId?: ClassId; look?: number }[] = [];
   /**
    * Trust on first use: the first HOST_CLAIM sets the token, later claims must
    * match. The only protection is the 4-letter room code (23^4) plus this token.
@@ -1139,6 +1140,8 @@ export class DungeonRoom {
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
     this.lateTeams = s.lateTeams ?? [];
+    // A save from before team colours (#320): each team without one takes the lowest free colour, in list order.
+    for (const t of [...this.pendingTeams, ...this.lateTeams]) if (t.look === undefined) t.look = firstFreeLook([...this.pendingTeams, ...this.lateTeams]);
     // A key whose team is in no list (a damaged waiting list) would bind its phone to nothing: forget it, so the phone's JOIN starts over.
     const known = new Set([...s.pendingTeams, ...this.lateTeams, ...(s.game?.teams ?? [])].map((t) => t?.id));
     this.teamKeys = new Map(s.teamKeys.filter(([id]) => known.has(id)));
@@ -2447,6 +2450,9 @@ export class DungeonRoom {
         case "TEAM_PICK_CLASS":
           this.handleTeamPickClass(sender, msg.classId);
           break;
+        case "TEAM_PICK_LOOK":
+          this.handleTeamPickLook(sender, msg.look);
+          break;
         case "TEAM_USE_ABILITY":
           this.handleTeamUseAbility(sender, msg.questionId);
           break;
@@ -2587,7 +2593,8 @@ export class DungeonRoom {
     this.teamKeys.set(teamId, teamKey);
     this.connTeam.set(conn.id, teamId);
     // Once the game is on, a new team waits for the host (docs/designs/late-join.md).
-    (this.game ? this.lateTeams : this.pendingTeams).push({ id: teamId, name });
+    // The lobby list keeps every playing team during a game, so lobby + waiting covers every colour in use (#320).
+    (this.game ? this.lateTeams : this.pendingTeams).push({ id: teamId, name, look: firstFreeLook([...this.pendingTeams, ...this.lateTeams]) });
     this.broadcastState();
   }
 
@@ -4282,6 +4289,19 @@ export class DungeonRoom {
     if ((team.classId ?? null) === classId) return;
     if (classId) team.classId = classId;
     else delete team.classId;
+    this.broadcastState();
+  }
+
+  /** Lobby only, like the class (#320): the team's colour. First pick wins: a colour another lobby or waiting team holds
+   * is ignored, and the next broadcast shows it locked. */
+  private handleTeamPickLook(conn: Conn, look: number) {
+    const teamId = this.connTeam.get(conn.id);
+    const late = this.lateTeams.find((t) => t.id === teamId);
+    const team = late ?? this.pendingTeams.find((t) => t.id === teamId);
+    if (!team) return void this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
+    if (this.game && !late) return void this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
+    if ([...this.pendingTeams, ...this.lateTeams].some((t) => t.look === look)) return;
+    team.look = look;
     this.broadcastState();
   }
 

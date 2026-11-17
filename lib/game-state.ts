@@ -173,6 +173,8 @@ export interface Team {
   queuedQuestionId?: string;
   /** Picked in the lobby, fixed once the game starts; none is a plain adventurer. */
   classId?: ClassId;
+  /** The team's colour (#320, lib/team-look.ts), picked in the lobby; missing in a save from before it. */
+  look?: number;
   /** Class ability uses left (ABILITY_USES at the start). */
   abilityUses: number;
   /** Natural 20s this team rolled: crit dice, warrior rolls, persuasion checks and the kill's 4d20 (podium-reveal.md D5).
@@ -716,7 +718,7 @@ export function isBossThreshold(v: unknown): v is number {
 }
 
 export function createGame(
-  teamSeeds: { id: string; name: string; classId?: ClassId }[],
+  teamSeeds: { id: string; name: string; classId?: ClassId; look?: number }[],
   rooms: RoomTemplate[],
   pools: string[][],
   bossQuestionIds: string[],
@@ -770,6 +772,7 @@ export function createGame(
       inBoss: config.bossThreshold <= 0, // score starts at 0
       ...(config.bossThreshold <= 0 ? { bossAt: { round: 1, turns: 0 } } : {}),
       ...(seed.classId ? { classId: seed.classId } : {}),
+      ...(seed.look !== undefined ? { look: seed.look } : {}),
       abilityUses: abilityUsesFor(seed.classId),
     });
   }
@@ -812,7 +815,7 @@ export function lateJoinOpen(game: GameState): boolean {
 
 /** The host lets a team in mid-game (docs/designs/late-join.md): room 1, last in turnOrder, and level with the team in
  * last place on both counts (reward decides the winner, score the boss door). No 擲先攻 for it. */
-export function addLateTeam(game: GameState, seed: { id: string; name: string; classId?: ClassId }, rng: () => number = Math.random): GameState {
+export function addLateTeam(game: GameState, seed: { id: string; name: string; classId?: ClassId; look?: number }, rng: () => number = Math.random): GameState {
   if (!lateJoinOpen(game)) throw new InvalidActionError("late_closed");
   if (game.teams.some((t) => t.id === seed.id)) throw new InvalidActionError("already_in_game");
   const room = game.rooms[0];
@@ -830,6 +833,7 @@ export function addLateTeam(game: GameState, seed: { id: string; name: string; c
     currentSelection: null,
     inBoss: false,
     ...(seed.classId ? { classId: seed.classId } : {}),
+    ...(seed.look !== undefined ? { look: seed.look } : {}),
     abilityUses: abilityUsesFor(seed.classId),
     late: true,
     // Let in while 抓包與神諭 is on: its uses now, as every team got them at the switch (anti-ai-cheating.md).
@@ -2498,6 +2502,8 @@ export interface SpectatorView {
      * see what a team has picked before judging (T7 host UI). */
     currentSelection: number | null;
     classId?: ClassId;
+    /** The team's colour (#320); missing for a team saved before it (pages fall back to its index). */
+    look?: number;
     abilityUses: number;
     /** The most uses ⚙ 更多's 修正 may give back (abilityCap); absent for a chef or no class. */
     abilityCap?: number;
@@ -2572,6 +2578,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       currentQuestionId: t.currentQuestionId,
       currentSelection: t.currentSelection,
       ...(t.classId ? { classId: t.classId } : {}),
+      ...(t.look !== undefined ? { look: t.look } : {}),
       abilityUses: t.abilityUses,
       ...(abilityCap(t) !== null ? { abilityCap: abilityCap(t)! } : {}),
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),

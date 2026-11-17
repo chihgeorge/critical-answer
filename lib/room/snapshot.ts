@@ -4,6 +4,7 @@ import type { Initiative } from "../initiative";
 import { MAX_TAP_LATENCY_MS } from "../tap-clock";
 import { isAnswerSeconds, type AnswerClock } from "../answer-clock";
 import { DEFAULT_AI_LIMIT, INTRO_PAGES, MAX_AI_LIMIT, parseScreenAudio, type AiSource, type ScreenAudio } from "../protocol";
+import { isLook } from "../team-look";
 
 /**
  * Everything a room must get back after its Durable Object restarts, as plain data.
@@ -26,9 +27,9 @@ export interface RoomSnapshot {
   /** Clients show "game reset" when this changes, so it must survive a restart unchanged. */
   roomEpoch: string;
   game: GameState | null;
-  pendingTeams: { id: string; name: string; classId?: ClassId }[];
+  pendingTeams: { id: string; name: string; classId?: ClassId; look?: number }[];
   /** Teams waiting for the host's 收這隊 (docs/designs/late-join.md). Missing means none, as in a save from before it. */
-  lateTeams?: { id: string; name: string; classId?: ClassId }[];
+  lateTeams?: { id: string; name: string; classId?: ClassId; look?: number }[];
   hostToken: string;
   /** team id -> team secret */
   teamKeys: [string, string][];
@@ -125,7 +126,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     if (game !== null && !(isObject(game.boss) && Array.isArray(game.boss.phases))) return null;
     if (!isString(raw.roomEpoch) || !isString(raw.hostToken)) return null;
     // Classes came later (class-abilities.md) without a version bump: a missing class is none, missing uses are a full set.
-    const classOk = (t: Record<string, unknown>) => t.classId === undefined || isClassId(t.classId);
+    // Team colours (#320) likewise: a missing one is filled in on restore, a bad one discards the save like a bad class.
+    const classOk = (t: Record<string, unknown>) => (t.classId === undefined || isClassId(t.classId)) && (t.look === undefined || isLook(t.look));
     if (!Array.isArray(raw.pendingTeams) || !raw.pendingTeams.every((t) => isObject(t) && isString(t.id) && isString(t.name) && classOk(t))) return null;
     // A damaged waiting list only loses the waiting teams: their phones JOIN again.
     const lateTeams = Array.isArray(raw.lateTeams) && raw.lateTeams.every((t) => isObject(t) && isString(t.id) && isString(t.name) && classOk(t)) ? (raw.lateTeams as RoomSnapshot["lateTeams"]) : undefined;

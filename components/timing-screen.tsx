@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { AnswerReveal, ClientMessage } from "@/lib/protocol";
 import type { SpectatorView } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
+import { lookOf } from "@/lib/team-look";
 import { ANCHOR_HEARTBEAT_MS, ANCHOR_POLL_MS, ANCHOR_SEND_GAP_MS, ANCHOR_SEND_MIN_MS, anchorOf, formatSongTime, formatTapError, labelRows, nextAnchorWindow, REPLAY_DELAY_MS, replayDue, shortTapError, songMs, timelineAt, timelineWindow } from "@/lib/tap-clock";
 import { Panel, Sprite } from "./pixel";
 import { useClockPings } from "./room-clock";
@@ -78,7 +79,8 @@ export function timingLines(timing: Timing, view: SpectatorView) {
 /** Beside the reveal's video: the winner, its error and the target, then every team in two columns of four. */
 export function TimingResult({ timing, view }: { timing: Timing; view: SpectatorView }) {
   const team = (id: string) => view.teams.find((t) => t.id === id);
-  const index = (id: string) => view.teams.findIndex((t) => t.id === id);
+  // The team's colour index (#320), or -1 for a team not in the view.
+  const index = (id: string) => { const i = view.teams.findIndex((t) => t.id === id); return i < 0 ? -1 : lookOf(view.teams[i], i); };
   const [first] = timing.rows;
   return (
     <div data-testid="timing-reveal" className="flex w-full min-w-0 flex-col text-left">
@@ -161,7 +163,8 @@ export function TimingTimeline({ timing, view, clipStartMs, timeRef }: { timing:
   const head = usePlayhead(timeRef, timing.latencyMs ?? 0);
   const win = timelineWindow(timing.targetMs, timing.rows.map((r) => r.errorMs), clipStartMs);
   const x = (ms: number) => AXIS_INSET + timelineAt(ms, win) * AXIS_W;
-  const index = (id: string) => view.teams.findIndex((t) => t.id === id);
+  // The team's colour index (#320), or -1 for a team not in the view.
+  const index = (id: string) => { const i = view.teams.findIndex((t) => t.id === id); return i < 0 ? -1 : lookOf(view.teams[i], i); };
   const targetText = `${timing.label ? `${timing.label} ` : ""}${formatSongTime(timing.targetMs)}`;
   const tx = x(timing.targetMs);
   const tw = labelWidth(targetText);

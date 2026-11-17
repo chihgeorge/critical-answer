@@ -287,7 +287,7 @@ describe("six hours after the first start", () => {
     send(room, conn("phone"), { type: "JOIN", teamId: T1, teamKey: "a-different-key-0123456789abc", teamName: "新隊" });
     // A new team joining an empty lobby, not the old game's team: the old key is gone and so is the game.
     const lobby = io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).findLast((m) => m.type === "LOBBY");
-    expect(lobby.teams).toEqual([{ id: T1, name: "新隊" }]);
+    expect(lobby.teams).toEqual([{ id: T1, name: "新隊", look: 0 }]);
     expect(room.game).toBeNull();
   });
 });

@@ -35,6 +35,7 @@ import type { Beat } from "./podium";
 import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
 import { isAnswerSeconds } from "./answer-clock";
+import { isLook } from "./team-look";
 import type { MonsterSprite } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -390,6 +391,8 @@ export type ClientMessage =
   | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "flee" | "switch" }
   /** Lobby only: the team's class, or null for none. The last pick before HOST_START counts. */
   | { type: "TEAM_PICK_CLASS"; classId: ClassId | null }
+  /** Lobby only (#320): the team's colour, an index into TEAM_LOOKS. A colour another team holds is ignored. */
+  | { type: "TEAM_PICK_LOOK"; look: number }
   /** Spend one use of the team's class ability on `questionId` (PR 1: the warrior's roll). */
   | { type: "TEAM_USE_ABILITY"; questionId: string }
   /** The team on turn at a fork picks its door (docs/designs/branch-fork.md). `eventId`: the STATE it was pressed under. */
@@ -509,7 +512,7 @@ export type ServerMessage =
    * `bankSize`: question counts only (no content), so the host page can warn a bank is too small for its teams. */
   /** `calibrate`: a 🎯 校正喇叭 test is running (tap-calibrate.md), its first beep at server ms `startAt`. `tapLatency`: the
    * speaker latency in ms (HOST_TAP_LATENCY), absent when 0. */
-  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId }[]; roomEpoch: string; replay?: true; bankSize?: BankSize; pacing?: "manual"; screenAudio?: ScreenAudio; calibrate?: CalibrateRun; tapLatency?: number }
+  | { type: "LOBBY"; teams: { id: string; name: string; classId?: ClassId; look?: number }[]; roomEpoch: string; replay?: true; bankSize?: BankSize; pacing?: "manual"; screenAudio?: ScreenAudio; calibrate?: CalibrateRun; tapLatency?: number }
   | {
       type: "STATE";
       view: SpectatorView;
@@ -590,7 +593,7 @@ export type ServerMessage =
       hold?: Hold;
       /** Teams that joined after the start and wait for the host (docs/designs/late-join.md). `closed`: the boss fight
        * has begun or the game is over, so they wait for the next game. Absent while nobody waits. */
-      late?: { teams: { id: string; name: string; classId?: ClassId }[]; closed?: true };
+      late?: { teams: { id: string; name: string; classId?: ClassId; look?: number }[]; closed?: true };
       /** The door that just opened, on show for FORK_BEAT_MS (branch-fork.md): `question` is null and the view still
        * shows the team as it was before the press, so nothing behind the door shows early. Memory only. The side opened
        * and what was behind it; the other door is never named, nor which side hides what before a pick. */
@@ -1119,6 +1122,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "TEAM_PICK_CLASS":
       return m.classId === null || isClassId(m.classId) ? { type: "TEAM_PICK_CLASS", classId: m.classId } : null;
+    case "TEAM_PICK_LOOK":
+      return isLook(m.look) ? { type: "TEAM_PICK_LOOK", look: m.look } : null;
     case "TEAM_USE_ABILITY": {
       const questionId = str(m.questionId, MAX_ID);
       return questionId === null ? null : { type: "TEAM_USE_ABILITY", questionId };
