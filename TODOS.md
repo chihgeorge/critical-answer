@@ -577,20 +577,6 @@
 
 ---
 
-## 其他 e2e spec 也在每個測試開始前關掉留下的 context
-
-**What:** 把 `e2e/answer.ts` 的 `closeLeftoverContexts()` 加到其他用 `browser.newContext()` 的 spec，或改成所有 spec 共用的 fixture。
-
-**Why:** Playwright 只關它自己的 `context` fixture。測試用 `browser.newContext()` 開的 context 會一直活到這個 shard 的瀏覽器關掉，所以前面測試的主持人頁、手機和大螢幕都還連著、還在動畫、還在收房間的廣播。2026-11-16 的 `narration-tts.spec.ts:147` 偶發失敗（第二支手機 5 秒內沒在自己的名單上看到自己）就是在這種負載下發生的。這次只在 `narration-tts.spec.ts` 加了，它的第一個測試會把前面 spec 留下的全部關掉。
-
-**Context:** `e2e/answer.ts`；`lifecycle.spec.ts:71`、`boss-buzzer.spec.ts:49` 在 CI 也偶發失敗過，可能是同一個原因，還沒查證。
-
-**Effort/Priority:** S / P3
-
-**Depends on:** 無。
-
----
-
 ## 開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）
 
 **What:** `npm audit` 剩 5 個 high，全是同一條：`eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob@3.3.1`（鎖死版本）→ `micromatch` → `braces <=3.0.3`。`braces` 最新版就是 3.0.3，上游沒有修好的版本。
@@ -665,6 +651,10 @@
 ## Completed
 
 細節見 CHANGELOG.md 與 git 歷史。
+
+## 其他 e2e spec 也在每個測試開始前關掉留下的 context
+
+- **每個 e2e spec 都關掉前面留下的 context** · 版號合併時定 · `closeLeftoverContexts()` 加到全部 41 個 spec（各檔一行，跟 `restoreRoom0AfterEach()` 同樣的寫法）。`lifecycle.spec.ts`、`boss-buzzer.spec.ts` 的偶發失敗在 #269 之後的 CI 沒再出現；那之後唯一一次 e2e 失敗是 `ai-key.spec.ts` 主持人頁還在「連線中…」，已改成先等房間連上。
 
 ## 縮短超過 22 字的舊腳本句
 
