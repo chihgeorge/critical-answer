@@ -119,7 +119,7 @@ export function monsterById(id: string): CatalogMonster | undefined;
 - `RoomTemplate`（`lib/game-state.ts:138`）新增 `monsterId: string`，由 dungeon-room 建遊戲時從 `bank.rooms[i].monster` 填入（跟現在填 `dish` 同一處）。
 - 在 `answerQuestion` 產生 `correct-room-advance` 結果的同一個狀態轉換裡，對答題隊伍所在房間的 `rooms[team.roomIndex].monsterId` 加 1（跟 `ate()` 加菜名同一處，`lib/game-state.ts:999`）。判定本來就以 eventId 擋重複（重送、第二台主持人裝置），同一次答對只會產生一次轉換，所以只加一次。房間是單一 Durable Object，所有判定依序執行，兩隊「同時」答對也是一前一後各加一次。
 - key 是 catalog id，不是房間：同一隻怪放在第 1 房和第 4 房，共用同一個計數。
-- 答錯、逃跑、首領被打中或打倒都不加。主持人重新開一場遊戲（新的 `GameState`）就是 `{}`。
+- 答錯、逃跑、說服成功（怪物讓路，#340）、首領被打中或打倒都不加。主持人重新開一場遊戲（新的 `GameState`）就是 `{}`。
 
 **選變化**：出題時用那間房怪物的 `n = defeats[id] ?? 0`（已經被打倒幾次；被打倒 k 次之後的登場用 n=k，所以第一次被打倒後的下一次登場是 n=1）決定外觀，結果放進那題的 `pub.monster`。實作（/review 後站長 2026-11-07 選「抽到題時就固定」）：隊伍走進房間時把那時的 `defeats[id]` 記在 `Team.metDefeats`（開局是 0），整個房間都用這個數字，別隊之後打倒同一種怪不影響；舊存檔沒有這欄時用整場的 `defeats`。
 

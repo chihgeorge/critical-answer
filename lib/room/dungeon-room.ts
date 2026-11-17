@@ -4999,7 +4999,8 @@ export class DungeonRoom {
    * that moved during the beat (a game ended) refuses it, and the die is only shown. */
   private applyRejudge(teamId: string, index: number, questionId: string, value: number) {
     try {
-      this.game = hostRejudge(this.game!, index, teamId, questionId, true, value);
+      const kind = this.question(questionId)?.kind;
+      this.game = hostRejudge(this.game!, index, teamId, questionId, true, value, kind === "multipleChoice" || kind === "sort");
       const team = this.game.teams.find((t) => t.id === teamId)!;
       const last = team.fixes!.at(-1)!;
       this.addTranscript({ kind: "fix", at: new Date().toISOString(), text: `${team.name} rejudge #${index + 1} 答錯→答對 d20=${value} ${last.from}→${last.to}` });
