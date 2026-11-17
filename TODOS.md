@@ -1,41 +1,43 @@
 # TODOs
 
+進度和狀態記在 [GitHub Issues](https://github.com/chihgeorge/critical-answer/issues)，每條後面的 #編號就是對應的 issue；TODOS.md 保留設計細節。
+
 ## 索引
 
 ### P1
 
-- [11/21 前在活動用的大螢幕瀏覽器實測 YouTube 聲音](#1121-前在活動用的大螢幕瀏覽器實測-youtube-聲音) — S（人工約 20 分鐘，要真機）
-- [11/21 前在場地電視看火把打光的地城](#1121-前在場地電視看火把打光的地城) — S（人工約 15 分鐘，要真機）
+- [11/21 前在活動用的大螢幕瀏覽器實測 YouTube 聲音](#1121-前在活動用的大螢幕瀏覽器實測-youtube-聲音)（[#278](https://github.com/chihgeorge/critical-answer/issues/278)） — S（人工約 20 分鐘，要真機）
+- [11/21 前在活動用的電視看火把打光的地城](#1121-前在活動用的電視看火把打光的地城)（[#279](https://github.com/chihgeorge/critical-answer/issues/279)） — S（人工約 15 分鐘，要真機）
 
 ### P2
 
-- [美術改版：冒險者野餐桌](#美術改版冒險者野餐桌) — L（人工約 1–2 週 / CC 約 1–2 天）
+- [美術改版：冒險者野餐桌](#美術改版冒險者野餐桌)（[#280](https://github.com/chihgeorge/critical-answer/issues/280)） — L（人工約 1–2 週 / CC 約 1–2 天）
 
 ### P3
 
-- [活動後：火把地城和舊畫面只留一個](#活動後火把地城和舊畫面只留一個) — S，活動後
-- [觀眾反應的後續：燈籠預測](#觀眾反應的後續燈籠預測) — M
-- [觀眾投票決定走哪扇門（叉路 Approach C）](#觀眾投票決定走哪扇門叉路-approach-c) — M（人工約 1–2 天 / CC 約 1 小時），活動後
-- [題庫指定叉路位置、難度門和類別門（叉路 Approach B）](#題庫指定叉路位置難度門和類別門叉路-approach-b) — L（人工約 1 週 / CC 約半天），活動後
-- [頒獎稱號「命運之子」](#頒獎稱號命運之子) — S，活動後
-- [抓包與神諭：用平衡模擬看分數對勝率的影響](#抓包與神諭用平衡模擬看分數對勝率的影響) — M，活動後
-- [抓包與神諭：首領房也能用](#抓包與神諭首領房也能用) — M，活動後
-- [活動後用對局紀錄對一次職業勝率](#活動後用對局紀錄對一次職業勝率) — S，活動後
-- [OpenRouter 一鍵登入拿 key，手機主持人不用複製貼上](#openrouter-一鍵登入拿-key手機主持人不用複製貼上) — M
-- [逃跑・換房（完整版）](#逃跑換房完整版) — M（人工約 1-2 天 / CC 約 1 小時），活動後
-- [用真的 API 聽幾局美食口吻的 AI 旁白](#用真的-api-聽幾局美食口吻的-ai-旁白) — S（人工約 30 分鐘，要 API key）
-- [上架手機版本](#上架手機版本) — 上架 L（人工約 1–2 週 / CC 約半天，不含審核）；PWA 已做
-- [每次行動可以選不同的動作，不只答題](#每次行動可以選不同的動作不只答題) — 未註明
-- [活動後清掉有版權疑慮的上傳影片和聲音](#活動後清掉有版權疑慮的上傳影片和聲音) — S，活動後
-- [每個職業技能都靠擲骰](#每個職業技能都靠擲骰) — M，活動後
-- [玩家自己選攻擊或說服](#玩家自己選攻擊或說服) — M
-- [在全新的 Cloudflare／Vercel 帳號上照部署指南做一遍](#在全新的-cloudflarevercel-帳號上照部署指南做一遍) — S（人工約 2 小時 / CC 約 30 分鐘）
+- [活動後：火把地城和舊畫面只留一個](#活動後火把地城和舊畫面只留一個)（[#281](https://github.com/chihgeorge/critical-answer/issues/281)） — S，活動後
+- [觀眾反應的後續：燈籠預測](#觀眾反應的後續燈籠預測)（[#283](https://github.com/chihgeorge/critical-answer/issues/283)） — M
+- [觀眾投票決定走哪扇門（叉路 Approach C）](#觀眾投票決定走哪扇門叉路-approach-c)（[#285](https://github.com/chihgeorge/critical-answer/issues/285)） — M（人工約 1–2 天 / CC 約 1 小時），活動後
+- [題庫指定叉路位置、難度門和類別門（叉路 Approach B）](#題庫指定叉路位置難度門和類別門叉路-approach-b)（[#286](https://github.com/chihgeorge/critical-answer/issues/286)） — L（人工約 1 週 / CC 約半天），活動後
+- [頒獎稱號「命運之子」](#頒獎稱號命運之子)（[#287](https://github.com/chihgeorge/critical-answer/issues/287)） — S，活動後
+- [抓包與神諭：用平衡模擬看分數對勝率的影響](#抓包與神諭用平衡模擬看分數對勝率的影響)（[#288](https://github.com/chihgeorge/critical-answer/issues/288)） — M，活動後
+- [抓包與神諭：首領房也能用](#抓包與神諭首領房也能用)（[#289](https://github.com/chihgeorge/critical-answer/issues/289)） — M，活動後
+- [活動後用對局紀錄對一次職業勝率](#活動後用對局紀錄對一次職業勝率)（[#292](https://github.com/chihgeorge/critical-answer/issues/292)） — S，活動後
+- [OpenRouter 一鍵登入拿 key，手機主持人不用複製貼上](#openrouter-一鍵登入拿-key手機主持人不用複製貼上)（[#294](https://github.com/chihgeorge/critical-answer/issues/294)） — M
+- [逃跑・換房（完整版）](#逃跑換房完整版)（[#298](https://github.com/chihgeorge/critical-answer/issues/298)） — M（人工約 1-2 天 / CC 約 1 小時），活動後
+- [用真的 API 聽幾局美食口吻的 AI 旁白](#用真的-api-聽幾局美食口吻的-ai-旁白)（[#299](https://github.com/chihgeorge/critical-answer/issues/299)） — S（人工約 30 分鐘，要 API key）
+- [上架手機版本](#上架手機版本)（[#300](https://github.com/chihgeorge/critical-answer/issues/300)） — 上架 L（人工約 1–2 週 / CC 約半天，不含審核）；PWA 已做
+- [每次行動可以選不同的動作，不只答題](#每次行動可以選不同的動作不只答題)（[#301](https://github.com/chihgeorge/critical-answer/issues/301)） — 未註明
+- [活動後清掉有版權疑慮的上傳影片和聲音](#活動後清掉有版權疑慮的上傳影片和聲音)（[#303](https://github.com/chihgeorge/critical-answer/issues/303)） — S，活動後
+- [每個職業技能都靠擲骰](#每個職業技能都靠擲骰)（[#305](https://github.com/chihgeorge/critical-answer/issues/305)） — M，活動後
+- [玩家自己選攻擊或說服](#玩家自己選攻擊或說服)（[#306](https://github.com/chihgeorge/critical-answer/issues/306)） — M
+- [在全新的 Cloudflare／Vercel 帳號上照部署指南做一遍](#在全新的-cloudflarevercel-帳號上照部署指南做一遍)（[#307](https://github.com/chihgeorge/critical-answer/issues/307)） — S（人工約 2 小時 / CC 約 30 分鐘）
 
 ### P4
 
-- [量 e2e 對前端（app/、components/）的實際覆蓋率](#量-e2e-對前端appcomponents的實際覆蓋率) — M
-- [開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）](#開發工具鏈剩-5-個-npm-audit-漏洞上游沒有修補版) — S
-- [ESLint 10 / TypeScript 7 升級被上游卡住](#eslint-10--typescript-7-升級被上游卡住) — 不確定（等上游）
+- [量 e2e 對前端（app/、components/）的實際覆蓋率](#量-e2e-對前端appcomponents的實際覆蓋率)（[#312](https://github.com/chihgeorge/critical-answer/issues/312)） — M
+- [開發工具鏈剩 5 個 npm audit 漏洞（上游沒有修補版）](#開發工具鏈剩-5-個-npm-audit-漏洞上游沒有修補版)（[#313](https://github.com/chihgeorge/critical-answer/issues/313)） — S
+- [ESLint 10 / TypeScript 7 升級被上游卡住](#eslint-10--typescript-7-升級被上游卡住)（[#314](https://github.com/chihgeorge/critical-answer/issues/314)） — 不確定（等上游）
 
 ---
 
@@ -49,7 +51,7 @@
 - 播放器在 `components/youtube-player.tsx`，聲音要開之前大螢幕要先有一次使用者操作（看 BGM 的解鎖方式）。
 - 如果被擋：先在大螢幕點一下畫面再開始遊戲，或改用 Chrome。
 - 順便測 Instagram 詳解（`docs/designs/instagram-explanations.md`）：公布答案後在大螢幕點影片，確認有聲音、背景音樂會靜音。無頭瀏覽器測不到聲音。
-- 也測上傳的影片和聲音（`docs/designs/uploaded-media.md`）：一題影片題、一題聲音題、一個影片詳解，**用場地的網路**，確認不會卡在開頭、⟲ 從頭能用。檔案從 r2.dev 下載，場地網路慢時大檔會卡。
+- 也測上傳的影片和聲音（`docs/designs/uploaded-media.md`）：一題影片題、一題聲音題、一個影片詳解，**用活動當天的網路**，確認不會卡在開頭、⟲ 從頭能用。檔案從 r2.dev 下載，網路慢時大檔會卡。
 
 **Effort/Priority:** S（人工約 20 分鐘，要真機）/ P1，期限 2026-11-21 活動前
 
@@ -61,9 +63,9 @@
 
 ---
 
-## 11/21 前在場地電視看火把打光的地城
+## 11/21 前在活動用的電視看火把打光的地城
 
-**What:** 在場地的電視或投影機上開大螢幕，看題目畫面、大廳和首領房，也按一次主持人的 🌑 螢幕變暗。牆、拱門、地圖列的房間和棋子要從觀眾的位置看得清楚。
+**What:** 在活動用的電視或投影機上開大螢幕，看題目畫面、大廳和首領房，也按一次主持人的 🌑 螢幕變暗。牆、拱門、地圖列的房間和棋子要從觀眾的位置看得清楚。
 
 **Why:** v0.81 把場景壓暗、加了火把光（`docs/designs/dungeon-scene.md`）。PNG 和 `lib/scene-classic.test.ts` 只保證牆不比舊畫面加 🌑 更暗，電視會不會把暗部糊成一片，只能實機看。
 
@@ -159,7 +161,7 @@
 
 **Effort/Priority:** M（人工約 1–2 天 / CC 約 1 小時） / P3
 
-**Depends on:** 叉路上線，且活動彩排的遊戲紀錄看過大家怎麼選。
+**Depends on:** 叉路上線，且實際對局的遊戲紀錄看過大家怎麼選。
 
 ---
 

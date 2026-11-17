@@ -5,6 +5,7 @@ import {
   answerQuestion,
   advanceTurn,
   currentTurnTeamId,
+  nextTurnTeamId,
   isInBossPhase,
   setTeamOnline,
   getSpectatorView,
@@ -308,6 +309,31 @@ describe("answerQuestion — stale question rejection (T6 critical gap)", () => 
     }
     expect(game.teams[0].score).toBe(0);
     expect(currentTurnTeamId(game)).toBe("T0");
+  });
+});
+
+describe("nextTurnTeamId (the host's 指定下一題 target)", () => {
+  it("names the team after the one on turn, skipping offline teams and wrapping", () => {
+    let game = makeGame();
+    expect(nextTurnTeamId(game)).toBe("T1");
+    game = setTeamOnline(game, "T1", false);
+    expect(nextTurnTeamId(game)).toBe("T2");
+    expect(getSpectatorView(advanceTurn(game)).nextTurnTeamId).toBe("T0");
+  });
+
+  it("is the team itself when it is the only one online, and absent with nobody on turn", () => {
+    let game = makeGame();
+    game = setTeamOnline(setTeamOnline(game, "T1", false), "T2", false);
+    expect(nextTurnTeamId(game)).toBe("T0");
+    game = setTeamOnline(game, "T0", false);
+    expect(nextTurnTeamId(game)).toBeNull();
+    expect(getSpectatorView(game)).not.toHaveProperty("nextTurnTeamId");
+  });
+
+  it("passes over a 💫 stunned team, as landTurn does", () => {
+    const stun = (g: GameState, ids: string[]) => ({ ...g, teams: g.teams.map((t) => (ids.includes(t.id) ? { ...t, stunned: true as const } : t)) });
+    expect(nextTurnTeamId(stun(makeGame(), ["T1"]))).toBe("T2");
+    expect(nextTurnTeamId(stun(makeGame(), ["T1", "T2"]))).toBe("T0");
   });
 });
 
@@ -1953,6 +1979,27 @@ describe("dishes (docs/designs/monster-cuisine.md)", () => {
     expect(g.phase).toBe("finished");
     expect(t(g, "T1").dishes).toEqual(["龍尾"]);
   });
+
+  // Value: protects=a persuasion 20 eats the monster's gift, not its body, for the same reward, and a dropped 20 cooks as
+  // before (persuasion-gift, owner 2026-11-16); fails_when=the gift is ignored, the reward changes, or a shown question's
+  // dropped 20 still counts as persuaded; no_claim=the room's reveal (dungeon-room.test.ts)
+  it("a persuasion 20 eats the monster's gift for the same reward, in a room and on the boss kill", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    const twenty = (g: GameState, id: string, q: string, dropped = false): GameState => ({ ...g, checks: { ...g.checks, [checkKey(q, id)]: { value: 20, bonus: 0, dc: 8, passed: true, ...(dropped ? { dropped: true as const } : {}) } } }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    const base = cookedGame();
+    const slime = monsterById("slime-soft")!;
+    const g0 = { ...base, rooms: base.rooms.map((r, i) => (i === 0 ? { ...r, monsterId: "slime-soft" } : r)) };
+    const plain = answerQuestion(g0, "T0", t(g0, "T0").currentQuestionId, true).game;
+    const q = t(g0, "T0").currentQuestionId;
+    const gifted = answerQuestion(twenty(g0, "T0", q), "T0", q, true).game;
+    expect(t(gifted, "T0").dishes).toEqual([slime.gift.name]);
+    expect(t(gifted, "T0").reward).toBe(t(plain, "T0").reward);
+    expect(t(answerQuestion(twenty(g0, "T0", q, true), "T0", q, true).game, "T0").dishes).toEqual(["湯"]);
+    let b: GameState = { ...cookedGame(0, 1), bossMonsterId: "dragon" };
+    const bq = b.boss.currentQuestionId;
+    b = answerQuestion(twenty(b, "T0", bq), "T0", bq, true).game;
+    expect(b.phase).toBe("finished");
+    expect(t(b, "T0").dishes).toEqual([monsterById("dragon")!.gift.name]);
+  });
 });
 
 // Value: protects=the crit die's rules (dnd design R4, R5, R2): a 20 adds half the base reward and one boss heart, a 1
@@ -2265,6 +2312,11 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     return enterNextBossPhase(g);
   }
   const judge = (g: GameState, team: string, correct: boolean) => answerQuestion(g, team, g.boss.currentQuestionId, correct, "retry", first);
+
+  it("has no next team on turn for the host's 指定下一題", () => {
+    expect(nextTurnTeamId(buzzer())).toBeNull();
+    expect(getSpectatorView(buzzer())).not.toHaveProperty("nextTurnTeamId");
+  });
 
   it("a sneak armed in the phase before is given back when a buzzer phase starts (no abilities, D6)", () => {
     const teams = [0, 1].map((i) => ({ id: `T${i}`, name: `Team ${i}` }));

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { startGame, closeLeftoverContexts } from "./answer";
+import { startGame, openMore, closeMore, closeLeftoverContexts } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -13,6 +13,8 @@ test("a malformed key is refused and never remembered, even with 記住這台電
   await page.getByRole("button", { name: /主持遊戲/ }).click();
   await page.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
 
+  // The AI key is in ⚙ 更多.
+  await openMore(page);
   await expect(page.getByRole("radio", { name: /不用 AI/ })).toBeChecked();
   await page.getByRole("radio", { name: /用我自己的 Anthropic API key/ }).check();
   await page.getByRole("textbox", { name: "Anthropic API key" }).fill("sk-not-a-real-key");
@@ -23,6 +25,7 @@ test("a malformed key is refused and never remembered, even with 記住這台電
   const stored = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("ai-key:")));
   expect(stored).toEqual([]);
   await page.reload();
+  await openMore(page);
   await expect(page.getByRole("radio", { name: /不用 AI/ })).toBeChecked();
 });
 
@@ -36,10 +39,12 @@ test("owner mode on a server without its own key says so, and the game still sta
   // backoff, which once ate the whole 5 s wait for the status (run 44000555668: still 連線中…). Wait for the room first.
   await expect(host.getByTestId("screen-link")).toHaveAttribute("href", /\/screen#s=./, { timeout: 15_000 });
 
+  await openMore(host);
   await host.getByRole("radio", { name: "站長金鑰" }).check();
   await host.getByRole("textbox", { name: /OWNER_KEY/ }).fill(E2E_OWNER_KEY);
   await host.getByRole("button", { name: "使用站長金鑰" }).click();
   await expect(host.getByText("這個伺服器沒有開放站長金鑰")).toBeVisible();
+  await closeMore(host);
 
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await phone.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);

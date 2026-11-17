@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { answerCorrectly, startGame, nextQuestion, screenUrl, closeLeftoverContexts } from "./answer";
+import { answerCorrectly, startGame, nextQuestion, screenUrl, openMore, closeMore, closeLeftoverContexts } from "./answer";
 import { readFile } from "node:fs/promises";
 
 closeLeftoverContexts();
@@ -113,6 +113,8 @@ test("the host queues the next line, the big screen says it, and the queue empti
   await startGame(host);
 
   const queued = "不怕死的冒險者問珍珠能吃嗎";
+  // The narration panel is in ⚙ 更多; the drawer closes for the judge buttons and opens again after.
+  await openMore(host);
   const toggle = host.getByTestId("narration-panel").getByRole("button", { name: /地城主旁白/ });
   await expect(toggle).toContainText(/\d 句・/); // the opening narration is in, so it won't close the panel on arrival (D12)
   await toggle.click();
@@ -120,11 +122,13 @@ test("the host queues the next line, the big screen says it, and the queue empti
   await host.getByRole("button", { name: "排進去" }).click();
   await expect(host.getByText(`已排入：${queued}`)).toBeVisible();
   await expect(toggle).toContainText("・已排下一句");
+  await closeMore(host);
 
   await answerCorrectly(host);
   await expect(screen.locator(".px-say")).toContainText(queued, { timeout: 8000 });
 
-  // The new narration closed the panel (D12); open it again.
+  // The panel lives in ⚙ 更多 now, so it reopens collapsed (D12's close-on-new-narration is checked by narration-tts editLastLine).
+  await openMore(host);
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await toggle.click();
   await expect(host.getByText(/下一句這樣說（下一次旁白的第二句/)).toBeVisible();
@@ -138,6 +142,7 @@ test("the host queues the next line, the big screen says it, and the queue empti
   await expect(queuedRow).toBeVisible();
   await queuedRow.locator("..").getByRole("button", { name: "取消" }).click();
   await expect(host.getByText(/已排入：/)).toHaveCount(0);
+  await closeMore(host);
 
   await nextQuestion(host);
   await answerCorrectly(host);

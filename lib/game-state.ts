@@ -369,7 +369,7 @@ export interface GameState {
   defeats?: Record<string, number>;
   /** Picks each game's first variant (R1). Absent (read as 0) in saves from before the catalog. */
   variantSeed?: number;
-  /** This game's boss when the bank draws monsters per game (gameMonsters). Absent: the bank's own boss. */
+  /** This game's boss (gameMonsters: drawn, or the bank's own). Absent in saves from before persuasion gifts: the bank's own boss. */
   bossMonsterId?: string;
   config: GameConfig;
   /** The round of the last turn played, from 1 (lib/game-log.ts): a turn starts a new round when its team does not
@@ -989,7 +989,7 @@ function rotatedBuzz(game: GameState, nextQuestionId: string): BuzzState | undef
 /** Sets the round's all-stunned latch (BuzzState.allStunned) when every online boss-room team is stunned on an open
  * round. Mid-round that starts only with the last unstunned team dropping (setTeamOnline), a ⟲ (restartTaps) or the
  * question coming round as itself (rotatedBuzz). A stunned team reconnecting into an empty room is not latched: every
- * team offline is a restore or a venue outage, and the teams coming back must not latch an order nobody chose; a tap
+ * team offline is a restore or a network outage, and the teams coming back must not latch an order nobody chose; a tap
  * taken in that window latches the round in tapIn instead. */
 function latchStun(game: GameState): GameState {
   const b = game.buzz;
@@ -1076,6 +1076,17 @@ export function currentTurnTeamId(game: GameState): string | null {
   const idx = nextOnlineIndex(game, 0);
   // null: every team is offline, so no one can take a turn.
   return idx === null ? null : game.turnOrder[idx];
+}
+
+/** The online team after the one on turn in turnOrder (itself when it is the only one online), or null in a buzzer
+ * phase or with nobody on turn. A 💫 stunned team is passed over as landTurn passes it, unless every other one is. */
+export function nextTurnTeamId(game: GameState): string | null {
+  const now = isBuzzPhase(game) ? null : currentTurnTeamId(game);
+  if (now === null) return null;
+  const n = game.turnOrder.length;
+  const at = game.turnOrder.indexOf(now);
+  const online = Array.from({ length: n }, (_, i) => getTeam(game, game.turnOrder[(at + i + 1) % n])).filter((t) => t.online);
+  return (online.find((t) => !t.stunned) ?? online[0])?.id ?? null;
 }
 
 /** The first turn index at or after currentTurnIndex + `from` whose team is online (wrapping), or null. */
@@ -1182,6 +1193,8 @@ export function answerQuestion(
   const crit = correct && critValue === 20;
   // This team's persuasion check on this question: a natural 1 halves any success on it, a warrior's too (R3-7).
   const check = game.checks?.[checkKey(questionId, teamId)];
+  // A natural 20 talked the monster aside (persuasion-gift): it lives, so the team eats what it shared, not the monster.
+  const persuaded = correct && check?.value === 20 && !check.dropped;
   // An event's curse or blessing waits for the next correct answer (event-rooms.md D12): the curse halves like a natural-1
   // check (never twice), the blessing adds half the base like a crit 20.
   const boon = correct ? game.teams.find((t) => t.id === teamId)?.boon : undefined;
@@ -1264,7 +1277,7 @@ export function answerQuestion(
       const hit = sneakPay(baseOf(boss.hitReward)) + critBonus(boss.hitReward);
       const gain = withChef((fields ? Math.round((hit * fields.right) / fields.total) : hit) + (killBonus ?? 0));
       const { reward } = gain;
-      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, boss.dish) : {}), ...withNaturals(t, kill ?? []) }));
+      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, persuaded && game.bossMonsterId ? monsterById(game.bossMonsterId)?.gift.name : boss.dish) : {}), ...withNaturals(t, kill ?? []) }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
       const phasePending = bossKilled ? undefined : newHp === 0 ? "cleared" : usedUp(revealedNow) ? "exhausted" : undefined;
@@ -1365,7 +1378,7 @@ export function answerQuestion(
         teams: patchTeam(game.teams, teamId, (t) => ({
           score: t.score + pointsAwarded,
           reward: t.reward + reward,
-          ...ate(t, team.swappedMonsterId ? monsterById(team.swappedMonsterId)?.dish.name : game.rooms[team.roomIndex].dish),
+          ...ate(t, persuaded && monsterId ? monsterById(monsterId)?.gift.name : team.swappedMonsterId ? monsterById(team.swappedMonsterId)?.dish.name : game.rooms[team.roomIndex].dish),
           roomIndex: nextRoomIndex,
           swappedMonsterId: undefined,
           ...(nextMonsterId ? { metDefeats: defeats?.[nextMonsterId] ?? 0 } : {}),
@@ -2340,6 +2353,9 @@ export function dismissCatch(game: GameState): { game: GameState; potion: boolea
  */
 export interface SpectatorView {
   currentTurnTeamId: string | null;
+  /** The team whose turn comes after this one (turnOrder, online teams only), for the host's 指定下一題. The team itself
+   * when it is the only one online; absent in a buzzer phase or with nobody on turn. */
+  nextTurnTeamId?: string;
   teams: {
     id: string;
     name: string;
@@ -2416,6 +2432,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
   return {
     // A buzzer phase has no turns: the team that buzzed answers, nobody else is on turn (boss-buzzer.md).
     currentTurnTeamId: isBuzzPhase(game) ? (currentBuzz(game).teamId ?? null) : currentTurnTeamId(game),
+    ...(nextTurnTeamId(game) ? { nextTurnTeamId: nextTurnTeamId(game)! } : {}),
     teams: game.teams.map((t) => ({
       id: t.id,
       name: t.name,

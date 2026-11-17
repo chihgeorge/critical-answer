@@ -34,10 +34,10 @@ export function shouldWakeReconnect(readyState: number, awayMs: number): boolean
   return readyState !== WebSocket.OPEN || awayMs >= WAKE_RECONNECT_AFTER_MS;
 }
 
-/** A socket can stay OPEN after the network dropped it (a venue AP drops an idle link, a laptop roams or sleeps), and
+/** A socket can stay OPEN after the network dropped it (a Wi-Fi access point drops an idle link, a laptop roams or sleeps), and
  * nothing would notice. So every LIVENESS_CHECK_MS: quiet for LIVENESS_PING_AFTER_MS, send a CLOCK_PING (the room
  * always answers and does not count it as activity, so an idle room still rests); quiet for LIVENESS_DEAD_AFTER_MS,
- * reconnect, so the page shows its offline notice. Generous, for slow venue Wi-Fi: about three pings go unanswered first. */
+ * reconnect, so the page shows its offline notice. Generous, for slow Wi-Fi: about three pings go unanswered first. */
 export const LIVENESS_CHECK_MS = 10_000;
 export const LIVENESS_PING_AFTER_MS = 15_000;
 export const LIVENESS_DEAD_AFTER_MS = 45_000;

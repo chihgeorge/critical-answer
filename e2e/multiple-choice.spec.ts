@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, revealLock, startGame, screenUrl, openSettings, closeLeftoverContexts } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -167,6 +167,7 @@ test("phone answering: a team that never locks gets the host's stuck row after 1
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("選擇隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
   // 作答倒數 關: the row keeps its 15 s (with a countdown it waits for 0, lib/answer-clock.test.ts).
+  await openSettings(host);
   await host.getByTestId("answer-seconds").selectOption("0");
   await startGame(host);
   await expect(host.getByTestId("host-mc-status")).toContainText("等選擇隊鎖定答案");

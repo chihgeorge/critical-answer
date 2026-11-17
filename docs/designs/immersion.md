@@ -42,7 +42,7 @@ Supersedes: georgechih-claude-progress-check-703b40-design-20261110-102011.md
 3. **地圖**：地圖已經有戰爭迷霧（`components/map-strip.tsx`），這次只加每間房的環境音和光線，以及揭霧的那一刻，不重做地圖。
 4. **聲音**：全部由瀏覽器合成。每一層聲音在影片題、旁白、搶答暫停時各怎麼處理，照下面的「聲音分層表」。
 5. **上線順序**：依影響大小一個一個 PR 上線，王戰最優先。每個 PR 都能單獨上線，來不及就停在前一個。
-- **修正（Codex）**：「燈暗」按鈕叫「螢幕變暗」，只讓大螢幕變暗，控制不了場地的燈。
+- **修正（Codex）**：「燈暗」按鈕叫「螢幕變暗」，只讓大螢幕變暗，控制不了現場的燈。
 - **修正（站長）**：答錯時的動畫演「王格擋反擊」。不扣血、不加規則，因為「王打人不扣血有點奇怪」。
 
 ## Cross-Model Perspective
@@ -204,7 +204,7 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 - Songs (answers the Open Question): one new Song `BOSS_RAGE_THEME` in lib/bgm.ts derived from DUNGEON_THEME's parts at a faster `stepsPerMinute` plus a new optional `drum` Part (kick as a short low pitch-slide note; a synthesized noise buffer is allowed, see the drum item below). "一般王戰版" is DUNGEON_THEME. `createBgmPlayer().setSong(song, gapS)` gives each song generation its own GainNode into the music layer and cuts/disconnects the old one at switch time, so notes already queued in the 0.25 s lookahead never sound inside the 0.5 s gap. Heartbeat, charge, parry and entrance rumble are `SfxNote[]` data in lib/sfx.ts played on the boss layer.
 - Flash budget: one pure module `lib/flash-budget.ts` (`take(): boolean`, sliding 1000 ms window, max 3), one instance per screen page, consulted by every heartbeat glow pulse, the parry red flash and the entrance silhouette brighten (counts as one flash). A refused take shows the static tint only. The fade to black is not a flash. Shake <= 8 px (entrance, parry); rage jitter <= 2 px. Reduced motion: no flash, shake or jitter, static tint, same sounds and same 1.4 s parry timeline. Verify: vitest heartbeat at 2.5 Hz + parry flash never exceeds 3 in any 1 s window.
 - Constraint wording correction: of the two 現況, PR1 removes the "music must be playing" gate for all cues and adds the layer table for the new boss (and later host/ambient) sounds; existing game cues keep ignoring video/buzz/narration mutes as today.
-- Venue check (manual, before 11/18, not CI): one full run-through on the event TV/speakers at party volume, covering unlock, existing cues, narration, heartbeat, parry and rage; the boss-layer volume is one named constant in lib/bgm-player.ts so it can be retuned in one line.
+- Real-device check (manual, before 11/18, not CI): one full run-through on the event TV/speakers at party volume, covering unlock, existing cues, narration, heartbeat, parry and rage; the boss-layer volume is one named constant in lib/bgm-player.ts so it can be retuned in one line.
 - Unlock press plays one short audible confirm chime (E6) on the screen, so the room hears the TV; the host banner still relies on `screenSound` (no host confirmation message).
 - Drum Part may use a synthesized noise AudioBuffer (generated in code, no files); no audio files are added.
 - Regression: table-driven vitest that every existing cue (SFX entries, BOSS_ALARM, SPRINT_FANFARE, ANSWER_TICK, ANSWER_TIME_UP, EAT_DONE) schedules notes with 🎵 on and none with 🎵 off under the new mixer, and that video/held/speaking do not silence them.
@@ -223,7 +223,7 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 - PR2 dim on the screen: a black layer at 40% opacity inside `<Stage>`, above the stage content and the parry layer, below the host effect layer (thunder lights up the dark), the TransitionOverlay and the top banners; on and off are hard cuts, the same under reduced motion; question, options and AnswerClock stay readable under it. DESIGN.md gains the three host buttons, the effect layer and the dim layer in the same PR.
 - PR2 deploy skew is harmless: an old screen ignores the unknown HOST_EFFECT message (its onMessage switch has no default, screen page.tsx:1546); an old Worker answers the new client messages with `ERROR invalid_action bad_message` (dungeon-room.ts:1865), which the host page shows in its error line only during the few minutes until the Worker deploy from the same merge finishes; accepted, no ordering needed.
 - PR2 effective spec: the PR2 items in these accepted blocks are the build spec; where they differ from the 「PR2：主持人加料鈕（三顆）」 section, they win (both voices flagged the layered wording as a risk for a background implementation lane).
-- PR2 rehearsal (manual, after PR2 merges, before 11/18, not CI, independent of PR3): one realistic judging run on the host's own phone with the three-button row, checking that the row never hides or shifts the judge controls and that ⚡ 👹 are heard and seen on the event TV; run on the venue TV/speakers together with the PR1 venue check when possible.
+- PR2 pre-launch check (manual, after PR2 merges, before 11/18, not CI, independent of PR3): one realistic judging run on the host's own phone with the three-button row, checking that the row never hides or shifts the judge controls and that ⚡ 👹 are heard and seen on the event TV; run on the event TV/speakers together with the PR1 real-device check when possible.
 <!-- /autoplan-accepted:ceo -->
 
 <!-- autoplan-accepted:design -->
@@ -249,7 +249,7 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 - PR2 🌑 toggle look reuses the host-pacing toggle (`aria-pressed`, on = `var(--k)` background with white text): on → 「🌑 已變暗」 on `--k`; off → 「🌑 螢幕變暗」 on white. `aria-pressed` and the look follow STATE `screenDim` only (no optimistic flip). 🌑 also gets the 1.2 s local cooldown after a press, so an on-then-off inside the server's 1 s dim window is never swallowed.
 - PR2 dim auto-clear has no toast: the label change (「🌑 影片中」, then 「🌑 螢幕變暗」) shows it. docs/hosting.md and docs/hosting.en.md say that ▶ cancels the dim and that the host presses 🌑 again after the clip.
 - PR2 dim under transitions: while any TransitionOverlay (doors, boss entrance, last sprint) is up, the dim layer is not drawn (hard cut out and back in), so the boss entrance's 75%/45% tint never stacks on the 40% dim.
-- PR2 dim strength is one named constant `DIM_ALPHA = 0.4` beside the tints in lib/flash-budget.ts. The PR2 rehearsal reads a question card from the back row of the event TV with dim on; if it fails, the constant is lowered (a one-token change).
+- PR2 dim strength is one named constant `DIM_ALPHA = 0.4` beside the tints in lib/flash-budget.ts. The PR2 pre-launch check reads a question card from the back row of the event TV with dim on; if it fails, the constant is lowered (a one-token change).
 - PR2 `GROWL_TINT` is `--k` `#2a1533` at 35% edge (`#2a153359`), not red: DESIGN.md reserves red for the boss and a growl can fire anywhere. This supersedes the CEO item's `#5a1020`.
 - PR2 letterbox: dim and edge effects stay inside `<Stage>`; outside it the letterbox is already black (components/stage.tsx), so nothing is added there.
 - PR2 DESIGN.md entries: the host row (sticky row, labels, 已送出, 🔇, 🌑 toggle look, lobby caption) and the screen's thunder, growl and dim (z order, tints, `DIM_ALPHA`, dim hidden under transitions).
@@ -266,7 +266,7 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 - Deploy order: no Worker-first ordering is assumed (Workers Builds and Vercel start from the same merge). Both skews are harmless: an old Worker answers SCREEN_SOUND with ERROR, which the screen ignores; an old screen never reports, so the host sees `muted`.
 - Flash budget scope: it covers the new effects (heartbeat glow, parry flash, entrance brighten). Legacy CSS (`px-alarm-text` blinks on the sprint/catch banners, at most 3 per 2.4 s; torch `px-tf*` flicks, which are sprite frames) is excluded and named in a code comment. While a TransitionOverlay plays, the heartbeat glow shows the static `HEART_TINT` instead of pulsing, so legacy blinks and new pulses never stack.
 - New CI e2e spec (runs only in CI): the lobby unlock button is visible on /screen; clicking it makes the host page show 「🔊 大螢幕聲音已就緒」.
-- Venue check uses a bank whose boss has maxHp >= 6 in at least one phase, so rage is heard in rehearsal (the bundled maxHp 5 rages only at 1 HP).
+- Real-device check uses a bank whose boss has maxHp >= 6 in at least one phase, so rage is heard in pre-launch check (the bundled maxHp 5 rages only at 1 HP).
 - lib/boss-fx.ts and lib/flash-budget.ts are pure and import nothing from `BANK`/data/question-bank.json; `npm run check:bundle` must pass.
 - Test plan artifact: ~/.gstack/projects/critical-answer/georgechih-feat-immersion-boss-eng-review-test-plan-20261111-214726.md (local only).
 - PR2 screenDim reset (run-2 eng H1, both rules kept): besides the read-time clear next to `liveMedia()` (dungeon-room.ts:3304, which mirrors how `liveMedia()` already drops a stale media command and runs in every STATE because each path that makes `clipPlaying` true or finishes the game broadcasts STATE), set `this.screenDim = false` explicitly at game start next to `this.clipEnded = null` (dungeon-room.ts:2758) and in `handleBackToLobby` (dungeon-room.ts:2250), because the back-to-lobby path sends LOBBY, not STATE (dungeon-room.ts:1266). The read-time clear sets the field false when phase is not playing or `clipPlaying` is true. Verify: room vitest: dim on → end game → back to lobby → start → the first STATE has no `screenDim`; dim on → a buzz-resumed clip (dungeon-room.ts:2922) → STATE has no `screenDim` and it stays absent after ⏸.
@@ -277,7 +277,7 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 - PR2 clipPlaying after a restart (run-2 eng, Codex finding rejected with evidence): `media` is not saved (the save at dungeon-room.ts:911 has no `media`; the restore at :1014 reads only `clipEnded`), so after a Worker restart `clipPlaying` is absent; `clipEnded` staying unsaved with the countdown off is harmless because `answering()` returns null without a countdown (dungeon-room.ts:1132). Verify: persistence vitest: ▶ then restart → STATE has no `clipPlaying`.
 - PR2 screen overlap rules are pure predicates (run-2 eng L4, replaces "screen-level render tests", which this repo cannot run: vitest is `environment: "node"` with no DOM, vitest.config.ts): next to the growl shake arbitration helper, add `thunderStyle(legacyAlarmUp, transitionUp)` → flash or static tint, and `dimVisible(screenDim, transitionUp)` → boolean, in the same pure module as the arbitration helper (no `BANK` import). Verify: vitest table rows for each branch.
 - PR2 cooldown constant: `HOST_FX_COOLDOWN_MS = 1200` lives next to the room's `HOST_FX_WINDOW_MS = 1000` in one shared module the host page may import (lib/protocol.ts or lib/flash-budget.ts, not lib/question-bank.ts); one vitest asserts cooldown > window. Verify: vitest; `npm run check:bundle`.
-- PR2 CI e2e (CI only, never local): the host page shows the `role="group"` 「大螢幕加料」 row with three buttons; pressing ⚡ in the lobby shows 「已送出」; 🌑 shows 「🌑 開局後」 in the lobby. No screen-effect visuals in e2e (rehearsal covers them).
+- PR2 CI e2e (CI only, never local): the host page shows the `role="group"` 「大螢幕加料」 row with three buttons; pressing ⚡ in the lobby shows 「已送出」; 🌑 shows 「🌑 開局後」 in the lobby. No screen-effect visuals in e2e (pre-launch check covers them).
 - Test plan artifact (run 2): ~/.gstack/projects/critical-answer/georgechih-feat-immersion-host-fx-eng-review-test-plan-20261112-000924.md (local only).
 <!-- /autoplan-accepted:eng -->
 
@@ -287,7 +287,7 @@ Approach B，分三個 PR 依序上線。草圖在 `~/.gstack/projects/chihgeorg
 - PR2 screen containment: the screen's HOST_EFFECT handler wraps drawing the effect and `playCue` in try/catch; a throw is logged as `console.error("[fx] host-effect", err)` and never escapes into the onMessage switch, so a bad audio call cannot stop STATE rendering. Verify: a vitest on the pure handler helper with a throwing `playCue` that still returns.
 - PR2 protocol doc comments: `screenDim?: true` and `clipPlaying?: true` say absent means false, also from an older server; `HOST_EFFECT` in the ServerMessage union says it is the room's relay to keyed screens of the host's press.
 - PR2 constants home: lib/flash-budget.ts gets a header comment naming it the home of the screen fx constants (`HEART_TINT`, `PARRY_TINT`, `THUNDER_TINT`, `GROWL_TINT`, `DIM_ALPHA`), and the DESIGN.md PR2 entry names that file.
-- PR2 rehearsal note: the rehearsal records the host's time from opening the host page to the first thunder heard on the event TV (target under 2 minutes).
+- PR2 pre-launch check note: the pre-launch check records the host's time from opening the host page to the first thunder heard on the event TV (target under 2 minutes).
 <!-- /autoplan-accepted:dx -->
 ## Review record
 
@@ -363,7 +363,7 @@ banner for the boss             boss entrance/parry/heartbeat/rage,        all u
 - Songs (answers the Open Question): one new Song `BOSS_RAGE_THEME` in lib/bgm.ts derived from DUNGEON_THEME's parts at a faster `stepsPerMinute` plus a new optional `drum` Part (kick as a short low pitch-slide note; a synthesized noise buffer is allowed, see the drum item below). "一般王戰版" is DUNGEON_THEME. `createBgmPlayer().setSong(song, gapS)` gives each song generation its own GainNode into the music layer and cuts/disconnects the old one at switch time, so notes already queued in the 0.25 s lookahead never sound inside the 0.5 s gap. Heartbeat, charge, parry and entrance rumble are `SfxNote[]` data in lib/sfx.ts played on the boss layer.
 - Flash budget: one pure module `lib/flash-budget.ts` (`take(): boolean`, sliding 1000 ms window, max 3), one instance per screen page, consulted by every heartbeat glow pulse, the parry red flash and the entrance silhouette brighten (counts as one flash). A refused take shows the static tint only. The fade to black is not a flash. Shake <= 8 px (entrance, parry); rage jitter <= 2 px. Reduced motion: no flash, shake or jitter, static tint, same sounds and same 1.4 s parry timeline. Verify: vitest heartbeat at 2.5 Hz + parry flash never exceeds 3 in any 1 s window.
 - Constraint wording correction: of the two 現況, PR1 removes the "music must be playing" gate for all cues and adds the layer table for the new boss (and later host/ambient) sounds; existing game cues keep ignoring video/buzz/narration mutes as today.
-- Venue check (manual, before 11/18, not CI): one full run-through on the event TV/speakers at party volume, covering unlock, existing cues, narration, heartbeat, parry and rage; the boss-layer volume is one named constant in lib/bgm-player.ts so it can be retuned in one line.
+- Real-device check (manual, before 11/18, not CI): one full run-through on the event TV/speakers at party volume, covering unlock, existing cues, narration, heartbeat, parry and rage; the boss-layer volume is one named constant in lib/bgm-player.ts so it can be retuned in one line.
 - Unlock press plays one short audible confirm chime (E6) on the screen, so the room hears the TV; the host banner still relies on `screenSound` (no host confirmation message).
 - Drum Part may use a synthesized noise AudioBuffer (generated in code, no files); no audio files are added.
 - Regression: table-driven vitest that every existing cue (SFX entries, BOSS_ALARM, SPRINT_FANFARE, ANSWER_TICK, ANSWER_TIME_UP, EAT_DONE) schedules notes with 🎵 on and none with 🎵 off under the new mixer, and that video/held/speaking do not silence them.
@@ -382,16 +382,16 @@ banner for the boss             boss entrance/parry/heartbeat/rage,        all u
 - PR2 dim on the screen: a black layer at 40% opacity inside `<Stage>`, above the stage content and the parry layer, below the host effect layer (thunder lights up the dark), the TransitionOverlay and the top banners; on and off are hard cuts, the same under reduced motion; question, options and AnswerClock stay readable under it. DESIGN.md gains the three host buttons, the effect layer and the dim layer in the same PR.
 - PR2 deploy skew is harmless: an old screen ignores the unknown HOST_EFFECT message (its onMessage switch has no default, screen page.tsx:1546); an old Worker answers the new client messages with `ERROR invalid_action bad_message` (dungeon-room.ts:1865), which the host page shows in its error line only during the few minutes until the Worker deploy from the same merge finishes; accepted, no ordering needed.
 - PR2 effective spec: the PR2 items in these accepted blocks are the build spec; where they differ from the 「PR2：主持人加料鈕（三顆）」 section, they win (both voices flagged the layered wording as a risk for a background implementation lane).
-- PR2 rehearsal (manual, after PR2 merges, before 11/18, not CI, independent of PR3): one realistic judging run on the host's own phone with the three-button row, checking that the row never hides or shifts the judge controls and that ⚡ 👹 are heard and seen on the event TV; run on the venue TV/speakers together with the PR1 venue check when possible.
+- PR2 pre-launch check (manual, after PR2 merges, before 11/18, not CI, independent of PR3): one realistic judging run on the host's own phone with the three-button row, checking that the row never hides or shifts the judge controls and that ⚡ 👹 are heard and seen on the event TV; run on the event TV/speakers together with the PR1 real-device check when possible.
 <!-- /autoplan-accepted:ceo -->
 
 **Spec Review Loop (0H).** Launch 1 (Plan subagent, inherited model): score 6/10, FAIL on Completeness/Consistency/Clarity; 13 issues. All 13 applied as accepted obligations above (E5 reversed to ACCEPTED, `none` definition, reset cleanup, boss-room no-choice correction, parry trigger set and dedupe, heartbeat source, Song API, flash budget location, rage small-HP rule, ANSWER_TIME_UP, post-kill music, 知道了 rule, Constraint wording). Loop stopped after 1 launch (all issues applied; P6, cap 3). Spec not re-verified by a second launch.
 
 **Dual voices (CEO).** Native: Claude subagent (opus), INPUT hash e41825e7… matched the snapshot. Outside: Codex gpt-6-luna, OUTSIDE_STATUS completed.
 
-Claude CEO findings (summary): High — PR0 + mixer should ship before the boss effects (split PR1a/PR1b); High — "screen sound = venue sound" unverified, needs a venue test; High — "no audio files" limits thunder/drums, allow a noise buffer; High — mixer rewrite risks existing cues, add per-cue regression tests; Medium — rage may barely fire with small boss HP; Medium — no boss-only kill switch; Medium — parry trigger is a multi-source state machine, table-test it; Medium — PR3 should default to after the event; doc metadata: Branch line is stale.
+Claude CEO findings (summary): High — PR0 + mixer should ship before the boss effects (split PR1a/PR1b); High — "screen sound = event sound" unverified, needs a real-device test; High — "no audio files" limits thunder/drums, allow a noise buffer; High — mixer rewrite risks existing cues, add per-cue regression tests; Medium — rage may barely fire with small boss HP; Medium — no boss-only kill switch; Medium — parry trigger is a multi-source state machine, table-test it; Medium — PR3 should default to after the event; doc metadata: Branch line is stale.
 
-Codex CEO findings (summary): High — PR1 bundles too much event-critical work, ship the smallest slice first; High — readiness can say ready while the room is silent, add an audible check; High — no rehearsal gate on event hardware; Medium — "more effects = more tension" unproven, playtest; Medium — 重答／逃跑 timing text conflicts with the boss flow; Medium — compare one polished effect vs four.
+Codex CEO findings (summary): High — PR1 bundles too much event-critical work, ship the smallest slice first; High — readiness can say ready while the room is silent, add an audible check; High — no pre-launch check gate on event hardware; Medium — "more effects = more tension" unproven, playtest; Medium — 重答／逃跑 timing text conflicts with the boss flow; Medium — compare one polished effect vs four.
 
 ```
 CEO DUAL VOICES — CONSENSUS TABLE:
@@ -406,7 +406,7 @@ CEO DUAL VOICES — CONSENSUS TABLE:
 
 **User Challenge UC1 (not auto-decided; your direction stands until you approve).** Both models recommend splitting PR1 into PR1a (PR0 unlock + SCREEN_SOUND + host banner + mixer layers, shipped first, ~11/13) and PR1b (the four boss effects). Ship policy also says `split_requires_owner: true`.
 
-**Integration of outside findings.** Codex 1 / Claude split → UC1. Codex 2 → E6 audible chime accepted; host confirmation round-trip skipped (new message, PR2 territory). Codex 3 / Claude venue → venue check accepted as a manual obligation. Codex 4, 6 → TASTE D3: keep all four effects (the user picked all four explicitly). Codex 5 → already fixed by the spec-review correction. Claude noise buffer → TASTE D2 accepted (still synthesized). Claude per-cue regression → accepted. Claude rage HP → checked: bundled bank `maxHp` 5 (data/question-bank.json), rage at 1 HP, formula kept. Claude kill switch → TASTE D4 skipped. Claude PR3 default-defer → out of this run's scope (PR3), noted. Claude Branch metadata → not edited (user-authored header; harmless).
+**Integration of outside findings.** Codex 1 / Claude split → UC1. Codex 2 → E6 audible chime accepted; host confirmation round-trip skipped (new message, PR2 territory). Codex 3 / Claude real-device → real-device check accepted as a manual obligation. Codex 4, 6 → TASTE D3: keep all four effects (the user picked all four explicitly). Codex 5 → already fixed by the spec-review correction. Claude noise buffer → TASTE D2 accepted (still synthesized). Claude per-cue regression → accepted. Claude rage HP → checked: bundled bank `maxHp` 5 (data/question-bank.json), rage at 1 HP, formula kept. Claude kill switch → TASTE D4 skipped. Claude PR3 default-defer → out of this run's scope (PR3), noted. Claude Branch metadata → not edited (user-authored header; harmless).
 
 #### Review Sections
 
@@ -474,7 +474,7 @@ Async ordering: STATE handling is single-threaded in the page; the only await is
  transitions rules unchanged     -> existing transitions tests
  unlock -> host 🔊 ready         -> e2e (CI only)
  sfx wrong-answer cue            -> existing e2e/sfx.spec.ts must stay green
- venue                           -> manual run-through
+ real TV                         -> manual run-through
 ```
 2am-Friday test: unlock on a fresh TV with 🎵 saved off, host sees ready. Hostile QA: boss wrong lock then auto retry — one parry. Chaos: OS suspends audio mid-boss.
 
@@ -492,7 +492,7 @@ Async ordering: STATE handling is single-threaded in the page; the only await is
 
 **What already exists.** Scheduler and tone() (bgm-player.ts), Song/songEvents (bgm.ts), SfxNote data (sfx.ts), transition rules + overlay + reduced-motion still frame, onClockSecond dedupe, cueSeq play-once, isScreen/keyedScreens, RateLimiter, no-activity list. All reused.
 
-**Dream state delta.** After PR1 the game has the mixer and the boss arc; missing vs ideal: host pads (PR2), per-room ambience (PR3), real-venue tuning.
+**Dream state delta.** After PR1 the game has the mixer and the boss arc; missing vs ideal: host pads (PR2), per-room ambience (PR3), real-device tuning.
 
 **Failure Modes Registry.**
 ```
@@ -505,7 +505,7 @@ Async ordering: STATE handling is single-threaded in the page; the only await is
  flash budget          | >3 flashes/s                     | Y        | Y     | static tint            | n/a
  readiness             | speakers off but "ready"         | partial  | manual| chime absent (E6)      | n/a
 ```
-CRITICAL GAPS: 0 (the speakers row is covered by the audible chime and the venue check; software cannot detect it).
+CRITICAL GAPS: 0 (the speakers row is covered by the audible chime and the real-device check; software cannot detect it).
 
 ```
   +====================================================================+
@@ -619,7 +619,7 @@ Audit trail additions: D-1 entrance tint (mechanical, P5) · D-2 boss art = Spri
 - PR2 🌑 toggle look reuses the host-pacing toggle (`aria-pressed`, on = `var(--k)` background with white text): on → 「🌑 已變暗」 on `--k`; off → 「🌑 螢幕變暗」 on white. `aria-pressed` and the look follow STATE `screenDim` only (no optimistic flip). 🌑 also gets the 1.2 s local cooldown after a press, so an on-then-off inside the server's 1 s dim window is never swallowed.
 - PR2 dim auto-clear has no toast: the label change (「🌑 影片中」, then 「🌑 螢幕變暗」) shows it. docs/hosting.md and docs/hosting.en.md say that ▶ cancels the dim and that the host presses 🌑 again after the clip.
 - PR2 dim under transitions: while any TransitionOverlay (doors, boss entrance, last sprint) is up, the dim layer is not drawn (hard cut out and back in), so the boss entrance's 75%/45% tint never stacks on the 40% dim.
-- PR2 dim strength is one named constant `DIM_ALPHA = 0.4` beside the tints in lib/flash-budget.ts. The PR2 rehearsal reads a question card from the back row of the event TV with dim on; if it fails, the constant is lowered (a one-token change).
+- PR2 dim strength is one named constant `DIM_ALPHA = 0.4` beside the tints in lib/flash-budget.ts. The PR2 pre-launch check reads a question card from the back row of the event TV with dim on; if it fails, the constant is lowered (a one-token change).
 - PR2 `GROWL_TINT` is `--k` `#2a1533` at 35% edge (`#2a153359`), not red: DESIGN.md reserves red for the boss and a growl can fire anywhere. This supersedes the CEO item's `#5a1020`.
 - PR2 letterbox: dim and edge effects stay inside `<Stage>`; outside it the letterbox is already black (components/stage.tsx), so nothing is added there.
 - PR2 DESIGN.md entries: the host row (sticky row, labels, 已送出, 🔇, 🌑 toggle look, lobby caption) and the screen's thunder, growl and dim (z order, tints, `DIM_ALPHA`, dim hidden under transitions).
@@ -636,7 +636,7 @@ REALITY: design-placement pass toggles are fixed outside Stage bottom-right app/
 
 Codex SAYS (eng — architecture challenge): screen disconnect leaves `screenSound` stale because `onClose` returns for a teamless screen without broadcasting (High, dungeon-room.ts:1739); the "existing per-socket RateLimiter" is not in the room dispatch (Medium — factually wrong: it is in worker/index.ts:190); the flash budget omits existing CSS blinks such as `.px-alarm-text` (Medium, globals.css:282).
 
-Claude SUBAGENT (eng — independent review): lobby button name breaks e2e strict-mode regex lookups (High, verified); corner button nags after a reload with 🎵 saved off because the click-anywhere unlock only exists when 🎵 is on (verified page.tsx:1264-1288); mixer start/stop rewrite understated (race guard, unmount close, duck/mute target, heartbeat gain); heartbeat stale closure and 5 s timer swallowed by the dedupe (verified page.tsx:1347-1354); disconnect broadcast not wired; deploy order uncontrollable but harmless; spoofed ready cosmetic; parry overlap and deferred retry timer; e2e and venue-bank gaps.
+Claude SUBAGENT (eng — independent review): lobby button name breaks e2e strict-mode regex lookups (High, verified); corner button nags after a reload with 🎵 saved off because the click-anywhere unlock only exists when 🎵 is on (verified page.tsx:1264-1288); mixer start/stop rewrite understated (race guard, unmount close, duck/mute target, heartbeat gain); heartbeat stale closure and 5 s timer swallowed by the dedupe (verified page.tsx:1347-1354); disconnect broadcast not wired; deploy order uncontrollable but harmless; spoofed ready cosmetic; parry overlap and deferred retry timer; e2e and event-bank gaps.
 
 ```
 ENG DUAL VOICES — CONSENSUS TABLE:
@@ -682,9 +682,9 @@ CODE PATHS                                         USER FLOWS
   ├─ existing cues on/off      [GAP→vitest table]    ├─ [GAP] 🎵 off → host muted, 知道了 rules
   ├─ off→on during resume      [GAP→vitest]          └─ [GAP] tap with 🎵 saved off → corner button gone
   ├─ close() on unmount        [GAP→vitest]        [+] Boss fight
-  └─ setSong gap/no leak       [GAP→vitest]          ├─ [GAP] parry on wrong lock, wrong cell visible (manual/venue)
-[+] lib/boss-fx.ts                                   ├─ [GAP] heartbeat last 5 s (manual/venue)
-  ├─ parry trigger set/dedupe  [GAP→vitest]          └─ [GAP] rage music + chip (venue, maxHp>=6 bank)
+  └─ setSong gap/no leak       [GAP→vitest]          ├─ [GAP] parry on wrong lock, wrong cell visible (manual/real TV)
+[+] lib/boss-fx.ts                                   ├─ [GAP] heartbeat last 5 s (manual/real TV)
+  ├─ parry trigger set/dedupe  [GAP→vitest]          └─ [GAP] rage music + chip (real TV, maxHp>=6 bank)
   ├─ rage formula/precedence   [GAP→vitest]
   └─ heartbeatTimes + 5 s      [GAP→vitest]
 [+] lib/flash-budget.ts        [GAP→vitest 2.5 Hz + parry <= 3/s]
@@ -692,7 +692,7 @@ CODE PATHS                                         USER FLOWS
 [+] dungeon-room readiness: reject phone/host/unkeyed, any-ready, disconnect broadcast, no-broadcast on same value, lastActivityAt unchanged, reset clears [GAP→room vitest]
 [+] lib/transitions.ts boss carries monster look [extend transitions.test.ts:44]
 [+] e2e strict-mode names [protects existing specs; covered by CI run]
-COVERAGE today: 0/20 new paths; all have a planned ★★/★★★ test or a manual venue check.
+COVERAGE today: 0/20 new paths; all have a planned ★★/★★★ test or a manual real-device check.
 ```
 Test plan artifact written: ~/.gstack/projects/critical-answer/georgechih-feat-immersion-boss-eng-review-test-plan-20261111-214726.md (local only). Regression rule: the existing-cue table is the CRITICAL regression contract (carried from the CEO block). Tests to retire: none; rework bgm-player.test.ts:90.
 
@@ -730,7 +730,7 @@ No issues found. Per-STATE work is O(teams) diffing; the scheduler keeps its 0.2
 - Deploy order: no Worker-first ordering is assumed (Workers Builds and Vercel start from the same merge). Both skews are harmless: an old Worker answers SCREEN_SOUND with ERROR, which the screen ignores; an old screen never reports, so the host sees `muted`.
 - Flash budget scope: it covers the new effects (heartbeat glow, parry flash, entrance brighten). Legacy CSS (`px-alarm-text` blinks on the sprint/catch banners, at most 3 per 2.4 s; torch `px-tf*` flicks, which are sprite frames) is excluded and named in a code comment. While a TransitionOverlay plays, the heartbeat glow shows the static `HEART_TINT` instead of pulsing, so legacy blinks and new pulses never stack.
 - New CI e2e spec (runs only in CI): the lobby unlock button is visible on /screen; clicking it makes the host page show 「🔊 大螢幕聲音已就緒」.
-- Venue check uses a bank whose boss has maxHp >= 6 in at least one phase, so rage is heard in rehearsal (the bundled maxHp 5 rages only at 1 HP).
+- Real-device check uses a bank whose boss has maxHp >= 6 in at least one phase, so rage is heard in pre-launch check (the bundled maxHp 5 rages only at 1 HP).
 - lib/boss-fx.ts and lib/flash-budget.ts are pure and import nothing from `BANK`/data/question-bank.json; `npm run check:bundle` must pass.
 - Test plan artifact: ~/.gstack/projects/critical-answer/georgechih-feat-immersion-boss-eng-review-test-plan-20261111-214726.md (local only).
 - PR2 screenDim reset (run-2 eng H1, both rules kept): besides the read-time clear next to `liveMedia()` (dungeon-room.ts:3304, which mirrors how `liveMedia()` already drops a stale media command and runs in every STATE because each path that makes `clipPlaying` true or finishes the game broadcasts STATE), set `this.screenDim = false` explicitly at game start next to `this.clipEnded = null` (dungeon-room.ts:2758) and in `handleBackToLobby` (dungeon-room.ts:2250), because the back-to-lobby path sends LOBBY, not STATE (dungeon-room.ts:1266). The read-time clear sets the field false when phase is not playing or `clipPlaying` is true. Verify: room vitest: dim on → end game → back to lobby → start → the first STATE has no `screenDim`; dim on → a buzz-resumed clip (dungeon-room.ts:2922) → STATE has no `screenDim` and it stays absent after ⏸.
@@ -741,7 +741,7 @@ No issues found. Per-STATE work is O(teams) diffing; the scheduler keeps its 0.2
 - PR2 clipPlaying after a restart (run-2 eng, Codex finding rejected with evidence): `media` is not saved (the save at dungeon-room.ts:911 has no `media`; the restore at :1014 reads only `clipEnded`), so after a Worker restart `clipPlaying` is absent; `clipEnded` staying unsaved with the countdown off is harmless because `answering()` returns null without a countdown (dungeon-room.ts:1132). Verify: persistence vitest: ▶ then restart → STATE has no `clipPlaying`.
 - PR2 screen overlap rules are pure predicates (run-2 eng L4, replaces "screen-level render tests", which this repo cannot run: vitest is `environment: "node"` with no DOM, vitest.config.ts): next to the growl shake arbitration helper, add `thunderStyle(legacyAlarmUp, transitionUp)` → flash or static tint, and `dimVisible(screenDim, transitionUp)` → boolean, in the same pure module as the arbitration helper (no `BANK` import). Verify: vitest table rows for each branch.
 - PR2 cooldown constant: `HOST_FX_COOLDOWN_MS = 1200` lives next to the room's `HOST_FX_WINDOW_MS = 1000` in one shared module the host page may import (lib/protocol.ts or lib/flash-budget.ts, not lib/question-bank.ts); one vitest asserts cooldown > window. Verify: vitest; `npm run check:bundle`.
-- PR2 CI e2e (CI only, never local): the host page shows the `role="group"` 「大螢幕加料」 row with three buttons; pressing ⚡ in the lobby shows 「已送出」; 🌑 shows 「🌑 開局後」 in the lobby. No screen-effect visuals in e2e (rehearsal covers them).
+- PR2 CI e2e (CI only, never local): the host page shows the `role="group"` 「大螢幕加料」 row with three buttons; pressing ⚡ in the lobby shows 「已送出」; 🌑 shows 「🌑 開局後」 in the lobby. No screen-effect visuals in e2e (pre-launch check covers them).
 - Test plan artifact (run 2): ~/.gstack/projects/critical-answer/georgechih-feat-immersion-host-fx-eng-review-test-plan-20261112-000924.md (local only).
 <!-- /autoplan-accepted:eng -->
 
@@ -803,7 +803,7 @@ unverified=0.
 ```
   CURRENT (v0.62)                 PR2                                12-MONTH IDEAL
   game state drives boss  --->    host gets 3 one-tap pads that  ---> a DM console: pads, room moods,
-  effects automatically;          reach every keyed TV, never         per-venue volume, all safe over
+  effects automatically;          reach every keyed TV, never         per-setup volume, all safe over
   host has no way to add          over a playing clip, inside the     clips and flash-limited
   drama                           flash budget
 ```
@@ -853,22 +853,22 @@ Metrics appended to `~/.gstack/analytics/spec-review.jsonl` (iterations 3, found
 
 **Step 0.5 dual voices (CEO).** Input `ceo 3fa2cdf9…` (snapshot autoplan-ceo-UXKyIF). Native: Opus subagent, completed, INPUT hash matched. Outside: Codex `gpt-6-luna`, completed (`OUTSIDE_STATUS: completed`, VERDICT FINDINGS).
 
-Claude CEO voice (summary): critical, PR3 at 11/18 leaves no venue rehearsal; high, `clipPlaying` stop-record machinery out of proportion, rely on the screen-side drop; high, layered "replaces X" wording will mislead a background lane, publish one effective PR2 spec; medium, ask the owner whether 🌑 is worth it (40% black hurts far-row readability, and Codex already noted it is not the venue lights); medium, the event bank's boss maxHp; medium, a busy host may not press at all; consider automatic thunder on game events.
+Claude CEO voice (summary): critical, PR3 at 11/18 leaves no real-device check; high, `clipPlaying` stop-record machinery out of proportion, rely on the screen-side drop; high, layered "replaces X" wording will mislead a background lane, publish one effective PR2 spec; medium, ask the owner whether 🌑 is worth it (40% black hurts far-row readability, and Codex already noted it is not the event lights); medium, the event bank's boss maxHp; medium, a busy host may not press at all; consider automatic thunder on game events.
 
-Codex CEO voice (summary): high, a late end report can stop a restarted clip (no press in the report); high, multiple keyed screens have no playback policy; medium, three prominent controls for an unvalidated interaction, rehearse and defer dim if it competes with judging; medium, success should be a rehearsal, not buttons existing.
+Codex CEO voice (summary): high, a late end report can stop a restarted clip (no press in the report); high, multiple keyed screens have no playback policy; medium, three prominent controls for an unvalidated interaction, try it on the real setup and defer dim if it competes with judging; medium, success should be a pre-launch check, not buttons existing.
 
 ```
 CEO DUAL VOICES — CONSENSUS TABLE:
   Dimension                           Claude  Codex  Consensus
   1. Premises valid?                   partly  partly CONFIRMED concern: "the host has hands free to press" is unproven
-  2. Right problem to solve?           yes     unsure DISAGREE (Codex: value speculative) → rehearsal obligation
+  2. Right problem to solve?           yes     unsure DISAGREE (Codex: value speculative) → pre-launch check obligation
   3. Scope calibration correct?        over    over   CONFIRMED: clipPlaying machinery over-built → D1 simplified
   4. Alternatives sufficiently explored? no    no     CONFIRMED gap: smaller set (⚡ 👹 only) → UC1
   5. Competitive/market risks covered? yes     partly CONFIRMED: the risk is event-day failure, not competition
   6. 6-month trajectory sound?         risk    risk   CONFIRMED: per-press inference was racy and heavy → removed
 ```
 
-Integration: both voices on clipPlaying → D1 rewritten (no stop record; the screen-side drop is the guarantee; Codex's race and multi-screen findings no longer apply because the room no longer infers playback per press, and each screen drops by its own player). Both voices on 🌑 → **USER CHALLENGE UC1** (never auto-decided; the owner's three buttons stand until approved). Both on rehearsal → accepted (PR2 rehearsal item). Claude layering → accepted (PR2 effective spec item). Claude PR3 cut-off → outside PR2 scope; noted for the owner, the rehearsal item no longer waits on PR3. Claude event-bank maxHp → PR1 venue-check territory, not reopened. Claude auto-thunder on game events → single voice, new feature → NOT in scope.
+Integration: both voices on clipPlaying → D1 rewritten (no stop record; the screen-side drop is the guarantee; Codex's race and multi-screen findings no longer apply because the room no longer infers playback per press, and each screen drops by its own player). Both voices on 🌑 → **USER CHALLENGE UC1** (never auto-decided; the owner's three buttons stand until approved). Both on pre-launch check → accepted (PR2 pre-launch check item). Claude layering → accepted (PR2 effective spec item). Claude PR3 cut-off → outside PR2 scope; noted for the owner, the pre-launch check item no longer waits on PR3. Claude event-bank maxHp → PR1 real-device-check territory, not reopened. Claude auto-thunder on game events → single voice, new feature → NOT in scope.
 
 #### Run 2 CEO Review Sections
 
@@ -946,7 +946,7 @@ Hostile QA: spam HOST_EFFECT from a phone (ERROR, nothing relayed); ▶ then dim
 
 **Section 8 — Observability.** Effects are transient; no logs needed beyond the room's activity tracking. STATE shows `clipPlaying`/`screenDim` in the host page's devtools. No dashboards for a personal party tool. No findings.
 
-**Section 9 — Deployment.** No migration, no flag. Skew harmless (accepted block). Rollback: revert the squash commit; Workers Builds and Vercel redeploy. Post-deploy: /canary plus the rehearsal item. No findings.
+**Section 9 — Deployment.** No migration, no flag. Skew harmless (accepted block). Rollback: revert the squash commit; Workers Builds and Vercel redeploy. Post-deploy: /canary plus the pre-launch check item. No findings.
 
 **Section 10 — Trajectory.** Reversibility 5/5. Debt: the screen page grows again (mitigated by pure helpers). Platform: the host layer and the relay message are the path later pads would use. Retrospective: X1 was needed (run 1's E1 skip); the rejected per-press stop record would have been debt.
 
@@ -962,7 +962,7 @@ Interaction states: loading n/a; empty (no screen) → existing banner; error (o
 
 **What already exists.** See 0B; all reused.
 
-**Dream state delta.** After PR2: host pads exist and are safe over clips and inside the flash limit; still missing vs the ideal: room moods (PR3), venue-tuned volumes, and rehearsal evidence that the host uses them.
+**Dream state delta.** After PR2: host pads exist and are safe over clips and inside the flash limit; still missing vs the ideal: room moods (PR3), setup-tuned volumes, and pre-launch check evidence that the host uses them.
 
 **Failure Modes Registry.**
 ```
@@ -983,7 +983,7 @@ Interaction states: loading n/a; empty (no screen) → existing banner; error (o
 - [ ] **T2 (P1, human: ~4h / CC: ~20min)** — screen — effect layer, drop rule, shake arbitration, dim layer, THUNDER/GROWL. Verify: helper vitest + flash-budget vitest.
 - [ ] **T3 (P1, human: ~2h / CC: ~10min)** — host page — sticky three-button row with cooldown and disabled states. Verify: tsc, lint, manual.
 - [ ] **T4 (P2, human: ~1h / CC: ~5min)** — docs — DESIGN.md, docs/hosting.md + .en.md, changelog fragment. Verify: `npm run check:docs`.
-- [ ] **T5 (P2, manual)** — rehearsal — judging run with the row on the host phone and the event TV.
+- [ ] **T5 (P2, manual)** — pre-launch check — judging run with the row on the host phone and the event TV.
 
 ```
   +====================================================================+
@@ -1056,7 +1056,7 @@ DESIGN OUTSIDE VOICES — LITMUS SCORECARD (classifier: host row = OPERATE, TV e
   Hard rejections triggered:               0       0      none
 ```
 
-**Pass 1 — Information architecture: 6/10 → 9/10.** Hierarchy on the host phone: first the judge controls (the host's job), second the effects row, third the status stack. Findings: (a) placement — the owner wrote 「最上面一排…單手按得到」; Claude would move it to a bottom bar for thumb reach, Codex would make it secondary → TASTE D2, auto-chose the owner's top row (direction stands; a bottom bar is the alternative at the gate); (b) sticky stack height → only the row is sticky (accepted). Remaining gap: thumb reach is checked only at the rehearsal.
+**Pass 1 — Information architecture: 6/10 → 9/10.** Hierarchy on the host phone: first the judge controls (the host's job), second the effects row, third the status stack. Findings: (a) placement — the owner wrote 「最上面一排…單手按得到」; Claude would move it to a bottom bar for thumb reach, Codex would make it secondary → TASTE D2, auto-chose the owner's top row (direction stands; a bottom bar is the alternative at the gate); (b) sticky stack height → only the row is sticky (accepted). Remaining gap: thumb reach is checked only at the pre-launch check.
 ```
  host phone (360px)
  ┌───────────────────────────────┐
@@ -1097,14 +1097,14 @@ Accepted: 已送出 + live region; 🔇 marker from `screenSound`; disabled reas
 
 **Pass 5 — Design system: 7/10 → 9/10.** `GROWL_TINT #5a1020` was a dark red; DESIGN.md: red has one job per effect and is reserved for the boss → `--k` at 35% (accepted, mechanical). 🌑 on-look reuses the host-pacing toggle (P4 DRY). `DIM_ALPHA` constant beside the tints. DESIGN.md entries for the row and the TV effects. Remaining: DESIGN.md itself has no host-row pattern yet (this PR adds it).
 
-**Pass 6 — Responsive and accessibility: 5/10 → 9/10.** 360px 3-column grid, wrap inside buttons, no horizontal scroll; 56px targets; `role="group"` label; live region for 已送出; disabled reasons in text; 🌑 `aria-pressed` plus a label change (not colour only); reduced motion already specified (tints, no shake); letterbox already black. Keyboard: native buttons in DOM order after the header, existing focus-visible style. Remaining: VoiceOver not tested (manual at rehearsal if wanted).
+**Pass 6 — Responsive and accessibility: 5/10 → 9/10.** 360px 3-column grid, wrap inside buttons, no horizontal scroll; 56px targets; `role="group"` label; live region for 已送出; disabled reasons in text; 🌑 `aria-pressed` plus a label change (not colour only); reduced motion already specified (tints, no shake); letterbox already black. Keyboard: native buttons in DOM order after the header, existing focus-visible style. Remaining: VoiceOver not tested (manual at pre-launch check if wanted).
 
 **Pass 7 — Unresolved decisions.**
 ```
   DECISION NEEDED                        | IF DEFERRED, WHAT HAPPENS
   ---------------------------------------|----------------------------------------------
   UC1 keep 🌑 in PR2? (CEO, owner's call) | three buttons ship as the owner wrote
-  D2 row at top (owner) vs bottom bar     | top ships; thumb reach checked at rehearsal
+  D2 row at top (owner) vs bottom bar     | top ships; thumb reach checked at pre-launch check
 ```
 2 at the gate, 0 deferred silently.
 
@@ -1119,7 +1119,7 @@ Accepted: 已送出 + live region; 🔇 marker from `screenSound`; disabled reas
 | R2-14 | Design | 🌑 cooldown, STATE-driven look, host-pacing style | Mechanical | P1, P4 | matches the server dim window; reuses a pattern | optimistic toggle |
 | R2-15 | Design | dim hidden under TransitionOverlay | Mechanical | P1 | 40% + 75% stack hides the question | darker-of-two blend |
 | R2-16 | Design | `GROWL_TINT` = `--k` 35% | Mechanical | P5 | DESIGN.md: red reserved for the boss | `#5a1020` |
-| R2-17 | Design | `DIM_ALPHA` constant + back-row rehearsal check | Mechanical | P1 | Codex: 40% unvalidated | lower now blind |
+| R2-17 | Design | `DIM_ALPHA` constant + back-row pre-launch check | Mechanical | P1 | Codex: 40% unvalidated | lower now blind |
 | R2-18 | Design | PR1a/PR1b findings (banner reflow, banner copy, rage chip, entrance band y) not reopened | Mechanical | scope | merged and out of PR2 scope; reported to the owner | reopening |
 
 **NOT in scope (design, run 2).** Bottom bar (D2 alternative, at the gate); an echo that the TV played the effect (X6, skipped in CEO); a dim-cleared toast; LOBBY `screenSound`; PR1a banner reflow and copy (H3, S5), a rage chip off the boss screen (J3), the PR1b entrance band position check (S1) — merged work, reported to the owner, not reopened here.
@@ -1129,7 +1129,7 @@ Accepted: 已送出 + live region; 🔇 marker from `screenSound`; disabled reas
 **TODOS.md updates.** 0 proposed (this lane may not edit TODOS.md; the PR1b entrance band check goes to the owner in the report).
 
 **Implementation Tasks (design).**
-- [ ] **T6 (P1, human: ~2h / CC: ~10min)** — host page — sticky row states: 已送出 + live region, 🔇 / 沒大螢幕, 影片中 / 開局後 labels, 🌑 toggle look and cooldown, lobby caption, group label, 360px grid. Verify: tsc, lint, a 360px screenshot at the rehearsal.
+- [ ] **T6 (P1, human: ~2h / CC: ~10min)** — host page — sticky row states: 已送出 + live region, 🔇 / 沒大螢幕, 影片中 / 開局後 labels, 🌑 toggle look and cooldown, lobby caption, group label, 360px grid. Verify: tsc, lint, a 360px screenshot at the pre-launch check.
 - [ ] **T7 (P1, human: ~30min / CC: ~5min)** — screen page — dim hidden while a TransitionOverlay is up; `DIM_ALPHA`; `GROWL_TINT` `--k` 35%. Verify: helper vitest (dim visible = screenDim && !overlay).
 - [ ] **T8 (P2, human: ~30min / CC: ~5min)** — docs — DESIGN.md host row + TV effects; hosting docs line on ▶ cancelling dim. Verify: `npm run check:docs`.
 
@@ -1211,7 +1211,7 @@ T+3:00  mid-game a second phone presses within 1 s: nothing; the doc's 1-second 
 
 **Dual voices (DX).** Native: Opus subagent, completed, INPUT hash matched (`dx 55cc790a…`); 14 findings, about half on merged PR1a/PR1b items. Outside: Codex `gpt-6-luna`, completed (`OUTSIDE_STATUS: completed`, VERDICT FINDINGS), 4 findings.
 
-Claude (summary): high, contain unexpected screen fx/audio exceptions (CAP6 trace); high, the rate-drop has no recovery (CAP6); high, deploy-skew shows a raw `bad_message` (CAP6); high, layered spec, consolidate; high, no screen-side reduced-motion override; high, no dev `?fx=` trigger; medium, constants home, absent-field wording, stale anchors, rehearsal bank unnamed, host checklist, unlock retry has no end, `none` banner location.
+Claude (summary): high, contain unexpected screen fx/audio exceptions (CAP6 trace); high, the rate-drop has no recovery (CAP6); high, deploy-skew shows a raw `bad_message` (CAP6); high, layered spec, consolidate; high, no screen-side reduced-motion override; high, no dev `?fx=` trigger; medium, constants home, absent-field wording, stale anchors, test bank unnamed, host checklist, unlock retry has no end, `none` banner location.
 
 Codex (summary): high, docs/hosting.md and DESIGN.md have no PR2 section; medium, 「已送出」 implies delivery the protocol cannot confirm (suggests 「已按下」); medium, auth tests do not assert the `not_host` / `bad_message` replies; low, document the deploy-skew window and its recovery.
 
@@ -1250,7 +1250,7 @@ Error tests pinned to exact replies (DX-4). Residual: the rate drop has no live 
 
 **Pass 7 — Community: 5/10 → 5/10.** A personal party tool; no community surface. No issues.
 
-**Pass 8 — Measurement: 4/10 → 6/10.** The PR2 rehearsal is the TTHW measurement: time from opening the host page to the first thunder heard on the event TV, written in the rehearsal notes. No telemetry (none asked).
+**Pass 8 — Measurement: 4/10 → 6/10.** The PR2 pre-launch check is the TTHW measurement: time from opening the host page to the first thunder heard on the event TV, written in the pre-launch check notes. No telemetry (none asked).
 
 <!-- autoplan-accepted:dx -->
 - PR2 host docs: docs/hosting.md gains a 「主持人加料鈕」 section under 「大螢幕」 and docs/hosting.en.md the same section ("Host effect buttons") at the same level, in the same PR (`npm run check:docs` must pass). It says: what ⚡ 雷聲, 👹 低吼 and 🌑 螢幕變暗 do on the TV; the lobby sound check (tap the TV first, then press ⚡); what 已送出, 🔇, 沒大螢幕, 影片中 and 開局後 mean on a button; that ▶ cancels the dim and 🌑 must be pressed again after the clip; that presses within 1 second count as one across every host device (thunder and growl share it); and that right after a deploy the error line may show `bad_message` for a few minutes, fixed by waiting for the Worker deploy and pressing again.
@@ -1258,7 +1258,7 @@ Error tests pinned to exact replies (DX-4). Residual: the rate drop has no live 
 - PR2 screen containment: the screen's HOST_EFFECT handler wraps drawing the effect and `playCue` in try/catch; a throw is logged as `console.error("[fx] host-effect", err)` and never escapes into the onMessage switch, so a bad audio call cannot stop STATE rendering. Verify: a vitest on the pure handler helper with a throwing `playCue` that still returns.
 - PR2 protocol doc comments: `screenDim?: true` and `clipPlaying?: true` say absent means false, also from an older server; `HOST_EFFECT` in the ServerMessage union says it is the room's relay to keyed screens of the host's press.
 - PR2 constants home: lib/flash-budget.ts gets a header comment naming it the home of the screen fx constants (`HEART_TINT`, `PARRY_TINT`, `THUNDER_TINT`, `GROWL_TINT`, `DIM_ALPHA`), and the DESIGN.md PR2 entry names that file.
-- PR2 rehearsal note: the rehearsal records the host's time from opening the host page to the first thunder heard on the event TV (target under 2 minutes).
+- PR2 pre-launch check note: the pre-launch check records the host's time from opening the host page to the first thunder heard on the event TV (target under 2 minutes).
 <!-- /autoplan-accepted:dx -->
 
 <!-- AUTONOMOUS DECISION LOG -->
@@ -1271,9 +1271,9 @@ Error tests pinned to exact replies (DX-4). Residual: the rate drop has no live 
 | R2-23 | DX | tests assert exact error replies (DX-4) | Mechanical | P1 | otherwise a silent room passes | absence-only tests |
 | R2-24 | DX | contain screen HOST_EFFECT exceptions (DX-5) | Mechanical | P1 | the event TV must not freeze | none |
 | R2-25 | DX | doc comments + constants home (DX-6) | Mechanical | P5 | findable, absent = false is explicit | moving the constants |
-| R2-26 | DX | `?fx=` preview, `?motion=reduced`, unlock retry cap, rehearsal bank name | Mechanical | scope | new capability or PR1a/PR1b items; noted for the owner | adding them to PR2 |
+| R2-26 | DX | `?fx=` preview, `?motion=reduced`, unlock retry cap, test bank name | Mechanical | scope | new capability or PR1a/PR1b items; noted for the owner | adding them to PR2 |
 
-**NOT in scope (DX, run 2).** A dev `?fx=` effect preview and a `?motion=reduced` screen override (new capabilities; the flash budget already caps flashes at 3 per second); a `rate_limited` ERROR; a host-page mapping of `bad_message`; the PR1a unlock retry cap and `none` banner wording; the PR1b rehearsal bank name and stale PR1 anchors (merged work).
+**NOT in scope (DX, run 2).** A dev `?fx=` effect preview and a `?motion=reduced` screen override (new capabilities; the flash budget already caps flashes at 3 per second); a `rate_limited` ERROR; a host-page mapping of `bad_message`; the PR1a unlock retry cap and `none` banner wording; the PR1b test bank name and stale PR1 anchors (merged work).
 
 **What already exists.** `requireHost` / `not_host`, `bad_message`, the host error line, `HOST_ANTI_CHEAT {on}` shape, docs/hosting.md 「大螢幕」 section and its English twin, `npm run check:docs`.
 
@@ -1322,7 +1322,7 @@ Community is below 6 by nature (a personal tool), not DX debt.
 ```
 DX IMPLEMENTATION CHECKLIST
 ============================
-[x] Time to hello world < 2 min (host, estimated; measured at rehearsal)
+[x] Time to hello world < 2 min (host, estimated; measured at pre-launch check)
 [n/a] Installation is one command (hosted web app)
 [x] First run produces meaningful output (thunder on the TV)
 [x] Magical moment delivered via the lobby ⚡ sound check
@@ -1424,7 +1424,7 @@ Dispositions: L1 accepted; M3 resolved by evidence; the Codex restart claim reje
 CODE PATHS                                              USER FLOWS
 [+] lib/protocol.ts validators                          [+] Host sound check (lobby)
   ├── [GAP] HOST_EFFECT bad/missing effect → null          ├── [GAP] [→E2E] ⚡ shows 已送出 (CI e2e)
-  └── [GAP] HOST_DIM non-boolean on → null                 └── [GAP] TV thunder audible (rehearsal)
+  └── [GAP] HOST_DIM non-boolean on → null                 └── [GAP] TV thunder audible (pre-launch check)
 [+] dungeon-room HOST_EFFECT                            [+] Dim during play
   ├── [GAP] not_host ×3 (phone, keyed, unkeyed screen)     ├── [GAP] 🌑 on/off via STATE
   ├── [GAP] window drop: no relay/STATE/ERROR/activity     ├── [GAP] ▶ clears dim
@@ -1466,7 +1466,7 @@ Dispositions: all test rows accepted; Codex's screen-render tests rejected (no D
 
 0 critical gaps.
 
-**NOT in scope.** Distinguishing rate-dropped presses in host feedback (D3, owner's taste); screen render tests (no DOM harness; rehearsal covers visuals); persisting `screenDim` or `media` across restarts; a per-device rate limit.
+**NOT in scope.** Distinguishing rate-dropped presses in host feedback (D3, owner's taste); screen render tests (no DOM harness; pre-launch check covers visuals); persisting `screenDim` or `media` across restarts; a per-device rate limit.
 
 **What already exists.** requireHost, the bad_message reply, isScreen, the liveMedia pattern, RateLimiter, the host mixer layer, the flash budget, the pacing toggle style, the `rejected` flag — all reused, nothing rebuilt.
 
@@ -1513,7 +1513,7 @@ Big-screen only. No protocol, room (Worker) or server-timing change. No new data
   - campfire: lowpass noise (soft roar) + random short highpass noise "crackle" bursts.
   - drips: no bed noise; random sine blips sliding 1400→700 Hz every 0.6–2.2 s.
   - Random events scheduled by the existing lookahead style (setInterval 100 ms, queue ahead on ctx clock); like the music scheduler, an event whose time already passed (a background tab's slow timer) is dropped, never played late in a burst. `Math.random` is used directly; tests assert node wiring, not timing. Switching kind fades the old generation out (0.4 s) and disconnects it. Remembered while the context is not running or 🎵 is off; starts on the next wake (onstatechange, only when 🎵 is on, the same rule as `play()`) or `start()`. `stop()` (🎵 off) halts the ambience generator (bed source stopped, event timer cleared, nodes disconnected) so nothing is built while unheard; `start()` resumes the remembered kind.
-- Levels: the layer table already in `layerGains()` (ambient: video 0, held 0, speaking ducked, 🎵 off 0). Per-kind internal levels balanced so ambience sits clearly under the music: each kind has an internal gain multiplier under the layer (AMBIENT_VOLUME 0.03 vs music 0.05; noise beds at multiplier 0.5, event blips at 0.8, because noise is perceived louder than tones). AMBIENT_VOLUME stays the one named constant for venue retune. Manual venue check before 11/18 (not CI): ambience audible but under the music at party volume.
+- Levels: the layer table already in `layerGains()` (ambient: video 0, held 0, speaking ducked, 🎵 off 0). Per-kind internal levels balanced so ambience sits clearly under the music: each kind has an internal gain multiplier under the layer (AMBIENT_VOLUME 0.03 vs music 0.05; noise beds at multiplier 0.5, event blips at 0.8, because noise is perceived louder than tones). AMBIENT_VOLUME stays the one named constant for real-device retune. Manual real-device check before 11/18 (not CI): ambience audible but under the music at party volume.
 - Screen page: one effect `player().setAmbience(ambienceFor(game))` on change.
 
 ### Run 3 — Fog reveal
@@ -1525,7 +1525,7 @@ Big-screen only. No protocol, room (Worker) or server-timing change. No new data
 ### Run 3 — Tests (vitest)
 - `ambienceFor`: rotation by room index, null for lobby/finished/boss scene/boss phase card/intro/initiative; a dish reveal uses the dish's room.
 - `revealFor`: frontier up → room; jump of two → only the new frontier; same → null; first STATE → null; new game → null; boss entry (roomIndex kept) → null; phase not playing → null.
-- `layerGains` ambient rows already covered by the existing table test; add a player test that setAmbience with a fake AudioContext connects under the ambient layer, switching disconnects the old one, `setAmbience(null)` stops it, a kind set before the context runs starts when it wakes (and not while 🎵 is off), `stop()` halts and `start()` resumes the remembered kind, `close()` stops it. The FakeAudioContext in lib/bgm-player.test.ts grows `createBuffer`, `createBufferSource` and `createBiquadFilter` fakes and its existing oscillator fake is extended (AudioParam with `value`/`setValueAtTime`/`setTargetAtTime`/`linearRampToValueAtTime`; a node can `connect()` to an AudioParam for the LFO). No MapStrip render test: vitest runs lib/**/*.test.ts in node only (vitest.config.ts) and the repo has no component test harness; the overlay is checked by the manual venue run.
+- `layerGains` ambient rows already covered by the existing table test; add a player test that setAmbience with a fake AudioContext connects under the ambient layer, switching disconnects the old one, `setAmbience(null)` stops it, a kind set before the context runs starts when it wakes (and not while 🎵 is off), `stop()` halts and `start()` resumes the remembered kind, `close()` stops it. The FakeAudioContext in lib/bgm-player.test.ts grows `createBuffer`, `createBufferSource` and `createBiquadFilter` fakes and its existing oscillator fake is extended (AudioParam with `value`/`setValueAtTime`/`setTargetAtTime`/`linearRampToValueAtTime`; a node can `connect()` to an AudioParam for the LFO). No MapStrip render test: vitest runs lib/**/*.test.ts in node only (vitest.config.ts) and the repo has no component test harness; the overlay is checked by the manual real-device run.
 
 ### Run 3 — Docs
 docs/hosting.md + docs/hosting.en.md: one paragraph on ambience and fog reveal (🎵 controls it, video/buzz silences it, reduced motion = static highlight). Fragment changelog.d/feat-immersion-ambience.md bump: minor.
@@ -1539,11 +1539,11 @@ docs/hosting.md + docs/hosting.en.md: one paragraph on ambience and fog reveal (
 - On a reveal: one door sound on the game-cue bus (C2, follows 🎵), clouds blow off the new room, and the room lights up once if the shared flash budget allows (counts as one flash); otherwise, or with reduced motion, a static highlight. The existing pawn arrival is unchanged. Never delays a question. Verify: vitest on the reveal look helper (lit vs static under budget/reduced motion).
 - Docs: docs/hosting.md and docs/hosting.en.md, same headings; fragment changelog.d/feat-immersion-ambience.md with `bump: minor`. Verify: `npm run check:docs`.
 - 🎵 off (`stop()`) halts the ambience generator and `start()` resumes the remembered kind. Verify: player vitest with the FakeAudioContext extended with buffer, buffer source, biquad and oscillator fakes.
-- Ambience balance: manual venue check before 11/18 (not CI) that ambience is audible but under the music at party volume; AMBIENT_VOLUME is the one-line retune.
+- Ambience balance: manual real-device check before 11/18 (not CI) that ambience is audible but under the music at party volume; AMBIENT_VOLUME is the one-line retune.
 - The reveal reaches all four MapStrip call sites; under reduced motion the static highlight stacks with the existing D13 outline on purpose. The look choice is the pure `revealLook({ reducedMotion, takeFlash })`. Verify: vitest on `revealLook`.
 - Replaces the two `revealLook` mentions above: the page uses its existing `flash()` (reduced motion + shared budget, page.tsx:1382) and no separate helper; the reveal state and MapStrip prop are named `fogReveal`. The door sound is skipped while this screen's video plays or a buzz hold is on. Verify: vitest on `revealFor`; existing flash-budget vitest.
 - `ambienceFor` takes the full STATE and mirrors the backdrop (dish reveal room, boss phase card); ambience events behind the clock are dropped like music notes. Verify: vitest on `ambienceFor` cases listed in Tests.
-- Player vitest also covers `setAmbience(null)` stopping and a kind set before the context runs starting on wake (only with 🎵 on); the oscillator fake is extended, not added. The `fogReveal` timer restarts on a new reveal and is cleared on unmount. No MapStrip render vitest (node-only vitest, no component harness); the overlay is checked in the manual venue run.
+- Player vitest also covers `setAmbience(null)` stopping and a kind set before the context runs starting on wake (only with 🎵 on); the oscillator fake is extended, not added. The `fogReveal` timer restarts on a new reveal and is cleared on unmount. No MapStrip render vitest (node-only vitest, no component harness); the overlay is checked in the manual real-device run.
 - Ambience keeps the turn room (T2) but does not restart when the next room maps to the same kind, and a kind change crossfades over 1.5 s (replaces the 0.4 s fade above). Verify: player vitest that setting the same kind twice builds nothing new.
 - Drips (M1) replace the 0.6-2.2 s cadence above: one blip every 1.5-4.5 s over a very faint bed (multiplier 0.15).
 - `revealFor` returns null when the same STATE also changes phase (M3). Verify: vitest case.
@@ -1559,11 +1559,11 @@ docs/hosting.md + docs/hosting.en.md: one paragraph on ambience and fog reveal (
 - Lit look: `px-room-lit` = `filter: brightness(1.6)` at 50% then back to 1, 0.4 s, `steps(2)`, animation-delay 0.6 s (after the clouds); one pulse = one flash-budget take. Static look (budget refused or reduced motion): static `filter: brightness(1.3)` on the room box for 1.2 s, no animation, removed as a cut; it replaces the turn2-outline static highlight so it differs from the D13 landing outline.
 - `DOOR_CREAK`: triangle wave falling 180→120 Hz with a small wobble, at most 0.6 s, game-cue bus.
 - A trailing team entering a room already revealed gets no fog reveal (only the frontier fogs). No ducking under the event d20 roll. The reveal state's `key` is the room index.
-- Docs say the ambience rotation is atmosphere, not a gameplay signal. Manual venue check adds: from couch distance the opened room is identifiable and the pawn stays visible.
+- Docs say the ambience rotation is atmosphere, not a gameplay signal. Manual real-device check adds: from couch distance the opened room is identifiable and the pawn stays visible.
 <!-- /autoplan-accepted:design -->
 
 <!-- autoplan-accepted:eng -->
-- E1 (both voices): the reveal's skip checks (video playing, buzz hold, `transitionOn.current`) and `flash()` run inside the 600 ms timer callback, not in the STATE handler; the pending timer is also cleared on a phase change, a return to the lobby and a reconnect (prevState reset). Verify: code read in /review; manual venue check.
+- E1 (both voices): the reveal's skip checks (video playing, buzz hold, `transitionOn.current`) and `flash()` run inside the 600 ms timer callback, not in the STATE handler; the pending timer is also cleared on a phase change, a return to the lobby and a reconnect (prevState reset). Verify: code read in /review; manual real-device check.
 - E2: the reveal has two steps. At the STATE: `fogReveal = { room, step: "covered" }` puts the two cloud sprites static over the new room (no sound, no flash, no animation). At +600 ms: door creak, `step: "blow"` starts `px-fog-blow` and the lit or static look; cleared 1.2 s later. Under reduced motion no clouds show in either step.
 - E4: one `resumeAmbience()` inside the player, called from `onstatechange`, `start()` and `unlock()`; it starts the remembered kind only when 🎵 is on, the context is running and no generator is live. `setAmbience` never calls `ensure()`: with no context (or after `close()`) it only remembers the kind. Verify: player vitest that `setAmbience` after `close()` creates no AudioContext.
 - E5: at most two live generators (the current one and one fading out); a new switch hard-stops any generator still fading. Verify: player vitest that A→B→C leaves at most 2 live sources.
@@ -1600,7 +1600,7 @@ unverified=0. Real problem: the walking rooms are silent between cues while the 
 ```
   CURRENT                          THIS PLAN                           12-MONTH IDEAL
   rooms silent between cues;  ---> each room has a quiet synth   --->  rooms with themed sound+light per
-  fog never animates               bed; fog blows away with a door     room type, venue-tuned mix presets
+  fog never animates               bed; fog blows away with a door     room type, setup-tuned mix presets
 ```
 
 **0D**: no approach choice needed (design fixes the approach). **0E**: SELECTIVE EXPANSION (autoplan override); ~9 files changed (lib/ambience.ts new, lib/ambience.test.ts new, lib/bgm-player.ts, lib/bgm-player.test.ts, lib/sfx.ts, components/map-strip.tsx, app/globals.css, screen page, docs x2, fragment) [estimated].
@@ -1625,7 +1625,7 @@ unverified=0. Real problem: the walking rooms are silent between cues while the 
 
 0H/0I and Review Sections follow below.
 
-<!-- autoplan-baseline-edits:ceo {"sourceSha256":"79396c7db61458aa0b79e67997fc71aeac8d769bd161684d7c8c1cb6be05d47d","replacements":[{"oldText":"`ambienceFor(state)` returns the ambience for the room on screen: phase `playing`, no intro/initiative overlay, turn not a boss scene → `AMBIENCES[room % 3]` where `room = describeTurn(...).room`; otherwise `null` (lobby, finished, boss scene: the boss layer and rage music own that space).","newText":"`ambienceFor(state: StateMessage)` returns the ambience for the room on stage, computed exactly like the screen's backdrop (app/room/[code]/screen/page.tsx:277-288): `turn = describeTurn(view, question, phaseCard?.monster)`; with a dish reveal (`reveal.dish`) the room is `dish.room` and the boss scene is `dish.room === null`, otherwise `turn.room` / `turn.bossScene`. Phase `playing`, no intro or initiative overlay, not a boss scene → `AMBIENCES[room % 3]`; otherwise `null` (lobby, finished, boss scene incl. the boss phase card: the boss layer and rage music own that space). Fortune, fork and event screens are walking rooms: ambience stays on."},{"oldText":"  - drips: no bed noise (or very low); random sine blips sliding 1400→700 Hz every 0.6–2.2 s.","newText":"  - drips: no bed noise; random sine blips sliding 1400→700 Hz every 0.6–2.2 s."},{"oldText":"  - Random events scheduled by the existing lookahead style (setInterval 100 ms, queue ahead on ctx clock).","newText":"  - Random events scheduled by the existing lookahead style (setInterval 100 ms, queue ahead on ctx clock); like the music scheduler, an event whose time already passed (a background tab's slow timer) is dropped, never played late in a burst. `Math.random` is used directly; tests assert node wiring, not timing."},{"oldText":"Remembered while the context is not running; starts on the next wake (onstatechange).","newText":"Remembered while the context is not running or 🎵 is off; starts on the next wake (onstatechange, only when 🎵 is on, the same rule as `play()`) or `start()`. `stop()` (🎵 off) halts the ambience generator (bed source stopped, event timer cleared, nodes disconnected) so nothing is built while unheard; `start()` resumes the remembered kind."},{"oldText":"Per-kind internal levels balanced so ambience sits clearly under the music (AMBIENT_VOLUME 0.03 vs music 0.05; noise is perceived louder, so bed peaks ~0.5). One named constant for venue retune.","newText":"Per-kind internal levels balanced so ambience sits clearly under the music: each kind has an internal gain multiplier under the layer (AMBIENT_VOLUME 0.03 vs music 0.05; noise beds at multiplier 0.5, event blips at 0.8, because noise is perceived louder than tones). AMBIENT_VOLUME stays the one named constant for venue retune. Manual venue check before 11/18 (not CI): ambience audible but under the music at party volume."},{"oldText":"- Pure `revealFor(prev, next)` in `lib/ambience.ts` (or map-layout): frontier = max `roomIndex` over teams (same as layoutMap). Returns the new frontier room index when `next.frontier > prev.frontier`,","newText":"- Pure `revealFor(prev, next)` in `lib/ambience.ts`: frontier = max `roomIndex` over teams (same as layoutMap, lib/map-layout.ts:43; boss entry keeps roomIndex, lib/game-state.ts:1215, so it never moves the frontier). Returns the new frontier room index when `next.frontier > prev.frontier` (a jump of two rooms in one STATE reveals only the new frontier room, on purpose: the fog edge is what moves),"},{"oldText":"- Screen page STATE handler: on reveal → play `DOOR_CREAK` (new SfxNote[] in lib/sfx.ts, game-cue bus, follows 🎵 like other move cues; not sawtooth) and set `reveal = { room, lit: flash(), key }` for 1.2 s. `flash()` is the shared budget + reduced motion check (already in page).","newText":"- Screen page STATE handler: on reveal → play `DOOR_CREAK` (new SfxNote[] in lib/sfx.ts, game-cue bus, follows 🎵; not sawtooth), skipped while this screen's video plays or a buzz hold is on (nothing covers a playing clip, immersion.md Success Criteria), and set page state `fogReveal = { room, lit: flash(), key }` for 1.2 s; a new reveal replaces the old one and restarts the timer, and the timer is cleared on unmount (named `fogReveal`, since `reveal` is already the answer reveal). `flash()` is the page's existing shared-budget + reduced-motion check (page.tsx:1382); no extra helper."},{"oldText":"- `MapStrip` gets an optional `reveal` prop.","newText":"- `MapStrip` gets an optional `fogReveal` prop, passed at all four MapStrip call sites on the screen page (app/room/[code]/screen/page.tsx:461, 727, 770, 822)."},{"oldText":"On the room box with `index === reveal.room`:","newText":"On the room box with `index === fogReveal.room`:"},{"oldText":"The existing pawn `arrived` hop + `px-room-flash` is unchanged and still plays.","newText":"The existing pawn `arrived` hop + `px-room-flash` is unchanged and still plays; under reduced motion it stacks with the static highlight on purpose (D13 outline, app/globals.css:330)."},{"oldText":"- `ambienceFor`: rotation by room index, null for lobby/finished/boss scene/intro.","newText":"- `ambienceFor`: rotation by room index, null for lobby/finished/boss scene/boss phase card/intro/initiative; a dish reveal uses the dish's room."},{"oldText":"- `revealFor`: frontier up → room; same → null; first STATE → null; new game → null; boss entry (frontier unchanged) → null.","newText":"- `revealFor`: frontier up → room; jump of two → only the new frontier; same → null; first STATE → null; new game → null; boss entry (roomIndex kept) → null; phase not playing → null."},{"oldText":"add a player test that setAmbience with a fake AudioContext connects under the ambient layer and switching disconnects the old one.","newText":"add a player test that setAmbience with a fake AudioContext connects under the ambient layer, switching disconnects the old one, `setAmbience(null)` stops it, a kind set before the context runs starts when it wakes (and not while 🎵 is off), `stop()` halts and `start()` resumes the remembered kind, `close()` stops it. The FakeAudioContext in lib/bgm-player.test.ts grows `createBuffer`, `createBufferSource` and `createBiquadFilter` fakes and its existing oscillator fake is extended (AudioParam with `value`/`setValueAtTime`/`setTargetAtTime`/`linearRampToValueAtTime`; a node can `connect()` to an AudioParam for the LFO). No MapStrip render test: vitest runs lib/**/*.test.ts in node only (vitest.config.ts) and the repo has no component test harness; the overlay is checked by the manual venue run."}]} -->
+<!-- autoplan-baseline-edits:ceo {"sourceSha256":"79396c7db61458aa0b79e67997fc71aeac8d769bd161684d7c8c1cb6be05d47d","replacements":[{"oldText":"`ambienceFor(state)` returns the ambience for the room on screen: phase `playing`, no intro/initiative overlay, turn not a boss scene → `AMBIENCES[room % 3]` where `room = describeTurn(...).room`; otherwise `null` (lobby, finished, boss scene: the boss layer and rage music own that space).","newText":"`ambienceFor(state: StateMessage)` returns the ambience for the room on stage, computed exactly like the screen's backdrop (app/room/[code]/screen/page.tsx:277-288): `turn = describeTurn(view, question, phaseCard?.monster)`; with a dish reveal (`reveal.dish`) the room is `dish.room` and the boss scene is `dish.room === null`, otherwise `turn.room` / `turn.bossScene`. Phase `playing`, no intro or initiative overlay, not a boss scene → `AMBIENCES[room % 3]`; otherwise `null` (lobby, finished, boss scene incl. the boss phase card: the boss layer and rage music own that space). Fortune, fork and event screens are walking rooms: ambience stays on."},{"oldText":"  - drips: no bed noise (or very low); random sine blips sliding 1400→700 Hz every 0.6–2.2 s.","newText":"  - drips: no bed noise; random sine blips sliding 1400→700 Hz every 0.6–2.2 s."},{"oldText":"  - Random events scheduled by the existing lookahead style (setInterval 100 ms, queue ahead on ctx clock).","newText":"  - Random events scheduled by the existing lookahead style (setInterval 100 ms, queue ahead on ctx clock); like the music scheduler, an event whose time already passed (a background tab's slow timer) is dropped, never played late in a burst. `Math.random` is used directly; tests assert node wiring, not timing."},{"oldText":"Remembered while the context is not running; starts on the next wake (onstatechange).","newText":"Remembered while the context is not running or 🎵 is off; starts on the next wake (onstatechange, only when 🎵 is on, the same rule as `play()`) or `start()`. `stop()` (🎵 off) halts the ambience generator (bed source stopped, event timer cleared, nodes disconnected) so nothing is built while unheard; `start()` resumes the remembered kind."},{"oldText":"Per-kind internal levels balanced so ambience sits clearly under the music (AMBIENT_VOLUME 0.03 vs music 0.05; noise is perceived louder, so bed peaks ~0.5). One named constant for real-device retune.","newText":"Per-kind internal levels balanced so ambience sits clearly under the music: each kind has an internal gain multiplier under the layer (AMBIENT_VOLUME 0.03 vs music 0.05; noise beds at multiplier 0.5, event blips at 0.8, because noise is perceived louder than tones). AMBIENT_VOLUME stays the one named constant for real-device retune. Manual real-device check before 11/18 (not CI): ambience audible but under the music at party volume."},{"oldText":"- Pure `revealFor(prev, next)` in `lib/ambience.ts` (or map-layout): frontier = max `roomIndex` over teams (same as layoutMap). Returns the new frontier room index when `next.frontier > prev.frontier`,","newText":"- Pure `revealFor(prev, next)` in `lib/ambience.ts`: frontier = max `roomIndex` over teams (same as layoutMap, lib/map-layout.ts:43; boss entry keeps roomIndex, lib/game-state.ts:1215, so it never moves the frontier). Returns the new frontier room index when `next.frontier > prev.frontier` (a jump of two rooms in one STATE reveals only the new frontier room, on purpose: the fog edge is what moves),"},{"oldText":"- Screen page STATE handler: on reveal → play `DOOR_CREAK` (new SfxNote[] in lib/sfx.ts, game-cue bus, follows 🎵 like other move cues; not sawtooth) and set `reveal = { room, lit: flash(), key }` for 1.2 s. `flash()` is the shared budget + reduced motion check (already in page).","newText":"- Screen page STATE handler: on reveal → play `DOOR_CREAK` (new SfxNote[] in lib/sfx.ts, game-cue bus, follows 🎵; not sawtooth), skipped while this screen's video plays or a buzz hold is on (nothing covers a playing clip, immersion.md Success Criteria), and set page state `fogReveal = { room, lit: flash(), key }` for 1.2 s; a new reveal replaces the old one and restarts the timer, and the timer is cleared on unmount (named `fogReveal`, since `reveal` is already the answer reveal). `flash()` is the page's existing shared-budget + reduced-motion check (page.tsx:1382); no extra helper."},{"oldText":"- `MapStrip` gets an optional `reveal` prop.","newText":"- `MapStrip` gets an optional `fogReveal` prop, passed at all four MapStrip call sites on the screen page (app/room/[code]/screen/page.tsx:461, 727, 770, 822)."},{"oldText":"On the room box with `index === reveal.room`:","newText":"On the room box with `index === fogReveal.room`:"},{"oldText":"The existing pawn `arrived` hop + `px-room-flash` is unchanged and still plays.","newText":"The existing pawn `arrived` hop + `px-room-flash` is unchanged and still plays; under reduced motion it stacks with the static highlight on purpose (D13 outline, app/globals.css:330)."},{"oldText":"- `ambienceFor`: rotation by room index, null for lobby/finished/boss scene/intro.","newText":"- `ambienceFor`: rotation by room index, null for lobby/finished/boss scene/boss phase card/intro/initiative; a dish reveal uses the dish's room."},{"oldText":"- `revealFor`: frontier up → room; same → null; first STATE → null; new game → null; boss entry (frontier unchanged) → null.","newText":"- `revealFor`: frontier up → room; jump of two → only the new frontier; same → null; first STATE → null; new game → null; boss entry (roomIndex kept) → null; phase not playing → null."},{"oldText":"add a player test that setAmbience with a fake AudioContext connects under the ambient layer and switching disconnects the old one.","newText":"add a player test that setAmbience with a fake AudioContext connects under the ambient layer, switching disconnects the old one, `setAmbience(null)` stops it, a kind set before the context runs starts when it wakes (and not while 🎵 is off), `stop()` halts and `start()` resumes the remembered kind, `close()` stops it. The FakeAudioContext in lib/bgm-player.test.ts grows `createBuffer`, `createBufferSource` and `createBiquadFilter` fakes and its existing oscillator fake is extended (AudioParam with `value`/`setValueAtTime`/`setTargetAtTime`/`linearRampToValueAtTime`; a node can `connect()` to an AudioParam for the LFO). No MapStrip render test: vitest runs lib/**/*.test.ts in node only (vitest.config.ts) and the repo has no component test harness; the overlay is checked by the manual real-device run."}]} -->
 
 <!-- autoplan-accepted:ceo -->
 - PR3 ships as one PR (ship-policy `pr_count` 1): room ambience + fog reveal, big screen only; no protocol, Worker or server-timing change; no audio files; client code never imports BANK. Verify: `npm run check:bundle`, diff touches no lib/protocol.ts or lib/room/.
@@ -1636,11 +1636,11 @@ unverified=0. Real problem: the walking rooms are silent between cues while the 
 - On a reveal: one door sound on the game-cue bus (C2, follows 🎵), clouds blow off the new room, and the room lights up once if the shared flash budget allows (counts as one flash); otherwise, or with reduced motion, a static highlight. The existing pawn arrival is unchanged. Never delays a question. Verify: vitest on the reveal look helper (lit vs static under budget/reduced motion).
 - Docs: docs/hosting.md and docs/hosting.en.md, same headings; fragment changelog.d/feat-immersion-ambience.md with `bump: minor`. Verify: `npm run check:docs`.
 - 🎵 off (`stop()`) halts the ambience generator and `start()` resumes the remembered kind. Verify: player vitest with the FakeAudioContext extended with buffer, buffer source, biquad and oscillator fakes.
-- Ambience balance: manual venue check before 11/18 (not CI) that ambience is audible but under the music at party volume; AMBIENT_VOLUME is the one-line retune.
+- Ambience balance: manual real-device check before 11/18 (not CI) that ambience is audible but under the music at party volume; AMBIENT_VOLUME is the one-line retune.
 - The reveal reaches all four MapStrip call sites; under reduced motion the static highlight stacks with the existing D13 outline on purpose. The look choice is the pure `revealLook({ reducedMotion, takeFlash })`. Verify: vitest on `revealLook`.
 - Replaces the two `revealLook` mentions above: the page uses its existing `flash()` (reduced motion + shared budget, page.tsx:1382) and no separate helper; the reveal state and MapStrip prop are named `fogReveal`. The door sound is skipped while this screen's video plays or a buzz hold is on. Verify: vitest on `revealFor`; existing flash-budget vitest.
 - `ambienceFor` takes the full STATE and mirrors the backdrop (dish reveal room, boss phase card); ambience events behind the clock are dropped like music notes. Verify: vitest on `ambienceFor` cases listed in Tests.
-- Player vitest also covers `setAmbience(null)` stopping and a kind set before the context runs starting on wake (only with 🎵 on); the oscillator fake is extended, not added. The `fogReveal` timer restarts on a new reveal and is cleared on unmount. No MapStrip render vitest (node-only vitest, no component harness); the overlay is checked in the manual venue run.
+- Player vitest also covers `setAmbience(null)` stopping and a kind set before the context runs starting on wake (only with 🎵 on); the oscillator fake is extended, not added. The `fogReveal` timer restarts on a new reveal and is cleared on unmount. No MapStrip render vitest (node-only vitest, no component harness); the overlay is checked in the manual real-device run.
 - Ambience keeps the turn room (T2) but does not restart when the next room maps to the same kind, and a kind change crossfades over 1.5 s (replaces the 0.4 s fade above). Verify: player vitest that setting the same kind twice builds nothing new.
 - Drips (M1) replace the 0.6-2.2 s cadence above: one blip every 1.5-4.5 s over a very faint bed (multiplier 0.15).
 - `revealFor` returns null when the same STATE also changes phase (M3). Verify: vitest case.
@@ -1721,7 +1721,7 @@ GAP found and accepted: generator start can throw on an old TV browser and must 
  setAmbience wiring    | unit   | under ambient layer, switch disconnects, null stops, wake only with 🎵, stop/start, close
  generator throws      | unit   | createBuffer throws → setAmbience does not throw
  layer table           | unit   | existing table test
- MapStrip overlay/CSS  | manual | venue run (no component harness)
+ MapStrip overlay/CSS  | manual | real-device run (no component harness)
 ```
 no_claim: how it sounds and looks (fake AudioContext; node only).
 
@@ -1731,7 +1731,7 @@ no_claim: how it sounds and looks (fake AudioContext; node only).
 
 **Section 9 Deployment.** Client only; no Worker-first ordering. Rollback = revert. Post-deploy /canary. No issues.
 
-**Section 10 Long-term.** Reversibility 5/5. Debt: levels tuned by ear (venue check). `ambienceFor` is the single mapping for later themed rooms.
+**Section 10 Long-term.** Reversibility 5/5. Debt: levels tuned by ear (real-device check). `ambienceFor` is the single mapping for later themed rooms.
 
 **Section 11 Design & UX.**
 ```
@@ -1753,7 +1753,7 @@ REALITY: pr-count pass pr_count 1 .gstack/ship-policy.json:1
 
 **What already exists**: layered mixer + ambient row, tone/pattern scheduling, drop-late-notes rule, flash budget + `flash()`, fog + pawn arrival in MapStrip, describeTurn/backdrop logic, cloud sprite. All reused.
 
-**Dream state delta**: rooms get a bed and a fog moment; the ideal (themed per room type, venue presets) needs room-type data later.
+**Dream state delta**: rooms get a bed and a fog moment; the ideal (themed per room type, setup presets) needs room-type data later.
 
 **Failure Modes Registry**
 ```
@@ -1762,7 +1762,7 @@ REALITY: pr-count pass pr_count 1 .gstack/ship-policy.json:1
  event timer     | bg tab burst         | Y        | N      | nothing         | N
  fog reveal      | wrong trigger        | Y        | Y      | no reveal       | N
  door creak      | over a clip          | Y        | N      | silence         | N
- mix level       | too loud at venue    | manual   | manual | hiss over music | N
+ mix level       | too loud for room    | manual   | manual | hiss over music | N
 ```
 CRITICAL GAPS: 0.
 
@@ -1829,7 +1829,7 @@ Input: design snapshot 5eded4ca5d771fddf9b0b6805ed0e85f39aa02e74184694962f2afa38
 **Pass 3 User journey 6→7:** J1 stays taste T2 (turn room; frontier is the alternative, now also argued by the native design voice). J2 / Codex low → taste T4: keep `room % 3` (design text "by room index in rotation"); docs say it is atmosphere, not a gameplay signal.
 **Pass 4 AI slop / specificity 5→8:** P1 auto-fix: two `Sprite kind="cloud" scale={2}` at the fog's own offsets (top 4 and top 30), `px-fog-blow` slides +40px and opacity 1→0 in `steps(4)` over 0.8 s. P2: `px-room-lit` = `filter: brightness(1.6)` at 50%, back to 1, 0.4 s, `steps(2)`. P3: `DOOR_CREAK` triangle wave falling 180→120 Hz with a small wobble, at most 0.6 s.
 **Pass 5 Design system 6→8:** H2 auto-fix: the static highlight is a static `filter: brightness(1.3)` on the room box (distinct from the D13 turn2 outline), no animation, held 1.2 s. Two-frame `steps()` only, no new colour tokens.
-**Pass 6 Responsive / accessibility 6→8:** S2 auto-fix: the overlay sits inside the room div, before the pawns in paint order (pawns, tag, ▼ stay on top), `pointer-events-none` and `aria-hidden`. Clouds are clipped to the room box (narrow rooms). Manual venue check adds: from couch distance the opened room is identifiable and the pawn stays visible. TV only, no touch or keyboard targets.
+**Pass 6 Responsive / accessibility 6→8:** S2 auto-fix: the overlay sits inside the room div, before the pawns in paint order (pawns, tag, ▼ stay on top), `pointer-events-none` and `aria-hidden`. Clouds are clipped to the room box (narrow rooms). Manual real-device check adds: from couch distance the opened room is identifiable and the pawn stays visible. TV only, no touch or keyboard targets.
 **Pass 7 Unresolved decisions:** A1 auto-fix (both voices): the design accepted block below is the single source of truth for fade time, drips cadence and helpers; superseded text is void. A3: `key` = room index. UC1 (independent ambience off) stays a User Challenge for the final gate.
 
 <!-- autoplan-accepted:design -->
@@ -1840,7 +1840,7 @@ Input: design snapshot 5eded4ca5d771fddf9b0b6805ed0e85f39aa02e74184694962f2afa38
 - Lit look: `px-room-lit` = `filter: brightness(1.6)` at 50% then back to 1, 0.4 s, `steps(2)`, animation-delay 0.6 s (after the clouds); one pulse = one flash-budget take. Static look (budget refused or reduced motion): static `filter: brightness(1.3)` on the room box for 1.2 s, no animation, removed as a cut; it replaces the turn2-outline static highlight so it differs from the D13 landing outline.
 - `DOOR_CREAK`: triangle wave falling 180→120 Hz with a small wobble, at most 0.6 s, game-cue bus.
 - A trailing team entering a room already revealed gets no fog reveal (only the frontier fogs). No ducking under the event d20 roll. The reveal state's `key` is the room index.
-- Docs say the ambience rotation is atmosphere, not a gameplay signal. Manual venue check adds: from couch distance the opened room is identifiable and the pawn stays visible.
+- Docs say the ambience rotation is atmosphere, not a gameplay signal. Manual real-device check adds: from couch distance the opened room is identifiable and the pawn stays visible.
 <!-- /autoplan-accepted:design -->
 
 Taste added in design: T4 keep `room % 3` (native wanted backdrop-theme mapping; Codex wanted only a stated rationale). T2 note: native design voice also prefers the frontier room.
@@ -1855,7 +1855,7 @@ REALITY: premise-table pass 9 premises, unverified=0 (frontier max lib/map-layou
 REALITY: already-done pass origin/main has no commit past b638fdd; no ambience/fog code exists lib/bgm-player.ts:84
 REALITY: surface-check pass npm scripts test/lint/check:bundle/check:docs exist in package.json; vitest config node-only vitest.config.ts:1
 REALITY: binding-decisions pass gstack-decision-search returned no branch decisions; immersion.md PR3 text (room index rotation, no files, flash budget) honored docs/designs/immersion.md:147
-REALITY: numbers pass every number is a design constant tagged [estimated] (600 ms, 1.5 s, 0.03/0.05 volumes from lib/bgm-player.ts, 3 per 1 s from lib/flash-budget.ts); balance [re-measure before gate] at the venue lib/flash-budget.ts:1
+REALITY: numbers pass every number is a design constant tagged [estimated] (600 ms, 1.5 s, 0.03/0.05 volumes from lib/bgm-player.ts, 3 per 1 s from lib/flash-budget.ts); balance [re-measure before gate] on the real setup lib/flash-budget.ts:1
 REALITY: deferred-asks pass no linked issue; design asks all covered (ambience, fog, door sound, flash budget, reduced motion) docs/designs/immersion.md:147
 REALITY: pr-count pass pr_count default 1, split_requires_owner true; one PR .gstack/ship-policy.json:30
 
@@ -1905,7 +1905,7 @@ CODE PATHS                                         USER FLOWS
   ├── [★★★ PLANNED] A→B→C ≤ 2 live sources (E5)
   └── [★★★ PLANNED] setAmbience after close() builds no context (E4)
 [+] page timer / MapStrip overlay: [GAP→manual] node-only vitest, no component harness
-COVERAGE: code paths 3/3 planned ★★★; user flows 2/6 automated, 4 manual venue
+COVERAGE: code paths 3/3 planned ★★★; user flows 2/6 automated, 4 manual real-device
 ```
 Test plan artifact: a local-only eng-review test plan under ~/.gstack/projects/ (local only). No LLM/eval scope.
 
@@ -1917,7 +1917,7 @@ Test plan artifact: a local-only eng-review test plan under ~/.gstack/projects/ 
 **Parallelization:** sequential implementation, no parallelization opportunity (one lane; page depends on lib/ambience.ts and the player API).
 
 <!-- autoplan-accepted:eng -->
-- E1 (both voices): the reveal's skip checks (video playing, buzz hold, `transitionOn.current`) and `flash()` run inside the 600 ms timer callback, not in the STATE handler; the pending timer is also cleared on a phase change, a return to the lobby and a reconnect (prevState reset). Verify: code read in /review; manual venue check.
+- E1 (both voices): the reveal's skip checks (video playing, buzz hold, `transitionOn.current`) and `flash()` run inside the 600 ms timer callback, not in the STATE handler; the pending timer is also cleared on a phase change, a return to the lobby and a reconnect (prevState reset). Verify: code read in /review; manual real-device check.
 - E2: the reveal has two steps. At the STATE: `fogReveal = { room, step: "covered" }` puts the two cloud sprites static over the new room (no sound, no flash, no animation). At +600 ms: door creak, `step: "blow"` starts `px-fog-blow` and the lit or static look; cleared 1.2 s later. Under reduced motion no clouds show in either step.
 - E4: one `resumeAmbience()` inside the player, called from `onstatechange`, `start()` and `unlock()`; it starts the remembered kind only when 🎵 is on, the context is running and no generator is live. `setAmbience` never calls `ensure()`: with no context (or after `close()`) it only remembers the kind. Verify: player vitest that `setAmbience` after `close()` creates no AudioContext.
 - E5: at most two live generators (the current one and one fading out); a new switch hard-stops any generator still fading. Verify: player vitest that A→B→C leaves at most 2 live sources.

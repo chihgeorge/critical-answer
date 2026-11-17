@@ -112,7 +112,7 @@ export function revealStage(reveal: Pick<NonNullable<StateMessage["reveal"]>, "a
 
 type HoldFields = Pick<StateMessage, "reveal" | "eventReveal" | "fortune" | "phaseCard" | "phaseCardDue">;
 
-/** The host page and the big screen say this while every team's phone is offline (rehearsal QA 2026-11-16 P1-1). */
+/** The host page and the big screen say this while every team's phone is offline (real-device QA 2026-11-16 P1-1). */
 export const PAUSED_OFFLINE = "⏸ 遊戲暫停中，等隊伍連回";
 
 /** Every team's phone is offline and none holds the turn, so the game waits until one reconnects. A team that keeps the

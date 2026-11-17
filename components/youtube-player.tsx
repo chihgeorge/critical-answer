@@ -48,7 +48,7 @@ declare global {
 }
 
 const API_URL = "https://www.youtube.com/iframe_api";
-/** A network that drops the script without an error (some venue Wi-Fi) must not leave 準備中 up forever. */
+/** A network that drops the script without an error (some public Wi-Fi) must not leave 準備中 up forever. */
 const API_TIMEOUT_MS = 15_000;
 let api: Promise<YTNamespace> | null = null;
 
@@ -141,7 +141,7 @@ export function YoutubePlayer({
   const ended = useRef(false);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<ClipStatus>("loading");
-  /** Goes up to build the player again: a ▶ or ⟲ while it shows 影片無法播放 retries (venue Wi-Fi, D26). */
+  /** Goes up to build the player again: a ▶ or ⟲ while it shows 影片無法播放 retries (slow or filtered Wi-Fi, D26). */
   const [attempt, setAttempt] = useState(0);
   const report = useRef(onPlayingChange);
   const reportEnd = useRef(onEnded);

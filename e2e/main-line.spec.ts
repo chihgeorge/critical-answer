@@ -1,5 +1,5 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { answerCorrectly, rollCheck, NEXT_WAIT_MS, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, screenUrl, closeLeftoverContexts } from "./answer";
+import { answerCorrectly, rollCheck, NEXT_WAIT_MS, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, screenUrl, openMore, closeMore, closeLeftoverContexts } from "./answer";
 import { stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
 import { MONSTERS } from "../lib/monster-catalog";
 
@@ -61,7 +61,9 @@ test("create room, join two teams, start, judge; screen and play never see host-
   // Host claims control, then starts once both teams are in.
   await expect(host.getByText("乙隊")).toBeVisible();
   // AI narration is off until a host pastes a key, so tests never call the real API.
+  await openMore(host);
   await expect(host.getByText("AI 旁白", { exact: true })).toBeVisible();
+  await closeMore(host);
   await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   await expect(screen.getByText("輪到：甲隊")).toBeVisible();

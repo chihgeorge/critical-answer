@@ -140,6 +140,9 @@ export type AnswerReveal = {
   /** The question itself, only when it was never shown: its fill-in resolved before the persuasion check was done (a
    * natural 20, or the host judging before the roll). Shown above 正解; a video stays in `video`. */
   asked?: Pick<PublicQuestion, "content" | "prompt">;
+  /** A persuasion 20 won it (persuasion-gift): the question was never shown, so `answer` is "" and nothing about the
+   * question comes (no `asked`, explanation, video or fields); screens say the monster stepped aside instead of 正解. */
+  persuaded?: true;
   /** 🚨 成立 (docs/designs/anti-ai-cheating.md): `teamId` was caught asking an AI on this question, reported by `by`.
    * The answer shows, nothing is scored: no `scored`, `choice`, `sorted` or `dish`. */
   caught?: { teamId: string; by: string };
@@ -164,6 +167,8 @@ export type AnswerReveal = {
     room: number | null;
     /** The team that ate it, for the 🍲 ribbon and the dish line. */
     teamId: string;
+    /** The monster was persuaded, not defeated: it shared `part` (a harmless ingredient) and this dish is made from it. */
+    gift?: true;
   };
   /** The host pressed 🍲 上菜 (HOST_SERVE): the panel goes away and the screen cooks the monster. Only with `dish`. */
   served?: true;
@@ -442,7 +447,7 @@ export const REACTIONS = { clap: { emoji: "👏", label: "鼓掌" }, wow: { emoj
 export type Reaction = keyof typeof REACTIONS;
 /** One reaction per team per this many ms (the phone greys its buttons for as long). */
 export const REACT_GAP_MS = 2000;
-/** The room lets a team's next tap arrive this much early: venue Wi-Fi can deliver the first one late. */
+/** The room lets a team's next tap arrive this much early: slow Wi-Fi can deliver the first one late. */
 export const REACT_JITTER_MS = 300;
 /** At most this many reactions per room in any REACT_GAP_MS: one from every waiting team of a full room. */
 export const REACT_ROOM_MAX = MAX_TEAMS - 1;

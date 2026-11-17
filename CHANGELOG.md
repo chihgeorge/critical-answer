@@ -2,6 +2,53 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.88.0.0] - 2026-11-17
+
+### Changed
+- 主持人頁變清爽：手機一個畫面就看得到題目、答案、判題鍵和各隊狀態。少用的按鈕搬進 ⚙ 更多，抽屜分成隊伍、修正・改判、開局準備、節奏、地城主旁白、大螢幕和其他幾區。
+- ⚙ 更多的「隊伍」區每隊都有自己的角色造型，指定下一題、給幸運藥水、交給新手機都在這裡。主頁只留下一隊的「指定下一題」。
+- 計分板改成兩欄小卡，職業、叉路、偷襲、神諭、藥水和已指定的題目都縮成小圖示。
+- 大螢幕加料（⚡👹🌑 等）收進頁首的「⚡ 加料 ▾」；螢幕變暗時加料列會一直開著，方便關掉。手動節奏開著時，頁首會標「⏸ 手動」。
+- 大廳的遊戲設定收成一行摘要，按「修改 ▾」才展開；入場密碼和題庫檢查搬進 ⚙ 更多的「開局準備」。地城主旁白面板也搬進 ⚙ 更多。
+
+## [0.87.0.0] - 2026-11-17
+
+### Added
+- 說服擲到 20 時，怪物沒倒下，而是分出一樣不傷身的食材下鍋：史萊姆分一塊果凍、蘑菇分一把孢子、不死火鳥給一顆溫熱的蛋。圖鑑每隻怪物都有自己的分享料理，料理卡和上菜旁白會寫「{怪物}送的{食材}」，飽足感和平常答對一樣。
+
+### Fixed
+- 填空題說服擲到 20 時，題目從沒出現，揭曉卻還公布答案。現在大螢幕、手機和主持人頁只寫「🗣️ {怪物}被說服，讓路了」和「✅ {隊名} 說服成功 +N」，不帶題目、答案、詳解或影片；剛好是打倒首領的最後一擊時，擲 4d20 的那幾秒也不會出題。主持人在擲骰前就判答對時，揭曉照舊公布題目和答案。
+
+## [0.86.0.0] - 2026-11-17
+
+### Added
+- 大螢幕大廳右下角多了「🗣 旁白聲音」：列出這台電腦瀏覽器的所有中文語音，每個都能試聽，選好的會記在這台電腦，重新整理也不變。
+
+### Changed
+- 沒選過旁白聲音時，大螢幕優先用已知的臺灣女聲（Meijia、Google 國語（臺灣）、Microsoft HsiaoChen 等），避開已知的男聲。
+
+## [0.85.0.0] - 2026-11-17
+
+### Added
+- 五個職業各有自己的像素角色造型：共用大頭 Q 版身體，靠頭飾和一件大道具分辨。法師是隊伍色尖帽加法杖，牧師是隊伍色頭巾、金光環和權杖，戰士是鐵頭盔（隊伍色羽飾）加劍和盾，盜賊是尖角兜帽、隊伍色圍巾和匕首，廚師是白色高帽加平底鍋。衣服仍是隊伍色，同職業的兩隊看顏色分。大螢幕大廳、地圖棋子、吃料理、頒獎台、得獎卡、算命卡、計時題結果，以及主持人和手機的隊伍列表都用同一套，也會眨眼。沒選職業的隊伍維持原本的樣子。
+
+## [0.84.1.0] - 2026-11-17
+
+### Changed
+- Every open entry in `TODOS.md` now links its GitHub issue, and a note at the top says progress and status live in GitHub Issues while `TODOS.md` keeps the design detail.
+- The speaker latency hint in 「⚙ 更多」 now reads 「開場前先放一題測試卡點題…」, and the bank check says to press 「📺 大螢幕試播影音」 again after changing network or computer.
+- The hosting guide (both languages) calls its list of checks before a real game the pre-launch checklist; design notes and code comments use the same neutral wording.
+
+## [0.84.0.0] - 2026-11-17
+
+### Added
+- 每個發版 commit 部署完，GitHub Actions 自動在正式站跑三輪 canary（`npm run canary:live -- --rounds 3`）：先等 Vercel 和 Workers Builds 都部署成功，失敗時 run 會失敗並在標籤 `canary` 的 issue 留下版本和失敗的行，輸出存成 artifact。不再需要在本機手動跑，也不用任何密鑰。
+
+## [0.83.1.1] - 2026-11-17
+
+### Fixed
+- 上線後的 canary 不再發出聲音：無頭 Chromium 改用靜音的 speechSynthesis（每句照樣在片刻後結束，旁白佇列照常前進），並加上 `--mute-audio`，在 macOS 上不會再把大螢幕旁白念出來。
+
 ## [0.83.1.0] - 2026-11-17
 
 ### Changed

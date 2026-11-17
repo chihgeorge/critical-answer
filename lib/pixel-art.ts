@@ -4,6 +4,7 @@
 // art stays crisp at any integer scale (CSS `image-rendering: pixelated`).
 
 import { ACCESSORIES, type Accessory } from "./monster-catalog";
+import type { ClassId } from "./game-state";
 import type { MonsterSprite, SpriteKind } from "./sprite-kind";
 
 const K = "#2a1533"; // the outline colour
@@ -391,7 +392,176 @@ export const TEAM_LOOKS = [
   { name: "青", hat: "#4fd1c5", dk: "#218a80", kind: "wiz" },
 ] as const;
 
-function hero(cv: HTMLCanvasElement, look: number, b: boolean) {
+/**
+ * The five class looks (#324, direction C): the shared big-head body, told apart by headwear plus one big prop.
+ * 24×24 letter grids; `t`/`T` are the team's colour and its dark shade (TEAM_LOOKS), so the team still shows on
+ * the robe, the mage's hat, the cleric's headscarf, the warrior's plume and shield, the thief's scarf and the chef's band.
+ */
+const CLASS_PAL: Record<string, string> = {
+  s: "#ffdcb8", S: "#f0b98c", w: "#ffffff", W: "#ded4ec", k: K, p: "#ff9db8", c: "#c9b3ff", y: "#ffcf4a", Y: "#e8a824",
+  i: "#c4c0dc", I: "#8a86a8", n: "#5a5670", N: "#3b3550", b: "#b07a4f", B: "#8a5a3e", e: "#eef4ff", d: "#4a3f66", D: "#1e1530",
+};
+const CLASS_HEROES: Record<ClassId, { rows: string[]; eyes: [number, number][] }> = {
+  mage: {
+    eyes: [[7, 14], [15, 14]],
+    rows: [
+      "........................",
+      "..............tT........",
+      "............tttT...ccc..",
+      "..........tttttT..ccwcc.",
+      "........tttttttT..ccccc.",
+      "........tttttttT...ccc..",
+      ".......ttttyttttT...bB..",
+      "......ttttyyytttT...bB..",
+      ".....ttttttyttttttT.bB..",
+      "....tttttttttttttttTbB..",
+      "..tttttttttttttttttttt..",
+      "..TTTTTTTTTTTTTTTTTTTT..",
+      "..TTTTTTTTTTTTTTTTTTTT..",
+      "....sssssssssssssssSbB..",
+      "....sssssssssssssssSbB..",
+      "....ssssssssssssssSSbB..",
+      ".....sssssssssssssS.bB..",
+      ".....ppsssssssssspp.bB..",
+      "......SsssskkssSSS..bB..",
+      "......ttSSSSSSSStT..bB..",
+      "......tttttttttttT..bB..",
+      "......tttttttttttT..bB..",
+      "......tttttttttttT..bB..",
+      ".......tttttttttT.......",
+    ],
+  },
+  cleric: {
+    eyes: [[7, 14], [15, 14]],
+    rows: [
+      "........yyyyyyyy........",
+      "......yy........yy......",
+      "........yyyyyyyy........",
+      "...................yyyy.",
+      "........tttttttT...ywyy.",
+      "......tttttttttttT.yyyy.",
+      ".....tttttttttttttTyyyy.",
+      "....tttttttttttttttTYY..",
+      "...ttyyyyyywwyyyyyytTY..",
+      "...tttttssssssssttttTY..",
+      "...ttttsssssssssstttTY..",
+      "...tttsssssssssssSttTY..",
+      "..ttttsssssssssssSttTY..",
+      "..ttttsssssssssssSttTY..",
+      "..ttttsssssssssssSttTY..",
+      ".tttttsssssssssssSttTY..",
+      ".tttttssssssssssSSttTY..",
+      ".ttttppssssssssSSpptTY..",
+      "ttttttttSSSkkSSSttttTY..",
+      "ttttttttttttttttttttTY..",
+      "ttttttttttttttttttttTY..",
+      "tttT..tttttttttttT..YY..",
+      "ttT...tttttttttttT..YY..",
+      ".......tttttttttT.......",
+    ],
+  },
+  warrior: {
+    eyes: [[7, 14], [15, 14]],
+    rows: [
+      "............t...........",
+      "..........ttttT.....e...",
+      ".........tttttTT...eee..",
+      ".......iitttitTTi..eei..",
+      "......iiitiiiiiTii.eei..",
+      "....iiiiiiiiiiiiiiiIei..",
+      "....iiiiiiiiiiiiiiiIei..",
+      "...iiiiiiiiiiiiiiiiIIi..",
+      "...iiiiiiiiiiiiiiiiIIi..",
+      "...iiiiiiiiiiiiiiiiIIi..",
+      "...iiiiiiiiiiiiiiiiIIi..",
+      "...iinnnnnnIInnnnnnIIi..",
+      "...iinnnnnnIInnnnnnIIi..",
+      "...iiisssssIIssssSIIIi..",
+      "...iiisssssIIssssSIIIi..",
+      "...iiissssssssssSSIIIi..",
+      ".iiiisssssssssssSsSYYYYY",
+      ".ittippssssssssSSppYYYYY",
+      "ittttiSsSSSkkSSSSS......",
+      "ittytittSSSSSSSStT......",
+      "ittttitttttttttttT......",
+      ".itti.tttttttttttT......",
+      ".iiii.tttttttttttT......",
+      ".......tttttttttT.......",
+    ],
+  },
+  thief: {
+    eyes: [[8, 13], [14, 13]],
+    rows: [
+      "......................d.",
+      "....................ddD.",
+      "..................dddD..",
+      ".........ddddddddddddD..",
+      ".......ddddddddddddddD..",
+      ".....dddddddddddddD.....",
+      "....dddddddddddddddD....",
+      "....dddddddddddddddD....",
+      "...ddddddddddddddddDD...",
+      "...dddddssssssssdddDD...",
+      "...ddddssssssssssddDD...",
+      "...dddsssssssssssSdDD...",
+      "...dddsssssssssssSdDD...",
+      "...dddsssssssssssSdDD...",
+      "...dddsssssssssssSDDD...",
+      "...dddsssssssssssSDDD...",
+      "....ddssssssssssSSDD....",
+      "....DdtttttttttttTTD....",
+      "...eiDtttttttttttTTtt...",
+      "...nnnTTTTTTTTTTTTTtTt..",
+      "..ei..tttttttttttTT.tTt.",
+      "..ei..tttttttttttT...tTt",
+      ".ei...tttttttttttT....tt",
+      ".......tttttttttT.......",
+    ],
+  },
+  chef: {
+    eyes: [[7, 14], [15, 14]],
+    rows: [
+      "........wwwwwwww........",
+      "......wwwwwwwwwwww......",
+      "......wwwwwwwwwwww......",
+      "......wwwwwwwwwwww......",
+      "......wwwwwwwwwwWw......",
+      ".......wwwwwwwwwW.......",
+      ".......wwwWwwWwwW.......",
+      ".......wwwwwwwwwW.......",
+      "......swwwwwwwwwWs......",
+      ".....sswwwwwwwwwWsS.....",
+      "....tttttttttttttttt....",
+      "....tttttttttttttttt....",
+      "....TTTTTTTTTTTTTTTT....",
+      "....sssssssssssssssS....",
+      "....sssssssssssssssS....",
+      "....sssssssssssssNNNN...",
+      ".....ssssssssssNNnnnnNN.",
+      ".....ppssssssssNnwwywnN.",
+      "......SsssskkssNnnwwynN.",
+      "......ttSSSSSSSNNnnnnNN.",
+      "......tttttttttttNNNN...",
+      "......tttttttttttT......",
+      "......tttttttttttT......",
+      ".......tttttttttT.......",
+    ],
+  },
+};
+
+function classHero(cv: HTMLCanvasElement, look: number, cls: ClassId, b: boolean) {
+  const H = TEAM_LOOKS[((look % TEAM_LOOKS.length) + TEAM_LOOKS.length) % TEAM_LOOKS.length];
+  const { rows, eyes } = CLASS_HEROES[cls];
+  const P = new Px(cv, 24, 24);
+  P.grid(rows, { ...CLASS_PAL, t: H.hat, T: H.dk });
+  P.outline(K);
+  for (const [x, y] of eyes) P.rect(x, b ? y + 1 : y, 2, b ? 1 : 2, K);
+  P.flush();
+}
+
+/** A team with a class gets its class look; no class (or one this page does not know yet) keeps the plain hero. */
+function hero(cv: HTMLCanvasElement, look: number, b: boolean, cls?: string) {
+  if (cls && Object.hasOwn(CLASS_HEROES, cls)) return classHero(cv, look, cls as ClassId, b);
   const H = TEAM_LOOKS[((look % TEAM_LOOKS.length) + TEAM_LOOKS.length) % TEAM_LOOKS.length];
   const P = new Px(cv, 24, 24);
   P.ell(12, 21, 6.5, 3.5, H.hat);
@@ -1876,7 +2046,7 @@ function lot(cv: HTMLCanvasElement, variant: number) {
   P.flush();
 }
 
-const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: boolean) => void> = {
+const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: boolean, cls?: string) => void> = {
   slime: (cv, _v, b) => slime(cv, b),
   "slime-lost": (cv, _v, b) => slimeLost(cv, b),
   "slime-king": (cv, _v, b) => slimeKing(cv, b),
@@ -1903,7 +2073,7 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   kraken: (cv, _v, b) => kraken(cv, b),
   phoenix: (cv, _v, b) => phoenix(cv, b),
   owl: (cv, _v, b) => owl(cv, b),
-  hero: (cv, v, b) => hero(cv, v, b),
+  hero: (cv, v, b, cls) => hero(cv, v, b, cls),
   crown: (cv) => crown(cv),
   heart: (cv, v) => heart(cv, v === 1),
   torch: (cv, v) => torch(cv, v),
@@ -1951,10 +2121,10 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
 
 /**
  * Draw one sprite. `variant` means: hero = look index, torch/campfire = frame (0/1),
- * heart = 1 for full and 0 for empty. `blink` closes the eyes.
+ * heart = 1 for full and 0 for empty. `blink` closes the eyes. `cls` is a hero's class id (#324).
  */
-export function drawSprite(cv: HTMLCanvasElement, kind: SpriteKind, variant = 0, blink = false) {
-  DRAW[kind](cv, variant, blink);
+export function drawSprite(cv: HTMLCanvasElement, kind: SpriteKind, variant = 0, blink = false, cls?: string) {
+  DRAW[kind](cv, variant, blink, cls);
 }
 
 /* ---------- scene backgrounds ---------- */

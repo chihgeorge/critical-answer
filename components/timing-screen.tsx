@@ -83,7 +83,7 @@ export function TimingResult({ timing, view }: { timing: Timing; view: Spectator
   return (
     <div data-testid="timing-reveal" className="flex w-full min-w-0 flex-col text-left">
       <div className="flex items-center gap-2">
-        {index(first.teamId) >= 0 && <Sprite kind="hero" variant={index(first.teamId)} scale={2} />}
+        {index(first.teamId) >= 0 && <Sprite kind="hero" variant={index(first.teamId)} cls={team(first.teamId)?.classId} scale={2} />}
         <span className="min-w-0 truncate text-[26px] leading-tight">
           {Math.abs(first.errorMs) > 1000 ? "最接近！" : "命中！"}
           {team(first.teamId)?.name ?? ""}

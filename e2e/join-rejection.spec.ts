@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
-import { screenUrl, startGame, closeLeftoverContexts } from "./answer";
+import { screenUrl, startGame, openMore, closeLeftoverContexts } from "./answer";
 import { PAUSED_OFFLINE } from "../lib/turn-info";
 
 closeLeftoverContexts();
@@ -108,9 +108,11 @@ test("a phone that joins after the game started waits, sees no game, and takes o
   for (const s of firstSockets) await s.close();
   await first.context().close();
   await expect(host.getByText("甲隊（離線）")).toBeVisible();
-  // The only team is offline: the game is paused and says so (rehearsal QA 2026-11-16 P1-1).
+  // The only team is offline: the game is paused and says so (real-device QA 2026-11-16 P1-1).
   await expect(host.getByTestId("host-paused")).toBeVisible();
   await expect(screen.getByTestId("screen-paused")).toHaveText(PAUSED_OFFLINE);
+  // 交給新手機 is in ⚙ 更多's 隊伍; the drawer closes so the code shows on the page.
+  await openMore(host);
   await host.getByRole("button", { name: "交給新手機" }).click();
   const handoffCode = (await host.getByTestId("handoff-code").locator(".px-num").textContent())!.trim();
   await late.getByLabel("換了手機？輸入主持人給的配對碼：").fill(handoffCode);

@@ -25,7 +25,7 @@ const luma = (d: Uint8ClampedArray, W: number, y0: number, y1: number) => {
 // Value: protects=the revert switch (DUNGEON_ART=false or ?art=classic) still draws the exact scene from before v0.81
 // (docs/designs/dungeon-scene.md); fails_when=a shared refactor changes a classic pixel; why_new=new revert path;
 // seam=a canvas stand-in that keeps the pixels Px.flush writes, hashes taken on main before the change; no_claim=how
-// either look reads on the venue TV
+// either look reads on the event TV
 describe("the classic scene", () => {
   it.each([
     ["stone", 160, 90, true, "886a22972df2cd9f"],
@@ -46,7 +46,7 @@ describe("the classic scene", () => {
 
 // Value: protects=the TV darkness floor agreed in review: the lit wall, away from any torch, is no darker than the
 // old wall under the host's 🌑 (DIM_ALPHA 0.4), and the boss room is darker than a normal room; fails_when=an ambient
-// or palette change crushes the wall; why_new=new look; seam=same stand-in; no_claim=what the venue TV does to it
+// or palette change crushes the wall; why_new=new look; seam=same stand-in; no_claim=what the event TV does to it
 describe("the torch-lit scene", () => {
   const WALL = [6, 40] as const; // under the ceiling band, above the arch's crown: the wall the question screen shows
   it.each(["stone", "moss", "deep", "crimson"] as const)("%s wall is at least the old wall under 🌑", (theme) => {

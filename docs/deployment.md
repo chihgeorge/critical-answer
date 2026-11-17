@@ -59,13 +59,15 @@ Workers Builds 不等 CI，也不保證比 Vercel 先完成：前端要用新的
 
 部署完跑 `npm run canary:live`，在線上版真的玩一局：用四個互不共用儲存的無頭 Chromium 分別當主持人、大螢幕和兩支手機。主持人從首頁「主持遊戲」開房間（不用站長金鑰），大螢幕用主持人頁的大螢幕網址打開，兩隊 `CANARY-1`、`CANARY-2` 加入並選廚師，主持人開始遊戲、全部代擲；輪到的隊伍照主持人頁的答案答對，確認大螢幕和另一支手機都看到正解，主持人上菜、按下一題，確認大螢幕換成下一隊，最後從「⚙ 更多」按「結束冒險」。每一步印 `STEP r<輪> <步驟> ok|FAIL ms=<毫秒>`，每個頁面印 `PAGE r<輪> <頁面> status=<狀態碼> ms=<載入毫秒> errs=[...]`（errs 是這頁的 console 錯誤和頁面錯誤），最後一行是 `CANARY HEALTHY` 或 `CANARY BROKEN`，不健康時結束碼不是 0。一輪大約 25 秒。
 
+不用自己跑：每個 `chore: release vX` commit 部署完，GitHub Actions 的 [.github/workflows/canary.yml](../.github/workflows/canary.yml) 會自動跑 `npm run -s canary:live -- --rounds 3`。Vercel 回報正式站部署成功時它開始，先等同一個 commit 的 Workers Builds 檢查成功（最多 15 分鐘），再玩三輪。其他 commit 不跑。一次只跑一個，輸出存成 artifact `canary-log`。失敗時這個 run 會失敗（GitHub 寄信通知），並在標籤 `canary` 的 issue 留言寫版本和失敗的行，沒有開著的就開一個新的。它不用任何密鑰。要手動再跑，到 Actions → Canary → Run workflow，會馬上測線上版，不等部署。
+
 - `--rounds N`：連玩 N 輪，每輪開新房間（預設 1）。
 - `--turns N`：每輪玩 N 個回合（預設 1）。第 2 回合起的步驟名稱加上 `-t<回合>`，例如 `answer-correctly-t3`；每多一回合，這一輪的時間上限多 60 秒。
 - `--boss`：開始遊戲後，主持人從「⚙ 更多」按「送王房」把 `CANARY-1` 送進首領房，之後它的回合都答首領題。
 - `--base URL` 或環境變數 `CANARY_BASE_URL`：改測預覽網址或本機（例如 `http://localhost:3000`），預設是線上版。
 - 環境變數 `CANARY_SHOTS=<資料夾>`：第一個失敗的步驟把四個頁面各截一張圖存進去。
 
-房間不會被刪掉，主持人也沒有關房間的按鈕：遊戲結束後連線閒置 2 小時休息，從第一次開始遊戲起 6 小時被清除（見[主持指南](hosting.md#已知限制)）。它不打開題庫編輯器，也不碰任何金鑰。
+房間不會被刪掉，主持人也沒有關房間的按鈕：遊戲結束後連線閒置 2 小時休息，從第一次開始遊戲起 6 小時被清除（見[主持指南](hosting.md#已知限制)）。它不打開題庫編輯器，也不碰任何金鑰。跑的時候不會發出聲音：Chromium 加了 `--mute-audio`，旁白改用靜音的 speechSynthesis，每句照樣在片刻後結束，旁白佇列照常前進。
 
 每個回合都照當下畫面決定下一步，各種題型都過得去：
 

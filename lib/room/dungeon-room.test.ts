@@ -1299,6 +1299,24 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(room.game!.boss.killedByTeamId).toBe(ids[0]);
     });
 
+    // Value: protects=a natural 20 that kills the boss keeps its unseen question hidden through the 4d20 beat and the end
+    // (persuasion-gift); fails_when=awaitingCheck lets the question out once the kill die replaces the check die
+    it("a natural 20 that kills the boss never shows its question, even during the kill dice", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.useFakeTimers();
+      const { room, roll } = checkGame(1);
+      const g = room.game!;
+      (room as any).game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, phaseIndex: g.boss.phases.length - 1, currentQuestionId: "r0-t1" } };
+      roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "kill" });
+      vi.advanceTimersByTime(4000);
+      expect(room.game!.phase).toBe("finished");
+      const sent = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+      expect(sent.some((m) => m.includes('"value":"？"') || m.includes("萬家福"))).toBe(false);
+      const reveal = sent.map((m) => JSON.parse(m)).findLast((m) => m.type === "STATE" && m.reveal)?.reveal;
+      expect(reveal).toMatchObject({ persuaded: true, answer: "", dish: { gift: true } });
+    });
+
     it("ending the game during the beat leaves no roll behind, and a natural 20 wins nothing after the end", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const { room, hostConn, ids, roll } = checkGame();
@@ -1366,14 +1384,16 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastSentTo(hostConn)).toMatchObject({ detail: "check_done" });
     });
 
-    // Value: protects=a fill-in won before its question was shown reveals the question with 正解 (owner, 2026-11-09);
-    // fails_when=the reveal lacks `asked` on a natural 20 or a judge before the roll, or carries it after a shown question
-    it("a reveal carries the question only when it was never shown", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    // Value: protects=a host's ruling before the roll reveals the unseen question with 正解 (owner, 2026-11-09), while a persuasion
+    // 20 reveals nothing of it (persuasion-gift, owner 2026-11-16); fails_when=the reveal lacks `asked` on a judge before the roll,
+    // or carries it after a shown question
+    it("a reveal carries the question only when it was never shown and not persuaded", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const nat = checkGame();
       nat.roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
-      expect(lastBroadcast(nat.room).reveal).toMatchObject({ answer: "萬家福", asked: { content: { kind: "text", value: "？" } } });
+      expect(lastBroadcast(nat.room).reveal).toMatchObject({ answer: "", persuaded: true });
+      expect(lastBroadcast(nat.room).reveal).not.toHaveProperty("asked");
       const early = checkGame();
       send(early.room, early.hostConn, { type: "HOST_JUDGE", teamId: early.ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(early.room) });
       expect(lastBroadcast(early.room).reveal).toMatchObject({ asked: { content: { kind: "text", value: "？" } } });
@@ -1395,7 +1415,34 @@ describe("TEAM_SELECT_OPTION", () => {
       host.roll(20, 0, seqOf(host.room) - 1); // pregate-literal: MAX_BOSS_HP=20 not the HP cap — stale: only sets the die
       send(host.room, host.hostConn, { type: "HOST_ROLL_CHECK", teamId: host.ids[0], questionId: "r0-t1", eventId: seqOf(host.room) });
       vi.advanceTimersByTime(2000);
-      expect(lastBroadcast(host.room).reveal).toMatchObject({ answer: "萬家福", asked: { content: { kind: "text", value: "？" } } });
+      expect(lastBroadcast(host.room).reveal).toMatchObject({ answer: "", persuaded: true });
+    });
+
+    // Value: protects=a persuasion 20 never puts the unseen question's answer on any screen, and the monster shares its gift
+    // dish instead of being cooked, for the same points (persuasion-gift, owner 2026-11-16); fails_when=the answer or the question
+    // text reaches a STATE, the dish is the monster's body dish, or the reward changes; no_claim=rendering on the pages
+    it("a persuasion 20 reveals no answer and serves the monster's gift for the usual points", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.useFakeTimers();
+      const nat = checkGame();
+      const monster = catalogMonster(nat.room.game!.rooms[0].monsterId!);
+      nat.roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.advanceTimersByTime(2000);
+      const reveal = lastBroadcast(nat.room).reveal;
+      // Every STATE the room broadcast (the screen and the phones read these), from the start to the reveal.
+      const states = (nat.room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+      expect(states.some((m) => m.includes('"reveal":{'))).toBe(true);
+      expect(states.some((m) => m.includes("萬家福") || m.includes('"value":"？"'))).toBe(false);
+      expect(reveal.dish).toMatchObject({ ...monster.gift, gift: true, points: reveal.scored.points });
+      expect(nat.room.game!.teams[0].dishes).toEqual([monster.gift.name]);
+      // The same points as a correct answer the host judged on a shown question.
+      const shown = checkGame();
+      shown.roll(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+      vi.advanceTimersByTime(2000);
+      send(shown.room, shown.hostConn, { type: "HOST_JUDGE", teamId: shown.ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(shown.room) });
+      expect(lastBroadcast(shown.room).reveal.dish).toMatchObject({ ...monster.dish, points: reveal.scored.points });
+      expect(lastBroadcast(shown.room).reveal.dish).not.toHaveProperty("gift");
+      // The question stays out of the deal as before: ids only, nothing about it reaches a screen.
+      expect(nat.room.game!.revealedQuestionIds).toContain("r0-t1");
     });
 
     // Value: protects=the thief's 偷襲 waits for the question on a fill-in (owner, 2026-11-09); fails_when=the room arms it before the check
@@ -4655,7 +4702,7 @@ describe("team handoff: HOST_HANDOFF, TEAM_CLAIM (docs/designs/team-handoff.md)"
     expect(lastSentTo(other)).toMatchObject({ type: "ERROR", error: "bad_code" });
   });
 
-  // Value: protects=the host page stops showing a code that no longer works (rehearsal QA 2026-11-16 P2-4);
+  // Value: protects=the host page stops showing a code that no longer works (real-device QA 2026-11-16 P2-4);
   // fails_when=a claim or a burn no longer sends HANDOFF_GONE to the host; why_new=the host showed a used code as valid; seam=none
   it("tells the host when a code is used or burned", () => {
     const { room, hostConn, fresh } = gameWithLostPhone();

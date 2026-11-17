@@ -5,6 +5,7 @@
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type Ref, type SyntheticEvent } from "react";
 import { biteSprite, classicArtRequested, drawEmptyPlate, DUNGEON_ART, drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneLights, type SceneTheme } from "@/lib/pixel-art";
 import type { Accessory } from "@/lib/monster-catalog";
+import type { ClassId } from "@/lib/game-state";
 import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/sprite-kind";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { loadCaptions, syncZhCaptions, youtubeEmbedUrl, type CaptionPlayer } from "@/lib/youtube";
@@ -169,10 +170,13 @@ export function Sprite({
   accessory,
   bites = 0,
   blink,
+  cls,
   className,
   style,
 }: {
   kind: SpriteKind;
+  /** A hero's class (#324): its class look in the team's colour. None keeps the plain hero. */
+  cls?: ClassId;
   /** Bites taken out of a dish (docs/designs/eat-dish.md), 4 for the empty plate; only for dishes, which never blink. */
   bites?: number;
   /** Fixes the eyes open (false) or shut (true) and stops the blink timer: a frame of the eater's chew. */
@@ -198,21 +202,21 @@ export function Sprite({
   useEffect(() => {
     const cv = ref.current;
     if (!cv) return;
-    drawSprite(cv, kind, variant, !!blink);
+    drawSprite(cv, kind, variant, !!blink, cls);
     if (bites >= 4) drawEmptyPlate(cv, kind);
     else if (bites) biteSprite(cv, bites);
     if (blink !== undefined || prefersReducedMotion() || !BLINKS.has(kind)) return;
     let reopen: ReturnType<typeof setTimeout>;
     const id = setInterval(() => {
-      drawSprite(cv, kind, variant, true);
-      reopen = setTimeout(() => drawSprite(cv, kind, variant, false), 140);
+      drawSprite(cv, kind, variant, true, cls);
+      reopen = setTimeout(() => drawSprite(cv, kind, variant, false, cls), 140);
     }, 2600);
     return () => {
       clearInterval(id);
       clearTimeout(reopen);
     };
     // `wearing` swaps the canvas element (bare vs inside the hat's wrapper): the new one needs drawing too.
-  }, [kind, variant, wearing, bites, blink]);
+  }, [kind, variant, wearing, bites, blink, cls]);
 
   const box = { width: w * scale, height: h * scale };
   const hueStyle = hue ? { filter: `hue-rotate(${hue}deg)` } : null;

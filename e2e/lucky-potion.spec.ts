@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, startGame, screenUrl, openMore, closeMore, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -27,6 +27,8 @@ test("lucky potion: host gives it, the team drinks it, the crit rolls two dice a
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
   // 給…一瓶幸運藥水？ asks first (#267): 取消 gives nothing, so the button stays and the next press still asks.
+  // The potion is in ⚙ 更多's 隊伍.
+  await openMore(host);
   const asked: string[] = [];
   host.once("dialog", (d) => void (asked.push(d.message()), d.dismiss()));
   await host.getByTestId("give-potion").click();
@@ -40,6 +42,7 @@ test("lucky potion: host gives it, the team drinks it, the crit rolls two dice a
   await expect.poll(() => asked.length).toBe(2);
   await expect(host.getByTestId("give-potion")).toBeDisabled();
   await expect(host.getByTestId("give-potion")).toHaveText("🧪 已有");
+  await closeMore(host);
   await expect(screen.getByTestId("pawn-potion")).toBeVisible();
   // The room's echo is in, so both presses' frames are logged, in order: only the accepted press gave a potion.
   expect(sent.filter((m) => m.includes('"HOST_GIVE_ITEM"'))).toHaveLength(1);
@@ -62,6 +65,7 @@ test("lucky potion: host gives it, the team drinks it, the crit rolls two dice a
   await expect(screen.getByTestId("potion-die")).toHaveCount(2);
   await expect(screen.getByTestId("roll-result")).toHaveText(/^取高：\d+/);
   await expect(overlay).toHaveCount(0, { timeout: 5000 });
+  await openMore(host);
   await expect(host.getByTestId("give-potion")).toHaveText("🧪 給藥水");
   await expect(screen.getByTestId("pawn-potion")).toHaveCount(0);
 });

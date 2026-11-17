@@ -17,7 +17,9 @@ import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, P
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
-import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
+import { chineseVoices, pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
+import { readStored, writeStored } from "@/lib/stored";
+import { VoicePicker } from "@/components/voice-picker";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CALIBRATE_BEEP, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
 import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
@@ -60,6 +62,8 @@ const bgmSupported = () => "AudioContext" in window;
 
 /** True only in a browser that actually implements the Web Speech API. */
 const ttsSupported = () => "speechSynthesis" in window;
+/** This screen computer's narration voice, by voiceURI (the lobby's 🗣 旁白聲音 picker). */
+const VOICE_KEY = "screenVoice";
 /** Browser support never changes while the page is open, so there is nothing to subscribe to. */
 const noSubscribe = () => () => {};
 
@@ -165,7 +169,7 @@ function TeamGroup({ teams, from, to, align }: { teams: LobbyTeams; from: number
         // Crowded: the hero stands beside its nameplate, so two rows clear the room-code panel above.
         <div key={t.id} className={`flex items-center gap-1 ${crowded ? "flex-row" : "flex-col"}`} style={{ width: crowded ? cell : undefined, maxWidth: cell }}>
           <div className="px-run">
-            <Sprite kind="hero" variant={from + j} scale={crowded ? 2 : 4} />
+            <Sprite kind="hero" variant={from + j} cls={t.classId} scale={crowded ? 2 : 4} />
           </div>
           <Nameplate className="min-w-0 text-[14px]" style={{ maxWidth: cell, padding: "3px 8px" }}>
             {/* text-overflow needs a block box: the Nameplate itself is a flex container. */}
@@ -469,7 +473,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
       {reveal.scored && scorer && !tapReveal && !reveal.fields?.marks.some((f) => !f.right) && (
         <div data-testid="reveal-result" className={`${size} [overflow-wrap:anywhere]`}>
-          ✅ {scorer.name} 答對 +{reveal.scored.points} {scoreName(cuisine)}
+          ✅ {scorer.name} {reveal.persuaded ? "說服成功" : "答對"} +{reveal.scored.points} {scoreName(cuisine)}
         </div>
       )}
     </>
@@ -626,12 +630,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
 
       {/* 上菜 puts the panel away (cooking R4): the stage is the monster's, then the dish's. */}
       {/* The dish stands where the monster stood; its card takes the panel's place. */}
-      {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={eaterIdx} />}
+      {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={eaterIdx} eaterClass={eater?.classId} />}
       {!served && (
       <Panel ref={panelRef} className="px-stone absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <span className="flex gap-2">
-            <LabelChip>{card ? "還沒結束！" : reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
+            <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
             {/* Going down (dungeon-scene C): how deep the room on stage is; the boss room says 首領題 already. */}
             {!classic && stageRoom !== null && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
           </span>
@@ -681,6 +685,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
                 player instead: above it, three fields push the player under the nameplate. */}
             {reveal.fields ? (
               !(video && !tileVideo && !tapReveal) && fieldsList("text-[18px]")
+            ) : reveal.persuaded ? (
+              // The question never showed, so neither does its answer (persuasion-gift).
+              <div data-testid="reveal-persuaded">🗣️ {reveal.at?.monster.name ?? reveal.dish?.monster.name ?? "怪物"}被說服，讓路了</div>
             ) : (
               // A timing reveal says it beside the video: 命中！{隊名} and the target.
               !tapReveal && <div>正解：{reveal.answer}</div>
@@ -1029,7 +1036,7 @@ function AwardCard({ beat, teams }: { beat: Extract<Beat, { kind: "award" }>; te
         <div className="flex justify-center gap-6">
           {beat.teamIds.slice(0, 2).map((id, j) => (
             <div key={id} className="flex flex-col items-center gap-1" style={{ maxWidth: tie ? 170 : 360 }}>
-              <Sprite kind="hero" variant={Math.max(0, teams.findIndex((t) => t.id === id))} scale={4} />
+              <Sprite kind="hero" variant={Math.max(0, teams.findIndex((t) => t.id === id))} cls={teams.find((t) => t.id === id)?.classId} scale={4} />
               <div className={tie ? "w-full truncate text-[22px]" : "line-clamp-2 break-all text-[22px]"}>{beat.names[j]}</div>
             </div>
           ))}
@@ -1137,7 +1144,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
                 <span className="block truncate" title={killer} style={[...killer].length > 8 ? { fontSize: 12 } : undefined}>{killer}</span>
               </div>
             )}
-            {reveal && <>最後一題正解：{reveal.answer}</>}
+            {reveal && !reveal.persuaded && <>最後一題正解：{reveal.answer}</>}
             {reveal?.dish && <div data-testid="dish-card">🍲 今晚的大菜：{reveal.dish.name}</div>}
           </Panel>
         </div>
@@ -1162,7 +1169,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
             <div key={p.place} data-testid={`podium-${p.place}`} data-shown={shown || undefined} className="flex flex-col items-center">
               {result && p.place === 1 && <Sprite kind="crown" scale={3} style={{ marginBottom: -10, zIndex: 2 }} />}
               {shown ? (
-                <Sprite kind="hero" variant={t.i} scale={p.hero} />
+                <Sprite kind="hero" variant={t.i} cls={t.classId} scale={p.hero} />
               ) : (
                 <div className="text-[64px] leading-none text-white" style={{ textShadow: "4px 4px 0 var(--k), -4px -4px 0 var(--k), 4px -4px 0 var(--k), -4px 4px 0 var(--k)" }}>？</div>
               )}
@@ -1263,6 +1270,15 @@ export default function ScreenPage() {
   /** The how-to-play page whose owl line was last spoken (D11). */
   const introSpoken = useRef<number | null>(null);
   const [ttsVoice, setTtsVoice] = useState<SpeechSynthesisVoice | undefined>(undefined);
+  /** Every Chinese voice this browser offers, for the lobby's 🗣 旁白聲音 picker. */
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  /** The voice picked on this page load: holds against a late voiceschanged even when storage is blocked. */
+  const pickedVoice = useRef<string | null>(null);
+  function pickNarrationVoice(voice: SpeechSynthesisVoice) {
+    pickedVoice.current = voice.voiceURI;
+    writeStored(VOICE_KEY, voice.voiceURI);
+    setTtsVoice(voice);
+  }
   /** Reset on every socket open AND on every LOBBY (a room reset can happen without a socket
    * reconnect, and a new game's eventIds start over from 0 — see tts.ts's shouldSpeakNarration
    * doc comment). null = "not yet established"; the next STATE message sets it from that
@@ -1284,7 +1300,9 @@ export default function ScreenPage() {
   useEffect(() => {
     if (!ttsSupported()) return;
     const load = () => {
-      const found = pickVoice(window.speechSynthesis.getVoices());
+      const all = window.speechSynthesis.getVoices();
+      setVoices(chineseVoices(all));
+      const found = pickVoice(all, pickedVoice.current ?? readStored(VOICE_KEY));
       if (found) setTtsVoice(found);
     };
     load(); // some browsers already have the list on first call
@@ -1431,6 +1449,7 @@ export default function ScreenPage() {
   // --- Background music (lib/bgm.ts): the host's 🎵 switch, on by default ---
   const bgmOn = screenAudio.music;
   const showBgmToggle = useSyncExternalStore(noSubscribe, bgmSupported, () => false);
+  const showVoicePicker = useSyncExternalStore(noSubscribe, ttsSupported, () => false);
   const bgm = useRef<BgmPlayer | null>(null);
   /** The AudioContext is awake (a tap on the page woke it): sound can play. */
   const [audioRunning, setAudioRunning] = useState(false);
@@ -2140,6 +2159,8 @@ export default function ScreenPage() {
           {unlockLabel ?? "👆 開聲音"}
         </PixelButton>
       )}
+      {/* Lobby only: auditioning cancels any speech, which must never cut a narration short. */}
+      {showVoicePicker && !game && <VoicePicker voices={voices} current={ttsVoice} onPick={pickNarrationVoice} />}
     </FogRevealContext.Provider>
   );
 }
