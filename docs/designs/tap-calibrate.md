@@ -1,6 +1,6 @@
 # 卡點題：自動校正喇叭延遲（timing-tap.md E3）
 
-站長核准的行為（2026-11-16）。Branch: worktree-agent-abcf628f7c63a92bc
+站長核准的行為（2026-11-16）。Branch: feat/tap-calibrate
 Status: APPROVED（/autoplan 2026-11-16，lean run，自動核准；lane 指示不問站長。樣張：`~/.gstack/projects/chihgeorge-critical-answer/designs/tap-calibrate-{host,phone,screen}.png`，只在本機）
 合併：活動（2026-11-21）之後。這次只開 PR。
 
@@ -54,9 +54,9 @@ Status: APPROVED（/autoplan 2026-11-16，lean run，自動核准；lane 指示�
 常數：`CALIBRATE_BEATS = 8`、`CALIBRATE_GAP_MS = 1000`、`CALIBRATE_SKIP = 2`、`CALIBRATE_EARLY_MS = 300`、`CALIBRATE_OUTLIER_MS = 250`、`CALIBRATE_MIN_TAPS = 6`。
 
 1. 每一下歸給一聲嗶：`k = floor((at − startAt + 300) / 1000)`，也就是嗶聲前 300 ms 到後 700 ms 之間都算這一聲（聽到的時間只會比排定的晚，所以往後留得多）。`k < 2`（前 2 聲）或 `k ≥ 8` 丟掉。
-2. 同一支手機同一聲只算第一下。
-3. 誤差 `e = at − (startAt + k × 1000)`。
-4. 先取中位數 `m0`，丟掉 `|e − m0| > 250` 的（亂按、慢半拍的），剩下的再取中位數。
+2. 誤差 `e = at − (startAt + k × 1000)`，所有按的誤差先取中位數 `m0`。
+3. 同一支手機（同一隊）同一聲只留離 `m0` 最近的那一下（晚按溢到下一聲視窗的，輸給那一聲真正的按）。
+4. 丟掉 `|e − m0| > 250` 的（亂按、慢半拍的），剩下的再取中位數。
 5. 剩下不到 6 下：`null`（「按的人太少，再試一次」）。6 下就是一支手機按滿後 6 聲，一個人試也能用；人越多越準。
 6. 中位數早於 −150 ms：`null`（「量不出來：大家按得不齊，或延遲超過 0.7 秒」）。聽到的聲音只會晚，大幅提早代表延遲超過視窗（800 ms 會被讀成下一聲的 −200 ms），給 0 會是錯的。
 7. 建議延遲 = 中位數，負的當 0。不是「現在的延遲＋中位數」：校正量的是絕對延遲，不經過現在的設定。
@@ -67,9 +67,9 @@ Status: APPROVED（/autoplan 2026-11-16，lean run，自動核准；lane 指示�
 
 ### 大螢幕（`app/room/[code]/screen/page.tsx`）
 
-- 收到 `SCREEN_CALIBRATE` 時：開始對時（現有的 `useRoomClock` + `useClockPings`）。等到第 1 聲前 1 秒（對時的 8 次已經跑完）才用當時的 offset 一次排好 8 聲嗶：現有 bgm player 的 `pattern()`，host 層（`lib/sfx.ts` 加 `CALIBRATE_BEEP`）。`pattern()` 自己會往後推 20 ms，排的時候扣回來，不然這 20 ms 會被當成喇叭延遲。之後的對時不再移動已經排好的嗶。已經過去的嗶不補。
+- 收到 `SCREEN_CALIBRATE` 時：開始對時（現有的 `useRoomClock` + `useClockPings`）。等到第 1 聲前 1 秒（對時的 8 次已經跑完）才用當時的 offset 一次排好 8 聲嗶：現有 bgm player 的 `pattern()`，host 層（`lib/sfx.ts` 加 `CALIBRATE_BEEP`）。`pattern()` 自己會往後推 20 ms，排的時候扣回來，不然這 20 ms 會被當成喇叭延遲。之後的對時不再移動已經排好的嗶。已經過去的嗶不補。AudioContext 暫停時先等，恢復後還沒到的嗶照排。
 - LOBBY 帶 `calibrate` 時，每台大螢幕的音樂和環境音都靜音（`hold`），結束後恢復。
-- 🎵 在校正中被關掉：剩下的嗶取消（`pattern()` 回傳的函式）。
+- 🎵 在校正中被關掉：剩下的嗶取消（`pattern()` 回傳的函式）；這輪還沒結束時再打開，還沒到的嗶照排。
 - 畫面：大廳上方一張不動的字卡兩行「🎯 校正喇叭」／「聽嗶聲，用手機跟著按」。沒有閃、沒有倒數、沒有跟著拍子動的東西。
 
 ### 手機（`app/room/[code]/play/page.tsx`，新元件 `components/calibrate-tap.tsx`）
@@ -81,11 +81,11 @@ Status: APPROVED（/autoplan 2026-11-16，lean run，自動核准；lane 指示�
 ### 主持人頁（`components/more-drawer.tsx`、`app/room/[code]/host/page.tsx`）
 
 - 大廳時「⚙ 更多」多一段「🎯 校正喇叭」（遊戲中不顯示）：說明一行「大螢幕放 8 聲嗶，大家用手機跟著按，算出卡點題的喇叭延遲」，下面一顆按鈕。
-- 按下後按鈕變「校正中…大家跟著嗶聲按」灰色：從按下到下一則 LOBBY，之後跟著 LOBBY 的 `calibrate`（房間說了算，伺服器重啟或開始遊戲都不會卡住）。
+- 按下後按鈕變「校正中…大家跟著嗶聲按」灰色：從按下到帶 `calibrate` 的 LOBBY、被拒絕或重新連線為止，之後跟著 LOBBY 的 `calibrate`（房間說了算，伺服器重啟或開始遊戲都不會卡住）。
 - 結果卡片（在同一段）：
   - 有值：「建議延遲 N ms」、「現在 M ms・算了 T 下、P 支手機」，按鈕「套用」「取消」。「套用」送 `HOST_TAP_LATENCY { ms: N }`，卡片收起；「取消」只收起卡片。
   - 有值時多一行「套用後放一題測試卡點題，看揭曉的誤差中位數接近 0 就好」：嗶聲走網頁音效、卡點題走影片，路徑不完全一樣。
-  - `null`：按數不到 6 是「按的人太少，再試一次」，不然是「量不出來：大家按得不齊，或延遲超過 0.7 秒。再試一次」；按鈕「再試一次」「取消」。
+  - `null`：0 下是「沒收到有效的按：大螢幕有放出嗶聲嗎？確認它有聲音、畫面在前景，再試一次」，按數不到 6 是「按的人太少，再試一次」，不然是「量不出來：大家按得不齊，或延遲超過 0.7 秒。再試一次」；按鈕「再試一次」「取消」。
 - 這次按下被拒絕（`screen_muted`、`no_screen`、`screen_testing`、`calibrating`）：在同一段顯示一行黃色說明，不進頁面的錯誤行（抽屜蓋住它）。
 
 ## 測試
