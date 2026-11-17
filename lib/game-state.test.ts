@@ -2003,6 +2003,17 @@ describe("class dice: every tier per class", () => {
     expect([1, 4, 12, 20].map((v) => cast(sort, v).teams[0].abilityUses)).toEqual([2, 3, 2, 2]);
   });
 
+  // Value: protects=a mage's 20 shows the whole answer, so the question is revealed and never dealt again (#343);
+  // fails_when=a 20 leaves it out of revealedQuestionIds, or a lower tier marks it.
+  it("mage's 20 marks the question revealed on every question kind; 1, 2–6 and 7–19 do not", () => {
+    const targets: MageTarget[] = [mc, { kind: "text", answer: "〈萬家福〉" }, { kind: "sort", items: ["甲", "乙", "丙"] }];
+    for (const target of targets) {
+      const g = game(["mage", undefined]);
+      expect([1, 4, 12, 20].map((v) => cast(target, v).revealedQuestionIds.includes(q0(g)))).toEqual([false, false, false, true]);
+      expect(pickBlock(cast(target, 20), q0(g))).toEqual({ kind: "revealed" });
+    }
+  });
+
   it("cleric's prayer die: 1 and 2–6 fail (use spent, no second prayer), 7–19 stands, 20 stands and gives the use back", () => {
     const g = game(["cleric", undefined]);
     const prayed = pray(recordWrongLock(g, "T0", q0(g), 0), "T0");

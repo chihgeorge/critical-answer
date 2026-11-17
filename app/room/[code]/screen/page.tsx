@@ -1175,7 +1175,8 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
           const shown = result || called.has(p.place);
           return (
             <div key={p.place} data-testid={`podium-${p.place}`} data-shown={shown || undefined} className="flex flex-col items-center">
-              {result && p.place === 1 && <Sprite kind="crown" scale={3} style={{ marginBottom: -10, zIndex: 2 }} />}
+              {/* The chef's toque reaches the sprite's top edge, so its crown sits higher instead of on the hat (#335). */}
+              {result && p.place === 1 && <Sprite kind="crown" scale={3} style={{ marginBottom: t.classId === "chef" ? 0 : -10, zIndex: 2 }} />}
               {shown ? (
                 <Sprite kind="hero" variant={t.i} cls={t.classId} scale={p.hero} />
               ) : (
