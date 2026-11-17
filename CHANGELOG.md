@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.83.1.1] - 2026-11-17
+
+### Fixed
+- 上線後的 canary 不再發出聲音：無頭 Chromium 改用靜音的 speechSynthesis（每句照樣在片刻後結束，旁白佇列照常前進），並加上 `--mute-audio`，在 macOS 上不會再把大螢幕旁白念出來。
+
 ## [0.83.1.0] - 2026-11-17
 
 ### Changed
