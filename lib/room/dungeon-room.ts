@@ -1120,7 +1120,8 @@ export class DungeonRoom {
     // held back joins it now.
     const h = s.heldHandoff;
     const n = this.lastNarration;
-    if (h && s.game?.phase === "playing" && n?.eventId === h.eventId && n.lines.length < NARRATION_MAX_LINES) this.lastNarration = { ...n, lines: [...n.lines, h.line], rev: n.rev + 1 };
+    // Not when the reveal ended a boss phase: closeReveal drops it there, as the phase card narrates its own.
+    if (h && s.game?.phase === "playing" && !s.game.boss.phasePending && n?.eventId === h.eventId && n.lines.length < NARRATION_MAX_LINES) this.lastNarration = { ...n, lines: [...n.lines, h.line], rev: n.rev + 1 };
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
     this.podium = s.podium ?? null;
@@ -3616,8 +3617,10 @@ export class DungeonRoom {
       // The owl's last 「輪到…」 line named the room monster this team just left: it now faces the boss.
       const next = onTurn ? this.nextTurn() : null;
       // During a reveal the handoff waits for 下一題 (closeReveal): the held one now names the boss, so a restart says it too.
+      // Saved again: broadcastState above saved the old one. Held even when none was (a narration with no handoff).
       if (next && this.reveal) {
-        if (this.heldHandoff?.eventId === this.eventSeq) this.heldHandoff = { ...this.heldHandoff, line: this.scripted.nextLine(next), next };
+        this.heldHandoff = { eventId: this.eventSeq, line: this.scripted.nextLine(next), next };
+        this.persist();
       } else if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next));
     } catch (err) {
       this.sendInvalid(conn, err);

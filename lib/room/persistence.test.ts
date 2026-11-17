@@ -749,6 +749,27 @@ describe("restoring after a restart", () => {
     expect(n.lines.at(-1)).toContain("乙隊");
   });
 
+  // Value: protects=a restart right after 送王房 during a reveal names the boss, not the room monster the team left;
+  // fails_when=the rewritten held handoff is not saved (broadcastState saved the old one first; outside-voice finding).
+  it("a restart after 送王房 during a reveal adds a handoff naming the boss", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(first.room);
+    judgeCorrect(first.room, host, T1);
+    await new Promise((r) => setTimeout(r, 30));
+    const room = (storage.data.get(SNAPSHOT_KEY) as any).heldHandoff;
+    first.room.onMessage(JSON.stringify({ type: "HOST_SEND_TO_BOSS", teamId: T2 }), host);
+    const boss = (storage.data.get(SNAPSHOT_KEY) as any).heldHandoff;
+    expect(boss.line).toContain("乙隊");
+    expect(boss.line).not.toBe(room.line);
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    const late = makeConn("late");
+    second.room.onConnect(late);
+    expect(lastOf(late, "NARRATION").lines.at(-1)).toBe(boss.line);
+  });
+
   // Value: protects=the big screen's reading progress and the edit revision survive a restart (host-narration-edit.md D14);
   // fails_when=a restored room forgets `done` (every read line editable again), forgets `rev` (an old report locks new
   // text), or a save from before them does not restore at all.

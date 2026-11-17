@@ -201,8 +201,10 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
   const { host } = await twoTeamGame(browser);
 
   // Judge the question with NO /screen watching yet — the narration becomes the room's
-  // lastNarration, sitting there for onConnect to replay to whoever connects next.
+  // lastNarration, sitting there for onConnect to replay to whoever connects next. 下一題 adds its last line, the one
+  // naming 乙隊 (it waits for the scene change).
   await answerCorrectly(host);
+  await nextQuestion(host);
   await expect(host.getByText("輪到：乙隊")).toBeVisible();
 
   // Now open /screen: onConnect replays that narration as this connection's baseline —
@@ -210,25 +212,25 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
   const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   await stubSpeechSynthesis(screen);
   await screen.goto(await screenUrl(host));
-  await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the reveal's ribbon names who eats (cooking I6)
+  await expect(screen.getByText("輪到：乙隊")).toBeVisible();
   await tapScreen(screen);
   expect(await ttsCalls(screen)).toEqual([""]); // only the unlock utterance — the replay was NOT spoken
 
   // The host now corrects that exact (replayed, unspoken) narration. The edited line must still be spoken.
   // The last line: the big screen is still typing the first ones, so it has not read it yet.
   const correctedText = "重播後修正的旁白文字";
-  await editLastLine(host, correctedText);
+  await editLastLine(host, correctedText, "乙隊");
   await expect.poll(() => ttsCalls(screen)).toContainEqual(correctedText);
 
-  // A live line is spoken, and a correction of that spoken line (same eventId, new text) is spoken too.
-  await nextQuestion(host); // close the first answer's reveal
-  const spokenBefore = (await ttsCalls(screen)).length; // the first correction already re-spoke a 乙隊 line
+  // A live line is spoken, and a correction of the line 下一題 then adds (same eventId, new text) is spoken too.
+  const spokenBefore = (await ttsCalls(screen)).length;
   await answerCorrectly(host);
   await expect
     .poll(async () => (await ttsCalls(screen)).slice(spokenBefore))
     .toContainEqual(expect.stringContaining("乙隊"));
+  await nextQuestion(host); // adds the line naming 甲隊; the screen reads it after its pause
   const liveCorrection = "測試修正後的旁白文字";
-  await editLastLine(host, liveCorrection);
+  await editLastLine(host, liveCorrection, "甲隊");
   await expect.poll(() => ttsCalls(screen)).toContainEqual(liveCorrection);
 });
 
@@ -367,15 +369,15 @@ test("host narration panel: every line has its own 改, and an edited line reach
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   // The opening NARRATION fires right after start. No big screen is open, so nothing is read yet.
   await answerCorrectly(host);
+  await nextQuestion(host); // adds the narration's last line, which waits for the scene change
   // The narration panel is in ⚙ 更多.
   await openMore(host);
   const toggle = host.getByTestId("narration-panel").getByRole("button", { name: /地城主旁白/ });
   await expect(toggle).toContainText(/\d 句・/);
   await toggle.click();
   const lines = host.getByTestId("narration-line");
-  await expect(lines.first()).toBeVisible();
+  await expect.poll(() => lines.count()).toBeGreaterThan(1);
   const n = await lines.count();
-  expect(n).toBeGreaterThan(1);
   await expect(host.getByRole("button", { name: /^改第 \d 句$/ })).toHaveCount(n);
 
   const edited = "主持人改寫：全場安靜！";
@@ -384,13 +386,15 @@ test("host narration panel: every line has its own 改, and an edited line reach
 });
 
 /** Opens the host's narration panel (in ⚙ 更多) if needed, swaps its last line for `text`, and closes the drawer. */
-async function editLastLine(host: Page, text: string) {
+/** `lastHas`: wait until the last line names it (the line 下一題 adds) before editing it. */
+async function editLastLine(host: Page, text: string, lastHas?: string) {
   await openMore(host);
   const panel = host.getByTestId("narration-panel");
   const toggle = panel.getByRole("button", { name: /地城主旁白/ });
   // The summary counts lines once the narration is in (not 旁白生成中…), so the panel won't close on its arrival (D12).
   await expect(toggle).toContainText(/\d 句・/);
   if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  if (lastHas) await expect(panel.getByTestId("narration-line").last()).toContainText(lastHas);
   await panel.getByRole("button", { name: /^改第 \d 句$/ }).last().click();
   const input = panel.getByRole("textbox", { name: /的新內容$/ });
   await input.fill(text);
