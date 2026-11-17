@@ -15,7 +15,7 @@ async function clericRoom(browser: Browser, beforeWrong?: (host: Page) => Promis
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("牧師隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
-  await expect(team.getByText("答錯後，這回合再答一次")).toBeVisible();
+  await expect(team.getByText("答錯後祈禱擲骰：7 以上這回合再答一次")).toBeVisible();
   await team.getByRole("button", { name: /牧師/ }).click();
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();

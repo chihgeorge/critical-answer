@@ -331,9 +331,7 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
           </PixelButton>
           <FleeButtons questionId={q.id} send={send} prayed={prayed} />
         </>
-      ) : rolling ? (
-        <ClassAbility game={game} teamId={teamId} send={send} />
-      ) : lock ? (
+      ) : rolling ? null : lock ? (
         <div className="px-bar mt-1" role="status">已鎖定！看大螢幕揭曉 ▶</div>
       ) : inFlight ? (
         <div className="px-bar ok mt-1" role="status">鎖定中…</div>
@@ -356,7 +354,8 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
         </PixelButton>
         </>
       )}
-      {!wrong && !rolling && <ClassAbility game={game} teamId={teamId} send={send} frozen={frozen} />}
+      {/* One mount through the die: a remount would lose the mage's cast and hide 「🔮 刪掉了」. */}
+      {!wrong && <ClassAbility game={game} teamId={teamId} send={send} frozen={frozen} />}
       {(lockFailed || dropped) && !frozen && <div className="text-center text-[14px]">沒送出，再按一次</div>}
     </Panel>
   );
