@@ -3,7 +3,7 @@
 
 import { DEFAULT_GAME_CONFIG, type SpectatorView } from "./game-state";
 import type { PublicQuestion, StateMessage } from "./protocol";
-import type { SceneTheme } from "./pixel-art";
+import { DUNGEON_ART, type SceneTheme } from "./pixel-art";
 import type { Accessory } from "./monster-catalog";
 import type { MonsterSprite, SpriteKind } from "./sprite-kind";
 
@@ -40,7 +40,15 @@ const LOOK: Record<MonsterSprite, { scale: number; float?: boolean }> = {
 export const FALLBACK_MONSTER: Monster = { kind: "slime", name: "…", scale: 6, hue: 0 };
 export const BOSS_THRESHOLD = DEFAULT_GAME_CONFIG.bossThreshold;
 
+/** The old look's backdrops, alternating (`classic`). */
 const ROOM_THEMES: SceneTheme[] = ["stone", "moss", "stone", "moss", "stone"];
+/** Going down (docs/designs/dungeon-scene.md C): each depth has its own biome, the boss room last. */
+const DEPTHS: { from: number; theme: SceneTheme; name: string }[] = [
+  { from: 0, theme: "stone", name: "入口石牆" },
+  { from: 2, theme: "moss", name: "苔蘚水道" },
+  { from: 4, theme: "deep", name: "幽暗深淵" },
+];
+const depth = (room: number) => DEPTHS.filter((d) => room >= d.from).pop()!; // no findLast: older TV browsers
 
 /** How the stage draws a bank monster. */
 export function monsterLook(m: PublicQuestion["monster"], hueShift = 0): Monster {
@@ -49,9 +57,15 @@ export function monsterLook(m: PublicQuestion["monster"], hueShift = 0): Monster
   return { ...LOOK[kind], kind, name: m.name, hue: (m.hue + hueShift) % 360, ...(m.accessory ? { accessory: m.accessory } : {}) };
 }
 
-/** A room's backdrop; `null` is the boss room. */
-export function roomTheme(room: number | null): SceneTheme {
-  return room === null ? "crimson" : ROOM_THEMES[room % ROOM_THEMES.length];
+/** A room's backdrop; `null` is the boss room. `classic`: the old alternation (the revert switch). */
+export function roomTheme(room: number | null, classic = !DUNGEON_ART): SceneTheme {
+  if (room === null) return "crimson";
+  return classic ? ROOM_THEMES[room % ROOM_THEMES.length] : depth(room).theme;
+}
+
+/** The big screen's floor chip: how deep the room on stage is, never how many are left (live map D8). */
+export function floorLabel(room: number | null): string {
+  return room === null ? "首領房" : `地下 ${room + 1} 樓・${depth(room).name}`;
 }
 
 /** Each boss phase turns the boss's colour by this much (boss-phases.md D9, chosen from the mockup).

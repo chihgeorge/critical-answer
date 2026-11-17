@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeTurn, FALLBACK_MONSTER, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, turnLive, turnOpened } from "./turn-info";
+import { describeTurn, FALLBACK_MONSTER, floorLabel, roomTheme, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, turnLive, turnOpened } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -62,11 +62,21 @@ describe("describeTurn", () => {
     expect(describeTurn(view(), null).monster).toBe(FALLBACK_MONSTER);
   });
 
-  it("picks the scene by room and cycles when there are more rooms than scenes", () => {
+  it("picks the scene by depth: stone, then moss, then deep from room 5 on", () => {
     const at = (roomIndex: number) => describeTurn(view({}, [{ roomIndex }]), null).theme;
-    expect(at(0)).toBe("stone");
-    expect(at(1)).toBe("moss");
-    expect(at(5)).toBe("stone");
+    expect([0, 1, 2, 3, 4, 49].map(at)).toEqual(["stone", "stone", "moss", "moss", "deep", "deep"]);
+  });
+
+  it("the classic look alternates stone and moss and never goes deep", () => {
+    expect([0, 1, 2, 3, 4, 5].map((r) => roomTheme(r, true))).toEqual(["stone", "moss", "stone", "moss", "stone", "stone"]);
+    expect(roomTheme(null, true)).toBe("crimson");
+  });
+
+  it("labels the floor by depth, and the boss room without a number", () => {
+    expect(floorLabel(0)).toBe("地下 1 樓・入口石牆");
+    expect(floorLabel(2)).toBe("地下 3 樓・苔蘚水道");
+    expect(floorLabel(7)).toBe("地下 8 樓・幽暗深淵");
+    expect(floorLabel(null)).toBe("首領房");
   });
 
   it("uses the crimson scene and the boss question in the boss room", () => {

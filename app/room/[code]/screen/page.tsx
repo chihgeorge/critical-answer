@@ -12,8 +12,8 @@ import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from
 import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FileVideo, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ScreenAudio, type ServerMessage, type ClientMessage, type SoundCue, type StateMessage, type HostEffect } from "@/lib/protocol";
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { CATCH_PAY, checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
-import { FORK_ARCH, sceneFloor, TEAM_LOOKS } from "@/lib/pixel-art";
-import { describeTurn, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
+import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type SceneLights } from "@/lib/pixel-art";
+import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
@@ -31,7 +31,7 @@ import { fitQuestionSize } from "@/lib/question-fit";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { antiCheatBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
 import { TransitionOverlay } from "@/components/transition-overlay";
-import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, prefersReducedMotion, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
+import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, prefersReducedMotion, QuestionMedia, SceneBackground, Sprite, TurnRibbon, useClassicArt } from "@/components/pixel";
 import { FogRevealContext, MapStrip } from "@/components/map-strip";
 import { McOption, optionLetter, type OptionLook } from "@/components/mc-option";
 import { Qr } from "@/components/qr";
@@ -68,17 +68,32 @@ const look = (i: number) => TEAM_LOOKS[i % TEAM_LOOKS.length];
 /** The 384×216 player drawn at 0.75 without rebuilding it: the margins give back the space the transform frees. */
 const SHRUNK_PLAYER = { transform: "scale(0.75)", transformOrigin: "0 0", marginRight: -96, marginBottom: -54 } as const;
 
-function Torches() {
+function Torches({ at, classic }: { at: Exclude<SceneLights, false>; classic: boolean }) {
+  const { xs, top, scale } = SCENE_TORCHES[at];
+  const [w, h] = SPRITE_SIZE.torch;
   return (
     <>
-      <div className="px-glow px-tf1" style={{ left: -40, bottom: 120 }} />
-      <div className="px-glow" style={{ right: -40, bottom: 120 }} />
-      {(["left", "right"] as const).map((side) => (
-        <div key={side} className="absolute" style={{ [side]: 66, bottom: 176, width: 54, height: 84, zIndex: 3 }}>
-          <Sprite kind="torch" variant={0} scale={6} className="px-tf1 absolute inset-0" />
-          <Sprite kind="torch" variant={1} scale={6} className="px-tf2 absolute inset-0" />
+      {/* The old look's glow; the torch-lit scene bakes its light into the canvas instead. */}
+      {classic && <div className="px-glow px-tf1" style={{ left: -40, bottom: 120 }} />}
+      {classic && <div className="px-glow" style={{ right: -40, bottom: 120 }} />}
+      {xs.map((x) => (
+        <div key={x} className="absolute" style={{ left: x - (w * scale) / 2, top, width: w * scale, height: h * scale, zIndex: 3 }}>
+          <Sprite kind="torch" variant={0} scale={scale} className="px-tf1 absolute inset-0" />
+          <Sprite kind="torch" variant={1} scale={scale} className="px-tf2 absolute inset-0" />
         </div>
       ))}
+    </>
+  );
+}
+
+/** A room's backdrop and its wall torches, from one value so the baked light and the flames always agree. `torches`
+ * false: no torches and no torch light (the tiles hang there). The old look keeps its torches low with CSS glows. */
+function Room({ room, arch, torches = "low" }: { room: number | null; arch?: boolean | "fork"; torches?: SceneLights }) {
+  const classic = useClassicArt();
+  return (
+    <>
+      <SceneBackground theme={roomTheme(room, classic)} arch={arch} lights={classic ? false : torches} classic={classic} />
+      {torches && <Torches at={classic ? "low" : torches} classic={classic} />}
     </>
   );
 }
@@ -97,8 +112,7 @@ function Lobby({ code, teams }: { code: string; teams: LobbyTeams }) {
   const joinUrl = typeof location === "undefined" ? "" : `${location.origin}/?code=${code}`;
   return (
     <>
-      <SceneBackground theme="stone" />
-      <Torches />
+      <Room room={0} />
       <Sparks />
       <div className="absolute inset-x-0 text-center" style={{ top: 34, zIndex: 5 }}>
         <div className="text-[22px] text-white" style={{ textShadow: "2px 2px 0 var(--k)" }}>
@@ -299,7 +313,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const eater = view.teams[eaterIdx];
   const bossScene = dish ? dish.room === null : turnInfo.bossScene;
   const monster = dish ? monsterLook(dish.monster) : turnInfo.monster;
-  const theme = dish ? roomTheme(dish.room) : turnInfo.theme;
+  // The room on stage: the dish's room through its reveal, else the boss room or the team's room. The backdrop and the
+  // floor chip both come from it, so they never disagree at the reveal.
+  const stageRoom = dish ? dish.room : bossScene ? null : turnInfo.room;
+  const classic = useClassicArt();
   // A team removed mid-reveal still leaves its dish line, without the name.
   const line = dish ? dishLine(dish, eater?.name ?? "", false) : "";
   const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => (say([line]), onChef(dish?.chefBonus)), eater ? onEaten : undefined); // no 嗝 when the eater's team has left (no one is shown eating)
@@ -577,9 +594,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
 
   return (
     <>
-      <SceneBackground theme={theme} />
-      {/* D1: the tiles stand where the torches hang. */}
-      {!wall && !sortWall && <Torches />}
+      {/* The torches hang high, between the panel and the tiles; the old look's low torches give way to the tiles (D1). */}
+      <Room room={stageRoom} torches={classic && (wall || sortWall) ? false : "high"} />
       <Sparks />
       {wall && <WallOptions options={wall.options} gone={wall.gone} magic={wall.magic} lock={pendingLock} wrong={wrong} correct={wall.correct} teamName={wall.team} narrow={tileVideo} />}
       {sortWall && <SortWall tiles={sortWall} narrow={tileVideo} />}
@@ -596,6 +612,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         )}
         <MapStrip view={view} />
       </div>
+      {/* Going down (dungeon-scene C): how deep the room on stage is. */}
+      {!classic && (
+        <div data-testid="screen-floor" className="absolute" style={{ left: 18, top: 70, zIndex: 6 }}>
+          <LabelChip>{floorLabel(stageRoom)}</LabelChip>
+        </div>
+      )}
 
       {/* 上菜 puts the panel away (cooking R4): the stage is the monster's, then the dish's. */}
       {/* The dish stands where the monster stood; its card takes the panel's place. */}
@@ -773,7 +795,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）
         </div>
       )}
-      <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0007", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
+      <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: classic ? "#0007" : "#0b0718b3", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
       {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : !dishUp(cook) && (
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         {/* ④ Rage jitters the whole boss; ② the parry's charge and counter wrap the sprite, whose own class never changes
@@ -839,8 +861,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
   const name = team?.name ?? "";
   return (
     <>
-      <SceneBackground theme={roomTheme(Math.max(0, (team?.roomIndex ?? 0) - 1))} />
-      <Torches />
+      <Room room={Math.max(0, (team?.roomIndex ?? 0) - 1)} />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
         {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`❓ ${name}`}</TurnRibbon>}
@@ -882,8 +903,7 @@ function FortuneScreen({ view, fortune, left, eventId, narration, onRead }: { vi
   const name = team?.name ?? "";
   return (
     <>
-      <SceneBackground theme={roomTheme(Math.max(0, (team?.roomIndex ?? 0) - (fortune.step === "card" ? 1 : 0)))} />
-      <Torches />
+      <Room room={Math.max(0, (team?.roomIndex ?? 0) - (fortune.step === "card" ? 1 : 0))} />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
         {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`🔮 ${name}`}</TurnRibbon>}
@@ -934,8 +954,7 @@ function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: Sp
   const doorTop = (sceneFloor(90) - FORK_ARCH.h) * px;
   return (
     <>
-      <SceneBackground theme={roomTheme(team?.roomIndex ?? 0)} arch="fork" />
-      <Torches />
+      <Room room={team?.roomIndex ?? 0} arch="fork" />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
         {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`輪到：${name}`}</TurnRibbon>}
@@ -1061,6 +1080,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   // A long epilogue shows one page at a time (≤ 3 rows, so the box stays under the steps); the host turns them.
   const shownEpilogue = epilogue && (epiloguePages(epilogue)[page] ?? epilogue);
   const turned = useRef(page);
+  const classic = useClassicArt();
   useEffect(() => {
     // Read out a page the host just turned to; a page already on show when this screen joined stays quiet, and a turn
     // during the places is read by onPodium.
@@ -1070,7 +1090,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   }, [page, ended, shownEpilogue, say]);
   return (
     <>
-      <SceneBackground theme="moss" arch={false} />
+      <SceneBackground theme="moss" arch={false} classic={classic} />
       {result && Array.from({ length: 26 }, (_, i) => (
         <i key={i} className="px-confetti" style={{ left: 20 + ((i * 37) % 920), background: CONFETTI[i % 6], animationDelay: `${-((i * 0.37) % 3.6)}s`, animationDuration: `${2.6 + ((i * 0.13) % 2)}s`, zIndex: 6 }} />
       ))}
@@ -1963,15 +1983,13 @@ export default function ScreenPage() {
         )}
         {game?.phase === "playing" && game.intro && (
           <>
-            <SceneBackground theme="stone" />
-            <Torches />
+            <Room room={0} />
             <HowToPlay page={game.intro.page} cuisine={!!game.cuisine} />
           </>
         )}
         {game?.phase === "playing" && !game.intro && game.initiative && (
           <>
-            <SceneBackground theme="stone" />
-            <Torches />
+            <Room room={0} />
             <InitiativeOverlay key={game.initiative.order ? "order" : "rolling"} ini={game.initiative} teams={game.view.teams} />
           </>
         )}
