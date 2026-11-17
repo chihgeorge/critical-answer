@@ -2279,6 +2279,27 @@ describe("narration (T5-T7)", () => {
     expect(all(room).filter((m) => m.type === "NARRATION")).toHaveLength(count);
   });
 
+  // Value: protects=送王房 during a reveal says the boss line once the stage shows it, and the held line naming the old
+  // room's monster is never said; fails_when=the boss line goes out over the reveal, or 下一題 adds the stale handoff.
+  it("送王房 during a reveal: 下一題 names the boss, not the room monster the held line named", async () => {
+    const { room, hostConn } = start(2);
+    await sleep(40);
+    judgeCorrect(room, hostConn); // Team 0 answers; Team 1 is next, in its first room
+    await sleep(40);
+    const held = all(room).filter((m) => m.type === "NARRATION").at(-1);
+    const roomMonster = (room as unknown as { heldHandoff: { next: { monster: string } } }).heldHandoff.next.monster;
+    send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: currentTurnTeamId(room.game!) });
+    expect(all(room).filter((m) => m.type === "NARRATION").at(-1)).toEqual(held); // nothing over the reveal
+    serveNext(room, hostConn, seqOf(room));
+    const boss = all(room).filter((m) => m.type === "STATE").at(-1)!.question;
+    expect(boss.boss).toBe(true);
+    const lines = all(room).filter((m) => m.type === "NARRATION").at(-1).lines as string[];
+    expect(lines.slice(0, held.lines.length)).toEqual(held.lines);
+    expect(lines.at(-1)).toContain(boss.monster.name);
+    expect(lines.at(-1)).not.toContain(roomMonster);
+    expect(lines).toHaveLength(held.lines.length + 1); // one handoff, not the held one as well
+  });
+
   describe("結束冒險 and the narration on screen", () => {
     /** A game whose start narration is in, ended by the host; `read` the screen read it out first. */
     async function ended(read: boolean, opts: ConstructorParameters<typeof DungeonRoom>[2] = {}) {
@@ -2363,7 +2384,8 @@ describe("narration (T5-T7)", () => {
     await flush();
     judgeCorrect(room, hostConn);
     await flush();
-    const narr = all(room).filter((m) => m.type === "NARRATION");
+    // rev 0 is each judgment's own NARRATION; 下一題 adds the held handoff to the one on show as rev 1.
+    const narr = all(room).filter((m) => m.type === "NARRATION" && m.rev === 0);
     expect(narr.map((m) => m.eventId)).toEqual([1, 2, 3]);
     for (const n of narr) expect(n.lines[0].length).toBeGreaterThan(0);
   });
@@ -2871,7 +2893,8 @@ describe("LLM narration and director (T8-T10)", () => {
       const next = narrations(r.room).at(-1);
       expect(next.eventId).toBeGreaterThan(r.n.eventId);
       send(r.room, r.hostConn, { type: "HOST_EDIT_NARRATION", eventId: next.eventId, rev: 0, index: 0, line: "新的開場" });
-      expect(narrations(r.room).at(-1)).toMatchObject({ eventId: next.eventId, rev: 1, lines: ["新的開場", THIRD] }); // an ordinary turn: result + the line that names the next team
+      // An ordinary turn: the result, and the line that names the next team waits for 下一題 (the reveal is on).
+      expect(narrations(r.room).at(-1)).toMatchObject({ eventId: next.eventId, rev: 1, lines: ["新的開場"] });
     });
 
 // Value: protects=the host's queued line is said once, in segment 2, by AI or scripted narration (host-next-line.md);
@@ -2880,6 +2903,10 @@ describe("LLM narration and director (T8-T10)", () => {
       // A reply a line long on an ordinary turn keeps the line that names the next team (runner.ts alignToSlots).
       const HANDOFF = "換人：Team 0、Team 1";
       const states = (conn: ReturnType<typeof makeConn>) => sentMsgs(conn).filter((m) => m.type === "HOST_NEXT_LINE_STATE").map((m) => m.line);
+      // 下一題: the reveal closes and the narration on show gets its held handoff.
+      const close = (r: { room: DungeonRoom; hostConn: ReturnType<typeof makeConn> }) => serveNext(r.room, r.hostConn, seqOf(r.room));
+      /** Each narration's lines as last sent (a handoff added at 下一題 included). */
+      const finalLines = (room: DungeonRoom): string[][] => [...new Map(narrations(room).map((n: { eventId: number; lines: string[] }) => [n.eventId, n.lines])).values()];
 
       it("the AI's second line keeps it when it says the line; the next narration has no line; every host page is told", async () => {
         const r = await llmRoom((req) => textReply(req.system.includes("珍珠能吃嗎") ? `紅隊答對了\n冒險者問：珍珠能吃嗎？\n${HANDOFF}` : `結果\n氣氛\n${HANDOFF}`));
@@ -2894,12 +2921,14 @@ describe("LLM narration and director (T8-T10)", () => {
         judge(r.room, r.hostConn);
         await sleep(30);
         expect(r.calls.at(-1)!.system).toContain("一定要包含主持人指定的這句話：「珍珠能吃嗎」");
+        close(r);
         expect(narrations(r.room).at(-1).lines).toEqual(["紅隊答對了", "冒險者問：珍珠能吃嗎？", HANDOFF]);
         expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ sources: ["llm", "llm", "llm"], event: { hostLine: "珍珠能吃嗎" } });
         for (const c of [r.hostConn, other]) expect(states(c).at(-1)).toBe("");
         judge(r.room, r.hostConn);
         await sleep(30);
         expect(r.calls.at(-1)!.system).not.toContain("珍珠能吃嗎");
+        close(r);
         expect(narrations(r.room).at(-1).lines).toEqual(["結果", HANDOFF]); // an ordinary turn: result + the line that names the next team
       });
 
@@ -2910,6 +2939,7 @@ describe("LLM narration and director (T8-T10)", () => {
         send(r.room, r.hostConn, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
         judge(r.room, r.hostConn);
         await sleep(30);
+        close(r);
         expect(narrations(r.room).at(-1).lines).toEqual(["結果", "珍珠能吃嗎", HANDOFF]);
         expect(transcript(r.room, r.hostConn).at(-1)).toMatchObject({ sources: ["llm", "host", "llm"] });
 
@@ -2950,6 +2980,7 @@ describe("LLM narration and director (T8-T10)", () => {
         expect(states(r.hostConn).at(-1)).toBe("");
         judge(r.room, r.hostConn);
         await sleep(30);
+        close(r);
         expect(narrations(r.room).at(-1).lines[1]).toBe(HANDOFF);
         expect(transcript(r.room, r.hostConn).filter((e: { kind?: string }) => e.kind === "next").map((e: { text: string }) => e.text)).toEqual(["珍珠能吃嗎", ""]);
       });
@@ -2984,7 +3015,8 @@ describe("LLM narration and director (T8-T10)", () => {
         await sleep(10);
         releases[1]();
         await sleep(30);
-        expect(narrations(r.room).map((n: { lines: string[] }) => n.lines[1]).slice(-2)).toEqual(["珍珠能吃嗎", HANDOFF]);
+        close(r);
+        expect(finalLines(r.room).map((l) => l[1]).slice(-2)).toEqual(["珍珠能吃嗎", HANDOFF]);
         expect(states(r.hostConn).at(-1)).toBe("");
       });
 
@@ -3001,6 +3033,7 @@ describe("LLM narration and director (T8-T10)", () => {
         await sleep(10);
         releases[0](); // narration 1 lands after 2: dropped as stale
         await sleep(30);
+        close(r);
         expect(narrations(r.room).at(-1).lines[1]).toBe(HANDOFF);
         expect(states(r.hostConn).at(-1)).toBe("珍珠能吃嗎");
         judge(r.room, r.hostConn);
@@ -3137,15 +3170,24 @@ describe("story moves on to the next team (two-line narration)", () => {
     expect(narrs(room)[0].lines.at(-1)).toContain("Team 0");
   });
 
-  it("a judgment's narration carries a follow-up that names the team now on turn and its monster", async () => {
+  // Value: protects=the line naming the next team's monster is said only once the big screen shows that team's room, not
+  // over the answered room's monster during the reveal (screen review: 鐵殼螃蟹 named over 沼澤胖蛙); fails_when=the
+  // handoff goes out with the reveal, or 下一題 never adds it; no_claim=the screen's typing and voice (screen page).
+  it("a correct answer's handoff waits for 下一題, then names the team now on turn and its monster", async () => {
     const { room, hostConn } = begin();
     await flush();
     judge(room, hostConn); // Team 0 answers; Team 1 is next, still in the first room
     await flush();
     const n = narrs(room).at(-1);
     expect(n.lines[0]).toContain("Team 0");
-    expect(n.lines.at(-1)).toContain("Team 1");
-    expect(n.lines.at(-1)).toContain("軟趴趴史萊姆");
+    expect(n.lines.join("")).not.toContain("Team 1");
+    serveNext(room, hostConn, seqOf(room));
+    const after = narrs(room).at(-1);
+    expect(after).toMatchObject({ eventId: n.eventId, rev: n.rev + 1, lines: [...n.lines, expect.stringContaining("Team 1")] });
+    expect(after.lines.at(-1)).toContain("軟趴趴史萊姆");
+    // The STATE that changes the scene goes out before the line.
+    const msgs = all(room);
+    expect(msgs.findLastIndex((m) => m.type === "STATE" && !m.reveal)).toBeLessThan(msgs.findLastIndex((m) => m.type === "NARRATION"));
   });
 
   it("names the right team after a wrong answer too (turn still passes)", async () => {
@@ -3169,7 +3211,8 @@ describe("story moves on to the next team (two-line narration)", () => {
     await flush();
     judge(room, hostConn);
     await flush();
-    send(room, hostConn, { type: "HOST_EDIT_NARRATION", eventId: narrs(room).at(-1).eventId, rev: 0, index: 0, line: "主持人改的結果句" });
+    serveNext(room, hostConn, seqOf(room)); // 下一題 adds the handoff (rev 1)
+    send(room, hostConn, { type: "HOST_EDIT_NARRATION", eventId: narrs(room).at(-1).eventId, rev: 1, index: 0, line: "主持人改的結果句" });
     const edited = narrs(room).at(-1);
     expect(edited.lines[0]).toBe("主持人改的結果句");
     expect(edited.lines.at(-1)).toContain("Team 1");

@@ -38,6 +38,8 @@ export interface RoomSnapshot {
   eventSeq: number;
   /** `rev`, `done`: host edits and how many lines the big screen has read (host-narration-edit.md D14). Missing in a save from before them: 0. */
   lastNarration: { eventId: number; lines: string[]; rev?: number; done?: number } | null;
+  /** The handoff lastNarration held back while the answer reveal was on (multi-segment-narration.md). Missing: none. */
+  heldHandoff?: { eventId: number; line: string };
   epilogue: string | null;
   epilogueRequested: boolean;
   /** Answers earlier games in this room showed, dealt last in the next one (回到大廳). Missing in a save from before it. */
@@ -206,6 +208,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       // Anything but the two values we write is auto, and no held podium.
       pacing: raw.pacing === "manual" ? "manual" : undefined,
       revealHeld: raw.revealHeld === true ? true : undefined,
+      // A damaged one is dropped: the narration only misses its handoff.
+      heldHandoff: isObject(raw.heldHandoff) && Number.isInteger(raw.heldHandoff.eventId) && isString(raw.heldHandoff.line) ? { eventId: raw.heldHandoff.eventId as number, line: raw.heldHandoff.line } : undefined,
       screenAudio: parseScreenAudio(raw.screenAudio) ?? undefined,
       tapLatency: Number.isInteger(raw.tapLatency) && (raw.tapLatency as number) >= 0 && (raw.tapLatency as number) <= MAX_TAP_LATENCY_MS ? (raw.tapLatency as number) : undefined,
       // Only a label: the bank itself is the saved copy. A damaged one reads as the default.

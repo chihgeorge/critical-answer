@@ -141,7 +141,7 @@ import { tokensEqual } from "../tokens";
 import { epilogueParts, titleFacts, toNarrationEvent, type NarrationEvent, type NextTurn } from "../narration/events";
 import { createCrowdTally } from "../narration/crowd";
 import { BUZZ_REOPEN_LINE, createScriptedProvider, stunSkipLine, type NarrationProvider } from "../narration/scripted";
-import { createRunner, type TranscriptItem } from "../narration/runner";
+import { createRunner, MAX_LINE, type TranscriptItem } from "../narration/runner";
 import { editedLine } from "../narration/client";
 import { PROVIDERS } from "../narration/providers";
 import { RECENT_LINES } from "../narration/llm";
@@ -614,6 +614,9 @@ export class DungeonRoom {
   private nextLineGen = 0;
   /** Scripted lines for narration `eventId` that has not landed yet (appendLine). Memory only. */
   private heldLines: { eventId: number; lines: string[] } | null = null;
+  /** The handoff a narration dropped while the reveal held the stage, and whom it named: closeReveal says it if that
+   * team still faces that monster, else a scripted one. Saved: a restart (which drops the reveal) adds it at once. */
+  private heldHandoff: { eventId: number; line: string; next: NextTurn } | null = null;
   /** eventId -> the nextLine gen its narration carries, until that narration is emitted. */
   private hostLineGens = new Map<number, number>();
   /** The host's choice at HOST_START. Only effective while the room has a key and budget left. */
@@ -795,6 +798,13 @@ export class DungeonRoom {
         // Cleared before the broadcast, so the one save it triggers cannot bring the line back after a restart.
         const said = gen !== undefined && this.nextLine?.gen === gen;
         if (said) this.nextLine = null;
+        // The stage keeps the answered room's monster until 下一題: the handoff naming the next team's monster would
+        // be read over it, so it is dropped here and closeReveal says it once the stage shows that team. Before the held
+        // lines go on, so a sprint or potion line held for this narration stays.
+        if (this.reveal && eventId === this.eventSeq && event.next) {
+          this.heldHandoff = { eventId, line: lines[lines.length - 1], next: event.next };
+          lines = lines.slice(0, -1);
+        }
         // A held line goes out with its narration, unless the game ended meanwhile.
         if (this.game?.phase === "playing") lines = [...lines, ...held];
         this.lastNarration = { eventId, lines, rev: 0, done: 0 };
@@ -1000,6 +1010,7 @@ export class DungeonRoom {
       screenKey: this.screenKey,
       eventSeq: this.eventSeq,
       lastNarration: this.lastNarration,
+      ...(this.heldHandoff ? { heldHandoff: { eventId: this.heldHandoff.eventId, line: this.heldHandoff.line } } : {}),
       epilogue: this.epilogue,
       epilogueRequested: this.epilogueRequested,
       podium: this.podium,
@@ -1101,6 +1112,11 @@ export class DungeonRoom {
     this.screenKey = s.screenKey ?? this.screenKey;
     this.eventSeq = s.eventSeq;
     this.lastNarration = s.lastNarration && { ...s.lastNarration, rev: s.lastNarration.rev ?? 0, done: s.lastNarration.done ?? 0 };
+    // The answer reveal is not saved, so the restored stage already shows the team on turn: the handoff its narration
+    // held back joins it now.
+    const h = s.heldHandoff;
+    const n = this.lastNarration;
+    if (h && n?.eventId === h.eventId && n.lines.length < NARRATION_MAX_LINES) this.lastNarration = { ...n, lines: [...n.lines, h.line], rev: n.rev + 1 };
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
     this.podium = s.podium ?? null;
@@ -1931,6 +1947,7 @@ export class DungeonRoom {
     this.eventSeq = 0;
     this.lastNarration = null;
     this.heldLines = null;
+    this.heldHandoff = null;
     this.cue = null;
     this.cueSeq = 0;
     this.epilogue = null;
@@ -2620,6 +2637,7 @@ export class DungeonRoom {
     this.revealOnRead = false;
     this.lastNarration = null;
     this.heldLines = null;
+    this.heldHandoff = null;
     this.cue = null;
     this.staleBeforeSeq = ++this.eventSeq;
     // A line queued in the game just left belongs to it, even if a narration still in flight carries it.
@@ -2849,7 +2867,17 @@ export class DungeonRoom {
     this.reveal = null;
     // A hit that ended a boss phase showed its answer first; the phase card comes next (boss-phases.md).
     if (this.game?.phase === "playing" && this.game.boss.phasePending) return this.openPhaseCard();
+    // The narration on show dropped its handoff while the reveal held the stage (emit): say it now, after the STATE that
+    // shows the team on turn. Worked out now, so it names whoever is on turn and whatever they face (送王房 included),
+    // and a restart in between loses nothing. A fork opening in broadcastState moves eventSeq on: its line wins.
+    const due = this.lastNarration?.eventId === this.eventSeq ? this.eventSeq : null;
+    const held = this.heldHandoff?.eventId === due ? this.heldHandoff : null;
+    this.heldHandoff = null;
     this.broadcastState();
+    const next = due === this.eventSeq ? this.nextTurn() : null;
+    if (due === null || !next) return;
+    const same = held && held.next.team === next.team && held.next.monster === next.monster && held.next.boss === next.boss && !!held.next.fork === !!next.fork;
+    this.appendLine(due, same ? held.line : this.scripted.nextLine(next), MAX_LINE);
   }
 
   /** Starts the boss's next phase and shows its card until 下一題. `announce` is false on a restart, which
@@ -2979,8 +3007,8 @@ export class DungeonRoom {
   /** Adds a scripted line after narration `eventId` (last-sprint.md E5, shared with lucky-potion.md E5): at once with
    * `rev + 1`, as a host edit goes out, or held until that narration lands. Cut to MAX_EDIT_LINE (team names are user
    * text); dropped once the game is over. */
-  private appendLine(eventId: number, raw: string) {
-    const line = sanitizeText(raw, MAX_EDIT_LINE);
+  private appendLine(eventId: number, raw: string, max = MAX_EDIT_LINE) {
+    const line = sanitizeText(raw, max);
     if (!line || this.game?.phase !== "playing") return;
     const n = this.lastNarration;
     if (n?.eventId === eventId) {
@@ -3575,7 +3603,8 @@ export class DungeonRoom {
       this.game = sendToBoss(this.game, teamId, this.rng);
       this.broadcastState();
       // The owl's last 「輪到…」 line named the room monster this team just left: it now faces the boss.
-      const next = onTurn ? this.nextTurn() : null;
+      // During a reveal the handoff waits for 下一題 (closeReveal), which names the boss then.
+      const next = onTurn && !this.reveal ? this.nextTurn() : null;
       if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next));
     } catch (err) {
       this.sendInvalid(conn, err);
