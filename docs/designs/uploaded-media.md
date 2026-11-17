@@ -44,7 +44,7 @@ Cloudflare Workers 的 request body 上限看帳號方案：Free 和 Pro 是 100
 
 不用 `arrayBuffer()` 一次讀完：一邊讀 `request.body` 一邊數，超過 25 MB 立刻停、回 413（沒有 `Content-Length` 或謊報都一樣擋得住；HTTP/2 的上傳不一定帶 `Content-Length`，所以不回 411）。`Content-Length` 超過 25 MB 先擋；讀完以後照實際格式套上限（圖片超過 5 MB 照舊 413）。上傳成功記一行 `media_uploaded {contentType, bytes}`，拒收記 `media_rejected {reason}`（不記內容）。上傳 API 的錯誤訊息全部改成繁中並寫怎麼修（例如「不支援這種檔案：影片請用 MP4（H.264／AAC），聲音用 M4A 或 MP3」「影片或聲音超過 25 MB，請先剪短或壓縮」「圖片超過 5 MB」），編輯器直接顯示。`bank-image-api.ts` 開頭註明：這裡的 image 指所有上傳媒材。回應多帶 `contentType`，編輯器用它決定存成 `video` 還是 `audio`，不信瀏覽器給的 `file.type`，也不信按了哪顆鈕：在「聲音」上傳了 MP4 影片，存成 `video`，分頁跟著跳到「影片」。
 
-shortcut：只看容器，不看編碼。HEVC 的 MP4 也收得進來，但很多瀏覽器放不出來；編輯器的預覽會先露出來。要擋再讀 `moov` 裡的 codec。
+HEVC（2026-11-16 補上，原本是 shortcut）：MP4 先走最外層的 box 找到 `moov`（在 `mdat` 前後都找得到），只在 `moov` 裡找後面接著 6 個 0 byte（sample entry 的保留欄位）的 `hvc1`／`hev1`／`dvh1`／`dvhe`（標題或註解裡寫了這幾個字不算），找到就 400「這支影片是 HEVC（H.265）編碼…請轉成 H.264」，記 `media_rejected {reason: "hevc"}`。不搜整個檔：`mdat` 是壓縮資料，碰巧出現這四個 byte 會誤擋。box 讀不懂（大小比標頭小、64 位元大小是 0、標頭被截斷）就照舊收下，交給編輯器預覽。
 
 ### D3 網址只給主持人和帶金鑰的大螢幕
 

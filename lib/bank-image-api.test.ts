@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { handleBankImageApi, MAX_IMAGE_BYTES, MAX_MEDIA_BYTES, PNG_MAGIC, JPEG_MAGIC, WEBP_RIFF_MAGIC, WEBP_MAGIC, type BankImageApiDeps } from "./bank-image-api";
+import { handleBankImageApi, handleMediaSweepApi, MAX_IMAGE_BYTES, MAX_MEDIA_BYTES, MEDIA_SWEEP_STUCK, PNG_MAGIC, JPEG_MAGIC, WEBP_RIFF_MAGIC, WEBP_MAGIC, type BankImageApiDeps, type MediaSweepDeps } from "./bank-image-api";
 
 const KEY = "owner-key-0123456789abcdef";
 
@@ -314,5 +314,89 @@ describe("handleBankImageApi: video and audio", () => {
     const res = await handleBankImageApi(req("POST", { body: ftypBytes("isom") }), deps({ putImage }));
     expect(res.status).toBe(403);
     expect(putImage).not.toHaveBeenCalled();
+  });
+});
+
+/** An MP4 box: 4-byte size, 4-character type, then `body`. */
+function box(type: string, body: Uint8Array = new Uint8Array(0)): Uint8Array {
+  const out = new Uint8Array(8 + body.length);
+  new DataView(out.buffer).setUint32(0, out.length);
+  out.set(new TextEncoder().encode(type), 4);
+  out.set(body, 8);
+  return out;
+}
+const join = (...parts: Uint8Array[]) => {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  parts.reduce((at, p) => (out.set(p, at), at + p.length), 0);
+  return out;
+};
+/** ftyp + moov whose sample entry is `codec`, with `mdat` before or after it. */
+const mp4 = (codec: string, mdat = box("mdat", new Uint8Array(64)), moovFirst = true) => {
+  const ftyp = box("ftyp", new TextEncoder().encode("isom\0\0\0\0isomavc1"));
+  const moov = box("moov", box("trak", box("mdia", box("minf", box("stbl", box("stsd", join(new Uint8Array(8), box(codec, new Uint8Array(16)))))))));
+  return moovFirst ? join(ftyp, moov, mdat) : join(ftyp, mdat, moov);
+};
+
+describe("handleBankImageApi: HEVC video", () => {
+  it.each(["hvc1", "hev1", "dvh1", "dvhe"])("rejects an MP4 whose video is %s (400, says to convert to H.264), storing nothing", async (codec) => {
+    const putImage = vi.fn();
+    const res = await post(mp4(codec), { putImage });
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("H.264");
+    expect(putImage).not.toHaveBeenCalled();
+  });
+
+  it("finds it in a moov after mdat, and in a file sent as audio", async () => {
+    expect((await post(mp4("hvc1", undefined, false))).status).toBe(400);
+    const asAudio = handleBankImageApi(new Request("https://worker.example.com/api/bank/image", { method: "POST", headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "audio/mp4" }, body: mp4("hev1") as unknown as BodyInit }), deps());
+    expect((await asAudio).status).toBe(400);
+  });
+
+  it("accepts H.264, and HEVC's four bytes inside mdat alone (compressed media can hold them by chance)", async () => {
+    expect((await post(mp4("avc1"))).status).toBe(200);
+    expect((await post(mp4("avc1", box("mdat", new TextEncoder().encode("..hvc1..")), false))).status).toBe(200);
+  });
+
+  it("accepts H.264 whose moov metadata merely says hvc1 (a title, not a sample entry)", async () => {
+    const ftyp = box("ftyp", new TextEncoder().encode("isom"));
+    const moov = box("moov", join(box("trak", box("avc1", new Uint8Array(16))), box("udta", new TextEncoder().encode("©nam my hvc1 clip"))));
+    expect((await post(join(ftyp, moov))).status).toBe(200);
+  });
+
+  it("accepts boxes it cannot walk as before: a size smaller than its header, a 64-bit size of 0, a cut-off header", async () => {
+    const ftyp = box("ftyp", new TextEncoder().encode("isom"));
+    const tooSmall = join(ftyp, new Uint8Array([0, 0, 0, 4]), new TextEncoder().encode("moovhvc1"));
+    const zeroLarge = join(ftyp, new Uint8Array([0, 0, 0, 1]), new TextEncoder().encode("moov"), new Uint8Array(8), new TextEncoder().encode("hvc1"));
+    const cut = join(ftyp, new Uint8Array([0, 0, 0, 1]), new TextEncoder().encode("moov"));
+    for (const body of [tooSmall, zeroLarge, cut]) expect((await post(body)).status).toBe(200);
+  });
+});
+
+describe("handleMediaSweepApi", () => {
+  const sweepReq = (method: string, auth = `Bearer ${KEY}`) => new Request("https://worker.example.com/api/bank/media-sweep", { method, headers: { Authorization: auth } });
+  const sweepDeps = (sweep: MediaSweepDeps["sweep"]): MediaSweepDeps => ({ ownerKey: KEY, allowedOrigins: "", sweep });
+
+  it("GET lists without queueing, POST queues", async () => {
+    const sweep = vi.fn(async () => ({ orphans: ["a"], skipped: ["b.png"] }));
+    expect(await (await handleMediaSweepApi(sweepReq("GET"), sweepDeps(sweep))).json()).toEqual({ queued: false, orphans: ["a"], skipped: ["b.png"] });
+    expect(await (await handleMediaSweepApi(sweepReq("POST"), sweepDeps(sweep))).json()).toEqual({ queued: true, orphans: ["a"], skipped: ["b.png"] });
+    expect(sweep.mock.calls).toEqual([[false], [true]]);
+  });
+
+  it("asks for the owner key (403) and refuses other methods (405), never sweeping", async () => {
+    const sweep = vi.fn();
+    expect((await handleMediaSweepApi(sweepReq("POST", "Bearer wrong"), sweepDeps(sweep))).status).toBe(403);
+    expect((await handleMediaSweepApi(sweepReq("DELETE"), sweepDeps(sweep))).status).toBe(405);
+    expect(sweep).not.toHaveBeenCalled();
+  });
+
+  it("answers 409 with a fixed text while a bank is unreadable, 503 when the listing or the bank store fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const stuck = await handleMediaSweepApi(sweepReq("POST"), sweepDeps(async () => Promise.reject(new Error(`${MEDIA_SWEEP_STUCK}：default`))));
+    expect(stuck.status).toBe(409);
+    expect(await stuck.text()).toBe(MEDIA_SWEEP_STUCK); // fixed text: the caught message (bank ids) stays in the log
+    const down = await handleMediaSweepApi(sweepReq("POST"), sweepDeps(async () => Promise.reject(new Error("R2 list failed"))));
+    expect(down.status).toBe(503);
+    expect(await down.text()).toContain("請稍後再試一次");
   });
 });

@@ -38,6 +38,10 @@ import { allQuestions, assertSavable, bossQuestions, parseBank, imageKeysOf, typ
 import type { RoomStorage } from "./room/io";
 import { DEFAULT_BANK_ENTRY } from "./protocol";
 import { BANK_NOT_FOUND } from "./bank-api";
+import { MEDIA_SWEEP_STUCK } from "./bank-image-api";
+
+/** The shape of a server-made upload key (crypto.randomUUID()). */
+const UPLOAD_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** The default bank's id. It keeps the storage keys every deploy before multi-bank used ("bank", "legacyBank"),
  * so an upgrade reads the same stored bank and old callers without an id get it (docs/designs/multi-bank.md). */
@@ -146,6 +150,10 @@ export class BankStore {
   private now: () => number;
   /** Keys runImageCleanup is deleting right now: R2 I/O lets a save run in between, and it must not put one back. */
   private deleting = new Set<string>();
+  /** runImageCleanup calls started, and those not finished: a sweep that overlaps one may list a file that is gone, or
+   * write back queue entries the cleanup just took out. */
+  private cleanupStarts = 0;
+  private cleanupsRunning = 0;
 
   /** `onImagesOrphaned`: deletes R2 objects the bank no longer references — see
    * docs/designs/image-question-type.md's "R2 cleanup mechanism" decision. It is NOT called at save
@@ -189,6 +197,16 @@ export class BankStore {
    * (an undo, or the same image re-added). Called by the Durable Object alarm; re-arms the alarm for
    * whatever is still waiting. */
   async runImageCleanup(): Promise<void> {
+    this.cleanupStarts++;
+    this.cleanupsRunning++;
+    try {
+      await this.cleanUp();
+    } finally {
+      this.cleanupsRunning--;
+    }
+  }
+
+  private async cleanUp(): Promise<void> {
     const pending = await this.getPending();
     if (pending.length === 0) return;
     const now = this.now();
@@ -366,6 +384,37 @@ export class BankStore {
     return next;
   }
 
+  /** Splits every key in the bucket (`listBucket`) into files nothing knows about and keys that are not server-made
+   * uploads. Known: any bank's files, any bank's backup from an overwritten outdated save (legacyBank), anything queued.
+   * With `queue`, the unknown files join the queue with the usual wait: runImageCleanup deletes them only if no bank uses
+   * them by then, and a room that copied one has expired. Refuses while a bank is unreadable or outdated (the fallback is
+   * not what's stored), and when a cleanup started or was still running at any point of the sweep: it may have deleted a
+   * listed file (a queue entry for it would let a stale tab save it back) or taken entries out of the queue that the
+   * sweep's write would put back. The queue is read last, right before the check, and written with storage awaits only,
+   * which the Durable Object's input gate keeps other events out of. */
+  async sweepOrphanedMedia(listBucket: () => Promise<string[]>, queue: boolean): Promise<{ orphans: string[]; skipped: string[] }> {
+    const before = this.cleanupStarts;
+    const stored = await listBucket();
+    const list = await this.listBanks();
+    const banks = await Promise.all(list.map((b) => this.read(b.id)));
+    const stuck = list.filter((_, i) => banks[i].unreadable || banks[i].outdated).map((b) => b.id);
+    if (stuck.length > 0) throw new Error(`${MEDIA_SWEEP_STUCK}：${stuck.join(", ")}`);
+    const backups = await Promise.all(list.map(async (b) => legacyImageKeys(((await this.storage.get(legacyKey(b.id))) as { bank?: unknown } | undefined)?.bank, undefined, true)));
+    const pending = await this.getPending();
+    if (this.cleanupStarts !== before || this.cleanupsRunning > 0) throw new Error("media sweep overlapped a cleanup; nothing queued, run it again");
+    const known = new Set([...banks.flatMap((b) => [...imageKeysOf(b.current.bank)]), ...backups.flatMap((s) => [...s]), ...pending.map((p) => p.key)]);
+    const unknown = stored.filter((k) => !known.has(k));
+    // Uploads are named crypto.randomUUID() (worker/index.ts): anything else was put in the bucket by hand, so it stays.
+    const orphans = unknown.filter((k) => UPLOAD_KEY.test(k));
+    const skipped = unknown.filter((k) => !UPLOAD_KEY.test(k));
+    if (queue && orphans.length > 0) {
+      const deleteAt = this.now() + this.cleanupDelayMs;
+      await this.setPending([...pending, ...orphans.map((key) => ({ key, deleteAt }))]);
+    }
+    console.log(JSON.stringify({ event: "media_sweep", queue, orphans: orphans.length, skipped }));
+    return { orphans, skipped };
+  }
+
   /** Files the readable banks other than `id` use. */
   private async otherBanksKeys(id: string): Promise<string[]> {
     const others = (await this.listBanks()).filter((b) => b.id !== id);
@@ -374,13 +423,16 @@ export class BankStore {
 }
 
 /** Every `value` of a `kind` image, video or audio object anywhere in `raw`: the files of a stored bank too old (or too new) to
- * parse. Other shapes are skipped, never thrown on. */
-export function legacyImageKeys(raw: unknown, keys = new Set<string>()): Set<string> {
-  if (Array.isArray(raw)) for (const v of raw) legacyImageKeys(v, keys);
+ * parse. Other shapes are skipped, never thrown on. With `imageKey`, also the pre-content `imageKey` shape (parseContent
+ * still reads it): the media sweep keeps those files. putBank and deleteBank leave it off, so a backup's old-shape files
+ * are never queued for deletion (a leak, as before), not deleted after the backup's 14 days. */
+export function legacyImageKeys(raw: unknown, keys = new Set<string>(), imageKey = false): Set<string> {
+  if (Array.isArray(raw)) for (const v of raw) legacyImageKeys(v, keys, imageKey);
   else if (raw && typeof raw === "object") {
     const o = raw as Record<string, unknown>;
     if ((o.kind === "image" || o.kind === "video" || o.kind === "audio") && typeof o.value === "string" && o.value) keys.add(o.value);
-    for (const v of Object.values(o)) legacyImageKeys(v, keys);
+    if (imageKey && typeof o.imageKey === "string" && o.imageKey) keys.add(o.imageKey);
+    for (const v of Object.values(o)) legacyImageKeys(v, keys, imageKey);
   }
   return keys;
 }
