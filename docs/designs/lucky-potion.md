@@ -304,3 +304,10 @@ Outside voices: declined by the user.
 - **VERDICT:** DESIGN + ENG CLEARED — ready to implement. The eng review was done by hand, not by a gstack skill, so `/ship`'s dashboard has no plan-eng-review record.
 
 NO UNRESOLVED DECISIONS
+
+## Class dice (2026-11-17)
+
+With class dice (docs/designs/class-abilities.md, 「職業技能擲骰」) a drunk potion goes on the team's next d20 of four kinds: the crit die, the persuasion check, the mage's skill die and the cleric's prayer die (`startRoll` takes the two dice for `crit`, `check`, `mage` and `cleric`). Never on the warrior's die, a fill-in's answer die (`answer`, which the chef and an armed thief read) or the kill's 4d20.
+
+- The phone shows 「🧪 喝下幸運藥水」 in two more places: on a fill-in for a mage once its check is done and it has a use left (small print 「法師技能骰擲兩次取高」), and for a cleric while its wrong answer waits for a prayer (「祈禱骰擲兩次取高」). On multiple choice a mage with a use left sees 「先施法的話，用在技能骰」 under the crit-die line: a cast before the answer takes the potion.
+- `handleTeamDrinkPotion` takes a drink on those turns too: the check gate is relaxed for a mage on a fill-in, and a cleric may drink while `canPray`.

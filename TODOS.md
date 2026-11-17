@@ -30,7 +30,6 @@
 - [上架手機版本](#上架手機版本)（[#300](https://github.com/chihgeorge/critical-answer/issues/300)） — 上架 L（人工約 1–2 週 / CC 約半天，不含審核）；PWA 已做
 - [每次行動可以選不同的動作，不只答題](#每次行動可以選不同的動作不只答題)（[#301](https://github.com/chihgeorge/critical-answer/issues/301)） — 未註明
 - [活動後清掉有版權疑慮的上傳影片和聲音](#活動後清掉有版權疑慮的上傳影片和聲音)（[#303](https://github.com/chihgeorge/critical-answer/issues/303)） — S，活動後
-- [每個職業技能都靠擲骰](#每個職業技能都靠擲骰)（[#305](https://github.com/chihgeorge/critical-answer/issues/305)） — M，活動後
 - [玩家自己選攻擊或說服](#玩家自己選攻擊或說服)（[#306](https://github.com/chihgeorge/critical-answer/issues/306)） — M
 - [在全新的 Cloudflare／Vercel 帳號上照部署指南做一遍](#在全新的-cloudflarevercel-帳號上照部署指南做一遍)（[#307](https://github.com/chihgeorge/critical-answer/issues/307)） — S（人工約 2 小時 / CC 約 30 分鐘）
 
@@ -344,25 +343,6 @@
 **Notes:**
 - Context 補充：回合流程在 `lib/game-state.ts` 和 `lib/room/dungeon-room.ts`；手機畫面在 `app/room/[code]/play/page.tsx`。可以和下面「隊伍職業」一起設計，職業的特殊能力可能就是其中一種動作。
 
----
-
-## 每個職業技能都靠擲骰
-
-**What:** 讓五個職業的技能都經過一次 d20：例如法師刪選項、盜賊偷襲、牧師祈禱先擲骰，結果決定效果大小。
-
-**Why:** 🧪 幸運藥水（原本的「⭐ 靈感」，`docs/designs/lucky-potion.md`）只影響 d20：暴擊骰和說服檢定。不擲骰的職業技能完全用不到藥水，戰士的答題骰為了平衡也排除在外。技能都走擲骰後，藥水對每個職業都一樣有用。lucky-potion office-hours（2026-11-08）估 1–2 天，活動前不做。
-
-**Context:**
-- `lib/game-state.ts`（`mageEliminate`、`armSneak`、`pray`）
-- `lib/room/dungeon-room.ts`（`startRoll`、`handleTeamUseAbility`）
-- `components/d20.tsx`（`RollOverlay`）
-
-**Effort/Priority:** M / P3（活動後）
-
-**Depends on:** 幸運藥水上線。要先討論職業平衡。
-
----
-
 ## 玩家自己選攻擊或說服
 
 **What:** 輪到時，手機讓隊伍自己選「攻擊」（出選擇題）或「說服」（出填空題），不再由抽到的題型決定。
@@ -483,6 +463,7 @@
 
 ## Host 自訂題庫文字進 LLM prompt 前的內容審核
 
+- **每個職業技能都靠擲骰** · 版號合併時定 · 戰士、法師、牧師、盜賊、廚師用能力都擲 d20，同一套四段：1 大失敗、2–6 小失敗、7–19 成功、20 大成功；大螢幕和其他骰子一樣顯示。次數一律一場 3 次（廚師沒有），廚師的 +20% 換成答對骰的 ×0.1／×0.8／×1.3／×2，戰士 7 以上答對拿八成、20 雙倍、1 扣整題。廚師和已偷襲的盜賊被改成答對時當場擲答對骰；戰士只看骰子，不能改判。藥水也能用在法師和牧師的骰子。設計見 `docs/designs/class-abilities.md`「職業技能擲骰（2026-11-17）」。
 - **題目、答案、選項、排序項目和詳解都不進 AI 旁白的 prompt** · 版號合併時定 · 重新看過每一條組 prompt 的路徑（`lib/narration/llm.ts` 是唯一的 LLM 呼叫）：題庫裡只有首領階段的名稱和規則會進去（階段卡那句，和晚到的隊伍踏進首領房那句），本來就用「」包起來並拿掉引號字元，這次系統提示也講明規則照原意講給玩家聽、裡面寫給 AI 的指示一律忽略。`lib/room/prompt-bank-text.test.ts` 用每個字串都是記號的題庫跑完整一局 AI 旁白，確認題目字串一個都沒出現在 prompt 裡。沒有涵蓋：欄位標籤和卡點題只出現在搶答階段，這局沒玩到。
 
 ## 手機答題模式（選擇題 + 自動判定）
