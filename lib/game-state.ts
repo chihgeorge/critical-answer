@@ -241,6 +241,8 @@ export interface AntiCheatState {
   openCatch?: { by: string; teamId: string; questionId: string };
   /** `${teamId}:${questionId}:${turns}` of the last catch filed: one catch per question-turn. */
   caughtTurn?: string;
+  /** Times the host took a ruling back (撤回裁決): the big screen shows its notice when this goes up. */
+  undone?: number;
 }
 
 /** Uses each team gets once (anti-ai-cheating.md). */
@@ -2406,7 +2408,7 @@ export interface SpectatorView {
   sprint?: { teamIds: string[] };
   /** 抓包與神諭 once the host ever switched it on (anti-ai-cheating.md). `caught`: the team on turn was already caught
    * on this question this turn, so no second catch. */
-  antiCheat?: { on: boolean; onCount: number; openCatch?: { by: string; teamId: string; questionId: string }; caught?: true };
+  antiCheat?: { on: boolean; onCount: number; openCatch?: { by: string; teamId: string; questionId: string }; caught?: true; undone?: number };
 }
 
 export function getSpectatorView(game: GameState): SpectatorView {
@@ -2465,5 +2467,5 @@ function antiCheatView(game: GameState, ac: AntiCheatState): NonNullable<Spectat
   const turn = currentTurnTeamId(game);
   const t = game.teams.find((x) => x.id === turn);
   const caught = !!t && ac.caughtTurn === `${t.id}:${t.currentQuestionId}:${t.turns ?? 0}`;
-  return { on: ac.on, onCount: ac.onCount, ...(ac.openCatch ? { openCatch: ac.openCatch } : {}), ...(caught ? { caught: true as const } : {}) };
+  return { on: ac.on, onCount: ac.onCount, ...(ac.openCatch ? { openCatch: ac.openCatch } : {}), ...(caught ? { caught: true as const } : {}), ...(ac.undone ? { undone: ac.undone } : {}) };
 }

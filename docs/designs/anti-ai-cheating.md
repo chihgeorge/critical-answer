@@ -77,6 +77,18 @@ Mode: Builder
     標成「已公布」的題通常不會再發；題庫小到沒別的題時，現有的發題退路可能再發到它，跟任何已公布的題一樣。
   - **🛡️ 冤枉**：檢舉隊 −10 分（最低 0）。答題隊拿一瓶幸運藥水（走 `giveItem`，算進 `potionsGiven`）；已經有藥水的話改拿 +10 分（固定）。
     答題隊繼續作答，倒數從頭算。
+- **↩ 撤回裁決**（原本的 E5，站長 2026-11-16 核准）：裁決後主持人頁判題區上方剩一顆「↩ 撤回裁決」（`HOST_UNDO_RULING`，只收主持人連線，
+  STATE 的 `undoRuling: { upheld }` 說可以按）。沿用「改判答對」的 `this.undo`，多一個 `verdict` 標記：`prev` 是裁決前（抓包還開著）的遊戲。
+  按下去用 `prev` 還原，跟改判答對一樣保留這期間不算動作的變化（手機上下線、別隊點的選項），但開關、次數和計數都取 `prev` 的，
+  所以兩隊分數、藥水、`catchesUpheld`／`catchesDismissed`、成立的「已公布」、換題和換隊全部退回；揭曉（`this.reveal`）清掉，
+  抓包重新開著，倒數又停下，裁決卡再出現。`antiCheat.undone` +1，大螢幕看到它變大就跳一次淡紫條紋橫幅「↩ 主持人收回了剛才的裁決」
+  （沿用最後衝刺的條紋，不放警報聲；這時重新開著的抓包不再跳抓包橫幅），貓頭鷹念固定的一句 `VERDICT_UNDO_LINE`（跟冤枉一樣只有腳本句，不走 AI）。
+  - 時機（`rulingUndoOpen`）：遊戲還是裁決後那一個（任何動作都會換掉它），而且成立要揭曉還在（`reveal.caught`）、冤枉要沒有別的東西擋著（`undoHeld`）。
+    所以成立按「下一題」、冤枉之後判題或任何動作就關掉；問神諭和切開關也會關掉（還原會把抓包放回神諭題上，或放回開關已經變了的遊戲）。
+    每次裁決只能撤回一次（撤回後 `this.undo` 清掉）。改判答對的路（`undoWrong`、`HOST_UNDO_WRONG`、改判、`withUndo` 的串接）都不理 `verdict`。
+  - 成立的答案已經被大家看到了；站長選擇連「已公布」一起退回，重新判冤枉的話答題隊會回到同一題（/autoplan 2026-11-16 外部審查提出，維持站長決定）。
+    暫停的影片不會自己恢復播放，主持人再按 ▶。成立時 AI 旁白還沒回來的話，撤回那句接在成立那句後面念。
+  - 房間重開：`this.undo` 和揭曉都只在記憶體，重開後裁決照舊、不能撤回（跟改判答對一樣）。`antiCheat.undone` 存在遊戲裡，大螢幕重連時只當基準，不會重播。
 - 沒裁決就結束的抓包：遊戲結束（主持人結束冒險或打倒首領；回大廳只能從結束的遊戲回去）、主持人把被抓的隊伍送進首領房、
   主持人關掉開關：抓包取消，檢舉隊的次數退回，裁決卡和橫幅消失。答題隊斷線不取消。倒數歸零不影響（歸零本來就只是提醒）。
   遊戲中沒有移除隊伍的動作，指定換題（queueQuestion）也不換掉目前的題，所以都不是取消條件。
@@ -89,7 +101,7 @@ Mode: Builder
 
 全部放在 `GameState`，欄位都是選填，snapshot `SCHEMA_VERSION` 不變，舊存檔讀成「關閉」：
 
-- `antiCheat { on, onCount, openCatch?: { by, teamId, questionId }, caughtTurn? }`
+- `antiCheat { on, onCount, openCatch?: { by, teamId, questionId }, caughtTurn?, undone? }`（`undone`：撤回裁決的次數）
 - 每隊：`oracleLeft`、`catchesLeft`（有值就代表已經給過次數）、`oracleQ`
 - 遊戲紀錄的計數（每隊）：`oracles`（用過神諭）、`catchesFiled`、`catchesUpheld`、`catchesDismissed`、`catchesCancelled`
   （取消的抓包算在檢舉隊身上）；整場的 `antiCheat.onCount`（開關打開幾次）。`lib/game-log.ts` 把它們寫進結束時的那一筆紀錄，
@@ -107,7 +119,6 @@ Mode: Builder
 
 - E2 用 `scripts/balance-sim.ts` 模擬抓包和神諭對勝率的影響。
 - E3 首領房的神諭和抓包。
-- E5 主持人撤回一次裁決。
 - 「怎麼玩」說明頁不加一頁（跟「開場不提」衝突）。
 
 ## 成功標準
