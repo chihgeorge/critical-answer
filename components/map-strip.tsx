@@ -70,7 +70,9 @@ export function MapStrip({ view }: { view: SpectatorView }) {
             {/* A boon held (last-sprint.md D4), a 🧪 lucky potion (lucky-potion.md D11) and 🚪 at a fork (branch-fork.md),
                 side by side on the tag's own top-right corner, never widening the tag. */}
             {(t.boon || t.stunned || t.item || t.fork) && (
-              <span aria-hidden className="absolute flex text-[12px] leading-none" style={{ right: -6, top: -10 }}>
+              <span aria-hidden className="absolute flex text-[12px] leading-none" style={{ right: -6, top: t.inBossPhase && [t.boon, t.stunned, t.item, t.fork].filter(Boolean).length === 1 ? -2 : -10 }}>
+                {/* -2: one badge on a boss-room pawn sits lower, clear of the boss HP bar (art QA 2026-11-17); two or more
+                    stay up, so they never cover the tag letter. */}
                 {t.boon && <span data-testid="pawn-boon">{t.boon === "blessing" ? "✨" : "💀"}</span>}
                 {t.stunned && <span data-testid="pawn-stun">💫</span>}
                 {t.item && <span data-testid="pawn-potion">🧪</span>}
