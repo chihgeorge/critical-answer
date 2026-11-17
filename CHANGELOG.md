@@ -2,6 +2,16 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.89.2.0] - 2026-11-17
+
+### Fixed
+- 正式站的定時健康檢查（canary）改版後一直失敗：大廳設定收進「修改 ▾」之後，它找不到「開始前播放玩法說明」。現在它會先展開設定再取消勾選；關 ⚙ 更多時只按抽屜裡的「關閉」；某一步失敗後收尾，也會先關掉沒關的抽屜再結束冒險（原本按 Esc，抽屜不吃 Esc）。遊戲本身沒有改。
+
+## [0.89.1.0] - 2026-11-17
+
+### Fixed
+- After a correct answer, the owl no longer names the next team and its monster while the big screen still shows the answered room. That line now comes after 下一題, once the screen shows the next team's room. If the host sends that team to the boss room first, the line names the boss. A restart during the answer reveal still says the line.
+
 ## [0.89.0.0] - 2026-11-17
 
 ### Added
